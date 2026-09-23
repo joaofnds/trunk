@@ -254,16 +254,21 @@ let listRef = $state<{
 let scrolledToHead = false;
 let containerRef = $state<HTMLDivElement | null>(null);
 
-// The column header and the rows scroll sideways as one. The list's viewport is
-// looked up whenever the list mounts, which a row-height change does again.
+/** The virtual list's scroller, or null while the list is not mounted. */
+function listViewport(): HTMLElement | null {
+	return (
+		containerRef?.querySelector<HTMLElement>(".virtual-list-viewport") ?? null
+	);
+}
+
+// The column header and the rows scroll sideways as one. The viewport belongs to
+// the virtual list, so it is registered each time the list mounts.
 const syncTableScroll = createHorizontalScrollSync();
 
 $effect(() => {
 	if (!listRef) return;
 
-	const viewport = containerRef?.querySelector<HTMLElement>(
-		".virtual-list-viewport",
-	);
+	const viewport = listViewport();
 	if (!viewport) return;
 
 	return syncTableScroll(viewport).destroy;
@@ -364,9 +369,7 @@ $effect(() => {
 function panGraph(event: WheelEvent & { currentTarget: HTMLElement }) {
 	if (maxGraphScrollX <= 0 || event.deltaX === 0) return;
 
-	const viewport = event.currentTarget.querySelector<HTMLElement>(
-		".virtual-list-viewport",
-	);
+	const viewport = listViewport();
 	const rect = event.currentTarget.getBoundingClientRect();
 	const pointerX =
 		event.clientX - rect.left - COLUMN_PADDING_X + (viewport?.scrollLeft ?? 0);
@@ -1606,9 +1609,7 @@ export async function scrollToOid(oid: string): Promise<void> {
 	// VirtualList doesn't support 'center' alignment, so we calculate:
 	//   scrollTop = rowTop - (viewportHeight / 2) + (rowHeight / 2)
 	const rowTop = idx * svgRowHeight;
-	const viewport = containerRef?.querySelector<HTMLElement>(
-		".virtual-list-viewport",
-	);
+	const viewport = listViewport();
 	if (viewport) {
 		const viewportHeight = viewport.clientHeight;
 		const centerOffset = Math.max(
