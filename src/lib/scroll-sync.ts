@@ -15,7 +15,11 @@ export function createHorizontalScrollSync() {
 			// The scroll event for an offset this sync wrote arrives a frame later,
 			// when the column it came from may have moved on. Mirrored back, it
 			// drags that column to where it was, and every per-frame scroll stalls.
-			if (written.get(node) === node.scrollLeft) return;
+			// Each event consumes the entry, or a later scroll by the user back to
+			// that same offset would be taken for the echo too.
+			const echo = written.get(node);
+			written.delete(node);
+			if (echo === node.scrollLeft) return;
 
 			syncing = true;
 			const { scrollLeft } = node;

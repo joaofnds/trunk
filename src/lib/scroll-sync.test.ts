@@ -50,6 +50,26 @@ describe("createHorizontalScrollSync", () => {
 		expect(a.scrollLeft).toBe(30);
 	});
 
+	// 0 and the far end are where a pan stops, so a column is often scrolled back
+	// to exactly the offset the sync last wrote to it.
+	it("follows a mirrored column the user scrolls back to the offset it was given", () => {
+		const sync = createHorizontalScrollSync();
+		const a = document.createElement("div");
+		const b = document.createElement("div");
+		sync(a);
+		sync(b);
+		a.scrollLeft = 50;
+		a.dispatchEvent(new Event("scroll"));
+		b.dispatchEvent(new Event("scroll"));
+		b.scrollLeft = 80;
+		b.dispatchEvent(new Event("scroll"));
+
+		b.scrollLeft = 50;
+		b.dispatchEvent(new Event("scroll"));
+
+		expect(a.scrollLeft).toBe(50);
+	});
+
 	it("stops mirroring a destroyed column and never scrolls it again", () => {
 		const sync = createHorizontalScrollSync();
 		const a = document.createElement("div");
