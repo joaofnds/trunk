@@ -150,3 +150,36 @@ in `commands/diff.rs` selects the delta and reads it with `Patch::from_diff`;
 `walk_diff` stays for callers that genuinely want every file. End to end, one
 file out of a 1000-file commit went from 118 ms to 4.5 ms, and stopped scaling
 with the commit's width.
+
+## A custom property changed on the commit list's root costs 11ms (TRUNK-254.6, 2026-09-24)
+
+A custom property changed on the commit list's root cost about 11ms whether or not a rule
+reads it, and so did an edit to one stylesheet rule. That the cost is a restyle of every
+element under the root is the reading the numbers below support; WebKit's own profile was
+not taken. The Message pan was first built as one custom property there that every
+summary's `text-indent` read.
+
+Measured in headless WebKit on an M5 Pro, a production build at a 900px window, 48 rows
+mounted, 994 elements under the root, one step forced to style and layout:
+
+| One step writes | Cost |
+|---|---|
+| a custom property on the root that the summaries read | 11.1 ms |
+| a custom property on the root that nothing reads | 11.1 ms |
+| one stylesheet rule the summaries match | 11.4 ms |
+| `text-indent` on each of the 48 summaries | 2.6 ms |
+| a negative `margin-left` on an inline box inside each summary | 0.87 ms |
+
+`text-indent` is inherited, so it restyles the spans inside each summary too; the margin
+is not. Containment on the summaries (`contain: layout`, `layout size`, `strict`,
+`inline-size layout`) left the per-summary indent at 2.55 to 2.82 ms, within the noise
+of 2.64 without it. A whole Message pan step, the wheel handler's measures and the thumb
+included, went from 12.7 ms to 1.1 ms, and the margins draw the same pixels as the
+indent at every offset compared.
+
+**Rule:** a value that changes every frame goes on the elements that use it, as a
+property they do not pass on to their children, never on an ancestor of the whole list.
+
+**Review check:** for anything written per frame, a wheel, a drag, a scroll, ask which
+element it lands on and how many elements sit under it. The component test "leaves the
+list's own style alone" in `CommitGraph.test.ts` pins it for the Message pan.

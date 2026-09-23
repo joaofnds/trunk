@@ -1,10 +1,6 @@
 <script lang="ts">
 import { copySha } from "../lib/clipboard.js";
-import {
-	columnWidthProperty,
-	MESSAGE_FLOOR,
-	MESSAGE_INDENT_PROPERTY,
-} from "../lib/column-widths.js";
+import { columnWidthProperty, MESSAGE_FLOOR } from "../lib/column-widths.js";
 import { parseSummary, prefixToneVar } from "../lib/commit-prefix.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
 import { diffBarFractions } from "../lib/diff-stat.js";
@@ -53,6 +49,8 @@ interface Props {
 	/** Diff size for the Diff column. `undefined` = not yet computed (placeholder);
 	 *  a present value with zeros = a real empty/binary commit. */
 	diffStat?: DiffStat;
+	/** How far the Message pan has moved the summary's text left, in px. */
+	messagePan?: number;
 }
 
 let {
@@ -72,6 +70,7 @@ let {
 	commentTone = null,
 	wipStats,
 	diffStat,
+	messagePan = 0,
 }: Props = $props();
 
 const dateLabel = $derived(
@@ -167,10 +166,10 @@ const rowShadow = $derived(
         {/if}
       </div>
     {:else if isStash}
-      <span data-testid="commit-row-summary" data-message-summary class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic" style="color: var(--color-text-muted); text-indent: var({MESSAGE_INDENT_PROPERTY});">{commit.summary}</span>
+      <span data-testid="commit-row-summary" data-message-summary class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic" style="color: var(--color-text-muted);"><span style="margin-left: {-messagePan}px;">{commit.summary}</span></span>
     {:else}
-      <span data-testid="commit-row-summary" data-message-summary class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap" style="text-indent: var({MESSAGE_INDENT_PROPERTY});"
-      >{#if parsed.prefix}<span style="color: {prefixToneVar(parsed.prefix)};">{parsed.prefix}{parsed.scope}{parsed.bang}</span><span style="color: var(--fg-2);">{": "}</span>{parsed.rest}{:else}{commit.summary}{/if}</span>
+      <span data-testid="commit-row-summary" data-message-summary class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
+      ><span style="margin-left: {-messagePan}px;">{#if parsed.prefix}<span style="color: {prefixToneVar(parsed.prefix)};">{parsed.prefix}{parsed.scope}{parsed.bang}</span><span style="color: var(--fg-2);">{": "}</span>{parsed.rest}{:else}{commit.summary}{/if}</span></span>
     {/if}
     <CommentBadge count={commentCount} tone={commentTone} />
   </div>

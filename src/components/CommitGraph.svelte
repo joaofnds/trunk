@@ -43,7 +43,6 @@ import {
 	HEADER_ICON_WIDTH,
 	headerMinWidths,
 	MESSAGE_FLOOR,
-	MESSAGE_INDENT_PROPERTY,
 	messageReserve,
 	refContentWidth,
 	SIZED_COLUMNS,
@@ -2045,7 +2044,7 @@ $effect(() => {
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class="h-full overflow-hidden flex flex-col"
-  style="background: var(--bg-1); outline: none; {columnWidthDeclarations(columnWidths)} {MESSAGE_INDENT_PROPERTY}: {-messageScrollX}px;"
+  style="background: var(--bg-1); outline: none; {columnWidthDeclarations(columnWidths)}"
   tabindex="0"
   role="listbox"
   bind:this={containerRef}
@@ -2504,7 +2503,7 @@ $effect(() => {
         {#snippet renderItem(commit, index)}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div onmouseenter={() => (hoveredRow = index)} onmouseleave={() => (hoveredRow = null)}>
-          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {columnVisibility} selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={reviewOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} commentTone={commentToneFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)} />
+          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {columnVisibility} selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={reviewOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} commentTone={commentToneFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)} messagePan={messageScrollX} />
           </div>
         {/snippet}
       </VirtualList>

@@ -100,7 +100,7 @@ Graph: the rails and dots are one SVG as tall as the list inside the virtual lis
 content, and a scroller over the Graph band would sit over the rows' clicks and take the
 vertical wheel. For Message it would be a scroller per summary, one offset each, which
 is the shape of moving each summary only as far as it is cut; one offset for all is one
-custom property.
+number every row reads.
 
 ## Dragging it
 

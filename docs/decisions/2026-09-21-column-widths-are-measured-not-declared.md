@@ -126,27 +126,33 @@ scrolled.
 
 Message pans its summaries under the same rule, on the product owner's direction of
 2026-09-23: a summary cut off at the column's edge is read by swiping over it, not by
-widening the column. The pan is a negative `text-indent` on every commit's and stash's
-summary, read from one custom property on the list's root, so a swipe is one style
-write and a row the virtual list mounts later arrives already moved. An indent keeps the
-text inline, so the trailing ellipsis stays while the text still overflows and goes once
-its end is in view; a transform would need an inline-block, which `text-overflow` treats
-as one box to hide whole. The pan ends where the longest cut summary on screen ends: of
-the rows the virtual list has mounted, only those inside its viewport count, since it
-mounts twenty more past each edge, and a long summary out of view would let the pan slide
-the visible ones out of their cells. Because that end moves with the rows on screen, the
-pan is pulled back to it whenever they change, by a scroll, new rows or a new width;
-otherwise it would outlive the summary that earned it and leave the column blank. The
-measure is each summary's own laid-out text, through a `Range`, and not a canvas: a
-canvas needs the font as a string, WebKit serializes a computed `font` as an empty
-string, and a canvas handed one keeps whatever font it had last, which measured a 747px
-summary at 546px. Measured in WebKit with 48 rows mounted, a swipe over Message costs
-0.37ms and a scroll with its thumb up 0.13ms. Message's width is the engine's, read from
-its header cell, since it is the slack column and no state holds it. Every summary moves
-by the same offset, so a short one slides out of view as a long one is read. Moving each
-summary only as far as it is cut is the other shape, with a scroll offset per row where
-this has one for all; the product owner leans to one offset and picks between the two
-after using both in the app (TRUNK-254.6).
+widening the column. The pan is a negative left margin on an inline box around each
+commit's and stash's summary text, taken from the one offset every row reads, so a row
+the virtual list mounts later arrives already moved. The box stays inline, so the
+trailing ellipsis stays while the text still overflows and goes once its end is in view;
+a transform would need an inline-block, which `text-overflow` treats as one box to hide
+whole. The pan ends where the longest cut summary on screen ends: of the rows the
+virtual list has mounted, only those inside its viewport count, since it mounts twenty
+more past each edge, and a long summary out of view would let the pan slide the visible
+ones out of their cells. Because that end moves with the rows on screen, the pan is
+pulled back to it whenever they change, by a scroll, new rows or a new width; otherwise
+it would outlive the summary that earned it and leave the column blank. The measure is
+each summary's own laid-out text, through a `Range`, and not a canvas: a canvas needs
+the font as a string, WebKit serializes a computed `font` as an empty string, and a
+canvas handed one keeps whatever font it had last, which measured a 747px summary at
+546px. Message's width is the engine's, read from its header cell, since it is the slack
+column and no state holds it. Every summary moves by the same offset, so a short one
+slides out of view as a long one is read. Moving each summary only as far as it is cut
+is the other shape, with a scroll offset per row where this has one for all; the product
+owner kept one offset after using it in the app, 2026-09-24.
+
+Where the offset is written decides what a step costs: measured in WebKit at a 900px
+window with 48 rows mounted, a step costs 1.1ms with the margins, the wheel handler and
+the thumb included, and 12.7ms as a negative `text-indent` read from one custom property
+on the list's root, since any custom property changed there cost about 11ms, one no rule
+reads included, which points at a restyle of all 994 elements under the root. Both draw
+the same pixels at every offset compared. `docs/performance-patterns.md` has the rest of
+that measurement.
 
 Both pans take a wheel event only when it is more sideways than vertical. The rest, a
 diagonal as vertical as it is sideways included, goes to the engine whole, and the

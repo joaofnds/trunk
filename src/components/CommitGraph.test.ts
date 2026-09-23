@@ -1223,15 +1223,13 @@ describe("CommitGraph", () => {
 			});
 		}
 
-		// How far a summary's text is moved left. jsdom inherits custom
-		// properties but never substitutes var(), so it is resolved here.
+		// How far a summary's text is moved left.
 		function summaryShift(summary: HTMLElement): number {
-			const reference = /var\((--[\w-]+)/.exec(summary.style.textIndent);
-			if (!reference) {
-				throw new Error(`no indent on "${summary.textContent}"`);
+			const text = summary.firstElementChild;
+			if (!(text instanceof HTMLElement)) {
+				throw new Error(`no text box in "${summary.textContent}"`);
 			}
-			const value = getComputedStyle(summary).getPropertyValue(reference[1]);
-			return 0 - Number.parseFloat(value || "0");
+			return 0 - Number.parseFloat(text.style.marginLeft);
 		}
 
 		it("moves every summary by the swipe, a stash's too", async () => {
@@ -1325,6 +1323,22 @@ describe("CommitGraph", () => {
 			expect(summaryShift(summaries(container)[0])).toBe(0);
 		});
 
+		// A property changed on the list's root costs as much as restyling every
+		// element under it: measured in WebKit, 11ms a step, against 0.9ms for the
+		// summaries alone.
+		it("leaves the list's own style alone", async () => {
+			const { container } = mountMessages([LONG]);
+			await flush();
+			layOut(container);
+			const list = screen.getByRole("listbox");
+			const before = list.getAttribute("style");
+
+			wheelAt(container, 50, { deltaX: 30 });
+			await tick();
+
+			expect(list.getAttribute("style")).toBe(before);
+		});
+
 		it("leaves the WIP row where it is", async () => {
 			const { container } = mountMessages([LONG], { wipMessage: LONG });
 			await flush();
@@ -1333,7 +1347,8 @@ describe("CommitGraph", () => {
 			wheelAt(container, 50, { deltaX: 30 });
 			await tick();
 
-			expect(summaries(container)[0].style.textIndent).toBe("");
+			const wipText = summaries(container)[0].firstElementChild as HTMLElement;
+			expect(wipText.style.marginLeft).toBe("");
 		});
 
 		describe("once the pan has gone further than the summaries now run", () => {
