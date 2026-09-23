@@ -6,6 +6,7 @@ import {
 } from "./graph-constants.js";
 import { refRowChrome, rowPill } from "./ref-pill-data.js";
 import { WIDEST_LABELS } from "./relative-time.js";
+import type { ColumnVisibility } from "./store.js";
 import type { GraphCommit, GraphDisplaySettings } from "./types.js";
 
 export interface ColumnWidths {
@@ -120,6 +121,11 @@ export function columnFloors(measure: MeasureText): ColumnFloors {
  */
 export const MESSAGE_FLOOR = 180;
 
+/** What Message's floor takes from the row: the whole floor while Message shows. */
+export function messageReserve(visible: ColumnVisibility): number {
+	return visible.message ? MESSAGE_FLOOR : 0;
+}
+
 /**
  * The narrowest the table lays out: every shown sized column at its width, and
  * Message at its floor. A list narrower than this scrolls sideways by the
@@ -127,9 +133,9 @@ export const MESSAGE_FLOOR = 180;
  */
 export function tableMinWidth(
 	widths: ColumnWidths,
-	visible: Record<keyof ColumnWidths | "message", boolean>,
+	visible: ColumnVisibility,
 ): number {
-	let width = visible.message ? MESSAGE_FLOOR : 0;
+	let width = messageReserve(visible);
 	for (const column of SIZED_COLUMNS) {
 		if (visible[column]) width += widths[column];
 	}

@@ -43,6 +43,7 @@ import {
 	HEADER_ICON_WIDTH,
 	headerMinWidths,
 	MESSAGE_FLOOR,
+	messageReserve,
 	refContentWidth,
 	SIZED_COLUMNS,
 	shaContentWidth,
@@ -471,7 +472,7 @@ $effect(() => {
 		},
 		fitted,
 		rowWidth,
-		reserved: userSizedWidth + (columnVisibility.message ? MESSAGE_FLOOR : 0),
+		reserved: userSizedWidth + messageReserve(columnVisibility),
 		floors,
 	});
 
