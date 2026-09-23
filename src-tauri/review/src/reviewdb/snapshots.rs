@@ -8,11 +8,11 @@
 //! them, which is how any working-tree comment renders at all.
 
 use super::{repo_key, sqlite_error};
+use crate::snapshot::SnapshotKind;
 use rusqlite::Connection;
 use serde::Serialize;
 use std::path::Path;
 use trunk_git::error::TrunkError;
-use trunk_git::workdir_snapshot::SnapshotKind;
 
 #[derive(Debug, Serialize, Clone, Default)]
 pub struct RepoSnapshots {

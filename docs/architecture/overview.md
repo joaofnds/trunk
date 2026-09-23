@@ -140,7 +140,7 @@
 **Review Domain Layer:**
 - Purpose: The code review store and the review document, shared by the review commands and the `trunk review` CLI
 - Location: `src-tauri/review/src/`, the `trunk-review` crate
-- Contains: `reviewdb/` (the SQLite store), `doc.rs` (the review document renderer), `resolution.rs` (whether a comment still resolves against the repository), `range.rs` (review session ranges), `types.rs` (the review vocabulary and session schema)
+- Contains: `reviewdb/` (the SQLite store), `doc.rs` (the review document renderer), `resolution.rs` (whether a comment still resolves against the repository), `range.rs` (review session ranges), `snapshot.rs` (the dangling commit a review of uncommitted work is made against, and the ref that pins it), `types.rs` (the review vocabulary and session schema)
 - Depends on: `trunk-git`, `rusqlite`. Not on Tauri or syntax highlighting, which its manifest does not list
 - Used by: `src-tauri/src/commands/review.rs`, `src-tauri/src/cli/`
 

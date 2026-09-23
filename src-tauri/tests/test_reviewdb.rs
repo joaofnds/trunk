@@ -537,11 +537,11 @@ fn a_reply_aimed_at_another_repos_thread_is_refused() {
 
 // ── Task 4: per-repo snapshot rows ───────────────────────────────────────────
 
-use trunk_git::workdir_snapshot::{SnapshotKind, pinned_snapshot_oids};
 use trunk_lib::commands::review::{
     ensure_review_snapshot_inner, read_snapshots_inner, recompute_staleness,
     submit_current_file_thread_inner, submit_thread_into, sweep_once, sweep_unanchored_pins,
 };
+use trunk_review::snapshot::{SnapshotKind, pinned_snapshot_oids};
 
 #[test]
 fn ensure_snapshot_reuses_the_repos_prior_oid() {
@@ -1368,10 +1368,7 @@ fn the_sweep_reclaims_superseded_pins_nothing_anchors_to() {
     sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
     let refs: Vec<String> = repo
-        .references_glob(&format!(
-            "{}*",
-            trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX
-        ))
+        .references_glob(&format!("{}*", trunk_review::snapshot::SNAPSHOT_REF_PREFIX))
         .unwrap()
         .filter_map(std::result::Result::ok)
         .filter_map(|r| r.name().ok().map(str::to_owned))
@@ -1381,7 +1378,7 @@ fn the_sweep_reclaims_superseded_pins_nothing_anchors_to() {
         refs,
         vec![format!(
             "{}{}",
-            trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX,
+            trunk_review::snapshot::SNAPSHOT_REF_PREFIX,
             last_oid
         )],
         "only the current pin survives the sweep",
@@ -1416,7 +1413,7 @@ fn a_pin_survives_supersession_while_a_thread_anchors_to_it() {
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
         .unwrap();
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{anchored_oid}"))
             .is_ok(),
@@ -1463,7 +1460,7 @@ fn a_thread_in_one_repo_does_not_pin_another_repos_snapshot() {
     sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
     sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{superseded}"))
             .is_err(),
@@ -1505,7 +1502,7 @@ fn the_sweep_leaves_the_untouched_kinds_pin_alone() {
     sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
     sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{index_oid}")).is_ok(),
         "the untouched kind's current pin must survive the sweep",
@@ -1557,7 +1554,7 @@ fn a_failed_store_write_leaves_the_old_pin_in_place() {
         "the simulated store.write failure must propagate",
     );
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{old_oid}")).is_ok(),
         "a store.write failure must not leave the old pin unpinned — pruning \
@@ -1586,11 +1583,7 @@ fn review_deletion_touches_no_refs() {
         .write(|tx| reviewdb::reviews::delete(tx, &canonical, &review_id))
         .unwrap();
 
-    let snap_ref = format!(
-        "{}{}",
-        trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX,
-        oid
-    );
+    let snap_ref = format!("{}{}", trunk_review::snapshot::SNAPSHOT_REF_PREFIX, oid);
     assert!(
         repo.find_reference(&snap_ref).is_ok(),
         "review deletion must not touch snapshot refs — D8 makes them repo-level pins",
@@ -3174,7 +3167,7 @@ fn a_thread_landing_during_supersession_keeps_its_pin() {
     });
     submit_thread_inner(&store, &canonical, late, 1_002).unwrap();
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{in_flight_oid}"))
             .is_ok(),
@@ -3208,7 +3201,7 @@ fn a_snapshot_that_never_carried_a_thread_survives_repeated_sweeps() {
     sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_003).unwrap();
     sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_004).unwrap();
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{in_flight}")).is_ok(),
         "a snapshot no thread has ever named must not be reclaimed",
@@ -3237,7 +3230,7 @@ fn an_abandoned_snapshot_is_reclaimed_once_the_grace_window_passes() {
 
     sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{abandoned}"))
             .is_err(),
@@ -3275,7 +3268,7 @@ fn a_thread_landing_between_sweeps_saves_its_pin() {
     submit_thread_inner(&store, &canonical, late, 1_003).unwrap();
     sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{in_flight}")).is_ok(),
         "a pin whose thread landed between sweeps must not be reclaimed",
@@ -3316,7 +3309,7 @@ fn the_sweep_reclaims_a_pin_whose_review_was_deleted() {
     sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
     sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{anchored}")).is_err(),
         "a pin whose review was deleted must be reclaimed",
@@ -3345,7 +3338,7 @@ fn the_sweep_never_reclaims_a_current_pin() {
     sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
     sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{current}")).is_ok(),
         "the repo's current pin must survive any number of sweeps",
@@ -3433,7 +3426,7 @@ fn opening_the_panel_reclaims_a_pin_whose_thread_is_gone() {
 
     sweep_once(&store, &canonical, ctx.path(), &swept);
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{stranded}")).is_err(),
         "opening the panel must reclaim a pin whose thread is gone",
@@ -3478,7 +3471,7 @@ fn the_sweep_runs_once_per_process_per_repo() {
     sweep_once(&store, &canonical, ctx.path(), &swept);
     sweep_once(&store, &canonical, ctx.path(), &swept);
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{garbage}")).is_ok(),
         "a repo already claimed this process must not be swept again",
@@ -3514,7 +3507,7 @@ fn a_submit_spanning_two_sweeps_keeps_its_pin() {
     });
     submit_thread_inner(&store, &canonical, late, 2_002).unwrap();
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{in_flight}")).is_ok(),
         "a pin must survive any number of sweeps while a submit that resolved it is unfinished",
@@ -3556,7 +3549,7 @@ fn a_pin_becomes_collectable_as_soon_as_its_thread_is_deleted() {
     // pin collectable this soon.
     sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_002).unwrap();
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{oid}")).is_err(),
         "a snapshot whose thread is deleted is finished with, grace window or not",
@@ -3678,7 +3671,7 @@ fn a_snapshot_reused_after_a_revert_is_protected_again() {
     });
     submit_thread_inner(&store, &canonical, second, 1_005).unwrap();
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{s}")).is_ok(),
         "handing out a snapshot again must protect it again, whatever its history",
@@ -3995,7 +3988,7 @@ fn superseding_one_kind_does_not_expose_the_others_current_pin() {
         .unwrap();
     sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{index_oid}")).is_ok(),
         "the index kind's current pin must survive the workdir kind's supersession",
@@ -4050,7 +4043,7 @@ fn anchoring_in_one_repo_does_not_mark_anothers_snapshot() {
 
 /// Every ref under the snapshot prefix, as git sees it.
 fn pin_refs(repo: &git2::Repository) -> Vec<String> {
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     repo.references_glob(&format!("{prefix}*"))
         .unwrap()
         .names()
@@ -4126,8 +4119,7 @@ fn a_record_with_no_ref_is_dropped() {
             .unwrap();
 
     // Someone else removes the ref, leaving the row behind.
-    trunk_git::workdir_snapshot::prune_snapshot_ref(&repo, git2::Oid::from_str(&oid).unwrap())
-        .unwrap();
+    trunk_review::snapshot::prune_snapshot_ref(&repo, git2::Oid::from_str(&oid).unwrap()).unwrap();
 
     sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_001).unwrap();
 
@@ -4407,7 +4399,7 @@ fn a_snapshot_handed_out_again_is_not_reclaimed() {
 
     sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{s}")).is_ok(),
         "a snapshot handed out again must be protected again",
@@ -4453,7 +4445,7 @@ fn a_snapshot_handed_out_under_a_concurrent_sweep_is_pinned() {
     // sibling test's property. The property here is that whatever is handed
     // out is pinned when it is handed out.
     let repo_path = ctx.repo_path().to_path_buf();
-    let prefix = trunk_git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let prefix = trunk_review::snapshot::SNAPSHOT_REF_PREFIX;
     for i in 0..40 {
         let content = if i % 2 == 0 { "state A" } else { "state B" };
         std::fs::write(repo_path.join("a.txt"), content).unwrap();
@@ -4714,7 +4706,7 @@ fn the_decision_sees_the_reconciled_record() {
     .unwrap();
 
     // Something else removed the ref, leaving the row behind.
-    trunk_git::workdir_snapshot::prune_snapshot_ref(&repo, git2::Oid::from_str(&vanished).unwrap())
+    trunk_review::snapshot::prune_snapshot_ref(&repo, git2::Oid::from_str(&vanished).unwrap())
         .unwrap();
 
     let reclaimed = sweep_unanchored_pins(&store, &canonical, ctx.path(), NOW + 100_000).unwrap();

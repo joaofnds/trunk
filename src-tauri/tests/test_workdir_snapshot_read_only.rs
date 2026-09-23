@@ -3,9 +3,7 @@ mod common;
 use common::context::TestContext;
 use common::repository_manifest::repository_manifest;
 use std::path::Path;
-use trunk_git::workdir_snapshot::{
-    in_memory_workdir_tree_oid, tree_matches_index, workdir_tree_oid,
-};
+use trunk_review::snapshot::{in_memory_workdir_tree_oid, tree_matches_index, workdir_tree_oid};
 
 const REGULAR_FILE: i32 = 0o100_644;
 #[cfg(unix)]

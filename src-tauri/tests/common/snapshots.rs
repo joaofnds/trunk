@@ -12,7 +12,7 @@ use super::context::TestContext;
 pub fn collect_the_object(ctx: &TestContext, oid: &str) {
     let repo = git2::Repository::open(ctx.path()).unwrap();
     let parsed = git2::Oid::from_str(oid).unwrap();
-    trunk_git::workdir_snapshot::prune_snapshot_ref(&repo, parsed).unwrap();
+    trunk_review::snapshot::prune_snapshot_ref(&repo, parsed).unwrap();
 
     let gc = std::process::Command::new("git")
         .args(["gc", "--prune=now"])

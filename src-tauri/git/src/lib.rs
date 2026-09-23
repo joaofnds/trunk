@@ -12,4 +12,3 @@ pub mod repository;
 pub mod status;
 pub mod tracked_files;
 pub mod types;
-pub mod workdir_snapshot;

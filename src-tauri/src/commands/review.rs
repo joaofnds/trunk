@@ -245,11 +245,11 @@ fn repin_restored(repo: &git2::Repository, oid: &str, canonical: &Path) {
         }
     };
 
-    if !trunk_git::workdir_snapshot::is_snapshot_commit(&commit) {
+    if !trunk_review::snapshot::is_snapshot_commit(&commit) {
         return;
     }
 
-    if let Err(e) = trunk_git::workdir_snapshot::keep_snapshot_ref(repo, parsed) {
+    if let Err(e) = trunk_review::snapshot::keep_snapshot_ref(repo, parsed) {
         eprintln!(
             "re-pin failed for {} in {}: {}",
             oid,
@@ -1261,7 +1261,7 @@ pub async fn add_review_commit<R: Runtime>(
 /// repository open (D13), and a snapshot gc later collects keeps the label it
 /// was added under (ruling 2026-08-31).
 fn member_subject(repo: &git2::Repository, snaps: &snapshots::RepoSnapshots, oid: &str) -> String {
-    use trunk_git::workdir_snapshot::SnapshotKind;
+    use trunk_review::snapshot::SnapshotKind;
 
     for kind in [SnapshotKind::Workdir, SnapshotKind::Index] {
         if snaps.for_kind(kind) == Some(oid) {
@@ -1382,10 +1382,10 @@ pub fn ensure_review_snapshot_inner(
     store: &Store,
     canonical: &Path,
     repo_path: &str,
-    kind: trunk_git::workdir_snapshot::SnapshotKind,
+    kind: trunk_review::snapshot::SnapshotKind,
     now: i64,
 ) -> Result<String, TrunkError> {
-    use trunk_git::workdir_snapshot::{decide_snapshot, keep_snapshot_ref};
+    use trunk_review::snapshot::{decide_snapshot, keep_snapshot_ref};
 
     let prior = store.read(|conn| {
         Ok(snapshots::get(conn, canonical)?
@@ -1447,10 +1447,10 @@ pub fn recompute_staleness(
     repo_path: &str,
 ) -> Result<usize, TrunkError> {
     use std::cell::RefCell;
-    use trunk_git::workdir_snapshot::{
+    use trunk_review::reviewdb::stale::SnapshotStanding;
+    use trunk_review::snapshot::{
         in_memory_workdir_tree_oid, is_snapshot_commit, tree_matches_index,
     };
-    use trunk_review::reviewdb::stale::SnapshotStanding;
 
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
     let current_workdir_tree = RefCell::new(None);
@@ -1541,7 +1541,7 @@ pub fn sweep_unanchored_pins(
     repo_path: &str,
     now: i64,
 ) -> Result<usize, TrunkError> {
-    use trunk_git::workdir_snapshot::{pinned_snapshot_oids, prune_snapshot_ref};
+    use trunk_review::snapshot::{pinned_snapshot_oids, prune_snapshot_ref};
 
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
 
@@ -1607,7 +1607,7 @@ pub async fn ensure_review_snapshot<R: Runtime>(
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<String, String> {
-    use trunk_git::workdir_snapshot::SnapshotKind;
+    use trunk_review::snapshot::SnapshotKind;
     let snapshot_kind = match kind.as_str() {
         "workdir" => SnapshotKind::Workdir,
         "index" => SnapshotKind::Index,

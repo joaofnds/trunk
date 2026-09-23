@@ -1575,8 +1575,8 @@ fn watch_stays_silent_for_composing_changes_and_drafts() {
 /// A published review holding one thread anchored to a fresh workdir snapshot
 /// of an edited `a.txt`. Returns the review id and the snapshot oid.
 fn a_published_thread_on_uncommitted_work(ctx: &TestContext) -> (String, String) {
-    use trunk_git::workdir_snapshot::SnapshotKind;
     use trunk_lib::commands::review::ensure_review_snapshot_inner;
+    use trunk_review::snapshot::SnapshotKind;
 
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let (_, published) = seed_reviews(ctx);
@@ -1616,8 +1616,8 @@ fn a_published_thread_on_uncommitted_work(ctx: &TestContext) -> (String, String)
 /// the flag: nothing wrote `stale`, so no poll could ever see it differ.
 #[test]
 fn watch_json_reports_a_thread_going_stale() {
-    use trunk_git::workdir_snapshot::SnapshotKind;
     use trunk_lib::commands::review::{ensure_review_snapshot_inner, recompute_staleness};
+    use trunk_review::snapshot::SnapshotKind;
 
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")

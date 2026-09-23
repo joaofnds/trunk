@@ -7,8 +7,8 @@
 //! snapshot tree (= working tree) — precisely "before vs after" for uncommitted work,
 //! with no new Source/Side variant.
 
-use crate::error::TrunkError;
 use std::path::Path;
+use trunk_git::error::TrunkError;
 
 /// Build the current working-tree TREE (staged + unstaged + untracked-not-ignored)
 /// and write it to the ODB, returning its Oid — WITHOUT creating a commit and
@@ -258,8 +258,8 @@ pub fn snapshot_working_tree(repo: &git2::Repository) -> Result<git2::Oid, Trunk
     snapshot(repo, SnapshotKind::Workdir)
 }
 
-/// HEAD is unborn when the repo has no commits yet (freshly init'd). Mirrors the
-/// probe at commands/diff.rs:25.
+/// HEAD is unborn when the repo has no commits yet (freshly init'd). Mirrors
+/// `is_head_unborn` in the app's `commands/diff.rs`.
 fn is_head_unborn(repo: &git2::Repository) -> bool {
     match repo.head() {
         Err(e) => e.code() == git2::ErrorCode::UnbornBranch,
