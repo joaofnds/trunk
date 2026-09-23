@@ -108,9 +108,9 @@ Recorded so they aren't re-tried:
   after it; the union was verified name-by-name against `cargo test -- --list`, which
   differs only by the one doctest.
 - **Dropping `cargo test --doc`** (adopted, TRUNK-139): that second invocation cost 30s
-  of compile in CI and ran nothing. `--doc` needs the `staticlib` and `cdylib` crate
-  types this package declares, which nextest never builds, so it relinked the crate from
-  scratch; the tree's only fenced doc block is an ```ignore example, which no runner
+  of compile in CI and ran nothing. `--doc` needed the `staticlib` and `cdylib` crate
+  types the package declared then, which nextest never builds, so it relinked the crate
+  from scratch; the tree's only fenced doc block is an ```ignore example, which no runner
   executes. The omission is guarded by `test_doctest_guard.rs`, which scans both crates'
   sources in 17ms and fails with the file and line the moment a runnable example appears.
   The general shape: a step that exists for a case the codebase does not yet have is

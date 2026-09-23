@@ -28,6 +28,40 @@ Why it matters: all sessions share one `src-tauri/target`. Artifacts are keyed
 by compiler version, so every extra version in play multiplies cold builds and
 disk (three versions once grew the dir to 113GB).
 
+## Switching between builds must not rebuild the shared layer
+
+`just dev`, `just check` and `just dev-app` build different configurations into
+that one target dir. Most dependencies, the C libraries and everything above
+them, are the same unit in all three, so they must look identical to all three.
+If they differ, each switch rebuilds them for whichever build comes next. Two
+things keep them identical, and each has a guard:
+
+- **One `MACOSX_DEPLOYMENT_TARGET`.** `tauri build`, which `just dev-app` runs,
+  exports tauri.conf.json's `bundle.macOS.minimumSystemVersion` under that name,
+  and `tauri dev` and bare cargo export nothing. The build scripts of libgit2-sys,
+  libsqlite3-sys, libz-sys, openssl-sys, onig_sys and objc2-exception-helper
+  rerun when it changes. With the two values different, every switch between
+  `just dev-app` and any other build recompiled 42 crates, 81s each way
+  (measured 2026-09-23). `.cargo/config.toml` gives every cargo run under the
+  repo, rust-analyzer's included, the value tauri exports, and `just
+  toolchain-parity` fails when the two files disagree.
+- **An rlib-only lib.** With `staticlib` or `cdylib` in its `crate-type`, cargo
+  drops the hash from the lib's file names. The dev build, the test build
+  (`test-util` on) and the bundle build then share one copy of `trunk`, and each
+  switch recompiled it: 7s going from `just check` to `just dev`.
+
+When a switch recompiles something it should not, ask cargo why, on the build
+that does it:
+
+```bash
+CARGO_LOG=cargo::core::compiler::fingerprint=info cargo build 2>&1 | grep '    dirty: ' | grep -v StaleDependency
+```
+
+`StaleDependency` and `UnitDependencyInfoChanged` lines are knock-on effects.
+The remaining line is the cause: `EnvVarChanged` names the variable, and
+`FeaturesChanged` on a unit you did not reconfigure means two builds share its
+slot.
+
 ## macOS Gatekeeper can stall every fresh binary
 
 Symptom: cargo runs sit for minutes with near-zero CPU; hour-long gates. A

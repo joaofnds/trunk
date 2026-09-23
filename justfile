@@ -108,7 +108,7 @@ check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-swee
 contrast:
     bun scripts/contrast/re-audit-verify.mjs
 
-# Verify every file naming the rust version names the same one (milliseconds)
+# Verify every file naming the rust version, or the macOS deployment target, names the same one (milliseconds)
 toolchain-parity:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -121,6 +121,12 @@ toolchain-parity:
             exit 1
         fi
     done
+    bundled=$(sed -n 's/^ *"minimumSystemVersion": *"\([^"]*\)".*/\1/p' src-tauri/tauri.conf.json)
+    exported=$(sed -n 's/^MACOSX_DEPLOYMENT_TARGET *= *"\(.*\)"/\1/p' .cargo/config.toml)
+    if [ -z "$bundled" ] || [ "$exported" != "$bundled" ]; then
+        echo "::error::.cargo/config.toml sets MACOSX_DEPLOYMENT_TARGET to '$exported' and tauri.conf.json's bundle.macOS.minimumSystemVersion is '$bundled'. tauri build exports the second to cargo and every other build takes the first. Six C build scripts rerun whenever the value changes, so a mismatch recompiles about forty crates on every switch between \`just dev-app\` and any other build. Make them equal."
+        exit 1
+    fi
 
 # Verify every mise-action step pins the same mise version (milliseconds)
 mise-parity:
