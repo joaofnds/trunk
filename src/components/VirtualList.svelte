@@ -460,6 +460,8 @@ const handleScroll = () => {
 	}, 250);
 
 	rafSchedule(() => {
+		if (!heightManager.isReady) return;
+
 		const current = heightManager.viewport.scrollTop;
 		lastScrollTopSnapshot = current;
 		heightManager.scrollTop = current;

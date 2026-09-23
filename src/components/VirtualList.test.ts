@@ -1,6 +1,7 @@
-import { render } from "@testing-library/svelte";
+import { fireEvent, render } from "@testing-library/svelte";
 import type { Snippet } from "svelte";
-import { describe, expect, it, vi } from "vitest";
+import { tick } from "svelte";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import VirtualList from "./VirtualList.svelte";
 
 // Shared Tauri mock
@@ -99,5 +100,39 @@ describe("VirtualList reaching the end of the loaded items", () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		expect(calls).toBeLessThan(RUNAWAY);
+	});
+});
+
+// A scroll records its position on the next frame, and a list torn down in
+// between, a tab closed mid-scroll, is no longer there to read it from.
+describe("VirtualList torn down between a scroll and the next frame", () => {
+	const frames: FrameRequestCallback[] = [];
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+		frames.length = 0;
+	});
+
+	it("lets the frame pass without reading the list it lost", async () => {
+		const { container, unmount } = render(VirtualList, {
+			props: {
+				items: ["a", "b", "c"],
+				renderItem: (() => {}) as unknown as Snippet,
+			},
+		});
+		await tick();
+		vi.spyOn(window, "requestAnimationFrame").mockImplementation((frame) => {
+			frames.push(frame);
+			return frames.length;
+		});
+		await fireEvent.scroll(
+			container.querySelector(".virtual-list-viewport") as Element,
+		);
+
+		unmount();
+
+		expect(() => {
+			for (const frame of frames) frame(0);
+		}).not.toThrow();
 	});
 });
