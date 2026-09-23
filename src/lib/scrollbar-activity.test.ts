@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	dragScrollTop,
+	dragScrollPosition,
 	THUMB_CLASS,
 	thumbGeometry,
 	trackScrollActivity,
@@ -75,65 +75,77 @@ afterEach(() => {
 });
 
 describe("thumbGeometry", () => {
+	const pane = {
+		trackStart: 0,
+		trackLength: 200,
+		scrolled: 0,
+		scrollLength: 1000,
+		clientLength: 200,
+	};
+
 	it("sizes the thumb proportionally to how much of the content is visible", () => {
-		expect(thumbGeometry(0, 200, 0, 1000, 200).height).toBe(40);
+		expect(thumbGeometry(pane).length).toBe(40);
 	});
 
-	it("floors the thumb height so a tiny fraction stays grabbable", () => {
-		expect(thumbGeometry(0, 200, 0, 100000, 200).height).toBe(24);
+	it("floors the thumb length so a tiny fraction stays grabbable", () => {
+		expect(thumbGeometry({ ...pane, scrollLength: 100000 }).length).toBe(24);
 	});
 
-	it("places the thumb at the track's start when scrolled to the top", () => {
-		expect(thumbGeometry(10, 200, 0, 1000, 200).top).toBe(10);
+	it("places the thumb at the track's start when scrolled to the start", () => {
+		expect(thumbGeometry({ ...pane, trackStart: 10 }).start).toBe(10);
 	});
 
-	it("places the thumb at the track's end when scrolled to the bottom", () => {
-		const { top, height } = thumbGeometry(10, 200, 800, 1000, 200);
+	it("places the thumb at the track's end when scrolled to the end", () => {
+		const { start, length } = thumbGeometry({
+			...pane,
+			trackStart: 10,
+			scrolled: 800,
+		});
 
-		expect(top + height).toBe(210);
+		expect(start + length).toBe(210);
 	});
 
 	it("interpolates position between the two ends", () => {
-		const { top } = thumbGeometry(0, 200, 400, 1000, 200);
+		const { start } = thumbGeometry({ ...pane, scrolled: 400 });
 
-		expect(top).toBeCloseTo(80, 5);
+		expect(start).toBeCloseTo(80, 5);
 	});
 });
 
-describe("dragScrollTop", () => {
+describe("dragScrollPosition", () => {
 	const pane = {
-		startScrollTop: 0,
-		trackHeight: 200,
-		thumbHeight: 40,
-		scrollHeight: 1000,
-		clientHeight: 200,
+		startScrolled: 0,
+		trackLength: 200,
+		thumbLength: 40,
+		scrollLength: 1000,
+		clientLength: 200,
 	};
 
 	it("moves the content by the share of the track the thumb travelled", () => {
-		expect(dragScrollTop({ ...pane, deltaY: 80 })).toBe(400);
+		expect(dragScrollPosition({ ...pane, pointerTravel: 80 })).toBe(400);
 	});
 
-	it("follows the pointer back up", () => {
-		expect(dragScrollTop({ ...pane, startScrollTop: 400, deltaY: -80 })).toBe(
-			0,
-		);
+	it("follows the pointer back", () => {
+		expect(
+			dragScrollPosition({ ...pane, startScrolled: 400, pointerTravel: -80 }),
+		).toBe(0);
 	});
 
-	it("stops at the top however far past it the pointer goes", () => {
-		expect(dragScrollTop({ ...pane, deltaY: -500 })).toBe(0);
+	it("stops at the start however far past it the pointer goes", () => {
+		expect(dragScrollPosition({ ...pane, pointerTravel: -500 })).toBe(0);
 	});
 
-	it("stops at the bottom however far past it the pointer goes", () => {
-		expect(dragScrollTop({ ...pane, deltaY: 500 })).toBe(800);
+	it("stops at the end however far past it the pointer goes", () => {
+		expect(dragScrollPosition({ ...pane, pointerTravel: 500 })).toBe(800);
 	});
 
 	it("holds position when the thumb fills the track and has nowhere to travel", () => {
 		expect(
-			dragScrollTop({
+			dragScrollPosition({
 				...pane,
-				startScrollTop: 120,
-				thumbHeight: 200,
-				deltaY: 50,
+				startScrolled: 120,
+				thumbLength: 200,
+				pointerTravel: 50,
 			}),
 		).toBe(120);
 	});

@@ -53,7 +53,7 @@ The thumb takes `pointer-events: auto` and carries its own handlers:
 
 - `pointerdown` on the thumb records the press and the scroller's geometry.
 - `pointermove` on `window` maps the pointer's travel to `scrollTop` through
-  `dragScrollTop()`, the inverse of `thumbGeometry()`, clamped at both ends.
+  `dragScrollPosition()`, the inverse of `thumbGeometry()`, clamped at both ends.
 - `pointerup` and `pointercancel` on `window` end it.
 - `pointerenter` and `pointerleave` on the thumb hold and release the linger timer, so the
   thumb cannot fade out from under a cursor that is reaching for it.
@@ -124,7 +124,7 @@ container altogether, so nothing can act on that range whether or not it exists.
 
 jsdom computes no layout and does no hit testing, so it can answer none of the questions
 that matter here. The unit suites cover what is left: the pure geometry in `thumbGeometry`
-and `dragScrollTop`, the tracker's create and remove behaviour driven by dispatched events,
+and `dragScrollPosition`, the tracker's create and remove behaviour driven by dispatched events,
 and the stylesheet contract as text.
 
 Everything else needs a real browser. `just measure` serves the real app so
