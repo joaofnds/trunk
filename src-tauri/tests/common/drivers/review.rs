@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use tauri::test::MockRuntime;
 use tauri::{Listener, Manager};
 use trunk_lib::commands::review::{RenderedThread, add_reply, add_thread, list_threads};
-use trunk_lib::git::types::Anchor;
+use trunk_lib::review::types::Anchor;
 use trunk_lib::state::{RepoState, ReviewStoreState, StoreSlot, SweptRepos};
 
 /// Drives review commands against a real `mock_app`, the only seam that reaches

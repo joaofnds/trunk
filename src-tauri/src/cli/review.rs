@@ -9,8 +9,8 @@
 
 use crate::cli::lookup::{RepoPaths, discover_repo, published_review, published_thread};
 use crate::error::TrunkError;
-use crate::review_types::ThreadState;
-use crate::reviewdb::{self, reviews};
+use crate::review::reviewdb::{self, reviews};
+use crate::review::types::ThreadState;
 use clap::Subcommand;
 use std::io::Write;
 use std::path::PathBuf;
@@ -190,7 +190,7 @@ fn show(
     let review = published_review(store, &canonical, id)?;
     let paths = RepoPaths::of(&canonical);
 
-    let doc = crate::git::review::render_review_doc(
+    let doc = crate::review::doc::render_review_doc(
         store,
         &canonical,
         &review.id,
@@ -225,7 +225,7 @@ fn reply(
             &canonical,
             &thread.id,
             &body,
-            crate::review_types::Channel::Agent,
+            crate::review::types::Channel::Agent,
             now,
         )
     })?;
@@ -263,8 +263,8 @@ fn address(
             tx,
             &canonical,
             &thread.id,
-            crate::review_types::ThreadState::Addressed,
-            crate::review_types::Channel::Agent,
+            crate::review::types::ThreadState::Addressed,
+            crate::review::types::Channel::Agent,
             now,
         )
     })?;
@@ -283,7 +283,8 @@ fn threads(
     out: &mut dyn Write,
 ) -> Result<(), TrunkError> {
     let review = published_review(store, &canonical, review)?;
-    let listed = store.read(|conn| crate::reviewdb::threads::list_for_review(conn, &review.id))?;
+    let listed =
+        store.read(|conn| crate::review::reviewdb::threads::list_for_review(conn, &review.id))?;
     let matching: Vec<_> = listed
         .into_iter()
         .filter(|t| state.is_none_or(|wanted| t.state == wanted))
@@ -311,7 +312,7 @@ fn thread(
     // value. Draining the map instead would interleave on `HashMap`'s
     // unspecified order the day a second id is passed.
     let replies = store.read(|conn| {
-        crate::reviewdb::replies::list_for_threads(conn, std::slice::from_ref(&thread.id))
+        crate::review::reviewdb::replies::list_for_threads(conn, std::slice::from_ref(&thread.id))
     })?;
     let replies = replies.get(&thread.id).cloned().unwrap_or_default();
 

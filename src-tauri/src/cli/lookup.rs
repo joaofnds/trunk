@@ -47,15 +47,15 @@ pub(crate) fn discover_repo(repo: Option<PathBuf>) -> Result<PathBuf, TrunkError
 /// same exact-or-unique-prefix rule and the same no-leak posture as
 /// `published_review`: a composing review's thread answers as missing.
 pub(crate) fn published_thread(
-    store: &crate::reviewdb::Store,
+    store: &crate::review::reviewdb::Store,
     canonical: &std::path::Path,
     raw: &str,
-) -> Result<crate::reviewdb::threads::Thread, TrunkError> {
-    use crate::reviewdb::threads;
+) -> Result<crate::review::reviewdb::threads::Thread, TrunkError> {
+    use crate::review::reviewdb::threads;
 
     let candidates: Vec<threads::Thread> = store.read(|conn| {
         let mut all = Vec::new();
-        for review in crate::reviewdb::reviews::list(conn, canonical)? {
+        for review in crate::review::reviewdb::reviews::list(conn, canonical)? {
             if review.published {
                 all.extend(threads::list_for_review(conn, &review.id)?);
             }
@@ -72,12 +72,12 @@ pub(crate) fn published_thread(
 /// judged after the published filter, so an unpublished review's existence
 /// never leaks, not even through a prefix collision (§5.1).
 pub(crate) fn published_review(
-    store: &crate::reviewdb::Store,
+    store: &crate::review::reviewdb::Store,
     canonical: &std::path::Path,
     raw: &str,
-) -> Result<crate::reviewdb::reviews::Review, TrunkError> {
-    let published: Vec<crate::reviewdb::reviews::Review> = store
-        .read(|conn| crate::reviewdb::reviews::list(conn, canonical))?
+) -> Result<crate::review::reviewdb::reviews::Review, TrunkError> {
+    let published: Vec<crate::review::reviewdb::reviews::Review> = store
+        .read(|conn| crate::review::reviewdb::reviews::list(conn, canonical))?
         .into_iter()
         .filter(|r| r.published)
         .collect();
@@ -96,7 +96,7 @@ pub(crate) fn resolve_unique<T>(
     raw: &str,
     noun: &str,
 ) -> Result<T, TrunkError> {
-    let needle = crate::reviewdb::ids::normalize(raw);
+    let needle = crate::review::reviewdb::ids::normalize(raw);
 
     let mut matches: Vec<T> = candidates
         .into_iter()

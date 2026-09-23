@@ -22,7 +22,7 @@ pub mod stale;
 pub mod threads;
 
 use crate::error::TrunkError;
-use crate::review_types::Channel;
+use crate::review::types::Channel;
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;

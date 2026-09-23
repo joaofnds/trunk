@@ -398,7 +398,7 @@ fn bench_enrich_new(c: &mut Criterion) {
 fn bench_draft_write(c: &mut Criterion) {
     let dir = tempfile::tempdir().unwrap();
     let repo = dir.path().join("repo");
-    let store = trunk_lib::reviewdb::open(dir.path()).unwrap();
+    let store = trunk_lib::review::reviewdb::open(dir.path()).unwrap();
     let mut n = 0u64;
 
     c.bench_function("reviewdb_draft_write", |b| {

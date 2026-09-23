@@ -4,7 +4,7 @@
 mod common;
 
 use common::context::TestContext;
-use trunk_lib::git::types::{Anchor, Side, Source};
+use trunk_lib::review::types::{Anchor, Side, Source};
 
 fn anchor() -> Anchor {
     Anchor {

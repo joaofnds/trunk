@@ -2,14 +2,14 @@
 
 use crate::error::TrunkError;
 use crate::git::blob_reader;
-use crate::git::syntax;
 use crate::git::tracked_files::{TrackedFile, tracked_files};
 use crate::git::types::{
     CommitDetail, DiffHunk, DiffLine, DiffOrigin, DiffRequestOptions, DiffStatus, FileDiff,
     LinePairing, SyntaxToken,
 };
-use crate::git::word_spans::compute_word_spans_for_hunk;
 use crate::state::{OpenRepos, RepoState};
+use crate::syntax;
+use crate::word_spans::compute_word_spans_for_hunk;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::State;
@@ -644,7 +644,7 @@ pub fn enrich_file_diffs(file_diffs: &mut [FileDiff], sides: &[SideContent]) {
             .as_deref()
             .map(|text| build_side_lines(text, ext, &new_needed));
 
-        let word_diff_deadline = crate::git::word_spans::word_diff_budget();
+        let word_diff_deadline = crate::word_spans::word_diff_budget();
         for hunk in &mut fd.hunks {
             let word_diff = compute_word_spans_for_hunk(&hunk.lines, word_diff_deadline);
             for (i, line) in hunk.lines.iter_mut().enumerate() {

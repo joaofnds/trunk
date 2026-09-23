@@ -1,7 +1,7 @@
 # Diff syntax highlighting: the cost model
 
 What highlighting a diff actually costs, which guards bound it, and which optimisations were
-measured and rejected. Read this before changing anything in `src-tauri/src/git/syntax.rs` or
+measured and rejected. Read this before changing anything in `src-tauri/src/syntax.rs` or
 the enrichment path in `src-tauri/src/commands/diff.rs`.
 
 ## The shape of the work

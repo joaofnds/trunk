@@ -24,7 +24,7 @@
 
 use super::{Store, repo_key, sqlite_error};
 use crate::error::TrunkError;
-use crate::git::types::ContentPin;
+use crate::review::types::ContentPin;
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::path::Path;
@@ -365,8 +365,8 @@ fn rows(conn: &Connection, repo_path: &Path) -> Result<Vec<StaleRow>, TrunkError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::types::{Anchor, Side, Source};
-    use crate::reviewdb::{Store, open, reviews, threads};
+    use crate::review::reviewdb::{Store, open, reviews, threads};
+    use crate::review::types::{Anchor, Side, Source};
     use std::cell::Cell;
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -511,7 +511,7 @@ mod tests {
             }
         };
         let revision_before = store
-            .read(crate::reviewdb::revision)
+            .read(crate::review::reviewdb::revision)
             .expect("revision before recomputation");
 
         let error = recompute(&store, &repo_path(), &failing_standing, &no_file).unwrap_err();
@@ -520,7 +520,7 @@ mod tests {
         assert!(!staleness_of(&store, &first));
         assert!(!staleness_of(&store, &second));
         assert_eq!(
-            store.read(crate::reviewdb::revision).unwrap(),
+            store.read(crate::review::reviewdb::revision).unwrap(),
             revision_before
         );
     }

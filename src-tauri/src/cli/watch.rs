@@ -2,7 +2,7 @@
 //! streams changes to published reviews through the caller's sink.
 
 use crate::error::TrunkError;
-use crate::reviewdb;
+use crate::review::reviewdb;
 use std::io::Write;
 
 /// Block on the store's doorbell and stream changes to published reviews.
@@ -97,9 +97,9 @@ mod watch_feed {
     //! Post-publish, threads and replies are permanent (spec §2), so the only
     //! disappearance is a whole review's deletion.
 
-    use crate::git::types::Anchor;
-    use crate::review_types::{Channel, ThreadState};
-    use crate::reviewdb::reviews::ReviewState;
+    use crate::review::reviewdb::reviews::ReviewState;
+    use crate::review::types::Anchor;
+    use crate::review::types::{Channel, ThreadState};
     use serde::Serialize;
     use std::collections::BTreeMap;
 
@@ -218,13 +218,14 @@ fn published_snapshot(
 ) -> Result<Snapshot, TrunkError> {
     store.read(|conn| {
         let mut snapshot = Snapshot::new();
-        for review in crate::reviewdb::reviews::list(conn, canonical)? {
+        for review in crate::review::reviewdb::reviews::list(conn, canonical)? {
             if !review.published {
                 continue;
             }
 
             let mut threads = std::collections::BTreeMap::new();
-            for (thread, replies) in crate::reviewdb::threads::list_with_replies(conn, &review.id)?
+            for (thread, replies) in
+                crate::review::reviewdb::threads::list_with_replies(conn, &review.id)?
             {
                 threads.insert(
                     thread.id,

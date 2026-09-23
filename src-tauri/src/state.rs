@@ -361,13 +361,13 @@ pub struct ReviewStoreState(pub StoreSlot);
 /// The store handle, shared so the open can run on the blocking pool rather than
 /// the async runtime.
 #[derive(Default)]
-pub struct StoreSlot(std::sync::Arc<Mutex<Option<std::sync::Arc<crate::reviewdb::Store>>>>);
+pub struct StoreSlot(std::sync::Arc<Mutex<Option<std::sync::Arc<crate::review::reviewdb::Store>>>>);
 
 impl StoreSlot {
     #[must_use]
     pub fn clone_handle(
         &self,
-    ) -> std::sync::Arc<Mutex<Option<std::sync::Arc<crate::reviewdb::Store>>>> {
+    ) -> std::sync::Arc<Mutex<Option<std::sync::Arc<crate::review::reviewdb::Store>>>> {
         std::sync::Arc::clone(&self.0)
     }
 }

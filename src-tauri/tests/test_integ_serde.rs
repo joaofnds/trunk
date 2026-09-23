@@ -870,7 +870,7 @@ fn diff_line_serializes_spans_as_array() {
 
 // ── Anchor wire shape ────────────────────────────────────────────────────────
 
-use trunk_lib::git::types::{Anchor, Side, Source};
+use trunk_lib::review::types::{Anchor, Side, Source};
 
 fn an_anchor() -> Anchor {
     Anchor {

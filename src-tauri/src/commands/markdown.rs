@@ -8,8 +8,8 @@
 
 use crate::error::TrunkError;
 use crate::git::blob_reader::{RevSpec, read_file_at_inner};
-use crate::git::syntax;
 use crate::state::{OpenRepos, RepoState};
+use crate::syntax;
 use comrak::adapters::SyntaxHighlighterAdapter;
 use comrak::nodes::NodeValue;
 use serde::Serialize;
@@ -2841,7 +2841,7 @@ pub async fn render_markdown_diff(
     Ok(diff)
 }
 
-/// Wraps the existing diff highlighter (`git/syntax.rs`) as a comrak codefence
+/// Wraps the existing diff highlighter (`syntax.rs`) as a comrak codefence
 /// adapter so fenced code emits byte-identical `--color-syn-*` classes — one
 /// highlighting vocabulary shared by diffs and rendered markdown. Unknown
 /// languages fall through to escaped, unhighlighted text.

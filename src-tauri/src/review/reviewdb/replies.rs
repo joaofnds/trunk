@@ -1,7 +1,7 @@
 use super::ids::{self, IdKind};
 use super::{repo_key, sqlite_error};
 use crate::error::TrunkError;
-use crate::review_types::Channel;
+use crate::review::types::Channel;
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use std::collections::HashMap;

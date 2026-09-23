@@ -5,7 +5,7 @@
 //! wraps them.
 
 use crate::error::TrunkError;
-use crate::git::types::SessionCommit;
+use crate::review::types::SessionCommit;
 
 /// Validate that `[base..tip]` is a meaningful inclusive range (SEL-01).
 ///

@@ -1,9 +1,5 @@
 //! Review-domain vocabulary shared across the store (`reviewdb`), the doc renderer
-//! (`git::review`) and the command layer (`commands::review`).
-//!
-//! None of those three owns these types, so they live here instead of inside any one of
-//! them — `git::types` is git2→DTO conversion only (its own header), and these enums
-//! carry no git meaning.
+//! (`doc`) and the command layer (`commands::review`).
 
 use crate::error::TrunkError;
 use serde::{Deserialize, Serialize};
@@ -12,8 +8,8 @@ use serde::{Deserialize, Serialize};
 ///
 /// `open` is the default at creation; `addressed` is the agent's claim, reachable only
 /// via `Channel::Agent`; `done`/`dismissed` are the user's resolutions. Serializes
-/// lowercase, matching the shipped TS union and the store's CHECK constraint — unlike
-/// `git::types::Side`/`Source`, which carry no `rename_all` and must not gain one.
+/// lowercase, matching the shipped TS union and the store's CHECK constraint, unlike
+/// `Side`/`Source` below, which carry no `rename_all` and must not gain one.
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ThreadState {
@@ -135,6 +131,91 @@ impl std::str::FromStr for Channel {
             )),
         }
     }
+}
+
+/// A single commit in the review session, rendered by the panel (D-05) and consumed as
+/// a membership set by the graph (D-04/D-06).
+///
+/// Serialize-default `snake_case` matches `GraphCommit`, whose fields it copies 1:1.
+#[derive(Debug, Serialize, Clone)]
+pub struct SessionCommit {
+    pub oid: String,
+    pub short_oid: String,
+    pub summary: String,
+    /// True when this commit is an auto-created review snapshot (working-tree or
+    /// index), not a commit the user hand-picked. The panel hides EMPTY snapshot
+    /// sections (260531-l02d) while keeping empty hand-picked sections (their
+    /// per-commit "Add note" affordance). Set by `list_session_commits`.
+    #[serde(default)]
+    pub is_snapshot: bool,
+}
+
+// ── Review session schema (Phase 65 keystone) ────────────────────────────────
+// Persisted to disk and read back, so every type derives Deserialize (unlike the
+// write-only DTOs in `git::types`, and like its DiffStatus). Enums serialize as PascalCase
+// strings with NO rename_all (like RefType). Struct fields stay snake_case.
+// The Anchor NEVER carries hunk_index/line_index/context_lines/ignore_whitespace
+// (D-01): it stores source coordinates only, never diff-array positions.
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub enum Source {
+    Diff,
+    FullFile,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub enum Side {
+    Old,
+    New,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Anchor {
+    pub commit_oid: String,
+    pub file_path: String,
+    pub source: Source,
+    pub side: Side,
+    pub start_line: u32,
+    pub end_line: u32,
+}
+
+/// Where a current-file thread is anchored: the block of the working-tree file
+/// the user selected, and which occurrence of it they picked.
+///
+/// There is no commit oid. That is the point of the content pin: a current-file
+/// comment writes nothing into the repository, so it cannot name a commit and
+/// must find its lines by searching the file.
+///
+/// `ordinal` is a display hint only, deciding which occurrence to render
+/// against. Staleness is block presence alone, so keying it on the ordinal
+/// would mark a thread stale when an EARLIER twin is deleted, which the
+/// ratified rule forbids.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct ContentPin {
+    pub file_path: String,
+    pub block: String,
+    pub ordinal: u32,
+    pub start_line: u32,
+    pub end_line: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Comment {
+    // Stable id generated on write (D-03); edit/delete target by id, never by
+    // list position. `#[serde(default)]` makes a v1 file lacking `id` deserialize
+    // to "" (the migration-shape-A sentinel backfilled at load time) instead of
+    // failing from_value.
+    #[serde(default)]
+    pub id: String,
+    pub text: String,
+    pub anchor: Option<Anchor>,
+    pub cached_excerpt: Option<String>,
+    // Commit-level comment target (D-01, written in Plan 02). A missing field
+    // maps to None automatically for Option, so no #[serde(default)] is needed.
+    pub commit_oid: Option<String>,
+    // A current-file comment's target: the file's content rather than a commit.
+    #[serde(default)]
+    pub content_pin: Option<ContentPin>,
 }
 
 #[cfg(test)]

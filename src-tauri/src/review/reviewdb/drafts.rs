@@ -7,7 +7,7 @@
 
 use super::{anchor, repo_key, sqlite_error};
 use crate::error::TrunkError;
-use crate::git::types::Anchor;
+use crate::review::types::Anchor;
 use rusqlite::Connection;
 use serde::Serialize;
 use std::path::Path;

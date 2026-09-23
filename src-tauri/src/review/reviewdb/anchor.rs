@@ -7,7 +7,7 @@
 //! columns `threads` alone holds. `anchor_kind` is what tells them apart.
 
 use crate::error::TrunkError;
-use crate::git::types::{Anchor, ContentPin, Side, Source};
+use crate::review::types::{Anchor, ContentPin, Side, Source};
 use rusqlite::Row;
 
 pub const DIFF: &str = "diff";

@@ -747,7 +747,7 @@ mod tests {
     use std::process::Command;
     use tempfile::TempDir;
 
-    // Temp-repo harness (mirrors git/review.rs:662 make_repo). Real git2 +
+    // Temp-repo harness (mirrors review/doc.rs make_repo). Real git2 +
     // tempfile, no mocks (classical TDD). The code-under-test shells out to
     // `git`, so the repo config must carry a committer identity — git2
     // Signatures do not satisfy the subprocess `git commit`.

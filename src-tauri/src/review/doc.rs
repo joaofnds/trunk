@@ -3,7 +3,7 @@
 //!
 //! [`render`] and [`render_thread_section`] are pure Rust logic: take
 //! `&RenderInput`, return a single `String`. No `tauri::*` imports (L-01), no
-//! calls into `crate::git::syntax` (L-10), never panic (L-04). No repository
+//! calls into `crate::syntax` (L-10), never panic (L-04). No repository
 //! access at all (D13): everything the doc says comes from stored rows plus
 //! the two path facts in the input, so the CLI renders it with the repo
 //! closed. All resolution failures are routed INTO the returned markdown (per
@@ -19,9 +19,9 @@
 //! second implementation that has to agree.
 
 use crate::error::TrunkError;
-use crate::git::types::{Anchor, ContentPin, Side, Source};
-use crate::review_types::{Channel, ThreadState};
-use crate::reviewdb::{Store, commits, replies, reviews, snapshots, threads};
+use crate::review::reviewdb::{Store, commits, replies, reviews, snapshots, threads};
+use crate::review::types::{Anchor, ContentPin, Side, Source};
+use crate::review::types::{Channel, ThreadState};
 use std::path::{Path, PathBuf};
 
 /// What the renderer needs from one review.
@@ -2936,15 +2936,15 @@ mod tests {
     fn renderer_does_not_import_syntax_module() {
         // L-10 gate: the renderer module is abstinent — no syntax.rs imports.
         // include_str! resolves relative to this file at expand time, so the
-        // assertion runs against the on-disk content of review.rs itself.
+        // assertion runs against the on-disk content of doc.rs itself.
         // Build the needle from two halves so the test body does NOT itself
         // count as a match — a literal "use" + "::" import statement to the
         // syntax module appearing in this comment would trip its own assertion.
-        let src = include_str!("review.rs");
-        let needle = concat!("use crate::", "git::syntax");
+        let src = include_str!("doc.rs");
+        let needle = concat!("use crate::", "syntax");
         assert!(
             !src.contains(needle),
-            "L-10 violation: review.rs must NOT import the syntax module"
+            "L-10 violation: doc.rs must NOT import the syntax module"
         );
     }
 
