@@ -78,7 +78,7 @@ describe("thumbGeometry", () => {
 	const pane = {
 		trackStart: 0,
 		trackLength: 200,
-		scrolled: 0,
+		offset: 0,
 		scrollLength: 1000,
 		clientLength: 200,
 	};
@@ -99,14 +99,14 @@ describe("thumbGeometry", () => {
 		const { start, length } = thumbGeometry({
 			...pane,
 			trackStart: 10,
-			scrolled: 800,
+			offset: 800,
 		});
 
 		expect(start + length).toBe(210);
 	});
 
 	it("interpolates position between the two ends", () => {
-		const { start } = thumbGeometry({ ...pane, scrolled: 400 });
+		const { start } = thumbGeometry({ ...pane, offset: 400 });
 
 		expect(start).toBeCloseTo(80, 5);
 	});
@@ -114,7 +114,7 @@ describe("thumbGeometry", () => {
 
 describe("dragScrollPosition", () => {
 	const pane = {
-		startScrolled: 0,
+		startOffset: 0,
 		trackLength: 200,
 		thumbLength: 40,
 		scrollLength: 1000,
@@ -127,7 +127,7 @@ describe("dragScrollPosition", () => {
 
 	it("follows the pointer back", () => {
 		expect(
-			dragScrollPosition({ ...pane, startScrolled: 400, pointerTravel: -80 }),
+			dragScrollPosition({ ...pane, startOffset: 400, pointerTravel: -80 }),
 		).toBe(0);
 	});
 
@@ -143,7 +143,7 @@ describe("dragScrollPosition", () => {
 		expect(
 			dragScrollPosition({
 				...pane,
-				startScrolled: 120,
+				startOffset: 120,
 				thumbLength: 200,
 				pointerTravel: 50,
 			}),
@@ -394,9 +394,17 @@ describe("trackScrollActivity", () => {
 		])("ignores a sideways range of $name", ({ overflow }) => {
 			const el = makePane({ scrollWidth: 200 + overflow, clientWidth: 200 });
 
-			scrollSidewaysTo(el, overflow);
+			scrollSidewaysTo(el, 1);
 
 			expect(sidewaysThumbFor(el)).toBeNull();
+		});
+
+		it("reveals a sideways range one pixel past the ignored maximum", () => {
+			const el = makePane({ scrollWidth: 203, clientWidth: 200 });
+
+			scrollSidewaysTo(el, 3);
+
+			expect(sidewaysThumbFor(el)).not.toBeNull();
 		});
 
 		// The column header mirrors the commit list's offset this way: it moves
@@ -425,6 +433,37 @@ describe("trackScrollActivity", () => {
 			vi.advanceTimersByTime(PAST_LINGER_MS);
 
 			expect(sidewaysThumbFor(el)).toBeNull();
+		});
+
+		describe("on a pane that also scrolls up and down", () => {
+			function makeTwoWayPane() {
+				return makePane({ scrollHeight: 1000, clientHeight: 200 });
+			}
+
+			it("shows a thumb of its own for each axis", () => {
+				const el = makeTwoWayPane();
+
+				el.dispatchEvent(new Event("scroll"));
+				scrollSidewaysTo(el, 400);
+
+				expect({
+					vertical: thumbFor(el)?.dataset.axis,
+					horizontal: sidewaysThumbFor(el)?.dataset.axis,
+				}).toEqual({ vertical: "vertical", horizontal: "horizontal" });
+			});
+
+			it("removes both thumbs once scrolling stops", () => {
+				const el = makeTwoWayPane();
+
+				el.dispatchEvent(new Event("scroll"));
+				scrollSidewaysTo(el, 400);
+				vi.advanceTimersByTime(PAST_LINGER_MS);
+
+				expect({
+					vertical: thumbFor(el),
+					horizontal: sidewaysThumbFor(el),
+				}).toEqual({ vertical: null, horizontal: null });
+			});
 		});
 
 		it("scrolls the pane sideways in proportion to how far the thumb is dragged", () => {

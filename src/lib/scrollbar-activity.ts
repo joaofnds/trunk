@@ -9,7 +9,7 @@ const MIN_THUMB_LENGTH_PX = 24;
 export interface ScrollAxisExtent {
 	trackStart: number;
 	trackLength: number;
-	scrolled: number;
+	offset: number;
 	scrollLength: number;
 	clientLength: number;
 }
@@ -23,17 +23,17 @@ export function thumbGeometry(axis: ScrollAxisExtent): {
 		MIN_THUMB_LENGTH_PX,
 		axis.trackLength * (axis.clientLength / axis.scrollLength),
 	);
-	const maxScrolled = axis.scrollLength - axis.clientLength;
+	const maxOffset = axis.scrollLength - axis.clientLength;
 	const travel = axis.trackLength - length;
 	const start =
-		axis.trackStart +
-		(maxScrolled > 0 ? (axis.scrolled / maxScrolled) * travel : 0);
+		axis.trackStart + (maxOffset > 0 ? (axis.offset / maxOffset) * travel : 0);
+
 	return { start, length };
 }
 
 // The inverse of thumbGeometry: where a thumb dragged this far leaves the content.
 export function dragScrollPosition(drag: {
-	startScrolled: number;
+	startOffset: number;
 	pointerTravel: number;
 	trackLength: number;
 	thumbLength: number;
@@ -41,21 +41,20 @@ export function dragScrollPosition(drag: {
 	clientLength: number;
 }): number {
 	const travel = drag.trackLength - drag.thumbLength;
-	if (travel <= 0) return drag.startScrolled;
+	if (travel <= 0) return drag.startOffset;
 
-	const maxScrolled = drag.scrollLength - drag.clientLength;
-	const moved =
-		drag.startScrolled + (drag.pointerTravel / travel) * maxScrolled;
+	const maxOffset = drag.scrollLength - drag.clientLength;
+	const moved = drag.startOffset + (drag.pointerTravel / travel) * maxOffset;
 
-	return Math.min(Math.max(moved, 0), maxScrolled);
+	return Math.min(Math.max(moved, 0), maxOffset);
 }
 
 /** How the thumb reads, draws and drives one axis of a scroller. */
 interface ScrollAxis {
 	name: "vertical" | "horizontal";
 	extent(el: HTMLElement): ScrollAxisExtent;
-	pointer(event: PointerEvent): number;
-	scrollTo(el: HTMLElement, scrolled: number): void;
+	pointerCoordinate(event: PointerEvent): number;
+	scrollTo(el: HTMLElement, offset: number): void;
 	place(
 		thumb: HTMLDivElement,
 		el: HTMLElement,
@@ -70,14 +69,14 @@ const vertical: ScrollAxis = {
 		return {
 			trackStart: rect.top,
 			trackLength: rect.height,
-			scrolled: el.scrollTop,
+			offset: el.scrollTop,
 			scrollLength: el.scrollHeight,
 			clientLength: el.clientHeight,
 		};
 	},
-	pointer: (event) => event.clientY,
-	scrollTo(el, scrolled) {
-		el.scrollTop = scrolled;
+	pointerCoordinate: (event) => event.clientY,
+	scrollTo(el, offset) {
+		el.scrollTop = offset;
 	},
 	place(thumb, el, { start, length }) {
 		const rect = el.getBoundingClientRect();
@@ -95,14 +94,14 @@ const horizontal: ScrollAxis = {
 		return {
 			trackStart: rect.left,
 			trackLength: rect.width,
-			scrolled: el.scrollLeft,
+			offset: el.scrollLeft,
 			scrollLength: el.scrollWidth,
 			clientLength: el.clientWidth,
 		};
 	},
-	pointer: (event) => event.clientX,
-	scrollTo(el, scrolled) {
-		el.scrollLeft = scrolled;
+	pointerCoordinate: (event) => event.clientX,
+	scrollTo(el, offset) {
+		el.scrollLeft = offset;
 	},
 	place(thumb, el, { start, length }) {
 		const rect = el.getBoundingClientRect();
@@ -145,7 +144,7 @@ export function trackScrollActivity(): () => void {
 		el: HTMLElement;
 		axis: ScrollAxis;
 		startPointer: number;
-		startScrolled: number;
+		startOffset: number;
 		trackLength: number;
 		thumbLength: number;
 	} | null = null;
@@ -202,8 +201,8 @@ export function trackScrollActivity(): () => void {
 		drag = {
 			el,
 			axis,
-			startPointer: axis.pointer(event),
-			startScrolled: extent.scrolled,
+			startPointer: axis.pointerCoordinate(event),
+			startOffset: extent.offset,
 			trackLength: extent.trackLength,
 			thumbLength: thumbGeometry(extent).length,
 		};
@@ -212,21 +211,18 @@ export function trackScrollActivity(): () => void {
 		event.preventDefault();
 	}
 
-	// A pane with some incidental sideways overflow shows no sideways thumb while
-	// it scrolls up and down; only a sideways scroll brings one.
-	function movedSideways(el: HTMLElement): boolean {
-		const moved = el.scrollLeft !== (lastScrollLeft.get(el) ?? 0);
-		lastScrollLeft.set(el, el.scrollLeft);
-		return moved;
-	}
-
 	function onScroll(event: Event) {
 		const el = event.target;
 		if (!(el instanceof HTMLElement)) return;
 
+		// A pane with some incidental sideways overflow shows no sideways thumb
+		// while it scrolls up and down; only a sideways scroll brings one.
+		const movedSideways = el.scrollLeft !== (lastScrollLeft.get(el) ?? 0);
+		lastScrollLeft.set(el, el.scrollLeft);
+
 		const showsVertical = el.scrollHeight - el.clientHeight > IGNORED_RANGE_PX;
 		const showsHorizontal =
-			movedSideways(el) &&
+			movedSideways &&
 			el.scrollWidth - el.clientWidth > IGNORED_RANGE_PX &&
 			scrollsSideways(el);
 		if (!showsVertical && !showsHorizontal) return;
@@ -245,8 +241,8 @@ export function trackScrollActivity(): () => void {
 		axis.scrollTo(
 			el,
 			dragScrollPosition({
-				startScrolled: drag.startScrolled,
-				pointerTravel: axis.pointer(event) - drag.startPointer,
+				startOffset: drag.startOffset,
+				pointerTravel: axis.pointerCoordinate(event) - drag.startPointer,
 				trackLength: drag.trackLength,
 				thumbLength: drag.thumbLength,
 				scrollLength: extent.scrollLength,
@@ -255,6 +251,7 @@ export function trackScrollActivity(): () => void {
 		);
 		paint(el, axis);
 	}
+
 	function onPointerUp() {
 		if (!drag) return;
 

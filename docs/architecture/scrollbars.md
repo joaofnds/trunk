@@ -57,6 +57,10 @@ with two narrowings the vertical thumb does not have:
   how one pane mirrors another's offset, as the commit list's column header mirrors the
   list, and a mirror must not draw a second thumb for the same scroll.
 
+Once up, the two thumbs share one linger: a pane that goes on scrolling up and down after a
+sideways scroll keeps its sideways thumb until 900ms after it stops, and a sideways scroll
+shows the vertical thumb too wherever the pane has a vertical range.
+
 Each thumb carries `data-axis`, `vertical` or `horizontal`, and `app.css` gives it its 5px
 thickness by that name, so a thumb without it paints nothing.
 
