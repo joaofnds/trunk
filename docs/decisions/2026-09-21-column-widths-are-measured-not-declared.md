@@ -277,7 +277,10 @@ rendered row, the per-row write this avoids. A grid template shared through
 `subgrid` would declare every column in one place, but the virtual list's viewport
 and items container are absolutely positioned, and an absolutely positioned child of
 a grid container is not a grid item, so the rows cannot join a grid the header
-belongs to.
+belongs to. What a write on the root costs was measured later, for the Message pan:
+11 to 12ms of style and layout in headless WebKit with 48 rows mounted, whether or
+not a rule reads the property (`docs/performance-patterns.md`). What that costs a
+drag has not been measured (TRUNK-279).
 
 ## What this does not solve
 

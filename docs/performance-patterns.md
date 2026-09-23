@@ -5,8 +5,9 @@ each caught by measurement during TRUNK-63/65/66, plus the Rust-gate patterns fr
 TRUNK-12. Review new code against them; when one seems worth violating, bring a
 measurement. `docs/application-harness.md` §Budget holds the frontend numbers and the cost
 model those rules fall out of; TRUNK-12's implementation notes hold the Rust-gate
-measurements in full. The last two sections are costs the app itself paid at runtime,
-measured the same way: a libgit2 diff walk, and a style write on the commit list's root.
+measurements in full. The last two sections are costs the app itself paid at runtime:
+a libgit2 diff walk, measured in a release build, and a style write on the commit list's
+root, measured in headless WebKit.
 
 ## Barrel imports of large libraries
 
@@ -152,45 +153,50 @@ in `commands/diff.rs` selects the delta and reads it with `Patch::from_diff`;
 file out of a 1000-file commit went from 118 ms to 4.5 ms, and stopped scaling
 with the commit's width.
 
-## A custom property changed on the commit list's root costs 11ms (TRUNK-254.6, 2026-09-24)
+## A custom property changed on the commit list's root costs 11 to 12ms (TRUNK-254.6, 2026-09-24)
 
-A custom property changed on the commit list's root cost about 11ms whether or not a rule
-reads it, and so did an edit to one stylesheet rule the summaries match. That the cost is
-a restyle of every element under the root is the reading the numbers below support;
-WebKit's own profile was not taken. The Message pan was first built as one custom
-property there that every summary's `text-indent` read.
+A custom property changed on the commit list's root cost 11 to 12ms whether or not a
+rule reads it, and so did an edit to one stylesheet rule the summaries match. That the
+cost is a restyle of every element under the root is the reading the numbers below
+support; WebKit's own profile was not taken. The Message pan was first built as one
+custom property there that every summary's `text-indent` read.
 
 Measured in headless WebKit (Playwright's build of WebKit 26.6) on an M5 Pro, a
 production build at a 900px window, 48 rows mounted, 994 elements under the root, each
-step forced to style and layout, the mean of 200 steps from one run:
+step forced to style and layout, the mean of 200 steps in each probe:
 
 | One step writes | Cost |
 |---|---|
 | a custom property on the root that the summaries read | 11.8 ms |
 | a custom property on the root that nothing reads | 11.7 ms |
 | one stylesheet rule the summaries match | 11.1 ms |
-| `text-indent` on each of the 48 summaries | 2.7 ms |
+| `text-indent` on each of the 48 summaries | 2.7 to 3.3 ms |
 | the same, on summaries flattened to one text node each | 1.2 ms |
 | a negative `margin-left` on an inline box inside each summary | 0.89 ms |
 
-An earlier run, whose output was not kept, gave each of these within 7%. The flattened
-row is what shows `text-indent` paying for the spans inside each summary, which inherit
-it; the margin is on one box that passes nothing on. Containment on the summaries
-(`contain: layout`, `layout size`, `strict`, `inline-size layout`) left the indent at
-2.65 to 2.83 ms against 2.69 without it, one run each. A whole Message pan step, the
-wheel handler's measures and the thumb included, cost 13.0 to 13.3 ms in the first build
-and 1.1 to 1.3 ms with the margins, over three runs each, and the margins draw the same
-pixels as the indent at every offset compared, on summaries with a conventional-commit
-prefix and without one; a stash's italic summary was not compared. TRUNK-254.6's notes
-name the probes and their raw results.
+The indent row spans four probes of the same write: 2.7 to 3.0ms on the summaries as the
+app renders them, and 3.3ms on the page that also measured the margin, where each
+summary had the extra inline box around its text. Against that like-for-like 3.3ms the
+margin costs about a quarter. The flattened row is what shows `text-indent` paying for
+the spans inside each summary, which inherit it; the margin is on one box that passes
+nothing on. Containment on the summaries (`contain: layout`, `layout size`, `strict`,
+`inline-size layout`) left the indent at 2.65 to 2.83ms against 2.69 without it, one run
+each. A first run of the same probes, whose output was printed and not kept, gave every
+row within 7% of these. A whole Message pan step, the wheel handler's measures and the
+thumb included, cost 13.0 to 13.3ms in the first build and 1.1 to 1.3ms with the
+margins, over three runs each, and the margins draw the same pixels as the indent at
+every offset compared, on summaries with a conventional-commit prefix and without one; a
+stash's italic summary was not compared. TRUNK-254.6's notes name the probes and their
+raw results.
 
 **Rule:** a value that changes on every frame of a scroll or a pan goes on the elements
 that use it, as a property they do not pass on to their children, never on an element
-every row sits under. The column widths are the case this has not measured: they live
+every row sits under. A drag is the case this has not measured: the column widths live
 on the same root, and a divider drag rewrites them on every pointer move (TRUNK-279).
 
-**Review check:** for anything written per frame, ask which element it lands on and how
-many elements sit under it. The component test "writes to nothing but the summaries'
-text as it pans" in `CommitGraph.test.ts` pins it for the Message pan: any attribute a
-pan writes under the list, other than on a summary's text box, fails it. To measure
-frames in the running app, `docs/performance-instrumentation.md` has `just perf`.
+**Review check:** for anything written on every frame of a scroll or a pan, ask which
+element it lands on and how many elements sit under it; for a drag, measure first. The
+component test "writes to nothing but the summaries' text as it pans" in
+`CommitGraph.test.ts` pins it for the Message pan: any attribute a pan writes under the
+list, other than on a summary's text box, fails it. To measure frames in the running
+app, `docs/performance-instrumentation.md` has `just perf`.
