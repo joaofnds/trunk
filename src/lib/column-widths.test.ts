@@ -17,6 +17,7 @@ import {
 	shaContentWidth,
 	shareBudget,
 	showsHeaderLabel,
+	tableMinWidth,
 } from "./column-widths.js";
 import {
 	COLUMN_PADDING_X,
@@ -553,4 +554,38 @@ describe("columnWidthDeclarations", () => {
 			);
 		},
 	);
+});
+
+describe("tableMinWidth", () => {
+	const shown = {
+		ref: true,
+		graph: true,
+		message: true,
+		diff: true,
+		author: true,
+		date: true,
+		sha: true,
+	};
+	const widths = {
+		ref: 100,
+		graph: 40,
+		diff: 90,
+		author: 120,
+		date: 60,
+		sha: 50,
+	};
+
+	it("is every shown sized column at its width, and Message at its floor", () => {
+		expect(tableMinWidth(widths, shown)).toBe(460 + MESSAGE_FLOOR);
+	});
+
+	it("leaves a hidden column out", () => {
+		expect(tableMinWidth(widths, { ...shown, author: false })).toBe(
+			340 + MESSAGE_FLOOR,
+		);
+	});
+
+	it("keeps no floor for a Message that is hidden", () => {
+		expect(tableMinWidth(widths, { ...shown, message: false })).toBe(460);
+	});
 });

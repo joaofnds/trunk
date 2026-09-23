@@ -1280,6 +1280,29 @@ describe("CommitGraph", () => {
 				},
 			);
 
+			// Past the list's width the row is laid out at this, and the surplus
+			// scrolls sideways.
+			it("are laid out at least as wide as the sized columns and Message's floor", async () => {
+				const { container } = mountHeader();
+				await flush();
+				const sized = (
+					["ref", "graph", "diff", "author", "date", "sha"] as const
+				).reduce(
+					(sum, column) =>
+						sum +
+						Number.parseFloat(renderedWidth(headerCell(container, column))),
+					0,
+				);
+				const content = container.querySelector(
+					".virtual-list-content",
+				) as HTMLElement;
+
+				expect(Number.parseFloat(content.style.minWidth)).toBeCloseTo(
+					sized + MESSAGE_FLOOR,
+					5,
+				);
+			});
+
 			it("carry the header with them when they scroll sideways", async () => {
 				const { container } = mountHeader();
 				await flush();

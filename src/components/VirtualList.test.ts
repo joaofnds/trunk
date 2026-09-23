@@ -136,3 +136,49 @@ describe("VirtualList torn down between a scroll and the next frame", () => {
 		}).not.toThrow();
 	});
 });
+
+describe("VirtualList given the width its content needs", () => {
+	function mountWith(minContentWidth?: number) {
+		const { container } = render(VirtualList, {
+			props: {
+				items: ["a", "b", "c"],
+				renderItem: (() => {}) as unknown as Snippet,
+				minContentWidth,
+			},
+		});
+
+		return {
+			viewport: container.querySelector(
+				".virtual-list-viewport",
+			) as HTMLElement,
+			content: container.querySelector(".virtual-list-content") as HTMLElement,
+		};
+	}
+
+	it("lays the content out at least that wide, in a viewport that scrolls sideways", () => {
+		const { viewport, content } = mountWith(600);
+
+		expect({
+			scrolls: viewport.style.overflowX,
+			width: content.style.minWidth,
+		}).toEqual({ scrolls: "auto", width: "600px" });
+	});
+
+	// An overlay drawn inside the content can be wider than the rows, and without
+	// the clip that width becomes a sideways range on a list whose rows all fit.
+	it("keeps anything drawn past the content's width out of the sideways range", () => {
+		const { content } = mountWith(600);
+
+		expect(content.style.overflowX).toBe("clip");
+	});
+
+	it("leaves a list given no width to scroll only up and down", () => {
+		const { viewport, content } = mountWith(undefined);
+
+		expect({
+			scrolls: viewport.style.overflowX,
+			width: content.style.minWidth,
+			clip: content.style.overflowX,
+		}).toEqual({ scrolls: "", width: "", clip: "" });
+	});
+});

@@ -54,8 +54,8 @@ with two narrowings the vertical thumb does not have:
   sideways overflow keeps showing one thumb, the vertical one, while it scrolls up and down.
 - It shows only on a pane whose `overflow-x` lets the user scroll it, `auto` or `scroll`. A
   pane that is `hidden` still fires `scroll` when a script writes its `scrollLeft`, which is
-  how one pane mirrors another's offset, and a mirror must not draw a second thumb for the
-  same scroll.
+  how one pane mirrors another's offset, as the commit list's column header mirrors the
+  list, and a mirror must not draw a second thumb for the same scroll.
 
 Each thumb carries `data-axis`, `vertical` or `horizontal`, and `app.css` gives it its 5px
 thickness by that name, so a thumb without it paints nothing.

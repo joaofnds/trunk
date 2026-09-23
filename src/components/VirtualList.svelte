@@ -49,6 +49,11 @@ interface Props {
 	overlaySnippet?: Snippet<
 		[contentHeight: number, visibleStart: number, visibleEnd: number]
 	>;
+	/** The narrowest the content lays out. A viewport narrower than this scrolls
+	 *  sideways by the difference, and the content clips at its own width, so
+	 *  nothing drawn wider, an overlay included, adds to that range. Unset, the
+	 *  list never scrolls sideways. */
+	minContentWidth?: number;
 	/** Reactive average item height measured by the virtual list.
 	 *  Bind to this to get the actual measured row height (may differ from
 	 *  defaultEstimatedItemHeight at non-100% browser zoom levels). */
@@ -65,6 +70,7 @@ let {
 	loadMoreThreshold = 20,
 	hasMore = true,
 	overlaySnippet,
+	minContentWidth,
 	measuredItemHeight = $bindable(defaultEstimatedItemHeight),
 }: Props = $props();
 
@@ -706,10 +712,13 @@ function autoObserveItemResize(element: HTMLElement) {
         bind:this={heightManager.viewportElement}
         onscroll={handleScroll}
         style:overflow-anchor="none"
+        style:overflow-x={minContentWidth === undefined ? undefined : "auto"}
     >
         <div
             class="virtual-list-content"
             style:height="{contentHeight}px"
+            style:min-width={minContentWidth === undefined ? undefined : `${minContentWidth}px`}
+            style:overflow-x={minContentWidth === undefined ? undefined : "clip"}
         >
             {#if overlaySnippet}
                 {@render overlaySnippet(contentHeight, visibleItems.start, visibleItems.end)}

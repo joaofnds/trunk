@@ -120,6 +120,23 @@ export function columnFloors(measure: MeasureText): ColumnFloors {
  */
 export const MESSAGE_FLOOR = 180;
 
+/**
+ * The narrowest the table lays out: every shown sized column at its width, and
+ * Message at its floor. A list narrower than this scrolls sideways by the
+ * difference.
+ */
+export function tableMinWidth(
+	widths: ColumnWidths,
+	visible: Record<keyof ColumnWidths | "message", boolean>,
+): number {
+	let width = visible.message ? MESSAGE_FLOOR : 0;
+	for (const column of SIZED_COLUMNS) {
+		if (visible[column]) width += widths[column];
+	}
+
+	return width;
+}
+
 /** Whether a header of this width has room for its word rather than its icon. */
 export function showsHeaderLabel(width: number, labelMin: number): boolean {
 	return width >= labelMin;

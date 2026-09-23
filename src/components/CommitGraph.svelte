@@ -48,6 +48,7 @@ import {
 	shaContentWidth,
 	shareBudget,
 	showsHeaderLabel,
+	tableMinWidth,
 } from "../lib/column-widths.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
 import {
@@ -2346,6 +2347,7 @@ $effect(() => {
         loadMoreThreshold={50}
         {hasMore}
         overlaySnippet={graphOverlay}
+        minContentWidth={tableMinWidth(columnWidths, columnVisibility)}
       >
         {#snippet renderItem(commit, index)}
           <!-- svelte-ignore a11y_no_static_element_interactions -->

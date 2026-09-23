@@ -56,7 +56,7 @@ of Date and Author because its bar scales where their text is cut, and Branch/Ta
 ahead of Graph because a cut pill's name is a hover away while a lane past the edge
 is not. A layout the app chose therefore fits the list whenever the row, the list
 less its two 4px gutters, holds the six floors and Message's floor, 346px on macOS;
-below that the row is wider than the list and the columns right of Message clip.
+below that the row is wider than the list and the surplus scrolls sideways.
 
 MUI's outlier exclusion was considered and rejected: a page with three refs has no
 distribution to exclude from.
@@ -70,6 +70,46 @@ then we should let'em." The caps and the budget bound what the app decides on it
 own. A drag has only the column's floor, a stored width comes back as wide as it was
 left, and a user width sits outside the budget: the fits yield to make room for it,
 and once they are at their floors a wider drag pushes the row past the list.
+
+## Past the list, the table scrolls sideways
+
+Once the shown sized columns and Message's floor add up to more than the list, the row
+is laid out at that sum, `tableMinWidth`, and the surplus scrolls sideways. Message gives
+up its slack first, so a layout that fits never scrolls. What scrolls is a user width
+dragged past the budget, or a list narrower than the floors: measured in WebKit at a
+244px list, every column at its floor adds to 346px, and the table scrolls 102px to
+bring SHA whole into view.
+
+The list's own viewport is the sideways scroller. VirtualList takes the table's width as
+`minContentWidth`, lays its content out at least that wide and lets its viewport scroll
+on `x`, so momentum and the horizontal wheel come from the engine, and the graph overlay,
+drawn inside that content, moves with the rows with no offset of its own. The column
+header mirrors the viewport's `scrollLeft` through `src/lib/scroll-sync.ts`. Its cells
+sit in a scroller inside the header's padding, as the rows sit inside the list's, so the
+two have one client width and one scroll range. The first build of this (bc13040a,
+reverted with the rest at 409d34b3) offset every row, the header and the overlay by one
+JavaScript value instead, three places to keep in step.
+
+The content clips at its own width. The overlay is as wide as the lanes rather than the
+Graph column, and a hovered pill shows its whole name, so either can reach past a table
+that fits. Measured in WebKit with forty lanes in a 56px Graph column at a 692px list,
+Diff and SHA hidden, the viewport's `scrollWidth` was 742 while every column fit, a range
+that `overflow-x: auto` would have let the user scroll into. With `overflow-x: clip` on
+the content it measured 692, its `clientWidth`.
+
+A sideways gesture over a Graph column narrower than its lanes still pans them, and
+anywhere else it scrolls the table. The pan cancels the gesture, or the table would
+move under it too, and applies the gesture's vertical part to the list itself, so a
+diagonal swipe over the lanes still scrolls the commits. The pointer is read in table
+coordinates, past however far the table has scrolled.
+
+The sideways thumb is the scrollbar tracker's, shown only while the table scrolls, as
+`docs/architecture/scrollbars.md` settles for every thumb.
+
+Not taken: shrinking user widths to fit, which is the ceiling the product owner refused
+above; pinning Graph or Branch/Tag while the rest scrolls, since once Message is at its
+floor the columns off screen are the ones to its right; and hiding columns by priority,
+which would fight the visibility the user set.
 
 ## Branch/Tag's floor is a `main` pill
 
@@ -190,9 +230,6 @@ a grid container is not a grid item, so the rows cannot join a grid the header
 belongs to.
 
 ## What this does not solve
-
-A row wider than the list clips the columns right of Message; nothing scrolls it
-horizontally yet.
 
 User widths are one set for every repository, so a graph narrowed for a forty-lane
 repository stays narrow on a one-lane one.
