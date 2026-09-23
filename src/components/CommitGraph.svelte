@@ -368,51 +368,89 @@ $effect(() => {
 /** Where the Graph column starts in the table, before any sideways scroll. */
 const graphStart = $derived(columnVisibility.ref ? columnWidths.ref : 0);
 
-const graphPan: Pan = {
-	extent(viewport) {
-		const tableLeft =
-			viewport.getBoundingClientRect().left - viewport.scrollLeft;
-		return {
-			trackStart: tableLeft + graphStart,
-			trackLength: columnWidths.graph,
-			offset: graphScrollX,
-			scrollLength: columnWidths.graph + maxGraphScrollX,
-			clientLength: columnWidths.graph,
-		};
-	},
+/** A column whose content pans sideways inside it, by an offset kept here. */
+interface ColumnPan extends Pan {
+	/** Whether a pointer this far into the table is over the column. */
+	holds(x: number): boolean;
+	offset(): number;
+	/** How far the content runs past the column. */
+	range(): number;
+}
+
+function columnPan(column: {
+	/** Where the column lies in the table, before any sideways scroll. */
+	band(): { start: number; width: number };
+	offset(): number;
+	range(): number;
+	scrollTo(offset: number): void;
+}): ColumnPan {
+	return {
+		offset: column.offset,
+		range: column.range,
+		scrollTo: column.scrollTo,
+		holds(x) {
+			const { start, width } = column.band();
+			return x >= start && x <= start + width;
+		},
+		extent(viewport) {
+			const { start, width } = column.band();
+			const tableLeft =
+				viewport.getBoundingClientRect().left - viewport.scrollLeft;
+			return {
+				trackStart: tableLeft + start,
+				trackLength: width,
+				offset: column.offset(),
+				scrollLength: width + column.range(),
+				clientLength: width,
+			};
+		},
+	};
+}
+
+const graphPan = columnPan({
+	band: () => ({
+		start: graphStart,
+		width: columnVisibility.graph ? columnWidths.graph : 0,
+	}),
+	offset: () => graphScrollX,
+	range: () => maxGraphScrollX,
 	scrollTo(offset) {
 		graphScrollX = offset;
 	},
-};
+});
 
-// GRAPH-02: a sideways gesture over the Graph column pans its lanes until they
-// reach their end in its direction, and from there, or anywhere else, it
-// scrolls the table. While the table can scroll sideways the pan cancels the
-// gesture, or the table would move under it too, and applies its vertical part
-// here instead; a table that fits leaves the gesture to the engine.
-function panGraph(event: WheelEvent & { currentTarget: HTMLElement }) {
-	if (maxGraphScrollX <= 0 || event.deltaX === 0) return;
+const columnPans: readonly ColumnPan[] = [graphPan];
+
+// GRAPH-02: a sideways gesture over a column that pans pans it until its
+// content reaches its end in the gesture's direction, and from there, or
+// anywhere else, it scrolls the table. While the table can scroll sideways the
+// pan cancels the gesture, or the table would move under it too, and applies
+// its vertical part here instead; a table that fits leaves the gesture to the
+// engine.
+function panColumn(event: WheelEvent & { currentTarget: HTMLElement }) {
+	if (event.deltaX === 0) return;
 
 	const viewport = listViewport();
+	if (!viewport) return;
+
 	const rect = event.currentTarget.getBoundingClientRect();
 	const pointerX =
-		event.clientX - rect.left - COLUMN_PADDING_X + (viewport?.scrollLeft ?? 0);
-	const graphEnd =
-		graphStart + (columnVisibility.graph ? columnWidths.graph : 0);
-	if (pointerX < graphStart || pointerX > graphEnd) return;
+		event.clientX - rect.left - COLUMN_PADDING_X + viewport.scrollLeft;
+	const column = columnPans.find((pan) => pan.holds(pointerX));
+	if (!column) return;
 
 	const panned = Math.max(
 		0,
-		Math.min(maxGraphScrollX, graphScrollX + event.deltaX),
+		Math.min(column.range(), column.offset() + event.deltaX),
 	);
-	if (panned === graphScrollX) return;
+	if (panned === column.offset()) return;
 
-	if (viewport && viewport.scrollWidth > viewport.clientWidth) {
+	if (viewport.scrollWidth > viewport.clientWidth) {
 		event.preventDefault();
 		viewport.scrollTop += event.deltaY;
 	}
-	graphScrollX = panned;
-	if (viewport) announcePan(viewport, graphPan);
+	column.scrollTo(panned);
+	announcePan(viewport, column);
 }
 
 const headerMins = headerMinWidths(measureTextWidth);
@@ -1977,7 +2015,7 @@ $effect(() => {
 
   <!-- Content area (grows to fill remaining space) -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="flex-1 overflow-hidden" style="position: relative; padding: 0 {COLUMN_PADDING_X}px;" onwheel={panGraph}>
+  <div class="flex-1 overflow-hidden" style="position: relative; padding: 0 {COLUMN_PADDING_X}px;" onwheel={panColumn}>
     {#if searchOpen}
       <SearchBar
         query={searchQuery}
