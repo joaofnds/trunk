@@ -98,10 +98,11 @@ that `overflow-x: auto` would have let the user scroll into. With `overflow-x: c
 the content it measured 692, its `clientWidth`.
 
 A sideways gesture over a Graph column narrower than its lanes still pans them, and
-anywhere else it scrolls the table. The pan cancels the gesture, or the table would
-move under it too, and applies the gesture's vertical part to the list itself, so a
-diagonal swipe over the lanes still scrolls the commits. The pointer is read in table
-coordinates, past however far the table has scrolled.
+anywhere else it scrolls the table. While the table can scroll sideways the pan cancels
+the gesture, or the table would move under it too, and applies the gesture's vertical
+part to the list itself, so a diagonal swipe over the lanes still scrolls the commits. A
+table that fits has nothing to move sideways, and the engine keeps the gesture. The
+pointer is read in table coordinates, past however far the table has scrolled.
 
 The sideways thumb is the scrollbar tracker's, shown only while the table scrolls, as
 `docs/architecture/scrollbars.md` settles for every thumb.
