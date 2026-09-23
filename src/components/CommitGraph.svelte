@@ -357,6 +357,31 @@ $effect(() => {
 	if (graphScrollX > maxGraphScrollX) graphScrollX = maxGraphScrollX;
 });
 
+// GRAPH-02: a sideways gesture over the Graph column pans its lanes, and anywhere
+// else it scrolls the table. The pan cancels the gesture, or the table would
+// scroll under it too, so the gesture's vertical part is applied here instead.
+function panGraph(event: WheelEvent & { currentTarget: HTMLElement }) {
+	if (maxGraphScrollX <= 0 || event.deltaX === 0) return;
+
+	const viewport = event.currentTarget.querySelector<HTMLElement>(
+		".virtual-list-viewport",
+	);
+	const rect = event.currentTarget.getBoundingClientRect();
+	const pointerX =
+		event.clientX - rect.left - COLUMN_PADDING_X + (viewport?.scrollLeft ?? 0);
+	const graphStart = columnVisibility.ref ? columnWidths.ref : 0;
+	const graphEnd =
+		graphStart + (columnVisibility.graph ? columnWidths.graph : 0);
+	if (pointerX < graphStart || pointerX > graphEnd) return;
+
+	event.preventDefault();
+	if (viewport) viewport.scrollTop += event.deltaY;
+	graphScrollX = Math.max(
+		0,
+		Math.min(maxGraphScrollX, graphScrollX + event.deltaX),
+	);
+}
+
 const headerMins = headerMinWidths(measureTextWidth);
 const floors = columnFloors(measureTextWidth);
 
@@ -1918,18 +1943,7 @@ $effect(() => {
 
   <!-- Content area (grows to fill remaining space) -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="flex-1 overflow-hidden" style="position: relative; padding: 0 {COLUMN_PADDING_X}px;" onwheel={(e) => {
-    // GRAPH-02: horizontal pan on trackpad swipe or shift+wheel — only when pointer is over the graph column
-    if (maxGraphScrollX > 0 && e.deltaX !== 0) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const pointerX = e.clientX - rect.left - COLUMN_PADDING_X;
-      const graphStart = columnVisibility.ref ? columnWidths.ref : 0;
-      const graphEnd = graphStart + (columnVisibility.graph ? columnWidths.graph : 0);
-      if (pointerX >= graphStart && pointerX <= graphEnd) {
-        graphScrollX = Math.max(0, Math.min(maxGraphScrollX, graphScrollX + e.deltaX));
-      }
-    }
-  }}>
+  <div class="flex-1 overflow-hidden" style="position: relative; padding: 0 {COLUMN_PADDING_X}px;" onwheel={panGraph}>
     {#if searchOpen}
       <SearchBar
         query={searchQuery}

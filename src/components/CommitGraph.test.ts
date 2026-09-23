@@ -718,6 +718,131 @@ describe("CommitGraph", () => {
 		});
 	});
 
+	// A sideways gesture over the Graph column pans its lanes, and anywhere else it
+	// scrolls the table. Branch/Tag is hidden so the Graph column starts at the
+	// list's left edge.
+	describe("a sideways wheel", () => {
+		const graphWidth = LANE_WIDTH + 2 * COLUMN_PADDING_X;
+
+		// Four lanes in a column the user narrowed to one, so the lanes pan.
+		function mountPannableGraph() {
+			installReads({
+				override: (cmd, args) => {
+					if (cmd === "get_commit_graph" || cmd === "refresh_commit_graph")
+						return Promise.resolve({ commits: TEST_COMMITS, max_columns: 4 });
+					if (cmd !== "prefs_get") return undefined;
+					if (args?.key === "column_widths")
+						return Promise.resolve({ graph: graphWidth });
+					if (args?.key === "resized_columns")
+						return Promise.resolve(["graph"]);
+					if (args?.key === "column_visibility")
+						return Promise.resolve({
+							ref: false,
+							graph: true,
+							message: true,
+							diff: true,
+							author: true,
+							date: true,
+							sha: true,
+						});
+					return undefined;
+				},
+			});
+
+			return render(CommitGraph, {
+				props: { repoPath: "/test/repo", tabActive: true },
+			});
+		}
+
+		function listViewport(container: HTMLElement): HTMLElement {
+			return container.querySelector(".virtual-list-viewport") as HTMLElement;
+		}
+
+		function lanesOffset(container: HTMLElement): number {
+			const transform =
+				container.querySelector(".overlay-paths")?.getAttribute("transform") ??
+				"";
+			return Number(/translate\((-?[\d.]+),/.exec(transform)?.[1]);
+		}
+
+		// jsdom lays nothing out, so the list's left edge is 0 and a pointer's x is
+		// its distance from there.
+		function wheelAt(
+			container: HTMLElement,
+			x: number,
+			deltas: { deltaX: number; deltaY?: number },
+		): WheelEvent {
+			const event = new WheelEvent("wheel", {
+				bubbles: true,
+				cancelable: true,
+				clientX: COLUMN_PADDING_X + x,
+				...deltas,
+			});
+			listViewport(container).dispatchEvent(event);
+			return event;
+		}
+
+		it("pans the lanes when it lands on the Graph column", async () => {
+			const { container } = mountPannableGraph();
+			await flush();
+			const before = lanesOffset(container);
+
+			wheelAt(container, 5, { deltaX: 10 });
+			await tick();
+
+			expect(lanesOffset(container)).toBe(before - 10);
+		});
+
+		it("keeps the table still while it pans the lanes", async () => {
+			const { container } = mountPannableGraph();
+			await flush();
+
+			const event = wheelAt(container, 5, { deltaX: 10 });
+
+			expect(event.defaultPrevented).toBe(true);
+		});
+
+		it("still scrolls the list down by the vertical part of a diagonal gesture over the lanes", async () => {
+			const { container } = mountPannableGraph();
+			await flush();
+
+			wheelAt(container, 5, { deltaX: 10, deltaY: 30 });
+
+			expect(listViewport(container).scrollTop).toBe(30);
+		});
+
+		it("leaves the gesture to the table anywhere else", async () => {
+			const { container } = mountPannableGraph();
+			await flush();
+			const before = lanesOffset(container);
+
+			const event = wheelAt(container, graphWidth + 20, { deltaX: 10 });
+			await tick();
+
+			expect({
+				prevented: event.defaultPrevented,
+				lanes: lanesOffset(container),
+			}).toEqual({ prevented: false, lanes: before });
+		});
+
+		// Scrolled 40px, the point 5px in from the list's edge is 45px into the
+		// table, past the Graph column and over Message.
+		it("finds the column under the pointer in the scrolled table", async () => {
+			const { container } = mountPannableGraph();
+			await flush();
+			listViewport(container).scrollLeft = 40;
+			const before = lanesOffset(container);
+
+			const event = wheelAt(container, 5, { deltaX: 10 });
+			await tick();
+
+			expect({
+				prevented: event.defaultPrevented,
+				lanes: lanesOffset(container),
+			}).toEqual({ prevented: false, lanes: before });
+		});
+	});
+
 	describe("column headers", () => {
 		function mountHeader(visibility?: Partial<Record<string, boolean>>) {
 			installReads({
