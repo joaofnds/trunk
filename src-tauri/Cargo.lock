@@ -5261,7 +5261,6 @@ dependencies = [
  "criterion",
  "git2",
  "libc",
- "notify",
  "notify-debouncer-mini",
  "objc2",
  "objc2-app-kit",

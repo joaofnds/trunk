@@ -30,7 +30,6 @@ serde_json = { workspace = true }
 git2 = { workspace = true }
 trunk-git = { path = "git" }
 trunk-review = { path = "review" }
-notify = "8"
 notify-debouncer-mini = "0.7"
 tauri-plugin-window-state = "2"
 tauri-plugin-clipboard-manager = "2"
