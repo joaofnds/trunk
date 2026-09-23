@@ -95,6 +95,45 @@ that carries on past a pan's end scrolls the table, so both can be up at once. W
 they overlap depends on where the column lies and how far the table has scrolled, and
 where they do, the one created later lies on top and takes the pointer.
 
+### Which wheel events a pan takes
+
+The commit list's wheel handler decides which events of a swipe go to a pan, from what
+WebKit does with them. That is read from WebKit's source (main, September 2026), not
+observed in the app. A trackpad drifts sideways as it scrolls down, and WebKit hands the
+page that drift: it holds its own scrollers to a swipe's main axis while the finger
+moves (`WheelEventDeltaFilterMac`; momentum is not filtered), but it filters only the
+deltas it scrolls by, never the ones the DOM event carries. It also decides at a swipe's
+first event whether the page may cancel the rest: once that event goes uncancelled, no
+later event of the swipe can be cancelled, and the engine scrolls them without waiting
+on the page (`EventHandler::updateWheelGestureState`,
+`ScrollingTree::computeWheelProcessingSteps`).
+
+So a swipe starts on a pan only with an event more sideways than vertical. Any other
+event, a diagonal as vertical as it is sideways included, goes to the engine whole, and
+a scroll down keeps the engine's own scrolling. Once a pan has an event of a swipe it
+keeps the rest of that swipe, whatever each event's direction and wherever the pointer
+is by then, until 100ms pass without an event, the wait WebKit gives a lifted finger's
+swipe for its momentum before it drops its own latch (`ScrollLatchingController`). An
+event a pan takes while the table can scroll sideways is cancelled whole, its vertical
+part with it; in a table that fits, the engine still scrolls the list by that part. A
+swipe that begins over another column and carries a pannable column under a still
+pointer starts panning it partway through, and since the swipe's first event went
+uncancelled, a table that can scroll sideways keeps moving under the pan.
+
+Measured in headless WebKit (Playwright's build of WebKit 26.6) before these rules, at a
+900px window: 60 events of 30px down and 2px sideways left the summaries 120px sideways
+when the pointer was over Message, and slid the lanes 120px when it was over a narrowed
+Graph column, as the Graph pan had done since it was built. At the same window, 150
+events of 30px down and 1px sideways over Message dropped about 19 frames in five
+seconds, against none before the Message pan; those steps also paid the first Message
+pan's per-step cost (`docs/performance-patterns.md`), and no run separates the two. The
+pans then cancelled a drifting event whenever the table could scroll sideways and
+scrolled the list by its vertical part by hand, which by the rule above made every event
+of a scroll down that began with drift wait on the page. Before the latch, one event of
+3px sideways and 4px down in the middle of a sideways swipe over Message moved a table
+that could scroll sideways 3px under the pan; with it, the pan takes the 3px and the
+table stays.
+
 The other shape, the pan as a real horizontal scroll container, is not taken for the
 Graph: the rails and dots are one SVG as tall as the list inside the virtual list's
 content, and a scroller over the Graph band would sit over the rows' clicks and take the

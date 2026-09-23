@@ -50,7 +50,7 @@ interface Props {
 	 *  a present value with zeros = a real empty/binary commit. */
 	diffStat?: DiffStat;
 	/** How far the Message pan has moved the summary's text left, in px. */
-	messagePan?: number;
+	messageScrollX?: number;
 }
 
 let {
@@ -70,7 +70,7 @@ let {
 	commentTone = null,
 	wipStats,
 	diffStat,
-	messagePan = 0,
+	messageScrollX = 0,
 }: Props = $props();
 
 const dateLabel = $derived(
@@ -166,10 +166,10 @@ const rowShadow = $derived(
         {/if}
       </div>
     {:else if isStash}
-      <span data-testid="commit-row-summary" data-message-summary class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic" style="color: var(--color-text-muted);"><span style="margin-left: {-messagePan}px;">{commit.summary}</span></span>
+      <span data-testid="commit-row-summary" data-message-summary class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic" style="color: var(--color-text-muted);"><span style="margin-left: {-messageScrollX}px;">{commit.summary}</span></span>
     {:else}
       <span data-testid="commit-row-summary" data-message-summary class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
-      ><span style="margin-left: {-messagePan}px;">{#if parsed.prefix}<span style="color: {prefixToneVar(parsed.prefix)};">{parsed.prefix}{parsed.scope}{parsed.bang}</span><span style="color: var(--fg-2);">{": "}</span>{parsed.rest}{:else}{commit.summary}{/if}</span></span>
+      ><span style="margin-left: {-messageScrollX}px;">{#if parsed.prefix}<span style="color: {prefixToneVar(parsed.prefix)};">{parsed.prefix}{parsed.scope}{parsed.bang}</span><span style="color: var(--fg-2);">{": "}</span>{parsed.rest}{:else}{commit.summary}{/if}</span></span>
     {/if}
     <CommentBadge count={commentCount} tone={commentTone} />
   </div>

@@ -110,19 +110,15 @@ A sideways gesture over a Graph column narrower than its lanes still pans them, 
 they reach their end in the gesture's direction; past that end, and anywhere else, it
 scrolls the table. That is the product owner's rule, 2026-09-23, taken from how a
 browser scrolls a page with a scrollable section in it: the section scrolls to its end
-first, and scrolling on from there moves the page. Each wheel event goes one way or the
-other, decided by the column under the pointer as the table stands at that event: one
-that finds the lanes already at their end goes to the engine whole, and the part of one
-that overshoots the end is dropped rather than handed on. So a swipe that begins over
-another column and carries the Graph column under a still pointer starts panning the
-lanes partway through. Whether WKWebView holds one trackpad gesture to the scroller it
-began on, as browsers are generally held to do, has not been observed. When the pan does
-move and the table can scroll sideways, the pan cancels the gesture, or the table would
-move under it too. A table that fits has nothing to move sideways, and the engine keeps
-the gesture. The pan adds the event's sideways part as pixels without reading
-`deltaMode`, so a wheel reporting lines, not tried, would pan by the line count in
-pixels. The pointer is read in table coordinates, past however far the table has
-scrolled.
+first, and scrolling on from there moves the page. An event that finds the lanes already
+at their end goes to the engine whole, and the part of one that overshoots the end is
+dropped rather than handed on. When the pan does move and the table can scroll sideways,
+the pan cancels the event, or the table would move under it too. A table that fits has
+nothing to move sideways, and the engine keeps the event. The pan adds the event's
+sideways part as pixels without reading `deltaMode`, so a wheel reporting lines, not
+tried, would pan by the line count in pixels. The pointer is read in table coordinates,
+past however far the table has scrolled. `docs/architecture/scrollbars.md`, under "Which
+wheel events a pan takes", says which events of a swipe a pan takes at all, and why.
 
 Message pans its summaries under the same rule, on the product owner's direction of
 2026-09-23: a summary cut off at the column's edge is read by swiping over it, not by
@@ -146,26 +142,10 @@ slides out of view as a long one is read. Moving each summary only as far as it 
 is the other shape, with a scroll offset per row where this has one for all; the product
 owner kept one offset after using it in the app, 2026-09-24.
 
-Where the offset is written decides what a step costs: measured in WebKit at a 900px
-window with 48 rows mounted, a step costs 1.1ms with the margins, the wheel handler and
-the thumb included, and 12.7ms as a negative `text-indent` read from one custom property
-on the list's root, since any custom property changed there cost about 11ms, one no rule
-reads included, which points at a restyle of all 994 elements under the root. Both draw
-the same pixels at every offset compared. `docs/performance-patterns.md` has the rest of
-that measurement.
-
-Both pans take a wheel event only when it is more sideways than vertical. The rest, a
-diagonal as vertical as it is sideways included, goes to the engine whole, and the
-vertical part of one a pan takes is dropped. A trackpad drifts sideways as it scrolls
-down, and WebKit hands the page that drift: it holds its own scrollers to a swipe's main
-axis (`WheelEventDeltaFilterMac`), but filters only the deltas it scrolls by, never the
-ones the DOM event carries. Measured in WebKit before this rule, a scroll down over
-Message with 2px of drift per event left the summaries 120px sideways after 1800px of
-scroll, and at a 900px window it dropped about 19 frames in five seconds where the build
-before the Message pan dropped none. Over the Graph column the same scroll slid the lanes
-120px, as it had since the Graph pan was built. The pans used to cancel such a diagonal
-and apply its vertical part to the list by hand, which took those events' scrolling off
-the engine.
+Where the offset is written decides what a pan step costs. Measured in headless WebKit,
+a step that writes the margins costs about a tenth of one that wrote a custom property
+on the list's root, the first build's shape, and the two draw the same pixels at the
+offsets compared; `docs/performance-patterns.md` has the measurement.
 
 The sideways thumb is the scrollbar tracker's, shown only while the table scrolls, as
 `docs/architecture/scrollbars.md` settles for every thumb. Each pan gets a thumb of its

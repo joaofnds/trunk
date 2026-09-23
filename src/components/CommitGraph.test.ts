@@ -784,11 +784,12 @@ describe("CommitGraph", () => {
 	}
 
 	// jsdom lays nothing out, so the list's left edge is 0 and a pointer's x is
-	// its distance from there.
+	// its distance from there. `at` stamps the event in ms, for the tests that
+	// care how far apart the events of a swipe come.
 	function wheelAt(
 		container: HTMLElement,
 		x: number,
-		deltas: { deltaX: number; deltaY?: number },
+		{ at, ...deltas }: { deltaX: number; deltaY?: number; at?: number },
 	): WheelEvent {
 		const event = new WheelEvent("wheel", {
 			bubbles: true,
@@ -796,6 +797,9 @@ describe("CommitGraph", () => {
 			clientX: COLUMN_PADDING_X + x,
 			...deltas,
 		});
+		if (at !== undefined) {
+			Object.defineProperty(event, "timeStamp", { value: at });
+		}
 		listViewport(container).dispatchEvent(event);
 		return event;
 	}
@@ -1323,32 +1327,109 @@ describe("CommitGraph", () => {
 			expect(summaryShift(summaries(container)[0])).toBe(0);
 		});
 
-		// A property changed on the list's root costs as much as restyling every
-		// element under it: measured in WebKit, 11ms a step, against 0.9ms for the
-		// summaries alone.
-		it("leaves the list's own style alone", async () => {
+		// A swipe's events come far closer together than 100ms, the wait WebKit
+		// gives a lifted finger's swipe for its momentum before it drops its own
+		// latch (ScrollLatchingController).
+		it("keeps the rest of a swipe it took, an event more vertical than sideways included", async () => {
 			const { container } = mountMessages([LONG]);
 			await flush();
 			layOut(container);
-			const list = screen.getByRole("listbox");
-			const before = list.getAttribute("style");
+			wheelAt(container, 50, { deltaX: 30, at: 0 });
+
+			wheelAt(container, 50, { deltaX: 3, deltaY: 4, at: 16 });
+			await tick();
+
+			expect(summaryShift(summaries(container)[0])).toBe(33);
+		});
+
+		// With Graph 24px wide before it, Message starts at 24.
+		it("keeps the rest of a swipe it took once the pointer is over the Graph column", async () => {
+			const { container } = mountMessages([LONG], { graph: 24 });
+			await flush();
+			layOut(container);
+			wheelAt(container, 24 + 10, { deltaX: 30, at: 0 });
+
+			wheelAt(container, 5, { deltaX: 30, at: 16 });
+			await tick();
+
+			expect(summaryShift(summaries(container)[0])).toBe(60);
+		});
+
+		it("keeps a swipe that runs longer than 100ms", async () => {
+			const { container } = mountMessages([LONG]);
+			await flush();
+			layOut(container);
+			wheelAt(container, 50, { deltaX: 30, at: 0 });
+			wheelAt(container, 50, { deltaX: 30, at: 80 });
+
+			wheelAt(container, 50, { deltaX: 3, deltaY: 4, at: 160 });
+			await tick();
+
+			expect(summaryShift(summaries(container)[0])).toBe(63);
+		});
+
+		it("takes 100ms without an event as the end of the swipe", async () => {
+			const { container } = mountMessages([LONG]);
+			await flush();
+			layOut(container);
+			wheelAt(container, 50, { deltaX: 30, at: 0 });
+
+			wheelAt(container, 50, { deltaX: 3, deltaY: 4, at: 100 });
+			await tick();
+
+			expect(summaryShift(summaries(container)[0])).toBe(30);
+		});
+
+		// Every attribute written under `root` from here on, for a test to read
+		// once the pan has been applied.
+		function watchWrites(root: Element): () => Node[] {
+			const written: Node[] = [];
+			const writes = new MutationObserver((records) => {
+				written.push(...records.map((record) => record.target));
+			});
+			writes.observe(root, { attributes: true, subtree: true });
+
+			return () => [
+				...written,
+				...writes.takeRecords().map((record) => record.target),
+			];
+		}
+
+		// A property changed on an element every row sits under cost 11ms a step
+		// in WebKit, whether or not a rule read it (docs/performance-patterns.md),
+		// so a pan writes to each summary's own text and nowhere else.
+		it("writes to nothing but the summaries' text as it pans", async () => {
+			const { container } = mountMessages([LONG, SHORT]);
+			await flush();
+			layOut(container);
+			const written = watchWrites(screen.getByRole("listbox"));
 
 			wheelAt(container, 50, { deltaX: 30 });
 			await tick();
 
-			expect(list.getAttribute("style")).toBe(before);
+			const texts = summaries(container).map(
+				(summary) => summary.firstElementChild,
+			);
+			const writtenTexts = new Set(
+				written().map((node) => texts.findIndex((text) => text === node)),
+			);
+			expect([...writtenTexts].sort((x, y) => x - y)).toEqual([0, 1]);
 		});
 
 		it("leaves the WIP row where it is", async () => {
 			const { container } = mountMessages([LONG], { wipMessage: LONG });
 			await flush();
 			layOut(container);
+			const [wipSummary, commitSummary] = summaries(container);
+			const written = watchWrites(wipSummary);
 
 			wheelAt(container, 50, { deltaX: 30 });
 			await tick();
 
-			const wipText = summaries(container)[0].firstElementChild as HTMLElement;
-			expect(wipText.style.marginLeft).toBe("");
+			expect({
+				wipWrites: written().length,
+				commitShift: summaryShift(commitSummary),
+			}).toEqual({ wipWrites: 0, commitShift: 30 });
 		});
 
 		describe("once the pan has gone further than the summaries now run", () => {
@@ -1409,6 +1490,18 @@ describe("CommitGraph", () => {
 				scrollTableSideways(container);
 
 				const event = wheelAt(container, 50, { deltaX: 30 });
+
+				expect(event.defaultPrevented).toBe(true);
+			});
+
+			it("keeps the table still under an event of the swipe more vertical than sideways", async () => {
+				const { container } = mountMessages([LONG]);
+				await flush();
+				layOut(container);
+				scrollTableSideways(container);
+				wheelAt(container, 50, { deltaX: 30, at: 0 });
+
+				const event = wheelAt(container, 50, { deltaX: 3, deltaY: 4, at: 16 });
 
 				expect(event.defaultPrevented).toBe(true);
 			});
