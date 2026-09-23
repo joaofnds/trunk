@@ -79,6 +79,7 @@ import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
 import { buildRefPillData, overflowBadgeWidth } from "../lib/ref-pill-data.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
+import { createHorizontalScrollSync } from "../lib/scroll-sync.js";
 import {
 	type ColumnVisibility,
 	type ColumnWidths,
@@ -251,6 +252,21 @@ let listRef = $state<{
 } | null>(null);
 let scrolledToHead = false;
 let containerRef = $state<HTMLDivElement | null>(null);
+
+// The column header and the rows scroll sideways as one. The list's viewport is
+// looked up whenever the list mounts, which a row-height change does again.
+const syncTableScroll = createHorizontalScrollSync();
+
+$effect(() => {
+	if (!listRef) return;
+
+	const viewport = containerRef?.querySelector<HTMLElement>(
+		".virtual-list-viewport",
+	);
+	if (!viewport) return;
+
+	return syncTableScroll(viewport).destroy;
+});
 
 // Diff column: per-oid stats for loaded history commits + the WIP row's stat.
 // Reassigned (never mutated) so the deeply-reactive Map drives re-render. All
@@ -1856,45 +1872,48 @@ $effect(() => {
   bind:this={containerRef}
   onkeydown={handleKeydown}
 >
-  <!-- Header row (always visible) -->
+  <!-- Header row (always visible). Its cells sit in a scroller of their own inside
+       the padding, as the list's rows do, so the two scroll the same distance. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="flex items-center flex-shrink-0"
+    class="flex-shrink-0"
     style="height: var(--bar-h); background: var(--bg-1); box-shadow: inset 0 -1px 0 var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px;"
     oncontextmenu={showHeaderContextMenu}
   >
-    {#each columnLabels as col (col.key)}
-      {#if columnVisibility[col.key]}
-        {#if col.sized}
-          {@const width = columnWidths[col.key]}
-          <div
-            class="relative flex-shrink-0 overflow-hidden whitespace-nowrap"
-            data-column={col.key}
-            style="width: var({columnWidthProperty(col.key)}); padding: 0 {COLUMN_PADDING_X}px;"
-            title={col.label}
-          >
-            {#if showsHeaderLabel(width, headerMins[col.key])}
+    <div data-testid="column-header" class="flex items-center h-full overflow-hidden" use:syncTableScroll>
+      {#each columnLabels as col (col.key)}
+        {#if columnVisibility[col.key]}
+          {#if col.sized}
+            {@const width = columnWidths[col.key]}
+            <div
+              class="relative flex-shrink-0 overflow-hidden whitespace-nowrap"
+              data-column={col.key}
+              style="width: var({columnWidthProperty(col.key)}); padding: 0 {COLUMN_PADDING_X}px;"
+              title={col.label}
+            >
+              {#if showsHeaderLabel(width, headerMins[col.key])}
+                {col.label}
+              {:else}
+                <col.icon size={HEADER_ICON_WIDTH} aria-hidden="true" />
+              {/if}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              {#if col.key !== lastVisibleColumn}
+                <div class="col-resize-handle" onmousedown={(e) => startColumnResize(col.key, e)} ondblclick={() => refitColumn(col.key)}></div>
+              {/if}
+            </div>
+          {:else}
+            <div
+              class="relative flex-1 overflow-hidden whitespace-nowrap"
+              data-column={col.key}
+              style="padding: 0 {COLUMN_PADDING_X}px; min-width: {MESSAGE_FLOOR}px;"
+              title={col.label}
+            >
               {col.label}
-            {:else}
-              <col.icon size={HEADER_ICON_WIDTH} aria-hidden="true" />
-            {/if}
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            {#if col.key !== lastVisibleColumn}
-              <div class="col-resize-handle" onmousedown={(e) => startColumnResize(col.key, e)} ondblclick={() => refitColumn(col.key)}></div>
-            {/if}
-          </div>
-        {:else}
-          <div
-            class="relative flex-1 overflow-hidden whitespace-nowrap"
-            data-column={col.key}
-            style="padding: 0 {COLUMN_PADDING_X}px; min-width: {MESSAGE_FLOOR}px;"
-            title={col.label}
-          >
-            {col.label}
-          </div>
+            </div>
+          {/if}
         {/if}
-      {/if}
-    {/each}
+      {/each}
+    </div>
   </div>
 
   <!-- Content area (grows to fill remaining space) -->

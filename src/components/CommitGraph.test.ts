@@ -301,9 +301,11 @@ describe("CommitGraph", () => {
 			},
 		});
 
-		const headerRow = (await screen.findByText("Date")).parentElement;
+		const headerBar = (await screen.findByText("Date")).closest(
+			"[data-testid=column-header]",
+		)?.parentElement;
 
-		expect(headerRow?.getAttribute("style")).toContain("height: var(--bar-h)");
+		expect(headerBar?.getAttribute("style")).toContain("height: var(--bar-h)");
 	});
 
 	it("renders commit summaries after data loads", async () => {
@@ -739,10 +741,14 @@ describe("CommitGraph", () => {
 			});
 		}
 
-		function headerCell(container: HTMLElement, label: string): HTMLElement {
-			const header = container.querySelector(
-				"[role=listbox] > div",
+		function columnHeader(container: HTMLElement): HTMLElement {
+			return container.querySelector(
+				"[data-testid=column-header]",
 			) as HTMLElement;
+		}
+
+		function headerCell(container: HTMLElement, label: string): HTMLElement {
+			const header = columnHeader(container);
 			const cell = [...header.children].find(
 				(c) => c.getAttribute("data-column") === label,
 			);
@@ -1148,6 +1154,19 @@ describe("CommitGraph", () => {
 					}).toEqual({ header: "177px", row: "177px" });
 				},
 			);
+
+			it("carry the header with them when they scroll sideways", async () => {
+				const { container } = mountHeader();
+				await flush();
+				const viewport = container.querySelector(
+					".virtual-list-viewport",
+				) as HTMLElement;
+
+				viewport.scrollLeft = 120;
+				await fireEvent.scroll(viewport);
+
+				expect(columnHeader(container).scrollLeft).toBe(120);
+			});
 		});
 	});
 
