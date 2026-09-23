@@ -118,12 +118,11 @@ another column and carries the Graph column under a still pointer starts panning
 lanes partway through. Whether WKWebView holds one trackpad gesture to the scroller it
 began on, as browsers are generally held to do, has not been observed. When the pan does
 move and the table can scroll sideways, the pan cancels the gesture, or the table would
-move under it too, and applies the gesture's vertical part to the list itself, so a
-diagonal swipe over the lanes still scrolls the commits.
-That part is added as pixels without reading `deltaMode`, so a wheel reporting lines,
-not tried, would move the list by the line count in pixels. A table that fits has
-nothing to move sideways, and the engine keeps the gesture. The pointer is read in table
-coordinates, past however far the table has scrolled.
+move under it too. A table that fits has nothing to move sideways, and the engine keeps
+the gesture. The pan adds the event's sideways part as pixels without reading
+`deltaMode`, so a wheel reporting lines, not tried, would pan by the line count in
+pixels. The pointer is read in table coordinates, past however far the table has
+scrolled.
 
 Message pans its summaries under the same rule, on the product owner's direction of
 2026-09-23: a summary cut off at the column's edge is read by swiping over it, not by
@@ -148,6 +147,19 @@ by the same offset, so a short one slides out of view as a long one is read. Mov
 summary only as far as it is cut is the other shape, with a scroll offset per row where
 this has one for all; the product owner leans to one offset and picks between the two
 after using both in the app (TRUNK-254.6).
+
+Both pans take a wheel event only when it is more sideways than vertical. The rest, a
+diagonal as vertical as it is sideways included, goes to the engine whole, and the
+vertical part of one a pan takes is dropped. A trackpad drifts sideways as it scrolls
+down, and WebKit hands the page that drift: it holds its own scrollers to a swipe's main
+axis (`WheelEventDeltaFilterMac`), but filters only the deltas it scrolls by, never the
+ones the DOM event carries. Measured in WebKit before this rule, a scroll down over
+Message with 2px of drift per event left the summaries 120px sideways after 1800px of
+scroll, and at a 900px window it dropped about 19 frames in five seconds where the build
+before the Message pan dropped none. Over the Graph column the same scroll slid the lanes
+120px, as it had since the Graph pan was built. The pans used to cancel such a diagonal
+and apply its vertical part to the list by hand, which took those events' scrolling off
+the engine.
 
 The sideways thumb is the scrollbar tracker's, shown only while the table scrolls, as
 `docs/architecture/scrollbars.md` settles for every thumb. Each pan gets a thumb of its

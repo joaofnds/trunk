@@ -506,12 +506,14 @@ const columnPans: readonly ColumnPan[] = [graphPan, messagePan];
 
 // A sideways gesture over a column that pans, Graph or Message, moves its
 // content until that reaches its end in the gesture's direction, and from
-// there, or anywhere else, it scrolls the table. While the table can scroll sideways the
-// pan cancels the gesture, or the table would move under it too, and applies
-// its vertical part here instead; a table that fits leaves the gesture to the
-// engine.
+// there, or anywhere else, it scrolls the table. While the table can scroll
+// sideways the pan cancels the gesture, or the table would move under it too;
+// a table that fits leaves the gesture to the engine. A wheel event no more
+// sideways than vertical is the engine's whole: WebKit hands the page a
+// trackpad's sideways drift as it scrolls down, and holds only its own
+// scrollers to the swipe's main axis.
 function panColumn(event: WheelEvent & { currentTarget: HTMLElement }) {
-	if (event.deltaX === 0) return;
+	if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
 
 	const viewport = listViewport();
 	if (!viewport) return;
@@ -528,10 +530,7 @@ function panColumn(event: WheelEvent & { currentTarget: HTMLElement }) {
 	);
 	if (panned === column.offset()) return;
 
-	if (viewport.scrollWidth > viewport.clientWidth) {
-		event.preventDefault();
-		viewport.scrollTop += event.deltaY;
-	}
+	if (viewport.scrollWidth > viewport.clientWidth) event.preventDefault();
 	column.scrollTo(panned);
 	announcePan(viewport, column);
 }

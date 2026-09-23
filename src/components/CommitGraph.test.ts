@@ -913,6 +913,36 @@ describe("CommitGraph", () => {
 			expect(event.defaultPrevented).toBe(false);
 		});
 
+		// A trackpad drifts sideways as it scrolls down, and WebKit hands the page
+		// the drift whole; its own scrollers hold the swipe to its main axis.
+		it.each([
+			{ direction: "down", deltaY: 30 },
+			{ direction: "up", deltaY: -30 },
+		])(
+			"leaves the lanes still under a swipe $direction more vertical than sideways",
+			async ({ deltaY }) => {
+				const { container } = mountGraph(4);
+				await flush();
+				const before = lanesOffset(container);
+
+				wheelAt(container, 5, { deltaX: 10, deltaY });
+				await tick();
+
+				expect(lanesOffset(container)).toBe(before);
+			},
+		);
+
+		it("leaves the lanes still under a swipe as vertical as it is sideways", async () => {
+			const { container } = mountGraph(4);
+			await flush();
+			const before = lanesOffset(container);
+
+			wheelAt(container, 5, { deltaX: 20, deltaY: 20 });
+			await tick();
+
+			expect(lanesOffset(container)).toBe(before);
+		});
+
 		// Scrolled a column past the Graph column, the point 5px in from the
 		// list's edge is past it.
 		it("finds the Graph column where the scrolled table has carried it", async () => {
@@ -938,14 +968,24 @@ describe("CommitGraph", () => {
 				expect(event.defaultPrevented).toBe(true);
 			});
 
-			it("still scrolls the list down by the vertical part of a diagonal gesture over the lanes", async () => {
+			it("leaves a swipe more vertical than sideways to the engine", async () => {
 				const { container } = mountGraph(4);
 				await flush();
 				scrollTableSideways(container);
 
-				wheelAt(container, 5, { deltaX: 10, deltaY: 30 });
+				const event = wheelAt(container, 5, { deltaX: 10, deltaY: 30 });
 
-				expect(listViewport(container).scrollTop).toBe(30);
+				expect(event.defaultPrevented).toBe(false);
+			});
+
+			it("keeps the list still under a swipe more sideways than vertical", async () => {
+				const { container } = mountGraph(4);
+				await flush();
+				scrollTableSideways(container);
+
+				wheelAt(container, 5, { deltaX: 30, deltaY: 10 });
+
+				expect(listViewport(container).scrollTop).toBe(0);
 			});
 
 			// As a page takes over the scroll once a section inside it reaches its
@@ -1058,13 +1098,13 @@ describe("CommitGraph", () => {
 				await flush();
 				const before = lanesOffset(container);
 
-				const event = wheelAt(container, 5, { deltaX: 10, deltaY: 30 });
+				const event = wheelAt(container, 5, { deltaX: 30, deltaY: 10 });
 				await tick();
 
 				expect({
 					prevented: event.defaultPrevented,
 					lanes: lanesOffset(container),
-				}).toEqual({ prevented: false, lanes: before - 10 });
+				}).toEqual({ prevented: false, lanes: before - 30 });
 			});
 		});
 	});
@@ -1269,6 +1309,17 @@ describe("CommitGraph", () => {
 			layOut(container);
 
 			wheelAt(container, MESSAGE_FLOOR + 5, { deltaX: 30 });
+			await tick();
+
+			expect(summaryShift(summaries(container)[0])).toBe(0);
+		});
+
+		it("leaves the summaries still under a swipe more vertical than sideways", async () => {
+			const { container } = mountMessages([LONG]);
+			await flush();
+			layOut(container);
+
+			wheelAt(container, 50, { deltaX: 2, deltaY: 30 });
 			await tick();
 
 			expect(summaryShift(summaries(container)[0])).toBe(0);
