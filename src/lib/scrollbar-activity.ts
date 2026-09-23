@@ -52,6 +52,7 @@ export function dragScrollPosition(drag: {
 
 /** How the thumb reads, draws and drives one axis of a scroller. */
 interface ScrollAxis {
+	name: "vertical" | "horizontal";
 	extent(el: HTMLElement): ScrollAxisExtent;
 	pointer(event: PointerEvent): number;
 	scrollTo(el: HTMLElement, scrolled: number): void;
@@ -63,6 +64,7 @@ interface ScrollAxis {
 }
 
 const vertical: ScrollAxis = {
+	name: "vertical",
 	extent(el) {
 		const rect = el.getBoundingClientRect();
 		return {
@@ -86,6 +88,37 @@ const vertical: ScrollAxis = {
 	},
 };
 
+const horizontal: ScrollAxis = {
+	name: "horizontal",
+	extent(el) {
+		const rect = el.getBoundingClientRect();
+		return {
+			trackStart: rect.left,
+			trackLength: rect.width,
+			scrolled: el.scrollLeft,
+			scrollLength: el.scrollWidth,
+			clientLength: el.clientWidth,
+		};
+	},
+	pointer: (event) => event.clientX,
+	scrollTo(el, scrolled) {
+		el.scrollLeft = scrolled;
+	},
+	place(thumb, el, { start, length }) {
+		const rect = el.getBoundingClientRect();
+
+		thumb.style.left = `${start}px`;
+		thumb.style.width = `${length}px`;
+		thumb.style.bottom = `${window.innerHeight - rect.bottom + THUMB_INSET_PX}px`;
+	},
+};
+
+/** Whether the user can scroll this pane sideways, rather than only a script. */
+function scrollsSideways(el: HTMLElement): boolean {
+	const { overflowX } = getComputedStyle(el);
+	return overflowX === "auto" || overflowX === "scroll";
+}
+
 /** One capture-phase listener covers every scroller in the app, including ones
  *  added later: `scroll` doesn't bubble, but it does capture.
  *
@@ -106,7 +139,8 @@ const vertical: ScrollAxis = {
  *  sync. */
 export function trackScrollActivity(): () => void {
 	const hideTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
-	const thumbs = new Map<HTMLElement, HTMLDivElement>();
+	const thumbs = new Map<HTMLElement, Map<ScrollAxis, HTMLDivElement>>();
+	const lastScrollLeft = new WeakMap<HTMLElement, number>();
 	let drag: {
 		el: HTMLElement;
 		axis: ScrollAxis;
@@ -117,17 +151,24 @@ export function trackScrollActivity(): () => void {
 	} | null = null;
 
 	function paint(el: HTMLElement, axis: ScrollAxis) {
-		let thumb = thumbs.get(el);
+		let painted = thumbs.get(el);
+		if (!painted) {
+			painted = new Map();
+			thumbs.set(el, painted);
+		}
+
+		let thumb = painted.get(axis);
 		if (!thumb) {
 			thumb = document.createElement("div");
 			thumb.className = THUMB_CLASS;
+			thumb.dataset.axis = axis.name;
 			thumb.addEventListener("pointerdown", (event) => grab(event, el, axis));
 			// Without these the linger timer runs out under a cursor that is
 			// resting on the thumb, and the thumb vanishes as it is reached for.
 			thumb.addEventListener("pointerenter", () => hold(el));
 			thumb.addEventListener("pointerleave", () => settle(el));
 			document.body.appendChild(thumb);
-			thumbs.set(el, thumb);
+			painted.set(axis, thumb);
 		}
 
 		axis.place(thumb, el, thumbGeometry(axis.extent(el)));
@@ -143,7 +184,7 @@ export function trackScrollActivity(): () => void {
 		hideTimers.set(
 			el,
 			setTimeout(() => {
-				thumbs.get(el)?.remove();
+				for (const thumb of thumbs.get(el)?.values() ?? []) thumb.remove();
 				thumbs.delete(el);
 				hideTimers.delete(el);
 			}, LINGER_MS),
@@ -171,12 +212,27 @@ export function trackScrollActivity(): () => void {
 		event.preventDefault();
 	}
 
+	// A pane with some incidental sideways overflow shows no sideways thumb while
+	// it scrolls up and down; only a sideways scroll brings one.
+	function movedSideways(el: HTMLElement): boolean {
+		const moved = el.scrollLeft !== (lastScrollLeft.get(el) ?? 0);
+		lastScrollLeft.set(el, el.scrollLeft);
+		return moved;
+	}
+
 	function onScroll(event: Event) {
 		const el = event.target;
 		if (!(el instanceof HTMLElement)) return;
-		if (el.scrollHeight - el.clientHeight <= IGNORED_RANGE_PX) return;
 
-		paint(el, vertical);
+		const showsVertical = el.scrollHeight - el.clientHeight > IGNORED_RANGE_PX;
+		const showsHorizontal =
+			movedSideways(el) &&
+			el.scrollWidth - el.clientWidth > IGNORED_RANGE_PX &&
+			scrollsSideways(el);
+		if (!showsVertical && !showsHorizontal) return;
+
+		if (showsVertical) paint(el, vertical);
+		if (showsHorizontal) paint(el, horizontal);
 		settle(el);
 	}
 
@@ -220,7 +276,9 @@ export function trackScrollActivity(): () => void {
 
 		for (const timer of hideTimers.values()) clearTimeout(timer);
 		hideTimers.clear();
-		for (const thumb of thumbs.values()) thumb.remove();
+		for (const painted of thumbs.values()) {
+			for (const thumb of painted.values()) thumb.remove();
+		}
 		thumbs.clear();
 		drag = null;
 	};

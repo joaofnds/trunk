@@ -47,21 +47,36 @@ Treat it as load-bearing. Anything that makes the thumb visible more often, a ho
 an always-on mode, a longer linger, has to be measured on a repository whose commits fit on
 screen, not only on a large one where a real scroll range hides the failure mode.
 
+A pane that scrolls sideways gets a second thumb along its bottom edge, under the same rule,
+with two narrowings the vertical thumb does not have:
+
+- It shows only when the sideways position moved. A pane with a few pixels of incidental
+  sideways overflow keeps showing one thumb, the vertical one, while it scrolls up and down.
+- It shows only on a pane whose `overflow-x` lets the user scroll it, `auto` or `scroll`. A
+  pane that is `hidden` still fires `scroll` when a script writes its `scrollLeft`, which is
+  how one pane mirrors another's offset, and a mirror must not draw a second thumb for the
+  same scroll.
+
+Each thumb carries `data-axis`, `vertical` or `horizontal`, and `app.css` gives it its 5px
+thickness by that name, so a thumb without it paints nothing.
+
 ## Dragging it
 
 The thumb takes `pointer-events: auto` and carries its own handlers:
 
 - `pointerdown` on the thumb records the press and the scroller's geometry.
-- `pointermove` on `window` maps the pointer's travel to `scrollTop` through
-  `dragScrollPosition()`, the inverse of `thumbGeometry()`, clamped at both ends.
+- `pointermove` on `window` maps the pointer's travel along the thumb's axis to `scrollTop`
+  or `scrollLeft` through `dragScrollPosition()`, the inverse of `thumbGeometry()`, clamped
+  at both ends.
 - `pointerup` and `pointercancel` on `window` end it.
 - `pointerenter` and `pointerleave` on the thumb hold and release the linger timer, so the
   thumb cannot fade out from under a cursor that is reaching for it.
 
 Two consequences worth knowing. For the 900ms the thumb is visible, a 5px column at the
-pane's right edge belongs to the scrollbar rather than the content beneath it, which is
-inseparable from making it grabbable. And a wider grab box is not free: a thumb that is
-tall, because the pane barely scrolls, will swallow clicks down its whole height.
+pane's right edge, or a 5px row along its bottom for a sideways thumb, belongs to the
+scrollbar rather than the content beneath it, which is inseparable from making it
+grabbable. And a wider grab box is not free: a thumb that is tall, because the pane barely
+scrolls, will swallow clicks down its whole height.
 
 ## The trap that produced three cards
 

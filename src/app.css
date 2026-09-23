@@ -347,11 +347,18 @@ body {
 
 .scrollbar-overlay-thumb {
 	position: fixed;
-	width: 5px;
 	background: var(--color-scrollbar-thumb);
 	border-radius: var(--radius-pill);
 	pointer-events: auto;
 	z-index: 100;
+}
+
+.scrollbar-overlay-thumb[data-axis="vertical"] {
+	width: 5px;
+}
+
+.scrollbar-overlay-thumb[data-axis="horizontal"] {
+	height: 5px;
 }
 
 /* Placeholders render at full token contrast, not the UA's ~0.54-opacity

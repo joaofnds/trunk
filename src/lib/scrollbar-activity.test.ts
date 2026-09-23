@@ -162,6 +162,15 @@ describe("trackScrollActivity", () => {
 		expect(thumb?.style.height).toBe("40px");
 	});
 
+	// The stylesheet gives a thumb its 5px thickness by this name alone.
+	it("names the thumb's axis, which the stylesheet sizes it by", () => {
+		const el = makeScroller();
+
+		el.dispatchEvent(new Event("scroll"));
+
+		expect(thumbFor(el)?.dataset.axis).toBe("vertical");
+	});
+
 	it("positions the thumb from the scroller's own viewport edge, as a body-level overlay", () => {
 		const el = makeScroller();
 
@@ -307,5 +316,129 @@ describe("trackScrollActivity", () => {
 		stop();
 
 		expect(document.body.querySelector(`.${THUMB_CLASS}`)).toBeNull();
+	});
+
+	describe("when a pane scrolls sideways", () => {
+		function makePane({
+			scrollWidth = 1000,
+			clientWidth = 200,
+			scrollHeight = 0,
+			clientHeight = 0,
+			bottom = 300,
+			overflowX = "auto",
+		} = {}) {
+			const el = document.createElement("div");
+			el.style.overflowX = overflowX;
+			Object.defineProperty(el, "scrollWidth", { value: scrollWidth });
+			Object.defineProperty(el, "clientWidth", { value: clientWidth });
+			Object.defineProperty(el, "scrollHeight", { value: scrollHeight });
+			Object.defineProperty(el, "clientHeight", { value: clientHeight });
+			el.getBoundingClientRect = () =>
+				({
+					top: bottom - clientHeight,
+					right: 10 + clientWidth,
+					bottom,
+					left: 10,
+					width: clientWidth,
+					height: clientHeight,
+				}) as DOMRect;
+			document.body.append(el);
+			return el;
+		}
+
+		function scrollSidewaysTo(el: HTMLElement, scrollLeft: number) {
+			el.scrollLeft = scrollLeft;
+			el.dispatchEvent(new Event("scroll"));
+		}
+
+		// A sideways thumb hangs off the pane's bottom edge, so this finds it by
+		// that edge, as thumbFor finds a vertical one by its right edge.
+		function sidewaysThumbFor(el: HTMLElement): HTMLDivElement | null {
+			const rect = el.getBoundingClientRect();
+			const expectedBottom = `${window.innerHeight - rect.bottom + 3}px`;
+			return (
+				[
+					...document.body.querySelectorAll<HTMLDivElement>(`.${THUMB_CLASS}`),
+				].find((thumb) => thumb.style.bottom === expectedBottom) ?? null
+			);
+		}
+
+		it("lays a thumb along the pane's bottom edge, sized to the share it shows", () => {
+			const el = makePane();
+
+			scrollSidewaysTo(el, 400);
+
+			expect(sidewaysThumbFor(el)?.style.width).toBe("40px");
+		});
+
+		it("names the thumb's axis, which the stylesheet sizes it by", () => {
+			const el = makePane();
+
+			scrollSidewaysTo(el, 400);
+
+			expect(sidewaysThumbFor(el)?.dataset.axis).toBe("horizontal");
+		});
+
+		it("places the thumb as far along the edge as the pane has scrolled", () => {
+			const el = makePane();
+
+			scrollSidewaysTo(el, 400);
+
+			expect(sidewaysThumbFor(el)?.style.left).toBe("90px");
+		});
+
+		it.each([
+			{ name: "nothing to scroll", overflow: 0 },
+			{ name: "a rounding artifact", overflow: 1 },
+			{ name: "exactly the ignored maximum", overflow: 2 },
+		])("ignores a sideways range of $name", ({ overflow }) => {
+			const el = makePane({ scrollWidth: 200 + overflow, clientWidth: 200 });
+
+			scrollSidewaysTo(el, overflow);
+
+			expect(sidewaysThumbFor(el)).toBeNull();
+		});
+
+		// The column header mirrors the commit list's offset this way: it moves
+		// only because its scrollLeft is written, so a thumb there would be a
+		// second thumb for one scroll.
+		it("gives no thumb to a pane the user cannot scroll sideways", () => {
+			const el = makePane({ overflowX: "hidden" });
+
+			scrollSidewaysTo(el, 400);
+
+			expect(sidewaysThumbFor(el)).toBeNull();
+		});
+
+		it("gives no sideways thumb while only the vertical position moves", () => {
+			const el = makePane({ scrollHeight: 1000, clientHeight: 200 });
+
+			el.dispatchEvent(new Event("scroll"));
+
+			expect(sidewaysThumbFor(el)).toBeNull();
+		});
+
+		it("removes the thumb once scrolling stops", () => {
+			const el = makePane();
+
+			scrollSidewaysTo(el, 400);
+			vi.advanceTimersByTime(PAST_LINGER_MS);
+
+			expect(sidewaysThumbFor(el)).toBeNull();
+		});
+
+		it("scrolls the pane sideways in proportion to how far the thumb is dragged", () => {
+			const el = makePane();
+			scrollSidewaysTo(el, 100);
+
+			sidewaysThumbFor(el)?.dispatchEvent(
+				new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }),
+			);
+			window.dispatchEvent(
+				new MouseEvent("pointermove", { bubbles: true, clientX: 180 }),
+			);
+
+			expect(el.scrollLeft).toBe(500);
+		});
 	});
 });

@@ -93,12 +93,27 @@ describe("app.css scrollbars", () => {
 		);
 	});
 
-	it("paints the same 5px sliver it always did, so taking a press changed no widths", () => {
-		const [, body] =
-			css.match(new RegExp(`\\.${THUMB_CLASS}\\s*\\{([^}]*)\\}`)) ?? [];
-		expect(body).toMatch(/width:\s*5px;/);
-		expect(body).not.toMatch(/border-(left|right):/);
-	});
+	it.each([
+		{ axis: "vertical", across: "width" },
+		{ axis: "horizontal", across: "height" },
+	])(
+		"paints a $axis thumb as the same 5px sliver, so taking a press widened no grab box",
+		({ axis, across }) => {
+			const [, base] =
+				css.match(new RegExp(`\\.${THUMB_CLASS}\\s*\\{([^}]*)\\}`)) ?? [];
+			const [, body] =
+				css.match(
+					new RegExp(
+						`\\.${THUMB_CLASS}\\[data-axis="${axis}"\\]\\s*\\{([^}]*)\\}`,
+					),
+				) ?? [];
+
+			expect(body).toMatch(new RegExp(`${across}:\\s*5px;`));
+			expect(`${base}${body}`).not.toMatch(
+				/border(-(left|right|top|bottom))?:/,
+			);
+		},
+	);
 });
 
 /** Every stylesheet the app ships, app.css included — a token is read from a
