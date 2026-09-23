@@ -77,8 +77,8 @@ Once the shown sized columns and Message's floor add up to more than the list, t
 is laid out at that sum, `tableMinWidth`, and the surplus scrolls sideways. Message gives
 up its slack first, so a layout that fits never scrolls. What scrolls is a user width
 dragged past the budget, or a list narrower than the floors: measured in WebKit at a
-244px list, every column at its floor adds to 346px, and the table scrolls 102px to
-bring SHA whole into view.
+252px list, whose row is 244px, every column at its floor adds to 346px, and the table
+scrolls 102px to bring SHA whole into view.
 
 The list's own viewport is the sideways scroller. VirtualList takes the table's width as
 `minContentWidth`, lays its content out at least that wide and lets its viewport scroll
@@ -90,19 +90,30 @@ two have one client width and one scroll range. The first build of this (bc13040
 reverted with the rest at 409d34b3) offset every row, the header and the overlay by one
 JavaScript value instead, three places to keep in step.
 
+The mirror has a cost. The header follows from the viewport's `scroll` event, and a
+scroll is composited before its handler runs, so while the table is moving the header
+may trail the rows by a frame; `docs/architecture/diff-virtualization.md` records the
+same effect, observed, for a gutter pinned from a scroll handler. The alignment was
+measured at rest only: after each scroll, every header cell's left edge equals its row
+cell's. A header inside the scroller, sticky to its top, would move with the rows on the
+compositor, at the price of a header inside the virtual list's measured height.
+
 The content clips at its own width. The overlay is as wide as the lanes rather than the
 Graph column, and a hovered pill shows its whole name, so either can reach past a table
-that fits. Measured in WebKit with forty lanes in a 56px Graph column at a 692px list,
-Diff and SHA hidden, the viewport's `scrollWidth` was 742 while every column fit, a range
-that `overflow-x: auto` would have let the user scroll into. With `overflow-x: clip` on
-the content it measured 692, its `clientWidth`.
+that fits. Measured in WebKit before the clip, with every column fitting: forty lanes in a
+56px Graph column at a 700px list, Diff and SHA hidden, left the viewport a `scrollWidth`
+of 742 against a `clientWidth` of 692; a long pill hovered at a 280px list left 291
+against 272. Either range is one `overflow-x: auto` would let the user scroll into. With
+`overflow-x: clip` on the content both measure their `clientWidth`, 692 and 272.
 
 A sideways gesture over a Graph column narrower than its lanes still pans them, and
 anywhere else it scrolls the table. While the table can scroll sideways the pan cancels
 the gesture, or the table would move under it too, and applies the gesture's vertical
-part to the list itself, so a diagonal swipe over the lanes still scrolls the commits. A
-table that fits has nothing to move sideways, and the engine keeps the gesture. The
-pointer is read in table coordinates, past however far the table has scrolled.
+part to the list itself, so a diagonal swipe over the lanes still scrolls the commits.
+That part is added as pixels without reading `deltaMode`, so a wheel reporting lines,
+not tried, would move the list by the line count in pixels. A table that fits has
+nothing to move sideways, and the engine keeps the gesture. The pointer is read in table
+coordinates, past however far the table has scrolled.
 
 The sideways thumb is the scrollbar tracker's, shown only while the table scrolls, as
 `docs/architecture/scrollbars.md` settles for every thumb.
@@ -231,6 +242,11 @@ a grid container is not a grid item, so the rows cannot join a grid the header
 belongs to.
 
 ## What this does not solve
+
+A stored `message: false`, which only the pref file can hold since the header menu
+cannot hide Message, leaves every row drawing its Message cell while the table's width
+counts no floor for it, so the rows' right-hand columns are cut at the table's edge
+rather than scrolled to (TRUNK-266).
 
 User widths are one set for every repository, so a graph narrowed for a forty-lane
 repository stays narrow on a one-lane one.

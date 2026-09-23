@@ -11,6 +11,7 @@ re-derive wrongly.
 | `src/app.css` | `::-webkit-scrollbar { display: none }`, applied to everything, and the `.scrollbar-overlay-thumb` class the tracker paints. |
 | `src/lib/scrollbar-activity.ts` | The tracker. One capture-phase `scroll` listener covers every scroller in the app, creates and positions the thumb, and runs the drag. |
 | `src/lib/app-services.ts` | Wires the tracker once, at startup. |
+| `src/lib/scroll-sync.ts` | Mirrors one scroller's `scrollLeft` onto others: the commit list's header follows its rows through it, and the rendered diff's split columns pan as one. |
 | `src/components/VirtualList.svelte` | Sizes a virtual list's content, which decides whether a pane has anything to scroll at all. |
 
 ## Why the native scrollbar is hidden
@@ -94,7 +95,14 @@ content from the *container's* border box, which does not account for that paddi
 padding. Every list under the graph carried a 16px scroll range it had not earned, forever.
 
 `VirtualList` now measures the viewport's **content box**: its `clientHeight` less its own
-padding. Keep it that way. If a pane scrolls when it should not, compare
+padding. Keep it that way.
+
+The sideways axis has its own version. The commit list's graph overlay is drawn inside the
+virtual list's content and is as wide as the lanes, not the Graph column, and a hovered pill
+is as wide as its whole name, so either can reach past a table that fits and hand the list a
+sideways range it has not earned. `VirtualList` therefore clips its content at its own width
+(`overflow-x: clip`) whenever it is given `minContentWidth`, which is also the only case in
+which its viewport scrolls sideways at all. If a pane scrolls when it should not, compare
 `scrollHeight - clientHeight` against that viewport's computed padding before theorising.
 Two earlier passes missed this, one by looking at a 0.33px content excess that was the wrong
 quantity entirely.
