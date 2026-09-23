@@ -1,7 +1,7 @@
 use crate::common::context::TestContext;
 use trunk_git::error::TrunkError;
-use trunk_git::types::HeadCommitMessage;
 use trunk_lib::commands::commit;
+use trunk_lib::types::HeadCommitMessage;
 
 impl TestContext {
     pub fn create_commit(&self, subject: &str, body: Option<&str>) -> Result<(), TrunkError> {

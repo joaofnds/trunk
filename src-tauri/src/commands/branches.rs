@@ -1,12 +1,13 @@
 use crate::shell_env;
 use crate::state::{CommitCache, GraphCache, OpenRepos, RepoState};
+use crate::types::{BranchInfo, RefsResponse, StashEntry};
 use crate::watcher::RepoChanged;
 use git2::BranchType;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
 use trunk_git::{
     graph,
-    types::{BranchInfo, RefLabel, RefType, RefsResponse, StashEntry},
+    types::{RefLabel, RefType},
 };
 
 /// Inner implementation of `list_refs` — separated for testability without Tauri state.

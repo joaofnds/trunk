@@ -2,7 +2,7 @@ mod common;
 
 use common::context::TestContext;
 use std::fmt::Write as _;
-use trunk_git::types::{DiffOrigin, DiffRequestOptions, FileStatusType};
+use trunk_lib::types::{DiffOrigin, DiffRequestOptions, FileStatusType};
 
 // -- get_status tests --
 

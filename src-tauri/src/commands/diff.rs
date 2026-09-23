@@ -2,6 +2,10 @@
 
 use crate::state::{OpenRepos, RepoState};
 use crate::syntax;
+use crate::types::{
+    CommitDetail, DiffHunk, DiffLine, DiffOrigin, DiffRequestOptions, DiffStatus, FileDiff,
+    LinePairing, SyntaxToken,
+};
 use crate::word_spans::compute_word_spans_for_hunk;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -9,10 +13,6 @@ use tauri::State;
 use trunk_git::blob_reader;
 use trunk_git::error::TrunkError;
 use trunk_git::tracked_files::{TrackedFile, tracked_files};
-use trunk_git::types::{
-    CommitDetail, DiffHunk, DiffLine, DiffOrigin, DiffRequestOptions, DiffStatus, FileDiff,
-    LinePairing, SyntaxToken,
-};
 
 pub(crate) fn is_head_unborn(repo: &git2::Repository) -> bool {
     match repo.head() {
@@ -914,7 +914,7 @@ pub fn compare_stat_inner(
     base_oid: Option<&str>,
     target_oid: &str,
     state_map: &OpenRepos,
-) -> Result<trunk_git::types::DiffStat, TrunkError> {
+) -> Result<crate::types::DiffStat, TrunkError> {
     let repo = state_map.open(path)?;
     let base_tree = compare_tree(&repo, base_oid)?;
     let target_tree = compare_tree(&repo, Some(target_oid))?;
@@ -925,7 +925,7 @@ pub fn compare_stat_inner(
     )?;
     detect_renames(&mut diff)?;
     let stats = diff.stats()?;
-    Ok(trunk_git::types::DiffStat {
+    Ok(crate::types::DiffStat {
         insertions: stats.insertions(),
         deletions: stats.deletions(),
         files_changed: stats.files_changed(),
@@ -1136,7 +1136,7 @@ pub async fn compare_stat(
     base_oid: Option<String>,
     target_oid: String,
     state: State<'_, RepoState>,
-) -> Result<trunk_git::types::DiffStat, String> {
+) -> Result<crate::types::DiffStat, String> {
     let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || {
         compare_stat_inner(&path, base_oid.as_deref(), &target_oid, &state_map)

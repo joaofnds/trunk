@@ -1,4 +1,5 @@
 use crate::state::{CommitCache, CommitStatsCache, OpenRepos, RepoState};
+use crate::types::{DiffStat, MatchType, SearchResult};
 use serde::Serialize;
 use std::collections::HashMap;
 use tauri::State;
@@ -6,7 +7,7 @@ use trunk_git::error::TrunkError;
 use trunk_git::graph_input::GraphSnapshot;
 use trunk_git::{
     graph,
-    types::{DiffStat, GraphCommit, GraphResult, MatchType, SearchResult},
+    types::{GraphCommit, GraphResult},
 };
 
 #[derive(Debug, Serialize, Clone)]

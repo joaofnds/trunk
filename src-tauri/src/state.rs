@@ -300,12 +300,12 @@ impl CommitCache {
 /// dropped wholesale when its repository closes. Filled lazily by the Diff
 /// column and only while that column is visible.
 #[derive(Debug, Default)]
-pub struct StatsCache(HashMap<String, HashMap<String, trunk_git::types::DiffStat>>);
+pub struct StatsCache(HashMap<String, HashMap<String, crate::types::DiffStat>>);
 
 impl StatsCache {
     /// The stat held for `oid` in `path`, if one has been computed.
     #[must_use]
-    pub fn get(&self, path: &str, oid: &str) -> Option<&trunk_git::types::DiffStat> {
+    pub fn get(&self, path: &str, oid: &str) -> Option<&crate::types::DiffStat> {
         self.0.get(path)?.get(oid)
     }
 
@@ -313,7 +313,7 @@ impl StatsCache {
     pub fn extend(
         &mut self,
         path: String,
-        stats: impl IntoIterator<Item = (String, trunk_git::types::DiffStat)>,
+        stats: impl IntoIterator<Item = (String, crate::types::DiffStat)>,
     ) {
         self.0.entry(path).or_default().extend(stats);
     }

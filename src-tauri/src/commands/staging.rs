@@ -1,12 +1,12 @@
 use crate::commands::diff::{staging_staged_diff, staging_workdir_diff};
 use crate::state::{OpenRepos, RepoState};
+use crate::types::{DiffRequestOptions, FileStatus, FileStatusType, WorkingTreeStatus};
 use git2::{Status, StatusOptions};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use tauri::State;
 use trunk_git::error::TrunkError;
 use trunk_git::status::{STAGED_BITS, UNSTAGED_BITS, dirty_status_options};
-use trunk_git::types::{DiffRequestOptions, FileStatus, FileStatusType, WorkingTreeStatus};
 
 const fn classify_index(s: Status) -> Option<FileStatusType> {
     if s.contains(Status::INDEX_NEW) {

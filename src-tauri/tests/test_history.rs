@@ -4,8 +4,9 @@ use trunk_lib::state::OpenRepos;
 
 use common::context::TestContext;
 use trunk_git::graph_input::RefVisibility;
-use trunk_git::types::{GraphResult, MatchType};
+use trunk_git::types::GraphResult;
 use trunk_lib::commands::history::{GraphResponse, set_ref_visibility_inner};
+use trunk_lib::types::MatchType;
 
 /// Build a `TestContext` with a merge topology and populate its cache.
 /// Topology: Initial commit -> Feature commit -> Merge feature into main

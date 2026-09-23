@@ -1,4 +1,5 @@
-// All TypeScript DTO interfaces mirroring Rust DTOs in src-tauri/git/src/types.rs
+// TypeScript DTO interfaces mirroring the Rust DTOs in src-tauri/src/types.rs, the commit
+// graph's in src-tauri/git/src/types.rs, and the review schema's in src-tauri/review/src/types.rs
 // Use string literal unions (not enum) — matches serde default serialization
 
 export type EdgeType =
@@ -345,7 +346,7 @@ export interface OverlayRefPill {
 	isHollow: boolean; // true for merge/stash/WIP dots (stroke-only, no fill)
 }
 
-// Interactive rebase types (mirrors src-tauri/git/src/types.rs RebaseTodoItem)
+// Interactive rebase types (mirrors src-tauri/src/types.rs RebaseTodoItem)
 export interface RebaseTodoItem {
 	oid: string;
 	short_oid: string;

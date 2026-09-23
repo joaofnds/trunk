@@ -7,6 +7,7 @@ pub mod shell_env;
 pub mod state;
 mod storage;
 pub mod syntax;
+pub mod types;
 pub mod watcher;
 pub mod word_spans;
 

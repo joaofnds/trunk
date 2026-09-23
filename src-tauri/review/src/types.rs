@@ -152,7 +152,8 @@ pub struct SessionCommit {
 
 // ── Review session schema (Phase 65 keystone) ────────────────────────────────
 // Persisted to disk and read back, so every type derives Deserialize (unlike the
-// write-only DTOs in `trunk_git::types`, and like its `DiffStatus`). Enums serialize as
+// write-only DTOs in `trunk_git::types` and the app's `types`, and like the app's
+// `DiffStatus`). Enums serialize as
 // PascalCase strings with NO rename_all (like `trunk_git::types::RefType`). Struct fields
 // stay snake_case.
 // The Anchor NEVER carries hunk_index/line_index/context_lines/ignore_whitespace

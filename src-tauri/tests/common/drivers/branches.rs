@@ -1,7 +1,7 @@
 use crate::common::context::TestContext;
 use trunk_git::error::TrunkError;
-use trunk_git::types::RefsResponse;
 use trunk_lib::commands::branches;
+use trunk_lib::types::RefsResponse;
 
 impl TestContext {
     /// List all refs (branches, tags, stashes) in the test repo

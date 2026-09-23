@@ -4,9 +4,9 @@
 //! texts (the way git --word-diff, delta, and VS Code do), so an edit that
 //! reflows lines still emphasizes only the words that changed.
 
+use crate::types::{DiffLine, DiffOrigin, LinePairing, WordSpan};
 use similar::{ChangeTag, DiffTag};
 use std::time::{Duration, Instant};
-use trunk_git::types::{DiffLine, DiffOrigin, LinePairing, WordSpan};
 
 /// A run's worth of old or new text may not be word-diffed past these bounds:
 /// beyond them the content is a rewrite or generated text, where emphasis is

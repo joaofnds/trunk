@@ -1,10 +1,11 @@
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
+use crate::types::UndoResult;
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
+use trunk_git::graph;
 use trunk_git::graph_input::{GraphSnapshot, GraphSource};
-use trunk_git::{graph, types::UndoResult};
 
 /// Outcome of a clean two-step revert begin.
 ///

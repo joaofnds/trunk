@@ -2,8 +2,8 @@ use crate::common::context::TestContext;
 use std::collections::HashMap;
 use trunk_git::error::TrunkError;
 use trunk_git::graph_input::RefVisibility;
-use trunk_git::types::{DiffStat, SearchResult};
 use trunk_lib::commands::history;
+use trunk_lib::types::{DiffStat, SearchResult};
 
 impl TestContext {
     /// Search commits by query string (matches SHA, message, ref, author).

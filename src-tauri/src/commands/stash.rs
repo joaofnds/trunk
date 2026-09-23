@@ -3,11 +3,12 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use crate::state::{CommitCache, OpenRepos, RepoState};
+use crate::types::StashEntry;
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
+use trunk_git::graph;
 use trunk_git::graph_input::GraphSource;
-use trunk_git::{graph, types::StashEntry};
 
 /// Kept apart: only pop can leave an entry behind, so only pop's message may say so.
 const POP_CONFLICT_MESSAGE: &str = "Stash applied with conflicts — resolve conflicts before continuing. Note: stash was NOT removed.";

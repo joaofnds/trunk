@@ -175,7 +175,7 @@ fn bench_ipc_diff_unstaged(c: &mut Criterion) {
                 &path,
                 "file0.txt",
                 &state_map,
-                &trunk_git::types::DiffRequestOptions::default(),
+                &trunk_lib::types::DiffRequestOptions::default(),
             )
             .unwrap();
             serde_json::to_string(&result).unwrap()

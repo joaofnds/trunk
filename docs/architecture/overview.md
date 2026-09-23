@@ -83,7 +83,8 @@
 | `git/placement.rs` | `assign_lanes()` — the pure lane assignment algorithm, columns, colours and edges | `src-tauri/git/src/placement.rs` |
 | `git/graph_input.rs` | `layout()` — page slice and row hydration, and the committed capture format the golden suite reads | `src-tauri/git/src/graph_input.rs` |
 | `git/repository.rs` | `validate_and_open()`, `build_ref_map()` | `src-tauri/git/src/repository.rs` |
-| `git/types.rs` | All Rust DTOs (`GraphCommit`, `FileDiff`, `WorkingTreeStatus`, etc.) — no git2 types, all owned | `src-tauri/git/src/types.rs` |
+| `git/types.rs` | The commit graph's DTOs (`GraphCommit`, `GraphEdge`, `RefLabel`), owned, with no git2 types | `src-tauri/git/src/types.rs` |
+| `types.rs` | The app's other IPC DTOs (`FileDiff`, `WorkingTreeStatus`, etc.), owned, with no git2 types | `src-tauri/src/types.rs` |
 | `state.rs` | `RepoState`, `CommitCache`, `RunningOp` — all `Mutex<HashMap<String, …>>` keyed by repo path; `GraphRebuild` bundles `CommitCache` and `RefVisibilityState` behind the one method every rebuild site calls instead of repeating the read-visibility/walk/write-cache triple | `src-tauri/src/state.rs` |
 | `watcher.rs` | `start_watcher` / `stop_watcher` — `notify_debouncer_mini` emitting `"repo-changed"` events; `RepoChanged` carries the changed paths; `WatcherState::disabled()` turns the watch off | `src-tauri/src/watcher.rs` |
 
@@ -133,7 +134,7 @@
 **Git Abstraction Layer:**
 - Purpose: All git2-based logic — pure functions operating on `git2::Repository`
 - Location: `src-tauri/git/src/`, the `trunk-git` crate
-- Contains: `graph.rs` (the repository read), `placement.rs` (the pure lane algorithm), `graph_input.rs` (page hydration), `repository.rs` (shared helpers), `types.rs` (DTOs), `error.rs` (`TrunkError`)
+- Contains: `graph.rs` (the repository read), `placement.rs` (the pure lane algorithm), `graph_input.rs` (page hydration), `repository.rs` (shared helpers), `types.rs` (the commit graph's DTOs), `error.rs` (`TrunkError`)
 - Depends on: `git2` crate. Not on Tauri or the review domain, which its manifest does not list
 - Used by: `src-tauri/src/commands/`, `src-tauri/review/src/`
 

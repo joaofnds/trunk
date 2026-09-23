@@ -1,7 +1,7 @@
 use crate::common::context::TestContext;
 use trunk_git::error::TrunkError;
-use trunk_git::types::{DiffRequestOptions, WorkingTreeStatus};
 use trunk_lib::commands::staging;
+use trunk_lib::types::{DiffRequestOptions, WorkingTreeStatus};
 
 impl TestContext {
     pub fn get_status(&self) -> Result<WorkingTreeStatus, TrunkError> {

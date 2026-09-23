@@ -1,9 +1,10 @@
 use crate::state::{CommitCache, OpenRepos, RepoState};
+use crate::types::HeadCommitMessage;
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
+use trunk_git::graph;
 use trunk_git::graph_input::GraphSource;
-use trunk_git::{graph, types::HeadCommitMessage};
 
 fn refresh_commit_cache(path: &str, state_map: &OpenRepos) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;

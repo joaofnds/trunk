@@ -1,11 +1,12 @@
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
+use crate::types::RebaseTodoItem;
 use crate::watcher::RepoChanged;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
+use trunk_git::graph;
 use trunk_git::graph_input::GraphSource;
-use trunk_git::{graph, types::RebaseTodoItem};
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
