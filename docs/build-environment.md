@@ -1,7 +1,9 @@
 # Build environment
 
-What the gate's speed depends on outside the repo, and how to tell which one is
-hurting when `just check` slows down. Warm on a settled tree the full gate is
+What the build's speed depends on beyond the code, and how to tell which cause is
+hurting when `just check` or `just dev` slows down. If switching between `just
+dev`, `just dev-app` and `just check` rebuilds dependencies with busy CPUs, start
+with the shared layer section below. Warm on a settled tree the full gate is
 ~47s; cold after `cargo clean` it is ~2m12s (measured 2026-08-30, M5 Pro, 18
 cores). If a run is minutes-slow with idle CPUs, the machine is the problem, not
 the checks — start with the target dir's file count below, then Gatekeeper.
@@ -31,10 +33,11 @@ disk (three versions once grew the dir to 113GB).
 ## Switching between builds must not rebuild the shared layer
 
 `just dev`, `just check` and `just dev-app` build different configurations into
-that one target dir. Most dependencies, the C libraries and everything above
-them, are the same unit in all three, so they must look identical to all three.
-If they differ, each switch rebuilds them for whichever build comes next. Two
-things keep them identical, and each has a guard:
+that one target dir. They differ in tauri's features, so tauri and the crates
+built on it are separate units in each. The C libraries and the crates between
+them and tauri are the same units in all three, so they must look identical to
+all three. If they differ, each switch rebuilds them for whichever build comes
+next. Two things keep them identical:
 
 - **One `MACOSX_DEPLOYMENT_TARGET`.** `tauri build`, which `just dev-app` runs,
   exports tauri.conf.json's `bundle.macOS.minimumSystemVersion` under that name,
@@ -42,23 +45,41 @@ things keep them identical, and each has a guard:
   libsqlite3-sys, libz-sys, openssl-sys, onig_sys and objc2-exception-helper
   rerun when it changes. With the two values different, every switch between
   `just dev-app` and any other build recompiled 42 crates, 81s each way
-  (measured 2026-09-23). `.cargo/config.toml` gives every cargo run under the
-  repo, rust-analyzer's included, the value tauri exports, and `just
-  toolchain-parity` fails when the two files disagree.
+  (measured 2026-09-23). `.cargo/config.toml` gives the same value to every
+  cargo run started inside the repo, and `just toolchain-parity` fails when the
+  two files disagree. The pin loses to a value already exported in the shell,
+  because the entry does not set `force`. A shell that exports a different
+  `MACOSX_DEPLOYMENT_TARGET` brings the rebuilds back while the check stays
+  green. Setting `minimumSystemVersion` to `null` would stop tauri exporting
+  the variable at all, but it also removes `LSMinimumSystemVersion` from the
+  shipped bundle's Info.plist.
 - **An rlib-only lib.** With `staticlib` or `cdylib` in its `crate-type`, cargo
   drops the hash from the lib's file names. The dev build, the test build
   (`test-util` on) and the bundle build then share one copy of `trunk`, and each
-  switch recompiled it: 7s going from `just check` to `just dev`.
+  switch recompiled it: 7s going from `just check` to `just dev`. Nothing checks
+  this one. The comment on `crate-type` in `src-tauri/Cargo.toml` is all that
+  stands against re-adding them, which Tauri's mobile setup does.
 
-When a switch recompiles something it should not, ask cargo why, on the build
-that does it:
+One switch still costs a `trunk` recompile, about 7s, and only `trunk`. The
+`trunk` build script reruns when `TAURI_CONFIG` changes. `just dev` and `just
+dev-app` set it to the dev overlay, and a bare `cargo build` in `src-tauri`
+shares `just dev`'s build units without setting it. Alternating the two
+recompiles `trunk` each way. `just check` is not affected, because it builds
+different units.
+
+When a switch recompiles something it should not, ask cargo why. Put the log
+variable on the recipe that recompiles, so the build runs with that route's
+environment. A bare `cargo build` does not, and can report a cause it created
+itself:
 
 ```bash
-CARGO_LOG=cargo::core::compiler::fingerprint=info cargo build 2>&1 | grep '    dirty: ' | grep -v StaleDependency
+CARGO_LOG=cargo::core::compiler::fingerprint=info mise exec -- just dev 2>&1 | grep '    dirty: '
 ```
 
-`StaleDependency` and `UnitDependencyInfoChanged` lines are knock-on effects.
-The remaining line is the cause: `EnvVarChanged` names the variable, and
+Each line names a unit (`package_id=… target="…"`) and why it is dirty.
+`StaleDependency`, `StaleDepFingerprint` and `UnitDependencyInfoChanged` are
+knock-on effects of a dependency rebuilding. Any other reason is a cause, often
+the same one on several units. `EnvVarChanged` names the variable, and
 `FeaturesChanged` on a unit you did not reconfigure means two builds share its
 slot.
 
@@ -116,13 +137,15 @@ time. An identical no-op build, nothing to compile and nothing else running:
 Both rows are this repository's own `src-tauri/target`, measured either side of
 the deletion below: 73GB and 1.2M files before, 6.7GB and 19k files after.
 
-The file count does not always cost that much. On 2026-09-23, with 1,511,655
-files, a no-op of the build `just dev` runs took 0.21s, right after other builds
-had run. What made the 76s case slow is not established, so measure a slow
-no-op before deleting on the file count alone.
+Which cargo command that no-op timed is not recorded. A no-op has also measured
+fast on a larger tree: on 2026-09-23, with 1,511,655 files, a no-op of the build
+`just dev` runs (`cargo build --no-default-features`) took 0.21s, right after
+other builds had run. How the cost depends on the command and on what the
+filesystem has cached is not established.
 
 Check it with `find src-tauri/target -type f | wc -l`. Past roughly 100k files,
-delete the directory:
+time a no-op of the command that is slow. If that no-op is slow too, delete the
+directory:
 
 ```bash
 rm -rf src-tauri/target

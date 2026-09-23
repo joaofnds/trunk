@@ -1,7 +1,6 @@
 [env]
-# tauri build exports tauri.conf.json's bundle.macOS.minimumSystemVersion under
-# this name, and six C build scripts rerun whenever its value changes. Without the
-# same value here, every switch between `just dev-app` and any other cargo build
-# (just dev, just check, rust-analyzer) recompiles about forty crates in the shared
-# target dir. `just toolchain-parity` fails when the two disagree.
+# Must equal tauri.conf.json's bundle.macOS.minimumSystemVersion, which tauri build
+# exports under this name. With the two different, every switch between `just
+# dev-app` and any other build recompiles the C dependencies and everything built on
+# them (docs/build-environment.md). `just toolchain-parity` checks that they agree.
 MACOSX_DEPLOYMENT_TARGET = "10.13"

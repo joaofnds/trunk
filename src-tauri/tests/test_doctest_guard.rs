@@ -1,8 +1,9 @@
 //! No doc comment in this workspace carries a runnable example.
 //!
 //! `just cargo-test` runs nextest, which cannot run doctests, and does not
-//! invoke `cargo test --doc` because adding it relinks the crate. That is only
-//! safe while there is nothing to run, which is what this checks.
+//! invoke `cargo test --doc` because its rustdoc pass costs time and runs
+//! nothing. That is only safe while there is nothing to run, which is what this
+//! checks.
 use std::path::{Path, PathBuf};
 
 /// A fenced block inside a doc comment, and the attributes on its opening fence.

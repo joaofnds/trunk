@@ -111,8 +111,10 @@ Recorded so they aren't re-tried:
   of compile in CI and ran nothing. `--doc` needed the `staticlib` and `cdylib` crate
   types the package declared then, which nextest never builds, so it relinked the crate
   from scratch; the tree's only fenced doc block is an ```ignore example, which no runner
-  executes. The omission is guarded by `test_doctest_guard.rs`, which scans both crates'
-  sources in 17ms and fails with the file and line the moment a runnable example appears.
+  executes. With the lib rlib-only, `cargo test --doc` after nextest compiles nothing
+  and its rustdoc pass takes 8s (measured 2026-09-23), still for no test. The omission
+  is guarded by `test_doctest_guard.rs`, which scans both crates' sources in 17ms and
+  fails with the file and line the moment a runnable example appears.
   The general shape: a step that exists for a case the codebase does not yet have is
   worth replacing with a check that the case has not arrived.
 - **Two-lane `just check`** (measured, not adopted): running the Rust chain

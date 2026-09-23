@@ -122,9 +122,9 @@ toolchain-parity:
         fi
     done
     bundled=$(sed -n 's/^ *"minimumSystemVersion": *"\([^"]*\)".*/\1/p' src-tauri/tauri.conf.json)
-    exported=$(sed -n 's/^MACOSX_DEPLOYMENT_TARGET *= *"\(.*\)"/\1/p' .cargo/config.toml)
+    exported=$(sed -n 's/^MACOSX_DEPLOYMENT_TARGET *= *"\(.*\)"/\1/p' .cargo/config.toml 2>/dev/null || true)
     if [ -z "$bundled" ] || [ "$exported" != "$bundled" ]; then
-        echo "::error::.cargo/config.toml sets MACOSX_DEPLOYMENT_TARGET to '$exported' and tauri.conf.json's bundle.macOS.minimumSystemVersion is '$bundled'. tauri build exports the second to cargo and every other build takes the first. Six C build scripts rerun whenever the value changes, so a mismatch recompiles about forty crates on every switch between \`just dev-app\` and any other build. Make them equal."
+        echo "::error::.cargo/config.toml sets MACOSX_DEPLOYMENT_TARGET to '$exported' and tauri.conf.json's bundle.macOS.minimumSystemVersion is '$bundled'. tauri build exports the second to cargo and every other build takes the first, so a mismatch recompiles the C dependencies and everything built on them on every switch between \`just dev-app\` and any other build (docs/build-environment.md). Make them equal."
         exit 1
     fi
 
@@ -194,8 +194,8 @@ clippy-shipped:
 # binary in parallel where `cargo test` runs them serially — measured 7.2s
 # against 17s on the same suites (TRUNK-67).
 #
-# No `--doc` line: there are no runnable doctests, and adding one relinks the
-# crate. `test_doctest_guard.rs` fails if that stops being true.
+# No `--doc` line: there are no runnable doctests, and the rustdoc pass alone
+# takes about 8s. `test_doctest_guard.rs` fails if that stops being true.
 cargo-test:
     {{scrubbed_env}} cargo nextest run --workspace --manifest-path {{manifest}}
 
