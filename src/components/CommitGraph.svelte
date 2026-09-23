@@ -2015,13 +2015,12 @@ $effect(() => {
     {:else}
       <!-- SVG overlay snippet - renders inside virtual list scroll container -->
       {#snippet graphOverlay(contentHeight: number, visibleStart: number, visibleEnd: number)}
-        {@const refOffset = columnVisibility.ref ? columnWidths.ref : 0}
         {@const visible = getVisibleOverlayElements(paths, graphData.nodes, visibleStart, visibleEnd, pillData)}
         {@const graphColWidth = columnVisibility.graph ? columnWidths.graph : naturalGraphWidth}
         {@const scrollX = Math.min(graphScrollX, maxGraphScrollX)}
         <svg
           class="absolute top-0"
-          width={refOffset + Math.max(graphColWidth, naturalGraphWidth)}
+          width={graphStart + Math.max(graphColWidth, naturalGraphWidth)}
           height={contentHeight}
           style="left: 0; pointer-events: none; z-index: 1; {searchDimmingActive ? 'opacity: var(--opacity-search-dim);' : ''}"
         >
@@ -2065,7 +2064,7 @@ $effect(() => {
           <!-- GRAPH-02: clip graph content to column width -->
           <defs>
             <clipPath id="graph-clip-{clipScope}">
-              <rect x={refOffset + COLUMN_PADDING_X} y="0" width={railBandWidth} height={contentHeight} />
+              <rect x={graphStart + COLUMN_PADDING_X} y="0" width={railBandWidth} height={contentHeight} />
             </clipPath>
             <!-- A dot clamped to an edge is where its line ends, but the rail
                  behind it keeps drawing and shows past the dot on the far side.
@@ -2104,7 +2103,7 @@ $effect(() => {
                  by a radius, which still ends inside the column's padding. -->
             <clipPath id="graph-dot-clip-{clipScope}">
               <rect
-                x={refOffset + COLUMN_PADDING_X - displaySettings.dotRadius}
+                x={graphStart + COLUMN_PADDING_X - displaySettings.dotRadius}
                 y="0"
                 width={railBandWidth + 2 * displaySettings.dotRadius}
                 height={contentHeight} />
@@ -2113,7 +2112,7 @@ $effect(() => {
           <!-- GRAPH-02: Layer A — rails + connections, scrolled and clipped.
                Translated left by scrollX to pan through lanes. -->
           <g clip-path="url(#graph-clip-{clipScope})">
-            <g class="overlay-paths" transform="translate({refOffset + COLUMN_PADDING_X - scrollX}, 0)">
+            <g class="overlay-paths" transform="translate({graphStart + COLUMN_PADDING_X - scrollX}, 0)">
               {#each railsHidden ? [] : visible.paths as path}
                 <path d={path.d} fill="none"
                   stroke={hugRight > 0 || hugLeft > 0
@@ -2130,7 +2129,7 @@ $effect(() => {
                Viewport spans graph coordinates [scrollX, scrollX + graphColWidth].
                Dots clamp to viewport edges (bead-on-a-string effect). -->
           <g clip-path="url(#graph-dot-clip-{clipScope})">
-          <g class="overlay-dots" transform="translate({refOffset + COLUMN_PADDING_X}, 0)">
+          <g class="overlay-dots" transform="translate({graphStart + COLUMN_PADDING_X}, 0)">
             {#each visible.dots as node}
               {@const clampedCx = stickyDotX(geometry.cx(node.x), graphColWidth, scrollX)}
               <!-- A stroke straddles the path it is drawn on, so half of it falls
@@ -2168,7 +2167,7 @@ $effect(() => {
           {#if columnVisibility.ref}
             <g class="overlay-pills">
               <clipPath id="ref-clip-{clipScope}">
-                <rect x="0" y="0" width={Math.max(0, refOffset - COLUMN_PADDING_X)} height={contentHeight} />
+                <rect x="0" y="0" width={Math.max(0, graphStart - COLUMN_PADDING_X)} height={contentHeight} />
               </clipPath>
               {#each ghostPill ? [...visible.pills, ghostPill] : visible.pills as pill}
                 {@const badgeWidth = overflowBadgeWidth(pill.overflowCount)}
@@ -2176,7 +2175,7 @@ $effect(() => {
                 <!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (uses sticky X position, scroll-adjusted) -->
                 {#if columnVisibility.graph}
                   {@const stickyDotCx = stickyDotX(pill.dotCx, graphColWidth, scrollX)}
-                  {@const connectorEndX = refOffset + COLUMN_PADDING_X + stickyDotCx - (pill.isHollow ? displaySettings.dotRadius : 0)}
+                  {@const connectorEndX = graphStart + COLUMN_PADDING_X + stickyDotCx - (pill.isHollow ? displaySettings.dotRadius : 0)}
                   <line
                     x1={pillGroupRightX}
                     y1={pill.y}
