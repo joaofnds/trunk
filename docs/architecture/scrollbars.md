@@ -78,9 +78,10 @@ through `dragScrollPosition()` into the pan's own `scrollTo`.
 
 Only the moves the component announces bring a thumb, and both pans announce the
 wheel's. The drag repaints its own thumb. A Graph divider double-click that returns the
-Graph pan to its start, and the clamp that shortens it when the column widens or the
-lanes fall, move it without a thumb, so a thumb still up from a swipe keeps its old
-place until it fades or the pane scrolls. The two narrowings above are a pane's own
+Graph pan to its start, the clamp that shortens the Graph pan when the column widens or
+the lanes fall, and the one that pulls the Message pan back when the summaries on screen
+change, move a pan without a thumb, so a thumb still up from a swipe keeps its old place
+until it fades or the pane scrolls. The two narrowings above are a pane's own
 sideways scroll's and do not apply: a pan's thumb shows whenever a pan is announced.
 
 A pan's track is a column of the table its pane scrolls sideways, so whenever the pane
@@ -90,14 +91,16 @@ off at the pane's edge as the column is, down to nothing once the column has lef
 
 A pane can then hold a thumb for each pan besides its own two. A pan's thumb and the
 table's own sideways thumb share the bottom edge, all named `horizontal`, and a swipe
-that carries on past a pan's end scrolls the table, so both can be up at once: side by
-side when the table has scrolled far, overlapping when it has not, and where they
-overlap the one created later lies on top and takes the pointer.
+that carries on past a pan's end scrolls the table, so both can be up at once. Whether
+they overlap depends on where the column lies and how far the table has scrolled, and
+where they do, the one created later lies on top and takes the pointer.
 
-The other shape, the pan as a real horizontal scroll container, is not taken: the rails
-and dots are one SVG as tall as the list inside the virtual list's content, and a
-scroller over the Graph band would sit over the rows' clicks and take the vertical
-wheel.
+The other shape, the pan as a real horizontal scroll container, is not taken for the
+Graph: the rails and dots are one SVG as tall as the list inside the virtual list's
+content, and a scroller over the Graph band would sit over the rows' clicks and take the
+vertical wheel. For Message it would be a scroller per summary, one offset each, which
+is the shape of moving each summary only as far as it is cut; one offset for all is one
+custom property.
 
 ## Dragging it
 

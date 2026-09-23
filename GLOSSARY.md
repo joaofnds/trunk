@@ -34,8 +34,8 @@ direction, a swipe scrolls the table instead.
 **Message pan** — the horizontal offset that slides the commit summaries in the Message
 column to the left, so a summary cut off at the column's edge can be read to its end
 without widening the column. Every summary moves by the same offset, and the pan ends
-where the longest cut summary on screen ends; past that end, as with the Graph pan, a
-swipe scrolls the table.
+where the longest cut summary on screen ends; past that end in either direction, as with
+the Graph pan, a swipe scrolls the table.
 
 **Linear continuation** — a commit chain connected to a given commit by unbroken first-parent
 links, with no intervening fork. A branch that is strictly ahead of another on the same line

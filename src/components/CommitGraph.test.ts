@@ -771,9 +771,52 @@ describe("CommitGraph", () => {
 		});
 	});
 
-	// A sideways gesture over the Graph column pans its lanes, and anywhere else it
-	// scrolls the table. Branch/Tag is hidden unless a test gives it a width, so
-	// the Graph column starts at the list's left edge.
+	function listViewport(container: HTMLElement): HTMLElement {
+		return container.querySelector(".virtual-list-viewport") as HTMLElement;
+	}
+
+	// jsdom lays nothing out, so the list reports no sideways range unless
+	// told to.
+	function scrollTableSideways(container: HTMLElement) {
+		const viewport = listViewport(container);
+		Object.defineProperty(viewport, "scrollWidth", { value: 900 });
+		Object.defineProperty(viewport, "clientWidth", { value: 700 });
+	}
+
+	// jsdom lays nothing out, so the list's left edge is 0 and a pointer's x is
+	// its distance from there.
+	function wheelAt(
+		container: HTMLElement,
+		x: number,
+		deltas: { deltaX: number; deltaY?: number },
+	): WheelEvent {
+		const event = new WheelEvent("wheel", {
+			bubbles: true,
+			cancelable: true,
+			clientX: COLUMN_PADDING_X + x,
+			...deltas,
+		});
+		listViewport(container).dispatchEvent(event);
+		return event;
+	}
+
+	function sidewaysThumb(): HTMLElement | null {
+		return document.querySelector(`.${THUMB_CLASS}[data-axis=horizontal]`);
+	}
+
+	function dragThumbPastItsEnd() {
+		sidewaysThumb()?.dispatchEvent(
+			new MouseEvent("pointerdown", { bubbles: true, clientX: 0 }),
+		);
+		window.dispatchEvent(
+			new MouseEvent("pointermove", { bubbles: true, clientX: 1000 }),
+		);
+		window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+	}
+
+	// A sideways gesture over the Graph column pans its lanes. Branch/Tag is
+	// hidden unless a test gives it a width, so the Graph column starts at the
+	// list's left edge.
 	describe("a sideways wheel", () => {
 		const graphWidth = LANE_WIDTH + 2 * COLUMN_PADDING_X;
 
@@ -817,18 +860,6 @@ describe("CommitGraph", () => {
 			});
 		}
 
-		function listViewport(container: HTMLElement): HTMLElement {
-			return container.querySelector(".virtual-list-viewport") as HTMLElement;
-		}
-
-		// jsdom lays nothing out, so the list reports no sideways range unless
-		// told to.
-		function scrollTableSideways(container: HTMLElement) {
-			const viewport = listViewport(container);
-			Object.defineProperty(viewport, "scrollWidth", { value: 900 });
-			Object.defineProperty(viewport, "clientWidth", { value: 700 });
-		}
-
 		function lanesOffset(container: HTMLElement): number {
 			const transform =
 				container.querySelector(".overlay-paths")?.getAttribute("transform") ??
@@ -838,23 +869,6 @@ describe("CommitGraph", () => {
 				throw new Error(`no lanes offset in "${transform}"`);
 			}
 			return Number(offset);
-		}
-
-		// jsdom lays nothing out, so the list's left edge is 0 and a pointer's x is
-		// its distance from there.
-		function wheelAt(
-			container: HTMLElement,
-			x: number,
-			deltas: { deltaX: number; deltaY?: number },
-		): WheelEvent {
-			const event = new WheelEvent("wheel", {
-				bubbles: true,
-				cancelable: true,
-				clientX: COLUMN_PADDING_X + x,
-				...deltas,
-			});
-			listViewport(container).dispatchEvent(event);
-			return event;
 		}
 
 		it("pans the lanes when it lands on the Graph column", async () => {
@@ -868,18 +882,15 @@ describe("CommitGraph", () => {
 			expect(lanesOffset(container)).toBe(before - 10);
 		});
 
-		it("leaves the gesture to the table anywhere else", async () => {
+		it("leaves the lanes still under a swipe past the Graph column", async () => {
 			const { container } = mountGraph(4);
 			await flush();
 			const before = lanesOffset(container);
 
-			const event = wheelAt(container, graphWidth + 20, { deltaX: 10 });
+			wheelAt(container, graphWidth + 20, { deltaX: 10 });
 			await tick();
 
-			expect({
-				prevented: event.defaultPrevented,
-				lanes: lanesOffset(container),
-			}).toEqual({ prevented: false, lanes: before });
+			expect(lanesOffset(container)).toBe(before);
 		});
 
 		it("leaves the gesture to the table when the lanes fit their column", async () => {
@@ -903,20 +914,17 @@ describe("CommitGraph", () => {
 		});
 
 		// Scrolled a column past the Graph column, the point 5px in from the
-		// list's edge is over Message.
-		it("finds the column under the pointer in the scrolled table", async () => {
+		// list's edge is past it.
+		it("finds the Graph column where the scrolled table has carried it", async () => {
 			const { container } = mountGraph(4);
 			await flush();
 			listViewport(container).scrollLeft = graphWidth + 16;
 			const before = lanesOffset(container);
 
-			const event = wheelAt(container, 5, { deltaX: 10 });
+			wheelAt(container, 5, { deltaX: 10 });
 			await tick();
 
-			expect({
-				prevented: event.defaultPrevented,
-				lanes: lanesOffset(container),
-			}).toEqual({ prevented: false, lanes: before });
+			expect(lanesOffset(container)).toBe(before);
 		});
 
 		describe("when the table scrolls sideways", () => {
@@ -1001,10 +1009,6 @@ describe("CommitGraph", () => {
 				stopTracking();
 			});
 
-			function sidewaysThumb(): HTMLElement | null {
-				return document.querySelector(`.${THUMB_CLASS}[data-axis=horizontal]`);
-			}
-
 			it("shows a sideways thumb while it pans the lanes", async () => {
 				const { container } = mountGraph(4);
 				await flush();
@@ -1022,13 +1026,7 @@ describe("CommitGraph", () => {
 				const start = lanesOffset(container);
 				wheelAt(container, 5, { deltaX: 10 });
 
-				sidewaysThumb()?.dispatchEvent(
-					new MouseEvent("pointerdown", { bubbles: true, clientX: 0 }),
-				);
-				window.dispatchEvent(
-					new MouseEvent("pointermove", { bubbles: true, clientX: 1000 }),
-				);
-				window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+				dragThumbPastItsEnd();
 				await tick();
 
 				expect(lanesOffset(container)).toBe(start - 548);
@@ -1071,45 +1069,75 @@ describe("CommitGraph", () => {
 		});
 	});
 
-	// Branch/Tag and Graph are hidden, so Message starts at the list's left edge.
-	// jsdom lays nothing out: the list is unmeasured, so Message is at its
-	// floor, and each summary is told how wide it shows.
+	// jsdom lays nothing out, so each test says how Message and its summaries lie:
+	// how wide the column is, how much of each summary its row shows, and which
+	// rows are on screen.
 	describe("a sideways wheel over Message", () => {
 		// 50 narrow glyphs measure 300px in the stubbed font and 20 measure 120.
 		const LONG = "a".repeat(50);
 		const SHORT = "b".repeat(20);
-		const SHOWN = 100;
+		const ROW = 28;
 
-		function mountMessages(summaries: string[], stashes: string[] = []) {
-			const commits = [
-				...summaries.map((summary) => ({ summary, is_stash: false })),
-				...stashes.map((summary) => ({ summary, is_stash: true })),
-			].map(({ summary, is_stash }, i) =>
-				makeCommit({
-					oid: `${i}`.repeat(40).slice(0, 40),
-					summary,
-					is_stash,
-					parent_oids: [],
-				}),
-			);
+		// Branch/Tag is hidden, and Graph is too unless given a width, so Message
+		// starts at the list's left edge.
+		function mountMessages(
+			summaries: string[],
+			options: {
+				stashes?: string[];
+				graph?: number;
+				wipMessage?: string;
+				refreshedTo?: string[];
+			} = {},
+		) {
+			const commitsOf = (texts: string[], stashes: string[] = []) =>
+				[
+					...texts.map((summary) => ({ summary, is_stash: false })),
+					...stashes.map((summary) => ({ summary, is_stash: true })),
+				].map(({ summary, is_stash }, i) =>
+					makeCommit({
+						oid: `${i}`.repeat(40).slice(0, 40),
+						summary,
+						is_stash,
+						parent_oids: [],
+					}),
+				);
+			const graphWidths =
+				options.graph === undefined ? {} : { graph: options.graph };
 			installReads({
-				commits,
-				override: (cmd, args) =>
-					cmd === "prefs_get" && args?.key === "column_visibility"
-						? Promise.resolve({
-								ref: false,
-								graph: false,
-								message: true,
-								diff: true,
-								author: true,
-								date: true,
-								sha: true,
-							})
-						: undefined,
+				commits: commitsOf(summaries, options.stashes),
+				override: (cmd, args) => {
+					if (cmd === "refresh_commit_graph" && options.refreshedTo)
+						return Promise.resolve({
+							commits: commitsOf(options.refreshedTo),
+							max_columns: 1,
+						});
+					if (cmd !== "prefs_get") return undefined;
+					if (args?.key === "column_widths")
+						return Promise.resolve(graphWidths);
+					if (args?.key === "resized_columns")
+						return Promise.resolve(Object.keys(graphWidths));
+					if (args?.key === "column_visibility")
+						return Promise.resolve({
+							ref: false,
+							graph: options.graph !== undefined,
+							message: true,
+							diff: true,
+							author: true,
+							date: true,
+							sha: true,
+						});
+					return undefined;
+				},
 			});
 
 			return render(CommitGraph, {
-				props: { repoPath: "/test/repo", tabActive: true },
+				props: {
+					repoPath: "/test/repo",
+					tabActive: true,
+					refreshSignal: 0,
+					wipCount: options.wipMessage === undefined ? 0 : 1,
+					wipMessage: options.wipMessage,
+				},
 			});
 		}
 
@@ -1121,10 +1149,38 @@ describe("CommitGraph", () => {
 			];
 		}
 
-		function showEachSummaryIn(container: HTMLElement, width: number) {
-			for (const summary of summaries(container)) {
-				Object.defineProperty(summary, "clientWidth", { value: width });
-			}
+		// Message `width` wide, each row showing `shown` of its summary, the rows
+		// stacked from the top of the table, and the list showing the part of
+		// them from `top` to `bottom`.
+		function layOut(
+			container: HTMLElement,
+			layout: {
+				width?: number;
+				shown?: number;
+				top?: number;
+				bottom?: number;
+			} = {},
+		) {
+			const {
+				width = MESSAGE_FLOOR,
+				shown = 100,
+				top = 0,
+				bottom = 400,
+			} = layout;
+			const header = container.querySelector(
+				"[data-testid=column-header] > [data-column=message]",
+			) as HTMLElement;
+			header.getBoundingClientRect = () => ({ width }) as DOMRect;
+			listViewport(container).getBoundingClientRect = () =>
+				({ top, bottom, left: 0, right: 700, width: 700 }) as DOMRect;
+			summaries(container).forEach((summary, row) => {
+				Object.defineProperty(summary, "clientWidth", {
+					value: shown,
+					configurable: true,
+				});
+				summary.getBoundingClientRect = () =>
+					({ top: row * ROW, bottom: (row + 1) * ROW }) as DOMRect;
+			});
 		}
 
 		// How far a summary's text is moved left. jsdom inherits custom
@@ -1138,26 +1194,12 @@ describe("CommitGraph", () => {
 			return 0 - Number.parseFloat(value || "0");
 		}
 
-		function wheelOverMessage(
-			container: HTMLElement,
-			deltas: { deltaX: number; deltaY?: number },
-		): WheelEvent {
-			const event = new WheelEvent("wheel", {
-				bubbles: true,
-				cancelable: true,
-				clientX: COLUMN_PADDING_X + 50,
-				...deltas,
-			});
-			container.querySelector(".virtual-list-viewport")?.dispatchEvent(event);
-			return event;
-		}
-
 		it("moves every summary by the swipe, a stash's too", async () => {
-			const { container } = mountMessages([LONG, SHORT], [SHORT]);
+			const { container } = mountMessages([LONG, SHORT], { stashes: [SHORT] });
 			await flush();
-			showEachSummaryIn(container, SHOWN);
+			layOut(container);
 
-			wheelOverMessage(container, { deltaX: 30 });
+			wheelAt(container, 50, { deltaX: 30 });
 			await tick();
 
 			expect(summaries(container).map(summaryShift)).toEqual([30, 30, 30]);
@@ -1165,65 +1207,183 @@ describe("CommitGraph", () => {
 
 		// 300px of text shown in 100px runs 200px past its row.
 		it("stops where the longest cut summary on screen ends", async () => {
-			const { container } = mountMessages([LONG, SHORT]);
+			const { container } = mountMessages([SHORT, LONG]);
 			await flush();
-			showEachSummaryIn(container, SHOWN);
+			layOut(container);
 
-			wheelOverMessage(container, { deltaX: 1000 });
+			wheelAt(container, 50, { deltaX: 1000 });
 			await tick();
 
 			expect(summaryShift(summaries(container)[0])).toBe(200);
 		});
 
-		it("leaves the gesture alone when every summary on screen fits", async () => {
-			const { container } = mountMessages([SHORT]);
+		// The list mounts rows past its edges; only the first row is on screen.
+		it("stops where the summaries on screen end, whatever the rows off it hold", async () => {
+			const { container } = mountMessages([SHORT, LONG]);
 			await flush();
-			showEachSummaryIn(container, 200);
+			layOut(container, { bottom: ROW });
 
-			const event = wheelOverMessage(container, { deltaX: 30 });
+			wheelAt(container, 50, { deltaX: 1000 });
 			await tick();
 
-			expect({
-				prevented: event.defaultPrevented,
-				shift: summaryShift(summaries(container)[0]),
-			}).toEqual({ prevented: false, shift: 0 });
+			expect(summaryShift(summaries(container)[0])).toBe(20);
 		});
 
-		// Message is at its 180px floor, so a pointer 185px in is over Diff.
+		it("pans from anywhere across a Message column wider than its floor", async () => {
+			const { container } = mountMessages([LONG]);
+			await flush();
+			layOut(container, { width: 400 });
+
+			wheelAt(container, 350, { deltaX: 30 });
+			await tick();
+
+			expect(summaryShift(summaries(container)[0])).toBe(30);
+		});
+
+		// Graph is hidden, so it lies at the same point, 0px wide.
+		it("pans from the first point of Message, which a hidden Graph does not claim", async () => {
+			const { container } = mountMessages([LONG]);
+			await flush();
+			layOut(container);
+
+			wheelAt(container, 0, { deltaX: 30 });
+			await tick();
+
+			expect(summaryShift(summaries(container)[0])).toBe(30);
+		});
+
+		it("pans with the Graph column shown before it", async () => {
+			const { container } = mountMessages([LONG], { graph: 24 });
+			await flush();
+			layOut(container);
+
+			wheelAt(container, 24 + 10, { deltaX: 30 });
+			await tick();
+
+			expect(summaryShift(summaries(container)[0])).toBe(30);
+		});
+
 		it("leaves the summaries still under a swipe over the next column", async () => {
 			const { container } = mountMessages([LONG]);
 			await flush();
-			showEachSummaryIn(container, SHOWN);
+			layOut(container);
 
-			container.querySelector(".virtual-list-viewport")?.dispatchEvent(
-				new WheelEvent("wheel", {
-					bubbles: true,
-					cancelable: true,
-					clientX: COLUMN_PADDING_X + MESSAGE_FLOOR + 5,
-					deltaX: 30,
-				}),
-			);
+			wheelAt(container, MESSAGE_FLOOR + 5, { deltaX: 30 });
 			await tick();
 
 			expect(summaryShift(summaries(container)[0])).toBe(0);
 		});
 
+		it("leaves the WIP row where it is", async () => {
+			const { container } = mountMessages([LONG], { wipMessage: LONG });
+			await flush();
+			layOut(container);
+
+			wheelAt(container, 50, { deltaX: 30 });
+			await tick();
+
+			expect(summaries(container)[0].style.textIndent).toBe("");
+		});
+
+		describe("once the pan has gone further than the summaries now run", () => {
+			// The long summary scrolls up out of the list, leaving the short one,
+			// which runs 20px past its row.
+			it("pulls the summaries back as the list scrolls", async () => {
+				const { container } = mountMessages([LONG, SHORT]);
+				await flush();
+				layOut(container);
+				wheelAt(container, 50, { deltaX: 1000 });
+				await tick();
+
+				layOut(container, { top: ROW });
+				listViewport(container).dispatchEvent(new Event("scroll"));
+				await tick();
+
+				expect(summaryShift(summaries(container)[1])).toBe(20);
+			});
+
+			// Rows that show 250px of the 300px summary leave 50px to pan.
+			it("pulls the summaries back as their rows widen", async () => {
+				const list = observeListAt(600);
+				const { container } = mountMessages([LONG]);
+				await flush();
+				layOut(container);
+				wheelAt(container, 50, { deltaX: 1000 });
+				await tick();
+
+				layOut(container, { shown: 250 });
+				await list.resize(900);
+
+				expect(summaryShift(summaries(container)[0])).toBe(50);
+			});
+
+			it("pulls the summaries back when the rows are replaced", async () => {
+				const { container, rerender } = mountMessages([LONG], {
+					refreshedTo: [SHORT],
+				});
+				await flush();
+				layOut(container);
+				wheelAt(container, 50, { deltaX: 1000 });
+				await tick();
+
+				await rerender({ refreshSignal: 1 });
+				await flush();
+				layOut(container);
+				await flush();
+
+				expect(summaryShift(summaries(container)[0])).toBe(20);
+			});
+		});
+
 		describe("when the table scrolls sideways", () => {
+			it("takes the gesture while the summaries pan", async () => {
+				const { container } = mountMessages([LONG]);
+				await flush();
+				layOut(container);
+				scrollTableSideways(container);
+
+				const event = wheelAt(container, 50, { deltaX: 30 });
+
+				expect(event.defaultPrevented).toBe(true);
+			});
+
 			it("hands the gesture on to the table once the summaries reach their end", async () => {
 				const { container } = mountMessages([LONG]);
 				await flush();
-				showEachSummaryIn(container, SHOWN);
-				const viewport = container.querySelector(
-					".virtual-list-viewport",
-				) as HTMLElement;
-				Object.defineProperty(viewport, "scrollWidth", { value: 900 });
-				Object.defineProperty(viewport, "clientWidth", { value: 700 });
-				wheelOverMessage(container, { deltaX: 1000 });
+				layOut(container);
+				scrollTableSideways(container);
+				wheelAt(container, 50, { deltaX: 1000 });
 				await tick();
 
-				const event = wheelOverMessage(container, { deltaX: 10 });
+				const event = wheelAt(container, 50, { deltaX: 10 });
 
 				expect(event.defaultPrevented).toBe(false);
+			});
+
+			it("hands a swipe back toward the start on to the table while the summaries are at their start", async () => {
+				const { container } = mountMessages([LONG]);
+				await flush();
+				layOut(container);
+				scrollTableSideways(container);
+
+				const event = wheelAt(container, 50, { deltaX: -10 });
+
+				expect(event.defaultPrevented).toBe(false);
+			});
+
+			it("leaves the gesture to the table when every summary on screen fits", async () => {
+				const { container } = mountMessages([SHORT]);
+				await flush();
+				layOut(container, { shown: 200 });
+				scrollTableSideways(container);
+
+				const event = wheelAt(container, 50, { deltaX: 30 });
+				await tick();
+
+				expect({
+					prevented: event.defaultPrevented,
+					shift: summaryShift(summaries(container)[0]),
+				}).toEqual({ prevented: false, shift: 0 });
 			});
 		});
 
@@ -1238,16 +1398,12 @@ describe("CommitGraph", () => {
 				stopTracking();
 			});
 
-			function sidewaysThumb(): HTMLElement | null {
-				return document.querySelector(`.${THUMB_CLASS}[data-axis=horizontal]`);
-			}
-
 			it("shows a sideways thumb while it pans the summaries", async () => {
 				const { container } = mountMessages([LONG]);
 				await flush();
-				showEachSummaryIn(container, SHOWN);
+				layOut(container);
 
-				wheelOverMessage(container, { deltaX: 30 });
+				wheelAt(container, 50, { deltaX: 30 });
 
 				expect(sidewaysThumb()).not.toBeNull();
 			});
@@ -1255,19 +1411,29 @@ describe("CommitGraph", () => {
 			it("moves the summaries to their end when the thumb is dragged past it", async () => {
 				const { container } = mountMessages([LONG]);
 				await flush();
-				showEachSummaryIn(container, SHOWN);
-				wheelOverMessage(container, { deltaX: 30 });
+				layOut(container);
+				wheelAt(container, 50, { deltaX: 30 });
 
-				sidewaysThumb()?.dispatchEvent(
-					new MouseEvent("pointerdown", { bubbles: true, clientX: 0 }),
-				);
-				window.dispatchEvent(
-					new MouseEvent("pointermove", { bubbles: true, clientX: 1000 }),
-				);
-				window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+				dragThumbPastItsEnd();
 				await tick();
 
 				expect(summaryShift(summaries(container)[0])).toBe(200);
+			});
+
+			// With Graph 24px wide before it, Message runs from 24 to 204, and a
+			// pan at its end puts the thumb's far edge on Message's.
+			it("lays the thumb under the Message column", async () => {
+				const { container } = mountMessages([LONG], { graph: 24 });
+				await flush();
+				layOut(container);
+
+				wheelAt(container, 24 + 10, { deltaX: 1000 });
+
+				const thumb = sidewaysThumb();
+				expect(
+					Number.parseFloat(thumb?.style.left ?? "") +
+						Number.parseFloat(thumb?.style.width ?? ""),
+				).toBeCloseTo(24 + MESSAGE_FLOOR);
 			});
 		});
 	});

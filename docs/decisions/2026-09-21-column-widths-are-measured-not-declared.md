@@ -132,14 +132,22 @@ summary, read from one custom property on the list's root, so a swipe is one sty
 write and a row the virtual list mounts later arrives already moved. An indent keeps the
 text inline, so the trailing ellipsis stays while the text still overflows and goes once
 its end is in view; a transform would need an inline-block, which `text-overflow` treats
-as one box to hide whole. The pan ends where the longest cut summary on screen ends,
-measured at each wheel event, as VS Code's lists measure only the rows they render. The
+as one box to hide whole. The pan ends where the longest cut summary on screen ends: of
+the rows the virtual list has mounted, only those inside its viewport count, since it
+mounts twenty more past each edge, and a long summary out of view would let the pan slide
+the visible ones out of their cells. Because that end moves with the rows on screen, the
+pan is pulled back to it whenever they change, by a scroll, new rows or a new width;
+otherwise it would outlive the summary that earned it and leave the column blank. The
 measure is each summary's own laid-out text, through a `Range`, and not a canvas: a
 canvas needs the font as a string, WebKit serializes a computed `font` as an empty
 string, and a canvas handed one keeps whatever font it had last, which measured a 747px
-summary at 546px. Every summary moves by the same offset, so a short one slides out of
-view as a long one is read. The product owner asked for this and for each summary moving
-only as far as it is cut, to try both in the app and keep one; this is the first.
+summary at 546px. Measured in WebKit with 48 rows mounted, a swipe over Message costs
+0.37ms and a scroll with its thumb up 0.13ms. Message's width is the engine's, read from
+its header cell, since it is the slack column and no state holds it. Every summary moves
+by the same offset, so a short one slides out of view as a long one is read. Moving each
+summary only as far as it is cut is the other shape, with a scroll offset per row where
+this has one for all; the product owner leans to one offset and picks between the two
+after using both in the app (TRUNK-254.6).
 
 The sideways thumb is the scrollbar tracker's, shown only while the table scrolls, as
 `docs/architecture/scrollbars.md` settles for every thumb. Each pan gets a thumb of its
@@ -252,7 +260,8 @@ row cell to follow, so a cell that takes a width of its own fails it.
 The widths themselves are the component's `columnWidths` state, and the properties
 are how the cells receive it. Script reads the state directly wherever it needs a
 number: the graph overlay's geometry, the header's choice between its word and its
-icon, and the graph pan's hit test and limit.
+icon, and the Graph and Message pans' hit tests; Message's own width is read from the
+layout instead, because no state holds it.
 
 Two other inputs to alignment are still written on both sides. The header row and
 the list's content area each apply the `COLUMN_PADDING_X` gutter, and the header

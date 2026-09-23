@@ -369,6 +369,9 @@ $effect(() => {
 /** Where the Graph column starts in the table, before any sideways scroll. */
 const graphStart = $derived(columnVisibility.ref ? columnWidths.ref : 0);
 
+/** How wide the Graph column is laid out: nothing while it is hidden. */
+const graphWidth = $derived(columnVisibility.graph ? columnWidths.graph : 0);
+
 /** A column whose content pans sideways inside it, by an offset kept here. */
 interface ColumnPan extends Pan {
 	/** Whether a pointer this far into the table is over the column. */
@@ -391,12 +394,13 @@ function columnPan(column: {
 		scrollTo: column.scrollTo,
 		holds(x) {
 			const { start, width } = column.band();
-			return x >= start && x <= start + width;
+			return x >= start && x < start + width;
 		},
 		extent(viewport) {
 			const { start, width } = column.band();
 			const tableLeft =
 				viewport.getBoundingClientRect().left - viewport.scrollLeft;
+
 			return {
 				trackStart: tableLeft + start,
 				trackLength: width,
@@ -409,10 +413,7 @@ function columnPan(column: {
 }
 
 const graphPan = columnPan({
-	band: () => ({
-		start: graphStart,
-		width: columnVisibility.graph ? columnWidths.graph : 0,
-	}),
+	band: () => ({ start: graphStart, width: graphWidth }),
 	offset: () => graphScrollX,
 	range: () => maxGraphScrollX,
 	scrollTo(offset) {
@@ -422,36 +423,52 @@ const graphPan = columnPan({
 
 let messageScrollX = $state(0);
 
+/** The summaries the list shows now, of all the rows it has mounted. */
+function summariesOnScreen(): HTMLElement[] {
+	const viewport = listViewport();
+	if (!viewport) return [];
+
+	const { top, bottom } = viewport.getBoundingClientRect();
+	const mounted = viewport.querySelectorAll<HTMLElement>(
+		"[data-message-summary]",
+	);
+	return [...mounted].filter((summary) => {
+		const row = summary.getBoundingClientRect();
+		return row.bottom > top && row.top < bottom;
+	});
+}
+
 /** How far the longest cut summary on screen runs past what its row shows. */
 function messageOverrun(): number {
-	const shown =
-		containerRef?.querySelectorAll<HTMLElement>("[data-message-summary]") ?? [];
-
 	let widest = 0;
-	for (const summary of shown) {
+	for (const summary of summariesOnScreen()) {
 		// The text as laid out, which no indent changes. A canvas measure needs
 		// the font as a string, and WebKit serializes a computed `font` as "".
-		const text = document.createRange();
-		text.selectNodeContents(summary);
+		const laidOut = document.createRange();
+		laidOut.selectNodeContents(summary);
 		widest = Math.max(
 			widest,
-			text.getBoundingClientRect().width - summary.clientWidth,
+			laidOut.getBoundingClientRect().width - summary.clientWidth,
 		);
 	}
 
 	return Math.ceil(widest);
 }
 
+/** Message's header cell: the engine lays out the column's width there. */
+function messageHeader(): HTMLElement | null {
+	return (
+		containerRef?.querySelector<HTMLElement>(
+			"[data-testid=column-header] > [data-column=message]",
+		) ?? null
+	);
+}
+
 const messagePan = columnPan({
-	band: () => {
-		const sized = tableMinWidth(columnWidths, columnVisibility) - MESSAGE_FLOOR;
-		return {
-			start: graphStart + (columnVisibility.graph ? columnWidths.graph : 0),
-			width: columnVisibility.message
-				? Math.max(MESSAGE_FLOOR, rowWidth - sized)
-				: 0,
-		};
-	},
+	band: () => ({
+		start: graphStart + graphWidth,
+		width: messageHeader()?.getBoundingClientRect().width ?? 0,
+	}),
 	offset: () => messageScrollX,
 	range: messageOverrun,
 	scrollTo(offset) {
@@ -459,11 +476,37 @@ const messagePan = columnPan({
 	},
 });
 
+// The pan's end is read from the summaries on screen, and a pan left past it
+// moves them out of their cells, so whatever changes those summaries pulls the
+// pan back to their end: a scroll, new rows, or a new width.
+function clampMessagePan() {
+	if (messageScrollX > 0) {
+		messageScrollX = Math.min(messageScrollX, messageOverrun());
+	}
+}
+
+$effect(() => {
+	if (!listRef) return;
+
+	const viewport = listViewport();
+	if (!viewport) return;
+
+	viewport.addEventListener("scroll", clampMessagePan);
+	return () => viewport.removeEventListener("scroll", clampMessagePan);
+});
+
+$effect(() => {
+	void displayItems;
+	void columnWidths;
+	void rowWidth;
+	void tick().then(clampMessagePan);
+});
+
 const columnPans: readonly ColumnPan[] = [graphPan, messagePan];
 
-// GRAPH-02: a sideways gesture over a column that pans pans it until its
-// content reaches its end in the gesture's direction, and from there, or
-// anywhere else, it scrolls the table. While the table can scroll sideways the
+// A sideways gesture over a column that pans, Graph or Message, moves its
+// content until that reaches its end in the gesture's direction, and from
+// there, or anywhere else, it scrolls the table. While the table can scroll sideways the
 // pan cancels the gesture, or the table would move under it too, and applies
 // its vertical part here instead; a table that fits leaves the gesture to the
 // engine.
