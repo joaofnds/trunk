@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	announcePan,
 	dragScrollPosition,
+	type Pan,
+	type ScrollAxisExtent,
 	THUMB_CLASS,
 	thumbGeometry,
 	trackScrollActivity,
@@ -8,6 +11,29 @@ import {
 
 const WITHIN_LINGER_MS = 800;
 const PAST_LINGER_MS = 2000;
+
+// An offset a component keeps itself across a band of its pane, a column of
+// the table the pane scrolls. The engine never scrolls it, so no scroll event
+// reports it.
+class FakePan implements Pan {
+	offset = 0;
+
+	constructor(private readonly band = { start: 50, length: 100, range: 300 }) {}
+
+	extent(pane: HTMLElement): ScrollAxisExtent {
+		return {
+			trackStart: this.band.start - pane.scrollLeft,
+			trackLength: this.band.length,
+			offset: this.offset,
+			scrollLength: this.band.length + this.band.range,
+			clientLength: this.band.length,
+		};
+	}
+
+	scrollTo(offset: number) {
+		this.offset = offset;
+	}
+}
 
 function makeScroller({
 	scrollHeight = 1000,
@@ -33,6 +59,50 @@ function thumbFor(el: HTMLElement): HTMLDivElement | null {
 	return (
 		[...document.body.querySelectorAll<HTMLDivElement>(`.${THUMB_CLASS}`)].find(
 			(thumb) => thumb.style.right === expectedRight,
+		) ?? null
+	);
+}
+
+function makePane({
+	scrollWidth = 1000,
+	clientWidth = 200,
+	scrollHeight = 0,
+	clientHeight = 0,
+	bottom = 300,
+	overflowX = "auto",
+} = {}) {
+	const el = document.createElement("div");
+	el.style.overflowX = overflowX;
+	Object.defineProperty(el, "scrollWidth", { value: scrollWidth });
+	Object.defineProperty(el, "clientWidth", { value: clientWidth });
+	Object.defineProperty(el, "scrollHeight", { value: scrollHeight });
+	Object.defineProperty(el, "clientHeight", { value: clientHeight });
+	el.getBoundingClientRect = () =>
+		({
+			top: bottom - clientHeight,
+			right: 10 + clientWidth,
+			bottom,
+			left: 10,
+			width: clientWidth,
+			height: clientHeight,
+		}) as DOMRect;
+	document.body.append(el);
+	return el;
+}
+
+function scrollSidewaysTo(el: HTMLElement, scrollLeft: number) {
+	el.scrollLeft = scrollLeft;
+	el.dispatchEvent(new Event("scroll"));
+}
+
+// A sideways thumb hangs off the pane's bottom edge, so this finds it by that
+// edge, as thumbFor finds a vertical one by its right edge.
+function sidewaysThumbFor(el: HTMLElement): HTMLDivElement | null {
+	const rect = el.getBoundingClientRect();
+	const expectedBottom = `${window.innerHeight - rect.bottom + 3}px`;
+	return (
+		[...document.body.querySelectorAll<HTMLDivElement>(`.${THUMB_CLASS}`)].find(
+			(thumb) => thumb.style.bottom === expectedBottom,
 		) ?? null
 	);
 }
@@ -319,50 +389,6 @@ describe("trackScrollActivity", () => {
 	});
 
 	describe("when a pane scrolls sideways", () => {
-		function makePane({
-			scrollWidth = 1000,
-			clientWidth = 200,
-			scrollHeight = 0,
-			clientHeight = 0,
-			bottom = 300,
-			overflowX = "auto",
-		} = {}) {
-			const el = document.createElement("div");
-			el.style.overflowX = overflowX;
-			Object.defineProperty(el, "scrollWidth", { value: scrollWidth });
-			Object.defineProperty(el, "clientWidth", { value: clientWidth });
-			Object.defineProperty(el, "scrollHeight", { value: scrollHeight });
-			Object.defineProperty(el, "clientHeight", { value: clientHeight });
-			el.getBoundingClientRect = () =>
-				({
-					top: bottom - clientHeight,
-					right: 10 + clientWidth,
-					bottom,
-					left: 10,
-					width: clientWidth,
-					height: clientHeight,
-				}) as DOMRect;
-			document.body.append(el);
-			return el;
-		}
-
-		function scrollSidewaysTo(el: HTMLElement, scrollLeft: number) {
-			el.scrollLeft = scrollLeft;
-			el.dispatchEvent(new Event("scroll"));
-		}
-
-		// A sideways thumb hangs off the pane's bottom edge, so this finds it by
-		// that edge, as thumbFor finds a vertical one by its right edge.
-		function sidewaysThumbFor(el: HTMLElement): HTMLDivElement | null {
-			const rect = el.getBoundingClientRect();
-			const expectedBottom = `${window.innerHeight - rect.bottom + 3}px`;
-			return (
-				[
-					...document.body.querySelectorAll<HTMLDivElement>(`.${THUMB_CLASS}`),
-				].find((thumb) => thumb.style.bottom === expectedBottom) ?? null
-			);
-		}
-
 		it("lays a thumb along the pane's bottom edge, sized to the share it shows", () => {
 			const el = makePane();
 
@@ -478,6 +504,71 @@ describe("trackScrollActivity", () => {
 			);
 
 			expect(el.scrollLeft).toBe(500);
+		});
+	});
+
+	describe("when a component pans", () => {
+		it("lays a thumb over the pan's band along the pane's bottom edge, sized to the share the band shows", () => {
+			const el = makePane();
+
+			announcePan(el, new FakePan());
+
+			expect(sidewaysThumbFor(el)?.style.width).toBe("25px");
+		});
+
+		it("places the thumb as far along the band as the pan has gone", () => {
+			const el = makePane();
+			const pan = new FakePan();
+			pan.offset = 150;
+
+			announcePan(el, pan);
+
+			expect(sidewaysThumbFor(el)?.style.left).toBe("87.5px");
+		});
+
+		it("moves the pan in proportion to how far the thumb is dragged", () => {
+			const el = makePane();
+			const pan = new FakePan();
+			announcePan(el, pan);
+
+			sidewaysThumbFor(el)?.dispatchEvent(
+				new MouseEvent("pointerdown", { bubbles: true, clientX: 60 }),
+			);
+			window.dispatchEvent(
+				new MouseEvent("pointermove", { bubbles: true, clientX: 85 }),
+			);
+
+			expect(pan.offset).toBe(100);
+		});
+
+		it("removes the thumb once the pan stops", () => {
+			const el = makePane();
+
+			announcePan(el, new FakePan());
+			vi.advanceTimersByTime(PAST_LINGER_MS);
+
+			expect(sidewaysThumbFor(el)).toBeNull();
+		});
+
+		it("keeps one thumb for a pan that goes on moving", () => {
+			const el = makePane();
+			const pan = new FakePan();
+
+			announcePan(el, pan);
+			announcePan(el, pan);
+
+			expect(document.body.querySelectorAll(`.${THUMB_CLASS}`)).toHaveLength(1);
+		});
+
+		// The pane cannot be scrolled sideways by the user, so its own sideways
+		// thumb stays away and the pan's is the only one along the edge.
+		it("carries the thumb along with its band when the pane scrolls", () => {
+			const el = makePane({ overflowX: "hidden" });
+			announcePan(el, new FakePan());
+
+			scrollSidewaysTo(el, 40);
+
+			expect(sidewaysThumbFor(el)?.style.left).toBe("10px");
 		});
 	});
 });

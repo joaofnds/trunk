@@ -112,6 +112,36 @@ const horizontal: ScrollAxis = {
 	},
 };
 
+/** An offset a component keeps itself rather than leaving to the engine, such
+ *  as the commit list's Graph pan. No `scroll` event reports it, so the
+ *  component announces each move with `announcePan`. */
+export interface Pan {
+	/** The pan's track, measured along the bottom edge of the pane it pans in. */
+	extent(pane: HTMLElement): ScrollAxisExtent;
+	scrollTo(offset: number): void;
+}
+
+const PAN_EVENT = "scrollbar-activity:pan";
+
+declare global {
+	interface DocumentEventMap {
+		[PAN_EVENT]: CustomEvent<Pan>;
+	}
+}
+
+/** Shows a thumb for a pan that just moved, as a scroll of its pane would. */
+export function announcePan(pane: HTMLElement, pan: Pan): void {
+	pane.dispatchEvent(new CustomEvent(PAN_EVENT, { detail: pan }));
+}
+
+function panAxis(pan: Pan): ScrollAxis {
+	return {
+		...horizontal,
+		extent: (el) => pan.extent(el),
+		scrollTo: (_el, offset) => pan.scrollTo(offset),
+	};
+}
+
 /** Whether the user can scroll this pane sideways, rather than only a script. */
 function scrollsSideways(el: HTMLElement): boolean {
 	const { overflowX } = getComputedStyle(el);
@@ -119,7 +149,8 @@ function scrollsSideways(el: HTMLElement): boolean {
 }
 
 /** One capture-phase listener covers every scroller in the app, including ones
- *  added later: `scroll` doesn't bubble, but it does capture.
+ *  added later: `scroll` doesn't bubble, but it does capture. A second catches
+ *  the pans components announce, which no `scroll` event reports.
  *
  *  The native scrollbar is hidden everywhere (`::-webkit-scrollbar { display:
  *  none }` in app.css) rather than styled: WebKit and Blink both drop overlay
@@ -140,6 +171,7 @@ export function trackScrollActivity(): () => void {
 	const hideTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
 	const thumbs = new Map<HTMLElement, Map<ScrollAxis, HTMLDivElement>>();
 	const lastScrollLeft = new WeakMap<HTMLElement, number>();
+	const panAxes = new WeakMap<Pan, ScrollAxis>();
 	let drag: {
 		el: HTMLElement;
 		axis: ScrollAxis;
@@ -215,6 +247,10 @@ export function trackScrollActivity(): () => void {
 		const el = event.target;
 		if (!(el instanceof HTMLElement)) return;
 
+		// A pan's band is a column of the table its pane scrolls, so a pan's
+		// thumb that is up moves with the pane even though the pan did not.
+		for (const axis of thumbs.get(el)?.keys() ?? []) paint(el, axis);
+
 		// A pane with some incidental sideways overflow shows no sideways thumb
 		// while it scrolls up and down; only a sideways scroll brings one.
 		const movedSideways = el.scrollLeft !== (lastScrollLeft.get(el) ?? 0);
@@ -229,6 +265,21 @@ export function trackScrollActivity(): () => void {
 
 		if (showsVertical) paint(el, vertical);
 		if (showsHorizontal) paint(el, horizontal);
+		settle(el);
+	}
+
+	function onPan(event: CustomEvent<Pan>) {
+		const el = event.target;
+		if (!(el instanceof HTMLElement)) return;
+
+		const pan = event.detail;
+		let axis = panAxes.get(pan);
+		if (!axis) {
+			axis = panAxis(pan);
+			panAxes.set(pan, axis);
+		}
+
+		paint(el, axis);
 		settle(el);
 	}
 
@@ -261,12 +312,14 @@ export function trackScrollActivity(): () => void {
 	}
 
 	document.addEventListener("scroll", onScroll, true);
+	document.addEventListener(PAN_EVENT, onPan, true);
 	window.addEventListener("pointermove", onPointerMove);
 	window.addEventListener("pointerup", onPointerUp);
 	window.addEventListener("pointercancel", onPointerUp);
 
 	return () => {
 		document.removeEventListener("scroll", onScroll, true);
+		document.removeEventListener(PAN_EVENT, onPan, true);
 		window.removeEventListener("pointermove", onPointerMove);
 		window.removeEventListener("pointerup", onPointerUp);
 		window.removeEventListener("pointercancel", onPointerUp);
