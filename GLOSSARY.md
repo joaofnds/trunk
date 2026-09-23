@@ -28,7 +28,11 @@ dot marks the commit; the rail is what joins one dot to the next.
 **Graph pan** — the horizontal offset that scrolls the graph column through lanes too far
 right to fit in it, so no lane is unreachable when the column is narrow. Rails move with it
 and fade at the column's edges; a dot whose lane has panned past an edge stays visible,
-pulled in to that edge, so every commit on screen keeps its mark.
+pulled in to that edge, so every commit on screen keeps its mark. A thumb under the column
+shows the pan while it moves. A swipe that carries on past the pan's end in either
+direction scrolls the table instead, as a page takes over once a section inside it runs
+out, and a double-click on the Graph divider returns the pan to its start as it refits the
+column.
 
 **Linear continuation** — a commit chain connected to a given commit by unbroken first-parent
 links, with no intervening fork. A branch that is strictly ahead of another on the same line

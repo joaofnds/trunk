@@ -82,6 +82,7 @@ import { buildRefPillData, overflowBadgeWidth } from "../lib/ref-pill-data.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
 import { createHorizontalScrollSync } from "../lib/scroll-sync.js";
+import { announcePan, type Pan } from "../lib/scrollbar-activity.js";
 import {
 	type ColumnVisibility,
 	type ColumnWidths,
@@ -364,10 +365,33 @@ $effect(() => {
 	if (graphScrollX > maxGraphScrollX) graphScrollX = maxGraphScrollX;
 });
 
-// GRAPH-02: a sideways gesture over the Graph column pans its lanes, and anywhere
-// else it scrolls the table. While the table can scroll sideways the pan cancels
-// the gesture, or the table would move under it too, and applies its vertical
-// part here instead; a table that fits leaves the gesture to the engine.
+/** Where the Graph column starts in the table, before any sideways scroll. */
+const graphStart = $derived(columnVisibility.ref ? columnWidths.ref : 0);
+
+// The pan as the scrollbar tracker sees it: a track as wide as the Graph column,
+// wherever the table's own sideways scroll has carried that column.
+const graphPan: Pan = {
+	extent(viewport) {
+		const left = viewport.getBoundingClientRect().left - viewport.scrollLeft;
+		return {
+			trackStart: left + graphStart,
+			trackLength: columnWidths.graph,
+			offset: graphScrollX,
+			scrollLength: columnWidths.graph + maxGraphScrollX,
+			clientLength: columnWidths.graph,
+		};
+	},
+	scrollTo(offset) {
+		graphScrollX = offset;
+	},
+};
+
+// GRAPH-02: a sideways gesture over the Graph column pans its lanes until they
+// reach their end in its direction, and from there, or anywhere else, it
+// scrolls the table: a page takes over the scroll the same way once a section
+// inside it reaches its end. While the table can scroll sideways the pan
+// cancels the gesture, or the table would move under it too, and applies its
+// vertical part here instead; a table that fits leaves the gesture to the engine.
 function panGraph(event: WheelEvent & { currentTarget: HTMLElement }) {
 	if (maxGraphScrollX <= 0 || event.deltaX === 0) return;
 
@@ -375,19 +399,22 @@ function panGraph(event: WheelEvent & { currentTarget: HTMLElement }) {
 	const rect = event.currentTarget.getBoundingClientRect();
 	const pointerX =
 		event.clientX - rect.left - COLUMN_PADDING_X + (viewport?.scrollLeft ?? 0);
-	const graphStart = columnVisibility.ref ? columnWidths.ref : 0;
 	const graphEnd =
 		graphStart + (columnVisibility.graph ? columnWidths.graph : 0);
 	if (pointerX < graphStart || pointerX > graphEnd) return;
+
+	const panned = Math.max(
+		0,
+		Math.min(maxGraphScrollX, graphScrollX + event.deltaX),
+	);
+	if (panned === graphScrollX) return;
 
 	if (viewport && viewport.scrollWidth > viewport.clientWidth) {
 		event.preventDefault();
 		viewport.scrollTop += event.deltaY;
 	}
-	graphScrollX = Math.max(
-		0,
-		Math.min(maxGraphScrollX, graphScrollX + event.deltaX),
-	);
+	graphScrollX = panned;
+	if (viewport) announcePan(viewport, graphPan);
 }
 
 const headerMins = headerMinWidths(measureTextWidth);
@@ -553,12 +580,15 @@ function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
 	window.addEventListener("mouseup", onMouseUp);
 }
 
-/** Hands a column back to its fit, the one way out of a user width. */
+/** Hands a column back to its fit, the one way out of a user width, and the
+ *  Graph column's lanes back to their start. */
 function refitColumn(column: keyof ColumnWidths) {
 	const remaining = new Set(userSizedColumns);
 	remaining.delete(column);
 	userSizedColumns = remaining;
 	saveColumnLayout(columnWidths, remaining);
+
+	if (column === "graph") graphScrollX = 0;
 }
 
 /**

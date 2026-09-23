@@ -9,7 +9,7 @@ re-derive wrongly.
 | File | Holds |
 |---|---|
 | `src/app.css` | `::-webkit-scrollbar { display: none }`, applied to everything, and the `.scrollbar-overlay-thumb` class the tracker paints. |
-| `src/lib/scrollbar-activity.ts` | The tracker. One capture-phase `scroll` listener covers every scroller in the app, creates and positions the thumb, and runs the drag. |
+| `src/lib/scrollbar-activity.ts` | The tracker. One capture-phase `scroll` listener covers every scroller in the app, creates and positions the thumb, and runs the drag. A second catches the pans components announce with `announcePan`. |
 | `src/lib/app-services.ts` | Wires the tracker once, at startup. |
 | `src/lib/scroll-sync.ts` | Mirrors one scroller's `scrollLeft` onto others: the commit list's header follows its rows through it, and the rendered diff's split columns pan as one. |
 | `src/components/VirtualList.svelte` | Sizes a virtual list's content, which decides whether a pane has anything to scroll at all. |
@@ -64,6 +64,30 @@ shows the vertical thumb too wherever the pane has a vertical range.
 
 Each thumb carries `data-axis`, `vertical` or `horizontal`, and `app.css` gives it its 5px
 thickness by that name, so a thumb without it paints nothing.
+
+## A pan the engine does not run
+
+The commit list's Graph column pans its lanes with an offset the component keeps itself
+(GLOSSARY "Graph pan"). No `scroll` event reports it, so the component announces each
+move with `announcePan(pane, pan)`: a DOM event on the pane it pans inside, which the
+tracker catches in the capture phase as it catches `scroll`. The `Pan` it carries says
+where its track lies and how far it has gone, as a `ScrollAxisExtent`, and how to move
+it, so the thumb is an ordinary sideways thumb: painted along the pane's bottom edge,
+under the pane's shared linger, and dragged through `dragScrollPosition()` into the
+pan's own `scrollTo`.
+
+A pan's track is a column of the table its pane scrolls sideways, so whenever the pane
+scrolls, every thumb it has up is repainted, and a pan's thumb follows its column
+rather than staying where the column was.
+
+The Graph pan's thumb and the table's own sideways thumb share that bottom edge. A swipe
+that carries on past the pan's end scrolls the table, so both can be up at once, and
+then the pan's thumb lies inside the table's.
+
+The other shape, the pan as a real horizontal scroll container, is not taken: the rails
+and dots are one SVG as tall as the list inside the virtual list's content, and a
+scroller over the Graph band would sit over the rows' clicks and take the vertical
+wheel.
 
 ## Dragging it
 

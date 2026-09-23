@@ -106,17 +106,25 @@ of 742 against a `clientWidth` of 692; a long pill hovered at a 280px list left 
 against 272. Either range is one `overflow-x: auto` would let the user scroll into. With
 `overflow-x: clip` on the content both measure their `clientWidth`, 692 and 272.
 
-A sideways gesture over a Graph column narrower than its lanes still pans them, and
-anywhere else it scrolls the table. While the table can scroll sideways the pan cancels
-the gesture, or the table would move under it too, and applies the gesture's vertical
-part to the list itself, so a diagonal swipe over the lanes still scrolls the commits.
+A sideways gesture over a Graph column narrower than its lanes still pans them, until
+they reach their end in the gesture's direction; past that end, and anywhere else, it
+scrolls the table. That is the product owner's rule, 2026-09-23, taken from how a
+browser scrolls a page with a scrollable section in it: the section scrolls to its end
+first, and scrolling on from there moves the page. Each wheel event goes one way or the
+other: one that finds the lanes already at their end goes to the engine whole, and the
+part of one that overshoots the end is dropped rather than handed on. When the pan does
+move and the table can scroll sideways, the pan cancels the gesture, or the table would
+move under it too, and applies the gesture's vertical part to the list itself, so a
+diagonal swipe over the lanes still scrolls the commits.
 That part is added as pixels without reading `deltaMode`, so a wheel reporting lines,
 not tried, would move the list by the line count in pixels. A table that fits has
 nothing to move sideways, and the engine keeps the gesture. The pointer is read in table
 coordinates, past however far the table has scrolled.
 
 The sideways thumb is the scrollbar tracker's, shown only while the table scrolls, as
-`docs/architecture/scrollbars.md` settles for every thumb.
+`docs/architecture/scrollbars.md` settles for every thumb. The pan gets a thumb of its
+own, along the Graph column's width at the list's bottom edge, which the component
+announces to the tracker because no scroll event reports a pan.
 
 Not taken: shrinking user widths to fit, which is the ceiling the product owner refused
 above; pinning Graph or Branch/Tag while the rest scrolls, since once Message is at its
@@ -171,7 +179,10 @@ wrote the set could land after a double-click that had just cleared it.
 A restored width does not grow to meet content. The user's number wins until they
 double-click the column's divider, which hands the column back to its fit and drops
 it from `resized_columns`. That is the one way back, which is what makes a stored
-user width safe to keep; AG Grid and MUI both refit on a divider double-click.
+user width safe to keep; AG Grid and MUI both refit on a divider double-click. On the
+Graph divider it also returns the pan to its start. Graph's fit is capped at a third of
+the row, so a refitted column can still be narrower than its lanes, and a pan left
+where it was would keep the lanes it had scrolled out of the view there.
 
 Before this, the restore replaced the whole object after the fits had already run.
 Those effects read the widths untracked, so nothing re-ran to correct it, and every

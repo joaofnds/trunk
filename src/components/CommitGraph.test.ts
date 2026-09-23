@@ -10,6 +10,7 @@ import { columnWidthProperty, MESSAGE_FLOOR } from "../lib/column-widths.js";
 import { COLUMN_PADDING_X, LANE_WIDTH } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
+import { THUMB_CLASS, trackScrollActivity } from "../lib/scrollbar-activity.js";
 import { resetCache } from "../lib/text-measure.js";
 import type { ReviewTone } from "../lib/types.js";
 import CommitGraph from "./CommitGraph.svelte";
@@ -193,12 +194,56 @@ function renderedWidth(cell: HTMLElement): string {
 	return getComputedStyle(cell).getPropertyValue(reference[1]).trim();
 }
 
+// Reports the commit list at a width the test sets, and nothing else, so the
+// virtual list keeps the observer it gets everywhere else.
+const unobservedResizeObserver = globalThis.ResizeObserver;
+
+function observeListAt(width: number) {
+	const lists: { callback: ResizeObserverCallback; list: Element }[] = [];
+	const report = (
+		target: { callback: ResizeObserverCallback; list: Element },
+		w: number,
+	) =>
+		target.callback(
+			[
+				{
+					target: target.list,
+					contentRect: { width: w },
+				} as ResizeObserverEntry,
+			],
+			{} as ResizeObserver,
+		);
+
+	globalThis.ResizeObserver = class {
+		constructor(private readonly callback: ResizeObserverCallback) {}
+		observe(target: Element) {
+			if (target.getAttribute("role") !== "listbox") return;
+			const observed = { callback: this.callback, list: target };
+			lists.push(observed);
+			queueMicrotask(() => report(observed, width));
+		}
+		unobserve() {}
+		disconnect() {}
+	} as unknown as typeof ResizeObserver;
+
+	return {
+		resize: async (w: number) => {
+			for (const observed of lists) report(observed, w);
+			await flush();
+		},
+	};
+}
+
 beforeEach(() => {
 	searchToggleHandlers = [];
 	vi.clearAllMocks();
 	menuActions.clear();
 	resetCache();
 	installReads();
+});
+
+afterEach(() => {
+	globalThis.ResizeObserver = unobservedResizeObserver;
 });
 
 describe("CommitGraph", () => {
@@ -724,8 +769,9 @@ describe("CommitGraph", () => {
 	describe("a sideways wheel", () => {
 		const graphWidth = LANE_WIDTH + 2 * COLUMN_PADDING_X;
 
-		// A column the user narrowed to one lane, holding `lanes` of them.
-		function mountGraph(lanes: number) {
+		// A column the user narrowed, to one lane unless told otherwise, holding
+		// `lanes` of them.
+		function mountGraph(lanes: number, width = graphWidth) {
 			installReads({
 				override: (cmd, args) => {
 					if (cmd === "get_commit_graph" || cmd === "refresh_commit_graph")
@@ -735,7 +781,7 @@ describe("CommitGraph", () => {
 						});
 					if (cmd !== "prefs_get") return undefined;
 					if (args?.key === "column_widths")
-						return Promise.resolve({ graph: graphWidth });
+						return Promise.resolve({ graph: width });
 					if (args?.key === "resized_columns")
 						return Promise.resolve(["graph"]);
 					if (args?.key === "column_visibility")
@@ -879,6 +925,101 @@ describe("CommitGraph", () => {
 
 				expect(listViewport(container).scrollTop).toBe(30);
 			});
+
+			// As a page takes over the scroll once a section inside it reaches its
+			// end (João, 2026-09-23).
+			it("hands the gesture on to the table once the lanes reach their end", async () => {
+				const { container } = mountGraph(4);
+				await flush();
+				scrollTableSideways(container);
+				wheelAt(container, 5, { deltaX: 1000 });
+				await tick();
+				const end = lanesOffset(container);
+
+				const event = wheelAt(container, 5, { deltaX: 10 });
+				await tick();
+
+				expect({
+					prevented: event.defaultPrevented,
+					lanes: lanesOffset(container),
+				}).toEqual({ prevented: false, lanes: end });
+			});
+
+			it("hands a gesture back toward the start on to the table while the lanes are at their start", async () => {
+				const { container } = mountGraph(4);
+				await flush();
+				scrollTableSideways(container);
+
+				const event = wheelAt(container, 5, { deltaX: -10 });
+
+				expect(event.defaultPrevented).toBe(false);
+			});
+		});
+
+		// A 568px list lays its rows out in 560px, and a third of that, 186px, is
+		// the most a fit gives forty lanes, so the refitted column still pans.
+		it("returns the lanes to their start when the Graph divider is double-clicked", async () => {
+			observeListAt(568);
+			const { container } = mountGraph(40, 100);
+			await flush();
+			const start = lanesOffset(container);
+			wheelAt(container, 5, { deltaX: 50 });
+			await tick();
+
+			await fireEvent.dblClick(
+				container.querySelector(
+					"[data-testid=column-header] > [data-column=graph] .col-resize-handle",
+				) as Element,
+			);
+			await flush();
+
+			expect(lanesOffset(container)).toBe(start);
+		});
+
+		describe("with the scrollbar tracker running", () => {
+			let stopTracking: () => void;
+
+			beforeEach(() => {
+				stopTracking = trackScrollActivity();
+			});
+
+			afterEach(() => {
+				stopTracking();
+			});
+
+			function sidewaysThumb(): HTMLElement | null {
+				return document.querySelector(`.${THUMB_CLASS}[data-axis=horizontal]`);
+			}
+
+			it("shows a sideways thumb while it pans the lanes", async () => {
+				const { container } = mountGraph(4);
+				await flush();
+
+				wheelAt(container, 5, { deltaX: 10 });
+
+				expect(sidewaysThumb()).not.toBeNull();
+			});
+
+			// A 100px column over 40 lanes pans 548px, and its thumb travels the
+			// 76px the 24px thumb leaves of the column, so half of that is 274.
+			it("pans the lanes as far as the thumb is dragged", async () => {
+				const { container } = mountGraph(40, 100);
+				await flush();
+				wheelAt(container, 5, { deltaX: 10 });
+				await tick();
+				const before = lanesOffset(container);
+
+				sidewaysThumb()?.dispatchEvent(
+					new MouseEvent("pointerdown", { bubbles: true, clientX: 0 }),
+				);
+				window.dispatchEvent(
+					new MouseEvent("pointermove", { bubbles: true, clientX: 38 }),
+				);
+				window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+				await tick();
+
+				expect(lanesOffset(container)).toBe(before - 274);
+			});
 		});
 
 		describe("when the table fits the list", () => {
@@ -999,50 +1140,6 @@ describe("CommitGraph", () => {
 		});
 
 		describe("inside a list of known width", () => {
-			// Reports the commit list at a width the test sets, and nothing else,
-			// so the virtual list keeps the observer it gets everywhere else.
-			const unobservedResizeObserver = globalThis.ResizeObserver;
-
-			afterEach(() => {
-				globalThis.ResizeObserver = unobservedResizeObserver;
-			});
-
-			function observeListAt(width: number) {
-				const lists: { callback: ResizeObserverCallback; list: Element }[] = [];
-				const report = (
-					target: { callback: ResizeObserverCallback; list: Element },
-					w: number,
-				) =>
-					target.callback(
-						[
-							{
-								target: target.list,
-								contentRect: { width: w },
-							} as ResizeObserverEntry,
-						],
-						{} as ResizeObserver,
-					);
-
-				globalThis.ResizeObserver = class {
-					constructor(private readonly callback: ResizeObserverCallback) {}
-					observe(target: Element) {
-						if (target.getAttribute("role") !== "listbox") return;
-						const observed = { callback: this.callback, list: target };
-						lists.push(observed);
-						queueMicrotask(() => report(observed, width));
-					}
-					unobserve() {}
-					disconnect() {}
-				} as unknown as typeof ResizeObserver;
-
-				return {
-					resize: async (w: number) => {
-						for (const observed of lists) report(observed, w);
-						await flush();
-					},
-				};
-			}
-
 			const everyColumnShown = {
 				ref: true,
 				graph: true,
