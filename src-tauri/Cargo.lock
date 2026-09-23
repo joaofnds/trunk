@@ -5259,7 +5259,6 @@ dependencies = [
  "clap",
  "comrak",
  "criterion",
- "getrandom 0.4.3",
  "git2",
  "libc",
  "notify",
@@ -5281,8 +5280,8 @@ dependencies = [
  "tauri-plugin-window-state",
  "tempfile",
  "tokio",
- "trunk",
  "trunk-git",
+ "trunk-review",
  "two-face",
  "windows-sys 0.61.2",
  "yaml-rust",
@@ -5308,6 +5307,19 @@ dependencies = [
  "serde_json",
  "tempfile",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "trunk-review"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "git2",
+ "libc",
+ "rusqlite",
+ "serde",
+ "tempfile",
+ "trunk-git",
 ]
 
 [[package]]

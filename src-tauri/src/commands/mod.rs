@@ -14,7 +14,7 @@ pub(crate) fn resolve_data_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf
 /// must agree with Tauri's resolver — a disagreement means the app and the
 /// CLI would silently run two stores, so it is refused, never papered over.
 pub(crate) fn store_data_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
-    let derived = crate::review::reviewdb::data_dir_for(&app.config().identifier);
+    let derived = trunk_review::reviewdb::data_dir_for(&app.config().identifier);
     if std::env::var_os("TRUNK_DATA_DIR").is_some() {
         return Ok(derived);
     }

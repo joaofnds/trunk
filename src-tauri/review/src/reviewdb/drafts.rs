@@ -6,7 +6,7 @@
 //! why this cannot be solved by moving auto-creation back to composer open.
 
 use super::{anchor, repo_key, sqlite_error};
-use crate::review::types::Anchor;
+use crate::types::Anchor;
 use rusqlite::Connection;
 use serde::Serialize;
 use std::path::Path;

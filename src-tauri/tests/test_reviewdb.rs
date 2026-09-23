@@ -8,13 +8,13 @@ use common::repository_manifest::repository_manifest;
 use trunk_lib::commands::review::{
     SubmitThreadRequest, list_threads_inner, set_thread_state_inner, submit_thread_inner,
 };
-use trunk_lib::review::types::{Anchor, Side, Source};
-use trunk_lib::review::types::{Channel, ThreadState};
+use trunk_review::types::{Anchor, Side, Source};
+use trunk_review::types::{Channel, ThreadState};
 
 /// A sweep clock past every test's mint time plus the in-flight grace window,
 /// so a test that wants the grace window's protection asks for it explicitly.
-const SWEEP_NOW: i64 = 10_000 + trunk_lib::review::reviewdb::pins::IN_FLIGHT_GRACE_SECS;
-use trunk_lib::review::reviewdb::{self, reviews::ReviewState};
+const SWEEP_NOW: i64 = 10_000 + trunk_review::reviewdb::pins::IN_FLIGHT_GRACE_SECS;
+use trunk_review::reviewdb::{self, reviews::ReviewState};
 
 /// A commit-set member with the subject a test stores it under.
 fn member(oid: &str, subject: &str) -> reviewdb::commits::ReviewCommit {
@@ -128,7 +128,7 @@ fn a_current_file_thread_stores_its_pinned_block_and_ordinal() {
             text: "pin this".into(),
             anchor: None,
             commit_oid: None,
-            content_pin: Some(trunk_lib::review::types::ContentPin {
+            content_pin: Some(trunk_review::types::ContentPin {
                 file_path: "src/main.rs".into(),
                 block: "fn main() {}".into(),
                 ordinal: 1,
@@ -1244,7 +1244,6 @@ fn poll_announces_a_foreign_commit_on_the_next_cycle() {
 /// thread, not the spawned one, or a foreign write landing before the spawned
 /// thread is first scheduled is silently never announced. Asserts thread
 /// identity rather than timing, so it cannot pass by winning a race.
-#[cfg(feature = "test-util")]
 #[test]
 fn the_poll_baseline_is_read_on_the_calling_thread() {
     let ctx = TestContext::builder()
@@ -1600,12 +1599,12 @@ fn review_deletion_touches_no_refs() {
 
 // ── Tasks 5–8: list, derived state, rename, active pointer, publish, delete ──
 
-use trunk_lib::review::reviewdb::Store;
+use trunk_review::reviewdb::Store;
 
 fn only_review(
     store: &Store,
     canonical: &std::path::Path,
-) -> trunk_lib::review::reviewdb::reviews::Review {
+) -> trunk_review::reviewdb::reviews::Review {
     store
         .read(|c| reviewdb::reviews::list(c, canonical))
         .unwrap()
@@ -2248,7 +2247,7 @@ fn publish_leaves_the_pointer_on_the_published_review() {
 
 // ── Milestone 2, Task 2: the transition matrix ───────────────────────────────
 // The matrix itself is pinned by `the_transition_matrix_is_exact` and its
-// companions, unit tests beside `ThreadState::transition` in `review/types.rs`
+// companions, unit tests beside `ThreadState::transition` in `review/src/types.rs`
 // (moved with the function, TRUNK-17). What stays here is the I/O seam.
 
 /// `set_thread_state_inner` is the UI-facing seam and always claims
@@ -2287,7 +2286,7 @@ fn schema_rejects(column: &str, value: &str) {
                 &format!("UPDATE threads SET {column} = '{value}' WHERE id = ?1"),
                 [&thread_id],
             )
-            .map_err(trunk_lib::review::reviewdb::sqlite_error)
+            .map_err(trunk_review::reviewdb::sqlite_error)
         })
         .unwrap_err();
 
@@ -2691,7 +2690,7 @@ fn editing_an_agent_thread_is_refused() {
                 "UPDATE threads SET channel = 'agent' WHERE id = ?1",
                 [&thread_id],
             )
-            .map_err(trunk_lib::review::reviewdb::sqlite_error)
+            .map_err(trunk_review::reviewdb::sqlite_error)
         })
         .unwrap();
 
@@ -4993,7 +4992,7 @@ fn a_repo_with_a_pinned_block(
             text: "look at this".into(),
             anchor: None,
             commit_oid: None,
-            content_pin: Some(trunk_lib::review::types::ContentPin {
+            content_pin: Some(trunk_review::types::ContentPin {
                 file_path: path.into(),
                 block: block.into(),
                 ordinal,

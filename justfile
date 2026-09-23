@@ -182,9 +182,9 @@ clippy:
     cargo clippy --workspace --manifest-path {{manifest}} --all-targets -- -D warnings
 
 # Clippy the configuration that actually ships. `clippy` above passes
-# --all-targets, which pulls in the dev targets, and the dev-dependency on
-# ourselves turns `test-util` on for all of them — so the feature-off build is
-# the one configuration nothing else compiles. Without this recipe, code that
+# --all-targets, which pulls in the dev targets, and the app's dev-dependencies
+# on trunk-git and trunk-review turn `test-util` on for all of them, so the
+# feature-off build is the one configuration nothing else compiles. Without this recipe, code that
 # reads a `test-util`-gated field from ungated code passes `just check` and
 # fails only at `tauri build`.
 clippy-shipped:

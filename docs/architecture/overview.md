@@ -34,6 +34,7 @@
 │  src-tauri/src/lib.rs — app setup, plugin registration, invoke table │
 │  src-tauri/src/commands/ — one file per domain (12 command modules)  │
 │  src-tauri/git/src/ — git2-based logic (graph, repository, types)    │
+│  src-tauri/review/src/ — review store, document, comment resolution  │
 │  src-tauri/src/state.rs — Tauri-managed shared state (Mutex-wrapped) │
 │  src-tauri/src/watcher.rs — notify-based fs watcher                  │
 │  src-tauri/src/shell_env.rs — macOS PATH resolution                  │
@@ -126,7 +127,7 @@
 - Purpose: Receive IPC calls, validate state, dispatch to git layer
 - Location: `src-tauri/src/commands/`
 - Contains: 12 command modules, each a thin coordinator (open repo from state, call git fn, update cache, emit events)
-- Depends on: `src-tauri/git/src/`, `src-tauri/src/state.rs`
+- Depends on: `src-tauri/git/src/`, `src-tauri/review/src/`, `src-tauri/src/state.rs`
 - Used by: Frontend via `invoke()`
 
 **Git Abstraction Layer:**
@@ -134,7 +135,14 @@
 - Location: `src-tauri/git/src/`, the `trunk-git` crate
 - Contains: `graph.rs` (the repository read), `placement.rs` (the pure lane algorithm), `graph_input.rs` (page hydration), `repository.rs` (shared helpers), `types.rs` (DTOs), `error.rs` (`TrunkError`)
 - Depends on: `git2` crate. Not on Tauri or the review domain, which its manifest does not list
-- Used by: `src-tauri/src/commands/`
+- Used by: `src-tauri/src/commands/`, `src-tauri/review/src/`
+
+**Review Domain Layer:**
+- Purpose: The code review store and the review document, shared by the review commands and the `trunk review` CLI
+- Location: `src-tauri/review/src/`, the `trunk-review` crate
+- Contains: `reviewdb/` (the SQLite store), `doc.rs` (the review document renderer), `resolution.rs` (whether a comment still resolves against the repository), `range.rs` (review session ranges), `types.rs` (the review vocabulary and session schema)
+- Depends on: `trunk-git`, `rusqlite`. Not on Tauri or syntax highlighting, which its manifest does not list
+- Used by: `src-tauri/src/commands/review.rs`, `src-tauri/src/cli/`
 
 **Managed State Layer:**
 - Purpose: Cross-command shared state, Tauri-managed singletons

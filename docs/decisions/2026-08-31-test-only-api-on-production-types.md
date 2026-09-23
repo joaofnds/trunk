@@ -30,7 +30,7 @@ wins:
 |---|---|
 | `#[cfg(test)]` on the method | Does not work. Integration suites are separate crates; the cfg is false when they compile the library. |
 | Redesign so the state is observable through the normal API | Real work, and it warps the production design around a test's needs. For TRUNK-59 this meant a second unix socket and redoing the barrier's ordering proof. |
-| **Non-default cargo feature** | A `#[cfg(feature = "test-util")]` per item, plus a dev-dependency on ourselves. Nothing ships. |
+| **Non-default cargo feature** | A `#[cfg(feature = "test-util")]` per item, plus a dev-dependency that turns it on for tests. Nothing ships. |
 
 ## Prior art
 
@@ -56,20 +56,30 @@ not.
 
 ## How it is wired here
 
-`src-tauri/Cargo.toml`:
+The crate that owns the affordance declares the feature. `trunk-review` has it
+for the `StoreEvents` and poll affordances, and `trunk-git` for the
+`blob_reader::test_repo` fixture the app's markdown tests share. Each of
+`src-tauri/review/Cargo.toml` and `src-tauri/git/Cargo.toml` has:
 
 ```toml
 [features]
 test-util = []
-
-[dev-dependencies]
-trunk = { path = ".", features = ["test-util"] }
 ```
 
-The dev-dependency on ourselves is the documented cargo mechanism for enabling
-a crate's own feature for its test targets. With it in place, `just check` needs
-no extra flags — `cargo test` picks the feature up through the dev-dependency
-graph.
+and the app turns both on for its test and bench targets in `src-tauri/Cargo.toml`:
+
+```toml
+[dev-dependencies]
+trunk-git = { path = "git", features = ["test-util"] }
+trunk-review = { path = "review", features = ["test-util"] }
+```
+
+A dev-dependency is the documented cargo mechanism for enabling a feature for
+test targets only. With it in place, `just check` needs no extra flags, because
+`cargo test` picks the feature up through the dev-dependency graph. An
+affordance the owning crate's own unit tests also call, as `test_repo` is,
+needs `#[cfg(any(test, feature = "test-util"))]`, because `cargo test -p
+trunk-git` resolves that crate alone and leaves the feature off.
 
 Gate the fields and channels too, not only the methods, or the default build
 warns about members nothing reads.
@@ -83,13 +93,16 @@ happily call a gated method. That says nothing about what ships.
 The check that means something:
 
 ```
-cargo build --lib --release
-nm target/release/libtrunk_lib.rlib | grep -oE "11StoreEvents[0-9]+(sync|baseline|try_recv)"
+cargo build --release --lib -p trunk-git -p trunk-review
+nm target/release/libtrunk_review.rlib | grep -oE "11StoreEvents[0-9]+(sync|baseline|try_recv)"
+nm target/release/libtrunk_git.rlib | grep -oE "9test_repo"
 ```
 
-Empty output, while `StoreEvents4recv` is present, is the proof.
+Empty output from both, while `StoreEvents4recv` and `11blob_reader` are
+present, is the proof. Run from `src-tauri`, or read the target directory
+from `cargo metadata` when `CARGO_TARGET_DIR` is set.
 
-**There is no flag that builds the suites with the feature off.** The self
+**There is no flag that builds the suites with the feature off.** The
 dev-dependency is unconditional, so `--no-default-features` does not reach it —
 `test-util` is not a *default* feature, it is enabled through a dependency
 edge. `cargo build --tests --no-default-features` succeeds, and it succeeds

@@ -6,7 +6,7 @@
 //! out-of-bounds range. The classifier mirrors `intersect_graph_order`: pure,
 //! one entry per input, never drops, never panics (D-08, threat T-69-10).
 
-use crate::review::types::Comment;
+use crate::types::Comment;
 use serde::Serialize;
 use std::path::Path;
 
@@ -45,10 +45,10 @@ pub struct CommentResolution {
 /// `Ok(())` when resolvable, `Err(reason)` for the orphan kind. Pure helper so
 /// `resolve_all` reads as a flat per-comment match; never panics.
 pub(crate) fn classify_anchor(
-    anchor: &crate::review::types::Anchor,
+    anchor: &crate::types::Anchor,
     repo: &git2::Repository,
 ) -> Result<(), OrphanReason> {
-    use crate::review::types::Side;
+    use crate::types::Side;
 
     // The anchor carries its OWN commit_oid (the commit the line numbers index
     // into), distinct from a commit-level comment's top-level commit_oid.
@@ -98,14 +98,14 @@ pub(crate) fn classify_anchor(
 /// and its pinned block must still occur in it; where it does not, the comment
 /// is an orphan even though nothing about the repository's history changed.
 fn classify_pin(
-    pin: &crate::review::types::ContentPin,
+    pin: &crate::types::ContentPin,
     repo: &git2::Repository,
 ) -> Result<(), OrphanReason> {
     let bytes = trunk_git::blob_reader::read_working_tree_file_without_links(repo, &pin.file_path)
         .map_err(|_| OrphanReason::FileGone)?;
     let text = String::from_utf8(bytes).map_err(|_| OrphanReason::FileGone)?;
 
-    if crate::review::reviewdb::stale::block_occurs(&text, &pin.block) {
+    if crate::reviewdb::stale::block_occurs(&text, &pin.block) {
         Ok(())
     } else {
         Err(OrphanReason::ContentGone)
@@ -161,7 +161,7 @@ pub fn resolve_all(comments: &[Comment], repo: &git2::Repository) -> Vec<Comment
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::review::types::{Anchor, Side, Source};
+    use crate::types::{Anchor, Side, Source};
     use git2::{Oid, Repository, Signature};
     use tempfile::TempDir;
 
@@ -475,7 +475,7 @@ mod tests {
 #[cfg(test)]
 mod current_file_tests {
     use super::*;
-    use crate::review::types::ContentPin;
+    use crate::types::ContentPin;
     use tempfile::TempDir;
 
     fn a_repo_holding(path: &str, contents: &str) -> (TempDir, git2::Repository) {

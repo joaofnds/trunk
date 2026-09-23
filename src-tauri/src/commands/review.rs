@@ -8,10 +8,6 @@
 //! Canonical-path keying: the repo's `PathBuf` is canonicalized so a repo opened
 //! via a symlink or alias reaches the same reviews.
 
-use crate::review::range::{compute_range_oids, intersect_graph_order, validate_range};
-use crate::review::resolution::{CommentResolution, resolve_all};
-use crate::review::reviewdb::{Store, commits, drafts, pins, replies, reviews, snapshots, threads};
-use crate::review::types::SessionCommit;
 use crate::state::{CommitCache, OpenRepos, RepoState, ReviewStoreState};
 use reviews::Review;
 use serde::Serialize;
@@ -19,6 +15,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
+use trunk_review::range::{compute_range_oids, intersect_graph_order, validate_range};
+use trunk_review::resolution::{CommentResolution, resolve_all};
+use trunk_review::reviewdb::{Store, commits, drafts, pins, replies, reviews, snapshots, threads};
+use trunk_review::types::SessionCommit;
 
 /// Look the repo up in `RepoState`'s map and canonicalize its `PathBuf`.
 /// Returns `not_open` when the path is not a currently-open repo.
@@ -38,7 +38,7 @@ fn open_cached(
     let mut slot = slot.lock().unwrap();
     let store = match slot.as_ref() {
         Some(store) => Arc::clone(store),
-        None => Arc::clone(slot.insert(Arc::new(crate::review::reviewdb::open(data_dir)?))),
+        None => Arc::clone(slot.insert(Arc::new(trunk_review::reviewdb::open(data_dir)?))),
     };
     drop(slot);
 
@@ -122,7 +122,7 @@ pub fn sweep_once(
         return;
     }
 
-    let now = crate::review::reviewdb::now_secs();
+    let now = trunk_review::reviewdb::now_secs();
     report_sweep(
         sweep_unanchored_pins(store, canonical, repo_path, now),
         canonical,
@@ -150,11 +150,11 @@ fn report_sweep(result: Result<usize, TrunkError>, canonical: &Path) {
 #[derive(Debug)]
 pub struct SubmitThreadRequest {
     pub text: String,
-    pub anchor: Option<crate::review::types::Anchor>,
+    pub anchor: Option<trunk_review::types::Anchor>,
     pub commit_oid: Option<String>,
     /// A current-file thread's target. Carries no commit oid, so a thread that
     /// has one is never a current-file thread and vice versa.
-    pub content_pin: Option<crate::review::types::ContentPin>,
+    pub content_pin: Option<trunk_review::types::ContentPin>,
     pub cached_excerpt: Option<String>,
     /// True for the diff composer's submit, which owns the draft row. A
     /// commit-level note is independent of the composer and must leave a
@@ -311,7 +311,7 @@ pub struct RenderedReply {
     pub id: String,
     pub text: String,
     pub text_html: String,
-    pub channel: crate::review::types::Channel,
+    pub channel: trunk_review::types::Channel,
     pub created_at: i64,
 }
 
@@ -338,17 +338,17 @@ pub struct RenderedThread {
     pub id: String,
     pub review_id: String,
     pub text: String,
-    pub anchor: Option<crate::review::types::Anchor>,
+    pub anchor: Option<trunk_review::types::Anchor>,
     pub cached_excerpt: Option<String>,
     pub commit_oid: Option<String>,
-    pub content_pin: Option<crate::review::types::ContentPin>,
+    pub content_pin: Option<trunk_review::types::ContentPin>,
     /// Where the backend most recently found the pinned block. The frontend
     /// renders at this line and performs no occurrence search of its own, so
     /// the two sides cannot disagree about what an occurrence is.
     pub resolved_start_line: Option<u32>,
-    pub state: crate::review::types::ThreadState,
+    pub state: trunk_review::types::ThreadState,
     pub stale: bool,
-    pub channel: crate::review::types::Channel,
+    pub channel: trunk_review::types::Channel,
     // The owning review's published bit (criterion 12): once set, the store
     // refuses to delete this thread or its replies, so the frontend needs it
     // to gate the Delete/Delete-reply controls it would otherwise offer.
@@ -357,7 +357,7 @@ pub struct RenderedThread {
     // the card presents them — `ThreadState::allowed_transitions` for
     // `Channel::Human`, precomputed here so the card never re-derives the
     // matrix. The CLI claims `Channel::Agent` and computes its own set.
-    pub allowed_transitions: Vec<crate::review::types::ThreadState>,
+    pub allowed_transitions: Vec<trunk_review::types::ThreadState>,
     pub text_html: String,
     pub replies: Vec<RenderedReply>,
 }
@@ -380,7 +380,7 @@ impl RenderedThread {
             published,
             allowed_transitions: t
                 .state
-                .allowed_transitions(crate::review::types::Channel::Human),
+                .allowed_transitions(trunk_review::types::Channel::Human),
             text_html,
             replies: replies.into_iter().map(RenderedReply::from_reply).collect(),
         }
@@ -426,7 +426,7 @@ pub fn list_threads_inner(
 pub async fn add_thread<R: Runtime>(
     path: String,
     text: String,
-    anchor: crate::review::types::Anchor,
+    anchor: trunk_review::types::Anchor,
     cached_excerpt: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
@@ -443,7 +443,7 @@ pub async fn add_thread<R: Runtime>(
         clears_draft: true,
     };
     let target = canonical.clone();
-    let now = crate::review::reviewdb::now_secs();
+    let now = trunk_review::reviewdb::now_secs();
     write_and_notify(&app, &canonical, move || {
         let repo = git2::Repository::open(&path).ok();
         submit_thread_into(&store, &target, repo.as_ref(), req, now)
@@ -485,7 +485,7 @@ pub fn submit_current_file_thread_inner(
         .map_err(|_| TrunkError::new("not_found", format!("{file_path} is not text")))?;
 
     let pin =
-        crate::review::reviewdb::stale::pin_range(&text_of_file, file_path, start_line, end_line)?;
+        trunk_review::reviewdb::stale::pin_range(&text_of_file, file_path, start_line, end_line)?;
 
     let req = SubmitThreadRequest {
         text: text.to_string(),
@@ -521,7 +521,7 @@ pub async fn add_current_file_thread<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    let now = crate::review::reviewdb::now_secs();
+    let now = trunk_review::reviewdb::now_secs();
     write_and_notify(&app, &canonical, move || {
         submit_current_file_thread_inner(
             &store, &target, &path, &file_path, start_line, end_line, &text, now,
@@ -561,7 +561,7 @@ pub async fn add_commit_thread<R: Runtime>(
         clears_draft: false,
     };
     let target = canonical.clone();
-    let now = crate::review::reviewdb::now_secs();
+    let now = trunk_review::reviewdb::now_secs();
     write_and_notify(&app, &canonical, move || {
         let repo = git2::Repository::open(&path).ok();
         submit_thread_into(&store, &target, repo.as_ref(), req, now)
@@ -592,7 +592,7 @@ pub async fn edit_thread<R: Runtime>(
 
     let target = canonical.clone();
     write_and_notify(&app, &canonical, move || {
-        let now = crate::review::reviewdb::now_secs();
+        let now = trunk_review::reviewdb::now_secs();
         store.write(|tx| threads::edit(tx, &target, &id, &text, now))
     })
     .await?;
@@ -648,7 +648,7 @@ pub fn add_reply_inner(
             repo_path,
             thread_id,
             text,
-            crate::review::types::Channel::Human,
+            trunk_review::types::Channel::Human,
             now,
         )
     })
@@ -675,7 +675,7 @@ pub async fn add_reply<R: Runtime>(
 
     let target = canonical.clone();
     write_and_notify(&app, &canonical, move || {
-        let now = crate::review::reviewdb::now_secs();
+        let now = trunk_review::reviewdb::now_secs();
         add_reply_inner(&store, &target, &thread_id, &text, now)
     })
     .await?;
@@ -712,7 +712,7 @@ pub async fn edit_reply<R: Runtime>(
 
     let target = canonical.clone();
     write_and_notify(&app, &canonical, move || {
-        let now = crate::review::reviewdb::now_secs();
+        let now = trunk_review::reviewdb::now_secs();
         store.write(|tx| replies::edit(tx, &target, &id, &text, now))
     })
     .await?;
@@ -762,7 +762,7 @@ pub fn set_thread_state_inner(
     store: &Store,
     canonical: &Path,
     id: &str,
-    next: crate::review::types::ThreadState,
+    next: trunk_review::types::ThreadState,
     now: i64,
 ) -> Result<(), TrunkError> {
     store.write(|tx| {
@@ -771,7 +771,7 @@ pub fn set_thread_state_inner(
             canonical,
             id,
             next,
-            crate::review::types::Channel::Human,
+            trunk_review::types::Channel::Human,
             now,
         )
     })
@@ -789,7 +789,7 @@ pub fn set_thread_state_inner(
 pub async fn set_thread_state<R: Runtime>(
     path: String,
     id: String,
-    next: crate::review::types::ThreadState,
+    next: trunk_review::types::ThreadState,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
@@ -798,7 +798,7 @@ pub async fn set_thread_state<R: Runtime>(
 
     let target = canonical.clone();
     write_and_notify(&app, &canonical, move || {
-        let now = crate::review::reviewdb::now_secs();
+        let now = trunk_review::reviewdb::now_secs();
         set_thread_state_inner(&store, &target, &id, next, now)
     })
     .await?;
@@ -910,7 +910,7 @@ pub async fn create_review<R: Runtime>(
 
     let target = canonical.clone();
     let id = write_and_notify(&app, &canonical, move || {
-        let now = crate::review::reviewdb::now_secs();
+        let now = trunk_review::reviewdb::now_secs();
         store.write(|tx| {
             let id = reviews::create(tx, &target, title.as_deref(), now)?;
             reviews::set_active(tx, &target, &id)?;
@@ -990,7 +990,7 @@ pub async fn rename_review<R: Runtime>(
 
     let target = canonical.clone();
     write_and_notify(&app, &canonical, move || {
-        let now = crate::review::reviewdb::now_secs();
+        let now = trunk_review::reviewdb::now_secs();
         store.write(|tx| reviews::rename(tx, &target, &review_id, &title, now))
     })
     .await?;
@@ -1024,7 +1024,7 @@ pub async fn publish_review<R: Runtime>(
 
     let target = canonical.clone();
     write_and_notify(&app, &canonical, move || {
-        let now = crate::review::reviewdb::now_secs();
+        let now = trunk_review::reviewdb::now_secs();
         store.write(|tx| reviews::publish(tx, &target, &review_id, now))
     })
     .await?;
@@ -1059,7 +1059,7 @@ pub async fn delete_review<R: Runtime>(
         // committed, so a failure here is not this command's failure — the
         // review is gone either way, and reporting an error would tell the
         // user a delete that happened did not.
-        let now = crate::review::reviewdb::now_secs();
+        let now = trunk_review::reviewdb::now_secs();
         report_sweep(
             sweep_unanchored_pins(&store, &target, &repo_path, now),
             &target,
@@ -1084,7 +1084,7 @@ pub fn save_draft_inner(
     store: &Store,
     canonical: &Path,
     text: &str,
-    anchor: Option<&crate::review::types::Anchor>,
+    anchor: Option<&trunk_review::types::Anchor>,
     now: i64,
 ) -> Result<(), TrunkError> {
     // Quiet on purpose: a per-keystroke bump would make the poll refetch
@@ -1116,7 +1116,7 @@ pub fn get_draft_inner(
 pub async fn save_draft<R: Runtime>(
     path: String,
     text: String,
-    anchor: Option<crate::review::types::Anchor>,
+    anchor: Option<trunk_review::types::Anchor>,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
@@ -1124,7 +1124,7 @@ pub async fn save_draft<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     blocking_store(move || {
-        let now = crate::review::reviewdb::now_secs();
+        let now = trunk_review::reviewdb::now_secs();
         save_draft_inner(&store, &canonical, &text, anchor.as_ref(), now)
     })
     .await
@@ -1202,7 +1202,7 @@ pub async fn seed_review_range<R: Runtime>(
         // One transaction: creating the review and seeding it are one gesture, and
         // a failure between them would strand an empty active review the user can
         // neither publish nor explain.
-        let now = crate::review::reviewdb::now_secs();
+        let now = trunk_review::reviewdb::now_secs();
         // A range walks real history, so subjects are plain summaries — no
         // snapshot can appear in it.
         let members: Vec<commits::ReviewCommit> = range_oids
@@ -1243,7 +1243,7 @@ pub async fn add_review_commit<R: Runtime>(
     let target = canonical.clone();
     write_and_notify(&app, &canonical, move || {
         let repo = git2::Repository::open(&path).map_err(TrunkError::from)?;
-        let now = crate::review::reviewdb::now_secs();
+        let now = trunk_review::reviewdb::now_secs();
         store.write(|tx| {
             let review_id = reviews::ensure_active(tx, &target, now)?;
             let subject = member_subject(&repo, &snapshots::get(tx, &target)?, &oid);
@@ -1446,11 +1446,11 @@ pub fn recompute_staleness(
     canonical: &Path,
     repo_path: &str,
 ) -> Result<usize, TrunkError> {
-    use crate::review::reviewdb::stale::SnapshotStanding;
     use std::cell::RefCell;
     use trunk_git::workdir_snapshot::{
         in_memory_workdir_tree_oid, is_snapshot_commit, tree_matches_index,
     };
+    use trunk_review::reviewdb::stale::SnapshotStanding;
 
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
     let current_workdir_tree = RefCell::new(None);
@@ -1499,7 +1499,7 @@ pub fn recompute_staleness(
             .and_then(|bytes| String::from_utf8(bytes).ok())
     };
 
-    crate::review::reviewdb::stale::recompute(
+    trunk_review::reviewdb::stale::recompute(
         store,
         canonical,
         &standing_of,
@@ -1622,7 +1622,7 @@ pub async fn ensure_review_snapshot<R: Runtime>(
 
     let target = canonical.clone();
     let oid = write_and_notify(&app, &canonical, move || {
-        let now = crate::review::reviewdb::now_secs();
+        let now = trunk_review::reviewdb::now_secs();
         ensure_review_snapshot_inner(&store, &target, &path, snapshot_kind, now)
     })
     .await?;
@@ -1654,10 +1654,10 @@ pub async fn get_review_snapshots<R: Runtime>(
 
 /// A thread as the anchor resolver wants it. The resolver predates threads and
 /// takes the comment shape; mapping here keeps it untouched.
-fn as_comments(threads: Vec<threads::Thread>) -> Vec<crate::review::types::Comment> {
+fn as_comments(threads: Vec<threads::Thread>) -> Vec<trunk_review::types::Comment> {
     threads
         .into_iter()
-        .map(|t| crate::review::types::Comment {
+        .map(|t| trunk_review::types::Comment {
             id: t.id,
             text: t.text,
             anchor: t.anchor,
@@ -1723,7 +1723,7 @@ pub fn generate_review_doc_inner(
     // same doc with the repo closed (D13).
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
 
-    crate::review::doc::render_review_doc(store, canonical, review_id, repo.workdir(), repo.path())
+    trunk_review::doc::render_review_doc(store, canonical, review_id, repo.workdir(), repo.path())
 }
 
 /// # Errors

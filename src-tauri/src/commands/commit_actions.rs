@@ -896,7 +896,7 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::TempDir;
 
-    // Temp-repo harness (mirrors operation_state.rs tests / review/doc.rs).
+    // Temp-repo harness (mirrors operation_state.rs tests / review/src/doc.rs).
     // Real git2 + tempfile, no mocks (classical TDD). The code-under-test shells
     // out to `git`, so the repo config must carry a committer identity.
 

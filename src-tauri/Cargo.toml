@@ -22,15 +22,6 @@ bench = false
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
-[features]
-# Test-only affordances compiled out of the shipped binary. `StoreEvents::sync`
-# and its companions let a test wait on what the event feed did instead of on a
-# clock; nothing in the app calls them. Off by default, and enabled for the test
-# and bench targets below, following tokio's `test-util` convention — `cfg(test)`
-# cannot serve this, because the suites in `tests/` are separate crates that
-# compile this one as an ordinary dependency.
-test-util = []
-
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
@@ -38,6 +29,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 git2 = { workspace = true }
 trunk-git = { path = "git" }
+trunk-review = { path = "review" }
 notify = "8"
 notify-debouncer-mini = "0.7"
 tauri-plugin-window-state = "2"
@@ -57,10 +49,6 @@ similar = { version = "3.1", features = ["unicode", "inline"] }
 syntect = { version = "5", default-features = false, features = ["default-onig"] }
 two-face = "0.5"
 tempfile = { workspace = true }
-rusqlite = { version = "0.40", features = ["bundled"] }
-# Already compiled in the tree (three versions resolve today); declaring it adds
-# no new compiled dependency, which is why id minting samples it directly.
-getrandom = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 # AttachConsole for the `trunk review` argv branch: the release binary is
@@ -89,10 +77,11 @@ objc2-foundation = { version = "0.3", features = [
 block2 = "0.6"
 
 [dev-dependencies]
-# Depend on ourselves with the feature on: the documented way to enable a
-# crate's own feature for its test targets only.
-trunk = { path = ".", features = ["test-util"] }
+# The member crates' test-only affordances, on for the test and bench targets
+# and off in the shipped build.
 trunk-git = { path = "git", features = ["test-util"] }
+trunk-review = { path = "review", features = ["test-util"] }
+rusqlite = { workspace = true }
 tauri = { version = "2", features = ["test"] }
 criterion = { version = "0.8", features = ["html_reports"] }
 
@@ -112,7 +101,7 @@ harness = false
 workspace = true
 
 [workspace]
-members = ["fixtures", "git"]
+members = ["fixtures", "git", "review"]
 
 [workspace.dependencies]
 git2 = { version = "0.21", features = ["vendored-libgit2", "vendored-openssl"] }
@@ -121,6 +110,7 @@ serde_json = "1"
 libc = "0.2"
 tempfile = "3"
 windows-sys = "0.61"
+rusqlite = { version = "0.40", features = ["bundled"] }
 
 # Every clippy lint is denied except the ones listed below, and the exceptions
 # live here rather than as `#[allow]` in the source. An allow next to code reads

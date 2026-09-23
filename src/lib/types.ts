@@ -362,7 +362,7 @@ export interface RebaseTodo {
 	items: RebaseTodoItem[];
 }
 
-// Review session schema (mirrors src-tauri/src/review/types.rs Phase 65 keystone)
+// Review session schema (mirrors src-tauri/review/src/types.rs Phase 65 keystone)
 // String-for-string with the Rust on-wire shape: PascalCase enum strings,
 // snake_case fields, nullable optionals for Rust Option<T>.
 export type Source = "Diff" | "FullFile";

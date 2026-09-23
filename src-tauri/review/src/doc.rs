@@ -2,25 +2,25 @@
 //! assembly that feeds it.
 //!
 //! [`render`] and [`render_thread_section`] are pure Rust logic: take
-//! `&RenderInput`, return a single `String`. No `tauri::*` imports (L-01), no
-//! calls into `crate::syntax` (L-10), never panic (L-04). No repository
-//! access at all (D13): everything the doc says comes from stored rows plus
-//! the two path facts in the input, so the CLI renders it with the repo
-//! closed. All resolution failures are routed INTO the returned markdown (per
-//! L-04 + L-09); these two NEVER return an error.
+//! `&RenderInput`, return a single `String`. They cannot use Tauri (L-01) or
+//! syntax highlighting (L-10), since this crate depends on neither, and they
+//! never panic (L-04). No repository access at all (D13): everything the doc
+//! says comes from stored rows plus the two path facts in the input, so the CLI
+//! renders it with the repo closed. All resolution failures are routed INTO the
+//! returned markdown (per L-04 + L-09); these two NEVER return an error.
 //!
 //! [`render_review_doc`] is the exception: it reads a `reviewdb::Store` to
 //! build the `RenderInput` those two render, and can fail (`not_found`,
 //! `no_threads`, or whatever the store read returns) — still no `tauri::*`
 //! and no git2 repository access, just not pure.
 //!
-//! This module is `tauri`-free. `render`/`render_thread_section` and the CLI's
-//! `thread` verb print the same bytes the document carries rather than a
-//! second implementation that has to agree.
+//! `render`/`render_thread_section` and the CLI's `thread` verb print the same
+//! bytes the document carries rather than a second implementation that has to
+//! agree.
 
-use crate::review::reviewdb::{Store, commits, replies, reviews, snapshots, threads};
-use crate::review::types::{Anchor, ContentPin, Side, Source};
-use crate::review::types::{Channel, ThreadState};
+use crate::reviewdb::{Store, commits, replies, reviews, snapshots, threads};
+use crate::types::{Anchor, ContentPin, Side, Source};
+use crate::types::{Channel, ThreadState};
 use std::path::{Path, PathBuf};
 use trunk_git::error::TrunkError;
 
@@ -144,7 +144,8 @@ pub(crate) fn fence_language(file_path: &str) -> &'static str {
 
 /// L-04-safe 7-char short SHA: returns at most the first 7 chars, never
 /// panicking on a shorter input. `Option::unwrap_or` is NOT `Result::unwrap`.
-pub(crate) fn short_sha(oid: &str) -> &str {
+#[must_use]
+pub fn short_sha(oid: &str) -> &str {
     oid.get(..7).unwrap_or(oid)
 }
 
@@ -177,13 +178,16 @@ fn inline_code(s: &str) -> String {
 }
 
 /// Neutralizes control characters in any reviewer-facing line an agent reads
-/// as structure. A git tree-entry name may legally contain a literal `\n`
+/// as structure.
+///
+/// A git tree-entry name may legally contain a literal `\n`
 /// (tree entries are NUL-delimited, not newline-delimited), so a crafted
 /// `file_path` spliced unescaped into a heading line could forge a fake
 /// heading, and into the CLI's one-line-per-thread index could forge a whole
 /// thread. Replacing `\n`/`\r` with a space keeps the text on one line
 /// without hiding the reviewer's data.
-pub(crate) fn sanitize_heading_text(s: &str) -> String {
+#[must_use]
+pub fn sanitize_heading_text(s: &str) -> String {
     s.chars()
         .map(|c| if c == '\n' || c == '\r' { ' ' } else { c })
         .collect()
@@ -570,11 +574,14 @@ fn classify(thread: &DocThread) -> ThreadTarget<'_> {
     }
 }
 
-/// One thread's section of the review document: its heading, the excerpt or
-/// commit label its shape calls for, the comment text, and the replies. The
-/// CLI's `thread` verb serves this same string, so an agent reading one thread
-/// and an agent reading the whole document see one format (TRUNK-56).
-pub(crate) fn render_thread_section(session: &RenderInput, thread: &DocThread) -> String {
+/// One thread's section of the review document.
+///
+/// The section is its heading, the excerpt or commit label its shape calls for,
+/// the comment text, and the replies. The CLI's `thread` verb serves this same
+/// string, so an agent reading one thread and an agent reading the whole
+/// document see one format (TRUNK-56).
+#[must_use]
+pub fn render_thread_section(session: &RenderInput, thread: &DocThread) -> String {
     let mut out = String::new();
     emit_thread_section(&mut out, session, &classify(thread));
 
@@ -599,7 +606,8 @@ fn emit_excerpt(out: &mut String, excerpt: Option<&str>, info: &str) {
 /// The suffix a thread's heading carries when the code it was written against
 /// is gone. Empty for a fresh thread, so no reader has to learn a second
 /// heading shape for the ordinary case.
-pub(crate) const fn stale_marker(stale: bool) -> &'static str {
+#[must_use]
+pub const fn stale_marker(stale: bool) -> &'static str {
     if stale { " (stale)" } else { "" }
 }
 
@@ -2930,22 +2938,6 @@ mod tests {
     #[test]
     fn sanitize_heading_text_replaces_newlines_with_spaces() {
         assert_eq!(sanitize_heading_text("foo\nbar\r\nbaz"), "foo bar  baz");
-    }
-
-    #[test]
-    fn renderer_does_not_import_syntax_module() {
-        // L-10 gate: the renderer module is abstinent — no syntax.rs imports.
-        // include_str! resolves relative to this file at expand time, so the
-        // assertion runs against the on-disk content of doc.rs itself.
-        // Build the needle from two halves so the test body does NOT itself
-        // count as a match — a literal "use" + "::" import statement to the
-        // syntax module appearing in this comment would trip its own assertion.
-        let src = include_str!("doc.rs");
-        let needle = concat!("use crate::", "syntax");
-        assert!(
-            !src.contains(needle),
-            "L-10 violation: doc.rs must NOT import the syntax module"
-        );
     }
 
     // Suppress unused-helper warning while task 3 is still pending.

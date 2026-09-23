@@ -4,7 +4,7 @@
 //! logic is provable against an in-process test repo; `commands/review.rs`
 //! wraps them.
 
-use crate::review::types::SessionCommit;
+use crate::types::SessionCommit;
 use trunk_git::error::TrunkError;
 
 /// Validate that `[base..tip]` is a meaningful inclusive range (SEL-01).
@@ -13,7 +13,13 @@ use trunk_git::error::TrunkError;
 /// case (valid under D-02 inclusive semantics → set `{base}`) MUST short-circuit
 /// before the descendant check. Unrelated histories surface as a `merge_base`
 /// error; a base that is not an ancestor of the tip is a `bad_range`.
-pub(crate) fn validate_range(
+///
+/// # Errors
+///
+/// `unrelated_history` when the two commits share no history, `bad_range` when
+/// `base` is not an ancestor of `tip`, and a `git_*` code when libgit2 cannot
+/// walk the graph between them.
+pub fn validate_range(
     repo: &git2::Repository,
     base: git2::Oid,
     tip: git2::Oid,
@@ -43,7 +49,11 @@ pub(crate) fn validate_range(
 /// leave the second-parent side branch reachable from `tip` and leak it into the
 /// selection (CR-01). A root-commit base (`parent_count() == 0`) hides nothing,
 /// mirroring the verified `interactive_rebase.rs` fallback, so it never panics.
-pub(crate) fn compute_range_oids(
+///
+/// # Errors
+///
+/// A `git_*` code when `base` is not a commit in `repo` or the revwalk fails.
+pub fn compute_range_oids(
     repo: &git2::Repository,
     base: git2::Oid,
     tip: git2::Oid,
@@ -68,11 +78,14 @@ pub(crate) fn compute_range_oids(
 }
 
 /// Order the session set by the full cached graph order, deduped, as the SEL-04
-/// list. OIDs present in the cached `graph` come first in graph order; any
+/// list.
+///
+/// OIDs present in the cached `graph` come first in graph order; any
 /// selected OID absent from the graph is appended via `repo.find_commit`, and an
 /// OID that even `find_commit` can't resolve is included with an `(unavailable)`
 /// summary rather than silently dropped (Phase 65 "never silently destroy").
-pub(crate) fn intersect_graph_order(
+#[must_use]
+pub fn intersect_graph_order(
     commits: &[String],
     graph: &trunk_git::types::GraphResult,
     repo: &git2::Repository,

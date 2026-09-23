@@ -1,0 +1,36 @@
+[package]
+name = "trunk-review"
+version = "0.1.0"
+description = "Trunk's code review domain: the review store, the review document, and resolving comments against a repository"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+bench = false
+
+[features]
+# Test-only affordances compiled out of the shipped binary. `StoreEvents::sync`
+# and its companions let a test wait on what the event feed did instead of on a
+# clock; nothing in the app calls them. Off by default, and enabled for the app's
+# test and bench targets through its dev-dependency on this crate, following
+# tokio's `test-util` convention. `cfg(test)` cannot serve this, because the
+# suites that use it are other crates' tests
+# (docs/decisions/2026-08-31-test-only-api-on-production-types.md).
+test-util = []
+
+[dependencies]
+trunk-git = { path = "../git" }
+git2 = { workspace = true }
+serde = { workspace = true }
+libc = { workspace = true }
+rusqlite = { workspace = true }
+# Already compiled in the tree (three versions resolve today); declaring it adds
+# no new compiled dependency, which is why id minting samples it directly.
+getrandom = "0.4"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

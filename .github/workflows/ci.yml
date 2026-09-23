@@ -148,7 +148,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: just clippy
       # The configuration that ships: --all-targets above turns `test-util` on
-      # everywhere through the dev-dependency, so this is the only job that
+      # everywhere through the dev-dependencies, so this is the only job that
       # compiles the feature-off build.
       - run: just clippy-shipped
 

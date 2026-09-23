@@ -1,15 +1,15 @@
 //! Threads: the persisted form of today's comments — root text plus anchor, now
 //! carrying a state and a channel.
 //!
-//! `ThreadState::transition` (`review::types`) is the single place the state matrix
+//! `ThreadState::transition` (`crate::types`) is the single place the state matrix
 //! (spec §2) is enforced; every writer of `threads.state` goes through it via
 //! `set_state`.
 
 use super::ids::{self, IdKind};
 use super::replies::{self, Reply};
 use super::{anchor, repo_key, sqlite_error};
-use crate::review::types::{Anchor, ContentPin};
-use crate::review::types::{Channel, ThreadState};
+use crate::types::{Anchor, ContentPin};
+use crate::types::{Channel, ThreadState};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use std::collections::HashSet;

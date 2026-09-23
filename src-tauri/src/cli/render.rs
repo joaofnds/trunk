@@ -5,10 +5,10 @@
 //! field vocabulary.
 
 use crate::cli::lookup::RepoPaths;
-use crate::review::reviewdb::{self, reviews};
-use crate::review::types::{Channel, ThreadState};
 use std::fmt::Write as _;
 use trunk_git::error::TrunkError;
+use trunk_review::reviewdb::{self, reviews};
+use trunk_review::types::{Channel, ThreadState};
 
 /// One markdown bullet per published review, in the store's list order.
 /// `composing` reviews are absent by contract: the CLI does not serve them,
@@ -52,15 +52,15 @@ const fn state_word(state: reviews::ReviewState) -> &'static str {
 /// path may legally contain a newline, so the location passes through the
 /// renderer's sanitizer: one thread must never print as two lines, or the
 /// second is a thread an agent will act on that nobody wrote.
-pub(crate) fn render_threads(threads: &[crate::review::reviewdb::threads::Thread]) -> String {
+pub(crate) fn render_threads(threads: &[trunk_review::reviewdb::threads::Thread]) -> String {
     threads.iter().fold(String::new(), |mut out, t| {
         let _ = writeln!(
             out,
             "- {id} {state}{stale} {location} — {summary}",
             id = t.id,
             state = t.state.as_str(),
-            stale = crate::review::doc::stale_marker(t.stale),
-            location = crate::review::doc::sanitize_heading_text(&thread_location(t)),
+            stale = trunk_review::doc::stale_marker(t.stale),
+            location = trunk_review::doc::sanitize_heading_text(&thread_location(t)),
             summary = first_line(&t.text),
         );
         out
@@ -68,7 +68,7 @@ pub(crate) fn render_threads(threads: &[crate::review::reviewdb::threads::Thread
 }
 
 /// Where a thread points, in the index's one-line spelling.
-fn thread_location(thread: &crate::review::reviewdb::threads::Thread) -> String {
+fn thread_location(thread: &trunk_review::reviewdb::threads::Thread) -> String {
     if let Some(pin) = &thread.content_pin {
         return format!("{}:{}-{}", pin.file_path, pin.start_line, pin.end_line);
     }
@@ -78,7 +78,7 @@ fn thread_location(thread: &crate::review::reviewdb::threads::Thread) -> String 
             "{}:{}-{}",
             anchor.file_path, anchor.start_line, anchor.end_line
         ),
-        (None, Some(oid)) => crate::review::doc::short_sha(oid).to_string(),
+        (None, Some(oid)) => trunk_review::doc::short_sha(oid).to_string(),
         (None, None) => "no target".to_string(),
     }
 }
@@ -89,7 +89,7 @@ fn thread_location(thread: &crate::review::reviewdb::threads::Thread) -> String 
 /// overwriting what the index already printed — so the result goes through
 /// the same sanitizer as the location.
 fn first_line(text: &str) -> String {
-    crate::review::doc::sanitize_heading_text(text.lines().next().unwrap_or("").trim())
+    trunk_review::doc::sanitize_heading_text(text.lines().next().unwrap_or("").trim())
 }
 
 /// One `threads --json` line. Optional fields are skipped rather than sent as
@@ -104,11 +104,11 @@ struct ThreadLine<'a> {
     stale: bool,
     text: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    anchor: Option<&'a crate::review::types::Anchor>,
+    anchor: Option<&'a trunk_review::types::Anchor>,
     #[serde(skip_serializing_if = "Option::is_none")]
     commit_oid: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    content_pin: Option<&'a crate::review::types::ContentPin>,
+    content_pin: Option<&'a trunk_review::types::ContentPin>,
 }
 
 /// One `thread --json` object: the index line's fields plus everything the
@@ -132,7 +132,7 @@ struct ChainReply<'a> {
 }
 
 impl<'a> ThreadLine<'a> {
-    fn of(review: &'a str, thread: &'a crate::review::reviewdb::threads::Thread) -> Self {
+    fn of(review: &'a str, thread: &'a trunk_review::reviewdb::threads::Thread) -> Self {
         ThreadLine {
             review,
             thread: &thread.id,
@@ -150,7 +150,7 @@ impl<'a> ThreadLine<'a> {
 /// field vocabulary so a harness parses both streams with one reader.
 pub(crate) fn render_threads_json(
     review_id: &str,
-    threads: &[crate::review::reviewdb::threads::Thread],
+    threads: &[trunk_review::reviewdb::threads::Thread],
 ) -> Result<String, TrunkError> {
     let mut out = String::new();
     for thread in threads {
@@ -190,15 +190,15 @@ fn trailer_rule_for(section: &str) -> String {
 
 /// One thread in full, as the document renders it, followed by the state and
 /// the moves the agent channel may make from it. The section comes from the
-/// document's own per-thread renderer (`review::doc::render_thread_section`),
+/// document's own per-thread renderer (`trunk_review::doc::render_thread_section`),
 /// so a thread read alone and the same thread read in `show` are one format.
 pub(crate) fn render_thread(
     store: &reviewdb::Store,
     canonical: &std::path::Path,
-    thread: &crate::review::reviewdb::threads::Thread,
-    replies: Vec<crate::review::reviewdb::replies::Reply>,
+    thread: &trunk_review::reviewdb::threads::Thread,
+    replies: Vec<trunk_review::reviewdb::replies::Reply>,
 ) -> Result<String, TrunkError> {
-    use crate::review::doc::{DocCommit, DocReply, DocThread, RenderInput};
+    use trunk_review::doc::{DocCommit, DocReply, DocThread, RenderInput};
 
     // One read, because two would let the store move underneath them: the
     // heading's state and the trailer's would come from different instants.
@@ -208,8 +208,8 @@ pub(crate) fn render_thread(
     // typed.
     let (commits, snapshots) = store.read(|conn| {
         Ok((
-            crate::review::reviewdb::commits::list(conn, &thread.review_id)?,
-            crate::review::reviewdb::snapshots::get(conn, canonical)?,
+            trunk_review::reviewdb::commits::list(conn, &thread.review_id)?,
+            trunk_review::reviewdb::snapshots::get(conn, canonical)?,
         ))
     })?;
 
@@ -250,7 +250,7 @@ pub(crate) fn render_thread(
             .collect(),
     };
 
-    let mut out = crate::review::doc::render_thread_section(&session, &doc_thread);
+    let mut out = trunk_review::doc::render_thread_section(&session, &doc_thread);
     let rule = trailer_rule_for(&out);
     let _ = write!(
         out,
@@ -299,8 +299,8 @@ const fn claiming_verb(next: ThreadState) -> &'static str {
 /// One thread in full as a single JSON object, in `watch`'s field vocabulary
 /// with the replies and the agent's available actions alongside.
 pub(crate) fn render_thread_json(
-    thread: &crate::review::reviewdb::threads::Thread,
-    replies: &[crate::review::reviewdb::replies::Reply],
+    thread: &trunk_review::reviewdb::threads::Thread,
+    replies: &[trunk_review::reviewdb::replies::Reply],
 ) -> Result<String, TrunkError> {
     let chain = ThreadChain {
         thread: ThreadLine::of(&thread.review_id, thread),
@@ -325,7 +325,7 @@ pub(crate) fn render_thread_json(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::review::types::Channel;
+    use trunk_review::types::Channel;
 
     #[test]
     fn the_actions_line_follows_the_transition_matrix() {

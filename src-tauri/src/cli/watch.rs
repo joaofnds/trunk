@@ -1,9 +1,9 @@
 //! The `watch` verb: blocks on the store's doorbell (`reviewdb::events`) and
 //! streams changes to published reviews through the caller's sink.
 
-use crate::review::reviewdb;
 use std::io::Write;
 use trunk_git::error::TrunkError;
+use trunk_review::reviewdb;
 
 /// Block on the store's doorbell and stream changes to published reviews.
 ///
@@ -97,11 +97,11 @@ mod watch_feed {
     //! Post-publish, threads and replies are permanent (spec §2), so the only
     //! disappearance is a whole review's deletion.
 
-    use crate::review::reviewdb::reviews::ReviewState;
-    use crate::review::types::Anchor;
-    use crate::review::types::{Channel, ThreadState};
     use serde::Serialize;
     use std::collections::BTreeMap;
+    use trunk_review::reviewdb::reviews::ReviewState;
+    use trunk_review::types::Anchor;
+    use trunk_review::types::{Channel, ThreadState};
 
     pub type Snapshot = BTreeMap<String, ReviewSnap>;
 
@@ -218,14 +218,14 @@ fn published_snapshot(
 ) -> Result<Snapshot, TrunkError> {
     store.read(|conn| {
         let mut snapshot = Snapshot::new();
-        for review in crate::review::reviewdb::reviews::list(conn, canonical)? {
+        for review in trunk_review::reviewdb::reviews::list(conn, canonical)? {
             if !review.published {
                 continue;
             }
 
             let mut threads = std::collections::BTreeMap::new();
             for (thread, replies) in
-                crate::review::reviewdb::threads::list_with_replies(conn, &review.id)?
+                trunk_review::reviewdb::threads::list_with_replies(conn, &review.id)?
             {
                 threads.insert(
                     thread.id,

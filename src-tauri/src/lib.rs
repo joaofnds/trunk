@@ -3,7 +3,6 @@ pub mod commands;
 pub mod launch;
 #[cfg(target_os = "macos")]
 mod macos_traffic_lights;
-pub mod review;
 pub mod shell_env;
 pub mod state;
 mod storage;
@@ -432,7 +431,7 @@ fn start_review_poll<R: tauri::Runtime>(app: &tauri::App<R>) {
     match crate::commands::store_data_dir(app.handle()) {
         Ok(data_dir) => {
             let handle = app.handle().clone();
-            app.manage(crate::review::reviewdb::poll::spawn(&data_dir, move || {
+            app.manage(trunk_review::reviewdb::poll::spawn(&data_dir, move || {
                 let _ = handle.emit("reviews-changed", ());
             }));
         }

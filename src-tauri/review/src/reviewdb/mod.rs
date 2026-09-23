@@ -21,7 +21,7 @@ pub mod snapshots;
 pub mod stale;
 pub mod threads;
 
-use crate::review::types::Channel;
+use crate::types::Channel;
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;

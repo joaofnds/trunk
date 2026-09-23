@@ -6,7 +6,7 @@
 //! current-file thread carries neither, naming its file through the content pin
 //! columns `threads` alone holds. `anchor_kind` is what tells them apart.
 
-use crate::review::types::{Anchor, ContentPin, Side, Source};
+use crate::types::{Anchor, ContentPin, Side, Source};
 use rusqlite::Row;
 use trunk_git::error::TrunkError;
 
