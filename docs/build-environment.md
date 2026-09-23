@@ -116,6 +116,11 @@ time. An identical no-op build, nothing to compile and nothing else running:
 Both rows are this repository's own `src-tauri/target`, measured either side of
 the deletion below: 73GB and 1.2M files before, 6.7GB and 19k files after.
 
+The file count does not always cost that much. On 2026-09-23, with 1,511,655
+files, a no-op of the build `just dev` runs took 0.21s, right after other builds
+had run. What made the 76s case slow is not established, so measure a slow
+no-op before deleting on the file count alone.
+
 Check it with `find src-tauri/target -type f | wc -l`. Past roughly 100k files,
 delete the directory:
 
