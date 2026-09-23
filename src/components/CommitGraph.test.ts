@@ -784,12 +784,11 @@ describe("CommitGraph", () => {
 	}
 
 	// jsdom lays nothing out, so the list's left edge is 0 and a pointer's x is
-	// its distance from there. `at` stamps the event in ms, for the tests that
-	// care how far apart the events of a swipe come.
+	// its distance from there.
 	function wheelAt(
 		container: HTMLElement,
 		x: number,
-		{ at, ...deltas }: { deltaX: number; deltaY?: number; at?: number },
+		deltas: { deltaX: number; deltaY?: number },
 	): WheelEvent {
 		const event = new WheelEvent("wheel", {
 			bubbles: true,
@@ -797,9 +796,6 @@ describe("CommitGraph", () => {
 			clientX: COLUMN_PADDING_X + x,
 			...deltas,
 		});
-		if (at !== undefined) {
-			Object.defineProperty(event, "timeStamp", { value: at });
-		}
 		listViewport(container).dispatchEvent(event);
 		return event;
 	}
@@ -1327,59 +1323,6 @@ describe("CommitGraph", () => {
 			expect(summaryShift(summaries(container)[0])).toBe(0);
 		});
 
-		// A swipe's events come far closer together than 100ms, the wait WebKit
-		// gives a lifted finger's swipe for its momentum before it drops its own
-		// latch (ScrollLatchingController).
-		it("keeps the rest of a swipe it took, an event more vertical than sideways included", async () => {
-			const { container } = mountMessages([LONG]);
-			await flush();
-			layOut(container);
-			wheelAt(container, 50, { deltaX: 30, at: 0 });
-
-			wheelAt(container, 50, { deltaX: 3, deltaY: 4, at: 16 });
-			await tick();
-
-			expect(summaryShift(summaries(container)[0])).toBe(33);
-		});
-
-		// With Graph 24px wide before it, Message starts at 24.
-		it("keeps the rest of a swipe it took once the pointer is over the Graph column", async () => {
-			const { container } = mountMessages([LONG], { graph: 24 });
-			await flush();
-			layOut(container);
-			wheelAt(container, 24 + 10, { deltaX: 30, at: 0 });
-
-			wheelAt(container, 5, { deltaX: 30, at: 16 });
-			await tick();
-
-			expect(summaryShift(summaries(container)[0])).toBe(60);
-		});
-
-		it("keeps a swipe that runs longer than 100ms", async () => {
-			const { container } = mountMessages([LONG]);
-			await flush();
-			layOut(container);
-			wheelAt(container, 50, { deltaX: 30, at: 0 });
-			wheelAt(container, 50, { deltaX: 30, at: 80 });
-
-			wheelAt(container, 50, { deltaX: 3, deltaY: 4, at: 160 });
-			await tick();
-
-			expect(summaryShift(summaries(container)[0])).toBe(63);
-		});
-
-		it("takes 100ms without an event as the end of the swipe", async () => {
-			const { container } = mountMessages([LONG]);
-			await flush();
-			layOut(container);
-			wheelAt(container, 50, { deltaX: 30, at: 0 });
-
-			wheelAt(container, 50, { deltaX: 3, deltaY: 4, at: 100 });
-			await tick();
-
-			expect(summaryShift(summaries(container)[0])).toBe(30);
-		});
-
 		// Every attribute written under `root` from here on, for a test to read
 		// once the pan has been applied.
 		function watchWrites(root: Element): () => Node[] {
@@ -1407,11 +1350,11 @@ describe("CommitGraph", () => {
 			wheelAt(container, 50, { deltaX: 30 });
 			await tick();
 
-			const texts = summaries(container).map(
+			const texts: (Node | null)[] = summaries(container).map(
 				(summary) => summary.firstElementChild,
 			);
 			const writtenTexts = new Set(
-				written().map((node) => texts.findIndex((text) => text === node)),
+				written().map((node) => texts.indexOf(node)),
 			);
 			expect([...writtenTexts].sort((x, y) => x - y)).toEqual([0, 1]);
 		});
@@ -1490,18 +1433,6 @@ describe("CommitGraph", () => {
 				scrollTableSideways(container);
 
 				const event = wheelAt(container, 50, { deltaX: 30 });
-
-				expect(event.defaultPrevented).toBe(true);
-			});
-
-			it("keeps the table still under an event of the swipe more vertical than sideways", async () => {
-				const { container } = mountMessages([LONG]);
-				await flush();
-				layOut(container);
-				scrollTableSideways(container);
-				wheelAt(container, 50, { deltaX: 30, at: 0 });
-
-				const event = wheelAt(container, 50, { deltaX: 3, deltaY: 4, at: 16 });
 
 				expect(event.defaultPrevented).toBe(true);
 			});

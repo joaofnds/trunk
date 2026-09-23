@@ -504,34 +504,24 @@ $effect(() => {
 
 const columnPans: readonly ColumnPan[] = [graphPan, messagePan];
 
-// How long a swipe goes without an event before it counts as over: the wait
-// WebKit gives a lifted finger's swipe for its momentum before it drops its
-// own latch (ScrollLatchingController's resetLatchedStateTimeout).
-const SWIPE_GAP_MS = 100;
-
-// The pan the swipe under way went to, and when its last event came.
-let swipe: { pan: ColumnPan; lastEventAt: number } | null = null;
-
 // A sideways gesture over a column that pans, Graph or Message, moves its
 // content until that reaches its end in the gesture's direction, and from
 // there, or anywhere else, it scrolls the table. While the table can scroll
 // sideways the pan cancels the gesture, or the table would move under it too;
-// a table that fits leaves the gesture to the engine. A swipe starts on a pan
-// only with an event more sideways than vertical, since WebKit hands the page
-// a trackpad's sideways drift as it scrolls down and holds only its own
-// scrollers to the swipe's main axis. Once a pan has the swipe it keeps every
-// event of it, so a stray one does not move the table under the pan.
+// a table that fits leaves the gesture to the engine. A wheel event no more
+// sideways than vertical is the engine's whole: WebKit hands the page a
+// trackpad's sideways drift as it scrolls down, and holds only its own
+// scrollers to the swipe's main axis.
 function panColumn(event: WheelEvent & { currentTarget: HTMLElement }) {
-	const ongoing =
-		swipe !== null && event.timeStamp - swipe.lastEventAt < SWIPE_GAP_MS
-			? swipe.pan
-			: undefined;
-	if (!ongoing && Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
+	if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
 
 	const viewport = listViewport();
 	if (!viewport) return;
 
-	const column = ongoing ?? columnUnder(event, viewport);
+	const rect = event.currentTarget.getBoundingClientRect();
+	const pointerX =
+		event.clientX - rect.left - COLUMN_PADDING_X + viewport.scrollLeft;
+	const column = columnPans.find((pan) => pan.holds(pointerX));
 	if (!column) return;
 
 	const panned = Math.max(
@@ -542,19 +532,7 @@ function panColumn(event: WheelEvent & { currentTarget: HTMLElement }) {
 
 	if (viewport.scrollWidth > viewport.clientWidth) event.preventDefault();
 	column.scrollTo(panned);
-	swipe = { pan: column, lastEventAt: event.timeStamp };
 	announcePan(viewport, column);
-}
-
-function columnUnder(
-	event: WheelEvent & { currentTarget: HTMLElement },
-	viewport: HTMLElement,
-): ColumnPan | undefined {
-	const rect = event.currentTarget.getBoundingClientRect();
-	const pointerX =
-		event.clientX - rect.left - COLUMN_PADDING_X + viewport.scrollLeft;
-
-	return columnPans.find((pan) => pan.holds(pointerX));
 }
 
 const headerMins = headerMinWidths(measureTextWidth);
