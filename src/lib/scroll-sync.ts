@@ -4,6 +4,7 @@
 // instance syncs only its own columns.
 export function createHorizontalScrollSync() {
 	const cols: Set<HTMLElement> = new Set();
+	const written = new WeakMap<HTMLElement, number>();
 	let syncing = false;
 
 	return function sync(node: HTMLElement) {
@@ -11,10 +12,17 @@ export function createHorizontalScrollSync() {
 
 		function onScroll() {
 			if (syncing) return;
+			// The scroll event for an offset this sync wrote arrives a frame later,
+			// when the column it came from may have moved on. Mirrored back, it
+			// drags that column to where it was, and every per-frame scroll stalls.
+			if (written.get(node) === node.scrollLeft) return;
+
 			syncing = true;
 			const { scrollLeft } = node;
 			for (const col of cols) {
-				if (col !== node) col.scrollLeft = scrollLeft;
+				if (col === node) continue;
+				col.scrollLeft = scrollLeft;
+				written.set(col, col.scrollLeft);
 			}
 			syncing = false;
 		}
