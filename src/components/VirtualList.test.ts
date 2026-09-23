@@ -130,10 +130,12 @@ describe("VirtualList torn down between a scroll and the next frame", () => {
 		);
 
 		unmount();
-
-		expect(() => {
+		const runFrames = () => {
 			for (const frame of frames) frame(0);
-		}).not.toThrow();
+		};
+
+		expect(frames).not.toHaveLength(0);
+		expect(runFrames).not.toThrow();
 	});
 });
 
@@ -179,6 +181,6 @@ describe("VirtualList given the width its content needs", () => {
 			scrolls: viewport.style.overflowX,
 			width: content.style.minWidth,
 			clip: content.style.overflowX,
-		}).toEqual({ scrolls: "", width: "", clip: "" });
+		}).toEqual({ scrolls: "hidden", width: "", clip: "" });
 	});
 });

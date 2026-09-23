@@ -712,7 +712,7 @@ function autoObserveItemResize(element: HTMLElement) {
         bind:this={heightManager.viewportElement}
         onscroll={handleScroll}
         style:overflow-anchor="none"
-        style:overflow-x={minContentWidth === undefined ? undefined : "auto"}
+        style:overflow-x={minContentWidth === undefined ? "hidden" : "auto"}
     >
         <div
             class="virtual-list-content"

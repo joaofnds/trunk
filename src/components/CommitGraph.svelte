@@ -2427,7 +2427,6 @@ $effect(() => {
     padding-top: var(--space-2);
     padding-bottom: var(--space-2);
     box-sizing: border-box;
-    overflow-x: hidden;
   }
   .error-banner {
     background: var(--color-danger-bg);
