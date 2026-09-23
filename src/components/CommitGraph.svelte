@@ -364,8 +364,9 @@ $effect(() => {
 });
 
 // GRAPH-02: a sideways gesture over the Graph column pans its lanes, and anywhere
-// else it scrolls the table. The pan cancels the gesture, or the table would
-// scroll under it too, so the gesture's vertical part is applied here instead.
+// else it scrolls the table. While the table can scroll sideways the pan cancels
+// the gesture, or the table would move under it too, and applies its vertical
+// part here instead; a table that fits leaves the gesture to the engine.
 function panGraph(event: WheelEvent & { currentTarget: HTMLElement }) {
 	if (maxGraphScrollX <= 0 || event.deltaX === 0) return;
 
@@ -378,8 +379,10 @@ function panGraph(event: WheelEvent & { currentTarget: HTMLElement }) {
 		graphStart + (columnVisibility.graph ? columnWidths.graph : 0);
 	if (pointerX < graphStart || pointerX > graphEnd) return;
 
-	event.preventDefault();
-	if (viewport) viewport.scrollTop += event.deltaY;
+	if (viewport && viewport.scrollWidth > viewport.clientWidth) {
+		event.preventDefault();
+		viewport.scrollTop += event.deltaY;
+	}
 	graphScrollX = Math.max(
 		0,
 		Math.min(maxGraphScrollX, graphScrollX + event.deltaX),

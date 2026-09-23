@@ -724,12 +724,15 @@ describe("CommitGraph", () => {
 	describe("a sideways wheel", () => {
 		const graphWidth = LANE_WIDTH + 2 * COLUMN_PADDING_X;
 
-		// Four lanes in a column the user narrowed to one, so the lanes pan.
-		function mountPannableGraph() {
+		// A column the user narrowed to one lane, holding `lanes` of them.
+		function mountGraph(lanes: number) {
 			installReads({
 				override: (cmd, args) => {
 					if (cmd === "get_commit_graph" || cmd === "refresh_commit_graph")
-						return Promise.resolve({ commits: TEST_COMMITS, max_columns: 4 });
+						return Promise.resolve({
+							commits: TEST_COMMITS,
+							max_columns: lanes,
+						});
 					if (cmd !== "prefs_get") return undefined;
 					if (args?.key === "column_widths")
 						return Promise.resolve({ graph: graphWidth });
@@ -758,11 +761,23 @@ describe("CommitGraph", () => {
 			return container.querySelector(".virtual-list-viewport") as HTMLElement;
 		}
 
+		// jsdom lays nothing out, so the list reports no sideways range unless
+		// told to.
+		function scrollTableSideways(container: HTMLElement) {
+			const viewport = listViewport(container);
+			Object.defineProperty(viewport, "scrollWidth", { value: 900 });
+			Object.defineProperty(viewport, "clientWidth", { value: 700 });
+		}
+
 		function lanesOffset(container: HTMLElement): number {
 			const transform =
 				container.querySelector(".overlay-paths")?.getAttribute("transform") ??
 				"";
-			return Number(/translate\((-?[\d.]+),/.exec(transform)?.[1]);
+			const offset = /translate\((-?[\d.]+),/.exec(transform)?.[1];
+			if (offset === undefined) {
+				throw new Error(`no lanes offset in "${transform}"`);
+			}
+			return Number(offset);
 		}
 
 		// jsdom lays nothing out, so the list's left edge is 0 and a pointer's x is
@@ -783,7 +798,7 @@ describe("CommitGraph", () => {
 		}
 
 		it("pans the lanes when it lands on the Graph column", async () => {
-			const { container } = mountPannableGraph();
+			const { container } = mountGraph(4);
 			await flush();
 			const before = lanesOffset(container);
 
@@ -793,26 +808,8 @@ describe("CommitGraph", () => {
 			expect(lanesOffset(container)).toBe(before - 10);
 		});
 
-		it("keeps the table still while it pans the lanes", async () => {
-			const { container } = mountPannableGraph();
-			await flush();
-
-			const event = wheelAt(container, 5, { deltaX: 10 });
-
-			expect(event.defaultPrevented).toBe(true);
-		});
-
-		it("still scrolls the list down by the vertical part of a diagonal gesture over the lanes", async () => {
-			const { container } = mountPannableGraph();
-			await flush();
-
-			wheelAt(container, 5, { deltaX: 10, deltaY: 30 });
-
-			expect(listViewport(container).scrollTop).toBe(30);
-		});
-
 		it("leaves the gesture to the table anywhere else", async () => {
-			const { container } = mountPannableGraph();
+			const { container } = mountGraph(4);
 			await flush();
 			const before = lanesOffset(container);
 
@@ -825,12 +822,32 @@ describe("CommitGraph", () => {
 			}).toEqual({ prevented: false, lanes: before });
 		});
 
-		// Scrolled 40px, the point 5px in from the list's edge is 45px into the
-		// table, past the Graph column and over Message.
-		it("finds the column under the pointer in the scrolled table", async () => {
-			const { container } = mountPannableGraph();
+		it("leaves the gesture to the table when the lanes fit their column", async () => {
+			const { container } = mountGraph(1);
 			await flush();
-			listViewport(container).scrollLeft = 40;
+			scrollTableSideways(container);
+
+			const event = wheelAt(container, 5, { deltaX: 10 });
+
+			expect(event.defaultPrevented).toBe(false);
+		});
+
+		it("leaves a gesture with no sideways part to the list", async () => {
+			const { container } = mountGraph(4);
+			await flush();
+			scrollTableSideways(container);
+
+			const event = wheelAt(container, 5, { deltaX: 0, deltaY: 30 });
+
+			expect(event.defaultPrevented).toBe(false);
+		});
+
+		// Scrolled a column past the Graph column, the point 5px in from the
+		// list's edge is over Message.
+		it("finds the column under the pointer in the scrolled table", async () => {
+			const { container } = mountGraph(4);
+			await flush();
+			listViewport(container).scrollLeft = graphWidth + 16;
 			const before = lanesOffset(container);
 
 			const event = wheelAt(container, 5, { deltaX: 10 });
@@ -840,6 +857,46 @@ describe("CommitGraph", () => {
 				prevented: event.defaultPrevented,
 				lanes: lanesOffset(container),
 			}).toEqual({ prevented: false, lanes: before });
+		});
+
+		describe("when the table scrolls sideways", () => {
+			it("keeps the table still while it pans the lanes", async () => {
+				const { container } = mountGraph(4);
+				await flush();
+				scrollTableSideways(container);
+
+				const event = wheelAt(container, 5, { deltaX: 10 });
+
+				expect(event.defaultPrevented).toBe(true);
+			});
+
+			it("still scrolls the list down by the vertical part of a diagonal gesture over the lanes", async () => {
+				const { container } = mountGraph(4);
+				await flush();
+				scrollTableSideways(container);
+
+				wheelAt(container, 5, { deltaX: 10, deltaY: 30 });
+
+				expect(listViewport(container).scrollTop).toBe(30);
+			});
+		});
+
+		describe("when the table fits the list", () => {
+			// Nothing can scroll sideways under the pan, so the engine keeps the
+			// gesture and scrolls the list down itself.
+			it("leaves the gesture to the engine while it pans the lanes", async () => {
+				const { container } = mountGraph(4);
+				await flush();
+				const before = lanesOffset(container);
+
+				const event = wheelAt(container, 5, { deltaX: 10, deltaY: 30 });
+				await tick();
+
+				expect({
+					prevented: event.defaultPrevented,
+					lanes: lanesOffset(container),
+				}).toEqual({ prevented: false, lanes: before - 10 });
+			});
 		});
 	});
 
