@@ -18,7 +18,7 @@ const PAST_LINGER_MS = 2000;
 class FakePan implements Pan {
 	offset = 0;
 
-	constructor(private readonly band = { start: 50, length: 100, range: 300 }) {}
+	private readonly band = { start: 50, length: 100, range: 300 };
 
 	extent(pane: HTMLElement): ScrollAxisExtent {
 		return {
@@ -519,7 +519,7 @@ describe("trackScrollActivity", () => {
 		it("places the thumb as far along the band as the pan has gone", () => {
 			const el = makePane();
 			const pan = new FakePan();
-			pan.offset = 150;
+			pan.scrollTo(150);
 
 			announcePan(el, pan);
 
@@ -569,6 +569,28 @@ describe("trackScrollActivity", () => {
 			scrollSidewaysTo(el, 40);
 
 			expect(sidewaysThumbFor(el)?.style.left).toBe("10px");
+		});
+
+		it("cuts the thumb off at the pane's edge, where the pane cuts off the band", () => {
+			const el = makePane({ overflowX: "hidden" });
+			announcePan(el, new FakePan());
+
+			scrollSidewaysTo(el, 45);
+
+			const thumb = sidewaysThumbFor(el);
+			expect({ left: thumb?.style.left, width: thumb?.style.width }).toEqual({
+				left: "10px",
+				width: "20px",
+			});
+		});
+
+		it("draws nothing of the thumb once its band has left the pane", () => {
+			const el = makePane({ overflowX: "hidden" });
+			announcePan(el, new FakePan());
+
+			scrollSidewaysTo(el, 100);
+
+			expect(sidewaysThumbFor(el)?.style.width).toBe("0px");
 		});
 	});
 });

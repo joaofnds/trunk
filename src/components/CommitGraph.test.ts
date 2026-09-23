@@ -764,14 +764,21 @@ describe("CommitGraph", () => {
 	});
 
 	// A sideways gesture over the Graph column pans its lanes, and anywhere else it
-	// scrolls the table. Branch/Tag is hidden so the Graph column starts at the
-	// list's left edge.
+	// scrolls the table. Branch/Tag is hidden unless a test gives it a width, so
+	// the Graph column starts at the list's left edge.
 	describe("a sideways wheel", () => {
 		const graphWidth = LANE_WIDTH + 2 * COLUMN_PADDING_X;
 
 		// A column the user narrowed, to one lane unless told otherwise, holding
-		// `lanes` of them.
-		function mountGraph(lanes: number, width = graphWidth) {
+		// `lanes` of them. Branch/Tag shows only when given a width of its own.
+		function mountGraph(
+			lanes: number,
+			widths: { graph?: number; ref?: number } = {},
+		) {
+			const sized = {
+				graph: widths.graph ?? graphWidth,
+				...(widths.ref === undefined ? {} : { ref: widths.ref }),
+			};
 			installReads({
 				override: (cmd, args) => {
 					if (cmd === "get_commit_graph" || cmd === "refresh_commit_graph")
@@ -780,13 +787,12 @@ describe("CommitGraph", () => {
 							max_columns: lanes,
 						});
 					if (cmd !== "prefs_get") return undefined;
-					if (args?.key === "column_widths")
-						return Promise.resolve({ graph: width });
+					if (args?.key === "column_widths") return Promise.resolve(sized);
 					if (args?.key === "resized_columns")
-						return Promise.resolve(["graph"]);
+						return Promise.resolve(Object.keys(sized));
 					if (args?.key === "column_visibility")
 						return Promise.resolve({
-							ref: false,
+							ref: widths.ref !== undefined,
 							graph: true,
 							message: true,
 							diff: true,
@@ -960,7 +966,7 @@ describe("CommitGraph", () => {
 		// the most a fit gives forty lanes, so the refitted column still pans.
 		it("returns the lanes to their start when the Graph divider is double-clicked", async () => {
 			observeListAt(568);
-			const { container } = mountGraph(40, 100);
+			const { container } = mountGraph(40, { graph: 100 });
 			await flush();
 			const start = lanesOffset(container);
 			wheelAt(container, 5, { deltaX: 50 });
@@ -1000,25 +1006,41 @@ describe("CommitGraph", () => {
 				expect(sidewaysThumb()).not.toBeNull();
 			});
 
-			// A 100px column over 40 lanes pans 548px, and its thumb travels the
-			// 76px the 24px thumb leaves of the column, so half of that is 274.
-			it("pans the lanes as far as the thumb is dragged", async () => {
-				const { container } = mountGraph(40, 100);
+			// A 100px column over 40 lanes (640px of them, plus the padding) pans
+			// 548px, the most a thumb dragged past its track's end can take it.
+			it("pans the lanes to their end when the thumb is dragged past it", async () => {
+				const { container } = mountGraph(40, { graph: 100 });
 				await flush();
+				const start = lanesOffset(container);
 				wheelAt(container, 5, { deltaX: 10 });
-				await tick();
-				const before = lanesOffset(container);
 
 				sidewaysThumb()?.dispatchEvent(
 					new MouseEvent("pointerdown", { bubbles: true, clientX: 0 }),
 				);
 				window.dispatchEvent(
-					new MouseEvent("pointermove", { bubbles: true, clientX: 38 }),
+					new MouseEvent("pointermove", { bubbles: true, clientX: 1000 }),
 				);
 				window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
 				await tick();
 
-				expect(lanesOffset(container)).toBe(before - 274);
+				expect(lanesOffset(container)).toBe(start - 548);
+			});
+
+			// Branch/Tag 100px wide puts the Graph column 100px into the table,
+			// and the table scrolled 40px carries it to 60px from the list's edge.
+			// jsdom lays nothing out, so the list is given a width to be seen in.
+			it("lays the thumb under the Graph column wherever the table has scrolled it", async () => {
+				const { container } = mountGraph(4, { ref: 100 });
+				await flush();
+				const viewport = listViewport(container);
+				viewport.getBoundingClientRect = () =>
+					({ left: 0, right: 700, bottom: 400, width: 700 }) as DOMRect;
+				wheelAt(container, 105, { deltaX: 10 });
+
+				viewport.scrollLeft = 40;
+				viewport.dispatchEvent(new Event("scroll"));
+
+				expect(sidewaysThumb()?.style.left).toBe("60px");
 			});
 		});
 

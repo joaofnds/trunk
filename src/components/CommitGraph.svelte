@@ -368,13 +368,12 @@ $effect(() => {
 /** Where the Graph column starts in the table, before any sideways scroll. */
 const graphStart = $derived(columnVisibility.ref ? columnWidths.ref : 0);
 
-// The pan as the scrollbar tracker sees it: a track as wide as the Graph column,
-// wherever the table's own sideways scroll has carried that column.
 const graphPan: Pan = {
 	extent(viewport) {
-		const left = viewport.getBoundingClientRect().left - viewport.scrollLeft;
+		const tableLeft =
+			viewport.getBoundingClientRect().left - viewport.scrollLeft;
 		return {
-			trackStart: left + graphStart,
+			trackStart: tableLeft + graphStart,
 			trackLength: columnWidths.graph,
 			offset: graphScrollX,
 			scrollLength: columnWidths.graph + maxGraphScrollX,
@@ -388,10 +387,9 @@ const graphPan: Pan = {
 
 // GRAPH-02: a sideways gesture over the Graph column pans its lanes until they
 // reach their end in its direction, and from there, or anywhere else, it
-// scrolls the table: a page takes over the scroll the same way once a section
-// inside it reaches its end. While the table can scroll sideways the pan
-// cancels the gesture, or the table would move under it too, and applies its
-// vertical part here instead; a table that fits leaves the gesture to the engine.
+// scrolls the table. While the table can scroll sideways the pan cancels the
+// gesture, or the table would move under it too, and applies its vertical part
+// here instead; a table that fits leaves the gesture to the engine.
 function panGraph(event: WheelEvent & { currentTarget: HTMLElement }) {
 	if (maxGraphScrollX <= 0 || event.deltaX === 0) return;
 

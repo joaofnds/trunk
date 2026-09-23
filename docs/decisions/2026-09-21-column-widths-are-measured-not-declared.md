@@ -111,8 +111,12 @@ they reach their end in the gesture's direction; past that end, and anywhere els
 scrolls the table. That is the product owner's rule, 2026-09-23, taken from how a
 browser scrolls a page with a scrollable section in it: the section scrolls to its end
 first, and scrolling on from there moves the page. Each wheel event goes one way or the
-other: one that finds the lanes already at their end goes to the engine whole, and the
-part of one that overshoots the end is dropped rather than handed on. When the pan does
+other, decided by the column under the pointer as the table stands at that event: one
+that finds the lanes already at their end goes to the engine whole, and the part of one
+that overshoots the end is dropped rather than handed on. So a swipe that begins over
+another column and carries the Graph column under a still pointer starts panning the
+lanes partway through. Whether WKWebView holds one trackpad gesture to the scroller it
+began on, as browsers are generally held to do, has not been observed. When the pan does
 move and the table can scroll sideways, the pan cancels the gesture, or the table would
 move under it too, and applies the gesture's vertical part to the list itself, so a
 diagonal swipe over the lanes still scrolls the commits.

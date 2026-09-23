@@ -114,7 +114,7 @@ const horizontal: ScrollAxis = {
 
 /** An offset a component keeps itself rather than leaving to the engine, such
  *  as the commit list's Graph pan. No `scroll` event reports it, so the
- *  component announces each move with `announcePan`. */
+ *  component announces the moves it wants a thumb for with `announcePan`. */
 export interface Pan {
 	/** The pan's track, measured along the bottom edge of the pane it pans in. */
 	extent(pane: HTMLElement): ScrollAxisExtent;
@@ -139,7 +139,23 @@ function panAxis(pan: Pan): ScrollAxis {
 		...horizontal,
 		extent: (el) => pan.extent(el),
 		scrollTo: (_el, offset) => pan.scrollTo(offset),
+		// A pan's band runs past its pane wherever the pane has scrolled the
+		// column it is out of view, and the thumb stops at the pane's edge too.
+		place(thumb, el, { start, length }) {
+			const pane = el.getBoundingClientRect();
+			const shownStart = Math.max(start, pane.left);
+			const shownEnd = Math.min(start + length, pane.right);
+
+			horizontal.place(thumb, el, {
+				start: shownStart,
+				length: Math.max(0, shownEnd - shownStart),
+			});
+		},
 	};
+}
+
+function isPan(axis: ScrollAxis): boolean {
+	return axis !== vertical && axis !== horizontal;
 }
 
 /** Whether the user can scroll this pane sideways, rather than only a script. */
@@ -249,7 +265,9 @@ export function trackScrollActivity(): () => void {
 
 		// A pan's band is a column of the table its pane scrolls, so a pan's
 		// thumb that is up moves with the pane even though the pan did not.
-		for (const axis of thumbs.get(el)?.keys() ?? []) paint(el, axis);
+		for (const axis of thumbs.get(el)?.keys() ?? []) {
+			if (isPan(axis)) paint(el, axis);
+		}
 
 		// A pane with some incidental sideways overflow shows no sideways thumb
 		// while it scrolls up and down; only a sideways scroll brings one.
