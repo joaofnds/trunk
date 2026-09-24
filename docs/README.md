@@ -15,7 +15,7 @@ specs, plans, review reports — stays in the gitignored `.boris/` tree instead.
 | [architecture/overview.md](architecture/overview.md) | Whole-system map — component tree, Rust command modules, state ownership. A 2026-05-14 snapshot, not kept current. |
 | [performance-patterns.md](performance-patterns.md) | Measured slow patterns and the rules they earned: barrel imports of large libraries, scenario files accumulating serial tests, deciding from priced models instead of measurements, wall-clock waits in scenarios, freshly linked binaries paying a first-exec scan, the Rust gate's levers, and two runtime costs, `Diff::foreach` walking the whole diff and a custom property on the commit list's root costing 11 to 12ms a write. Review new code against it; the suite numbers live in `application-harness.md` §Budget. |
 | [fixtures.md](fixtures.md) | The fixture corpus: the `trunk-fixtures` crate that builds every repository Trunk is tested against, the eleven cases and what each proves, the fingerprint oracle each is pinned to, how to write a case, and the provenance of the two hand-built originals. Read before adding a fixture or touching a case module. |
-| [review-cli.md](review-cli.md) | The `trunk review` CLI: the four verbs, repo and store discovery, the agent-attribution and no-leak rules, the error contract, and how live reflection reaches the running app. Read before extending the CLI or changing the review store's schema. |
+| [review-cli.md](review-cli.md) | The `trunk review` CLI: its seven verbs, repo and store discovery, the agent-attribution and no-leak rules, the error contract, and how live reflection reaches the running app. Read before extending the CLI or changing the review store's schema. |
 
 ## Decisions
 
