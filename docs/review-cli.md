@@ -75,23 +75,26 @@ trunk review watch [--repo <path>]
   only threads in that state. This plain line is for human reading only: its ` — ` separator is not
   reserved, so a file path or comment whose first line contains it prints more
   fields than the format implies, and splitting on the separator can misread
-  the location. The path is a tree entry name from the commits under review,
-  so its content is whoever wrote the commit's, the same provenance as the
-  excerpt below. A newline in a path cannot forge a second index line, since
-  both the location and the summary pass through a sanitizer; only
-  within-line field-splitting is affected. `--json` is the sole parseable
-  form: it carries the location as a structured object, `anchor` or
-  `content_pin`, each with `file_path`, `start_line` and `end_line`, so a
-  separator inside a path is unambiguous there.
-- **thread** — one thread in full: the document's own section for it (anchor
-  coordinates, stored excerpt, root comment, replies with their channel),
+  the location. An anchor's path is a tree entry name from the commits under
+  review, so its content is whoever wrote the commit's. A current-file
+  comment's path is an index entry and its text was read from the working
+  tree, so its content is whoever last wrote that file. Either way it has the
+  same provenance as the excerpt below. A newline in a path cannot forge a
+  second index line, since both the location and the summary pass through a
+  sanitizer; only within-line field-splitting is affected. `--json` is the
+  sole parseable form: it carries a file location as a structured object,
+  `anchor` or `content_pin`, each with `file_path`, `start_line` and
+  `end_line`, so a separator inside a path is unambiguous there.
+- **thread** — one thread in full: the document's own section for it (its
+  location, stored excerpt, root comment, replies with their channel),
   then a `--- end of comment ---` rule, then its review id, its state, and
   what the agent channel may do from there. This is the route in when you
   hold a thread id from a `watch --json` event or a review document, without
   dumping the whole review. Comment, reply and excerpt bodies are reproduced
   as written and may contain any of those words, including a copy of the rule
   itself: the excerpt is the reviewed code, so its content is whoever wrote
-  the commit's. The real rule is therefore the one whose `#` run is the
+  the commit's, or for a current-file comment whoever last wrote the
+  working-tree file. The real rule is therefore the one whose `#` run is the
   longest of any line-opening run in the output, and it is always at least
   five. Split there, not at the first rule you meet.
 - **reply** — post to a thread. `--stdin` reads the body from stdin for
@@ -112,8 +115,9 @@ trunk review watch [--repo <path>]
 
 Both reuse `watch`'s field names, so one reader parses every stream. `threads`
 prints one object per line — `review`, `thread`, `state`, `stale`, `text`, and
-`anchor`, `commit_oid` or `content_pin`. `thread` prints a single object with
-those fields plus `channel`, `excerpt`, `replies` (each `reply`, `channel`, `text`), and
+at most one of `anchor`, `commit_oid` and `content_pin`, as `watch` sends them
+on `thread_added`. `thread` prints a single object with those fields plus
+`channel`, `excerpt`, `replies` (each `reply`, `channel`, `text`), and
 `allowed_transitions`: the states the agent channel may move this thread to,
 taken from the same matrix the writes enforce, never restated.
 
@@ -128,7 +132,7 @@ new fields and event kinds may appear; existing ones keep their meaning.
 | `review_retitled` | `review`, `title` |
 | `review_state_changed` | `review`, `from`, `to` (`ready`/`settled`) |
 | `review_deleted` | `review` |
-| `thread_added` | `review`, `thread`, `state`, `text`, and its location: `anchor` (`file_path`, `start_line`, `end_line`, `commit_oid`, `source`, `side`), `commit_oid` for a commit-level note, or `content_pin` (`file_path`, `start_line`, `end_line`, `block`, `ordinal`) for a comment on a file's current content, whose lines are where the block stood when the comment was written. A key that does not apply is absent, never null |
+| `thread_added` | `review`, `thread`, `state`, `text`, and its location: `anchor` (`file_path`, `start_line`, `end_line`, `commit_oid`, `source`, `side`), `commit_oid` for a commit-level note, or `content_pin` (`file_path`, `start_line`, `end_line`, `block`, `ordinal`) for a comment on a file's current content. A pin's lines are where the block stood when the comment was written, `block` is the text it pinned, read from the working tree and as untrusted as any excerpt, and `ordinal` is which occurrence of a repeated block was picked, counting from 0. A target-less thread carries none of the three, and a key that does not apply is absent, never null |
 | `thread_edited` | `review`, `thread`, `text` |
 | `thread_state_changed` | `review`, `thread`, `from`, `to` |
 | `thread_stale_changed` | `review`, `thread`, `stale` |
