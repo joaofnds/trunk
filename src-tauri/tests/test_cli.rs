@@ -1747,6 +1747,88 @@ fn watch_json_streams_the_events_full_data() {
     assert_eq!(event["anchor"]["file_path"], "src/deep/file.rs");
     assert_eq!(event["anchor"]["start_line"], 4);
     assert_eq!(event["anchor"]["end_line"], 9);
+    assert!(event.get("content_pin").is_none());
+}
+
+#[test]
+fn watch_json_locates_a_current_file_thread_by_its_content_pin() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let watch = WatchChild::spawn_json(&ctx);
+
+    seed_current_file_thread(&ctx, &published, false);
+
+    let event: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    assert_eq!(event["event"], "thread_added");
+    assert_eq!(event["content_pin"]["file_path"], "a.txt");
+    assert_eq!(event["content_pin"]["start_line"], 1);
+    assert_eq!(event["content_pin"]["end_line"], 1);
+    assert!(event.get("anchor").is_none());
+    assert!(event.get("commit_oid").is_none());
+}
+
+/// A reader tells a thread's shape by which location key is present, so a
+/// thread with no pin must not carry the key at all: a null would read as a
+/// current-file thread with its location missing.
+#[test]
+fn watch_json_omits_the_content_pin_on_commit_level_and_target_less_threads() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (composing, _) = seed_reviews(&ctx);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    store
+        .write(|tx| {
+            threads::insert(
+                tx,
+                &composing,
+                threads::NewThread {
+                    text: "about the whole commit".to_string(),
+                    anchor: None,
+                    commit_oid: Some("abc123def456".to_string()),
+                    content_pin: None,
+                    cached_excerpt: None,
+                },
+                600,
+            )?;
+            threads::insert(
+                tx,
+                &composing,
+                threads::NewThread {
+                    text: "about nothing in particular".to_string(),
+                    anchor: None,
+                    commit_oid: None,
+                    content_pin: None,
+                    cached_excerpt: None,
+                },
+                601,
+            )
+        })
+        .unwrap();
+    let watch = WatchChild::spawn_json(&ctx);
+
+    store
+        .write(|tx| reviews::publish(tx, &canonical, &composing, 700))
+        .unwrap();
+
+    let events: Vec<serde_json::Value> = (0..3)
+        .map(|_| serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap())
+        .collect();
+    let threads_added: Vec<&serde_json::Value> = events
+        .iter()
+        .filter(|e| e["event"] == "thread_added")
+        .collect();
+    assert_eq!(threads_added.len(), 2, "one event per thread: {events:?}");
+    assert!(
+        threads_added.iter().all(|e| e.get("content_pin").is_none()),
+        "{threads_added:?}",
+    );
 }
 
 /// `watch` driven straight through `run`'s sink on a background thread, with

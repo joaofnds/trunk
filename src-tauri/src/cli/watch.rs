@@ -100,7 +100,7 @@ mod watch_feed {
     use serde::Serialize;
     use std::collections::BTreeMap;
     use trunk_review::reviewdb::reviews::ReviewState;
-    use trunk_review::types::Anchor;
+    use trunk_review::types::{Anchor, ContentPin};
     use trunk_review::types::{Channel, ThreadState};
 
     pub type Snapshot = BTreeMap<String, ReviewSnap>;
@@ -117,6 +117,7 @@ mod watch_feed {
         pub text: String,
         pub anchor: Option<Anchor>,
         pub commit_oid: Option<String>,
+        pub content_pin: Option<ContentPin>,
         pub replies: BTreeMap<String, ReplySnap>,
     }
 
@@ -156,6 +157,8 @@ mod watch_feed {
             anchor: Option<Anchor>,
             #[serde(skip_serializing_if = "Option::is_none")]
             commit_oid: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            content_pin: Option<ContentPin>,
         },
         ThreadEdited {
             review: String,
@@ -235,6 +238,7 @@ fn published_snapshot(
                         text: thread.text,
                         anchor: thread.anchor,
                         commit_oid: thread.commit_oid,
+                        content_pin: thread.content_pin,
                         replies: replies
                             .into_iter()
                             .map(|r| {
@@ -330,6 +334,7 @@ fn push_thread_added(
         text: thread.text.clone(),
         anchor: thread.anchor.clone(),
         commit_oid: thread.commit_oid.clone(),
+        content_pin: thread.content_pin.clone(),
     });
     for (reply_id, reply) in &thread.replies {
         changes.push(WatchChange::ReplyAdded {

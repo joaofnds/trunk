@@ -80,9 +80,9 @@ trunk review watch [--repo <path>]
   excerpt below. A newline in a path cannot forge a second index line, since
   both the location and the summary pass through a sanitizer; only
   within-line field-splitting is affected. `--json` is the sole parseable
-  form: it carries the anchor as a structured object (`file_path`,
-  `start_line`, `end_line`), so a separator inside a path is unambiguous
-  there.
+  form: it carries the location as a structured object, `anchor` or
+  `content_pin`, each with `file_path`, `start_line` and `end_line`, so a
+  separator inside a path is unambiguous there.
 - **thread** — one thread in full: the document's own section for it (anchor
   coordinates, stored excerpt, root comment, replies with their channel),
   then a `--- end of comment ---` rule, then its review id, its state, and
@@ -112,8 +112,8 @@ trunk review watch [--repo <path>]
 
 Both reuse `watch`'s field names, so one reader parses every stream. `threads`
 prints one object per line — `review`, `thread`, `state`, `stale`, `text`, and
-`anchor` or `commit_oid`. `thread` prints a single object with those fields
-plus `channel`, `excerpt`, `replies` (each `reply`, `channel`, `text`), and
+`anchor`, `commit_oid` or `content_pin`. `thread` prints a single object with
+those fields plus `channel`, `excerpt`, `replies` (each `reply`, `channel`, `text`), and
 `allowed_transitions`: the states the agent channel may move this thread to,
 taken from the same matrix the writes enforce, never restated.
 
@@ -128,7 +128,7 @@ new fields and event kinds may appear; existing ones keep their meaning.
 | `review_retitled` | `review`, `title` |
 | `review_state_changed` | `review`, `from`, `to` (`ready`/`settled`) |
 | `review_deleted` | `review` |
-| `thread_added` | `review`, `thread`, `state`, `text`, and `anchor` (`file_path`, `start_line`, `end_line`, `commit_oid`, `source`, `side`) or `commit_oid` for a commit-level note |
+| `thread_added` | `review`, `thread`, `state`, `text`, and its location: `anchor` (`file_path`, `start_line`, `end_line`, `commit_oid`, `source`, `side`), `commit_oid` for a commit-level note, or `content_pin` (`file_path`, `start_line`, `end_line`, `block`, `ordinal`) for a comment on a file's current content, whose lines are where the block stood when the comment was written. A key that does not apply is absent, never null |
 | `thread_edited` | `review`, `thread`, `text` |
 | `thread_state_changed` | `review`, `thread`, `from`, `to` |
 | `thread_stale_changed` | `review`, `thread`, `stale` |

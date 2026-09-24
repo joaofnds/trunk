@@ -47,11 +47,11 @@ const fn state_word(state: reviews::ReviewState) -> &'static str {
 /// the first line of its text — the index an agent scans before asking for a
 /// thread in full. A stale thread carries the marker here as well as in the
 /// document, because the location it prints is where the code no longer is. The
-/// location is the anchor's `file:start-end`, a commit-level thread's short
-/// oid, or `no target`, mirroring the document's three thread shapes. A file
-/// path may legally contain a newline, so the location passes through the
-/// renderer's sanitizer: one thread must never print as two lines, or the
-/// second is a thread an agent will act on that nobody wrote.
+/// location is the content pin's or the anchor's `file:start-end`, a
+/// commit-level thread's short oid, or `no target`, mirroring the document's
+/// thread shapes. A file path may legally contain a newline, so the location
+/// passes through the renderer's sanitizer: one thread must never print as two
+/// lines, or the second is a thread an agent will act on that nobody wrote.
 pub(crate) fn render_threads(threads: &[trunk_review::reviewdb::threads::Thread]) -> String {
     threads.iter().fold(String::new(), |mut out, t| {
         let _ = writeln!(
