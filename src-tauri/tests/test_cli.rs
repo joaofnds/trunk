@@ -1747,7 +1747,7 @@ fn watch_json_streams_the_events_full_data() {
     assert_eq!(event["anchor"]["file_path"], "src/deep/file.rs");
     assert_eq!(event["anchor"]["start_line"], 4);
     assert_eq!(event["anchor"]["end_line"], 9);
-    assert!(event.get("content_pin").is_none());
+    assert!(event.get("content_pin").is_none(), "{event:?}");
 }
 
 #[test]
@@ -1763,17 +1763,25 @@ fn watch_json_locates_a_current_file_thread_by_its_content_pin() {
 
     let event: serde_json::Value =
         serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
-    assert_eq!(event["event"], "thread_added");
-    assert_eq!(event["content_pin"]["file_path"], "a.txt");
-    assert_eq!(event["content_pin"]["start_line"], 1);
-    assert_eq!(event["content_pin"]["end_line"], 1);
-    assert!(event.get("anchor").is_none());
-    assert!(event.get("commit_oid").is_none());
+    assert_eq!(
+        event,
+        serde_json::json!({
+            "event": "thread_added",
+            "review": published,
+            "thread": event["thread"],
+            "state": "open",
+            "text": "this constant needs a name",
+            "content_pin": {
+                "file_path": "a.txt",
+                "block": "one",
+                "ordinal": 0,
+                "start_line": 1,
+                "end_line": 1,
+            },
+        }),
+    );
 }
 
-/// A reader tells a thread's shape by which location key is present, so a
-/// thread with no pin must not carry the key at all: a null would read as a
-/// current-file thread with its location missing.
 #[test]
 fn watch_json_omits_the_content_pin_on_commit_level_and_target_less_threads() {
     let ctx = TestContext::builder()
@@ -1783,9 +1791,9 @@ fn watch_json_omits_the_content_pin_on_commit_level_and_target_less_threads() {
     let (composing, _) = seed_reviews(&ctx);
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
-    store
+    let (commit_level, target_less) = store
         .write(|tx| {
-            threads::insert(
+            let commit_level = threads::insert(
                 tx,
                 &composing,
                 threads::NewThread {
@@ -1797,7 +1805,7 @@ fn watch_json_omits_the_content_pin_on_commit_level_and_target_less_threads() {
                 },
                 600,
             )?;
-            threads::insert(
+            let target_less = threads::insert(
                 tx,
                 &composing,
                 threads::NewThread {
@@ -1808,7 +1816,8 @@ fn watch_json_omits_the_content_pin_on_commit_level_and_target_less_threads() {
                     cached_excerpt: None,
                 },
                 601,
-            )
+            )?;
+            Ok((commit_level, target_less))
         })
         .unwrap();
     let watch = WatchChild::spawn_json(&ctx);
@@ -1820,14 +1829,32 @@ fn watch_json_omits_the_content_pin_on_commit_level_and_target_less_threads() {
     let events: Vec<serde_json::Value> = (0..3)
         .map(|_| serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap())
         .collect();
-    let threads_added: Vec<&serde_json::Value> = events
-        .iter()
-        .filter(|e| e["event"] == "thread_added")
-        .collect();
-    assert_eq!(threads_added.len(), 2, "one event per thread: {events:?}");
-    assert!(
-        threads_added.iter().all(|e| e.get("content_pin").is_none()),
-        "{threads_added:?}",
+    let added = |thread: &str| {
+        events
+            .iter()
+            .find(|e| e["event"] == "thread_added" && e["thread"] == thread)
+            .unwrap_or_else(|| panic!("no thread_added for {thread}: {events:?}"))
+    };
+    assert_eq!(
+        added(&commit_level),
+        &serde_json::json!({
+            "event": "thread_added",
+            "review": composing,
+            "thread": commit_level,
+            "state": "open",
+            "text": "about the whole commit",
+            "commit_oid": "abc123def456",
+        }),
+    );
+    assert_eq!(
+        added(&target_less),
+        &serde_json::json!({
+            "event": "thread_added",
+            "review": composing,
+            "thread": target_less,
+            "state": "open",
+            "text": "about nothing in particular",
+        }),
     );
 }
 
