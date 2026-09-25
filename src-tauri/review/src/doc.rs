@@ -2303,7 +2303,7 @@ mod tests {
 
     #[test]
     fn header_overrides_project_commit_conventions() {
-        // This repo's own CLAUDE.md says to commit directly to main, which
+        // This repo's own AGENTS.md says to commit directly to main, which
         // collides with the uncommitted-changes rule above unless this
         // document states precedence explicitly.
         let (_dir, repo) = make_repo();

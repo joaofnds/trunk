@@ -136,7 +136,7 @@ Scope: root `package.json`, `bun.lock`, and code fallout under `src/`.
    the Phase 1 mise commit, which this removes) and HALT with the failing
    output. `git checkout <anchor> -- .` is **forbidden** (relative-path
    checkout from a stale cwd has wiped work before).
-4. Sync `CLAUDE.md`'s Stack section with any version it names that changed —
+4. Sync `AGENTS.md`'s Stack section with any version it names that changed —
    frontend *and* backend (it names git2, notify, tokio, Vite, TypeScript…).
    Stage each edit with the commit of the ecosystem that changed it.
 5. Commit per ecosystem, sequentially, staging only that ecosystem's paths:

@@ -283,7 +283,7 @@ established.
 
 - **Threading:** Tauri uses tokio async runtime. All git2 calls run in `spawn_blocking` because git2 is synchronous. Remote ops use `tokio::process::Command` for async subprocess with stderr streaming.
 - **git2 not Sync:** `git2::Repository` cannot be stored in shared state. Each command opens its own fresh `Repository` handle. Constraint is documented in `src-tauri/src/state.rs:5`.
-- **No git shelling out for local ops:** All local git operations (stage, commit, checkout, etc.) use git2 API. Only remote ops (fetch/pull/push/delete-remote-branch, rebase/merge message editing) shell out — documented in `CLAUDE.md`.
+- **No git shelling out for local ops:** All local git operations (stage, commit, checkout, etc.) use git2 API. Only remote ops (fetch/pull/push/delete-remote-branch, rebase/merge message editing) shell out — documented in `AGENTS.md`.
 - **Global state:** `RepoState`, `CommitCache`, `RunningOp`, `WatcherState` are module-level singletons managed by Tauri, each holding a `Mutex<HashMap<String, T>>` keyed by repo path string (`CommitCache`'s map is one layer down, inside the `GraphCache` its own `Mutex` wraps). `WatcherState` is the one with a second field, `enabled`, and it is passed into `configure` rather than constructed there, because `Builder::manage` panics on a duplicate type.
 - **Circular imports:** None detected. Frontend has a clear dependency direction: `components/` → `lib/` → `@tauri-apps/`.
 - **macOS PATH:** `src-tauri/src/shell_env.rs` uses `/usr/libexec/path_helper` to resolve full system PATH for git subprocess calls — required because GUI apps inherit a minimal launchd PATH.

@@ -43,7 +43,7 @@ file: `placement.rs` holds a second `let min_col = usize::from(!head_chain.is_em
 at 12-space indent that is not an anchor, and editing that phase-1 rule leaves all 65 anchors
 matching exactly once. The goldens catch that one, because it moves a layout.
 
-**`just mutants` is untouched.** That recipe predates this chain, is documented in `CLAUDE.md`,
+**`just mutants` is untouched.** That recipe predates this chain, is documented in `AGENTS.md`,
 is not graph-specific, and stays. It is not what measures this pipeline.
 
 ## Verdict table

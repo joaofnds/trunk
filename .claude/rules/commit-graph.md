@@ -103,7 +103,7 @@ then mirror the same edit into the changelog.
   **Adding or removing a pipeline stage or a graph test suite means editing both.** Every other
   file that should load this rule when opened means editing `paths:` only — do not grow the File
   Map to match it (ruling 2026-08-12, when `paths:` grew past the File Map's file set).
-  `CLAUDE.md` §Rules, the doc's own §File Map, and the memory note
+  `AGENTS.md` §Rules, the doc's own §File Map, and the memory note
   `claude_rules_paths_loader.md` (with its `MEMORY.md` index line) all point at this split;
   amend all four together, and state no entry count in any of them — the counts drift and
   nothing checks them
@@ -117,7 +117,7 @@ then mirror the same edit into the changelog.
   and record the date and the cause inline, as the bullets below do. Appending a dated
   re-derivation or revalidation note that a bullet itself asks for is not an amendment —
   record it yourself, in the bullet it belongs to
-- After changing the pipeline, or a rule here, grep `docs/`, `scripts/`, `CLAUDE.md`, the
+- After changing the pipeline, or a rule here, grep `docs/`, `scripts/`, `AGENTS.md`, the
   project memory notes under `$CLAUDE_CONFIG_DIR/projects/*/memory/` (index line and note
   both — they load in every session and nothing else sweeps them), **this file's own prose and its `paths:`
   list, and the comments in the pipeline-source files and the graph test suites** for every symbol and mechanism the change touched, **including the ones it deleted**

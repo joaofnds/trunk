@@ -152,7 +152,7 @@ by rewriting behavior.
   `--color-danger-border` (`src/app.css:55-57`).
 - **Fix:** Add an `.error-box` / `.error-text` class (or a small `<ErrorBox>` /
   `<ErrorText>` component) backed by the existing `--color-danger*` tokens;
-  replace all 26 inline literals. Direct CLAUDE.md-rule cleanup.
+  replace all 26 inline literals. Direct AGENTS.md-rule cleanup.
 
 ### D2 — ✅ PAID — File-status color hex in component maps
 - **The twist:** the audit's "duplicated map" was half **dead code**. The
@@ -261,7 +261,7 @@ by rewriting behavior.
   `src-tauri/tests/` integration binary fails to compile against a renamed
   symbol. Nothing enforces the full build.
 - **Fix:** Ensure CI runs the full `cargo test` (lib + integration) and treats
-  integration-compile failure as a gate. Already noted in CLAUDE.md/MEMORY —
+  integration-compile failure as a gate. Already noted in AGENTS.md/MEMORY —
   make it a CI assertion, not tribal knowledge.
 - **Partial hardening (`6883c6b`, adjacent — NOT a full E4 fix):** the `clippy`
   recipe now runs `--all-targets`, so tests + benches + the integration binary
@@ -280,17 +280,17 @@ by rewriting behavior.
 - **Fix:** Shift toward role/text queries; extract shared mock factories. Low
   priority — only when these tests start blocking refactors.
 
-### E6 — Doc drift: CLAUDE.md doesn't list active Tauri plugins
+### E6 — Doc drift: AGENTS.md doesn't list active Tauri plugins
 - **Severity:** low · **Effort:** trivial
 - **Fix:** `src-tauri/Cargo.toml` enables specific plugins (dialog, store,
-  window-state, clipboard); CLAUDE.md says only "Tauri 2". List them.
+  window-state, clipboard); AGENTS.md says only "Tauri 2". List them.
 
 ---
 
 ## Suggested order
 
 1. **Quick wins (one sitting):** C3, C1, C2, D1 — high-payoff dedup + the
-   CLAUDE-rule color cleanup. Low risk, big readability gain.
+   AGENTS.md-rule color cleanup. Low risk, big readability gain.
 2. **Scoped fix:** A1 (the tracked todo) + its `ReviewPanel` gate test.
 3. **Type safety:** D3.
 4. **Structural, behind green:** B1 → B2, then add E2 tests in the same pass.
