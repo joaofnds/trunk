@@ -10,7 +10,8 @@ compare SVG markup, in which an erased rail and a drawn one are identical, and T
 six sessions of green checks against a graph that was empty on screen (revert `409d34b3`).
 A green render golden is not evidence the graph draws. This suite is the one that looks.
 
-Why it is built this way, what gets a baseline, and why the tolerance is zero are in
+Why it is built this way, what gets a baseline, and why a pixel may drift 24 colour levels
+before it differs are in
 [decisions/2026-09-26-visual-regression-baselines.md](decisions/2026-09-26-visual-regression-baselines.md).
 
 ## Running it
@@ -28,8 +29,9 @@ once with `mise exec -- bunx playwright install webkit`.
 
 ## A capture differs
 
-A difference is a suspected break until someone has looked at it. The failing test names the
-repository and the number of differing pixels, and writes two files to
+A difference is a suspected break until someone has looked at it. A pixel differs when one
+of its colour channels is more than 24 levels of 255 from the baseline's. The failing test
+names the repository and the number of differing pixels, and writes two files to
 `tests/visual/differences/` (gitignored):
 
 - `<name>.capture.png`, what the app drew this run;
@@ -93,9 +95,9 @@ Alternatives measured and not taken:
 
 ## What it does not cover
 
-- Only this Mac's captures are measured to repeat. Whether the GitHub `macos-latest` runner
-  draws the same pixels is unmeasured until the CI job has run once. If it differs, the
-  decision record names the fallback.
+- The column header is not captured. GitHub's `macos-latest` runner draws its label up to
+  36 levels away from this Mac, and below it the runner stays within 12. A runner image
+  update can move that, and the decision record says how to re-measure it.
 - `--font-sans` starts with Inter, which is not installed here, so captures use the system
   sans-serif. A machine with Inter installed draws different text and fails.
 - A macOS update can change WebKit's or the system font's rendering. Treat a suite-wide

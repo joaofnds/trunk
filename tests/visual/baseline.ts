@@ -17,8 +17,8 @@ export type Differ = (baseline: Buffer, capture: Buffer) => Promise<Difference>;
 
 /**
  * Compares `capture` with the committed baseline called `name`, and returns why
- * it does not match, or nothing when it does. The measured variance between two
- * runs on one machine is zero, so a single differing pixel is a difference.
+ * it does not match, or nothing when it does. A single pixel that `differ`
+ * counts is a difference.
  *
  * A mismatch writes the capture and the difference image beside each other in
  * `tests/visual/differences/`, where they are read before anyone accepts them.

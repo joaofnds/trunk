@@ -22,6 +22,11 @@ const GRAPH_CASES = ["graph-lanes", "graph-merges"];
 const VIEWPORT = { width: 1200, height: 800 };
 const NOW = new Date("2026-09-01T00:00:00Z");
 
+/** How many levels of 255 a pixel's channel may move before the pixel differs.
+ *  GitHub's macOS runner draws a diagonal rail up to 12 levels away from this
+ *  Mac, and an erased rail moves at least 96 pixels per capture by more than 64. */
+const CHANNEL_TOLERANCE = 24;
+
 /** Captures that differ this many times running mean the page never settled. */
 const SETTLE_ATTEMPTS = 5;
 
@@ -104,13 +109,15 @@ export class VisualHarness {
 		}
 	}
 
-	/** Decodes both images in the browser and counts the pixels whose colour differs. */
+	/** Decodes both images in the browser and counts the pixels whose colour
+	 *  differs by more than the renderer variance between machines. */
 	async difference(baseline: Buffer, capture: Buffer): Promise<Difference> {
 		const page = await this.browser.newPage();
 		try {
 			const { pixels, image } = await page.evaluate(comparePixels, [
 				baseline.toString("base64"),
 				capture.toString("base64"),
+				CHANNEL_TOLERANCE,
 			] as const);
 			return { pixels, image: Buffer.from(image, "base64") };
 		} finally {
@@ -279,9 +286,10 @@ class AppPage {
 }
 
 /**
- * The graph column of the commit list: as wide as its header cell and as tall
- * as the list. Nothing outside it is captured, so a change to another column
- * leaves every capture as it was.
+ * The graph column of the commit list: as wide as its header cell, from below
+ * the header row to the bottom of the list. Nothing outside it is captured, so
+ * a change to another column, or to the header's label, leaves every capture
+ * as it was.
  */
 function graphColumn(): {
 	x: number;
@@ -290,19 +298,21 @@ function graphColumn(): {
 	height: number;
 } {
 	const list = document.querySelector('[role="listbox"]:has(.overlay-paths)');
-	const header = document.querySelector(
+	const header = document.querySelector("[data-testid=column-header]");
+	const cell = document.querySelector(
 		"[data-testid=column-header] > [data-column=graph]",
 	);
-	if (list === null || header === null)
+	if (list === null || header === null || cell === null)
 		throw new Error("the commit list or its graph column is not on the page");
 
 	const rows = list.getBoundingClientRect();
-	const column = header.getBoundingClientRect();
+	const headerRow = header.getBoundingClientRect();
+	const column = cell.getBoundingClientRect();
 	return {
 		x: column.left,
-		y: rows.top,
+		y: headerRow.bottom,
 		width: column.width,
-		height: rows.height,
+		height: rows.bottom - headerRow.bottom,
 	};
 }
 
@@ -322,9 +332,10 @@ function origin(vite: ViteDevServer): string {
 	return `http://127.0.0.1:${address.port}`;
 }
 
-async function comparePixels([baseline, capture]: readonly [
+async function comparePixels([baseline, capture, tolerance]: readonly [
 	string,
 	string,
+	number,
 ]): Promise<{ pixels: number; image: string }> {
 	const decode = async (png: string) => {
 		const image = new Image();
@@ -355,10 +366,10 @@ async function comparePixels([baseline, capture]: readonly [
 	let pixels = 0;
 	for (let i = 0; i < before.length; i += 4) {
 		const differs =
-			before[i] !== after[i] ||
-			before[i + 1] !== after[i + 1] ||
-			before[i + 2] !== after[i + 2] ||
-			before[i + 3] !== after[i + 3];
+			Math.abs(before[i] - after[i]) > tolerance ||
+			Math.abs(before[i + 1] - after[i + 1]) > tolerance ||
+			Math.abs(before[i + 2] - after[i + 2]) > tolerance ||
+			Math.abs(before[i + 3] - after[i + 3]) > tolerance;
 		if (differs) pixels++;
 		const grey = (before[i] + before[i + 1] + before[i + 2]) / 12 + 191;
 		out.data[i] = differs ? 255 : grey;
