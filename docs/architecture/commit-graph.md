@@ -559,6 +559,9 @@ A red golden is a suspected defect, not a stale artifact. Accept a change only w
 `just graph-accept "<reason>"`, which records the reason in `docs/commit-graph-changelog.md`.
 Never set `TRUNK_ACCEPT_GRAPH_GOLDENS` by hand, and never accept a change without the
 user's explicit direction; `.claude/rules/commit-graph.md` is the binding source.
+A red visual baseline in `tests/visual/baselines/` is held to the same rule. Accept it only
+with `just visual-accept "<reason>"`, which records the reason in
+`docs/visual-baseline-changelog.md`, and never set `TRUNK_ACCEPT_VISUAL_BASELINES` by hand.
 
 Three cases build the corpus, offline, behind `just graph-capture`: `04-graph-lanes`,
 `05-graph-merges` and `06-stash-lanes` of the `trunk-fixtures` crate, which builds every

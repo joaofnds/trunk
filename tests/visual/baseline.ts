@@ -7,6 +7,11 @@ const DIFFERENCES = join(import.meta.dirname, "differences");
 /** Set only by `scripts/visual-accept.sh`, which runs at the user's direction. */
 const ACCEPTING = process.env.TRUNK_ACCEPT_VISUAL_BASELINES === "1";
 
+const ACCEPT_HINT =
+	"Accept a capture only at the user's explicit direction, with " +
+	'`just visual-accept "<reason>"`, which records the reason in docs/visual-baseline-changelog.md. ' +
+	"Never set TRUNK_ACCEPT_VISUAL_BASELINES by hand (docs/visual-regression.md).";
+
 export interface Difference {
 	pixels: number;
 	/** The baseline dimmed, with every differing pixel painted over it. */
@@ -33,7 +38,7 @@ export async function mismatch(
 	if (!existsSync(path)) {
 		if (ACCEPTING) return accept(path, capture);
 		record(name, "capture", capture);
-		return `${name} has no baseline. Look at ${join(DIFFERENCES, `${name}.capture.png`)}; accept it only at the user's direction (docs/visual-regression.md).`;
+		return `${name} has no baseline. Look at ${join(DIFFERENCES, `${name}.capture.png`)}. ${ACCEPT_HINT}`;
 	}
 
 	const baseline = readFileSync(path);
@@ -46,7 +51,7 @@ export async function mismatch(
 
 	record(name, "capture", capture);
 	record(name, "difference", difference.image);
-	return `${name}: ${difference.pixels} pixels differ from the baseline. Look at ${join(DIFFERENCES, `${name}.difference.png`)}; a difference is a break until the user accepts it (docs/visual-regression.md).`;
+	return `${name}: ${difference.pixels} pixels differ from the baseline. Look at ${join(DIFFERENCES, `${name}.difference.png`)}. A difference is a suspected defect. ${ACCEPT_HINT}`;
 }
 
 function accept(path: string, capture: Buffer): null {

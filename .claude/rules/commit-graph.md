@@ -237,12 +237,21 @@ then mirror the same edit into the changelog.
   (`src-tauri/tests/common/goldens.rs`, `src/__tests__/helpers/graph-render.ts`), `DRIFT_HINT`
   in `src-tauri/tests/test_graph_capture.rs`, and
   `docs/architecture/commit-graph.md` §"Golden corpus"; `scripts/graph-capture.sh`'s header
-  states the upstream half only. When this bullet's substance changes, amend every
-  restatement it touches in the same change. (Added 2026-08-07 at the user's direction, and
-  every restatement amended in that same change — the red-golden half was already in the
-  sites named above, but nothing stated the user-direction gate; the nearest policy was
-  `docs/architecture/commit-graph.md`, which the "code wins" bullet above subordinates to the
-  pipeline source)
+  states the upstream half only. A red visual baseline in `tests/visual/baselines/` is a
+  suspected defect too. Accept one only at the user's explicit direction, and only with
+  `just visual-accept "<reason>"`, which records the reason in
+  `docs/visual-baseline-changelog.md`. Never set `TRUNK_ACCEPT_VISUAL_BASELINES` by hand,
+  since it skips the changelog. The visual half is restated in `scripts/visual-accept.sh`,
+  the failure messages in `tests/visual/baseline.ts`, `docs/visual-regression.md`
+  §"Accepting a change", `docs/architecture/commit-graph.md` §"Golden corpus", the
+  `visual-accept` recipe's comment in `justfile`, and `GLOSSARY.md` "Visual baseline".
+  `docs/README.md` restates both halves in its changelog rows. When this bullet's substance
+  changes, amend every restatement it touches in the same change. (Added 2026-08-07 at the
+  user's direction, and every restatement amended in that same change — the red-golden half
+  was already in the sites named above, but nothing stated the user-direction gate; the
+  nearest policy was `docs/architecture/commit-graph.md`, which the "code wins" bullet above
+  subordinates to the pipeline source. Visual baselines added 2026-09-26 at the user's
+  direction, TRUNK-100)
 - Every test in `test_graph.rs` outside the repository-built sets (a) and (b) in the
   "Two kinds of test" bullet below reads a committed capture; it never rebuilds the repository
   inside the test. Its data comes
@@ -331,7 +340,8 @@ then mirror the same edit into the changelog.
 
 - `docs/architecture/commit-graph.md` — read before changing lane assignment, edge
   emission, or node rendering. Covers the pipeline stages, the per-commit phases, the file
-  map, and the golden corpus (capture, red-golden discipline, `just graph-accept`)
+  map, and the golden corpus (capture, red-golden discipline, `just graph-accept` and
+  `just visual-accept`)
 - `docs/research/gitamine-graph-algorithm.md` — read only when reworking the placement algorithm
   itself. A comparison against gitamine's "straight branches", not a spec of current
   behaviour; its stash sections carry staleness notes. The docs sweep above still covers this
