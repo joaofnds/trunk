@@ -11,7 +11,8 @@
 		"check:watch": "svelte-check --tsconfig ./tsconfig.json --watch",
 		"tauri": "tauri",
 		"test": "vitest run",
-		"test:app": "vitest run --config vitest.app.config.ts"
+		"test:app": "vitest run --config vitest.app.config.ts",
+		"test:visual": "vitest run --config vitest.visual.config.ts"
 	},
 	"license": "Apache-2.0",
 	"dependencies": {
@@ -35,6 +36,7 @@
 		"@types/sortablejs": "^1.15.9",
 		"@vitest/coverage-v8": "^4.1.11",
 		"jsdom": "30.0.1",
+		"playwright": "1.63.0",
 		"svelte": "^5.57.0",
 		"svelte-check": "^4.7.6",
 		"tailwindcss": "^4.3.3",

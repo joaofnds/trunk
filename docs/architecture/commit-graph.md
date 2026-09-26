@@ -513,7 +513,9 @@ shape, the dirtiness dependency, the post-processing prohibition — is stated o
 
 Test commands are in `.claude/rules/commit-graph.md`.
 
-For visual checks, `just dev` and open a repo with stashes.
+`just visual` screenshots the graph pane of every `graph-lanes` and `graph-merges` repository
+and compares each with its committed baseline (`docs/visual-regression.md`). For a case it
+does not capture, `just dev` and open a repo with stashes.
 The `06-stash-lanes` case of the fixture corpus (`just fixtures 06-stash-lanes`,
 `docs/fixtures.md`) builds a set of repos covering
 inline placement, each flavour of dirtiness, the multi-stash, orphan, detached-HEAD,
@@ -637,6 +639,7 @@ Key test cases to maintain (in `src-tauri/tests/test_graph.rs` unless a bullet n
 | `src/components/CommitGraph.render.test.ts` | Pins the rendered SVG against `src/__tests__/goldens/graph-render/`: node shapes, dashed flags, connector geometry |
 | `src/components/CommitGraph.scrolled.test.ts` | Pins the overlay behind a viewport shorter than the fixture: the culled window, its row height, and that it moves on scroll. The render goldens all mount unscrolled and cannot see any of it |
 | `src/components/CommitGraph.test.ts` | Pins the graph column's component behaviour that no golden covers |
+| `tests/visual/graph.test.ts` | Screenshots the real app's graph pane in WebKit for every `graph-lanes` and `graph-merges` repository and compares each with its committed baseline in `tests/visual/baselines/`. It is the only suite that sees paint. The render goldens compare markup, in which an erased rail and a drawn one are identical, so a green render golden is not evidence the graph draws (`docs/visual-regression.md`) |
 
 This table and the `paths:` list in `.claude/rules/commit-graph.md` are **no longer the same
 set**, and that is deliberate. This table explains the pipeline: the stages a reader follows the

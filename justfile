@@ -102,7 +102,7 @@ front: biome svelte-check vitest
 rust: fmt clippy clippy-shipped cargo-test
 
 # Run all checks (run before committing)
-check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-sweep-check app-test toolchain-parity mise-parity dev-conf-parity contrast
+check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-sweep-check app-test toolchain-parity mise-parity dev-conf-parity contrast visual
 
 # Every audited text/background pair in src/app.css still clears its WCAG target (milliseconds)
 contrast:
@@ -243,6 +243,15 @@ vitest-cov:
 app-test:
     cargo build --manifest-path {{manifest}} --example app_host
     TRUNK_APP_HOST="{{target}}/debug/examples/app_host" bun run test:app
+
+# Screenshot every graph fixture in the real app and compare with the committed baselines (docs/visual-regression.md)
+visual:
+    cargo build --manifest-path {{manifest}} -p trunk --example app_host -p trunk-fixtures --bin fixtures
+    TRUNK_APP_HOST="{{target}}/debug/examples/app_host" TRUNK_FIXTURES="{{target}}/debug/fixtures" bun run test:visual
+
+# Accept changed visual baselines, recording why (refuses without a reason; only at the user's direction)
+visual-accept reason="":
+    scripts/visual-accept.sh {{quote(reason)}}
 
 # Repeat the frontend suites to catch a wait that only fails sometimes (`just flake-hunt 20`)
 flake-hunt runs="10":

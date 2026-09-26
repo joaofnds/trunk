@@ -110,7 +110,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Every recipe in `just check` has a CI job
         run: |
-          mirrored=$(printf '%s\n' app-test biome cargo-test clippy clippy-shipped contrast dev-conf-parity fmt graph-sweep-check mise-parity svelte-check toolchain-parity vitest | sort)
+          mirrored=$(printf '%s\n' app-test biome cargo-test clippy clippy-shipped contrast dev-conf-parity fmt graph-sweep-check mise-parity svelte-check toolchain-parity vitest visual | sort)
           recipes=$(sed -n 's/^check: *//p' justfile | tr ' ' '\n' | sort)
           if ! diff <(echo "$mirrored") <(echo "$recipes"); then
             echo "::error::just check and this workflow disagree; add or remove the CI job, then update the mirrored list in ci.yml"
@@ -285,3 +285,29 @@ jobs:
         with:
           name: typescript-coverage-report
           path: coverage/
+
+  visual:
+    name: Visual Baselines
+    needs: [biome, cargo-fmt, graph-sweep-check, svelte-check]
+    # The baselines are WebKit on macOS, the engine and platform Trunk ships on
+    # (docs/decisions/2026-09-26-visual-regression-baselines.md).
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "src-tauri -> target"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install webkit
+      - run: just visual
+      - name: Upload mismatching captures
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: visual-differences
+          path: tests/visual/differences/

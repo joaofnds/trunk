@@ -47,6 +47,15 @@ paths:
   - "scripts/graph-fixture-render.ts"
   - "scripts/graph-connector-render.ts"
   - "src/components/CommitGraph.test.ts"
+  - "tests/visual/graph.test.ts"
+  - "tests/visual/harness.ts"
+  - "tests/visual/page/boot.ts"
+  - "tests/visual/page/bindings.ts"
+  - "tests/visual/baseline.ts"
+  - "tests/visual/baselines"
+  - "scripts/visual-accept.sh"
+  - "docs/visual-regression.md"
+  - "docs/visual-baseline-changelog.md"
   - "justfile"
   - "docs/architecture/commit-graph.md"
   - "docs/commit-graph-changelog.md"
@@ -315,7 +324,8 @@ then mirror the same edit into the changelog.
   "Two kinds of test" bullet enumerates — and pins the accepted dirtiness churn, `test_placement.rs`
   the pure lane algorithm, `test_graph_input.rs` page hydration, `test_graph_goldens.rs` the
   committed fixture corpus; plain `cargo test --lib` runs none of them, and `just` runs them
-  the way CI does), `just front` (TypeScript)
+  the way CI does), `just front` (TypeScript), and `just visual`, the only suite that sees
+  paint, which neither tier above runs (`docs/visual-regression.md`)
 
 ## Reference
 

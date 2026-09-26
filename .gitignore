@@ -23,6 +23,9 @@ mutants.out.old
 # The fixture corpus, build output of src-tauri/fixtures (just fixtures)
 /repos
 
+# The visual suite writes each mismatching capture and its difference here (just visual)
+tests/visual/differences/
+
 # The measurement bridge writes its per-run token here (just measure)
 scripts/measure/.bridge-token.txt
 
