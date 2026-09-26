@@ -244,7 +244,7 @@ app-test:
     cargo build --manifest-path {{manifest}} --example app_host
     TRUNK_APP_HOST="{{target}}/debug/examples/app_host" bun run test:app
 
-# Screenshot every graph fixture in the real app and compare with the committed baselines (needs: bunx playwright install webkit; docs/visual-regression.md)
+# Screenshot the graph column of the graph, stash and kitchen-sink fixtures in the real app and compare with the committed baselines (needs: bunx playwright install webkit; docs/visual-regression.md)
 visual:
     cargo build --manifest-path {{manifest}} -p trunk --example app_host -p trunk-fixtures --bin fixtures
     TRUNK_APP_HOST="{{target}}/debug/examples/app_host" TRUNK_FIXTURES="{{target}}/debug/fixtures" bun run test:visual

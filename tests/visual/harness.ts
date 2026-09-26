@@ -23,11 +23,16 @@ const DEFAULT_FIXTURES = "src-tauri/target/debug/fixtures";
 const UNIT_TEST_PLUGIN = "vite-plugin-svelte-testing-library";
 
 /** The cases whose repositories carry a commit graph worth a baseline. */
-const GRAPH_CASES = ["graph-lanes", "graph-merges"];
+const GRAPH_CASES = [
+	"graph-lanes",
+	"graph-merges",
+	"kitchen-sink",
+	"stash-lanes",
+];
 
 /** The window every capture is taken in, tall enough to hold the longest graph
  *  without scrolling, and the day its relative dates count from. */
-const VIEWPORT = { width: 1200, height: 1000 };
+const VIEWPORT = { width: 1200, height: 1800 };
 const NOW = new Date("2026-09-01T00:00:00Z");
 
 /** How many levels of 255 a pixel's channel may move before the pixel differs.
@@ -50,6 +55,9 @@ const PAGES = pageCount(process.env.TRUNK_VISUAL_PAGES ?? "5");
 export interface GraphView {
 	/** Sizes the graph column as a user dragging it would, in CSS pixels. */
 	graphColumnWidth?: number;
+	/** Pans the graph column sideways by this many CSS pixels, as a sideways
+	 *  swipe over it would. */
+	pan?: number;
 }
 
 /**
@@ -119,13 +127,11 @@ export class VisualHarness {
 		return { browser: browser.value, pages };
 	}
 
-	/** Every repository the graph cases built, as `case/repository`. The bare
-	 *  remotes some cases push to sit in a dot directory and are no graph. */
+	/** Every repository the graph cases built, as `case/repository`, or as the
+	 *  case alone where the case is one repository. */
 	graphRepositories(): string[] {
 		return GRAPH_CASES.flatMap((graphCase) =>
-			readdirSync(join(this.repos, graphCase))
-				.filter((name) => !name.startsWith("."))
-				.map((name) => `${graphCase}/${name}`),
+			repositoriesIn(this.repos, graphCase),
 		).sort();
 	}
 
@@ -212,6 +218,13 @@ class AppPage {
 		await this.page.goto(this.url);
 		await this.untilRowsDrawn(host);
 
+		// The stored column width arrives after the first rows draw. A wheel before
+		// it is clamped to the fitted width's range, which is 0 for an uncapped fit.
+		if (view.pan !== undefined) {
+			await this.settledCapture();
+			await this.panGraph(view.pan);
+		}
+
 		return this.settledCapture();
 	}
 
@@ -295,6 +308,19 @@ class AppPage {
 				{ cause: error },
 			);
 		}
+	}
+
+	/** A sideways wheel over the graph column. The pointer then rests in the
+	 *  window's corner, since the row under it draws a hover into the column. */
+	private async panGraph(by: number): Promise<void> {
+		const column = await this.page.evaluate(graphColumn);
+
+		await this.page.mouse.move(
+			column.x + column.width / 2,
+			column.y + column.height / 2,
+		);
+		await this.page.mouse.wheel(by, 0);
+		await this.page.mouse.move(0, 0);
 	}
 
 	private async openTab(path: string, view: GraphView): Promise<void> {
@@ -411,6 +437,17 @@ function graphColumn(): {
 	};
 }
 
+/** The bare remotes some cases push to sit in a dot directory and are no
+ *  graph, and a case's notes sit beside its repositories as files. */
+function repositoriesIn(repos: string, graphCase: string): string[] {
+	const dir = join(repos, graphCase);
+	if (existsSync(join(dir, ".git"))) return [graphCase];
+
+	return readdirSync(dir, { withFileTypes: true })
+		.filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+		.map((entry) => `${graphCase}/${entry.name}`);
+}
+
 /** Playwright's own message for a missing browser installs every engine it
  *  ships. The suite needs WebKit alone, at the version this checkout pins. */
 async function launchWebKit(): Promise<Browser> {
@@ -495,9 +532,21 @@ async function comparePixels([baseline, capture, tolerance]: readonly [
 	return { pixels, image: btoa(binary) };
 }
 
+/** Every build finishes before this returns, failed or not, since the run
+ *  deletes their directory once one fails. */
 async function buildFixtures(out: string): Promise<void> {
 	const binary = process.env.TRUNK_FIXTURES ?? join(ROOT, DEFAULT_FIXTURES);
-	await promisify(execFile)(binary, ["build", ...GRAPH_CASES, "--out", out]);
+	const builds = await Promise.allSettled(
+		GRAPH_CASES.map((graphCase) =>
+			promisify(execFile)(binary, ["build", graphCase, "--out", out]),
+		),
+	);
+
+	const failures = builds
+		.filter((build) => build.status === "rejected")
+		.map((build) => build.reason);
+	if (failures.length > 0)
+		throw new AggregateError(failures, "the fixture cases did not all build");
 }
 
 async function serve(): Promise<ViteDevServer> {

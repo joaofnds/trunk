@@ -107,3 +107,33 @@ Changed baselines:
     tests/visual/baselines/graph-merges__12-pagination-boundary.png
     tests/visual/baselines/graph-merges__13-freed-column-left.png
     tests/visual/baselines/graph-merges__14-spiral-right-before-left.png
+
+## 2026-09-26
+
+New captures of the 21 stash-lanes repositories, the kitchen-sink repository, and 09-column-saturation at 56 px panned 20 px, so a paint break in stash placement beside the WIP row, the WIP marker or a panned graph column fails the suite. Each image equals the candidate João looked at in the TRUNK-289 contact sheet. The 28 existing baselines are unchanged. Accepted at João's direction on 2026-09-27 (TRUNK-289).
+
+Changed baselines:
+
+    tests/visual/baselines/graph-merges__09-column-saturation__graph-56px__panned-20px.png
+    tests/visual/baselines/kitchen-sink.png
+    tests/visual/baselines/stash-lanes__01-clean-inline.png
+    tests/visual/baselines/stash-lanes__02-dirty-tracked.png
+    tests/visual/baselines/stash-lanes__03-dirty-untracked.png
+    tests/visual/baselines/stash-lanes__04-dirty-staged.png
+    tests/visual/baselines/stash-lanes__05-dirty-conflicted.png
+    tests/visual/baselines/stash-lanes__06-ignored-stays-inline.png
+    tests/visual/baselines/stash-lanes__07-multi-stash-clean.png
+    tests/visual/baselines/stash-lanes__08-multi-stash-dirty.png
+    tests/visual/baselines/stash-lanes__09-topic-above-parent.png
+    tests/visual/baselines/stash-lanes__10-topic-below-parent.png
+    tests/visual/baselines/stash-lanes__11-stash-parent-mid-chain.png
+    tests/visual/baselines/stash-lanes__12-orphan-stash.png
+    tests/visual/baselines/stash-lanes__13-detached-head.png
+    tests/visual/baselines/stash-lanes__14-merge-tip.png
+    tests/visual/baselines/stash-lanes__15-backdated-stash.png
+    tests/visual/baselines/stash-lanes__16-bare-repo.git.png
+    tests/visual/baselines/stash-lanes__17-no-stash-dirty.png
+    tests/visual/baselines/stash-lanes__18-many-files.png
+    tests/visual/baselines/stash-lanes__19-two-backdated.png
+    tests/visual/baselines/stash-lanes__20-stash-on-stash.png
+    tests/visual/baselines/stash-lanes__21-tagged-stash.png

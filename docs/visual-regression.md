@@ -1,9 +1,9 @@
 # Visual regression suite
 
 `just visual` renders the real application in Playwright's WebKit against the repositories
-the fixture crate builds, screenshots the graph column of the commit list for each, and
-compares every capture with its committed baseline in `tests/visual/baselines/`. It is part
-of `just check` and has its own CI job, `Visual Baselines`, on `macos-latest`.
+four of the fixture crate's cases build, screenshots the graph column of the commit list for
+each, and compares every capture with its committed baseline in `tests/visual/baselines/`. It
+is part of `just check` and has its own CI job, `Visual Baselines`, on `macos-latest`.
 
 It exists because every other graph suite runs without a layout engine. The render goldens
 compare SVG markup, in which an erased rail and a drawn one are identical, and TRUNK-255 ran
@@ -77,36 +77,45 @@ tolerance leaves its baseline as it was. Review the change as an image diff befo
 it (GitHub's rich diff for PNGs, or `git difftool` with an image viewer). Never set
 `TRUNK_ACCEPT_VISUAL_BASELINES` by hand: it skips the changelog.
 
-A new repository in the `graph-lanes` or `graph-merges` case fails the suite twice until it
-is accepted. The coverage test fails because the list in `graph.test.ts` does not name it,
-and once it is named, its capture has no baseline. Removing a repository leaves its baseline
-behind with nothing to flag it, so delete the PNG in the same change.
+A new repository in `graph-lanes`, `graph-merges` or `stash-lanes` fails the suite twice until
+it is accepted. The coverage test fails because the list in `graph.test.ts` does not name it,
+and once it is named, its capture has no baseline. `kitchen-sink` is one repository, found as
+its case's directory, so a repository added to that case outside that directory is neither
+captured nor flagged. Removing a repository leaves its baseline behind with nothing to flag
+it, so delete the PNG in the same change.
 
 ## Wall time
 
-Measured 2026-09-26 on this 18-core Apple Silicon Mac, Playwright 1.63.0 WebKit, 29 tests
-(28 captures and the coverage test), builds warm:
+Measured 2026-09-27 on this 18-core Apple Silicon Mac, Playwright 1.63.0 WebKit, 52 tests
+(51 captures and the coverage test), builds warm:
 
-| Configuration | Wall time |
+| Measure | Five consecutive runs |
 |---|---|
-| `just visual`, the whole recipe with the cargo no-op build | 4.06, 4.07, 4.33 s |
-| vitest's own duration within those runs | 3.67, 3.69, 3.94 s |
+| `just visual`, the whole recipe with the cargo no-op build | 6.79, 6.72, 6.72, 6.92, 6.72 s |
+| vitest's own duration within those runs | 6.44, 6.36, 6.37, 6.57, 6.36 s |
+| Load average over one minute before each run | 7.60, 8.67, 8.22, 7.95, 7.87 |
 
-Load averages over one minute were 4.9 to 5.2 for these runs, from the other sessions on the
-machine. A reviewer's run of an earlier, slower version took 17.38 s with load averages of
-11.57, 7.46 and 5.48, after waiting 3.64 s on another build's cargo lock. That is one sample,
-and whether the suite stays in `just check` on a shared machine is unsettled, as the decision
-record says.
+The load came from the other sessions on the machine. Two runs by a reviewer the same day took
+8.15 and 6.97 s at load averages of 3.77 and 3.94, so the spread is wider than these five show.
+At 29 tests, on 2026-09-26, the recipe took 4.06 to 4.33 s at load averages of 4.9 to 5.2. A
+reviewer's run of an earlier, slower version took 17.38 s with load averages of 11.57, 7.46
+and 5.48, after waiting 3.64 s on another build's cargo lock. That is one sample, and whether
+the suite stays in `just check` on a shared machine is unsettled, as the decision record says.
 
-Where the time goes, measured per capture at three pages: retiring the last host, spawning a
-new one and writing the prefs 25 to 40 ms, loading the app 55 ms, drawing the first row
-95 ms, settling 75 ms. Settling always takes two screenshots, since the second must match the
-first. Before the first capture, Vite starts in about 130 ms and WebKit in about 270 ms, the
-fixture build takes about 800 ms, and the pages finish loading the app about 1.2 s in.
-Teardown takes about 160 ms.
+The slowest captures are `stash-lanes/18-many-files`, about 560 ms, and `kitchen-sink`, about
+440 ms. The four fixture cases build in one process each, side by side, in 2.08 to 2.16 s,
+against 2.80 to 2.86 s for all four in one process.
 
-Every speed alternative measured, vitest alone, each row adding to the one above unless it
-says otherwise. Rows sharing a round were run in rotation, so the load hit each alike:
+Where the time goes, measured per capture at three pages on 2026-09-26, with two cases:
+retiring the last host, spawning a new one and writing the prefs 25 to 40 ms, loading the app
+55 ms, drawing the first row 95 ms, settling 75 ms. Settling always takes two screenshots,
+since the second must match the first. Before the first capture, Vite starts in about 130 ms
+and WebKit in about 270 ms, the fixture build takes about 800 ms, and the pages finish loading
+the app about 1.2 s in. Teardown takes about 160 ms.
+
+Every speed alternative measured on 2026-09-26, with two cases and 29 tests, vitest alone,
+each row adding to the one above unless it says otherwise. Rows sharing a round were run in
+rotation, so the load hit each alike:
 
 | Configuration | Wall time |
 |---|---|
@@ -138,8 +147,10 @@ Alternatives not taken:
   Svelte's server build, which is why that plugin is filtered.
 - One `app_host` shared by every capture. Spawning one takes about 8 ms, so sharing would
   save under 0.1 s, and a shared host carries the prefs one capture writes into the next.
-- Caching the fixture build between runs. The pages finish loading after the fixtures are
-  built, so the build is no longer what the captures wait on.
+- Caching the fixture build between runs. With four cases the build alone takes about 2.1 s,
+  against the 1.2 s the pages took to load when that was last measured, so a cache would
+  likely save time now. It would also have to notice every change to the fixture crate, and
+  the suite runs inside 10 s without one.
 - One browser context for every page, so the pages share one HTTP cache. In one rotation,
   separate pages took 3.87 to 3.98 s, one context loading every page at once 3.86 to 3.96 s,
   and one context loading a first page before the others 3.99 to 4.11 s. Each page loads the
@@ -158,16 +169,12 @@ Alternatives not taken:
   look at the images, and accept with the reason.
 - Text. The capture holds no label: the column header and the ref pills are outside it, and
   GitHub's `macos-latest` runner draws text up to 36 levels away from this Mac.
-- Ref pills, which sit in the Branch/Tag column. The line joining each pill to its dot is
-  captured where it crosses into the graph column.
-- The `06-stash-lanes` repositories, so the dashed-square stash marker and stash placement
-  against the WIP row have no baseline.
-- A panned graph column. No capture pans it, so a break that shows only while it is panned
-  passes.
+- Ref pills, which sit in the Branch/Tag column (TRUNK-290). The line joining each pill to
+  its dot is captured where it crosses into the graph column.
+- A graph pan other than the one captured, `09-column-saturation` at 56 px panned 20 px. A
+  break that shows only at another offset, or in another repository, passes.
 - The diff pane (TRUNK-288).
 
-TRUNK-289 proposes capturing the stash repositories, the pills and a panned column.
-
 Every capture holds all of its repository's rows. A repository whose commit list would scroll
-in the 1000 px window fails its capture and says to raise the window's height, rather than
+in the 1800 px window fails its capture and says to raise the window's height, rather than
 leaving its last rows uncompared.

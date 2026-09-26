@@ -1,8 +1,8 @@
 # Visual regression baselines: what is captured, how, and at what tolerance
 
-Status: accepted 2026-09-26 (TRUNK-100). Two choices in it were made by the build without
-João's direction and stay unsettled until he rules: the 24-level tolerance, and running the
-suite inside `just check`.
+Status: accepted 2026-09-26 (TRUNK-100), captures widened 2026-09-27 (TRUNK-289). Two
+choices in it were made by the build without João's direction and stay unsettled until he
+rules: the 24-level tolerance, and running the suite inside `just check`.
 
 ## Context
 
@@ -27,22 +27,27 @@ seconds at most, or we accept that it will be slower and run [it nightly]."
 
 The graph column of the commit list, and nothing else:
 
-- one capture for each repository the `graph-lanes` and `graph-merges` fixture cases build
-  (27 today), at the default column widths;
+- one capture for each repository the `graph-lanes`, `graph-merges`, `stash-lanes` and
+  `kitchen-sink` fixture cases build (49 today), at the default column widths;
 - one capture of `graph-merges/09-column-saturation`, the widest fixture, with the graph
   column's stored width set to 56 px before the app loads. The lanes overflow that width and
-  the rails still draw, which is the state TRUNK-255 broke.
+  the rails still draw, which is the state TRUNK-255 broke;
+- one capture of that same narrowed column panned 20 px by a sideways wheel over it once the
+  rows have drawn and the stored width has arrived, so lanes sit past both of its edges.
 
-That is 28 captures. Each is as wide as the graph column's header cell and runs from the top
-of the first commit row to the bottom of the last, so its height follows the repository and
-not the space the app gives the list. The branch, message, author, date and SHA columns, the
-header, and the chrome around the list are outside it, so a change to any of them leaves every
-capture unchanged, with one exception. The line from each ref pill to its commit's dot runs
-into the graph column, so hiding the Branch/Tag column or restyling that line changes the
-captures of the repositories with refs. Four pixels more of top bar, and a visible string
-added to every commit message, each kept all 28 captures green (measured 2026-09-26). The
-window is 1000 px tall, enough for the longest repository's 30 rows. A list that would
-scroll fails its capture rather than leave its last rows uncompared.
+That is 51 captures. The stash and kitchen-sink repositories and the panned column joined on
+2026-09-27 at João's direction (TRUNK-289), so that stash placement beside the WIP row, the WIP
+marker and a panned column each have a baseline. Each is as wide as the graph column's header
+cell and runs from the top of the first commit row to the bottom of the last, so its height
+follows the repository and not the space the app gives the list. The branch, message, author,
+date and SHA columns, the header, and the chrome around the list are outside it, so a change to
+any of them leaves every capture unchanged, with one exception. The line from each ref pill to
+its commit's dot runs into the graph column, so hiding the Branch/Tag column or restyling that
+line changes the captures of the repositories with refs. Four pixels more of top bar, and a
+visible string added to every commit message, each kept all 28 captures green (measured
+2026-09-26). The window is 1800 px tall, enough for the longest repository's 61 rows
+(`kitchen-sink`). A list that would scroll fails its capture rather than leave its last rows
+uncompared.
 
 Not captured, and why:
 
@@ -50,12 +55,10 @@ Not captured, and why:
   36 levels away from this Mac (below). The pills also sit in the Branch/Tag column, outside
   the graph column, though the line joining each pill to its dot is captured where it
   crosses into the graph column.
-- The `06-stash-lanes` repositories. The two captured cases are the ones the fixture crate
-  builds for lane and merge geometry, and the stash case was not chosen with them.
-- A panned graph column. Every capture is of the list at rest.
+- A column panned any other distance, or in any other repository. One pan is captured.
 - The diff pane, which João's direction did not name (TRUNK-288).
 
-Capturing the stash repositories, the pills and a panned column is proposed in TRUNK-289.
+Capturing the pills is proposed in TRUNK-290.
 
 ## Capture setup
 
@@ -70,7 +73,7 @@ Capturing the stash repositories, the pills and a panned column is proposed in T
   Svelte plugin, empties the browser's resolve conditions inside any vitest process, and the
   page then loads Svelte's server build. One host per capture, so the prefs one capture writes
   cannot reach the next.
-- Viewport 1200 by 1000, device scale factor 1, and the clock pinned to 2026-09-01. The only
+- Viewport 1200 by 1800, device scale factor 1, and the clock pinned to 2026-09-01. The only
   dates the app draws are in the date column, outside the capture, so the pin guards against
   a date reaching the graph column rather than against any variance seen today.
 - Readiness is observed, never waited on: a commit row exists, no command is in flight, two
@@ -97,7 +100,9 @@ run against baselines recorded here (macOS 27) differed in 11 of 28 captures (CI
 
 Outside the header, the runner's captures are within 12 levels of this Mac's everywhere, and
 24 is twice that. CI run 36232438441 passed every capture under the tolerance, with captures
-cut below the header.
+cut below the header. Those were the 28 captures of 2026-09-26. The 23 added on 2026-09-27 had
+not run on the runner when they were accepted, so a red first run of theirs is the Re-check
+below.
 
 What the tolerance admits is a change of 24 levels or fewer in every channel of a pixel: an
 antialiasing shift, or a colour nudged that little. The two nearest lane colours, `--lane-0`
@@ -124,7 +129,7 @@ Paths considered when the runner differed, and what ruled each out:
 
 `playwright` is the library only. The suite runs under vitest like every other TypeScript
 suite, so there is one runner, one config style and one report. `@playwright/test` would add a
-second runner for 29 tests, and its comparator is the one rejected above.
+second runner for one suite, and its comparator is the one rejected above.
 
 ## Why bindings and not the measurement bridge
 
@@ -134,7 +139,7 @@ nothing listening on a port and no token to write.
 
 ## Where it runs
 
-In `just check` and in CI as `Visual Baselines`. The whole recipe takes about 4 s with builds
+In `just check` and in CI as `Visual Baselines`. The whole recipe takes about 7 s with builds
 warm and needs no Docker, which is inside the 10 seconds João's direction allows. The same
 direction also says local verification should not have to depend on the suite, and `just
 check` does depend on it: it fails on a machine without Playwright's WebKit installed. That is
