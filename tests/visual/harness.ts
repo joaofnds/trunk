@@ -1,12 +1,15 @@
 import { execFile } from "node:child_process";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
-import { svelte } from "@sveltejs/vite-plugin-svelte";
-import tailwindcss from "@tailwindcss/postcss";
 import { type Browser, type Page, webkit } from "playwright";
-import { createServer, type ViteDevServer } from "vite";
+import {
+	createServer,
+	loadConfigFromFile,
+	type PluginOption,
+	type ViteDevServer,
+} from "vite";
 import { HostClient } from "../app/harness/host-client.js";
 import type { Difference } from "./baseline.js";
 import "./page/bindings.js";
@@ -15,11 +18,16 @@ const ROOT = join(import.meta.dirname, "../..");
 const PAGE = "/tests/visual/page/index.html";
 const DEFAULT_FIXTURES = "src-tauri/target/debug/fixtures";
 
+/** Sets up vitest's DOM tests, and inside any vitest process it empties Vite's
+ *  browser resolve conditions, so the page would load Svelte's server build. */
+const UNIT_TEST_PLUGIN = "vite-plugin-svelte-testing-library";
+
 /** The cases whose repositories carry a commit graph worth a baseline. */
 const GRAPH_CASES = ["graph-lanes", "graph-merges"];
 
-/** The window every capture is taken in, and the day its relative dates count from. */
-const VIEWPORT = { width: 1200, height: 800 };
+/** The window every capture is taken in, tall enough to hold the longest graph
+ *  without scrolling, and the day its relative dates count from. */
+const VIEWPORT = { width: 1200, height: 1000 };
 const NOW = new Date("2026-09-01T00:00:00Z");
 
 /** How many levels of 255 a pixel's channel may move before the pixel differs.
@@ -30,9 +38,14 @@ const CHANNEL_TOLERANCE = 24;
 /** Captures that differ this many times running mean the page never settled. */
 const SETTLE_ATTEMPTS = 5;
 
+/** How long a repository may take to draw its first row. It sits inside the
+ *  test's timeout so the failure can carry what the host was still owed. */
+const ROWS_DRAWN_MS = 10_000;
+
 /** Pages capturing at once. Each capture mostly waits on its host and its page,
- *  so a few overlap well; more would load a machine other sessions share. */
-const PAGES = pageCount(process.env.TRUNK_VISUAL_PAGES ?? "3");
+ *  so a few overlap well. Past four the run gets no faster and only loads a
+ *  machine other sessions share (docs/visual-regression.md). */
+const PAGES = pageCount(process.env.TRUNK_VISUAL_PAGES ?? "4");
 
 export interface GraphView {
 	/** Sizes the graph column as a user dragging it would, in CSS pixels. */
@@ -45,45 +58,58 @@ export interface GraphView {
  * capture at once, each borrowed by one capture at a time.
  */
 export class VisualHarness {
-	private readonly idle: AppPage[];
 	private readonly waiting: ((page: AppPage) => void)[] = [];
 
 	private constructor(
 		private readonly repos: string,
-		private readonly vite: ViteDevServer,
 		private readonly browser: Browser,
-		private readonly pages: AppPage[],
-	) {
-		this.idle = [...pages];
-	}
+		private readonly idle: AppPage[],
+		private readonly opened: Opened,
+	) {}
 
 	static async setup(): Promise<VisualHarness> {
-		const repos = mkdtempSync(join(tmpdir(), "trunk-visual-"));
-		const started = await Promise.allSettled([
-			buildFixtures(repos),
-			serve(),
-			webkit.launch(),
-		]);
-		const [fixtures, vite, browser] = started;
-		if (
-			fixtures.status === "rejected" ||
-			vite.status === "rejected" ||
-			browser.status === "rejected"
-		) {
-			// Whatever did start would otherwise outlive the failed run.
-			if (vite.status === "fulfilled") await vite.value.close();
-			if (browser.status === "fulfilled") await browser.value.close();
-			rmSync(repos, { recursive: true, force: true });
-			const failed = started.find((result) => result.status === "rejected");
-			throw (failed as PromiseRejectedResult).reason;
+		const opened = new Opened();
+		try {
+			return await VisualHarness.start(opened);
+		} catch (error) {
+			await opened.close();
+			throw error;
 		}
+	}
 
+	/** The fixture build takes longest, so the pages open and load the app beside it. */
+	private static async start(opened: Opened): Promise<VisualHarness> {
+		const repos = mkdtempSync(join(tmpdir(), "trunk-visual-"));
+		opened.add(() => rmSync(repos, { recursive: true, force: true }));
+
+		const [fixtures, browsing] = await Promise.allSettled([
+			buildFixtures(repos),
+			VisualHarness.openPages(opened),
+		]);
+		if (fixtures.status === "rejected") throw fixtures.reason;
+		if (browsing.status === "rejected") throw browsing.reason;
+
+		const { browser, pages } = browsing.value;
+		return new VisualHarness(repos, browser, pages, opened);
+	}
+
+	private static async openPages(
+		opened: Opened,
+	): Promise<{ browser: Browser; pages: AppPage[] }> {
+		const [vite, browser] = await Promise.allSettled([serve(), launchWebKit()]);
+		if (vite.status === "fulfilled") opened.add(() => vite.value.close());
+		if (browser.status === "fulfilled") opened.add(() => browser.value.close());
+		if (vite.status === "rejected") throw vite.reason;
+		if (browser.status === "rejected") throw browser.reason;
+
+		// A page that opened before another failed closes with the browser.
 		const url = new URL(PAGE, origin(vite.value)).href;
 		const pages = await Promise.all(
 			Array.from({ length: PAGES }, () => AppPage.open(browser.value, url)),
 		);
+		for (const page of pages) opened.add(() => page.close());
 
-		return new VisualHarness(repos, vite.value, browser.value, pages);
+		return { browser: browser.value, pages };
 	}
 
 	/** Every repository the graph cases built, as `case/repository`. The bare
@@ -96,7 +122,7 @@ export class VisualHarness {
 		).sort();
 	}
 
-	/** Opens `repository` the way a restored tab does and captures the graph pane. */
+	/** Opens `repository` the way a restored tab does and captures the graph column. */
 	async captureGraph(
 		repository: string,
 		view: GraphView = {},
@@ -109,8 +135,8 @@ export class VisualHarness {
 		}
 	}
 
-	/** Decodes both images in the browser and counts the pixels whose colour
-	 *  differs by more than the renderer variance between machines. */
+	/** Decodes both images in the browser and counts the pixels with a channel
+	 *  more than `CHANNEL_TOLERANCE` levels from the baseline's. */
 	async difference(baseline: Buffer, capture: Buffer): Promise<Difference> {
 		const page = await this.browser.newPage();
 		try {
@@ -126,10 +152,7 @@ export class VisualHarness {
 	}
 
 	async teardown(): Promise<void> {
-		await Promise.all(this.pages.map((page) => page.close()));
-		await this.browser.close();
-		await this.vite.close();
-		rmSync(this.repos, { recursive: true, force: true });
+		await this.opened.close();
 	}
 
 	private borrow(): Promise<AppPage> {
@@ -168,35 +191,42 @@ class AppPage {
 
 		const appPage = new AppPage(page, url);
 		await appPage.bind();
+		// Puts the app's modules in the page's cache before the first capture.
+		// With no host attached, the app stops booting at its first question.
+		await page.goto(url);
 		return appPage;
 	}
 
 	async captureGraph(path: string, view: GraphView): Promise<Buffer> {
-		await this.replaceHost();
+		await this.retireHost();
+		const host = await this.attachHost();
 		await this.openTab(path, view);
 
 		await this.page.goto(this.url);
-		await this.page.waitForFunction(
-			() => document.querySelector(".overlay-paths path") !== null,
-		);
+		await this.untilRowsDrawn(host);
 
 		return this.settledCapture();
 	}
 
 	async close(): Promise<void> {
-		await this.host?.shutdown();
+		const retired = this.host;
+		this.host = null;
+		await retired?.shutdown();
+
 		await this.page.close();
 	}
 
+	/** A document that asks with no host attached is the warm-up or one being
+	 *  retired, and nothing reads it again. Its question goes unanswered, since a
+	 *  rejection would surface in the run's output as a fault of the capture. */
 	private async bind(): Promise<void> {
 		await this.page.exposeFunction(
 			"__trunkInvoke",
 			(cmd: string, args: Record<string, unknown>) =>
-				this.currentHost().invoke(cmd, args),
+				this.host === null ? unanswered() : this.host.invoke(cmd, args),
 		);
-		await this.page.exposeFunction(
-			"__trunkHome",
-			() => this.currentHost().home,
+		await this.page.exposeFunction("__trunkHome", () =>
+			this.host === null ? unanswered() : this.host.home,
 		);
 		await this.page.addInitScript(() => {
 			const queued: [string, unknown][] = [];
@@ -215,9 +245,17 @@ class AppPage {
 		});
 	}
 
-	private async replaceHost(): Promise<void> {
-		await this.host?.shutdown();
+	/** Takes the page off the application before the host goes, so nothing the
+	 *  last capture's document still writes can reach the next capture's host. */
+	private async retireHost(): Promise<void> {
+		const retired = this.host;
+		this.host = null;
 
+		await this.page.goto("about:blank");
+		await retired?.shutdown();
+	}
+
+	private async attachHost(): Promise<HostClient> {
 		const host = await HostClient.spawn();
 		host.onEvent((event, payload) => {
 			if (this.host !== host) return;
@@ -226,9 +264,27 @@ class AppPage {
 					event,
 					payload,
 				] as const)
-				.catch(() => {});
+				.catch((error: unknown) => {
+					// Retiring the host navigates away from the document it was delivering to.
+					if (this.host === host) throw error;
+				});
 		});
 		this.host = host;
+		return host;
+	}
+
+	private async untilRowsDrawn(host: HostClient): Promise<void> {
+		try {
+			await this.page
+				.locator("[data-testid=commit-row]")
+				.first()
+				.waitFor({ timeout: ROWS_DRAWN_MS });
+		} catch (error) {
+			throw new Error(
+				`no commit row drew within ${ROWS_DRAWN_MS} ms\n${host.describeOutstanding()}`,
+				{ cause: error },
+			);
+		}
 	}
 
 	private async openTab(path: string, view: GraphView): Promise<void> {
@@ -285,11 +341,35 @@ class AppPage {
 	}
 }
 
+/** What a run has started, closed newest first. Every closer runs even when an
+ *  earlier one fails, since whatever it skipped would outlive the run. */
+class Opened {
+	private readonly closers: (() => unknown)[] = [];
+
+	add(close: () => unknown): void {
+		this.closers.push(close);
+	}
+
+	async close(): Promise<void> {
+		const failures: unknown[] = [];
+		for (const close of this.closers.splice(0).reverse()) {
+			try {
+				await close();
+			} catch (error) {
+				failures.push(error);
+			}
+		}
+
+		if (failures.length > 0)
+			throw new AggregateError(failures, "the visual harness did not close");
+	}
+}
+
 /**
- * The graph column of the commit list: as wide as its header cell, from below
- * the header row to the bottom of the list. Nothing outside it is captured, so
- * a change to another column, or to the header's label, leaves every capture
- * as it was.
+ * The graph column of the commit list: as wide as its header cell, from the top
+ * of the first commit row to the bottom of the last. Nothing outside it is
+ * captured, so a change to another column, to the header, or to the chrome
+ * around the list leaves every capture as it was.
  */
 function graphColumn(): {
 	x: number;
@@ -297,23 +377,41 @@ function graphColumn(): {
 	width: number;
 	height: number;
 } {
-	const list = document.querySelector('[role="listbox"]:has(.overlay-paths)');
-	const header = document.querySelector("[data-testid=column-header]");
 	const cell = document.querySelector(
 		"[data-testid=column-header] > [data-column=graph]",
 	);
-	if (list === null || header === null || cell === null)
+	const list = document.querySelector(".virtual-list-viewport");
+	const rows = document.querySelectorAll("[data-testid=commit-row]");
+	if (cell === null || list === null || rows.length === 0)
 		throw new Error("the commit list or its graph column is not on the page");
+	if (list.scrollHeight > list.clientHeight)
+		throw new Error(
+			"the commit list scrolls, so its last rows would go uncaptured: raise VIEWPORT's height",
+		);
 
-	const rows = list.getBoundingClientRect();
-	const headerRow = header.getBoundingClientRect();
 	const column = cell.getBoundingClientRect();
+	const first = rows[0].getBoundingClientRect();
+	const last = rows[rows.length - 1].getBoundingClientRect();
 	return {
 		x: column.left,
-		y: headerRow.bottom,
+		y: first.top,
 		width: column.width,
-		height: rows.bottom - headerRow.bottom,
+		height: last.bottom - first.top,
 	};
+}
+
+/** Playwright's own message for a missing browser installs every engine it
+ *  ships. The suite needs WebKit alone, at the version this checkout pins. */
+async function launchWebKit(): Promise<Browser> {
+	if (!existsSync(webkit.executablePath()))
+		throw new Error(
+			"Playwright's WebKit is not installed. Install it once with: mise exec -- bunx playwright install webkit",
+		);
+	return webkit.launch();
+}
+
+function unanswered(): Promise<never> {
+	return new Promise(() => {});
 }
 
 function pageCount(setting: string): number {
@@ -392,22 +490,40 @@ async function buildFixtures(out: string): Promise<void> {
 }
 
 async function serve(): Promise<ViteDevServer> {
+	const app = await loadConfigFromFile(
+		{ command: "serve", mode: "development" },
+		join(ROOT, "vite.config.ts"),
+	);
+	if (app === null) throw new Error("vite.config.ts did not load");
+	const plugins = app.config.plugins ?? [];
+	const served = plugins.filter((plugin) => !named(plugin, UNIT_TEST_PLUGIN));
+	if (served.length === plugins.length)
+		throw new Error(
+			`vite.config.ts no longer lists ${UNIT_TEST_PLUGIN}: serve its plugins unfiltered`,
+		);
+
 	const server = await createServer({
+		...app.config,
+		plugins: served,
 		configFile: false,
 		root: ROOT,
+		cacheDir: join(ROOT, "node_modules/.vite-visual"),
+		optimizeDeps: { entries: [PAGE.slice(1)] },
 		logLevel: "error",
-		plugins: [svelte()],
-		css: {
-			postcss: {
-				plugins: [tailwindcss({ base: join(ROOT, "src") })],
-			},
-		},
 		server: {
 			host: "127.0.0.1",
 			port: 0,
 			hmr: false,
 			watch: null,
+			headers: { "Cache-Control": "max-age=3600" },
+			warmup: { clientFiles: [PAGE.slice(1)] },
 		},
 	});
 	return server.listen();
+}
+
+function named(plugin: PluginOption, name: string): boolean {
+	if (!plugin || Array.isArray(plugin) || plugin instanceof Promise)
+		return false;
+	return plugin.name === name;
 }

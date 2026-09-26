@@ -198,11 +198,11 @@ backend actually produces.
 layout export: paths, dots, node shapes, and ref pills. Everything inside the `<svg>`
 element. The frontend half of the guarantee.
 
-**Visual baseline**: a committed screenshot of the graph pane as the real app draws one
+**Visual baseline**: a committed screenshot of the graph column as the real app draws one
 fixture repository in WebKit (`tests/visual/baselines/`). Unlike a render golden it records
-paint, so it sees a rail that is in the markup but not on screen. A pixel that differs by
-more than the renderer variance between machines is a break until the user accepts it with
-a reason (`docs/visual-regression.md`).
+paint, so it sees a rail that is in the markup but not on screen. A pixel with a channel more
+than 24 levels of 255 from the baseline, twice the largest difference measured between
+machines, is a break until the user accepts it with a reason (`docs/visual-regression.md`).
 
 **Named-rule test** — a hand-written, hand-asserted test whose name states a placement rule
 (`upstream_outranks_a_topic_branch_for_the_head_lane`,

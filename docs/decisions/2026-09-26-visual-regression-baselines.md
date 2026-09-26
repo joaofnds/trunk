@@ -1,15 +1,27 @@
 # Visual regression baselines: what is captured, how, and at what tolerance
 
-Status: accepted 2026-09-26 (TRUNK-100).
+Status: accepted 2026-09-26 (TRUNK-100). Two choices in it were made by the build without
+João's direction and stay unsettled until he rules: the 24-level tolerance, and running the
+suite inside `just check`.
 
 ## Context
 
 Every graph test in Trunk ran without a layout engine. The render goldens compare markup
 strings, and jsdom evaluates no clip-path or mask, so a rail erased on screen and one drawn
 are the same string. TRUNK-255 shipped a graph that was empty on screen through six sessions
-of green checks (revert `409d34b3`). João's direction on 2026-09-22 was that the graph be
-rendered end to end through the real code against fixture repositories, that the screenshot
-be the golden, and that any difference be reviewed by hand and otherwise treated as a break.
+of green checks (revert `409d34b3`).
+
+João's direction on 2026-09-22: "If we had some fixture repos that we can use the real code
+end to end to render the graph for those repos and take screenshots and we save those
+screenshots every time there is a difference in the screenshot, that should be our golden.
+That should be manually reviewed and make sure that the change is intentional and otherwise
+consider it as a break."
+
+On where it runs, the same day: "the screenshotting should be like additional in our suite.
+Maybe run it also on a cron like every day on GitHub because it will probably be slow... So
+we don't want to have to depend on it every time we need to verify stuff locally. So we
+either find a way to make it really, really, really, really fast and run under like 10
+seconds at most, or we accept that it will be slower and run [it nightly]."
 
 ## What gets a baseline
 
@@ -18,51 +30,77 @@ The graph column of the commit list, and nothing else:
 - one capture for each repository the `graph-lanes` and `graph-merges` fixture cases build
   (27 today), at the default column widths;
 - one capture of `graph-merges/09-column-saturation`, the widest fixture, with the graph
-  column dragged to 56 px. The lanes overflow that width and the rails still draw, which is
-  the state TRUNK-255 broke. With the rail group's clip rectangle removed, every capture failed,
-  this one included, and restoring it passed all of them (measured 2026-09-26).
+  column's stored width set to 56 px before the app loads. The lanes overflow that width and
+  the rails still draw, which is the state TRUNK-255 broke.
 
-Each capture is clipped to the graph column: as wide as the column's header cell, from below
-the header row to the bottom of the list. The header's label is text, which the CI runner
-draws differently (below), and it is not the graph. The branch, message, author, date and SHA columns are outside it, so a change to
-them, or to anything else in the app, leaves every capture unchanged. A visible string added to every
-commit message kept all 29 captures green (measured 2026-09-26). The diff pane was dropped from this card (TRUNK-288).
+That is 28 captures. Each is as wide as the graph column's header cell and runs from the top
+of the first commit row to the bottom of the last, so its height follows the repository and
+not the space the app gives the list. The branch, message, author, date and SHA columns, the
+header, and the chrome around the list are outside it, so a change to any of them leaves every
+capture unchanged. Four pixels more of top bar, and a visible string added to every commit
+message, each kept all 28 captures green (measured 2026-09-26). The window is 1000 px tall,
+enough for the longest repository's 30 rows. A list that would scroll fails its capture rather
+than leave its last rows uncompared.
+
+Not captured, and why:
+
+- The column header and the ref pills. Both are text, which GitHub's macOS runner draws up to
+  36 levels away from this Mac (below). The pills also sit in the Branch/Tag column, outside
+  the graph column.
+- The `06-stash-lanes` repositories. The two captured cases are the ones the fixture crate
+  builds for lane and merge geometry, and the stash case was not chosen with them.
+- A panned graph column. Every capture is of the list at rest.
+- The diff pane, which João's direction did not name (TRUNK-288).
+
+Capturing the stash repositories, the pills and a panned column is proposed in TRUNK-289.
 
 ## Capture setup
 
-- Engine: Playwright's WebKit, because Trunk renders in WKWebView on macOS (wry 0.55.1). A
-  Chromium baseline would pin an engine Trunk never ships on.
+- Engine: Playwright's WebKit build (626+ for Playwright 1.63), because Trunk renders in
+  WKWebView on macOS (wry 0.55.1) and a Chromium baseline would pin an engine Trunk never
+  ships on. Playwright's build is not the system WKWebView. It draws through the system's
+  CoreGraphics, CoreText and QuartzCore, so a macOS update can still move a capture, but a
+  change confined to the system's WebKit does not reach one.
 - Platform: native macOS, locally and on the CI job's `macos-latest` runner. No container.
-- The real `App` served by Vite, talking to a real `app_host` through Playwright bindings, one
-  host per capture so the prefs one capture writes cannot reach the next.
-- Viewport 1200 by 800, device scale factor 1, animations disabled, and the clock pinned to
-  2026-09-01 so the relative dates in the rows do not move.
-- Readiness is observed, never waited on: the first rail path exists, no command is in
-  flight, two frames have painted, and two consecutive screenshots are identical. Events the
-  host sends are not counted as in flight, so an event that lands after two identical
-  captures would be missed. None was seen.
+- The real `App`, served by Vite from `vite.config.ts` with one plugin removed, talking to a
+  real `app_host` through Playwright bindings. The removed plugin, the Testing Library's
+  Svelte plugin, empties the browser's resolve conditions inside any vitest process, and the
+  page then loads Svelte's server build. One host per capture, so the prefs one capture writes
+  cannot reach the next.
+- Viewport 1200 by 1000, device scale factor 1, and the clock pinned to 2026-09-01. The only
+  dates the app draws are in the date column, outside the capture, so the pin guards against
+  a date reaching the graph column rather than against any variance seen today.
+- Readiness is observed, never waited on: a commit row exists, no command is in flight, two
+  frames have painted, and two consecutive screenshots are identical. A row that has not drawn
+  within 10 seconds fails the capture with the commands the host still owed. Readiness does not
+  wait on the graph's paths, so a change that stops them drawing fails as a difference with an
+  image, not as a timeout. Events the host sends are not counted as in flight, so an event that
+  lands after two identical captures would be missed. None was seen.
 
 ## Tolerance: 24 levels a channel
 
-A capture passes when its bytes equal the baseline, or when decoding both finds no pixel
-with a colour channel more than 24 levels of 255 away from the baseline's.
+A capture passes when its bytes equal the baseline, or when decoding both finds no pixel with
+a channel (red, green, blue or alpha) more than 24 levels of 255 away from the baseline's.
 
-Two runs on this Mac were byte-identical for every capture, so this machine alone has no
-variance to absorb. GitHub's `macos-latest` runner (macOS 26, arm64) does. Its first run
-against the baselines recorded here (macOS 27) differed in 11 of 28 captures (CI run
+With the tolerance at zero, two runs on this Mac matched every baseline, so this machine alone
+has no variance to absorb. GitHub's `macos-latest` runner (macOS 26, arm64) does. Its first
+run against baselines recorded here (macOS 27) differed in 11 of 28 captures (CI run
 36204042756):
 
 - in 10, only the header's "GRAPH" label, by 94 to 100 pixels and up to 36 levels, which is
-  why the capture starts below the header row;
+  one reason the capture holds no text;
 - in one (`graph-lanes/08-stash-on-tip-behind`), 11 pixels along one diagonal connector, by
   at most 12 levels.
 
-Below the header, the runner's captures are within 12 levels of this Mac's everywhere, and 24
-is twice that. The rail-erasure mutant (the rail group's clip rectangle zero wide) moves at least
-96 pixels per capture by more than 64 levels, and all 28 captures still fail under it with
-the tolerance in place (measured 2026-09-26). What the tolerance admits is a change of 24
-levels or fewer in every channel of a pixel: an antialiasing shift, or a colour nudged that
-little. Under the mutant, the largest change in every capture was at least 173 levels.
+Outside the header, the runner's captures are within 12 levels of this Mac's everywhere, and
+24 is twice that. CI run 36232438441 passed every capture under the tolerance, with captures
+cut below the header.
+
+What the tolerance admits is a change of 24 levels or fewer in every channel of a pixel: an
+antialiasing shift, or a colour nudged that little. The two nearest lane colours, `--lane-0`
+and `--lane-5`, are 27 levels apart in their closest channel, so a rail recoloured from one to
+the other still fails, by a margin of 3. With the rail group's clip rectangle set zero wide,
+all 28 captures fail (measured 2026-09-26).
 
 Playwright's own comparator was not used: by default it allows a colour threshold of 0.2 and
 skips anti-aliased pixels, and a thin rail is mostly anti-aliased pixels.
@@ -93,15 +131,17 @@ nothing listening on a port and no token to write.
 
 ## Where it runs
 
-In `just check` and in CI as `Visual Baselines`, because the whole recipe takes 7.06 s with
-builds warm on a quiet machine and needs no Docker. A run on a loaded machine took 17.38 s,
-so whether it stays in the local gate is open on TRUNK-100. João's 2026-09-22 direction allows the local run when it is
-under 10 seconds. Timings and the alternatives measured are in `docs/visual-regression.md`.
+In `just check` and in CI as `Visual Baselines`. The whole recipe takes about 4 s with builds
+warm and needs no Docker, which is inside the 10 seconds João's direction allows. The same
+direction also says local verification should not have to depend on the suite, and `just
+check` does depend on it: it fails on a machine without Playwright's WebKit installed. That is
+why the placement is unsettled. Timings and every speed alternative measured are in
+`docs/visual-regression.md`.
 
 ## Re-check
 
 Re-run `just visual` twice with no change after a macOS update, a Playwright bump or a change
 to the fonts installed. Two green runs mean the tolerance still covers this machine. A red
 `Visual Baselines` job after a runner image update is the same question for the runner: its
-`visual-differences` artifact holds the captures, and the largest channel difference below
-the header decides whether 24 still covers it.
+`visual-differences` artifact holds the captures, and their largest channel difference
+decides whether 24 still covers it.
