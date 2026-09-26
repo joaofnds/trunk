@@ -51,7 +51,7 @@ STATUS=0
 # `comm`, not `diff`: diff exits 1 when it finds a change, which pipefail turns
 # into an abort before anything is recorded.
 CHANGED="$(comm -13 <(printf '%s\n' "$BEFORE") <(fingerprint) |
-	sed 's/^[0-9a-f]*  //')"
+	sed 's/^[0-9a-f]*  //' | sort)"
 if [ -z "$CHANGED" ]; then
 	echo "no baseline changed; nothing recorded." >&2
 	exit "$STATUS"
