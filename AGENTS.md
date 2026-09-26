@@ -16,8 +16,8 @@ just dev-app      # Debug .app you can drive and screenshot (docs/build-environm
 just build        # Production build
 just quick        # Static only: fmt, biome, svelte-check (~3s)
 just front        # biome, svelte-check, vitest (~14s)
-just rust         # fmt, clippy, cargo-test (~12s; longer after an edit)
-just check        # Run ALL checks (fmt, biome, svelte-check, clippy, cargo-test, vitest, graph-sweep-check)
+just rust         # Everything that touches Rust (~12s; longer after an edit)
+just check        # Run all checks
 just audit        # Dependency advisories (cargo-audit + bun audit)
 just mutants      # Which mutations the Rust tests miss (slow, opt-in)
 just fixtures     # Build the fixture corpus into repos/ (`just fixtures nested` for one case)
