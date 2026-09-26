@@ -43,9 +43,9 @@ const SETTLE_ATTEMPTS = 5;
 const ROWS_DRAWN_MS = 10_000;
 
 /** Pages capturing at once. Each capture mostly waits on its host and its page,
- *  so a few overlap well. Past four the run gets no faster and only loads a
- *  machine other sessions share (docs/visual-regression.md). */
-const PAGES = pageCount(process.env.TRUNK_VISUAL_PAGES ?? "4");
+ *  so a few overlap well. vitest runs at most five tests at once, so a sixth
+ *  page would never be borrowed (docs/visual-regression.md). */
+const PAGES = pageCount(process.env.TRUNK_VISUAL_PAGES ?? "5");
 
 export interface GraphView {
 	/** Sizes the graph column as a user dragging it would, in CSS pixels. */
@@ -72,7 +72,14 @@ export class VisualHarness {
 		try {
 			return await VisualHarness.start(opened);
 		} catch (error) {
-			await opened.close();
+			try {
+				await opened.close();
+			} catch (closing) {
+				throw new AggregateError(
+					[error, closing],
+					"the visual harness did not start, and did not close",
+				);
+			}
 			throw error;
 		}
 	}
@@ -251,8 +258,11 @@ class AppPage {
 		const retired = this.host;
 		this.host = null;
 
-		await this.page.goto("about:blank");
-		await retired?.shutdown();
+		try {
+			await this.page.goto("about:blank");
+		} finally {
+			await retired?.shutdown();
+		}
 	}
 
 	private async attachHost(): Promise<HostClient> {
@@ -369,7 +379,8 @@ class Opened {
  * The graph column of the commit list: as wide as its header cell, from the top
  * of the first commit row to the bottom of the last. Nothing outside it is
  * captured, so a change to another column, to the header, or to the chrome
- * around the list leaves every capture as it was.
+ * around the list leaves every capture as it was. The line from each ref pill
+ * to its dot is the exception, since it runs into the graph column.
  */
 function graphColumn(): {
 	x: number;

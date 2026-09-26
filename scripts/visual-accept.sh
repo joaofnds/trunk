@@ -71,5 +71,4 @@ if [ "$STATUS" -ne 0 ]; then
 	exit "$STATUS"
 fi
 
-rm -rf "$ROOT/tests/visual/differences"
 printf '\nRecorded in %s. Review the image diff of %s before committing.\n' "${CHANGELOG#"$ROOT"/}" "$BASELINES"

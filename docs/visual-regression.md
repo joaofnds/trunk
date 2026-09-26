@@ -29,7 +29,8 @@ once:
 mise exec -- bunx playwright install webkit
 ```
 
-`TRUNK_VISUAL_PAGES` sets how many pages capture at once (default 4).
+`TRUNK_VISUAL_PAGES` sets how many pages capture at once (default 5). vitest runs at most five
+tests at once, so a sixth page is opened and never used.
 
 Vite serves the page from the project's own `vite.config.ts`, so a change to how the app is
 built reaches the captures. The suite drops one plugin from that config,
@@ -50,7 +51,8 @@ writes two files to `tests/visual/differences/` (gitignored):
 - `<name>.capture.png`, what the app drew this run;
 - `<name>.difference.png`, the baseline dimmed to grey with every differing pixel in red.
 
-A capture with no baseline writes only `<name>.capture.png`.
+A capture with no baseline writes only `<name>.capture.png`. Each run empties the directory
+before it starts, so every image in it comes from the last run.
 
 In CI the same directory is uploaded as the `visual-differences` artifact.
 
@@ -70,10 +72,10 @@ mise exec -- just visual-accept "why the new rendering is intended"
 
 It refuses without a reason. With one, it rewrites every baseline that differs by more than
 the tolerance and writes each missing one, then appends the date, the reason and the changed
-files to [visual-baseline-changelog.md](visual-baseline-changelog.md), and clears the
-differences. A capture within the tolerance leaves its baseline as it was. Review the change
-as an image diff before committing it (GitHub's rich diff for PNGs, or `git difftool` with
-an image viewer). Never set `TRUNK_ACCEPT_VISUAL_BASELINES` by hand: it skips the changelog.
+files to [visual-baseline-changelog.md](visual-baseline-changelog.md). A capture within the
+tolerance leaves its baseline as it was. Review the change as an image diff before committing
+it (GitHub's rich diff for PNGs, or `git difftool` with an image viewer). Never set
+`TRUNK_ACCEPT_VISUAL_BASELINES` by hand: it skips the changelog.
 
 A new repository in the `graph-lanes` or `graph-merges` case fails the suite twice until it
 is accepted. The coverage test fails because the list in `graph.test.ts` does not name it,
@@ -87,14 +89,14 @@ Measured 2026-09-26 on this 18-core Apple Silicon Mac, Playwright 1.63.0 WebKit,
 
 | Configuration | Wall time |
 |---|---|
-| `just visual`, the whole recipe with the cargo no-op build | 4.49, 4.10, 4.13 s |
-| vitest alone | 3.88, 3.84, 3.82 s |
+| `just visual`, the whole recipe with the cargo no-op build | 4.06, 4.07, 4.33 s |
+| vitest's own duration within those runs | 3.67, 3.69, 3.94 s |
 
-Load averages over one minute were 4.3 to 6.7 for these runs, from the other sessions on the
+Load averages over one minute were 4.9 to 5.2 for these runs, from the other sessions on the
 machine. A reviewer's run of an earlier, slower version took 17.38 s with load averages of
 11.57, 7.46 and 5.48, after waiting 3.64 s on another build's cargo lock. That is one sample,
-and whether the suite stays in `just check` on a shared machine is an open question on
-TRUNK-100.
+and whether the suite stays in `just check` on a shared machine is unsettled, as the decision
+record says.
 
 Where the time goes, measured per capture at three pages: retiring the last host, spawning a
 new one and writing the prefs 25 to 40 ms, loading the app 55 ms, drawing the first row
@@ -118,11 +120,17 @@ says otherwise. Rows sharing a round were run in rotation, so the load hit each 
 | The pages load the app while the fixtures build (round A) | 4.19 to 4.59 s, median 4.24 s |
 | 1 page (round B) | 8.37, 8.27 s |
 | 2 pages (round B) | 5.34, 5.00 s |
-| 4 pages (round A), the default | 3.80 to 3.84 s |
-| 6 pages (round A) | 3.88 to 3.94 s |
+| 4 pages (round A) | 3.80 to 3.84 s |
+| 6 pages, vitest running at most five tests (round A) | 3.88 to 3.94 s |
+| 4 pages (round D) | 3.76 to 3.82 s |
+| 5 pages (round D), the default | 3.65 to 3.75 s |
+| 6 pages, vitest running six tests at once (round D) | 3.57 to 3.75 s |
+| 8 pages, vitest running eight tests at once (round D) | 3.68 to 3.74 s |
 
-Six pages spent about 0.4 s more CPU than four for no gain, and each page carries its own
-`app_host`, so four is the default on a machine several sessions share.
+Five pages beat four in each of round D's three rotations, by 0.07 to 0.12 s. Six and eight
+pages, with vitest's `maxConcurrency` raised to match, were no faster than five, and each page
+carries its own `app_host`, so five is the default: the most tests vitest runs at once
+without a change to its configuration.
 
 Alternatives not taken:
 
@@ -150,7 +158,8 @@ Alternatives not taken:
   look at the images, and accept with the reason.
 - Text. The capture holds no label: the column header and the ref pills are outside it, and
   GitHub's `macos-latest` runner draws text up to 36 levels away from this Mac.
-- Ref pills, which sit in the Branch/Tag column.
+- Ref pills, which sit in the Branch/Tag column. The line joining each pill to its dot is
+  captured where it crosses into the graph column.
 - The `06-stash-lanes` repositories, so the dashed-square stash marker and stash placement
   against the WIP row have no baseline.
 - A panned graph column. No capture pans it, so a break that shows only while it is panned

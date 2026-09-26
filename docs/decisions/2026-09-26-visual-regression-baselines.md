@@ -37,16 +37,19 @@ That is 28 captures. Each is as wide as the graph column's header cell and runs 
 of the first commit row to the bottom of the last, so its height follows the repository and
 not the space the app gives the list. The branch, message, author, date and SHA columns, the
 header, and the chrome around the list are outside it, so a change to any of them leaves every
-capture unchanged. Four pixels more of top bar, and a visible string added to every commit
-message, each kept all 28 captures green (measured 2026-09-26). The window is 1000 px tall,
-enough for the longest repository's 30 rows. A list that would scroll fails its capture rather
-than leave its last rows uncompared.
+capture unchanged, with one exception. The line from each ref pill to its commit's dot runs
+into the graph column, so hiding the Branch/Tag column or restyling that line changes the
+captures of the repositories with refs. Four pixels more of top bar, and a visible string
+added to every commit message, each kept all 28 captures green (measured 2026-09-26). The
+window is 1000 px tall, enough for the longest repository's 30 rows. A list that would
+scroll fails its capture rather than leave its last rows uncompared.
 
 Not captured, and why:
 
 - The column header and the ref pills. Both are text, which GitHub's macOS runner draws up to
   36 levels away from this Mac (below). The pills also sit in the Branch/Tag column, outside
-  the graph column.
+  the graph column, though the line joining each pill to its dot is captured where it
+  crosses into the graph column.
 - The `06-stash-lanes` repositories. The two captured cases are the ones the fixture crate
   builds for lane and merge geometry, and the stash case was not chosen with them.
 - A panned graph column. Every capture is of the list at rest.

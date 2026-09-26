@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 const BASELINES = join(import.meta.dirname, "baselines");
@@ -52,6 +58,11 @@ export async function mismatch(
 	record(name, "capture", capture);
 	record(name, "difference", difference.image);
 	return `${name}: ${difference.pixels} pixels differ from the baseline. Look at ${join(DIFFERENCES, `${name}.difference.png`)}. A difference is a suspected defect. ${ACCEPT_HINT}`;
+}
+
+/** Leaves only what this run writes, so no image in the directory predates it. */
+export function clearDifferences(): void {
+	rmSync(DIFFERENCES, { recursive: true, force: true });
 }
 
 function accept(path: string, capture: Buffer): null {
