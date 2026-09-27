@@ -284,28 +284,39 @@ drag has not been measured (TRUNK-279).
 
 ## What a cell cannot fit
 
-Rows have one fixed height, which the overlay's geometry rests on, so a name too long for
-its cell is cut to one line and its whole text is one hover away. Wrapping onto more lines
-was ruled out for that reason.
+Rows have one fixed height, which the overlay's geometry rests on, so a cell's text is cut
+to one line rather than wrapped. Where the cut hides part of a commit's summary, its author
+or a ref name, the whole text is one hover away. The WIP row's draft subject is cut with no
+tooltip.
 
 A commit's or stash's summary cut by Message ends in a trailing ellipsis and shows its whole
 text in the app's tooltip on hover. A summary that fits shows no tooltip. A cell counts as
-cut when its laid-out text runs wider than the box that shows it, the same measure the
-Message pan's end takes, so the pan does not change whether a summary counts as cut.
+cut when its laid-out text runs wider than the box that shows it, both measured to the
+fraction of a pixel, the same measure the Message pan's end takes, so the pan does not
+change whether a summary counts as cut. The tooltip and the pan both reveal a cut summary,
+and the product owner kept both (2026-09-23: "Keep the hover tooltip too?" "yes").
 
 An author's name ends in a trailing ellipsis beside the avatar, and hovering anywhere on
 the avatar or the name shows the whole name when it is cut. Author's floor is the avatar
 and its gap plus the cell's padding, so at the floor the avatar shows alone and the name
-is on hover. GitLens shows avatars instead of text at its Author column's minimum width.
+is on hover. Measured in headless WebKit on 2026-09-27: at the 34px floor the name's box is
+0px wide and the tooltip carries the whole name. Just above the floor the name shows as an
+ellipsis and a letter or two, since the floor is the one point where the avatar stands
+alone. GitLens's help page describes its Author column showing avatars instead of text at
+its minimum width.
 
-A ref name too long for its pill is cut in the middle, one ellipsis between its head and
-its tail, and the pill shows the whole name on hover as before. The product owner chose the
-middle on 2026-09-22, since the part that tells two branch names apart is usually the tail.
-GitKraken cuts the end, with CSS `text-overflow`, and Finder and Chromium's `ELIDE_MIDDLE`
-cut the middle.
+A ref name too long for its pill keeps as much of its head and its tail as fits around one
+added ellipsis, the tail taking the odd character, and the pill shows the whole name on
+hover as before. The middle was recommended because the part that tells two branch names
+apart is usually the tail, and the product owner agreed on 2026-09-22. GitKraken's graph
+component (11.3.0) cuts the end, with CSS `text-overflow`, and Finder and Chromium's
+`ELIDE_MIDDLE` cut the middle. The cut never splits a character written in two UTF-16
+units, though it can separate a combining mark from its letter.
 
-Date and SHA are never cut: each fits to its widest possible content, the widest label the
-relative clock can produce and a seven-character abbreviated SHA.
+Date and SHA are never cut at their fits: each fits to its widest possible content, the
+widest label the relative clock can produce and a seven-character abbreviated SHA. When the
+budget's yield or a drag takes either below its fit, it is clipped like any cell, without
+an ellipsis. A clipped date still shows the exact date on hover.
 
 ## What this does not solve
 
