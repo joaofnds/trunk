@@ -282,6 +282,31 @@ belongs to. What a write on the root costs was measured later, for the Message p
 not a rule reads the property (`docs/performance-patterns.md`). What that costs a
 drag has not been measured (TRUNK-279).
 
+## What a cell cannot fit
+
+Rows have one fixed height, which the overlay's geometry rests on, so a name too long for
+its cell is cut to one line and its whole text is one hover away. Wrapping onto more lines
+was ruled out for that reason.
+
+A commit's or stash's summary cut by Message ends in a trailing ellipsis and shows its whole
+text in the app's tooltip on hover. A summary that fits shows no tooltip. A cell counts as
+cut when its laid-out text runs wider than the box that shows it, the same measure the
+Message pan's end takes, so the pan does not change whether a summary counts as cut.
+
+An author's name ends in a trailing ellipsis beside the avatar, and hovering anywhere on
+the avatar or the name shows the whole name when it is cut. Author's floor is the avatar
+and its gap plus the cell's padding, so at the floor the avatar shows alone and the name
+is on hover. GitLens shows avatars instead of text at its Author column's minimum width.
+
+A ref name too long for its pill is cut in the middle, one ellipsis between its head and
+its tail, and the pill shows the whole name on hover as before. The product owner chose the
+middle on 2026-09-22, since the part that tells two branch names apart is usually the tail.
+GitKraken cuts the end, with CSS `text-overflow`, and Finder and Chromium's `ELIDE_MIDDLE`
+cut the middle.
+
+Date and SHA are never cut: each fits to its widest possible content, the widest label the
+relative clock can produce and a seven-character abbreviated SHA.
+
 ## What this does not solve
 
 A stored `message: false`, which only the pref file can hold since the header menu

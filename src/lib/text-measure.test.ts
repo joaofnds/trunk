@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
 	measureTextWidth,
 	resetCache,
-	truncateWithEllipsis,
+	truncateMiddle,
 } from "./text-measure.js";
 
 /** Mock measure function: each char = 7px width */
@@ -56,24 +56,34 @@ describe("measureTextWidth", () => {
 	});
 });
 
-describe("truncateWithEllipsis", () => {
+describe("truncateMiddle", () => {
 	it("returns full text when it fits within maxWidth", () => {
-		const result = truncateWithEllipsis("hi", 100, "test-font", mockMeasure);
+		const result = truncateMiddle("hi", 100, "test-font", mockMeasure);
 		expect(result.text).toBe("hi");
 		expect(result.width).toBe(14);
 	});
 
-	it('returns truncated text + "…" when text exceeds maxWidth', () => {
-		// "abcdef" = 42px, maxWidth = 30px
-		// "abc…" = 4 chars * 7 = 28px fits
-		const result = truncateWithEllipsis("abcdef", 30, "test-font", mockMeasure);
-		expect(result.text).toContain("…");
-		expect(result.width).toBeLessThanOrEqual(30);
+	it("cuts the middle out, keeping the head and the tail", () => {
+		const result = truncateMiddle("abcdef", 35, "test-font", mockMeasure);
+
+		expect(result).toEqual({ text: "ab…ef", width: 35 });
+	});
+
+	it("gives the tail the odd character, since it tells names apart", () => {
+		const result = truncateMiddle("abcdef", 30, "test-font", mockMeasure);
+
+		expect(result).toEqual({ text: "a…ef", width: 28 });
+	});
+
+	it("never splits a character written in two code units", () => {
+		const result = truncateMiddle("🍎🍏🍐🍊", 42, "test-font", mockMeasure);
+
+		expect(result).toEqual({ text: "🍎…🍊", width: 35 });
 	});
 
 	it('returns just "…" when the ellipsis fits but no character beside it does', () => {
 		// "…" = 7px fits in 10px; one char + ellipsis = 14px does not
-		const result = truncateWithEllipsis("abcdef", 10, "test-font", mockMeasure);
+		const result = truncateMiddle("abcdef", 10, "test-font", mockMeasure);
 		expect(result).toEqual({ text: "…", width: 7 });
 	});
 
@@ -82,7 +92,7 @@ describe("truncateWithEllipsis", () => {
 	it.each([5, 0])(
 		"returns nothing when not even the ellipsis fits in %ipx",
 		(maxWidth) => {
-			const result = truncateWithEllipsis(
+			const result = truncateMiddle(
 				"abcdef",
 				maxWidth,
 				"test-font",
@@ -93,13 +103,13 @@ describe("truncateWithEllipsis", () => {
 	);
 
 	it("handles empty string", () => {
-		const result = truncateWithEllipsis("", 100, "test-font", mockMeasure);
+		const result = truncateMiddle("", 100, "test-font", mockMeasure);
 		expect(result.text).toBe("");
 		expect(result.width).toBe(0);
 	});
 
 	it("handles single-character input that fits", () => {
-		const result = truncateWithEllipsis("a", 100, "test-font", mockMeasure);
+		const result = truncateMiddle("a", 100, "test-font", mockMeasure);
 		expect(result.text).toBe("a");
 		expect(result.width).toBe(7);
 	});

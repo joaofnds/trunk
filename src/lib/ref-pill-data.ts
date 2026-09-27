@@ -12,7 +12,7 @@ import {
 	PILL_PADDING_X,
 } from "./graph-constants.js";
 import { makePathContext } from "./overlay-paths.js";
-import { truncateWithEllipsis } from "./text-measure.js";
+import { truncateMiddle } from "./text-measure.js";
 import type {
 	GraphCommit,
 	GraphDisplaySettings,
@@ -147,7 +147,7 @@ export function buildRefPillData(
 		const maxTextWidth = refColumnWidth - refRowChrome(overflowCount, settings);
 
 		// Measure and truncate text
-		const { text: truncatedLabel, width: textWidth } = truncateWithEllipsis(
+		const { text: truncatedLabel, width: textWidth } = truncateMiddle(
 			primary.short_name,
 			maxTextWidth,
 			font,

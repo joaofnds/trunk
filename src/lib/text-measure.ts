@@ -42,12 +42,13 @@ export function measureTextWidth(
  * Returns the (possibly truncated) text and its measured width.
  *
  * - If text fits: returns { text, width }
- * - If text too long: progressively trims and appends "…" (U+2026)
+ * - If text too long: keeps as much of its head and tail as fits around one "…"
+ *   (U+2026) in the middle, the tail taking the odd character
  * - If only "…" fits: returns { text: "…", width: ellipsisWidth }
  * - If not even "…" fits: returns { text: "", width: 0 }
  * - If empty string: returns { text: "", width: 0 }
  */
-export function truncateWithEllipsis(
+export function truncateMiddle(
 	text: string,
 	maxWidth: number,
 	font: string,
@@ -60,10 +61,13 @@ export function truncateWithEllipsis(
 	if (fullWidth <= maxWidth) return { text, width: fullWidth };
 
 	const ellipsis = "…";
+	const chars = Array.from(text);
 
-	// Try progressively shorter substrings + ellipsis
-	for (let i = text.length - 1; i >= 1; i--) {
-		const candidate = text.slice(0, i) + ellipsis;
+	for (let kept = chars.length - 1; kept >= 1; kept--) {
+		const headLength = Math.floor(kept / 2);
+		const head = chars.slice(0, headLength).join("");
+		const tail = chars.slice(chars.length - (kept - headLength)).join("");
+		const candidate = head + ellipsis + tail;
 		const w = measure(candidate);
 		if (w <= maxWidth) return { text: candidate, width: w };
 	}
