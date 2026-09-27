@@ -98,7 +98,8 @@ export type ColumnFloors = Record<keyof ColumnWidths, number>;
  * The narrowest each column may be dragged. Sized for the cell's content, never
  * for the header word: a header too narrow for its word shows an icon, so the
  * word cannot be what stops the drag. The graph's floor is one lane, which is
- * the single line of commits the column exists to show. Branch/Tag's is HEAD's
+ * the single line of commits the column exists to show. Author's is the avatar
+ * alone, its name then on hover. Branch/Tag's is HEAD's
  * `main` pill whole, its label measured in the bold font HEAD draws in and
  * rounded up as the pill rounds its label's box; narrower, every pill is cut to a
  * sliver of capsule and icon.
@@ -108,7 +109,7 @@ export function columnFloors(measure: MeasureText): ColumnFloors {
 		ref: refRowChrome(0) + Math.ceil(measure("main", PILL_FONT_BOLD)),
 		graph: LANE_WIDTH + CELL_PAD,
 		diff: HEADER_ICON_WIDTH + CELL_PAD,
-		author: HEADER_ICON_WIDTH + CELL_PAD,
+		author: AUTHOR_AVATAR_WIDTH + CELL_PAD,
 		date: HEADER_ICON_WIDTH + CELL_PAD,
 		sha: HEADER_ICON_WIDTH + CELL_PAD,
 	};

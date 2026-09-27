@@ -482,6 +482,41 @@ describe("CommitRow", () => {
 		});
 	});
 
+	describe("an author name its column cuts", () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+			Range.prototype.getBoundingClientRect = () => ({ width: 140 }) as DOMRect;
+		});
+
+		afterEach(() => {
+			document.querySelector(".tooltip-pop")?.remove();
+			delete (Range.prototype as Partial<Range>).getBoundingClientRect;
+			vi.useRealTimers();
+		});
+
+		it("reveals the whole name on hover, over the avatar or the name", () => {
+			render(CommitRow, {
+				props: {
+					commit: makeCommit({
+						oid: "abc1234567",
+						author_name: "Maximiliana Wolkenstein-Hartmann",
+					}),
+					rowIndex: 0,
+					columnVisibility: allVisible,
+				},
+			});
+			const author = screen.getByTestId("commit-author");
+			Object.defineProperty(author, "clientWidth", { value: 26 });
+
+			author.dispatchEvent(new MouseEvent("mouseenter"));
+			vi.advanceTimersByTime(SHOW_DELAY_MS);
+
+			expect(document.querySelector(".tooltip-pop")?.textContent).toBe(
+				"Maximiliana Wolkenstein-Hartmann",
+			);
+		});
+	});
+
 	describe("date column", () => {
 		const pinnedNow = new Date("2026-07-28T10:29:00Z");
 		const twoHours = 2 * 60 * 60 * 1000;

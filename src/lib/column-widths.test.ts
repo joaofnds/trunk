@@ -173,6 +173,10 @@ describe("headerMinWidths", () => {
 		);
 	});
 
+	it("lets Author shrink to its avatar alone", () => {
+		expect(columnFloors(measure).author).toBe(AUTHOR_AVATAR_WIDTH + PADDING);
+	});
+
 	it("covers every resizable column", () => {
 		expect(Object.keys(headerMinWidths(measure)).sort()).toEqual([
 			"author",

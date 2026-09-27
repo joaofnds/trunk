@@ -218,8 +218,8 @@ const rowShadow = $derived(
 
   <!-- Column 5: Author -->
   {#if columnVisibility.author}
-    <div data-column="author" class="flex-shrink-0 flex items-center gap-2 text-[12px]" style="width: var({columnWidthProperty('author')}); color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;">
-      {#if !isWip && !isStash}<Avatar name={commit.author_name} /><span class="overflow-hidden text-ellipsis whitespace-nowrap">{commit.author_name}</span>{/if}
+    <div data-column="author" class="flex-shrink-0 flex items-center text-[12px]" style="width: var({columnWidthProperty('author')}); color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;">
+      {#if !isWip && !isStash}<span data-testid="commit-author" class="flex items-center gap-2 min-w-0 w-full" use:cutTooltip={commit.author_name}><Avatar name={commit.author_name} /><span class="overflow-hidden text-ellipsis whitespace-nowrap">{commit.author_name}</span></span>{/if}
     </div>
   {/if}
 
