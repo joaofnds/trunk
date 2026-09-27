@@ -5,6 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CommitRow from "./CommitRow.svelte";
 import "../__tests__/helpers/tauri-mock";
 import { makeCommit } from "../__tests__/helpers/factories";
+import {
+	layOutText,
+	restoreTextLayout,
+} from "../__tests__/helpers/text-layout.js";
 import { exactLabel } from "../lib/relative-time.js";
 import type { ColumnVisibility } from "../lib/store";
 import { SHOW_DELAY_MS } from "../lib/tooltip.js";
@@ -446,14 +450,6 @@ describe("CommitRow", () => {
 		expect(style).toContain("var(--color-review-pending-base)");
 	});
 
-	// jsdom lays out nothing: a cell's text is as wide as a Range over it reports,
-	// and its box is as wide as its own rect.
-	function layOut(cell: HTMLElement, textWidth: number, boxWidth: number) {
-		Range.prototype.getBoundingClientRect = () =>
-			({ width: textWidth }) as DOMRect;
-		cell.getBoundingClientRect = () => ({ width: boxWidth }) as DOMRect;
-	}
-
 	function hover(cell: HTMLElement) {
 		cell.dispatchEvent(new MouseEvent("mouseenter"));
 		vi.advanceTimersByTime(SHOW_DELAY_MS);
@@ -468,7 +464,7 @@ describe("CommitRow", () => {
 
 		afterEach(() => {
 			document.querySelector(".tooltip-pop")?.remove();
-			delete (Range.prototype as Partial<Range>).getBoundingClientRect;
+			restoreTextLayout();
 			vi.useRealTimers();
 		});
 
@@ -492,7 +488,7 @@ describe("CommitRow", () => {
 			"reveals the whole summary of $row on hover",
 			({ is_stash }) => {
 				const cell = renderRow(is_stash);
-				layOut(cell, 400, 150);
+				layOutText(cell, 400, 150);
 
 				hover(cell);
 
@@ -506,7 +502,7 @@ describe("CommitRow", () => {
 			"shows nothing on hover when $row's summary fits",
 			({ is_stash }) => {
 				const cell = renderRow(is_stash);
-				layOut(cell, 150, 150);
+				layOutText(cell, 150, 150);
 
 				hover(cell);
 
@@ -531,14 +527,14 @@ describe("CommitRow", () => {
 
 		afterEach(() => {
 			document.querySelector(".tooltip-pop")?.remove();
-			delete (Range.prototype as Partial<Range>).getBoundingClientRect;
+			restoreTextLayout();
 			vi.useRealTimers();
 		});
 
 		// At Author's floor the name is 0px wide, so the avatar is all there is to hover.
 		it("reveals the whole name on hover, over the avatar or the name", () => {
 			const author = screen.getByTestId("commit-author");
-			layOut(author, 140, 26);
+			layOutText(author, 140, 26);
 
 			hover(author);
 
@@ -548,7 +544,7 @@ describe("CommitRow", () => {
 
 		it("shows nothing on hover when the name fits", () => {
 			const author = screen.getByTestId("commit-author");
-			layOut(author, 140, 140);
+			layOutText(author, 140, 140);
 
 			hover(author);
 

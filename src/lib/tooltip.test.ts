@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	layOutText,
+	restoreTextLayout,
+} from "../__tests__/helpers/text-layout.js";
 import { clampedLeft, cutTooltip, SHOW_DELAY_MS, tooltip } from "./tooltip.js";
 
 describe("clampedLeft", () => {
@@ -132,15 +136,6 @@ describe("cutTooltip", () => {
 	let node: HTMLSpanElement;
 	let handle: { update(t: string): void; destroy(): void };
 
-	// jsdom lays out nothing: the text's width is what a Range over it reports,
-	// and the box is the node's own rect. clientWidth rounds, as a browser's does.
-	function layOut(textWidth: number, boxWidth: number) {
-		Range.prototype.getBoundingClientRect = () =>
-			({ width: textWidth }) as DOMRect;
-		node.getBoundingClientRect = () => ({ width: boxWidth }) as DOMRect;
-		Object.defineProperty(node, "clientWidth", { value: Math.round(boxWidth) });
-	}
-
 	function hover() {
 		node.dispatchEvent(new MouseEvent("mouseenter"));
 		vi.advanceTimersByTime(SHOW_DELAY_MS);
@@ -157,12 +152,12 @@ describe("cutTooltip", () => {
 	afterEach(() => {
 		handle.destroy();
 		node.remove();
-		delete (Range.prototype as Partial<Range>).getBoundingClientRect;
+		restoreTextLayout();
 		vi.useRealTimers();
 	});
 
 	it("shows the full text on hover when the text runs past its box", () => {
-		layOut(300, 120);
+		layOutText(node, 300, 120);
 
 		hover();
 
@@ -173,7 +168,7 @@ describe("cutTooltip", () => {
 
 	describe("when the text fits its box", () => {
 		it("shows nothing on hover", () => {
-			layOut(120, 120);
+			layOutText(node, 120, 120);
 
 			hover();
 
@@ -183,7 +178,7 @@ describe("cutTooltip", () => {
 		// A flex column's box is often a fraction of a pixel wide, and the text
 		// fits it with no ellipsis drawn.
 		it("shows nothing when the box is a fraction wider than clientWidth says", () => {
-			layOut(150.3, 150.4);
+			layOutText(node, 150.3, 150.4);
 
 			hover();
 
