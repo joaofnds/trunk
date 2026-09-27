@@ -133,11 +133,12 @@ describe("cutTooltip", () => {
 	let handle: { update(t: string): void; destroy(): void };
 
 	// jsdom lays out nothing: the text's width is what a Range over it reports,
-	// and the box is the node's clientWidth.
+	// and the box is the node's own rect. clientWidth rounds, as a browser's does.
 	function layOut(textWidth: number, boxWidth: number) {
 		Range.prototype.getBoundingClientRect = () =>
 			({ width: textWidth }) as DOMRect;
-		Object.defineProperty(node, "clientWidth", { value: boxWidth });
+		node.getBoundingClientRect = () => ({ width: boxWidth }) as DOMRect;
+		Object.defineProperty(node, "clientWidth", { value: Math.round(boxWidth) });
 	}
 
 	function hover() {
@@ -173,6 +174,16 @@ describe("cutTooltip", () => {
 	describe("when the text fits its box", () => {
 		it("shows nothing on hover", () => {
 			layOut(120, 120);
+
+			hover();
+
+			expect(document.querySelector(".tooltip-pop")).toBeNull();
+		});
+
+		// A flex column's box is often a fraction of a pixel wide, and the text
+		// fits it with no ellipsis drawn.
+		it("shows nothing when the box is a fraction wider than clientWidth says", () => {
+			layOut(150.3, 150.4);
 
 			hover();
 

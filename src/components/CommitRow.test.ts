@@ -446,13 +446,24 @@ describe("CommitRow", () => {
 		expect(style).toContain("var(--color-review-pending-base)");
 	});
 
+	// jsdom lays out nothing: a cell's text is as wide as a Range over it reports,
+	// and its box is as wide as its own rect.
+	function layOut(cell: HTMLElement, textWidth: number, boxWidth: number) {
+		Range.prototype.getBoundingClientRect = () =>
+			({ width: textWidth }) as DOMRect;
+		cell.getBoundingClientRect = () => ({ width: boxWidth }) as DOMRect;
+	}
+
+	function hover(cell: HTMLElement) {
+		cell.dispatchEvent(new MouseEvent("mouseenter"));
+		vi.advanceTimersByTime(SHOW_DELAY_MS);
+	}
+
 	describe("a summary its column cuts", () => {
-		const summary =
-			"feat(graph): a summary far too long for the column it sits in";
+		const summary = "feat(graph): a summary";
 
 		beforeEach(() => {
 			vi.useFakeTimers();
-			Range.prototype.getBoundingClientRect = () => ({ width: 400 }) as DOMRect;
 		});
 
 		afterEach(() => {
@@ -461,10 +472,12 @@ describe("CommitRow", () => {
 			vi.useRealTimers();
 		});
 
-		it.each([
+		const rows = [
 			{ row: "a commit", is_stash: false },
 			{ row: "a stash", is_stash: true },
-		])("reveals the whole summary of $row on hover", ({ is_stash }) => {
+		];
+
+		function renderRow(is_stash: boolean): HTMLElement {
 			render(CommitRow, {
 				props: {
 					commit: makeCommit({ oid: "abc1234567", summary, is_stash }),
@@ -472,20 +485,48 @@ describe("CommitRow", () => {
 					columnVisibility: allVisible,
 				},
 			});
-			const cell = screen.getByTestId("commit-row-summary");
-			Object.defineProperty(cell, "clientWidth", { value: 150 });
+			return screen.getByTestId("commit-row-summary");
+		}
 
-			cell.dispatchEvent(new MouseEvent("mouseenter"));
-			vi.advanceTimersByTime(SHOW_DELAY_MS);
+		it.each(rows)(
+			"reveals the whole summary of $row on hover",
+			({ is_stash }) => {
+				const cell = renderRow(is_stash);
+				layOut(cell, 400, 150);
 
-			expect(document.querySelector(".tooltip-pop")?.textContent).toBe(summary);
-		});
+				hover(cell);
+
+				expect(document.querySelector(".tooltip-pop")?.textContent).toBe(
+					summary,
+				);
+			},
+		);
+
+		it.each(rows)(
+			"shows nothing on hover when $row's summary fits",
+			({ is_stash }) => {
+				const cell = renderRow(is_stash);
+				layOut(cell, 150, 150);
+
+				hover(cell);
+
+				expect(document.querySelector(".tooltip-pop")).toBeNull();
+			},
+		);
 	});
 
 	describe("an author name its column cuts", () => {
+		const name = "Maximiliana Wolkenstein-Hartmann";
+
 		beforeEach(() => {
 			vi.useFakeTimers();
-			Range.prototype.getBoundingClientRect = () => ({ width: 140 }) as DOMRect;
+			render(CommitRow, {
+				props: {
+					commit: makeCommit({ oid: "abc1234567", author_name: name }),
+					rowIndex: 0,
+					columnVisibility: allVisible,
+				},
+			});
 		});
 
 		afterEach(() => {
@@ -494,26 +535,24 @@ describe("CommitRow", () => {
 			vi.useRealTimers();
 		});
 
+		// At Author's floor the name is 0px wide, so the avatar is all there is to hover.
 		it("reveals the whole name on hover, over the avatar or the name", () => {
-			render(CommitRow, {
-				props: {
-					commit: makeCommit({
-						oid: "abc1234567",
-						author_name: "Maximiliana Wolkenstein-Hartmann",
-					}),
-					rowIndex: 0,
-					columnVisibility: allVisible,
-				},
-			});
 			const author = screen.getByTestId("commit-author");
-			Object.defineProperty(author, "clientWidth", { value: 26 });
+			layOut(author, 140, 26);
 
-			author.dispatchEvent(new MouseEvent("mouseenter"));
-			vi.advanceTimersByTime(SHOW_DELAY_MS);
+			hover(author);
 
-			expect(document.querySelector(".tooltip-pop")?.textContent).toBe(
-				"Maximiliana Wolkenstein-Hartmann",
-			);
+			expect(author).toContainElement(screen.getByText("MW"));
+			expect(document.querySelector(".tooltip-pop")?.textContent).toBe(name);
+		});
+
+		it("shows nothing on hover when the name fits", () => {
+			const author = screen.getByTestId("commit-author");
+			layOut(author, 140, 140);
+
+			hover(author);
+
+			expect(document.querySelector(".tooltip-pop")).toBeNull();
 		});
 	});
 

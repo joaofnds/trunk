@@ -1214,12 +1214,12 @@ describe("CommitGraph", () => {
 			listViewport(container).getBoundingClientRect = () =>
 				({ top, bottom, left: 0, right: 700, width: 700 }) as DOMRect;
 			summaries(container).forEach((summary, row) => {
-				Object.defineProperty(summary, "clientWidth", {
-					value: shown,
-					configurable: true,
-				});
 				summary.getBoundingClientRect = () =>
-					({ top: row * ROW, bottom: (row + 1) * ROW }) as DOMRect;
+					({
+						top: row * ROW,
+						bottom: (row + 1) * ROW,
+						width: shown,
+					}) as DOMRect;
 			});
 		}
 

@@ -447,8 +447,6 @@ function summariesOnScreen(): HTMLElement[] {
 function messageOverrun(): number {
 	let widest = 0;
 	for (const summary of summariesOnScreen()) {
-		// Not a canvas measure: that needs the font as a string, and WebKit
-		// serializes a computed `font` as "".
 		widest = Math.max(widest, textOverrun(summary));
 	}
 

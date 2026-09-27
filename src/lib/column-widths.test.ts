@@ -173,10 +173,6 @@ describe("headerMinWidths", () => {
 		);
 	});
 
-	it("lets Author shrink to its avatar alone", () => {
-		expect(columnFloors(measure).author).toBe(AUTHOR_AVATAR_WIDTH + PADDING);
-	});
-
 	it("covers every resizable column", () => {
 		expect(Object.keys(headerMinWidths(measure)).sort()).toEqual([
 			"author",
@@ -192,6 +188,10 @@ describe("headerMinWidths", () => {
 describe("columnFloors", () => {
 	it("lets the graph shrink to a single lane of commits", () => {
 		expect(columnFloors(measure).graph).toBe(LANE_WIDTH + PADDING);
+	});
+
+	it("lets Author shrink to its avatar alone", () => {
+		expect(columnFloors(measure).author).toBe(AUTHOR_AVATAR_WIDTH + PADDING);
 	});
 
 	it("covers every resizable column", () => {
