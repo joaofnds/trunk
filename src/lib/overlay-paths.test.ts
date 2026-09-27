@@ -5,7 +5,11 @@ import {
 	LANE_WIDTH,
 	ROW_HEIGHT,
 } from "./graph-constants.js";
-import { buildOverlayPaths, makePathContext } from "./overlay-paths.js";
+import {
+	buildOverlayPaths,
+	makePathContext,
+	wipMarkerPath,
+} from "./overlay-paths.js";
 import type {
 	OverlayConnection,
 	OverlayGraphData,
@@ -50,6 +54,41 @@ function pathYs(d: string): number[] {
 		}
 	}
 	return ys;
+}
+
+/**
+ * Where each clockwise arc in a ring path starts and ends, as distances along
+ * the ring from its rightmost point, clockwise, in the order they start.
+ */
+function dashSpans(
+	d: string,
+	centreX: number,
+	centreY: number,
+	radius: number,
+): [number, number][] {
+	const along = (x: number, y: number) => {
+		const angle = Math.atan2(y - centreY, x - centreX);
+		const turn = angle < -1e-9 ? angle + 2 * Math.PI : Math.max(angle, 0);
+		return Math.round(turn * radius * 100) / 100;
+	};
+
+	return d
+		.split("M ")
+		.filter((subpath) => subpath !== "")
+		.map((subpath) => {
+			const [x0, y0, command, rx, ry, , largeArc, sweep, x1, y1] = subpath
+				.trim()
+				.split(" ");
+			if (command !== "A" || Number(rx) !== radius || Number(ry) !== radius)
+				throw new Error(`not an arc of the ring: M ${subpath}`);
+			if (largeArc !== "0") throw new Error(`not the short arc: M ${subpath}`);
+			if (sweep !== "1") throw new Error(`not clockwise: M ${subpath}`);
+			return [along(Number(x0), Number(y0)), along(Number(x1), Number(y1))] as [
+				number,
+				number,
+			];
+		})
+		.sort(([a], [b]) => a - b);
 }
 
 /** Factory: minimal OverlayConnection */
@@ -614,5 +653,38 @@ describe("makePathContext", () => {
 		const measured = { ...DEFAULT_GRAPH_SETTINGS, rowHeight: 25.5 };
 
 		expect(makePathContext(measured).cy(4)).toBe(4 * 25.5 + 25.5 / 2);
+	});
+});
+
+describe("wipMarkerPath", () => {
+	it("dashes the ring clockwise from its rightmost point, 3px on and 3px off", () => {
+		const d = wipMarkerPath(8, 14, 5.5);
+
+		expect(dashSpans(d, 8, 14, 5.5)).toEqual([
+			[0, 3],
+			[6, 9],
+			[12, 15],
+			[18, 21],
+			[24, 27],
+			[30, 33],
+		]);
+	});
+
+	it("writes its coordinates to a thousandth of a pixel", () => {
+		expect(wipMarkerPath(8, 14, 5.25)).not.toMatch(/\.\d{4}/);
+	});
+
+	describe("when the ring ends partway through a dash", () => {
+		it("runs that dash on into the first", () => {
+			const d = wipMarkerPath(8, 14, 5.25);
+
+			expect(dashSpans(d, 8, 14, 5.25)).toEqual([
+				[6, 9],
+				[12, 15],
+				[18, 21],
+				[24, 27],
+				[30, 3],
+			]);
+		});
 	});
 });

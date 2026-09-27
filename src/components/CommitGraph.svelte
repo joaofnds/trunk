@@ -77,7 +77,11 @@ import {
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import { laneRefForRow } from "../lib/lane-ref.js";
-import { buildOverlayPaths, makePathContext } from "../lib/overlay-paths.js";
+import {
+	buildOverlayPaths,
+	makePathContext,
+	wipMarkerPath,
+} from "../lib/overlay-paths.js";
 import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
 import { buildRefPillData, overflowBadgeWidth } from "../lib/ref-pill-data.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
@@ -2258,9 +2262,9 @@ $effect(() => {
                    off the line its lane shares. -->
               {@const strokeInset = displaySettings.edgeStroke / 2}
               {#if node.isWip}
-                <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius - strokeInset}
+                <path d={wipMarkerPath(clampedCx, geometry.cy(node.y), displaySettings.dotRadius - strokeInset)}
                   fill="none" stroke={laneColor(node.colorIndex)}
-                  stroke-width={displaySettings.edgeStroke} stroke-dasharray="{DASH} {DASH}" />
+                  stroke-width={displaySettings.edgeStroke} />
               {:else if node.isStash}
                 <rect
                   x={clampedCx - displaySettings.dotRadius + strokeInset}

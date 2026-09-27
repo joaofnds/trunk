@@ -15,7 +15,7 @@
       <path d="M 24 126 V 146 C 24 150.41827799864635 19.58172200135365 154 16 154 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-1)">
   <g clip-path="url(#graph-dot-clip-g49)">
     <g class="overlay-dots" transform="translate(66, 0)">
-      <circle cx="8" cy="14" fill="none" r="5.25" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 10.179 18.777 A 5.25 5.25 0 0 1 7.249 19.196 M 4.558 17.965 A 5.25 5.25 0 0 1 2.961 15.473 M 2.965 12.514 A 5.25 5.25 0 0 1 4.568 10.027 M 7.262 8.802 A 5.25 5.25 0 0 1 10.191 9.229 M 12.423 11.172 A 5.25 5.25 0 0 1 12.416 16.839" fill="none" stroke-width="1.5" stroke="var(--lane-0)">
       <rect fill="none" height="10.5" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-0)" width="10.5" x="2.75" y="36.75">
       <circle cx="8" cy="70" fill="var(--bg-1)" r="5" stroke-width="2" stroke="var(--lane-0)">
       <circle cx="8" cy="98" fill="var(--lane-0)" r="6">

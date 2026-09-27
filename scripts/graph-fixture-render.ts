@@ -17,13 +17,14 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildGraphData } from "../src/lib/active-lanes.js";
 import {
+	DASH,
 	DOT_RADIUS,
 	EDGE_STROKE,
 	LANE_WIDTH,
 	MERGE_STROKE,
 	ROW_HEIGHT,
 } from "../src/lib/graph-constants.js";
-import { buildOverlayPaths } from "../src/lib/overlay-paths.js";
+import { buildOverlayPaths, wipMarkerPath } from "../src/lib/overlay-paths.js";
 import type {
 	GraphCommit,
 	GraphResponse,
@@ -68,11 +69,11 @@ function marker(n: OverlayNode): string {
 	const [x, y] = [cx(n.x), cy(n.y)];
 
 	if (n.isWip) {
-		return `<circle cx="${x}" cy="${y}" r="${DOT_RADIUS}" fill="none" stroke="${color}" stroke-width="${EDGE_STROKE}" stroke-dasharray="3 3"/>`;
+		return `<path d="${wipMarkerPath(x, y, DOT_RADIUS)}" fill="none" stroke="${color}" stroke-width="${EDGE_STROKE}"/>`;
 	}
 	if (n.isStash) {
 		const side = DOT_RADIUS * 2;
-		return `<rect x="${x - DOT_RADIUS}" y="${y - DOT_RADIUS}" width="${side}" height="${side}" fill="none" stroke="${color}" stroke-width="${EDGE_STROKE}" stroke-dasharray="3 3"/>`;
+		return `<rect x="${x - DOT_RADIUS}" y="${y - DOT_RADIUS}" width="${side}" height="${side}" fill="none" stroke="${color}" stroke-width="${EDGE_STROKE}" stroke-dasharray="${DASH} ${DASH}"/>`;
 	}
 	if (n.isMerge) {
 		return `<circle cx="${x}" cy="${y}" r="${DOT_RADIUS}" fill="var(--bg-1)" stroke="${color}" stroke-width="${MERGE_STROKE}"/>`;
@@ -107,7 +108,7 @@ function render(name: string): string {
 	const strokes = paths
 		.map(
 			(p) =>
-				`    <path d="${p.d}" fill="none" stroke="${laneColor(p.colorIndex)}" stroke-width="${EDGE_STROKE}" stroke-linecap="round"${p.dashed ? ' stroke-dasharray="3 3"' : ""}/>`,
+				`    <path d="${p.d}" fill="none" stroke="${laneColor(p.colorIndex)}" stroke-width="${EDGE_STROKE}" stroke-linecap="round"${p.dashed ? ` stroke-dasharray="${DASH} ${DASH}"` : ""}/>`,
 		)
 		.join("\n");
 	const markers = nodes.map((n) => `    ${marker(n)}`).join("\n");

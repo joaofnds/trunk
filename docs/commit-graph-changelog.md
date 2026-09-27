@@ -761,3 +761,19 @@ Branch/Tag's fit now stops at the column's floor, HEAD's main pill whole (owner'
 Changed goldens:
 
      M src/__tests__/goldens/graph-render/lane-02-local-ahead-no-remote.txt
+
+## 2026-09-27
+
+TRUNK-293: WIP ring drawn as one arc per dash, so no platform dasher places the dashes
+
+Changed goldens:
+
+     M src/__tests__/goldens/graph-render/lane-01-behind-only.wip.txt
+     M src/__tests__/goldens/graph-render/stash-02-dirty-tracked.wip.txt
+     M src/__tests__/goldens/graph-render/stash-03-dirty-untracked.wip.txt
+     M src/__tests__/goldens/graph-render/stash-04-dirty-staged.wip.txt
+     M src/__tests__/goldens/graph-render/stash-05-dirty-conflicted.wip.txt
+     M src/__tests__/goldens/graph-render/stash-08-multi-stash-dirty.wip.txt
+     M src/__tests__/goldens/graph-render/stash-14-merge-tip.wip.txt
+     M src/__tests__/goldens/graph-render/stash-17-no-stash-dirty.wip.txt
+     M src/__tests__/goldens/graph-render/stash-18-many-files.wip.txt

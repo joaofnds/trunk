@@ -39,6 +39,7 @@ git repo
 [TypeScript: overlay-paths.ts] buildOverlayPaths()
   │  Converts each OverlayConnection → one SVG path string
   │  (M…V vertical, or a cubic bezier 90° corner for cross-column).
+  │  wipMarkerPath() draws the WIP marker's ring, one arc per dash.
   │
   ▼
 [TypeScript: overlay-visible.ts] getVisibleOverlayElements()
@@ -327,7 +328,7 @@ cx(col) = col * laneWidth + laneWidth / 2   // column center x
 cy(row) = row * rowHeight + rowHeight / 2   // row center y
 R = laneWidth / 2                           // bezier corner radius
 KAPPA = 4(√2−1)/3                           // quarter-circle control offset
-DASH_GAP = 3                                // matches stroke-dasharray "3 3"
+DASH_GAP = DASH                             // 3, one gap of the dashed strokes
 ```
 
 `isHollowTip(node)` is `(isBranchTip || isWip) && (isStash || isWip || isMerge)`.
@@ -375,6 +376,17 @@ sub-pixel snapping nor browser zoom takes it near 18; only a smaller
 Every path also carries `minRow`/`maxRow`: the two rows in ascending order, never child
 then parent. `overlay-visible.ts` culls on that interval, and an inverted pair drops a
 partially-visible connector instead of clipping it.
+
+### `wipMarkerPath(cx, cy, r): string`
+
+The WIP marker's dashed ring, drawn as one solid arc per dash rather than as a circle with
+`stroke-dasharray`. A dasher places dashes by its own measure of a curve, and CI's runner
+measured the ring about 1.5% short where a local Mac measured it 0.5% short, which moved
+dashes a pixel and failed the visual baselines (TRUNK-293). The arcs keep the dasharray's
+layout: `DASH` on and `DASH` off, clockwise from the ring's rightmost point, with a dash the
+ring's end cuts short running on into the first. Each coordinate is rounded to a thousandth
+of a pixel, because the render goldens hold them and the last digits of `Math.cos` and
+`Math.sin` differ between JavaScript runtimes.
 
 ---
 
@@ -434,9 +446,10 @@ impossible to test in a harness where nothing scrolls.
 ## Layer 4: Svelte — `CommitGraph.svelte`
 
 Renders:
-- **Dots** (`overlay-dots`, one branch per kind): dashed hollow circle for WIP; dashed
-  hollow `<rect>` for a stash; solid-stroke hollow circle for a merge; filled circle
-  otherwise. WIP sits at row 0 in the head-chain column, which is 0 in practice.
+- **Dots** (`overlay-dots`, one branch per kind): dashed hollow circle for WIP, a `<path>`
+  of one arc per dash from `wipMarkerPath` (Layer 3); dashed hollow `<rect>` for a stash;
+  solid-stroke hollow circle for a merge; filled circle otherwise. WIP sits at row 0 in the head-chain
+  column, which is 0 in practice.
 - **Paths**: SVG `<path>` elements from `buildOverlayPaths()`, colored by
   `laneColor(colorIndex)`, dashed via `stroke-dasharray`.
 - **Pills**: ref labels from `OverlayRefPill[]`.
@@ -628,7 +641,7 @@ Key test cases to maintain (in `src-tauri/tests/test_graph.rs` unless a bullet n
 | `src/lib/types.ts` | TS mirror types + overlay types (`OverlayNode`, `OverlayConnection`, `OverlayPath`) |
 | `src/lib/wip-row.ts` | `withWipRow()` — prepends the WIP row at index 0 while the worktree is dirty |
 | `src/lib/active-lanes.ts` | `buildGraphData()` — per-parent connections, off-page lane continuation, WIP sentinel |
-| `src/lib/overlay-paths.ts` | `buildOverlayPaths()` — SVG path generation |
+| `src/lib/overlay-paths.ts` | `buildOverlayPaths()` — SVG path generation; `wipMarkerPath()` — the WIP marker's ring |
 | `src/lib/overlay-visible.ts` | Viewport culling of paths, dots and pills before render |
 | `src/lib/lane-ref.ts` | `laneRefForRow()` — reads a row's `lane_ref`, the ref that opened its lane, for the hover pill |
 | `src/lib/ref-visibility.ts` | The frontend's `RefVisibility`, mirroring the Rust value object field for field; which refs the user hid, and the predicates the sidebar reads |

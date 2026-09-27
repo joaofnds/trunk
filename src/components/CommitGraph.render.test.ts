@@ -20,7 +20,15 @@ import {
 	FIT_CAPS,
 	refContentWidth,
 } from "../lib/column-widths.js";
-import { BADGE_HEIGHT, COLUMN_PADDING_X } from "../lib/graph-constants.js";
+import {
+	BADGE_HEIGHT,
+	COLUMN_PADDING_X,
+	DOT_RADIUS,
+	EDGE_STROKE,
+	LANE_WIDTH,
+	ROW_HEIGHT,
+} from "../lib/graph-constants.js";
+import { wipMarkerPath } from "../lib/overlay-paths.js";
 
 /** The fixture with its first ref renamed, to give the page a ref of that length. */
 function withFirstRefNamed(fixture: LayoutExport, name: string): LayoutExport {
@@ -68,12 +76,20 @@ describe("CommitGraph", () => {
 		it("paints the WIP row as a dashed hollow circle", async () => {
 			const { svg } = await allFourShapes();
 
-			expect(shapeOf(dots(svg)[0])).toEqual({
-				element: "circle",
+			const wip = dots(svg)[0];
+			expect(shapeOf(wip)).toEqual({
+				element: "path",
 				fill: "none",
-				dash: "3 3",
+				dash: null,
 				strokeWidth: "1.5",
 			});
+			expect(wip.getAttribute("d")).toBe(
+				wipMarkerPath(
+					LANE_WIDTH / 2,
+					ROW_HEIGHT / 2,
+					DOT_RADIUS - EDGE_STROKE / 2,
+				),
+			);
 		});
 
 		it("paints a stash as a dashed hollow square", async () => {

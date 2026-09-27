@@ -174,3 +174,52 @@ export function buildOverlayPaths(
 	}
 	return result;
 }
+
+// ─── WIP marker ───────────────────────────────────────────────────────────────
+
+/**
+ * The WIP marker's dashed ring as one arc per dash, laid out the way
+ * `stroke-dasharray` lays dashes on a circle: from its rightmost point,
+ * clockwise. A dashed circle would leave the dashes to the platform's own
+ * measure of the curve, which differs between platforms by enough to move
+ * them a pixel, as CI's runner did.
+ */
+export function wipMarkerPath(cx: number, cy: number, r: number): string {
+	const circumference = 2 * Math.PI * r;
+	const dashes: [number, number][] = [];
+	for (let from = 0; from < circumference; from += 2 * DASH) {
+		dashes.push([from, Math.min(from + DASH, circumference)]);
+	}
+
+	const first = dashes[0];
+	const last = dashes[dashes.length - 1];
+	if (last[1] === circumference) {
+		dashes.shift();
+		last[1] = circumference + first[1];
+	}
+
+	return dashes.map(([from, to]) => ringArc(cx, cy, r, from, to)).join(" ");
+}
+
+/** A clockwise arc of the ring between two distances along it from its rightmost point. */
+function ringArc(
+	cx: number,
+	cy: number,
+	r: number,
+	from: number,
+	to: number,
+): string {
+	const largeArc = to - from > Math.PI * r ? 1 : 0;
+	return `M ${ringPoint(cx, cy, r, from)} A ${r} ${r} 0 ${largeArc} 1 ${ringPoint(cx, cy, r, to)}`;
+}
+
+/**
+ * The point a distance along the ring from its rightmost point, clockwise, to a
+ * thousandth of a pixel. The render goldens hold these coordinates, and the last
+ * digits of `Math.cos` and `Math.sin` differ between JavaScript runtimes.
+ */
+function ringPoint(cx: number, cy: number, r: number, along: number): string {
+	const x = cx + r * Math.cos(along / r);
+	const y = cy + r * Math.sin(along / r);
+	return `${Math.round(x * 1000) / 1000} ${Math.round(y * 1000) / 1000}`;
+}

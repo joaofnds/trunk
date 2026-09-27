@@ -200,9 +200,9 @@ function overlaySvg(container: HTMLElement): SVGSVGElement | null {
  * layout, so they are built here and committed nowhere.
  *
  * `stashRows` marks rows to paint as stashes, which the overlay draws as a
- * `<rect>` rather than a `<circle>`. That is the one shape whose row centre is
- * not in `cy`, so a window mixing the two is what proves a coordinate reader
- * handles both.
+ * `<rect>` rather than a `<circle>`. That is the one shape a scrolled window
+ * holds whose row centre is not in `cy`, so a window mixing the two is what
+ * proves a coordinate reader handles both.
  */
 export function tallFixture(
 	rows: number,
@@ -471,11 +471,15 @@ export function dotRows(svg: SVGSVGElement): number[] {
 /**
  * The row centre a node was painted at, in overlay coordinates.
  *
- * The four node shapes do not agree on which attribute holds it. A circle
- * carries its centre in `cy`, but a stash is a `<rect>` whose `y` is the top
- * edge, one dot radius above the centre. Reading `cy ?? y` treats the two as the
- * same number, so any window holding both a stash and a commit measures uneven
+ * The node shapes do not agree on which attribute holds it. A circle carries
+ * its centre in `cy`, but a stash is a `<rect>` whose `y` is the top edge, one
+ * dot radius above the centre. Reading `cy ?? y` treats the two as the same
+ * number, so any window holding both a stash and a commit measures uneven
  * gaps and reports a correct render as a broken one.
+ *
+ * The WIP ring is a `<path>` of arcs with no centre attribute, and a scrolled
+ * window at rest never holds it: the WIP row is row 0, and `settledScroll`
+ * waits for a first row past 0, which the overlay culls by.
  */
 function rowCentre(dot: Element): number {
 	if (dot.tagName === "rect") {
@@ -483,11 +487,17 @@ function rowCentre(dot: Element): number {
 		const height = Number.parseFloat(dot.getAttribute("height") ?? "");
 		return top + height / 2;
 	}
+	if (dot.tagName === "circle") {
+		return Number.parseFloat(dot.getAttribute("cy") ?? "");
+	}
 
-	return Number.parseFloat(dot.getAttribute("cy") ?? "");
+	throw new Error(`no row centre to read off a <${dot.tagName}>`);
 }
 
-/** One element per rendered row: a circle for a commit, a rect for a stash. */
+/**
+ * One element per rendered row: a circle for a commit, a rect for a stash, and
+ * a path for the WIP row.
+ */
 export function dots(svg: SVGSVGElement): Element[] {
 	return [...(svg.querySelector(".overlay-dots")?.children ?? [])];
 }

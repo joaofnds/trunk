@@ -137,3 +137,18 @@ Changed baselines:
     tests/visual/baselines/stash-lanes__19-two-backdated.png
     tests/visual/baselines/stash-lanes__20-stash-on-stash.png
     tests/visual/baselines/stash-lanes__21-tagged-stash.png
+
+## 2026-09-27
+
+TRUNK-293: WIP ring drawn as one arc per dash
+
+Changed baselines:
+
+    tests/visual/baselines/kitchen-sink.png
+    tests/visual/baselines/stash-lanes__02-dirty-tracked.png
+    tests/visual/baselines/stash-lanes__03-dirty-untracked.png
+    tests/visual/baselines/stash-lanes__04-dirty-staged.png
+    tests/visual/baselines/stash-lanes__05-dirty-conflicted.png
+    tests/visual/baselines/stash-lanes__08-multi-stash-dirty.png
+    tests/visual/baselines/stash-lanes__17-no-stash-dirty.png
+    tests/visual/baselines/stash-lanes__18-many-files.png
