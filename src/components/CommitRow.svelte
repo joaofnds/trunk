@@ -232,7 +232,7 @@ const rowShadow = $derived(
 
   <!-- Column 7: SHA — click to copy the full oid (stops row select on click + keydown) -->
   {#if columnVisibility.sha}
-    <div data-column="sha" class="flex-shrink-0" style="width: var({columnWidthProperty('sha')}); padding: 0 {COLUMN_PADDING_X}px;">
+    <div data-column="sha" class="flex-shrink-0 overflow-hidden whitespace-nowrap" style="width: var({columnWidthProperty('sha')}); padding: 0 {COLUMN_PADDING_X}px;">
       {#if !isWip && !isStash}
         <button
           type="button"
