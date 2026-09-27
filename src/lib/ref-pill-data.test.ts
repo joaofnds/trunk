@@ -227,14 +227,13 @@ describe("buildRefPillData", () => {
 		expect(result[0].commitColorIndex).toBe(5);
 	});
 
-	it("text truncation applied when label exceeds available width", () => {
+	it("cuts a label too long for its pill in the middle, keeping the head and the tail", () => {
 		// refColumnWidth = 60 leaves 26px of label, "longbranchname" = 14 chars * 7 = 98px
 		const ref = makeRef({ short_name: "longbranchname", is_head: true });
 		const nodes = [makeNode({ x: 0, y: 0 })];
 		const commits = [makeCommit({ refs: [ref] })];
 		const result = buildRefPillData(nodes, commits, 60, mockMeasure);
-		expect(result[0].truncatedLabel).toContain("…");
-		expect(result[0].truncatedLabel).not.toBe("longbranchname");
+		expect(result[0].truncatedLabel).toBe("l…e");
 	});
 
 	it("pill width = textWidth + PILL_PADDING_X*2 + ICON_WIDTH + ICON_GAP for branches", () => {
