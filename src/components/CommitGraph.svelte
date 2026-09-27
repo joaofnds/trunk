@@ -98,6 +98,7 @@ import {
 	setColumnVisibility,
 } from "../lib/store.js";
 import { measureTextWidth } from "../lib/text-measure.js";
+import { textOverrun } from "../lib/text-overrun.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
 	DiffStat,
@@ -446,15 +447,9 @@ function summariesOnScreen(): HTMLElement[] {
 function messageOverrun(): number {
 	let widest = 0;
 	for (const summary of summariesOnScreen()) {
-		// The text as laid out, which the pan's margin does not change. A canvas
-		// measure needs the font as a string, and WebKit serializes a computed
-		// `font` as "".
-		const laidOut = document.createRange();
-		laidOut.selectNodeContents(summary);
-		widest = Math.max(
-			widest,
-			laidOut.getBoundingClientRect().width - summary.clientWidth,
-		);
+		// Not a canvas measure: that needs the font as a string, and WebKit
+		// serializes a computed `font` as "".
+		widest = Math.max(widest, textOverrun(summary));
 	}
 
 	return Math.ceil(widest);
