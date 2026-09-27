@@ -5,7 +5,7 @@
  *
  * The scenes are fixed, so two runs over an unchanged tree are byte-identical: capture one
  * before a change to overlay-paths.ts, capture again after, and open both to see what moved.
- * Panels are scaled up so the dash gaps at hollow tips are legible.
+ * Panels are scaled up so the gaps where rails stop short of a marker are legible.
  *
  * Upward scenes (parent above child) are unreachable from graph::snapshot — it orders stashes by
  * the revwalk — so a dev build cannot show them. They are here because the geometry still has

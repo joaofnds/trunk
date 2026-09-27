@@ -6,8 +6,8 @@
       <rect height="4000" width="28" x="60" y="0">
   <g clip-path="url(#graph-clip-g57)">
     <g class="overlay-paths" transform="translate(66, 0)">
-      <path d="M 8 23 V 42" fill="none" stroke-dasharray="3 3" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 42 V 70" fill="none" stroke-dasharray="3 3" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 23 V 33" fill="none" stroke-dasharray="3 3" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 51 V 70" fill="none" stroke-dasharray="3 3" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
       <path d="M 8 70 V 98" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
   <g clip-path="url(#graph-dot-clip-g57)">
     <g class="overlay-dots" transform="translate(66, 0)">

@@ -331,9 +331,12 @@ KAPPA = 4(√2−1)/3                           // quarter-circle control offset
 DASH_GAP = DASH                             // 3, one gap of the dashed strokes
 ```
 
-`isHollowTip(node)` is `(isBranchTip || isWip) && (isStash || isWip || isMerge)`.
-A hollow tip pulls the path end back by `dotRadius + DASH_GAP` so the stroke stops at
-the ring's edge instead of crossing it.
+`stopsShortOfMarker(node)` is `isStash || isWip || (isBranchTip && isMerge)`. Such a
+node pulls the path end back by `dotRadius + DASH_GAP` so the stroke stops at the
+marker's edge instead of crossing it. A stash square and the WIP ring are unfilled, so
+every stash pulls back, a tip or not, including one with another stash on top of it. A
+merge circle is filled with the background, which covers the rails, and pulls back only
+at a branch tip.
 
 ### Direction of travel
 
@@ -366,12 +369,12 @@ path, which is safe because a commit cannot be its own parent. A guard here was 
 milestone 2 of the backdated-stash work: it returned an empty `d` and left the row interval
 inverted, so it hid one defect behind another.
 
-That removal puts a floor under `rowHeight`. Below **18**, two hollow tips one row apart
-pull their ends past each other and the segment inverts — measured at `rowHeight 17`, 252 of
-11200 downward cases. `rowHeight` is a measured float from `VirtualList`, and neither
-sub-pixel snapping nor browser zoom takes it near 18; only a smaller
-`DEFAULT_GRAPH_SETTINGS.rowHeight` would. Constrain it where `svgSettings` is assembled in
-`CommitGraph.svelte`, not at a settings page.
+That removal puts a floor under `rowHeight`. Below **18**, two nodes that stop rails short,
+one row apart, pull their ends past each other and the segment inverts. At `rowHeight 17`
+that was 252 of 11200 downward cases, measured before every stash stopped rails short.
+`rowHeight` is a measured float from `VirtualList`, and neither sub-pixel snapping nor
+browser zoom takes it near 18; only a smaller `DEFAULT_GRAPH_SETTINGS.rowHeight` would.
+Constrain it where `svgSettings` is assembled in `CommitGraph.svelte`, not at a settings page.
 
 Every path also carries `minRow`/`maxRow`: the two rows in ascending order, never child
 then parent. `overlay-visible.ts` culls on that interval, and an inverted pair drops a

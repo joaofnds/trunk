@@ -632,6 +632,73 @@ describe("buildOverlayPaths", () => {
 			}
 		});
 	});
+
+	describe("when a stash is not a branch tip", () => {
+		const stash = makeNode({
+			oid: "stash",
+			x: 0,
+			y: 2,
+			isStash: true,
+			isBranchTip: false,
+		});
+
+		it("ends the rail from above at the square's top edge", () => {
+			const conn = makeConn({
+				childX: 0,
+				childY: 0,
+				parentX: 0,
+				parentY: 2,
+				dashed: true,
+			});
+
+			const result = buildOverlayPaths(makeGraphData([conn], [stash]));
+
+			expect(result[0].d).toBe(
+				`M ${cx(0)} ${cy(0)} V ${cy(2) - DOT_R - DASH_GAP}`,
+			);
+		});
+
+		it("starts the rail below at the square's bottom edge", () => {
+			const conn = makeConn({ childX: 0, childY: 2, parentX: 0, parentY: 4 });
+
+			const result = buildOverlayPaths(makeGraphData([conn], [stash]));
+
+			expect(result[0].d).toBe(
+				`M ${cx(0)} ${cy(2) + DOT_R + DASH_GAP} V ${cy(4)}`,
+			);
+		});
+
+		it("ends a fork from another column at the square's side", () => {
+			const conn = makeConn({
+				childX: 1,
+				childY: 0,
+				parentX: 0,
+				parentY: 2,
+				dashed: true,
+			});
+
+			const result = buildOverlayPaths(makeGraphData([conn], [stash]));
+
+			expect(result[0].d).toMatch(new RegExp(`H ${cx(0) + DOT_R + DASH_GAP}$`));
+		});
+	});
+
+	describe("when a merge is not a branch tip", () => {
+		it("runs the rail from above to its centre", () => {
+			const conn = makeConn({ childX: 0, childY: 0, parentX: 0, parentY: 2 });
+			const merge = makeNode({
+				oid: "merge",
+				x: 0,
+				y: 2,
+				isMerge: true,
+				isBranchTip: false,
+			});
+
+			const result = buildOverlayPaths(makeGraphData([conn], [merge]));
+
+			expect(result[0].d).toBe(`M ${cx(0)} ${cy(0)} V ${cy(2)}`);
+		});
+	});
 });
 
 describe("makePathContext", () => {

@@ -777,3 +777,11 @@ Changed goldens:
      M src/__tests__/goldens/graph-render/stash-14-merge-tip.wip.txt
      M src/__tests__/goldens/graph-render/stash-17-no-stash-dirty.wip.txt
      M src/__tests__/goldens/graph-render/stash-18-many-files.wip.txt
+
+## 2026-09-27
+
+TRUNK-291: every stash stops its rails at the square's edge, so a stash with a stash on top shows no rail inside it
+
+Changed goldens:
+
+     M src/__tests__/goldens/graph-render/stash-20-stash-on-stash.txt

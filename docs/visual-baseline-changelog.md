@@ -152,3 +152,11 @@ Changed baselines:
     tests/visual/baselines/stash-lanes__08-multi-stash-dirty.png
     tests/visual/baselines/stash-lanes__17-no-stash-dirty.png
     tests/visual/baselines/stash-lanes__18-many-files.png
+
+## 2026-09-27
+
+TRUNK-291: every stash stops its rails at the square's edge, so a stash with a stash on top shows no rail inside it
+
+Changed baselines:
+
+    tests/visual/baselines/stash-lanes__20-stash-on-stash.png

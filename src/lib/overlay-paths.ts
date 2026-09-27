@@ -37,17 +37,15 @@ export function makePathContext(s: GraphDisplaySettings): PathContext {
  */
 const KAPPA = (4 * (Math.SQRT2 - 1)) / 3;
 
-/** Gap between path end and hollow dot edge, one gap of the dashed strokes */
+/** Gap between path end and marker edge, one gap of the dashed strokes */
 const DASH_GAP = DASH;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Whether a node renders as a hollow tip (stroke-only dot with gap) */
-function isHollowTip(node: OverlayNode | undefined): boolean {
+/** A stash square and the WIP ring are unfilled, so a rail run to their centre shows through them. */
+function stopsShortOfMarker(node: OverlayNode | undefined): boolean {
 	if (!node) return false;
-	const tip = node.isBranchTip || node.isWip;
-	const hollow = node.isStash || node.isWip || node.isMerge;
-	return tip && hollow;
+	return node.isStash || node.isWip || (node.isBranchTip && node.isMerge);
 }
 
 // ─── Path builder ─────────────────────────────────────────────────────────────
@@ -67,11 +65,10 @@ function buildPath(
 	const minRow = Math.min(conn.childY, conn.parentY);
 	const maxRow = Math.max(conn.childY, conn.parentY);
 
-	// Hollow tips pull their end of the path back to the ring's edge
-	const childStartY = isHollowTip(childNode)
+	const childStartY = stopsShortOfMarker(childNode)
 		? cy(conn.childY) + rowSign * (dotRadius + DASH_GAP)
 		: cy(conn.childY);
-	const parentEndY = isHollowTip(parentNode)
+	const parentEndY = stopsShortOfMarker(parentNode)
 		? cy(conn.parentY) - rowSign * (dotRadius + DASH_GAP)
 		: cy(conn.parentY);
 
@@ -128,7 +125,7 @@ function buildPath(
 		const cornerX = cx(conn.childX);
 		const cornerY = cy(conn.parentY);
 		// Horizontal end: parent position
-		const endX = isHollowTip(parentNode)
+		const endX = stopsShortOfMarker(parentNode)
 			? cx(conn.parentX) - hSign * (dotRadius + DASH_GAP)
 			: cx(conn.parentX);
 
