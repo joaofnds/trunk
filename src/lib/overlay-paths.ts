@@ -1,4 +1,4 @@
-import { DEFAULT_GRAPH_SETTINGS } from "./graph-constants.js";
+import { DASH, DEFAULT_GRAPH_SETTINGS } from "./graph-constants.js";
 import type {
 	GraphDisplaySettings,
 	OverlayConnection,
@@ -37,8 +37,8 @@ export function makePathContext(s: GraphDisplaySettings): PathContext {
  */
 const KAPPA = (4 * (Math.SQRT2 - 1)) / 3;
 
-/** Gap between path end and hollow dot edge — matches stroke-dasharray gap (3 3) */
-const DASH_GAP = 3;
+/** Gap between path end and hollow dot edge, one gap of the dashed strokes */
+const DASH_GAP = DASH;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

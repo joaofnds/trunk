@@ -10,6 +10,9 @@ export const EDGE_STROKE = 1.5;
 export const MERGE_STROKE = 2;
 export const PILL_STROKE = 1;
 
+/** The length of each dash, and of each gap, in the graph's dashed strokes. */
+export const DASH = 3;
+
 /**
  * How far a rail fades out before the graph column's right edge. A dot clamped
  * to that edge is the end of its line, so the rail behind it has to stop there

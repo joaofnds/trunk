@@ -61,6 +61,7 @@ import {
 	BADGE_FONT_SIZE,
 	BADGE_HEIGHT,
 	COLUMN_PADDING_X,
+	DASH,
 	DEFAULT_GRAPH_SETTINGS,
 	EDGE_FADE_WIDTH,
 	ICON_GAP,
@@ -2238,7 +2239,7 @@ $effect(() => {
                     : laneColor(path.colorIndex)}
                   stroke-width={displaySettings.edgeStroke}
                   stroke-linecap="round"
-                  stroke-dasharray={path.dashed ? '3 3' : 'none'} />
+                  stroke-dasharray={path.dashed ? `${DASH} ${DASH}` : 'none'} />
               {/each}
             </g>
           </g>
@@ -2259,7 +2260,7 @@ $effect(() => {
               {#if node.isWip}
                 <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius - strokeInset}
                   fill="none" stroke={laneColor(node.colorIndex)}
-                  stroke-width={displaySettings.edgeStroke} stroke-dasharray="3 3" />
+                  stroke-width={displaySettings.edgeStroke} stroke-dasharray="{DASH} {DASH}" />
               {:else if node.isStash}
                 <rect
                   x={clampedCx - displaySettings.dotRadius + strokeInset}
@@ -2269,7 +2270,7 @@ $effect(() => {
                   fill="none"
                   stroke={laneColor(node.colorIndex)}
                   stroke-width={displaySettings.edgeStroke}
-                  stroke-dasharray="3 3" />
+                  stroke-dasharray="{DASH} {DASH}" />
               {:else if node.isMerge}
                 <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius - displaySettings.mergeStroke / 2}
                   fill="var(--bg-1)" stroke={laneColor(node.colorIndex)}
