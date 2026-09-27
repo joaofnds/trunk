@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clampedLeft, SHOW_DELAY_MS, tooltip } from "./tooltip.js";
+import { clampedLeft, cutTooltip, SHOW_DELAY_MS, tooltip } from "./tooltip.js";
 
 describe("clampedLeft", () => {
 	it("centers the tooltip under the trigger when there is room", () => {
@@ -125,5 +125,58 @@ describe("tooltip", () => {
 
 		handle.update("");
 		expect(popup()).toBeNull();
+	});
+});
+
+describe("cutTooltip", () => {
+	let node: HTMLSpanElement;
+	let handle: { update(t: string): void; destroy(): void };
+
+	// jsdom lays out nothing: the text's width is what a Range over it reports,
+	// and the box is the node's clientWidth.
+	function layOut(textWidth: number, boxWidth: number) {
+		Range.prototype.getBoundingClientRect = () =>
+			({ width: textWidth }) as DOMRect;
+		Object.defineProperty(node, "clientWidth", { value: boxWidth });
+	}
+
+	function hover() {
+		node.dispatchEvent(new MouseEvent("mouseenter"));
+		vi.advanceTimersByTime(SHOW_DELAY_MS);
+	}
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		node = document.createElement("span");
+		node.textContent = "feat: a summary too long for its column";
+		document.body.appendChild(node);
+		handle = cutTooltip(node, "feat: a summary too long for its column");
+	});
+
+	afterEach(() => {
+		handle.destroy();
+		node.remove();
+		delete (Range.prototype as Partial<Range>).getBoundingClientRect;
+		vi.useRealTimers();
+	});
+
+	it("shows the full text on hover when the text runs past its box", () => {
+		layOut(300, 120);
+
+		hover();
+
+		expect(document.querySelector(".tooltip-pop")?.textContent).toBe(
+			"feat: a summary too long for its column",
+		);
+	});
+
+	describe("when the text fits its box", () => {
+		it("shows nothing on hover", () => {
+			layOut(120, 120);
+
+			hover();
+
+			expect(document.querySelector(".tooltip-pop")).toBeNull();
+		});
 	});
 });

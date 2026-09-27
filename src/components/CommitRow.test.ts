@@ -446,6 +446,42 @@ describe("CommitRow", () => {
 		expect(style).toContain("var(--color-review-pending-base)");
 	});
 
+	describe("a summary its column cuts", () => {
+		const summary =
+			"feat(graph): a summary far too long for the column it sits in";
+
+		beforeEach(() => {
+			vi.useFakeTimers();
+			Range.prototype.getBoundingClientRect = () => ({ width: 400 }) as DOMRect;
+		});
+
+		afterEach(() => {
+			document.querySelector(".tooltip-pop")?.remove();
+			delete (Range.prototype as Partial<Range>).getBoundingClientRect;
+			vi.useRealTimers();
+		});
+
+		it.each([
+			{ row: "a commit", is_stash: false },
+			{ row: "a stash", is_stash: true },
+		])("reveals the whole summary of $row on hover", ({ is_stash }) => {
+			render(CommitRow, {
+				props: {
+					commit: makeCommit({ oid: "abc1234567", summary, is_stash }),
+					rowIndex: 0,
+					columnVisibility: allVisible,
+				},
+			});
+			const cell = screen.getByTestId("commit-row-summary");
+			Object.defineProperty(cell, "clientWidth", { value: 150 });
+
+			cell.dispatchEvent(new MouseEvent("mouseenter"));
+			vi.advanceTimersByTime(SHOW_DELAY_MS);
+
+			expect(document.querySelector(".tooltip-pop")?.textContent).toBe(summary);
+		});
+	});
+
 	describe("date column", () => {
 		const pinnedNow = new Date("2026-07-28T10:29:00Z");
 		const twoHours = 2 * 60 * 60 * 1000;

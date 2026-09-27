@@ -10,7 +10,7 @@ import { currentMinute } from "../lib/now.svelte.js";
 import { relativeLabel } from "../lib/relative-time.js";
 import { STATUS_BADGES, WIP_BADGE_ORDER } from "../lib/status-badges.js";
 import type { ColumnVisibility } from "../lib/store.js";
-import { tooltip } from "../lib/tooltip.js";
+import { cutTooltip, tooltip } from "../lib/tooltip.js";
 import type {
 	DiffStat,
 	GraphCommit,
@@ -166,10 +166,10 @@ const rowShadow = $derived(
         {/if}
       </div>
     {:else if isStash}
-      <span data-testid="commit-row-summary" data-message-summary class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic" style="color: var(--color-text-muted);"><span style="margin-left: {-messageScrollX}px;">{commit.summary}</span></span>
+      <span data-testid="commit-row-summary" data-message-summary class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic" style="color: var(--color-text-muted);" use:cutTooltip={commit.summary}><span style="margin-left: {-messageScrollX}px;">{commit.summary}</span></span>
     {:else}
       <span data-testid="commit-row-summary" data-message-summary class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
-      ><span style="margin-left: {-messageScrollX}px;">{#if parsed.prefix}<span style="color: {prefixToneVar(parsed.prefix)};">{parsed.prefix}{parsed.scope}{parsed.bang}</span><span style="color: var(--fg-2);">{": "}</span>{parsed.rest}{:else}{commit.summary}{/if}</span></span>
+      use:cutTooltip={commit.summary}><span style="margin-left: {-messageScrollX}px;">{#if parsed.prefix}<span style="color: {prefixToneVar(parsed.prefix)};">{parsed.prefix}{parsed.scope}{parsed.bang}</span><span style="color: var(--fg-2);">{": "}</span>{parsed.rest}{:else}{commit.summary}{/if}</span></span>
     {/if}
     <CommentBadge count={commentCount} tone={commentTone} />
   </div>

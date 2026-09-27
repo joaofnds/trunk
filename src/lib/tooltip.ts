@@ -3,6 +3,8 @@
 // under its trigger and clamped to the viewport so it never spills off-screen.
 // `aria-label` on the trigger remains the accessible name; this is visual only.
 
+import { textOverrun } from "./text-overrun.js";
+
 export const SHOW_DELAY_MS = 300;
 const VIEWPORT_MARGIN = 6;
 const TRIGGER_GAP = 6;
@@ -21,10 +23,22 @@ export function clampedLeft(
 	return Math.max(margin, Math.min(centered, maxLeft));
 }
 
-export function tooltip(
+type TooltipHandle = { update(next: string): void; destroy(): void };
+
+export function tooltip(node: HTMLElement, text: string): TooltipHandle {
+	return attachTooltip(node, text, () => true);
+}
+
+/** A tooltip carrying a cell's full text, shown only while the cell cuts it. */
+export function cutTooltip(node: HTMLElement, text: string): TooltipHandle {
+	return attachTooltip(node, text, () => textOverrun(node) > 0);
+}
+
+function attachTooltip(
 	node: HTMLElement,
 	text: string,
-): { update(next: string): void; destroy(): void } {
+	isWanted: () => boolean,
+): TooltipHandle {
 	let label = text;
 	let el: HTMLDivElement | null = null;
 	let showTimer: ReturnType<typeof setTimeout> | undefined;
@@ -39,7 +53,7 @@ export function tooltip(
 	function show() {
 		// Skip blank labels so a trigger with no text (e.g. a not-yet-computed
 		// value) never flashes an empty popup.
-		if (el || !label.trim()) return;
+		if (el || !label.trim() || !isWanted()) return;
 		el = document.createElement("div");
 		el.className = "tooltip-pop";
 		el.textContent = label;
