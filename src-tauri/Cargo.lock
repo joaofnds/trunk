@@ -5252,7 +5252,7 @@ dependencies = [
 
 [[package]]
 name = "trunk"
-version = "0.52.1"
+version = "0.53.0"
 dependencies = [
  "ammonia",
  "block2",
