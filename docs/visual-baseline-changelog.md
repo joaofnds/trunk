@@ -160,3 +160,18 @@ TRUNK-291: every stash stops its rails at the square's edge, so a stash with a s
 Changed baselines:
 
     tests/visual/baselines/stash-lanes__20-stash-on-stash.png
+
+## 2026-09-28
+
+WIP ring: a whole number of equal dashes and gaps goes round the ring, so the last dash no longer runs on into the first as one double-length dash. Only the WIP marker's pixels change, in the eight captures holding a WIP row. Accepted at João's direction on 2026-09-28.
+
+Changed baselines:
+
+    tests/visual/baselines/kitchen-sink.png
+    tests/visual/baselines/stash-lanes__02-dirty-tracked.png
+    tests/visual/baselines/stash-lanes__03-dirty-untracked.png
+    tests/visual/baselines/stash-lanes__04-dirty-staged.png
+    tests/visual/baselines/stash-lanes__05-dirty-conflicted.png
+    tests/visual/baselines/stash-lanes__08-multi-stash-dirty.png
+    tests/visual/baselines/stash-lanes__17-no-stash-dirty.png
+    tests/visual/baselines/stash-lanes__18-many-files.png

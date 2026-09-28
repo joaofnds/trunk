@@ -175,30 +175,26 @@ export function buildOverlayPaths(
 // ─── WIP marker ───────────────────────────────────────────────────────────────
 
 /**
- * The WIP marker's dashed ring as one arc per dash, laid out the way
- * `stroke-dasharray` lays dashes on a circle: from its rightmost point,
+ * The WIP marker's dashed ring as one arc per dash, from its rightmost point,
  * clockwise. A dashed circle would leave the dashes to the platform's own
  * measure of the curve, which differs between platforms by enough to move
- * them a pixel, as CI's runner did.
+ * them a pixel, as CI's runner did. The dash is stretched or shrunk from
+ * `DASH` so a whole number of dashes and gaps goes round, since a ring that
+ * ends partway through a period leaves its last dash touching the first.
  */
 export function wipMarkerPath(cx: number, cy: number, r: number): string {
 	const circumference = 2 * Math.PI * r;
-	const dashes: [number, number][] = [];
-	for (let from = 0; from < circumference; from += 2 * DASH) {
-		dashes.push([from, Math.min(from + DASH, circumference)]);
-	}
+	const dashCount = Math.round(circumference / (2 * DASH));
+	const dash = circumference / (2 * dashCount);
 
-	const first = dashes[0];
-	const last = dashes[dashes.length - 1];
-	if (last[1] === circumference) {
-		dashes.shift();
-		last[1] = circumference + first[1];
+	const arcs: string[] = [];
+	for (let i = 0; i < dashCount; i++) {
+		arcs.push(ringArc(cx, cy, r, 2 * i * dash, (2 * i + 1) * dash));
 	}
-
-	return dashes.map(([from, to]) => ringArc(cx, cy, r, from, to)).join(" ");
+	return arcs.join(" ");
 }
 
-/** A clockwise arc of the ring between two distances along it from its rightmost point. */
+/** A short clockwise arc of the ring between two distances along it from its rightmost point. */
 function ringArc(
 	cx: number,
 	cy: number,
@@ -206,8 +202,7 @@ function ringArc(
 	from: number,
 	to: number,
 ): string {
-	const largeArc = to - from > Math.PI * r ? 1 : 0;
-	return `M ${ringPoint(cx, cy, r, from)} A ${r} ${r} 0 ${largeArc} 1 ${ringPoint(cx, cy, r, to)}`;
+	return `M ${ringPoint(cx, cy, r, from)} A ${r} ${r} 0 0 1 ${ringPoint(cx, cy, r, to)}`;
 }
 
 /**

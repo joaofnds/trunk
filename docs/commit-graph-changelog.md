@@ -785,3 +785,19 @@ TRUNK-291: every stash stops its rails at the square's edge, so a stash with a s
 Changed goldens:
 
      M src/__tests__/goldens/graph-render/stash-20-stash-on-stash.txt
+
+## 2026-09-28
+
+WIP ring: fit a whole number of dash periods round the ring. At the app's radius the ring is 5.5 periods of 3px dash and 3px gap, so the last dash was cut short and run on into the first, leaving one 6px dash where every other is 3px. Each dash and gap is now stretched alike (3.3px at radius 5.25) so none touch. Only the WIP marker's path changes.
+
+Changed goldens:
+
+     M src/__tests__/goldens/graph-render/lane-01-behind-only.wip.txt
+     M src/__tests__/goldens/graph-render/stash-02-dirty-tracked.wip.txt
+     M src/__tests__/goldens/graph-render/stash-03-dirty-untracked.wip.txt
+     M src/__tests__/goldens/graph-render/stash-04-dirty-staged.wip.txt
+     M src/__tests__/goldens/graph-render/stash-05-dirty-conflicted.wip.txt
+     M src/__tests__/goldens/graph-render/stash-08-multi-stash-dirty.wip.txt
+     M src/__tests__/goldens/graph-render/stash-14-merge-tip.wip.txt
+     M src/__tests__/goldens/graph-render/stash-17-no-stash-dirty.wip.txt
+     M src/__tests__/goldens/graph-render/stash-18-many-files.wip.txt

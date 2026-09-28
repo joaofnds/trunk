@@ -385,11 +385,12 @@ partially-visible connector instead of clipping it.
 The WIP marker's dashed ring, drawn as one solid arc per dash rather than as a circle with
 `stroke-dasharray`. A dasher places dashes by its own measure of a curve, and CI's runner
 measured the ring about 1.5% short where a local Mac measured it 0.5% short, which moved
-dashes a pixel and failed the visual baselines (TRUNK-293). The arcs keep the dasharray's
-layout: `DASH` on and `DASH` off, clockwise from the ring's rightmost point, with a dash the
-ring's end cuts short running on into the first. Each coordinate is rounded to a thousandth
-of a pixel, because the render goldens hold them and the last digits of `Math.cos` and
-`Math.sin` differ between JavaScript runtimes.
+dashes a pixel and failed the visual baselines (TRUNK-293). The arcs run clockwise from the
+ring's rightmost point, with each dash and each gap stretched or shrunk alike from `DASH` so a
+whole number of them goes round. A ring that ends partway through a dash would otherwise leave
+that dash touching the first, which reads as one dash twice as long. Each coordinate is
+rounded to a thousandth of a pixel, because the render goldens hold them and the last digits
+of `Math.cos` and `Math.sin` differ between JavaScript runtimes.
 
 ---
 

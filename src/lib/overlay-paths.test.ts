@@ -725,15 +725,14 @@ describe("makePathContext", () => {
 
 describe("wipMarkerPath", () => {
 	it("dashes the ring clockwise from its rightmost point, 3px on and 3px off", () => {
-		const d = wipMarkerPath(8, 14, 5.5);
+		const radius = 9 / Math.PI;
 
-		expect(dashSpans(d, 8, 14, 5.5)).toEqual([
+		const d = wipMarkerPath(8, 14, radius);
+
+		expect(dashSpans(d, 8, 14, radius)).toEqual([
 			[0, 3],
 			[6, 9],
 			[12, 15],
-			[18, 21],
-			[24, 27],
-			[30, 33],
 		]);
 	});
 
@@ -741,17 +740,21 @@ describe("wipMarkerPath", () => {
 		expect(wipMarkerPath(8, 14, 5.25)).not.toMatch(/\.\d{4}/);
 	});
 
-	describe("when the ring ends partway through a dash", () => {
-		it("runs that dash on into the first", () => {
-			const d = wipMarkerPath(8, 14, 5.25);
+	describe("when the ring is not a whole number of dashes round", () => {
+		it.each([5.25, 5.5, 6])(
+			"stretches every dash and gap alike at radius %d, so no two dashes meet",
+			(radius) => {
+				const spans = dashSpans(wipMarkerPath(8, 14, radius), 8, 14, radius);
 
-			expect(dashSpans(d, 8, 14, 5.25)).toEqual([
-				[6, 9],
-				[12, 15],
-				[18, 21],
-				[24, 27],
-				[30, 3],
-			]);
-		});
+				const circumference = 2 * Math.PI * radius;
+				const dashes = spans.map(([from, to]) => to - from);
+				const gaps = spans.map(
+					([, to], i) => (spans[i + 1]?.[0] ?? circumference) - to,
+				);
+				for (const length of [...dashes, ...gaps]) {
+					expect(length).toBeCloseTo(dashes[0], 1);
+				}
+			},
+		);
 	});
 });
