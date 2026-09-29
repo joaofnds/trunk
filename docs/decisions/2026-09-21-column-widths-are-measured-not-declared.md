@@ -204,15 +204,21 @@ repositories cannot overwrite each other's widths, and fits are never written.
 
 An older pref file holds `column_widths`, every column's number for every repository
 at once with fits included, and `resized_columns`, which of them the user chose.
-Nothing writes those two keys and no load reads them. Once, at the first launch that
-finds them, each repository in `recent_repos` or `open_tabs` that has no key of its
-own gets them as its key (João chose this copy over reading them as a fallback on
-TRUNK-254.7, 2026-09-29). `column_user_widths_copied` then records that the copy ran,
-so a repository first opened later fits its columns, and a repository whose key is
-`{}`, its last user width double-clicked away, is not given them again. The copy
-runs on the same queue as every load, so a graph mounting at launch reads what it
-copied. The old keys stay in the file, so a build from before the change still finds
-the widths it wrote.
+Nothing writes those two keys. João chose to copy them once rather than read them as
+a fallback (TRUNK-254.7, 2026-09-29). At launch, before any graph can load, each
+repository then in `recent_repos` or `open_tabs` whose own key is missing or not a
+record of widths gets the user widths those keys hold, sanitized as "The pref file is
+untrusted" describes for the old global keys and stored unrounded, since loading a key
+rounds it and holds it to its floor. Every width load queues behind the copy, so a
+graph restored at launch opens at the copied widths.
+`column_user_widths_copied` is written last, whether or not the file held the old
+keys, and once it is set nothing reads them again: a repository first opened later
+fits its columns, and a repository whose key is `{}`, its last user width
+double-clicked away, is not given them again. A copy that fails before the marker is
+written runs again at the next launch, over the repositories known then, including
+any opened in between. The old keys stay in the file, so an older build still finds
+the widths it wrote, but widths dragged there after the marker was set are not copied
+on returning.
 
 A column becomes a user width only when a drag moves it. A click on a divider sizes
 nothing. Saves and loads run one at a time in the order made, because the pref
@@ -247,9 +253,10 @@ Widths are sanitized on the way in: a value survives only if it is a finite
 positive number, then it is rounded and raised to that column's floor, and
 nothing else: a width that is merely large is the user's to choose. In a
 repository's own key, anything else leaves that column to its fit, a name that is
-not a sized column is dropped, and a value that is not an object reads as no key at
-all. In the old global keys, an unusable number for a resized column falls back to
-that column's default, and `resized_columns` keeps only the names of sized columns.
+not a sized column is dropped, and a value that is not a record of widths (`null`, a
+list, or anything but an object) reads as no key at all. In the old global keys, an
+unusable number for a resized column falls back to that column's default, and
+`resized_columns` keeps only the names of sized columns.
 
 ## When a fit is measured and when the budget applies
 

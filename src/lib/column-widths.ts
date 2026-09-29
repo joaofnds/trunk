@@ -310,12 +310,10 @@ function fitCaps(rowWidth: number): ColumnWidths {
  * (`column_widths`), made safe to lay out with. The pref file is plain JSON that
  * nothing upstream validates, and a width that is not a usable number reached the
  * drag clamp as NaN, which persisted itself and left the column unresizable.
- * A width that is merely large is not unsafe: it is the user's to choose.
+ * A width that is merely large is not unsafe: it is the user's to choose. A usable
+ * width is kept as stored, since loading it rounds it and holds it to its floor.
  */
-export function sanitizeLegacyColumnWidths(
-	stored: unknown,
-	floors: ColumnFloors,
-): ColumnWidths {
+export function sanitizeLegacyColumnWidths(stored: unknown): ColumnWidths {
 	const record =
 		typeof stored === "object" && stored !== null
 			? (stored as Record<string, unknown>)
@@ -324,9 +322,7 @@ export function sanitizeLegacyColumnWidths(
 
 	for (const column of SIZED_COLUMNS) {
 		const value = record[column];
-		widths[column] = isUsableWidth(value)
-			? storedWidth(value, floors[column])
-			: DEFAULT_WIDTHS[column];
+		widths[column] = isUsableWidth(value) ? value : DEFAULT_WIDTHS[column];
 	}
 
 	return widths;
@@ -341,9 +337,7 @@ export function sanitizeUserWidths(
 	stored: unknown,
 	floors: ColumnFloors,
 ): Partial<ColumnWidths> | undefined {
-	if (typeof stored !== "object" || stored === null || Array.isArray(stored)) {
-		return undefined;
-	}
+	if (!isUserWidthsRecord(stored)) return undefined;
 
 	const widths: Partial<ColumnWidths> = {};
 	for (const [column, value] of Object.entries(stored)) {
@@ -352,6 +346,14 @@ export function sanitizeUserWidths(
 	}
 
 	return widths;
+}
+
+export function isUserWidthsRecord(
+	stored: unknown,
+): stored is Record<string, unknown> {
+	return (
+		typeof stored === "object" && stored !== null && !Array.isArray(stored)
+	);
 }
 
 function isUsableWidth(value: unknown): value is number {

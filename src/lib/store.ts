@@ -2,6 +2,7 @@ import {
 	type ColumnFloors,
 	type ColumnWidths,
 	isSizedColumn,
+	isUserWidthsRecord,
 	sanitizeLegacyColumnWidths,
 	sanitizeUserWidths,
 } from "./column-widths.js";
@@ -114,17 +115,7 @@ export type { ColumnWidths };
 
 const LEGACY_COLUMN_WIDTHS_KEY = "column_widths";
 const LEGACY_RESIZED_COLUMNS_KEY = "resized_columns";
-const GLOBAL_USER_WIDTHS_COPIED_KEY = "column_user_widths_copied";
-
-/** Rounding only: a copied width is held to its column's floor when it is loaded. */
-const NO_FLOORS: ColumnFloors = {
-	ref: 0,
-	graph: 0,
-	diff: 0,
-	author: 0,
-	date: 0,
-	sha: 0,
-};
+const LEGACY_USER_WIDTHS_COPIED_KEY = "column_user_widths_copied";
 
 /**
  * The user widths stored for every repository at once, before they were kept
@@ -134,7 +125,6 @@ const NO_FLOORS: ColumnFloors = {
 async function legacyUserWidths(): Promise<Partial<ColumnWidths>> {
 	const widths = sanitizeLegacyColumnWidths(
 		await getPref<unknown>(LEGACY_COLUMN_WIDTHS_KEY),
-		NO_FLOORS,
 	);
 	const resized = await getPref<unknown>(LEGACY_RESIZED_COLUMNS_KEY);
 	if (!Array.isArray(resized)) return {};
@@ -158,7 +148,6 @@ function storedPaths(list: unknown, field: "path" | "repoPath"): string[] {
 	});
 }
 
-/** Every repository in the recent list or open in a tab, once each. */
 async function knownRepositoryPaths(): Promise<Set<string>> {
 	const recent = storedPaths(await getPref<unknown>(RECENT_KEY), "path");
 	const open = storedPaths(await getPref<unknown>(TABS_KEY), "repoPath");
@@ -187,26 +176,28 @@ function userWidthsKey(repoPath: string): string {
 }
 
 /**
- * Gives each repository in the recent list or open in a tab, that has no widths
- * of its own, the widths stored for every repository before they were kept per
- * repository, and never runs again once it has finished. A repository opened
- * later fits its columns. The old keys stay in the file, so a build from before
- * the change still finds them.
+ * Gives each repository in the recent list or open in a tab, whose own entry is
+ * missing or not a record of widths, the widths stored for every repository
+ * before they were kept per repository, and never runs again once it has
+ * finished. Called at launch, before any graph can load, so every load queues
+ * behind it; a repository opened later fits its columns. The old keys stay in the
+ * file, so an older build still finds them.
  */
-export function copyGlobalUserWidthsOnce(): Promise<void> {
+export function copyLegacyUserWidthsOnce(): Promise<void> {
 	return inColumnLayoutOrder(async () => {
-		if ((await getPref<unknown>(GLOBAL_USER_WIDTHS_COPIED_KEY)) === true)
+		if ((await getPref<unknown>(LEGACY_USER_WIDTHS_COPIED_KEY)) === true)
 			return;
 
 		const widths = await legacyUserWidths();
 		if (Object.keys(widths).length > 0) {
 			for (const path of await knownRepositoryPaths()) {
-				if ((await getPref<unknown>(userWidthsKey(path))) !== null) continue;
+				const own = await getPref<unknown>(userWidthsKey(path));
+				if (isUserWidthsRecord(own)) continue;
 				await setPref(userWidthsKey(path), widths);
 			}
 		}
 
-		await setPref(GLOBAL_USER_WIDTHS_COPIED_KEY, true);
+		await setPref(LEGACY_USER_WIDTHS_COPIED_KEY, true);
 	});
 }
 

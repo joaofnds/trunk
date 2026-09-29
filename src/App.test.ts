@@ -104,6 +104,18 @@ function graphPathsRequested(): string[] {
 		.map(([, args]) => (args as { path: string }).path);
 }
 
+// jsdom inherits custom properties but never substitutes var(), so the header
+// cell's width is resolved here the way the engine would resolve it.
+function refHeaderWidth(container: HTMLElement): string | undefined {
+	const cell = container.querySelector<HTMLElement>(
+		"[data-testid=column-header] > [data-column=ref]",
+	);
+	if (!cell) return undefined;
+	const reference = /^var\((--[\w-]+)\)$/.exec(cell.style.width);
+	if (!reference) return cell.style.width;
+	return getComputedStyle(cell).getPropertyValue(reference[1]).trim();
+}
+
 describe("App", () => {
 	beforeEach(() => {
 		for (const key of Object.keys(prefs)) delete prefs[key];
@@ -259,11 +271,8 @@ describe("App", () => {
 		});
 	});
 
-	// Known flake: this test has expired its 1 008 ms `waitFor` deadline under
-	// contention without the application being broken. If it fails, read TRUNK-62
-	// (`backlog task 62 --plain`) before investigating — it records what is already
-	// ruled out, including that raising this deadline is not the fix.
-	it("gives a recent repository the column widths stored for every repository before they were per repository", async () => {
+	it("gives a recent repository the column widths stored for every repository before they were per repository at launch, before any repository is open", async () => {
+		prefs.open_tabs = [{ id: "tab-1", repoPath: null, repoName: "" }];
 		prefs.column_widths = { ref: 200 };
 		prefs.resized_columns = ["ref"];
 
@@ -274,6 +283,19 @@ describe("App", () => {
 		);
 	});
 
+	it("opens a repository at the column widths stored for every repository before they were per repository", async () => {
+		prefs.column_widths = { ref: 200 };
+		prefs.resized_columns = ["ref"];
+
+		const { container } = render(App);
+
+		await waitFor(() => expect(refHeaderWidth(container)).toBe(`${200}px`));
+	});
+
+	// Known flake: this test has expired its 1 008 ms `waitFor` deadline under
+	// contention without the application being broken. If it fails, read TRUNK-62
+	// (`backlog task 62 --plain`) before investigating — it records what is already
+	// ruled out, including that raising this deadline is not the fix.
 	it("loads the new repository's graph when a tab swaps repositories in place", async () => {
 		const { getByText } = render(App);
 		await waitFor(() => expect(graphPathsRequested()).toContain(REPO_A));

@@ -23,7 +23,7 @@ import type { RepoChanged } from "./lib/repo-change-subscription.js";
 import { getScheduler } from "./lib/scheduler.js";
 import {
 	addRecentRepo,
-	copyGlobalUserWidthsOnce,
+	copyLegacyUserWidthsOnce,
 	getActiveTabId,
 	getDiffContentMode,
 	getLeftPaneCollapsed,
@@ -394,7 +394,7 @@ function persistTabs() {
 
 // Restore on mount
 $effect(() => {
-	copyGlobalUserWidthsOnce();
+	copyLegacyUserWidthsOnce();
 
 	(async () => {
 		let restored = await getOpenTabs();

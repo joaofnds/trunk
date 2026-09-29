@@ -471,13 +471,11 @@ describe("shareBudget", () => {
 });
 
 describe("sanitizeLegacyColumnWidths", () => {
-	const floors = columnFloors(measure);
-
 	it("keeps a width the user could have set", () => {
-		const widths = sanitizeLegacyColumnWidths(
-			{ ...DEFAULT_WIDTHS, author: 180 },
-			floors,
-		);
+		const widths = sanitizeLegacyColumnWidths({
+			...DEFAULT_WIDTHS,
+			author: 180,
+		});
 
 		expect(widths.author).toBe(180);
 	});
@@ -485,9 +483,7 @@ describe("sanitizeLegacyColumnWidths", () => {
 	it("fills a key the stored layout never had", () => {
 		const stored = { ref: 150 };
 
-		expect(sanitizeLegacyColumnWidths(stored, floors).sha).toBe(
-			DEFAULT_WIDTHS.sha,
-		);
+		expect(sanitizeLegacyColumnWidths(stored).sha).toBe(DEFAULT_WIDTHS.sha);
 	});
 
 	// Each of these reached the layout before: a NaN width made every drag
@@ -506,38 +502,22 @@ describe("sanitizeLegacyColumnWidths", () => {
 		it.each(unusable)("falls back to the default for %s", (_name, value) => {
 			const stored = { author: value };
 
-			expect(sanitizeLegacyColumnWidths(stored, floors).author).toBe(
+			expect(sanitizeLegacyColumnWidths(stored).author).toBe(
 				DEFAULT_WIDTHS.author,
 			);
 		});
 	});
 
-	it("raises a width below the column's floor", () => {
-		const stored = { author: 2 };
-
-		expect(sanitizeLegacyColumnWidths(stored, floors).author).toBe(
-			floors.author,
-		);
-	});
-
-	// A user width has a floor and no ceiling.
+	// A user width has no ceiling.
 	it("keeps a width however wide the user left it", () => {
 		const stored = { graph: 900 };
 
-		expect(sanitizeLegacyColumnWidths(stored, floors).graph).toBe(900);
-	});
-
-	it("rounds a fractional width to whole pixels", () => {
-		const stored = { author: 120.6 };
-
-		expect(sanitizeLegacyColumnWidths(stored, floors).author).toBe(121);
+		expect(sanitizeLegacyColumnWidths(stored).graph).toBe(900);
 	});
 
 	describe("when there is no stored layout at all", () => {
 		it("returns the defaults", () => {
-			expect(sanitizeLegacyColumnWidths(undefined, floors)).toEqual(
-				DEFAULT_WIDTHS,
-			);
+			expect(sanitizeLegacyColumnWidths(undefined)).toEqual(DEFAULT_WIDTHS);
 		});
 	});
 });

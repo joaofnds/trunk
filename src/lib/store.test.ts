@@ -50,7 +50,7 @@ const {
 	getCommitDraft,
 	setCommitDraft,
 	clearCommitDraft,
-	copyGlobalUserWidthsOnce,
+	copyLegacyUserWidthsOnce,
 	loadUserWidths,
 	saveUserWidths,
 	getColumnVisibility,
@@ -129,6 +129,25 @@ function holdNextPrefWrite(): () => void {
 		release();
 	};
 }
+
+function failNextPrefWriteTo(key: string): void {
+	const invoke = vi.mocked(safeInvoke);
+	const direct = invoke.getMockImplementation();
+	invoke.mockImplementation(async (cmd, args) => {
+		if (cmd === "prefs_set" && (args as { key: string }).key === key) {
+			if (direct) invoke.mockImplementation(direct);
+			throw new Error("disk full");
+		}
+		return direct?.(cmd, args);
+	});
+}
+
+// Stored entries that are not a record of widths.
+const notARecord = [
+	["a number", 7],
+	["a string", "wide"],
+	["a list", [180]],
+] as const;
 
 // Stored widths nothing can be laid out with.
 const unusableWidths = [
@@ -403,12 +422,6 @@ describe("store", () => {
 		});
 
 		describe("when a stored entry is not a record of widths", () => {
-			const notARecord = [
-				["a number", 7],
-				["a string", "wide"],
-				["a list", [180]],
-			] as const;
-
 			it.each(notARecord)(
 				"leaves every column to its fit for %s",
 				async (_name, value) => {
@@ -478,7 +491,7 @@ describe("store", () => {
 				backingStore.set("resized_columns", ["ref", "graph"]);
 				knownRepositories(["/repo/a"], []);
 
-				await copyGlobalUserWidthsOnce();
+				await copyLegacyUserWidthsOnce();
 
 				expect(await loadUserWidths("/repo/a", floors)).toEqual({
 					ref: 200,
@@ -491,9 +504,21 @@ describe("store", () => {
 				backingStore.set("resized_columns", ["ref"]);
 				knownRepositories([], ["/repo/a", null]);
 
-				await copyGlobalUserWidthsOnce();
+				await copyLegacyUserWidthsOnce();
 
 				expect(await loadUserWidths("/repo/a", floors)).toEqual({ ref: 200 });
+			});
+
+			it("copies nothing later once a launch found none to copy", async () => {
+				knownRepositories(["/repo/a"], []);
+				await copyLegacyUserWidthsOnce();
+
+				backingStore.set("column_widths", { ref: 200 });
+				backingStore.set("resized_columns", ["ref"]);
+
+				await copyLegacyUserWidthsOnce();
+
+				expect(await loadUserWidths("/repo/a", floors)).toEqual({});
 			});
 
 			it("leaves a repository it does not know to its fits", async () => {
@@ -501,7 +526,7 @@ describe("store", () => {
 				backingStore.set("resized_columns", ["ref"]);
 				knownRepositories(["/repo/a"], ["/repo/a"]);
 
-				await copyGlobalUserWidthsOnce();
+				await copyLegacyUserWidthsOnce();
 
 				expect(await loadUserWidths("/repo/b", floors)).toEqual({});
 			});
@@ -512,19 +537,46 @@ describe("store", () => {
 				knownRepositories(["/repo/a"], []);
 				await saveUserWidths("/repo/a", { author: 213 });
 
-				await copyGlobalUserWidthsOnce();
+				await copyLegacyUserWidthsOnce();
 
 				expect(await loadUserWidths("/repo/a", floors)).toEqual({
 					author: 213,
 				});
 			});
 
+			it("leaves a repository whose widths were all handed back to its fits", async () => {
+				backingStore.set("column_widths", { ref: 200 });
+				backingStore.set("resized_columns", ["ref"]);
+				knownRepositories(["/repo/a"], []);
+				await saveUserWidths("/repo/a", {});
+
+				await copyLegacyUserWidthsOnce();
+
+				expect(await loadUserWidths("/repo/a", floors)).toEqual({});
+			});
+
+			it.each(notARecord)(
+				"gives a repository whose own entry is %s the columns the user resized",
+				async (_name, value) => {
+					backingStore.set("column_widths", { ref: 200 });
+					backingStore.set("resized_columns", ["ref"]);
+					knownRepositories(["/repo/a"], []);
+					backingStore.set("column_user_widths:/repo/a", value);
+
+					await copyLegacyUserWidthsOnce();
+
+					expect(await loadUserWidths("/repo/a", floors)).toEqual({
+						ref: 200,
+					});
+				},
+			);
+
 			it("leaves the widths stored for every repository in the file", async () => {
 				backingStore.set("column_widths", { ref: 200 });
 				backingStore.set("resized_columns", ["ref"]);
 				knownRepositories(["/repo/a"], []);
 
-				await copyGlobalUserWidthsOnce();
+				await copyLegacyUserWidthsOnce();
 
 				expect(backingStore.get("column_widths")).toEqual({ ref: 200 });
 				expect(backingStore.get("resized_columns")).toEqual(["ref"]);
@@ -536,7 +588,7 @@ describe("store", () => {
 				knownRepositories(["/repo/a"], []);
 				const release = holdNextPrefWrite();
 
-				const copied = copyGlobalUserWidthsOnce();
+				const copied = copyLegacyUserWidthsOnce();
 				const loaded = loadUserWidths("/repo/a", floors);
 				release();
 				await copied;
@@ -544,18 +596,30 @@ describe("store", () => {
 				expect(await loaded).toEqual({ ref: 200 });
 			});
 
+			it("copies them on the next launch when a write failed", async () => {
+				backingStore.set("column_widths", { ref: 200 });
+				backingStore.set("resized_columns", ["ref"]);
+				knownRepositories(["/repo/a", "/repo/b"], []);
+				failNextPrefWriteTo("column_user_widths:/repo/b");
+				await expect(copyLegacyUserWidthsOnce()).rejects.toThrow();
+
+				await copyLegacyUserWidthsOnce();
+
+				expect(await loadUserWidths("/repo/b", floors)).toEqual({ ref: 200 });
+			});
+
 			describe("on a later launch", () => {
 				beforeEach(async () => {
 					backingStore.set("column_widths", { ref: 200 });
 					backingStore.set("resized_columns", ["ref"]);
 					knownRepositories(["/repo/a"], []);
-					await copyGlobalUserWidthsOnce();
+					await copyLegacyUserWidthsOnce();
 				});
 
 				it("leaves a repository first opened since then to its fits", async () => {
 					knownRepositories(["/repo/b", "/repo/a"], ["/repo/b"]);
 
-					await copyGlobalUserWidthsOnce();
+					await copyLegacyUserWidthsOnce();
 
 					expect(await loadUserWidths("/repo/b", floors)).toEqual({});
 				});
@@ -565,7 +629,7 @@ describe("store", () => {
 				it("leaves a repository whose widths were all handed back to its fits", async () => {
 					await saveUserWidths("/repo/a", {});
 
-					await copyGlobalUserWidthsOnce();
+					await copyLegacyUserWidthsOnce();
 
 					expect(await loadUserWidths("/repo/a", floors)).toEqual({});
 				});
@@ -577,7 +641,7 @@ describe("store", () => {
 				backingStore.set("resized_columns", ["ref", "diff"]);
 				knownRepositories(["/repo/a"], []);
 
-				await copyGlobalUserWidthsOnce();
+				await copyLegacyUserWidthsOnce();
 
 				expect(await loadUserWidths("/repo/a", floors)).toEqual({
 					ref: 200,
@@ -592,7 +656,7 @@ describe("store", () => {
 					backingStore.set("resized_columns", ["ref", "author"]);
 					knownRepositories(["/repo/a"], []);
 
-					await copyGlobalUserWidthsOnce();
+					await copyLegacyUserWidthsOnce();
 
 					expect(await loadUserWidths("/repo/a", floors)).toEqual({
 						ref: 200,
@@ -601,12 +665,25 @@ describe("store", () => {
 				},
 			);
 
+			it("holds a resized column narrower than a pixel to its floor", async () => {
+				backingStore.set("column_widths", { ref: 200, author: 0.4 });
+				backingStore.set("resized_columns", ["ref", "author"]);
+				knownRepositories(["/repo/a"], []);
+
+				await copyLegacyUserWidthsOnce();
+
+				expect(await loadUserWidths("/repo/a", floors)).toEqual({
+					ref: 200,
+					author: floors.author,
+				});
+			});
+
 			it("drops a resized name that is not a sized column", async () => {
 				backingStore.set("column_widths", { ref: 200 });
 				backingStore.set("resized_columns", ["ref", "message", "nonsense", 7]);
 				knownRepositories(["/repo/a"], []);
 
-				await copyGlobalUserWidthsOnce();
+				await copyLegacyUserWidthsOnce();
 
 				expect(await loadUserWidths("/repo/a", floors)).toEqual({ ref: 200 });
 			});
@@ -616,7 +693,7 @@ describe("store", () => {
 				backingStore.set("resized_columns", { ref: true });
 				knownRepositories(["/repo/a"], []);
 
-				await copyGlobalUserWidthsOnce();
+				await copyLegacyUserWidthsOnce();
 
 				expect(await loadUserWidths("/repo/a", floors)).toEqual({});
 			});
@@ -627,10 +704,11 @@ describe("store", () => {
 				backingStore.set("recent_repos", [
 					{ name: "a" },
 					7,
+					null,
 					{ path: "/repo/a" },
 				]);
 
-				await copyGlobalUserWidthsOnce();
+				await copyLegacyUserWidthsOnce();
 
 				expect(await loadUserWidths("/repo/a", floors)).toEqual({ ref: 200 });
 			});
