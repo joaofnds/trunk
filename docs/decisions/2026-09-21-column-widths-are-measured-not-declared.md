@@ -204,10 +204,15 @@ repositories cannot overwrite each other's widths, and fits are never written.
 
 An older pref file holds `column_widths`, every column's number for every repository
 at once with fits included, and `resized_columns`, which of them the user chose.
-Nothing writes those two keys. A repository with no key of its own reads them as its
-user widths, so the widths a user set before per-repository storage survive it. A
-repository whose key is `{}`, its last user width double-clicked away, never reads
-them, or the double-click would be undone on the next launch.
+Nothing writes those two keys and no load reads them. Once, at the first launch that
+finds them, each repository in `recent_repos` or `open_tabs` that has no key of its
+own gets them as its key (João chose this copy over reading them as a fallback on
+TRUNK-254.7, 2026-09-29). `column_user_widths_copied` then records that the copy ran,
+so a repository first opened later fits its columns, and a repository whose key is
+`{}`, its last user width double-clicked away, is not given them again. The copy
+runs on the same queue as every load, so a graph mounting at launch reads what it
+copied. The old keys stay in the file, so a build from before the change still finds
+the widths it wrote.
 
 A column becomes a user width only when a drag moves it. A click on a divider sizes
 nothing. Saves and loads run one at a time in the order made, because the pref
@@ -342,11 +347,6 @@ A stored `message: false`, which only the pref file can hold since the header me
 cannot hide Message, leaves every row drawing its Message cell while the table's width
 counts no floor for it, so the rows' right-hand columns are cut at the table's edge
 rather than scrolled to (TRUNK-266).
-
-A repository with no stored widths of its own, including one first opened long after
-per-repository storage, still opens at the user widths the older global keys hold, and
-its first drag copies them into its own key. Whether to end that fallback by seeding a
-key for each known repository is open for João on TRUNK-254.7.
 
 Widths are absolute pixels and carry no record of the lane pitch they were chosen
 under. Nothing writes `displaySettings` today, so a stored graph width cannot yet

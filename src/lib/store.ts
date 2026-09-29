@@ -34,6 +34,7 @@ async function setPref(key: string, value: unknown): Promise<void> {
 }
 
 const RECENT_KEY = "recent_repos";
+const TABS_KEY = "open_tabs";
 
 export async function addRecentRepo(repo: RecentRepo): Promise<void> {
 	const current = (await getPref<RecentRepo[]>(RECENT_KEY)) ?? [];
@@ -113,18 +114,27 @@ export type { ColumnWidths };
 
 const LEGACY_COLUMN_WIDTHS_KEY = "column_widths";
 const LEGACY_RESIZED_COLUMNS_KEY = "resized_columns";
+const GLOBAL_USER_WIDTHS_COPIED_KEY = "column_user_widths_copied";
+
+/** Rounding only: a copied width is held to its column's floor when it is loaded. */
+const NO_FLOORS: ColumnFloors = {
+	ref: 0,
+	graph: 0,
+	diff: 0,
+	author: 0,
+	date: 0,
+	sha: 0,
+};
 
 /**
  * The user widths stored for every repository at once, before they were kept
  * per repository: each column named in `resized_columns` at its number in
  * `column_widths`, which also held fits.
  */
-async function legacyUserWidths(
-	floors: ColumnFloors,
-): Promise<Partial<ColumnWidths>> {
+async function legacyUserWidths(): Promise<Partial<ColumnWidths>> {
 	const widths = sanitizeLegacyColumnWidths(
 		await getPref<unknown>(LEGACY_COLUMN_WIDTHS_KEY),
-		floors,
+		NO_FLOORS,
 	);
 	const resized = await getPref<unknown>(LEGACY_RESIZED_COLUMNS_KEY);
 	if (!Array.isArray(resized)) return {};
@@ -135,6 +145,25 @@ async function legacyUserWidths(
 	}
 
 	return userWidths;
+}
+
+/** Each string at `field` in a stored list of records; anything else is skipped. */
+function storedPaths(list: unknown, field: "path" | "repoPath"): string[] {
+	if (!Array.isArray(list)) return [];
+
+	return list.flatMap((entry: unknown) => {
+		if (typeof entry !== "object" || entry === null) return [];
+		const path = (entry as Record<string, unknown>)[field];
+		return typeof path === "string" ? [path] : [];
+	});
+}
+
+/** Every repository in the recent list or open in a tab, once each. */
+async function knownRepositoryPaths(): Promise<Set<string>> {
+	const recent = storedPaths(await getPref<unknown>(RECENT_KEY), "path");
+	const open = storedPaths(await getPref<unknown>(TABS_KEY), "repoPath");
+
+	return new Set([...recent, ...open]);
 }
 
 let columnLayoutQueue: Promise<unknown> = Promise.resolve();
@@ -158,22 +187,41 @@ function userWidthsKey(repoPath: string): string {
 }
 
 /**
+ * Gives each repository in the recent list or open in a tab, that has no widths
+ * of its own, the widths stored for every repository before they were kept per
+ * repository, and never runs again once it has finished. A repository opened
+ * later fits its columns. The old keys stay in the file, so a build from before
+ * the change still finds them.
+ */
+export function copyGlobalUserWidthsOnce(): Promise<void> {
+	return inColumnLayoutOrder(async () => {
+		if ((await getPref<unknown>(GLOBAL_USER_WIDTHS_COPIED_KEY)) === true)
+			return;
+
+		const widths = await legacyUserWidths();
+		if (Object.keys(widths).length > 0) {
+			for (const path of await knownRepositoryPaths()) {
+				if ((await getPref<unknown>(userWidthsKey(path))) !== null) continue;
+				await setPref(userWidthsKey(path), widths);
+			}
+		}
+
+		await setPref(GLOBAL_USER_WIDTHS_COPIED_KEY, true);
+	});
+}
+
+/**
  * The widths the user set in this repository, by column; every column missing
- * from it fits its content. A repository that never stored its own has the
- * widths stored for every repository before they were kept per repository.
+ * from it fits its content.
  */
 export function loadUserWidths(
 	repoPath: string,
 	floors: ColumnFloors,
 ): Promise<Partial<ColumnWidths>> {
 	return inColumnLayoutOrder(async () => {
-		const own = sanitizeUserWidths(
-			await getPref<unknown>(userWidthsKey(repoPath)),
-			floors,
-		);
-		if (own !== undefined) return own;
+		const stored = await getPref<unknown>(userWidthsKey(repoPath));
 
-		return legacyUserWidths(floors);
+		return sanitizeUserWidths(stored, floors) ?? {};
 	});
 }
 
@@ -283,7 +331,6 @@ export async function setRebaseColumnVisibility(
 }
 
 // Tab persistence
-const TABS_KEY = "open_tabs";
 const ACTIVE_TAB_KEY = "active_tab_id";
 
 export async function getOpenTabs(): Promise<PersistedTab[]> {

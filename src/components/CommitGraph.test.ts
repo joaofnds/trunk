@@ -1851,80 +1851,49 @@ describe("CommitGraph", () => {
 				);
 			});
 
-			describe("with widths stored for every repository before they were per repository", () => {
-				const legacy = () =>
-					new Map<string, unknown>([
-						["column_widths", { ref: 200 }],
-						["resized_columns", ["ref"]],
-					]);
-
-				it("opens a repository with none of its own at those widths", async () => {
-					const { container } = mountWithPrefs(legacy(), {
-						repoPath: "/repo/a",
-					});
-					await flush();
-
-					expect(renderedWidth(headerCell(container, "ref"))).toBe("200px");
+			// The graph remounts when a diff closes, so a double-click can come
+			// before the restore has read what to restore.
+			it("keeps a stored width once another column is double-clicked before it is read", async () => {
+				const prefs = new Map<string, unknown>([
+					["column_user_widths:/test/repo", { ref: 200 }],
+				]);
+				let read = () => {};
+				const widthsRead = new Promise<void>((resolve) => {
+					read = resolve;
 				});
+				const first = mountWithPrefs(prefs, { widthsRead });
+				await flush();
+				await fireEvent.dblClick(resizeHandle(first.container, "author"));
+				read();
+				await flush();
+				first.unmount();
 
-				it("keeps them once another column is dragged", async () => {
-					const prefs = legacy();
-					const first = mountWithPrefs(prefs, { repoPath: "/repo/a" });
-					await flush();
-					await drag(resizeHandle(first.container, "author"), 60);
-					first.unmount();
+				const second = mountWithPrefs(prefs);
+				await flush();
 
-					const second = mountWithPrefs(prefs, { repoPath: "/repo/a" });
-					await flush();
+				expect(renderedWidth(headerCell(second.container, "ref"))).toBe(
+					"200px",
+				);
+			});
 
-					expect(renderedWidth(headerCell(second.container, "ref"))).toBe(
-						"200px",
-					);
-				});
+			it("fits a stored column again on the next mount once it was double-clicked", async () => {
+				const fresh = mountWithPrefs(new Map());
+				await flush();
+				const fit = renderedWidth(headerCell(fresh.container, "ref"));
+				fresh.unmount();
+				const prefs = new Map<string, unknown>([
+					["column_user_widths:/test/repo", { ref: 200 }],
+				]);
+				const first = mountWithPrefs(prefs);
+				await flush();
+				await fireEvent.dblClick(resizeHandle(first.container, "ref"));
+				await flush();
+				first.unmount();
 
-				// The graph remounts when a diff closes, so a double-click can come
-				// before the restore has read what to restore.
-				it("keeps them once another column is double-clicked before they are read", async () => {
-					const prefs = legacy();
-					let read = () => {};
-					const widthsRead = new Promise<void>((resolve) => {
-						read = resolve;
-					});
-					const first = mountWithPrefs(prefs, {
-						repoPath: "/repo/a",
-						widthsRead,
-					});
-					await flush();
-					await fireEvent.dblClick(resizeHandle(first.container, "author"));
-					read();
-					await flush();
-					first.unmount();
+				const second = mountWithPrefs(prefs);
+				await flush();
 
-					const second = mountWithPrefs(prefs, { repoPath: "/repo/a" });
-					await flush();
-
-					expect(renderedWidth(headerCell(second.container, "ref"))).toBe(
-						"200px",
-					);
-				});
-
-				it("fits a column again after a relaunch once it was double-clicked", async () => {
-					const fresh = mountWithPrefs(new Map());
-					await flush();
-					const fit = renderedWidth(headerCell(fresh.container, "ref"));
-					fresh.unmount();
-					const prefs = legacy();
-					const first = mountWithPrefs(prefs, { repoPath: "/repo/a" });
-					await flush();
-					await fireEvent.dblClick(resizeHandle(first.container, "ref"));
-					await flush();
-					first.unmount();
-
-					const second = mountWithPrefs(prefs, { repoPath: "/repo/a" });
-					await flush();
-
-					expect(renderedWidth(headerCell(second.container, "ref"))).toBe(fit);
-				});
+				expect(renderedWidth(headerCell(second.container, "ref"))).toBe(fit);
 			});
 
 			// A click on a divider is not a drag: the column goes on fitting what

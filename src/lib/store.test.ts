@@ -50,6 +50,7 @@ const {
 	getCommitDraft,
 	setCommitDraft,
 	clearCommitDraft,
+	copyGlobalUserWidthsOnce,
 	loadUserWidths,
 	saveUserWidths,
 	getColumnVisibility,
@@ -409,15 +410,11 @@ describe("store", () => {
 			] as const;
 
 			it.each(notARecord)(
-				"falls back to the widths from before they were per repository for %s",
+				"leaves every column to its fit for %s",
 				async (_name, value) => {
 					backingStore.set("column_user_widths:/repo/a", value);
-					backingStore.set("column_widths", { ref: 200 });
-					backingStore.set("resized_columns", ["ref"]);
 
-					expect(await loadUserWidths("/repo/a", floors)).toEqual({
-						ref: 200,
-					});
+					expect(await loadUserWidths("/repo/a", floors)).toEqual({});
 				},
 			);
 		});
@@ -461,9 +458,27 @@ describe("store", () => {
 		});
 
 		describe("stored for every repository before they were per repository", () => {
-			it("opens a repository with none of its own at the columns the user resized", async () => {
+			function knownRepositories(recent: string[], open: (string | null)[]) {
+				backingStore.set(
+					"recent_repos",
+					recent.map((path) => ({ name: path, path })),
+				);
+				backingStore.set(
+					"open_tabs",
+					open.map((repoPath) => ({
+						id: createTabId(),
+						repoPath,
+						repoName: "",
+					})),
+				);
+			}
+
+			it("gives every recent repository the columns the user resized", async () => {
 				backingStore.set("column_widths", { ref: 200, graph: 56, author: 90 });
 				backingStore.set("resized_columns", ["ref", "graph"]);
+				knownRepositories(["/repo/a"], []);
+
+				await copyGlobalUserWidthsOnce();
 
 				expect(await loadUserWidths("/repo/a", floors)).toEqual({
 					ref: 200,
@@ -471,20 +486,98 @@ describe("store", () => {
 				});
 			});
 
-			// The one way out of a user width is a double-click, so a repository
-			// whose last one was handed back must not get the old widths again.
-			it("is not read by a repository whose own widths were all handed back", async () => {
+			it("gives every repository open in a tab the columns the user resized", async () => {
 				backingStore.set("column_widths", { ref: 200 });
 				backingStore.set("resized_columns", ["ref"]);
-				await saveUserWidths("/repo/a", {});
+				knownRepositories([], ["/repo/a", null]);
 
-				expect(await loadUserWidths("/repo/a", floors)).toEqual({});
+				await copyGlobalUserWidthsOnce();
+
+				expect(await loadUserWidths("/repo/a", floors)).toEqual({ ref: 200 });
+			});
+
+			it("leaves a repository it does not know to its fits", async () => {
+				backingStore.set("column_widths", { ref: 200 });
+				backingStore.set("resized_columns", ["ref"]);
+				knownRepositories(["/repo/a"], ["/repo/a"]);
+
+				await copyGlobalUserWidthsOnce();
+
+				expect(await loadUserWidths("/repo/b", floors)).toEqual({});
+			});
+
+			it("leaves a repository's own widths as they were", async () => {
+				backingStore.set("column_widths", { ref: 200 });
+				backingStore.set("resized_columns", ["ref"]);
+				knownRepositories(["/repo/a"], []);
+				await saveUserWidths("/repo/a", { author: 213 });
+
+				await copyGlobalUserWidthsOnce();
+
+				expect(await loadUserWidths("/repo/a", floors)).toEqual({
+					author: 213,
+				});
+			});
+
+			it("leaves the widths stored for every repository in the file", async () => {
+				backingStore.set("column_widths", { ref: 200 });
+				backingStore.set("resized_columns", ["ref"]);
+				knownRepositories(["/repo/a"], []);
+
+				await copyGlobalUserWidthsOnce();
+
+				expect(backingStore.get("column_widths")).toEqual({ ref: 200 });
+				expect(backingStore.get("resized_columns")).toEqual(["ref"]);
+			});
+
+			it("is read by a load asked for while it runs", async () => {
+				backingStore.set("column_widths", { ref: 200 });
+				backingStore.set("resized_columns", ["ref"]);
+				knownRepositories(["/repo/a"], []);
+				const release = holdNextPrefWrite();
+
+				const copied = copyGlobalUserWidthsOnce();
+				const loaded = loadUserWidths("/repo/a", floors);
+				release();
+				await copied;
+
+				expect(await loaded).toEqual({ ref: 200 });
+			});
+
+			describe("on a later launch", () => {
+				beforeEach(async () => {
+					backingStore.set("column_widths", { ref: 200 });
+					backingStore.set("resized_columns", ["ref"]);
+					knownRepositories(["/repo/a"], []);
+					await copyGlobalUserWidthsOnce();
+				});
+
+				it("leaves a repository first opened since then to its fits", async () => {
+					knownRepositories(["/repo/b", "/repo/a"], ["/repo/b"]);
+
+					await copyGlobalUserWidthsOnce();
+
+					expect(await loadUserWidths("/repo/b", floors)).toEqual({});
+				});
+
+				// The one way out of a user width is a double-click, so a repository
+				// whose last one was handed back must not get the old widths again.
+				it("leaves a repository whose widths were all handed back to its fits", async () => {
+					await saveUserWidths("/repo/a", {});
+
+					await copyGlobalUserWidthsOnce();
+
+					expect(await loadUserWidths("/repo/a", floors)).toEqual({});
+				});
 			});
 
 			it("gives a resized column missing from the stored widths its default", async () => {
 				// A user who persisted widths before the Diff column existed.
 				backingStore.set("column_widths", { ref: 200 });
 				backingStore.set("resized_columns", ["ref", "diff"]);
+				knownRepositories(["/repo/a"], []);
+
+				await copyGlobalUserWidthsOnce();
 
 				expect(await loadUserWidths("/repo/a", floors)).toEqual({
 					ref: 200,
@@ -497,6 +590,9 @@ describe("store", () => {
 				async (_name, value) => {
 					backingStore.set("column_widths", { ref: 200, author: value });
 					backingStore.set("resized_columns", ["ref", "author"]);
+					knownRepositories(["/repo/a"], []);
+
+					await copyGlobalUserWidthsOnce();
 
 					expect(await loadUserWidths("/repo/a", floors)).toEqual({
 						ref: 200,
@@ -508,6 +604,9 @@ describe("store", () => {
 			it("drops a resized name that is not a sized column", async () => {
 				backingStore.set("column_widths", { ref: 200 });
 				backingStore.set("resized_columns", ["ref", "message", "nonsense", 7]);
+				knownRepositories(["/repo/a"], []);
+
+				await copyGlobalUserWidthsOnce();
 
 				expect(await loadUserWidths("/repo/a", floors)).toEqual({ ref: 200 });
 			});
@@ -515,17 +614,25 @@ describe("store", () => {
 			it("finds none when the resized set is not a list", async () => {
 				backingStore.set("column_widths", { ref: 200 });
 				backingStore.set("resized_columns", { ref: true });
+				knownRepositories(["/repo/a"], []);
+
+				await copyGlobalUserWidthsOnce();
 
 				expect(await loadUserWidths("/repo/a", floors)).toEqual({});
 			});
 
-			it("is left as it was by a save", async () => {
+			it("skips a recent repository with no path", async () => {
 				backingStore.set("column_widths", { ref: 200 });
 				backingStore.set("resized_columns", ["ref"]);
+				backingStore.set("recent_repos", [
+					{ name: "a" },
+					7,
+					{ path: "/repo/a" },
+				]);
 
-				await saveUserWidths("/repo/a", { author: 213 });
+				await copyGlobalUserWidthsOnce();
 
-				expect(await loadUserWidths("/repo/b", floors)).toEqual({ ref: 200 });
+				expect(await loadUserWidths("/repo/a", floors)).toEqual({ ref: 200 });
 			});
 		});
 	});

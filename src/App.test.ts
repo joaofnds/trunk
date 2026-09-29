@@ -263,6 +263,17 @@ describe("App", () => {
 	// contention without the application being broken. If it fails, read TRUNK-62
 	// (`backlog task 62 --plain`) before investigating — it records what is already
 	// ruled out, including that raising this deadline is not the fix.
+	it("gives a recent repository the column widths stored for every repository before they were per repository", async () => {
+		prefs.column_widths = { ref: 200 };
+		prefs.resized_columns = ["ref"];
+
+		render(App);
+
+		await waitFor(() =>
+			expect(prefs[`column_user_widths:${REPO_B}`]).toEqual({ ref: 200 }),
+		);
+	});
+
 	it("loads the new repository's graph when a tab swaps repositories in place", async () => {
 		const { getByText } = render(App);
 		await waitFor(() => expect(graphPathsRequested()).toContain(REPO_A));
