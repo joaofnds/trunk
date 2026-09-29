@@ -838,9 +838,8 @@ describe("CommitGraph", () => {
 							max_columns: lanes,
 						});
 					if (cmd !== "prefs_get") return undefined;
-					if (args?.key === "column_widths") return Promise.resolve(sized);
-					if (args?.key === "resized_columns")
-						return Promise.resolve(Object.keys(sized));
+					if (args?.key === "column_user_widths:/test/repo")
+						return Promise.resolve(sized);
 					if (args?.key === "column_visibility")
 						return Promise.resolve({
 							ref: widths.ref !== undefined,
@@ -1152,10 +1151,8 @@ describe("CommitGraph", () => {
 							max_columns: 1,
 						});
 					if (cmd !== "prefs_get") return undefined;
-					if (args?.key === "column_widths")
+					if (args?.key === "column_user_widths:/test/repo")
 						return Promise.resolve(graphWidths);
-					if (args?.key === "resized_columns")
-						return Promise.resolve(Object.keys(graphWidths));
 					if (args?.key === "column_visibility")
 						return Promise.resolve({
 							ref: false,
@@ -1586,12 +1583,18 @@ describe("CommitGraph", () => {
 		// launches.
 		function mountWithPrefs(
 			prefs: Map<string, unknown>,
-			commits = TEST_COMMITS,
+			{
+				commits = TEST_COMMITS,
+				repoPath = "/test/repo",
+				widthsRead = Promise.resolve(),
+			} = {},
 		) {
 			installReads({
 				commits,
 				override: (cmd, args) => {
 					const key = args?.key as string;
+					if (cmd === "prefs_get" && key.startsWith("column_user_widths:"))
+						return widthsRead.then(() => prefs.get(key) ?? null);
 					if (cmd === "prefs_get")
 						return Promise.resolve(prefs.get(key) ?? null);
 					if (cmd === "prefs_set") {
@@ -1603,7 +1606,7 @@ describe("CommitGraph", () => {
 			});
 
 			return render(CommitGraph, {
-				props: { repoPath: "/test/repo", tabActive: true },
+				props: { repoPath, tabActive: true },
 			});
 		}
 
@@ -1750,6 +1753,180 @@ describe("CommitGraph", () => {
 				expect(renderedWidth(headerCell(second.container, "author"))).toBe(fit);
 			});
 
+			it("keeps the other user widths when one is double-clicked", async () => {
+				const prefs = new Map<string, unknown>();
+				const first = mountWithPrefs(prefs);
+				await flush();
+				await drag(resizeHandle(first.container, "ref"), 60);
+				const dragged = renderedWidth(headerCell(first.container, "ref"));
+				await drag(resizeHandle(first.container, "author"), 60);
+				await fireEvent.dblClick(resizeHandle(first.container, "author"));
+				await flush();
+				first.unmount();
+
+				const second = mountWithPrefs(prefs);
+				await flush();
+
+				expect(renderedWidth(headerCell(second.container, "ref"))).toBe(
+					dragged,
+				);
+			});
+
+			// The graph remounts when a diff closes, so a drag can end before the
+			// restore has read what to restore.
+			it("keeps a stored width when another column is dragged before it is read", async () => {
+				const prefs = new Map<string, unknown>([
+					["column_user_widths:/test/repo", { ref: 180 }],
+				]);
+				let read = () => {};
+				const widthsRead = new Promise<void>((resolve) => {
+					read = resolve;
+				});
+				const first = mountWithPrefs(prefs, { widthsRead });
+				await flush();
+				await drag(resizeHandle(first.container, "author"), 60);
+				const dragged = renderedWidth(headerCell(first.container, "author"));
+				read();
+				await flush();
+				first.unmount();
+
+				const second = mountWithPrefs(prefs);
+				await flush();
+
+				expect(renderedWidth(headerCell(second.container, "ref"))).toBe(
+					"180px",
+				);
+				expect(renderedWidth(headerCell(second.container, "author"))).toBe(
+					dragged,
+				);
+			});
+
+			it("keeps a column dragged before the stored widths are read at the dragged width", async () => {
+				const prefs = new Map<string, unknown>([
+					["column_user_widths:/test/repo", { author: 150 }],
+				]);
+				let read = () => {};
+				const widthsRead = new Promise<void>((resolve) => {
+					read = resolve;
+				});
+				const { container } = mountWithPrefs(prefs, { widthsRead });
+				await flush();
+				await drag(resizeHandle(container, "author"), 60);
+				const dragged = renderedWidth(headerCell(container, "author"));
+				read();
+				await flush();
+
+				expect(renderedWidth(headerCell(container, "author"))).toBe(dragged);
+			});
+
+			it("fits a column in another repository that the user dragged in one", async () => {
+				const prefs = new Map<string, unknown>();
+				const first = mountWithPrefs(prefs, { repoPath: "/repo/a" });
+				await flush();
+				const fit = renderedWidth(headerCell(first.container, "ref"));
+				await drag(resizeHandle(first.container, "ref"), 60);
+				first.unmount();
+
+				const other = mountWithPrefs(prefs, { repoPath: "/repo/b" });
+				await flush();
+
+				expect(renderedWidth(headerCell(other.container, "ref"))).toBe(fit);
+			});
+
+			it("leaves the width another open repository stored alone", async () => {
+				const prefs = new Map<string, unknown>();
+				const a = mountWithPrefs(prefs, { repoPath: "/repo/a" });
+				const b = mountWithPrefs(prefs, { repoPath: "/repo/b" });
+				await flush();
+				await drag(resizeHandle(b.container, "ref"), 40);
+				const bWidth = renderedWidth(headerCell(b.container, "ref"));
+
+				await drag(resizeHandle(a.container, "ref"), 60);
+				b.unmount();
+				const relaunched = mountWithPrefs(prefs, { repoPath: "/repo/b" });
+				await flush();
+
+				expect(renderedWidth(headerCell(relaunched.container, "ref"))).toBe(
+					bWidth,
+				);
+			});
+
+			describe("with widths stored for every repository before they were per repository", () => {
+				const legacy = () =>
+					new Map<string, unknown>([
+						["column_widths", { ref: 200 }],
+						["resized_columns", ["ref"]],
+					]);
+
+				it("opens a repository with none of its own at those widths", async () => {
+					const { container } = mountWithPrefs(legacy(), {
+						repoPath: "/repo/a",
+					});
+					await flush();
+
+					expect(renderedWidth(headerCell(container, "ref"))).toBe("200px");
+				});
+
+				it("keeps them once another column is dragged", async () => {
+					const prefs = legacy();
+					const first = mountWithPrefs(prefs, { repoPath: "/repo/a" });
+					await flush();
+					await drag(resizeHandle(first.container, "author"), 60);
+					first.unmount();
+
+					const second = mountWithPrefs(prefs, { repoPath: "/repo/a" });
+					await flush();
+
+					expect(renderedWidth(headerCell(second.container, "ref"))).toBe(
+						"200px",
+					);
+				});
+
+				// The graph remounts when a diff closes, so a double-click can come
+				// before the restore has read what to restore.
+				it("keeps them once another column is double-clicked before they are read", async () => {
+					const prefs = legacy();
+					let read = () => {};
+					const widthsRead = new Promise<void>((resolve) => {
+						read = resolve;
+					});
+					const first = mountWithPrefs(prefs, {
+						repoPath: "/repo/a",
+						widthsRead,
+					});
+					await flush();
+					await fireEvent.dblClick(resizeHandle(first.container, "author"));
+					read();
+					await flush();
+					first.unmount();
+
+					const second = mountWithPrefs(prefs, { repoPath: "/repo/a" });
+					await flush();
+
+					expect(renderedWidth(headerCell(second.container, "ref"))).toBe(
+						"200px",
+					);
+				});
+
+				it("fits a column again after a relaunch once it was double-clicked", async () => {
+					const fresh = mountWithPrefs(new Map());
+					await flush();
+					const fit = renderedWidth(headerCell(fresh.container, "ref"));
+					fresh.unmount();
+					const prefs = legacy();
+					const first = mountWithPrefs(prefs, { repoPath: "/repo/a" });
+					await flush();
+					await fireEvent.dblClick(resizeHandle(first.container, "ref"));
+					await flush();
+					first.unmount();
+
+					const second = mountWithPrefs(prefs, { repoPath: "/repo/a" });
+					await flush();
+
+					expect(renderedWidth(headerCell(second.container, "ref"))).toBe(fit);
+				});
+			});
+
 			// A click on a divider is not a drag: the column goes on fitting what
 			// the next repository shows.
 			it("keeps fitting a column whose divider was only clicked", async () => {
@@ -1759,22 +1936,26 @@ describe("CommitGraph", () => {
 				await drag(resizeHandle(first.container, "author"), 0);
 				first.unmount();
 
-				const second = mountWithPrefs(prefs, [
-					makeCommit({
-						oid: "c".repeat(40),
-						author_name: "Grace Brewster Hopper",
-					}),
-				]);
+				const second = mountWithPrefs(prefs, {
+					commits: [
+						makeCommit({
+							oid: "c".repeat(40),
+							author_name: "Grace Brewster Hopper",
+						}),
+					],
+				});
 				await flush();
 				const clicked = renderedWidth(headerCell(second.container, "author"));
 				second.unmount();
 
-				const fresh = mountWithPrefs(new Map(), [
-					makeCommit({
-						oid: "c".repeat(40),
-						author_name: "Grace Brewster Hopper",
-					}),
-				]);
+				const fresh = mountWithPrefs(new Map(), {
+					commits: [
+						makeCommit({
+							oid: "c".repeat(40),
+							author_name: "Grace Brewster Hopper",
+						}),
+					],
+				});
 				await flush();
 
 				expect(clicked).toBe(

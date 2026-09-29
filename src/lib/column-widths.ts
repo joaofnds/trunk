@@ -306,12 +306,13 @@ function fitCaps(rowWidth: number): ColumnWidths {
 }
 
 /**
- * The stored layout, made safe to lay out with. The pref file is plain JSON that
+ * The widths every repository shared before they were stored per repository
+ * (`column_widths`), made safe to lay out with. The pref file is plain JSON that
  * nothing upstream validates, and a width that is not a usable number reached the
  * drag clamp as NaN, which persisted itself and left the column unresizable.
  * A width that is merely large is not unsafe: it is the user's to choose.
  */
-export function sanitizeColumnWidths(
+export function sanitizeLegacyColumnWidths(
 	stored: unknown,
 	floors: ColumnFloors,
 ): ColumnWidths {
@@ -323,11 +324,40 @@ export function sanitizeColumnWidths(
 
 	for (const column of SIZED_COLUMNS) {
 		const value = record[column];
-		widths[column] =
-			typeof value === "number" && Number.isFinite(value) && value > 0
-				? Math.max(floors[column], Math.round(value))
-				: DEFAULT_WIDTHS[column];
+		widths[column] = isUsableWidth(value)
+			? storedWidth(value, floors[column])
+			: DEFAULT_WIDTHS[column];
 	}
 
 	return widths;
+}
+
+/**
+ * A repository's stored user widths, made safe to lay out with, or undefined
+ * when what is stored is not a record of them. A column whose stored width is
+ * unusable is left out, so it fits its content rather than taking a default.
+ */
+export function sanitizeUserWidths(
+	stored: unknown,
+	floors: ColumnFloors,
+): Partial<ColumnWidths> | undefined {
+	if (typeof stored !== "object" || stored === null || Array.isArray(stored)) {
+		return undefined;
+	}
+
+	const widths: Partial<ColumnWidths> = {};
+	for (const [column, value] of Object.entries(stored)) {
+		if (!isSizedColumn(column) || !isUsableWidth(value)) continue;
+		widths[column] = storedWidth(value, floors[column]);
+	}
+
+	return widths;
+}
+
+function isUsableWidth(value: unknown): value is number {
+	return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function storedWidth(value: number, floor: number): number {
+	return Math.max(floor, Math.round(value));
 }

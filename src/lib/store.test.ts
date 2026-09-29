@@ -50,12 +50,9 @@ const {
 	getCommitDraft,
 	setCommitDraft,
 	clearCommitDraft,
-	getColumnWidths,
-	getResizedColumns,
+	loadUserWidths,
+	saveUserWidths,
 	getColumnVisibility,
-	setColumnWidths,
-	setResizedColumns,
-	saveColumnLayout,
 	setColumnVisibility,
 	getRefVisibility,
 	setRefVisibility,
@@ -107,6 +104,39 @@ describe("tab types and helpers", () => {
 	});
 });
 
+// Holds the next pref write until the returned release is called, so a test
+// can make a second call while the first is still in flight. Reads pass
+// through, so a read that does not wait its turn sees the store as it was.
+function holdNextPrefWrite(): () => void {
+	let release = () => {};
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const invoke = vi.mocked(safeInvoke);
+	const direct = invoke.getMockImplementation();
+	let holding = true;
+	invoke.mockImplementation(async (cmd, args) => {
+		if (holding && cmd === "prefs_set") {
+			holding = false;
+			await held;
+		}
+		return direct?.(cmd, args);
+	});
+
+	return () => {
+		if (direct) invoke.mockImplementation(direct);
+		release();
+	};
+}
+
+// Stored widths nothing can be laid out with.
+const unusableWidths = [
+	["null", null],
+	["a string", "120"],
+	["NaN", Number.NaN],
+	["negative", -40],
+	["zero", 0],
+] as const;
 describe("store", () => {
 	beforeEach(() => {
 		backingStore.clear();
@@ -303,25 +333,204 @@ describe("store", () => {
 		});
 	});
 
-	describe("column widths and visibility migration", () => {
+	describe("user widths", () => {
 		const floors = columnFloors((text) => text.length * 7);
 
-		it("getColumnWidths fills a default for a key missing from a legacy persisted object", async () => {
-			// A user who persisted widths before the Diff column existed.
-			backingStore.set("column_widths", {
-				ref: 200,
-				graph: 24,
-				author: 60,
-				date: 40,
-				sha: 50,
-			});
-
-			const widths = await getColumnWidths(floors);
-
-			expect(widths.diff).toBe(96); // new key gets its default…
-			expect(widths.ref).toBe(200); // …without clobbering persisted values
+		it("finds none in a repository where nothing is stored", async () => {
+			expect(await loadUserWidths("/repo/a", floors)).toEqual({});
 		});
 
+		it("returns what the user set in that repository", async () => {
+			await saveUserWidths("/repo/a", { ref: 180, author: 213 });
+
+			expect(await loadUserWidths("/repo/a", floors)).toEqual({
+				ref: 180,
+				author: 213,
+			});
+		});
+
+		it("keeps each repository's widths to that repository", async () => {
+			await saveUserWidths("/repo/a", { ref: 180 });
+
+			expect(await loadUserWidths("/repo/b", floors)).toEqual({});
+		});
+
+		// A user width has no ceiling, so a stored one must not come back
+		// narrower than the user left it, however wide that was.
+		it("returns a wide stored width as it was stored", async () => {
+			await saveUserWidths("/repo/a", { graph: 900 });
+
+			expect((await loadUserWidths("/repo/a", floors)).graph).toBe(900);
+		});
+
+		// Each pref write is its own IPC call and nothing on the Rust side orders
+		// them, so a save made second must still be the one that lands.
+		it("lands saves for one repository in the order they were made", async () => {
+			const release = holdNextPrefWrite();
+
+			const first = saveUserWidths("/repo/a", { author: 213 });
+			const second = saveUserWidths("/repo/a", {});
+			release();
+			await Promise.all([first, second]);
+
+			expect(await loadUserWidths("/repo/a", floors)).toEqual({});
+		});
+
+		it("keeps both of two saves for different repositories made together", async () => {
+			const release = holdNextPrefWrite();
+
+			const first = saveUserWidths("/repo/a", { author: 213 });
+			const second = saveUserWidths("/repo/b", { ref: 180 });
+			release();
+			await Promise.all([first, second]);
+
+			expect(await loadUserWidths("/repo/a", floors)).toEqual({ author: 213 });
+			expect(await loadUserWidths("/repo/b", floors)).toEqual({ ref: 180 });
+		});
+
+		// A drag's save still in flight when the graph remounts, as it does when
+		// a diff closes, must be what the remount reads.
+		it("reads a save made before it once that save has landed", async () => {
+			const release = holdNextPrefWrite();
+
+			const saved = saveUserWidths("/repo/a", { author: 213 });
+			const loaded = loadUserWidths("/repo/a", floors);
+			release();
+			await saved;
+
+			expect(await loaded).toEqual({ author: 213 });
+		});
+
+		describe("when a stored entry is not a record of widths", () => {
+			const notARecord = [
+				["a number", 7],
+				["a string", "wide"],
+				["a list", [180]],
+			] as const;
+
+			it.each(notARecord)(
+				"falls back to the widths from before they were per repository for %s",
+				async (_name, value) => {
+					backingStore.set("column_user_widths:/repo/a", value);
+					backingStore.set("column_widths", { ref: 200 });
+					backingStore.set("resized_columns", ["ref"]);
+
+					expect(await loadUserWidths("/repo/a", floors)).toEqual({
+						ref: 200,
+					});
+				},
+			);
+		});
+
+		describe("when a stored width is not usable", () => {
+			it.each(unusableWidths)(
+				"leaves the column to its fit for %s",
+				async (_name, value) => {
+					backingStore.set("column_user_widths:/repo/a", {
+						ref: 200,
+						author: value,
+					});
+
+					expect(await loadUserWidths("/repo/a", floors)).toEqual({
+						ref: 200,
+					});
+				},
+			);
+		});
+
+		it("drops a stored name that is not a sized column", async () => {
+			backingStore.set("column_user_widths:/repo/a", {
+				ref: 200,
+				message: 300,
+				nonsense: 40,
+			});
+
+			expect(await loadUserWidths("/repo/a", floors)).toEqual({ ref: 200 });
+		});
+
+		it("rounds a stored width and holds it to the column's floor", async () => {
+			backingStore.set("column_user_widths:/repo/a", {
+				ref: 200.6,
+				author: 1,
+			});
+
+			expect(await loadUserWidths("/repo/a", floors)).toEqual({
+				ref: 201,
+				author: floors.author,
+			});
+		});
+
+		describe("stored for every repository before they were per repository", () => {
+			it("opens a repository with none of its own at the columns the user resized", async () => {
+				backingStore.set("column_widths", { ref: 200, graph: 56, author: 90 });
+				backingStore.set("resized_columns", ["ref", "graph"]);
+
+				expect(await loadUserWidths("/repo/a", floors)).toEqual({
+					ref: 200,
+					graph: 56,
+				});
+			});
+
+			// The one way out of a user width is a double-click, so a repository
+			// whose last one was handed back must not get the old widths again.
+			it("is not read by a repository whose own widths were all handed back", async () => {
+				backingStore.set("column_widths", { ref: 200 });
+				backingStore.set("resized_columns", ["ref"]);
+				await saveUserWidths("/repo/a", {});
+
+				expect(await loadUserWidths("/repo/a", floors)).toEqual({});
+			});
+
+			it("gives a resized column missing from the stored widths its default", async () => {
+				// A user who persisted widths before the Diff column existed.
+				backingStore.set("column_widths", { ref: 200 });
+				backingStore.set("resized_columns", ["ref", "diff"]);
+
+				expect(await loadUserWidths("/repo/a", floors)).toEqual({
+					ref: 200,
+					diff: 96,
+				});
+			});
+
+			it.each(unusableWidths)(
+				"gives a resized column its default for %s",
+				async (_name, value) => {
+					backingStore.set("column_widths", { ref: 200, author: value });
+					backingStore.set("resized_columns", ["ref", "author"]);
+
+					expect(await loadUserWidths("/repo/a", floors)).toEqual({
+						ref: 200,
+						author: 60,
+					});
+				},
+			);
+
+			it("drops a resized name that is not a sized column", async () => {
+				backingStore.set("column_widths", { ref: 200 });
+				backingStore.set("resized_columns", ["ref", "message", "nonsense", 7]);
+
+				expect(await loadUserWidths("/repo/a", floors)).toEqual({ ref: 200 });
+			});
+
+			it("finds none when the resized set is not a list", async () => {
+				backingStore.set("column_widths", { ref: 200 });
+				backingStore.set("resized_columns", { ref: true });
+
+				expect(await loadUserWidths("/repo/a", floors)).toEqual({});
+			});
+
+			it("is left as it was by a save", async () => {
+				backingStore.set("column_widths", { ref: 200 });
+				backingStore.set("resized_columns", ["ref"]);
+
+				await saveUserWidths("/repo/a", { author: 213 });
+
+				expect(await loadUserWidths("/repo/b", floors)).toEqual({ ref: 200 });
+			});
+		});
+	});
+
+	describe("column visibility", () => {
 		it("getColumnVisibility fills a default for a key missing from a legacy persisted object", async () => {
 			backingStore.set("column_visibility", {
 				ref: true,
@@ -336,108 +545,6 @@ describe("store", () => {
 
 			expect(visibility.diff).toBe(true); // new key defaults visible…
 			expect(visibility.author).toBe(false); // …without clobbering persisted values
-		});
-
-		it("getColumnWidths returns all defaults when nothing is persisted", async () => {
-			const widths = await getColumnWidths(floors);
-			expect(widths.diff).toBe(96);
-			expect(widths.ref).toBe(120);
-		});
-
-		describe("when a persisted width is not a usable number", () => {
-			const unusable = [
-				["null", null],
-				["a string", "120"],
-				["NaN", Number.NaN],
-				["negative", -40],
-				["zero", 0],
-			] as const;
-
-			it.each(unusable)(
-				"getColumnWidths falls back to the default for %s",
-				async (_name, value) => {
-					backingStore.set("column_widths", { ref: 200, author: value });
-
-					const widths = await getColumnWidths(floors);
-
-					expect(widths.author).toBe(60);
-					expect(widths.ref).toBe(200);
-				},
-			);
-		});
-
-		// A user width has no ceiling, so a stored one must not come back
-		// narrower than the user left it, however wide that was.
-		it("getColumnWidths returns a wide stored width as it was stored", async () => {
-			backingStore.set("column_widths", { graph: 900 });
-
-			expect((await getColumnWidths(floors)).graph).toBe(900);
-		});
-
-		// The widths were persisted but the fact that the user chose them was not,
-		// so a fresh mount could not tell a width the user set from a stale fit.
-		it("round-trips which columns the user resized", async () => {
-			await setResizedColumns(new Set(["ref", "author"] as const));
-
-			expect(await getResizedColumns()).toEqual(new Set(["ref", "author"]));
-		});
-
-		it("treats a missing resized set as nobody having resized anything", async () => {
-			expect(await getResizedColumns()).toEqual(new Set());
-		});
-
-		it("drops a stored name that is not a sized column", async () => {
-			backingStore.set("resized_columns", ["ref", "message", "nonsense", 7]);
-
-			expect(await getResizedColumns()).toEqual(new Set(["ref"]));
-		});
-
-		it("treats a stored value that is not a list as nobody having resized anything", async () => {
-			backingStore.set("resized_columns", { ref: true });
-
-			expect(await getResizedColumns()).toEqual(new Set());
-		});
-
-		// Each pref write is its own IPC call and nothing on the Rust side orders
-		// them, so a save made second must still be the one that lands.
-		it("lands column layout saves in the order they were made", async () => {
-			let release = () => {};
-			const held = new Promise<void>((resolve) => {
-				release = resolve;
-			});
-			const invoke = vi.mocked(safeInvoke);
-			const direct = invoke.getMockImplementation();
-			invoke.mockImplementationOnce(async (cmd, args) => {
-				await held;
-				return direct?.(cmd, args);
-			});
-			const dragged = {
-				ref: 120,
-				graph: 24,
-				diff: 96,
-				author: 213,
-				date: 40,
-				sha: 50,
-			};
-
-			const first = saveColumnLayout(dragged, new Set(["author"] as const));
-			const second = saveColumnLayout(dragged, new Set());
-			release();
-			await Promise.all([first, second]);
-
-			expect(await getResizedColumns()).toEqual(new Set());
-		});
-
-		it("round-trips persisted widths including the diff key", async () => {
-			await setColumnWidths({
-				ref: 120,
-				graph: 24,
-				diff: 150,
-				author: 60,
-				date: 40,
-				sha: 50,
-			});
-			expect((await getColumnWidths(floors)).diff).toBe(150);
 		});
 
 		it("round-trips persisted visibility including the diff key", async () => {

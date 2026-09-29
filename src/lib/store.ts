@@ -2,7 +2,8 @@ import {
 	type ColumnFloors,
 	type ColumnWidths,
 	isSizedColumn,
-	sanitizeColumnWidths,
+	sanitizeLegacyColumnWidths,
+	sanitizeUserWidths,
 } from "./column-widths.js";
 import { safeInvoke } from "./invoke.js";
 import { EVERYTHING_VISIBLE, type RefVisibility } from "./ref-visibility.js";
@@ -110,63 +111,80 @@ export async function setOpenRepo(repo: RecentRepo | null): Promise<void> {
 
 export type { ColumnWidths };
 
-const COLUMN_WIDTHS_KEY = "column_widths";
+const LEGACY_COLUMN_WIDTHS_KEY = "column_widths";
+const LEGACY_RESIZED_COLUMNS_KEY = "resized_columns";
 
-export async function getColumnWidths(
+/**
+ * The user widths stored for every repository at once, before they were kept
+ * per repository: each column named in `resized_columns` at its number in
+ * `column_widths`, which also held fits.
+ */
+async function legacyUserWidths(
 	floors: ColumnFloors,
-): Promise<ColumnWidths> {
-	// The pref file is plain JSON on disk and nothing upstream checks its shape,
-	// so every stored value is treated as untrusted here.
-	return sanitizeColumnWidths(
-		await getPref<unknown>(COLUMN_WIDTHS_KEY),
+): Promise<Partial<ColumnWidths>> {
+	const widths = sanitizeLegacyColumnWidths(
+		await getPref<unknown>(LEGACY_COLUMN_WIDTHS_KEY),
 		floors,
 	);
+	const resized = await getPref<unknown>(LEGACY_RESIZED_COLUMNS_KEY);
+	if (!Array.isArray(resized)) return {};
+
+	const userWidths: Partial<ColumnWidths> = {};
+	for (const column of resized.filter(isSizedColumn)) {
+		userWidths[column] = widths[column];
+	}
+
+	return userWidths;
 }
 
-export async function setColumnWidths(widths: ColumnWidths): Promise<void> {
-	await setPref(COLUMN_WIDTHS_KEY, widths);
-}
-
-const RESIZED_COLUMNS_KEY = "resized_columns";
+let columnLayoutQueue: Promise<unknown> = Promise.resolve();
 
 /**
- * The columns whose width the user set. A stored width looks the same whether
- * the user dragged it or a fit computed it, so this is what says which ones to
- * restore; every other column fits its content again.
+ * Runs column layout reads and writes one at a time, in the order they were
+ * asked for. Pref writes run concurrently on the Rust side, so two saves made a
+ * moment apart, a drag's and then a double-click's, could land in either order
+ * and bring back the width the double-click handed back; and a graph remounting
+ * right after a drag must read the width that drag saved.
  */
-export async function getResizedColumns(): Promise<Set<keyof ColumnWidths>> {
-	const stored = await getPref<unknown>(RESIZED_COLUMNS_KEY);
-	if (!Array.isArray(stored)) return new Set();
+function inColumnLayoutOrder<T>(work: () => Promise<T>): Promise<T> {
+	const done = columnLayoutQueue.then(work);
+	columnLayoutQueue = done.catch(() => {});
 
-	return new Set(stored.filter(isSizedColumn));
+	return done;
 }
 
-export async function setResizedColumns(
-	columns: ReadonlySet<keyof ColumnWidths>,
-): Promise<void> {
-	await setPref(RESIZED_COLUMNS_KEY, [...columns]);
+function userWidthsKey(repoPath: string): string {
+	return `column_user_widths:${repoPath}`;
 }
-
-let columnLayoutSaved: Promise<void> = Promise.resolve();
 
 /**
- * Stores the widths and which columns the user sized, once every earlier save
- * has landed. Pref writes run concurrently on the Rust side, so two saves made
- * a moment apart, a drag's and then a double-click's, could land in either
- * order and bring back the width the double-click handed back.
+ * The widths the user set in this repository, by column; every column missing
+ * from it fits its content. A repository that never stored its own has the
+ * widths stored for every repository before they were kept per repository.
  */
-export function saveColumnLayout(
-	widths: ColumnWidths,
-	userSized: ReadonlySet<keyof ColumnWidths>,
-): Promise<void> {
-	const snapshot = { widths: { ...widths }, userSized: new Set(userSized) };
-	const save = columnLayoutSaved.then(async () => {
-		await setColumnWidths(snapshot.widths);
-		await setResizedColumns(snapshot.userSized);
+export function loadUserWidths(
+	repoPath: string,
+	floors: ColumnFloors,
+): Promise<Partial<ColumnWidths>> {
+	return inColumnLayoutOrder(async () => {
+		const own = sanitizeUserWidths(
+			await getPref<unknown>(userWidthsKey(repoPath)),
+			floors,
+		);
+		if (own !== undefined) return own;
+
+		return legacyUserWidths(floors);
 	});
-	columnLayoutSaved = save.catch(() => {});
+}
 
-	return save;
+/** Replaces this repository's user widths, leaving every other repository's alone. */
+export function saveUserWidths(
+	repoPath: string,
+	widths: Partial<ColumnWidths>,
+): Promise<void> {
+	const snapshot = { ...widths };
+
+	return inColumnLayoutOrder(() => setPref(userWidthsKey(repoPath), snapshot));
 }
 
 export interface ColumnVisibility {

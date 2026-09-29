@@ -65,9 +65,8 @@ they yield toward their floors, rightmost first. A column with a user width is e
 fitting.
 
 **User width** — a width the user set by dragging a column's divider. It replaces the
-column's fit, has a floor and no ceiling, is stored by column id, and holds until a
-double-click on the divider hands the column back to its fit. The width alone cannot say
-whether the user chose it, so which columns carry one is recorded beside the widths.
+column's fit, has a floor and no ceiling, is stored by column id for the repository it
+was set in, and holds until a double-click on the divider hands the column back to its fit.
 
 **Slack column** — Message: the column with no fit and no user width, which takes what the
 sized columns leave, down to a floor. Past that floor the row is wider than the list and the

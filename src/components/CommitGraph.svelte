@@ -92,9 +92,8 @@ import {
 	type ColumnVisibility,
 	type ColumnWidths,
 	getColumnVisibility,
-	getColumnWidths,
-	getResizedColumns,
-	saveColumnLayout,
+	loadUserWidths,
+	saveUserWidths,
 	setColumnVisibility,
 } from "../lib/store.js";
 import { measureTextWidth } from "../lib/text-measure.js";
@@ -331,16 +330,16 @@ const lastVisibleColumn = $derived(
 );
 
 $effect(() => {
-	// Only the columns the user sized come back. The rest fit the page that just
-	// loaded, and restoring their stored numbers would overwrite that fit.
-	Promise.all([getColumnWidths(floors), getResizedColumns()]).then(
-		([stored, resized]) => {
-			const restored = { ...columnWidths };
-			for (const column of resized) restored[column] = stored[column];
-			columnWidths = restored;
-			userSizedColumns = new Set([...userSizedColumns, ...resized]);
-		},
-	);
+	userWidthsRestored = loadUserWidths(repoPath, floors).then((stored) => {
+		const restored = SIZED_COLUMNS.filter(
+			(column) => column in stored && !columnsSizedSinceMount.has(column),
+		);
+		const widths = { ...columnWidths };
+		for (const column of restored)
+			widths[column] = stored[column] ?? widths[column];
+		columnWidths = widths;
+		userSizedColumns = new Set([...userSizedColumns, ...restored]);
+	});
 });
 
 $effect(() => {
@@ -539,6 +538,11 @@ const floors = columnFloors(measureTextWidth);
 // The columns whose width the user set, which no fit may change. Reassigned
 // rather than mutated, so the fits re-run when a column joins or leaves it.
 let userSizedColumns = $state<ReadonlySet<keyof ColumnWidths>>(new Set());
+// The graph remounts when a diff closes, so a drag or a double-click can come
+// before the stored widths are read. Saves wait for the restore so they carry
+// what it brings back, and the restore leaves the columns sized since alone.
+let userWidthsRestored: Promise<void> = Promise.resolve();
+const columnsSizedSinceMount = new Set<keyof ColumnWidths>();
 
 /** The width the rows lay their cells out in, 0 until the list is measured. */
 let rowWidth = $state(0);
@@ -679,7 +683,10 @@ function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
 		const width = Math.max(floors[column], startWidth + ev.clientX - startX);
 		if (width === columnWidths[column]) return;
 
-		if (!moved) userSizedColumns = new Set([...userSizedColumns, column]);
+		if (!moved) {
+			userSizedColumns = new Set([...userSizedColumns, column]);
+			columnsSizedSinceMount.add(column);
+		}
 		moved = true;
 		columnWidths = { ...columnWidths, [column]: width };
 	}
@@ -689,11 +696,21 @@ function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
 		window.removeEventListener("mouseup", onMouseUp);
 		if (!moved) return;
 
-		saveColumnLayout(columnWidths, userSizedColumns);
+		storeUserWidths();
 	}
 
 	window.addEventListener("mousemove", onMouseMove);
 	window.addEventListener("mouseup", onMouseUp);
+}
+
+function storeUserWidths() {
+	userWidthsRestored.then(() => {
+		const widths: Partial<ColumnWidths> = {};
+		for (const column of userSizedColumns)
+			widths[column] = columnWidths[column];
+
+		saveUserWidths(repoPath, widths);
+	});
 }
 
 /** Hands a column back to its fit, the one way out of a user width, and the
@@ -702,7 +719,8 @@ function refitColumn(column: keyof ColumnWidths) {
 	const remaining = new Set(userSizedColumns);
 	remaining.delete(column);
 	userSizedColumns = remaining;
-	saveColumnLayout(columnWidths, remaining);
+	columnsSizedSinceMount.add(column);
+	storeUserWidths();
 
 	if (column === "graph") graphScrollX = 0;
 }

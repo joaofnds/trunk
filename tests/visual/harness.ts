@@ -332,8 +332,7 @@ class AppPage {
 			recent_repos: [{ name, path }],
 		};
 		if (view.graphColumnWidth !== undefined) {
-			prefs.column_widths = { graph: view.graphColumnWidth };
-			prefs.resized_columns = ["graph"];
+			prefs[`column_user_widths:${path}`] = { graph: view.graphColumnWidth };
 		}
 
 		for (const [key, value] of Object.entries(prefs))

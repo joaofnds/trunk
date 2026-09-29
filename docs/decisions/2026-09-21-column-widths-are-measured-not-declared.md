@@ -192,20 +192,36 @@ cell both carry `MESSAGE_FLOOR`, 180px, as their minimum width.
 
 ## What a stored width means
 
-A width in the pref file is a claim about the user's intent, and the widths alone
-cannot carry it: every column's number looks the same whether the user dragged it
-or a fit computed it. `resized_columns` records which ones the user chose, and only
-those are restored. Everything else fits the page that just loaded. A pref file
-written before `resized_columns` existed reads as nobody having sized anything.
+A width in the pref file is a claim about the user's intent. Only user widths are
+stored, by column id, one pref key per repository (`column_user_widths:<repoPath>`),
+so the columns present are the ones the user chose and everything else fits the page
+that just loaded. A column dragged narrow for a forty-lane repository stays in that
+repository and does not come back on a one-lane one (João admitted per-repository
+widths on TRUNK-254.7, 2026-09-22; GitKraken's help page says it saves widths per
+repository, as a search engine summarized it, unconfirmed verbatim in doc-130). Each
+save replaces only its own repository's key in one `prefs_set`, so two open
+repositories cannot overwrite each other's widths, and fits are never written.
 
-A column joins that set only when a drag moves it. A click on a divider sizes
-nothing, and the pref writes are not ordered against each other, so a click that
-wrote the set could land after a double-click that had just cleared it.
+An older pref file holds `column_widths`, every column's number for every repository
+at once with fits included, and `resized_columns`, which of them the user chose.
+Nothing writes those two keys. A repository with no key of its own reads them as its
+user widths, so the widths a user set before per-repository storage survive it. A
+repository whose key is `{}`, its last user width double-clicked away, never reads
+them, or the double-click would be undone on the next launch.
+
+A column becomes a user width only when a drag moves it. A click on a divider sizes
+nothing. Saves and loads run one at a time in the order made, because the pref
+writes are not ordered against each other on the Rust side: a drag's save could
+otherwise land after a double-click's, and a graph remounting when a diff closes
+could read the widths from before the drag that just ended. That remount can also
+take a drag or a double-click before its restore has read anything, so a save waits
+for the restore and carries the widths it brought back, and the restore leaves a
+column sized since the mount as the user left it.
 
 A restored width does not grow to meet content. The user's number wins until they
 double-click the column's divider, which hands the column back to its fit and drops
-it from `resized_columns`. That is the one way back, which is what makes a stored
-user width safe to keep; AG Grid and MUI both refit on a divider double-click. On the
+it from the repository's stored widths. That is the one way back, which is what makes
+a stored user width safe to keep; AG Grid and MUI both refit on a divider double-click. On the
 Graph divider it also returns the pan to its start. Graph's fit is capped at a third of
 the row, so a refitted column can still be narrower than its lanes, and a pan left
 where it was would keep the lanes it had scrolled out of the view there.
@@ -224,9 +240,11 @@ from the width it starts at, so every drag produced `NaN` and persisted it.
 
 Widths are sanitized on the way in: a value survives only if it is a finite
 positive number, then it is rounded and raised to that column's floor, and
-nothing else: a width that is merely large is the user's to choose. Anything else
-falls back to that column's default. `resized_columns` keeps only the names of
-sized columns.
+nothing else: a width that is merely large is the user's to choose. In a
+repository's own key, anything else leaves that column to its fit, a name that is
+not a sized column is dropped, and a value that is not an object reads as no key at
+all. In the old global keys, an unusable number for a resized column falls back to
+that column's default, and `resized_columns` keeps only the names of sized columns.
 
 ## When a fit is measured and when the budget applies
 
@@ -325,8 +343,10 @@ cannot hide Message, leaves every row drawing its Message cell while the table's
 counts no floor for it, so the rows' right-hand columns are cut at the table's edge
 rather than scrolled to (TRUNK-266).
 
-User widths are one set for every repository, so a graph narrowed for a forty-lane
-repository stays narrow on a one-lane one.
+A repository with no stored widths of its own, including one first opened long after
+per-repository storage, still opens at the user widths the older global keys hold, and
+its first drag copies them into its own key. Whether to end that fallback by seeding a
+key for each known repository is open for João on TRUNK-254.7.
 
 Widths are absolute pixels and carry no record of the lane pitch they were chosen
 under. Nothing writes `displaySettings` today, so a stored graph width cannot yet

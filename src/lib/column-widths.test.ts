@@ -13,7 +13,7 @@ import {
 	headerMinWidths,
 	MESSAGE_FLOOR,
 	refContentWidth,
-	sanitizeColumnWidths,
+	sanitizeLegacyColumnWidths,
 	shaContentWidth,
 	shareBudget,
 	showsHeaderLabel,
@@ -470,11 +470,11 @@ describe("shareBudget", () => {
 	});
 });
 
-describe("sanitizeColumnWidths", () => {
+describe("sanitizeLegacyColumnWidths", () => {
 	const floors = columnFloors(measure);
 
 	it("keeps a width the user could have set", () => {
-		const widths = sanitizeColumnWidths(
+		const widths = sanitizeLegacyColumnWidths(
 			{ ...DEFAULT_WIDTHS, author: 180 },
 			floors,
 		);
@@ -485,7 +485,9 @@ describe("sanitizeColumnWidths", () => {
 	it("fills a key the stored layout never had", () => {
 		const stored = { ref: 150 };
 
-		expect(sanitizeColumnWidths(stored, floors).sha).toBe(DEFAULT_WIDTHS.sha);
+		expect(sanitizeLegacyColumnWidths(stored, floors).sha).toBe(
+			DEFAULT_WIDTHS.sha,
+		);
 	});
 
 	// Each of these reached the layout before: a NaN width made every drag
@@ -504,7 +506,7 @@ describe("sanitizeColumnWidths", () => {
 		it.each(unusable)("falls back to the default for %s", (_name, value) => {
 			const stored = { author: value };
 
-			expect(sanitizeColumnWidths(stored, floors).author).toBe(
+			expect(sanitizeLegacyColumnWidths(stored, floors).author).toBe(
 				DEFAULT_WIDTHS.author,
 			);
 		});
@@ -513,25 +515,29 @@ describe("sanitizeColumnWidths", () => {
 	it("raises a width below the column's floor", () => {
 		const stored = { author: 2 };
 
-		expect(sanitizeColumnWidths(stored, floors).author).toBe(floors.author);
+		expect(sanitizeLegacyColumnWidths(stored, floors).author).toBe(
+			floors.author,
+		);
 	});
 
 	// A user width has a floor and no ceiling.
 	it("keeps a width however wide the user left it", () => {
 		const stored = { graph: 900 };
 
-		expect(sanitizeColumnWidths(stored, floors).graph).toBe(900);
+		expect(sanitizeLegacyColumnWidths(stored, floors).graph).toBe(900);
 	});
 
 	it("rounds a fractional width to whole pixels", () => {
 		const stored = { author: 120.6 };
 
-		expect(sanitizeColumnWidths(stored, floors).author).toBe(121);
+		expect(sanitizeLegacyColumnWidths(stored, floors).author).toBe(121);
 	});
 
 	describe("when there is no stored layout at all", () => {
 		it("returns the defaults", () => {
-			expect(sanitizeColumnWidths(undefined, floors)).toEqual(DEFAULT_WIDTHS);
+			expect(sanitizeLegacyColumnWidths(undefined, floors)).toEqual(
+				DEFAULT_WIDTHS,
+			);
 		});
 	});
 });
