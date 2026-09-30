@@ -206,7 +206,7 @@ impl GitCli {
             .env_remove("GIT_CONFIG_PARAMETERS")
             .env_remove("GIT_CONFIG_COUNT")
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("GIT_CONFIG_SYSTEM", "/dev/null");
+            .env("GIT_CONFIG_NOSYSTEM", "1");
         if let Some((author, committer)) = dates {
             command
                 .env("GIT_AUTHOR_NAME", author.identity().name)
