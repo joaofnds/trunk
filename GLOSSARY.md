@@ -245,11 +245,13 @@ context, and **full-file mode**, which shows the whole file. On request-backed S
 the toolbar, view and `DiffRequestOptions.showFullFile` derive from the same value in every
 mounted tab; Source hunks from another mode stay hidden while their replacement loads or has
 failed (TRUNK-224). Rendered Markdown holds both complete revisions and projects either mode
-locally, so its rows remain available while Source reloads. A current-file view is forced to
-full-file because it has no diff hunks, so its toolbar shows no content-mode toggle (TRUNK-201).
+locally, so its rows remain available while Source reloads. A current-file view is always
+full-file, as its entry below says (TRUNK-201).
 
 **Current-file view** — the diff pane showing a tracked file's present content rather than a
-diff, opened from the file finder. It is always full-file, so it offers no content-mode toggle.
+diff, opened from the file finder that a review's "Comment on a file" action brings up. It is
+where a current-file comment is written. It has no changes to show hunks of, so it is always
+full-file and offers no content-mode toggle.
 
 **Old path** — where a renamed file came from, carried on every file diff as `old_path`
 and null for every other status (TRUNK-82). Rename pairing runs over the whole tree
