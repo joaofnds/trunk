@@ -228,7 +228,10 @@ CREATE INDEX threads_by_anchor ON threads(commit_oid, file_path);
 /// A commit's author cannot answer that: git lets any commit claim the author a
 /// snapshot carries. `snapshot_pins` cannot either, since a thread on any commit
 /// writes a row there and the sweep deletes rows the pin repair still needs.
-/// `minted_snapshots` is written by the mint path alone and never deleted.
+/// `minted_snapshots` is written by the mint path alone and never deleted. The
+/// one exception is this migration, which copies in the pointers in
+/// `repo_snapshots`, since only the mint path ever wrote those: a snapshot a
+/// composer was still holding across the upgrade stays a snapshot.
 ///
 /// Stores from before this version minted snapshots with no record of them.
 /// `legacy_snapshot_candidates` freezes, once, every oid a thread or draft named
@@ -255,6 +258,12 @@ FROM threads t JOIN reviews r ON r.id = t.review_id
 WHERE t.commit_oid IS NOT NULL
 UNION
 SELECT repo_path, commit_oid FROM drafts WHERE commit_oid IS NOT NULL;
+
+INSERT INTO minted_snapshots (repo_path, oid)
+SELECT repo_path, working_tree_snapshot FROM repo_snapshots
+WHERE working_tree_snapshot IS NOT NULL
+UNION
+SELECT repo_path, index_snapshot FROM repo_snapshots WHERE index_snapshot IS NOT NULL;
 ";
 
 /// A dev store may carry `user_version = 8` from an unreleased commit that numbered

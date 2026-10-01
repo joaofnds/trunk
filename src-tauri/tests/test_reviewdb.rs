@@ -329,6 +329,13 @@ CREATE TABLE drafts (
     updated_at  INTEGER NOT NULL
 );
 
+CREATE TABLE repo_snapshots (
+    repo_path            TEXT PRIMARY KEY,
+    working_tree_snapshot TEXT,
+    index_snapshot        TEXT,
+    updated_at            INTEGER NOT NULL
+);
+
 PRAGMA user_version = 1;
 ";
 
@@ -5043,7 +5050,7 @@ fn commenting_on_a_commit_claiming_the_snapshot_author_pins_nothing() {
 /// mirror clone or a `+refs/*:refs/*` fetch puts one there, and the sweep adopts
 /// every ref it finds. Adopting a pin must not make its commit a snapshot.
 #[test]
-fn a_keepalive_ref_trunk_never_minted_does_not_make_a_snapshot() {
+fn a_commit_under_a_keepalive_ref_trunk_never_minted_never_goes_stale() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
         .with_commit("c1")
@@ -5055,6 +5062,12 @@ fn a_keepalive_ref_trunk_never_minted_does_not_make_a_snapshot() {
     trunk_review::snapshot::keep_snapshot_ref(&repo, git2::Oid::from_str(&impostor).unwrap())
         .unwrap();
     sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+    assert!(
+        store
+            .read(|c| reviewdb::pins::recorded(c, &canonical, &impostor))
+            .unwrap(),
+        "the sweep must adopt the planted ref, or this test exercises nothing",
+    );
     submit_thread_inner(&store, &canonical, a_diff_thread_on(&impostor), SWEEP_NOW).unwrap();
 
     recompute_staleness(&store, &canonical, ctx.path()).unwrap();
@@ -5076,6 +5089,14 @@ fn wind_back_to_v8(ctx: &TestContext) {
     .unwrap();
 }
 
+/// Close `store`, wind it back to v8, and open it again, which runs the v9
+/// migration over whatever the v8 store held.
+fn upgraded_from_v8(ctx: &TestContext, store: reviewdb::Store) -> reviewdb::Store {
+    drop(store);
+    wind_back_to_v8(ctx);
+    reviewdb::open(ctx.data_dir()).unwrap()
+}
+
 /// A v8 build minted snapshots without recording them. A thread on one of
 /// them must keep going stale after the upgrade, or the upgrade would tell its
 /// reader that superseded code is current.
@@ -5093,9 +5114,7 @@ fn a_thread_on_a_snapshot_minted_before_the_mint_record_still_goes_stale() {
         .to_string();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     submit_thread_inner(&store, &canonical, a_diff_thread_on(&legacy), 1_000).unwrap();
-    drop(store);
-    wind_back_to_v8(&ctx);
-    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let store = upgraded_from_v8(&ctx, store);
 
     std::fs::write(ctx.repo_path().join("a.txt"), "edited again").unwrap();
     recompute_staleness(&store, &canonical, ctx.path()).unwrap();
@@ -5130,9 +5149,7 @@ fn a_draft_on_a_snapshot_minted_before_the_mint_record_goes_stale_once_submitted
         1_000,
     )
     .unwrap();
-    drop(store);
-    wind_back_to_v8(&ctx);
-    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let store = upgraded_from_v8(&ctx, store);
     submit_thread_inner(&store, &canonical, drafted, 2_000).unwrap();
 
     std::fs::write(ctx.repo_path().join("a.txt"), "edited again").unwrap();
@@ -5145,7 +5162,10 @@ fn a_draft_on_a_snapshot_minted_before_the_mint_record_goes_stale_once_submitted
 }
 
 /// Freezing every anchor a store held at the upgrade freezes real commits too,
-/// and those are most of them. The author still tells them apart.
+/// and those are most of them. The author still tells them apart. The thread
+/// anchors to HEAD's parent, whose tree the index no longer matches: on HEAD a
+/// snapshot would read current anyway, and the test could not tell a real
+/// commit from one taken for a snapshot.
 #[test]
 fn a_thread_on_a_real_commit_from_before_the_mint_record_never_goes_stale() {
     let ctx = TestContext::builder()
@@ -5171,9 +5191,7 @@ fn a_thread_on_a_real_commit_from_before_the_mint_record_never_goes_stale() {
         1_000,
     )
     .unwrap();
-    drop(store);
-    wind_back_to_v8(&ctx);
-    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let store = upgraded_from_v8(&ctx, store);
 
     recompute_staleness(&store, &canonical, ctx.path()).unwrap();
 
@@ -5189,7 +5207,7 @@ fn a_thread_on_a_real_commit_from_before_the_mint_record_never_goes_stale() {
 /// is never rediscovered as a defect. Only a commit commented on before the
 /// upgrade pays it.
 #[test]
-fn a_commit_claiming_the_snapshot_author_commented_on_before_the_mint_record_reads_as_a_snapshot() {
+fn a_commit_claiming_the_snapshot_author_commented_on_before_the_mint_record_goes_stale() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
         .with_commit("c1")
@@ -5198,13 +5216,14 @@ fn a_commit_claiming_the_snapshot_author_commented_on_before_the_mint_record_rea
     let impostor = common::snapshots::a_commit_impersonating_a_snapshot(&ctx);
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     submit_thread_inner(&store, &canonical, a_diff_thread_on(&impostor), 1_000).unwrap();
-    drop(store);
-    wind_back_to_v8(&ctx);
-    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let store = upgraded_from_v8(&ctx, store);
 
     recompute_staleness(&store, &canonical, ctx.path()).unwrap();
 
-    assert!(only_thread(&store, &canonical).stale);
+    assert!(
+        only_thread(&store, &canonical).stale,
+        "this residual was accepted in doc-158: a change that removes it reverses that decision",
+    );
 }
 
 /// A submit with no repository to hand, as a current-file thread's route and
@@ -5226,6 +5245,148 @@ fn a_commit_claiming_the_snapshot_author_submitted_without_a_repo_never_goes_sta
     assert!(
         !only_thread(&store, &canonical).stale,
         "a commit Trunk never minted is a real commit, by whatever route it was commented on",
+    );
+}
+
+/// A v8 build that minted a snapshot just before the upgrade, with the
+/// composer still open, left no thread or draft naming it. Its pointer is the
+/// v8 mint record, so the submit that lands after the upgrade still anchors to
+/// a snapshot.
+#[test]
+fn a_snapshot_minted_before_the_mint_record_and_submitted_after_it_goes_stale() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let in_flight =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    let store = upgraded_from_v8(&ctx, store);
+    submit_thread_inner(&store, &canonical, a_diff_thread_on(&in_flight), 2_000).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited again").unwrap();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        only_thread(&store, &canonical).stale,
+        "a snapshot Trunk minted before the upgrade is still a snapshot",
+    );
+}
+
+/// The ordinary v8 store: several comments on one unchanged tree share a
+/// snapshot, a draft names it too, and another repo's draft names nothing.
+/// The upgrade must take all of it, or the store refuses to open.
+#[test]
+fn a_store_with_many_anchors_on_one_snapshot_upgrades() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let shared =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    submit_thread_inner(&store, &canonical, a_diff_thread_on(&shared), 1_001).unwrap();
+    submit_thread_inner(&store, &canonical, a_diff_thread_on(&shared), 1_002).unwrap();
+    let drafted = a_diff_thread_on(&shared);
+    save_draft_inner(
+        &store,
+        &canonical,
+        "half typed",
+        drafted.anchor.as_ref(),
+        1_003,
+    )
+    .unwrap();
+    save_draft_inner(
+        &store,
+        &canonical.join("elsewhere"),
+        "no anchor",
+        None,
+        1_004,
+    )
+    .unwrap();
+
+    let store = upgraded_from_v8(&ctx, store);
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited again").unwrap();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+    let threads = store
+        .read(|conn| {
+            let review_id = reviewdb::reviews::active(conn, &canonical)?.unwrap();
+            reviewdb::threads::list_for_review(conn, &review_id)
+        })
+        .unwrap();
+    assert_eq!(threads.len(), 2);
+    assert!(
+        threads.iter().all(|t| t.stale),
+        "both threads on the shared snapshot describe superseded code",
+    );
+}
+
+/// A collected anchor is stale whatever it was, because the excerpt is the
+/// only copy of the code left. Knowing Trunk never minted the oid must not
+/// skip the check that the object is gone.
+#[test]
+fn a_thread_on_a_collected_commit_trunk_never_minted_goes_stale() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let rebased_away = common::snapshots::a_commit_off_every_branch(&ctx);
+    submit_thread_inner(&store, &canonical, a_diff_thread_on(&rebased_away), 1_000).unwrap();
+    common::snapshots::collect_the_object(&ctx, &rebased_away);
+
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        only_thread(&store, &canonical).stale,
+        "the excerpt is all that is left of a collected commit",
+    );
+}
+
+/// The second residual doc-158 accepts: a snapshot from before the mint record
+/// whose pin was reclaimed is not pinned again by a submit after the upgrade,
+/// since only the record may say an oid is Trunk's to pin. Pinned here so the
+/// decision is never reversed unseen.
+#[test]
+fn a_submit_after_the_upgrade_does_not_pin_a_snapshot_from_before_the_mint_record() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let legacy = trunk_review::snapshot::snapshot_working_tree(&repo)
+        .unwrap()
+        .to_string();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let drafted = a_diff_thread_on(&legacy);
+    save_draft_inner(
+        &store,
+        &canonical,
+        "half typed",
+        drafted.anchor.as_ref(),
+        1_000,
+    )
+    .unwrap();
+    let store = upgraded_from_v8(&ctx, store);
+
+    submit_thread_into(&store, &canonical, Some(&repo), drafted, 2_000).unwrap();
+
+    let pinned = repo
+        .find_reference(&format!("refs/trunk/review-snapshots/{legacy}"))
+        .is_ok();
+    assert!(
+        !pinned,
+        "this residual was accepted in doc-158: a change that pins it reverses that decision",
     );
 }
 

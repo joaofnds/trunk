@@ -214,9 +214,10 @@ fn snapshot_signature() -> Result<git2::Signature<'static>, TrunkError> {
     )?)
 }
 
-/// The author name and address `snapshot` stamps on every snapshot commit. They
-/// identify nothing: any commit can claim them, which is why Trunk keeps its own
-/// mint record (`reviewdb::minted`). Changing them changes every snapshot oid.
+/// The author name and address `snapshot` stamps on every snapshot commit. Any
+/// commit can claim them, which is why Trunk keeps its own mint record
+/// (`reviewdb::minted`) and reads them only for an oid named before that record
+/// existed. Changing them changes every snapshot oid.
 const SNAPSHOT_AUTHOR_NAME: &str = "Trunk";
 const SNAPSHOT_AUTHOR_EMAIL: &str = "review@trunk.local";
 

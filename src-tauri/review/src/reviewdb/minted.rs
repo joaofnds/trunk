@@ -3,9 +3,11 @@
 //! A snapshot is what Trunk minted, not what a commit claims to be: git lets
 //! any commit carry the author a snapshot carries, so a fetched commit can look
 //! exactly like one (TRUNK-193). The mint path records each snapshot here in the
-//! transaction that stores its oid, and nothing else writes the record. In
-//! particular `pins::reconcile` must not: it adopts any ref under the keepalive
-//! namespace, and a mirror clone or a `+refs/*:refs/*` fetch can put one there.
+//! transaction that stores its oid, and nothing else writes the record but the
+//! v9 migration, which copied in the pointers the mint path had written before.
+//! In particular `pins::reconcile` must not: it adopts any ref under the
+//! keepalive namespace, and a mirror clone or a `+refs/*:refs/*` fetch can put
+//! one there.
 
 use super::{repo_key, sqlite_error};
 use crate::snapshot::carries_snapshot_author;
@@ -21,7 +23,8 @@ pub enum Provenance {
     /// A thread or draft named it before the store kept a mint record, so only
     /// the commit's author can still say whether it was a snapshot.
     Legacy,
-    /// Trunk never minted it: a real commit, whatever author it claims.
+    /// No record that Trunk minted it, so a real commit, whatever author it
+    /// claims.
     Unrecorded,
 }
 

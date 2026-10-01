@@ -54,3 +54,19 @@ pub fn a_commit_impersonating_a_snapshot(ctx: &TestContext) -> String {
     .unwrap()
     .to_string()
 }
+
+/// A commit by an ordinary author that no ref reaches, as a commit rebased away
+/// leaves behind. Trunk never minted it, and `collect_the_object` can collect it.
+pub fn a_commit_off_every_branch(ctx: &TestContext) -> String {
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    let blob = repo.blob(b"what the rebase dropped\n").unwrap();
+    let mut tree = repo.treebuilder(Some(&head.tree().unwrap())).unwrap();
+    tree.insert("a.txt", blob, 0o100_644).unwrap();
+    let tree = repo.find_tree(tree.write().unwrap()).unwrap();
+    let author = git2::Signature::new("Ada", "ada@example.com", &git2::Time::new(1, 0)).unwrap();
+
+    repo.commit(None, &author, &author, "rebased away", &tree, &[&head])
+        .unwrap()
+        .to_string()
+}

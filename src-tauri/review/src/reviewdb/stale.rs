@@ -8,9 +8,11 @@
 //! again the moment the content returns — the spec's branch-switch example,
 //! which supersession can never undo.
 //!
-//! Whether an oid is a snapshot is Trunk's own record, `minted_snapshots`, read
-//! here in the same read as the threads and handed to the caller as each
-//! anchor's `Provenance` (TRUNK-193). Whether a snapshot is still current is
+//! Whether an oid is a snapshot is Trunk's own record: `minted_snapshots`, and
+//! for an oid a thread or draft named before that record existed,
+//! `legacy_snapshot_candidates`, where the commit's author still decides. Both
+//! are read here in the same read as the threads and handed to the caller as
+//! each anchor's `Provenance` (TRUNK-193). Whether a snapshot is still current is
 //! deliberately not decided here, because that is a question about the
 //! repository as it stands now, not about anything the store recorded. The
 //! caller answers it, and passes in the verdict.
