@@ -134,7 +134,7 @@ built by `just fixtures` into the gitignored `repos/` (TRUNK-108 ported them fro
 repository of shell and python scripts, byte for byte).
 
 **Case** — one generator and the set of fixture repositories it builds for one purpose
-(`06-stash-lanes` builds 21, `09-kitchen-sink` builds 1). Eleven cases, 75 repositories.
+(`06-stash-lanes` builds 21, `09-kitchen-sink` builds 1). Thirteen cases, 77 repositories.
 Each case has a one-line summary `just fixtures-list` prints and, per built repository, a
 `SCENARIO.md` saying what to look at and what would count as wrong (`06-stash-lanes` carries
 one README for the corpus, `04` and `05` are described in `docs/fixtures.md`, and
@@ -343,8 +343,8 @@ a snapshot because Trunk minted it and recorded doing so, never because of what 
 commit says about itself: any commit can claim the author snapshots carry, and one
 that only claims it is a real commit (TRUNK-193). The exception is an oid a thread
 or draft named before Trunk kept that record (review store version 9). The author
-still decides for it, so a fetched commit that claims the author and was commented
-on before the upgrade reads as a snapshot.
+still decides staleness for it, so a fetched commit that claims the author and was
+commented on before the upgrade still takes a stale marker.
 
 **Snapshot pin** — the keepalive ref under `refs/trunk/review-snapshots/` that holds
 a snapshot against `git gc`. Without it the snapshot is collected, the comment

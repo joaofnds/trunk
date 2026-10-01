@@ -37,7 +37,7 @@ case has to remember them:
 | Property | Why |
 |---|---|
 | Isolated git config | libgit2 reads the operator's `~/.gitconfig` and `~/.config/git/config` through `HOME` and, on the open path this crate uses, ignores `GIT_CONFIG_GLOBAL`. `trunk_fixtures::isolate()` blanks its config search paths before any repository is opened, in the binary and in every test. An ambient `core.excludesFile` moved a `-u` stash's OID in the experiment that settled the design; `tests/isolation.rs` builds under a hostile HOME to prove it cannot now. |
-| Pinned timestamps | The commit graph sorts with `TOPOLOGICAL \| TIME`. Same-second commits sort arbitrarily and can render a layout that is correct only by coincidence. Every commit is a day apart (an hour in `07` and `08`), pinned to UTC. The one exception is `13`'s impostor tip, dated at the Unix epoch because that is the date review snapshots carry. |
+| Pinned timestamps | The commit graph sorts with `TOPOLOGICAL \| TIME`. Same-second commits sort arbitrarily and can render a layout that is correct only by coincidence. Every commit is a day apart (an hour in `07` and `08`, an hour with half-hour spurs in `12`), pinned to UTC. The one exception is `13`'s impostor tip, dated at the Unix epoch because that is the date review snapshots carry. |
 | Rebuild from scratch | Repos are disposable. `fixtures build` removes a previous build of each repository before building it. |
 | Fixed identity | Three identities carry the corpus, kept exactly as it had them so its OIDs hold: `Trunk Fixture <fixture@trunk.test>` (01, 02, 03, 09, 10, 11, 13), `QA Fixture <qa@trunk.test>` (04, 05, 06) and `Trunk QA <qa@example.invalid>` (07, 08, 12). Two cases add one on purpose: `12` a long author name, and `13` the review snapshot author `Trunk <review@trunk.local>`. |
 
@@ -45,10 +45,12 @@ Two builds of the whole corpus print the same **fingerprint** (`fixtures fingerp
 --root DIR PATH...`: HEAD, every ref, the stash reflog, the repository state, a stopped
 merge's files, the unmerged index stages, the worktree status with blob ids, ignored paths
 and branch upstreams). One fingerprint per case is committed under
-`src-tauri/fixtures/oracle/`, captured once from the shell corpus this crate replaced, and
-`tests/oracle.rs` compares a fresh build of each case against it. An oracle file is a
+`src-tauri/fixtures/oracle/`, captured from the shell corpus this crate replaced for cases
+`01` to `11` and from the Rust builder for the cases added since, and `tests/oracle.rs`
+compares a fresh build of each case against it. An oracle file is a
 golden: a change to it is a fixture change, made on purpose, with the cause in the commit
-message. When an oracle test goes red, the port is the suspect: the report names the
+message. Where a case commits its `SCENARIO.md`, editing that text changes the case's
+oids, so the oracle is recaptured in the same commit. When an oracle test goes red, the port is the suspect: the report names the
 repository block and the first line that differs; compare the case module with what the
 retired generator did before touching the oracle, and never edit an oracle to make the
 test pass.
@@ -115,9 +117,9 @@ one function per repository, every git operation a `Repo` verb. Register it in `
 case order. Then capture its oracle:
 
 ```bash
-just fixtures 12-my-case
+just fixtures 14-my-case
 cargo run --manifest-path src-tauri/Cargo.toml -p trunk-fixtures -- \
-  fingerprint --root repos my-case > src-tauri/fixtures/oracle/12-my-case.txt
+  fingerprint --root repos my-case > src-tauri/fixtures/oracle/14-my-case.txt
 ```
 
 Commit the oracle with the case, add the case's test to `tests/oracle.rs`, and add the

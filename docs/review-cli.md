@@ -66,7 +66,10 @@ trunk review watch [--repo <path>]
   answerable; what changed is that the repository no longer holds that code
   where the comment pointed. For the first two shapes that means the file reads
   differently; for a collected anchor the file may be untouched and the commit
-  simply gone.
+  simply gone. One older shape raises the marker by accident: a comment left
+  before the review store's version 9 upgrade on a commit that claims the author
+  Trunk's snapshots carry reads as a comment on a superseded snapshot, so it is
+  stale although the code it names has not moved.
 - **threads** — the review's threads as an index, one line each: id, state, the
   `(stale)` marker where the thread carries one, location (`file:start-end`, a
   commit-level thread's short oid, or `no target`), and the comment's first

@@ -126,7 +126,7 @@ clock stepped forward. So the window is a heuristic, not the guarantee. The
 guarantee is that submitting a thread whose snapshot is no longer on record puts
 the record back and re-pins the ref, so a late submit repairs what the sweep
 took rather than losing its comment. It holds for every snapshot in Trunk's mint
-record, and the last paragraph below names the older ones it misses.
+record, and the end of this section names the older ones it misses.
 
 The re-pin covers snapshots only. The store half of a submit cannot tell a
 reclaimed pin from an oid that was never a snapshot, since neither has a
@@ -137,14 +137,16 @@ ref. Ungated, the repair pins every commit a thread anchors to, and
 
 The gate used to read the commit's author, which git lets any commit claim, so a
 fetched commit carrying the snapshot author took a pin it should not have.
-TRUNK-193 replaced it with the mint record, which only the mint path writes:
-not `pins::mark_minted`, because reconciliation calls that for any ref in the
-namespace. The upgrade that created the record copied in each repo's current
-snapshot pointers, and handing a snapshot out again records it, so a composer
-open across the upgrade keeps its repair. An older snapshot that only a draft
-carried across the upgrade is not in the record: once the sweep reclaims its
-pin, a late submit does not re-pin it, and the thread can land on a commit gc
-will collect.
+TRUNK-193 replaced it with the mint record, `minted_snapshots`, which the mint
+path writes: not `pins::mark_minted`, because reconciliation calls that for any
+ref in the namespace. The upgrade that created the record seeded it once with
+each repo's current snapshot pointers, which only the mint path had written, so
+a pointer from before the upgrade is repaired like any later snapshot. The app
+also resolves a comment on uncommitted work through the mint path at submit, so
+its own late submits land on a recorded snapshot. An older snapshot that only a
+thread or draft named at the upgrade is not in the record: once the sweep
+reclaims its pin, a late submit does not re-pin it, and the thread can land on a
+commit gc will collect.
 
 ## What this costs
 
