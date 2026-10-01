@@ -12,6 +12,12 @@ const FIXTURE: Identity = Identity {
     name: "Trunk Fixture",
     email: "fixture@trunk.test",
 };
+/// The author Trunk signs its review snapshots with, at the Unix epoch, which case 13
+/// puts on a fetched commit. Git reads `@0` as a date too, so the epoch is a byte case.
+const SNAPSHOT_AUTHOR: Identity = Identity {
+    name: "Trunk",
+    email: "review@trunk.local",
+};
 const BASE_SECS: i64 = 1_767_225_600;
 const DAY: i64 = 86_400;
 
@@ -369,6 +375,9 @@ fn scenario(b: &mut dyn Build) {
     b.write("src/feature.rs", "pub fn feature() {}\n");
     b.add_all();
     b.commit(day(2), "feat: feature work\n\nWith a body that says why.");
+    b.write("src/feature.rs", "pub fn feature() { claimed() }\n");
+    b.add_all();
+    b.commit(SNAPSHOT_AUTHOR.at(0), "feat: a commit dated at the epoch");
     b.checkout("main");
     b.write("docs/notes.md", "notes\n");
     b.add_all();

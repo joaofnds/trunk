@@ -10,6 +10,7 @@ pub mod merge_conflict;
 pub mod nested_conflict;
 pub mod remote_branch;
 pub mod rendered_markdown;
+pub mod snapshot_impostor;
 pub mod staging_ignore_ws;
 pub mod stash_lanes;
 
@@ -37,6 +38,7 @@ pub const CASES: &[Case] = &[
     nested_conflict::CASE,
     rendered_markdown::CASE,
     deep_history::CASE,
+    snapshot_impostor::CASE,
 ];
 
 /// Where `fixtures build` lands without `--out`: `repos/` at the repository root.

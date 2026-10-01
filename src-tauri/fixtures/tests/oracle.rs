@@ -82,3 +82,8 @@ fn rendered_markdown_matches_its_oracle() {
 fn deep_history_matches_its_oracle() {
     assert_matches_oracle("12-deep-history");
 }
+
+#[test]
+fn snapshot_impostor_matches_its_oracle() {
+    assert_matches_oracle("13-snapshot-impostor");
+}
