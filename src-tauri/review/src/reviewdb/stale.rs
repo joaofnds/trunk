@@ -10,12 +10,13 @@
 //!
 //! Whether an oid is a snapshot is Trunk's own record: `minted_snapshots`, and
 //! for an oid a thread or draft named before that record existed,
-//! `legacy_snapshot_candidates`, where the commit's author still decides. Both
-//! are read here in the same read as the threads and handed to the caller as
-//! each anchor's `Provenance` (TRUNK-193). Whether a snapshot is still current is
-//! deliberately not decided here, because that is a question about the
-//! repository as it stands now, not about anything the store recorded. The
-//! caller answers it, and passes in the verdict.
+//! `legacy_snapshot_candidates`, where the commit's author decides unless the
+//! mint record holds the oid too. Both are read here in the same read as the
+//! threads and handed to the caller as each anchor's `Provenance` (TRUNK-193).
+//! Whether a snapshot is still current is deliberately not decided here,
+//! because that is a question about the repository as it stands now, not about
+//! anything the store recorded. The caller answers it, and passes in the
+//! verdict.
 //!
 //! `repo_snapshots` is the wrong yardstick for the second question and reading
 //! it here was a defect: it moves only when a comment is submitted, so it names

@@ -5248,10 +5248,9 @@ fn a_commit_claiming_the_snapshot_author_submitted_without_a_repo_never_goes_sta
     );
 }
 
-/// A v8 build that minted a snapshot just before the upgrade, with the
-/// composer still open, left no thread or draft naming it. Its pointer is the
-/// v8 mint record, so the submit that lands after the upgrade still anchors to
-/// a snapshot.
+/// A v8 store's current snapshot pointer may be named by no thread or draft.
+/// The pointer is the v8 mint record, so a thread submitted on it after the
+/// upgrade still anchors to a snapshot.
 #[test]
 fn a_snapshot_minted_before_the_mint_record_and_submitted_after_it_goes_stale() {
     let ctx = TestContext::builder()
@@ -5273,6 +5272,77 @@ fn a_snapshot_minted_before_the_mint_record_and_submitted_after_it_goes_stale() 
     assert!(
         only_thread(&store, &canonical).stale,
         "a snapshot Trunk minted before the upgrade is still a snapshot",
+    );
+}
+
+/// A staged comment's snapshot is the index pointer, the other half of the v8
+/// mint record the upgrade copies.
+#[test]
+fn a_staged_snapshot_minted_before_the_mint_record_and_submitted_after_it_goes_stale() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    stage(&repo, ctx.repo_path(), "staged");
+    let in_flight =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Index, 1_000)
+            .unwrap();
+    let store = upgraded_from_v8(&ctx, store);
+    submit_thread_inner(&store, &canonical, a_diff_thread_on(&in_flight), 2_000).unwrap();
+
+    stage(&repo, ctx.repo_path(), "staged again");
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        only_thread(&store, &canonical).stale,
+        "a staged snapshot Trunk minted before the upgrade is still a snapshot",
+    );
+}
+
+fn stage(repo: &git2::Repository, workdir: &std::path::Path, content: &str) {
+    std::fs::write(workdir.join("a.txt"), content).unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new("a.txt")).unwrap();
+    index.write().unwrap();
+}
+
+/// The upgrade puts a v8 snapshot pointer in the mint record, so a pin lost
+/// after the upgrade is repaired by the next submit, as a pin minted after it
+/// would be.
+#[test]
+fn a_submit_after_the_upgrade_pins_a_snapshot_pointer_from_before_the_mint_record_again() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let pointer =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    let store = upgraded_from_v8(&ctx, store);
+    trunk_review::snapshot::prune_snapshot_ref(&repo, git2::Oid::from_str(&pointer).unwrap())
+        .unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+
+    submit_thread_into(
+        &store,
+        &canonical,
+        Some(&repo),
+        a_diff_thread_on(&pointer),
+        SWEEP_NOW,
+    )
+    .unwrap();
+
+    assert_eq!(
+        pinned_snapshot_oids(&repo).unwrap(),
+        vec![git2::Oid::from_str(&pointer).unwrap()],
+        "a snapshot pointer from before the upgrade is in the mint record, so its pin is repaired",
     );
 }
 
@@ -5381,11 +5451,9 @@ fn a_submit_after_the_upgrade_does_not_pin_a_snapshot_from_before_the_mint_recor
 
     submit_thread_into(&store, &canonical, Some(&repo), drafted, 2_000).unwrap();
 
-    let pinned = repo
-        .find_reference(&format!("refs/trunk/review-snapshots/{legacy}"))
-        .is_ok();
-    assert!(
-        !pinned,
+    assert_eq!(
+        pinned_snapshot_oids(&repo).unwrap(),
+        Vec::<git2::Oid>::new(),
         "this residual was accepted in doc-158: a change that pins it reverses that decision",
     );
 }

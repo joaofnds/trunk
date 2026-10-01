@@ -23,8 +23,8 @@ pub enum Provenance {
     /// A thread or draft named it before the store kept a mint record, so only
     /// the commit's author can still say whether it was a snapshot.
     Legacy,
-    /// No record that Trunk minted it, so a real commit, whatever author it
-    /// claims.
+    /// Neither minted nor named before the mint record existed, so a real
+    /// commit, whatever author it claims.
     Unrecorded,
 }
 

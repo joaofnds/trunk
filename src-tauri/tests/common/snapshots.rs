@@ -1,9 +1,10 @@
-//! Driving `git gc` over a review snapshot, for the tests about what a thread
-//! reads once its anchor is gone.
+//! Commits a thread can anchor to without Trunk minting them, and a `git gc`
+//! that collects an anchor, for the tests about what makes an oid a snapshot
+//! and what a thread reads once its anchor is gone.
 
 use super::context::TestContext;
 
-/// An outside actor's `git gc`: drop the keepalive ref Trunk holds the snapshot
+/// An outside actor's `git gc`: drop any keepalive ref Trunk holds the commit
 /// with, then prune, and assert the object really is unreachable — a gc that
 /// kept it would make the caller's test vacuous.
 ///
