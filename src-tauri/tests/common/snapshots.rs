@@ -5,8 +5,8 @@
 use super::context::TestContext;
 
 /// An outside actor's `git gc`: drop any keepalive ref Trunk holds the commit
-/// with, then prune, and assert the object really is unreachable — a gc that
-/// kept it would make the caller's test vacuous.
+/// with, then prune, and assert the object really is unreachable, since a gc
+/// that kept it would make the caller's test vacuous.
 ///
 /// git2 0.21 exposes no gc or prune API, so this shells out, as the other gc
 /// tests in this suite do.
@@ -35,39 +35,47 @@ pub fn collect_the_object(ctx: &TestContext, oid: &str) {
 /// commit fetched from elsewhere would, so a reader that took it for a snapshot
 /// would find it superseded.
 pub fn a_commit_impersonating_a_snapshot(ctx: &TestContext) -> String {
-    let repo = git2::Repository::open(ctx.path()).unwrap();
-    let head = repo.head().unwrap().peel_to_commit().unwrap();
-    let blob = repo.blob(b"what the fetched commit says\n").unwrap();
-    let mut tree = repo.treebuilder(Some(&head.tree().unwrap())).unwrap();
-    tree.insert("a.txt", blob, 0o100_644).unwrap();
-    let tree = repo.find_tree(tree.write().unwrap()).unwrap();
     let impostor =
         git2::Signature::new("Trunk", "review@trunk.local", &git2::Time::new(0, 0)).unwrap();
-
-    repo.commit(
+    commit_on_head(
+        ctx,
         Some("refs/remotes/origin/impostor"),
         &impostor,
-        &impostor,
+        b"what the fetched commit says\n",
         "fetched from elsewhere",
-        &tree,
-        &[&head],
     )
-    .unwrap()
-    .to_string()
 }
 
 /// A commit by an ordinary author that no ref reaches, as a commit rebased away
 /// leaves behind. Trunk never minted it, and `collect_the_object` can collect it.
 pub fn a_commit_off_every_branch(ctx: &TestContext) -> String {
+    let author = git2::Signature::new("Ada", "ada@example.com", &git2::Time::new(1, 0)).unwrap();
+    commit_on_head(
+        ctx,
+        None,
+        &author,
+        b"what the rebase dropped\n",
+        "rebased away",
+    )
+}
+
+/// A child of HEAD that replaces `a.txt` with `a_txt`, written under `update_ref`
+/// or under no ref at all.
+fn commit_on_head(
+    ctx: &TestContext,
+    update_ref: Option<&str>,
+    author: &git2::Signature,
+    a_txt: &[u8],
+    message: &str,
+) -> String {
     let repo = git2::Repository::open(ctx.path()).unwrap();
     let head = repo.head().unwrap().peel_to_commit().unwrap();
-    let blob = repo.blob(b"what the rebase dropped\n").unwrap();
+    let blob = repo.blob(a_txt).unwrap();
     let mut tree = repo.treebuilder(Some(&head.tree().unwrap())).unwrap();
     tree.insert("a.txt", blob, 0o100_644).unwrap();
     let tree = repo.find_tree(tree.write().unwrap()).unwrap();
-    let author = git2::Signature::new("Ada", "ada@example.com", &git2::Time::new(1, 0)).unwrap();
 
-    repo.commit(None, &author, &author, "rebased away", &tree, &[&head])
+    repo.commit(update_ref, author, author, message, &tree, &[&head])
         .unwrap()
         .to_string()
 }
