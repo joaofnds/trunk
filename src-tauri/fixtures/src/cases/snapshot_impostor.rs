@@ -1,6 +1,6 @@
 //! Case 13: a commit that claims to be a review snapshot (TRUNK-193).
 //!
-//! Trunk signs the snapshots it mints as `Trunk <review@trunk.local>` at the Unix
+//! Trunk authors the snapshots it mints as `Trunk <review@trunk.local>` at the Unix
 //! epoch. Git lets any commit carry that author, so a fetched commit can look exactly
 //! like one. Trunk decides what is a snapshot from its own record of what it minted,
 //! and this case is the commit that only claims it.
@@ -30,7 +30,7 @@ const DAY_SECS: i64 = 86_400;
 
 pub const CASE: Case = Case {
     name: "13-snapshot-impostor",
-    summary: "A branch whose tip claims the author Trunk signs review snapshots with.",
+    summary: "A branch whose tip claims the author review snapshots carry.",
     repos: &["snapshot-impostor"],
     build,
 };
@@ -38,21 +38,27 @@ pub const CASE: Case = Case {
 const SCENARIO: &str = "\
 # A commit that claims to be a review snapshot (TRUNK-193)
 
-The `impostor` branch's tip is authored by `Trunk <review@trunk.local>` on
-1970-01-01, the author Trunk signs the review snapshots it mints with. Trunk did not
-mint it: anyone can write a commit with that author and push it. Its change to
-`a.txt` matches neither the index nor the working tree.
+The `impostor` branch's tip is authored by `Trunk <review@trunk.local>` at the Unix
+epoch (shown as 1970-01-01, or 1969-12-31 west of UTC), the author and date of the
+review snapshots Trunk mints. Trunk did not mint it: anyone can write a commit with
+that author and push it. Its change to `a.txt` matches neither the index nor the
+working tree.
 
 1. Select the `impostor` branch's tip in the graph and comment on a line of its
    `a.txt` diff.
-2. Change any file in the working tree from outside Trunk
-   (`echo more >> notes.txt` in the repository). The watcher reruns the staleness
-   pass.
-3. Look at the comment in the review panel.
+2. The control: run `echo draft >> notes.txt` in the repository, then comment on
+   that added line in the working-tree changes. Trunk mints a snapshot for it.
+3. Run `echo more >> notes.txt`. The watcher reruns the staleness pass.
+4. Look at both comments in the review panel. The `notes.txt` comment must read
+   stale, which proves the pass ran. If it does not, the result says nothing.
+
+Use a review store no build from before TRUNK-193 commented on this tip in. The
+upgrade leaves an oid commented on before it judged by its author, so such a
+comment goes stale, which is a recorded residual and not this defect.
 
 ## What would be wrong
 
-The comment marked stale. Staleness of a comment on a commit is never decided by
+The `a.txt` comment marked stale. Staleness of a comment on a commit is never decided by
 the working tree, so a stale marker means Trunk took the commit for a snapshot of
 it because of the author it claims.
 

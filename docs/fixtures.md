@@ -37,9 +37,9 @@ case has to remember them:
 | Property | Why |
 |---|---|
 | Isolated git config | libgit2 reads the operator's `~/.gitconfig` and `~/.config/git/config` through `HOME` and, on the open path this crate uses, ignores `GIT_CONFIG_GLOBAL`. `trunk_fixtures::isolate()` blanks its config search paths before any repository is opened, in the binary and in every test. An ambient `core.excludesFile` moved a `-u` stash's OID in the experiment that settled the design; `tests/isolation.rs` builds under a hostile HOME to prove it cannot now. |
-| Pinned timestamps | The commit graph sorts with `TOPOLOGICAL \| TIME`. Same-second commits sort arbitrarily and can render a layout that is correct only by coincidence. Every commit is a day apart (an hour in `07` and `08`), pinned to UTC. |
+| Pinned timestamps | The commit graph sorts with `TOPOLOGICAL \| TIME`. Same-second commits sort arbitrarily and can render a layout that is correct only by coincidence. Every commit is a day apart (an hour in `07` and `08`), pinned to UTC. The one exception is `13`'s impostor tip, dated at the Unix epoch because that is the date review snapshots carry. |
 | Rebuild from scratch | Repos are disposable. `fixtures build` removes a previous build of each repository before building it. |
-| Fixed identity | Three identities exist, kept exactly as the corpus had them so its OIDs hold: `Trunk Fixture <fixture@trunk.test>` (01, 02, 03, 09, 10, 11), `QA Fixture <qa@trunk.test>` (04, 05, 06) and `Trunk QA <qa@example.invalid>` (07, 08). |
+| Fixed identity | Three identities carry the corpus, kept exactly as it had them so its OIDs hold: `Trunk Fixture <fixture@trunk.test>` (01, 02, 03, 09, 10, 11, 13), `QA Fixture <qa@trunk.test>` (04, 05, 06) and `Trunk QA <qa@example.invalid>` (07, 08, 12). Two cases add one on purpose: `12` a long author name, and `13` the review snapshot author `Trunk <review@trunk.local>`. |
 
 Two builds of the whole corpus print the same **fingerprint** (`fixtures fingerprint
 --root DIR PATH...`: HEAD, every ref, the stash reflog, the repository state, a stopped
@@ -72,7 +72,7 @@ table says what each case is for. `tests/catalogue.rs` fails when a case is miss
 | `10-nested-conflict` | 1 | A stopped merge across four directory levels, plus one file git calls resolved that still contains conflict markers. |
 | `11-rendered-markdown` | 1 | The rendered markdown diff, one commit pair per defect or design case: an unchanged image beside changed words, a markup-only edit, the fold inside a list and inside a blockquote and a table, a quote that stops being a container, a task list, the row-level fold's distance-to-changed-line rule, the heading-stays-as-context exception, two gaps surviving between far-apart changes, and a block that is only an image. |
 | `12-deep-history` | 1 | History several pages deep, for the jumps that must page commits in before they can land: a branch tip and a search hit that both sit below the first 200-row page (TRUNK-137). |
-| `13-snapshot-impostor` | 1 | A branch tip authored as `Trunk <review@trunk.local>` at the Unix epoch, the author Trunk signs review snapshots with, on a commit Trunk never minted: a comment on it must never go stale or pin it (TRUNK-193). |
+| `13-snapshot-impostor` | 1 | A branch tip authored as `Trunk <review@trunk.local>` at the Unix epoch, the author review snapshots carry, on a commit Trunk never minted: a comment on it must never go stale or pin it, while the scenario's control comment on uncommitted work does go stale (TRUNK-193). |
 
 Cases 04, 05 and 06 are also the corpus Trunk's committed graph inputs are captured
 from, via `just graph-capture`, which builds them into a throwaway directory and must

@@ -324,8 +324,8 @@ Text edits never change state. Attribution is by channel: UI = human, CLI = agen
 **Stale marker** — an orthogonal, derived flag on a thread whose pinned content no
 longer occurs on the surface the thread targets (current-file → the pinned block is
 absent from the working-tree file; snapshot → superseded; any anchor oid → the
-object is no longer in the repository). A commit-diff thread never goes stale while its commit
-exists, and the orphan classifier covers it; once the commit is collected the excerpt
+object is no longer in the repository). A thread on a commit that is not a snapshot never
+goes stale while its commit exists, and the orphan classifier covers it; once the commit is collected the excerpt
 is the only surviving copy of the code, and the thread reads stale like any other
 collected anchor. Presence alone decides it for a
 current-file thread: an edit elsewhere raises no marker, and neither does deleting
@@ -338,10 +338,13 @@ stale at once.
 **Snapshot** — a dangling commit holding the working tree or the index as it stood
 when a comment was left on uncommitted work, so the comment has something to anchor
 to. One per kind per repo, reused while the tree is unchanged, and **superseded**
-when the tree changes and the next comment gesture mints a new one. A commit is a
-snapshot because Trunk minted it and recorded doing so, never because of what the
+once the tree it holds is no longer the current working tree or index. A commit is
+a snapshot because Trunk minted it and recorded doing so, never because of what the
 commit says about itself: any commit can claim the author snapshots carry, and one
-that only claims it is a real commit (TRUNK-193).
+that only claims it is a real commit (TRUNK-193). The exception is an oid a thread
+or draft named before Trunk kept that record (review store version 9). The author
+still decides for it, so a fetched commit that claims the author and was commented
+on before the upgrade reads as a snapshot.
 
 **Snapshot pin** — the keepalive ref under `refs/trunk/review-snapshots/` that holds
 a snapshot against `git gc`. Without it the snapshot is collected, the comment
