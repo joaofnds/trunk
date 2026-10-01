@@ -39,10 +39,15 @@ const SCENARIO: &str = "\
 # A commit that claims to be a review snapshot (TRUNK-193)
 
 The `impostor` branch's tip is authored by `Trunk <review@trunk.local>` at the Unix
-epoch (shown as 1970-01-01, or 1969-12-31 west of UTC), the author and date of the
-review snapshots Trunk mints. Trunk did not mint it: anyone can write a commit with
-that author and push it. Its change to `a.txt` matches neither the index nor the
-working tree.
+epoch, the author and date of the review snapshots Trunk mints, so its graph row shows
+no date. Trunk did not mint it: anyone can write a commit with that author and push
+it. Its change to `a.txt` matches neither the index nor the working tree.
+
+Start from a fresh build (`just fixtures 13-snapshot-impostor`), so no ref or comment
+from an earlier session is in the repository, and from a review store in which no
+build from before TRUNK-193 left a comment or a draft on this tip. The upgrade judges
+an oid named before it by its author, so such a comment goes stale, which is a
+recorded residual and not this defect.
 
 1. Select the `impostor` branch's tip in the graph and comment on a line of its
    `a.txt` diff.
@@ -52,19 +57,16 @@ working tree.
 4. Look at both comments in the review panel. The `notes.txt` comment must read
    stale, which proves the pass ran. If it does not, the result says nothing.
 
-Use a review store no build from before TRUNK-193 commented on this tip in. The
-upgrade leaves an oid commented on before it judged by its author, so such a
-comment goes stale, which is a recorded residual and not this defect.
-
 ## What would be wrong
 
 The `a.txt` comment marked stale. Staleness of a comment on a commit is never decided by
 the working tree, so a stale marker means Trunk took the commit for a snapshot of
 it because of the author it claims.
 
-`git for-each-ref refs/trunk/review-snapshots/` listing the tip's oid. Trunk keeps
-only the snapshots it minted alive, and a ref on this commit would keep it from
-ever being collected.
+`git for-each-ref refs/trunk/review-snapshots/` listing the oid `git rev-parse
+impostor` prints. One ref is expected, the control's snapshot. Trunk keeps only the
+snapshots it minted alive, and a ref on this commit would keep it from ever being
+collected.
 ";
 
 fn build(out: &Path) {
