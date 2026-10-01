@@ -2949,6 +2949,7 @@ describe("RepoView", () => {
 						return Promise.resolve({
 							unstaged: [
 								{ path: "src/edited.ts", status: "Modified", is_binary: false },
+								{ path: "src/other.ts", status: "Modified", is_binary: false },
 							],
 							staged: [],
 							conflicted: [],
@@ -3016,21 +3017,39 @@ describe("RepoView", () => {
 			expect(modeBoundDiffRequests()).toBe(requestsBefore);
 		});
 
+		// Every later staging diff request stays pending, so the test sees what the
+		// pane shows while it waits.
+		function holdStagingDiffRequests(): () => boolean {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			let held = false;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd !== "diff_unstaged") return base(cmd, args);
+				held = true;
+				return new Promise<FileDiff[]>(() => {});
+			});
+			return () => held;
+		}
+
 		it("withholds the old mode's staging hunks after leaving the view", async () => {
 			const { changeContentMode } =
 				await showTrackedFileOverStagingFile("hunk");
 			await changeContentMode("full");
-			const base = mockInvoke.getMockImplementation();
-			if (!base) throw new Error("base invoke implementation missing");
-			let heldRequest = false;
-			mockInvoke.mockImplementation((cmd, args) => {
-				if (cmd !== "diff_unstaged") return base(cmd, args);
-				heldRequest = true;
-				return new Promise<FileDiff[]>(() => {});
-			});
+			const requestHeld = holdStagingDiffRequests();
 
 			await fireEvent.click(screen.getByText("src/edited.ts"));
-			await vi.waitFor(() => expect(heldRequest).toBe(true));
+			await vi.waitFor(() => expect(requestHeld()).toBe(true));
+
+			expect(screen.getByText("Loading diff…")).toBeTruthy();
+			expect(screen.queryByText("let count = 1;")).toBeNull();
+		});
+
+		it("withholds the earlier staging file's hunks while the next one loads", async () => {
+			await showTrackedFileOverStagingFile("hunk");
+			const requestHeld = holdStagingDiffRequests();
+
+			await fireEvent.click(screen.getByText("src/other.ts"));
+			await vi.waitFor(() => expect(requestHeld()).toBe(true));
 
 			expect(screen.getByText("Loading diff…")).toBeTruthy();
 			expect(screen.queryByText("let count = 1;")).toBeNull();
