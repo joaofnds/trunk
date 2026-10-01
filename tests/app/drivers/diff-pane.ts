@@ -54,16 +54,6 @@ export class DiffPaneDriver {
 		button.click();
 	}
 
-	/** Whether the center pane is withholding its previous Source payload while
-	 *  the request for the active target is still pending. */
-	isLoading(): boolean {
-		return [...document.querySelectorAll<HTMLElement>("div")].some(
-			(element) =>
-				element.children.length === 0 &&
-				element.textContent?.trim() === "Loading diff…",
-		);
-	}
-
 	/** Switches the pane from source to rendered markdown. */
 	async showRendered(): Promise<void> {
 		const button = await waitFor("the rendered-markdown toggle", () =>
@@ -91,17 +81,6 @@ export class DiffPaneDriver {
 		await waitFor("the full-file mode to render", () =>
 			document.querySelector<HTMLButtonElement>(SHOW_HUNKS),
 		);
-	}
-
-	/** Switches the pane from full-file mode to hunks, if needed. */
-	async showHunks(): Promise<void> {
-		const button = await waitFor("the hunk mode control", () =>
-			document.querySelector<HTMLButtonElement>(
-				`${SHOW_HUNKS}, ${SHOW_FULL_FILE}`,
-			),
-		);
-
-		if (button.matches(SHOW_HUNKS)) button.click();
 	}
 
 	/** Whether the pane remains in hunk mode. */

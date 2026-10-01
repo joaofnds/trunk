@@ -22,6 +22,7 @@ import { SCHEDULER } from "../lib/scheduler.js";
 import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import type {
 	CommitDetail as CommitDetailType,
+	ContentMode,
 	FileDiff,
 } from "../lib/types.js";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
@@ -87,6 +88,12 @@ function fireRepoChanged(repo: string, paths: string[]): void {
 	const registered = eventHandlers.get("repo-changed") ?? [];
 	if (registered.length === 0) throw new Error("no repo-changed listener");
 	for (const handler of registered) handler({ payload: { repo, paths } });
+}
+
+function fireReviewShowPanel(): void {
+	const registered = eventHandlers.get("review-show-panel") ?? [];
+	if (registered.length === 0) throw new Error("no review-show-panel listener");
+	for (const handler of registered) handler({ payload: undefined });
 }
 
 vi.mock("@tauri-apps/api/window", () => ({
@@ -2814,13 +2821,6 @@ describe("RepoView", () => {
 			await new Promise((r) => setTimeout(r, 0));
 		}
 
-		function fireReviewShowPanel(): void {
-			const registered = eventHandlers.get("review-show-panel") ?? [];
-			if (registered.length === 0)
-				throw new Error("no review-show-panel listener");
-			for (const handler of registered) handler({ payload: undefined });
-		}
-
 		beforeEach(() => {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
@@ -2886,6 +2886,154 @@ describe("RepoView", () => {
 			await flush();
 
 			expect(screen.queryByText("FILE BEHIND THE FINDER")).toBeNull();
+		});
+	});
+
+	// The content mode is one App-owned value, so another tab can change it while
+	// this one shows a current-file view; the view's own toolbar offers no toggle.
+	describe("a current-file view under a content-mode change", () => {
+		const MODE_BOUND_DIFF_COMMANDS = new Set([
+			"diff_unstaged",
+			"diff_staged",
+			"diff_commit_file",
+			"diff_compare_file",
+		]);
+
+		function oneLineFile(
+			path: string,
+			origin: "Add" | "Context",
+			content: string,
+		): FileDiff {
+			return {
+				path,
+				old_path: null,
+				status: "Modified",
+				is_binary: false,
+				hunks: [
+					{
+						header: "@@ -1,1 +1,1 @@",
+						old_start: 1,
+						old_lines: 1,
+						new_start: 1,
+						new_lines: 1,
+						lines: [
+							{
+								origin,
+								content,
+								old_lineno: origin === "Add" ? null : 1,
+								new_lineno: 1,
+								spans: [],
+							},
+						],
+					},
+				],
+			};
+		}
+
+		async function flush() {
+			await new Promise((r) => setTimeout(r, 0));
+		}
+
+		function modeBoundDiffRequests(): number {
+			return mockInvoke.mock.calls.filter(([cmd]) =>
+				MODE_BOUND_DIFF_COMMANDS.has(cmd),
+			).length;
+		}
+
+		beforeEach(() => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				switch (cmd) {
+					case "get_status":
+						return Promise.resolve({
+							unstaged: [
+								{ path: "src/edited.ts", status: "Modified", is_binary: false },
+							],
+							staged: [],
+							conflicted: [],
+						});
+					case "diff_unstaged":
+						return Promise.resolve([
+							oneLineFile("src/edited.ts", "Add", "let count = 1;"),
+						]);
+					case "list_tracked_files":
+						return Promise.resolve([
+							{ path: "src/untouched.ts", changed: false },
+						]);
+					case "open_current_file":
+						return Promise.resolve([
+							oneLineFile("src/untouched.ts", "Context", "const answer = 42;"),
+						]);
+					case "get_active_review":
+						return Promise.resolve("r1");
+					default:
+						return base(cmd, args);
+				}
+			});
+		});
+
+		// Opens the staging file, then the tracked file over it. A rerender re-sends
+		// every prop, and re-sending reviewActive puts the review panel back over the
+		// view, so the view is left showing outside review mode.
+		async function showTrackedFileOverStagingFile(contentMode: ContentMode) {
+			const props = {
+				...baseProps(createMockRemoteState()),
+				reviewActive: true,
+				contentMode,
+				oncontentmodechange: vi.fn(),
+			};
+			const view = render(RepoView, { props });
+			await fireEvent.click(await screen.findByText("src/edited.ts"));
+			expect(await screen.findByText("let count = 1;")).toBeTruthy();
+			fireReviewShowPanel();
+			await flush();
+			await fireEvent.click(await screen.findByText(/Comment on a file/));
+			await flush();
+			await fireEvent.click(await screen.findByRole("option"));
+			await flush();
+			const outsideReview = { ...props, reviewActive: false };
+			await view.rerender(outsideReview);
+			await flush();
+			expect(screen.getByText("const answer = 42;")).toBeTruthy();
+
+			return {
+				changeContentMode: async (mode: ContentMode) => {
+					await view.rerender({ ...outsideReview, contentMode: mode });
+					await flush();
+				},
+			};
+		}
+
+		it("keeps the full-file view without requesting a diff", async () => {
+			const { changeContentMode } =
+				await showTrackedFileOverStagingFile("full");
+			const requestsBefore = modeBoundDiffRequests();
+
+			await changeContentMode("hunk");
+
+			expect(document.querySelector(".full-file")).not.toBeNull();
+			expect(modeBoundDiffRequests()).toBe(requestsBefore);
+		});
+
+		it("withholds the old mode's staging hunks after leaving the view", async () => {
+			const { changeContentMode } =
+				await showTrackedFileOverStagingFile("hunk");
+			await changeContentMode("full");
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			let heldRequest = false;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd !== "diff_unstaged") return base(cmd, args);
+				heldRequest = true;
+				return new Promise<FileDiff[]>(() => {});
+			});
+
+			await fireEvent.click(screen.getByText("src/edited.ts"));
+			await vi.waitFor(() => expect(heldRequest).toBe(true));
+
+			expect(screen.getByText("Loading diff…")).toBeTruthy();
+			expect(screen.queryByText("let count = 1;")).toBeNull();
 		});
 	});
 });

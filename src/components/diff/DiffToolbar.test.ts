@@ -70,6 +70,27 @@ describe("DiffToolbar Source|Rendered toggle", () => {
 	});
 });
 
+describe("DiffToolbar content-mode toggle", () => {
+	it("offers the toggle for a commit diff", () => {
+		render(DiffToolbar, {
+			props: { ...baseProps, selectedPath: "src/main.rs", diffKind: "commit" },
+		});
+		expect(screen.getByTitle("Show full file")).toBeInTheDocument();
+	});
+
+	it("offers no toggle in a current-file view", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "src/main.rs",
+				diffKind: "current_file",
+			},
+		});
+		expect(screen.queryByTitle("Show full file")).toBeNull();
+		expect(screen.queryByTitle("Show hunks")).toBeNull();
+	});
+});
+
 describe("DiffToolbar invisibles toggle", () => {
 	it("disables the button with an explanation in rendered mode", () => {
 		render(DiffToolbar, {

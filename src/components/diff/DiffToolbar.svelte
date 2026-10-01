@@ -151,6 +151,7 @@ const renderedActive = $derived(
     </button>
   {/if}
 
+  {#if diffKind !== "current_file"}
   <button
     class="toggle-btn"
     title={contentMode === "hunk" ? "Show full file" : "Show hunks"}
@@ -162,6 +163,7 @@ const renderedActive = $derived(
       <FoldVertical size={14} />
     {/if}
   </button>
+  {/if}
 
   <button
     class="toggle-btn"
