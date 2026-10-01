@@ -8,20 +8,19 @@
 //! again the moment the content returns — the spec's branch-switch example,
 //! which supersession can never undo.
 //!
-//! Two things this module deliberately does not decide. Whether an oid is a
-//! snapshot at all, because no store table can answer it: `pins::mark_anchored`
-//! writes a `snapshot_pins` row for whatever oid a thread names, real commits
-//! included. The keepalive refs do not share that over-reach: the submit path's
-//! pin repair reads the commit's own author before it writes one. And whether a
-//! snapshot is still current, because that is a question about the repository
-//! as it stands now, not about anything the store recorded. The caller answers
-//! both, and passes in the verdict.
+//! Whether an oid is a snapshot is Trunk's own record, `minted_snapshots`, read
+//! here in the same read as the threads and handed to the caller as each
+//! anchor's `Provenance` (TRUNK-193). Whether a snapshot is still current is
+//! deliberately not decided here, because that is a question about the
+//! repository as it stands now, not about anything the store recorded. The
+//! caller answers it, and passes in the verdict.
 //!
 //! `repo_snapshots` is the wrong yardstick for the second question and reading
 //! it here was a defect: it moves only when a comment is submitted, so it names
 //! the very snapshot the thread anchors to, and no thread would ever read as
 //! superseded.
 
+use super::minted::Provenance;
 use super::{Store, repo_key, sqlite_error};
 use crate::types::ContentPin;
 use rusqlite::Connection;
@@ -61,6 +60,10 @@ pub enum SnapshotStanding {
 /// Recompute `stale` for every thread of `repo_path`, returning how many rows
 /// changed value.
 ///
+/// `standing` receives each anchor oid with its `Provenance`, read in the same
+/// store read as the threads, so the callback never needs the store: calling
+/// back into it from there would deadlock on the store's mutex.
+///
 /// The count is what lets the caller stay quiet: a pass that changed nothing
 /// must not bump the store revision, or every unrelated `.git` write would
 /// refetch every thread in the panel.
@@ -76,7 +79,7 @@ pub enum SnapshotStanding {
 pub fn recompute(
     store: &Store,
     repo_path: &Path,
-    standing: &impl Fn(&str) -> Result<SnapshotStanding, TrunkError>,
+    standing: &impl Fn(&str, Provenance) -> Result<SnapshotStanding, TrunkError>,
     read_file: &impl Fn(&str) -> Option<String>,
 ) -> Result<usize, TrunkError> {
     let generation_clock = generation_clock(store, repo_path);
@@ -132,7 +135,7 @@ fn generation_clock(store: &Store, repo_path: &Path) -> Arc<Mutex<u64>> {
 /// continue while a background refresh is running.
 fn plan(
     rows: Vec<StaleRow>,
-    standing: &impl Fn(&str) -> Result<SnapshotStanding, TrunkError>,
+    standing: &impl Fn(&str, Provenance) -> Result<SnapshotStanding, TrunkError>,
     read_file: &impl Fn(&str) -> Option<String>,
 ) -> Result<Vec<StaleChange>, TrunkError> {
     let mut changes = Vec::new();
@@ -144,7 +147,7 @@ fn plan(
             Some(found) => found.is_none(),
             None => match row.commit_oid.as_deref() {
                 Some(oid) => matches!(
-                    standing(oid)?,
+                    standing(oid, row.provenance)?,
                     SnapshotStanding::Superseded | SnapshotStanding::Collected
                 ),
                 None => false,
@@ -197,6 +200,7 @@ fn apply(conn: &Connection, changes: &[StaleChange]) -> Result<usize, TrunkError
 struct StaleRow {
     id: String,
     commit_oid: Option<String>,
+    provenance: Provenance,
     pin: Option<PinRef>,
     was_stale: bool,
     resolved_start_line: Option<u32>,
@@ -333,7 +337,11 @@ fn rows(conn: &Connection, repo_path: &Path) -> Result<Vec<StaleRow>, TrunkError
     let mut stmt = conn
         .prepare(
             "SELECT id, commit_oid, stale, file_path, pin_block, pin_ordinal,
-                    resolved_start_line
+                    resolved_start_line,
+                    EXISTS(SELECT 1 FROM minted_snapshots
+                           WHERE repo_path = ?1 AND oid = threads.commit_oid),
+                    EXISTS(SELECT 1 FROM legacy_snapshot_candidates
+                           WHERE repo_path = ?1 AND oid = threads.commit_oid)
              FROM threads
              WHERE review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)",
         )
@@ -344,10 +352,18 @@ fn rows(conn: &Connection, repo_path: &Path) -> Result<Vec<StaleRow>, TrunkError
             let block: Option<String> = row.get(4)?;
             let ordinal: Option<i64> = row.get(5)?;
             let resolved: Option<i64> = row.get(6)?;
+            let provenance = if row.get(7)? {
+                Provenance::Minted
+            } else if row.get(8)? {
+                Provenance::Legacy
+            } else {
+                Provenance::Unrecorded
+            };
 
             Ok(StaleRow {
                 id: row.get(0)?,
                 commit_oid: row.get(1)?,
+                provenance,
                 pin: block.zip(file_path).map(|(block, file_path)| PinRef {
                     file_path,
                     block,
@@ -440,13 +456,13 @@ mod tests {
     /// standings mean stale.
     fn standing_where(
         table: &[(&str, SnapshotStanding)],
-    ) -> impl Fn(&str) -> Result<SnapshotStanding, TrunkError> {
+    ) -> impl Fn(&str, Provenance) -> Result<SnapshotStanding, TrunkError> {
         let table: HashMap<String, SnapshotStanding> = table
             .iter()
             .map(|(oid, standing)| ((*oid).to_string(), *standing))
             .collect();
 
-        move |oid: &str| {
+        move |oid: &str, _: Provenance| {
             Ok(table
                 .get(oid)
                 .copied()
@@ -502,7 +518,7 @@ mod tests {
         let first = thread_anchored_to(&store, "FIRST");
         let second = thread_anchored_to(&store, "SECOND");
         let calls = Cell::new(0);
-        let failing_standing = |_: &str| {
+        let failing_standing = |_: &str, _: Provenance| {
             calls.set(calls.get() + 1);
             if calls.get() == 1 {
                 Ok(SnapshotStanding::Superseded)
@@ -534,7 +550,7 @@ mod tests {
         let changed = recompute(
             &store,
             &repo_path(),
-            &|_| {
+            &|_, _| {
                 let connection = store.conn.try_lock().map_err(|_| {
                     TrunkError::new(
                         "store_locked",
@@ -577,7 +593,7 @@ mod tests {
             recompute(
                 &older_store,
                 &repo_path(),
-                &|_| {
+                &|_, _| {
                     older_observed.send(()).unwrap();
                     older_released.recv().unwrap();
                     Ok(SnapshotStanding::Current)
@@ -593,7 +609,7 @@ mod tests {
             recompute(
                 &newer_store,
                 &repo_path(),
-                &|_| {
+                &|_, _| {
                     newer_observed.send(()).unwrap();
                     Ok(SnapshotStanding::Superseded)
                 },

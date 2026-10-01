@@ -214,33 +214,18 @@ fn snapshot_signature() -> Result<git2::Signature<'static>, TrunkError> {
     )?)
 }
 
-/// The author name and address `snapshot` stamps on every snapshot commit, and
-/// what `is_snapshot_commit` reads back.
+/// The author name and address `snapshot` stamps on every snapshot commit. They
+/// identify nothing: any commit can claim them, which is why Trunk keeps its own
+/// mint record (`reviewdb::minted`). Changing them changes every snapshot oid.
 const SNAPSHOT_AUTHOR_NAME: &str = "Trunk";
 const SNAPSHOT_AUTHOR_EMAIL: &str = "review@trunk.local";
 
-/// Whether `oid` names a commit this app minted as a review snapshot.
+/// Whether `commit` carries the author every snapshot carries.
 ///
-/// Read from the commit itself, because neither store table can answer it: the
-/// `snapshot_pins` row for an oid is written for whatever a thread anchors to,
-/// real commits included.
-///
-/// This is a heuristic, not proof. Git lets a commit claim any author, so a
-/// commit in a fetched repository can carry this one. It costs a wrong
-/// `(stale)` marker on a thread about that commit, and a keepalive ref the
-/// submit path's pin repair would otherwise withhold. Neither reaches past what
-/// an ungated caller would have done anyway, since every caller here guards a
-/// write it would otherwise make unconditionally. TRUNK-193 carries the
-/// narrowing.
-///
-/// Takes the resolved commit rather than an oid, so an oid this repository does
-/// not hold cannot be asked this question at all. It used to take an oid and
-/// answer false for a missing one, which a caller treating every non-snapshot
-/// alike read as "a real commit, which never goes stale" — the collected-anchor
-/// defect. The caller must resolve the oid first, and there is no longer a way
-/// to forget.
-#[must_use]
-pub fn is_snapshot_commit(commit: &git2::Commit<'_>) -> bool {
+/// Proof of nothing, since git lets a commit claim any author. It decides only
+/// for an oid a thread or draft named before Trunk recorded what it minted
+/// (`reviewdb::minted::Provenance::Legacy`), where nothing better survives.
+pub(crate) fn carries_snapshot_author(commit: &git2::Commit<'_>) -> bool {
     let author = commit.author();
 
     author.email() == Ok(SNAPSHOT_AUTHOR_EMAIL)
@@ -634,22 +619,22 @@ mod tests {
     }
 
     #[test]
-    fn a_snapshot_commit_is_recognized_as_one() {
+    fn a_snapshot_commit_carries_the_snapshot_author() {
         let (_dir, repo) = repo_with_initial_commit();
         let oid = snapshot_working_tree(&repo).unwrap();
 
-        assert!(is_snapshot_commit(&repo.find_commit(oid).unwrap()));
+        assert!(carries_snapshot_author(&repo.find_commit(oid).unwrap()));
     }
 
     #[test]
-    fn a_users_own_commit_is_not_a_snapshot() {
+    fn a_users_own_commit_does_not_carry_the_snapshot_author() {
         let (_dir, repo) = repo_with_initial_commit();
         let head = repo.head().unwrap().peel_to_commit().unwrap();
 
         assert!(
-            !is_snapshot_commit(&head),
-            "a real commit must never be read as a snapshot, or every comment on one \
-             would go stale the moment the working tree moved",
+            !carries_snapshot_author(&head),
+            "a legacy thread on a real commit must never be read as one on a snapshot, \
+             or it would go stale the moment the working tree moved",
         );
     }
 }

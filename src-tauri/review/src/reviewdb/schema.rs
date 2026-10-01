@@ -8,7 +8,7 @@ use super::sqlite_error;
 use rusqlite::Connection;
 use trunk_git::error::TrunkError;
 
-pub const CURRENT_VERSION: i64 = 8;
+pub const CURRENT_VERSION: i64 = 9;
 
 const V1: &str = r"
 CREATE TABLE reviews (
@@ -222,6 +222,41 @@ CREATE INDEX threads_by_review ON threads(review_id);
 CREATE INDEX threads_by_anchor ON threads(commit_oid, file_path);
 ";
 
+/// Trunk's own record of the snapshots it minted, which is what makes an oid a
+/// snapshot (TRUNK-193).
+///
+/// A commit's author cannot answer that: git lets any commit claim the author a
+/// snapshot carries. `snapshot_pins` cannot either, since a thread on any commit
+/// writes a row there and the sweep deletes rows the pin repair still needs.
+/// `minted_snapshots` is written by the mint path alone and never deleted.
+///
+/// Stores from before this version minted snapshots with no record of them.
+/// `legacy_snapshot_candidates` freezes, once, every oid a thread or draft named
+/// when the store migrated, and nothing writes it again. Only an oid in it is
+/// still judged by the snapshot author, so a commit fetched after the upgrade
+/// can never be taken for a snapshot, while a thread on an old snapshot keeps
+/// its stale marker.
+const V9: &str = r"
+CREATE TABLE minted_snapshots (
+    repo_path TEXT NOT NULL,
+    oid       TEXT NOT NULL,
+    PRIMARY KEY (repo_path, oid)
+);
+
+CREATE TABLE legacy_snapshot_candidates (
+    repo_path TEXT NOT NULL,
+    oid       TEXT NOT NULL,
+    PRIMARY KEY (repo_path, oid)
+);
+
+INSERT INTO legacy_snapshot_candidates (repo_path, oid)
+SELECT r.repo_path, t.commit_oid
+FROM threads t JOIN reviews r ON r.id = t.review_id
+WHERE t.commit_oid IS NOT NULL
+UNION
+SELECT repo_path, commit_oid FROM drafts WHERE commit_oid IS NOT NULL;
+";
+
 /// A dev store may carry `user_version = 8` from an unreleased commit that numbered
 /// an earlier cleanup 8, before this build's own v8 existed.
 ///
@@ -372,6 +407,10 @@ fn apply_pending(conn: &Connection) -> Result<(), TrunkError> {
     }
     if user_version(conn)? < 8 {
         conn.execute_batch(&format!("{V8} PRAGMA user_version = 8;"))
+            .map_err(sqlite_error)?;
+    }
+    if user_version(conn)? < 9 {
+        conn.execute_batch(&format!("{V9} PRAGMA user_version = 9;"))
             .map_err(sqlite_error)?;
     }
 

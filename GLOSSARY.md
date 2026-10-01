@@ -338,7 +338,10 @@ stale at once.
 **Snapshot** — a dangling commit holding the working tree or the index as it stood
 when a comment was left on uncommitted work, so the comment has something to anchor
 to. One per kind per repo, reused while the tree is unchanged, and **superseded**
-when the tree changes and the next comment gesture mints a new one.
+when the tree changes and the next comment gesture mints a new one. A commit is a
+snapshot because Trunk minted it and recorded doing so, never because of what the
+commit says about itself: any commit can claim the author snapshots carry, and one
+that only claims it is a real commit (TRUNK-193).
 
 **Snapshot pin** — the keepalive ref under `refs/trunk/review-snapshots/` that holds
 a snapshot against `git gc`. Without it the snapshot is collected, the comment

@@ -93,6 +93,8 @@ fn the_v8_rebuild_keeps_the_replies_hanging_off_a_thread() {
             "ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
+             DROP TABLE minted_snapshots;
+             DROP TABLE legacy_snapshot_candidates;
              PRAGMA user_version = 7;",
         )
         .unwrap();
@@ -274,7 +276,7 @@ fn a_reply_survives_a_restart() {
     assert_eq!(replies[0].thread_id, thread_id);
 }
 
-/// A frozen snapshot of the v1 `reviews` + `threads` DDL, written directly so
+/// A frozen snapshot of the v1 DDL that later rungs read, written directly so
 /// this test proves the migration is additive against a REAL v1 store rather
 /// than one this build already upgraded on the way in.
 const V1_SNAPSHOT: &str = r"
@@ -312,6 +314,19 @@ CREATE TABLE review_commits (
     oid       TEXT    NOT NULL,
     position  INTEGER NOT NULL,
     PRIMARY KEY (review_id, oid)
+);
+
+CREATE TABLE drafts (
+    repo_path   TEXT PRIMARY KEY,
+    body        TEXT    NOT NULL,
+    anchor_kind TEXT    NOT NULL CHECK (anchor_kind IN ('diff', 'commit', 'none')),
+    commit_oid  TEXT,
+    file_path   TEXT,
+    source      TEXT CHECK (source IS NULL OR source IN ('Diff', 'FullFile')),
+    side        TEXT CHECK (side IS NULL OR side IN ('Old', 'New')),
+    start_line  INTEGER,
+    end_line    INTEGER,
+    updated_at  INTEGER NOT NULL
 );
 
 PRAGMA user_version = 1;
@@ -3700,6 +3715,8 @@ fn a_store_from_the_earlier_v5_is_reconciled() {
              ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
+             DROP TABLE minted_snapshots;
+             DROP TABLE legacy_snapshot_candidates;
              PRAGMA user_version = 5;",
         )
         .unwrap();
@@ -4544,6 +4561,8 @@ fn a_store_from_the_unreleased_v8_is_accepted() {
         let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
         conn.execute_batch(
             "CREATE TABLE pin_seq (repo_path TEXT PRIMARY KEY, next INTEGER NOT NULL);
+             DROP TABLE minted_snapshots;
+             DROP TABLE legacy_snapshot_candidates;
              PRAGMA user_version = 8;",
         )
         .unwrap();
@@ -4608,6 +4627,8 @@ fn a_store_stamped_eight_without_the_pin_columns_is_migrated() {
             "ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
+             DROP TABLE minted_snapshots;
+             DROP TABLE legacy_snapshot_candidates;
              PRAGMA user_version = 8;",
         )
         .unwrap();
@@ -4941,6 +4962,270 @@ fn a_commit_diff_thread_survives_a_staleness_pass() {
         !only_thread(&store, &canonical).stale,
         "an oid this repo never pinned as a snapshot is a real commit, and a commit-diff \
          thread never goes stale however far the working tree moves",
+    );
+}
+
+/// A request for a one-line diff thread on `a.txt` as `oid` holds it.
+fn a_diff_thread_on(oid: &str) -> SubmitThreadRequest {
+    let mut request = submission("about the fetched commit");
+    request.anchor = Some(Anchor {
+        commit_oid: oid.to_string(),
+        file_path: "a.txt".to_string(),
+        source: Source::Diff,
+        side: Side::New,
+        start_line: 1,
+        end_line: 1,
+    });
+
+    request
+}
+
+/// Git lets a commit claim any author, so the author a snapshot carries proves
+/// nothing about who minted it. A comment on a fetched commit is a commit-diff
+/// thread, and a commit-diff thread never goes stale (TRUNK-193).
+#[test]
+fn a_commit_claiming_the_snapshot_author_never_goes_stale() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let impostor = common::snapshots::a_commit_impersonating_a_snapshot(&ctx);
+    submit_thread_into(
+        &store,
+        &canonical,
+        Some(&repo),
+        a_diff_thread_on(&impostor),
+        1_000,
+    )
+    .unwrap();
+
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        !only_thread(&store, &canonical).stale,
+        "a commit Trunk never minted is a real commit whatever author it claims",
+    );
+}
+
+/// The keepalive namespace holds what Trunk minted. A fetched commit claiming
+/// the snapshot author must not get a ref there by being commented on.
+#[test]
+fn commenting_on_a_commit_claiming_the_snapshot_author_pins_nothing() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let impostor = common::snapshots::a_commit_impersonating_a_snapshot(&ctx);
+
+    submit_thread_into(
+        &store,
+        &canonical,
+        Some(&repo),
+        a_diff_thread_on(&impostor),
+        1_000,
+    )
+    .unwrap();
+
+    assert_eq!(
+        pinned_snapshot_oids(&repo).unwrap(),
+        Vec::<git2::Oid>::new(),
+        "a commit Trunk never minted takes no keepalive ref, whatever author it claims",
+    );
+}
+
+/// A ref can land in the keepalive namespace without Trunk minting anything: a
+/// mirror clone or a `+refs/*:refs/*` fetch puts one there, and the sweep adopts
+/// every ref it finds. Adopting a pin must not make its commit a snapshot.
+#[test]
+fn a_keepalive_ref_trunk_never_minted_does_not_make_a_snapshot() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let impostor = common::snapshots::a_commit_impersonating_a_snapshot(&ctx);
+    trunk_review::snapshot::keep_snapshot_ref(&repo, git2::Oid::from_str(&impostor).unwrap())
+        .unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+    submit_thread_inner(&store, &canonical, a_diff_thread_on(&impostor), SWEEP_NOW).unwrap();
+
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        !only_thread(&store, &canonical).stale,
+        "a ref someone else put in the keepalive namespace is not Trunk's mint record",
+    );
+}
+
+/// Wind a store back to what a v8 build left: no mint record at all.
+fn wind_back_to_v8(ctx: &TestContext) {
+    let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+    conn.execute_batch(
+        "DROP TABLE minted_snapshots;
+         DROP TABLE legacy_snapshot_candidates;
+         PRAGMA user_version = 8;",
+    )
+    .unwrap();
+}
+
+/// A v8 build minted snapshots without recording them. A thread on one of
+/// them must keep going stale after the upgrade, or the upgrade would tell its
+/// reader that superseded code is current.
+#[test]
+fn a_thread_on_a_snapshot_minted_before_the_mint_record_still_goes_stale() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let legacy = trunk_review::snapshot::snapshot_working_tree(&repo)
+        .unwrap()
+        .to_string();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(&store, &canonical, a_diff_thread_on(&legacy), 1_000).unwrap();
+    drop(store);
+    wind_back_to_v8(&ctx);
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited again").unwrap();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        only_thread(&store, &canonical).stale,
+        "a thread on a snapshot from before the upgrade still describes superseded code",
+    );
+}
+
+/// A draft outlives a restart, so it can carry a pre-upgrade snapshot into a
+/// thread submitted after the upgrade.
+#[test]
+fn a_draft_on_a_snapshot_minted_before_the_mint_record_goes_stale_once_submitted() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let legacy = trunk_review::snapshot::snapshot_working_tree(&repo)
+        .unwrap()
+        .to_string();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let drafted = a_diff_thread_on(&legacy);
+    save_draft_inner(
+        &store,
+        &canonical,
+        "half typed",
+        drafted.anchor.as_ref(),
+        1_000,
+    )
+    .unwrap();
+    drop(store);
+    wind_back_to_v8(&ctx);
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(&store, &canonical, drafted, 2_000).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited again").unwrap();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        only_thread(&store, &canonical).stale,
+        "a draft written before the upgrade still names a snapshot",
+    );
+}
+
+/// Freezing every anchor a store held at the upgrade freezes real commits too,
+/// and those are most of them. The author still tells them apart.
+#[test]
+fn a_thread_on_a_real_commit_from_before_the_mint_record_never_goes_stale() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .with_file("a.txt", "two")
+        .with_commit("c2")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let parent = repo
+        .head()
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .parent_id(0)
+        .unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(
+        &store,
+        &canonical,
+        a_diff_thread_on(&parent.to_string()),
+        1_000,
+    )
+    .unwrap();
+    drop(store);
+    wind_back_to_v8(&ctx);
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        !only_thread(&store, &canonical).stale,
+        "a commit-diff thread from before the upgrade never goes stale either",
+    );
+}
+
+/// The price of keeping pre-upgrade markers: an oid commented on before the
+/// upgrade is judged by its author, so a fetched commit claiming the snapshot
+/// author still reads as one. Pinned here so the residual stays a decision and
+/// is never rediscovered as a defect. Only a commit commented on before the
+/// upgrade pays it.
+#[test]
+fn a_commit_claiming_the_snapshot_author_commented_on_before_the_mint_record_reads_as_a_snapshot() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let impostor = common::snapshots::a_commit_impersonating_a_snapshot(&ctx);
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(&store, &canonical, a_diff_thread_on(&impostor), 1_000).unwrap();
+    drop(store);
+    wind_back_to_v8(&ctx);
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(only_thread(&store, &canonical).stale);
+}
+
+/// A submit with no repository to hand, as a current-file thread's route and
+/// a failed repo open both make, must not leave the fetched commit any closer
+/// to being read as a snapshot.
+#[test]
+fn a_commit_claiming_the_snapshot_author_submitted_without_a_repo_never_goes_stale() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let impostor = common::snapshots::a_commit_impersonating_a_snapshot(&ctx);
+    submit_thread_into(&store, &canonical, None, a_diff_thread_on(&impostor), 1_000).unwrap();
+
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        !only_thread(&store, &canonical).stale,
+        "a commit Trunk never minted is a real commit, by whatever route it was commented on",
     );
 }
 

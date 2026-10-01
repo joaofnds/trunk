@@ -129,16 +129,19 @@ took rather than losing its comment.
 
 The re-pin covers snapshots only. The store half of a submit cannot tell a
 reclaimed pin from an oid that was never a snapshot, since neither has a
-`snapshot_pins` row and both come back as restored. So the repair resolves the
-oid and asks the commit itself, through `is_snapshot_commit`, before it writes a
+`snapshot_pins` row and both come back as restored. So the repair asks Trunk's
+own mint record, `minted_snapshots`, in the same transaction, before it writes a
 ref. Ungated, the repair pins every commit a thread anchors to, and
 `refs/trunk/review-snapshots/` stops naming snapshots.
 
-That question is answered from the commit's author, which git lets any commit
-claim, so the gate is a heuristic like the window above it, not proof. A fetched
-commit carrying the snapshot author takes a pin it should not have. The error
-only ever costs a surplus ref, never a missing one, so it cannot lose a comment.
-TRUNK-193 holds the narrowing.
+The gate used to read the commit's author, which git lets any commit claim, so a
+fetched commit carrying the snapshot author took a pin it should not have.
+TRUNK-193 replaced it with the mint record, which only the mint path writes:
+not `pins::mark_minted`, because reconciliation calls that for any ref in the
+namespace. A snapshot minted before the record existed is no longer re-pinned by
+a late submit. Handing such a snapshot out again records it, since every mint
+writes the record, so only a submit already in flight across the upgrade, whose
+pin the sweep then reclaims, can still land on a commit gc will collect.
 
 ## What this costs
 

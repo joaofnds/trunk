@@ -17,7 +17,9 @@ use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
 use trunk_review::range::{compute_range_oids, intersect_graph_order, validate_range};
 use trunk_review::resolution::{CommentResolution, resolve_all};
-use trunk_review::reviewdb::{Store, commits, drafts, pins, replies, reviews, snapshots, threads};
+use trunk_review::reviewdb::{
+    Store, commits, drafts, minted, pins, replies, reviews, snapshots, threads,
+};
 use trunk_review::types::SessionCommit;
 
 /// Look the repo up in `RepoState`'s map and canonicalize its `PathBuf`.
@@ -218,11 +220,7 @@ pub fn submit_thread_into(
 
 /// Put back the keepalive ref for a snapshot the sweep reclaimed under an
 /// in-flight submit. Reports rather than propagates: see `submit_thread_into`.
-///
-/// Only a snapshot takes a pin. The store half cannot tell "the sweep reclaimed
-/// my pin" from "this was never a snapshot", because a real commit has no
-/// `snapshot_pins` row either and both arrive here as `Restored`. The commit
-/// itself settles it.
+/// The store half has already checked that Trunk minted the oid.
 fn repin_restored(repo: &git2::Repository, oid: &str, canonical: &Path) {
     let parsed = match git2::Oid::from_str(oid) {
         Ok(parsed) => parsed,
@@ -232,20 +230,13 @@ fn repin_restored(repo: &git2::Repository, oid: &str, canonical: &Path) {
         }
     };
 
-    let commit = match repo.find_commit(parsed) {
-        Ok(commit) => commit,
-        Err(e) => {
-            eprintln!(
-                "re-pin found nothing to pin for {} in {}: {}",
-                oid,
-                canonical.display(),
-                e.message()
-            );
-            return;
-        }
-    };
-
-    if !trunk_review::snapshot::is_snapshot_commit(&commit) {
+    if let Err(e) = repo.find_commit(parsed) {
+        eprintln!(
+            "re-pin found nothing to pin for {} in {}: {}",
+            oid,
+            canonical.display(),
+            e.message()
+        );
         return;
     }
 
@@ -261,6 +252,10 @@ fn repin_restored(repo: &git2::Repository, oid: &str, canonical: &Path) {
 
 /// The store half of a submit. Returns the thread id, and the anchor oid when
 /// it named a snapshot whose pin had already been reclaimed.
+///
+/// `mark_anchored` reports `Restored` for a real commit too, since a real commit
+/// has no `snapshot_pins` row either. Only Trunk's mint record separates the
+/// two, so a commit that merely claims the snapshot author takes no pin.
 fn submit_thread_write(
     store: &Store,
     canonical: &Path,
@@ -290,7 +285,8 @@ fn submit_thread_write(
         // the thread landing and its snapshot being marked as used.
         let restored = match anchor_oid {
             Some(oid)
-                if pins::mark_anchored(tx, canonical, &oid, now)? == pins::Anchored::Restored =>
+                if pins::mark_anchored(tx, canonical, &oid, now)? == pins::Anchored::Restored
+                    && minted::was_minted(tx, canonical, &oid)? =>
             {
                 Some(oid)
             }
@@ -1410,6 +1406,9 @@ pub fn ensure_review_snapshot_inner(
         let oid = oid.to_string();
         snapshots::set(tx, canonical, kind, &oid, now)?;
         pins::mark_minted(tx, canonical, &oid, now)?;
+        // Here and never in `pins::mark_minted`, which `pins::reconcile` also
+        // calls for any ref it finds in the keepalive namespace.
+        minted::record(tx, canonical, &oid)?;
 
         Ok(oid)
     })?;
@@ -1447,15 +1446,14 @@ pub fn recompute_staleness(
     repo_path: &str,
 ) -> Result<usize, TrunkError> {
     use std::cell::RefCell;
+    use trunk_review::reviewdb::minted::Provenance;
     use trunk_review::reviewdb::stale::SnapshotStanding;
-    use trunk_review::snapshot::{
-        in_memory_workdir_tree_oid, is_snapshot_commit, tree_matches_index,
-    };
+    use trunk_review::snapshot::{in_memory_workdir_tree_oid, tree_matches_index};
 
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
     let current_workdir_tree = RefCell::new(None);
 
-    let standing_of = |oid: &str| {
+    let standing_of = |oid: &str, provenance: Provenance| {
         let Ok(parsed) = git2::Oid::from_str(oid) else {
             return Ok(SnapshotStanding::NotASnapshot);
         };
@@ -1464,7 +1462,7 @@ pub fn recompute_staleness(
             return Ok(SnapshotStanding::Collected);
         };
 
-        if !is_snapshot_commit(&commit) {
+        if !provenance.names_a_snapshot(&commit) {
             return Ok(SnapshotStanding::NotASnapshot);
         }
 

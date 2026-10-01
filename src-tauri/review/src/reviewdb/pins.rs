@@ -99,7 +99,7 @@ pub enum Anchored {
     /// No record: either an ordinary commit, which has no pin and needs none,
     /// or a snapshot whose pin the sweep reclaimed while this submit was in
     /// flight. Nothing here can tell them apart. The caller re-pins the second
-    /// case only, separating them by the commit's own author.
+    /// case only, separating them by Trunk's mint record (`minted`).
     Restored,
 }
 

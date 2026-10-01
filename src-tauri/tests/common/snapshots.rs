@@ -27,3 +27,30 @@ pub fn collect_the_object(ctx: &TestContext, oid: &str) {
         "the test needs the object gone, and gc kept {oid}",
     );
 }
+
+/// A commit off HEAD that claims the author every review snapshot carries,
+/// `Trunk <review@trunk.local>` at epoch 0, as a fetched commit can. Trunk never
+/// minted it. Its `a.txt` matches neither the index nor the worktree, the way a
+/// commit fetched from elsewhere would, so a reader that took it for a snapshot
+/// would find it superseded.
+pub fn a_commit_impersonating_a_snapshot(ctx: &TestContext) -> String {
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    let blob = repo.blob(b"what the fetched commit says\n").unwrap();
+    let mut tree = repo.treebuilder(Some(&head.tree().unwrap())).unwrap();
+    tree.insert("a.txt", blob, 0o100_644).unwrap();
+    let tree = repo.find_tree(tree.write().unwrap()).unwrap();
+    let impostor =
+        git2::Signature::new("Trunk", "review@trunk.local", &git2::Time::new(0, 0)).unwrap();
+
+    repo.commit(
+        Some("refs/remotes/origin/impostor"),
+        &impostor,
+        &impostor,
+        "fetched from elsewhere",
+        &tree,
+        &[&head],
+    )
+    .unwrap()
+    .to_string()
+}
