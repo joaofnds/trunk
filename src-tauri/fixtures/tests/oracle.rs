@@ -1,5 +1,6 @@
-//! Every case builds to the fingerprint the shell corpus produced: one test per case,
-//! against the oracle file captured before the port.
+//! Every case builds to its committed fingerprint: one test per case, against the oracle
+//! file captured from the shell corpus before the port, or from the Rust builder for a
+//! case added since.
 
 use trunk_fixtures::fingerprint;
 
