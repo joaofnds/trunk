@@ -2891,7 +2891,7 @@ describe("RepoView", () => {
 
 	// The content mode is one App-owned value, so another tab can change it while
 	// this one shows a current-file view; the view's own toolbar offers no toggle.
-	describe("a current-file view under a content-mode change", () => {
+	describe("a current-file view opened over a staging file", () => {
 		const MODE_BOUND_DIFF_COMMANDS = new Set([
 			"diff_unstaged",
 			"diff_staged",
@@ -3006,7 +3006,7 @@ describe("RepoView", () => {
 			};
 		}
 
-		it("keeps the full-file view without requesting a diff", async () => {
+		it("keeps the full-file view without requesting a diff when the content mode changes", async () => {
 			const { changeContentMode } =
 				await showTrackedFileOverStagingFile("full");
 			const requestsBefore = modeBoundDiffRequests();
