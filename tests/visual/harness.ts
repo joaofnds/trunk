@@ -10,6 +10,7 @@ import {
 	type PluginOption,
 	type ViteDevServer,
 } from "vite";
+import type { TestContext } from "vitest";
 import { HostClient } from "../app/harness/host-client.js";
 import type { Difference } from "./baseline.js";
 import "./page/bindings.js";
@@ -43,14 +44,22 @@ const CHANNEL_TOLERANCE = 24;
 /** Captures that differ this many times running mean the page never settled. */
 const SETTLE_ATTEMPTS = 5;
 
-/** How long a repository may take to draw its first row. It sits inside the
- *  test's timeout so the failure can carry what the host was still owed. */
-const ROWS_DRAWN_MS = 10_000;
+/** The repository each page captures before the tests. It draws every kind of
+ *  row the others do, so its capture runs whatever their first one would. */
+const WARM_UP_REPOSITORY = "kitchen-sink";
+
+/** The warm-up is no test, so nothing abandons its captures, and each of their
+ *  waits ends at Playwright's own timeout. */
+const NEVER_ABANDONED = new AbortController().signal;
 
 /** Pages capturing at once. Each capture mostly waits on its host and its page,
  *  so a few overlap well. vitest runs at most five tests at once, so a sixth
  *  page would never be borrowed (docs/visual-regression.md). */
 const PAGES = pageCount(process.env.TRUNK_VISUAL_PAGES ?? "5");
+
+/** The test a capture is taken for: the signal vitest aborts when it abandons
+ *  the test, and the note that then reaches the test's failure. */
+export type CaptureTest = Pick<TestContext, "signal" | "annotate">;
 
 export interface GraphView {
 	/** Sizes the graph column as a user dragging it would, in CSS pixels. */
@@ -127,6 +136,18 @@ export class VisualHarness {
 		return { browser: browser.value, pages };
 	}
 
+	/** Each page takes its first capture here, and the tests take only later
+	 *  ones, which cost less (docs/visual-regression.md). A capture that fails here
+	 *  is taken again by its repository's own test, which reports the failure. */
+	async warmUp(): Promise<void> {
+		const repository = join(this.repos, WARM_UP_REPOSITORY);
+		await Promise.allSettled(
+			this.idle.map((page) =>
+				page.captureGraph(repository, {}, NEVER_ABANDONED),
+			),
+		);
+	}
+
 	/** Every repository the graph cases built, as `case/repository`, or as the
 	 *  case alone where the case is one repository. */
 	graphRepositories(): string[] {
@@ -135,15 +156,30 @@ export class VisualHarness {
 		).sort();
 	}
 
-	/** Opens `repository` the way a restored tab does and captures the graph column. */
+	/** Opens `repository` the way a restored tab does and captures the graph
+	 *  column. vitest drops whatever a test throws after its timeout, so when it
+	 *  abandons `test`, what the host still owed the page is noted on the test. */
 	async captureGraph(
 		repository: string,
+		test: CaptureTest,
 		view: GraphView = {},
 	): Promise<Buffer> {
 		const page = await this.borrow();
+		const report = () =>
+			void test.annotate(
+				`what the host owed the page when the test was abandoned:\n${page.describeHost()}`,
+				"error",
+			);
+		test.signal.addEventListener("abort", report, { once: true });
+
 		try {
-			return await page.captureGraph(join(this.repos, repository), view);
+			return await page.captureGraph(
+				join(this.repos, repository),
+				view,
+				test.signal,
+			);
 		} finally {
+			test.signal.removeEventListener("abort", report);
 			this.giveBack(page);
 		}
 	}
@@ -210,22 +246,34 @@ class AppPage {
 		return appPage;
 	}
 
-	async captureGraph(path: string, view: GraphView): Promise<Buffer> {
-		await this.retireHost();
-		const host = await this.attachHost();
+	async captureGraph(
+		path: string,
+		view: GraphView,
+		abandoned: AbortSignal,
+	): Promise<Buffer> {
+		await this.retireHost(abandoned);
+		await this.attachHost();
 		await this.openTab(path, view);
 
-		await this.page.goto(this.url);
-		await this.untilRowsDrawn(host);
+		await this.page.goto(this.url, { signal: abandoned });
+		await this.page
+			.locator("[data-testid=commit-row]")
+			.first()
+			.waitFor({ signal: abandoned });
 
 		// The stored column width arrives after the first rows draw. A wheel before
 		// it is clamped to the fitted width's range, which is 0 for an uncapped fit.
 		if (view.pan !== undefined) {
-			await this.settledCapture();
+			await this.settledCapture(abandoned);
 			await this.panGraph(view.pan);
 		}
 
-		return this.settledCapture();
+		return this.settledCapture(abandoned);
+	}
+
+	describeHost(): string {
+		if (this.host === null) return "no host attached";
+		return this.host.describeOutstanding();
 	}
 
 	async close(): Promise<void> {
@@ -236,9 +284,10 @@ class AppPage {
 		await this.page.close();
 	}
 
-	/** A document that asks with no host attached is the warm-up or one being
-	 *  retired, and nothing reads it again. Its question goes unanswered, since a
-	 *  rejection would surface in the run's output as a fault of the capture. */
+	/** A document that asks with no host attached is the one `open` loads to
+	 *  cache the app's modules or one being retired, and nothing reads it again.
+	 *  Its question goes unanswered, since a rejection would surface in the run's
+	 *  output as a fault of the capture. */
 	private async bind(): Promise<void> {
 		await this.page.exposeFunction(
 			"__trunkInvoke",
@@ -267,18 +316,18 @@ class AppPage {
 
 	/** Takes the page off the application before the host goes, so nothing the
 	 *  last capture's document still writes can reach the next capture's host. */
-	private async retireHost(): Promise<void> {
+	private async retireHost(abandoned: AbortSignal): Promise<void> {
 		const retired = this.host;
 		this.host = null;
 
 		try {
-			await this.page.goto("about:blank");
+			await this.page.goto("about:blank", { signal: abandoned });
 		} finally {
 			await retired?.shutdown();
 		}
 	}
 
-	private async attachHost(): Promise<HostClient> {
+	private async attachHost(): Promise<void> {
 		const host = await HostClient.spawn();
 		host.onEvent((event, payload) => {
 			if (this.host !== host) return;
@@ -293,21 +342,6 @@ class AppPage {
 				});
 		});
 		this.host = host;
-		return host;
-	}
-
-	private async untilRowsDrawn(host: HostClient): Promise<void> {
-		try {
-			await this.page
-				.locator("[data-testid=commit-row]")
-				.first()
-				.waitFor({ timeout: ROWS_DRAWN_MS });
-		} catch (error) {
-			throw new Error(
-				`no commit row drew within ${ROWS_DRAWN_MS} ms\n${host.describeOutstanding()}`,
-				{ cause: error },
-			);
-		}
 	}
 
 	/** A sideways wheel over the graph column. The pointer then rests in the
@@ -345,11 +379,13 @@ class AppPage {
 	 * arrives by a round trip after the first rails draw, so the first capture
 	 * can precede it, which is also why the column is measured on every attempt.
 	 */
-	private async settledCapture(): Promise<Buffer> {
+	private async settledCapture(abandoned: AbortSignal): Promise<Buffer> {
 		let previous: Buffer | null = null;
 
 		for (let attempt = 0; attempt < SETTLE_ATTEMPTS; attempt++) {
-			await this.page.waitForFunction(() => window.__trunkPending === 0);
+			await this.page.waitForFunction(() => window.__trunkPending === 0, null, {
+				signal: abandoned,
+			});
 			await this.page.evaluate(
 				() =>
 					new Promise((painted) =>
@@ -359,6 +395,7 @@ class AppPage {
 			const capture = await this.page.screenshot({
 				clip: await this.page.evaluate(graphColumn),
 				animations: "disabled",
+				signal: abandoned,
 			});
 			if (previous?.equals(capture)) return capture;
 			previous = capture;

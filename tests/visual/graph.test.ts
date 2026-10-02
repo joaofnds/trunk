@@ -67,6 +67,7 @@ describe.concurrent("commit graph", () => {
 	beforeAll(async () => {
 		clearDifferences();
 		harness = await VisualHarness.setup();
+		await harness.warmUp();
 	});
 
 	afterAll(async () => {
@@ -85,19 +86,20 @@ describe.concurrent("commit graph", () => {
 		expect(harness.graphRepositories()).toEqual(GRAPH_REPOSITORIES);
 	});
 
-	test.each(GRAPH_REPOSITORIES)(
+	test.for(GRAPH_REPOSITORIES)(
 		"draws %s as its baseline shows",
-		async (repository) => {
-			const capture = await harness.captureGraph(repository);
+		async (repository, context) => {
+			const capture = await harness.captureGraph(repository, context);
 
 			await expectBaseline(repository.replace("/", "__"), capture);
 		},
 	);
 
 	describe("when the graph column is narrower than its lanes", () => {
-		test("draws the overflowing rails as the baseline shows", async () => {
+		test("draws the overflowing rails as the baseline shows", async (context) => {
 			const capture = await harness.captureGraph(
 				"graph-merges/09-column-saturation",
+				context,
 				{
 					graphColumnWidth: OVERFLOWING_GRAPH_COLUMN,
 				},
@@ -109,9 +111,10 @@ describe.concurrent("commit graph", () => {
 			);
 		});
 
-		test("draws the rails of a column panned partway as the baseline shows", async () => {
+		test("draws the rails of a column panned partway as the baseline shows", async (context) => {
 			const capture = await harness.captureGraph(
 				"graph-merges/09-column-saturation",
+				context,
 				{
 					graphColumnWidth: OVERFLOWING_GRAPH_COLUMN,
 					pan: PANNED_PARTWAY,

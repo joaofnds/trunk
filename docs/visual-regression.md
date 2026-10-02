@@ -59,8 +59,25 @@ In CI the same directory is uploaded as the `visual-differences` artifact.
 Look at the difference image first. If the change is not intended, it is a defect: fix the
 code, not the baseline.
 
-A repository whose first row does not draw within 10 seconds fails with the commands the
-host still owed the page, rather than at vitest's timeout.
+A capture sets no deadline of its own, because how long a runner takes to draw says nothing
+about what it draws (TRUNK-304). Each of its waits ends when the page shows what it waits for,
+or when vitest abandons the test at its 20-second timeout, which stays as the guard against a
+page that never draws. That failure carries a note listing the commands the host still owed
+the page. A runner that takes over 20 s on one capture still fails. The slowest test capture
+recorded on a runner, not counting a page's first, took 8.4 s.
+
+Before any test runs, each page captures `kitchen-sink` once and discards it, because a page's
+first capture costs more than its later ones and the five pages take their first at once. In
+the `Visual Baselines` job, the first five captures took 6.8 to 7.7 s against a median of 2.4 s
+for the later ones (run 36877062639), 8.8 to 9.3 s against 2.5 s (36935676980, second
+attempt), 9.8 to 11.0 s against 2.4 s (36937152860), and 11.9 to 13.2 s against 3.7 s
+(36935676980, first attempt). On this Mac the first capture costs about 0.1 s more than a later
+one, so what the runners' first capture pays for is not known, nor whether it is paid once per
+page or once per run. The warm-up pays it either way.
+
+Setup, warm-up included, must finish inside vitest's 60-second hook timeout, and each of the
+warm-up's waits ends at Playwright's 30-second default. A warm-up capture that fails is
+ignored, and that repository's own test takes it again and reports the failure.
 
 ## Accepting a change
 
@@ -112,6 +129,10 @@ retiring the last host, spawning a new one and writing the prefs 25 to 40 ms, lo
 since the second must match the first. Before the first capture, Vite starts in about 130 ms
 and WebKit in about 270 ms, the fixture build takes about 800 ms, and the pages finish loading
 the app about 1.2 s in. Teardown takes about 160 ms.
+
+The warm-up capture each page takes before the tests adds about half a second. On 2026-10-02,
+three runs of vitest alone alternating with and without it took 7.24, 6.97 and 6.96 s with it
+against 6.47, 6.55 and 6.73 s without, at load averages of 1.4 to 6.3.
 
 Every speed alternative measured on 2026-09-26, with two cases and 29 tests, vitest alone,
 each row adding to the one above unless it says otherwise. Rows sharing a round were run in

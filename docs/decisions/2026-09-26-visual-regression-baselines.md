@@ -77,8 +77,9 @@ Capturing the pills is proposed in TRUNK-290.
   dates the app draws are in the date column, outside the capture, so the pin guards against
   a date reaching the graph column rather than against any variance seen today.
 - Readiness is observed, never waited on: a commit row exists, no command is in flight, two
-  frames have painted, and two consecutive screenshots are identical. A row that has not drawn
-  within 10 seconds fails the capture with the commands the host still owed. Readiness does not
+  frames have painted, and two consecutive screenshots are identical. A row that never draws
+  fails at vitest's test timeout, with a note on the commands the host still owed the page, and
+  each page takes its costlier first capture during setup (TRUNK-304). Readiness does not
   wait on the graph's paths, so a change that stops them drawing fails as a difference with an
   image, not as a timeout. Events the host sends are not counted as in flight, so an event that
   lands after two identical captures would be missed. None was seen.
