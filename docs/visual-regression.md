@@ -73,16 +73,17 @@ for the later ones (run 36877062639), 8.8 to 9.3 s against 2.5 s (36935676980, s
 attempt), 9.8 to 11.0 s against 2.4 s (36937152860), and 11.9 to 13.2 s against 3.7 s
 (36935676980, first attempt). On this Mac the first capture costs about 0.1 s more than a later
 one, so what the runners' first capture pays for is not known, nor whether it is paid once per
-page or once per run. On the first run with the warm-up, 36995691692, the first five tests
-still took 2.5 to 3.6 s against a median of 1.2 s, so the warm-up does not pay all of that
-cost. How much of it the warm-up pays is not known, because that runner was faster than the
-four above. On a fast runner before the warm-up, 36874399859, the first five took 1.3 s
-against 0.8 s.
+page or once per run. With the warm-up, the first five tests took 2.5 to 3.6 s against a
+median of 1.2 s (36995691692), and 2.5 to 2.9 s against 2.3 s on a runner as slow as the four
+above (36998434686). One run still paid about twice the median on its first five and the
+other little more than the median, so how much of that cost the warm-up pays is not settled.
+On a fast runner before the warm-up, 36874399859, the first five took 1.3 s against 0.8 s.
 
 Setup, warm-up included, must finish inside vitest's 60-second hook timeout, and each of the
 warm-up's waits ends at Playwright's 30-second default. Setup and teardown together took 17 to
-22 s on the slower runners above whose logs could be read, and 6 s on the fast one, reckoned as
-the run's duration less the time its tests took five at a time. A warm-up capture that fails is
+22 s on the slower runners above whose logs could be read and 6 s on the fast one before the
+warm-up, and 20 s and 31 s on the two runs with it, reckoned as the run's duration less the
+time its tests took five at a time. A warm-up capture that fails is
 ignored, and that repository's own test takes it again and reports the failure.
 
 ## Accepting a change
