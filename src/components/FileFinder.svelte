@@ -29,6 +29,11 @@ let {
 
 let query = $state("");
 let selectedIndex = $state(0);
+let dialogEl: HTMLDialogElement | undefined = $state();
+
+$effect(() => {
+	if (dialogEl && !dialogEl.open) dialogEl.showModal();
+});
 
 const matches = $derived(rankFiles(files, query));
 
@@ -72,27 +77,20 @@ function rowLabel(file: TrackedFile): string {
 }
 </script>
 
-<div
-	class="fixed inset-0 flex flex-col items-center"
-	style="z-index: 9999; background: var(--color-backdrop);"
+<!-- The dialog element fills the viewport as a transparent layer so the
+     palette can sit a little above centre, where the eye already is. The
+     spacer takes that share of the free height so the box needs no offset of
+     its own, which is what keeps this a flex layout rather than a padding
+     hack. The UA's fit-content size and margins would centre the box instead. -->
+<dialog
+	bind:this={dialogEl}
+	class="fixed inset-0 flex flex-col items-center backdrop:bg-backdrop"
+	style="width: auto; height: auto; max-width: none; max-height: none; margin: 0; padding: 0; border: none; background: transparent;"
+	aria-label="Comment on a file"
+	oncancel={onclose}
 >
-	<!-- The palette sits a little above centre, where the eye already is. The
-       spacer takes that share of the free height so the box needs no offset of
-       its own, which is what keeps this a flex layout rather than a padding
-       hack. -->
 	<div style="flex: 1 1 0;" aria-hidden="true"></div>
-	<button
-		type="button"
-		class="fixed inset-0"
-		aria-label="Close the file finder"
-		tabindex="-1"
-		onclick={onclose}
-		style="background: transparent; border: none; cursor: default;"
-	></button>
 	<div
-		role="dialog"
-		aria-modal="true"
-		aria-label="Comment on a file"
 		class="flex flex-col rounded"
 		style="
       background: var(--color-surface-raised);
@@ -127,22 +125,21 @@ function rowLabel(file: TrackedFile): string {
       "
 		>
 
-		<ul
+		<div
 			id="file-finder-list"
 			role="listbox"
 			aria-label="Tracked files"
-			style="flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 0; list-style: none;"
+			style="flex: 1; min-height: 0; overflow-y: auto;"
 		>
 			{#each matches as file, i (file.path)}
-				<li role="presentation">
-					<button
-						type="button"
-						role="option"
-						aria-selected={i === selectedIndex}
-						aria-label={rowLabel(file)}
-						class="flex items-center w-full"
-						onclick={() => onselect(file.path)}
-						style="
+				<button
+					type="button"
+					role="option"
+					aria-selected={i === selectedIndex}
+					aria-label={rowLabel(file)}
+					class="flex items-center w-full"
+					onclick={() => onselect(file.path)}
+					style="
               gap: var(--space-2);
               padding: var(--space-2) var(--space-3);
               font-size: var(--text-callout);
@@ -152,34 +149,32 @@ function rowLabel(file: TrackedFile): string {
               color: var(--color-text);
               background: {i === selectedIndex ? 'var(--color-selected-row)' : 'transparent'};
             "
-					>
-						{#if file.changed}
-							<span
-								aria-hidden="true"
-								style="
+				>
+					{#if file.changed}
+						<span
+							aria-hidden="true"
+							style="
                 width: 6px;
                 height: 6px;
                 border-radius: 50%;
                 flex-shrink: 0;
                 background: var(--color-accent);
               "
-							></span>
-						{:else}
-							<span
-								aria-hidden="true"
-								style="width: 6px; flex-shrink: 0;"
-							></span>
-						{/if}
+						></span>
+					{:else}
+						<span aria-hidden="true" style="width: 6px; flex-shrink: 0;"></span>
+					{/if}
+					<span
+						style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+					>
+						{file.path}
+					</span>
+					{#if (commentCounts.get(file.path) ?? 0) > 0}
 						<span
-							style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
-						>
-							{file.path}
-						</span>
-						{#if (commentCounts.get(file.path) ?? 0) > 0}
-							<span
-								class="finder-comment-count"
-								aria-label="{commentCounts.get(file.path)} review comments"
-								style="
+							class="finder-comment-count"
+							role="img"
+							aria-label="{commentCounts.get(file.path)} review comments"
+							style="
                   margin-left: auto;
                   flex-shrink: 0;
                   padding: 0 var(--space-1);
@@ -188,22 +183,21 @@ function rowLabel(file: TrackedFile): string {
                   color: var(--color-on-accent);
                   font-size: var(--text-small);
                 "
-								>{commentCounts.get(file.path)}</span
-							>
-						{/if}
-					</button>
-				</li>
+							>{commentCounts.get(file.path)}</span
+						>
+					{/if}
+				</button>
 			{/each}
 
 			{#if matches.length === 0}
-				<li
+				<div
 					role="presentation"
 					style="padding: var(--space-3); font-size: var(--text-callout); color: var(--color-text-muted);"
 				>
 					No tracked file matches
-				</li>
+				</div>
 			{/if}
-		</ul>
+		</div>
 	</div>
 	<div style="flex: 3 1 0;" aria-hidden="true"></div>
-</div>
+</dialog>

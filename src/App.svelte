@@ -798,6 +798,7 @@ $effect(() => {
 						{/key}
 					{:else}
 						<div
+							role="status"
 							aria-label="Loading repository"
 							style="flex: 1; display: flex; align-items: center; justify-content: center; color: var(--color-text-subtle); font-size: var(--text-body);"
 						>

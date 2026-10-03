@@ -17,6 +17,7 @@ let { count, tone = "open" }: Props = $props();
 	{@const effectiveTone = tone ?? "open"}
 	<span
 		class="comment-badge tone-{effectiveTone}"
+		role="img"
 		aria-label="{count} review {count === 1 ? 'comment' : 'comments'}"
 		>{count}</span
 	>

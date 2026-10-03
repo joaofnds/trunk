@@ -3,6 +3,13 @@ import { describe, expect, it } from "vitest";
 import CommentBadge from "./CommentBadge.svelte";
 
 describe("CommentBadge", () => {
+	it("is an image named by its count for assistive tech", () => {
+		render(CommentBadge, { props: { count: 3 } });
+		expect(
+			screen.getByRole("img", { name: "3 review comments" }),
+		).toBeInTheDocument();
+	});
+
 	it("renders the count when positive", () => {
 		render(CommentBadge, { props: { count: 3 } });
 		expect(screen.getByText("3")).toBeInTheDocument();

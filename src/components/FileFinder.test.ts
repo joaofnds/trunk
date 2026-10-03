@@ -31,6 +31,30 @@ function rowPaths(): string[] {
 }
 
 describe("FileFinder", () => {
+	it("opens as a modal named for assistive tech", () => {
+		open();
+
+		expect(
+			screen.getByRole("dialog", { name: "Comment on a file" }),
+		).toHaveAttribute("open");
+	});
+
+	it("closes when the dialog is cancelled", async () => {
+		const { onclose } = open();
+
+		await fireEvent(screen.getByRole("dialog"), new Event("cancel"));
+
+		expect(onclose).toHaveBeenCalled();
+	});
+
+	it("names the comment count as an image for assistive tech", () => {
+		open({ commentCounts: new Map([["src/alpha.ts", 2]]) });
+
+		expect(
+			screen.getByRole("img", { name: "2 review comments" }),
+		).toBeInTheDocument();
+	});
+
 	it("shows how many comments an unchanged file already carries", () => {
 		open({
 			commentCounts: new Map([["src/alpha.ts", 2]]),
