@@ -63,8 +63,33 @@ describe("Button", () => {
 		});
 
 		const button = screen.getByRole("button", { name: "Undo" });
-		expect(button).toHaveClass("size-control");
+		expect(button).toHaveClass("w-control");
 		expect(button).not.toHaveClass("px-3");
+	});
+
+	it("anchors a badge a caller places inside it", () => {
+		render(Button, { props: { children: label } });
+
+		expect(screen.getByRole("button")).toHaveClass("relative");
+	});
+
+	describe("when joined into a group", () => {
+		it("leaves the frame and the height to the group", () => {
+			render(Button, { props: { joined: true, children: label } });
+
+			const button = screen.getByRole("button");
+			expect(button).toHaveClass("rounded-none");
+			expect(button).not.toHaveClass("rounded", "border", "h-control");
+		});
+
+		it("rounds only the corners at the group's ends", () => {
+			render(Button, { props: { joined: true, children: label } });
+
+			expect(screen.getByRole("button")).toHaveClass(
+				"first:rounded-l",
+				"last:rounded-r",
+			);
+		});
 	});
 
 	it("reports a click to its caller", async () => {

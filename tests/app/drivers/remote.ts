@@ -2,7 +2,7 @@ import { waitFor } from "../harness/wait.js";
 import { firstMatching } from "./dom.js";
 
 const PUSH = '[aria-label="Push"]';
-const PULL_OPTIONS = '[title="Pull options"]';
+const PULL_OPTIONS = '[aria-label="Pull options"]';
 const PULL_REBASE = "Pull (rebase)";
 const RECOVERY_SURFACE = ".recovery-surface";
 const RECOVERY_TEXT = ".recovery-text";

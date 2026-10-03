@@ -22,25 +22,42 @@ beforeEach(() => {
 });
 
 describe("PullDropdown", () => {
-	function renderDropdown(disabled = false) {
+	function renderDropdown(disabled = false, onpull = () => {}) {
 		return render(PullDropdown, {
 			props: {
 				repoPath: "/repo",
 				disabled,
 				remoteState: createRemoteState(),
+				onpull,
 			},
 		});
 	}
 
-	it("renders pull/fetch button", () => {
+	it("renders the pull button beside its options", () => {
 		renderDropdown();
-		const button = screen.getByTitle("Pull options");
-		expect(button).toBeInTheDocument();
+
+		expect(screen.getByRole("group")).toContainElement(
+			screen.getByRole("button", { name: "Pull" }),
+		);
+		expect(screen.getByRole("group")).toContainElement(
+			screen.getByRole("button", { name: "Pull options" }),
+		);
+	});
+
+	it("runs the pull action from its main button", async () => {
+		let pulls = 0;
+		renderDropdown(false, () => {
+			pulls += 1;
+		});
+
+		await fireEvent.click(screen.getByRole("button", { name: "Pull" }));
+
+		expect(pulls).toBe(1);
 	});
 
 	it("shows dropdown options when clicked", async () => {
 		renderDropdown();
-		const button = screen.getByTitle("Pull options");
+		const button = screen.getByRole("button", { name: "Pull options" });
 		await fireEvent.click(button);
 		expect(screen.getByText("Fetch")).toBeInTheDocument();
 		expect(screen.getByText("Fast-forward if possible")).toBeInTheDocument();
@@ -50,7 +67,7 @@ describe("PullDropdown", () => {
 
 	it("closes dropdown on second click", async () => {
 		renderDropdown();
-		const button = screen.getByTitle("Pull options");
+		const button = screen.getByRole("button", { name: "Pull options" });
 		await fireEvent.click(button);
 		expect(screen.getByText("Fetch")).toBeInTheDocument();
 		await fireEvent.click(button);
@@ -59,7 +76,7 @@ describe("PullDropdown", () => {
 
 	it("does not open when disabled", async () => {
 		renderDropdown(true);
-		const button = screen.getByTitle("Pull options");
+		const button = screen.getByRole("button", { name: "Pull options" });
 		await fireEvent.click(button);
 		expect(screen.queryByText("Fetch")).toBeNull();
 	});
@@ -73,9 +90,16 @@ describe("PullDropdown", () => {
 			const remoteState = createRemoteState();
 
 			render(PullDropdown, {
-				props: { repoPath: "/repo", disabled: false, remoteState },
+				props: {
+					repoPath: "/repo",
+					disabled: false,
+					remoteState,
+					onpull: () => {},
+				},
 			});
-			await fireEvent.click(screen.getByTitle("Pull options"));
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Pull options" }),
+			);
 			await fireEvent.click(screen.getByText("Fetch"));
 
 			await waitFor(() =>

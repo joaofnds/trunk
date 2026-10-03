@@ -1,15 +1,20 @@
 <script lang="ts">
+import ArrowDown from "@lucide/svelte/icons/arrow-down";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
+import Button from "../lib/ui/Button.svelte";
+import ButtonGroup from "../lib/ui/ButtonGroup.svelte";
 
 interface Props {
 	repoPath: string;
 	disabled: boolean;
 	remoteState: RemoteState;
+	/** The plain pull, run from the main button; the menu holds the other strategies. */
+	onpull: () => void;
 }
 
-let { repoPath, disabled, remoteState }: Props = $props();
+let { repoPath, disabled, remoteState, onpull }: Props = $props();
 let open = $state(false);
 
 interface PullOption {
@@ -81,38 +86,6 @@ $effect(() => {
 	display: inline-flex;
 }
 
-.chevron-btn {
-	background: none;
-	border: none;
-	/* Paint, not length: a border here would take a pixel out of the declared
-       width, the same way it did out of the group's height. */
-	box-shadow: inset 1px 0 0 var(--color-border);
-	border-radius: 0 var(--radius) var(--radius) 0;
-	color: var(--color-text-muted);
-	cursor: pointer;
-	font-size: var(--text-caption);
-	/* Narrower than the button it hangs off: this is that button's dropdown,
-       not a peer of it. Declared rather than derived from padding. */
-	width: var(--control-sm-h);
-	padding: 0;
-	height: 100%;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-.chevron-btn:focus-visible {
-	outline: 2px solid var(--color-accent);
-	outline-offset: 1px;
-}
-.chevron-btn:hover:not(:disabled) {
-	background: var(--color-hover);
-	color: var(--color-text);
-}
-.chevron-btn:disabled {
-	opacity: 0.45;
-	cursor: default;
-}
-
 .dropdown-panel {
 	position: absolute;
 	top: 100%;
@@ -145,9 +118,33 @@ $effect(() => {
 </style>
 
 <div class="pull-dropdown">
-	<button class="chevron-btn" onclick={toggle} {disabled} title="Pull options">
-		<ChevronDown size={12} />
-	</button>
+	<ButtonGroup>
+		<Button
+			icon
+			joined
+			{disabled}
+			onclick={onpull}
+			aria-label="Pull"
+			tooltip="Pull"
+		>
+			<ArrowDown size={14} />
+		</Button>
+		<!-- Narrower than the button it hangs off: this is that button's menu,
+		     not a peer of it. -->
+		<Button
+			icon
+			joined
+			size="sm"
+			variant="ghost"
+			{disabled}
+			onclick={toggle}
+			aria-label="Pull options"
+			aria-expanded={open}
+			tooltip="Pull options"
+		>
+			<ChevronDown size={12} />
+		</Button>
+	</ButtonGroup>
 
 	{#if open}
 		<div class="dropdown-panel">

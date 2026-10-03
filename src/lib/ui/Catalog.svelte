@@ -23,7 +23,9 @@ const SIZES: ButtonSize[] = ["sm", "md", "lg"];
 
 <script lang="ts">
 import Check from "@lucide/svelte/icons/check";
+import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import Button from "./Button.svelte";
+import ButtonGroup from "./ButtonGroup.svelte";
 </script>
 
 <!--
@@ -150,5 +152,27 @@ import Button from "./Button.svelte";
 				</li>
 			{/each}
 		</ul>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>ButtonGroup</h2
+		>
+		<div class="flex items-center gap-4">
+			<ButtonGroup>
+				<Button joined><span data-catalog-text>Pull</span></Button>
+				<Button joined icon size="sm" variant="ghost" aria-label="Pull options"
+					><ChevronDown size={12} /></Button
+				>
+			</ButtonGroup>
+			<ButtonGroup tone="accent">
+				<Button joined variant="ghost"
+					><span data-catalog-text>All threads</span></Button
+				>
+				<Button joined icon aria-pressed="true" aria-label="Hide review threads"
+					><Check size={14} /></Button
+				>
+			</ButtonGroup>
+		</div>
 	</section>
 </div>

@@ -79,32 +79,6 @@ function deferred<T>() {
 	return { promise, resolve };
 }
 
-function injectedStyleRule(
-	selectorIncludes: string[],
-	selectorExcludes: string[] = [],
-): CSSStyleRule {
-	for (const sheet of Array.from(document.styleSheets)) {
-		for (const rule of Array.from(sheet.cssRules)) {
-			if (
-				rule instanceof CSSStyleRule &&
-				rule.selectorText
-					.split(",")
-					.some(
-						(selector) =>
-							selectorIncludes.every((part) => selector.includes(part)) &&
-							selectorExcludes.every((part) => !selector.includes(part)),
-					)
-			) {
-				return rule;
-			}
-		}
-	}
-
-	throw new Error(
-		`no style rule found including ${selectorIncludes.join(", ")}`,
-	);
-}
-
 describe("Toolbar", () => {
 	it("renders Pull button", () => {
 		render(Toolbar, {
@@ -389,7 +363,6 @@ describe("Toolbar", () => {
 			},
 		});
 		const btn = screen.getByRole("button", { name: /Review/ });
-		expect(btn).toHaveClass("toolbar-btn-active");
 		expect(btn).toHaveAttribute("aria-pressed", "true");
 	});
 
@@ -404,7 +377,6 @@ describe("Toolbar", () => {
 			},
 		});
 		const btn = screen.getByRole("button", { name: /Review/ });
-		expect(btn).not.toHaveClass("toolbar-btn-active");
 		expect(btn).toHaveAttribute("aria-pressed", "false");
 	});
 
@@ -607,12 +579,9 @@ describe("Toolbar", () => {
 		});
 
 		expect(threadsButton.parentElement).toContainElement(select);
-		expect(threadsButton.parentElement).toHaveClass(
-			"review-filter-control-active",
-		);
 	});
 
-	it("styles the active review filter as the soft sleeve", () => {
+	it("paints the active filter and toggle as one accent sleeve", () => {
 		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
@@ -621,44 +590,33 @@ describe("Toolbar", () => {
 				reviewActive: false,
 			},
 		});
-		const select = screen.getByRole("combobox", {
-			name: "Review filter selection",
-		});
 		const threadsButton = screen.getByRole("button", {
 			name: "Hide review threads",
 		});
-		const control = threadsButton.parentElement as HTMLElement;
 
-		expect(getComputedStyle(control).flexDirection).toBe("row");
-
-		const sleeve = injectedStyleRule(
-			[".review-filter-control-active"],
-			[".review-filter-select", ".toolbar-btn"],
-		).cssText;
-		expect(sleeve).toContain("background: var(--color-accent-bg)");
-		expect(sleeve).toContain(
-			"box-shadow: inset 0 0 0 1px var(--color-accent-border)",
+		expect(threadsButton.parentElement).toHaveClass(
+			"bg-accent-bg",
+			"ring-accent-border",
 		);
+		expect(threadsButton).toHaveAttribute("aria-pressed", "true");
+	});
 
-		const selectSegment = injectedStyleRule([
-			".review-filter-control-active",
-			".review-filter-select",
-			"select",
-		]).cssText;
-		expect(selectSegment).toContain(
-			"border-radius: var(--radius) 0 0 var(--radius)",
-		);
-		expect(selectSegment).toContain("background: transparent");
+	it("frames the toggle alone, in neutral, when review threads are hidden", () => {
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+				reviewFilter: "none",
+			},
+		});
+		const threadsButton = screen.getByRole("button", {
+			name: "Show review threads",
+		});
 
-		const toggleSegment = injectedStyleRule(
-			[".review-filter-control-active", ".toolbar-btn"],
-			[":hover"],
-		).cssText;
-		expect(toggleSegment).toContain(
-			"border-radius: 0 var(--radius) var(--radius) 0",
-		);
-		expect(toggleSegment).toContain("background: var(--color-accent)");
-		expect(control).toContainElement(select);
+		expect(threadsButton.parentElement).toHaveClass("ring-border");
+		expect(threadsButton.parentElement).not.toHaveClass("bg-accent-bg");
 	});
 
 	it("hides the filter selector when review threads are hidden", () => {
