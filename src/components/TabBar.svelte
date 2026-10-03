@@ -4,6 +4,7 @@ import X from "@lucide/svelte/icons/x";
 import Sortable from "sortablejs";
 import { displayPath } from "../lib/path.js";
 import type { TabInfo } from "../lib/tab-types.js";
+import Button from "../lib/ui/Button.svelte";
 
 interface Props {
 	tabs: TabInfo[];
@@ -57,8 +58,7 @@ $effect(() => {
 		ghostClass: "tab-ghost",
 		chosenClass: "tab-chosen",
 		dragClass: "tab-drag",
-		filter: ".new-tab-btn",
-		preventOnFilter: false,
+		draggable: ".tab-item",
 		scroll: true,
 		scrollSensitivity: 50,
 		onEnd: (e) => {
@@ -96,18 +96,24 @@ $effect(() => {
 			<span class="truncate" style="max-width: 200px; flex: 1;"
 				>{tab.repoName || 'New Tab'}</span
 			>
-			<button
-				class="close-btn"
-				onclick={(e: MouseEvent) => { e.stopPropagation(); onclose(tab.id, e.shiftKey); }}
+			<Button
+				icon
+				size="sm"
+				variant="ghost"
 				aria-label="Close tab"
+				onclick={(e: MouseEvent) => { e.stopPropagation(); onclose(tab.id, e.shiftKey); }}
 			>
 				<X size={12} />
-			</button>
+			</Button>
 		</div>
 	{/each}
-	<button class="new-tab-btn" onclick={onnew} aria-label="New tab">
-		<Plus size={14} />
-	</button>
+	<span
+		class="ml-1 inline-flex shrink-0 rounded outline-1 outline-dashed -outline-offset-1 outline-border"
+	>
+		<Button icon variant="ghost" aria-label="New tab" onclick={onnew}>
+			<Plus size={14} />
+		</Button>
+	</span>
 </div>
 
 <style>
@@ -162,58 +168,6 @@ $effect(() => {
 	border-radius: 50%;
 	background: var(--color-accent);
 	flex-shrink: 0;
-}
-
-.close-btn {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 16px;
-	height: 16px;
-	border-radius: var(--radius);
-	border: none;
-	background: none;
-	color: var(--color-text-muted);
-	cursor: pointer;
-	padding: 0;
-	flex-shrink: 0;
-	transition:
-		background-color 0.15s,
-		color 0.15s;
-}
-
-.close-btn:hover {
-	background: var(--color-surface-chip);
-	color: var(--color-text);
-}
-
-.new-tab-btn {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: var(--control-h);
-	height: var(--control-h);
-	border-radius: var(--radius);
-	/* Dashed, because this is an add affordance rather than a real tab, and
-       a box-shadow cannot render a dash pattern. An outline is paint like an
-       inset shadow — it sits outside the box and costs the declared size
-       nothing, which is why the border this replaced had to go. */
-	outline: 1px dashed var(--color-border);
-	outline-offset: -1px;
-	background: none;
-	color: var(--color-text-muted);
-	cursor: pointer;
-	padding: 0;
-	flex-shrink: 0;
-	margin-left: var(--space-1);
-	transition:
-		background-color 0.15s,
-		color 0.15s;
-}
-
-.new-tab-btn:hover {
-	background: var(--color-hover);
-	color: var(--color-text);
 }
 
 :global(.tab-ghost) {

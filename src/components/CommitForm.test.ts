@@ -53,6 +53,14 @@ describe("CommitForm", () => {
 		).toBeInTheDocument();
 	});
 
+	it("draws the submit as the large primary action across the form", () => {
+		render(CommitForm, { props: defaultProps });
+
+		const submit = screen.getByTestId("commit-form-submit");
+		expect(submit).toHaveClass("bg-accent", "h-control-lg");
+		expect(submit.parentElement).toHaveClass("grid");
+	});
+
 	describe("draft seeding and lifting", () => {
 		it("seeds inputs from initialSubject and initialBody at mount", () => {
 			render(CommitForm, {

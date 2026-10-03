@@ -59,6 +59,27 @@ describe("TabBar", () => {
 		expect(screen.getByLabelText("New tab")).toBeInTheDocument();
 	});
 
+	it("draws the close and new-tab controls as ghost icon buttons", () => {
+		render(TabBar, { props: defaultProps });
+
+		expect(screen.getAllByLabelText("Close tab")[0]).toHaveClass(
+			"w-control-sm",
+			"bg-transparent",
+		);
+		expect(screen.getByLabelText("New tab")).toHaveClass(
+			"w-control",
+			"bg-transparent",
+		);
+	});
+
+	it("frames the new-tab control with a dashed outline", () => {
+		render(TabBar, { props: defaultProps });
+
+		expect(screen.getByLabelText("New tab").parentElement).toHaveClass(
+			"outline-dashed",
+		);
+	});
+
 	it("calls onactivate when tab clicked", async () => {
 		const onactivate = vi.fn();
 		render(TabBar, {

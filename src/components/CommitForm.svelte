@@ -4,6 +4,7 @@ import { reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { HeadCommitMessage } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
 
 interface Props {
 	repoPath: string;
@@ -285,28 +286,17 @@ async function handleSubmit() {
 			>
 		{/if}
 
-		<!-- Commit button -->
-		<button
-			data-testid="commit-form-submit"
-			onclick={handleSubmit}
-			disabled={committing}
-			style="
-        width: 100%;
-        height: var(--control-lg-h);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: var(--color-accent);
-        color: var(--color-on-accent);
-        border: 0;
-        border-radius: var(--radius);
-        font-size: var(--text-callout);
-        font-weight: var(--weight-semibold);
-        cursor: pointer;
-        opacity: {committing ? 0.6 : 1};
-      "
-			>{buttonLabel}</button
-		>
+		<div class="grid">
+			<Button
+				size="lg"
+				variant="primary"
+				data-testid="commit-form-submit"
+				onclick={handleSubmit}
+				disabled={committing}
+			>
+				{buttonLabel}
+			</Button>
+		</div>
 	</div>
 </div>
 
