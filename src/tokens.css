@@ -129,7 +129,6 @@
 	--color-bg: var(--bg-0);
 	--color-surface: var(--bg-1);
 	--color-border: var(--line);
-	--color-input-bg: var(--bg-0);
 
 	/* Comment card — its own elevated surface so the card reads identically on
 	   every host (diff area sits on --bg-0, the review panel on --bg-1; --bg-2 is
@@ -152,7 +151,6 @@
 	/* Rows & overlays */
 	--color-selected-row: var(--bg-selected);
 	--color-hover: var(--bg-hover);
-	--color-tab-hover: var(--bg-hover);
 	--color-tree-focus: var(--color-selected-row);
 	--color-backdrop: rgba(0, 0, 0, 0.5);
 
@@ -238,7 +236,6 @@
 		var(--err) 9%,
 		var(--color-surface)
 	);
-	--color-error: var(--err);
 	--color-warning: var(--warn);
 	--color-warning-bg: color-mix(in oklch, var(--warn) 15%, transparent);
 	--color-warning-border: color-mix(in oklch, var(--warn) 30%, transparent);
