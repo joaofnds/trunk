@@ -66,6 +66,15 @@ describe("CommitNotes", () => {
 		expect(screen.getByText("Notes(2)")).toBeInTheDocument();
 	});
 
+	it("draws Add note as a small ghost control", () => {
+		renderNotes();
+
+		expect(screen.getByText("Add note").closest("button")).toHaveClass(
+			"h-control-sm",
+			"hover:bg-hover",
+		);
+	});
+
 	it("saves a composed note via add_commit_thread with the repo path and commit oid", async () => {
 		renderNotes();
 

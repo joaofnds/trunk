@@ -7,6 +7,7 @@ import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
 import type { OperationInfo, PushTarget } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
 
 interface Props {
 	repoPath: string;
@@ -197,37 +198,6 @@ async function handleForcePush(target: Target) {
 	flex: 1;
 	min-width: 0;
 }
-.recovery-actions {
-	display: flex;
-	gap: var(--space-1);
-	flex-shrink: 0;
-}
-.btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	font-size: var(--text-small);
-	border-radius: var(--radius);
-	cursor: pointer;
-	height: var(--control-sm-h);
-	padding: 0 var(--space-2);
-	white-space: nowrap;
-	border: 1px solid transparent;
-}
-.btn:disabled {
-	opacity: 0.5;
-	cursor: default;
-}
-.btn-danger {
-	background: var(--color-danger-bg);
-	color: var(--color-danger);
-	border-color: var(--color-danger-border);
-}
-.btn-neutral {
-	background: transparent;
-	color: var(--color-text-muted);
-	border-color: var(--color-border);
-}
 </style>
 
 {#if display.kind !== "none"}
@@ -240,18 +210,16 @@ async function handleForcePush(target: Target) {
 					<strong>{target.branch}</strong>
 					has diverged from the remote.
 				</span>
-				<div class="recovery-actions">
-					<button
-						class="btn btn-danger"
+				<div class="flex shrink-0 gap-1">
+					<Button
+						size="sm"
+						variant="danger"
 						onclick={() => handleForcePush(target)}
 						disabled={remoteState.isRunning}
-						>Force Push</button
+						>Force Push</Button
 					>
-					<button
-						class="btn btn-neutral"
-						onclick={dismiss}
-						disabled={remoteState.isRunning}
-						>Cancel</button
+					<Button size="sm" onclick={dismiss} disabled={remoteState.isRunning}
+						>Cancel</Button
 					>
 				</div>
 			{:else if display.kind === "force_refused"}
@@ -261,18 +229,15 @@ async function handleForcePush(target: Target) {
 					has remote commits you haven&rsquo;t integrated. Pull &amp; Rebase to
 					include them, then push.
 				</span>
-				<div class="recovery-actions">
-					<button
-						class="btn btn-neutral"
-						onclick={dismiss}
-						disabled={remoteState.isRunning}
-						>Cancel</button
+				<div class="flex shrink-0 gap-1">
+					<Button size="sm" onclick={dismiss} disabled={remoteState.isRunning}
+						>Cancel</Button
 					>
 				</div>
 			{:else}
 				<span class="recovery-text">{display.text}</span>
-				<div class="recovery-actions">
-					<button class="btn btn-neutral" onclick={dismiss}>Dismiss</button>
+				<div class="flex shrink-0 gap-1">
+					<Button size="sm" onclick={dismiss}>Dismiss</Button>
 				</div>
 			{/if}
 		</div>

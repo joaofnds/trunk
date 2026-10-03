@@ -123,6 +123,17 @@ describe("PushRecoveryPrompt", () => {
 		expect(surface.textContent).toContain("origin");
 	});
 
+	it("paints Force Push in the danger tone beside a plain Cancel", async () => {
+		render(PushRecoveryPrompt, {
+			props: propsFor(stateWith(err("non_fast_forward"))),
+		});
+
+		await waitFor(() => {
+			expect(screen.getByText("Force Push")).toHaveClass("bg-danger-bg");
+		});
+		expect(screen.getByText("Cancel")).toHaveClass("border-border");
+	});
+
 	it("offers Cancel only on a lease/if-includes refusal", async () => {
 		render(PushRecoveryPrompt, {
 			props: propsFor(stateWith(err("push_lease_refused"))),

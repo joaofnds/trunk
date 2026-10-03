@@ -10,6 +10,7 @@ import {
 import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
 import { filterThreads, threadMatchesFilter } from "../lib/review-filter.js";
 import type { ReviewFilter, Thread } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
 import ThreadCard from "./ThreadCard.svelte";
 
 interface Props {
@@ -89,10 +90,10 @@ async function saveNote() {
 			{/if}
 		</span>
 		{#if !draft.editing && reviewFilter !== "none"}
-			<button type="button" class="add-note-btn" onclick={openAddNote}>
+			<Button size="sm" variant="ghost" onclick={openAddNote}>
 				<MessageSquarePlus size={14} />
 				<span>Add note</span>
-			</button>
+			</Button>
 		{/if}
 	</div>
 
@@ -108,15 +109,15 @@ async function saveNote() {
 				class="add-note-textarea"
 				disabled={noteSaving}
 			></textarea>
-			<div class="add-note-actions">
-				<button
-					type="button"
+			<div class="flex gap-1">
+				<Button
+					size="sm"
 					onclick={saveNote}
 					disabled={!draft.valid || noteSaving}
-					>Save</button
+					>Save</Button
 				>
-				<button type="button" onclick={cancelAddNote} disabled={noteSaving}
-					>Cancel</button
+				<Button size="sm" onclick={cancelAddNote} disabled={noteSaving}
+					>Cancel</Button
 				>
 			</div>
 		</div>
@@ -168,24 +169,6 @@ async function saveNote() {
 	letter-spacing: var(--tracking-wider);
 	flex: 1;
 }
-.add-note-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	background: transparent;
-	color: var(--color-text-muted);
-	border: none;
-	border-radius: var(--radius);
-	cursor: pointer;
-	padding: var(--space-1) var(--space-2);
-	font-size: var(--text-callout);
-	flex-shrink: 0;
-}
-.add-note-btn:hover,
-.add-note-btn:focus-visible {
-	color: var(--color-text);
-	background: var(--color-hover);
-}
 .add-note-composer {
 	display: flex;
 	flex-direction: column;
@@ -202,27 +185,6 @@ async function saveNote() {
 	padding: var(--space-1) var(--space-2);
 	font-size: var(--text-callout);
 	font-family: inherit;
-}
-.add-note-actions {
-	display: flex;
-	gap: var(--space-1);
-}
-.add-note-actions button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	background: transparent;
-	color: var(--color-text);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius);
-	cursor: pointer;
-	height: var(--control-sm-h);
-	padding: 0 var(--space-2);
-	font-size: var(--text-callout);
-}
-.add-note-actions button[disabled] {
-	cursor: not-allowed;
-	opacity: 0.5;
 }
 .commit-notes-list {
 	display: flex;

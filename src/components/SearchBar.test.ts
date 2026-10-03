@@ -86,6 +86,17 @@ describe("SearchBar", () => {
 		expect(onclose).toHaveBeenCalled();
 	});
 
+	it("draws its stepping and close as small ghost icon controls", () => {
+		render(SearchBar, { props: defaultProps });
+
+		for (const name of ["Previous match", "Next match", "Close search"]) {
+			expect(screen.getByLabelText(name)).toHaveClass(
+				"w-control-sm",
+				"bg-transparent",
+			);
+		}
+	});
+
 	it("disables nav buttons when totalMatches=0", () => {
 		render(SearchBar, {
 			props: { ...defaultProps, totalMatches: 0 },

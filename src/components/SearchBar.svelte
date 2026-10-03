@@ -3,6 +3,7 @@ import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronUp from "@lucide/svelte/icons/chevron-up";
 import X from "@lucide/svelte/icons/x";
 import { slide } from "svelte/transition";
+import Button from "../lib/ui/Button.svelte";
 
 interface Props {
 	query: string;
@@ -108,66 +109,35 @@ function autofocus(node: HTMLElement) {
 		</span>
 	{/if}
 
-	<button
-		onclick={onprev}
+	<Button
+		icon
+		size="sm"
+		variant="ghost"
+		aria-label="Previous match"
 		disabled={totalMatches === 0}
-		style="
-      border: none;
-      background: transparent;
-      cursor: pointer;
-      padding: var(--space-1);
-      border-radius: var(--radius);
-      color: var(--color-text-muted);
-      display: flex;
-      align-items: center;
-      opacity: {totalMatches === 0 ? '0.3' : '1'};
-      pointer-events: {totalMatches === 0 ? 'none' : 'auto'};
-    "
-		class="search-btn"
+		onclick={onprev}
 	>
 		<ChevronUp size={14} />
-	</button>
+	</Button>
 
-	<button
-		onclick={onnext}
+	<Button
+		icon
+		size="sm"
+		variant="ghost"
+		aria-label="Next match"
 		disabled={totalMatches === 0}
-		style="
-      border: none;
-      background: transparent;
-      cursor: pointer;
-      padding: var(--space-1);
-      border-radius: var(--radius);
-      color: var(--color-text-muted);
-      display: flex;
-      align-items: center;
-      opacity: {totalMatches === 0 ? '0.3' : '1'};
-      pointer-events: {totalMatches === 0 ? 'none' : 'auto'};
-    "
-		class="search-btn"
+		onclick={onnext}
 	>
 		<ChevronDown size={14} />
-	</button>
+	</Button>
 
-	<button
+	<Button
+		icon
+		size="sm"
+		variant="ghost"
+		aria-label="Close search"
 		onclick={onclose}
-		style="
-      border: none;
-      background: transparent;
-      cursor: pointer;
-      padding: var(--space-1);
-      border-radius: var(--radius);
-      color: var(--color-text-muted);
-      display: flex;
-      align-items: center;
-    "
-		class="search-btn"
 	>
 		<X size={14} />
-	</button>
+	</Button>
 </div>
-
-<style>
-.search-btn:hover {
-	background: var(--color-hover);
-}
-</style>
