@@ -8,6 +8,7 @@ import Rows2 from "@lucide/svelte/icons/rows-2";
 import Space from "@lucide/svelte/icons/space";
 import TextWrap from "@lucide/svelte/icons/text-wrap";
 import UnfoldVertical from "@lucide/svelte/icons/unfold-vertical";
+import X from "@lucide/svelte/icons/x";
 import { onMount } from "svelte";
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import { fileStatusOf } from "../../lib/file-status.js";
@@ -25,6 +26,7 @@ import type {
 	RenderMode,
 	ReviewFilter,
 } from "../../lib/types.js";
+import Button from "../../lib/ui/Button.svelte";
 
 interface Props {
 	contentMode: ContentMode;
@@ -138,9 +140,11 @@ const renderedActive = $derived(
 	</span>
 
 	{#if selectedPath && isMarkdownPath(selectedPath)}
-		<button
-			class="toggle-btn"
-			class:active={renderMode === "rendered"}
+		<Button
+			icon
+			size="sm"
+			variant="ghost"
+			aria-pressed={renderMode === "rendered"}
 			title={renderMode === "source" ? "Show rendered markdown" : "Show source"}
 			onclick={() => onrendermodechange(renderMode === "source" ? "rendered" : "source")}
 		>
@@ -149,12 +153,14 @@ const renderedActive = $derived(
 			{:else}
 				<Code2 size={14} />
 			{/if}
-		</button>
+		</Button>
 	{/if}
 
 	{#if diffKind !== "current_file"}
-		<button
-			class="toggle-btn"
+		<Button
+			icon
+			size="sm"
+			variant="ghost"
 			title={contentMode === "hunk" ? "Show full file" : "Show hunks"}
 			onclick={() => oncontentmodechange(contentMode === "hunk" ? "full" : "hunk")}
 		>
@@ -163,11 +169,13 @@ const renderedActive = $derived(
 			{:else}
 				<FoldVertical size={14} />
 			{/if}
-		</button>
+		</Button>
 	{/if}
 
-	<button
-		class="toggle-btn"
+	<Button
+		icon
+		size="sm"
+		variant="ghost"
 		title={layoutMode === "inline" ? "Side-by-side view" : "Inline view"}
 		onclick={() => onlayoutmodechange(layoutMode === "inline" ? "split" : "inline")}
 	>
@@ -176,19 +184,23 @@ const renderedActive = $derived(
 		{:else}
 			<Rows2 size={14} />
 		{/if}
-	</button>
+	</Button>
 
-	<button
-		class="toggle-btn"
-		class:active={ignoreWhitespace}
+	<Button
+		icon
+		size="sm"
+		variant="ghost"
+		aria-pressed={ignoreWhitespace}
 		title="Ignore whitespace changes"
 		onclick={() => onignorewhitespacechange(!ignoreWhitespace)}
 	>
 		<Space size={14} />
-	</button>
-	<button
-		class="toggle-btn"
-		class:active={showInvisibles}
+	</Button>
+	<Button
+		icon
+		size="sm"
+		variant="ghost"
+		aria-pressed={showInvisibles}
 		disabled={renderedActive}
 		title={renderedActive
       ? "Invisible characters aren't rendered in preview"
@@ -196,10 +208,12 @@ const renderedActive = $derived(
 		onclick={() => onshowinvisibleschange(!showInvisibles)}
 	>
 		<Pilcrow size={14} />
-	</button>
-	<button
-		class="toggle-btn"
-		class:active={wordWrap}
+	</Button>
+	<Button
+		icon
+		size="sm"
+		variant="ghost"
+		aria-pressed={wordWrap}
 		disabled={!fixedPitch}
 		title={fixedPitch
       ? "Toggle word wrap"
@@ -207,7 +221,7 @@ const renderedActive = $derived(
 		onclick={() => onwordwrapchange(!wordWrap)}
 	>
 		<TextWrap size={14} />
-	</button>
+	</Button>
 	<span
 		class="font-probe"
 		bind:this={fontProbe}
@@ -223,53 +237,50 @@ const renderedActive = $derived(
        toolbar's Comment buttons, so a clean read-only diff shows no comment
        affordances; never gated on whitespace-ignore since it never stages. -->
 	{#if reviewCommentsVisible && reviewFilter !== "none" && diffKind !== "current_file"}
-		<button class="action-btn comment-btn" onclick={oncommentfile}>
-			Comment File
-		</button>
+		<Button size="sm" variant="accent" onclick={oncommentfile}
+			>Comment File</Button
+		>
 	{/if}
 
 	{#if diffKind === 'unstaged'}
-		<button
-			class="action-btn discard-btn"
+		<Button
+			size="sm"
+			variant="danger"
 			disabled={hunkOperationInFlight}
-			style="
-        cursor: {hunkOperationInFlight ? 'not-allowed' : 'pointer'};
-        opacity: {hunkOperationInFlight ? 0.4 : 1};
-      "
 			onclick={ondiscardfile}
 		>
 			Discard File
-		</button>
-		<button
-			class="action-btn stage-btn"
+		</Button>
+		<Button
+			size="sm"
+			variant="success"
 			disabled={hunkOperationInFlight || ignoreWhitespace}
 			title={ignoreWhitespace ? "Staging is disabled while whitespace changes are ignored" : undefined}
-			style="
-        cursor: {(hunkOperationInFlight || ignoreWhitespace) ? 'not-allowed' : 'pointer'};
-        opacity: {(hunkOperationInFlight || ignoreWhitespace) ? 0.4 : 1};
-      "
 			onclick={onstagefile}
 		>
 			Stage File
-		</button>
+		</Button>
 	{:else if diffKind === 'staged'}
-		<button
-			class="action-btn unstage-btn"
+		<Button
+			size="sm"
+			variant="warning"
 			disabled={hunkOperationInFlight || ignoreWhitespace}
 			title={ignoreWhitespace ? "Staging is disabled while whitespace changes are ignored" : undefined}
-			style="
-        cursor: {(hunkOperationInFlight || ignoreWhitespace) ? 'not-allowed' : 'pointer'};
-        opacity: {(hunkOperationInFlight || ignoreWhitespace) ? 0.4 : 1};
-      "
 			onclick={onunstagefile}
 		>
 			Unstage File
-		</button>
+		</Button>
 	{/if}
 
-	<button onclick={onclose} aria-label="Close diff" class="close-btn"
-		>&#x2715;</button
+	<Button
+		icon
+		size="sm"
+		variant="ghost"
+		aria-label="Close diff"
+		onclick={onclose}
 	>
+		<X size={14} />
+	</Button>
 </div>
 
 <style>
@@ -331,77 +342,5 @@ const renderedActive = $derived(
 	font-weight: var(--weight-semibold);
 	font-size: var(--text-caption);
 	line-height: var(--leading-none);
-}
-
-.action-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	border-radius: var(--radius);
-	font-size: var(--text-small);
-	font-family: var(--font-sans);
-	height: var(--control-sm-h);
-	padding: 0 var(--space-2);
-	white-space: nowrap;
-	flex-shrink: 0;
-}
-
-.stage-btn {
-	background: var(--color-success-bg);
-	border: 1px solid var(--color-success-border);
-	color: var(--color-success);
-}
-
-.discard-btn {
-	background: var(--color-danger-bg);
-	border: 1px solid var(--color-danger-border);
-	color: var(--color-danger);
-}
-
-.comment-btn {
-	background: var(--color-accent-bg);
-	border: 1px solid var(--color-accent-border);
-	color: var(--color-accent);
-	cursor: pointer;
-}
-
-.unstage-btn {
-	background: var(--color-warning-bg);
-	border: 1px solid var(--color-warning-border);
-	color: var(--color-warning);
-}
-
-.close-btn {
-	background: none;
-	border: none;
-	cursor: pointer;
-	color: var(--color-text-muted);
-	font-size: var(--text-title);
-	line-height: var(--leading-none);
-	padding: var(--space-1);
-	border-radius: var(--radius);
-	flex-shrink: 0;
-}
-
-.toggle-btn {
-	background: none;
-	border: 1px solid transparent;
-	border-radius: var(--radius);
-	color: var(--color-text-muted);
-	padding: var(--space-1);
-	cursor: pointer;
-	display: flex;
-	align-items: center;
-}
-
-.toggle-btn.active {
-	background: var(--color-accent-bg);
-	color: var(--color-accent);
-	border-color: var(--color-border);
-}
-
-.toggle-btn:disabled {
-	opacity: 0.4;
-	cursor: not-allowed;
 }
 </style>

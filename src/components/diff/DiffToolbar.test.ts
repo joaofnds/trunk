@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, describe, expect, it } from "vitest";
 import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
 import DiffToolbar from "./DiffToolbar.svelte";
@@ -112,6 +112,67 @@ describe("DiffToolbar invisibles toggle", () => {
 		});
 		const btn = screen.getByTitle("Show invisible characters");
 		expect(btn).toBeEnabled();
+	});
+});
+
+describe("DiffToolbar toggles", () => {
+	it("marks the toggles that are on as pressed", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "src/main.rs",
+				ignoreWhitespace: true,
+				showInvisibles: true,
+			},
+		});
+
+		expect(screen.getByTitle("Ignore whitespace changes")).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
+		expect(screen.getByTitle("Show invisible characters")).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
+		expect(screen.getByTitle("Side-by-side view")).not.toHaveAttribute(
+			"aria-pressed",
+		);
+	});
+
+	it("disables staging while whitespace changes are ignored, and says why", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "src/main.rs",
+				diffKind: "unstaged",
+				ignoreWhitespace: true,
+			},
+		});
+
+		const stage = screen.getByRole("button", { name: /Stage File/ });
+		expect(stage).toBeDisabled();
+		expect(stage).toHaveAttribute(
+			"title",
+			"Staging is disabled while whitespace changes are ignored",
+		);
+		expect(screen.getByRole("button", { name: "Discard File" })).toBeEnabled();
+	});
+
+	it("closes the pane from a labelled control", async () => {
+		let closes = 0;
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "src/main.rs",
+				onclose: () => {
+					closes += 1;
+				},
+			},
+		});
+
+		await fireEvent.click(screen.getByRole("button", { name: "Close diff" }));
+
+		expect(closes).toBe(1);
 	});
 });
 

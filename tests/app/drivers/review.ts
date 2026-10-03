@@ -1,12 +1,13 @@
 import type { ReviewFilter } from "../../../src/lib/types.js";
 import { waitFor } from "../harness/wait.js";
+import { enabledButton } from "./dom.js";
 
 const REVIEW_FILTER = '[aria-label="Review filter selection"]';
 const REVIEW = '[aria-label="Review"]';
 const VIEW_BADGE = '[aria-label$="review comments in this view"]';
 const HUNK_TOOLBAR = ".hunk-toolbar";
 const COMMENT = "Comment";
-const COMMENT_FILE = ".toolbar .comment-btn";
+const COMMENT_FILE = "Comment File";
 const COMPOSER_TEXT = ".composer-textarea";
 const SUBMIT = ".submit-btn";
 const CARD = ".comment-card";
@@ -100,7 +101,7 @@ export class ReviewDriver {
 	/** Comments the entire file from the diff toolbar. */
 	async commentOnFile(): Promise<void> {
 		const button = await waitFor("the Comment File affordance", () =>
-			enabled(COMMENT_FILE),
+			enabledButton(COMMENT_FILE),
 		);
 
 		button.click();

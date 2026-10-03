@@ -1374,14 +1374,12 @@ describe("DISP-02: Word wrap toggle", () => {
 		await flushPrefs();
 
 		const wrapBtn = screen.getByTitle("Toggle word wrap");
-		// Before click: should not have active class
-		expect(wrapBtn.classList.contains("active")).toBe(false);
+		expect(wrapBtn).toHaveAttribute("aria-pressed", "false");
 
 		await fireEvent.click(wrapBtn);
 		await flushPrefs();
 
-		// After click: should have active class
-		expect(wrapBtn.classList.contains("active")).toBe(true);
+		expect(wrapBtn).toHaveAttribute("aria-pressed", "true");
 	});
 });
 
