@@ -384,7 +384,7 @@ describe("CommitRow", () => {
 		});
 		const row = screen.getByTestId("commit-row");
 		const style = row.getAttribute("style") ?? "";
-		expect(style).toContain("var(--color-review-row)");
+		expect(style).toContain("var(--color-accent)");
 		// The marker must not hardcode a literal color.
 		expect(style).not.toMatch(/inset[^;]*(rgb|#[0-9a-fA-F])/);
 	});
@@ -400,7 +400,7 @@ describe("CommitRow", () => {
 			},
 		});
 		const style = screen.getByTestId("commit-row").getAttribute("style") ?? "";
-		expect(style).not.toContain("var(--color-review-row)");
+		expect(style).not.toContain("var(--color-accent)");
 	});
 
 	it("applies a distinct theme-variable marker when isPendingBase is true", () => {
@@ -416,7 +416,7 @@ describe("CommitRow", () => {
 		const row = screen.getByTestId("commit-row");
 		const style = row.getAttribute("style") ?? "";
 		expect(style).toContain("var(--color-review-pending-base)");
-		expect(style).not.toContain("var(--color-review-row)");
+		expect(style).not.toContain("var(--color-accent)");
 		expect(style).not.toMatch(/inset[^;]*(rgb|#[0-9a-fA-F])/);
 	});
 
@@ -446,7 +446,7 @@ describe("CommitRow", () => {
 			},
 		});
 		const style = screen.getByTestId("commit-row").getAttribute("style") ?? "";
-		expect(style).toContain("var(--color-review-row)");
+		expect(style).toContain("var(--color-accent)");
 		expect(style).toContain("var(--color-review-pending-base)");
 	});
 

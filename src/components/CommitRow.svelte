@@ -111,7 +111,7 @@ const wipFileBadges = $derived.by(() => {
 // without fighting them. Never an inline literal color, never the SVG pipeline.
 const reviewMarker = $derived(
 	[
-		inSession ? "inset 3px 0 0 var(--color-review-row)" : "",
+		inSession ? "inset 3px 0 0 var(--color-accent)" : "",
 		isPendingBase ? "inset 0 -3px 0 var(--color-review-pending-base)" : "",
 	]
 		.filter(Boolean)
