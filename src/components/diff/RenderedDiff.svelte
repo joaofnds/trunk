@@ -917,7 +917,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 	color: var(--color-text-muted);
 	font-size: var(--text-small);
 	font-style: italic;
-	letter-spacing: 0.02em;
+	letter-spacing: var(--tracking-wide);
 }
 /* The backend's per-gap fold note (TRUNK-144.4): a real `<li>`/`<tr>` the
      fold spliced into the folded fragment itself, so it sits inside the
@@ -927,7 +927,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 	color: var(--color-text-muted);
 	font-size: var(--text-small);
 	font-style: italic;
-	letter-spacing: 0.02em;
+	letter-spacing: var(--tracking-wide);
 }
 /* A list note carries no bullet — it reports a gap, not an item. */
 :global(.markdown-body li.rendered-fold-note) {
@@ -941,7 +941,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 .rendered-sep-label {
 	color: var(--color-text-muted);
 	font-size: var(--text-small);
-	letter-spacing: 0.02em;
+	letter-spacing: var(--tracking-wide);
 	white-space: nowrap;
 }
 .rendered-nochange {

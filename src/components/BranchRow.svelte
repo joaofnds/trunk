@@ -132,7 +132,7 @@ let actionShown = $derived(hovered || focused || hidden);
 		{/if}
 		{#if isHead}
 			<span
-				style="flex-shrink: 0; margin-left: var(--space-1); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em; color: var(--color-accent);"
+				style="flex-shrink: 0; margin-left: var(--space-1); font-family: var(--font-mono); font-size: 9px; letter-spacing: var(--tracking-widest); color: var(--color-accent);"
 				>HEAD</span
 			>
 		{/if}

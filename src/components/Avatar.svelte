@@ -29,7 +29,7 @@ let { name, size = 18 }: Props = $props();
 	box-shadow: inset 0 0 0 1px var(--color-border);
 	font-family: var(--font-sans);
 	font-weight: var(--weight-semibold);
-	letter-spacing: 0.02em;
+	letter-spacing: var(--tracking-wide);
 	line-height: var(--leading-none);
 	user-select: none;
 }

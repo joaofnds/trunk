@@ -238,7 +238,7 @@ async function saveReplyEdit() {
 	font-size: var(--text-caption);
 	line-height: 1.4;
 	text-transform: uppercase;
-	letter-spacing: 0.02em;
+	letter-spacing: var(--tracking-wide);
 	color: var(--color-text-muted);
 	background: var(--color-comment-card-header-bg);
 	border-radius: var(--radius);

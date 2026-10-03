@@ -466,7 +466,7 @@ async function requestDeleteReply(replyId: string) {
 	font-size: var(--text-caption);
 	line-height: 1.4;
 	text-transform: uppercase;
-	letter-spacing: 0.02em;
+	letter-spacing: var(--tracking-wide);
 	border-radius: var(--radius);
 	padding: 0 var(--space-2);
 	white-space: nowrap;

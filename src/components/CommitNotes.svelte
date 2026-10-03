@@ -165,7 +165,7 @@ async function saveNote() {
 	font-weight: var(--weight-medium);
 	color: var(--color-text-muted);
 	text-transform: uppercase;
-	letter-spacing: 0.04em;
+	letter-spacing: var(--tracking-wider);
 	flex: 1;
 }
 .add-note-btn {
