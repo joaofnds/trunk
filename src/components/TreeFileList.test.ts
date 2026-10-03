@@ -125,15 +125,19 @@ describe("TreeFileList", () => {
 
 		// Verify b.ts is focused (has focus background)
 		const items = screen.getAllByRole("listitem");
-		expect(items[1].style.background).toContain("var(--color-tree-focus)");
-		expect(items[2].style.background).not.toContain("var(--color-tree-focus)");
+		expect(items[1].style.background).toContain("var(--color-selected-row)");
+		expect(items[2].style.background).not.toContain(
+			"var(--color-selected-row)",
+		);
 
 		// Click on c.ts
 		await fireEvent.click(screen.getByText("c.ts"));
 
 		// Verify c.ts is now focused and b.ts is no longer focused
-		expect(items[2].style.background).toContain("var(--color-tree-focus)");
-		expect(items[1].style.background).not.toContain("var(--color-tree-focus)");
+		expect(items[2].style.background).toContain("var(--color-selected-row)");
+		expect(items[1].style.background).not.toContain(
+			"var(--color-selected-row)",
+		);
 	});
 
 	it("keyboard navigation continues from clicked file", async () => {
@@ -160,7 +164,7 @@ describe("TreeFileList", () => {
 
 		// Verify b.ts is visually focused
 		const items = screen.getAllByRole("listitem");
-		expect(items[1].style.background).toContain("var(--color-tree-focus)");
+		expect(items[1].style.background).toContain("var(--color-selected-row)");
 	});
 
 	it("renders list role in flat mode and tree role in tree mode", () => {

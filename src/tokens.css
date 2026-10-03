@@ -151,7 +151,6 @@
 	/* Rows & overlays */
 	--color-selected-row: var(--bg-selected);
 	--color-hover: var(--bg-hover);
-	--color-tree-focus: var(--color-selected-row);
 	--color-backdrop: rgba(0, 0, 0, 0.5);
 
 	/* Code-review commit markers (Phase 66) */

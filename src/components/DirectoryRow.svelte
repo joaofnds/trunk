@@ -71,7 +71,7 @@ let commentTone = $derived(
     align-items: center;
     gap: var(--space-1);
     cursor: pointer;
-    background: {focused ? 'var(--color-tree-focus)' : hovered ? 'var(--color-surface)' : 'transparent'};
+    background: {focused ? 'var(--color-selected-row)' : hovered ? 'var(--color-surface)' : 'transparent'};
     color: var(--color-text);
     font-size: 12px;
   "

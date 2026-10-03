@@ -75,7 +75,7 @@ let badgeBg = $derived(
     align-items: center;
     gap: var(--space-2);
     cursor: {onclick ? 'pointer' : 'default'};
-    background: {focused ? 'var(--color-tree-focus)' : hovered ? 'var(--bg-hover)' : 'transparent'};
+    background: {focused ? 'var(--color-selected-row)' : hovered ? 'var(--bg-hover)' : 'transparent'};
     color: {isLoading ? 'var(--color-text-muted)' : 'var(--color-text)'};
   "
 >
