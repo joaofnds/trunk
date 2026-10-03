@@ -167,7 +167,7 @@ export function dateContentWidth(measure: MeasureText): number {
 }
 
 export function shaContentWidth(measure: MeasureText): number {
-	return measure("0000000", SHA_CONTENT_FONT) + CELL_PAD;
+	return Math.ceil(measure("0000000", SHA_CONTENT_FONT)) + CELL_PAD;
 }
 
 /** Width that shows every lane. */

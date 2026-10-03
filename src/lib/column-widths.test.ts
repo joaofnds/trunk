@@ -144,6 +144,12 @@ describe("shaContentWidth", () => {
 	it("fits a seven-character abbreviated sha", () => {
 		expect(shaContentWidth(measure)).toBe(measure("0000000") + PADDING);
 	});
+
+	it("rounds a fractional measurement up so the last glyph is not clipped", () => {
+		const fractional = (text: string) => text.length * 6.5;
+
+		expect(shaContentWidth(fractional)).toBe(46 + PADDING);
+	});
 });
 
 describe("graphTargetWidth", () => {
