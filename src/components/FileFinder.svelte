@@ -104,14 +104,14 @@ function rowLabel(file: TrackedFile): string {
 			oninput={handleInput}
 			onkeydown={handleKeydown}
 			use:autofocus
-			class="bg-bg border-none border-b border-border text-text p-3 text-body outline-none"
+			class="bg-bg border-none border-b border-border text-text p-3 text-body leading-normal outline-none"
 		>
 
 		<div
 			id="file-finder-list"
 			role="listbox"
 			aria-label="Tracked files"
-			class="flex-1 min-h-0 overflow-y-auto text-callout"
+			class="flex-1 min-h-0 overflow-y-auto text-callout leading-normal"
 		>
 			{#each matches as file, i (file.path)}
 				<ListOption
@@ -143,7 +143,10 @@ function rowLabel(file: TrackedFile): string {
 			{/each}
 
 			{#if matches.length === 0}
-				<div role="presentation" class="p-3 text-callout text-text-muted">
+				<div
+					role="presentation"
+					class="p-3 text-callout leading-normal text-text-muted"
+				>
 					No tracked file matches
 				</div>
 			{/if}

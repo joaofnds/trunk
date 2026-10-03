@@ -219,7 +219,7 @@ async function handleSubmit() {
 			{/if}
 		</div>
 		{#if subjectError}
-			<span class="error-text text-small">{subjectError}</span>
+			<span class="error-text text-small leading-normal">{subjectError}</span>
 		{/if}
 
 		<!-- Body field -->
@@ -227,12 +227,12 @@ async function handleSubmit() {
 			bind:value={getBody, setBody}
 			rows={3}
 			placeholder="Description (optional)"
-			class="w-full box-border border border-border bg-bg text-text rounded py-2 px-3 text-callout resize-y"
+			class="w-full box-border border border-border bg-bg text-text rounded py-2 px-3 text-callout leading-normal resize-y"
 		></textarea>
 
 		<!-- Staged error -->
 		{#if stagedError}
-			<span class="error-text text-small">{stagedError}</span>
+			<span class="error-text text-small leading-normal">{stagedError}</span>
 		{/if}
 
 		<div class="grid">

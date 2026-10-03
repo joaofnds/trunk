@@ -62,7 +62,7 @@ function autofocus(node: HTMLElement) {
 		oncancel={handleCancel}
 	>
 		<textarea
-			class="w-full rounded text-body bg-bg border border-border text-text p-2 resize-y message-textarea"
+			class="w-full rounded text-body leading-normal bg-bg border border-border text-text p-2 resize-y message-textarea"
 			bind:value={text}
 			onkeydown={handleKeydown}
 			use:autofocus

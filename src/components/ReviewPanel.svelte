@@ -545,7 +545,7 @@ $effect(() => {
        it active, which is also criterion 3's one-step switch. -->
 		<div class="flex flex-col gap-1 pb-2">
 			<div class="flex items-center gap-2 py-1 px-0">
-				<span class="text-text-muted text-small flex-1">
+				<span class="text-text-muted text-small leading-normal flex-1">
 					{reviews.length} {reviews.length === 1 ? "review" : "reviews"}
 				</span>
 				<Button size="sm" onclick={startNewReview}>New review</Button>
@@ -570,7 +570,7 @@ $effect(() => {
 								class="flex-1 bg-bg text-text border border-border rounded h-control-sm py-0 px-1 text-callout"
 							>
 						{:else}
-							<span class="min-w-0 flex-1 text-callout">
+							<span class="min-w-0 flex-1 text-callout leading-normal">
 								<LinkButton
 									truncate
 									onclick={() => activateReview(review.id)}
@@ -598,7 +598,7 @@ $effect(() => {
 								>{review.id}</LinkButton
 							>
 						</span>
-						<span class="text-text-muted text-small shrink-0">
+						<span class="text-text-muted text-small leading-normal shrink-0">
 							{`${REVIEW_STATE_LABEL[review.state] ?? review.state} · ${review.thread_count}`}
 						</span>
 						<Button
@@ -618,7 +618,7 @@ $effect(() => {
 		</div>
 
 		{#if activeReview && reviewFilter !== "none"}
-			<span class="text-text-muted text-small py-1 px-0">
+			<span class="text-text-muted text-small leading-normal py-1 px-0">
 				{`${visibleComments.length} ${visibleComments.length === 1 ? "comment" : "comments"} · ${commits.length} ${commits.length === 1 ? "commit" : "commits"}`}
 			</span>
 		{/if}
@@ -631,21 +631,21 @@ $effect(() => {
 		{#if reviews.length === 0}
 			<div class="flex flex-col gap-1 p-3">
 				<span>No reviews yet</span>
-				<span class="text-text-muted text-small">
+				<span class="text-text-muted text-small leading-normal">
 					Comment on a diff line to start one, or create an empty review above.
 				</span>
 			</div>
 		{:else if commits.length === 0 && !hasAnyComment}
 			<div class="flex flex-col gap-1 p-3">
 				<span>No commits in this review yet.</span>
-				<span class="text-text-muted text-small">
+				<span class="text-text-muted text-small leading-normal">
 					Add commits from the graph to start reviewing.
 				</span>
 			</div>
 		{:else if !hasAnyComment}
 			<div class="flex flex-col gap-1 p-3">
 				<span>Review started.</span>
-				<span class="text-text-muted text-small">
+				<span class="text-text-muted text-small leading-normal">
 					Select diff lines or add a commit note to comment.
 				</span>
 			</div>
@@ -654,7 +654,7 @@ $effect(() => {
 				<span
 					>{reviewFilter === "none" ? "Review threads hidden." : "No threads match this filter."}</span
 				>
-				<span class="text-text-muted text-small">
+				<span class="text-text-muted text-small leading-normal">
 					The review inventory remains available above.
 				</span>
 			</div>
@@ -672,7 +672,7 @@ $effect(() => {
 						<div
 							class="flex items-center gap-2 py-1 px-0 border-b border-border"
 						>
-							<span class="shrink-0 text-body font-semibold">
+							<span class="shrink-0 text-body leading-normal font-semibold">
 								<LinkButton
 									mono
 									title="Copy SHA"
@@ -681,7 +681,9 @@ $effect(() => {
 									>{group.shortOid}</LinkButton
 								>
 							</span>
-							<span class="min-w-0 flex-1 text-body font-semibold">
+							<span
+								class="min-w-0 flex-1 text-body leading-normal font-semibold"
+							>
 								<LinkButton
 									truncate
 									aria-label="Jump to commit {group.shortOid}"
@@ -712,7 +714,7 @@ $effect(() => {
 									bind:value={noteDraft.text}
 									rows="3"
 									disabled={noteSaving}
-									class="w-full resize-y bg-bg text-text border border-border rounded py-1 px-2 text-callout"
+									class="w-full resize-y bg-bg text-text border border-border rounded py-1 px-2 text-callout leading-normal"
 								></textarea>
 								<div class="flex items-center gap-1">
 									<Button
@@ -732,7 +734,7 @@ $effect(() => {
 						{/if}
 
 						{#if group.comments.length === 0}
-							<span class="text-text-muted text-small py-1 px-0">
+							<span class="text-text-muted text-small leading-normal py-1 px-0">
 								No comments on this commit.
 							</span>
 						{:else}

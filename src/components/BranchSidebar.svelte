@@ -765,7 +765,9 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
               }}
 						>
 						{#if createError}
-							<div class="error-text text-small mt-1">{createError}</div>
+							<div class="error-text text-small leading-normal mt-1"
+								>{createError}</div
+							>
 						{/if}
 					</div>
 				{/if}

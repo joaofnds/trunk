@@ -80,7 +80,7 @@ async function saveReplyEdit() {
 
 {#if replies.length > 0}
 	{#if hiddenReplyCount > 0 && !repliesExpanded && editingReplyId === null}
-		<span class="mx-2 mt-2 self-start text-small">
+		<span class="mx-2 mt-2 self-start text-small leading-normal">
 			<LinkButton tone="accent" onclick={() => { repliesExpanded = true; }}
 				>{`Show ${hiddenReplyCount} more ${hiddenReplyCount === 1 ? "reply" : "replies"}`}</LinkButton
 			>

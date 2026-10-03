@@ -236,7 +236,7 @@ async function requestDeleteReply(replyId: string) {
 			>{thread.state}</span
 		>
 		<span
-			class="flex gap-4 text-callout"
+			class="flex gap-4 text-callout leading-normal"
 			role="group"
 			aria-label="Thread actions"
 		>

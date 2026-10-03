@@ -286,7 +286,60 @@ function rawButtons(source: string): string[] {
 		);
 }
 
+const STEP = /^text-(caption|small|callout|body|title|display)$/;
+const LEADING = /^leading-/;
+
+/** A `<textarea>` on a text step without a leading of its own. The step pairs
+ *  the line height of a one-line label, and a field that wraps reads a
+ *  unitless leading instead (docs/design-system.md, Tokens). */
+function textareasOnLabelLeading(source: string): string[] {
+	const ast = parse(source, { modern: true });
+	const bindings = scope(ast.instance, ast.module);
+	return descendants(ast.fragment, "RegularElement")
+		.filter(isElement)
+		.filter((element) => element.name === "textarea")
+		.filter(
+			(element) =>
+				!element.attributes.some(
+					(a) => a.type === "StyleDirective" && a.name === "line-height",
+				),
+		)
+		.filter((element) => {
+			const classes = element.attributes
+				.filter(
+					(a): a is AST.Attribute =>
+						a.type === "Attribute" && a.name === "class",
+				)
+				.flatMap((a) => (a.value === true ? [] : words(a.value, bindings)));
+			return (
+				classes.some((w) => STEP.test(w)) &&
+				!classes.some((w) => LEADING.test(w))
+			);
+		})
+		.map(
+			(element) =>
+				`<textarea> at line ${source.slice(0, element.start).split("\n").length}`,
+		);
+}
+
 describe("markup classes", () => {
+	it("finds a textarea on a text step with no leading", () => {
+		expect(
+			textareasOnLabelLeading(
+				'<textarea class="text-callout"></textarea>\n<textarea class="text-callout leading-normal"></textarea>\n<textarea class="field"></textarea>',
+			),
+		).toEqual(["<textarea> at line 1"]);
+	});
+
+	it.each(components)(
+		"%s gives a textarea on a text step a leading of its own (docs/design-system.md, Tokens)",
+		(file) => {
+			expect(
+				textareasOnLabelLeading(readFileSync(join(root, file), "utf8")),
+			).toEqual([]);
+		},
+	);
+
 	it("generates a utility the theme maps", () => {
 		expect(
 			["flex", "p-2", "text-body", "text-text-muted", "h-control"].map(utility),

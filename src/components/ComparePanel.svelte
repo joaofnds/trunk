@@ -117,7 +117,9 @@ let filesChanged = $derived(fileDiffs.length);
 		{#if base}
 			{@render commitCard(base)}
 		{:else}
-			<div class="text-callout italic text-text-muted">empty tree</div>
+			<div class="text-callout leading-normal italic text-text-muted"
+				>empty tree</div
+			>
 		{/if}
 		<div
 			aria-hidden="true"

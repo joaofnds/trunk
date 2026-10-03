@@ -1157,19 +1157,19 @@ $effect(() => {
 			class="p-2 flex flex-col gap-2 shrink-0 overflow-hidden"
 			style:height="{bottomHeight}px"
 		>
-			<div class="text-small text-text-muted mb-1">
+			<div class="text-small leading-normal text-text-muted mb-1">
 				Rebasing commit {rebaseProgressNum} out of {rebaseProgressTotal}
 			</div>
 			<input
 				type="text"
 				bind:value={rebaseMsgSummary}
 				placeholder="Commit message summary"
-				class="w-full box-border border border-border bg-surface text-text rounded py-1 px-2 text-callout"
+				class="w-full box-border border border-border bg-surface text-text rounded h-control py-1 px-2 text-callout"
 			>
 			<textarea
 				bind:value={rebaseMsgBody}
 				placeholder="Description (optional)"
-				class="w-full flex-1 min-h-0 box-border border border-border bg-surface text-text rounded py-1 px-2 text-callout resize-none"
+				class="w-full flex-1 min-h-0 box-border border border-border bg-surface text-text rounded py-1 px-2 text-callout leading-normal resize-none"
 			></textarea>
 			<div class="grid grid-cols-6 gap-2">
 				<div class="col-span-3 grid">

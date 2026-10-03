@@ -132,7 +132,9 @@ let actionShown = $derived(hovered || focused || hidden);
 	</div>
 
 	{#if isError}
-		<div class="error-banner text-small py-2 px-3 mt-0 mx-2 mb-1 rounded">
+		<div
+			class="error-banner text-small leading-normal py-2 px-3 mt-0 mx-2 mb-1 rounded"
+		>
 			{errorText ?? 'Cannot checkout — working tree has uncommitted changes. Commit or stash your changes first.'}
 		</div>
 	{/if}
