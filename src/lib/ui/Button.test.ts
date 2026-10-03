@@ -59,6 +59,15 @@ describe("Button", () => {
 		expect(screen.getByRole("button")).toHaveClass("h-control");
 	});
 
+	it("fades its colors over the fast duration, and not under reduced motion", () => {
+		render(Button, { props: { children: label } });
+
+		expect(screen.getByRole("button")).toHaveClass(
+			"transition-colors",
+			"motion-reduce:transition-none",
+		);
+	});
+
 	it("squares an icon button to its height and drops the side padding", () => {
 		render(Button, {
 			props: { icon: true, "aria-label": "Undo", children: label },

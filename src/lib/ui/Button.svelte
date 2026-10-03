@@ -49,6 +49,7 @@ let {
 
 const BASE =
 	"relative inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap cursor-pointer " +
+	"transition-colors motion-reduce:transition-none " +
 	"disabled:pointer-events-none disabled:opacity-50 " +
 	"focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent " +
 	"aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-on-accent " +
