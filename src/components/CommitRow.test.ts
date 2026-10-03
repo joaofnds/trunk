@@ -229,9 +229,10 @@ describe("CommitRow", () => {
 			const col = screen.getByTestId("diff-stat");
 			const segments = col.querySelectorAll("[data-diff-seg]");
 			expect(segments.length).toBe(2);
-			// jsdom only reads inline styles — the min-sliver guarantee lives inline.
+			// The min-sliver guarantee is a utility, and jsdom lays nothing out, so
+			// the class list is what can be read.
 			for (const seg of segments) {
-				expect((seg as HTMLElement).style.minWidth).toBe("1px");
+				expect(seg).toHaveClass("min-w-px");
 			}
 			// Numbers are tooltip-only now — nothing visible in the column.
 			expect(screen.queryByTestId("diff-stat-count")).toBeNull();

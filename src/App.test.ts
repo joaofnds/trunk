@@ -111,8 +111,9 @@ function refHeaderWidth(container: HTMLElement): string | undefined {
 		"[data-testid=column-header] > [data-column=ref]",
 	);
 	if (!cell) return undefined;
-	const reference = /^var\((--[\w-]+)\)$/.exec(cell.style.width);
-	if (!reference) return cell.style.width;
+	const width = getComputedStyle(cell).width;
+	const reference = /^var\((--[\w-]+)\)$/.exec(width);
+	if (!reference) return width;
 	return getComputedStyle(cell).getPropertyValue(reference[1]).trim();
 }
 

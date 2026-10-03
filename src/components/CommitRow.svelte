@@ -1,6 +1,6 @@
 <script lang="ts">
 import { copySha } from "../lib/clipboard.js";
-import { columnWidthProperty, MESSAGE_FLOOR } from "../lib/column-widths.js";
+import { MESSAGE_FLOOR } from "../lib/column-widths.js";
 import { parseSummary, prefixToneVar } from "../lib/commit-prefix.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
 import { diffBarFractions } from "../lib/diff-stat.js";
@@ -133,10 +133,14 @@ const rowShadow = $derived(
 	data-testid="commit-row"
 	role="row"
 	tabindex="0"
-	class="relative flex items-center cursor-pointer text-body"
+	class="relative flex items-center cursor-pointer text-body text-text"
 	class:hover:bg-hover={!selected && !isCurrentMatch && !isSearchMatch}
+	class:bg-search-current={isCurrentMatch}
+	class:bg-search-match={isSearchMatch && !isCurrentMatch}
+	class:bg-selected-row={selected && !isSearchMatch && !isCurrentMatch}
+	class:search-dim={isSearchActive && !isSearchMatch && !isCurrentMatch}
 	style:height="{rowHeight}px"
-	style="color: var(--color-text); {isCurrentMatch ? 'background: var(--color-search-current);' : isSearchMatch ? 'background: var(--color-search-match);' : selected ? 'background: var(--color-selected-row);' : ''} {isSearchActive && !isSearchMatch && !isCurrentMatch ? 'opacity: var(--opacity-search-dim);' : ''} {rowShadow ? `box-shadow: ${rowShadow};` : ''}"
+	style:box-shadow={rowShadow}
 	onclick={(e) => onselect?.(commit.oid, { compare: e.metaKey || e.ctrlKey, range: e.shiftKey })}
 	onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onselect?.(commit.oid); } }}
 	oncontextmenu={(e: MouseEvent) => { if (oncontextmenu && !isWip) { e.preventDefault(); oncontextmenu(e, commit); } }}
@@ -146,7 +150,7 @@ const rowShadow = $derived(
 		<div
 			data-column="ref"
 			class="flex-shrink-0"
-			style="width: var({columnWidthProperty('ref')}); padding: 0 {COLUMN_PADDING_X}px;"
+			style:padding="0 {COLUMN_PADDING_X}px"
 		></div>
 	{/if}
 
@@ -155,7 +159,7 @@ const rowShadow = $derived(
 		<div
 			data-column="graph"
 			class="relative z-1 flex items-center flex-shrink-0 overflow-hidden"
-			style="width: var({columnWidthProperty('graph')}); padding: 0 {COLUMN_PADDING_X}px;"
+			style:padding="0 {COLUMN_PADDING_X}px"
 		> </div>
 	{/if}
 
@@ -163,7 +167,8 @@ const rowShadow = $derived(
 	<div
 		data-column="message"
 		class="flex-1 flex items-center gap-2 overflow-hidden"
-		style="padding: 0 {COLUMN_PADDING_X}px; min-width: {MESSAGE_FLOOR}px;"
+		style:padding="0 {COLUMN_PADDING_X}px"
+		style:min-width="{MESSAGE_FLOOR}px"
 	>
 		{#if isWip}
 			<div
@@ -171,8 +176,7 @@ const rowShadow = $derived(
 				class="flex items-center gap-2 overflow-hidden whitespace-nowrap"
 			>
 				<span
-					class="overflow-hidden text-ellipsis italic rounded px-2 py-1"
-					style="min-width: 6rem; background: var(--color-surface-raised); color: var(--color-text-muted);"
+					class="wip-summary overflow-hidden text-ellipsis italic rounded px-2 py-1 bg-surface-raised text-text-muted"
 					>{commit.summary}</span
 				>
 				{#if wipFileBadges.length}
@@ -180,7 +184,7 @@ const rowShadow = $derived(
 						class="flex items-center gap-2 flex-shrink-0 font-mono text-small"
 					>
 						{#each wipFileBadges as b}
-							<span title={b.title} style="color: {b.color};"
+							<span title={b.title} style:color={b.color}
 								>{b.letter} {b.count}</span
 							>
 						{/each}
@@ -191,10 +195,9 @@ const rowShadow = $derived(
 			<span
 				data-testid="commit-row-summary"
 				data-message-summary
-				class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic"
-				style="color: var(--color-text-muted);"
+				class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic text-text-muted"
 				use:cutTooltip={commit.summary}
-				><span style="margin-left: {-messageScrollX}px;"
+				><span style:margin-left="{-messageScrollX}px"
 					>{commit.summary}</span
 				></span
 			>
@@ -204,9 +207,9 @@ const rowShadow = $derived(
 				data-message-summary
 				class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
 				use:cutTooltip={commit.summary}
-				><span style="margin-left: {-messageScrollX}px;"
+				><span style:margin-left="{-messageScrollX}px"
 					>{#if parsed.prefix}
-						<span style="color: {prefixToneVar(parsed.prefix)};"
+						<span style:color={prefixToneVar(parsed.prefix)}
 							>{parsed.prefix}{parsed.scope}{parsed.bang}</span
 						><span class="prefix-colon">{": "}</span>{parsed.rest}
 					{:else}
@@ -225,7 +228,7 @@ const rowShadow = $derived(
 			data-testid="diff-stat"
 			data-column="diff"
 			class="flex-shrink-0 flex items-center overflow-hidden"
-			style="width: var({columnWidthProperty('diff')}); padding: 0 {COLUMN_PADDING_X}px;"
+			style:padding="0 {COLUMN_PADDING_X}px"
 			use:tooltip={diffTitle}
 		>
 			{#if diffStat && (diffBar.addFrac > 0 || diffBar.delFrac > 0)}
@@ -241,20 +244,20 @@ const rowShadow = $derived(
 				<div
 					data-testid="diff-stat-bar"
 					class="flex h-1 min-w-1 flex-shrink-0"
-					style="width: {(diffBar.addFrac + diffBar.delFrac) * 100}%;"
+					style:width="{(diffBar.addFrac + diffBar.delFrac) * 100}%"
 				>
 					{#if diffBar.addFrac > 0}
 						<span
 							data-diff-seg="add"
-							class="h-full {diffBar.delFrac > 0 ? 'rounded-l-full' : 'rounded-full'}"
-							style="flex: {diffBar.addFrac}; min-width: 1px; background: var(--color-diff-add);"
+							class="h-full min-w-px bg-diff-add {diffBar.delFrac > 0 ? 'rounded-l-full' : 'rounded-full'}"
+							style:flex={diffBar.addFrac}
 						></span>
 					{/if}
 					{#if diffBar.delFrac > 0}
 						<span
 							data-diff-seg="delete"
-							class="h-full {diffBar.addFrac > 0 ? 'rounded-r-full' : 'rounded-full'}"
-							style="flex: {diffBar.delFrac}; min-width: 1px; background: var(--color-diff-delete);"
+							class="h-full min-w-px bg-diff-delete {diffBar.addFrac > 0 ? 'rounded-r-full' : 'rounded-full'}"
+							style:flex={diffBar.delFrac}
 						></span>
 					{/if}
 				</div>
@@ -264,8 +267,7 @@ const rowShadow = $derived(
              gap that reads as "no change". Details are in the tooltip. -->
 				<span
 					data-testid="diff-stat-neutral"
-					class="h-1 w-1 flex-shrink-0 rounded-full"
-					style="background: var(--color-text-muted);"
+					class="h-1 w-1 flex-shrink-0 rounded-full bg-text-muted"
 				></span>
 			{:else if diffStat}
 			<!-- Genuinely empty commit (0 files): render nothing — there is no change
@@ -273,8 +275,7 @@ const rowShadow = $derived(
 			{:else}
 				<span
 					data-testid="diff-stat-placeholder"
-					class="flex-1 text-center text-small"
-					style="color: var(--color-text-muted); opacity: 0.5;"
+					class="flex-1 text-center text-small text-text-muted opacity-50"
 					>—</span
 				>
 			{/if}
@@ -285,8 +286,8 @@ const rowShadow = $derived(
 	{#if columnVisibility.author}
 		<div
 			data-column="author"
-			class="flex-shrink-0 flex items-center text-callout"
-			style="width: var({columnWidthProperty('author')}); color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;"
+			class="flex-shrink-0 flex items-center text-callout text-text-muted"
+			style:padding="0 {COLUMN_PADDING_X}px"
 		>
 			{#if !isWip && !isStash}
 				<span
@@ -306,8 +307,8 @@ const rowShadow = $derived(
 	{#if columnVisibility.date}
 		<div
 			data-column="date"
-			class="flex-shrink-0 overflow-hidden whitespace-nowrap text-small"
-			style="width: var({columnWidthProperty('date')}); color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;"
+			class="flex-shrink-0 overflow-hidden whitespace-nowrap text-small text-text-muted"
+			style:padding="0 {COLUMN_PADDING_X}px"
 		>
 			{#if !isWip && !isStash}
 				<span data-testid="commit-date" use:exactDate={commit.author_timestamp}
@@ -322,14 +323,13 @@ const rowShadow = $derived(
 		<div
 			data-column="sha"
 			class="flex-shrink-0 overflow-hidden whitespace-nowrap"
-			style="width: var({columnWidthProperty('sha')}); padding: 0 {COLUMN_PADDING_X}px;"
+			style:padding="0 {COLUMN_PADDING_X}px"
 		>
 			{#if !isWip && !isStash}
 				<button
 					type="button"
 					title="Copy SHA"
-					class="font-mono text-small w-full text-left bg-transparent border-0 p-0 cursor-pointer hover:underline"
-					style="color: var(--color-text-muted);"
+					class="font-mono text-small w-full text-left bg-transparent border-0 p-0 cursor-pointer hover:underline text-text-muted"
 					onclick={(e) => { e.stopPropagation(); copySha(commit.oid); }}
 					onkeydown={(e) => e.stopPropagation()}
 					>{commit.short_oid}</button
@@ -342,5 +342,15 @@ const rowShadow = $derived(
 <style>
 .prefix-colon {
 	color: var(--color-text-muted);
+}
+
+/* A row the open search did not match steps back so the matches read first. */
+.search-dim {
+	opacity: var(--opacity-search-dim);
+}
+
+/* Wide enough that a one-word WIP summary still reads as a chip. */
+.wip-summary {
+	min-width: 6rem;
 }
 </style>

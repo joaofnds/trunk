@@ -37,21 +37,6 @@ export function isSizedColumn(name: unknown): name is keyof ColumnWidths {
 	return typeof name === "string" && Object.hasOwn(DEFAULT_WIDTHS, name);
 }
 
-/**
- * The custom property on the commit list's root that holds a column's width.
- * Header cells and row cells both read it, so neither can keep a width of its own.
- */
-export function columnWidthProperty(column: keyof ColumnWidths): string {
-	return `--column-${column}-width`;
-}
-
-/** The commit list root's style: every sized column's width, declared once. */
-export function columnWidthDeclarations(widths: ColumnWidths): string {
-	return SIZED_COLUMNS.map(
-		(column) => `${columnWidthProperty(column)}: ${widths[column]}px;`,
-	).join(" ");
-}
-
 export type MeasureText = (text: string, font: string) => number;
 
 // Fonts the cells actually render in — the measurement is only as good as the

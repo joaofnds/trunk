@@ -6,7 +6,7 @@ import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
-import { columnWidthProperty, MESSAGE_FLOOR } from "../lib/column-widths.js";
+import { MESSAGE_FLOOR } from "../lib/column-widths.js";
 import { COLUMN_PADDING_X, LANE_WIDTH } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
@@ -197,8 +197,9 @@ async function flush() {
 // jsdom inherits custom properties but never substitutes var(), so a cell's
 // width is resolved here the way the engine would resolve it.
 function renderedWidth(cell: HTMLElement): string {
-	const reference = /^var\((--[\w-]+)\)$/.exec(cell.style.width);
-	if (!reference) return cell.style.width;
+	const width = getComputedStyle(cell).width;
+	const reference = /^var\((--[\w-]+)\)$/.exec(width);
+	if (!reference) return width;
 	return getComputedStyle(cell).getPropertyValue(reference[1]).trim();
 }
 
@@ -358,7 +359,7 @@ describe("CommitGraph", () => {
 			"[data-testid=column-header]",
 		)?.parentElement;
 
-		expect(headerBar?.getAttribute("style")).toContain("height: var(--bar-h)");
+		expect(headerBar).toHaveClass("h-bar");
 	});
 
 	it("renders commit summaries after data loads", async () => {
@@ -2062,7 +2063,7 @@ describe("CommitGraph", () => {
 					await flush();
 					const root = container.querySelector("[role=listbox]") as HTMLElement;
 
-					root.style.setProperty(columnWidthProperty(column), "177px");
+					root.style.setProperty(`--column-${column}-width`, "177px");
 
 					expect({
 						header: renderedWidth(headerCell(container, column)),

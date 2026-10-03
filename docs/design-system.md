@@ -145,9 +145,10 @@ Biome's `nursery/noUndeclaredCustomProperties` is on, as an error. It reports a
 `var(--name)` in a stylesheet, a `<style>` block or a `style="..."` attribute that
 no stylesheet declares, and an `@property` registration in `src/properties.css`
 counts as the declaration. A name built from an expression in markup is outside
-its reach: the column widths the commit list hands down are read that way, and
-`src/properties.css.test.ts` demands their registration the moment they are
-handed off as `style:--` directives.
+its reach, so a property is read by its literal name in a stylesheet rule, as the
+commit list's six column widths are in `CommitGraph.svelte`'s `<style>`, and
+`src/properties.css.test.ts` demands the registration of every property a
+`style:--` directive hands off.
 
 `src/markup-classes.test.ts` guards the markup. It parses every component with
 Svelte's compiler, loads `theme.css` into Tailwind's design system, and fails a

@@ -52,3 +52,35 @@
 	inherits: true;
 	initial-value: 0;
 }
+
+/* ── Commit list: the measured width of each sized column (src/lib/column-widths.ts) ── */
+@property --column-ref-width {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+@property --column-graph-width {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+@property --column-diff-width {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+@property --column-author-width {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+@property --column-date-width {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+@property --column-sha-width {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}

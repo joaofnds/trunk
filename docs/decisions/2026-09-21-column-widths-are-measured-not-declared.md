@@ -281,8 +281,9 @@ the same object cannot share anything.
 The header is one flex row and every commit row is another, inside the virtual
 list, so a header cell sits over its row cells only while they are the same width.
 Each sized column's width reaches the cells through one custom property on the
-list's root: `columnWidthProperty` names it, `columnWidthDeclarations` writes all
-six, and every header cell and row cell takes its width from it. A test in
+list's root, `--column-<name>-width`: the root's `style:` directives in
+`CommitGraph.svelte` declare all six, and one rule per column in that component's
+`<style>` gives every header cell and row cell its width from it. A test in
 `CommitGraph.test.ts` sets the property on the root and expects a header cell and a
 row cell to follow, so a cell that takes a width of its own fails it.
 

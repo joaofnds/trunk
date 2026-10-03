@@ -35,8 +35,6 @@ import {
 import {
 	authorContentWidth,
 	columnFloors,
-	columnWidthDeclarations,
-	columnWidthProperty,
 	DEFAULT_WIDTHS,
 	dateContentWidth,
 	graphTargetWidth,
@@ -2061,8 +2059,13 @@ $effect(() => {
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
-	class="h-full overflow-hidden flex flex-col"
-	style="background: var(--color-surface); outline: none; {columnWidthDeclarations(columnWidths)}"
+	class="h-full overflow-hidden flex flex-col bg-surface outline-none"
+	style:--column-ref-width="{columnWidths.ref}px"
+	style:--column-graph-width="{columnWidths.graph}px"
+	style:--column-diff-width="{columnWidths.diff}px"
+	style:--column-author-width="{columnWidths.author}px"
+	style:--column-date-width="{columnWidths.date}px"
+	style:--column-sha-width="{columnWidths.sha}px"
 	tabindex="0"
 	role="listbox"
 	bind:this={containerRef}
@@ -2072,8 +2075,8 @@ $effect(() => {
        the padding, as the list's rows do, so the two scroll the same distance. -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="flex-shrink-0"
-		style="height: var(--bar-h); background: var(--color-surface); box-shadow: inset 0 -1px 0 var(--color-border); font-size: var(--text-caption); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-widest); text-transform: uppercase; color: var(--color-text-subtle); padding: 0 {COLUMN_PADDING_X}px;"
+		class="flex-shrink-0 h-bar bg-surface shadow-hairline text-caption font-semibold tracking-widest uppercase text-text-subtle"
+		style:padding="0 {COLUMN_PADDING_X}px"
 		oncontextmenu={showHeaderContextMenu}
 	>
 		<div
@@ -2088,7 +2091,7 @@ $effect(() => {
 						<div
 							class="relative flex-shrink-0 overflow-hidden whitespace-nowrap"
 							data-column={col.key}
-							style="width: var({columnWidthProperty(col.key)}); padding: 0 {COLUMN_PADDING_X}px;"
+							style:padding="0 {COLUMN_PADDING_X}px"
 							title={col.label}
 						>
 							{#if showsHeaderLabel(width, headerMins[col.key])}
@@ -2109,7 +2112,8 @@ $effect(() => {
 						<div
 							class="relative flex-1 overflow-hidden whitespace-nowrap"
 							data-column={col.key}
-							style="padding: 0 {COLUMN_PADDING_X}px; min-width: {MESSAGE_FLOOR}px;"
+							style:padding="0 {COLUMN_PADDING_X}px"
+							style:min-width="{MESSAGE_FLOOR}px"
 							title={col.label}
 						>
 							{col.label}
@@ -2123,8 +2127,8 @@ $effect(() => {
 	<!-- Content area (grows to fill remaining space) -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="flex-1 overflow-hidden"
-		style="position: relative; padding: 0 {COLUMN_PADDING_X}px;"
+		class="flex-1 overflow-hidden relative"
+		style:padding="0 {COLUMN_PADDING_X}px"
 		onwheel={panColumn}
 	>
 		{#if searchOpen}
@@ -2144,20 +2148,15 @@ $effect(() => {
 			{#each { length: SKELETON_COUNT } as _}
 				<div
 					class="flex items-center gap-2 px-2 animate-pulse"
-					style="height: {displaySettings.rowHeight}px"
+					style:height="{displaySettings.rowHeight}px"
 				>
 					<div
-						class="rounded-full flex-shrink-0"
-						style="background: var(--color-border); width: 64px; height: 12px;"
+						class="skeleton-ref rounded-full flex-shrink-0 bg-border h-3"
 					></div>
 					<div
-						class="rounded flex-shrink-0"
-						style="background: var(--color-border); width: 32px; height: 100%;"
+						class="skeleton-graph rounded flex-shrink-0 bg-border h-full"
 					></div>
-					<div
-						class="rounded flex-1"
-						style="background: var(--color-border); height: 12px;"
-					></div>
+					<div class="rounded flex-1 bg-border h-3"></div>
 				</div>
 			{/each}
 		{:else if commits.length === 0 && error}
@@ -2172,10 +2171,10 @@ $effect(() => {
 				{@const graphColWidth = columnVisibility.graph ? columnWidths.graph : naturalGraphWidth}
 				{@const scrollX = Math.min(graphScrollX, maxGraphScrollX)}
 				<svg
-					class="absolute top-0"
+					class="absolute top-0 left-0 pointer-events-none z-1"
+					class:search-dim={searchDimmingActive}
 					width={graphStart + Math.max(graphColWidth, naturalGraphWidth)}
 					height={contentHeight}
-					style="left: 0; pointer-events: none; z-index: 1; {searchDimmingActive ? 'opacity: var(--opacity-search-dim);' : ''}"
 				>
 					<!-- Layers A and B live in the Graph column's band; with the column
                hidden CommitRow drops that cell and the Message text slides into
@@ -2398,7 +2397,7 @@ $effect(() => {
 										stroke={laneColor(pill.commitColorIndex)}
 										stroke-width={pill.isHead ? displaySettings.pillStroke * 2 : displaySettings.pillStroke}
 										opacity={pill.isGhost ? 0.45 : pill.isRemoteOnly ? 0.67 : 1}
-										style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
+										class:non-head={pill.isNonHead && !pill.isRemoteOnly}
 									/>
 									{#if pill.overflowCount > 0}
 										<!-- Stub linking the named pill to the +N badge, filling the gap so they read as one connected group. -->
@@ -2410,7 +2409,7 @@ $effect(() => {
 											stroke={laneColor(pill.commitColorIndex)}
 											stroke-width={pill.isHead ? displaySettings.pillStroke * 2 : displaySettings.pillStroke}
 											opacity={pill.isGhost ? 0.45 : pill.isRemoteOnly ? 0.67 : 1}
-											style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
+											class:non-head={pill.isNonHead && !pill.isRemoteOnly}
 										/>
 									{/if}
 								{/if}
@@ -2444,7 +2443,8 @@ $effect(() => {
 										<g
 											transform="translate({pill.x + PILL_PADDING_X}, {pill.y - ICON_WIDTH / 2})"
 											opacity={pill.isGhost ? 0.45 : 0.9}
-											style="pointer-events: auto; cursor: {pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'};"
+											class="pointer-events-auto"
+											style:cursor={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}
 											oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
 											ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
 										>
@@ -2461,17 +2461,13 @@ $effect(() => {
 										height={PILL_HEIGHT}
 									>
 										<span
-											style="
-                      display: block;
-                      line-height: {PILL_HEIGHT}px;
-                      color: {laneColor(pill.colorIndex)};{pill.isGhost ? ' opacity: 0.5;' : ''}
-                      font-size: {PILL_FONT_SIZE}px;
-                      font-family: var(--font-sans);
-                      font-weight: {pill.isHead ? 700 : 500};
-                      white-space: nowrap;
-                      overflow: hidden;
-                      cursor: {pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'};
-                    "
+											class="block font-sans whitespace-nowrap overflow-hidden"
+											class:opacity-50={pill.isGhost}
+											style:line-height="{PILL_HEIGHT}px"
+											style:color={laneColor(pill.colorIndex)}
+											style:font-size="{PILL_FONT_SIZE}px"
+											style:font-weight={pill.isHead ? 700 : 500}
+											style:cursor={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}
 											oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
 											ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
 											>{pill.truncatedLabel}</span
@@ -2503,16 +2499,11 @@ $effect(() => {
 											height={BADGE_HEIGHT}
 										>
 											<span
-												style="
-                        color: {laneColor(pill.colorIndex)};{pill.isGhost ? ' opacity: 0.5;' : ''}
-                        font-size: {BADGE_FONT_SIZE}px;
-                        font-family: var(--font-sans);
-                        font-weight: 500;
-                        line-height: {BADGE_HEIGHT}px;
-                        display: block;
-                        text-align: center;
-                        white-space: nowrap;
-                      "
+												class="block text-center whitespace-nowrap font-sans font-medium"
+												class:opacity-50={pill.isGhost}
+												style:color={laneColor(pill.colorIndex)}
+												style:font-size="{BADGE_FONT_SIZE}px"
+												style:line-height="{BADGE_HEIGHT}px"
 												>{badgeText}</span
 											>
 										</foreignObject>
@@ -2526,32 +2517,24 @@ $effect(() => {
 					{#if hoveredPill.overflowCount > 0}
 						<!-- Multi-ref expansion: shows all refs vertically -->
 						<div
-							class="absolute rounded shadow-lg"
-							style="
-                left: {hoveredPill.x}px;
-                top: {hoveredPill.y - PILL_HEIGHT / 2}px;
-                background: var(--color-surface-raised);
-                border: 1px solid var(--color-border);
-                padding: var(--space-1) var(--space-2);
-                z-index: 50;
-                pointer-events: auto;
-                opacity: 1;
-                transition: opacity 180ms ease;
-              "
+							class="absolute rounded shadow-lg bg-surface-raised border border-border py-1 px-2 z-50 pointer-events-auto"
+							style:left="{hoveredPill.x}px"
+							style:top="{hoveredPill.y - PILL_HEIGHT / 2}px"
 							onmouseenter={overlayMouseEnter}
 							onmouseleave={overlayMouseLeave}
 						>
 							{#each hoveredPill.allRefs as ref}
 								{@const ri = refFromLabel(ref)}
 								<div
-									style="display: flex; align-items: center; gap: var(--space-1); cursor: {ri.refType === 'LocalBranch' || ri.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}; border-radius: var(--radius); color: var(--lane-{ref.color_index % 8});"
-									class="text-small font-medium whitespace-nowrap hover:bg-hover px-1 -mx-1 h-target"
+									class="flex items-center gap-1 rounded text-small font-medium whitespace-nowrap hover:bg-hover px-1 -mx-1 h-target"
+									style:cursor={ri.refType === 'LocalBranch' || ri.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}
+									style:color="var(--lane-{ref.color_index % 8})"
 									oncontextmenu={(e) => showRefContextMenu(e, ri)}
 									ondblclick={ri.refType === 'LocalBranch' || ri.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, ri) : undefined}
 								>
 									{#if PILL_ICONS[ref.ref_type]}
 										{@const RefIcon = PILL_ICONS[ref.ref_type]}
-										<RefIcon size={10} style="flex-shrink: 0; opacity: 0.85;" />
+										<RefIcon size={10} class="flex-shrink-0 opacity-85" />
 									{/if}
 									{ref.short_name}
 								</div>
@@ -2561,34 +2544,27 @@ $effect(() => {
 						{@const pill = hoveredPill}
 						<!-- Truncated single-ref: width-only expansion showing full label -->
 						<div
-							class="absolute rounded-full shadow-lg"
-							style="
-                left: {pill.x}px;
-                top: {pill.y - PILL_HEIGHT / 2}px;
-                height: {PILL_HEIGHT}px;
-                background: color-mix(in oklch, var(--lane-{pill.colorIndex % 8}) 14%, var(--color-surface-raised));
-                box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--lane-{pill.colorIndex % 8}) 50%, transparent);
-                padding: 0 {PILL_PADDING_X}px;
-                z-index: 50;
-                pointer-events: auto;
-                display: flex;
-                align-items: center;
-                opacity: 1;
-                transition: opacity 180ms ease;
-                cursor: {pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'};
-              "
+							class="absolute rounded-full flex items-center z-50 pointer-events-auto"
+							style:left="{pill.x}px"
+							style:top="{pill.y - PILL_HEIGHT / 2}px"
+							style:height="{PILL_HEIGHT}px"
+							style:background="color-mix(in oklch, var(--lane-{pill.colorIndex % 8}) 14%, var(--color-surface-raised))"
+							style:box-shadow="inset 0 0 0 1px color-mix(in oklch, var(--lane-{pill.colorIndex % 8}) 50%, transparent)"
+							style:padding="0 {PILL_PADDING_X}px"
+							style:cursor={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}
 							onmouseenter={overlayMouseEnter}
 							onmouseleave={overlayMouseLeave}
 							oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
 							ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
 						>
 							<span
-								style="display: flex; align-items: center; gap: var(--space-1); font-weight: {pill.isHead ? 700 : 500}; color: var(--lane-{pill.colorIndex % 8});"
-								class="text-small font-medium whitespace-nowrap"
+								class="flex items-center gap-1 text-small font-medium whitespace-nowrap"
+								style:font-weight={pill.isHead ? 700 : 500}
+								style:color="var(--lane-{pill.colorIndex % 8})"
 							>
 								{#if PILL_ICONS[pill.refType]}
 									{@const HoverIcon = PILL_ICONS[pill.refType]}
-									<HoverIcon size={10} style="flex-shrink: 0; opacity: 0.9;" />
+									<HoverIcon size={10} class="flex-shrink-0 opacity-90" />
 								{/if}
 								{pill.label}
 							</span>
@@ -2644,20 +2620,15 @@ $effect(() => {
 				{#each { length: 3 } as _}
 					<div
 						class="flex items-center gap-2 animate-pulse"
-						style="height: {displaySettings.rowHeight}px"
+						style:height="{displaySettings.rowHeight}px"
 					>
 						<div
-							class="rounded-full flex-shrink-0"
-							style="background: var(--color-border); width: 64px; height: 12px;"
+							class="skeleton-ref rounded-full flex-shrink-0 bg-border h-3"
 						></div>
 						<div
-							class="rounded flex-shrink-0"
-							style="background: var(--color-border); width: 32px; height: 100%;"
+							class="skeleton-graph rounded flex-shrink-0 bg-border h-full"
 						></div>
-						<div
-							class="rounded flex-1"
-							style="background: var(--color-border); height: 12px;"
-						></div>
+						<div class="rounded flex-1 bg-border h-3"></div>
 					</div>
 				{/each}
 			{/if}
@@ -2708,6 +2679,26 @@ $effect(() => {
 		transparent 3px
 	);
 }
+/* Each sized column is one width, set on the list root and read here by the
+   header cell and the row cell alike, so neither can keep a width of its own. */
+[role="listbox"] :global([data-column="ref"]) {
+	width: var(--column-ref-width);
+}
+[role="listbox"] :global([data-column="graph"]) {
+	width: var(--column-graph-width);
+}
+[role="listbox"] :global([data-column="diff"]) {
+	width: var(--column-diff-width);
+}
+[role="listbox"] :global([data-column="author"]) {
+	width: var(--column-author-width);
+}
+[role="listbox"] :global([data-column="date"]) {
+	width: var(--column-date-width);
+}
+[role="listbox"] :global([data-column="sha"]) {
+	width: var(--column-sha-width);
+}
 /* GRAPH-01: visible padding above first and below last commit row */
 :global(.virtual-list-viewport) {
 	padding-top: var(--space-2);
@@ -2721,5 +2712,24 @@ $effect(() => {
 }
 .error-text {
 	color: var(--color-danger);
+}
+
+/* The overlay steps back while a search is open so the matched rows read first. */
+.search-dim {
+	opacity: var(--opacity-search-dim);
+}
+
+/* A connector to a branch that is not HEAD is drawn a shade darker than its
+   lane, so the checked-out branch's connector is the one that stands out. */
+.non-head {
+	filter: brightness(0.75);
+}
+
+/* The loading skeleton's stand-ins for a ref pill and a graph lane. */
+.skeleton-ref {
+	width: 64px;
+}
+.skeleton-graph {
+	width: 32px;
 }
 </style>
