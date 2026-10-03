@@ -53,9 +53,19 @@
 					"correctness": {
 						"noUnusedVariables": "off",
 						"noUnusedImports": "off"
+					},
+					"a11y": {
+						"recommended": false
 					}
 				}
 			}
 		}
-	]
+	],
+	"html": {
+		"experimentalFullSupportEnabled": true,
+		"formatter": {
+			"enabled": true,
+			"whitespaceSensitivity": "strict"
+		}
+	}
 }
