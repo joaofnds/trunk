@@ -215,3 +215,11 @@ Tab and TabStrip primitives added to the catalog, drawn below Chip as the commit
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-10-03
+
+ToastCard primitive added to the catalog, drawn below Tab as a neutral and a danger card in a column that shrinks to its widest card; the same antialiased pixels on the first Chip pill's curve and one pixel above it move with the capture height, as the Tab entry records
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png

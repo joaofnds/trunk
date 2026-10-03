@@ -43,6 +43,7 @@ import ListOption from "./ListOption.svelte";
 import RowAction from "./RowAction.svelte";
 import Tab from "./Tab.svelte";
 import TabStrip from "./TabStrip.svelte";
+import ToastCard from "./ToastCard.svelte";
 </script>
 
 <!--
@@ -309,6 +310,20 @@ import TabStrip from "./TabStrip.svelte";
 					<Tab selected={i === 1}><span data-catalog-text>{mode}</span></Tab>
 				{/each}
 			</TabStrip>
+		</div>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>ToastCard</h2
+		>
+		<div class="flex flex-col gap-2 self-start">
+			<ToastCard
+				><span data-catalog-text>Pushed main to origin</span></ToastCard
+			>
+			<ToastCard tone="danger"
+				><span data-catalog-text>Push rejected: fetch first</span></ToastCard
+			>
 		</div>
 	</section>
 </div>
