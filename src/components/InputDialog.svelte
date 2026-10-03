@@ -86,7 +86,7 @@ function autofocus(node: HTMLElement) {
 		class="rounded"
 		style="background: var(--color-surface-raised); border: 1px solid var(--color-border); box-shadow: var(--shadow-2); min-width: 340px; max-width: 480px; padding: var(--space-4);"
 	>
-		<h3 class="text-sm font-semibold mb-3" style="color: var(--color-text);"
+		<h3 class="text-body font-semibold mb-3" style="color: var(--color-text);"
 			>{title}</h3
 		>
 
@@ -94,7 +94,7 @@ function autofocus(node: HTMLElement) {
 			<div class="mb-3">
 				<label
 					for="input-dialog-{field.key}"
-					class="block text-xs mb-1"
+					class="block text-callout mb-1"
 					style="color: var(--color-text-muted);"
 				>
 					{field.label}
@@ -106,7 +106,7 @@ function autofocus(node: HTMLElement) {
 					{#if i === 0}
 						<textarea
 							id="input-dialog-{field.key}"
-							class="w-full rounded text-sm"
+							class="w-full rounded text-body"
 							style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 60px;"
 							placeholder={field.placeholder ?? ''}
 							bind:value={values[field.key]}
@@ -115,7 +115,7 @@ function autofocus(node: HTMLElement) {
 					{:else}
 						<textarea
 							id="input-dialog-{field.key}"
-							class="w-full rounded text-sm"
+							class="w-full rounded text-body"
 							style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 60px;"
 							placeholder={field.placeholder ?? ''}
 							bind:value={values[field.key]}
@@ -126,7 +126,7 @@ function autofocus(node: HTMLElement) {
 						<input
 							id="input-dialog-{field.key}"
 							type="text"
-							class="w-full rounded text-sm"
+							class="w-full rounded text-body"
 							style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2);"
 							placeholder={field.placeholder ?? ''}
 							bind:value={values[field.key]}
@@ -136,7 +136,7 @@ function autofocus(node: HTMLElement) {
 						<input
 							id="input-dialog-{field.key}"
 							type="text"
-							class="w-full rounded text-sm"
+							class="w-full rounded text-body"
 							style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2);"
 							placeholder={field.placeholder ?? ''}
 							bind:value={values[field.key]}
@@ -148,14 +148,14 @@ function autofocus(node: HTMLElement) {
 
 		<div class="flex justify-end gap-2 mt-4">
 			<button
-				class="rounded px-3 py-1.5 text-xs font-medium"
+				class="rounded px-3 h-control text-callout font-medium"
 				style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text);"
 				onclick={oncancel}
 			>
 				{cancelLabel}
 			</button>
 			<button
-				class="rounded px-3 py-1.5 text-xs font-medium"
+				class="rounded px-3 h-control text-callout font-medium"
 				style="background: var(--color-accent); color: var(--color-on-accent); opacity: {canSubmit ? '1' : '0.5'};"
 				disabled={!canSubmit}
 				onclick={handleSubmit}

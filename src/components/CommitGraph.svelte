@@ -2161,7 +2161,7 @@ $effect(() => {
 			{/each}
 		{:else if commits.length === 0 && error}
 			<!-- Initial load error -->
-			<div class="error-banner m-4 rounded px-4 py-3 text-sm">
+			<div class="error-banner m-4 rounded px-4 py-3 text-body">
 				{error}
 			</div>
 		{:else}
@@ -2544,7 +2544,7 @@ $effect(() => {
 								{@const ri = refFromLabel(ref)}
 								<div
 									style="display: flex; align-items: center; gap: var(--space-1); cursor: {ri.refType === 'LocalBranch' || ri.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}; border-radius: var(--radius); color: var(--lane-{ref.color_index % 8});"
-									class="text-[11px] leading-5 font-medium whitespace-nowrap hover:bg-white/8 px-1 -mx-1"
+									class="text-small font-medium whitespace-nowrap hover:bg-hover px-1 -mx-1 h-target"
 									oncontextmenu={(e) => showRefContextMenu(e, ri)}
 									ondblclick={ri.refType === 'LocalBranch' || ri.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, ri) : undefined}
 								>
@@ -2583,7 +2583,7 @@ $effect(() => {
 						>
 							<span
 								style="display: flex; align-items: center; gap: var(--space-1); font-weight: {pill.isHead ? 700 : 500}; color: var(--lane-{pill.colorIndex % 8});"
-								class="text-[11px] font-medium whitespace-nowrap"
+								class="text-small font-medium whitespace-nowrap"
 							>
 								{#if PILL_ICONS[pill.refType]}
 									{@const HoverIcon = PILL_ICONS[pill.refType]}
@@ -2664,10 +2664,10 @@ $effect(() => {
 			<!-- Mid-scroll error + retry -->
 			{#if error && commits.length > 0}
 				<div class="flex items-center gap-3 px-4 py-2">
-					<span class="error-text text-sm">{error}</span>
+					<span class="error-text text-body">{error}</span>
 					<button
 						onclick={() => void loadMore()}
-						class="rounded px-3 py-1 text-xs font-medium"
+						class="rounded px-3 h-control text-callout font-medium"
 						style="background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
 					>
 						Retry

@@ -133,8 +133,8 @@ const rowShadow = $derived(
 	data-testid="commit-row"
 	role="row"
 	tabindex="0"
-	class="relative flex items-center cursor-pointer text-[13px]"
-	class:hover:bg-[var(--color-hover)]={!selected && !isCurrentMatch && !isSearchMatch}
+	class="relative flex items-center cursor-pointer text-body"
+	class:hover:bg-hover={!selected && !isCurrentMatch && !isSearchMatch}
 	style:height="{rowHeight}px"
 	style="color: var(--color-text); {isCurrentMatch ? 'background: var(--color-search-current);' : isSearchMatch ? 'background: var(--color-search-match);' : selected ? 'background: var(--color-selected-row);' : ''} {isSearchActive && !isSearchMatch && !isCurrentMatch ? 'opacity: var(--opacity-search-dim);' : ''} {rowShadow ? `box-shadow: ${rowShadow};` : ''}"
 	onclick={(e) => onselect?.(commit.oid, { compare: e.metaKey || e.ctrlKey, range: e.shiftKey })}
@@ -154,7 +154,7 @@ const rowShadow = $derived(
 	{#if columnVisibility.graph}
 		<div
 			data-column="graph"
-			class="relative z-[1] flex items-center flex-shrink-0 overflow-hidden"
+			class="relative z-1 flex items-center flex-shrink-0 overflow-hidden"
 			style="width: var({columnWidthProperty('graph')}); padding: 0 {COLUMN_PADDING_X}px;"
 		> </div>
 	{/if}
@@ -171,13 +171,13 @@ const rowShadow = $derived(
 				class="flex items-center gap-2 overflow-hidden whitespace-nowrap"
 			>
 				<span
-					class="overflow-hidden text-ellipsis italic rounded px-2 py-0.5"
+					class="overflow-hidden text-ellipsis italic rounded px-2 py-1"
 					style="min-width: 6rem; background: var(--color-surface-raised); color: var(--color-text-muted);"
 					>{commit.summary}</span
 				>
 				{#if wipFileBadges.length}
 					<span
-						class="flex items-center gap-2 flex-shrink-0 font-mono text-[11px]"
+						class="flex items-center gap-2 flex-shrink-0 font-mono text-small"
 					>
 						{#each wipFileBadges as b}
 							<span title={b.title} style="color: {b.color};"
@@ -240,8 +240,8 @@ const rowShadow = $derived(
              Segments split the bar via flex-grow so their ratio matches exactly. -->
 				<div
 					data-testid="diff-stat-bar"
-					class="flex h-1.5 flex-shrink-0"
-					style="width: {(diffBar.addFrac + diffBar.delFrac) * 100}%; min-width: 6px;"
+					class="flex h-1 min-w-1 flex-shrink-0"
+					style="width: {(diffBar.addFrac + diffBar.delFrac) * 100}%;"
 				>
 					{#if diffBar.addFrac > 0}
 						<span
@@ -264,8 +264,8 @@ const rowShadow = $derived(
              gap that reads as "no change". Details are in the tooltip. -->
 				<span
 					data-testid="diff-stat-neutral"
-					class="h-1.5 flex-shrink-0 rounded-full"
-					style="width: 6px; background: var(--color-text-muted);"
+					class="h-1 w-1 flex-shrink-0 rounded-full"
+					style="background: var(--color-text-muted);"
 				></span>
 			{:else if diffStat}
 			<!-- Genuinely empty commit (0 files): render nothing — there is no change
@@ -273,7 +273,7 @@ const rowShadow = $derived(
 			{:else}
 				<span
 					data-testid="diff-stat-placeholder"
-					class="flex-1 text-center text-[11px]"
+					class="flex-1 text-center text-small"
 					style="color: var(--color-text-muted); opacity: 0.5;"
 					>—</span
 				>
@@ -285,7 +285,7 @@ const rowShadow = $derived(
 	{#if columnVisibility.author}
 		<div
 			data-column="author"
-			class="flex-shrink-0 flex items-center text-[12px]"
+			class="flex-shrink-0 flex items-center text-callout"
 			style="width: var({columnWidthProperty('author')}); color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;"
 		>
 			{#if !isWip && !isStash}
@@ -306,7 +306,7 @@ const rowShadow = $derived(
 	{#if columnVisibility.date}
 		<div
 			data-column="date"
-			class="flex-shrink-0 overflow-hidden whitespace-nowrap text-[11px]"
+			class="flex-shrink-0 overflow-hidden whitespace-nowrap text-small"
 			style="width: var({columnWidthProperty('date')}); color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;"
 		>
 			{#if !isWip && !isStash}
@@ -328,7 +328,7 @@ const rowShadow = $derived(
 				<button
 					type="button"
 					title="Copy SHA"
-					class="font-mono text-[11px] w-full text-left bg-transparent border-0 p-0 cursor-pointer hover:underline"
+					class="font-mono text-small w-full text-left bg-transparent border-0 p-0 cursor-pointer hover:underline"
 					style="color: var(--color-text-muted);"
 					onclick={(e) => { e.stopPropagation(); copySha(commit.oid); }}
 					onkeydown={(e) => e.stopPropagation()}

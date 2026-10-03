@@ -77,14 +77,14 @@ $effect(() => {
 	>
 		<h3
 			id={titleId}
-			class="text-sm font-semibold mb-3"
+			class="text-body font-semibold mb-3"
 			style="color: var(--color-text);"
 		>
 			{title}
 		</h3>
 
 		<textarea
-			class="w-full rounded text-sm"
+			class="w-full rounded text-body"
 			style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 200px;"
 			bind:value={text}
 			use:autofocus
@@ -92,14 +92,14 @@ $effect(() => {
 
 		<div class="flex justify-end gap-2 mt-4">
 			<button
-				class="rounded px-3 py-1.5 text-xs font-medium"
+				class="rounded px-3 h-control text-callout font-medium"
 				style="background: var(--color-surface-chip); border: 1px solid var(--color-border); color: var(--color-text);"
 				onclick={handleCancel}
 			>
 				Cancel
 			</button>
 			<button
-				class="rounded px-3 py-1.5 text-xs font-medium"
+				class="rounded px-3 h-control text-callout font-medium"
 				style="background: var(--color-accent); color: var(--color-on-accent);"
 				onclick={handleSubmit}
 			>

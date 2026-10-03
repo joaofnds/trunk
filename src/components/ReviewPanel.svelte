@@ -936,7 +936,7 @@ $effect(() => {
 				style="gap: var(--space-1); display: {reviewFilter === 'none' || (reviewFilter !== 'all' && visibleCurrentFileComments.length === 0) ? 'none' : 'flex'};"
 			>
 				<div
-					class="text-xs"
+					class="text-callout"
 					style="color: var(--color-text-muted); padding: 0 var(--space-1);"
 				>
 					On current file content
