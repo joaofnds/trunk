@@ -99,6 +99,25 @@ describe("OperationBanner", () => {
 		expect(screen.getByText("Abort")).toBeInTheDocument();
 	});
 
+	it("paints each rebase action in the tone its meaning carries", () => {
+		render(OperationBanner, {
+			props: {
+				info: makeInfo({ op_type: "Rebase" }),
+				repoPath: "/repo",
+			},
+		});
+
+		expect(screen.getByRole("button", { name: "Continue" })).toHaveClass(
+			"bg-success-bg",
+		);
+		expect(screen.getByRole("button", { name: "Skip" })).toHaveClass(
+			"bg-warning-bg",
+		);
+		expect(screen.getByRole("button", { name: "Abort" })).toHaveClass(
+			"bg-danger-bg",
+		);
+	});
+
 	it("does not show Continue/Skip/Abort for merge", () => {
 		render(OperationBanner, {
 			props: {

@@ -5,6 +5,7 @@ import { reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { OperationInfo } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
 
 interface Props {
 	info: OperationInfo;
@@ -247,146 +248,62 @@ async function handleRevertAbort() {
 	</div>
 	{#if isRebase}
 		<div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
-			<button
+			<Button
+				size="sm"
+				variant="success"
 				onclick={handleContinue}
 				disabled={loading}
-				style="
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--color-success-bg);
-          color: var(--color-success);
-          font-size: var(--text-small);
-          border: 1px solid var(--color-success-border);
-          border-radius: var(--radius);
-          cursor: pointer;
-          height: var(--control-sm-h);
-          padding: 0 var(--space-2);
-          white-space: nowrap;
-        "
-				>Continue</button
+				>Continue</Button
 			>
-			<button
+			<Button
+				size="sm"
+				variant="warning"
 				onclick={handleSkip}
 				disabled={loading}
-				style="
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--color-warning-bg);
-          color: var(--color-warning);
-          font-size: var(--text-small);
-          border: 1px solid var(--color-warning-border);
-          border-radius: var(--radius);
-          cursor: pointer;
-          height: var(--control-sm-h);
-          padding: 0 var(--space-2);
-          white-space: nowrap;
-        "
-				>Skip</button
+				>Skip</Button
 			>
-			<button
+			<Button
+				size="sm"
+				variant="danger"
 				onclick={handleAbort}
 				disabled={loading}
-				style="
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--color-danger-bg);
-          color: var(--color-danger);
-          font-size: var(--text-small);
-          border: 1px solid var(--color-danger-border);
-          border-radius: var(--radius);
-          cursor: pointer;
-          height: var(--control-sm-h);
-          padding: 0 var(--space-2);
-          white-space: nowrap;
-        "
-				>Abort</button
+				>Abort</Button
 			>
 		</div>
 	{/if}
 	{#if isCherryPick}
 		<div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
-			<button
+			<Button
+				size="sm"
+				variant="success"
 				onclick={handleCherryPickContinue}
 				disabled={loading}
-				style="
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--color-success-bg);
-          color: var(--color-success);
-          font-size: var(--text-small);
-          border: 1px solid var(--color-success-border);
-          border-radius: var(--radius);
-          cursor: pointer;
-          height: var(--control-sm-h);
-          padding: 0 var(--space-2);
-          white-space: nowrap;
-        "
-				>Continue</button
+				>Continue</Button
 			>
-			<button
+			<Button
+				size="sm"
+				variant="danger"
 				onclick={handleCherryPickAbort}
 				disabled={loading}
-				style="
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--color-danger-bg);
-          color: var(--color-danger);
-          font-size: var(--text-small);
-          border: 1px solid var(--color-danger-border);
-          border-radius: var(--radius);
-          cursor: pointer;
-          height: var(--control-sm-h);
-          padding: 0 var(--space-2);
-          white-space: nowrap;
-        "
-				>Abort</button
+				>Abort</Button
 			>
 		</div>
 	{/if}
 	{#if isRevert}
 		<div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
-			<button
+			<Button
+				size="sm"
+				variant="success"
 				onclick={handleRevertContinue}
 				disabled={loading}
-				style="
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--color-success-bg);
-          color: var(--color-success);
-          font-size: var(--text-small);
-          border: 1px solid var(--color-success-border);
-          border-radius: var(--radius);
-          cursor: pointer;
-          height: var(--control-sm-h);
-          padding: 0 var(--space-2);
-          white-space: nowrap;
-        "
-				>Continue</button
+				>Continue</Button
 			>
-			<button
+			<Button
+				size="sm"
+				variant="danger"
 				onclick={handleRevertAbort}
 				disabled={loading}
-				style="
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--color-danger-bg);
-          color: var(--color-danger);
-          font-size: var(--text-small);
-          border: 1px solid var(--color-danger-border);
-          border-radius: var(--radius);
-          cursor: pointer;
-          height: var(--control-sm-h);
-          padding: 0 var(--space-2);
-          white-space: nowrap;
-        "
-				>Abort</button
+				>Abort</Button
 			>
 		</div>
 	{/if}

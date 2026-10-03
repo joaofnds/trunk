@@ -1,11 +1,12 @@
 import { waitFor } from "../harness/wait.js";
+import { enabledButton, firstMatching } from "./dom.js";
 
 const EDITOR = ".rebase-editor";
 const ROW = "[data-rebase-row]";
 const MESSAGE = ".rebase-cell-message";
 const TOOLBAR = ".rebase-toolbar-meta";
-const START = ".rebase-btn-start";
-const CANCEL = ".rebase-btn-cancel";
+const START = "Start Rebase";
+const CANCEL = "Cancel Rebase";
 const FILE_ROW = '[data-testid="staging-file"]';
 const DETAIL_SUMMARY = ".commit-message .summary";
 const DIFF_PATH = '[data-testid="diff-path"]';
@@ -98,7 +99,7 @@ export class RebaseEditorDriver {
 	/** Closes the takeover without starting its plan. */
 	async cancel(): Promise<void> {
 		const cancel = await waitFor("the cancel-rebase button", () =>
-			document.querySelector<HTMLButtonElement>(CANCEL),
+			firstMatching("button", (text) => text === CANCEL),
 		);
 
 		cancel.click();
@@ -109,10 +110,9 @@ export class RebaseEditorDriver {
 
 	async start(): Promise<void> {
 		await this.openRows();
-		const button = await waitFor("an enabled start button", () => {
-			const button = document.querySelector<HTMLButtonElement>(START);
-			return button && !button.disabled ? button : null;
-		});
+		const button = await waitFor("an enabled start button", () =>
+			enabledButton(START),
+		);
 
 		button.click();
 	}

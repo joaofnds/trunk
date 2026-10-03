@@ -250,6 +250,26 @@ describe("RebaseEditor", () => {
 		expect(screen.getByText("Start Rebase")).toBeInTheDocument();
 	});
 
+	it("paints starting in the success tone and cancelling in the danger tone", () => {
+		render(RebaseEditor, {
+			props: {
+				repoPath: "/test/repo",
+				commits: TEST_ITEMS,
+				branchName: "feature/login",
+				baseName: "main",
+				onclose: vi.fn(),
+				onstart: vi.fn(),
+			},
+		});
+
+		expect(screen.getByRole("button", { name: "Start Rebase" })).toHaveClass(
+			"bg-success-bg",
+		);
+		expect(screen.getByRole("button", { name: "Cancel Rebase" })).toHaveClass(
+			"bg-danger-bg",
+		);
+	});
+
 	it("calls onclose when Cancel Rebase clicked", async () => {
 		const onclose = vi.fn();
 		render(RebaseEditor, {

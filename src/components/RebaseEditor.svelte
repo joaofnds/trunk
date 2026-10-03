@@ -19,6 +19,8 @@ import {
 } from "../lib/store.js";
 import { measureTextWidth } from "../lib/text-measure.js";
 import type { RebaseTodoItem } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
+import LinkButton from "../lib/ui/LinkButton.svelte";
 
 type RebaseAction = "pick" | "squash" | "reword" | "drop";
 
@@ -496,11 +498,8 @@ let lastVisibleColumn = $derived.by(() => {
 			>
 		</div>
 		<div class="rebase-toolbar-right">
-			<button
-				class="rebase-btn rebase-btn-ghost"
-				disabled={!hasChanges}
-				onclick={handleReset}
-				>Reset</button
+			<Button size="sm" disabled={!hasChanges} onclick={handleReset}
+				>Reset</Button
 			>
 		</div>
 	</div>
@@ -630,14 +629,14 @@ let lastVisibleColumn = $derived.by(() => {
 								class="rebase-cell flex-shrink-0"
 								style="width: {columnWidths.sha}px; padding: 0 {COLUMN_PADDING_X}px;"
 							>
-								<button
-									type="button"
+								<LinkButton
+									mono
+									truncate
 									title="Copy SHA"
-									class="rebase-sha-copy"
 									onclick={(e) => { e.stopPropagation(); copySha(item.oid); }}
 									onkeydown={(e) => e.stopPropagation()}
 									ondblclick={(e) => e.stopPropagation()}
-									>{item.shortOid}</button
+									>{item.shortOid}</LinkButton
 								>
 							</div>
 						{/if}
@@ -704,18 +703,13 @@ let lastVisibleColumn = $derived.by(() => {
 								bind:value={editingBody}
 							></textarea>
 							<div class="rebase-msg-editor-buttons">
-								<button
-									class="rebase-btn rebase-btn-confirm"
-									tabindex="0"
+								<Button
+									size="sm"
+									variant="success"
 									onclick={handleMessageUpdate}
-									>Update Message</button
+									>Update Message</Button
 								>
-								<button
-									class="rebase-btn rebase-btn-ghost"
-									tabindex="0"
-									onclick={handleMessageCancel}
-									>Cancel</button
-								>
+								<Button size="sm" onclick={handleMessageCancel}>Cancel</Button>
 							</div>
 						</div>
 					{/if}
@@ -742,14 +736,15 @@ let lastVisibleColumn = $derived.by(() => {
 			Move Down
 		</div>
 		<div class="rebase-bottombar-right">
-			<button class="rebase-btn rebase-btn-cancel" onclick={handleCancel}
-				>Cancel Rebase</button
+			<Button size="sm" variant="danger" onclick={handleCancel}
+				>Cancel Rebase</Button
 			>
-			<button
-				class="rebase-btn rebase-btn-start"
+			<Button
+				size="sm"
+				variant="success"
 				disabled={!canStart}
 				onclick={handleStartRebase}
-				>Start Rebase</button
+				>Start Rebase</Button
 			>
 		</div>
 	</div>
@@ -850,46 +845,6 @@ let lastVisibleColumn = $derived.by(() => {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-}
-
-.rebase-btn {
-	border-radius: var(--radius);
-	padding: var(--space-1) var(--space-3);
-	font-size: var(--text-small);
-	cursor: pointer;
-	white-space: nowrap;
-	font-family: var(--font-sans);
-	font-weight: var(--weight-semibold);
-	border: none;
-}
-
-.rebase-btn:disabled {
-	opacity: 0.5;
-	cursor: default;
-}
-
-.rebase-btn-ghost {
-	background: var(--color-bg);
-	border: 1px solid var(--color-border);
-	color: var(--color-text);
-}
-
-.rebase-btn-cancel {
-	background: var(--color-danger-bg);
-	border: 1px solid var(--color-danger-border);
-	color: var(--color-danger);
-}
-
-.rebase-btn-start {
-	background: var(--color-success-bg);
-	border: 1px solid var(--color-success-border);
-	color: var(--color-success);
-}
-
-.rebase-btn-confirm {
-	background: var(--color-success-bg);
-	border: 1px solid var(--color-success-border);
-	color: var(--color-success);
 }
 
 /* --- Column header --- */
@@ -1043,21 +998,6 @@ let lastVisibleColumn = $derived.by(() => {
 }
 
 /* Click-to-copy SHA: reset the button to read as the plain mono cell text. */
-.rebase-sha-copy {
-	width: 100%;
-	text-align: left;
-	background: none;
-	border: none;
-	padding: 0;
-	cursor: pointer;
-	font-family: var(--font-mono);
-	font-size: inherit;
-	color: inherit;
-}
-.rebase-sha-copy:hover {
-	text-decoration: underline;
-}
-
 .rebase-cell-message {
 	overflow: hidden;
 	text-overflow: ellipsis;
