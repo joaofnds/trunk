@@ -15,6 +15,7 @@ import {
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
 import type { Thread, ThreadState } from "../lib/types.js";
+import LinkButton from "../lib/ui/LinkButton.svelte";
 import ThreadReplies from "./ThreadReplies.svelte";
 
 interface Props {
@@ -209,13 +210,11 @@ async function requestDeleteReply(replyId: string) {
 	<header class="comment-card-header">
 		{#if location !== null}
 			{#if jumpable && onjump}
-				<button
-					type="button"
-					aria-label="Jump to code"
-					onclick={() => onjump?.(thread)}
-					class="jump-ref font-mono comment-card-fileref"
-					>{location.path}:L{location.start}-L{location.end}</button
-				>
+				<span class="font-mono comment-card-fileref">
+					<LinkButton aria-label="Jump to code" onclick={() => onjump?.(thread)}
+						>{location.path}:L{location.start}-L{location.end}</LinkButton
+					>
+				</span>
 			{:else}
 				<span
 					class="font-mono comment-card-fileref"
@@ -324,12 +323,6 @@ async function requestDeleteReply(replyId: string) {
 </div>
 
 <style>
-.jump-ref:hover,
-.jump-ref:focus-visible {
-	color: var(--color-accent);
-	text-decoration: underline;
-}
-
 /* GitHub-review-style card per comment. */
 .comment-card {
 	display: flex;
@@ -366,12 +359,6 @@ async function requestDeleteReply(replyId: string) {
 	font-size: var(--text-small);
 	line-height: var(--text-small--line-height);
 	color: var(--color-text-muted);
-	background: transparent;
-	border: none;
-	padding: 0;
-	text-align: left;
-	font-family: inherit;
-	cursor: pointer;
 }
 /* Orphan de-emphasis via a solid dim color, not opacity-on-text (which would
      composite the glyph toward the card and drop it below AAA). --fg-3 on the

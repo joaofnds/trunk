@@ -26,6 +26,7 @@ import Check from "@lucide/svelte/icons/check";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import Button from "./Button.svelte";
 import ButtonGroup from "./ButtonGroup.svelte";
+import LinkButton from "./LinkButton.svelte";
 </script>
 
 <!--
@@ -173,6 +174,30 @@ import ButtonGroup from "./ButtonGroup.svelte";
 					><Check size={14} /></Button
 				>
 			</ButtonGroup>
+		</div>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>LinkButton</h2
+		>
+		<div class="flex items-center gap-2 text-body font-semibold">
+			<LinkButton mono><span data-catalog-text>a1b2c3d</span></LinkButton>
+			<LinkButton
+				><span data-catalog-text
+					>fix the thing the summary names</span
+				></LinkButton
+			>
+		</div>
+		<div class="flex items-center gap-2 text-small">
+			<LinkButton tone="muted" mono
+				><span data-catalog-text>r-12</span></LinkButton
+			>
+			<LinkButton tone="muted"
+				><span data-catalog-text
+					>src/lib/ui/LinkButton.svelte:L1-L9</span
+				></LinkButton
+			>
 		</div>
 	</section>
 </div>

@@ -31,6 +31,7 @@ import type {
 	Thread,
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import LinkButton from "../lib/ui/LinkButton.svelte";
 import ThreadCard from "./ThreadCard.svelte";
 
 interface Props {
@@ -612,52 +613,34 @@ $effect(() => {
               "
 							>
 						{:else}
-							<button
-								type="button"
-								onclick={() => activateReview(review.id)}
-								ondblclick={() => openRename(review.id, review.title)}
-								title="Click to make active · double-click or F2 to rename"
-								onkeydown={(e) => {
+							<span class="min-w-0 flex-1 text-callout">
+								<LinkButton
+									truncate
+									onclick={() => activateReview(review.id)}
+									ondblclick={() => openRename(review.id, review.title)}
+									title="Click to make active · double-click or F2 to rename"
+									onkeydown={(e) => {
                 if (e.key === "F2") {
                   e.preventDefault();
                   openRename(review.id, review.title);
                 }
               }}
-								aria-label="Activate review {review.id}"
-								aria-current={review.id === activeReviewId ? "true" : undefined}
-								class="overflow-hidden text-ellipsis whitespace-nowrap"
-								style="
-                flex: 1;
-                text-align: left;
-                background: transparent;
-                border: none;
-                padding: 0;
-                cursor: pointer;
-                color: inherit;
-                font-size: var(--text-callout);
-                font-family: inherit;
-              "
-								>{review.title}</button
-							>
+									aria-label="Activate review {review.id}"
+									aria-current={review.id === activeReviewId ? "true" : undefined}
+									>{review.title}</LinkButton
+								>
+							</span>
 						{/if}
-						<button
-							type="button"
-							onclick={() => openRename(review.id, review.title)}
-							aria-label="Rename review {review.id}"
-							title="Rename this review"
-							class="font-mono"
-							style="
-              background: transparent;
-              border: none;
-              padding: 0;
-              cursor: pointer;
-              color: var(--color-text-muted);
-              font-size: var(--text-small);
-              font-family: inherit;
-              flex-shrink: 0;
-            "
-							>{review.id}</button
-						>
+						<span class="shrink-0 text-small">
+							<LinkButton
+								tone="muted"
+								mono
+								onclick={() => openRename(review.id, review.title)}
+								aria-label="Rename review {review.id}"
+								title="Rename this review"
+								>{review.id}</LinkButton
+							>
+						</span>
 						<span
 							style="color: var(--color-text-muted); font-size: var(--text-small); flex-shrink: 0;"
 						>
@@ -760,44 +743,23 @@ $effect(() => {
 							class="flex items-center"
 							style="gap: var(--space-2); padding: var(--space-1) 0; border-bottom: 1px solid var(--color-border);"
 						>
-							<button
-								type="button"
-								title="Copy SHA"
-								aria-label="Copy SHA {group.shortOid}"
-								onclick={() => copySha(group.oid)}
-								class="jump-ref font-mono"
-								style="
-                background: transparent;
-                border: none;
-                padding: 0;
-                cursor: pointer;
-                font-size: var(--text-body);
-                font-weight: var(--weight-semibold);
-                color: inherit;
-                font-family: inherit;
-                flex-shrink: 0;
-              "
-								>{group.shortOid}</button
-							>
-							<button
-								type="button"
-								aria-label="Jump to commit {group.shortOid}"
-								onclick={() => onJumpToCommit(group.oid)}
-								class="jump-ref overflow-hidden text-ellipsis whitespace-nowrap"
-								style="
-                background: transparent;
-                border: none;
-                padding: 0;
-                cursor: pointer;
-                text-align: left;
-                font-size: var(--text-body);
-                font-weight: var(--weight-semibold);
-                color: inherit;
-                font-family: inherit;
-                flex: 1;
-              "
-								>{group.summary}</button
-							>
+							<span class="shrink-0 text-body font-semibold">
+								<LinkButton
+									mono
+									title="Copy SHA"
+									aria-label="Copy SHA {group.shortOid}"
+									onclick={() => copySha(group.oid)}
+									>{group.shortOid}</LinkButton
+								>
+							</span>
+							<span class="min-w-0 flex-1 text-body font-semibold">
+								<LinkButton
+									truncate
+									aria-label="Jump to commit {group.shortOid}"
+									onclick={() => onJumpToCommit(group.oid)}
+									>{group.summary}</LinkButton
+								>
+							</span>
 							{#if reviewFilter !== "none"}
 								<Button
 									size="sm"
@@ -929,12 +891,6 @@ $effect(() => {
 </div>
 
 <style>
-.jump-ref:hover,
-.jump-ref:focus-visible {
-	color: var(--color-accent);
-	text-decoration: underline;
-}
-
 .review-row:hover {
 	background: var(--color-hover);
 }
