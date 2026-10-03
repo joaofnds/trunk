@@ -52,6 +52,30 @@ wrong fails `src/markup-classes.test.ts` rather than silently styling nothing.
 2. Give it a reader in the same commit. An unread length token fails the test above.
 3. A text or background color gets its pair in `scripts/contrast/re-audit-verify.mjs`, with the WCAG target it must clear.
 
+## Primitives
+
+`src/lib/ui/` holds the components a screen is built from. Each is plain Svelte
+over the theme's utilities, with a typed variant map and no `class` or `style`
+prop: a caller that needs a different look adds a variant, which the catalog
+then shows, rather than overriding one call site.
+
+| Primitive | Props | Use |
+|-----------|-------|-----|
+| `Button` | `variant`: `primary` (the one action a surface commits, solid accent), `secondary` (the default: outlined, neutral), `ghost` (borderless, for chrome like a close or chevron), `accent`, `danger`, `success`, `warning` (soft tinted, for an action whose tone carries meaning: stage, discard, confirm a rebase). `size`: `sm`, `md` (default), `lg`, one control height each. `icon` squares it to its height and drops the side padding; give it an `aria-label`. `tooltip` attaches the visual tooltip. Everything else (`onclick`, `disabled`, `aria-pressed`, `type`) passes through to the element, and `type` defaults to `button`. | Every button. A pressed toggle sets `aria-pressed`, which the primitive paints. |
+
+A `<style>` block in a component is for what a utility cannot say: keyframes,
+the graph's painting, a selector over structure (`:has`, a descendant of a
+state class). It reads tokens through `var()` and the Biome plugins hold it to
+that. A button, a row, a chip or a panel written in scoped CSS is a copy of a
+primitive waiting to drift from it: look in `src/lib/ui/` first, and add the
+variant there.
+
+### Adding a primitive
+
+1. Write its test first in `src/lib/ui/<Name>.test.ts`: one case per variant and size, from the DOM it renders, with `@testing-library/svelte`.
+2. Build it from utilities. Keep each class string in a `const` in its script, as `Button` does: `src/markup-classes.test.ts` reads those bindings, so a class the theme cannot generate fails there.
+3. Document it in the table above and give it a catalog entry.
+
 ## Guards
 
 Three Biome plugins in `scripts/biome/` state, per property, the forms a value may
@@ -98,8 +122,11 @@ declares it (the component's own `<style>`, `:global` included, or any
 `src/**/*.css`), when a `.ts` file under `src/` or `tests/` or the component's own
 script selects it, or when it is one of Tailwind's `group` and `peer` markers. An
 arbitrary value (`text-[11px]`, `h-(--row-h)`) fails outright: declare a token and
-map it. A word built from an expression checks only its static prefix against the
-declared classes, since the expression's values are not known statically. The same
+map it. A word built from an expression is enumerated where the parser can see the
+values: a literal, a template, a conditional, an `&&` or `??`, an array, an
+object's keys, a `const` the component's own script binds, and a lookup into a
+`const` object, which yields every value it holds. Past that, only the word's
+static prefix is checked against the declared classes. The same
 test fails a `style:` directive whose value is a literal, because a constant belongs
 in a stylesheet rule where the token plugins read it; a `style:--name` directive
 is the runtime hand-off and passes.

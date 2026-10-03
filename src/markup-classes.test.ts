@@ -90,12 +90,45 @@ const isElement = (node: Node): node is Node & AST.ElementLike =>
 	ELEMENTS.includes(String(node.type));
 
 type Expression = AST.ExpressionTag["expression"];
+type Statement = AST.Script["content"]["body"][number];
+/** The component's own `const` bindings, so a class string a primitive keeps
+ *  in its script is read where the markup spreads it. */
+type Scope = Map<string, Expression>;
 const OPAQUE = "\u0000";
+const PATTERNS = new Set([
+	"ObjectPattern",
+	"ArrayPattern",
+	"RestElement",
+	"AssignmentPattern",
+]);
+const isExpression = (node: { type: string }): node is Expression =>
+	!PATTERNS.has(node.type);
+
+function scope(...scripts: (AST.Script | null)[]): Scope {
+	const bindings: Scope = new Map();
+	const statements: Statement[] = scripts.flatMap(
+		(script) => script?.content.body ?? [],
+	);
+	for (const statement of statements) {
+		const declaration =
+			statement.type === "ExportNamedDeclaration"
+				? statement.declaration
+				: statement;
+		if (declaration?.type !== "VariableDeclaration") continue;
+		if (declaration.kind !== "const") continue;
+		for (const { id, init } of declaration.declarations) {
+			if (id.type === "Identifier" && init) bindings.set(id.name, init);
+		}
+	}
+	return bindings;
+}
 
 /** Every string a class expression can evaluate to, or null when the value is
- *  computed, an identifier or a call, and the static text around it is all a
- *  reader can check. */
-function literals(node: Expression): string[] | null {
+ *  computed, a call or a binding the scope lacks, and the static text around
+ *  it is all a reader can check. A lookup into a const object yields every
+ *  value it holds, since which one the markup picks is a runtime matter. */
+function literals(node: Expression, bindings: Scope): string[] | null {
+	const of = (child: Expression) => literals(child, bindings) ?? [OPAQUE];
 	switch (node.type) {
 		case "Literal":
 			return [typeof node.value === "string" ? node.value : ""];
@@ -104,27 +137,23 @@ function literals(node: Expression): string[] | null {
 			node.quasis.forEach((quasi, i) => {
 				acc = acc.map((a) => a + (quasi.value.cooked ?? ""));
 				const expression = node.expressions[i];
-				if (expression) acc = product(acc, literals(expression) ?? [OPAQUE]);
+				if (expression) acc = product(acc, of(expression));
 			});
 			return acc;
 		}
+		case "BinaryExpression":
+			return node.operator === "+" && node.left.type !== "PrivateIdentifier"
+				? product(of(node.left), of(node.right))
+				: null;
 		case "ConditionalExpression":
-			return [
-				...(literals(node.consequent) ?? [OPAQUE]),
-				...(literals(node.alternate) ?? [OPAQUE]),
-			];
+			return [...of(node.consequent), ...of(node.alternate)];
 		case "LogicalExpression":
 			return node.operator === "&&"
-				? [...(literals(node.right) ?? [OPAQUE]), ""]
-				: [
-						...(literals(node.left) ?? [OPAQUE]),
-						...(literals(node.right) ?? [OPAQUE]),
-					];
+				? [...of(node.right), ""]
+				: [...of(node.left), ...of(node.right)];
 		case "ArrayExpression":
 			return node.elements.flatMap((element) =>
-				element && element.type !== "SpreadElement"
-					? (literals(element) ?? [OPAQUE])
-					: [OPAQUE],
+				element && element.type !== "SpreadElement" ? of(element) : [OPAQUE],
 			);
 		case "ObjectExpression":
 			return node.properties.map((property) => {
@@ -133,6 +162,20 @@ function literals(node: Expression): string[] | null {
 				if (key.type === "Identifier") return key.name;
 				return key.type === "Literal" ? String(key.value) : OPAQUE;
 			});
+		case "Identifier": {
+			const bound = bindings.get(node.name);
+			return bound ? literals(bound, bindings) : null;
+		}
+		case "MemberExpression": {
+			if (node.object.type !== "Identifier") return null;
+			const bound = bindings.get(node.object.name);
+			if (bound?.type !== "ObjectExpression") return null;
+			return bound.properties.flatMap((property) =>
+				property.type === "Property" && isExpression(property.value)
+					? of(property.value)
+					: [OPAQUE],
+			);
+		}
 		default:
 			return null;
 	}
@@ -148,14 +191,14 @@ function product(prefixes: string[], options: string[]): string[] {
 type Chunks = AST.Attribute["value"];
 /** The class words an attribute can render. A word holding OPAQUE has a part the
  *  parser cannot see past; its static prefix is what gets checked. */
-function words(value: Chunks): string[] {
+function words(value: Chunks, bindings: Scope): string[] {
 	if (value === true) return [];
 	let acc = [""];
 	for (const chunk of Array.isArray(value) ? value : [value]) {
 		const options =
 			chunk.type === "Text"
 				? [chunk.data]
-				: (literals(chunk.expression) ?? [OPAQUE]);
+				: (literals(chunk.expression, bindings) ?? [OPAQUE]);
 		acc = product(acc, options);
 	}
 	return [...new Set(acc.flatMap((s) => s.split(/\s+/)).filter(Boolean))];
@@ -185,11 +228,11 @@ function component(file: string) {
 		)
 		.filter(isElement)
 		.flatMap((element) => element.attributes);
-	return { declared, attributes };
+	return { declared, attributes, bindings: scope(ast.module, ast.instance) };
 }
 
 function classOffences(file: string): string[] {
-	const { declared, attributes } = component(file);
+	const { declared, attributes, bindings } = component(file);
 	const vouched = (word: string) => declared.has(word) || utility(word);
 	const offences = new Set<string>();
 	for (const attribute of attributes) {
@@ -197,7 +240,7 @@ function classOffences(file: string): string[] {
 			offences.add(`class:${attribute.name}`);
 		}
 		if (attribute.type !== "Attribute" || attribute.name !== "class") continue;
-		for (const word of words(attribute.value)) {
+		for (const word of words(attribute.value, bindings)) {
 			const shown = word.replaceAll(OPAQUE, "{…}");
 			if (/\[|\(--/.test(word)) {
 				offences.add(`${shown} (an arbitrary value; declare a token)`);
