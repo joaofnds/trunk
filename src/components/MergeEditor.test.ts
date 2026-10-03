@@ -114,4 +114,46 @@ describe("MergeEditor", () => {
 		await fireEvent.click(screen.getByLabelText("Close merge editor"));
 		expect(onclose).toHaveBeenCalledOnce();
 	});
+
+	it("paints every resolving action in the success tone", async () => {
+		render(MergeEditor, {
+			props: {
+				repoPath: "/test/repo",
+				filePath: "src/main.ts",
+				onclose: vi.fn(),
+				onresolved: vi.fn(),
+			},
+		});
+		await waitFor(() => {
+			expect(screen.getByText("Save and Mark Resolved")).toBeInTheDocument();
+		});
+
+		for (const label of [
+			"Take All Current",
+			"Take All Incoming",
+			"Save and Mark Resolved",
+		]) {
+			expect(screen.getByRole("button", { name: label })).toHaveClass(
+				"bg-success-bg",
+			);
+		}
+	});
+
+	it("draws the conflict chrome as small icon controls", async () => {
+		render(MergeEditor, {
+			props: {
+				repoPath: "/test/repo",
+				filePath: "src/main.ts",
+				onclose: vi.fn(),
+				onresolved: vi.fn(),
+			},
+		});
+		await waitFor(() => {
+			expect(screen.getByLabelText("Close merge editor")).toBeInTheDocument();
+		});
+
+		for (const label of ["Reset merge selections", "Close merge editor"]) {
+			expect(screen.getByLabelText(label)).toHaveClass("w-control-sm");
+		}
+	});
 });

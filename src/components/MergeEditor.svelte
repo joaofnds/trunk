@@ -21,6 +21,7 @@ import {
 	toggleLine,
 } from "../lib/merge-parser.js";
 import type { MergeSides } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
 
 interface Props {
 	repoPath: string;
@@ -583,18 +584,10 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
     "
 		>
 			<span style="color: var(--color-diff-delete);">{error}</span>
-			<button
+			<Button
+				size="sm"
 				onclick={() => { loading = true; error = null; safeInvoke<MergeSides>('get_merge_sides', { path: repoPath, filePath }).then((result) => { regions = parseConflictRegions(result.base, result.ours, result.theirs); takenLines = new Set(); manualEdit = false; manualText = ''; focusedConflictIdx = 0; loading = false; }).catch((e) => { error = errorMessage(e, 'Failed to load'); loading = false; }); }}
-				style="
-          background: var(--color-surface);
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius);
-          color: var(--color-text);
-          font-size: var(--text-callout);
-          padding: var(--space-1) var(--space-3);
-          cursor: pointer;
-        "
-				>Retry</button
+				>Retry</Button
 			>
 		</div>
 	{:else}
@@ -622,25 +615,8 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 						>Current (Ours)</span
 					>
 					<span style="flex: 1;"></span>
-					<button
-						onclick={handleTakeAllCurrent}
-						style="
-              display: inline-flex;
-              align-items: center;
-              justify-content: center;
-              background: var(--color-success-bg);
-              border: 1px solid var(--color-success-border);
-              border-radius: var(--radius);
-              color: var(--color-success);
-              font-size: var(--text-small);
-              font-family: var(--font-sans);
-              height: var(--control-sm-h);
-              padding: 0 var(--space-2);
-              cursor: pointer;
-              white-space: nowrap;
-              flex-shrink: 0;
-            "
-						>Take All Current</button
+					<Button size="sm" variant="success" onclick={handleTakeAllCurrent}
+						>Take All Current</Button
 					>
 				</div>
 
@@ -699,25 +675,8 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 						>Incoming (Theirs)</span
 					>
 					<span style="flex: 1;"></span>
-					<button
-						onclick={handleTakeAllIncoming}
-						style="
-              display: inline-flex;
-              align-items: center;
-              justify-content: center;
-              background: var(--color-success-bg);
-              border: 1px solid var(--color-success-border);
-              border-radius: var(--radius);
-              color: var(--color-success);
-              font-size: var(--text-small);
-              font-family: var(--font-sans);
-              height: var(--control-sm-h);
-              padding: 0 var(--space-2);
-              cursor: pointer;
-              white-space: nowrap;
-              flex-shrink: 0;
-            "
-						>Take All Incoming</button
+					<Button size="sm" variant="success" onclick={handleTakeAllIncoming}
+						>Take All Incoming</Button
 					>
 				</div>
 
@@ -783,61 +742,41 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 							>(manual edit)</span
 						>
 					{/if}
-					<button
+					<Button
+						icon
+						size="sm"
+						variant="ghost"
 						onclick={handleReset}
 						aria-label="Reset merge selections"
 						title="Reset to Current (Ours)"
-						style="
-              background: none;
-              border: none;
-              cursor: pointer;
-              color: var(--color-text-muted);
-              padding: var(--space-1);
-              display: flex;
-              align-items: center;
-            "
-						><RotateCcw size={14} /></button
+						><RotateCcw size={14} /></Button
 					>
 				</div>
 
 				<!-- Center: conflict navigation -->
 				<div style="display: flex; align-items: center; gap: var(--space-1);">
 					{#if hasConflicts}
-						<button
+						<Button
+							icon
+							size="sm"
+							variant="ghost"
 							onclick={handlePrevConflict}
 							disabled={!hasPrev}
 							aria-label="Previous conflict"
-							style="
-                background: none;
-                border: none;
-                cursor: {hasPrev ? 'pointer' : 'default'};
-                color: {hasPrev ? 'var(--color-text)' : 'var(--color-text-muted)'};
-                opacity: {hasPrev ? 1 : 0.4};
-                padding: var(--space-1);
-                display: flex;
-                align-items: center;
-              "
-							><ChevronUp size={16} /></button
+							><ChevronUp size={16} /></Button
 						>
 						<span
 							style="font-size: var(--text-small); color: var(--color-text-muted); white-space: nowrap;"
 							>{focusedConflictIdx + 1}/{conflictIndices.length}</span
 						>
-						<button
+						<Button
+							icon
+							size="sm"
+							variant="ghost"
 							onclick={handleNextConflict}
 							disabled={!hasNext}
 							aria-label="Next conflict"
-							style="
-                background: none;
-                border: none;
-                cursor: {hasNext ? 'pointer' : 'default'};
-                color: {hasNext ? 'var(--color-text)' : 'var(--color-text-muted)'};
-                opacity: {hasNext ? 1 : 0.4};
-                padding: var(--space-1);
-                display: flex;
-                align-items: center;
-              "
-							><ChevronDown size={16} /></button
+							><ChevronDown size={16} /></Button
 						>
 					{/if}
 				</div>
@@ -846,40 +785,20 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 				<div
 					style="display: flex; align-items: center; gap: var(--space-2); justify-content: flex-end;"
 				>
-					<button
+					<Button
+						size="sm"
+						variant="success"
 						onclick={handleSaveAndResolve}
 						disabled={saving}
-						style="
-              display: inline-flex;
-              align-items: center;
-              justify-content: center;
-              background: var(--color-success-bg);
-              border: 1px solid var(--color-success-border);
-              border-radius: var(--radius);
-              color: var(--color-success);
-              font-size: var(--text-small);
-              font-family: var(--font-sans);
-              height: var(--control-sm-h);
-              padding: 0 var(--space-2);
-              cursor: {saving ? 'not-allowed' : 'pointer'};
-              opacity: {saving ? 0.4 : 1};
-              white-space: nowrap;
-            "
-						>Save and Mark Resolved</button
+						>Save and Mark Resolved</Button
 					>
-					<button
+					<Button
+						icon
+						size="sm"
+						variant="ghost"
 						onclick={onclose}
 						aria-label="Close merge editor"
-						style="
-              background: none;
-              border: none;
-              cursor: pointer;
-              color: var(--color-text-muted);
-              padding: var(--space-1);
-              display: flex;
-              align-items: center;
-            "
-						><X size={16} /></button
+						><X size={16} /></Button
 					>
 				</div>
 			</div>
