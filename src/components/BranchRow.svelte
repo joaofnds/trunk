@@ -91,7 +91,7 @@ let actionShown = $derived(hovered || focused || hidden);
 	>
 		{#if kind === 'tag'}
 			<span
-				style="flex-shrink: 0; display: inline-flex; align-items: center; margin-right: var(--space-2); color: var(--fg-3);"
+				style="flex-shrink: 0; display: inline-flex; align-items: center; margin-right: var(--space-2); color: var(--color-text-subtle);"
 			>
 				<Tag size={12} />
 			</span>
@@ -114,7 +114,7 @@ let actionShown = $derived(hovered || focused || hidden);
 		>
 		{#if ahead > 0 || behind > 0}
 			<span
-				style="flex-shrink: 0; font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); margin-left: var(--space-1); display: inline-flex; align-items: center; gap: var(--space-1);"
+				style="flex-shrink: 0; font-family: var(--font-mono); font-size: 10px; color: var(--color-text-subtle); margin-left: var(--space-1); display: inline-flex; align-items: center; gap: var(--space-1);"
 			>
 				{#if ahead > 0}
 					<span
@@ -141,7 +141,7 @@ let actionShown = $derived(hovered || focused || hidden);
 				data-testid="branch-row-visibility-btn"
 				onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
 				ondblclick={(e) => e.stopPropagation()}
-				style="flex-shrink: 0; margin-left: var(--space-1); margin-right: calc(-1 * var(--space-2)); color: var(--fg-3); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); align-items: center; justify-content: center; display: {actionShown ? 'inline-flex' : 'none'};"
+				style="flex-shrink: 0; margin-left: var(--space-1); margin-right: calc(-1 * var(--space-2)); color: var(--color-text-subtle); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); align-items: center; justify-content: center; display: {actionShown ? 'inline-flex' : 'none'};"
 				aria-label="{visibilityVerb(hidden)} {name}"
 			>
 				<VisibilityIcon {hidden} />

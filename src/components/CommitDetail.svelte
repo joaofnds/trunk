@@ -380,13 +380,13 @@ let commitNotes = $derived(
 	border-color: color-mix(in oklch, var(--color-accent) 30%, transparent);
 }
 .pager-btn:disabled {
-	color: var(--fg-3);
+	color: var(--color-text-subtle);
 	opacity: 0.4;
 	cursor: default;
 }
 .pager-pos {
 	font-size: 10px;
-	color: var(--fg-3);
+	color: var(--color-text-subtle);
 	font-family: var(--font-mono);
 	padding: 0 var(--space-1);
 }

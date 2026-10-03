@@ -67,7 +67,7 @@ describe("prefixToneVar", () => {
 		"gives an unmapped prefix %s a stable, non-grey lane color",
 		(prefix) => {
 			const tone = prefixToneVar(prefix);
-			expect(tone).not.toBe("var(--fg-3)");
+			expect(tone).not.toBe("var(--color-text-subtle)");
 			expect(tone).toMatch(/^var\(--lane-[0-7]\)$/);
 			expect(prefixToneVar(prefix)).toBe(tone);
 		},

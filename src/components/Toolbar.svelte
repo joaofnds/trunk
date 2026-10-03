@@ -321,7 +321,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 }
 .toolbar-btn:disabled {
 	opacity: 0.45;
-	color: var(--fg-3);
+	color: var(--color-text-subtle);
 	cursor: default;
 	pointer-events: none;
 }

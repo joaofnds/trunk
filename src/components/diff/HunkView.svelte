@@ -532,7 +532,7 @@ function lineColor(): string {
 }
 .hunk-header-text {
 	flex: 1;
-	color: color-mix(in oklch, var(--info) 70%, var(--fg-3));
+	color: color-mix(in oklch, var(--info) 70%, var(--color-text-subtle));
 	font-size: 11px;
 	font-family: var(--font-mono, monospace);
 }

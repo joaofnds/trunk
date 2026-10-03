@@ -377,7 +377,7 @@ async function requestDeleteReply(replyId: string) {
      composite the glyph toward the card and drop it below AAA). --fg-3 on the
      card surface is 7.68:1 (AAA) while still reading as muted. */
 .comment-card-fileref-dim {
-	color: var(--fg-3);
+	color: var(--color-text-subtle);
 }
 
 /* Diff hunk inside the card — line-level red/green backgrounds, no

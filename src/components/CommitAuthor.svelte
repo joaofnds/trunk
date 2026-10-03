@@ -115,7 +115,7 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 	font-weight: 600;
 }
 .email {
-	color: var(--fg-3);
+	color: var(--color-text-subtle);
 	font-family: var(--font-mono);
 	font-size: 11px;
 	overflow: hidden;
@@ -125,7 +125,7 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 .date {
 	margin-left: auto;
 	flex-shrink: 0;
-	color: var(--fg-3);
+	color: var(--color-text-subtle);
 	font-family: var(--font-mono);
 	font-size: 11px;
 }
@@ -145,7 +145,7 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 }
 .topo-lbl {
 	font-size: 10px;
-	color: var(--fg-3);
+	color: var(--color-text-subtle);
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	width: 62px;
@@ -169,11 +169,11 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 	background: color-mix(in oklch, var(--color-accent) 20%, transparent);
 }
 .chip.merge {
-	background: color-mix(in oklch, var(--fg-3) 10%, transparent);
+	background: color-mix(in oklch, var(--color-text-subtle) 10%, transparent);
 	color: var(--color-text);
 	border-color: var(--color-border);
 }
 .chip.merge:hover {
-	background: color-mix(in oklch, var(--fg-3) 18%, transparent);
+	background: color-mix(in oklch, var(--color-text-subtle) 18%, transparent);
 }
 </style>

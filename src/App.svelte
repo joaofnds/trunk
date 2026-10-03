@@ -799,7 +799,7 @@ $effect(() => {
 					{:else}
 						<div
 							aria-label="Loading repository"
-							style="flex: 1; display: flex; align-items: center; justify-content: center; color: var(--fg-3); font-size: 13px;"
+							style="flex: 1; display: flex; align-items: center; justify-content: center; color: var(--color-text-subtle); font-size: 13px;"
 						>
 							Loading repository…
 						</div>

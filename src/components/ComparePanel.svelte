@@ -76,7 +76,7 @@ let filesChanged = $derived(fileDiffs.length);
 				>{commit.author_name}</span
 			>
 			<span
-				style="color: var(--fg-3); font-family: var(--font-mono); flex-shrink: 0;"
+				style="color: var(--color-text-subtle); font-family: var(--font-mono); flex-shrink: 0;"
 				use:exactDate={commit.author_timestamp}
 				>{relativeLabel(commit.author_timestamp, currentMinute())}</span
 			>

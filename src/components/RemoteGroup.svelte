@@ -49,7 +49,7 @@ let allHidden = $derived(groupState === "all");
     height: var(--bar-h);
     padding: 0 var(--space-2) 0 var(--space-4);
     font-size: 11px;
-    color: var(--fg-3);
+    color: var(--color-text-subtle);
     font-weight: 500;
     font-family: var(--font-mono);
     display: flex;
@@ -64,7 +64,7 @@ let allHidden = $derived(groupState === "all");
 			<button
 				data-testid="remote-group-visibility-btn"
 				onclick={() => ontogglevisibility?.()}
-				style="flex-shrink: 0; color: var(--fg-3); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
+				style="flex-shrink: 0; color: var(--color-text-subtle); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
 				aria-label="{visibilityVerb(allHidden)} all {remoteName} branches"
 				data-group-state={groupState}
 			>

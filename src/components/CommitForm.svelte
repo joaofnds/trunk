@@ -204,7 +204,7 @@ async function handleSubmit() {
           background: none;
           border: none;
           border-bottom: 2px solid {mode === tab ? 'var(--color-accent)' : 'transparent'};
-          color: {mode === tab ? 'var(--color-text-strong)' : 'var(--fg-3)'};
+          color: {mode === tab ? 'var(--color-text-strong)' : 'var(--color-text-subtle)'};
           cursor: {committing ? 'default' : 'pointer'};
           text-transform: none;
         "
@@ -248,7 +248,7 @@ async function handleSubmit() {
             pointer-events: none;
             font-family: var(--font-mono);
             font-size: 10.5px;
-            color: {subjectOverLimit ? 'var(--color-danger)' : 'var(--fg-3)'};
+            color: {subjectOverLimit ? 'var(--color-danger)' : 'var(--color-text-subtle)'};
           "
 					>{getSubject().length}/72</span
 				>

@@ -740,7 +740,11 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
       border-radius: var(--radius);
     "
 		>
-			<Search size={12} color="var(--fg-3)" style="flex-shrink: 0;" />
+			<Search
+				size={12}
+				color="var(--color-text-subtle)"
+				style="flex-shrink: 0;"
+			/>
 			<input
 				type="text"
 				placeholder="Filter branches…"
@@ -955,7 +959,11 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onrefnavigate?.(stash.oid); } }}
 					oncontextmenu={(e) => showStashEntryMenu(e, stash)}
 				>
-					<Archive size={12} color="var(--fg-3)" style="flex-shrink: 0;" />
+					<Archive
+						size={12}
+						color="var(--color-text-subtle)"
+						style="flex-shrink: 0;"
+					/>
 					<span class="stash-index">{stash.short_name}</span>
 					<span class="stash-message" title={stash.name}>{stash.name}</span>
 					<button
@@ -1026,7 +1034,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 .stash-visibility-btn {
 	flex-shrink: 0;
 	margin-left: auto;
-	color: var(--fg-3);
+	color: var(--color-text-subtle);
 	background: none;
 	border: none;
 	cursor: pointer;
