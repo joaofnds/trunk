@@ -657,7 +657,7 @@ describe("Toolbar", () => {
 		expect(toggleSegment).toContain(
 			"border-radius: 0 var(--radius) var(--radius) 0",
 		);
-		expect(toggleSegment).toContain("background: var(--accent)");
+		expect(toggleSegment).toContain("background: var(--color-accent)");
 		expect(control).toContainElement(select);
 	});
 

@@ -292,7 +292,7 @@ async function handleSubmit() {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        background: var(--accent);
+        background: var(--color-accent);
         color: var(--accent-fg);
         border: 0;
         border-radius: var(--radius);

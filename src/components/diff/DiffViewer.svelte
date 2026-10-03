@@ -347,7 +347,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 }
 
 .retry-button:focus-visible {
-	outline: 2px solid var(--accent);
+	outline: 2px solid var(--color-accent);
 	outline-offset: 1px;
 }
 </style>

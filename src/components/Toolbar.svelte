@@ -313,7 +313,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 	cursor: pointer;
 }
 .toolbar-btn:focus-visible {
-	outline: 2px solid var(--accent);
+	outline: 2px solid var(--color-accent);
 	outline-offset: 1px;
 }
 .toolbar-btn:hover:not(:disabled) {
@@ -327,8 +327,8 @@ async function handleBranchCreate(values: Record<string, string>) {
 }
 
 .toolbar-btn.toolbar-btn-active {
-	background: var(--accent);
-	box-shadow: inset 0 0 0 1px var(--accent);
+	background: var(--color-accent);
+	box-shadow: inset 0 0 0 1px var(--color-accent);
 	color: var(--accent-fg);
 }
 .toolbar-btn.toolbar-btn-active:hover:not(:disabled) {
@@ -351,7 +351,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 	align-items: center;
 	justify-content: center;
 	border-radius: var(--radius-pill);
-	background: var(--accent);
+	background: var(--color-accent);
 	color: var(--accent-fg);
 	font-size: 10px;
 	font-weight: 600;
@@ -400,7 +400,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 .review-filter-control-active > .toolbar-btn,
 .review-filter-control:has(.review-filter-select) > .toolbar-btn {
 	border-radius: 0 var(--radius) var(--radius) 0;
-	background: var(--accent);
+	background: var(--color-accent);
 	box-shadow: none;
 	color: var(--accent-fg);
 }

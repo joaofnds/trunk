@@ -28,7 +28,7 @@ import { dismissToast, toasts } from "../lib/toast.svelte.js";
 	cursor: pointer;
 }
 .toast:focus-visible {
-	outline: 2px solid var(--accent);
+	outline: 2px solid var(--color-accent);
 	outline-offset: 1px;
 }
 .toast.error {

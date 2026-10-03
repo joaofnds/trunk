@@ -82,8 +82,8 @@ let actionShown = $derived(hovered || focused || hidden);
       align-items: center;
       overflow: hidden;
       cursor: pointer;
-      background: {isHead ? 'color-mix(in oklch, var(--accent) 10%, transparent)' : hovered ? 'var(--bg-hover)' : 'transparent'};
-      box-shadow: {isHead ? 'inset 0 0 0 1px color-mix(in oklch, var(--accent) 28%, transparent)' : 'none'};
+      background: {isHead ? 'color-mix(in oklch, var(--color-accent) 10%, transparent)' : hovered ? 'var(--bg-hover)' : 'transparent'};
+      box-shadow: {isHead ? 'inset 0 0 0 1px color-mix(in oklch, var(--color-accent) 28%, transparent)' : 'none'};
       color: {isHead ? 'var(--fg-0)' : isLoading || hidden ? 'var(--color-text-muted)' : 'var(--color-text)'};
       font-weight: {isHead ? '600' : 'normal'};
       font-size: 12px;
@@ -97,7 +97,7 @@ let actionShown = $derived(hovered || focused || hidden);
 			</span>
 		{:else}
 			<span
-				style="flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; margin-right: var(--space-2); background: {isHead ? 'var(--accent)' : 'var(--fg-4)'};"
+				style="flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; margin-right: var(--space-2); background: {isHead ? 'var(--color-accent)' : 'var(--fg-4)'};"
 			></span>
 		{/if}
 		<span
@@ -132,7 +132,7 @@ let actionShown = $derived(hovered || focused || hidden);
 		{/if}
 		{#if isHead}
 			<span
-				style="flex-shrink: 0; margin-left: var(--space-1); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em; color: var(--accent);"
+				style="flex-shrink: 0; margin-left: var(--space-1); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em; color: var(--color-accent);"
 				>HEAD</span
 			>
 		{/if}

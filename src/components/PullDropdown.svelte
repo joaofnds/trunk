@@ -101,7 +101,7 @@ $effect(() => {
 	justify-content: center;
 }
 .chevron-btn:focus-visible {
-	outline: 2px solid var(--accent);
+	outline: 2px solid var(--color-accent);
 	outline-offset: 1px;
 }
 .chevron-btn:hover:not(:disabled) {
@@ -139,7 +139,7 @@ $effect(() => {
 	cursor: pointer;
 }
 .dropdown-option:hover {
-	background: var(--accent);
+	background: var(--color-accent);
 	color: var(--accent-fg);
 }
 </style>

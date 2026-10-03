@@ -121,7 +121,7 @@ const reviewMarker = $derived(
 // Selected rows get the design's left accent bar; it layers ahead of the review
 // markers so an in-session selection still shows its 3px review edge on top.
 const rowShadow = $derived(
-	[selected ? "inset 2px 0 0 var(--accent)" : "", reviewMarker]
+	[selected ? "inset 2px 0 0 var(--color-accent)" : "", reviewMarker]
 		.filter(Boolean)
 		.join(", "),
 );

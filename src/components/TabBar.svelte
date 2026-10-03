@@ -160,7 +160,7 @@ $effect(() => {
 	width: 6px;
 	height: 6px;
 	border-radius: 50%;
-	background: var(--accent);
+	background: var(--color-accent);
 	flex-shrink: 0;
 }
 

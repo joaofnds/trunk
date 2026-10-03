@@ -785,8 +785,8 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
                 width: 100%;
                 box-sizing: border-box;
                 background: var(--bg-0);
-                border: 1px solid var(--accent);
-                box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 18%, transparent);
+                border: 1px solid var(--color-accent);
+                box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 18%, transparent);
                 color: var(--fg-0);
                 font-size: 12px;
                 padding: var(--space-1) var(--space-2);
@@ -1009,7 +1009,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 	height: var(--control-sm-h);
 	padding: 0 var(--space-2);
 	cursor: pointer;
-	background: var(--accent);
+	background: var(--color-accent);
 	color: var(--accent-fg);
 	border: none;
 	border-radius: var(--radius);
