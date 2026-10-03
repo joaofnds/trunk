@@ -30,7 +30,8 @@ let resolvedPaths = $state<Record<string, string>>({});
 let highlightedIdx = $state(0);
 let loading = $state(false);
 let inputEl: HTMLInputElement | undefined = $state();
-let listEl: HTMLUListElement | undefined = $state();
+let listEl: HTMLDivElement | undefined = $state();
+let dialogEl: HTMLDialogElement | undefined = $state();
 
 const filtered = $derived(filterRecents(recents, query));
 
@@ -83,9 +84,9 @@ $effect(() => {
 });
 
 function scrollHighlightedIntoView() {
-	const li = listEl?.children[highlightedIdx];
-	if (li instanceof HTMLElement) {
-		li.scrollIntoView({ block: "nearest" });
+	const row = listEl?.children[highlightedIdx];
+	if (row instanceof HTMLElement) {
+		row.scrollIntoView({ block: "nearest" });
 	}
 }
 
@@ -133,84 +134,83 @@ async function handleOpenDialog() {
 	onpick(selected, name);
 }
 
-function handleBackdropClick() {
-	onclose();
-}
+$effect(() => {
+	if (dialogEl && !dialogEl.open) dialogEl.showModal();
+});
 </script>
 
 {#if visible}
-	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		class="fixed inset-0 flex justify-center"
-		style="background: var(--color-backdrop); z-index: 50;"
-		onclick={handleBackdropClick}
+	<!-- Palette-shaped: no title, no padding, pinned near the top. The
+	     fixed/inset/mx-auto trio re-states the modal centering that the
+	     preflight margin reset wipes, then the top margin drops it. -->
+	<dialog
+		bind:this={dialogEl}
+		class="fixed inset-x-0 top-0 mx-auto flex flex-col rounded overflow-hidden backdrop:bg-backdrop"
+		style="width: 480px; max-width: 90vw; height: fit-content; margin-top: var(--dialog-drop); padding: 0; background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
+		aria-label="Open a recent repository"
+		oncancel={onclose}
 	>
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div
-			class="flex flex-col rounded overflow-hidden"
-			style="width: 480px; max-width: 90vw; height: fit-content; margin-top: var(--dialog-drop); background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
-			onclick={(e) => e.stopPropagation()}
+		<input
+			bind:this={inputEl}
+			bind:value={query}
+			onkeydown={handleKeydown}
+			aria-label="Search recent repositories"
+			placeholder="Search recent repositories"
+			class="w-full px-3 py-2 text-body outline-none"
+			style="background: transparent; color: var(--color-text); border-bottom: 1px solid var(--color-border);"
 		>
-			<input
-				bind:this={inputEl}
-				bind:value={query}
-				onkeydown={handleKeydown}
-				placeholder="Search recent repositories"
-				class="w-full px-3 py-2 text-body outline-none"
-				style="background: transparent; color: var(--color-text); border-bottom: 1px solid var(--color-border);"
-			>
 
-			{#if loading}
-			<!-- intentionally empty body while pruning -->
-			{:else if recents.length === 0}
-				<div class="flex flex-col items-center gap-3 px-4 py-6">
-					<p class="text-body" style="color: var(--color-text-muted);"
-						>No recent repositories</p
-					>
-					<Button variant="primary" size="lg" onclick={handleOpenDialog}>
-						Open Repository
-					</Button>
-				</div>
-			{:else if filtered.length === 0}
-				<div
-					class="px-4 py-6 text-body text-center"
-					style="color: var(--color-text-muted);"
+		{#if loading}
+		<!-- intentionally empty body while pruning -->
+		{:else if recents.length === 0}
+			<div class="flex flex-col items-center gap-3 px-4 py-6">
+				<p class="text-body" style="color: var(--color-text-muted);"
+					>No recent repositories</p
 				>
-					No matches
-				</div>
-			{:else}
-				<ul
-					bind:this={listEl}
-					class="flex flex-col py-1 max-h-dropdown-max overflow-y-auto"
-				>
-					{#each filtered as repo, idx (repo.path)}
-						{@const dp = resolvedPaths[repo.path] ?? repo.path}
-						<!-- svelte-ignore a11y_click_events_have_key_events -->
-						<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-						<li
-							class="px-3 py-2 cursor-pointer flex flex-col gap-1"
-							style="background: {idx === highlightedIdx
+				<Button variant="primary" size="lg" onclick={handleOpenDialog}>
+					Open Repository
+				</Button>
+			</div>
+		{:else if filtered.length === 0}
+			<div
+				class="px-4 py-6 text-body text-center"
+				style="color: var(--color-text-muted);"
+			>
+				No matches
+			</div>
+		{:else}
+			<div
+				bind:this={listEl}
+				role="listbox"
+				aria-label="Recent repositories"
+				class="flex flex-col py-1 max-h-dropdown-max overflow-y-auto"
+			>
+				{#each filtered as repo, idx (repo.path)}
+					{@const dp = resolvedPaths[repo.path] ?? repo.path}
+					<button
+						type="button"
+						role="option"
+						aria-selected={idx === highlightedIdx}
+						class="px-3 py-2 cursor-pointer flex flex-col gap-1 text-left w-full"
+						style="background: {idx === highlightedIdx
                 ? 'var(--color-hover)'
                 : 'transparent'};"
-							onmousemove={() => (highlightedIdx = idx)}
-							onclick={() => onpick(repo.path, repo.name)}
+						onmousemove={() => (highlightedIdx = idx)}
+						onclick={() => onpick(repo.path, repo.name)}
+					>
+						<span
+							class="text-body font-semibold truncate"
+							style="color: var(--color-text);"
+							>{repo.name}</span
 						>
-							<span
-								class="text-body font-semibold truncate"
-								style="color: var(--color-text);"
-								>{repo.name}</span
-							>
-							<span
-								class="text-callout truncate"
-								style="color: var(--color-text-muted);"
-								>{dp}</span
-							>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</div>
-	</div>
+						<span
+							class="text-callout truncate"
+							style="color: var(--color-text-muted);"
+							>{dp}</span
+						>
+					</button>
+				{/each}
+			</div>
+		{/if}
+	</dialog>
 {/if}
