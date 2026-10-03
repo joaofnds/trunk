@@ -40,7 +40,7 @@ function offences(pattern: RegExp, allowed: (value: string) => boolean) {
  *  this guard with no edit here.
  *
  *  `--control-h` is in: a full-size control sits in a bar and shares its edge,
- *  and this is what caught the toolbar's button group. The two smaller control
+ *  and this is what caught the toolbar's button group. The smaller control
  *  heights are deliberately out: a bordered chip loses the same pixel, but the
  *  ~11 sites belong with the button-recipe extraction (TRUNK-50), not here.
  *
@@ -49,7 +49,11 @@ function offences(pattern: RegExp, allowed: (value: string) => boolean) {
  *  was exempt from the guard however it was used — which is the same way every
  *  guard on this card failed before it. `--banded-lg-h` was live and unwatched
  *  under that version. */
-const SMALLER_CONTROLS = new Set(["--control-sm-h", "--control-lg-h"]);
+const SMALLER_CONTROLS = new Set([
+	"--control-xs-h",
+	"--control-sm-h",
+	"--control-lg-h",
+]);
 
 function barTokens(): string[] {
 	const css = readFileSync(join(root, "tokens.css"), "utf8");

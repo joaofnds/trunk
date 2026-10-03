@@ -63,7 +63,7 @@ describe("TabBar", () => {
 		render(TabBar, { props: defaultProps });
 
 		expect(screen.getAllByLabelText("Close tab")[0]).toHaveClass(
-			"w-control-sm",
+			"w-control-xs",
 			"bg-transparent",
 		);
 		expect(screen.getByLabelText("New tab")).toHaveClass(

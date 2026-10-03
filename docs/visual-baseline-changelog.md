@@ -223,3 +223,11 @@ ToastCard primitive added to the catalog, drawn below Tab as a neutral and a dan
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-10-03
+
+Button gains a 16px icon-only xs size for the tab close, shown beside the md icon in each Button row; nothing else moves
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png

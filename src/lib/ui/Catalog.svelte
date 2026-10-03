@@ -35,6 +35,7 @@ import Check from "@lucide/svelte/icons/check";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import Eye from "@lucide/svelte/icons/eye";
 import Plus from "@lucide/svelte/icons/plus";
+import X from "@lucide/svelte/icons/x";
 import Button from "./Button.svelte";
 import ButtonGroup from "./ButtonGroup.svelte";
 import Chip from "./Chip.svelte";
@@ -161,6 +162,9 @@ import ToastCard from "./ToastCard.svelte";
 						>
 					{/each}
 					<Button {variant} icon aria-label="Done"><Check size={14} /></Button>
+					<Button {variant} icon size="xs" aria-label="Close"
+						><X size={12} /></Button
+					>
 					<Button {variant} disabled
 						><span data-catalog-text>disabled</span></Button
 					>

@@ -96,7 +96,7 @@ $effect(() => {
 			<span class="truncate tab-label flex-1">{tab.repoName || 'New Tab'}</span>
 			<Button
 				icon
-				size="sm"
+				size="xs"
 				variant="ghost"
 				aria-label="Close tab"
 				onclick={(e: MouseEvent) => { e.stopPropagation(); onclose(tab.id, e.shiftKey); }}

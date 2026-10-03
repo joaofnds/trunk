@@ -67,6 +67,17 @@ describe("Button", () => {
 		expect(button).not.toHaveClass("px-3");
 	});
 
+	it("squares an xs icon button to the smallest control height", () => {
+		render(Button, {
+			props: { icon: true, size: "xs", "aria-label": "Close", children: label },
+		});
+
+		expect(screen.getByRole("button", { name: "Close" })).toHaveClass(
+			"h-control-xs",
+			"w-control-xs",
+		);
+	});
+
 	it("anchors a badge a caller places inside it", () => {
 		render(Button, { props: { children: label } });
 

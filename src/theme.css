@@ -17,6 +17,7 @@
 	--spacing-topbar: var(--topbar-h);
 	--spacing-banded-lg: var(--banded-lg-h);
 	--spacing-target: var(--target-min);
+	--spacing-control-xs: var(--control-xs-h);
 	--spacing-control-sm: var(--control-sm-h);
 	--spacing-control: var(--control-h);
 	--spacing-control-lg: var(--control-lg-h);
