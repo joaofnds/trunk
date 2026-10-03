@@ -153,6 +153,47 @@ describe("CommitDetail", () => {
 			expect(screen.getByText("12 / 340+")).toBeInTheDocument();
 		});
 
+		it("draws the pager and the close as small ghost icon controls", () => {
+			render(CommitDetailComponent, {
+				props: {
+					commitDetail: detail,
+					fileDiffs,
+					selectedFile: null,
+					onfileselect: vi.fn(),
+					onclose: vi.fn(),
+					nav,
+				},
+			});
+
+			for (const name of [
+				"Go to newer commit",
+				"Go to older commit",
+				"Close commit detail",
+			]) {
+				expect(screen.getByLabelText(name)).toHaveClass(
+					"w-control-sm",
+					"bg-transparent",
+				);
+			}
+		});
+
+		it("sets the SHA on a chip that copies it", () => {
+			render(CommitDetailComponent, {
+				props: {
+					commitDetail: detail,
+					fileDiffs,
+					selectedFile: null,
+					onfileselect: vi.fn(),
+					onclose: vi.fn(),
+					nav,
+				},
+			});
+
+			const sha = screen.getByTitle("Copy SHA");
+			expect(sha).toHaveClass("font-mono");
+			expect(sha.parentElement).toHaveClass("bg-surface-chip");
+		});
+
 		it("navigates newer/older from the chevrons", async () => {
 			const onnavigate = vi.fn();
 			render(CommitDetailComponent, {

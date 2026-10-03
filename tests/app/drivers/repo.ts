@@ -13,7 +13,7 @@ const RECENT_ENTRY = '[role="button"]';
 const COMMIT_ROW = '[data-testid="commit-row"]';
 const COMMIT_SUMMARY = '[data-testid="commit-row-summary"]';
 const COMMIT_SHA = '[title="Copy SHA"]';
-const COMMIT_DETAIL_SHA = "button.sha-copy";
+const COMMIT_DETAIL_SHA = '[data-testid="commit-detail"] [title="Copy SHA"]';
 // The label lives in a `span` inside this `foreignObject`, and a selector that
 // names the span matches nothing: jsdom does not reach across the SVG boundary
 // into its HTML children.

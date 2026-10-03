@@ -3,6 +3,7 @@ import ArrowDown from "@lucide/svelte/icons/arrow-down";
 import ArrowUpDown from "@lucide/svelte/icons/arrow-up-down";
 import FolderTree from "@lucide/svelte/icons/folder-tree";
 import List from "@lucide/svelte/icons/list";
+import X from "@lucide/svelte/icons/x";
 import { copySha } from "../lib/clipboard.js";
 import { exactDate } from "../lib/exact-date.js";
 import { toFileStatusList } from "../lib/file-status.js";
@@ -14,6 +15,8 @@ import type {
 	FileDiff,
 	FileStatus,
 } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
+import LinkButton from "../lib/ui/LinkButton.svelte";
 import Avatar from "./Avatar.svelte";
 import TreeFileList from "./TreeFileList.svelte";
 
@@ -81,14 +84,13 @@ let filesChanged = $derived(fileDiffs.length);
 				>{relativeLabel(commit.author_timestamp, currentMinute())}</span
 			>
 			<span style="flex: 1;"></span>
-			<button
-				type="button"
-				title="Copy SHA"
-				class="sha-copy"
-				style="display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--color-surface-chip); color: var(--color-text-strong); font-family: var(--font-mono); font-size: var(--text-small); flex-shrink: 0;"
-				onclick={() => copySha(commit.oid)}
-				>{commit.short_oid}</button
+			<span
+				class="inline-flex shrink-0 items-center rounded bg-surface-chip px-2 py-1 text-small text-text-strong"
 			>
+				<LinkButton mono title="Copy SHA" onclick={() => copySha(commit.oid)}
+					>{commit.short_oid}</LinkButton
+				>
+			</span>
 		</div>
 	</div>
 {/snippet}
@@ -127,39 +129,23 @@ let filesChanged = $derived(fileDiffs.length);
     "
 			>Comparing</span
 		>
-		<button
-			type="button"
+		<Button
+			icon
+			size="sm"
+			variant="ghost"
 			aria-label="Swap comparison direction"
 			title="Swap comparison direction"
 			disabled={base === null}
-			aria-disabled={base === null}
 			onclick={onswap}
-			style="
-        display: inline-flex;
-        align-items: center;
-        padding: var(--space-1);
-        border-radius: var(--radius);
-        background: none;
-        border: none;
-        color: var(--color-text-muted);
-        cursor: {base === null ? 'default' : 'pointer'};
-        opacity: {base === null ? '0.4' : '1'};
-      "
-			><ArrowUpDown size={14} /></button
+			><ArrowUpDown size={14} /></Button
 		>
-		<button
-			onclick={onclose}
+		<Button
+			icon
+			size="sm"
+			variant="ghost"
 			aria-label="Close comparison"
-			style="
-        background: none;
-        border: none;
-        cursor: pointer;
-        color: var(--color-text-muted);
-        font-size: var(--text-title);
-        line-height: var(--leading-none);
-        padding: var(--space-1);
-      "
-			>×</button
+			onclick={onclose}
+			><X size={14} /></Button
 		>
 	</div>
 
@@ -226,33 +212,22 @@ let filesChanged = $derived(fileDiffs.length);
 			</span>
 		{/if}
 		{#if ontreeviewtoggle}
-			<button
+			<Button
+				icon
+				size="sm"
+				variant="ghost"
 				role="switch"
 				aria-checked={treeViewEnabled}
 				aria-label={treeViewEnabled ? 'Switch to list view' : 'Switch to tree view'}
 				title={treeViewEnabled ? 'List view' : 'Tree view'}
 				onclick={(e) => { e.stopPropagation(); ontreeviewtoggle?.(); }}
-				style="
-          background: none;
-          border: none;
-          cursor: pointer;
-          color: var(--color-text-muted);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 20px;
-          height: var(--control-sm-h);
-          border-radius: var(--radius);
-          flex-shrink: 0;
-          padding: 0;
-        "
 			>
 				{#if treeViewEnabled}
 					<FolderTree size={14} />
 				{:else}
 					<List size={14} />
 				{/if}
-			</button>
+			</Button>
 		{/if}
 	</div>
 	<div style="flex: 1; overflow-y: auto; min-height: 0;">
@@ -266,14 +241,3 @@ let filesChanged = $derived(fileDiffs.length);
 		/>
 	</div>
 </div>
-
-<style>
-/* Click-to-copy SHA chip. The .sha-copy rules in CommitDetail are
-     component-scoped and never reach this panel, so the affordance lives here. */
-.sha-copy {
-	cursor: pointer;
-}
-.sha-copy:hover {
-	text-decoration: underline;
-}
-</style>

@@ -3,6 +3,7 @@ import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronUp from "@lucide/svelte/icons/chevron-up";
 import FolderTree from "@lucide/svelte/icons/folder-tree";
 import List from "@lucide/svelte/icons/list";
+import X from "@lucide/svelte/icons/x";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { copySha } from "../lib/clipboard.js";
 import { fileCountsForOid, fileTonesForOid } from "../lib/comment-counts.js";
@@ -22,6 +23,8 @@ import type {
 	ReviewTone,
 	Thread,
 } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
+import LinkButton from "../lib/ui/LinkButton.svelte";
 import CommitAuthor from "./CommitAuthor.svelte";
 import CommitMessage from "./CommitMessage.svelte";
 import CommitNotes from "./CommitNotes.svelte";
@@ -149,6 +152,7 @@ let commitNotes = $derived(
 <svelte:window onkeydown={handlePaneKeydown} />
 
 <div
+	data-testid="commit-detail"
 	style="
   width: 100%;
   min-width: 0;
@@ -183,57 +187,51 @@ let commitNotes = $derived(
     "
 		>
 			commit:
-			<button
-				type="button"
-				title="Copy SHA"
-				class="sha-copy"
-				style="display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--color-surface-chip); color: var(--color-text-strong);"
-				onclick={() => copySha(commitDetail.oid)}
-				>{commitDetail.short_oid}</button
+			<span
+				class="inline-flex items-center rounded bg-surface-chip px-2 py-1 text-text-strong"
 			>
+				<LinkButton
+					mono
+					title="Copy SHA"
+					onclick={() => copySha(commitDetail.oid)}
+					>{commitDetail.short_oid}</LinkButton
+				>
+			</span>
 		</span>
 		{#if nav}
 			<span class="pager">
-				<button
-					type="button"
-					class="pager-btn"
+				<Button
+					icon
+					size="sm"
+					variant="ghost"
 					aria-label="Go to newer commit"
 					title="Newer commit"
 					disabled={nav.newerOid === null}
-					aria-disabled={nav.newerOid === null}
 					onclick={() => nav?.newerOid && onnavigate?.(nav.newerOid)}
-					><ChevronUp size={13} /></button
+					><ChevronUp size={13} /></Button
 				>
 				<span class="pager-pos"
 					>{`${nav.index} / ${nav.total}${nav.hasMore ? '+' : ''}`}</span
 				>
-				<button
-					type="button"
-					class="pager-btn"
+				<Button
+					icon
+					size="sm"
+					variant="ghost"
 					aria-label="Go to older commit"
 					title="Older commit"
 					disabled={nav.olderOid === null}
-					aria-disabled={nav.olderOid === null}
 					onclick={() => nav?.olderOid && onnavigate?.(nav.olderOid)}
-					><ChevronDown size={13} /></button
+					><ChevronDown size={13} /></Button
 				>
 			</span>
 		{/if}
-		<button
-			onclick={onclose}
+		<Button
+			icon
+			size="sm"
+			variant="ghost"
 			aria-label="Close commit detail"
-			style="
-        background: none;
-        border: none;
-        cursor: pointer;
-        color: var(--color-text-muted);
-        font-size: var(--text-title);
-        line-height: var(--leading-none);
-        padding: var(--space-1);
-        border-radius: var(--radius);
-        flex-shrink: 0;
-      "
-			>✕</button
+			onclick={onclose}
+			><X size={14} /></Button
 		>
 	</div>
 
@@ -297,33 +295,22 @@ let commitNotes = $derived(
 					</span>
 				{/if}
 				{#if ontreeviewtoggle}
-					<button
+					<Button
+						icon
+						size="sm"
+						variant="ghost"
 						role="switch"
 						aria-checked={treeViewEnabled}
 						aria-label={treeViewEnabled ? 'Switch to list view' : 'Switch to tree view'}
 						title={treeViewEnabled ? 'List view' : 'Tree view'}
 						onclick={(e) => { e.stopPropagation(); ontreeviewtoggle?.(); }}
-						style="
-              background: none;
-              border: none;
-              cursor: pointer;
-              color: var(--color-text-muted);
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              width: 20px;
-              height: var(--control-sm-h);
-              border-radius: var(--radius);
-              flex-shrink: 0;
-              padding: 0;
-            "
 					>
 						{#if treeViewEnabled}
 							<FolderTree size={14} />
 						{:else}
 							<List size={14} />
 						{/if}
-					</button>
+					</Button>
 				{/if}
 			</div>
 			<TreeFileList
@@ -342,18 +329,6 @@ let commitNotes = $derived(
 
 <style>
 /* Click-to-copy SHA: reset the button to read as inline mono text. */
-.sha-copy {
-	background: none;
-	border: none;
-	padding: 0;
-	cursor: pointer;
-	font-family: var(--font-mono);
-	font-size: inherit;
-	color: inherit;
-}
-.sha-copy:hover {
-	text-decoration: underline;
-}
 
 /* Toolbar pager — step to the newer/older adjacent commit in graph order. */
 .pager {
@@ -361,28 +336,6 @@ let commitNotes = $derived(
 	align-items: center;
 	gap: var(--space-1);
 	flex-shrink: 0;
-}
-.pager-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 22px;
-	height: var(--control-sm-h);
-	border-radius: var(--radius);
-	background: var(--color-surface-chip);
-	color: var(--color-text-muted);
-	border: 1px solid transparent;
-	cursor: pointer;
-	padding: 0;
-}
-.pager-btn:hover:not(:disabled) {
-	color: var(--color-accent-strong);
-	border-color: color-mix(in oklch, var(--color-accent) 30%, transparent);
-}
-.pager-btn:disabled {
-	color: var(--color-text-subtle);
-	opacity: 0.4;
-	cursor: default;
 }
 .pager-pos {
 	font-size: var(--text-caption);

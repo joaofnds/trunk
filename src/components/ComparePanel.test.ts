@@ -87,6 +87,27 @@ describe("ComparePanel", () => {
 		expect(swap).toBeDisabled();
 	});
 
+	it("draws the swap and the close as small ghost icon controls", () => {
+		renderPanel();
+
+		for (const name of ["Swap comparison direction", "Close comparison"]) {
+			expect(screen.getByRole("button", { name })).toHaveClass(
+				"w-control-sm",
+				"bg-transparent",
+			);
+		}
+	});
+
+	it("sets each SHA on a chip that copies it", () => {
+		renderPanel();
+
+		for (const sha of screen.getAllByTitle("Copy SHA")) {
+			expect(sha).toHaveClass("font-mono");
+			expect(sha.parentElement).toHaveClass("bg-surface-chip");
+		}
+		expect(screen.getAllByTitle("Copy SHA")).toHaveLength(2);
+	});
+
 	it("selects a file from the list", async () => {
 		const { onfileselect } = renderPanel();
 		await fireEvent.click(screen.getByText("src/main.ts"));
