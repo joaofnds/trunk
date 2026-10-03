@@ -365,6 +365,22 @@ async function handleBranchCreate(values: Record<string, string>) {
 	height: var(--control-h);
 	flex-shrink: 0;
 }
+.review-filter-select {
+	display: flex;
+	align-items: center;
+	overflow: hidden;
+}
+.review-filter-select select {
+	max-width: 92px;
+	height: var(--control-sm-h);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	background: var(--color-surface);
+	color: var(--color-text);
+	font: inherit;
+	font-size: 11px;
+	padding: 0 var(--space-1);
+}
 .review-filter-control-active,
 .review-filter-control:has(.review-filter-select) {
 	gap: 0;
@@ -392,22 +408,6 @@ async function handleBranchCreate(values: Record<string, string>) {
 .review-filter-control:has(.review-filter-select)
 	> .toolbar-btn:hover:not(:disabled) {
 	background: var(--accent-hi);
-}
-.review-filter-select {
-	display: flex;
-	align-items: center;
-	overflow: hidden;
-}
-.review-filter-select select {
-	max-width: 92px;
-	height: var(--control-sm-h);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius);
-	background: var(--color-surface);
-	color: var(--color-text);
-	font: inherit;
-	font-size: 11px;
-	padding: 0 var(--space-1);
 }
 .toolbar-badge.tone-open {
 	background: var(--color-thread-open);
