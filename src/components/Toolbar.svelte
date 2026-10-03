@@ -329,7 +329,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 .toolbar-btn.toolbar-btn-active {
 	background: var(--color-accent);
 	box-shadow: inset 0 0 0 1px var(--color-accent);
-	color: var(--accent-fg);
+	color: var(--color-on-accent);
 }
 .toolbar-btn.toolbar-btn-active:hover:not(:disabled) {
 	background: var(--accent-hi);
@@ -352,7 +352,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 	justify-content: center;
 	border-radius: var(--radius-pill);
 	background: var(--color-accent);
-	color: var(--accent-fg);
+	color: var(--color-on-accent);
 	font-size: 10px;
 	font-weight: 600;
 	line-height: 1;
@@ -402,7 +402,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 	border-radius: 0 var(--radius) var(--radius) 0;
 	background: var(--color-accent);
 	box-shadow: none;
-	color: var(--accent-fg);
+	color: var(--color-on-accent);
 }
 .review-filter-control-active > .toolbar-btn:hover:not(:disabled),
 .review-filter-control:has(.review-filter-select)

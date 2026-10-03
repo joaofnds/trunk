@@ -1012,7 +1012,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 	padding: 0 var(--space-2);
 	cursor: pointer;
 	background: var(--color-accent);
-	color: var(--accent-fg);
+	color: var(--color-on-accent);
 	border: none;
 	border-radius: var(--radius);
 }

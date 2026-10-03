@@ -185,7 +185,7 @@ function rowLabel(file: TrackedFile): string {
                   padding: 0 var(--space-1);
                   border-radius: var(--radius);
                   background: var(--color-thread-{commentTones.get(file.path) ?? 'open'});
-                  color: var(--accent-fg);
+                  color: var(--color-on-accent);
                   font-size: 11px;
                 "
 								>{commentCounts.get(file.path)}</span

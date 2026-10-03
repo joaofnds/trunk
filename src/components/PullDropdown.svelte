@@ -140,7 +140,7 @@ $effect(() => {
 }
 .dropdown-option:hover {
 	background: var(--color-accent);
-	color: var(--accent-fg);
+	color: var(--color-on-accent);
 }
 </style>
 

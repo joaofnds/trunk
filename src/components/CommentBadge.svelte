@@ -33,7 +33,7 @@ let { count, tone = "open" }: Props = $props();
 	justify-content: center;
 	border-radius: var(--radius-pill);
 	background: var(--color-accent);
-	color: var(--accent-fg);
+	color: var(--color-on-accent);
 	font-size: 10px;
 	font-weight: 600;
 	line-height: 1;

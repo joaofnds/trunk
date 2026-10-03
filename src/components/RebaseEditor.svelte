@@ -802,7 +802,7 @@ let lastVisibleColumn = $derived.by(() => {
 	align-items: center;
 	height: var(--control-sm-h);
 	background: var(--color-accent);
-	color: var(--accent-fg);
+	color: var(--color-on-accent);
 	font-size: 11px;
 	font-weight: 600;
 	padding: 0 var(--space-2);

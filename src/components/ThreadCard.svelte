@@ -473,7 +473,7 @@ async function requestDeleteReply(replyId: string) {
 }
 
 .thread-stale-chip {
-	color: var(--accent-fg);
+	color: var(--color-on-accent);
 	background: var(--color-thread-stale);
 }
 
