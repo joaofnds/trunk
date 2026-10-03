@@ -316,7 +316,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 .composer-preview {
 	color: var(--color-text-muted);
 	font-size: var(--text-small);
-	font-family: var(--font-mono, monospace);
+	font-family: var(--font-mono);
 }
 
 .composer-textarea {
@@ -324,7 +324,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	resize: vertical;
 	padding: var(--space-2);
 	font-size: var(--text-callout);
-	font-family: var(--font-sans, sans-serif);
+	font-family: var(--font-sans);
 	color: var(--color-text);
 	background: var(--color-bg);
 	border: 1px solid var(--color-border);
@@ -346,7 +346,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 .composer-btn {
 	border-radius: var(--radius);
 	font-size: var(--text-small);
-	font-family: var(--font-sans, sans-serif);
+	font-family: var(--font-sans);
 	padding: var(--space-1) var(--space-3);
 	white-space: nowrap;
 	cursor: pointer;

@@ -325,7 +325,7 @@ function lineColor(): string {
           border-radius: var(--radius);
           color: var(--color-accent);
           font-size: var(--text-small);
-          font-family: var(--font-sans, sans-serif);
+          font-family: var(--font-sans);
           height: var(--control-sm-h);
           padding: 0 var(--space-2);
           cursor: pointer;

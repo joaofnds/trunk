@@ -339,7 +339,7 @@ const renderedActive = $derived(
 	justify-content: center;
 	border-radius: var(--radius);
 	font-size: var(--text-small);
-	font-family: var(--font-sans, sans-serif);
+	font-family: var(--font-sans);
 	height: var(--control-sm-h);
 	padding: 0 var(--space-2);
 	white-space: nowrap;

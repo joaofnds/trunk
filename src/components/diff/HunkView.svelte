@@ -538,7 +538,7 @@ function lineColor(): string {
 	flex: 1;
 	color: color-mix(in oklch, var(--color-info) 70%, var(--color-text-subtle));
 	font-size: var(--text-small);
-	font-family: var(--font-mono, monospace);
+	font-family: var(--font-mono);
 }
 .hunk-btn {
 	display: inline-flex;
@@ -546,7 +546,7 @@ function lineColor(): string {
 	justify-content: center;
 	border-radius: var(--radius);
 	font-size: var(--text-small);
-	font-family: var(--font-sans, sans-serif);
+	font-family: var(--font-sans);
 	height: var(--control-sm-h);
 	padding: 0 var(--space-2);
 	cursor: pointer;

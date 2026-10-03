@@ -633,7 +633,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
               border-radius: var(--radius);
               color: var(--color-success);
               font-size: var(--text-small);
-              font-family: var(--font-sans, sans-serif);
+              font-family: var(--font-sans);
               height: var(--control-sm-h);
               padding: 0 var(--space-2);
               cursor: pointer;
@@ -710,7 +710,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
               border-radius: var(--radius);
               color: var(--color-success);
               font-size: var(--text-small);
-              font-family: var(--font-sans, sans-serif);
+              font-family: var(--font-sans);
               height: var(--control-sm-h);
               padding: 0 var(--space-2);
               cursor: pointer;
@@ -858,7 +858,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
               border-radius: var(--radius);
               color: var(--color-success);
               font-size: var(--text-small);
-              font-family: var(--font-sans, sans-serif);
+              font-family: var(--font-sans);
               height: var(--control-sm-h);
               padding: 0 var(--space-2);
               cursor: {saving ? 'not-allowed' : 'pointer'};

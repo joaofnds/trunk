@@ -634,7 +634,7 @@ function originClass(origin: string): string {
 	flex: 1;
 	color: color-mix(in oklch, var(--color-info) 70%, var(--color-text-subtle));
 	font-size: var(--text-small);
-	font-family: var(--font-mono, monospace);
+	font-family: var(--font-mono);
 }
 
 /* Multi-file view only. Vertical stickiness does not survive the list — a row
@@ -675,7 +675,7 @@ function originClass(origin: string): string {
 	justify-content: center;
 	border-radius: var(--radius);
 	font-size: var(--text-small);
-	font-family: var(--font-sans, sans-serif);
+	font-family: var(--font-sans);
 	height: var(--control-sm-h);
 	padding: 0 var(--space-2);
 	cursor: pointer;
