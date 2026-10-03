@@ -73,7 +73,7 @@ let commentTone = $derived(
     cursor: pointer;
     background: {focused ? 'var(--color-selected-row)' : hovered ? 'var(--color-surface)' : 'transparent'};
     color: var(--color-text);
-    font-size: 12px;
+    font-size: var(--text-callout);
   "
 >
 	<span

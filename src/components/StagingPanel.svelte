@@ -834,7 +834,7 @@ $effect(() => {
 		<span
 			style="flex: 1; display: flex; align-items: center; justify-content: center; gap: var(--space-2); min-width: 0;"
 		>
-			<span style="font-size: 12px; color: var(--color-text);">
+			<span style="font-size: var(--text-callout); color: var(--color-text);">
 				{`${totalCount} file${totalCount === 1 ? '' : 's'} changed`}
 			</span>
 			{#if currentBranch}
@@ -962,7 +962,7 @@ $effect(() => {
 					<AlertTriangle size={12} />
 				</span>
 				<span
-					style="font-size: 12px; font-weight: 600; color: var(--color-badge-warning);"
+					style="font-size: var(--text-callout); font-weight: 600; color: var(--color-badge-warning);"
 					>Rebase conflicts detected</span
 				>
 			</div>
@@ -1407,7 +1407,7 @@ $effect(() => {
           color: var(--color-text);
           border-radius: var(--radius);
           padding: var(--space-1) var(--space-2);
-          font-size: 12px;
+          font-size: var(--text-callout);
         "
 			>
 			<textarea
@@ -1423,7 +1423,7 @@ $effect(() => {
           color: var(--color-text);
           border-radius: var(--radius);
           padding: var(--space-1) var(--space-2);
-          font-size: 12px;
+          font-size: var(--text-callout);
           resize: none;
         "
 			></textarea>
@@ -1438,7 +1438,7 @@ $effect(() => {
             color: var(--color-success);
             border: 1px solid var(--color-success-border);
             border-radius: var(--radius);
-            font-size: 12px;
+            font-size: var(--text-callout);
             font-weight: 600;
             cursor: {allResolved && !rebaseLoading ? 'pointer' : 'not-allowed'};
             opacity: {allResolved && !rebaseLoading ? 1 : 0.4};
@@ -1456,7 +1456,7 @@ $effect(() => {
             color: var(--color-warning);
             border: 1px solid var(--color-warning-border);
             border-radius: var(--radius);
-            font-size: 12px;
+            font-size: var(--text-callout);
             font-weight: 600;
             cursor: {rebaseLoading ? 'not-allowed' : 'pointer'};
             opacity: {rebaseLoading ? 0.4 : 1};
@@ -1474,7 +1474,7 @@ $effect(() => {
             color: var(--color-danger);
             border: 1px solid var(--color-danger-border);
             border-radius: var(--radius);
-            font-size: 12px;
+            font-size: var(--text-callout);
             font-weight: 600;
             cursor: {rebaseLoading ? 'not-allowed' : 'pointer'};
             opacity: {rebaseLoading ? 0.4 : 1};
@@ -1505,7 +1505,7 @@ $effect(() => {
           color: var(--color-success);
           border: 1px solid var(--color-success-border);
           border-radius: var(--radius);
-          font-size: 12px;
+          font-size: var(--text-callout);
           cursor: {allResolved && !mergeLoading ? 'pointer' : 'not-allowed'};
           opacity: {allResolved && !mergeLoading ? 1 : 0.4};
         "
@@ -1522,7 +1522,7 @@ $effect(() => {
           color: var(--color-danger);
           border: 1px solid var(--color-danger-border);
           border-radius: var(--radius);
-          font-size: 12px;
+          font-size: var(--text-callout);
           cursor: {mergeLoading ? 'not-allowed' : 'pointer'};
           opacity: {mergeLoading ? 0.4 : 1};
         "

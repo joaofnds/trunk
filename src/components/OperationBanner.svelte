@@ -195,7 +195,7 @@ async function handleRevertAbort() {
 		{/if}
 	</span>
 	<div
-		style="font-size: 12px; color: var(--color-text); flex: 1; overflow: hidden; display: flex; align-items: center; gap: var(--space-1); white-space: nowrap;"
+		style="font-size: var(--text-callout); color: var(--color-text); flex: 1; overflow: hidden; display: flex; align-items: center; gap: var(--space-1); white-space: nowrap;"
 	>
 		{#if isMerge || isRebase}
 			<span style="flex-shrink: 0;">{isMerge ? 'Merging' : 'Rebasing'}</span>

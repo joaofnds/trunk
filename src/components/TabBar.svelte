@@ -129,7 +129,7 @@ $effect(() => {
 	padding: 0 var(--space-2) 0 var(--space-3);
 	height: var(--control-h);
 	border-radius: var(--radius);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	font-weight: 500;
 	color: var(--color-text-muted);
 	cursor: pointer;

@@ -145,7 +145,7 @@ function rowLabel(file: TrackedFile): string {
 						style="
               gap: var(--space-2);
               padding: var(--space-2) var(--space-3);
-              font-size: 12px;
+              font-size: var(--text-callout);
               cursor: pointer;
               text-align: left;
               border: none;
@@ -198,7 +198,7 @@ function rowLabel(file: TrackedFile): string {
 			{#if matches.length === 0}
 				<li
 					role="presentation"
-					style="padding: var(--space-3); font-size: 12px; color: var(--color-text-muted);"
+					style="padding: var(--space-3); font-size: var(--text-callout); color: var(--color-text-muted);"
 				>
 					No tracked file matches
 				</li>

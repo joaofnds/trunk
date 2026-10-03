@@ -162,7 +162,7 @@ async function saveReplyEdit() {
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius);
 	padding: var(--space-1) var(--space-2);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	font-family: inherit;
 }
 .card-editor-actions {
@@ -180,7 +180,7 @@ async function saveReplyEdit() {
 	cursor: pointer;
 	height: var(--control-sm-h);
 	padding: 0 var(--space-2);
-	font-size: 12px;
+	font-size: var(--text-callout);
 }
 .card-editor-actions button[disabled] {
 	cursor: not-allowed;
@@ -245,7 +245,7 @@ async function saveReplyEdit() {
 	padding: 0 var(--space-2);
 }
 .thread-reply-text {
-	font-size: 12px;
+	font-size: var(--text-callout);
 	white-space: pre-wrap;
 	word-break: break-word;
 }

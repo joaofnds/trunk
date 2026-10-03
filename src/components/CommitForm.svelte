@@ -200,7 +200,7 @@ async function handleSubmit() {
 				style="
           flex: 1;
           padding: 0;
-          font-size: 12px;
+          font-size: var(--text-callout);
           background: none;
           border: none;
           border-bottom: 2px solid {mode === tab ? 'var(--color-accent)' : 'transparent'};
@@ -233,7 +233,7 @@ async function handleSubmit() {
           border-radius: var(--radius);
           height: var(--control-lg-h);
           padding: 0 var(--counter-gutter) 0 var(--space-3);
-          font-size: 12px;
+          font-size: var(--text-callout);
         "
 			>
 			{#if counterVisible}
@@ -273,7 +273,7 @@ async function handleSubmit() {
         color: var(--color-text);
         border-radius: var(--radius);
         padding: var(--space-2) var(--space-3);
-        font-size: 12px;
+        font-size: var(--text-callout);
         resize: vertical;
       "
 		></textarea>

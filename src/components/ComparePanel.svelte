@@ -177,7 +177,7 @@ let filesChanged = $derived(fileDiffs.length);
 		{:else}
 			<div
 				style="
-        font-size: 12px;
+        font-size: var(--text-callout);
         font-style: italic;
         color: var(--color-text-muted);
       "
@@ -207,7 +207,7 @@ let filesChanged = $derived(fileDiffs.length);
   "
 	>
 		<span
-			style="font-size: 12px; font-weight: 500; color: var(--color-text); flex: 1;"
+			style="font-size: var(--text-callout); font-weight: 500; color: var(--color-text); flex: 1;"
 		>
 			{`${filesChanged} file${filesChanged === 1 ? '' : 's'} changed`}
 		</span>

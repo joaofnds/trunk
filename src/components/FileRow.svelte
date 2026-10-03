@@ -107,7 +107,7 @@ let badgeBg = $derived(
     display: flex;
     align-items: baseline;
     gap: var(--space-1);
-    font-size: 12px;
+    font-size: var(--text-callout);
   "
 	>
 		{#if rename !== null}

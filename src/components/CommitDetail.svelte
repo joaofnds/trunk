@@ -280,7 +280,7 @@ let commitNotes = $derived(
       "
 			>
 				<span
-					style="font-size: 12px; font-weight: 500; color: var(--color-text); flex: 1;"
+					style="font-size: var(--text-callout); font-weight: 500; color: var(--color-text); flex: 1;"
 				>
 					{`${fileDiffs.length} file${fileDiffs.length === 1 ? '' : 's'} changed`}
 				</span>

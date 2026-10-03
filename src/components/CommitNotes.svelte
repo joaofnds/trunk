@@ -178,7 +178,7 @@ async function saveNote() {
 	border-radius: var(--radius);
 	cursor: pointer;
 	padding: var(--space-1) var(--space-2);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	flex-shrink: 0;
 }
 .add-note-btn:hover,
@@ -200,7 +200,7 @@ async function saveNote() {
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius);
 	padding: var(--space-1) var(--space-2);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	font-family: inherit;
 }
 .add-note-actions {
@@ -218,7 +218,7 @@ async function saveNote() {
 	cursor: pointer;
 	height: var(--control-sm-h);
 	padding: 0 var(--space-2);
-	font-size: 12px;
+	font-size: var(--text-callout);
 }
 .add-note-actions button[disabled] {
 	cursor: not-allowed;

@@ -793,7 +793,7 @@ let lastVisibleColumn = $derived.by(() => {
 }
 
 .rebase-toolbar-meta {
-	font-size: 12px;
+	font-size: var(--text-callout);
 	color: var(--color-text-muted);
 }
 
@@ -982,7 +982,7 @@ let lastVisibleColumn = $derived.by(() => {
 	left: 3px;
 	top: 50%;
 	transform: translateY(-50%);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	color: var(--color-accent-alt);
 	z-index: 1;
 	pointer-events: none;
@@ -1094,7 +1094,7 @@ let lastVisibleColumn = $derived.by(() => {
 }
 
 .rebase-msg-editor-title {
-	font-size: 12px;
+	font-size: var(--text-callout);
 	font-weight: 600;
 	color: var(--color-text-muted);
 }

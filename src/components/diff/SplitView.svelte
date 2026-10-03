@@ -642,7 +642,7 @@ function originClass(origin: string): string {
 .split-file-header {
 	background: var(--color-surface);
 	box-shadow: inset 0 -1px 0 var(--color-border);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	font-weight: 500;
 	padding: 0 var(--space-2);
 	height: var(--diff-file-header-height);
@@ -665,7 +665,7 @@ function originClass(origin: string): string {
 	box-sizing: border-box;
 	padding: var(--space-2);
 	color: var(--color-text-muted);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	line-height: 16px;
 }
 
@@ -831,7 +831,7 @@ function originClass(origin: string): string {
 }
 .invisible-char::before {
 	content: attr(data-glyph);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	color: var(--color-invisible);
 }
 

@@ -323,7 +323,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	min-height: 60px;
 	resize: vertical;
 	padding: var(--space-2);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	font-family: var(--font-sans, sans-serif);
 	color: var(--color-text);
 	background: var(--color-bg);

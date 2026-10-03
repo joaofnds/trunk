@@ -342,7 +342,7 @@ async function requestDeleteReply(replyId: string) {
        host's inherited font — the inline diff host and the review panel pass
        different defaults, which is why the body prose drifted in size. */
 	font-family: var(--font-sans);
-	font-size: 12px;
+	font-size: var(--text-callout);
 }
 /* Inline hosts (diff / commit-detail) span the full row width naturally; the
      panel card sits inside the per-commit list. The variants exist so width and
@@ -434,7 +434,7 @@ async function requestDeleteReply(replyId: string) {
 	border: none;
 	cursor: pointer;
 	padding: 0 var(--space-1);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	color: var(--color-text-muted);
 }
 .card-action:hover,
@@ -511,7 +511,7 @@ async function requestDeleteReply(replyId: string) {
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius);
 	padding: var(--space-1) var(--space-2);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	font-family: inherit;
 }
 .card-editor-actions {
@@ -529,7 +529,7 @@ async function requestDeleteReply(replyId: string) {
 	cursor: pointer;
 	height: var(--control-sm-h);
 	padding: 0 var(--space-2);
-	font-size: 12px;
+	font-size: var(--text-callout);
 }
 .card-editor-actions button[disabled] {
 	cursor: not-allowed;
@@ -545,7 +545,7 @@ async function requestDeleteReply(replyId: string) {
 	border-top: 1px solid var(--color-border);
 }
 .thread-reply-composer .card-textarea {
-	font-size: 12px;
+	font-size: var(--text-callout);
 }
 .thread-reply-composer button {
 	display: inline-flex;
@@ -559,7 +559,7 @@ async function requestDeleteReply(replyId: string) {
 	cursor: pointer;
 	height: var(--control-sm-h);
 	padding: 0 var(--space-2);
-	font-size: 12px;
+	font-size: var(--text-callout);
 }
 .thread-reply-composer button[disabled] {
 	cursor: not-allowed;

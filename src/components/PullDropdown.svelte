@@ -134,7 +134,7 @@ $effect(() => {
 	background: none;
 	border: none;
 	color: var(--color-text);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	padding: var(--space-2) var(--space-3);
 	cursor: pointer;
 }

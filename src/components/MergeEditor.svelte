@@ -590,7 +590,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
           border: 1px solid var(--color-border);
           border-radius: var(--radius);
           color: var(--color-text);
-          font-size: 12px;
+          font-size: var(--text-callout);
           padding: var(--space-1) var(--space-3);
           cursor: pointer;
         "
@@ -617,7 +617,8 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
           flex-shrink: 0;
         "
 				>
-					<span style="font-size: 12px; color: var(--color-text);"
+					<span
+						style="font-size: var(--text-callout); color: var(--color-text);"
 						>Current (Ours)</span
 					>
 					<span style="flex: 1;"></span>
@@ -652,7 +653,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
             flex: 1;
             overflow-y: auto;
             font-family: var(--font-mono);
-            font-size: 12px;
+            font-size: var(--text-callout);
             line-height: {LINE_HEIGHT}px;
           "
 				>
@@ -693,7 +694,8 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
           flex-shrink: 0;
         "
 				>
-					<span style="font-size: 12px; color: var(--color-text);"
+					<span
+						style="font-size: var(--text-callout); color: var(--color-text);"
 						>Incoming (Theirs)</span
 					>
 					<span style="flex: 1;"></span>
@@ -727,7 +729,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
             flex: 1;
             overflow-y: auto;
             font-family: var(--font-mono);
-            font-size: 12px;
+            font-size: var(--text-callout);
             line-height: {LINE_HEIGHT}px;
           "
 				>
@@ -771,7 +773,10 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 			>
 				<!-- Left: label -->
 				<div style="display: flex; align-items: center; gap: var(--space-2);">
-					<span style="font-size: 12px; color: var(--color-text);">Output</span>
+					<span
+						style="font-size: var(--text-callout); color: var(--color-text);"
+						>Output</span
+					>
 					{#if manualEdit}
 						<span style="font-size: 10px; color: var(--color-text-muted);"
 							>(manual edit)</span
@@ -892,7 +897,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
           background: var(--color-bg);
           color: var(--color-text);
           font-family: var(--font-mono);
-          font-size: 12px;
+          font-size: var(--text-callout);
           line-height: {LINE_HEIGHT}px;
           padding: var(--space-1) var(--space-2);
           outline: none;

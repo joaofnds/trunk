@@ -192,7 +192,7 @@ async function handleForcePush(target: Target) {
 	gap: var(--space-2);
 }
 .recovery-text {
-	font-size: 12px;
+	font-size: var(--text-callout);
 	color: var(--color-text);
 	flex: 1;
 	min-width: 0;

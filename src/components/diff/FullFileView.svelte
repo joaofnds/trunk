@@ -401,7 +401,7 @@ function lineColor(): string {
 	box-sizing: border-box;
 	padding: var(--space-2);
 	color: var(--color-text-muted);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	line-height: 16px;
 }
 
@@ -531,7 +531,7 @@ function lineColor(): string {
 }
 .invisible-char::before {
 	content: attr(data-glyph);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	color: var(--color-invisible);
 }
 

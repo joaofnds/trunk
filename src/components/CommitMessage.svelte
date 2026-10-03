@@ -81,7 +81,7 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
      an inline scroll area inside the panel's own scroller is content readers
      skip past, and it would leave the file list just as far down. */
 .commit-body {
-	font-size: 12px;
+	font-size: var(--text-callout);
 	color: var(--color-text-muted);
 	line-height: 1.6;
 	margin-top: var(--space-2);

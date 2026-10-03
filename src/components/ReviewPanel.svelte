@@ -499,7 +499,7 @@ $effect(() => {
       background: var(--color-surface);
       box-shadow: inset 0 -1px 0 var(--color-border);
       flex-shrink: 0;
-      font-size: 12px;
+      font-size: var(--text-callout);
     "
 	>
 		{#if oncommentonfile && reviewFilter !== "none"}
@@ -555,7 +555,7 @@ $effect(() => {
       padding: var(--space-3);
       background: var(--color-surface);
       color: var(--color-text);
-      font-size: 12px;
+      font-size: var(--text-callout);
       line-height: 1.5;
     "
 	>
@@ -610,7 +610,7 @@ $effect(() => {
                 border-radius: var(--radius);
                 height: var(--control-sm-h);
                 padding: 0 var(--space-1);
-                font-size: 12px;
+                font-size: var(--text-callout);
                 font-family: inherit;
               "
 							>
@@ -637,7 +637,7 @@ $effect(() => {
                 padding: 0;
                 cursor: pointer;
                 color: inherit;
-                font-size: 12px;
+                font-size: var(--text-callout);
                 font-family: inherit;
               "
 								>{review.title}</button
@@ -817,7 +817,7 @@ $effect(() => {
                 cursor: pointer;
                 padding: var(--space-1);
                 flex-shrink: 0;
-                font-size: 12px;
+                font-size: var(--text-callout);
               "
 								onmouseenter={(e) => (e.currentTarget.style.background = "var(--color-hover)")}
 								onmouseleave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -845,7 +845,7 @@ $effect(() => {
                   border: 1px solid var(--color-border);
                   border-radius: var(--radius);
                   padding: var(--space-1) var(--space-2);
-                  font-size: 12px;
+                  font-size: var(--text-callout);
                   font-family: inherit;
                 "
 								></textarea>
@@ -865,7 +865,7 @@ $effect(() => {
                     cursor: pointer;
                     height: var(--control-sm-h);
                     padding: 0 var(--space-2);
-                    font-size: 12px;
+                    font-size: var(--text-callout);
                   "
 										>Save</button
 									>
@@ -884,7 +884,7 @@ $effect(() => {
                     cursor: pointer;
                     height: var(--control-sm-h);
                     padding: 0 var(--space-2);
-                    font-size: 12px;
+                    font-size: var(--text-callout);
                   "
 										>Cancel</button
 									>
@@ -991,7 +991,7 @@ $effect(() => {
 	cursor: pointer;
 	height: var(--control-sm-h);
 	padding: 0 var(--space-2);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	font-family: inherit;
 }
 .comment-on-file-button:hover,
@@ -1021,7 +1021,7 @@ $effect(() => {
 	cursor: pointer;
 	height: var(--control-sm-h);
 	padding: 0 var(--space-2);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	font-family: inherit;
 }
 .publish-button:hover:not(.confirming):not([disabled]),
@@ -1051,7 +1051,7 @@ $effect(() => {
 	cursor: pointer;
 	height: var(--control-sm-h);
 	padding: 0 var(--space-2);
-	font-size: 12px;
+	font-size: var(--text-callout);
 	font-family: inherit;
 }
 .end-button:hover:not(.confirming):not([disabled]),
