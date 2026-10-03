@@ -1,0 +1,11 @@
+.bad { color: #fff; }
+.bad { color: red; }
+.bad { background: oklch(0.5 0.1 200); }
+.bad { background-color: rgba(0, 0, 0, 0.5); }
+.bad { border-color: #cccccc; }
+.bad { border-left-color: white; }
+.bad { fill: #000; }
+.bad { stroke: black; }
+.bad { background: var(--color-accent-bg, var(--color-surface)); }
+.bad { color: color-mix(in srgb, var(--fg-1) 50%, transparent); }
+.bad { background: linear-gradient(to right, #000 0%, var(--line) 100%); }

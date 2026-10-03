@@ -1,0 +1,17 @@
+.good { color: var(--fg-1); }
+.good { background: transparent; }
+.good { background: none; }
+.good { background-color: currentColor; }
+.good { color: inherit; }
+.good { border-color: color-mix(in oklch, var(--accent) 50%, transparent); }
+.good { fill: color-mix(in oklch, var(--fg-1) 35%, var(--bg-0)); }
+.good {
+	background: linear-gradient(
+		to right,
+		transparent 1.5px,
+		var(--line) 1.5px,
+		var(--line) 2.5px,
+		transparent 2.5px
+	);
+}
+.good { --color-syn-x: #ffffff; }

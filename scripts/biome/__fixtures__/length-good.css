@@ -1,0 +1,32 @@
+.good { padding: 0 var(--space-2); }
+.good { padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3); }
+.good { padding: 0.4em 0; }
+.good { margin: calc(-1 * var(--space-1)) auto; }
+.good { margin-left: calc(var(--counter-gutter) + var(--space-1)); }
+.good { gap: var(--space-1); }
+.good { inset: 0; }
+.good { top: 50%; }
+.good { left: calc(var(--depth) * var(--space-4)); }
+.good { border: 1px solid var(--line); }
+.good { border: 1px solid transparent; }
+.good { border: 1px solid color-mix(in oklch, var(--accent) 25%, transparent); }
+.good { border: none; }
+.good { border-left: 3px solid var(--accent); }
+.good { outline: 2px solid var(--accent); }
+.good { outline: 1px dashed var(--line); }
+.good { outline: none; }
+.good { border-radius: var(--radius); }
+.good { border-radius: var(--radius-pill); }
+.good { border-radius: 0 var(--radius) var(--radius) 0; }
+.good { border-radius: 50%; }
+.good { border-radius: 0; }
+.good { box-shadow: inset 0 0 0 1px var(--line); }
+.good { box-shadow: var(--shadow-1); }
+.good { box-shadow: none; }
+.good {
+	box-shadow:
+		inset 0 -1px 0 var(--line),
+		inset 3px 0 0 var(--warn);
+}
+.good { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--accent) 50%, transparent); }
+.good { --space-9: 36px; }

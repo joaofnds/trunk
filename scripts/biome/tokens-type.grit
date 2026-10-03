@@ -1,0 +1,20 @@
+language css;
+
+or {
+	`font-size: $v` as $d where {
+		not $v <: r"^(?:0|inherit|[\d.]+em|var\(--[\w-]+\))$",
+		register_diagnostic(span = $d, message = "A text size is a token: var(--text-...), or an em inside prose. See docs/design-system.md.")
+	},
+	or { `line-height: $v`, `letter-spacing: $v` } as $d where {
+		not $v <: r"^(?:0|inherit|var\(--[\w-]+\))$",
+		register_diagnostic(span = $d, message = "A line height or tracking is a token: var(--...). See docs/design-system.md.")
+	},
+	or { `font-weight: $v`, `font-family: $v` } as $d where {
+		not $v <: r"^(?:inherit|var\(--[\w-]+\))$",
+		register_diagnostic(span = $d, message = "A font weight or family is a token: var(--...). See docs/design-system.md.")
+	},
+	`font: $v` as $d where {
+		not $v <: r"^inherit$",
+		register_diagnostic(span = $d, message = "The font shorthand hides the scale. Set font-size, font-weight and font-family from tokens. See docs/design-system.md.")
+	}
+}

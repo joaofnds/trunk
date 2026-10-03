@@ -1,0 +1,21 @@
+language css;
+
+or {
+	`color: $v`,
+	`background: $v`,
+	`background-color: $v`,
+	`border-color: $v`,
+	`border-top-color: $v`,
+	`border-right-color: $v`,
+	`border-bottom-color: $v`,
+	`border-left-color: $v`,
+	`outline-color: $v`,
+	`text-decoration-color: $v`,
+	`caret-color: $v`,
+	`accent-color: $v`,
+	`fill: $v`,
+	`stroke: $v`
+} as $d where {
+	not $v <: r"^\s*(?:(?:var\(--[\w-]+\)|transparent|currentColor|inherit|none|color-mix\(in oklch,\s*(?:var\(--[\w-]+\)|transparent)\s+\d+%,\s*(?:var\(--[\w-]+\)|transparent)\s*\))|linear-gradient\(\s*(?:to (?:right|left|top|bottom),\s*)?(?:(?:var\(--[\w-]+\)|transparent)(?:\s+[\d.]+(?:px|%))?,?\s*)+\))\s*$",
+	register_diagnostic(span = $d, message = "A color is a token: var(--...), transparent, currentColor, or a color-mix of those. See docs/design-system.md.")
+}

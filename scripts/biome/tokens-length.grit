@@ -1,0 +1,25 @@
+language css;
+
+or {
+	or {
+		`padding: $v`, `padding-top: $v`, `padding-right: $v`, `padding-bottom: $v`, `padding-left: $v`,
+		`margin: $v`, `margin-top: $v`, `margin-right: $v`, `margin-bottom: $v`, `margin-left: $v`,
+		`gap: $v`, `row-gap: $v`, `column-gap: $v`,
+		`inset: $v`, `top: $v`, `right: $v`, `bottom: $v`, `left: $v`
+	} as $d where {
+		not $v <: r"^\s*(?:0|auto|-?\d+%|[\d.]+em|var\(--[\w-]+\)|calc\(.*var\(--[\w-]+\).*\))(?:\s+(?:0|auto|-?\d+%|[\d.]+em|var\(--[\w-]+\)|calc\(.*var\(--[\w-]+\).*\))){0,3}\s*$",
+		register_diagnostic(span = $d, message = "A length is a spacing token: var(--space-N), or a calc() over one. See docs/design-system.md.")
+	},
+	or { `border: $v`, `border-top: $v`, `border-right: $v`, `border-bottom: $v`, `border-left: $v`, `outline: $v` } as $d where {
+		not $v <: r"^\s*(?:none|0|\d+px (?:solid|dashed) (?:var\(--[\w-]+\)|transparent|currentColor|color-mix\(in oklch,\s*(?:var\(--[\w-]+\)|transparent)\s+\d+%,\s*(?:var\(--[\w-]+\)|transparent)\s*\)))\s*$",
+		register_diagnostic(span = $d, message = "A border or outline is `<width>px solid|dashed <token>`, none or 0. See docs/design-system.md.")
+	},
+	`border-radius: $v` as $d where {
+		not $v <: r"^\s*(?:0|50%|var\(--radius(?:-pill)?\))(?:\s+(?:0|var\(--radius(?:-pill)?\))){0,3}\s*$",
+		register_diagnostic(span = $d, message = "A corner is var(--radius), var(--radius-pill), 50% or 0. See docs/design-system.md.")
+	},
+	`box-shadow: $v` as $d where {
+		not $v <: r"^\s*(?:none|var\(--[\w-]+\)|(?:inset\s+)?(?:-?\d+(?:px)?\s+){2,4}(?:var\(--[\w-]+\)|transparent|color-mix\(in oklch,\s*(?:var\(--[\w-]+\)|transparent)\s+\d+%,\s*(?:var\(--[\w-]+\)|transparent)\s*\))(?:,\s*(?:inset\s+)?(?:-?\d+(?:px)?\s+){2,4}(?:var\(--[\w-]+\)|transparent|color-mix\(in oklch,\s*(?:var\(--[\w-]+\)|transparent)\s+\d+%,\s*(?:var\(--[\w-]+\)|transparent)\s*\)))*)\s*$",
+		register_diagnostic(span = $d, message = "A shadow is a token, or offsets with a token color. See docs/design-system.md.")
+	}
+}

@@ -1,0 +1,12 @@
+.bad { font-size: 12px; }
+.bad { font-size: 0.8rem; }
+.bad { line-height: 1.4; }
+.bad { line-height: 16px; }
+.bad { line-height: 1.5em; }
+.bad { letter-spacing: 0.02em; }
+.bad { font-weight: 600; }
+.bad { font-weight: bold; }
+.bad { font-family: monospace; }
+.bad { font-family: var(--font-sans, sans-serif); }
+.bad { font: 12px/1 sans-serif; }
+.bad { font: var(--text-body) var(--font-sans); }

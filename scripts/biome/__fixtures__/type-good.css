@@ -1,0 +1,14 @@
+.good { font-size: var(--text-body); }
+.good { font-size: 0; }
+.good { font-size: inherit; }
+.good { font-size: 0.9em; }
+.good { line-height: var(--leading-body); }
+.good { line-height: inherit; }
+.good { letter-spacing: var(--tracking-caps); }
+.good { letter-spacing: 0; }
+.good { font-weight: var(--weight-medium); }
+.good { font-weight: inherit; }
+.good { font-family: var(--font-mono); }
+.good { font-family: inherit; }
+.good { font: inherit; }
+.good { --text-body: 13px; }
