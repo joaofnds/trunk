@@ -15,6 +15,7 @@ import {
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
 import type { Thread, ThreadState } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import ThreadReplies from "./ThreadReplies.svelte";
 
@@ -234,25 +235,25 @@ async function requestDeleteReply(replyId: string) {
 		<span class="thread-state-chip thread-state-{thread.state}"
 			>{thread.state}</span
 		>
-		{#each stateActions as action (action.next)}
-			<button
-				type="button"
-				class="card-action"
-				onclick={() => setThreadState(repoPath, thread.id, action.next)}
-				>{action.label}</button
-			>
-		{/each}
-		{#if !draft.editing}
-			<button type="button" class="card-action" onclick={openEdit}>Edit</button>
-			{#if !thread.published}
-				<button
-					type="button"
-					class="card-action card-action-danger"
-					onclick={requestDelete}
-					>Delete</button
+		<span
+			class="flex gap-4 text-callout"
+			role="group"
+			aria-label="Thread actions"
+		>
+			{#each stateActions as action (action.next)}
+				<LinkButton
+					tone="muted"
+					onclick={() => setThreadState(repoPath, thread.id, action.next)}
+					>{action.label}</LinkButton
 				>
+			{/each}
+			{#if !draft.editing}
+				<LinkButton tone="muted" onclick={openEdit}>Edit</LinkButton>
+				{#if !thread.published}
+					<LinkButton tone="danger" onclick={requestDelete}>Delete</LinkButton>
+				{/if}
 			{/if}
-		{/if}
+		</span>
 	</header>
 
 	<!-- Diff hunk: line-anchored comments only. The cached_excerpt is the
@@ -279,11 +280,11 @@ async function requestDeleteReply(replyId: string) {
 				rows="3"
 				class="card-textarea"
 			></textarea>
-			<div class="card-editor-actions">
-				<button type="button" onclick={saveEdit} disabled={!draft.valid}
-					>Save</button
+			<div class="flex gap-1">
+				<Button size="sm" onclick={saveEdit} disabled={!draft.valid}
+					>Save</Button
 				>
-				<button type="button" onclick={cancelEdit}>Cancel</button>
+				<Button size="sm" onclick={cancelEdit}>Cancel</Button>
 			</div>
 		{:else if thread.text_html !== undefined}
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
@@ -313,12 +314,14 @@ async function requestDeleteReply(replyId: string) {
 			class="card-textarea"
 			disabled={replySaving}
 		></textarea>
-		<button
-			type="button"
-			onclick={submitReply}
-			disabled={!replyDraft.valid || replySaving}
-			>Reply</button
-		>
+		<span class="self-end">
+			<Button
+				size="sm"
+				onclick={submitReply}
+				disabled={!replyDraft.valid || replySaving}
+				>Reply</Button
+			>
+		</span>
 	</div>
 </div>
 
@@ -416,25 +419,6 @@ async function requestDeleteReply(replyId: string) {
 }
 
 /* Inline action buttons in the header. */
-.card-action {
-	background: transparent;
-	border: none;
-	cursor: pointer;
-	padding: 0 var(--space-1);
-	font-size: var(--text-callout);
-	color: var(--color-text-muted);
-}
-.card-action:hover,
-.card-action:focus-visible {
-	color: var(--color-text);
-}
-.card-action-danger {
-	color: var(--color-danger);
-}
-.card-action-danger:hover,
-.card-action-danger:focus-visible {
-	color: var(--color-danger);
-}
 
 /* Orphan badge */
 .orphan-badge {
@@ -501,27 +485,6 @@ async function requestDeleteReply(replyId: string) {
 	font-size: var(--text-callout);
 	font-family: inherit;
 }
-.card-editor-actions {
-	display: flex;
-	gap: var(--space-1);
-}
-.card-editor-actions button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	background: transparent;
-	color: var(--color-text);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius);
-	cursor: pointer;
-	height: var(--control-sm-h);
-	padding: 0 var(--space-2);
-	font-size: var(--text-callout);
-}
-.card-editor-actions button[disabled] {
-	cursor: not-allowed;
-	opacity: 0.5;
-}
 
 /* Reply composer, always available under a thread's replies. */
 .thread-reply-composer {
@@ -533,23 +496,5 @@ async function requestDeleteReply(replyId: string) {
 }
 .thread-reply-composer .card-textarea {
 	font-size: var(--text-callout);
-}
-.thread-reply-composer button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	align-self: flex-end;
-	background: transparent;
-	color: var(--color-text);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius);
-	cursor: pointer;
-	height: var(--control-sm-h);
-	padding: 0 var(--space-2);
-	font-size: var(--text-callout);
-}
-.thread-reply-composer button[disabled] {
-	cursor: not-allowed;
-	opacity: 0.5;
 }
 </style>

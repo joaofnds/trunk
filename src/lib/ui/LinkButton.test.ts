@@ -33,6 +33,20 @@ describe("LinkButton", () => {
 		expect(screen.getByRole("button")).toHaveClass("text-text-muted");
 	});
 
+	it.each([
+		["accent", "text-accent"],
+		["danger", "text-danger"],
+	] as const)(
+		"paints the %s tone and keeps it under the pointer",
+		(tone, paint) => {
+			render(LinkButton, { props: { tone, children: label } });
+
+			const button = screen.getByRole("button");
+			expect(button).toHaveClass(paint, "hover:underline");
+			expect(button).not.toHaveClass("hover:text-accent");
+		},
+	);
+
 	it("sets a ref in the mono face when told to", () => {
 		render(LinkButton, { props: { mono: true, children: label } });
 

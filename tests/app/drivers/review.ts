@@ -14,7 +14,7 @@ const CARD = ".comment-card";
 const PROBE = ".comment-probe";
 const FILE_REF = ".comment-card-fileref";
 const STATE_CHIP = ".thread-state-chip";
-const CARD_ACTION = ".card-action";
+const CARD_ACTION = '[aria-label="Thread actions"] button';
 const ORPHAN_BADGE = ".orphan-badge";
 const STALE_CHIP = ".thread-stale-chip";
 const EXCERPT_LINE = ".comment-card-diff .diff-content";

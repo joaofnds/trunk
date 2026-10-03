@@ -5,6 +5,8 @@ import {
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
 import type { Reply } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
+import LinkButton from "../lib/ui/LinkButton.svelte";
 
 interface Props {
 	replies: readonly Reply[];
@@ -78,12 +80,11 @@ async function saveReplyEdit() {
 
 {#if replies.length > 0}
 	{#if hiddenReplyCount > 0 && !repliesExpanded && editingReplyId === null}
-		<button
-			type="button"
-			class="thread-replies-expand"
-			onclick={() => { repliesExpanded = true; }}
-			>{`Show ${hiddenReplyCount} more ${hiddenReplyCount === 1 ? "reply" : "replies"}`}</button
-		>
+		<span class="mx-2 mt-2 self-start text-small">
+			<LinkButton tone="accent" onclick={() => { repliesExpanded = true; }}
+				>{`Show ${hiddenReplyCount} more ${hiddenReplyCount === 1 ? "reply" : "replies"}`}</LinkButton
+			>
+		</span>
 	{/if}
 	<ul class="thread-replies">
 		{#each visibleReplies as reply (reply.id)}
@@ -91,22 +92,20 @@ async function saveReplyEdit() {
 				<div class="thread-reply-header">
 					<span class="thread-reply-channel">{reply.channel}</span>
 					{#if reply.channel === "human" && editingReplyId !== reply.id}
-						<button
-							type="button"
-							class="thread-reply-edit-toggle"
+						<LinkButton
+							tone="muted"
 							disabled={replyEditSaving}
 							onclick={() => openReplyEdit(reply.id, reply.text)}
-							>Edit reply</button
+							>Edit reply</LinkButton
 						>
 					{/if}
 					<span class="comment-card-spacer"></span>
 					{#if !published}
-						<button
-							type="button"
-							class="thread-reply-delete"
+						<LinkButton
+							tone="muted"
 							disabled={replyEditSaving}
 							onclick={() => onreplydelete(reply.id)}
-							>Delete reply</button
+							>Delete reply</LinkButton
 						>
 					{/if}
 				</div>
@@ -118,18 +117,18 @@ async function saveReplyEdit() {
 						class="card-textarea"
 						disabled={replyEditSaving}
 					></textarea>
-					<div class="card-editor-actions">
-						<button
-							type="button"
+					<div class="flex gap-1">
+						<Button
+							size="sm"
 							onclick={saveReplyEdit}
 							disabled={!replyEditDraft.valid || replyEditSaving}
-							>Save</button
+							>Save</Button
 						>
-						<button
-							type="button"
+						<Button
+							size="sm"
 							onclick={cancelReplyEdit}
 							disabled={replyEditSaving}
-							>Cancel</button
+							>Cancel</Button
 						>
 					</div>
 				{:else}
@@ -151,9 +150,9 @@ async function saveReplyEdit() {
 	flex: 1;
 }
 
-/* Inline editor inside a reply — mirrors ThreadCard's own .card-textarea /
-     .card-editor-actions; Svelte scoped styles don't cross component
-     boundaries, so the reply-edit textarea needs its own copy here. */
+/* Inline editor inside a reply — mirrors ThreadCard's own .card-textarea;
+     Svelte scoped styles don't cross component boundaries, so the reply-edit
+     textarea needs its own copy here. */
 .card-textarea {
 	width: 100%;
 	resize: vertical;
@@ -164,39 +163,6 @@ async function saveReplyEdit() {
 	padding: var(--space-1) var(--space-2);
 	font-size: var(--text-callout);
 	font-family: inherit;
-}
-.card-editor-actions {
-	display: flex;
-	gap: var(--space-1);
-}
-.card-editor-actions button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	background: transparent;
-	color: var(--color-text);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius);
-	cursor: pointer;
-	height: var(--control-sm-h);
-	padding: 0 var(--space-2);
-	font-size: var(--text-callout);
-}
-.card-editor-actions button[disabled] {
-	cursor: not-allowed;
-	opacity: 0.5;
-}
-
-/* Expand control for a collapsed reply list. */
-.thread-replies-expand {
-	align-self: flex-start;
-	margin: var(--space-2) var(--space-2) 0;
-	background: transparent;
-	color: var(--color-accent);
-	border: none;
-	cursor: pointer;
-	padding: 0;
-	font-size: var(--text-small);
 }
 
 .thread-replies {
@@ -217,21 +183,7 @@ async function saveReplyEdit() {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-}
-.thread-reply-edit-toggle,
-.thread-reply-delete {
-	background: transparent;
-	border: none;
-	cursor: pointer;
-	padding: 0;
 	font-size: var(--text-small);
-	color: var(--color-text-muted);
-}
-.thread-reply-edit-toggle:hover,
-.thread-reply-edit-toggle:focus-visible,
-.thread-reply-delete:hover,
-.thread-reply-delete:focus-visible {
-	color: var(--color-text);
 }
 .thread-reply-channel {
 	align-self: flex-start;

@@ -283,14 +283,15 @@ describe("ThreadCard", () => {
 		expect(screen.getByText("dismissed")).toBeInTheDocument();
 	});
 
-	// Edit/Delete render as .card-action too but never vary by state; excluding
+	// Edit/Delete sit in the same actions group but never vary by state; excluding
 	// them by name (rather than keeping only the labels each row expects)
 	// means a label neither list names still shows up here and fails the
 	// comparison, instead of being silently filtered away.
 	const STATIC_ACTION_LABELS = ["Edit", "Delete"];
+	const THREAD_ACTIONS = '[aria-label="Thread actions"] button';
 
 	function stateActionLabels(container: HTMLElement) {
-		return Array.from(container.querySelectorAll(".card-action"))
+		return Array.from(container.querySelectorAll(THREAD_ACTIONS))
 			.map((b) => b.textContent)
 			.filter((label) => !STATIC_ACTION_LABELS.includes(label ?? ""));
 	}
@@ -321,6 +322,13 @@ describe("ThreadCard", () => {
 		});
 
 		expect(stateActionLabels(container)).toEqual(labels);
+	});
+
+	it("paints Delete in the danger tone and the rest muted", () => {
+		renderCard({ thread: comment });
+
+		expect(screen.getByText("Delete")).toHaveClass("text-danger");
+		expect(screen.getByText("Edit")).toHaveClass("text-text-muted");
 	});
 
 	it("renders its state actions from allowed_transitions, not from the state", () => {

@@ -1,5 +1,5 @@
 <script lang="ts" module>
-export type LinkButtonTone = "inherit" | "muted";
+export type LinkButtonTone = "inherit" | "muted" | "accent" | "danger";
 </script>
 
 <script lang="ts">
@@ -24,14 +24,15 @@ let {
 }: Props = $props();
 
 const BASE =
-	"cursor-pointer text-left " +
-	"hover:text-accent hover:underline focus-visible:text-accent focus-visible:underline " +
+	"cursor-pointer text-left hover:underline focus-visible:underline " +
 	"focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent " +
 	"disabled:pointer-events-none disabled:opacity-50";
 
 const TONES: Record<LinkButtonTone, string> = {
-	inherit: "text-inherit",
-	muted: "text-text-muted",
+	inherit: "text-inherit hover:text-accent focus-visible:text-accent",
+	muted: "text-text-muted hover:text-accent focus-visible:text-accent",
+	accent: "text-accent",
+	danger: "text-danger",
 };
 
 const FACES = { mono: "font-mono" };

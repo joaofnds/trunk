@@ -8,6 +8,19 @@ import ThreadReplies from "./ThreadReplies.svelte";
 const reply = aReply({ id: "r1", text: "original", channel: "human" });
 
 describe("ThreadReplies", () => {
+	it("paints the expand link in the accent tone", () => {
+		render(ThreadReplies, {
+			props: {
+				replies: ["r1", "r2", "r3", "r4"].map((id) => aReply({ id })),
+				published: false,
+				onreplyedit: () => true,
+				onreplydelete: () => {},
+			},
+		});
+
+		expect(screen.getByText("Show 1 more reply")).toHaveClass("text-accent");
+	});
+
 	it("closes a reply edit once its save succeeds", async () => {
 		render(ThreadReplies, {
 			props: {

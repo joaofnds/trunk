@@ -199,5 +199,14 @@ import LinkButton from "./LinkButton.svelte";
 				></LinkButton
 			>
 		</div>
+		<div class="flex items-center gap-4 text-callout">
+			<LinkButton tone="accent"
+				><span data-catalog-text>Show 2 more replies</span></LinkButton
+			>
+			<LinkButton tone="muted"><span data-catalog-text>Edit</span></LinkButton>
+			<LinkButton tone="danger"
+				><span data-catalog-text>Delete</span></LinkButton
+			>
+		</div>
 	</section>
 </div>
