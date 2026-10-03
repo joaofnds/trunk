@@ -2170,7 +2170,7 @@ function startRightResize(e: MouseEvent) {
 					/>
 				{:else}
 					<div
-						style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-muted); font-size: 13px;"
+						style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-muted); font-size: var(--text-body);"
 					>
 						Select a commit to view details
 					</div>

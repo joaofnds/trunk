@@ -563,7 +563,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
       align-items: center;
       justify-content: center;
       color: var(--color-text-muted);
-      font-size: 13px;
+      font-size: var(--text-body);
     "
 		>
 			Loading merge editor...
@@ -579,7 +579,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
       justify-content: center;
       gap: var(--space-2);
       color: var(--color-text-muted);
-      font-size: 13px;
+      font-size: var(--text-body);
     "
 		>
 			<span style="color: var(--color-diff-delete);">{error}</span>

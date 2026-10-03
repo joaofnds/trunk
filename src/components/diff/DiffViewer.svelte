@@ -191,7 +191,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
       align-items: center;
       justify-content: center;
       color: var(--color-text-muted);
-      font-size: 13px;
+      font-size: var(--text-body);
     "
 		>
 			Select a file or commit to view its diff
@@ -204,7 +204,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
       align-items: center;
       justify-content: center;
       color: var(--color-text-muted);
-      font-size: 13px;
+      font-size: var(--text-body);
     "
 		>
 			Empty commit — no changes
@@ -228,7 +228,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 		/>
 	{:else if loadError}
 		<div
-			style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); color: var(--color-text-muted); font-size: 13px;"
+			style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); color: var(--color-text-muted); font-size: var(--text-body);"
 		>
 			<span>Could not load diff</span>
 			<span>{loadError}</span>
@@ -240,7 +240,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 		</div>
 	{:else if (loading || payloadStale) && !hasContent}
 		<div
-			style="height: 100%; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); font-size: 13px;"
+			style="height: 100%; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); font-size: var(--text-body);"
 		>
 			Loading diff…
 		</div>

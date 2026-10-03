@@ -787,7 +787,7 @@ let lastVisibleColumn = $derived.by(() => {
 }
 
 .rebase-toolbar-title {
-	font-size: 13px;
+	font-size: var(--text-body);
 	font-weight: 600;
 	color: var(--color-text);
 }
@@ -950,7 +950,7 @@ let lastVisibleColumn = $derived.by(() => {
 	position: relative;
 	display: flex;
 	align-items: center;
-	font-size: 13px;
+	font-size: var(--text-body);
 	color: var(--color-text);
 	cursor: grab;
 }
@@ -1104,7 +1104,7 @@ let lastVisibleColumn = $derived.by(() => {
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius);
 	color: var(--color-text);
-	font-size: 13px;
+	font-size: var(--text-body);
 	font-family: var(--font-sans);
 	padding: var(--space-2);
 	outline: none;
@@ -1119,7 +1119,7 @@ let lastVisibleColumn = $derived.by(() => {
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius);
 	color: var(--color-text);
-	font-size: 13px;
+	font-size: var(--text-body);
 	font-family: var(--font-sans);
 	padding: var(--space-2);
 	resize: vertical;

@@ -85,7 +85,7 @@ function autofocus(node: HTMLElement) {
       flex: 1;
       border: none;
       background: transparent;
-      font-size: 13px;
+      font-size: var(--text-body);
       color: var(--color-text);
       outline: none;
       min-width: 0;

@@ -57,7 +57,7 @@ let filesChanged = $derived(fileDiffs.length);
 	<div style="min-width: 0;">
 		<div
 			style="
-      font-size: 13px;
+      font-size: var(--text-body);
       font-weight: 600;
       color: var(--color-text);
       line-height: 1.4;

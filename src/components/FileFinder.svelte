@@ -122,7 +122,7 @@ function rowLabel(file: TrackedFile): string {
         border-bottom: 1px solid var(--color-border);
         color: var(--color-text);
         padding: var(--space-3);
-        font-size: 13px;
+        font-size: var(--text-body);
         outline: none;
       "
 		>

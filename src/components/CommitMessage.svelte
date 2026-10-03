@@ -68,7 +68,7 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 	border-bottom: 1px solid var(--color-border);
 }
 .summary {
-	font-size: 13px;
+	font-size: var(--text-body);
 	font-weight: 600;
 	color: var(--color-text);
 	line-height: 1.4;
