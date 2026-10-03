@@ -41,10 +41,10 @@ parser takes one modifier after `@theme`, and `inline` is the one the utilities
 need. A pill is `rounded-full`, which Tailwind generates without a theme value,
 so `--radius-pill` has no mapping.
 
-Tailwind's default theme is still in force beside the mapping. `text-sm`,
-`text-xs`, `py-1.5`, `shadow-lg`'s default and the default palette resolve until
-the reset lands, which `.boris/plans/2026-10-02-design-system-research.md` step 6
-schedules after every markup site reads a mapped name.
+The block opens with `--*: initial`, which drops Tailwind's default theme. A
+utility generates CSS only for a value the mapping names, so `text-sm`, `py-1.5`,
+`bg-white` and the default palette emit nothing, and a class the markup spells
+wrong fails `src/markup-classes.test.ts` rather than silently styling nothing.
 
 ### Adding a token
 
@@ -89,3 +89,17 @@ is on. It reads `<style>` blocks and stylesheets, not a `style="..."` attribute 
 markup or a style string built in TypeScript, so those sites are unguarded until
 they move to `style:` directives. The length plugin waits on its count reaching
 zero.
+
+`src/markup-classes.test.ts` guards the markup. It parses every component with
+Svelte's compiler, loads `theme.css` into Tailwind's design system, and fails a
+class attribute or class directive on any word nothing vouches for. A word is
+vouched for when Tailwind generates CSS for it under the reset, when a stylesheet
+declares it (the component's own `<style>`, `:global` included, or any
+`src/**/*.css`), when a `.ts` file under `src/` or `tests/` or the component's own
+script selects it, or when it is one of Tailwind's `group` and `peer` markers. An
+arbitrary value (`text-[11px]`, `h-(--row-h)`) fails outright: declare a token and
+map it. A word built from an expression checks only its static prefix against the
+declared classes, since the expression's values are not known statically. The same
+test fails a `style:` directive whose value is a literal, because a constant belongs
+in a stylesheet rule where the token plugins read it; a `style:--name` directive
+is the runtime hand-off and passes.

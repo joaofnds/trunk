@@ -1,4 +1,7 @@
 @theme inline {
+	/* Tailwind's default theme ends here: a utility reads a token below or generates nothing */
+	--*: initial;
+
 	/* ── Spacing ── */
 	--spacing-0: var(--space-0);
 	--spacing-1: var(--space-1);
