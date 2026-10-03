@@ -62,7 +62,13 @@
 						"noUnusedImports": "off"
 					},
 					"a11y": {
-						"recommended": false
+						"noStaticElementInteractions": "off",
+						"noNoninteractiveElementInteractions": "off",
+						"useSemanticElements": "off",
+						"useAriaPropsSupportedByRole": "off",
+						"useKeyWithClickEvents": "off",
+						"noSvgWithoutTitle": "off",
+						"noNoninteractiveTabindex": "off"
 					}
 				}
 			}
