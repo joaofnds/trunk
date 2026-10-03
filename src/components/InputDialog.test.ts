@@ -67,6 +67,23 @@ describe("InputDialog", () => {
 		expect(oncancel).toHaveBeenCalled();
 	});
 
+	it("calls oncancel when the dialog is cancelled", async () => {
+		const oncancel = vi.fn();
+		render(InputDialog, { props: { ...defaultProps, oncancel } });
+
+		await fireEvent(screen.getByRole("dialog"), new Event("cancel"));
+
+		expect(oncancel).toHaveBeenCalled();
+	});
+
+	it("opens as a modal named by its title", () => {
+		render(InputDialog, { props: defaultProps });
+
+		expect(
+			screen.getByRole("dialog", { name: "Create Branch" }),
+		).toHaveAttribute("open");
+	});
+
 	it("calls oncancel on Escape", async () => {
 		const oncancel = vi.fn();
 		render(InputDialog, {

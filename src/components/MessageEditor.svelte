@@ -1,5 +1,6 @@
 <script lang="ts">
 import Button from "../lib/ui/Button.svelte";
+import Dialog from "../lib/ui/Dialog.svelte";
 
 interface Props {
 	title: string;
@@ -7,11 +8,9 @@ interface Props {
 
 let { title }: Props = $props();
 
-let dialogEl: HTMLDialogElement | undefined = $state();
 let isOpen = $state(false);
 let text = $state("");
 let resolveFn: ((value: string | null) => void) | null = null;
-const titleId = `message-editor-title-${crypto.randomUUID()}`;
 
 export function open(defaultValue: string): Promise<string | null> {
 	// Resolve any in-flight promise before reassigning the slot — otherwise a
@@ -50,45 +49,23 @@ function handleKeydown(e: KeyboardEvent) {
 	}
 }
 
-function handleBackdropClick(e: MouseEvent) {
-	if (e.target === dialogEl) {
-		handleCancel();
-	}
-}
-
 function autofocus(node: HTMLElement) {
 	node.focus();
 }
-
-$effect(() => {
-	if (isOpen && dialogEl && !dialogEl.open) {
-		dialogEl.showModal();
-	}
-});
 </script>
 
 {#if isOpen}
-	<dialog
-		bind:this={dialogEl}
-		class="rounded"
-		data-testid="message-editor-backdrop"
-		aria-labelledby={titleId}
-		style="background: var(--color-surface-raised); border: 1px solid var(--color-border); box-shadow: var(--shadow-2); min-width: 420px; max-width: 640px; padding: var(--space-4);"
-		onkeydown={handleKeydown}
-		onclick={handleBackdropClick}
+	<Dialog
+		{title}
+		size="md"
+		data-testid="message-editor"
+		oncancel={handleCancel}
 	>
-		<h3
-			id={titleId}
-			class="text-body font-semibold mb-3"
-			style="color: var(--color-text);"
-		>
-			{title}
-		</h3>
-
 		<textarea
 			class="w-full rounded text-body"
 			style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 200px;"
 			bind:value={text}
+			onkeydown={handleKeydown}
 			use:autofocus
 		></textarea>
 
@@ -96,23 +73,5 @@ $effect(() => {
 			<Button onclick={handleCancel}>Cancel</Button>
 			<Button variant="primary" onclick={handleSubmit}>Save</Button>
 		</div>
-	</dialog>
+	</Dialog>
 {/if}
-
-<style>
-/* Restore native modal centering: the UA `dialog:modal { margin: auto }`
-	   default is wiped by Tailwind v4 preflight's universal `margin: 0` reset,
-	   which collapses the dialog to the viewport's top-left corner. Re-state the
-	   centering recipe explicitly (fit-content box + inset:0 + auto margins). */
-dialog {
-	position: fixed;
-	inset: 0;
-	width: fit-content;
-	height: fit-content;
-	margin: auto;
-}
-
-dialog::backdrop {
-	background: var(--color-backdrop);
-}
-</style>

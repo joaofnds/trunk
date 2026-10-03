@@ -75,17 +75,24 @@ describe("MessageEditor", () => {
 		expect(await promise).toBeNull();
 	});
 
-	it("resolves null when backdrop is clicked", async () => {
-		const { ref, container } = mount();
+	it("resolves null when the dialog is cancelled", async () => {
+		const { ref } = mount();
 
 		const promise = ref.open("x");
 		await screen.findByRole("textbox");
-		const backdrop = container.querySelector(
-			'[data-testid="message-editor-backdrop"]',
-		) as HTMLElement;
-		await fireEvent.click(backdrop);
+		await fireEvent(screen.getByRole("dialog"), new Event("cancel"));
 
 		expect(await promise).toBeNull();
+	});
+
+	it("opens as a modal named by its title", async () => {
+		const { ref } = mount("Revert commit message");
+
+		ref.open("x");
+
+		expect(
+			await screen.findByRole("dialog", { name: "Revert commit message" }),
+		).toHaveAttribute("open");
 	});
 
 	it("resolves null when text is empty and Save is clicked", async () => {

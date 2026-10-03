@@ -1,6 +1,6 @@
 import { waitFor } from "../harness/wait.js";
 
-const BACKDROP = '[data-testid="message-editor-backdrop"]';
+const EDITOR = '[data-testid="message-editor"]';
 
 /** The host-owned commit message modal: revert, cherry-pick and merge continue
  *  all route their message through this one dialog. */
@@ -25,7 +25,7 @@ export class MessageEditorDriver {
 
 	private dialog(): Promise<HTMLElement> {
 		return waitFor("the message editor", () =>
-			document.querySelector<HTMLElement>(BACKDROP),
+			document.querySelector<HTMLElement>(EDITOR),
 		);
 	}
 }

@@ -45,6 +45,11 @@
 		var(--u)
 	); /* how far a centred dialog sits from the top */
 	--welcome-col: calc(112 * var(--u)); /* the welcome screen's centred column */
+	--dialog-min: calc(85 * var(--u)); /* a dialog box is at least this wide… */
+	--dialog-max: calc(120 * var(--u)); /* …and wraps its content past this */
+	/* the same pair for a message editor */
+	--dialog-lg-min: calc(105 * var(--u));
+	--dialog-lg-max: calc(160 * var(--u));
 	--dropdown-max-h: calc(96 * var(--u)); /* a dropdown list scrolls past this */
 
 	/* ── Surfaces — cool-neutral ramp (oklch, hue 260) ── */

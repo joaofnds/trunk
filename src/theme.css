@@ -24,6 +24,10 @@
 
 	/* ── Named lengths ── */
 	--container-welcome: var(--welcome-col);
+	--spacing-dialog-min: var(--dialog-min);
+	--spacing-dialog-max: var(--dialog-max);
+	--spacing-dialog-lg-min: var(--dialog-lg-min);
+	--spacing-dialog-lg-max: var(--dialog-lg-max);
 
 	/* ── Radius ── */
 	--radius: var(--radius);

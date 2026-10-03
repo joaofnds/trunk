@@ -19,6 +19,7 @@ interface Props {
 
 import { untrack } from "svelte";
 import Button from "../lib/ui/Button.svelte";
+import Dialog from "../lib/ui/Dialog.svelte";
 
 let {
 	title,
@@ -65,93 +66,76 @@ function handleKeydown(e: KeyboardEvent) {
 	}
 }
 
-function handleBackdropClick(e: MouseEvent) {
-	if (e.target === e.currentTarget) {
-		oncancel();
-	}
-}
-
 function autofocus(node: HTMLElement) {
 	node.focus();
 }
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
-	class="fixed inset-0 flex items-center justify-center"
-	style="z-index: 9999; background: var(--color-backdrop);"
-	onkeydown={handleKeydown}
-	onclick={handleBackdropClick}
->
-	<div
-		class="rounded"
-		style="background: var(--color-surface-raised); border: 1px solid var(--color-border); box-shadow: var(--shadow-2); min-width: 340px; max-width: 480px; padding: var(--space-4);"
-	>
-		<h3 class="text-body font-semibold mb-3" style="color: var(--color-text);"
-			>{title}</h3
-		>
-
-		{#each fields as field, i}
-			<div class="mb-3">
-				<label
-					for="input-dialog-{field.key}"
-					class="block text-callout mb-1"
-					style="color: var(--color-text-muted);"
-				>
-					{field.label}
-					{#if field.required}
-						<span style="color: var(--color-accent);"> *</span>
-					{/if}
-				</label>
-				{#if field.multiline}
-					{#if i === 0}
-						<textarea
-							id="input-dialog-{field.key}"
-							class="w-full rounded text-body"
-							style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 60px;"
-							placeholder={field.placeholder ?? ''}
-							bind:value={values[field.key]}
-							use:autofocus
-						></textarea>
-					{:else}
-						<textarea
-							id="input-dialog-{field.key}"
-							class="w-full rounded text-body"
-							style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 60px;"
-							placeholder={field.placeholder ?? ''}
-							bind:value={values[field.key]}
-						></textarea>
-					{/if}
-				{:else}
-					{#if i === 0}
-						<input
-							id="input-dialog-{field.key}"
-							type="text"
-							class="w-full rounded text-body"
-							style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2);"
-							placeholder={field.placeholder ?? ''}
-							bind:value={values[field.key]}
-							use:autofocus
-						>
-					{:else}
-						<input
-							id="input-dialog-{field.key}"
-							type="text"
-							class="w-full rounded text-body"
-							style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2);"
-							placeholder={field.placeholder ?? ''}
-							bind:value={values[field.key]}
-						>
-					{/if}
+<Dialog {title} {oncancel}>
+	{#each fields as field, i}
+		<div class="mb-3">
+			<label
+				for="input-dialog-{field.key}"
+				class="block text-callout mb-1"
+				style="color: var(--color-text-muted);"
+			>
+				{field.label}
+				{#if field.required}
+					<span style="color: var(--color-accent);"> *</span>
 				{/if}
-			</div>
-		{/each}
-
-		<div class="flex justify-end gap-2 mt-4">
-			<Button onclick={oncancel}>{cancelLabel}</Button>
-			<Button variant="primary" disabled={!canSubmit} onclick={handleSubmit}>
-				{confirmLabel}
-			</Button>
+			</label>
+			{#if field.multiline}
+				{#if i === 0}
+					<textarea
+						id="input-dialog-{field.key}"
+						class="w-full rounded text-body"
+						style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 60px;"
+						placeholder={field.placeholder ?? ''}
+						bind:value={values[field.key]}
+						onkeydown={handleKeydown}
+						use:autofocus
+					></textarea>
+				{:else}
+					<textarea
+						id="input-dialog-{field.key}"
+						class="w-full rounded text-body"
+						style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 60px;"
+						placeholder={field.placeholder ?? ''}
+						bind:value={values[field.key]}
+						onkeydown={handleKeydown}
+					></textarea>
+				{/if}
+			{:else}
+				{#if i === 0}
+					<input
+						id="input-dialog-{field.key}"
+						type="text"
+						class="w-full rounded text-body"
+						style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2);"
+						placeholder={field.placeholder ?? ''}
+						bind:value={values[field.key]}
+						onkeydown={handleKeydown}
+						use:autofocus
+					>
+				{:else}
+					<input
+						id="input-dialog-{field.key}"
+						type="text"
+						class="w-full rounded text-body"
+						style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2);"
+						placeholder={field.placeholder ?? ''}
+						bind:value={values[field.key]}
+						onkeydown={handleKeydown}
+					>
+				{/if}
+			{/if}
 		</div>
+	{/each}
+
+	<div class="flex justify-end gap-2 mt-4">
+		<Button onclick={oncancel}>{cancelLabel}</Button>
+		<Button variant="primary" disabled={!canSubmit} onclick={handleSubmit}>
+			{confirmLabel}
+		</Button>
 	</div>
-</div>
+</Dialog>
