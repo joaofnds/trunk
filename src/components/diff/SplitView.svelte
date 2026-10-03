@@ -23,6 +23,7 @@ import type {
 	FileDiff,
 	Thread,
 } from "../../lib/types.js";
+import Button from "../../lib/ui/Button.svelte";
 import {
 	createVirtualizedDiff,
 	TAB_SIZE,
@@ -397,50 +398,56 @@ function originClass(origin: string): string {
                scope + Old-side guard live in the host. Leads the action cluster
                (260531-l02 UX: Comment left of staging). -->
 					{#if reviewCommentsVisible && reviewFilter !== "none"}
-						<button
-							class="staging-btn accent-btn"
+						<Button
+							size="sm"
+							variant="accent"
 							onclick={() => oncommentlines(item.path, item.hunkIdx)}
-							>Comment ({selectedCount})</button
+							>Comment ({selectedCount})</Button
 						>
 					{/if}
-					<button
+					<Button
+						size="sm"
+						variant="danger"
 						disabled={stagingDisabled}
 						title={stagingDisabledTitle}
-						class="staging-btn danger-btn"
 						onclick={() => ondiscardlines(item.path, item.hunkIdx)}
-						>Discard Lines ({selectedCount})</button
+						>Discard Lines ({selectedCount})</Button
 					>
-					<button
+					<Button
+						size="sm"
+						variant="success"
 						disabled={stagingDisabled}
 						title={stagingDisabledTitle}
-						class="staging-btn success-btn"
 						onclick={() => onstagelines(item.path, item.hunkIdx)}
-						>Stage Lines ({selectedCount})</button
+						>Stage Lines ({selectedCount})</Button
 					>
 				{:else}
 					<!-- Whole-hunk Comment affordance (260531-l02): comment the hunk
                without selecting lines. Reuses the accent button class verbatim
                (no new color); host applies the New-side guard. -->
 					{#if reviewCommentsVisible && reviewFilter !== "none"}
-						<button
-							class="staging-btn accent-btn"
+						<Button
+							size="sm"
+							variant="accent"
 							onclick={() => oncommenthunk(item.path, item.hunkIdx)}
-							>Comment</button
+							>Comment</Button
 						>
 					{/if}
-					<button
+					<Button
+						size="sm"
+						variant="danger"
 						disabled={stagingDisabled}
 						title={stagingDisabledTitle}
-						class="staging-btn danger-btn"
 						onclick={() => ondiscardhunk(item.path, item.hunkIdx)}
-						>Discard Hunk</button
+						>Discard Hunk</Button
 					>
-					<button
+					<Button
+						size="sm"
+						variant="success"
 						disabled={stagingDisabled}
 						title={stagingDisabledTitle}
-						class="staging-btn success-btn"
 						onclick={() => onstagehunk(item.path, item.hunkIdx)}
-						>Stage Hunk</button
+						>Stage Hunk</Button
 					>
 				{/if}
 			{:else if diffKind === 'staged'}
@@ -448,45 +455,50 @@ function originClass(origin: string): string {
 					<!-- Staged Comment (260531-l02b): index-snapshot anchored, both sides
                resolve (no Old-side guard). Leads the cluster. -->
 					{#if reviewCommentsVisible && reviewFilter !== "none"}
-						<button
-							class="staging-btn accent-btn"
+						<Button
+							size="sm"
+							variant="accent"
 							onclick={() => oncommentlines(item.path, item.hunkIdx)}
-							>Comment ({selectedCount})</button
+							>Comment ({selectedCount})</Button
 						>
 					{/if}
-					<button
+					<Button
+						size="sm"
+						variant="warning"
 						disabled={stagingDisabled}
 						title={stagingDisabledTitle}
-						class="staging-btn warning-btn"
 						onclick={() => onunstagelines(item.path, item.hunkIdx)}
-						>Unstage Lines ({selectedCount})</button
+						>Unstage Lines ({selectedCount})</Button
 					>
 				{:else}
 					{#if reviewCommentsVisible && reviewFilter !== "none"}
-						<button
-							class="staging-btn accent-btn"
+						<Button
+							size="sm"
+							variant="accent"
 							onclick={() => oncommenthunk(item.path, item.hunkIdx)}
-							>Comment</button
+							>Comment</Button
 						>
 					{/if}
-					<button
+					<Button
+						size="sm"
+						variant="warning"
 						disabled={stagingDisabled}
 						title={stagingDisabledTitle}
-						class="staging-btn warning-btn"
 						onclick={() => onunstagehunk(item.path, item.hunkIdx)}
-						>Unstage Hunk</button
+						>Unstage Hunk</Button
 					>
 				{/if}
 			{:else if diffKind === 'commit'}
 				<!-- Commit-diff Comment (260531-l02): whole-hunk when nothing is
              selected, line-scoped otherwise; both carry the isMerge guard. -->
 				{#if reviewCommentsVisible && reviewFilter !== "none"}
-					<button
+					<Button
+						size="sm"
+						variant="accent"
 						disabled={isMerge}
 						title={isMerge ? "Diff comments aren't available on merge commits" : ""}
-						class="staging-btn accent-btn"
 						onclick={() => hasSelection ? oncommentlines(item.path, item.hunkIdx) : oncommenthunk(item.path, item.hunkIdx)}
-						>{hasSelection ? `Comment (${selectedCount})` : 'Comment'}</button
+						>{hasSelection ? `Comment (${selectedCount})` : 'Comment'}</Button
 					>
 				{/if}
 			{/if}
@@ -667,47 +679,6 @@ function originClass(origin: string): string {
 	color: var(--color-text-muted);
 	font-size: var(--text-callout);
 	line-height: var(--text-callout--line-height);
-}
-
-.staging-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	border-radius: var(--radius);
-	font-size: var(--text-small);
-	font-family: var(--font-sans);
-	height: var(--control-sm-h);
-	padding: 0 var(--space-2);
-	cursor: pointer;
-	white-space: nowrap;
-}
-.staging-btn:disabled {
-	cursor: not-allowed;
-	opacity: 0.4;
-}
-
-.danger-btn {
-	background: var(--color-danger-bg);
-	border: 1px solid var(--color-danger-border);
-	color: var(--color-danger);
-}
-
-.success-btn {
-	background: var(--color-success-bg);
-	border: 1px solid var(--color-success-border);
-	color: var(--color-success);
-}
-
-.warning-btn {
-	background: var(--color-warning-bg);
-	border: 1px solid var(--color-warning-border);
-	color: var(--color-warning);
-}
-
-.accent-btn {
-	background: var(--color-accent-bg);
-	border: 1px solid var(--color-accent-border);
-	color: var(--color-accent);
 }
 
 .hunk-highlight {

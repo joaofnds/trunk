@@ -117,6 +117,28 @@ function scrollTo(container: Element, top: number): void {
 }
 
 describe("HunkView", () => {
+	it("paints each hunk action in the tone its meaning carries", () => {
+		render(HunkView, { props: defaultProps() });
+
+		expect(screen.getByRole("button", { name: "Comment" })).toHaveClass(
+			"bg-accent-bg",
+		);
+		expect(screen.getByRole("button", { name: "Discard Hunk" })).toHaveClass(
+			"bg-danger-bg",
+		);
+		expect(screen.getByRole("button", { name: "Stage Hunk" })).toHaveClass(
+			"bg-success-bg",
+		);
+	});
+
+	it("paints the unstage action in the warning tone", () => {
+		render(HunkView, { props: defaultProps({ diffKind: "staged" }) });
+
+		expect(screen.getByRole("button", { name: "Unstage Hunk" })).toHaveClass(
+			"bg-warning-bg",
+		);
+	});
+
 	it("hides whole-hunk and selected-line comment actions under Hide all", async () => {
 		const hidden = { reviewFilter: "none" as const };
 		const view = render(HunkView, { props: defaultProps(hidden) });

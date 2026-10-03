@@ -23,6 +23,7 @@ import type {
 	ReviewFilter,
 	Thread,
 } from "../../lib/types.js";
+import Button from "../../lib/ui/Button.svelte";
 import {
 	createVirtualizedDiff,
 	TAB_SIZE,
@@ -334,58 +335,64 @@ function lineColor(): string {
                New-side scope + Old-side guard live in the host. Leads the action
                cluster (260531-l02 UX: Comment to the left of staging). -->
 					{#if reviewCommentsVisible && reviewFilter !== "none"}
-						<button
-							class="hunk-btn hunk-btn-accent"
+						<Button
+							size="sm"
+							variant="accent"
 							onclick={() => oncommentlines(item.path, item.hunkIdx)}
 						>
 							Comment ({selectedCount})
-						</button>
+						</Button>
 					{/if}
-					<button
-						class="hunk-btn hunk-btn-danger"
+					<Button
+						size="sm"
+						variant="danger"
 						disabled={stagingDisabled}
 						title={stagingDisabledTitle}
 						onclick={() => ondiscardlines(item.path, item.hunkIdx)}
 					>
 						Discard Lines ({selectedCount})
-					</button>
-					<button
-						class="hunk-btn hunk-btn-success"
+					</Button>
+					<Button
+						size="sm"
+						variant="success"
 						disabled={stagingDisabled}
 						title={stagingDisabledTitle}
 						onclick={() => onstagelines(item.path, item.hunkIdx)}
 					>
 						Stage Lines ({selectedCount})
-					</button>
+					</Button>
 				{:else}
 					<!-- Whole-hunk Comment affordance (260531-l02): comment the hunk
                without selecting lines. Reuses the line-level accent button
                markup verbatim (no new color); host synthesizes the full-hunk
                selection + applies the New-side guard. Leads the action cluster. -->
 					{#if reviewCommentsVisible && reviewFilter !== "none"}
-						<button
-							class="hunk-btn hunk-btn-accent"
+						<Button
+							size="sm"
+							variant="accent"
 							onclick={() => oncommenthunk(item.path, item.hunkIdx)}
 						>
 							Comment
-						</button>
+						</Button>
 					{/if}
-					<button
-						class="hunk-btn hunk-btn-danger"
+					<Button
+						size="sm"
+						variant="danger"
 						disabled={stagingDisabled}
 						title={stagingDisabledTitle}
 						onclick={() => ondiscardhunk(item.path, item.hunkIdx)}
 					>
 						Discard Hunk
-					</button>
-					<button
-						class="hunk-btn hunk-btn-success"
+					</Button>
+					<Button
+						size="sm"
+						variant="success"
 						disabled={stagingDisabled}
 						title={stagingDisabledTitle}
 						onclick={() => onstagehunk(item.path, item.hunkIdx)}
 					>
 						Stage Hunk
-					</button>
+					</Button>
 				{/if}
 			{:else if diffKind === 'staged'}
 				{#if hasSelection}
@@ -393,52 +400,57 @@ function lineColor(): string {
                snapshot (HEAD→index) — both sides resolve, so no Old-side guard.
                Reuses the accent button; leads the cluster. -->
 					{#if reviewCommentsVisible && reviewFilter !== "none"}
-						<button
-							class="hunk-btn hunk-btn-accent"
+						<Button
+							size="sm"
+							variant="accent"
 							onclick={() => oncommentlines(item.path, item.hunkIdx)}
 						>
 							Comment ({selectedCount})
-						</button>
+						</Button>
 					{/if}
-					<button
-						class="hunk-btn hunk-btn-warning"
+					<Button
+						size="sm"
+						variant="warning"
 						disabled={stagingDisabled}
 						title={stagingDisabledTitle}
 						onclick={() => onunstagelines(item.path, item.hunkIdx)}
 					>
 						Unstage Lines ({selectedCount})
-					</button>
+					</Button>
 				{:else}
 					<!-- Whole-hunk staged Comment (260531-l02b): index-snapshot anchored. -->
 					{#if reviewCommentsVisible && reviewFilter !== "none"}
-						<button
-							class="hunk-btn hunk-btn-accent"
+						<Button
+							size="sm"
+							variant="accent"
 							onclick={() => oncommenthunk(item.path, item.hunkIdx)}
 						>
 							Comment
-						</button>
+						</Button>
 					{/if}
-					<button
-						class="hunk-btn hunk-btn-warning"
+					<Button
+						size="sm"
+						variant="warning"
 						disabled={stagingDisabled}
 						title={stagingDisabledTitle}
 						onclick={() => onunstagehunk(item.path, item.hunkIdx)}
 					>
 						Unstage Hunk
-					</button>
+					</Button>
 				{/if}
 			{:else if diffKind === 'commit'}
 				{#if reviewCommentsVisible && reviewFilter !== "none"}
 					<!-- Commit-diff Comment (260531-l02): whole-hunk when nothing is
              selected, line-scoped otherwise; both carry the isMerge guard. -->
-					<button
-						class="hunk-btn hunk-btn-accent"
+					<Button
+						size="sm"
+						variant="accent"
 						disabled={isMerge}
 						title={isMerge ? "Diff comments aren't available on merge commits" : ""}
 						onclick={() => hasSelection ? oncommentlines(item.path, item.hunkIdx) : oncommenthunk(item.path, item.hunkIdx)}
 					>
 						{hasSelection ? `Comment (${selectedCount})` : 'Comment'}
-					</button>
+					</Button>
 				{/if}
 			{/if}
 		</div>
@@ -540,43 +552,6 @@ function lineColor(): string {
 	font-size: var(--text-small);
 	font-family: var(--font-mono);
 }
-.hunk-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	border-radius: var(--radius);
-	font-size: var(--text-small);
-	font-family: var(--font-sans);
-	height: var(--control-sm-h);
-	padding: 0 var(--space-2);
-	cursor: pointer;
-	white-space: nowrap;
-}
-.hunk-btn:disabled {
-	cursor: not-allowed;
-	opacity: 0.4;
-}
-.hunk-btn-accent {
-	background: var(--color-accent-bg);
-	border: 1px solid var(--color-accent-border);
-	color: var(--color-accent);
-}
-.hunk-btn-danger {
-	background: var(--color-danger-bg);
-	border: 1px solid var(--color-danger-border);
-	color: var(--color-danger);
-}
-.hunk-btn-success {
-	background: var(--color-success-bg);
-	border: 1px solid var(--color-success-border);
-	color: var(--color-success);
-}
-.hunk-btn-warning {
-	background: var(--color-warning-bg);
-	border: 1px solid var(--color-warning-border);
-	color: var(--color-warning);
-}
-
 /* Multi-file view only. Vertical stickiness does not survive the list — a row
      inside a translated container has no scrollport-relative flow position — and
      is not restored here. */
