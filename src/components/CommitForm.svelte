@@ -228,7 +228,7 @@ async function handleSubmit() {
           width: 100%;
           box-sizing: border-box;
           border: 1px solid var(--line);
-          background: var(--bg-0);
+          background: var(--color-bg);
           color: var(--color-text);
           border-radius: var(--radius);
           height: var(--control-lg-h);
@@ -267,7 +267,7 @@ async function handleSubmit() {
         width: 100%;
         box-sizing: border-box;
         border: 1px solid var(--line);
-        background: var(--bg-0);
+        background: var(--color-bg);
         color: var(--color-text);
         border-radius: var(--radius);
         padding: var(--space-2) var(--space-3);

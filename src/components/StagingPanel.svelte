@@ -989,7 +989,7 @@ $effect(() => {
           height: var(--control-sm-h);
           display: inline-block;
           line-height: var(--control-sm-h);
-          color: var(--bg-0);
+          color: var(--color-bg);
           font-weight: 700;
         "
 					>{operationInfo.source_branch}</span
@@ -1006,7 +1006,7 @@ $effect(() => {
           height: var(--control-sm-h);
           display: inline-block;
           line-height: var(--control-sm-h);
-          color: var(--bg-0);
+          color: var(--color-bg);
           font-weight: 700;
         "
 					>{operationInfo.target_branch}</span

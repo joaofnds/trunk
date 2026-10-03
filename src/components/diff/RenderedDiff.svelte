@@ -817,7 +817,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 	height: 100%;
 	overflow: auto;
 	box-sizing: border-box;
-	background: var(--bg-0);
+	background: var(--color-bg);
 }
 /* One flex pair per DiffRow (Source's .split-columns): the row's height is
      max(left, right) via flex stretch, so variable-height blocks stay row-aligned
@@ -834,7 +834,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 	overflow-x: auto;
 	overscroll-behavior-x: none;
 	scrollbar-width: none;
-	background: var(--bg-0);
+	background: var(--color-bg);
 }
 .split-column:first-child {
 	border-right: 1px solid var(--color-border);
@@ -900,7 +900,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 	align-items: center;
 	gap: var(--space-3);
 	padding: var(--space-3) var(--space-4);
-	background: var(--bg-0);
+	background: var(--color-bg);
 }
 .rendered-sep::before,
 .rendered-sep::after {

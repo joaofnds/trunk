@@ -297,7 +297,7 @@ textarea::placeholder {
    away. Two classes beat the single-class rule above on specificity. */
 .rendered-block.md-added.no-wash,
 .rendered-block.md-removed.no-wash {
-	background: var(--bg-0);
+	background: var(--color-bg);
 	box-shadow: none;
 }
 /* A tinted list item carries no rail on the BOX. It carries one on the far

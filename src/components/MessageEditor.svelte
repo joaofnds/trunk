@@ -85,7 +85,7 @@ $effect(() => {
 
 		<textarea
 			class="w-full rounded text-sm"
-			style="background: var(--bg-0); border: 1px solid var(--line); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 200px;"
+			style="background: var(--color-bg); border: 1px solid var(--line); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 200px;"
 			bind:value={text}
 			use:autofocus
 		></textarea>
