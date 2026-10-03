@@ -2,6 +2,7 @@
 import ArrowDown from "@lucide/svelte/icons/arrow-down";
 import ArrowUp from "@lucide/svelte/icons/arrow-up";
 import { copySha } from "../lib/clipboard.js";
+import Chip from "../lib/ui/Chip.svelte";
 import Avatar from "./Avatar.svelte";
 
 interface Props {
@@ -60,13 +61,11 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 						>{childOids.length > 1 ? 'Children' : 'Child'}</span
 					>
 					{#each childOids as childOid (childOid)}
-						<button
-							type="button"
-							class="chip"
+						<Chip
 							title="Go to child {childOid.slice(0, 7)} (right-click to copy SHA)"
 							onclick={() => onnavigate?.(childOid)}
 							oncontextmenu={(e) => showShaContextMenu(e, childOid)}
-							><ArrowUp size={11} />{childOid.slice(0, 7)}</button
+							><ArrowUp size={11} />{childOid.slice(0, 7)}</Chip
 						>
 					{/each}
 				</div>
@@ -77,14 +76,12 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 						>{parentOids.length > 1 ? 'Parents' : 'Parent'}</span
 					>
 					{#each parentOids as parentOid, i (parentOid)}
-						<button
-							type="button"
-							class="chip"
-							class:merge={i > 0}
+						<Chip
+							tone={i === 0 ? "accent" : "neutral"}
 							title="Go to parent {parentOid.slice(0, 7)} (right-click to copy SHA)"
 							onclick={() => onnavigate?.(parentOid)}
 							oncontextmenu={(e) => showShaContextMenu(e, parentOid)}
-							><ArrowDown size={11} />{parentOid.slice(0, 7)}</button
+							><ArrowDown size={11} />{parentOid.slice(0, 7)}</Chip
 						>
 					{/each}
 				</div>
@@ -130,7 +127,6 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 	font-size: var(--text-small);
 }
 
-/* Topology chips — clickable parent/child lineage links. */
 .topo {
 	margin-top: var(--space-2);
 	display: flex;
@@ -150,30 +146,5 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 	letter-spacing: var(--tracking-wider);
 	width: 62px;
 	flex-shrink: 0;
-}
-.chip {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	height: var(--control-sm-h);
-	padding: 0 var(--space-2) 0 var(--space-1);
-	border-radius: var(--radius-pill);
-	font-family: var(--font-mono);
-	font-size: var(--text-small);
-	cursor: pointer;
-	background: color-mix(in oklch, var(--color-accent) 12%, transparent);
-	color: var(--color-accent-strong);
-	border: 1px solid color-mix(in oklch, var(--color-accent) 25%, transparent);
-}
-.chip:hover {
-	background: color-mix(in oklch, var(--color-accent) 20%, transparent);
-}
-.chip.merge {
-	background: color-mix(in oklch, var(--color-text-subtle) 10%, transparent);
-	color: var(--color-text);
-	border-color: var(--color-border);
-}
-.chip.merge:hover {
-	background: color-mix(in oklch, var(--color-text-subtle) 18%, transparent);
 }
 </style>
