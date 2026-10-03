@@ -433,7 +433,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
       padding: 0 var(--space-2);
       gap: var(--space-1);
       cursor: pointer;
-      font-size: 11px;
+      font-size: var(--text-small);
       color: var(--color-text-muted);
     "
 	>
@@ -631,7 +631,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
               border: 1px solid var(--color-success-border);
               border-radius: var(--radius);
               color: var(--color-success);
-              font-size: 11px;
+              font-size: var(--text-small);
               font-family: var(--font-sans, sans-serif);
               height: var(--control-sm-h);
               padding: 0 var(--space-2);
@@ -707,7 +707,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
               border: 1px solid var(--color-success-border);
               border-radius: var(--radius);
               color: var(--color-success);
-              font-size: 11px;
+              font-size: var(--text-small);
               font-family: var(--font-sans, sans-serif);
               height: var(--control-sm-h);
               padding: 0 var(--space-2);
@@ -814,7 +814,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 							><ChevronUp size={16} /></button
 						>
 						<span
-							style="font-size: 11px; color: var(--color-text-muted); white-space: nowrap;"
+							style="font-size: var(--text-small); color: var(--color-text-muted); white-space: nowrap;"
 							>{focusedConflictIdx + 1}/{conflictIndices.length}</span
 						>
 						<button
@@ -851,7 +851,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
               border: 1px solid var(--color-success-border);
               border-radius: var(--radius);
               color: var(--color-success);
-              font-size: 11px;
+              font-size: var(--text-small);
               font-family: var(--font-sans, sans-serif);
               height: var(--control-sm-h);
               padding: 0 var(--space-2);

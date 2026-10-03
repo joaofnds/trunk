@@ -838,7 +838,10 @@ $effect(() => {
 				{`${totalCount} file${totalCount === 1 ? '' : 's'} changed`}
 			</span>
 			{#if currentBranch}
-				<span style="font-size: 11px; color: var(--color-text-muted);">on</span>
+				<span
+					style="font-size: var(--text-small); color: var(--color-text-muted);"
+					>on</span
+				>
 				<!-- inline-block, not inline-flex: text-overflow does not apply to a
              flex container, so a long branch name would hard-clip instead of
              showing an ellipsis. line-height does the vertical centring. -->
@@ -848,7 +851,7 @@ $effect(() => {
           box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--lane-0) 50%, transparent);
           border-radius: var(--radius-pill);
           padding: 0 var(--space-2);
-          font-size: 11px;
+          font-size: var(--text-small);
           height: var(--control-sm-h);
           display: inline-block;
           line-height: var(--control-sm-h);
@@ -974,7 +977,7 @@ $effect(() => {
       justify-content: center;
       gap: var(--space-2);
       flex-shrink: 0;
-      font-size: 11px;
+      font-size: var(--text-small);
       color: var(--color-text-muted);
     "
 		>
@@ -1166,7 +1169,7 @@ $effect(() => {
                 justify-content: center;
                 background: var(--color-success-bg);
                 color: var(--color-success);
-                font-size: 11px;
+                font-size: var(--text-small);
                 border: 1px solid var(--color-success-border);
                 border-radius: var(--radius);
                 cursor: pointer;
@@ -1195,7 +1198,7 @@ $effect(() => {
                 justify-content: center;
                 background: var(--color-danger-bg);
                 color: var(--color-danger);
-                font-size: 11px;
+                font-size: var(--text-small);
                 border: 1px solid var(--color-danger-border);
                 border-radius: var(--radius);
                 cursor: pointer;
@@ -1215,7 +1218,7 @@ $effect(() => {
                 justify-content: center;
                 background: var(--color-success-bg);
                 color: var(--color-success);
-                font-size: 11px;
+                font-size: var(--text-small);
                 border: 1px solid var(--color-success-border);
                 border-radius: var(--radius);
                 cursor: pointer;
@@ -1320,7 +1323,7 @@ $effect(() => {
               justify-content: center;
               background: var(--color-warning-bg);
               color: var(--color-warning);
-              font-size: 11px;
+              font-size: var(--text-small);
               border: 1px solid var(--color-warning-border);
               border-radius: var(--radius);
               cursor: pointer;
@@ -1388,7 +1391,7 @@ $effect(() => {
     "
 		>
 			<div
-				style="font-size: 11px; color: var(--color-text-muted); margin-bottom: var(--space-1);"
+				style="font-size: var(--text-small); color: var(--color-text-muted); margin-bottom: var(--space-1);"
 			>
 				Rebasing commit {rebaseProgressNum} out of {rebaseProgressTotal}
 			</div>

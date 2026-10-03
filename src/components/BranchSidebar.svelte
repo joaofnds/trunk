@@ -808,7 +808,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 						{#if createError}
 							<div
 								class="error-text"
-								style="font-size: 11px; margin-top: var(--space-1);"
+								style="font-size: var(--text-small); margin-top: var(--space-1);"
 								>{createError}</div
 							>
 						{/if}
@@ -1015,7 +1015,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 11px;
+	font-size: var(--text-small);
 	height: var(--control-sm-h);
 	padding: 0 var(--space-2);
 	cursor: pointer;
@@ -1082,7 +1082,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 }
 
 .stash-error {
-	font-size: 11px;
+	font-size: var(--text-small);
 	color: var(--color-danger);
 	padding: var(--space-1) var(--space-3) var(--space-1);
 	margin: 0;

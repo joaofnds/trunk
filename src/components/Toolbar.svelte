@@ -378,7 +378,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 	background: var(--color-surface);
 	color: var(--color-text);
 	font: inherit;
-	font-size: 11px;
+	font-size: var(--text-small);
 	padding: 0 var(--space-1);
 }
 .review-filter-control-active,

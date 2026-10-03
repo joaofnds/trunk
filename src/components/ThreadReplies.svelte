@@ -196,7 +196,7 @@ async function saveReplyEdit() {
 	border: none;
 	cursor: pointer;
 	padding: 0;
-	font-size: 11px;
+	font-size: var(--text-small);
 }
 
 .thread-replies {
@@ -224,7 +224,7 @@ async function saveReplyEdit() {
 	border: none;
 	cursor: pointer;
 	padding: 0;
-	font-size: 11px;
+	font-size: var(--text-small);
 	color: var(--color-text-muted);
 }
 .thread-reply-edit-toggle:hover,

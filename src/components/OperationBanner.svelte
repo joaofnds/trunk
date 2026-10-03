@@ -208,7 +208,7 @@ async function handleRevertAbort() {
         background: {sourceColor};
         border-radius: var(--radius-pill);
         padding: 0 var(--space-2);
-        font-size: 11px;
+        font-size: var(--text-small);
         height: var(--control-sm-h);
         display: inline-block;
         line-height: var(--control-sm-h);
@@ -226,7 +226,7 @@ async function handleRevertAbort() {
         background: {targetColor};
         border-radius: var(--radius-pill);
         padding: 0 var(--space-2);
-        font-size: 11px;
+        font-size: var(--text-small);
         height: var(--control-sm-h);
         display: inline-block;
         line-height: var(--control-sm-h);
@@ -256,7 +256,7 @@ async function handleRevertAbort() {
           justify-content: center;
           background: var(--color-success-bg);
           color: var(--color-success);
-          font-size: 11px;
+          font-size: var(--text-small);
           border: 1px solid var(--color-success-border);
           border-radius: var(--radius);
           cursor: pointer;
@@ -275,7 +275,7 @@ async function handleRevertAbort() {
           justify-content: center;
           background: var(--color-warning-bg);
           color: var(--color-warning);
-          font-size: 11px;
+          font-size: var(--text-small);
           border: 1px solid var(--color-warning-border);
           border-radius: var(--radius);
           cursor: pointer;
@@ -294,7 +294,7 @@ async function handleRevertAbort() {
           justify-content: center;
           background: var(--color-danger-bg);
           color: var(--color-danger);
-          font-size: 11px;
+          font-size: var(--text-small);
           border: 1px solid var(--color-danger-border);
           border-radius: var(--radius);
           cursor: pointer;
@@ -317,7 +317,7 @@ async function handleRevertAbort() {
           justify-content: center;
           background: var(--color-success-bg);
           color: var(--color-success);
-          font-size: 11px;
+          font-size: var(--text-small);
           border: 1px solid var(--color-success-border);
           border-radius: var(--radius);
           cursor: pointer;
@@ -336,7 +336,7 @@ async function handleRevertAbort() {
           justify-content: center;
           background: var(--color-danger-bg);
           color: var(--color-danger);
-          font-size: 11px;
+          font-size: var(--text-small);
           border: 1px solid var(--color-danger-border);
           border-radius: var(--radius);
           cursor: pointer;
@@ -359,7 +359,7 @@ async function handleRevertAbort() {
           justify-content: center;
           background: var(--color-success-bg);
           color: var(--color-success);
-          font-size: 11px;
+          font-size: var(--text-small);
           border: 1px solid var(--color-success-border);
           border-radius: var(--radius);
           cursor: pointer;
@@ -378,7 +378,7 @@ async function handleRevertAbort() {
           justify-content: center;
           background: var(--color-danger-bg);
           color: var(--color-danger);
-          font-size: 11px;
+          font-size: var(--text-small);
           border: 1px solid var(--color-danger-border);
           border-radius: var(--radius);
           cursor: pointer;

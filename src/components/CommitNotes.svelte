@@ -161,7 +161,7 @@ async function saveNote() {
 	padding: 0 var(--space-3);
 }
 .commit-notes-title {
-	font-size: 11px;
+	font-size: var(--text-small);
 	font-weight: 500;
 	color: var(--color-text-muted);
 	text-transform: uppercase;

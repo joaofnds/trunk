@@ -48,7 +48,7 @@ let allHidden = $derived(groupState === "all");
 		style="
     height: var(--bar-h);
     padding: 0 var(--space-2) 0 var(--space-4);
-    font-size: 11px;
+    font-size: var(--text-small);
     color: var(--color-text-subtle);
     font-weight: 500;
     font-family: var(--font-mono);

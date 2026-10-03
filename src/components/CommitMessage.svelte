@@ -116,7 +116,7 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 	border-radius: var(--radius);
 	background: var(--color-surface-raised);
 	color: var(--color-text-muted);
-	font-size: 11px;
+	font-size: var(--text-small);
 	font-family: inherit;
 	cursor: pointer;
 }

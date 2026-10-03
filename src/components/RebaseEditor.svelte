@@ -803,7 +803,7 @@ let lastVisibleColumn = $derived.by(() => {
 	height: var(--control-sm-h);
 	background: var(--color-accent);
 	color: var(--color-on-accent);
-	font-size: 11px;
+	font-size: var(--text-small);
 	font-weight: 600;
 	padding: 0 var(--space-2);
 	border-radius: var(--radius);
@@ -826,7 +826,7 @@ let lastVisibleColumn = $derived.by(() => {
 }
 
 .rebase-shortcuts {
-	font-size: 11px;
+	font-size: var(--text-small);
 	color: var(--color-text-muted);
 	display: flex;
 	align-items: center;
@@ -858,7 +858,7 @@ let lastVisibleColumn = $derived.by(() => {
 .rebase-btn {
 	border-radius: var(--radius);
 	padding: var(--space-1) var(--space-3);
-	font-size: 11px;
+	font-size: var(--text-small);
 	cursor: pointer;
 	white-space: nowrap;
 	font-family: var(--font-sans);
@@ -904,7 +904,7 @@ let lastVisibleColumn = $derived.by(() => {
 	flex-shrink: 0;
 	background: var(--color-surface);
 	box-shadow: inset 0 -1px 0 var(--color-border);
-	font-size: 11px;
+	font-size: var(--text-small);
 	color: var(--color-text-muted);
 }
 
@@ -1032,7 +1032,7 @@ let lastVisibleColumn = $derived.by(() => {
 	background: var(--color-bg);
 	border: 1px solid var(--color-border);
 	color: var(--color-text);
-	font-size: 11px;
+	font-size: var(--text-small);
 	padding: var(--space-1);
 	border-radius: var(--radius);
 	cursor: pointer;
@@ -1141,7 +1141,7 @@ let lastVisibleColumn = $derived.by(() => {
 .rebase-validation-error {
 	background: var(--color-danger-bg-subtle);
 	padding: var(--space-1) var(--space-3);
-	font-size: 11px;
+	font-size: var(--text-small);
 	color: var(--color-danger);
 }
 </style>

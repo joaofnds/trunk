@@ -915,7 +915,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 .rendered-fold {
 	padding: 0 var(--space-4) var(--space-2);
 	color: var(--color-text-muted);
-	font-size: 11px;
+	font-size: var(--text-small);
 	font-style: italic;
 	letter-spacing: 0.02em;
 }
@@ -925,7 +925,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
      past scoping into the `{@html}`-injected markdown body. */
 :global(.markdown-body .rendered-fold-note) {
 	color: var(--color-text-muted);
-	font-size: 11px;
+	font-size: var(--text-small);
 	font-style: italic;
 	letter-spacing: 0.02em;
 }
@@ -940,7 +940,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 }
 .rendered-sep-label {
 	color: var(--color-text-muted);
-	font-size: 11px;
+	font-size: var(--text-small);
 	letter-spacing: 0.02em;
 	white-space: nowrap;
 }

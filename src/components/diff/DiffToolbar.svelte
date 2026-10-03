@@ -295,7 +295,7 @@ const renderedActive = $derived(
 	display: flex;
 	align-items: baseline;
 	gap: var(--space-1);
-	font-size: 11px;
+	font-size: var(--text-small);
 	color: var(--color-text-muted);
 	text-align: left;
 }
@@ -338,7 +338,7 @@ const renderedActive = $derived(
 	align-items: center;
 	justify-content: center;
 	border-radius: var(--radius);
-	font-size: 11px;
+	font-size: var(--text-small);
 	font-family: var(--font-sans, sans-serif);
 	height: var(--control-sm-h);
 	padding: 0 var(--space-2);

@@ -255,7 +255,9 @@ async function handleSubmit() {
 			{/if}
 		</div>
 		{#if subjectError}
-			<span class="error-text" style="font-size: 11px;">{subjectError}</span>
+			<span class="error-text" style="font-size: var(--text-small);"
+				>{subjectError}</span
+			>
 		{/if}
 
 		<!-- Body field -->
@@ -278,7 +280,9 @@ async function handleSubmit() {
 
 		<!-- Staged error -->
 		{#if stagedError}
-			<span class="error-text" style="font-size: 11px;">{stagedError}</span>
+			<span class="error-text" style="font-size: var(--text-small);"
+				>{stagedError}</span
+			>
 		{/if}
 
 		<!-- Commit button -->

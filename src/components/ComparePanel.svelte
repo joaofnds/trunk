@@ -68,7 +68,7 @@ let filesChanged = $derived(fileDiffs.length);
 			>{commit.summary}</div
 		>
 		<div
-			style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); min-width: 0; font-size: 11px;"
+			style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); min-width: 0; font-size: var(--text-small);"
 		>
 			<Avatar name={commit.author_name} size={18} />
 			<span
@@ -85,7 +85,7 @@ let filesChanged = $derived(fileDiffs.length);
 				type="button"
 				title="Copy SHA"
 				class="sha-copy"
-				style="display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--color-surface-chip); color: var(--color-text-strong); font-family: var(--font-mono); font-size: 11px; flex-shrink: 0;"
+				style="display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--color-surface-chip); color: var(--color-text-strong); font-family: var(--font-mono); font-size: var(--text-small); flex-shrink: 0;"
 				onclick={() => copySha(commit.oid)}
 				>{commit.short_oid}</button
 			>
@@ -118,7 +118,7 @@ let filesChanged = $derived(fileDiffs.length);
 	>
 		<span
 			style="
-      font-size: 11px;
+      font-size: var(--text-small);
       color: var(--color-text-muted);
       flex: 1;
       overflow: hidden;

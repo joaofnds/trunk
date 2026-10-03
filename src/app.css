@@ -70,7 +70,7 @@ textarea::placeholder {
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius);
 	box-shadow: var(--shadow-md);
-	font-size: 11px;
+	font-size: var(--text-small);
 	font-weight: 500;
 	line-height: 1.2;
 	white-space: nowrap;

@@ -315,7 +315,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 
 .composer-preview {
 	color: var(--color-text-muted);
-	font-size: 11px;
+	font-size: var(--text-small);
 	font-family: var(--font-mono, monospace);
 }
 
@@ -345,7 +345,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 
 .composer-btn {
 	border-radius: var(--radius);
-	font-size: 11px;
+	font-size: var(--text-small);
 	font-family: var(--font-sans, sans-serif);
 	padding: var(--space-1) var(--space-3);
 	white-space: nowrap;

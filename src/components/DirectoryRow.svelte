@@ -97,7 +97,7 @@ let commentTone = $derived(
 	<span
 		style="
     color: var(--color-text-muted);
-    font-size: 11px;
+    font-size: var(--text-small);
     font-weight: 400;
     flex-shrink: 0;
   "

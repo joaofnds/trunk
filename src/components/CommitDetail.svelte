@@ -173,7 +173,7 @@ let commitNotes = $derived(
 	>
 		<span
 			style="
-      font-size: 11px;
+      font-size: var(--text-small);
       color: var(--color-text-muted);
       font-family: monospace;
       flex: 1;

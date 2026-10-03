@@ -96,7 +96,7 @@ function autofocus(node: HTMLElement) {
 		<span
 			style="
         flex-shrink: 0;
-        font-size: 11px;
+        font-size: var(--text-small);
         color: var(--color-text-muted);
         white-space: nowrap;
       "

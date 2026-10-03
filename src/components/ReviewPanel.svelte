@@ -570,7 +570,9 @@ $effect(() => {
 				class="flex items-center"
 				style="gap: var(--space-2); padding: var(--space-1) 0;"
 			>
-				<span style="color: var(--color-text-muted); font-size: 11px; flex: 1;">
+				<span
+					style="color: var(--color-text-muted); font-size: var(--text-small); flex: 1;"
+				>
 					{reviews.length} {reviews.length === 1 ? "review" : "reviews"}
 				</span>
 				<button type="button" class="copy-button" onclick={startNewReview}>
@@ -653,14 +655,14 @@ $effect(() => {
               padding: 0;
               cursor: pointer;
               color: var(--color-text-muted);
-              font-size: 11px;
+              font-size: var(--text-small);
               font-family: inherit;
               flex-shrink: 0;
             "
 							>{review.id}</button
 						>
 						<span
-							style="color: var(--color-text-muted); font-size: 11px; flex-shrink: 0;"
+							style="color: var(--color-text-muted); font-size: var(--text-small); flex-shrink: 0;"
 						>
 							{`${REVIEW_STATE_LABEL[review.state] ?? review.state} · ${review.thread_count}`}
 						</span>
@@ -683,7 +685,7 @@ $effect(() => {
 
 		{#if activeReview && reviewFilter !== "none"}
 			<span
-				style="color: var(--color-text-muted); font-size: 11px; padding: var(--space-1) 0;"
+				style="color: var(--color-text-muted); font-size: var(--text-small); padding: var(--space-1) 0;"
 			>
 				{`${visibleComments.length} ${visibleComments.length === 1 ? "comment" : "comments"} · ${commits.length} ${commits.length === 1 ? "commit" : "commits"}`}
 			</span>
@@ -700,7 +702,9 @@ $effect(() => {
 				style="gap: var(--space-1); padding: var(--space-3);"
 			>
 				<span>No reviews yet</span>
-				<span style="color: var(--color-text-muted); font-size: 11px;">
+				<span
+					style="color: var(--color-text-muted); font-size: var(--text-small);"
+				>
 					Comment on a diff line to start one, or create an empty review above.
 				</span>
 			</div>
@@ -710,7 +714,9 @@ $effect(() => {
 				style="gap: var(--space-1); padding: var(--space-3);"
 			>
 				<span>No commits in this review yet.</span>
-				<span style="color: var(--color-text-muted); font-size: 11px;">
+				<span
+					style="color: var(--color-text-muted); font-size: var(--text-small);"
+				>
 					Add commits from the graph to start reviewing.
 				</span>
 			</div>
@@ -720,7 +726,9 @@ $effect(() => {
 				style="gap: var(--space-1); padding: var(--space-3);"
 			>
 				<span>Review started.</span>
-				<span style="color: var(--color-text-muted); font-size: 11px;">
+				<span
+					style="color: var(--color-text-muted); font-size: var(--text-small);"
+				>
 					Select diff lines or add a commit note to comment.
 				</span>
 			</div>
@@ -732,7 +740,9 @@ $effect(() => {
 				<span
 					>{reviewFilter === "none" ? "Review threads hidden." : "No threads match this filter."}</span
 				>
-				<span style="color: var(--color-text-muted); font-size: 11px;">
+				<span
+					style="color: var(--color-text-muted); font-size: var(--text-small);"
+				>
 					The review inventory remains available above.
 				</span>
 			</div>
@@ -884,7 +894,7 @@ $effect(() => {
 
 						{#if group.comments.length === 0}
 							<span
-								style="color: var(--color-text-muted); font-size: 11px; padding: var(--space-1) 0;"
+								style="color: var(--color-text-muted); font-size: var(--text-small); padding: var(--space-1) 0;"
 							>
 								No comments on this commit.
 							</span>

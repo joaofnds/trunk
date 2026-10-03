@@ -97,7 +97,7 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 .commit-author {
 	padding: var(--space-2) var(--space-3);
 	border-bottom: 1px solid var(--color-border);
-	font-size: 11px;
+	font-size: var(--text-small);
 	color: var(--color-text-muted);
 }
 .identity {
@@ -117,7 +117,7 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 .email {
 	color: var(--color-text-subtle);
 	font-family: var(--font-mono);
-	font-size: 11px;
+	font-size: var(--text-small);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -127,7 +127,7 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 	flex-shrink: 0;
 	color: var(--color-text-subtle);
 	font-family: var(--font-mono);
-	font-size: 11px;
+	font-size: var(--text-small);
 }
 
 /* Topology chips — clickable parent/child lineage links. */
@@ -159,7 +159,7 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 	padding: 0 var(--space-2) 0 var(--space-1);
 	border-radius: var(--radius-pill);
 	font-family: var(--font-mono);
-	font-size: 11px;
+	font-size: var(--text-small);
 	cursor: pointer;
 	background: color-mix(in oklch, var(--color-accent) 12%, transparent);
 	color: var(--color-accent-strong);

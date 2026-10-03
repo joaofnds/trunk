@@ -357,13 +357,13 @@ async function requestDeleteReply(replyId: string) {
 	padding: var(--space-1) var(--space-2);
 	background: var(--color-comment-card-header-bg);
 	border-bottom: 1px solid var(--color-border);
-	font-size: 11px;
+	font-size: var(--text-small);
 }
 .comment-card-spacer {
 	flex: 1;
 }
 .comment-card-fileref {
-	font-size: 11px;
+	font-size: var(--text-small);
 	line-height: 1.4;
 	color: var(--color-text-muted);
 	background: transparent;
@@ -384,7 +384,7 @@ async function requestDeleteReply(replyId: string) {
      syntax highlighting (deferred). */
 .comment-card-diff {
 	font-family: var(--font-mono);
-	font-size: 11px;
+	font-size: var(--text-small);
 	line-height: 1.5;
 	border-bottom: 1px solid var(--color-border);
 }
@@ -451,7 +451,7 @@ async function requestDeleteReply(replyId: string) {
 
 /* Orphan badge */
 .orphan-badge {
-	font-size: 11px;
+	font-size: var(--text-small);
 	line-height: 1.4;
 	color: var(--color-warning);
 	background: var(--color-warning-bg);

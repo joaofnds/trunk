@@ -206,7 +206,7 @@ async function handleForcePush(target: Target) {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 11px;
+	font-size: var(--text-small);
 	border-radius: var(--radius);
 	cursor: pointer;
 	height: var(--control-sm-h);

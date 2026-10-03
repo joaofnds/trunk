@@ -633,7 +633,7 @@ function originClass(origin: string): string {
 .split-hunk-header-text {
 	flex: 1;
 	color: color-mix(in oklch, var(--color-info) 70%, var(--color-text-subtle));
-	font-size: 11px;
+	font-size: var(--text-small);
 	font-family: var(--font-mono, monospace);
 }
 
@@ -674,7 +674,7 @@ function originClass(origin: string): string {
 	align-items: center;
 	justify-content: center;
 	border-radius: var(--radius);
-	font-size: 11px;
+	font-size: var(--text-small);
 	font-family: var(--font-sans, sans-serif);
 	height: var(--control-sm-h);
 	padding: 0 var(--space-2);
