@@ -1,39 +1,24 @@
 <script lang="ts">
 import { fly } from "svelte/transition";
 import { dismissToast, toasts } from "../lib/toast.svelte.js";
+import ToastCard from "../lib/ui/ToastCard.svelte";
 </script>
 
 <div
 	class="fixed bottom-4 right-4 flex flex-col gap-2 z-50 pointer-events-none"
 >
 	{#each toasts.items as toast (toast.id)}
-		<div role="status" transition:fly={{ y: 8, duration: 150 }}>
-			<button
-				type="button"
-				class="toast block w-full text-left px-4 py-2 rounded text-body font-medium shadow-lg pointer-events-auto"
-				class:error={toast.kind === 'error'}
+		<div
+			role="status"
+			class="pointer-events-auto"
+			transition:fly={{ y: 8, duration: 150 }}
+		>
+			<ToastCard
+				tone={toast.kind === 'error' ? 'danger' : 'neutral'}
 				onclick={() => dismissToast(toast.id)}
 			>
 				{toast.message}
-			</button>
+			</ToastCard>
 		</div>
 	{/each}
 </div>
-
-<style>
-.toast {
-	background: var(--color-surface);
-	border: 1px solid var(--color-border);
-	color: var(--color-text);
-	cursor: pointer;
-}
-.toast:focus-visible {
-	outline: 2px solid var(--color-accent);
-	outline-offset: 1px;
-}
-.toast.error {
-	background: var(--color-toast-error-bg);
-	border-color: var(--color-danger-border);
-	color: var(--color-danger);
-}
-</style>
