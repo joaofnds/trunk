@@ -162,7 +162,7 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 	font-size: 11px;
 	cursor: pointer;
 	background: color-mix(in oklch, var(--color-accent) 12%, transparent);
-	color: var(--accent-hi);
+	color: var(--color-accent-strong);
 	border: 1px solid color-mix(in oklch, var(--color-accent) 25%, transparent);
 }
 .chip:hover {

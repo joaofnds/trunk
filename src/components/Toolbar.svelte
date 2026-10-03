@@ -332,8 +332,8 @@ async function handleBranchCreate(values: Record<string, string>) {
 	color: var(--color-on-accent);
 }
 .toolbar-btn.toolbar-btn-active:hover:not(:disabled) {
-	background: var(--accent-hi);
-	box-shadow: inset 0 0 0 1px var(--accent-hi);
+	background: var(--color-accent-strong);
+	box-shadow: inset 0 0 0 1px var(--color-accent-strong);
 }
 
 .toolbar-btn-badged {
@@ -407,7 +407,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 .review-filter-control-active > .toolbar-btn:hover:not(:disabled),
 .review-filter-control:has(.review-filter-select)
 	> .toolbar-btn:hover:not(:disabled) {
-	background: var(--accent-hi);
+	background: var(--color-accent-strong);
 }
 .toolbar-badge.tone-open {
 	background: var(--color-thread-open);

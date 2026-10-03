@@ -149,6 +149,7 @@
 
 	/* Accent */
 	--color-accent: var(--accent);
+	--color-accent-strong: var(--accent-hi);
 	--color-accent-alt: var(--lane-3);
 	--color-accent-bg: color-mix(in oklch, var(--accent) 9%, transparent);
 	--color-accent-border: color-mix(in oklch, var(--accent) 30%, transparent);

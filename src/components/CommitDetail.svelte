@@ -376,7 +376,7 @@ let commitNotes = $derived(
 	padding: 0;
 }
 .pager-btn:hover:not(:disabled) {
-	color: var(--accent-hi);
+	color: var(--color-accent-strong);
 	border-color: color-mix(in oklch, var(--color-accent) 30%, transparent);
 }
 .pager-btn:disabled {
