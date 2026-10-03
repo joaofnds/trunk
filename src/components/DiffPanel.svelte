@@ -1058,7 +1058,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 </script>
 
 <div
-	style="height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-1);"
+	style="height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--color-surface);"
 >
 	<DiffToolbar
 		{contentMode}

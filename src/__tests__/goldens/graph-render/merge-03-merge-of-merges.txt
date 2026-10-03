@@ -18,10 +18,10 @@
       <path d="M 56 182 V 202 C 56 206.41827799864635 51.581722001353654 210 48 210 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-3)">
   <g clip-path="url(#graph-dot-clip-g18)">
     <g class="overlay-dots" transform="translate(74, 0)">
-      <circle cx="8" cy="14" fill="var(--bg-1)" r="5" stroke-width="2" stroke="var(--lane-0)">
-      <circle cx="24" cy="42" fill="var(--bg-1)" r="5" stroke-width="2" stroke="var(--lane-1)">
+      <circle cx="8" cy="14" fill="var(--color-surface)" r="5" stroke-width="2" stroke="var(--lane-0)">
+      <circle cx="24" cy="42" fill="var(--color-surface)" r="5" stroke-width="2" stroke="var(--lane-1)">
       <circle cx="24" cy="70" fill="var(--lane-1)" r="6">
-      <circle cx="8" cy="98" fill="var(--bg-1)" r="5" stroke-width="2" stroke="var(--lane-0)">
+      <circle cx="8" cy="98" fill="var(--color-surface)" r="5" stroke-width="2" stroke="var(--lane-0)">
       <circle cx="8" cy="126" fill="var(--lane-0)" r="6">
       <circle cx="40" cy="154" fill="var(--lane-2)" r="6">
       <circle cx="56" cy="182" fill="var(--lane-3)" r="6">

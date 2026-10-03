@@ -14,7 +14,7 @@
   <g clip-path="url(#graph-dot-clip-g48)">
     <g class="overlay-dots" transform="translate(66, 0)">
       <rect fill="none" height="10.5" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-0)" width="10.5" x="2.75" y="8.75">
-      <circle cx="8" cy="42" fill="var(--bg-1)" r="5" stroke-width="2" stroke="var(--lane-0)">
+      <circle cx="8" cy="42" fill="var(--color-surface)" r="5" stroke-width="2" stroke="var(--lane-0)">
       <circle cx="8" cy="70" fill="var(--lane-0)" r="6">
       <circle cx="24" cy="98" fill="var(--lane-1)" r="6">
       <circle cx="8" cy="126" fill="var(--lane-0)" r="6">

@@ -2061,7 +2061,7 @@ $effect(() => {
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
 	class="h-full overflow-hidden flex flex-col"
-	style="background: var(--bg-1); outline: none; {columnWidthDeclarations(columnWidths)}"
+	style="background: var(--color-surface); outline: none; {columnWidthDeclarations(columnWidths)}"
 	tabindex="0"
 	role="listbox"
 	bind:this={containerRef}
@@ -2072,7 +2072,7 @@ $effect(() => {
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="flex-shrink-0"
-		style="height: var(--bar-h); background: var(--bg-1); box-shadow: inset 0 -1px 0 var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px;"
+		style="height: var(--bar-h); background: var(--color-surface); box-shadow: inset 0 -1px 0 var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px;"
 		oncontextmenu={showHeaderContextMenu}
 	>
 		<div
@@ -2356,7 +2356,7 @@ $effect(() => {
 											cx={clampedCx}
 											cy={geometry.cy(node.y)}
 											r={displaySettings.dotRadius - displaySettings.mergeStroke / 2}
-											fill="var(--bg-1)"
+											fill="var(--color-surface)"
 											stroke={laneColor(node.colorIndex)}
 											stroke-width={displaySettings.mergeStroke}
 										/>

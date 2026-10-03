@@ -946,7 +946,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 }
 .rendered-nochange {
 	padding: var(--space-2) var(--space-4);
-	background: var(--bg-1);
+	background: var(--color-surface);
 	color: var(--color-text-muted);
 	font-size: 12px;
 	font-style: italic;

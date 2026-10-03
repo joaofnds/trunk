@@ -12,7 +12,7 @@
       <path d="M 8 70 V 98" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
   <g clip-path="url(#graph-dot-clip-g25)">
     <g class="overlay-dots" transform="translate(80, 0)">
-      <circle cx="24" cy="14" fill="var(--bg-1)" r="5" stroke-width="2" stroke="var(--lane-1)">
+      <circle cx="24" cy="14" fill="var(--color-surface)" r="5" stroke-width="2" stroke="var(--lane-1)">
       <circle cx="24" cy="42" fill="var(--lane-1)" r="6">
       <circle cx="8" cy="70" fill="var(--lane-0)" r="6">
       <circle cx="8" cy="98" fill="var(--lane-0)" r="6">

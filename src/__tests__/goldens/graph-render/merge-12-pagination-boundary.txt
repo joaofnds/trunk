@@ -18,7 +18,7 @@
     <g class="overlay-dots" transform="translate(66, 0)">
       <circle cx="24" cy="14" fill="var(--lane-1)" r="6">
       <circle cx="8" cy="42" fill="var(--lane-0)" r="6">
-      <circle cx="8" cy="70" fill="var(--bg-1)" r="5" stroke-width="2" stroke="var(--lane-0)">
+      <circle cx="8" cy="70" fill="var(--color-surface)" r="5" stroke-width="2" stroke="var(--lane-0)">
       <circle cx="8" cy="98" fill="var(--lane-0)" r="6">
       <circle cx="8" cy="126" fill="var(--lane-0)" r="6">
       <circle cx="40" cy="154" fill="var(--lane-2)" r="6">

@@ -718,7 +718,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 	style="
   width: 100%;
   min-width: 0;
-  background: var(--bg-1);
+  background: var(--color-surface);
   display: flex;
   flex-direction: column;
   overflow: hidden;

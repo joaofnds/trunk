@@ -108,7 +108,7 @@ describe("CommitGraph", () => {
 
 			expect(shapeOf(dots(svg)[2])).toEqual({
 				element: "circle",
-				fill: "var(--bg-1)",
+				fill: "var(--color-surface)",
 				dash: null,
 				strokeWidth: "2",
 			});

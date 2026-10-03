@@ -17,7 +17,7 @@
     <g class="overlay-dots" transform="translate(66, 0)">
       <path d="M 13.25 14 A 5.25 5.25 0 0 1 12.247 17.086 M 9.622 18.993 A 5.25 5.25 0 0 1 6.378 18.993 M 3.753 17.086 A 5.25 5.25 0 0 1 2.75 14 M 3.753 10.914 A 5.25 5.25 0 0 1 6.378 9.007 M 9.622 9.007 A 5.25 5.25 0 0 1 12.247 10.914" fill="none" stroke-width="1.5" stroke="var(--lane-0)">
       <rect fill="none" height="10.5" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-0)" width="10.5" x="2.75" y="36.75">
-      <circle cx="8" cy="70" fill="var(--bg-1)" r="5" stroke-width="2" stroke="var(--lane-0)">
+      <circle cx="8" cy="70" fill="var(--color-surface)" r="5" stroke-width="2" stroke="var(--lane-0)">
       <circle cx="8" cy="98" fill="var(--lane-0)" r="6">
       <circle cx="24" cy="126" fill="var(--lane-1)" r="6">
       <circle cx="8" cy="154" fill="var(--lane-0)" r="6">
