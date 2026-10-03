@@ -30,7 +30,7 @@ let { name, size = 18 }: Props = $props();
 	font-family: var(--font-sans);
 	font-weight: var(--weight-semibold);
 	letter-spacing: 0.02em;
-	line-height: 1;
+	line-height: var(--leading-none);
 	user-select: none;
 }
 </style>

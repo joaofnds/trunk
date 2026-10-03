@@ -156,7 +156,7 @@ let filesChanged = $derived(fileDiffs.length);
         cursor: pointer;
         color: var(--color-text-muted);
         font-size: 16px;
-        line-height: 1;
+        line-height: var(--leading-none);
         padding: var(--space-1);
       "
 			>×</button

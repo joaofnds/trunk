@@ -36,7 +36,7 @@ let { count, tone = "open" }: Props = $props();
 	color: var(--color-on-accent);
 	font-size: var(--text-caption);
 	font-weight: var(--weight-semibold);
-	line-height: 1;
+	line-height: var(--leading-none);
 }
 .tone-open {
 	background: var(--color-thread-open);

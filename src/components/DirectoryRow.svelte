@@ -119,7 +119,7 @@ let commentTone = $derived(
         display: flex;
         align-items: center;
         padding: 0 var(--space-1);
-        line-height: 1;
+        line-height: var(--leading-none);
       "
 		>
 			{#if actionLabel === '+'}

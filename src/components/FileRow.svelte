@@ -92,7 +92,7 @@ let badgeBg = $derived(
     font-family: var(--font-mono);
     font-weight: var(--weight-semibold);
     font-size: var(--text-caption);
-    line-height: 1;
+    line-height: var(--leading-none);
     color: {isLoading ? 'var(--color-text-muted)' : badge.color};
     background: {badgeBg};
   "
@@ -169,7 +169,7 @@ let badgeBg = $derived(
         display: flex;
         align-items: center;
         padding: 0 var(--space-1);
-        line-height: 1;
+        line-height: var(--leading-none);
       "
 		>
 			{#if actionLabel === '+'}

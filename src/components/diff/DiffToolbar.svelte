@@ -330,7 +330,7 @@ const renderedActive = $derived(
 	font-family: var(--font-mono);
 	font-weight: var(--weight-semibold);
 	font-size: var(--text-caption);
-	line-height: 1;
+	line-height: var(--leading-none);
 }
 
 .action-btn {
@@ -377,7 +377,7 @@ const renderedActive = $derived(
 	cursor: pointer;
 	color: var(--color-text-muted);
 	font-size: 16px;
-	line-height: 1;
+	line-height: var(--leading-none);
 	padding: var(--space-1);
 	border-radius: var(--radius);
 	flex-shrink: 0;
