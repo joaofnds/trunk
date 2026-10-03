@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { clearDifferences, mismatch } from "./baseline.js";
+import { mismatch } from "./baseline.js";
 import { VisualHarness } from "./harness.js";
 
 const GRAPH_REPOSITORIES = [
@@ -65,7 +65,6 @@ describe.concurrent("commit graph", () => {
 	let harness: VisualHarness;
 
 	beforeAll(async () => {
-		clearDifferences();
 		harness = await VisualHarness.setup();
 		await harness.warmUp();
 	});

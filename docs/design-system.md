@@ -70,11 +70,23 @@ that. A button, a row, a chip or a panel written in scoped CSS is a copy of a
 primitive waiting to drift from it: look in `src/lib/ui/` first, and add the
 variant there.
 
+### The catalog
+
+`src/lib/ui/Catalog.svelte` draws every token in `src/tokens.css` and every primitive on
+one screen: color roles, graph lanes, the spacing scale, the type steps and weights, radius
+and elevation, then each primitive in every variant and size, with its disabled and pressed
+states. It reads the token names from `tokens.css` itself, so a new color, lane or space
+token appears without an edit. Nothing in the app mounts it. The visual suite captures it
+as its `catalog` baseline, with the text masked, so a change to a token or a primitive's
+paint fails `just visual` before any screen that uses it does
+(`docs/visual-regression.md`, The design catalog). To see it, start `bunx vite` and open
+`/tests/visual/page/catalog.html`.
+
 ### Adding a primitive
 
 1. Write its test first in `src/lib/ui/<Name>.test.ts`: one case per variant and size, from the DOM it renders, with `@testing-library/svelte`.
 2. Build it from utilities. Keep each class string in a `const` in its script, as `Button` does: `src/markup-classes.test.ts` reads those bindings, so a class the theme cannot generate fails there.
-3. Document it in the table above and give it a catalog entry.
+3. Document it in the table above, and add a section to `Catalog.svelte` showing every variant and size, each label carrying `data-catalog-text`. The catalog baseline then differs; the one accepting it is the user, with `just visual-accept "<reason>"`.
 
 ## Guards
 

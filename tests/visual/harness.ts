@@ -17,6 +17,7 @@ import "./page/bindings.js";
 
 const ROOT = join(import.meta.dirname, "../..");
 const PAGE = "/tests/visual/page/index.html";
+const CATALOG_PAGE = "/tests/visual/page/catalog.html";
 const DEFAULT_FIXTURES = "src-tauri/target/debug/fixtures";
 
 /** Sets up vitest's DOM tests, and inside any vitest process it empties Vite's
@@ -89,15 +90,7 @@ export class VisualHarness {
 		try {
 			return await VisualHarness.start(opened);
 		} catch (error) {
-			try {
-				await opened.close();
-			} catch (closing) {
-				throw new AggregateError(
-					[error, closing],
-					"the visual harness did not start, and did not close",
-				);
-			}
-			throw error;
+			return closeAfterFailure(opened, error);
 		}
 	}
 
@@ -120,20 +113,16 @@ export class VisualHarness {
 	private static async openPages(
 		opened: Opened,
 	): Promise<{ browser: Browser; pages: AppPage[] }> {
-		const [vite, browser] = await Promise.allSettled([serve(), launchWebKit()]);
-		if (vite.status === "fulfilled") opened.add(() => vite.value.close());
-		if (browser.status === "fulfilled") opened.add(() => browser.value.close());
-		if (vite.status === "rejected") throw vite.reason;
-		if (browser.status === "rejected") throw browser.reason;
+		const { browser, origin } = await openBrowser(opened);
 
 		// A page that opened before another failed closes with the browser.
-		const url = new URL(PAGE, origin(vite.value)).href;
+		const url = new URL(PAGE, origin).href;
 		const pages = await Promise.all(
-			Array.from({ length: PAGES }, () => AppPage.open(browser.value, url)),
+			Array.from({ length: PAGES }, () => AppPage.open(browser, url)),
 		);
 		for (const page of pages) opened.add(() => page.close());
 
-		return { browser: browser.value, pages };
+		return { browser, pages };
 	}
 
 	/** Each page takes its first capture here, and the tests take only later
@@ -184,20 +173,8 @@ export class VisualHarness {
 		}
 	}
 
-	/** Decodes both images in the browser and counts the pixels with a channel
-	 *  more than `CHANNEL_TOLERANCE` levels from the baseline's. */
-	async difference(baseline: Buffer, capture: Buffer): Promise<Difference> {
-		const page = await this.browser.newPage();
-		try {
-			const { pixels, image } = await page.evaluate(comparePixels, [
-				baseline.toString("base64"),
-				capture.toString("base64"),
-				CHANNEL_TOLERANCE,
-			] as const);
-			return { pixels, image: Buffer.from(image, "base64") };
-		} finally {
-			await page.close();
-		}
+	difference(baseline: Buffer, capture: Buffer): Promise<Difference> {
+		return pixelDifference(this.browser, baseline, capture);
 	}
 
 	async teardown(): Promise<void> {
@@ -215,6 +192,63 @@ export class VisualHarness {
 		const next = this.waiting.shift();
 		if (next) next(page);
 		else this.idle.push(page);
+	}
+}
+
+/**
+ * The design catalog (`src/lib/ui/Catalog.svelte`), served by Vite to one
+ * WebKit page with no host behind it: the catalog mounts tokens and primitives
+ * alone and asks the backend nothing.
+ */
+export class CatalogHarness {
+	private constructor(
+		private readonly browser: Browser,
+		private readonly page: Page,
+		private readonly url: string,
+		private readonly opened: Opened,
+	) {}
+
+	static async setup(): Promise<CatalogHarness> {
+		const opened = new Opened();
+		try {
+			const { browser, origin } = await openBrowser(opened);
+			const page = await browser.newPage({
+				viewport: VIEWPORT,
+				deviceScaleFactor: 1,
+			});
+			opened.add(() => page.close());
+
+			const url = new URL(CATALOG_PAGE, origin).href;
+			return new CatalogHarness(browser, page, url, opened);
+		} catch (error) {
+			return closeAfterFailure(opened, error);
+		}
+	}
+
+	/** The whole catalog with every text label masked, since glyphs differ
+	 *  between machines by more than the tolerance (docs/visual-regression.md)
+	 *  and the tokens and primitives around them are what the baseline pins. */
+	async capture(test: CaptureTest): Promise<Buffer> {
+		await this.page.goto(this.url, { signal: test.signal });
+		const catalog = this.page.locator("[data-testid=catalog]");
+		await catalog.waitFor({ signal: test.signal });
+
+		return settled(async () => {
+			await painted(this.page);
+			return catalog.screenshot({
+				animations: "disabled",
+				mask: [this.page.locator("[data-catalog-text]")],
+				signal: test.signal,
+			});
+		});
+	}
+
+	difference(baseline: Buffer, capture: Buffer): Promise<Difference> {
+		return pixelDifference(this.browser, baseline, capture);
+	}
+
+	async teardown(): Promise<void> {
+		await this.opened.close();
 	}
 }
 
@@ -379,31 +413,18 @@ class AppPage {
 	 * arrives by a round trip after the first rails draw, so the first capture
 	 * can precede it, which is also why the column is measured on every attempt.
 	 */
-	private async settledCapture(abandoned: AbortSignal): Promise<Buffer> {
-		let previous: Buffer | null = null;
-
-		for (let attempt = 0; attempt < SETTLE_ATTEMPTS; attempt++) {
+	private settledCapture(abandoned: AbortSignal): Promise<Buffer> {
+		return settled(async () => {
 			await this.page.waitForFunction(() => window.__trunkPending === 0, null, {
 				signal: abandoned,
 			});
-			await this.page.evaluate(
-				() =>
-					new Promise((painted) =>
-						requestAnimationFrame(() => requestAnimationFrame(painted)),
-					),
-			);
-			const capture = await this.page.screenshot({
+			await painted(this.page);
+			return this.page.screenshot({
 				clip: await this.page.evaluate(graphColumn),
 				animations: "disabled",
 				signal: abandoned,
 			});
-			if (previous?.equals(capture)) return capture;
-			previous = capture;
-		}
-
-		throw new Error(
-			`the graph kept changing across ${SETTLE_ATTEMPTS} captures; the page never settled`,
-		);
+		});
 	}
 
 	private currentHost(): HostClient {
@@ -482,6 +503,80 @@ function repositoriesIn(repos: string, graphCase: string): string[] {
 	return readdirSync(dir, { withFileTypes: true })
 		.filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
 		.map((entry) => `${graphCase}/${entry.name}`);
+}
+
+/** `capture` taken again until two in a row are identical. */
+async function settled(capture: () => Promise<Buffer>): Promise<Buffer> {
+	let previous: Buffer | null = null;
+
+	for (let attempt = 0; attempt < SETTLE_ATTEMPTS; attempt++) {
+		const current = await capture();
+		if (previous?.equals(current)) return current;
+		previous = current;
+	}
+
+	throw new Error(
+		`the page kept changing across ${SETTLE_ATTEMPTS} captures; it never settled`,
+	);
+}
+
+/** Resolves once two frames have painted, so what the page last applied is on screen. */
+function painted(page: Page): Promise<void> {
+	return page.evaluate(
+		() =>
+			new Promise<void>((frame) =>
+				requestAnimationFrame(() => requestAnimationFrame(() => frame())),
+			),
+	);
+}
+
+/** Decodes both images in the browser and counts the pixels with a channel
+ *  more than `CHANNEL_TOLERANCE` levels from the baseline's. */
+async function pixelDifference(
+	browser: Browser,
+	baseline: Buffer,
+	capture: Buffer,
+): Promise<Difference> {
+	const page = await browser.newPage();
+	try {
+		const { pixels, image } = await page.evaluate(comparePixels, [
+			baseline.toString("base64"),
+			capture.toString("base64"),
+			CHANNEL_TOLERANCE,
+		] as const);
+		return { pixels, image: Buffer.from(image, "base64") };
+	} finally {
+		await page.close();
+	}
+}
+
+/** Vite and WebKit, started side by side; whichever started is closed with the run. */
+async function openBrowser(
+	opened: Opened,
+): Promise<{ browser: Browser; origin: string }> {
+	const [vite, browser] = await Promise.allSettled([serve(), launchWebKit()]);
+	if (vite.status === "fulfilled") opened.add(() => vite.value.close());
+	if (browser.status === "fulfilled") opened.add(() => browser.value.close());
+	if (vite.status === "rejected") throw vite.reason;
+	if (browser.status === "rejected") throw browser.reason;
+
+	return { browser: browser.value, origin: origin(vite.value) };
+}
+
+/** Closes what a failed setup had opened, and reports both faults when that fails too. */
+async function closeAfterFailure(
+	opened: Opened,
+	error: unknown,
+): Promise<never> {
+	try {
+		await opened.close();
+	} catch (closing) {
+		throw new AggregateError(
+			[error, closing],
+			"the visual harness did not start, and did not close",
+		);
+	}
+	throw error;
 }
 
 /** Playwright's own message for a missing browser installs every engine it
@@ -604,7 +699,7 @@ async function serve(): Promise<ViteDevServer> {
 		configFile: false,
 		root: ROOT,
 		cacheDir: join(ROOT, "node_modules/.vite-visual"),
-		optimizeDeps: { entries: [PAGE.slice(1)] },
+		optimizeDeps: { entries: [PAGE.slice(1), CATALOG_PAGE.slice(1)] },
 		logLevel: "error",
 		server: {
 			host: "127.0.0.1",
@@ -612,7 +707,7 @@ async function serve(): Promise<ViteDevServer> {
 			hmr: false,
 			watch: null,
 			headers: { "Cache-Control": "max-age=3600" },
-			warmup: { clientFiles: [PAGE.slice(1)] },
+			warmup: { clientFiles: [PAGE.slice(1), CATALOG_PAGE.slice(1)] },
 		},
 	});
 	return server.listen();

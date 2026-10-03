@@ -3,7 +3,8 @@
 `just visual` renders the real application in Playwright's WebKit against the repositories
 four of the fixture crate's cases build, screenshots the graph column of the commit list for
 each, and compares every capture with its committed baseline in `tests/visual/baselines/`. It
-is part of `just check` and has its own CI job, `Visual Baselines`, on `macos-latest`.
+also captures the design catalog, below. It is part of `just check` and has its own CI job,
+`Visual Baselines`, on `macos-latest`.
 
 It exists because every other graph suite runs without a layout engine. The render goldens
 compare SVG markup, in which an erased rail and a drawn one are identical, and TRUNK-255 ran
@@ -40,6 +41,35 @@ that plugin is no longer in the config, so the filter cannot outlive it. Vite's 
 cache for the suite is `node_modules/.vite-visual`, apart from the shared one, because the
 suite runs with `NODE_ENV=test` and the shared cache's hash differs, so each `just dev` would
 otherwise send the next run through dependency optimization again.
+
+## The design catalog
+
+`src/lib/ui/Catalog.svelte` draws every token in `src/tokens.css` and every primitive in
+`src/lib/ui/` on one screen (`docs/design-system.md`). Nothing in the app mounts it. The
+suite captures it as `catalog`, so a token or primitive that changes paint or geometry fails
+here before any screen that uses it does, and a reader can see the system whole.
+
+`tests/visual/catalog.test.ts` opens `tests/visual/page/catalog.html` through its own
+`CatalogHarness`: one Vite server and one WebKit page, with no `app_host` and no fixture
+repository, since the catalog binds to nothing. vitest runs it in parallel with the graph
+file, so it adds well under a second to the suite.
+
+The capture masks every element carrying `data-catalog-text` with Playwright's mask color,
+solid magenta. GitHub's `macos-latest` runner draws text up to 36 levels away from this Mac
+(the Text bullet under What it does not cover), so a baseline that held glyphs would fail on
+CI for every run. Masked, the baseline pins the tokens and the primitives' size, shape and
+color, and each masked label is sized by its layout cell rather than by its text, so a font
+metric change moves nothing in the type, color or spacing sections. A button's width is its
+label's advance width, so a change to the system font's metrics would move the right edges
+in the Button section; that is the one place text metrics still reach the capture.
+
+To look at the catalog in a browser, start the dev server and open the page:
+
+```bash
+mise exec -- bunx vite
+```
+
+Then visit `/tests/visual/page/catalog.html` on the port it prints.
 
 ## A capture differs
 
@@ -195,8 +225,10 @@ Alternatives not taken:
   CoreText and QuartzCore, so a macOS update can move the captures that way, and a Playwright
   bump changes the engine the baselines pin. Treat a suite-wide failure after either as that:
   look at the images, and accept with the reason.
-- Text. The capture holds no label: the column header and the ref pills are outside it, and
-  GitHub's `macos-latest` runner draws text up to 36 levels away from this Mac.
+- Text. The graph capture holds no label: the column header and the ref pills are outside it,
+  and GitHub's `macos-latest` runner draws text up to 36 levels away from this Mac. The
+  catalog capture masks its text for the same reason, so a type step that changes only its
+  glyphs passes.
 - Ref pills, which sit in the Branch/Tag column (TRUNK-290). The line joining each pill to
   its dot is captured where it crosses into the graph column.
 - A graph pan other than the one captured, `09-column-saturation` at 56 px panned 20 px. A
