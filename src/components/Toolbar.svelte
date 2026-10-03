@@ -296,8 +296,8 @@ async function handleBranchCreate(values: Record<string, string>) {
 
 .toolbar-badge {
 	position: absolute;
-	top: calc(-1 * var(--space-2));
-	right: calc(-1 * var(--space-2));
+	top: calc(-3 * var(--u) / 2);
+	right: calc(-3 * var(--u) / 2);
 	min-width: 16px;
 	height: 16px;
 	padding: 0 var(--space-1);

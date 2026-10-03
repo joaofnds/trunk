@@ -933,7 +933,7 @@ let lastVisibleColumn = $derived.by(() => {
 
 .rebase-squash-arrow {
 	position: absolute;
-	left: var(--space-1);
+	left: calc(3 * var(--u) / 4);
 	top: 50%;
 	transform: translateY(-50%);
 	font-size: var(--text-callout);
