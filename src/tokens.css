@@ -242,7 +242,6 @@
 	   onto the ramp; everything else reuses existing tokens directly. */
 	--color-md-code-bg: var(--color-muted-bg);
 	--color-md-blockquote-border: var(--line-strong);
-	--color-md-table-border: var(--line);
 
 	/* File-status icon colors (FileRow status map) */
 	--color-status-new: var(--ok);
