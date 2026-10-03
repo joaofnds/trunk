@@ -183,3 +183,11 @@ first catalog baseline: the design catalog draws the tokens and the Button, Link
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-10-03
+
+RowAction primitive added to the catalog: five tones at the target and compact sizes, drawn below LinkButton so nothing above moves
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png

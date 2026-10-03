@@ -1,6 +1,7 @@
 <script lang="ts" module>
 import tokens from "../../tokens.css?raw";
 import type { ButtonSize, ButtonVariant } from "./Button.svelte";
+import type { RowActionTone } from "./RowAction.svelte";
 
 const DECLARED = [...tokens.matchAll(/^\t(--[\w-]+):/gm)].map(
 	([, name]) => name,
@@ -19,14 +20,18 @@ const VARIANTS: ButtonVariant[] = [
 	"warning",
 ];
 const SIZES: ButtonSize[] = ["sm", "md", "lg"];
+const TONES: RowActionTone[] = ["subtle", "muted", "text", "success", "danger"];
 </script>
 
 <script lang="ts">
 import Check from "@lucide/svelte/icons/check";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
+import Eye from "@lucide/svelte/icons/eye";
+import Plus from "@lucide/svelte/icons/plus";
 import Button from "./Button.svelte";
 import ButtonGroup from "./ButtonGroup.svelte";
 import LinkButton from "./LinkButton.svelte";
+import RowAction from "./RowAction.svelte";
 </script>
 
 <!--
@@ -208,5 +213,26 @@ import LinkButton from "./LinkButton.svelte";
 				><span data-catalog-text>Delete</span></LinkButton
 			>
 		</div>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>RowAction</h2
+		>
+		<ul class="flex flex-col gap-2">
+			{#each TONES as tone (tone)}
+				<li class="flex items-center gap-4">
+					<RowAction {tone} aria-label="Hide {tone}"
+						><Eye size={12} /></RowAction
+					>
+					<RowAction {tone} size="compact" aria-label="Stage {tone}"
+						><Plus size={11} /></RowAction
+					>
+					<span data-catalog-text class="text-caption text-text-muted"
+						>{tone}</span
+					>
+				</li>
+			{/each}
+		</ul>
 	</section>
 </div>
