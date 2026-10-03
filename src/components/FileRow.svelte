@@ -5,6 +5,7 @@ import { treeIndent } from "../lib/chrome-heights.js";
 import { renamePartsOf } from "../lib/rename-display.js";
 import { STATUS_BADGES, UNKNOWN_STATUS_BADGE } from "../lib/status-badges.js";
 import type { FileStatus, ReviewTone } from "../lib/types.js";
+import RowAction from "../lib/ui/RowAction.svelte";
 import CommentBadge from "./CommentBadge.svelte";
 
 interface Props {
@@ -107,19 +108,18 @@ let badgeBg = $derived(
 
 	<!-- Hover action button (hidden during loading or when no actionLabel) -->
 	{#if hovered && !isLoading && actionLabel}
-		<button
-			type="button"
+		<RowAction
+			size="compact"
+			tone={actionLabel === '+' ? 'success' : 'danger'}
 			onclick={(e) => { e.stopPropagation(); onaction(); }}
 			aria-label={actionLabel === '+' ? 'Stage file' : 'Unstage file'}
-			class="bg-transparent border-none cursor-pointer flex items-center py-0 px-1 leading-none"
-			style:color={actionLabel === '+' ? 'var(--color-success)' : 'var(--color-danger)'}
 		>
 			{#if actionLabel === '+'}
 				<Plus size={11} />
 			{:else}
 				<Minus size={11} />
 			{/if}
-		</button>
+		</RowAction>
 	{/if}
 </div>
 

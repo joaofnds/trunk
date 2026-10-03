@@ -35,6 +35,7 @@ import type {
 	StashEntry,
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import RowAction from "../lib/ui/RowAction.svelte";
 import BranchRow from "./BranchRow.svelte";
 import BranchSection from "./BranchSection.svelte";
 import InputDialog from "./InputDialog.svelte";
@@ -922,15 +923,17 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 					/>
 					<span class="stash-index">{stash.short_name}</span>
 					<span class="stash-message" title={stash.name}>{stash.name}</span>
-					<button
-						type="button"
-						class="stash-visibility-btn"
+					<span
+						class="stash-action"
 						data-hidden={isStashHidden(visibility, stash.oid)}
-						onclick={(e) => { e.stopPropagation(); applyVisibility(toggleStash(visibility, stash.oid)); }}
-						aria-label="{visibilityVerb(isStashHidden(visibility, stash.oid))} {stash.short_name}"
 					>
-						<VisibilityIcon hidden={isStashHidden(visibility, stash.oid)} />
-					</button>
+						<RowAction
+							onclick={(e) => { e.stopPropagation(); applyVisibility(toggleStash(visibility, stash.oid)); }}
+							aria-label="{visibilityVerb(isStashHidden(visibility, stash.oid))} {stash.short_name}"
+						>
+							<VisibilityIcon hidden={isStashHidden(visibility, stash.oid)} />
+						</RowAction>
+					</span>
 				</div>
 				{#if stashEntryErrors[stash.oid]}
 					<p class="stash-error stash-entry-error"
@@ -974,26 +977,17 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
    * made every message truncate early against an icon that was not there. The alignment
    * slot below follows it in and out for the same reason.
    */
-.stash-visibility-btn {
+.stash-action {
 	flex-shrink: 0;
 	margin-left: auto;
-	color: var(--color-text-subtle);
-	background: none;
-	border: none;
-	cursor: pointer;
-	padding: 0;
-	min-width: var(--target-min);
-	min-height: var(--target-min);
-	align-items: center;
-	justify-content: center;
 	display: none;
 }
 
 /* Focus reveals it too, or the control is unreachable by keyboard. A hidden stash keeps
      it permanently: the eye is the only marker saying the stash is hidden. */
-.stash-row:hover .stash-visibility-btn,
-.stash-row:focus-within .stash-visibility-btn,
-.stash-visibility-btn[data-hidden="true"] {
+.stash-row:hover .stash-action,
+.stash-row:focus-within .stash-action,
+.stash-action[data-hidden="true"] {
 	display: inline-flex;
 }
 

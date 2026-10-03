@@ -1,5 +1,6 @@
 <script lang="ts">
 import { type GroupState, visibilityVerb } from "../lib/ref-visibility.js";
+import RowAction from "../lib/ui/RowAction.svelte";
 import BranchRow from "./BranchRow.svelte";
 import VisibilityIcon from "./VisibilityIcon.svelte";
 
@@ -51,16 +52,14 @@ let allHidden = $derived(groupState === "all");
 			>{remoteName}</span
 		>
 		{#if ontogglevisibility}
-			<button
-				type="button"
+			<RowAction
 				data-testid="remote-group-visibility-btn"
 				onclick={() => ontogglevisibility?.()}
-				class="shrink-0 text-text-subtle bg-transparent border-none cursor-pointer p-0 min-w-target min-h-target inline-flex items-center justify-center"
 				aria-label="{visibilityVerb(allHidden)} all {remoteName} branches"
 				data-group-state={groupState}
 			>
 				<VisibilityIcon hidden={allHidden} />
-			</button>
+			</RowAction>
 		{/if}
 	</div>
 

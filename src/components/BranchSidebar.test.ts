@@ -871,10 +871,10 @@ describe("BranchSidebar ref visibility", () => {
 
 		await fireEvent.click(await screen.findByText("Stashes (1)"));
 
-		expect(await screen.findByLabelText("Hide stash@{0}")).toHaveStyle({
-			minWidth: "var(--target-min)",
-			minHeight: "var(--target-min)",
-		});
+		expect(await screen.findByLabelText("Hide stash@{0}")).toHaveClass(
+			"min-w-target",
+			"min-h-target",
+		);
 	});
 
 	// The eye anchors to the right edge with var(--space-2) padding. No slot is needed.
@@ -917,7 +917,7 @@ describe("BranchSidebar ref visibility", () => {
 		await fireEvent.click(await screen.findByText("Stashes (1)"));
 		const btn = await screen.findByLabelText("Hide stash@{0}");
 
-		expect(getComputedStyle(btn).minWidth).toBe("var(--target-min)");
+		expect(btn).toHaveClass("min-w-target");
 		expect(container.querySelector(".stash-create-slot")).toBeNull();
 	});
 
@@ -962,7 +962,7 @@ describe("BranchSidebar ref visibility", () => {
 		await fireEvent.click(await screen.findByText("Stashes (1)"));
 		const btn = await screen.findByLabelText("Hide stash@{0}");
 
-		expect(getComputedStyle(btn).display).toBe("none");
+		expect(btn).not.toBeVisible();
 	});
 
 	// The stash row is the same height as every other row in the sidebar, which is what
@@ -1056,7 +1056,7 @@ describe("BranchSidebar ref visibility", () => {
 		expect(cssRuleText(".stash-row")).toContain(
 			"padding: 0 var(--space-2) 0 var(--space-3)",
 		);
-		expect(cssRuleText(".stash-visibility-btn")).not.toContain("margin-right");
+		expect(cssRuleText(".stash-action")).not.toContain("margin-right");
 	});
 
 	// TRUNK-128: onvisibilityresolved gates CommitGraph's first page load, so a stored-

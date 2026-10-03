@@ -4,6 +4,7 @@ import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import Plus from "@lucide/svelte/icons/plus";
 import type { Snippet } from "svelte";
 import { type GroupState, visibilityVerb } from "../lib/ref-visibility.js";
+import RowAction from "../lib/ui/RowAction.svelte";
 import VisibilityIcon from "./VisibilityIcon.svelte";
 
 interface Props {
@@ -62,27 +63,25 @@ let allHidden = $derived(groupState === "all");
 			{`${label} (${count})`}
 		</span>
 		{#if showCreateButton}
-			<button
-				type="button"
+			<RowAction
+				tone="text"
 				data-testid="branch-section-create-btn"
 				onclick={(e) => { e.stopPropagation(); oncreate?.(); }}
-				class="text-text bg-transparent border-none cursor-pointer p-0 min-w-target min-h-target inline-flex items-center justify-center"
 				aria-label={createLabel}
 			>
 				<Plus size={12} />
-			</button>
+			</RowAction>
 		{/if}
 		{#if ontogglevisibility}
-			<button
-				type="button"
+			<RowAction
+				tone="muted"
 				data-testid="branch-section-visibility-btn"
 				onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
-				class="text-text-muted bg-transparent border-none cursor-pointer p-0 min-w-target min-h-target inline-flex items-center justify-center"
 				aria-label="{visibilityVerb(allHidden)} all {label} refs"
 				data-group-state={groupState}
 			>
 				<VisibilityIcon hidden={allHidden} />
-			</button>
+			</RowAction>
 		{/if}
 	</div>
 

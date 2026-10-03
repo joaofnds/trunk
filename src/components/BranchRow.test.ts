@@ -152,9 +152,7 @@ describe("BranchRow trailing action layout", () => {
 
 		// `display: none` rather than `visibility: hidden`: the latter keeps the layout
 		// box, which is what reserved the gutter the name was truncating against.
-		expect(screen.getByLabelText("Hide topic")).toHaveStyle({
-			display: "none",
-		});
+		expect(screen.getByLabelText("Hide topic")).not.toBeVisible();
 	});
 
 	// A hidden row shows its eye permanently: that is the only marker saying the ref is
@@ -235,9 +233,7 @@ describe("BranchRow keyboard reachability", () => {
 		await fireEvent.focusIn(row);
 
 		// Present in the document and not display:none, so it can take focus next.
-		const action = screen.getByLabelText("Hide topic");
-		expect(action).toBeInTheDocument();
-		expect(action).not.toHaveStyle({ display: "none" });
+		expect(screen.getByLabelText("Hide topic")).toBeVisible();
 	});
 
 	it("can be activated from the keyboard once revealed", async () => {
@@ -295,9 +291,9 @@ describe("BranchRow eye alignment", () => {
 			props: { name: "topic", hidden: true, ontogglevisibility: vi.fn() },
 		});
 
-		expect(screen.getByTestId("branch-row-visibility-btn")).toHaveClass(
-			"-mr-2",
-		);
+		expect(
+			screen.getByTestId("branch-row-visibility-btn").parentElement,
+		).toHaveClass("-mr-2");
 	});
 });
 

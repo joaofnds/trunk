@@ -11,6 +11,7 @@ import {
 } from "../lib/build-tree.js";
 import { treeIndent } from "../lib/chrome-heights.js";
 import type { ReviewTone } from "../lib/types.js";
+import RowAction from "../lib/ui/RowAction.svelte";
 import CommentBadge from "./CommentBadge.svelte";
 
 interface Props {
@@ -86,18 +87,17 @@ let commentTone = $derived(
 		<CommentBadge count={commentCount} tone={commentTone} />
 	{/if}
 	{#if hovered && actionLabel && onaction}
-		<button
-			type="button"
+		<RowAction
+			size="compact"
+			tone={actionLabel === '+' ? 'success' : 'danger'}
 			onclick={(e) => { e.stopPropagation(); onaction(); }}
 			aria-label={actionLabel === '+' ? 'Stage directory' : 'Unstage directory'}
-			class="bg-transparent border-none cursor-pointer flex items-center py-0 px-1 leading-none"
-			style:color={actionLabel === '+' ? 'var(--color-success)' : 'var(--color-danger)'}
 		>
 			{#if actionLabel === '+'}
 				<Plus size={11} />
 			{:else}
 				<Minus size={11} />
 			{/if}
-		</button>
+		</RowAction>
 	{/if}
 </div>

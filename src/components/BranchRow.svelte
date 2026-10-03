@@ -3,6 +3,7 @@ import ArrowDown from "@lucide/svelte/icons/arrow-down";
 import ArrowUp from "@lucide/svelte/icons/arrow-up";
 import Tag from "@lucide/svelte/icons/tag";
 import { visibilityVerb } from "../lib/ref-visibility.js";
+import RowAction from "../lib/ui/RowAction.svelte";
 import VisibilityIcon from "./VisibilityIcon.svelte";
 
 interface Props {
@@ -117,17 +118,16 @@ let actionShown = $derived(hovered || focused || hidden);
 			>
 		{/if}
 		{#if ontogglevisibility}
-			<button
-				type="button"
-				data-testid="branch-row-visibility-btn"
-				onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
-				ondblclick={(e) => e.stopPropagation()}
-				class="shrink-0 ml-1 -mr-2 text-text-subtle bg-transparent border-none cursor-pointer p-0 min-w-target min-h-target items-center justify-center"
-				style:display={actionShown ? 'inline-flex' : 'none'}
-				aria-label="{visibilityVerb(hidden)} {name}"
-			>
-				<VisibilityIcon {hidden} />
-			</button>
+			<span class="shrink-0 ml-1 -mr-2 inline-flex" hidden={!actionShown}>
+				<RowAction
+					data-testid="branch-row-visibility-btn"
+					onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
+					ondblclick={(e) => e.stopPropagation()}
+					aria-label="{visibilityVerb(hidden)} {name}"
+				>
+					<VisibilityIcon {hidden} />
+				</RowAction>
+			</span>
 		{/if}
 	</div>
 
