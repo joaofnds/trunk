@@ -2557,15 +2557,16 @@ $effect(() => {
 							{/each}
 						</div>
 					{:else}
+						{@const pill = hoveredPill}
 						<!-- Truncated single-ref: width-only expansion showing full label -->
 						<div
 							class="absolute rounded-full shadow-lg"
 							style="
-                left: {hoveredPill.x}px;
-                top: {hoveredPill.y - PILL_HEIGHT / 2}px;
+                left: {pill.x}px;
+                top: {pill.y - PILL_HEIGHT / 2}px;
                 height: {PILL_HEIGHT}px;
-                background: color-mix(in oklch, var(--lane-{hoveredPill.colorIndex % 8}) 14%, var(--bg-2));
-                box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--lane-{hoveredPill.colorIndex % 8}) 50%, transparent);
+                background: color-mix(in oklch, var(--lane-{pill.colorIndex % 8}) 14%, var(--bg-2));
+                box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--lane-{pill.colorIndex % 8}) 50%, transparent);
                 padding: 0 {PILL_PADDING_X}px;
                 z-index: 50;
                 pointer-events: auto;
@@ -2573,22 +2574,22 @@ $effect(() => {
                 align-items: center;
                 opacity: 1;
                 transition: opacity 180ms ease;
-                cursor: {hoveredPill.refType === 'LocalBranch' || hoveredPill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'};
+                cursor: {pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'};
               "
 							onmouseenter={overlayMouseEnter}
 							onmouseleave={overlayMouseLeave}
-							oncontextmenu={(e) => showRefContextMenu(e, refFromPill(hoveredPill!))}
-							ondblclick={hoveredPill.refType === 'LocalBranch' || hoveredPill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(hoveredPill!)) : undefined}
+							oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
+							ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
 						>
 							<span
-								style="display: flex; align-items: center; gap: var(--space-1); font-weight: {hoveredPill.isHead ? 700 : 500}; color: var(--lane-{hoveredPill.colorIndex % 8});"
+								style="display: flex; align-items: center; gap: var(--space-1); font-weight: {pill.isHead ? 700 : 500}; color: var(--lane-{pill.colorIndex % 8});"
 								class="text-[11px] font-medium whitespace-nowrap"
 							>
-								{#if PILL_ICONS[hoveredPill.refType]}
-									{@const HoverIcon = PILL_ICONS[hoveredPill.refType]}
+								{#if PILL_ICONS[pill.refType]}
+									{@const HoverIcon = PILL_ICONS[pill.refType]}
 									<HoverIcon size={10} style="flex-shrink: 0; opacity: 0.9;" />
 								{/if}
-								{hoveredPill.label}
+								{pill.label}
 							</span>
 						</div>
 					{/if}
