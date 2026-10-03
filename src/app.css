@@ -115,7 +115,7 @@ textarea::placeholder {
 	margin: 1.2em 0 0.6em;
 	font-weight: 600;
 	line-height: 1.25;
-	color: var(--fg-0);
+	color: var(--color-text-strong);
 }
 .markdown-body h1 {
 	font-size: 1.6em;

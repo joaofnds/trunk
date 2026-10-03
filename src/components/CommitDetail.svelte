@@ -187,7 +187,7 @@ let commitNotes = $derived(
 				type="button"
 				title="Copy SHA"
 				class="sha-copy"
-				style="display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--bg-3); color: var(--fg-0);"
+				style="display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--bg-3); color: var(--color-text-strong);"
 				onclick={() => copySha(commitDetail.oid)}
 				>{commitDetail.short_oid}</button
 			>

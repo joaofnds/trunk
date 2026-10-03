@@ -147,7 +147,7 @@ $effect(() => {
 }
 
 .tab-item.active {
-	color: var(--fg-0);
+	color: var(--color-text-strong);
 	background: var(--bg-2);
 	box-shadow: inset 0 0 0 1px var(--color-border);
 }

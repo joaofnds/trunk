@@ -123,6 +123,6 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 .body-toggle:hover,
 .body-toggle:focus-visible {
 	background: var(--bg-3);
-	color: var(--fg-0);
+	color: var(--color-text-strong);
 }
 </style>

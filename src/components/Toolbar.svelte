@@ -394,7 +394,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 	border-color: transparent;
 	border-radius: var(--radius) 0 0 var(--radius);
 	background: transparent;
-	color: var(--fg-0);
+	color: var(--color-text-strong);
 	padding: 0 var(--space-2);
 }
 .review-filter-control-active > .toolbar-btn,

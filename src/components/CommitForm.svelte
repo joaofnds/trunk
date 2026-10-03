@@ -204,7 +204,7 @@ async function handleSubmit() {
           background: none;
           border: none;
           border-bottom: 2px solid {mode === tab ? 'var(--color-accent)' : 'transparent'};
-          color: {mode === tab ? 'var(--fg-0)' : 'var(--fg-3)'};
+          color: {mode === tab ? 'var(--color-text-strong)' : 'var(--fg-3)'};
           cursor: {committing ? 'default' : 'pointer'};
           text-transform: none;
         "

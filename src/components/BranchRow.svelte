@@ -84,7 +84,7 @@ let actionShown = $derived(hovered || focused || hidden);
       cursor: pointer;
       background: {isHead ? 'color-mix(in oklch, var(--color-accent) 10%, transparent)' : hovered ? 'var(--color-hover)' : 'transparent'};
       box-shadow: {isHead ? 'inset 0 0 0 1px color-mix(in oklch, var(--color-accent) 28%, transparent)' : 'none'};
-      color: {isHead ? 'var(--fg-0)' : isLoading || hidden ? 'var(--color-text-muted)' : 'var(--color-text)'};
+      color: {isHead ? 'var(--color-text-strong)' : isLoading || hidden ? 'var(--color-text-muted)' : 'var(--color-text)'};
       font-weight: {isHead ? '600' : 'normal'};
       font-size: 12px;
     "
