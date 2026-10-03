@@ -801,7 +801,7 @@ $effect(() => {
 
 {#snippet sectionCount(n: number)}
 	<span
-		style="display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 var(--space-1); border-radius: var(--radius); background: var(--color-surface-chip); color: var(--color-text); font-family: var(--font-mono); font-weight: 600; font-size: var(--text-caption); letter-spacing: 0; flex-shrink: 0;"
+		style="display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 var(--space-1); border-radius: var(--radius); background: var(--color-surface-chip); color: var(--color-text); font-family: var(--font-mono); font-weight: var(--weight-semibold); font-size: var(--text-caption); letter-spacing: 0; flex-shrink: 0;"
 		>{n}</span
 	>
 {/snippet}
@@ -962,7 +962,7 @@ $effect(() => {
 					<AlertTriangle size={12} />
 				</span>
 				<span
-					style="font-size: var(--text-callout); font-weight: 600; color: var(--color-badge-warning);"
+					style="font-size: var(--text-callout); font-weight: var(--weight-semibold); color: var(--color-badge-warning);"
 					>Rebase conflicts detected</span
 				>
 			</div>
@@ -1070,7 +1070,7 @@ $effect(() => {
 						<AlertTriangle size={12} />
 					</span>
 					<span
-						style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
+						style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: var(--weight-semibold); letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
 					>
 						<span>Conflicted Files</span>
 						{@render sectionCount(status?.conflicted.length ?? 0)}
@@ -1086,7 +1086,7 @@ $effect(() => {
               border: 1px solid var(--color-warning-border);
               border-radius: var(--radius);
               font-size: var(--text-caption);
-              font-weight: 600;
+              font-weight: var(--weight-semibold);
               height: var(--control-sm-h);
               padding: 0 var(--space-2);
               cursor: pointer;
@@ -1155,7 +1155,7 @@ $effect(() => {
 							<AlertTriangle size={12} />
 						</span>
 						<span
-							style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-2);"
+							style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: var(--weight-semibold); letter-spacing: 0.08em; text-transform: uppercase; flex: 1; white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-2);"
 						>
 							<span>Conflicted Files</span>
 							{@render sectionCount(status?.conflicted.length ?? 0)}
@@ -1184,7 +1184,7 @@ $effect(() => {
 						{/if}
 					{:else}
 						<span
-							style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
+							style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: var(--weight-semibold); letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
 						>
 							<span>Unstaged Files</span>
 							{@render sectionCount(status?.unstaged.length ?? 0)}
@@ -1309,7 +1309,7 @@ $effect(() => {
 					{/if}
 				</span>
 				<span
-					style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
+					style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: var(--weight-semibold); letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
 				>
 					<span>{isOperation ? 'Resolved Files' : 'Staged Files'}</span>
 					{@render sectionCount(status?.staged.length ?? 0)}
@@ -1439,7 +1439,7 @@ $effect(() => {
             border: 1px solid var(--color-success-border);
             border-radius: var(--radius);
             font-size: var(--text-callout);
-            font-weight: 600;
+            font-weight: var(--weight-semibold);
             cursor: {allResolved && !rebaseLoading ? 'pointer' : 'not-allowed'};
             opacity: {allResolved && !rebaseLoading ? 1 : 0.4};
           "
@@ -1457,7 +1457,7 @@ $effect(() => {
             border: 1px solid var(--color-warning-border);
             border-radius: var(--radius);
             font-size: var(--text-callout);
-            font-weight: 600;
+            font-weight: var(--weight-semibold);
             cursor: {rebaseLoading ? 'not-allowed' : 'pointer'};
             opacity: {rebaseLoading ? 0.4 : 1};
           "
@@ -1475,7 +1475,7 @@ $effect(() => {
             border: 1px solid var(--color-danger-border);
             border-radius: var(--radius);
             font-size: var(--text-callout);
-            font-weight: 600;
+            font-weight: var(--weight-semibold);
             cursor: {rebaseLoading ? 'not-allowed' : 'pointer'};
             opacity: {rebaseLoading ? 0.4 : 1};
           "

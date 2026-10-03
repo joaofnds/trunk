@@ -71,7 +71,7 @@ textarea::placeholder {
 	border-radius: var(--radius);
 	box-shadow: var(--shadow-md);
 	font-size: var(--text-small);
-	font-weight: 500;
+	font-weight: var(--weight-medium);
 	line-height: 1.2;
 	white-space: nowrap;
 	pointer-events: none;
@@ -113,7 +113,7 @@ textarea::placeholder {
 .markdown-body h5,
 .markdown-body h6 {
 	margin: 1.2em 0 0.6em;
-	font-weight: 600;
+	font-weight: var(--weight-semibold);
 	line-height: 1.25;
 	color: var(--color-text-strong);
 }
@@ -211,7 +211,7 @@ textarea::placeholder {
 }
 .markdown-body th {
 	background: var(--color-muted-bg);
-	font-weight: 600;
+	font-weight: var(--weight-semibold);
 }
 .markdown-body img {
 	max-width: 100%;

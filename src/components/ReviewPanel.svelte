@@ -776,7 +776,7 @@ $effect(() => {
                 padding: 0;
                 cursor: pointer;
                 font-size: var(--text-body);
-                font-weight: 600;
+                font-weight: var(--weight-semibold);
                 color: inherit;
                 font-family: inherit;
                 flex-shrink: 0;
@@ -795,7 +795,7 @@ $effect(() => {
                 cursor: pointer;
                 text-align: left;
                 font-size: var(--text-body);
-                font-weight: 600;
+                font-weight: var(--weight-semibold);
                 color: inherit;
                 font-family: inherit;
                 flex: 1;

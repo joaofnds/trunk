@@ -354,7 +354,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 	background: var(--color-accent);
 	color: var(--color-on-accent);
 	font-size: var(--text-caption);
-	font-weight: 600;
+	font-weight: var(--weight-semibold);
 	line-height: 1;
 }
 

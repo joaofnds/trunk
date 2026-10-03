@@ -301,7 +301,7 @@ async function handleSubmit() {
         border: 0;
         border-radius: var(--radius);
         font-size: 12.5px;
-        font-weight: 600;
+        font-weight: var(--weight-semibold);
         cursor: pointer;
         opacity: {committing ? 0.6 : 1};
       "

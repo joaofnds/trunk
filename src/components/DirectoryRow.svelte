@@ -90,7 +90,7 @@ let commentTone = $derived(
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: 500;
+    font-weight: var(--weight-medium);
   "
 		>{node.name}</span
 	>
@@ -98,7 +98,7 @@ let commentTone = $derived(
 		style="
     color: var(--color-text-muted);
     font-size: var(--text-small);
-    font-weight: 400;
+    font-weight: var(--weight-regular);
     flex-shrink: 0;
   "
 		>({fileCount})</span

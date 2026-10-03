@@ -788,7 +788,7 @@ let lastVisibleColumn = $derived.by(() => {
 
 .rebase-toolbar-title {
 	font-size: var(--text-body);
-	font-weight: 600;
+	font-weight: var(--weight-semibold);
 	color: var(--color-text);
 }
 
@@ -804,7 +804,7 @@ let lastVisibleColumn = $derived.by(() => {
 	background: var(--color-accent);
 	color: var(--color-on-accent);
 	font-size: var(--text-small);
-	font-weight: 600;
+	font-weight: var(--weight-semibold);
 	padding: 0 var(--space-2);
 	border-radius: var(--radius);
 }
@@ -835,7 +835,7 @@ let lastVisibleColumn = $derived.by(() => {
 }
 
 .rebase-shortcut-label {
-	font-weight: 600;
+	font-weight: var(--weight-semibold);
 	margin-right: var(--space-1);
 }
 
@@ -862,7 +862,7 @@ let lastVisibleColumn = $derived.by(() => {
 	cursor: pointer;
 	white-space: nowrap;
 	font-family: var(--font-sans);
-	font-weight: 600;
+	font-weight: var(--weight-semibold);
 	border: none;
 }
 
@@ -1095,7 +1095,7 @@ let lastVisibleColumn = $derived.by(() => {
 
 .rebase-msg-editor-title {
 	font-size: var(--text-callout);
-	font-weight: 600;
+	font-weight: var(--weight-semibold);
 	color: var(--color-text-muted);
 }
 

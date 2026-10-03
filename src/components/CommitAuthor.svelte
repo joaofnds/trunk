@@ -112,7 +112,7 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 }
 .name {
 	color: var(--color-text-strong);
-	font-weight: 600;
+	font-weight: var(--weight-semibold);
 }
 .email {
 	color: var(--color-text-subtle);

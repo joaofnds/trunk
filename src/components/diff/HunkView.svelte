@@ -584,7 +584,7 @@ function lineColor(): string {
 	background: var(--color-surface);
 	box-shadow: inset 0 -1px 0 var(--color-border);
 	font-size: var(--text-callout);
-	font-weight: 500;
+	font-weight: var(--weight-medium);
 	padding: 0 var(--space-2);
 	height: var(--diff-file-header-height);
 	box-sizing: border-box;

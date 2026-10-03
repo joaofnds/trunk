@@ -90,7 +90,7 @@ let badgeBg = $derived(
     height: 16px;
     border-radius: var(--radius);
     font-family: var(--font-mono);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     font-size: var(--text-caption);
     line-height: 1;
     color: {isLoading ? 'var(--color-text-muted)' : badge.color};

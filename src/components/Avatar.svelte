@@ -28,7 +28,7 @@ let { name, size = 18 }: Props = $props();
 	color: var(--color-text-strong);
 	box-shadow: inset 0 0 0 1px var(--color-border);
 	font-family: var(--font-sans);
-	font-weight: 600;
+	font-weight: var(--weight-semibold);
 	letter-spacing: 0.02em;
 	line-height: 1;
 	user-select: none;

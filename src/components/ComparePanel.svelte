@@ -58,7 +58,7 @@ let filesChanged = $derived(fileDiffs.length);
 		<div
 			style="
       font-size: var(--text-body);
-      font-weight: 600;
+      font-weight: var(--weight-semibold);
       color: var(--color-text);
       line-height: 1.4;
       overflow: hidden;
@@ -72,7 +72,7 @@ let filesChanged = $derived(fileDiffs.length);
 		>
 			<Avatar name={commit.author_name} size={18} />
 			<span
-				style="color: var(--color-text-strong); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+				style="color: var(--color-text-strong); font-weight: var(--weight-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
 				>{commit.author_name}</span
 			>
 			<span
@@ -207,7 +207,7 @@ let filesChanged = $derived(fileDiffs.length);
   "
 	>
 		<span
-			style="font-size: var(--text-callout); font-weight: 500; color: var(--color-text); flex: 1;"
+			style="font-size: var(--text-callout); font-weight: var(--weight-medium); color: var(--color-text); flex: 1;"
 		>
 			{`${filesChanged} file${filesChanged === 1 ? '' : 's'} changed`}
 		</span>
