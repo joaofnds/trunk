@@ -382,23 +382,24 @@ li.md-removed::before {
    alone: its highlight starts at its own bullet, which is what marks it as
    belonging to the sub-list rather than to the pane. The reach comes from
    --md-prose-inset, which the container sets to the very value it pads with,
-   so the two cannot drift apart. It is read with a 0 fallback and declared on
-   no element here: .markdown-body declaring its own default would overwrite
-   the container's value for every descendant that reads it, which is the whole
-   of this rule, and the bleed would silently collapse to nothing. */
+   so the two cannot drift apart. Its zero comes from the registration in
+   properties.css and it is declared on no element here: .markdown-body
+   declaring its own default would overwrite the container's value for every
+   descendant that reads it, which is the whole of this rule, and the bleed
+   would silently collapse to nothing. */
 .markdown-body > ul > li.md-added,
 .markdown-body > ul > li.md-removed,
 .markdown-body > ol > li.md-added,
 .markdown-body > ol > li.md-removed {
-	margin-right: calc(-1 * var(--md-prose-inset, 0px));
-	padding-right: var(--md-prose-inset, 0px);
+	margin-right: calc(-1 * var(--md-prose-inset));
+	padding-right: var(--md-prose-inset);
 }
 .markdown-body > ul > li.md-added::before,
 .markdown-body > ul > li.md-removed::before,
 .markdown-body > ol > li.md-added::before,
 .markdown-body > ol > li.md-removed::before {
-	left: calc(-1 * (var(--md-list-gutter) + var(--md-prose-inset, 0px)));
-	width: calc(var(--md-list-gutter) + var(--md-prose-inset, 0px));
+	left: calc(-1 * (var(--md-list-gutter) + var(--md-prose-inset)));
+	width: calc(var(--md-list-gutter) + var(--md-prose-inset));
 }
 
 /* ── Word-level inline diff marks ──

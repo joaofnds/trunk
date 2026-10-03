@@ -16,6 +16,7 @@ function stylesheet(name: string): string {
 }
 const css = stylesheet("app.css");
 const tokens = stylesheet("tokens.css");
+const properties = stylesheet("properties.css");
 
 /* WCAG relative luminance from an oklch(L C H) triple, via OKLab -> linear sRGB
    -> gamma sRGB, the same pipeline scripts/contrast/contrast.mjs uses on the
@@ -530,17 +531,17 @@ describe("rendered markdown list item tints", () => {
 
 		expect(before).toBeDefined();
 		expect(before).toMatch(
-			/left:\s*calc\(-1 \* \(var\(--md-list-gutter\) \+ var\(--md-prose-inset, 0px\)\)\)/,
+			/left:\s*calc\(-1 \* \(var\(--md-list-gutter\) \+ var\(--md-prose-inset\)\)\)/,
 		);
 		expect(before).toMatch(
-			/width:\s*calc\(var\(--md-list-gutter\) \+ var\(--md-prose-inset, 0px\)\)/,
+			/width:\s*calc\(var\(--md-list-gutter\) \+ var\(--md-prose-inset\)\)/,
 		);
 
 		expect(box).toBeDefined();
 		expect(box).toMatch(
-			/margin-right:\s*calc\(-1 \* var\(--md-prose-inset, 0px\)\)/,
+			/margin-right:\s*calc\(-1 \* var\(--md-prose-inset\)\)/,
 		);
-		expect(box).toMatch(/padding-right:\s*var\(--md-prose-inset, 0px\)/);
+		expect(box).toMatch(/padding-right:\s*var\(--md-prose-inset\)/);
 	});
 
 	/* The negative margin is given back as padding, so the content box ends
@@ -562,7 +563,7 @@ describe("rendered markdown list item tints", () => {
 	   a direct child of .markdown-body's own list gets the full bleed. */
 	it("leaves a nested item's tint at its own gutter", () => {
 		const bleedSelectors = css.match(
-			/([^}]*)\{[^}]*left:\s*calc\(-1 \* \(var\(--md-list-gutter\) \+ var\(--md-prose-inset, 0px\)\)\)/,
+			/([^}]*)\{[^}]*left:\s*calc\(-1 \* \(var\(--md-list-gutter\) \+ var\(--md-prose-inset\)\)\)/,
 		)?.[1];
 
 		expect(bleedSelectors).toBeDefined();
@@ -575,21 +576,20 @@ describe("rendered markdown list item tints", () => {
 
 	/* The default is no bleed, so a .markdown-body host that does not inset its
 	   prose (a comment body) reaches its own content edge and nowhere further.
-	   It has to be a var() fallback rather than a declaration: .markdown-body
-	   declaring its own default overwrites the container's value for every
-	   descendant, which is exactly where these rules read it, and the bleed
-	   collapses to zero while the container still pads. That is a bug the
-	   stylesheet reads as correct, so it is pinned here. */
-	it("takes the zero inset as a fallback, never as its own declaration", () => {
+	   The zero comes from the registration in properties.css, never from a
+	   declaration here: .markdown-body declaring its own default overwrites the
+	   container's value for every descendant, which is exactly where these rules
+	   read it, and the bleed collapses to zero while the container still pads.
+	   That is a bug the stylesheet reads as correct, so it is pinned here. */
+	it("takes the zero inset from its registration, never as its own declaration", () => {
 		const prose = css.match(/\.markdown-body \{([^}]*)\}/)?.[1];
+		const registration = properties.match(
+			/@property --md-prose-inset \{([^}]*)\}/,
+		)?.[1];
 
 		expect(prose).toBeDefined();
 		expect(prose).not.toMatch(/--md-prose-inset:/);
-
-		const reads = [...css.matchAll(/var\(--md-prose-inset([^)]*)\)/g)];
-		expect(reads.length).toBeGreaterThan(0);
-		for (const [, fallback] of reads) {
-			expect(fallback).toBe(", 0px");
-		}
+		expect(registration).toMatch(/initial-value:\s*0px/);
+		expect(registration).toMatch(/inherits:\s*true/);
 	});
 });

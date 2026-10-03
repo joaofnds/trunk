@@ -72,19 +72,10 @@ const namedPart = /^(0|auto|var\(--[\w-]+\)|[\d.]+em|@(?:px)?)$/;
  *  It earns a place here because a full-bleed highlight has to negate it, and a
  *  negation is the one form a bare var() cannot take. */
 const onScaleCalc =
-	/calc\((?:\s|\d+|\*|\+|-|\/|\(|\)|var\(--(?:u|space-[0-6]|md-prose-inset(?:,\s*0px)?|depth(?:,\s*0)?)\))+\)/g;
-
-/* A var() carrying a fallback holds a space, so it would split into two parts
-   that are each nonsense on their own. Masked to one token like a calc() is.
-   Named rather than left open to any token: a general `var(--anything, 0px)`
-   would wave through a fallback nothing on the scale vouches for. */
-const varWithFallback = /var\(--md-prose-inset,\s*0px\)/g;
+	/calc\((?:\s|\d+|\*|\+|-|\/|\(|\)|var\(--(?:u|space-[0-6]|md-prose-inset|depth(?:,\s*0)?)\))+\)/g;
 
 const mask = (value: string) =>
-	value
-		.replace(/\{[^}]*\}/g, "@")
-		.replace(onScaleCalc, "@")
-		.replace(varWithFallback, "@");
+	value.replace(/\{[^}]*\}/g, "@").replace(onScaleCalc, "@");
 
 describe("spacing scale", () => {
 	it("carries no raw pixel value in a gap, padding or margin", () => {
