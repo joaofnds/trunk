@@ -222,7 +222,7 @@ $effect(() => {
 
 .tab-item:global(.tab-chosen),
 .tab-item:global(.tab-chosen):hover {
-	background: var(--bg-selected);
+	background: var(--color-selected-row);
 }
 
 :global(.tab-drag) {
