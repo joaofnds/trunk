@@ -2529,7 +2529,7 @@ $effect(() => {
 							style="
                 left: {hoveredPill.x}px;
                 top: {hoveredPill.y - PILL_HEIGHT / 2}px;
-                background: var(--bg-2);
+                background: var(--color-surface-raised);
                 border: 1px solid var(--color-border);
                 padding: var(--space-1) var(--space-2);
                 z-index: 50;
@@ -2565,7 +2565,7 @@ $effect(() => {
                 left: {pill.x}px;
                 top: {pill.y - PILL_HEIGHT / 2}px;
                 height: {PILL_HEIGHT}px;
-                background: color-mix(in oklch, var(--lane-{pill.colorIndex % 8}) 14%, var(--bg-2));
+                background: color-mix(in oklch, var(--lane-{pill.colorIndex % 8}) 14%, var(--color-surface-raised));
                 box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--lane-{pill.colorIndex % 8}) 50%, transparent);
                 padding: 0 {PILL_PADDING_X}px;
                 z-index: 50;

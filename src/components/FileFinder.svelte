@@ -95,7 +95,7 @@ function rowLabel(file: TrackedFile): string {
 		aria-label="Comment on a file"
 		class="flex flex-col rounded"
 		style="
-      background: var(--bg-2);
+      background: var(--color-surface-raised);
       border: 1px solid var(--color-border);
       box-shadow: var(--shadow-2);
       width: 520px;

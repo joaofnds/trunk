@@ -65,7 +65,7 @@ textarea::placeholder {
 	position: fixed;
 	z-index: 1000;
 	padding: var(--space-1) var(--space-2);
-	background: var(--bg-2);
+	background: var(--color-surface-raised);
 	color: var(--color-text);
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius);

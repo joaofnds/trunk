@@ -619,7 +619,7 @@ function originClass(origin: string): string {
 /* The hunk header's height is the declared token the row model computes
      offsets from, not whatever the button cluster happens to measure. */
 .split-hunk-header {
-	background: color-mix(in oklch, var(--info) 6%, var(--bg-2));
+	background: color-mix(in oklch, var(--info) 6%, var(--color-surface-raised));
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);

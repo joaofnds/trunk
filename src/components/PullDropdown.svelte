@@ -119,7 +119,7 @@ $effect(() => {
 	left: 0;
 	z-index: 100;
 	margin-top: var(--space-1);
-	background: var(--bg-2);
+	background: var(--color-surface-raised);
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius);
 	box-shadow: var(--shadow-md);

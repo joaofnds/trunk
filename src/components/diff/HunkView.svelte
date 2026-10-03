@@ -520,7 +520,7 @@ function lineColor(): string {
      model computes offsets from, not whatever the button cluster happens to
      measure. */
 .hunk-toolbar {
-	background: color-mix(in oklch, var(--info) 6%, var(--bg-2));
+	background: color-mix(in oklch, var(--info) 6%, var(--color-surface-raised));
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);

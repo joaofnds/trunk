@@ -148,12 +148,12 @@ $effect(() => {
 
 .tab-item.active {
 	color: var(--color-text-strong);
-	background: var(--bg-2);
+	background: var(--color-surface-raised);
 	box-shadow: inset 0 0 0 1px var(--color-border);
 }
 
 .tab-item.active:hover {
-	background: var(--bg-2);
+	background: var(--color-surface-raised);
 }
 
 .dirty-dot {

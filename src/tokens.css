@@ -128,6 +128,7 @@
 	/* Surfaces */
 	--color-bg: var(--bg-0);
 	--color-surface: var(--bg-1);
+	--color-surface-raised: var(--bg-2);
 	--color-border: var(--line);
 	--color-border-strong: var(--line-strong);
 

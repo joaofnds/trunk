@@ -114,7 +114,7 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 	padding: 0 var(--space-2) 0 var(--space-1);
 	border: 1px solid transparent;
 	border-radius: var(--radius);
-	background: var(--bg-2);
+	background: var(--color-surface-raised);
 	color: var(--color-text-muted);
 	font-size: 11px;
 	font-family: inherit;

@@ -172,7 +172,7 @@ const rowShadow = $derived(
 			>
 				<span
 					class="overflow-hidden text-ellipsis italic rounded px-2 py-0.5"
-					style="min-width: 6rem; background: var(--bg-2); color: var(--color-text-muted);"
+					style="min-width: 6rem; background: var(--color-surface-raised); color: var(--color-text-muted);"
 					>{commit.summary}</span
 				>
 				{#if wipFileBadges.length}

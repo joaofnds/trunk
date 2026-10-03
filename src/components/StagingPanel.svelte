@@ -821,7 +821,7 @@ $effect(() => {
 	<div
 		style="
     height: var(--bar-h);
-    background: var(--bg-2);
+    background: var(--color-surface-raised);
     box-shadow: inset 0 -1px 0 var(--color-border);
     padding: 0 var(--space-3);
     display: flex;

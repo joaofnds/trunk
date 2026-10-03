@@ -71,7 +71,7 @@ $effect(() => {
 		class="rounded"
 		data-testid="message-editor-backdrop"
 		aria-labelledby={titleId}
-		style="background: var(--bg-2); border: 1px solid var(--color-border); box-shadow: var(--shadow-2); min-width: 420px; max-width: 640px; padding: var(--space-4);"
+		style="background: var(--color-surface-raised); border: 1px solid var(--color-border); box-shadow: var(--shadow-2); min-width: 420px; max-width: 640px; padding: var(--space-4);"
 		onkeydown={handleKeydown}
 		onclick={handleBackdropClick}
 	>

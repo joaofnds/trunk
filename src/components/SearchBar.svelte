@@ -63,7 +63,7 @@ function autofocus(node: HTMLElement) {
     z-index: 10;
     width: 300px;
     height: var(--control-lg-h);
-    background: var(--bg-2);
+    background: var(--color-surface-raised);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
     box-shadow: var(--shadow-md);
