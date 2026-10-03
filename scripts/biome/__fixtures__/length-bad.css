@@ -9,6 +9,8 @@
 .bad { left: 48px; }
 .bad { padding-right: var(--md-prose-inset, 0px); }
 .bad { margin: calc(2 * 4px); }
+.bad { left: calc(var(--u) + 3px); }
+.bad { top: calc(-1 * var(--space-2) - 1px); }
 .bad { border: 1px solid red; }
 .bad { border: 1px solid #ccc; }
 .bad { border: 2px dotted var(--line); }

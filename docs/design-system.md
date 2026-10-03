@@ -121,7 +121,7 @@ pointing at this document.
 | | `line-height`, `letter-spacing` | `var(--...)`, `inherit`, `0`. |
 | | `font-weight`, `font-family` | `var(--...)`, `inherit`. |
 | | `font` | `inherit` only. The shorthand hides the scale. |
-| `tokens-length.grit` | `padding*`, `margin*`, `gap`, `row-gap`, `column-gap`, `inset`, `top`, `right`, `bottom`, `left` | Up to four of: `var(--...)`, a `calc()` over one, `0`, `auto`, a percentage, an `em`. |
+| `tokens-length.grit` | `padding*`, `margin*`, `gap`, `row-gap`, `column-gap`, `inset`, `top`, `right`, `bottom`, `left` | Up to four of: `var(--...)`, a `calc()` built only from `var(--...)`, unitless numbers and operators, `0`, `auto`, a percentage, an `em`. |
 | | `border`, `border-*`, `outline` | `none`, `0`, or `<N>px solid|dashed <token color>`. |
 | | `border-radius` | `var(--radius)`, `var(--radius-pill)`, `50%`, `0`, up to four of them. |
 | | `box-shadow` | `none`, `var(--...)`, or layers of offsets with a token color. |
@@ -148,8 +148,9 @@ goes through a utility or a `<style>` rule, where the plugins read it, and a val
 computed at runtime goes through a `style:` directive, which the rule leaves alone
 and `src/markup-classes.test.ts` keeps honest by failing a directive that sets a
 literal. `tokens-length.grit` is on, so a length a `<style>` rule states as a
-literal fails there, and `src/spacing-scale.test.ts` reads the same rules for a
-raw pixel in a gap, padding or margin that a `calc()` or a fallback could hide.
+literal fails there, inside a `calc()` or a fallback included, and
+`src/spacing-scale.test.ts` holds a gap, padding or margin to the spacing tokens
+by name, which the plugin's `var(--...)` does not.
 
 Biome's `nursery/noUndeclaredCustomProperties` is on, as an error. It reports a
 `var(--name)` in a stylesheet, a `<style>` block or a `style="..."` attribute that

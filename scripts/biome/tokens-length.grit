@@ -7,8 +7,8 @@ or {
 		`gap: $v`, `row-gap: $v`, `column-gap: $v`,
 		`inset: $v`, `top: $v`, `right: $v`, `bottom: $v`, `left: $v`
 	} as $d where {
-		not $v <: r"^\s*(?:0|auto|-?\d+%|[\d.]+em|var\(--[\w-]+\)|calc\(.*var\(--[\w-]+\).*\))(?:\s+(?:0|auto|-?\d+%|[\d.]+em|var\(--[\w-]+\)|calc\(.*var\(--[\w-]+\).*\))){0,3}\s*$",
-		register_diagnostic(span = $d, message = "A length is a spacing token: var(--space-N), or a calc() over one. See docs/design-system.md.")
+		not $v <: r"^\s*(?:0|auto|-?\d+%|[\d.]+em|var\(--[\w-]+\)|calc\((?:\s|\d+|\*|\+|-|/|\(|\)|var\(--[\w-]+\))+\))(?:\s+(?:0|auto|-?\d+%|[\d.]+em|var\(--[\w-]+\)|calc\((?:\s|\d+|\*|\+|-|/|\(|\)|var\(--[\w-]+\))+\))){0,3}\s*$",
+		register_diagnostic(span = $d, message = "A length is a spacing token: var(--space-N), or a calc() of tokens and numbers with no unit. See docs/design-system.md.")
 	},
 	or { `border: $v`, `border-top: $v`, `border-right: $v`, `border-bottom: $v`, `border-left: $v`, `outline: $v` } as $d where {
 		not $v <: r"^\s*(?:none|0|\d+px (?:solid|dashed) (?:var\(--[\w-]+\)|transparent|currentColor|color-mix\(in oklch,\s*(?:var\(--[\w-]+\)|transparent)\s+\d+%,\s*(?:var\(--[\w-]+\)|transparent)\s*\)))\s*$",
