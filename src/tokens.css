@@ -118,6 +118,28 @@
 		"Inter", -apple-system, BlinkMacSystemFont, "SF Pro", "Helvetica Neue",
 		sans-serif;
 
+	--text-caption: 10px;
+	--text-caption--line-height: 13px;
+	--text-small: 11px;
+	--text-small--line-height: 14px;
+	--text-callout: 12px;
+	--text-callout--line-height: 15px;
+	--text-body: 13px;
+	--text-body--line-height: 16px;
+	--text-title: 15px;
+	--text-title--line-height: 20px;
+	--text-display: 22px;
+	--text-display--line-height: 26px;
+
+	--weight-regular: 400;
+	--weight-medium: 500;
+	--weight-semibold: 600;
+
+	--leading-none: 1;
+	--tracking-wide: 0.02em;
+	--tracking-wider: 0.04em;
+	--tracking-widest: 0.08em;
+
 	/* ───────────────────────────────────────────────
 	   Roles. The --color-* names below are the only color
 	   vocabulary a component reads. Each is a ramp step above,

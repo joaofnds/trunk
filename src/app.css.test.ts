@@ -187,7 +187,10 @@ describe("tokens.css lengths", () => {
 
 	it("expresses every declared length as a whole number of units", () => {
 		const declared = declarations().filter(
-			([, name, value]) => !offScaleByDesign.has(name) && isLength(value),
+			([, name, value]) =>
+				!offScaleByDesign.has(name) &&
+				!typeScaleTokens.has(name) &&
+				isLength(value),
 		);
 		/* A whole number of units, optionally plus the single pixel a painted rule
 		   costs the surface that draws one. Anything else is off the scale. */
@@ -205,6 +208,7 @@ describe("tokens.css lengths", () => {
 			.filter(([, , value]) => isLength(value))
 			.map(([, name]) => name)
 			.filter((name) => !offScaleByDesign.has(name))
+			.filter((name) => !typeScaleTokens.has(name))
 			.filter((name) => !sources.some((text) => text.includes(`var(${name})`)));
 
 		expect(unread).toEqual([]);
@@ -225,6 +229,58 @@ describe("tokens.css lengths", () => {
 	it("gives the diff pane's fixed header rows that same bar height", () => {
 		expect(FIXED_ROW_HEIGHTS.fileHeader).toBe(BAR_HEIGHT);
 		expect(FIXED_ROW_HEIGHTS.hunkHeader).toBe(BAR_HEIGHT);
+	});
+});
+
+/* The six macOS text styles Trunk's sizes cluster on, size over line height
+   in px. docs/design-system.md names the role each one takes. */
+const TYPE_SCALE: Record<string, [number, number]> = {
+	caption: [10, 13],
+	small: [11, 14],
+	callout: [12, 15],
+	body: [13, 16],
+	title: [15, 20],
+	display: [22, 26],
+};
+const typeScaleTokens = new Set(
+	Object.keys(TYPE_SCALE).flatMap((step) => [
+		`--text-${step}`,
+		`--text-${step}--line-height`,
+	]),
+);
+
+describe("tokens.css type scale", () => {
+	function declared(name: string): string | undefined {
+		return tokens.match(new RegExp(`^\t${name}: ([^;]+);$`, "m"))?.[1];
+	}
+
+	it.each(Object.entries(TYPE_SCALE))(
+		"pairs the %s step with its line height",
+		(step, [size, lineHeight]) => {
+			expect(declared(`--text-${step}`)).toBe(`${size}px`);
+			expect(declared(`--text-${step}--line-height`)).toBe(`${lineHeight}px`);
+		},
+	);
+
+	it("declares no text step outside the scale", () => {
+		const steps = [...tokens.matchAll(/^\t(--text-[\w-]+):/gm)].map(
+			([, n]) => n,
+		);
+
+		expect(steps.filter((name) => !typeScaleTokens.has(name))).toEqual([]);
+	});
+
+	it("declares the three weights and the one line height off the scale", () => {
+		expect(declared("--weight-regular")).toBe("400");
+		expect(declared("--weight-medium")).toBe("500");
+		expect(declared("--weight-semibold")).toBe("600");
+		expect(declared("--leading-none")).toBe("1");
+	});
+
+	it("declares tracking in em, so it follows the step it is set on", () => {
+		expect(declared("--tracking-wide")).toBe("0.02em");
+		expect(declared("--tracking-wider")).toBe("0.04em");
+		expect(declared("--tracking-widest")).toBe("0.08em");
 	});
 });
 
