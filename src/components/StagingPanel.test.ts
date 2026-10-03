@@ -166,10 +166,10 @@ describe("StagingPanel", () => {
 		});
 
 		const header = (await screen.findByText("2 files changed")).closest(
-			"div[style]",
+			"div.h-bar",
 		);
 
-		expect(header?.getAttribute("style")).toContain("height: var(--bar-h)");
+		expect(header).toHaveClass("h-bar");
 	});
 
 	it("renders unstaged files section header", async () => {

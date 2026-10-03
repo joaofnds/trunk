@@ -175,19 +175,13 @@ async function handleRevertAbort() {
 </script>
 
 <div
-	style="
-  flex-shrink: 0;
-  min-height: var(--banded-lg-h);
-  padding: var(--space-1) var(--space-3);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  box-shadow: inset 0 -1px 0 var(--color-border), inset 3px 0 0 {isMerge ? 'var(--color-banner-warning-border)' : 'var(--color-banner-info-border)'};
-  background: {isMerge ? 'var(--color-banner-warning-bg)' : 'var(--color-banner-info-bg)'};
-"
+	class="shrink-0 min-h-banded-lg py-1 px-3 flex items-center gap-2"
+	style:box-shadow="inset 0 -1px 0 var(--color-border), inset 3px 0 0 {isMerge ? 'var(--color-banner-warning-border)' : 'var(--color-banner-info-border)'}"
+	style:background={isMerge ? 'var(--color-banner-warning-bg)' : 'var(--color-banner-info-bg)'}
 >
 	<span
-		style="color: {isMerge ? 'var(--color-banner-warning-border)' : 'var(--color-banner-info-border)'}; display: inline-flex; align-items: center; flex-shrink: 0;"
+		class="inline-flex items-center shrink-0"
+		style:color={isMerge ? 'var(--color-banner-warning-border)' : 'var(--color-banner-info-border)'}
 	>
 		{#if isMerge}
 			<GitMerge size={14} />
@@ -196,58 +190,34 @@ async function handleRevertAbort() {
 		{/if}
 	</span>
 	<div
-		style="font-size: var(--text-callout); color: var(--color-text); flex: 1; overflow: hidden; display: flex; align-items: center; gap: var(--space-1); white-space: nowrap;"
+		class="text-callout text-text flex-1 overflow-hidden flex items-center gap-1 whitespace-nowrap"
 	>
 		{#if isMerge || isRebase}
-			<span style="flex-shrink: 0;">{isMerge ? 'Merging' : 'Rebasing'}</span>
+			<span class="shrink-0">{isMerge ? 'Merging' : 'Rebasing'}</span>
 			<!-- The branch chips are inline-block, not inline-flex: text-overflow
            does not apply to a flex container, so an over-long branch name
            would hard-clip instead of showing an ellipsis. line-height does
            the vertical centring that align-items would have done. -->
 			<span
-				style="
-        background: {sourceColor};
-        border-radius: var(--radius-pill);
-        padding: 0 var(--space-2);
-        font-size: var(--text-small);
-        height: var(--control-sm-h);
-        display: inline-block;
-        line-height: var(--control-sm-h);
-        color: var(--color-bg);
-        font-weight: var(--weight-semibold);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        min-width: 0;
-      "
+				class="rounded-full py-0 px-2 text-small h-control-sm inline-block leading-control-sm text-bg font-semibold overflow-hidden text-ellipsis min-w-0"
+				style:background={sourceColor}
 				>{sourceBranch}</span
 			>
-			<span style="flex-shrink: 0;">{isMerge ? 'into' : 'onto'}</span>
+			<span class="shrink-0">{isMerge ? 'into' : 'onto'}</span>
 			<span
-				style="
-        background: {targetColor};
-        border-radius: var(--radius-pill);
-        padding: 0 var(--space-2);
-        font-size: var(--text-small);
-        height: var(--control-sm-h);
-        display: inline-block;
-        line-height: var(--control-sm-h);
-        color: var(--color-bg);
-        font-weight: var(--weight-semibold);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        min-width: 0;
-      "
+				class="rounded-full py-0 px-2 text-small h-control-sm inline-block leading-control-sm text-bg font-semibold overflow-hidden text-ellipsis min-w-0"
+				style:background={targetColor}
 				>{targetBranch}</span
 			>
 			{#if isRebase && info.progress}
-				<span style="color: var(--color-text-muted);">({info.progress})</span>
+				<span class="text-text-muted">({info.progress})</span>
 			{/if}
 		{:else}
 			<span>{label}</span>
 		{/if}
 	</div>
 	{#if isRebase}
-		<div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
+		<div class="flex gap-1 shrink-0">
 			<Button
 				size="sm"
 				variant="success"
@@ -272,7 +242,7 @@ async function handleRevertAbort() {
 		</div>
 	{/if}
 	{#if isCherryPick}
-		<div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
+		<div class="flex gap-1 shrink-0">
 			<Button
 				size="sm"
 				variant="success"
@@ -290,7 +260,7 @@ async function handleRevertAbort() {
 		</div>
 	{/if}
 	{#if isRevert}
-		<div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
+		<div class="flex gap-1 shrink-0">
 			<Button
 				size="sm"
 				variant="success"

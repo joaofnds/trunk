@@ -57,33 +57,23 @@ let filesChanged = $derived(fileDiffs.length);
 </script>
 
 {#snippet commitCard(commit: CommitDetail)}
-	<div style="min-width: 0;">
+	<div class="min-w-0">
 		<div
-			style="
-      font-size: var(--text-body);
-      font-weight: var(--weight-semibold);
-      color: var(--color-text);
-      line-height: 1.4;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    "
+			class="text-body font-semibold text-text overflow-hidden text-ellipsis whitespace-nowrap"
 			>{commit.summary}</div
 		>
-		<div
-			style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); min-width: 0; font-size: var(--text-small);"
-		>
+		<div class="flex items-center gap-2 mt-1 min-w-0 text-small">
 			<Avatar name={commit.author_name} size={18} />
 			<span
-				style="color: var(--color-text-strong); font-weight: var(--weight-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+				class="text-text-strong font-semibold overflow-hidden text-ellipsis whitespace-nowrap"
 				>{commit.author_name}</span
 			>
 			<span
-				style="color: var(--color-text-subtle); font-family: var(--font-mono); flex-shrink: 0;"
+				class="text-text-subtle font-mono shrink-0"
 				use:exactDate={commit.author_timestamp}
 				>{relativeLabel(commit.author_timestamp, currentMinute())}</span
 			>
-			<span style="flex: 1;"></span>
+			<span class="flex-1"></span>
 			<span
 				class="inline-flex shrink-0 items-center rounded bg-surface-chip px-2 py-1 text-small text-text-strong"
 			>
@@ -95,38 +85,11 @@ let filesChanged = $derived(fileDiffs.length);
 	</div>
 {/snippet}
 
-<div
-	style="
-  width: 100%;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-  background: var(--color-surface);
-"
->
+<div class="w-full min-w-0 flex flex-col h-full overflow-hidden bg-surface">
 	<!-- Toolbar -->
-	<div
-		style="
-    height: var(--bar-h);
-    box-shadow: inset 0 -1px 0 var(--color-border);
-    padding: 0 var(--space-2);
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    flex-shrink: 0;
-  "
-	>
+	<div class="h-bar shadow-hairline py-0 px-2 flex items-center gap-1 shrink-0">
 		<span
-			style="
-      font-size: var(--text-small);
-      color: var(--color-text-muted);
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    "
+			class="text-small text-text-muted flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
 			>Comparing</span
 		>
 		<Button
@@ -150,64 +113,35 @@ let filesChanged = $derived(fileDiffs.length);
 	</div>
 
 	<!-- Base → Target: open blocks split by a hairline carrying the arrow -->
-	<div
-		data-testid="compare-header"
-		style="
-    padding: var(--space-3);
-    border-bottom: 1px solid var(--color-border);
-    flex-shrink: 0;
-  "
-	>
+	<div data-testid="compare-header" class="p-3 border-b border-border shrink-0">
 		{#if base}
 			{@render commitCard(base)}
 		{:else}
-			<div
-				style="
-        font-size: var(--text-callout);
-        font-style: italic;
-        color: var(--color-text-muted);
-      "
-				>empty tree</div
-			>
+			<div class="text-callout italic text-text-muted">empty tree</div>
 		{/if}
 		<div
 			aria-hidden="true"
-			style="display: flex; align-items: center; gap: var(--space-2); margin: var(--space-2) 0; color: var(--color-text-muted);"
+			class="flex items-center gap-2 my-2 mx-0 text-text-muted"
 		>
-			<span style="flex: 1; border-top: 1px solid var(--color-border);"></span>
+			<span class="flex-1 border-t border-border"></span>
 			<ArrowDown size={13} />
-			<span style="flex: 1; border-top: 1px solid var(--color-border);"></span>
+			<span class="flex-1 border-t border-border"></span>
 		</div>
 		{@render commitCard(target)}
 	</div>
 
 	<!-- File list, headed by the same stats bar CommitDetail uses -->
-	<div
-		style="
-    height: var(--bar-h);
-    padding: 0 var(--space-3);
-    display: flex;
-    align-items: center;
-    box-shadow: inset 0 -1px 0 var(--color-border);
-    flex-shrink: 0;
-  "
-	>
-		<span
-			style="font-size: var(--text-callout); font-weight: var(--weight-medium); color: var(--color-text); flex: 1;"
-		>
+	<div class="h-bar py-0 px-3 flex items-center shadow-hairline shrink-0">
+		<span class="text-callout font-medium text-text flex-1">
 			{`${filesChanged} file${filesChanged === 1 ? '' : 's'} changed`}
 		</span>
 		{#if stat && (stat.insertions > 0 || stat.deletions > 0)}
-			<span
-				style="display: inline-flex; gap: var(--space-2); flex-shrink: 0; margin-right: var(--space-2); font-family: var(--font-mono); font-size: var(--text-caption);"
-			>
+			<span class="inline-flex gap-2 shrink-0 mr-2 font-mono text-caption">
 				{#if stat.insertions > 0}
-					<span style="color: var(--color-diff-add);">+{stat.insertions}</span>
+					<span class="text-diff-add">+{stat.insertions}</span>
 				{/if}
 				{#if stat.deletions > 0}
-					<span style="color: var(--color-diff-delete);"
-						>−{stat.deletions}</span
-					>
+					<span class="text-diff-delete">−{stat.deletions}</span>
 				{/if}
 			</span>
 		{/if}
@@ -230,7 +164,7 @@ let filesChanged = $derived(fileDiffs.length);
 			</Button>
 		{/if}
 	</div>
-	<div style="flex: 1; overflow-y: auto; min-height: 0;">
+	<div class="flex-1 overflow-y-auto min-h-0">
 		<TreeFileList
 			files={fileStatusList}
 			treeMode={treeViewEnabled}

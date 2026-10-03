@@ -183,83 +183,46 @@ async function handleSubmit() {
 }
 </script>
 
-<div
-	style="
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-"
->
+<div class="flex flex-col shrink-0">
 	<!-- Mode tab selector -->
-	<div
-		style="display: flex; gap: 0; height: var(--bar-h); flex-shrink: 0; box-shadow: inset 0 -1px 0 var(--color-border);"
-	>
+	<div class="flex gap-0 h-bar shrink-0 shadow-hairline">
 		{#each [['commit', 'Commit'], ['amend', 'Amend'], ['stash', 'Stash']] as [tab, label]}
 			<button
 				type="button"
 				onclick={() => handleModeSwitch(tab as 'commit' | 'amend' | 'stash')}
 				disabled={committing}
-				style="
-          flex: 1;
-          padding: 0;
-          font-size: var(--text-callout);
-          background: none;
-          border: none;
-          border-bottom: 2px solid {mode === tab ? 'var(--color-accent)' : 'transparent'};
-          color: {mode === tab ? 'var(--color-text-strong)' : 'var(--color-text-subtle)'};
-          cursor: {committing ? 'default' : 'pointer'};
-          text-transform: none;
-        "
+				class="flex-1 p-0 text-callout bg-transparent border-none normal-case"
+				style:border-bottom="2px solid {mode === tab ? 'var(--color-accent)' : 'transparent'}"
+				style:color={mode === tab ? 'var(--color-text-strong)' : 'var(--color-text-subtle)'}
+				style:cursor={committing ? 'default' : 'pointer'}
 			>
 				{label}
 			</button>
 		{/each}
 	</div>
 
-	<div
-		style="padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2);"
-	>
+	<div class="p-2 flex flex-col gap-2">
 		<!-- Subject field -->
-		<div style="position: relative;">
+		<div class="relative">
 			<input
 				data-testid="commit-form-subject"
 				type="text"
 				bind:value={getSubject, setSubject}
 				placeholder={mode === 'stash' ? 'Stash name (optional)' : 'Summary (required)'}
-				style="
-          width: 100%;
-          box-sizing: border-box;
-          border: 1px solid var(--color-border);
-          background: var(--color-bg);
-          color: var(--color-text);
-          border-radius: var(--radius);
-          height: var(--control-lg-h);
-          padding: 0 var(--counter-gutter) 0 var(--space-3);
-          font-size: var(--text-callout);
-        "
+				class="w-full box-border border border-border bg-bg text-text rounded h-control-lg py-0 pl-3 pr-counter text-callout"
 			>
 			{#if counterVisible}
 				<span
 					data-testid="subject-counter"
 					data-over={subjectOverLimit}
-					style="
-            position: absolute;
-            top: 50%;
-            right: 10px;
-            transform: translateY(-50%);
-            pointer-events: none;
-            font-family: var(--font-mono);
-            font-size: var(--text-caption);
-            color: {subjectOverLimit ? 'var(--color-danger)' : 'var(--color-text-subtle)'};
-          "
+					class="absolute top-1/2 right-2 -translate-y-1/2 pointer-events-none font-mono text-caption"
+					style:color={subjectOverLimit ? 'var(--color-danger)' : 'var(--color-text-subtle)'}
 					>{getSubject().length}/72</span
 				>
 			{/if}
 		</div>
 		{#if subjectError}
-			<span class="error-text" style="font-size: var(--text-small);"
-				>{subjectError}</span
-			>
+			<span class="error-text text-small">{subjectError}</span>
 		{/if}
 
 		<!-- Body field -->
@@ -267,24 +230,12 @@ async function handleSubmit() {
 			bind:value={getBody, setBody}
 			rows={3}
 			placeholder="Description (optional)"
-			style="
-        width: 100%;
-        box-sizing: border-box;
-        border: 1px solid var(--color-border);
-        background: var(--color-bg);
-        color: var(--color-text);
-        border-radius: var(--radius);
-        padding: var(--space-2) var(--space-3);
-        font-size: var(--text-callout);
-        resize: vertical;
-      "
+			class="w-full box-border border border-border bg-bg text-text rounded py-2 px-3 text-callout resize-y"
 		></textarea>
 
 		<!-- Staged error -->
 		{#if stagedError}
-			<span class="error-text" style="font-size: var(--text-small);"
-				>{stagedError}</span
-			>
+			<span class="error-text text-small">{stagedError}</span>
 		{/if}
 
 		<div class="grid">
@@ -304,5 +255,9 @@ async function handleSubmit() {
 <style>
 .error-text {
 	color: var(--color-danger);
+}
+
+.pr-counter {
+	padding-right: var(--counter-gutter);
 }
 </style>

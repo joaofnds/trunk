@@ -2102,7 +2102,9 @@ function startRightResize(e: MouseEvent) {
 			<!-- Full-window takeover for interactive rebase -->
 			<div class="flex-1 overflow-hidden">
 				<div
-					style="height: 100%; {rebaseDiffFile ? 'display: none;' : 'display: flex; flex-direction: column;'}"
+					class="h-full flex-col"
+					class:flex={!rebaseDiffFile}
+					class:hidden={rebaseDiffFile}
 				>
 					<RebaseEditor
 						{repoPath}
@@ -2146,7 +2148,8 @@ function startRightResize(e: MouseEvent) {
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="pane-divider" onmousedown={startRightResize}></div>
 			<div
-				style="width: {rightPaneCollapsed ? 0 : rightPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;"
+				class="shrink-0 overflow-hidden flex flex-col"
+				style:width="{rightPaneCollapsed ? 0 : rightPaneWidth}px"
 			>
 				{#if rebaseFocusedCommitDetail}
 					<CommitDetail
@@ -2170,7 +2173,7 @@ function startRightResize(e: MouseEvent) {
 					/>
 				{:else}
 					<div
-						style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-muted); font-size: var(--text-body);"
+						class="flex items-center justify-center h-full text-text-muted text-body"
 					>
 						Select a commit to view details
 					</div>
@@ -2178,7 +2181,8 @@ function startRightResize(e: MouseEvent) {
 			</div>
 		{:else}
 			<div
-				style="width: {leftPaneCollapsed ? 0 : leftPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;"
+				class="shrink-0 overflow-hidden flex flex-col"
+				style:width="{leftPaneCollapsed ? 0 : leftPaneWidth}px"
 			>
 				<BranchSidebar
 					{repoPath}
@@ -2197,7 +2201,7 @@ function startRightResize(e: MouseEvent) {
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
 				class="pane-divider"
-				style="display: {leftPaneCollapsed ? 'none' : 'block'};"
+				style:display={leftPaneCollapsed ? 'none' : 'block'}
 				onmousedown={startLeftResize}
 			></div>
 			<div class="flex-1 overflow-hidden">
@@ -2211,10 +2215,7 @@ function startRightResize(e: MouseEvent) {
              buttons and mis-resolved comment anchors (260531-l02e). Wrapper uses
              height:100% (not flex:1) so the ReviewPanel scroll body has a constrained
              height — its parent .flex-1 is a flex *child* (Phase 72 gap closure). -->
-					<div
-						class="flex flex-col"
-						style="height: 100%; min-height: 0; overflow: hidden;"
-					>
+					<div class="flex flex-col h-full min-h-0 overflow-hidden">
 						<ReviewPanel
 							{repoPath}
 							session={reviewSession}
@@ -2319,11 +2320,12 @@ function startRightResize(e: MouseEvent) {
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
 				class="pane-divider"
-				style="display: {rightPaneCollapsed ? 'none' : 'block'};"
+				style:display={rightPaneCollapsed ? 'none' : 'block'}
 				onmousedown={startRightResize}
 			></div>
 			<div
-				style="width: {rightPaneCollapsed ? 0 : rightPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;"
+				class="shrink-0 overflow-hidden flex flex-col"
+				style:width="{rightPaneCollapsed ? 0 : rightPaneWidth}px"
 			>
 				{#if compare && compareTargetDetail}
 					<ComparePanel

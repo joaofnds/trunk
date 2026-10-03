@@ -486,23 +486,14 @@ $effect(() => {
 });
 </script>
 
-<div class="flex flex-col" style="flex: 1; min-height: 0; overflow: hidden;">
+<div class="flex flex-col flex-1 min-h-0 overflow-hidden">
 	<!-- Panel-level header (Phase 72): hosts the Copy button. Disabled until the
        session has >=1 comment; the disabled tooltip and the hard backstop in
        commands/review.rs (no_comments TrunkError) form the gate. The header
        sits above the scrollable list body so the button is always visible
        while the list scrolls. -->
 	<div
-		class="flex items-center"
-		style="
-      gap: var(--space-2);
-      height: var(--bar-h);
-      padding: 0 var(--space-3);
-      background: var(--color-surface);
-      box-shadow: inset 0 -1px 0 var(--color-border);
-      flex-shrink: 0;
-      font-size: var(--text-callout);
-    "
+		class="flex items-center gap-2 h-bar py-0 px-3 bg-surface shadow-hairline shrink-0 text-callout"
 	>
 		{#if oncommentonfile && reviewFilter !== "none"}
 			<Button
@@ -547,48 +538,24 @@ $effect(() => {
 		</Button>
 	</div>
 	<div
-		class="flex flex-col"
-		style="
-      flex: 1;
-      min-height: 0;
-      overflow: auto;
-      padding: var(--space-3);
-      background: var(--color-surface);
-      color: var(--color-text);
-      font-size: var(--text-callout);
-      line-height: 1.5;
-    "
+		class="flex flex-col flex-1 min-h-0 overflow-auto p-3 bg-surface text-text text-callout leading-normal"
 	>
 		<!-- Review list (criterion 2): every review for this repo with its derived
        state, short id, thread count and an editable title. Selecting one makes
        it active, which is also criterion 3's one-step switch. -->
-		<div
-			class="flex flex-col"
-			style="gap: var(--space-1); padding-bottom: var(--space-2);"
-		>
-			<div
-				class="flex items-center"
-				style="gap: var(--space-2); padding: var(--space-1) 0;"
-			>
-				<span
-					style="color: var(--color-text-muted); font-size: var(--text-small); flex: 1;"
-				>
+		<div class="flex flex-col gap-1 pb-2">
+			<div class="flex items-center gap-2 py-1 px-0">
+				<span class="text-text-muted text-small flex-1">
 					{reviews.length} {reviews.length === 1 ? "review" : "reviews"}
 				</span>
 				<Button size="sm" onclick={startNewReview}>New review</Button>
 			</div>
-			<ul
-				class="flex flex-col"
-				style="gap: var(--space-1); list-style: none; margin: 0; padding: 0;"
-			>
+			<ul class="flex flex-col gap-1 list-none m-0 p-0">
 				{#each reviews as review (review.id)}
 					<li
-						class="review-row {review.id === activeReviewId ? 'active' : ''} flex items-center"
-						style="gap: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius);"
+						class="review-row {review.id === activeReviewId ? 'active' : ''} flex items-center gap-2 py-1 px-2 rounded"
 					>
-						<span
-							aria-hidden="true"
-							style="width: 6px; flex-shrink: 0; color: var(--color-accent);"
+						<span aria-hidden="true" class="dot shrink-0 text-accent"
 							>{review.id === activeReviewId ? "\u2022" : ""}</span
 						>
 						{#if renamingId === review.id}
@@ -600,17 +567,7 @@ $effect(() => {
                 if (e.key === "Escape") renamingId = null;
               }}
 								aria-label="Review title"
-								style="
-                flex: 1;
-                background: var(--color-bg);
-                color: var(--color-text);
-                border: 1px solid var(--color-border);
-                border-radius: var(--radius);
-                height: var(--control-sm-h);
-                padding: 0 var(--space-1);
-                font-size: var(--text-callout);
-                font-family: inherit;
-              "
+								class="flex-1 bg-bg text-text border border-border rounded h-control-sm py-0 px-1 text-callout"
 							>
 						{:else}
 							<span class="min-w-0 flex-1 text-callout">
@@ -641,9 +598,7 @@ $effect(() => {
 								>{review.id}</LinkButton
 							>
 						</span>
-						<span
-							style="color: var(--color-text-muted); font-size: var(--text-small); flex-shrink: 0;"
-						>
+						<span class="text-text-muted text-small shrink-0">
 							{`${REVIEW_STATE_LABEL[review.state] ?? review.state} · ${review.thread_count}`}
 						</span>
 						<Button
@@ -663,9 +618,7 @@ $effect(() => {
 		</div>
 
 		{#if activeReview && reviewFilter !== "none"}
-			<span
-				style="color: var(--color-text-muted); font-size: var(--text-small); padding: var(--space-1) 0;"
-			>
+			<span class="text-text-muted text-small py-1 px-0">
 				{`${visibleComments.length} ${visibleComments.length === 1 ? "comment" : "comments"} · ${commits.length} ${commits.length === 1 ? "commit" : "commits"}`}
 			</span>
 		{/if}
@@ -676,72 +629,48 @@ $effect(() => {
        yet." copy). The three branches are mutually exclusive; when the user has
        added at least one comment, none render and the list below takes over. -->
 		{#if reviews.length === 0}
-			<div
-				class="flex flex-col"
-				style="gap: var(--space-1); padding: var(--space-3);"
-			>
+			<div class="flex flex-col gap-1 p-3">
 				<span>No reviews yet</span>
-				<span
-					style="color: var(--color-text-muted); font-size: var(--text-small);"
-				>
+				<span class="text-text-muted text-small">
 					Comment on a diff line to start one, or create an empty review above.
 				</span>
 			</div>
 		{:else if commits.length === 0 && !hasAnyComment}
-			<div
-				class="flex flex-col"
-				style="gap: var(--space-1); padding: var(--space-3);"
-			>
+			<div class="flex flex-col gap-1 p-3">
 				<span>No commits in this review yet.</span>
-				<span
-					style="color: var(--color-text-muted); font-size: var(--text-small);"
-				>
+				<span class="text-text-muted text-small">
 					Add commits from the graph to start reviewing.
 				</span>
 			</div>
 		{:else if !hasAnyComment}
-			<div
-				class="flex flex-col"
-				style="gap: var(--space-1); padding: var(--space-3);"
-			>
+			<div class="flex flex-col gap-1 p-3">
 				<span>Review started.</span>
-				<span
-					style="color: var(--color-text-muted); font-size: var(--text-small);"
-				>
+				<span class="text-text-muted text-small">
 					Select diff lines or add a commit note to comment.
 				</span>
 			</div>
 		{:else if !hasVisibleComment}
-			<div
-				class="flex flex-col"
-				style="gap: var(--space-1); padding: var(--space-3);"
-			>
+			<div class="flex flex-col gap-1 p-3">
 				<span
 					>{reviewFilter === "none" ? "Review threads hidden." : "No threads match this filter."}</span
 				>
-				<span
-					style="color: var(--color-text-muted); font-size: var(--text-small);"
-				>
+				<span class="text-text-muted text-small">
 					The review inventory remains available above.
 				</span>
 			</div>
 		{/if}
 
 		{#if groups.length > 0}
-			<ul
-				class="flex flex-col"
-				style="gap: var(--space-2); list-style: none; margin: 0; padding: 0;"
-			>
+			<ul class="flex flex-col gap-2 list-none m-0 p-0">
 				{#each groups as group (group.oid)}
 					{@const visibleGroupComments = filterThreads(group.comments, reviewFilter)}
 					<li
-						class="flex flex-col"
-						style="gap: var(--space-1); display: {reviewFilter === 'none' || (reviewFilter !== 'all' && group.comments.length > 0 && visibleGroupComments.length === 0) ? 'none' : 'flex'};"
+						class="flex flex-col gap-1"
+						style:display={reviewFilter === 'none' || (reviewFilter !== 'all' && group.comments.length > 0 && visibleGroupComments.length === 0) ? 'none' : 'flex'}
 					>
 						<!-- Commit group header (focal point): short SHA mono 600 + summary -->
 						<div
-							class="flex items-center"
-							style="gap: var(--space-2); padding: var(--space-1) 0; border-bottom: 1px solid var(--color-border);"
+							class="flex items-center gap-2 py-1 px-0 border-b border-border"
 						>
 							<span class="shrink-0 text-body font-semibold">
 								<LinkButton
@@ -776,26 +705,16 @@ $effect(() => {
 						<!-- Inline add-note composer for this commit -->
 						{#if noteSession.target === group.oid}
 							<div
-								class="flex flex-col"
-								style="gap: var(--space-1); padding: var(--space-1) 0; display: {reviewFilter === 'none' ? 'none' : 'flex'};"
+								class="flex flex-col gap-1 py-1 px-0"
+								style:display={reviewFilter === 'none' ? 'none' : 'flex'}
 							>
 								<textarea
 									bind:value={noteDraft.text}
 									rows="3"
 									disabled={noteSaving}
-									style="
-                  width: 100%;
-                  resize: vertical;
-                  background: var(--color-bg);
-                  color: var(--color-text);
-                  border: 1px solid var(--color-border);
-                  border-radius: var(--radius);
-                  padding: var(--space-1) var(--space-2);
-                  font-size: var(--text-callout);
-                  font-family: inherit;
-                "
+									class="w-full resize-y bg-bg text-text border border-border rounded py-1 px-2 text-callout"
 								></textarea>
-								<div class="flex items-center" style="gap: var(--space-1);">
+								<div class="flex items-center gap-1">
 									<Button
 										size="sm"
 										onclick={() => saveAddNote(group.oid)}
@@ -813,16 +732,11 @@ $effect(() => {
 						{/if}
 
 						{#if group.comments.length === 0}
-							<span
-								style="color: var(--color-text-muted); font-size: var(--text-small); padding: var(--space-1) 0;"
-							>
+							<span class="text-text-muted text-small py-1 px-0">
 								No comments on this commit.
 							</span>
 						{:else}
-							<ul
-								class="flex flex-col"
-								style="gap: var(--space-1); list-style: none; margin: 0; padding: 0;"
-							>
+							<ul class="flex flex-col gap-1 list-none m-0 p-0">
 								{#each group.comments as comment (comment.id)}
 									<li
 										style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}
@@ -852,19 +766,13 @@ $effect(() => {
 		{#if currentFileComments.length > 0}
 			{@const visibleCurrentFileComments = filterThreads(currentFileComments, reviewFilter)}
 			<div
-				class="flex flex-col"
-				style="gap: var(--space-1); display: {reviewFilter === 'none' || (reviewFilter !== 'all' && visibleCurrentFileComments.length === 0) ? 'none' : 'flex'};"
+				class="flex flex-col gap-1"
+				style:display={reviewFilter === 'none' || (reviewFilter !== 'all' && visibleCurrentFileComments.length === 0) ? 'none' : 'flex'}
 			>
-				<div
-					class="text-callout"
-					style="color: var(--color-text-muted); padding: 0 var(--space-1);"
-				>
+				<div class="text-callout text-text-muted py-0 px-1">
 					On current file content
 				</div>
-				<ul
-					class="flex flex-col"
-					style="gap: var(--space-1); list-style: none; margin: 0; padding: 0;"
-				>
+				<ul class="flex flex-col gap-1 list-none m-0 p-0">
 					{#each currentFileComments as comment (comment.id)}
 						<li
 							style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}
@@ -896,5 +804,9 @@ $effect(() => {
 }
 .review-row.active {
 	background: var(--color-selected-row);
+}
+
+.dot {
+	width: 6px;
 }
 </style>

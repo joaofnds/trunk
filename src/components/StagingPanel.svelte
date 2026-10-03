@@ -802,67 +802,27 @@ $effect(() => {
 
 {#snippet sectionCount(n: number)}
 	<span
-		style="display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 var(--space-1); border-radius: var(--radius); background: var(--color-surface-chip); color: var(--color-text); font-family: var(--font-mono); font-weight: var(--weight-semibold); font-size: var(--text-caption); letter-spacing: 0; flex-shrink: 0;"
+		class="inline-flex items-center justify-center min-w-4 h-4 py-0 px-1 rounded bg-surface-chip text-text font-mono font-semibold text-caption section-count shrink-0"
 		>{n}</span
 	>
 {/snippet}
 
-<div
-	style="
-  width: 100%;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-  background: var(--color-surface);
-"
->
+<div class="w-full min-w-0 flex flex-col h-full overflow-hidden bg-surface">
 	<!-- Panel header -->
 	<div
-		style="
-    height: var(--bar-h);
-    background: var(--color-surface-raised);
-    box-shadow: inset 0 -1px 0 var(--color-border);
-    padding: 0 var(--space-3);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-2);
-    flex-shrink: 0;
-  "
+		class="h-bar bg-surface-raised shadow-hairline py-0 px-3 flex items-center justify-center gap-2 shrink-0"
 	>
-		<span
-			style="flex: 1; display: flex; align-items: center; justify-content: center; gap: var(--space-2); min-width: 0;"
-		>
-			<span style="font-size: var(--text-callout); color: var(--color-text);">
+		<span class="flex-1 flex items-center justify-center gap-2 min-w-0">
+			<span class="text-callout text-text">
 				{`${totalCount} file${totalCount === 1 ? '' : 's'} changed`}
 			</span>
 			{#if currentBranch}
-				<span
-					style="font-size: var(--text-small); color: var(--color-text-muted);"
-					>on</span
-				>
+				<span class="text-small text-text-muted">on</span>
 				<!-- inline-block, not inline-flex: text-overflow does not apply to a
              flex container, so a long branch name would hard-clip instead of
              showing an ellipsis. line-height does the vertical centring. -->
 				<span
-					style="
-          background: color-mix(in oklch, var(--lane-0) 14%, transparent);
-          box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--lane-0) 50%, transparent);
-          border-radius: var(--radius-pill);
-          padding: 0 var(--space-2);
-          font-size: var(--text-small);
-          height: var(--control-sm-h);
-          display: inline-block;
-          line-height: var(--control-sm-h);
-          color: var(--lane-0);
-          font-weight: var(--weight-semibold);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          min-width: 0;
-        "
+					class="branch-chip rounded-full py-0 px-2 text-small h-control-sm inline-block leading-control-sm font-semibold whitespace-nowrap overflow-hidden text-ellipsis min-w-0"
 				>
 					{currentBranch}
 				</span>
@@ -913,73 +873,32 @@ $effect(() => {
 		<!-- Rebase conflict/progress header -->
 		{#if (status?.conflicted.length ?? 0) > 0}
 			<div
-				style="
-        height: var(--bar-h);
-        background: var(--color-badge-warning-bg);
-        box-shadow: inset 0 -1px 0 var(--color-border);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: var(--space-2);
-        flex-shrink: 0;
-      "
+				class="h-bar bg-badge-warning-bg shadow-hairline flex items-center justify-center gap-2 shrink-0"
 			>
-				<span
-					style="color: var(--color-badge-warning); display: inline-flex; align-items: center;"
-				>
+				<span class="text-badge-warning inline-flex items-center">
 					<AlertTriangle size={12} />
 				</span>
-				<span
-					style="font-size: var(--text-callout); font-weight: var(--weight-semibold); color: var(--color-badge-warning);"
+				<span class="text-callout font-semibold text-badge-warning"
 					>Rebase conflicts detected</span
 				>
 			</div>
 		{/if}
 		<div
-			style="
-      height: var(--bar-h);
-      box-shadow: inset 0 -1px 0 var(--color-border);
-      padding: 0 var(--space-3);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: var(--space-2);
-      flex-shrink: 0;
-      font-size: var(--text-small);
-      color: var(--color-text-muted);
-    "
+			class="h-bar shadow-hairline py-0 px-3 flex items-center justify-center gap-2 shrink-0 text-small text-text-muted"
 		>
 			Rebasing
 			{#if operationInfo.source_branch}
 				<span
-					style="
-          background: var(--lane-{operationInfo.source_color_index ?? 0});
-          border-radius: var(--radius-pill);
-          padding: 0 var(--space-2);
-          font-size: var(--text-caption);
-          height: var(--control-sm-h);
-          display: inline-block;
-          line-height: var(--control-sm-h);
-          color: var(--color-bg);
-          font-weight: var(--weight-semibold);
-        "
+					class="rounded-full py-0 px-2 text-caption h-control-sm inline-block leading-control-sm text-bg font-semibold"
+					style:background="var(--lane-{operationInfo.source_color_index ?? 0})"
 					>{operationInfo.source_branch}</span
 				>
 			{/if}
 			onto
 			{#if operationInfo.target_branch}
 				<span
-					style="
-          background: var(--lane-{operationInfo.target_color_index ?? 0});
-          border-radius: var(--radius-pill);
-          padding: 0 var(--space-2);
-          font-size: var(--text-caption);
-          height: var(--control-sm-h);
-          display: inline-block;
-          line-height: var(--control-sm-h);
-          color: var(--color-bg);
-          font-weight: var(--weight-semibold);
-        "
+					class="rounded-full py-0 px-2 text-caption h-control-sm inline-block leading-control-sm text-bg font-semibold"
+					style:background="var(--lane-{operationInfo.target_color_index ?? 0})"
 					>{operationInfo.target_branch}</span
 				>
 			{/if}
@@ -994,51 +913,33 @@ $effect(() => {
 	{/if}
 
 	<!-- File sections flex container (50/50 split when both expanded) -->
-	<div
-		style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0;"
-	>
+	<div class="flex-1 flex flex-col overflow-hidden min-h-0">
 		<!-- Conflicted Files section (rebase: always shown; non-rebase: only when conflicts exist) -->
 		{#if !isMerge && (isRebase || (status?.conflicted.length ?? 0) > 0)}
 			<div
-				style="
-        {conflicted_expanded && staged_expanded ? 'flex: 1;' : conflicted_expanded ? 'max-height: calc(100% - 28px);' : ''}
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        min-height: 0;
-      "
+				class="flex flex-col overflow-hidden min-h-0"
+				class:flex-1={conflicted_expanded && staged_expanded}
+				class:section-capped={conflicted_expanded && !staged_expanded}
 			>
 				<div
 					role="button"
 					tabindex="0"
 					onclick={() => (conflicted_expanded = !conflicted_expanded)}
 					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') conflicted_expanded = !conflicted_expanded; }}
-					style="
-            height: var(--bar-h);
-            box-shadow: inset 0 -1px 0 var(--color-border);
-            padding: 0 var(--space-2);
-            display: flex;
-            align-items: center;
-            cursor: pointer;
-            flex-shrink: 0;
-          "
+					class="h-bar shadow-hairline py-0 px-2 flex items-center cursor-pointer shrink-0"
 				>
-					<span
-						style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: var(--space-1);"
-					>
+					<span class="text-text-muted inline-flex items-center mr-1">
 						{#if conflicted_expanded}
 							<ChevronDown size={12} />
 						{:else}
 							<ChevronRight size={12} />
 						{/if}
 					</span>
-					<span
-						style="color: var(--color-badge-warning); display: inline-flex; align-items: center; margin-right: var(--space-1);"
-					>
+					<span class="text-badge-warning inline-flex items-center mr-1">
 						<AlertTriangle size={12} />
 					</span>
 					<span
-						style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-widest); text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
+						class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 inline-flex items-center gap-2"
 					>
 						<span>Conflicted Files</span>
 						{@render sectionCount(status?.conflicted.length ?? 0)}
@@ -1072,32 +973,18 @@ $effect(() => {
 		{#if !isRebase}
 			<div
 				data-testid="staging-unstaged-section"
-				style="
-      {unstaged_expanded && staged_expanded ? 'flex: 1;' : unstaged_expanded ? 'max-height: calc(100% - 28px);' : ''}
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      min-height: 0;
-    "
+				class="flex flex-col overflow-hidden min-h-0"
+				class:flex-1={unstaged_expanded && staged_expanded}
+				class:section-capped={unstaged_expanded && !staged_expanded}
 			>
 				<div
 					role="button"
 					tabindex="0"
 					onclick={() => (unstaged_expanded = !unstaged_expanded)}
 					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') unstaged_expanded = !unstaged_expanded; }}
-					style="
-          height: var(--bar-h);
-          box-shadow: inset 0 -1px 0 var(--color-border);
-          padding: 0 var(--space-2);
-          display: flex;
-          align-items: center;
-          cursor: pointer;
-          flex-shrink: 0;
-        "
+					class="h-bar shadow-hairline py-0 px-2 flex items-center cursor-pointer shrink-0"
 				>
-					<span
-						style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: var(--space-1);"
-					>
+					<span class="text-text-muted inline-flex items-center mr-1">
 						{#if unstaged_expanded}
 							<ChevronDown size={12} />
 						{:else}
@@ -1105,13 +992,11 @@ $effect(() => {
 						{/if}
 					</span>
 					{#if isMerge}
-						<span
-							style="color: var(--color-badge-warning); display: inline-flex; align-items: center; margin-right: var(--space-1);"
-						>
+						<span class="text-badge-warning inline-flex items-center mr-1">
 							<AlertTriangle size={12} />
 						</span>
 						<span
-							style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-widest); text-transform: uppercase; flex: 1; white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-2);"
+							class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 whitespace-nowrap inline-flex items-center gap-2"
 						>
 							<span>Conflicted Files</span>
 							{@render sectionCount(status?.conflicted.length ?? 0)}
@@ -1128,7 +1013,7 @@ $effect(() => {
 						{/if}
 					{:else}
 						<span
-							style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-widest); text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
+							class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 inline-flex items-center gap-2"
 						>
 							<span>Unstaged Files</span>
 							{@render sectionCount(status?.unstaged.length ?? 0)}
@@ -1197,32 +1082,18 @@ $effect(() => {
 		<!-- Staged Files section -->
 		<div
 			data-testid="staging-staged-section"
-			style="
-      {staged_expanded && unstaged_expanded ? 'flex: 1;' : staged_expanded ? 'max-height: calc(100% - 28px);' : ''}
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      min-height: 0;
-    "
+			class="flex flex-col overflow-hidden min-h-0"
+			class:flex-1={staged_expanded && unstaged_expanded}
+			class:section-capped={staged_expanded && !unstaged_expanded}
 		>
 			<div
 				role="button"
 				tabindex="0"
 				onclick={() => (staged_expanded = !staged_expanded)}
 				onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') staged_expanded = !staged_expanded; }}
-				style="
-          height: var(--bar-h);
-          box-shadow: inset 0 -1px 0 var(--color-border);
-          padding: 0 var(--space-2);
-          display: flex;
-          align-items: center;
-          cursor: pointer;
-          flex-shrink: 0;
-        "
+				class="h-bar shadow-hairline py-0 px-2 flex items-center cursor-pointer shrink-0"
 			>
-				<span
-					style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: var(--space-1);"
-				>
+				<span class="text-text-muted inline-flex items-center mr-1">
 					{#if staged_expanded}
 						<ChevronDown size={12} />
 					{:else}
@@ -1230,7 +1101,7 @@ $effect(() => {
 					{/if}
 				</span>
 				<span
-					style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-widest); text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
+					class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 inline-flex items-center gap-2"
 				>
 					<span>{isOperation ? 'Resolved Files' : 'Staged Files'}</span>
 					{@render sectionCount(status?.staged.length ?? 0)}
@@ -1269,7 +1140,7 @@ $effect(() => {
 
 		<!-- Spacer: absorbs remaining space when a section is collapsed -->
 		{#if !(unstaged_expanded && staged_expanded)}
-			<div style="flex: 1;"></div>
+			<div class="flex-1"></div>
 		{/if}
 	</div>
 
@@ -1277,64 +1148,28 @@ $effect(() => {
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		onmousedown={startBottomResize}
-		style="
-      flex-shrink: 0;
-      height: 4px;
-      cursor: row-resize;
-      background: linear-gradient(to bottom, transparent 1px, var(--color-border) 1px, var(--color-border) 2px, transparent 2px);
-      transition: background 0.15s;
-    "
+		class="shrink-0 bottom-resize-handle"
 	></div>
 
 	{#if isRebase && operationInfo}
 		<!-- Rebase progress + actions (GitKraken style) -->
 		<div
-			style="
-      padding: var(--space-2);
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-2);
-      height: {bottomHeight}px;
-      flex-shrink: 0;
-      overflow: hidden;
-    "
+			class="p-2 flex flex-col gap-2 shrink-0 overflow-hidden"
+			style:height="{bottomHeight}px"
 		>
-			<div
-				style="font-size: var(--text-small); color: var(--color-text-muted); margin-bottom: var(--space-1);"
-			>
+			<div class="text-small text-text-muted mb-1">
 				Rebasing commit {rebaseProgressNum} out of {rebaseProgressTotal}
 			</div>
 			<input
 				type="text"
 				bind:value={rebaseMsgSummary}
 				placeholder="Commit message summary"
-				style="
-          width: 100%;
-          box-sizing: border-box;
-          border: 1px solid var(--color-border);
-          background: var(--color-surface);
-          color: var(--color-text);
-          border-radius: var(--radius);
-          padding: var(--space-1) var(--space-2);
-          font-size: var(--text-callout);
-        "
+				class="w-full box-border border border-border bg-surface text-text rounded py-1 px-2 text-callout"
 			>
 			<textarea
 				bind:value={rebaseMsgBody}
 				placeholder="Description (optional)"
-				style="
-          width: 100%;
-          flex: 1;
-          min-height: 0;
-          box-sizing: border-box;
-          border: 1px solid var(--color-border);
-          background: var(--color-surface);
-          color: var(--color-text);
-          border-radius: var(--radius);
-          padding: var(--space-1) var(--space-2);
-          font-size: var(--text-callout);
-          resize: none;
-        "
+				class="w-full flex-1 min-h-0 box-border border border-border bg-surface text-text rounded py-1 px-2 text-callout resize-none"
 			></textarea>
 			<div class="grid grid-cols-6 gap-2">
 				<div class="col-span-3 grid">
@@ -1406,3 +1241,35 @@ $effect(() => {
 		/>
 	{/if}
 </div>
+
+<style>
+.section-count {
+	letter-spacing: 0;
+}
+
+.branch-chip {
+	background: color-mix(in oklch, var(--lane-0) 14%, transparent);
+	box-shadow: inset 0 0 0 1px
+		color-mix(in oklch, var(--lane-0) 50%, transparent);
+	color: var(--lane-0);
+}
+
+/* Hides its own height behind a 1px rule, so the grab area is wider than the line it draws */
+.bottom-resize-handle {
+	height: 4px;
+	cursor: row-resize;
+	background: linear-gradient(
+		to bottom,
+		transparent 1px,
+		var(--color-border) 1px,
+		var(--color-border) 2px,
+		transparent 2px
+	);
+	transition: background 0.15s;
+}
+
+/* A section left open on its own stops short of the other section's collapsed bar */
+.section-capped {
+	max-height: calc(100% - var(--bar-h));
+}
+</style>
