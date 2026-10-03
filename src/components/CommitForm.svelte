@@ -247,7 +247,7 @@ async function handleSubmit() {
             transform: translateY(-50%);
             pointer-events: none;
             font-family: var(--font-mono);
-            font-size: 10.5px;
+            font-size: var(--text-caption);
             color: {subjectOverLimit ? 'var(--color-danger)' : 'var(--color-text-subtle)'};
           "
 					>{getSubject().length}/72</span
@@ -300,7 +300,7 @@ async function handleSubmit() {
         color: var(--color-on-accent);
         border: 0;
         border-radius: var(--radius);
-        font-size: 12.5px;
+        font-size: var(--text-callout);
         font-weight: var(--weight-semibold);
         cursor: pointer;
         opacity: {committing ? 0.6 : 1};

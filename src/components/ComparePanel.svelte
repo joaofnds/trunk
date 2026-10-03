@@ -155,7 +155,7 @@ let filesChanged = $derived(fileDiffs.length);
         border: none;
         cursor: pointer;
         color: var(--color-text-muted);
-        font-size: 16px;
+        font-size: var(--text-title);
         line-height: var(--leading-none);
         padding: var(--space-1);
       "
@@ -213,7 +213,7 @@ let filesChanged = $derived(fileDiffs.length);
 		</span>
 		{#if stat && (stat.insertions > 0 || stat.deletions > 0)}
 			<span
-				style="display: inline-flex; gap: var(--space-2); flex-shrink: 0; margin-right: var(--space-2); font-family: var(--font-mono); font-size: 10.5px;"
+				style="display: inline-flex; gap: var(--space-2); flex-shrink: 0; margin-right: var(--space-2); font-family: var(--font-mono); font-size: var(--text-caption);"
 			>
 				{#if stat.insertions > 0}
 					<span style="color: var(--color-diff-add);">+{stat.insertions}</span>

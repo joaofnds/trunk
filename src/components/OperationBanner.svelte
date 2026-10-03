@@ -213,7 +213,7 @@ async function handleRevertAbort() {
         display: inline-block;
         line-height: var(--control-sm-h);
         color: var(--color-bg);
-        font-weight: 700;
+        font-weight: var(--weight-semibold);
         overflow: hidden;
         text-overflow: ellipsis;
         min-width: 0;
@@ -231,7 +231,7 @@ async function handleRevertAbort() {
         display: inline-block;
         line-height: var(--control-sm-h);
         color: var(--color-bg);
-        font-weight: 700;
+        font-weight: var(--weight-semibold);
         overflow: hidden;
         text-overflow: ellipsis;
         min-width: 0;

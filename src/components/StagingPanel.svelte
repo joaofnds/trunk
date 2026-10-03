@@ -856,7 +856,7 @@ $effect(() => {
           display: inline-block;
           line-height: var(--control-sm-h);
           color: var(--lane-0);
-          font-weight: 700;
+          font-weight: var(--weight-semibold);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -993,7 +993,7 @@ $effect(() => {
           display: inline-block;
           line-height: var(--control-sm-h);
           color: var(--color-bg);
-          font-weight: 700;
+          font-weight: var(--weight-semibold);
         "
 					>{operationInfo.source_branch}</span
 				>
@@ -1010,7 +1010,7 @@ $effect(() => {
           display: inline-block;
           line-height: var(--control-sm-h);
           color: var(--color-bg);
-          font-weight: 700;
+          font-weight: var(--weight-semibold);
         "
 					>{operationInfo.target_branch}</span
 				>

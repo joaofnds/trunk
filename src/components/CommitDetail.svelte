@@ -175,7 +175,7 @@ let commitNotes = $derived(
 			style="
       font-size: var(--text-small);
       color: var(--color-text-muted);
-      font-family: monospace;
+      font-family: var(--font-mono);
       flex: 1;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -227,7 +227,7 @@ let commitNotes = $derived(
         border: none;
         cursor: pointer;
         color: var(--color-text-muted);
-        font-size: 16px;
+        font-size: var(--text-title);
         line-height: var(--leading-none);
         padding: var(--space-1);
         border-radius: var(--radius);
@@ -286,7 +286,7 @@ let commitNotes = $derived(
 				</span>
 				{#if totalAdds > 0 || totalDels > 0}
 					<span
-						style="display: inline-flex; gap: var(--space-2); flex-shrink: 0; margin-right: var(--space-2); font-family: var(--font-mono); font-size: 10.5px;"
+						style="display: inline-flex; gap: var(--space-2); flex-shrink: 0; margin-right: var(--space-2); font-family: var(--font-mono); font-size: var(--text-caption);"
 					>
 						{#if totalAdds > 0}
 							<span style="color: var(--color-diff-add);">+{totalAdds}</span>
@@ -347,7 +347,7 @@ let commitNotes = $derived(
 	border: none;
 	padding: 0;
 	cursor: pointer;
-	font-family: monospace;
+	font-family: var(--font-mono);
 	font-size: inherit;
 	color: inherit;
 }

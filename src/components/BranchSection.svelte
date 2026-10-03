@@ -66,7 +66,7 @@ let allHidden = $derived(groupState === "all");
 			{/if}
 		</span>
 		<span
-			style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: var(--weight-semibold); letter-spacing: 0.09em; text-transform: uppercase; flex: 1;"
+			style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-widest); text-transform: uppercase; flex: 1;"
 		>
 			{`${label} (${count})`}
 		</span>

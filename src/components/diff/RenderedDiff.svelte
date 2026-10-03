@@ -855,11 +855,10 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 	padding: var(--space-2) var(--md-prose-inset);
 	min-width: 0;
 }
-/* GitHub's comment-prose size; the 16px browser default reads oversized
-     against the app's 11-13px chrome. Heading/code sizes are em-based and
-     scale with it. */
+/* The 16px browser default reads oversized against the app's chrome.
+     Heading/code sizes are em-based and scale with it. */
 .rendered-block > :global(.markdown-body) {
-	font-size: 14px;
+	font-size: var(--text-body);
 }
 /* The toolbar's word-wrap toggle, mirroring Source's semantics (HunkView:
      pre-wrap + 100% when on, pre + max-content when off).
