@@ -114,7 +114,7 @@ let actionShown = $derived(hovered || focused || hidden);
 		>
 		{#if ahead > 0 || behind > 0}
 			<span
-				style="flex-shrink: 0; font-family: var(--font-mono); font-size: 10px; color: var(--color-text-subtle); margin-left: var(--space-1); display: inline-flex; align-items: center; gap: var(--space-1);"
+				style="flex-shrink: 0; font-family: var(--font-mono); font-size: var(--text-caption); color: var(--color-text-subtle); margin-left: var(--space-1); display: inline-flex; align-items: center; gap: var(--space-1);"
 			>
 				{#if ahead > 0}
 					<span

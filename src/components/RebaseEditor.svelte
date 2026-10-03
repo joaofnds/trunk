@@ -845,7 +845,7 @@ let lastVisibleColumn = $derived.by(() => {
 	border-radius: var(--radius);
 	padding: 0 var(--space-1);
 	font-family: var(--font-mono);
-	font-size: 10px;
+	font-size: var(--text-caption);
 	margin-left: var(--space-2);
 }
 

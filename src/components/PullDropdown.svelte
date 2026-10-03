@@ -90,7 +90,7 @@ $effect(() => {
 	border-radius: 0 var(--radius) var(--radius) 0;
 	color: var(--color-text-muted);
 	cursor: pointer;
-	font-size: 10px;
+	font-size: var(--text-caption);
 	/* Narrower than the button it hangs off: this is that button's dropdown,
        not a peer of it. Declared rather than derived from padding. */
 	width: var(--control-sm-h);

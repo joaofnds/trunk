@@ -144,7 +144,7 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 	flex-wrap: wrap;
 }
 .topo-lbl {
-	font-size: 10px;
+	font-size: var(--text-caption);
 	color: var(--color-text-subtle);
 	text-transform: uppercase;
 	letter-spacing: 0.04em;

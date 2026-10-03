@@ -655,7 +655,7 @@ function originClass(origin: string): string {
 	gap: var(--space-1);
 }
 .split-file-header-caret {
-	font-size: 10px;
+	font-size: var(--text-caption);
 	color: var(--color-text-muted);
 	width: 10px;
 	display: inline-block;

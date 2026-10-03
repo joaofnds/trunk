@@ -385,7 +385,7 @@ let commitNotes = $derived(
 	cursor: default;
 }
 .pager-pos {
-	font-size: 10px;
+	font-size: var(--text-caption);
 	color: var(--color-text-subtle);
 	font-family: var(--font-mono);
 	padding: 0 var(--space-1);

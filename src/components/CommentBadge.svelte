@@ -34,7 +34,7 @@ let { count, tone = "open" }: Props = $props();
 	border-radius: var(--radius-pill);
 	background: var(--color-accent);
 	color: var(--color-on-accent);
-	font-size: 10px;
+	font-size: var(--text-caption);
 	font-weight: 600;
 	line-height: 1;
 }

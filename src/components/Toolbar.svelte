@@ -353,7 +353,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 	border-radius: var(--radius-pill);
 	background: var(--color-accent);
 	color: var(--color-on-accent);
-	font-size: 10px;
+	font-size: var(--text-caption);
 	font-weight: 600;
 	line-height: 1;
 }

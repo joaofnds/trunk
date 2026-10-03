@@ -778,7 +778,8 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 						>Output</span
 					>
 					{#if manualEdit}
-						<span style="font-size: 10px; color: var(--color-text-muted);"
+						<span
+							style="font-size: var(--text-caption); color: var(--color-text-muted);"
 							>(manual edit)</span
 						>
 					{/if}

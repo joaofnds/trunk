@@ -463,7 +463,7 @@ async function requestDeleteReply(replyId: string) {
 .comment-card-channel,
 .thread-stale-chip,
 .thread-state-chip {
-	font-size: 10px;
+	font-size: var(--text-caption);
 	line-height: 1.4;
 	text-transform: uppercase;
 	letter-spacing: 0.02em;

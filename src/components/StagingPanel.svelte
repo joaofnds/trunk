@@ -801,7 +801,7 @@ $effect(() => {
 
 {#snippet sectionCount(n: number)}
 	<span
-		style="display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 var(--space-1); border-radius: var(--radius); background: var(--color-surface-chip); color: var(--color-text); font-family: var(--font-mono); font-weight: 600; font-size: 10px; letter-spacing: 0; flex-shrink: 0;"
+		style="display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 var(--space-1); border-radius: var(--radius); background: var(--color-surface-chip); color: var(--color-text); font-family: var(--font-mono); font-weight: 600; font-size: var(--text-caption); letter-spacing: 0; flex-shrink: 0;"
 		>{n}</span
 	>
 {/snippet}
@@ -988,7 +988,7 @@ $effect(() => {
           background: var(--lane-{operationInfo.source_color_index ?? 0});
           border-radius: var(--radius-pill);
           padding: 0 var(--space-2);
-          font-size: 10px;
+          font-size: var(--text-caption);
           height: var(--control-sm-h);
           display: inline-block;
           line-height: var(--control-sm-h);
@@ -1005,7 +1005,7 @@ $effect(() => {
           background: var(--lane-{operationInfo.target_color_index ?? 0});
           border-radius: var(--radius-pill);
           padding: 0 var(--space-2);
-          font-size: 10px;
+          font-size: var(--text-caption);
           height: var(--control-sm-h);
           display: inline-block;
           line-height: var(--control-sm-h);
@@ -1070,7 +1070,7 @@ $effect(() => {
 						<AlertTriangle size={12} />
 					</span>
 					<span
-						style="color: var(--color-text-muted); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
+						style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
 					>
 						<span>Conflicted Files</span>
 						{@render sectionCount(status?.conflicted.length ?? 0)}
@@ -1085,7 +1085,7 @@ $effect(() => {
               color: var(--color-warning);
               border: 1px solid var(--color-warning-border);
               border-radius: var(--radius);
-              font-size: 10px;
+              font-size: var(--text-caption);
               font-weight: 600;
               height: var(--control-sm-h);
               padding: 0 var(--space-2);
@@ -1155,7 +1155,7 @@ $effect(() => {
 							<AlertTriangle size={12} />
 						</span>
 						<span
-							style="color: var(--color-text-muted); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-2);"
+							style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-2);"
 						>
 							<span>Conflicted Files</span>
 							{@render sectionCount(status?.conflicted.length ?? 0)}
@@ -1184,7 +1184,7 @@ $effect(() => {
 						{/if}
 					{:else}
 						<span
-							style="color: var(--color-text-muted); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
+							style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
 						>
 							<span>Unstaged Files</span>
 							{@render sectionCount(status?.unstaged.length ?? 0)}
@@ -1309,7 +1309,7 @@ $effect(() => {
 					{/if}
 				</span>
 				<span
-					style="color: var(--color-text-muted); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
+					style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
 				>
 					<span>{isOperation ? 'Resolved Files' : 'Staged Files'}</span>
 					{@render sectionCount(status?.staged.length ?? 0)}
