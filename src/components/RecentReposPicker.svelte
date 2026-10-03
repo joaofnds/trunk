@@ -138,66 +138,82 @@ function handleBackdropClick() {
 </script>
 
 {#if visible}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="fixed inset-0 flex justify-center"
-    style="background: var(--color-backdrop); z-index: 50;"
-    onclick={handleBackdropClick}
-  >
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-      class="flex flex-col rounded overflow-hidden"
-      style="width: 480px; max-width: 90vw; height: fit-content; margin-top: var(--dialog-drop); background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
-      onclick={(e) => e.stopPropagation()}
-    >
-      <input
-        bind:this={inputEl}
-        bind:value={query}
-        onkeydown={handleKeydown}
-        placeholder="Search recent repositories"
-        class="w-full px-3 py-2 text-sm outline-none"
-        style="background: transparent; color: var(--color-text); border-bottom: 1px solid var(--color-border);"
-      />
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="fixed inset-0 flex justify-center"
+		style="background: var(--color-backdrop); z-index: 50;"
+		onclick={handleBackdropClick}
+	>
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="flex flex-col rounded overflow-hidden"
+			style="width: 480px; max-width: 90vw; height: fit-content; margin-top: var(--dialog-drop); background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<input
+				bind:this={inputEl}
+				bind:value={query}
+				onkeydown={handleKeydown}
+				placeholder="Search recent repositories"
+				class="w-full px-3 py-2 text-sm outline-none"
+				style="background: transparent; color: var(--color-text); border-bottom: 1px solid var(--color-border);"
+			>
 
-      {#if loading}
-        <!-- intentionally empty body while pruning -->
-      {:else if recents.length === 0}
-        <div class="flex flex-col items-center gap-3 px-4 py-6">
-          <p class="text-sm" style="color: var(--color-text-muted);">No recent repositories</p>
-          <button
-            onclick={handleOpenDialog}
-            class="rounded px-4 py-2 text-sm font-medium cursor-pointer"
-            style="background: var(--color-accent); color: var(--color-on-accent);"
-          >
-            Open Repository
-          </button>
-        </div>
-      {:else if filtered.length === 0}
-        <div class="px-4 py-6 text-sm text-center" style="color: var(--color-text-muted);">
-          No matches
-        </div>
-      {:else}
-        <ul bind:this={listEl} class="flex flex-col py-1 max-h-96 overflow-y-auto">
-          {#each filtered as repo, idx (repo.path)}
-            {@const dp = resolvedPaths[repo.path] ?? repo.path}
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-            <li
-              class="px-3 py-2 cursor-pointer flex flex-col gap-0.5"
-              style="background: {idx === highlightedIdx
+			{#if loading}
+			<!-- intentionally empty body while pruning -->
+			{:else if recents.length === 0}
+				<div class="flex flex-col items-center gap-3 px-4 py-6">
+					<p class="text-sm" style="color: var(--color-text-muted);"
+						>No recent repositories</p
+					>
+					<button
+						onclick={handleOpenDialog}
+						class="rounded px-4 py-2 text-sm font-medium cursor-pointer"
+						style="background: var(--color-accent); color: var(--color-on-accent);"
+					>
+						Open Repository
+					</button>
+				</div>
+			{:else if filtered.length === 0}
+				<div
+					class="px-4 py-6 text-sm text-center"
+					style="color: var(--color-text-muted);"
+				>
+					No matches
+				</div>
+			{:else}
+				<ul
+					bind:this={listEl}
+					class="flex flex-col py-1 max-h-96 overflow-y-auto"
+				>
+					{#each filtered as repo, idx (repo.path)}
+						{@const dp = resolvedPaths[repo.path] ?? repo.path}
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
+						<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+						<li
+							class="px-3 py-2 cursor-pointer flex flex-col gap-0.5"
+							style="background: {idx === highlightedIdx
                 ? 'var(--color-hover)'
                 : 'transparent'};"
-              onmousemove={() => (highlightedIdx = idx)}
-              onclick={() => onpick(repo.path, repo.name)}
-            >
-              <span class="text-sm font-semibold truncate" style="color: var(--color-text);">{repo.name}</span>
-              <span class="text-xs truncate" style="color: var(--color-text-muted);">{dp}</span>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </div>
-  </div>
+							onmousemove={() => (highlightedIdx = idx)}
+							onclick={() => onpick(repo.path, repo.name)}
+						>
+							<span
+								class="text-sm font-semibold truncate"
+								style="color: var(--color-text);"
+								>{repo.name}</span
+							>
+							<span
+								class="text-xs truncate"
+								style="color: var(--color-text-muted);"
+								>{dp}</span
+							>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
+	</div>
 {/if}

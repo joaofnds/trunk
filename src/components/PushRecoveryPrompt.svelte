@@ -175,86 +175,106 @@ async function handleForcePush(target: Target) {
 </script>
 
 <style>
-  .recovery-surface {
-    flex-shrink: 0;
-    /* No declared height: this one wraps to several lines by design. The rules
+.recovery-surface {
+	flex-shrink: 0;
+	/* No declared height: this one wraps to several lines by design. The rules
        are still paint, so they cost it no space of its own. */
-    min-height: var(--banded-lg-h);
-    padding: var(--space-1) var(--space-3);
-    box-shadow:
-      inset 0 -1px 0 var(--color-border),
-      inset 3px 0 0 var(--color-banner-warning-border);
-    background: var(--color-banner-warning-bg);
-  }
-  .recovery-body {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .recovery-text {
-    font-size: 12px;
-    color: var(--color-text);
-    flex: 1;
-    min-width: 0;
-  }
-  .recovery-actions {
-    display: flex;
-    gap: var(--space-1);
-    flex-shrink: 0;
-  }
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    border-radius: var(--radius);
-    cursor: pointer;
-    height: var(--control-sm-h);
-    padding: 0 var(--space-2);
-    white-space: nowrap;
-    border: 1px solid transparent;
-  }
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-  .btn-danger {
-    background: var(--color-danger-bg);
-    color: var(--color-danger);
-    border-color: var(--color-danger-border);
-  }
-  .btn-neutral {
-    background: transparent;
-    color: var(--color-text-muted);
-    border-color: var(--color-border);
-  }
+	min-height: var(--banded-lg-h);
+	padding: var(--space-1) var(--space-3);
+	box-shadow:
+		inset 0 -1px 0 var(--color-border),
+		inset 3px 0 0 var(--color-banner-warning-border);
+	background: var(--color-banner-warning-bg);
+}
+.recovery-body {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+.recovery-text {
+	font-size: 12px;
+	color: var(--color-text);
+	flex: 1;
+	min-width: 0;
+}
+.recovery-actions {
+	display: flex;
+	gap: var(--space-1);
+	flex-shrink: 0;
+}
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 11px;
+	border-radius: var(--radius);
+	cursor: pointer;
+	height: var(--control-sm-h);
+	padding: 0 var(--space-2);
+	white-space: nowrap;
+	border: 1px solid transparent;
+}
+.btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+.btn-danger {
+	background: var(--color-danger-bg);
+	color: var(--color-danger);
+	border-color: var(--color-danger-border);
+}
+.btn-neutral {
+	background: transparent;
+	color: var(--color-text-muted);
+	border-color: var(--color-border);
+}
 </style>
 
 {#if display.kind !== "none"}
-  <div class="recovery-surface" role="alert">
-    <div class="recovery-body">
-      {#if display.kind === "recovery"}
-        {@const target = { remote: display.remote, branch: display.branch }}
-        <span class="recovery-text">
-          Push to <strong>{target.remote}</strong> rejected &mdash; <strong>{target.branch}</strong> has diverged from the remote.
-        </span>
-        <div class="recovery-actions">
-          <button class="btn btn-danger" onclick={() => handleForcePush(target)} disabled={remoteState.isRunning}>Force Push</button>
-          <button class="btn btn-neutral" onclick={dismiss} disabled={remoteState.isRunning}>Cancel</button>
-        </div>
-      {:else if display.kind === "force_refused"}
-        <span class="recovery-text">
-          Force push to <strong>{display.remote}</strong> refused &mdash; <strong>{display.branch}</strong> has remote commits you haven&rsquo;t integrated. Pull &amp; Rebase to include them, then push.
-        </span>
-        <div class="recovery-actions">
-          <button class="btn btn-neutral" onclick={dismiss} disabled={remoteState.isRunning}>Cancel</button>
-        </div>
-      {:else}
-        <span class="recovery-text">{display.text}</span>
-        <div class="recovery-actions">
-          <button class="btn btn-neutral" onclick={dismiss}>Dismiss</button>
-        </div>
-      {/if}
-    </div>
-  </div>
+	<div class="recovery-surface" role="alert">
+		<div class="recovery-body">
+			{#if display.kind === "recovery"}
+				{@const target = { remote: display.remote, branch: display.branch }}
+				<span class="recovery-text">
+					Push to <strong>{target.remote}</strong> rejected &mdash;
+					<strong>{target.branch}</strong>
+					has diverged from the remote.
+				</span>
+				<div class="recovery-actions">
+					<button
+						class="btn btn-danger"
+						onclick={() => handleForcePush(target)}
+						disabled={remoteState.isRunning}
+						>Force Push</button
+					>
+					<button
+						class="btn btn-neutral"
+						onclick={dismiss}
+						disabled={remoteState.isRunning}
+						>Cancel</button
+					>
+				</div>
+			{:else if display.kind === "force_refused"}
+				<span class="recovery-text">
+					Force push to <strong>{display.remote}</strong> refused &mdash;
+					<strong>{display.branch}</strong>
+					has remote commits you haven&rsquo;t integrated. Pull &amp; Rebase to
+					include them, then push.
+				</span>
+				<div class="recovery-actions">
+					<button
+						class="btn btn-neutral"
+						onclick={dismiss}
+						disabled={remoteState.isRunning}
+						>Cancel</button
+					>
+				</div>
+			{:else}
+				<span class="recovery-text">{display.text}</span>
+				<div class="recovery-actions">
+					<button class="btn btn-neutral" onclick={dismiss}>Dismiss</button>
+				</div>
+			{/if}
+		</div>
+	</div>
 {/if}

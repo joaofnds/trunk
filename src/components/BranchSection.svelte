@@ -40,14 +40,14 @@ let allHidden = $derived(groupState === "all");
 </script>
 
 <div data-testid="branch-section-{label.toLowerCase()}">
-  <!-- Section header -->
-  <div
-    data-testid="branch-section-header"
-    role="button"
-    tabindex="0"
-    onclick={ontoggle}
-    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') ontoggle(); }}
-    style="
+	<!-- Section header -->
+	<div
+		data-testid="branch-section-header"
+		role="button"
+		tabindex="0"
+		onclick={ontoggle}
+		onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') ontoggle(); }}
+		style="
       height: var(--bar-h);
       padding: 0 var(--space-2) 0 var(--space-3);
       display: flex;
@@ -55,38 +55,46 @@ let allHidden = $derived(groupState === "all");
       align-items: center;
       cursor: pointer;
     "
-  >
-    <span style="color: var(--fg-2); display: inline-flex; align-items: center; margin-right: var(--space-1);">
-      {#if expanded}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
-    </span>
-    <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; flex: 1;">
-      {label} ({count})
-    </span>
-    {#if showCreateButton}
-      <button
-        data-testid="branch-section-create-btn"
-        onclick={(e) => { e.stopPropagation(); oncreate?.(); }}
-        style="color: var(--fg-1); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
-        aria-label={createLabel}
-      >
-        <Plus size={12} />
-      </button>
-    {/if}
-    {#if ontogglevisibility}
-      <button
-        data-testid="branch-section-visibility-btn"
-        onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
-        style="color: var(--fg-2); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
-        aria-label="{visibilityVerb(allHidden)} all {label} refs"
-        data-group-state={groupState}
-      >
-        <VisibilityIcon hidden={allHidden} />
-      </button>
-    {/if}
-  </div>
+	>
+		<span
+			style="color: var(--fg-2); display: inline-flex; align-items: center; margin-right: var(--space-1);"
+		>
+			{#if expanded}
+				<ChevronDown size={12} />
+			{:else}
+				<ChevronRight size={12} />
+			{/if}
+		</span>
+		<span
+			style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; flex: 1;"
+		>
+			{`${label} (${count})`}
+		</span>
+		{#if showCreateButton}
+			<button
+				data-testid="branch-section-create-btn"
+				onclick={(e) => { e.stopPropagation(); oncreate?.(); }}
+				style="color: var(--fg-1); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
+				aria-label={createLabel}
+			>
+				<Plus size={12} />
+			</button>
+		{/if}
+		{#if ontogglevisibility}
+			<button
+				data-testid="branch-section-visibility-btn"
+				onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
+				style="color: var(--fg-2); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
+				aria-label="{visibilityVerb(allHidden)} all {label} refs"
+				data-group-state={groupState}
+			>
+				<VisibilityIcon hidden={allHidden} />
+			</button>
+		{/if}
+	</div>
 
-  <!-- Section content -->
-  {#if expanded}
-    {@render children()}
-  {/if}
+	<!-- Section content -->
+	{#if expanded}
+		{@render children()}
+	{/if}
 </div>

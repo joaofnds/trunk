@@ -73,28 +73,28 @@ function rowLabel(file: TrackedFile): string {
 </script>
 
 <div
-  class="fixed inset-0 flex flex-col items-center"
-  style="z-index: 9999; background: var(--color-backdrop);"
+	class="fixed inset-0 flex flex-col items-center"
+	style="z-index: 9999; background: var(--color-backdrop);"
 >
-  <!-- The palette sits a little above centre, where the eye already is. The
+	<!-- The palette sits a little above centre, where the eye already is. The
        spacer takes that share of the free height so the box needs no offset of
        its own, which is what keeps this a flex layout rather than a padding
        hack. -->
-  <div style="flex: 1 1 0;" aria-hidden="true"></div>
-  <button
-    type="button"
-    class="fixed inset-0"
-    aria-label="Close the file finder"
-    tabindex="-1"
-    onclick={onclose}
-    style="background: transparent; border: none; cursor: default;"
-  ></button>
-  <div
-    role="dialog"
-    aria-modal="true"
-    aria-label="Comment on a file"
-    class="flex flex-col rounded"
-    style="
+	<div style="flex: 1 1 0;" aria-hidden="true"></div>
+	<button
+		type="button"
+		class="fixed inset-0"
+		aria-label="Close the file finder"
+		tabindex="-1"
+		onclick={onclose}
+		style="background: transparent; border: none; cursor: default;"
+	></button>
+	<div
+		role="dialog"
+		aria-modal="true"
+		aria-label="Comment on a file"
+		class="flex flex-col rounded"
+		style="
       background: var(--bg-2);
       border: 1px solid var(--line);
       box-shadow: var(--shadow-2);
@@ -104,19 +104,19 @@ function rowLabel(file: TrackedFile): string {
       position: relative;
       flex: 0 1 auto;
     "
-  >
-    <input
-      type="text"
-      role="combobox"
-      aria-expanded="true"
-      aria-controls="file-finder-list"
-      aria-label="Find a tracked file to comment on"
-      placeholder="Comment on a file…"
-      value={query}
-      oninput={handleInput}
-      onkeydown={handleKeydown}
-      use:autofocus
-      style="
+	>
+		<input
+			type="text"
+			role="combobox"
+			aria-expanded="true"
+			aria-controls="file-finder-list"
+			aria-label="Find a tracked file to comment on"
+			placeholder="Comment on a file…"
+			value={query}
+			oninput={handleInput}
+			onkeydown={handleKeydown}
+			use:autofocus
+			style="
         background: var(--color-bg);
         border: none;
         border-bottom: 1px solid var(--color-border);
@@ -125,24 +125,24 @@ function rowLabel(file: TrackedFile): string {
         font-size: 13px;
         outline: none;
       "
-    />
+		>
 
-    <ul
-      id="file-finder-list"
-      role="listbox"
-      aria-label="Tracked files"
-      style="flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 0; list-style: none;"
-    >
-      {#each matches as file, i (file.path)}
-        <li role="presentation">
-          <button
-            type="button"
-            role="option"
-            aria-selected={i === selectedIndex}
-            aria-label={rowLabel(file)}
-            class="flex items-center w-full"
-            onclick={() => onselect(file.path)}
-            style="
+		<ul
+			id="file-finder-list"
+			role="listbox"
+			aria-label="Tracked files"
+			style="flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 0; list-style: none;"
+		>
+			{#each matches as file, i (file.path)}
+				<li role="presentation">
+					<button
+						type="button"
+						role="option"
+						aria-selected={i === selectedIndex}
+						aria-label={rowLabel(file)}
+						class="flex items-center w-full"
+						onclick={() => onselect(file.path)}
+						style="
               gap: var(--space-2);
               padding: var(--space-2) var(--space-3);
               font-size: 12px;
@@ -152,29 +152,34 @@ function rowLabel(file: TrackedFile): string {
               color: var(--color-text);
               background: {i === selectedIndex ? 'var(--color-selected-row)' : 'transparent'};
             "
-          >
-            {#if file.changed}
-              <span
-              aria-hidden="true"
-              style="
+					>
+						{#if file.changed}
+							<span
+								aria-hidden="true"
+								style="
                 width: 6px;
                 height: 6px;
                 border-radius: 50%;
                 flex-shrink: 0;
                 background: var(--color-accent);
               "
-              ></span>
-            {:else}
-              <span aria-hidden="true" style="width: 6px; flex-shrink: 0;"></span>
-            {/if}
-            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-              {file.path}
-            </span>
-            {#if (commentCounts.get(file.path) ?? 0) > 0}
-              <span
-                class="finder-comment-count"
-                aria-label="{commentCounts.get(file.path)} review comments"
-                style="
+							></span>
+						{:else}
+							<span
+								aria-hidden="true"
+								style="width: 6px; flex-shrink: 0;"
+							></span>
+						{/if}
+						<span
+							style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+						>
+							{file.path}
+						</span>
+						{#if (commentCounts.get(file.path) ?? 0) > 0}
+							<span
+								class="finder-comment-count"
+								aria-label="{commentCounts.get(file.path)} review comments"
+								style="
                   margin-left: auto;
                   flex-shrink: 0;
                   padding: 0 var(--space-1);
@@ -183,18 +188,22 @@ function rowLabel(file: TrackedFile): string {
                   color: var(--accent-fg);
                   font-size: 11px;
                 "
-              >{commentCounts.get(file.path)}</span>
-            {/if}
-          </button>
-        </li>
-      {/each}
+								>{commentCounts.get(file.path)}</span
+							>
+						{/if}
+					</button>
+				</li>
+			{/each}
 
-      {#if matches.length === 0}
-        <li role="presentation" style="padding: var(--space-3); font-size: 12px; color: var(--color-text-muted);">
-          No tracked file matches
-        </li>
-      {/if}
-    </ul>
-  </div>
-  <div style="flex: 3 1 0;" aria-hidden="true"></div>
+			{#if matches.length === 0}
+				<li
+					role="presentation"
+					style="padding: var(--space-3); font-size: 12px; color: var(--color-text-muted);"
+				>
+					No tracked file matches
+				</li>
+			{/if}
+		</ul>
+	</div>
+	<div style="flex: 3 1 0;" aria-hidden="true"></div>
 </div>

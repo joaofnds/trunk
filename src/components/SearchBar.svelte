@@ -54,9 +54,9 @@ function autofocus(node: HTMLElement) {
 </script>
 
 <div
-  class="search-bar"
-  transition:slide={{ duration: 150, axis: 'y' }}
-  style="
+	class="search-bar"
+	transition:slide={{ duration: 150, axis: 'y' }}
+	style="
     position: absolute;
     top: 0;
     right: 8px;
@@ -73,15 +73,15 @@ function autofocus(node: HTMLElement) {
     gap: var(--space-1);
   "
 >
-  <input
-    class="search-bar-input"
-    type="text"
-    placeholder="Search commits…"
-    bind:value={inputValue}
-    oninput={handleInput}
-    onkeydown={handleKeydown}
-    use:autofocus
-    style="
+	<input
+		class="search-bar-input"
+		type="text"
+		placeholder="Search commits…"
+		bind:value={inputValue}
+		oninput={handleInput}
+		onkeydown={handleKeydown}
+		use:autofocus
+		style="
       flex: 1;
       border: none;
       background: transparent;
@@ -90,29 +90,29 @@ function autofocus(node: HTMLElement) {
       outline: none;
       min-width: 0;
     "
-  />
+	>
 
-  {#if query.length > 0}
-    <span
-      style="
+	{#if query.length > 0}
+		<span
+			style="
         flex-shrink: 0;
         font-size: 11px;
         color: var(--color-text-muted);
         white-space: nowrap;
       "
-    >
-      {#if totalMatches > 0}
-        {currentIndex + 1} of {totalMatches}
-      {:else}
-        0 matches
-      {/if}
-    </span>
-  {/if}
+		>
+			{#if totalMatches > 0}
+				{`${currentIndex + 1} of ${totalMatches}`}
+			{:else}
+				0 matches
+			{/if}
+		</span>
+	{/if}
 
-  <button
-    onclick={onprev}
-    disabled={totalMatches === 0}
-    style="
+	<button
+		onclick={onprev}
+		disabled={totalMatches === 0}
+		style="
       border: none;
       background: transparent;
       cursor: pointer;
@@ -124,15 +124,15 @@ function autofocus(node: HTMLElement) {
       opacity: {totalMatches === 0 ? '0.3' : '1'};
       pointer-events: {totalMatches === 0 ? 'none' : 'auto'};
     "
-    class="search-btn"
-  >
-    <ChevronUp size={14} />
-  </button>
+		class="search-btn"
+	>
+		<ChevronUp size={14} />
+	</button>
 
-  <button
-    onclick={onnext}
-    disabled={totalMatches === 0}
-    style="
+	<button
+		onclick={onnext}
+		disabled={totalMatches === 0}
+		style="
       border: none;
       background: transparent;
       cursor: pointer;
@@ -144,14 +144,14 @@ function autofocus(node: HTMLElement) {
       opacity: {totalMatches === 0 ? '0.3' : '1'};
       pointer-events: {totalMatches === 0 ? 'none' : 'auto'};
     "
-    class="search-btn"
-  >
-    <ChevronDown size={14} />
-  </button>
+		class="search-btn"
+	>
+		<ChevronDown size={14} />
+	</button>
 
-  <button
-    onclick={onclose}
-    style="
+	<button
+		onclick={onclose}
+		style="
       border: none;
       background: transparent;
       cursor: pointer;
@@ -161,14 +161,14 @@ function autofocus(node: HTMLElement) {
       display: flex;
       align-items: center;
     "
-    class="search-btn"
-  >
-    <X size={14} />
-  </button>
+		class="search-btn"
+	>
+		<X size={14} />
+	</button>
 </div>
 
 <style>
-  .search-btn:hover {
-    background: var(--bg-hover);
-  }
+.search-btn:hover {
+	background: var(--bg-hover);
+}
 </style>

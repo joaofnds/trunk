@@ -215,39 +215,39 @@ function handleKeydown(e: KeyboardEvent) {
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
-  role={treeMode ? 'tree' : 'list'}
-  tabindex="0"
-  onkeydown={handleKeydown}
-  style="flex: 1; overflow-y: auto; min-height: 0; outline: none;"
+	role={treeMode ? 'tree' : 'list'}
+	tabindex="0"
+	onkeydown={handleKeydown}
+	style="flex: 1; overflow-y: auto; min-height: 0; outline: none;"
 >
-  {#each flatRows as row, i (row.type === 'file' ? row.node.path : `dir:${row.node.path}`)}
-    {#if row.type === 'directory'}
-      <DirectoryRow
-        node={row.node}
-        depth={row.depth}
-        expanded={row.expanded}
-        focused={i === focusIndex}
-        ontoggle={() => { focusIndex = i; lastFocusedPath = row.node.path; toggleExpanded(row.node.path); }}
-        actionLabel={ondirectoryaction ? actionLabel : ''}
-        onaction={ondirectoryaction ? () => ondirectoryaction!(row.node.path) : undefined}
-        oncontextmenu={ondirectorycontextmenu ? (e) => ondirectorycontextmenu!(e, row.node.path) : undefined}
-        {commentCounts}
-        {commentTones}
-      />
-    {:else}
-      <FileRow
-        file={row.node.file}
-        actionLabel={actionLabel}
-        isLoading={loadingFiles?.has(row.node.file.path) ?? false}
-        onaction={() => onfileaction(row.node.file.path)}
-        onclick={() => { focusIndex = i; lastFocusedPath = row.node.file.path; onfileclick?.(row.node.file.path); }}
-        oncontextmenu={onfilecontextmenu ? (e) => onfilecontextmenu!(e, row.node.file.path, row.node.file) : undefined}
-        depth={treeMode ? row.depth : 0}
-        displayName={treeMode ? row.node.name : undefined}
-        focused={i === focusIndex}
-        commentCount={commentCounts?.get(row.node.file.path) ?? 0}
-        commentTone={commentTones?.get(row.node.file.path) ?? null}
-      />
-    {/if}
-  {/each}
+	{#each flatRows as row, i (row.type === 'file' ? row.node.path : `dir:${row.node.path}`)}
+		{#if row.type === 'directory'}
+			<DirectoryRow
+				node={row.node}
+				depth={row.depth}
+				expanded={row.expanded}
+				focused={i === focusIndex}
+				ontoggle={() => { focusIndex = i; lastFocusedPath = row.node.path; toggleExpanded(row.node.path); }}
+				actionLabel={ondirectoryaction ? actionLabel : ''}
+				onaction={ondirectoryaction ? () => ondirectoryaction!(row.node.path) : undefined}
+				oncontextmenu={ondirectorycontextmenu ? (e) => ondirectorycontextmenu!(e, row.node.path) : undefined}
+				{commentCounts}
+				{commentTones}
+			/>
+		{:else}
+			<FileRow
+				file={row.node.file}
+				{actionLabel}
+				isLoading={loadingFiles?.has(row.node.file.path) ?? false}
+				onaction={() => onfileaction(row.node.file.path)}
+				onclick={() => { focusIndex = i; lastFocusedPath = row.node.file.path; onfileclick?.(row.node.file.path); }}
+				oncontextmenu={onfilecontextmenu ? (e) => onfilecontextmenu!(e, row.node.file.path, row.node.file) : undefined}
+				depth={treeMode ? row.depth : 0}
+				displayName={treeMode ? row.node.name : undefined}
+				focused={i === focusIndex}
+				commentCount={commentCounts?.get(row.node.file.path) ?? 0}
+				commentTone={commentTones?.get(row.node.file.path) ?? null}
+			/>
+		{/if}
+	{/each}
 </div>

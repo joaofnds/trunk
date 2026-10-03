@@ -674,27 +674,28 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
   changeIndex: number | null = null,
   wash = true
 )}
-  <!-- Tint (bg + rail) on the outer wrapper; the prose lives in an inner
+	<!-- Tint (bg + rail) on the outer wrapper; the prose lives in an inner
        .markdown-body so the height equalizer can observe natural content
        height while the wrapper flex-stretches to the row height. `no-wash`
        keeps the rail and drops the background, for a row whose own leaf tints
        already mark the change. -->
-  <div
-    class="rendered-block"
-    class:md-added={tint === "added"}
-    class:md-removed={tint === "removed"}
-    class:no-wash={!wash}
-    use:externalLinks
-    use:registerChange={changeIndex}
-  ><div class="markdown-body">{@html html}</div></div>
+	<div
+		class="rendered-block"
+		class:md-added={tint === "added"}
+		class:md-removed={tint === "removed"}
+		class:no-wash={!wash}
+		use:externalLinks
+		use:registerChange={changeIndex}
+		><div class="markdown-body">{@html html}</div></div
+	>
 {/snippet}
 
 {#snippet separator(count: number)}
-  <div class="rendered-sep" role="separator">
-    <span class="rendered-sep-label"
-      >{count} line{count === 1 ? "" : "s"} hidden</span
-    >
-  </div>
+	<div class="rendered-sep" role="separator">
+		<span class="rendered-sep-label"
+			>{`${count} line${count === 1 ? "" : "s"} hidden`}</span
+		>
+	</div>
 {/snippet}
 
 {#snippet cell(
@@ -702,133 +703,143 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
   c: SplitCell,
   changeIndex: number | null = null
 )}
-  {#if c}
-    <div class="split-cell" data-side={side}>
-      {@render block(c.tint, c.html, changeIndex, c.wash)}
-    </div>
-  {:else}
-    <div class="split-cell rendered-phantom" data-side={side}></div>
-  {/if}
+	{#if c}
+		<div class="split-cell" data-side={side}>
+			{@render block(c.tint, c.html, changeIndex, c.wash)}
+		</div>
+	{:else}
+		<div class="split-cell rendered-phantom" data-side={side}></div>
+	{/if}
 {/snippet}
 
 {#snippet columnStack(rows: SplitRow[], side: "left" | "right")}
-  <!-- ONE hidden-scrollbar horizontal scroller per column per run (Source's
+	<!-- ONE hidden-scrollbar horizontal scroller per column per run (Source's
        .split-column, d1c299f): every row of the run stacks inside the same
        max-content wrapper, so short rows pan on the run's shared plane and
        tints span the full scrolled width. -->
-  <div class="split-column" use:colSync>
-    <div
-      class="split-col-content"
-      style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
-    >
-      {#each rows as row}
-        {@render cell(
+	<div class="split-column" use:colSync>
+		<div
+			class="split-col-content"
+			style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
+		>
+			{#each rows as row}
+				{@render cell(
           side,
           side === "left" ? row.left : row.right,
           cellChangeIndex(row, side)
         )}
-      {/each}
-    </div>
-  </div>
+			{/each}
+		</div>
+	</div>
 {/snippet}
 
 <div class="rendered-diff" class:wrap={wordWrap}>
-  <!-- ONE shared content wrapper sized by the wrap toggle (Source's HunkView
+	<!-- ONE shared content wrapper sized by the wrap toggle (Source's HunkView
        pattern): at max-content every inline block, tint, and separator spans the
        same scrolled width. In split the outer wrapper never widens — panning
        lives inside the per-row columns. -->
-  <div
-    class="rendered-content"
-    class:split={layoutMode === "split"}
-    style="min-width: 100%; width: {wordWrap || layoutMode === 'split'
+	<div
+		class="rendered-content"
+		class:split={layoutMode === "split"}
+		style="min-width: 100%; width: {wordWrap || layoutMode === 'split'
       ? '100%'
       : 'max-content'};"
-  >
-    {#if showNoChange}
-      <div class="rendered-nochange">{noChangeLabel}</div>
-    {/if}
-    {#if state.kind === "error"}
-      <div class="rendered-note rendered-error">{state.message}</div>
-    {:else if state.kind === "loading"}
-      <div class="rendered-block"></div>
-    {:else if layoutMode === "split" && absentSide === "before"}
-      <div class="split-columns">
-        <div class="split-column rendered-note">Not present at this revision</div>
-        <div class="split-column" use:colSync>
-          <div
-            class="split-col-content"
-            style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
-          >
-            {#each presentHtmls as markup}{@render block("added", markup)}{/each}
-          </div>
-        </div>
-      </div>
-    {:else if layoutMode === "split" && absentSide === "after"}
-      <div class="split-columns">
-        <div class="split-column" use:colSync>
-          <div
-            class="split-col-content"
-            style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
-          >
-            {#each presentHtmls as markup}{@render block("removed", markup)}{/each}
-          </div>
-        </div>
-        <div class="split-column rendered-note">Not present at this revision</div>
-      </div>
-    {:else if layoutMode === "split"}
-      {#each splitSegments as segment}
-        {#if segment.type === "sep"}
-          {@render separator(segment.count)}
-        {:else}
-          <div class="split-columns" use:rowHeights={segment.rows}>
-            {@render columnStack(segment.rows, "left")}
-            {@render columnStack(segment.rows, "right")}
-          </div>
-        {/if}
-      {/each}
-    {:else}
-      {#each inlineItems as item}
-        {#if item.type === "sep"}
-          {@render separator(item.count)}
-        {:else}
-          {@render block(item.tint, item.html, item.changeIndex, item.wash)}
-          {#if item.note}<div class="rendered-fold">{item.note}</div>{/if}
-        {/if}
-      {/each}
-    {/if}
-  </div>
+	>
+		{#if showNoChange}
+			<div class="rendered-nochange">{noChangeLabel}</div>
+		{/if}
+		{#if state.kind === "error"}
+			<div class="rendered-note rendered-error">{state.message}</div>
+		{:else if state.kind === "loading"}
+			<div class="rendered-block"></div>
+		{:else if layoutMode === "split" && absentSide === "before"}
+			<div class="split-columns">
+				<div class="split-column rendered-note"
+					>Not present at this revision</div
+				>
+				<div class="split-column" use:colSync>
+					<div
+						class="split-col-content"
+						style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
+					>
+						{#each presentHtmls as markup}
+							{@render block("added", markup)}
+						{/each}
+					</div>
+				</div>
+			</div>
+		{:else if layoutMode === "split" && absentSide === "after"}
+			<div class="split-columns">
+				<div class="split-column" use:colSync>
+					<div
+						class="split-col-content"
+						style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
+					>
+						{#each presentHtmls as markup}
+							{@render block("removed", markup)}
+						{/each}
+					</div>
+				</div>
+				<div class="split-column rendered-note"
+					>Not present at this revision</div
+				>
+			</div>
+		{:else if layoutMode === "split"}
+			{#each splitSegments as segment}
+				{#if segment.type === "sep"}
+					{@render separator(segment.count)}
+				{:else}
+					<div class="split-columns" use:rowHeights={segment.rows}>
+						{@render columnStack(segment.rows, "left")}
+						{@render columnStack(segment.rows, "right")}
+					</div>
+				{/if}
+			{/each}
+		{:else}
+			{#each inlineItems as item}
+				{#if item.type === "sep"}
+					{@render separator(item.count)}
+				{:else}
+					{@render block(item.tint, item.html, item.changeIndex, item.wash)}
+					{#if item.note}
+						<div class="rendered-fold">{item.note}</div>
+					{/if}
+				{/if}
+			{/each}
+		{/if}
+	</div>
 </div>
 
 <style>
-  /* Single outer scroller: vertical scroll needs no JS sync, and in split the
+/* Single outer scroller: vertical scroll needs no JS sync, and in split the
      grid rows align both columns structurally. */
-  .rendered-diff {
-    height: 100%;
-    overflow: auto;
-    box-sizing: border-box;
-    background: var(--bg-0);
-  }
-  /* One flex pair per DiffRow (Source's .split-columns): the row's height is
+.rendered-diff {
+	height: 100%;
+	overflow: auto;
+	box-sizing: border-box;
+	background: var(--bg-0);
+}
+/* One flex pair per DiffRow (Source's .split-columns): the row's height is
      max(left, right) via flex stretch, so variable-height blocks stay row-aligned
      without a shared grid. */
-  .split-columns {
-    display: flex;
-  }
-  /* Half-panel column that pans horizontally on its own (scrollbars hidden,
+.split-columns {
+	display: flex;
+}
+/* Half-panel column that pans horizontally on its own (scrollbars hidden,
      panning synced across all columns) — Source's .split-column verbatim. This is
      what keeps split at panel width under wrap-off instead of widening 2×. */
-  .split-column {
-    flex: 1;
-    min-width: 0;
-    overflow-x: auto;
-    overscroll-behavior-x: none;
-    scrollbar-width: none;
-    background: var(--bg-0);
-  }
-  .split-column:first-child {
-    border-right: 1px solid var(--color-border);
-  }
-  /* No overflow here: any non-visible overflow on one axis forces the other to
+.split-column {
+	flex: 1;
+	min-width: 0;
+	overflow-x: auto;
+	overscroll-behavior-x: none;
+	scrollbar-width: none;
+	background: var(--bg-0);
+}
+.split-column:first-child {
+	border-right: 1px solid var(--color-border);
+}
+/* No overflow here: any non-visible overflow on one axis forces the other to
      compute non-visible too, turning the block into a scroll container whose grid
      row can then collapse below its content and clip it. Blocks flow at natural
      height so each grid row is max(left, right); wide children (code fences,
@@ -839,116 +850,116 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
      left only the 3px rail visible. Untinted blocks show the pane's bg-0.
      Padding-only box: rowHeights reconstructs each cell as markdown-body height
      + this padding — a border or margin here silently breaks row equalization. */
-  .rendered-block {
-    --md-prose-inset: var(--space-4);
-    padding: var(--space-2) var(--md-prose-inset);
-    min-width: 0;
-  }
-  /* GitHub's comment-prose size; the 16px browser default reads oversized
+.rendered-block {
+	--md-prose-inset: var(--space-4);
+	padding: var(--space-2) var(--md-prose-inset);
+	min-width: 0;
+}
+/* GitHub's comment-prose size; the 16px browser default reads oversized
      against the app's 11-13px chrome. Heading/code sizes are em-based and
      scale with it. */
-  .rendered-block > :global(.markdown-body) {
-    font-size: 14px;
-  }
-  /* The toolbar's word-wrap toggle, mirroring Source's semantics (HunkView:
+.rendered-block > :global(.markdown-body) {
+	font-size: 14px;
+}
+/* The toolbar's word-wrap toggle, mirroring Source's semantics (HunkView:
      pre-wrap + 100% when on, pre + max-content when off).
      ON: prose wraps natively; code fences flip from their pre scroller to
      pre-wrap. :global reaches the {@html}-injected fragment Svelte scoping can't. */
-  .rendered-diff.wrap :global(.markdown-body pre code) {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-  /* OFF: nothing wraps — nowrap inherits into the injected prose (a paragraph is
+.rendered-diff.wrap :global(.markdown-body pre code) {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+/* OFF: nothing wraps — nowrap inherits into the injected prose (a paragraph is
      one long line; `pre code` keeps its explicit white-space:pre). The shared
      wrapper's max-content width makes every block span the widest line; the
      outer .rendered-diff scroller pans horizontally, like Source. */
-  .rendered-diff:not(.wrap) .rendered-content {
-    white-space: nowrap;
-  }
-  /* One row's slot in a column stack. Explicit height comes from the
+.rendered-diff:not(.wrap) .rendered-content {
+	white-space: nowrap;
+}
+/* One row's slot in a column stack. Explicit height comes from the
      rowHeights equalizer (max of the pair); the block flex-stretches into it
      so its tint fills the whole row slot. */
-  .split-cell {
-    display: flex;
-    flex-direction: column;
-  }
-  .split-cell > .rendered-block {
-    flex: 1;
-  }
-  /* The empty counterpart cell of an added/removed block: same equalized
+.split-cell {
+	display: flex;
+	flex-direction: column;
+}
+.split-cell > .rendered-block {
+	flex: 1;
+}
+/* The empty counterpart cell of an added/removed block: same equalized
      height, carries no content. */
-  .split-cell.rendered-phantom {
-    background: var(--color-diff-phantom-bg);
-  }
-  /* A collapsed run of unchanged blocks: a full-width sibling of the .split-columns
+.split-cell.rendered-phantom {
+	background: var(--color-diff-phantom-bg);
+}
+/* A collapsed run of unchanged blocks: a full-width sibling of the .split-columns
      rows in split, a plain block inline. A centered count flanked by hairline
      rules, so the fold reads as a seam in the content rather than a boxed-in
      banner. Non-expandable, matching Source (criterion 12). */
-  .rendered-sep {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
-    background: var(--bg-0);
-  }
-  .rendered-sep::before,
-  .rendered-sep::after {
-    content: "";
-    flex: 1;
-    height: 1px;
-    background: var(--color-border);
-  }
-  /* The reflow note: a block whose two sides render the same visible text,
+.rendered-sep {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3) var(--space-4);
+	background: var(--bg-0);
+}
+.rendered-sep::before,
+.rendered-sep::after {
+	content: "";
+	flex: 1;
+	height: 1px;
+	background: var(--color-border);
+}
+/* The reflow note: a block whose two sides render the same visible text,
      drawn as a sibling div under the block. Muted and indented to the
      block's own padding, so it reads as a footnote rather than a divider. */
-  .rendered-fold {
-    padding: 0 var(--space-4) var(--space-2);
-    color: var(--color-text-muted);
-    font-size: 11px;
-    font-style: italic;
-    letter-spacing: 0.02em;
-  }
-  /* The backend's per-gap fold note (TRUNK-144.4): a real `<li>`/`<tr>` the
+.rendered-fold {
+	padding: 0 var(--space-4) var(--space-2);
+	color: var(--color-text-muted);
+	font-size: 11px;
+	font-style: italic;
+	letter-spacing: 0.02em;
+}
+/* The backend's per-gap fold note (TRUNK-144.4): a real `<li>`/`<tr>` the
      fold spliced into the folded fragment itself, so it sits inside the
      list/table it hid items from rather than after it. `:global` reaches
      past scoping into the `{@html}`-injected markdown body. */
-  :global(.markdown-body .rendered-fold-note) {
-    color: var(--color-text-muted);
-    font-size: 11px;
-    font-style: italic;
-    letter-spacing: 0.02em;
-  }
-  /* A list note carries no bullet — it reports a gap, not an item. */
-  :global(.markdown-body li.rendered-fold-note) {
-    list-style: none;
-  }
-  /* A table note's cell already spans every column (backend-set colspan);
+:global(.markdown-body .rendered-fold-note) {
+	color: var(--color-text-muted);
+	font-size: 11px;
+	font-style: italic;
+	letter-spacing: 0.02em;
+}
+/* A list note carries no bullet — it reports a gap, not an item. */
+:global(.markdown-body li.rendered-fold-note) {
+	list-style: none;
+}
+/* A table note's cell already spans every column (backend-set colspan);
      center it so the row reads as a seam rather than a left-aligned label. */
-  :global(.markdown-body tr.rendered-fold-note td) {
-    text-align: center;
-  }
-  .rendered-sep-label {
-    color: var(--color-text-muted);
-    font-size: 11px;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
-  }
-  .rendered-nochange {
-    padding: var(--space-2) var(--space-4);
-    background: var(--bg-1);
-    color: var(--color-text-muted);
-    font-size: 12px;
-    font-style: italic;
-    text-align: center;
-    border-block-end: 1px solid var(--color-border);
-  }
-  .rendered-note {
-    padding: var(--space-4);
-    color: var(--color-text-muted);
-    font-size: 13px;
-    font-style: italic;
-  }
-  .rendered-error {
-    color: var(--color-danger);
-  }
+:global(.markdown-body tr.rendered-fold-note td) {
+	text-align: center;
+}
+.rendered-sep-label {
+	color: var(--color-text-muted);
+	font-size: 11px;
+	letter-spacing: 0.02em;
+	white-space: nowrap;
+}
+.rendered-nochange {
+	padding: var(--space-2) var(--space-4);
+	background: var(--bg-1);
+	color: var(--color-text-muted);
+	font-size: 12px;
+	font-style: italic;
+	text-align: center;
+	border-block-end: 1px solid var(--color-border);
+}
+.rendered-note {
+	padding: var(--space-4);
+	color: var(--color-text-muted);
+	font-size: 13px;
+	font-style: italic;
+}
+.rendered-error {
+	color: var(--color-danger);
+}
 </style>

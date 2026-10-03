@@ -273,277 +273,329 @@ async function handleBranchCreate(values: Record<string, string>) {
 </script>
 
 <style>
-  .toolbar {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: 0 var(--space-3) 0 var(--space-2);
-  }
+.toolbar {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: 0 var(--space-3) 0 var(--space-2);
+}
 
-  .toolbar-group {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
+.toolbar-group {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
 
-  .toolbar-divider {
-    width: 1px;
-    height: 18px;
-    background: var(--line);
-    flex-shrink: 0;
-  }
+.toolbar-divider {
+	width: 1px;
+	height: 18px;
+	background: var(--line);
+	flex-shrink: 0;
+}
 
-  .toolbar-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--control-h);
-    height: var(--control-h);
-    /* The toolbar is a flex row, so without this a crowded window narrows the
+.toolbar-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--control-h);
+	height: var(--control-h);
+	/* The toolbar is a flex row, so without this a crowded window narrows the
        buttons off their declared square. */
-    flex-shrink: 0;
-    padding: 0;
-    /* Paint, not length: a border under border-box would cost the button 2px
+	flex-shrink: 0;
+	padding: 0;
+	/* Paint, not length: a border under border-box would cost the button 2px
        of the height its token declares. */
-    box-shadow: inset 0 0 0 1px var(--line);
-    border-radius: var(--radius);
-    background: transparent;
-    color: var(--fg-1);
-    cursor: pointer;
-  }
-  .toolbar-btn:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-  }
-  .toolbar-btn:hover:not(:disabled) {
-    background: var(--bg-hover);
-  }
-  .toolbar-btn:disabled {
-    opacity: 0.45;
-    color: var(--fg-3);
-    cursor: default;
-    pointer-events: none;
-  }
+	box-shadow: inset 0 0 0 1px var(--line);
+	border-radius: var(--radius);
+	background: transparent;
+	color: var(--fg-1);
+	cursor: pointer;
+}
+.toolbar-btn:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+.toolbar-btn:hover:not(:disabled) {
+	background: var(--bg-hover);
+}
+.toolbar-btn:disabled {
+	opacity: 0.45;
+	color: var(--fg-3);
+	cursor: default;
+	pointer-events: none;
+}
 
-  .toolbar-btn.toolbar-btn-active {
-    background: var(--accent);
-    box-shadow: inset 0 0 0 1px var(--accent);
-    color: var(--accent-fg);
-  }
-  .toolbar-btn.toolbar-btn-active:hover:not(:disabled) {
-    background: var(--accent-hi);
-    box-shadow: inset 0 0 0 1px var(--accent-hi);
-  }
+.toolbar-btn.toolbar-btn-active {
+	background: var(--accent);
+	box-shadow: inset 0 0 0 1px var(--accent);
+	color: var(--accent-fg);
+}
+.toolbar-btn.toolbar-btn-active:hover:not(:disabled) {
+	background: var(--accent-hi);
+	box-shadow: inset 0 0 0 1px var(--accent-hi);
+}
 
-  .toolbar-btn-badged {
-    position: relative;
-  }
+.toolbar-btn-badged {
+	position: relative;
+}
 
-  .toolbar-badge {
-    position: absolute;
-    top: -6px;
-    right: -6px;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 var(--space-1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-pill);
-    background: var(--accent);
-    color: var(--accent-fg);
-    font-size: 10px;
-    font-weight: 600;
-    line-height: 1;
-  }
+.toolbar-badge {
+	position: absolute;
+	top: -6px;
+	right: -6px;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 var(--space-1);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: var(--radius-pill);
+	background: var(--accent);
+	color: var(--accent-fg);
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 1;
+}
 
-  .review-filter-control {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    height: var(--control-h);
-    flex-shrink: 0;
-  }
-  .review-filter-control-active,
-  .review-filter-control:has(.review-filter-select) {
-    gap: 0;
-    border-radius: var(--radius);
-    background: var(--color-accent-bg);
-    box-shadow: inset 0 0 0 1px var(--color-accent-border);
-  }
-  .review-filter-control-active .review-filter-select select,
-  .review-filter-control:has(.review-filter-select) .review-filter-select select {
-    height: var(--control-h);
-    border-color: transparent;
-    border-radius: var(--radius) 0 0 var(--radius);
-    background: transparent;
-    color: var(--fg-0);
-    padding: 0 var(--space-2);
-  }
-  .review-filter-control-active > .toolbar-btn,
-  .review-filter-control:has(.review-filter-select) > .toolbar-btn {
-    border-radius: 0 var(--radius) var(--radius) 0;
-    background: var(--accent);
-    box-shadow: none;
-    color: var(--accent-fg);
-  }
-  .review-filter-control-active > .toolbar-btn:hover:not(:disabled),
-  .review-filter-control:has(.review-filter-select) > .toolbar-btn:hover:not(:disabled) {
-    background: var(--accent-hi);
-  }
-  .review-filter-select {
-    display: flex;
-    align-items: center;
-    overflow: hidden;
-  }
-  .review-filter-select select {
-    max-width: 92px;
-    height: var(--control-sm-h);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    background: var(--color-surface);
-    color: var(--color-text);
-    font: inherit;
-    font-size: 11px;
-    padding: 0 var(--space-1);
-  }
-  .toolbar-badge.tone-open { background: var(--color-thread-open); }
-  .toolbar-badge.tone-addressed { background: var(--color-thread-addressed); }
-  .toolbar-badge.tone-done { background: var(--color-thread-done); }
-  .toolbar-badge.tone-dismissed { background: var(--color-thread-dismissed); }
-  .toolbar-badge.tone-stale { background: var(--color-thread-stale); }
+.review-filter-control {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	height: var(--control-h);
+	flex-shrink: 0;
+}
+.review-filter-control-active,
+.review-filter-control:has(.review-filter-select) {
+	gap: 0;
+	border-radius: var(--radius);
+	background: var(--color-accent-bg);
+	box-shadow: inset 0 0 0 1px var(--color-accent-border);
+}
+.review-filter-control-active .review-filter-select select,
+.review-filter-control:has(.review-filter-select) .review-filter-select select {
+	height: var(--control-h);
+	border-color: transparent;
+	border-radius: var(--radius) 0 0 var(--radius);
+	background: transparent;
+	color: var(--fg-0);
+	padding: 0 var(--space-2);
+}
+.review-filter-control-active > .toolbar-btn,
+.review-filter-control:has(.review-filter-select) > .toolbar-btn {
+	border-radius: 0 var(--radius) var(--radius) 0;
+	background: var(--accent);
+	box-shadow: none;
+	color: var(--accent-fg);
+}
+.review-filter-control-active > .toolbar-btn:hover:not(:disabled),
+.review-filter-control:has(.review-filter-select)
+	> .toolbar-btn:hover:not(:disabled) {
+	background: var(--accent-hi);
+}
+.review-filter-select {
+	display: flex;
+	align-items: center;
+	overflow: hidden;
+}
+.review-filter-select select {
+	max-width: 92px;
+	height: var(--control-sm-h);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	background: var(--color-surface);
+	color: var(--color-text);
+	font: inherit;
+	font-size: 11px;
+	padding: 0 var(--space-1);
+}
+.toolbar-badge.tone-open {
+	background: var(--color-thread-open);
+}
+.toolbar-badge.tone-addressed {
+	background: var(--color-thread-addressed);
+}
+.toolbar-badge.tone-done {
+	background: var(--color-thread-done);
+}
+.toolbar-badge.tone-dismissed {
+	background: var(--color-thread-dismissed);
+}
+.toolbar-badge.tone-stale {
+	background: var(--color-thread-stale);
+}
 
-  .btn-group {
-    display: inline-flex;
-    align-items: stretch;
-    height: var(--control-h);
-    flex-shrink: 0;
-    /* Paint, not length: a real border would take 2px out of the content box
+.btn-group {
+	display: inline-flex;
+	align-items: stretch;
+	height: var(--control-h);
+	flex-shrink: 0;
+	/* Paint, not length: a real border would take 2px out of the content box
        and leave the group's own children overflowing it. */
-    box-shadow: inset 0 0 0 1px var(--line);
-    border-radius: var(--radius);
-  }
-  .btn-group .toolbar-btn {
-    box-shadow: none;
-    border-radius: var(--radius) 0 0 var(--radius);
-  }
-
+	box-shadow: inset 0 0 0 1px var(--line);
+	border-radius: var(--radius);
+}
+.btn-group .toolbar-btn {
+	box-shadow: none;
+	border-radius: var(--radius) 0 0 var(--radius);
+}
 </style>
 
 <div data-tauri-drag-region class="toolbar">
-  <div class="toolbar-group">
-    <button class="toolbar-btn" disabled={!canUndo} onclick={handleUndo} aria-label="Undo" use:tooltip={"Undo"}>
-      <Undo2 size={14} />
-    </button>
-    <button class="toolbar-btn" disabled={!canRedo} onclick={handleRedo} aria-label="Redo" use:tooltip={"Redo"}>
-      <Redo2 size={14} />
-    </button>
-  </div>
+	<div class="toolbar-group">
+		<button
+			class="toolbar-btn"
+			disabled={!canUndo}
+			onclick={handleUndo}
+			aria-label="Undo"
+			use:tooltip={"Undo"}
+		>
+			<Undo2 size={14} />
+		</button>
+		<button
+			class="toolbar-btn"
+			disabled={!canRedo}
+			onclick={handleRedo}
+			aria-label="Redo"
+			use:tooltip={"Redo"}
+		>
+			<Redo2 size={14} />
+		</button>
+	</div>
 
-  <div class="toolbar-divider"></div>
+	<div class="toolbar-divider"></div>
 
-  <div class="toolbar-group">
-    <div class="btn-group">
-      <button class="toolbar-btn" disabled={remoteState.isRunning} onclick={handlePull} aria-label="Pull" use:tooltip={"Pull"}>
-        <ArrowDown size={14} />
-      </button>
-      <PullDropdown {repoPath} disabled={remoteState.isRunning} {remoteState} />
-    </div>
-    <button class="toolbar-btn" disabled={remoteState.isRunning} onclick={handlePush} aria-label="Push" use:tooltip={"Push"}>
-      <ArrowUp size={14} />
-    </button>
-  </div>
+	<div class="toolbar-group">
+		<div class="btn-group">
+			<button
+				class="toolbar-btn"
+				disabled={remoteState.isRunning}
+				onclick={handlePull}
+				aria-label="Pull"
+				use:tooltip={"Pull"}
+			>
+				<ArrowDown size={14} />
+			</button>
+			<PullDropdown {repoPath} disabled={remoteState.isRunning} {remoteState} />
+		</div>
+		<button
+			class="toolbar-btn"
+			disabled={remoteState.isRunning}
+			onclick={handlePush}
+			aria-label="Push"
+			use:tooltip={"Push"}
+		>
+			<ArrowUp size={14} />
+		</button>
+	</div>
 
-  <div class="toolbar-divider"></div>
+	<div class="toolbar-divider"></div>
 
-  <div class="toolbar-group">
-    <button class="toolbar-btn" onclick={handleBranch} aria-label="Branch" use:tooltip={"Branch"}>
-      <GitBranch size={14} />
-    </button>
-    <button class="toolbar-btn" onclick={handleStash} aria-label="Stash" use:tooltip={"Stash"}>
-      <Archive size={14} />
-    </button>
-    <button class="toolbar-btn" onclick={handlePop} aria-label="Pop" use:tooltip={"Pop"}>
-      <ArchiveRestore size={14} />
-    </button>
-  </div>
+	<div class="toolbar-group">
+		<button
+			class="toolbar-btn"
+			onclick={handleBranch}
+			aria-label="Branch"
+			use:tooltip={"Branch"}
+		>
+			<GitBranch size={14} />
+		</button>
+		<button
+			class="toolbar-btn"
+			onclick={handleStash}
+			aria-label="Stash"
+			use:tooltip={"Stash"}
+		>
+			<Archive size={14} />
+		</button>
+		<button
+			class="toolbar-btn"
+			onclick={handlePop}
+			aria-label="Pop"
+			use:tooltip={"Pop"}
+		>
+			<ArchiveRestore size={14} />
+		</button>
+	</div>
 
-  <div class="toolbar-divider"></div>
+	<div class="toolbar-divider"></div>
 
-  <div class="toolbar-group">
-    <div
-      class="review-filter-control"
-      class:review-filter-control-active={reviewFilter !== "none"}
-    >
-      {#if reviewFilter !== "none"}
-        <label
-          class="review-filter-select"
-          title="Filter review threads"
-          transition:reviewFilterSlide
-        >
-          <span class="sr-only">Review filter</span>
-          <select
-            aria-label="Review filter selection"
-            aria-describedby="review-filter-help"
-            value={reviewFilter}
-            onchange={(event) => {
+	<div class="toolbar-group">
+		<div
+			class="review-filter-control"
+			class:review-filter-control-active={reviewFilter !== "none"}
+		>
+			{#if reviewFilter !== "none"}
+				<label
+					class="review-filter-select"
+					title="Filter review threads"
+					transition:reviewFilterSlide
+				>
+					<span class="sr-only">Review filter</span>
+					<select
+						aria-label="Review filter selection"
+						aria-describedby="review-filter-help"
+						value={reviewFilter}
+						onchange={(event) => {
               const value = (event.currentTarget as HTMLSelectElement).value;
               if (isValidReviewFilter(value)) onreviewfilterchange?.(value);
             }}
-          >
-            {#each REVIEW_FILTER_OPTIONS as option (option.value)}
-              <option value={option.value}>{option.label}</option>
-            {/each}
-          </select>
-          <span id="review-filter-help" class="sr-only">
-            All threads shows every card; its badges count only open and addressed threads.
-            Other filters show matching thread states. Use the review threads button to hide
-            review content and creation controls.
-          </span>
-        </label>
-      {/if}
-      <button
-        class="toolbar-btn toolbar-btn-badged"
-        class:toolbar-btn-active={reviewFilter !== "none"}
-        aria-pressed={reviewFilter !== "none"}
-        aria-label={reviewFilter === "none" ? "Show review threads" : "Hide review threads"}
-        use:tooltip={reviewFilter === "none" ? "Show review threads" : "Hide review threads"}
-        onclick={handleReviewThreadsToggle}
-      >
-        <MessageSquare size={14} />
-        {#if viewCommentCount > 0}
-          <span
-            class="toolbar-badge tone-{viewCommentTone ?? 'open'}"
-            aria-label="{viewCommentCount} review comments in this view"
-          >{viewCommentCount}</span>
-        {/if}
-      </button>
-    </div>
-    <button
-      class="toolbar-btn toolbar-btn-badged"
-      class:toolbar-btn-active={reviewButtonActive}
-      aria-pressed={reviewButtonActive}
-      aria-label="Review"
-      use:tooltip={"Review"}
-      onclick={handleReviewToggle}
-    >
-      <ClipboardCheck size={14} />
-      {#if reviewCommentCount > 0}
-        <span
-          class="toolbar-badge tone-{reviewCommentTone ?? 'open'}"
-          aria-label="{reviewCommentCount} review comments in this review"
-        >{reviewCommentCount}</span>
-      {/if}
-    </button>
-  </div>
+					>
+						{#each REVIEW_FILTER_OPTIONS as option (option.value)}
+							<option value={option.value}>{option.label}</option>
+						{/each}
+					</select>
+					<span id="review-filter-help" class="sr-only">
+						All threads shows every card; its badges count only open and
+						addressed threads. Other filters show matching thread states. Use
+						the review threads button to hide review content and creation
+						controls.
+					</span>
+				</label>
+			{/if}
+			<button
+				class="toolbar-btn toolbar-btn-badged"
+				class:toolbar-btn-active={reviewFilter !== "none"}
+				aria-pressed={reviewFilter !== "none"}
+				aria-label={reviewFilter === "none" ? "Show review threads" : "Hide review threads"}
+				use:tooltip={reviewFilter === "none" ? "Show review threads" : "Hide review threads"}
+				onclick={handleReviewThreadsToggle}
+			>
+				<MessageSquare size={14} />
+				{#if viewCommentCount > 0}
+					<span
+						class="toolbar-badge tone-{viewCommentTone ?? 'open'}"
+						aria-label="{viewCommentCount} review comments in this view"
+						>{viewCommentCount}</span
+					>
+				{/if}
+			</button>
+		</div>
+		<button
+			class="toolbar-btn toolbar-btn-badged"
+			class:toolbar-btn-active={reviewButtonActive}
+			aria-pressed={reviewButtonActive}
+			aria-label="Review"
+			use:tooltip={"Review"}
+			onclick={handleReviewToggle}
+		>
+			<ClipboardCheck size={14} />
+			{#if reviewCommentCount > 0}
+				<span
+					class="toolbar-badge tone-{reviewCommentTone ?? 'open'}"
+					aria-label="{reviewCommentCount} review comments in this review"
+					>{reviewCommentCount}</span
+				>
+			{/if}
+		</button>
+	</div>
 </div>
 
 {#if branchDialogOpen}
-  <InputDialog
-    title="Create Branch"
-    fields={[{ key: 'name', label: 'Branch name', placeholder: 'feature/my-branch', required: true }]}
-    onsubmit={handleBranchCreate}
-    oncancel={() => (branchDialogOpen = false)}
-  />
+	<InputDialog
+		title="Create Branch"
+		fields={[{ key: 'name', label: 'Branch name', placeholder: 'feature/my-branch', required: true }]}
+		onsubmit={handleBranchCreate}
+		oncancel={() => (branchDialogOpen = false)}
+	/>
 {/if}

@@ -703,80 +703,77 @@ function autoObserveItemResize(element: HTMLElement) {
     3. Content - Full height container (+ overlay snippet)
     4. Items - Translated list of visible items
 -->
-<div
-    class="virtual-list-container"
-    bind:this={heightManager.containerElement}
->
-    <div
-        class="virtual-list-viewport"
-        bind:this={heightManager.viewportElement}
-        onscroll={handleScroll}
-        style:overflow-anchor="none"
-        style:overflow-x={minContentWidth === undefined ? "hidden" : "auto"}
-    >
-        <div
-            class="virtual-list-content"
-            style:height="{contentHeight}px"
-            style:min-width={minContentWidth === undefined ? undefined : `${minContentWidth}px`}
-            style:overflow-x={minContentWidth === undefined ? undefined : "clip"}
-        >
-            {#if overlaySnippet}
-                {@render overlaySnippet(contentHeight, visibleItems.start, visibleItems.end)}
-            {/if}
-            <div
-                class="virtual-list-items"
-                style:transform="translateY({transformY}px)"
-            >
-                {#each displayItems as currentItemWithIndex, _i (currentItemWithIndex.originalIndex)}
-                    <div
-                        bind:this={itemElements[currentItemWithIndex.sliceIndex]}
-                        use:autoObserveItemResize
-                        data-original-index={currentItemWithIndex.originalIndex}
-                    >
-                        {@render renderItem(
+<div class="virtual-list-container" bind:this={heightManager.containerElement}>
+	<div
+		class="virtual-list-viewport"
+		bind:this={heightManager.viewportElement}
+		onscroll={handleScroll}
+		style:overflow-anchor="none"
+		style:overflow-x={minContentWidth === undefined ? "hidden" : "auto"}
+	>
+		<div
+			class="virtual-list-content"
+			style:height="{contentHeight}px"
+			style:min-width={minContentWidth === undefined ? undefined : `${minContentWidth}px`}
+			style:overflow-x={minContentWidth === undefined ? undefined : "clip"}
+		>
+			{#if overlaySnippet}
+				{@render overlaySnippet(contentHeight, visibleItems.start, visibleItems.end)}
+			{/if}
+			<div
+				class="virtual-list-items"
+				style:transform="translateY({transformY}px)"
+			>
+				{#each displayItems as currentItemWithIndex, _i (currentItemWithIndex.originalIndex)}
+					<div
+						bind:this={itemElements[currentItemWithIndex.sliceIndex]}
+						use:autoObserveItemResize
+						data-original-index={currentItemWithIndex.originalIndex}
+					>
+						{@render renderItem(
                             currentItemWithIndex.item,
                             currentItemWithIndex.originalIndex
                         )}
-                    </div>
-                {/each}
-            </div>
-        </div>
-    </div>
+					</div>
+				{/each}
+			</div>
+		</div>
+	</div>
 </div>
 
 <style>
-    .virtual-list-container {
-        position: relative;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-    }
+.virtual-list-container {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+}
 
-    .virtual-list-viewport {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        overflow-y: scroll;
-        -webkit-overflow-scrolling: touch;
-    }
+.virtual-list-viewport {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	overflow-y: scroll;
+	-webkit-overflow-scrolling: touch;
+}
 
-    .virtual-list-content {
-        position: relative;
-        width: 100%;
-        min-height: 100%;
-    }
+.virtual-list-content {
+	position: relative;
+	width: 100%;
+	min-height: 100%;
+}
 
-    .virtual-list-items {
-        position: absolute;
-        width: 100%;
-        left: 0;
-        top: 0;
-    }
+.virtual-list-items {
+	position: absolute;
+	width: 100%;
+	left: 0;
+	top: 0;
+}
 
-    .virtual-list-items > div {
-        width: 100%;
-        display: block;
-    }
+.virtual-list-items > div {
+	width: 100%;
+	display: block;
+}
 </style>

@@ -76,22 +76,22 @@ function onscroll() {
 </script>
 
 <div
-  class="exact-virtual-viewport"
-  bind:this={viewport}
-  {onscroll}
-  style="position: absolute; inset: 0; overflow-y: auto; overflow-x: {horizontal ? 'auto' : 'hidden'}; overscroll-behavior-x: none; overflow-anchor: none;"
+	class="exact-virtual-viewport"
+	bind:this={viewport}
+	{onscroll}
+	style="position: absolute; inset: 0; overflow-y: auto; overflow-x: {horizontal ? 'auto' : 'hidden'}; overscroll-behavior-x: none; overflow-anchor: none;"
 >
-  <div
-    class="exact-virtual-content"
-    style="position: relative; height: {shown.totalHeight}px; width: {contentWidth}; min-width: 100%;"
-  >
-    <div
-      class="exact-virtual-rows"
-      style="position: absolute; top: 0; left: 0; width: 100%; min-width: 100%; --pan-x: {panLeft}px; transform: translateY({shown.offsetTop}px);"
-    >
-      {#each visible as item, offset (shown.start + offset)}
-        {@render renderItem(item, shown.start + offset)}
-      {/each}
-    </div>
-  </div>
+	<div
+		class="exact-virtual-content"
+		style="position: relative; height: {shown.totalHeight}px; width: {contentWidth}; min-width: 100%;"
+	>
+		<div
+			class="exact-virtual-rows"
+			style="position: absolute; top: 0; left: 0; width: 100%; min-width: 100%; --pan-x: {panLeft}px; transform: translateY({shown.offsetTop}px);"
+		>
+			{#each visible as item, offset (shown.start + offset)}
+				{@render renderItem(item, shown.start + offset)}
+			{/each}
+		</div>
+	</div>
 </div>

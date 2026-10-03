@@ -130,62 +130,106 @@ const rowShadow = $derived(
 <!-- Sized cells read their widths from the properties CommitGraph declares on the list
      root; mounted outside it, every sized cell collapses to its content. -->
 <div
-  data-testid="commit-row"
-  role="row"
-  tabindex="0"
-  class="relative flex items-center cursor-pointer text-[13px]"
-  class:hover:bg-[var(--bg-hover)]={!selected && !isCurrentMatch && !isSearchMatch}
-  style:height="{rowHeight}px"
-  style="color: var(--color-text); {isCurrentMatch ? 'background: var(--color-search-current);' : isSearchMatch ? 'background: var(--color-search-match);' : selected ? 'background: var(--color-selected-row);' : ''} {isSearchActive && !isSearchMatch && !isCurrentMatch ? 'opacity: var(--opacity-search-dim);' : ''} {rowShadow ? `box-shadow: ${rowShadow};` : ''}"
-  onclick={(e) => onselect?.(commit.oid, { compare: e.metaKey || e.ctrlKey, range: e.shiftKey })}
-  onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onselect?.(commit.oid); } }}
-  oncontextmenu={(e: MouseEvent) => { if (oncontextmenu && !isWip) { e.preventDefault(); oncontextmenu(e, commit); } }}
+	data-testid="commit-row"
+	role="row"
+	tabindex="0"
+	class="relative flex items-center cursor-pointer text-[13px]"
+	class:hover:bg-[var(--bg-hover)]={!selected && !isCurrentMatch && !isSearchMatch}
+	style:height="{rowHeight}px"
+	style="color: var(--color-text); {isCurrentMatch ? 'background: var(--color-search-current);' : isSearchMatch ? 'background: var(--color-search-match);' : selected ? 'background: var(--color-selected-row);' : ''} {isSearchActive && !isSearchMatch && !isCurrentMatch ? 'opacity: var(--opacity-search-dim);' : ''} {rowShadow ? `box-shadow: ${rowShadow};` : ''}"
+	onclick={(e) => onselect?.(commit.oid, { compare: e.metaKey || e.ctrlKey, range: e.shiftKey })}
+	onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onselect?.(commit.oid); } }}
+	oncontextmenu={(e: MouseEvent) => { if (oncontextmenu && !isWip) { e.preventDefault(); oncontextmenu(e, commit); } }}
 >
-  <!-- Column 1: Branch/Tag refs spacer (SVG overlay handles rendering) -->
-  {#if columnVisibility.ref}
-    <div data-column="ref" class="flex-shrink-0" style="width: var({columnWidthProperty('ref')}); padding: 0 {COLUMN_PADDING_X}px;"></div>
-  {/if}
+	<!-- Column 1: Branch/Tag refs spacer (SVG overlay handles rendering) -->
+	{#if columnVisibility.ref}
+		<div
+			data-column="ref"
+			class="flex-shrink-0"
+			style="width: var({columnWidthProperty('ref')}); padding: 0 {COLUMN_PADDING_X}px;"
+		></div>
+	{/if}
 
-  <!-- Column 2: Graph -->
-  {#if columnVisibility.graph}
-    <div data-column="graph" class="relative z-[1] flex items-center flex-shrink-0 overflow-hidden" style="width: var({columnWidthProperty('graph')}); padding: 0 {COLUMN_PADDING_X}px;">
-    </div>
-  {/if}
+	<!-- Column 2: Graph -->
+	{#if columnVisibility.graph}
+		<div
+			data-column="graph"
+			class="relative z-[1] flex items-center flex-shrink-0 overflow-hidden"
+			style="width: var({columnWidthProperty('graph')}); padding: 0 {COLUMN_PADDING_X}px;"
+		> </div>
+	{/if}
 
-  <!-- Column 3: Message (flex-1, always visible) + WIP file badges + trailing comment badge -->
-  <div data-column="message" class="flex-1 flex items-center gap-2 overflow-hidden" style="padding: 0 {COLUMN_PADDING_X}px; min-width: {MESSAGE_FLOOR}px;">
-    {#if isWip}
-      <div data-testid="commit-row-summary" class="flex items-center gap-2 overflow-hidden whitespace-nowrap">
-        <span class="overflow-hidden text-ellipsis italic rounded px-2 py-0.5" style="min-width: 6rem; background: var(--bg-2); color: var(--color-text-muted);">{commit.summary}</span>
-        {#if wipFileBadges.length}
-          <span class="flex items-center gap-2 flex-shrink-0 font-mono text-[11px]">
-            {#each wipFileBadges as b}
-              <span title={b.title} style="color: {b.color};">{b.letter} {b.count}</span>
-            {/each}
-          </span>
-        {/if}
-      </div>
-    {:else if isStash}
-      <span data-testid="commit-row-summary" data-message-summary class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic" style="color: var(--color-text-muted);" use:cutTooltip={commit.summary}><span style="margin-left: {-messageScrollX}px;">{commit.summary}</span></span>
-    {:else}
-      <span data-testid="commit-row-summary" data-message-summary class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
-      use:cutTooltip={commit.summary}><span style="margin-left: {-messageScrollX}px;">{#if parsed.prefix}<span style="color: {prefixToneVar(parsed.prefix)};">{parsed.prefix}{parsed.scope}{parsed.bang}</span><span style="color: var(--fg-2);">{": "}</span>{parsed.rest}{:else}{commit.summary}{/if}</span></span>
-    {/if}
-    <CommentBadge count={commentCount} tone={commentTone} />
-  </div>
+	<!-- Column 3: Message (flex-1, always visible) + WIP file badges + trailing comment badge -->
+	<div
+		data-column="message"
+		class="flex-1 flex items-center gap-2 overflow-hidden"
+		style="padding: 0 {COLUMN_PADDING_X}px; min-width: {MESSAGE_FLOOR}px;"
+	>
+		{#if isWip}
+			<div
+				data-testid="commit-row-summary"
+				class="flex items-center gap-2 overflow-hidden whitespace-nowrap"
+			>
+				<span
+					class="overflow-hidden text-ellipsis italic rounded px-2 py-0.5"
+					style="min-width: 6rem; background: var(--bg-2); color: var(--color-text-muted);"
+					>{commit.summary}</span
+				>
+				{#if wipFileBadges.length}
+					<span
+						class="flex items-center gap-2 flex-shrink-0 font-mono text-[11px]"
+					>
+						{#each wipFileBadges as b}
+							<span title={b.title} style="color: {b.color};"
+								>{b.letter} {b.count}</span
+							>
+						{/each}
+					</span>
+				{/if}
+			</div>
+		{:else if isStash}
+			<span
+				data-testid="commit-row-summary"
+				data-message-summary
+				class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic"
+				style="color: var(--color-text-muted);"
+				use:cutTooltip={commit.summary}
+				><span style="margin-left: {-messageScrollX}px;"
+					>{commit.summary}</span
+				></span
+			>
+		{:else}
+			<span
+				data-testid="commit-row-summary"
+				data-message-summary
+				class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
+				use:cutTooltip={commit.summary}
+				><span style="margin-left: {-messageScrollX}px;"
+					>{#if parsed.prefix}
+						<span style="color: {prefixToneVar(parsed.prefix)};"
+							>{parsed.prefix}{parsed.scope}{parsed.bang}</span
+						><span style="color: var(--fg-2);">{": "}</span>{parsed.rest}
+					{:else}
+						{commit.summary}
+					{/if}</span
+				></span
+			>
+		{/if}
+		<CommentBadge count={commentCount} tone={commentTone} />
+	</div>
 
-  <!-- Column 4: Diff size — log-scaled add/delete bar + counts. Renders for
+	<!-- Column 4: Diff size — log-scaled add/delete bar + counts. Renders for
        commits, stashes, and the WIP row alike; placeholder while uncomputed. -->
-  {#if columnVisibility.diff}
-    <div
-      data-testid="diff-stat"
-      data-column="diff"
-      class="flex-shrink-0 flex items-center overflow-hidden"
-      style="width: var({columnWidthProperty('diff')}); padding: 0 {COLUMN_PADDING_X}px;"
-      use:tooltip={diffTitle}
-    >
-      {#if diffStat && (diffBar.addFrac > 0 || diffBar.delFrac > 0)}
-        <!-- The bar is the only mark — no background track. It's sized to the diff
+	{#if columnVisibility.diff}
+		<div
+			data-testid="diff-stat"
+			data-column="diff"
+			class="flex-shrink-0 flex items-center overflow-hidden"
+			style="width: var({columnWidthProperty('diff')}); padding: 0 {COLUMN_PADDING_X}px;"
+			use:tooltip={diffTitle}
+		>
+			{#if diffStat && (diffBar.addFrac > 0 || diffBar.delFrac > 0)}
+				<!-- The bar is the only mark — no background track. It's sized to the diff
              magnitude (a fraction of the column), left-aligned, and rounded on
              BOTH outer ends. Rounding is applied to the painted end segments
              directly (the first rounds its left, the last its right; a one-sided
@@ -194,55 +238,103 @@ const rowShadow = $derived(
              border-radius, which left the right end square. Green/red split =
              add/delete; exact +X −Y and files-changed are in the tooltip.
              Segments split the bar via flex-grow so their ratio matches exactly. -->
-        <div data-testid="diff-stat-bar" class="flex h-1.5 flex-shrink-0" style="width: {(diffBar.addFrac + diffBar.delFrac) * 100}%; min-width: 6px;">
-          {#if diffBar.addFrac > 0}
-            <span data-diff-seg="add" class="h-full {diffBar.delFrac > 0 ? 'rounded-l-full' : 'rounded-full'}" style="flex: {diffBar.addFrac}; min-width: 1px; background: var(--color-diff-add);"></span>
-          {/if}
-          {#if diffBar.delFrac > 0}
-            <span data-diff-seg="delete" class="h-full {diffBar.addFrac > 0 ? 'rounded-r-full' : 'rounded-full'}" style="flex: {diffBar.delFrac}; min-width: 1px; background: var(--color-diff-delete);"></span>
-          {/if}
-        </div>
-      {:else if diffStat && diffStat.files_changed > 0}
-        <!-- Files changed but zero line deltas: binary, pure rename, or mode-only.
+				<div
+					data-testid="diff-stat-bar"
+					class="flex h-1.5 flex-shrink-0"
+					style="width: {(diffBar.addFrac + diffBar.delFrac) * 100}%; min-width: 6px;"
+				>
+					{#if diffBar.addFrac > 0}
+						<span
+							data-diff-seg="add"
+							class="h-full {diffBar.delFrac > 0 ? 'rounded-l-full' : 'rounded-full'}"
+							style="flex: {diffBar.addFrac}; min-width: 1px; background: var(--color-diff-add);"
+						></span>
+					{/if}
+					{#if diffBar.delFrac > 0}
+						<span
+							data-diff-seg="delete"
+							class="h-full {diffBar.addFrac > 0 ? 'rounded-r-full' : 'rounded-full'}"
+							style="flex: {diffBar.delFrac}; min-width: 1px; background: var(--color-diff-delete);"
+						></span>
+					{/if}
+				</div>
+			{:else if diffStat && diffStat.files_changed > 0}
+				<!-- Files changed but zero line deltas: binary, pure rename, or mode-only.
              A neutral marker keeps "something changed" visible instead of a blank
              gap that reads as "no change". Details are in the tooltip. -->
-        <span data-testid="diff-stat-neutral" class="h-1.5 flex-shrink-0 rounded-full" style="width: 6px; background: var(--color-text-muted);"></span>
-      {:else if diffStat}
-        <!-- Genuinely empty commit (0 files): render nothing — there is no change
+				<span
+					data-testid="diff-stat-neutral"
+					class="h-1.5 flex-shrink-0 rounded-full"
+					style="width: 6px; background: var(--color-text-muted);"
+				></span>
+			{:else if diffStat}
+			<!-- Genuinely empty commit (0 files): render nothing — there is no change
              to convey. Distinct from the uncomputed placeholder below. -->
-      {:else}
-        <span data-testid="diff-stat-placeholder" class="flex-1 text-center text-[11px]" style="color: var(--color-text-muted); opacity: 0.5;">—</span>
-      {/if}
-    </div>
-  {/if}
+			{:else}
+				<span
+					data-testid="diff-stat-placeholder"
+					class="flex-1 text-center text-[11px]"
+					style="color: var(--color-text-muted); opacity: 0.5;"
+					>—</span
+				>
+			{/if}
+		</div>
+	{/if}
 
-  <!-- Column 5: Author -->
-  {#if columnVisibility.author}
-    <div data-column="author" class="flex-shrink-0 flex items-center text-[12px]" style="width: var({columnWidthProperty('author')}); color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;">
-      {#if !isWip && !isStash}<span data-testid="commit-author" class="flex items-center gap-2 min-w-0 w-full" use:cutTooltip={commit.author_name}><Avatar name={commit.author_name} /><span class="overflow-hidden text-ellipsis whitespace-nowrap">{commit.author_name}</span></span>{/if}
-    </div>
-  {/if}
+	<!-- Column 5: Author -->
+	{#if columnVisibility.author}
+		<div
+			data-column="author"
+			class="flex-shrink-0 flex items-center text-[12px]"
+			style="width: var({columnWidthProperty('author')}); color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;"
+		>
+			{#if !isWip && !isStash}
+				<span
+					data-testid="commit-author"
+					class="flex items-center gap-2 min-w-0 w-full"
+					use:cutTooltip={commit.author_name}
+					><Avatar name={commit.author_name} />
+					<span class="overflow-hidden text-ellipsis whitespace-nowrap"
+						>{commit.author_name}</span
+					></span
+				>
+			{/if}
+		</div>
+	{/if}
 
-  <!-- Column 6: Date -->
-  {#if columnVisibility.date}
-    <div data-column="date" class="flex-shrink-0 overflow-hidden whitespace-nowrap text-[11px]" style="width: var({columnWidthProperty('date')}); color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;">
-      {#if !isWip && !isStash}<span data-testid="commit-date" use:exactDate={commit.author_timestamp}>{dateLabel}</span>{/if}
-    </div>
-  {/if}
+	<!-- Column 6: Date -->
+	{#if columnVisibility.date}
+		<div
+			data-column="date"
+			class="flex-shrink-0 overflow-hidden whitespace-nowrap text-[11px]"
+			style="width: var({columnWidthProperty('date')}); color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;"
+		>
+			{#if !isWip && !isStash}
+				<span data-testid="commit-date" use:exactDate={commit.author_timestamp}
+					>{dateLabel}</span
+				>
+			{/if}
+		</div>
+	{/if}
 
-  <!-- Column 7: SHA — click to copy the full oid (stops row select on click + keydown) -->
-  {#if columnVisibility.sha}
-    <div data-column="sha" class="flex-shrink-0 overflow-hidden whitespace-nowrap" style="width: var({columnWidthProperty('sha')}); padding: 0 {COLUMN_PADDING_X}px;">
-      {#if !isWip && !isStash}
-        <button
-          type="button"
-          title="Copy SHA"
-          class="font-mono text-[11px] w-full text-left bg-transparent border-0 p-0 cursor-pointer hover:underline"
-          style="color: var(--color-text-muted);"
-          onclick={(e) => { e.stopPropagation(); copySha(commit.oid); }}
-          onkeydown={(e) => e.stopPropagation()}
-        >{commit.short_oid}</button>
-      {/if}
-    </div>
-  {/if}
+	<!-- Column 7: SHA — click to copy the full oid (stops row select on click + keydown) -->
+	{#if columnVisibility.sha}
+		<div
+			data-column="sha"
+			class="flex-shrink-0 overflow-hidden whitespace-nowrap"
+			style="width: var({columnWidthProperty('sha')}); padding: 0 {COLUMN_PADDING_X}px;"
+		>
+			{#if !isWip && !isStash}
+				<button
+					type="button"
+					title="Copy SHA"
+					class="font-mono text-[11px] w-full text-left bg-transparent border-0 p-0 cursor-pointer hover:underline"
+					style="color: var(--color-text-muted);"
+					onclick={(e) => { e.stopPropagation(); copySha(commit.oid); }}
+					onkeydown={(e) => e.stopPropagation()}
+					>{commit.short_oid}</button
+				>
+			{/if}
+		</div>
+	{/if}
 </div>

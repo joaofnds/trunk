@@ -481,579 +481,667 @@ let lastVisibleColumn = $derived.by(() => {
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
-  class="rebase-editor"
-  tabindex="-1"
-  onkeydown={handleEditorKeydown}
-  use:autofocus
+	class="rebase-editor"
+	tabindex="-1"
+	onkeydown={handleEditorKeydown}
+	use:autofocus
 >
-  <!-- Header -->
-  <div class="rebase-toolbar">
-    <div class="rebase-toolbar-left">
-      <span class="rebase-toolbar-title">Interactive Rebase</span>
-      <span class="rebase-toolbar-meta">Rebasing <span class="rebase-branch-pill">{branchName}</span> onto <span class="rebase-branch-pill">{baseName}</span></span>
-    </div>
-    <div class="rebase-toolbar-right">
-      <button class="rebase-btn rebase-btn-ghost" disabled={!hasChanges} onclick={handleReset}>Reset</button>
-    </div>
-  </div>
+	<!-- Header -->
+	<div class="rebase-toolbar">
+		<div class="rebase-toolbar-left">
+			<span class="rebase-toolbar-title">Interactive Rebase</span>
+			<span class="rebase-toolbar-meta"
+				>Rebasing <span class="rebase-branch-pill">{branchName}</span> onto
+				<span class="rebase-branch-pill">{baseName}</span></span
+			>
+		</div>
+		<div class="rebase-toolbar-right">
+			<button
+				class="rebase-btn rebase-btn-ghost"
+				disabled={!hasChanges}
+				onclick={handleReset}
+				>Reset</button
+			>
+		</div>
+	</div>
 
-  <!-- Column header -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="rebase-header"
-    oncontextmenu={showHeaderContextMenu}
-  >
-    <div class="rebase-col-action" style="width: 90px; padding: 0 {COLUMN_PADDING_X}px;">
-      Action
-    </div>
-    <div class="rebase-col flex-1 relative" style="padding: 0 {COLUMN_PADDING_X}px;">
-      Message
-      {#if 'message' !== lastVisibleColumn}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="col-resize-handle" onmousedown={(e) => startColumnResize('sha', e, true)}></div>
-      {/if}
-    </div>
-    {#if columnVisibility.sha}
-      <div class="rebase-col flex-shrink-0 relative" style="width: {columnWidths.sha}px; padding: 0 {COLUMN_PADDING_X}px;">
-        SHA
-        {#if 'sha' !== lastVisibleColumn}
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="col-resize-handle" onmousedown={(e) => startColumnResize('author', e, true)}></div>
-        {/if}
-      </div>
-    {/if}
-    {#if columnVisibility.author}
-      <div class="rebase-col flex-shrink-0 relative" style="width: {columnWidths.author}px; padding: 0 {COLUMN_PADDING_X}px;">
-        Author
-        {#if 'author' !== lastVisibleColumn}
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="col-resize-handle" onmousedown={(e) => startColumnResize('date', e, true)}></div>
-        {/if}
-      </div>
-    {/if}
-    {#if columnVisibility.date}
-      <div class="rebase-col flex-shrink-0 relative" style="width: {columnWidths.date}px; padding: 0 {COLUMN_PADDING_X}px;">
-        Date
-        {#if 'date' !== lastVisibleColumn}
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="col-resize-handle" onmousedown={(e) => startColumnResize('date', e)}></div>
-        {/if}
-      </div>
-    {/if}
-  </div>
+	<!-- Column header -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="rebase-header" oncontextmenu={showHeaderContextMenu}>
+		<div
+			class="rebase-col-action"
+			style="width: 90px; padding: 0 {COLUMN_PADDING_X}px;"
+		>
+			Action
+		</div>
+		<div
+			class="rebase-col flex-1 relative"
+			style="padding: 0 {COLUMN_PADDING_X}px;"
+		>
+			Message
+			{#if 'message' !== lastVisibleColumn}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="col-resize-handle"
+					onmousedown={(e) => startColumnResize('sha', e, true)}
+				></div>
+			{/if}
+		</div>
+		{#if columnVisibility.sha}
+			<div
+				class="rebase-col flex-shrink-0 relative"
+				style="width: {columnWidths.sha}px; padding: 0 {COLUMN_PADDING_X}px;"
+			>
+				SHA
+				{#if 'sha' !== lastVisibleColumn}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						class="col-resize-handle"
+						onmousedown={(e) => startColumnResize('author', e, true)}
+					></div>
+				{/if}
+			</div>
+		{/if}
+		{#if columnVisibility.author}
+			<div
+				class="rebase-col flex-shrink-0 relative"
+				style="width: {columnWidths.author}px; padding: 0 {COLUMN_PADDING_X}px;"
+			>
+				Author
+				{#if 'author' !== lastVisibleColumn}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						class="col-resize-handle"
+						onmousedown={(e) => startColumnResize('date', e, true)}
+					></div>
+				{/if}
+			</div>
+		{/if}
+		{#if columnVisibility.date}
+			<div
+				class="rebase-col flex-shrink-0 relative"
+				style="width: {columnWidths.date}px; padding: 0 {COLUMN_PADDING_X}px;"
+			>
+				Date
+				{#if 'date' !== lastVisibleColumn}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						class="col-resize-handle"
+						onmousedown={(e) => startColumnResize('date', e)}
+					></div>
+				{/if}
+			</div>
+		{/if}
+	</div>
 
-  <!-- Commit list: {#key} forces DOM recreation after reorder so SortableJS and Svelte don't fight -->
-  {#key items}
-  <div class="rebase-list" bind:this={listEl}>
-    {#each items as item, idx (item.oid)}
-      <div class="rebase-row-wrapper">
-      <div
-        class="rebase-row"
-        role="row"
-        tabindex="0"
-        class:rebase-row-focused={focusedIndex === idx}
-        class:rebase-row-drop={item.action === 'drop'}
-        class:rebase-row-squash={item.action === 'squash'}
-        data-rebase-row={idx}
-        onclick={() => (focusedIndex = idx)}
-        onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (item.action !== 'drop') openMessageEditor(idx); } else if (e.key === ' ') { e.preventDefault(); focusedIndex = idx; } }}
-        ondblclick={() => { if (item.action !== 'drop') openMessageEditor(idx); }}
-        style="height: var(--row-h);"
-      >
-        {#if item.action === 'squash'}
-          <span class="rebase-squash-arrow">↓</span>
-        {/if}
-        <!-- Action column -->
-        <div class="rebase-cell-action" style="width: 90px; padding: 0 {COLUMN_PADDING_X}px;">
-          <span
-            class="rebase-action-dot"
-            style="background: {actionColor(item.action)};"
-          ></span>
-          <select
-            class="rebase-select"
-            bind:value={item.action}
-            onclick={(e) => e.stopPropagation()}
-            onchange={() => { if (item.action === 'reword' || item.action === 'squash') openMessageEditor(idx); }}
-          >
-            <option value="pick">Pick</option>
-            <option value="reword">Reword</option>
-            <option value="squash">Squash</option>
-            <option value="drop">Drop</option>
-          </select>
-        </div>
+	<!-- Commit list: {#key} forces DOM recreation after reorder so SortableJS and Svelte don't fight -->
+	{#key items}
+		<div class="rebase-list" bind:this={listEl}>
+			{#each items as item, idx (item.oid)}
+				<div class="rebase-row-wrapper">
+					<div
+						class="rebase-row"
+						role="row"
+						tabindex="0"
+						class:rebase-row-focused={focusedIndex === idx}
+						class:rebase-row-drop={item.action === 'drop'}
+						class:rebase-row-squash={item.action === 'squash'}
+						data-rebase-row={idx}
+						onclick={() => (focusedIndex = idx)}
+						onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (item.action !== 'drop') openMessageEditor(idx); } else if (e.key === ' ') { e.preventDefault(); focusedIndex = idx; } }}
+						ondblclick={() => { if (item.action !== 'drop') openMessageEditor(idx); }}
+						style="height: var(--row-h);"
+					>
+						{#if item.action === 'squash'}
+							<span class="rebase-squash-arrow">↓</span>
+						{/if}
+						<!-- Action column -->
+						<div
+							class="rebase-cell-action"
+							style="width: 90px; padding: 0 {COLUMN_PADDING_X}px;"
+						>
+							<span
+								class="rebase-action-dot"
+								style="background: {actionColor(item.action)};"
+							></span>
+							<select
+								class="rebase-select"
+								bind:value={item.action}
+								onclick={(e) => e.stopPropagation()}
+								onchange={() => { if (item.action === 'reword' || item.action === 'squash') openMessageEditor(idx); }}
+							>
+								<option value="pick">Pick</option>
+								<option value="reword">Reword</option>
+								<option value="squash">Squash</option>
+								<option value="drop">Drop</option>
+							</select>
+						</div>
 
-        <!-- Message column -->
-        <div class="rebase-cell rebase-cell-message flex-1" style="padding: 0 {COLUMN_PADDING_X}px;">
-          <span class:rebase-text-drop={item.action === 'drop'}>{item.newMessage ?? item.summary}</span>
-        </div>
+						<!-- Message column -->
+						<div
+							class="rebase-cell rebase-cell-message flex-1"
+							style="padding: 0 {COLUMN_PADDING_X}px;"
+						>
+							<span class:rebase-text-drop={item.action === 'drop'}
+								>{item.newMessage ?? item.summary}</span
+							>
+						</div>
 
-        <!-- SHA column -->
-        {#if columnVisibility.sha}
-          <div
-            class="rebase-cell flex-shrink-0"
-            style="width: {columnWidths.sha}px; padding: 0 {COLUMN_PADDING_X}px;"
-          >
-            <button
-              type="button"
-              title="Copy SHA"
-              class="rebase-sha-copy"
-              onclick={(e) => { e.stopPropagation(); copySha(item.oid); }}
-              onkeydown={(e) => e.stopPropagation()}
-              ondblclick={(e) => e.stopPropagation()}
-            >{item.shortOid}</button>
-          </div>
-        {/if}
+						<!-- SHA column -->
+						{#if columnVisibility.sha}
+							<div
+								class="rebase-cell flex-shrink-0"
+								style="width: {columnWidths.sha}px; padding: 0 {COLUMN_PADDING_X}px;"
+							>
+								<button
+									type="button"
+									title="Copy SHA"
+									class="rebase-sha-copy"
+									onclick={(e) => { e.stopPropagation(); copySha(item.oid); }}
+									onkeydown={(e) => e.stopPropagation()}
+									ondblclick={(e) => e.stopPropagation()}
+									>{item.shortOid}</button
+								>
+							</div>
+						{/if}
 
-        <!-- Author column -->
-        {#if columnVisibility.author}
-          <div
-            class="rebase-cell flex-shrink-0"
-            style="width: {columnWidths.author}px; padding: 0 {COLUMN_PADDING_X}px;"
-          >
-            <span class:rebase-text-drop={item.action === 'drop'}>{item.authorName}</span>
-          </div>
-        {/if}
+						<!-- Author column -->
+						{#if columnVisibility.author}
+							<div
+								class="rebase-cell flex-shrink-0"
+								style="width: {columnWidths.author}px; padding: 0 {COLUMN_PADDING_X}px;"
+							>
+								<span class:rebase-text-drop={item.action === 'drop'}
+									>{item.authorName}</span
+								>
+							</div>
+						{/if}
 
-        <!-- Date column -->
-        {#if columnVisibility.date}
-          <div
-            class="rebase-cell flex-shrink-0 rebase-cell-date"
-            style="width: {columnWidths.date}px; padding: 0 {COLUMN_PADDING_X}px;"
-          >
-            <span class:rebase-text-drop={item.action === 'drop'} use:exactDate={item.authorTimestamp}>{relativeLabel(item.authorTimestamp, nowMinute)}</span>
-          </div>
-        {/if}
-      </div>
+						<!-- Date column -->
+						{#if columnVisibility.date}
+							<div
+								class="rebase-cell flex-shrink-0 rebase-cell-date"
+								style="width: {columnWidths.date}px; padding: 0 {COLUMN_PADDING_X}px;"
+							>
+								<span
+									class:rebase-text-drop={item.action === 'drop'}
+									use:exactDate={item.authorTimestamp}
+									>{relativeLabel(item.authorTimestamp, nowMinute)}</span
+								>
+							</div>
+						{/if}
+					</div>
 
-      <!-- Validation error inline -->
-      {#if errorForIndex(idx)}
-        <div class="rebase-validation-error">
-          {errorForIndex(idx)}
-        </div>
-      {/if}
+					<!-- Validation error inline -->
+					{#if errorForIndex(idx)}
+						<div class="rebase-validation-error">
+							{errorForIndex(idx)}
+						</div>
+					{/if}
 
-      <!-- Floating message editor (absolute, doesn't push rows) -->
-      {#if editingIdx === idx}
-        <div class="rebase-msg-editor" role="dialog" aria-label="Edit commit message" tabindex="-1" onkeydown={(e) => { e.stopPropagation(); if (e.key === 'Escape') handleMessageCancel(); }}>
-          <div class="rebase-msg-editor-title">{items[editingIdx]?.action === 'squash' ? 'Edit squash message' : 'Reword commit message'}</div>
-          <input
-            class="rebase-msg-editor-summary"
-            type="text"
-            tabindex="0"
-            placeholder="Summary (required)"
-            bind:value={editingSummary}
-            use:selectAll
-          />
-          <textarea
-            class="rebase-msg-editor-body"
-            placeholder="Body (optional)"
-            tabindex="0"
-            rows="4"
-            bind:value={editingBody}
-          ></textarea>
-          <div class="rebase-msg-editor-buttons">
-            <button class="rebase-btn rebase-btn-confirm" tabindex="0" onclick={handleMessageUpdate}>Update Message</button>
-            <button class="rebase-btn rebase-btn-ghost" tabindex="0" onclick={handleMessageCancel}>Cancel</button>
-          </div>
-        </div>
-      {/if}
-      </div>
-    {/each}
-  </div>
-  {/key}
+					<!-- Floating message editor (absolute, doesn't push rows) -->
+					{#if editingIdx === idx}
+						<div
+							class="rebase-msg-editor"
+							role="dialog"
+							aria-label="Edit commit message"
+							tabindex="-1"
+							onkeydown={(e) => { e.stopPropagation(); if (e.key === 'Escape') handleMessageCancel(); }}
+						>
+							<div class="rebase-msg-editor-title"
+								>{items[editingIdx]?.action === 'squash' ? 'Edit squash message' : 'Reword commit message'}</div
+							>
+							<input
+								class="rebase-msg-editor-summary"
+								type="text"
+								tabindex="0"
+								placeholder="Summary (required)"
+								bind:value={editingSummary}
+								use:selectAll
+							>
+							<textarea
+								class="rebase-msg-editor-body"
+								placeholder="Body (optional)"
+								tabindex="0"
+								rows="4"
+								bind:value={editingBody}
+							></textarea>
+							<div class="rebase-msg-editor-buttons">
+								<button
+									class="rebase-btn rebase-btn-confirm"
+									tabindex="0"
+									onclick={handleMessageUpdate}
+									>Update Message</button
+								>
+								<button
+									class="rebase-btn rebase-btn-ghost"
+									tabindex="0"
+									onclick={handleMessageCancel}
+									>Cancel</button
+								>
+							</div>
+						</div>
+					{/if}
+				</div>
+			{/each}
+		</div>
+	{/key}
 
-  <!-- Bottom bar -->
-  <div class="rebase-bottombar">
-    <div class="rebase-shortcuts">
-      <span class="rebase-shortcut-label">shortcuts:</span>
-      <span class="rebase-shortcut-key">P</span> Pick
-      <span class="rebase-shortcut-key">S</span> Squash
-      <span class="rebase-shortcut-key">R</span> Reword
-      <span class="rebase-shortcut-key">D</span> Drop
-      <span class="rebase-shortcut-key">Shift+↑</span> Move Up
-      <span class="rebase-shortcut-key">Shift+↓</span> Move Down
-    </div>
-    <div class="rebase-bottombar-right">
-      <button class="rebase-btn rebase-btn-cancel" onclick={handleCancel}>Cancel Rebase</button>
-      <button class="rebase-btn rebase-btn-start" disabled={!canStart} onclick={handleStartRebase}>Start Rebase</button>
-    </div>
-  </div>
+	<!-- Bottom bar -->
+	<div class="rebase-bottombar">
+		<div class="rebase-shortcuts">
+			<span class="rebase-shortcut-label">shortcuts:</span>
+			<span class="rebase-shortcut-key">P</span>
+			Pick
+			<span class="rebase-shortcut-key">S</span>
+			Squash
+			<span class="rebase-shortcut-key">R</span>
+			Reword
+			<span class="rebase-shortcut-key">D</span>
+			Drop
+			<span class="rebase-shortcut-key">Shift+↑</span>
+			Move Up
+			<span class="rebase-shortcut-key">Shift+↓</span>
+			Move Down
+		</div>
+		<div class="rebase-bottombar-right">
+			<button class="rebase-btn rebase-btn-cancel" onclick={handleCancel}
+				>Cancel Rebase</button
+			>
+			<button
+				class="rebase-btn rebase-btn-start"
+				disabled={!canStart}
+				onclick={handleStartRebase}
+				>Start Rebase</button
+			>
+		</div>
+	</div>
 </div>
 
-
 <style>
-  .rebase-editor {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    background: var(--color-bg);
-    outline: none;
-  }
+.rebase-editor {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	background: var(--color-bg);
+	outline: none;
+}
 
-  /* --- Toolbar --- */
+/* --- Toolbar --- */
 
-  .rebase-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: var(--bar-h);
-    flex-shrink: 0;
-    background: var(--color-surface);
-    box-shadow: inset 0 -1px 0 var(--color-border);
-    padding: 0 var(--space-3);
-  }
+.rebase-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	height: var(--bar-h);
+	flex-shrink: 0;
+	background: var(--color-surface);
+	box-shadow: inset 0 -1px 0 var(--color-border);
+	padding: 0 var(--space-3);
+}
 
-  .rebase-toolbar-left {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
+.rebase-toolbar-left {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
 
-  .rebase-toolbar-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--color-text);
-  }
+.rebase-toolbar-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--color-text);
+}
 
-  .rebase-toolbar-meta {
-    font-size: 12px;
-    color: var(--color-text-muted);
-  }
+.rebase-toolbar-meta {
+	font-size: 12px;
+	color: var(--color-text-muted);
+}
 
-  .rebase-branch-pill {
-    display: inline-flex;
-    align-items: center;
-    height: var(--control-sm-h);
-    background: var(--color-accent);
-    color: var(--accent-fg);
-    font-size: 11px;
-    font-weight: 600;
-    padding: 0 var(--space-2);
-    border-radius: var(--radius);
-  }
+.rebase-branch-pill {
+	display: inline-flex;
+	align-items: center;
+	height: var(--control-sm-h);
+	background: var(--color-accent);
+	color: var(--accent-fg);
+	font-size: 11px;
+	font-weight: 600;
+	padding: 0 var(--space-2);
+	border-radius: var(--radius);
+}
 
-  .rebase-toolbar-right {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
+.rebase-toolbar-right {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
 
-  .rebase-bottombar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-    padding: var(--space-2) var(--space-3);
-    border-top: 1px solid var(--color-border);
-    background: var(--color-surface);
-  }
+.rebase-bottombar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-shrink: 0;
+	padding: var(--space-2) var(--space-3);
+	border-top: 1px solid var(--color-border);
+	background: var(--color-surface);
+}
 
-  .rebase-shortcuts {
-    font-size: 11px;
-    color: var(--color-text-muted);
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    flex-wrap: wrap;
-  }
+.rebase-shortcuts {
+	font-size: 11px;
+	color: var(--color-text-muted);
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	flex-wrap: wrap;
+}
 
-  .rebase-shortcut-label {
-    font-weight: 600;
-    margin-right: var(--space-1);
-  }
+.rebase-shortcut-label {
+	font-weight: 600;
+	margin-right: var(--space-1);
+}
 
-  .rebase-shortcut-key {
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 0 var(--space-1);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    margin-left: var(--space-2);
-  }
+.rebase-shortcut-key {
+	background: var(--color-bg);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	padding: 0 var(--space-1);
+	font-family: var(--font-mono);
+	font-size: 10px;
+	margin-left: var(--space-2);
+}
 
-  .rebase-bottombar-right {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
+.rebase-bottombar-right {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
 
-  .rebase-btn {
-    border-radius: var(--radius);
-    padding: var(--space-1) var(--space-3);
-    font-size: 11px;
-    cursor: pointer;
-    white-space: nowrap;
-    font-family: var(--font-sans);
-    font-weight: 600;
-    border: none;
-  }
+.rebase-btn {
+	border-radius: var(--radius);
+	padding: var(--space-1) var(--space-3);
+	font-size: 11px;
+	cursor: pointer;
+	white-space: nowrap;
+	font-family: var(--font-sans);
+	font-weight: 600;
+	border: none;
+}
 
-  .rebase-btn:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
+.rebase-btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
 
-  .rebase-btn-ghost {
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    color: var(--color-text);
-  }
+.rebase-btn-ghost {
+	background: var(--color-bg);
+	border: 1px solid var(--color-border);
+	color: var(--color-text);
+}
 
-  .rebase-btn-cancel {
-    background: var(--color-danger-bg);
-    border: 1px solid var(--color-danger-border);
-    color: var(--color-danger);
-  }
+.rebase-btn-cancel {
+	background: var(--color-danger-bg);
+	border: 1px solid var(--color-danger-border);
+	color: var(--color-danger);
+}
 
-  .rebase-btn-start {
-    background: var(--color-success-bg);
-    border: 1px solid var(--color-success-border);
-    color: var(--color-success);
-  }
+.rebase-btn-start {
+	background: var(--color-success-bg);
+	border: 1px solid var(--color-success-border);
+	color: var(--color-success);
+}
 
-  .rebase-btn-confirm {
-    background: var(--color-success-bg);
-    border: 1px solid var(--color-success-border);
-    color: var(--color-success);
-  }
+.rebase-btn-confirm {
+	background: var(--color-success-bg);
+	border: 1px solid var(--color-success-border);
+	color: var(--color-success);
+}
 
-  /* --- Column header --- */
+/* --- Column header --- */
 
-  .rebase-header {
-    display: flex;
-    align-items: center;
-    height: var(--bar-h);
-    flex-shrink: 0;
-    background: var(--color-surface);
-    box-shadow: inset 0 -1px 0 var(--color-border);
-    font-size: 11px;
-    color: var(--color-text-muted);
-  }
+.rebase-header {
+	display: flex;
+	align-items: center;
+	height: var(--bar-h);
+	flex-shrink: 0;
+	background: var(--color-surface);
+	box-shadow: inset 0 -1px 0 var(--color-border);
+	font-size: 11px;
+	color: var(--color-text-muted);
+}
 
-  .rebase-col-action {
-    flex-shrink: 0;
-  }
+.rebase-col-action {
+	flex-shrink: 0;
+}
 
-  .col-resize-handle {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    cursor: col-resize;
-    background: linear-gradient(to right, transparent 1.5px, var(--color-border) 1.5px, var(--color-border) 2.5px, transparent 2.5px);
-    transition: background 0.15s;
-  }
+.col-resize-handle {
+	position: absolute;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	width: 4px;
+	cursor: col-resize;
+	background: linear-gradient(
+		to right,
+		transparent 1.5px,
+		var(--color-border) 1.5px,
+		var(--color-border) 2.5px,
+		transparent 2.5px
+	);
+	transition: background 0.15s;
+}
 
-  .col-resize-handle:hover {
-    background: linear-gradient(to right, transparent 1px, var(--color-accent) 1px, var(--color-accent) 3px, transparent 3px);
-  }
+.col-resize-handle:hover {
+	background: linear-gradient(
+		to right,
+		transparent 1px,
+		var(--color-accent) 1px,
+		var(--color-accent) 3px,
+		transparent 3px
+	);
+}
 
-  /* --- Commit list --- */
+/* --- Commit list --- */
 
-  .rebase-list {
-    flex: 1;
-    overflow-y: auto;
-  }
+.rebase-list {
+	flex: 1;
+	overflow-y: auto;
+}
 
-  .rebase-row {
-    position: relative;
-    display: flex;
-    align-items: center;
-    font-size: 13px;
-    color: var(--color-text);
-    cursor: grab;
-  }
+.rebase-row {
+	position: relative;
+	display: flex;
+	align-items: center;
+	font-size: 13px;
+	color: var(--color-text);
+	cursor: grab;
+}
 
-  .rebase-row:hover:not(.rebase-row-focused) {
-    background: var(--color-surface);
-  }
+.rebase-row:hover:not(.rebase-row-focused) {
+	background: var(--color-surface);
+}
 
-  .rebase-row-focused {
-    border-left: 2px solid var(--color-accent);
-    background: var(--color-selected-row);
-  }
+.rebase-row-focused {
+	border-left: 2px solid var(--color-accent);
+	background: var(--color-selected-row);
+}
 
-  .rebase-row-drop {
-    opacity: var(--opacity-dimmed);
-  }
+.rebase-row-drop {
+	opacity: var(--opacity-dimmed);
+}
 
-  .rebase-row-squash {
-    padding-left: var(--space-4);
-    border-left: 2px solid var(--color-accent-alt);
-  }
+.rebase-row-squash {
+	padding-left: var(--space-4);
+	border-left: 2px solid var(--color-accent-alt);
+}
 
-  .rebase-row-squash.rebase-row-focused {
-    border-left: 2px solid var(--color-accent-alt);
-  }
+.rebase-row-squash.rebase-row-focused {
+	border-left: 2px solid var(--color-accent-alt);
+}
 
-  .rebase-squash-arrow {
-    position: absolute;
-    left: 3px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 12px;
-    color: var(--color-accent-alt);
-    z-index: 1;
-    pointer-events: none;
-  }
+.rebase-squash-arrow {
+	position: absolute;
+	left: 3px;
+	top: 50%;
+	transform: translateY(-50%);
+	font-size: 12px;
+	color: var(--color-accent-alt);
+	z-index: 1;
+	pointer-events: none;
+}
 
-  :global(.rebase-row-ghost) {
-    opacity: 0.4;
-  }
+:global(.rebase-row-ghost) {
+	opacity: 0.4;
+}
 
-  :global(.rebase-row-chosen) {
-    background: var(--color-selected-row);
-  }
+:global(.rebase-row-chosen) {
+	background: var(--color-selected-row);
+}
 
-  :global(.rebase-row-drag) {
-    opacity: 0;
-  }
+:global(.rebase-row-drag) {
+	opacity: 0;
+}
 
-  :global(.rebase-row-fallback) {
-    background: var(--color-surface);
-    box-shadow: var(--shadow-sm);
-    opacity: 0.9;
-  }
+:global(.rebase-row-fallback) {
+	background: var(--color-surface);
+	box-shadow: var(--shadow-sm);
+	opacity: 0.9;
+}
 
-  .rebase-text-drop {
-    text-decoration: line-through;
-  }
+.rebase-text-drop {
+	text-decoration: line-through;
+}
 
+/* --- Cells --- */
 
-  /* --- Cells --- */
+.rebase-cell-action {
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
+	gap: var(--space-1);
+}
 
-  .rebase-cell-action {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-    gap: var(--space-1);
-  }
+.rebase-action-dot {
+	display: inline-block;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	vertical-align: middle;
+	flex-shrink: 0;
+}
 
-  .rebase-action-dot {
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    vertical-align: middle;
-    flex-shrink: 0;
-  }
+.rebase-select {
+	background: var(--color-bg);
+	border: 1px solid var(--color-border);
+	color: var(--color-text);
+	font-size: 11px;
+	padding: var(--space-1);
+	border-radius: var(--radius);
+	cursor: pointer;
+	font-family: var(--font-sans);
+}
 
-  .rebase-select {
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    color: var(--color-text);
-    font-size: 11px;
-    padding: var(--space-1);
-    border-radius: var(--radius);
-    cursor: pointer;
-    font-family: var(--font-sans);
-  }
+.rebase-cell {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
 
-  .rebase-cell {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+/* Click-to-copy SHA: reset the button to read as the plain mono cell text. */
+.rebase-sha-copy {
+	width: 100%;
+	text-align: left;
+	background: none;
+	border: none;
+	padding: 0;
+	cursor: pointer;
+	font-family: var(--font-mono);
+	font-size: inherit;
+	color: inherit;
+}
+.rebase-sha-copy:hover {
+	text-decoration: underline;
+}
 
-  /* Click-to-copy SHA: reset the button to read as the plain mono cell text. */
-  .rebase-sha-copy {
-    width: 100%;
-    text-align: left;
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: inherit;
-    color: inherit;
-  }
-  .rebase-sha-copy:hover {
-    text-decoration: underline;
-  }
+.rebase-cell-message {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
 
-  .rebase-cell-message {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.rebase-cell-date {
+	color: var(--color-text-muted);
+}
 
-  .rebase-cell-date {
-    color: var(--color-text-muted);
-  }
+/* --- Inline message editor --- */
 
-  /* --- Inline message editor --- */
+.rebase-row-wrapper {
+	position: relative;
+}
 
-  .rebase-row-wrapper {
-    position: relative;
-  }
+.rebase-msg-editor {
+	position: absolute;
+	top: 100%;
+	left: 48px;
+	right: 48px;
+	z-index: 10;
+	background: var(--color-surface);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	padding: var(--space-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	box-shadow: var(--shadow-lg);
+}
 
-  .rebase-msg-editor {
-    position: absolute;
-    top: 100%;
-    left: 48px;
-    right: 48px;
-    z-index: 10;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: var(--space-4);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    box-shadow: var(--shadow-lg);
-  }
+.rebase-msg-editor-title {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--color-text-muted);
+}
 
-  .rebase-msg-editor-title {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--color-text-muted);
-  }
+.rebase-msg-editor-summary {
+	background: var(--color-bg);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	color: var(--color-text);
+	font-size: 13px;
+	font-family: var(--font-sans);
+	padding: var(--space-2);
+	outline: none;
+}
 
-  .rebase-msg-editor-summary {
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    color: var(--color-text);
-    font-size: 13px;
-    font-family: var(--font-sans);
-    padding: var(--space-2);
-    outline: none;
-  }
+.rebase-msg-editor-summary:focus {
+	border-color: var(--color-accent);
+}
 
-  .rebase-msg-editor-summary:focus {
-    border-color: var(--color-accent);
-  }
+.rebase-msg-editor-body {
+	background: var(--color-bg);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	color: var(--color-text);
+	font-size: 13px;
+	font-family: var(--font-sans);
+	padding: var(--space-2);
+	resize: vertical;
+	outline: none;
+}
 
-  .rebase-msg-editor-body {
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    color: var(--color-text);
-    font-size: 13px;
-    font-family: var(--font-sans);
-    padding: var(--space-2);
-    resize: vertical;
-    outline: none;
-  }
+.rebase-msg-editor-body:focus {
+	border-color: var(--color-accent);
+}
 
-  .rebase-msg-editor-body:focus {
-    border-color: var(--color-accent);
-  }
+.rebase-msg-editor-buttons {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
 
-  .rebase-msg-editor-buttons {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-2);
-  }
+/* --- Validation error --- */
 
-  /* --- Validation error --- */
-
-  .rebase-validation-error {
-    background: var(--color-danger-bg-subtle);
-    padding: var(--space-1) var(--space-3);
-    font-size: 11px;
-    color: var(--color-danger);
-  }
+.rebase-validation-error {
+	background: var(--color-danger-bg-subtle);
+	padding: var(--space-1) var(--space-3);
+	font-size: 11px;
+	color: var(--color-danger);
+}
 </style>

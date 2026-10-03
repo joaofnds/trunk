@@ -713,17 +713,21 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 }
 </script>
 
-<aside data-testid="branch-sidebar" style="
+<aside
+	data-testid="branch-sidebar"
+	style="
   width: 100%;
   min-width: 0;
   background: var(--bg-1);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-">
-  <!-- Search input (sticky at top) -->
-  <div style="padding: var(--space-2); box-shadow: inset 0 -1px 0 var(--line);">
-    <div style="
+"
+>
+	<!-- Search input (sticky at top) -->
+	<div style="padding: var(--space-2); box-shadow: inset 0 -1px 0 var(--line);">
+		<div
+			style="
       display: flex;
       align-items: center;
       gap: var(--space-2);
@@ -732,13 +736,14 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
       background: var(--bg-0);
       border: 1px solid var(--line);
       border-radius: var(--radius);
-    ">
-      <Search size={12} color="var(--fg-3)" style="flex-shrink: 0;" />
-      <input
-        type="text"
-        placeholder="Filter branches…"
-        bind:value={search}
-        style="
+    "
+		>
+			<Search size={12} color="var(--fg-3)" style="flex-shrink: 0;" />
+			<input
+				type="text"
+				placeholder="Filter branches…"
+				bind:value={search}
+				style="
           flex: 1;
           min-width: 0;
           height: 100%;
@@ -748,35 +753,35 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
           font-size: 12px;
           outline: none;
         "
-      />
-    </div>
-  </div>
+			>
+		</div>
+	</div>
 
-  <!-- Sections (scrollable) -->
-  <div style="flex: 1; overflow-y: auto;">
-    <!-- Local branches (expanded by default, show + button) -->
-    {#if loading || filteredLocal.length > 0 || (refs?.local.length ?? 0) > 0}
-      <BranchSection
-        label="Local"
-        count={refs?.local.length ?? 0}
-        expanded={localExpanded}
-        ontoggle={() => (localExpanded = !localExpanded)}
-        showCreateButton={true}
-        oncreate={() => { showCreateInput = true; }}
-        groupState={groupState(visibility, localMembers)}
-        ontogglevisibility={() => applyVisibility(
+	<!-- Sections (scrollable) -->
+	<div style="flex: 1; overflow-y: auto;">
+		<!-- Local branches (expanded by default, show + button) -->
+		{#if loading || filteredLocal.length > 0 || (refs?.local.length ?? 0) > 0}
+			<BranchSection
+				label="Local"
+				count={refs?.local.length ?? 0}
+				expanded={localExpanded}
+				ontoggle={() => (localExpanded = !localExpanded)}
+				showCreateButton={true}
+				oncreate={() => { showCreateInput = true; }}
+				groupState={groupState(visibility, localMembers)}
+				ontogglevisibility={() => applyVisibility(
           setGroupHidden(visibility, localMembers, groupState(visibility, localMembers) !== 'all'),
         )}
-      >
-        {#if showCreateInput}
-          <div style="padding: var(--space-1) var(--space-2) var(--space-1);">
-            <input
-              data-testid="branch-create-input"
-              type="text"
-              placeholder="New branch name"
-              bind:value={newBranchName}
-              use:autoFocus
-              style="
+			>
+				{#if showCreateInput}
+					<div style="padding: var(--space-1) var(--space-2) var(--space-1);">
+						<input
+							data-testid="branch-create-input"
+							type="text"
+							placeholder="New branch name"
+							bind:value={newBranchName}
+							use:autoFocus
+							style="
                 width: 100%;
                 box-sizing: border-box;
                 background: var(--bg-0);
@@ -789,289 +794,295 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
                 border-radius: var(--radius);
                 outline: none;
               "
-              onkeydown={(e) => {
+							onkeydown={(e) => {
                 if (e.key === 'Enter') handleCreateBranch();
                 if (e.key === 'Escape') { showCreateInput = false; newBranchName = ''; createError = null; }
               }}
-            />
-            {#if createError}
-              <div class="error-text" style="font-size: 11px; margin-top: var(--space-1);">{createError}</div>
-            {/if}
-          </div>
-        {/if}
-        {#each filteredLocal as branch (branch.name)}
-          <BranchRow
-            name={branch.name}
-            kind="local"
-            isHead={branch.is_head}
-            isLoading={checkingOutBranch === branch.name}
-            isError={checkoutError?.branch === branch.name}
-            errorText={checkoutError?.message}
-            ahead={branch.ahead}
-            behind={branch.behind}
-            onclick={() => onrefnavigate?.(branch.name)}
-            ondblclick={() => handleCheckout(branch.name)}
-            oncontextmenu={(e) => showBranchContextMenu(e, branch.name, branch.is_head)}
-            hidden={isRefHidden(visibility, refLabel(localRefName(branch.name), 'LocalBranch', branch.is_head))}
-            ontogglevisibility={branch.is_head
+						>
+						{#if createError}
+							<div
+								class="error-text"
+								style="font-size: 11px; margin-top: var(--space-1);"
+								>{createError}</div
+							>
+						{/if}
+					</div>
+				{/if}
+				{#each filteredLocal as branch (branch.name)}
+					<BranchRow
+						name={branch.name}
+						kind="local"
+						isHead={branch.is_head}
+						isLoading={checkingOutBranch === branch.name}
+						isError={checkoutError?.branch === branch.name}
+						errorText={checkoutError?.message}
+						ahead={branch.ahead}
+						behind={branch.behind}
+						onclick={() => onrefnavigate?.(branch.name)}
+						ondblclick={() => handleCheckout(branch.name)}
+						oncontextmenu={(e) => showBranchContextMenu(e, branch.name, branch.is_head)}
+						hidden={isRefHidden(visibility, refLabel(localRefName(branch.name), 'LocalBranch', branch.is_head))}
+						ontogglevisibility={branch.is_head
               ? undefined
               : () => applyVisibility(toggleRef(visibility, refLabel(localRefName(branch.name), 'LocalBranch')))}
-          />
-        {/each}
-      </BranchSection>
-    {/if}
+					/>
+				{/each}
+			</BranchSection>
+		{/if}
 
-    <!-- Remote branches (collapsed by default, grouped by remote) -->
-    {#if (refs?.remote.length ?? 0) > 0}
-      <BranchSection
-        label="Remote"
-        count={refs?.remote.length ?? 0}
-        expanded={remoteExpanded}
-        ontoggle={() => (remoteExpanded = !remoteExpanded)}
-        groupState={groupState(visibility, allRemoteMembers)}
-        ontogglevisibility={() => applyVisibility(
+		<!-- Remote branches (collapsed by default, grouped by remote) -->
+		{#if (refs?.remote.length ?? 0) > 0}
+			<BranchSection
+				label="Remote"
+				count={refs?.remote.length ?? 0}
+				expanded={remoteExpanded}
+				ontoggle={() => (remoteExpanded = !remoteExpanded)}
+				groupState={groupState(visibility, allRemoteMembers)}
+				ontogglevisibility={() => applyVisibility(
           setGroupHidden(
             visibility,
             allRemoteMembers,
             groupState(visibility, allRemoteMembers) !== 'all',
           ),
         )}
-      >
-        {#each Object.entries(remoteGroups) as [remoteName, branches] (remoteName)}
-          <RemoteGroup
-            {remoteName}
-            {branches}
-            checkingOut={checkingOutBranch}
-            errorBranch={checkoutError?.branch ?? null}
-            errorText={checkoutError?.message ?? ''}
-            oncheckout={(fullName) => onrefnavigate?.(fullName)}
-            ondblclick={handleCheckoutRemoteBranch}
-            oncontextmenu={(e, fullName) => showRemoteContextMenu(e, fullName)}
-            groupState={groupState(visibility, remoteMembers[remoteName] ?? [])}
-            hiddenBranches={Object.fromEntries(
+			>
+				{#each Object.entries(remoteGroups) as [remoteName, branches] (remoteName)}
+					<RemoteGroup
+						{remoteName}
+						{branches}
+						checkingOut={checkingOutBranch}
+						errorBranch={checkoutError?.branch ?? null}
+						errorText={checkoutError?.message ?? ''}
+						oncheckout={(fullName) => onrefnavigate?.(fullName)}
+						ondblclick={handleCheckoutRemoteBranch}
+						oncontextmenu={(e, fullName) => showRemoteContextMenu(e, fullName)}
+						groupState={groupState(visibility, remoteMembers[remoteName] ?? [])}
+						hiddenBranches={Object.fromEntries(
               branches.map((b) => [
                 remoteName + '/' + b,
                 isRefHidden(visibility, refLabel(remoteRefName(remoteName + '/' + b), 'RemoteBranch')),
               ]),
             )}
-            ontogglevisibility={() => applyVisibility(
+						ontogglevisibility={() => applyVisibility(
               setGroupHidden(
                 visibility,
                 remoteMembers[remoteName] ?? [],
                 groupState(visibility, remoteMembers[remoteName] ?? []) !== 'all',
               ),
             )}
-            ontogglebranchvisibility={(fullName) =>
+						ontogglebranchvisibility={(fullName) =>
               applyVisibility(toggleRef(visibility, refLabel(remoteRefName(fullName), 'RemoteBranch')))}
-          />
-        {/each}
-      </BranchSection>
-    {/if}
+					/>
+				{/each}
+			</BranchSection>
+		{/if}
 
-    <!-- Tags (collapsed by default; hidden if empty) -->
-    {#if (refs?.tags.length ?? 0) > 0}
-      <BranchSection
-        label="Tags"
-        count={refs?.tags.length ?? 0}
-        expanded={tagsExpanded}
-        ontoggle={() => (tagsExpanded = !tagsExpanded)}
-        groupState={groupState(visibility, tagMembers)}
-        ontogglevisibility={() => applyVisibility(
+		<!-- Tags (collapsed by default; hidden if empty) -->
+		{#if (refs?.tags.length ?? 0) > 0}
+			<BranchSection
+				label="Tags"
+				count={refs?.tags.length ?? 0}
+				expanded={tagsExpanded}
+				ontoggle={() => (tagsExpanded = !tagsExpanded)}
+				groupState={groupState(visibility, tagMembers)}
+				ontogglevisibility={() => applyVisibility(
           setGroupHidden(visibility, tagMembers, groupState(visibility, tagMembers) !== 'all'),
         )}
-      >
-        {#each filteredTags as tag (tag.name)}
-          <BranchRow
-            name={tag.short_name}
-            kind="tag"
-            onclick={() => onrefnavigate?.(tag.short_name)}
-            oncontextmenu={(e) => showTagContextMenu(e, tag.short_name)}
-            hidden={isRefHidden(visibility, refLabel(tagRefName(tag.short_name), 'Tag'))}
-            ontogglevisibility={() => applyVisibility(toggleRef(visibility, refLabel(tagRefName(tag.short_name), 'Tag')))}
-          />
-        {/each}
-      </BranchSection>
-    {/if}
+			>
+				{#each filteredTags as tag (tag.name)}
+					<BranchRow
+						name={tag.short_name}
+						kind="tag"
+						onclick={() => onrefnavigate?.(tag.short_name)}
+						oncontextmenu={(e) => showTagContextMenu(e, tag.short_name)}
+						hidden={isRefHidden(visibility, refLabel(tagRefName(tag.short_name), 'Tag'))}
+						ontogglevisibility={() => applyVisibility(toggleRef(visibility, refLabel(tagRefName(tag.short_name), 'Tag')))}
+					/>
+				{/each}
+			</BranchSection>
+		{/if}
 
-    <!-- Stashes — always visible so '+' button is accessible -->
-    <BranchSection
-      label="Stashes"
-      count={filteredStashes.length}
-      expanded={stashesExpanded}
-      ontoggle={() => (stashesExpanded = !stashesExpanded)}
-      groupState={stashGroupState(visibility, filteredStashes)}
-      ontogglevisibility={() => applyVisibility(
+		<!-- Stashes — always visible so '+' button is accessible -->
+		<BranchSection
+			label="Stashes"
+			count={filteredStashes.length}
+			expanded={stashesExpanded}
+			ontoggle={() => (stashesExpanded = !stashesExpanded)}
+			groupState={stashGroupState(visibility, filteredStashes)}
+			ontogglevisibility={() => applyVisibility(
         setStashGroupHidden(
           visibility,
           filteredStashes,
           stashGroupState(visibility, filteredStashes) !== 'all',
         ),
       )}
-      showCreateButton={true}
-      createLabel="Create new stash"
-      oncreate={() => { showStashForm = !showStashForm; stashCreateError = null; stashName = ''; stashesExpanded = true; }}
-    >
-      <!-- Inline create form -->
-      {#if showStashForm}
-        <div class="stash-form">
-          <input
-            type="text"
-            placeholder="Stash name (optional)"
-            bind:value={stashName}
-            onkeydown={(e) => e.key === 'Enter' && handleStashSave()}
-            disabled={stashSaving}
-            class="stash-name-input"
-          />
-          <button
-            onclick={handleStashSave}
-            disabled={stashSaving}
-            class="stash-save-btn"
-          >{stashSaving ? 'Stashing…' : 'Stash'}</button>
-        </div>
-        {#if stashCreateError}
-          <p class="stash-error">{stashCreateError}</p>
-        {/if}
-      {/if}
+			showCreateButton={true}
+			createLabel="Create new stash"
+			oncreate={() => { showStashForm = !showStashForm; stashCreateError = null; stashName = ''; stashesExpanded = true; }}
+		>
+			<!-- Inline create form -->
+			{#if showStashForm}
+				<div class="stash-form">
+					<input
+						type="text"
+						placeholder="Stash name (optional)"
+						bind:value={stashName}
+						onkeydown={(e) => e.key === 'Enter' && handleStashSave()}
+						disabled={stashSaving}
+						class="stash-name-input"
+					>
+					<button
+						onclick={handleStashSave}
+						disabled={stashSaving}
+						class="stash-save-btn"
+						>{stashSaving ? 'Stashing…' : 'Stash'}</button
+					>
+				</div>
+				{#if stashCreateError}
+					<p class="stash-error">{stashCreateError}</p>
+				{/if}
+			{/if}
 
-      <!-- Stash list entries -->
-      {#each filteredStashes as stash (stash.index)}
-        <div
-          class="stash-row"
-          role="button"
-          tabindex="0"
-          onclick={() => onrefnavigate?.(stash.oid)}
-          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onrefnavigate?.(stash.oid); } }}
-          oncontextmenu={(e) => showStashEntryMenu(e, stash)}
-        >
-          <Archive size={12} color="var(--fg-3)" style="flex-shrink: 0;" />
-          <span class="stash-index">{stash.short_name}</span>
-          <span class="stash-message" title={stash.name}>{stash.name}</span>
-          <button
-            class="stash-visibility-btn"
-            data-hidden={isStashHidden(visibility, stash.oid)}
-            onclick={(e) => { e.stopPropagation(); applyVisibility(toggleStash(visibility, stash.oid)); }}
-            aria-label="{visibilityVerb(isStashHidden(visibility, stash.oid))} {stash.short_name}"
-          >
-            <VisibilityIcon hidden={isStashHidden(visibility, stash.oid)} />
-          </button>
-        </div>
-        {#if stashEntryErrors[stash.oid]}
-          <p class="stash-error stash-entry-error">{stashEntryErrors[stash.oid]}</p>
-        {/if}
-      {/each}
-    </BranchSection>
-  </div>
+			<!-- Stash list entries -->
+			{#each filteredStashes as stash (stash.index)}
+				<div
+					class="stash-row"
+					role="button"
+					tabindex="0"
+					onclick={() => onrefnavigate?.(stash.oid)}
+					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onrefnavigate?.(stash.oid); } }}
+					oncontextmenu={(e) => showStashEntryMenu(e, stash)}
+				>
+					<Archive size={12} color="var(--fg-3)" style="flex-shrink: 0;" />
+					<span class="stash-index">{stash.short_name}</span>
+					<span class="stash-message" title={stash.name}>{stash.name}</span>
+					<button
+						class="stash-visibility-btn"
+						data-hidden={isStashHidden(visibility, stash.oid)}
+						onclick={(e) => { e.stopPropagation(); applyVisibility(toggleStash(visibility, stash.oid)); }}
+						aria-label="{visibilityVerb(isStashHidden(visibility, stash.oid))} {stash.short_name}"
+					>
+						<VisibilityIcon hidden={isStashHidden(visibility, stash.oid)} />
+					</button>
+				</div>
+				{#if stashEntryErrors[stash.oid]}
+					<p class="stash-error stash-entry-error"
+						>{stashEntryErrors[stash.oid]}</p
+					>
+				{/if}
+			{/each}
+		</BranchSection>
+	</div>
 
-  {#if dialogConfig}
-    <InputDialog
-      title={dialogConfig.title}
-      fields={dialogConfig.fields}
-      onsubmit={dialogConfig.onsubmit}
-      oncancel={closeDialog}
-    />
-  {/if}
+	{#if dialogConfig}
+		<InputDialog
+			title={dialogConfig.title}
+			fields={dialogConfig.fields}
+			onsubmit={dialogConfig.onsubmit}
+			oncancel={closeDialog}
+		/>
+	{/if}
 </aside>
 
 <style>
-  .stash-form {
-    display: flex;
-    gap: var(--space-1);
-    padding: var(--space-1) var(--space-2);
-  }
+.stash-form {
+	display: flex;
+	gap: var(--space-1);
+	padding: var(--space-1) var(--space-2);
+}
 
-  .stash-name-input {
-    flex: 1;
-    font-size: 12px;
-    padding: var(--space-1) var(--space-2);
-    background: var(--bg-0);
-    border: 1px solid var(--line);
-    color: var(--fg-1);
-    border-radius: var(--radius);
-  }
+.stash-name-input {
+	flex: 1;
+	font-size: 12px;
+	padding: var(--space-1) var(--space-2);
+	background: var(--bg-0);
+	border: 1px solid var(--line);
+	color: var(--fg-1);
+	border-radius: var(--radius);
+}
 
-  .stash-save-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    height: var(--control-sm-h);
-    padding: 0 var(--space-2);
-    cursor: pointer;
-    background: var(--accent);
-    color: var(--accent-fg);
-    border: none;
-    border-radius: var(--radius);
-  }
+.stash-save-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 11px;
+	height: var(--control-sm-h);
+	padding: 0 var(--space-2);
+	cursor: pointer;
+	background: var(--accent);
+	color: var(--accent-fg);
+	border: none;
+	border-radius: var(--radius);
+}
 
-  /*
+/*
    * Idle rows drop the eye out of the flow rather than reserving its box, so the stash
    * message gets the full width. `visibility: hidden` keeps the layout box, which is what
    * made every message truncate early against an icon that was not there. The alignment
    * slot below follows it in and out for the same reason.
    */
-  .stash-visibility-btn {
-    flex-shrink: 0;
-    margin-left: auto;
-    color: var(--fg-3);
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    min-width: var(--target-min);
-    min-height: var(--target-min);
-    align-items: center;
-    justify-content: center;
-    display: none;
-  }
+.stash-visibility-btn {
+	flex-shrink: 0;
+	margin-left: auto;
+	color: var(--fg-3);
+	background: none;
+	border: none;
+	cursor: pointer;
+	padding: 0;
+	min-width: var(--target-min);
+	min-height: var(--target-min);
+	align-items: center;
+	justify-content: center;
+	display: none;
+}
 
-  /* Focus reveals it too, or the control is unreachable by keyboard. A hidden stash keeps
+/* Focus reveals it too, or the control is unreachable by keyboard. A hidden stash keeps
      it permanently: the eye is the only marker saying the stash is hidden. */
-  .stash-row:hover .stash-visibility-btn,
-  .stash-row:focus-within .stash-visibility-btn,
-  .stash-visibility-btn[data-hidden="true"] {
-    display: inline-flex;
-  }
+.stash-row:hover .stash-visibility-btn,
+.stash-row:focus-within .stash-visibility-btn,
+.stash-visibility-btn[data-hidden="true"] {
+	display: inline-flex;
+}
 
+.stash-row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	height: var(--row-h);
+	padding: 0 var(--space-2) 0 var(--space-3);
+	font-size: 12px;
+	cursor: default;
+}
 
-  .stash-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    height: var(--row-h);
-    padding: 0 var(--space-2) 0 var(--space-3);
-    font-size: 12px;
-    cursor: default;
-  }
+.stash-row:hover {
+	background: var(--bg-hover);
+}
 
-  .stash-row:hover {
-    background: var(--bg-hover);
-  }
+.stash-index {
+	color: var(--fg-2);
+	font-family: var(--font-mono);
+	flex-shrink: 0;
+}
 
-  .stash-index {
-    color: var(--fg-2);
-    font-family: var(--font-mono);
-    flex-shrink: 0;
-  }
+.stash-message {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--fg-2);
+}
 
-  .stash-message {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--fg-2);
-  }
+.stash-error {
+	font-size: 11px;
+	color: var(--err);
+	padding: var(--space-1) var(--space-3) var(--space-1);
+	margin: 0;
+}
 
-  .stash-error {
-    font-size: 11px;
-    color: var(--err);
-    padding: var(--space-1) var(--space-3) var(--space-1);
-    margin: 0;
-  }
+.stash-entry-error {
+	padding-left: calc(var(--space-4) + var(--space-2));
+}
 
-  .stash-entry-error {
-    padding-left: calc(var(--space-4) + var(--space-2));
-  }
-
-  .error-text {
-    color: var(--color-danger);
-  }
+.error-text {
+	color: var(--color-danger);
+}
 </style>

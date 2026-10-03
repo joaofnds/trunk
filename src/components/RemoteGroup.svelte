@@ -42,8 +42,10 @@ let allHidden = $derived(groupState === "all");
 </script>
 
 <div>
-  <!-- Remote name sub-header -->
-  <div data-testid="remote-group-subheader" style="
+	<!-- Remote name sub-header -->
+	<div
+		data-testid="remote-group-subheader"
+		style="
     height: var(--bar-h);
     padding: 0 var(--space-2) 0 var(--space-4);
     font-size: 11px;
@@ -52,39 +54,42 @@ let allHidden = $derived(groupState === "all");
     font-family: var(--font-mono);
     display: flex;
     align-items: center;
-  ">
-    <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;">{remoteName}</span>
-    {#if ontogglevisibility}
-      <button
-        data-testid="remote-group-visibility-btn"
-        onclick={() => ontogglevisibility?.()}
-        style="flex-shrink: 0; color: var(--fg-3); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
-        aria-label="{visibilityVerb(allHidden)} all {remoteName} branches"
-        data-group-state={groupState}
-      >
-        <VisibilityIcon hidden={allHidden} />
-      </button>
-    {/if}
+  "
+	>
+		<span
+			style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;"
+			>{remoteName}</span
+		>
+		{#if ontogglevisibility}
+			<button
+				data-testid="remote-group-visibility-btn"
+				onclick={() => ontogglevisibility?.()}
+				style="flex-shrink: 0; color: var(--fg-3); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
+				aria-label="{visibilityVerb(allHidden)} all {remoteName} branches"
+				data-group-state={groupState}
+			>
+				<VisibilityIcon hidden={allHidden} />
+			</button>
+		{/if}
+	</div>
 
-  </div>
-
-  <!-- Branch rows for this remote -->
-  {#each branches as branch (branch)}
-    <div style="padding-left: var(--space-3); overflow: hidden;">
-      <BranchRow
-        name={branch}
-        kind="remote"
-        isLoading={checkingOut === remoteName + '/' + branch}
-        isError={errorBranch === remoteName + '/' + branch}
-        {errorText}
-        onclick={() => oncheckout(remoteName + '/' + branch)}
-        ondblclick={() => ondblclick?.(remoteName + '/' + branch)}
-        oncontextmenu={(e) => oncontextmenu?.(e, remoteName + '/' + branch)}
-        hidden={hiddenBranches[remoteName + '/' + branch] ?? false}
-        ontogglevisibility={ontogglebranchvisibility
+	<!-- Branch rows for this remote -->
+	{#each branches as branch (branch)}
+		<div style="padding-left: var(--space-3); overflow: hidden;">
+			<BranchRow
+				name={branch}
+				kind="remote"
+				isLoading={checkingOut === remoteName + '/' + branch}
+				isError={errorBranch === remoteName + '/' + branch}
+				{errorText}
+				onclick={() => oncheckout(remoteName + '/' + branch)}
+				ondblclick={() => ondblclick?.(remoteName + '/' + branch)}
+				oncontextmenu={(e) => oncontextmenu?.(e, remoteName + '/' + branch)}
+				hidden={hiddenBranches[remoteName + '/' + branch] ?? false}
+				ontogglevisibility={ontogglebranchvisibility
           ? () => ontogglebranchvisibility?.(remoteName + '/' + branch)
           : undefined}
-      />
-    </div>
-  {/each}
+			/>
+		</div>
+	{/each}
 </div>

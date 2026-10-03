@@ -485,14 +485,14 @@ $effect(() => {
 </script>
 
 <div class="flex flex-col" style="flex: 1; min-height: 0; overflow: hidden;">
-  <!-- Panel-level header (Phase 72): hosts the Copy button. Disabled until the
+	<!-- Panel-level header (Phase 72): hosts the Copy button. Disabled until the
        session has >=1 comment; the disabled tooltip and the hard backstop in
        commands/review.rs (no_comments TrunkError) form the gate. The header
        sits above the scrollable list body so the button is always visible
        while the list scrolls. -->
-  <div
-    class="flex items-center"
-    style="
+	<div
+		class="flex items-center"
+		style="
       gap: var(--space-2);
       height: var(--bar-h);
       padding: 0 var(--space-3);
@@ -501,54 +501,54 @@ $effect(() => {
       flex-shrink: 0;
       font-size: 12px;
     "
-  >
-    {#if oncommentonfile && reviewFilter !== "none"}
-      <button
-        type="button"
-        class="comment-on-file-button flex items-center"
-        onclick={oncommentonfile}
-        title="Comment on any tracked file, including one no change touches"
-      >
-        <MessageSquarePlus size={14} />
-        <span>Comment on a file…</span>
-      </button>
-    {/if}
-    <span class="preview-spacer" style="flex: 1;"></span>
-    {#if activeReview && !activeReview.published}
-      <button
-        type="button"
-        class="publish-button {endConfirming ? 'confirming' : ''} flex items-center"
-        onclick={onEndClick}
-        disabled={!hasAnyComment}
-        title={hasAnyComment
+	>
+		{#if oncommentonfile && reviewFilter !== "none"}
+			<button
+				type="button"
+				class="comment-on-file-button flex items-center"
+				onclick={oncommentonfile}
+				title="Comment on any tracked file, including one no change touches"
+			>
+				<MessageSquarePlus size={14} />
+				<span>Comment on a file…</span>
+			</button>
+		{/if}
+		<span class="preview-spacer" style="flex: 1;"></span>
+		{#if activeReview && !activeReview.published}
+			<button
+				type="button"
+				class="publish-button {endConfirming ? 'confirming' : ''} flex items-center"
+				onclick={onEndClick}
+				disabled={!hasAnyComment}
+				title={hasAnyComment
           ? endConfirming
             ? ""
             : "Publish this review so an agent can read it. Nothing is deleted."
           : "A review needs at least one comment before it can be published"}
-      >
-        <Check size={14} />
-        <span>{endConfirming ? "Click again to confirm" : "End review"}</span>
-      </button>
-    {/if}
-    <button
-      type="button"
-      class="copy-button flex items-center"
-      onclick={onCopyClick}
-      disabled={!hasAnyComment}
-      title={hasAnyComment ? "" : "Add at least one comment to generate"}
-    >
-      {#if copied}
-        <span aria-hidden="true">✓</span>
-        <span>Copied</span>
-      {:else}
-        <Clipboard size={14} />
-        <span>Copy</span>
-      {/if}
-    </button>
-  </div>
-  <div
-    class="flex flex-col"
-    style="
+			>
+				<Check size={14} />
+				<span>{endConfirming ? "Click again to confirm" : "End review"}</span>
+			</button>
+		{/if}
+		<button
+			type="button"
+			class="copy-button flex items-center"
+			onclick={onCopyClick}
+			disabled={!hasAnyComment}
+			title={hasAnyComment ? "" : "Add at least one comment to generate"}
+		>
+			{#if copied}
+				<span aria-hidden="true">✓</span>
+				<span>Copied</span>
+			{:else}
+				<Clipboard size={14} />
+				<span>Copy</span>
+			{/if}
+		</button>
+	</div>
+	<div
+		class="flex flex-col"
+		style="
       flex: 1;
       min-height: 0;
       overflow: auto;
@@ -558,37 +558,49 @@ $effect(() => {
       font-size: 12px;
       line-height: 1.5;
     "
-  >
-  <!-- Review list (criterion 2): every review for this repo with its derived
+	>
+		<!-- Review list (criterion 2): every review for this repo with its derived
        state, short id, thread count and an editable title. Selecting one makes
        it active, which is also criterion 3's one-step switch. -->
-  <div class="flex flex-col" style="gap: var(--space-1); padding-bottom: var(--space-2);">
-    <div class="flex items-center" style="gap: var(--space-2); padding: var(--space-1) 0;">
-      <span style="color: var(--color-text-muted); font-size: 11px; flex: 1;">
-        {reviews.length} {reviews.length === 1 ? "review" : "reviews"}
-      </span>
-      <button type="button" class="copy-button" onclick={startNewReview}>
-        New review
-      </button>
-    </div>
-    <ul class="flex flex-col" style="gap: var(--space-1); list-style: none; margin: 0; padding: 0;">
-      {#each reviews as review (review.id)}
-        <li class="review-row {review.id === activeReviewId ? 'active' : ''} flex items-center"
-            style="gap: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius);">
-          <span
-            aria-hidden="true"
-            style="width: 6px; flex-shrink: 0; color: var(--color-accent);"
-          >{review.id === activeReviewId ? "\u2022" : ""}</span>
-          {#if renamingId === review.id}
-            <input
-              bind:value={renameText}
-              onblur={commitRename}
-              onkeydown={(e) => {
+		<div
+			class="flex flex-col"
+			style="gap: var(--space-1); padding-bottom: var(--space-2);"
+		>
+			<div
+				class="flex items-center"
+				style="gap: var(--space-2); padding: var(--space-1) 0;"
+			>
+				<span style="color: var(--color-text-muted); font-size: 11px; flex: 1;">
+					{reviews.length} {reviews.length === 1 ? "review" : "reviews"}
+				</span>
+				<button type="button" class="copy-button" onclick={startNewReview}>
+					New review
+				</button>
+			</div>
+			<ul
+				class="flex flex-col"
+				style="gap: var(--space-1); list-style: none; margin: 0; padding: 0;"
+			>
+				{#each reviews as review (review.id)}
+					<li
+						class="review-row {review.id === activeReviewId ? 'active' : ''} flex items-center"
+						style="gap: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius);"
+					>
+						<span
+							aria-hidden="true"
+							style="width: 6px; flex-shrink: 0; color: var(--color-accent);"
+							>{review.id === activeReviewId ? "\u2022" : ""}</span
+						>
+						{#if renamingId === review.id}
+							<input
+								bind:value={renameText}
+								onblur={commitRename}
+								onkeydown={(e) => {
                 if (e.key === "Enter") commitRename();
                 if (e.key === "Escape") renamingId = null;
               }}
-              aria-label="Review title"
-              style="
+								aria-label="Review title"
+								style="
                 flex: 1;
                 background: var(--color-bg);
                 color: var(--color-text);
@@ -599,23 +611,23 @@ $effect(() => {
                 font-size: 12px;
                 font-family: inherit;
               "
-            />
-          {:else}
-            <button
-              type="button"
-              onclick={() => activateReview(review.id)}
-              ondblclick={() => openRename(review.id, review.title)}
-              title="Click to make active · double-click or F2 to rename"
-              onkeydown={(e) => {
+							>
+						{:else}
+							<button
+								type="button"
+								onclick={() => activateReview(review.id)}
+								ondblclick={() => openRename(review.id, review.title)}
+								title="Click to make active · double-click or F2 to rename"
+								onkeydown={(e) => {
                 if (e.key === "F2") {
                   e.preventDefault();
                   openRename(review.id, review.title);
                 }
               }}
-              aria-label="Activate review {review.id}"
-              aria-current={review.id === activeReviewId ? "true" : undefined}
-              class="overflow-hidden text-ellipsis whitespace-nowrap"
-              style="
+								aria-label="Activate review {review.id}"
+								aria-current={review.id === activeReviewId ? "true" : undefined}
+								class="overflow-hidden text-ellipsis whitespace-nowrap"
+								style="
                 flex: 1;
                 text-align: left;
                 background: transparent;
@@ -626,15 +638,16 @@ $effect(() => {
                 font-size: 12px;
                 font-family: inherit;
               "
-            >{review.title}</button>
-          {/if}
-          <button
-            type="button"
-            onclick={() => openRename(review.id, review.title)}
-            aria-label="Rename review {review.id}"
-            title="Rename this review"
-            class="font-mono"
-            style="
+								>{review.title}</button
+							>
+						{/if}
+						<button
+							type="button"
+							onclick={() => openRename(review.id, review.title)}
+							aria-label="Rename review {review.id}"
+							title="Rename this review"
+							class="font-mono"
+							style="
               background: transparent;
               border: none;
               padding: 0;
@@ -644,89 +657,110 @@ $effect(() => {
               font-family: inherit;
               flex-shrink: 0;
             "
-          >{review.id}</button>
-          <span style="color: var(--color-text-muted); font-size: 11px; flex-shrink: 0;">
-            {REVIEW_STATE_LABEL[review.state] ?? review.state} · {review.thread_count}
-          </span>
-          <button
-            type="button"
-            class="end-button {deleteConfirmingId === review.id ? 'confirming' : ''}"
-            onclick={() => onDeleteReviewClick(review.id)}
-            aria-label="Delete review {review.id}"
-            title={deleteConfirmingId === review.id
+							>{review.id}</button
+						>
+						<span
+							style="color: var(--color-text-muted); font-size: 11px; flex-shrink: 0;"
+						>
+							{`${REVIEW_STATE_LABEL[review.state] ?? review.state} · ${review.thread_count}`}
+						</span>
+						<button
+							type="button"
+							class="end-button {deleteConfirmingId === review.id ? 'confirming' : ''}"
+							onclick={() => onDeleteReviewClick(review.id)}
+							aria-label="Delete review {review.id}"
+							title={deleteConfirmingId === review.id
               ? "Click again to delete this review and its comments"
               : "Delete this review"}
-            style="flex-shrink: 0; padding: 0 var(--space-2);"
-          >
-            {deleteConfirmingId === review.id ? "Confirm delete" : "Delete review"}
-          </button>
-        </li>
-      {/each}
-    </ul>
-  </div>
+							style="flex-shrink: 0; padding: 0 var(--space-2);"
+						>
+							{deleteConfirmingId === review.id ? "Confirm delete" : "Delete review"}
+						</button>
+					</li>
+				{/each}
+			</ul>
+		</div>
 
-  {#if activeReview && reviewFilter !== "none"}
-    <span style="color: var(--color-text-muted); font-size: 11px; padding: var(--space-1) 0;">
-      {visibleComments.length} {visibleComments.length === 1 ? "comment" : "comments"} · {commits.length}
-      {commits.length === 1 ? "commit" : "commits"}
-    </span>
-  {/if}
+		{#if activeReview && reviewFilter !== "none"}
+			<span
+				style="color: var(--color-text-muted); font-size: 11px; padding: var(--space-1) 0;"
+			>
+				{`${visibleComments.length} ${visibleComments.length === 1 ? "comment" : "comments"} · ${commits.length} ${commits.length === 1 ? "commit" : "commits"}`}
+			</span>
+		{/if}
 
-  <!-- Phase 73-03 — Three-way empty-state branching (D-06). Order is specificity-
+		<!-- Phase 73-03 — Three-way empty-state branching (D-06). Order is specificity-
        first: cold (no session) → warm-no-commits (existing copy preserved
        verbatim) → warm-with-commits-zero-comments (replaces prior "No comments
        yet." copy). The three branches are mutually exclusive; when the user has
        added at least one comment, none render and the list below takes over. -->
-  {#if reviews.length === 0}
-    <div class="flex flex-col" style="gap: var(--space-1); padding: var(--space-3);">
-      <span>No reviews yet</span>
-      <span style="color: var(--color-text-muted); font-size: 11px;">
-        Comment on a diff line to start one, or create an empty review above.
-      </span>
-    </div>
-  {:else if commits.length === 0 && !hasAnyComment}
-    <div class="flex flex-col" style="gap: var(--space-1); padding: var(--space-3);">
-      <span>No commits in this review yet.</span>
-      <span style="color: var(--color-text-muted); font-size: 11px;">
-        Add commits from the graph to start reviewing.
-      </span>
-    </div>
-  {:else if !hasAnyComment}
-    <div class="flex flex-col" style="gap: var(--space-1); padding: var(--space-3);">
-      <span>Review started.</span>
-      <span style="color: var(--color-text-muted); font-size: 11px;">
-        Select diff lines or add a commit note to comment.
-      </span>
-    </div>
-  {:else if !hasVisibleComment}
-    <div class="flex flex-col" style="gap: var(--space-1); padding: var(--space-3);">
-      <span>{reviewFilter === "none" ? "Review threads hidden." : "No threads match this filter."}</span>
-      <span style="color: var(--color-text-muted); font-size: 11px;">
-        The review inventory remains available above.
-      </span>
-    </div>
-  {/if}
+		{#if reviews.length === 0}
+			<div
+				class="flex flex-col"
+				style="gap: var(--space-1); padding: var(--space-3);"
+			>
+				<span>No reviews yet</span>
+				<span style="color: var(--color-text-muted); font-size: 11px;">
+					Comment on a diff line to start one, or create an empty review above.
+				</span>
+			</div>
+		{:else if commits.length === 0 && !hasAnyComment}
+			<div
+				class="flex flex-col"
+				style="gap: var(--space-1); padding: var(--space-3);"
+			>
+				<span>No commits in this review yet.</span>
+				<span style="color: var(--color-text-muted); font-size: 11px;">
+					Add commits from the graph to start reviewing.
+				</span>
+			</div>
+		{:else if !hasAnyComment}
+			<div
+				class="flex flex-col"
+				style="gap: var(--space-1); padding: var(--space-3);"
+			>
+				<span>Review started.</span>
+				<span style="color: var(--color-text-muted); font-size: 11px;">
+					Select diff lines or add a commit note to comment.
+				</span>
+			</div>
+		{:else if !hasVisibleComment}
+			<div
+				class="flex flex-col"
+				style="gap: var(--space-1); padding: var(--space-3);"
+			>
+				<span
+					>{reviewFilter === "none" ? "Review threads hidden." : "No threads match this filter."}</span
+				>
+				<span style="color: var(--color-text-muted); font-size: 11px;">
+					The review inventory remains available above.
+				</span>
+			</div>
+		{/if}
 
-  {#if groups.length > 0}
-    <ul class="flex flex-col" style="gap: var(--space-2); list-style: none; margin: 0; padding: 0;">
-      {#each groups as group (group.oid)}
-        {@const visibleGroupComments = filterThreads(group.comments, reviewFilter)}
-        <li
-          class="flex flex-col"
-          style="gap: var(--space-1); display: {reviewFilter === 'none' || (reviewFilter !== 'all' && group.comments.length > 0 && visibleGroupComments.length === 0) ? 'none' : 'flex'};"
-        >
-          <!-- Commit group header (focal point): short SHA mono 600 + summary -->
-          <div
-            class="flex items-center"
-            style="gap: var(--space-2); padding: var(--space-1) 0; border-bottom: 1px solid var(--color-border);"
-          >
-            <button
-              type="button"
-              title="Copy SHA"
-              aria-label="Copy SHA {group.shortOid}"
-              onclick={() => copySha(group.oid)}
-              class="jump-ref font-mono"
-              style="
+		{#if groups.length > 0}
+			<ul
+				class="flex flex-col"
+				style="gap: var(--space-2); list-style: none; margin: 0; padding: 0;"
+			>
+				{#each groups as group (group.oid)}
+					{@const visibleGroupComments = filterThreads(group.comments, reviewFilter)}
+					<li
+						class="flex flex-col"
+						style="gap: var(--space-1); display: {reviewFilter === 'none' || (reviewFilter !== 'all' && group.comments.length > 0 && visibleGroupComments.length === 0) ? 'none' : 'flex'};"
+					>
+						<!-- Commit group header (focal point): short SHA mono 600 + summary -->
+						<div
+							class="flex items-center"
+							style="gap: var(--space-2); padding: var(--space-1) 0; border-bottom: 1px solid var(--color-border);"
+						>
+							<button
+								type="button"
+								title="Copy SHA"
+								aria-label="Copy SHA {group.shortOid}"
+								onclick={() => copySha(group.oid)}
+								class="jump-ref font-mono"
+								style="
                 background: transparent;
                 border: none;
                 padding: 0;
@@ -737,13 +771,14 @@ $effect(() => {
                 font-family: inherit;
                 flex-shrink: 0;
               "
-            >{group.shortOid}</button>
-            <button
-              type="button"
-              aria-label="Jump to commit {group.shortOid}"
-              onclick={() => onJumpToCommit(group.oid)}
-              class="jump-ref overflow-hidden text-ellipsis whitespace-nowrap"
-              style="
+								>{group.shortOid}</button
+							>
+							<button
+								type="button"
+								aria-label="Jump to commit {group.shortOid}"
+								onclick={() => onJumpToCommit(group.oid)}
+								class="jump-ref overflow-hidden text-ellipsis whitespace-nowrap"
+								style="
                 background: transparent;
                 border: none;
                 padding: 0;
@@ -755,13 +790,14 @@ $effect(() => {
                 font-family: inherit;
                 flex: 1;
               "
-            >{group.summary}</button>
-            <button
-              type="button"
-              class="flex items-center"
-              onclick={() => openAddNote(group.oid)}
-              disabled={noteSaving}
-              style="
+								>{group.summary}</button
+							>
+							<button
+								type="button"
+								class="flex items-center"
+								onclick={() => openAddNote(group.oid)}
+								disabled={noteSaving}
+								style="
                 display: {reviewFilter === 'none' ? 'none' : 'inline-flex'};
                 gap: var(--space-1);
                 background: transparent;
@@ -773,22 +809,25 @@ $effect(() => {
                 flex-shrink: 0;
                 font-size: 12px;
               "
-              onmouseenter={(e) => (e.currentTarget.style.background = "var(--color-hover)")}
-              onmouseleave={(e) => (e.currentTarget.style.background = "transparent")}
-            >
-              <MessageSquarePlus size={14} />
-              <span>Add note</span>
-            </button>
-          </div>
+								onmouseenter={(e) => (e.currentTarget.style.background = "var(--color-hover)")}
+								onmouseleave={(e) => (e.currentTarget.style.background = "transparent")}
+							>
+								<MessageSquarePlus size={14} />
+								<span>Add note</span>
+							</button>
+						</div>
 
-          <!-- Inline add-note composer for this commit -->
-          {#if noteSession.target === group.oid}
-            <div class="flex flex-col" style="gap: var(--space-1); padding: var(--space-1) 0; display: {reviewFilter === 'none' ? 'none' : 'flex'};">
-              <textarea
-                bind:value={noteDraft.text}
-                rows="3"
-                disabled={noteSaving}
-                style="
+						<!-- Inline add-note composer for this commit -->
+						{#if noteSession.target === group.oid}
+							<div
+								class="flex flex-col"
+								style="gap: var(--space-1); padding: var(--space-1) 0; display: {reviewFilter === 'none' ? 'none' : 'flex'};"
+							>
+								<textarea
+									bind:value={noteDraft.text}
+									rows="3"
+									disabled={noteSaving}
+									style="
                   width: 100%;
                   resize: vertical;
                   background: var(--color-bg);
@@ -799,13 +838,13 @@ $effect(() => {
                   font-size: 12px;
                   font-family: inherit;
                 "
-              ></textarea>
-              <div class="flex items-center" style="gap: var(--space-1);">
-                <button
-                  type="button"
-                  onclick={() => saveAddNote(group.oid)}
-                  disabled={!noteDraft.valid || noteSaving}
-                  style="
+								></textarea>
+								<div class="flex items-center" style="gap: var(--space-1);">
+									<button
+										type="button"
+										onclick={() => saveAddNote(group.oid)}
+										disabled={!noteDraft.valid || noteSaving}
+										style="
                     display: inline-flex;
                     align-items: center;
                     justify-content: center;
@@ -818,12 +857,13 @@ $effect(() => {
                     padding: 0 var(--space-2);
                     font-size: 12px;
                   "
-                >Save</button>
-                <button
-                  type="button"
-                  onclick={cancelComposer}
-                  disabled={noteSaving}
-                  style="
+										>Save</button
+									>
+									<button
+										type="button"
+										onclick={cancelComposer}
+										disabled={noteSaving}
+										style="
                     display: inline-flex;
                     align-items: center;
                     justify-content: center;
@@ -836,175 +876,194 @@ $effect(() => {
                     padding: 0 var(--space-2);
                     font-size: 12px;
                   "
-                >Cancel</button>
-              </div>
-            </div>
-          {/if}
+										>Cancel</button
+									>
+								</div>
+							</div>
+						{/if}
 
-          {#if group.comments.length === 0}
-            <span style="color: var(--color-text-muted); font-size: 11px; padding: var(--space-1) 0;">
-              No comments on this commit.
-            </span>
-          {:else}
-            <ul class="flex flex-col" style="gap: var(--space-1); list-style: none; margin: 0; padding: 0;">
-              {#each group.comments as comment (comment.id)}
-                <li style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}>
-                  <ThreadCard
-                    thread={comment}
-                    {repoPath}
-                    onedit={(id, text) => saveEdit(id, text)}
-                    ondelete={(id) => deleteComment(id)}
-                    confirmDelete={true}
-                    variant="panel"
-                    onjump={onJump}
-                    jumpable={isJumpable(comment)}
-                    orphaned={isOrphan(comment)}
-                    orphanLabel={orphanLabel(comment)}
-                    editorSessionForThread={editorSessionForThread}
-                  />
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        </li>
-      {/each}
-    </ul>
-  {/if}
+						{#if group.comments.length === 0}
+							<span
+								style="color: var(--color-text-muted); font-size: 11px; padding: var(--space-1) 0;"
+							>
+								No comments on this commit.
+							</span>
+						{:else}
+							<ul
+								class="flex flex-col"
+								style="gap: var(--space-1); list-style: none; margin: 0; padding: 0;"
+							>
+								{#each group.comments as comment (comment.id)}
+									<li
+										style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}
+									>
+										<ThreadCard
+											thread={comment}
+											{repoPath}
+											onedit={(id, text) => saveEdit(id, text)}
+											ondelete={(id) => deleteComment(id)}
+											confirmDelete={true}
+											variant="panel"
+											onjump={onJump}
+											jumpable={isJumpable(comment)}
+											orphaned={isOrphan(comment)}
+											orphanLabel={orphanLabel(comment)}
+											{editorSessionForThread}
+										/>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
 
-  {#if currentFileComments.length > 0}
-    {@const visibleCurrentFileComments = filterThreads(currentFileComments, reviewFilter)}
-    <div class="flex flex-col" style="gap: var(--space-1); display: {reviewFilter === 'none' || (reviewFilter !== 'all' && visibleCurrentFileComments.length === 0) ? 'none' : 'flex'};">
-      <div class="text-xs" style="color: var(--color-text-muted); padding: 0 var(--space-1);">
-        On current file content
-      </div>
-      <ul class="flex flex-col" style="gap: var(--space-1); list-style: none; margin: 0; padding: 0;">
-        {#each currentFileComments as comment (comment.id)}
-          <li style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}>
-            <ThreadCard
-              thread={comment}
-              {repoPath}
-              onedit={(id, text) => saveEdit(id, text)}
-              ondelete={(id) => deleteComment(id)}
-              confirmDelete={true}
-              variant="panel"
-              onjump={onJump}
-              jumpable={false}
-              orphaned={isOrphan(comment)}
-              orphanLabel={orphanLabel(comment)}
-              editorSessionForThread={editorSessionForThread}
-            />
-          </li>
-        {/each}
-      </ul>
-    </div>
-  {/if}
-  </div>
+		{#if currentFileComments.length > 0}
+			{@const visibleCurrentFileComments = filterThreads(currentFileComments, reviewFilter)}
+			<div
+				class="flex flex-col"
+				style="gap: var(--space-1); display: {reviewFilter === 'none' || (reviewFilter !== 'all' && visibleCurrentFileComments.length === 0) ? 'none' : 'flex'};"
+			>
+				<div
+					class="text-xs"
+					style="color: var(--color-text-muted); padding: 0 var(--space-1);"
+				>
+					On current file content
+				</div>
+				<ul
+					class="flex flex-col"
+					style="gap: var(--space-1); list-style: none; margin: 0; padding: 0;"
+				>
+					{#each currentFileComments as comment (comment.id)}
+						<li
+							style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}
+						>
+							<ThreadCard
+								thread={comment}
+								{repoPath}
+								onedit={(id, text) => saveEdit(id, text)}
+								ondelete={(id) => deleteComment(id)}
+								confirmDelete={true}
+								variant="panel"
+								onjump={onJump}
+								jumpable={false}
+								orphaned={isOrphan(comment)}
+								orphanLabel={orphanLabel(comment)}
+								{editorSessionForThread}
+							/>
+						</li>
+					{/each}
+				</ul>
+			</div>
+		{/if}
+	</div>
 </div>
 
 <style>
-  .jump-ref:hover,
-  .jump-ref:focus-visible {
-    color: var(--color-accent);
-    text-decoration: underline;
-  }
+.jump-ref:hover,
+.jump-ref:focus-visible {
+	color: var(--color-accent);
+	text-decoration: underline;
+}
 
-  /* Phase 72 Copy button — lives in the panel header. Carry-forward from the
+/* Phase 72 Copy button — lives in the panel header. Carry-forward from the
      deleted Phase 71 preview component. */
-  .comment-on-file-button,
-  .copy-button {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    background: transparent;
-    color: var(--color-text-muted);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-    height: var(--control-sm-h);
-    padding: 0 var(--space-2);
-    font-size: 12px;
-    font-family: inherit;
-  }
-  .comment-on-file-button:hover,
-  .comment-on-file-button:focus-visible,
-  .copy-button:hover:not([disabled]),
-  .copy-button:focus-visible:not([disabled]) {
-    color: var(--color-text);
-    background: var(--color-hover);
-  }
-  .copy-button[disabled] {
-    cursor: not-allowed;
-    opacity: 0.5;
-  }
+.comment-on-file-button,
+.copy-button {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	background: transparent;
+	color: var(--color-text-muted);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	cursor: pointer;
+	height: var(--control-sm-h);
+	padding: 0 var(--space-2);
+	font-size: 12px;
+	font-family: inherit;
+}
+.comment-on-file-button:hover,
+.comment-on-file-button:focus-visible,
+.copy-button:hover:not([disabled]),
+.copy-button:focus-visible:not([disabled]) {
+	color: var(--color-text);
+	background: var(--color-hover);
+}
+.copy-button[disabled] {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
 
-  /* Publish button. Deliberately NOT danger-tinted: ending a review deletes
+/* Publish button. Deliberately NOT danger-tinted: ending a review deletes
      nothing, so the icon and colour must not say otherwise. The confirming
      state uses the accent, which reads as "commit to this" rather than
      "destroy this". All colours via :root tokens in src/app.css. */
-  .publish-button {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    background: transparent;
-    color: var(--color-text-muted);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-    height: var(--control-sm-h);
-    padding: 0 var(--space-2);
-    font-size: 12px;
-    font-family: inherit;
-  }
-  .publish-button:hover:not(.confirming):not([disabled]),
-  .publish-button:focus-visible:not(.confirming):not([disabled]) {
-    color: var(--color-text);
-    background: var(--color-hover);
-  }
-  .publish-button[disabled] {
-    cursor: not-allowed;
-    opacity: 0.5;
-  }
-  .publish-button.confirming {
-    color: var(--fg-1);
-    background: var(--color-accent-bg);
-    border: 1px solid var(--color-accent);
-  }
+.publish-button {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	background: transparent;
+	color: var(--color-text-muted);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	cursor: pointer;
+	height: var(--control-sm-h);
+	padding: 0 var(--space-2);
+	font-size: 12px;
+	font-family: inherit;
+}
+.publish-button:hover:not(.confirming):not([disabled]),
+.publish-button:focus-visible:not(.confirming):not([disabled]) {
+	color: var(--color-text);
+	background: var(--color-hover);
+}
+.publish-button[disabled] {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
+.publish-button.confirming {
+	color: var(--fg-1);
+	background: var(--color-accent-bg);
+	border: 1px solid var(--color-accent);
+}
 
-  /* Delete-review button — genuinely destructive, so it keeps the danger tint. */
-  .end-button {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    background: transparent;
-    color: var(--color-text-muted);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-    height: var(--control-sm-h);
-    padding: 0 var(--space-2);
-    font-size: 12px;
-    font-family: inherit;
-  }
-  .end-button:hover:not(.confirming):not([disabled]),
-  .end-button:focus-visible:not(.confirming):not([disabled]) {
-    color: var(--color-text);
-    background: var(--color-hover);
-  }
-  .end-button.confirming {
-    color: var(--fg-1);
-    background: var(--color-danger-bg);
-    border: 1px solid var(--color-danger-border);
-  }
-  .end-button.confirming:hover,
-  .end-button.confirming:focus-visible {
-    background: var(--color-danger-bg-strong);
-    border: 1px solid var(--color-danger);
-  }
+/* Delete-review button — genuinely destructive, so it keeps the danger tint. */
+.end-button {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	background: transparent;
+	color: var(--color-text-muted);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	cursor: pointer;
+	height: var(--control-sm-h);
+	padding: 0 var(--space-2);
+	font-size: 12px;
+	font-family: inherit;
+}
+.end-button:hover:not(.confirming):not([disabled]),
+.end-button:focus-visible:not(.confirming):not([disabled]) {
+	color: var(--color-text);
+	background: var(--color-hover);
+}
+.end-button.confirming {
+	color: var(--fg-1);
+	background: var(--color-danger-bg);
+	border: 1px solid var(--color-danger-border);
+}
+.end-button.confirming:hover,
+.end-button.confirming:focus-visible {
+	background: var(--color-danger-bg-strong);
+	border: 1px solid var(--color-danger);
+}
 
-  .review-row:hover {
-    background: var(--color-hover);
-  }
-  .review-row.active {
-    background: var(--color-selected-row);
-  }
+.review-row:hover {
+	background: var(--color-hover);
+}
+.review-row.active {
+	background: var(--color-selected-row);
+}
 </style>

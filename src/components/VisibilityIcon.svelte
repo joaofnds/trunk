@@ -18,4 +18,8 @@ interface Props {
 let { hidden, size = 12 }: Props = $props();
 </script>
 
-{#if hidden}<EyeOff {size} />{:else}<Eye {size} />{/if}
+{#if hidden}
+	<EyeOff {size} />
+{:else}
+	<Eye {size} />
+{/if}

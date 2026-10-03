@@ -180,140 +180,174 @@ function isLoaded(diff: FileDiff | undefined): boolean {
      `clip`, not `hidden`: a hidden overflow is still a scroll container that
      scrollIntoView and scroll chaining can move, and WebKit hands it a phantom
      scroll range the size of the rendered pane's content (TRUNK-127). -->
-<div style="flex: 1; overflow: clip; min-height: 0; position: relative; container-type: inline-size; overscroll-behavior-x: none;">
-  {#if fileDiffs.length === 0 && commitDetail === null && !loading && !payloadStale && !loadError}
-    <div style="
+<div
+	style="flex: 1; overflow: clip; min-height: 0; position: relative; container-type: inline-size; overscroll-behavior-x: none;"
+>
+	{#if fileDiffs.length === 0 && commitDetail === null && !loading && !payloadStale && !loadError}
+		<div
+			style="
       flex: 1;
       display: flex;
       align-items: center;
       justify-content: center;
       color: var(--color-text-muted);
       font-size: 13px;
-    ">
-      Select a file or commit to view its diff
-    </div>
-  {:else if emptyCommit}
-    <div style="
+    "
+		>
+			Select a file or commit to view its diff
+		</div>
+	{:else if emptyCommit}
+		<div
+			style="
       flex: 1;
       display: flex;
       align-items: center;
       justify-content: center;
       color: var(--color-text-muted);
       font-size: 13px;
-    ">
-      Empty commit — no changes
-    </div>
-  {:else if renderMode === "rendered" && selectedPath && isMarkdownPath(selectedPath) && selectedFileDiff}
-    <RenderedDiff
-      {layoutMode}
-      selectedPath={selectedPath}
-      oldPath={selectedFileDiff.old_path}
-      {diffKind}
-      {commitOid}
-      {repoPath}
-      {commitDetail}
-      {compareBaseOid}
-      {contentMode}
-      {contextLines}
-      {ignoreWhitespace}
-      {wordWrap}
-      {refreshToken}
-      {hunkElements}
-    />
+    "
+		>
+			Empty commit — no changes
+		</div>
+	{:else if renderMode === "rendered" && selectedPath && isMarkdownPath(selectedPath) && selectedFileDiff}
+		<RenderedDiff
+			{layoutMode}
+			{selectedPath}
+			oldPath={selectedFileDiff.old_path}
+			{diffKind}
+			{commitOid}
+			{repoPath}
+			{commitDetail}
+			{compareBaseOid}
+			{contentMode}
+			{contextLines}
+			{ignoreWhitespace}
+			{wordWrap}
+			{refreshToken}
+			{hunkElements}
+		/>
 	{:else if loadError}
-		<div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); color: var(--color-text-muted); font-size: 13px;">
+		<div
+			style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); color: var(--color-text-muted); font-size: 13px;"
+		>
 			<span>Could not load diff</span>
 			<span>{loadError}</span>
 			{#if onretry}
-				<button class="retry-button" type="button" onclick={onretry}>Retry</button>
+				<button class="retry-button" type="button" onclick={onretry}
+					>Retry</button
+				>
 			{/if}
-    </div>
-  {:else if (loading || payloadStale) && !hasContent}
-    <div style="height: 100%; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); font-size: 13px;">
-      Loading diff…
-    </div>
-  {:else if layoutMode === "inline" && contentMode === "hunk"}
-    <HunkView
-      bind:this={diffNav}
-      {fileDiffs}
-      {selectedPath}
-      {diffKind}
-      {hunkOperationInFlight}
-      {showInvisibles}
-      {wordWrap}
-      {selectedHunkKey}
-      {selectedLineIndices}
-      {selectedCount}
-      {isMerge}
-      {collapsedFiles}
-      {onfilecollapsetoggle}
-      {onlineclick}
-      {onlinemousedown}
-      {onlineenter}
-      onstagehunk={onstagehunk}
-      onunstagehunk={onunstagehunk}
-      ondiscardhunk={ondiscardhunk}
-      onstagelines={onstagelines}
-      onunstagelines={onunstagelines}
-      ondiscardlines={ondiscardlines}
-      oncommentlines={oncommentlines}
-      oncommenthunk={oncommenthunk}
-      {repoPath}
-      {reviewCommentsVisible}
-      {reviewFilter}
-      {viewComments}
-      {editorSessionForThread}
-    />
-  {:else if layoutMode === "inline" && contentMode === "full"}
-    <FullFileView
-      bind:this={fullFileView}
-      {fileDiffs}
-      {showInvisibles}
-      {wordWrap}
-      {repoPath}
-      {diffKind}
-      {isMerge}
-      {oncommentfullfile}
-      {reviewCommentsVisible}
-      {reviewFilter}
-      {viewComments}
-      {editorSessionForThread}
-    />
-  {:else}
-    <SplitView bind:this={diffNav}
-      {contentMode} {fileDiffs} {selectedPath} {diffKind}
-      {hunkOperationInFlight} {showInvisibles} {wordWrap}
-      {selectedHunkKey} {selectedLineIndices} {selectedCount} {isMerge}
-      {collapsedFiles}
-      {onfilecollapsetoggle} {onlineclick} {onlinemousedown} {onlineenter}
-      onstagehunk={onstagehunk} onunstagehunk={onunstagehunk} ondiscardhunk={ondiscardhunk}
-      onstagelines={onstagelines} onunstagelines={onunstagelines} ondiscardlines={ondiscardlines}
-      oncommentlines={oncommentlines} oncommenthunk={oncommenthunk}
-      {repoPath} {reviewCommentsVisible} {reviewFilter} {viewComments} {editorSessionForThread} />
+		</div>
+	{:else if (loading || payloadStale) && !hasContent}
+		<div
+			style="height: 100%; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); font-size: 13px;"
+		>
+			Loading diff…
+		</div>
+	{:else if layoutMode === "inline" && contentMode === "hunk"}
+		<HunkView
+			bind:this={diffNav}
+			{fileDiffs}
+			{selectedPath}
+			{diffKind}
+			{hunkOperationInFlight}
+			{showInvisibles}
+			{wordWrap}
+			{selectedHunkKey}
+			{selectedLineIndices}
+			{selectedCount}
+			{isMerge}
+			{collapsedFiles}
+			{onfilecollapsetoggle}
+			{onlineclick}
+			{onlinemousedown}
+			{onlineenter}
+			{onstagehunk}
+			{onunstagehunk}
+			{ondiscardhunk}
+			{onstagelines}
+			{onunstagelines}
+			{ondiscardlines}
+			{oncommentlines}
+			{oncommenthunk}
+			{repoPath}
+			{reviewCommentsVisible}
+			{reviewFilter}
+			{viewComments}
+			{editorSessionForThread}
+		/>
+	{:else if layoutMode === "inline" && contentMode === "full"}
+		<FullFileView
+			bind:this={fullFileView}
+			{fileDiffs}
+			{showInvisibles}
+			{wordWrap}
+			{repoPath}
+			{diffKind}
+			{isMerge}
+			{oncommentfullfile}
+			{reviewCommentsVisible}
+			{reviewFilter}
+			{viewComments}
+			{editorSessionForThread}
+		/>
+	{:else}
+		<SplitView
+			bind:this={diffNav}
+			{contentMode}
+			{fileDiffs}
+			{selectedPath}
+			{diffKind}
+			{hunkOperationInFlight}
+			{showInvisibles}
+			{wordWrap}
+			{selectedHunkKey}
+			{selectedLineIndices}
+			{selectedCount}
+			{isMerge}
+			{collapsedFiles}
+			{onfilecollapsetoggle}
+			{onlineclick}
+			{onlinemousedown}
+			{onlineenter}
+			{onstagehunk}
+			{onunstagehunk}
+			{ondiscardhunk}
+			{onstagelines}
+			{onunstagelines}
+			{ondiscardlines}
+			{oncommentlines}
+			{oncommenthunk}
+			{repoPath}
+			{reviewCommentsVisible}
+			{reviewFilter}
+			{viewComments}
+			{editorSessionForThread}
+		/>
 	{/if}
 </div>
 
 <style>
-	.retry-button {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-height: var(--target-min);
-		padding: 0 var(--space-3);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius);
-		background: var(--color-surface);
-		color: var(--color-text);
-		font: inherit;
-		cursor: pointer;
-	}
+.retry-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: var(--target-min);
+	padding: 0 var(--space-3);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	background: var(--color-surface);
+	color: var(--color-text);
+	font: inherit;
+	cursor: pointer;
+}
 
-	.retry-button:hover {
-		background: var(--color-hover);
-	}
+.retry-button:hover {
+	background: var(--color-hover);
+}
 
-	.retry-button:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 1px;
-	}
+.retry-button:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
 </style>

@@ -2071,102 +2071,138 @@ function startRightResize(e: MouseEvent) {
 </script>
 
 <style>
-  .pane-divider {
-    width: 4px;
-    flex-shrink: 0;
-    cursor: col-resize;
-    background: linear-gradient(to right, transparent 1.5px, var(--line-strong) 1.5px, var(--line-strong) 2.5px, transparent 2.5px);
-    transition: background 0.15s;
-  }
-  .pane-divider:hover {
-    background: linear-gradient(to right, transparent 1px, var(--color-accent) 1px, var(--color-accent) 3px, transparent 3px);
-  }
+.pane-divider {
+	width: 4px;
+	flex-shrink: 0;
+	cursor: col-resize;
+	background: linear-gradient(
+		to right,
+		transparent 1.5px,
+		var(--line-strong) 1.5px,
+		var(--line-strong) 2.5px,
+		transparent 2.5px
+	);
+	transition: background 0.15s;
+}
+.pane-divider:hover {
+	background: linear-gradient(
+		to right,
+		transparent 1px,
+		var(--color-accent) 1px,
+		var(--color-accent) 3px,
+		transparent 3px
+	);
+}
 </style>
 
 <div class="flex-1 overflow-hidden flex flex-col">
-  <PushRecoveryPrompt {repoPath} {remoteState} {refreshSignal} />
-  <main class="flex-1 overflow-hidden flex">
-    {#if showRebaseEditor}
-      <!-- Full-window takeover for interactive rebase -->
-      <div class="flex-1 overflow-hidden">
-        <div style="height: 100%; {rebaseDiffFile ? 'display: none;' : 'display: flex; flex-direction: column;'}">
-          <RebaseEditor
-            {repoPath}
-            commits={rebaseEditorCommits}
-            branchName={rebaseBranchName}
-            baseName={rebaseBaseName}
-            onclose={handleRebaseEditorClose}
-            onstart={handleRebaseStart}
-            onfocuschange={handleRebaseFocusChange}
-          />
-        </div>
-        {#if rebaseDiffFile}
-          <DiffPanel
-            fileDiffs={rebaseFocusedFileDiffs.filter((f) => f.path === rebaseDiffFile)}
-            commitDetail={rebaseFocusedCommitDetail}
-            selectedPath={rebaseDiffFile}
-            diffKind="commit"
-            {repoPath}
-            reviewCommentsVisible={reviewFilter !== "none"}
-            {reviewFilter}
-            viewComments={rebaseViewComments}
-            activeReviewId={reviewComments.activeReviewId}
-            editorSessionForThread={editorSessionForDiffThread}
-            composerSession={diffComposerSession}
-            composerTarget={diffComposerTarget}
-            {contentMode}
-            {oncontentmodechange}
-            loading={rebaseDiffLoading}
-            payloadStale={rebaseDiffFile !== null && !rebaseDiffError && rebaseDiffMode !== contentMode}
-            loadError={rebaseDiffError}
-            onloadfullfile={loadRebaseFullFileForComment}
-            onretry={() => { if (rebaseDiffFile) void reloadRebaseFile(rebaseDiffFile, buildDiffOptions()); }}
-            ondiffoptionschange={async (options) => {
+	<PushRecoveryPrompt {repoPath} {remoteState} {refreshSignal} />
+	<main class="flex-1 overflow-hidden flex">
+		{#if showRebaseEditor}
+			<!-- Full-window takeover for interactive rebase -->
+			<div class="flex-1 overflow-hidden">
+				<div
+					style="height: 100%; {rebaseDiffFile ? 'display: none;' : 'display: flex; flex-direction: column;'}"
+				>
+					<RebaseEditor
+						{repoPath}
+						commits={rebaseEditorCommits}
+						branchName={rebaseBranchName}
+						baseName={rebaseBaseName}
+						onclose={handleRebaseEditorClose}
+						onstart={handleRebaseStart}
+						onfocuschange={handleRebaseFocusChange}
+					/>
+				</div>
+				{#if rebaseDiffFile}
+					<DiffPanel
+						fileDiffs={rebaseFocusedFileDiffs.filter((f) => f.path === rebaseDiffFile)}
+						commitDetail={rebaseFocusedCommitDetail}
+						selectedPath={rebaseDiffFile}
+						diffKind="commit"
+						{repoPath}
+						reviewCommentsVisible={reviewFilter !== "none"}
+						{reviewFilter}
+						viewComments={rebaseViewComments}
+						activeReviewId={reviewComments.activeReviewId}
+						editorSessionForThread={editorSessionForDiffThread}
+						composerSession={diffComposerSession}
+						composerTarget={diffComposerTarget}
+						{contentMode}
+						{oncontentmodechange}
+						loading={rebaseDiffLoading}
+						payloadStale={rebaseDiffFile !== null && !rebaseDiffError && rebaseDiffMode !== contentMode}
+						loadError={rebaseDiffError}
+						onloadfullfile={loadRebaseFullFileForComment}
+						onretry={() => { if (rebaseDiffFile) void reloadRebaseFile(rebaseDiffFile, buildDiffOptions()); }}
+						ondiffoptionschange={async (options) => {
 			  rememberLocalDiffOptions(options);
               if (rebaseDiffFile) await reloadRebaseFile(rebaseDiffFile, options);
             }}
-            onclose={() => { rebaseDiffFile = null; }}
-          />
-        {/if}
-      </div>
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="pane-divider" onmousedown={startRightResize}></div>
-      <div style="width: {rightPaneCollapsed ? 0 : rightPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
-        {#if rebaseFocusedCommitDetail}
-          <CommitDetail
-            commitDetail={rebaseFocusedCommitDetail}
-            stat={rebaseFocusedCommitStat}
-            fileDiffs={rebaseFocusedFileDiffs}
-            selectedFile={rebaseFocusedFileSelected}
-            onfileselect={handleRebaseFileSelect}
-            onclose={() => { rebaseFocusedCommitDetail = null; rebaseFocusedCommitStat = null; }}
-            {repoPath}
-            reviewComments={reviewComments}
-            reviewCommentsVisible={reviewFilter !== "none"}
-            {reviewFilter}
-            commentCounts={presentation.byFile}
-            commentTones={presentation.toneByFile}
-            activeReviewId={reviewComments.activeReviewId}
-            editorSessionForThread={editorSessionForCommitNoteThread}
-            editorDraftFor={editorDraftFor}
-            {treeViewEnabled}
-            ontreeviewtoggle={handleTreeViewToggle}
-          />
-        {:else}
-          <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-muted); font-size: 13px;">
-            Select a commit to view details
-          </div>
-        {/if}
-      </div>
-    {:else}
-    <div style="width: {leftPaneCollapsed ? 0 : leftPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
-      <BranchSidebar {repoPath} onrefreshed={handleRefresh} onvisibilitychanged={(graph) => commitGraphRef?.showGraph(graph)} onvisibilityresolved={() => { refVisibilityResolved = true; }} loadedRows={() => commitGraphRef?.loadedRows() ?? 0} onstashselect={handleCommitSelect} onrefnavigate={handleRefNavigate} {refreshSignal} workingTreeDirty={wipCount > 0} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} />
-    </div>
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="pane-divider" style="display: {leftPaneCollapsed ? 'none' : 'block'};" onmousedown={startLeftResize}></div>
-    <div class="flex-1 overflow-hidden">
-      {#if reviewSession.state.reviewActive && !(reviewSession.state.rightPaneMode === 'diff' && showDiff)}
-        <!-- Review panel claims the center pane (UI-SPEC:133). When the user selects a
+						onclose={() => { rebaseDiffFile = null; }}
+					/>
+				{/if}
+			</div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="pane-divider" onmousedown={startRightResize}></div>
+			<div
+				style="width: {rightPaneCollapsed ? 0 : rightPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;"
+			>
+				{#if rebaseFocusedCommitDetail}
+					<CommitDetail
+						commitDetail={rebaseFocusedCommitDetail}
+						stat={rebaseFocusedCommitStat}
+						fileDiffs={rebaseFocusedFileDiffs}
+						selectedFile={rebaseFocusedFileSelected}
+						onfileselect={handleRebaseFileSelect}
+						onclose={() => { rebaseFocusedCommitDetail = null; rebaseFocusedCommitStat = null; }}
+						{repoPath}
+						{reviewComments}
+						reviewCommentsVisible={reviewFilter !== "none"}
+						{reviewFilter}
+						commentCounts={presentation.byFile}
+						commentTones={presentation.toneByFile}
+						activeReviewId={reviewComments.activeReviewId}
+						editorSessionForThread={editorSessionForCommitNoteThread}
+						{editorDraftFor}
+						{treeViewEnabled}
+						ontreeviewtoggle={handleTreeViewToggle}
+					/>
+				{:else}
+					<div
+						style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-muted); font-size: 13px;"
+					>
+						Select a commit to view details
+					</div>
+				{/if}
+			</div>
+		{:else}
+			<div
+				style="width: {leftPaneCollapsed ? 0 : leftPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;"
+			>
+				<BranchSidebar
+					{repoPath}
+					onrefreshed={handleRefresh}
+					onvisibilitychanged={(graph) => commitGraphRef?.showGraph(graph)}
+					onvisibilityresolved={() => { refVisibilityResolved = true; }}
+					loadedRows={() => commitGraphRef?.loadedRows() ?? 0}
+					onstashselect={handleCommitSelect}
+					onrefnavigate={handleRefNavigate}
+					{refreshSignal}
+					workingTreeDirty={wipCount > 0}
+					onopenrebaseeditor={handleOpenRebaseEditor}
+					onopenmessageeditor={handleOpenMessageEditor}
+				/>
+			</div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="pane-divider"
+				style="display: {leftPaneCollapsed ? 'none' : 'block'};"
+				onmousedown={startLeftResize}
+			></div>
+			<div class="flex-1 overflow-hidden">
+				{#if reviewSession.state.reviewActive && !(reviewSession.state.rightPaneMode === 'diff' && showDiff)}
+					<!-- Review panel claims the center pane (UI-SPEC:133). When the user selects a
              commit/file/ref (or jumps from a comment), rightPaneMode flips to 'diff' and
              the SAME full DiffPanel below renders — with the correct per-source diffKind
              and the complete handler set — rather than a separate stripped mount. The old
@@ -2175,45 +2211,58 @@ function startRightResize(e: MouseEvent) {
              buttons and mis-resolved comment anchors (260531-l02e). Wrapper uses
              height:100% (not flex:1) so the ReviewPanel scroll body has a constrained
              height — its parent .flex-1 is a flex *child* (Phase 72 gap closure). -->
-        <div class="flex flex-col" style="height: 100%; min-height: 0; overflow: hidden;">
-          <ReviewPanel {repoPath} session={reviewSession} {reviewComments} {reviewFilter} editorSessionForThread={editorSessionForPanelThread} editorNoteSessionFor={editorNoteSessionFor} onJump={handleReviewJump} onJumpToCommit={handleReviewJumpToCommit} oncommentonfile={openFileFinder} />
-        </div>
-      {:else if showMergeEditor && selectedFile}
-        <MergeEditor
-          {repoPath}
-          filePath={selectedFile.path}
-          onclose={handleDiffClose}
-          onresolved={handleFileResolved}
-        />
-      {:else if showDiff}
-        <!-- Single DiffPanel mount, shared by normal and review mode. In review mode
+					<div
+						class="flex flex-col"
+						style="height: 100%; min-height: 0; overflow: hidden;"
+					>
+						<ReviewPanel
+							{repoPath}
+							session={reviewSession}
+							{reviewComments}
+							{reviewFilter}
+							editorSessionForThread={editorSessionForPanelThread}
+							{editorNoteSessionFor}
+							onJump={handleReviewJump}
+							onJumpToCommit={handleReviewJumpToCommit}
+							oncommentonfile={openFileFinder}
+						/>
+					</div>
+				{:else if showMergeEditor && selectedFile}
+					<MergeEditor
+						{repoPath}
+						filePath={selectedFile.path}
+						onclose={handleDiffClose}
+						onresolved={handleFileResolved}
+					/>
+				{:else if showDiff}
+					<!-- Single DiffPanel mount, shared by normal and review mode. In review mode
              rightPaneMode==='diff' routes here (260531-l02e); bind:this exposes the
              jump-to-comment scroll seam, and onclose returns to the review panel. -->
-        <DiffPanel
-          bind:this={diffPanelRef}
-          fileDiffs={currentDiffFiles}
-          commitDetail={selectedCompareFile ? compareTargetDetail : commitDetail}
-          compareBaseOid={selectedCompareFile ? (compareBaseDetail?.oid ?? null) : null}
-          selectedPath={selectedCompareFile ?? selectedDiffPath}
-          {diffKind}
-          emptyCommit={commitEmpty}
-          {repoPath}
-          reviewCommentsVisible={selectedCompareFile ? false : reviewFilter !== "none"}
-          {reviewFilter}
-          {viewComments}
-          activeReviewId={reviewComments.activeReviewId}
-          editorSessionForThread={editorSessionForDiffThread}
-          composerSession={diffComposerSession}
-          composerTarget={diffComposerTarget}
-          refreshToken={diffRefreshToken}
-          {contentMode}
-          {oncontentmodechange}
-          loading={currentSourceLoading}
-          payloadStale={currentSourcePayloadStale}
-          loadError={currentSourceError}
-          onloadfullfile={loadFullFileForComment}
-          onretry={() => { void retryVisibleDiff(); }}
-          onhunkaction={async (filePath) => {
+					<DiffPanel
+						bind:this={diffPanelRef}
+						fileDiffs={currentDiffFiles}
+						commitDetail={selectedCompareFile ? compareTargetDetail : commitDetail}
+						compareBaseOid={selectedCompareFile ? (compareBaseDetail?.oid ?? null) : null}
+						selectedPath={selectedCompareFile ?? selectedDiffPath}
+						{diffKind}
+						emptyCommit={commitEmpty}
+						{repoPath}
+						reviewCommentsVisible={selectedCompareFile ? false : reviewFilter !== "none"}
+						{reviewFilter}
+						{viewComments}
+						activeReviewId={reviewComments.activeReviewId}
+						editorSessionForThread={editorSessionForDiffThread}
+						composerSession={diffComposerSession}
+						composerTarget={diffComposerTarget}
+						refreshToken={diffRefreshToken}
+						{contentMode}
+						{oncontentmodechange}
+						loading={currentSourceLoading}
+						payloadStale={currentSourcePayloadStale}
+						loadError={currentSourceError}
+						onloadfullfile={loadFullFileForComment}
+						onretry={() => { void retryVisibleDiff(); }}
+						onhunkaction={async (filePath) => {
             if (selectedFile) {
               const { path, kind } = selectedFile;
               const isEmpty = await refetchFileDiff(filePath, kind);
@@ -2222,14 +2271,14 @@ function startRightResize(e: MouseEvent) {
               }
             }
           }}
-          onfileemptied={(filePath, action) => {
+						onfileemptied={(filePath, action) => {
             if (selectedFile?.path === filePath) {
               const { kind } = selectedFile;
               advanceToNextFile(filePath, kind);
               stagingPanelRef?.optimisticMove(filePath, kind, action);
             }
           }}
-          ondiffoptionschange={async (options) => {
+						ondiffoptionschange={async (options) => {
 			rememberLocalDiffOptions(options);
             if (selectedFile && selectedFile.kind !== "conflicted") {
               await refetchFileDiff(selectedFile.path, selectedFile.kind, options);
@@ -2239,93 +2288,119 @@ function startRightResize(e: MouseEvent) {
               await reloadCommitFile(selectedCommitFile, options);
             }
           }}
-          onclose={reviewSession.state.reviewActive
+						onclose={reviewSession.state.reviewActive
             ? () => { handleDiffClose(); reviewSession.showPanel(); }
             : handleDiffClose}
-        />
-      {:else}
-        <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitschange={(items, hasMore) => { graphDisplayItems = items; graphHasMore = hasMore; }} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} {tabActive} reviewCommentsVisible={reviewFilter !== "none"} commentCounts={presentation.byCommit} commentTones={presentation.toneByCommit} {reviewComments} {compareOids} visibilityResolved={refVisibilityResolved} />
-      {/if}
-    </div>
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="pane-divider" style="display: {rightPaneCollapsed ? 'none' : 'block'};" onmousedown={startRightResize}></div>
-    <div style="width: {rightPaneCollapsed ? 0 : rightPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
-      {#if compare && compareTargetDetail}
-        <ComparePanel
-          base={compareBaseDetail}
-          target={compareTargetDetail}
-          fileDiffs={compareFileDiffs}
-          stat={compareStat}
-          selectedFile={selectedCompareFile}
-          onfileselect={handleCompareFileSelect}
-          onswap={handleCompareSwap}
-          onclose={clearCompare}
-          {treeViewEnabled}
-          ontreeviewtoggle={handleTreeViewToggle}
-        />
-      {:else if selectedCommitOid && commitDetail}
-        <CommitDetail
-          {commitDetail}
-          stat={commitDetailStat}
-          fileDiffs={commitFileDiffs}
-          selectedFile={selectedCommitFile}
-          onfileselect={handleCommitFileSelect}
-          onclose={clearCommit}
-          {repoPath}
-          {reviewComments}
-          reviewCommentsVisible={reviewFilter !== "none"}
-          {reviewFilter}
-          commentCounts={presentation.byFile}
-          commentTones={presentation.toneByFile}
-          activeReviewId={reviewComments.activeReviewId}
-          editorSessionForThread={editorSessionForCommitNoteThread}
-          {editorDraftFor}
-          {treeViewEnabled}
-          ontreeviewtoggle={handleTreeViewToggle}
-          nav={commitNav}
-          onnavigate={navigateToCommit}
-        />
-      {:else if draftLoaded}
-        <StagingPanel
-          bind:this={stagingPanelRef}
-          {repoPath}
-          currentBranch={headBranch}
-          initialSubject={wipSubject}
-          initialBody={wipBody}
-          onfileselect={handleFileSelect}
-          onsubjectchange={(v) => (wipSubject = v)}
-          onbodychange={(v) => (wipBody = v)}
-          onfileresolved={handleFileResolved}
-          onfileadvance={(path, kind) => {
+					/>
+				{:else}
+					<CommitGraph
+						bind:this={commitGraphRef}
+						{repoPath}
+						oncommitselect={handleCommitSelect}
+						oncommitschange={(items, hasMore) => { graphDisplayItems = items; graphHasMore = hasMore; }}
+						{wipCount}
+						wipMessage={wipSubject.trim() || '// WIP'}
+						{wipStats}
+						onWipClick={handleWipClick}
+						{refreshSignal}
+						{selectedCommitOid}
+						onopenrebaseeditor={handleOpenRebaseEditor}
+						onopenmessageeditor={handleOpenMessageEditor}
+						{tabActive}
+						reviewCommentsVisible={reviewFilter !== "none"}
+						commentCounts={presentation.byCommit}
+						commentTones={presentation.toneByCommit}
+						{reviewComments}
+						{compareOids}
+						visibilityResolved={refVisibilityResolved}
+					/>
+				{/if}
+			</div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="pane-divider"
+				style="display: {rightPaneCollapsed ? 'none' : 'block'};"
+				onmousedown={startRightResize}
+			></div>
+			<div
+				style="width: {rightPaneCollapsed ? 0 : rightPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;"
+			>
+				{#if compare && compareTargetDetail}
+					<ComparePanel
+						base={compareBaseDetail}
+						target={compareTargetDetail}
+						fileDiffs={compareFileDiffs}
+						stat={compareStat}
+						selectedFile={selectedCompareFile}
+						onfileselect={handleCompareFileSelect}
+						onswap={handleCompareSwap}
+						onclose={clearCompare}
+						{treeViewEnabled}
+						ontreeviewtoggle={handleTreeViewToggle}
+					/>
+				{:else if selectedCommitOid && commitDetail}
+					<CommitDetail
+						{commitDetail}
+						stat={commitDetailStat}
+						fileDiffs={commitFileDiffs}
+						selectedFile={selectedCommitFile}
+						onfileselect={handleCommitFileSelect}
+						onclose={clearCommit}
+						{repoPath}
+						{reviewComments}
+						reviewCommentsVisible={reviewFilter !== "none"}
+						{reviewFilter}
+						commentCounts={presentation.byFile}
+						commentTones={presentation.toneByFile}
+						activeReviewId={reviewComments.activeReviewId}
+						editorSessionForThread={editorSessionForCommitNoteThread}
+						{editorDraftFor}
+						{treeViewEnabled}
+						ontreeviewtoggle={handleTreeViewToggle}
+						nav={commitNav}
+						onnavigate={navigateToCommit}
+					/>
+				{:else if draftLoaded}
+					<StagingPanel
+						bind:this={stagingPanelRef}
+						{repoPath}
+						currentBranch={headBranch}
+						initialSubject={wipSubject}
+						initialBody={wipBody}
+						onfileselect={handleFileSelect}
+						onsubjectchange={(v) => (wipSubject = v)}
+						onbodychange={(v) => (wipBody = v)}
+						onfileresolved={handleFileResolved}
+						onfileadvance={(path, kind) => {
             if (selectedFile?.path === path && selectedFile?.kind === kind) {
               advanceToNextFile(path, kind);
             }
           }}
-          selectedPath={selectedFile?.path ?? null}
-          selectedKind={selectedFile?.kind ?? null}
-          onstatuschange={handleStatusChange}
-          {treeViewEnabled}
-          ontreeviewtoggle={handleTreeViewToggle}
-          onopenmessageeditor={handleOpenMessageEditor}
-          {reviewComments}
-          reviewCommentsVisible={reviewFilter !== "none"}
-          commentCounts={presentation.byFile}
-          commentTones={presentation.toneByFile}
-        />
-      {/if}
-    </div>
-    {/if}
-  </main>
+						selectedPath={selectedFile?.path ?? null}
+						selectedKind={selectedFile?.kind ?? null}
+						onstatuschange={handleStatusChange}
+						{treeViewEnabled}
+						ontreeviewtoggle={handleTreeViewToggle}
+						onopenmessageeditor={handleOpenMessageEditor}
+						{reviewComments}
+						reviewCommentsVisible={reviewFilter !== "none"}
+						commentCounts={presentation.byFile}
+						commentTones={presentation.toneByFile}
+					/>
+				{/if}
+			</div>
+		{/if}
+	</main>
 </div>
 
 {#if finderOpen}
-  <FileFinder
-    files={finderFiles}
-    commentCounts={presentation.byCurrentFile}
-    commentTones={presentation.toneByCurrentFile}
-    onselect={openCurrentFile}
-    onclose={() => (finderOpen = false)}
-  />
+	<FileFinder
+		files={finderFiles}
+		commentCounts={presentation.byCurrentFile}
+		commentTones={presentation.toneByCurrentFile}
+		onselect={openCurrentFile}
+		onclose={() => (finderOpen = false)}
+	/>
 {/if}
 
 <!-- Single MessageEditor host (D-04). Renders nothing until open() is called;

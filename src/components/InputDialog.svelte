@@ -77,82 +77,91 @@ function autofocus(node: HTMLElement) {
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class="fixed inset-0 flex items-center justify-center"
-  style="z-index: 9999; background: var(--color-backdrop);"
-  onkeydown={handleKeydown}
-  onclick={handleBackdropClick}
+	class="fixed inset-0 flex items-center justify-center"
+	style="z-index: 9999; background: var(--color-backdrop);"
+	onkeydown={handleKeydown}
+	onclick={handleBackdropClick}
 >
-  <div
-    class="rounded"
-    style="background: var(--bg-2); border: 1px solid var(--line); box-shadow: var(--shadow-2); min-width: 340px; max-width: 480px; padding: var(--space-4);"
-  >
-    <h3 class="text-sm font-semibold mb-3" style="color: var(--color-text);">{title}</h3>
+	<div
+		class="rounded"
+		style="background: var(--bg-2); border: 1px solid var(--line); box-shadow: var(--shadow-2); min-width: 340px; max-width: 480px; padding: var(--space-4);"
+	>
+		<h3 class="text-sm font-semibold mb-3" style="color: var(--color-text);"
+			>{title}</h3
+		>
 
-    {#each fields as field, i}
-      <div class="mb-3">
-        <label for="input-dialog-{field.key}" class="block text-xs mb-1" style="color: var(--color-text-muted);">
-          {field.label}{#if field.required}<span style="color: var(--color-accent);"> *</span>{/if}
-        </label>
-        {#if field.multiline}
-          {#if i === 0}
-            <textarea
-              id="input-dialog-{field.key}"
-              class="w-full rounded text-sm"
-              style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 60px;"
-              placeholder={field.placeholder ?? ''}
-              bind:value={values[field.key]}
-              use:autofocus
-            ></textarea>
-          {:else}
-            <textarea
-              id="input-dialog-{field.key}"
-              class="w-full rounded text-sm"
-              style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 60px;"
-              placeholder={field.placeholder ?? ''}
-              bind:value={values[field.key]}
-            ></textarea>
-          {/if}
-        {:else}
-          {#if i === 0}
-            <input
-              id="input-dialog-{field.key}"
-              type="text"
-              class="w-full rounded text-sm"
-              style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2);"
-              placeholder={field.placeholder ?? ''}
-              bind:value={values[field.key]}
-              use:autofocus
-            />
-          {:else}
-            <input
-              id="input-dialog-{field.key}"
-              type="text"
-              class="w-full rounded text-sm"
-              style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2);"
-              placeholder={field.placeholder ?? ''}
-              bind:value={values[field.key]}
-            />
-          {/if}
-        {/if}
-      </div>
-    {/each}
+		{#each fields as field, i}
+			<div class="mb-3">
+				<label
+					for="input-dialog-{field.key}"
+					class="block text-xs mb-1"
+					style="color: var(--color-text-muted);"
+				>
+					{field.label}
+					{#if field.required}
+						<span style="color: var(--color-accent);"> *</span>
+					{/if}
+				</label>
+				{#if field.multiline}
+					{#if i === 0}
+						<textarea
+							id="input-dialog-{field.key}"
+							class="w-full rounded text-sm"
+							style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 60px;"
+							placeholder={field.placeholder ?? ''}
+							bind:value={values[field.key]}
+							use:autofocus
+						></textarea>
+					{:else}
+						<textarea
+							id="input-dialog-{field.key}"
+							class="w-full rounded text-sm"
+							style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 60px;"
+							placeholder={field.placeholder ?? ''}
+							bind:value={values[field.key]}
+						></textarea>
+					{/if}
+				{:else}
+					{#if i === 0}
+						<input
+							id="input-dialog-{field.key}"
+							type="text"
+							class="w-full rounded text-sm"
+							style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2);"
+							placeholder={field.placeholder ?? ''}
+							bind:value={values[field.key]}
+							use:autofocus
+						>
+					{:else}
+						<input
+							id="input-dialog-{field.key}"
+							type="text"
+							class="w-full rounded text-sm"
+							style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2);"
+							placeholder={field.placeholder ?? ''}
+							bind:value={values[field.key]}
+						>
+					{/if}
+				{/if}
+			</div>
+		{/each}
 
-    <div class="flex justify-end gap-2 mt-4">
-      <button
-        class="rounded px-3 py-1.5 text-xs font-medium"
-        style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text);"
-        onclick={oncancel}
-      >
-        {cancelLabel}
-      </button>
-      <button
-        class="rounded px-3 py-1.5 text-xs font-medium"
-        style="background: var(--color-accent); color: var(--color-on-accent); opacity: {canSubmit ? '1' : '0.5'};"
-        disabled={!canSubmit}
-        onclick={handleSubmit}
-      >
-        {confirmLabel}
-      </button>
-    </div>
-  </div>
+		<div class="flex justify-end gap-2 mt-4">
+			<button
+				class="rounded px-3 py-1.5 text-xs font-medium"
+				style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text);"
+				onclick={oncancel}
+			>
+				{cancelLabel}
+			</button>
+			<button
+				class="rounded px-3 py-1.5 text-xs font-medium"
+				style="background: var(--color-accent); color: var(--color-on-accent); opacity: {canSubmit ? '1' : '0.5'};"
+				disabled={!canSubmit}
+				onclick={handleSubmit}
+			>
+				{confirmLabel}
+			</button>
+		</div>
+	</div>
 </div>

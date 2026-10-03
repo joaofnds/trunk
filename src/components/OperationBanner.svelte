@@ -173,7 +173,8 @@ async function handleRevertAbort() {
 }
 </script>
 
-<div style="
+<div
+	style="
   flex-shrink: 0;
   min-height: var(--banded-lg-h);
   padding: var(--space-1) var(--space-3);
@@ -182,18 +183,28 @@ async function handleRevertAbort() {
   gap: var(--space-2);
   box-shadow: inset 0 -1px 0 var(--color-border), inset 3px 0 0 {isMerge ? 'var(--color-banner-warning-border)' : 'var(--color-banner-info-border)'};
   background: {isMerge ? 'var(--color-banner-warning-bg)' : 'var(--color-banner-info-bg)'};
-">
-  <span style="color: {isMerge ? 'var(--color-banner-warning-border)' : 'var(--color-banner-info-border)'}; display: inline-flex; align-items: center; flex-shrink: 0;">
-    {#if isMerge}<GitMerge size={14} />{:else}<GitBranch size={14} />{/if}
-  </span>
-  <div style="font-size: 12px; color: var(--color-text); flex: 1; overflow: hidden; display: flex; align-items: center; gap: var(--space-1); white-space: nowrap;">
-    {#if isMerge || isRebase}
-      <span style="flex-shrink: 0;">{isMerge ? 'Merging' : 'Rebasing'}</span>
-      <!-- The branch chips are inline-block, not inline-flex: text-overflow
+"
+>
+	<span
+		style="color: {isMerge ? 'var(--color-banner-warning-border)' : 'var(--color-banner-info-border)'}; display: inline-flex; align-items: center; flex-shrink: 0;"
+	>
+		{#if isMerge}
+			<GitMerge size={14} />
+		{:else}
+			<GitBranch size={14} />
+		{/if}
+	</span>
+	<div
+		style="font-size: 12px; color: var(--color-text); flex: 1; overflow: hidden; display: flex; align-items: center; gap: var(--space-1); white-space: nowrap;"
+	>
+		{#if isMerge || isRebase}
+			<span style="flex-shrink: 0;">{isMerge ? 'Merging' : 'Rebasing'}</span>
+			<!-- The branch chips are inline-block, not inline-flex: text-overflow
            does not apply to a flex container, so an over-long branch name
            would hard-clip instead of showing an ellipsis. line-height does
            the vertical centring that align-items would have done. -->
-      <span style="
+			<span
+				style="
         background: {sourceColor};
         border-radius: var(--radius-pill);
         padding: 0 var(--space-2);
@@ -206,9 +217,12 @@ async function handleRevertAbort() {
         overflow: hidden;
         text-overflow: ellipsis;
         min-width: 0;
-      ">{sourceBranch}</span>
-      <span style="flex-shrink: 0;">{isMerge ? 'into' : 'onto'}</span>
-      <span style="
+      "
+				>{sourceBranch}</span
+			>
+			<span style="flex-shrink: 0;">{isMerge ? 'into' : 'onto'}</span>
+			<span
+				style="
         background: {targetColor};
         border-radius: var(--radius-pill);
         padding: 0 var(--space-2);
@@ -221,20 +235,22 @@ async function handleRevertAbort() {
         overflow: hidden;
         text-overflow: ellipsis;
         min-width: 0;
-      ">{targetBranch}</span>
-      {#if isRebase && info.progress}
-        <span style="color: var(--color-text-muted);">({info.progress})</span>
-      {/if}
-    {:else}
-      <span>{label}</span>
-    {/if}
-  </div>
-  {#if isRebase}
-    <div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
-      <button
-        onclick={handleContinue}
-        disabled={loading}
-        style="
+      "
+				>{targetBranch}</span
+			>
+			{#if isRebase && info.progress}
+				<span style="color: var(--color-text-muted);">({info.progress})</span>
+			{/if}
+		{:else}
+			<span>{label}</span>
+		{/if}
+	</div>
+	{#if isRebase}
+		<div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
+			<button
+				onclick={handleContinue}
+				disabled={loading}
+				style="
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -248,11 +264,12 @@ async function handleRevertAbort() {
           padding: 0 var(--space-2);
           white-space: nowrap;
         "
-      >Continue</button>
-      <button
-        onclick={handleSkip}
-        disabled={loading}
-        style="
+				>Continue</button
+			>
+			<button
+				onclick={handleSkip}
+				disabled={loading}
+				style="
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -266,11 +283,12 @@ async function handleRevertAbort() {
           padding: 0 var(--space-2);
           white-space: nowrap;
         "
-      >Skip</button>
-      <button
-        onclick={handleAbort}
-        disabled={loading}
-        style="
+				>Skip</button
+			>
+			<button
+				onclick={handleAbort}
+				disabled={loading}
+				style="
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -284,15 +302,16 @@ async function handleRevertAbort() {
           padding: 0 var(--space-2);
           white-space: nowrap;
         "
-      >Abort</button>
-    </div>
-  {/if}
-  {#if isCherryPick}
-    <div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
-      <button
-        onclick={handleCherryPickContinue}
-        disabled={loading}
-        style="
+				>Abort</button
+			>
+		</div>
+	{/if}
+	{#if isCherryPick}
+		<div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
+			<button
+				onclick={handleCherryPickContinue}
+				disabled={loading}
+				style="
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -306,11 +325,12 @@ async function handleRevertAbort() {
           padding: 0 var(--space-2);
           white-space: nowrap;
         "
-      >Continue</button>
-      <button
-        onclick={handleCherryPickAbort}
-        disabled={loading}
-        style="
+				>Continue</button
+			>
+			<button
+				onclick={handleCherryPickAbort}
+				disabled={loading}
+				style="
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -324,15 +344,16 @@ async function handleRevertAbort() {
           padding: 0 var(--space-2);
           white-space: nowrap;
         "
-      >Abort</button>
-    </div>
-  {/if}
-  {#if isRevert}
-    <div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
-      <button
-        onclick={handleRevertContinue}
-        disabled={loading}
-        style="
+				>Abort</button
+			>
+		</div>
+	{/if}
+	{#if isRevert}
+		<div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
+			<button
+				onclick={handleRevertContinue}
+				disabled={loading}
+				style="
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -346,11 +367,12 @@ async function handleRevertAbort() {
           padding: 0 var(--space-2);
           white-space: nowrap;
         "
-      >Continue</button>
-      <button
-        onclick={handleRevertAbort}
-        disabled={loading}
-        style="
+				>Continue</button
+			>
+			<button
+				onclick={handleRevertAbort}
+				disabled={loading}
+				style="
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -364,7 +386,8 @@ async function handleRevertAbort() {
           padding: 0 var(--space-2);
           white-space: nowrap;
         "
-      >Abort</button>
-    </div>
-  {/if}
+				>Abort</button
+			>
+		</div>
+	{/if}
 </div>

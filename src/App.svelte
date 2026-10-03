@@ -729,68 +729,96 @@ $effect(() => {
 </script>
 
 <div class="flex flex-col h-screen" style="background: var(--color-bg);">
-  <!-- LAYOUT-02: unified title bar + toolbar -->
-  <div data-tauri-drag-region class="flex items-center flex-shrink-0" style="height: var(--topbar-h); background: var(--color-surface); box-shadow: inset 0 -1px 0 var(--color-border); padding-left: {isFullscreen ? 0 : 78 / zoomLevel}px;">
-    <TabBar
-      {tabs}
-      {activeTabId}
-      onactivate={(id) => { activeTabId = id; persistTabs(); }}
-      onclose={(id, force) => { if (force) forceCloseTab(id); else closeTab(id); }}
-      onnew={addNewTab}
-      oncontextmenu={showTabContextMenu}
-      onauxclose={(id) => closeTab(id)}
-      onreorder={(newTabs) => { tabs = newTabs; persistTabs(); }}
-    />
-    <div data-tauri-drag-region class="flex-1 h-full"></div>
-    {#if activeTab?.repoPath}
-      {@const activeState = getOrCreateTabState(activeTabId)}
-      <Toolbar repoPath={activeTab.repoPath} remoteState={activeState.remoteState} undoRedo={activeState.undoRedo} reviewActive={reviewPanelOpen} reviewPanelShowing={activeReviewPanelShowing} {reviewFilter} viewCommentCount={activeInlineCommentCount} reviewCommentCount={activeReviewCommentCount} viewCommentTone={activeInlineCommentTone} reviewCommentTone={activeReviewCommentTone} onreviewfilterchange={handleReviewFilterChange} />
-    {/if}
-  </div>
+	<!-- LAYOUT-02: unified title bar + toolbar -->
+	<div
+		data-tauri-drag-region
+		class="flex items-center flex-shrink-0"
+		style="height: var(--topbar-h); background: var(--color-surface); box-shadow: inset 0 -1px 0 var(--color-border); padding-left: {isFullscreen ? 0 : 78 / zoomLevel}px;"
+	>
+		<TabBar
+			{tabs}
+			{activeTabId}
+			onactivate={(id) => { activeTabId = id; persistTabs(); }}
+			onclose={(id, force) => { if (force) forceCloseTab(id); else closeTab(id); }}
+			onnew={addNewTab}
+			oncontextmenu={showTabContextMenu}
+			onauxclose={(id) => closeTab(id)}
+			onreorder={(newTabs) => { tabs = newTabs; persistTabs(); }}
+		/>
+		<div data-tauri-drag-region class="flex-1 h-full"></div>
+		{#if activeTab?.repoPath}
+			{@const activeState = getOrCreateTabState(activeTabId)}
+			<Toolbar
+				repoPath={activeTab.repoPath}
+				remoteState={activeState.remoteState}
+				undoRedo={activeState.undoRedo}
+				reviewActive={reviewPanelOpen}
+				reviewPanelShowing={activeReviewPanelShowing}
+				{reviewFilter}
+				viewCommentCount={activeInlineCommentCount}
+				reviewCommentCount={activeReviewCommentCount}
+				viewCommentTone={activeInlineCommentTone}
+				reviewCommentTone={activeReviewCommentTone}
+				onreviewfilterchange={handleReviewFilterChange}
+			/>
+		{/if}
+	</div>
 
-  <div style="flex: 1; overflow: hidden; position: relative;">
-    {#each tabs as tab (tab.id)}
-      <div style="position: absolute; inset: 0; display: flex; flex-direction: column; {tab.id !== activeTabId ? 'visibility: hidden; pointer-events: none;' : ''}">
-        {#if tab.repoPath}
-          {#if diffContentModeLoaded}
-            {#key tab.repoPath}
-            {@const tabState = getOrCreateTabState(tab.id)}
-            <RepoView
-            repoPath={tab.repoPath}
-            repoName={tab.repoName}
-            remoteState={tabState.remoteState}
-            undoRedo={tabState.undoRedo}
-            {leftPaneWidth}
-            {leftPaneCollapsed}
-            {rightPaneWidth}
-            {rightPaneCollapsed}
-            {windowVisible}
-            tabActive={tab.id === activeTabId}
-            reviewActive={reviewPanelOpen && tab.id === activeTabId}
-            {reviewFilter}
-            contentMode={diffContentMode}
-            oncontentmodechange={handleDiffContentModeChange}
-            oncommentcountschange={(c) => setCommentCounts(tab.id, c)}
-            onreviewpanelshowingchange={(s) => { activeReviewPanelShowing = s; }}
-            onleftpanecollapsedchange={(c) => { leftPaneCollapsed = c; setLeftPaneCollapsed(c); }}
-            onrightpanecollapsedchange={(c) => { rightPaneCollapsed = c; setRightPaneCollapsed(c); }}
-            onleftpanewidthchange={(w) => { leftPaneWidth = w; setLeftPaneWidth(w); }}
-            onrightpanewidthchange={(w) => { rightPaneWidth = w; setRightPaneWidth(w); }}
-            />
-            {/key}
-          {:else}
-            <div aria-label="Loading repository" style="flex: 1; display: flex; align-items: center; justify-content: center; color: var(--fg-3); font-size: 13px;">
-              Loading repository…
-            </div>
-          {/if}
-        {:else}
-          <WelcomeScreen {isFullscreen} onopen={(path, name) => openRepoInTab(tab.id, path, name)} />
-        {/if}
-      </div>
-    {/each}
-  </div>
+	<div style="flex: 1; overflow: hidden; position: relative;">
+		{#each tabs as tab (tab.id)}
+			<div
+				style="position: absolute; inset: 0; display: flex; flex-direction: column; {tab.id !== activeTabId ? 'visibility: hidden; pointer-events: none;' : ''}"
+			>
+				{#if tab.repoPath}
+					{#if diffContentModeLoaded}
+						{#key tab.repoPath}
+							{@const tabState = getOrCreateTabState(tab.id)}
+							<RepoView
+								repoPath={tab.repoPath}
+								repoName={tab.repoName}
+								remoteState={tabState.remoteState}
+								undoRedo={tabState.undoRedo}
+								{leftPaneWidth}
+								{leftPaneCollapsed}
+								{rightPaneWidth}
+								{rightPaneCollapsed}
+								{windowVisible}
+								tabActive={tab.id === activeTabId}
+								reviewActive={reviewPanelOpen && tab.id === activeTabId}
+								{reviewFilter}
+								contentMode={diffContentMode}
+								oncontentmodechange={handleDiffContentModeChange}
+								oncommentcountschange={(c) => setCommentCounts(tab.id, c)}
+								onreviewpanelshowingchange={(s) => { activeReviewPanelShowing = s; }}
+								onleftpanecollapsedchange={(c) => { leftPaneCollapsed = c; setLeftPaneCollapsed(c); }}
+								onrightpanecollapsedchange={(c) => { rightPaneCollapsed = c; setRightPaneCollapsed(c); }}
+								onleftpanewidthchange={(w) => { leftPaneWidth = w; setLeftPaneWidth(w); }}
+								onrightpanewidthchange={(w) => { rightPaneWidth = w; setRightPaneWidth(w); }}
+							/>
+						{/key}
+					{:else}
+						<div
+							aria-label="Loading repository"
+							style="flex: 1; display: flex; align-items: center; justify-content: center; color: var(--fg-3); font-size: 13px;"
+						>
+							Loading repository…
+						</div>
+					{/if}
+				{:else}
+					<WelcomeScreen
+						{isFullscreen}
+						onopen={(path, name) => openRepoInTab(tab.id, path, name)}
+					/>
+				{/if}
+			</div>
+		{/each}
+	</div>
 
-  <RecentReposPicker open={pickerOpen} onpick={handlePickerPick} onclose={() => (pickerOpen = false)} />
+	<RecentReposPicker
+		open={pickerOpen}
+		onpick={handlePickerPick}
+		onclose={() => (pickerOpen = false)}
+	/>
 
-  <Toast />
+	<Toast />
 </div>

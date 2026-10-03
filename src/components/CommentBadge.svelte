@@ -14,32 +14,43 @@ let { count, tone = "open" }: Props = $props();
 </script>
 
 {#if count > 0}
-  {@const effectiveTone = tone ?? "open"}
-  <span
-    class="comment-badge tone-{effectiveTone}"
-    aria-label="{count} review {count === 1 ? 'comment' : 'comments'}"
-  >{count}</span>
+	{@const effectiveTone = tone ?? "open"}
+	<span
+		class="comment-badge tone-{effectiveTone}"
+		aria-label="{count} review {count === 1 ? 'comment' : 'comments'}"
+		>{count}</span
+	>
 {/if}
 
 <style>
-  .comment-badge {
-    flex-shrink: 0;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 var(--space-1);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-pill);
-    background: var(--accent);
-    color: var(--accent-fg);
-    font-size: 10px;
-    font-weight: 600;
-    line-height: 1;
-  }
-  .tone-open { background: var(--color-thread-open); }
-  .tone-addressed { background: var(--color-thread-addressed); }
-  .tone-done { background: var(--color-thread-done); }
-  .tone-dismissed { background: var(--color-thread-dismissed); }
-  .tone-stale { background: var(--color-thread-stale); }
+.comment-badge {
+	flex-shrink: 0;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 var(--space-1);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: var(--radius-pill);
+	background: var(--accent);
+	color: var(--accent-fg);
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 1;
+}
+.tone-open {
+	background: var(--color-thread-open);
+}
+.tone-addressed {
+	background: var(--color-thread-addressed);
+}
+.tone-done {
+	background: var(--color-thread-done);
+}
+.tone-dismissed {
+	background: var(--color-thread-dismissed);
+}
+.tone-stale {
+	background: var(--color-thread-stale);
+}
 </style>

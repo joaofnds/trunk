@@ -39,7 +39,9 @@ describe.each(views)("$name diff-line styles", ({ css }) => {
 	it("places that rule after every color rule it ties with on specificity", () => {
 		const ruleAt = patchText?.index ?? -1;
 		expect(ruleAt).toBeGreaterThanOrEqual(0);
-		expect(lastIndexOfAll(css, /\.syn-[a-z]+ \{ color:/g)).toBeLessThan(ruleAt);
+		expect(lastIndexOfAll(css, /\.syn-[a-z]+ \{\s*color:/g)).toBeLessThan(
+			ruleAt,
+		);
 		expect(lastIndexOfAll(css, /\.invisible-char::before \{/g)).toBeLessThan(
 			ruleAt,
 		);

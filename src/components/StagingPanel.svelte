@@ -800,10 +800,14 @@ $effect(() => {
 </script>
 
 {#snippet sectionCount(n: number)}
-  <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 var(--space-1); border-radius: var(--radius); background: var(--bg-3); color: var(--fg-1); font-family: var(--font-mono); font-weight: 600; font-size: 10px; letter-spacing: 0; flex-shrink: 0;">{n}</span>
+	<span
+		style="display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 var(--space-1); border-radius: var(--radius); background: var(--bg-3); color: var(--fg-1); font-family: var(--font-mono); font-weight: 600; font-size: 10px; letter-spacing: 0; flex-shrink: 0;"
+		>{n}</span
+	>
 {/snippet}
 
-<div style="
+<div
+	style="
   width: 100%;
   min-width: 0;
   display: flex;
@@ -811,9 +815,11 @@ $effect(() => {
   height: 100%;
   overflow: hidden;
   background: var(--bg-1);
-">
-  <!-- Panel header -->
-  <div style="
+"
+>
+	<!-- Panel header -->
+	<div
+		style="
     height: var(--bar-h);
     background: var(--bg-2);
     box-shadow: inset 0 -1px 0 var(--color-border);
@@ -823,17 +829,21 @@ $effect(() => {
     justify-content: center;
     gap: var(--space-2);
     flex-shrink: 0;
-  ">
-    <span style="flex: 1; display: flex; align-items: center; justify-content: center; gap: var(--space-2); min-width: 0;">
-      <span style="font-size: 12px; color: var(--color-text);">
-        {totalCount} file{totalCount === 1 ? '' : 's'} changed
-      </span>
-      {#if currentBranch}
-        <span style="font-size: 11px; color: var(--color-text-muted);">on</span>
-        <!-- inline-block, not inline-flex: text-overflow does not apply to a
+  "
+	>
+		<span
+			style="flex: 1; display: flex; align-items: center; justify-content: center; gap: var(--space-2); min-width: 0;"
+		>
+			<span style="font-size: 12px; color: var(--color-text);">
+				{`${totalCount} file${totalCount === 1 ? '' : 's'} changed`}
+			</span>
+			{#if currentBranch}
+				<span style="font-size: 11px; color: var(--color-text-muted);">on</span>
+				<!-- inline-block, not inline-flex: text-overflow does not apply to a
              flex container, so a long branch name would hard-clip instead of
              showing an ellipsis. line-height does the vertical centring. -->
-        <span style="
+				<span
+					style="
           background: color-mix(in oklch, var(--lane-0) 14%, transparent);
           box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--lane-0) 50%, transparent);
           border-radius: var(--radius-pill);
@@ -848,17 +858,18 @@ $effect(() => {
           overflow: hidden;
           text-overflow: ellipsis;
           min-width: 0;
-        ">
-          {currentBranch}
-        </span>
-      {/if}
-    </span>
-    {#if treeViewEnabled}
-      <button
-        aria-label="Expand all directories"
-        title="Expand All"
-        onclick={(e) => { e.stopPropagation(); expandAllSignal++; }}
-        style="
+        "
+				>
+					{currentBranch}
+				</span>
+			{/if}
+		</span>
+		{#if treeViewEnabled}
+			<button
+				aria-label="Expand all directories"
+				title="Expand All"
+				onclick={(e) => { e.stopPropagation(); expandAllSignal++; }}
+				style="
           background: none;
           border: none;
           cursor: pointer;
@@ -872,14 +883,14 @@ $effect(() => {
           flex-shrink: 0;
           padding: 0;
         "
-      >
-        <ChevronsUpDown size={14} />
-      </button>
-      <button
-        aria-label="Collapse all directories"
-        title="Collapse All"
-        onclick={(e) => { e.stopPropagation(); collapseAllSignal++; }}
-        style="
+			>
+				<ChevronsUpDown size={14} />
+			</button>
+			<button
+				aria-label="Collapse all directories"
+				title="Collapse All"
+				onclick={(e) => { e.stopPropagation(); collapseAllSignal++; }}
+				style="
           background: none;
           border: none;
           cursor: pointer;
@@ -893,17 +904,17 @@ $effect(() => {
           flex-shrink: 0;
           padding: 0;
         "
-      >
-        <ChevronsDownUp size={14} />
-      </button>
-    {/if}
-    <button
-      role="switch"
-      aria-checked={treeViewEnabled}
-      aria-label={treeViewEnabled ? 'Switch to list view' : 'Switch to tree view'}
-      title={treeViewEnabled ? 'List view' : 'Tree view'}
-      onclick={(e) => { e.stopPropagation(); ontreeviewtoggle?.(); }}
-      style="
+			>
+				<ChevronsDownUp size={14} />
+			</button>
+		{/if}
+		<button
+			role="switch"
+			aria-checked={treeViewEnabled}
+			aria-label={treeViewEnabled ? 'Switch to list view' : 'Switch to tree view'}
+			title={treeViewEnabled ? 'List view' : 'Tree view'}
+			onclick={(e) => { e.stopPropagation(); ontreeviewtoggle?.(); }}
+			style="
         background: none;
         border: none;
         cursor: pointer;
@@ -917,20 +928,21 @@ $effect(() => {
         flex-shrink: 0;
         padding: 0;
       "
-    >
-      {#if treeViewEnabled}
-        <FolderTree size={14} />
-      {:else}
-        <List size={14} />
-      {/if}
-    </button>
-  </div>
+		>
+			{#if treeViewEnabled}
+				<FolderTree size={14} />
+			{:else}
+				<List size={14} />
+			{/if}
+		</button>
+	</div>
 
-  <!-- Operation banners -->
-  {#if isRebase && operationInfo}
-    <!-- Rebase conflict/progress header -->
-    {#if (status?.conflicted.length ?? 0) > 0}
-      <div style="
+	<!-- Operation banners -->
+	{#if isRebase && operationInfo}
+		<!-- Rebase conflict/progress header -->
+		{#if (status?.conflicted.length ?? 0) > 0}
+			<div
+				style="
         height: var(--bar-h);
         background: var(--color-badge-warning-bg);
         box-shadow: inset 0 -1px 0 var(--color-border);
@@ -939,14 +951,21 @@ $effect(() => {
         justify-content: center;
         gap: var(--space-2);
         flex-shrink: 0;
-      ">
-        <span style="color: var(--color-badge-warning); display: inline-flex; align-items: center;">
-          <AlertTriangle size={12} />
-        </span>
-        <span style="font-size: 12px; font-weight: 600; color: var(--color-badge-warning);">Rebase conflicts detected</span>
-      </div>
-    {/if}
-    <div style="
+      "
+			>
+				<span
+					style="color: var(--color-badge-warning); display: inline-flex; align-items: center;"
+				>
+					<AlertTriangle size={12} />
+				</span>
+				<span
+					style="font-size: 12px; font-weight: 600; color: var(--color-badge-warning);"
+					>Rebase conflicts detected</span
+				>
+			</div>
+		{/if}
+		<div
+			style="
       height: var(--bar-h);
       box-shadow: inset 0 -1px 0 var(--color-border);
       padding: 0 var(--space-3);
@@ -957,10 +976,12 @@ $effect(() => {
       flex-shrink: 0;
       font-size: 11px;
       color: var(--color-text-muted);
-    ">
-      Rebasing
-      {#if operationInfo.source_branch}
-        <span style="
+    "
+		>
+			Rebasing
+			{#if operationInfo.source_branch}
+				<span
+					style="
           background: var(--lane-{operationInfo.source_color_index ?? 0});
           border-radius: var(--radius-pill);
           padding: 0 var(--space-2);
@@ -970,11 +991,14 @@ $effect(() => {
           line-height: var(--control-sm-h);
           color: var(--bg-0);
           font-weight: 700;
-        ">{operationInfo.source_branch}</span>
-      {/if}
-      onto
-      {#if operationInfo.target_branch}
-        <span style="
+        "
+					>{operationInfo.source_branch}</span
+				>
+			{/if}
+			onto
+			{#if operationInfo.target_branch}
+				<span
+					style="
           background: var(--lane-{operationInfo.target_color_index ?? 0});
           border-radius: var(--radius-pill);
           padding: 0 var(--space-2);
@@ -984,35 +1008,41 @@ $effect(() => {
           line-height: var(--control-sm-h);
           color: var(--bg-0);
           font-weight: 700;
-        ">{operationInfo.target_branch}</span>
-      {/if}
-    </div>
-  {:else if operationInfo && operationInfo.op_type !== 'None'}
-    <OperationBanner
-      info={operationInfo}
-      {repoPath}
-      {onopenmessageeditor}
-      onaction={() => { loadStatus(); }}
-    />
-  {/if}
+        "
+					>{operationInfo.target_branch}</span
+				>
+			{/if}
+		</div>
+	{:else if operationInfo && operationInfo.op_type !== 'None'}
+		<OperationBanner
+			info={operationInfo}
+			{repoPath}
+			{onopenmessageeditor}
+			onaction={() => { loadStatus(); }}
+		/>
+	{/if}
 
-  <!-- File sections flex container (50/50 split when both expanded) -->
-  <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0;">
-    <!-- Conflicted Files section (rebase: always shown; non-rebase: only when conflicts exist) -->
-    {#if !isMerge && (isRebase || (status?.conflicted.length ?? 0) > 0)}
-      <div style="
+	<!-- File sections flex container (50/50 split when both expanded) -->
+	<div
+		style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0;"
+	>
+		<!-- Conflicted Files section (rebase: always shown; non-rebase: only when conflicts exist) -->
+		{#if !isMerge && (isRebase || (status?.conflicted.length ?? 0) > 0)}
+			<div
+				style="
         {conflicted_expanded && staged_expanded ? 'flex: 1;' : conflicted_expanded ? 'max-height: calc(100% - 28px);' : ''}
         display: flex;
         flex-direction: column;
         overflow: hidden;
         min-height: 0;
-      ">
-        <div
-          role="button"
-          tabindex="0"
-          onclick={() => (conflicted_expanded = !conflicted_expanded)}
-          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') conflicted_expanded = !conflicted_expanded; }}
-          style="
+      "
+			>
+				<div
+					role="button"
+					tabindex="0"
+					onclick={() => (conflicted_expanded = !conflicted_expanded)}
+					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') conflicted_expanded = !conflicted_expanded; }}
+					style="
             height: var(--bar-h);
             box-shadow: inset 0 -1px 0 var(--color-border);
             padding: 0 var(--space-2);
@@ -1021,19 +1051,30 @@ $effect(() => {
             cursor: pointer;
             flex-shrink: 0;
           "
-        >
-          <span style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: var(--space-1);">
-            {#if conflicted_expanded}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
-          </span>
-          <span style="color: var(--color-badge-warning); display: inline-flex; align-items: center; margin-right: var(--space-1);">
-            <AlertTriangle size={12} />
-          </span>
-          <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);">
-            <span>Conflicted Files</span>{@render sectionCount(status?.conflicted.length ?? 0)}
-          </span>
-          <button
-            onclick={(e) => { e.stopPropagation(); markAllResolved(); }}
-            style="
+				>
+					<span
+						style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: var(--space-1);"
+					>
+						{#if conflicted_expanded}
+							<ChevronDown size={12} />
+						{:else}
+							<ChevronRight size={12} />
+						{/if}
+					</span>
+					<span
+						style="color: var(--color-badge-warning); display: inline-flex; align-items: center; margin-right: var(--space-1);"
+					>
+						<AlertTriangle size={12} />
+					</span>
+					<span
+						style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
+					>
+						<span>Conflicted Files</span>
+						{@render sectionCount(status?.conflicted.length ?? 0)}
+					</span>
+					<button
+						onclick={(e) => { e.stopPropagation(); markAllResolved(); }}
+						style="
               display: inline-flex;
               align-items: center;
               justify-content: center;
@@ -1047,41 +1088,45 @@ $effect(() => {
               padding: 0 var(--space-2);
               cursor: pointer;
             "
-          >Mark All Resolved</button>
-        </div>
+						>Mark All Resolved</button
+					>
+				</div>
 
-        {#if conflicted_expanded}
-          <TreeFileList
-            files={status?.conflicted ?? []}
-            treeMode={treeViewEnabled}
-            actionLabel=""
-            onfileaction={() => {}}
-            onfileclick={(path) => onfileselect?.(path, 'conflicted')}
-            onfilecontextmenu={(e, path) => showConflictedContextMenu(e, path)}
-            ondirectorycontextmenu={(e, dirPath) => showConflictedDirContextMenu(e, dirPath)}
-            selectedPath={selectedKind === 'conflicted' ? selectedPath : null}
-            {expandAllSignal}
-            {collapseAllSignal}
-          />
-        {/if}
-      </div>
-    {/if}
+				{#if conflicted_expanded}
+					<TreeFileList
+						files={status?.conflicted ?? []}
+						treeMode={treeViewEnabled}
+						actionLabel=""
+						onfileaction={() => {}}
+						onfileclick={(path) => onfileselect?.(path, 'conflicted')}
+						onfilecontextmenu={(e, path) => showConflictedContextMenu(e, path)}
+						ondirectorycontextmenu={(e, dirPath) => showConflictedDirContextMenu(e, dirPath)}
+						selectedPath={selectedKind === 'conflicted' ? selectedPath : null}
+						{expandAllSignal}
+						{collapseAllSignal}
+					/>
+				{/if}
+			</div>
+		{/if}
 
-    <!-- Unstaged Files section (hidden during rebase — only conflicted + resolved shown) -->
-    {#if !isRebase}
-    <div data-testid="staging-unstaged-section" style="
+		<!-- Unstaged Files section (hidden during rebase — only conflicted + resolved shown) -->
+		{#if !isRebase}
+			<div
+				data-testid="staging-unstaged-section"
+				style="
       {unstaged_expanded && staged_expanded ? 'flex: 1;' : unstaged_expanded ? 'max-height: calc(100% - 28px);' : ''}
       display: flex;
       flex-direction: column;
       overflow: hidden;
       min-height: 0;
-    ">
-      <div
-        role="button"
-        tabindex="0"
-        onclick={() => (unstaged_expanded = !unstaged_expanded)}
-        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') unstaged_expanded = !unstaged_expanded; }}
-        style="
+    "
+			>
+				<div
+					role="button"
+					tabindex="0"
+					onclick={() => (unstaged_expanded = !unstaged_expanded)}
+					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') unstaged_expanded = !unstaged_expanded; }}
+					style="
           height: var(--bar-h);
           box-shadow: inset 0 -1px 0 var(--color-border);
           padding: 0 var(--space-2);
@@ -1090,21 +1135,32 @@ $effect(() => {
           cursor: pointer;
           flex-shrink: 0;
         "
-      >
-        <span style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: var(--space-1);">
-          {#if unstaged_expanded}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
-        </span>
-        {#if isMerge}
-          <span style="color: var(--color-badge-warning); display: inline-flex; align-items: center; margin-right: var(--space-1);">
-            <AlertTriangle size={12} />
-          </span>
-          <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-2);">
-            <span>Conflicted Files</span>{@render sectionCount(status?.conflicted.length ?? 0)}
-          </span>
-          {#if (status?.conflicted.length ?? 0) > 0}
-            <button
-              onclick={(e) => { e.stopPropagation(); markAllResolved(); }}
-              style="
+				>
+					<span
+						style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: var(--space-1);"
+					>
+						{#if unstaged_expanded}
+							<ChevronDown size={12} />
+						{:else}
+							<ChevronRight size={12} />
+						{/if}
+					</span>
+					{#if isMerge}
+						<span
+							style="color: var(--color-badge-warning); display: inline-flex; align-items: center; margin-right: var(--space-1);"
+						>
+							<AlertTriangle size={12} />
+						</span>
+						<span
+							style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-2);"
+						>
+							<span>Conflicted Files</span>
+							{@render sectionCount(status?.conflicted.length ?? 0)}
+						</span>
+						{#if (status?.conflicted.length ?? 0) > 0}
+							<button
+								onclick={(e) => { e.stopPropagation(); markAllResolved(); }}
+								style="
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
@@ -1118,19 +1174,22 @@ $effect(() => {
                 padding: 0 var(--space-2);
                 white-space: nowrap;
               "
-              aria-label="Mark all as resolved"
-            >
-              Mark All as Resolved
-            </button>
-          {/if}
-        {:else}
-          <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);">
-            <span>Unstaged Files</span>{@render sectionCount(status?.unstaged.length ?? 0)}
-          </span>
-          {#if (status?.unstaged.length ?? 0) > 0}
-            <button
-              onclick={(e) => { e.stopPropagation(); handleDiscardAll(); }}
-              style="
+								aria-label="Mark all as resolved"
+							>
+								Mark All as Resolved
+							</button>
+						{/if}
+					{:else}
+						<span
+							style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
+						>
+							<span>Unstaged Files</span>
+							{@render sectionCount(status?.unstaged.length ?? 0)}
+						</span>
+						{#if (status?.unstaged.length ?? 0) > 0}
+							<button
+								onclick={(e) => { e.stopPropagation(); handleDiscardAll(); }}
+								style="
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
@@ -1144,13 +1203,13 @@ $effect(() => {
                 padding: 0 var(--space-2);
                 white-space: nowrap;
               "
-              aria-label="Discard all changes"
-            >
-              Discard All
-            </button>
-            <button
-              onclick={(e) => { e.stopPropagation(); stageAll(); }}
-              style="
+								aria-label="Discard all changes"
+							>
+								Discard All
+							</button>
+							<button
+								onclick={(e) => { e.stopPropagation(); stageAll(); }}
+								style="
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
@@ -1165,66 +1224,69 @@ $effect(() => {
                 white-space: nowrap;
                 margin-left: var(--space-1);
               "
-              aria-label="Stage all changes"
-            >
-              Stage All Changes
-            </button>
-          {/if}
-        {/if}
-      </div>
+								aria-label="Stage all changes"
+							>
+								Stage All Changes
+							</button>
+						{/if}
+					{/if}
+				</div>
 
-      {#if unstaged_expanded}
-        {#if isMerge}
-          <TreeFileList
-            files={status?.conflicted ?? []}
-            treeMode={treeViewEnabled}
-            actionLabel="+"
-            {loadingFiles}
-            onfileaction={(path) => stageFile(path)}
-            onfileclick={(path) => onfileselect?.(path, 'conflicted')}
-            onfilecontextmenu={(e, path) => showConflictedContextMenu(e, path)}
-            ondirectoryaction={(dirPath) => stageDirectory(dirPath)}
-            ondirectorycontextmenu={(e, dirPath) => showConflictedDirContextMenu(e, dirPath)}
-            selectedPath={selectedKind === 'conflicted' ? selectedPath : null}
-            {expandAllSignal}
-            {collapseAllSignal}
-          />
-        {:else}
-          <TreeFileList
-            files={status?.unstaged ?? []}
-            treeMode={treeViewEnabled}
-            actionLabel="+"
-            {loadingFiles}
-            onfileaction={(path) => stageFile(path)}
-            onfileclick={(path) => onfileselect?.(path, 'unstaged')}
-            onfilecontextmenu={(e, path, file) => showUnstagedContextMenu(e, path, file.status)}
-            ondirectoryaction={(dirPath) => stageDirectory(dirPath)}
-            ondirectorycontextmenu={(e, dirPath) => showUnstagedDirContextMenu(e, dirPath)}
-            selectedPath={selectedKind === 'unstaged' ? selectedPath : null}
-            commentCounts={unstagedCommentCounts}
-            commentTones={unstagedCommentTones}
-            {expandAllSignal}
-            {collapseAllSignal}
-          />
-        {/if}
-      {/if}
-    </div>
-    {/if}
+				{#if unstaged_expanded}
+					{#if isMerge}
+						<TreeFileList
+							files={status?.conflicted ?? []}
+							treeMode={treeViewEnabled}
+							actionLabel="+"
+							{loadingFiles}
+							onfileaction={(path) => stageFile(path)}
+							onfileclick={(path) => onfileselect?.(path, 'conflicted')}
+							onfilecontextmenu={(e, path) => showConflictedContextMenu(e, path)}
+							ondirectoryaction={(dirPath) => stageDirectory(dirPath)}
+							ondirectorycontextmenu={(e, dirPath) => showConflictedDirContextMenu(e, dirPath)}
+							selectedPath={selectedKind === 'conflicted' ? selectedPath : null}
+							{expandAllSignal}
+							{collapseAllSignal}
+						/>
+					{:else}
+						<TreeFileList
+							files={status?.unstaged ?? []}
+							treeMode={treeViewEnabled}
+							actionLabel="+"
+							{loadingFiles}
+							onfileaction={(path) => stageFile(path)}
+							onfileclick={(path) => onfileselect?.(path, 'unstaged')}
+							onfilecontextmenu={(e, path, file) => showUnstagedContextMenu(e, path, file.status)}
+							ondirectoryaction={(dirPath) => stageDirectory(dirPath)}
+							ondirectorycontextmenu={(e, dirPath) => showUnstagedDirContextMenu(e, dirPath)}
+							selectedPath={selectedKind === 'unstaged' ? selectedPath : null}
+							commentCounts={unstagedCommentCounts}
+							commentTones={unstagedCommentTones}
+							{expandAllSignal}
+							{collapseAllSignal}
+						/>
+					{/if}
+				{/if}
+			</div>
+		{/if}
 
-    <!-- Staged Files section -->
-    <div data-testid="staging-staged-section" style="
+		<!-- Staged Files section -->
+		<div
+			data-testid="staging-staged-section"
+			style="
       {staged_expanded && unstaged_expanded ? 'flex: 1;' : staged_expanded ? 'max-height: calc(100% - 28px);' : ''}
       display: flex;
       flex-direction: column;
       overflow: hidden;
       min-height: 0;
-    ">
-      <div
-        role="button"
-        tabindex="0"
-        onclick={() => (staged_expanded = !staged_expanded)}
-        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') staged_expanded = !staged_expanded; }}
-        style="
+    "
+		>
+			<div
+				role="button"
+				tabindex="0"
+				onclick={() => (staged_expanded = !staged_expanded)}
+				onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') staged_expanded = !staged_expanded; }}
+				style="
           height: var(--bar-h);
           box-shadow: inset 0 -1px 0 var(--color-border);
           padding: 0 var(--space-2);
@@ -1233,17 +1295,26 @@ $effect(() => {
           cursor: pointer;
           flex-shrink: 0;
         "
-      >
-        <span style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: var(--space-1);">
-          {#if staged_expanded}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
-        </span>
-        <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);">
-          <span>{isOperation ? 'Resolved Files' : 'Staged Files'}</span>{@render sectionCount(status?.staged.length ?? 0)}
-        </span>
-        {#if (status?.staged.length ?? 0) > 0}
-          <button
-            onclick={(e) => { e.stopPropagation(); unstageAll(); }}
-            style="
+			>
+				<span
+					style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: var(--space-1);"
+				>
+					{#if staged_expanded}
+						<ChevronDown size={12} />
+					{:else}
+						<ChevronRight size={12} />
+					{/if}
+				</span>
+				<span
+					style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
+				>
+					<span>{isOperation ? 'Resolved Files' : 'Staged Files'}</span>
+					{@render sectionCount(status?.staged.length ?? 0)}
+				</span>
+				{#if (status?.staged.length ?? 0) > 0}
+					<button
+						onclick={(e) => { e.stopPropagation(); unstageAll(); }}
+						style="
               display: inline-flex;
               align-items: center;
               justify-content: center;
@@ -1257,55 +1328,56 @@ $effect(() => {
               padding: 0 var(--space-2);
               white-space: nowrap;
             "
-            aria-label="Unstage all"
-          >
-            Unstage All
-          </button>
-        {/if}
-      </div>
+						aria-label="Unstage all"
+					>
+						Unstage All
+					</button>
+				{/if}
+			</div>
 
-      {#if staged_expanded}
-        <TreeFileList
-          files={status?.staged ?? []}
-          treeMode={treeViewEnabled}
-          actionLabel="−"
-          {loadingFiles}
-          onfileaction={(path) => unstageFile(path)}
-          onfileclick={(path) => onfileselect?.(path, 'staged')}
-          onfilecontextmenu={(e, path, file) => showStagedContextMenu(e, path, file.old_path ?? null)}
-          ondirectoryaction={(dirPath) => unstageDirectory(dirPath)}
-          ondirectorycontextmenu={(e, dirPath) => showStagedDirContextMenu(e, dirPath)}
-          selectedPath={selectedKind === 'staged' ? selectedPath : null}
-          commentCounts={stagedCommentCounts}
-          commentTones={stagedCommentTones}
-          {expandAllSignal}
-          {collapseAllSignal}
-        />
-      {/if}
-    </div>
+			{#if staged_expanded}
+				<TreeFileList
+					files={status?.staged ?? []}
+					treeMode={treeViewEnabled}
+					actionLabel="−"
+					{loadingFiles}
+					onfileaction={(path) => unstageFile(path)}
+					onfileclick={(path) => onfileselect?.(path, 'staged')}
+					onfilecontextmenu={(e, path, file) => showStagedContextMenu(e, path, file.old_path ?? null)}
+					ondirectoryaction={(dirPath) => unstageDirectory(dirPath)}
+					ondirectorycontextmenu={(e, dirPath) => showStagedDirContextMenu(e, dirPath)}
+					selectedPath={selectedKind === 'staged' ? selectedPath : null}
+					commentCounts={stagedCommentCounts}
+					commentTones={stagedCommentTones}
+					{expandAllSignal}
+					{collapseAllSignal}
+				/>
+			{/if}
+		</div>
 
-    <!-- Spacer: absorbs remaining space when a section is collapsed -->
-    {#if !(unstaged_expanded && staged_expanded)}
-      <div style="flex: 1;"></div>
-    {/if}
-  </div>
+		<!-- Spacer: absorbs remaining space when a section is collapsed -->
+		{#if !(unstaged_expanded && staged_expanded)}
+			<div style="flex: 1;"></div>
+		{/if}
+	</div>
 
-  <!-- Draggable divider above bottom area -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    onmousedown={startBottomResize}
-    style="
+	<!-- Draggable divider above bottom area -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		onmousedown={startBottomResize}
+		style="
       flex-shrink: 0;
       height: 4px;
       cursor: row-resize;
       background: linear-gradient(to bottom, transparent 1px, var(--color-border) 1px, var(--color-border) 2px, transparent 2px);
       transition: background 0.15s;
     "
-  ></div>
+	></div>
 
-  {#if isRebase && operationInfo}
-    <!-- Rebase progress + actions (GitKraken style) -->
-    <div style="
+	{#if isRebase && operationInfo}
+		<!-- Rebase progress + actions (GitKraken style) -->
+		<div
+			style="
       padding: var(--space-2);
       display: flex;
       flex-direction: column;
@@ -1313,15 +1385,18 @@ $effect(() => {
       height: {bottomHeight}px;
       flex-shrink: 0;
       overflow: hidden;
-    ">
-      <div style="font-size: 11px; color: var(--color-text-muted); margin-bottom: var(--space-1);">
-        Rebasing commit {rebaseProgressNum} out of {rebaseProgressTotal}
-      </div>
-      <input
-        type="text"
-        bind:value={rebaseMsgSummary}
-        placeholder="Commit message summary"
-        style="
+    "
+		>
+			<div
+				style="font-size: 11px; color: var(--color-text-muted); margin-bottom: var(--space-1);"
+			>
+				Rebasing commit {rebaseProgressNum} out of {rebaseProgressTotal}
+			</div>
+			<input
+				type="text"
+				bind:value={rebaseMsgSummary}
+				placeholder="Commit message summary"
+				style="
           width: 100%;
           box-sizing: border-box;
           border: 1px solid var(--color-border);
@@ -1331,11 +1406,11 @@ $effect(() => {
           padding: var(--space-1) var(--space-2);
           font-size: 12px;
         "
-      />
-      <textarea
-        bind:value={rebaseMsgBody}
-        placeholder="Description (optional)"
-        style="
+			>
+			<textarea
+				bind:value={rebaseMsgBody}
+				placeholder="Description (optional)"
+				style="
           width: 100%;
           flex: 1;
           min-height: 0;
@@ -1348,12 +1423,12 @@ $effect(() => {
           font-size: 12px;
           resize: none;
         "
-      ></textarea>
-      <div style="display: flex; gap: var(--space-2);">
-        <button
-          onclick={continueRebase}
-          disabled={rebaseLoading || !allResolved}
-          style="
+			></textarea>
+			<div style="display: flex; gap: var(--space-2);">
+				<button
+					onclick={continueRebase}
+					disabled={rebaseLoading || !allResolved}
+					style="
             flex: 3;
             height: var(--control-lg-h);
             background: var(--color-success-bg);
@@ -1365,13 +1440,13 @@ $effect(() => {
             cursor: {allResolved && !rebaseLoading ? 'pointer' : 'not-allowed'};
             opacity: {allResolved && !rebaseLoading ? 1 : 0.4};
           "
-        >
-          Continue Rebase
-        </button>
-        <button
-          onclick={skipRebase}
-          disabled={rebaseLoading}
-          style="
+				>
+					Continue Rebase
+				</button>
+				<button
+					onclick={skipRebase}
+					disabled={rebaseLoading}
+					style="
             flex: 1;
             height: var(--control-lg-h);
             background: var(--color-warning-bg);
@@ -1383,13 +1458,13 @@ $effect(() => {
             cursor: {rebaseLoading ? 'not-allowed' : 'pointer'};
             opacity: {rebaseLoading ? 0.4 : 1};
           "
-        >
-          Skip
-        </button>
-        <button
-          onclick={abortRebase}
-          disabled={rebaseLoading}
-          style="
+				>
+					Skip
+				</button>
+				<button
+					onclick={abortRebase}
+					disabled={rebaseLoading}
+					style="
             flex: 2;
             height: var(--control-lg-h);
             background: var(--color-danger-bg);
@@ -1401,24 +1476,26 @@ $effect(() => {
             cursor: {rebaseLoading ? 'not-allowed' : 'pointer'};
             opacity: {rebaseLoading ? 0.4 : 1};
           "
-        >
-          Abort Rebase
-        </button>
-      </div>
-    </div>
-  {:else if isMerge}
-    <!-- Merge-continue actions. The commit message is edited in the host-owned
+				>
+					Abort Rebase
+				</button>
+			</div>
+		</div>
+	{:else if isMerge}
+		<!-- Merge-continue actions. The commit message is edited in the host-owned
          MessageEditor modal (runMergeContinue), not an inline form. -->
-    <div style="
+		<div
+			style="
       padding: var(--space-2);
       display: flex;
       gap: var(--space-2);
       flex-shrink: 0;
-    ">
-      <button
-        onclick={runMergeContinue}
-        disabled={!allResolved || mergeLoading}
-        style="
+    "
+		>
+			<button
+				onclick={runMergeContinue}
+				disabled={!allResolved || mergeLoading}
+				style="
           flex: 3;
           height: var(--control-lg-h);
           background: var(--color-success-bg);
@@ -1429,13 +1506,13 @@ $effect(() => {
           cursor: {allResolved && !mergeLoading ? 'pointer' : 'not-allowed'};
           opacity: {allResolved && !mergeLoading ? 1 : 0.4};
         "
-      >
-        {mergeLoading ? 'Committing...' : 'Commit merge'}
-      </button>
-      <button
-        onclick={abortMerge}
-        disabled={mergeLoading}
-        style="
+			>
+				{mergeLoading ? 'Committing...' : 'Commit merge'}
+			</button>
+			<button
+				onclick={abortMerge}
+				disabled={mergeLoading}
+				style="
           flex: 2;
           height: var(--control-lg-h);
           background: var(--color-danger-bg);
@@ -1446,12 +1523,19 @@ $effect(() => {
           cursor: {mergeLoading ? 'not-allowed' : 'pointer'};
           opacity: {mergeLoading ? 0.4 : 1};
         "
-      >
-        Abort Merge
-      </button>
-    </div>
-  {:else}
-    <!-- CommitForm — normal mode -->
-    <CommitForm {repoPath} stagedCount={status?.staged.length ?? 0} {initialSubject} {initialBody} {onsubjectchange} {onbodychange} />
-  {/if}
+			>
+				Abort Merge
+			</button>
+		</div>
+	{:else}
+		<!-- CommitForm — normal mode -->
+		<CommitForm
+			{repoPath}
+			stagedCount={status?.staged.length ?? 0}
+			{initialSubject}
+			{initialBody}
+			{onsubjectchange}
+			{onbodychange}
+		/>
+	{/if}
 </div>

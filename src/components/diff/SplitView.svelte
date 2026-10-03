@@ -259,15 +259,15 @@ function originClass(origin: string): string {
 </script>
 
 {#snippet threadCard(c: Thread)}
-  <ThreadCard
-    variant="inline"
-    confirmDelete={false}
-    thread={c}
-    {repoPath}
-    onedit={(id, text) => editThread(repoPath, id, text)}
-    ondelete={(id) => deleteThread(repoPath, id)}
-    editorSessionForThread={editorSessionForThread}
-  />
+	<ThreadCard
+		variant="inline"
+		confirmDelete={false}
+		thread={c}
+		{repoPath}
+		onedit={(id, text) => editThread(repoPath, id, text)}
+		ondelete={(id) => deleteThread(repoPath, id)}
+		{editorSessionForThread}
+	/>
 {/snippet}
 
 <!-- One side's code, inside the window the pan translates. `word-break` is not a
@@ -275,494 +275,587 @@ function originClass(origin: string): string {
      the break is unconditional, so it is declared here with the height it
      belongs to. -->
 {#snippet cellContent(line: DiffLine)}
-  {@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
-  <span class="diff-line-content" style="white-space: {vd.wrapActive ? 'pre-wrap' : 'pre'}; word-break: {vd.wrapActive ? 'break-all' : 'normal'}; user-select: text; -webkit-user-select: text; cursor: text;">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span>
+	{@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
+	<span
+		class="diff-line-content"
+		style="white-space: {vd.wrapActive ? 'pre-wrap' : 'pre'}; word-break: {vd.wrapActive ? 'break-all' : 'normal'}; user-select: text; -webkit-user-select: text; cursor: text;"
+		>{#if line.spans.length > 0}
+			{#each line.spans as span}
+				{@const sliced = line.content.slice(span.start, span.end)}
+				{@const spanInTrailing = span.start >= trailStart}
+				{#if showInvisibles}
+					{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}
+						<span
+							class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}"
+							data-glyph={seg.glyph}
+							>{seg.text}</span
+						>
+					{/each}
+				{:else}
+					<span
+						class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}"
+						>{sliced}</span
+					>
+				{/if}
+			{/each}
+		{:else}
+			{#if showInvisibles}
+				{@const segments = splitInvisibles(line.content, false)}
+				{#each segments as seg}
+					<span
+						class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}"
+						data-glyph={seg.glyph}
+						>{seg.text}</span
+					>
+				{/each}
+			{:else}
+				{line.content}
+			{/if}
+		{/if}</span
+	>
 {/snippet}
 
 {#snippet splitRow(item: DiffRow, _index: number)}
-  {#if item.kind === "pair"}
-    {@const hunkKey = `${item.path}-${item.hunkIdx}`}
-    <!-- The row, not the cell, is what the pan is held against: it is sticky at
+	{#if item.kind === "pair"}
+		{@const hunkKey = `${item.path}-${item.hunkIdx}`}
+		<!-- The row, not the cell, is what the pan is held against: it is sticky at
          the viewport's left edge and spans one viewport, and the two halves
          translate inside it. jsdom reads only inline styles, so every
          load-bearing declaration here is inline. -->
-    <div class="split-row" style="position: sticky; left: 0; width: 100cqi; display: flex;">
-      {#if item.row.left}
-        {@const line = item.row.left.line}
-        {@const isSelected = selectedHunkKey === hunkKey && selectedLineIndices.has(item.row.left.lineIdx)}
-        <div
-          class="split-cell split-cell-left diff-line {originClass(line.origin)}{item.spannedLeft ? ' diff-line-commented' : ''}"
-          style={cellStyle(line.origin, isSelected)}
-        >
-          <span class="split-gutter" style="min-width: {vd.gutterW};">{line.old_lineno ?? ''}</span>
-          <div class="split-window" style="overflow: clip;">
-            <div class="split-pan" style={panTransform('--max-l')}>
-              {@render cellContent(line)}
-            </div>
-          </div>
-        </div>
-      {:else}
-        <div class="split-cell split-cell-left split-phantom" style={HALF_GEOMETRY}></div>
-      {/if}
+		<div
+			class="split-row"
+			style="position: sticky; left: 0; width: 100cqi; display: flex;"
+		>
+			{#if item.row.left}
+				{@const line = item.row.left.line}
+				{@const isSelected = selectedHunkKey === hunkKey && selectedLineIndices.has(item.row.left.lineIdx)}
+				<div
+					class="split-cell split-cell-left diff-line {originClass(line.origin)}{item.spannedLeft ? ' diff-line-commented' : ''}"
+					style={cellStyle(line.origin, isSelected)}
+				>
+					<span class="split-gutter" style="min-width: {vd.gutterW};"
+						>{line.old_lineno ?? ''}</span
+					>
+					<div class="split-window" style="overflow: clip;">
+						<div class="split-pan" style={panTransform('--max-l')}>
+							{@render cellContent(line)}
+						</div>
+					</div>
+				</div>
+			{:else}
+				<div
+					class="split-cell split-cell-left split-phantom"
+					style={HALF_GEOMETRY}
+				></div>
+			{/if}
 
-      {#if item.row.right}
-        {@const line = item.row.right.line}
-        {@const lineIdx = item.row.right.lineIdx}
-        {@const isSelectable = line.origin === 'Add'}
-        {@const isSelected = selectedHunkKey === hunkKey && selectedLineIndices.has(lineIdx)}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <!-- mouseenter only continues an in-progress gutter drag (guarded by
+			{#if item.row.right}
+				{@const line = item.row.right.line}
+				{@const lineIdx = item.row.right.lineIdx}
+				{@const isSelectable = line.origin === 'Add'}
+				{@const isSelected = selectedHunkKey === hunkKey && selectedLineIndices.has(lineIdx)}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<!-- mouseenter only continues an in-progress gutter drag (guarded by
              `dragging` in the host); the cell is not a control. -->
-        <div
-          class="split-cell diff-line {originClass(line.origin)}{item.spannedRight ? ' diff-line-commented' : ''}"
-          style={cellStyle(line.origin, isSelected)}
-          onmouseenter={(e) => onlineenter(item.path, item.hunkIdx, lineIdx, e)}
-        >
-          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-          <span
-            class="split-gutter{isSelectable ? ' gutter-selectable' : ''}"
-            style="min-width: {vd.gutterW};"
-            role={isSelectable ? 'button' : undefined}
-            tabindex={isSelectable ? 0 : undefined}
-            onmousedown={(e) => { if (isSelectable) onlinemousedown(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), e); }}
-            onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onlineclick(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
-          >{line.new_lineno ?? ''}</span>
-          <div class="split-window" style="overflow: clip;">
-            <div class="split-pan" style={panTransform('--max-r')}>
-              {@render cellContent(line)}
-            </div>
-          </div>
-        </div>
-      {:else}
-        <div class="split-cell split-phantom" style={HALF_GEOMETRY}></div>
-      {/if}
-    </div>
-  {:else if item.kind === "hunk-header"}
-    {@const hunkKey = `${item.path}-${item.hunkIdx}`}
-    {@const hasSelection = selectedHunkKey === hunkKey && selectedCount > 0}
-    <div
-      class="split-hunk-header{flashedHunkKey === hunkKey ? ' hunk-highlight' : ''}"
-      style="position: sticky; left: 0; width: 100cqi; height: var(--diff-hunk-header-height); box-sizing: border-box;"
-    >
-      <span class="split-hunk-header-text">{item.header}</span>
-      {#if diffKind === 'unstaged'}
-        {#if hasSelection}
-          <!-- Working-tree Comment affordance (260531-k4j): reuses the
+				<div
+					class="split-cell diff-line {originClass(line.origin)}{item.spannedRight ? ' diff-line-commented' : ''}"
+					style={cellStyle(line.origin, isSelected)}
+					onmouseenter={(e) => onlineenter(item.path, item.hunkIdx, lineIdx, e)}
+				>
+					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+					<span
+						class="split-gutter{isSelectable ? ' gutter-selectable' : ''}"
+						style="min-width: {vd.gutterW};"
+						role={isSelectable ? 'button' : undefined}
+						tabindex={isSelectable ? 0 : undefined}
+						onmousedown={(e) => { if (isSelectable) onlinemousedown(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), e); }}
+						onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onlineclick(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
+						>{line.new_lineno ?? ''}</span
+					>
+					<div class="split-window" style="overflow: clip;">
+						<div class="split-pan" style={panTransform('--max-r')}>
+							{@render cellContent(line)}
+						</div>
+					</div>
+				</div>
+			{:else}
+				<div class="split-cell split-phantom" style={HALF_GEOMETRY}></div>
+			{/if}
+		</div>
+	{:else if item.kind === "hunk-header"}
+		{@const hunkKey = `${item.path}-${item.hunkIdx}`}
+		{@const hasSelection = selectedHunkKey === hunkKey && selectedCount > 0}
+		<div
+			class="split-hunk-header{flashedHunkKey === hunkKey ? ' hunk-highlight' : ''}"
+			style="position: sticky; left: 0; width: 100cqi; height: var(--diff-hunk-header-height); box-sizing: border-box;"
+		>
+			<span class="split-hunk-header-text">{item.header}</span>
+			{#if diffKind === 'unstaged'}
+				{#if hasSelection}
+					<!-- Working-tree Comment affordance (260531-k4j): reuses the
                commit-mode accent button class verbatim (no new color). New-side
                scope + Old-side guard live in the host. Leads the action cluster
                (260531-l02 UX: Comment left of staging). -->
-          {#if reviewCommentsVisible && reviewFilter !== "none"}
-          <button
-            class="staging-btn accent-btn"
-            onclick={() => oncommentlines(item.path, item.hunkIdx)}
-          >Comment ({selectedCount})</button>
-          {/if}
-          <button
-            disabled={stagingDisabled}
-            title={stagingDisabledTitle}
-            class="staging-btn danger-btn"
-            onclick={() => ondiscardlines(item.path, item.hunkIdx)}
-          >Discard Lines ({selectedCount})</button>
-          <button
-            disabled={stagingDisabled}
-            title={stagingDisabledTitle}
-            class="staging-btn success-btn"
-            onclick={() => onstagelines(item.path, item.hunkIdx)}
-          >Stage Lines ({selectedCount})</button>
-        {:else}
-          <!-- Whole-hunk Comment affordance (260531-l02): comment the hunk
+					{#if reviewCommentsVisible && reviewFilter !== "none"}
+						<button
+							class="staging-btn accent-btn"
+							onclick={() => oncommentlines(item.path, item.hunkIdx)}
+							>Comment ({selectedCount})</button
+						>
+					{/if}
+					<button
+						disabled={stagingDisabled}
+						title={stagingDisabledTitle}
+						class="staging-btn danger-btn"
+						onclick={() => ondiscardlines(item.path, item.hunkIdx)}
+						>Discard Lines ({selectedCount})</button
+					>
+					<button
+						disabled={stagingDisabled}
+						title={stagingDisabledTitle}
+						class="staging-btn success-btn"
+						onclick={() => onstagelines(item.path, item.hunkIdx)}
+						>Stage Lines ({selectedCount})</button
+					>
+				{:else}
+					<!-- Whole-hunk Comment affordance (260531-l02): comment the hunk
                without selecting lines. Reuses the accent button class verbatim
                (no new color); host applies the New-side guard. -->
-          {#if reviewCommentsVisible && reviewFilter !== "none"}
-          <button
-            class="staging-btn accent-btn"
-            onclick={() => oncommenthunk(item.path, item.hunkIdx)}
-          >Comment</button>
-          {/if}
-          <button
-            disabled={stagingDisabled}
-            title={stagingDisabledTitle}
-            class="staging-btn danger-btn"
-            onclick={() => ondiscardhunk(item.path, item.hunkIdx)}
-          >Discard Hunk</button>
-          <button
-            disabled={stagingDisabled}
-            title={stagingDisabledTitle}
-            class="staging-btn success-btn"
-            onclick={() => onstagehunk(item.path, item.hunkIdx)}
-          >Stage Hunk</button>
-        {/if}
-      {:else if diffKind === 'staged'}
-        {#if hasSelection}
-          <!-- Staged Comment (260531-l02b): index-snapshot anchored, both sides
+					{#if reviewCommentsVisible && reviewFilter !== "none"}
+						<button
+							class="staging-btn accent-btn"
+							onclick={() => oncommenthunk(item.path, item.hunkIdx)}
+							>Comment</button
+						>
+					{/if}
+					<button
+						disabled={stagingDisabled}
+						title={stagingDisabledTitle}
+						class="staging-btn danger-btn"
+						onclick={() => ondiscardhunk(item.path, item.hunkIdx)}
+						>Discard Hunk</button
+					>
+					<button
+						disabled={stagingDisabled}
+						title={stagingDisabledTitle}
+						class="staging-btn success-btn"
+						onclick={() => onstagehunk(item.path, item.hunkIdx)}
+						>Stage Hunk</button
+					>
+				{/if}
+			{:else if diffKind === 'staged'}
+				{#if hasSelection}
+					<!-- Staged Comment (260531-l02b): index-snapshot anchored, both sides
                resolve (no Old-side guard). Leads the cluster. -->
-          {#if reviewCommentsVisible && reviewFilter !== "none"}
-          <button
-            class="staging-btn accent-btn"
-            onclick={() => oncommentlines(item.path, item.hunkIdx)}
-          >Comment ({selectedCount})</button>
-          {/if}
-          <button
-            disabled={stagingDisabled}
-            title={stagingDisabledTitle}
-            class="staging-btn warning-btn"
-            onclick={() => onunstagelines(item.path, item.hunkIdx)}
-          >Unstage Lines ({selectedCount})</button>
-        {:else}
-          {#if reviewCommentsVisible && reviewFilter !== "none"}
-          <button
-            class="staging-btn accent-btn"
-            onclick={() => oncommenthunk(item.path, item.hunkIdx)}
-          >Comment</button>
-          {/if}
-          <button
-            disabled={stagingDisabled}
-            title={stagingDisabledTitle}
-            class="staging-btn warning-btn"
-            onclick={() => onunstagehunk(item.path, item.hunkIdx)}
-          >Unstage Hunk</button>
-        {/if}
-      {:else if diffKind === 'commit'}
-        <!-- Commit-diff Comment (260531-l02): whole-hunk when nothing is
+					{#if reviewCommentsVisible && reviewFilter !== "none"}
+						<button
+							class="staging-btn accent-btn"
+							onclick={() => oncommentlines(item.path, item.hunkIdx)}
+							>Comment ({selectedCount})</button
+						>
+					{/if}
+					<button
+						disabled={stagingDisabled}
+						title={stagingDisabledTitle}
+						class="staging-btn warning-btn"
+						onclick={() => onunstagelines(item.path, item.hunkIdx)}
+						>Unstage Lines ({selectedCount})</button
+					>
+				{:else}
+					{#if reviewCommentsVisible && reviewFilter !== "none"}
+						<button
+							class="staging-btn accent-btn"
+							onclick={() => oncommenthunk(item.path, item.hunkIdx)}
+							>Comment</button
+						>
+					{/if}
+					<button
+						disabled={stagingDisabled}
+						title={stagingDisabledTitle}
+						class="staging-btn warning-btn"
+						onclick={() => onunstagehunk(item.path, item.hunkIdx)}
+						>Unstage Hunk</button
+					>
+				{/if}
+			{:else if diffKind === 'commit'}
+				<!-- Commit-diff Comment (260531-l02): whole-hunk when nothing is
              selected, line-scoped otherwise; both carry the isMerge guard. -->
-        {#if reviewCommentsVisible && reviewFilter !== "none"}
-        <button
-          disabled={isMerge}
-          title={isMerge ? "Diff comments aren't available on merge commits" : ""}
-          class="staging-btn accent-btn"
-          onclick={() => hasSelection ? oncommentlines(item.path, item.hunkIdx) : oncommenthunk(item.path, item.hunkIdx)}
-        >{hasSelection ? `Comment (${selectedCount})` : 'Comment'}</button>
-        {/if}
-      {/if}
-    </div>
-  {:else if item.kind === "comment"}
-    <div class="split-comment-row" style="position: sticky; left: 0; width: 100cqi;">
-      {#each item.threads as c (c.id)}
-        <div>
-          {@render threadCard(c)}
-        </div>
-      {/each}
-    </div>
-  {:else if item.kind === "file-header"}
-    <div
-      class="split-file-header"
-      style="position: sticky; left: 0; width: 100cqi;"
-      role="button"
-      tabindex="0"
-      onclick={() => onfilecollapsetoggle(item.path)}
-      onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onfilecollapsetoggle(item.path); } }}
-    >
-      <span class="split-file-header-caret">{item.collapsed ? '▶' : '▼'}</span>
-      {item.path}
-    </div>
-  {:else if item.kind === "binary"}
-    <div class="binary-row" style="position: sticky; left: 0; width: 100cqi;">Binary file — no diff available</div>
-  {/if}
+				{#if reviewCommentsVisible && reviewFilter !== "none"}
+					<button
+						disabled={isMerge}
+						title={isMerge ? "Diff comments aren't available on merge commits" : ""}
+						class="staging-btn accent-btn"
+						onclick={() => hasSelection ? oncommentlines(item.path, item.hunkIdx) : oncommenthunk(item.path, item.hunkIdx)}
+						>{hasSelection ? `Comment (${selectedCount})` : 'Comment'}</button
+					>
+				{/if}
+			{/if}
+		</div>
+	{:else if item.kind === "comment"}
+		<div
+			class="split-comment-row"
+			style="position: sticky; left: 0; width: 100cqi;"
+		>
+			{#each item.threads as c (c.id)}
+				<div> {@render threadCard(c)} </div>
+			{/each}
+		</div>
+	{:else if item.kind === "file-header"}
+		<div
+			class="split-file-header"
+			style="position: sticky; left: 0; width: 100cqi;"
+			role="button"
+			tabindex="0"
+			onclick={() => onfilecollapsetoggle(item.path)}
+			onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onfilecollapsetoggle(item.path); } }}
+		>
+			<span class="split-file-header-caret">{item.collapsed ? '▶' : '▼'}</span>
+			{item.path}
+		</div>
+	{:else if item.kind === "binary"}
+		<div class="binary-row" style="position: sticky; left: 0; width: 100cqi;"
+			>Binary file — no diff available</div
+		>
+	{/if}
 {/snippet}
 
 <div
-  class="split-view"
-  style="{FIXED_ROW_HEIGHT_VARS}; --max-l: {vd.maxLeftPx}px; --max-r: {vd.maxRightPx}px;"
-  bind:this={vd.pane}
+	class="split-view"
+	style="{FIXED_ROW_HEIGHT_VARS}; --max-l: {vd.maxLeftPx}px; --max-r: {vd.maxRightPx}px;"
+	bind:this={vd.pane}
 >
-  {#if vd.ready}
-    <ExactVirtualList
-      bind:this={list}
-      items={model.rows}
-      heights={vd.heights}
-      contentWidth={vd.contentWidth}
-      renderItem={splitRow}
-    />
-  {/if}
+	{#if vd.ready}
+		<ExactVirtualList
+			bind:this={list}
+			items={model.rows}
+			heights={vd.heights}
+			contentWidth={vd.contentWidth}
+			renderItem={splitRow}
+		/>
+	{/if}
 
-  <div
-    class="diff-line metrics-probe"
-    bind:this={vd.metricsProbe}
-    style="{DIFF_ROW_FONT};"
-  ></div>
+	<div
+		class="diff-line metrics-probe"
+		bind:this={vd.metricsProbe}
+		style="{DIFF_ROW_FONT};"
+	></div>
 
-  {#if vd.threadsToProbe.length > 0}
-    <div class="comment-probe" bind:this={vd.commentProbe}>
-      {#each vd.threadsToProbe as c (c.id)}
-        <div class="split-comment-row" data-thread-id={c.id}>{@render threadCard(c)}</div>
-      {/each}
-    </div>
-  {/if}
+	{#if vd.threadsToProbe.length > 0}
+		<div class="comment-probe" bind:this={vd.commentProbe}>
+			{#each vd.threadsToProbe as c (c.id)}
+				<div class="split-comment-row" data-thread-id={c.id}
+					>{@render threadCard(c)}</div
+				>
+			{/each}
+		</div>
+	{/if}
 </div>
 
 <style>
-  .split-view {
-    position: absolute;
-    inset: 0;
-  }
+.split-view {
+	position: absolute;
+	inset: 0;
+}
 
-  /* Both probes are laid out at the row's real width so their measurements are
+/* Both probes are laid out at the row's real width so their measurements are
      the ones the rendered rows will produce, and neither is visible or
      hit-testable. */
-  .metrics-probe,
-  .comment-probe {
-    position: absolute;
-    top: 0;
-    left: 0;
-    visibility: hidden;
-    pointer-events: none;
-    z-index: -1;
-  }
+.metrics-probe,
+.comment-probe {
+	position: absolute;
+	top: 0;
+	left: 0;
+	visibility: hidden;
+	pointer-events: none;
+	z-index: -1;
+}
 
-  .split-cell {
-    display: flex;
-    align-items: flex-start;
-    padding: 0 var(--space-2);
-    box-sizing: border-box;
-  }
+.split-cell {
+	display: flex;
+	align-items: flex-start;
+	padding: 0 var(--space-2);
+	box-sizing: border-box;
+}
 
-  /* The divider between the halves. Under border-box it comes out of the left
+/* The divider between the halves. Under border-box it comes out of the left
      half's own width, so the right half's ceiling over-reserves by this 1px —
      the safe direction: the pan may reach a pixel past the last character,
      never stop short of it. */
-  .split-cell-left {
-    border-right: 1px solid var(--color-border);
-  }
+.split-cell-left {
+	border-right: 1px solid var(--color-border);
+}
 
-  /* The window the pan happens inside. The gutter is its sibling, not its child,
+/* The window the pan happens inside. The gutter is its sibling, not its child,
      so the line numbers stay put while the code moves. */
-  .split-window {
-    flex: 1;
-    min-width: 0;
-  }
+.split-window {
+	flex: 1;
+	min-width: 0;
+}
 
+.split-gutter {
+	text-align: right;
+	color: var(--color-text-muted);
+	padding-right: var(--space-2);
+	user-select: none;
+	-webkit-user-select: none;
+	flex-shrink: 0;
+}
 
-
-  .split-gutter {
-    text-align: right;
-    color: var(--color-text-muted);
-    padding-right: var(--space-2);
-    user-select: none;
-    -webkit-user-select: none;
-    flex-shrink: 0;
-  }
-
-  /* Right-column gutter is the staging/selection trigger; the left gutter stays
+/* Right-column gutter is the staging/selection trigger; the left gutter stays
      inert. Kept out of the text selection so multi-line copies skip line numbers. */
-  .gutter-selectable {
-    cursor: pointer;
-  }
-  .gutter-selectable:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: -2px;
-    border-radius: var(--radius);
-  }
+.gutter-selectable {
+	cursor: pointer;
+}
+.gutter-selectable:focus-visible {
+	outline: 2px solid var(--color-accent);
+	outline-offset: -2px;
+	border-radius: var(--radius);
+}
 
-  .split-phantom {
-    background: var(--color-diff-phantom-bg);
-  }
+.split-phantom {
+	background: var(--color-diff-phantom-bg);
+}
 
-  /* The hunk header's height is the declared token the row model computes
+/* The hunk header's height is the declared token the row model computes
      offsets from, not whatever the button cluster happens to measure. */
-  .split-hunk-header {
-    background: color-mix(in oklch, var(--info) 6%, var(--bg-2));
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: 0 var(--space-2);
-    z-index: 1;
-  }
-  .split-hunk-header-text {
-    flex: 1;
-    color: color-mix(in oklch, var(--info) 70%, var(--fg-3));
-    font-size: 11px;
-    font-family: var(--font-mono, monospace);
-  }
+.split-hunk-header {
+	background: color-mix(in oklch, var(--info) 6%, var(--bg-2));
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: 0 var(--space-2);
+	z-index: 1;
+}
+.split-hunk-header-text {
+	flex: 1;
+	color: color-mix(in oklch, var(--info) 70%, var(--fg-3));
+	font-size: 11px;
+	font-family: var(--font-mono, monospace);
+}
 
-  /* Multi-file view only. Vertical stickiness does not survive the list — a row
+/* Multi-file view only. Vertical stickiness does not survive the list — a row
      inside a translated container has no scrollport-relative flow position. */
-  .split-file-header {
-    background: var(--color-surface);
-    box-shadow: inset 0 -1px 0 var(--color-border);
-    font-size: 12px;
-    font-weight: 500;
-    padding: 0 var(--space-2);
-    height: var(--diff-file-header-height);
-    box-sizing: border-box;
-    color: var(--color-text);
-    cursor: pointer;
-    user-select: none;
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-  }
-  .split-file-header-caret {
-    font-size: 10px;
-    color: var(--color-text-muted);
-    width: 10px;
-    display: inline-block;
-  }
-  .binary-row {
-    height: var(--diff-binary-row-height);
-    box-sizing: border-box;
-    padding: var(--space-2);
-    color: var(--color-text-muted);
-    font-size: 12px;
-    line-height: 16px;
-  }
+.split-file-header {
+	background: var(--color-surface);
+	box-shadow: inset 0 -1px 0 var(--color-border);
+	font-size: 12px;
+	font-weight: 500;
+	padding: 0 var(--space-2);
+	height: var(--diff-file-header-height);
+	box-sizing: border-box;
+	color: var(--color-text);
+	cursor: pointer;
+	user-select: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+.split-file-header-caret {
+	font-size: 10px;
+	color: var(--color-text-muted);
+	width: 10px;
+	display: inline-block;
+}
+.binary-row {
+	height: var(--diff-binary-row-height);
+	box-sizing: border-box;
+	padding: var(--space-2);
+	color: var(--color-text-muted);
+	font-size: 12px;
+	line-height: 16px;
+}
 
-  .staging-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius);
-    font-size: 11px;
-    font-family: var(--font-sans, sans-serif);
-    height: var(--control-sm-h);
-    padding: 0 var(--space-2);
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .staging-btn:disabled {
-    cursor: not-allowed;
-    opacity: 0.4;
-  }
+.staging-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: var(--radius);
+	font-size: 11px;
+	font-family: var(--font-sans, sans-serif);
+	height: var(--control-sm-h);
+	padding: 0 var(--space-2);
+	cursor: pointer;
+	white-space: nowrap;
+}
+.staging-btn:disabled {
+	cursor: not-allowed;
+	opacity: 0.4;
+}
 
-  .danger-btn {
-    background: var(--color-danger-bg);
-    border: 1px solid var(--color-danger-border);
-    color: var(--color-danger);
-  }
+.danger-btn {
+	background: var(--color-danger-bg);
+	border: 1px solid var(--color-danger-border);
+	color: var(--color-danger);
+}
 
-  .success-btn {
-    background: var(--color-success-bg);
-    border: 1px solid var(--color-success-border);
-    color: var(--color-success);
-  }
+.success-btn {
+	background: var(--color-success-bg);
+	border: 1px solid var(--color-success-border);
+	color: var(--color-success);
+}
 
-  .warning-btn {
-    background: var(--color-warning-bg);
-    border: 1px solid var(--color-warning-border);
-    color: var(--color-warning);
-  }
+.warning-btn {
+	background: var(--color-warning-bg);
+	border: 1px solid var(--color-warning-border);
+	color: var(--color-warning);
+}
 
-  .accent-btn {
-    background: var(--color-accent-bg);
-    border: 1px solid var(--color-accent-border);
-    color: var(--color-accent);
-  }
+.accent-btn {
+	background: var(--color-accent-bg);
+	border: 1px solid var(--color-accent-border);
+	color: var(--color-accent);
+}
 
-  .hunk-highlight {
-    animation: hunk-flash 0.6s ease-out;
-  }
-  @keyframes hunk-flash {
-    0% { background-color: var(--color-hunk-flash); }
-    100% { background-color: transparent; }
-  }
-  .word-add {
-    background-color: var(--color-diff-word-add-bg);
-    border-radius: var(--radius);
-  }
-  .word-delete {
-    background-color: var(--color-diff-word-delete-bg);
-    border-radius: var(--radius);
-  }
+.hunk-highlight {
+	animation: hunk-flash 0.6s ease-out;
+}
+@keyframes hunk-flash {
+	0% {
+		background-color: var(--color-hunk-flash);
+	}
+	100% {
+		background-color: transparent;
+	}
+}
+.word-add {
+	background-color: var(--color-diff-word-add-bg);
+	border-radius: var(--radius);
+}
+.word-delete {
+	background-color: var(--color-diff-word-delete-bg);
+	border-radius: var(--radius);
+}
 
-  /* Syntax highlighting classes */
-  .syn-keyword { color: var(--color-syn-keyword); }
-  .syn-string { color: var(--color-syn-string); }
-  .syn-comment { color: var(--color-syn-comment); }
-  .syn-number { color: var(--color-syn-number); }
-  .syn-type { color: var(--color-syn-type); }
-  .syn-function { color: var(--color-syn-function); }
-  .syn-variable { color: var(--color-syn-variable); }
-  .syn-constant { color: var(--color-syn-constant); }
-  .syn-operator { color: var(--color-syn-operator); }
-  .syn-punctuation { color: var(--color-syn-punctuation); }
-  .syn-attribute { color: var(--color-syn-attribute); }
-  .syn-tag { color: var(--color-syn-tag); }
-  .syn-property { color: var(--color-syn-property); }
-  .syn-regex { color: var(--color-syn-regex); }
-  .syn-escape { color: var(--color-syn-escape); }
+/* Syntax highlighting classes */
+.syn-keyword {
+	color: var(--color-syn-keyword);
+}
+.syn-string {
+	color: var(--color-syn-string);
+}
+.syn-comment {
+	color: var(--color-syn-comment);
+}
+.syn-number {
+	color: var(--color-syn-number);
+}
+.syn-type {
+	color: var(--color-syn-type);
+}
+.syn-function {
+	color: var(--color-syn-function);
+}
+.syn-variable {
+	color: var(--color-syn-variable);
+}
+.syn-constant {
+	color: var(--color-syn-constant);
+}
+.syn-operator {
+	color: var(--color-syn-operator);
+}
+.syn-punctuation {
+	color: var(--color-syn-punctuation);
+}
+.syn-attribute {
+	color: var(--color-syn-attribute);
+}
+.syn-tag {
+	color: var(--color-syn-tag);
+}
+.syn-property {
+	color: var(--color-syn-property);
+}
+.syn-regex {
+	color: var(--color-syn-regex);
+}
+.syn-escape {
+	color: var(--color-syn-escape);
+}
 
-  /* Change-indicator accent bar: saturated for add/delete, neutral rail for context.
+/* Change-indicator accent bar: saturated for add/delete, neutral rail for context.
      Every cell carries the 3px border so the columns stay aligned regardless of origin. */
-  .diff-line {
-    position: relative;
-    /* Own stacking context so the z-index:-1 hover overlay below resolves
+.diff-line {
+	position: relative;
+	/* Own stacking context so the z-index:-1 hover overlay below resolves
        against this cell (painting over its inline background) instead of
        slipping behind it. */
-    isolation: isolate;
-    border-left: 3px solid var(--color-border);
-  }
-  .diff-line-add {
-    border-left-color: var(--color-diff-add);
-  }
-  .diff-line-delete {
-    border-left-color: var(--color-diff-delete);
-  }
+	isolation: isolate;
+	border-left: 3px solid var(--color-border);
+}
+.diff-line-add {
+	border-left-color: var(--color-diff-add);
+}
+.diff-line-delete {
+	border-left-color: var(--color-diff-delete);
+}
 
-  /* Faint full-cell tint while hovering the selectable (right) gutter — signals
+/* Faint full-cell tint while hovering the selectable (right) gutter — signals
      that the line number, not the code, arms staging. z-index:-1 overlay so it
      tints over the inline diff background without hiding it. */
-  .diff-line:has(.gutter-selectable:hover)::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: color-mix(in oklch, var(--color-hover) 60%, transparent);
-    pointer-events: none;
-  }
+.diff-line:has(.gutter-selectable:hover)::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background: color-mix(in oklch, var(--color-hover) 60%, transparent);
+	pointer-events: none;
+}
 
-  /* Left-edge accent on lines spanned by an inline comment. Inset box-shadow
+/* Left-edge accent on lines spanned by an inline comment. Inset box-shadow
      rather than a background tint so it doesn't fight the add/delete/context
      row backgrounds; layered over the existing 3px change-indicator border. */
-  .diff-line-commented {
-    box-shadow: inset 3px 0 0 0 var(--color-accent);
-  }
+.diff-line-commented {
+	box-shadow: inset 3px 0 0 0 var(--color-accent);
+}
 
-  /* Inline comment row: a plain full-width row spanning both halves. */
-  .split-comment-row {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-2);
-    box-sizing: border-box;
-  }
+/* Inline comment row: a plain full-width row spanning both halves. */
+.split-comment-row {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-2);
+	box-sizing: border-box;
+}
 
-  /* Invisible character styling. Real whitespace stays in the text node (so it
+/* Invisible character styling. Real whitespace stays in the text node (so it
      copies faithfully) at zero width via font-size:0; the ·/→ glyph is painted by
      a pseudo-element, never part of the selection/clipboard. font-size:0 also keeps
      a real tab at one visual cell instead of advancing to a tab stop. */
-  .invisible-char {
-    font-size: 0;
-  }
-  .invisible-char::before {
-    content: attr(data-glyph);
-    font-size: 12px;
-    color: var(--color-invisible);
-  }
+.invisible-char {
+	font-size: 0;
+}
+.invisible-char::before {
+	content: attr(data-glyph);
+	font-size: 12px;
+	color: var(--color-invisible);
+}
 
-  /* Trailing whitespace warning */
-  .trailing-ws {
-    background-color: var(--color-trailing-ws-bg);
-  }
-  .trailing-ws::before {
-    color: var(--color-trailing-ws-fg);
-  }
+/* Trailing whitespace warning */
+.trailing-ws {
+	background-color: var(--color-trailing-ws-bg);
+}
+.trailing-ws::before {
+	color: var(--color-trailing-ws-fg);
+}
 
-  /* Text on a word patch is the primary diff color, whatever its syntax class
+/* Text on a word patch is the primary diff color, whatever its syntax class
      or marker role. The patch is strong enough that no syntax hue clears AAA
      on it (see --color-diff-word-add-bg); last so it wins every equal-
      specificity color rule above. */
-  .word-add,
-  .word-delete,
-  .word-add::before,
-  .word-delete::before {
-    color: var(--color-diff-text);
-  }
-  /* Trailing whitespace inside a word patch keeps the patch color: its own red
+.word-add,
+.word-delete,
+.word-add::before,
+.word-delete::before {
+	color: var(--color-diff-text);
+}
+/* Trailing whitespace inside a word patch keeps the patch color: its own red
      tint on top would take the glyph below AAA on a selected line, and the
      patch plus the marker glyph already say everything the tint said. */
-  .word-add.trailing-ws {
-    background-color: var(--color-diff-word-add-bg);
-  }
-  .word-delete.trailing-ws {
-    background-color: var(--color-diff-word-delete-bg);
-  }
+.word-add.trailing-ws {
+	background-color: var(--color-diff-word-add-bg);
+}
+.word-delete.trailing-ws {
+	background-color: var(--color-diff-word-delete-bg);
+}
 </style>

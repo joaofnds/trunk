@@ -66,17 +66,17 @@ onready(vd);
 </script>
 
 <div class="host-pane" bind:this={vd.pane}>
-  <div
-    class="diff-line metrics-probe"
-    bind:this={vd.metricsProbe}
-    style="{DIFF_ROW_FONT};"
-  ></div>
+	<div
+		class="diff-line metrics-probe"
+		bind:this={vd.metricsProbe}
+		style="{DIFF_ROW_FONT};"
+	></div>
 
-  {#if vd.threadsToProbe.length > 0}
-    <div class="comment-probe" bind:this={vd.commentProbe}>
-      {#each vd.threadsToProbe as c (c.id)}
-        <div data-thread-id={c.id}>{c.text}</div>
-      {/each}
-    </div>
-  {/if}
+	{#if vd.threadsToProbe.length > 0}
+		<div class="comment-probe" bind:this={vd.commentProbe}>
+			{#each vd.threadsToProbe as c (c.id)}
+				<div data-thread-id={c.id}>{c.text}</div>
+			{/each}
+		</div>
+	{/if}
 </div>

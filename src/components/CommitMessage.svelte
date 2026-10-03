@@ -30,98 +30,99 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 </script>
 
 <div class="commit-message">
-  <div class="select-text summary" class:has-body={body}>
-    {summary}
-  </div>
-  {#if body}
-    <div
-      class="select-text commit-body"
-      class:clamped={bodyClamped}
-      data-testid="commit-body"
-      data-clamped={bodyClamped}
-      style="--body-clamp-lines: {BODY_CLAMP_LINES};"
-    >{body}</div>
-    {#if bodyExpandable}
-      <button
-        type="button"
-        class="body-toggle"
-        aria-expanded={!bodyClamped}
-        onclick={() => {
+	<div class="select-text summary" class:has-body={body}>
+		{summary}
+	</div>
+	{#if body}
+		<div
+			class="select-text commit-body"
+			class:clamped={bodyClamped}
+			data-testid="commit-body"
+			data-clamped={bodyClamped}
+			style="--body-clamp-lines: {BODY_CLAMP_LINES};"
+			>{body}</div
+		>
+		{#if bodyExpandable}
+			<button
+				type="button"
+				class="body-toggle"
+				aria-expanded={!bodyClamped}
+				onclick={() => {
           bodyExpanded = !bodyExpanded;
         }}
-      >
-        {#if bodyClamped}
-          <ChevronDown size={12} />
-        {:else}
-          <ChevronUp size={12} />
-        {/if}
-        <span>{bodyClamped ? 'Show more' : 'Show less'}</span>
-      </button>
-    {/if}
-  {/if}
+			>
+				{#if bodyClamped}
+					<ChevronDown size={12} />
+				{:else}
+					<ChevronUp size={12} />
+				{/if}
+				<span>{bodyClamped ? 'Show more' : 'Show less'}</span>
+			</button>
+		{/if}
+	{/if}
 </div>
 
 <style>
-  .commit-message {
-    padding: var(--space-3);
-    border-bottom: 1px solid var(--color-border);
-  }
-  .summary {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--color-text);
-    line-height: 1.4;
-  }
-  .summary.has-body {
-    margin-bottom: var(--space-2);
-  }
+.commit-message {
+	padding: var(--space-3);
+	border-bottom: 1px solid var(--color-border);
+}
+.summary {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--color-text);
+	line-height: 1.4;
+}
+.summary.has-body {
+	margin-bottom: var(--space-2);
+}
 
-  /* Commit body. Clamped to a line count rather than given its own scrollbar:
+/* Commit body. Clamped to a line count rather than given its own scrollbar:
      an inline scroll area inside the panel's own scroller is content readers
      skip past, and it would leave the file list just as far down. */
-  .commit-body {
-    font-size: 12px;
-    color: var(--fg-2);
-    line-height: 1.6;
-    margin-top: var(--space-2);
-    /* Bodies arrive hard-wrapped at the author's terminal width, and some carry
+.commit-body {
+	font-size: 12px;
+	color: var(--fg-2);
+	line-height: 1.6;
+	margin-top: var(--space-2);
+	/* Bodies arrive hard-wrapped at the author's terminal width, and some carry
        indented code or lists, so the newlines and the leading spaces are both
        content: `pre-wrap` rather than `pre-line`. The cost is that a line longer
        than this pane wraps a second time and leaves a short remainder under it.
        Narrowing the type and opening the leading keeps that remainder rare at
        the widths this panel is actually used at. */
-    white-space: pre-wrap;
-    overflow-wrap: break-word;
-  }
-  .commit-body.clamped {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: var(--body-clamp-lines);
-    line-clamp: var(--body-clamp-lines);
-    overflow: hidden;
-    /* Fade the cut so the clamp reads as text continuing rather than as a
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+.commit-body.clamped {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: var(--body-clamp-lines);
+	line-clamp: var(--body-clamp-lines);
+	overflow: hidden;
+	/* Fade the cut so the clamp reads as text continuing rather than as a
        paragraph that happens to end mid-sentence. */
-    mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6em), transparent);
-  }
+	mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6em), transparent);
+}
 
-  .body-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    height: var(--control-sm-h);
-    margin-top: var(--space-1);
-    padding: 0 var(--space-2) 0 var(--space-1);
-    border: 1px solid transparent;
-    border-radius: var(--radius);
-    background: var(--bg-2);
-    color: var(--fg-2);
-    font-size: 11px;
-    font-family: inherit;
-    cursor: pointer;
-  }
-  .body-toggle:hover,
-  .body-toggle:focus-visible {
-    background: var(--bg-3);
-    color: var(--fg-0);
-  }
+.body-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	height: var(--control-sm-h);
+	margin-top: var(--space-1);
+	padding: 0 var(--space-2) 0 var(--space-1);
+	border: 1px solid transparent;
+	border-radius: var(--radius);
+	background: var(--bg-2);
+	color: var(--fg-2);
+	font-size: 11px;
+	font-family: inherit;
+	cursor: pointer;
+}
+.body-toggle:hover,
+.body-toggle:focus-visible {
+	background: var(--bg-3);
+	color: var(--fg-0);
+}
 </style>

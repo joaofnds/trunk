@@ -2060,110 +2060,128 @@ $effect(() => {
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
-  class="h-full overflow-hidden flex flex-col"
-  style="background: var(--bg-1); outline: none; {columnWidthDeclarations(columnWidths)}"
-  tabindex="0"
-  role="listbox"
-  bind:this={containerRef}
-  onkeydown={handleKeydown}
+	class="h-full overflow-hidden flex flex-col"
+	style="background: var(--bg-1); outline: none; {columnWidthDeclarations(columnWidths)}"
+	tabindex="0"
+	role="listbox"
+	bind:this={containerRef}
+	onkeydown={handleKeydown}
 >
-  <!-- Header row (always visible). Its cells sit in a scroller of their own inside
+	<!-- Header row (always visible). Its cells sit in a scroller of their own inside
        the padding, as the list's rows do, so the two scroll the same distance. -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="flex-shrink-0"
-    style="height: var(--bar-h); background: var(--bg-1); box-shadow: inset 0 -1px 0 var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px;"
-    oncontextmenu={showHeaderContextMenu}
-  >
-    <div data-testid="column-header" class="flex items-center h-full overflow-hidden" use:syncTableScroll>
-      {#each columnLabels as col (col.key)}
-        {#if columnVisibility[col.key]}
-          {#if col.sized}
-            {@const width = columnWidths[col.key]}
-            <div
-              class="relative flex-shrink-0 overflow-hidden whitespace-nowrap"
-              data-column={col.key}
-              style="width: var({columnWidthProperty(col.key)}); padding: 0 {COLUMN_PADDING_X}px;"
-              title={col.label}
-            >
-              {#if showsHeaderLabel(width, headerMins[col.key])}
-                {col.label}
-              {:else}
-                <col.icon size={HEADER_ICON_WIDTH} aria-hidden="true" />
-              {/if}
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              {#if col.key !== lastVisibleColumn}
-                <div class="col-resize-handle" onmousedown={(e) => startColumnResize(col.key, e)} ondblclick={() => refitColumn(col.key)}></div>
-              {/if}
-            </div>
-          {:else}
-            <div
-              class="relative flex-1 overflow-hidden whitespace-nowrap"
-              data-column={col.key}
-              style="padding: 0 {COLUMN_PADDING_X}px; min-width: {MESSAGE_FLOOR}px;"
-              title={col.label}
-            >
-              {col.label}
-            </div>
-          {/if}
-        {/if}
-      {/each}
-    </div>
-  </div>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="flex-shrink-0"
+		style="height: var(--bar-h); background: var(--bg-1); box-shadow: inset 0 -1px 0 var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px;"
+		oncontextmenu={showHeaderContextMenu}
+	>
+		<div
+			data-testid="column-header"
+			class="flex items-center h-full overflow-hidden"
+			use:syncTableScroll
+		>
+			{#each columnLabels as col (col.key)}
+				{#if columnVisibility[col.key]}
+					{#if col.sized}
+						{@const width = columnWidths[col.key]}
+						<div
+							class="relative flex-shrink-0 overflow-hidden whitespace-nowrap"
+							data-column={col.key}
+							style="width: var({columnWidthProperty(col.key)}); padding: 0 {COLUMN_PADDING_X}px;"
+							title={col.label}
+						>
+							{#if showsHeaderLabel(width, headerMins[col.key])}
+								{col.label}
+							{:else}
+								<col.icon size={HEADER_ICON_WIDTH} aria-hidden="true" />
+							{/if}
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							{#if col.key !== lastVisibleColumn}
+								<div
+									class="col-resize-handle"
+									onmousedown={(e) => startColumnResize(col.key, e)}
+									ondblclick={() => refitColumn(col.key)}
+								></div>
+							{/if}
+						</div>
+					{:else}
+						<div
+							class="relative flex-1 overflow-hidden whitespace-nowrap"
+							data-column={col.key}
+							style="padding: 0 {COLUMN_PADDING_X}px; min-width: {MESSAGE_FLOOR}px;"
+							title={col.label}
+						>
+							{col.label}
+						</div>
+					{/if}
+				{/if}
+			{/each}
+		</div>
+	</div>
 
-  <!-- Content area (grows to fill remaining space) -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="flex-1 overflow-hidden" style="position: relative; padding: 0 {COLUMN_PADDING_X}px;" onwheel={panColumn}>
-    {#if searchOpen}
-      <SearchBar
-        query={searchQuery}
-        currentIndex={searchCurrentIndex}
-        totalMatches={searchResults.length}
-        onquerychange={handleSearchQueryChange}
-        onnext={handleSearchNext}
-        onprev={handleSearchPrev}
-        onclose={handleSearchClose}
-      />
-    {/if}
+	<!-- Content area (grows to fill remaining space) -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="flex-1 overflow-hidden"
+		style="position: relative; padding: 0 {COLUMN_PADDING_X}px;"
+		onwheel={panColumn}
+	>
+		{#if searchOpen}
+			<SearchBar
+				query={searchQuery}
+				currentIndex={searchCurrentIndex}
+				totalMatches={searchResults.length}
+				onquerychange={handleSearchQueryChange}
+				onnext={handleSearchNext}
+				onprev={handleSearchPrev}
+				onclose={handleSearchClose}
+			/>
+		{/if}
 
-    {#if commits.length === 0 && loading}
-      <!-- Initial skeleton loading -->
-      {#each { length: SKELETON_COUNT } as _}
-        <div class="flex items-center gap-2 px-2 animate-pulse" style="height: {displaySettings.rowHeight}px">
-          <div
-            class="rounded-full flex-shrink-0"
-            style="background: var(--color-border); width: 64px; height: 12px;"
-          ></div>
-          <div
-            class="rounded flex-shrink-0"
-            style="background: var(--color-border); width: 32px; height: 100%;"
-          ></div>
-          <div class="rounded flex-1" style="background: var(--color-border); height: 12px;"></div>
-        </div>
-      {/each}
-    {:else if commits.length === 0 && error}
-      <!-- Initial load error -->
-      <div class="error-banner m-4 rounded px-4 py-3 text-sm">
-        {error}
-      </div>
-    {:else}
-      <!-- SVG overlay snippet - renders inside virtual list scroll container -->
-      {#snippet graphOverlay(contentHeight: number, visibleStart: number, visibleEnd: number)}
-        {@const visible = getVisibleOverlayElements(paths, graphData.nodes, visibleStart, visibleEnd, pillData)}
-        {@const graphColWidth = columnVisibility.graph ? columnWidths.graph : naturalGraphWidth}
-        {@const scrollX = Math.min(graphScrollX, maxGraphScrollX)}
-        <svg
-          class="absolute top-0"
-          width={graphStart + Math.max(graphColWidth, naturalGraphWidth)}
-          height={contentHeight}
-          style="left: 0; pointer-events: none; z-index: 1; {searchDimmingActive ? 'opacity: var(--opacity-search-dim);' : ''}"
-        >
-          <!-- Layers A and B live in the Graph column's band; with the column
+		{#if commits.length === 0 && loading}
+			<!-- Initial skeleton loading -->
+			{#each { length: SKELETON_COUNT } as _}
+				<div
+					class="flex items-center gap-2 px-2 animate-pulse"
+					style="height: {displaySettings.rowHeight}px"
+				>
+					<div
+						class="rounded-full flex-shrink-0"
+						style="background: var(--color-border); width: 64px; height: 12px;"
+					></div>
+					<div
+						class="rounded flex-shrink-0"
+						style="background: var(--color-border); width: 32px; height: 100%;"
+					></div>
+					<div
+						class="rounded flex-1"
+						style="background: var(--color-border); height: 12px;"
+					></div>
+				</div>
+			{/each}
+		{:else if commits.length === 0 && error}
+			<!-- Initial load error -->
+			<div class="error-banner m-4 rounded px-4 py-3 text-sm">
+				{error}
+			</div>
+		{:else}
+			<!-- SVG overlay snippet - renders inside virtual list scroll container -->
+			{#snippet graphOverlay(contentHeight: number, visibleStart: number, visibleEnd: number)}
+				{@const visible = getVisibleOverlayElements(paths, graphData.nodes, visibleStart, visibleEnd, pillData)}
+				{@const graphColWidth = columnVisibility.graph ? columnWidths.graph : naturalGraphWidth}
+				{@const scrollX = Math.min(graphScrollX, maxGraphScrollX)}
+				<svg
+					class="absolute top-0"
+					width={graphStart + Math.max(graphColWidth, naturalGraphWidth)}
+					height={contentHeight}
+					style="left: 0; pointer-events: none; z-index: 1; {searchDimmingActive ? 'opacity: var(--opacity-search-dim);' : ''}"
+				>
+					<!-- Layers A and B live in the Graph column's band; with the column
                hidden CommitRow drops that cell and the Message text slides into
                the band, so anything painted here lands on top of it. -->
-          {#if columnVisibility.graph}
-          {@const railBandWidth = graphColWidth - 2 * COLUMN_PADDING_X}
-          <!-- A dot whose lane sits past an edge is clamped inward, away from
+					{#if columnVisibility.graph}
+						{@const railBandWidth = graphColWidth - 2 * COLUMN_PADDING_X}
+						<!-- A dot whose lane sits past an edge is clamped inward, away from
                the lane its rail still runs down, so the rail shows past the dot
                on the far side. The hug band hides the rails behind those dots.
 
@@ -2177,30 +2195,35 @@ $effect(() => {
                on screen: reading it from the rendered rows made it appear and
                vanish as the list scrolled, and the rails were clipped to
                whatever it happened to be at the time. -->
-          {@const hugMax = 2 * displaySettings.dotRadius + COLUMN_PADDING_X}
-          <!-- Where the fade reaches zero, measured in from the band's edge. A
+						{@const hugMax = 2 * displaySettings.dotRadius + COLUMN_PADDING_X}
+						<!-- Where the fade reaches zero, measured in from the band's edge. A
                hugged dot sits half a lane in, and the rail carries on half a
                radius past its centre before it is gone: enough to read as the
                line ending under the dot, not so much that it stops short of it
                and leaves a gap. -->
-          {@const fadeEndInset =
+						{@const fadeEndInset =
             displaySettings.laneWidth / 2 - displaySettings.dotRadius / 2}
-          {@const hugRight = Math.min(
+						{@const hugRight = Math.min(
             hugMax,
             Math.max(0, naturalGraphWidth - scrollX - railBandWidth),
           )}
-          {@const hugLeft = Math.min(hugMax, Math.max(0, scrollX))}
-          <!-- Once the hug takes the whole band there is no stretch of rail left
+						{@const hugLeft = Math.min(hugMax, Math.max(0, scrollX))}
+						<!-- Once the hug takes the whole band there is no stretch of rail left
                to fade from, and a gradient across it leaves the rail opaque at
                one edge: the faint line that still showed through a fully
                collapsed column. Nothing is drawable there, so nothing is drawn. -->
-          {@const railsHidden = railBandWidth - hugLeft - hugRight <= 0}
-          <!-- GRAPH-02: clip graph content to column width -->
-          <defs>
-            <clipPath id="graph-clip-{clipScope}">
-              <rect x={graphStart + COLUMN_PADDING_X} y="0" width={railBandWidth} height={contentHeight} />
-            </clipPath>
-            <!-- A dot clamped to an edge is where its line ends, but the rail
+						{@const railsHidden = railBandWidth - hugLeft - hugRight <= 0}
+						<!-- GRAPH-02: clip graph content to column width -->
+						<defs>
+							<clipPath id="graph-clip-{clipScope}">
+								<rect
+									x={graphStart + COLUMN_PADDING_X}
+									y="0"
+									width={railBandWidth}
+									height={contentHeight}
+								/>
+							</clipPath>
+							<!-- A dot clamped to an edge is where its line ends, but the rail
                  behind it keeps drawing and shows past the dot on the far side.
                  Each lane colour gets a gradient that fades it out across the
                  hug band, so the rail dies under the dots rather than stopping
@@ -2209,173 +2232,235 @@ $effect(() => {
                  Painted on each rail's own stroke. A mask over the layer would
                  be rasterized at the full scroll height, which is the whole
                  history rather than the rows on screen. -->
-            {#if hugRight > 0 || hugLeft > 0}
-              {#each { length: 8 } as _, lane}
-                <!-- Authored in the rails group's own space: userSpaceOnUse
+							{#if hugRight > 0 || hugLeft > 0}
+								{#each { length: 8 } as _, lane}
+									<!-- Authored in the rails group's own space: userSpaceOnUse
                      resolves against the element that references the gradient,
                      and that group carries the column offset and the pan. Using
                      absolute coordinates here put the fade a whole column to
                      the right of the band, where it never touched a rail. -->
-                <linearGradient id="rail-fade-{lane}-{clipScope}" gradientUnits="userSpaceOnUse"
-                  x1={scrollX} x2={scrollX + railBandWidth}>
-                  {#if hugLeft > 0}
-                    <stop offset="0" stop-color="var(--lane-{lane})" stop-opacity="0" />
-                    <stop offset={fadeEndInset / railBandWidth} stop-color="var(--lane-{lane})" stop-opacity="0" />
-                    <stop offset={hugLeft / railBandWidth} stop-color="var(--lane-{lane})" stop-opacity="1" />
-                  {/if}
-                  {#if hugRight > 0}
-                    <stop offset={(railBandWidth - hugRight) / railBandWidth} stop-color="var(--lane-{lane})" stop-opacity="1" />
-                    <stop offset={(railBandWidth - fadeEndInset) / railBandWidth} stop-color="var(--lane-{lane})" stop-opacity="0" />
-                    <stop offset="1" stop-color="var(--lane-{lane})" stop-opacity="0" />
-                  {/if}
-                </linearGradient>
-              {/each}
-            {/if}
-            <!-- The dots' own band. A dot is clamped to a lane centre, so half of
+									<linearGradient
+										id="rail-fade-{lane}-{clipScope}"
+										gradientUnits="userSpaceOnUse"
+										x1={scrollX}
+										x2={scrollX + railBandWidth}
+									>
+										{#if hugLeft > 0}
+											<stop
+												offset="0"
+												stop-color="var(--lane-{lane})"
+												stop-opacity="0"
+											/>
+											<stop
+												offset={fadeEndInset / railBandWidth}
+												stop-color="var(--lane-{lane})"
+												stop-opacity="0"
+											/>
+											<stop
+												offset={hugLeft / railBandWidth}
+												stop-color="var(--lane-{lane})"
+												stop-opacity="1"
+											/>
+										{/if}
+										{#if hugRight > 0}
+											<stop
+												offset={(railBandWidth - hugRight) / railBandWidth}
+												stop-color="var(--lane-{lane})"
+												stop-opacity="1"
+											/>
+											<stop
+												offset={(railBandWidth - fadeEndInset) / railBandWidth}
+												stop-color="var(--lane-{lane})"
+												stop-opacity="0"
+											/>
+											<stop
+												offset="1"
+												stop-color="var(--lane-{lane})"
+												stop-opacity="0"
+											/>
+										{/if}
+									</linearGradient>
+								{/each}
+							{/if}
+							<!-- The dots' own band. A dot is clamped to a lane centre, so half of
                  it sits outside the rail band at either edge; cutting it there
                  would slice every hugged dot in half. It is the rail band grown
                  by a radius, which still ends inside the column's padding. -->
-            <clipPath id="graph-dot-clip-{clipScope}">
-              <rect
-                x={graphStart + COLUMN_PADDING_X - displaySettings.dotRadius}
-                y="0"
-                width={railBandWidth + 2 * displaySettings.dotRadius}
-                height={contentHeight} />
-            </clipPath>
-          </defs>
-          <!-- GRAPH-02: Layer A — rails + connections, scrolled and clipped.
+							<clipPath id="graph-dot-clip-{clipScope}">
+								<rect
+									x={graphStart + COLUMN_PADDING_X - displaySettings.dotRadius}
+									y="0"
+									width={railBandWidth + 2 * displaySettings.dotRadius}
+									height={contentHeight}
+								/>
+							</clipPath>
+						</defs>
+						<!-- GRAPH-02: Layer A — rails + connections, scrolled and clipped.
                Translated left by scrollX to pan through lanes. -->
-          <g clip-path="url(#graph-clip-{clipScope})">
-            <g class="overlay-paths" transform="translate({graphStart + COLUMN_PADDING_X - scrollX}, 0)">
-              {#each railsHidden ? [] : visible.paths as path}
-                <path d={path.d} fill="none"
-                  stroke={hugRight > 0 || hugLeft > 0
+						<g clip-path="url(#graph-clip-{clipScope})">
+							<g
+								class="overlay-paths"
+								transform="translate({graphStart + COLUMN_PADDING_X - scrollX}, 0)"
+							>
+								{#each railsHidden ? [] : visible.paths as path}
+									<path
+										d={path.d}
+										fill="none"
+										stroke={hugRight > 0 || hugLeft > 0
                     ? `url(#rail-fade-${path.colorIndex % 8}-${clipScope})`
                     : laneColor(path.colorIndex)}
-                  stroke-width={displaySettings.edgeStroke}
-                  stroke-linecap="round"
-                  stroke-dasharray={path.dashed ? `${DASH} ${DASH}` : 'none'} />
-              {/each}
-            </g>
-          </g>
-          <!-- GRAPH-02: Layer B — dots with "sticky" X clamping.
+										stroke-width={displaySettings.edgeStroke}
+										stroke-linecap="round"
+										stroke-dasharray={path.dashed ? `${DASH} ${DASH}` : 'none'}
+									/>
+								{/each}
+							</g>
+						</g>
+						<!-- GRAPH-02: Layer B — dots with "sticky" X clamping.
                Dots slide along their horizontal line to stay visible in the viewport.
                Viewport spans graph coordinates [scrollX, scrollX + graphColWidth].
                Dots clamp to viewport edges (bead-on-a-string effect). -->
-          <g clip-path="url(#graph-dot-clip-{clipScope})">
-          <g class="overlay-dots" transform="translate({graphStart + COLUMN_PADDING_X}, 0)">
-            {#each visible.dots as node}
-              {@const clampedCx = stickyDotX(geometry.cx(node.x), graphColWidth, scrollX)}
-              <!-- A stroke straddles the path it is drawn on, so half of it falls
+						<g clip-path="url(#graph-dot-clip-{clipScope})">
+							<g
+								class="overlay-dots"
+								transform="translate({graphStart + COLUMN_PADDING_X}, 0)"
+							>
+								{#each visible.dots as node}
+									{@const clampedCx = stickyDotX(geometry.cx(node.x), graphColWidth, scrollX)}
+									<!-- A stroke straddles the path it is drawn on, so half of it falls
                    outside. Every stroked marker is inset by half its stroke, which
                    makes all four kinds occupy the same width as the filled dot:
                    without it a merge read 14px against a solid 12 and sat visibly
                    off the line its lane shares. -->
-              {@const strokeInset = displaySettings.edgeStroke / 2}
-              {#if node.isWip}
-                <path d={wipMarkerPath(clampedCx, geometry.cy(node.y), displaySettings.dotRadius - strokeInset)}
-                  fill="none" stroke={laneColor(node.colorIndex)}
-                  stroke-width={displaySettings.edgeStroke} />
-              {:else if node.isStash}
-                <rect
-                  x={clampedCx - displaySettings.dotRadius + strokeInset}
-                  y={geometry.cy(node.y) - displaySettings.dotRadius + strokeInset}
-                  width={displaySettings.dotRadius * 2 - displaySettings.edgeStroke}
-                  height={displaySettings.dotRadius * 2 - displaySettings.edgeStroke}
-                  fill="none"
-                  stroke={laneColor(node.colorIndex)}
-                  stroke-width={displaySettings.edgeStroke}
-                  stroke-dasharray="{DASH} {DASH}" />
-              {:else if node.isMerge}
-                <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius - displaySettings.mergeStroke / 2}
-                  fill="var(--bg-1)" stroke={laneColor(node.colorIndex)}
-                  stroke-width={displaySettings.mergeStroke} />
-              {:else}
-                <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius}
-                  fill={laneColor(node.colorIndex)} />
-              {/if}
-            {/each}
-          </g>
-          </g>
-          {/if}
-          {#if columnVisibility.ref}
-            <g class="overlay-pills">
-              <clipPath id="ref-clip-{clipScope}">
-                <rect x="0" y="0" width={Math.max(0, graphStart - COLUMN_PADDING_X)} height={contentHeight} />
-              </clipPath>
-              {#each ghostPill ? [...visible.pills, ghostPill] : visible.pills as pill}
-                {@const badgeWidth = overflowBadgeWidth(pill.overflowCount)}
-                {@const pillGroupRightX = pill.x + pill.width + (pill.overflowCount > 0 ? PILL_GAP + badgeWidth : 0)}
-                <!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (uses sticky X position, scroll-adjusted) -->
-                {#if columnVisibility.graph}
-                  {@const stickyDotCx = stickyDotX(pill.dotCx, graphColWidth, scrollX)}
-                  {@const connectorEndX = graphStart + COLUMN_PADDING_X + stickyDotCx - (pill.isHollow ? displaySettings.dotRadius : 0)}
-                  <line
-                    x1={pillGroupRightX}
-                    y1={pill.y}
-                    x2={connectorEndX}
-                    y2={pill.dotCy}
-                    stroke={laneColor(pill.commitColorIndex)}
-                    stroke-width={pill.isHead ? displaySettings.pillStroke * 2 : displaySettings.pillStroke}
-                    opacity={pill.isGhost ? 0.45 : pill.isRemoteOnly ? 0.67 : 1}
-                    style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
-                  />
-                  {#if pill.overflowCount > 0}
-                    <!-- Stub linking the named pill to the +N badge, filling the gap so they read as one connected group. -->
-                    <line
-                      x1={pill.x + pill.width}
-                      y1={pill.y}
-                      x2={pill.x + pill.width + PILL_GAP}
-                      y2={pill.y}
-                      stroke={laneColor(pill.commitColorIndex)}
-                      stroke-width={pill.isHead ? displaySettings.pillStroke * 2 : displaySettings.pillStroke}
-                      opacity={pill.isGhost ? 0.45 : pill.isRemoteOnly ? 0.67 : 1}
-                      style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
-                    />
-                  {/if}
-                {/if}
+									{@const strokeInset = displaySettings.edgeStroke / 2}
+									{#if node.isWip}
+										<path
+											d={wipMarkerPath(clampedCx, geometry.cy(node.y), displaySettings.dotRadius - strokeInset)}
+											fill="none"
+											stroke={laneColor(node.colorIndex)}
+											stroke-width={displaySettings.edgeStroke}
+										/>
+									{:else if node.isStash}
+										<rect
+											x={clampedCx - displaySettings.dotRadius + strokeInset}
+											y={geometry.cy(node.y) - displaySettings.dotRadius + strokeInset}
+											width={displaySettings.dotRadius * 2 - displaySettings.edgeStroke}
+											height={displaySettings.dotRadius * 2 - displaySettings.edgeStroke}
+											fill="none"
+											stroke={laneColor(node.colorIndex)}
+											stroke-width={displaySettings.edgeStroke}
+											stroke-dasharray="{DASH} {DASH}"
+										/>
+									{:else if node.isMerge}
+										<circle
+											cx={clampedCx}
+											cy={geometry.cy(node.y)}
+											r={displaySettings.dotRadius - displaySettings.mergeStroke / 2}
+											fill="var(--bg-1)"
+											stroke={laneColor(node.colorIndex)}
+											stroke-width={displaySettings.mergeStroke}
+										/>
+									{:else}
+										<circle
+											cx={clampedCx}
+											cy={geometry.cy(node.y)}
+											r={displaySettings.dotRadius}
+											fill={laneColor(node.colorIndex)}
+										/>
+									{/if}
+								{/each}
+							</g>
+						</g>
+					{/if}
+					{#if columnVisibility.ref}
+						<g class="overlay-pills">
+							<clipPath id="ref-clip-{clipScope}">
+								<rect
+									x="0"
+									y="0"
+									width={Math.max(0, graphStart - COLUMN_PADDING_X)}
+									height={contentHeight}
+								/>
+							</clipPath>
+							{#each ghostPill ? [...visible.pills, ghostPill] : visible.pills as pill}
+								{@const badgeWidth = overflowBadgeWidth(pill.overflowCount)}
+								{@const pillGroupRightX = pill.x + pill.width + (pill.overflowCount > 0 ? PILL_GAP + badgeWidth : 0)}
+								<!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (uses sticky X position, scroll-adjusted) -->
+								{#if columnVisibility.graph}
+									{@const stickyDotCx = stickyDotX(pill.dotCx, graphColWidth, scrollX)}
+									{@const connectorEndX = graphStart + COLUMN_PADDING_X + stickyDotCx - (pill.isHollow ? displaySettings.dotRadius : 0)}
+									<line
+										x1={pillGroupRightX}
+										y1={pill.y}
+										x2={connectorEndX}
+										y2={pill.dotCy}
+										stroke={laneColor(pill.commitColorIndex)}
+										stroke-width={pill.isHead ? displaySettings.pillStroke * 2 : displaySettings.pillStroke}
+										opacity={pill.isGhost ? 0.45 : pill.isRemoteOnly ? 0.67 : 1}
+										style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
+									/>
+									{#if pill.overflowCount > 0}
+										<!-- Stub linking the named pill to the +N badge, filling the gap so they read as one connected group. -->
+										<line
+											x1={pill.x + pill.width}
+											y1={pill.y}
+											x2={pill.x + pill.width + PILL_GAP}
+											y2={pill.y}
+											stroke={laneColor(pill.commitColorIndex)}
+											stroke-width={pill.isHead ? displaySettings.pillStroke * 2 : displaySettings.pillStroke}
+											opacity={pill.isGhost ? 0.45 : pill.isRemoteOnly ? 0.67 : 1}
+											style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
+										/>
+									{/if}
+								{/if}
 
-                <!-- What the pill draws stays inside the Branch/Tag column; only its
+								<!-- What the pill draws stays inside the Branch/Tag column; only its
                      connector reaches the lanes. -->
-                <g clip-path="url(#ref-clip-{clipScope})">
-                <!-- Capsule rect -->
-                <rect
-                  x={pill.x}
-                  y={pill.y - PILL_HEIGHT / 2}
-                  width={pill.width}
-                  height={PILL_HEIGHT}
-                  rx={PILL_HEIGHT / 2}
-                  ry={PILL_HEIGHT / 2}
-                  fill={laneColor(pill.colorIndex)}
-                  fill-opacity={pill.isGhost ? 0.06 : pill.isRemoteOnly ? 0.1 : 0.14}
-                  stroke={laneColor(pill.colorIndex)}
-                  stroke-opacity={pill.isGhost ? 0.25 : 0.5}
-                  pointer-events={pill.isGhost ? "none" : "auto"}
-                  style:cursor={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}
-                  onmouseenter={() => pillMouseEnter(pill)}
-                  onmouseleave={pillMouseLeave}
-                  oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
-                  ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
-                />
+								<g clip-path="url(#ref-clip-{clipScope})">
+									<!-- Capsule rect -->
+									<rect
+										x={pill.x}
+										y={pill.y - PILL_HEIGHT / 2}
+										width={pill.width}
+										height={PILL_HEIGHT}
+										rx={PILL_HEIGHT / 2}
+										ry={PILL_HEIGHT / 2}
+										fill={laneColor(pill.colorIndex)}
+										fill-opacity={pill.isGhost ? 0.06 : pill.isRemoteOnly ? 0.1 : 0.14}
+										stroke={laneColor(pill.colorIndex)}
+										stroke-opacity={pill.isGhost ? 0.25 : 0.5}
+										pointer-events={pill.isGhost ? "none" : "auto"}
+										style:cursor={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}
+										onmouseenter={() => pillMouseEnter(pill)}
+										onmouseleave={pillMouseLeave}
+										oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
+										ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
+									/>
 
-                <!-- Icon rendered directly in SVG at a fixed position (no CSS layout) -->
-                {#if PILL_ICONS[pill.refType]}
-                  {@const PillIcon = PILL_ICONS[pill.refType]}
-                  <g transform="translate({pill.x + PILL_PADDING_X}, {pill.y - ICON_WIDTH / 2})" opacity={pill.isGhost ? 0.45 : 0.9} style="pointer-events: auto; cursor: {pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'};" oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))} ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}>
-                    <PillIcon size={ICON_WIDTH} />
-                  </g>
-                {/if}
+									<!-- Icon rendered directly in SVG at a fixed position (no CSS layout) -->
+									{#if PILL_ICONS[pill.refType]}
+										{@const PillIcon = PILL_ICONS[pill.refType]}
+										<g
+											transform="translate({pill.x + PILL_PADDING_X}, {pill.y - ICON_WIDTH / 2})"
+											opacity={pill.isGhost ? 0.45 : 0.9}
+											style="pointer-events: auto; cursor: {pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'};"
+											oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
+											ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
+										>
+											<PillIcon size={ICON_WIDTH} />
+										</g>
+									{/if}
 
-                <!-- Text in its own foreignObject sized to exactly the canvas-measured text width.
+									<!-- Text in its own foreignObject sized to exactly the canvas-measured text width.
                      No flex layout — icon is positioned separately so the text width is unambiguous. -->
-                <foreignObject
-                  x={pill.x + PILL_PADDING_X + ICON_WIDTH + ICON_GAP}
-                  y={pill.y - PILL_HEIGHT / 2}
-                  width={Math.ceil(pill.textWidth)}
-                  height={PILL_HEIGHT}
-                >
-                  <span
-                    style="
+									<foreignObject
+										x={pill.x + PILL_PADDING_X + ICON_WIDTH + ICON_GAP}
+										y={pill.y - PILL_HEIGHT / 2}
+										width={Math.ceil(pill.textWidth)}
+										height={PILL_HEIGHT}
+									>
+										<span
+											style="
                       display: block;
                       line-height: {PILL_HEIGHT}px;
                       color: {laneColor(pill.colorIndex)};{pill.isGhost ? ' opacity: 0.5;' : ''}
@@ -2386,37 +2471,38 @@ $effect(() => {
                       overflow: hidden;
                       cursor: {pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'};
                     "
-                    oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
-                    ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
-                  >{pill.truncatedLabel}</span>
-                </foreignObject>
+											oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
+											ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
+											>{pill.truncatedLabel}</span
+										>
+									</foreignObject>
 
-                <!-- Overflow +N badge -->
-                {#if pill.overflowCount > 0}
-                  {@const badgeText = `+${pill.overflowCount}`}
-                  <rect
-                    x={pill.x + pill.width + PILL_GAP}
-                    y={pill.y - BADGE_HEIGHT / 2}
-                    width={badgeWidth}
-                    height={BADGE_HEIGHT}
-                    rx={BADGE_HEIGHT / 2}
-                    ry={BADGE_HEIGHT / 2}
-                    fill={laneColor(pill.colorIndex)}
-                    fill-opacity="0.14"
-                    stroke={laneColor(pill.colorIndex)}
-                    stroke-opacity={pill.isGhost ? 0.25 : 0.5}
-                    pointer-events={pill.isGhost ? "none" : "auto"}
-                    onmouseenter={() => pillMouseEnter(pill)}
-                    onmouseleave={pillMouseLeave}
-                  />
-                  <foreignObject
-                    x={pill.x + pill.width + PILL_GAP}
-                    y={pill.y - BADGE_HEIGHT / 2}
-                    width={badgeWidth}
-                    height={BADGE_HEIGHT}
-                  >
-                    <span
-                      style="
+									<!-- Overflow +N badge -->
+									{#if pill.overflowCount > 0}
+										{@const badgeText = `+${pill.overflowCount}`}
+										<rect
+											x={pill.x + pill.width + PILL_GAP}
+											y={pill.y - BADGE_HEIGHT / 2}
+											width={badgeWidth}
+											height={BADGE_HEIGHT}
+											rx={BADGE_HEIGHT / 2}
+											ry={BADGE_HEIGHT / 2}
+											fill={laneColor(pill.colorIndex)}
+											fill-opacity="0.14"
+											stroke={laneColor(pill.colorIndex)}
+											stroke-opacity={pill.isGhost ? 0.25 : 0.5}
+											pointer-events={pill.isGhost ? "none" : "auto"}
+											onmouseenter={() => pillMouseEnter(pill)}
+											onmouseleave={pillMouseLeave}
+										/>
+										<foreignObject
+											x={pill.x + pill.width + PILL_GAP}
+											y={pill.y - BADGE_HEIGHT / 2}
+											width={badgeWidth}
+											height={BADGE_HEIGHT}
+										>
+											<span
+												style="
                         color: {laneColor(pill.colorIndex)};{pill.isGhost ? ' opacity: 0.5;' : ''}
                         font-size: {BADGE_FONT_SIZE}px;
                         font-family: var(--font-sans);
@@ -2426,20 +2512,21 @@ $effect(() => {
                         text-align: center;
                         white-space: nowrap;
                       "
-                    >{badgeText}</span>
-                  </foreignObject>
-                {/if}
-                </g>
-              {/each}
-            </g>
-          {/if}
-        </svg>
-        {#if hoveredPill && columnVisibility.ref}
-          {#if hoveredPill.overflowCount > 0}
-            <!-- Multi-ref expansion: shows all refs vertically -->
-            <div
-              class="absolute rounded shadow-lg"
-              style="
+												>{badgeText}</span
+											>
+										</foreignObject>
+									{/if}
+								</g>
+							{/each}
+						</g>
+					{/if}
+				</svg>
+				{#if hoveredPill && columnVisibility.ref}
+					{#if hoveredPill.overflowCount > 0}
+						<!-- Multi-ref expansion: shows all refs vertically -->
+						<div
+							class="absolute rounded shadow-lg"
+							style="
                 left: {hoveredPill.x}px;
                 top: {hoveredPill.y - PILL_HEIGHT / 2}px;
                 background: var(--bg-2);
@@ -2450,30 +2537,30 @@ $effect(() => {
                 opacity: 1;
                 transition: opacity 180ms ease;
               "
-              onmouseenter={overlayMouseEnter}
-              onmouseleave={overlayMouseLeave}
-            >
-              {#each hoveredPill.allRefs as ref}
-                {@const ri = refFromLabel(ref)}
-                <div
-                  style="display: flex; align-items: center; gap: var(--space-1); cursor: {ri.refType === 'LocalBranch' || ri.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}; border-radius: var(--radius); color: var(--lane-{ref.color_index % 8});"
-                  class="text-[11px] leading-5 font-medium whitespace-nowrap hover:bg-white/8 px-1 -mx-1"
-                  oncontextmenu={(e) => showRefContextMenu(e, ri)}
-                  ondblclick={ri.refType === 'LocalBranch' || ri.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, ri) : undefined}
-                >
-                  {#if PILL_ICONS[ref.ref_type]}
-                    {@const RefIcon = PILL_ICONS[ref.ref_type]}
-                    <RefIcon size={10} style="flex-shrink: 0; opacity: 0.85;" />
-                  {/if}
-                  {ref.short_name}
-                </div>
-              {/each}
-            </div>
-          {:else}
-            <!-- Truncated single-ref: width-only expansion showing full label -->
-            <div
-              class="absolute rounded-full shadow-lg"
-              style="
+							onmouseenter={overlayMouseEnter}
+							onmouseleave={overlayMouseLeave}
+						>
+							{#each hoveredPill.allRefs as ref}
+								{@const ri = refFromLabel(ref)}
+								<div
+									style="display: flex; align-items: center; gap: var(--space-1); cursor: {ri.refType === 'LocalBranch' || ri.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}; border-radius: var(--radius); color: var(--lane-{ref.color_index % 8});"
+									class="text-[11px] leading-5 font-medium whitespace-nowrap hover:bg-white/8 px-1 -mx-1"
+									oncontextmenu={(e) => showRefContextMenu(e, ri)}
+									ondblclick={ri.refType === 'LocalBranch' || ri.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, ri) : undefined}
+								>
+									{#if PILL_ICONS[ref.ref_type]}
+										{@const RefIcon = PILL_ICONS[ref.ref_type]}
+										<RefIcon size={10} style="flex-shrink: 0; opacity: 0.85;" />
+									{/if}
+									{ref.short_name}
+								</div>
+							{/each}
+						</div>
+					{:else}
+						<!-- Truncated single-ref: width-only expansion showing full label -->
+						<div
+							class="absolute rounded-full shadow-lg"
+							style="
                 left: {hoveredPill.x}px;
                 top: {hoveredPill.y - PILL_HEIGHT / 2}px;
                 height: {PILL_HEIGHT}px;
@@ -2488,116 +2575,155 @@ $effect(() => {
                 transition: opacity 180ms ease;
                 cursor: {hoveredPill.refType === 'LocalBranch' || hoveredPill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'};
               "
-              onmouseenter={overlayMouseEnter}
-              onmouseleave={overlayMouseLeave}
-              oncontextmenu={(e) => showRefContextMenu(e, refFromPill(hoveredPill!))}
-              ondblclick={hoveredPill.refType === 'LocalBranch' || hoveredPill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(hoveredPill!)) : undefined}
-            >
-              <span style="display: flex; align-items: center; gap: var(--space-1); font-weight: {hoveredPill.isHead ? 700 : 500}; color: var(--lane-{hoveredPill.colorIndex % 8});" class="text-[11px] font-medium whitespace-nowrap">
-                {#if PILL_ICONS[hoveredPill.refType]}
-                  {@const HoverIcon = PILL_ICONS[hoveredPill.refType]}
-                  <HoverIcon size={10} style="flex-shrink: 0; opacity: 0.9;" />
-                {/if}
-                {hoveredPill.label}
-              </span>
-            </div>
-          {/if}
-        {/if}
-      {/snippet}
+							onmouseenter={overlayMouseEnter}
+							onmouseleave={overlayMouseLeave}
+							oncontextmenu={(e) => showRefContextMenu(e, refFromPill(hoveredPill!))}
+							ondblclick={hoveredPill.refType === 'LocalBranch' || hoveredPill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(hoveredPill!)) : undefined}
+						>
+							<span
+								style="display: flex; align-items: center; gap: var(--space-1); font-weight: {hoveredPill.isHead ? 700 : 500}; color: var(--lane-{hoveredPill.colorIndex % 8});"
+								class="text-[11px] font-medium whitespace-nowrap"
+							>
+								{#if PILL_ICONS[hoveredPill.refType]}
+									{@const HoverIcon = PILL_ICONS[hoveredPill.refType]}
+									<HoverIcon size={10} style="flex-shrink: 0; opacity: 0.9;" />
+								{/if}
+								{hoveredPill.label}
+							</span>
+						</div>
+					{/if}
+				{/if}
+			{/snippet}
 
-      {#key displaySettings.rowHeight}
-      <VirtualList
-        bind:this={listRef}
-        items={displayItems}
-        defaultEstimatedItemHeight={displaySettings.rowHeight}
-        bind:measuredItemHeight={svgRowHeight}
-        onLoadMore={() => void loadMore()}
-        loadMoreThreshold={50}
-        {hasMore}
-        overlaySnippet={graphOverlay}
-        minContentWidth={tableMinWidth(columnWidths, columnVisibility)}
-      >
-        {#snippet renderItem(commit, index)}
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div onmouseenter={() => (hoveredRow = index)} onmouseleave={() => (hoveredRow = null)}>
-          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {columnVisibility} selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={reviewOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} commentTone={commentToneFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)} {messageScrollX} />
-          </div>
-        {/snippet}
-      </VirtualList>
-      {/key}
+			{#key displaySettings.rowHeight}
+				<VirtualList
+					bind:this={listRef}
+					items={displayItems}
+					defaultEstimatedItemHeight={displaySettings.rowHeight}
+					bind:measuredItemHeight={svgRowHeight}
+					onLoadMore={() => void loadMore()}
+					loadMoreThreshold={50}
+					{hasMore}
+					overlaySnippet={graphOverlay}
+					minContentWidth={tableMinWidth(columnWidths, columnVisibility)}
+				>
+					{#snippet renderItem(commit, index)}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div
+							onmouseenter={() => (hoveredRow = index)}
+							onmouseleave={() => (hoveredRow = null)}
+						>
+							<CommitRow
+								{commit}
+								rowIndex={index}
+								onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect}
+								oncontextmenu={handleRowContextMenu}
+								{columnVisibility}
+								selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'}
+								rowHeight={displaySettings.rowHeight}
+								isSearchMatch={searchMatchOids.has(commit.oid)}
+								isCurrentMatch={commit.oid === searchCurrentOid}
+								isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0}
+								inSession={reviewOids.has(commit.oid)}
+								isPendingBase={pendingBase === commit.oid}
+								commentCount={commentCountFor(commit.oid)}
+								commentTone={commentToneFor(commit.oid)}
+								wipStats={commit.oid === '__wip__' ? wipStats : undefined}
+								diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)}
+								{messageScrollX}
+							/>
+						</div>
+					{/snippet}
+				</VirtualList>
+			{/key}
 
-      <!-- Mid-scroll skeleton (more commits loading) -->
-      {#if loading && commits.length > 0}
-        {#each { length: 3 } as _}
-        <div class="flex items-center gap-2 animate-pulse" style="height: {displaySettings.rowHeight}px">
-            <div
-              class="rounded-full flex-shrink-0"
-              style="background: var(--color-border); width: 64px; height: 12px;"
-            ></div>
-            <div
-              class="rounded flex-shrink-0"
-              style="background: var(--color-border); width: 32px; height: 100%;"
-            ></div>
-            <div
-              class="rounded flex-1"
-              style="background: var(--color-border); height: 12px;"
-            ></div>
-          </div>
-        {/each}
-      {/if}
+			<!-- Mid-scroll skeleton (more commits loading) -->
+			{#if loading && commits.length > 0}
+				{#each { length: 3 } as _}
+					<div
+						class="flex items-center gap-2 animate-pulse"
+						style="height: {displaySettings.rowHeight}px"
+					>
+						<div
+							class="rounded-full flex-shrink-0"
+							style="background: var(--color-border); width: 64px; height: 12px;"
+						></div>
+						<div
+							class="rounded flex-shrink-0"
+							style="background: var(--color-border); width: 32px; height: 100%;"
+						></div>
+						<div
+							class="rounded flex-1"
+							style="background: var(--color-border); height: 12px;"
+						></div>
+					</div>
+				{/each}
+			{/if}
 
-      <!-- Mid-scroll error + retry -->
-      {#if error && commits.length > 0}
-        <div class="flex items-center gap-3 px-4 py-2">
-          <span class="error-text text-sm">{error}</span>
-          <button
-            onclick={() => void loadMore()}
-            class="rounded px-3 py-1 text-xs font-medium"
-            style="background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
-          >
-            Retry
-          </button>
-        </div>
-      {/if}
-    {/if}
-  </div>
+			<!-- Mid-scroll error + retry -->
+			{#if error && commits.length > 0}
+				<div class="flex items-center gap-3 px-4 py-2">
+					<span class="error-text text-sm">{error}</span>
+					<button
+						onclick={() => void loadMore()}
+						class="rounded px-3 py-1 text-xs font-medium"
+						style="background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
+					>
+						Retry
+					</button>
+				</div>
+			{/if}
+		{/if}
+	</div>
 </div>
 
 {#if dialogConfig}
-  <InputDialog
-    title={dialogConfig.title}
-    fields={dialogConfig.fields}
-    onsubmit={dialogConfig.onsubmit}
-    oncancel={closeDialog}
-  />
+	<InputDialog
+		title={dialogConfig.title}
+		fields={dialogConfig.fields}
+		onsubmit={dialogConfig.onsubmit}
+		oncancel={closeDialog}
+	/>
 {/if}
 
 <style>
-  .col-resize-handle {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    cursor: col-resize;
-    background: linear-gradient(to right, transparent 1.5px, var(--color-border) 1.5px, var(--color-border) 2.5px, transparent 2.5px);
-    transition: background 0.15s;
-  }
-  .col-resize-handle:hover {
-    background: linear-gradient(to right, transparent 1px, var(--color-accent) 1px, var(--color-accent) 3px, transparent 3px);
-  }
-  /* GRAPH-01: visible padding above first and below last commit row */
-  :global(.virtual-list-viewport) {
-    padding-top: var(--space-2);
-    padding-bottom: var(--space-2);
-    box-sizing: border-box;
-  }
-  .error-banner {
-    background: var(--color-danger-bg);
-    border: 1px solid var(--color-danger-border);
-    color: var(--color-danger);
-  }
-  .error-text {
-    color: var(--color-danger);
-  }
+.col-resize-handle {
+	position: absolute;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	width: 4px;
+	cursor: col-resize;
+	background: linear-gradient(
+		to right,
+		transparent 1.5px,
+		var(--color-border) 1.5px,
+		var(--color-border) 2.5px,
+		transparent 2.5px
+	);
+	transition: background 0.15s;
+}
+.col-resize-handle:hover {
+	background: linear-gradient(
+		to right,
+		transparent 1px,
+		var(--color-accent) 1px,
+		var(--color-accent) 3px,
+		transparent 3px
+	);
+}
+/* GRAPH-01: visible padding above first and below last commit row */
+:global(.virtual-list-viewport) {
+	padding-top: var(--space-2);
+	padding-bottom: var(--space-2);
+	box-sizing: border-box;
+}
+.error-banner {
+	background: var(--color-danger-bg);
+	border: 1px solid var(--color-danger-border);
+	color: var(--color-danger);
+}
+.error-text {
+	color: var(--color-danger);
+}
 </style>

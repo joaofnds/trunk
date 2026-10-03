@@ -77,163 +77,176 @@ async function saveReplyEdit() {
 </script>
 
 {#if replies.length > 0}
-  {#if hiddenReplyCount > 0 && !repliesExpanded && editingReplyId === null}
-    <button
-      type="button"
-      class="thread-replies-expand"
-      onclick={() => { repliesExpanded = true; }}
-    >Show {hiddenReplyCount} more {hiddenReplyCount === 1 ? "reply" : "replies"}</button>
-  {/if}
-  <ul class="thread-replies">
-    {#each visibleReplies as reply (reply.id)}
-      <li class="thread-reply">
-        <div class="thread-reply-header">
-          <span class="thread-reply-channel">{reply.channel}</span>
-          {#if reply.channel === "human" && editingReplyId !== reply.id}
-            <button
-              type="button"
-              class="thread-reply-edit-toggle"
-              disabled={replyEditSaving}
-              onclick={() => openReplyEdit(reply.id, reply.text)}
-            >Edit reply</button>
-          {/if}
-          <span class="comment-card-spacer"></span>
-          {#if !published}
-            <button
-              type="button"
-              class="thread-reply-delete"
-              disabled={replyEditSaving}
-              onclick={() => onreplydelete(reply.id)}
-            >Delete reply</button>
-          {/if}
-        </div>
-        {#if editingReplyId === reply.id}
-          <textarea
-            bind:value={replyEditDraft.text}
-            rows="2"
-            aria-label="Edit reply"
-            class="card-textarea"
-            disabled={replyEditSaving}
-          ></textarea>
-          <div class="card-editor-actions">
-            <button
-              type="button"
-              onclick={saveReplyEdit}
-              disabled={!replyEditDraft.valid || replyEditSaving}
-            >Save</button>
-            <button
-              type="button"
-              onclick={cancelReplyEdit}
-              disabled={replyEditSaving}
-            >Cancel</button>
-          </div>
-        {:else}
-          <!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
+	{#if hiddenReplyCount > 0 && !repliesExpanded && editingReplyId === null}
+		<button
+			type="button"
+			class="thread-replies-expand"
+			onclick={() => { repliesExpanded = true; }}
+			>{`Show ${hiddenReplyCount} more ${hiddenReplyCount === 1 ? "reply" : "replies"}`}</button
+		>
+	{/if}
+	<ul class="thread-replies">
+		{#each visibleReplies as reply (reply.id)}
+			<li class="thread-reply">
+				<div class="thread-reply-header">
+					<span class="thread-reply-channel">{reply.channel}</span>
+					{#if reply.channel === "human" && editingReplyId !== reply.id}
+						<button
+							type="button"
+							class="thread-reply-edit-toggle"
+							disabled={replyEditSaving}
+							onclick={() => openReplyEdit(reply.id, reply.text)}
+							>Edit reply</button
+						>
+					{/if}
+					<span class="comment-card-spacer"></span>
+					{#if !published}
+						<button
+							type="button"
+							class="thread-reply-delete"
+							disabled={replyEditSaving}
+							onclick={() => onreplydelete(reply.id)}
+							>Delete reply</button
+						>
+					{/if}
+				</div>
+				{#if editingReplyId === reply.id}
+					<textarea
+						bind:value={replyEditDraft.text}
+						rows="2"
+						aria-label="Edit reply"
+						class="card-textarea"
+						disabled={replyEditSaving}
+					></textarea>
+					<div class="card-editor-actions">
+						<button
+							type="button"
+							onclick={saveReplyEdit}
+							disabled={!replyEditDraft.valid || replyEditSaving}
+							>Save</button
+						>
+						<button
+							type="button"
+							onclick={cancelReplyEdit}
+							disabled={replyEditSaving}
+							>Cancel</button
+						>
+					</div>
+				{:else}
+					<!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
                (comrak unsafe-off + ammonia); see commands/markdown.rs -->
-          <div class="thread-reply-text markdown-body select-text" use:externalLinks>{@html reply.text_html}</div>
-        {/if}
-      </li>
-    {/each}
-  </ul>
+					<div
+						class="thread-reply-text markdown-body select-text"
+						use:externalLinks
+						>{@html reply.text_html}</div
+					>
+				{/if}
+			</li>
+		{/each}
+	</ul>
 {/if}
 
 <style>
-  .comment-card-spacer { flex: 1; }
+.comment-card-spacer {
+	flex: 1;
+}
 
-  /* Inline editor inside a reply — mirrors ThreadCard's own .card-textarea /
+/* Inline editor inside a reply — mirrors ThreadCard's own .card-textarea /
      .card-editor-actions; Svelte scoped styles don't cross component
      boundaries, so the reply-edit textarea needs its own copy here. */
-  .card-textarea {
-    width: 100%;
-    resize: vertical;
-    background: var(--color-comment-card-bg);
-    color: var(--color-text);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: var(--space-1) var(--space-2);
-    font-size: 12px;
-    font-family: inherit;
-  }
-  .card-editor-actions {
-    display: flex;
-    gap: var(--space-1);
-  }
-  .card-editor-actions button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    color: var(--color-text);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-    height: var(--control-sm-h);
-    padding: 0 var(--space-2);
-    font-size: 12px;
-  }
-  .card-editor-actions button[disabled] {
-    cursor: not-allowed;
-    opacity: 0.5;
-  }
+.card-textarea {
+	width: 100%;
+	resize: vertical;
+	background: var(--color-comment-card-bg);
+	color: var(--color-text);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	padding: var(--space-1) var(--space-2);
+	font-size: 12px;
+	font-family: inherit;
+}
+.card-editor-actions {
+	display: flex;
+	gap: var(--space-1);
+}
+.card-editor-actions button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	background: transparent;
+	color: var(--color-text);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	cursor: pointer;
+	height: var(--control-sm-h);
+	padding: 0 var(--space-2);
+	font-size: 12px;
+}
+.card-editor-actions button[disabled] {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
 
-  /* Expand control for a collapsed reply list. */
-  .thread-replies-expand {
-    align-self: flex-start;
-    margin: var(--space-2) var(--space-2) 0;
-    background: transparent;
-    color: var(--color-accent);
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    font-size: 11px;
-  }
+/* Expand control for a collapsed reply list. */
+.thread-replies-expand {
+	align-self: flex-start;
+	margin: var(--space-2) var(--space-2) 0;
+	background: transparent;
+	color: var(--color-accent);
+	border: none;
+	cursor: pointer;
+	padding: 0;
+	font-size: 11px;
+}
 
-  .thread-replies {
-    list-style: none;
-    margin: 0;
-    padding: var(--space-2) var(--space-2) 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    border-top: 1px solid var(--color-border);
-  }
-  .thread-reply {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-  .thread-reply-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .thread-reply-edit-toggle,
-  .thread-reply-delete {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    font-size: 11px;
-    color: var(--color-text-muted);
-  }
-  .thread-reply-edit-toggle:hover,
-  .thread-reply-edit-toggle:focus-visible,
-  .thread-reply-delete:hover,
-  .thread-reply-delete:focus-visible { color: var(--color-text); }
-  .thread-reply-channel {
-    align-self: flex-start;
-    font-size: 10px;
-    line-height: 1.4;
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-    color: var(--color-text-muted);
-    background: var(--color-comment-card-header-bg);
-    border-radius: var(--radius);
-    padding: 0 var(--space-2);
-  }
-  .thread-reply-text {
-    font-size: 12px;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
+.thread-replies {
+	list-style: none;
+	margin: 0;
+	padding: var(--space-2) var(--space-2) 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	border-top: 1px solid var(--color-border);
+}
+.thread-reply {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+.thread-reply-header {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+.thread-reply-edit-toggle,
+.thread-reply-delete {
+	background: transparent;
+	border: none;
+	cursor: pointer;
+	padding: 0;
+	font-size: 11px;
+	color: var(--color-text-muted);
+}
+.thread-reply-edit-toggle:hover,
+.thread-reply-edit-toggle:focus-visible,
+.thread-reply-delete:hover,
+.thread-reply-delete:focus-visible {
+	color: var(--color-text);
+}
+.thread-reply-channel {
+	align-self: flex-start;
+	font-size: 10px;
+	line-height: 1.4;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+	color: var(--color-text-muted);
+	background: var(--color-comment-card-header-bg);
+	border-radius: var(--radius);
+	padding: 0 var(--space-2);
+}
+.thread-reply-text {
+	font-size: 12px;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
 </style>

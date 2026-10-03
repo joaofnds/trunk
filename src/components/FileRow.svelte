@@ -61,14 +61,14 @@ let badgeBg = $derived(
 </script>
 
 <div
-  data-testid="staging-file"
-  role={depth > 0 ? 'treeitem' : 'listitem'}
-  aria-level={depth > 0 ? depth + 1 : undefined}
-  onmouseenter={() => (hovered = true)}
-  onmouseleave={() => (hovered = false)}
-  onclick={() => onclick?.()}
-  oncontextmenu={(e) => { if (oncontextmenu) { e.preventDefault(); oncontextmenu(e); } }}
-  style="
+	data-testid="staging-file"
+	role={depth > 0 ? 'treeitem' : 'listitem'}
+	aria-level={depth > 0 ? depth + 1 : undefined}
+	onmouseenter={() => (hovered = true)}
+	onmouseleave={() => (hovered = false)}
+	onclick={() => onclick?.()}
+	oncontextmenu={(e) => { if (oncontextmenu) { e.preventDefault(); oncontextmenu(e); } }}
+	style="
     height: var(--row-h);
     padding: 0 var(--space-2) 0 {treeIndent(depth)};
     display: flex;
@@ -79,8 +79,9 @@ let badgeBg = $derived(
     color: {isLoading ? 'var(--color-text-muted)' : 'var(--color-text)'};
   "
 >
-  <!-- Status badge -->
-  <span style="
+	<!-- Status badge -->
+	<span
+		style="
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -94,56 +95,73 @@ let badgeBg = $derived(
     line-height: 1;
     color: {isLoading ? 'var(--color-text-muted)' : badge.color};
     background: {badgeBg};
-  ">{badge.letter}</span>
+  "
+		>{badge.letter}</span
+	>
 
-  <!-- Filename, or both paths when the file was renamed -->
-  <span style="
+	<!-- Filename, or both paths when the file was renamed -->
+	<span
+		style="
     flex: 1;
     min-width: 0;
     display: flex;
     align-items: baseline;
     gap: var(--space-1);
     font-size: 12px;
-  ">
-    {#if rename !== null}
-      <!-- The old path yields space first: it shrinks and ellipsizes while the
+  "
+	>
+		{#if rename !== null}
+			<!-- The old path yields space first: it shrinks and ellipsizes while the
            new path, which is where the file is now, keeps its width. -->
-      <span style="
+			<span
+				style="
         flex-shrink: 1;
         min-width: 2ch;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
         color: var(--color-text-muted);
-      ">{rename.from}</span>
-      <span aria-hidden="true" style="
+      "
+				>{rename.from}</span
+			>
+			<span
+				aria-hidden="true"
+				style="
         flex-shrink: 0;
         color: var(--color-text-muted);
-      ">→</span>
-      <span style="
+      "
+				>→</span
+			>
+			<span
+				style="
         flex-shrink: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-      ">{rename.to}</span>
-    {:else}
-      <span style="
+      "
+				>{rename.to}</span
+			>
+		{:else}
+			<span
+				style="
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-      ">{displayName ?? file.path}</span>
-    {/if}
-  </span>
+      "
+				>{displayName ?? file.path}</span
+			>
+		{/if}
+	</span>
 
-  <!-- Review-comment count for this file -->
-  <CommentBadge count={commentCount} tone={commentTone} />
+	<!-- Review-comment count for this file -->
+	<CommentBadge count={commentCount} tone={commentTone} />
 
-  <!-- Hover action button (hidden during loading or when no actionLabel) -->
-  {#if hovered && !isLoading && actionLabel}
-    <button
-      onclick={(e) => { e.stopPropagation(); onaction(); }}
-      aria-label={actionLabel === '+' ? 'Stage file' : 'Unstage file'}
-      style="
+	<!-- Hover action button (hidden during loading or when no actionLabel) -->
+	{#if hovered && !isLoading && actionLabel}
+		<button
+			onclick={(e) => { e.stopPropagation(); onaction(); }}
+			aria-label={actionLabel === '+' ? 'Stage file' : 'Unstage file'}
+			style="
         background: none;
         border: none;
         cursor: pointer;
@@ -153,12 +171,12 @@ let badgeBg = $derived(
         padding: 0 var(--space-1);
         line-height: 1;
       "
-    >
-      {#if actionLabel === '+'}
-        <Plus size={11} />
-      {:else}
-        <Minus size={11} />
-      {/if}
-    </button>
-  {/if}
+		>
+			{#if actionLabel === '+'}
+				<Plus size={11} />
+			{:else}
+				<Minus size={11} />
+			{/if}
+		</button>
+	{/if}
 </div>

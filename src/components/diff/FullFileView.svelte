@@ -211,29 +211,29 @@ function lineColor(): string {
 </script>
 
 {#snippet threadCard(c: Thread)}
-  <ThreadCard
-    variant="inline"
-    confirmDelete={false}
-    thread={c}
-    {repoPath}
-    onedit={(id, text) => editThread(repoPath, id, text)}
-    ondelete={(id) => deleteThread(repoPath, id)}
-    editorSessionForThread={editorSessionForThread}
-  />
+	<ThreadCard
+		variant="inline"
+		confirmDelete={false}
+		thread={c}
+		{repoPath}
+		onedit={(id, text) => editThread(repoPath, id, text)}
+		ondelete={(id) => deleteThread(repoPath, id)}
+		{editorSessionForThread}
+	/>
 {/snippet}
 
 {#snippet diffRow(item: DiffRow, _index: number)}
-  {#if item.kind === "line"}
-    {@const line = item.line}
-    {@const isSelectable = line.new_lineno !== null}
-    {@const isSelected = selectedPath === item.path && selectedIndices.has(item.flatIdx)}
-    {@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <!-- mouseenter only continues an in-progress gutter drag; the row itself is
+	{#if item.kind === "line"}
+		{@const line = item.line}
+		{@const isSelectable = line.new_lineno !== null}
+		{@const isSelected = selectedPath === item.path && selectedIndices.has(item.flatIdx)}
+		{@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- mouseenter only continues an in-progress gutter drag; the row itself is
          not a control. -->
-    <div
-      class="diff-line {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{item.spanned ? ' diff-line-commented' : ''}"
-      style="
+		<div
+			class="diff-line {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{item.spanned ? ' diff-line-commented' : ''}"
+			style="
         {DIFF_ROW_FONT};
         padding: 0 var(--space-2);
         white-space: {vd.wrapActive ? 'pre-wrap' : 'pre'};
@@ -243,36 +243,80 @@ function lineColor(): string {
         display: flex;
         align-items: flex-start;
       "
-      onmouseenter={(e) => extendDrag(item.path, line, item.flatIdx, e)}
-    ><!-- svelte-ignore a11y_no_noninteractive_tabindex --><span
-        class="gutter-grip{isSelectable ? ' gutter-selectable' : ''}"
-        style="user-select: none; -webkit-user-select: none;"
-        role={isSelectable ? 'button' : undefined}
-        tabindex={isSelectable ? 0 : undefined}
-        onmousedown={(e) => isSelectable && startDrag(item.path, line, item.flatIdx, e)}
-        onclick={(e) => isSelectable && selectLine(item.path, line, item.flatIdx, e.shiftKey)}
-        onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectLine(item.path, line, item.flatIdx, e.shiftKey); } }}
-      ><span class="gutter-num" style="min-width: {vd.gutterW};">{line.old_lineno ?? ''}</span><span class="gutter-num" style="min-width: {vd.gutterW};">{line.new_lineno ?? ''}</span></span><span class="diff-line-content" style="user-select: text; -webkit-user-select: text; cursor: text;">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>
-  {:else if item.kind === "comment"}
-    {#each item.threads as c (c.id)}
-      <div class="comment-row">{@render threadCard(c)}</div>
-    {/each}
-  {:else if item.kind === "binary"}
-    <div class="binary-row">Binary file — no diff available</div>
-  {/if}
+			onmouseenter={(e) => extendDrag(item.path, line, item.flatIdx, e)}
+			><!-- svelte-ignore a11y_no_noninteractive_tabindex --><span
+				class="gutter-grip{isSelectable ? ' gutter-selectable' : ''}"
+				style="user-select: none; -webkit-user-select: none;"
+				role={isSelectable ? 'button' : undefined}
+				tabindex={isSelectable ? 0 : undefined}
+				onmousedown={(e) => isSelectable && startDrag(item.path, line, item.flatIdx, e)}
+				onclick={(e) => isSelectable && selectLine(item.path, line, item.flatIdx, e.shiftKey)}
+				onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectLine(item.path, line, item.flatIdx, e.shiftKey); } }}
+				><span class="gutter-num" style="min-width: {vd.gutterW};"
+					>{line.old_lineno ?? ''}</span
+				><span class="gutter-num" style="min-width: {vd.gutterW};"
+					>{line.new_lineno ?? ''}</span
+				></span
+			><span
+				class="diff-line-content"
+				style="user-select: text; -webkit-user-select: text; cursor: text;"
+				>{#if line.spans.length > 0}
+					{#each line.spans as span}
+						{@const sliced = line.content.slice(span.start, span.end)}
+						{@const spanInTrailing = span.start >= trailStart}
+						{#if showInvisibles}
+							{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}
+								<span
+									class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}"
+									data-glyph={seg.glyph}
+									>{seg.text}</span
+								>
+							{/each}
+						{:else}
+							<span
+								class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}"
+								>{sliced}</span
+							>
+						{/if}
+					{/each}
+				{:else}
+					{#if showInvisibles}
+						{@const segments = splitInvisibles(line.content, false)}
+						{#each segments as seg}
+							<span
+								class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}"
+								data-glyph={seg.glyph}
+								>{seg.text}</span
+							>
+						{/each}
+					{:else}
+						{line.content}
+					{/if}
+				{/if}</span
+			></div
+		>
+	{:else if item.kind === "comment"}
+		{#each item.threads as c (c.id)}
+			<div class="comment-row">{@render threadCard(c)}</div>
+		{/each}
+	{:else if item.kind === "binary"}
+		<div class="binary-row">Binary file — no diff available</div>
+	{/if}
 {/snippet}
 
 <div class="full-file" style="{FIXED_ROW_HEIGHT_VARS}">
-  {#if affordanceVisible}
-    <!-- Full-file Comment affordance (L-05: no isMerge disable). Appears on
+	{#if affordanceVisible}
+		<!-- Full-file Comment affordance (L-05: no isMerge disable). Appears on
          comment-capable commit, unstaged working-tree (260531-k4j), and
          current-file views once a selection exists. Lives outside the list
          because it follows the live selection, which the row model must not
          take as an input. -->
-    <div style="display: flex; justify-content: flex-end; padding: var(--space-1) var(--space-2); flex: 0 0 auto;">
-      <button
-        class="full-file-comment-button"
-        style="
+		<div
+			style="display: flex; justify-content: flex-end; padding: var(--space-1) var(--space-2); flex: 0 0 auto;"
+		>
+			<button
+				class="full-file-comment-button"
+				style="
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -287,200 +331,235 @@ function lineColor(): string {
           cursor: pointer;
           white-space: nowrap;
         "
-        onclick={() => selectedPath && oncommentfullfile(selectedPath, selectedIndices)}
-      >
-        Comment ({selectedIndices.size})
-      </button>
-    </div>
-  {/if}
+				onclick={() => selectedPath && oncommentfullfile(selectedPath, selectedIndices)}
+			>
+				Comment ({selectedIndices.size})
+			</button>
+		</div>
+	{/if}
 
-  <div class="list-area" bind:this={vd.pane}>
-    {#if vd.ready}
-      <ExactVirtualList
-        bind:this={list}
-        items={model.rows}
-        heights={vd.heights}
-        contentWidth={vd.contentWidth}
-        renderItem={diffRow}
-      />
-    {/if}
+	<div class="list-area" bind:this={vd.pane}>
+		{#if vd.ready}
+			<ExactVirtualList
+				bind:this={list}
+				items={model.rows}
+				heights={vd.heights}
+				contentWidth={vd.contentWidth}
+				renderItem={diffRow}
+			/>
+		{/if}
 
-    <div
-      class="diff-line metrics-probe"
-      bind:this={vd.metricsProbe}
-      style="{DIFF_ROW_FONT};"
-    ></div>
+		<div
+			class="diff-line metrics-probe"
+			bind:this={vd.metricsProbe}
+			style="{DIFF_ROW_FONT};"
+		></div>
 
-    {#if vd.threadsToProbe.length > 0}
-      <div class="comment-probe" bind:this={vd.commentProbe}>
-        {#each vd.threadsToProbe as c (c.id)}
-          <div class="comment-row" data-thread-id={c.id} style:display={reviewFilter !== "none" ? "block" : "none"}>{@render threadCard(c)}</div>
-        {/each}
-      </div>
-    {/if}
-  </div>
+		{#if vd.threadsToProbe.length > 0}
+			<div class="comment-probe" bind:this={vd.commentProbe}>
+				{#each vd.threadsToProbe as c (c.id)}
+					<div
+						class="comment-row"
+						data-thread-id={c.id}
+						style:display={reviewFilter !== "none" ? "block" : "none"}
+						>{@render threadCard(c)}</div
+					>
+				{/each}
+			</div>
+		{/if}
+	</div>
 </div>
 
 <style>
-  .full-file {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-  .list-area {
-    position: relative;
-    flex: 1 1 auto;
-    min-height: 0;
-  }
+.full-file {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+.list-area {
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 0;
+}
 
-  /* Both probes are laid out at the row's real width so their measurements are
+/* Both probes are laid out at the row's real width so their measurements are
      the ones the rendered rows will produce, and neither is visible or
      hit-testable. */
-  .metrics-probe,
-  .comment-probe {
-    position: absolute;
-    top: 0;
-    left: 0;
-    visibility: hidden;
-    pointer-events: none;
-    z-index: -1;
-  }
-  .binary-row {
-    height: var(--diff-binary-row-height);
-    box-sizing: border-box;
-    padding: var(--space-2);
-    color: var(--color-text-muted);
-    font-size: 12px;
-    line-height: 16px;
-  }
+.metrics-probe,
+.comment-probe {
+	position: absolute;
+	top: 0;
+	left: 0;
+	visibility: hidden;
+	pointer-events: none;
+	z-index: -1;
+}
+.binary-row {
+	height: var(--diff-binary-row-height);
+	box-sizing: border-box;
+	padding: var(--space-2);
+	color: var(--color-text-muted);
+	font-size: 12px;
+	line-height: 16px;
+}
 
-  .word-add {
-    background-color: var(--color-diff-word-add-bg);
-    border-radius: var(--radius);
-  }
-  .word-delete {
-    background-color: var(--color-diff-word-delete-bg);
-    border-radius: var(--radius);
-  }
+.word-add {
+	background-color: var(--color-diff-word-add-bg);
+	border-radius: var(--radius);
+}
+.word-delete {
+	background-color: var(--color-diff-word-delete-bg);
+	border-radius: var(--radius);
+}
 
-  /* Syntax highlighting classes */
-  .syn-keyword { color: var(--color-syn-keyword); }
-  .syn-string { color: var(--color-syn-string); }
-  .syn-comment { color: var(--color-syn-comment); }
-  .syn-number { color: var(--color-syn-number); }
-  .syn-type { color: var(--color-syn-type); }
-  .syn-function { color: var(--color-syn-function); }
-  .syn-variable { color: var(--color-syn-variable); }
-  .syn-constant { color: var(--color-syn-constant); }
-  .syn-operator { color: var(--color-syn-operator); }
-  .syn-punctuation { color: var(--color-syn-punctuation); }
-  .syn-attribute { color: var(--color-syn-attribute); }
-  .syn-tag { color: var(--color-syn-tag); }
-  .syn-property { color: var(--color-syn-property); }
-  .syn-regex { color: var(--color-syn-regex); }
-  .syn-escape { color: var(--color-syn-escape); }
+/* Syntax highlighting classes */
+.syn-keyword {
+	color: var(--color-syn-keyword);
+}
+.syn-string {
+	color: var(--color-syn-string);
+}
+.syn-comment {
+	color: var(--color-syn-comment);
+}
+.syn-number {
+	color: var(--color-syn-number);
+}
+.syn-type {
+	color: var(--color-syn-type);
+}
+.syn-function {
+	color: var(--color-syn-function);
+}
+.syn-variable {
+	color: var(--color-syn-variable);
+}
+.syn-constant {
+	color: var(--color-syn-constant);
+}
+.syn-operator {
+	color: var(--color-syn-operator);
+}
+.syn-punctuation {
+	color: var(--color-syn-punctuation);
+}
+.syn-attribute {
+	color: var(--color-syn-attribute);
+}
+.syn-tag {
+	color: var(--color-syn-tag);
+}
+.syn-property {
+	color: var(--color-syn-property);
+}
+.syn-regex {
+	color: var(--color-syn-regex);
+}
+.syn-escape {
+	color: var(--color-syn-escape);
+}
 
-  /* Change-indicator accent bar: saturated for add/delete, neutral rail for context.
+/* Change-indicator accent bar: saturated for add/delete, neutral rail for context.
      Every line carries the 3px border so columns stay aligned regardless of origin. */
-  .diff-line {
-    position: relative;
-    /* Own stacking context so the z-index:-1 hover overlay below resolves
+.diff-line {
+	position: relative;
+	/* Own stacking context so the z-index:-1 hover overlay below resolves
        against this row (painting over its inline background) instead of slipping
        behind it. */
-    isolation: isolate;
-    border-left: 3px solid var(--color-border);
-  }
-  .diff-line-add {
-    border-left-color: var(--color-diff-add);
-  }
+	isolation: isolate;
+	border-left: 3px solid var(--color-border);
+}
+.diff-line-add {
+	border-left-color: var(--color-diff-add);
+}
 
-  /* Gutter grip: the line-number column is the selection trigger. Kept out of the
+/* Gutter grip: the line-number column is the selection trigger. Kept out of the
      text selection so copies never pick up line numbers. */
-  .gutter-grip {
-    display: inline-flex;
-    flex-shrink: 0;
-  }
-  .gutter-num {
-    text-align: right;
-    color: var(--color-text-muted);
-    padding-right: var(--space-2);
-  }
-  .gutter-selectable {
-    cursor: pointer;
-  }
-  .gutter-selectable:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: -2px;
-    border-radius: var(--radius);
-  }
+.gutter-grip {
+	display: inline-flex;
+	flex-shrink: 0;
+}
+.gutter-num {
+	text-align: right;
+	color: var(--color-text-muted);
+	padding-right: var(--space-2);
+}
+.gutter-selectable {
+	cursor: pointer;
+}
+.gutter-selectable:focus-visible {
+	outline: 2px solid var(--color-accent);
+	outline-offset: -2px;
+	border-radius: var(--radius);
+}
 
-  /* Faint full-row tint while hovering a selectable gutter — signals the line
+/* Faint full-row tint while hovering a selectable gutter — signals the line
      number arms selection, not the code. z-index:-1 overlay so it tints over the
      inline diff background without hiding it. */
-  .diff-line:has(.gutter-selectable:hover)::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: color-mix(in oklch, var(--color-hover) 60%, transparent);
-    pointer-events: none;
-  }
-  .diff-line-delete {
-    border-left-color: var(--color-diff-delete);
-  }
-  /* Inline-comment gutter accent: a left-edge inset rail in the accent color,
+.diff-line:has(.gutter-selectable:hover)::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background: color-mix(in oklch, var(--color-hover) 60%, transparent);
+	pointer-events: none;
+}
+.diff-line-delete {
+	border-left-color: var(--color-diff-delete);
+}
+/* Inline-comment gutter accent: a left-edge inset rail in the accent color,
      layered via box-shadow so it never tints the diff add/delete/context
      background and never overrides the per-origin change-indicator border. */
-  .diff-line-commented {
-    box-shadow: inset 2px 0 0 0 var(--color-accent);
-  }
+.diff-line-commented {
+	box-shadow: inset 2px 0 0 0 var(--color-accent);
+}
 
-  /* Comment rows hang as full-width block siblings directly under their anchored
+/* Comment rows hang as full-width block siblings directly under their anchored
      line, indented to clear the change-indicator rail. */
-  .comment-row {
-    padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
-  }
+.comment-row {
+	padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
+}
 
-  /* Invisible character styling (Phase 63 -- WHSP-03, D-11). Real whitespace stays
+/* Invisible character styling (Phase 63 -- WHSP-03, D-11). Real whitespace stays
      in the text node (so it copies faithfully) at zero width via font-size:0; the
      ·/→ glyph is painted by a pseudo-element, never part of the selection/clipboard.
      font-size:0 also keeps a real tab at one visual cell, not a tab stop. */
-  .invisible-char {
-    font-size: 0;
-  }
-  .invisible-char::before {
-    content: attr(data-glyph);
-    font-size: 12px;
-    color: var(--color-invisible);
-  }
+.invisible-char {
+	font-size: 0;
+}
+.invisible-char::before {
+	content: attr(data-glyph);
+	font-size: 12px;
+	color: var(--color-invisible);
+}
 
-  /* Trailing whitespace warning (Phase 63 -- D-12) */
-  .trailing-ws {
-    background-color: var(--color-trailing-ws-bg);
-  }
-  .trailing-ws::before {
-    color: var(--color-trailing-ws-fg);
-  }
+/* Trailing whitespace warning (Phase 63 -- D-12) */
+.trailing-ws {
+	background-color: var(--color-trailing-ws-bg);
+}
+.trailing-ws::before {
+	color: var(--color-trailing-ws-fg);
+}
 
-  /* Text on a word patch is the primary diff color, whatever its syntax class
+/* Text on a word patch is the primary diff color, whatever its syntax class
      or marker role. The patch is strong enough that no syntax hue clears AAA
      on it (see --color-diff-word-add-bg); last so it wins every equal-
      specificity color rule above. */
-  .word-add,
-  .word-delete,
-  .word-add::before,
-  .word-delete::before {
-    color: var(--color-diff-text);
-  }
-  /* Trailing whitespace inside a word patch keeps the patch color: its own red
+.word-add,
+.word-delete,
+.word-add::before,
+.word-delete::before {
+	color: var(--color-diff-text);
+}
+/* Trailing whitespace inside a word patch keeps the patch color: its own red
      tint on top would take the glyph below AAA on a selected line, and the
      patch plus the marker glyph already say everything the tint said. */
-  .word-add.trailing-ws {
-    background-color: var(--color-diff-word-add-bg);
-  }
-  .word-delete.trailing-ws {
-    background-color: var(--color-diff-word-delete-bg);
-  }
+.word-add.trailing-ws {
+	background-color: var(--color-diff-word-add-bg);
+}
+.word-delete.trailing-ws {
+	background-color: var(--color-diff-word-delete-bg);
+}
 </style>

@@ -274,7 +274,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 
 <div class="comment-composer">
 	<div class="composer-preview">
-		Comments on lines {capturedResult.anchor.start_line}-{capturedResult.anchor.end_line}
+		{`Comments on lines ${capturedResult.anchor.start_line}-${capturedResult.anchor.end_line}`}
 	</div>
 	<textarea
 		bind:this={textareaEl}
@@ -289,76 +289,78 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 			class="composer-btn cancel-btn"
 			disabled={submitting}
 			onclick={handleCancel}
-		>Cancel</button>
+			>Cancel</button
+		>
 		<button
 			class="composer-btn submit-btn"
 			disabled={submitDisabled}
 			style="cursor: {submitDisabled ? 'not-allowed' : 'pointer'}; opacity: {submitDisabled ? 0.4 : 1};"
 			onclick={handleSubmit}
-		>Submit</button>
+			>Submit</button
+		>
 	</div>
 </div>
 
 <style>
-	.comment-composer {
-		display: flex;
-		flex-direction: column;
-		width: 100%;
-		box-sizing: border-box;
-		gap: var(--space-2);
-		padding: var(--space-2);
-		background: var(--color-surface);
-		border-top: 1px solid var(--color-border);
-	}
+.comment-composer {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	box-sizing: border-box;
+	gap: var(--space-2);
+	padding: var(--space-2);
+	background: var(--color-surface);
+	border-top: 1px solid var(--color-border);
+}
 
-	.composer-preview {
-		color: var(--color-text-muted);
-		font-size: 11px;
-		font-family: var(--font-mono, monospace);
-	}
+.composer-preview {
+	color: var(--color-text-muted);
+	font-size: 11px;
+	font-family: var(--font-mono, monospace);
+}
 
-	.composer-textarea {
-		min-height: 60px;
-		resize: vertical;
-		padding: var(--space-2);
-		font-size: 12px;
-		font-family: var(--font-sans, sans-serif);
-		color: var(--color-text);
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius);
-		box-sizing: border-box;
-	}
+.composer-textarea {
+	min-height: 60px;
+	resize: vertical;
+	padding: var(--space-2);
+	font-size: 12px;
+	font-family: var(--font-sans, sans-serif);
+	color: var(--color-text);
+	background: var(--color-bg);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	box-sizing: border-box;
+}
 
-	.composer-textarea:focus {
-		outline: none;
-		border-color: var(--color-accent);
-	}
+.composer-textarea:focus {
+	outline: none;
+	border-color: var(--color-accent);
+}
 
-	.composer-actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: var(--space-2);
-	}
+.composer-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
 
-	.composer-btn {
-		border-radius: var(--radius);
-		font-size: 11px;
-		font-family: var(--font-sans, sans-serif);
-		padding: var(--space-1) var(--space-3);
-		white-space: nowrap;
-		cursor: pointer;
-	}
+.composer-btn {
+	border-radius: var(--radius);
+	font-size: 11px;
+	font-family: var(--font-sans, sans-serif);
+	padding: var(--space-1) var(--space-3);
+	white-space: nowrap;
+	cursor: pointer;
+}
 
-	.cancel-btn {
-		background: transparent;
-		border: 1px solid var(--color-border);
-		color: var(--color-text-muted);
-	}
+.cancel-btn {
+	background: transparent;
+	border: 1px solid var(--color-border);
+	color: var(--color-text-muted);
+}
 
-	.submit-btn {
-		background: var(--color-success-bg);
-		border: 1px solid var(--color-success-border);
-		color: var(--color-success);
-	}
+.submit-btn {
+	background: var(--color-success-bg);
+	border: 1px solid var(--color-success-border);
+	color: var(--color-success);
+}
 </style>

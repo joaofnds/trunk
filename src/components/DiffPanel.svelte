@@ -1057,7 +1057,9 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 }
 </script>
 
-<div style="height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-1);">
+<div
+	style="height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-1);"
+>
 	<DiffToolbar
 		{contentMode}
 		{layoutMode}
@@ -1065,7 +1067,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		oncontentmodechange={handleContentModeChange}
 		onlayoutmodechange={handleLayoutModeChange}
 		onrendermodechange={handleRenderModeChange}
-		selectedPath={selectedPath}
+		{selectedPath}
 		selectedStatus={selectedFile?.status ?? null}
 		selectedOldPath={selectedFile?.old_path ?? null}
 		{diffKind}
@@ -1082,96 +1084,96 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		onunstagefile={handleUnstageFile}
 		ondiscardfile={handleDiscardFile}
 		oncommentfile={handleCommentFile}
-		onclose={onclose}
+		{onclose}
 	/>
 	{#if prefsLoaded}
-	<DiffViewer
-		contentMode={effectiveContentMode}
-		{contextLines}
-		{layoutMode}
-		{renderMode}
-		{fileDiffs}
-		{commitDetail}
-		{compareBaseOid}
-		{selectedPath}
-		{diffKind}
-		{emptyCommit}
-		{loading}
-		{payloadStale}
-		{loadError}
-		{onretry}
-		{hunkOperationInFlight}
-		{ignoreWhitespace}
-		{showInvisibles}
-		{wordWrap}
-		{selectedHunkKey}
-		{selectedLineIndices}
-		{selectedCount}
-		{isMerge}
-		{collapsedFiles}
-		{hunkElements}
-		bind:diffNav
-		onfilecollapsetoggle={toggleFileCollapsed}
-		onlineclick={handleLineClick}
-		onlinemousedown={handleLineMouseDown}
-		onlineenter={handleLineEnter}
-		onstagehunk={handleStageHunk}
-		onunstagehunk={handleUnstageHunk}
-		ondiscardhunk={handleDiscardHunk}
-		onstagelines={handleStageLines}
-		onunstagelines={handleUnstageLines}
-		ondiscardlines={handleDiscardLines}
-		oncommentlines={handleCommentLines}
-		oncommenthunk={handleCommentHunk}
-		{commitOid}
-		{repoPath}
-		reviewCommentsVisible={commentCardsMounted}
-		{reviewFilter}
-		{viewComments}
-		editorSessionForThread={editorSessionForThread}
-		{refreshToken}
-		oncommentfullfile={handleCommentFullFile}
-		bind:fullFileView
-	/>
+		<DiffViewer
+			contentMode={effectiveContentMode}
+			{contextLines}
+			{layoutMode}
+			{renderMode}
+			{fileDiffs}
+			{commitDetail}
+			{compareBaseOid}
+			{selectedPath}
+			{diffKind}
+			{emptyCommit}
+			{loading}
+			{payloadStale}
+			{loadError}
+			{onretry}
+			{hunkOperationInFlight}
+			{ignoreWhitespace}
+			{showInvisibles}
+			{wordWrap}
+			{selectedHunkKey}
+			{selectedLineIndices}
+			{selectedCount}
+			{isMerge}
+			{collapsedFiles}
+			{hunkElements}
+			bind:diffNav
+			onfilecollapsetoggle={toggleFileCollapsed}
+			onlineclick={handleLineClick}
+			onlinemousedown={handleLineMouseDown}
+			onlineenter={handleLineEnter}
+			onstagehunk={handleStageHunk}
+			onunstagehunk={handleUnstageHunk}
+			ondiscardhunk={handleDiscardHunk}
+			onstagelines={handleStageLines}
+			onunstagelines={handleUnstageLines}
+			ondiscardlines={handleDiscardLines}
+			oncommentlines={handleCommentLines}
+			oncommenthunk={handleCommentHunk}
+			{commitOid}
+			{repoPath}
+			reviewCommentsVisible={commentCardsMounted}
+			{reviewFilter}
+			{viewComments}
+			{editorSessionForThread}
+			{refreshToken}
+			oncommentfullfile={handleCommentFullFile}
+			bind:fullFileView
+		/>
 	{/if}
-		{#if composerOpen && diffCaptured}
-			<div
-				style:display={reviewFilter === "none" ? "none" : "flex"}
-				aria-hidden={reviewFilter === "none"}
-			>
-				<CommentComposer
-					bind:this={composer}
-					captured={diffCaptured}
-					composerSession={activeComposerSession}
-					{commitOid}
-					resolveCommitOid={resolveCommentCommitOid}
-					{repoPath}
-					{activeReviewId}
-					originatingReviewId={composerReviewId}
-					canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
-					onclose={composerOnClose}
-				/>
-			</div>
-		{:else if fullFileComposerOpen && fullFileCaptured}
-			<div
-				style:display={reviewFilter === "none" ? "none" : "flex"}
-				aria-hidden={reviewFilter === "none"}
-			>
-				<CommentComposer
-					bind:this={composer}
-					captured={fullFileCaptured}
-					composerSession={activeComposerSession}
-					currentFile={currentFileTarget}
-					{commitOid}
-					resolveCommitOid={currentFileTarget
+	{#if composerOpen && diffCaptured}
+		<div
+			style:display={reviewFilter === "none" ? "none" : "flex"}
+			aria-hidden={reviewFilter === "none"}
+		>
+			<CommentComposer
+				bind:this={composer}
+				captured={diffCaptured}
+				composerSession={activeComposerSession}
+				{commitOid}
+				resolveCommitOid={resolveCommentCommitOid}
+				{repoPath}
+				{activeReviewId}
+				originatingReviewId={composerReviewId}
+				canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
+				onclose={composerOnClose}
+			/>
+		</div>
+	{:else if fullFileComposerOpen && fullFileCaptured}
+		<div
+			style:display={reviewFilter === "none" ? "none" : "flex"}
+			aria-hidden={reviewFilter === "none"}
+		>
+			<CommentComposer
+				bind:this={composer}
+				captured={fullFileCaptured}
+				composerSession={activeComposerSession}
+				currentFile={currentFileTarget}
+				{commitOid}
+				resolveCommitOid={currentFileTarget
 						? undefined
 						: resolveCommentCommitOid}
-					{repoPath}
-					{activeReviewId}
-					originatingReviewId={composerReviewId}
-					canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
-					onclose={composerOnClose}
-				/>
-			</div>
-		{/if}
+				{repoPath}
+				{activeReviewId}
+				originatingReviewId={composerReviewId}
+				canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
+				onclose={composerOnClose}
+			/>
+		</div>
+	{/if}
 </div>

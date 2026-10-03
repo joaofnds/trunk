@@ -54,17 +54,17 @@ let commentTone = $derived(
 </script>
 
 <div
-  role="treeitem"
-  aria-expanded={expanded}
-  aria-selected={focused}
-  aria-level={depth + 1}
-  tabindex="0"
-  onmouseenter={() => (hovered = true)}
-  onmouseleave={() => (hovered = false)}
-  onclick={ontoggle}
-  onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ontoggle(); } }}
-  oncontextmenu={(e) => { if (oncontextmenu) { e.preventDefault(); oncontextmenu(e); } }}
-  style="
+	role="treeitem"
+	aria-expanded={expanded}
+	aria-selected={focused}
+	aria-level={depth + 1}
+	tabindex="0"
+	onmouseenter={() => (hovered = true)}
+	onmouseleave={() => (hovered = false)}
+	onclick={ontoggle}
+	onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ontoggle(); } }}
+	oncontextmenu={(e) => { if (oncontextmenu) { e.preventDefault(); oncontextmenu(e); } }}
+	style="
     height: var(--row-h);
     padding: 0 var(--space-2) 0 {treeIndent(depth)};
     display: flex;
@@ -76,34 +76,42 @@ let commentTone = $derived(
     font-size: 12px;
   "
 >
-  <span style="display: inline-flex; align-items: center; color: var(--color-text-muted); width: 12px; min-width: 12px;">
-    {#if expanded}
-      <ChevronDown size={12} />
-    {:else}
-      <ChevronRight size={12} />
-    {/if}
-  </span>
-  <span style="
+	<span
+		style="display: inline-flex; align-items: center; color: var(--color-text-muted); width: 12px; min-width: 12px;"
+	>
+		{#if expanded}
+			<ChevronDown size={12} />
+		{:else}
+			<ChevronRight size={12} />
+		{/if}
+	</span>
+	<span
+		style="
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 500;
-  ">{node.name}</span>
-  <span style="
+  "
+		>{node.name}</span
+	>
+	<span
+		style="
     color: var(--color-text-muted);
     font-size: 11px;
     font-weight: 400;
     flex-shrink: 0;
-  ">({fileCount})</span>
-  <span style="flex: 1;"></span>
-  {#if !expanded}
-    <CommentBadge count={commentCount} tone={commentTone} />
-  {/if}
-  {#if hovered && actionLabel && onaction}
-    <button
-      onclick={(e) => { e.stopPropagation(); onaction(); }}
-      aria-label={actionLabel === '+' ? 'Stage directory' : 'Unstage directory'}
-      style="
+  "
+		>({fileCount})</span
+	>
+	<span style="flex: 1;"></span>
+	{#if !expanded}
+		<CommentBadge count={commentCount} tone={commentTone} />
+	{/if}
+	{#if hovered && actionLabel && onaction}
+		<button
+			onclick={(e) => { e.stopPropagation(); onaction(); }}
+			aria-label={actionLabel === '+' ? 'Stage directory' : 'Unstage directory'}
+			style="
         background: none;
         border: none;
         cursor: pointer;
@@ -113,12 +121,12 @@ let commentTone = $derived(
         padding: 0 var(--space-1);
         line-height: 1;
       "
-    >
-      {#if actionLabel === '+'}
-        <Plus size={11} />
-      {:else}
-        <Minus size={11} />
-      {/if}
-    </button>
-  {/if}
+		>
+			{#if actionLabel === '+'}
+				<Plus size={11} />
+			{:else}
+				<Minus size={11} />
+			{/if}
+		</button>
+	{/if}
 </div>

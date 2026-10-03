@@ -182,18 +182,22 @@ async function handleSubmit() {
 }
 </script>
 
-<div style="
+<div
+	style="
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-">
-  <!-- Mode tab selector -->
-  <div style="display: flex; gap: 0; height: var(--bar-h); flex-shrink: 0; box-shadow: inset 0 -1px 0 var(--color-border);">
-    {#each [['commit', 'Commit'], ['amend', 'Amend'], ['stash', 'Stash']] as [tab, label]}
-      <button
-        onclick={() => handleModeSwitch(tab as 'commit' | 'amend' | 'stash')}
-        disabled={committing}
-        style="
+"
+>
+	<!-- Mode tab selector -->
+	<div
+		style="display: flex; gap: 0; height: var(--bar-h); flex-shrink: 0; box-shadow: inset 0 -1px 0 var(--color-border);"
+	>
+		{#each [['commit', 'Commit'], ['amend', 'Amend'], ['stash', 'Stash']] as [tab, label]}
+			<button
+				onclick={() => handleModeSwitch(tab as 'commit' | 'amend' | 'stash')}
+				disabled={committing}
+				style="
           flex: 1;
           padding: 0;
           font-size: 12px;
@@ -204,21 +208,23 @@ async function handleSubmit() {
           cursor: {committing ? 'default' : 'pointer'};
           text-transform: none;
         "
-      >
-        {label}
-      </button>
-    {/each}
-  </div>
+			>
+				{label}
+			</button>
+		{/each}
+	</div>
 
-  <div style="padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2);">
-    <!-- Subject field -->
-    <div style="position: relative;">
-      <input
-        data-testid="commit-form-subject"
-        type="text"
-        bind:value={getSubject, setSubject}
-        placeholder={mode === 'stash' ? 'Stash name (optional)' : 'Summary (required)'}
-        style="
+	<div
+		style="padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2);"
+	>
+		<!-- Subject field -->
+		<div style="position: relative;">
+			<input
+				data-testid="commit-form-subject"
+				type="text"
+				bind:value={getSubject, setSubject}
+				placeholder={mode === 'stash' ? 'Stash name (optional)' : 'Summary (required)'}
+				style="
           width: 100%;
           box-sizing: border-box;
           border: 1px solid var(--line);
@@ -229,12 +235,12 @@ async function handleSubmit() {
           padding: 0 var(--counter-gutter) 0 var(--space-3);
           font-size: 12px;
         "
-      />
-      {#if counterVisible}
-        <span
-          data-testid="subject-counter"
-          data-over={subjectOverLimit}
-          style="
+			>
+			{#if counterVisible}
+				<span
+					data-testid="subject-counter"
+					data-over={subjectOverLimit}
+					style="
             position: absolute;
             top: 50%;
             right: 10px;
@@ -244,19 +250,20 @@ async function handleSubmit() {
             font-size: 10.5px;
             color: {subjectOverLimit ? 'var(--color-danger)' : 'var(--fg-3)'};
           "
-        >{getSubject().length}/72</span>
-      {/if}
-    </div>
-    {#if subjectError}
-      <span class="error-text" style="font-size: 11px;">{subjectError}</span>
-    {/if}
+					>{getSubject().length}/72</span
+				>
+			{/if}
+		</div>
+		{#if subjectError}
+			<span class="error-text" style="font-size: 11px;">{subjectError}</span>
+		{/if}
 
-    <!-- Body field -->
-    <textarea
-      bind:value={getBody, setBody}
-      rows={3}
-      placeholder="Description (optional)"
-      style="
+		<!-- Body field -->
+		<textarea
+			bind:value={getBody, setBody}
+			rows={3}
+			placeholder="Description (optional)"
+			style="
         width: 100%;
         box-sizing: border-box;
         border: 1px solid var(--line);
@@ -267,19 +274,19 @@ async function handleSubmit() {
         font-size: 12px;
         resize: vertical;
       "
-    ></textarea>
+		></textarea>
 
-    <!-- Staged error -->
-    {#if stagedError}
-      <span class="error-text" style="font-size: 11px;">{stagedError}</span>
-    {/if}
+		<!-- Staged error -->
+		{#if stagedError}
+			<span class="error-text" style="font-size: 11px;">{stagedError}</span>
+		{/if}
 
-    <!-- Commit button -->
-    <button
-      data-testid="commit-form-submit"
-      onclick={handleSubmit}
-      disabled={committing}
-      style="
+		<!-- Commit button -->
+		<button
+			data-testid="commit-form-submit"
+			onclick={handleSubmit}
+			disabled={committing}
+			style="
         width: 100%;
         height: var(--control-lg-h);
         display: inline-flex;
@@ -294,12 +301,13 @@ async function handleSubmit() {
         cursor: pointer;
         opacity: {committing ? 0.6 : 1};
       "
-    >{buttonLabel}</button>
-  </div>
+			>{buttonLabel}</button
+		>
+	</div>
 </div>
 
 <style>
-  .error-text {
-    color: var(--color-danger);
-  }
+.error-text {
+	color: var(--color-danger);
+}
 </style>
