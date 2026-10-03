@@ -270,8 +270,10 @@ describe("rendered markdown word marks", () => {
 		const addRule = css.match(/\.md-word-add\s*\{([^}]*)\}/)?.[1] ?? "";
 		const deleteRule = css.match(/\.md-word-delete\s*\{([^}]*)\}/)?.[1] ?? "";
 
-		expect(addRule).toMatch(/text-decoration-color:\s*var\(--ok\)/);
-		expect(deleteRule).toMatch(/text-decoration-color:\s*var\(--err\)/);
+		expect(addRule).toMatch(/text-decoration-color:\s*var\(--color-diff-add\)/);
+		expect(deleteRule).toMatch(
+			/text-decoration-color:\s*var\(--color-diff-delete\)/,
+		);
 	});
 
 	/* The rule is the hue, not the weight. A pinned thickness read heavy across

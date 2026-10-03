@@ -28,10 +28,10 @@ const NEUTRAL_LANES = [
 
 const PREFIX_TONE: Record<string, string> = {
 	// Semantic anchors — the hue carries meaning.
-	feat: "var(--ok)",
-	perf: "var(--ok)",
-	fix: "var(--warn)",
-	revert: "var(--err)",
+	feat: "var(--color-success)",
+	perf: "var(--color-success)",
+	fix: "var(--color-warning)",
+	revert: "var(--color-danger)",
 	docs: "var(--info)",
 	// Distinct neutral hues.
 	refactor: NEUTRAL_LANES[0], // purple

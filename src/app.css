@@ -410,12 +410,12 @@ li.md-removed::before {
 .md-word-delete {
 	background: var(--color-md-word-delete-bg);
 	text-decoration: line-through;
-	text-decoration-color: var(--err);
+	text-decoration-color: var(--color-diff-delete);
 }
 .md-word-add {
 	background: var(--color-md-word-add-bg);
 	text-decoration: underline;
-	text-decoration-color: var(--ok);
+	text-decoration-color: var(--color-diff-add);
 	text-underline-offset: 3px;
 }
 /* A mark wrapping nothing but an image. An inline box paints its background

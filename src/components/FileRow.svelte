@@ -165,7 +165,7 @@ let badgeBg = $derived(
         background: none;
         border: none;
         cursor: pointer;
-        color: {actionLabel === '+' ? 'var(--ok)' : 'var(--err)'};
+        color: {actionLabel === '+' ? 'var(--color-success)' : 'var(--color-danger)'};
         display: flex;
         align-items: center;
         padding: 0 var(--space-1);

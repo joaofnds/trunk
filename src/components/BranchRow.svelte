@@ -118,13 +118,13 @@ let actionShown = $derived(hovered || focused || hidden);
 			>
 				{#if ahead > 0}
 					<span
-						style="display: inline-flex; align-items: center; color: var(--ok);"
+						style="display: inline-flex; align-items: center; color: var(--color-success);"
 						><ArrowUp size={11} />{ahead}</span
 					>
 				{/if}
 				{#if behind > 0}
 					<span
-						style="display: inline-flex; align-items: center; margin-left: var(--space-1); color: var(--warn);"
+						style="display: inline-flex; align-items: center; margin-left: var(--space-1); color: var(--color-warning);"
 						><ArrowDown size={11} />{behind}</span
 					>
 				{/if}

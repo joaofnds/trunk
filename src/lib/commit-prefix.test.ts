@@ -45,10 +45,10 @@ describe("parseSummary", () => {
 describe("prefixToneVar", () => {
 	it.each([
 		// Semantic anchors — the hue carries meaning.
-		{ prefix: "feat", tone: "var(--ok)" },
-		{ prefix: "perf", tone: "var(--ok)" },
-		{ prefix: "fix", tone: "var(--warn)" },
-		{ prefix: "revert", tone: "var(--err)" },
+		{ prefix: "feat", tone: "var(--color-success)" },
+		{ prefix: "perf", tone: "var(--color-success)" },
+		{ prefix: "fix", tone: "var(--color-warning)" },
+		{ prefix: "revert", tone: "var(--color-danger)" },
 		{ prefix: "docs", tone: "var(--info)" },
 		// Distinct neutral hues, clear of the semantic ones.
 		{ prefix: "refactor", tone: "var(--lane-3)" },

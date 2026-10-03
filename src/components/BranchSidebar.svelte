@@ -1075,7 +1075,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 
 .stash-error {
 	font-size: 11px;
-	color: var(--err);
+	color: var(--color-danger);
 	padding: var(--space-1) var(--space-3) var(--space-1);
 	margin: 0;
 }

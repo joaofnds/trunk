@@ -289,10 +289,10 @@ let commitNotes = $derived(
 						style="display: inline-flex; gap: var(--space-2); flex-shrink: 0; margin-right: var(--space-2); font-family: var(--font-mono); font-size: 10.5px;"
 					>
 						{#if totalAdds > 0}
-							<span style="color: var(--ok);">+{totalAdds}</span>
+							<span style="color: var(--color-diff-add);">+{totalAdds}</span>
 						{/if}
 						{#if totalDels > 0}
-							<span style="color: var(--err);">−{totalDels}</span>
+							<span style="color: var(--color-diff-delete);">−{totalDels}</span>
 						{/if}
 					</span>
 				{/if}
