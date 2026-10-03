@@ -40,7 +40,7 @@ function offences(pattern: RegExp, allowed: (value: string) => boolean) {
  *  this guard with no edit here.
  *
  *  `--control-h` is in: a full-size control sits in a bar and shares its edge,
- *  and this is what caught the toolbar's button group. The smaller control
+ *  and this is what caught the toolbar's button group. The other control
  *  heights are deliberately out: a bordered chip loses the same pixel, but the
  *  ~11 sites belong with the button-recipe extraction (TRUNK-50), not here.
  *

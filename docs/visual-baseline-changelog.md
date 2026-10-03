@@ -226,7 +226,7 @@ Changed baselines:
 
 ## 2026-10-03
 
-Button gains a 16px icon-only xs size for the tab close, shown beside the md icon in each Button row; nothing else moves
+Button gains a 16px icon-only xs size for the tab close, drawn after the md icon in each Button row, so the disabled and pressed buttons that follow it in every row move 32px right; nothing outside the Button rows moves
 
 Changed baselines:
 
