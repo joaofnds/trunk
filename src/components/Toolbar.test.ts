@@ -505,10 +505,10 @@ describe("Toolbar", () => {
 		});
 
 		expect(
-			screen.getByLabelText("2 review comments in this view"),
+			screen.getByRole("img", { name: "2 review comments in this view" }),
 		).toBeInTheDocument();
 		expect(
-			screen.getByLabelText("2 review comments in this review"),
+			screen.getByRole("img", { name: "2 review comments in this review" }),
 		).toBeInTheDocument();
 	});
 

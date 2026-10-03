@@ -691,7 +691,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 {/snippet}
 
 {#snippet separator(count: number)}
-	<div class="rendered-sep" role="separator">
+	<div class="rendered-sep">
 		<span class="rendered-sep-label"
 			>{`${count} line${count === 1 ? "" : "s"} hidden`}</span
 		>
