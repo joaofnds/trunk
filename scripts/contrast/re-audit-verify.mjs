@@ -75,7 +75,7 @@ for (const [origin, word, rule] of [
 	["del", "var(--color-md-word-delete-bg)", "var(--err)"],
 ]) {
 	check(`${origin} text on mark`, "var(--color-diff-text)", PAGE, { layers: [word] });
-	check(`${origin} text on mark inside a code span`, "var(--color-diff-text)", PAGE, { layers: [word, "var(--color-md-code-bg)"] });
+	check(`${origin} text on mark inside a code span`, "var(--color-diff-text)", PAGE, { layers: [word, "var(--color-muted-bg)"] });
 	check(`${origin} strike/underline rule on mark (non-text, 3:1)`, rule, PAGE, { layers: [word], target: 3 });
 	checkSurfaces(`${origin} mark stands apart from the page`, PAGE, [], [word], 2);
 }
