@@ -69,7 +69,9 @@ onready(vd);
 	<div
 		class="diff-line metrics-probe"
 		bind:this={vd.metricsProbe}
-		style="{DIFF_ROW_FONT};"
+		style:font-family={DIFF_ROW_FONT.fontFamily}
+		style:font-size={DIFF_ROW_FONT.fontSize}
+		style:line-height={DIFF_ROW_FONT.lineHeight}
 	></div>
 
 	{#if vd.threadsToProbe.length > 0}

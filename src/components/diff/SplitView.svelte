@@ -231,27 +231,6 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 	return "transparent";
 }
 
-// One half's geometry, stated once: `clip` rather than `hidden` so a cell never
-// becomes a scroll container and cannot steal a wheel or be scrolled by focus.
-const HALF_GEOMETRY = "width: 50cqi; overflow: clip;";
-
-function cellStyle(origin: string, isSelected: boolean): string {
-	return `${DIFF_ROW_FONT}; ${HALF_GEOMETRY} background: ${lineBackground(origin, isSelected)}; color: var(--color-diff-text);`;
-}
-
-/** The pan, clamped to this side's own end so a short side stops where its text
- *  does instead of panning into blank. It rides the content INSIDE the clipping
- *  window, never the window: transforming the clipper moves its clip box too,
- *  which slides the whole half out of the cell instead of panning within it. */
-function panTransform(ceiling: "--max-l" | "--max-r"): string {
-	// `max-content` is what gives an unwrapped line its full width to translate
-	// across; a wrapped half has nothing to pan, and max-content there would run
-	// the line past the window instead of wrapping into the height `rowHeights`
-	// predicted for it.
-	const width = vd.wrapActive ? "100%" : "max-content";
-	return `width: ${width}; min-width: 100%; transform: translateX(calc(-1 * min(var(--pan-x, 0px), max(0px, var(${ceiling}) - 50cqi))));`;
-}
-
 function originClass(origin: string): string {
 	if (origin === "Add") return "diff-line-add";
 	if (origin === "Delete") return "diff-line-delete";
@@ -278,8 +257,11 @@ function originClass(origin: string): string {
 {#snippet cellContent(line: DiffLine)}
 	{@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
 	<span
-		class="diff-line-content"
-		style="white-space: {vd.wrapActive ? 'pre-wrap' : 'pre'}; word-break: {vd.wrapActive ? 'break-all' : 'normal'}; user-select: text; -webkit-user-select: text; cursor: text;"
+		class="diff-line-content select-text cursor-text"
+		class:whitespace-pre-wrap={vd.wrapActive}
+		class:whitespace-pre={!vd.wrapActive}
+		class:break-all={vd.wrapActive}
+		class:break-normal={!vd.wrapActive}
 		>{#if line.spans.length > 0}
 			{#each line.spans as span}
 				{@const sliced = line.content.slice(span.start, span.end)}
@@ -319,35 +301,35 @@ function originClass(origin: string): string {
 {#snippet splitRow(item: DiffRow, _index: number)}
 	{#if item.kind === "pair"}
 		{@const hunkKey = `${item.path}-${item.hunkIdx}`}
-		<!-- The row, not the cell, is what the pan is held against: it is sticky at
+		<!-- The row, not the cell, is what the pan is held against: it is pinned at
          the viewport's left edge and spans one viewport, and the two halves
-         translate inside it. jsdom reads only inline styles, so every
-         load-bearing declaration here is inline. -->
-		<div
-			class="split-row"
-			style="position: sticky; left: 0; width: 100cqi; display: flex;"
-		>
+         translate inside it. -->
+		<div class="split-row pan-pinned flex">
 			{#if item.row.left}
 				{@const line = item.row.left.line}
 				{@const isSelected = selectedHunkKey === hunkKey && selectedLineIndices.has(item.row.left.lineIdx)}
 				<div
-					class="split-cell split-cell-left diff-line {originClass(line.origin)}{item.spannedLeft ? ' diff-line-commented' : ''}"
-					style={cellStyle(line.origin, isSelected)}
+					class="split-cell split-cell-left diff-line text-diff-text {originClass(line.origin)}{item.spannedLeft ? ' diff-line-commented' : ''}"
+					style:font-family={DIFF_ROW_FONT.fontFamily}
+					style:font-size={DIFF_ROW_FONT.fontSize}
+					style:line-height={DIFF_ROW_FONT.lineHeight}
+					style:background={lineBackground(line.origin, isSelected)}
 				>
-					<span class="split-gutter" style="min-width: {vd.gutterW};"
+					<span class="split-gutter" style:min-width={vd.gutterW}
 						>{line.old_lineno ?? ''}</span
 					>
-					<div class="split-window" style="overflow: clip;">
-						<div class="split-pan" style={panTransform('--max-l')}>
+					<div class="split-window overflow-clip">
+						<div
+							class="split-pan pan-left min-w-full"
+							class:w-full={vd.wrapActive}
+							class:w-max={!vd.wrapActive}
+						>
 							{@render cellContent(line)}
 						</div>
 					</div>
 				</div>
 			{:else}
-				<div
-					class="split-cell split-cell-left split-phantom"
-					style={HALF_GEOMETRY}
-				></div>
+				<div class="split-cell split-cell-left split-phantom"></div>
 			{/if}
 
 			{#if item.row.right}
@@ -359,36 +341,42 @@ function originClass(origin: string): string {
 				<!-- mouseenter only continues an in-progress gutter drag (guarded by
              `dragging` in the host); the cell is not a control. -->
 				<div
-					class="split-cell diff-line {originClass(line.origin)}{item.spannedRight ? ' diff-line-commented' : ''}"
-					style={cellStyle(line.origin, isSelected)}
+					class="split-cell diff-line text-diff-text {originClass(line.origin)}{item.spannedRight ? ' diff-line-commented' : ''}"
+					style:font-family={DIFF_ROW_FONT.fontFamily}
+					style:font-size={DIFF_ROW_FONT.fontSize}
+					style:line-height={DIFF_ROW_FONT.lineHeight}
+					style:background={lineBackground(line.origin, isSelected)}
 					onmouseenter={(e) => onlineenter(item.path, item.hunkIdx, lineIdx, e)}
 				>
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 					<span
 						class="split-gutter{isSelectable ? ' gutter-selectable' : ''}"
-						style="min-width: {vd.gutterW};"
+						style:min-width={vd.gutterW}
 						role={isSelectable ? 'button' : undefined}
 						tabindex={isSelectable ? 0 : undefined}
 						onmousedown={(e) => { if (isSelectable) onlinemousedown(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), e); }}
 						onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onlineclick(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
 						>{line.new_lineno ?? ''}</span
 					>
-					<div class="split-window" style="overflow: clip;">
-						<div class="split-pan" style={panTransform('--max-r')}>
+					<div class="split-window overflow-clip">
+						<div
+							class="split-pan pan-right min-w-full"
+							class:w-full={vd.wrapActive}
+							class:w-max={!vd.wrapActive}
+						>
 							{@render cellContent(line)}
 						</div>
 					</div>
 				</div>
 			{:else}
-				<div class="split-cell split-phantom" style={HALF_GEOMETRY}></div>
+				<div class="split-cell split-phantom"></div>
 			{/if}
 		</div>
 	{:else if item.kind === "hunk-header"}
 		{@const hunkKey = `${item.path}-${item.hunkIdx}`}
 		{@const hasSelection = selectedHunkKey === hunkKey && selectedCount > 0}
 		<div
-			class="split-hunk-header{flashedHunkKey === hunkKey ? ' hunk-highlight' : ''}"
-			style="position: sticky; left: 0; width: 100cqi; height: var(--diff-hunk-header-height); box-sizing: border-box;"
+			class="split-hunk-header pan-pinned box-border{flashedHunkKey === hunkKey ? ' hunk-highlight' : ''}"
 		>
 			<span class="split-hunk-header-text">{item.header}</span>
 			{#if diffKind === 'unstaged'}
@@ -504,18 +492,14 @@ function originClass(origin: string): string {
 			{/if}
 		</div>
 	{:else if item.kind === "comment"}
-		<div
-			class="split-comment-row"
-			style="position: sticky; left: 0; width: 100cqi;"
-		>
+		<div class="split-comment-row pan-pinned">
 			{#each item.threads as c (c.id)}
 				<div> {@render threadCard(c)} </div>
 			{/each}
 		</div>
 	{:else if item.kind === "file-header"}
 		<div
-			class="split-file-header"
-			style="position: sticky; left: 0; width: 100cqi;"
+			class="split-file-header pan-pinned"
 			role="button"
 			tabindex="0"
 			onclick={() => onfilecollapsetoggle(item.path)}
@@ -525,15 +509,17 @@ function originClass(origin: string): string {
 			{item.path}
 		</div>
 	{:else if item.kind === "binary"}
-		<div class="binary-row" style="position: sticky; left: 0; width: 100cqi;"
-			>Binary file — no diff available</div
-		>
+		<div class="binary-row pan-pinned">Binary file — no diff available</div>
 	{/if}
 {/snippet}
 
 <div
 	class="split-view"
-	style="{FIXED_ROW_HEIGHT_VARS}; --max-l: {vd.maxLeftPx}px; --max-r: {vd.maxRightPx}px;"
+	style:--diff-file-header-height={FIXED_ROW_HEIGHT_VARS["--diff-file-header-height"]}
+	style:--diff-hunk-header-height={FIXED_ROW_HEIGHT_VARS["--diff-hunk-header-height"]}
+	style:--diff-binary-row-height={FIXED_ROW_HEIGHT_VARS["--diff-binary-row-height"]}
+	style:--max-l="{vd.maxLeftPx}px"
+	style:--max-r="{vd.maxRightPx}px"
 	bind:this={vd.pane}
 >
 	{#if vd.ready}
@@ -549,7 +535,9 @@ function originClass(origin: string): string {
 	<div
 		class="diff-line metrics-probe"
 		bind:this={vd.metricsProbe}
-		style="{DIFF_ROW_FONT};"
+		style:font-family={DIFF_ROW_FONT.fontFamily}
+		style:font-size={DIFF_ROW_FONT.fontSize}
+		style:line-height={DIFF_ROW_FONT.lineHeight}
 	></div>
 
 	{#if vd.threadsToProbe.length > 0}
@@ -569,6 +557,14 @@ function originClass(origin: string): string {
 	inset: 0;
 }
 
+/* Pinned against the pan: one viewport wide and held at the scrollport's left
+   edge, so a wide file scrolling sideways leaves it where it is. */
+.pan-pinned {
+	position: sticky;
+	left: 0;
+	width: 100cqi;
+}
+
 /* Both probes are laid out at the row's real width so their measurements are
      the ones the rendered rows will produce, and neither is visible or
      hit-testable. */
@@ -582,11 +578,15 @@ function originClass(origin: string): string {
 	z-index: -1;
 }
 
+/* One half of the row. `clip` rather than `hidden` so a cell never becomes a
+     scroll container and cannot steal a wheel or be scrolled by focus. */
 .split-cell {
 	display: flex;
 	align-items: flex-start;
 	padding: 0 var(--space-2);
 	box-sizing: border-box;
+	width: 50cqi;
+	overflow: clip;
 }
 
 /* The divider between the halves. Under border-box it comes out of the left
@@ -602,6 +602,25 @@ function originClass(origin: string): string {
 .split-window {
 	flex: 1;
 	min-width: 0;
+}
+
+/* The pan, clamped to this side's own end so a short side stops where its text
+     does instead of panning into blank. It rides the content INSIDE the clipping
+     window, never the window: transforming the clipper moves its clip box too,
+     which slides the whole half out of the cell instead of panning within it.
+     The pan's width is `max-content` only while unwrapped: that is what gives a
+     line its full width to translate across, and a wrapped half has nothing to
+     pan, so max-content there would run the line past the window instead of
+     wrapping into the height `rowHeights` predicted for it. */
+.pan-left {
+	transform: translateX(
+		calc(-1 * min(var(--pan-x, 0px), max(0px, var(--max-l) - 50cqi)))
+	);
+}
+.pan-right {
+	transform: translateX(
+		calc(-1 * min(var(--pan-x, 0px), max(0px, var(--max-r) - 50cqi)))
+	);
 }
 
 .split-gutter {
@@ -640,6 +659,7 @@ function originClass(origin: string): string {
 	align-items: center;
 	gap: var(--space-2);
 	padding: 0 var(--space-2);
+	height: var(--diff-hunk-header-height);
 	z-index: 1;
 }
 .split-hunk-header-text {

@@ -97,11 +97,11 @@ export const FIXED_ROW_HEIGHTS = {
 } as const;
 
 /** The custom properties the rows read, declared from the same numbers. */
-export const FIXED_ROW_HEIGHT_VARS = [
-	`--diff-file-header-height: ${FIXED_ROW_HEIGHTS.fileHeader}px`,
-	`--diff-hunk-header-height: ${FIXED_ROW_HEIGHTS.hunkHeader}px`,
-	`--diff-binary-row-height: ${FIXED_ROW_HEIGHTS.binary}px`,
-].join("; ");
+export const FIXED_ROW_HEIGHT_VARS = {
+	"--diff-file-header-height": `${FIXED_ROW_HEIGHTS.fileHeader}px`,
+	"--diff-hunk-header-height": `${FIXED_ROW_HEIGHTS.hunkHeader}px`,
+	"--diff-binary-row-height": `${FIXED_ROW_HEIGHTS.binary}px`,
+} as const;
 
 /** Total diff lines across files — the `lines` attribute every view's
  *  `diff.buildRows` observation reports. */

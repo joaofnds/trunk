@@ -35,8 +35,8 @@ function offences(pattern: RegExp, allowed: (value: string) => boolean) {
    text it wraps, which is what an em is for and what the unit scale is not. */
 /** Every custom property that declares the height of a band spanning its pane,
  *  read from where it is declared rather than restated: tokens.css's `:root`
- *  chrome heights, and the diff pane's `FIXED_ROW_HEIGHT_VARS`, which emits its
- *  properties from TS constants. Adding a chrome height token brings it under
+ *  chrome heights, and the diff pane's `FIXED_ROW_HEIGHT_VARS`, which declares
+ *  its properties from TS constants. Adding a chrome height token brings it under
  *  this guard with no edit here.
  *
  *  `--control-h` is in: a full-size control sits in a bar and shares its edge,
@@ -56,9 +56,7 @@ function barTokens(): string[] {
 	const chrome = [...css.matchAll(/^\t(--[\w-]*h): /gm)]
 		.map(([, name]) => name)
 		.filter((name) => !SMALLER_CONTROLS.has(name));
-	const diffRows = [...FIXED_ROW_HEIGHT_VARS.matchAll(/(--[\w-]+):/g)].map(
-		([, name]) => name,
-	);
+	const diffRows = Object.keys(FIXED_ROW_HEIGHT_VARS);
 	return [...chrome, ...diffRows];
 }
 

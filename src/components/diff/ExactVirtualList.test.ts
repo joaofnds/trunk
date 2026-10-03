@@ -58,15 +58,13 @@ describe("ExactVirtualList", () => {
 
 		const rows = container.querySelector(".exact-virtual-rows");
 
-		expect(rows?.getAttribute("style")).toContain("min-width: 100%");
+		expect(rows).toHaveClass("min-w-full");
 	});
 
 	it("suppresses horizontal overscroll chaining on the viewport", () => {
 		const { container } = mountList(5000);
 
-		expect(viewportOf(container).getAttribute("style")).toContain(
-			"overscroll-behavior-x: none",
-		);
+		expect(viewportOf(container)).toHaveClass("overscroll-x-none");
 	});
 
 	it("publishes the viewport's horizontal offset for the rows to pan from", async () => {

@@ -1929,10 +1929,7 @@ describe("VIEW-05: Staging in split view", () => {
 			await flushPrefs();
 			const hunkHeaderText = screen.getByText("@@ -1,3 +1,4 @@");
 			const toolbar = hunkHeaderText.parentElement;
-			expect(toolbar).toBeTruthy();
-			const style = toolbar?.getAttribute("style") ?? "";
-			expect(style).toContain("position: sticky");
-			expect(style).toContain("left: 0");
+			expect(toolbar).toHaveStyle("position: sticky; left: 0");
 		});
 
 		it("file header is horizontally sticky in multi-file view", async () => {
@@ -1949,10 +1946,7 @@ describe("VIEW-05: Staging in split view", () => {
 			const fileHeader = Array.from(headers).find((el) =>
 				el.textContent?.includes("src/main.ts"),
 			);
-			expect(fileHeader).toBeTruthy();
-			const style = fileHeader?.getAttribute("style") ?? "";
-			expect(style).toContain("position: sticky");
-			expect(style).toContain("left: 0");
+			expect(fileHeader).toHaveStyle("position: sticky; left: 0");
 		});
 
 		it("diff lines wrapper ensures full-width backgrounds via min-width", async () => {
@@ -1967,9 +1961,7 @@ describe("VIEW-05: Staging in split view", () => {
 			const line = container.querySelector(".diff-line");
 			expect(line).toBeTruthy();
 			const wrapper = line?.parentElement;
-			expect(wrapper).toBeTruthy();
-			const style = wrapper?.getAttribute("style") ?? "";
-			expect(style).toContain("min-width: 100%");
+			expect(wrapper).toHaveClass("min-w-full");
 		});
 	});
 });
@@ -2183,8 +2175,8 @@ describe("DiffPanel drag-to-select", () => {
 	it("keeps the gutter unselectable and the code content selectable", async () => {
 		await renderCommit();
 
-		expect(gutterOf("const x = 2;").style.userSelect).toBe("none");
-		expect(screen.getByText("const x = 2;").style.userSelect).toBe("text");
+		expect(gutterOf("const x = 2;")).toHaveClass("select-none");
+		expect(screen.getByText("const x = 2;")).toHaveClass("select-text");
 	});
 });
 

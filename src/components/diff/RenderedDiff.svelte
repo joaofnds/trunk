@@ -719,8 +719,9 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
        tints span the full scrolled width. -->
 	<div class="split-column" use:colSync>
 		<div
-			class="split-col-content"
-			style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
+			class="split-col-content min-w-full"
+			class:w-full={wordWrap}
+			class:w-max={!wordWrap}
 		>
 			{#each rows as row}
 				{@render cell(
@@ -739,11 +740,10 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
        same scrolled width. In split the outer wrapper never widens — panning
        lives inside the per-row columns. -->
 	<div
-		class="rendered-content"
+		class="rendered-content min-w-full"
 		class:split={layoutMode === "split"}
-		style="min-width: 100%; width: {wordWrap || layoutMode === 'split'
-      ? '100%'
-      : 'max-content'};"
+		class:w-full={wordWrap || layoutMode === "split"}
+		class:w-max={!wordWrap && layoutMode !== "split"}
 	>
 		{#if showNoChange}
 			<div class="rendered-nochange">{noChangeLabel}</div>
@@ -759,8 +759,9 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 				>
 				<div class="split-column" use:colSync>
 					<div
-						class="split-col-content"
-						style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
+						class="split-col-content min-w-full"
+						class:w-full={wordWrap}
+						class:w-max={!wordWrap}
 					>
 						{#each presentHtmls as markup}
 							{@render block("added", markup)}
@@ -772,8 +773,9 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 			<div class="split-columns">
 				<div class="split-column" use:colSync>
 					<div
-						class="split-col-content"
-						style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
+						class="split-col-content min-w-full"
+						class:w-full={wordWrap}
+						class:w-max={!wordWrap}
 					>
 						{#each presentHtmls as markup}
 							{@render block("removed", markup)}

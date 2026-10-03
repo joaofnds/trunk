@@ -25,9 +25,8 @@ let {
 
 let viewport = $state<HTMLDivElement | null>(null);
 let scrollTop = $state(0);
-// Published to the rows below in the same reactive style string that carries
-// translateY: Svelte's set_style assigns cssText wholesale, so a custom property
-// set imperatively on this element would be wiped on the next vertical scroll.
+// Published once, on the rows container, as the `--pan-x` every row's own
+// transform reads, so a horizontal scroll re-renders no row.
 let panLeft = $state(0);
 let viewportHeight = $state(0);
 
@@ -76,18 +75,21 @@ function onscroll() {
 </script>
 
 <div
-	class="exact-virtual-viewport"
+	class="exact-virtual-viewport absolute inset-0 overflow-y-auto overscroll-x-none"
+	class:overflow-x-auto={horizontal}
+	class:overflow-x-hidden={!horizontal}
 	bind:this={viewport}
 	{onscroll}
-	style="position: absolute; inset: 0; overflow-y: auto; overflow-x: {horizontal ? 'auto' : 'hidden'}; overscroll-behavior-x: none; overflow-anchor: none;"
 >
 	<div
-		class="exact-virtual-content"
-		style="position: relative; height: {shown.totalHeight}px; width: {contentWidth}; min-width: 100%;"
+		class="exact-virtual-content relative min-w-full"
+		style:height="{shown.totalHeight}px"
+		style:width={contentWidth}
 	>
 		<div
-			class="exact-virtual-rows"
-			style="position: absolute; top: 0; left: 0; width: 100%; min-width: 100%; --pan-x: {panLeft}px; transform: translateY({shown.offsetTop}px);"
+			class="exact-virtual-rows absolute top-0 left-0 w-full min-w-full"
+			style:--pan-x="{panLeft}px"
+			style:transform="translateY({shown.offsetTop}px)"
 		>
 			{#each visible as item, offset (shown.start + offset)}
 				{@render renderItem(item, shown.start + offset)}
@@ -95,3 +97,11 @@ function onscroll() {
 		</div>
 	</div>
 </div>
+
+<style>
+/* The rows are positioned by arithmetic, so the browser's own anchor adjustment
+   would fight every height recompute. */
+.exact-virtual-viewport {
+	overflow-anchor: none;
+}
+</style>

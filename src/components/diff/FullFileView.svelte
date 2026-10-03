@@ -204,10 +204,6 @@ function lineBackground(origin: string, isSelected: boolean): string {
 	if (origin === "Delete") return "var(--color-diff-delete-bg)";
 	return "transparent";
 }
-
-function lineColor(): string {
-	return "var(--color-diff-text)";
-}
 </script>
 
 {#snippet threadCard(c: Thread)}
@@ -232,34 +228,29 @@ function lineColor(): string {
 		<!-- mouseenter only continues an in-progress gutter drag; the row itself is
          not a control. -->
 		<div
-			class="diff-line {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{item.spanned ? ' diff-line-commented' : ''}"
-			style="
-        {DIFF_ROW_FONT};
-        padding: 0 var(--space-2);
-        white-space: {vd.wrapActive ? 'pre-wrap' : 'pre'};
-        word-break: {vd.wrapActive ? 'break-all' : 'normal'};
-        background: {lineBackground(line.origin, isSelected)};
-        color: {lineColor()};
-        display: flex;
-        align-items: flex-start;
-      "
+			class="diff-line flex items-start px-2 text-diff-text {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{item.spanned ? ' diff-line-commented' : ''}"
+			class:whitespace-pre-wrap={vd.wrapActive}
+			class:whitespace-pre={!vd.wrapActive}
+			class:break-all={vd.wrapActive}
+			class:break-normal={!vd.wrapActive}
+			style:font-family={DIFF_ROW_FONT.fontFamily}
+			style:font-size={DIFF_ROW_FONT.fontSize}
+			style:line-height={DIFF_ROW_FONT.lineHeight}
+			style:background={lineBackground(line.origin, isSelected)}
 			onmouseenter={(e) => extendDrag(item.path, line, item.flatIdx, e)}
 			><!-- svelte-ignore a11y_no_noninteractive_tabindex --><span
-				class="gutter-grip{isSelectable ? ' gutter-selectable' : ''}"
-				style="user-select: none; -webkit-user-select: none;"
+				class="gutter-grip select-none{isSelectable ? ' gutter-selectable' : ''}"
 				role={isSelectable ? 'button' : undefined}
 				tabindex={isSelectable ? 0 : undefined}
 				onmousedown={(e) => isSelectable && startDrag(item.path, line, item.flatIdx, e)}
 				onclick={(e) => isSelectable && selectLine(item.path, line, item.flatIdx, e.shiftKey)}
 				onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectLine(item.path, line, item.flatIdx, e.shiftKey); } }}
-				><span class="gutter-num" style="min-width: {vd.gutterW};"
+				><span class="gutter-num" style:min-width={vd.gutterW}
 					>{line.old_lineno ?? ''}</span
-				><span class="gutter-num" style="min-width: {vd.gutterW};"
+				><span class="gutter-num" style:min-width={vd.gutterW}
 					>{line.new_lineno ?? ''}</span
 				></span
-			><span
-				class="diff-line-content"
-				style="user-select: text; -webkit-user-select: text; cursor: text;"
+			><span class="diff-line-content select-text cursor-text"
 				>{#if line.spans.length > 0}
 					{#each line.spans as span}
 						{@const sliced = line.content.slice(span.start, span.end)}
@@ -304,34 +295,22 @@ function lineColor(): string {
 	{/if}
 {/snippet}
 
-<div class="full-file" style="{FIXED_ROW_HEIGHT_VARS}">
+<div
+	class="full-file"
+	style:--diff-file-header-height={FIXED_ROW_HEIGHT_VARS["--diff-file-header-height"]}
+	style:--diff-hunk-header-height={FIXED_ROW_HEIGHT_VARS["--diff-hunk-header-height"]}
+	style:--diff-binary-row-height={FIXED_ROW_HEIGHT_VARS["--diff-binary-row-height"]}
+>
 	{#if affordanceVisible}
 		<!-- Full-file Comment affordance (L-05: no isMerge disable). Appears on
          comment-capable commit, unstaged working-tree (260531-k4j), and
          current-file views once a selection exists. Lives outside the list
          because it follows the live selection, which the row model must not
          take as an input. -->
-		<div
-			style="display: flex; justify-content: flex-end; padding: var(--space-1) var(--space-2); flex: 0 0 auto;"
-		>
+		<div class="flex justify-end py-1 px-2 flex-none">
 			<button
 				type="button"
-				class="full-file-comment-button"
-				style="
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--color-accent-bg, var(--color-surface));
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius);
-          color: var(--color-accent);
-          font-size: var(--text-small);
-          font-family: var(--font-sans);
-          height: var(--control-sm-h);
-          padding: 0 var(--space-2);
-          cursor: pointer;
-          white-space: nowrap;
-        "
+				class="full-file-comment-button inline-flex items-center justify-center bg-accent-bg border border-border rounded text-accent text-small font-sans h-control-sm px-2 cursor-pointer whitespace-nowrap"
 				onclick={() => selectedPath && oncommentfullfile(selectedPath, selectedIndices)}
 			>
 				Comment ({selectedIndices.size})
@@ -353,7 +332,9 @@ function lineColor(): string {
 		<div
 			class="diff-line metrics-probe"
 			bind:this={vd.metricsProbe}
-			style="{DIFF_ROW_FONT};"
+			style:font-family={DIFF_ROW_FONT.fontFamily}
+			style:font-size={DIFF_ROW_FONT.fontSize}
+			style:line-height={DIFF_ROW_FONT.lineHeight}
 		></div>
 
 		{#if vd.threadsToProbe.length > 0}

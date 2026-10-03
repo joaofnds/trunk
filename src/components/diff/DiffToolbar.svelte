@@ -122,7 +122,8 @@ const renderedActive = $derived(
 			data-testid="diff-status-badge"
 			class="status-badge"
 			title={badge.title}
-			style="color: {badge.color}; background: color-mix(in oklch, {badge.color} 6%, transparent);"
+			style:color={badge.color}
+			style:background="color-mix(in oklch, {badge.color} 6%, transparent)"
 			>{badge.letter}</span
 		>
 	{/if}
@@ -225,7 +226,9 @@ const renderedActive = $derived(
 	<span
 		class="font-probe"
 		bind:this={fontProbe}
-		style="{DIFF_ROW_FONT};"
+		style:font-family={DIFF_ROW_FONT.fontFamily}
+		style:font-size={DIFF_ROW_FONT.fontSize}
+		style:line-height={DIFF_ROW_FONT.lineHeight}
 	></span>
 
 	<!-- One-click whole-file Comment (260531-l02e/l02f): comments every change in the

@@ -364,7 +364,8 @@ describe("FullFileView", () => {
 		});
 
 		const row = container.querySelector(".diff-line:not(.metrics-probe)");
-		expect(row?.getAttribute("style")).toContain("white-space: pre;");
+		expect(row).toHaveClass("whitespace-pre");
+		expect(row).not.toHaveClass("whitespace-pre-wrap");
 	});
 
 	it("breaks a wrapped row at the column limit rather than at a space", () => {
@@ -373,10 +374,8 @@ describe("FullFileView", () => {
 		});
 
 		const row = container.querySelector(".diff-line:not(.metrics-probe)");
-		const style = row?.getAttribute("style") ?? "";
 
-		expect(style).toContain("white-space: pre-wrap;");
-		expect(style).toContain("word-break: break-all;");
+		expect(row).toHaveClass("whitespace-pre-wrap", "break-all");
 	});
 
 	it("leaves word breaking alone when rows do not wrap", () => {
@@ -384,7 +383,7 @@ describe("FullFileView", () => {
 
 		const row = container.querySelector(".diff-line:not(.metrics-probe)");
 
-		expect(row?.getAttribute("style")).toContain("word-break: normal;");
+		expect(row).toHaveClass("break-normal");
 	});
 
 	it("recomputes wrapped heights and holds the reader's place when the pane narrows", async () => {

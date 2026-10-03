@@ -235,11 +235,9 @@ describe("SplitView panning", () => {
 	it("pins each pair row against the pan, one viewport wide", () => {
 		const { container } = render(SplitView, { props: defaultProps() });
 
-		const style = container.querySelector(".split-row")?.getAttribute("style");
+		const row = container.querySelector(".split-row");
 
-		expect(style).toContain("position: sticky");
-		expect(style).toContain("left: 0");
-		expect(style).toContain("width: 100cqi");
+		expect(row).toHaveStyle("position: sticky; left: 0; width: 100cqi");
 	});
 
 	it("clamps each half's translation against that side's own ceiling", () => {
@@ -248,13 +246,15 @@ describe("SplitView panning", () => {
 		const pans = Array.from(
 			container.querySelector(".split-row")?.querySelectorAll(".split-pan") ??
 				[],
-			(el) => el.getAttribute("style") ?? "",
+			// The formatter breaks the long calc across lines, which the engine
+			// reads the same as one line, so the line breaks are folded before comparing.
+			(el) => getComputedStyle(el).transform.replace(/\s*\n\s*/g, ""),
 		);
 
-		expect(pans[0]).toContain(
+		expect(pans[0]).toBe(
 			"translateX(calc(-1 * min(var(--pan-x, 0px), max(0px, var(--max-l) - 50cqi))))",
 		);
-		expect(pans[1]).toContain(
+		expect(pans[1]).toBe(
 			"translateX(calc(-1 * min(var(--pan-x, 0px), max(0px, var(--max-r) - 50cqi))))",
 		);
 	});
@@ -268,7 +268,7 @@ describe("SplitView panning", () => {
 		for (const window of windows) {
 			// Transforming the clipper moves its clip box too, which slides the
 			// whole half out of the cell instead of panning the code within it.
-			expect(window.getAttribute("style") ?? "").not.toContain("transform");
+			expect(getComputedStyle(window).transform).not.toContain("translateX");
 			expect(window.querySelector(".split-pan")).not.toBeNull();
 		}
 	});
@@ -307,7 +307,7 @@ describe("SplitView panning", () => {
 			// The cell's own clip stops at the cell box, which the gutter sits
 			// inside: without a clip on the window, content translated left paints
 			// across the line numbers (doc-38 §4's "clipped window").
-			expect(window.getAttribute("style") ?? "").toContain("overflow: clip");
+			expect(window).toHaveClass("overflow-clip");
 		}
 	});
 
@@ -318,7 +318,7 @@ describe("SplitView panning", () => {
 
 		expect(gutters.length).toBeGreaterThan(0);
 		for (const gutter of gutters) {
-			expect(gutter.getAttribute("style") ?? "").not.toContain("transform");
+			expect(getComputedStyle(gutter).transform).not.toContain("translateX");
 			expect(gutter.closest(".split-pan")).toBeNull();
 		}
 	});
@@ -333,13 +333,20 @@ describe("SplitView row shapes", () => {
 			props: defaultProps({ wordWrap: false }),
 		});
 
-		const styleOf = (root: Element) =>
-			root.querySelector(".diff-line-content")?.getAttribute("style") ?? "";
+		const contentOf = (root: Element) =>
+			root.querySelector(".diff-line-content");
 
-		expect(styleOf(wrapped.container)).toContain("word-break: break-all");
-		expect(styleOf(wrapped.container)).toContain("white-space: pre-wrap");
-		expect(styleOf(unwrapped.container)).toContain("word-break: normal");
-		expect(styleOf(unwrapped.container)).toContain("white-space: pre");
+		expect(contentOf(wrapped.container)).toHaveClass(
+			"break-all",
+			"whitespace-pre-wrap",
+		);
+		expect(contentOf(unwrapped.container)).toHaveClass(
+			"break-normal",
+			"whitespace-pre",
+		);
+		expect(contentOf(unwrapped.container)).not.toHaveClass(
+			"whitespace-pre-wrap",
+		);
 	});
 
 	it("sizes the panned content to its text only when there is a pan", () => {
@@ -350,24 +357,23 @@ describe("SplitView row shapes", () => {
 			props: defaultProps({ wordWrap: true }),
 		});
 
-		const panStyle = (root: Element) =>
-			root.querySelector(".split-pan")?.getAttribute("style") ?? "";
+		const panOf = (root: Element) => root.querySelector(".split-pan");
 
-		expect(panStyle(unwrapped.container)).toContain("width: max-content");
+		expect(panOf(unwrapped.container)).toHaveClass("w-max");
 		// A wrapped half has nothing to pan, and max-content there would let the
 		// line run past the window instead of wrapping into the height
 		// `rowHeights` predicted for it.
-		expect(panStyle(wrapped.container)).toContain("width: 100%");
-		expect(panStyle(wrapped.container)).not.toContain("max-content");
+		expect(panOf(wrapped.container)).toHaveClass("w-full");
+		expect(panOf(wrapped.container)).not.toHaveClass("w-max");
 	});
 
 	it("takes the hunk-header row's height from the declared token", () => {
 		const { container } = render(SplitView, { props: defaultProps() });
 
-		const header = container.querySelector(".split-hunk-header");
+		const header = container.querySelector(".split-hunk-header") as Element;
 
-		expect(header?.getAttribute("style")).toContain(
-			"height: var(--diff-hunk-header-height)",
+		expect(getComputedStyle(header).height).toBe(
+			"var(--diff-hunk-header-height)",
 		);
 		expect(
 			container.querySelector(".split-view")?.getAttribute("style"),
@@ -404,7 +410,7 @@ describe("SplitView row shapes", () => {
 
 		expect(commentIndex).toBeGreaterThan(0);
 		expect(rows[commentIndex - 1].classList.contains("split-row")).toBe(true);
-		expect(rows[commentIndex].getAttribute("style")).toContain("width: 100cqi");
+		expect(rows[commentIndex]).toHaveStyle("width: 100cqi");
 	});
 
 	it("renders a binary file's notice as one full-width row", () => {
@@ -425,7 +431,7 @@ describe("SplitView row shapes", () => {
 		const binary = container.querySelector(".binary-row");
 
 		expect(binary?.textContent).toContain("Binary file");
-		expect(binary?.getAttribute("style")).toContain("width: 100cqi");
+		expect(binary).toHaveStyle("width: 100cqi");
 		expect(container.querySelectorAll(".split-row").length).toBe(0);
 	});
 });

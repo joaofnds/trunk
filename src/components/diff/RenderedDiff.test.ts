@@ -1193,10 +1193,10 @@ describe("RenderedDiff", () => {
 		await screen.findByText("long line");
 
 		// Wrap on: the wrap class (keys the pre-wrap CSS) + the shared wrapper at
-		// 100%. The width is an inline style — the one seam jsdom can assert.
+		// 100%. The width is read off the class list because jsdom lays nothing out.
 		expect(container.querySelector(".rendered-diff.wrap")).not.toBeNull();
 		const wrapped = container.querySelector(".rendered-content") as HTMLElement;
-		expect(wrapped.style.width).toBe("100%");
+		expect(wrapped).toHaveClass("w-full");
 
 		// Wrap off: no wrap class; the ONE wrapper grows to the longest line so
 		// every block, tint, and separator spans the same scrolled width.
@@ -1205,8 +1205,7 @@ describe("RenderedDiff", () => {
 		const unwrapped = container.querySelector(
 			".rendered-content",
 		) as HTMLElement;
-		expect(unwrapped.style.width).toBe("max-content");
-		expect(unwrapped.style.minWidth).toBe("100%");
+		expect(unwrapped).toHaveClass("w-max", "min-w-full");
 	});
 
 	it("pans split per column under wrap-off: outer stays panel width, column content grows (like Source)", async () => {
@@ -1234,15 +1233,14 @@ describe("RenderedDiff", () => {
 		const wrapper = container.querySelector(
 			".rendered-content.split",
 		) as HTMLElement;
-		expect(wrapper.style.width).toBe("100%");
+		expect(wrapper).toHaveClass("w-full");
 
 		const colContents = [
 			...container.querySelectorAll(".split-col-content"),
 		] as HTMLElement[];
 		expect(colContents).toHaveLength(2);
 		for (const el of colContents) {
-			expect(el.style.width).toBe("max-content");
-			expect(el.style.minWidth).toBe("100%");
+			expect(el).toHaveClass("w-max", "min-w-full");
 		}
 	});
 
