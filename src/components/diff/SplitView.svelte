@@ -619,7 +619,11 @@ function originClass(origin: string): string {
 /* The hunk header's height is the declared token the row model computes
      offsets from, not whatever the button cluster happens to measure. */
 .split-hunk-header {
-	background: color-mix(in oklch, var(--info) 6%, var(--color-surface-raised));
+	background: color-mix(
+		in oklch,
+		var(--color-info) 6%,
+		var(--color-surface-raised)
+	);
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
@@ -628,7 +632,7 @@ function originClass(origin: string): string {
 }
 .split-hunk-header-text {
 	flex: 1;
-	color: color-mix(in oklch, var(--info) 70%, var(--color-text-subtle));
+	color: color-mix(in oklch, var(--color-info) 70%, var(--color-text-subtle));
 	font-size: 11px;
 	font-family: var(--font-mono, monospace);
 }

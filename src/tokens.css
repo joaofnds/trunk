@@ -243,6 +243,7 @@
 	--color-warning: var(--warn);
 	--color-warning-bg: color-mix(in oklch, var(--warn) 15%, transparent);
 	--color-warning-border: color-mix(in oklch, var(--warn) 30%, transparent);
+	--color-info: var(--info);
 	--color-muted-bg: color-mix(in oklch, var(--fg-3) 10%, transparent);
 
 	/* Rendered-markdown prose (comment bodies + .md diff view). Three aliases

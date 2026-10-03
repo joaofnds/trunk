@@ -49,7 +49,7 @@ describe("prefixToneVar", () => {
 		{ prefix: "perf", tone: "var(--color-success)" },
 		{ prefix: "fix", tone: "var(--color-warning)" },
 		{ prefix: "revert", tone: "var(--color-danger)" },
-		{ prefix: "docs", tone: "var(--info)" },
+		{ prefix: "docs", tone: "var(--color-info)" },
 		// Distinct neutral hues, clear of the semantic ones.
 		{ prefix: "refactor", tone: "var(--lane-3)" },
 		{ prefix: "refine", tone: "var(--lane-2)" },

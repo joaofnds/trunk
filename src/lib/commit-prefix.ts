@@ -32,7 +32,7 @@ const PREFIX_TONE: Record<string, string> = {
 	perf: "var(--color-success)",
 	fix: "var(--color-warning)",
 	revert: "var(--color-danger)",
-	docs: "var(--info)",
+	docs: "var(--color-info)",
 	// Distinct neutral hues.
 	refactor: NEUTRAL_LANES[0], // purple
 	refine: NEUTRAL_LANES[1], // pink
