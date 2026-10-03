@@ -74,7 +74,7 @@ const namedPart = /^(0|auto|var\(--[\w-]+\)|[\d.]+em|@(?:px)?)$/;
  *  It earns a place here because a full-bleed highlight has to negate it, and a
  *  negation is the one form a bare var() cannot take. */
 const onScaleCalc =
-	/calc\((?:\s|\d+|\*|\+|-|\/|\(|\)|var\(--(?:u|space-[1-4]|md-prose-inset(?:,\s*0px)?|depth(?:,\s*0)?)\))+\)/g;
+	/calc\((?:\s|\d+|\*|\+|-|\/|\(|\)|var\(--(?:u|space-[0-6]|md-prose-inset(?:,\s*0px)?|depth(?:,\s*0)?)\))+\)/g;
 
 /* A var() carrying a fallback holds a space, so it would split into two parts
    that are each nonsense on their own. Masked to one token like a calc() is.
@@ -206,7 +206,7 @@ describe("spacing scale", () => {
 	it("only ever sets the prose inset to a spacing token or zero", () => {
 		const raw = offences(
 			/--md-prose-inset: ([^;"\n]+)/g,
-			(value) => value === "0" || /^var\(--space-[1-4]\)$/.test(value),
+			(value) => value === "0" || /^var\(--space-[0-6]\)$/.test(value),
 		);
 
 		expect(raw).toEqual([]);

@@ -6,10 +6,13 @@
 	--u: 4px;
 
 	/* ── Spacing ── */
+	--space-0: calc(0 * var(--u));
 	--space-1: calc(1 * var(--u));
 	--space-2: calc(2 * var(--u));
 	--space-3: calc(3 * var(--u));
 	--space-4: calc(4 * var(--u));
+	--space-5: calc(5 * var(--u));
+	--space-6: calc(6 * var(--u));
 
 	/* ── Chrome heights ── */
 	--row-h: calc(7 * var(--u));
@@ -41,6 +44,8 @@
 		20 *
 		var(--u)
 	); /* how far a centred dialog sits from the top */
+	--welcome-col: calc(112 * var(--u)); /* the welcome screen's centred column */
+	--dropdown-max-h: calc(96 * var(--u)); /* a dropdown list scrolls past this */
 
 	/* ── Surfaces — cool-neutral ramp (oklch, hue 260) ── */
 	--bg-0: oklch(0.08 0.003 260); /* deepest — body, editor & input wells */

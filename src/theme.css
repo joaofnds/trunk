@@ -1,0 +1,152 @@
+@theme inline {
+	/* ── Spacing ── */
+	--spacing-0: var(--space-0);
+	--spacing-1: var(--space-1);
+	--spacing-2: var(--space-2);
+	--spacing-3: var(--space-3);
+	--spacing-4: var(--space-4);
+	--spacing-5: var(--space-5);
+	--spacing-6: var(--space-6);
+
+	/* ── Chrome heights, so markup writes h-row and never h-(--row-h) ── */
+	--spacing-row: var(--row-h);
+	--spacing-bar: var(--bar-h);
+	--spacing-topbar: var(--topbar-h);
+	--spacing-banded-lg: var(--banded-lg-h);
+	--spacing-target: var(--target-min);
+	--spacing-control-sm: var(--control-sm-h);
+	--spacing-control: var(--control-h);
+	--spacing-control-lg: var(--control-lg-h);
+	--spacing-dropdown-max: var(--dropdown-max-h);
+
+	/* ── Named lengths ── */
+	--container-welcome: var(--welcome-col);
+
+	/* ── Radius ── */
+	--radius: var(--radius);
+
+	/* ── Type ── */
+	--text-caption: var(--text-caption);
+	--text-caption--line-height: var(--text-caption--line-height);
+	--text-small: var(--text-small);
+	--text-small--line-height: var(--text-small--line-height);
+	--text-callout: var(--text-callout);
+	--text-callout--line-height: var(--text-callout--line-height);
+	--text-body: var(--text-body);
+	--text-body--line-height: var(--text-body--line-height);
+	--text-title: var(--text-title);
+	--text-title--line-height: var(--text-title--line-height);
+	--text-display: var(--text-display);
+	--text-display--line-height: var(--text-display--line-height);
+
+	/* ── Weight ── */
+	--font-weight-regular: var(--weight-regular);
+	--font-weight-medium: var(--weight-medium);
+	--font-weight-semibold: var(--weight-semibold);
+
+	/* ── Family ── */
+	--font-mono: var(--font-mono);
+	--font-sans: var(--font-sans);
+
+	/* ── Leading and tracking ── */
+	--leading-none: var(--leading-none);
+	--leading-tight: var(--leading-tight);
+	--leading-normal: var(--leading-normal);
+	--tracking-wide: var(--tracking-wide);
+	--tracking-wider: var(--tracking-wider);
+	--tracking-widest: var(--tracking-widest);
+
+	/* ── Shadow roles ── */
+	--shadow-sm: var(--shadow-sm);
+	--shadow-md: var(--shadow-md);
+	--shadow-lg: var(--shadow-lg);
+
+	/* ── Color roles ── */
+	--color-scrollbar-thumb: var(--color-scrollbar-thumb);
+	--color-bg: var(--color-bg);
+	--color-surface: var(--color-surface);
+	--color-surface-raised: var(--color-surface-raised);
+	--color-surface-chip: var(--color-surface-chip);
+	--color-border: var(--color-border);
+	--color-border-strong: var(--color-border-strong);
+	--color-comment-card-bg: var(--color-comment-card-bg);
+	--color-comment-card-header-bg: var(--color-comment-card-header-bg);
+	--color-text: var(--color-text);
+	--color-text-strong: var(--color-text-strong);
+	--color-text-muted: var(--color-text-muted);
+	--color-text-subtle: var(--color-text-subtle);
+	--color-text-disabled: var(--color-text-disabled);
+	--color-accent: var(--color-accent);
+	--color-accent-strong: var(--color-accent-strong);
+	--color-accent-alt: var(--color-accent-alt);
+	--color-accent-bg: var(--color-accent-bg);
+	--color-accent-border: var(--color-accent-border);
+	--color-on-accent: var(--color-on-accent);
+	--color-selected-row: var(--color-selected-row);
+	--color-hover: var(--color-hover);
+	--color-backdrop: var(--color-backdrop);
+	--color-thread-open: var(--color-thread-open);
+	--color-thread-addressed: var(--color-thread-addressed);
+	--color-thread-done: var(--color-thread-done);
+	--color-thread-dismissed: var(--color-thread-dismissed);
+	--color-thread-stale: var(--color-thread-stale);
+	--color-diff-text: var(--color-diff-text);
+	--color-diff-add: var(--color-diff-add);
+	--color-diff-add-bg: var(--color-diff-add-bg);
+	--color-diff-delete: var(--color-diff-delete);
+	--color-diff-delete-bg: var(--color-diff-delete-bg);
+	--color-diff-add-bg-selected: var(--color-diff-add-bg-selected);
+	--color-diff-delete-bg-selected: var(--color-diff-delete-bg-selected);
+	--color-diff-word-add-bg: var(--color-diff-word-add-bg);
+	--color-diff-word-delete-bg: var(--color-diff-word-delete-bg);
+	--color-md-word-add-bg: var(--color-md-word-add-bg);
+	--color-md-word-delete-bg: var(--color-md-word-delete-bg);
+	--color-diff-phantom-bg: var(--color-diff-phantom-bg);
+	--color-syn-keyword: var(--color-syn-keyword);
+	--color-syn-string: var(--color-syn-string);
+	--color-syn-comment: var(--color-syn-comment);
+	--color-syn-number: var(--color-syn-number);
+	--color-syn-type: var(--color-syn-type);
+	--color-syn-function: var(--color-syn-function);
+	--color-syn-variable: var(--color-syn-variable);
+	--color-syn-constant: var(--color-syn-constant);
+	--color-syn-operator: var(--color-syn-operator);
+	--color-syn-punctuation: var(--color-syn-punctuation);
+	--color-syn-attribute: var(--color-syn-attribute);
+	--color-syn-tag: var(--color-syn-tag);
+	--color-syn-property: var(--color-syn-property);
+	--color-syn-regex: var(--color-syn-regex);
+	--color-syn-escape: var(--color-syn-escape);
+	--color-success: var(--color-success);
+	--color-success-bg: var(--color-success-bg);
+	--color-success-border: var(--color-success-border);
+	--color-danger: var(--color-danger);
+	--color-danger-bg: var(--color-danger-bg);
+	--color-danger-bg-strong: var(--color-danger-bg-strong);
+	--color-danger-border: var(--color-danger-border);
+	--color-danger-bg-subtle: var(--color-danger-bg-subtle);
+	--color-toast-error-bg: var(--color-toast-error-bg);
+	--color-warning: var(--color-warning);
+	--color-warning-bg: var(--color-warning-bg);
+	--color-warning-border: var(--color-warning-border);
+	--color-info: var(--color-info);
+	--color-muted-bg: var(--color-muted-bg);
+	--color-status-new: var(--color-status-new);
+	--color-status-modified: var(--color-status-modified);
+	--color-status-deleted: var(--color-status-deleted);
+	--color-status-renamed: var(--color-status-renamed);
+	--color-status-typechange: var(--color-status-typechange);
+	--color-status-conflicted: var(--color-status-conflicted);
+	--color-banner-warning-bg: var(--color-banner-warning-bg);
+	--color-banner-warning-border: var(--color-banner-warning-border);
+	--color-banner-info-bg: var(--color-banner-info-bg);
+	--color-banner-info-border: var(--color-banner-info-border);
+	--color-badge-warning: var(--color-badge-warning);
+	--color-badge-warning-bg: var(--color-badge-warning-bg);
+	--color-hunk-flash: var(--color-hunk-flash);
+	--color-invisible: var(--color-invisible);
+	--color-trailing-ws-bg: var(--color-trailing-ws-bg);
+	--color-trailing-ws-fg: var(--color-trailing-ws-fg);
+	--color-search-current: var(--color-search-current);
+	--color-search-match: var(--color-search-match);
+}

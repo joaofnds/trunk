@@ -16,9 +16,35 @@ through `var(--...)`.
 | Unit and spacing | `--u`, `--space-N` | Every length is a whole multiple of `--u` (4px). `src/app.css.test.ts` fails on one that is not, and on a length token nothing reads. |
 | Chrome heights | `--bar-h`, `--row-h`, `--control-*-h`, `--banded-*-h`, `--target-min` | Mirrored by the constants in `src/lib/chrome-heights.ts`, which the same test holds equal. A band that paints a rule adds that rule's pixel, `calc(N * var(--u) + 1px)`. |
 | Radii | `--radius`, `--radius-pill` | A pill is round, not a multiple of anything. |
-| Type | `--text-<step>` with `--text-<step>--line-height`: caption 10/13, small 11/14, callout 12/15, body 13/16, title 15/20, display 22/26. `--weight-regular`, `--weight-medium`, `--weight-semibold` (400, 500, 600). `--leading-none`, `--leading-tight`, `--leading-normal` (1, 1.25, 1.5). `--tracking-wide`, `--tracking-wider`, `--tracking-widest` (0.02, 0.04, 0.08em). | The sizes and line heights are the macOS text styles Caption 1, Subheadline, Callout, Body, Title 3 and Title 1. A single-line label sets a step and that step's line height together, never a px size; an em-sized prose block or a wrapping paragraph reads a unitless `--leading-*` so the leading follows the size. and code is `--font-mono` at the step its context uses rather than a step of its own. The same test pins the scale and fails on a `--text-*` outside it. |
+| Type | `--text-<step>` with `--text-<step>--line-height`: caption 10/13, small 11/14, callout 12/15, body 13/16, title 15/20, display 22/26. `--weight-regular`, `--weight-medium`, `--weight-semibold` (400, 500, 600). `--leading-none`, `--leading-tight`, `--leading-normal` (1, 1.25, 1.5). `--tracking-wide`, `--tracking-wider`, `--tracking-widest` (0.02, 0.04, 0.08em). | The sizes and line heights are the macOS text styles Caption 1, Subheadline, Callout, Body, Title 3 and Title 1. A single-line label sets a step and that step's line height together, never a px size; an em-sized prose block or a wrapping paragraph reads a unitless `--leading-*` so the leading follows the size, and code is `--font-mono` at the step its context uses rather than a step of its own. The same test pins the scale and fails on a `--text-*` outside it. |
 | Colors | the oklch ramps (`--bg-*`, `--fg-*`, `--line`, `--accent`, the status hues) and the `--color-*` roles over them | A component reads a role, never a ramp step: the role is the name the theme mapping will declare, and the step is a raw value `src/tokens.css` reads alone. The lane colors are the exception, read by the graph as `--lane-N`. Every text/background pair is in `scripts/contrast/re-audit-verify.mjs`, which `just contrast` runs inside `just check`. |
 | Shadows | `--shadow-1`, `--shadow-2`, and the `--shadow-sm/md/lg` roles over them | Declared once here. A component reads one, or writes offsets with a token color. |
+
+### The theme
+
+`src/theme.css` maps the tokens into Tailwind's namespaces with `@theme inline`,
+one line per token, so markup reads the same vocabulary a `<style>` block does:
+`bg-surface`, `text-text-muted`, `p-2`, `gap-1`, `h-row`, `h-control`,
+`text-body`, `font-medium`, `font-mono`, `leading-none`, `tracking-widest`,
+`shadow-lg`, `max-w-welcome`. The file holds no literal, only `var()` over a
+token, and `src/theme.css.test.ts` fails on a color role, spacing step, chrome
+height or text step that tokens.css declares and the theme does not map.
+
+`inline` makes a utility carry the token's `var()` itself. Tailwind still writes
+the theme variables it saw used onto `:root` inside `@layer theme`, and where a
+theme key and a token share a name that line reads `--color-text:
+var(--color-text)`, a cycle. It never wins: tokens.css declares its `:root`
+outside every layer, and an unlayered declaration beats a layered one in the
+cascade, which the same test pins by refusing an `@layer` in tokens.css.
+Tailwind's `reference` modifier would stop the emission instead, but Biome's
+parser takes one modifier after `@theme`, and `inline` is the one the utilities
+need. A pill is `rounded-full`, which Tailwind generates without a theme value,
+so `--radius-pill` has no mapping.
+
+Tailwind's default theme is still in force beside the mapping. `text-sm`,
+`text-xs`, `py-1.5`, `shadow-lg`'s default and the default palette resolve until
+the reset lands, which `.boris/plans/2026-10-02-design-system-research.md` step 6
+schedules after every markup site reads a mapped name.
 
 ### Adding a token
 
