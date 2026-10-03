@@ -1237,17 +1237,18 @@ pub async fn open_current_file(
 /// from the working tree, or traverses a link. Other filesystem failures are
 /// returned as `io_error`.
 pub fn current_file_diff(repo: &git2::Repository, file_path: &str) -> Result<FileDiff, TrunkError> {
-    let bytes = blob_reader::read_tracked_working_tree_file(repo, file_path)?;
-
-    if blob_reader::is_binary(&bytes) {
-        return Ok(FileDiff {
-            path: file_path.to_string(),
-            old_path: None,
-            status: DiffStatus::Unknown,
-            is_binary: true,
-            hunks: vec![],
-        });
-    }
+    let bytes = match blob_reader::read_tracked_working_tree_file(repo, file_path)? {
+        blob_reader::WorkingTreeFile::Binary => {
+            return Ok(FileDiff {
+                path: file_path.to_string(),
+                old_path: None,
+                status: DiffStatus::Unknown,
+                is_binary: true,
+                hunks: vec![],
+            });
+        }
+        blob_reader::WorkingTreeFile::Text(bytes) => bytes,
+    };
 
     let text = String::from_utf8_lossy(&bytes);
     let lines: Vec<DiffLine> = text

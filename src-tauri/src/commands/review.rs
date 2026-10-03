@@ -14,6 +14,7 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Runtime, State};
+use trunk_git::blob_reader::WorkingTreeFile;
 use trunk_git::error::TrunkError;
 use trunk_review::range::{compute_range_oids, intersect_graph_order, validate_range};
 use trunk_review::resolution::{CommentResolution, resolve_all};
@@ -462,10 +463,11 @@ pub async fn add_thread<R: Runtime>(
 ///
 /// # Errors
 ///
-/// Returns `not_found` when the file will not read at the working tree or is
-/// not text by the rule the current-file view applies, `invalid_range` when the
-/// range names lines the file does not have, and whatever the store returns
-/// when the write fails.
+/// Returns `not_found` when the file will not read at the working tree, is
+/// binary by the rule the current-file view applies, or is not UTF-8 (which the
+/// view decodes lossily and this path does not), `invalid_range` when the range
+/// names lines the file does not have, and whatever the store returns when the
+/// write fails.
 pub fn submit_current_file_thread_inner(
     store: &Store,
     canonical: &Path,
@@ -477,12 +479,12 @@ pub fn submit_current_file_thread_inner(
     now: i64,
 ) -> Result<String, TrunkError> {
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
-    let bytes = trunk_git::blob_reader::read_tracked_working_tree_file(&repo, file_path)?;
     let not_text = || TrunkError::new("not_found", format!("{file_path} is not text"));
-    if trunk_git::blob_reader::is_binary(&bytes) {
-        return Err(not_text());
-    }
-    let text_of_file = String::from_utf8(bytes).map_err(|_| not_text())?;
+    let text_of_file =
+        match trunk_git::blob_reader::read_tracked_working_tree_file(&repo, file_path)? {
+            WorkingTreeFile::Binary => return Err(not_text()),
+            WorkingTreeFile::Text(bytes) => String::from_utf8(bytes).map_err(|_| not_text())?,
+        };
 
     let pin =
         trunk_review::reviewdb::stale::pin_range(&text_of_file, file_path, start_line, end_line)?;
@@ -1495,11 +1497,15 @@ pub fn recompute_staleness(
     // Refuse links at every path component. A thread's pinned path is stored
     // text, and an unavailable or non-text file simply reads as absent, which
     // marks the pin stale.
-    let read_working_tree_file = |file_path: &str| {
-        trunk_git::blob_reader::read_working_tree_file_without_links(&repo, file_path)
-            .ok()
-            .and_then(|bytes| String::from_utf8(bytes).ok())
-    };
+    let read_working_tree_file =
+        |file_path: &str| match trunk_git::blob_reader::read_working_tree_file_without_links(
+            &repo, file_path,
+        )
+        .ok()?
+        {
+            WorkingTreeFile::Binary => None,
+            WorkingTreeFile::Text(bytes) => String::from_utf8(bytes).ok(),
+        };
 
     trunk_review::reviewdb::stale::recompute(
         store,

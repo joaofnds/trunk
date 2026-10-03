@@ -9,6 +9,7 @@
 use crate::types::Comment;
 use serde::Serialize;
 use std::path::Path;
+use trunk_git::blob_reader::WorkingTreeFile;
 
 /// Why a comment no longer resolves against the repo (D-08).
 ///
@@ -101,9 +102,14 @@ fn classify_pin(
     pin: &crate::types::ContentPin,
     repo: &git2::Repository,
 ) -> Result<(), OrphanReason> {
-    let bytes = trunk_git::blob_reader::read_working_tree_file_without_links(repo, &pin.file_path)
+    let file = trunk_git::blob_reader::read_working_tree_file_without_links(repo, &pin.file_path)
         .map_err(|_| OrphanReason::FileGone)?;
-    let text = String::from_utf8(bytes).map_err(|_| OrphanReason::FileGone)?;
+    let text = match file {
+        WorkingTreeFile::Binary => return Err(OrphanReason::FileGone),
+        WorkingTreeFile::Text(bytes) => {
+            String::from_utf8(bytes).map_err(|_| OrphanReason::FileGone)?
+        }
+    };
 
     if crate::reviewdb::stale::block_occurs(&text, &pin.block) {
         Ok(())
@@ -541,6 +547,17 @@ mod current_file_tests {
         let (_dir, repo) = a_repo_holding("a.txt", "one\n");
 
         let resolved = resolve_all(&[a_thread_pinned_to("absent.txt", "two")], &repo);
+
+        assert_eq!(resolved[0].reason, Some(OrphanReason::FileGone));
+    }
+
+    /// The current-file view shows a file with a NUL in its first 8000 bytes as
+    /// binary, with no lines, so a pin into it has no line to resolve to.
+    #[test]
+    fn a_pin_in_a_file_that_turned_binary_reports_file_gone() {
+        let (_dir, repo) = a_repo_holding("a.txt", "\0\ntwo\n");
+
+        let resolved = resolve_all(&[a_thread_pinned_to("a.txt", "two")], &repo);
 
         assert_eq!(resolved[0].reason, Some(OrphanReason::FileGone));
     }

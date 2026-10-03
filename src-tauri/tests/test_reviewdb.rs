@@ -6087,6 +6087,23 @@ fn pinning_refuses_a_file_the_current_file_view_calls_binary() {
 
 /// The pin is a store row, so a fresh process reads it back on the same lines.
 /// Closing and reopening the store is what a restart is, from the thread's side.
+/// NUL is valid UTF-8, so a strict decode alone keeps this thread fresh at a
+/// line the current-file view has no row for. The view's rule is the one that
+/// decides whether a file has lines at all, so the recompute reads by it too.
+#[test]
+fn a_current_file_thread_whose_file_turned_binary_is_stale() {
+    let (ctx, store) = a_repo_with_a_pinned_block("a.txt", "one\ntwo\nthree\n", "two", 0);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), b"\0\ntwo\n").unwrap();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        only_thread(&store, &canonical).stale,
+        "the block still occurs, but the view shows this file as binary with no line to carry a comment",
+    );
+}
+
 #[test]
 fn a_current_file_thread_survives_a_restart_on_the_same_lines() {
     let ctx = TestContext::builder()

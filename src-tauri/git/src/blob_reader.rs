@@ -1,5 +1,6 @@
-//! Reading a file's bytes at a given revision, and the sandbox that keeps those
-//! reads inside the repository.
+//! Reading a file's bytes at a given revision, the sandbox that keeps those
+//! reads inside the repository, and the one rule that says whether a
+//! working-tree file is text at all.
 //!
 //! Committed revs (Head/Index/Commit) resolve through git2 against a tree or the
 //! index, so they can only name objects the repo already contains. `WorkingTree`
@@ -171,9 +172,9 @@ fn read_working_tree_file(repo: &git2::Repository, file_path: &str) -> Result<Ve
 pub fn read_working_tree_file_without_links(
     repo: &git2::Repository,
     file_path: &str,
-) -> Result<Vec<u8>, TrunkError> {
+) -> Result<WorkingTreeFile, TrunkError> {
     let path = ValidatedRelativePath::parse(file_path)?;
-    read_validated_working_tree_file(repo, &path)
+    read_validated_working_tree_file(repo, &path).map(WorkingTreeFile::classify)
 }
 
 fn read_validated_working_tree_file(
@@ -233,7 +234,7 @@ fn no_link_open_options() -> OpenOptions {
 pub fn read_tracked_working_tree_file(
     repo: &git2::Repository,
     file_path: &str,
-) -> Result<Vec<u8>, TrunkError> {
+) -> Result<WorkingTreeFile, TrunkError> {
     let path = ValidatedRelativePath::parse(file_path)?;
     let index = repo.index().map_err(|_| not_found(file_path))?;
     if index
@@ -243,17 +244,35 @@ pub fn read_tracked_working_tree_file(
         return Err(not_found(file_path));
     }
 
-    read_validated_working_tree_file(repo, &path)
+    read_validated_working_tree_file(repo, &path).map(WorkingTreeFile::classify)
+}
+
+/// A working-tree file as every current-file reader sees it.
+///
+/// Binary by git's rule, or bytes git calls text, still undecoded. Every read
+/// of a current file returns this, so no reader can take the bytes without
+/// first meeting the question the current-file view answers with "binary".
+#[derive(Debug, PartialEq, Eq)]
+pub enum WorkingTreeFile {
+    Binary,
+    Text(Vec<u8>),
 }
 
 /// git's own heuristic: a NUL byte in the first 8000 bytes means binary.
-///
-/// The current-file view and the current-file pin both read a tracked file
-/// through this module and both ask this one question of its bytes, so a file
-/// the view refuses to show is a file no comment can be pinned to.
-#[must_use]
-pub fn is_binary(bytes: &[u8]) -> bool {
-    bytes.iter().take(8000).any(|b| *b == 0)
+const GIT_BINARY_PROBE_BYTES: usize = 8000;
+
+impl WorkingTreeFile {
+    fn classify(bytes: Vec<u8>) -> Self {
+        if is_binary(&bytes) {
+            Self::Binary
+        } else {
+            Self::Text(bytes)
+        }
+    }
+}
+
+fn is_binary(bytes: &[u8]) -> bool {
+    bytes.iter().take(GIT_BINARY_PROBE_BYTES).any(|b| *b == 0)
 }
 
 struct ValidatedRelativePath<'a> {
@@ -413,6 +432,11 @@ mod tests {
     }
 
     #[test]
+    fn control_bytes_without_a_nul_read_as_text() {
+        assert!(!is_binary(&[1, 2, 3, b'\n', b'A']));
+    }
+
+    #[test]
     fn a_nul_past_the_first_8000_bytes_reads_as_text() {
         let mut bytes = vec![b'a'; 8001];
         bytes[8000] = 0;
@@ -535,9 +559,9 @@ mod no_link_tests {
     fn no_link_read_returns_nested_regular_file_bytes() {
         let (_dir, repo) = repo_with_tracked_file("nested/file.txt", "ordinary");
 
-        let bytes = read_working_tree_file_without_links(&repo, "nested/file.txt").unwrap();
+        let file = read_working_tree_file_without_links(&repo, "nested/file.txt").unwrap();
 
-        assert_eq!(bytes, b"ordinary");
+        assert_eq!(file, WorkingTreeFile::Text(b"ordinary".to_vec()));
     }
 
     #[test]
