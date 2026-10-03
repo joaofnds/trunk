@@ -21,6 +21,9 @@ const VARIANTS: ButtonVariant[] = [
 ];
 const SIZES: ButtonSize[] = ["sm", "md", "lg"];
 const TONES: RowActionTone[] = ["subtle", "muted", "text", "success", "danger"];
+const FILES = ["src/main.rs", "src/lib.rs", "Cargo.toml"];
+const REPOS = ["trunk", "dotfiles"];
+const STRATEGIES = ["Fetch", "Fast-forward only", "Pull (rebase)"];
 </script>
 
 <script lang="ts">
@@ -31,6 +34,7 @@ import Plus from "@lucide/svelte/icons/plus";
 import Button from "./Button.svelte";
 import ButtonGroup from "./ButtonGroup.svelte";
 import LinkButton from "./LinkButton.svelte";
+import ListOption from "./ListOption.svelte";
 import RowAction from "./RowAction.svelte";
 </script>
 
@@ -234,5 +238,43 @@ import RowAction from "./RowAction.svelte";
 				</li>
 			{/each}
 		</ul>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>ListOption</h2
+		>
+		<div class="flex gap-4">
+			<div role="listbox" aria-label="Files" class="flex-1 text-callout">
+				{#each FILES as file, i (file)}
+					<ListOption selected={i === 1}
+						><span data-catalog-text>{file}</span></ListOption
+					>
+				{/each}
+			</div>
+			<div role="listbox" aria-label="Recent repositories" class="flex-1">
+				{#each REPOS as repo, i (repo)}
+					<ListOption layout="stack" highlight="hover" selected={i === 0}>
+						<span data-catalog-text class="text-body font-semibold text-text"
+							>{repo}</span
+						>
+						<span data-catalog-text class="text-callout text-text-muted"
+							>~/code/{repo}</span
+						>
+					</ListOption>
+				{/each}
+			</div>
+			<div
+				role="menu"
+				aria-label="Pull options"
+				class="flex-1 rounded border border-border bg-surface-raised py-1 text-callout"
+			>
+				{#each STRATEGIES as strategy (strategy)}
+					<ListOption role="menuitem" highlight="accent"
+						><span data-catalog-text>{strategy}</span></ListOption
+					>
+				{/each}
+			</div>
+		</div>
 	</section>
 </div>

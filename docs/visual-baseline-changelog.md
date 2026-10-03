@@ -191,3 +191,11 @@ RowAction primitive added to the catalog: five tones at the target and compact s
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-10-03
+
+ListOption primitive added to the catalog: a files listbox, a stacked repository list and a pull menu, drawn below RowAction so nothing above moves
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png
