@@ -19,5 +19,6 @@ open, so a change there is a change here.
   `<style>`, and register the name in `src/properties.css`.
 - Before writing a `<button>`, a link styled as one, or a `<dialog>` outside
   `src/lib/ui`, use the primitive there, and extend it and its entry in
-  `src/lib/ui/Catalog.svelte` when a variant is missing, because a control in
-  scoped CSS passes every guard and is what the next session copies.
+  `src/lib/ui/Catalog.svelte` when a variant is missing, because no check sees
+  every shape a control can take, and one drawn without a primitive drifts from
+  its frame, size and focus ring and is what the next session copies.
