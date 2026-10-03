@@ -300,14 +300,14 @@ describe("markup classes", () => {
 	});
 
 	it.each(components)(
-		"%s names only utilities or classes a stylesheet, script or test vouches for",
+		"%s names only utilities or classes a stylesheet, script or test vouches for (docs/design-system.md, Tokens)",
 		(file) => {
 			expect(classOffences(join(root, file))).toEqual([]);
 		},
 	);
 
 	it.each(components)(
-		"%s puts a static value in a stylesheet rule, not a style directive",
+		"%s puts a static value in a stylesheet rule, not a style directive (docs/design-system.md, Guards)",
 		(file) => {
 			expect(staticStyleDirectives(join(root, file))).toEqual([]);
 		},
