@@ -858,10 +858,10 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 						oncontextmenu={(e, fullName) => showRemoteContextMenu(e, fullName)}
 						groupState={groupState(visibility, remoteMembers[remoteName] ?? [])}
 						hiddenBranches={Object.fromEntries(
-              branches.map((b) => [
-                remoteName + '/' + b,
-                isRefHidden(visibility, refLabel(remoteRefName(remoteName + '/' + b), 'RemoteBranch')),
-              ]),
+              branches.map((b) => {
+                const fullName = `${remoteName}/${b}`;
+                return [fullName, isRefHidden(visibility, refLabel(remoteRefName(fullName), 'RemoteBranch'))];
+              }),
             )}
 						ontogglevisibility={() => applyVisibility(
               setGroupHidden(

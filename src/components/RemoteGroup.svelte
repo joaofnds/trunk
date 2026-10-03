@@ -75,19 +75,20 @@ let allHidden = $derived(groupState === "all");
 
 	<!-- Branch rows for this remote -->
 	{#each branches as branch (branch)}
+		{@const fullName = `${remoteName}/${branch}`}
 		<div style="padding-left: var(--space-3); overflow: hidden;">
 			<BranchRow
 				name={branch}
 				kind="remote"
-				isLoading={checkingOut === remoteName + '/' + branch}
-				isError={errorBranch === remoteName + '/' + branch}
+				isLoading={checkingOut === fullName}
+				isError={errorBranch === fullName}
 				{errorText}
-				onclick={() => oncheckout(remoteName + '/' + branch)}
-				ondblclick={() => ondblclick?.(remoteName + '/' + branch)}
-				oncontextmenu={(e) => oncontextmenu?.(e, remoteName + '/' + branch)}
-				hidden={hiddenBranches[remoteName + '/' + branch] ?? false}
+				onclick={() => oncheckout(fullName)}
+				ondblclick={() => ondblclick?.(fullName)}
+				oncontextmenu={(e) => oncontextmenu?.(e, fullName)}
+				hidden={hiddenBranches[fullName] ?? false}
 				ontogglevisibility={ontogglebranchvisibility
-          ? () => ontogglebranchvisibility?.(remoteName + '/' + branch)
+          ? () => ontogglebranchvisibility?.(fullName)
           : undefined}
 			/>
 		</div>
