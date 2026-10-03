@@ -122,6 +122,30 @@ describe("StagingPanel", () => {
 		expect(container).toBeTruthy();
 	});
 
+	it("paints the bulk actions in the tone each carries", async () => {
+		render(StagingPanel, { props: { repoPath: "/test/repo" } });
+
+		await waitFor(() => {
+			expect(
+				screen.getByRole("button", { name: "Stage all changes" }),
+			).toHaveClass("bg-success-bg");
+		});
+		expect(
+			screen.getByRole("button", { name: "Discard all changes" }),
+		).toHaveClass("bg-danger-bg");
+		expect(screen.getByRole("button", { name: "Unstage all" })).toHaveClass(
+			"bg-warning-bg",
+		);
+	});
+
+	it("draws the view switch as a small icon control", async () => {
+		render(StagingPanel, { props: { repoPath: "/test/repo" } });
+
+		await waitFor(() => {
+			expect(screen.getByRole("switch")).toHaveClass("w-control-sm");
+		});
+	});
+
 	it("renders file count header", async () => {
 		render(StagingPanel, {
 			props: {

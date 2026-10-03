@@ -26,6 +26,7 @@ import type {
 	ReviewTone,
 	WorkingTreeStatus,
 } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
 import CommitForm from "./CommitForm.svelte";
 import FileRow from "./FileRow.svelte";
 import OperationBanner from "./OperationBanner.svelte";
@@ -868,76 +869,43 @@ $effect(() => {
 			{/if}
 		</span>
 		{#if treeViewEnabled}
-			<button
+			<Button
+				icon
+				size="sm"
+				variant="ghost"
 				aria-label="Expand all directories"
 				title="Expand All"
 				onclick={(e) => { e.stopPropagation(); expandAllSignal++; }}
-				style="
-          background: none;
-          border: none;
-          cursor: pointer;
-          color: var(--color-text-muted);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 20px;
-          height: var(--control-sm-h);
-          border-radius: var(--radius);
-          flex-shrink: 0;
-          padding: 0;
-        "
 			>
 				<ChevronsUpDown size={14} />
-			</button>
-			<button
+			</Button>
+			<Button
+				icon
+				size="sm"
+				variant="ghost"
 				aria-label="Collapse all directories"
 				title="Collapse All"
 				onclick={(e) => { e.stopPropagation(); collapseAllSignal++; }}
-				style="
-          background: none;
-          border: none;
-          cursor: pointer;
-          color: var(--color-text-muted);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 20px;
-          height: var(--control-sm-h);
-          border-radius: var(--radius);
-          flex-shrink: 0;
-          padding: 0;
-        "
 			>
 				<ChevronsDownUp size={14} />
-			</button>
+			</Button>
 		{/if}
-		<button
+		<Button
+			icon
+			size="sm"
+			variant="ghost"
 			role="switch"
 			aria-checked={treeViewEnabled}
 			aria-label={treeViewEnabled ? 'Switch to list view' : 'Switch to tree view'}
 			title={treeViewEnabled ? 'List view' : 'Tree view'}
 			onclick={(e) => { e.stopPropagation(); ontreeviewtoggle?.(); }}
-			style="
-        background: none;
-        border: none;
-        cursor: pointer;
-        color: var(--color-text-muted);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 20px;
-        height: var(--control-sm-h);
-        border-radius: var(--radius);
-        flex-shrink: 0;
-        padding: 0;
-      "
 		>
 			{#if treeViewEnabled}
 				<FolderTree size={14} />
 			{:else}
 				<List size={14} />
 			{/if}
-		</button>
+		</Button>
 	</div>
 
 	<!-- Operation banners -->
@@ -1075,23 +1043,11 @@ $effect(() => {
 						<span>Conflicted Files</span>
 						{@render sectionCount(status?.conflicted.length ?? 0)}
 					</span>
-					<button
+					<Button
+						size="sm"
+						variant="warning"
 						onclick={(e) => { e.stopPropagation(); markAllResolved(); }}
-						style="
-              display: inline-flex;
-              align-items: center;
-              justify-content: center;
-              background: var(--color-warning-bg);
-              color: var(--color-warning);
-              border: 1px solid var(--color-warning-border);
-              border-radius: var(--radius);
-              font-size: var(--text-caption);
-              font-weight: var(--weight-semibold);
-              height: var(--control-sm-h);
-              padding: 0 var(--space-2);
-              cursor: pointer;
-            "
-						>Mark All Resolved</button
+						>Mark All Resolved</Button
 					>
 				</div>
 
@@ -1161,26 +1117,14 @@ $effect(() => {
 							{@render sectionCount(status?.conflicted.length ?? 0)}
 						</span>
 						{#if (status?.conflicted.length ?? 0) > 0}
-							<button
+							<Button
+								size="sm"
+								variant="success"
 								onclick={(e) => { e.stopPropagation(); markAllResolved(); }}
-								style="
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                background: var(--color-success-bg);
-                color: var(--color-success);
-                font-size: var(--text-small);
-                border: 1px solid var(--color-success-border);
-                border-radius: var(--radius);
-                cursor: pointer;
-                height: var(--control-sm-h);
-                padding: 0 var(--space-2);
-                white-space: nowrap;
-              "
 								aria-label="Mark all as resolved"
 							>
 								Mark All as Resolved
-							</button>
+							</Button>
 						{/if}
 					{:else}
 						<span
@@ -1190,47 +1134,24 @@ $effect(() => {
 							{@render sectionCount(status?.unstaged.length ?? 0)}
 						</span>
 						{#if (status?.unstaged.length ?? 0) > 0}
-							<button
-								onclick={(e) => { e.stopPropagation(); handleDiscardAll(); }}
-								style="
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                background: var(--color-danger-bg);
-                color: var(--color-danger);
-                font-size: var(--text-small);
-                border: 1px solid var(--color-danger-border);
-                border-radius: var(--radius);
-                cursor: pointer;
-                height: var(--control-sm-h);
-                padding: 0 var(--space-2);
-                white-space: nowrap;
-              "
-								aria-label="Discard all changes"
-							>
-								Discard All
-							</button>
-							<button
-								onclick={(e) => { e.stopPropagation(); stageAll(); }}
-								style="
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                background: var(--color-success-bg);
-                color: var(--color-success);
-                font-size: var(--text-small);
-                border: 1px solid var(--color-success-border);
-                border-radius: var(--radius);
-                cursor: pointer;
-                height: var(--control-sm-h);
-                padding: 0 var(--space-2);
-                white-space: nowrap;
-                margin-left: var(--space-1);
-              "
-								aria-label="Stage all changes"
-							>
-								Stage All Changes
-							</button>
+							<div class="flex gap-1">
+								<Button
+									size="sm"
+									variant="danger"
+									onclick={(e) => { e.stopPropagation(); handleDiscardAll(); }}
+									aria-label="Discard all changes"
+								>
+									Discard All
+								</Button>
+								<Button
+									size="sm"
+									variant="success"
+									onclick={(e) => { e.stopPropagation(); stageAll(); }}
+									aria-label="Stage all changes"
+								>
+									Stage All Changes
+								</Button>
+							</div>
 						{/if}
 					{/if}
 				</div>
@@ -1315,26 +1236,14 @@ $effect(() => {
 					{@render sectionCount(status?.staged.length ?? 0)}
 				</span>
 				{#if (status?.staged.length ?? 0) > 0}
-					<button
+					<Button
+						size="sm"
+						variant="warning"
 						onclick={(e) => { e.stopPropagation(); unstageAll(); }}
-						style="
-              display: inline-flex;
-              align-items: center;
-              justify-content: center;
-              background: var(--color-warning-bg);
-              color: var(--color-warning);
-              font-size: var(--text-small);
-              border: 1px solid var(--color-warning-border);
-              border-radius: var(--radius);
-              cursor: pointer;
-              height: var(--control-sm-h);
-              padding: 0 var(--space-2);
-              white-space: nowrap;
-            "
 						aria-label="Unstage all"
 					>
 						Unstage All
-					</button>
+					</Button>
 				{/if}
 			</div>
 
@@ -1427,108 +1336,63 @@ $effect(() => {
           resize: none;
         "
 			></textarea>
-			<div style="display: flex; gap: var(--space-2);">
-				<button
-					onclick={continueRebase}
-					disabled={rebaseLoading || !allResolved}
-					style="
-            flex: 3;
-            height: var(--control-lg-h);
-            background: var(--color-success-bg);
-            color: var(--color-success);
-            border: 1px solid var(--color-success-border);
-            border-radius: var(--radius);
-            font-size: var(--text-callout);
-            font-weight: var(--weight-semibold);
-            cursor: {allResolved && !rebaseLoading ? 'pointer' : 'not-allowed'};
-            opacity: {allResolved && !rebaseLoading ? 1 : 0.4};
-          "
-				>
-					Continue Rebase
-				</button>
-				<button
-					onclick={skipRebase}
-					disabled={rebaseLoading}
-					style="
-            flex: 1;
-            height: var(--control-lg-h);
-            background: var(--color-warning-bg);
-            color: var(--color-warning);
-            border: 1px solid var(--color-warning-border);
-            border-radius: var(--radius);
-            font-size: var(--text-callout);
-            font-weight: var(--weight-semibold);
-            cursor: {rebaseLoading ? 'not-allowed' : 'pointer'};
-            opacity: {rebaseLoading ? 0.4 : 1};
-          "
-				>
-					Skip
-				</button>
-				<button
-					onclick={abortRebase}
-					disabled={rebaseLoading}
-					style="
-            flex: 2;
-            height: var(--control-lg-h);
-            background: var(--color-danger-bg);
-            color: var(--color-danger);
-            border: 1px solid var(--color-danger-border);
-            border-radius: var(--radius);
-            font-size: var(--text-callout);
-            font-weight: var(--weight-semibold);
-            cursor: {rebaseLoading ? 'not-allowed' : 'pointer'};
-            opacity: {rebaseLoading ? 0.4 : 1};
-          "
-				>
-					Abort Rebase
-				</button>
+			<div class="grid grid-cols-6 gap-2">
+				<div class="col-span-3 grid">
+					<Button
+						size="lg"
+						variant="success"
+						onclick={continueRebase}
+						disabled={rebaseLoading || !allResolved}
+					>
+						Continue Rebase
+					</Button>
+				</div>
+				<div class="col-span-1 grid">
+					<Button
+						size="lg"
+						variant="warning"
+						onclick={skipRebase}
+						disabled={rebaseLoading}
+					>
+						Skip
+					</Button>
+				</div>
+				<div class="col-span-2 grid">
+					<Button
+						size="lg"
+						variant="danger"
+						onclick={abortRebase}
+						disabled={rebaseLoading}
+					>
+						Abort Rebase
+					</Button>
+				</div>
 			</div>
 		</div>
 	{:else if isMerge}
 		<!-- Merge-continue actions. The commit message is edited in the host-owned
          MessageEditor modal (runMergeContinue), not an inline form. -->
-		<div
-			style="
-      padding: var(--space-2);
-      display: flex;
-      gap: var(--space-2);
-      flex-shrink: 0;
-    "
-		>
-			<button
-				onclick={runMergeContinue}
-				disabled={!allResolved || mergeLoading}
-				style="
-          flex: 3;
-          height: var(--control-lg-h);
-          background: var(--color-success-bg);
-          color: var(--color-success);
-          border: 1px solid var(--color-success-border);
-          border-radius: var(--radius);
-          font-size: var(--text-callout);
-          cursor: {allResolved && !mergeLoading ? 'pointer' : 'not-allowed'};
-          opacity: {allResolved && !mergeLoading ? 1 : 0.4};
-        "
-			>
-				{mergeLoading ? 'Committing...' : 'Commit merge'}
-			</button>
-			<button
-				onclick={abortMerge}
-				disabled={mergeLoading}
-				style="
-          flex: 2;
-          height: var(--control-lg-h);
-          background: var(--color-danger-bg);
-          color: var(--color-danger);
-          border: 1px solid var(--color-danger-border);
-          border-radius: var(--radius);
-          font-size: var(--text-callout);
-          cursor: {mergeLoading ? 'not-allowed' : 'pointer'};
-          opacity: {mergeLoading ? 0.4 : 1};
-        "
-			>
-				Abort Merge
-			</button>
+		<div class="grid shrink-0 grid-cols-5 gap-2 p-2">
+			<div class="col-span-3 grid">
+				<Button
+					size="lg"
+					variant="success"
+					onclick={runMergeContinue}
+					disabled={!allResolved || mergeLoading}
+				>
+					{mergeLoading ? 'Committing...' : 'Commit merge'}
+				</Button>
+			</div>
+			<div class="col-span-2 grid">
+				<Button
+					size="lg"
+					variant="danger"
+					onclick={abortMerge}
+					disabled={mergeLoading}
+				>
+					Abort Merge
+				</Button>
+			</div>
 		</div>
 	{:else}
 		<!-- CommitForm — normal mode -->
