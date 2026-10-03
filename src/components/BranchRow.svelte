@@ -73,58 +73,38 @@ let actionShown = $derived(hovered || focused || hidden);
 		onfocusin={() => (focused = true)}
 		onfocusout={() => (focused = false)}
 		aria-label={name}
-		style="
-      height: var(--row-h);
-      margin: 0 var(--space-2);
-      padding: 0 var(--space-2);
-      border-radius: var(--radius);
-      display: flex;
-      align-items: center;
-      overflow: hidden;
-      cursor: pointer;
-      background: {isHead ? 'color-mix(in oklch, var(--color-accent) 10%, transparent)' : hovered ? 'var(--color-hover)' : 'transparent'};
-      box-shadow: {isHead ? 'inset 0 0 0 1px color-mix(in oklch, var(--color-accent) 28%, transparent)' : 'none'};
-      color: {isHead ? 'var(--color-text-strong)' : isLoading || hidden ? 'var(--color-text-muted)' : 'var(--color-text)'};
-      font-weight: {isHead ? '600' : 'normal'};
-      font-size: var(--text-callout);
-    "
+		class="h-row my-0 mx-2 py-0 px-2 rounded flex items-center overflow-hidden cursor-pointer text-callout"
+		style:background={isHead ? 'color-mix(in oklch, var(--color-accent) 10%, transparent)' : hovered ? 'var(--color-hover)' : 'transparent'}
+		style:box-shadow={isHead ? 'inset 0 0 0 1px color-mix(in oklch, var(--color-accent) 28%, transparent)' : 'none'}
+		style:color={isHead ? 'var(--color-text-strong)' : isLoading || hidden ? 'var(--color-text-muted)' : 'var(--color-text)'}
+		style:font-weight={isHead ? '600' : 'normal'}
 	>
 		{#if kind === 'tag'}
-			<span
-				style="flex-shrink: 0; display: inline-flex; align-items: center; margin-right: var(--space-2); color: var(--color-text-subtle);"
-			>
+			<span class="shrink-0 inline-flex items-center mr-2 text-text-subtle">
 				<Tag size={12} />
 			</span>
 		{:else}
 			<span
-				style="flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; margin-right: var(--space-2); background: {isHead ? 'var(--color-accent)' : 'var(--color-text-disabled)'};"
+				class="shrink-0 dot rounded-full mr-2"
+				style:background={isHead ? 'var(--color-accent)' : 'var(--color-text-disabled)'}
 			></span>
 		{/if}
 		<span
 			title={name}
-			style="
-      display: block;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-      min-width: 0;
-      flex: 1;
-    "
+			class="block overflow-hidden whitespace-nowrap text-ellipsis min-w-0 flex-1"
 			>{name}{isLoading ? ' …' : ''}</span
 		>
 		{#if ahead > 0 || behind > 0}
 			<span
-				style="flex-shrink: 0; font-family: var(--font-mono); font-size: var(--text-caption); color: var(--color-text-subtle); margin-left: var(--space-1); display: inline-flex; align-items: center; gap: var(--space-1);"
+				class="shrink-0 font-mono text-caption text-text-subtle ml-1 inline-flex items-center gap-1"
 			>
 				{#if ahead > 0}
-					<span
-						style="display: inline-flex; align-items: center; color: var(--color-success);"
+					<span class="inline-flex items-center text-success"
 						><ArrowUp size={11} />{ahead}</span
 					>
 				{/if}
 				{#if behind > 0}
-					<span
-						style="display: inline-flex; align-items: center; margin-left: var(--space-1); color: var(--color-warning);"
+					<span class="inline-flex items-center ml-1 text-warning"
 						><ArrowDown size={11} />{behind}</span
 					>
 				{/if}
@@ -132,7 +112,7 @@ let actionShown = $derived(hovered || focused || hidden);
 		{/if}
 		{#if isHead}
 			<span
-				style="flex-shrink: 0; margin-left: var(--space-1); font-family: var(--font-mono); font-size: var(--text-caption); letter-spacing: var(--tracking-widest); color: var(--color-accent);"
+				class="shrink-0 ml-1 font-mono text-caption tracking-widest text-accent"
 				>HEAD</span
 			>
 		{/if}
@@ -142,7 +122,8 @@ let actionShown = $derived(hovered || focused || hidden);
 				data-testid="branch-row-visibility-btn"
 				onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
 				ondblclick={(e) => e.stopPropagation()}
-				style="flex-shrink: 0; margin-left: var(--space-1); margin-right: calc(-1 * var(--space-2)); color: var(--color-text-subtle); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); align-items: center; justify-content: center; display: {actionShown ? 'inline-flex' : 'none'};"
+				class="shrink-0 ml-1 -mr-2 text-text-subtle bg-transparent border-none cursor-pointer p-0 min-w-target min-h-target items-center justify-center"
+				style:display={actionShown ? 'inline-flex' : 'none'}
 				aria-label="{visibilityVerb(hidden)} {name}"
 			>
 				<VisibilityIcon {hidden} />
@@ -151,10 +132,7 @@ let actionShown = $derived(hovered || focused || hidden);
 	</div>
 
 	{#if isError}
-		<div
-			class="error-banner"
-			style="font-size: var(--text-small); padding: var(--space-2) var(--space-3); margin: 0 var(--space-2) var(--space-1); border-radius: var(--radius);"
-		>
+		<div class="error-banner text-small py-2 px-3 mt-0 mx-2 mb-1 rounded">
 			{errorText ?? 'Cannot checkout — working tree has uncommitted changes. Commit or stash your changes first.'}
 		</div>
 	{/if}
@@ -165,5 +143,9 @@ let actionShown = $derived(hovered || focused || hidden);
 	background: var(--color-danger-bg);
 	border: 1px solid var(--color-danger-border);
 	color: var(--color-danger);
+}
+.dot {
+	width: 6px;
+	height: 6px;
 }
 </style>

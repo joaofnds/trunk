@@ -1,5 +1,6 @@
 import { mount, unmount } from "svelte";
 import App from "../../../src/App.svelte";
+import "../../../src/app.css";
 import { startAppServices } from "../../../src/lib/app-services.js";
 import { SCHEDULER } from "../../../src/lib/scheduler.js";
 import { AppDriver } from "../drivers/index.js";

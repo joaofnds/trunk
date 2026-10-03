@@ -143,10 +143,10 @@ describe("RemoteGroup visibility toggle target size", () => {
 				ontogglebranchvisibility: vi.fn(),
 			},
 		});
-		expect(screen.getByLabelText("Hide all origin branches")).toHaveStyle({
-			minWidth: "var(--target-min)",
-			minHeight: "var(--target-min)",
-		});
+		expect(screen.getByLabelText("Hide all origin branches")).toHaveClass(
+			"min-w-target",
+			"min-h-target",
+		);
 	});
 });
 
@@ -196,8 +196,6 @@ describe("RemoteGroup trailing controls", () => {
 			},
 		});
 
-		expect(screen.getByTestId("remote-group-subheader")).toHaveStyle({
-			height: "var(--bar-h)",
-		});
+		expect(screen.getByTestId("remote-group-subheader")).toHaveClass("h-bar");
 	});
 });

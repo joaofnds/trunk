@@ -1896,8 +1896,7 @@ describe("VIEW-05: Staging in split view", () => {
 		function findContainerContext(el: Element): HTMLElement | null {
 			let current = el.parentElement;
 			while (current) {
-				const style = current.getAttribute("style") || "";
-				if (style.includes("container-type: inline-size")) return current;
+				if (current.classList.contains("@container")) return current;
 				current = current.parentElement;
 			}
 			return null;
@@ -1916,8 +1915,7 @@ describe("VIEW-05: Staging in split view", () => {
 			expect(line).toBeTruthy();
 			const context = findContainerContext(line as Element);
 			expect(context).toBeTruthy();
-			const style = context?.getAttribute("style") ?? "";
-			expect(style).toContain("overscroll-behavior-x: none");
+			expect(context).toHaveClass("overscroll-x-none");
 		});
 
 		it("hunk toolbar is horizontally sticky so buttons stay visible", async () => {

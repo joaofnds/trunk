@@ -76,19 +76,17 @@ async function handleRemoveRecent(path: string, event: MouseEvent) {
 }
 </script>
 
-<div class="flex flex-col h-screen" style="background: var(--color-bg);">
+<div class="flex flex-col h-screen bg-bg">
 	<!-- LAYOUT-02: drag region for window movement on welcome screen -->
 	<div
 		data-tauri-drag-region
-		class="flex-shrink-0"
-		style="height: var(--topbar-h); padding-left: {isFullscreen ? 0 : 78}px;"
+		class="flex-shrink-0 h-topbar"
+		style:padding-left="{isFullscreen ? 0 : 78}px"
 	></div>
 	<div class="flex-1 flex flex-col items-center justify-center gap-6">
 		<div class="flex flex-col items-center gap-4 w-full max-w-welcome px-4">
-			<h1 class="text-display font-semibold" style="color: var(--color-text);"
-				>Trunk</h1
-			>
-			<p class="text-body" style="color: var(--color-text-muted);"
+			<h1 class="text-display font-semibold text-text">Trunk</h1>
+			<p class="text-body text-text-muted"
 				>Git history, beautifully visualized</p
 			>
 
@@ -113,8 +111,7 @@ async function handleRemoveRecent(path: string, event: MouseEvent) {
 		{#if displayedRepos.length > 0}
 			<div class="w-full max-w-welcome px-4">
 				<p
-					class="text-callout font-medium mb-2 uppercase tracking-widest"
-					style="color: var(--color-text-muted);"
+					class="text-callout font-medium mb-2 uppercase tracking-widest text-text-muted"
 					>Recent</p
 				>
 				<ul class="flex flex-col gap-1">
@@ -131,9 +128,9 @@ async function handleRemoveRecent(path: string, event: MouseEvent) {
 								onkeydown={(e) => e.key === 'Enter' && openPath(repo.path)}
 							>
 								<span class="text-body truncate min-w-0 flex-1">
-									<span style="color: var(--color-text-muted);"
+									<span class="text-text-muted"
 										>{dp.substring(0, dp.lastIndexOf('/'))}/</span
-									><span class="font-semibold" style="color: var(--color-text);"
+									><span class="font-semibold text-text"
 										>{dp.split('/').at(-1)}</span
 									>
 								</span>

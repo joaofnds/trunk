@@ -68,86 +68,35 @@ let badgeBg = $derived(
 	onmouseleave={() => (hovered = false)}
 	onclick={() => onclick?.()}
 	oncontextmenu={(e) => { if (oncontextmenu) { e.preventDefault(); oncontextmenu(e); } }}
-	style="
-    height: var(--row-h);
-    padding: 0 var(--space-2) 0 {treeIndent(depth)};
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    cursor: {onclick ? 'pointer' : 'default'};
-    background: {focused ? 'var(--color-selected-row)' : hovered ? 'var(--color-hover)' : 'transparent'};
-    color: {isLoading ? 'var(--color-text-muted)' : 'var(--color-text)'};
-  "
+	class="h-row flex items-center gap-2"
+	style:padding="0 var(--space-2) 0 {treeIndent(depth)}"
+	style:cursor={onclick ? 'pointer' : 'default'}
+	style:background={focused ? 'var(--color-selected-row)' : hovered ? 'var(--color-hover)' : 'transparent'}
+	style:color={isLoading ? 'var(--color-text-muted)' : 'var(--color-text)'}
 >
 	<!-- Status badge -->
 	<span
-		style="
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    border-radius: var(--radius);
-    font-family: var(--font-mono);
-    font-weight: var(--weight-semibold);
-    font-size: var(--text-caption);
-    line-height: var(--leading-none);
-    color: {isLoading ? 'var(--color-text-muted)' : badge.color};
-    background: {badgeBg};
-  "
+		class="shrink-0 inline-flex items-center justify-center size-4 rounded font-mono font-semibold text-caption leading-none"
+		style:color={isLoading ? 'var(--color-text-muted)' : badge.color}
+		style:background={badgeBg}
 		>{badge.letter}</span
 	>
 
 	<!-- Filename, or both paths when the file was renamed -->
-	<span
-		style="
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-1);
-    font-size: var(--text-callout);
-  "
-	>
+	<span class="flex-1 min-w-0 flex items-baseline gap-1 text-callout">
 		{#if rename !== null}
 			<!-- The old path yields space first: it shrinks and ellipsizes while the
            new path, which is where the file is now, keeps its width. -->
 			<span
-				style="
-        flex-shrink: 1;
-        min-width: 2ch;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        color: var(--color-text-muted);
-      "
+				class="shrink path-min overflow-hidden text-ellipsis whitespace-nowrap text-text-muted"
 				>{rename.from}</span
 			>
-			<span
-				aria-hidden="true"
-				style="
-        flex-shrink: 0;
-        color: var(--color-text-muted);
-      "
-				>→</span
-			>
-			<span
-				style="
-        flex-shrink: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      "
+			<span aria-hidden="true" class="shrink-0 text-text-muted">→</span>
+			<span class="shrink-0 overflow-hidden text-ellipsis whitespace-nowrap"
 				>{rename.to}</span
 			>
 		{:else}
-			<span
-				style="
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      "
+			<span class="overflow-hidden text-ellipsis whitespace-nowrap"
 				>{displayName ?? file.path}</span
 			>
 		{/if}
@@ -162,16 +111,8 @@ let badgeBg = $derived(
 			type="button"
 			onclick={(e) => { e.stopPropagation(); onaction(); }}
 			aria-label={actionLabel === '+' ? 'Stage file' : 'Unstage file'}
-			style="
-        background: none;
-        border: none;
-        cursor: pointer;
-        color: {actionLabel === '+' ? 'var(--color-success)' : 'var(--color-danger)'};
-        display: flex;
-        align-items: center;
-        padding: 0 var(--space-1);
-        line-height: var(--leading-none);
-      "
+			class="bg-transparent border-none cursor-pointer flex items-center py-0 px-1 leading-none"
+			style:color={actionLabel === '+' ? 'var(--color-success)' : 'var(--color-danger)'}
 		>
 			{#if actionLabel === '+'}
 				<Plus size={11} />
@@ -181,3 +122,9 @@ let badgeBg = $derived(
 		</button>
 	{/if}
 </div>
+
+<style>
+.path-min {
+	min-width: 2ch;
+}
+</style>

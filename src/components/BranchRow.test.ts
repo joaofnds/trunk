@@ -133,10 +133,10 @@ describe("BranchRow visibility toggle target size", () => {
 			props: { name: "topic", hidden: false, ontogglevisibility: vi.fn() },
 		});
 
-		expect(screen.getByLabelText("Hide topic")).toHaveStyle({
-			minWidth: "var(--target-min)",
-			minHeight: "var(--target-min)",
-		});
+		expect(screen.getByLabelText("Hide topic")).toHaveClass(
+			"min-w-target",
+			"min-h-target",
+		);
 	});
 });
 
@@ -277,19 +277,17 @@ describe("BranchRow keyboard reachability", () => {
 // the row's own margin and padding push content in, and the eye's negative margin
 // pulls it back out by the same amount. Nothing here reads as an edge position, so
 // a change to any one of the three moves the eye and no other test notices. Both
-// are read off the style attribute because jsdom resolves a var() padding to "0".
+// are read off the class list because jsdom lays nothing out.
 describe("BranchRow eye alignment", () => {
 	it("insets the row by --space-2 on the right", () => {
 		render(BranchRow, {
 			props: { name: "topic", hidden: true, ontogglevisibility: vi.fn() },
 		});
 
-		const style = screen
-			.getByRole("button", { name: "topic" })
-			.getAttribute("style");
-
-		expect(style).toContain("margin: 0 var(--space-2)");
-		expect(style).toContain("padding: 0 var(--space-2)");
+		expect(screen.getByRole("button", { name: "topic" })).toHaveClass(
+			"mx-2",
+			"px-2",
+		);
 	});
 
 	it("pulls the eye back out of that inset so it sits on the shared edge", () => {
@@ -297,9 +295,9 @@ describe("BranchRow eye alignment", () => {
 			props: { name: "topic", hidden: true, ontogglevisibility: vi.fn() },
 		});
 
-		expect(
-			screen.getByTestId("branch-row-visibility-btn").getAttribute("style"),
-		).toContain("margin-right: calc(-1 * var(--space-2))");
+		expect(screen.getByTestId("branch-row-visibility-btn")).toHaveClass(
+			"-mr-2",
+		);
 	});
 });
 

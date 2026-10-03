@@ -62,8 +62,7 @@ function autofocus(node: HTMLElement) {
 		oncancel={handleCancel}
 	>
 		<textarea
-			class="w-full rounded text-body"
-			style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 200px;"
+			class="w-full rounded text-body bg-bg border border-border text-text p-2 resize-y message-textarea"
 			bind:value={text}
 			onkeydown={handleKeydown}
 			use:autofocus
@@ -75,3 +74,9 @@ function autofocus(node: HTMLElement) {
 		</div>
 	</Dialog>
 {/if}
+
+<style>
+.message-textarea {
+	min-height: calc(50 * var(--u));
+}
+</style>

@@ -47,18 +47,9 @@ let allHidden = $derived(groupState === "all");
 		tabindex="0"
 		onclick={ontoggle}
 		onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') ontoggle(); }}
-		style="
-      height: var(--bar-h);
-      padding: 0 var(--space-2) 0 var(--space-3);
-      display: flex;
-      flex-direction: row;
-      align-items: center;
-      cursor: pointer;
-    "
+		class="h-bar py-0 pr-2 pl-3 flex flex-row items-center cursor-pointer"
 	>
-		<span
-			style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: var(--space-1);"
-		>
+		<span class="text-text-muted inline-flex items-center mr-1">
 			{#if expanded}
 				<ChevronDown size={12} />
 			{:else}
@@ -66,7 +57,7 @@ let allHidden = $derived(groupState === "all");
 			{/if}
 		</span>
 		<span
-			style="color: var(--color-text-muted); font-size: var(--text-caption); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-widest); text-transform: uppercase; flex: 1;"
+			class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1"
 		>
 			{`${label} (${count})`}
 		</span>
@@ -75,7 +66,7 @@ let allHidden = $derived(groupState === "all");
 				type="button"
 				data-testid="branch-section-create-btn"
 				onclick={(e) => { e.stopPropagation(); oncreate?.(); }}
-				style="color: var(--color-text); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
+				class="text-text bg-transparent border-none cursor-pointer p-0 min-w-target min-h-target inline-flex items-center justify-center"
 				aria-label={createLabel}
 			>
 				<Plus size={12} />
@@ -86,7 +77,7 @@ let allHidden = $derived(groupState === "all");
 				type="button"
 				data-testid="branch-section-visibility-btn"
 				onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
-				style="color: var(--color-text-muted); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
+				class="text-text-muted bg-transparent border-none cursor-pointer p-0 min-w-target min-h-target inline-flex items-center justify-center"
 				aria-label="{visibilityVerb(allHidden)} all {label} refs"
 				data-group-state={groupState}
 			>

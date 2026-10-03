@@ -64,46 +64,24 @@ let commentTone = $derived(
 	onclick={ontoggle}
 	onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ontoggle(); } }}
 	oncontextmenu={(e) => { if (oncontextmenu) { e.preventDefault(); oncontextmenu(e); } }}
-	style="
-    height: var(--row-h);
-    padding: 0 var(--space-2) 0 {treeIndent(depth)};
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    cursor: pointer;
-    background: {focused ? 'var(--color-selected-row)' : hovered ? 'var(--color-surface)' : 'transparent'};
-    color: var(--color-text);
-    font-size: var(--text-callout);
-  "
+	class="h-row flex items-center gap-1 cursor-pointer text-text text-callout"
+	style:padding="0 var(--space-2) 0 {treeIndent(depth)}"
+	style:background={focused ? 'var(--color-selected-row)' : hovered ? 'var(--color-surface)' : 'transparent'}
 >
-	<span
-		style="display: inline-flex; align-items: center; color: var(--color-text-muted); width: 12px; min-width: 12px;"
-	>
+	<span class="inline-flex items-center text-text-muted w-3 min-w-3">
 		{#if expanded}
 			<ChevronDown size={12} />
 		{:else}
 			<ChevronRight size={12} />
 		{/if}
 	</span>
-	<span
-		style="
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-weight: var(--weight-medium);
-  "
+	<span class="overflow-hidden text-ellipsis whitespace-nowrap font-medium"
 		>{node.name}</span
 	>
-	<span
-		style="
-    color: var(--color-text-muted);
-    font-size: var(--text-small);
-    font-weight: var(--weight-regular);
-    flex-shrink: 0;
-  "
+	<span class="text-text-muted text-small font-regular shrink-0"
 		>({fileCount})</span
 	>
-	<span style="flex: 1;"></span>
+	<span class="flex-1"></span>
 	{#if !expanded}
 		<CommentBadge count={commentCount} tone={commentTone} />
 	{/if}
@@ -112,16 +90,8 @@ let commentTone = $derived(
 			type="button"
 			onclick={(e) => { e.stopPropagation(); onaction(); }}
 			aria-label={actionLabel === '+' ? 'Stage directory' : 'Unstage directory'}
-			style="
-        background: none;
-        border: none;
-        cursor: pointer;
-        color: {actionLabel === '+' ? 'var(--color-success)' : 'var(--color-danger)'};
-        display: flex;
-        align-items: center;
-        padding: 0 var(--space-1);
-        line-height: var(--leading-none);
-      "
+			class="bg-transparent border-none cursor-pointer flex items-center py-0 px-1 leading-none"
+			style:color={actionLabel === '+' ? 'var(--color-success)' : 'var(--color-danger)'}
 		>
 			{#if actionLabel === '+'}
 				<Plus size={11} />

@@ -180,32 +180,16 @@ function isLoaded(diff: FileDiff | undefined): boolean {
      `clip`, not `hidden`: a hidden overflow is still a scroll container that
      scrollIntoView and scroll chaining can move, and WebKit hands it a phantom
      scroll range the size of the rendered pane's content (TRUNK-127). -->
-<div
-	style="flex: 1; overflow: clip; min-height: 0; position: relative; container-type: inline-size; overscroll-behavior-x: none;"
->
+<div class="flex-1 overflow-clip min-h-0 relative @container overscroll-x-none">
 	{#if fileDiffs.length === 0 && commitDetail === null && !loading && !payloadStale && !loadError}
 		<div
-			style="
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--color-text-muted);
-      font-size: var(--text-body);
-    "
+			class="flex-1 flex items-center justify-center text-text-muted text-body"
 		>
 			Select a file or commit to view its diff
 		</div>
 	{:else if emptyCommit}
 		<div
-			style="
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--color-text-muted);
-      font-size: var(--text-body);
-    "
+			class="flex-1 flex items-center justify-center text-text-muted text-body"
 		>
 			Empty commit — no changes
 		</div>
@@ -228,7 +212,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 		/>
 	{:else if loadError}
 		<div
-			style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); color: var(--color-text-muted); font-size: var(--text-body);"
+			class="h-full flex flex-col items-center justify-center gap-2 text-text-muted text-body"
 		>
 			<span>Could not load diff</span>
 			<span>{loadError}</span>
@@ -240,7 +224,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 		</div>
 	{:else if (loading || payloadStale) && !hasContent}
 		<div
-			style="height: 100%; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); font-size: var(--text-body);"
+			class="h-full flex items-center justify-center text-text-muted text-body"
 		>
 			Loading diff…
 		</div>

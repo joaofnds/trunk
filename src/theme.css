@@ -67,6 +67,7 @@
 	--shadow-sm: var(--shadow-sm);
 	--shadow-md: var(--shadow-md);
 	--shadow-lg: var(--shadow-lg);
+	--shadow-hairline: var(--shadow-hairline);
 
 	/* ── Motion ── */
 	--default-transition-duration: var(--duration-fast);

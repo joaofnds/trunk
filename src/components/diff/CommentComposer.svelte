@@ -296,7 +296,8 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 			type="button"
 			class="composer-btn submit-btn"
 			disabled={submitDisabled}
-			style="cursor: {submitDisabled ? 'not-allowed' : 'pointer'}; opacity: {submitDisabled ? 0.4 : 1};"
+			style:cursor={submitDisabled ? 'not-allowed' : 'pointer'}
+			style:opacity={submitDisabled ? 0.4 : 1}
 			onclick={handleSubmit}
 			>Submit</button
 		>

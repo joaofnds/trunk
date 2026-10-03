@@ -728,12 +728,12 @@ $effect(() => {
 });
 </script>
 
-<div class="flex flex-col h-screen" style="background: var(--color-bg);">
+<div class="flex flex-col h-screen bg-bg">
 	<!-- LAYOUT-02: unified title bar + toolbar -->
 	<div
 		data-tauri-drag-region
-		class="flex items-center flex-shrink-0"
-		style="height: var(--topbar-h); background: var(--color-surface); box-shadow: inset 0 -1px 0 var(--color-border); padding-left: {isFullscreen ? 0 : 78 / zoomLevel}px;"
+		class="flex items-center flex-shrink-0 h-topbar bg-surface shadow-hairline"
+		style:padding-left="{isFullscreen ? 0 : 78 / zoomLevel}px"
 	>
 		<TabBar
 			{tabs}
@@ -764,10 +764,12 @@ $effect(() => {
 		{/if}
 	</div>
 
-	<div style="flex: 1; overflow: hidden; position: relative;">
+	<div class="flex-1 overflow-hidden relative">
 		{#each tabs as tab (tab.id)}
 			<div
-				style="position: absolute; inset: 0; display: flex; flex-direction: column; {tab.id !== activeTabId ? 'visibility: hidden; pointer-events: none;' : ''}"
+				class="absolute inset-0 flex flex-col"
+				class:invisible={tab.id !== activeTabId}
+				class:pointer-events-none={tab.id !== activeTabId}
 			>
 				{#if tab.repoPath}
 					{#if diffContentModeLoaded}
@@ -800,7 +802,7 @@ $effect(() => {
 						<div
 							role="status"
 							aria-label="Loading repository"
-							style="flex: 1; display: flex; align-items: center; justify-content: center; color: var(--color-text-subtle); font-size: var(--text-body);"
+							class="flex-1 flex items-center justify-center text-text-subtle text-body"
 						>
 							Loading repository…
 						</div>

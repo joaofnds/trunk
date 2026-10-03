@@ -716,56 +716,25 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 
 <aside
 	data-testid="branch-sidebar"
-	style="
-  width: 100%;
-  min-width: 0;
-  background: var(--color-surface);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-"
+	class="w-full min-w-0 bg-surface flex flex-col overflow-hidden"
 >
 	<!-- Search input (sticky at top) -->
-	<div
-		style="padding: var(--space-2); box-shadow: inset 0 -1px 0 var(--color-border);"
-	>
+	<div class="p-2 shadow-hairline">
 		<div
-			style="
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      height: var(--control-lg-h);
-      padding: 0 var(--space-3);
-      background: var(--color-bg);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius);
-    "
+			class="flex items-center gap-2 h-control-lg py-0 px-3 bg-bg border border-border rounded"
 		>
-			<Search
-				size={12}
-				color="var(--color-text-subtle)"
-				style="flex-shrink: 0;"
-			/>
+			<Search size={12} color="var(--color-text-subtle)" class="shrink-0" />
 			<input
 				type="text"
 				placeholder="Filter branches…"
 				bind:value={search}
-				style="
-          flex: 1;
-          min-width: 0;
-          height: 100%;
-          background: transparent;
-          border: none;
-          color: var(--color-text-muted);
-          font-size: var(--text-callout);
-          outline: none;
-        "
+				class="flex-1 min-w-0 h-full bg-transparent border-none text-text-muted text-callout outline-none"
 			>
 		</div>
 	</div>
 
 	<!-- Sections (scrollable) -->
-	<div style="flex: 1; overflow-y: auto;">
+	<div class="flex-1 overflow-y-auto">
 		<!-- Local branches (expanded by default, show + button) -->
 		{#if loading || filteredLocal.length > 0 || (refs?.local.length ?? 0) > 0}
 			<BranchSection
@@ -781,37 +750,21 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
         )}
 			>
 				{#if showCreateInput}
-					<div style="padding: var(--space-1) var(--space-2) var(--space-1);">
+					<div class="py-1 px-2">
 						<input
 							data-testid="branch-create-input"
 							type="text"
 							placeholder="New branch name"
 							bind:value={newBranchName}
 							use:autoFocus
-							style="
-                width: 100%;
-                box-sizing: border-box;
-                background: var(--color-bg);
-                border: 1px solid var(--color-accent);
-                box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 18%, transparent);
-                color: var(--color-text-strong);
-                font-size: var(--text-callout);
-                padding: var(--space-1) var(--space-2);
-                height: var(--control-lg-h);
-                border-radius: var(--radius);
-                outline: none;
-              "
+							class="w-full box-border bg-bg border border-accent create-input-ring text-text-strong text-callout py-1 px-2 h-control-lg rounded outline-none"
 							onkeydown={(e) => {
                 if (e.key === 'Enter') handleCreateBranch();
                 if (e.key === 'Escape') { showCreateInput = false; newBranchName = ''; createError = null; }
               }}
 						>
 						{#if createError}
-							<div
-								class="error-text"
-								style="font-size: var(--text-small); margin-top: var(--space-1);"
-								>{createError}</div
-							>
+							<div class="error-text text-small mt-1">{createError}</div>
 						{/if}
 					</div>
 				{/if}
@@ -965,7 +918,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 					<Archive
 						size={12}
 						color="var(--color-text-subtle)"
-						style="flex-shrink: 0;"
+						class="shrink-0"
 					/>
 					<span class="stash-index">{stash.short_name}</span>
 					<span class="stash-message" title={stash.name}>{stash.name}</span>
@@ -1084,5 +1037,9 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 
 .error-text {
 	color: var(--color-danger);
+}
+.create-input-ring {
+	box-shadow: 0 0 0 3px
+		color-mix(in oklch, var(--color-accent) 18%, transparent);
 }
 </style>

@@ -39,7 +39,7 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 			class:clamped={bodyClamped}
 			data-testid="commit-body"
 			data-clamped={bodyClamped}
-			style="--body-clamp-lines: {BODY_CLAMP_LINES};"
+			style:--body-clamp-lines={BODY_CLAMP_LINES}
 			>{body}</div
 		>
 		{#if bodyExpandable}

@@ -13,7 +13,9 @@ let { name, size = 18 }: Props = $props();
 <span
 	class="avatar"
 	aria-hidden="true"
-	style="width: {size}px; height: {size}px; font-size: {Math.round(size * 0.5)}px;"
+	style:width="{size}px"
+	style:height="{size}px"
+	style:font-size="{Math.round(size * 0.5)}px"
 	>{initials(name)}</span
 >
 

@@ -84,24 +84,13 @@ function rowLabel(file: TrackedFile): string {
      hack. The UA's fit-content size and margins would centre the box instead. -->
 <dialog
 	bind:this={dialogEl}
-	class="fixed inset-0 flex flex-col items-center backdrop:bg-backdrop"
-	style="width: auto; height: auto; max-width: none; max-height: none; margin: 0; padding: 0; border: none; background: transparent;"
+	class="fixed inset-0 flex flex-col items-center backdrop:bg-backdrop w-auto h-auto max-w-none max-h-none m-0 p-0 border-none bg-transparent"
 	aria-label="Comment on a file"
 	oncancel={onclose}
 >
-	<div style="flex: 1 1 0;" aria-hidden="true"></div>
+	<div class="flex-1" aria-hidden="true"></div>
 	<div
-		class="flex flex-col rounded"
-		style="
-      background: var(--color-surface-raised);
-      border: 1px solid var(--color-border);
-      box-shadow: var(--shadow-2);
-      width: 520px;
-      max-height: 60vh;
-      overflow: hidden;
-      position: relative;
-      flex: 0 1 auto;
-    "
+		class="flex flex-col rounded bg-surface-raised border border-border shadow-lg finder-box overflow-hidden relative flex-initial"
 	>
 		<input
 			type="text"
@@ -114,22 +103,14 @@ function rowLabel(file: TrackedFile): string {
 			oninput={handleInput}
 			onkeydown={handleKeydown}
 			use:autofocus
-			style="
-        background: var(--color-bg);
-        border: none;
-        border-bottom: 1px solid var(--color-border);
-        color: var(--color-text);
-        padding: var(--space-3);
-        font-size: var(--text-body);
-        outline: none;
-      "
+			class="bg-bg border-none border-b border-border text-text p-3 text-body outline-none"
 		>
 
 		<div
 			id="file-finder-list"
 			role="listbox"
 			aria-label="Tracked files"
-			style="flex: 1; min-height: 0; overflow-y: auto;"
+			class="flex-1 min-h-0 overflow-y-auto"
 		>
 			{#each matches as file, i (file.path)}
 				<button
@@ -137,52 +118,27 @@ function rowLabel(file: TrackedFile): string {
 					role="option"
 					aria-selected={i === selectedIndex}
 					aria-label={rowLabel(file)}
-					class="flex items-center w-full"
+					class="flex items-center w-full gap-2 py-2 px-3 text-callout cursor-pointer text-left border-none text-text"
 					onclick={() => onselect(file.path)}
-					style="
-              gap: var(--space-2);
-              padding: var(--space-2) var(--space-3);
-              font-size: var(--text-callout);
-              cursor: pointer;
-              text-align: left;
-              border: none;
-              color: var(--color-text);
-              background: {i === selectedIndex ? 'var(--color-selected-row)' : 'transparent'};
-            "
+					style:background={i === selectedIndex ? 'var(--color-selected-row)' : 'transparent'}
 				>
 					{#if file.changed}
 						<span
 							aria-hidden="true"
-							style="
-                width: 6px;
-                height: 6px;
-                border-radius: 50%;
-                flex-shrink: 0;
-                background: var(--color-accent);
-              "
+							class="dot-slot dot rounded-full shrink-0 bg-accent"
 						></span>
 					{:else}
-						<span aria-hidden="true" style="width: 6px; flex-shrink: 0;"></span>
+						<span aria-hidden="true" class="dot-slot shrink-0"></span>
 					{/if}
-					<span
-						style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
-					>
+					<span class="overflow-hidden text-ellipsis whitespace-nowrap">
 						{file.path}
 					</span>
 					{#if (commentCounts.get(file.path) ?? 0) > 0}
 						<span
-							class="finder-comment-count"
+							class="finder-comment-count ml-auto shrink-0 py-0 px-1 rounded text-on-accent text-small"
 							role="img"
 							aria-label="{commentCounts.get(file.path)} review comments"
-							style="
-                  margin-left: auto;
-                  flex-shrink: 0;
-                  padding: 0 var(--space-1);
-                  border-radius: var(--radius);
-                  background: var(--color-thread-{commentTones.get(file.path) ?? 'open'});
-                  color: var(--color-on-accent);
-                  font-size: var(--text-small);
-                "
+							style:background="var(--color-thread-{commentTones.get(file.path) ?? 'open'})"
 							>{commentCounts.get(file.path)}</span
 						>
 					{/if}
@@ -190,14 +146,26 @@ function rowLabel(file: TrackedFile): string {
 			{/each}
 
 			{#if matches.length === 0}
-				<div
-					role="presentation"
-					style="padding: var(--space-3); font-size: var(--text-callout); color: var(--color-text-muted);"
-				>
+				<div role="presentation" class="p-3 text-callout text-text-muted">
 					No tracked file matches
 				</div>
 			{/if}
 		</div>
 	</div>
-	<div style="flex: 3 1 0;" aria-hidden="true"></div>
+	<div class="flex-3" aria-hidden="true"></div>
 </dialog>
+
+<style>
+.finder-box {
+	width: calc(130 * var(--u));
+	max-height: 60vh;
+}
+
+.dot-slot {
+	width: 6px;
+}
+
+.dot {
+	height: 6px;
+}
+</style>

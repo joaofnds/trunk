@@ -76,20 +76,18 @@ function autofocus(node: HTMLElement) {
 		<div class="mb-3">
 			<label
 				for="input-dialog-{field.key}"
-				class="block text-callout mb-1"
-				style="color: var(--color-text-muted);"
+				class="block text-callout mb-1 text-text-muted"
 			>
 				{field.label}
 				{#if field.required}
-					<span style="color: var(--color-accent);"> *</span>
+					<span class="text-accent"> *</span>
 				{/if}
 			</label>
 			{#if field.multiline}
 				{#if i === 0}
 					<textarea
 						id="input-dialog-{field.key}"
-						class="w-full rounded text-body"
-						style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 60px;"
+						class="w-full rounded text-body bg-bg border border-border text-text p-2 resize-y field-textarea"
 						placeholder={field.placeholder ?? ''}
 						bind:value={values[field.key]}
 						onkeydown={handleKeydown}
@@ -98,8 +96,7 @@ function autofocus(node: HTMLElement) {
 				{:else}
 					<textarea
 						id="input-dialog-{field.key}"
-						class="w-full rounded text-body"
-						style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 60px;"
+						class="w-full rounded text-body bg-bg border border-border text-text p-2 resize-y field-textarea"
 						placeholder={field.placeholder ?? ''}
 						bind:value={values[field.key]}
 						onkeydown={handleKeydown}
@@ -110,8 +107,7 @@ function autofocus(node: HTMLElement) {
 					<input
 						id="input-dialog-{field.key}"
 						type="text"
-						class="w-full rounded text-body"
-						style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2);"
+						class="w-full rounded text-body bg-bg border border-border text-text p-2"
 						placeholder={field.placeholder ?? ''}
 						bind:value={values[field.key]}
 						onkeydown={handleKeydown}
@@ -121,8 +117,7 @@ function autofocus(node: HTMLElement) {
 					<input
 						id="input-dialog-{field.key}"
 						type="text"
-						class="w-full rounded text-body"
-						style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2);"
+						class="w-full rounded text-body bg-bg border border-border text-text p-2"
 						placeholder={field.placeholder ?? ''}
 						bind:value={values[field.key]}
 						onkeydown={handleKeydown}
@@ -139,3 +134,9 @@ function autofocus(node: HTMLElement) {
 		</Button>
 	</div>
 </Dialog>
+
+<style>
+.field-textarea {
+	min-height: calc(15 * var(--u));
+}
+</style>

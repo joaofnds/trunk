@@ -218,7 +218,7 @@ function handleKeydown(e: KeyboardEvent) {
 	role={treeMode ? 'tree' : 'list'}
 	tabindex="0"
 	onkeydown={handleKeydown}
-	style="flex: 1; overflow-y: auto; min-height: 0; outline: none;"
+	class="flex-1 overflow-y-auto min-h-0 outline-none"
 >
 	{#each flatRows as row, i (row.type === 'file' ? row.node.path : `dir:${row.node.path}`)}
 		{#if row.type === 'directory'}

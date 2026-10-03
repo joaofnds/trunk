@@ -56,51 +56,20 @@ function autofocus(node: HTMLElement) {
 
 <div
 	transition:slide={{ duration: 150, axis: 'y' }}
-	style="
-    position: absolute;
-    top: 0;
-    right: 8px;
-    z-index: 10;
-    width: 300px;
-    height: var(--control-lg-h);
-    background: var(--color-surface-raised);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-md);
-    display: flex;
-    align-items: center;
-    padding: 0 var(--space-2);
-    gap: var(--space-1);
-  "
+	class="absolute top-0 right-2 z-10 search-bar h-control-lg bg-surface-raised border border-border rounded shadow-md flex items-center py-0 px-2 gap-1"
 >
 	<input
-		class="search-bar-input"
+		class="search-bar-input flex-1 border-none bg-transparent text-body text-text outline-none min-w-0"
 		type="text"
 		placeholder="Search commits…"
 		bind:value={inputValue}
 		oninput={handleInput}
 		onkeydown={handleKeydown}
 		use:autofocus
-		style="
-      flex: 1;
-      border: none;
-      background: transparent;
-      font-size: var(--text-body);
-      color: var(--color-text);
-      outline: none;
-      min-width: 0;
-    "
 	>
 
 	{#if query.length > 0}
-		<span
-			style="
-        flex-shrink: 0;
-        font-size: var(--text-small);
-        color: var(--color-text-muted);
-        white-space: nowrap;
-      "
-		>
+		<span class="shrink-0 text-small text-text-muted whitespace-nowrap">
 			{#if totalMatches > 0}
 				{`${currentIndex + 1} of ${totalMatches}`}
 			{:else}
@@ -141,3 +110,9 @@ function autofocus(node: HTMLElement) {
 		<X size={14} />
 	</Button>
 </div>
+
+<style>
+.search-bar {
+	width: calc(75 * var(--u));
+}
+</style>

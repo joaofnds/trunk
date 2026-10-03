@@ -87,8 +87,7 @@ describe("DiffViewer's wrapper", () => {
 		});
 		const pane = container.querySelector(".rendered-diff");
 		expect(pane).not.toBeNull();
-		const wrapper = pane?.parentElement as HTMLElement;
-		expect(wrapper.getAttribute("style")).toContain("overflow: clip");
+		expect(pane?.parentElement).toHaveClass("overflow-clip");
 	});
 
 	it("hands the selected file's old path to the rendered view", () => {
@@ -147,8 +146,7 @@ describe("DiffViewer's wrapper", () => {
 
 	it("is clipped around the source view too", () => {
 		const { container } = render(DiffViewer, { props: baseProps });
-		const wrapper = container.firstElementChild as HTMLElement;
-		expect(wrapper.getAttribute("style")).toContain("overflow: clip");
+		expect(container.firstElementChild).toHaveClass("overflow-clip");
 	});
 });
 

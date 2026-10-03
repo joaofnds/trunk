@@ -45,19 +45,9 @@ let allHidden = $derived(groupState === "all");
 	<!-- Remote name sub-header -->
 	<div
 		data-testid="remote-group-subheader"
-		style="
-    height: var(--bar-h);
-    padding: 0 var(--space-2) 0 var(--space-4);
-    font-size: var(--text-small);
-    color: var(--color-text-subtle);
-    font-weight: var(--weight-medium);
-    font-family: var(--font-mono);
-    display: flex;
-    align-items: center;
-  "
+		class="h-bar py-0 pr-2 pl-4 text-small text-text-subtle font-medium font-mono flex items-center"
 	>
-		<span
-			style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;"
+		<span class="flex-1 min-w-0 overflow-hidden text-ellipsis"
 			>{remoteName}</span
 		>
 		{#if ontogglevisibility}
@@ -65,7 +55,7 @@ let allHidden = $derived(groupState === "all");
 				type="button"
 				data-testid="remote-group-visibility-btn"
 				onclick={() => ontogglevisibility?.()}
-				style="flex-shrink: 0; color: var(--color-text-subtle); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
+				class="shrink-0 text-text-subtle bg-transparent border-none cursor-pointer p-0 min-w-target min-h-target inline-flex items-center justify-center"
 				aria-label="{visibilityVerb(allHidden)} all {remoteName} branches"
 				data-group-state={groupState}
 			>
@@ -77,7 +67,7 @@ let allHidden = $derived(groupState === "all");
 	<!-- Branch rows for this remote -->
 	{#each branches as branch (branch)}
 		{@const fullName = `${remoteName}/${branch}`}
-		<div style="padding-left: var(--space-3); overflow: hidden;">
+		<div class="pl-3 overflow-hidden">
 			<BranchRow
 				name={branch}
 				kind="remote"

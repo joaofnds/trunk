@@ -145,8 +145,7 @@ $effect(() => {
 	     preflight margin reset wipes, then the top margin drops it. -->
 	<dialog
 		bind:this={dialogEl}
-		class="fixed inset-x-0 top-0 mx-auto flex flex-col rounded overflow-hidden backdrop:bg-backdrop"
-		style="width: 480px; max-width: 90vw; height: fit-content; margin-top: var(--dialog-drop); padding: 0; background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
+		class="fixed inset-x-0 top-0 mx-auto flex flex-col rounded overflow-hidden backdrop:bg-backdrop w-dialog-max picker h-fit p-0 bg-surface border border-border text-text"
 		aria-label="Open a recent repository"
 		oncancel={onclose}
 	>
@@ -156,26 +155,20 @@ $effect(() => {
 			onkeydown={handleKeydown}
 			aria-label="Search recent repositories"
 			placeholder="Search recent repositories"
-			class="w-full px-3 py-2 text-body outline-none"
-			style="background: transparent; color: var(--color-text); border-bottom: 1px solid var(--color-border);"
+			class="w-full px-3 py-2 text-body outline-none bg-transparent text-text border-b border-border"
 		>
 
 		{#if loading}
 		<!-- intentionally empty body while pruning -->
 		{:else if recents.length === 0}
 			<div class="flex flex-col items-center gap-3 px-4 py-6">
-				<p class="text-body" style="color: var(--color-text-muted);"
-					>No recent repositories</p
-				>
+				<p class="text-body text-text-muted">No recent repositories</p>
 				<Button variant="primary" size="lg" onclick={handleOpenDialog}>
 					Open Repository
 				</Button>
 			</div>
 		{:else if filtered.length === 0}
-			<div
-				class="px-4 py-6 text-body text-center"
-				style="color: var(--color-text-muted);"
-			>
+			<div class="px-4 py-6 text-body text-center text-text-muted">
 				No matches
 			</div>
 		{:else}
@@ -192,25 +185,24 @@ $effect(() => {
 						role="option"
 						aria-selected={idx === highlightedIdx}
 						class="px-3 py-2 cursor-pointer flex flex-col gap-1 text-left w-full"
-						style="background: {idx === highlightedIdx
-                ? 'var(--color-hover)'
-                : 'transparent'};"
+						style:background={idx === highlightedIdx ? 'var(--color-hover)' : 'transparent'}
 						onmousemove={() => (highlightedIdx = idx)}
 						onclick={() => onpick(repo.path, repo.name)}
 					>
-						<span
-							class="text-body font-semibold truncate"
-							style="color: var(--color-text);"
+						<span class="text-body font-semibold truncate text-text"
 							>{repo.name}</span
 						>
-						<span
-							class="text-callout truncate"
-							style="color: var(--color-text-muted);"
-							>{dp}</span
-						>
+						<span class="text-callout truncate text-text-muted">{dp}</span>
 					</button>
 				{/each}
 			</div>
 		{/if}
 	</dialog>
 {/if}
+
+<style>
+.picker {
+	max-width: 90vw;
+	margin-top: var(--dialog-drop);
+}
+</style>

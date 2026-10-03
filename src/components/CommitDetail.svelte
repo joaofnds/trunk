@@ -153,38 +153,12 @@ let commitNotes = $derived(
 
 <div
 	data-testid="commit-detail"
-	style="
-  width: 100%;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-  background: var(--color-surface);
-"
+	class="w-full min-w-0 flex flex-col h-full overflow-hidden bg-surface"
 >
 	<!-- Toolbar -->
-	<div
-		style="
-    height: var(--bar-h);
-    box-shadow: inset 0 -1px 0 var(--color-border);
-    padding: 0 var(--space-2);
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-shrink: 0;
-  "
-	>
+	<div class="h-bar shadow-hairline py-0 px-2 flex items-center gap-2 shrink-0">
 		<span
-			style="
-      font-size: var(--text-small);
-      color: var(--color-text-muted);
-      font-family: var(--font-mono);
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    "
+			class="text-small text-text-muted font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
 		>
 			commit:
 			<span
@@ -236,7 +210,7 @@ let commitNotes = $derived(
 	</div>
 
 	<!-- Scrollable content -->
-	<div style="flex: 1; overflow-y: auto; min-height: 0;">
+	<div class="flex-1 overflow-y-auto min-h-0">
 		<!-- Commit message -->
 		<CommitMessage
 			summary={commitDetail.summary}
@@ -267,30 +241,17 @@ let commitNotes = $derived(
 
 		<!-- File list -->
 		<div>
-			<div
-				style="
-        height: var(--bar-h);
-        padding: 0 var(--space-3);
-        display: flex;
-        align-items: center;
-        box-shadow: inset 0 -1px 0 var(--color-border);
-        flex-shrink: 0;
-      "
-			>
-				<span
-					style="font-size: var(--text-callout); font-weight: var(--weight-medium); color: var(--color-text); flex: 1;"
-				>
+			<div class="h-bar py-0 px-3 flex items-center shadow-hairline shrink-0">
+				<span class="text-callout font-medium text-text flex-1">
 					{`${fileDiffs.length} file${fileDiffs.length === 1 ? '' : 's'} changed`}
 				</span>
 				{#if totalAdds > 0 || totalDels > 0}
-					<span
-						style="display: inline-flex; gap: var(--space-2); flex-shrink: 0; margin-right: var(--space-2); font-family: var(--font-mono); font-size: var(--text-caption);"
-					>
+					<span class="inline-flex gap-2 shrink-0 mr-2 font-mono text-caption">
 						{#if totalAdds > 0}
-							<span style="color: var(--color-diff-add);">+{totalAdds}</span>
+							<span class="text-diff-add">+{totalAdds}</span>
 						{/if}
 						{#if totalDels > 0}
-							<span style="color: var(--color-diff-delete);">−{totalDels}</span>
+							<span class="text-diff-delete">−{totalDels}</span>
 						{/if}
 					</span>
 				{/if}

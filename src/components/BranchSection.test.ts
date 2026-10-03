@@ -167,10 +167,10 @@ describe("BranchSection visibility toggle target size", () => {
 				children: emptySnippet,
 			},
 		});
-		expect(screen.getByLabelText("Hide all Branches refs")).toHaveStyle({
-			minWidth: "var(--target-min)",
-			minHeight: "var(--target-min)",
-		});
+		expect(screen.getByLabelText("Hide all Branches refs")).toHaveClass(
+			"min-w-target",
+			"min-h-target",
+		);
 	});
 });
 
@@ -191,14 +191,14 @@ describe("BranchSection trailing controls", () => {
 	};
 
 	// The right edge is what puts every row's eye in one column. It is read off the
-	// style attribute rather than getComputedStyle because jsdom returns "0" for any
-	// padding written as a var(), shorthand or longhand, so toHaveStyle cannot see it.
+	// class list rather than getComputedStyle because jsdom lays nothing out.
 	it("ends the header at the shared --space-2 edge", () => {
 		render(BranchSection, { props });
 
-		expect(
-			screen.getByTestId("branch-section-header").getAttribute("style"),
-		).toContain("padding: 0 var(--space-2) 0 var(--space-3)");
+		expect(screen.getByTestId("branch-section-header")).toHaveClass(
+			"pr-2",
+			"pl-3",
+		);
 	});
 
 	// The eye is anchored to the right edge. When a section provides a create button,

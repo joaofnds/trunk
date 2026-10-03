@@ -93,9 +93,7 @@ $effect(() => {
 			{#if tab.dirty}
 				<span class="dirty-dot"></span>
 			{/if}
-			<span class="truncate" style="max-width: 200px; flex: 1;"
-				>{tab.repoName || 'New Tab'}</span
-			>
+			<span class="truncate tab-label flex-1">{tab.repoName || 'New Tab'}</span>
 			<Button
 				icon
 				size="sm"
@@ -181,5 +179,8 @@ $effect(() => {
 
 :global(.tab-drag) {
 	opacity: 0;
+}
+.tab-label {
+	max-width: calc(50 * var(--u));
 }
 </style>
