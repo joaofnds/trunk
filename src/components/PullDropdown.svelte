@@ -88,7 +88,7 @@ $effect(() => {
        width, the same way it did out of the group's height. */
 	box-shadow: inset 1px 0 0 var(--line);
 	border-radius: 0 var(--radius) var(--radius) 0;
-	color: var(--fg-2);
+	color: var(--color-text-muted);
 	cursor: pointer;
 	font-size: 10px;
 	/* Narrower than the button it hangs off: this is that button's dropdown,

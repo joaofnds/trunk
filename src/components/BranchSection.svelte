@@ -57,7 +57,7 @@ let allHidden = $derived(groupState === "all");
     "
 	>
 		<span
-			style="color: var(--fg-2); display: inline-flex; align-items: center; margin-right: var(--space-1);"
+			style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: var(--space-1);"
 		>
 			{#if expanded}
 				<ChevronDown size={12} />
@@ -66,7 +66,7 @@ let allHidden = $derived(groupState === "all");
 			{/if}
 		</span>
 		<span
-			style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; flex: 1;"
+			style="color: var(--color-text-muted); font-size: 10px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; flex: 1;"
 		>
 			{`${label} (${count})`}
 		</span>
@@ -84,7 +84,7 @@ let allHidden = $derived(groupState === "all");
 			<button
 				data-testid="branch-section-visibility-btn"
 				onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
-				style="color: var(--fg-2); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
+				style="color: var(--color-text-muted); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
 				aria-label="{visibilityVerb(allHidden)} all {label} refs"
 				data-group-state={groupState}
 			>

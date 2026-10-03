@@ -208,7 +208,7 @@ const rowShadow = $derived(
 					>{#if parsed.prefix}
 						<span style="color: {prefixToneVar(parsed.prefix)};"
 							>{parsed.prefix}{parsed.scope}{parsed.bang}</span
-						><span style="color: var(--fg-2);">{": "}</span>{parsed.rest}
+						><span class="prefix-colon">{": "}</span>{parsed.rest}
 					{:else}
 						{commit.summary}
 					{/if}</span
@@ -338,3 +338,9 @@ const rowShadow = $derived(
 		</div>
 	{/if}
 </div>
+
+<style>
+.prefix-colon {
+	color: var(--color-text-muted);
+}
+</style>

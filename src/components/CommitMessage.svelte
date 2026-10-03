@@ -82,7 +82,7 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
      skip past, and it would leave the file list just as far down. */
 .commit-body {
 	font-size: 12px;
-	color: var(--fg-2);
+	color: var(--color-text-muted);
 	line-height: 1.6;
 	margin-top: var(--space-2);
 	/* Bodies arrive hard-wrapped at the author's terminal width, and some carry
@@ -115,7 +115,7 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 	border: 1px solid transparent;
 	border-radius: var(--radius);
 	background: var(--bg-2);
-	color: var(--fg-2);
+	color: var(--color-text-muted);
 	font-size: 11px;
 	font-family: inherit;
 	cursor: pointer;

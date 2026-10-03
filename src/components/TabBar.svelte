@@ -131,7 +131,7 @@ $effect(() => {
 	border-radius: var(--radius);
 	font-size: 12px;
 	font-weight: 500;
-	color: var(--fg-2);
+	color: var(--color-text-muted);
 	cursor: pointer;
 	white-space: nowrap;
 	flex-shrink: 0;
@@ -173,7 +173,7 @@ $effect(() => {
 	border-radius: var(--radius);
 	border: none;
 	background: none;
-	color: var(--fg-2);
+	color: var(--color-text-muted);
 	cursor: pointer;
 	padding: 0;
 	flex-shrink: 0;
@@ -201,7 +201,7 @@ $effect(() => {
 	outline: 1px dashed var(--line);
 	outline-offset: -1px;
 	background: none;
-	color: var(--fg-2);
+	color: var(--color-text-muted);
 	cursor: pointer;
 	padding: 0;
 	flex-shrink: 0;

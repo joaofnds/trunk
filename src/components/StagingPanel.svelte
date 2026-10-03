@@ -1067,7 +1067,7 @@ $effect(() => {
 						<AlertTriangle size={12} />
 					</span>
 					<span
-						style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
+						style="color: var(--color-text-muted); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
 					>
 						<span>Conflicted Files</span>
 						{@render sectionCount(status?.conflicted.length ?? 0)}
@@ -1152,7 +1152,7 @@ $effect(() => {
 							<AlertTriangle size={12} />
 						</span>
 						<span
-							style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-2);"
+							style="color: var(--color-text-muted); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-2);"
 						>
 							<span>Conflicted Files</span>
 							{@render sectionCount(status?.conflicted.length ?? 0)}
@@ -1181,7 +1181,7 @@ $effect(() => {
 						{/if}
 					{:else}
 						<span
-							style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
+							style="color: var(--color-text-muted); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
 						>
 							<span>Unstaged Files</span>
 							{@render sectionCount(status?.unstaged.length ?? 0)}
@@ -1306,7 +1306,7 @@ $effect(() => {
 					{/if}
 				</span>
 				<span
-					style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
+					style="color: var(--color-text-muted); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);"
 				>
 					<span>{isOperation ? 'Resolved Files' : 'Staged Files'}</span>
 					{@render sectionCount(status?.staged.length ?? 0)}

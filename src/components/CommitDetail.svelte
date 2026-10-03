@@ -370,7 +370,7 @@ let commitNotes = $derived(
 	height: var(--control-sm-h);
 	border-radius: var(--radius);
 	background: var(--bg-3);
-	color: var(--fg-2);
+	color: var(--color-text-muted);
 	border: 1px solid transparent;
 	cursor: pointer;
 	padding: 0;

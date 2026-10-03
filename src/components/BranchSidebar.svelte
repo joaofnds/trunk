@@ -749,7 +749,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
           height: 100%;
           background: transparent;
           border: none;
-          color: var(--fg-2);
+          color: var(--color-text-muted);
           font-size: 12px;
           outline: none;
         "
@@ -1059,7 +1059,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 }
 
 .stash-index {
-	color: var(--fg-2);
+	color: var(--color-text-muted);
 	font-family: var(--font-mono);
 	flex-shrink: 0;
 }
@@ -1068,7 +1068,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	color: var(--fg-2);
+	color: var(--color-text-muted);
 }
 
 .stash-error {
