@@ -514,10 +514,7 @@ let lastVisibleColumn = $derived.by(() => {
 		>
 			Action
 		</div>
-		<div
-			class="rebase-col flex-1 relative"
-			style="padding: 0 {COLUMN_PADDING_X}px;"
-		>
+		<div class="flex-1 relative" style="padding: 0 {COLUMN_PADDING_X}px;">
 			Message
 			{#if 'message' !== lastVisibleColumn}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -529,7 +526,7 @@ let lastVisibleColumn = $derived.by(() => {
 		</div>
 		{#if columnVisibility.sha}
 			<div
-				class="rebase-col flex-shrink-0 relative"
+				class="flex-shrink-0 relative"
 				style="width: {columnWidths.sha}px; padding: 0 {COLUMN_PADDING_X}px;"
 			>
 				SHA
@@ -544,7 +541,7 @@ let lastVisibleColumn = $derived.by(() => {
 		{/if}
 		{#if columnVisibility.author}
 			<div
-				class="rebase-col flex-shrink-0 relative"
+				class="flex-shrink-0 relative"
 				style="width: {columnWidths.author}px; padding: 0 {COLUMN_PADDING_X}px;"
 			>
 				Author
@@ -559,7 +556,7 @@ let lastVisibleColumn = $derived.by(() => {
 		{/if}
 		{#if columnVisibility.date}
 			<div
-				class="rebase-col flex-shrink-0 relative"
+				class="flex-shrink-0 relative"
 				style="width: {columnWidths.date}px; padding: 0 {COLUMN_PADDING_X}px;"
 			>
 				Date

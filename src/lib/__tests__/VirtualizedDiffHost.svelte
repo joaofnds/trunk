@@ -65,7 +65,7 @@ const vd =
 onready(vd);
 </script>
 
-<div class="host-pane" bind:this={vd.pane}>
+<div bind:this={vd.pane}>
 	<div
 		class="diff-line metrics-probe"
 		bind:this={vd.metricsProbe}

@@ -513,7 +513,7 @@ $effect(() => {
 				<span>Comment on a file…</span>
 			</button>
 		{/if}
-		<span class="preview-spacer" style="flex: 1;"></span>
+		<span class="flex-1"></span>
 		{#if activeReview && !activeReview.published}
 			<button
 				type="button"

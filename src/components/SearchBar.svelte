@@ -54,7 +54,6 @@ function autofocus(node: HTMLElement) {
 </script>
 
 <div
-	class="search-bar"
 	transition:slide={{ duration: 150, axis: 'y' }}
 	style="
     position: absolute;
