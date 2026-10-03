@@ -168,7 +168,7 @@ textarea::placeholder {
 	margin: 0.6em 0;
 	padding: 0 0.9em;
 	color: var(--color-text-muted);
-	border-left: 3px solid var(--color-md-blockquote-border);
+	border-left: 3px solid var(--color-border-strong);
 }
 .markdown-body hr {
 	height: 1px;

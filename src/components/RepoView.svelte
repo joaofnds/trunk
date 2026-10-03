@@ -2078,8 +2078,8 @@ function startRightResize(e: MouseEvent) {
 	background: linear-gradient(
 		to right,
 		transparent 1.5px,
-		var(--line-strong) 1.5px,
-		var(--line-strong) 2.5px,
+		var(--color-border-strong) 1.5px,
+		var(--color-border-strong) 2.5px,
 		transparent 2.5px
 	);
 	transition: background 0.15s;

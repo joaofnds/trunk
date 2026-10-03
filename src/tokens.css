@@ -129,6 +129,7 @@
 	--color-bg: var(--bg-0);
 	--color-surface: var(--bg-1);
 	--color-border: var(--line);
+	--color-border-strong: var(--line-strong);
 
 	/* Comment card — its own elevated surface so the card reads identically on
 	   every host (diff area sits on --bg-0, the review panel on --bg-1; --bg-2 is
@@ -240,7 +241,6 @@
 
 	/* Rendered-markdown prose (comment bodies + .md diff view). Three aliases
 	   onto the ramp; everything else reuses existing tokens directly. */
-	--color-md-blockquote-border: var(--line-strong);
 
 	/* File-status icon colors (FileRow status map) */
 	--color-status-new: var(--ok);
