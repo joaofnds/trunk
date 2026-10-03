@@ -175,3 +175,11 @@ Changed baselines:
     tests/visual/baselines/stash-lanes__08-multi-stash-dirty.png
     tests/visual/baselines/stash-lanes__17-no-stash-dirty.png
     tests/visual/baselines/stash-lanes__18-many-files.png
+
+## 2026-10-03
+
+first catalog baseline: the design catalog draws the tokens and the Button, LinkButton and ButtonGroup primitives, text masked
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png
