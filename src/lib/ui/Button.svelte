@@ -8,10 +8,9 @@ export type ButtonVariant =
 	| "success"
 	| "warning";
 export type ButtonSize = "sm" | "md" | "lg";
-/** An icon button may also be `xs`, the 16px square a tab's close takes. Text
- *  stays off it: a 13px line box leaves 3px in a 16px frame, which no split
- *  centers, where a 12px glyph leaves 2px each side. */
-export type IconButtonSize = ButtonSize | "xs";
+/** Only an icon button takes `xs`: a text button there puts a caption line box
+ *  in a 16px frame, where no split centers it. */
+type IconButtonSize = ButtonSize | "xs";
 </script>
 
 <script lang="ts">
@@ -20,9 +19,12 @@ import { tooltip as attachTooltip } from "../tooltip.js";
 
 type Sizing =
 	| { icon?: false; size?: ButtonSize }
-	/** Square, sized by its height, for a button whose only child is an icon.
-	 *  It still needs an aria-label: the icon gives it no accessible name. */
-	| { icon: true; size?: IconButtonSize };
+	| {
+			/** Square, sized by its height, for a button whose only child is an icon.
+			 *  It still needs an aria-label: the icon gives it no accessible name. */
+			icon: true;
+			size?: IconButtonSize;
+	  };
 
 type Props = Omit<HTMLButtonAttributes, "class" | "style"> &
 	Sizing & {

@@ -1,12 +1,14 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
-import { createRawSnippet } from "svelte";
-import { describe, expect, it, vi } from "vitest";
+import { type ComponentProps, createRawSnippet } from "svelte";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SHOW_DELAY_MS } from "../tooltip.js";
 import Button from "./Button.svelte";
 
 const label = createRawSnippet(() => ({ render: () => "<span>Save</span>" }));
 
 describe("Button", () => {
+	afterEach(() => vi.useRealTimers());
+
 	it("is a button that submits nothing unless told to", () => {
 		render(Button, { props: { children: label } });
 
@@ -78,6 +80,16 @@ describe("Button", () => {
 		);
 	});
 
+	it("keeps xs off a text button", () => {
+		// @ts-expect-error svelte-check fails here once Sizing lets a text button take xs
+		const textAtXs: ComponentProps<typeof Button> = {
+			size: "xs",
+			children: label,
+		};
+
+		expect(textAtXs.size).toBe("xs");
+	});
+
 	it("anchors a badge a caller places inside it", () => {
 		render(Button, { props: { children: label } });
 
@@ -128,6 +140,5 @@ describe("Button", () => {
 		vi.advanceTimersByTime(SHOW_DELAY_MS);
 
 		expect(document.querySelector(".tooltip-pop")).toHaveTextContent("Undo");
-		vi.useRealTimers();
 	});
 });
