@@ -72,7 +72,7 @@ const namedPart = /^(0|auto|var\(--[\w-]+\)|[\d.]+em|@(?:px)?)$/;
  *  It earns a place here because a full-bleed highlight has to negate it, and a
  *  negation is the one form a bare var() cannot take. */
 const onScaleCalc =
-	/calc\((?:\s|\d+|\*|\+|-|\/|\(|\)|var\(--(?:u|space-[0-6]|md-prose-inset|depth(?:,\s*0)?)\))+\)/g;
+	/calc\((?:\s|\d+|\*|\+|-|\/|\(|\)|var\(--(?:u|space-[0-6]|md-prose-inset)\))+\)/g;
 
 const mask = (value: string) =>
 	value.replace(/\{[^}]*\}/g, "@").replace(onScaleCalc, "@");
