@@ -57,6 +57,23 @@ describe("Toast", () => {
 		},
 	);
 
+	it.each([
+		["success", "bg-surface"],
+		["error", "bg-toast-error-bg"],
+	] as const)("paints the %s kind in its own tone", (kind, surface) => {
+		showToast("Toned", kind);
+		render(Toast);
+
+		expect(screen.getByRole("button", { name: "Toned" })).toHaveClass(surface);
+	});
+
+	it("lets the pointer reach a toast while the stack passes it through", () => {
+		showToast("Reach me", "success");
+		render(Toast);
+
+		expect(screen.getByRole("status")).toHaveClass("pointer-events-auto");
+	});
+
 	it("renders multiple toasts", () => {
 		showToast("First", "success");
 		showToast("Second", "error");

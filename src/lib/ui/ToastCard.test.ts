@@ -36,21 +36,32 @@ describe("ToastCard", () => {
 	it("paints as news unless a tone is named", () => {
 		render(ToastCard, { props: { children: message } });
 
+		const card = screen.getByRole("button");
+		expect(card).toHaveClass("bg-surface", "border-border", "text-text");
+		expect(card).not.toHaveClass("bg-toast-error-bg");
+	});
+
+	it("shows a pointer and the shared focus ring", () => {
+		render(ToastCard, { props: { children: message } });
+
 		expect(screen.getByRole("button")).toHaveClass(
-			"bg-surface",
-			"border-border",
-			"text-text",
+			"cursor-pointer",
+			"focus-visible:outline-2",
+			"focus-visible:outline-offset-1",
+			"focus-visible:outline-accent",
 		);
 	});
 
 	it("paints as a failure under the danger tone", () => {
 		render(ToastCard, { props: { tone: "danger", children: message } });
 
-		expect(screen.getByRole("button")).toHaveClass(
+		const card = screen.getByRole("button");
+		expect(card).toHaveClass(
 			"bg-toast-error-bg",
 			"border-danger-border",
 			"text-danger",
 		);
+		expect(card).not.toHaveClass("bg-surface");
 	});
 
 	it("reports a click to its caller", async () => {

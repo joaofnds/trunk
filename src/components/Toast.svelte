@@ -1,7 +1,12 @@
 <script lang="ts">
 import { fly } from "svelte/transition";
-import { dismissToast, toasts } from "../lib/toast.svelte.js";
-import ToastCard from "../lib/ui/ToastCard.svelte";
+import { dismissToast, type ToastKind, toasts } from "../lib/toast.svelte.js";
+import ToastCard, { type ToastTone } from "../lib/ui/ToastCard.svelte";
+
+const TONE: Record<ToastKind, ToastTone> = {
+	success: "neutral",
+	error: "danger",
+};
 </script>
 
 <div
@@ -13,10 +18,7 @@ import ToastCard from "../lib/ui/ToastCard.svelte";
 			class="pointer-events-auto"
 			transition:fly={{ y: 8, duration: 150 }}
 		>
-			<ToastCard
-				tone={toast.kind === 'error' ? 'danger' : 'neutral'}
-				onclick={() => dismissToast(toast.id)}
-			>
+			<ToastCard tone={TONE[toast.kind]} onclick={() => dismissToast(toast.id)}>
 				{toast.message}
 			</ToastCard>
 		</div>
