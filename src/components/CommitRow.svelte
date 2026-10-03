@@ -112,7 +112,7 @@ const wipFileBadges = $derived.by(() => {
 const reviewMarker = $derived(
 	[
 		inSession ? "inset 3px 0 0 var(--color-accent)" : "",
-		isPendingBase ? "inset 0 -3px 0 var(--color-review-pending-base)" : "",
+		isPendingBase ? "inset 0 -3px 0 var(--color-warning)" : "",
 	]
 		.filter(Boolean)
 		.join(", "),

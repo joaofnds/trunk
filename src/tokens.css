@@ -154,7 +154,6 @@
 	--color-backdrop: rgba(0, 0, 0, 0.5);
 
 	/* Code-review commit markers (Phase 66) */
-	--color-review-pending-base: var(--color-warning);
 
 	/* Thread state chip — aliases onto the already-audited ramp, so no new
 	   contrast audit is owed. */
