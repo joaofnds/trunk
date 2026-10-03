@@ -1,4 +1,5 @@
 <script lang="ts">
+import X from "@lucide/svelte/icons/x";
 import { open } from "@tauri-apps/plugin-dialog";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
@@ -9,6 +10,7 @@ import {
 	type RecentRepo,
 	removeRecentRepo,
 } from "../lib/store.js";
+import Button from "../lib/ui/Button.svelte";
 
 interface Props {
 	onopen: (path: string, name: string) => void;
@@ -96,14 +98,16 @@ async function handleRemoveRecent(path: string, event: MouseEvent) {
 				</div>
 			{/if}
 
-			<button
-				onclick={openRepository}
-				disabled={loading}
-				class="w-full rounded px-4 py-3 text-body font-medium transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-				style="background: var(--color-accent); color: var(--color-on-accent);"
-			>
-				{loading ? 'Opening...' : 'Open Repository'}
-			</button>
+			<div class="grid w-full">
+				<Button
+					variant="primary"
+					size="lg"
+					onclick={openRepository}
+					disabled={loading}
+				>
+					{loading ? 'Opening...' : 'Open Repository'}
+				</Button>
+			</div>
 		</div>
 
 		{#if displayedRepos.length > 0}
@@ -133,15 +137,20 @@ async function handleRemoveRecent(path: string, event: MouseEvent) {
 										>{dp.split('/').at(-1)}</span
 									>
 								</span>
-								<button
-									class="ml-2 flex-shrink-0 w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity text-callout"
-									style="color: var(--color-text-muted);"
-									onclick={(e) => handleRemoveRecent(repo.path, e)}
-									aria-label="Remove from recent"
-									title="Remove from recent"
+								<span
+									class="ml-2 flex shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
 								>
-									×
-								</button>
+									<Button
+										icon
+										size="sm"
+										variant="ghost"
+										aria-label="Remove from recent"
+										title="Remove from recent"
+										onclick={(e) => handleRemoveRecent(repo.path, e)}
+									>
+										<X size={12} />
+									</Button>
+								</span>
 							</div>
 						</li>
 					{/each}

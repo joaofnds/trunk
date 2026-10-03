@@ -111,6 +111,7 @@ import type {
 	StashEntry,
 	WipStats,
 } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
 import { withWipRow } from "../lib/wip-row.js";
 import CommitRow from "./CommitRow.svelte";
 import InputDialog from "./InputDialog.svelte";
@@ -2665,13 +2666,7 @@ $effect(() => {
 			{#if error && commits.length > 0}
 				<div class="flex items-center gap-3 px-4 py-2">
 					<span class="error-text text-body">{error}</span>
-					<button
-						onclick={() => void loadMore()}
-						class="rounded px-3 h-control text-callout font-medium"
-						style="background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
-					>
-						Retry
-					</button>
+					<Button onclick={() => void loadMore()}>Retry</Button>
 				</div>
 			{/if}
 		{/if}

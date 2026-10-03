@@ -99,4 +99,11 @@ describe("InputDialog", () => {
 		expect(screen.getByText("Create")).toBeInTheDocument();
 		expect(screen.getByText("Dismiss")).toBeInTheDocument();
 	});
+
+	it("draws the confirm as the primary action beside a plain cancel", () => {
+		render(InputDialog, { props: defaultProps });
+
+		expect(screen.getByText("OK")).toHaveClass("bg-accent");
+		expect(screen.getByText("Cancel")).toHaveClass("border-border");
+	});
 });

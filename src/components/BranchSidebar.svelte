@@ -34,6 +34,7 @@ import type {
 	RefsResponse,
 	StashEntry,
 } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
 import BranchRow from "./BranchRow.svelte";
 import BranchSection from "./BranchSection.svelte";
 import InputDialog from "./InputDialog.svelte";
@@ -937,12 +938,14 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 						disabled={stashSaving}
 						class="stash-name-input"
 					>
-					<button
+					<Button
+						size="sm"
+						variant="primary"
 						onclick={handleStashSave}
 						disabled={stashSaving}
-						class="stash-save-btn"
-						>{stashSaving ? 'Stashing…' : 'Stash'}</button
 					>
+						{stashSaving ? 'Stashing…' : 'Stash'}
+					</Button>
 				</div>
 				{#if stashCreateError}
 					<p class="stash-error">{stashCreateError}</p>
@@ -1008,20 +1011,6 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 	background: var(--color-bg);
 	border: 1px solid var(--color-border);
 	color: var(--color-text);
-	border-radius: var(--radius);
-}
-
-.stash-save-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	font-size: var(--text-small);
-	height: var(--control-sm-h);
-	padding: 0 var(--space-2);
-	cursor: pointer;
-	background: var(--color-accent);
-	color: var(--color-on-accent);
-	border: none;
 	border-radius: var(--radius);
 }
 

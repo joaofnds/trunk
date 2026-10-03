@@ -2624,7 +2624,9 @@ describe("CommitGraph", () => {
 			await flush();
 
 			expect(screen.getByText("page unavailable")).toBeInTheDocument();
-			expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: "Retry" })).toHaveClass(
+				"border-border",
+			);
 		});
 	});
 	// A rebuild replaces the whole commit list. It must ask the backend for as many

@@ -1,4 +1,6 @@
 <script lang="ts">
+import Button from "../lib/ui/Button.svelte";
+
 interface Props {
 	title: string;
 }
@@ -91,20 +93,8 @@ $effect(() => {
 		></textarea>
 
 		<div class="flex justify-end gap-2 mt-4">
-			<button
-				class="rounded px-3 h-control text-callout font-medium"
-				style="background: var(--color-surface-chip); border: 1px solid var(--color-border); color: var(--color-text);"
-				onclick={handleCancel}
-			>
-				Cancel
-			</button>
-			<button
-				class="rounded px-3 h-control text-callout font-medium"
-				style="background: var(--color-accent); color: var(--color-on-accent);"
-				onclick={handleSubmit}
-			>
-				Save
-			</button>
+			<Button onclick={handleCancel}>Cancel</Button>
+			<Button variant="primary" onclick={handleSubmit}>Save</Button>
 		</div>
 	</dialog>
 {/if}

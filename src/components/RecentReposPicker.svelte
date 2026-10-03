@@ -14,6 +14,7 @@ import {
 	type RecentRepo,
 	removeRecentRepo,
 } from "../lib/store.js";
+import Button from "../lib/ui/Button.svelte";
 
 interface Props {
 	open: boolean;
@@ -168,13 +169,9 @@ function handleBackdropClick() {
 					<p class="text-body" style="color: var(--color-text-muted);"
 						>No recent repositories</p
 					>
-					<button
-						onclick={handleOpenDialog}
-						class="rounded px-4 py-2 text-body font-medium cursor-pointer"
-						style="background: var(--color-accent); color: var(--color-on-accent);"
-					>
+					<Button variant="primary" size="lg" onclick={handleOpenDialog}>
 						Open Repository
-					</button>
+					</Button>
 				</div>
 			{:else if filtered.length === 0}
 				<div

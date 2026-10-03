@@ -56,6 +56,23 @@ describe("WelcomeScreen", () => {
 		expect(screen.getByText("Open Repository")).toBeInTheDocument();
 	});
 
+	it("draws Open Repository as the large primary action", () => {
+		render(WelcomeScreen, { props: { onopen: vi.fn() } });
+
+		expect(screen.getByText("Open Repository")).toHaveClass(
+			"bg-accent",
+			"h-control-lg",
+		);
+	});
+
+	it("keeps the remove control a small ghost icon that shows under the pointer", async () => {
+		await renderWithRecentRepo();
+
+		const remove = screen.getByLabelText("Remove from recent");
+		expect(remove).toHaveClass("w-control-sm", "bg-transparent");
+		expect(remove.parentElement).toHaveClass("group-hover:opacity-100");
+	});
+
 	it("lists every recent repo under a Recent heading", async () => {
 		vi.mocked(getRecentRepos).mockResolvedValue([
 			{ name: "trunk", path: "/Users/test/code/trunk" },

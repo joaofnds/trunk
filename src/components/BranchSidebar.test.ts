@@ -1183,4 +1183,15 @@ describe("BranchSidebar stash creation", () => {
 			await screen.findByText("Nothing to stash — stage changes first."),
 		).toBeInTheDocument();
 	});
+
+	it("draws Stash as the small primary action", async () => {
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+
+		await fireEvent.click(await screen.findByLabelText("Create new stash"));
+
+		expect(await screen.findByText("Stash")).toHaveClass(
+			"bg-accent",
+			"h-control-sm",
+		);
+	});
 });

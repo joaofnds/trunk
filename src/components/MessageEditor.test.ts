@@ -170,4 +170,13 @@ describe("MessageEditor", () => {
 
 		expect(screen.queryByRole("textbox")).toBeNull();
 	});
+
+	it("draws Save as the primary action beside a plain Cancel", async () => {
+		const { ref } = mount();
+
+		ref.open("");
+
+		expect(await screen.findByText("Save")).toHaveClass("bg-accent");
+		expect(screen.getByText("Cancel")).toHaveClass("border-border");
+	});
 });

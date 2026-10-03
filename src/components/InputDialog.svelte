@@ -18,6 +18,7 @@ interface Props {
 }
 
 import { untrack } from "svelte";
+import Button from "../lib/ui/Button.svelte";
 
 let {
 	title,
@@ -147,21 +148,10 @@ function autofocus(node: HTMLElement) {
 		{/each}
 
 		<div class="flex justify-end gap-2 mt-4">
-			<button
-				class="rounded px-3 h-control text-callout font-medium"
-				style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text);"
-				onclick={oncancel}
-			>
-				{cancelLabel}
-			</button>
-			<button
-				class="rounded px-3 h-control text-callout font-medium"
-				style="background: var(--color-accent); color: var(--color-on-accent); opacity: {canSubmit ? '1' : '0.5'};"
-				disabled={!canSubmit}
-				onclick={handleSubmit}
-			>
+			<Button onclick={oncancel}>{cancelLabel}</Button>
+			<Button variant="primary" disabled={!canSubmit} onclick={handleSubmit}>
 				{confirmLabel}
-			</button>
+			</Button>
 		</div>
 	</div>
 </div>
