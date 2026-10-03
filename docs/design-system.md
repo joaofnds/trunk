@@ -58,5 +58,8 @@ measure, write a `biome.json` listing that plugin alone, the way the test does,
 and run `biome lint --config-path <that dir> src`.
 
 `tokens-color.grit` is on, with Biome's own `style/noHexColors` beside it, so
-a hex literal fails even in a property the plugin does not list. The type and
-length plugins wait on their counts reaching zero.
+a hex literal fails even in a property the plugin does not list. `tokens-type.grit`
+is on. It reads `<style>` blocks and stylesheets, not a `style="..."` attribute in
+markup or a style string built in TypeScript, so those sites are unguarded until
+they move to `style:` directives. The length plugin waits on its count reaching
+zero.

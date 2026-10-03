@@ -23,7 +23,10 @@
 			}
 		}
 	},
-	"plugins": ["./scripts/biome/tokens-color.grit"],
+	"plugins": [
+		"./scripts/biome/tokens-color.grit",
+		"./scripts/biome/tokens-type.grit"
+	],
 	"linter": {
 		"enabled": true,
 		"rules": {

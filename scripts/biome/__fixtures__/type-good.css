@@ -2,9 +2,9 @@
 .good { font-size: 0; }
 .good { font-size: inherit; }
 .good { font-size: 0.9em; }
-.good { line-height: var(--leading-body); }
+.good { line-height: var(--leading-normal); }
 .good { line-height: inherit; }
-.good { letter-spacing: var(--tracking-caps); }
+.good { letter-spacing: var(--tracking-wide); }
 .good { letter-spacing: 0; }
 .good { font-weight: var(--weight-medium); }
 .good { font-weight: inherit; }
