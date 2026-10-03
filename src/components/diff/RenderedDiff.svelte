@@ -759,7 +759,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
             class="split-col-content"
             style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
           >
-            {#each presentHtmls as html}{@render block("added", html)}{/each}
+            {#each presentHtmls as markup}{@render block("added", markup)}{/each}
           </div>
         </div>
       </div>
@@ -770,7 +770,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
             class="split-col-content"
             style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
           >
-            {#each presentHtmls as html}{@render block("removed", html)}{/each}
+            {#each presentHtmls as markup}{@render block("removed", markup)}{/each}
           </div>
         </div>
         <div class="split-column rendered-note">Not present at this revision</div>
