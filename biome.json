@@ -23,10 +23,14 @@
 			}
 		}
 	},
+	"plugins": ["./scripts/biome/tokens-color.grit"],
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"preset": "recommended"
+			"preset": "recommended",
+			"style": {
+				"noHexColors": "error"
+			}
 		}
 	},
 	"formatter": {

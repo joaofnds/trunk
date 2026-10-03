@@ -16,6 +16,6 @@ or {
 	`fill: $v`,
 	`stroke: $v`
 } as $d where {
-	not $v <: r"^\s*(?:(?:var\(--[\w-]+\)|transparent|currentColor|inherit|none|color-mix\(in oklch,\s*(?:var\(--[\w-]+\)|transparent)\s+\d+%,\s*(?:var\(--[\w-]+\)|transparent)\s*\))|linear-gradient\(\s*(?:to (?:right|left|top|bottom),\s*)?(?:(?:var\(--[\w-]+\)|transparent)(?:\s+[\d.]+(?:px|%))?,?\s*)+\))\s*$",
+	not $v <: r"^\s*(?:(?:var\(--[\w-]+\)|transparent|currentColor|inherit|none|color-mix\(\s*in oklch,\s*(?:var\(--[\w-]+\)|transparent)\s+\d+%,\s*(?:var\(--[\w-]+\)|transparent)\s*\))|linear-gradient\(\s*(?:to (?:right|left|top|bottom),\s*)?(?:(?:var\(--[\w-]+\)|transparent)(?:\s+[\d.]+(?:px|%))?,?\s*)+\))\s*$",
 	register_diagnostic(span = $d, message = "A color is a token: var(--...), transparent, currentColor, or a color-mix of those. See docs/design-system.md.")
 }

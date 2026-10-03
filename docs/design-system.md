@@ -16,7 +16,7 @@ through `var(--...)`.
 | Unit and spacing | `--u`, `--space-N` | Every length is a whole multiple of `--u` (4px). `src/app.css.test.ts` fails on one that is not, and on a length token nothing reads. |
 | Chrome heights | `--bar-h`, `--row-h`, `--control-*-h`, `--banded-*-h`, `--target-min` | Mirrored by the constants in `src/lib/chrome-heights.ts`, which the same test holds equal. A band that paints a rule adds that rule's pixel, `calc(N * var(--u) + 1px)`. |
 | Radii | `--radius`, `--radius-pill` | A pill is round, not a multiple of anything. |
-| Colors | the oklch ramps (`--bg-*`, `--fg-*`, `--line`, `--accent`, lane colors) and the `--color-*` roles over them | Every text/background pair is in `scripts/contrast/re-audit-verify.mjs`, which `just contrast` runs inside `just check`. |
+| Colors | the oklch ramps (`--bg-*`, `--fg-*`, `--line`, `--accent`, the status hues) and the `--color-*` roles over them | A component reads a role, never a ramp step: the role is the name the theme mapping will declare, and the step is a raw value `src/tokens.css` reads alone. The lane colors are the exception, read by the graph as `--lane-N`. Every text/background pair is in `scripts/contrast/re-audit-verify.mjs`, which `just contrast` runs inside `just check`. |
 | Shadows | `--shadow-1`, `--shadow-2`, and the `--shadow-sm/md/lg` roles over them | Declared once here. A component reads one, or writes offsets with a token color. |
 
 ### Adding a token
@@ -55,3 +55,7 @@ not compile is reported by Biome as an info and would otherwise pass silently.
 A plugin is enabled in `biome.json` once no stylesheet under `src/` trips it. To
 measure, write a `biome.json` listing that plugin alone, the way the test does,
 and run `biome lint --config-path <that dir> src`.
+
+`tokens-color.grit` is on, with Biome's own `style/noHexColors` beside it, so
+a hex literal fails even in a property the plugin does not list. The type and
+length plugins wait on their counts reaching zero.
