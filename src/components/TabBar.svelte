@@ -220,8 +220,9 @@ $effect(() => {
 	opacity: 0.4;
 }
 
-:global(.tab-chosen) {
-	background: var(--bg-selected) !important;
+.tab-item:global(.tab-chosen),
+.tab-item:global(.tab-chosen):hover {
+	background: var(--bg-selected);
 }
 
 :global(.tab-drag) {
