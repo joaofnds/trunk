@@ -25,6 +25,7 @@ const FILES = ["src/main.rs", "src/lib.rs", "Cargo.toml"];
 const REPOS = ["trunk", "dotfiles"];
 const STRATEGIES = ["Fetch", "Fast-forward only", "Pull (rebase)"];
 const PARENTS = ["a1b2c3d", "e4f5a6b"];
+const MODES = ["Commit", "Amend", "Stash"];
 </script>
 
 <script lang="ts">
@@ -40,6 +41,8 @@ import Chip from "./Chip.svelte";
 import LinkButton from "./LinkButton.svelte";
 import ListOption from "./ListOption.svelte";
 import RowAction from "./RowAction.svelte";
+import Tab from "./Tab.svelte";
+import TabStrip from "./TabStrip.svelte";
 </script>
 
 <!--
@@ -293,6 +296,19 @@ import RowAction from "./RowAction.svelte";
 					><ArrowDown size={11} /><span data-catalog-text>{parent}</span></Chip
 				>
 			{/each}
+		</div>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>Tab</h2
+		>
+		<div class="bg-surface-raised">
+			<TabStrip aria-label="Commit mode">
+				{#each MODES as mode, i (mode)}
+					<Tab selected={i === 1}><span data-catalog-text>{mode}</span></Tab>
+				{/each}
+			</TabStrip>
 		</div>
 	</section>
 </div>

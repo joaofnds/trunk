@@ -207,3 +207,11 @@ Chip primitive added to the catalog, drawn below ListOption; its four color toke
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-10-03
+
+Tab and TabStrip primitives added to the catalog, drawn below Chip as the commit form's Commit, Amend and Stash strip with Amend selected; a dozen antialiased pixels on the first Chip pill's curve and two single pixels on a Button corner also move, and an empty box of the same height in place of the strip moves the same pixels, so they follow the capture height rather than the new primitive
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png
