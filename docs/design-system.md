@@ -2,7 +2,8 @@
 
 Where a visual value comes from, what checks that it does, and how to add one.
 The vocabulary is Tailwind's and the tooling is Biome's; nothing else is
-installed for this.
+installed for this. The migration onto these tokens kept every pixel but the type
+merges that `docs/decisions/2026-10-03-design-system-migration-pixels.md` lists.
 
 ## Tokens
 
