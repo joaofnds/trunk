@@ -286,12 +286,14 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	></textarea>
 	<div class="composer-actions">
 		<button
+			type="button"
 			class="composer-btn cancel-btn"
 			disabled={submitting}
 			onclick={handleCancel}
 			>Cancel</button
 		>
 		<button
+			type="button"
 			class="composer-btn submit-btn"
 			disabled={submitDisabled}
 			style="cursor: {submitDisabled ? 'not-allowed' : 'pointer'}; opacity: {submitDisabled ? 0.4 : 1};"

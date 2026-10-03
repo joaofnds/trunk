@@ -72,6 +72,7 @@ let allHidden = $derived(groupState === "all");
 		</span>
 		{#if showCreateButton}
 			<button
+				type="button"
 				data-testid="branch-section-create-btn"
 				onclick={(e) => { e.stopPropagation(); oncreate?.(); }}
 				style="color: var(--color-text); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
@@ -82,6 +83,7 @@ let allHidden = $derived(groupState === "all");
 		{/if}
 		{#if ontogglevisibility}
 			<button
+				type="button"
 				data-testid="branch-section-visibility-btn"
 				onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
 				style="color: var(--color-text-muted); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"

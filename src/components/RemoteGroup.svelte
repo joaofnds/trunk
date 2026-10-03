@@ -62,6 +62,7 @@ let allHidden = $derived(groupState === "all");
 		>
 		{#if ontogglevisibility}
 			<button
+				type="button"
 				data-testid="remote-group-visibility-btn"
 				onclick={() => ontogglevisibility?.()}
 				style="flex-shrink: 0; color: var(--color-text-subtle); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"

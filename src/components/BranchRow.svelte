@@ -138,6 +138,7 @@ let actionShown = $derived(hovered || focused || hidden);
 		{/if}
 		{#if ontogglevisibility}
 			<button
+				type="button"
 				data-testid="branch-row-visibility-btn"
 				onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
 				ondblclick={(e) => e.stopPropagation()}

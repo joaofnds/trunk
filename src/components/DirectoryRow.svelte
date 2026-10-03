@@ -109,6 +109,7 @@ let commentTone = $derived(
 	{/if}
 	{#if hovered && actionLabel && onaction}
 		<button
+			type="button"
 			onclick={(e) => { e.stopPropagation(); onaction(); }}
 			aria-label={actionLabel === '+' ? 'Stage directory' : 'Unstage directory'}
 			style="

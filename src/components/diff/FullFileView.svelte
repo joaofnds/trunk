@@ -315,6 +315,7 @@ function lineColor(): string {
 			style="display: flex; justify-content: flex-end; padding: var(--space-1) var(--space-2); flex: 0 0 auto;"
 		>
 			<button
+				type="button"
 				class="full-file-comment-button"
 				style="
           display: inline-flex;

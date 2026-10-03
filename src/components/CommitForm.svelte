@@ -196,6 +196,7 @@ async function handleSubmit() {
 	>
 		{#each [['commit', 'Commit'], ['amend', 'Amend'], ['stash', 'Stash']] as [tab, label]}
 			<button
+				type="button"
 				onclick={() => handleModeSwitch(tab as 'commit' | 'amend' | 'stash')}
 				disabled={committing}
 				style="

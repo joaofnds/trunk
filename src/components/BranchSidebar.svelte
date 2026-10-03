@@ -970,6 +970,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 					<span class="stash-index">{stash.short_name}</span>
 					<span class="stash-message" title={stash.name}>{stash.name}</span>
 					<button
+						type="button"
 						class="stash-visibility-btn"
 						data-hidden={isStashHidden(visibility, stash.oid)}
 						onclick={(e) => { e.stopPropagation(); applyVisibility(toggleStash(visibility, stash.oid)); }}

@@ -149,7 +149,11 @@ $effect(() => {
 	{#if open}
 		<div class="dropdown-panel">
 			{#each options as opt}
-				<button class="dropdown-option" onclick={() => handleOptionClick(opt)}>
+				<button
+					type="button"
+					class="dropdown-option"
+					onclick={() => handleOptionClick(opt)}
+				>
 					{opt.label}
 				</button>
 			{/each}
