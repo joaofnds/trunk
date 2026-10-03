@@ -81,9 +81,17 @@ textarea::placeholder {
 .tooltip-pop-shown {
 	opacity: 1;
 }
+@keyframes pulse {
+	50% {
+		opacity: 0.5;
+	}
+}
 @media (prefers-reduced-motion: reduce) {
 	.tooltip-pop {
 		transition: none;
+	}
+	.animate-pulse {
+		animation: none;
 	}
 }
 

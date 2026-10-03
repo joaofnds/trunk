@@ -110,6 +110,11 @@
 	--lane-6: oklch(0.76 0.14 160);
 	--lane-7: oklch(0.76 0.02 75);
 
+	/* ── Motion ── */
+	--duration-fast: 150ms;
+	--ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+	--animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
 	/* ── Radius & elevation ── */
 	--radius: calc(1 * var(--u));
 	--radius-pill: 999px;

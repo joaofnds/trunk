@@ -85,8 +85,18 @@ describe("theme.css", () => {
 		...declared(tokens, "--leading-"),
 		...declared(tokens, "--tracking-"),
 		...declared(tokens, "--shadow-").filter((s) => !/-\d$/.test(s)),
+		...declared(tokens, "--animate-"),
 	];
 	it.each(roles)("maps %s onto its token", (role) => {
 		expect(theme).toMatch(new RegExp(`^\\t${role}: var\\(--[\\w-]+\\);$`, "m"));
+	});
+
+	it("gives every transition the motion tokens' duration and curve", () => {
+		expect(theme).toMatch(
+			/^\t--default-transition-duration: var\(--duration-fast\);$/m,
+		);
+		expect(theme).toMatch(
+			/^\t--default-transition-timing-function: var\(--ease-standard\);$/m,
+		);
 	});
 });

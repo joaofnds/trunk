@@ -61,6 +61,11 @@
 	--shadow-md: var(--shadow-md);
 	--shadow-lg: var(--shadow-lg);
 
+	/* ── Motion ── */
+	--default-transition-duration: var(--duration-fast);
+	--default-transition-timing-function: var(--ease-standard);
+	--animate-pulse: var(--animate-pulse);
+
 	/* ── Color roles ── */
 	--color-scrollbar-thumb: var(--color-scrollbar-thumb);
 	--color-bg: var(--color-bg);
