@@ -95,6 +95,9 @@
 	--color-accent-bg: var(--color-accent-bg);
 	--color-accent-border: var(--color-accent-border);
 	--color-on-accent: var(--color-on-accent);
+	--color-chip-accent-bg: var(--color-chip-accent-bg);
+	--color-chip-accent-bg-hover: var(--color-chip-accent-bg-hover);
+	--color-chip-accent-border: var(--color-chip-accent-border);
 	--color-selected-row: var(--color-selected-row);
 	--color-hover: var(--color-hover);
 	--color-backdrop: var(--color-backdrop);
@@ -144,6 +147,7 @@
 	--color-warning-border: var(--color-warning-border);
 	--color-info: var(--color-info);
 	--color-muted-bg: var(--color-muted-bg);
+	--color-muted-bg-hover: var(--color-muted-bg-hover);
 	--color-status-new: var(--color-status-new);
 	--color-status-modified: var(--color-status-modified);
 	--color-status-deleted: var(--color-status-deleted);

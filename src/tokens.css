@@ -194,6 +194,17 @@
 	--color-accent-bg: color-mix(in oklch, var(--accent) 9%, transparent);
 	--color-accent-border: color-mix(in oklch, var(--accent) 30%, transparent);
 	--color-on-accent: var(--accent-fg);
+	--color-chip-accent-bg: color-mix(in oklch, var(--accent) 12%, transparent);
+	--color-chip-accent-bg-hover: color-mix(
+		in oklch,
+		var(--accent) 20%,
+		transparent
+	);
+	--color-chip-accent-border: color-mix(
+		in oklch,
+		var(--accent) 25%,
+		transparent
+	);
 
 	/* Rows & overlays */
 	--color-selected-row: var(--bg-selected);
@@ -285,6 +296,7 @@
 	--color-warning-border: color-mix(in oklch, var(--warn) 30%, transparent);
 	--color-info: var(--info);
 	--color-muted-bg: color-mix(in oklch, var(--fg-3) 10%, transparent);
+	--color-muted-bg-hover: color-mix(in oklch, var(--fg-3) 18%, transparent);
 
 	/* Rendered-markdown prose (comment bodies + .md diff view). Three aliases
 	   onto the ramp; everything else reuses existing tokens directly. */

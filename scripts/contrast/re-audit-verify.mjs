@@ -120,6 +120,12 @@ for (const [state, color] of [
 }
 check("review filter selector", "var(--color-text)", "var(--color-surface)");
 
+section("Chip (lineage pills in the commit detail, on --color-surface)");
+check("accent chip label", "var(--color-accent-strong)", "var(--color-surface)", { layers: ["var(--color-chip-accent-bg)"] });
+check("accent chip label under the pointer", "var(--color-accent-strong)", "var(--color-surface)", { layers: ["var(--color-chip-accent-bg-hover)"] });
+check("neutral chip label", "var(--color-text)", "var(--color-surface)", { layers: ["var(--color-muted-bg)"] });
+check("neutral chip label under the pointer", "var(--color-text)", "var(--color-surface)", { layers: ["var(--color-muted-bg-hover)"] });
+
 section("Rebase DROP row (--opacity-dimmed 0.6 -> 0.8): message AAA, date AA (transient)");
 check("message --fg-1", "var(--fg-1)", "var(--color-selected-row)", { opacity: 0.8 });
 check("author --fg-1", "var(--fg-1)", "var(--color-selected-row)", { opacity: 0.8 });

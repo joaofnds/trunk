@@ -24,15 +24,19 @@ const TONES: RowActionTone[] = ["subtle", "muted", "text", "success", "danger"];
 const FILES = ["src/main.rs", "src/lib.rs", "Cargo.toml"];
 const REPOS = ["trunk", "dotfiles"];
 const STRATEGIES = ["Fetch", "Fast-forward only", "Pull (rebase)"];
+const PARENTS = ["a1b2c3d", "e4f5a6b"];
 </script>
 
 <script lang="ts">
+import ArrowDown from "@lucide/svelte/icons/arrow-down";
+import ArrowUp from "@lucide/svelte/icons/arrow-up";
 import Check from "@lucide/svelte/icons/check";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import Eye from "@lucide/svelte/icons/eye";
 import Plus from "@lucide/svelte/icons/plus";
 import Button from "./Button.svelte";
 import ButtonGroup from "./ButtonGroup.svelte";
+import Chip from "./Chip.svelte";
 import LinkButton from "./LinkButton.svelte";
 import ListOption from "./ListOption.svelte";
 import RowAction from "./RowAction.svelte";
@@ -275,6 +279,20 @@ import RowAction from "./RowAction.svelte";
 					>
 				{/each}
 			</div>
+		</div>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>Chip</h2
+		>
+		<div class="flex items-center gap-2">
+			<Chip><ArrowUp size={11} /><span data-catalog-text>c7d8e9f</span></Chip>
+			{#each PARENTS as parent, i (parent)}
+				<Chip tone={i === 0 ? "accent" : "neutral"}
+					><ArrowDown size={11} /><span data-catalog-text>{parent}</span></Chip
+				>
+			{/each}
 		</div>
 	</section>
 </div>

@@ -199,3 +199,11 @@ ListOption primitive added to the catalog: a files listbox, a stacked repository
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-10-03
+
+Chip primitive added to the catalog, drawn below ListOption; its four color tokens appear as swatches in the color grid, which grew one row and moved everything below it 32px
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png
