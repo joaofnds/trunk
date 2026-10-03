@@ -1520,6 +1520,17 @@ describe("End review", () => {
 		expect(endCallCount()).toBe(0);
 	});
 
+	it("paints the armed confirmation in the accent tone", async () => {
+		renderWithSession();
+		await flushFake();
+		expect(getEndButton()).not.toHaveClass("bg-accent-bg");
+
+		await fireEvent.click(getEndButton());
+		await flushFake();
+
+		expect(getEndButton()).toHaveClass("bg-accent-bg");
+	});
+
 	it("second click publishes the active review exactly once", async () => {
 		renderWithSession();
 		await flushFake();
@@ -1771,6 +1782,21 @@ describe("review list", () => {
 		await flush();
 
 		expect(del).toHaveTextContent("Delete review");
+	});
+
+	it("paints the armed delete in the danger tone", async () => {
+		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
+		renderPanel();
+		await flush();
+		const del = screen.getByRole("button", {
+			name: `Delete review ${ACTIVE_REVIEW}`,
+		});
+		expect(del).not.toHaveClass("bg-danger-bg");
+
+		await fireEvent.click(del);
+		await flush();
+
+		expect(del).toHaveClass("bg-danger-bg");
 	});
 
 	it("takes the delete confirmation timer down with the panel", async () => {

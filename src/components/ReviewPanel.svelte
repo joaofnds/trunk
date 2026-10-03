@@ -30,6 +30,7 @@ import type {
 	ReviewFilter,
 	Thread,
 } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
 import ThreadCard from "./ThreadCard.svelte";
 
 interface Props {
@@ -503,21 +504,20 @@ $effect(() => {
     "
 	>
 		{#if oncommentonfile && reviewFilter !== "none"}
-			<button
-				type="button"
-				class="comment-on-file-button flex items-center"
+			<Button
+				size="sm"
 				onclick={oncommentonfile}
 				title="Comment on any tracked file, including one no change touches"
 			>
 				<MessageSquarePlus size={14} />
 				<span>Comment on a file…</span>
-			</button>
+			</Button>
 		{/if}
 		<span class="flex-1"></span>
 		{#if activeReview && !activeReview.published}
-			<button
-				type="button"
-				class="publish-button {endConfirming ? 'confirming' : ''} flex items-center"
+			<Button
+				size="sm"
+				variant={endConfirming ? "accent" : "secondary"}
 				onclick={onEndClick}
 				disabled={!hasAnyComment}
 				title={hasAnyComment
@@ -528,11 +528,10 @@ $effect(() => {
 			>
 				<Check size={14} />
 				<span>{endConfirming ? "Click again to confirm" : "End review"}</span>
-			</button>
+			</Button>
 		{/if}
-		<button
-			type="button"
-			class="copy-button flex items-center"
+		<Button
+			size="sm"
 			onclick={onCopyClick}
 			disabled={!hasAnyComment}
 			title={hasAnyComment ? "" : "Add at least one comment to generate"}
@@ -544,7 +543,7 @@ $effect(() => {
 				<Clipboard size={14} />
 				<span>Copy</span>
 			{/if}
-		</button>
+		</Button>
 	</div>
 	<div
 		class="flex flex-col"
@@ -575,9 +574,7 @@ $effect(() => {
 				>
 					{reviews.length} {reviews.length === 1 ? "review" : "reviews"}
 				</span>
-				<button type="button" class="copy-button" onclick={startNewReview}>
-					New review
-				</button>
+				<Button size="sm" onclick={startNewReview}>New review</Button>
 			</div>
 			<ul
 				class="flex flex-col"
@@ -666,18 +663,17 @@ $effect(() => {
 						>
 							{`${REVIEW_STATE_LABEL[review.state] ?? review.state} · ${review.thread_count}`}
 						</span>
-						<button
-							type="button"
-							class="end-button {deleteConfirmingId === review.id ? 'confirming' : ''}"
+						<Button
+							size="sm"
+							variant={deleteConfirmingId === review.id ? "danger" : "secondary"}
 							onclick={() => onDeleteReviewClick(review.id)}
 							aria-label="Delete review {review.id}"
 							title={deleteConfirmingId === review.id
               ? "Click again to delete this review and its comments"
               : "Delete this review"}
-							style="flex-shrink: 0; padding: 0 var(--space-2);"
 						>
 							{deleteConfirmingId === review.id ? "Confirm delete" : "Delete review"}
-						</button>
+						</Button>
 					</li>
 				{/each}
 			</ul>
@@ -802,29 +798,17 @@ $effect(() => {
               "
 								>{group.summary}</button
 							>
-							<button
-								type="button"
-								class="flex items-center"
-								onclick={() => openAddNote(group.oid)}
-								disabled={noteSaving}
-								style="
-                display: {reviewFilter === 'none' ? 'none' : 'inline-flex'};
-                gap: var(--space-1);
-                background: transparent;
-                color: var(--color-text-muted);
-                border: none;
-                border-radius: var(--radius);
-                cursor: pointer;
-                padding: var(--space-1);
-                flex-shrink: 0;
-                font-size: var(--text-callout);
-              "
-								onmouseenter={(e) => (e.currentTarget.style.background = "var(--color-hover)")}
-								onmouseleave={(e) => (e.currentTarget.style.background = "transparent")}
-							>
-								<MessageSquarePlus size={14} />
-								<span>Add note</span>
-							</button>
+							{#if reviewFilter !== "none"}
+								<Button
+									size="sm"
+									variant="ghost"
+									onclick={() => openAddNote(group.oid)}
+									disabled={noteSaving}
+								>
+									<MessageSquarePlus size={14} />
+									<span>Add note</span>
+								</Button>
+							{/if}
 						</div>
 
 						<!-- Inline add-note composer for this commit -->
@@ -850,43 +834,17 @@ $effect(() => {
                 "
 								></textarea>
 								<div class="flex items-center" style="gap: var(--space-1);">
-									<button
-										type="button"
+									<Button
+										size="sm"
 										onclick={() => saveAddNote(group.oid)}
 										disabled={!noteDraft.valid || noteSaving}
-										style="
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    background: transparent;
-                    color: var(--color-text);
-                    border: 1px solid var(--color-border);
-                    border-radius: var(--radius);
-                    cursor: pointer;
-                    height: var(--control-sm-h);
-                    padding: 0 var(--space-2);
-                    font-size: var(--text-callout);
-                  "
-										>Save</button
+										>Save</Button
 									>
-									<button
-										type="button"
+									<Button
+										size="sm"
 										onclick={cancelComposer}
 										disabled={noteSaving}
-										style="
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    background: transparent;
-                    color: var(--color-text-muted);
-                    border: 1px solid var(--color-border);
-                    border-radius: var(--radius);
-                    cursor: pointer;
-                    height: var(--control-sm-h);
-                    padding: 0 var(--space-2);
-                    font-size: var(--text-callout);
-                  "
-										>Cancel</button
+										>Cancel</Button
 									>
 								</div>
 							</div>
@@ -975,99 +933,6 @@ $effect(() => {
 .jump-ref:focus-visible {
 	color: var(--color-accent);
 	text-decoration: underline;
-}
-
-/* Phase 72 Copy button — lives in the panel header. Carry-forward from the
-     deleted Phase 71 preview component. */
-.comment-on-file-button,
-.copy-button {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	background: transparent;
-	color: var(--color-text-muted);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius);
-	cursor: pointer;
-	height: var(--control-sm-h);
-	padding: 0 var(--space-2);
-	font-size: var(--text-callout);
-	font-family: inherit;
-}
-.comment-on-file-button:hover,
-.comment-on-file-button:focus-visible,
-.copy-button:hover:not([disabled]),
-.copy-button:focus-visible:not([disabled]) {
-	color: var(--color-text);
-	background: var(--color-hover);
-}
-.copy-button[disabled] {
-	cursor: not-allowed;
-	opacity: 0.5;
-}
-
-/* Publish button. Deliberately NOT danger-tinted: ending a review deletes
-     nothing, so the icon and colour must not say otherwise. The confirming
-     state uses the accent, which reads as "commit to this" rather than
-     "destroy this". All colours via :root tokens in src/tokens.css. */
-.publish-button {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	background: transparent;
-	color: var(--color-text-muted);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius);
-	cursor: pointer;
-	height: var(--control-sm-h);
-	padding: 0 var(--space-2);
-	font-size: var(--text-callout);
-	font-family: inherit;
-}
-.publish-button:hover:not(.confirming):not([disabled]),
-.publish-button:focus-visible:not(.confirming):not([disabled]) {
-	color: var(--color-text);
-	background: var(--color-hover);
-}
-.publish-button[disabled] {
-	cursor: not-allowed;
-	opacity: 0.5;
-}
-.publish-button.confirming {
-	color: var(--color-text);
-	background: var(--color-accent-bg);
-	border: 1px solid var(--color-accent);
-}
-
-/* Delete-review button — genuinely destructive, so it keeps the danger tint. */
-.end-button {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	background: transparent;
-	color: var(--color-text-muted);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius);
-	cursor: pointer;
-	height: var(--control-sm-h);
-	padding: 0 var(--space-2);
-	font-size: var(--text-callout);
-	font-family: inherit;
-}
-.end-button:hover:not(.confirming):not([disabled]),
-.end-button:focus-visible:not(.confirming):not([disabled]) {
-	color: var(--color-text);
-	background: var(--color-hover);
-}
-.end-button.confirming {
-	color: var(--color-text);
-	background: var(--color-danger-bg);
-	border: 1px solid var(--color-danger-border);
-}
-.end-button.confirming:hover,
-.end-button.confirming:focus-visible {
-	background: var(--color-danger-bg-strong);
-	border: 1px solid var(--color-danger);
 }
 
 .review-row:hover {

@@ -18,12 +18,12 @@ const CARD_ACTION = ".card-action";
 const ORPHAN_BADGE = ".orphan-badge";
 const STALE_CHIP = ".thread-stale-chip";
 const EXCERPT_LINE = ".comment-card-diff .diff-content";
-const PUBLISH = ".publish-button";
+const PUBLISH = "End review";
 const CONFIRM_PUBLISH = "Click again to confirm";
-const COPY = ".copy-button";
+const COPY = "Copy";
 const MARK_DONE = "Mark done";
 const DISMISS = "Dismiss";
-const COMMENT_ON_FILE = ".comment-on-file-button";
+const COMMENT_ON_FILE = "Comment on a file…";
 const FINDER_INPUT = '[aria-label="Find a tracked file to comment on"]';
 const FINDER_ROW = '[role="option"]';
 const SELECTABLE_LINE = ".gutter-selectable";
@@ -347,7 +347,7 @@ export class ReviewDriver {
 	/** Opens the file finder from the review panel header. */
 	async openFileFinder(): Promise<void> {
 		const button = await waitFor("the comment-on-a-file button", () =>
-			enabled(COMMENT_ON_FILE),
+			enabledButton(COMMENT_ON_FILE),
 		);
 
 		button.click();
@@ -481,7 +481,7 @@ export class ReviewDriver {
 	 *  that reverts after 3000 ms, and the second is the one that publishes. */
 	async publish(): Promise<void> {
 		const button = await waitFor("an enabled end-review button", () =>
-			enabled(PUBLISH),
+			enabledButton(PUBLISH),
 		);
 
 		button.click();
@@ -504,7 +504,9 @@ export class ReviewDriver {
 
 	/** Copies the review doc, which is what renders it. */
 	async copyDoc(): Promise<void> {
-		const button = await waitFor("an enabled copy button", () => enabled(COPY));
+		const button = await waitFor("an enabled copy button", () =>
+			enabledButton(COPY),
+		);
 
 		button.click();
 	}
