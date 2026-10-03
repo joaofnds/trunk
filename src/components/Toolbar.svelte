@@ -309,7 +309,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 	box-shadow: inset 0 0 0 1px var(--line);
 	border-radius: var(--radius);
 	background: transparent;
-	color: var(--fg-1);
+	color: var(--color-text);
 	cursor: pointer;
 }
 .toolbar-btn:focus-visible {

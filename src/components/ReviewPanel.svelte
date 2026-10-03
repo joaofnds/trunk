@@ -1024,7 +1024,7 @@ $effect(() => {
 	opacity: 0.5;
 }
 .publish-button.confirming {
-	color: var(--fg-1);
+	color: var(--color-text);
 	background: var(--color-accent-bg);
 	border: 1px solid var(--color-accent);
 }
@@ -1050,7 +1050,7 @@ $effect(() => {
 	background: var(--color-hover);
 }
 .end-button.confirming {
-	color: var(--fg-1);
+	color: var(--color-text);
 	background: var(--color-danger-bg);
 	border: 1px solid var(--color-danger-border);
 }

@@ -142,7 +142,7 @@ $effect(() => {
 }
 
 .tab-item:hover {
-	color: var(--fg-1);
+	color: var(--color-text);
 	background: var(--bg-hover);
 }
 
@@ -184,7 +184,7 @@ $effect(() => {
 
 .close-btn:hover {
 	background: var(--bg-3);
-	color: var(--fg-1);
+	color: var(--color-text);
 }
 
 .new-tab-btn {
@@ -213,7 +213,7 @@ $effect(() => {
 
 .new-tab-btn:hover {
 	background: var(--bg-hover);
-	color: var(--fg-1);
+	color: var(--color-text);
 }
 
 :global(.tab-ghost) {

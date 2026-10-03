@@ -74,7 +74,7 @@ let allHidden = $derived(groupState === "all");
 			<button
 				data-testid="branch-section-create-btn"
 				onclick={(e) => { e.stopPropagation(); oncreate?.(); }}
-				style="color: var(--fg-1); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
+				style="color: var(--color-text); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
 				aria-label={createLabel}
 			>
 				<Plus size={12} />

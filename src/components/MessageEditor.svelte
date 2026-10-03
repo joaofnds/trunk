@@ -85,7 +85,7 @@ $effect(() => {
 
 		<textarea
 			class="w-full rounded text-sm"
-			style="background: var(--bg-0); border: 1px solid var(--line); color: var(--fg-1); padding: var(--space-2); resize: vertical; min-height: 200px;"
+			style="background: var(--bg-0); border: 1px solid var(--line); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 200px;"
 			bind:value={text}
 			use:autofocus
 		></textarea>
@@ -93,7 +93,7 @@ $effect(() => {
 		<div class="flex justify-end gap-2 mt-4">
 			<button
 				class="rounded px-3 py-1.5 text-xs font-medium"
-				style="background: var(--bg-3); border: 1px solid var(--line); color: var(--fg-1);"
+				style="background: var(--bg-3); border: 1px solid var(--line); color: var(--color-text);"
 				onclick={handleCancel}
 			>
 				Cancel

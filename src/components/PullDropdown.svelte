@@ -106,7 +106,7 @@ $effect(() => {
 }
 .chevron-btn:hover:not(:disabled) {
 	background: var(--bg-hover);
-	color: var(--fg-1);
+	color: var(--color-text);
 }
 .chevron-btn:disabled {
 	opacity: 0.45;
@@ -133,7 +133,7 @@ $effect(() => {
 	text-align: left;
 	background: none;
 	border: none;
-	color: var(--fg-1);
+	color: var(--color-text);
 	font-size: 12px;
 	padding: var(--space-2) var(--space-3);
 	cursor: pointer;

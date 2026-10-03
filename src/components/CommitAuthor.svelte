@@ -170,7 +170,7 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 }
 .chip.merge {
 	background: color-mix(in oklch, var(--fg-3) 10%, transparent);
-	color: var(--fg-1);
+	color: var(--color-text);
 	border-color: var(--color-border);
 }
 .chip.merge:hover {
