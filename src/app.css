@@ -10,7 +10,6 @@ body {
 	background-color: var(--color-bg);
 	color: var(--color-text);
 	font-family: var(--font-sans);
-	font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
 	-webkit-font-smoothing: antialiased;
 	text-rendering: optimizeLegibility;
 	margin: 0;

@@ -165,8 +165,9 @@ everything." The screenshot beside those words showed HEAD's `main` pill alone, 
 `+N` badge. A narrower column cut every pill to a sliver of capsule and icon. The floor
 is that pill whole: its capsule, icon and name, with the column's padding and the gap
 that mirrors the dot's inset. The name is measured at runtime in the bold font HEAD
-draws in, as every fit is. The app bundles no font: the pills ask for Inter and fall
-back to the system font, so a declared width holds `main` whole on one machine only.
+draws in, as every fit is. The app bundles no font: the pills draw in the system
+font, which differs per machine, so a declared width holds `main` whole on one machine
+only.
 On macOS the floor is 62px.
 
 It bounds the column however its width is set: a drag, a stored width, the budget, and

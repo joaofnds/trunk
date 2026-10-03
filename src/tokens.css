@@ -115,8 +115,7 @@
 	--font-mono:
 		"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 	--font-sans:
-		"Inter", -apple-system, BlinkMacSystemFont, "SF Pro", "Helvetica Neue",
-		sans-serif;
+		-apple-system, BlinkMacSystemFont, "SF Pro", "Helvetica Neue", sans-serif;
 
 	--text-caption: 10px;
 	--text-caption--line-height: 13px;
