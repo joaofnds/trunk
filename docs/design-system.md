@@ -147,7 +147,9 @@ is on beside it, as an error, and refuses the attribute itself. A static value
 goes through a utility or a `<style>` rule, where the plugins read it, and a value
 computed at runtime goes through a `style:` directive, which the rule leaves alone
 and `src/markup-classes.test.ts` keeps honest by failing a directive that sets a
-literal. The length plugin waits on its count reaching zero.
+literal. `tokens-length.grit` is on, so a length a `<style>` rule states as a
+literal fails there, and `src/spacing-scale.test.ts` reads the same rules for a
+raw pixel in a gap, padding or margin that a `calc()` or a fallback could hide.
 
 Biome's `nursery/noUndeclaredCustomProperties` is on, as an error. It reports a
 `var(--name)` in a stylesheet, a `<style>` block or a `style="..."` attribute that

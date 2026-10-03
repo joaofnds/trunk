@@ -25,7 +25,8 @@
 	},
 	"plugins": [
 		"./scripts/biome/tokens-color.grit",
-		"./scripts/biome/tokens-type.grit"
+		"./scripts/biome/tokens-type.grit",
+		"./scripts/biome/tokens-length.grit"
 	],
 	"linter": {
 		"enabled": true,
