@@ -557,7 +557,7 @@ function lineColor(): string {
 	opacity: 0.4;
 }
 .hunk-btn-accent {
-	background: var(--color-accent-bg, var(--color-surface));
+	background: var(--color-accent-bg);
 	border: 1px solid var(--color-accent-border);
 	color: var(--color-accent);
 }

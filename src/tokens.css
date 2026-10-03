@@ -119,10 +119,12 @@
 		sans-serif;
 
 	/* ───────────────────────────────────────────────
-	   Legacy aliases — existing --color-* names re-pointed
-	   at the ramp above so components adopt the theme with
-	   no edits. Phase 2 migrates call sites to the ramp
-	   directly where the richer scale matters.
+	   Roles. The --color-* names below are the only color
+	   vocabulary a component reads. Each is a ramp step above,
+	   or a color-mix of steps, named for what it paints. The
+	   ramp steps themselves are raw values read here alone;
+	   the lanes are the one exception, read by the graph under
+	   their own names. docs/design-system.md states the rule.
 	   ─────────────────────────────────────────────── */
 
 	/* Surfaces */
@@ -199,24 +201,24 @@
 	   The six dim hues (keyword, string, comment, punctuation, tag, regex) were
 	   brightened so every token clears WCAG AAA (7:1) on context, add, delete,
 	   and selected lines; the nine already-passing hues are unchanged. Punctuation
-	   was lifted further to #cccccc for a word-patch stack that no longer exists
+	   was lifted further, to L 0.845, for a word-patch stack that no longer exists
 	   (text on a patch is --color-diff-text now); it stays because lowering it
 	   is a design change with no reason behind it yet. */
-	--color-syn-keyword: #6db2ee;
-	--color-syn-string: #dc9e84;
-	--color-syn-comment: #88b974;
-	--color-syn-number: #b5cea8;
-	--color-syn-type: #4ec9b0;
-	--color-syn-function: #dcdcaa;
-	--color-syn-variable: #9cdcfe;
-	--color-syn-constant: #4fc1ff;
-	--color-syn-operator: #d4d4d4;
-	--color-syn-punctuation: #cccccc;
-	--color-syn-attribute: #9cdcfe;
-	--color-syn-tag: #6db2ee;
-	--color-syn-property: #9cdcfe;
-	--color-syn-regex: #fa8d8d;
-	--color-syn-escape: #d7ba7d;
+	--color-syn-keyword: oklch(0.742 0.112 246.3);
+	--color-syn-string: oklch(0.752 0.083 43.7);
+	--color-syn-comment: oklch(0.734 0.109 137);
+	--color-syn-number: oklch(0.823 0.059 134.9);
+	--color-syn-type: oklch(0.76 0.115 177.2);
+	--color-syn-function: oklch(0.882 0.066 107.7);
+	--color-syn-variable: oklch(0.863 0.08 232.1);
+	--color-syn-constant: oklch(0.772 0.135 236.2);
+	--color-syn-operator: oklch(0.87 0 0);
+	--color-syn-punctuation: oklch(0.845 0 0);
+	--color-syn-attribute: oklch(0.863 0.08 232.1);
+	--color-syn-tag: oklch(0.742 0.112 246.3);
+	--color-syn-property: oklch(0.863 0.08 232.1);
+	--color-syn-regex: oklch(0.76 0.132 20.6);
+	--color-syn-escape: oklch(0.8 0.086 85.1);
 
 	/* Semantic status */
 	--color-success: var(--ok);

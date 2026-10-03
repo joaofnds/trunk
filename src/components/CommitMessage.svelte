@@ -102,7 +102,7 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 	overflow: hidden;
 	/* Fade the cut so the clamp reads as text continuing rather than as a
        paragraph that happens to end mid-sentence. */
-	mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6em), transparent);
+	mask-image: linear-gradient(to bottom, black calc(100% - 1.6em), transparent);
 }
 
 .body-toggle {

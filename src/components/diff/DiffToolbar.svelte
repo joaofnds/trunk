@@ -359,7 +359,7 @@ const renderedActive = $derived(
 }
 
 .comment-btn {
-	background: var(--color-accent-bg, var(--color-surface));
+	background: var(--color-accent-bg);
 	border: 1px solid var(--color-accent-border);
 	color: var(--color-accent);
 	cursor: pointer;
