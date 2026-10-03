@@ -134,7 +134,7 @@ const rowShadow = $derived(
 	role="row"
 	tabindex="0"
 	class="relative flex items-center cursor-pointer text-[13px]"
-	class:hover:bg-[var(--bg-hover)]={!selected && !isCurrentMatch && !isSearchMatch}
+	class:hover:bg-[var(--color-hover)]={!selected && !isCurrentMatch && !isSearchMatch}
 	style:height="{rowHeight}px"
 	style="color: var(--color-text); {isCurrentMatch ? 'background: var(--color-search-current);' : isSearchMatch ? 'background: var(--color-search-match);' : selected ? 'background: var(--color-selected-row);' : ''} {isSearchActive && !isSearchMatch && !isCurrentMatch ? 'opacity: var(--opacity-search-dim);' : ''} {rowShadow ? `box-shadow: ${rowShadow};` : ''}"
 	onclick={(e) => onselect?.(commit.oid, { compare: e.metaKey || e.ctrlKey, range: e.shiftKey })}

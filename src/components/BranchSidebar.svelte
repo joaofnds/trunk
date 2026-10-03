@@ -1057,7 +1057,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 }
 
 .stash-row:hover {
-	background: var(--bg-hover);
+	background: var(--color-hover);
 }
 
 .stash-index {

@@ -317,7 +317,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 	outline-offset: 1px;
 }
 .toolbar-btn:hover:not(:disabled) {
-	background: var(--bg-hover);
+	background: var(--color-hover);
 }
 .toolbar-btn:disabled {
 	opacity: 0.45;

@@ -143,7 +143,7 @@ $effect(() => {
 
 .tab-item:hover {
 	color: var(--color-text);
-	background: var(--bg-hover);
+	background: var(--color-hover);
 }
 
 .tab-item.active {
@@ -212,7 +212,7 @@ $effect(() => {
 }
 
 .new-tab-btn:hover {
-	background: var(--bg-hover);
+	background: var(--color-hover);
 	color: var(--color-text);
 }
 

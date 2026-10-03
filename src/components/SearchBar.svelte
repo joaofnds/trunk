@@ -169,6 +169,6 @@ function autofocus(node: HTMLElement) {
 
 <style>
 .search-btn:hover {
-	background: var(--bg-hover);
+	background: var(--color-hover);
 }
 </style>

@@ -105,7 +105,7 @@ $effect(() => {
 	outline-offset: 1px;
 }
 .chevron-btn:hover:not(:disabled) {
-	background: var(--bg-hover);
+	background: var(--color-hover);
 	color: var(--color-text);
 }
 .chevron-btn:disabled {
