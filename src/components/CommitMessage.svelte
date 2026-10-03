@@ -2,6 +2,7 @@
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronUp from "@lucide/svelte/icons/chevron-up";
 import { BODY_CLAMP_LINES, bodyOverflows } from "../lib/commit-body-clamp.js";
+import Button from "../lib/ui/Button.svelte";
 
 interface Props {
 	summary: string;
@@ -43,21 +44,23 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 			>{body}</div
 		>
 		{#if bodyExpandable}
-			<button
-				type="button"
-				class="body-toggle"
-				aria-expanded={!bodyClamped}
-				onclick={() => {
-          bodyExpanded = !bodyExpanded;
-        }}
-			>
-				{#if bodyClamped}
-					<ChevronDown size={12} />
-				{:else}
-					<ChevronUp size={12} />
-				{/if}
-				<span>{bodyClamped ? 'Show more' : 'Show less'}</span>
-			</button>
+			<div class="mt-1">
+				<Button
+					variant="ghost"
+					size="sm"
+					aria-expanded={!bodyClamped}
+					onclick={() => {
+						bodyExpanded = !bodyExpanded;
+					}}
+				>
+					{#if bodyClamped}
+						<ChevronDown size={12} />
+					{:else}
+						<ChevronUp size={12} />
+					{/if}
+					<span>{bodyClamped ? 'Show more' : 'Show less'}</span>
+				</Button>
+			</div>
 		{/if}
 	{/if}
 </div>
@@ -103,26 +106,5 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 	/* Fade the cut so the clamp reads as text continuing rather than as a
        paragraph that happens to end mid-sentence. */
 	mask-image: linear-gradient(to bottom, black calc(100% - 1.6em), transparent);
-}
-
-.body-toggle {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	height: var(--control-sm-h);
-	margin-top: var(--space-1);
-	padding: 0 var(--space-2) 0 var(--space-1);
-	border: 1px solid transparent;
-	border-radius: var(--radius);
-	background: var(--color-surface-raised);
-	color: var(--color-text-muted);
-	font-size: var(--text-small);
-	font-family: inherit;
-	cursor: pointer;
-}
-.body-toggle:hover,
-.body-toggle:focus-visible {
-	background: var(--color-surface-chip);
-	color: var(--color-text-strong);
 }
 </style>

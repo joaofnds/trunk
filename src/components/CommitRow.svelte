@@ -17,6 +17,7 @@ import type {
 	ReviewTone,
 	WipStats,
 } from "../lib/types.js";
+import LinkButton from "../lib/ui/LinkButton.svelte";
 import Avatar from "./Avatar.svelte";
 import CommentBadge from "./CommentBadge.svelte";
 
@@ -322,17 +323,18 @@ const rowShadow = $derived(
 	{#if columnVisibility.sha}
 		<div
 			data-column="sha"
-			class="flex-shrink-0 overflow-hidden whitespace-nowrap"
+			class="flex-shrink-0 overflow-hidden whitespace-nowrap text-small"
 			style:padding="0 {COLUMN_PADDING_X}px"
 		>
 			{#if !isWip && !isStash}
-				<button
-					type="button"
+				<LinkButton
+					mono
+					truncate
+					tone="muted"
 					title="Copy SHA"
-					class="font-mono text-small w-full text-left bg-transparent border-0 p-0 cursor-pointer hover:underline text-text-muted"
 					onclick={(e) => { e.stopPropagation(); copySha(commit.oid); }}
 					onkeydown={(e) => e.stopPropagation()}
-					>{commit.short_oid}</button
+					>{commit.short_oid}</LinkButton
 				>
 			{/if}
 		</div>
