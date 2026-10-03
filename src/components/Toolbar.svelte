@@ -290,7 +290,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 .toolbar-divider {
 	width: 1px;
 	height: 18px;
-	background: var(--line);
+	background: var(--color-border);
 	flex-shrink: 0;
 }
 
@@ -306,7 +306,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 	padding: 0;
 	/* Paint, not length: a border under border-box would cost the button 2px
        of the height its token declares. */
-	box-shadow: inset 0 0 0 1px var(--line);
+	box-shadow: inset 0 0 0 1px var(--color-border);
 	border-radius: var(--radius);
 	background: transparent;
 	color: var(--color-text);
@@ -432,7 +432,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 	flex-shrink: 0;
 	/* Paint, not length: a real border would take 2px out of the content box
        and leave the group's own children overflowing it. */
-	box-shadow: inset 0 0 0 1px var(--line);
+	box-shadow: inset 0 0 0 1px var(--color-border);
 	border-radius: var(--radius);
 }
 .btn-group .toolbar-btn {

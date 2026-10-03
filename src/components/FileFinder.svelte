@@ -96,7 +96,7 @@ function rowLabel(file: TrackedFile): string {
 		class="flex flex-col rounded"
 		style="
       background: var(--bg-2);
-      border: 1px solid var(--line);
+      border: 1px solid var(--color-border);
       box-shadow: var(--shadow-2);
       width: 520px;
       max-height: 60vh;

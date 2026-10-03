@@ -86,7 +86,7 @@ $effect(() => {
 	border: none;
 	/* Paint, not length: a border here would take a pixel out of the declared
        width, the same way it did out of the group's height. */
-	box-shadow: inset 1px 0 0 var(--line);
+	box-shadow: inset 1px 0 0 var(--color-border);
 	border-radius: 0 var(--radius) var(--radius) 0;
 	color: var(--color-text-muted);
 	cursor: pointer;
@@ -120,7 +120,7 @@ $effect(() => {
 	z-index: 100;
 	margin-top: var(--space-1);
 	background: var(--bg-2);
-	border: 1px solid var(--line);
+	border: 1px solid var(--color-border);
 	border-radius: var(--radius);
 	box-shadow: var(--shadow-md);
 	min-width: 180px;

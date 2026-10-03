@@ -84,7 +84,7 @@ function autofocus(node: HTMLElement) {
 >
 	<div
 		class="rounded"
-		style="background: var(--bg-2); border: 1px solid var(--line); box-shadow: var(--shadow-2); min-width: 340px; max-width: 480px; padding: var(--space-4);"
+		style="background: var(--bg-2); border: 1px solid var(--color-border); box-shadow: var(--shadow-2); min-width: 340px; max-width: 480px; padding: var(--space-4);"
 	>
 		<h3 class="text-sm font-semibold mb-3" style="color: var(--color-text);"
 			>{title}</h3

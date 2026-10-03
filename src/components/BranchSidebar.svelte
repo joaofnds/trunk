@@ -725,7 +725,9 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 "
 >
 	<!-- Search input (sticky at top) -->
-	<div style="padding: var(--space-2); box-shadow: inset 0 -1px 0 var(--line);">
+	<div
+		style="padding: var(--space-2); box-shadow: inset 0 -1px 0 var(--color-border);"
+	>
 		<div
 			style="
       display: flex;
@@ -734,7 +736,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
       height: var(--control-lg-h);
       padding: 0 var(--space-3);
       background: var(--color-bg);
-      border: 1px solid var(--line);
+      border: 1px solid var(--color-border);
       border-radius: var(--radius);
     "
 		>
@@ -996,7 +998,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 	font-size: 12px;
 	padding: var(--space-1) var(--space-2);
 	background: var(--color-bg);
-	border: 1px solid var(--line);
+	border: 1px solid var(--color-border);
 	color: var(--color-text);
 	border-radius: var(--radius);
 }

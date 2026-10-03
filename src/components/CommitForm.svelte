@@ -227,7 +227,7 @@ async function handleSubmit() {
 				style="
           width: 100%;
           box-sizing: border-box;
-          border: 1px solid var(--line);
+          border: 1px solid var(--color-border);
           background: var(--color-bg);
           color: var(--color-text);
           border-radius: var(--radius);
@@ -266,7 +266,7 @@ async function handleSubmit() {
 			style="
         width: 100%;
         box-sizing: border-box;
-        border: 1px solid var(--line);
+        border: 1px solid var(--color-border);
         background: var(--color-bg);
         color: var(--color-text);
         border-radius: var(--radius);

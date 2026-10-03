@@ -149,7 +149,7 @@ $effect(() => {
 .tab-item.active {
 	color: var(--fg-0);
 	background: var(--bg-2);
-	box-shadow: inset 0 0 0 1px var(--line);
+	box-shadow: inset 0 0 0 1px var(--color-border);
 }
 
 .tab-item.active:hover {
@@ -198,7 +198,7 @@ $effect(() => {
        a box-shadow cannot render a dash pattern. An outline is paint like an
        inset shadow — it sits outside the box and costs the declared size
        nothing, which is why the border this replaced had to go. */
-	outline: 1px dashed var(--line);
+	outline: 1px dashed var(--color-border);
 	outline-offset: -1px;
 	background: none;
 	color: var(--color-text-muted);

@@ -2072,7 +2072,7 @@ $effect(() => {
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="flex-shrink-0"
-		style="height: var(--bar-h); background: var(--color-surface); box-shadow: inset 0 -1px 0 var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px;"
+		style="height: var(--bar-h); background: var(--color-surface); box-shadow: inset 0 -1px 0 var(--color-border); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px;"
 		oncontextmenu={showHeaderContextMenu}
 	>
 		<div
@@ -2530,7 +2530,7 @@ $effect(() => {
                 left: {hoveredPill.x}px;
                 top: {hoveredPill.y - PILL_HEIGHT / 2}px;
                 background: var(--bg-2);
-                border: 1px solid var(--line);
+                border: 1px solid var(--color-border);
                 padding: var(--space-1) var(--space-2);
                 z-index: 50;
                 pointer-events: auto;

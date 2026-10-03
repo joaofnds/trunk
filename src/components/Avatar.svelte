@@ -26,7 +26,7 @@ let { name, size = 18 }: Props = $props();
 	border-radius: var(--radius-pill);
 	background: var(--bg-3);
 	color: var(--fg-0);
-	box-shadow: inset 0 0 0 1px var(--line);
+	box-shadow: inset 0 0 0 1px var(--color-border);
 	font-family: var(--font-sans);
 	font-weight: 600;
 	letter-spacing: 0.02em;
