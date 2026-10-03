@@ -1005,6 +1005,6 @@ $effect(() => {
     background: var(--color-hover);
   }
   .review-row.active {
-    background: var(--color-selected);
+    background: var(--color-selected-row);
   }
 </style>
