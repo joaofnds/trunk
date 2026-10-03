@@ -275,8 +275,7 @@ const PRIMITIVES = "lib/ui/";
 /** A `<button>` written where a primitive should be. The primitive carries the
  *  frame, the sizes and the focus ring, and a control in scoped CSS passes
  *  every other guard while looking right (docs/design-system.md, Primitives). */
-function rawButtons(file: string): string[] {
-	const source = readFileSync(file, "utf8");
+function rawButtons(source: string): string[] {
 	const ast = parse(source, { modern: true });
 	return descendants(ast.fragment, "RegularElement")
 		.filter(isElement)
@@ -314,10 +313,16 @@ describe("markup classes", () => {
 		},
 	);
 
+	it("finds a raw <button> inside a block", () => {
+		expect(
+			rawButtons("<div>\n{#if open}\n<button>Go</button>\n{/if}\n</div>"),
+		).toEqual(["<button> at line 3"]);
+	});
+
 	it.each(components.filter((file) => !file.startsWith(PRIMITIVES)))(
-		"%s draws a button through a primitive from src/lib/ui, not a raw <button>",
+		"%s draws a button through a primitive from src/lib/ui, not a raw <button> (docs/design-system.md, Primitives)",
 		(file) => {
-			expect(rawButtons(join(root, file))).toEqual([]);
+			expect(rawButtons(readFileSync(join(root, file), "utf8"))).toEqual([]);
 		},
 	);
 });
