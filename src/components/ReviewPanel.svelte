@@ -999,7 +999,7 @@ $effect(() => {
 /* Publish button. Deliberately NOT danger-tinted: ending a review deletes
      nothing, so the icon and colour must not say otherwise. The confirming
      state uses the accent, which reads as "commit to this" rather than
-     "destroy this". All colours via :root tokens in src/app.css. */
+     "destroy this". All colours via :root tokens in src/tokens.css. */
 .publish-button {
 	display: inline-flex;
 	align-items: center;

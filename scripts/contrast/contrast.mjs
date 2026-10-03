@@ -4,16 +4,16 @@
 // Translucent layers are composited "source-over" in gamma sRGB space (how browsers
 // actually blend overlapping semi-transparent background-colors and `opacity`).
 //
-// Resolves any value found in src/app.css: var(--x), oklch(L C H [/ a]),
+// Resolves any value found in src/tokens.css: var(--x), oklch(L C H [/ a]),
 // color-mix(in oklch, <expr> p%, transparent), color-mix(in oklch, <expr> p%, <expr>),
-// rgba()/rgb(), #hex. Tokens are parsed live from app.css so the helper never drifts.
+// rgba()/rgb(), #hex. Tokens are parsed live from tokens.css so the helper never drifts.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve as presolve } from "node:path";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
-const APP_CSS = presolve(__dir, "../../src/app.css");
+const TOKENS_CSS = presolve(__dir, "../../src/tokens.css");
 
 // ---------- color space conversions ----------
 
@@ -75,7 +75,7 @@ function over(top, bottom) {
 function parseTokens() {
 	// Comments go first: one that quotes a token name followed by a colon
 	// (`--bg-0: body text on …`) would otherwise parse as a definition.
-	const css = readFileSync(APP_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+	const css = readFileSync(TOKENS_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 	const root = css.slice(css.indexOf(":root"));
 	const map = {};
 	const re = /(--[a-z0-9-]+)\s*:\s*([^;]+);/gi;

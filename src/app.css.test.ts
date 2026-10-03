@@ -5,13 +5,17 @@ import { BAR_HEIGHT, ROW_HEIGHT, treeIndent, UNIT } from "./lib/chrome-heights";
 import { FIXED_ROW_HEIGHTS } from "./lib/diff-rows";
 import { THUMB_CLASS } from "./lib/scrollbar-activity.js";
 
-/* jsdom renders no scrollbars, so these read the stylesheet as text. They guard
+/* jsdom renders no scrollbars, so these read the stylesheets as text. They guard
    the contract src/lib/scrollbar-activity.ts drives; the proof that it renders
    is a WKWebView screenshot, not this file. */
-const css = readFileSync(resolve(process.cwd(), "src/app.css"), "utf8").replace(
-	/\/\*[\s\S]*?\*\//g,
-	"",
-);
+function stylesheet(name: string): string {
+	return readFileSync(resolve(process.cwd(), "src", name), "utf8").replace(
+		/\/\*[\s\S]*?\*\//g,
+		"",
+	);
+}
+const css = stylesheet("app.css");
+const tokens = stylesheet("tokens.css");
 
 /* WCAG relative luminance from an oklch(L C H) triple, via OKLab -> linear sRGB
    -> gamma sRGB, the same pipeline scripts/contrast/contrast.mjs uses on the
@@ -41,7 +45,7 @@ function oklchLuminance(l: number, c: number, h: number): number {
 }
 
 function oklchToken(name: string): [number, number, number] {
-	const match = css.match(
+	const match = tokens.match(
 		new RegExp(`${name}:\\s*oklch\\(([\\d.]+) ([\\d.]+) ([\\d.]+)\\)`),
 	);
 	if (!match) throw new Error(`token ${name} not found as a plain oklch()`);
@@ -69,7 +73,7 @@ describe("app.css scrollbars", () => {
 	});
 
 	it("declares the thumb color as a theme token", () => {
-		expect(css).toMatch(/--color-scrollbar-thumb:\s*oklch\(/);
+		expect(tokens).toMatch(/--color-scrollbar-thumb:\s*oklch\(/);
 	});
 
 	it("clears WCAG 1.4.11's 3:1 for non-text UI against both surfaces it thumbs over", () => {
@@ -116,8 +120,8 @@ describe("app.css scrollbars", () => {
 	);
 });
 
-/** Every stylesheet the app ships, app.css included — a token is read from a
- *  component or from another rule in app.css itself, and both count. */
+/** Every stylesheet the app ships, tokens.css included — a token is read from a
+ *  component, from app.css, or from another token, and all three count. */
 function svelteAndCssSources(): string[] {
 	const root = resolve(process.cwd(), "src");
 	const walk = (dir: string): string[] =>
@@ -139,10 +143,10 @@ function isLength(value: string): boolean {
 	return /^(?:0|-?[\d.]+px|calc\([^,]*\))$/.test(value.trim());
 }
 
-describe("app.css lengths", () => {
-	const unit = css.match(/^\t--u: (\d+)px;$/m)?.[1];
+describe("tokens.css lengths", () => {
+	const unit = tokens.match(/^\t--u: (\d+)px;$/m)?.[1];
 	const lengths = [
-		...css.matchAll(/^\t(--[\w-]+): calc\((\d+) \* var\(--u\)\);$/gm),
+		...tokens.matchAll(/^\t(--[\w-]+): calc\((\d+) \* var\(--u\)\);$/gm),
 	];
 
 	function multiple(name: string) {
@@ -168,7 +172,7 @@ describe("app.css lengths", () => {
 	 *  Whitespace inside the value is collapsed so a wrapped calc() compares the
 	 *  same as an unwrapped one. */
 	function declarations(): [string, string, string][] {
-		return [...css.matchAll(/^\t(--[\w-]+):\s([^;]+);/gm)].map(
+		return [...tokens.matchAll(/^\t(--[\w-]+):\s([^;]+);/gm)].map(
 			([line, name, value]) => [
 				line,
 				name,

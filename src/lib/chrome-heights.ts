@@ -1,4 +1,4 @@
-/** The unit the chrome scale is built from. It mirrors `--u` in app.css, and
+/** The unit the chrome scale is built from. It mirrors `--u` in tokens.css, and
  *  src/app.css.test.ts fails if the two disagree.
  *
  *  Virtualized surfaces compute their offsets before layout, so they cannot read
@@ -6,7 +6,7 @@
  *
  *  Not every length in the app is on this scale: the graph's dot radius and
  *  stroke widths are drawing values, and Tailwind's utility classes carry their
- *  own spacing and radius theme. What the guard covers is app.css's declared
+ *  own spacing and radius theme. What the guard covers is tokens.css's declared
  *  lengths and the constants here that mirror them. */
 export const UNIT = 4;
 

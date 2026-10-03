@@ -104,7 +104,7 @@ rust: fmt clippy clippy-shipped cargo-test
 # Run all checks (run before committing)
 check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-sweep-check app-test toolchain-parity mise-parity dev-conf-parity contrast visual
 
-# Every audited text/background pair in src/app.css still clears its WCAG target (milliseconds)
+# Every audited text/background pair in src/tokens.css still clears its WCAG target (milliseconds)
 contrast:
     bun scripts/contrast/re-audit-verify.mjs
 

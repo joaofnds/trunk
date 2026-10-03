@@ -54,7 +54,7 @@ lines it reads as noise, and the 2:1 patch carries the mark on its own.
 ## How it is held
 
 `just contrast` runs `scripts/contrast/re-audit-verify.mjs` under the pinned
-bun, which reads the tokens live from `src/app.css` and fails on any pair below
+bun, which reads the tokens live from `src/tokens.css` and fails on any pair below
 its target. It is part of `just check` and the `contrast` job in
 `.github/workflows/ci.yml` runs it on every push. The word-patch and
 rendered-mark pairs above are in it, both the 7:1 text checks and the 2:1

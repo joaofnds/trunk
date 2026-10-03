@@ -1,7 +1,7 @@
-// The contrast gate: every audited text/background pair in src/app.css against
+// The contrast gate: every audited text/background pair in src/tokens.css against
 // its WCAG target. Started as the post-fix verification of the 2026-06-22
 // app-wide AAA re-audit; runs as `just contrast` inside `just check`.
-// Parses tokens LIVE from src/app.css via contrast.mjs, so it tracks the theme.
+// Parses tokens LIVE from src/tokens.css via contrast.mjs, so it tracks the theme.
 // Run: bun scripts/contrast/re-audit-verify.mjs   (exit 1 if any target missed)
 
 import { compose, contrast, ratio, verdict } from "./contrast.mjs";

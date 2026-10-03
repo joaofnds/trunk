@@ -34,7 +34,7 @@ function offences(pattern: RegExp, allowed: (value: string) => boolean) {
 /* `em` is prose, not chrome: `.markdown-body` sizes its paragraph rhythm to the
    text it wraps, which is what an em is for and what the unit scale is not. */
 /** Every custom property that declares the height of a band spanning its pane,
- *  read from where it is declared rather than restated: app.css's `:root`
+ *  read from where it is declared rather than restated: tokens.css's `:root`
  *  chrome heights, and the diff pane's `FIXED_ROW_HEIGHT_VARS`, which emits its
  *  properties from TS constants. Adding a chrome height token brings it under
  *  this guard with no edit here.
@@ -52,7 +52,7 @@ function offences(pattern: RegExp, allowed: (value: string) => boolean) {
 const SMALLER_CONTROLS = new Set(["--control-sm-h", "--control-lg-h"]);
 
 function barTokens(): string[] {
-	const css = readFileSync(join(root, "app.css"), "utf8");
+	const css = readFileSync(join(root, "tokens.css"), "utf8");
 	const chrome = [...css.matchAll(/^\t(--[\w-]*h): /gm)]
 		.map(([, name]) => name)
 		.filter((name) => !SMALLER_CONTROLS.has(name));
@@ -105,7 +105,7 @@ describe("spacing scale", () => {
 	   every sidebar row reserves for the slot that holds its eye's column. It was a
 	   bare literal at ten sites across four files before the token existed, outside
 	   both this file's scale guard, which reads gap, padding and margin, and
-	   app.css.test.ts, which reads :root. So a copy could drift and the eye's box
+	   app.css.test.ts, which reads tokens.css. So a copy could drift and the eye's box
 	   could silently disagree with the slot reserving its column.
 
 	   Only the token's own value is guarded. A min-width or min-height is a real

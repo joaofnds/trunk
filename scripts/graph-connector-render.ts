@@ -23,7 +23,7 @@ import {
 import { buildOverlayPaths, wipMarkerPath } from "../src/lib/overlay-paths.js";
 import type { OverlayConnection, OverlayNode } from "../src/lib/types.js";
 
-/** Mirrors the :root block in src/app.css — the only place these values are authored. */
+/** Mirrors the :root block in src/tokens.css — the only place these values are authored. */
 export const TOKENS = `
 	--lane-0: oklch(0.76 0.12 225);
 	--lane-1: oklch(0.76 0.14 55);

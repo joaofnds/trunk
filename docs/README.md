@@ -41,7 +41,7 @@ specs, plans, review reports — stays in the gitignored `.boris/` tree instead.
 ## Accessibility
 
 The theme targets WCAG AAA for text contrast. `just contrast` is the gate: it runs
-`scripts/contrast/re-audit-verify.mjs`, which parses the tokens live from `src/app.css` and
+`scripts/contrast/re-audit-verify.mjs`, which parses the tokens live from `src/tokens.css` and
 exits 1 if any target is missed. It is part of `just check`. Add a pair there when you add a
 color token.
 
