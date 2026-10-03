@@ -423,25 +423,12 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 		tabindex="0"
 		onclick={() => handleToggleHunk(side, row.regionIdx)}
 		onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleToggleHunk(side, row.regionIdx); } }}
-		style="
-      width: 100%;
-      height: calc(var(--bar-h) + 1px);
-      flex-shrink: 0;
-      background: var(--color-surface);
-      box-shadow: inset 0 1px 0 var(--color-border), inset 0 -1px 0 var(--color-border);
-      display: flex;
-      align-items: center;
-      padding: 0 var(--space-2);
-      gap: var(--space-1);
-      cursor: pointer;
-      font-size: var(--text-small);
-      color: var(--color-text-muted);
-    "
+		class="w-full conflict-header shrink-0 bg-surface flex items-center py-0 px-2 gap-1 cursor-pointer text-small text-text-muted"
 	>
 		{#if isHunkAllTaken(side, row.regionIdx)}
-			<Check size={14} style="color: var(--color-success);" />
+			<Check size={14} class="text-success" />
 		{:else}
-			<span style="width: 14px; height: 14px; display: inline-block;"></span>
+			<span class="icon-slot inline-block"></span>
 		{/if}
 		Conflict {row.conflictNum}
 	</div>
@@ -454,136 +441,55 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 		tabindex="0"
 		onclick={(e: MouseEvent) => handleToggleLine(row.key, e)}
 		onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleToggleLine(row.key); } }}
-		class="merge-line"
-		style="
-      display: flex;
-      height: {LINE_HEIGHT}px;
-      flex-shrink: 0;
-      background: {bgColor};
-      cursor: pointer;
-    "
+		class="merge-line flex shrink-0 cursor-pointer"
+		style:height="{LINE_HEIGHT}px"
+		style:background={bgColor}
 	>
-		<span
-			style="
-      width: 48px;
-      flex-shrink: 0;
-      text-align: right;
-      padding-right: var(--space-2);
-      color: var(--color-text-muted);
-      -webkit-user-select: none;
-      user-select: none;
-    "
+		<span class="line-no shrink-0 text-right pr-2 text-text-muted select-none"
 			>{row.lineNum}</span
 		>
-		<span
-			style="
-      width: 20px;
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    "
-		>
+		<span class="w-5 shrink-0 flex items-center justify-center">
 			{#if taken}
-				<span class="icon-taken"
-					><Check size={14} style="color: var(--color-success);" /></span
-				>
+				<span class="icon-taken"><Check size={14} class="text-success" /></span>
 				<span class="icon-remove"
-					><CircleX size={14} style="color: var(--color-danger);" /></span
+					><CircleX size={14} class="text-danger" /></span
 				>
 			{:else}
-				<span class="icon-add"
-					><Check size={14} style="color: var(--color-success);" /></span
-				>
+				<span class="icon-add"><Check size={14} class="text-success" /></span>
 			{/if}
 		</span>
-		<span
-			style="
-      padding-left: var(--space-1);
-      white-space: pre;
-      overflow-x: auto;
-      flex: 1;
-      min-width: 0;
-      color: var(--color-text);
-    "
+		<span class="pl-1 whitespace-pre overflow-x-auto flex-1 min-w-0 text-text"
 			>{row.text}</span
 		>
 	</div>
 {/snippet}
 
 {#snippet contextLine(row: FlatRow)}
-	<div
-		style="
-    display: flex;
-    height: {LINE_HEIGHT}px;
-    flex-shrink: 0;
-    background: transparent;
-  "
-	>
-		<span
-			style="
-      width: 48px;
-      flex-shrink: 0;
-      text-align: right;
-      padding-right: var(--space-2);
-      color: var(--color-text-muted);
-      -webkit-user-select: none;
-      user-select: none;
-    "
+	<div class="flex shrink-0 bg-transparent" style:height="{LINE_HEIGHT}px">
+		<span class="line-no shrink-0 text-right pr-2 text-text-muted select-none"
 			>{row.lineNum}</span
 		>
-		<span style="width: 20px; flex-shrink: 0;"></span>
-		<span
-			style="
-      padding-left: var(--space-1);
-      white-space: pre;
-      overflow-x: auto;
-      flex: 1;
-      min-width: 0;
-      color: var(--color-text);
-    "
+		<span class="w-5 shrink-0"></span>
+		<span class="pl-1 whitespace-pre overflow-x-auto flex-1 min-w-0 text-text"
 			>{row.text}</span
 		>
 	</div>
 {/snippet}
 
-<div
-	style="
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--color-bg);
-"
->
+<div class="h-full flex flex-col bg-bg">
 	{#if loading}
 		<!-- Loading state -->
 		<div
-			style="
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--color-text-muted);
-      font-size: var(--text-body);
-    "
+			class="flex-1 flex items-center justify-center text-text-muted text-body"
 		>
 			Loading merge editor...
 		</div>
 	{:else if error}
 		<!-- Error state -->
 		<div
-			style="
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: var(--space-2);
-      color: var(--color-text-muted);
-      font-size: var(--text-body);
-    "
+			class="flex-1 flex flex-col items-center justify-center gap-2 text-text-muted text-body"
 		>
-			<span style="color: var(--color-diff-delete);">{error}</span>
+			<span class="text-diff-delete">{error}</span>
 			<Button
 				size="sm"
 				onclick={() => { loading = true; error = null; safeInvoke<MergeSides>('get_merge_sides', { path: repoPath, filePath }).then((result) => { regions = parseConflictRegions(result.base, result.ours, result.theirs); takenLines = new Set(); manualEdit = false; manualText = ''; focusedConflictIdx = 0; loading = false; }).catch((e) => { error = errorMessage(e, 'Failed to load'); loading = false; }); }}
@@ -592,29 +498,15 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 		</div>
 	{:else}
 		<!-- Top row: Current + Incoming side by side (50% height) -->
-		<div style="flex: 1; display: flex; min-height: 0;">
+		<div class="flex-1 flex min-h-0">
 			<!-- Current (Ours) Panel -->
-			<div
-				style="flex: 1; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--color-border);"
-			>
+			<div class="flex-1 flex flex-col min-w-0 border-r border-border">
 				<!-- Header -->
 				<div
-					style="
-          height: var(--bar-h);
-          background: var(--color-accent-bg);
-          box-shadow: inset 0 -1px 0 var(--color-accent);
-          display: flex;
-          align-items: center;
-          padding: 0 var(--space-2);
-          gap: var(--space-2);
-          flex-shrink: 0;
-        "
+					class="h-bar bg-accent-bg hairline-accent flex items-center py-0 px-2 gap-2 shrink-0"
 				>
-					<span
-						style="font-size: var(--text-callout); color: var(--color-text);"
-						>Current (Ours)</span
-					>
-					<span style="flex: 1;"></span>
+					<span class="text-callout text-text">Current (Ours)</span>
+					<span class="flex-1"></span>
 					<Button size="sm" variant="success" onclick={handleTakeAllCurrent}
 						>Take All Current</Button
 					>
@@ -625,20 +517,16 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 					bind:this={panelRefs[0]}
 					bind:clientHeight={panelViewportHeight}
 					onscroll={() => handleScroll(0)}
-					style="
-            flex: 1;
-            overflow-y: auto;
-            font-family: var(--font-mono);
-            font-size: var(--text-callout);
-            line-height: {LINE_HEIGHT}px;
-          "
+					class="flex-1 overflow-y-auto font-mono text-callout"
+					style:line-height="{LINE_HEIGHT}px"
 				>
 					<div
-						style="height: {oursOffsets[oursVisible[0]]}px; flex-shrink: 0;"
+						class="shrink-0"
+						style:height="{oursOffsets[oursVisible[0]]}px"
 					></div>
 					{#each oursFlat.slice(oursVisible[0], oursVisible[1]) as row, idx (oursVisible[0] + idx)}
 						{#if row.type === 'padding'}
-							<div style="height: {row.height}px; flex-shrink: 0;"></div>
+							<div class="shrink-0" style:height="{row.height}px"></div>
 						{:else if row.type === 'conflict-header'}
 							{@render conflictHeader('ours', row)}
 						{:else if row.type === 'conflict-line'}
@@ -648,33 +536,20 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 						{/if}
 					{/each}
 					<div
-						style="height: {oursTotalHeight - (oursOffsets[oursVisible[1]] ?? oursTotalHeight)}px; flex-shrink: 0;"
+						class="shrink-0"
+						style:height="{oursTotalHeight - (oursOffsets[oursVisible[1]] ?? oursTotalHeight)}px"
 					></div>
 				</div>
 			</div>
 
 			<!-- Incoming (Theirs) Panel -->
-			<div
-				style="flex: 1; display: flex; flex-direction: column; min-width: 0;"
-			>
+			<div class="flex-1 flex flex-col min-w-0">
 				<!-- Header -->
 				<div
-					style="
-          height: var(--bar-h);
-          background: var(--color-success-bg);
-          box-shadow: inset 0 -1px 0 var(--color-success);
-          display: flex;
-          align-items: center;
-          padding: 0 var(--space-2);
-          gap: var(--space-2);
-          flex-shrink: 0;
-        "
+					class="h-bar bg-success-bg hairline-success flex items-center py-0 px-2 gap-2 shrink-0"
 				>
-					<span
-						style="font-size: var(--text-callout); color: var(--color-text);"
-						>Incoming (Theirs)</span
-					>
-					<span style="flex: 1;"></span>
+					<span class="text-callout text-text">Incoming (Theirs)</span>
+					<span class="flex-1"></span>
 					<Button size="sm" variant="success" onclick={handleTakeAllIncoming}
 						>Take All Incoming</Button
 					>
@@ -684,20 +559,16 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 				<div
 					bind:this={panelRefs[1]}
 					onscroll={() => handleScroll(1)}
-					style="
-            flex: 1;
-            overflow-y: auto;
-            font-family: var(--font-mono);
-            font-size: var(--text-callout);
-            line-height: {LINE_HEIGHT}px;
-          "
+					class="flex-1 overflow-y-auto font-mono text-callout"
+					style:line-height="{LINE_HEIGHT}px"
 				>
 					<div
-						style="height: {theirsOffsets[theirsVisible[0]]}px; flex-shrink: 0;"
+						class="shrink-0"
+						style:height="{theirsOffsets[theirsVisible[0]]}px"
 					></div>
 					{#each theirsFlat.slice(theirsVisible[0], theirsVisible[1]) as row, idx (theirsVisible[0] + idx)}
 						{#if row.type === 'padding'}
-							<div style="height: {row.height}px; flex-shrink: 0;"></div>
+							<div class="shrink-0" style:height="{row.height}px"></div>
 						{:else if row.type === 'conflict-header'}
 							{@render conflictHeader('theirs', row)}
 						{:else if row.type === 'conflict-line'}
@@ -707,40 +578,24 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 						{/if}
 					{/each}
 					<div
-						style="height: {theirsTotalHeight - (theirsOffsets[theirsVisible[1]] ?? theirsTotalHeight)}px; flex-shrink: 0;"
+						class="shrink-0"
+						style:height="{theirsTotalHeight - (theirsOffsets[theirsVisible[1]] ?? theirsTotalHeight)}px"
 					></div>
 				</div>
 			</div>
 		</div>
 
 		<!-- Bottom panel: Output (50% height) -->
-		<div
-			style="flex: 1; display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--color-border);"
-		>
+		<div class="flex-1 flex flex-col min-h-0 border-t border-border">
 			<!-- Header: 3-column grid so the nav naturally centers -->
 			<div
-				style="
-        height: var(--bar-h);
-        background: var(--color-muted-bg);
-        box-shadow: inset 0 -1px 0 var(--color-text-muted);
-        display: grid;
-        grid-template-columns: 1fr auto 1fr;
-        align-items: center;
-        padding: 0 var(--space-2);
-        flex-shrink: 0;
-      "
+				class="h-bar bg-muted-bg hairline-muted grid output-bar items-center py-0 px-2 shrink-0"
 			>
 				<!-- Left: label -->
-				<div style="display: flex; align-items: center; gap: var(--space-2);">
-					<span
-						style="font-size: var(--text-callout); color: var(--color-text);"
-						>Output</span
-					>
+				<div class="flex items-center gap-2">
+					<span class="text-callout text-text">Output</span>
 					{#if manualEdit}
-						<span
-							style="font-size: var(--text-caption); color: var(--color-text-muted);"
-							>(manual edit)</span
-						>
+						<span class="text-caption text-text-muted">(manual edit)</span>
 					{/if}
 					<Button
 						icon
@@ -754,7 +609,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 				</div>
 
 				<!-- Center: conflict navigation -->
-				<div style="display: flex; align-items: center; gap: var(--space-1);">
+				<div class="flex items-center gap-1">
 					{#if hasConflicts}
 						<Button
 							icon
@@ -765,8 +620,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 							aria-label="Previous conflict"
 							><ChevronUp size={16} /></Button
 						>
-						<span
-							style="font-size: var(--text-small); color: var(--color-text-muted); white-space: nowrap;"
+						<span class="text-small text-text-muted whitespace-nowrap"
 							>{focusedConflictIdx + 1}/{conflictIndices.length}</span
 						>
 						<Button
@@ -782,9 +636,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 				</div>
 
 				<!-- Right: actions -->
-				<div
-					style="display: flex; align-items: center; gap: var(--space-2); justify-content: flex-end;"
-				>
+				<div class="flex items-center gap-2 justify-end">
 					<Button
 						size="sm"
 						variant="success"
@@ -809,20 +661,8 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 				value={outputText}
 				oninput={handleOutputEdit}
 				onscroll={() => handleScroll(2)}
-				style="
-          flex: 1;
-          width: 100%;
-          resize: none;
-          border: none;
-          background: var(--color-bg);
-          color: var(--color-text);
-          font-family: var(--font-mono);
-          font-size: var(--text-callout);
-          line-height: {LINE_HEIGHT}px;
-          padding: var(--space-1) var(--space-2);
-          outline: none;
-          box-sizing: border-box;
-        "
+				class="flex-1 w-full resize-none border-none bg-bg text-text font-mono text-callout py-1 px-2 outline-none box-border"
+				style:line-height="{LINE_HEIGHT}px"
 			></textarea>
 		</div>
 	{/if}
@@ -846,5 +686,38 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 }
 .merge-line:hover .icon-remove {
 	display: inline-flex;
+}
+
+/* One bar tall plus the rule it paints along its top, so the conflict's lines start below both */
+.conflict-header {
+	height: calc(var(--bar-h) + 1px);
+	box-shadow:
+		inset 0 1px 0 var(--color-border),
+		inset 0 -1px 0 var(--color-border);
+}
+
+.icon-slot {
+	width: 14px;
+	height: 14px;
+}
+
+.line-no {
+	width: calc(12 * var(--u));
+}
+
+.hairline-accent {
+	box-shadow: inset 0 -1px 0 var(--color-accent);
+}
+
+.hairline-success {
+	box-shadow: inset 0 -1px 0 var(--color-success);
+}
+
+.hairline-muted {
+	box-shadow: inset 0 -1px 0 var(--color-text-muted);
+}
+
+.output-bar {
+	grid-template-columns: 1fr auto 1fr;
 }
 </style>

@@ -507,13 +507,10 @@ let lastVisibleColumn = $derived.by(() => {
 	<!-- Column header -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="rebase-header" oncontextmenu={showHeaderContextMenu}>
-		<div
-			class="rebase-col-action"
-			style="width: 90px; padding: 0 {COLUMN_PADDING_X}px;"
-		>
+		<div class="rebase-col-action" style:padding="0 {COLUMN_PADDING_X}px">
 			Action
 		</div>
-		<div class="flex-1 relative" style="padding: 0 {COLUMN_PADDING_X}px;">
+		<div class="flex-1 relative" style:padding="0 {COLUMN_PADDING_X}px">
 			Message
 			{#if 'message' !== lastVisibleColumn}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -526,7 +523,8 @@ let lastVisibleColumn = $derived.by(() => {
 		{#if columnVisibility.sha}
 			<div
 				class="flex-shrink-0 relative"
-				style="width: {columnWidths.sha}px; padding: 0 {COLUMN_PADDING_X}px;"
+				style:width="{columnWidths.sha}px"
+				style:padding="0 {COLUMN_PADDING_X}px"
 			>
 				SHA
 				{#if 'sha' !== lastVisibleColumn}
@@ -541,7 +539,8 @@ let lastVisibleColumn = $derived.by(() => {
 		{#if columnVisibility.author}
 			<div
 				class="flex-shrink-0 relative"
-				style="width: {columnWidths.author}px; padding: 0 {COLUMN_PADDING_X}px;"
+				style:width="{columnWidths.author}px"
+				style:padding="0 {COLUMN_PADDING_X}px"
 			>
 				Author
 				{#if 'author' !== lastVisibleColumn}
@@ -556,7 +555,8 @@ let lastVisibleColumn = $derived.by(() => {
 		{#if columnVisibility.date}
 			<div
 				class="flex-shrink-0 relative"
-				style="width: {columnWidths.date}px; padding: 0 {COLUMN_PADDING_X}px;"
+				style:width="{columnWidths.date}px"
+				style:padding="0 {COLUMN_PADDING_X}px"
 			>
 				Date
 				{#if 'date' !== lastVisibleColumn}
@@ -576,7 +576,7 @@ let lastVisibleColumn = $derived.by(() => {
 			{#each items as item, idx (item.oid)}
 				<div class="rebase-row-wrapper">
 					<div
-						class="rebase-row"
+						class="rebase-row h-row"
 						role="row"
 						tabindex="0"
 						class:rebase-row-focused={focusedIndex === idx}
@@ -586,7 +586,6 @@ let lastVisibleColumn = $derived.by(() => {
 						onclick={() => (focusedIndex = idx)}
 						onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (item.action !== 'drop') openMessageEditor(idx); } else if (e.key === ' ') { e.preventDefault(); focusedIndex = idx; } }}
 						ondblclick={() => { if (item.action !== 'drop') openMessageEditor(idx); }}
-						style="height: var(--row-h);"
 					>
 						{#if item.action === 'squash'}
 							<span class="rebase-squash-arrow">↓</span>
@@ -594,11 +593,11 @@ let lastVisibleColumn = $derived.by(() => {
 						<!-- Action column -->
 						<div
 							class="rebase-cell-action"
-							style="width: 90px; padding: 0 {COLUMN_PADDING_X}px;"
+							style:padding="0 {COLUMN_PADDING_X}px"
 						>
 							<span
 								class="rebase-action-dot"
-								style="background: {actionColor(item.action)};"
+								style:background={actionColor(item.action)}
 							></span>
 							<select
 								class="rebase-select"
@@ -616,7 +615,7 @@ let lastVisibleColumn = $derived.by(() => {
 						<!-- Message column -->
 						<div
 							class="rebase-cell rebase-cell-message flex-1"
-							style="padding: 0 {COLUMN_PADDING_X}px;"
+							style:padding="0 {COLUMN_PADDING_X}px"
 						>
 							<span class:rebase-text-drop={item.action === 'drop'}
 								>{item.newMessage ?? item.summary}</span
@@ -627,7 +626,8 @@ let lastVisibleColumn = $derived.by(() => {
 						{#if columnVisibility.sha}
 							<div
 								class="rebase-cell flex-shrink-0"
-								style="width: {columnWidths.sha}px; padding: 0 {COLUMN_PADDING_X}px;"
+								style:width="{columnWidths.sha}px"
+								style:padding="0 {COLUMN_PADDING_X}px"
 							>
 								<LinkButton
 									mono
@@ -645,7 +645,8 @@ let lastVisibleColumn = $derived.by(() => {
 						{#if columnVisibility.author}
 							<div
 								class="rebase-cell flex-shrink-0"
-								style="width: {columnWidths.author}px; padding: 0 {COLUMN_PADDING_X}px;"
+								style:width="{columnWidths.author}px"
+								style:padding="0 {COLUMN_PADDING_X}px"
 							>
 								<span class:rebase-text-drop={item.action === 'drop'}
 									>{item.authorName}</span
@@ -657,7 +658,8 @@ let lastVisibleColumn = $derived.by(() => {
 						{#if columnVisibility.date}
 							<div
 								class="rebase-cell flex-shrink-0 rebase-cell-date"
-								style="width: {columnWidths.date}px; padding: 0 {COLUMN_PADDING_X}px;"
+								style:width="{columnWidths.date}px"
+								style:padding="0 {COLUMN_PADDING_X}px"
 							>
 								<span
 									class:rebase-text-drop={item.action === 'drop'}
@@ -1080,5 +1082,10 @@ let lastVisibleColumn = $derived.by(() => {
 	padding: var(--space-1) var(--space-3);
 	font-size: var(--text-small);
 	color: var(--color-danger);
+}
+
+.rebase-col-action,
+.rebase-cell-action {
+	width: 90px;
 }
 </style>
