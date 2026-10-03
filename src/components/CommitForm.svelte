@@ -5,6 +5,8 @@ import { safeInvoke } from "../lib/invoke.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { HeadCommitMessage } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import Tab from "../lib/ui/Tab.svelte";
+import TabStrip from "../lib/ui/TabStrip.svelte";
 
 interface Props {
 	repoPath: string;
@@ -184,22 +186,17 @@ async function handleSubmit() {
 </script>
 
 <div class="flex flex-col shrink-0">
-	<!-- Mode tab selector -->
-	<div class="flex gap-0 h-bar shrink-0 shadow-hairline">
+	<TabStrip aria-label="Commit mode">
 		{#each [['commit', 'Commit'], ['amend', 'Amend'], ['stash', 'Stash']] as [tab, label]}
-			<button
-				type="button"
-				onclick={() => handleModeSwitch(tab as 'commit' | 'amend' | 'stash')}
+			<Tab
+				selected={mode === tab}
 				disabled={committing}
-				class="flex-1 p-0 text-callout bg-transparent border-none normal-case"
-				style:border-bottom="2px solid {mode === tab ? 'var(--color-accent)' : 'transparent'}"
-				style:color={mode === tab ? 'var(--color-text-strong)' : 'var(--color-text-subtle)'}
-				style:cursor={committing ? 'default' : 'pointer'}
+				onclick={() => handleModeSwitch(tab as 'commit' | 'amend' | 'stash')}
 			>
 				{label}
-			</button>
+			</Tab>
 		{/each}
-	</div>
+	</TabStrip>
 
 	<div class="p-2 flex flex-col gap-2">
 		<!-- Subject field -->

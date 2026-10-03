@@ -157,11 +157,10 @@ describe("CommitForm", () => {
 
 	it("shows all three mode tabs", () => {
 		render(CommitForm, { props: defaultProps });
-		const buttons = screen.getAllByRole("button");
-		const tabLabels = buttons.map((b) => b.textContent?.trim());
-		expect(tabLabels).toContain("Commit");
-		expect(tabLabels).toContain("Amend");
-		expect(tabLabels).toContain("Stash");
+		const tabLabels = screen
+			.getAllByRole("tab")
+			.map((tab) => tab.textContent?.trim());
+		expect(tabLabels).toEqual(["Commit", "Amend", "Stash"]);
 	});
 
 	describe("mode-switch field handling", () => {
@@ -179,15 +178,7 @@ describe("CommitForm", () => {
 		});
 
 		function tab(label: string): HTMLElement {
-			const found = screen
-				.getAllByRole("button")
-				.find(
-					(b) =>
-						b.getAttribute("data-testid") !== "commit-form-submit" &&
-						b.textContent?.trim() === label,
-				);
-			if (!found) throw new Error(`tab "${label}" not found`);
-			return found;
+			return screen.getByRole("tab", { name: label });
 		}
 
 		function subjectInput(): HTMLInputElement {
@@ -559,15 +550,7 @@ describe("CommitForm", () => {
 		}
 
 		function stashTab(): HTMLElement {
-			const found = screen
-				.getAllByRole("button")
-				.find(
-					(b) =>
-						b.getAttribute("data-testid") !== "commit-form-submit" &&
-						b.textContent?.trim() === "Stash",
-				);
-			if (!found) throw new Error('tab "Stash" not found');
-			return found;
+			return screen.getByRole("tab", { name: "Stash" });
 		}
 
 		it("tells the user to stage first in stash mode", async () => {
