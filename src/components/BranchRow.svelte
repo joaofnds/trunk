@@ -97,7 +97,7 @@ let actionShown = $derived(hovered || focused || hidden);
 			</span>
 		{:else}
 			<span
-				style="flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; margin-right: var(--space-2); background: {isHead ? 'var(--color-accent)' : 'var(--fg-4)'};"
+				style="flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; margin-right: var(--space-2); background: {isHead ? 'var(--color-accent)' : 'var(--color-text-disabled)'};"
 			></span>
 		{/if}
 		<span

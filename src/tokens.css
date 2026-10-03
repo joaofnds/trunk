@@ -143,6 +143,7 @@
 	--color-text-strong: var(--fg-0);
 	--color-text-muted: var(--fg-2);
 	--color-text-subtle: var(--fg-3);
+	--color-text-disabled: var(--fg-4);
 
 	/* Accent */
 	--color-accent: var(--accent);
