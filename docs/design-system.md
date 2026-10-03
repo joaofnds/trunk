@@ -173,4 +173,6 @@ object's keys, a `const` the component's own script binds, and a lookup into a
 static prefix is checked against the declared classes. The same
 test fails a `style:` directive whose value is a literal, because a constant belongs
 in a stylesheet rule where the token plugins read it; a `style:--name` directive
-is the runtime hand-off and passes.
+is the runtime hand-off and passes. The same test fails a raw `<button>` in
+a component outside `src/lib/ui/`, because a control drawn there in scoped CSS
+passes every other guard while it drifts from the primitives.

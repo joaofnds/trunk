@@ -269,6 +269,24 @@ function staticStyleDirectives(file: string): string[] {
 
 const components = files(root, ".svelte").map((file) => relative(root, file));
 
+/** The primitives live here; everything else draws a control through one of them. */
+const PRIMITIVES = "lib/ui/";
+
+/** A `<button>` written where a primitive should be. The primitive carries the
+ *  frame, the sizes and the focus ring, and a control in scoped CSS passes
+ *  every other guard while looking right (docs/design-system.md, Primitives). */
+function rawButtons(file: string): string[] {
+	const source = readFileSync(file, "utf8");
+	const ast = parse(source, { modern: true });
+	return descendants(ast.fragment, "RegularElement")
+		.filter(isElement)
+		.filter((element) => element.name === "button")
+		.map(
+			(element) =>
+				`<button> at line ${source.slice(0, element.start).split("\n").length}`,
+		);
+}
+
 describe("markup classes", () => {
 	it("generates a utility the theme maps", () => {
 		expect(
@@ -293,6 +311,13 @@ describe("markup classes", () => {
 		"%s puts a static value in a stylesheet rule, not a style directive",
 		(file) => {
 			expect(staticStyleDirectives(join(root, file))).toEqual([]);
+		},
+	);
+
+	it.each(components.filter((file) => !file.startsWith(PRIMITIVES)))(
+		"%s draws a button through a primitive from src/lib/ui, not a raw <button>",
+		(file) => {
+			expect(rawButtons(join(root, file))).toEqual([]);
 		},
 	);
 });
