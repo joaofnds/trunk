@@ -82,18 +82,16 @@ async function handleRemoveRecent(path: string, event: MouseEvent) {
 		style="height: var(--topbar-h); padding-left: {isFullscreen ? 0 : 78}px;"
 	></div>
 	<div class="flex-1 flex flex-col items-center justify-center gap-6">
-		<div class="flex flex-col items-center gap-4 w-full max-w-md px-4">
-			<h1
-				class="text-2xl font-semibold tracking-tight"
-				style="color: var(--color-text);"
+		<div class="flex flex-col items-center gap-4 w-full max-w-welcome px-4">
+			<h1 class="text-display font-semibold" style="color: var(--color-text);"
 				>Trunk</h1
 			>
-			<p class="text-sm" style="color: var(--color-text-muted);"
+			<p class="text-body" style="color: var(--color-text-muted);"
 				>Git history, beautifully visualized</p
 			>
 
 			{#if error}
-				<div class="error-banner w-full rounded px-4 py-2 text-sm">
+				<div class="error-banner w-full rounded px-4 py-2 text-body">
 					{error}
 				</div>
 			{/if}
@@ -101,7 +99,7 @@ async function handleRemoveRecent(path: string, event: MouseEvent) {
 			<button
 				onclick={openRepository}
 				disabled={loading}
-				class="w-full rounded px-4 py-2.5 text-sm font-medium transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+				class="w-full rounded px-4 py-3 text-body font-medium transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
 				style="background: var(--color-accent); color: var(--color-on-accent);"
 			>
 				{loading ? 'Opening...' : 'Open Repository'}
@@ -109,9 +107,9 @@ async function handleRemoveRecent(path: string, event: MouseEvent) {
 		</div>
 
 		{#if displayedRepos.length > 0}
-			<div class="w-full max-w-md px-4">
+			<div class="w-full max-w-welcome px-4">
 				<p
-					class="text-xs font-medium mb-2 uppercase tracking-widest"
+					class="text-callout font-medium mb-2 uppercase tracking-widest"
 					style="color: var(--color-text-muted);"
 					>Recent</p
 				>
@@ -122,13 +120,13 @@ async function handleRemoveRecent(path: string, event: MouseEvent) {
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<!-- svelte-ignore a11y_click_events_have_key_events -->
 							<div
-								class="group flex items-center gap-2 rounded px-3 py-1.5 cursor-pointer hover:bg-white/5"
+								class="group flex items-center gap-2 rounded px-3 py-2 cursor-pointer hover:bg-hover"
 								onclick={() => openPath(repo.path)}
 								role="button"
 								tabindex="0"
 								onkeydown={(e) => e.key === 'Enter' && openPath(repo.path)}
 							>
-								<span class="text-sm truncate min-w-0 flex-1">
+								<span class="text-body truncate min-w-0 flex-1">
 									<span style="color: var(--color-text-muted);"
 										>{dp.substring(0, dp.lastIndexOf('/'))}/</span
 									><span class="font-semibold" style="color: var(--color-text);"
@@ -136,7 +134,7 @@ async function handleRemoveRecent(path: string, event: MouseEvent) {
 									>
 								</span>
 								<button
-									class="ml-2 flex-shrink-0 w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+									class="ml-2 flex-shrink-0 w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity text-callout"
 									style="color: var(--color-text-muted);"
 									onclick={(e) => handleRemoveRecent(repo.path, e)}
 									aria-label="Remove from recent"

@@ -157,7 +157,7 @@ function handleBackdropClick() {
 				bind:value={query}
 				onkeydown={handleKeydown}
 				placeholder="Search recent repositories"
-				class="w-full px-3 py-2 text-sm outline-none"
+				class="w-full px-3 py-2 text-body outline-none"
 				style="background: transparent; color: var(--color-text); border-bottom: 1px solid var(--color-border);"
 			>
 
@@ -165,12 +165,12 @@ function handleBackdropClick() {
 			<!-- intentionally empty body while pruning -->
 			{:else if recents.length === 0}
 				<div class="flex flex-col items-center gap-3 px-4 py-6">
-					<p class="text-sm" style="color: var(--color-text-muted);"
+					<p class="text-body" style="color: var(--color-text-muted);"
 						>No recent repositories</p
 					>
 					<button
 						onclick={handleOpenDialog}
-						class="rounded px-4 py-2 text-sm font-medium cursor-pointer"
+						class="rounded px-4 py-2 text-body font-medium cursor-pointer"
 						style="background: var(--color-accent); color: var(--color-on-accent);"
 					>
 						Open Repository
@@ -178,7 +178,7 @@ function handleBackdropClick() {
 				</div>
 			{:else if filtered.length === 0}
 				<div
-					class="px-4 py-6 text-sm text-center"
+					class="px-4 py-6 text-body text-center"
 					style="color: var(--color-text-muted);"
 				>
 					No matches
@@ -186,14 +186,14 @@ function handleBackdropClick() {
 			{:else}
 				<ul
 					bind:this={listEl}
-					class="flex flex-col py-1 max-h-96 overflow-y-auto"
+					class="flex flex-col py-1 max-h-dropdown-max overflow-y-auto"
 				>
 					{#each filtered as repo, idx (repo.path)}
 						{@const dp = resolvedPaths[repo.path] ?? repo.path}
 						<!-- svelte-ignore a11y_click_events_have_key_events -->
 						<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 						<li
-							class="px-3 py-2 cursor-pointer flex flex-col gap-0.5"
+							class="px-3 py-2 cursor-pointer flex flex-col gap-1"
 							style="background: {idx === highlightedIdx
                 ? 'var(--color-hover)'
                 : 'transparent'};"
@@ -201,12 +201,12 @@ function handleBackdropClick() {
 							onclick={() => onpick(repo.path, repo.name)}
 						>
 							<span
-								class="text-sm font-semibold truncate"
+								class="text-body font-semibold truncate"
 								style="color: var(--color-text);"
 								>{repo.name}</span
 							>
 							<span
-								class="text-xs truncate"
+								class="text-callout truncate"
 								style="color: var(--color-text-muted);"
 								>{dp}</span
 							>
