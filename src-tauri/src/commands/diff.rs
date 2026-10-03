@@ -1239,7 +1239,7 @@ pub async fn open_current_file(
 pub fn current_file_diff(repo: &git2::Repository, file_path: &str) -> Result<FileDiff, TrunkError> {
     let bytes = blob_reader::read_tracked_working_tree_file(repo, file_path)?;
 
-    if is_binary(&bytes) {
+    if blob_reader::is_binary(&bytes) {
         return Ok(FileDiff {
             path: file_path.to_string(),
             old_path: None,
@@ -1298,11 +1298,6 @@ pub fn current_file_diff(repo: &git2::Repository, file_path: &str) -> Result<Fil
 /// on a file longer than `u32` can count.
 fn line_number(index: usize) -> u32 {
     u32::try_from(index + 1).unwrap_or(u32::MAX)
-}
-
-/// git's own heuristic: a NUL byte in the first 8000 bytes means binary.
-fn is_binary(bytes: &[u8]) -> bool {
-    bytes.iter().take(8000).any(|b| *b == 0)
 }
 
 #[cfg(test)]

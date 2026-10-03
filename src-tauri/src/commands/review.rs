@@ -462,9 +462,10 @@ pub async fn add_thread<R: Runtime>(
 ///
 /// # Errors
 ///
-/// Returns `not_found` when the file will not read at the working tree,
-/// `invalid_range` when the range names lines the file does not have, and
-/// whatever the store returns when the write fails.
+/// Returns `not_found` when the file will not read at the working tree or is
+/// not text by the rule the current-file view applies, `invalid_range` when the
+/// range names lines the file does not have, and whatever the store returns
+/// when the write fails.
 pub fn submit_current_file_thread_inner(
     store: &Store,
     canonical: &Path,
@@ -477,8 +478,11 @@ pub fn submit_current_file_thread_inner(
 ) -> Result<String, TrunkError> {
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
     let bytes = trunk_git::blob_reader::read_tracked_working_tree_file(&repo, file_path)?;
-    let text_of_file = String::from_utf8(bytes)
-        .map_err(|_| TrunkError::new("not_found", format!("{file_path} is not text")))?;
+    let not_text = || TrunkError::new("not_found", format!("{file_path} is not text"));
+    if trunk_git::blob_reader::is_binary(&bytes) {
+        return Err(not_text());
+    }
+    let text_of_file = String::from_utf8(bytes).map_err(|_| not_text())?;
 
     let pin =
         trunk_review::reviewdb::stale::pin_range(&text_of_file, file_path, start_line, end_line)?;

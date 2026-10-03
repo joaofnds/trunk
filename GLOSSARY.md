@@ -365,7 +365,8 @@ kept until a grace window passes. See
 **Current-file comment** — a comment anchored to the present content of a tracked
 file, independent of any pending change. Pins to the content at comment time; the
 stale marker arrives when that pinned block no longer occurs anywhere in the file,
-not on any edit elsewhere in it. Never re-anchored forward.
+not on any edit elsewhere in it. Never re-anchored forward. Takes no comment on a
+file the current-file view shows as binary, by the same rule the view applies.
 
 **Content pin** — what a current-file comment is attached to: the block of text the
 user selected, which occurrence of it they picked (the ordinal), and the line range

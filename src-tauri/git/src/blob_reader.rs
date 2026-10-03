@@ -246,6 +246,16 @@ pub fn read_tracked_working_tree_file(
     read_validated_working_tree_file(repo, &path)
 }
 
+/// git's own heuristic: a NUL byte in the first 8000 bytes means binary.
+///
+/// The current-file view and the current-file pin both read a tracked file
+/// through this module and both ask this one question of its bytes, so a file
+/// the view refuses to show is a file no comment can be pinned to.
+#[must_use]
+pub fn is_binary(bytes: &[u8]) -> bool {
+    bytes.iter().take(8000).any(|b| *b == 0)
+}
+
 struct ValidatedRelativePath<'a> {
     input: &'a str,
     parents: Vec<&'a OsStr>,
@@ -393,6 +403,22 @@ pub mod test_repo {
 mod tests {
     use super::test_repo::with_three_revs;
     use super::*;
+
+    #[test]
+    fn a_nul_in_the_first_8000_bytes_reads_as_binary() {
+        let mut bytes = vec![b'a'; 8000];
+        bytes[7999] = 0;
+
+        assert!(is_binary(&bytes));
+    }
+
+    #[test]
+    fn a_nul_past_the_first_8000_bytes_reads_as_text() {
+        let mut bytes = vec![b'a'; 8001];
+        bytes[8000] = 0;
+
+        assert!(!is_binary(&bytes));
+    }
 
     #[test]
     fn reads_head_blob() {

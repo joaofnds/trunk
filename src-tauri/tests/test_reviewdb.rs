@@ -6055,6 +6055,36 @@ fn pinning_reports_an_unreadable_index_as_not_found_before_writing() {
     assert_eq!(thread_count(&store, &canonical), 0);
 }
 
+/// The current-file view refuses a file by git's own rule, a NUL in its first
+/// 8000 bytes, so a pin on such a file is a pin on lines nobody could have
+/// selected. Line 2 here is plain text, which is what tells this rule from one
+/// that only reads the pinned range. The review document renders stored rows
+/// only, so a refused pin is also the observed control bytes kept out of it.
+#[test]
+fn pinning_refuses_a_file_the_current_file_view_calls_binary() {
+    let ctx = TestContext::builder()
+        .with_binary_file("b.bin", &[0, 1, 2, 3, b'\n', b'A', b'B', b'\n'])
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    let error = submit_current_file_thread_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        "b.bin",
+        2,
+        2,
+        "look",
+        1_000,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, "not_found");
+    assert_eq!(thread_count(&store, &canonical), 0);
+}
+
 /// The pin is a store row, so a fresh process reads it back on the same lines.
 /// Closing and reopening the store is what a restart is, from the thread's side.
 #[test]
