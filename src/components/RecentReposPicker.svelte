@@ -15,6 +15,7 @@ import {
 	removeRecentRepo,
 } from "../lib/store.js";
 import Button from "../lib/ui/Button.svelte";
+import ListOption from "../lib/ui/ListOption.svelte";
 
 interface Props {
 	open: boolean;
@@ -180,12 +181,10 @@ $effect(() => {
 			>
 				{#each filtered as repo, idx (repo.path)}
 					{@const dp = resolvedPaths[repo.path] ?? repo.path}
-					<button
-						type="button"
-						role="option"
-						aria-selected={idx === highlightedIdx}
-						class="px-3 py-2 cursor-pointer flex flex-col gap-1 text-left w-full"
-						style:background={idx === highlightedIdx ? 'var(--color-hover)' : 'transparent'}
+					<ListOption
+						layout="stack"
+						highlight="hover"
+						selected={idx === highlightedIdx}
 						onmousemove={() => (highlightedIdx = idx)}
 						onclick={() => onpick(repo.path, repo.name)}
 					>
@@ -193,7 +192,7 @@ $effect(() => {
 							>{repo.name}</span
 						>
 						<span class="text-callout truncate text-text-muted">{dp}</span>
-					</button>
+					</ListOption>
 				{/each}
 			</div>
 		{/if}

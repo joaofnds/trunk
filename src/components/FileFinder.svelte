@@ -8,6 +8,7 @@
 
 import { rankFiles } from "../lib/file-finder.js";
 import type { ReviewTone, TrackedFile } from "../lib/types.js";
+import ListOption from "../lib/ui/ListOption.svelte";
 
 interface Props {
 	files: TrackedFile[];
@@ -110,17 +111,13 @@ function rowLabel(file: TrackedFile): string {
 			id="file-finder-list"
 			role="listbox"
 			aria-label="Tracked files"
-			class="flex-1 min-h-0 overflow-y-auto"
+			class="flex-1 min-h-0 overflow-y-auto text-callout"
 		>
 			{#each matches as file, i (file.path)}
-				<button
-					type="button"
-					role="option"
-					aria-selected={i === selectedIndex}
+				<ListOption
+					selected={i === selectedIndex}
 					aria-label={rowLabel(file)}
-					class="flex items-center w-full gap-2 py-2 px-3 text-callout cursor-pointer text-left border-none text-text"
 					onclick={() => onselect(file.path)}
-					style:background={i === selectedIndex ? 'var(--color-selected-row)' : 'transparent'}
 				>
 					{#if file.changed}
 						<span
@@ -142,7 +139,7 @@ function rowLabel(file: TrackedFile): string {
 							>{commentCounts.get(file.path)}</span
 						>
 					{/if}
-				</button>
+				</ListOption>
 			{/each}
 
 			{#if matches.length === 0}

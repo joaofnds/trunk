@@ -5,6 +5,7 @@ import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import Button from "../lib/ui/Button.svelte";
 import ButtonGroup from "../lib/ui/ButtonGroup.svelte";
+import ListOption from "../lib/ui/ListOption.svelte";
 
 interface Props {
 	repoPath: string;
@@ -98,22 +99,7 @@ $effect(() => {
 	box-shadow: var(--shadow-md);
 	min-width: 180px;
 	padding: var(--space-1) 0;
-}
-
-.dropdown-option {
-	display: block;
-	width: 100%;
-	text-align: left;
-	background: none;
-	border: none;
-	color: var(--color-text);
 	font-size: var(--text-callout);
-	padding: var(--space-2) var(--space-3);
-	cursor: pointer;
-}
-.dropdown-option:hover {
-	background: var(--color-accent);
-	color: var(--color-on-accent);
 }
 </style>
 
@@ -147,15 +133,15 @@ $effect(() => {
 	</ButtonGroup>
 
 	{#if open}
-		<div class="dropdown-panel">
+		<div class="dropdown-panel" role="menu" aria-label="Pull options">
 			{#each options as opt}
-				<button
-					type="button"
-					class="dropdown-option"
+				<ListOption
+					role="menuitem"
+					highlight="accent"
 					onclick={() => handleOptionClick(opt)}
 				>
 					{opt.label}
-				</button>
+				</ListOption>
 			{/each}
 		</div>
 	{/if}
