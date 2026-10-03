@@ -129,6 +129,7 @@
 	--color-bg: var(--bg-0);
 	--color-surface: var(--bg-1);
 	--color-surface-raised: var(--bg-2);
+	--color-surface-chip: var(--bg-3);
 	--color-border: var(--line);
 	--color-border-strong: var(--line-strong);
 

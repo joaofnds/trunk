@@ -183,7 +183,7 @@ $effect(() => {
 }
 
 .close-btn:hover {
-	background: var(--bg-3);
+	background: var(--color-surface-chip);
 	color: var(--color-text);
 }
 

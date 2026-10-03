@@ -85,7 +85,7 @@ let filesChanged = $derived(fileDiffs.length);
 				type="button"
 				title="Copy SHA"
 				class="sha-copy"
-				style="display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--bg-3); color: var(--color-text-strong); font-family: var(--font-mono); font-size: 11px; flex-shrink: 0;"
+				style="display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--color-surface-chip); color: var(--color-text-strong); font-family: var(--font-mono); font-size: 11px; flex-shrink: 0;"
 				onclick={() => copySha(commit.oid)}
 				>{commit.short_oid}</button
 			>

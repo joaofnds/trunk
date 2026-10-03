@@ -24,7 +24,7 @@ let { name, size = 18 }: Props = $props();
 	align-items: center;
 	justify-content: center;
 	border-radius: var(--radius-pill);
-	background: var(--bg-3);
+	background: var(--color-surface-chip);
 	color: var(--color-text-strong);
 	box-shadow: inset 0 0 0 1px var(--color-border);
 	font-family: var(--font-sans);

@@ -122,7 +122,7 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 }
 .body-toggle:hover,
 .body-toggle:focus-visible {
-	background: var(--bg-3);
+	background: var(--color-surface-chip);
 	color: var(--color-text-strong);
 }
 </style>

@@ -801,7 +801,7 @@ $effect(() => {
 
 {#snippet sectionCount(n: number)}
 	<span
-		style="display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 var(--space-1); border-radius: var(--radius); background: var(--bg-3); color: var(--color-text); font-family: var(--font-mono); font-weight: 600; font-size: 10px; letter-spacing: 0; flex-shrink: 0;"
+		style="display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 var(--space-1); border-radius: var(--radius); background: var(--color-surface-chip); color: var(--color-text); font-family: var(--font-mono); font-weight: 600; font-size: 10px; letter-spacing: 0; flex-shrink: 0;"
 		>{n}</span
 	>
 {/snippet}

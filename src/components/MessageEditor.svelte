@@ -93,7 +93,7 @@ $effect(() => {
 		<div class="flex justify-end gap-2 mt-4">
 			<button
 				class="rounded px-3 py-1.5 text-xs font-medium"
-				style="background: var(--bg-3); border: 1px solid var(--color-border); color: var(--color-text);"
+				style="background: var(--color-surface-chip); border: 1px solid var(--color-border); color: var(--color-text);"
 				onclick={handleCancel}
 			>
 				Cancel
