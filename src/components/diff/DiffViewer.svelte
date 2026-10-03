@@ -14,6 +14,7 @@ import type {
 	ReviewFilter,
 	Thread,
 } from "../../lib/types.js";
+import Button from "../../lib/ui/Button.svelte";
 import FullFileView from "./FullFileView.svelte";
 import HunkView from "./HunkView.svelte";
 import RenderedDiff from "./RenderedDiff.svelte";
@@ -217,9 +218,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			<span>Could not load diff</span>
 			<span>{loadError}</span>
 			{#if onretry}
-				<button class="retry-button" type="button" onclick={onretry}
-					>Retry</button
-				>
+				<Button data-testid="diff-retry" onclick={onretry}>Retry</Button>
 			{/if}
 		</div>
 	{:else if (loading || payloadStale) && !hasContent}
@@ -310,28 +309,3 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 		/>
 	{/if}
 </div>
-
-<style>
-.retry-button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	min-height: var(--target-min);
-	padding: 0 var(--space-3);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius);
-	background: var(--color-surface);
-	color: var(--color-text);
-	font: inherit;
-	cursor: pointer;
-}
-
-.retry-button:hover {
-	background: var(--color-hover);
-}
-
-.retry-button:focus-visible {
-	outline: 2px solid var(--color-accent);
-	outline-offset: 1px;
-}
-</style>

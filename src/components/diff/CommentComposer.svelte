@@ -14,6 +14,7 @@ import {
 	type ReviewComposerSession,
 } from "../../lib/review-editors.svelte.js";
 import type { Anchor, FileDiff } from "../../lib/types.js";
+import Button from "../../lib/ui/Button.svelte";
 
 interface Props {
 	// Diff path passes file/hunkIdx/selectedLineIndices and the composer derives
@@ -285,22 +286,18 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 		oninput={scheduleDraftSave}
 	></textarea>
 	<div class="composer-actions">
-		<button
-			type="button"
-			class="composer-btn cancel-btn"
-			disabled={submitting}
-			onclick={handleCancel}
-			>Cancel</button
+		<Button size="sm" disabled={submitting} onclick={handleCancel}
+			>Cancel</Button
 		>
-		<button
-			type="button"
-			class="composer-btn submit-btn"
+		<Button
+			variant="success"
+			size="sm"
+			data-testid="comment-submit"
 			disabled={submitDisabled}
-			style:cursor={submitDisabled ? 'not-allowed' : 'pointer'}
-			style:opacity={submitDisabled ? 0.4 : 1}
 			onclick={handleSubmit}
-			>Submit</button
 		>
+			Submit
+		</Button>
 	</div>
 </div>
 
@@ -344,26 +341,5 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	display: flex;
 	justify-content: flex-end;
 	gap: var(--space-2);
-}
-
-.composer-btn {
-	border-radius: var(--radius);
-	font-size: var(--text-small);
-	font-family: var(--font-sans);
-	padding: var(--space-1) var(--space-3);
-	white-space: nowrap;
-	cursor: pointer;
-}
-
-.cancel-btn {
-	background: transparent;
-	border: 1px solid var(--color-border);
-	color: var(--color-text-muted);
-}
-
-.submit-btn {
-	background: var(--color-success-bg);
-	border: 1px solid var(--color-success-border);
-	color: var(--color-success);
 }
 </style>

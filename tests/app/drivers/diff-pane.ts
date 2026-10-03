@@ -9,7 +9,7 @@ const IGNORE_WHITESPACE = 'button[title="Ignore whitespace changes"]';
 const CLOSE_DIFF = 'button[aria-label="Close diff"]';
 const CONTEXT_LINE = ".diff-line-context .diff-line-content";
 const DIFF_PATH = '[data-testid="diff-path"]';
-const LOAD_ERROR = ".retry-button";
+const LOAD_ERROR = '[data-testid="diff-retry"]';
 const RENDERED_VIEW = ".rendered-diff";
 const ADDED_BLOCK = ".rendered-diff .md-added";
 const REMOVED_BLOCK = ".rendered-diff .md-removed";

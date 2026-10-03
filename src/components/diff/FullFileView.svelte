@@ -20,6 +20,7 @@ import type {
 	ReviewFilter,
 	Thread,
 } from "../../lib/types.js";
+import Button from "../../lib/ui/Button.svelte";
 import {
 	createVirtualizedDiff,
 	TAB_SIZE,
@@ -308,13 +309,14 @@ function lineBackground(origin: string, isSelected: boolean): string {
          because it follows the live selection, which the row model must not
          take as an input. -->
 		<div class="flex justify-end py-1 px-2 flex-none">
-			<button
-				type="button"
-				class="full-file-comment-button inline-flex items-center justify-center bg-accent-bg border border-border rounded text-accent text-small font-sans h-control-sm px-2 cursor-pointer whitespace-nowrap"
+			<Button
+				variant="accent"
+				size="sm"
+				data-testid="full-file-comment"
 				onclick={() => selectedPath && oncommentfullfile(selectedPath, selectedIndices)}
 			>
 				Comment ({selectedIndices.size})
-			</button>
+			</Button>
 		</div>
 	{/if}
 
