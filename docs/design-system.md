@@ -46,6 +46,19 @@ utility generates CSS only for a value the mapping names, so `text-sm`, `py-1.5`
 `bg-white` and the default palette emit nothing, and a class the markup spells
 wrong fails `src/markup-classes.test.ts` rather than silently styling nothing.
 
+### Runtime-set properties
+
+A component that computes a length for a stylesheet to read, a diff view's row
+heights, the split view's pan offset, the inset a markdown container pads its
+prose with, hands it over as a custom property: a `style:--name` directive, or a
+rule in its own `<style>`. `src/properties.css` registers each one with
+`@property`, its syntax, whether it inherits and the value it holds where nothing
+set it, so the read side is typed and never falls through to an invalid value. A
+token has a value and belongs in `tokens.css`; a property here has none until a
+component supplies one. `src/properties.css.test.ts` fails a registration
+nothing sets or nothing reads, one missing a descriptor, which a browser drops
+without a word, and a `style:--` directive with no registration behind it.
+
 ### Adding a token
 
 1. Declare it in `src/tokens.css` under its group. A length is `calc(N * var(--u))`; a color is `oklch(...)` or a `color-mix(in oklch, ...)` of tokens.
@@ -127,6 +140,14 @@ is on. It reads `<style>` blocks and stylesheets, not a `style="..."` attribute 
 markup or a style string built in TypeScript, so those sites are unguarded until
 they move to `style:` directives. The length plugin waits on its count reaching
 zero.
+
+Biome's `nursery/noUndeclaredCustomProperties` is on, as an error. It reports a
+`var(--name)` in a stylesheet, a `<style>` block or a `style="..."` attribute that
+no stylesheet declares, and an `@property` registration in `src/properties.css`
+counts as the declaration. A name built from an expression in markup is outside
+its reach: the column widths the commit list hands down are read that way, and
+`src/properties.css.test.ts` demands their registration the moment they are
+handed off as `style:--` directives.
 
 `src/markup-classes.test.ts` guards the markup. It parses every component with
 Svelte's compiler, loads `theme.css` into Tailwind's design system, and fails a

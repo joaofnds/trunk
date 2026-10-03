@@ -1,0 +1,54 @@
+/* The custom properties a component sets at runtime, with a style:-- directive
+   or a rule in its own <style>, for a stylesheet elsewhere to read. A token has
+   a value and lives in tokens.css; a property here has none until a component
+   supplies one. The registration types the hand-off, gives the reader a value
+   where nothing set one, and is the declaration Biome's
+   noUndeclaredCustomProperties finds behind the var(). */
+
+/* ── Diff rows: the fixed heights the views hand their rows (src/lib/diff-rows.ts) ── */
+@property --diff-file-header-height {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+@property --diff-hunk-header-height {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+@property --diff-binary-row-height {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+/* ── Split view: horizontal pan and each half's widest line ── */
+@property --pan-x {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+@property --max-l {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+@property --max-r {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+/* ── Rendered markdown: the inset a container pads its prose with ── */
+@property --md-prose-inset {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+/* ── Commit message: how many body lines show before the fade ── */
+@property --body-clamp-lines {
+	syntax: "<integer>";
+	inherits: true;
+	initial-value: 0;
+}

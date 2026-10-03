@@ -33,6 +33,9 @@
 			"preset": "recommended",
 			"style": {
 				"noHexColors": "error"
+			},
+			"nursery": {
+				"noUndeclaredCustomProperties": "error"
 			}
 		}
 	},
