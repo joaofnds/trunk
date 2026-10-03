@@ -72,7 +72,7 @@ textarea::placeholder {
 	box-shadow: var(--shadow-md);
 	font-size: var(--text-small);
 	font-weight: var(--weight-medium);
-	line-height: 1.2;
+	line-height: var(--text-small--line-height);
 	white-space: nowrap;
 	pointer-events: none;
 	opacity: 0;
@@ -97,7 +97,7 @@ textarea::placeholder {
 	user-select: text;
 	-webkit-user-select: text;
 	color: var(--color-text);
-	line-height: 1.5;
+	line-height: var(--leading-normal);
 	word-wrap: break-word;
 }
 .markdown-body > *:first-child {
@@ -114,7 +114,7 @@ textarea::placeholder {
 .markdown-body h6 {
 	margin: 1.2em 0 0.6em;
 	font-weight: var(--weight-semibold);
-	line-height: 1.25;
+	line-height: var(--leading-tight);
 	color: var(--color-text-strong);
 }
 .markdown-body h1 {
@@ -195,7 +195,7 @@ textarea::placeholder {
 	border-radius: 0;
 	background: transparent;
 	font-size: 0.85em;
-	line-height: 1.5;
+	line-height: var(--leading-normal);
 	white-space: pre;
 }
 .markdown-body table {

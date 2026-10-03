@@ -71,7 +71,7 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 	font-size: var(--text-body);
 	font-weight: var(--weight-semibold);
 	color: var(--color-text);
-	line-height: 1.4;
+	line-height: var(--leading-normal);
 }
 .summary.has-body {
 	margin-bottom: var(--space-2);
@@ -83,7 +83,7 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 .commit-body {
 	font-size: var(--text-callout);
 	color: var(--color-text-muted);
-	line-height: 1.6;
+	line-height: var(--leading-normal);
 	margin-top: var(--space-2);
 	/* Bodies arrive hard-wrapped at the author's terminal width, and some carry
        indented code or lists, so the newlines and the leading spaces are both

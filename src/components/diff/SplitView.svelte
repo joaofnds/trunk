@@ -666,7 +666,7 @@ function originClass(origin: string): string {
 	padding: var(--space-2);
 	color: var(--color-text-muted);
 	font-size: var(--text-callout);
-	line-height: 16px;
+	line-height: var(--text-callout--line-height);
 }
 
 .staging-btn {

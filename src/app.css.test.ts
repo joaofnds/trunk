@@ -270,11 +270,19 @@ describe("tokens.css type scale", () => {
 		expect(steps.filter((name) => !typeScaleTokens.has(name))).toEqual([]);
 	});
 
-	it("declares the three weights and the one line height off the scale", () => {
+	it("declares the three weights", () => {
 		expect(declared("--weight-regular")).toBe("400");
 		expect(declared("--weight-medium")).toBe("500");
 		expect(declared("--weight-semibold")).toBe("600");
+	});
+
+	/* Unitless, so they follow an em-sized prose block where a step's px line
+	   height could not. A single-line label reads its step's line height
+	   instead. */
+	it("declares the unitless line heights for pills, headings and prose", () => {
 		expect(declared("--leading-none")).toBe("1");
+		expect(declared("--leading-tight")).toBe("1.25");
+		expect(declared("--leading-normal")).toBe("1.5");
 	});
 
 	it("declares tracking in em, so it follows the step it is set on", () => {

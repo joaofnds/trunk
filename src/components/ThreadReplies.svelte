@@ -236,7 +236,7 @@ async function saveReplyEdit() {
 .thread-reply-channel {
 	align-self: flex-start;
 	font-size: var(--text-caption);
-	line-height: 1.4;
+	line-height: var(--text-caption--line-height);
 	text-transform: uppercase;
 	letter-spacing: var(--tracking-wide);
 	color: var(--color-text-muted);
