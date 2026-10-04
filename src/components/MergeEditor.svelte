@@ -22,6 +22,7 @@ import {
 } from "../lib/merge-parser.js";
 import type { MergeSides } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import Row from "../lib/ui/Row.svelte";
 
 interface Props {
 	repoPath: string;
@@ -418,49 +419,60 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 </script>
 
 {#snippet conflictHeader(side: 'ours' | 'theirs', row: FlatRow)}
-	<div
-		role="button"
-		tabindex="0"
-		onclick={() => handleToggleHunk(side, row.regionIdx)}
-		onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleToggleHunk(side, row.regionIdx); } }}
-		class="w-full conflict-header shrink-0 bg-surface flex items-center py-0 px-2 gap-1 cursor-pointer text-small text-text-muted"
-	>
-		{#if isHunkAllTaken(side, row.regionIdx)}
-			<Check size={14} class="text-success" />
-		{:else}
-			<span class="icon-slot inline-block"></span>
-		{/if}
-		Conflict {row.conflictNum}
+	<div class="w-full conflict-header shrink-0 bg-surface text-small">
+		<Row
+			variant="fill"
+			tone="muted"
+			onclick={() => handleToggleHunk(side, row.regionIdx)}
+		>
+			<span class="flex-1 flex items-center px-2 gap-1">
+				{#if isHunkAllTaken(side, row.regionIdx)}
+					<Check size={14} class="text-success" />
+				{:else}
+					<span class="icon-slot inline-block"></span>
+				{/if}
+				Conflict {row.conflictNum}
+			</span>
+		</Row>
 	</div>
 {/snippet}
 
 {#snippet conflictLine(row: FlatRow, bgColor: string)}
 	{@const taken = takenLines.has(row.key)}
 	<div
-		role="button"
-		tabindex="0"
-		onclick={(e: MouseEvent) => handleToggleLine(row.key, e)}
-		onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleToggleLine(row.key); } }}
-		class="merge-line flex shrink-0 cursor-pointer"
+		class="merge-line shrink-0"
 		style:height="{LINE_HEIGHT}px"
 		style:background={bgColor}
 	>
-		<span class="line-no shrink-0 text-right pr-2 text-text-muted select-none"
-			>{row.lineNum}</span
+		<Row
+			variant="fill"
+			onclick={(e: MouseEvent) => handleToggleLine(row.key, e)}
 		>
-		<span class="w-5 shrink-0 flex items-center justify-center">
-			{#if taken}
-				<span class="icon-taken"><Check size={14} class="text-success" /></span>
-				<span class="icon-remove"
-					><CircleX size={14} class="text-danger" /></span
+			<span class="flex-1 self-stretch flex min-w-0">
+				<span
+					class="line-no shrink-0 text-right pr-2 text-text-muted select-none"
+					>{row.lineNum}</span
 				>
-			{:else}
-				<span class="icon-add"><Check size={14} class="text-success" /></span>
-			{/if}
-		</span>
-		<span class="pl-1 whitespace-pre overflow-x-auto flex-1 min-w-0 text-text"
-			>{row.text}</span
-		>
+				<span class="w-5 shrink-0 flex items-center justify-center">
+					{#if taken}
+						<span class="icon-taken"
+							><Check size={14} class="text-success" /></span
+						>
+						<span class="icon-remove"
+							><CircleX size={14} class="text-danger" /></span
+						>
+					{:else}
+						<span class="icon-add"
+							><Check size={14} class="text-success" /></span
+						>
+					{/if}
+				</span>
+				<span
+					class="pl-1 whitespace-pre overflow-x-auto flex-1 min-w-0 text-text"
+					>{row.text}</span
+				>
+			</span>
+		</Row>
 	</div>
 {/snippet}
 

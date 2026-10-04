@@ -1,5 +1,11 @@
 <script lang="ts" module>
-export type RowVariant = "inset" | "flush" | "header" | "band" | "entry";
+export type RowVariant =
+	| "inset"
+	| "flush"
+	| "header"
+	| "band"
+	| "entry"
+	| "fill";
 export type RowTone = "plain" | "muted" | "current";
 export type RowReveal = "hover" | "fade" | "always";
 </script>
@@ -13,7 +19,9 @@ interface Props extends Omit<HTMLButtonAttributes, "class" | "style"> {
 	 *  runs to them with the arrow cursor, both taking the hover color; `header`
 	 *  is the bar over a section, edge to edge, which does not, and `band` the
 	 *  one over a panel's section, which paints the hairline rule; `entry` is a
-	 *  rounded row of a list that stands alone, as tall as its label and padding. */
+	 *  rounded row of a list that stands alone, as tall as its label and
+	 *  padding; `fill` takes the whole box of a frame its caller sizes and
+	 *  paints, and pads nothing, so its children do. */
 	variant?: RowVariant;
 	/** `muted` dims the text; `current` marks the one row that is checked out
 	 *  with the accent tint, which the pointer does not change. */
@@ -44,6 +52,7 @@ const SHAPES: Record<RowVariant, string> = {
 	header: "h-bar",
 	band: "row-band h-bar shadow-hairline",
 	entry: "rounded",
+	fill: "size-full",
 };
 
 const HOVERS: Record<RowVariant, string> = {
@@ -52,6 +61,7 @@ const HOVERS: Record<RowVariant, string> = {
 	header: "",
 	band: "",
 	entry: "hover:bg-hover",
+	fill: "",
 };
 
 const TONES: Record<RowTone, string> = {
@@ -69,6 +79,7 @@ const POINTERS: Record<RowVariant, string> = {
 	header: "cursor-pointer",
 	band: "cursor-pointer",
 	entry: "rounded cursor-pointer",
+	fill: "cursor-pointer",
 };
 
 const CONTENT = "flex items-center min-w-0";
@@ -79,6 +90,7 @@ const LEADS: Record<RowVariant, string> = {
 	header: "pl-3",
 	band: "pl-2",
 	entry: "pl-3 py-2",
+	fill: "",
 };
 
 const ACTIONS = "col-start-2 row-start-1 flex items-center pointer-events-none";
@@ -89,6 +101,7 @@ const TRAILS: Record<RowVariant, string> = {
 	header: "pr-2",
 	band: "pr-2",
 	entry: "pr-3 py-2",
+	fill: "",
 };
 
 const SHOWN = "items-center *:pointer-events-auto";
@@ -99,6 +112,7 @@ const GAPS: Record<RowVariant, string> = {
 	header: "ml-1",
 	band: "",
 	entry: "ml-4",
+	fill: "",
 };
 
 const REVEALS: Record<RowReveal, string> = {

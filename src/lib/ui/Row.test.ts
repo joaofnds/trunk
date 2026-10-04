@@ -276,4 +276,22 @@ describe("Row", () => {
 			expect(container.querySelector("button + div")).toHaveClass("pr-3");
 		});
 	});
+
+	describe("when it fills a frame its caller sizes and paints", () => {
+		it("takes the frame's whole box and adds no padding or hover color", () => {
+			const { container } = render(Row, {
+				props: { variant: "fill", "aria-label": "Conflict 1", children: name },
+			});
+
+			const row = container.firstElementChild;
+			expect(row).toHaveClass("size-full");
+			expect(row).not.toHaveClass("hover:bg-hover", "h-row", "h-bar");
+			expect(container.querySelector("button > span")?.className).not.toMatch(
+				/\bp[lxy]-/,
+			);
+			expect(container.querySelector("button + div")?.className).not.toMatch(
+				/\bpr-|\bmin-w-2\b/,
+			);
+		});
+	});
 });
