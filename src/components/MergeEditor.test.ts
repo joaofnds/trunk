@@ -156,4 +156,81 @@ describe("MergeEditor", () => {
 			expect(screen.getByLabelText(label)).toHaveClass("w-control-sm");
 		}
 	});
+
+	describe("when a conflict spans several lines", () => {
+		const props = {
+			repoPath: "/test/repo",
+			filePath: "src/main.ts",
+			onclose: () => {},
+			onresolved: () => {},
+		};
+
+		beforeEach(() => {
+			mockInvoke.mockImplementation((cmd: string) => {
+				if (cmd !== "get_merge_sides") return Promise.resolve(undefined);
+				return Promise.resolve({
+					base: "first\nold one\nold two\nold three\nlast\n",
+					ours: "first\nours one\nours two\nours three\nlast\n",
+					theirs: "first\ntheirs one\ntheirs two\ntheirs three\nlast\n",
+				});
+			});
+		});
+
+		async function output(): Promise<HTMLTextAreaElement> {
+			return (await screen.findByRole("textbox")) as HTMLTextAreaElement;
+		}
+
+		function line(text: string): HTMLElement {
+			return screen.getByRole("button", { name: new RegExp(text) });
+		}
+
+		it("takes an incoming line when it is clicked", async () => {
+			render(MergeEditor, { props });
+			const result = await output();
+
+			await fireEvent.click(line("theirs two"));
+
+			expect(result.value).toContain("theirs two");
+			expect(result.value).not.toContain("theirs one");
+		});
+
+		it("takes the run of lines between a click and a shift click", async () => {
+			render(MergeEditor, { props });
+			const result = await output();
+
+			await fireEvent.click(line("theirs one"));
+			await fireEvent.click(line("theirs three"), {
+				shiftKey: true,
+				detail: 1,
+			});
+
+			expect(result.value).toContain("theirs one\ntheirs two\ntheirs three");
+		});
+
+		it("takes one line when a key press with Shift held activates it", async () => {
+			render(MergeEditor, { props });
+			const result = await output();
+
+			await fireEvent.click(line("theirs one"));
+			await fireEvent.click(line("theirs three"), {
+				shiftKey: true,
+				detail: 0,
+			});
+
+			expect(result.value).toContain("theirs three");
+			expect(result.value).not.toContain("theirs two");
+		});
+
+		it("takes every line of a side when its conflict header is clicked", async () => {
+			render(MergeEditor, { props });
+			const result = await output();
+			const [, incoming] = screen.getAllByRole("button", {
+				name: "Conflict 1",
+			});
+
+			await fireEvent.click(incoming);
+
+			expect(result.value).toContain("theirs one\ntheirs two\ntheirs three");
+		});
+	});
 });

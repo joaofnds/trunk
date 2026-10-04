@@ -319,8 +319,12 @@ function handleToggleHunk(side: "ours" | "theirs", regionIdx: number) {
 
 let lastClickedKey = $state<string | null>(null);
 
-function handleToggleLine(key: string, event?: MouseEvent) {
-	if (event?.shiftKey && lastClickedKey) {
+function isPointerClick(event: MouseEvent) {
+	return event.detail > 0;
+}
+
+function handleToggleLine(key: string, event: MouseEvent) {
+	if (isPointerClick(event) && event.shiftKey && lastClickedKey) {
 		// Parse keys: "side-regionIdx-lineIdx"
 		const [side, regStr, lineStr] = key.split("-");
 		const [lastSide, lastRegStr, lastLineStr] = lastClickedKey.split("-");
