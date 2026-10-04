@@ -149,4 +149,31 @@ describe("Row", () => {
 
 		expect(container.querySelector("button + div")).toHaveClass("min-w-2");
 	});
+
+	describe("when it heads a section", () => {
+		it("takes the bar height and the full width, with no hover color", () => {
+			const { container } = render(Row, {
+				props: { variant: "header", "aria-label": "Branches", children: name },
+			});
+
+			const row = container.firstElementChild;
+			expect(row).toHaveClass("h-bar");
+			expect(row).not.toHaveClass("h-row", "mx-2", "hover:bg-hover");
+		});
+
+		// A header runs edge to edge, so its actions are inset from the edge by
+		// padding and land in the column the rows under it put theirs in.
+		it("insets its actions from the edge it runs to", () => {
+			const { container } = render(Row, {
+				props: {
+					variant: "header",
+					"aria-label": "Branches",
+					children: name,
+					actions: eye,
+				},
+			});
+
+			expect(container.querySelector("button + div")).toHaveClass("pr-2");
+		});
+	});
 });

@@ -190,15 +190,18 @@ describe("BranchSection trailing controls", () => {
 		children: emptySnippet,
 	};
 
-	// The right edge is what puts every row's eye in one column. It is read off the
-	// class list rather than getComputedStyle because jsdom lays nothing out.
-	it("ends the header at the shared --space-2 edge", () => {
+	// The header variant is what insets the eye from the edge the header runs to,
+	// which puts it in the column every row's eye is in. It is read off the class
+	// list because jsdom lays nothing out.
+	it("draws its header as a section header row", () => {
 		render(BranchSection, { props });
 
-		expect(screen.getByTestId("branch-section-header")).toHaveClass(
-			"pr-2",
-			"pl-3",
-		);
+		expect(
+			screen.getByTestId("branch-section-visibility-btn").closest(".pr-2"),
+		).toBeInTheDocument();
+		expect(
+			screen.getByTestId("branch-section-header").parentElement,
+		).toHaveClass("h-bar");
 	});
 
 	// The eye is anchored to the right edge. When a section provides a create button,

@@ -1,4 +1,5 @@
 <script lang="ts" module>
+export type RowVariant = "inset" | "header";
 export type RowTone = "plain" | "muted" | "current";
 export type RowReveal = "hover" | "always";
 </script>
@@ -8,6 +9,9 @@ import type { Snippet } from "svelte";
 import type { HTMLButtonAttributes } from "svelte/elements";
 
 interface Props extends Omit<HTMLButtonAttributes, "class" | "style"> {
+	/** `inset` is a rounded row held off the list's edges, which takes the hover
+	 *  color; `header` is the bar over a section, edge to edge, which does not. */
+	variant?: RowVariant;
 	/** `muted` dims the text; `current` marks the one row that is checked out
 	 *  with the accent tint, which the pointer does not change. */
 	tone?: RowTone;
@@ -18,6 +22,7 @@ interface Props extends Omit<HTMLButtonAttributes, "class" | "style"> {
 }
 
 let {
+	variant = "inset",
 	tone = "plain",
 	actions,
 	reveal = "hover",
@@ -27,22 +32,46 @@ let {
 	...rest
 }: Props = $props();
 
-const CONTAINER = "row group h-row mx-2 rounded text-callout";
+const CONTAINER = "row group";
+
+const SHAPES: Record<RowVariant, string> = {
+	inset: "h-row mx-2 rounded text-callout",
+	header: "h-bar",
+};
+
+const HOVERS: Record<RowVariant, string> = {
+	inset: "hover:bg-hover",
+	header: "",
+};
 
 const TONES: Record<RowTone, string> = {
-	plain: "text-text font-regular hover:bg-hover",
-	muted: "text-text-muted font-regular hover:bg-hover",
+	plain: "text-text font-regular",
+	muted: "text-text-muted font-regular",
 	current: "row-current text-text-strong font-semibold",
 };
 
 const PRIMARY =
 	"col-start-1 col-span-2 row-start-1 grid grid-cols-subgrid " +
-	"rounded text-left cursor-pointer";
+	"text-left cursor-pointer";
 
-const CONTENT = "flex items-center min-w-0 pl-2";
+const CORNERS: Record<RowVariant, string> = {
+	inset: "rounded",
+	header: "",
+};
 
-const ACTIONS =
-	"col-start-2 row-start-1 flex items-center min-w-2 pointer-events-none";
+const CONTENT = "flex items-center min-w-0";
+
+const LEADS: Record<RowVariant, string> = {
+	inset: "pl-2",
+	header: "pl-3",
+};
+
+const ACTIONS = "col-start-2 row-start-1 flex items-center pointer-events-none";
+
+const TRAILS: Record<RowVariant, string> = {
+	inset: "min-w-2",
+	header: "pr-2",
+};
 
 const SHOWN = "ml-1 items-center *:pointer-events-auto";
 
@@ -53,17 +82,25 @@ const REVEALS: Record<RowReveal, string> = {
 </script>
 
 <!--
-	One row of a list whose whole width is a control: a branch in the sidebar.
+	One row of a list whose whole width is a control: a branch in the sidebar,
+	or the header that folds its section.
 	The primary button spans the row and its actions sit over its trailing edge
 	as siblings, so no control nests in another. The action column lets the
 	pointer through everywhere but on an action, so a click in a gap still lands
 	on the row.
 -->
-<div class={[CONTAINER, TONES[tone]]}>
-	<button {type} {tabindex} class={PRIMARY} {...rest}>
-		<span class={CONTENT}>{@render children?.()}</span>
+<div
+	class={[
+		CONTAINER,
+		SHAPES[variant],
+		TONES[tone],
+		tone !== "current" && HOVERS[variant],
+	]}
+>
+	<button {type} {tabindex} class={[PRIMARY, CORNERS[variant]]} {...rest}>
+		<span class={[CONTENT, LEADS[variant]]}>{@render children?.()}</span>
 	</button>
-	<div class={ACTIONS}>
+	<div class={[ACTIONS, TRAILS[variant]]}>
 		{#if actions}
 			<div class={[SHOWN, REVEALS[reveal]]}>{@render actions()}</div>
 		{/if}
