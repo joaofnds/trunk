@@ -1,6 +1,7 @@
-//! Commits a thread can anchor to without Trunk minting them, and a `git gc`
-//! that collects an anchor, for the tests about what makes an oid a snapshot
-//! and what a thread reads once its anchor is gone.
+//! Commits a thread can anchor to without Trunk minting them, a `git gc` that
+//! collects an anchor, and an anchor object that is present and will not read,
+//! for the tests about what makes an oid a snapshot and what a thread reads
+//! once its anchor is gone or unreadable.
 
 use super::context::TestContext;
 

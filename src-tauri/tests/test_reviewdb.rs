@@ -5480,16 +5480,17 @@ fn a_thread_whose_anchor_object_is_collected_is_stale() {
 /// a read of a live commit for one pass, and a marker written from that failure
 /// tells the reader the code is unrecoverable when it is one retry away.
 #[test]
-fn a_thread_whose_anchor_object_will_not_read_keeps_its_marker() {
+fn a_thread_whose_anchor_object_will_not_read_is_not_marked_stale() {
     let (ctx, store, snapshot) = a_thread_on_a_workdir_snapshot("this line is wrong");
     let canonical = ctx.repo_path().canonicalize().unwrap();
     common::snapshots::make_the_object_unreadable(&ctx, &snapshot);
 
     let outcome = recompute_staleness(&store, &canonical, ctx.path());
 
-    assert!(
-        outcome.is_err(),
-        "the pass reports the read it could not make"
+    assert_eq!(
+        outcome.map_err(|failure| failure.code),
+        Err("git_error".to_owned()),
+        "the pass reports the read it could not make",
     );
     assert!(
         !only_thread(&store, &canonical).stale,

@@ -47,11 +47,12 @@ pub enum SnapshotStanding {
     Current,
     /// A snapshot of a state the repo has moved past.
     Superseded,
-    /// An oid this repository can no longer resolve to a commit. Collection is
-    /// the cause in practice, but the check cannot tell that from an oid naming
-    /// a tree, a blob, or an object this repo never held. Either way the code
-    /// the thread was written against is unreachable, so this is the most stale
-    /// a thread can be.
+    /// An oid this repository holds no commit for. Collection is the cause in
+    /// practice, but the check cannot tell that from an oid naming a tree, a
+    /// blob, or an object this repo never held. Either way the code the thread
+    /// was written against is unreachable, so this is the most stale a thread
+    /// can be. A commit that is present and will not read is not this, and the
+    /// caller fails the pass on it.
     Collected,
     /// A real commit, which never goes stale. Also where an oid that will not
     /// parse lands: a corrupt row is not a collected object, and reporting
