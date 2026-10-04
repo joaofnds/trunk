@@ -1,7 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import BranchRow from "./BranchRow.svelte";
 import "../__tests__/helpers/tauri-mock";
+
+const toggle = () => {};
 
 describe("BranchRow", () => {
 	it("renders branch name", () => {
@@ -10,10 +12,19 @@ describe("BranchRow", () => {
 	});
 
 	it("calls onclick when clicked", async () => {
-		const onclick = vi.fn();
-		render(BranchRow, { props: { name: "main", onclick } });
-		await fireEvent.click(screen.getByRole("button"));
-		expect(onclick).toHaveBeenCalled();
+		let clicks = 0;
+		render(BranchRow, {
+			props: {
+				name: "main",
+				onclick: () => {
+					clicks += 1;
+				},
+			},
+		});
+
+		await fireEvent.click(screen.getByRole("button", { name: "main" }));
+
+		expect(clicks).toBe(1);
 	});
 
 	it("shows error message when isError=true", () => {
@@ -60,12 +71,10 @@ describe("BranchRow", () => {
 	});
 
 	it("renders with isHead=true without error", () => {
-		const { container } = render(BranchRow, {
-			props: { name: "main", isHead: true },
-		});
-		// isHead=true sets visual emphasis on the branch name
+		render(BranchRow, { props: { name: "main", isHead: true } });
+
 		expect(screen.getByText("main")).toBeInTheDocument();
-		expect(container.querySelector("[role='button']")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "main" })).toBeInTheDocument();
 	});
 });
 
@@ -78,17 +87,25 @@ describe("BranchRow visibility toggle", () => {
 	});
 
 	it("offers to hide a visible row", async () => {
-		const ontogglevisibility = vi.fn();
+		let toggles = 0;
 		render(BranchRow, {
-			props: { name: "topic", hidden: false, ontogglevisibility },
+			props: {
+				name: "topic",
+				hidden: false,
+				ontogglevisibility: () => {
+					toggles += 1;
+				},
+			},
 		});
+
 		await fireEvent.click(screen.getByLabelText("Hide topic"));
-		expect(ontogglevisibility).toHaveBeenCalled();
+
+		expect(toggles).toBe(1);
 	});
 
 	it("offers to show a hidden row", () => {
 		render(BranchRow, {
-			props: { name: "topic", hidden: true, ontogglevisibility: vi.fn() },
+			props: { name: "topic", hidden: true, ontogglevisibility: toggle },
 		});
 		expect(screen.getByLabelText("Show topic")).toBeInTheDocument();
 	});
@@ -97,7 +114,7 @@ describe("BranchRow visibility toggle", () => {
 	// again to turn it back on.
 	it("keeps a hidden row listed and marks it hidden", () => {
 		render(BranchRow, {
-			props: { name: "topic", hidden: true, ontogglevisibility: vi.fn() },
+			props: { name: "topic", hidden: true, ontogglevisibility: toggle },
 		});
 		expect(screen.getByText("topic")).toBeInTheDocument();
 		expect(screen.getByTestId("branch-row")).toHaveAttribute(
@@ -108,17 +125,39 @@ describe("BranchRow visibility toggle", () => {
 
 	// Clicking the eye must not also navigate to the ref.
 	it("does not navigate when the toggle is clicked", async () => {
-		const onclick = vi.fn();
+		let clicks = 0;
 		render(BranchRow, {
 			props: {
 				name: "topic",
 				hidden: false,
-				ontogglevisibility: vi.fn(),
-				onclick,
+				ontogglevisibility: toggle,
+				onclick: () => {
+					clicks += 1;
+				},
 			},
 		});
+
 		await fireEvent.click(screen.getByLabelText("Hide topic"));
-		expect(onclick).not.toHaveBeenCalled();
+
+		expect(clicks).toBe(0);
+	});
+
+	// The eye sits beside the row's button rather than inside it, so the row's
+	// menu has to be handed to it or a right-click there opens the webview's own.
+	it("opens the row's menu from a right-click on the toggle", async () => {
+		const menus: MouseEvent[] = [];
+		render(BranchRow, {
+			props: {
+				name: "topic",
+				ontogglevisibility: toggle,
+				oncontextmenu: (event) => menus.push(event),
+			},
+		});
+
+		await fireEvent.contextMenu(screen.getByLabelText("Hide topic"));
+
+		expect(menus).toHaveLength(1);
+		expect(menus[0].defaultPrevented).toBe(true);
 	});
 });
 
@@ -130,7 +169,7 @@ describe("BranchRow visibility toggle", () => {
 describe("BranchRow visibility toggle target size", () => {
 	it("declares a 24x24 minimum on the toggle", () => {
 		render(BranchRow, {
-			props: { name: "topic", hidden: false, ontogglevisibility: vi.fn() },
+			props: { name: "topic", hidden: false, ontogglevisibility: toggle },
 		});
 
 		expect(screen.getByLabelText("Hide topic")).toHaveClass(
@@ -140,72 +179,33 @@ describe("BranchRow visibility toggle target size", () => {
 	});
 });
 
-// The eye used to sit in the row permanently as `visibility: hidden`, which keeps its
-// layout box, so every name truncated ~40px early for an icon that was usually not there.
-// It now leaves the flow when idle and the name takes the full width, following VS Code's
-// SCM view (João, 2026-09-02).
+// The eye leaves the flow when the row is idle, so the name takes the full width
+// instead of truncating against a gutter for an icon that is usually not there,
+// following VS Code's SCM view (João, 2026-09-02). The pointer and focus bring it
+// back in the stylesheet, which jsdom does not apply, so these read which of the
+// two the row asks for.
 describe("BranchRow trailing action layout", () => {
 	it("takes no width while the row is idle", () => {
 		render(BranchRow, {
-			props: { name: "topic", hidden: false, ontogglevisibility: vi.fn() },
+			props: { name: "topic", hidden: false, ontogglevisibility: toggle },
 		});
 
-		// `display: none` rather than `visibility: hidden`: the latter keeps the layout
-		// box, which is what reserved the gutter the name was truncating against.
-		expect(screen.getByLabelText("Hide topic")).not.toBeVisible();
+		expect(screen.getByLabelText("Hide topic").parentElement).toHaveClass(
+			"hidden",
+			"group-hover:flex",
+			"group-focus-within:flex",
+		);
 	});
 
 	// A hidden row shows its eye permanently: that is the only marker saying the ref is
 	// hidden, so it cannot depend on the pointer being there.
 	it("stays in the row while the ref is hidden", () => {
 		render(BranchRow, {
-			props: { name: "topic", hidden: true, ontogglevisibility: vi.fn() },
+			props: { name: "topic", hidden: true, ontogglevisibility: toggle },
 		});
 
-		expect(screen.getByTestId("branch-row")).toHaveAttribute(
-			"data-action-shown",
-			"true",
-		);
-	});
-
-	// A hover-only control is unreachable by keyboard. Focus has to reveal it too, which is
-	// what VS Code does with its `.focused` selector.
-	it("appears when the row takes keyboard focus", async () => {
-		render(BranchRow, {
-			props: { name: "topic", hidden: false, ontogglevisibility: vi.fn() },
-		});
-
-		const row = screen.getByRole("button", { name: /topic/ });
-		await fireEvent.focusIn(row);
-
-		expect(screen.getByTestId("branch-row")).toHaveAttribute(
-			"data-action-shown",
-			"true",
-		);
-	});
-
-	it("appears while the pointer is over the row", async () => {
-		render(BranchRow, {
-			props: { name: "topic", hidden: false, ontogglevisibility: vi.fn() },
-		});
-
-		const row = screen.getByRole("button", { name: /topic/ });
-		await fireEvent.mouseEnter(row);
-
-		expect(screen.getByTestId("branch-row")).toHaveAttribute(
-			"data-action-shown",
-			"true",
-		);
-	});
-
-	it("hides the action again when the row is neither hovered nor focused", () => {
-		render(BranchRow, {
-			props: { name: "topic", hidden: false, ontogglevisibility: vi.fn() },
-		});
-
-		expect(screen.getByTestId("branch-row")).toHaveAttribute(
-			"data-action-shown",
-			"false",
+		expect(screen.getByLabelText("Show topic").parentElement).not.toHaveClass(
+			"hidden",
 		);
 	});
 
@@ -220,102 +220,36 @@ describe("BranchRow trailing action layout", () => {
 	});
 });
 
-// `display: none` takes an element out of the tab order, so revealing the button on row
-// focus is what keeps it reachable: Tab lands on the row, the eye appears, Tab again lands
-// on the eye. Without the focus trigger the control would be keyboard-dead.
-describe("BranchRow keyboard reachability", () => {
-	it("puts the action in the tab order once the row is focused", async () => {
-		render(BranchRow, {
-			props: { name: "topic", hidden: false, ontogglevisibility: vi.fn() },
-		});
-
-		const row = screen.getByRole("button", { name: "topic" });
-		await fireEvent.focusIn(row);
-
-		// Present in the document and not display:none, so it can take focus next.
-		expect(screen.getByLabelText("Hide topic")).toBeVisible();
-	});
-
-	it("can be activated from the keyboard once revealed", async () => {
-		const ontogglevisibility = vi.fn();
-		render(BranchRow, {
-			props: { name: "topic", hidden: false, ontogglevisibility },
-		});
-
-		const row = screen.getByRole("button", { name: "topic" });
-		await fireEvent.focusIn(row);
-		await fireEvent.click(screen.getByLabelText("Hide topic"));
-
-		expect(ontogglevisibility).toHaveBeenCalled();
-	});
-
-	// Focus moving into the button itself must not collapse it: `onfocusout` on the row
-	// fires as focus crosses to the child, and a naive handler would hide the very control
-	// the user just reached.
-	it("stays visible when focus moves from the row onto the action", async () => {
-		render(BranchRow, {
-			props: { name: "topic", hidden: false, ontogglevisibility: vi.fn() },
-		});
-
-		const row = screen.getByRole("button", { name: "topic" });
-		await fireEvent.focusIn(row);
-		const action = screen.getByLabelText("Hide topic");
-		await fireEvent.focusIn(action);
-
-		expect(screen.getByTestId("branch-row")).toHaveAttribute(
-			"data-action-shown",
-			"true",
-		);
-	});
-});
-
-// The eye lands on the shared --space-2 column only because three values cancel:
-// the row's own margin and padding push content in, and the eye's negative margin
-// pulls it back out by the same amount. Nothing here reads as an edge position, so
-// a change to any one of the three moves the eye and no other test notices. Both
-// are read off the class list because jsdom lays nothing out.
-describe("BranchRow eye alignment", () => {
-	it("insets the row by --space-2 on the right", () => {
-		render(BranchRow, {
-			props: { name: "topic", hidden: true, ontogglevisibility: vi.fn() },
-		});
-
-		expect(screen.getByRole("button", { name: "topic" })).toHaveClass(
-			"mx-2",
-			"px-2",
-		);
-	});
-
-	it("pulls the eye back out of that inset so it sits on the shared edge", () => {
-		render(BranchRow, {
-			props: { name: "topic", hidden: true, ontogglevisibility: vi.fn() },
-		});
+describe("BranchRow tone", () => {
+	it.each([
+		["the checked-out branch", { isHead: true }, "text-text-strong"],
+		["a hidden ref", { hidden: true }, "text-text-muted"],
+		["a branch being checked out", { isLoading: true }, "text-text-muted"],
+		["any other branch", {}, "text-text"],
+	])("draws %s in its own text color", (_, props, color) => {
+		render(BranchRow, { props: { name: "topic", ...props } });
 
 		expect(
-			screen.getByTestId("branch-row-visibility-btn").parentElement,
-		).toHaveClass("-mr-2");
+			screen.getByRole("button", { name: "topic" }).parentElement,
+		).toHaveClass(color);
 	});
 });
 
-// The eye anchors to the right edge of the row container. No phantom slot is needed.
 describe("BranchRow trailing controls", () => {
-	it("renders the visibility toggle as the rightmost trailing control", () => {
+	it("renders the visibility toggle as its one trailing control", () => {
 		render(BranchRow, {
-			props: { name: "topic", hidden: true, ontogglevisibility: vi.fn() },
+			props: { name: "topic", hidden: true, ontogglevisibility: toggle },
 		});
 
-		const btn = screen.getByTestId("branch-row-visibility-btn");
-		expect(btn).toBeInTheDocument();
+		expect(screen.getByTestId("branch-row-visibility-btn")).toBeInTheDocument();
 		expect(
 			screen.queryByTestId("branch-row-create-slot"),
 		).not.toBeInTheDocument();
 	});
 
 	// HEAD's row is passed no ontogglevisibility, so it renders no eye.
-	it("renders no trailing control on a row that has no eye", async () => {
+	it("renders no trailing control on a row that has no eye", () => {
 		render(BranchRow, { props: { name: "main", isHead: true } });
-
-		await fireEvent.mouseEnter(screen.getByRole("button", { name: "main" }));
 
 		expect(
 			screen.queryByTestId("branch-row-visibility-btn"),

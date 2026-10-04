@@ -3,6 +3,7 @@ import ArrowDown from "@lucide/svelte/icons/arrow-down";
 import ArrowUp from "@lucide/svelte/icons/arrow-up";
 import Tag from "@lucide/svelte/icons/tag";
 import { visibilityVerb } from "../lib/ref-visibility.js";
+import Row, { type RowTone } from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import VisibilityIcon from "./VisibilityIcon.svelte";
 
@@ -40,45 +41,44 @@ let {
 	ontogglevisibility,
 }: Props = $props();
 
-let hovered = $state(false);
-let focused = $state(false);
+let tone: RowTone = $derived(
+	isHead ? "current" : isLoading || hidden ? "muted" : "plain",
+);
 
-/**
- * Whether the trailing action occupies the row.
- *
- * Idle rows drop it out of the flow entirely, so the name gets the full width instead of
- * truncating against a reserved gutter for an icon that is not there. Following VS Code's
- * SCM view, which is the same problem in the same shape: a git ref list in a narrow pane.
- *
- * Focus counts alongside hover, or the control would be unreachable by keyboard. A hidden
- * ref keeps it permanently: the eye is the only thing saying the ref is hidden, so it
- * cannot depend on the pointer being there.
- */
-let actionShown = $derived(hovered || focused || hidden);
+function openMenu(e: MouseEvent) {
+	if (!oncontextmenu) return;
+
+	e.preventDefault();
+	oncontextmenu(e);
+}
 </script>
 
-<div
-	data-testid="branch-row"
-	data-hidden={hidden}
-	data-action-shown={actionShown}
->
-	<div
-		role="button"
-		tabindex="0"
+<!--
+	The eye leaves the row when idle, so the name gets the full width instead of
+	truncating against a gutter for an icon that is not there, following VS Code's
+	SCM view. A hidden ref keeps it: the eye is the only thing saying the ref is
+	hidden, so it cannot depend on the pointer being there.
+-->
+{#snippet eye()}
+	<RowAction
+		data-testid="branch-row-visibility-btn"
+		onclick={() => ontogglevisibility?.()}
+		oncontextmenu={openMenu}
+		aria-label="{visibilityVerb(hidden)} {name}"
+	>
+		<VisibilityIcon {hidden} />
+	</RowAction>
+{/snippet}
+
+<div data-testid="branch-row" data-hidden={hidden}>
+	<Row
+		{tone}
+		reveal={hidden ? "always" : "hover"}
+		aria-label={name}
 		onclick={() => onclick?.()}
 		ondblclick={() => ondblclick?.()}
-		onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onclick?.(); }}
-		oncontextmenu={(e) => { if (oncontextmenu) { e.preventDefault(); oncontextmenu(e); } }}
-		onmouseenter={() => (hovered = true)}
-		onmouseleave={() => (hovered = false)}
-		onfocusin={() => (focused = true)}
-		onfocusout={() => (focused = false)}
-		aria-label={name}
-		class="h-row my-0 mx-2 py-0 px-2 rounded flex items-center overflow-hidden cursor-pointer text-callout"
-		style:background={isHead ? 'color-mix(in oklch, var(--color-accent) 10%, transparent)' : hovered ? 'var(--color-hover)' : 'transparent'}
-		style:box-shadow={isHead ? 'inset 0 0 0 1px color-mix(in oklch, var(--color-accent) 28%, transparent)' : 'none'}
-		style:color={isHead ? 'var(--color-text-strong)' : isLoading || hidden ? 'var(--color-text-muted)' : 'var(--color-text)'}
-		style:font-weight={isHead ? '600' : 'normal'}
+		oncontextmenu={openMenu}
+		actions={ontogglevisibility ? eye : undefined}
 	>
 		{#if kind === 'tag'}
 			<span class="shrink-0 inline-flex items-center mr-2 text-text-subtle">
@@ -117,19 +117,7 @@ let actionShown = $derived(hovered || focused || hidden);
 				>HEAD</span
 			>
 		{/if}
-		{#if ontogglevisibility}
-			<span class="shrink-0 ml-1 -mr-2 inline-flex" hidden={!actionShown}>
-				<RowAction
-					data-testid="branch-row-visibility-btn"
-					onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
-					ondblclick={(e) => e.stopPropagation()}
-					aria-label="{visibilityVerb(hidden)} {name}"
-				>
-					<VisibilityIcon {hidden} />
-				</RowAction>
-			</span>
-		{/if}
-	</div>
+	</Row>
 
 	{#if isError}
 		<div

@@ -3,7 +3,7 @@ import { waitFor } from "../harness/wait.js";
 import { firstMatching, openContextMenu } from "./dom.js";
 
 const BRANCH_ROW = '[data-testid="branch-row"]';
-const ROW_BUTTON = '[role="button"]';
+const ROW_BUTTON = "button";
 const CREATE_BUTTON = '[aria-label="Create new branch"]';
 const CREATE_INPUT = '[data-testid="branch-create-input"]';
 const ROW_VISIBILITY = '[data-testid="branch-row-visibility-btn"]';
@@ -69,13 +69,9 @@ export class BranchesDriver {
 	}
 
 	/** Clicks the eye on a branch row, hiding it from the graph or showing it
-	 *  again. The row reveals the control on hover, so this enters it first. */
+	 *  again. */
 	async toggleVisibility(name: string): Promise<void> {
 		const row = await waitFor(`the ${name} branch row`, () => branchRow(name));
-		row
-			.querySelector(ROW_BUTTON)
-			?.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-
 		const eye = await waitFor(`the eye on ${name}`, () =>
 			row.querySelector<HTMLButtonElement>(ROW_VISIBILITY),
 		);
@@ -89,13 +85,7 @@ export class BranchesDriver {
 
 	/** Whether `name` offers a visibility toggle at all. HEAD's branch does not. */
 	offersVisibilityToggle(name: string): boolean {
-		const row = branchRow(name);
-		if (!row) return false;
-		row
-			.querySelector(ROW_BUTTON)
-			?.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-
-		return row.querySelector(ROW_VISIBILITY) !== null;
+		return branchRow(name)?.querySelector(ROW_VISIBILITY) != null;
 	}
 
 	/** Clicks the eye on a section header, hiding or showing every row under it. */

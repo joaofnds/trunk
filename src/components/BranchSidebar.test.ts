@@ -207,7 +207,7 @@ describe("BranchSidebar", () => {
 		});
 
 		const label = await waitFor(() => screen.getByText("feature"));
-		const row = label.closest('[role="button"]');
+		const row = label.closest("button");
 		if (!row) throw new Error("the feature row offers no control");
 		await fireEvent.dblClick(row);
 		await waitFor(() =>
@@ -390,7 +390,7 @@ describe("BranchSidebar", () => {
 			// Double-click the remote branch row (find the BranchRow button containing "feature")
 			const remoteBranchRow = screen
 				.getByTestId("branch-section-remote")
-				.querySelector('[data-testid="branch-row"] [role="button"]');
+				.querySelector('[data-testid="branch-row"] button');
 			expect(remoteBranchRow).toBeTruthy();
 			await fireEvent.dblClick(remoteBranchRow as Element);
 
@@ -432,7 +432,7 @@ describe("BranchSidebar", () => {
 
 			const remoteBranchRow = screen
 				.getByTestId("branch-section-remote")
-				.querySelector('[data-testid="branch-row"] [role="button"]');
+				.querySelector('[data-testid="branch-row"] button');
 			await fireEvent.dblClick(remoteBranchRow as Element);
 
 			// Verify create_branch was called (and it rejected)
@@ -486,7 +486,7 @@ describe("BranchSidebar", () => {
 				featureRow = container
 					.querySelector('[data-testid="branch-section-local"]')
 					?.querySelectorAll('[data-testid="branch-row"]')[1]
-					?.querySelector('[role="button"]');
+					?.querySelector("button");
 				expect(featureRow).toBeTruthy();
 			});
 			await fireEvent.contextMenu(featureRow as Element);
