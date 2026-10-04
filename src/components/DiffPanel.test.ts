@@ -1933,7 +1933,7 @@ describe("VIEW-05: Staging in split view", () => {
 		});
 
 		it("file header is horizontally sticky in multi-file view", async () => {
-			const { container } = render(DiffPanel, {
+			render(DiffPanel, {
 				props: {
 					fileDiffs: [testDiff],
 					commitDetail: null,
@@ -1942,11 +1942,29 @@ describe("VIEW-05: Staging in split view", () => {
 				},
 			});
 			await flushPrefs();
-			const headers = container.querySelectorAll('[role="button"]');
-			const fileHeader = Array.from(headers).find((el) =>
-				el.textContent?.includes("src/main.ts"),
-			);
+			const fileHeader = screen
+				.getByRole("button", { name: /src\/main\.ts/ })
+				.closest(".pan-pinned");
 			expect(fileHeader).toHaveStyle("position: sticky; left: 0");
+		});
+
+		it("folds a file's rows away when its header is clicked", async () => {
+			render(DiffPanel, {
+				props: {
+					fileDiffs: [testDiff],
+					commitDetail: null,
+					selectedPath: null,
+					onclose: () => {},
+				},
+			});
+			await flushPrefs();
+			expect(screen.getByText("@@ -1,3 +1,4 @@")).toBeInTheDocument();
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: /src\/main\.ts/ }),
+			);
+
+			expect(screen.queryByText("@@ -1,3 +1,4 @@")).not.toBeInTheDocument();
 		});
 
 		it("diff lines wrapper ensures full-width backgrounds via min-width", async () => {

@@ -24,6 +24,7 @@ import type {
 	Thread,
 } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
+import Row from "../../lib/ui/Row.svelte";
 import {
 	createVirtualizedDiff,
 	TAB_SIZE,
@@ -498,15 +499,15 @@ function originClass(origin: string): string {
 			{/each}
 		</div>
 	{:else if item.kind === "file-header"}
-		<div
-			class="split-file-header pan-pinned"
-			role="button"
-			tabindex="0"
-			onclick={() => onfilecollapsetoggle(item.path)}
-			onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onfilecollapsetoggle(item.path); } }}
-		>
-			<span class="split-file-header-caret">{item.collapsed ? '▶' : '▼'}</span>
-			{item.path}
+		<div class="split-file-header pan-pinned">
+			<Row variant="fill" onclick={() => onfilecollapsetoggle(item.path)}>
+				<span class="split-file-header-label">
+					<span class="split-file-header-caret"
+						>{item.collapsed ? '▶' : '▼'}</span
+					>
+					{item.path}
+				</span>
+			</Row>
 		</div>
 	{:else if item.kind === "binary"}
 		<div class="binary-row pan-pinned">Binary file — no diff available</div>
@@ -675,16 +676,17 @@ function originClass(origin: string): string {
 	background: var(--color-surface);
 	box-shadow: inset 0 -1px 0 var(--color-border);
 	font-size: var(--text-callout);
-	font-weight: var(--weight-medium);
-	padding: 0 var(--space-2);
 	height: var(--diff-file-header-height);
 	box-sizing: border-box;
-	color: var(--color-text);
-	cursor: pointer;
 	user-select: none;
+}
+.split-file-header-label {
+	flex: 1;
 	display: flex;
 	align-items: center;
 	gap: var(--space-1);
+	padding: 0 var(--space-2);
+	font-weight: var(--weight-medium);
 }
 .split-file-header-caret {
 	font-size: var(--text-caption);
