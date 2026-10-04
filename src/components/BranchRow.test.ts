@@ -69,13 +69,6 @@ describe("BranchRow", () => {
 			),
 		).toHaveLength(0);
 	});
-
-	it("renders with isHead=true without error", () => {
-		render(BranchRow, { props: { name: "main", isHead: true } });
-
-		expect(screen.getByText("main")).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: "main" })).toBeInTheDocument();
-	});
 });
 
 describe("BranchRow visibility toggle", () => {

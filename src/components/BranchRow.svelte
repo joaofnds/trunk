@@ -41,9 +41,14 @@ let {
 	ontogglevisibility,
 }: Props = $props();
 
-let tone: RowTone = $derived(
-	isHead ? "current" : isLoading || hidden ? "muted" : "plain",
-);
+function rowTone(): RowTone {
+	if (isHead) return "current";
+	if (isLoading || hidden) return "muted";
+
+	return "plain";
+}
+
+let tone = $derived(rowTone());
 
 function openMenu(e: MouseEvent) {
 	if (!oncontextmenu) return;
@@ -53,12 +58,6 @@ function openMenu(e: MouseEvent) {
 }
 </script>
 
-<!--
-	The eye leaves the row when idle, so the name gets the full width instead of
-	truncating against a gutter for an icon that is not there, following VS Code's
-	SCM view. A hidden ref keeps it: the eye is the only thing saying the ref is
-	hidden, so it cannot depend on the pointer being there.
--->
 {#snippet eye()}
 	<RowAction
 		data-testid="branch-row-visibility-btn"
@@ -70,6 +69,12 @@ function openMenu(e: MouseEvent) {
 	</RowAction>
 {/snippet}
 
+<!--
+	The eye leaves the row when idle, so the name gets the full width instead of
+	truncating against a gutter for an icon that is not there, following VS Code's
+	SCM view. A hidden ref keeps it: the eye is the only thing saying the ref is
+	hidden, so it cannot depend on the pointer being there.
+-->
 <div data-testid="branch-row" data-hidden={hidden}>
 	<Row
 		{tone}

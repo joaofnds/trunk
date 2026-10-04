@@ -1018,24 +1018,22 @@ $effect(() => {
 								</Button>
 							{/if}
 						{:else if (status?.unstaged.length ?? 0) > 0}
-							<div class="flex gap-1">
-								<Button
-									size="sm"
-									variant="danger"
-									onclick={handleDiscardAll}
-									aria-label="Discard all changes"
-								>
-									Discard All
-								</Button>
-								<Button
-									size="sm"
-									variant="success"
-									onclick={stageAll}
-									aria-label="Stage all changes"
-								>
-									Stage All Changes
-								</Button>
-							</div>
+							<Button
+								size="sm"
+								variant="danger"
+								onclick={handleDiscardAll}
+								aria-label="Discard all changes"
+							>
+								Discard All
+							</Button>
+							<Button
+								size="sm"
+								variant="success"
+								onclick={stageAll}
+								aria-label="Stage all changes"
+							>
+								Stage All Changes
+							</Button>
 						{/if}
 					{/snippet}
 				</Row>

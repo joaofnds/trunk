@@ -277,6 +277,51 @@ describe("Row", () => {
 		});
 	});
 
+	describe("when it names the rows under it in a scrolling list", () => {
+		it("fills its frame as a surface bar with a hairline and a medium label", () => {
+			const { container } = render(Row, {
+				props: {
+					variant: "title",
+					"aria-label": "src/main.ts",
+					children: name,
+				},
+			});
+
+			const row = container.firstElementChild;
+			expect(row).toHaveClass(
+				"size-full",
+				"bg-surface",
+				"shadow-hairline",
+				"font-medium",
+			);
+			expect(row).not.toHaveClass("hover:bg-hover", "h-row", "h-bar");
+			expect(container.querySelector("button > span")).toHaveClass("px-2");
+		});
+	});
+
+	describe("when it parts two runs of rows", () => {
+		it("fills its frame as a surface bar ruled above and below", () => {
+			const { container } = render(Row, {
+				props: {
+					variant: "divider",
+					tone: "muted",
+					"aria-label": "Conflict 1",
+					children: name,
+				},
+			});
+
+			const row = container.firstElementChild;
+			expect(row).toHaveClass(
+				"size-full",
+				"bg-surface",
+				"row-ruled",
+				"text-text-muted",
+			);
+			expect(row).not.toHaveClass("hover:bg-hover", "h-row", "h-bar");
+			expect(container.querySelector("button > span")).toHaveClass("px-2");
+		});
+	});
+
 	describe("when it fills a frame its caller sizes and paints", () => {
 		it("takes the frame's whole box and adds no padding or hover color", () => {
 			const { container } = render(Row, {

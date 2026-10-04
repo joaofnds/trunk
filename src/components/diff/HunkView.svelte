@@ -450,11 +450,9 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 		</div>
 	{:else if item.kind === "file-header"}
 		<div class="file-header pan-pinned">
-			<Row variant="fill" onclick={() => onfilecollapsetoggle(item.path)}>
-				<span class="file-header-label">
-					<span class="file-header-caret">{item.collapsed ? '▶' : '▼'}</span>
-					{item.path}
-				</span>
+			<Row variant="title" onclick={() => onfilecollapsetoggle(item.path)}>
+				<span class="file-header-caret">{item.collapsed ? '▶' : '▼'}</span>
+				{item.path}
 			</Row>
 		</div>
 	{:else if item.kind === "binary"}
@@ -557,20 +555,7 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
      inside a translated container has no scrollport-relative flow position — and
      is not restored here. */
 .file-header {
-	background: var(--color-surface);
-	box-shadow: inset 0 -1px 0 var(--color-border);
-	font-size: var(--text-callout);
 	height: var(--diff-file-header-height);
-	box-sizing: border-box;
-	user-select: none;
-}
-.file-header-label {
-	flex: 1;
-	display: flex;
-	align-items: center;
-	gap: var(--space-1);
-	padding: 0 var(--space-2);
-	font-weight: var(--weight-medium);
 }
 .file-header-caret {
 	font-size: var(--text-caption);

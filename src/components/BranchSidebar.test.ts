@@ -812,6 +812,34 @@ describe("BranchSidebar ref visibility", () => {
 		});
 	});
 
+	it("opens the stash's menu from a right-click on its toggle", async () => {
+		menuActions.clear();
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd !== "list_refs") return Promise.resolve(null);
+			return Promise.resolve(
+				mockListRefs({
+					stashes: [
+						{
+							index: 0,
+							name: "WIP on main",
+							short_name: "stash@{0}",
+							oid: "abc123",
+							parent_oid: null,
+						},
+					],
+				}),
+			);
+		});
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		await fireEvent.click(await screen.findByText("Stashes (1)"));
+
+		await fireEvent.contextMenu(await screen.findByLabelText("Hide stash@{0}"));
+
+		await waitFor(() => {
+			expect([...menuActions.keys()]).toEqual(["Pop", "Apply", "Drop"]);
+		});
+	});
+
 	// WCAG 2.2 SC 2.5.8 asks for a 24x24 CSS px target. The icon stays 12px; only the
 	// button's hit area grows to meet it. jsdom lays nothing out, so this pins the
 	// declared minimum rather than a measured box.

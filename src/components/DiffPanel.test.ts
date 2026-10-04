@@ -1616,6 +1616,32 @@ describe("pairLines", () => {
 // ---- VIEW-02: Split view layout ----
 
 describe("VIEW-02: Split view layout", () => {
+	it("folds a file's rows away when its header is clicked", async () => {
+		const storeMock = await import("../lib/store.js");
+		vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
+			Promise.resolve("split"),
+		);
+		const { container } = render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				selectedPath: null,
+				onclose: () => {},
+			},
+		});
+		await flushPrefs();
+		expect(container.querySelectorAll(".split-row")).not.toHaveLength(0);
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: /src\/main\.ts/ }),
+		);
+
+		expect(container.querySelectorAll(".split-row")).toHaveLength(0);
+		vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
+			Promise.resolve("inline"),
+		);
+	});
+
 	it("renders split view with paired rows when layout mode is split", async () => {
 		const storeMock = await import("../lib/store.js");
 		vi.mocked(storeMock.getDiffContentMode).mockImplementation(() =>

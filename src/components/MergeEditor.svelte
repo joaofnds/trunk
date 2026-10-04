@@ -423,20 +423,18 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 </script>
 
 {#snippet conflictHeader(side: 'ours' | 'theirs', row: FlatRow)}
-	<div class="w-full conflict-header shrink-0 bg-surface text-small">
+	<div class="w-full conflict-header shrink-0">
 		<Row
-			variant="fill"
+			variant="divider"
 			tone="muted"
 			onclick={() => handleToggleHunk(side, row.regionIdx)}
 		>
-			<span class="flex-1 flex items-center px-2 gap-1">
-				{#if isHunkAllTaken(side, row.regionIdx)}
-					<Check size={14} class="text-success" />
-				{:else}
-					<span class="icon-slot inline-block"></span>
-				{/if}
-				Conflict {row.conflictNum}
-			</span>
+			{#if isHunkAllTaken(side, row.regionIdx)}
+				<Check size={14} class="text-success" />
+			{:else}
+				<span class="icon-slot inline-block"></span>
+			{/if}
+			Conflict {row.conflictNum}
 		</Row>
 	</div>
 {/snippet}
@@ -707,9 +705,6 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 /* One bar tall plus the rule it paints along its top, so the conflict's lines start below both */
 .conflict-header {
 	height: calc(var(--bar-h) + 1px);
-	box-shadow:
-		inset 0 1px 0 var(--color-border),
-		inset 0 -1px 0 var(--color-border);
 }
 
 .icon-slot {

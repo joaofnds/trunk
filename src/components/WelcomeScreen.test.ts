@@ -96,6 +96,25 @@ describe("WelcomeScreen", () => {
 		});
 	});
 
+	it("removes a recent repo without opening it", async () => {
+		const opened: string[] = [];
+		vi.mocked(getRecentRepos).mockResolvedValueOnce([
+			{ name: "trunk", path: "/Users/test/code/trunk" },
+		]);
+		render(WelcomeScreen, {
+			props: { onopen: (path: string) => void opened.push(path) },
+		});
+		await screen.findByText("trunk");
+
+		await fireEvent.click(screen.getByLabelText("Remove from recent"));
+
+		await vi.waitFor(() => {
+			expect(screen.queryByText("trunk")).not.toBeInTheDocument();
+		});
+		expect(removeRecentRepo).toHaveBeenCalledWith("/Users/test/code/trunk");
+		expect(opened).toEqual([]);
+	});
+
 	it("shows the backend message when opening a repo fails", async () => {
 		// Command-scoped, not mockRejectedValueOnce: a leaked flow must not consume it.
 		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>

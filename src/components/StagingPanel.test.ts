@@ -198,6 +198,32 @@ describe("StagingPanel", () => {
 		});
 	});
 
+	it("folds a section's files away when its header is clicked", async () => {
+		render(StagingPanel, { props: { repoPath: "/test/repo" } });
+		const header = await screen.findByRole("button", {
+			name: /Unstaged Files/,
+		});
+		expect(screen.getAllByTestId("staging-file")).toHaveLength(2);
+
+		await fireEvent.click(header);
+
+		expect(screen.queryByText("README.md")).not.toBeInTheDocument();
+		expect(screen.getAllByTestId("staging-file")).toHaveLength(1);
+	});
+
+	it.each(["Stage all changes", "Discard all changes", "Unstage all"])(
+		"keeps both sections open when %s is clicked",
+		async (action) => {
+			render(StagingPanel, { props: { repoPath: "/test/repo" } });
+
+			await fireEvent.click(
+				await screen.findByRole("button", { name: action }),
+			);
+
+			expect(screen.getAllByTestId("staging-file")).toHaveLength(2);
+		},
+	);
+
 	it("renders current branch name when provided", async () => {
 		render(StagingPanel, {
 			props: {

@@ -500,13 +500,11 @@ function originClass(origin: string): string {
 		</div>
 	{:else if item.kind === "file-header"}
 		<div class="split-file-header pan-pinned">
-			<Row variant="fill" onclick={() => onfilecollapsetoggle(item.path)}>
-				<span class="split-file-header-label">
-					<span class="split-file-header-caret"
-						>{item.collapsed ? '▶' : '▼'}</span
-					>
-					{item.path}
-				</span>
+			<Row variant="title" onclick={() => onfilecollapsetoggle(item.path)}>
+				<span class="split-file-header-caret"
+					>{item.collapsed ? '▶' : '▼'}</span
+				>
+				{item.path}
 			</Row>
 		</div>
 	{:else if item.kind === "binary"}
@@ -673,20 +671,7 @@ function originClass(origin: string): string {
 /* Multi-file view only. Vertical stickiness does not survive the list — a row
      inside a translated container has no scrollport-relative flow position. */
 .split-file-header {
-	background: var(--color-surface);
-	box-shadow: inset 0 -1px 0 var(--color-border);
-	font-size: var(--text-callout);
 	height: var(--diff-file-header-height);
-	box-sizing: border-box;
-	user-select: none;
-}
-.split-file-header-label {
-	flex: 1;
-	display: flex;
-	align-items: center;
-	gap: var(--space-1);
-	padding: 0 var(--space-2);
-	font-weight: var(--weight-medium);
 }
 .split-file-header-caret {
 	font-size: var(--text-caption);

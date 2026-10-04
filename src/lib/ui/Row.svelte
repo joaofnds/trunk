@@ -5,6 +5,8 @@ export type RowVariant =
 	| "header"
 	| "band"
 	| "entry"
+	| "title"
+	| "divider"
 	| "fill";
 export type RowTone = "plain" | "muted" | "current";
 export type RowReveal = "hover" | "fade" | "always";
@@ -20,8 +22,11 @@ interface Props extends Omit<HTMLButtonAttributes, "class" | "style"> {
 	 *  is the bar over a section, edge to edge, which does not, and `band` the
 	 *  one over a panel's section, which paints the hairline rule; `entry` is a
 	 *  rounded row of a list that stands alone, as tall as its label and
-	 *  padding; `fill` takes the whole box of a frame its caller sizes and
-	 *  paints, and pads nothing, so its children do. */
+	 *  padding; `title` is the bar that names the rows under it in a scrolling
+	 *  list and `divider` the ruled one that parts two runs of them, both as
+	 *  tall as the frame the list's layout reserves; `fill` takes the whole box
+	 *  of a frame whose height and background its caller computes, and pads
+	 *  nothing, so its children do. */
 	variant?: RowVariant;
 	/** `muted` dims the text; `current` marks the one row that is checked out
 	 *  with the accent tint, which the pointer does not change. */
@@ -49,9 +54,11 @@ const CONTAINER = "row group shrink-0";
 const SHAPES: Record<RowVariant, string> = {
 	inset: "h-row mx-2 rounded text-callout",
 	flush: "h-row text-callout",
-	header: "h-bar",
-	band: "row-band h-bar shadow-hairline",
+	header: "row-whole-label h-bar",
+	band: "row-whole-label h-bar shadow-hairline",
 	entry: "rounded",
+	title: "size-full bg-surface shadow-hairline text-callout select-none",
+	divider: "row-ruled size-full bg-surface text-small",
 	fill: "size-full",
 };
 
@@ -61,24 +68,39 @@ const HOVERS: Record<RowVariant, string> = {
 	header: "",
 	band: "",
 	entry: "hover:bg-hover",
+	title: "",
+	divider: "",
 	fill: "",
 };
 
 const TONES: Record<RowTone, string> = {
-	plain: "text-text font-regular",
-	muted: "text-text-muted font-regular",
+	plain: "text-text",
+	muted: "text-text-muted",
 	current: "row-current text-text-strong font-semibold",
+};
+
+const WEIGHTS: Record<RowVariant, string> = {
+	inset: "font-regular",
+	flush: "font-regular",
+	header: "font-regular",
+	band: "font-regular",
+	entry: "font-regular",
+	title: "font-medium",
+	divider: "font-regular",
+	fill: "font-regular",
 };
 
 const PRIMARY =
 	"col-start-1 col-span-2 row-start-1 grid grid-cols-subgrid text-left";
 
 const POINTERS: Record<RowVariant, string> = {
-	inset: "rounded cursor-pointer",
+	inset: "rounded cursor-pointer overflow-hidden",
 	flush: "cursor-default",
 	header: "cursor-pointer",
 	band: "cursor-pointer",
 	entry: "rounded cursor-pointer",
+	title: "cursor-pointer",
+	divider: "cursor-pointer",
 	fill: "cursor-pointer",
 };
 
@@ -90,6 +112,8 @@ const LEADS: Record<RowVariant, string> = {
 	header: "pl-3",
 	band: "pl-2",
 	entry: "pl-3 py-2",
+	title: "px-2 gap-1",
+	divider: "px-2 gap-1",
 	fill: "",
 };
 
@@ -101,17 +125,21 @@ const TRAILS: Record<RowVariant, string> = {
 	header: "pr-2",
 	band: "pr-2",
 	entry: "pr-3 py-2",
+	title: "",
+	divider: "",
 	fill: "",
 };
 
-const SHOWN = "items-center *:pointer-events-auto";
+const TARGETS = "items-center *:pointer-events-auto";
 
 const GAPS: Record<RowVariant, string> = {
 	inset: "ml-1",
 	flush: "ml-2",
-	header: "ml-1",
-	band: "",
+	header: "",
+	band: "gap-1",
 	entry: "ml-4",
+	title: "",
+	divider: "",
 	fill: "",
 };
 
@@ -123,18 +151,20 @@ const REVEALS: Record<RowReveal, string> = {
 </script>
 
 <!--
-	One row of a list whose whole width is a control: a branch or a stash in the
-	sidebar, or the header that folds a section.
+	One row of a list whose whole width is a control; docs/design-system.md
+	lists the rows drawn through it.
 	The primary button spans the row and its actions sit over its trailing edge
 	as siblings, so no control nests in another. The action column lets the
 	pointer through everywhere but on an action, so a click in a gap still lands
-	on the row.
+	on the row. Only the snippet's top-level elements take the pointer back, so
+	a wrapper around two actions would swallow the click between them.
 -->
 <div
 	class={[
 		CONTAINER,
 		SHAPES[variant],
 		TONES[tone],
+		tone !== "current" && WEIGHTS[variant],
 		tone !== "current" && HOVERS[variant],
 	]}
 >
@@ -143,7 +173,7 @@ const REVEALS: Record<RowReveal, string> = {
 	</button>
 	<div class={[ACTIONS, TRAILS[variant]]}>
 		{#if actions}
-			<div class={[SHOWN, GAPS[variant], REVEALS[reveal]]}
+			<div class={[TARGETS, GAPS[variant], REVEALS[reveal]]}
 				>{@render actions()}</div
 			>
 		{/if}
@@ -155,10 +185,15 @@ const REVEALS: Record<RowReveal, string> = {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
 }
-/* A band keeps its label whole and lets its buttons run off the edge, where every
-   other row truncates its label to keep them in view. */
-.row-band {
+/* A section's bar keeps its label whole and lets its actions run off the edge,
+   where every other row truncates its label to keep them in view. */
+.row-whole-label {
 	grid-template-columns: minmax(min-content, 1fr) auto;
+}
+.row-ruled {
+	box-shadow:
+		inset 0 1px 0 var(--color-border),
+		inset 0 -1px 0 var(--color-border);
 }
 .row-current {
 	background: color-mix(in oklch, var(--color-accent) 10%, transparent);
