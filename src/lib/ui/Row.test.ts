@@ -176,4 +176,41 @@ describe("Row", () => {
 			expect(container.querySelector("button + div")).toHaveClass("pr-2");
 		});
 	});
+
+	describe("when it runs flush with the list's edges", () => {
+		it("takes the row height, the full width and the hover color", () => {
+			const { container } = render(Row, {
+				props: { variant: "flush", "aria-label": "stash", children: name },
+			});
+
+			const row = container.firstElementChild;
+			expect(row).toHaveClass("h-row", "hover:bg-hover");
+			expect(row).not.toHaveClass("mx-2", "rounded");
+		});
+
+		it("insets its actions from the edge it runs to", () => {
+			const { container } = render(Row, {
+				props: {
+					variant: "flush",
+					"aria-label": "stash",
+					children: name,
+					actions: eye,
+				},
+			});
+
+			expect(container.querySelector("button + div")).toHaveClass("pr-2");
+		});
+
+		// A flush row navigates rather than acts, and keeps the arrow the list
+		// around it shows.
+		it("keeps the default cursor", () => {
+			render(Row, {
+				props: { variant: "flush", "aria-label": "stash", children: name },
+			});
+
+			const primary = screen.getByRole("button", { name: "stash" });
+			expect(primary).toHaveClass("cursor-default");
+			expect(primary).not.toHaveClass("cursor-pointer");
+		});
+	});
 });

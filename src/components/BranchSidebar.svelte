@@ -35,6 +35,7 @@ import type {
 	StashEntry,
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import BranchRow from "./BranchRow.svelte";
 import BranchSection from "./BranchSection.svelte";
@@ -910,14 +911,22 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 
 			<!-- Stash list entries -->
 			{#each filteredStashes as stash (stash.index)}
-				<div
-					class="stash-row"
-					role="button"
-					tabindex="0"
+				{@const stashHidden = isStashHidden(visibility, stash.oid)}
+				<Row
+					variant="flush"
+					reveal={stashHidden ? "always" : "hover"}
 					onclick={() => onrefnavigate?.(stash.oid)}
-					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onrefnavigate?.(stash.oid); } }}
 					oncontextmenu={(e) => showStashEntryMenu(e, stash)}
 				>
+					{#snippet actions()}
+						<RowAction
+							onclick={() => applyVisibility(toggleStash(visibility, stash.oid))}
+							oncontextmenu={(e) => showStashEntryMenu(e, stash)}
+							aria-label="{visibilityVerb(stashHidden)} {stash.short_name}"
+						>
+							<VisibilityIcon hidden={stashHidden} />
+						</RowAction>
+					{/snippet}
 					<Archive
 						size={12}
 						color="var(--color-text-subtle)"
@@ -925,18 +934,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 					/>
 					<span class="stash-index">{stash.short_name}</span>
 					<span class="stash-message" title={stash.name}>{stash.name}</span>
-					<span
-						class="stash-action"
-						data-hidden={isStashHidden(visibility, stash.oid)}
-					>
-						<RowAction
-							onclick={(e) => { e.stopPropagation(); applyVisibility(toggleStash(visibility, stash.oid)); }}
-							aria-label="{visibilityVerb(isStashHidden(visibility, stash.oid))} {stash.short_name}"
-						>
-							<VisibilityIcon hidden={isStashHidden(visibility, stash.oid)} />
-						</RowAction>
-					</span>
-				</div>
+				</Row>
 				{#if stashEntryErrors[stash.oid]}
 					<p class="stash-error stash-entry-error"
 						>{stashEntryErrors[stash.oid]}</p
@@ -971,40 +969,6 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 	border: 1px solid var(--color-border);
 	color: var(--color-text);
 	border-radius: var(--radius);
-}
-
-/*
-   * Idle rows drop the eye out of the flow rather than reserving its box, so the stash
-   * message gets the full width. `visibility: hidden` keeps the layout box, which is what
-   * made every message truncate early against an icon that was not there. The alignment
-   * slot below follows it in and out for the same reason.
-   */
-.stash-action {
-	flex-shrink: 0;
-	margin-left: auto;
-	display: none;
-}
-
-/* Focus reveals it too, or the control is unreachable by keyboard. A hidden stash keeps
-     it permanently: the eye is the only marker saying the stash is hidden. */
-.stash-row:hover .stash-action,
-.stash-row:focus-within .stash-action,
-.stash-action[data-hidden="true"] {
-	display: inline-flex;
-}
-
-.stash-row {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	height: var(--row-h);
-	padding: 0 var(--space-2) 0 var(--space-3);
-	font-size: var(--text-callout);
-	cursor: default;
-}
-
-.stash-row:hover {
-	background: var(--color-hover);
 }
 
 .stash-index {
