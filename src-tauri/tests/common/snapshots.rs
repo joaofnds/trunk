@@ -79,3 +79,26 @@ fn commit_on_head(
         .unwrap()
         .to_string()
 }
+
+/// Overwrite the loose object `oid` with bytes that are not a git object, as a
+/// torn write or a failing disk leaves it. The object is still there, so a read
+/// fails with something other than not-found.
+pub fn make_the_object_unreadable(ctx: &TestContext, oid: &str) {
+    let loose = ctx
+        .repo_path()
+        .join(".git/objects")
+        .join(&oid[..2])
+        .join(&oid[2..]);
+    std::fs::remove_file(&loose).unwrap();
+    std::fs::write(&loose, b"not a git object").unwrap();
+
+    let fresh = git2::Repository::open(ctx.path()).unwrap();
+    let error = fresh
+        .find_commit(git2::Oid::from_str(oid).unwrap())
+        .expect_err("the test needs the read to fail");
+    assert_ne!(
+        error.code(),
+        git2::ErrorCode::NotFound,
+        "the test needs a failure that is not an absence: {error}",
+    );
+}

@@ -1440,12 +1440,15 @@ pub fn ensure_review_snapshot_inner(
 ///
 /// An anchor oid the repository cannot resolve to a commit is stale whatever
 /// kind of commit it was, because the code it describes is unreachable and the
-/// thread's excerpt is the only surviving copy.
+/// thread's excerpt is the only surviving copy. Only an absence counts. A read
+/// that fails any other way fails the pass and leaves every marker as it
+/// stands, because a repack can fail a read of a live commit for one pass.
 ///
 /// # Errors
 ///
-/// Returns the git error when the repository will not open or its trees will
-/// not build, and whatever the store returns when the write fails.
+/// Returns the git error when the repository will not open, an anchor object
+/// is present and will not read, or its trees will not build, and whatever the
+/// store returns when the write fails.
 pub fn recompute_staleness(
     store: &Store,
     canonical: &Path,
@@ -1464,8 +1467,12 @@ pub fn recompute_staleness(
             return Ok(SnapshotStanding::NotASnapshot);
         };
 
-        let Ok(commit) = repo.find_commit(parsed) else {
-            return Ok(SnapshotStanding::Collected);
+        let commit = match repo.find_commit(parsed) {
+            Ok(commit) => commit,
+            Err(absent) if absent.code() == git2::ErrorCode::NotFound => {
+                return Ok(SnapshotStanding::Collected);
+            }
+            Err(unreadable) => return Err(unreadable.into()),
         };
 
         if !provenance.names_a_snapshot(&commit) {

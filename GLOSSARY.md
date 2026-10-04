@@ -333,7 +333,9 @@ absent from the working-tree file; snapshot → superseded; any anchor oid → t
 object is no longer in the repository). A thread on a commit that is not a snapshot never
 goes stale while its commit exists, and the orphan classifier covers it; once the commit is collected the excerpt
 is the only surviving copy of the code, and the thread reads stale like any other
-collected anchor. Presence alone decides it for a
+collected anchor. Only an object the repository reports absent counts as collected:
+a read that fails any other way decides nothing, and the recompute stops with every
+marker as it stood. Presence alone decides it for a
 current-file thread: an edit elsewhere raises no marker, and neither does deleting
 the anchored occurrence while a byte-identical twin survives. Recomputed by the app
 on repo-changed events, persisted
