@@ -213,4 +213,29 @@ describe("Row", () => {
 			expect(primary).not.toHaveClass("cursor-pointer");
 		});
 	});
+
+	describe("when it heads a panel's section", () => {
+		it("takes the bar height and paints the hairline, with no hover color", () => {
+			const { container } = render(Row, {
+				props: { variant: "band", "aria-label": "Staged", children: name },
+			});
+
+			const row = container.firstElementChild;
+			expect(row).toHaveClass("h-bar", "shadow-hairline");
+			expect(row).not.toHaveClass("hover:bg-hover");
+		});
+
+		it("insets its actions from the edge it runs to", () => {
+			const { container } = render(Row, {
+				props: {
+					variant: "band",
+					"aria-label": "Staged",
+					children: name,
+					actions: eye,
+				},
+			});
+
+			expect(container.querySelector("button + div")).toHaveClass("pr-2");
+		});
+	});
 });

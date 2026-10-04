@@ -1,5 +1,5 @@
 <script lang="ts" module>
-export type RowVariant = "inset" | "flush" | "header";
+export type RowVariant = "inset" | "flush" | "header" | "band";
 export type RowTone = "plain" | "muted" | "current";
 export type RowReveal = "hover" | "always";
 </script>
@@ -11,7 +11,8 @@ import type { HTMLButtonAttributes } from "svelte/elements";
 interface Props extends Omit<HTMLButtonAttributes, "class" | "style"> {
 	/** `inset` is a rounded row held off the list's edges and `flush` one that
 	 *  runs to them with the arrow cursor, both taking the hover color; `header`
-	 *  is the bar over a section, edge to edge, which does not. */
+	 *  is the bar over a section, edge to edge, which does not, and `band` the
+	 *  one over a panel's section, which paints the hairline rule. */
 	variant?: RowVariant;
 	/** `muted` dims the text; `current` marks the one row that is checked out
 	 *  with the accent tint, which the pointer does not change. */
@@ -33,18 +34,20 @@ let {
 	...rest
 }: Props = $props();
 
-const CONTAINER = "row group";
+const CONTAINER = "row group shrink-0";
 
 const SHAPES: Record<RowVariant, string> = {
 	inset: "h-row mx-2 rounded text-callout",
 	flush: "h-row text-callout",
 	header: "h-bar",
+	band: "row-band h-bar shadow-hairline",
 };
 
 const HOVERS: Record<RowVariant, string> = {
 	inset: "hover:bg-hover",
 	flush: "hover:bg-hover",
 	header: "",
+	band: "",
 };
 
 const TONES: Record<RowTone, string> = {
@@ -60,6 +63,7 @@ const POINTERS: Record<RowVariant, string> = {
 	inset: "rounded cursor-pointer",
 	flush: "cursor-default",
 	header: "cursor-pointer",
+	band: "cursor-pointer",
 };
 
 const CONTENT = "flex items-center min-w-0";
@@ -68,6 +72,7 @@ const LEADS: Record<RowVariant, string> = {
 	inset: "pl-2",
 	flush: "pl-3 gap-2",
 	header: "pl-3",
+	band: "pl-2",
 };
 
 const ACTIONS = "col-start-2 row-start-1 flex items-center pointer-events-none";
@@ -76,6 +81,7 @@ const TRAILS: Record<RowVariant, string> = {
 	inset: "min-w-2",
 	flush: "pr-2",
 	header: "pr-2",
+	band: "pr-2",
 };
 
 const SHOWN = "items-center *:pointer-events-auto";
@@ -84,6 +90,7 @@ const GAPS: Record<RowVariant, string> = {
 	inset: "ml-1",
 	flush: "ml-2",
 	header: "ml-1",
+	band: "",
 };
 
 const REVEALS: Record<RowReveal, string> = {
@@ -94,7 +101,7 @@ const REVEALS: Record<RowReveal, string> = {
 
 <!--
 	One row of a list whose whole width is a control: a branch or a stash in the
-	sidebar, or the header that folds its section.
+	sidebar, or the header that folds a section.
 	The primary button spans the row and its actions sit over its trailing edge
 	as siblings, so no control nests in another. The action column lets the
 	pointer through everywhere but on an action, so a click in a gap still lands
@@ -124,6 +131,11 @@ const REVEALS: Record<RowReveal, string> = {
 .row {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
+}
+/* A band keeps its label whole and lets its buttons run off the edge, where every
+   other row truncates its label to keep them in view. */
+.row-band {
+	grid-template-columns: minmax(min-content, 1fr) auto;
 }
 .row-current {
 	background: color-mix(in oklch, var(--color-accent) 10%, transparent);

@@ -27,6 +27,7 @@ import type {
 	WorkingTreeStatus,
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import Row from "../lib/ui/Row.svelte";
 import CommitForm from "./CommitForm.svelte";
 import FileRow from "./FileRow.svelte";
 import OperationBanner from "./OperationBanner.svelte";
@@ -921,12 +922,10 @@ $effect(() => {
 				class:flex-1={conflicted_expanded && staged_expanded}
 				class:section-capped={conflicted_expanded && !staged_expanded}
 			>
-				<div
-					role="button"
-					tabindex="0"
+				<Row
+					variant="band"
+					reveal="always"
 					onclick={() => (conflicted_expanded = !conflicted_expanded)}
-					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') conflicted_expanded = !conflicted_expanded; }}
-					class="h-bar shadow-hairline py-0 px-2 flex items-center cursor-pointer shrink-0"
 				>
 					<span class="text-text-muted inline-flex items-center mr-1">
 						{#if conflicted_expanded}
@@ -944,13 +943,12 @@ $effect(() => {
 						<span>Conflicted Files</span>
 						{@render sectionCount(status?.conflicted.length ?? 0)}
 					</span>
-					<Button
-						size="sm"
-						variant="warning"
-						onclick={(e) => { e.stopPropagation(); markAllResolved(); }}
-						>Mark All Resolved</Button
-					>
-				</div>
+					{#snippet actions()}
+						<Button size="sm" variant="warning" onclick={markAllResolved}
+							>Mark All Resolved</Button
+						>
+					{/snippet}
+				</Row>
 
 				{#if conflicted_expanded}
 					<TreeFileList
@@ -977,12 +975,10 @@ $effect(() => {
 				class:flex-1={unstaged_expanded && staged_expanded}
 				class:section-capped={unstaged_expanded && !staged_expanded}
 			>
-				<div
-					role="button"
-					tabindex="0"
+				<Row
+					variant="band"
+					reveal="always"
 					onclick={() => (unstaged_expanded = !unstaged_expanded)}
-					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') unstaged_expanded = !unstaged_expanded; }}
-					class="h-bar shadow-hairline py-0 px-2 flex items-center cursor-pointer shrink-0"
 				>
 					<span class="text-text-muted inline-flex items-center mr-1">
 						{#if unstaged_expanded}
@@ -1001,16 +997,6 @@ $effect(() => {
 							<span>Conflicted Files</span>
 							{@render sectionCount(status?.conflicted.length ?? 0)}
 						</span>
-						{#if (status?.conflicted.length ?? 0) > 0}
-							<Button
-								size="sm"
-								variant="success"
-								onclick={(e) => { e.stopPropagation(); markAllResolved(); }}
-								aria-label="Mark all as resolved"
-							>
-								Mark All as Resolved
-							</Button>
-						{/if}
 					{:else}
 						<span
 							class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 inline-flex items-center gap-2"
@@ -1018,12 +1004,25 @@ $effect(() => {
 							<span>Unstaged Files</span>
 							{@render sectionCount(status?.unstaged.length ?? 0)}
 						</span>
-						{#if (status?.unstaged.length ?? 0) > 0}
+					{/if}
+					{#snippet actions()}
+						{#if isMerge}
+							{#if (status?.conflicted.length ?? 0) > 0}
+								<Button
+									size="sm"
+									variant="success"
+									onclick={markAllResolved}
+									aria-label="Mark all as resolved"
+								>
+									Mark All as Resolved
+								</Button>
+							{/if}
+						{:else if (status?.unstaged.length ?? 0) > 0}
 							<div class="flex gap-1">
 								<Button
 									size="sm"
 									variant="danger"
-									onclick={(e) => { e.stopPropagation(); handleDiscardAll(); }}
+									onclick={handleDiscardAll}
 									aria-label="Discard all changes"
 								>
 									Discard All
@@ -1031,15 +1030,15 @@ $effect(() => {
 								<Button
 									size="sm"
 									variant="success"
-									onclick={(e) => { e.stopPropagation(); stageAll(); }}
+									onclick={stageAll}
 									aria-label="Stage all changes"
 								>
 									Stage All Changes
 								</Button>
 							</div>
 						{/if}
-					{/if}
-				</div>
+					{/snippet}
+				</Row>
 
 				{#if unstaged_expanded}
 					{#if isMerge}
@@ -1086,12 +1085,10 @@ $effect(() => {
 			class:flex-1={staged_expanded && unstaged_expanded}
 			class:section-capped={staged_expanded && !unstaged_expanded}
 		>
-			<div
-				role="button"
-				tabindex="0"
+			<Row
+				variant="band"
+				reveal="always"
 				onclick={() => (staged_expanded = !staged_expanded)}
-				onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') staged_expanded = !staged_expanded; }}
-				class="h-bar shadow-hairline py-0 px-2 flex items-center cursor-pointer shrink-0"
 			>
 				<span class="text-text-muted inline-flex items-center mr-1">
 					{#if staged_expanded}
@@ -1106,17 +1103,19 @@ $effect(() => {
 					<span>{isOperation ? 'Resolved Files' : 'Staged Files'}</span>
 					{@render sectionCount(status?.staged.length ?? 0)}
 				</span>
-				{#if (status?.staged.length ?? 0) > 0}
-					<Button
-						size="sm"
-						variant="warning"
-						onclick={(e) => { e.stopPropagation(); unstageAll(); }}
-						aria-label="Unstage all"
-					>
-						Unstage All
-					</Button>
-				{/if}
-			</div>
+				{#snippet actions()}
+					{#if (status?.staged.length ?? 0) > 0}
+						<Button
+							size="sm"
+							variant="warning"
+							onclick={unstageAll}
+							aria-label="Unstage all"
+						>
+							Unstage All
+						</Button>
+					{/if}
+				{/snippet}
+			</Row>
 
 			{#if staged_expanded}
 				<TreeFileList
