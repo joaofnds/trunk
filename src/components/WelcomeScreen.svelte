@@ -11,6 +11,7 @@ import {
 	removeRecentRepo,
 } from "../lib/store.js";
 import Button from "../lib/ui/Button.svelte";
+import Row from "../lib/ui/Row.svelte";
 
 interface Props {
 	onopen: (path: string, name: string) => void;
@@ -69,8 +70,7 @@ async function openPath(path: string) {
 	}
 }
 
-async function handleRemoveRecent(path: string, event: MouseEvent) {
-	event.stopPropagation();
+async function handleRemoveRecent(path: string) {
 	await removeRecentRepo(path);
 	recentRepos = await getRecentRepos();
 }
@@ -118,14 +118,10 @@ async function handleRemoveRecent(path: string, event: MouseEvent) {
 					{#each displayedRepos as repo (repo.path)}
 						{@const dp = resolvedPaths[repo.path] ?? repo.path}
 						<li>
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<!-- svelte-ignore a11y_click_events_have_key_events -->
-							<div
-								class="group flex items-center gap-2 rounded px-3 py-2 cursor-pointer hover:bg-hover"
+							<Row
+								variant="entry"
+								reveal="fade"
 								onclick={() => openPath(repo.path)}
-								role="button"
-								tabindex="0"
-								onkeydown={(e) => e.key === 'Enter' && openPath(repo.path)}
 							>
 								<span class="text-body truncate min-w-0 flex-1">
 									<span class="text-text-muted"
@@ -134,21 +130,19 @@ async function handleRemoveRecent(path: string, event: MouseEvent) {
 										>{dp.split('/').at(-1)}</span
 									>
 								</span>
-								<span
-									class="ml-2 flex shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-								>
+								{#snippet actions()}
 									<Button
 										icon
 										size="sm"
 										variant="ghost"
 										aria-label="Remove from recent"
 										title="Remove from recent"
-										onclick={(e) => handleRemoveRecent(repo.path, e)}
+										onclick={() => handleRemoveRecent(repo.path)}
 									>
 										<X size={12} />
 									</Button>
-								</span>
-							</div>
+								{/snippet}
+							</Row>
 						</li>
 					{/each}
 				</ul>

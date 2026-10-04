@@ -202,7 +202,7 @@ describe("ref visibility", () => {
 		// commits to appear -- that wait would deadlock against the held gate,
 		// since the fix this test pins means no commits appear until release().
 		const entry = await waitFor(`the recent entry for ${app.repo.path}`, () =>
-			firstMatching('[role="button"]', (text) => text.includes(app.repo.path)),
+			firstMatching("button", (text) => text.includes(app.repo.path)),
 		);
 		entry.click();
 

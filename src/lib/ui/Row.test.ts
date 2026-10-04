@@ -238,4 +238,42 @@ describe("Row", () => {
 			expect(container.querySelector("button + div")).toHaveClass("pr-2");
 		});
 	});
+
+	describe("when it is an entry of a list that stands alone", () => {
+		it("grows with its label inside its padding and paints the hover color", () => {
+			const { container } = render(Row, {
+				props: { variant: "entry", "aria-label": "trunk", children: name },
+			});
+
+			const row = container.firstElementChild;
+			expect(row).toHaveClass("rounded", "hover:bg-hover");
+			expect(row).not.toHaveClass("h-row");
+			expect(container.querySelector("button > span")).toHaveClass(
+				"pl-3",
+				"py-2",
+			);
+		});
+
+		it("fades its actions in under the pointer or focus and keeps their width", () => {
+			const { container } = render(Row, {
+				props: {
+					variant: "entry",
+					reveal: "fade",
+					"aria-label": "trunk",
+					children: name,
+					actions: eye,
+				},
+			});
+
+			const shown = screen.getByLabelText("Hide topic").parentElement;
+			expect(shown).toHaveClass(
+				"flex",
+				"opacity-0",
+				"group-hover:opacity-100",
+				"group-focus-within:opacity-100",
+			);
+			expect(shown).not.toHaveClass("hidden");
+			expect(container.querySelector("button + div")).toHaveClass("pr-3");
+		});
+	});
 });

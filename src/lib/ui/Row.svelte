@@ -1,7 +1,7 @@
 <script lang="ts" module>
-export type RowVariant = "inset" | "flush" | "header" | "band";
+export type RowVariant = "inset" | "flush" | "header" | "band" | "entry";
 export type RowTone = "plain" | "muted" | "current";
-export type RowReveal = "hover" | "always";
+export type RowReveal = "hover" | "fade" | "always";
 </script>
 
 <script lang="ts">
@@ -12,14 +12,16 @@ interface Props extends Omit<HTMLButtonAttributes, "class" | "style"> {
 	/** `inset` is a rounded row held off the list's edges and `flush` one that
 	 *  runs to them with the arrow cursor, both taking the hover color; `header`
 	 *  is the bar over a section, edge to edge, which does not, and `band` the
-	 *  one over a panel's section, which paints the hairline rule. */
+	 *  one over a panel's section, which paints the hairline rule; `entry` is a
+	 *  rounded row of a list that stands alone, as tall as its label and padding. */
 	variant?: RowVariant;
 	/** `muted` dims the text; `current` marks the one row that is checked out
 	 *  with the accent tint, which the pointer does not change. */
 	tone?: RowTone;
 	/** The controls drawn at the row's trailing edge, beside the primary button. */
 	actions?: Snippet;
-	/** `hover` shows the actions under the pointer or focus; `always` keeps them. */
+	/** `hover` shows the actions under the pointer or focus and `fade` does the
+	 *  same while holding their width at rest; `always` keeps them. */
 	reveal?: RowReveal;
 }
 
@@ -41,6 +43,7 @@ const SHAPES: Record<RowVariant, string> = {
 	flush: "h-row text-callout",
 	header: "h-bar",
 	band: "row-band h-bar shadow-hairline",
+	entry: "rounded",
 };
 
 const HOVERS: Record<RowVariant, string> = {
@@ -48,6 +51,7 @@ const HOVERS: Record<RowVariant, string> = {
 	flush: "hover:bg-hover",
 	header: "",
 	band: "",
+	entry: "hover:bg-hover",
 };
 
 const TONES: Record<RowTone, string> = {
@@ -64,6 +68,7 @@ const POINTERS: Record<RowVariant, string> = {
 	flush: "cursor-default",
 	header: "cursor-pointer",
 	band: "cursor-pointer",
+	entry: "rounded cursor-pointer",
 };
 
 const CONTENT = "flex items-center min-w-0";
@@ -73,6 +78,7 @@ const LEADS: Record<RowVariant, string> = {
 	flush: "pl-3 gap-2",
 	header: "pl-3",
 	band: "pl-2",
+	entry: "pl-3 py-2",
 };
 
 const ACTIONS = "col-start-2 row-start-1 flex items-center pointer-events-none";
@@ -82,6 +88,7 @@ const TRAILS: Record<RowVariant, string> = {
 	flush: "pr-2",
 	header: "pr-2",
 	band: "pr-2",
+	entry: "pr-3 py-2",
 };
 
 const SHOWN = "items-center *:pointer-events-auto";
@@ -91,10 +98,12 @@ const GAPS: Record<RowVariant, string> = {
 	flush: "ml-2",
 	header: "ml-1",
 	band: "",
+	entry: "ml-4",
 };
 
 const REVEALS: Record<RowReveal, string> = {
 	hover: "hidden group-hover:flex group-focus-within:flex",
+	fade: "flex opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
 	always: "flex",
 };
 </script>

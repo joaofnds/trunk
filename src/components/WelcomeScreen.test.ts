@@ -43,7 +43,7 @@ describe("WelcomeScreen", () => {
 		]);
 
 		render(WelcomeScreen, { props: { onopen } });
-		const row = (await screen.findByText("trunk")).closest('[role="button"]');
+		const row = (await screen.findByText("trunk")).closest("button");
 
 		expect(row).toBeTruthy();
 		return { row: row as Element, onopen };
