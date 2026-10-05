@@ -33,9 +33,7 @@ describe("DirectoryRow", () => {
 		});
 
 		const label = screen.getByRole("treeitem").firstElementChild;
-		expect((label as HTMLElement).style.getPropertyValue("--row-indent")).toBe(
-			treeIndent(3),
-		);
+		expect((label as HTMLElement).style.paddingLeft).toBe(treeIndent(3));
 	});
 
 	it("renders directory name", () => {
@@ -161,11 +159,44 @@ describe("DirectoryRow", () => {
 			},
 		});
 
-		await fireEvent.contextMenu(screen.getByRole("treeitem"));
-		await fireEvent.contextMenu(
+		const onRow = await fireEvent.contextMenu(screen.getByRole("treeitem"));
+		const onAction = await fireEvent.contextMenu(
 			screen.getByRole("button", { name: "Stage directory" }),
 		);
 
 		expect(menus).toHaveLength(2);
+		expect([onRow, onAction]).toEqual([false, false]);
+	});
+
+	it("stays out of the Tab order", () => {
+		render(DirectoryRow, {
+			props: {
+				node: makeNode("src"),
+				depth: 0,
+				expanded: false,
+				focused: false,
+				ontoggle: () => {},
+			},
+		});
+
+		expect(screen.getByRole("treeitem")).toHaveAttribute("tabindex", "-1");
+	});
+
+	it.each([
+		["a list with no action", { actionLabel: "", onaction: () => {} }],
+		["a list that acts on files only", { actionLabel: "+" }],
+	])("offers no action in %s", (_, action) => {
+		render(DirectoryRow, {
+			props: {
+				node: makeNode("src"),
+				depth: 0,
+				expanded: false,
+				focused: false,
+				ontoggle: () => {},
+				...action,
+			},
+		});
+
+		expect(screen.queryByRole("button")).toBeNull();
 	});
 });

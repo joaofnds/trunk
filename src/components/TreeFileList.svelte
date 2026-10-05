@@ -108,26 +108,16 @@ $effect(() => {
 	}
 });
 
-// Sync focusIndex when parent sets selectedPath (e.g. auto-advance). The rows
-// change under an unchanged selection whenever a directory folds, and the
-// cursor then stays on the row it was put on while that row is still shown.
-let syncedPath: string | null = null;
+// Sync focusIndex when parent sets selectedPath (e.g. auto-advance)
 $effect(() => {
-	if (!selectedPath) {
-		syncedPath = null;
-		return;
-	}
-	const cursor = untrack(() => lastFocusedPath);
-	const cursorShown = flatRows.some((r) => r.node.path === cursor);
-	if (selectedPath === syncedPath && cursorShown) return;
-
-	const idx = flatRows.findIndex(
-		(r) => r.type === "file" && r.node.file.path === selectedPath,
-	);
-	if (idx >= 0) {
-		focusIndex = idx;
-		lastFocusedPath = selectedPath;
-		syncedPath = selectedPath;
+	if (selectedPath && flatRows.length > 0) {
+		const idx = flatRows.findIndex(
+			(r) => r.type === "file" && r.node.file.path === selectedPath,
+		);
+		if (idx >= 0) {
+			focusIndex = idx;
+			lastFocusedPath = selectedPath;
+		}
 	}
 });
 
@@ -156,7 +146,10 @@ const LIST = "flex-1 overflow-y-auto min-h-0 outline-none";
 function focusRow(index: number, path: string) {
 	focusIndex = index;
 	lastFocusedPath = path;
-	list?.focus();
+}
+
+function takeFocus() {
+	list?.focus({ preventScroll: true });
 }
 
 function toggleExpanded(path: string) {
@@ -174,6 +167,9 @@ function handleKeydown(e: KeyboardEvent) {
 	const row = flatRows[focusIndex];
 	if (!row) return;
 	const prevIndex = focusIndex;
+	// A directory's button holds the focus once clicked and answers Enter and
+	// Space itself, so the list leaves those two to it.
+	const fromRow = e.target !== e.currentTarget;
 
 	switch (e.key) {
 		case "ArrowDown":
@@ -208,6 +204,7 @@ function handleKeydown(e: KeyboardEvent) {
 			}
 			break;
 		case "Enter":
+			if (fromRow) break;
 			e.preventDefault();
 			if (row.type === "file") {
 				onfileclick?.(row.node.file.path);
@@ -216,6 +213,7 @@ function handleKeydown(e: KeyboardEvent) {
 			}
 			break;
 		case " ":
+			if (fromRow) break;
 			if (row.type === "directory") {
 				e.preventDefault();
 				toggleExpanded(row.node.path);
@@ -231,10 +229,7 @@ function handleKeydown(e: KeyboardEvent) {
 		(e.key === "ArrowDown" || e.key === "ArrowUp") &&
 		focusIndex !== prevIndex
 	) {
-		if (
-			focusedRow?.type === "file" &&
-			focusedRow.node.file.path !== selectedPath
-		) {
+		if (focusedRow?.type === "file") {
 			onfileclick?.(focusedRow.node.file.path);
 		}
 	}
@@ -264,6 +259,7 @@ function handleKeydown(e: KeyboardEvent) {
 				isLoading={loadingFiles?.has(row.node.file.path) ?? false}
 				onaction={() => onfileaction(row.node.file.path)}
 				onclick={() => { focusRow(i, row.node.file.path); onfileclick?.(row.node.file.path); }}
+				onfocus={takeFocus}
 				oncontextmenu={onfilecontextmenu ? (e) => onfilecontextmenu(e, row.node.file.path, row.node.file) : undefined}
 				depth={treeMode ? row.depth : 0}
 				displayName={treeMode ? row.node.name : undefined}
@@ -276,8 +272,9 @@ function handleKeydown(e: KeyboardEvent) {
 {/snippet}
 
 <!--
-	The list holds the focus and the keys, and the focus index marks the row, so
-	a row hands the focus back when a click gave it to its button.
+	The list holds the focus and the keys for its files, so a file's button
+	hands the focus back when a click gives it. The role is written out in each
+	branch, since the compiler accepts a tabindex only on a role it can read.
 -->
 {#if treeMode}
 	<div

@@ -84,10 +84,3 @@
 	inherits: true;
 	initial-value: 0px;
 }
-
-/* ── Row: where an item of a tree starts its label (src/lib/ui/Row.svelte) ── */
-@property --row-indent {
-	syntax: "<length>";
-	inherits: false;
-	initial-value: 0px;
-}

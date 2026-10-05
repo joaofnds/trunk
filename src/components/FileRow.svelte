@@ -17,6 +17,8 @@ interface Props {
 	actionLabel: string;
 	onaction: () => void;
 	onclick?: () => void;
+	/** Called when its button takes the focus, which the list takes back. */
+	onfocus?: () => void;
 	oncontextmenu?: (e: MouseEvent) => void;
 	depth?: number;
 	displayName?: string;
@@ -32,6 +34,7 @@ let {
 	actionLabel,
 	onaction,
 	onclick,
+	onfocus,
 	oncontextmenu,
 	depth = 0,
 	displayName,
@@ -96,6 +99,7 @@ function openMenu(e: MouseEvent) {
 	tabindex={-1}
 	aria-level={role === 'treeitem' ? depth + 1 : undefined}
 	onclick={() => onclick?.()}
+	onfocus={() => onfocus?.()}
 	oncontextmenu={openMenu}
 	actions={!isLoading && actionLabel ? action : undefined}
 >

@@ -52,6 +52,13 @@ let commentTone = $derived(
 	commentTones ? toneInSubtree(node.children, commentTones) : null,
 );
 
+// WebKit leaves a clicked button unfocused, and the focus is what sends Enter
+// and Space to this directory instead of to the list's cursor.
+function toggle(e: MouseEvent & { currentTarget: HTMLButtonElement }) {
+	e.currentTarget.focus({ preventScroll: true });
+	ontoggle();
+}
+
 function openMenu(e: MouseEvent) {
 	if (!oncontextmenu) return;
 
@@ -84,9 +91,10 @@ function openMenu(e: MouseEvent) {
 	tabindex={-1}
 	aria-expanded={expanded}
 	aria-level={depth + 1}
-	onclick={ontoggle}
+	onclick={toggle}
 	oncontextmenu={openMenu}
 	actions={actionLabel && onaction ? action : undefined}
+	reveal="pointer"
 >
 	<span class="inline-flex items-center text-text-muted w-3 min-w-3">
 		{#if expanded}

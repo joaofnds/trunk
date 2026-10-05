@@ -12,7 +12,7 @@ export type RowVariant =
 	| "parent";
 export type RowRole = "option" | "treeitem";
 export type RowTone = "plain" | "muted" | "current";
-export type RowReveal = "hover" | "fade" | "always";
+export type RowReveal = "hover" | "pointer" | "fade" | "always";
 </script>
 
 <script lang="ts">
@@ -48,7 +48,9 @@ interface Props extends Omit<HTMLButtonAttributes, "class" | "style" | "role"> {
 	/** The controls drawn at the row's trailing edge, beside the primary button. */
 	actions?: Snippet;
 	/** `hover` shows the actions under the pointer or focus and `fade` does the
-	 *  same while holding their width at rest; `always` keeps them. */
+	 *  same while holding their width at rest; `pointer` shows them under the
+	 *  pointer alone, for a row that keeps the focus after a click; `always`
+	 *  keeps them. */
 	reveal?: RowReveal;
 }
 
@@ -142,8 +144,8 @@ const LEADS: Record<RowVariant, string> = {
 	title: "px-2 gap-1",
 	divider: "px-2 gap-1",
 	fill: "",
-	item: "row-indented gap-2",
-	parent: "row-indented gap-1",
+	item: "gap-2",
+	parent: "gap-1",
 };
 
 const ACTIONS = "col-start-2 row-start-1 flex items-center pointer-events-none";
@@ -178,10 +180,17 @@ const GAPS: Record<RowVariant, string> = {
 
 const REVEALS: Record<RowReveal, string> = {
 	hover: "hidden group-hover:flex group-focus-within:flex",
+	pointer: "hidden group-hover:flex",
 	fade: "flex opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
 	always: "flex",
 };
 </script>
+
+{#snippet label()}
+	<span class={[CONTENT, LEADS[variant]]} style:padding-left={indent}
+		>{@render children?.()}</span
+	>
+{/snippet}
 
 <!--
 	One row of a list whose whole width is a control; docs/design-system.md
@@ -191,6 +200,8 @@ const REVEALS: Record<RowReveal, string> = {
 	pointer through everywhere but on an action, so a click in a gap still lands
 	on the row. Only the snippet's top-level elements take the pointer back, so
 	a wrapper around two actions would swallow the click between them.
+	Each role has its own branch, since the linter reads a role only where it
+	is written out and rejects `aria-selected` on a button without one.
 -->
 <div
 	class={[
@@ -202,18 +213,33 @@ const REVEALS: Record<RowReveal, string> = {
 		selected && SELECTED,
 	]}
 >
-	<button
-		{type}
-		{role}
-		{tabindex}
-		aria-selected={selected}
-		class={[PRIMARY, POINTERS[variant]]}
-		{...rest}
-	>
-		<span class={[CONTENT, LEADS[variant]]} style:--row-indent={indent}
-			>{@render children?.()}</span
+	{#if role === "option"}
+		<button
+			{type}
+			role="option"
+			{tabindex}
+			aria-selected={selected}
+			class={[PRIMARY, POINTERS[variant]]}
+			{...rest}
 		>
-	</button>
+			{@render label()}
+		</button>
+	{:else if role === "treeitem"}
+		<button
+			{type}
+			role="treeitem"
+			{tabindex}
+			aria-selected={selected}
+			class={[PRIMARY, POINTERS[variant]]}
+			{...rest}
+		>
+			{@render label()}
+		</button>
+	{:else}
+		<button {type} {tabindex} class={[PRIMARY, POINTERS[variant]]} {...rest}>
+			{@render label()}
+		</button>
+	{/if}
 	<div class={[ACTIONS, TRAILS[variant]]}>
 		{#if actions}
 			<div class={[TARGETS, GAPS[variant], REVEALS[reveal]]}
@@ -232,9 +258,6 @@ const REVEALS: Record<RowReveal, string> = {
    where every other row truncates its label to keep them in view. */
 .row-whole-label {
 	grid-template-columns: minmax(min-content, 1fr) auto;
-}
-.row-indented {
-	padding-left: var(--row-indent);
 }
 .row-ruled {
 	box-shadow:

@@ -2847,7 +2847,7 @@ describe("RepoView", () => {
 			await flush();
 			await fireEvent.click(await screen.findByText(/Comment on a file/));
 			await flush();
-			await fireEvent.click(await screen.findByRole("option"));
+			await fireEvent.click(await findFinderOption());
 			await flush();
 			expect(await screen.findByText("FILE BEHIND THE FINDER")).toBeTruthy();
 			fireReviewShowPanel();
@@ -2878,7 +2878,7 @@ describe("RepoView", () => {
 			await flush();
 			await fireEvent.click(await screen.findByText(/Comment on a file/));
 			await flush();
-			await fireEvent.click(await screen.findByRole("option"));
+			await fireEvent.click(await findFinderOption());
 			await flush();
 			expect(await screen.findByText("FILE BEHIND THE FINDER")).toBeTruthy();
 
@@ -2991,10 +2991,7 @@ describe("RepoView", () => {
 			await flush();
 			await fireEvent.click(await screen.findByText(/Comment on a file/));
 			await flush();
-			const finder = await screen.findByRole("listbox", {
-				name: "Tracked files",
-			});
-			await fireEvent.click(await within(finder).findByRole("option"));
+			await fireEvent.click(await findFinderOption());
 			await flush();
 			const outsideReview = { ...props, reviewActive: false };
 			await view.rerender(outsideReview);
@@ -3059,3 +3056,9 @@ describe("RepoView", () => {
 		});
 	});
 });
+
+async function findFinderOption(): Promise<HTMLElement> {
+	const finder = await screen.findByRole("listbox", { name: "Tracked files" });
+
+	return within(finder).findByRole("option");
+}

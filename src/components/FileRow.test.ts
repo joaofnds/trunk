@@ -157,9 +157,7 @@ describe("FileRow", () => {
 		});
 
 		const label = screen.getByRole("treeitem").firstElementChild;
-		expect((label as HTMLElement).style.getPropertyValue("--row-indent")).toBe(
-			treeIndent(3),
-		);
+		expect((label as HTMLElement).style.paddingLeft).toBe(treeIndent(3));
 	});
 
 	it("marks the row the list's cursor is on", () => {
@@ -221,12 +219,44 @@ describe("FileRow", () => {
 			},
 		});
 
-		await fireEvent.contextMenu(screen.getByRole("option"));
-		await fireEvent.contextMenu(
+		const onRow = await fireEvent.contextMenu(screen.getByRole("option"));
+		const onAction = await fireEvent.contextMenu(
 			screen.getByRole("button", { name: "Stage file" }),
 		);
 
 		expect(menus).toHaveLength(2);
+		expect([onRow, onAction]).toEqual([false, false]);
+	});
+
+	// The list holds the focus and the keys, so a row that took a Tab stop
+	// would take the arrow keys away with it.
+	it("stays out of the Tab order", () => {
+		render(FileRow, {
+			props: {
+				file: makeFile("README.md"),
+				role: "option",
+				actionLabel: "+",
+				onaction: () => {},
+			},
+		});
+
+		expect(screen.getByRole("option")).toHaveAttribute("tabindex", "-1");
+	});
+
+	it("dims a file that is loading", () => {
+		render(FileRow, {
+			props: {
+				file: makeFile("README.md"),
+				role: "option",
+				actionLabel: "+",
+				onaction: () => {},
+				isLoading: true,
+			},
+		});
+
+		expect(screen.getByRole("option").parentElement).toHaveClass(
+			"text-text-muted",
+		);
 	});
 
 	it("renders New file with file path", () => {

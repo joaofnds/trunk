@@ -33,6 +33,14 @@ describe("Row", () => {
 		);
 	});
 
+	it("claims no selection outside a list or a tree", () => {
+		render(Row, { props: { "aria-label": "topic", children: name } });
+
+		expect(screen.getByRole("button", { name: "topic" })).not.toHaveAttribute(
+			"aria-selected",
+		);
+	});
+
 	it("draws its actions beside the primary button, never inside it", () => {
 		render(Row, {
 			props: { "aria-label": "topic", children: name, actions: eye },
@@ -121,6 +129,23 @@ describe("Row", () => {
 		expect(
 			screen.getByRole("button", { name: "Hide topic" }).parentElement,
 		).toHaveClass("hidden", "group-hover:flex", "group-focus-within:flex");
+	});
+
+	it("leaves its actions hidden under focus when only the pointer reveals them", () => {
+		render(Row, {
+			props: {
+				reveal: "pointer",
+				"aria-label": "topic",
+				children: name,
+				actions: eye,
+			},
+		});
+
+		const actions = screen.getByRole("button", {
+			name: "Hide topic",
+		}).parentElement;
+		expect(actions).toHaveClass("hidden", "group-hover:flex");
+		expect(actions).not.toHaveClass("group-focus-within:flex");
 	});
 
 	it("keeps its actions in the row when they are always shown", () => {
@@ -366,8 +391,7 @@ describe("Row", () => {
 			});
 
 			const label = container.querySelector<HTMLElement>("button > span");
-			expect(label).toHaveClass("row-indented");
-			expect(label?.style.getPropertyValue("--row-indent")).toBe("40px");
+			expect(label?.style.paddingLeft).toBe("40px");
 		});
 
 		it("insets its actions from the edge it runs to", () => {
@@ -409,8 +433,7 @@ describe("Row", () => {
 			});
 
 			const label = container.querySelector<HTMLElement>("button > span");
-			expect(label).toHaveClass("row-indented");
-			expect(label?.style.getPropertyValue("--row-indent")).toBe("24px");
+			expect(label?.style.paddingLeft).toBe("24px");
 		});
 	});
 

@@ -70,7 +70,7 @@ export class StagingDriver {
 		row.click();
 	}
 
-	/** Stages one file with its row's + action, which only shows on hover.
+	/** Stages one file with its row's + action, which is painted only on hover.
 	 *  Returns once the file has crossed into the staged section. */
 	async stageFile(path: string): Promise<void> {
 		const row = await waitFor(`the unstaged ${path} row`, () =>

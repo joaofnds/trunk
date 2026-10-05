@@ -145,30 +145,20 @@ describe("TreeFileList", () => {
 		);
 	});
 
-	// The list holds the keys, so a click that gave a row's button the focus
-	// would otherwise take the arrow keys away with it.
-	it.each([
-		["a file", false, "option"],
-		["a directory", true, "treeitem"],
-	] as const)(
-		"takes the focus back from %s that was clicked",
-		async (_, treeMode, role) => {
-			render(TreeFileList, {
-				props: {
-					files: [makeFile("src/a.ts")],
-					treeMode,
-					actionLabel: "Stage",
-					onfileaction: () => {},
-				},
-			});
-			const row = screen.getAllByRole(role)[0];
-			row.focus();
+	it("takes the focus back from a file's button", async () => {
+		render(TreeFileList, {
+			props: {
+				files: [makeFile("a.ts")],
+				treeMode: false,
+				actionLabel: "Stage",
+				onfileaction: () => {},
+			},
+		});
 
-			await fireEvent.click(row);
+		screen.getByRole("option").focus();
 
-			expect(screen.getByRole(treeMode ? "tree" : "listbox")).toHaveFocus();
-		},
-	);
+		expect(screen.getByRole("listbox")).toHaveFocus();
+	});
 
 	it("is a listbox of options when flat and a tree of items otherwise", async () => {
 		const props = {
@@ -191,56 +181,126 @@ describe("TreeFileList", () => {
 		expect(items[1]).toHaveTextContent("README.md");
 	});
 
-	// Opening the selected file again is how a click closes its diff.
-	it("leaves the selected file open when the arrow keys reach it", async () => {
+	it("leaves Space on a file to the list's scroll", async () => {
 		const opened: string[] = [];
 		render(TreeFileList, {
 			props: {
-				files: [makeFile("src/a.ts"), makeFile("README.md")],
-				treeMode: true,
+				files: [makeFile("a.ts")],
+				treeMode: false,
 				actionLabel: "Stage",
 				onfileaction: () => {},
 				onfileclick: (path) => opened.push(path),
-				selectedPath: "README.md",
 			},
 		});
-		const tree = screen.getByRole("tree");
-		await fireEvent.click(screen.getByText("src"));
 
-		await fireEvent.keyDown(tree, { key: "ArrowDown" });
-		await fireEvent.keyDown(tree, { key: "ArrowDown" });
+		const scrolls = await fireEvent.keyDown(screen.getByRole("listbox"), {
+			key: " ",
+		});
 
-		expect(opened).toEqual(["src/a.ts"]);
-		expect(screen.getByRole("treeitem", { selected: true })).toHaveTextContent(
-			"README.md",
-		);
+		expect(scrolls).toBe(true);
+		expect(opened).toEqual([]);
+	});
+
+	describe("when its parent selects a file", () => {
+		const props = {
+			files: [makeFile("a.ts"), makeFile("b.ts"), makeFile("c.ts")],
+			treeMode: false,
+			actionLabel: "Stage",
+			onfileaction: () => {},
+		};
+
+		it("moves the cursor to it from a row still shown", async () => {
+			const { rerender } = render(TreeFileList, {
+				props: { ...props, selectedPath: "a.ts" },
+			});
+
+			await rerender({ ...props, selectedPath: "c.ts" });
+
+			expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
+				"c.ts",
+			);
+		});
+
+		it("keeps the cursor on it when the list becomes a tree", async () => {
+			const { rerender } = render(TreeFileList, {
+				props: { ...props, selectedPath: "c.ts" },
+			});
+
+			await rerender({ ...props, selectedPath: "c.ts", treeMode: true });
+
+			expect(
+				screen.getByRole("treeitem", { selected: true }),
+			).toHaveTextContent("c.ts");
+		});
+
+		it("moves the cursor to a file selected again after the selection was dropped", async () => {
+			const { rerender } = render(TreeFileList, {
+				props: { ...props, selectedPath: "c.ts" },
+			});
+			await rerender({ ...props, selectedPath: null });
+			await fireEvent.keyDown(screen.getByRole("listbox"), { key: "ArrowUp" });
+
+			await rerender({ ...props, selectedPath: "c.ts" });
+
+			expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
+				"c.ts",
+			);
+		});
 	});
 
 	describe("when the cursor is on a directory", () => {
+		const props = {
+			files: [makeFile("src/a.ts"), makeFile("README.md")],
+			treeMode: true,
+			actionLabel: "Stage",
+			onfileaction: () => {},
+		};
+
+		it("leaves the focus on a clicked directory", async () => {
+			render(TreeFileList, { props });
+			const directory = screen.getByRole("treeitem", { name: /src/ });
+
+			await fireEvent.click(directory);
+
+			expect(directory).toHaveFocus();
+			expect(directory).toHaveAttribute("aria-expanded", "true");
+		});
+
+		// Its button answers both keys with a click of its own, so the list
+		// acting on them too would fold it straight back.
 		it.each(["Enter", " "])(
-			"keeps the cursor on a clicked directory while a file is selected, so %j closes it",
+			"leaves %j to a directory that holds the focus",
 			async (key) => {
+				const opened: string[] = [];
 				render(TreeFileList, {
 					props: {
-						files: [makeFile("src/a.ts"), makeFile("README.md")],
-						treeMode: true,
-						actionLabel: "Stage",
-						onfileaction: () => {},
+						...props,
 						selectedPath: "README.md",
+						onfileclick: (path) => opened.push(path),
 					},
 				});
-				await fireEvent.click(screen.getByText("src"));
-				expect(
-					screen.getByRole("treeitem", { expanded: true }),
-				).toBeInTheDocument();
+				const directory = screen.getByRole("treeitem", { name: /src/ });
+				await fireEvent.click(directory);
 
-				await fireEvent.keyDown(screen.getByRole("tree"), { key });
+				const unhandled = await fireEvent.keyDown(directory, { key });
 
-				expect(
-					screen.getByRole("treeitem", { expanded: false }),
-				).toBeInTheDocument();
+				expect(unhandled).toBe(true);
+				expect(directory).toHaveAttribute("aria-expanded", "true");
+				expect(opened).toEqual([]);
 			},
 		);
+
+		it("keeps the cursor on the selected file when a directory is clicked", async () => {
+			render(TreeFileList, {
+				props: { ...props, selectedPath: "README.md" },
+			});
+
+			await fireEvent.click(screen.getByRole("treeitem", { name: /src/ }));
+
+			expect(
+				screen.getByRole("treeitem", { selected: true }),
+			).toHaveTextContent("README.md");
+		});
 
 		it.each(["Enter", " ", "ArrowRight"])(
 			"opens it once on %j",
