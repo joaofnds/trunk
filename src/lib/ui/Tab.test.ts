@@ -56,29 +56,76 @@ describe("Tab", () => {
 		);
 	});
 
-	describe("as a chip", () => {
-		it("spans the chip's two columns and leaves the strip's share and rule", () => {
-			render(Tab, { props: { variant: "chip", children: label } });
+	it("leaves a strip tab's place in the Tab order to its caller", () => {
+		render(Tab, { props: { children: label } });
 
-			const tab = screen.getByRole("tab", { name: "Amend" });
-			expect(tab).toHaveClass(
-				"col-span-2",
-				"grid-cols-subgrid",
+		expect(screen.getByRole("tab")).not.toHaveAttribute("tabindex");
+	});
+
+	describe("framed", () => {
+		it("fills its frame's one cell as the whole target", () => {
+			render(Tab, { props: { variant: "framed", children: label } });
+
+			expect(screen.getByRole("tab", { name: "Amend" })).toHaveClass(
+				"col-start-1",
+				"row-start-1",
 				"rounded",
 				"cursor-pointer",
 			);
-			expect(tab).not.toHaveClass("flex-1", "border-b-2");
 		});
 
-		it("lays its label out in the first column, stepped in from the edge", () => {
-			render(Tab, { props: { variant: "chip", children: label } });
+		it.each([
+			"flex-1",
+			"border-b-2",
+			"text-callout",
+			"text-text-subtle",
+			"aria-selected:text-text-strong",
+			"focus-visible:outline-2",
+		])("leaves the strip's %s to the caller's frame", (stripClass) => {
+			render(Tab, { props: { variant: "framed", children: label } });
 
-			expect(screen.getByText("Amend").parentElement).toHaveClass(
+			expect(screen.getByRole("tab")).not.toHaveClass(stripClass);
+		});
+
+		it("lays its label on one line, stepped in from the edge", () => {
+			render(Tab, { props: { variant: "framed", children: label } });
+
+			expect(screen.getByRole("tab")).toHaveClass(
 				"flex",
 				"items-center",
 				"gap-2",
 				"pl-3",
 			);
+		});
+
+		it("keeps room after its label for an xs control laid over its trailing edge", () => {
+			render(Tab, { props: { variant: "framed", children: label } });
+
+			expect(screen.getByRole("tab")).toHaveClass(
+				"after:w-control-xs",
+				"after:shrink-0",
+				"pr-2",
+			);
+		});
+
+		it("sizes itself from its label alone, with no track borrowed from the frame", () => {
+			render(Tab, { props: { variant: "framed", children: label } });
+
+			expect(screen.getByRole("tab")).not.toHaveClass("grid-cols-subgrid");
+		});
+
+		it("joins the Tab order", () => {
+			render(Tab, { props: { variant: "framed", children: label } });
+
+			expect(screen.getByRole("tab")).toHaveAttribute("tabindex", "0");
+		});
+
+		it("takes the place in the Tab order its caller gives it", () => {
+			render(Tab, {
+				props: { variant: "framed", tabindex: -1, children: label },
+			});
+
+			expect(screen.getByRole("tab")).toHaveAttribute("tabindex", "-1");
 		});
 	});
 

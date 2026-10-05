@@ -27,6 +27,23 @@ const tabs: TabInfo[] = [
 	{ id: "2", repoPath: "/path/to/other", repoName: "other", dirty: true },
 ];
 
+function closeOf(name: string): HTMLElement {
+	const item = screen
+		.getByRole("tab", { name })
+		.closest<HTMLElement>(".tab-item");
+	if (!item) throw new Error(`no tab named ${name}`);
+
+	return within(item).getByLabelText("Close tab");
+}
+
+function auxClick(button: number): MouseEvent {
+	return new MouseEvent("auxclick", {
+		button,
+		bubbles: true,
+		cancelable: true,
+	});
+}
+
 describe("TabBar", () => {
 	const defaultProps = {
 		tabs,
@@ -147,6 +164,30 @@ describe("TabBar", () => {
 		expect(within(tab).queryByLabelText("Close tab")).toBeNull();
 	});
 
+	it("puts each tab in the Tab order", () => {
+		render(TabBar, { props: defaultProps });
+
+		expect(
+			screen.getAllByRole("tab").map((tab) => tab.getAttribute("tabindex")),
+		).toEqual(["0", "0"]);
+	});
+
+	it("describes a tab by its repository's path", () => {
+		render(TabBar, { props: defaultProps });
+
+		expect(
+			screen.getByRole("tab", { name: "trunk" }),
+		).toHaveAccessibleDescription("/path/to/trunk");
+	});
+
+	it("keeps a dragged copy of a tab out of the pointer's way", () => {
+		const { container } = render(TabBar, { props: defaultProps });
+
+		expect(
+			container.querySelectorAll('.tab-item [class*="pointer-events-auto"]'),
+		).toHaveLength(0);
+	});
+
 	it.each(["Enter", " "])("activates a focused tab on %j", async (key) => {
 		const activated: string[] = [];
 		render(TabBar, {
@@ -160,18 +201,37 @@ describe("TabBar", () => {
 		expect(activated).toEqual(["2"]);
 	});
 
-	it("leaves a tab alone on a right or middle mousedown", async () => {
-		const activated: string[] = [];
-		render(TabBar, {
-			props: { ...defaultProps, onactivate: (id) => activated.push(id) },
-		});
-		const tab = screen.getByRole("tab", { name: "other" });
+	it.each(["a", "Tab", "Escape", "ArrowRight"])(
+		"leaves a focused tab alone on %j",
+		async (key) => {
+			const activated: string[] = [];
+			render(TabBar, {
+				props: { ...defaultProps, onactivate: (id) => activated.push(id) },
+			});
 
-		await fireEvent.mouseDown(tab, { button: 1 });
-		await fireEvent.mouseDown(tab, { button: 2 });
+			await fireEvent.keyDown(screen.getByRole("tab", { name: "other" }), {
+				key,
+			});
 
-		expect(activated).toEqual([]);
-	});
+			expect(activated).toEqual([]);
+		},
+	);
+
+	it.each([1, 2])(
+		"leaves a tab alone on a mousedown of button %i",
+		async (button) => {
+			const activated: string[] = [];
+			render(TabBar, {
+				props: { ...defaultProps, onactivate: (id) => activated.push(id) },
+			});
+
+			await fireEvent.mouseDown(screen.getByRole("tab", { name: "other" }), {
+				button,
+			});
+
+			expect(activated).toEqual([]);
+		},
+	);
 
 	it("opens a tab's menu on a right click", async () => {
 		const menus: string[] = [];
@@ -193,27 +253,65 @@ describe("TabBar", () => {
 			props: { ...defaultProps, onauxclose: (id) => closed.push(id) },
 		});
 
-		await fireEvent(
+		const unhandled = await fireEvent(
 			screen.getByRole("tab", { name: "other" }),
-			new MouseEvent("auxclick", { button: 1, bubbles: true }),
+			auxClick(1),
 		);
 
+		expect(unhandled).toBe(false);
 		expect(closed).toEqual(["2"]);
 	});
 
+	it("keeps a tab open on an auxiliary click of the right button", async () => {
+		const closed: string[] = [];
+		render(TabBar, {
+			props: { ...defaultProps, onauxclose: (id) => closed.push(id) },
+		});
+
+		await fireEvent(screen.getByRole("tab", { name: "other" }), auxClick(2));
+
+		expect(closed).toEqual([]);
+	});
+
 	describe("on a tab's close", () => {
-		it("activates the tab on mousedown, as anywhere else on its chip", async () => {
+		it("activates the tab on mousedown, as anywhere else on it", async () => {
 			const activated: string[] = [];
 			render(TabBar, {
 				props: { ...defaultProps, onactivate: (id) => activated.push(id) },
 			});
 
-			await fireEvent.mouseDown(screen.getAllByLabelText("Close tab")[1], {
-				button: 0,
-			});
+			await fireEvent.mouseDown(closeOf("other"), { button: 0 });
 
 			expect(activated).toEqual(["2"]);
 		});
+
+		it.each([1, 2])(
+			"leaves the tab alone on a mousedown of button %i",
+			async (button) => {
+				const activated: string[] = [];
+				render(TabBar, {
+					props: { ...defaultProps, onactivate: (id) => activated.push(id) },
+				});
+
+				await fireEvent.mouseDown(closeOf("other"), { button });
+
+				expect(activated).toEqual([]);
+			},
+		);
+
+		it.each([0, 1, 2])(
+			"moves the focus to its tab on a mousedown of button %i",
+			async (button) => {
+				render(TabBar, { props: defaultProps });
+
+				const unhandled = await fireEvent.mouseDown(closeOf("other"), {
+					button,
+				});
+
+				expect(unhandled).toBe(false);
+				expect(screen.getByRole("tab", { name: "other" })).toHaveFocus();
+			},
+		);
 
 		it("opens the tab's menu on a right click", async () => {
 			const menus: string[] = [];
@@ -221,8 +319,9 @@ describe("TabBar", () => {
 				props: { ...defaultProps, oncontextmenu: (id) => menus.push(id) },
 			});
 
-			await fireEvent.contextMenu(screen.getAllByLabelText("Close tab")[1]);
+			const unhandled = await fireEvent.contextMenu(closeOf("other"));
 
+			expect(unhandled).toBe(false);
 			expect(menus).toEqual(["2"]);
 		});
 
@@ -232,12 +331,21 @@ describe("TabBar", () => {
 				props: { ...defaultProps, onauxclose: (id) => closed.push(id) },
 			});
 
-			await fireEvent(
-				screen.getAllByLabelText("Close tab")[1],
-				new MouseEvent("auxclick", { button: 1, bubbles: true }),
-			);
+			const unhandled = await fireEvent(closeOf("other"), auxClick(1));
 
+			expect(unhandled).toBe(false);
 			expect(closed).toEqual(["2"]);
+		});
+
+		it("keeps the tab open on an auxiliary click of the right button", async () => {
+			const closed: string[] = [];
+			render(TabBar, {
+				props: { ...defaultProps, onauxclose: (id) => closed.push(id) },
+			});
+
+			await fireEvent(closeOf("other"), auxClick(2));
+
+			expect(closed).toEqual([]);
 		});
 
 		it("forces the close while Shift is held", async () => {
@@ -249,9 +357,7 @@ describe("TabBar", () => {
 				},
 			});
 
-			await fireEvent.click(screen.getAllByLabelText("Close tab")[1], {
-				shiftKey: true,
-			});
+			await fireEvent.click(closeOf("other"), { shiftKey: true });
 
 			expect(closed).toEqual([["2", true]]);
 		});

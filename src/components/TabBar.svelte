@@ -74,11 +74,23 @@ $effect(() => {
 	return () => sortable.destroy();
 });
 
-const CLOSE =
-	"col-start-2 row-start-1 flex items-center px-2 pointer-events-none *:pointer-events-auto";
+const CLOSE = "col-start-1 row-start-1 justify-self-end self-center flex mr-2";
 
-function press(e: MouseEvent, tabId: string) {
+function activateOnPrimary(e: MouseEvent, tabId: string) {
 	if (e.button === 0) onactivate(tabId);
+}
+
+function pressClose(
+	e: MouseEvent & { currentTarget: HTMLButtonElement },
+	tabId: string,
+) {
+	e.preventDefault();
+	e.currentTarget
+		.closest(".tab-item")
+		?.querySelector<HTMLElement>('[role="tab"]')
+		?.focus({ preventScroll: true });
+
+	activateOnPrimary(e, tabId);
 }
 
 function openMenu(e: MouseEvent, tabId: string) {
@@ -95,10 +107,13 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 </script>
 
 <!--
-	Each chip stays the element SortableJS drags, and holds the tab's button
+	Each tab item is the element SortableJS drags, and holds the tab's button
 	with the close over its trailing edge as a sibling. An event on the close
 	never reaches the tab, so the close is handed what a press, a right click
-	and a middle click anywhere on the chip do.
+	and a middle click anywhere on the item do, the focus a press gives the
+	tab included. Nothing inside an item may turn pointer events back on:
+	SortableJS switches them off on the copy it drags, and a descendant that
+	opts back in is found under the pointer as a drop target.
 -->
 <div
 	class="tab-bar"
@@ -107,18 +122,19 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 	bind:this={tabBarEl}
 >
 	{#each tabs as tab (tab.id)}
+		{@const title = tab.repoPath ? (resolvedPaths[tab.repoPath] ?? tab.repoPath) : tab.repoName || 'New Tab'}
 		<div
 			class="tab-item"
 			class:active={tab.id === activeTabId}
 			role="presentation"
 			data-tab-id={tab.id}
-			title={tab.repoPath ? (resolvedPaths[tab.repoPath] ?? tab.repoPath) : tab.repoName || 'New Tab'}
+			{title}
 		>
 			<Tab
-				variant="chip"
+				variant="framed"
 				selected={tab.id === activeTabId}
-				tabindex={0}
-				onmousedown={(e) => press(e, tab.id)}
+				{title}
+				onmousedown={(e) => activateOnPrimary(e, tab.id)}
 				onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onactivate(tab.id); }}
 				oncontextmenu={(e) => openMenu(e, tab.id)}
 				onauxclick={(e) => closeOnMiddle(e, tab.id)}
@@ -136,10 +152,10 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 					size="xs"
 					variant="ghost"
 					aria-label="Close tab"
-					onmousedown={(e: MouseEvent) => press(e, tab.id)}
-					oncontextmenu={(e: MouseEvent) => openMenu(e, tab.id)}
-					onauxclick={(e: MouseEvent) => closeOnMiddle(e, tab.id)}
-					onclick={(e: MouseEvent) => { e.stopPropagation(); onclose(tab.id, e.shiftKey); }}
+					onmousedown={(e) => pressClose(e, tab.id)}
+					oncontextmenu={(e) => openMenu(e, tab.id)}
+					onauxclick={(e) => closeOnMiddle(e, tab.id)}
+					onclick={(e) => { e.stopPropagation(); onclose(tab.id, e.shiftKey); }}
 				>
 					<X size={12} />
 				</Button>
@@ -169,7 +185,6 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 
 .tab-item {
 	display: grid;
-	grid-template-columns: auto auto;
 	height: var(--control-h);
 	border-radius: var(--radius);
 	font-size: var(--text-callout);
