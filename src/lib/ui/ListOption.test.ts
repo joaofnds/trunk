@@ -38,6 +38,14 @@ describe("ListOption", () => {
 		expect(screen.getByRole("menuitem")).toBeInTheDocument();
 	});
 
+	it("carries no selected state as a menu item, which has no cursor", () => {
+		render(ListOption, {
+			props: { role: "menuitem", selected: true, children: label },
+		});
+
+		expect(screen.getByRole("menuitem")).not.toHaveAttribute("aria-selected");
+	});
+
 	it("fills the list's width as a left-aligned row in the list's type", () => {
 		render(ListOption, { props: { children: label } });
 

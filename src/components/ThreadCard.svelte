@@ -235,9 +235,8 @@ async function requestDeleteReply(replyId: string) {
 		<span class="thread-state-chip thread-state-{thread.state}"
 			>{thread.state}</span
 		>
-		<span
-			class="flex gap-4 text-callout leading-normal"
-			role="group"
+		<fieldset
+			class="flex min-w-auto gap-4 text-callout leading-normal"
 			aria-label="Thread actions"
 		>
 			{#each stateActions as action (action.next)}
@@ -253,7 +252,7 @@ async function requestDeleteReply(replyId: string) {
 					<LinkButton tone="danger" onclick={requestDelete}>Delete</LinkButton>
 				{/if}
 			{/if}
-		</span>
+		</fieldset>
 	</header>
 
 	<!-- Diff hunk: line-anchored comments only. The cached_excerpt is the

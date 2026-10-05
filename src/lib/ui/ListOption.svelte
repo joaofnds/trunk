@@ -10,7 +10,7 @@ import type { HTMLButtonAttributes } from "svelte/elements";
 interface Props extends Omit<HTMLButtonAttributes, "class" | "style" | "role"> {
 	/** `option` in a listbox, `menuitem` in a menu of actions. */
 	role?: ListOptionRole;
-	/** Whether the list's cursor is on it. Leave unset in a menu, which has none. */
+	/** Whether the list's cursor is on it. A menu has none, so a menu item ignores it. */
 	selected?: boolean;
 	/** `row` lays its children on one line; `stack` puts each on its own. */
 	layout?: ListOptionLayout;
@@ -50,12 +50,23 @@ const HIGHLIGHTS: Record<ListOptionHighlight, string> = {
 	strategy in the pull menu. It takes its type from the list around it, so the
 	caller sets the size on the listbox or menu.
 -->
-<button
-	{type}
-	{role}
-	aria-selected={selected}
-	class={[BASE, LAYOUTS[layout], HIGHLIGHTS[highlight]]}
-	{...rest}
->
-	{@render children?.()}
-</button>
+{#if role === "option"}
+	<button
+		{type}
+		role="option"
+		aria-selected={selected}
+		class={[BASE, LAYOUTS[layout], HIGHLIGHTS[highlight]]}
+		{...rest}
+	>
+		{@render children?.()}
+	</button>
+{:else}
+	<button
+		{type}
+		role="menuitem"
+		class={[BASE, LAYOUTS[layout], HIGHLIGHTS[highlight]]}
+		{...rest}
+	>
+		{@render children?.()}
+	</button>
+{/if}
