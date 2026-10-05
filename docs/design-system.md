@@ -190,3 +190,8 @@ one the parser cannot enumerate, a prop or a `$derived` value among them, fails
 too, since it can be either. A `role` handed to a component is that component's
 to draw and is not judged. A control drawn there in scoped CSS passes every other
 guard while it drifts from the primitives.
+
+Biome's a11y rules read the same components, so a pointer or key handler on an
+element that is no control, a `<div>`, a `<span>` or an `<svg>`, fails `just
+quick`. Hand the press to a primitive, or to `HitArea` where the thing pressed is
+drawn by something else.

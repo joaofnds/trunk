@@ -67,9 +67,7 @@
 						"noUnusedImports": "off"
 					},
 					"a11y": {
-						"noStaticElementInteractions": "off",
-						"noNoninteractiveElementInteractions": "off",
-						"noSvgWithoutTitle": "off"
+						"noNoninteractiveElementInteractions": "error"
 					}
 				}
 			}
