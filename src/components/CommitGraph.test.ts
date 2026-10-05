@@ -125,10 +125,13 @@ function getMenuAction(text: string): () => unknown {
 	}
 	return action;
 }
+const menusShown = vi.hoisted((): true[] => []);
 vi.mock("@tauri-apps/api/menu", () => ({
 	Menu: {
 		new: vi.fn().mockResolvedValue({
-			popup: vi.fn().mockResolvedValue(undefined),
+			popup: async () => {
+				menusShown.push(true);
+			},
 		}),
 	},
 	MenuItem: {
@@ -247,6 +250,7 @@ beforeEach(() => {
 	searchToggleHandlers = [];
 	vi.clearAllMocks();
 	menuActions.clear();
+	menusShown.length = 0;
 	resetCache();
 	installReads();
 });
@@ -373,14 +377,18 @@ describe("CommitGraph", () => {
 		expect(await screen.findByText("second commit")).toBeInTheDocument();
 	});
 
-	it("has listbox role for keyboard navigation", () => {
-		const { container } = render(CommitGraph, {
+	it("is a listbox that takes more than one selected commit", () => {
+		render(CommitGraph, {
 			props: {
 				repoPath: "/test/repo",
 				tabActive: true,
 			},
 		});
-		expect(container.querySelector('[role="listbox"]')).toBeTruthy();
+
+		expect(screen.getByRole("listbox")).toHaveAttribute(
+			"aria-multiselectable",
+			"true",
+		);
 	});
 
 	describe("arrow keys", () => {
@@ -2856,6 +2864,13 @@ describe("CommitGraph", () => {
 			await flush();
 		}
 
+		function headerBar(): Element {
+			const bar = screen.getByTestId("column-header").parentElement;
+			if (!bar) throw new Error("the column header has no bar around it");
+
+			return bar;
+		}
+
 		it("on the column header offers the columns, in place of the native menu", async () => {
 			await mountGraph();
 
@@ -2872,6 +2887,24 @@ describe("CommitGraph", () => {
 				"Date",
 				"SHA",
 			]);
+		});
+
+		it("on the column header shows the menu of columns", async () => {
+			await mountGraph();
+
+			await fireEvent.contextMenu(screen.getByText("Author"));
+			await flush();
+
+			expect(menusShown).toEqual([true]);
+		});
+
+		it("on the header bar's own padding offers the columns", async () => {
+			await mountGraph();
+
+			await fireEvent.contextMenu(headerBar());
+			await flush();
+
+			expect(columnsOffered()).toHaveLength(7);
 		});
 
 		it("on a commit offers no columns", async () => {

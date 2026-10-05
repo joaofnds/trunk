@@ -1,8 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Menu } from "@tauri-apps/api/menu";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { fireEvent, render, screen, within } from "@testing-library/svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { tick } from "svelte";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	onTestFinished,
+	vi,
+} from "vitest";
 import { exactLabel } from "../lib/relative-time.js";
 import { SHOW_DELAY_MS } from "../lib/tooltip.js";
 import type { RebaseTodoItem } from "../lib/types.js";
@@ -58,10 +66,13 @@ vi.mock("@tauri-apps/api/window", () => ({
 	}),
 }));
 
+const menusShown = vi.hoisted((): true[] => []);
 vi.mock("@tauri-apps/api/menu", () => ({
 	Menu: {
 		new: vi.fn().mockResolvedValue({
-			popup: vi.fn().mockResolvedValue(undefined),
+			popup: async () => {
+				menusShown.push(true);
+			},
 		}),
 	},
 	MenuItem: { new: vi.fn().mockResolvedValue({}) },
@@ -116,6 +127,7 @@ describe("RebaseEditor", () => {
 		mockInvoke.mockReset();
 		mockInvoke.mockResolvedValue(undefined);
 		scrolled.length = 0;
+		menusShown.length = 0;
 		Element.prototype.scrollIntoView = function scrollIntoView() {
 			scrolled.push(this);
 		};
@@ -124,6 +136,37 @@ describe("RebaseEditor", () => {
 	afterEach(() => {
 		Element.prototype.scrollIntoView = originalScrollIntoView;
 	});
+
+	function renderEditor({ onclose = () => {} } = {}) {
+		return render(RebaseEditor, {
+			props: {
+				repoPath: "/test/repo",
+				commits: TEST_ITEMS,
+				branchName: "feature/login",
+				baseName: "main",
+				onclose,
+				onstart: vi.fn(),
+			},
+		});
+	}
+
+	function actions(container: HTMLElement) {
+		return [...container.querySelectorAll("select")].map(
+			(select) => select.value,
+		);
+	}
+
+	async function settled() {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await tick();
+	}
+
+	function planRow(container: HTMLElement, index: number): Element {
+		const row = container.querySelector(`[data-rebase-row="${index}"]`);
+		if (!row) throw new Error(`the plan has no row ${index}`);
+
+		return row;
+	}
 
 	it("renders without crashing", () => {
 		const { container } = render(RebaseEditor, {
@@ -407,25 +450,6 @@ describe("RebaseEditor", () => {
 	});
 
 	describe("the plan's rows", () => {
-		function renderEditor() {
-			return render(RebaseEditor, {
-				props: {
-					repoPath: "/test/repo",
-					commits: TEST_ITEMS,
-					branchName: "feature/login",
-					baseName: "main",
-					onclose: vi.fn(),
-					onstart: vi.fn(),
-				},
-			});
-		}
-
-		function actions(container: HTMLElement) {
-			return [...container.querySelectorAll("select")].map(
-				(select) => select.value,
-			);
-		}
-
 		it("are the options of a named listbox, each a tab stop", () => {
 			renderEditor();
 
@@ -456,6 +480,21 @@ describe("RebaseEditor", () => {
 			]);
 		});
 
+		it("are described by their validation error, which the list does not own", async () => {
+			const { container } = renderEditor();
+			const oldest = TEST_ITEMS.length - 1;
+
+			await fireEvent.click(planRow(container, oldest));
+			await fireEvent.keyDown(planRow(container, oldest), { key: "s" });
+
+			expect(planRow(container, oldest)).toHaveAccessibleDescription(
+				"Cannot squash the first commit",
+			);
+			expect(
+				screen.getByText("Cannot squash the first commit"),
+			).toHaveAttribute("aria-hidden", "true");
+		});
+
 		it("take an action key pressed on the toolbar", async () => {
 			const { container } = renderEditor();
 
@@ -484,25 +523,22 @@ describe("RebaseEditor", () => {
 	});
 
 	describe("a right click", () => {
-		function renderEditor() {
-			return render(RebaseEditor, {
-				props: {
-					repoPath: "/test/repo",
-					commits: TEST_ITEMS,
-					branchName: "feature/login",
-					baseName: "main",
-					onclose: vi.fn(),
-					onstart: vi.fn(),
-				},
-			});
-		}
-
 		it("on the column header takes the native menu's place", async () => {
 			renderEditor();
 
 			const unhandled = await fireEvent.contextMenu(screen.getByText("Author"));
 
 			expect(unhandled).toBe(false);
+		});
+
+		it("on the column header shows the editor's own menu", async () => {
+			renderEditor();
+
+			await fireEvent.contextMenu(screen.getByText("Author"));
+
+			await settled();
+
+			expect(menusShown).toEqual([true]);
 		});
 
 		it.each(["Interactive Rebase", "fix: null check"])(
@@ -516,14 +552,14 @@ describe("RebaseEditor", () => {
 			},
 		);
 
-		it("on another editor's column header opens one menu, not two", async () => {
-			vi.mocked(Menu.new).mockClear();
+		it("on another editor's column header shows one menu, not two", async () => {
 			renderEditor();
 			const second = renderEditor();
 
 			await fireEvent.contextMenu(within(second.container).getByText("Author"));
+			await settled();
 
-			await vi.waitFor(() => expect(Menu.new).toHaveBeenCalledTimes(1));
+			expect(menusShown).toEqual([true]);
 		});
 	});
 
@@ -536,19 +572,10 @@ describe("RebaseEditor", () => {
 
 		async function openMessageEditor() {
 			const closed: true[] = [];
-			const { container } = render(RebaseEditor, {
-				props: {
-					repoPath: "/test/repo",
-					commits: TEST_ITEMS,
-					branchName: "feature/login",
-					baseName: "main",
-					onclose: () => closed.push(true),
-					onstart: vi.fn(),
-				},
+			const { container } = renderEditor({
+				onclose: () => closed.push(true),
 			});
-			await fireEvent.dblClick(
-				container.querySelector('[data-rebase-row="0"]') as Element,
-			);
+			await fireEvent.dblClick(planRow(container, 0));
 			const update = await screen.findByRole("button", {
 				name: "Update Message",
 			});
@@ -579,6 +606,17 @@ describe("RebaseEditor", () => {
 			},
 		);
 
+		it("hands the message editor to the editor, out of the list's rows", async () => {
+			const { container } = await openMessageEditor();
+
+			const owned = container
+				.querySelector(".rebase-editor")
+				?.getAttribute("aria-owns");
+
+			expect(owned).toBeTruthy();
+			expect(screen.getByRole("dialog")).toHaveAttribute("id", owned);
+		});
+
 		it("cancels only the message edit on Escape", async () => {
 			const { container, update, closed } = await openMessageEditor();
 
@@ -589,35 +627,25 @@ describe("RebaseEditor", () => {
 			expect(closed).toEqual([]);
 		});
 
-		it("keeps a key pressed there from the window's shortcuts", async () => {
-			const { update } = await openMessageEditor();
-			const reached: string[] = [];
-			const record = (e: KeyboardEvent) => reached.push(e.key);
-			window.addEventListener("keydown", record);
+		it.each(["s", "Escape"])(
+			"keeps %s pressed there from the window's shortcuts",
+			async (key) => {
+				const { update } = await openMessageEditor();
+				const reached: string[] = [];
+				const record = (e: KeyboardEvent) => reached.push(e.key);
+				window.addEventListener("keydown", record);
+				onTestFinished(() => window.removeEventListener("keydown", record));
 
-			await fireEvent.keyDown(update, { key: "s" });
-			window.removeEventListener("keydown", record);
+				await fireEvent.keyDown(update, { key });
 
-			expect(reached).toEqual([]);
-		});
+				expect(reached).toEqual([]);
+			},
+		);
 	});
 
 	// Every open tab's editor lives in the one document, and data-rebase-row is a
 	// raw loop index, so a document-rooted query collides across instances.
 	describe("with a second editor mounted", () => {
-		function renderEditor() {
-			return render(RebaseEditor, {
-				props: {
-					repoPath: "/test/repo",
-					commits: TEST_ITEMS,
-					branchName: "feature/login",
-					baseName: "main",
-					onclose: vi.fn(),
-					onstart: vi.fn(),
-				},
-			});
-		}
-
 		it("scrolls its own row into view", async () => {
 			renderEditor();
 			const second = renderEditor();
@@ -628,6 +656,16 @@ describe("RebaseEditor", () => {
 			);
 
 			expect(second.container.contains(scrolled.at(-1) ?? null)).toBe(true);
+		});
+
+		it("leaves the first editor's plan alone under a key pressed in its own", async () => {
+			const first = renderEditor();
+			const second = renderEditor();
+
+			await fireEvent.keyDown(planRow(second.container, 0), { key: "s" });
+
+			expect(actions(first.container)).toEqual(["pick", "pick", "pick"]);
+			expect(actions(second.container)).toEqual(["squash", "pick", "pick"]);
 		});
 	});
 });

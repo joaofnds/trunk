@@ -1,4 +1,5 @@
 <script lang="ts">
+import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
 import Sortable from "sortablejs";
 import { copySha } from "../lib/clipboard.js";
 import { exactDate } from "../lib/exact-date.js";
@@ -86,6 +87,9 @@ $effect(() => {
 let focusedIndex = $state<number>(0);
 let editorEl: HTMLDivElement | undefined = $state();
 let headerEl: HTMLDivElement | undefined = $state();
+let messageEditorEl: HTMLDivElement | undefined = $state();
+const uid = $props.id();
+const messageEditorId = `${uid}-message-editor`;
 let listEl: HTMLDivElement | undefined = $state();
 
 // Inline message editor state
@@ -197,7 +201,7 @@ function startColumnResize(
 
 // --- Header context menu ---
 
-function openHeaderMenu(e: MouseEvent) {
+function openMenuIfOnHeader(e: MouseEvent) {
 	if (!(e.target instanceof Node) || !headerEl?.contains(e.target)) return;
 
 	void showHeaderContextMenu(e);
@@ -205,7 +209,6 @@ function openHeaderMenu(e: MouseEvent) {
 
 async function showHeaderContextMenu(e: MouseEvent) {
 	e.preventDefault();
-	const { Menu, CheckMenuItem } = await import("@tauri-apps/api/menu");
 	const cols: { key: keyof RebaseColumnVisibility; label: string }[] = [
 		{ key: "sha", label: "SHA" },
 		{ key: "author", label: "Author" },
@@ -270,7 +273,7 @@ function scrollRowIntoView(idx: number) {
 function handleEditorKeydown(e: KeyboardEvent) {
 	if (!(e.target instanceof Element) || !editorEl?.contains(e.target)) return;
 
-	if (e.target.closest('[role="dialog"]')) {
+	if (messageEditorEl?.contains(e.target)) {
 		e.stopPropagation();
 		if (e.key === "Escape") handleMessageCancel();
 		return;
@@ -498,10 +501,16 @@ let lastVisibleColumn = $derived.by(() => {
 
 <svelte:document
 	onkeydown={handleEditorKeydown}
-	oncontextmenu={openHeaderMenu}
+	oncontextmenu={openMenuIfOnHeader}
 />
 
-<div class="rebase-editor" tabindex="-1" bind:this={editorEl} use:autofocus>
+<div
+	class="rebase-editor"
+	tabindex="-1"
+	aria-owns={editingIdx === null ? undefined : messageEditorId}
+	bind:this={editorEl}
+	use:autofocus
+>
 	<!-- Header -->
 	<div class="rebase-toolbar">
 		<div class="rebase-toolbar-left">
@@ -597,6 +606,7 @@ let lastVisibleColumn = $derived.by(() => {
 						class="rebase-row h-row"
 						role="option"
 						aria-selected={focusedIndex === idx}
+						aria-describedby={errorForIndex(idx) ? `${uid}-error-${idx}` : undefined}
 						tabindex="0"
 						class:rebase-row-focused={focusedIndex === idx}
 						class:rebase-row-drop={item.action === 'drop'}
@@ -691,7 +701,11 @@ let lastVisibleColumn = $derived.by(() => {
 
 					<!-- Validation error inline -->
 					{#if errorForIndex(idx)}
-						<div class="rebase-validation-error">
+						<div
+							class="rebase-validation-error"
+							id="{uid}-error-{idx}"
+							aria-hidden="true"
+						>
 							{errorForIndex(idx)}
 						</div>
 					{/if}
@@ -700,9 +714,11 @@ let lastVisibleColumn = $derived.by(() => {
 					{#if editingIdx === idx}
 						<div
 							class="rebase-msg-editor"
+							id={messageEditorId}
 							role="dialog"
 							aria-label="Edit commit message"
 							tabindex="-1"
+							bind:this={messageEditorEl}
 						>
 							<div class="rebase-msg-editor-title"
 								>{items[editingIdx]?.action === 'squash' ? 'Edit squash message' : 'Reword commit message'}</div

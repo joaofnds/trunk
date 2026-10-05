@@ -26,8 +26,8 @@ interface Props {
 	rowIndex: number;
 	onselect?: (oid: string, mods?: SelectModifiers) => void;
 	oncontextmenu?: (e: MouseEvent, commit: GraphCommit) => void;
-	/** Called with true as the pointer enters the row and false as it leaves. */
-	onhover?: (over: boolean) => void;
+	onenter?: () => void;
+	onleave?: () => void;
 	columnVisibility: ColumnVisibility;
 	selected?: boolean;
 	/** Row height in px. Defaults to ROW_HEIGHT constant.
@@ -61,7 +61,8 @@ let {
 	rowIndex,
 	onselect,
 	oncontextmenu,
-	onhover,
+	onenter,
+	onleave,
 	columnVisibility,
 	selected = false,
 	rowHeight = ROW_HEIGHT,
@@ -149,8 +150,8 @@ const rowShadow = $derived(
 	onclick={(e) => onselect?.(commit.oid, { compare: e.metaKey || e.ctrlKey, range: e.shiftKey })}
 	onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onselect?.(commit.oid); } }}
 	oncontextmenu={(e: MouseEvent) => { if (oncontextmenu && !isWip) { e.preventDefault(); oncontextmenu(e, commit); } }}
-	onmouseenter={() => onhover?.(true)}
-	onmouseleave={() => onhover?.(false)}
+	onmouseenter={() => onenter?.()}
+	onmouseleave={() => onleave?.()}
 >
 	<!-- Column 1: Branch/Tag refs spacer (SVG overlay handles rendering) -->
 	{#if columnVisibility.ref}

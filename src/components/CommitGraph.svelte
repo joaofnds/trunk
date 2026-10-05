@@ -1491,7 +1491,7 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 	}
 }
 
-function openHeaderMenu(e: MouseEvent) {
+function openMenuIfOnHeader(e: MouseEvent) {
 	if (!(e.target instanceof Node) || !headerRef?.contains(e.target)) return;
 
 	void showHeaderContextMenu(e);
@@ -2064,7 +2064,6 @@ $effect(() => {
 });
 </script>
 
-<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
 	class="h-full overflow-hidden flex flex-col bg-surface outline-none"
 	style:--column-ref-width="{columnWidths.ref}px"
@@ -2075,9 +2074,10 @@ $effect(() => {
 	style:--column-sha-width="{columnWidths.sha}px"
 	tabindex="0"
 	role="listbox"
+	aria-multiselectable="true"
 	bind:this={containerRef}
 	onkeydown={handleKeydown}
-	oncontextmenu={openHeaderMenu}
+	oncontextmenu={openMenuIfOnHeader}
 >
 	<!-- Header row (always visible). Its cells sit in a scroller of their own inside
        the padding, as the list's rows do, so the two scroll the same distance. -->
@@ -2598,7 +2598,8 @@ $effect(() => {
 							rowIndex={index}
 							onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect}
 							oncontextmenu={handleRowContextMenu}
-							onhover={(over) => (hoveredRow = over ? index : null)}
+							onenter={() => (hoveredRow = index)}
+							onleave={() => (hoveredRow = null)}
 							{columnVisibility}
 							selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'}
 							rowHeight={displaySettings.rowHeight}

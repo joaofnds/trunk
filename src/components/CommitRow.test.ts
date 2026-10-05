@@ -164,18 +164,19 @@ describe("CommitRow", () => {
 
 	describe("in its list", () => {
 		function renderRow(props: { selected?: boolean } = {}) {
-			const hovered: boolean[] = [];
+			const pointer: string[] = [];
 			render(CommitRow, {
 				props: {
 					commit: makeCommit({ oid: "abc1234567" }),
 					rowIndex: 0,
 					columnVisibility: allVisible,
-					onhover: (over: boolean) => hovered.push(over),
+					onenter: () => pointer.push("entered"),
+					onleave: () => pointer.push("left"),
 					...props,
 				},
 			});
 
-			return { row: screen.getByTestId("commit-row"), hovered };
+			return { row: screen.getByTestId("commit-row"), pointer };
 		}
 
 		it("is an option and a tab stop", () => {
@@ -195,12 +196,12 @@ describe("CommitRow", () => {
 		});
 
 		it("reports the pointer entering and leaving it", async () => {
-			const { row, hovered } = renderRow();
+			const { row, pointer } = renderRow();
 
 			await fireEvent.mouseEnter(row);
 			await fireEvent.mouseLeave(row);
 
-			expect(hovered).toEqual([true, false]);
+			expect(pointer).toEqual(["entered", "left"]);
 		});
 	});
 
