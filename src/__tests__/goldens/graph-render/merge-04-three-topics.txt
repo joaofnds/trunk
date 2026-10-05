@@ -1,4 +1,4 @@
-<svg class="absolute top-0 left-0 pointer-events-none z-1 svelte-m4sbjr" height="4000" width="188">
+<svg class="absolute top-0 left-0 pointer-events-none z-1 svelte-m4sbjr" height="4000" role="presentation" width="188">
   <defs>
     <clipPath id="graph-clip-g19">
       <rect height="4000" width="80" x="104" y="0">
@@ -24,41 +24,51 @@
       <rect height="4000" width="96" x="0" y="0">
     <line class="svelte-m4sbjr non-head" opacity="1" stroke-width="1" stroke="var(--lane-1)" x1="88" x2="128" y1="14" y2="14">
     <g clip-path="url(#ref-clip-g19)">
-      <rect fill-opacity="0.14" fill="var(--lane-1)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-1)" style="cursor: pointer;" width="84" x="4" y="4">
-      <g class="pointer-events-auto" opacity="0.9" style="cursor: pointer;" transform="translate(10, 9)">
+      <rect fill-opacity="0.14" fill="var(--lane-1)" height="20" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-1)" width="84" x="4" y="4">
+      <g opacity="0.9" transform="translate(10, 9)">
         <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
       <foreignObject height="20" width="60" x="22" y="4">
-        <SPAN class="block font-sans whitespace-nowrap overflow-hidden" style="line-height: 20px; color: var(--lane-1); font-size: 11px; font-weight: 500; cursor: pointer;">
+        <SPAN class="block font-sans whitespace-nowrap overflow-hidden" style="line-height: 20px; color: var(--lane-1); font-size: 11px; font-weight: 500;">
           "topic-four"
+      <foreignObject height="20" width="84" x="4" y="4">
+        <BUTTON aria-label="topic-four" class="flex items-center size-full text-start pointer-events-auto cursor-pointer rounded-full" tabindex="-1" type="button">
     <line class="svelte-m4sbjr non-head" opacity="1" stroke-width="1" stroke="var(--lane-2)" x1="94" x2="144" y1="42" y2="42">
     <g clip-path="url(#ref-clip-g19)">
-      <rect fill-opacity="0.14" fill="var(--lane-2)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-2)" style="cursor: pointer;" width="90" x="4" y="32">
-      <g class="pointer-events-auto" opacity="0.9" style="cursor: pointer;" transform="translate(10, 37)">
+      <rect fill-opacity="0.14" fill="var(--lane-2)" height="20" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-2)" width="90" x="4" y="32">
+      <g opacity="0.9" transform="translate(10, 37)">
         <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
       <foreignObject height="20" width="66" x="22" y="32">
-        <SPAN class="block font-sans whitespace-nowrap overflow-hidden" style="line-height: 20px; color: var(--lane-2); font-size: 11px; font-weight: 500; cursor: pointer;">
+        <SPAN class="block font-sans whitespace-nowrap overflow-hidden" style="line-height: 20px; color: var(--lane-2); font-size: 11px; font-weight: 500;">
           "topic-three"
+      <foreignObject height="20" width="90" x="4" y="32">
+        <BUTTON aria-label="topic-three" class="flex items-center size-full text-start pointer-events-auto cursor-pointer rounded-full" tabindex="-1" type="button">
     <line class="svelte-m4sbjr non-head" opacity="1" stroke-width="1" stroke="var(--lane-3)" x1="86" x2="160" y1="70" y2="70">
     <g clip-path="url(#ref-clip-g19)">
-      <rect fill-opacity="0.14" fill="var(--lane-3)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-3)" style="cursor: pointer;" width="82" x="4" y="60">
-      <g class="pointer-events-auto" opacity="0.9" style="cursor: pointer;" transform="translate(10, 65)">
+      <rect fill-opacity="0.14" fill="var(--lane-3)" height="20" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-3)" width="82" x="4" y="60">
+      <g opacity="0.9" transform="translate(10, 65)">
         <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
       <foreignObject height="20" width="58" x="22" y="60">
-        <SPAN class="block font-sans whitespace-nowrap overflow-hidden" style="line-height: 20px; color: var(--lane-3); font-size: 11px; font-weight: 500; cursor: pointer;">
+        <SPAN class="block font-sans whitespace-nowrap overflow-hidden" style="line-height: 20px; color: var(--lane-3); font-size: 11px; font-weight: 500;">
           "topic-two"
+      <foreignObject height="20" width="82" x="4" y="60">
+        <BUTTON aria-label="topic-two" class="flex items-center size-full text-start pointer-events-auto cursor-pointer rounded-full" tabindex="-1" type="button">
     <line class="svelte-m4sbjr non-head" opacity="1" stroke-width="1" stroke="var(--lane-4)" x1="82" x2="176" y1="98" y2="98">
     <g clip-path="url(#ref-clip-g19)">
-      <rect fill-opacity="0.14" fill="var(--lane-4)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-4)" style="cursor: pointer;" width="78" x="4" y="88">
-      <g class="pointer-events-auto" opacity="0.9" style="cursor: pointer;" transform="translate(10, 93)">
+      <rect fill-opacity="0.14" fill="var(--lane-4)" height="20" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-4)" width="78" x="4" y="88">
+      <g opacity="0.9" transform="translate(10, 93)">
         <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
       <foreignObject height="20" width="54" x="22" y="88">
-        <SPAN class="block font-sans whitespace-nowrap overflow-hidden" style="line-height: 20px; color: var(--lane-4); font-size: 11px; font-weight: 500; cursor: pointer;">
+        <SPAN class="block font-sans whitespace-nowrap overflow-hidden" style="line-height: 20px; color: var(--lane-4); font-size: 11px; font-weight: 500;">
           "topic-one"
+      <foreignObject height="20" width="78" x="4" y="88">
+        <BUTTON aria-label="topic-one" class="flex items-center size-full text-start pointer-events-auto cursor-pointer rounded-full" tabindex="-1" type="button">
     <line class="svelte-m4sbjr" opacity="1" stroke-width="2" stroke="var(--lane-0)" x1="56" x2="112" y1="126" y2="126">
     <g clip-path="url(#ref-clip-g19)">
-      <rect fill-opacity="0.14" fill="var(--lane-0)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-0)" style="cursor: pointer;" width="52" x="4" y="116">
-      <g class="pointer-events-auto" opacity="0.9" style="cursor: pointer;" transform="translate(10, 121)">
+      <rect fill-opacity="0.14" fill="var(--lane-0)" height="20" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-0)" width="52" x="4" y="116">
+      <g opacity="0.9" transform="translate(10, 121)">
         <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
       <foreignObject height="20" width="28" x="22" y="116">
-        <SPAN class="block font-sans whitespace-nowrap overflow-hidden" style="line-height: 20px; color: var(--lane-0); font-size: 11px; font-weight: 700; cursor: pointer;">
+        <SPAN class="block font-sans whitespace-nowrap overflow-hidden" style="line-height: 20px; color: var(--lane-0); font-size: 11px; font-weight: 700;">
           "main"
+      <foreignObject height="20" width="52" x="4" y="116">
+        <BUTTON aria-label="main" class="flex items-center size-full text-start pointer-events-auto cursor-pointer rounded-full" tabindex="-1" type="button">

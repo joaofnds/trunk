@@ -2335,10 +2335,8 @@ describe("CommitGraph", () => {
 			await flush();
 		}
 
-		// The canvas stub measures every string at the same width, so long labels
-		// come back truncated — match the pill by its surviving prefix.
-		async function findPill(labelPrefix: string) {
-			return await screen.findByText(new RegExp(`^${labelPrefix}`));
+		async function findPill(label: string) {
+			return await screen.findByRole("button", { name: label });
 		}
 
 		async function openRowMenu() {
@@ -2375,7 +2373,7 @@ describe("CommitGraph", () => {
 		it("branches a remote checkout from the fully-qualified ref", async () => {
 			await mountGraph();
 
-			await fireEvent.dblClick(await findPill("origin"));
+			await fireEvent.dblClick(await findPill("origin/feature"));
 			await flush();
 
 			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("create_branch", {
@@ -2996,6 +2994,161 @@ describe("CommitGraph", () => {
 		});
 	});
 
+	describe("a ref pill under the pointer", () => {
+		const MAIN = makeRef({
+			short_name: "main",
+			name: "refs/heads/main",
+			ref_type: "LocalBranch",
+			is_head: true,
+		});
+		const REMOTE = makeRef({
+			short_name: "origin/topic",
+			name: "refs/remotes/origin/topic",
+			ref_type: "RemoteBranch",
+		});
+		const TAG = makeRef({
+			short_name: "v1.0.0",
+			name: "refs/tags/v1.0.0",
+			ref_type: "Tag",
+		});
+		const LONG = makeRef({
+			short_name: "feature/a-name-far-too-long-for-the-column-it-sits-in",
+			name: "refs/heads/feature/a-name-far-too-long-for-the-column-it-sits-in",
+			ref_type: "LocalBranch",
+		});
+		const OID = "aaa111aaa111aaa1aaa111aaa111aaa1aaa111aa";
+
+		async function mountWith(refs: ReturnType<typeof makeRef>[]) {
+			installReads({
+				commits: [
+					makeCommit({ oid: OID, summary: "tip", is_head: true, refs }),
+				],
+			});
+			render(CommitGraph, {
+				props: { repoPath: "/test/repo", tabActive: true },
+			});
+			await screen.findAllByTestId("commit-row");
+			await flush();
+		}
+
+		async function hoverPill(label: string) {
+			await fireEvent.mouseEnter(
+				await screen.findByRole("button", { name: label }),
+			);
+		}
+
+		function listedRefs() {
+			return screen
+				.getAllByRole("menuitem")
+				.map((ref) => ref.getAttribute("aria-label"));
+		}
+
+		it("lists every ref of a commit that holds more than one", async () => {
+			await mountWith([MAIN, REMOTE]);
+
+			await hoverPill("main");
+
+			expect(
+				screen.getByRole("menu", { name: "Refs on this commit" }),
+			).toBeInTheDocument();
+			expect(listedRefs()).toEqual(["main", "origin/topic"]);
+		});
+
+		it("opens nothing over a single ref whose name fits", async () => {
+			await mountWith([MAIN]);
+
+			await hoverPill("main");
+
+			expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+		});
+
+		it("checks out a listed branch on a double click", async () => {
+			await mountWith([MAIN, REMOTE]);
+			await hoverPill("main");
+
+			await fireEvent.dblClick(
+				screen.getByRole("menuitem", { name: "origin/topic" }),
+			);
+			await flush();
+
+			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("create_branch", {
+				path: "/test/repo",
+				name: "topic",
+				fromOid: "refs/remotes/origin/topic",
+			});
+		});
+
+		it("opens a listed ref's own menu on a right click", async () => {
+			await mountWith([MAIN, REMOTE]);
+			await hoverPill("main");
+
+			await fireEvent.contextMenu(
+				screen.getByRole("menuitem", { name: "origin/topic" }),
+			);
+			await flush();
+
+			expect([...menuActions.keys()]).toContain("Checkout origin/topic");
+		});
+
+		it("checks nothing out on a double click of a tag", async () => {
+			await mountWith([TAG]);
+			vi.mocked(safeInvoke).mockClear();
+
+			await fireEvent.dblClick(
+				await screen.findByRole("button", { name: "v1.0.0" }),
+			);
+			await flush();
+
+			expect(vi.mocked(safeInvoke)).not.toHaveBeenCalled();
+		});
+
+		it("shows the whole name of a ref the column cut short", async () => {
+			await mountWith([LONG]);
+
+			await hoverPill(LONG.short_name);
+
+			expect(
+				screen.getByRole("menu", { name: "Full name of this ref" }),
+			).toHaveTextContent(LONG.short_name);
+		});
+
+		it("checks out a branch on a double click of its whole name", async () => {
+			await mountWith([LONG]);
+			await hoverPill(LONG.short_name);
+
+			await fireEvent.dblClick(
+				screen.getByRole("menuitem", { name: LONG.short_name }),
+			);
+			await flush();
+
+			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("checkout_branch", {
+				path: "/test/repo",
+				branchName: LONG.short_name,
+			});
+		});
+
+		it("leaves keyboard focus on the list when the whole name is pressed", async () => {
+			await mountWith([LONG]);
+			await hoverPill(LONG.short_name);
+
+			screen.getByRole("menuitem", { name: LONG.short_name }).focus();
+
+			expect(screen.getByRole("listbox")).toHaveFocus();
+		});
+
+		it("opens the ref's menu on a right click of its whole name", async () => {
+			await mountWith([LONG]);
+			await hoverPill(LONG.short_name);
+
+			await fireEvent.contextMenu(
+				screen.getByRole("menuitem", { name: LONG.short_name }),
+			);
+			await flush();
+
+			expect([...menuActions.keys()]).toContain(`Checkout ${LONG.short_name}`);
+		});
+	});
+
 	describe("the commits", () => {
 		const LANE = makeRef({ short_name: "main", ref_type: "LocalBranch" });
 		const ON_A_NAMED_LANE = [
@@ -3035,6 +3188,16 @@ describe("CommitGraph", () => {
 			await fireEvent.mouseEnter(row);
 
 			expect(screen.getByText(/^main/)).toBeInTheDocument();
+		});
+
+		it("give the lane's name nothing to press", async () => {
+			const row = await mountGraph();
+
+			await fireEvent.mouseEnter(row);
+
+			expect(
+				screen.queryByRole("button", { name: /^main/ }),
+			).not.toBeInTheDocument();
 		});
 
 		it("stop naming the lane once the pointer leaves", async () => {

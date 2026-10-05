@@ -81,6 +81,7 @@ import {
 	wipMarkerPath,
 } from "../lib/overlay-paths.js";
 import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
+import { createOwnedTimer } from "../lib/owned-timer.js";
 import { buildRefPillData, overflowBadgeWidth } from "../lib/ref-pill-data.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
@@ -110,6 +111,7 @@ import type {
 	WipStats,
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import HitArea from "../lib/ui/HitArea.svelte";
 import Splitter from "../lib/ui/Splitter.svelte";
 import { withWipRow } from "../lib/wip-row.js";
 import CommitRow from "./CommitRow.svelte";
@@ -1367,6 +1369,10 @@ function checkoutRemoteBranch(ref: RefInfo) {
 	});
 }
 
+function checksOutOnDoubleClick(refType: RefType): boolean {
+	return refType === "LocalBranch" || refType === "RemoteBranch";
+}
+
 async function handleRefCheckout(e: MouseEvent, ref: RefInfo) {
 	e.preventDefault();
 	e.stopPropagation();
@@ -1608,33 +1614,33 @@ const ghostPill = $derived.by(() => {
 	);
 	return pill ? { ...pill, rowIndex: hoveredRow, isGhost: true } : undefined;
 });
-let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
+const pillClose = createOwnedTimer();
 
 function pillMouseEnter(pill: OverlayRefPill) {
-	if (hoverTimeout) {
-		clearTimeout(hoverTimeout);
-		hoverTimeout = null;
-	}
+	pillClose.cancel();
 	if (pill.overflowCount > 0 || pill.truncatedLabel !== pill.label) {
 		hoveredPill = pill;
 	}
 }
 
 function pillMouseLeave() {
-	hoverTimeout = setTimeout(() => {
+	pillClose.arm(() => {
 		hoveredPill = null;
 	}, 50);
 }
 
 function overlayMouseEnter() {
-	if (hoverTimeout) {
-		clearTimeout(hoverTimeout);
-		hoverTimeout = null;
-	}
+	pillClose.cancel();
 }
 
 function overlayMouseLeave() {
 	hoveredPill = null;
+}
+
+// A press on a pill or on a ref of the hover list would leave focus there,
+// where no key does anything, so the list takes it.
+function keepFocusOnList() {
+	containerRef?.focus();
 }
 
 // Lazy diff-stats for the page starting at `pageOffset`. Fire-and-forget so the
@@ -2144,7 +2150,6 @@ $effect(() => {
 	</div>
 
 	<!-- Content area (grows to fill remaining space) -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="flex-1 overflow-hidden relative"
 		style:padding="0 {COLUMN_PADDING_X}px"
@@ -2190,6 +2195,7 @@ $effect(() => {
 				{@const graphColWidth = columnVisibility.graph ? columnWidths.graph : naturalGraphWidth}
 				{@const scrollX = Math.min(graphScrollX, maxGraphScrollX)}
 				<svg
+					role="presentation"
 					class="absolute top-0 left-0 pointer-events-none z-1"
 					class:search-dim={searchDimmingActive}
 					width={graphStart + Math.max(graphColWidth, naturalGraphWidth)}
@@ -2403,7 +2409,11 @@ $effect(() => {
 							</clipPath>
 							{#each ghostPill ? [...visible.pills, ghostPill] : visible.pills as pill}
 								{@const badgeWidth = overflowBadgeWidth(pill.overflowCount)}
+								{@const pillTop = pill.y - PILL_HEIGHT / 2}
+								{@const badgeX = pill.x + pill.width + PILL_GAP}
+								{@const badgeTop = pill.y - BADGE_HEIGHT / 2}
 								{@const pillGroupRightX = pill.x + pill.width + (pill.overflowCount > 0 ? PILL_GAP + badgeWidth : 0)}
+								{@const pillIsBranch = checksOutOnDoubleClick(pill.refType)}
 								<!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (uses sticky X position, scroll-adjusted) -->
 								{#if columnVisibility.graph}
 									{@const stickyDotCx = stickyDotX(pill.dotCx, graphColWidth, scrollX)}
@@ -2423,7 +2433,7 @@ $effect(() => {
 										<line
 											x1={pill.x + pill.width}
 											y1={pill.y}
-											x2={pill.x + pill.width + PILL_GAP}
+											x2={badgeX}
 											y2={pill.y}
 											stroke={laneColor(pill.commitColorIndex)}
 											stroke-width={pill.isHead ? displaySettings.pillStroke * 2 : displaySettings.pillStroke}
@@ -2439,7 +2449,7 @@ $effect(() => {
 									<!-- Capsule rect -->
 									<rect
 										x={pill.x}
-										y={pill.y - PILL_HEIGHT / 2}
+										y={pillTop}
 										width={pill.width}
 										height={PILL_HEIGHT}
 										rx={PILL_HEIGHT / 2}
@@ -2448,12 +2458,6 @@ $effect(() => {
 										fill-opacity={pill.isGhost ? 0.06 : pill.isRemoteOnly ? 0.1 : 0.14}
 										stroke={laneColor(pill.colorIndex)}
 										stroke-opacity={pill.isGhost ? 0.25 : 0.5}
-										pointer-events={pill.isGhost ? "none" : "auto"}
-										style:cursor={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}
-										onmouseenter={() => pillMouseEnter(pill)}
-										onmouseleave={pillMouseLeave}
-										oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
-										ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
 									/>
 
 									<!-- Icon rendered directly in SVG at a fixed position (no CSS layout) -->
@@ -2462,10 +2466,6 @@ $effect(() => {
 										<g
 											transform="translate({pill.x + PILL_PADDING_X}, {pill.y - ICON_WIDTH / 2})"
 											opacity={pill.isGhost ? 0.45 : 0.9}
-											class="pointer-events-auto"
-											style:cursor={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}
-											oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
-											ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
 										>
 											<PillIcon size={ICON_WIDTH} />
 										</g>
@@ -2475,7 +2475,7 @@ $effect(() => {
                      No flex layout — icon is positioned separately so the text width is unambiguous. -->
 									<foreignObject
 										x={pill.x + PILL_PADDING_X + ICON_WIDTH + ICON_GAP}
-										y={pill.y - PILL_HEIGHT / 2}
+										y={pillTop}
 										width={Math.ceil(pill.textWidth)}
 										height={PILL_HEIGHT}
 									>
@@ -2486,9 +2486,6 @@ $effect(() => {
 											style:color={laneColor(pill.colorIndex)}
 											style:font-size="{PILL_FONT_SIZE}px"
 											style:font-weight={pill.isHead ? 700 : 500}
-											style:cursor={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}
-											oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
-											ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
 											>{pill.truncatedLabel}</span
 										>
 									</foreignObject>
@@ -2497,8 +2494,8 @@ $effect(() => {
 									{#if pill.overflowCount > 0}
 										{@const badgeText = `+${pill.overflowCount}`}
 										<rect
-											x={pill.x + pill.width + PILL_GAP}
-											y={pill.y - BADGE_HEIGHT / 2}
+											x={badgeX}
+											y={badgeTop}
 											width={badgeWidth}
 											height={BADGE_HEIGHT}
 											rx={BADGE_HEIGHT / 2}
@@ -2507,13 +2504,10 @@ $effect(() => {
 											fill-opacity="0.14"
 											stroke={laneColor(pill.colorIndex)}
 											stroke-opacity={pill.isGhost ? 0.25 : 0.5}
-											pointer-events={pill.isGhost ? "none" : "auto"}
-											onmouseenter={() => pillMouseEnter(pill)}
-											onmouseleave={pillMouseLeave}
 										/>
 										<foreignObject
-											x={pill.x + pill.width + PILL_GAP}
-											y={pill.y - BADGE_HEIGHT / 2}
+											x={badgeX}
+											y={badgeTop}
 											width={badgeWidth}
 											height={BADGE_HEIGHT}
 										>
@@ -2527,6 +2521,44 @@ $effect(() => {
 											>
 										</foreignObject>
 									{/if}
+
+									<!-- The pointer's targets, over everything the pill draws. A ghost
+                     pill has none, since it names a lane and not a ref on its row. -->
+									{#if !pill.isGhost}
+										<foreignObject
+											x={pill.x}
+											y={pillTop}
+											width={pill.width}
+											height={PILL_HEIGHT}
+										>
+											<HitArea
+												aria-label={pill.label}
+												shape="pill"
+												cursor={pillIsBranch ? 'pointer' : 'context-menu'}
+												onfocus={keepFocusOnList}
+												onmouseenter={() => pillMouseEnter(pill)}
+												onmouseleave={pillMouseLeave}
+												oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
+												ondblclick={pillIsBranch ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
+											/>
+										</foreignObject>
+										{#if pill.overflowCount > 0}
+											<foreignObject
+												x={badgeX}
+												y={badgeTop}
+												width={badgeWidth}
+												height={BADGE_HEIGHT}
+											>
+												<HitArea
+													aria-label="{pill.label} and {pill.overflowCount} more"
+													shape="pill"
+													onfocus={keepFocusOnList}
+													onmouseenter={() => pillMouseEnter(pill)}
+													onmouseleave={pillMouseLeave}
+												/>
+											</foreignObject>
+										{/if}
+									{/if}
 								</g>
 							{/each}
 						</g>
@@ -2536,57 +2568,81 @@ $effect(() => {
 					{#if hoveredPill.overflowCount > 0}
 						<!-- Multi-ref expansion: shows all refs vertically -->
 						<div
+							role="menu"
+							tabindex="-1"
+							aria-label="Refs on this commit"
 							class="absolute rounded shadow-lg bg-surface-raised border border-border py-1 px-2 z-50 pointer-events-auto"
 							style:left="{hoveredPill.x}px"
 							style:top="{hoveredPill.y - PILL_HEIGHT / 2}px"
+							onfocusin={keepFocusOnList}
 							onmouseenter={overlayMouseEnter}
 							onmouseleave={overlayMouseLeave}
 						>
 							{#each hoveredPill.allRefs as ref}
 								{@const ri = refFromLabel(ref)}
+								{@const refIsBranch = checksOutOnDoubleClick(ri.refType)}
 								<div
-									class="flex items-center gap-1 rounded text-small font-medium whitespace-nowrap hover:bg-hover px-1 -mx-1 h-target"
-									style:cursor={ri.refType === 'LocalBranch' || ri.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}
+									class="rounded text-small font-medium whitespace-nowrap hover:bg-hover -mx-1 h-target"
 									style:color="var(--lane-{ref.color_index % 8})"
-									oncontextmenu={(e) => showRefContextMenu(e, ri)}
-									ondblclick={ri.refType === 'LocalBranch' || ri.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, ri) : undefined}
 								>
-									{#if PILL_ICONS[ref.ref_type]}
-										{@const RefIcon = PILL_ICONS[ref.ref_type]}
-										<RefIcon size={10} class="flex-shrink-0 opacity-85" />
-									{/if}
-									{ref.short_name}
+									<HitArea
+										role="menuitem"
+										aria-label={ref.short_name}
+										shape="row"
+										cursor={refIsBranch ? 'pointer' : 'context-menu'}
+										oncontextmenu={(e) => showRefContextMenu(e, ri)}
+										ondblclick={refIsBranch ? (e: MouseEvent) => handleRefCheckout(e, ri) : undefined}
+									>
+										<span class="flex items-center gap-1 px-1">
+											{#if PILL_ICONS[ref.ref_type]}
+												{@const RefIcon = PILL_ICONS[ref.ref_type]}
+												<RefIcon size={10} class="flex-shrink-0 opacity-85" />
+											{/if}
+											{ref.short_name}
+										</span>
+									</HitArea>
 								</div>
 							{/each}
 						</div>
 					{:else}
 						{@const pill = hoveredPill}
+						{@const pillIsBranch = checksOutOnDoubleClick(pill.refType)}
 						<!-- Truncated single-ref: width-only expansion showing full label -->
 						<div
+							role="menu"
+							tabindex="-1"
+							aria-label="Full name of this ref"
 							class="absolute rounded-full flex items-center z-50 pointer-events-auto"
 							style:left="{pill.x}px"
 							style:top="{pill.y - PILL_HEIGHT / 2}px"
 							style:height="{PILL_HEIGHT}px"
 							style:background="color-mix(in oklch, var(--lane-{pill.colorIndex % 8}) 14%, var(--color-surface-raised))"
 							style:box-shadow="inset 0 0 0 1px color-mix(in oklch, var(--lane-{pill.colorIndex % 8}) 50%, transparent)"
-							style:padding="0 {PILL_PADDING_X}px"
-							style:cursor={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}
+							onfocusin={keepFocusOnList}
 							onmouseenter={overlayMouseEnter}
 							onmouseleave={overlayMouseLeave}
-							oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
-							ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
 						>
-							<span
-								class="flex items-center gap-1 text-small font-medium whitespace-nowrap"
-								style:font-weight={pill.isHead ? 700 : 500}
-								style:color="var(--lane-{pill.colorIndex % 8})"
+							<HitArea
+								role="menuitem"
+								aria-label={pill.label}
+								shape="pill"
+								cursor={pillIsBranch ? 'pointer' : 'context-menu'}
+								oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
+								ondblclick={pillIsBranch ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
 							>
-								{#if PILL_ICONS[pill.refType]}
-									{@const HoverIcon = PILL_ICONS[pill.refType]}
-									<HoverIcon size={10} class="flex-shrink-0 opacity-90" />
-								{/if}
-								{pill.label}
-							</span>
+								<span
+									class="flex items-center gap-1 text-small font-medium whitespace-nowrap"
+									style:font-weight={pill.isHead ? 700 : 500}
+									style:color="var(--lane-{pill.colorIndex % 8})"
+									style:padding="0 {PILL_PADDING_X}px"
+								>
+									{#if PILL_ICONS[pill.refType]}
+										{@const HoverIcon = PILL_ICONS[pill.refType]}
+										<HoverIcon size={10} class="flex-shrink-0 opacity-90" />
+									{/if}
+									{pill.label}
+								</span>
+							</HitArea>
 						</div>
 					{/if}
 				{/if}

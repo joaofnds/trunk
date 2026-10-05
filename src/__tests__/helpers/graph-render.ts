@@ -514,7 +514,7 @@ export function shapeOf(dot: Element) {
 
 /** Every ref pill's rendered text, in document order, overflow badges included. */
 export function pillTexts(svg: SVGSVGElement): string[] {
-	return [...svg.querySelectorAll(".overlay-pills foreignObject")].map(
+	return [...svg.querySelectorAll(".overlay-pills foreignObject > span")].map(
 		(label) => label.textContent?.trim() ?? "",
 	);
 }

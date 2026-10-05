@@ -14,11 +14,12 @@ const COMMIT_ROW = '[data-testid="commit-row"]';
 const COMMIT_SUMMARY = '[data-testid="commit-row-summary"]';
 const COMMIT_SHA = '[title="Copy SHA"]';
 const COMMIT_DETAIL_SHA = '[data-testid="commit-detail"] [title="Copy SHA"]';
-// The label lives in a `span` inside this `foreignObject`, and a selector that
-// names the span matches nothing: jsdom does not reach across the SVG boundary
-// into its HTML children.
-const REF_PILL = "g.overlay-pills foreignObject";
+const REF_PILL = "g.overlay-pills foreignObject > span";
 const OVERFLOW_BADGE = /^\+\d+$/;
+const REF_HIT_AREA = "g.overlay-pills button";
+const HOVERED_REFS = '[role="menu"][aria-label="Refs on this commit"]';
+const HOVERED_REF = '[role="menuitem"]';
+const COMMIT_LIST = '[role="listbox"][aria-multiselectable="true"]';
 const FILE_ROW = '[data-testid="staging-file"]';
 const GRAPH_VIEWPORT = ".virtual-list-viewport";
 const GRAPH_CONTENT = ".virtual-list-content";
@@ -199,6 +200,85 @@ export class RepoDriver {
 			.filter((label) => !OVERFLOW_BADGE.test(label));
 	}
 
+	/** Moves the pointer onto the `+N` badge beside a pill, returning once the
+	 *  list of the commit's refs is open. */
+	async hoverOverflowBadge(label: string): Promise<void> {
+		const badge = await waitFor(`the overflow badge beside ${label}`, () =>
+			overflowBadge(label),
+		);
+
+		badge.dispatchEvent(new MouseEvent("mouseenter"));
+
+		await waitFor(`the refs folded beside ${label}`, () =>
+			this.hoveredRefs()?.length ? true : null,
+		);
+	}
+
+	/** Moves the pointer off the `+N` badge beside a pill. */
+	leaveOverflowBadge(label: string): void {
+		found(
+			`the overflow badge beside ${label}`,
+			overflowBadge(label),
+		).dispatchEvent(new MouseEvent("mouseleave"));
+	}
+
+	/** Moves the pointer into the open list of a commit's refs. */
+	enterHoveredRefs(): void {
+		found(
+			"the open list of refs",
+			document.querySelector(HOVERED_REFS),
+		).dispatchEvent(new MouseEvent("mouseenter"));
+	}
+
+	/** The refs the open hover list names, top first, or null while none is open. */
+	hoveredRefs(): string[] | null {
+		const list = document.querySelector(HOVERED_REFS);
+		if (!list) return null;
+
+		return [...list.querySelectorAll(HOVERED_REF)].map(
+			(ref) => ref.textContent?.trim() ?? "",
+		);
+	}
+
+	/** Presses the pointer on a ref's pill, which is where a click puts focus. */
+	async pressRefPill(label: string): Promise<void> {
+		const pill = await waitFor(`the ${label} pill`, () => refHitArea(label));
+
+		pill.focus();
+	}
+
+	/** Presses the pointer on a ref in the open list of a commit's refs. */
+	pressHoveredRef(name: string): void {
+		const refs = document.querySelectorAll<HTMLElement>(
+			`${HOVERED_REFS} ${HOVERED_REF}`,
+		);
+
+		found(
+			`${name} in the open list of refs`,
+			[...refs].find((ref) => ref.textContent?.trim() === name) ?? null,
+		).focus();
+	}
+
+	/** Moves the pointer onto a ref's pill, clear of any `+N` badge beside it. */
+	async hoverRefPill(label: string): Promise<void> {
+		const pill = await waitFor(`the ${label} pill`, () => refHitArea(label));
+
+		pill.dispatchEvent(new MouseEvent("mouseenter"));
+	}
+
+	/** Whether the commit list holds keyboard focus, so the arrow keys move its
+	 *  selection. */
+	commitListHasFocus(): boolean {
+		return document.activeElement === document.querySelector(COMMIT_LIST);
+	}
+
+	/** Right-clicks a ref's pill, returning once the menu it opens is on screen. */
+	async openRefPillMenu(label: string): Promise<void> {
+		const pill = await waitFor(`the ${label} pill`, () => refHitArea(label));
+
+		await openContextMenu(pill, this.menu, `the ${label} pill`);
+	}
+
 	/** A working-tree file as it stands on disk, which is where a discard lands
 	 *  and what the diff pane is a re-read of. */
 	workingTreeFile(relativePath: string): string {
@@ -318,4 +398,28 @@ function commitRow(summary: string): HTMLElement | null {
 	const cell = firstMatching(COMMIT_SUMMARY, (text) => text === summary);
 
 	return cell?.closest<HTMLElement>(COMMIT_ROW) ?? null;
+}
+
+function found<T>(description: string, element: T | null): T {
+	if (element === null) throw new Error(`${description} is not on screen`);
+
+	return element;
+}
+
+function refHitArea(name: string): HTMLButtonElement | null {
+	const areas = document.querySelectorAll<HTMLButtonElement>(REF_HIT_AREA);
+
+	return (
+		[...areas].find((area) => area.getAttribute("aria-label") === name) ?? null
+	);
+}
+
+function overflowBadge(label: string): HTMLButtonElement | null {
+	const areas = document.querySelectorAll<HTMLButtonElement>(REF_HIT_AREA);
+
+	return (
+		[...areas].find((area) =>
+			area.getAttribute("aria-label")?.startsWith(`${label} and `),
+		) ?? null
+	);
 }
