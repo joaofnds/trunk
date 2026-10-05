@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { fireEvent, render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
@@ -2991,7 +2991,10 @@ describe("RepoView", () => {
 			await flush();
 			await fireEvent.click(await screen.findByText(/Comment on a file/));
 			await flush();
-			await fireEvent.click(await screen.findByRole("option"));
+			const finder = await screen.findByRole("listbox", {
+				name: "Tracked files",
+			});
+			await fireEvent.click(await within(finder).findByRole("option"));
 			await flush();
 			const outsideReview = { ...props, reviewActive: false };
 			await view.rerender(outsideReview);

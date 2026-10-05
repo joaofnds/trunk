@@ -11,6 +11,7 @@ import {
 } from "../lib/build-tree.js";
 import { treeIndent } from "../lib/chrome-heights.js";
 import type { ReviewTone } from "../lib/types.js";
+import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import CommentBadge from "./CommentBadge.svelte";
 
@@ -40,8 +41,6 @@ let {
 	commentTones,
 }: Props = $props();
 
-let hovered = $state(false);
-
 let fileCount = $derived(countFiles(node.children));
 
 // Collapsed-only rollup: an expanded directory's comments already show on its
@@ -52,22 +51,42 @@ let commentCount = $derived(
 let commentTone = $derived(
 	commentTones ? toneInSubtree(node.children, commentTones) : null,
 );
+
+function openMenu(e: MouseEvent) {
+	if (!oncontextmenu) return;
+
+	e.preventDefault();
+	oncontextmenu(e);
+}
 </script>
 
-<div
+{#snippet action()}
+	<RowAction
+		size="compact"
+		tone={actionLabel === '+' ? 'success' : 'danger'}
+		onclick={() => onaction?.()}
+		oncontextmenu={openMenu}
+		aria-label={actionLabel === '+' ? 'Stage directory' : 'Unstage directory'}
+	>
+		{#if actionLabel === '+'}
+			<Plus size={11} />
+		{:else}
+			<Minus size={11} />
+		{/if}
+	</RowAction>
+{/snippet}
+
+<Row
+	variant="parent"
 	role="treeitem"
+	selected={focused}
+	indent={treeIndent(depth)}
+	tabindex={-1}
 	aria-expanded={expanded}
-	aria-selected={focused}
 	aria-level={depth + 1}
-	tabindex="0"
-	onmouseenter={() => (hovered = true)}
-	onmouseleave={() => (hovered = false)}
 	onclick={ontoggle}
-	onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ontoggle(); } }}
-	oncontextmenu={(e) => { if (oncontextmenu) { e.preventDefault(); oncontextmenu(e); } }}
-	class="h-row flex items-center gap-1 cursor-pointer text-text text-callout"
-	style:padding="0 var(--space-2) 0 {treeIndent(depth)}"
-	style:background={focused ? 'var(--color-selected-row)' : hovered ? 'var(--color-surface)' : 'transparent'}
+	oncontextmenu={openMenu}
+	actions={actionLabel && onaction ? action : undefined}
 >
 	<span class="inline-flex items-center text-text-muted w-3 min-w-3">
 		{#if expanded}
@@ -86,18 +105,4 @@ let commentTone = $derived(
 	{#if !expanded}
 		<CommentBadge count={commentCount} tone={commentTone} />
 	{/if}
-	{#if hovered && actionLabel && onaction}
-		<RowAction
-			size="compact"
-			tone={actionLabel === '+' ? 'success' : 'danger'}
-			onclick={(e) => { e.stopPropagation(); onaction(); }}
-			aria-label={actionLabel === '+' ? 'Stage directory' : 'Unstage directory'}
-		>
-			{#if actionLabel === '+'}
-				<Plus size={11} />
-			{:else}
-				<Minus size={11} />
-			{/if}
-		</RowAction>
-	{/if}
-</div>
+</Row>

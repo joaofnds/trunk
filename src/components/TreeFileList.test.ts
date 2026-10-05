@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
 import { makeFile } from "../__tests__/helpers/factories";
 import type { ReviewTone } from "../lib/types.js";
@@ -68,24 +68,21 @@ describe("TreeFileList", () => {
 		expect(screen.queryByText("a.ts")).not.toBeInTheDocument();
 	});
 
-	it("calls onfileaction when file action triggered", async () => {
-		const onfileaction = vi.fn();
-		const files = [makeFile("src/a.ts")];
+	it("stages a file from its action without opening it", async () => {
+		const seen: string[] = [];
 		render(TreeFileList, {
 			props: {
-				files,
+				files: [makeFile("src/a.ts")],
 				treeMode: false,
 				actionLabel: "+",
-				onfileaction,
+				onfileaction: (path) => seen.push(`stage ${path}`),
+				onfileclick: (path) => seen.push(`open ${path}`),
 			},
 		});
-		// FileRow shows action button on hover only — trigger mouseenter first
-		const fileRow = screen.getByRole("listitem");
-		await fireEvent.mouseEnter(fileRow);
-		// Action button aria-label is "Stage file" when actionLabel="+"
-		const stageBtn = screen.getByLabelText("Stage file");
-		await fireEvent.click(stageBtn);
-		expect(onfileaction).toHaveBeenCalledWith("src/a.ts");
+
+		await fireEvent.click(screen.getByRole("button", { name: "Stage file" }));
+
+		expect(seen).toEqual(["stage src/a.ts"]);
 	});
 
 	it("calls onfileclick when file clicked", async () => {
@@ -106,85 +103,185 @@ describe("TreeFileList", () => {
 		expect(onfileclick).toHaveBeenCalledWith("src/a.ts");
 	});
 
-	it("clicking a file updates visual focus to that file", async () => {
-		const onfileclick = vi.fn();
-		const files = [makeFile("a.ts"), makeFile("b.ts"), makeFile("c.ts")];
+	it("moves the cursor to a clicked file", async () => {
 		render(TreeFileList, {
 			props: {
-				files,
+				files: [makeFile("a.ts"), makeFile("b.ts"), makeFile("c.ts")],
 				treeMode: false,
 				actionLabel: "Stage",
-				onfileaction: vi.fn(),
-				onfileclick,
+				onfileaction: () => {},
 			},
 		});
-		const list = screen.getByRole("list");
-
-		// Keyboard-navigate down to second file (b.ts)
-		await fireEvent.keyDown(list, { key: "ArrowDown" });
-
-		// Verify b.ts is focused (has focus background)
-		const items = screen.getAllByRole("listitem");
-		expect(items[1].style.background).toContain("var(--color-selected-row)");
-		expect(items[2].style.background).not.toContain(
-			"var(--color-selected-row)",
+		await fireEvent.keyDown(screen.getByRole("listbox"), { key: "ArrowDown" });
+		expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
+			"b.ts",
 		);
 
-		// Click on c.ts
 		await fireEvent.click(screen.getByText("c.ts"));
 
-		// Verify c.ts is now focused and b.ts is no longer focused
-		expect(items[2].style.background).toContain("var(--color-selected-row)");
-		expect(items[1].style.background).not.toContain(
-			"var(--color-selected-row)",
+		expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
+			"c.ts",
 		);
 	});
 
-	it("keyboard navigation continues from clicked file", async () => {
-		const onfileclick = vi.fn();
-		const files = [makeFile("a.ts"), makeFile("b.ts"), makeFile("c.ts")];
+	it("moves on from a clicked file with the arrow keys", async () => {
+		const opened: string[] = [];
 		render(TreeFileList, {
 			props: {
-				files,
+				files: [makeFile("a.ts"), makeFile("b.ts"), makeFile("c.ts")],
 				treeMode: false,
 				actionLabel: "Stage",
-				onfileaction: vi.fn(),
-				onfileclick,
+				onfileaction: () => {},
+				onfileclick: (path) => opened.push(path),
 			},
 		});
-		const list = screen.getByRole("list");
 
-		// Click on c.ts (last file, index 2)
 		await fireEvent.click(screen.getByText("c.ts"));
-		expect(onfileclick).toHaveBeenCalledWith("c.ts");
+		await fireEvent.keyDown(screen.getByRole("listbox"), { key: "ArrowUp" });
 
-		// Press ArrowUp — should move to b.ts (index 1), not from initial position
-		await fireEvent.keyDown(list, { key: "ArrowUp" });
-		expect(onfileclick).toHaveBeenCalledWith("b.ts");
-
-		// Verify b.ts is visually focused
-		const items = screen.getAllByRole("listitem");
-		expect(items[1].style.background).toContain("var(--color-selected-row)");
+		expect(opened).toEqual(["c.ts", "b.ts"]);
+		expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
+			"b.ts",
+		);
 	});
 
-	it("renders list role in flat mode and tree role in tree mode", () => {
-		const files = [makeFile("a.ts")];
-		const { rerender } = render(TreeFileList, {
-			props: {
-				files,
-				treeMode: false,
-				actionLabel: "Stage",
-				onfileaction: vi.fn(),
-			},
-		});
-		expect(screen.getByRole("list")).toBeInTheDocument();
+	// The list holds the keys, so a click that gave a row's button the focus
+	// would otherwise take the arrow keys away with it.
+	it.each([
+		["a file", false, "option"],
+		["a directory", true, "treeitem"],
+	] as const)(
+		"takes the focus back from %s that was clicked",
+		async (_, treeMode, role) => {
+			render(TreeFileList, {
+				props: {
+					files: [makeFile("src/a.ts")],
+					treeMode,
+					actionLabel: "Stage",
+					onfileaction: () => {},
+				},
+			});
+			const row = screen.getAllByRole(role)[0];
+			row.focus();
 
-		rerender({
-			files,
-			treeMode: true,
+			await fireEvent.click(row);
+
+			expect(screen.getByRole(treeMode ? "tree" : "listbox")).toHaveFocus();
+		},
+	);
+
+	it("is a listbox of options when flat and a tree of items otherwise", async () => {
+		const props = {
+			files: [makeFile("src/a.ts"), makeFile("README.md")],
 			actionLabel: "Stage",
-			onfileaction: vi.fn(),
+			onfileaction: () => {},
+		};
+		const { rerender } = render(TreeFileList, {
+			props: { ...props, treeMode: false },
 		});
-		expect(screen.getByRole("tree")).toBeInTheDocument();
+		expect(
+			within(screen.getByRole("listbox")).getAllByRole("option"),
+		).toHaveLength(2);
+
+		await rerender({ ...props, treeMode: true });
+
+		const items = within(screen.getByRole("tree")).getAllByRole("treeitem");
+		expect(items).toHaveLength(2);
+		expect(items[0]).toHaveTextContent("src");
+		expect(items[1]).toHaveTextContent("README.md");
+	});
+
+	// Opening the selected file again is how a click closes its diff.
+	it("leaves the selected file open when the arrow keys reach it", async () => {
+		const opened: string[] = [];
+		render(TreeFileList, {
+			props: {
+				files: [makeFile("src/a.ts"), makeFile("README.md")],
+				treeMode: true,
+				actionLabel: "Stage",
+				onfileaction: () => {},
+				onfileclick: (path) => opened.push(path),
+				selectedPath: "README.md",
+			},
+		});
+		const tree = screen.getByRole("tree");
+		await fireEvent.click(screen.getByText("src"));
+
+		await fireEvent.keyDown(tree, { key: "ArrowDown" });
+		await fireEvent.keyDown(tree, { key: "ArrowDown" });
+
+		expect(opened).toEqual(["src/a.ts"]);
+		expect(screen.getByRole("treeitem", { selected: true })).toHaveTextContent(
+			"README.md",
+		);
+	});
+
+	describe("when the cursor is on a directory", () => {
+		it.each(["Enter", " "])(
+			"keeps the cursor on a clicked directory while a file is selected, so %j closes it",
+			async (key) => {
+				render(TreeFileList, {
+					props: {
+						files: [makeFile("src/a.ts"), makeFile("README.md")],
+						treeMode: true,
+						actionLabel: "Stage",
+						onfileaction: () => {},
+						selectedPath: "README.md",
+					},
+				});
+				await fireEvent.click(screen.getByText("src"));
+				expect(
+					screen.getByRole("treeitem", { expanded: true }),
+				).toBeInTheDocument();
+
+				await fireEvent.keyDown(screen.getByRole("tree"), { key });
+
+				expect(
+					screen.getByRole("treeitem", { expanded: false }),
+				).toBeInTheDocument();
+			},
+		);
+
+		it.each(["Enter", " ", "ArrowRight"])(
+			"opens it once on %j",
+			async (key) => {
+				render(TreeFileList, {
+					props: {
+						files: [makeFile("src/a.ts")],
+						treeMode: true,
+						actionLabel: "Stage",
+						onfileaction: () => {},
+					},
+				});
+
+				await fireEvent.keyDown(screen.getByRole("tree"), { key });
+
+				expect(
+					screen.getByRole("treeitem", { expanded: true }),
+				).toHaveTextContent("src");
+			},
+		);
+
+		it.each(["Enter", " ", "ArrowLeft"])(
+			"closes it again on %j",
+			async (key) => {
+				render(TreeFileList, {
+					props: {
+						files: [makeFile("src/a.ts")],
+						treeMode: true,
+						actionLabel: "Stage",
+						onfileaction: () => {},
+					},
+				});
+				const tree = screen.getByRole("tree");
+				await fireEvent.keyDown(tree, { key: "Enter" });
+
+				await fireEvent.keyDown(tree, { key });
+
+				expect(
+					screen.getByRole("treeitem", { expanded: false }),
+				).toHaveTextContent("src");
+			},
+		);
 	});
 });

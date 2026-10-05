@@ -339,4 +339,118 @@ describe("Row", () => {
 			);
 		});
 	});
+
+	describe("when it is an item of a list or a tree", () => {
+		it("takes the row height, the hover color and the pointer", () => {
+			const { container } = render(Row, {
+				props: { variant: "item", "aria-label": "a.ts", children: name },
+			});
+
+			expect(container.firstElementChild).toHaveClass(
+				"h-row",
+				"hover:bg-hover",
+			);
+			expect(screen.getByRole("button", { name: "a.ts" })).toHaveClass(
+				"cursor-pointer",
+			);
+		});
+
+		it("indents its label by the length it is handed", () => {
+			const { container } = render(Row, {
+				props: {
+					variant: "item",
+					indent: "40px",
+					"aria-label": "a.ts",
+					children: name,
+				},
+			});
+
+			const label = container.querySelector<HTMLElement>("button > span");
+			expect(label).toHaveClass("row-indented");
+			expect(label?.style.getPropertyValue("--row-indent")).toBe("40px");
+		});
+
+		it("insets its actions from the edge it runs to", () => {
+			const { container } = render(Row, {
+				props: {
+					variant: "item",
+					"aria-label": "a.ts",
+					children: name,
+					actions: eye,
+				},
+			});
+
+			expect(container.querySelector("button + div")).toHaveClass("pr-2");
+		});
+	});
+
+	describe("when it folds the items under it", () => {
+		it("takes the row height, the surface color under the pointer and the pointer", () => {
+			const { container } = render(Row, {
+				props: { variant: "parent", "aria-label": "src", children: name },
+			});
+
+			const row = container.firstElementChild;
+			expect(row).toHaveClass("h-row", "hover:bg-surface");
+			expect(row).not.toHaveClass("hover:bg-hover");
+			expect(screen.getByRole("button", { name: "src" })).toHaveClass(
+				"cursor-pointer",
+			);
+		});
+
+		it("indents its label by the length it is handed", () => {
+			const { container } = render(Row, {
+				props: {
+					variant: "parent",
+					indent: "24px",
+					"aria-label": "src",
+					children: name,
+				},
+			});
+
+			const label = container.querySelector<HTMLElement>("button > span");
+			expect(label).toHaveClass("row-indented");
+			expect(label?.style.getPropertyValue("--row-indent")).toBe("24px");
+		});
+	});
+
+	describe("when a list or a tree owns it", () => {
+		it.each(["option", "treeitem"] as const)(
+			"takes the %s role in place of the button's",
+			(role) => {
+				render(Row, {
+					props: {
+						role,
+						selected: false,
+						"aria-label": "a.ts",
+						children: name,
+					},
+				});
+
+				expect(screen.getByRole(role, { name: "a.ts" })).toHaveAttribute(
+					"aria-selected",
+					"false",
+				);
+			},
+		);
+
+		it("paints the selected one, which the pointer does not change", () => {
+			const { container } = render(Row, {
+				props: {
+					variant: "item",
+					role: "option",
+					selected: true,
+					"aria-label": "a.ts",
+					children: name,
+				},
+			});
+
+			const row = container.firstElementChild;
+			expect(
+				screen.getByRole("option", { selected: true }),
+			).toBeInTheDocument();
+			expect(row).toHaveClass("bg-selected-row");
+			expect(row).not.toHaveClass("hover:bg-hover");
+		});
+	});
 });

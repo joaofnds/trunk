@@ -5,11 +5,14 @@ import { treeIndent } from "../lib/chrome-heights.js";
 import { renamePartsOf } from "../lib/rename-display.js";
 import { STATUS_BADGES, UNKNOWN_STATUS_BADGE } from "../lib/status-badges.js";
 import type { FileStatus, ReviewTone } from "../lib/types.js";
+import Row, { type RowRole } from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import CommentBadge from "./CommentBadge.svelte";
 
 interface Props {
 	file: FileStatus;
+	/** `option` in a flat list, `treeitem` in a tree, whatever its depth. */
+	role: RowRole;
 	isLoading?: boolean;
 	actionLabel: string;
 	onaction: () => void;
@@ -24,6 +27,7 @@ interface Props {
 
 let {
 	file,
+	role,
 	isLoading = false,
 	actionLabel,
 	onaction,
@@ -35,8 +39,6 @@ let {
 	commentCount = 0,
 	commentTone = null,
 }: Props = $props();
-
-let hovered = $state(false);
 
 let badge = $derived(STATUS_BADGES[file.status] ?? UNKNOWN_STATUS_BADGE);
 
@@ -59,21 +61,43 @@ let badgeBg = $derived(
 		? "transparent"
 		: `color-mix(in oklch, ${badge.color} 6%, transparent)`,
 );
+
+function openMenu(e: MouseEvent) {
+	if (!oncontextmenu) return;
+
+	e.preventDefault();
+	oncontextmenu(e);
+}
 </script>
 
-<div
+{#snippet action()}
+	<RowAction
+		size="compact"
+		tone={actionLabel === '+' ? 'success' : 'danger'}
+		onclick={() => onaction()}
+		oncontextmenu={openMenu}
+		aria-label={actionLabel === '+' ? 'Stage file' : 'Unstage file'}
+	>
+		{#if actionLabel === '+'}
+			<Plus size={11} />
+		{:else}
+			<Minus size={11} />
+		{/if}
+	</RowAction>
+{/snippet}
+
+<Row
 	data-testid="staging-file"
-	role={depth > 0 ? 'treeitem' : 'listitem'}
-	aria-level={depth > 0 ? depth + 1 : undefined}
-	onmouseenter={() => (hovered = true)}
-	onmouseleave={() => (hovered = false)}
+	variant="item"
+	{role}
+	selected={focused}
+	tone={isLoading ? 'muted' : 'plain'}
+	indent={treeIndent(depth)}
+	tabindex={-1}
+	aria-level={role === 'treeitem' ? depth + 1 : undefined}
 	onclick={() => onclick?.()}
-	oncontextmenu={(e) => { if (oncontextmenu) { e.preventDefault(); oncontextmenu(e); } }}
-	class="h-row flex items-center gap-2"
-	style:padding="0 var(--space-2) 0 {treeIndent(depth)}"
-	style:cursor={onclick ? 'pointer' : 'default'}
-	style:background={focused ? 'var(--color-selected-row)' : hovered ? 'var(--color-hover)' : 'transparent'}
-	style:color={isLoading ? 'var(--color-text-muted)' : 'var(--color-text)'}
+	oncontextmenu={openMenu}
+	actions={!isLoading && actionLabel ? action : undefined}
 >
 	<!-- Status badge -->
 	<span
@@ -105,23 +129,7 @@ let badgeBg = $derived(
 
 	<!-- Review-comment count for this file -->
 	<CommentBadge count={commentCount} tone={commentTone} />
-
-	<!-- Hover action button (hidden during loading or when no actionLabel) -->
-	{#if hovered && !isLoading && actionLabel}
-		<RowAction
-			size="compact"
-			tone={actionLabel === '+' ? 'success' : 'danger'}
-			onclick={(e) => { e.stopPropagation(); onaction(); }}
-			aria-label={actionLabel === '+' ? 'Stage file' : 'Unstage file'}
-		>
-			{#if actionLabel === '+'}
-				<Plus size={11} />
-			{:else}
-				<Minus size={11} />
-			{/if}
-		</RowAction>
-	{/if}
-</div>
+</Row>
 
 <style>
 .path-min {

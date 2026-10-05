@@ -21,23 +21,20 @@ describe("DirectoryRow", () => {
 		return { type: "directory", name, path: name, children };
 	}
 
-	it("indents one gutter step per level, in the padding shorthand", () => {
-		/* Same construction and same trap as FileRow: a padding-left from a
-		   stylesheet rule loses to this inline shorthand, which is how the indent
-		   silently flattened to 8px at every depth once already. */
-		const { container } = render(DirectoryRow, {
+	it("indents one gutter step per level", () => {
+		render(DirectoryRow, {
 			props: {
 				node: makeNode("src"),
 				depth: 3,
 				expanded: false,
 				focused: false,
-				ontoggle: vi.fn(),
+				ontoggle: () => {},
 			},
 		});
 
-		const row = container.querySelector("[role=treeitem]");
-		expect(row?.getAttribute("style")).toContain(
-			`padding: 0 var(--space-2) 0 ${treeIndent(3)}`,
+		const label = screen.getByRole("treeitem").firstElementChild;
+		expect((label as HTMLElement).style.getPropertyValue("--row-indent")).toBe(
+			treeIndent(3),
 		);
 	});
 
@@ -109,5 +106,66 @@ describe("DirectoryRow", () => {
 		});
 		await fireEvent.click(screen.getByRole("treeitem"));
 		expect(ontoggle).toHaveBeenCalled();
+	});
+
+	it("marks the row the list's cursor is on and states its level", () => {
+		render(DirectoryRow, {
+			props: {
+				node: makeNode("src"),
+				depth: 1,
+				expanded: false,
+				focused: true,
+				ontoggle: () => {},
+			},
+		});
+
+		expect(screen.getByRole("treeitem", { selected: true })).toHaveAttribute(
+			"aria-level",
+			"2",
+		);
+	});
+
+	it("runs its action without folding the directory", async () => {
+		const seen: string[] = [];
+		render(DirectoryRow, {
+			props: {
+				node: makeNode("src"),
+				depth: 0,
+				expanded: false,
+				focused: false,
+				ontoggle: () => seen.push("toggle"),
+				actionLabel: "+",
+				onaction: () => seen.push("action"),
+			},
+		});
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Stage directory" }),
+		);
+
+		expect(seen).toEqual(["action"]);
+	});
+
+	it("opens the row's menu from its action too", async () => {
+		const menus: MouseEvent[] = [];
+		render(DirectoryRow, {
+			props: {
+				node: makeNode("src"),
+				depth: 0,
+				expanded: false,
+				focused: false,
+				ontoggle: () => {},
+				actionLabel: "+",
+				onaction: () => {},
+				oncontextmenu: (event) => menus.push(event),
+			},
+		});
+
+		await fireEvent.contextMenu(screen.getByRole("treeitem"));
+		await fireEvent.contextMenu(
+			screen.getByRole("button", { name: "Stage directory" }),
+		);
+
+		expect(menus).toHaveLength(2);
 	});
 });

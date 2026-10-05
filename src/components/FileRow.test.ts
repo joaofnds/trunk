@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
 import FileRow from "./FileRow.svelte";
 import "../__tests__/helpers/tauri-mock";
@@ -10,6 +10,7 @@ describe("FileRow", () => {
 		render(FileRow, {
 			props: {
 				file: makeFile("README.md", "Modified"),
+				role: "option",
 				actionLabel: "+",
 				onaction: vi.fn(),
 			},
@@ -28,6 +29,7 @@ describe("FileRow", () => {
 					status: "New",
 					is_binary: false,
 				},
+				role: "option",
 				actionLabel: "+",
 				onaction: vi.fn(),
 			},
@@ -44,6 +46,7 @@ describe("FileRow", () => {
 					status: "Renamed",
 					is_binary: false,
 				},
+				role: "option",
 				actionLabel: "+",
 				onaction: vi.fn(),
 			},
@@ -62,6 +65,7 @@ describe("FileRow", () => {
 					status: "Renamed",
 					is_binary: false,
 				},
+				role: "option",
 				actionLabel: "+",
 				onaction: vi.fn(),
 			},
@@ -79,6 +83,7 @@ describe("FileRow", () => {
 					status: "Renamed",
 					is_binary: false,
 				},
+				role: "option",
 				actionLabel: "+",
 				onaction: vi.fn(),
 				displayName: "math-util.ts",
@@ -94,6 +99,7 @@ describe("FileRow", () => {
 		render(FileRow, {
 			props: {
 				file: makeFile("src/lib/utils/short.ts", "Modified"),
+				role: "option",
 				actionLabel: "+",
 				onaction: vi.fn(),
 				displayName: "short.ts",
@@ -103,53 +109,131 @@ describe("FileRow", () => {
 		expect(screen.queryByText("src/lib/utils/short.ts")).toBeNull();
 	});
 
-	it("has listitem role when depth=0", () => {
+	it.each([
+		["option", 0],
+		["treeitem", 0],
+		["treeitem", 2],
+	] as const)("is the %s its list makes it at depth %i", (role, depth) => {
 		render(FileRow, {
 			props: {
 				file: makeFile("README.md"),
+				role,
 				actionLabel: "+",
-				onaction: vi.fn(),
-				depth: 0,
+				onaction: () => {},
+				depth,
 			},
 		});
-		expect(screen.getByRole("listitem")).toBeInTheDocument();
+
+		expect(screen.getByRole(role)).toHaveTextContent("README.md");
 	});
 
-	it("indents one gutter step per level, in the padding shorthand", () => {
-		/* The indent has to ride in the same shorthand as the rest of the padding:
-		   a padding-left from a stylesheet rule loses to this inline shorthand,
-		   which is how the indent silently flattened to 8px once already. */
-		const { container } = render(FileRow, {
+	it("states its level only in a tree", () => {
+		const props = {
+			file: makeFile("README.md"),
+			actionLabel: "+",
+			onaction: () => {},
+			depth: 2,
+		};
+		const { unmount } = render(FileRow, {
+			props: { ...props, role: "treeitem" },
+		});
+		expect(screen.getByRole("treeitem")).toHaveAttribute("aria-level", "3");
+		unmount();
+
+		render(FileRow, { props: { ...props, role: "option", depth: 0 } });
+
+		expect(screen.getByRole("option")).not.toHaveAttribute("aria-level");
+	});
+
+	it("indents one gutter step per level", () => {
+		render(FileRow, {
 			props: {
 				file: makeFile("deep.ts", "Modified"),
+				role: "treeitem",
 				actionLabel: "+",
-				onaction: vi.fn(),
+				onaction: () => {},
 				depth: 3,
 			},
 		});
 
-		const row = container.querySelector("[data-testid=staging-file]");
-		expect(row?.getAttribute("style")).toContain(
-			`padding: 0 var(--space-2) 0 ${treeIndent(3)}`,
+		const label = screen.getByRole("treeitem").firstElementChild;
+		expect((label as HTMLElement).style.getPropertyValue("--row-indent")).toBe(
+			treeIndent(3),
 		);
 	});
 
-	it("has treeitem role when depth>0", () => {
+	it("marks the row the list's cursor is on", () => {
 		render(FileRow, {
 			props: {
 				file: makeFile("README.md"),
+				role: "option",
 				actionLabel: "+",
-				onaction: vi.fn(),
-				depth: 1,
+				onaction: () => {},
+				focused: true,
 			},
 		});
-		expect(screen.getByRole("treeitem")).toBeInTheDocument();
+
+		expect(screen.getByRole("option", { selected: true })).toBeInTheDocument();
+	});
+
+	it("runs its action without opening the file", async () => {
+		const seen: string[] = [];
+		render(FileRow, {
+			props: {
+				file: makeFile("README.md"),
+				role: "option",
+				actionLabel: "+",
+				onaction: () => seen.push("action"),
+				onclick: () => seen.push("open"),
+			},
+		});
+
+		await fireEvent.click(screen.getByRole("button", { name: "Stage file" }));
+
+		expect(seen).toEqual(["action"]);
+	});
+
+	it.each([
+		["a loading file", { isLoading: true, actionLabel: "+" }],
+		["a list with no action", { isLoading: false, actionLabel: "" }],
+	])("offers no action on %s", (_, state) => {
+		render(FileRow, {
+			props: {
+				file: makeFile("README.md"),
+				role: "option",
+				onaction: () => {},
+				...state,
+			},
+		});
+
+		expect(screen.queryByRole("button")).toBeNull();
+	});
+
+	it("opens the row's menu from its action too", async () => {
+		const menus: MouseEvent[] = [];
+		render(FileRow, {
+			props: {
+				file: makeFile("README.md"),
+				role: "option",
+				actionLabel: "+",
+				onaction: () => {},
+				oncontextmenu: (event) => menus.push(event),
+			},
+		});
+
+		await fireEvent.contextMenu(screen.getByRole("option"));
+		await fireEvent.contextMenu(
+			screen.getByRole("button", { name: "Stage file" }),
+		);
+
+		expect(menus).toHaveLength(2);
 	});
 
 	it("renders New file with file path", () => {
 		render(FileRow, {
 			props: {
 				file: makeFile("new-file.ts", "New"),
+				role: "option",
 				actionLabel: "+",
 				onaction: vi.fn(),
 			},

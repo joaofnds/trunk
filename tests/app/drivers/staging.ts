@@ -10,6 +10,7 @@ import {
 
 const COMMIT_ROW = '[data-testid="commit-row"]';
 const STAGE_ALL = '[aria-label="Stage all changes"]';
+const STAGE_FILE = '[aria-label="Stage file"]';
 const SUBJECT = '[data-testid="commit-form-subject"]';
 const SUBMIT = '[data-testid="commit-form-submit"]';
 const WIP_PLACEHOLDER = "// WIP";
@@ -77,10 +78,9 @@ export class StagingDriver {
 				text.includes(path),
 			),
 		);
-		row.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
 
 		const button = await waitFor(`the stage action on ${path}`, () =>
-			row.querySelector<HTMLButtonElement>('[aria-label="Stage file"]'),
+			stageActionBeside(row),
 		);
 		button.click();
 
@@ -320,6 +320,13 @@ function grip(content: string): HTMLElement | null {
 	const cell = firstMatching(LINE_CONTENT, (text) => text === content);
 
 	return cell?.closest(DIFF_LINE)?.querySelector<HTMLElement>(GRIP) ?? null;
+}
+
+/** A row's action sits beside its button, never inside it. */
+function stageActionBeside(row: HTMLElement): HTMLButtonElement | null {
+	return (
+		row.parentElement?.querySelector<HTMLButtonElement>(STAGE_FILE) ?? null
+	);
 }
 
 function stageAllButton(): HTMLElement | null {

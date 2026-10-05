@@ -51,6 +51,7 @@ let {
 let expanded = $state<Set<string>>(new Set());
 let focusIndex = $state(0);
 let lastFocusedPath = $state<string | null>(null);
+let list = $state<HTMLElement>();
 
 // Track previous tree mode to detect actual changes (not initial render)
 let prevTreeMode: boolean | undefined;
@@ -107,16 +108,26 @@ $effect(() => {
 	}
 });
 
-// Sync focusIndex when parent sets selectedPath (e.g. auto-advance)
+// Sync focusIndex when parent sets selectedPath (e.g. auto-advance). The rows
+// change under an unchanged selection whenever a directory folds, and the
+// cursor then stays on the row it was put on while that row is still shown.
+let syncedPath: string | null = null;
 $effect(() => {
-	if (selectedPath && flatRows.length > 0) {
-		const idx = flatRows.findIndex(
-			(r) => r.type === "file" && r.node.file.path === selectedPath,
-		);
-		if (idx >= 0) {
-			focusIndex = idx;
-			lastFocusedPath = selectedPath;
-		}
+	if (!selectedPath) {
+		syncedPath = null;
+		return;
+	}
+	const cursor = untrack(() => lastFocusedPath);
+	const cursorShown = flatRows.some((r) => r.node.path === cursor);
+	if (selectedPath === syncedPath && cursorShown) return;
+
+	const idx = flatRows.findIndex(
+		(r) => r.type === "file" && r.node.file.path === selectedPath,
+	);
+	if (idx >= 0) {
+		focusIndex = idx;
+		lastFocusedPath = selectedPath;
+		syncedPath = selectedPath;
 	}
 });
 
@@ -139,6 +150,14 @@ $effect(() => {
 		focusIndex = 0;
 	}
 });
+
+const LIST = "flex-1 overflow-y-auto min-h-0 outline-none";
+
+function focusRow(index: number, path: string) {
+	focusIndex = index;
+	lastFocusedPath = path;
+	list?.focus();
+}
 
 function toggleExpanded(path: string) {
 	const next = new Set(expanded);
@@ -196,6 +215,12 @@ function handleKeydown(e: KeyboardEvent) {
 				toggleExpanded(row.node.path);
 			}
 			break;
+		case " ":
+			if (row.type === "directory") {
+				e.preventDefault();
+				toggleExpanded(row.node.path);
+			}
+			break;
 	}
 	// Track focused path for preservation across data changes
 	const focusedRow = flatRows[focusIndex];
@@ -206,20 +231,17 @@ function handleKeydown(e: KeyboardEvent) {
 		(e.key === "ArrowDown" || e.key === "ArrowUp") &&
 		focusIndex !== prevIndex
 	) {
-		if (focusedRow?.type === "file") {
+		if (
+			focusedRow?.type === "file" &&
+			focusedRow.node.file.path !== selectedPath
+		) {
 			onfileclick?.(focusedRow.node.file.path);
 		}
 	}
 }
 </script>
 
-<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-<div
-	role={treeMode ? 'tree' : 'list'}
-	tabindex="0"
-	onkeydown={handleKeydown}
-	class="flex-1 overflow-y-auto min-h-0 outline-none"
->
+{#snippet rows()}
 	{#each flatRows as row, i (row.type === 'file' ? row.node.path : `dir:${row.node.path}`)}
 		{#if row.type === 'directory'}
 			<DirectoryRow
@@ -227,7 +249,7 @@ function handleKeydown(e: KeyboardEvent) {
 				depth={row.depth}
 				expanded={row.expanded}
 				focused={i === focusIndex}
-				ontoggle={() => { focusIndex = i; lastFocusedPath = row.node.path; toggleExpanded(row.node.path); }}
+				ontoggle={() => { focusRow(i, row.node.path); toggleExpanded(row.node.path); }}
 				actionLabel={ondirectoryaction ? actionLabel : ''}
 				onaction={ondirectoryaction ? () => ondirectoryaction(row.node.path) : undefined}
 				oncontextmenu={ondirectorycontextmenu ? (e) => ondirectorycontextmenu(e, row.node.path) : undefined}
@@ -237,10 +259,11 @@ function handleKeydown(e: KeyboardEvent) {
 		{:else}
 			<FileRow
 				file={row.node.file}
+				role={treeMode ? 'treeitem' : 'option'}
 				{actionLabel}
 				isLoading={loadingFiles?.has(row.node.file.path) ?? false}
 				onaction={() => onfileaction(row.node.file.path)}
-				onclick={() => { focusIndex = i; lastFocusedPath = row.node.file.path; onfileclick?.(row.node.file.path); }}
+				onclick={() => { focusRow(i, row.node.file.path); onfileclick?.(row.node.file.path); }}
 				oncontextmenu={onfilecontextmenu ? (e) => onfilecontextmenu(e, row.node.file.path, row.node.file) : undefined}
 				depth={treeMode ? row.depth : 0}
 				displayName={treeMode ? row.node.name : undefined}
@@ -250,4 +273,30 @@ function handleKeydown(e: KeyboardEvent) {
 			/>
 		{/if}
 	{/each}
-</div>
+{/snippet}
+
+<!--
+	The list holds the focus and the keys, and the focus index marks the row, so
+	a row hands the focus back when a click gave it to its button.
+-->
+{#if treeMode}
+	<div
+		bind:this={list}
+		role="tree"
+		tabindex="0"
+		onkeydown={handleKeydown}
+		class={LIST}
+	>
+		{@render rows()}
+	</div>
+{:else}
+	<div
+		bind:this={list}
+		role="listbox"
+		tabindex="0"
+		onkeydown={handleKeydown}
+		class={LIST}
+	>
+		{@render rows()}
+	</div>
+{/if}

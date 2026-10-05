@@ -7,7 +7,10 @@ export type RowVariant =
 	| "entry"
 	| "title"
 	| "divider"
-	| "fill";
+	| "fill"
+	| "item"
+	| "parent";
+export type RowRole = "option" | "treeitem";
 export type RowTone = "plain" | "muted" | "current";
 export type RowReveal = "hover" | "fade" | "always";
 </script>
@@ -16,7 +19,7 @@ export type RowReveal = "hover" | "fade" | "always";
 import type { Snippet } from "svelte";
 import type { HTMLButtonAttributes } from "svelte/elements";
 
-interface Props extends Omit<HTMLButtonAttributes, "class" | "style"> {
+interface Props extends Omit<HTMLButtonAttributes, "class" | "style" | "role"> {
 	/** `inset` is a rounded row held off the list's edges and `flush` one that
 	 *  runs to them with the arrow cursor, both taking the hover color; `header`
 	 *  is the bar over a section, edge to edge, which does not, and `band` the
@@ -26,8 +29,19 @@ interface Props extends Omit<HTMLButtonAttributes, "class" | "style"> {
 	 *  list and `divider` the ruled one that parts two runs of them, both as
 	 *  tall as the frame the list's layout reserves; `fill` takes the whole box
 	 *  of a frame whose height and background its caller computes, and pads
-	 *  nothing, so its children do. */
+	 *  nothing, so its children do; `item` is a row of a list or a tree that
+	 *  runs to its edges and takes the hover color, and `parent` the row that
+	 *  folds the items under it, which takes the surface color instead, both
+	 *  starting their label at `indent`. */
 	variant?: RowVariant;
+	/** The role the primary button takes in a `role="listbox"` or a
+	 *  `role="tree"`, in place of a button's. */
+	role?: RowRole;
+	/** Whether the list's cursor is on it, which paints it in the selected-row
+	 *  color under the pointer too. Leave unset outside a listbox or a tree. */
+	selected?: boolean;
+	/** Where an `item` or a `parent` starts its label, as a length. */
+	indent?: string;
 	/** `muted` dims the text; `current` marks the one row that is checked out
 	 *  with the accent tint, which the pointer does not change. */
 	tone?: RowTone;
@@ -40,6 +54,9 @@ interface Props extends Omit<HTMLButtonAttributes, "class" | "style"> {
 
 let {
 	variant = "inset",
+	role,
+	selected,
+	indent,
 	tone = "plain",
 	actions,
 	reveal = "hover",
@@ -60,6 +77,8 @@ const SHAPES: Record<RowVariant, string> = {
 	title: "size-full bg-surface shadow-hairline text-callout select-none",
 	divider: "row-ruled size-full bg-surface text-small",
 	fill: "size-full",
+	item: "h-row text-callout",
+	parent: "h-row text-callout",
 };
 
 const HOVERS: Record<RowVariant, string> = {
@@ -71,6 +90,8 @@ const HOVERS: Record<RowVariant, string> = {
 	title: "",
 	divider: "",
 	fill: "",
+	item: "hover:bg-hover",
+	parent: "hover:bg-surface",
 };
 
 const TONES: Record<RowTone, string> = {
@@ -88,7 +109,11 @@ const WEIGHTS: Record<RowVariant, string> = {
 	title: "font-medium",
 	divider: "font-regular",
 	fill: "font-regular",
+	item: "font-regular",
+	parent: "font-regular",
 };
+
+const SELECTED = "bg-selected-row";
 
 const PRIMARY =
 	"col-start-1 col-span-2 row-start-1 grid grid-cols-subgrid text-left";
@@ -102,6 +127,8 @@ const POINTERS: Record<RowVariant, string> = {
 	title: "cursor-pointer",
 	divider: "cursor-pointer",
 	fill: "cursor-pointer",
+	item: "cursor-pointer",
+	parent: "cursor-pointer",
 };
 
 const CONTENT = "flex items-center min-w-0";
@@ -115,6 +142,8 @@ const LEADS: Record<RowVariant, string> = {
 	title: "px-2 gap-1",
 	divider: "px-2 gap-1",
 	fill: "",
+	item: "row-indented gap-2",
+	parent: "row-indented gap-1",
 };
 
 const ACTIONS = "col-start-2 row-start-1 flex items-center pointer-events-none";
@@ -128,6 +157,8 @@ const TRAILS: Record<RowVariant, string> = {
 	title: "",
 	divider: "",
 	fill: "",
+	item: "pr-2",
+	parent: "pr-2",
 };
 
 const TARGETS = "items-center *:pointer-events-auto";
@@ -141,6 +172,8 @@ const GAPS: Record<RowVariant, string> = {
 	title: "",
 	divider: "",
 	fill: "",
+	item: "ml-2",
+	parent: "ml-1",
 };
 
 const REVEALS: Record<RowReveal, string> = {
@@ -165,11 +198,21 @@ const REVEALS: Record<RowReveal, string> = {
 		SHAPES[variant],
 		TONES[tone],
 		tone !== "current" && WEIGHTS[variant],
-		tone !== "current" && HOVERS[variant],
+		tone !== "current" && !selected && HOVERS[variant],
+		selected && SELECTED,
 	]}
 >
-	<button {type} {tabindex} class={[PRIMARY, POINTERS[variant]]} {...rest}>
-		<span class={[CONTENT, LEADS[variant]]}>{@render children?.()}</span>
+	<button
+		{type}
+		{role}
+		{tabindex}
+		aria-selected={selected}
+		class={[PRIMARY, POINTERS[variant]]}
+		{...rest}
+	>
+		<span class={[CONTENT, LEADS[variant]]} style:--row-indent={indent}
+			>{@render children?.()}</span
+		>
 	</button>
 	<div class={[ACTIONS, TRAILS[variant]]}>
 		{#if actions}
@@ -189,6 +232,9 @@ const REVEALS: Record<RowReveal, string> = {
    where every other row truncates its label to keep them in view. */
 .row-whole-label {
 	grid-template-columns: minmax(min-content, 1fr) auto;
+}
+.row-indented {
+	padding-left: var(--row-indent);
 }
 .row-ruled {
 	box-shadow:
