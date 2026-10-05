@@ -68,12 +68,6 @@ interface Props {
 		hunkLines: DiffLine[],
 		e: MouseEvent,
 	) => void;
-	onlineenter: (
-		filePath: string,
-		hunkIdx: number,
-		lineIndex: number,
-		e: MouseEvent,
-	) => void;
 	onstagehunk: (filePath: string, hunkIndex: number) => void;
 	onunstagehunk: (filePath: string, hunkIndex: number) => void;
 	ondiscardhunk: (filePath: string, hunkIndex: number) => void;
@@ -123,7 +117,6 @@ let {
 	onfilecollapsetoggle,
 	onlineclick,
 	onlinemousedown,
-	onlineenter,
 	onstagehunk,
 	onunstagehunk,
 	ondiscardhunk,
@@ -244,7 +237,6 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{onfilecollapsetoggle}
 			{onlineclick}
 			{onlinemousedown}
-			{onlineenter}
 			{onstagehunk}
 			{onunstagehunk}
 			{ondiscardhunk}
@@ -292,7 +284,6 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{onfilecollapsetoggle}
 			{onlineclick}
 			{onlinemousedown}
-			{onlineenter}
 			{onstagehunk}
 			{onunstagehunk}
 			{ondiscardhunk}

@@ -51,7 +51,6 @@ const baseProps = {
 	onfilecollapsetoggle: noop,
 	onlineclick: noop,
 	onlinemousedown: noop,
-	onlineenter: noop,
 	onstagehunk: noop,
 	onunstagehunk: noop,
 	ondiscardhunk: noop,

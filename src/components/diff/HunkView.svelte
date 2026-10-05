@@ -24,6 +24,7 @@ import type {
 	Thread,
 } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
+import GutterGrip from "../../lib/ui/GutterGrip.svelte";
 import Row from "../../lib/ui/Row.svelte";
 import {
 	createVirtualizedDiff,
@@ -61,12 +62,6 @@ interface Props {
 		hunkLines: DiffLine[],
 		e: MouseEvent,
 	) => void;
-	onlineenter: (
-		filePath: string,
-		hunkIdx: number,
-		lineIndex: number,
-		e: MouseEvent,
-	) => void;
 	onstagehunk: (filePath: string, hunkIndex: number) => void;
 	onunstagehunk: (filePath: string, hunkIndex: number) => void;
 	ondiscardhunk: (filePath: string, hunkIndex: number) => void;
@@ -97,7 +92,6 @@ let {
 	onfilecollapsetoggle,
 	onlineclick,
 	onlinemousedown,
-	onlineenter,
 	onstagehunk,
 	onunstagehunk,
 	ondiscardhunk,
@@ -240,6 +234,14 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 	/>
 {/snippet}
 
+{#snippet lineNumbers(line: DiffLine)}
+	<span class="gutter-num" style:min-width={vd.gutterW}
+		>{line.old_lineno ?? ''}</span
+	><span class="gutter-num" style:min-width={vd.gutterW}
+		>{line.new_lineno ?? ''}</span
+	>
+{/snippet}
+
 {#snippet diffRow(item: DiffRow, _index: number)}
 	{#if item.kind === "line"}
 		{@const line = item.line}
@@ -248,9 +250,6 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 		{@const isSelected = selectedHunkKey === hunkKey && selectedLineIndices.has(item.lineIdx)}
 		{@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
 		{@const hunkLines = fileDiffs.find((fd) => fd.path === item.path)?.hunks[item.hunkIdx]?.lines ?? []}
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<!-- mouseenter only continues an in-progress gutter drag (guarded by
-         `dragging` in the host); the row itself is not a control. -->
 		<div
 			class="diff-line flex items-start px-2 text-diff-text {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{item.spanned ? ' diff-line-commented' : ''}"
 			class:whitespace-pre-wrap={vd.wrapActive}
@@ -261,19 +260,18 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 			style:font-size={DIFF_ROW_FONT.fontSize}
 			style:line-height={DIFF_ROW_FONT.lineHeight}
 			style:background={lineBackground(line.origin, isSelected)}
-			onmouseenter={(e) => onlineenter(item.path, item.hunkIdx, item.lineIdx, e)}
-			><!-- svelte-ignore a11y_no_noninteractive_tabindex --><span
-				class="gutter-grip select-none{isSelectable ? ' gutter-selectable' : ''}"
-				role={isSelectable ? 'button' : undefined}
-				tabindex={isSelectable ? 0 : undefined}
-				onmousedown={(e) => isSelectable && onlinemousedown(item.path, item.hunkIdx, item.lineIdx, line.origin, hunkLines, e)}
-				onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onlineclick(item.path, item.hunkIdx, item.lineIdx, line.origin, hunkLines, new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
-				><span class="gutter-num" style:min-width={vd.gutterW}
-					>{line.old_lineno ?? ''}</span
-				><span class="gutter-num" style:min-width={vd.gutterW}
-					>{line.new_lineno ?? ''}</span
-				></span
-			><span class="diff-line-content select-text cursor-text"
+			data-line-path={item.path}
+			data-hunk-index={item.hunkIdx}
+			data-line-index={item.lineIdx}
+			>{#if isSelectable}
+				<GutterGrip
+					onmousedown={(e) => onlinemousedown(item.path, item.hunkIdx, item.lineIdx, line.origin, hunkLines, e)}
+					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onlineclick(item.path, item.hunkIdx, item.lineIdx, line.origin, hunkLines, new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
+					>{@render lineNumbers(line)}</GutterGrip
+				>
+			{:else}
+				<span class="gutter-grip select-none">{@render lineNumbers(line)}</span>
+			{/if}<span class="diff-line-content select-text cursor-text"
 				>{#if line.spans.length > 0}
 					{#each line.spans as span}
 						{@const sliced = line.content.slice(span.start, span.end)}
@@ -664,19 +662,11 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 	color: var(--color-text-muted);
 	padding-right: var(--space-2);
 }
-.gutter-selectable {
-	cursor: pointer;
-}
-.gutter-selectable:focus-visible {
-	outline: 2px solid var(--color-accent);
-	outline-offset: -2px;
-	border-radius: var(--radius);
-}
 
 /* Faint full-row tint while hovering a selectable gutter — the affordance that
      the line number, not the code, arms staging. Painted as a z-index:-1 overlay
      so it tints over the inline diff background without hiding it. */
-.diff-line:has(.gutter-selectable:hover)::after {
+.diff-line:has(:global([data-gutter-grip]:hover))::after {
 	content: "";
 	position: absolute;
 	inset: 0;

@@ -92,7 +92,6 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
 		onfilecollapsetoggle: vi.fn(),
 		onlineclick: vi.fn(),
 		onlinemousedown: vi.fn(),
-		onlineenter: vi.fn(),
 		onstagehunk: vi.fn(),
 		onunstagehunk: vi.fn(),
 		ondiscardhunk: vi.fn(),
@@ -175,7 +174,7 @@ describe("HunkView", () => {
 		const grip = screen
 			.getByText("line 2501")
 			.closest(".diff-line")
-			?.querySelector(".gutter-grip") as HTMLElement;
+			?.querySelector("[data-gutter-grip]") as HTMLElement;
 		await fireEvent.mouseDown(grip);
 
 		expect(onlinemousedown.mock.calls[0].slice(0, 4)).toEqual([

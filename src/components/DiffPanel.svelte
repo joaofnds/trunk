@@ -160,8 +160,8 @@ let selectedCount = $derived(selectedLineIndices.size);
 // single hunk: the start line's current state picks the mode (start unselected →
 // the drag selects, start selected → it deselects), then each line the cursor
 // enters fills the range [anchor..current] against the snapshot taken at drag start.
-// `dragging` plus the per-event `e.buttons === 1` guard make a stuck drag inert.
-let dragging = false;
+// The pointer is followed by a document listener that lives only as long as the
+// drag, and its `e.buttons === 1` guard makes a drag that never saw its release inert.
 let dragMode: "add" | "remove" = "add";
 let dragAnchorIndex: number | null = null;
 let dragBaseSet: Set<number> | null = null;
@@ -682,14 +682,12 @@ $effect(() => {
 			scrollToHunk(focusedHunkIndex - 1);
 		}
 	}
-	function handleMouseUp() {
-		dragging = false;
-	}
 	window.addEventListener("keydown", handleKeydown);
-	window.addEventListener("mouseup", handleMouseUp);
+	window.addEventListener("mouseup", stopDrag);
 	return () => {
 		window.removeEventListener("keydown", handleKeydown);
-		window.removeEventListener("mouseup", handleMouseUp);
+		window.removeEventListener("mouseup", stopDrag);
+		stopDrag();
 	};
 });
 
@@ -962,24 +960,30 @@ async function handleLineMouseDown(
 	}
 	dragAnchorIndex = lineIndex;
 	dragHunkLines = hunkLines;
-	dragging = true;
+	document.addEventListener("mouseover", extendDrag);
 	lastClickedIndex = lineIndex;
 	applyDragRange(lineIndex);
 }
 
-// Cursor enters a line during a drag: extend the painted range. The e.buttons
-// guard makes a stuck `dragging` flag inert — without a held button, no paint.
-// It must ignore, not end, the drag: WebKit's scroll-synthesized hover events
-// report no buttons mid-drag, and ending it there kills a live gutter drag.
-function handleLineEnter(
-	filePath: string,
-	hunkIdx: number,
-	lineIndex: number,
-	e: MouseEvent,
-) {
-	if (!dragging) return;
+function stopDrag() {
+	document.removeEventListener("mouseover", extendDrag);
+}
+
+// The pointer moved onto another element during a drag: extend the painted range
+// to the line under it. A move with no button held is ignored and must not end
+// the drag: WebKit's scroll-synthesized hover events report no buttons mid-drag,
+// and ending it there kills a live gutter drag.
+function extendDrag(e: MouseEvent) {
 	if (e.buttons !== 1) return;
-	if (`${filePath}-${hunkIdx}` !== selectedHunkKey) return;
+	if (!(e.target instanceof Element)) return;
+
+	const row = e.target.closest<HTMLElement>("[data-line-index]");
+	if (!row) return;
+
+	const { linePath, hunkIndex } = row.dataset;
+	const lineIndex = Number(row.dataset.lineIndex);
+	if (`${linePath}-${hunkIndex}` !== selectedHunkKey) return;
+
 	applyDragRange(lineIndex);
 	lastClickedIndex = lineIndex;
 }
@@ -1114,7 +1118,6 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			onfilecollapsetoggle={toggleFileCollapsed}
 			onlineclick={handleLineClick}
 			onlinemousedown={handleLineMouseDown}
-			onlineenter={handleLineEnter}
 			onstagehunk={handleStageHunk}
 			onunstagehunk={handleUnstageHunk}
 			ondiscardhunk={handleDiscardHunk}

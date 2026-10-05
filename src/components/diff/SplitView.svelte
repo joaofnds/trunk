@@ -24,6 +24,7 @@ import type {
 	Thread,
 } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
+import GutterGrip from "../../lib/ui/GutterGrip.svelte";
 import Row from "../../lib/ui/Row.svelte";
 import {
 	createVirtualizedDiff,
@@ -64,12 +65,6 @@ interface Props {
 		hunkLines: DiffLine[],
 		e: MouseEvent,
 	) => void;
-	onlineenter: (
-		filePath: string,
-		hunkIdx: number,
-		lineIndex: number,
-		e: MouseEvent,
-	) => void;
 	onstagehunk: (filePath: string, hunkIndex: number) => void;
 	onunstagehunk: (filePath: string, hunkIndex: number) => void;
 	ondiscardhunk: (filePath: string, hunkIndex: number) => void;
@@ -99,7 +94,6 @@ let {
 	onfilecollapsetoggle,
 	onlineclick,
 	onlinemousedown,
-	onlineenter,
 	onstagehunk,
 	onunstagehunk,
 	ondiscardhunk,
@@ -338,27 +332,30 @@ function originClass(origin: string): string {
 				{@const lineIdx = item.row.right.lineIdx}
 				{@const isSelectable = line.origin === 'Add'}
 				{@const isSelected = selectedHunkKey === hunkKey && selectedLineIndices.has(lineIdx)}
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<!-- mouseenter only continues an in-progress gutter drag (guarded by
-             `dragging` in the host); the cell is not a control. -->
 				<div
 					class="split-cell diff-line text-diff-text {originClass(line.origin)}{item.spannedRight ? ' diff-line-commented' : ''}"
 					style:font-family={DIFF_ROW_FONT.fontFamily}
 					style:font-size={DIFF_ROW_FONT.fontSize}
 					style:line-height={DIFF_ROW_FONT.lineHeight}
 					style:background={lineBackground(line.origin, isSelected)}
-					onmouseenter={(e) => onlineenter(item.path, item.hunkIdx, lineIdx, e)}
+					data-line-path={item.path}
+					data-hunk-index={item.hunkIdx}
+					data-line-index={lineIdx}
 				>
-					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-					<span
-						class="split-gutter{isSelectable ? ' gutter-selectable' : ''}"
-						style:min-width={vd.gutterW}
-						role={isSelectable ? 'button' : undefined}
-						tabindex={isSelectable ? 0 : undefined}
-						onmousedown={(e) => { if (isSelectable) onlinemousedown(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), e); }}
-						onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onlineclick(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
-						>{line.new_lineno ?? ''}</span
-					>
+					{#if isSelectable}
+						<GutterGrip
+							onmousedown={(e) => onlinemousedown(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), e)}
+							onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onlineclick(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
+						>
+							<span class="split-gutter" style:min-width={vd.gutterW}
+								>{line.new_lineno ?? ''}</span
+							>
+						</GutterGrip>
+					{:else}
+						<span class="split-gutter" style:min-width={vd.gutterW}
+							>{line.new_lineno ?? ''}</span
+						>
+					{/if}
 					<div class="split-window overflow-clip">
 						<div
 							class="split-pan pan-right min-w-full"
@@ -631,17 +628,6 @@ function originClass(origin: string): string {
 	flex-shrink: 0;
 }
 
-/* Right-column gutter is the staging/selection trigger; the left gutter stays
-     inert. Kept out of the text selection so multi-line copies skip line numbers. */
-.gutter-selectable {
-	cursor: pointer;
-}
-.gutter-selectable:focus-visible {
-	outline: 2px solid var(--color-accent);
-	outline-offset: -2px;
-	border-radius: var(--radius);
-}
-
 .split-phantom {
 	background: var(--color-diff-phantom-bg);
 }
@@ -775,7 +761,7 @@ function originClass(origin: string): string {
 /* Faint full-cell tint while hovering the selectable (right) gutter — signals
      that the line number, not the code, arms staging. z-index:-1 overlay so it
      tints over the inline diff background without hiding it. */
-.diff-line:has(.gutter-selectable:hover)::after {
+.diff-line:has(:global([data-gutter-grip]:hover))::after {
 	content: "";
 	position: absolute;
 	inset: 0;

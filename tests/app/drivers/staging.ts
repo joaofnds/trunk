@@ -24,7 +24,7 @@ const DIFF_LINE = ".diff-line";
 const LINE_CONTENT = ".diff-line-content";
 const ADDED_LINE = `.diff-line-add ${LINE_CONTENT}`;
 const REMOVED_LINE = `.diff-line-delete ${LINE_CONTENT}`;
-const GRIP = ".gutter-selectable";
+const GRIP = "[data-gutter-grip]";
 const TREE_ROW = '[role="treeitem"]';
 const TREE_VIEW = '[aria-label="Switch to tree view"]';
 const STAGE_HUNK = "Stage Hunk";
@@ -207,6 +207,29 @@ export class StagingDriver {
 		);
 	}
 
+	/** Presses the gutter of the row reading `first` and, the button held, moves
+	 *  the pointer over each of `rest` in turn. The button is never released. */
+	async dragLines(first: string, ...rest: string[]): Promise<void> {
+		const from = await waitFor(`the grip on ${first}`, () => grip(first));
+
+		from.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+		for (const content of rest) movePointerOnto(content, HELD);
+	}
+
+	/** Moves the pointer onto the row reading `content` with no button held. */
+	hoverLine(content: string): void {
+		movePointerOnto(content, RELEASED);
+	}
+
+	/** The line actions a hunk's toolbar offers for the selection, as written. */
+	lineActions(): string[] {
+		return toolbars().flatMap((toolbar) =>
+			[...toolbar.querySelectorAll("button")]
+				.map((action) => action.textContent?.trim() ?? "")
+				.filter((label) => / Lines \(\d+\)$/.test(label)),
+		);
+	}
+
 	/** Discards the selected lines. The confirmation goes to the dialog Fake,
 	 *  which dismisses unless the test has said otherwise. */
 	async discardSelectedLines(): Promise<void> {
@@ -314,6 +337,22 @@ function offeredAnywhere(label: string): HTMLButtonElement | null {
 	}
 
 	return null;
+}
+
+const HELD = 1;
+const RELEASED = 0;
+
+/** What a webview dispatches as the pointer crosses onto a row: a mouseover on
+ *  the element under it, which bubbles, and a mouseenter on the row, which does
+ *  not. */
+function movePointerOnto(content: string, buttons: number): void {
+	const cell = firstMatching(LINE_CONTENT, (text) => text === content);
+	if (!cell) throw new Error(`no diff line reads ${content}`);
+
+	cell.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, buttons }));
+	cell
+		.closest(DIFF_LINE)
+		?.dispatchEvent(new MouseEvent("mouseenter", { buttons }));
 }
 
 function grip(content: string): HTMLElement | null {

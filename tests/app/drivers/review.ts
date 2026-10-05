@@ -26,7 +26,7 @@ const DISMISS = "Dismiss";
 const COMMENT_ON_FILE = "Comment on a file…";
 const FINDER_INPUT = '[aria-label="Find a tracked file to comment on"]';
 const FINDER_ROW = '[aria-label="Tracked files"] [role="option"]';
-const SELECTABLE_LINE = ".gutter-selectable";
+const SELECTABLE_LINE = "[data-gutter-grip]";
 const FULL_FILE_COMMENT = '[data-testid="full-file-comment"]';
 const JUMP_TO_CODE = '[aria-label="Jump to code"]';
 const DIFF_PATH = '[data-testid="diff-path"]';

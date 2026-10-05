@@ -21,6 +21,7 @@ import type {
 	Thread,
 } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
+import GutterGrip from "../../lib/ui/GutterGrip.svelte";
 import {
 	createVirtualizedDiff,
 	TAB_SIZE,
@@ -69,9 +70,9 @@ let anchorIndex = $state<number | null>(null);
 let focusIndex = $state<number | null>(null);
 
 // A press arms the span and holds it open; the pointer crossing another row
-// carries the focus with it. Not a second selection model — a drag is the
-// contiguous span with a moving endpoint, which is what shift-click already is.
-let dragging = false;
+// carries the focus with it, followed by a document listener that lives only as
+// long as the drag. Not a second selection model — a drag is the contiguous span
+// with a moving endpoint, which is what shift-click already is.
 
 let list = $state<{
 	topIndex: () => number;
@@ -118,12 +119,11 @@ const affordanceVisible = $derived(
 );
 
 $effect(() => {
-	const stopDrag = () => {
-		dragging = false;
-	};
-
 	window.addEventListener("mouseup", stopDrag);
-	return () => window.removeEventListener("mouseup", stopDrag);
+	return () => {
+		window.removeEventListener("mouseup", stopDrag);
+		stopDrag();
+	};
 });
 
 function computeSpan(anchor: number | null, focus: number | null): Set<number> {
@@ -162,29 +162,32 @@ function startDrag(path: string, line: DiffLine, index: number, e: MouseEvent) {
 	e.preventDefault();
 
 	selectLine(path, line, index, e.shiftKey);
-	dragging = true;
+	document.addEventListener("mouseover", extendDrag);
 }
 
-// The e.buttons guard makes a stuck `dragging` flag inert: with no button held
-// there is no gesture to continue, whatever the flag says.
-function extendDrag(
-	path: string,
-	line: DiffLine,
-	index: number,
-	e: MouseEvent,
-) {
-	if (!dragging) return;
+function stopDrag() {
+	document.removeEventListener("mouseover", extendDrag);
+}
+
+// The pointer moved onto another element during a drag. A row it crosses with
+// no button held ends the drag: there is no gesture left to continue.
+function extendDrag(e: MouseEvent) {
+	if (!(e.target instanceof Element)) return;
+
+	const row = e.target.closest<HTMLElement>("[data-flat-index]");
+	if (!row) return;
 
 	if (e.buttons !== 1) {
-		dragging = false;
+		stopDrag();
 		return;
 	}
 
 	// D-02 again: a Delete line is not a valid endpoint, so the span stops at
 	// the last new-side row the pointer crossed rather than snapping to it.
-	if (path !== selectedPath || line.new_lineno === null) return;
+	const { linePath, newSide } = row.dataset;
+	if (linePath !== selectedPath || newSide !== "true") return;
 
-	focusIndex = index;
+	focusIndex = Number(row.dataset.flatIndex);
 }
 
 // Called by the DiffPanel host (via bind:this) on mode/layout toggle and Escape
@@ -219,15 +222,20 @@ function lineBackground(origin: string, isSelected: boolean): string {
 	/>
 {/snippet}
 
+{#snippet lineNumbers(line: DiffLine)}
+	<span class="gutter-num" style:min-width={vd.gutterW}
+		>{line.old_lineno ?? ''}</span
+	><span class="gutter-num" style:min-width={vd.gutterW}
+		>{line.new_lineno ?? ''}</span
+	>
+{/snippet}
+
 {#snippet diffRow(item: DiffRow, _index: number)}
 	{#if item.kind === "line"}
 		{@const line = item.line}
 		{@const isSelectable = line.new_lineno !== null}
 		{@const isSelected = selectedPath === item.path && selectedIndices.has(item.flatIdx)}
 		{@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<!-- mouseenter only continues an in-progress gutter drag; the row itself is
-         not a control. -->
 		<div
 			class="diff-line flex items-start px-2 text-diff-text {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{item.spanned ? ' diff-line-commented' : ''}"
 			class:whitespace-pre-wrap={vd.wrapActive}
@@ -238,20 +246,19 @@ function lineBackground(origin: string, isSelected: boolean): string {
 			style:font-size={DIFF_ROW_FONT.fontSize}
 			style:line-height={DIFF_ROW_FONT.lineHeight}
 			style:background={lineBackground(line.origin, isSelected)}
-			onmouseenter={(e) => extendDrag(item.path, line, item.flatIdx, e)}
-			><!-- svelte-ignore a11y_no_noninteractive_tabindex --><span
-				class="gutter-grip select-none{isSelectable ? ' gutter-selectable' : ''}"
-				role={isSelectable ? 'button' : undefined}
-				tabindex={isSelectable ? 0 : undefined}
-				onmousedown={(e) => isSelectable && startDrag(item.path, line, item.flatIdx, e)}
-				onclick={(e) => isSelectable && selectLine(item.path, line, item.flatIdx, e.shiftKey)}
-				onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectLine(item.path, line, item.flatIdx, e.shiftKey); } }}
-				><span class="gutter-num" style:min-width={vd.gutterW}
-					>{line.old_lineno ?? ''}</span
-				><span class="gutter-num" style:min-width={vd.gutterW}
-					>{line.new_lineno ?? ''}</span
-				></span
-			><span class="diff-line-content select-text cursor-text"
+			data-line-path={item.path}
+			data-flat-index={item.flatIdx}
+			data-new-side={isSelectable}
+			>{#if isSelectable}
+				<GutterGrip
+					onmousedown={(e) => startDrag(item.path, line, item.flatIdx, e)}
+					onclick={(e) => selectLine(item.path, line, item.flatIdx, e.shiftKey)}
+					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectLine(item.path, line, item.flatIdx, e.shiftKey); } }}
+					>{@render lineNumbers(line)}</GutterGrip
+				>
+			{:else}
+				<span class="gutter-grip select-none">{@render lineNumbers(line)}</span>
+			{/if}<span class="diff-line-content select-text cursor-text"
 				>{#if line.spans.length > 0}
 					{#each line.spans as span}
 						{@const sliced = line.content.slice(span.start, span.end)}
@@ -470,19 +477,11 @@ function lineBackground(origin: string, isSelected: boolean): string {
 	color: var(--color-text-muted);
 	padding-right: var(--space-2);
 }
-.gutter-selectable {
-	cursor: pointer;
-}
-.gutter-selectable:focus-visible {
-	outline: 2px solid var(--color-accent);
-	outline-offset: -2px;
-	border-radius: var(--radius);
-}
 
 /* Faint full-row tint while hovering a selectable gutter — signals the line
      number arms selection, not the code. z-index:-1 overlay so it tints over the
      inline diff background without hiding it. */
-.diff-line:has(.gutter-selectable:hover)::after {
+.diff-line:has(:global([data-gutter-grip]:hover))::after {
 	content: "";
 	position: absolute;
 	inset: 0;

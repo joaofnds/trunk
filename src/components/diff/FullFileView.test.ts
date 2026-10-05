@@ -129,7 +129,7 @@ function gutterGrip(text: string): HTMLElement {
 	const grip = screen
 		.getByText(text)
 		.closest(".diff-line")
-		?.querySelector(".gutter-grip") as HTMLElement | null;
+		?.querySelector("[data-gutter-grip]") as HTMLElement | null;
 	if (!grip) throw new Error(`no gutter grip for "${text}"`);
 	return grip;
 }
@@ -219,7 +219,7 @@ describe("FullFileView", () => {
 
 		await fireEvent.mouseDown(gutterGrip("added one"));
 		await tick();
-		await fireEvent.mouseEnter(lineRow("added three"), {
+		await fireEvent.mouseOver(lineRow("added three"), {
 			buttons: 1,
 		});
 		await tick();
@@ -234,7 +234,7 @@ describe("FullFileView", () => {
 
 		await fireEvent.mouseDown(gutterGrip("added one"));
 		await tick();
-		await fireEvent.mouseEnter(lineRow("added three"), {
+		await fireEvent.mouseOver(lineRow("added three"), {
 			buttons: 0,
 		});
 		await tick();
@@ -248,7 +248,7 @@ describe("FullFileView", () => {
 		await fireEvent.mouseDown(gutterGrip("added one"));
 		await tick();
 		await fireEvent.mouseUp(window);
-		await fireEvent.mouseEnter(lineRow("added three"), {
+		await fireEvent.mouseOver(lineRow("added three"), {
 			buttons: 1,
 		});
 		await tick();
@@ -545,7 +545,7 @@ describe("FullFileView", () => {
 		await tick();
 		expect(screen.queryAllByText("line 10").length).toBe(0);
 
-		await fireEvent.mouseEnter(lineRow("line 2500"), {
+		await fireEvent.mouseOver(lineRow("line 2500"), {
 			buttons: 1,
 		});
 		await tick();

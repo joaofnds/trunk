@@ -36,7 +36,7 @@ function gutterOf(text: string): HTMLElement {
 	const grip = screen
 		.getByText(text)
 		.closest(".diff-line")
-		?.querySelector(".gutter-grip") as HTMLElement | null;
+		?.querySelector("[data-gutter-grip]") as HTMLElement | null;
 	if (!grip) throw new Error(`no gutter grip for "${text}"`);
 	return grip;
 }
@@ -2100,7 +2100,7 @@ describe("DiffPanel drag-to-select", () => {
 
 		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
-		await fireEvent.mouseEnter(lineDiv("const y = 3;"), { buttons: 1 });
+		await fireEvent.mouseOver(lineDiv("const y = 3;"), { buttons: 1 });
 		await tick();
 
 		expect(selectedCount()).toBe(2);
@@ -2111,7 +2111,7 @@ describe("DiffPanel drag-to-select", () => {
 
 		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
-		await fireEvent.mouseEnter(lineDiv("const y = 3;"), { buttons: 0 });
+		await fireEvent.mouseOver(lineDiv("const y = 3;"), { buttons: 0 });
 		await tick();
 
 		expect(selectedCount()).toBe(1);
@@ -2122,12 +2122,24 @@ describe("DiffPanel drag-to-select", () => {
 
 		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
-		await fireEvent.mouseEnter(lineDiv("const y = 3;"), { buttons: 0 });
+		await fireEvent.mouseOver(lineDiv("const y = 3;"), { buttons: 0 });
 		await tick();
-		await fireEvent.mouseEnter(lineDiv("const y = 3;"), { buttons: 1 });
+		await fireEvent.mouseOver(lineDiv("const y = 3;"), { buttons: 1 });
 		await tick();
 
 		expect(selectedCount()).toBe(2);
+	});
+
+	it("stops painting once the button is released", async () => {
+		await renderCommit();
+
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
+		await tick();
+		await fireEvent.mouseUp(window);
+		await fireEvent.mouseOver(lineDiv("const y = 3;"), { buttons: 1 });
+		await tick();
+
+		expect(selectedCount()).toBe(1);
 	});
 
 	it("deselects the range when the drag starts on an already-selected line", async () => {
@@ -2135,14 +2147,14 @@ describe("DiffPanel drag-to-select", () => {
 
 		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
-		await fireEvent.mouseEnter(lineDiv("const y = 3;"), { buttons: 1 });
+		await fireEvent.mouseOver(lineDiv("const y = 3;"), { buttons: 1 });
 		await tick();
 		expect(selectedCount()).toBe(2);
 
 		// A fresh drag from a selected line deselects as it paints across the range.
 		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
-		await fireEvent.mouseEnter(lineDiv("const y = 3;"), { buttons: 1 });
+		await fireEvent.mouseOver(lineDiv("const y = 3;"), { buttons: 1 });
 		await tick();
 		expect(selectedCount()).toBe(0);
 	});
@@ -2193,7 +2205,7 @@ describe("DiffPanel drag-to-select", () => {
 		await tick();
 		expect(screen.queryAllByText("line 10").length).toBe(0);
 
-		await fireEvent.mouseEnter(lineDiv("line 2500"), { buttons: 1 });
+		await fireEvent.mouseOver(lineDiv("line 2500"), { buttons: 1 });
 		await tick();
 
 		// The toolbar carrying the readout is itself a row, and a hunk this long

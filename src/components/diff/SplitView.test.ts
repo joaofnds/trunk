@@ -104,7 +104,6 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
 		onfilecollapsetoggle: vi.fn(),
 		onlineclick: vi.fn(),
 		onlinemousedown: vi.fn(),
-		onlineenter: vi.fn(),
 		onstagehunk: vi.fn(),
 		onunstagehunk: vi.fn(),
 		ondiscardhunk: vi.fn(),
@@ -219,7 +218,7 @@ describe("SplitView", () => {
 		const gutter = screen
 			.getByText("line 2501")
 			.closest(".split-cell")
-			?.querySelector(".split-gutter") as HTMLElement;
+			?.querySelector("[data-gutter-grip]") as HTMLElement;
 		await fireEvent.mouseDown(gutter);
 
 		expect(onlinemousedown.mock.calls[0].slice(0, 4)).toEqual([
