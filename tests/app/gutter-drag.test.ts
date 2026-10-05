@@ -51,6 +51,7 @@ async function openDiff() {
 	await waitFor("the file's hunk", () =>
 		app.staging.addedLines().length === 3 ? true : null,
 	);
+	await app.settled();
 
 	return app;
 }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -115,16 +115,6 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-// Selection now arms from the line-number gutter grip (which carries
-// role="button"), not the code content. Query the grip via the line's content.
-// mouseenter does not bubble, so fire it on the row div that carries the
-// handler, not the content span getByText returns.
-function lineRow(text: string): HTMLElement {
-	const row = screen.getByText(text).closest(".diff-line");
-	if (!row) throw new Error(`no diff line for "${text}"`);
-	return row as HTMLElement;
-}
-
 function gutterGrip(text: string): HTMLElement {
 	const grip = screen
 		.getByText(text)
@@ -219,7 +209,7 @@ describe("FullFileView", () => {
 
 		await fireEvent.mouseDown(gutterGrip("added one"));
 		await tick();
-		await fireEvent.mouseOver(lineRow("added three"), {
+		await fireEvent.mouseOver(screen.getByText("added three"), {
 			buttons: 1,
 		});
 		await tick();
@@ -229,14 +219,22 @@ describe("FullFileView", () => {
 		expect(Array.from(indices).sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
 	});
 
-	it("leaves the span alone when the pointer crosses a row with no button held", async () => {
+	it("ends the drag when the pointer crosses a row with no button held", async () => {
 		render(FullFileView, { props: defaultProps() });
 
 		await fireEvent.mouseDown(gutterGrip("added one"));
+		await fireEvent.mouseOver(screen.getByText("added three"), { buttons: 0 });
+		await fireEvent.mouseOver(screen.getByText("added three"), { buttons: 1 });
 		await tick();
-		await fireEvent.mouseOver(lineRow("added three"), {
-			buttons: 0,
-		});
+
+		expect(screen.getByRole("button", { name: /comment \(1\)/i })).toBeTruthy();
+	});
+
+	it("stops a drag at the last new-side row before a removed line", async () => {
+		render(FullFileView, { props: defaultProps() });
+
+		await fireEvent.mouseDown(gutterGrip("added one"));
+		await fireEvent.mouseOver(screen.getByText("removed one"), { buttons: 1 });
 		await tick();
 
 		expect(screen.getByRole("button", { name: /comment \(1\)/i })).toBeTruthy();
@@ -248,7 +246,7 @@ describe("FullFileView", () => {
 		await fireEvent.mouseDown(gutterGrip("added one"));
 		await tick();
 		await fireEvent.mouseUp(window);
-		await fireEvent.mouseOver(lineRow("added three"), {
+		await fireEvent.mouseOver(screen.getByText("added three"), {
 			buttons: 1,
 		});
 		await tick();
@@ -268,15 +266,22 @@ describe("FullFileView", () => {
 		expect(press.defaultPrevented).toBe(true);
 	});
 
+	it("names the line a gutter grip selects", () => {
+		render(FullFileView, { props: defaultProps() });
+
+		expect(gutterGrip("added one")).toHaveAccessibleName(
+			"Select added line 11",
+		);
+	});
+
 	it("V6/D-02: a Delete line (new_lineno=null) is not selectable and not an endpoint", async () => {
 		render(FullFileView, { props: defaultProps() });
 
-		// The Delete line renders, but is not a selectable row (no role="button").
-		const deleteContent = screen.getByText("removed one");
-		expect(deleteContent.closest('[role="button"]')).toBeNull();
+		const deleteRow = screen
+			.getByText("removed one")
+			.closest(".diff-line") as HTMLElement;
+		expect(within(deleteRow).queryByRole("button")).toBeNull();
 
-		// Clicking its row directly must not open a selection / affordance.
-		const deleteRow = deleteContent.closest(".diff-line") as HTMLElement;
 		await fireEvent.click(deleteRow);
 		await tick();
 
@@ -545,7 +550,7 @@ describe("FullFileView", () => {
 		await tick();
 		expect(screen.queryAllByText("line 10").length).toBe(0);
 
-		await fireEvent.mouseOver(lineRow("line 2500"), {
+		await fireEvent.mouseOver(screen.getByText("line 2500"), {
 			buttons: 1,
 		});
 		await tick();

@@ -443,3 +443,16 @@ describe("threaded comment actions", () => {
 		safeInvoke,
 	);
 });
+
+describe("SplitView gutter grip", () => {
+	it("names the line it selects", () => {
+		render(SplitView, { props: defaultProps() });
+
+		const grip = screen
+			.getByText("added one")
+			.closest(".split-cell")
+			?.querySelector("[data-gutter-grip]");
+
+		expect(grip).toHaveAccessibleName("Select added line 11");
+	});
+});

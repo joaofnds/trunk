@@ -7,6 +7,7 @@ import {
 	FIXED_ROW_HEIGHT_VARS,
 } from "../../lib/diff-rows.js";
 import {
+	gripLabel,
 	splitInvisibles,
 	trailingWhitespaceStart,
 } from "../../lib/diff-utils.js";
@@ -174,8 +175,8 @@ function stopDrag() {
 function extendDrag(e: MouseEvent) {
 	if (!(e.target instanceof Element)) return;
 
-	const row = e.target.closest<HTMLElement>("[data-flat-index]");
-	if (!row) return;
+	const row = e.target.closest("[data-flat-index]");
+	if (!(row instanceof HTMLElement)) return;
 
 	if (e.buttons !== 1) {
 		stopDrag();
@@ -185,7 +186,7 @@ function extendDrag(e: MouseEvent) {
 	// D-02 again: a Delete line is not a valid endpoint, so the span stops at
 	// the last new-side row the pointer crossed rather than snapping to it.
 	const { linePath, newSide } = row.dataset;
-	if (linePath !== selectedPath || newSide !== "true") return;
+	if (linePath !== selectedPath || newSide === undefined) return;
 
 	focusIndex = Number(row.dataset.flatIndex);
 }
@@ -248,16 +249,18 @@ function lineBackground(origin: string, isSelected: boolean): string {
 			style:background={lineBackground(line.origin, isSelected)}
 			data-line-path={item.path}
 			data-flat-index={item.flatIdx}
-			data-new-side={isSelectable}
+			data-new-side={isSelectable ? "" : undefined}
 			>{#if isSelectable}
 				<GutterGrip
+					aria-label={gripLabel(line)}
 					onmousedown={(e) => startDrag(item.path, line, item.flatIdx, e)}
 					onclick={(e) => selectLine(item.path, line, item.flatIdx, e.shiftKey)}
-					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectLine(item.path, line, item.flatIdx, e.shiftKey); } }}
 					>{@render lineNumbers(line)}</GutterGrip
 				>
 			{:else}
-				<span class="gutter-grip select-none">{@render lineNumbers(line)}</span>
+				<span class="inline-flex shrink-0 select-none"
+					>{@render lineNumbers(line)}</span
+				>
 			{/if}<span class="diff-line-content select-text cursor-text"
 				>{#if line.spans.length > 0}
 					{#each line.spans as span}
@@ -466,12 +469,6 @@ function lineBackground(origin: string, isSelected: boolean): string {
 	border-left-color: var(--color-diff-add);
 }
 
-/* Gutter grip: the line-number column is the selection trigger. Kept out of the
-     text selection so copies never pick up line numbers. */
-.gutter-grip {
-	display: inline-flex;
-	flex-shrink: 0;
-}
 .gutter-num {
 	text-align: right;
 	color: var(--color-text-muted);

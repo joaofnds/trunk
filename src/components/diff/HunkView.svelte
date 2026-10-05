@@ -9,6 +9,7 @@ import {
 	rowIndexForLine,
 } from "../../lib/diff-rows.js";
 import {
+	gripLabel,
 	splitInvisibles,
 	trailingWhitespaceStart,
 } from "../../lib/diff-utils.js";
@@ -265,12 +266,15 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 			data-line-index={item.lineIdx}
 			>{#if isSelectable}
 				<GutterGrip
+					aria-label={gripLabel(line)}
 					onmousedown={(e) => onlinemousedown(item.path, item.hunkIdx, item.lineIdx, line.origin, hunkLines, e)}
 					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onlineclick(item.path, item.hunkIdx, item.lineIdx, line.origin, hunkLines, new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
 					>{@render lineNumbers(line)}</GutterGrip
 				>
 			{:else}
-				<span class="gutter-grip select-none">{@render lineNumbers(line)}</span>
+				<span class="inline-flex shrink-0 select-none"
+					>{@render lineNumbers(line)}</span
+				>
 			{/if}<span class="diff-line-content select-text cursor-text"
 				>{#if line.spans.length > 0}
 					{#each line.spans as span}
@@ -651,12 +655,6 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 	border-left-color: var(--color-diff-add);
 }
 
-/* Gutter grip: the line-number column is the staging/selection trigger. Kept
-     out of the text selection so multi-line copies never pick up line numbers. */
-.gutter-grip {
-	display: inline-flex;
-	flex-shrink: 0;
-}
 .gutter-num {
 	text-align: right;
 	color: var(--color-text-muted);

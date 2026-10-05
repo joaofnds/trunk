@@ -2063,7 +2063,77 @@ const addedFileDiff: FileDiff = {
 	],
 };
 
+const hunksOfDifferentLengths: FileDiff = {
+	path: "src/main.ts",
+	old_path: null,
+	status: "Modified",
+	is_binary: false,
+	hunks: [
+		{
+			header: "@@ -1,0 +1,2 @@",
+			old_start: 1,
+			old_lines: 0,
+			new_start: 1,
+			new_lines: 2,
+			lines: [
+				{
+					origin: "Add",
+					content: "first hunk, pressed",
+					old_lineno: null,
+					new_lineno: 1,
+					spans: [],
+				},
+				{
+					origin: "Add",
+					content: "first hunk, below it",
+					old_lineno: null,
+					new_lineno: 2,
+					spans: [],
+				},
+			],
+		},
+		{
+			header: "@@ -20,1 +22,2 @@",
+			old_start: 20,
+			old_lines: 1,
+			new_start: 22,
+			new_lines: 2,
+			lines: [
+				{
+					origin: "Context",
+					content: "second hunk, unchanged",
+					old_lineno: 20,
+					new_lineno: 22,
+					spans: [],
+				},
+				{
+					origin: "Add",
+					content: "second hunk, added",
+					old_lineno: null,
+					new_lineno: 23,
+					spans: [],
+				},
+			],
+		},
+	],
+};
+
 describe("DiffPanel drag-to-select", () => {
+	afterEach(async () => {
+		const store = await import("../lib/store.js");
+		vi.mocked(store.getDiffLayoutMode).mockImplementation(() =>
+			Promise.resolve("inline"),
+		);
+	});
+
+	async function renderCommitInSplitLayout() {
+		const store = await import("../lib/store.js");
+		vi.mocked(store.getDiffLayoutMode).mockImplementation(() =>
+			Promise.resolve("split"),
+		);
+		await renderCommit();
+	}
+
 	// testDiff hunk lines: Context(0), Delete(1), Add "const x = 2;"(2),
 	// Add "const y = 3;"(3), Context(4). In commit mode the on-selection affordance
 	// renders "Comment (N)" with N = the live selectedCount — the observable readout
@@ -2072,14 +2142,6 @@ describe("DiffPanel drag-to-select", () => {
 		const btn = screen.queryByRole("button", { name: /^Comment \(/ });
 		const m = btn?.textContent?.match(/\((\d+)\)/);
 		return m ? Number(m[1]) : 0;
-	}
-
-	// mouseenter does not bubble, so fire it on the line div (which holds the
-	// handler), not the inner content span that getByText returns.
-	function lineDiv(text: string): HTMLElement {
-		const el = screen.getByText(text).closest(".diff-line");
-		if (!el) throw new Error(`no diff line for "${text}"`);
-		return el as HTMLElement;
 	}
 
 	function renderCommit() {
@@ -2100,10 +2162,74 @@ describe("DiffPanel drag-to-select", () => {
 
 		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
-		await fireEvent.mouseOver(lineDiv("const y = 3;"), { buttons: 1 });
+		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
 		await tick();
 
 		expect(selectedCount()).toBe(2);
+	});
+
+	it("paints the whole range when dragging across split rows", async () => {
+		await renderCommitInSplitLayout();
+
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
+		await tick();
+		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
+		await tick();
+
+		expect(selectedCount()).toBe(2);
+	});
+
+	it("keeps a drag inside the hunk it started in", async () => {
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [hunksOfDifferentLengths],
+				commitDetail: nonMergeCommit,
+				onclose: vi.fn(),
+				diffKind: "commit",
+				repoPath: "/repo",
+			},
+		});
+		await flushPrefs();
+
+		await fireEvent.mouseDown(gutterOf("first hunk, pressed"));
+		await tick();
+		await fireEvent.mouseOver(screen.getByText("second hunk, added"), {
+			buttons: 1,
+		});
+		await tick();
+
+		expect(selectedCount()).toBe(1);
+	});
+
+	it("selects a line from the keyboard", async () => {
+		await renderCommit();
+
+		await fireEvent.keyDown(gutterOf("const x = 2;"), { key: "Enter" });
+		await tick();
+
+		expect(selectedCount()).toBe(1);
+	});
+
+	it("extends the selection from the keyboard with Shift held", async () => {
+		await renderCommit();
+
+		await fireEvent.keyDown(gutterOf("const x = 2;"), { key: "Enter" });
+		await fireEvent.keyDown(gutterOf("const y = 3;"), {
+			key: " ",
+			shiftKey: true,
+		});
+		await tick();
+
+		expect(selectedCount()).toBe(2);
+	});
+
+	it("selects a split row from the keyboard", async () => {
+		await renderCommitInSplitLayout();
+
+		await fireEvent.keyDown(gutterOf("const x = 2;"), { key: "Enter" });
+		await tick();
+
+		expect(selectedCount()).toBe(1);
 	});
 
 	it("does not extend the selection on a hover with no button held", async () => {
@@ -2111,7 +2237,7 @@ describe("DiffPanel drag-to-select", () => {
 
 		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
-		await fireEvent.mouseOver(lineDiv("const y = 3;"), { buttons: 0 });
+		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 0 });
 		await tick();
 
 		expect(selectedCount()).toBe(1);
@@ -2122,9 +2248,9 @@ describe("DiffPanel drag-to-select", () => {
 
 		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
-		await fireEvent.mouseOver(lineDiv("const y = 3;"), { buttons: 0 });
+		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 0 });
 		await tick();
-		await fireEvent.mouseOver(lineDiv("const y = 3;"), { buttons: 1 });
+		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
 		await tick();
 
 		expect(selectedCount()).toBe(2);
@@ -2136,7 +2262,7 @@ describe("DiffPanel drag-to-select", () => {
 		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
 		await fireEvent.mouseUp(window);
-		await fireEvent.mouseOver(lineDiv("const y = 3;"), { buttons: 1 });
+		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
 		await tick();
 
 		expect(selectedCount()).toBe(1);
@@ -2147,14 +2273,14 @@ describe("DiffPanel drag-to-select", () => {
 
 		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
-		await fireEvent.mouseOver(lineDiv("const y = 3;"), { buttons: 1 });
+		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
 		await tick();
 		expect(selectedCount()).toBe(2);
 
 		// A fresh drag from a selected line deselects as it paints across the range.
 		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
-		await fireEvent.mouseOver(lineDiv("const y = 3;"), { buttons: 1 });
+		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
 		await tick();
 		expect(selectedCount()).toBe(0);
 	});
@@ -2205,7 +2331,7 @@ describe("DiffPanel drag-to-select", () => {
 		await tick();
 		expect(screen.queryAllByText("line 10").length).toBe(0);
 
-		await fireEvent.mouseOver(lineDiv("line 2500"), { buttons: 1 });
+		await fireEvent.mouseOver(screen.getByText("line 2500"), { buttons: 1 });
 		await tick();
 
 		// The toolbar carrying the readout is itself a row, and a hunk this long

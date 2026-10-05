@@ -145,6 +145,15 @@ function pairByPartner(deletes: Seat[], adds: Seat[], rows: PairedRow[]): void {
  * substitution (·/→) the view paints via a pseudo-element. `glyph` is the
  * empty string for visible segments.
  */
+/** What a screen reader calls the control in a selectable line's gutter. The
+ *  numbers it shows cannot name it: a hunk shows the same number on a removed
+ *  line and on the added line that replaced it. */
+export function gripLabel(line: DiffLine): string {
+	if (line.origin === "Add") return `Select added line ${line.new_lineno}`;
+	if (line.origin === "Delete") return `Select removed line ${line.old_lineno}`;
+	return `Select line ${line.new_lineno}`;
+}
+
 export interface InvisibleSegment {
 	text: string;
 	glyph: string;

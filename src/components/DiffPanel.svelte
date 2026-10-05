@@ -977,12 +977,13 @@ function extendDrag(e: MouseEvent) {
 	if (e.buttons !== 1) return;
 	if (!(e.target instanceof Element)) return;
 
-	const row = e.target.closest<HTMLElement>("[data-line-index]");
-	if (!row) return;
+	const row = e.target.closest("[data-line-index]");
+	if (!(row instanceof HTMLElement)) return;
 
 	const { linePath, hunkIndex } = row.dataset;
 	const lineIndex = Number(row.dataset.lineIndex);
 	if (`${linePath}-${hunkIndex}` !== selectedHunkKey) return;
+	if (lineIndex === lastClickedIndex) return;
 
 	applyDragRange(lineIndex);
 	lastClickedIndex = lineIndex;

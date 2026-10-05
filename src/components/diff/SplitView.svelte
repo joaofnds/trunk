@@ -9,6 +9,7 @@ import {
 	rowIndexForLine,
 } from "../../lib/diff-rows.js";
 import {
+	gripLabel,
 	splitInvisibles,
 	trailingWhitespaceStart,
 } from "../../lib/diff-utils.js";
@@ -344,6 +345,7 @@ function originClass(origin: string): string {
 				>
 					{#if isSelectable}
 						<GutterGrip
+							aria-label={gripLabel(line)}
 							onmousedown={(e) => onlinemousedown(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), e)}
 							onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onlineclick(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
 						>

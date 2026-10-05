@@ -342,17 +342,13 @@ function offeredAnywhere(label: string): HTMLButtonElement | null {
 const HELD = 1;
 const RELEASED = 0;
 
-/** What a webview dispatches as the pointer crosses onto a row: a mouseover on
- *  the element under it, which bubbles, and a mouseenter on the row, which does
- *  not. */
+/** What a drag follows as the pointer crosses onto a row: the mouseover a
+ *  webview dispatches on the element under it. */
 function movePointerOnto(content: string, buttons: number): void {
 	const cell = firstMatching(LINE_CONTENT, (text) => text === content);
 	if (!cell) throw new Error(`no diff line reads ${content}`);
 
 	cell.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, buttons }));
-	cell
-		.closest(DIFF_LINE)
-		?.dispatchEvent(new MouseEvent("mouseenter", { buttons }));
 }
 
 function grip(content: string): HTMLElement | null {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pairLines } from "./diff-utils.js";
+import { gripLabel, pairLines } from "./diff-utils.js";
 import type { DiffLine } from "./types.js";
 
 function line(
@@ -116,5 +116,27 @@ describe("pairLines", () => {
 			expect(rows[0].left?.line.content).toBe("old last");
 			expect(rows[0].right?.line.content).toBe("new last");
 		});
+	});
+});
+
+describe("gripLabel", () => {
+	it.each([
+		{
+			name: "an added line by its new number",
+			given: line("Add", "a", null, 12),
+			label: "Select added line 12",
+		},
+		{
+			name: "a removed line by its old number",
+			given: line("Delete", "a", 7, null),
+			label: "Select removed line 7",
+		},
+		{
+			name: "an unchanged line by its new number",
+			given: line("Context", "a", 44, 45),
+			label: "Select line 45",
+		},
+	])("names $name", ({ given, label }) => {
+		expect(gripLabel(given)).toBe(label);
 	});
 });

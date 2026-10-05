@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
@@ -223,5 +223,28 @@ describe("HunkView", () => {
 			".inline-comment-row",
 			safeInvoke,
 		);
+	});
+});
+
+describe("HunkView gutter grip", () => {
+	it("offers none on a context line", () => {
+		render(HunkView, { props: defaultProps() });
+
+		const row = screen
+			.getByText("context before")
+			.closest(".diff-line") as HTMLElement;
+
+		expect(within(row).queryByRole("button")).toBeNull();
+	});
+
+	it("names the line it selects", () => {
+		render(HunkView, { props: defaultProps() });
+
+		const grip = screen
+			.getByText("added one")
+			.closest(".diff-line")
+			?.querySelector("[data-gutter-grip]");
+
+		expect(grip).toHaveAccessibleName("Select added line 11");
 	});
 });
