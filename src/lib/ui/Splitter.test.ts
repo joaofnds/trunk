@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import Splitter, { type SplitterVariant } from "./Splitter.svelte";
 
 function renderSplitter(variant: SplitterVariant) {
@@ -59,11 +59,9 @@ describe("Splitter", () => {
 	it("keeps a key it answered from scrolling the page or reaching a list above it", async () => {
 		const { splitter } = renderSplitter("pane");
 		const bubbled: string[] = [];
-		document.body.addEventListener(
-			"keydown",
-			(event) => bubbled.push(event.key),
-			{ once: true },
-		);
+		const record = (event: KeyboardEvent) => bubbled.push(event.key);
+		document.body.addEventListener("keydown", record);
+		onTestFinished(() => document.body.removeEventListener("keydown", record));
 
 		const unhandled = await fireEvent.keyDown(splitter, { key: "ArrowRight" });
 
@@ -90,6 +88,7 @@ describe("Splitter", () => {
 		render(Splitter, {
 			props: {
 				variant: "column",
+				"aria-label": "Resize author column",
 				value: 176.4,
 				min: 38.78,
 				max: 399.5,
@@ -105,7 +104,13 @@ describe("Splitter", () => {
 
 	it("states no upper limit where its caller has none", () => {
 		render(Splitter, {
-			props: { variant: "column", value: 220, min: 20, onstep: () => {} },
+			props: {
+				variant: "column",
+				"aria-label": "Resize author column",
+				value: 220,
+				min: 20,
+				onstep: () => {},
+			},
 		});
 
 		expect(screen.getByRole("slider")).not.toHaveAttribute("aria-valuemax");
@@ -177,6 +182,7 @@ describe("Splitter", () => {
 		render(Splitter, {
 			props: {
 				variant: "pane",
+				"aria-label": "Resize sidebar",
 				value: 220,
 				min: 0,
 				onstep: () => {},
@@ -194,6 +200,7 @@ describe("Splitter", () => {
 		render(Splitter, {
 			props: {
 				variant: "column",
+				"aria-label": "Resize author column",
 				value: 220,
 				min: 0,
 				onstep: () => {},
@@ -222,6 +229,7 @@ describe("Splitter", () => {
 		render(Splitter, {
 			props: {
 				variant: "pane",
+				"aria-label": "Resize sidebar",
 				value: 0,
 				min: 0,
 				hidden: true,

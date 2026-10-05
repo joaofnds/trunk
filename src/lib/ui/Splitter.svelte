@@ -18,6 +18,7 @@ interface Shared
 		| "aria-valuenow"
 		| "aria-valuemin"
 		| "aria-valuemax"
+		| "onkeydown"
 	> {
 	/** `pane` is the strip between two panes laid side by side and `column`
 	 *  the one over the trailing edge of a table's header cell, both moving
@@ -28,6 +29,7 @@ interface Shared
 
 interface Moving extends Shared {
 	fixed?: false;
+	"aria-label": string;
 	/** The size in pixels of what it resizes, and the limits that size moves
 	 *  between. Leave `max` unset where nothing caps it. */
 	value: number;
@@ -57,7 +59,6 @@ let {
 	min,
 	max,
 	onstep,
-	onkeydown,
 	...rest
 }: Props = $props();
 
@@ -69,7 +70,7 @@ const ORIENTATIONS: Record<SplitterVariant, Orientation> = {
 	bar: "vertical",
 };
 
-const DIRECTIONS: Record<Orientation, Record<string, number>> = {
+const DIRECTIONS: Record<Orientation, Partial<Record<string, number>>> = {
 	horizontal: { ArrowLeft: -1, ArrowRight: 1 },
 	vertical: { ArrowUp: -1, ArrowDown: 1 },
 };
@@ -92,8 +93,7 @@ function wholePixels(size: number | undefined) {
 	return size === undefined ? undefined : Math.round(size);
 }
 
-function stepOnArrow(event: KeyboardEvent & { currentTarget: HTMLDivElement }) {
-	onkeydown?.(event);
+function stepOnArrow(event: KeyboardEvent) {
 	const direction = DIRECTIONS[ORIENTATIONS[variant]][event.key];
 	if (direction === undefined) return;
 
@@ -106,9 +106,8 @@ function stepOnArrow(event: KeyboardEvent & { currentTarget: HTMLDivElement }) {
 <!--
 	The handle between two things that share a width or a height. Its caller
 	starts the drag from the press it passes through, and resizes by the step
-	an arrow key reports. It paints a hairline inside a strip wider than the
-	line, so the grab area is; the focus ring is drawn inside that strip, since
-	a header cell clips whatever leaves it.
+	an arrow key reports. The focus ring is drawn inside the strip, since a
+	header cell clips whatever leaves it.
 -->
 {#if fixed}
 	<div class={VARIANTS[variant]} {...rest}></div>
@@ -131,6 +130,13 @@ function stepOnArrow(event: KeyboardEvent & { currentTarget: HTMLDivElement }) {
 .splitter-column,
 .splitter-bar {
 	transition: background 0.15s;
+}
+@media (prefers-reduced-motion: reduce) {
+	.splitter-pane,
+	.splitter-column,
+	.splitter-bar {
+		transition: none;
+	}
 }
 .splitter-pane {
 	background: linear-gradient(
