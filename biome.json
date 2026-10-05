@@ -69,11 +69,7 @@
 					"a11y": {
 						"noStaticElementInteractions": "off",
 						"noNoninteractiveElementInteractions": "off",
-						"useSemanticElements": "off",
-						"useAriaPropsSupportedByRole": "off",
-						"useKeyWithClickEvents": "off",
-						"noSvgWithoutTitle": "off",
-						"noNoninteractiveTabindex": "off"
+						"noSvgWithoutTitle": "off"
 					}
 				}
 			}
