@@ -139,3 +139,53 @@ describe("staging while whitespace changes are ignored", () => {
 		});
 	});
 });
+
+/** Three lines appended to a committed file: one hunk of pure insertions. */
+const APPENDED_LINES: RepoSpec = {
+	steps: [
+		{ step: "file", path: FILE, content: fileOf(NUMBERED) },
+		{ step: "commit", message: "Add main" },
+		{
+			step: "file",
+			path: FILE,
+			content: fileOf([...NUMBERED, "extra a", "extra b", "extra c"]),
+		},
+	],
+};
+
+// Nothing here fires the watcher, so a section that only refreshes on a
+// repo-changed event keeps showing the file where it was before the gesture.
+describe("staging selected lines", () => {
+	afterEach(teardown);
+
+	it("lists the file as staged without waiting for the watcher", async () => {
+		const app = await setup({ repo: APPENDED_LINES });
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile(FILE);
+		await app.settled();
+		await app.staging.selectLines("extra a", "extra b");
+
+		await app.staging.stageSelectedLines();
+
+		await app.settled();
+		expect(app.staging.stagedFiles()).toEqual([MODIFIED_ROW]);
+		expect(app.staging.unstagedFiles()).toEqual([MODIFIED_ROW]);
+	});
+
+	it("lists the file as unstaged without waiting for the watcher", async () => {
+		const app = await setup({ repo: APPENDED_LINES });
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.stageFile(FILE);
+		await app.staging.openStagedFile(FILE);
+		await app.settled();
+		await app.staging.selectLines("extra a", "extra c");
+
+		await app.staging.unstageSelectedLines();
+
+		await app.settled();
+		expect(app.staging.stagedFiles()).toEqual([]);
+		expect(app.staging.unstagedFiles()).toEqual([MODIFIED_ROW]);
+	});
+});

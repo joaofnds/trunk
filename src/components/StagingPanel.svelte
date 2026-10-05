@@ -239,7 +239,7 @@ onDestroy(() => {
 	statusRefresh.dispose();
 });
 
-async function loadStatus() {
+export async function loadStatus() {
 	await statusRefresh.run();
 }
 

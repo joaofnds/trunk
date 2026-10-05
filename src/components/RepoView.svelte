@@ -2293,6 +2293,7 @@ function stepRightPane(delta: number) {
                 advanceToNextFile(path, kind);
               }
             }
+            await stagingPanelRef?.loadStatus();
           }}
 						onfileemptied={(filePath, action) => {
             if (selectedFile?.path === filePath) {

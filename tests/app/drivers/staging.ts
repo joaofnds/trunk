@@ -29,6 +29,8 @@ const TREE_ROW = '[role="treeitem"]';
 const TREE_VIEW = '[aria-label="Switch to tree view"]';
 const STAGE_HUNK = "Stage Hunk";
 const DISCARD_LINES = "Discard Lines";
+const STAGE_LINES = "Stage Lines";
+const UNSTAGE_LINES = "Unstage Lines";
 const MARK_ALL_RESOLVED = "Mark All Resolved";
 const CONTINUE_REBASE = "Continue Rebase";
 const ABORT_REBASE = "Abort Rebase";
@@ -235,6 +237,24 @@ export class StagingDriver {
 	async discardSelectedLines(): Promise<void> {
 		const button = await waitFor(`${DISCARD_LINES} on the selection`, () =>
 			offeredAnywhere(DISCARD_LINES),
+		);
+
+		button.click();
+	}
+
+	/** Stages the selected lines. */
+	async stageSelectedLines(): Promise<void> {
+		const button = await waitFor(`${STAGE_LINES} on the selection`, () =>
+			offeredAnywhere(STAGE_LINES),
+		);
+
+		button.click();
+	}
+
+	/** Unstages the selected lines. */
+	async unstageSelectedLines(): Promise<void> {
+		const button = await waitFor(`${UNSTAGE_LINES} on the selection`, () =>
+			offeredAnywhere(UNSTAGE_LINES),
 		);
 
 		button.click();
