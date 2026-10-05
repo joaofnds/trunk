@@ -496,24 +496,6 @@ describe("StagingPanel rebase form", () => {
 		}
 	}
 
-	it("offers no handle while there is no rebase form to resize", async () => {
-		mockInvoke.mockImplementation((cmd: string) =>
-			Promise.resolve(
-				cmd === "get_status"
-					? { unstaged: [], staged: [], conflicted: [] }
-					: undefined,
-			),
-		);
-
-		const { container } = render(StagingPanel, {
-			props: { repoPath: "/repo" },
-		});
-		await screen.findByText("Staged Files");
-
-		expect(screen.queryByRole("slider")).toBeNull();
-		expect(container.querySelector(".splitter-bar")).not.toBeNull();
-	});
-
 	it("grows by a step when the handle above it takes ArrowUp", async () => {
 		const { form, handle } = await renderRebaseForm();
 
@@ -545,7 +527,7 @@ describe("StagingPanel rebase form", () => {
 		},
 	);
 
-	it("follows a drag of the handle through the same limits", async () => {
+	it("follows a drag of the handle", async () => {
 		const { form, handle } = await renderRebaseForm();
 
 		await fireEvent.mouseDown(handle, { clientY: 400 });
@@ -554,4 +536,56 @@ describe("StagingPanel rebase form", () => {
 
 		expect(form.style.height).toBe("220px");
 	});
+
+	it.each([
+		{ limit: "tallest", to: 0, height: "500px" },
+		{ limit: "shortest", to: 800, height: "100px" },
+	])("stops a drag at the $limit height", async ({ to, height }) => {
+		const { form, handle } = await renderRebaseForm();
+
+		await fireEvent.mouseDown(handle, { clientY: 400 });
+		await fireEvent.mouseMove(window, { clientY: to });
+		await fireEvent.mouseUp(window);
+
+		expect(form.style.height).toBe(height);
+	});
+});
+
+describe("StagingPanel with no rebase form", () => {
+	function mockOperation(opType: string | null) {
+		mockInvoke.mockReset();
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "get_status")
+				return Promise.resolve({ unstaged: [], staged: [], conflicted: [] });
+			if (cmd === "get_operation_state" && opType)
+				return Promise.resolve({
+					op_type: opType,
+					source_branch: "feature",
+					target_branch: "main",
+					progress: null,
+					source_color_index: 1,
+					target_color_index: 0,
+					rebase_message: null,
+				});
+			return Promise.resolve(undefined);
+		});
+	}
+
+	it.each([
+		{ state: "nothing is in progress", opType: null, shown: "Staged Files" },
+		{ state: "a merge is stopped", opType: "Merge", shown: "Abort Merge" },
+	])(
+		"draws the line above the form as no control while $state",
+		async ({ opType, shown }) => {
+			mockOperation(opType);
+
+			const { container } = render(StagingPanel, {
+				props: { repoPath: "/repo" },
+			});
+			await screen.findByText(shown);
+
+			expect(screen.queryByRole("slider")).toBeNull();
+			expect(container.querySelectorAll(".splitter-bar")).toHaveLength(1);
+		},
+	);
 });

@@ -166,6 +166,7 @@ let {
 }: Props = $props();
 const LEFT_PANE_MAX = 600;
 const RIGHT_PANE_MAX = 700;
+const NARROWEST_PANE = 50;
 const leftPaneSize = $derived(leftPaneCollapsed ? 0 : leftPaneWidth);
 const rightPaneSize = $derived(rightPaneCollapsed ? 0 : rightPaneWidth);
 const scheduler = getScheduler();
@@ -2015,7 +2016,7 @@ async function handleRebaseStart(
 }
 
 function resizeLeftPane(width: number) {
-	if (width < 50) {
+	if (width < NARROWEST_PANE) {
 		onleftpanecollapsedchange(true);
 		return;
 	}
@@ -2054,11 +2055,10 @@ function startLeftResize(e: MouseEvent) {
 
 function stepLeftPane(delta: number) {
 	resizeLeftPane(Math.max(0, leftPaneSize + delta));
-	storeLeftPane();
 }
 
 function resizeRightPane(width: number) {
-	if (width < 50) {
+	if (width < NARROWEST_PANE) {
 		onrightpanecollapsedchange(true);
 		return;
 	}
@@ -2096,8 +2096,13 @@ function startRightResize(e: MouseEvent) {
 }
 
 function stepRightPane(delta: number) {
-	resizeRightPane(Math.max(0, rightPaneSize - delta));
-	storeRightPane();
+	const width = rightPaneSize - delta;
+	if (!rightPaneCollapsed) {
+		resizeRightPane(Math.max(0, width));
+		return;
+	}
+
+	if (width > 0) resizeRightPane(NARROWEST_PANE);
 }
 </script>
 
@@ -2162,7 +2167,7 @@ function stepRightPane(delta: number) {
 			/>
 			<div
 				class="shrink-0 overflow-hidden flex flex-col"
-				style:width="{rightPaneCollapsed ? 0 : rightPaneWidth}px"
+				style:width="{rightPaneSize}px"
 			>
 				{#if rebaseFocusedCommitDetail}
 					<CommitDetail
@@ -2195,7 +2200,7 @@ function stepRightPane(delta: number) {
 		{:else}
 			<div
 				class="shrink-0 overflow-hidden flex flex-col"
-				style:width="{leftPaneCollapsed ? 0 : leftPaneWidth}px"
+				style:width="{leftPaneSize}px"
 			>
 				<BranchSidebar
 					{repoPath}
@@ -2346,7 +2351,7 @@ function stepRightPane(delta: number) {
 			/>
 			<div
 				class="shrink-0 overflow-hidden flex flex-col"
-				style:width="{rightPaneCollapsed ? 0 : rightPaneWidth}px"
+				style:width="{rightPaneSize}px"
 			>
 				{#if compare && compareTargetDetail}
 					<ComparePanel

@@ -200,11 +200,54 @@ describe("RebaseEditor", () => {
 
 	it("stops a key at the narrowest a drag makes the column", async () => {
 		const handle = await renderColumns();
-		const narrowest = handle("Date").getAttribute("aria-valuemin");
 
 		await press(handle("Date"), "ArrowRight", 13);
 
-		expect(handle("Date")).toHaveAttribute("aria-valuenow", narrowest);
+		expect(handle("Date")).toHaveAttribute("aria-valuenow", "66");
+		expect(handle("Date")).toHaveAttribute("aria-valuemin", "66");
+	});
+
+	function widthsStored() {
+		return mockInvoke.mock.calls
+			.filter(([command]) => command === "prefs_set")
+			.map(([, args]) => args as { key: string; value: unknown })
+			.filter(({ key }) => key === "rebase_column_widths")
+			.map(({ value }) => value);
+	}
+
+	it("stores nothing for a key that finds the column at its limit", async () => {
+		const handle = await renderColumns();
+		await press(handle("SHA"), "ArrowLeft", 5);
+		const stored = widthsStored().length;
+
+		await press(handle("SHA"), "ArrowLeft", 1);
+
+		expect(widthsStored()).toHaveLength(stored);
+	});
+
+	it.each([
+		{ limit: "widest", to: 0, width: "400" },
+		{ limit: "narrowest", to: 1000, width: "66" },
+	])("stops a drag of the edge at the $limit", async ({ to, width }) => {
+		const handle = await renderColumns();
+
+		await fireEvent.mouseDown(handle("Author"), { clientX: 500 });
+		await fireEvent.mouseMove(window, { clientX: to });
+		await fireEvent.mouseUp(window);
+
+		expect(handle("Author")).toHaveAttribute("aria-valuenow", width);
+	});
+
+	it("stores the widths a drag left when it is released", async () => {
+		const handle = await renderColumns();
+
+		await fireEvent.mouseDown(handle("Author"), { clientX: 500 });
+		await fireEvent.mouseMove(window, { clientX: 480 });
+		const whileHeld = widthsStored();
+		await fireEvent.mouseUp(window);
+
+		expect(whileHeld).toEqual([]);
+		expect(widthsStored()).toEqual([{ sha: 80, author: 140, date: 100 }]);
 	});
 
 	it("stores the widths a key leaves, as the release of a drag does", async () => {

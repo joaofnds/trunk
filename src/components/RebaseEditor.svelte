@@ -197,8 +197,10 @@ function startColumnResize(column: keyof RebaseColumnWidths, e: MouseEvent) {
 }
 
 function stepColumn(column: keyof RebaseColumnWidths, delta: number) {
-	resizeColumn(column, columnWidths[column] - delta);
-	setRebaseColumnWidths(columnWidths);
+	const before = columnWidths[column];
+	resizeColumn(column, before - delta);
+
+	if (columnWidths[column] !== before) setRebaseColumnWidths(columnWidths);
 }
 
 // --- Header context menu ---

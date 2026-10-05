@@ -2017,6 +2017,7 @@ describe("CommitGraph", () => {
 			await flush();
 			const graph = headerCell(container, "graph");
 			await drag(resizeHandle(container, "graph"), -500);
+			await drag(resizeHandle(container, "graph"), 40);
 
 			const handle = within(graph).getByRole("slider", {
 				name: "Resize Graph column",
@@ -2024,7 +2025,7 @@ describe("CommitGraph", () => {
 
 			expect(handle).toHaveAttribute(
 				"aria-valuenow",
-				`${LANE_WIDTH + 2 * COLUMN_PADDING_X}`,
+				`${LANE_WIDTH + 2 * COLUMN_PADDING_X + 40}`,
 			);
 			expect(handle).toHaveAttribute(
 				"aria-valuemin",
