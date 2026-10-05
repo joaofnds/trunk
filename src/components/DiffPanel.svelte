@@ -166,6 +166,7 @@ let dragMode: "add" | "remove" = "add";
 let dragAnchorIndex: number | null = null;
 let dragBaseSet: Set<number> | null = null;
 let dragHunkLines: DiffLine[] | null = null;
+let pressHeld = false;
 
 let collapsedFiles = $state<Set<string>>(new Set());
 
@@ -925,6 +926,7 @@ async function handleLineMouseDown(
 	// Suppress native text selection for the whole gesture — a drag crosses
 	// Context lines and gutters that are otherwise user-selectable.
 	e.preventDefault();
+	pressHeld = true;
 
 	// D-02: switching to a new range while an open composer holds a dirty draft
 	// prompts a discard confirmation. On cancel, keep selection and composer.
@@ -960,12 +962,15 @@ async function handleLineMouseDown(
 	}
 	dragAnchorIndex = lineIndex;
 	dragHunkLines = hunkLines;
-	document.addEventListener("mouseover", extendDrag);
+	// The discard prompt above can outlast the press. A release it swallowed
+	// leaves nothing to drag, and a listener added now would never come off.
+	if (pressHeld) document.addEventListener("mouseover", extendDrag);
 	lastClickedIndex = lineIndex;
 	applyDragRange(lineIndex);
 }
 
 function stopDrag() {
+	pressHeld = false;
 	document.removeEventListener("mouseover", extendDrag);
 }
 

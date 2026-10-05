@@ -2473,6 +2473,46 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		);
 	});
 
+	it("does not paint after a release that arrived while the discard prompt was open", async () => {
+		const { ask } = await import("@tauri-apps/plugin-dialog");
+		const askMock = vi.mocked(ask);
+		askMock.mockClear();
+		let answer: (discard: boolean) => void = () => {};
+		askMock.mockImplementation(
+			() => new Promise<boolean>((resolve) => (answer = resolve)),
+		);
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: nonMergeCommit,
+				onclose: vi.fn(),
+				diffKind: "commit",
+				repoPath: "/repo",
+			},
+		});
+		await flushPrefs();
+		await fireEvent.mouseDown(gutterOf("const x = 1;"));
+		await fireEvent.mouseUp(window);
+		await fireEvent.click(screen.getByRole("button", { name: /^Comment \(/ }));
+		await fireEvent.input(screen.getByRole("textbox"), {
+			target: { value: "unsaved note" },
+		});
+
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
+		await waitFor(() => expect(askMock).toHaveBeenCalledTimes(1));
+		await fireEvent.mouseUp(window);
+		answer(true);
+		await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
+		await tick();
+
+		const count = screen
+			.getByRole("button", { name: /^Comment \(/ })
+			.textContent?.match(/\((\d+)\)/)?.[1];
+		expect(count).toBe("2");
+		askMock.mockResolvedValue(false);
+	});
+
 	// Opening the composer establishes NOTHING. The draft row has no review
 	// foreign key, so autosave always has a home, and the review is created at
 	// SUBMIT — which is what makes a cancelled composer strand nothing
