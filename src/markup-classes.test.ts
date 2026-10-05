@@ -272,18 +272,47 @@ const components = files(root, ".svelte").map((file) => relative(root, file));
 /** The primitives live here; everything else draws a control through one of them. */
 const PRIMITIVES = "lib/ui/";
 
-/** A `<button>` written where a primitive should be. The primitive carries the
- *  frame, the sizes and the focus ring, and a control in scoped CSS passes
- *  every other guard while looking right (docs/design-system.md, Primitives). */
-function rawButtons(source: string): string[] {
+const CONTROL_ROLES = ["button", "tab"];
+
+/** A control written where a primitive should be: a `<button>`, an element a
+ *  `role` turns into a button or a tab, or a `<svelte:element>` that can render
+ *  a `<button>`. The primitive carries the frame, the sizes and the focus ring,
+ *  and a control in scoped CSS passes every other guard while looking right
+ *  (docs/design-system.md, Primitives). */
+function rawControls(source: string): string[] {
 	const ast = parse(source, { modern: true });
-	return descendants(ast.fragment, "RegularElement")
-		.filter(isElement)
-		.filter((element) => element.name === "button")
-		.map(
-			(element) =>
-				`<button> at line ${source.slice(0, element.start).split("\n").length}`,
-		);
+	const bindings = scope(ast.module, ast.instance);
+	const at = (element: AST.ElementLike) =>
+		`at line ${source.slice(0, element.start).split("\n").length}`;
+
+	const offences: [number, string][] = [];
+	for (const element of descendants(ast.fragment, "RegularElement")
+		.concat(descendants(ast.fragment, "SvelteElement"))
+		.filter(isElement)) {
+		if (element.type === "RegularElement" && element.name === "button") {
+			offences.push([element.start, `<button> ${at(element)}`]);
+		}
+		if (
+			element.type === "SvelteElement" &&
+			literals(element.tag, bindings)?.includes("button")
+		) {
+			offences.push([
+				element.start,
+				`<svelte:element this="button"> ${at(element)}`,
+			]);
+		}
+		for (const attribute of element.attributes) {
+			if (attribute.type !== "Attribute" || attribute.name !== "role") continue;
+			for (const role of words(attribute.value, bindings)) {
+				if (!CONTROL_ROLES.includes(role)) continue;
+				offences.push([
+					element.start,
+					`<${element.name} role="${role}"> ${at(element)}`,
+				]);
+			}
+		}
+	}
+	return offences.sort(([a], [b]) => a - b).map(([, offence]) => offence);
 }
 
 const STEP = /^text-(caption|small|callout|body|title|display)$/;
@@ -368,14 +397,41 @@ describe("markup classes", () => {
 
 	it("finds a raw <button> inside a block", () => {
 		expect(
-			rawButtons("<div>\n{#if open}\n<button>Go</button>\n{/if}\n</div>"),
+			rawControls("<div>\n{#if open}\n<button>Go</button>\n{/if}\n</div>"),
 		).toEqual(["<button> at line 3"]);
 	});
 
+	it.each([
+		['<div role="button">Go</div>', '<div role="button"> at line 1'],
+		['<div role="tab">Files</div>', '<div role="tab"> at line 1'],
+		[
+			"<span role={pressable ? 'button' : undefined}>Go</span>",
+			'<span role="button"> at line 1',
+		],
+		[
+			'<svelte:element this="button">Go</svelte:element>',
+			'<svelte:element this="button"> at line 1',
+		],
+		[
+			"<svelte:element this={href ? 'a' : 'button'}>Go</svelte:element>",
+			'<svelte:element this="button"> at line 1',
+		],
+	])("finds %s, a control drawn without a <button>", (markup, offence) => {
+		expect(rawControls(markup)).toEqual([offence]);
+	});
+
+	it("leaves an element whose role is no control's", () => {
+		expect(
+			rawControls(
+				'<div role="menu"></div>\n<div role={role}></div>\n<svelte:element this="div"></svelte:element>',
+			),
+		).toEqual([]);
+	});
+
 	it.each(components.filter((file) => !file.startsWith(PRIMITIVES)))(
-		"%s draws a button through a primitive from src/lib/ui, not a raw <button> (docs/design-system.md, Primitives)",
+		"%s draws a control through a primitive from src/lib/ui, not a raw <button>, a role or a <svelte:element> (docs/design-system.md, Primitives)",
 		(file) => {
-			expect(rawButtons(readFileSync(join(root, file), "utf8"))).toEqual([]);
+			expect(rawControls(readFileSync(join(root, file), "utf8"))).toEqual([]);
 		},
 	);
 });
