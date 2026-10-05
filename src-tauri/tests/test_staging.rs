@@ -261,6 +261,23 @@ fn discard_file_on_a_path_with_no_changes_reports_it_missing() {
 }
 
 #[test]
+fn discard_file_restores_the_staged_version_and_keeps_it_staged() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "committed\n")
+        .with_commit("Initial commit")
+        .build();
+    std::fs::write(ctx.repo_path().join("README.md"), "staged\n").unwrap();
+    ctx.stage_file("README.md").unwrap();
+    std::fs::write(ctx.repo_path().join("README.md"), "staged\nunstaged\n").unwrap();
+
+    ctx.discard_file("README.md").expect("discard_file failed");
+
+    let after = std::fs::read_to_string(ctx.repo_path().join("README.md")).unwrap();
+    assert_eq!(after, "staged\n");
+    assert_eq!(ctx.staged_content("README.md"), "staged\n");
+}
+
+#[test]
 fn discard_file_deletes_untracked_file() {
     let ctx = TestContext::builder()
         .with_file("README.md", "hello")
@@ -321,6 +338,46 @@ fn discard_all_deletes_nested_untracked_file() {
         !sub.join("untracked.txt").exists(),
         "expected nested/dir/untracked.txt to be deleted after discard_all"
     );
+}
+
+#[test]
+fn discard_all_restores_staged_versions_and_keeps_them_staged() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "committed\n")
+        .with_commit("Initial commit")
+        .build();
+    std::fs::write(ctx.repo_path().join("README.md"), "staged\n").unwrap();
+    ctx.stage_file("README.md").unwrap();
+    std::fs::write(ctx.repo_path().join("README.md"), "staged\nunstaged\n").unwrap();
+
+    ctx.discard_all().expect("discard_all failed");
+
+    let after = std::fs::read_to_string(ctx.repo_path().join("README.md")).unwrap();
+    assert_eq!(after, "staged\n");
+    assert_eq!(ctx.staged_content("README.md"), "staged\n");
+}
+
+#[test]
+fn discard_all_leaves_a_conflicted_file_as_it_is() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "feature content")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_file("file.txt", "main content")
+        .with_commit("Main commit")
+        .with_conflict("feature")
+        .build();
+    std::fs::write(ctx.repo_path().join("file.txt"), "half resolved").unwrap();
+
+    ctx.discard_all().expect("discard_all failed");
+
+    let conflicted = std::fs::read_to_string(ctx.repo_path().join("file.txt")).unwrap();
+    assert_eq!(conflicted, "half resolved");
+    assert!(ctx.repo().index().unwrap().has_conflicts());
 }
 
 #[test]

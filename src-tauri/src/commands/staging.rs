@@ -338,7 +338,14 @@ pub fn unstage_files_inner(
     Ok(())
 }
 
-/// Throw away one path's working-tree changes, deleting it when untracked.
+/// A working-tree change to a file the index already tracks.
+const TRACKED_WORKTREE_CHANGE: Status = Status::WT_MODIFIED
+    .union(Status::WT_DELETED)
+    .union(Status::WT_RENAMED)
+    .union(Status::WT_TYPECHANGE);
+
+/// Throw away one path's working-tree changes, keeping what is staged, and
+/// delete it when untracked.
 ///
 /// # Errors
 ///
@@ -380,16 +387,15 @@ pub fn discard_file_inner(
         std::fs::remove_file(&full_path).map_err(|e| {
             TrunkError::new("io_error", format!("Failed to delete {file_path}: {e}"))
         })?;
-    } else if status.intersects(
-        Status::WT_MODIFIED | Status::WT_DELETED | Status::WT_RENAMED | Status::WT_TYPECHANGE,
-    ) {
-        // Tracked file with working tree changes — checkout from HEAD
+    } else if status.intersects(TRACKED_WORKTREE_CHANGE) {
+        // From the index, not HEAD: a HEAD checkout resets the index entry too
+        // and throws away the part of the file the user staged.
         let mut checkout = git2::build::CheckoutBuilder::new();
         checkout
             .path(file_path)
             .disable_pathspec_match(true)
             .force();
-        repo.checkout_head(Some(&mut checkout))?;
+        repo.checkout_index(None, Some(&mut checkout))?;
     } else {
         return Err(not_in_working_tree());
     }
@@ -397,7 +403,8 @@ pub fn discard_file_inner(
     Ok(())
 }
 
-/// Throw away every working-tree change, deleting untracked files too.
+/// Throw away every working-tree change, keeping what is staged, and delete
+/// untracked files too.
 ///
 /// # Errors
 ///
@@ -423,10 +430,25 @@ pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkE
         .filter_map(|entry| entry.path().ok().map(|p| workdir.join(p)))
         .collect();
 
-    // Force checkout HEAD to restore all tracked modifications
-    let mut checkout = git2::build::CheckoutBuilder::new();
-    checkout.force();
-    repo.checkout_head(Some(&mut checkout))?;
+    // Naming the changed paths keeps a conflicted file's resolution in progress:
+    // a checkout of every path rewrites its conflict markers, and libgit2's
+    // skip_unmerged deletes it.
+    let changed_paths: Vec<String> = statuses
+        .iter()
+        .filter(|entry| entry.status().intersects(TRACKED_WORKTREE_CHANGE))
+        .filter_map(|entry| entry.path().ok().map(str::to_string))
+        .collect();
+
+    // An empty pathspec would check out every path.
+    if !changed_paths.is_empty() {
+        // From the index, not HEAD, so staged changes survive (see discard_file_inner).
+        let mut checkout = git2::build::CheckoutBuilder::new();
+        checkout.force().disable_pathspec_match(true);
+        for changed in &changed_paths {
+            checkout.path(changed);
+        }
+        repo.checkout_index(None, Some(&mut checkout))?;
+    }
 
     // Delete untracked files
     for file_path in &untracked_paths {
