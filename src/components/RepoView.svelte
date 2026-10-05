@@ -74,6 +74,7 @@ import type {
 	WipStats,
 	WorkingTreeStatus,
 } from "../lib/types.js";
+import Splitter from "../lib/ui/Splitter.svelte";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
 import BranchSidebar from "./BranchSidebar.svelte";
 import CommitDetail from "./CommitDetail.svelte";
@@ -163,6 +164,10 @@ let {
 	onleftpanewidthchange,
 	onrightpanewidthchange,
 }: Props = $props();
+const LEFT_PANE_MAX = 600;
+const RIGHT_PANE_MAX = 700;
+const leftPaneSize = $derived(leftPaneCollapsed ? 0 : leftPaneWidth);
+const rightPaneSize = $derived(rightPaneCollapsed ? 0 : rightPaneWidth);
 const scheduler = getScheduler();
 let repoViewActive = true;
 
@@ -2009,58 +2014,79 @@ async function handleRebaseStart(
 	}
 }
 
+function resizeLeftPane(width: number) {
+	if (width < 50) {
+		onleftpanecollapsedchange(true);
+		return;
+	}
+
+	onleftpanecollapsedchange(false);
+	onleftpanewidthchange(Math.min(LEFT_PANE_MAX, width));
+}
+
+function storeLeftPane() {
+	if (leftPaneCollapsed) {
+		setLeftPaneCollapsed(true);
+	} else {
+		setLeftPaneWidth(leftPaneWidth);
+		setLeftPaneCollapsed(false);
+	}
+}
+
 function startLeftResize(e: MouseEvent) {
 	e.preventDefault();
 	const startX = e.clientX;
-	const startWidth = leftPaneCollapsed ? 0 : leftPaneWidth;
+	const startWidth = leftPaneSize;
 
 	function onMouseMove(ev: MouseEvent) {
-		const newWidth = Math.max(0, startWidth + ev.clientX - startX);
-		if (newWidth < 50) {
-			onleftpanecollapsedchange(true);
-		} else {
-			onleftpanecollapsedchange(false);
-			onleftpanewidthchange(Math.min(600, newWidth));
-		}
+		resizeLeftPane(Math.max(0, startWidth + ev.clientX - startX));
 	}
 
 	function onMouseUp() {
-		if (leftPaneCollapsed) {
-			setLeftPaneCollapsed(true);
-		} else {
-			setLeftPaneWidth(leftPaneWidth);
-			setLeftPaneCollapsed(false);
-		}
+		storeLeftPane();
 		window.removeEventListener("mousemove", onMouseMove);
 		window.removeEventListener("mouseup", onMouseUp);
 	}
 
 	window.addEventListener("mousemove", onMouseMove);
 	window.addEventListener("mouseup", onMouseUp);
+}
+
+function stepLeftPane(delta: number) {
+	resizeLeftPane(Math.max(0, leftPaneSize + delta));
+	storeLeftPane();
+}
+
+function resizeRightPane(width: number) {
+	if (width < 50) {
+		onrightpanecollapsedchange(true);
+		return;
+	}
+
+	onrightpanecollapsedchange(false);
+	onrightpanewidthchange(Math.min(RIGHT_PANE_MAX, width));
+}
+
+function storeRightPane() {
+	if (rightPaneCollapsed) {
+		setRightPaneCollapsed(true);
+	} else {
+		setRightPaneWidth(rightPaneWidth);
+		setRightPaneCollapsed(false);
+	}
 }
 
 function startRightResize(e: MouseEvent) {
 	e.preventDefault();
 	const startX = e.clientX;
-	const startWidth = rightPaneCollapsed ? 0 : rightPaneWidth;
+	const startWidth = rightPaneSize;
 
 	function onMouseMove(ev: MouseEvent) {
-		const newWidth = Math.max(0, startWidth - (ev.clientX - startX));
-		if (newWidth < 50) {
-			onrightpanecollapsedchange(true);
-		} else {
-			onrightpanecollapsedchange(false);
-			onrightpanewidthchange(Math.min(700, newWidth));
-		}
+		resizeRightPane(Math.max(0, startWidth - (ev.clientX - startX)));
 	}
 
 	function onMouseUp() {
-		if (rightPaneCollapsed) {
-			setRightPaneCollapsed(true);
-		} else {
-			setRightPaneWidth(rightPaneWidth);
-			setRightPaneCollapsed(false);
-		}
+		storeRightPane();
 		window.removeEventListener("mousemove", onMouseMove);
 		window.removeEventListener("mouseup", onMouseUp);
 	}
@@ -2068,32 +2094,12 @@ function startRightResize(e: MouseEvent) {
 	window.addEventListener("mousemove", onMouseMove);
 	window.addEventListener("mouseup", onMouseUp);
 }
-</script>
 
-<style>
-.pane-divider {
-	width: 4px;
-	flex-shrink: 0;
-	cursor: col-resize;
-	background: linear-gradient(
-		to right,
-		transparent 1.5px,
-		var(--color-border-strong) 1.5px,
-		var(--color-border-strong) 2.5px,
-		transparent 2.5px
-	);
-	transition: background 0.15s;
+function stepRightPane(delta: number) {
+	resizeRightPane(Math.max(0, rightPaneSize - delta));
+	storeRightPane();
 }
-.pane-divider:hover {
-	background: linear-gradient(
-		to right,
-		transparent 1px,
-		var(--color-accent) 1px,
-		var(--color-accent) 3px,
-		transparent 3px
-	);
-}
-</style>
+</script>
 
 <div class="flex-1 overflow-hidden flex flex-col">
 	<PushRecoveryPrompt {repoPath} {remoteState} {refreshSignal} />
@@ -2145,8 +2151,15 @@ function startRightResize(e: MouseEvent) {
 					/>
 				{/if}
 			</div>
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="pane-divider" onmousedown={startRightResize}></div>
+			<Splitter
+				variant="pane"
+				aria-label="Resize detail pane"
+				value={rightPaneSize}
+				min={0}
+				max={RIGHT_PANE_MAX}
+				onstep={stepRightPane}
+				onmousedown={startRightResize}
+			/>
 			<div
 				class="shrink-0 overflow-hidden flex flex-col"
 				style:width="{rightPaneCollapsed ? 0 : rightPaneWidth}px"
@@ -2198,12 +2211,16 @@ function startRightResize(e: MouseEvent) {
 					onopenmessageeditor={handleOpenMessageEditor}
 				/>
 			</div>
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div
-				class="pane-divider"
-				style:display={leftPaneCollapsed ? 'none' : 'block'}
+			<Splitter
+				variant="pane"
+				aria-label="Resize sidebar"
+				value={leftPaneSize}
+				min={0}
+				max={LEFT_PANE_MAX}
+				hidden={leftPaneCollapsed}
+				onstep={stepLeftPane}
 				onmousedown={startLeftResize}
-			></div>
+			/>
 			<div class="flex-1 overflow-hidden">
 				{#if reviewSession.state.reviewActive && !(reviewSession.state.rightPaneMode === 'diff' && showDiff)}
 					<!-- Review panel claims the center pane (UI-SPEC:133). When the user selects a
@@ -2317,12 +2334,16 @@ function startRightResize(e: MouseEvent) {
 					/>
 				{/if}
 			</div>
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div
-				class="pane-divider"
-				style:display={rightPaneCollapsed ? 'none' : 'block'}
+			<Splitter
+				variant="pane"
+				aria-label="Resize detail pane"
+				value={rightPaneSize}
+				min={0}
+				max={RIGHT_PANE_MAX}
+				hidden={rightPaneCollapsed}
+				onstep={stepRightPane}
 				onmousedown={startRightResize}
-			></div>
+			/>
 			<div
 				class="shrink-0 overflow-hidden flex flex-col"
 				style:width="{rightPaneCollapsed ? 0 : rightPaneWidth}px"

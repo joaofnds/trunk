@@ -110,6 +110,7 @@ import type {
 	WipStats,
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import Splitter from "../lib/ui/Splitter.svelte";
 import { withWipRow } from "../lib/wip-row.js";
 import CommitRow from "./CommitRow.svelte";
 import InputDialog from "./InputDialog.svelte";
@@ -673,6 +674,18 @@ async function loadStashMap() {
 
 const stashMapRefresh = createCoalescedTask(scheduler, loadStashMap);
 
+function resizeColumn(column: keyof ColumnWidths, requested: number) {
+	const width = Math.max(floors[column], requested);
+	if (width === columnWidths[column]) return false;
+
+	if (!userSizedColumns.has(column))
+		userSizedColumns = new Set([...userSizedColumns, column]);
+	columnsSizedSinceMount.add(column);
+	columnWidths = { ...columnWidths, [column]: width };
+
+	return true;
+}
+
 function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
 	e.preventDefault();
 	const startX = e.clientX;
@@ -680,15 +693,7 @@ function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
 	let moved = false;
 
 	function onMouseMove(ev: MouseEvent) {
-		const width = Math.max(floors[column], startWidth + ev.clientX - startX);
-		if (width === columnWidths[column]) return;
-
-		if (!moved) {
-			userSizedColumns = new Set([...userSizedColumns, column]);
-			columnsSizedSinceMount.add(column);
-		}
-		moved = true;
-		columnWidths = { ...columnWidths, [column]: width };
+		if (resizeColumn(column, startWidth + ev.clientX - startX)) moved = true;
 	}
 
 	function onMouseUp() {
@@ -701,6 +706,10 @@ function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
 
 	window.addEventListener("mousemove", onMouseMove);
 	window.addEventListener("mouseup", onMouseUp);
+}
+
+function stepColumn(column: keyof ColumnWidths, delta: number) {
+	if (resizeColumn(column, columnWidths[column] + delta)) storeUserWidths();
 }
 
 function storeUserWidths() {
@@ -2106,13 +2115,16 @@ $effect(() => {
 							{:else}
 								<col.icon size={HEADER_ICON_WIDTH} aria-hidden="true" />
 							{/if}
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							{#if col.key !== lastVisibleColumn}
-								<div
-									class="col-resize-handle"
+								<Splitter
+									variant="column"
+									aria-label="Resize {col.label} column"
+									value={width}
+									min={floors[col.key]}
+									onstep={(delta) => stepColumn(col.key, delta)}
 									onmousedown={(e) => startColumnResize(col.key, e)}
 									ondblclick={() => refitColumn(col.key)}
-								></div>
+								/>
 							{/if}
 						</div>
 					{:else}
@@ -2657,31 +2669,6 @@ $effect(() => {
 {/if}
 
 <style>
-.col-resize-handle {
-	position: absolute;
-	right: 0;
-	top: 0;
-	bottom: 0;
-	width: 4px;
-	cursor: col-resize;
-	background: linear-gradient(
-		to right,
-		transparent 1.5px,
-		var(--color-border) 1.5px,
-		var(--color-border) 2.5px,
-		transparent 2.5px
-	);
-	transition: background 0.15s;
-}
-.col-resize-handle:hover {
-	background: linear-gradient(
-		to right,
-		transparent 1px,
-		var(--color-accent) 1px,
-		var(--color-accent) 3px,
-		transparent 3px
-	);
-}
 /* Each sized column is one width, set on the list root and read here by the
    header cell and the row cell alike, so neither can keep a width of its own. */
 [role="listbox"] :global([data-column="ref"]) {

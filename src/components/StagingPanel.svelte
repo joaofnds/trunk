@@ -28,6 +28,7 @@ import type {
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
+import Splitter from "../lib/ui/Splitter.svelte";
 import CommitForm from "./CommitForm.svelte";
 import FileRow from "./FileRow.svelte";
 import OperationBanner from "./OperationBanner.svelte";
@@ -765,7 +766,13 @@ async function skipRebase() {
 }
 
 // --- Bottom form resize ---
+const BOTTOM_MIN = 100;
+const BOTTOM_MAX = 500;
 let bottomHeight = $state(180);
+
+function resizeBottom(height: number) {
+	bottomHeight = Math.max(BOTTOM_MIN, Math.min(BOTTOM_MAX, height));
+}
 
 function startBottomResize(e: MouseEvent) {
 	e.preventDefault();
@@ -773,8 +780,7 @@ function startBottomResize(e: MouseEvent) {
 	const startHeight = bottomHeight;
 
 	function onMouseMove(ev: MouseEvent) {
-		const delta = startY - ev.clientY;
-		bottomHeight = Math.max(100, Math.min(500, startHeight + delta));
+		resizeBottom(startHeight + startY - ev.clientY);
 	}
 
 	function onMouseUp() {
@@ -1141,14 +1147,16 @@ $effect(() => {
 		{/if}
 	</div>
 
-	<!-- Draggable divider above bottom area -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		onmousedown={startBottomResize}
-		class="shrink-0 bottom-resize-handle"
-	></div>
-
 	{#if isRebase && operationInfo}
+		<Splitter
+			variant="bar"
+			aria-label="Resize rebase form"
+			value={bottomHeight}
+			min={BOTTOM_MIN}
+			max={BOTTOM_MAX}
+			onstep={(delta) => resizeBottom(bottomHeight - delta)}
+			onmousedown={startBottomResize}
+		/>
 		<!-- Rebase progress + actions (GitKraken style) -->
 		<div
 			class="p-2 flex flex-col gap-2 shrink-0 overflow-hidden"
@@ -1202,6 +1210,7 @@ $effect(() => {
 			</div>
 		</div>
 	{:else if isMerge}
+		<Splitter variant="bar" fixed />
 		<!-- Merge-continue actions. The commit message is edited in the host-owned
          MessageEditor modal (runMergeContinue), not an inline form. -->
 		<div class="grid shrink-0 grid-cols-5 gap-2 p-2">
@@ -1227,6 +1236,7 @@ $effect(() => {
 			</div>
 		</div>
 	{:else}
+		<Splitter variant="bar" fixed />
 		<!-- CommitForm — normal mode -->
 		<CommitForm
 			{repoPath}
@@ -1249,20 +1259,6 @@ $effect(() => {
 	box-shadow: inset 0 0 0 1px
 		color-mix(in oklch, var(--lane-0) 50%, transparent);
 	color: var(--lane-0);
-}
-
-/* Hides its own height behind a 1px rule, so the grab area is wider than the line it draws */
-.bottom-resize-handle {
-	height: 4px;
-	cursor: row-resize;
-	background: linear-gradient(
-		to bottom,
-		transparent 1px,
-		var(--color-border) 1px,
-		var(--color-border) 2px,
-		transparent 2px
-	);
-	transition: background 0.15s;
 }
 
 /* A section left open on its own stops short of the other section's collapsed bar */

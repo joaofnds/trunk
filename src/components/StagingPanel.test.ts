@@ -457,3 +457,101 @@ describe("StagingPanel merge-continue", () => {
 		expect(await screen.findByText("Abort Merge")).toBeInTheDocument();
 	});
 });
+
+describe("StagingPanel rebase form", () => {
+	beforeEach(() => {
+		mockInvoke.mockReset();
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "get_status")
+				return Promise.resolve({ unstaged: [], staged: [], conflicted: [] });
+			if (cmd === "get_operation_state")
+				return Promise.resolve({
+					op_type: "Rebase",
+					source_branch: "feature",
+					target_branch: "main",
+					progress: "2/5",
+					source_color_index: 1,
+					target_color_index: 0,
+					rebase_message: "reword the parser",
+				});
+			return Promise.resolve(undefined);
+		});
+	});
+
+	async function renderRebaseForm() {
+		render(StagingPanel, { props: { repoPath: "/repo" } });
+		const progress = await screen.findByText("Rebasing commit 2 out of 5");
+		const form = progress.parentElement;
+		if (!form) throw new Error("expected the progress line inside the form");
+
+		return {
+			form,
+			handle: screen.getByRole("slider", { name: "Resize rebase form" }),
+		};
+	}
+
+	async function press(handle: HTMLElement, key: string, times: number) {
+		for (let count = 0; count < times; count++) {
+			await fireEvent.keyDown(handle, { key });
+		}
+	}
+
+	it("offers no handle while there is no rebase form to resize", async () => {
+		mockInvoke.mockImplementation((cmd: string) =>
+			Promise.resolve(
+				cmd === "get_status"
+					? { unstaged: [], staged: [], conflicted: [] }
+					: undefined,
+			),
+		);
+
+		const { container } = render(StagingPanel, {
+			props: { repoPath: "/repo" },
+		});
+		await screen.findByText("Staged Files");
+
+		expect(screen.queryByRole("slider")).toBeNull();
+		expect(container.querySelector(".splitter-bar")).not.toBeNull();
+	});
+
+	it("grows by a step when the handle above it takes ArrowUp", async () => {
+		const { form, handle } = await renderRebaseForm();
+
+		await press(handle, "ArrowUp", 1);
+
+		expect(form.style.height).toBe("188px");
+		expect(handle).toHaveAttribute("aria-valuenow", "188");
+	});
+
+	it("shrinks by a step when the handle takes ArrowDown", async () => {
+		const { form, handle } = await renderRebaseForm();
+
+		await press(handle, "ArrowDown", 1);
+
+		expect(form.style.height).toBe("172px");
+	});
+
+	it.each([
+		{ key: "ArrowUp", limit: "tallest", height: "500px" },
+		{ key: "ArrowDown", limit: "shortest", height: "100px" },
+	])(
+		"stops at the $limit height a drag stops it at",
+		async ({ key, height }) => {
+			const { form, handle } = await renderRebaseForm();
+
+			await press(handle, key, 41);
+
+			expect(form.style.height).toBe(height);
+		},
+	);
+
+	it("follows a drag of the handle through the same limits", async () => {
+		const { form, handle } = await renderRebaseForm();
+
+		await fireEvent.mouseDown(handle, { clientY: 400 });
+		await fireEvent.mouseMove(window, { clientY: 360 });
+		await fireEvent.mouseUp(window);
+
+		expect(form.style.height).toBe("220px");
+	});
+});

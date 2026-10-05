@@ -1,5 +1,11 @@
 import { CheckMenuItem, MenuItem } from "@tauri-apps/api/menu";
-import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import {
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
@@ -1038,7 +1044,7 @@ describe("CommitGraph", () => {
 
 			await fireEvent.dblClick(
 				container.querySelector(
-					"[data-testid=column-header] > [data-column=graph] .col-resize-handle",
+					"[data-testid=column-header] > [data-column=graph] [role=slider]",
 				) as Element,
 			);
 			await flush();
@@ -1621,7 +1627,7 @@ describe("CommitGraph", () => {
 
 		function resizeHandle(container: HTMLElement, column: string): Element {
 			return headerCell(container, column).querySelector(
-				".col-resize-handle",
+				"[role=slider]",
 			) as Element;
 		}
 
@@ -1950,9 +1956,81 @@ describe("CommitGraph", () => {
 			const author = headerCell(container, "author");
 			const before = Number.parseFloat(renderedWidth(author));
 
-			await drag(author.querySelector(".col-resize-handle") as Element, 60);
+			await drag(author.querySelector("[role=slider]") as Element, 60);
 
 			expect(renderedWidth(author)).toBe(`${before + 60}px`);
+		});
+
+		it.each([
+			{ key: "ArrowRight", step: 8 },
+			{ key: "ArrowLeft", step: -8 },
+		])(
+			"moves the column's edge a step the way $key points",
+			async ({ key, step }) => {
+				const { container } = mountHeader();
+				await flush();
+				const author = headerCell(container, "author");
+				const before = Number.parseFloat(renderedWidth(author));
+				await drag(resizeHandle(container, "author"), 60);
+
+				await fireEvent.keyDown(resizeHandle(container, "author"), { key });
+
+				expect(renderedWidth(author)).toBe(`${before + 60 + step}px`);
+			},
+		);
+
+		it("stops a key at the floor a drag stops the column at", async () => {
+			const { container } = mountHeader();
+			await flush();
+			const graph = headerCell(container, "graph");
+			await drag(resizeHandle(container, "graph"), -500);
+
+			await fireEvent.keyDown(resizeHandle(container, "graph"), {
+				key: "ArrowLeft",
+			});
+
+			expect(renderedWidth(graph)).toBe(
+				`${LANE_WIDTH + 2 * COLUMN_PADDING_X}px`,
+			);
+		});
+
+		it("keeps the width a key set, as it keeps a dragged one", async () => {
+			const prefs = new Map<string, unknown>();
+			const { container } = mountWithPrefs(prefs);
+			await flush();
+			const before = Number.parseFloat(
+				renderedWidth(headerCell(container, "author")),
+			);
+
+			await fireEvent.keyDown(resizeHandle(container, "author"), {
+				key: "ArrowRight",
+			});
+			await flush();
+
+			expect(prefs.get("column_user_widths:/test/repo")).toEqual({
+				author: before + 8,
+			});
+		});
+
+		it("names each handle for the column it resizes and states its width and floor", async () => {
+			const { container } = mountHeader();
+			await flush();
+			const graph = headerCell(container, "graph");
+			await drag(resizeHandle(container, "graph"), -500);
+
+			const handle = within(graph).getByRole("slider", {
+				name: "Resize Graph column",
+			});
+
+			expect(handle).toHaveAttribute(
+				"aria-valuenow",
+				`${LANE_WIDTH + 2 * COLUMN_PADDING_X}`,
+			);
+			expect(handle).toHaveAttribute(
+				"aria-valuemin",
+				`${LANE_WIDTH + 2 * COLUMN_PADDING_X}`,
+			);
+			expect(handle).not.toHaveAttribute("aria-valuemax");
 		});
 
 		it("widens the column when its edge is dragged right", async () => {
@@ -1960,7 +2038,7 @@ describe("CommitGraph", () => {
 			await flush();
 			const date = headerCell(container, "date");
 
-			await drag(date.querySelector(".col-resize-handle") as Element, 50);
+			await drag(date.querySelector("[role=slider]") as Element, 50);
 
 			expect(Number.parseInt(renderedWidth(date), 10)).toBeGreaterThan(40);
 		});
@@ -1974,7 +2052,7 @@ describe("CommitGraph", () => {
 				const author = headerCell(container, "author");
 				const before = renderedWidth(author);
 
-				await drag(author.querySelector(".col-resize-handle") as Element, 40);
+				await drag(author.querySelector("[role=slider]") as Element, 40);
 
 				expect(renderedWidth(author)).not.toBe(before);
 			});
@@ -1990,7 +2068,7 @@ describe("CommitGraph", () => {
 				const cell = headerCell(container, column);
 				const before = Number.parseFloat(renderedWidth(cell));
 
-				await drag(cell.querySelector(".col-resize-handle") as Element, 500);
+				await drag(cell.querySelector("[role=slider]") as Element, 500);
 
 				expect(renderedWidth(cell)).toBe(`${before + 500}px`);
 			},
@@ -2001,7 +2079,7 @@ describe("CommitGraph", () => {
 			await flush();
 			const graph = headerCell(container, "graph");
 
-			await drag(graph.querySelector(".col-resize-handle") as Element, -500);
+			await drag(graph.querySelector("[role=slider]") as Element, -500);
 
 			expect(renderedWidth(graph)).toBe(
 				`${LANE_WIDTH + 2 * COLUMN_PADDING_X}px`,
@@ -2021,7 +2099,7 @@ describe("CommitGraph", () => {
 			await flush();
 			const author = headerCell(container, "author");
 
-			await drag(author.querySelector(".col-resize-handle") as Element, -500);
+			await drag(author.querySelector("[role=slider]") as Element, -500);
 
 			expect(author.textContent).not.toContain("Author");
 			expect(author.querySelector("svg")).not.toBeNull();
@@ -2032,7 +2110,7 @@ describe("CommitGraph", () => {
 			await flush();
 			const author = headerCell(container, "author");
 
-			await drag(author.querySelector(".col-resize-handle") as Element, -500);
+			await drag(author.querySelector("[role=slider]") as Element, -500);
 
 			expect(author.getAttribute("title")).toBe("Author");
 		});

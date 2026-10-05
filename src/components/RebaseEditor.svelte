@@ -22,6 +22,7 @@ import { measureTextWidth } from "../lib/text-measure.js";
 import type { RebaseTodoItem } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
+import Splitter from "../lib/ui/Splitter.svelte";
 
 type RebaseAction = "pick" | "squash" | "reword" | "drop";
 
@@ -161,32 +162,28 @@ const headerMinSha = measureTextWidth("SHA", HEADER_FONT) + HEADER_PAD;
 const headerMinAuthor = measureTextWidth("Author", HEADER_FONT) + HEADER_PAD;
 const headerMinDate = measureTextWidth("Date", HEADER_FONT) + HEADER_PAD;
 
-function startColumnResize(
-	column: keyof RebaseColumnWidths,
-	e: MouseEvent,
-	invert = false,
-) {
+const MIN_WIDTHS: RebaseColumnWidths = {
+	sha: headerMinSha,
+	author: headerMinAuthor,
+	date: headerMinDate,
+};
+const MAX_WIDTHS: RebaseColumnWidths = { sha: 120, author: 400, date: 400 };
+
+function resizeColumn(column: keyof RebaseColumnWidths, width: number) {
+	const clamped = Math.max(
+		MIN_WIDTHS[column],
+		Math.min(MAX_WIDTHS[column], width),
+	);
+	columnWidths = { ...columnWidths, [column]: clamped };
+}
+
+function startColumnResize(column: keyof RebaseColumnWidths, e: MouseEvent) {
 	e.preventDefault();
 	const startX = e.clientX;
 	const startWidth = columnWidths[column];
-	const minWidths: Record<keyof RebaseColumnWidths, number> = {
-		sha: headerMinSha,
-		author: headerMinAuthor,
-		date: headerMinDate,
-	};
-	const maxWidths: Record<keyof RebaseColumnWidths, number> = {
-		sha: 120,
-		author: 400,
-		date: 400,
-	};
 
 	function onMouseMove(ev: MouseEvent) {
-		const delta = (ev.clientX - startX) * (invert ? -1 : 1);
-		const newWidth = Math.max(
-			minWidths[column],
-			Math.min(maxWidths[column], startWidth + delta),
-		);
-		columnWidths = { ...columnWidths, [column]: newWidth };
+		resizeColumn(column, startWidth - (ev.clientX - startX));
 	}
 
 	function onMouseUp() {
@@ -197,6 +194,11 @@ function startColumnResize(
 
 	window.addEventListener("mousemove", onMouseMove);
 	window.addEventListener("mouseup", onMouseUp);
+}
+
+function stepColumn(column: keyof RebaseColumnWidths, delta: number) {
+	resizeColumn(column, columnWidths[column] - delta);
+	setRebaseColumnWidths(columnWidths);
 }
 
 // --- Header context menu ---
@@ -504,6 +506,18 @@ let lastVisibleColumn = $derived.by(() => {
 	oncontextmenu={openMenuIfOnHeader}
 />
 
+{#snippet edgeBefore(column: keyof RebaseColumnWidths, label: string)}
+	<Splitter
+		variant="column"
+		aria-label="Resize {label} column"
+		value={columnWidths[column]}
+		min={MIN_WIDTHS[column]}
+		max={MAX_WIDTHS[column]}
+		onstep={(delta) => stepColumn(column, delta)}
+		onmousedown={(e) => startColumnResize(column, e)}
+	/>
+{/snippet}
+
 <div
 	class="rebase-editor"
 	tabindex="-1"
@@ -535,11 +549,7 @@ let lastVisibleColumn = $derived.by(() => {
 		<div class="flex-1 relative" style:padding="0 {COLUMN_PADDING_X}px">
 			Message
 			{#if 'message' !== lastVisibleColumn}
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div
-					class="col-resize-handle"
-					onmousedown={(e) => startColumnResize('sha', e, true)}
-				></div>
+				{@render edgeBefore('sha', 'SHA')}
 			{/if}
 		</div>
 		{#if columnVisibility.sha}
@@ -550,11 +560,7 @@ let lastVisibleColumn = $derived.by(() => {
 			>
 				SHA
 				{#if 'sha' !== lastVisibleColumn}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div
-						class="col-resize-handle"
-						onmousedown={(e) => startColumnResize('author', e, true)}
-					></div>
+					{@render edgeBefore('author', 'Author')}
 				{/if}
 			</div>
 		{/if}
@@ -566,11 +572,7 @@ let lastVisibleColumn = $derived.by(() => {
 			>
 				Author
 				{#if 'author' !== lastVisibleColumn}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div
-						class="col-resize-handle"
-						onmousedown={(e) => startColumnResize('date', e, true)}
-					></div>
+					{@render edgeBefore('date', 'Date')}
 				{/if}
 			</div>
 		{/if}
@@ -581,13 +583,6 @@ let lastVisibleColumn = $derived.by(() => {
 				style:padding="0 {COLUMN_PADDING_X}px"
 			>
 				Date
-				{#if 'date' !== lastVisibleColumn}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div
-						class="col-resize-handle"
-						onmousedown={(e) => startColumnResize('date', e)}
-					></div>
-				{/if}
 			</div>
 		{/if}
 	</div>
@@ -898,33 +893,6 @@ let lastVisibleColumn = $derived.by(() => {
 
 .rebase-col-action {
 	flex-shrink: 0;
-}
-
-.col-resize-handle {
-	position: absolute;
-	right: 0;
-	top: 0;
-	bottom: 0;
-	width: 4px;
-	cursor: col-resize;
-	background: linear-gradient(
-		to right,
-		transparent 1.5px,
-		var(--color-border) 1.5px,
-		var(--color-border) 2.5px,
-		transparent 2.5px
-	);
-	transition: background 0.15s;
-}
-
-.col-resize-handle:hover {
-	background: linear-gradient(
-		to right,
-		transparent 1px,
-		var(--color-accent) 1px,
-		var(--color-accent) 3px,
-		transparent 3px
-	);
 }
 
 /* --- Commit list --- */

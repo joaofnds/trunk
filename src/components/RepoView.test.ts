@@ -330,6 +330,126 @@ describe("RepoView", () => {
 		expect((leftPane as HTMLElement).style.width).toBe("0px");
 	});
 
+	function renderWithPanes(panes: {
+		leftPaneWidth?: number;
+		rightPaneWidth?: number;
+		leftPaneCollapsed?: boolean;
+	}) {
+		const changes: string[] = [];
+		render(RepoView, {
+			props: {
+				...baseProps(createMockRemoteState()),
+				...panes,
+				onleftpanewidthchange: (width) => changes.push(`left width ${width}`),
+				onrightpanewidthchange: (width) => changes.push(`right width ${width}`),
+				onleftpanecollapsedchange: (collapsed) =>
+					changes.push(`left collapsed ${collapsed}`),
+				onrightpanecollapsedchange: (collapsed) =>
+					changes.push(`right collapsed ${collapsed}`),
+			},
+		});
+
+		return changes;
+	}
+
+	it("widens the sidebar by a step when its divider takes ArrowRight", async () => {
+		const changes = renderWithPanes({ leftPaneWidth: 200 });
+
+		await fireEvent.keyDown(
+			screen.getByRole("slider", { name: "Resize sidebar" }),
+			{ key: "ArrowRight" },
+		);
+
+		expect(changes).toEqual(["left collapsed false", "left width 208"]);
+	});
+
+	it("narrows the detail pane by a step when its divider takes ArrowRight", async () => {
+		const changes = renderWithPanes({ rightPaneWidth: 300 });
+
+		await fireEvent.keyDown(
+			screen.getByRole("slider", { name: "Resize detail pane" }),
+			{ key: "ArrowRight" },
+		);
+
+		expect(changes).toEqual(["right collapsed false", "right width 292"]);
+	});
+
+	it.each([
+		{ pane: "sidebar", key: "ArrowRight", widest: "left width 600" },
+		{ pane: "detail pane", key: "ArrowLeft", widest: "right width 700" },
+	])(
+		"stops the $pane at the width a drag stops it at",
+		async ({ pane, key, widest }) => {
+			const changes = renderWithPanes({
+				leftPaneWidth: 596,
+				rightPaneWidth: 696,
+			});
+
+			await fireEvent.keyDown(
+				screen.getByRole("slider", { name: `Resize ${pane}` }),
+				{ key },
+			);
+
+			expect(changes).toContain(widest);
+		},
+	);
+
+	it.each([
+		{ pane: "sidebar", key: "ArrowLeft", collapsed: "left collapsed true" },
+		{
+			pane: "detail pane",
+			key: "ArrowRight",
+			collapsed: "right collapsed true",
+		},
+	])(
+		"collapses the $pane when a step takes it under the width a drag collapses it at",
+		async ({ pane, key, collapsed }) => {
+			const changes = renderWithPanes({
+				leftPaneWidth: 56,
+				rightPaneWidth: 56,
+			});
+
+			await fireEvent.keyDown(
+				screen.getByRole("slider", { name: `Resize ${pane}` }),
+				{ key },
+			);
+
+			expect(changes).toEqual([collapsed]);
+		},
+	);
+
+	it("stores the pane a key resized, as the release of a drag does", async () => {
+		renderWithPanes({ leftPaneWidth: 200 });
+
+		await fireEvent.keyDown(
+			screen.getByRole("slider", { name: "Resize sidebar" }),
+			{ key: "ArrowRight" },
+		);
+
+		expect(mockInvoke).toHaveBeenCalledWith("prefs_set", {
+			key: "left_pane_collapsed",
+			value: false,
+		});
+	});
+
+	it("tells assistive tech each pane's width and the widths it moves between", () => {
+		renderWithPanes({ leftPaneWidth: 200, rightPaneWidth: 300 });
+
+		const sidebar = screen.getByRole("slider", { name: "Resize sidebar" });
+		const detail = screen.getByRole("slider", { name: "Resize detail pane" });
+
+		expect(sidebar).toHaveAttribute("aria-valuenow", "200");
+		expect(sidebar).toHaveAttribute("aria-valuemax", "600");
+		expect(detail).toHaveAttribute("aria-valuenow", "300");
+		expect(detail).toHaveAttribute("aria-valuemax", "700");
+	});
+
+	it("takes the divider of a collapsed sidebar out of the Tab order", () => {
+		renderWithPanes({ leftPaneCollapsed: true });
+
+		expect(screen.queryByRole("slider", { name: "Resize sidebar" })).toBeNull();
+	});
+
 	function baseProps(remoteState: RemoteState) {
 		return {
 			repoPath: "/test/repo",

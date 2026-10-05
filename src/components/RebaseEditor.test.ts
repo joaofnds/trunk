@@ -161,6 +161,73 @@ describe("RebaseEditor", () => {
 		await tick();
 	}
 
+	async function renderColumns() {
+		renderEditor();
+		await settled();
+
+		return (column: string) =>
+			screen.getByRole("slider", { name: `Resize ${column} column` });
+	}
+
+	async function press(handle: HTMLElement, key: string, times: number) {
+		for (let count = 0; count < times; count++) {
+			await fireEvent.keyDown(handle, { key });
+		}
+	}
+
+	it.each([
+		{ key: "ArrowLeft", width: "128" },
+		{ key: "ArrowRight", width: "112" },
+	])(
+		"moves the edge before the Author column a step the way $key points",
+		async ({ key, width }) => {
+			const handle = await renderColumns();
+
+			await press(handle("Author"), key, 1);
+
+			expect(handle("Author")).toHaveAttribute("aria-valuenow", width);
+		},
+	);
+
+	it("stops a key at the widest a drag makes the column", async () => {
+		const handle = await renderColumns();
+
+		await press(handle("SHA"), "ArrowLeft", 6);
+
+		expect(handle("SHA")).toHaveAttribute("aria-valuenow", "120");
+		expect(handle("SHA")).toHaveAttribute("aria-valuemax", "120");
+	});
+
+	it("stops a key at the narrowest a drag makes the column", async () => {
+		const handle = await renderColumns();
+		const narrowest = handle("Date").getAttribute("aria-valuemin");
+
+		await press(handle("Date"), "ArrowRight", 13);
+
+		expect(handle("Date")).toHaveAttribute("aria-valuenow", narrowest);
+	});
+
+	it("stores the widths a key leaves, as the release of a drag does", async () => {
+		const handle = await renderColumns();
+
+		await press(handle("Author"), "ArrowRight", 1);
+
+		expect(mockInvoke).toHaveBeenCalledWith("prefs_set", {
+			key: "rebase_column_widths",
+			value: { sha: 80, author: 112, date: 100 },
+		});
+	});
+
+	it("follows a drag of the edge before a column", async () => {
+		const handle = await renderColumns();
+
+		await fireEvent.mouseDown(handle("Author"), { clientX: 500 });
+		await fireEvent.mouseMove(window, { clientX: 480 });
+		await fireEvent.mouseUp(window);
+
+		expect(handle("Author")).toHaveAttribute("aria-valuenow", "140");
+	});
+
 	function planRow(container: HTMLElement, index: number): Element {
 		const row = container.querySelector(`[data-rebase-row="${index}"]`);
 		if (!row) throw new Error(`the plan has no row ${index}`);
