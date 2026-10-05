@@ -8,11 +8,14 @@ const label = createRawSnippet(() => ({
 }));
 
 describe("ListOption", () => {
-	it("is an option that submits nothing", () => {
-		render(ListOption, { props: { children: label } });
+	it.each(["option", "menuitem"] as const)(
+		"submits nothing as a %s",
+		(role) => {
+			render(ListOption, { props: { role, children: label } });
 
-		expect(screen.getByRole("option")).toHaveAttribute("type", "button");
-	});
+			expect(screen.getByRole(role)).toHaveAttribute("type", "button");
+		},
+	);
 
 	it.each([true, false])(
 		"tells assistive tech whether it is selected: %s",
@@ -36,14 +39,6 @@ describe("ListOption", () => {
 		render(ListOption, { props: { role: "menuitem", children: label } });
 
 		expect(screen.getByRole("menuitem")).toBeInTheDocument();
-	});
-
-	it("carries no selected state as a menu item, which has no cursor", () => {
-		render(ListOption, {
-			props: { role: "menuitem", selected: true, children: label },
-		});
-
-		expect(screen.getByRole("menuitem")).not.toHaveAttribute("aria-selected");
 	});
 
 	it("fills the list's width as a left-aligned row in the list's type", () => {
@@ -89,25 +84,29 @@ describe("ListOption", () => {
 		expect(option).not.toHaveClass("aria-selected:bg-selected-row");
 	});
 
-	it("fills with the accent under the pointer under the accent highlight", () => {
-		render(ListOption, {
-			props: { highlight: "accent", role: "menuitem", children: label },
-		});
+	it("fills with the accent under the pointer as a menu item", () => {
+		render(ListOption, { props: { role: "menuitem", children: label } });
 
-		expect(screen.getByRole("menuitem")).toHaveClass(
-			"hover:bg-accent",
-			"hover:text-on-accent",
-		);
+		const item = screen.getByRole("menuitem");
+		expect(item).toHaveClass("hover:bg-accent", "hover:text-on-accent");
+		expect(item).not.toHaveClass("aria-selected:bg-selected-row");
 	});
 
-	it("reports a click to its caller", async () => {
-		const clicks: MouseEvent[] = [];
-		render(ListOption, {
-			props: { onclick: (event) => clicks.push(event), children: label },
-		});
+	it.each(["option", "menuitem"] as const)(
+		"reports a click to its caller as a %s",
+		async (role) => {
+			const clicks: MouseEvent[] = [];
+			render(ListOption, {
+				props: {
+					role,
+					onclick: (event: MouseEvent) => clicks.push(event),
+					children: label,
+				},
+			});
 
-		await fireEvent.click(screen.getByRole("option"));
+			await fireEvent.click(screen.getByRole(role));
 
-		expect(clicks).toHaveLength(1);
-	});
+			expect(clicks).toHaveLength(1);
+		},
+	);
 });

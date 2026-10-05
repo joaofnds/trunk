@@ -135,11 +135,7 @@ $effect(() => {
 	{#if open}
 		<div class="dropdown-panel" role="menu" aria-label="Pull options">
 			{#each options as opt}
-				<ListOption
-					role="menuitem"
-					highlight="accent"
-					onclick={() => handleOptionClick(opt)}
-				>
+				<ListOption role="menuitem" onclick={() => handleOptionClick(opt)}>
 					{opt.label}
 				</ListOption>
 			{/each}

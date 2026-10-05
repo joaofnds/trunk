@@ -282,7 +282,7 @@ import ToastCard from "./ToastCard.svelte";
 				class="flex-1 rounded border border-border bg-surface-raised py-1 text-callout"
 			>
 				{#each STRATEGIES as strategy (strategy)}
-					<ListOption role="menuitem" highlight="accent"
+					<ListOption role="menuitem"
 						><span data-catalog-text>{strategy}</span></ListOption
 					>
 				{/each}

@@ -1,23 +1,38 @@
 <script lang="ts" module>
 export type ListOptionLayout = "row" | "stack";
-export type ListOptionHighlight = "selection" | "hover" | "accent";
-export type ListOptionRole = "option" | "menuitem";
+export type ListOptionHighlight = "selection" | "hover";
 </script>
 
 <script lang="ts">
 import type { HTMLButtonAttributes } from "svelte/elements";
 
-interface Props extends Omit<HTMLButtonAttributes, "class" | "style" | "role"> {
-	/** `option` in a listbox, `menuitem` in a menu of actions. */
-	role?: ListOptionRole;
-	/** Whether the list's cursor is on it. A menu has none, so a menu item ignores it. */
-	selected?: boolean;
+interface Shared
+	extends Omit<
+		HTMLButtonAttributes,
+		"class" | "style" | "role" | "aria-selected"
+	> {
 	/** `row` lays its children on one line; `stack` puts each on its own. */
 	layout?: ListOptionLayout;
-	/** What marks it: `selection` paints the selected one like a selected row,
-	 *  `hover` paints it like a hovered row, `accent` fills it under the pointer. */
+}
+
+interface Option extends Shared {
+	role?: "option";
+	/** Whether the list's cursor is on it. */
+	selected?: boolean;
+	/** What marks the selected one: `selection` paints it like a selected row,
+	 *  `hover` like a hovered one. */
 	highlight?: ListOptionHighlight;
 }
+
+/** A row in a menu of actions. A menu has no cursor, so it takes no selected
+ *  state and fills with the accent under the pointer instead. */
+interface MenuItem extends Shared {
+	role: "menuitem";
+	selected?: never;
+	highlight?: never;
+}
+
+type Props = Option | MenuItem;
 
 let {
 	role = "option",
@@ -41,8 +56,9 @@ const LAYOUTS: Record<ListOptionLayout, string> = {
 const HIGHLIGHTS: Record<ListOptionHighlight, string> = {
 	selection: "aria-selected:bg-selected-row",
 	hover: "aria-selected:bg-hover",
-	accent: "hover:bg-accent hover:text-on-accent",
 };
+
+const MENU_ITEM = "hover:bg-accent hover:text-on-accent";
 </script>
 
 <!--
@@ -64,7 +80,7 @@ const HIGHLIGHTS: Record<ListOptionHighlight, string> = {
 	<button
 		{type}
 		role="menuitem"
-		class={[BASE, LAYOUTS[layout], HIGHLIGHTS[highlight]]}
+		class={[BASE, LAYOUTS[layout], MENU_ITEM]}
 		{...rest}
 	>
 		{@render children?.()}
