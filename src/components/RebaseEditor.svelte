@@ -21,6 +21,7 @@ import {
 import { measureTextWidth } from "../lib/text-measure.js";
 import type { RebaseTodoItem } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import Dialog from "../lib/ui/Dialog.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Splitter from "../lib/ui/Splitter.svelte";
 
@@ -88,7 +89,6 @@ $effect(() => {
 let focusedIndex = $state<number>(0);
 let editorEl: HTMLDivElement | undefined = $state();
 let headerEl: HTMLDivElement | undefined = $state();
-let messageEditorEl: HTMLDivElement | undefined = $state();
 const uid = $props.id();
 const messageEditorId = `${uid}-message-editor`;
 let listEl: HTMLDivElement | undefined = $state();
@@ -277,7 +277,7 @@ function scrollRowIntoView(idx: number) {
 function handleEditorKeydown(e: KeyboardEvent) {
 	if (!(e.target instanceof Element) || !editorEl?.contains(e.target)) return;
 
-	if (messageEditorEl?.contains(e.target)) {
+	if (e.target.closest(`#${CSS.escape(messageEditorId)}`)) {
 		e.stopPropagation();
 		if (e.key === "Escape") handleMessageCancel();
 		return;
@@ -709,41 +709,40 @@ let lastVisibleColumn = $derived.by(() => {
 
 					<!-- Floating message editor (absolute, doesn't push rows) -->
 					{#if editingIdx === idx}
-						<div
-							class="rebase-msg-editor"
-							id={messageEditorId}
-							role="dialog"
-							aria-label="Edit commit message"
-							tabindex="-1"
-							bind:this={messageEditorEl}
-						>
-							<div class="rebase-msg-editor-title"
-								>{items[editingIdx]?.action === 'squash' ? 'Edit squash message' : 'Reword commit message'}</div
+						<div class="rebase-msg-anchor">
+							<Dialog
+								variant="anchored"
+								id={messageEditorId}
+								tabindex={-1}
+								title={items[editingIdx]?.action === 'squash' ? 'Edit squash message' : 'Reword commit message'}
 							>
-							<input
-								class="rebase-msg-editor-summary"
-								type="text"
-								tabindex="0"
-								placeholder="Summary (required)"
-								bind:value={editingSummary}
-								use:selectAll
-							>
-							<textarea
-								class="rebase-msg-editor-body"
-								placeholder="Body (optional)"
-								tabindex="0"
-								rows="4"
-								bind:value={editingBody}
-							></textarea>
-							<div class="rebase-msg-editor-buttons">
-								<Button
-									size="sm"
-									variant="success"
-									onclick={handleMessageUpdate}
-									>Update Message</Button
+								<input
+									class="rebase-msg-editor-summary"
+									type="text"
+									tabindex="0"
+									placeholder="Summary (required)"
+									bind:value={editingSummary}
+									use:selectAll
 								>
-								<Button size="sm" onclick={handleMessageCancel}>Cancel</Button>
-							</div>
+								<textarea
+									class="rebase-msg-editor-body"
+									placeholder="Body (optional)"
+									tabindex="0"
+									rows="4"
+									bind:value={editingBody}
+								></textarea>
+								<div class="rebase-msg-editor-buttons">
+									<Button
+										size="sm"
+										variant="success"
+										onclick={handleMessageUpdate}
+										>Update Message</Button
+									>
+									<Button size="sm" onclick={handleMessageCancel}
+										>Cancel</Button
+									>
+								</div>
+							</Dialog>
 						</div>
 					{/if}
 				</div>
@@ -1020,26 +1019,12 @@ let lastVisibleColumn = $derived.by(() => {
 	position: relative;
 }
 
-.rebase-msg-editor {
+.rebase-msg-anchor {
 	position: absolute;
 	top: 100%;
 	left: calc(12 * var(--u));
 	right: calc(12 * var(--u));
 	z-index: 10;
-	background: var(--color-surface);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius);
-	padding: var(--space-4);
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	box-shadow: var(--shadow-lg);
-}
-
-.rebase-msg-editor-title {
-	font-size: var(--text-callout);
-	font-weight: var(--weight-semibold);
-	color: var(--color-text-muted);
 }
 
 .rebase-msg-editor-summary {

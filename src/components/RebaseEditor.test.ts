@@ -716,6 +716,16 @@ describe("RebaseEditor", () => {
 			},
 		);
 
+		it("draws the message editor as a dialog named by its title", async () => {
+			await openMessageEditor();
+
+			const dialog = screen.getByRole("dialog", {
+				name: "Reword commit message",
+			});
+			expect(dialog.tagName).toBe("DIALOG");
+			expect(dialog).toHaveAttribute("open");
+		});
+
 		it("hands the message editor to the editor, out of the list's rows", async () => {
 			const { container } = await openMessageEditor();
 

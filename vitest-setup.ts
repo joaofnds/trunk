@@ -9,10 +9,15 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 	} as unknown as typeof ResizeObserver;
 }
 
-// jsdom does not implement HTMLDialogElement.showModal/close — stub so modal components render as accessible/open.
+// jsdom does not implement HTMLDialogElement.show/showModal/close: stub them so dialogs render as accessible and open.
 if (typeof HTMLDialogElement !== "undefined") {
 	if (typeof HTMLDialogElement.prototype.showModal !== "function") {
 		HTMLDialogElement.prototype.showModal = function () {
+			this.setAttribute("open", "");
+		};
+	}
+	if (typeof HTMLDialogElement.prototype.show !== "function") {
+		HTMLDialogElement.prototype.show = function () {
 			this.setAttribute("open", "");
 		};
 	}
