@@ -183,7 +183,9 @@ test fails a `style:` directive whose value is a literal, because a constant bel
 in a stylesheet rule where the token plugins read it; a `style:--name` directive
 is the runtime hand-off and passes. The same test fails a control drawn in a
 component outside `src/lib/ui/`: a raw `<button>`, an element whose `role` can be
-`button` or `tab`, written as a literal or as an expression the parser can
-enumerate, and a `<svelte:element>` whose `this` can be `button`. A control drawn
-there in scoped CSS passes every other guard while it drifts from the primitives.
-A `role` the parser cannot see past, one read from a prop, is not judged.
+`button` or `tab`, and a `<svelte:element>` whose `this` can be `button`. A `role`
+or a `this` written as an expression is enumerated the way a class word is, and
+one the parser cannot enumerate, a prop or a `$derived` value among them, fails
+too, since it can be either. A `role` handed to a component is that component's
+to draw and is not judged. A control drawn there in scoped CSS passes every other
+guard while it drifts from the primitives.

@@ -123,10 +123,10 @@ function scope(...scripts: (AST.Script | null)[]): Scope {
 	return bindings;
 }
 
-/** Every string a class expression can evaluate to, or null when the value is
- *  computed, a call or a binding the scope lacks, and the static text around
- *  it is all a reader can check. A lookup into a const object yields every
- *  value it holds, since which one the markup picks is a runtime matter. */
+/** Every string an attribute's expression can evaluate to, or null when the
+ *  value is computed, a call or a binding the scope lacks, and the static text
+ *  around it is all a reader can check. A lookup into a const object yields
+ *  every value it holds, since which one the markup picks is a runtime matter. */
 function literals(node: Expression, bindings: Scope): string[] | null {
 	const of = (child: Expression) => literals(child, bindings) ?? [OPAQUE];
 	switch (node.type) {
@@ -163,6 +163,8 @@ function literals(node: Expression, bindings: Scope): string[] | null {
 				return key.type === "Literal" ? String(key.value) : OPAQUE;
 			});
 		case "Identifier": {
+			if (node.name === "undefined") return [""];
+
 			const bound = bindings.get(node.name);
 			return bound ? literals(bound, bindings) : null;
 		}
@@ -189,8 +191,9 @@ function product(prefixes: string[], options: string[]): string[] {
 }
 
 type Chunks = AST.Attribute["value"];
-/** The class words an attribute can render. A word holding OPAQUE has a part the
- *  parser cannot see past; its static prefix is what gets checked. */
+/** The words an attribute can render, a `class` or a `role`. A word holding
+ *  OPAQUE has a part the parser cannot see past, and its static prefix is all
+ *  that is known of it. */
 function words(value: Chunks, bindings: Scope): string[] {
 	if (value === true) return [];
 	let acc = [""];
@@ -273,46 +276,60 @@ const components = files(root, ".svelte").map((file) => relative(root, file));
 const PRIMITIVES = "lib/ui/";
 
 const CONTROL_ROLES = ["button", "tab"];
+const UNREAD = "{…}";
 
-/** A control written where a primitive should be: a `<button>`, an element a
- *  `role` turns into a button or a tab, or a `<svelte:element>` that can render
- *  a `<button>`. The primitive carries the frame, the sizes and the focus ring,
- *  and a control in scoped CSS passes every other guard while looking right
- *  (docs/design-system.md, Primitives). */
-function rawControls(source: string): string[] {
-	const ast = parse(source, { modern: true });
-	const bindings = scope(ast.module, ast.instance);
-	const at = (element: AST.ElementLike) =>
-		`at line ${source.slice(0, element.start).split("\n").length}`;
+/** What makes one element a control, as the tag would be written: a `role` or
+ *  a `this` that can be a control's, or that the scope cannot enumerate. */
+function controlMarks(element: AST.ElementLike, bindings: Scope): string[] {
+	const marks: string[] = [];
+	if (element.type === "RegularElement" && element.name === "button") {
+		marks.push("<button>");
+	}
 
-	const offences: [number, string][] = [];
-	for (const element of descendants(ast.fragment, "RegularElement")
-		.concat(descendants(ast.fragment, "SvelteElement"))
-		.filter(isElement)) {
-		if (element.type === "RegularElement" && element.name === "button") {
-			offences.push([element.start, `<button> ${at(element)}`]);
+	if (element.type === "SvelteElement") {
+		const tags = literals(element.tag, bindings) ?? [OPAQUE];
+		if (tags.some((tag) => tag.includes(OPAQUE))) {
+			marks.push(`<svelte:element this=${UNREAD}>`);
+		} else if (tags.includes("button")) {
+			marks.push('<svelte:element this="button">');
 		}
-		if (
-			element.type === "SvelteElement" &&
-			literals(element.tag, bindings)?.includes("button")
-		) {
-			offences.push([
-				element.start,
-				`<svelte:element this="button"> ${at(element)}`,
-			]);
-		}
-		for (const attribute of element.attributes) {
-			if (attribute.type !== "Attribute" || attribute.name !== "role") continue;
-			for (const role of words(attribute.value, bindings)) {
-				if (!CONTROL_ROLES.includes(role)) continue;
-				offences.push([
-					element.start,
-					`<${element.name} role="${role}"> ${at(element)}`,
-				]);
+	}
+
+	for (const attribute of element.attributes) {
+		if (attribute.type !== "Attribute" || attribute.name !== "role") continue;
+		for (const role of words(attribute.value, bindings)) {
+			if (role.includes(OPAQUE)) {
+				marks.push(`<${element.name} role=${UNREAD}>`);
+			} else if (CONTROL_ROLES.includes(role)) {
+				marks.push(`<${element.name} role="${role}">`);
 			}
 		}
 	}
-	return offences.sort(([a], [b]) => a - b).map(([, offence]) => offence);
+
+	return marks;
+}
+
+/** A control written where a primitive should be: a `<button>`, an element a
+ *  `role` turns into a button or a tab, or a `<svelte:element>` that can render
+ *  a `<button>`. A `role` or a `this` the scope cannot enumerate counts, since
+ *  it can be either. The primitive carries the frame, the sizes and the focus
+ *  ring, and a control in scoped CSS passes every other guard while looking
+ *  right (docs/design-system.md, Primitives). */
+function rawControls(source: string): string[] {
+	const ast = parse(source, { modern: true });
+	const bindings = scope(ast.module, ast.instance);
+	const elements = descendants(ast.fragment, "RegularElement")
+		.concat(descendants(ast.fragment, "SvelteElement"))
+		.filter(isElement)
+		.sort((a, b) => a.start - b.start);
+
+	return elements.flatMap((element) => {
+		const line = source.slice(0, element.start).split("\n").length;
+
+		return controlMarks(element, bindings).map(
+			(mark) => `${mark} at line ${line}`,
+		);
+	});
 }
 
 const STEP = /^text-(caption|small|callout|body|title|display)$/;
@@ -409,6 +426,14 @@ describe("markup classes", () => {
 			'<span role="button"> at line 1',
 		],
 		[
+			'<script>const role = "button";</script>\n<div {role}>Go</div>',
+			'<div role="button"> at line 2',
+		],
+		[
+			'<svelte:element this="a" role="tab">Files</svelte:element>',
+			'<svelte:element role="tab"> at line 1',
+		],
+		[
 			'<svelte:element this="button">Go</svelte:element>',
 			'<svelte:element this="button"> at line 1',
 		],
@@ -416,16 +441,45 @@ describe("markup classes", () => {
 			"<svelte:element this={href ? 'a' : 'button'}>Go</svelte:element>",
 			'<svelte:element this="button"> at line 1',
 		],
-	])("finds %s, a control drawn without a <button>", (markup, offence) => {
+	])("finds %s, a control drawn outside a primitive", (markup, offence) => {
 		expect(rawControls(markup)).toEqual([offence]);
 	});
 
-	it("leaves an element whose role is no control's", () => {
+	it.each([
+		["<div role={role}>Go</div>", "<div role={…}> at line 1"],
+		[
+			'<script>const role = $derived(on ? "button" : undefined);</script>\n<div {role}>Go</div>',
+			"<div role={…}> at line 2",
+		],
+		[
+			"<svelte:element this={tag}>Go</svelte:element>",
+			"<svelte:element this={…}> at line 1",
+		],
+		[
+			'<script>let tag = "button";</script>\n<svelte:element this={tag}>Go</svelte:element>',
+			"<svelte:element this={…}> at line 2",
+		],
+	])("finds %s, which can be a control for all it shows", (markup, offence) => {
+		expect(rawControls(markup)).toEqual([offence]);
+	});
+
+	it.each([
+		'<div role="menu"></div>',
+		'<svelte:element this="div"></svelte:element>',
+		"<Row role={role} />",
+	])("leaves %s, which is no control", (markup) => {
+		expect(rawControls(markup)).toEqual([]);
+	});
+
+	it("lists the controls in the order the file writes them", () => {
 		expect(
 			rawControls(
-				'<div role="menu"></div>\n<div role={role}></div>\n<svelte:element this="div"></svelte:element>',
+				'<svelte:element this="button"></svelte:element>\n<button>Go</button>',
 			),
-		).toEqual([]);
+		).toEqual([
+			'<svelte:element this="button"> at line 1',
+			"<button> at line 2",
+		]);
 	});
 
 	it.each(components.filter((file) => !file.startsWith(PRIMITIVES)))(
