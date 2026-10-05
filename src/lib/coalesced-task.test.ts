@@ -112,7 +112,7 @@ describe("createCoalescedTask", () => {
 		expect(runs).toBe(2);
 	});
 
-	it("makes an explicit request wait for the run after active work", async () => {
+	it("starts an explicit request's run as soon as active work finishes", async () => {
 		const scheduler = new TestScheduler();
 		const first = controlled();
 		const second = controlled();
@@ -130,9 +130,8 @@ describe("createCoalescedTask", () => {
 		first.resolve();
 		await initial;
 		expect(postActionFinished).toBe(false);
-
-		scheduler.advanceBy(200);
 		expect(runs).toBe(2);
+
 		second.resolve();
 		await postAction;
 		expect(postActionFinished).toBe(true);

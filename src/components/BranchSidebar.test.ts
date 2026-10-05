@@ -246,8 +246,6 @@ describe("BranchSidebar", () => {
 		expect(pending).toHaveLength(1);
 
 		pending[0](mockListRefs());
-		await waitFor(() => expect(scheduler.pending).toBe(1));
-		scheduler.advanceBy(200);
 		await waitFor(() => expect(pending).toHaveLength(2));
 		pending[1](mockListRefs());
 	});

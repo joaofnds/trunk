@@ -339,13 +339,7 @@ describe("StagingPanel", () => {
 		});
 
 		held.resolve(beforeAction);
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		expect(statusReads).toBe(2);
-		expect(screen.queryByLabelText("Stage file")).toBeNull();
-
-		scheduler.advanceBy(200);
-		await tick();
-		expect(statusReads).toBe(3);
+		await waitFor(() => expect(statusReads).toBe(3));
 		expect(screen.queryByLabelText("Stage file")).toBeNull();
 
 		caughtUp.resolve(afterAction);

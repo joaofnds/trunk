@@ -123,18 +123,11 @@ describe("repository changes during a sustained event stream", () => {
 		);
 
 		release();
-		await waitFor("the catch-up status timer", () =>
-			app.scheduler.pending > 0 ? true : null,
-		);
-		expect(calls(app, "get_status")).toBe(beforeStatus + 1);
-
-		app.advanceBy(199);
-		expect(calls(app, "get_status")).toBe(beforeStatus + 1);
-		app.advanceBy(1);
 		await action;
 		await waitFor("the post-action status read", () =>
 			calls(app, "get_status") === beforeStatus + 2 ? true : null,
 		);
+
 		expect(app.staging.stagedFiles()).toContainEqual(
 			expect.stringContaining("a.txt"),
 		);

@@ -12,7 +12,7 @@ export interface CoalescedTask {
 	invalidate(): void;
 	/** Starts notification work now, retaining only one pending rerun while busy. */
 	request(): void;
-	/** Runs immediately when idle, or waits for one fresh run after active work. */
+	/** Runs immediately when idle, or as soon as active work finishes. */
 	run(): Promise<void>;
 	dispose(): void;
 }
@@ -70,7 +70,8 @@ export function createCoalescedTask(
 		} finally {
 			activeWaiters = [];
 			running = false;
-			if (!disposed && (rerunPending || waiters.length > 0)) schedule();
+			if (!disposed && waiters.length > 0) void start();
+			else if (!disposed && rerunPending) schedule();
 		}
 	}
 

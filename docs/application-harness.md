@@ -237,7 +237,8 @@ arbitrarily.
 Repository-change consumers use a fixed-deadline coalescer backed by the frozen
 `FakeScheduler` installed through `mount`'s context option. The first invalidation arms a
 200 ms deadline; later invalidations do not move it. While its command is active, a consumer
-holds one pending catch-up and schedules that catch-up 200 ms after completion. Consumers
+holds one pending catch-up and schedules that catch-up 200 ms after completion, unless an
+explicit run is waiting on it, which starts as soon as the command completes. Consumers
 remain independent, so a held status read does not hold graph refresh. Every other owned
 timer (`GLOSSARY.md`) lands in the same scheduler, and `flush` fires the currently armed
 generation. No wall-clock window outlasts it, so a test advances it deliberately:
