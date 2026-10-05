@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TabInfo } from "../lib/tab-types.js";
 import TabBar from "./TabBar.svelte";
@@ -127,6 +127,134 @@ describe("TabBar", () => {
 		);
 		expect(activeTab).toBeTruthy();
 		expect(activeTab?.textContent).toContain("trunk");
+	});
+
+	it("is a tablist of tab buttons", () => {
+		render(TabBar, { props: defaultProps });
+
+		const tabs = within(
+			screen.getByRole("tablist", { name: "Repository tabs" }),
+		).getAllByRole("tab");
+
+		expect(tabs.map((tab) => tab.tagName)).toEqual(["BUTTON", "BUTTON"]);
+	});
+
+	it("keeps each close beside its tab, not inside it", () => {
+		render(TabBar, { props: defaultProps });
+
+		const tab = screen.getByRole("tab", { name: "trunk" });
+
+		expect(within(tab).queryByLabelText("Close tab")).toBeNull();
+	});
+
+	it.each(["Enter", " "])("activates a focused tab on %j", async (key) => {
+		const activated: string[] = [];
+		render(TabBar, {
+			props: { ...defaultProps, onactivate: (id) => activated.push(id) },
+		});
+
+		await fireEvent.keyDown(screen.getByRole("tab", { name: "other" }), {
+			key,
+		});
+
+		expect(activated).toEqual(["2"]);
+	});
+
+	it("leaves a tab alone on a right or middle mousedown", async () => {
+		const activated: string[] = [];
+		render(TabBar, {
+			props: { ...defaultProps, onactivate: (id) => activated.push(id) },
+		});
+		const tab = screen.getByRole("tab", { name: "other" });
+
+		await fireEvent.mouseDown(tab, { button: 1 });
+		await fireEvent.mouseDown(tab, { button: 2 });
+
+		expect(activated).toEqual([]);
+	});
+
+	it("opens a tab's menu on a right click", async () => {
+		const menus: string[] = [];
+		render(TabBar, {
+			props: { ...defaultProps, oncontextmenu: (id) => menus.push(id) },
+		});
+
+		const unhandled = await fireEvent.contextMenu(
+			screen.getByRole("tab", { name: "other" }),
+		);
+
+		expect(unhandled).toBe(false);
+		expect(menus).toEqual(["2"]);
+	});
+
+	it("closes a tab on a middle click", async () => {
+		const closed: string[] = [];
+		render(TabBar, {
+			props: { ...defaultProps, onauxclose: (id) => closed.push(id) },
+		});
+
+		await fireEvent(
+			screen.getByRole("tab", { name: "other" }),
+			new MouseEvent("auxclick", { button: 1, bubbles: true }),
+		);
+
+		expect(closed).toEqual(["2"]);
+	});
+
+	describe("on a tab's close", () => {
+		it("activates the tab on mousedown, as anywhere else on its chip", async () => {
+			const activated: string[] = [];
+			render(TabBar, {
+				props: { ...defaultProps, onactivate: (id) => activated.push(id) },
+			});
+
+			await fireEvent.mouseDown(screen.getAllByLabelText("Close tab")[1], {
+				button: 0,
+			});
+
+			expect(activated).toEqual(["2"]);
+		});
+
+		it("opens the tab's menu on a right click", async () => {
+			const menus: string[] = [];
+			render(TabBar, {
+				props: { ...defaultProps, oncontextmenu: (id) => menus.push(id) },
+			});
+
+			await fireEvent.contextMenu(screen.getAllByLabelText("Close tab")[1]);
+
+			expect(menus).toEqual(["2"]);
+		});
+
+		it("closes the tab on a middle click", async () => {
+			const closed: string[] = [];
+			render(TabBar, {
+				props: { ...defaultProps, onauxclose: (id) => closed.push(id) },
+			});
+
+			await fireEvent(
+				screen.getAllByLabelText("Close tab")[1],
+				new MouseEvent("auxclick", { button: 1, bubbles: true }),
+			);
+
+			expect(closed).toEqual(["2"]);
+		});
+
+		it("forces the close while Shift is held", async () => {
+			const closed: [string, boolean][] = [];
+			render(TabBar, {
+				props: {
+					...defaultProps,
+					onclose: (id, force) => closed.push([id, force]),
+				},
+			});
+
+			await fireEvent.click(screen.getAllByLabelText("Close tab")[1], {
+				shiftKey: true,
+			});
+
+			expect(closed).toEqual([["2", true]]);
+		});
 	});
 
 	describe("tab tooltips", () => {

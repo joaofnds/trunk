@@ -56,6 +56,32 @@ describe("Tab", () => {
 		);
 	});
 
+	describe("as a chip", () => {
+		it("spans the chip's two columns and leaves the strip's share and rule", () => {
+			render(Tab, { props: { variant: "chip", children: label } });
+
+			const tab = screen.getByRole("tab", { name: "Amend" });
+			expect(tab).toHaveClass(
+				"col-span-2",
+				"grid-cols-subgrid",
+				"rounded",
+				"cursor-pointer",
+			);
+			expect(tab).not.toHaveClass("flex-1", "border-b-2");
+		});
+
+		it("lays its label out in the first column, stepped in from the edge", () => {
+			render(Tab, { props: { variant: "chip", children: label } });
+
+			expect(screen.getByText("Amend").parentElement).toHaveClass(
+				"flex",
+				"items-center",
+				"gap-2",
+				"pl-3",
+			);
+		});
+	});
+
 	it("drops the pointer cursor while disabled", () => {
 		render(Tab, { props: { disabled: true, children: label } });
 

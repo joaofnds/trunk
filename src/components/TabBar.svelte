@@ -5,6 +5,7 @@ import Sortable from "sortablejs";
 import { displayPath } from "../lib/path.js";
 import type { TabInfo } from "../lib/tab-types.js";
 import Button from "../lib/ui/Button.svelte";
+import Tab from "../lib/ui/Tab.svelte";
 
 interface Props {
 	tabs: TabInfo[];
@@ -72,37 +73,77 @@ $effect(() => {
 	});
 	return () => sortable.destroy();
 });
+
+const CLOSE =
+	"col-start-2 row-start-1 flex items-center px-2 pointer-events-none *:pointer-events-auto";
+
+function press(e: MouseEvent, tabId: string) {
+	if (e.button === 0) onactivate(tabId);
+}
+
+function openMenu(e: MouseEvent, tabId: string) {
+	e.preventDefault();
+	oncontextmenu(tabId, e);
+}
+
+function closeOnMiddle(e: MouseEvent, tabId: string) {
+	if (e.button !== 1) return;
+
+	e.preventDefault();
+	onauxclose(tabId);
+}
 </script>
 
-<div class="tab-bar" bind:this={tabBarEl}>
+<!--
+	Each chip stays the element SortableJS drags, and holds the tab's button
+	with the close over its trailing edge as a sibling. An event on the close
+	never reaches the tab, so the close is handed what a press, a right click
+	and a middle click anywhere on the chip do.
+-->
+<div
+	class="tab-bar"
+	role="tablist"
+	aria-label="Repository tabs"
+	bind:this={tabBarEl}
+>
 	{#each tabs as tab (tab.id)}
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="tab-item"
 			class:active={tab.id === activeTabId}
+			role="presentation"
 			data-tab-id={tab.id}
 			title={tab.repoPath ? (resolvedPaths[tab.repoPath] ?? tab.repoPath) : tab.repoName || 'New Tab'}
-			onmousedown={(e: MouseEvent) => { if (e.button === 0) onactivate(tab.id); }}
-			onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') onactivate(tab.id); }}
-			oncontextmenu={(e: MouseEvent) => { e.preventDefault(); oncontextmenu(tab.id, e); }}
-			onauxclick={(e: MouseEvent) => { if (e.button === 1) { e.preventDefault(); onauxclose(tab.id); } }}
-			role="tab"
-			tabindex="0"
-			aria-selected={tab.id === activeTabId}
 		>
-			{#if tab.dirty}
-				<span class="dirty-dot"></span>
-			{/if}
-			<span class="truncate tab-label flex-1">{tab.repoName || 'New Tab'}</span>
-			<Button
-				icon
-				size="xs"
-				variant="ghost"
-				aria-label="Close tab"
-				onclick={(e: MouseEvent) => { e.stopPropagation(); onclose(tab.id, e.shiftKey); }}
+			<Tab
+				variant="chip"
+				selected={tab.id === activeTabId}
+				tabindex={0}
+				onmousedown={(e) => press(e, tab.id)}
+				onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onactivate(tab.id); }}
+				oncontextmenu={(e) => openMenu(e, tab.id)}
+				onauxclick={(e) => closeOnMiddle(e, tab.id)}
 			>
-				<X size={12} />
-			</Button>
+				{#if tab.dirty}
+					<span class="dirty-dot"></span>
+				{/if}
+				<span class="truncate tab-label flex-1"
+					>{tab.repoName || 'New Tab'}</span
+				>
+			</Tab>
+			<div class={CLOSE}>
+				<Button
+					icon
+					size="xs"
+					variant="ghost"
+					aria-label="Close tab"
+					onmousedown={(e: MouseEvent) => press(e, tab.id)}
+					oncontextmenu={(e: MouseEvent) => openMenu(e, tab.id)}
+					onauxclick={(e: MouseEvent) => closeOnMiddle(e, tab.id)}
+					onclick={(e: MouseEvent) => { e.stopPropagation(); onclose(tab.id, e.shiftKey); }}
+				>
+					<X size={12} />
+				</Button>
+			</div>
 		</div>
 	{/each}
 	<span
@@ -127,16 +168,13 @@ $effect(() => {
 }
 
 .tab-item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: 0 var(--space-2) 0 var(--space-3);
+	display: grid;
+	grid-template-columns: auto auto;
 	height: var(--control-h);
 	border-radius: var(--radius);
 	font-size: var(--text-callout);
 	font-weight: var(--weight-medium);
 	color: var(--color-text-muted);
-	cursor: pointer;
 	white-space: nowrap;
 	flex-shrink: 0;
 	background: none;

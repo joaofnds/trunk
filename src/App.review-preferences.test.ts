@@ -703,7 +703,9 @@ async function chooseFilter(filter: ReviewFilter): Promise<void> {
 
 async function activateTab(tabId: string): Promise<void> {
 	const tab = await waitFor(() => {
-		const found = document.querySelector(`[data-tab-id="${tabId}"]`);
+		const found = document.querySelector(
+			`[data-tab-id="${tabId}"] [role="tab"]`,
+		);
 		if (!(found instanceof HTMLElement)) {
 			throw new Error(`the ${tabId} repository tab is not mounted`);
 		}
