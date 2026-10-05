@@ -70,11 +70,6 @@ let selectedPath = $state<string | null>(null);
 let anchorIndex = $state<number | null>(null);
 let focusIndex = $state<number | null>(null);
 
-// A press arms the span and holds it open; the pointer crossing another row
-// carries the focus with it, followed by a document listener that lives only as
-// long as the drag. Not a second selection model — a drag is the contiguous span
-// with a moving endpoint, which is what shift-click already is.
-
 let list = $state<{
 	topIndex: () => number;
 	anchorTo: (index: number) => void;
@@ -156,6 +151,10 @@ function selectLine(
 	focusIndex = index;
 }
 
+// A press arms the span and holds it open; the pointer crossing another row
+// carries the focus with it, followed by a document listener that lives only as
+// long as the drag. Not a second selection model — a drag is the contiguous span
+// with a moving endpoint, which is what shift-click already is.
 function startDrag(path: string, line: DiffLine, index: number, e: MouseEvent) {
 	// Suppress the webview's own text selection for the whole gesture: a drag
 	// crosses gutters and code spans that are otherwise user-selectable, and
