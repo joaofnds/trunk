@@ -21,7 +21,7 @@ import {
 } from "../lib/compare-select.js";
 import { resolveDiffTarget } from "../lib/diff-in-view.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
-import { patchLoadedDiff } from "../lib/file-status.js";
+import { listsSameFiles, patchLoadedDiff } from "../lib/file-status.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { span } from "../lib/perf.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
@@ -893,7 +893,12 @@ function clearStagingDiff() {
 // conflict, so when the status no longer lists that file as conflicted there is
 // nothing left for the merge editor to show, whatever ended the operation.
 function handleStatusChange(s: WorkingTreeStatus) {
+	const filesMoved = cachedStatus === null || !listsSameFiles(cachedStatus, s);
 	cachedStatus = s;
+
+	// Staging and discarding emit no repo-changed, so without this the graph's
+	// working-tree row keeps its old counts until the file watcher fires.
+	if (filesMoved) void dirtyCountsRefresh.run();
 
 	if (
 		selectedFile?.kind === "conflicted" &&

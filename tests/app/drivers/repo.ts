@@ -178,6 +178,14 @@ export class RepoDriver {
 		return this.rows().map((row) => row.textContent?.trim() ?? "");
 	}
 
+	/** Whether the graph shows the working-tree row, which stands for every
+	 *  uncommitted change. */
+	showsWorkingTreeRow(): boolean {
+		return (
+			firstMatching(COMMIT_ROW, (text) => text.includes("// WIP")) !== null
+		);
+	}
+
 	/** The short hash the graph shows for each commit, top row first. */
 	commitShas(): string[] {
 		const shas = document.querySelectorAll<HTMLElement>(

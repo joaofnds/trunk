@@ -189,3 +189,25 @@ describe("staging selected lines", () => {
 		expect(app.staging.unstagedFiles()).toEqual([MODIFIED_ROW]);
 	});
 });
+
+describe("discarding every change", () => {
+	afterEach(teardown);
+
+	it("drops the working-tree row from the graph without waiting for the watcher", async () => {
+		const app = await setup({ repo: APPENDED_LINES });
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile(FILE);
+		await app.settled();
+		await app.staging.selectLines("extra a", "extra c");
+		app.dialog.confirms();
+
+		await app.staging.discardSelectedLines();
+		await app.elapseUntil("the discard to restore the file", () =>
+			app.repo.workingTreeFile(FILE) === fileOf(NUMBERED) ? true : null,
+		);
+		await app.settled();
+
+		expect(app.repo.showsWorkingTreeRow()).toBe(false);
+	});
+});

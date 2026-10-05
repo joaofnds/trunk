@@ -3,6 +3,7 @@ import type {
 	FileDiff,
 	FileStatus,
 	FileStatusType,
+	WorkingTreeStatus,
 } from "./types.js";
 
 // Diff deltas speak git2's vocabulary; the file lists speak the staging
@@ -28,6 +29,23 @@ export function toFileStatusList(fileDiffs: FileDiff[]): FileStatus[] {
 		status: fileStatusOf(fd.status),
 		is_binary: fd.is_binary,
 	}));
+}
+
+/** Whether two status reads list the same files, each in the same section
+ *  with the same status. */
+export function listsSameFiles(
+	before: WorkingTreeStatus,
+	after: WorkingTreeStatus,
+): boolean {
+	return listingOf(before) === listingOf(after);
+}
+
+function listingOf(status: WorkingTreeStatus): string {
+	const sections = [status.unstaged, status.staged, status.conflicted];
+
+	return JSON.stringify(
+		sections.map((files) => files.map((file) => [file.path, file.status])),
+	);
 }
 
 /**

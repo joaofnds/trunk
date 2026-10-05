@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
 	fileStatusOf,
+	listsSameFiles,
 	patchLoadedDiff,
 	toFileStatusList,
 } from "./file-status.js";
-import type { FileDiff } from "./types.js";
+import type { FileDiff, FileStatus, WorkingTreeStatus } from "./types.js";
 
 function fd(path: string, status: FileDiff["status"] = "Modified"): FileDiff {
 	return { path, old_path: null, status, is_binary: false, hunks: [] };
@@ -78,5 +79,42 @@ describe("fileStatusOf", () => {
 
 	it("falls back to Modified for a status it does not know", () => {
 		expect(fileStatusOf("Typechange" as never)).toBe("Modified");
+	});
+});
+
+describe("listsSameFiles", () => {
+	const modified = (path: string): FileStatus => ({
+		path,
+		old_path: null,
+		status: "Modified",
+		is_binary: false,
+	});
+	const lists = (
+		unstaged: FileStatus[],
+		staged: FileStatus[] = [],
+	): WorkingTreeStatus => ({ unstaged, staged, conflicted: [] });
+
+	it("holds for two reads of the same files", () => {
+		expect(
+			listsSameFiles(lists([modified("a.ts")]), lists([modified("a.ts")])),
+		).toBe(true);
+	});
+
+	it("fails when a file moves to another section", () => {
+		expect(
+			listsSameFiles(lists([modified("a.ts")]), lists([], [modified("a.ts")])),
+		).toBe(false);
+	});
+
+	it("fails when a file leaves the lists", () => {
+		expect(listsSameFiles(lists([modified("a.ts")]), lists([]))).toBe(false);
+	});
+
+	it("fails when a file's status changes", () => {
+		const deleted: FileStatus = { ...modified("a.ts"), status: "Deleted" };
+
+		expect(listsSameFiles(lists([modified("a.ts")]), lists([deleted]))).toBe(
+			false,
+		);
 	});
 });
