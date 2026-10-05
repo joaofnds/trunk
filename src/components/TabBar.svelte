@@ -74,8 +74,6 @@ $effect(() => {
 	return () => sortable.destroy();
 });
 
-const CLOSE = "col-start-1 row-start-1 justify-self-end self-center flex mr-2";
-
 function activateOnPrimary(e: MouseEvent, tabId: string) {
 	if (e.button === 0) onactivate(tabId);
 }
@@ -88,7 +86,7 @@ function pressClose(
 	e.currentTarget
 		.closest(".tab-item")
 		?.querySelector<HTMLElement>('[role="tab"]')
-		?.focus({ preventScroll: true });
+		?.focus({ preventScroll: true, focusVisible: false });
 
 	activateOnPrimary(e, tabId);
 }
@@ -145,21 +143,21 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 				<span class="truncate tab-label flex-1"
 					>{tab.repoName || 'New Tab'}</span
 				>
+				{#snippet trailing()}
+					<Button
+						icon
+						size="xs"
+						variant="ghost"
+						aria-label="Close tab"
+						onmousedown={(e) => pressClose(e, tab.id)}
+						oncontextmenu={(e) => openMenu(e, tab.id)}
+						onauxclick={(e) => closeOnMiddle(e, tab.id)}
+						onclick={(e) => { e.stopPropagation(); onclose(tab.id, e.shiftKey); }}
+					>
+						<X size={12} />
+					</Button>
+				{/snippet}
 			</Tab>
-			<div class={CLOSE}>
-				<Button
-					icon
-					size="xs"
-					variant="ghost"
-					aria-label="Close tab"
-					onmousedown={(e) => pressClose(e, tab.id)}
-					oncontextmenu={(e) => openMenu(e, tab.id)}
-					onauxclick={(e) => closeOnMiddle(e, tab.id)}
-					onclick={(e) => { e.stopPropagation(); onclose(tab.id, e.shiftKey); }}
-				>
-					<X size={12} />
-				</Button>
-			</div>
 		</div>
 	{/each}
 	<span
@@ -194,7 +192,7 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 	flex-shrink: 0;
 	background: none;
 	/* Paint, not length: the active state's outline must not take a pixel out
-       of a chip already declaring its height. */
+       of a tab item already declaring its height. */
 	box-shadow: inset 0 0 0 1px transparent;
 }
 

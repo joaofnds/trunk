@@ -31,7 +31,7 @@ function closeOf(name: string): HTMLElement {
 	const item = screen
 		.getByRole("tab", { name })
 		.closest<HTMLElement>(".tab-item");
-	if (!item) throw new Error(`no tab named ${name}`);
+	if (!item) throw new Error(`no tab item around the tab named ${name}`);
 
 	return within(item).getByLabelText("Close tab");
 }
@@ -172,15 +172,40 @@ describe("TabBar", () => {
 		).toEqual(["0", "0"]);
 	});
 
-	it("describes a tab by its repository's path", () => {
-		render(TabBar, { props: defaultProps });
+	it.each([
+		{
+			source: "its repository's path",
+			repoPath: "/path/to/lone",
+			repoName: "lone",
+			name: "lone",
+			title: "/path/to/lone",
+		},
+		{
+			source: "its name where it has no repository",
+			repoPath: null,
+			repoName: "orphan",
+			name: "orphan",
+			title: "orphan",
+		},
+		{
+			source: '"New Tab" where it has neither',
+			repoPath: null,
+			repoName: "",
+			name: "New Tab",
+			title: "New Tab",
+		},
+	])("titles a tab with $source", ({ repoPath, repoName, name, title }) => {
+		render(TabBar, {
+			props: {
+				...defaultProps,
+				tabs: [{ id: "3", repoPath, repoName, dirty: false }],
+			},
+		});
 
-		expect(
-			screen.getByRole("tab", { name: "trunk" }),
-		).toHaveAccessibleDescription("/path/to/trunk");
+		expect(screen.getByRole("tab", { name })).toHaveAttribute("title", title);
 	});
 
-	it("keeps a dragged copy of a tab out of the pointer's way", () => {
+	it("turns pointer events back on for nothing inside a tab item", () => {
 		const { container } = render(TabBar, { props: defaultProps });
 
 		expect(
@@ -239,12 +264,19 @@ describe("TabBar", () => {
 			props: { ...defaultProps, oncontextmenu: (id) => menus.push(id) },
 		});
 
+		await fireEvent.contextMenu(screen.getByRole("tab", { name: "other" }));
+
+		expect(menus).toEqual(["2"]);
+	});
+
+	it("keeps the webview's own menu off a right click on a tab", async () => {
+		render(TabBar, { props: defaultProps });
+
 		const unhandled = await fireEvent.contextMenu(
 			screen.getByRole("tab", { name: "other" }),
 		);
 
 		expect(unhandled).toBe(false);
-		expect(menus).toEqual(["2"]);
 	});
 
 	it("closes a tab on a middle click", async () => {
@@ -253,13 +285,20 @@ describe("TabBar", () => {
 			props: { ...defaultProps, onauxclose: (id) => closed.push(id) },
 		});
 
+		await fireEvent(screen.getByRole("tab", { name: "other" }), auxClick(1));
+
+		expect(closed).toEqual(["2"]);
+	});
+
+	it("keeps the webview's default off a middle click on a tab", async () => {
+		render(TabBar, { props: defaultProps });
+
 		const unhandled = await fireEvent(
 			screen.getByRole("tab", { name: "other" }),
 			auxClick(1),
 		);
 
 		expect(unhandled).toBe(false);
-		expect(closed).toEqual(["2"]);
 	});
 
 	it("keeps a tab open on an auxiliary click of the right button", async () => {
@@ -313,16 +352,35 @@ describe("TabBar", () => {
 			},
 		);
 
+		it("asks for no focus ring on the tab its press focuses", async () => {
+			render(TabBar, { props: defaultProps });
+			const asked: (FocusOptions | undefined)[] = [];
+			screen.getByRole("tab", { name: "other" }).focus = (options) => {
+				asked.push(options);
+			};
+
+			await fireEvent.mouseDown(closeOf("other"), { button: 0 });
+
+			expect(asked).toEqual([expect.objectContaining({ focusVisible: false })]);
+		});
+
 		it("opens the tab's menu on a right click", async () => {
 			const menus: string[] = [];
 			render(TabBar, {
 				props: { ...defaultProps, oncontextmenu: (id) => menus.push(id) },
 			});
 
+			await fireEvent.contextMenu(closeOf("other"));
+
+			expect(menus).toEqual(["2"]);
+		});
+
+		it("keeps the webview's own menu off a right click", async () => {
+			render(TabBar, { props: defaultProps });
+
 			const unhandled = await fireEvent.contextMenu(closeOf("other"));
 
 			expect(unhandled).toBe(false);
-			expect(menus).toEqual(["2"]);
 		});
 
 		it("closes the tab on a middle click", async () => {
@@ -331,10 +389,17 @@ describe("TabBar", () => {
 				props: { ...defaultProps, onauxclose: (id) => closed.push(id) },
 			});
 
+			await fireEvent(closeOf("other"), auxClick(1));
+
+			expect(closed).toEqual(["2"]);
+		});
+
+		it("keeps the webview's default off a middle click", async () => {
+			render(TabBar, { props: defaultProps });
+
 			const unhandled = await fireEvent(closeOf("other"), auxClick(1));
 
 			expect(unhandled).toBe(false);
-			expect(closed).toEqual(["2"]);
 		});
 
 		it("keeps the tab open on an auxiliary click of the right button", async () => {

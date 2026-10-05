@@ -3,17 +3,31 @@ export type TabVariant = "strip" | "framed";
 </script>
 
 <script lang="ts">
+import type { Snippet } from "svelte";
 import type { HTMLButtonAttributes } from "svelte/elements";
 
-interface Props extends Omit<HTMLButtonAttributes, "class" | "style" | "role"> {
-	/** `strip` is one tab of a TabStrip, an equal share of it with the accent
-	 *  rule under the selected one; `framed` is the target of a tab its caller
-	 *  frames and paints as a grid, whose one cell it fills, keeping its
-	 *  trailing edge clear for a control the caller lays over it there. */
-	variant?: TabVariant;
-	/** Whether this is the tab its tablist has open. */
-	selected?: boolean;
-}
+type Framing =
+	| {
+			/** One tab of a TabStrip, an equal share of it with the accent rule
+			 *  under the selected one. */
+			variant?: "strip";
+			trailing?: never;
+	  }
+	| {
+			/** The target of a tab its caller frames and paints as a grid, whose
+			 *  one cell it fills. */
+			variant: "framed";
+			/** The control laid over the tab's trailing edge, in the room the tab
+			 *  keeps clear after its label: one `xs` control, beside the tab and
+			 *  never inside it. */
+			trailing: Snippet;
+	  };
+
+type Props = Omit<HTMLButtonAttributes, "class" | "style" | "role"> &
+	Framing & {
+		/** Whether this is the tab its tablist has open. */
+		selected?: boolean;
+	};
 
 let {
 	variant = "strip",
@@ -21,6 +35,7 @@ let {
 	type = "button",
 	tabindex,
 	children,
+	trailing,
 	...rest
 }: Props = $props();
 
@@ -34,6 +49,9 @@ const VARIANTS: Record<TabVariant, string> = {
 		"after:w-control-xs after:shrink-0 rounded text-left cursor-pointer",
 };
 
+const TRAILING =
+	"col-start-1 row-start-1 justify-self-end self-center flex mr-2";
+
 const TAB_ORDER: Record<TabVariant, number | undefined> = {
 	strip: undefined,
 	framed: 0,
@@ -43,8 +61,8 @@ const TAB_ORDER: Record<TabVariant, number | undefined> = {
 <!--
 	One tab of a tablist. In a TabStrip it takes an equal share of the strip,
 	and the selected one carries the accent rule along its bottom edge. Framed,
-	it is the whole target of a tab its caller draws, with the caller's other
-	controls beside it and never inside it.
+	it is the whole target of a tab its caller draws, with the trailing control
+	over its trailing edge as a sibling.
 -->
 <button
 	{type}
@@ -56,3 +74,6 @@ const TAB_ORDER: Record<TabVariant, number | undefined> = {
 >
 	{@render children?.()}
 </button>
+{#if trailing}
+	<div class={TRAILING}> {@render trailing()} </div>
+{/if}

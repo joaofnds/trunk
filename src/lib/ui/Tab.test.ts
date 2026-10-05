@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 import Tab from "./Tab.svelte";
 
 const label = createRawSnippet(() => ({ render: () => "<span>Amend</span>" }));
+const close = createRawSnippet(() => ({
+	render: () => '<button type="button" aria-label="Close"></button>',
+}));
 
 describe("Tab", () => {
 	it("is a tab that submits nothing", () => {
@@ -64,7 +67,9 @@ describe("Tab", () => {
 
 	describe("framed", () => {
 		it("fills its frame's one cell as the whole target", () => {
-			render(Tab, { props: { variant: "framed", children: label } });
+			render(Tab, {
+				props: { variant: "framed", trailing: close, children: label },
+			});
 
 			expect(screen.getByRole("tab", { name: "Amend" })).toHaveClass(
 				"col-start-1",
@@ -82,13 +87,17 @@ describe("Tab", () => {
 			"aria-selected:text-text-strong",
 			"focus-visible:outline-2",
 		])("leaves the strip's %s to the caller's frame", (stripClass) => {
-			render(Tab, { props: { variant: "framed", children: label } });
+			render(Tab, {
+				props: { variant: "framed", trailing: close, children: label },
+			});
 
 			expect(screen.getByRole("tab")).not.toHaveClass(stripClass);
 		});
 
 		it("lays its label on one line, stepped in from the edge", () => {
-			render(Tab, { props: { variant: "framed", children: label } });
+			render(Tab, {
+				props: { variant: "framed", trailing: close, children: label },
+			});
 
 			expect(screen.getByRole("tab")).toHaveClass(
 				"flex",
@@ -99,7 +108,9 @@ describe("Tab", () => {
 		});
 
 		it("keeps room after its label for an xs control laid over its trailing edge", () => {
-			render(Tab, { props: { variant: "framed", children: label } });
+			render(Tab, {
+				props: { variant: "framed", trailing: close, children: label },
+			});
 
 			expect(screen.getByRole("tab")).toHaveClass(
 				"after:w-control-xs",
@@ -108,21 +119,47 @@ describe("Tab", () => {
 			);
 		});
 
-		it("sizes itself from its label alone, with no track borrowed from the frame", () => {
-			render(Tab, { props: { variant: "framed", children: label } });
+		it("lays its trailing control over that room, beside the tab", () => {
+			render(Tab, {
+				props: { variant: "framed", trailing: close, children: label },
+			});
+
+			const control = screen.getByLabelText("Close");
+
+			expect(screen.getByRole("tab")).not.toContainElement(control);
+			expect(control.parentElement).toHaveClass(
+				"col-start-1",
+				"row-start-1",
+				"justify-self-end",
+				"self-center",
+				"mr-2",
+			);
+		});
+
+		it("lays out no subgrid of its frame", () => {
+			render(Tab, {
+				props: { variant: "framed", trailing: close, children: label },
+			});
 
 			expect(screen.getByRole("tab")).not.toHaveClass("grid-cols-subgrid");
 		});
 
 		it("joins the Tab order", () => {
-			render(Tab, { props: { variant: "framed", children: label } });
+			render(Tab, {
+				props: { variant: "framed", trailing: close, children: label },
+			});
 
 			expect(screen.getByRole("tab")).toHaveAttribute("tabindex", "0");
 		});
 
 		it("takes the place in the Tab order its caller gives it", () => {
 			render(Tab, {
-				props: { variant: "framed", tabindex: -1, children: label },
+				props: {
+					variant: "framed",
+					tabindex: -1,
+					trailing: close,
+					children: label,
+				},
 			});
 
 			expect(screen.getByRole("tab")).toHaveAttribute("tabindex", "-1");
