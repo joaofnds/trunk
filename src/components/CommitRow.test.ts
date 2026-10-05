@@ -162,6 +162,48 @@ describe("CommitRow", () => {
 		});
 	});
 
+	describe("in its list", () => {
+		function renderRow(props: { selected?: boolean } = {}) {
+			const hovered: boolean[] = [];
+			render(CommitRow, {
+				props: {
+					commit: makeCommit({ oid: "abc1234567" }),
+					rowIndex: 0,
+					columnVisibility: allVisible,
+					onhover: (over: boolean) => hovered.push(over),
+					...props,
+				},
+			});
+
+			return { row: screen.getByTestId("commit-row"), hovered };
+		}
+
+		it("is an option and a tab stop", () => {
+			const { row } = renderRow();
+
+			expect(row).toHaveAttribute("role", "option");
+			expect(row).toHaveAttribute("tabindex", "0");
+		});
+
+		it.each([
+			[true, "true"],
+			[false, "false"],
+		])("says whether it is selected (%s)", (selected, announced) => {
+			const { row } = renderRow({ selected });
+
+			expect(row).toHaveAttribute("aria-selected", announced);
+		});
+
+		it("reports the pointer entering and leaving it", async () => {
+			const { row, hovered } = renderRow();
+
+			await fireEvent.mouseEnter(row);
+			await fireEvent.mouseLeave(row);
+
+			expect(hovered).toEqual([true, false]);
+		});
+	});
+
 	describe("clicking the SHA", () => {
 		beforeEach(() => {
 			vi.mocked(writeText).mockClear();

@@ -84,6 +84,8 @@ $effect(() => {
 });
 
 let focusedIndex = $state<number>(0);
+let editorEl: HTMLDivElement | undefined = $state();
+let headerEl: HTMLDivElement | undefined = $state();
 let listEl: HTMLDivElement | undefined = $state();
 
 // Inline message editor state
@@ -195,6 +197,12 @@ function startColumnResize(
 
 // --- Header context menu ---
 
+function openHeaderMenu(e: MouseEvent) {
+	if (!(e.target instanceof Node) || !headerEl?.contains(e.target)) return;
+
+	void showHeaderContextMenu(e);
+}
+
 async function showHeaderContextMenu(e: MouseEvent) {
 	e.preventDefault();
 	const { Menu, CheckMenuItem } = await import("@tauri-apps/api/menu");
@@ -260,7 +268,15 @@ function scrollRowIntoView(idx: number) {
 }
 
 function handleEditorKeydown(e: KeyboardEvent) {
-	const tag = (e.target as HTMLElement)?.tagName;
+	if (!(e.target instanceof Element) || !editorEl?.contains(e.target)) return;
+
+	if (e.target.closest('[role="dialog"]')) {
+		e.stopPropagation();
+		if (e.key === "Escape") handleMessageCancel();
+		return;
+	}
+
+	const tag = e.target.tagName;
 	if (tag === "SELECT" || tag === "INPUT" || tag === "TEXTAREA") return;
 
 	switch (e.key) {
@@ -480,14 +496,12 @@ let lastVisibleColumn = $derived.by(() => {
 });
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-<div
-	class="rebase-editor"
-	tabindex="-1"
+<svelte:document
 	onkeydown={handleEditorKeydown}
-	use:autofocus
->
+	oncontextmenu={openHeaderMenu}
+/>
+
+<div class="rebase-editor" tabindex="-1" bind:this={editorEl} use:autofocus>
 	<!-- Header -->
 	<div class="rebase-toolbar">
 		<div class="rebase-toolbar-left">
@@ -505,8 +519,7 @@ let lastVisibleColumn = $derived.by(() => {
 	</div>
 
 	<!-- Column header -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="rebase-header" oncontextmenu={showHeaderContextMenu}>
+	<div class="rebase-header" bind:this={headerEl}>
 		<div class="rebase-col-action" style:padding="0 {COLUMN_PADDING_X}px">
 			Action
 		</div>
@@ -572,12 +585,18 @@ let lastVisibleColumn = $derived.by(() => {
 
 	<!-- Commit list: {#key} forces DOM recreation after reorder so SortableJS and Svelte don't fight -->
 	{#key items}
-		<div class="rebase-list" bind:this={listEl}>
+		<div
+			class="rebase-list"
+			role="listbox"
+			aria-label="Commits to rebase"
+			bind:this={listEl}
+		>
 			{#each items as item, idx (item.oid)}
 				<div class="rebase-row-wrapper">
 					<div
 						class="rebase-row h-row"
-						role="row"
+						role="option"
+						aria-selected={focusedIndex === idx}
 						tabindex="0"
 						class:rebase-row-focused={focusedIndex === idx}
 						class:rebase-row-drop={item.action === 'drop'}
@@ -684,7 +703,6 @@ let lastVisibleColumn = $derived.by(() => {
 							role="dialog"
 							aria-label="Edit commit message"
 							tabindex="-1"
-							onkeydown={(e) => { e.stopPropagation(); if (e.key === 'Escape') handleMessageCancel(); }}
 						>
 							<div class="rebase-msg-editor-title"
 								>{items[editingIdx]?.action === 'squash' ? 'Edit squash message' : 'Reword commit message'}</div

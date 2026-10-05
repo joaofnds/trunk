@@ -1852,6 +1852,15 @@ describe("RepoView", () => {
 			return view;
 		}
 
+		function rebaseRow(index: number): HTMLElement {
+			const row = screen
+				.getByRole("listbox", { name: "Commits to rebase" })
+				.querySelector<HTMLElement>(`[data-rebase-row="${index}"]`);
+			if (!row) throw new Error(`the plan has no row ${index}`);
+
+			return row;
+		}
+
 		it("raises a toast when the rebase stops", async () => {
 			stubRebaseTodo(PARENT_OID, { kind: "stopped" });
 
@@ -1938,7 +1947,7 @@ describe("RepoView", () => {
 			if (!resolveStaleDetail || !resolveStaleFiles) {
 				throw new Error("the initial rebase focus did not enter its barriers");
 			}
-			await fireEvent.click(screen.getAllByRole("row")[1]);
+			await fireEvent.click(rebaseRow(1));
 			expect(await screen.findByText(focusedFile.path)).toBeTruthy();
 
 			resolveStaleDetail(makeRebaseDetail(HEAD_OID, "head commit"));
@@ -1989,7 +1998,7 @@ describe("RepoView", () => {
 			if (!rejectStaleDetail) {
 				throw new Error("the initial rebase focus did not enter its barrier");
 			}
-			await fireEvent.click(screen.getAllByRole("row")[1]);
+			await fireEvent.click(rebaseRow(1));
 			expect(await screen.findByText(focusedFile.path)).toBeTruthy();
 
 			rejectStaleDetail(new Error("stale focus failed"));
@@ -2046,7 +2055,7 @@ describe("RepoView", () => {
 			});
 
 			await openTheEditorOnTheClickedCommit();
-			await fireEvent.click(screen.getAllByRole("row")[1]);
+			await fireEvent.click(rebaseRow(1));
 			await fireEvent.click(await screen.findByText(path));
 			expect(await screen.findByText("INITIAL")).toBeTruthy();
 			await fireEvent.click(screen.getByTitle("Ignore whitespace changes"));
@@ -2098,7 +2107,7 @@ describe("RepoView", () => {
 				return base(cmd, args);
 			});
 			await openTheEditorOnTheClickedCommit();
-			await fireEvent.click(screen.getAllByRole("row")[1]);
+			await fireEvent.click(rebaseRow(1));
 			await fireEvent.click(await screen.findByText(path));
 			expect(await screen.findByText("OLD REBASE")).toBeTruthy();
 			mockInvoke.mockImplementation((cmd, args) =>
@@ -2136,7 +2145,7 @@ describe("RepoView", () => {
 			});
 
 			await openTheEditorOnTheClickedCommit();
-			await fireEvent.click(screen.getAllByRole("row")[1]);
+			await fireEvent.click(rebaseRow(1));
 			await fireEvent.click(await screen.findByText(path));
 			await vi.waitFor(() => expect(resolveDiff).toBeTypeOf("function"));
 			await fireEvent.click(screen.getByTestId("staging-file"));
@@ -2230,7 +2239,7 @@ describe("RepoView", () => {
 			});
 
 			await openTheEditorOnTheClickedCommit();
-			await fireEvent.click(screen.getAllByRole("row")[1]);
+			await fireEvent.click(rebaseRow(1));
 			await screen.findByText("src/rebase.ts");
 			await fireEvent.click(screen.getByText("src/rebase.ts"));
 

@@ -1,4 +1,4 @@
-import { MenuItem } from "@tauri-apps/api/menu";
+import { CheckMenuItem, MenuItem } from "@tauri-apps/api/menu";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -2838,6 +2838,100 @@ describe("CommitGraph", () => {
 
 			expect(referenced).not.toHaveLength(0);
 			for (const ref of referenced) expect(declared).toContain(ref);
+		});
+	});
+
+	describe("a right click", () => {
+		function columnsOffered(): string[] {
+			return vi
+				.mocked(CheckMenuItem.new)
+				.mock.calls.map(([options]) => options.text);
+		}
+
+		async function mountGraph() {
+			render(CommitGraph, {
+				props: { repoPath: "/test/repo", tabActive: true },
+			});
+			await screen.findAllByTestId("commit-row");
+			await flush();
+		}
+
+		it("on the column header offers the columns, in place of the native menu", async () => {
+			await mountGraph();
+
+			const unhandled = await fireEvent.contextMenu(screen.getByText("Author"));
+			await flush();
+
+			expect(unhandled).toBe(false);
+			expect(columnsOffered()).toEqual([
+				"Branch/Tag",
+				"Graph",
+				"Message",
+				"Diff",
+				"Author",
+				"Date",
+				"SHA",
+			]);
+		});
+
+		it("on a commit offers no columns", async () => {
+			await mountGraph();
+
+			await fireEvent.contextMenu(screen.getAllByTestId("commit-row")[1]);
+			await flush();
+
+			expect(columnsOffered()).toEqual([]);
+		});
+	});
+
+	describe("the commits", () => {
+		const LANE = makeRef({ short_name: "main", ref_type: "LocalBranch" });
+		const ON_A_NAMED_LANE = [
+			makeCommit({
+				oid: "aaa111aaa111aaa1aaa111aaa111aaa1aaa111aa",
+				summary: "first commit",
+				lane_ref: LANE,
+			}),
+		];
+
+		async function mountGraph(selectedCommitOid?: string) {
+			installReads({ commits: ON_A_NAMED_LANE });
+			render(CommitGraph, {
+				props: { repoPath: "/test/repo", tabActive: true, selectedCommitOid },
+			});
+			await flush();
+
+			return await screen.findByTestId("commit-row");
+		}
+
+		it("are the options of the list", async () => {
+			const row = await mountGraph();
+
+			expect(screen.getByRole("listbox")).toContainElement(row);
+			expect(row).toHaveAttribute("role", "option");
+		});
+
+		it("mark the selected one", async () => {
+			const row = await mountGraph(ON_A_NAMED_LANE[0].oid);
+
+			expect(row).toHaveAttribute("aria-selected", "true");
+		});
+
+		it("name the lane of the one under the pointer", async () => {
+			const row = await mountGraph();
+
+			await fireEvent.mouseEnter(row);
+
+			expect(screen.getByText(/^main/)).toBeInTheDocument();
+		});
+
+		it("stop naming the lane once the pointer leaves", async () => {
+			const row = await mountGraph();
+			await fireEvent.mouseEnter(row);
+
+			await fireEvent.mouseLeave(row);
+
+			expect(screen.queryByText(/^main/)).not.toBeInTheDocument();
 		});
 	});
 });

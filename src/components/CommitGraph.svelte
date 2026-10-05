@@ -259,6 +259,7 @@ let listRef = $state<{
 } | null>(null);
 let scrolledToHead = false;
 let containerRef = $state<HTMLDivElement | null>(null);
+let headerRef = $state<HTMLDivElement | null>(null);
 
 /** The virtual list's scroller, or null while the list is not mounted. */
 function listViewport(): HTMLElement | null {
@@ -1490,6 +1491,12 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 	}
 }
 
+function openHeaderMenu(e: MouseEvent) {
+	if (!(e.target instanceof Node) || !headerRef?.contains(e.target)) return;
+
+	void showHeaderContextMenu(e);
+}
+
 async function showHeaderContextMenu(e: MouseEvent) {
 	e.preventDefault();
 	const items = await Promise.all(
@@ -2070,14 +2077,14 @@ $effect(() => {
 	role="listbox"
 	bind:this={containerRef}
 	onkeydown={handleKeydown}
+	oncontextmenu={openHeaderMenu}
 >
 	<!-- Header row (always visible). Its cells sit in a scroller of their own inside
        the padding, as the list's rows do, so the two scroll the same distance. -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="flex-shrink-0 h-bar bg-surface shadow-hairline text-caption font-semibold tracking-widest uppercase text-text-subtle"
 		style:padding="0 {COLUMN_PADDING_X}px"
-		oncontextmenu={showHeaderContextMenu}
+		bind:this={headerRef}
 	>
 		<div
 			data-testid="column-header"
@@ -2586,31 +2593,26 @@ $effect(() => {
 					minContentWidth={tableMinWidth(columnWidths, columnVisibility)}
 				>
 					{#snippet renderItem(commit, index)}
-						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div
-							onmouseenter={() => (hoveredRow = index)}
-							onmouseleave={() => (hoveredRow = null)}
-						>
-							<CommitRow
-								{commit}
-								rowIndex={index}
-								onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect}
-								oncontextmenu={handleRowContextMenu}
-								{columnVisibility}
-								selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'}
-								rowHeight={displaySettings.rowHeight}
-								isSearchMatch={searchMatchOids.has(commit.oid)}
-								isCurrentMatch={commit.oid === searchCurrentOid}
-								isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0}
-								inSession={reviewOids.has(commit.oid)}
-								isPendingBase={pendingBase === commit.oid}
-								commentCount={commentCountFor(commit.oid)}
-								commentTone={commentToneFor(commit.oid)}
-								wipStats={commit.oid === '__wip__' ? wipStats : undefined}
-								diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)}
-								{messageScrollX}
-							/>
-						</div>
+						<CommitRow
+							{commit}
+							rowIndex={index}
+							onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect}
+							oncontextmenu={handleRowContextMenu}
+							onhover={(over) => (hoveredRow = over ? index : null)}
+							{columnVisibility}
+							selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'}
+							rowHeight={displaySettings.rowHeight}
+							isSearchMatch={searchMatchOids.has(commit.oid)}
+							isCurrentMatch={commit.oid === searchCurrentOid}
+							isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0}
+							inSession={reviewOids.has(commit.oid)}
+							isPendingBase={pendingBase === commit.oid}
+							commentCount={commentCountFor(commit.oid)}
+							commentTone={commentToneFor(commit.oid)}
+							wipStats={commit.oid === '__wip__' ? wipStats : undefined}
+							diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)}
+							{messageScrollX}
+						/>
 					{/snippet}
 				</VirtualList>
 			{/key}
