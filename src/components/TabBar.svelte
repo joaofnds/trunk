@@ -212,8 +212,8 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 }
 
 .dirty-dot {
-	width: 6px;
-	height: 6px;
+	width: calc(3 * var(--u) / 2);
+	height: calc(3 * var(--u) / 2);
 	border-radius: 50%;
 	background: var(--color-accent);
 	flex-shrink: 0;

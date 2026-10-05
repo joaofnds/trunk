@@ -44,11 +44,11 @@ body {
 }
 
 .scrollbar-overlay-thumb[data-axis="vertical"] {
-	width: 5px;
+	width: calc(5 * var(--u) / 4);
 }
 
 .scrollbar-overlay-thumb[data-axis="horizontal"] {
-	height: 5px;
+	height: calc(5 * var(--u) / 4);
 }
 
 /* Placeholders render at full token contrast, not the UA's ~0.54-opacity
@@ -426,7 +426,7 @@ li.md-removed::before {
 	background: var(--color-md-word-add-bg);
 	text-decoration: underline;
 	text-decoration-color: var(--color-diff-add);
-	text-underline-offset: 3px;
+	text-underline-offset: calc(3 * var(--u) / 4);
 }
 /* A mark wrapping nothing but an image. An inline box paints its background
    across the line box and not behind a replaced element, so the reader got a

@@ -809,6 +809,6 @@ $effect(() => {
 }
 
 .dot {
-	width: 6px;
+	width: calc(3 * var(--u) / 2);
 }
 </style>

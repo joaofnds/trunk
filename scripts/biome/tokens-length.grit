@@ -5,12 +5,28 @@ or {
 		`padding: $v`, `padding-top: $v`, `padding-right: $v`, `padding-bottom: $v`, `padding-left: $v`,
 		`margin: $v`, `margin-top: $v`, `margin-right: $v`, `margin-bottom: $v`, `margin-left: $v`,
 		`gap: $v`, `row-gap: $v`, `column-gap: $v`,
-		`inset: $v`, `top: $v`, `right: $v`, `bottom: $v`, `left: $v`
+		`inset: $v`, `top: $v`, `right: $v`, `bottom: $v`, `left: $v`,
+		`text-underline-offset: $v`
 	} as $d where {
 		not $v <: r"^\s*(?:0|auto|-?\d+%|[\d.]+em|var\(--[\w-]+\)|calc\((?:\s|\d+|\*|\+|-|/|\(|\)|var\(--[\w-]+\))+\))(?:\s+(?:0|auto|-?\d+%|[\d.]+em|var\(--[\w-]+\)|calc\((?:\s|\d+|\*|\+|-|/|\(|\)|var\(--[\w-]+\))+\))){0,3}\s*$",
 		register_diagnostic(span = $d, message = "A length is a spacing token: var(--space-N), or a calc() of tokens and numbers with no unit. See docs/design-system.md.")
 	},
-	or { `border: $v`, `border-top: $v`, `border-right: $v`, `border-bottom: $v`, `border-left: $v`, `outline: $v` } as $d where {
+	or {
+		`width: $v`, `min-width: $v`, `max-width: $v`,
+		`height: $v`, `min-height: $v`, `max-height: $v`,
+		`inline-size: $v`, `min-inline-size: $v`, `max-inline-size: $v`,
+		`block-size: $v`, `min-block-size: $v`, `max-block-size: $v`,
+		`flex-basis: $v`
+	} as $d where {
+		not $v <: r"^\s*(?:0|auto|none|fit-content|min-content|max-content|1px|[\d.]+(?:%|em|ch|vh|vw|cqi)|var\(--[\w-]+\)|calc\([\s(-]*(?:\d+%?|var\(--[\w-]+\))(?:\s*[-+*/()][-+*/()\s]*(?:\d+%?|var\(--[\w-]+\)))*[\s)]*(?:[+-]\s*1px[\s)]*)?\))\s*$",
+		register_diagnostic(span = $d, message = "A size is a token, a calc() of tokens, unitless numbers and percentages that may end in the + 1px a rule adds, a relative unit, a keyword, or 1px. See docs/design-system.md.")
+	},
+	or {
+		`border: $v`, `border-top: $v`, `border-right: $v`, `border-bottom: $v`, `border-left: $v`,
+		`border-block: $v`, `border-block-start: $v`, `border-block-end: $v`,
+		`border-inline: $v`, `border-inline-start: $v`, `border-inline-end: $v`,
+		`outline: $v`
+	} as $d where {
 		not $v <: r"^\s*(?:none|0|\d+px (?:solid|dashed) (?:var\(--[\w-]+\)|transparent|currentColor|color-mix\(in oklch,\s*(?:var\(--[\w-]+\)|transparent)\s+\d+%,\s*(?:var\(--[\w-]+\)|transparent)\s*\)))\s*$",
 		register_diagnostic(span = $d, message = "A border or outline is `<width>px solid|dashed <token>`, none or 0. See docs/design-system.md.")
 	},

@@ -979,8 +979,8 @@ let lastVisibleColumn = $derived.by(() => {
 
 .rebase-action-dot {
 	display: inline-block;
-	width: 6px;
-	height: 6px;
+	width: calc(3 * var(--u) / 2);
+	height: calc(3 * var(--u) / 2);
 	border-radius: 50%;
 	vertical-align: middle;
 	flex-shrink: 0;
@@ -1090,6 +1090,6 @@ let lastVisibleColumn = $derived.by(() => {
 
 .rebase-col-action,
 .rebase-cell-action {
-	width: 90px;
+	width: calc(45 * var(--u) / 2);
 }
 </style>

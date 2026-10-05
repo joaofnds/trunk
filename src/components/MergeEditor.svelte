@@ -708,8 +708,8 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 }
 
 .icon-slot {
-	width: 14px;
-	height: 14px;
+	width: calc(7 * var(--u) / 2);
+	height: calc(7 * var(--u) / 2);
 }
 
 .line-no {

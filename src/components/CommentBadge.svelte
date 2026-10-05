@@ -26,8 +26,8 @@ let { count, tone = "open" }: Props = $props();
 <style>
 .comment-badge {
 	flex-shrink: 0;
-	min-width: 16px;
-	height: 16px;
+	min-width: calc(4 * var(--u));
+	height: calc(4 * var(--u));
 	padding: 0 var(--space-1);
 	display: inline-flex;
 	align-items: center;

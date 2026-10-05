@@ -392,7 +392,7 @@ async function requestDeleteReply(replyId: string) {
 }
 .diff-gutter {
 	flex-shrink: 0;
-	width: 18px;
+	width: calc(9 * var(--u) / 2);
 	padding: 0 var(--space-1);
 	text-align: center;
 	color: var(--color-text-muted);

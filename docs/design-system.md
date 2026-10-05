@@ -7,14 +7,22 @@ merges that `docs/decisions/2026-10-03-design-system-migration-pixels.md` lists.
 
 ## Tokens
 
-`src/tokens.css` is the one stylesheet where a color, a length, a radius or a
-shadow is written as a literal. It declares them on `:root`, grouped by role,
+`src/tokens.css` is the one stylesheet that gives a color, a radius, a shadow or
+a length in pixels its value. It declares them on `:root`, grouped by role,
 and every other stylesheet, a component's `<style>` block included, reads them
-through `var(--...)`.
+through `var(--...)`, states a length as a `calc()` of `--u`, or states it in a
+unit relative to the text, the viewport or the container (`em`, `ch`, `vh`,
+`vw`, `cqi`, a percentage). In a stylesheet, pixel counts are written in place
+only where a token would name nothing: a border's or an outline's width, a
+shadow's offsets, a gradient's stop positions, and a `1px` width or height,
+which a rule drawn as a box and a visually hidden label take. The guards below
+allow those. Two places hold a pixel count no guard reads: the `0px` a property
+registered in `src/properties.css` starts from, and the `0px`s in the split
+diff's pan transform.
 
 | Group | Tokens | Rule |
 |-------|--------|------|
-| Unit and spacing | `--u`, `--space-N` | Every length is a whole multiple of `--u` (4px). `src/app.css.test.ts` fails on one that is not, and on a length token nothing reads. |
+| Unit and spacing | `--u`, `--space-N` | Every length token is a whole multiple of `--u` (4px). `src/app.css.test.ts` fails on one that is not, and on a length token nothing reads. |
 | Chrome heights | `--bar-h`, `--row-h`, `--control-*-h`, `--banded-*-h`, `--target-min` | `--bar-h` and `--row-h` are mirrored by the constants in `src/lib/chrome-heights.ts`, which the same test holds equal. A band that paints a rule adds that rule's pixel, `calc(N * var(--u) + 1px)`. |
 | Radii | `--radius`, `--radius-pill` | A pill is round, not a multiple of anything. |
 | Type | `--text-<step>` with `--text-<step>--line-height`: caption 10/13, small 11/14, callout 12/15, body 13/16, title 15/20, display 22/26. `--weight-regular`, `--weight-medium`, `--weight-semibold` (400, 500, 600). `--leading-none`, `--leading-tight`, `--leading-normal` (1, 1.25, 1.5). `--tracking-wide`, `--tracking-wider`, `--tracking-widest` (0.02, 0.04, 0.08em). | The sizes and line heights are the macOS text styles Caption 1, Subheadline, Callout, Body, Title 3 and Title 1. A single-line label sets a step and that step's line height together, never a px size; an em-sized prose block or a wrapping paragraph reads a unitless `--leading-*` so the leading follows the size, and code is `--font-mono` at the step its context uses rather than a step of its own. The same test pins the scale and fails on a `--text-*` outside it. |
@@ -127,8 +135,9 @@ pointing at this document.
 | | `line-height`, `letter-spacing` | `var(--...)`, `inherit`, `0`. |
 | | `font-weight`, `font-family` | `var(--...)`, `inherit`. |
 | | `font` | `inherit` only. The shorthand hides the scale. |
-| `tokens-length.grit` | `padding*`, `margin*`, `gap`, `row-gap`, `column-gap`, `inset`, `top`, `right`, `bottom`, `left` | Up to four of: `var(--...)`, a `calc()` built only from `var(--...)`, unitless numbers and operators, `0`, `auto`, a percentage, an `em`. |
-| | `border`, `border-*`, `outline` | `none`, `0`, or `<N>px solid|dashed <token color>`. |
+| `tokens-length.grit` | `padding*`, `margin*`, `gap`, `row-gap`, `column-gap`, `inset`, `top`, `right`, `bottom`, `left`, `text-underline-offset` | Up to four of: `var(--...)`, a `calc()` built only from `var(--...)`, unitless numbers and operators, `0`, `auto`, a percentage, an `em`. |
+| | `width`, `height`, `inline-size`, `block-size`, the `min-` and `max-` form of each, `flex-basis` | One of: `0`, `auto`, `none`, a `*-content` keyword, `1px`, a percentage, an `em`, `ch`, `vh`, `vw` or `cqi` length, `var(--...)`, or a `calc()` built only from `var(--...)`, unitless numbers, percentages and operators, which may end in the `+ 1px` or `- 1px` a rule adds. A size off the 4px grid keeps its pixel as a fraction of the unit, `calc(3 * var(--u) / 2)` for a 6px dot, rather than moving. |
+| | `border`, its four sides, `border-block`, `border-inline` and their `-start` and `-end`, `outline` | `none`, `0`, or `<N>px solid|dashed <token color>`. |
 | | `border-radius` | `var(--radius)`, `var(--radius-pill)`, `50%`, `0`, up to four of them. |
 | | `box-shadow` | `none`, `var(--...)`, or layers of offsets with a token color. |
 
@@ -154,7 +163,8 @@ goes through a utility or a `<style>` rule, where the plugins read it, and a val
 computed at runtime goes through a `style:` directive, which the rule leaves alone
 and `src/markup-classes.test.ts` keeps honest by failing a directive that sets a
 literal. `tokens-length.grit` is on, so a length a `<style>` rule states as a
-literal fails there, inside a `calc()` or a fallback included, and
+literal fails there, inside a `calc()` or a fallback included, apart from the
+pixel counts the table above names, and
 `src/spacing-scale.test.ts` holds a gap, padding or margin to the spacing tokens
 by name, which the plugin's `var(--...)` does not.
 

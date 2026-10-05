@@ -289,7 +289,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 
 .toolbar-divider {
 	width: 1px;
-	height: 18px;
+	height: calc(9 * var(--u) / 2);
 	background: var(--color-border);
 	flex-shrink: 0;
 }
@@ -298,8 +298,8 @@ async function handleBranchCreate(values: Record<string, string>) {
 	position: absolute;
 	top: calc(-3 * var(--u) / 2);
 	right: calc(-3 * var(--u) / 2);
-	min-width: 16px;
-	height: 16px;
+	min-width: calc(4 * var(--u));
+	height: calc(4 * var(--u));
 	padding: 0 var(--space-1);
 	display: flex;
 	align-items: center;
@@ -318,7 +318,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 	overflow: hidden;
 }
 .review-filter-select select {
-	max-width: 92px;
+	max-width: calc(23 * var(--u));
 	height: var(--control-h);
 	border: none;
 	border-radius: var(--radius);

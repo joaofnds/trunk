@@ -144,7 +144,7 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 	color: var(--color-text-subtle);
 	text-transform: uppercase;
 	letter-spacing: var(--tracking-wider);
-	width: 62px;
+	width: calc(31 * var(--u) / 2);
 	flex-shrink: 0;
 }
 </style>

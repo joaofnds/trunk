@@ -11,7 +11,27 @@
 .bad { margin: calc(2 * 4px); }
 .bad { left: calc(var(--u) + 3px); }
 .bad { top: calc(-1 * var(--space-2) - 1px); }
+.bad { width: 6px; }
+.bad { height: 16px; }
+.bad { min-width: 6rem; }
+.bad { min-height: 60px; }
+.bad { max-width: 92px; }
+.bad { max-height: 180px; }
+.bad { width: calc(var(--u) + 3px); }
+.bad { height: var(--row-h, 28px); }
+.bad { text-underline-offset: 3px; }
+.bad { width: calc(37 * 1px); }
+.bad { width: calc(1px * 37); }
+.bad { height: calc(1px + 1px + 1px); }
+.bad { height: calc(var(--u) + 1px + 1px); }
+.bad { inline-size: 6px; }
+.bad { block-size: 16px; }
+.bad { min-inline-size: 6px; }
+.bad { max-block-size: 180px; }
+.bad { flex-basis: 60px; }
 .bad { border: 1px solid red; }
+.bad { border-block-end: 1px solid red; }
+.bad { border-inline-start: 2px solid #fff; }
 .bad { border: 1px solid #ccc; }
 .bad { border: 2px dotted var(--line); }
 .bad { border-left: 3px solid rgba(0, 0, 0, 0.3); }

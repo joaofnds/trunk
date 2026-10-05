@@ -162,10 +162,10 @@ function rowLabel(file: TrackedFile): string {
 }
 
 .dot-slot {
-	width: 6px;
+	width: calc(3 * var(--u) / 2);
 }
 
 .dot {
-	height: 6px;
+	height: calc(3 * var(--u) / 2);
 }
 </style>

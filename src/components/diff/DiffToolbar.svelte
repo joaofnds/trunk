@@ -338,8 +338,8 @@ const renderedActive = $derived(
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 16px;
-	height: 16px;
+	width: calc(4 * var(--u));
+	height: calc(4 * var(--u));
 	border-radius: var(--radius);
 	font-family: var(--font-mono);
 	font-weight: var(--weight-semibold);

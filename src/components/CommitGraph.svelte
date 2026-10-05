@@ -2773,9 +2773,9 @@ $effect(() => {
 
 /* The loading skeleton's stand-ins for a ref pill and a graph lane. */
 .skeleton-ref {
-	width: 64px;
+	width: calc(16 * var(--u));
 }
 .skeleton-graph {
-	width: 32px;
+	width: calc(8 * var(--u));
 }
 </style>

@@ -320,7 +320,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 }
 
 .composer-textarea {
-	min-height: 60px;
+	min-height: calc(15 * var(--u));
 	resize: vertical;
 	padding: var(--space-2);
 	font-size: var(--text-callout);

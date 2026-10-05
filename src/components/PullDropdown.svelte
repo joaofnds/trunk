@@ -97,7 +97,7 @@ $effect(() => {
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius);
 	box-shadow: var(--shadow-md);
-	min-width: 180px;
+	min-width: calc(45 * var(--u));
 	padding: var(--space-1) 0;
 	font-size: var(--text-callout);
 }

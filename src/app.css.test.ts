@@ -113,7 +113,10 @@ describe("app.css scrollbars", () => {
 					),
 				) ?? [];
 
-			expect(body).toMatch(new RegExp(`${across}:\\s*5px;`));
+			// 5px is a unit and a quarter, so it is written as a fraction of the unit.
+			expect(body).toMatch(
+				new RegExp(`${across}:\\s*calc\\(5 \\* var\\(--u\\) / 4\\);`),
+			);
 			expect(`${base}${body}`).not.toMatch(
 				/border(-(left|right|top|bottom))?:/,
 			);

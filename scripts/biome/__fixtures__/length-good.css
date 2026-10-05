@@ -7,7 +7,27 @@
 .good { inset: 0; }
 .good { top: 50%; }
 .good { left: calc(var(--depth) * var(--space-4)); }
+.good { width: calc(3 * var(--u) / 2); }
+.good { height: calc(4 * var(--u)); }
+.good { width: 1px; }
+.good { height: calc(var(--bar-h) + 1px); }
+.good { width: calc(100% - var(--space-2)); }
+.good { min-width: 0; }
+.good { width: 100%; }
+.good { height: auto; }
+.good { max-width: none; }
+.good { width: fit-content; }
+.good { inline-size: calc(3 * var(--u) / 2); }
+.good { flex-basis: 50%; }
+.good { height: calc(var(--bar-h) - 1px); }
+.good { max-height: 60vh; }
+.good { max-width: 90vw; }
+.good { width: 100cqi; }
+.good { min-width: 2ch; }
+.good { width: var(--welcome-col); }
+.good { text-underline-offset: calc(3 * var(--u) / 4); }
 .good { border: 1px solid var(--line); }
+.good { border-block-end: 1px solid var(--line); }
 .good { border: 1px solid transparent; }
 .good { border: 1px solid color-mix(in oklch, var(--accent) 25%, transparent); }
 .good { border: none; }

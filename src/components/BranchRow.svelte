@@ -140,7 +140,7 @@ function openMenu(e: MouseEvent) {
 	color: var(--color-danger);
 }
 .dot {
-	width: 6px;
-	height: 6px;
+	width: calc(3 * var(--u) / 2);
+	height: calc(3 * var(--u) / 2);
 }
 </style>

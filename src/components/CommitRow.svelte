@@ -360,6 +360,6 @@ const rowShadow = $derived(
 
 /* Wide enough that a one-word WIP summary still reads as a chip. */
 .wip-summary {
-	min-width: 6rem;
+	min-width: calc(24 * var(--u));
 }
 </style>
