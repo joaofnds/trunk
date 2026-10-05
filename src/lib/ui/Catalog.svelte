@@ -1,6 +1,7 @@
 <script lang="ts" module>
 import tokens from "../../tokens.css?raw";
 import type { ButtonSize, ButtonVariant } from "./Button.svelte";
+import type { RowReveal, RowTone, RowVariant } from "./Row.svelte";
 import type { RowActionTone } from "./RowAction.svelte";
 
 const DECLARED = [...tokens.matchAll(/^\t(--[\w-]+):/gm)].map(
@@ -26,6 +27,17 @@ const REPOS = ["trunk", "dotfiles"];
 const STRATEGIES = ["Fetch", "Fast-forward only", "Pull (rebase)"];
 const PARENTS = ["a1b2c3d", "e4f5a6b"];
 const MODES = ["Commit", "Amend", "Stash"];
+const LIST_ROWS: RowVariant[] = ["inset", "flush", "entry", "item", "parent"];
+const BAR_ROWS: RowVariant[] = ["header", "band"];
+const FRAMED_ROWS: RowVariant[] = ["title", "divider", "fill"];
+const ROW_TONES: RowTone[] = ["plain", "muted", "current"];
+const ROW_REVEALS: RowReveal[] = ["hover", "fade", "pointer"];
+const BRANCHES = ["main", "release", "feature/login"];
+const LINES = [12, 13, 14];
+const PANE_WIDTH = 240;
+const PANE_MIN = 120;
+
+const stay = () => undefined;
 </script>
 
 <script lang="ts">
@@ -36,12 +48,17 @@ import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import Eye from "@lucide/svelte/icons/eye";
 import Plus from "@lucide/svelte/icons/plus";
 import X from "@lucide/svelte/icons/x";
+import { treeIndent } from "../chrome-heights";
 import Button from "./Button.svelte";
 import ButtonGroup from "./ButtonGroup.svelte";
 import Chip from "./Chip.svelte";
+import GutterGrip from "./GutterGrip.svelte";
+import HitArea from "./HitArea.svelte";
 import LinkButton from "./LinkButton.svelte";
 import ListOption from "./ListOption.svelte";
+import Row from "./Row.svelte";
 import RowAction from "./RowAction.svelte";
+import Splitter from "./Splitter.svelte";
 import Tab from "./Tab.svelte";
 import TabStrip from "./TabStrip.svelte";
 import ToastCard from "./ToastCard.svelte";
@@ -254,6 +271,67 @@ import ToastCard from "./ToastCard.svelte";
 
 	<section class="flex flex-col gap-3">
 		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>Row</h2
+		>
+		{#snippet eye()}
+			<RowAction aria-label="Hide"><Eye size={12} /></RowAction>
+		{/snippet}
+		<div class="grid grid-cols-3 gap-4">
+			<div class="flex flex-col gap-1 bg-surface py-1">
+				{#each LIST_ROWS as variant (variant)}
+					<Row {variant}><span data-catalog-text>{variant}</span></Row>
+				{/each}
+				{#each ROW_REVEALS as reveal (reveal)}
+					<Row actions={eye} {reveal}
+						><span data-catalog-text>{reveal}</span></Row
+					>
+				{/each}
+			</div>
+			<div class="flex flex-col gap-1 bg-surface py-1">
+				{#each ROW_TONES as tone (tone)}
+					<Row {tone} actions={eye} reveal="always"
+						><span data-catalog-text>{tone}</span></Row
+					>
+				{/each}
+				<div role="listbox" aria-label="Branches" class="flex flex-col">
+					{#each BRANCHES as branch, i (branch)}
+						<Row variant="item" role="option" selected={i === 1} tabindex={-1}
+							><span data-catalog-text>{branch}</span></Row
+						>
+					{/each}
+				</div>
+				<div role="tree" aria-label="Files" class="flex flex-col">
+					<Row variant="parent" role="treeitem" tabindex={-1}
+						><span data-catalog-text>src</span></Row
+					>
+					{#each FILES as file (file)}
+						<Row
+							variant="item"
+							role="treeitem"
+							indent={treeIndent(1)}
+							tabindex={-1}
+							><span data-catalog-text>{file}</span></Row
+						>
+					{/each}
+				</div>
+			</div>
+			<div class="flex flex-col gap-1 bg-surface py-1">
+				{#each BAR_ROWS as variant (variant)}
+					<Row {variant} actions={eye} reveal="always"
+						><span data-catalog-text class="text-callout">{variant}</span></Row
+					>
+				{/each}
+				{#each FRAMED_ROWS as variant (variant)}
+					<div class="h-bar">
+						<Row {variant}><span data-catalog-text>{variant}</span></Row>
+					</div>
+				{/each}
+			</div>
+		</div>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
 			>ListOption</h2
 		>
 		<div class="flex gap-4">
@@ -315,6 +393,28 @@ import ToastCard from "./ToastCard.svelte";
 				{/each}
 			</TabStrip>
 		</div>
+		<div role="tablist" aria-label="Repositories" class="flex gap-1">
+			{#each REPOS as repo, i (repo)}
+				<div
+					role="presentation"
+					class={[
+						"grid h-control shrink-0 rounded text-callout font-medium whitespace-nowrap",
+						i === 0
+							? "bg-surface-raised text-text-strong ring-1 ring-inset ring-border"
+							: "text-text-muted hover:bg-hover hover:text-text",
+					]}
+				>
+					<Tab variant="framed" selected={i === 0}>
+						<span data-catalog-text>{repo}</span>
+						{#snippet trailing()}
+							<Button icon size="xs" variant="ghost" aria-label="Close {repo}"
+								><X size={12} /></Button
+							>
+						{/snippet}
+					</Tab>
+				</div>
+			{/each}
+		</div>
 	</section>
 
 	<section class="flex flex-col gap-3">
@@ -328,6 +428,111 @@ import ToastCard from "./ToastCard.svelte";
 			<ToastCard tone="danger"
 				><span data-catalog-text>Push rejected: fetch first</span></ToastCard
 			>
+		</div>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>GutterGrip</h2
+		>
+		<div class="flex flex-col self-start bg-surface font-mono text-callout">
+			{#each LINES as line (line)}
+				<GutterGrip aria-label="Select line {line}">
+					<span data-catalog-text class="px-2 text-text-subtle">{line}</span>
+					<span data-catalog-text class="px-2 text-text-subtle"
+						>{line + 2}</span
+					>
+				</GutterGrip>
+			{/each}
+		</div>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>HitArea</h2
+		>
+		<div class="flex items-center gap-4">
+			<div
+				class="h-control-sm rounded-full bg-accent-bg text-small text-accent"
+			>
+				<HitArea aria-label="main" cursor="pointer" shape="pill"
+					><span data-catalog-text class="px-2">main</span></HitArea
+				>
+			</div>
+			<div
+				class="grid h-control-sm w-control-sm place-items-center bg-surface-raised text-small text-text-muted"
+			>
+				<span data-catalog-text class="col-start-1 row-start-1">+2</span>
+				<div class="col-start-1 row-start-1 size-full">
+					<HitArea aria-label="main and 2 more" />
+				</div>
+			</div>
+			<div
+				role="menu"
+				aria-label="Refs on this commit"
+				class="rounded border border-border bg-surface-raised px-2 py-1"
+			>
+				{#each BRANCHES as branch (branch)}
+					<div
+						class="-mx-1 h-target rounded text-small font-medium whitespace-nowrap hover:bg-hover"
+					>
+						<HitArea
+							role="menuitem"
+							aria-label={branch}
+							cursor="context-menu"
+							shape="row"
+							><span data-catalog-text class="px-1">{branch}</span></HitArea
+						>
+					</div>
+				{/each}
+			</div>
+		</div>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>Splitter</h2
+		>
+		<div class="grid grid-cols-4 gap-4">
+			<div class="flex h-topbar bg-surface">
+				<div class="flex-1"></div>
+				<Splitter
+					variant="pane"
+					aria-label="Resize pane"
+					value={PANE_WIDTH}
+					min={PANE_MIN}
+					onstep={stay}
+				/>
+				<div class="flex-1"></div>
+			</div>
+			<div class="flex h-topbar bg-surface">
+				<div class="relative flex-1">
+					<Splitter
+						variant="column"
+						aria-label="Resize column"
+						value={PANE_WIDTH}
+						min={PANE_MIN}
+						onstep={stay}
+					/>
+				</div>
+				<div class="flex-1"></div>
+			</div>
+			<div class="flex h-topbar flex-col bg-surface">
+				<div class="flex-1"></div>
+				<Splitter
+					variant="bar"
+					aria-label="Resize form"
+					value={PANE_WIDTH}
+					min={PANE_MIN}
+					onstep={stay}
+				/>
+				<div class="flex-1"></div>
+			</div>
+			<div class="flex h-topbar flex-col bg-surface">
+				<div class="flex-1"></div>
+				<Splitter variant="bar" fixed />
+				<div class="flex-1"></div>
+			</div>
 		</div>
 	</section>
 </div>

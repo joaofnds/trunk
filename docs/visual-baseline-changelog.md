@@ -231,3 +231,11 @@ Button gains a 16px icon-only xs size for the tab close, drawn after the md icon
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-10-05
+
+TRUNK-307: catalog sections for Row, the framed Tab, GutterGrip, HitArea and Splitter
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png
