@@ -105,8 +105,6 @@ describe("StagingPanel", () => {
 					source_branch: null,
 					target_branch: null,
 					progress: null,
-					source_color_index: null,
-					target_color_index: null,
 					rebase_message: null,
 				});
 			return Promise.resolve(undefined);
@@ -380,8 +378,6 @@ describe("StagingPanel merge-continue", () => {
 					source_branch: "feature",
 					target_branch: "main",
 					progress: null,
-					source_color_index: 1,
-					target_color_index: 0,
 					rebase_message: null,
 				});
 			if (cmd === "get_merge_message")
@@ -477,8 +473,6 @@ describe("StagingPanel rebase form", () => {
 					source_branch: "feature",
 					target_branch: "main",
 					progress: "2/5",
-					source_color_index: 1,
-					target_color_index: 0,
 					rebase_message: "reword the parser",
 				});
 			return Promise.resolve(undefined);
@@ -582,8 +576,6 @@ describe("StagingPanel with no rebase form", () => {
 					source_branch: "feature",
 					target_branch: "main",
 					progress: null,
-					source_color_index: 1,
-					target_color_index: 0,
 					rebase_message: null,
 				});
 			return Promise.resolve(undefined);

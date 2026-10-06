@@ -102,8 +102,6 @@ pub fn get_operation_state_inner(
                 source_branch: source,
                 target_branch: target,
                 progress: None,
-                source_color_index: None,
-                target_color_index: None,
                 rebase_message: None,
             })
         }
@@ -141,8 +139,6 @@ pub fn get_operation_state_inner(
                 source_branch: head_name,
                 target_branch: onto_branch,
                 progress,
-                source_color_index: None,
-                target_color_index: None,
                 rebase_message,
             })
         }
@@ -152,8 +148,6 @@ pub fn get_operation_state_inner(
                 source_branch: None,
                 target_branch: None,
                 progress: None,
-                source_color_index: None,
-                target_color_index: None,
                 rebase_message: None,
             })
         }
@@ -163,8 +157,6 @@ pub fn get_operation_state_inner(
                 source_branch: None,
                 target_branch: None,
                 progress: None,
-                source_color_index: None,
-                target_color_index: None,
                 rebase_message: None,
             })
         }
@@ -173,8 +165,6 @@ pub fn get_operation_state_inner(
             source_branch: None,
             target_branch: None,
             progress: None,
-            source_color_index: None,
-            target_color_index: None,
             rebase_message: None,
         }),
     }
@@ -468,41 +458,12 @@ pub fn rebase_branch_inner(
 pub async fn get_operation_state(
     path: String,
     state: State<'_, RepoState>,
-    cache: State<'_, CommitCache>,
 ) -> Result<OperationInfo, String> {
     let state_map = state.snapshot();
-    let graph = cache.snapshot(&path);
-    tauri::async_runtime::spawn_blocking(move || {
-        let mut info = get_operation_state_inner(&path, &state_map)?;
-        // Look up branch color indexes from the cached graph
-        if let Some(graph) = graph {
-            if let Some(ref src) = info.source_branch {
-                info.source_color_index = find_branch_color(&graph.layout.commits, src);
-            }
-            if let Some(ref tgt) = info.target_branch {
-                info.target_color_index = find_branch_color(&graph.layout.commits, tgt);
-            }
-        }
-        Ok(info)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e: TrunkError| e.to_json())
-}
-
-/// Find a branch's `color_index` by searching ref labels in the cached graph.
-fn find_branch_color(
-    commits: &[trunk_git::types::GraphCommit],
-    branch_name: &str,
-) -> Option<usize> {
-    for commit in commits {
-        for r in &commit.refs {
-            if r.short_name == branch_name {
-                return Some(r.color_index);
-            }
-        }
-    }
-    None
+    tauri::async_runtime::spawn_blocking(move || get_operation_state_inner(&path, &state_map))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e: TrunkError| e.to_json())
 }
 
 /// # Errors

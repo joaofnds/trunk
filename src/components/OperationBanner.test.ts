@@ -23,8 +23,6 @@ function makeInfo(overrides: Partial<OperationInfo> = {}): OperationInfo {
 		source_branch: "feature",
 		target_branch: "main",
 		progress: null,
-		source_color_index: 1,
-		target_color_index: 0,
 		rebase_message: null,
 		...overrides,
 	};

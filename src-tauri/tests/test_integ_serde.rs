@@ -590,16 +590,6 @@ fn operation_info_serializes_correctly() {
         progress.is_null() || progress.is_string(),
         "progress should be null or string"
     );
-    let source_color_index = &json["source_color_index"];
-    assert!(
-        source_color_index.is_null() || source_color_index.is_number(),
-        "source_color_index should be null or number"
-    );
-    let target_color_index = &json["target_color_index"];
-    assert!(
-        target_color_index.is_null() || target_color_index.is_number(),
-        "target_color_index should be null or number"
-    );
     let rebase_message = &json["rebase_message"];
     assert!(
         rebase_message.is_null() || rebase_message.is_string(),

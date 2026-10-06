@@ -29,8 +29,6 @@ const NONE_OP = {
 	source_branch: null,
 	target_branch: null,
 	progress: null,
-	source_color_index: null,
-	target_color_index: null,
 	rebase_message: null,
 };
 
