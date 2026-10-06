@@ -30,6 +30,7 @@ import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
 import Splitter from "../lib/ui/Splitter.svelte";
 import BranchChip from "./BranchChip.svelte";
+import CommitChip from "./CommitChip.svelte";
 import CommitForm from "./CommitForm.svelte";
 import FileRow from "./FileRow.svelte";
 import OperationBanner from "./OperationBanner.svelte";
@@ -894,6 +895,8 @@ $effect(() => {
 			onto
 			{#if operationInfo.target_branch}
 				<BranchChip name={operationInfo.target_branch} />
+			{:else if operationInfo.onto_oid}
+				<CommitChip oid={operationInfo.onto_oid} />
 			{/if}
 		</div>
 	{:else if operationInfo && operationInfo.op_type !== 'None'}

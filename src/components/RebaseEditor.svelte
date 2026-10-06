@@ -1,5 +1,4 @@
 <script lang="ts">
-import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
 import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
 import Sortable from "sortablejs";
 import { copySha } from "../lib/clipboard.js";
@@ -27,6 +26,7 @@ import Dialog from "../lib/ui/Dialog.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Splitter from "../lib/ui/Splitter.svelte";
 import BranchChip from "./BranchChip.svelte";
+import CommitChip from "./CommitChip.svelte";
 
 type RebaseAction = "pick" | "squash" | "reword" | "drop";
 
@@ -541,9 +541,7 @@ let lastVisibleColumn = $derived.by(() => {
 				{#if base.kind === "branch"}
 					<BranchChip name={base.name} />
 				{:else if base.kind === "commit"}
-					<Chip title="Copy SHA" onclick={() => copySha(base.oid)}
-						><GitCommitHorizontal size={11} />{base.oid.slice(0, 7)}</Chip
-					>
+					<CommitChip oid={base.oid} />
 				{:else}
 					<Chip variant="label">root</Chip>
 				{/if}</span

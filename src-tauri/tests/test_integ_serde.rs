@@ -585,6 +585,11 @@ fn operation_info_serializes_correctly() {
         target_branch.is_null() || target_branch.is_string(),
         "target_branch should be null or string"
     );
+    assert_eq!(
+        json.get("onto_oid"),
+        Some(&serde_json::Value::Null),
+        "onto_oid should be present, and null when no rebase is in progress"
+    );
     let progress = &json["progress"];
     assert!(
         progress.is_null() || progress.is_string(),

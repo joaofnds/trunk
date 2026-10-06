@@ -408,3 +408,52 @@ fn rebase_resolves_an_option_shaped_branch_name_as_a_ref() {
         result.err()
     );
 }
+
+/// A feature branch whose one commit conflicts with `main`, checked out on `feature`.
+fn diverged_on_one_file() -> TestContext {
+    TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "feature content")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_file("file.txt", "main content")
+        .with_commit("Main commit")
+        .checkout("feature")
+        .build()
+}
+
+#[test]
+fn a_paused_rebase_names_the_branch_it_rebases_onto() {
+    let ctx = diverged_on_one_file();
+
+    let _ = ctx.rebase_branch("main");
+    let info = ctx.get_operation_state().unwrap();
+
+    assert_eq!(info.source_branch.as_deref(), Some("feature"));
+    assert_eq!(info.target_branch.as_deref(), Some("main"));
+}
+
+#[test]
+fn a_paused_rebase_onto_a_commit_no_branch_points_at_names_the_commit_not_a_branch() {
+    let ctx = diverged_on_one_file();
+    let onto = ctx.repo().revparse_single("main").unwrap().id();
+    let _ = ctx.rebase_branch("main");
+    let parent = ctx.repo().find_commit(onto).unwrap().parent_id(0).unwrap();
+    ctx.repo()
+        .reference(
+            "refs/heads/main",
+            parent,
+            true,
+            "move main off the onto commit",
+        )
+        .unwrap();
+
+    let info = ctx.get_operation_state().unwrap();
+
+    assert!(matches!(info.op_type, OperationType::Rebase));
+    assert_eq!(info.target_branch, None);
+    assert_eq!(info.onto_oid, Some(onto.to_string()));
+}

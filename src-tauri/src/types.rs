@@ -257,6 +257,8 @@ pub struct OperationInfo {
     pub op_type: OperationType,
     pub source_branch: Option<String>,
     pub target_branch: Option<String>,
+    /// The full oid a rebase replays onto, whether or not a branch names it.
+    pub onto_oid: Option<String>,
     pub progress: Option<String>,
     pub rebase_message: Option<String>,
 }

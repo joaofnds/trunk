@@ -160,6 +160,8 @@ export interface OperationInfo {
 	op_type: OperationType;
 	source_branch: string | null;
 	target_branch: string | null;
+	/** The full oid a rebase replays onto, whether or not a branch names it. */
+	onto_oid: string | null;
 	progress: string | null;
 	rebase_message: string | null;
 }

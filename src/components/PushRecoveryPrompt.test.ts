@@ -28,6 +28,7 @@ const NONE_OP = {
 	op_type: "None",
 	source_branch: null,
 	target_branch: null,
+	onto_oid: null,
 	progress: null,
 	rebase_message: null,
 };

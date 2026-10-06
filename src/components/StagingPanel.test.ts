@@ -1,3 +1,4 @@
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -104,6 +105,7 @@ describe("StagingPanel", () => {
 					op_type: "None",
 					source_branch: null,
 					target_branch: null,
+					onto_oid: null,
 					progress: null,
 					rebase_message: null,
 				});
@@ -377,6 +379,7 @@ describe("StagingPanel merge-continue", () => {
 					op_type: "Merge",
 					source_branch: "feature",
 					target_branch: "main",
+					onto_oid: null,
 					progress: null,
 					rebase_message: null,
 				});
@@ -463,6 +466,7 @@ describe("StagingPanel merge-continue", () => {
 
 describe("StagingPanel rebase form", () => {
 	beforeEach(() => {
+		vi.mocked(writeText).mockClear();
 		mockInvoke.mockReset();
 		mockInvoke.mockImplementation((cmd: string) => {
 			if (cmd === "get_status")
@@ -472,6 +476,7 @@ describe("StagingPanel rebase form", () => {
 					op_type: "Rebase",
 					source_branch: "feature",
 					target_branch: "main",
+					onto_oid: null,
 					progress: "2/5",
 					rebase_message: "reword the parser",
 				});
@@ -498,16 +503,44 @@ describe("StagingPanel rebase form", () => {
 	}
 
 	it.each(["feature", "main"])(
-		"offers %s as a branch chip that copies itself",
+		"copies %s when its branch chip is pressed",
 		async (name) => {
 			await renderRebaseForm();
 
-			expect(screen.getByRole("button", { name })).toHaveAttribute(
-				"title",
-				`Copy ${name}`,
-			);
+			await fireEvent.click(screen.getByRole("button", { name }));
+
+			expect(vi.mocked(writeText)).toHaveBeenCalledWith(name);
 		},
 	);
+
+	describe("when no branch points at the commit it rebases onto", () => {
+		const ONTO = "7d6008b2c4e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7";
+
+		beforeEach(() => {
+			mockInvoke.mockImplementation((cmd: string) => {
+				if (cmd === "get_status")
+					return Promise.resolve({ unstaged: [], staged: [], conflicted: [] });
+				if (cmd === "get_operation_state")
+					return Promise.resolve({
+						op_type: "Rebase",
+						source_branch: "feature",
+						target_branch: null,
+						onto_oid: ONTO,
+						progress: "2/5",
+						rebase_message: null,
+					});
+				return Promise.resolve(undefined);
+			});
+		});
+
+		it("copies the commit's full SHA when its chip is pressed", async () => {
+			await renderRebaseForm();
+
+			await fireEvent.click(screen.getByRole("button", { name: "7d6008b" }));
+
+			expect(vi.mocked(writeText)).toHaveBeenCalledWith(ONTO);
+		});
+	});
 
 	it("grows by a step when the handle above it takes ArrowUp", async () => {
 		const { form, handle } = await renderRebaseForm();
@@ -575,6 +608,7 @@ describe("StagingPanel with no rebase form", () => {
 					op_type: opType,
 					source_branch: "feature",
 					target_branch: "main",
+					onto_oid: null,
 					progress: null,
 					rebase_message: null,
 				});

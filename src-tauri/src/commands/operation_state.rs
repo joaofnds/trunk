@@ -71,8 +71,7 @@ fn resolve_oid_to_branch(repo: &git2::Repository, oid_str: &str) -> Option<Strin
             return reference.shorthand().ok().map(String::from);
         }
     }
-    // Fallback: return short OID
-    Some(oid_str.chars().take(7).collect())
+    None
 }
 
 /// Which operation the repository is in the middle of, if any.
@@ -101,6 +100,7 @@ pub fn get_operation_state_inner(
                 op_type: OperationType::Merge,
                 source_branch: source,
                 target_branch: target,
+                onto_oid: None,
                 progress: None,
                 rebase_message: None,
             })
@@ -120,7 +120,9 @@ pub fn get_operation_state_inner(
             let onto_oid = std::fs::read_to_string(rebase_dir.join("onto"))
                 .ok()
                 .map(|s| s.trim().to_owned());
-            let onto_branch = onto_oid.and_then(|oid| resolve_oid_to_branch(&repo, &oid));
+            let onto_branch = onto_oid
+                .as_deref()
+                .and_then(|oid| resolve_oid_to_branch(&repo, oid));
             let msgnum = std::fs::read_to_string(rebase_dir.join("msgnum"))
                 .ok()
                 .map(|s| s.trim().to_owned());
@@ -138,6 +140,7 @@ pub fn get_operation_state_inner(
                 op_type: OperationType::Rebase,
                 source_branch: head_name,
                 target_branch: onto_branch,
+                onto_oid,
                 progress,
                 rebase_message,
             })
@@ -147,6 +150,7 @@ pub fn get_operation_state_inner(
                 op_type: OperationType::CherryPick,
                 source_branch: None,
                 target_branch: None,
+                onto_oid: None,
                 progress: None,
                 rebase_message: None,
             })
@@ -156,6 +160,7 @@ pub fn get_operation_state_inner(
                 op_type: OperationType::Revert,
                 source_branch: None,
                 target_branch: None,
+                onto_oid: None,
                 progress: None,
                 rebase_message: None,
             })
@@ -164,6 +169,7 @@ pub fn get_operation_state_inner(
             op_type: OperationType::None,
             source_branch: None,
             target_branch: None,
+            onto_oid: None,
             progress: None,
             rebase_message: None,
         }),
