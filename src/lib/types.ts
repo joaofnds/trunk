@@ -480,6 +480,8 @@ export interface Review {
 	state: ReviewState;
 	published: boolean;
 	thread_count: number;
+	/** Threads still waiting on someone: open or addressed. */
+	unresolved_count: number;
 	created_at: number;
 }
 

@@ -407,13 +407,13 @@ describe("App review preference", () => {
 
 		await fireEvent.click(
 			await screen.findByRole("button", {
-				name: `Activate review ${empty.review.id}`,
+				name: `Active review ${empty.review.id}`,
 			}),
 		);
 		await reviewBadge(null);
 		await fireEvent.click(
 			await screen.findByRole("button", {
-				name: `Activate review ${populated.review.id}`,
+				name: `Active review ${populated.review.id}`,
 			}),
 		);
 
@@ -624,6 +624,7 @@ function reviewWith(
 			state: "composing",
 			published: false,
 			thread_count: storedThreads.length,
+			unresolved_count: storedThreads.filter((t) => t.state === "open").length,
 			created_at: 0,
 		},
 		threads: storedThreads.map((thread) => ({ ...thread, review_id: id })),

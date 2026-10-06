@@ -25,6 +25,14 @@ export interface ReviewCommentsManager {
 	readonly activeReviewId: string | null;
 	/** The review new comments land in, or null while the list lacks it. */
 	readonly activeReview: Review | null;
+	/**
+	 * The review the panel shows: the one the user selected while it exists,
+	 * else the active one. Selecting never moves where new comments land.
+	 */
+	readonly shownReviewId: string | null;
+	readonly shownReview: Review | null;
+	readonly shownThreads: Thread[];
+	readonly shownCommits: SessionCommit[];
 	readonly snapshots: ReviewSnapshots;
 	/** True when this repo has threads to show. Replaces the session gate. */
 	readonly hasThreads: boolean;
@@ -48,6 +56,7 @@ export interface ReviewCommentsManager {
 	// sum of its file badges plus its notes.
 	readonly countByCommit: Map<string, number>;
 	readonly countByFile: Map<string, number>;
+	select(reviewId: string): Promise<void>;
 	refresh(): Promise<void>;
 	destroy(): void;
 }
@@ -76,6 +85,12 @@ export function createReviewComments(
 			index_snapshot: null,
 		} as ReviewSnapshots,
 		commits: [] as SessionCommit[],
+		selectedReviewId: null as string | null,
+		selected: null as {
+			reviewId: string;
+			threads: Thread[];
+			commits: SessionCommit[];
+		} | null,
 		revision: 0,
 		threadsAuthoritative: false,
 		lastError: null as string | null,
@@ -84,6 +99,21 @@ export function createReviewComments(
 	const hasThreads = $derived(state.threads.length > 0);
 	const activeReview = $derived(
 		state.reviews.find((review) => review.id === state.activeReviewId) ?? null,
+	);
+
+	const shownReviewId = $derived(
+		state.reviews.some((review) => review.id === state.selectedReviewId)
+			? state.selectedReviewId
+			: state.activeReviewId,
+	);
+	const shownReview = $derived(
+		state.reviews.find((review) => review.id === shownReviewId) ?? null,
+	);
+	const shownSelection = $derived(
+		shownReviewId !== state.activeReviewId &&
+			state.selected?.reviewId === shownReviewId
+			? state.selected
+			: null,
 	);
 
 	const oids = $derived(
@@ -167,15 +197,56 @@ export function createReviewComments(
 				? commitsR.value
 				: [];
 
+		const selectedR = await readSelectedReview(seq);
+		if (cancelled || seq !== loadSeq) return;
+
 		state.lastError = firstRealFailure([
 			reviewsR,
 			activeR,
 			snapshotsR,
 			threadsR,
 			commitsR,
+			...selectedR,
 		]);
 
 		state.revision += 1;
+	}
+
+	// The active review's reads above feed every surface; a review the user
+	// picked to look at is read beside them, only while it is not the active one.
+	async function readSelectedReview(
+		seq: number,
+	): Promise<PromiseSettledResult<unknown>[]> {
+		const reviewId = state.selectedReviewId;
+		const listed = state.reviews.some((review) => review.id === reviewId);
+		if (reviewId === null || !listed || reviewId === state.activeReviewId) {
+			state.selected = null;
+			return [];
+		}
+
+		const results = await Promise.allSettled([
+			safeInvoke<Thread[]>("list_threads", { path: repoPath, reviewId }),
+			safeInvoke<SessionCommit[]>("list_session_commits", {
+				path: repoPath,
+				reviewId,
+			}),
+		]);
+		if (cancelled || seq !== loadSeq) return results;
+
+		const [threadsR, commitsR] = results;
+		state.selected = {
+			reviewId,
+			threads:
+				threadsR.status === "fulfilled" && Array.isArray(threadsR.value)
+					? threadsR.value
+					: [],
+			commits:
+				commitsR.status === "fulfilled" && Array.isArray(commitsR.value)
+					? commitsR.value
+					: [],
+		};
+
+		return results;
 	}
 
 	const reviewRefresh = createCoalescedTask(scheduler, readReviewState);
@@ -185,6 +256,11 @@ export function createReviewComments(
 
 	function refresh(): Promise<void> {
 		return reviewRefresh.run();
+	}
+
+	function select(reviewId: string): Promise<void> {
+		state.selectedReviewId = reviewId;
+		return refresh();
 	}
 
 	// Live coordination: refresh when a reviews-changed event arrives for this
@@ -245,6 +321,24 @@ export function createReviewComments(
 		get activeReview() {
 			return activeReview;
 		},
+		get shownReviewId() {
+			return shownReviewId;
+		},
+		get shownReview() {
+			return shownReview;
+		},
+		get shownThreads() {
+			return (
+				shownSelection?.threads ??
+				(shownReviewId === state.activeReviewId ? state.threads : [])
+			);
+		},
+		get shownCommits() {
+			return (
+				shownSelection?.commits ??
+				(shownReviewId === state.activeReviewId ? state.commits : [])
+			);
+		},
 		get snapshots() {
 			return state.snapshots;
 		},
@@ -275,6 +369,7 @@ export function createReviewComments(
 		get countByFile() {
 			return counts.byFile;
 		},
+		select,
 		refresh,
 		destroy() {
 			cancelled = true;

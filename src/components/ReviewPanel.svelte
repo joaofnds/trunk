@@ -4,18 +4,17 @@
 // and jump-to-anchor with read-only orphan rows (D-07 / D-08). The panel lives
 // in the center pane (UI-SPEC:133); jump is driven by the host via onJump.
 
-import Check from "@lucide/svelte/icons/check";
 import Clipboard from "@lucide/svelte/icons/clipboard";
 import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
 import Pencil from "@lucide/svelte/icons/pencil";
 import Plus from "@lucide/svelte/icons/plus";
+import Send from "@lucide/svelte/icons/send";
 import Trash2 from "@lucide/svelte/icons/trash-2";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { untrack } from "svelte";
 import { commitOidForComment } from "../lib/comment-counts.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
-import { createOwnedTimer } from "../lib/owned-timer.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import {
 	createReviewEditorStore,
@@ -28,11 +27,14 @@ import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommentResolution,
 	OrphanReason,
+	Review,
 	ReviewFilter,
 	Thread,
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import Dialog from "../lib/ui/Dialog.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
+import Radio from "../lib/ui/Radio.svelte";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import CommitChip from "./CommitChip.svelte";
@@ -81,13 +83,13 @@ let {
 	editorNoteSessionFor,
 }: Props = $props();
 
-const commits = $derived(reviewComments.commits);
-const comments = $derived(reviewComments.threads);
+const commits = $derived(reviewComments.shownCommits);
+const comments = $derived(reviewComments.shownThreads);
 const visibleComments = $derived(filterThreads(comments, reviewFilter));
 
-// The header's counts, one per state a thread can be filtered to, in the
-// toolbar selector's order. Each counts what pressing it would show.
-const STATE_FILTERS = [
+// The header's tally, one count per state a thread can be filtered to, in the
+// toolbar selector's order.
+const STATE_TALLY = [
 	{ value: "open", tone: "text-thread-open" },
 	{ value: "addressed", tone: "text-thread-addressed" },
 	{ value: "done", tone: "text-thread-done" },
@@ -95,12 +97,15 @@ const STATE_FILTERS = [
 	{ value: "stale", tone: "text-thread-stale" },
 ] as const;
 
-function toggleFilter(filter: ReviewFilter) {
-	onreviewfilterchange?.(reviewFilter === filter ? "all" : filter);
-}
 const reviews = $derived(reviewComments.reviews);
 const activeReviewId = $derived(reviewComments.activeReviewId);
-const activeReview = $derived(reviewComments.activeReview);
+// The review the panel shows, which is the active one until the user picks
+// another from the list. Picking one never moves where new comments land.
+const shownReviewId = $derived(reviewComments.shownReviewId);
+const shownReview = $derived(reviewComments.shownReview);
+const unresolvedCount = $derived(
+	comments.filter((t) => t.state === "open" || t.state === "addressed").length,
+);
 
 // Orphan resolution stays here: resolve_threads walks a blob per
 // comment, and only this panel renders the badge it feeds.
@@ -228,11 +233,8 @@ const currentFileComments = $derived(
 const hasAnyComment = $derived(comments.length > 0);
 const hasVisibleComment = $derived(visibleComments.length > 0);
 
-let copied = $state(false);
-const copiedRevert = createOwnedTimer();
-
-let endConfirming = $state(false);
-const endConfirmRevert = createOwnedTimer();
+let endPopoverOpen = $state(false);
+let endAnchor = $state<HTMLElement>();
 
 function isOrphan(c: Thread): boolean {
 	const r = resolutionById.get(c.id);
@@ -266,13 +268,14 @@ function reportReadFailure(reason: unknown) {
 // otherwise land on top of a fresh one.
 let loadSeq = 0;
 
-// resolve_threads answers for the active review, or with an empty list when the
+// resolve_threads answers for the shown review, or with an empty list when the
 // repo has none — a normal state, not a failure.
-async function loadResolutions() {
+async function loadResolutions(reviewId: string | null) {
 	const seq = ++loadSeq;
 	try {
 		const next = await safeInvoke<CommentResolution[]>("resolve_threads", {
 			path: repoPath,
+			reviewId,
 		});
 		if (seq !== loadSeq) return;
 		resolutions = next;
@@ -333,65 +336,50 @@ async function saveEdit(id: string, text: string) {
 	}
 }
 
-// Phase 72 — Copy handler. The button is disabled by `!hasAnyComment`, so the
-// no_comments TrunkError branch (from session.generate) is reachable only by a
-// race (the session was emptied by another window between render and click) —
-// surface it as a toast. The handler composes session.generate() (IPC, returns
-// markdown string) with writeText() (clipboard plugin). Both are awaited inside
-// one try/catch so a failure in either step lands in the same showToast call;
-// the button never flips to "Copied" on failure. Carry-forward of the Phase 71
-// preview component's Copy handler (now-deleted in Plan 04).
+// The button is disabled while nothing is unresolved, so the no_comments
+// TrunkError from session.generate is reachable only by a race (another window
+// emptied the review between render and click), and it lands in the same toast
+// as a clipboard failure.
 async function onCopyClick() {
-	try {
-		if (!activeReviewId) return;
+	if (!shownReviewId) return;
+	const reviewId = shownReviewId;
+	const unresolved = unresolvedCount;
 
-		const md = await session.generate(repoPath, activeReviewId);
+	try {
+		const md = await session.generate(repoPath, reviewId);
 		await writeText(md);
-		copied = true;
-		copiedRevert.arm(() => {
-			copied = false;
-		}, 1500);
+		showToast(
+			`Copied ${unresolved} unresolved ${unresolved === 1 ? "thread" : "threads"} from ${reviewId} as an agent prompt`,
+			"success",
+		);
 	} catch (e) {
 		showToast(`Failed to copy: ${errorMessage(e, "unknown error")}`, "error");
 	}
 }
 
-// End-review two-step confirm. First click arms the confirming state + 3000ms
-// revert; second click PUBLISHES. Publishing deletes nothing: the review stays
-// listed, its threads stay visible, and the snapshot keepalive refs stay.
-function startEndConfirm() {
-	endConfirming = true;
-	endConfirmRevert.arm(() => {
-		endConfirming = false;
-	}, 3000);
-}
-
-async function onEndClick() {
-	if (!endConfirming) {
-		startEndConfirm();
-		return;
-	}
-	// Second click: clear the auto-revert timer but KEEP endConfirming = true so
-	// the label stays "Click again to confirm" (frozen during await). On success
-	// the owner's reviews-changed refresh re-reads the now-published review and
-	// the button's {#if} gate hides it. On failure we explicitly revert.
-	endConfirmRevert.cancel();
-	if (!activeReviewId) return;
+// Publishing deletes nothing: the review stays listed, its threads stay
+// visible, and the snapshot keepalive refs stay. The owner's reviews-changed
+// refresh re-reads the now-published review and the button's gate hides it.
+async function publishShown() {
+	endPopoverOpen = false;
+	if (!shownReviewId) return;
+	const reviewId = shownReviewId;
 
 	try {
-		await safeInvoke("publish_review", {
-			path: repoPath,
-			reviewId: activeReviewId,
-		});
+		await safeInvoke("publish_review", { path: repoPath, reviewId });
+		showToast(`${reviewId} published`, "success");
 	} catch (e) {
-		endConfirming = false;
-		// Match Plan 73-01's resume-fail shape: errorMessage() extracts only
-		// `.message`; the "Failed to end review: " prefix is added by template
-		// literal at the call site (RESEARCH §Pattern 2). The errorMessage
-		// fallback fires only when `e` is neither Error nor TrunkError.
-		const msg = errorMessage(e, "unknown error");
-		showToast(`Failed to publish review: ${msg}`, "error");
+		showToast(
+			`Failed to publish review: ${errorMessage(e, "unknown error")}`,
+			"error",
+		);
 	}
+}
+
+function dismissEndPopover(event: PointerEvent) {
+	if (!endPopoverOpen) return;
+	if (event.target instanceof Node && endAnchor?.contains(event.target)) return;
+	endPopoverOpen = false;
 }
 
 async function deleteComment(id: string) {
@@ -402,10 +390,8 @@ async function deleteComment(id: string) {
 	}
 }
 
-// ── Review list: switch, rename, delete ─────────────────────────────────────
+// ── Review list: show, activate, rename, delete ──────────────────────────────
 
-// Selecting a review in the list makes it active — that IS the one-step switch,
-// so there is no separate "activate" affordance.
 async function activateReview(id: string) {
 	if (id === activeReviewId) return;
 	try {
@@ -417,24 +403,34 @@ async function activateReview(id: string) {
 
 async function startNewReview() {
 	try {
-		await safeInvoke("create_review", { path: repoPath, title: null });
+		const id = await safeInvoke<string>("create_review", {
+			path: repoPath,
+			title: null,
+		});
+		await reviewComments.select(id);
 	} catch (e) {
 		showToast(errorMessage(e, "Failed to create review"), "error");
 	}
 }
 
-let renamingId = $state<string | null>(null);
+// One title is edited at a time, in the list or in the header.
+let renaming = $state<{ id: string; where: "list" | "header" } | null>(null);
 let renameText = $state("");
 
-function openRename(id: string, title: string) {
-	renamingId = id;
+function openRename(id: string, title: string, where: "list" | "header") {
+	renaming = { id, where };
 	renameText = title;
 }
 
+function renameKeys(event: KeyboardEvent) {
+	if (event.key === "Enter") commitRename();
+	if (event.key === "Escape") renaming = null;
+}
+
 async function commitRename() {
-	const id = renamingId;
+	const id = renaming?.id;
 	const title = renameText.trim();
-	renamingId = null;
+	renaming = null;
 	if (!id || title.length === 0) return;
 	try {
 		await safeInvoke("rename_review", { path: repoPath, reviewId: id, title });
@@ -443,28 +439,24 @@ async function commitRename() {
 	}
 }
 
-// Deleting a review is destructive in every state, so it takes the same
-// two-step confirm the publish button uses rather than a single click.
 let deleteConfirmingId = $state<string | null>(null);
-const deleteConfirmRevert = createOwnedTimer();
 
-async function onDeleteReviewClick(id: string) {
-	if (deleteConfirmingId !== id) {
-		deleteConfirmingId = id;
-		deleteConfirmRevert.arm(() => {
-			deleteConfirmingId = null;
-		}, 3000);
-		return;
-	}
-
-	deleteConfirmRevert.cancel();
+async function deleteReview(id: string) {
 	deleteConfirmingId = null;
-
 	try {
 		await safeInvoke("delete_review", { path: repoPath, reviewId: id });
 	} catch (e) {
 		showToast(errorMessage(e, "Failed to delete review"), "error");
 	}
+}
+
+function deletePrompt(review: Review): string {
+	const threads =
+		review.thread_count === 0
+			? ""
+			: ` and its ${review.thread_count} ${review.thread_count === 1 ? "thread" : "threads"}`;
+	const agent = review.published ? " The agent loses access to it." : "";
+	return `${threads}?${agent} This can\u2019t be undone.`;
 }
 
 // The owner only refreshes on reviews-changed, but list_session_commits takes
@@ -484,7 +476,7 @@ $effect(() => {
 // pins that, and a deep-equal skip there would silently freeze orphan badges.
 $effect(() => {
 	void reviewComments.revision;
-	loadResolutions();
+	loadResolutions(shownReviewId);
 });
 
 // Keyed on the failure, NOT on revision: a refused store fails every read and
@@ -502,10 +494,11 @@ $effect(() => {
 });
 </script>
 
+<svelte:window onpointerdown={dismissEndPopover} />
+
 <div class="review-layout flex-1 min-h-0 overflow-hidden bg-surface">
-	<!-- The repo's reviews, one row each. Selecting a row makes that review
-	     active, so the highlighted row and the review new comments land in are
-	     always the same one. -->
+	<!-- The repo's reviews, one row each. Pressing a row shows that review; the
+	     radio beside it makes it the active one, where new comments land. -->
 	<nav
 		aria-label="Reviews"
 		class="flex flex-col min-h-0 border-r border-border text-callout"
@@ -521,102 +514,128 @@ $effect(() => {
 				variant="ghost"
 				onclick={startNewReview}
 				aria-label="New review"
+				title="New review (becomes active)"
 			>
 				<Plus size={12} />
 				<span>New</span>
 			</Button>
 		</div>
-		<ul class="flex flex-col flex-1 min-h-0 overflow-auto list-none m-0 p-0">
+		<ul
+			class="flex flex-col flex-1 min-h-0 overflow-auto list-none m-0 py-1 px-0"
+		>
 			{#each reviews as review (review.id)}
 				{@const isActive = review.id === activeReviewId}
-				<li>
-					{#if renamingId === review.id}
-						<div class="py-1 px-2">
+				{@const isShown = review.id === shownReviewId}
+				<li class="review-item" class:review-item-shown={isShown}>
+					<span class="review-item-radio">
+						<Radio
+							checked={isActive}
+							aria-label="Active review {review.id}"
+							title={isActive ? "Active: new comments land here" : "Make active"}
+							onclick={() => activateReview(review.id)}
+						/>
+					</span>
+					{#if renaming?.where === "list" && renaming.id === review.id}
+						<div class="py-1 pr-2">
 							<input
 								bind:value={renameText}
 								onblur={commitRename}
-								onkeydown={(e) => {
-									if (e.key === "Enter") commitRename();
-									if (e.key === "Escape") renamingId = null;
-								}}
+								onkeydown={renameKeys}
 								aria-label="Review title"
-								class="w-full bg-bg text-text border border-border rounded h-control-sm py-0 px-1 text-callout"
+								class="w-full bg-bg text-text border border-accent rounded h-control-sm py-0 px-1 text-callout"
 							>
 						</div>
 					{:else}
 						<Row
 							variant="entry"
-							onclick={() => activateReview(review.id)}
-							ondblclick={() => openRename(review.id, review.title)}
+							reveal="fade"
+							onclick={() => reviewComments.select(review.id)}
+							ondblclick={() => openRename(review.id, review.title, "list")}
 							onkeydown={(e) => {
 								if (e.key === "F2") {
 									e.preventDefault();
-									openRename(review.id, review.title);
+									openRename(review.id, review.title, "list");
 								}
 							}}
-							title="Click to make active · double-click or F2 to rename"
-							aria-label="Activate review {review.id}"
-							aria-current={isActive ? "true" : undefined}
+							title="Click to show · double-click or F2 to rename"
+							aria-label="Show review {review.id}"
+							aria-current={isShown ? "true" : undefined}
 						>
-							<span class="review-entry">
+							<span class="flex flex-col gap-1 min-w-0 w-full">
 								<span
-									class="review-radio"
-									class:active={isActive}
-									aria-hidden="true"
-								></span>
-								<span
-									class="min-w-0 text-text-strong leading-tight line-clamp-2 whitespace-normal"
+									class="min-w-0 font-medium text-text-strong leading-tight line-clamp-2 whitespace-normal"
 									>{review.title}</span
 								>
-								<span class="review-meta flex items-center gap-2 min-w-0">
-									<span class="font-mono text-caption text-text-muted"
-										>{review.id}</span
-									>
+								<span
+									class="flex items-center gap-2 min-w-0 font-mono text-caption text-text-subtle"
+								>
+									<span>{review.id}</span>
 									<StatePill state={review.state} />
 									<span class="flex-1"></span>
-									<span class="text-caption text-text-muted"
-										>{review.thread_count}</span
+									<span
+										title="{review.unresolved_count} unresolved of {review.thread_count}"
+										>{review.unresolved_count > 0
+											? `${review.unresolved_count}/${review.thread_count}`
+											: review.thread_count}</span
 									>
 								</span>
 							</span>
 							{#snippet actions()}
 								<RowAction
-									onclick={() => openRename(review.id, review.title)}
+									onclick={() => openRename(review.id, review.title, "list")}
 									aria-label="Rename review {review.id}"
-									title="Rename this review"
+									title="Rename"
 								>
 									<Pencil size={12} />
 								</RowAction>
-								{#if deleteConfirmingId === review.id}
-									<Button
-										size="sm"
-										variant="danger"
-										onclick={() => onDeleteReviewClick(review.id)}
-										aria-label="Confirm delete review {review.id}"
-										title="Click again to delete this review and its comments"
-									>
-										Delete?
-									</Button>
-								{:else}
-									<RowAction
-										tone="danger"
-										onclick={() => onDeleteReviewClick(review.id)}
-										aria-label="Delete review {review.id}"
-										title="Delete this review"
-									>
-										<Trash2 size={12} />
-									</RowAction>
-								{/if}
+								<RowAction
+									tone="danger"
+									onclick={() => {
+										deleteConfirmingId = review.id;
+									}}
+									aria-label="Delete review {review.id}"
+									title="Delete review"
+								>
+									<Trash2 size={12} />
+								</RowAction>
 							{/snippet}
 						</Row>
+					{/if}
+					{#if deleteConfirmingId === review.id}
+						<fieldset
+							aria-label="Delete {review.title}?"
+							class="review-confirm flex flex-col gap-2 m-0 p-2 rounded text-small leading-normal text-text"
+						>
+							<p class="m-0">
+								Delete
+								<b class="font-semibold text-text-strong">{review.title}</b>
+								{deletePrompt(review)}
+							</p>
+							<div class="flex justify-end gap-2">
+								<Button
+									size="sm"
+									variant="ghost"
+									onclick={() => {
+										deleteConfirmingId = null;
+									}}
+									>Cancel</Button
+								>
+								<Button
+									size="sm"
+									variant="danger"
+									onclick={() => deleteReview(review.id)}
+									>Delete review</Button
+								>
+							</div>
+						</fieldset>
 					{/if}
 				</li>
 			{/each}
 		</ul>
 		<p
-			class="flex items-center gap-2 shrink-0 m-0 py-2 px-3 border-t border-border text-caption text-text-muted"
+			class="flex items-center gap-2 shrink-0 m-0 py-2 px-3 shadow-hairline text-small text-text-subtle"
 		>
-			<span class="review-radio active" aria-hidden="true"></span>
+			<Radio variant="mark" checked />
 			Active review. New comments land here.
 		</p>
 	</nav>
@@ -625,22 +644,37 @@ $effect(() => {
 		aria-label="Review threads"
 		class="flex flex-col min-h-0 overflow-hidden"
 	>
-		<!-- The selected review's name and state over its actions, and a count of
-		     its threads in each state that filters the list below. Copy is disabled
-		     until the review has a comment; commands/review.rs refuses an empty one
-		     too (no_comments). The header stays put while the list scrolls. -->
-		<header class="flex flex-col gap-1 py-2 px-3 shadow-hairline shrink-0">
+		<!-- The shown review's name, id and state over its actions, and under them
+		     whether it is the active one, whether the agent can see it, and a tally
+		     of its threads by state. The header stays put while the list scrolls. -->
+		<header class="flex flex-col gap-2 py-3 px-4 shadow-hairline shrink-0">
 			<div class="flex items-center gap-2 min-w-0">
-				{#if activeReview}
-					<h1
-						class="m-0 min-w-0 truncate text-body font-semibold text-text-strong"
-					>
-						{activeReview.title}
-					</h1>
+				{#if shownReview}
+					{#if renaming?.where === "header" && renaming.id === shownReview.id}
+						<input
+							bind:value={renameText}
+							onblur={commitRename}
+							onkeydown={renameKeys}
+							aria-label="Review title"
+							class="review-title-field bg-bg text-text-strong border border-accent rounded h-control py-0 px-1 text-title font-semibold"
+						>
+					{:else}
+						<h1
+							class="m-0 min-w-0 truncate text-title font-semibold text-text-strong"
+						>
+							<LinkButton
+								truncate
+								title="Click to rename"
+								onclick={() =>
+									openRename(shownReview.id, shownReview.title, "header")}
+								>{shownReview.title}</LinkButton
+							>
+						</h1>
+					{/if}
 					<span class="shrink-0 font-mono text-caption text-text-muted"
-						>{activeReview.id}</span
+						>{shownReview.id}</span
 					>
-					<StatePill state={activeReview.state} />
+					<StatePill state={shownReview.state} />
 				{/if}
 				<span class="flex-1"></span>
 				{#if oncommentonfile && reviewFilter !== "none"}
@@ -649,70 +683,131 @@ $effect(() => {
 						onclick={oncommentonfile}
 						title="Comment on any tracked file, including one no change touches"
 					>
-						<MessageSquarePlus size={14} />
+						<MessageSquarePlus size={12} />
 						<span>Comment on a file…</span>
-					</Button>
-				{/if}
-				{#if activeReview && !activeReview.published}
-					<Button
-						size="sm"
-						variant={endConfirming ? "accent" : "secondary"}
-						onclick={onEndClick}
-						disabled={!hasAnyComment}
-						title={hasAnyComment
-							? endConfirming
-								? ""
-								: "Publish this review so an agent can read it. Nothing is deleted."
-							: "A review needs at least one comment before it can be published"}
-					>
-						<Check size={14} />
-						<span
-							>{endConfirming ? "Click again to confirm" : "End review"}</span
-						>
 					</Button>
 				{/if}
 				<Button
 					size="sm"
 					onclick={onCopyClick}
-					disabled={!hasAnyComment}
-					title={hasAnyComment ? "" : "Add at least one comment to generate"}
+					disabled={unresolvedCount === 0}
+					title={unresolvedCount === 0
+						? "No unresolved threads to copy"
+						: "Copy unresolved threads as a prompt for an agent"}
 				>
-					{#if copied}
-						<span aria-hidden="true">✓</span>
-						<span>Copied</span>
-					{:else}
-						<Clipboard size={14} />
-						<span>Copy</span>
-					{/if}
+					<Clipboard size={12} />
+					<span>Copy</span>
 				</Button>
-			</div>
-			{#if activeReview}
-				<fieldset
-					aria-label="Filter threads by state"
-					class="flex items-center gap-1 min-w-auto text-small"
-				>
-					{#each STATE_FILTERS as filter (filter.value)}
-						{@const label = THREAD_LABELS[filter.value]}
-						{@const count = comments.filter((t) =>
-							threadMatchesFilter(t, filter.value),
-						).length}
+				{#if shownReview && !shownReview.published}
+					<div class="relative" bind:this={endAnchor}>
 						<Button
 							size="sm"
-							variant="ghost"
-							aria-pressed={reviewFilter === filter.value}
-							aria-label="{label} threads: {count}"
-							title={reviewFilter === filter.value
-								? "Show all threads"
-								: `Show only ${label.toLowerCase()} threads`}
-							onclick={() => toggleFilter(filter.value)}
+							variant="primary"
+							disabled={!hasAnyComment}
+							title={hasAnyComment
+								? "Publish to the agent"
+								: "Add at least one thread first"}
+							onclick={() => {
+								endPopoverOpen = !endPopoverOpen;
+							}}
 						>
-							<span class="inline-flex {filter.tone}" aria-hidden="true">
-								<StateGlyph state={filter.value} size={12} />
-							</span>
-							<span>{count}</span>
+							<Send size={12} />
+							<span>End review</span>
 						</Button>
-					{/each}
-				</fieldset>
+						{#if endPopoverOpen}
+							<div class="end-popover">
+								<Dialog
+									variant="anchored"
+									title="Publish {shownReview.id}?"
+									onkeydown={(e) => {
+										if (e.key === "Escape") endPopoverOpen = false;
+									}}
+								>
+									<p class="m-0 text-callout leading-normal text-text-muted">
+										The agent will be able to read and reply to
+										{comments.length}
+										{comments.length === 1 ? "thread" : "threads"}. You can keep
+										adding comments. Nothing is deleted.
+									</p>
+									<div class="flex justify-end gap-2">
+										<Button
+											size="sm"
+											variant="ghost"
+											onclick={() => {
+												endPopoverOpen = false;
+											}}
+											>Cancel</Button
+										>
+										<Button size="sm" variant="primary" onclick={publishShown}
+											>End review</Button
+										>
+									</div>
+								</Dialog>
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
+			{#if shownReview}
+				<div
+					class="flex items-center gap-2 min-w-0 whitespace-nowrap text-small text-text-subtle"
+				>
+					{#if shownReview.id === activeReviewId}
+						<span
+							class="inline-flex items-center gap-1 font-medium text-accent-strong"
+						>
+							<Radio variant="mark" checked />
+							Active
+						</span>
+					{:else}
+						<LinkButton
+							tone="muted"
+							onclick={() => activateReview(shownReview.id)}
+							>Make active</LinkButton
+						>
+					{/if}
+					<span class="text-text-disabled" aria-hidden="true">·</span>
+					<span
+						>{shownReview.published
+							? "Published"
+							: "Not visible to the agent"}</span
+					>
+					<span class="text-text-disabled" aria-hidden="true">·</span>
+					<ul
+						aria-label="Threads by state"
+						class="flex gap-3 list-none m-0 p-0"
+					>
+						{#each STATE_TALLY as tally (tally.value)}
+							{@const count = comments.filter((t) =>
+								threadMatchesFilter(t, tally.value),
+							).length}
+							{#if count > 0}
+								<li
+									title={THREAD_LABELS[tally.value]}
+									class="inline-flex items-center gap-1 font-mono text-text-muted"
+								>
+									<span class="inline-flex {tally.tone}" aria-hidden="true">
+										<StateGlyph state={tally.value} size={11} />
+									</span>
+									{count}
+								</li>
+							{/if}
+						{/each}
+					</ul>
+					{#if reviewFilter !== "all" && reviewFilter !== "none" && hasAnyComment}
+						<span class="flex-1"></span>
+						<span class="text-accent-strong"
+							>Showing {THREAD_LABELS[reviewFilter].toLowerCase()} only ·
+							{visibleComments.length}
+							of {comments.length}</span
+						>
+						<LinkButton
+							tone="muted"
+							onclick={() => onreviewfilterchange?.("all")}
+							>Show all</LinkButton
+						>
+					{/if}
+				</div>
 			{/if}
 		</header>
 		<div
@@ -903,31 +998,39 @@ $effect(() => {
 	grid-template-columns: var(--review-list-w) minmax(0, 1fr);
 }
 
-/* A review's row: the active marker beside a title that may wrap to two lines,
-   and under the title its id, its state and its thread count. */
-.review-entry {
+/* A review in the list: the radio that makes it active, beside the row that
+   shows it, and under both the delete confirmation when it is asked for. */
+.review-item {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
-	column-gap: var(--space-2);
-	row-gap: var(--space-1);
-	align-items: center;
-	width: 100%;
+	align-items: start;
 }
-.review-meta {
-	grid-column: 2;
+.review-item-radio {
+	display: flex;
+	padding: var(--space-2) 0 0 var(--space-3);
+}
+.review-item-shown {
+	background: var(--color-selected-row);
+	box-shadow: inset 2px 0 0 var(--color-accent);
+}
+.review-confirm {
+	grid-column: 1 / -1;
+	margin: 0 var(--space-2) var(--space-2) var(--space-3);
+	background: var(--color-danger-bg);
+	border: 1px solid var(--color-danger-border);
 }
 
-/* The radio that marks the active review. Decoration only: the row's
-   aria-current says the same thing to assistive tech. */
-.review-radio {
-	width: var(--space-3);
-	height: var(--space-3);
-	border-radius: 50%;
-	border: 1px solid var(--color-border-strong);
+.review-title-field {
+	width: calc(70 * var(--u));
 }
-.review-radio.active {
-	border-color: var(--color-accent);
-	box-shadow: inset 0 0 0 2px var(--color-surface);
-	background: var(--color-accent);
+
+/* The End review popover, under its button and aligned to its trailing edge. */
+.end-popover {
+	position: absolute;
+	top: 100%;
+	right: 0;
+	z-index: 10;
+	width: calc(80 * var(--u));
+	margin-top: var(--space-1);
 }
 </style>

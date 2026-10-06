@@ -40,6 +40,11 @@ function installDialog(): void {
 			this.setAttribute("open", "");
 		};
 	}
+	if (typeof HTMLDialogElement.prototype.show !== "function") {
+		HTMLDialogElement.prototype.show = function show() {
+			this.setAttribute("open", "");
+		};
+	}
 	if (typeof HTMLDialogElement.prototype.close !== "function") {
 		HTMLDialogElement.prototype.close = function close() {
 			this.removeAttribute("open");

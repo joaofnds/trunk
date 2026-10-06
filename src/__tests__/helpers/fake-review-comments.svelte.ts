@@ -15,6 +15,8 @@ interface Store {
 	commits: SessionCommit[];
 	threadsAuthoritative: boolean;
 	lastError: string | null;
+	/** What a read naming a review other than the active one returns. */
+	otherReviews: Record<string, { threads: Thread[]; commits: SessionCommit[] }>;
 }
 
 export interface FakeReviewComments extends ReviewCommentsManager {
@@ -38,6 +40,7 @@ function emptyStore(): Store {
 		commits: [],
 		threadsAuthoritative: true,
 		lastError: null,
+		otherReviews: {},
 	};
 }
 
@@ -45,11 +48,32 @@ export function createFakeReviewComments(): FakeReviewComments {
 	let seeded = emptyStore();
 	let refreshCount = 0;
 
-	const state = $state({ ...emptyStore(), revision: 0 });
+	const state = $state({
+		...emptyStore(),
+		revision: 0,
+		selectedReviewId: null as string | null,
+	});
 
 	const hasThreads = $derived(state.threads.length > 0);
 	const activeReview = $derived(
 		state.reviews.find((review) => review.id === state.activeReviewId) ?? null,
+	);
+
+	const shownReviewId = $derived(
+		state.reviews.some((review) => review.id === state.selectedReviewId)
+			? state.selectedReviewId
+			: state.activeReviewId,
+	);
+	const shownReview = $derived(
+		state.reviews.find((review) => review.id === shownReviewId) ?? null,
+	);
+	const shown = $derived(
+		shownReviewId === state.activeReviewId
+			? { threads: state.threads, commits: state.commits }
+			: (state.otherReviews[shownReviewId ?? ""] ?? {
+					threads: [],
+					commits: [],
+				}),
 	);
 
 	const oids = $derived(
@@ -70,6 +94,18 @@ export function createFakeReviewComments(): FakeReviewComments {
 		},
 		get activeReview() {
 			return activeReview;
+		},
+		get shownReviewId() {
+			return shownReviewId;
+		},
+		get shownReview() {
+			return shownReview;
+		},
+		get shownThreads() {
+			return shown.threads;
+		},
+		get shownCommits() {
+			return shown.commits;
 		},
 		get snapshots() {
 			return state.snapshots;
@@ -113,8 +149,13 @@ export function createFakeReviewComments(): FakeReviewComments {
 			state.commits = seeded.commits;
 			state.threadsAuthoritative = seeded.threadsAuthoritative;
 			state.lastError = seeded.lastError;
+			state.otherReviews = seeded.otherReviews;
 			state.revision += 1;
 			return Promise.resolve();
+		},
+		select(reviewId: string) {
+			state.selectedReviewId = reviewId;
+			return this.refresh();
 		},
 		destroy() {},
 		seed(next: Partial<Store>) {
@@ -122,7 +163,10 @@ export function createFakeReviewComments(): FakeReviewComments {
 		},
 		reset() {
 			seeded = emptyStore();
-			Object.assign(state, emptyStore(), { revision: 0 });
+			Object.assign(state, emptyStore(), {
+				revision: 0,
+				selectedReviewId: null,
+			});
 			refreshCount = 0;
 		},
 	};

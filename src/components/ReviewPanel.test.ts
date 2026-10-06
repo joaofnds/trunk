@@ -7,14 +7,12 @@ import {
 	within,
 } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createReviewEditorStore } from "../lib/review-editors.svelte.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
-import { SCHEDULER } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommentResolution,
@@ -134,6 +132,7 @@ function aReview(overrides: Partial<Review> = {}): Review {
 		state: "composing",
 		published: false,
 		thread_count: 0,
+		unresolved_count: 0,
 		created_at: 0,
 		...overrides,
 	};
@@ -1287,42 +1286,24 @@ describe("ReviewPanel", () => {
 	// clearTimeout-before-setTimeout re-arm; failure surfaces toast via
 	// instanceof Error narrowing.
 	describe("Copy", () => {
-		// Scope fake timers to THIS describe only. The file-global `flush` helper
-		// at the top uses `setTimeout(r, 0)` which deadlocks under fake timers —
-		// the tests inside this block use a local `flushFake` instead.
-		beforeEach(() => {
-			vi.useFakeTimers();
-		});
-
-		afterEach(() => {
-			vi.useRealTimers();
-		});
-
-		// Microtask flush — safe under fake timers (no setTimeout(0)).
-		async function flushFake() {
-			await Promise.resolve();
-			await tick();
-		}
-
-		// `Copy` vs `Copied` share only the `Cop` prefix (no `y` in `Copied`!) —
-		// substring match on `/Copy/` would NOT match the success-state button.
-		// Use `/Cop(y|ied)/` to cover both states via a single accessor.
-		function getCopyButton() {
-			return screen.getByRole("button", { name: /^Cop(y|ied)$/ });
-		}
-
-		function renderWithComment(
-			opts: {
-				generateDoc?: string;
-				generateRejection?: unknown;
-				scheduler?: FakeScheduler;
-			} = {},
+		function renderCopy(
+			opts: { comments?: Thread[]; generateRejection?: unknown } = {},
 		) {
+			const comments = opts.comments ?? [
+				lineAnchoredComment("c1", COMMIT_A, "look here"),
+			];
 			installReads({
 				commits,
-				comments: [lineAnchoredComment("c1", COMMIT_A, "look here")],
-				resolutions: [resolvable("c1")],
-				generateDoc: opts.generateDoc ?? "the doc",
+				comments,
+				reviews: [
+					aReview({
+						thread_count: comments.length,
+						unresolved_count: comments.filter(
+							(t) => t.state === "open" || t.state === "addressed",
+						).length,
+					}),
+				],
+				generateDoc: "the doc",
 				generateRejection: opts.generateRejection,
 			});
 			return render(ReviewPanel, {
@@ -1333,221 +1314,100 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
-				...(opts.scheduler
-					? { context: new Map([[SCHEDULER, opts.scheduler]]) }
-					: {}),
 			});
 		}
 
-		it("Copy button is disabled when no comments", async () => {
-			installReads({ commits, comments: [], resolutions: [] });
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-				},
-			});
-			await flushFake();
+		function getCopyButton() {
+			return screen.getByRole("button", { name: "Copy" });
+		}
 
-			const copyBtn = getCopyButton();
-			expect(copyBtn).toBeDisabled();
-			// The disabled tooltip is inherited verbatim from the Generate button.
-			expect(copyBtn.getAttribute("title")).toBe(
-				"Add at least one comment to generate",
-			);
-		});
+		it("copies the shown review's doc to the clipboard", async () => {
+			renderCopy();
+			await flush();
 
-		it("copy click invokes generate and writeText", async () => {
-			renderWithComment();
-			await flushFake();
 			await fireEvent.click(getCopyButton());
-			await flushFake();
+			await flush();
 
-			expect(calledCommands()).toContain("generate_review_doc");
-			expect(callArgs("generate_review_doc")?.path).toBe("/repo");
-			expect(vi.mocked(writeText)).toHaveBeenCalledTimes(1);
+			expect(callArgs("generate_review_doc")).toEqual({
+				path: "/repo",
+				reviewId: ACTIVE_REVIEW,
+			});
 			expect(vi.mocked(writeText)).toHaveBeenCalledWith("the doc");
 		});
 
-		it("shows Copied affordance", async () => {
-			renderWithComment();
-			await flushFake();
-			// Before the click the button reads "Copy".
-			expect(
-				screen.getByRole("button", { name: /^Cop(y|ied)$/ }),
-			).toHaveTextContent(/^Copy$/);
+		it("says how many unresolved threads it copied", async () => {
+			renderCopy();
+			await flush();
+
 			await fireEvent.click(getCopyButton());
-			await flushFake();
-			expect(screen.getByRole("button", { name: /Copied/ })).toHaveTextContent(
-				/Copied/,
-			);
-		});
+			await flush();
 
-		it("reverts to Copy after 1500ms", async () => {
-			renderWithComment();
-			await flushFake();
-			await fireEvent.click(getCopyButton());
-			await flushFake();
-			expect(screen.getByRole("button", { name: /Copied/ })).toHaveTextContent(
-				/Copied/,
-			);
-			vi.advanceTimersByTime(1500);
-			await tick();
-			expect(
-				screen.getByRole("button", { name: /^Cop(y|ied)$/ }),
-			).toHaveTextContent(/^Copy$/);
-		});
-
-		it("remains clickable during window", async () => {
-			renderWithComment();
-			await flushFake();
-			// First click at virtual t=0.
-			await fireEvent.click(getCopyButton());
-			await flushFake();
-			expect(screen.getByRole("button", { name: /Copied/ })).toHaveTextContent(
-				/Copied/,
-			);
-
-			// Mid-window second click at virtual t=500.
-			vi.advanceTimersByTime(500);
-			await fireEvent.click(getCopyButton());
-			await flushFake();
-
-			// If the FIRST timer were still alive it would fire at t=1500
-			// (we're at t=500 + 1499 = t=1999). Advance 1499 and assert still Copied.
-			vi.advanceTimersByTime(1499);
-			await tick();
-			expect(screen.getByRole("button", { name: /Copied/ })).toHaveTextContent(
-				/Copied/,
-			);
-
-			// Second timer fires at t=500 + 1500 = t=2000.
-			vi.advanceTimersByTime(1);
-			await tick();
-			expect(
-				screen.getByRole("button", { name: /^Cop(y|ied)$/ }),
-			).toHaveTextContent(/^Copy$/);
-		});
-
-		it("shows error toast on failure", async () => {
-			vi.mocked(writeText).mockRejectedValueOnce(new Error("plugin disabled"));
-			renderWithComment();
-			await flushFake();
-			await fireEvent.click(getCopyButton());
-			await flushFake();
 			expect(vi.mocked(showToast)).toHaveBeenCalledWith(
-				"Failed to copy: plugin disabled",
-				"error",
+				`Copied 1 unresolved thread from ${ACTIVE_REVIEW} as an agent prompt`,
+				"success",
 			);
 		});
 
-		it("does not flip copied on failure", async () => {
-			vi.mocked(writeText).mockRejectedValueOnce(new Error("plugin disabled"));
-			renderWithComment();
-			await flushFake();
+		it("is disabled with nothing unresolved", async () => {
+			renderCopy({
+				comments: [aThread({ id: "c1", commit_oid: COMMIT_A, state: "done" })],
+			});
+			await flush();
+
+			expect(getCopyButton()).toBeDisabled();
+			expect(getCopyButton()).toHaveAttribute(
+				"title",
+				"No unresolved threads to copy",
+			);
+		});
+
+		it.each([
+			[new Error("plugin disabled"), "Failed to copy: plugin disabled"],
+			["raw string", "Failed to copy: raw string"],
+		])("toasts a clipboard failure %#", async (rejection, message) => {
+			vi.mocked(writeText).mockRejectedValueOnce(rejection);
+			renderCopy();
+			await flush();
+
 			await fireEvent.click(getCopyButton());
-			await flushFake();
-			// Button text must still be Copy — never Copied — on the failure path.
-			expect(
-				screen.getByRole("button", { name: /^Cop(y|ied)$/ }),
-			).toHaveTextContent(/^Copy$/);
-			expect(
-				screen.queryByRole("button", { name: /Copied/ }),
-			).not.toBeInTheDocument();
+			await flush();
+
+			expect(vi.mocked(showToast)).toHaveBeenCalledWith(message, "error");
+			expect(vi.mocked(showToast)).not.toHaveBeenCalledWith(
+				expect.stringMatching(/^Copied/),
+				"success",
+			);
 		});
 
 		it("surfaces the message when generate rejects with a TrunkError", async () => {
-			renderWithComment({
+			renderCopy({
 				generateRejection: {
 					code: "no_comments",
 					message: "No comments to include",
 				},
 			});
-			await flushFake();
+			await flush();
+
 			await fireEvent.click(getCopyButton());
-			await flushFake();
+			await flush();
+
 			expect(vi.mocked(showToast)).toHaveBeenCalledWith(
 				"Failed to copy: No comments to include",
-				"error",
-			);
-		});
-
-		it("takes the Copied revert timer down with the panel", async () => {
-			const scheduler = new FakeScheduler();
-			const { unmount } = renderWithComment({ scheduler });
-			await flushFake();
-			await fireEvent.click(getCopyButton());
-			await flushFake();
-			expect(getCopyButton()).toHaveTextContent(/Copied/);
-			expect(scheduler.pending).toBe(1);
-
-			unmount();
-
-			expect(scheduler.pending).toBe(0);
-		});
-
-		it("arms no revert when the copy resolves after the panel is gone", async () => {
-			const scheduler = new FakeScheduler();
-			let clipboardWritten = () => {};
-			vi.mocked(writeText).mockReturnValueOnce(
-				new Promise<void>((resolve) => {
-					clipboardWritten = resolve;
-				}),
-			);
-			const { unmount } = renderWithComment({ scheduler });
-			await flushFake();
-			await fireEvent.click(getCopyButton());
-
-			unmount();
-			clipboardWritten();
-			await flushFake();
-
-			expect(scheduler.pending).toBe(0);
-		});
-
-		it("coerces non-Error rejection", async () => {
-			vi.mocked(writeText).mockRejectedValueOnce("raw string");
-			renderWithComment();
-			await flushFake();
-			await fireEvent.click(getCopyButton());
-			await flushFake();
-			expect(vi.mocked(showToast)).toHaveBeenCalledWith(
-				"Failed to copy: raw string",
 				"error",
 			);
 		});
 	});
 });
 
-// Ending a review publishes it. FAKE timers here, which is why these tests use
-// the local `flushFake` rather than the file-global `flush()` — the latter is
-// setTimeout(0)-based and deadlocks under them.
+// Ending a review publishes it, after a popover under the button says what
+// that means.
 describe("End review", () => {
-	beforeEach(() => {
-		vi.useFakeTimers();
-	});
-
-	afterEach(() => {
-		vi.useRealTimers();
-	});
-
-	// Microtask flush — safe under fake timers (no setTimeout(0)).
-	async function flushFake() {
-		await Promise.resolve();
-		await tick();
-	}
-
-	// Render helper mirroring renderWithComment in the Copy describe. Returns
-	// the full render() handle so tests that need the unmount() callback
-	// (Test 6) can destructure it; Tests 1–5 ignore the return value.
-	function renderWithSession() {
+	function renderWithSession(opts: { publishRejection?: unknown } = {}) {
 		installReads({
 			commits,
 			comments: [lineAnchoredComment("c1", COMMIT_A, "x")],
 			resolutions: [resolvable("c1")],
+			publishRejection: opts.publishRejection,
 		});
 		return render(ReviewPanel, {
 			props: {
@@ -1560,113 +1420,69 @@ describe("End review", () => {
 		});
 	}
 
-	function endCallCount(): number {
-		return calledCommands().filter((c) => c === "publish_review").length;
+	async function openPopover() {
+		await fireEvent.click(screen.getByRole("button", { name: "End review" }));
+		await flush();
+		return screen.getByRole("dialog", { name: `Publish ${ACTIVE_REVIEW}?` });
 	}
 
-	function getEndButton() {
-		// Idle label is "End review"; confirming label is "Click again to confirm".
-		// Both share no common substring with "End review", so use a regex union.
-		return screen.getByRole("button", {
-			name: /End review|Click again to confirm/,
-		});
-	}
-
-	it("first click enters confirming state without invoking publish_review", async () => {
+	it("asks before publishing, and says what publishing does", async () => {
 		renderWithSession();
-		await flushFake();
+		await flush();
 
-		await fireEvent.click(getEndButton());
-		await flushFake();
+		const popover = await openPopover();
 
-		expect(getEndButton()).toHaveTextContent(/Click again to confirm/);
-		expect(endCallCount()).toBe(0);
+		expect(popover).toHaveTextContent(
+			"The agent will be able to read and reply to 1 thread. You can keep adding comments. Nothing is deleted.",
+		);
+		expect(calledCommands()).not.toContain("publish_review");
 	});
 
-	it("paints the armed confirmation in the accent tone", async () => {
+	it("publishes the shown review from the popover", async () => {
 		renderWithSession();
-		await flushFake();
-		expect(getEndButton()).not.toHaveClass("bg-accent-bg");
+		await flush();
+		const popover = await openPopover();
 
-		await fireEvent.click(getEndButton());
-		await flushFake();
+		await fireEvent.click(
+			within(popover).getByRole("button", { name: "End review" }),
+		);
+		await flush();
 
-		expect(getEndButton()).toHaveClass("bg-accent-bg");
-	});
-
-	it("second click publishes the active review exactly once", async () => {
-		renderWithSession();
-		await flushFake();
-
-		await fireEvent.click(getEndButton());
-		await flushFake();
-		await fireEvent.click(getEndButton());
-		await flushFake();
-
-		expect(endCallCount()).toBe(1);
 		expect(callArgs("publish_review")).toEqual({
 			path: "/repo",
 			reviewId: ACTIVE_REVIEW,
 		});
-		// Success path: no error toast.
-		const errorCalls = vi
-			.mocked(showToast)
-			.mock.calls.filter((c) => c[1] === "error");
-		expect(errorCalls.length).toBe(0);
+		expect(vi.mocked(showToast)).toHaveBeenCalledWith(
+			`${ACTIVE_REVIEW} published`,
+			"success",
+		);
+		expect(screen.queryByRole("dialog")).toBeNull();
 	});
 
-	it("auto-reverts to idle after 3000ms with no second click", async () => {
+	it.each([
+		[
+			"Cancel",
+			(popover: HTMLElement) =>
+				within(popover).getByRole("button", { name: "Cancel" }).click(),
+		],
+		[
+			"Escape",
+			(popover: HTMLElement) => fireEvent.keyDown(popover, { key: "Escape" }),
+		],
+	])("closes without publishing on %s", async (_, dismiss) => {
 		renderWithSession();
-		await flushFake();
+		await flush();
+		const popover = await openPopover();
 
-		await fireEvent.click(getEndButton());
-		await flushFake();
-		expect(getEndButton()).toHaveTextContent(/Click again to confirm/);
+		await dismiss(popover);
+		await flush();
 
-		vi.advanceTimersByTime(3000);
-		await tick();
-
-		expect(getEndButton()).toHaveTextContent(/^End review$/);
-		expect(endCallCount()).toBe(0);
+		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(calledCommands()).not.toContain("publish_review");
 	});
 
-	it("second click within window cancels the auto-revert timer (clearTimeout before setTimeout)", async () => {
-		renderWithSession();
-		await flushFake();
-
-		// First click at virtual t=0 — arm the 3000ms revert.
-		await fireEvent.click(getEndButton());
-		await flushFake();
-		expect(getEndButton()).toHaveTextContent(/Click again to confirm/);
-
-		// Second click at virtual t=2000 — should clear the t=0+3000 revert AND
-		// fire the IPC. Under mocked listen() the post-success reviews-changed
-		// reload never happens, so the button stays in the confirming label —
-		// proving the original revert timer was cancelled.
-		vi.advanceTimersByTime(2000);
-		await fireEvent.click(getEndButton());
-		await flushFake();
-
-		// Now at virtual t=2000 + IPC await. Advance another 1500ms — past
-		// the original t=3000 revert deadline. If the timer hadn't been cleared
-		// the button would have reverted to "End review" by now.
-		vi.advanceTimersByTime(1500);
-		await tick();
-
-		expect(endCallCount()).toBe(1);
-		expect(getEndButton()).not.toHaveTextContent(/^End review$/);
-	});
-
-	it("surfaces a publish-failure toast when publish_review rejects", async () => {
-		installReads({
-			commits,
-			comments: [lineAnchoredComment("c1", COMMIT_A, "x")],
-			resolutions: [resolvable("c1")],
-			publishRejection: {
-				code: "no_session",
-				message: "No active review session",
-			},
-		});
+	it("is disabled until the review has a thread", async () => {
+		installReads({ commits, comments: [] });
 		render(ReviewPanel, {
 			props: {
 				repoPath: "/repo",
@@ -1676,40 +1492,33 @@ describe("End review", () => {
 				onJumpToCommit: vi.fn(),
 			},
 		});
-		await flushFake();
+		await flush();
 
-		await fireEvent.click(getEndButton());
-		await flushFake();
-		await fireEvent.click(getEndButton());
-		await flushFake();
+		const end = screen.getByRole("button", { name: "End review" });
+		expect(end).toBeDisabled();
+		expect(end).toHaveAttribute("title", "Add at least one thread first");
+	});
+
+	it("surfaces a publish-failure toast when publish_review rejects", async () => {
+		renderWithSession({
+			publishRejection: {
+				code: "no_session",
+				message: "No active review session",
+			},
+		});
+		await flush();
+		const popover = await openPopover();
+
+		await fireEvent.click(
+			within(popover).getByRole("button", { name: "End review" }),
+		);
+		await flush();
 
 		expect(vi.mocked(showToast)).toHaveBeenCalledWith(
 			"Failed to publish review: No active review session",
 			"error",
 		);
-		expect(endCallCount()).toBe(1);
-		// Arrays untouched on failure — comment text remains rendered (D-08).
 		expect(screen.getByText("x")).toBeInTheDocument();
-	});
-
-	it("clears pending timer on unmount (no console.error from torn-down state)", async () => {
-		const consoleError = vi
-			.spyOn(console, "error")
-			.mockImplementation(() => {});
-
-		const { unmount } = renderWithSession();
-		await flushFake();
-
-		await fireEvent.click(getEndButton());
-		await flushFake();
-		expect(getEndButton()).toHaveTextContent(/Click again to confirm/);
-
-		unmount();
-		vi.advanceTimersByTime(3000);
-		await Promise.resolve();
-
-		expect(consoleError.mock.calls.length).toBe(0);
-		consoleError.mockRestore();
 	});
 });
 
@@ -1719,9 +1528,8 @@ describe("End review", () => {
 //   a review, no commits, no threads → warm-no-commits (existing copy preserved)
 //   a review with commits, no threads → warm-with-commits ("Review started.")
 // REAL timers — these tests use the file-global `flush()` (setTimeout(r,0) + tick).
-// Criterion 2 (list half) and criterion 3 (one-step switch). The panel shows a
-// review list in a column and, beside it, the threads of the ACTIVE review;
-// selecting a row makes it active, which IS the switch.
+// The rail lists every review. Pressing a row shows that review; the radio
+// beside it is what makes a review the active one, where new comments land.
 describe("review list", () => {
 	const READY: Review = {
 		id: "READYRV1",
@@ -1729,10 +1537,11 @@ describe("review list", () => {
 		state: "ready",
 		published: true,
 		thread_count: 2,
+		unresolved_count: 1,
 		created_at: 0,
 	};
 
-	function renderPanel(opts: { scheduler?: FakeScheduler } = {}) {
+	function renderPanel() {
 		return render(ReviewPanel, {
 			props: {
 				repoPath: "/repo",
@@ -1741,37 +1550,34 @@ describe("review list", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
-			...(opts.scheduler
-				? { context: new Map([[SCHEDULER, opts.scheduler]]) }
-				: {}),
+		});
+	}
+
+	function twoReviews() {
+		installReads({
+			reviews: [aReview(), READY],
+			activeReviewId: ACTIVE_REVIEW,
 		});
 	}
 
 	it("lists reviews with their derived state, short id and title", async () => {
-		installReads({
-			reviews: [aReview(), READY],
-			activeReviewId: ACTIVE_REVIEW,
-		});
+		twoReviews();
 		renderPanel();
 		await flush();
 
 		const ready = screen.getByRole("button", {
-			name: `Activate review ${READY.id}`,
+			name: `Show review ${READY.id}`,
 		});
 		expect(ready).toHaveTextContent("Auth review");
 		expect(ready).toHaveTextContent(READY.id);
 		expect(ready).toHaveTextContent("Ready");
-		expect(ready).toHaveTextContent("2");
 		expect(
-			screen.getByRole("button", { name: `Activate review ${ACTIVE_REVIEW}` }),
+			screen.getByRole("button", { name: `Show review ${ACTIVE_REVIEW}` }),
 		).toHaveTextContent("Composing");
 	});
 
 	it("heads the list with the number of reviews", async () => {
-		installReads({
-			reviews: [aReview(), READY],
-			activeReviewId: ACTIVE_REVIEW,
-		});
+		twoReviews();
 		renderPanel();
 		await flush();
 
@@ -1780,44 +1586,78 @@ describe("review list", () => {
 		).toBeInTheDocument();
 	});
 
-	it("starts a new review from the list's header", async () => {
+	it.each([
+		[1, "1/2"],
+		[0, "2"],
+	])(
+		"counts %i unresolved of two threads as %s",
+		async (unresolved_count, shown) => {
+			installReads({ reviews: [{ ...READY, unresolved_count }] });
+			renderPanel();
+			await flush();
+
+			const count = screen.getByTitle(`${unresolved_count} unresolved of 2`);
+			expect(count).toHaveTextContent(new RegExp(`^${shown}$`));
+		},
+	);
+
+	it("starts a new review from the list's header and shows it", async () => {
 		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
 		renderPanel();
 		await flush();
+		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+			Promise.resolve(cmd === "create_review" ? READY.id : undefined),
+		);
+		reviewComments.seed({ reviews: [aReview(), READY] });
 
 		await fireEvent.click(screen.getByRole("button", { name: "New review" }));
 		await flush();
 
 		expect(callArgs("create_review")).toEqual({ path: "/repo", title: null });
+		expect(reviewComments.shownReviewId).toBe(READY.id);
 	});
 
-	it("marks the active review, and only it, as current", async () => {
-		installReads({
-			reviews: [aReview(), READY],
-			activeReviewId: ACTIVE_REVIEW,
-		});
+	it("marks the shown review, and only it, as current", async () => {
+		twoReviews();
 		renderPanel();
 		await flush();
 
 		expect(
-			screen.getByRole("button", { name: `Activate review ${ACTIVE_REVIEW}` }),
+			screen.getByRole("button", { name: `Show review ${ACTIVE_REVIEW}` }),
 		).toHaveAttribute("aria-current", "true");
 		expect(
-			screen.getByRole("button", { name: `Activate review ${READY.id}` }),
+			screen.getByRole("button", { name: `Show review ${READY.id}` }),
 		).not.toHaveAttribute("aria-current");
 	});
 
-	it("activating a review invokes set_active_review with its id", async () => {
-		installReads({
-			reviews: [aReview(), READY],
-			activeReviewId: ACTIVE_REVIEW,
-		});
+	it("pressing a row shows that review without making it active", async () => {
+		twoReviews();
 		renderPanel();
 		await flush();
 
 		await fireEvent.click(
-			screen.getByRole("button", { name: `Activate review ${READY.id}` }),
+			screen.getByRole("button", { name: `Show review ${READY.id}` }),
 		);
+		await flush();
+
+		expect(reviewComments.shownReviewId).toBe(READY.id);
+		expect(
+			screen.getByRole("button", { name: `Show review ${READY.id}` }),
+		).toHaveAttribute("aria-current", "true");
+		expect(calledCommands()).not.toContain("set_active_review");
+	});
+
+	it("the radio makes a review the active one", async () => {
+		twoReviews();
+		renderPanel();
+		await flush();
+
+		const radio = screen.getByRole("button", {
+			name: `Active review ${READY.id}`,
+		});
+		expect(radio).toHaveAttribute("aria-pressed", "false");
+		expect(radio).toHaveAttribute("title", "Make active");
+		await fireEvent.click(radio);
 		await flush();
 
 		expect(callArgs("set_active_review")).toEqual({
@@ -1831,95 +1671,71 @@ describe("review list", () => {
 		renderPanel();
 		await flush();
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: `Activate review ${ACTIVE_REVIEW}` }),
-		);
+		const radio = screen.getByRole("button", {
+			name: `Active review ${ACTIVE_REVIEW}`,
+		});
+		expect(radio).toHaveAttribute("aria-pressed", "true");
+		expect(radio).toHaveAttribute("title", "Active: new comments land here");
+		await fireEvent.click(radio);
 		await flush();
 
 		expect(calledCommands()).not.toContain("set_active_review");
 	});
 
-	it("deleting a review takes a second click to confirm", async () => {
-		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
-		renderPanel();
-		await flush();
+	describe("deleting a review", () => {
+		async function askToDelete(review: Review) {
+			installReads({ reviews: [review], activeReviewId: review.id });
+			renderPanel();
+			await flush();
+			await fireEvent.click(
+				screen.getByRole("button", { name: `Delete review ${review.id}` }),
+			);
+			await flush();
+			return screen.getByRole("group", { name: `Delete ${review.title}?` });
+		}
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: `Delete review ${ACTIVE_REVIEW}` }),
-		);
-		await flush();
-		expect(calledCommands()).not.toContain("delete_review");
+		it("asks inline before deleting, naming what goes with it", async () => {
+			const confirm = await askToDelete(READY);
 
-		await fireEvent.click(
-			screen.getByRole("button", {
-				name: `Confirm delete review ${ACTIVE_REVIEW}`,
-			}),
-		);
-		await flush();
-		expect(callArgs("delete_review")).toEqual({
-			path: "/repo",
-			reviewId: ACTIVE_REVIEW,
+			expect(confirm).toHaveTextContent(
+				"Delete Auth review and its 2 threads? The agent loses access to it. This can\u2019t be undone.",
+			);
+			expect(calledCommands()).not.toContain("delete_review");
 		});
-	});
 
-	it("drops the delete confirmation once its window runs out", async () => {
-		const scheduler = new FakeScheduler();
-		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
-		renderPanel({ scheduler });
-		await flush();
-		await fireEvent.click(
-			screen.getByRole("button", { name: `Delete review ${ACTIVE_REVIEW}` }),
-		);
-		await flush();
-		expect(
-			screen.getByRole("button", {
-				name: `Confirm delete review ${ACTIVE_REVIEW}`,
-			}),
-		).toBeInTheDocument();
+		it("says nothing of the agent for a review it never saw", async () => {
+			const confirm = await askToDelete(aReview({ thread_count: 1 }));
 
-		scheduler.flush();
-		await flush();
+			expect(confirm).toHaveTextContent(
+				`Delete ${aReview().title} and its 1 thread? This can\u2019t be undone.`,
+			);
+		});
 
-		expect(
-			screen.queryByRole("button", {
-				name: `Confirm delete review ${ACTIVE_REVIEW}`,
-			}),
-		).not.toBeInTheDocument();
-		expect(
-			screen.getByRole("button", { name: `Delete review ${ACTIVE_REVIEW}` }),
-		).toBeInTheDocument();
-	});
+		it("deletes the review once confirmed", async () => {
+			const confirm = await askToDelete(READY);
 
-	it("paints the armed delete in the danger tone", async () => {
-		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
-		renderPanel();
-		await flush();
-		await fireEvent.click(
-			screen.getByRole("button", { name: `Delete review ${ACTIVE_REVIEW}` }),
-		);
-		await flush();
+			await fireEvent.click(
+				within(confirm).getByRole("button", { name: "Delete review" }),
+			);
+			await flush();
 
-		expect(
-			screen.getByRole("button", {
-				name: `Confirm delete review ${ACTIVE_REVIEW}`,
-			}),
-		).toHaveClass("bg-danger-bg");
-	});
+			expect(callArgs("delete_review")).toEqual({
+				path: "/repo",
+				reviewId: READY.id,
+			});
+		});
 
-	it("takes the delete confirmation timer down with the panel", async () => {
-		const scheduler = new FakeScheduler();
-		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
-		const { unmount } = renderPanel({ scheduler });
-		await flush();
-		await fireEvent.click(
-			screen.getByRole("button", { name: `Delete review ${ACTIVE_REVIEW}` }),
-		);
-		await flush();
-		expect(scheduler.pending).toBe(1);
+		it("keeps the review on Cancel", async () => {
+			const confirm = await askToDelete(READY);
 
-		unmount();
+			await fireEvent.click(
+				within(confirm).getByRole("button", { name: "Cancel" }),
+			);
+			await flush();
 
-		expect(scheduler.pending).toBe(0);
+			expect(screen.queryByRole("group", { name: /^Delete / })).toBeNull();
+			expect(calledCommands()).not.toContain("delete_review");
+		});
 	});
 
 	it("renames a review through the inline title editor", async () => {
@@ -1928,7 +1744,7 @@ describe("review list", () => {
 		await flush();
 
 		await fireEvent.dblClick(
-			screen.getByRole("button", { name: `Activate review ${ACTIVE_REVIEW}` }),
+			screen.getByRole("button", { name: `Show review ${ACTIVE_REVIEW}` }),
 		);
 		await tick();
 		const input = screen.getByLabelText("Review title") as HTMLInputElement;
@@ -2067,7 +1883,23 @@ describe("header", () => {
 		aThread({ id: "t4", commit_oid: COMMIT_A, state: "done" }),
 	];
 
-	it("names the active review by title, id and state", async () => {
+	const OTHER: Review = {
+		id: "OTHERRV1",
+		title: "Other review",
+		state: "ready",
+		published: true,
+		thread_count: 0,
+		unresolved_count: 0,
+		created_at: 0,
+	};
+
+	function header() {
+		return screen
+			.getByRole("heading", { level: 1 })
+			.closest("header") as HTMLElement;
+	}
+
+	it("names the shown review by title, id and state", async () => {
 		installReads({
 			commits,
 			comments: THREADS,
@@ -2076,76 +1908,146 @@ describe("header", () => {
 		renderPanel();
 		await flush();
 
-		const heading = screen.getByRole("heading", { level: 1 });
-		expect(heading).toHaveTextContent("Watcher review");
-		const header = heading.closest("header") as HTMLElement;
-		expect(header).toHaveTextContent(ACTIVE_REVIEW);
-		expect(header).toHaveTextContent("Ready");
+		expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+			"Watcher review",
+		);
+		expect(header()).toHaveTextContent(ACTIVE_REVIEW);
+		expect(header()).toHaveTextContent("Ready");
 	});
 
-	it("counts the active review's threads in each state", async () => {
+	describe("renaming from the title", () => {
+		async function openTitleEditor() {
+			installReads({ commits, comments: THREADS });
+			renderPanel();
+			await flush();
+			await fireEvent.click(
+				screen.getByRole("button", { name: aReview().title }),
+			);
+			await tick();
+			return screen.getByRole("textbox", { name: "Review title" });
+		}
+
+		it("opens a field holding the title", async () => {
+			const field = await openTitleEditor();
+
+			expect(field).toHaveValue(aReview().title);
+		});
+
+		it("saves the new title on Enter", async () => {
+			const field = await openTitleEditor();
+
+			await fireEvent.input(field, { target: { value: "Renamed" } });
+			await fireEvent.keyDown(field, { key: "Enter" });
+			await flush();
+
+			expect(callArgs("rename_review")).toEqual({
+				path: "/repo",
+				reviewId: ACTIVE_REVIEW,
+				title: "Renamed",
+			});
+		});
+
+		it("keeps the title on Escape", async () => {
+			const field = await openTitleEditor();
+
+			await fireEvent.input(field, { target: { value: "Renamed" } });
+			await fireEvent.keyDown(field, { key: "Escape" });
+			await flush();
+
+			expect(calledCommands()).not.toContain("rename_review");
+			expect(
+				screen.queryByRole("textbox", { name: "Review title" }),
+			).toBeNull();
+		});
+	});
+
+	it("tallies the shown review's threads in each state it holds", async () => {
 		installReads({ commits, comments: THREADS });
 		renderPanel();
 		await flush();
 
-		expect(
-			screen.getByRole("button", { name: "Open threads: 2" }),
-		).toBeInTheDocument();
-		expect(
-			screen.getByRole("button", { name: "Addressed threads: 1" }),
-		).toBeInTheDocument();
-		expect(
-			screen.getByRole("button", { name: "Done threads: 1" }),
-		).toBeInTheDocument();
-		expect(
-			screen.getByRole("button", { name: "Dismissed threads: 0" }),
-		).toBeInTheDocument();
-		expect(
-			screen.getByRole("button", { name: "Stale threads: 1" }),
-		).toBeInTheDocument();
+		const tally = screen.getByRole("list", { name: "Threads by state" });
+		expect(within(tally).getByTitle("Open")).toHaveTextContent("2");
+		expect(within(tally).getByTitle("Addressed")).toHaveTextContent("1");
+		expect(within(tally).getByTitle("Done")).toHaveTextContent("1");
+		expect(within(tally).getByTitle("Stale")).toHaveTextContent("1");
+		expect(within(tally).queryByTitle("Dismissed")).toBeNull();
 	});
 
-	it("reports the pressed state's count as the filter", async () => {
-		const onreviewfilterchange = vi.fn();
+	it("says the review is active and not yet visible to the agent", async () => {
 		installReads({ commits, comments: THREADS });
-		renderPanel({ onreviewfilterchange });
+		renderPanel();
 		await flush();
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: "Addressed threads: 1" }),
-		);
-
-		expect(onreviewfilterchange).toHaveBeenCalledWith("addressed");
+		expect(header()).toHaveTextContent("Active");
+		expect(header()).toHaveTextContent("Not visible to the agent");
+		expect(screen.queryByRole("button", { name: "Make active" })).toBeNull();
 	});
 
-	it("shows every thread again when the pressed count is pressed", async () => {
-		const onreviewfilterchange = vi.fn();
-		installReads({ commits, comments: THREADS });
-		renderPanel({ reviewFilter: "open", onreviewfilterchange });
-		await flush();
+	describe("for a review that is not the active one", () => {
+		async function showOther() {
+			installReads({
+				commits,
+				comments: THREADS,
+				reviews: [aReview({ thread_count: 4 }), OTHER],
+			});
+			renderPanel();
+			await flush();
+			await reviewComments.select(OTHER.id);
+			await flush();
+		}
 
-		const open = screen.getByRole("button", { name: "Open threads: 2" });
-		expect(open).toHaveAttribute("aria-pressed", "true");
-		await fireEvent.click(open);
+		it("offers to make it active", async () => {
+			await showOther();
 
-		expect(onreviewfilterchange).toHaveBeenCalledWith("all");
-	});
-
-	it.each([
-		["all", "Show only open threads"],
-		["open", "Show all threads"],
-	] as const)(
-		"titles the open count under the %s filter as %s",
-		async (reviewFilter, title) => {
-			installReads({ commits, comments: THREADS });
-			renderPanel({ reviewFilter });
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Make active" }),
+			);
 			await flush();
 
-			expect(
-				screen.getByRole("button", { name: "Open threads: 2" }),
-			).toHaveAttribute("title", title);
-		},
-	);
+			expect(callArgs("set_active_review")).toEqual({
+				path: "/repo",
+				reviewId: OTHER.id,
+			});
+		});
+
+		it("says it is published and offers no End review", async () => {
+			await showOther();
+
+			expect(header()).toHaveTextContent("Published");
+			expect(screen.queryByRole("button", { name: "End review" })).toBeNull();
+		});
+
+		it("reads its own resolutions", async () => {
+			await showOther();
+
+			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("resolve_threads", {
+				path: "/repo",
+				reviewId: OTHER.id,
+			});
+		});
+	});
+
+	describe("under a filter", () => {
+		it("says how many threads it shows", async () => {
+			installReads({ commits, comments: THREADS });
+			renderPanel({ reviewFilter: "open" });
+			await flush();
+
+			expect(header()).toHaveTextContent("Showing open only · 2 of 4");
+		});
+
+		it("shows every thread again from Show all", async () => {
+			const onreviewfilterchange = vi.fn();
+			installReads({ commits, comments: THREADS });
+			renderPanel({ reviewFilter: "open", onreviewfilterchange });
+			await flush();
+
+			await fireEvent.click(screen.getByRole("button", { name: "Show all" }));
+
+			expect(onreviewfilterchange).toHaveBeenCalledWith("all");
+		});
+	});
 
 	it("names no review when the repo has none", async () => {
 		installReads({ reviews: [], activeReviewId: null });
@@ -2153,7 +2055,7 @@ describe("header", () => {
 		await flush();
 
 		expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
-		expect(screen.queryByRole("button", { name: /threads: / })).toBeNull();
+		expect(screen.queryByRole("list", { name: "Threads by state" })).toBeNull();
 	});
 });
 

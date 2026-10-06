@@ -643,6 +643,7 @@ describe("RepoView", () => {
 							state: "ready",
 							published: false,
 							thread_count: 1,
+							unresolved_count: 1,
 							created_at: 0,
 						},
 					]);
@@ -2486,6 +2487,7 @@ describe("RepoView", () => {
 							state: "ready",
 							published: false,
 							thread_count: 1,
+							unresolved_count: 1,
 							created_at: 0,
 						},
 					]);

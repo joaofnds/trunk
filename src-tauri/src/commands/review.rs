@@ -388,7 +388,8 @@ impl RenderedThread {
     }
 }
 
-/// The threads of the repo's active review, each with its replies.
+/// The threads of the review `review_id` names, else of the repo's active one,
+/// each with its replies.
 ///
 /// A repo with no active review has no threads to show — an empty list, not an error:
 /// there is no "session is active" concept left to report.
@@ -399,12 +400,13 @@ impl RenderedThread {
 pub fn list_threads_inner(
     store: &Store,
     canonical: &Path,
+    review_id: Option<&str>,
 ) -> Result<Vec<RenderedThread>, TrunkError> {
     store.read(|conn| {
-        let Some(review_id) = reviews::active(conn, canonical)? else {
+        let Some(review_id) = reviews::requested_or_active(conn, canonical, review_id)? else {
             return Ok(vec![]);
         };
-        // Every thread in this batch belongs to the same active review, so its
+        // Every thread in this batch belongs to the same review, so its
         // published bit is read once rather than per-thread.
         let published = reviews::get(conn, &review_id)?.is_some_and(|r| r.published);
 
@@ -823,6 +825,7 @@ pub async fn set_thread_state<R: Runtime>(
 #[tauri::command]
 pub async fn list_threads<R: Runtime>(
     path: String,
+    review_id: Option<String>,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     swept: State<'_, crate::state::SweptRepos>,
@@ -834,7 +837,7 @@ pub async fn list_threads<R: Runtime>(
     let target = canonical.clone();
     blocking_store(move || {
         sweep_once(&store, &target, &path, &swept_repos);
-        list_threads_inner(&store, &target)
+        list_threads_inner(&store, &target, review_id.as_deref())
     })
     .await
 }
@@ -1318,7 +1321,8 @@ pub async fn remove_review_commit<R: Runtime>(
     Ok(())
 }
 
-/// The active review's commits in graph order. Read-only, no emit.
+/// The commits of the review `review_id` names, else of the active one, in graph
+/// order. Read-only, no emit.
 ///
 /// Dual path-keying: the commit set is read by CANONICAL key from the store; the
 /// graph order comes from `CommitCache` by RAW path.
@@ -1334,6 +1338,7 @@ pub async fn remove_review_commit<R: Runtime>(
 #[tauri::command]
 pub async fn list_session_commits<R: Runtime>(
     path: String,
+    review_id: Option<String>,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     cache: State<'_, CommitCache>,
@@ -1347,13 +1352,14 @@ pub async fn list_session_commits<R: Runtime>(
 
     blocking_store(move || {
         let (commits, snapshot_oids) = store.read(|conn| {
-            let commits = match reviews::active(conn, &canonical)? {
-                Some(id) => commits::list(conn, &id)?
-                    .into_iter()
-                    .map(|c| c.oid)
-                    .collect(),
-                None => vec![],
-            };
+            let commits =
+                match reviews::requested_or_active(conn, &canonical, review_id.as_deref())? {
+                    Some(id) => commits::list(conn, &id)?
+                        .into_iter()
+                        .map(|c| c.oid)
+                        .collect(),
+                    None => vec![],
+                };
             Ok((commits, snapshots::get(conn, &canonical)?.oids()))
         })?;
 
@@ -1702,6 +1708,7 @@ fn as_comments(threads: Vec<threads::Thread>) -> Vec<trunk_review::types::Commen
 #[tauri::command]
 pub async fn resolve_threads<R: Runtime>(
     path: String,
+    review_id: Option<String>,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
@@ -1710,7 +1717,9 @@ pub async fn resolve_threads<R: Runtime>(
 
     blocking_store(move || {
         let threads = store.read(|conn| {
-            let Some(review_id) = reviews::active(conn, &canonical)? else {
+            let Some(review_id) =
+                reviews::requested_or_active(conn, &canonical, review_id.as_deref())?
+            else {
                 return Ok(vec![]);
             };
             threads::list_for_review(conn, &review_id)

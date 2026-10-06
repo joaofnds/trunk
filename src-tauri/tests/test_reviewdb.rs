@@ -102,7 +102,7 @@ fn the_v8_rebuild_keeps_the_replies_hanging_off_a_thread() {
 
     let store = reviewdb::open(ctx.data_dir()).unwrap();
 
-    let threads = list_threads_inner(&store, &canonical).unwrap();
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
     let thread = threads
         .iter()
         .find(|t| t.id == thread_id)
@@ -144,7 +144,7 @@ fn a_current_file_thread_stores_its_pinned_block_and_ordinal() {
     )
     .unwrap();
 
-    let threads = list_threads_inner(&store, &canonical).unwrap();
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
     let thread = threads.iter().find(|t| t.id == id).expect("the thread");
     assert_eq!(
         thread
@@ -214,7 +214,7 @@ fn a_listed_thread_carries_the_time_it_was_submitted() {
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     submit_thread_inner(&store, &canonical, submission("when was this?"), 1_234).unwrap();
 
-    let threads = list_threads_inner(&store, &canonical).unwrap();
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
 
     assert_eq!(
         threads[0].created_at, 1_234,
@@ -235,7 +235,7 @@ fn a_listed_diff_excerpt_holds_no_empty_line_a_diff_cannot_have() {
     };
     submit_thread_inner(&store, &canonical, doubled, 1_000).unwrap();
 
-    let threads = list_threads_inner(&store, &canonical).unwrap();
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
 
     assert_eq!(
         threads[0].cached_excerpt.as_deref(),
@@ -267,7 +267,7 @@ fn a_listed_full_file_excerpt_loses_the_doubled_newlines_of_its_capture() {
     let doubled = full_file_submission("a\n\n\n\n… 3 lines unchanged …\nb\n", 10, 15);
     submit_thread_inner(&store, &canonical, doubled, 1_000).unwrap();
 
-    let threads = list_threads_inner(&store, &canonical).unwrap();
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
 
     assert_eq!(
         threads[0].cached_excerpt.as_deref(),
@@ -288,7 +288,7 @@ fn a_listed_full_file_excerpt_keeps_the_file_s_own_empty_lines() {
     )
     .unwrap();
 
-    let threads = list_threads_inner(&store, &canonical).unwrap();
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
 
     assert_eq!(threads[0].cached_excerpt.as_deref(), Some("a\n\nb"));
 }
@@ -614,7 +614,7 @@ fn a_ui_reply_is_attributed_human() {
     trunk_lib::commands::review::add_reply_inner(&store, &canonical, &thread_id, "a reply", 1_001)
         .unwrap();
 
-    let threads = list_threads_inner(&store, &canonical).unwrap();
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
     let thread = threads.iter().find(|t| t.id == thread_id).unwrap();
     assert_eq!(thread.replies.len(), 1);
     assert_eq!(thread.replies[0].channel, Channel::Human);
@@ -1814,6 +1814,65 @@ fn gestures_land_in_the_switched_review() {
 }
 
 #[test]
+fn a_named_review_lists_its_threads_while_another_is_active() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(&store, &canonical, submission("in the first"), 1_000).unwrap();
+    let first = only_review(&store, &canonical).id;
+    let second = store
+        .write(|tx| reviewdb::reviews::create(tx, &canonical, Some("second"), 0))
+        .unwrap();
+    store
+        .write(|tx| reviewdb::reviews::set_active(tx, &canonical, &second))
+        .unwrap();
+
+    let threads = list_threads_inner(&store, &canonical, Some(&first)).unwrap();
+
+    let texts: Vec<&str> = threads.iter().map(|t| t.text.as_str()).collect();
+    assert_eq!(texts, ["in the first"]);
+}
+
+#[test]
+fn a_review_of_another_repo_is_not_found() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(&store, &canonical, submission("private"), 1_000).unwrap();
+    let theirs = only_review(&store, &canonical).id;
+    let elsewhere = canonical.join("elsewhere");
+
+    let refused = list_threads_inner(&store, &elsewhere, Some(&theirs)).unwrap_err();
+
+    assert_eq!(refused.code, "not_found");
+}
+
+#[test]
+fn a_review_counts_its_unresolved_threads() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(&store, &canonical, submission("open"), 1_000).unwrap();
+    let done = submit_thread_inner(&store, &canonical, submission("done"), 1_000).unwrap();
+    store
+        .write(|tx| {
+            reviewdb::threads::set_state(
+                tx,
+                &canonical,
+                &done,
+                ThreadState::Done,
+                Channel::Human,
+                1_001,
+            )
+        })
+        .unwrap();
+
+    let review = only_review(&store, &canonical);
+
+    assert_eq!((review.unresolved_count, review.thread_count), (1, 2));
+}
+
+#[test]
 fn publishing_keeps_threads_and_refs() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
@@ -2686,7 +2745,7 @@ fn list_threads_reports_the_owning_reviews_published_bit() {
     let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
     let review_id = only_review(&store, &canonical).id;
 
-    let before = list_threads_inner(&store, &canonical).unwrap();
+    let before = list_threads_inner(&store, &canonical, None).unwrap();
     assert!(
         !before.iter().find(|t| t.id == thread_id).unwrap().published,
         "a composing review's threads report published: false",
@@ -2696,7 +2755,7 @@ fn list_threads_reports_the_owning_reviews_published_bit() {
         .write(|tx| reviewdb::reviews::publish(tx, &canonical, &review_id, 1_000))
         .unwrap();
 
-    let after = list_threads_inner(&store, &canonical).unwrap();
+    let after = list_threads_inner(&store, &canonical, None).unwrap();
     assert!(
         after.iter().find(|t| t.id == thread_id).unwrap().published,
         "a published review's threads report published: true",
@@ -2713,7 +2772,7 @@ fn list_threads_carries_the_human_allowed_transitions() {
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
 
-    let open = list_threads_inner(&store, &canonical).unwrap();
+    let open = list_threads_inner(&store, &canonical, None).unwrap();
     assert_eq!(
         open[0].allowed_transitions,
         vec![ThreadState::Done, ThreadState::Dismissed],
@@ -2721,7 +2780,7 @@ fn list_threads_carries_the_human_allowed_transitions() {
     );
 
     set_thread_state_inner(&store, &canonical, &thread_id, ThreadState::Done, 1_001).unwrap();
-    let done = list_threads_inner(&store, &canonical).unwrap();
+    let done = list_threads_inner(&store, &canonical, None).unwrap();
     assert_eq!(
         done[0].allowed_transitions,
         vec![ThreadState::Open],
@@ -2752,7 +2811,7 @@ fn a_published_review_still_accepts_a_reply_and_a_text_edit() {
         .write(|tx| reviewdb::replies::edit(tx, &canonical, &reply_id, "edited reply", 1_002))
         .unwrap();
 
-    let threads = list_threads_inner(&store, &canonical).unwrap();
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
     let thread = threads.iter().find(|t| t.id == thread_id).unwrap();
     assert_eq!(thread.text, "edited root");
     assert_eq!(thread.replies[0].text, "edited reply");
@@ -3088,7 +3147,7 @@ fn a_repo_with_no_active_review_lists_no_threads_without_erroring() {
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
 
-    let threads = list_threads_inner(&store, &canonical).unwrap();
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
 
     assert!(
         threads.is_empty(),
@@ -3117,7 +3176,7 @@ fn switching_back_to_the_older_review_lists_its_threads_again() {
         .unwrap();
 
     assert_eq!(
-        list_threads_inner(&store, &canonical)
+        list_threads_inner(&store, &canonical, None)
             .unwrap()
             .iter()
             .map(|t| t.text.as_str())
@@ -3143,7 +3202,9 @@ fn activating_an_empty_review_hides_the_repos_other_threads() {
         .unwrap();
 
     assert!(
-        list_threads_inner(&store, &canonical).unwrap().is_empty(),
+        list_threads_inner(&store, &canonical, None)
+            .unwrap()
+            .is_empty(),
         "creating a review blanks every badge in the repo until the user switches \
          back, because badges count only the active review's threads — the \
          projection milestone 5 replaces with an all-reviews unresolved count",
@@ -4094,7 +4155,7 @@ fn a_submit_succeeds_even_when_its_anchor_is_beyond_saving() {
     submit_thread_into(&store, &canonical, Some(&repo), late, SWEEP_NOW + 1)
         .expect("a submit must not fail because its pin could not be repaired");
 
-    let threads = list_threads_inner(&store, &canonical).unwrap();
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
     assert_eq!(threads.len(), 1, "the comment is kept, not lost");
 }
 
@@ -4693,7 +4754,7 @@ fn a_store_from_the_unreleased_v8_is_accepted() {
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     submit_thread_inner(&store, &canonical, submission("still works"), 1_000).unwrap();
 
-    let threads = list_threads_inner(&store, &canonical).unwrap();
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
     assert_eq!(threads.len(), 1, "a v8 dev store must still take a comment");
 }
 

@@ -48,9 +48,9 @@ describe("a comment left on a commit's diff", () => {
 		expect(app.review.states()).toEqual(["open"]);
 	});
 
-	it("filters a completed thread and copies its review document", async () => {
+	it("filters a completed thread, leaving nothing to copy", async () => {
 		const app = await setup({ repo: TWO_COMMITS });
-		const commit = await createReviewThread(app);
+		await createReviewThread(app);
 
 		await app.review.publish();
 
@@ -69,25 +69,23 @@ describe("a comment left on a commit's diff", () => {
 			() => app.review.reviewBadgeCount() === 1,
 		);
 
-		await app.review.copyDoc();
-
-		const doc = await waitFor(
-			"the copied review doc",
-			() => app.clipboard.text,
-		);
-		expect(doc).toContain(`${ANCHOR} (${commit}, after) — done`);
+		expect(app.review.canCopy()).toBe(false);
 	});
 
-	it("filters the panel to a state from that state's count", async () => {
+	it("shows every thread again from the header's Show all", async () => {
 		const app = await setup({ repo: TWO_COMMITS });
 		await createReviewThread(app);
-
-		await app.review.pressStateCount("done");
-
-		await waitFor("the open thread to leave the done filter", () =>
-			app.review.threads().length === 0 ? true : null,
+		await app.review.showReviewFilter(
+			"done",
+			() => app.review.threads().length === 0,
 		);
-		expect(app.review.reviewFilter()).toBe("done");
+
+		await app.review.showAll();
+
+		await waitFor("the open thread to come back", () =>
+			app.review.threads().length === 1 ? true : null,
+		);
+		expect(app.review.reviewFilter()).toBe("all");
 	});
 
 	it.each(["none", "done"] as const)(

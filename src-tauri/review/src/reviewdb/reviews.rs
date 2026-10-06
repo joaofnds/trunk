@@ -27,6 +27,8 @@ pub struct Review {
     pub state: ReviewState,
     pub published: bool,
     pub thread_count: i64,
+    /// Threads still waiting on someone: open or addressed.
+    pub unresolved_count: i64,
     pub created_at: i64,
 }
 
@@ -45,7 +47,9 @@ const STATE_SQL: &str = "
 
 const SELECT: &str = "
     SELECT r.id, r.title, r.published, r.created_at,
-           (SELECT COUNT(*) FROM threads t WHERE t.review_id = r.id)";
+           (SELECT COUNT(*) FROM threads t WHERE t.review_id = r.id),
+           (SELECT COUNT(*) FROM threads t
+            WHERE t.review_id = r.id AND t.state IN ('open', 'addressed'))";
 
 /// Create a composing review for `repo_path` and return its id.
 ///
@@ -114,7 +118,7 @@ pub fn get(conn: &Connection, id: &str) -> Result<Option<Review>, TrunkError> {
 }
 
 fn read_review(row: &rusqlite::Row) -> rusqlite::Result<Review> {
-    let state: String = row.get(5)?;
+    let state: String = row.get(6)?;
 
     Ok(Review {
         id: row.get(0)?,
@@ -122,6 +126,7 @@ fn read_review(row: &rusqlite::Row) -> rusqlite::Result<Review> {
         published: row.get::<_, i64>(2)? != 0,
         created_at: row.get(3)?,
         thread_count: row.get(4)?,
+        unresolved_count: row.get(5)?,
         state: match state.as_str() {
             "composing" => ReviewState::Composing,
             "ready" => ReviewState::Ready,
@@ -149,6 +154,26 @@ pub fn active(conn: &Connection, repo_path: &Path) -> Result<Option<String>, Tru
         None => Ok(None),
         Some(row) => Ok(Some(row.map_err(sqlite_error)?)),
     }
+}
+
+/// The review a read asked for by id, or the active one when it named none.
+///
+/// # Errors
+///
+/// Returns `not_found` when `requested` names a review outside `repo_path`, and
+/// the `SQLite` error when a query fails.
+pub fn requested_or_active(
+    conn: &Connection,
+    repo_path: &Path,
+    requested: Option<&str>,
+) -> Result<Option<String>, TrunkError> {
+    let Some(id) = requested else {
+        return active(conn, repo_path);
+    };
+
+    belongs_to(conn, repo_path, id)?;
+
+    Ok(Some(id.to_string()))
 }
 
 /// Point the repo at `review_id` without checking that it belongs there.

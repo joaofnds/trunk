@@ -58,6 +58,7 @@ import GutterGrip from "./GutterGrip.svelte";
 import HitArea from "./HitArea.svelte";
 import LinkButton from "./LinkButton.svelte";
 import ListOption from "./ListOption.svelte";
+import Radio from "./Radio.svelte";
 import Row from "./Row.svelte";
 import RowAction from "./RowAction.svelte";
 import Splitter from "./Splitter.svelte";
@@ -394,6 +395,17 @@ import ToastCard from "./ToastCard.svelte";
 			<Chip truncate
 				><GitBranch size={11} /><span data-catalog-text>main</span></Chip
 			>
+		</div>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>Radio</h2
+		>
+		<div class="flex items-center gap-2">
+			<Radio checked aria-label="Active review" />
+			<Radio checked={false} aria-label="Make active" />
+			<Radio variant="mark" checked />
 		</div>
 	</section>
 

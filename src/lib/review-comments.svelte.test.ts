@@ -77,6 +77,7 @@ const review: Review = {
 	state: "composing",
 	published: false,
 	thread_count: 1,
+	unresolved_count: 1,
 	created_at: 0,
 };
 
@@ -443,6 +444,76 @@ describe("createReviewComments - refresh backpressure", () => {
 		await later;
 
 		expect(manager.threads).toHaveLength(1);
+		manager.destroy();
+	});
+});
+
+describe("createReviewComments — the shown review", () => {
+	const other: Review = {
+		...review,
+		id: "REVIEW02",
+		title: "Second pass",
+		thread_count: 1,
+		unresolved_count: 1,
+	};
+	const otherThread = aThread({ id: "c2", review_id: "REVIEW02" });
+	const otherCommits: SessionCommit[] = [
+		{ oid: "def", short_oid: "def", summary: "two", is_snapshot: false },
+	];
+
+	/** Two reviews, REVIEW01 active; a read that names REVIEW02 answers for it. */
+	function twoReviews() {
+		aPopulatedStore({ list_reviews: [review, other] });
+		const populated = mockInvoke.getMockImplementation();
+		mockInvoke.mockImplementation((cmd, args) => {
+			const named = args && "reviewId" in args ? args.reviewId : undefined;
+			if (named === "REVIEW02" && cmd === "list_threads")
+				return Promise.resolve([otherThread]);
+			if (named === "REVIEW02" && cmd === "list_session_commits")
+				return Promise.resolve(otherCommits);
+			return populated?.(cmd, args) ?? Promise.resolve(undefined);
+		});
+	}
+
+	it("follows the active review until another is selected", async () => {
+		twoReviews();
+
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+
+		expect(manager.shownReviewId).toBe("REVIEW01");
+		expect(manager.shownThreads.map((t) => t.id)).toEqual(["c1"]);
+		manager.destroy();
+	});
+
+	it("reads a selected review's threads and commits without moving the active ones", async () => {
+		twoReviews();
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+
+		manager.select("REVIEW02");
+		await flush();
+
+		expect(manager.shownReview?.title).toBe("Second pass");
+		expect(manager.shownThreads.map((t) => t.id)).toEqual(["c2"]);
+		expect(manager.shownCommits.map((c) => c.oid)).toEqual(["def"]);
+		expect(manager.threads.map((t) => t.id)).toEqual(["c1"]);
+		expect(manager.activeReviewId).toBe("REVIEW01");
+		manager.destroy();
+	});
+
+	it("falls back to the active review when the selected one is gone", async () => {
+		twoReviews();
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+		manager.select("REVIEW02");
+		await flush();
+
+		aPopulatedStore();
+		await manager.refresh();
+
+		expect(manager.shownReviewId).toBe("REVIEW01");
+		expect(manager.shownThreads.map((t) => t.id)).toEqual(["c1"]);
 		manager.destroy();
 	});
 });

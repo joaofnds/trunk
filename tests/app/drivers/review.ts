@@ -20,8 +20,9 @@ const ORPHAN_BADGE = ".orphan-badge";
 const STALE_CHIP = ".thread-stale-chip";
 const EXCERPT_LINE = ".comment-card-diff .diff-content";
 const PUBLISH = "End review";
-const CONFIRM_PUBLISH = "Click again to confirm";
+const PUBLISH_POPOVER = "dialog[aria-labelledby]";
 const COPY = "Copy";
+const SHOW_ALL = "Show all";
 const MARK_DONE = "Mark done";
 const DISMISS = "Dismiss";
 const COMMENT_ON_FILE = "Comment on a file…";
@@ -36,7 +37,8 @@ const REPLY_BODY = ".thread-reply-text";
 const ROOT_EDIT_TEXT = 'textarea[aria-label="Edit comment"]';
 const REPLY_EDIT_TEXT = 'textarea[aria-label="Edit reply"]';
 const COMMIT_NOTES = ".commit-notes";
-const ACTIVE_REVIEW_ROW = 'nav[aria-label="Reviews"] [aria-current="true"]';
+const ACTIVE_REVIEW_RADIO =
+	'nav[aria-label="Reviews"] button[aria-label^="Active review "][aria-pressed="true"]';
 const NEW_REVIEW = 'nav[aria-label="Reviews"] [aria-label="New review"]';
 const COMMIT_NOTE_TEXT = 'textarea[placeholder="Leave a note on this commit…"]';
 
@@ -91,19 +93,16 @@ export class ReviewDriver {
 		});
 	}
 
-	/** Presses the panel header's count for one thread state, which hands the
-	 *  filter to the toolbar's selector, and waits for the selector to show it. */
-	async pressStateCount(filterValue: ReviewFilter): Promise<void> {
-		const label = filterValue[0].toUpperCase() + filterValue.slice(1);
-		const count = await waitFor(`the ${filterValue} threads count`, () =>
-			document.querySelector<HTMLButtonElement>(
-				`[aria-label^="${label} threads: "]`,
-			),
+	/** Presses the header's Show all, which hands the toolbar's selector back
+	 *  every thread, and waits for the selector to show it. */
+	async showAll(): Promise<void> {
+		const button = await waitFor("the header's Show all", () =>
+			enabledButton(SHOW_ALL),
 		);
-		count.click();
+		button.click();
 
-		await waitFor(`the review filter to become ${filterValue}`, () =>
-			this.reviewFilter() === filterValue ? true : null,
+		await waitFor("the review filter to become all", () =>
+			this.reviewFilter() === "all" ? true : null,
 		);
 	}
 
@@ -210,9 +209,9 @@ export class ReviewDriver {
 
 	/** The id of the review the panel marks active, or null when none is. */
 	activeReviewId(): string | null {
-		const row = document.querySelector<HTMLElement>(ACTIVE_REVIEW_ROW);
-		const label = row?.getAttribute("aria-label");
-		return label ? label.slice("Activate review ".length) : null;
+		const radio = document.querySelector<HTMLElement>(ACTIVE_REVIEW_RADIO);
+		const label = radio?.getAttribute("aria-label");
+		return label ? label.slice("Active review ".length) : null;
 	}
 
 	/** Types an unsent reply on the first visible thread. */
@@ -538,8 +537,9 @@ export class ReviewDriver {
 		);
 	}
 
-	/** Ends the review, which publishes it. Two clicks: the first arms a confirm
-	 *  that reverts after 3000 ms, and the second is the one that publishes. */
+	/** Ends the review, which publishes it: the header's End review opens a
+	 *  popover that says what publishing does, and its own End review is the
+	 *  press that publishes. */
 	async publish(): Promise<void> {
 		const button = await waitFor("an enabled end-review button", () =>
 			enabledButton(PUBLISH),
@@ -547,8 +547,8 @@ export class ReviewDriver {
 
 		button.click();
 
-		const confirm = await waitFor("the end-review confirmation", () =>
-			collapse(button) === CONFIRM_PUBLISH ? button : null,
+		const confirm = await waitFor("the end-review popover", () =>
+			enabledIn(document.querySelector<HTMLElement>(PUBLISH_POPOVER), PUBLISH),
 		);
 
 		confirm.click();
@@ -564,6 +564,12 @@ export class ReviewDriver {
 	}
 
 	/** Copies the review doc, which is what renders it. */
+	/** Whether the header's Copy would copy anything: it is off while no thread
+	 *  is unresolved. */
+	canCopy(): boolean {
+		return enabledButton(COPY) !== null;
+	}
+
 	async copyDoc(): Promise<void> {
 		const button = await waitFor("an enabled copy button", () =>
 			enabledButton(COPY),

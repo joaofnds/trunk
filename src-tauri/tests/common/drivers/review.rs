@@ -93,6 +93,7 @@ impl ReviewDriver<'_> {
     pub fn list_threads(&self) -> Result<Vec<RenderedThread>, String> {
         tauri::async_runtime::block_on(list_threads(
             self.ctx.path().to_string(),
+            None,
             self.app.state::<RepoState>(),
             self.app.state::<ReviewStoreState>(),
             self.app.state::<SweptRepos>(),
