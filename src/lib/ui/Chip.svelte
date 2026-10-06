@@ -1,5 +1,5 @@
 <script lang="ts" module>
-export type ChipTone = "accent" | "neutral";
+export type ChipTone = "accent" | "neutral" | "lane";
 </script>
 
 <script lang="ts">
@@ -8,7 +8,8 @@ import type { HTMLButtonAttributes } from "svelte/elements";
 
 interface ButtonChip extends Omit<HTMLButtonAttributes, "class" | "style"> {
 	variant?: "button";
-	/** `accent` for the chip a row leads with; `neutral` for the ones beside it. */
+	/** `accent` for the chip a row leads with; `neutral` for the ones beside it;
+	 *  `lane` for a ref drawn in its graph lane's colour, read from `--lane`. */
 	tone?: ChipTone;
 	truncate?: boolean;
 }
@@ -44,11 +45,13 @@ const SHRINK = "chip-truncate min-w-0 flex-1 max-w-max";
 const TONES: Record<ChipTone, string> = {
 	accent: "border-chip-accent-border bg-chip-accent-bg text-accent-strong",
 	neutral: "border-border bg-muted-bg text-text",
+	lane: "chip-lane",
 };
 
 const HOVERS: Record<ChipTone, string> = {
 	accent: "hover:bg-chip-accent-bg-hover",
 	neutral: "hover:bg-muted-bg-hover",
+	lane: "",
 };
 </script>
 
@@ -75,6 +78,12 @@ const HOVERS: Record<ChipTone, string> = {
 {/if}
 
 <style>
+.chip-lane {
+	color: var(--lane);
+	border-color: color-mix(in oklch, var(--lane) 45%, transparent);
+	background: color-mix(in oklch, var(--lane) 14%, transparent);
+}
+
 .chip-truncate > :global(svg) {
 	flex-shrink: 0;
 }

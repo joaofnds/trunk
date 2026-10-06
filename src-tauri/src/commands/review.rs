@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::blob_reader::WorkingTreeFile;
 use trunk_git::error::TrunkError;
-use trunk_review::range::{compute_range_oids, intersect_graph_order, validate_range};
+use trunk_review::range::{compute_range_oids, review_commits, validate_range};
 use trunk_review::resolution::{CommentResolution, resolve_all};
 use trunk_review::reviewdb::{
     Store, commits, drafts, minted, pins, replies, reviews, snapshots, threads,
@@ -1351,20 +1351,23 @@ pub async fn list_session_commits<R: Runtime>(
         .ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?;
 
     blocking_store(move || {
-        let (commits, snapshot_oids) = store.read(|conn| {
-            let commits =
+        let (picked, threaded, snapshot_oids) = store.read(|conn| {
+            let (picked, threaded) =
                 match reviews::requested_or_active(conn, &canonical, review_id.as_deref())? {
-                    Some(id) => commits::list(conn, &id)?
-                        .into_iter()
-                        .map(|c| c.oid)
-                        .collect(),
-                    None => vec![],
+                    Some(id) => (
+                        commits::list(conn, &id)?
+                            .into_iter()
+                            .map(|c| c.oid)
+                            .collect(),
+                        commits::threaded(conn, &id)?,
+                    ),
+                    None => (vec![], vec![]),
                 };
-            Ok((commits, snapshots::get(conn, &canonical)?.oids()))
+            Ok((picked, threaded, snapshots::get(conn, &canonical)?.oids()))
         })?;
 
         let repo = git2::Repository::open(&path).map_err(TrunkError::from)?;
-        let mut result = intersect_graph_order(&commits, &graph.layout, &repo);
+        let mut result = review_commits(&picked, &threaded, &graph.layout, &repo);
         for commit in &mut result {
             commit.is_snapshot = snapshot_oids.contains(&commit.oid);
         }

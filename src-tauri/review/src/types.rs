@@ -148,6 +148,17 @@ pub struct SessionCommit {
     /// per-commit "Add note" affordance). Set by `list_session_commits`.
     #[serde(default)]
     pub is_snapshot: bool,
+    /// The ref naming the line of history the graph drew this commit on, so the
+    /// panel can gather a review's commits by branch. None off the graph.
+    pub lane_ref: Option<trunk_git::types::RefLabel>,
+    /// The graph's lane colour for this commit. None off the graph.
+    pub color_index: Option<usize>,
+    pub author_timestamp: Option<i64>,
+    /// False when the repository no longer has the commit at all.
+    pub exists: bool,
+    /// True when someone added the commit to the review; false for a commit
+    /// that is in it only because a thread was left on it.
+    pub picked: bool,
 }
 
 // ── Review session schema (Phase 65 keystone) ────────────────────────────────

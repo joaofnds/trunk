@@ -6506,3 +6506,29 @@ fn a_fifty_thread_recompute_pass_is_reported() {
         "the pass must have actually run over threads whose blocks are all present",
     );
 }
+
+#[test]
+fn a_review_lists_the_commits_its_threads_sit_on_in_the_order_they_arrived() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let note = |oid: &str| SubmitThreadRequest {
+        text: "a note about the commit".to_string(),
+        anchor: None,
+        commit_oid: Some(oid.to_string()),
+        content_pin: None,
+        cached_excerpt: None,
+        clears_draft: false,
+    };
+    submit_thread_inner(&store, &canonical, note("deadbeef"), 1_000).unwrap();
+    submit_thread_inner(&store, &canonical, submission("on a line"), 1_001).unwrap();
+    submit_thread_inner(&store, &canonical, note("deadbeef"), 1_002).unwrap();
+    let id = only_review(&store, &canonical).id;
+
+    let oids = store.read(|c| reviewdb::commits::threaded(c, &id)).unwrap();
+
+    assert_eq!(
+        oids,
+        vec!["deadbeef".to_string(), "abc123def456".to_string()]
+    );
+}

@@ -106,6 +106,30 @@ pub fn list(conn: &Connection, review_id: &str) -> Result<Vec<ReviewCommit>, Tru
     Ok(rows)
 }
 
+/// The commits the review's threads sit on, whether or not anyone added them to
+/// the set, in the order each one's first thread arrived.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
+pub fn threaded(conn: &Connection, review_id: &str) -> Result<Vec<String>, TrunkError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT commit_oid FROM threads
+             WHERE review_id = ?1 AND commit_oid IS NOT NULL
+             GROUP BY commit_oid
+             ORDER BY MIN(created_at), MIN(rowid)",
+        )
+        .map_err(sqlite_error)?;
+    let rows = stmt
+        .query_map([review_id], |row| row.get(0))
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<String>, _>>()
+        .map_err(sqlite_error)?;
+
+    Ok(rows)
+}
+
 fn next_position(conn: &Connection, review_id: &str) -> Result<i64, TrunkError> {
     conn.query_row(
         "SELECT COALESCE(MAX(position), -1) + 1 FROM review_commits WHERE review_id = ?1",

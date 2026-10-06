@@ -13,6 +13,9 @@ const SUBMIT = '[data-testid="comment-submit"]';
 const CARD = ".comment-card";
 const PROBE = ".comment-probe";
 const FILE_REF = ".comment-card-fileref";
+/** A card in the review panel names only its lines; their tag's tooltip names
+ *  the file too, in the same form a card elsewhere spells out. */
+const SCOPE_TAG = ".comment-card-scope button";
 const STATE_CHIP = ".thread-state-chip";
 const CARD_ACTION =
 	'.comment-card-header button[aria-label$=" comment"], [aria-label="Thread actions"] button';
@@ -30,7 +33,7 @@ const FINDER_INPUT = '[aria-label="Find a tracked file to comment on"]';
 const FINDER_ROW = '[aria-label="Tracked files"] [role="option"]';
 const SELECTABLE_LINE = "[data-gutter-grip]";
 const FULL_FILE_COMMENT = '[data-testid="full-file-comment"]';
-const JUMP_TO_CODE = '[aria-label="Jump to code"]';
+const JUMP_TO_CODE = `[aria-label="Jump to code"], ${SCOPE_TAG}`;
 const DIFF_PATH = '[data-testid="diff-path"]';
 const REPLY_TEXT = 'input[aria-label="Reply"]';
 const REPLY_BODY = ".thread-reply-text";
@@ -452,7 +455,7 @@ export class ReviewDriver {
 
 	/** The file each thread card is anchored to, topmost first. */
 	threads(): string[] {
-		return cards().map((card) => textIn(card, FILE_REF));
+		return cards().map(locationOf);
 	}
 
 	/** The pinned code the topmost thread card shows, line by line. For a
@@ -602,7 +605,15 @@ function stateOf(card: HTMLElement): string {
 }
 
 function cardFor(fileRef: string): HTMLElement | undefined {
-	return cards().find((card) => textIn(card, FILE_REF) === fileRef);
+	return cards().find((card) => locationOf(card) === fileRef);
+}
+
+function locationOf(card: HTMLElement): string {
+	return (
+		textIn(card, FILE_REF) ||
+		card.querySelector<HTMLElement>(SCOPE_TAG)?.title ||
+		""
+	);
 }
 
 function visible(element: HTMLElement): boolean {

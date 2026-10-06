@@ -4,6 +4,7 @@ import {
 	render,
 	screen,
 	waitFor,
+	within,
 } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -22,6 +23,7 @@ import type {
 import { TauriInternals as AppInternals } from "../tests/app/harness/internals.js";
 import { makeCommit } from "./__tests__/helpers/factories.js";
 import { restoreLayout, stubLayout } from "./__tests__/helpers/layout-stub.js";
+import { aSessionCommit } from "./__tests__/helpers/session-commit-fixture.js";
 import { aReply, aThread } from "./__tests__/helpers/thread-fixture.js";
 import App from "./App.svelte";
 import type {
@@ -629,12 +631,11 @@ function reviewWith(
 		},
 		threads: storedThreads.map((thread) => ({ ...thread, review_id: id })),
 		commits: [
-			{
+			aSessionCommit({
 				oid: "commit-1",
 				short_oid: "commit-1",
 				summary: "First commit",
-				is_snapshot: false,
-			},
+			}),
 		],
 	};
 }
@@ -731,13 +732,10 @@ async function openReviewPanel(): Promise<void> {
 	await screen.findByText("First commit");
 }
 
-function noteComposer(): HTMLTextAreaElement {
-	const addNote = screen.getByRole("button", { name: "Add note" });
-	const group = addNote.closest("li");
-	const textarea = group?.querySelector<HTMLTextAreaElement>("textarea");
-	if (!textarea) throw new Error("the review note composer is not open");
+function noteComposer(): HTMLElement {
+	const composer = screen.getByRole("group", { name: /^Note on / });
 
-	return textarea;
+	return within(composer).getByRole("textbox");
 }
 
 async function nextTask(): Promise<void> {

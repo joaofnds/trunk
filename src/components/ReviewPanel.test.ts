@@ -16,6 +16,7 @@ import { createReviewSession } from "../lib/review-session.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommentResolution,
+	RefLabel,
 	Review,
 	ReviewFilter,
 	SessionCommit,
@@ -26,6 +27,7 @@ import ReviewPanel from "./ReviewPanel.svelte";
 // Shared Tauri mock (provides @tauri-apps/plugin-dialog `ask` defaulting to false,
 // @tauri-apps/api/event `listen`, etc.).
 import "../__tests__/helpers/tauri-mock";
+import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
 
 // Command-aware safeInvoke dispatcher: the panel issues one read and several
 // writes, so a sequential mock would be fragile — route by command name.
@@ -54,18 +56,16 @@ const COMMIT_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const COMMIT_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 const commits: SessionCommit[] = [
-	{
+	aSessionCommit({
 		oid: COMMIT_A,
 		short_oid: "aaaaaaa",
 		summary: "first commit",
-		is_snapshot: false,
-	},
-	{
+	}),
+	aSessionCommit({
 		oid: COMMIT_B,
 		short_oid: "bbbbbbb",
 		summary: "second commit",
-		is_snapshot: false,
-	},
+	}),
 ];
 
 function lineAnchoredComment(
@@ -240,7 +240,7 @@ describe("ReviewPanel", () => {
 			],
 			resolutions: [resolvable("c1"), resolvable("cf")],
 		});
-		const { container } = render(ReviewPanel, {
+		render(ReviewPanel, {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
@@ -251,10 +251,11 @@ describe("ReviewPanel", () => {
 		});
 		await flush();
 
-		const locations = Array.from(
-			container.querySelectorAll(".comment-card-fileref"),
-		).map((l) => l.textContent?.trim());
-		expect(locations).toContain("src/untouched.ts:L4-L4");
+		expect(
+			within(
+				screen.getByRole("listitem", { name: "Current file content" }),
+			).getByRole("button", { name: "Open src/untouched.ts" }),
+		).toBeInTheDocument();
 		const shas = screen
 			.getAllByTitle("Copy SHA")
 			.map((b) => b.textContent?.trim());
@@ -325,18 +326,17 @@ describe("ReviewPanel", () => {
 	it("hides empty snapshot sections but keeps empty hand-picked sections", async () => {
 		installReads({
 			commits: [
-				{
+				aSessionCommit({
 					oid: COMMIT_A,
 					short_oid: "aaaaaaa",
 					summary: "Uncommitted changes",
 					is_snapshot: true,
-				},
-				{
+				}),
+				aSessionCommit({
 					oid: COMMIT_B,
 					short_oid: "bbbbbbb",
 					summary: "hand-picked",
-					is_snapshot: false,
-				},
+				}),
 			],
 			comments: [],
 			resolutions: [],
@@ -436,7 +436,13 @@ describe("ReviewPanel", () => {
 	});
 
 	describe("add note", () => {
-		it("writes a commit-level comment via add_commit_thread on Save", async () => {
+		function noteSubmit(): HTMLElement {
+			return within(
+				screen.getByRole("group", { name: "Note on aaaaaaa" }),
+			).getByRole("button", { name: "Add note" });
+		}
+
+		it("writes a commit-level comment via add_commit_thread on Add note", async () => {
 			installReads({ commits, comments: [], resolutions: [] });
 			render(ReviewPanel, {
 				props: {
@@ -458,7 +464,7 @@ describe("ReviewPanel", () => {
 			await fireEvent.input(textarea, { target: { value: "a fresh note" } });
 			await tick();
 
-			await fireEvent.click(screen.getByText("Save"));
+			await fireEvent.click(noteSubmit());
 			await flush();
 
 			expect(calledCommands()).toContain("add_commit_thread");
@@ -467,7 +473,7 @@ describe("ReviewPanel", () => {
 			expect(args?.text).toBe("a fresh note");
 		});
 
-		it("disables Save while the add-note textarea is empty/whitespace", async () => {
+		it("disables Add note while the add-note textarea is empty/whitespace", async () => {
 			installReads({ commits, comments: [], resolutions: [] });
 			render(ReviewPanel, {
 				props: {
@@ -484,7 +490,7 @@ describe("ReviewPanel", () => {
 			await fireEvent.click(addBtns[0]);
 			await tick();
 
-			const saveBtn = screen.getByText("Save").closest("button");
+			const saveBtn = noteSubmit();
 			expect(saveBtn).toBeDisabled();
 
 			const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
@@ -528,7 +534,7 @@ describe("ReviewPanel", () => {
 
 			const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
 			expect(textarea.value).toBe("unfinished note");
-			await fireEvent.click(screen.getByText("Save"));
+			await fireEvent.click(noteSubmit());
 			await flush();
 
 			const args = callArgs("add_commit_thread");
@@ -564,7 +570,7 @@ describe("ReviewPanel", () => {
 			await tick();
 
 			expect(screen.getByRole("textbox")).toHaveValue("retained panel note");
-			await fireEvent.click(screen.getByText("Save"));
+			await fireEvent.click(noteSubmit());
 			expect(callArgs("add_commit_thread")).toEqual({
 				path: "/repo",
 				commitOid: COMMIT_A,
@@ -572,7 +578,7 @@ describe("ReviewPanel", () => {
 			});
 		});
 
-		it("allows only one add-note write while Save is pending", async () => {
+		it("allows only one add-note write while one is pending", async () => {
 			installReads({ commits, comments: [], resolutions: [] });
 			let settleSave!: () => void;
 			vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
@@ -597,12 +603,12 @@ describe("ReviewPanel", () => {
 			await fireEvent.input(screen.getByRole("textbox"), {
 				target: { value: "one note" },
 			});
-			const saveButton = screen.getByText("Save").closest("button");
-			await fireEvent.click(saveButton as HTMLButtonElement);
+			const saveButton = noteSubmit();
+			await fireEvent.click(saveButton);
 			await tick();
 
 			expect(saveButton).toBeDisabled();
-			await fireEvent.click(saveButton as HTMLButtonElement);
+			await fireEvent.click(saveButton);
 			expect(
 				calledCommands().filter((command) => command === "add_commit_thread"),
 			).toHaveLength(1);
@@ -1028,7 +1034,9 @@ describe("ReviewPanel", () => {
 			});
 			await flush();
 
-			await fireEvent.click(screen.getByLabelText("Jump to code"));
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Lines 10–12" }),
+			);
 			await flush();
 
 			expect(onJump).toHaveBeenCalledTimes(1);
@@ -1056,8 +1064,9 @@ describe("ReviewPanel", () => {
 			expect(
 				screen.getByTitle("File gone. Only the saved excerpt survives."),
 			).toHaveTextContent("Orphaned");
-			// Jump affordance is gone (or disabled) for an orphan.
-			expect(screen.queryByLabelText("Jump to code")).toBeNull();
+			expect(
+				screen.getByRole("button", { name: "Lines 10–12" }),
+			).toBeDisabled();
 			// The comment text + excerpt remain visible.
 			expect(screen.getByText("stale note")).toBeInTheDocument();
 		});
@@ -1098,7 +1107,9 @@ describe("ReviewPanel", () => {
 			expect(
 				screen.getByTitle("File gone. Only the saved excerpt survives."),
 			).toHaveTextContent("Orphaned");
-			expect(screen.queryByLabelText("Jump to code")).toBeNull();
+			expect(
+				screen.getByRole("button", { name: "Lines 10–12" }),
+			).toBeDisabled();
 		});
 
 		it("clicking the commit summary calls onJumpToCommit with the full oid", async () => {
@@ -2229,12 +2240,11 @@ describe("remount", () => {
 		// it, but under a new oid and summary.
 		reviewComments.seed({
 			commits: [
-				{
+				aSessionCommit({
 					oid: COMMIT_B,
 					short_oid: "ccccccc",
 					summary: "amended commit",
-					is_snapshot: false,
-				},
+				}),
 			],
 		});
 		const refreshesBefore = reviewComments.refreshCount;
@@ -2351,5 +2361,264 @@ describe("comment on a file", () => {
 		expect(
 			screen.getByRole("button", { name: /Comment on a file/ }),
 		).not.toBeDisabled();
+	});
+});
+
+describe("ReviewPanel branch sections", () => {
+	const main: RefLabel = {
+		name: "refs/heads/main",
+		short_name: "main",
+		ref_type: "LocalBranch",
+		is_head: true,
+		color_index: 0,
+	};
+	const feature: RefLabel = {
+		name: "refs/heads/feature",
+		short_name: "feature",
+		ref_type: "LocalBranch",
+		is_head: false,
+		color_index: 3,
+	};
+	const TWO_DAYS_AGO = Math.floor(Date.now() / 1000) - 2 * 86_400;
+
+	function renderPanel(
+		props: {
+			onJump?: (thread: Thread) => void;
+			onopenfile?: (filePath: string) => void;
+		} = {},
+	) {
+		return render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: props.onJump ?? vi.fn(),
+				onJumpToCommit: vi.fn(),
+				onopenfile: props.onopenfile,
+				headBranch: "main",
+			},
+		});
+	}
+
+	it("gathers the review's commits under the branch each sits on", async () => {
+		installReads({
+			commits: [
+				aSessionCommit({ oid: COMMIT_A, lane_ref: feature }),
+				aSessionCommit({ oid: COMMIT_B, lane_ref: main }),
+			],
+		});
+		renderPanel();
+		await flush();
+
+		const sections = screen.getAllByRole("region", { name: /^Branch / });
+
+		expect(
+			sections.map((s) => [
+				s.getAttribute("aria-label"),
+				within(s)
+					.getAllByRole("listitem", { name: /^Commit / })
+					.map((li) => li.getAttribute("aria-label")),
+			]),
+		).toEqual([
+			["Branch feature", ["Commit aaaaaaa"]],
+			["Branch main", ["Commit bbbbbbb"]],
+		]);
+	});
+
+	it("says which branch is checked out and what its section holds", async () => {
+		installReads({
+			commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+			comments: [
+				lineAnchoredComment("c1", COMMIT_A, "one"),
+				commitLevelComment("c2", COMMIT_A, "two"),
+			],
+		});
+		renderPanel();
+		await flush();
+
+		const section = screen.getByRole("region", { name: "Branch main" });
+
+		expect(within(section).getByText("checked out")).toBeInTheDocument();
+		expect(
+			within(section).getByText("1 commit · 2 threads"),
+		).toBeInTheDocument();
+	});
+
+	it("puts a commit the graph does not draw under Not on any branch", async () => {
+		installReads({ commits: [aSessionCommit({ oid: COMMIT_A })] });
+		renderPanel();
+		await flush();
+
+		const section = screen.getByRole("region", { name: "Not on any branch" });
+
+		expect(
+			within(section).getByRole("listitem", { name: "Commit aaaaaaa" }),
+		).toBeInTheDocument();
+	});
+
+	it("shows how long ago a commit was written", async () => {
+		installReads({
+			commits: [
+				aSessionCommit({
+					oid: COMMIT_A,
+					lane_ref: main,
+					author_timestamp: TWO_DAYS_AGO,
+				}),
+			],
+		});
+		renderPanel();
+		await flush();
+
+		const commit = screen.getByRole("listitem", { name: "Commit aaaaaaa" });
+
+		expect(within(commit).getByText("2d ago")).toBeInTheDocument();
+	});
+
+	it("heads each file's threads with its path, which opens the first of them", async () => {
+		const onJump = vi.fn();
+		const later = lineAnchoredComment("late", COMMIT_A, "later");
+		const earlier = aThread({
+			id: "early",
+			text: "earlier",
+			anchor: {
+				commit_oid: COMMIT_A,
+				file_path: "src/main.ts",
+				source: "Diff",
+				side: "New",
+				start_line: 2,
+				end_line: 2,
+			},
+		});
+		installReads({
+			commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+			comments: [later, earlier],
+			resolutions: [resolvable("late"), resolvable("early")],
+		});
+		renderPanel({ onJump });
+		await flush();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Open src/main.ts" }),
+		);
+
+		expect(onJump).toHaveBeenCalledWith(earlier);
+	});
+
+	it("names the lines each card covers in a tag", async () => {
+		installReads({
+			commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+			comments: [lineAnchoredComment("c1", COMMIT_A, "one")],
+			resolutions: [resolvable("c1")],
+		});
+		renderPanel();
+		await flush();
+
+		expect(
+			screen.getByRole("button", { name: "Lines 10–12" }),
+		).toBeInTheDocument();
+	});
+
+	it("says a commit the repository lost no longer exists and keeps its files shut", async () => {
+		installReads({
+			commits: [
+				aSessionCommit({ oid: COMMIT_A, summary: "gone work", exists: false }),
+			],
+			comments: [lineAnchoredComment("c1", COMMIT_A, "one")],
+			resolutions: [orphan("c1", "CommitGone")],
+		});
+		renderPanel();
+		await flush();
+
+		const commit = screen.getByRole("listitem", { name: "Commit aaaaaaa" });
+
+		expect(
+			within(commit).getByText("gone work · commit no longer exists"),
+		).toBeInTheDocument();
+		expect(
+			within(commit).getByRole("button", { name: "Open src/main.ts" }),
+		).toBeDisabled();
+	});
+
+	it("gathers current-file threads under the checked-out branch", async () => {
+		installReads({
+			comments: [currentFileComment("cf", "name this constant")],
+			resolutions: [resolvable("cf")],
+		});
+		renderPanel();
+		await flush();
+
+		const section = screen.getByRole("region", { name: "Branch main" });
+
+		expect(
+			within(section).getByText("Current file content · HEAD"),
+		).toBeInTheDocument();
+	});
+
+	it("opens a current file's content from its path", async () => {
+		const opened: string[] = [];
+		installReads({
+			comments: [currentFileComment("cf", "name this constant")],
+			resolutions: [resolvable("cf")],
+		});
+		renderPanel({ onopenfile: (path) => opened.push(path) });
+		await flush();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Open src/untouched.ts" }),
+		);
+
+		expect(opened).toEqual(["src/untouched.ts"]);
+	});
+
+	describe("the note composer", () => {
+		async function openComposer() {
+			installReads({
+				commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+				reviews: [aReview({ title: "Pass one" })],
+			});
+			renderPanel();
+			await flush();
+			await fireEvent.click(screen.getByRole("button", { name: "Add note" }));
+			await flush();
+		}
+
+		it("names the commit and the review the note lands in", async () => {
+			await openComposer();
+
+			expect(
+				within(
+					screen.getByRole("group", { name: "Note on aaaaaaa" }),
+				).getByText("Pass one"),
+			).toBeInTheDocument();
+		});
+
+		it("adds the note on Cmd-Enter", async () => {
+			await openComposer();
+			const field = screen.getByPlaceholderText(
+				"Whole-commit note… Markdown supported",
+			);
+			await fireEvent.input(field, { target: { value: "ship it" } });
+
+			await fireEvent.keyDown(field, { key: "Enter", metaKey: true });
+			await flush();
+
+			expect(callArgs("add_commit_thread")).toEqual({
+				path: "/repo",
+				commitOid: COMMIT_A,
+				text: "ship it",
+			});
+		});
+
+		it("closes on Escape", async () => {
+			await openComposer();
+
+			await fireEvent.keyDown(
+				screen.getByPlaceholderText("Whole-commit note… Markdown supported"),
+				{ key: "Escape" },
+			);
+			await flush();
+
+			expect(screen.queryByText("Note on aaaaaaa")).not.toBeInTheDocument();
+		});
 	});
 });

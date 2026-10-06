@@ -38,7 +38,7 @@ export interface ReviewCommentsManager {
 	readonly hasThreads: boolean;
 	/** The commits in the active review, in the order the backend returned them. */
 	readonly commits: SessionCommit[];
-	/** Oids of those commits — drives the graph's in-review rail. */
+	/** Oids of the commits someone added, which drive the graph's in-review rail. */
 	readonly oids: ReadonlySet<string>;
 	/** Advances once per refresh that lands its reads, so consumers can follow. */
 	readonly revision: number;
@@ -117,7 +117,9 @@ export function createReviewComments(
 	);
 
 	const oids = $derived(
-		new Set(state.commits.map((c) => c.oid)) as ReadonlySet<string>,
+		new Set(
+			state.commits.filter((c) => c.picked).map((c) => c.oid),
+		) as ReadonlySet<string>,
 	);
 
 	const totalCount = $derived(state.threads.length);

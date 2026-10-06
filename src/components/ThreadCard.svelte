@@ -413,8 +413,13 @@ async function requestDeleteReply(replyId: string) {
 					><GitCommitHorizontal size={11} aria-hidden="true" />Whole commit</Tag
 				>
 			{:else if onjump}
-				<Tag disabled={orphaned || !jumpable} onclick={() => onjump?.(thread)}
-					>{scopeLabel}</Tag
+				<span class="comment-card-scope contents"
+					><Tag
+						title="{location.path}:L{location.start}-L{location.end}"
+						disabled={orphaned || !jumpable}
+						onclick={() => onjump?.(thread)}
+						>{scopeLabel}</Tag
+					></span
 				>
 			{:else}
 				<Tag variant="label">{scopeLabel}</Tag>

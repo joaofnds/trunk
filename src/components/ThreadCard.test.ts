@@ -124,6 +124,14 @@ describe("ThreadCard", () => {
 			expect(screen.queryByText("src/foo.ts")).not.toBeInTheDocument();
 		});
 
+		it("titles its range with the file and lines it points at", () => {
+			renderCard({ scoped: true, jumpable: true, onjump: () => {} });
+
+			expect(
+				screen.getByRole("button", { name: "Lines 10–11" }),
+			).toHaveAttribute("title", "src/foo.ts:L10-L11");
+		});
+
 		it("names a single line", () => {
 			renderCard({
 				scoped: true,

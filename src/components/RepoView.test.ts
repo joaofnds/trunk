@@ -6,6 +6,7 @@ import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import RepoView from "../__tests__/helpers/controlled-repo-view.svelte";
 import { makeCommit } from "../__tests__/helpers/factories.js";
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
+import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { REPO_CHANGE_DELAY_MS } from "../lib/coalesced-task.js";
 import {
@@ -2956,12 +2957,11 @@ describe("RepoView", () => {
 			mockInvoke.mockImplementation((cmd, args) =>
 				cmd === "list_session_commits"
 					? Promise.resolve([
-							{
+							aSessionCommit({
 								oid: "oid-2",
 								short_oid: "oid-2",
 								summary: "second commit",
-								is_snapshot: false,
-							},
+							}),
 						])
 					: withCompare(cmd, args),
 			);

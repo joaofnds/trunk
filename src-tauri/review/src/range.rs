@@ -100,6 +100,11 @@ pub fn intersect_graph_order(
                 short_oid: c.short_oid.clone(),
                 summary: c.summary.clone(),
                 is_snapshot: false,
+                lane_ref: c.lane_ref.clone(),
+                color_index: Some(c.color_index),
+                author_timestamp: Some(c.author_timestamp),
+                exists: true,
+                picked: true,
             });
         }
     }
@@ -109,9 +114,11 @@ pub fn intersect_graph_order(
         if !seen.insert(oid_str.clone()) {
             continue;
         }
-        let summary = git2::Oid::from_str(oid_str)
+        let found = git2::Oid::from_str(oid_str)
             .ok()
-            .and_then(|oid| repo.find_commit(oid).ok())
+            .and_then(|oid| repo.find_commit(oid).ok());
+        let summary = found
+            .as_ref()
             .and_then(|c| {
                 c.summary()
                     .ok()
@@ -124,7 +131,30 @@ pub fn intersect_graph_order(
             short_oid: oid_str.chars().take(7).collect(),
             summary,
             is_snapshot: false,
+            lane_ref: None,
+            color_index: None,
+            author_timestamp: found.as_ref().map(|c| c.author().when().seconds()),
+            exists: found.is_some(),
+            picked: true,
         });
+    }
+
+    out
+}
+
+/// The review's commits as the panel reads them: the ones someone added and the
+/// ones a thread was left on, in graph order, each marked by which it is.
+#[must_use]
+pub fn review_commits(
+    picked: &[String],
+    threaded: &[String],
+    graph: &trunk_git::types::GraphResult,
+    repo: &git2::Repository,
+) -> Vec<SessionCommit> {
+    let all: Vec<String> = picked.iter().chain(threaded).cloned().collect();
+    let mut out = intersect_graph_order(&all, graph, repo);
+    for commit in &mut out {
+        commit.picked = picked.contains(&commit.oid);
     }
 
     out
@@ -355,6 +385,85 @@ mod tests {
         // Re-imposed graph order (D before B), deduped, C excluded (not selected).
         assert_eq!(oids, vec![t.d.to_string(), t.b.to_string()]);
         assert_eq!(out[0].summary, "D");
+    }
+
+    #[test]
+    fn a_session_commit_carries_the_lane_the_graph_drew_it_on() {
+        let t = make_repo();
+        let main = trunk_git::types::RefLabel {
+            name: "main".to_string(),
+            short_name: "main".to_string(),
+            ref_type: trunk_git::types::RefType::LocalBranch,
+            is_head: true,
+            color_index: 3,
+        };
+        let mut d = graph_commit(&t.d.to_string(), "D");
+        d.color_index = 3;
+        d.author_timestamp = 1_700_000_000;
+        d.lane_ref = Some(main);
+        let graph = trunk_git::types::GraphResult {
+            commits: vec![d],
+            max_columns: 1,
+        };
+
+        let out = intersect_graph_order(&[t.d.to_string()], &graph, &t.repo);
+
+        let lane = out[0].lane_ref.as_ref().expect("the graph named this lane");
+        assert_eq!(
+            (lane.name.as_str(), lane.is_head, out[0].color_index),
+            ("main", true, Some(3))
+        );
+        assert_eq!(out[0].author_timestamp, Some(1_700_000_000));
+        assert!(out[0].exists);
+    }
+
+    #[test]
+    fn a_session_commit_the_graph_lacks_has_no_lane() {
+        let t = make_repo();
+        let graph = trunk_git::types::GraphResult {
+            commits: vec![],
+            max_columns: 1,
+        };
+        let bogus = "0".repeat(40);
+
+        let out = intersect_graph_order(&[t.a.to_string(), bogus], &graph, &t.repo);
+
+        assert!(
+            out.iter()
+                .all(|c| c.lane_ref.is_none() && c.color_index.is_none())
+        );
+        assert_eq!(
+            out.iter().map(|c| c.exists).collect::<Vec<_>>(),
+            vec![true, false]
+        );
+        assert!(out[0].author_timestamp.is_some());
+        assert_eq!(out[1].author_timestamp, None);
+    }
+
+    #[test]
+    fn a_commit_only_a_thread_names_joins_the_review_unpicked() {
+        let t = make_repo();
+        let graph = trunk_git::types::GraphResult {
+            commits: vec![
+                graph_commit(&t.d.to_string(), "D"),
+                graph_commit(&t.c.to_string(), "C"),
+            ],
+            max_columns: 1,
+        };
+
+        let out = review_commits(
+            &[t.c.to_string()],
+            &[t.d.to_string(), t.c.to_string()],
+            &graph,
+            &t.repo,
+        );
+
+        assert_eq!(
+            out.iter()
+                .map(|c| (c.summary.as_str(), c.picked))
+                .collect::<Vec<_>>(),
+            vec![("D", false), ("C", true)]
+        );
     }
 
     #[test]

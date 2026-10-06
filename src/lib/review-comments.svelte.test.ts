@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { createReviewComments } from "./review-comments.svelte.js";
 import type { Scheduler } from "./scheduler.js";
@@ -82,7 +83,7 @@ const review: Review = {
 };
 
 const commits: SessionCommit[] = [
-	{ oid: "abc", short_oid: "abc", summary: "one", is_snapshot: false },
+	aSessionCommit({ oid: "abc", short_oid: "abc", summary: "one" }),
 ];
 
 /** A repo with one composing review holding one thread. */
@@ -175,6 +176,21 @@ describe("createReviewComments — refresh", () => {
 		await flush();
 
 		expect(manager.oids.has("abc")).toBe(true);
+		manager.destroy();
+	});
+
+	it("leaves a commit only a thread names out of the oids", async () => {
+		aPopulatedStore({
+			list_session_commits: [
+				...commits,
+				aSessionCommit({ oid: "def", picked: false }),
+			],
+		});
+
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+
+		expect([...manager.oids]).toEqual(["abc"]);
 		manager.destroy();
 	});
 
@@ -458,7 +474,7 @@ describe("createReviewComments — the shown review", () => {
 	};
 	const otherThread = aThread({ id: "c2", review_id: "REVIEW02" });
 	const otherCommits: SessionCommit[] = [
-		{ oid: "def", short_oid: "def", summary: "two", is_snapshot: false },
+		aSessionCommit({ oid: "def", short_oid: "def", summary: "two" }),
 	];
 
 	/** Two reviews, REVIEW01 active; a read that names REVIEW02 answers for it. */

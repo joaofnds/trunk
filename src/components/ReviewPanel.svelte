@@ -1,10 +1,12 @@
 <script lang="ts">
-// Renders the accumulated review grouped by commit (D-09), with a per-commit
+// Renders the shown review grouped by branch, then commit, then file, with a per-commit
 // "Add note" affordance (D-02), inline edit (D-10), delete-with-confirm (D-05),
 // and jump-to-anchor with read-only orphan rows (D-07 / D-08). The panel lives
 // in the center pane (UI-SPEC:133); jump is driven by the host via onJump.
 
 import Clipboard from "@lucide/svelte/icons/clipboard";
+import File from "@lucide/svelte/icons/file";
+import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
 import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
 import Pencil from "@lucide/svelte/icons/pencil";
 import Plus from "@lucide/svelte/icons/plus";
@@ -12,9 +14,11 @@ import Send from "@lucide/svelte/icons/send";
 import Trash2 from "@lucide/svelte/icons/trash-2";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { untrack } from "svelte";
-import { commitOidForComment } from "../lib/comment-counts.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { laneColor } from "../lib/lanes.js";
+import { currentMinute } from "../lib/now.svelte.js";
+import { exactLabel, relativeLabel } from "../lib/relative-time.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import {
 	createReviewEditorStore,
@@ -22,6 +26,12 @@ import {
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
 import { filterThreads, threadMatchesFilter } from "../lib/review-filter.js";
+import {
+	type ReviewFile,
+	type ReviewGroup,
+	type ReviewSection,
+	reviewSections,
+} from "../lib/review-sections.js";
 import type { ReviewSessionManager } from "../lib/review-session.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
@@ -32,12 +42,15 @@ import type {
 	Thread,
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import Chip from "../lib/ui/Chip.svelte";
 import Dialog from "../lib/ui/Dialog.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Radio from "../lib/ui/Radio.svelte";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
+import BranchChip from "./BranchChip.svelte";
 import CommitChip from "./CommitChip.svelte";
+import ComposerFrame from "./review/ComposerFrame.svelte";
 import StateGlyph from "./review/StateGlyph.svelte";
 import StatePill, { THREAD_LABELS } from "./review/StatePill.svelte";
 import ThreadCard from "./ThreadCard.svelte";
@@ -59,6 +72,11 @@ interface Props {
 	// Open the file finder. One suppressible affordance rather than several, so
 	// milestone 5's hide-all has a single thing to hide.
 	oncommentonfile?: () => void;
+	// Open a file's current content, where its current-file threads live.
+	onopenfile?: (filePath: string) => void;
+	// The checked-out branch, which uncommitted work and current-file threads
+	// belong to. Null while HEAD is detached.
+	headBranch?: string | null;
 	reviewFilter?: ReviewFilter;
 	// Pressing a state's count in the header asks the owner of the filter, the
 	// toolbar's selector, to show only that state, or every thread again.
@@ -77,6 +95,8 @@ let {
 	onJump,
 	onJumpToCommit,
 	oncommentonfile,
+	onopenfile,
+	headBranch = null,
 	reviewFilter = "all",
 	onreviewfilterchange,
 	editorSessionForThread,
@@ -138,97 +158,64 @@ const ORPHAN_LABEL: Record<OrphanReason, string> = {
 // exists and resolvable is false.
 const resolutionById = $derived(new Map(resolutions.map((r) => [r.id, r])));
 
-interface CommitGroup {
-	oid: string;
-	shortOid: string;
-	summary: string;
-	comments: Thread[];
-	isSnapshot: boolean;
-}
-
-// Within a group, commit-level comments (anchor === null) sort before
-// line-anchored ones — they're notes about the commit as a whole, so they read
-// as the lede. Array.prototype.sort is stable on modern engines, so capture
-// order is preserved within each class.
-function sortGroupComments(list: Thread[]): Thread[] {
-	return list.slice().sort((a, b) => {
-		if (a.anchor === null && b.anchor !== null) return -1;
-		if (a.anchor !== null && b.anchor === null) return 1;
-		return 0;
-	});
-}
-
-// Group comments by commit in the session's commit order; comments on commits
-// no longer in the session (e.g. CommitGone) get a fallback group keyed by oid
-// so nothing is dropped (D-08). EMPTY snapshot groups (auto-added working-tree /
-// staged snapshots with no comments) are filtered out as noise; empty hand-picked
-// commit groups stay so their per-commit "Add note" affordance remains (260531-l02d).
-const groups = $derived.by<CommitGroup[]>(() => {
-	const byOid = new Map<string, Thread[]>();
-	for (const c of comments) {
-		// A current-file comment names no commit, so grouping it by oid puts it
-		// in a headerless group keyed by the empty string, whose "Add note"
-		// button then writes a commit thread with an empty oid. It gets its own
-		// section instead.
-		if (c.content_pin) continue;
-
-		const oid = commitOidForComment(c);
-		const list = byOid.get(oid) ?? [];
-		list.push(c);
-		byOid.set(oid, list);
-	}
-
-	const result: CommitGroup[] = [];
-	const seen = new Set<string>();
-	for (const commit of commits) {
-		result.push({
-			oid: commit.oid,
-			shortOid: commit.short_oid,
-			summary: commit.summary,
-			comments: sortGroupComments(byOid.get(commit.oid) ?? []),
-			isSnapshot: commit.is_snapshot,
-		});
-		seen.add(commit.oid);
-	}
-	// Fallback groups for comments whose commit is gone from the session.
-	for (const [oid, list] of byOid) {
-		if (seen.has(oid)) continue;
-		// The commit isn't in session.commits — either it's actually gone from the
-		// repo (the resolver will mark each comment CommitGone and the orphan badge
-		// carries the truth) or it's just not added to the review. Either way, the
-		// header summary is unknown here — leave it blank and let the per-comment
-		// badge speak.
-		result.push({
-			oid,
-			shortOid: oid.slice(0, 7),
-			summary: "",
-			comments: sortGroupComments(list),
-			isSnapshot: false,
-		});
-	}
-	// Drop empty snapshot sections — a snapshot with no comments is noise, not a
-	// section to render. Empty hand-picked commits are kept (Add-note affordance).
-	return result.filter(
-		(group) => !(group.isSnapshot && group.comments.length === 0),
-	);
-});
-
-// Comments on a file's own content, which belong to no commit. They render in
-// their own section rather than a commit group, and are sorted by file so a
-// reader scans one file's comments together.
-const currentFileComments = $derived(
-	comments
-		.filter((c) => c.content_pin)
-		.sort((a, b) => {
-			const byPath = (a.content_pin?.file_path ?? "").localeCompare(
-				b.content_pin?.file_path ?? "",
-			);
-			if (byPath !== 0) return byPath;
-			return (
-				(a.content_pin?.start_line ?? 0) - (b.content_pin?.start_line ?? 0)
-			);
-		}),
+const sections = $derived(
+	reviewSections({ threads: comments, commits, headBranch }),
 );
+
+function shows(thread: Thread): boolean {
+	return reviewFilter !== "none" && threadMatchesFilter(thread, reviewFilter);
+}
+
+// A block of threads hides once the filter hides every one of them. A commit
+// nobody commented on yet stays, for its Add note.
+function hidesAll(threads: Thread[]): boolean {
+	if (reviewFilter === "none") return true;
+	return reviewFilter !== "all" && threads.length > 0 && !threads.some(shows);
+}
+
+function hidesSection(section: ReviewSection): boolean {
+	return section.groups.every((group) => hidesAll(group.threads));
+}
+
+function plural(count: number, noun: string): string {
+	return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+function sectionSummary(section: ReviewSection): string {
+	const commitCount = section.groups.filter(
+		(group) => group.kind === "commit" || group.kind === "gone",
+	).length;
+	const threadCount = section.groups.reduce(
+		(sum, group) => sum + group.threads.length,
+		0,
+	);
+	const threads = plural(threadCount, "thread");
+	return commitCount === 0
+		? threads
+		: `${plural(commitCount, "commit")} · ${threads}`;
+}
+
+function sectionLane(section: ReviewSection): string {
+	return section.colorIndex === null
+		? "var(--color-text-subtle)"
+		: laneColor(section.colorIndex);
+}
+
+function groupLabel(group: ReviewGroup): string {
+	if (group.kind === "current") return "Current file content";
+	if (group.kind === "uncommitted") return "Uncommitted changes";
+	return `Commit ${group.commit?.short_oid}`;
+}
+
+function openFile(group: ReviewGroup, file: ReviewFile) {
+	if (group.kind === "current") onopenfile?.(file.path);
+	else onJump(file.threads[0]);
+}
+
+function splitPath(path: string): { dir: string; name: string } {
+	const slash = path.lastIndexOf("/");
+	return { dir: path.slice(0, slash + 1), name: path.slice(slash + 1) };
+}
 
 const hasAnyComment = $derived(comments.length > 0);
 const hasVisibleComment = $derived(visibleComments.length > 0);
@@ -851,146 +838,214 @@ $effect(() => {
 				</div>
 			{/if}
 
-			{#if groups.length > 0}
-				<ul class="flex flex-col gap-2 list-none m-0 p-0">
-					{#each groups as group (group.oid)}
-						{@const visibleGroupComments = filterThreads(group.comments, reviewFilter)}
-						<li
-							aria-label="Commit {group.shortOid}"
-							class="flex flex-col gap-1"
-							style:display={reviewFilter === 'none' || (reviewFilter !== 'all' && group.comments.length > 0 && visibleGroupComments.length === 0) ? 'none' : 'flex'}
-						>
-							<!-- The commit the threads under it were left on: its SHA, which
-							     copies itself, its summary, which jumps to it in the graph, how
-							     many threads it holds, and a note on the commit as a whole. -->
-							<div
-								class="flex items-center gap-2 h-bar py-0 px-2 rounded bg-surface-raised text-callout"
-							>
-								<CommitChip oid={group.oid} />
-								<span class="min-w-0 flex-1 text-text">
-									<LinkButton
-										truncate
-										aria-label="Jump to commit {group.shortOid}"
-										onclick={() => onJumpToCommit(group.oid)}
-										>{group.summary}</LinkButton
-									>
-								</span>
-								<span
-									class="shrink-0 text-caption text-text-muted"
-									title="Threads on this commit"
-									>{group.comments.length}</span
-								>
-								{#if reviewFilter !== "none"}
-									<Button
-										size="sm"
-										variant="ghost"
-										onclick={() => openAddNote(group.oid)}
-										disabled={noteSaving}
-									>
-										<MessageSquarePlus size={14} />
-										<span>Add note</span>
-									</Button>
-								{/if}
-							</div>
-
-							<!-- Inline add-note composer for this commit -->
-							{#if noteSession.target === group.oid}
-								<div
-									class="flex flex-col gap-1 py-1 px-0"
-									style:display={reviewFilter === 'none' ? 'none' : 'flex'}
-								>
-									<textarea
-										bind:value={noteDraft.text}
-										rows="3"
-										disabled={noteSaving}
-										class="w-full resize-y bg-bg text-text border border-border rounded py-1 px-2 text-callout leading-normal"
-									></textarea>
-									<div class="flex items-center gap-1">
-										<Button
-											size="sm"
-											onclick={() => saveAddNote(group.oid)}
-											disabled={!noteDraft.valid || noteSaving}
-											>Save</Button
-										>
-										<Button
-											size="sm"
-											onclick={cancelComposer}
-											disabled={noteSaving}
-											>Cancel</Button
-										>
-									</div>
-								</div>
-							{/if}
-
-							{#if group.comments.length === 0}
-								<span
-									class="text-text-muted text-small leading-normal py-1 px-0"
-								>
-									No comments on this commit.
-								</span>
-							{:else}
-								<ul class="flex flex-col gap-1 list-none m-0 p-0">
-									{#each group.comments as comment (comment.id)}
-										<li
-											style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}
-										>
-											<ThreadCard
-												thread={comment}
-												{repoPath}
-												onedit={(id, text) => saveEdit(id, text)}
-												ondelete={(id) => deleteComment(id)}
-												confirmDelete={true}
-												variant="panel"
-												onjump={onJump}
-												jumpable={isJumpable(comment)}
-												orphaned={isOrphan(comment)}
-												orphanLabel={orphanLabel(comment)}
-												{editorSessionForThread}
-											/>
-										</li>
-									{/each}
-								</ul>
-							{/if}
-						</li>
-					{/each}
-				</ul>
-			{/if}
-
-			{#if currentFileComments.length > 0}
-				{@const visibleCurrentFileComments = filterThreads(currentFileComments, reviewFilter)}
-				<div
-					class="flex flex-col gap-1"
-					style:display={reviewFilter === 'none' || (reviewFilter !== 'all' && visibleCurrentFileComments.length === 0) ? 'none' : 'flex'}
+			{#each sections as section (section.key)}
+				<section
+					class="review-branch"
+					aria-label={section.branch === null ? "Not on any branch" : `Branch ${section.branch}`}
+					style:--lane={sectionLane(section)}
+					style:display={hidesSection(section) ? "none" : "block"}
 				>
-					<div class="text-callout text-text-muted py-0 px-1">
-						On current file content
-					</div>
-					<ul class="flex flex-col gap-1 list-none m-0 p-0">
-						{#each currentFileComments as comment (comment.id)}
-							<li
-								style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}
+					<header
+						class="review-branch-head flex items-center gap-2 h-bar pl-3 pr-4 bg-surface-raised"
+					>
+						{#if section.branch === null}
+							<span class="font-medium text-callout text-text-subtle"
+								>Not on any branch</span
 							>
-								<ThreadCard
-									thread={comment}
-									{repoPath}
-									onedit={(id, text) => saveEdit(id, text)}
-									ondelete={(id) => deleteComment(id)}
-									confirmDelete={true}
-									variant="panel"
-									onjump={onJump}
-									jumpable={false}
-									orphaned={isOrphan(comment)}
-									orphanLabel={orphanLabel(comment)}
-									{editorSessionForThread}
-								/>
+						{:else}
+							<span class="review-branch-ref flex min-w-0">
+								<BranchChip name={section.branch} tone="lane" />
+							</span>
+							{#if section.isHead}
+								<span class="review-meta">checked out</span>
+							{/if}
+						{/if}
+						<span class="flex-1"></span>
+						<span class="review-meta">{sectionSummary(section)}</span>
+					</header>
+					<ul class="list-none m-0 p-0">
+						{#each section.groups as group (group.key)}
+							<li
+								class="review-group"
+								aria-label={groupLabel(group)}
+								style:display={hidesAll(group.threads) ? "none" : "block"}
+							>
+								<div
+									class="review-group-head flex items-center gap-2 h-bar pl-4 pr-2 bg-surface text-callout text-text"
+								>
+									<span class="review-node" data-kind={group.kind}></span>
+									{#if group.kind === "commit" && group.commit}
+										<CommitChip oid={group.commit.oid} />
+										<span class="min-w-0 shrink">
+											<LinkButton
+												truncate
+												aria-label="Jump to commit {group.commit.short_oid}"
+												onclick={() => group.commit && onJumpToCommit(group.commit.oid)}
+												>{group.commit.summary}</LinkButton
+											>
+										</span>
+										{#if group.commit.author_timestamp !== null}
+											<span
+												class="review-meta"
+												title={exactLabel(group.commit.author_timestamp)}
+												>{relativeLabel(group.commit.author_timestamp, currentMinute())}</span
+											>
+										{/if}
+									{:else if group.kind === "gone" && group.commit}
+										<Chip variant="label" tone="neutral"
+											>{group.commit.short_oid}</Chip
+										>
+										<span class="min-w-0 truncate text-text-subtle"
+											>{group.commit.summary}
+											· commit no longer exists</span
+										>
+									{:else if group.kind === "uncommitted"}
+										<span class="font-medium text-text-strong"
+											>Uncommitted changes</span
+										>
+									{:else}
+										<span class="font-medium text-text-strong"
+											>Current file content · HEAD</span
+										>
+									{/if}
+									<span
+										class="shrink-0 text-caption text-text-muted"
+										title="Threads on this commit"
+										>{group.threads.length}</span
+									>
+									<span class="flex-1"></span>
+									{#if group.kind === "commit" && group.commit && reviewFilter !== "none"}
+										{@const oid = group.commit.oid}
+										<Button
+											size="sm"
+											variant="ghost"
+											onclick={() => openAddNote(oid)}
+											disabled={noteSaving}
+										>
+											<MessageSquarePlus size={14} />
+											<span>Add note</span>
+										</Button>
+									{/if}
+								</div>
+
+								<div class="review-group-list flex flex-col gap-2">
+									{#if group.commit && noteSession.target === group.commit.oid}
+										{@const commit = group.commit}
+										<div
+											class="flex"
+											style:display={reviewFilter === "none" ? "none" : "flex"}
+										>
+											<ComposerFrame
+												activeReview={reviewComments.activeReview}
+												{activeReviewId}
+												placeholder="Whole-commit note… Markdown supported"
+												bind:text={noteDraft.text}
+												busy={noteSaving}
+												submitLabel="Add note"
+												submitDisabled={!noteDraft.valid || noteSaving}
+												onsubmit={() => void saveAddNote(commit.oid)}
+												oncancel={cancelComposer}
+												onescape={cancelComposer}
+											>
+												{#snippet heading()}
+													<GitCommitHorizontal
+														size={13}
+														class="shrink-0 text-accent"
+														aria-hidden="true"
+													/>
+													Note on {commit.short_oid}
+												{/snippet}
+											</ComposerFrame>
+										</div>
+									{/if}
+
+									{#if group.threads.length === 0}
+										<span class="text-text-muted text-small leading-normal">
+											No comments on this commit.
+										</span>
+									{/if}
+
+									{#if group.notes.length > 0}
+										<ul class="flex flex-col gap-2 list-none m-0 p-0">
+											{#each group.notes as comment (comment.id)}
+												<li
+													style:display={shows(comment) ? "list-item" : "none"}
+												>
+													{@render card(comment)}
+												</li>
+											{/each}
+										</ul>
+									{/if}
+
+									{#each group.files as file (file.path)}
+										{@const path = splitPath(file.path)}
+										<div
+											class="flex flex-col gap-2"
+											style:display={hidesAll(file.threads) ? "none" : "flex"}
+										>
+											<div
+												class="flex items-center gap-2 min-w-0 h-control-sm text-text-subtle"
+											>
+												<File size={12} class="shrink-0" aria-hidden="true" />
+												<span class="flex min-w-0 text-small">
+													<LinkButton
+														tone="muted"
+														mono
+														aria-label="Open {file.path}"
+														title={group.kind === "gone" ? "Commit was garbage-collected" : `Open ${file.path}`}
+														disabled={group.kind === "gone"}
+														onclick={() => openFile(group, file)}
+													>
+														<span class="flex min-w-0">
+															<span class="review-path-dir"
+																><bdi>{path.dir}</bdi></span
+															>
+															<span class="review-path-name">{path.name}</span>
+														</span>
+													</LinkButton>
+												</span>
+												<span class="flex-1"></span>
+												<span class="review-meta"
+													>{plural(file.threads.length, "thread")}</span
+												>
+											</div>
+											<ul class="flex flex-col gap-2 list-none m-0 p-0">
+												{#each file.threads as comment (comment.id)}
+													<li
+														style:display={shows(comment) ? "list-item" : "none"}
+													>
+														{@render card(comment)}
+													</li>
+												{/each}
+											</ul>
+										</div>
+									{/each}
+								</div>
 							</li>
 						{/each}
 					</ul>
-				</div>
-			{/if}
+				</section>
+			{/each}
 		</div>
 	</section>
 </div>
+
+{#snippet card(comment: Thread)}
+	<ThreadCard
+		thread={comment}
+		{repoPath}
+		onedit={(id, text) => saveEdit(id, text)}
+		ondelete={(id) => deleteComment(id)}
+		confirmDelete={true}
+		variant="panel"
+		scoped
+		onjump={onJump}
+		jumpable={isJumpable(comment)}
+		orphaned={isOrphan(comment)}
+		orphanLabel={orphanLabel(comment)}
+		{editorSessionForThread}
+	/>
+{/snippet}
 
 <style>
 .review-layout {
@@ -1018,6 +1073,89 @@ $effect(() => {
 	margin: 0 var(--space-2) var(--space-2) var(--space-3);
 	background: var(--color-danger-bg);
 	border: 1px solid var(--color-danger-border);
+}
+
+/* A branch's section: its head stays in view while its commits scroll under
+   it, and each commit's head stays under that. The rail down the left joins a
+   commit's node to the threads under it, in the branch's lane colour. */
+.review-branch + .review-branch {
+	margin-top: var(--space-3);
+}
+.review-branch-head {
+	position: sticky;
+	top: 0;
+	z-index: 4;
+	border-top: 1px solid var(--color-border);
+	box-shadow: var(--shadow-hairline);
+}
+.review-branch-ref {
+	max-width: 60%;
+}
+.review-meta {
+	font-family: var(--font-mono);
+	font-size: var(--text-caption);
+	color: var(--color-text-subtle);
+	white-space: nowrap;
+}
+.review-group {
+	position: relative;
+}
+.review-group::before {
+	content: "";
+	position: absolute;
+	left: calc(var(--space-4) + var(--u));
+	top: calc(var(--bar-h) / 2);
+	bottom: 0;
+	width: calc(var(--u) / 2);
+	background: color-mix(in oklch, var(--lane) 55%, transparent);
+}
+.review-group:last-child::before {
+	bottom: var(--space-3);
+}
+.review-group-head {
+	position: sticky;
+	top: var(--bar-h);
+	z-index: 3;
+	box-shadow: var(--shadow-hairline);
+}
+.review-group + .review-group .review-group-head {
+	border-top: 1px solid var(--color-border);
+}
+.review-node {
+	position: relative;
+	z-index: 1;
+	flex-shrink: 0;
+	width: calc(5 * var(--u) / 2);
+	height: calc(5 * var(--u) / 2);
+	border-radius: 50%;
+	background: var(--lane);
+}
+.review-node[data-kind="uncommitted"],
+.review-node[data-kind="current"] {
+	background: var(--color-surface);
+	border: 1px dashed var(--lane);
+}
+.review-node[data-kind="gone"] {
+	background: var(--color-surface);
+	border: 1px dashed var(--color-text-subtle);
+}
+.review-group-list {
+	padding: var(--space-2) var(--space-4) var(--space-3)
+		calc(var(--space-4) + var(--space-5));
+}
+.review-path-dir {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	direction: rtl;
+	text-align: left;
+}
+.review-path-name {
+	flex-shrink: 0;
+	white-space: nowrap;
+	color: var(--color-text-strong);
+	font-weight: var(--weight-medium);
 }
 
 .review-title-field {

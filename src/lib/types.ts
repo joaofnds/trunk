@@ -519,4 +519,13 @@ export interface SessionCommit {
 	// True for an auto-created review snapshot (working-tree/index), not a
 	// hand-picked commit. The panel hides EMPTY snapshot sections (260531-l02d).
 	is_snapshot: boolean;
+	/** The ref naming the line of history the graph drew this commit on; null off the graph. */
+	lane_ref: RefLabel | null;
+	/** The graph's lane colour for this commit; null off the graph. */
+	color_index: number | null;
+	author_timestamp: number | null;
+	/** False when the repository no longer has the commit at all. */
+	exists: boolean;
+	/** False for a commit in the review only because a thread was left on it. */
+	picked: boolean;
 }

@@ -84,3 +84,10 @@
 	inherits: true;
 	initial-value: 0px;
 }
+
+/* ── Graph lanes: the lane colour a section hands the refs and rails it draws ── */
+@property --lane {
+	syntax: "<color>";
+	inherits: true;
+	initial-value: transparent;
+}

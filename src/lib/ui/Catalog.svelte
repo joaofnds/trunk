@@ -384,6 +384,11 @@ import ToastCard from "./ToastCard.svelte";
 				>
 			{/each}
 			<Chip variant="label"><span data-catalog-text>main</span></Chip>
+			<span class="catalog-lane flex"
+				><Chip tone="lane"
+					><GitBranch size={11} /><span data-catalog-text>feature</span></Chip
+				></span
+			>
 		</div>
 		<div class="flex w-dialog-min items-center gap-1">
 			<Chip truncate
@@ -590,3 +595,10 @@ import ToastCard from "./ToastCard.svelte";
 		</div>
 	</section>
 </div>
+
+<style>
+/* A ref chip takes its colour from the graph lane its section hands it. */
+.catalog-lane {
+	--lane: var(--lane-3);
+}
+</style>

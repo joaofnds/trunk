@@ -2261,6 +2261,8 @@ function stepRightPane(delta: number) {
 							onJump={handleReviewJump}
 							onJumpToCommit={handleReviewJumpToCommit}
 							oncommentonfile={openFileFinder}
+							onopenfile={openCurrentFile}
+							headBranch={headBranch ?? null}
 						/>
 					</div>
 				{:else if showMergeEditor && selectedFile}

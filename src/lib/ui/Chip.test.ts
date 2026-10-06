@@ -63,6 +63,14 @@ describe("Chip", () => {
 		expect(chip).not.toHaveClass("text-accent-strong");
 	});
 
+	it("takes the colour of the lane around it under the lane tone", () => {
+		render(Chip, { props: { tone: "lane", children: refName } });
+
+		const chip = screen.getByRole("button");
+		expect(chip).toHaveClass("chip-lane");
+		expect(chip).not.toHaveClass("bg-chip-accent-bg");
+	});
+
 	it("reports a click to its caller", async () => {
 		const clicks: MouseEvent[] = [];
 		render(Chip, {
