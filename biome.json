@@ -33,7 +33,15 @@
 		"rules": {
 			"preset": "recommended",
 			"style": {
-				"noHexColors": "error"
+				"noHexColors": "error",
+				"noRestrictedImports": {
+					"level": "error",
+					"options": {
+						"paths": {
+							"@tauri-apps/plugin-clipboard-manager": "Copy through $lib/clipboard, which tells the user when the clipboard refuses the write."
+						}
+					}
+				}
 			},
 			"nursery": {
 				"noInlineStyles": "error",
@@ -45,6 +53,22 @@
 		"enabled": true
 	},
 	"overrides": [
+		{
+			"includes": [
+				"src/lib/clipboard.ts",
+				"src/components/ReviewPanel.svelte",
+				"**/*.test.ts",
+				"src/__tests__/**",
+				"tests/**"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": "off"
+					}
+				}
+			}
+		},
 		{
 			"includes": ["src/components/virtual-list/**"],
 			"linter": {
