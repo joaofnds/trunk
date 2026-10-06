@@ -6,6 +6,7 @@
 import Check from "@lucide/svelte/icons/check";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronRight from "@lucide/svelte/icons/chevron-right";
+import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
 import Pencil from "@lucide/svelte/icons/pencil";
 import Trash2 from "@lucide/svelte/icons/trash-2";
 import { externalLinks } from "../lib/external-links.js";
@@ -24,6 +25,7 @@ import type { Side, Thread, ThreadState } from "../lib/types.js";
 import Button, { type ButtonVariant } from "../lib/ui/Button.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
+import Tag from "../lib/ui/Tag.svelte";
 import StatePill from "./review/StatePill.svelte";
 import ThreadAuthor from "./review/ThreadAuthor.svelte";
 import ThreadReplies from "./ThreadReplies.svelte";
@@ -44,6 +46,9 @@ interface Props {
 	jumpable?: boolean;
 	orphaned?: boolean;
 	orphanLabel?: string | null;
+	// Under its file's header in the panel, the card names only the lines it
+	// covers, since the header already names the file.
+	scoped?: boolean;
 	editorSession?: ThreadEditorSession;
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 }
@@ -59,6 +64,7 @@ let {
 	jumpable = false,
 	orphaned = false,
 	orphanLabel = null,
+	scoped = false,
 	editorSession,
 	editorSessionForThread,
 }: Props = $props();
@@ -109,6 +115,26 @@ const location = $derived.by(() => {
 		end: start + (pin.end_line - pin.start_line),
 	};
 });
+
+const scopeLabel = $derived(
+	location === null
+		? ""
+		: location.start === location.end
+			? `Line ${location.start}`
+			: `Lines ${location.start}–${location.end}`,
+);
+
+const orphanReason = $derived(
+	orphanLabel ? orphanLabel[0].toUpperCase() + orphanLabel.slice(1) : null,
+);
+
+const excerptNote = $derived(
+	orphanReason
+		? `Saved excerpt. ${orphanReason}.`
+		: thread.stale
+			? "Saved excerpt. These lines have moved or changed since."
+			: null,
+);
 
 // A current-file excerpt is plain code, like the full-file source: it is the
 // file's own lines, with no diff prefixes to strip.
@@ -347,15 +373,19 @@ async function requestDeleteReply(replyId: string) {
 		<span class="thread-state-chip contents"
 			><StatePill state={thread.state} /></span
 		>
-		{#if thread.stale}
-			<span class="thread-stale-chip contents"
-				><StatePill state="stale" /></span
-			>
-		{/if}
-		{#if orphanLabel}
-			<span class="orphan-badge">{orphanLabel}</span>
-		{/if}
-		{#if location !== null}
+		{#if scoped}
+			{#if location === null}
+				<Tag variant="label" dashed
+					><GitCommitHorizontal size={11} aria-hidden="true" />Whole commit</Tag
+				>
+			{:else if onjump}
+				<Tag disabled={orphaned || !jumpable} onclick={() => onjump?.(thread)}
+					>{scopeLabel}</Tag
+				>
+			{:else}
+				<Tag variant="label">{scopeLabel}</Tag>
+			{/if}
+		{:else if location !== null}
 			<span
 				class="comment-card-fileref min-w-0 truncate font-mono text-small"
 				class:comment-card-fileref-dim={orphaned}
@@ -368,6 +398,18 @@ async function requestDeleteReply(replyId: string) {
 					{@render fileref()}
 				{/if}
 			</span>
+		{/if}
+		{#if thread.stale}
+			<span class="thread-stale-chip contents"
+				><StatePill state="stale" /></span
+			>
+		{/if}
+		{#if orphanReason}
+			<span
+				class="orphan-badge contents"
+				title="{orphanReason}. Only the saved excerpt survives."
+				><StatePill state="orphaned" /></span
+			>
 		{/if}
 		{#if collapsed}
 			<span
@@ -404,6 +446,13 @@ async function requestDeleteReply(replyId: string) {
 	{#if !collapsed}
 		{#if excerptLines.length > 0}
 			<div class="comment-card-diff">
+				{#if excerptNote}
+					<p
+						class="flex items-center gap-1 px-3 pb-1 font-sans text-small text-text-subtle"
+					>
+						{excerptNote}
+					</p>
+				{/if}
 				{#each excerptLines as line, i (i)}
 					<div class="diff-line diff-line-{line.kind}">
 						<span class="diff-number select-none">{line.number ?? ""}</span>

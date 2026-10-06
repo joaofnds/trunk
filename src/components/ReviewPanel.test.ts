@@ -1056,8 +1056,10 @@ describe("ReviewPanel", () => {
 			});
 			await flush();
 
-			// Reason badge with the LOCKED label.
-			expect(screen.getByText("file gone")).toBeInTheDocument();
+			// The Orphaned flag names the LOCKED reason.
+			expect(
+				screen.getByTitle("File gone. Only the saved excerpt survives."),
+			).toHaveTextContent("Orphaned");
 			// Jump affordance is gone (or disabled) for an orphan.
 			expect(screen.queryByLabelText("Jump to code")).toBeNull();
 			// The comment text + excerpt remain visible.
@@ -1097,7 +1099,9 @@ describe("ReviewPanel", () => {
 			older.resolve([resolvable("c1")]);
 			await flush();
 
-			expect(screen.getByText("file gone")).toBeInTheDocument();
+			expect(
+				screen.getByTitle("File gone. Only the saved excerpt survives."),
+			).toHaveTextContent("Orphaned");
 			expect(screen.queryByLabelText("Jump to code")).toBeNull();
 		});
 
@@ -1267,9 +1271,17 @@ describe("ReviewPanel", () => {
 			});
 			await flush();
 
-			expect(screen.getByText("commit gone")).toBeInTheDocument();
-			expect(screen.getByText("line out of range")).toBeInTheDocument();
-			expect(screen.getByText("file gone")).toBeInTheDocument();
+			expect(
+				screen.getByTitle("Commit gone. Only the saved excerpt survives."),
+			).toHaveTextContent("Orphaned");
+			expect(
+				screen.getByTitle(
+					"Line out of range. Only the saved excerpt survives.",
+				),
+			).toHaveTextContent("Orphaned");
+			expect(
+				screen.getByTitle("File gone. Only the saved excerpt survives."),
+			).toHaveTextContent("Orphaned");
 		});
 	});
 

@@ -36,7 +36,8 @@ import LinkButton from "../lib/ui/LinkButton.svelte";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import CommitChip from "./CommitChip.svelte";
-import StatePill, { THREAD_LOOKS } from "./review/StatePill.svelte";
+import StateGlyph from "./review/StateGlyph.svelte";
+import StatePill, { THREAD_LABELS } from "./review/StatePill.svelte";
 import ThreadCard from "./ThreadCard.svelte";
 
 interface Props {
@@ -691,7 +692,7 @@ $effect(() => {
 					class="flex items-center gap-1 min-w-auto text-small"
 				>
 					{#each STATE_FILTERS as filter (filter.value)}
-						{@const look = THREAD_LOOKS[filter.value]}
+						{@const label = THREAD_LABELS[filter.value]}
 						{@const count = comments.filter((t) =>
 							threadMatchesFilter(t, filter.value),
 						).length}
@@ -699,14 +700,14 @@ $effect(() => {
 							size="sm"
 							variant="ghost"
 							aria-pressed={reviewFilter === filter.value}
-							aria-label="{look.label} threads: {count}"
+							aria-label="{label} threads: {count}"
 							title={reviewFilter === filter.value
 								? "Show all threads"
-								: `Show only ${look.label.toLowerCase()} threads`}
+								: `Show only ${label.toLowerCase()} threads`}
 							onclick={() => toggleFilter(filter.value)}
 						>
 							<span class="inline-flex {filter.tone}" aria-hidden="true">
-								<look.icon size={12} strokeWidth={2.5} />
+								<StateGlyph state={filter.value} size={12} />
 							</span>
 							<span>{count}</span>
 						</Button>

@@ -63,6 +63,7 @@ import RowAction from "./RowAction.svelte";
 import Splitter from "./Splitter.svelte";
 import Tab from "./Tab.svelte";
 import TabStrip from "./TabStrip.svelte";
+import Tag from "./Tag.svelte";
 import ToastCard from "./ToastCard.svelte";
 </script>
 
@@ -392,6 +393,19 @@ import ToastCard from "./ToastCard.svelte";
 			>
 			<Chip truncate
 				><GitBranch size={11} /><span data-catalog-text>main</span></Chip
+			>
+		</div>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>Tag</h2
+		>
+		<div class="flex items-center gap-2">
+			<Tag><span data-catalog-text>Lines 10–11</span></Tag>
+			<Tag disabled><span data-catalog-text>Line 4</span></Tag>
+			<Tag dashed variant="label"
+				><span data-catalog-text>Whole commit</span></Tag
 			>
 		</div>
 	</section>

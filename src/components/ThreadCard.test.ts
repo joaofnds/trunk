@@ -116,6 +116,89 @@ describe("ThreadCard", () => {
 		);
 	});
 
+	describe("scoped under its file", () => {
+		it("names the range of lines it is on", () => {
+			renderCard({ scoped: true });
+
+			expect(screen.getByText("Lines 10–11")).toBeInTheDocument();
+			expect(screen.queryByText("src/foo.ts")).not.toBeInTheDocument();
+		});
+
+		it("names a single line", () => {
+			renderCard({
+				scoped: true,
+				thread: { ...comment, anchor: { ...anchor, end_line: 10 } },
+			});
+
+			expect(screen.getByText("Line 10")).toBeInTheDocument();
+		});
+
+		it("names a note on the whole commit", () => {
+			renderCard({
+				scoped: true,
+				thread: { ...comment, anchor: null, cached_excerpt: null },
+			});
+
+			expect(screen.getByText("Whole commit")).toBeInTheDocument();
+		});
+
+		it("opens the code of a current-file comment at its lines", async () => {
+			const jumped: Thread[] = [];
+			renderCard({
+				scoped: true,
+				thread: currentFileComment,
+				jumpable: true,
+				onjump: (thread) => jumped.push(thread),
+			});
+
+			await fireEvent.click(screen.getByRole("button", { name: "Line 1" }));
+
+			expect(jumped.map((t) => t.id)).toEqual(["c2"]);
+		});
+
+		it("refuses to open the code of an orphaned comment", () => {
+			renderCard({
+				scoped: true,
+				jumpable: true,
+				onjump: () => {},
+				orphaned: true,
+				orphanLabel: "commit gone",
+			});
+
+			expect(
+				screen.getByRole("button", { name: "Lines 10–11" }),
+			).toBeDisabled();
+		});
+	});
+
+	describe("flags", () => {
+		it("marks an orphaned comment and says why", () => {
+			renderCard({ orphaned: true, orphanLabel: "commit gone" });
+
+			expect(
+				screen.getByTitle("Commit gone. Only the saved excerpt survives."),
+			).toHaveTextContent("Orphaned");
+		});
+
+		it("notes over the excerpt that an orphaned comment's code is gone", () => {
+			renderCard({ orphaned: true, orphanLabel: "commit gone" });
+
+			expect(
+				screen.getByText("Saved excerpt. Commit gone."),
+			).toBeInTheDocument();
+		});
+
+		it("notes over the excerpt that a stale comment's lines moved", () => {
+			renderCard({ thread: { ...comment, stale: true } });
+
+			expect(
+				screen.getByText(
+					"Saved excerpt. These lines have moved or changed since.",
+				),
+			).toBeInTheDocument();
+		});
+	});
+
 	it.each<ThreadState>(["open", "addressed", "done", "dismissed"])(
 		"shows the stale marker exactly while the backend marks a %s thread stale",
 		async (state) => {
@@ -156,7 +239,7 @@ describe("ThreadCard", () => {
 		});
 
 		expect(screen.getByText("const answer = 42;")).toBeTruthy();
-		expect(screen.getByText("code gone")).toBeTruthy();
+		expect(screen.getByText("Saved excerpt. Code gone.")).toBeTruthy();
 		expect(screen.getByText("Stale")).toBeTruthy();
 	});
 

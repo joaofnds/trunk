@@ -462,11 +462,13 @@ export class ReviewDriver {
 		return [...lines].map(collapse);
 	}
 
-	/** The orphan badge each thread card carries, topmost first, empty where a
-	 *  card carries none. This is what a user sees when a comment no longer
-	 *  resolves against the repository. */
+	/** Why each thread card's Orphaned flag says it no longer resolves against
+	 *  the repository, topmost first, empty where a card carries no flag. The
+	 *  flag names the reason in its tooltip. */
 	orphanBadges(): string[] {
-		return cards().map((card) => textIn(card, ORPHAN_BADGE));
+		return cards().map(
+			(card) => card.querySelector(ORPHAN_BADGE)?.getAttribute("title") ?? "",
+		);
 	}
 
 	/** The visible stale marker each thread card carries, empty while fresh. */
