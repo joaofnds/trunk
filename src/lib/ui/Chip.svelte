@@ -39,7 +39,7 @@ const BUTTON =
 
 const LABEL = "px-2";
 
-const SHRINK = "min-w-0 max-w-full";
+const SHRINK = "chip-truncate min-w-0 flex-1 max-w-max";
 
 const TONES: Record<ChipTone, string> = {
 	accent: "border-chip-accent-border bg-chip-accent-bg text-accent-strong",
@@ -73,3 +73,16 @@ const HOVERS: Record<ChipTone, string> = {
 		{@render children?.()}
 	</button>
 {/if}
+
+<style>
+.chip-truncate > :global(svg) {
+	flex-shrink: 0;
+}
+
+.chip-truncate > :global(:not(svg)) {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+</style>

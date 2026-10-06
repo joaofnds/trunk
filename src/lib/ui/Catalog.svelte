@@ -46,6 +46,7 @@ import ArrowUp from "@lucide/svelte/icons/arrow-up";
 import Check from "@lucide/svelte/icons/check";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import Eye from "@lucide/svelte/icons/eye";
+import GitBranch from "@lucide/svelte/icons/git-branch";
 import Plus from "@lucide/svelte/icons/plus";
 import X from "@lucide/svelte/icons/x";
 import { treeIndent } from "../chrome-heights";
@@ -381,6 +382,17 @@ import ToastCard from "./ToastCard.svelte";
 				>
 			{/each}
 			<Chip variant="label"><span data-catalog-text>main</span></Chip>
+		</div>
+		<div class="flex w-dialog-min items-center gap-1">
+			<Chip truncate
+				><GitBranch size={11} />
+				<span data-catalog-text
+					>feature/a-branch-name-far-too-long-for-its-row</span
+				></Chip
+			>
+			<Chip truncate
+				><GitBranch size={11} /><span data-catalog-text>main</span></Chip
+			>
 		</div>
 	</section>
 
