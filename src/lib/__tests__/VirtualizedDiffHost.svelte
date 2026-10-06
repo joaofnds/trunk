@@ -77,7 +77,9 @@ onready(vd);
 	{#if vd.threadsToProbe.length > 0}
 		<div class="comment-probe" bind:this={vd.commentProbe}>
 			{#each vd.threadsToProbe as c (c.id)}
-				<div data-thread-id={c.id}>{c.text}</div>
+				<div data-probe-thread-id={c.id}>
+					<article data-thread-id={c.id}>{c.text}</article>
+				</div>
 			{/each}
 		</div>
 	{/if}

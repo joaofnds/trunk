@@ -323,7 +323,7 @@ describe("FullFileView", () => {
 			0,
 		);
 
-		for (const probe of container.querySelectorAll("[data-thread-id]")) {
+		for (const probe of container.querySelectorAll("[data-probe-thread-id]")) {
 			setLayout(probe, { height: 80 });
 		}
 		await rerender(props);
@@ -595,7 +595,7 @@ describe("FullFileView", () => {
 
 		// A narrower pane reflows the card taller; the stale height would leave
 		// the rows below it overlapping.
-		for (const probe of container.querySelectorAll("[data-thread-id]")) {
+		for (const probe of container.querySelectorAll("[data-probe-thread-id]")) {
 			setLayout(probe, { height: 900 });
 		}
 		setLayout(container.querySelector(".list-area") as HTMLElement, {

@@ -497,7 +497,7 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 			{#each vd.threadsToProbe as c (c.id)}
 				<div
 					class="inline-comment-row"
-					data-thread-id={c.id}
+					data-probe-thread-id={c.id}
 					style:display={reviewFilter !== "none" ? "block" : "none"}
 					>{@render threadCard(c)}</div
 				>

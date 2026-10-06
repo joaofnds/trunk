@@ -222,9 +222,9 @@ export function createVirtualizedDiff(
 
 		const measured = new Map<string, number>();
 		for (const row of container.querySelectorAll<HTMLElement>(
-			"[data-thread-id]",
+			"[data-probe-thread-id]",
 		)) {
-			const id = row.dataset.threadId;
+			const id = row.dataset.probeThreadId;
 			const height = row.offsetHeight;
 			// A zero here is an unmeasured row, not a row of no height. Recording it
 			// would be the substituted default invariant 8 forbids.

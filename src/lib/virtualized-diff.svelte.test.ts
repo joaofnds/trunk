@@ -131,12 +131,30 @@ describe("createVirtualizedDiff", () => {
 
 		expect(vd.ready).toBe(false);
 
-		for (const probe of container.querySelectorAll("[data-thread-id]")) {
+		for (const probe of container.querySelectorAll("[data-probe-thread-id]")) {
 			setLayout(probe, { height: 80 });
 		}
 		await rerender(props);
 
 		expect(vd.ready).toBe(true);
+		expect(vd.probedHeights.get("t1")).toBe(80);
+	});
+
+	it("records a probed row's height, padding and all, not the card's inside it", () => {
+		stubLayout({
+			replace: true,
+			width: 900,
+			height: 400,
+			measure: (el) => {
+				if (!(el instanceof HTMLElement)) return undefined;
+				if (el.dataset.probeThreadId) return { height: 80 };
+				if (el.dataset.threadId) return { height: 64 };
+				return undefined;
+			},
+		});
+
+		const { vd } = mount({ comments: [anchoredThread()] });
+
 		expect(vd.probedHeights.get("t1")).toBe(80);
 	});
 
@@ -240,7 +258,7 @@ describe("createVirtualizedDiff", () => {
 			width: 900,
 			height: 400,
 			measure: (el) =>
-				el instanceof HTMLElement && el.dataset.threadId
+				el instanceof HTMLElement && el.dataset.probeThreadId
 					? { height: reflowed ? 120 : 80 }
 					: undefined,
 		});

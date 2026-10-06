@@ -551,7 +551,7 @@ function originClass(origin: string): string {
 	{#if vd.threadsToProbe.length > 0}
 		<div class="comment-probe" bind:this={vd.commentProbe}>
 			{#each vd.threadsToProbe as c (c.id)}
-				<div class="split-comment-row" data-thread-id={c.id}
+				<div class="split-comment-row" data-probe-thread-id={c.id}
 					>{@render threadCard(c)}</div
 				>
 			{/each}
