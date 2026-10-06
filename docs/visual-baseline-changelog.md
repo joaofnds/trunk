@@ -247,3 +247,11 @@ catalog: add the anchored Dialog
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-10-06
+
+catalog shows Chip's new label variant
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png
