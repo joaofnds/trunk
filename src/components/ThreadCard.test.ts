@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import type { ComponentProps } from "svelte";
 import { tick } from "svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { aReply, aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createThreadEditorSession } from "../lib/review-editors.svelte.js";
@@ -234,12 +234,23 @@ describe("ThreadCard", () => {
 		expect(screen.getByText("Agent")).toBeInTheDocument();
 	});
 
-	it("says how long ago the root comment was written", () => {
-		const twoDaysAgo = Math.floor(Date.now() / 1000) - 2 * 86_400;
+	describe("age", () => {
+		beforeEach(() => {
+			vi.useFakeTimers({ toFake: ["Date"] });
+			vi.setSystemTime(new Date("2026-10-06T12:00:00Z"));
+		});
 
-		renderCard({ thread: { ...comment, created_at: twoDaysAgo } });
+		afterEach(() => {
+			vi.useRealTimers();
+		});
 
-		expect(screen.getByText("2d ago")).toBeInTheDocument();
+		it("says how long ago the root comment was written", () => {
+			const twoDaysAgo = Date.parse("2026-10-04T11:00:00Z") / 1000;
+
+			renderCard({ thread: { ...comment, created_at: twoDaysAgo } });
+
+			expect(screen.getByText("2d ago")).toBeInTheDocument();
+		});
 	});
 
 	it("numbers the excerpt's lines from the anchored start line", () => {

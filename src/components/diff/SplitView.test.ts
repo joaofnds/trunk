@@ -479,6 +479,13 @@ describe("SplitView thread marker", () => {
 			?.querySelector(".thread-marker");
 	}
 
+	function markerCellOn(text: string): Element | null | undefined {
+		return screen
+			.getByText(text)
+			.closest(".diff-line")
+			?.querySelector(".thread-marker-cell");
+	}
+
 	it("counts each side's threads in that side's gutter", () => {
 		render(SplitView, {
 			props: defaultProps({
@@ -492,6 +499,16 @@ describe("SplitView thread marker", () => {
 		expect(markerOn("added one")).toHaveTextContent("1");
 		expect(markerOn("removed two")).toHaveTextContent("1");
 		expect(markerOn("removed one")).toBeNull();
+	});
+
+	it("keeps the empty column on a line no thread hangs on, so the code stays aligned", () => {
+		render(SplitView, {
+			props: defaultProps({
+				viewComments: [threadOn("tNew", "New", 11)],
+			}),
+		});
+
+		expect(markerCellOn("removed one")).not.toBeNull();
 	});
 
 	it("reserves no marker column when no thread hangs in view", () => {

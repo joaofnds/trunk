@@ -271,6 +271,13 @@ describe("HunkView thread marker", () => {
 			?.querySelector(".thread-marker");
 	}
 
+	function markerCellOn(text: string): Element | null | undefined {
+		return screen
+			.getByText(text)
+			.closest(".diff-line")
+			?.querySelector(".thread-marker-cell");
+	}
+
 	it("counts the threads hanging on a line beside its numbers", () => {
 		render(HunkView, {
 			props: defaultProps({
@@ -280,6 +287,16 @@ describe("HunkView thread marker", () => {
 
 		expect(markerOn("added one")).toHaveTextContent("2");
 		expect(markerOn("context before")).toBeNull();
+	});
+
+	it("keeps the empty column on a line no thread hangs on, so the code stays aligned", () => {
+		render(HunkView, {
+			props: defaultProps({
+				viewComments: [onAddedLine("t1")],
+			}),
+		});
+
+		expect(markerCellOn("context before")).not.toBeNull();
 	});
 
 	it("reserves no marker column when no thread hangs in view", () => {

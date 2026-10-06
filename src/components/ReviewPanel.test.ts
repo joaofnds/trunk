@@ -1711,7 +1711,7 @@ describe("End review", () => {
 //   a review with commits, no threads → warm-with-commits ("Review started.")
 // REAL timers — these tests use the file-global `flush()` (setTimeout(r,0) + tick).
 // Criterion 2 (list half) and criterion 3 (one-step switch). The panel shows a
-// review list at the top and, below it, the threads of the ACTIVE review;
+// review list in a column and, beside it, the threads of the ACTIVE review;
 // selecting a row makes it active, which IS the switch.
 describe("review list", () => {
 	const READY: Review = {
@@ -2030,9 +2030,8 @@ describe("empty states", () => {
 	});
 });
 
-// Phase 73-03 — Session summary caption. `{N} comments · {M} commits` above the
-// list whenever a review is active; hidden when the repo has none.
-// The middle dot is U+00B7 (literal · character — NOT * or -).
+// The header names the active review and counts its threads by state; hidden
+// when the repo has no review.
 describe("header", () => {
 	function renderPanel(
 		props: {
@@ -2097,7 +2096,7 @@ describe("header", () => {
 		).toBeInTheDocument();
 	});
 
-	it("filters the list to a state when its count is pressed", async () => {
+	it("reports the pressed state's count as the filter", async () => {
 		const onreviewfilterchange = vi.fn();
 		installReads({ commits, comments: THREADS });
 		renderPanel({ onreviewfilterchange });
@@ -2122,6 +2121,7 @@ describe("header", () => {
 
 		expect(onreviewfilterchange).toHaveBeenCalledWith("all");
 	});
+
 	it("names no review when the repo has none", async () => {
 		installReads({ reviews: [], activeReviewId: null });
 		renderPanel();
@@ -2153,7 +2153,6 @@ describe("Hide all filter", () => {
 		});
 		await flush();
 
-		expect(screen.queryByText("1 comment · 1 commit")).not.toBeInTheDocument();
 		expect(
 			screen.queryByRole("button", { name: "Comment on a file…" }),
 		).not.toBeInTheDocument();

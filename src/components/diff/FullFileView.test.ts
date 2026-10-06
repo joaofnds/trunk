@@ -730,6 +730,13 @@ describe("FullFileView thread marker", () => {
 			?.querySelector(".thread-marker");
 	}
 
+	function markerCellOn(text: string): Element | null | undefined {
+		return screen
+			.getByText(text)
+			.closest(".diff-line")
+			?.querySelector(".thread-marker-cell");
+	}
+
 	it("counts the threads hanging on a line beside its numbers", () => {
 		const onAddedLine = aThread({
 			id: "t1",
@@ -749,6 +756,26 @@ describe("FullFileView thread marker", () => {
 
 		expect(markerOn("added one")).toHaveTextContent("1");
 		expect(markerOn("added two")).toBeNull();
+	});
+
+	it("keeps the empty column on a line no thread hangs on, so the code stays aligned", () => {
+		const onAddedLine = aThread({
+			id: "t1",
+			anchor: {
+				commit_oid: "abc123",
+				file_path: "src/main.ts",
+				source: "FullFile",
+				side: "New",
+				start_line: 11,
+				end_line: 11,
+			},
+		});
+
+		render(FullFileView, {
+			props: defaultProps({ viewComments: [onAddedLine] }),
+		});
+
+		expect(markerCellOn("added two")).not.toBeNull();
 	});
 
 	it("reserves no marker column when no thread hangs in view", () => {
