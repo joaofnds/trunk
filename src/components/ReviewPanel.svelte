@@ -7,6 +7,8 @@
 import Check from "@lucide/svelte/icons/check";
 import Clipboard from "@lucide/svelte/icons/clipboard";
 import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
+import Pencil from "@lucide/svelte/icons/pencil";
+import Plus from "@lucide/svelte/icons/plus";
 import Trash2 from "@lucide/svelte/icons/trash-2";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { untrack } from "svelte";
@@ -32,6 +34,9 @@ import type {
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
+import Row from "../lib/ui/Row.svelte";
+import RowAction from "../lib/ui/RowAction.svelte";
+import StatePill from "./review/StatePill.svelte";
 import ThreadCard from "./ThreadCard.svelte";
 
 interface Props {
@@ -445,12 +450,6 @@ async function onDeleteReviewClick(id: string) {
 	}
 }
 
-const REVIEW_STATE_LABEL: Record<string, string> = {
-	composing: "composing",
-	ready: "ready",
-	settled: "settled",
-};
-
 // The owner only refreshes on reviews-changed, but list_session_commits takes
 // its group headers from the graph cache, so a commit or amend changes its
 // answer without emitting one. This panel is destroyed on every jump into a
@@ -486,329 +485,402 @@ $effect(() => {
 });
 </script>
 
-<div class="flex flex-col flex-1 min-h-0 overflow-hidden">
-	<!-- Panel-level header (Phase 72): hosts the Copy button. Disabled until the
-       session has >=1 comment; the disabled tooltip and the hard backstop in
-       commands/review.rs (no_comments TrunkError) form the gate. The header
-       sits above the scrollable list body so the button is always visible
-       while the list scrolls. -->
-	<div
-		class="flex items-center gap-2 h-bar py-0 px-3 bg-surface shadow-hairline shrink-0 text-callout"
+<div class="review-layout flex-1 min-h-0 overflow-hidden bg-surface">
+	<!-- The repo's reviews, one row each. Selecting a row makes that review
+	     active, so the highlighted row and the review new comments land in are
+	     always the same one. -->
+	<nav
+		aria-label="Reviews"
+		class="flex flex-col min-h-0 border-r border-border text-callout"
 	>
-		{#if oncommentonfile && reviewFilter !== "none"}
+		<div class="flex items-center gap-2 h-bar shrink-0 pl-3 pr-1">
+			<h2
+				class="flex-1 m-0 text-caption font-semibold uppercase text-text-muted"
+			>
+				Reviews <span class="font-regular">{reviews.length}</span>
+			</h2>
 			<Button
 				size="sm"
-				onclick={oncommentonfile}
-				title="Comment on any tracked file, including one no change touches"
+				variant="ghost"
+				onclick={startNewReview}
+				aria-label="New review"
 			>
-				<MessageSquarePlus size={14} />
-				<span>Comment on a file…</span>
+				<Plus size={12} />
+				<span>New</span>
 			</Button>
-		{/if}
-		<span class="flex-1"></span>
-		{#if activeReview && !activeReview.published}
-			<Button
-				size="sm"
-				variant={endConfirming ? "accent" : "secondary"}
-				onclick={onEndClick}
-				disabled={!hasAnyComment}
-				title={hasAnyComment
-          ? endConfirming
-            ? ""
-            : "Publish this review so an agent can read it. Nothing is deleted."
-          : "A review needs at least one comment before it can be published"}
-			>
-				<Check size={14} />
-				<span>{endConfirming ? "Click again to confirm" : "End review"}</span>
-			</Button>
-		{/if}
-		<Button
-			size="sm"
-			onclick={onCopyClick}
-			disabled={!hasAnyComment}
-			title={hasAnyComment ? "" : "Add at least one comment to generate"}
-		>
-			{#if copied}
-				<span aria-hidden="true">✓</span>
-				<span>Copied</span>
-			{:else}
-				<Clipboard size={14} />
-				<span>Copy</span>
-			{/if}
-		</Button>
-	</div>
-	<div
-		class="flex flex-col flex-1 min-h-0 overflow-auto p-3 bg-surface text-text text-callout leading-normal"
-	>
-		<!-- Review list (criterion 2): every review for this repo with its derived
-       state, short id, thread count and an editable title. Selecting one makes
-       it active, which is also criterion 3's one-step switch. -->
-		<div class="flex flex-col gap-1 pb-2">
-			<div class="flex items-center gap-2 py-1 px-0">
-				<span class="text-text-muted text-small leading-normal flex-1">
-					{reviews.length} {reviews.length === 1 ? "review" : "reviews"}
-				</span>
-				<Button size="sm" onclick={startNewReview}>New review</Button>
-			</div>
-			<ul class="flex flex-col gap-1 list-none m-0 p-0">
-				{#each reviews as review (review.id)}
-					<li
-						class="review-row {review.id === activeReviewId ? 'active' : ''} flex items-center gap-2 py-1 px-2 rounded"
-					>
-						<span aria-hidden="true" class="dot shrink-0 text-accent"
-							>{review.id === activeReviewId ? "\u2022" : ""}</span
-						>
-						{#if renamingId === review.id}
+		</div>
+		<ul class="flex flex-col flex-1 min-h-0 overflow-auto list-none m-0 p-0">
+			{#each reviews as review (review.id)}
+				{@const isActive = review.id === activeReviewId}
+				<li>
+					{#if renamingId === review.id}
+						<div class="py-1 px-2">
 							<input
 								bind:value={renameText}
 								onblur={commitRename}
 								onkeydown={(e) => {
-                if (e.key === "Enter") commitRename();
-                if (e.key === "Escape") renamingId = null;
-              }}
+									if (e.key === "Enter") commitRename();
+									if (e.key === "Escape") renamingId = null;
+								}}
 								aria-label="Review title"
-								class="flex-1 bg-bg text-text border border-border rounded h-control-sm py-0 px-1 text-callout"
+								class="w-full bg-bg text-text border border-border rounded h-control-sm py-0 px-1 text-callout"
 							>
-						{:else}
-							<span class="min-w-0 flex-1 text-callout leading-normal">
-								<LinkButton
-									truncate
-									onclick={() => activateReview(review.id)}
-									ondblclick={() => openRename(review.id, review.title)}
-									title="Click to make active · double-click or F2 to rename"
-									onkeydown={(e) => {
-                if (e.key === "F2") {
-                  e.preventDefault();
-                  openRename(review.id, review.title);
-                }
-              }}
-									aria-label="Activate review {review.id}"
-									aria-current={review.id === activeReviewId ? "true" : undefined}
-									>{review.title}</LinkButton
-								>
-							</span>
-						{/if}
-						<span class="shrink-0 text-small">
-							<LinkButton
-								tone="muted"
-								mono
-								onclick={() => openRename(review.id, review.title)}
-								aria-label="Rename review {review.id}"
-								title="Rename this review"
-								>{review.id}</LinkButton
-							>
-						</span>
-						<span class="text-text-muted text-small leading-normal shrink-0">
-							{`${REVIEW_STATE_LABEL[review.state] ?? review.state} · ${review.thread_count}`}
-						</span>
-						<Button
-							size="sm"
-							variant={deleteConfirmingId === review.id ? "danger" : "secondary"}
-							onclick={() => onDeleteReviewClick(review.id)}
-							aria-label="Delete review {review.id}"
-							title={deleteConfirmingId === review.id
-              ? "Click again to delete this review and its comments"
-              : "Delete this review"}
+						</div>
+					{:else}
+						<Row
+							variant="flush"
+							selected={isActive}
+							onclick={() => activateReview(review.id)}
+							ondblclick={() => openRename(review.id, review.title)}
+							onkeydown={(e) => {
+								if (e.key === "F2") {
+									e.preventDefault();
+									openRename(review.id, review.title);
+								}
+							}}
+							title="Click to make active · double-click or F2 to rename"
+							aria-label="Activate review {review.id}"
+							aria-current={isActive ? "true" : undefined}
 						>
-							{deleteConfirmingId === review.id ? "Confirm delete" : "Delete review"}
-						</Button>
-					</li>
-				{/each}
-			</ul>
+							<span class="review-entry">
+								<span
+									class="review-radio"
+									class:active={isActive}
+									aria-hidden="true"
+								></span>
+								<span
+									class="min-w-0 text-text-strong leading-tight line-clamp-2 whitespace-normal"
+									>{review.title}</span
+								>
+								<span class="review-meta flex items-center gap-2 min-w-0">
+									<span class="font-mono text-caption text-text-muted"
+										>{review.id}</span
+									>
+									<StatePill state={review.state} />
+									<span class="flex-1"></span>
+									<span class="text-caption text-text-muted"
+										>{review.thread_count}</span
+									>
+								</span>
+							</span>
+							{#snippet actions()}
+								<RowAction
+									onclick={() => openRename(review.id, review.title)}
+									aria-label="Rename review {review.id}"
+									title="Rename this review"
+								>
+									<Pencil size={12} />
+								</RowAction>
+								{#if deleteConfirmingId === review.id}
+									<Button
+										size="sm"
+										variant="danger"
+										onclick={() => onDeleteReviewClick(review.id)}
+										aria-label="Confirm delete review {review.id}"
+										title="Click again to delete this review and its comments"
+									>
+										Delete?
+									</Button>
+								{:else}
+									<RowAction
+										tone="danger"
+										onclick={() => onDeleteReviewClick(review.id)}
+										aria-label="Delete review {review.id}"
+										title="Delete this review"
+									>
+										<Trash2 size={12} />
+									</RowAction>
+								{/if}
+							{/snippet}
+						</Row>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+		<p
+			class="flex items-center gap-2 shrink-0 m-0 py-2 px-3 border-t border-border text-caption text-text-muted"
+		>
+			<span class="review-radio active" aria-hidden="true"></span>
+			Active review. New comments land here.
+		</p>
+	</nav>
+
+	<section
+		aria-label="Review threads"
+		class="flex flex-col min-h-0 overflow-hidden"
+	>
+		<!-- Panel-level header (Phase 72): hosts the Copy button. Disabled until the
+       session has >=1 comment; the disabled tooltip and the hard backstop in
+       commands/review.rs (no_comments TrunkError) form the gate. The header
+       sits above the scrollable list body so the button is always visible
+       while the list scrolls. -->
+		<div
+			class="flex items-center gap-2 h-bar py-0 px-3 bg-surface shadow-hairline shrink-0 text-callout"
+		>
+			{#if oncommentonfile && reviewFilter !== "none"}
+				<Button
+					size="sm"
+					onclick={oncommentonfile}
+					title="Comment on any tracked file, including one no change touches"
+				>
+					<MessageSquarePlus size={14} />
+					<span>Comment on a file…</span>
+				</Button>
+			{/if}
+			<span class="flex-1"></span>
+			{#if activeReview && !activeReview.published}
+				<Button
+					size="sm"
+					variant={endConfirming ? "accent" : "secondary"}
+					onclick={onEndClick}
+					disabled={!hasAnyComment}
+					title={hasAnyComment
+          ? endConfirming
+            ? ""
+            : "Publish this review so an agent can read it. Nothing is deleted."
+          : "A review needs at least one comment before it can be published"}
+				>
+					<Check size={14} />
+					<span>{endConfirming ? "Click again to confirm" : "End review"}</span>
+				</Button>
+			{/if}
+			<Button
+				size="sm"
+				onclick={onCopyClick}
+				disabled={!hasAnyComment}
+				title={hasAnyComment ? "" : "Add at least one comment to generate"}
+			>
+				{#if copied}
+					<span aria-hidden="true">✓</span>
+					<span>Copied</span>
+				{:else}
+					<Clipboard size={14} />
+					<span>Copy</span>
+				{/if}
+			</Button>
 		</div>
+		<div
+			class="flex flex-col flex-1 min-h-0 overflow-auto p-3 bg-surface text-text text-callout leading-normal"
+		>
+			{#if activeReview && reviewFilter !== "none"}
+				<span class="text-text-muted text-small leading-normal py-1 px-0">
+					{`${visibleComments.length} ${visibleComments.length === 1 ? "comment" : "comments"} · ${commits.length} ${commits.length === 1 ? "commit" : "commits"}`}
+				</span>
+			{/if}
 
-		{#if activeReview && reviewFilter !== "none"}
-			<span class="text-text-muted text-small leading-normal py-1 px-0">
-				{`${visibleComments.length} ${visibleComments.length === 1 ? "comment" : "comments"} · ${commits.length} ${commits.length === 1 ? "commit" : "commits"}`}
-			</span>
-		{/if}
-
-		<!-- Phase 73-03 — Three-way empty-state branching (D-06). Order is specificity-
+			<!-- Phase 73-03 — Three-way empty-state branching (D-06). Order is specificity-
        first: cold (no session) → warm-no-commits (existing copy preserved
        verbatim) → warm-with-commits-zero-comments (replaces prior "No comments
        yet." copy). The three branches are mutually exclusive; when the user has
        added at least one comment, none render and the list below takes over. -->
-		{#if reviews.length === 0}
-			<div class="flex flex-col gap-1 p-3">
-				<span>No reviews yet</span>
-				<span class="text-text-muted text-small leading-normal">
-					Comment on a diff line to start one, or create an empty review above.
-				</span>
-			</div>
-		{:else if commits.length === 0 && !hasAnyComment}
-			<div class="flex flex-col gap-1 p-3">
-				<span>No commits in this review yet.</span>
-				<span class="text-text-muted text-small leading-normal">
-					Add commits from the graph to start reviewing.
-				</span>
-			</div>
-		{:else if !hasAnyComment}
-			<div class="flex flex-col gap-1 p-3">
-				<span>Review started.</span>
-				<span class="text-text-muted text-small leading-normal">
-					Select diff lines or add a commit note to comment.
-				</span>
-			</div>
-		{:else if !hasVisibleComment}
-			<div class="flex flex-col gap-1 p-3">
-				<span
-					>{reviewFilter === "none" ? "Review threads hidden." : "No threads match this filter."}</span
-				>
-				<span class="text-text-muted text-small leading-normal">
-					The review inventory remains available above.
-				</span>
-			</div>
-		{/if}
-
-		{#if groups.length > 0}
-			<ul class="flex flex-col gap-2 list-none m-0 p-0">
-				{#each groups as group (group.oid)}
-					{@const visibleGroupComments = filterThreads(group.comments, reviewFilter)}
-					<li
-						class="flex flex-col gap-1"
-						style:display={reviewFilter === 'none' || (reviewFilter !== 'all' && group.comments.length > 0 && visibleGroupComments.length === 0) ? 'none' : 'flex'}
-					>
-						<!-- Commit group header (focal point): short SHA mono 600 + summary -->
-						<div
-							class="flex items-center gap-2 py-1 px-0 border-b border-border"
-						>
-							<span class="shrink-0 text-body leading-normal font-semibold">
-								<LinkButton
-									mono
-									title="Copy SHA"
-									aria-label="Copy SHA {group.shortOid}"
-									onclick={() => copySha(group.oid)}
-									>{group.shortOid}</LinkButton
-								>
-							</span>
-							<span
-								class="min-w-0 flex-1 text-body leading-normal font-semibold"
-							>
-								<LinkButton
-									truncate
-									aria-label="Jump to commit {group.shortOid}"
-									onclick={() => onJumpToCommit(group.oid)}
-									>{group.summary}</LinkButton
-								>
-							</span>
-							{#if reviewFilter !== "none"}
-								<Button
-									size="sm"
-									variant="ghost"
-									onclick={() => openAddNote(group.oid)}
-									disabled={noteSaving}
-								>
-									<MessageSquarePlus size={14} />
-									<span>Add note</span>
-								</Button>
-							{/if}
-						</div>
-
-						<!-- Inline add-note composer for this commit -->
-						{#if noteSession.target === group.oid}
-							<div
-								class="flex flex-col gap-1 py-1 px-0"
-								style:display={reviewFilter === 'none' ? 'none' : 'flex'}
-							>
-								<textarea
-									bind:value={noteDraft.text}
-									rows="3"
-									disabled={noteSaving}
-									class="w-full resize-y bg-bg text-text border border-border rounded py-1 px-2 text-callout leading-normal"
-								></textarea>
-								<div class="flex items-center gap-1">
-									<Button
-										size="sm"
-										onclick={() => saveAddNote(group.oid)}
-										disabled={!noteDraft.valid || noteSaving}
-										>Save</Button
-									>
-									<Button
-										size="sm"
-										onclick={cancelComposer}
-										disabled={noteSaving}
-										>Cancel</Button
-									>
-								</div>
-							</div>
-						{/if}
-
-						{#if group.comments.length === 0}
-							<span class="text-text-muted text-small leading-normal py-1 px-0">
-								No comments on this commit.
-							</span>
-						{:else}
-							<ul class="flex flex-col gap-1 list-none m-0 p-0">
-								{#each group.comments as comment (comment.id)}
-									<li
-										style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}
-									>
-										<ThreadCard
-											thread={comment}
-											{repoPath}
-											onedit={(id, text) => saveEdit(id, text)}
-											ondelete={(id) => deleteComment(id)}
-											confirmDelete={true}
-											variant="panel"
-											onjump={onJump}
-											jumpable={isJumpable(comment)}
-											orphaned={isOrphan(comment)}
-											orphanLabel={orphanLabel(comment)}
-											{editorSessionForThread}
-										/>
-									</li>
-								{/each}
-							</ul>
-						{/if}
-					</li>
-				{/each}
-			</ul>
-		{/if}
-
-		{#if currentFileComments.length > 0}
-			{@const visibleCurrentFileComments = filterThreads(currentFileComments, reviewFilter)}
-			<div
-				class="flex flex-col gap-1"
-				style:display={reviewFilter === 'none' || (reviewFilter !== 'all' && visibleCurrentFileComments.length === 0) ? 'none' : 'flex'}
-			>
-				<div class="text-callout text-text-muted py-0 px-1">
-					On current file content
+			{#if reviews.length === 0}
+				<div class="flex flex-col gap-1 p-3">
+					<span>No reviews yet</span>
+					<span class="text-text-muted text-small leading-normal">
+						Comment on a diff line to start one, or create an empty review
+						above.
+					</span>
 				</div>
-				<ul class="flex flex-col gap-1 list-none m-0 p-0">
-					{#each currentFileComments as comment (comment.id)}
+			{:else if commits.length === 0 && !hasAnyComment}
+				<div class="flex flex-col gap-1 p-3">
+					<span>No commits in this review yet.</span>
+					<span class="text-text-muted text-small leading-normal">
+						Add commits from the graph to start reviewing.
+					</span>
+				</div>
+			{:else if !hasAnyComment}
+				<div class="flex flex-col gap-1 p-3">
+					<span>Review started.</span>
+					<span class="text-text-muted text-small leading-normal">
+						Select diff lines or add a commit note to comment.
+					</span>
+				</div>
+			{:else if !hasVisibleComment}
+				<div class="flex flex-col gap-1 p-3">
+					<span
+						>{reviewFilter === "none" ? "Review threads hidden." : "No threads match this filter."}</span
+					>
+					<span class="text-text-muted text-small leading-normal">
+						The review inventory remains available above.
+					</span>
+				</div>
+			{/if}
+
+			{#if groups.length > 0}
+				<ul class="flex flex-col gap-2 list-none m-0 p-0">
+					{#each groups as group (group.oid)}
+						{@const visibleGroupComments = filterThreads(group.comments, reviewFilter)}
 						<li
-							style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}
+							class="flex flex-col gap-1"
+							style:display={reviewFilter === 'none' || (reviewFilter !== 'all' && group.comments.length > 0 && visibleGroupComments.length === 0) ? 'none' : 'flex'}
 						>
-							<ThreadCard
-								thread={comment}
-								{repoPath}
-								onedit={(id, text) => saveEdit(id, text)}
-								ondelete={(id) => deleteComment(id)}
-								confirmDelete={true}
-								variant="panel"
-								onjump={onJump}
-								jumpable={false}
-								orphaned={isOrphan(comment)}
-								orphanLabel={orphanLabel(comment)}
-								{editorSessionForThread}
-							/>
+							<!-- Commit group header (focal point): short SHA mono 600 + summary -->
+							<div
+								class="flex items-center gap-2 py-1 px-0 border-b border-border"
+							>
+								<span class="shrink-0 text-body leading-normal font-semibold">
+									<LinkButton
+										mono
+										title="Copy SHA"
+										aria-label="Copy SHA {group.shortOid}"
+										onclick={() => copySha(group.oid)}
+										>{group.shortOid}</LinkButton
+									>
+								</span>
+								<span
+									class="min-w-0 flex-1 text-body leading-normal font-semibold"
+								>
+									<LinkButton
+										truncate
+										aria-label="Jump to commit {group.shortOid}"
+										onclick={() => onJumpToCommit(group.oid)}
+										>{group.summary}</LinkButton
+									>
+								</span>
+								{#if reviewFilter !== "none"}
+									<Button
+										size="sm"
+										variant="ghost"
+										onclick={() => openAddNote(group.oid)}
+										disabled={noteSaving}
+									>
+										<MessageSquarePlus size={14} />
+										<span>Add note</span>
+									</Button>
+								{/if}
+							</div>
+
+							<!-- Inline add-note composer for this commit -->
+							{#if noteSession.target === group.oid}
+								<div
+									class="flex flex-col gap-1 py-1 px-0"
+									style:display={reviewFilter === 'none' ? 'none' : 'flex'}
+								>
+									<textarea
+										bind:value={noteDraft.text}
+										rows="3"
+										disabled={noteSaving}
+										class="w-full resize-y bg-bg text-text border border-border rounded py-1 px-2 text-callout leading-normal"
+									></textarea>
+									<div class="flex items-center gap-1">
+										<Button
+											size="sm"
+											onclick={() => saveAddNote(group.oid)}
+											disabled={!noteDraft.valid || noteSaving}
+											>Save</Button
+										>
+										<Button
+											size="sm"
+											onclick={cancelComposer}
+											disabled={noteSaving}
+											>Cancel</Button
+										>
+									</div>
+								</div>
+							{/if}
+
+							{#if group.comments.length === 0}
+								<span
+									class="text-text-muted text-small leading-normal py-1 px-0"
+								>
+									No comments on this commit.
+								</span>
+							{:else}
+								<ul class="flex flex-col gap-1 list-none m-0 p-0">
+									{#each group.comments as comment (comment.id)}
+										<li
+											style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}
+										>
+											<ThreadCard
+												thread={comment}
+												{repoPath}
+												onedit={(id, text) => saveEdit(id, text)}
+												ondelete={(id) => deleteComment(id)}
+												confirmDelete={true}
+												variant="panel"
+												onjump={onJump}
+												jumpable={isJumpable(comment)}
+												orphaned={isOrphan(comment)}
+												orphanLabel={orphanLabel(comment)}
+												{editorSessionForThread}
+											/>
+										</li>
+									{/each}
+								</ul>
+							{/if}
 						</li>
 					{/each}
 				</ul>
-			</div>
-		{/if}
-	</div>
+			{/if}
+
+			{#if currentFileComments.length > 0}
+				{@const visibleCurrentFileComments = filterThreads(currentFileComments, reviewFilter)}
+				<div
+					class="flex flex-col gap-1"
+					style:display={reviewFilter === 'none' || (reviewFilter !== 'all' && visibleCurrentFileComments.length === 0) ? 'none' : 'flex'}
+				>
+					<div class="text-callout text-text-muted py-0 px-1">
+						On current file content
+					</div>
+					<ul class="flex flex-col gap-1 list-none m-0 p-0">
+						{#each currentFileComments as comment (comment.id)}
+							<li
+								style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}
+							>
+								<ThreadCard
+									thread={comment}
+									{repoPath}
+									onedit={(id, text) => saveEdit(id, text)}
+									ondelete={(id) => deleteComment(id)}
+									confirmDelete={true}
+									variant="panel"
+									onjump={onJump}
+									jumpable={false}
+									orphaned={isOrphan(comment)}
+									orphanLabel={orphanLabel(comment)}
+									{editorSessionForThread}
+								/>
+							</li>
+						{/each}
+					</ul>
+				</div>
+			{/if}
+		</div>
+	</section>
 </div>
 
 <style>
-.review-row:hover {
-	background: var(--color-hover);
-}
-.review-row.active {
-	background: var(--color-selected-row);
+.review-layout {
+	display: grid;
+	grid-template-columns: var(--review-list-w) minmax(0, 1fr);
 }
 
-.dot {
-	width: calc(3 * var(--u) / 2);
+/* A review's row: the active marker beside a title that may wrap to two lines,
+   and under the title its id, its state and its thread count. */
+.review-entry {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	column-gap: var(--space-2);
+	row-gap: var(--space-1);
+	align-items: center;
+	width: 100%;
+	padding: var(--space-2) var(--space-2) var(--space-2) 0;
+}
+.review-meta {
+	grid-column: 2;
+}
+
+/* The radio that marks the active review. Decoration only: the row's
+   aria-current says the same thing to assistive tech. */
+.review-radio {
+	width: var(--space-3);
+	height: var(--space-3);
+	border-radius: 50%;
+	border: 1px solid var(--color-border-strong);
+}
+.review-radio.active {
+	border-color: var(--color-accent);
+	box-shadow: inset 0 0 0 2px var(--color-surface);
+	background: var(--color-accent);
 }
 </style>

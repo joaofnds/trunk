@@ -1692,10 +1692,40 @@ describe("review list", () => {
 		renderPanel();
 		await flush();
 
-		expect(screen.getByText("Auth review")).toBeInTheDocument();
-		expect(screen.getByText(READY.id)).toBeInTheDocument();
-		expect(screen.getByText(/ready · 2/)).toBeInTheDocument();
-		expect(screen.getByText(/composing · 0/)).toBeInTheDocument();
+		const ready = screen.getByRole("button", {
+			name: `Activate review ${READY.id}`,
+		});
+		expect(ready).toHaveTextContent("Auth review");
+		expect(ready).toHaveTextContent(READY.id);
+		expect(ready).toHaveTextContent("Ready");
+		expect(ready).toHaveTextContent("2");
+		expect(
+			screen.getByRole("button", { name: `Activate review ${ACTIVE_REVIEW}` }),
+		).toHaveTextContent("Composing");
+	});
+
+	it("heads the list with the number of reviews", async () => {
+		installReads({
+			reviews: [aReview(), READY],
+			activeReviewId: ACTIVE_REVIEW,
+		});
+		renderPanel();
+		await flush();
+
+		expect(
+			screen.getByRole("heading", { name: "Reviews 2" }),
+		).toBeInTheDocument();
+	});
+
+	it("starts a new review from the list's header", async () => {
+		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
+		renderPanel();
+		await flush();
+
+		await fireEvent.click(screen.getByRole("button", { name: "New review" }));
+		await flush();
+
+		expect(callArgs("create_review")).toEqual({ path: "/repo", title: null });
 	});
 
 	it("marks the active review, and only it, as current", async () => {
@@ -1751,14 +1781,17 @@ describe("review list", () => {
 		renderPanel();
 		await flush();
 
-		const del = screen.getByRole("button", {
-			name: `Delete review ${ACTIVE_REVIEW}`,
-		});
-		await fireEvent.click(del);
+		await fireEvent.click(
+			screen.getByRole("button", { name: `Delete review ${ACTIVE_REVIEW}` }),
+		);
 		await flush();
 		expect(calledCommands()).not.toContain("delete_review");
 
-		await fireEvent.click(del);
+		await fireEvent.click(
+			screen.getByRole("button", {
+				name: `Confirm delete review ${ACTIVE_REVIEW}`,
+			}),
+		);
 		await flush();
 		expect(callArgs("delete_review")).toEqual({
 			path: "/repo",
@@ -1771,32 +1804,43 @@ describe("review list", () => {
 		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
 		renderPanel({ scheduler });
 		await flush();
-		const del = screen.getByRole("button", {
-			name: `Delete review ${ACTIVE_REVIEW}`,
-		});
-		await fireEvent.click(del);
+		await fireEvent.click(
+			screen.getByRole("button", { name: `Delete review ${ACTIVE_REVIEW}` }),
+		);
 		await flush();
-		expect(del).toHaveTextContent("Confirm delete");
+		expect(
+			screen.getByRole("button", {
+				name: `Confirm delete review ${ACTIVE_REVIEW}`,
+			}),
+		).toBeInTheDocument();
 
 		scheduler.flush();
 		await flush();
 
-		expect(del).toHaveTextContent("Delete review");
+		expect(
+			screen.queryByRole("button", {
+				name: `Confirm delete review ${ACTIVE_REVIEW}`,
+			}),
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: `Delete review ${ACTIVE_REVIEW}` }),
+		).toBeInTheDocument();
 	});
 
 	it("paints the armed delete in the danger tone", async () => {
 		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
 		renderPanel();
 		await flush();
-		const del = screen.getByRole("button", {
-			name: `Delete review ${ACTIVE_REVIEW}`,
-		});
-		expect(del).not.toHaveClass("bg-danger-bg");
-
-		await fireEvent.click(del);
+		await fireEvent.click(
+			screen.getByRole("button", { name: `Delete review ${ACTIVE_REVIEW}` }),
+		);
 		await flush();
 
-		expect(del).toHaveClass("bg-danger-bg");
+		expect(
+			screen.getByRole("button", {
+				name: `Confirm delete review ${ACTIVE_REVIEW}`,
+			}),
+		).toHaveClass("bg-danger-bg");
 	});
 
 	it("takes the delete confirmation timer down with the panel", async () => {
@@ -1834,6 +1878,19 @@ describe("review list", () => {
 			reviewId: ACTIVE_REVIEW,
 			title: "Renamed",
 		});
+	});
+
+	it("opens the title editor from the row's rename action", async () => {
+		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
+		renderPanel();
+		await flush();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: `Rename review ${ACTIVE_REVIEW}` }),
+		);
+		await tick();
+
+		expect(screen.getByLabelText("Review title")).toHaveValue(aReview().title);
 	});
 });
 
