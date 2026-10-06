@@ -127,9 +127,7 @@ function toggleFilter(filter: ReviewFilter) {
 }
 const reviews = $derived(reviewComments.reviews);
 const activeReviewId = $derived(reviewComments.activeReviewId);
-const activeReview = $derived(
-	reviews.find((r) => r.id === activeReviewId) ?? null,
-);
+const activeReview = $derived(reviewComments.activeReview);
 
 // Orphan resolution stays here: resolve_threads walks a blob per
 // comment, and only this panel renders the badge it feeds.

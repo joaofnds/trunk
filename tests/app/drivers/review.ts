@@ -37,6 +37,7 @@ const ROOT_EDIT_TEXT = ".comment-card-body textarea";
 const REPLY_EDIT_TEXT = 'textarea[aria-label="Edit reply"]';
 const COMMIT_NOTES = ".commit-notes";
 const ACTIVE_REVIEW_ROW = 'nav[aria-label="Reviews"] [aria-current="true"]';
+const NEW_REVIEW = 'nav[aria-label="Reviews"] [aria-label="New review"]';
 const COMMIT_NOTE_TEXT = 'textarea[placeholder="Leave a note on this commit…"]';
 
 /**
@@ -371,6 +372,20 @@ export class ReviewDriver {
 		await waitFor("the review panel to open", () =>
 			button.getAttribute("aria-pressed") === "true" ? true : null,
 		);
+	}
+
+	/** Starts a new review from the panel's review column, which makes it the
+	 *  active one, and returns its id. */
+	async newReview(): Promise<string> {
+		const before = this.activeReviewId();
+		const button = await waitFor("the new review button", () =>
+			enabled(NEW_REVIEW),
+		);
+		button.click();
+		return waitFor("the new review to become active", () => {
+			const active = this.activeReviewId();
+			return active !== null && active !== before ? active : null;
+		});
 	}
 
 	/** Closes the review panel and returns to the repository layout. */

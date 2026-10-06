@@ -23,6 +23,8 @@ export interface ReviewCommentsManager {
 	/** Every review for this repo, with its derived state and thread count. */
 	readonly reviews: Review[];
 	readonly activeReviewId: string | null;
+	/** The review new comments land in, or null while the list lacks it. */
+	readonly activeReview: Review | null;
 	readonly snapshots: ReviewSnapshots;
 	/** True when this repo has threads to show. Replaces the session gate. */
 	readonly hasThreads: boolean;
@@ -80,6 +82,9 @@ export function createReviewComments(
 	});
 
 	const hasThreads = $derived(state.threads.length > 0);
+	const activeReview = $derived(
+		state.reviews.find((review) => review.id === state.activeReviewId) ?? null,
+	);
 
 	const oids = $derived(
 		new Set(state.commits.map((c) => c.oid)) as ReadonlySet<string>,
@@ -236,6 +241,9 @@ export function createReviewComments(
 		},
 		get activeReviewId() {
 			return state.activeReviewId;
+		},
+		get activeReview() {
+			return activeReview;
 		},
 		get snapshots() {
 			return state.snapshots;

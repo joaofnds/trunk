@@ -180,10 +180,8 @@ describe("a comment left on a commit's diff", () => {
 	it("names the review a new diff comment lands in", async () => {
 		const app = await setup({ repo: TWO_COMMITS });
 		await createReviewThread(app);
-		const active = await waitFor("the active review", () =>
-			app.review.activeReviewId(),
-		);
-		await app.review.jumpToThread();
+		const active = await app.review.newReview();
+		await app.review.closePanel();
 
 		await app.review.commentOnHunk(0);
 

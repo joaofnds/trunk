@@ -48,6 +48,9 @@ export function createFakeReviewComments(): FakeReviewComments {
 	const state = $state({ ...emptyStore(), revision: 0 });
 
 	const hasThreads = $derived(state.threads.length > 0);
+	const activeReview = $derived(
+		state.reviews.find((review) => review.id === state.activeReviewId) ?? null,
+	);
 
 	const oids = $derived(
 		new Set(state.commits.map((c) => c.oid)) as ReadonlySet<string>,
@@ -64,6 +67,9 @@ export function createFakeReviewComments(): FakeReviewComments {
 		},
 		get activeReviewId() {
 			return state.activeReviewId;
+		},
+		get activeReview() {
+			return activeReview;
 		},
 		get snapshots() {
 			return state.snapshots;

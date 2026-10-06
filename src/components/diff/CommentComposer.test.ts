@@ -91,7 +91,8 @@ describe("CommentComposer", () => {
 	function renderComposer(
 		opts: {
 			scheduler?: FakeScheduler;
-			landingReview?: { id: string; title: string } | null;
+			activeReview?: { id: string; title: string } | null;
+			activeReviewId?: string | null;
 		} = {},
 	) {
 		return render(CommentComposer, {
@@ -102,7 +103,8 @@ describe("CommentComposer", () => {
 				commitOid: "abc123",
 				repoPath: "/repo",
 				onclose: () => {},
-				landingReview: opts.landingReview ?? null,
+				activeReview: opts.activeReview ?? null,
+				activeReviewId: opts.activeReviewId ?? opts.activeReview?.id ?? null,
 			},
 			...(opts.scheduler
 				? { context: new Map([[SCHEDULER, opts.scheduler]]) }
@@ -198,7 +200,7 @@ describe("CommentComposer", () => {
 
 	it("names the review the comment lands in", () => {
 		renderComposer({
-			landingReview: { id: "r3m9", title: "Graph lane colors" },
+			activeReview: { id: "r3m9", title: "Graph lane colors" },
 		});
 
 		expect(screen.getByText(/Lands in/)).toHaveTextContent(
@@ -206,23 +208,47 @@ describe("CommentComposer", () => {
 		);
 	});
 
+	// The review list and the active pointer are two reads, so the list can
+	// fail or lag while the pointer stands, and the comment still lands there.
+	it("names the active review by its id when the review list lacks it", () => {
+		renderComposer({ activeReview: null, activeReviewId: "r3m9" });
+
+		expect(screen.getByText(/Lands in/)).toHaveTextContent("Lands in r3m9");
+	});
+
 	it("says a comment with no active review starts a new one", () => {
-		renderComposer({ landingReview: null });
+		renderComposer({ activeReview: null });
 
 		expect(screen.getByText(/Lands in/)).toHaveTextContent(
 			"Lands in a new review",
 		);
 	});
 
-	it("submits on Cmd+Enter", async () => {
+	it.each([
+		["Cmd+Enter", { metaKey: true }],
+		["Ctrl+Enter", { ctrlKey: true }],
+	])("submits on %s", async (_name, modifier) => {
 		renderComposer();
 		const textarea = screen.getByRole("textbox");
 		await fireEvent.input(textarea, { target: { value: "ship it" } });
 
-		await fireEvent.keyDown(textarea, { key: "Enter", metaKey: true });
+		await fireEvent.keyDown(textarea, { key: "Enter", ...modifier });
 		await flush();
 
 		expect(mockedInvoke.mock.calls.map((c) => c[0])).toContain("add_thread");
+	});
+
+	it("keeps a plain Enter for a new line in the comment", async () => {
+		renderComposer();
+		const textarea = screen.getByRole("textbox");
+		await fireEvent.input(textarea, { target: { value: "first line" } });
+
+		await fireEvent.keyDown(textarea, { key: "Enter" });
+		await flush();
+
+		expect(mockedInvoke.mock.calls.map((c) => c[0])).not.toContain(
+			"add_thread",
+		);
 	});
 
 	it.each([

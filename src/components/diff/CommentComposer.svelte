@@ -14,7 +14,7 @@ import {
 	createReviewComposerSession,
 	type ReviewComposerSession,
 } from "../../lib/review-editors.svelte.js";
-import type { Anchor, FileDiff } from "../../lib/types.js";
+import type { Anchor, FileDiff, Review } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
 
 interface Props {
@@ -48,8 +48,8 @@ interface Props {
 	activeReviewId?: string | null;
 	/** Repository-tab-owned submission latch that survives conditional mounts. */
 	composerSession?: ReviewComposerSession;
-	/** The review the comment lands in; null when submitting starts a new one. */
-	landingReview?: { id: string; title: string } | null;
+	/** The active review's id and title, null while the host has not read them. */
+	activeReview?: Pick<Review, "id" | "title"> | null;
 }
 
 let {
@@ -66,7 +66,7 @@ let {
 	originatingReviewId = null,
 	activeReviewId = null,
 	composerSession,
-	landingReview = null,
+	activeReview = null,
 }: Props = $props();
 
 const localSession = createReviewComposerSession();
@@ -292,9 +292,11 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 		<span class="flex-1"></span>
 		<p class="composer-landing">
 			Lands in
-			{#if landingReview}
-				<span class="font-mono text-text">{landingReview.id}</span>
-				<span class="text-text">{landingReview.title}</span>
+			{#if activeReview}
+				<span class="font-mono text-text">{activeReview.id}</span>
+				<span class="text-text">{activeReview.title}</span>
+			{:else if activeReviewId}
+				<span class="font-mono text-text">{activeReviewId}</span>
 			{:else}
 				<span class="text-text">a new review</span>
 			{/if}
