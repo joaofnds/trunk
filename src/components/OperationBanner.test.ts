@@ -88,27 +88,6 @@ describe("OperationBanner", () => {
 		});
 	});
 
-	it("shows 'Rebasing' for rebase operations", () => {
-		render(OperationBanner, {
-			props: {
-				info: makeInfo({ op_type: "Rebase" }),
-				repoPath: "/repo",
-			},
-		});
-		expect(screen.getByText("Rebasing")).toBeInTheDocument();
-	});
-
-	it("shows 'onto' for rebase instead of 'into'", () => {
-		render(OperationBanner, {
-			props: {
-				info: makeInfo({ op_type: "Rebase" }),
-				repoPath: "/repo",
-			},
-		});
-		expect(screen.getByText("onto")).toBeInTheDocument();
-		expect(screen.queryByText("into")).toBeNull();
-	});
-
 	it("shows 'into' for merge instead of 'onto'", () => {
 		render(OperationBanner, {
 			props: {
@@ -118,37 +97,6 @@ describe("OperationBanner", () => {
 		});
 		expect(screen.getByText("into")).toBeInTheDocument();
 		expect(screen.queryByText("onto")).toBeNull();
-	});
-
-	it("shows Continue/Skip/Abort buttons for rebase", () => {
-		render(OperationBanner, {
-			props: {
-				info: makeInfo({ op_type: "Rebase" }),
-				repoPath: "/repo",
-			},
-		});
-		expect(screen.getByText("Continue")).toBeInTheDocument();
-		expect(screen.getByText("Skip")).toBeInTheDocument();
-		expect(screen.getByText("Abort")).toBeInTheDocument();
-	});
-
-	it("paints each rebase action in the tone its meaning carries", () => {
-		render(OperationBanner, {
-			props: {
-				info: makeInfo({ op_type: "Rebase" }),
-				repoPath: "/repo",
-			},
-		});
-
-		expect(screen.getByRole("button", { name: "Continue" })).toHaveClass(
-			"bg-success-bg",
-		);
-		expect(screen.getByRole("button", { name: "Skip" })).toHaveClass(
-			"bg-warning-bg",
-		);
-		expect(screen.getByRole("button", { name: "Abort" })).toHaveClass(
-			"bg-danger-bg",
-		);
 	});
 
 	it("does not show Continue/Skip/Abort for merge", () => {
@@ -161,16 +109,6 @@ describe("OperationBanner", () => {
 		expect(screen.queryByText("Continue")).toBeNull();
 		expect(screen.queryByText("Skip")).toBeNull();
 		expect(screen.queryByText("Abort")).toBeNull();
-	});
-
-	it("shows progress for rebase", () => {
-		render(OperationBanner, {
-			props: {
-				info: makeInfo({ op_type: "Rebase", progress: "2/5" }),
-				repoPath: "/repo",
-			},
-		});
-		expect(screen.getByText("(2/5)")).toBeInTheDocument();
 	});
 
 	it("shows cherry-pick label", () => {

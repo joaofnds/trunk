@@ -25,7 +25,6 @@ let { info, repoPath, onaction, onopenmessageeditor }: Props = $props();
 let loading = $state(false);
 
 let isMerge = $derived(info.op_type === "Merge");
-let isRebase = $derived(info.op_type === "Rebase");
 let isRevert = $derived(info.op_type === "Revert");
 let isCherryPick = $derived(info.op_type === "CherryPick");
 
@@ -34,59 +33,6 @@ let label = $derived.by(() => {
 	if (info.op_type === "Revert") return "Revert in progress";
 	return "";
 });
-
-async function handleContinue() {
-	loading = true;
-	try {
-		const cmd = isMerge ? "merge_continue" : "rebase_continue";
-		await safeInvoke(cmd, { path: repoPath });
-		showToast(isMerge ? "Merge completed" : "Rebase continued", "success");
-	} catch (e) {
-		reportErrorToast(e, "Continue failed");
-	} finally {
-		loading = false;
-		onaction?.();
-	}
-}
-
-async function handleSkip() {
-	loading = true;
-	try {
-		await safeInvoke("rebase_skip", { path: repoPath });
-	} catch (e) {
-		reportErrorToast(e, "Skip failed");
-	} finally {
-		loading = false;
-		onaction?.();
-	}
-}
-
-async function handleAbort() {
-	const { ask } = await import("@tauri-apps/plugin-dialog");
-	const opName = isMerge ? "merge" : "rebase";
-	const confirmed = await ask(
-		`Abort ${opName}? This will discard all ${opName} progress and return to the previous state.`,
-		{
-			title: `Abort ${opName.charAt(0).toUpperCase() + opName.slice(1)}`,
-			kind: "warning",
-		},
-	);
-	if (!confirmed) return;
-	loading = true;
-	try {
-		const cmd = isMerge ? "merge_abort" : "rebase_abort";
-		await safeInvoke(cmd, { path: repoPath });
-		showToast(
-			`${opName.charAt(0).toUpperCase() + opName.slice(1)} aborted`,
-			"success",
-		);
-	} catch (e) {
-		reportErrorToast(e, "Abort failed");
-	} finally {
-		loading = false;
-		onaction?.();
-	}
-}
 
 // Revert recovery (MSG-06). A Revert state previously rendered no buttons,
 // trapping a cancelled revert in REVERT_HEAD. Continue routes the commit message
@@ -197,43 +143,15 @@ async function handleRevertAbort() {
 	<div
 		class="text-callout text-text flex-1 overflow-hidden flex items-center gap-1 whitespace-nowrap"
 	>
-		{#if isMerge || isRebase}
-			<span class="shrink-0">{isMerge ? 'Merging' : 'Rebasing'}</span>
+		{#if isMerge}
+			<span class="shrink-0">Merging</span>
 			{@render branch(info.source_branch)}
-			<span class="shrink-0">{isMerge ? 'into' : 'onto'}</span>
+			<span class="shrink-0">into</span>
 			{@render branch(info.target_branch)}
-			{#if isRebase && info.progress}
-				<span class="text-text-muted">({info.progress})</span>
-			{/if}
 		{:else}
 			<span>{label}</span>
 		{/if}
 	</div>
-	{#if isRebase}
-		<div class="flex gap-1 shrink-0">
-			<Button
-				size="sm"
-				variant="success"
-				onclick={handleContinue}
-				disabled={loading}
-				>Continue</Button
-			>
-			<Button
-				size="sm"
-				variant="warning"
-				onclick={handleSkip}
-				disabled={loading}
-				>Skip</Button
-			>
-			<Button
-				size="sm"
-				variant="danger"
-				onclick={handleAbort}
-				disabled={loading}
-				>Abort</Button
-			>
-		</div>
-	{/if}
 	{#if isCherryPick}
 		<div class="flex gap-1 shrink-0">
 			<Button
