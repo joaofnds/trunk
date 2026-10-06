@@ -49,12 +49,16 @@ export function resolveSide(status: DiffStatus, selected: DiffLine[]): Side {
 
 /**
  * Prefix a diff line by origin in standard diff format: `+`/`-`/space followed
- * by the original content (its own leading whitespace preserved).
+ * by the original content (its own leading whitespace preserved), without the
+ * newline libgit2 leaves on it, since the excerpt joins its lines with one.
  */
 function prefixLine(line: DiffLine): string {
-	if (line.origin === "Add") return `+${line.content}`;
-	if (line.origin === "Delete") return `-${line.content}`;
-	return ` ${line.content}`;
+	const content = line.content.endsWith("\n")
+		? line.content.slice(0, -1)
+		: line.content;
+	if (line.origin === "Add") return `+${content}`;
+	if (line.origin === "Delete") return `-${content}`;
+	return ` ${content}`;
 }
 
 /**

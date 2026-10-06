@@ -222,6 +222,28 @@ fn a_listed_thread_carries_the_time_it_was_submitted() {
     );
 }
 
+/// Captures before 2026-10-06 kept libgit2's newline on every diff line and
+/// joined them with another, so a stored excerpt holds an empty line after each.
+#[test]
+fn a_listed_diff_excerpt_holds_no_empty_line_a_diff_cannot_have() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let doubled = SubmitThreadRequest {
+        cached_excerpt: Some("-let x = 1;\n\n+let x = 2;\n\n \n".to_string()),
+        ..submission("doubled")
+    };
+    submit_thread_inner(&store, &canonical, doubled, 1_000).unwrap();
+
+    let threads = list_threads_inner(&store, &canonical).unwrap();
+
+    assert_eq!(
+        threads[0].cached_excerpt.as_deref(),
+        Some("-let x = 1;\n+let x = 2;\n "),
+        "every diff line carries a prefix, so only the empty lines go",
+    );
+}
+
 #[test]
 fn a_second_submit_lands_in_the_same_review() {
     let ctx = TestContext::new_empty();

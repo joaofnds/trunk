@@ -216,6 +216,16 @@ describe("buildDiffAnchor", () => {
 		expect(cachedExcerpt).toBe("-removed\n+added");
 	});
 
+	it("separates excerpt lines by one newline when each line carries its own", () => {
+		// libgit2 hands every diff line over with its terminating newline.
+		const lines = [deleteLine(41, "removed\n"), addLine(41, "added\n")];
+		const f = file("Modified", "src/e.ts", lines);
+
+		const { cachedExcerpt } = buildDiffAnchor(OID, f, 0, new Set([0, 1]));
+
+		expect(cachedExcerpt).toBe("-removed\n+added");
+	});
+
 	it("produces an anchor with exactly the six schema fields and no array-index metadata", () => {
 		const lines = [addLine(1, "x")];
 		const f = file("Modified", "src/f.ts", lines);

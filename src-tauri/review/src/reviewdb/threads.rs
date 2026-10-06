@@ -8,7 +8,7 @@
 use super::ids::{self, IdKind};
 use super::replies::{self, Reply};
 use super::{anchor, repo_key, sqlite_error};
-use crate::types::{Anchor, Channel, ContentPin, ThreadState};
+use crate::types::{Anchor, Channel, ContentPin, Source, ThreadState};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use std::collections::HashSet;
@@ -150,9 +150,26 @@ pub fn list_with_replies(
         .collect())
 }
 
+/// Every line of a diff excerpt carries a `+`, `-` or space prefix, so an empty
+/// one belongs to no diff. Captures before 2026-10-06 kept libgit2's newline on
+/// each line and joined them with another, which left one after every line;
+/// dropping them here mends those rows for every reader without a migration.
+fn drop_empty_lines(excerpt: String) -> String {
+    excerpt
+        .split('\n')
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn read_thread(row: &rusqlite::Row) -> Result<Thread, TrunkError> {
     let (anchor, commit_oid) = anchor::from_row(row, ANCHOR_FIRST_COLUMN)?;
     let content_pin = read_pin(row)?;
+    let stored_excerpt: Option<String> = row.get(3).map_err(sqlite_error)?;
+    let cached_excerpt = match &anchor {
+        Some(a) if a.source == Source::Diff => stored_excerpt.map(drop_empty_lines),
+        _ => stored_excerpt,
+    };
     let state: String = row.get(4).map_err(sqlite_error)?;
     let channel: String = row.get(6).map_err(sqlite_error)?;
 
@@ -160,7 +177,7 @@ fn read_thread(row: &rusqlite::Row) -> Result<Thread, TrunkError> {
         id: row.get(0).map_err(sqlite_error)?,
         review_id: row.get(1).map_err(sqlite_error)?,
         text: row.get(2).map_err(sqlite_error)?,
-        cached_excerpt: row.get(3).map_err(sqlite_error)?,
+        cached_excerpt,
         state: ThreadState::from_str(&state)?,
         stale: row.get::<_, i64>(5).map_err(sqlite_error)? != 0,
         channel: Channel::from_str(&channel)?,
