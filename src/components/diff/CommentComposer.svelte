@@ -15,7 +15,7 @@ import {
 	type ReviewComposerSession,
 } from "../../lib/review-editors.svelte.js";
 import type { Anchor, FileDiff, Review } from "../../lib/types.js";
-import Button from "../../lib/ui/Button.svelte";
+import ComposerFrame from "../review/ComposerFrame.svelte";
 
 interface Props {
 	// Diff path passes file/hunkIdx/selectedLineIndices and the composer derives
@@ -100,13 +100,6 @@ $effect(() => {
 			reportErrorToast(error, "Restore draft failed");
 		}
 	});
-});
-
-// Focus the textarea as soon as the composer mounts (it mounts fresh on each open)
-// so the user can type immediately without clicking into it.
-let textareaEl = $state<HTMLTextAreaElement | null>(null);
-$effect(() => {
-	textareaEl?.focus();
 });
 
 const DRAFT_DEBOUNCE_MS = 300;
@@ -251,12 +244,6 @@ async function handleCancel() {
 	}
 }
 
-function submitOnModEnter(event: KeyboardEvent) {
-	if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
-	event.preventDefault();
-	void handleSubmit();
-}
-
 // Instance method the host (DiffPanel) calls before switching the selection to a
 // new range. Confirms only when the draft is dirty (non-empty); an empty draft
 // switches silently. Mirrors DiffPanel.handleDiscardLines' confirm pattern.
@@ -283,133 +270,20 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 }
 </script>
 
-<div class="comment-composer">
-	<header class="composer-header">
+<ComposerFrame
+	{activeReview}
+	{activeReviewId}
+	placeholder="Leave a comment on these lines…"
+	bind:text={composerDraft.text}
+	busy={submitting}
+	submitLabel="Submit"
+	{submitDisabled}
+	onsubmit={() => void handleSubmit()}
+	oncancel={handleCancel}
+	oninput={scheduleDraftSave}
+>
+	{#snippet heading()}
 		<MessageSquare size={12} class="shrink-0 text-accent" aria-hidden="true" />
-		<span class="composer-preview"
-			>{`Comments on lines ${capturedResult.anchor.start_line}-${capturedResult.anchor.end_line}`}</span
-		>
-		<span class="flex-1"></span>
-		<p class="composer-landing">
-			Lands in
-			{#if activeReview}
-				<span class="font-mono text-text">{activeReview.id}</span>
-				<span class="text-text truncate">{activeReview.title}</span>
-			{:else if activeReviewId}
-				<span class="font-mono text-text">{activeReviewId}</span>
-			{:else}
-				<span class="text-text">a new review</span>
-			{/if}
-		</p>
-	</header>
-	<textarea
-		bind:this={textareaEl}
-		class="composer-textarea"
-		placeholder="Leave a comment on these lines…"
-		disabled={submitting}
-		bind:value={composerDraft.text}
-		oninput={scheduleDraftSave}
-		onkeydown={submitOnModEnter}
-	></textarea>
-	<footer class="composer-actions">
-		<span class="composer-hint"><kbd>⌘</kbd><kbd>↵</kbd> submit</span>
-		<span class="flex-1"></span>
-		<Button
-			size="sm"
-			variant="ghost"
-			disabled={submitting}
-			onclick={handleCancel}
-			>Cancel</Button
-		>
-		<Button
-			variant="primary"
-			size="sm"
-			data-testid="comment-submit"
-			disabled={submitDisabled}
-			onclick={handleSubmit}
-		>
-			Submit
-		</Button>
-	</footer>
-</div>
-
-<style>
-.comment-composer {
-	display: flex;
-	flex-direction: column;
-	width: 100%;
-	box-sizing: border-box;
-	background: var(--color-comment-card-bg);
-	border: 1px solid var(--color-accent-border);
-	border-radius: var(--radius);
-	overflow: hidden;
-}
-
-.comment-composer:focus-within {
-	border-color: var(--color-accent);
-}
-
-.composer-header {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: var(--space-1) var(--space-2);
-	border-bottom: 1px solid var(--color-border);
-}
-
-.composer-preview {
-	color: var(--color-text-strong);
-	font-size: var(--text-small);
-	font-weight: var(--weight-medium);
-}
-
-.composer-landing {
-	display: flex;
-	align-items: center;
-	gap: var(--space-1);
-	margin: 0;
-	min-width: 0;
-	color: var(--color-text-muted);
-	font-size: var(--text-small);
-	white-space: nowrap;
-}
-
-.composer-textarea {
-	min-height: calc(15 * var(--u));
-	resize: vertical;
-	padding: var(--space-2);
-	font-size: var(--text-callout);
-	font-family: var(--font-sans);
-	color: var(--color-text);
-	background: var(--color-comment-card-bg);
-	border: none;
-	box-sizing: border-box;
-}
-
-.composer-textarea:focus {
-	outline: none;
-}
-
-.composer-actions {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: var(--space-1) var(--space-2);
-	border-top: 1px solid var(--color-border);
-}
-
-.composer-hint {
-	display: flex;
-	align-items: center;
-	gap: var(--space-1);
-	color: var(--color-text-subtle);
-	font-size: var(--text-caption);
-}
-
-.composer-hint kbd {
-	padding: 0 var(--space-1);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius);
-	font-family: var(--font-sans);
-}
-</style>
+		{`Comments on lines ${capturedResult.anchor.start_line}-${capturedResult.anchor.end_line}`}
+	{/snippet}
+</ComposerFrame>
