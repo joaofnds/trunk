@@ -88,7 +88,12 @@ describe("CommentComposer", () => {
 		vi.useRealTimers();
 	});
 
-	function renderComposer(opts: { scheduler?: FakeScheduler } = {}) {
+	function renderComposer(
+		opts: {
+			scheduler?: FakeScheduler;
+			landingReview?: { id: string; title: string } | null;
+		} = {},
+	) {
 		return render(CommentComposer, {
 			props: {
 				file: modifiedFile,
@@ -97,6 +102,7 @@ describe("CommentComposer", () => {
 				commitOid: "abc123",
 				repoPath: "/repo",
 				onclose: () => {},
+				landingReview: opts.landingReview ?? null,
 			},
 			...(opts.scheduler
 				? { context: new Map([[SCHEDULER, opts.scheduler]]) }
@@ -188,6 +194,35 @@ describe("CommentComposer", () => {
 		});
 
 		expect(screen.getByText("Comments on lines 11-12")).toBeTruthy();
+	});
+
+	it("names the review the comment lands in", () => {
+		renderComposer({
+			landingReview: { id: "r3m9", title: "Graph lane colors" },
+		});
+
+		expect(screen.getByText(/Lands in/)).toHaveTextContent(
+			"Lands in r3m9 Graph lane colors",
+		);
+	});
+
+	it("says a comment with no active review starts a new one", () => {
+		renderComposer({ landingReview: null });
+
+		expect(screen.getByText(/Lands in/)).toHaveTextContent(
+			"Lands in a new review",
+		);
+	});
+
+	it("submits on Cmd+Enter", async () => {
+		renderComposer();
+		const textarea = screen.getByRole("textbox");
+		await fireEvent.input(textarea, { target: { value: "ship it" } });
+
+		await fireEvent.keyDown(textarea, { key: "Enter", metaKey: true });
+		await flush();
+
+		expect(mockedInvoke.mock.calls.map((c) => c[0])).toContain("add_thread");
 	});
 
 	it.each([

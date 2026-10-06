@@ -177,6 +177,22 @@ describe("a comment left on a commit's diff", () => {
 		expect(doc).toContain("keep this unsaved comment");
 	});
 
+	it("names the review a new diff comment lands in", async () => {
+		const app = await setup({ repo: TWO_COMMITS });
+		await createReviewThread(app);
+		const active = await waitFor("the active review", () =>
+			app.review.activeReviewId(),
+		);
+		await app.review.jumpToThread();
+
+		await app.review.commentOnHunk(0);
+
+		const landing = await waitFor("the composer's landing review", () =>
+			app.review.composerLanding(),
+		);
+		expect(landing).toContain(`Lands in ${active}`);
+	});
+
 	it("keeps panel and inline reply drafts separate through hiding and remounting", async () => {
 		const app = await setup({ repo: TWO_COMMITS });
 		await createReviewThread(app);

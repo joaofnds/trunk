@@ -36,6 +36,7 @@ const REPLY_BODY = ".thread-reply-text";
 const ROOT_EDIT_TEXT = ".comment-card-body textarea";
 const REPLY_EDIT_TEXT = 'textarea[aria-label="Edit reply"]';
 const COMMIT_NOTES = ".commit-notes";
+const ACTIVE_REVIEW_ROW = 'nav[aria-label="Reviews"] [aria-current="true"]';
 const COMMIT_NOTE_TEXT = 'textarea[placeholder="Leave a note on this commit…"]';
 
 /**
@@ -198,6 +199,19 @@ export class ReviewDriver {
 		return field && composer
 			? { text: field.value, range: textIn(composer, ".composer-preview") }
 			: null;
+	}
+
+	/** Where the visible composer says its comment will land. */
+	composerLanding(): string | null {
+		const composer = visibleElement<HTMLElement>(".comment-composer");
+		return composer ? textIn(composer, ".composer-landing") : null;
+	}
+
+	/** The id of the review the panel marks active, or null when none is. */
+	activeReviewId(): string | null {
+		const row = document.querySelector<HTMLElement>(ACTIVE_REVIEW_ROW);
+		const label = row?.getAttribute("aria-label");
+		return label ? label.slice("Activate review ".length) : null;
 	}
 
 	/** Types an unsent reply on the first visible thread. */

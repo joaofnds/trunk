@@ -82,6 +82,8 @@ interface Props {
 	reviewCommentsVisible?: boolean;
 	reviewFilter?: ReviewFilter;
 	activeReviewId?: string | null;
+	/** The review a new comment lands in; null when submitting starts one. */
+	landingReview?: { id: string; title: string } | null;
 	viewComments?: Thread[];
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	composerSession?: ReviewComposerSession;
@@ -112,6 +114,7 @@ let {
 	reviewCommentsVisible = true,
 	reviewFilter = "all",
 	activeReviewId = null,
+	landingReview = null,
 	viewComments = [],
 	editorSessionForThread,
 	composerSession,
@@ -1156,6 +1159,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 				resolveCommitOid={resolveCommentCommitOid}
 				{repoPath}
 				{activeReviewId}
+				{landingReview}
 				originatingReviewId={composerReviewId}
 				canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
 				onclose={composerOnClose}
@@ -1177,6 +1181,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 						: resolveCommentCommitOid}
 				{repoPath}
 				{activeReviewId}
+				{landingReview}
 				originatingReviewId={composerReviewId}
 				canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
 				onclose={composerOnClose}

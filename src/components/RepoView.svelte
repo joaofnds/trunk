@@ -202,6 +202,11 @@ const reviewComments = createReviewComments(
 	untrack(() => repoPath),
 	scheduler,
 );
+const landingReview = $derived(
+	reviewComments.reviews.find(
+		(review) => review.id === reviewComments.activeReviewId,
+	) ?? null,
+);
 const reviewEditors: ReviewEditorStore = createReviewEditorStore();
 onDestroy(() => reviewComments.destroy());
 
@@ -2149,6 +2154,7 @@ function stepRightPane(delta: number) {
 						{reviewFilter}
 						viewComments={rebaseViewComments}
 						activeReviewId={reviewComments.activeReviewId}
+						{landingReview}
 						editorSessionForThread={editorSessionForDiffThread}
 						composerSession={diffComposerSession}
 						composerTarget={diffComposerTarget}
@@ -2286,6 +2292,7 @@ function stepRightPane(delta: number) {
 						{reviewFilter}
 						{viewComments}
 						activeReviewId={reviewComments.activeReviewId}
+						{landingReview}
 						editorSessionForThread={editorSessionForDiffThread}
 						composerSession={diffComposerSession}
 						composerTarget={diffComposerTarget}
