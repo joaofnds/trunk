@@ -36,7 +36,7 @@ describe("a current-file comment filtered out before autosave", () => {
 
 		expect(app.review.composerDraft()).toEqual({
 			text: "name this constant",
-			range: "Comments on lines 1-1",
+			range: "Comment on line 1",
 		});
 		await app.review.submit();
 		await app.review.openPanel();
@@ -93,7 +93,7 @@ describe("a current-file comment filtered out before autosave", () => {
 		await app.settled();
 		expect(app.review.composerDraft()).toEqual({
 			text: "keep this replacement draft",
-			range: "Comments on lines 1-1",
+			range: "Comment on line 1",
 		});
 		await app.review.openPanel();
 		const threads = await waitFor("the submitted current-file thread", () => {

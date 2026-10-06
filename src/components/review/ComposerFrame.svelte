@@ -3,6 +3,7 @@ import type { Snippet } from "svelte";
 import type { Review } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
 import Keycap from "../../lib/ui/Keycap.svelte";
+import Tag from "../../lib/ui/Tag.svelte";
 
 interface Props {
 	/** The icon and line naming what the comment is on. */
@@ -10,6 +11,8 @@ interface Props {
 	/** The active review's id and title, null while the host has not read them. */
 	activeReview: Pick<Review, "id" | "title"> | null;
 	activeReviewId: string | null;
+	/** What the landing line calls the review a comment starts when none is active. */
+	newReviewName?: string;
 	placeholder: string;
 	text: string;
 	busy: boolean;
@@ -26,6 +29,7 @@ let {
 	heading,
 	activeReview,
 	activeReviewId,
+	newReviewName = "a new review",
 	placeholder,
 	text = $bindable(),
 	busy,
@@ -69,12 +73,12 @@ function onkeydown(event: KeyboardEvent) {
 		<p class="composer-landing">
 			Lands in
 			{#if activeReview}
-				<span class="font-mono text-text">{activeReview.id}</span>
-				<span class="text-text truncate">{activeReview.title}</span>
+				<Tag variant="label">{activeReview.id}</Tag>
+				<span class="composer-landing-name">{activeReview.title}</span>
 			{:else if activeReviewId}
-				<span class="font-mono text-text">{activeReviewId}</span>
+				<Tag variant="label">{activeReviewId}</Tag>
 			{:else}
-				<span class="text-text">a new review</span>
+				<span class="composer-landing-name">{newReviewName}</span>
 			{/if}
 		</p>
 	</header>
@@ -109,6 +113,8 @@ function onkeydown(event: KeyboardEvent) {
 </fieldset>
 
 <style>
+/* A composer reads as the one live card in the diff: an accent edge and a soft
+   accent ring set it apart from the threads around it. */
 .comment-composer {
 	display: flex;
 	min-width: 0;
@@ -120,6 +126,7 @@ function onkeydown(event: KeyboardEvent) {
 	background: var(--color-comment-card-bg);
 	border: 1px solid var(--color-accent-border);
 	border-radius: var(--radius);
+	box-shadow: 0 0 0 2px var(--color-accent-bg);
 	overflow: hidden;
 }
 
@@ -131,8 +138,11 @@ function onkeydown(event: KeyboardEvent) {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	padding: var(--space-1) var(--space-2);
-	border-bottom: 1px solid var(--color-border);
+	height: var(--control-h);
+	padding: 0 var(--space-3);
+	background: var(--color-comment-card-header-bg);
+	box-shadow: var(--shadow-hairline);
+	white-space: nowrap;
 }
 
 .composer-preview {
@@ -140,31 +150,42 @@ function onkeydown(event: KeyboardEvent) {
 	align-items: center;
 	gap: var(--space-2);
 	color: var(--color-text-strong);
-	font-size: var(--text-small);
+	font-size: var(--text-callout);
 	font-weight: var(--weight-medium);
 }
 
 .composer-landing {
 	display: flex;
 	align-items: center;
-	gap: var(--space-1);
+	gap: var(--space-2);
 	margin: 0;
 	min-width: 0;
-	color: var(--color-text-muted);
+	color: var(--color-text-subtle);
 	font-size: var(--text-small);
-	white-space: nowrap;
+}
+
+.composer-landing-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--color-text);
+	font-weight: var(--weight-medium);
 }
 
 .composer-textarea {
-	min-height: calc(15 * var(--u));
+	height: calc(20 * var(--u));
 	resize: vertical;
-	padding: var(--space-2);
+	padding: var(--space-2) var(--space-3);
 	font-size: var(--text-callout);
+	line-height: var(--leading-normal);
 	font-family: var(--font-sans);
-	color: var(--color-text);
-	background: var(--color-comment-card-bg);
+	color: var(--color-text-strong);
+	background: var(--color-bg);
 	border: none;
 	box-sizing: border-box;
+}
+
+.composer-textarea::placeholder {
+	color: var(--color-text-subtle);
 }
 
 .composer-textarea:focus {
@@ -175,7 +196,7 @@ function onkeydown(event: KeyboardEvent) {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	padding: var(--space-1) var(--space-2);
+	padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
 	border-top: 1px solid var(--color-border);
 }
 
@@ -183,7 +204,9 @@ function onkeydown(event: KeyboardEvent) {
 	display: flex;
 	align-items: center;
 	gap: var(--space-1);
+	overflow: hidden;
 	color: var(--color-text-subtle);
-	font-size: var(--text-caption);
+	font-size: var(--text-small);
+	white-space: nowrap;
 }
 </style>

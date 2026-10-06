@@ -85,7 +85,7 @@ describe("an interactive-rebase diff comment", () => {
 			waitFor("the retained rebase comment", () => app.review.composerDraft()),
 		).resolves.toEqual({
 			text: DRAFT,
-			range: "Comments on lines 8-8",
+			range: "Comment on line 8",
 		});
 		await app.review.submit();
 		await app.rebaseEditor.cancel();

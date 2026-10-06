@@ -244,6 +244,12 @@ async function handleCancel() {
 	}
 }
 
+function rangeHeading(start: number, end: number): string {
+	return start === end
+		? `Comment on line ${start}`
+		: `Comments on lines ${start}-${end}`;
+}
+
 // Instance method the host (DiffPanel) calls before switching the selection to a
 // new range. Confirms only when the draft is dirty (non-empty); an empty draft
 // switches silently. Mirrors DiffPanel.handleDiscardLines' confirm pattern.
@@ -273,7 +279,8 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 <ComposerFrame
 	{activeReview}
 	{activeReviewId}
-	placeholder="Leave a comment on these lines…"
+	placeholder="Leave a comment… Markdown supported"
+	newReviewName="a new composing review"
 	bind:text={composerDraft.text}
 	busy={submitting}
 	submitLabel="Submit"
@@ -284,6 +291,6 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 >
 	{#snippet heading()}
 		<MessageSquare size={12} class="shrink-0 text-accent" aria-hidden="true" />
-		{`Comments on lines ${capturedResult.anchor.start_line}-${capturedResult.anchor.end_line}`}
+		{rangeHeading(capturedResult.anchor.start_line, capturedResult.anchor.end_line)}
 	{/snippet}
 </ComposerFrame>

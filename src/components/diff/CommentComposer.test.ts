@@ -198,6 +198,30 @@ describe("CommentComposer", () => {
 		expect(screen.getByText("Comments on lines 11-12")).toBeTruthy();
 	});
 
+	it("names a single line in the singular", () => {
+		render(CommentComposer, {
+			props: {
+				file: modifiedFile,
+				hunkIdx: 0,
+				selectedLineIndices: new Set([1]),
+				commitOid: "abc123",
+				repoPath: "/repo",
+				onclose: () => {},
+			},
+		});
+
+		expect(screen.getByText("Comment on line 11")).toBeTruthy();
+	});
+
+	it("invites Markdown in the empty text", () => {
+		renderComposer();
+
+		expect(screen.getByRole("textbox")).toHaveAttribute(
+			"placeholder",
+			"Leave a comment… Markdown supported",
+		);
+	});
+
 	it("names the review the comment lands in", () => {
 		renderComposer({
 			activeReview: { id: "r3m9", title: "Graph lane colors" },
@@ -220,7 +244,7 @@ describe("CommentComposer", () => {
 		renderComposer({ activeReview: null });
 
 		expect(screen.getByText(/Lands in/)).toHaveTextContent(
-			"Lands in a new review",
+			"Lands in a new composing review",
 		);
 	});
 

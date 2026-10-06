@@ -83,7 +83,7 @@ describe("a current-file view whose file changes on disk", () => {
 
 		expect(app.review.composerDraft()).toEqual({
 			text: "half a thought",
-			range: "Comments on lines 1-1",
+			range: "Comment on line 1",
 		});
 	});
 

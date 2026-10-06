@@ -61,7 +61,7 @@ describe("a full-file comment on a commit", () => {
 			),
 		).resolves.toEqual({
 			text: "keep this full-file target",
-			range: "Comments on lines 8-8",
+			range: "Comment on line 8",
 		});
 		await app.review.submit();
 		await app.review.openPanel();

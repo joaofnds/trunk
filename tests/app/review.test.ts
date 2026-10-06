@@ -159,7 +159,7 @@ describe("a comment left on a commit's diff", () => {
 		);
 		expect(restored).toEqual({
 			text: "keep this unsaved comment",
-			range: "Comments on lines 3-3",
+			range: "Comment on line 3",
 		});
 		await app.review.submit();
 		await app.review.openPanel();
