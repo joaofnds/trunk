@@ -204,7 +204,9 @@ describe("discarding every change", () => {
 
 		await app.staging.discardSelectedLines();
 		await app.elapseUntil("the discard to restore the file", () =>
-			app.repo.workingTreeFile(FILE) === fileOf(NUMBERED) ? true : null,
+			app.repo.workingTreeFileIfPresent(FILE) === fileOf(NUMBERED)
+				? true
+				: null,
 		);
 		await app.settled();
 

@@ -293,6 +293,17 @@ export class RepoDriver {
 		return readFileSync(join(this.path, relativePath), "utf8");
 	}
 
+	/** The same file, or null while it is absent. A discard rewrites the file,
+	 *  and a poll has landed in the moment it was missing (ENOENT). */
+	workingTreeFileIfPresent(relativePath: string): string | null {
+		try {
+			return this.workingTreeFile(relativePath);
+		} catch (e) {
+			if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+			throw e;
+		}
+	}
+
 	/** Writes a working-tree file, the edit a user makes in their own editor.
 	 *  Nothing refreshes on it — the watcher is off — so the panel reads the
 	 *  content at the next gesture that reloads status. */
