@@ -122,6 +122,9 @@ for (const [state, color] of [
 	check(`${state} pill label on a card`, color, "var(--color-comment-card-bg)", { layers: [t(color, 12)] });
 	check(`${state} pill label on the panel`, color, "var(--color-surface)", { layers: [t(color, 12)] });
 }
+check("excerpt line number on an added line", "var(--color-text-muted)", "var(--color-comment-card-bg)", { layers: ["var(--color-diff-add-bg)"] });
+check("excerpt line number on a removed line", "var(--color-text-muted)", "var(--color-comment-card-bg)", { layers: ["var(--color-diff-delete-bg)"] });
+check("excerpt line number on a context line", "var(--color-text-muted)", "var(--color-comment-card-bg)");
 check("dismissed pill label on a card", "var(--color-thread-dismissed)", "var(--color-comment-card-bg)", { layers: ["var(--color-hover)"] });
 check("agent name on a card", "var(--color-accent-alt)", "var(--color-comment-card-bg)");
 check("thread count in the diff gutter", "var(--color-on-accent)", "var(--color-accent)");

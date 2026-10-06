@@ -540,7 +540,7 @@ async function requestDeleteReply(replyId: string) {
 	width: calc(8 * var(--u));
 	padding-right: var(--space-1);
 	text-align: right;
-	color: var(--color-text-subtle);
+	color: var(--color-text-muted);
 }
 .diff-gutter {
 	flex-shrink: 0;
