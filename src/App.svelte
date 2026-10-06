@@ -788,6 +788,7 @@ $effect(() => {
 								tabActive={tab.id === activeTabId}
 								reviewActive={reviewPanelOpen && tab.id === activeTabId}
 								{reviewFilter}
+								onreviewfilterchange={handleReviewFilterChange}
 								contentMode={diffContentMode}
 								oncontentmodechange={handleDiffContentModeChange}
 								oncommentcountschange={(c) => setCommentCounts(tab.id, c)}

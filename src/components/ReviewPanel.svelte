@@ -5,13 +5,17 @@
 // in the center pane (UI-SPEC:133); jump is driven by the host via onJump.
 
 import Check from "@lucide/svelte/icons/check";
+import Circle from "@lucide/svelte/icons/circle";
+import CircleSlash from "@lucide/svelte/icons/circle-slash";
 import Clipboard from "@lucide/svelte/icons/clipboard";
+import Clock from "@lucide/svelte/icons/clock";
+import Contrast from "@lucide/svelte/icons/contrast";
 import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
 import Pencil from "@lucide/svelte/icons/pencil";
 import Plus from "@lucide/svelte/icons/plus";
 import Trash2 from "@lucide/svelte/icons/trash-2";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { untrack } from "svelte";
+import { type Component, untrack } from "svelte";
 import { copySha } from "../lib/clipboard.js";
 import { commitOidForComment } from "../lib/comment-counts.js";
 import { errorMessage } from "../lib/error-report.js";
@@ -57,6 +61,9 @@ interface Props {
 	// milestone 5's hide-all has a single thing to hide.
 	oncommentonfile?: () => void;
 	reviewFilter?: ReviewFilter;
+	// Pressing a state's count in the header asks the owner of the filter, the
+	// toolbar's selector, to show only that state, or every thread again.
+	onreviewfilterchange?: (filter: ReviewFilter) => void;
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	editorNoteSessionFor?: (
 		reviewId: string | null,
@@ -72,6 +79,7 @@ let {
 	onJumpToCommit,
 	oncommentonfile,
 	reviewFilter = "all",
+	onreviewfilterchange,
 	editorSessionForThread,
 	editorNoteSessionFor,
 }: Props = $props();
@@ -79,6 +87,44 @@ let {
 const commits = $derived(reviewComments.commits);
 const comments = $derived(reviewComments.threads);
 const visibleComments = $derived(filterThreads(comments, reviewFilter));
+
+// The header's counts, one per state a thread can be filtered to, in the
+// toolbar selector's order. Each counts what pressing it would show.
+const STATE_FILTERS: readonly {
+	value: Exclude<ReviewFilter, "all" | "none">;
+	label: string;
+	icon: Component;
+	tone: string;
+}[] = [
+	{ value: "open", label: "Open", icon: Circle, tone: "text-thread-open" },
+	{
+		value: "addressed",
+		label: "Addressed",
+		icon: Contrast,
+		tone: "text-thread-addressed",
+	},
+	{ value: "done", label: "Done", icon: Check, tone: "text-thread-done" },
+	{
+		value: "dismissed",
+		label: "Dismissed",
+		icon: CircleSlash,
+		tone: "text-thread-dismissed",
+	},
+	{ value: "stale", label: "Stale", icon: Clock, tone: "text-thread-stale" },
+];
+
+const stateCounts = $derived(
+	Object.fromEntries(
+		STATE_FILTERS.map((f) => [
+			f.value,
+			comments.filter((t) => threadMatchesFilter(t, f.value)).length,
+		]),
+	) as Record<(typeof STATE_FILTERS)[number]["value"], number>,
+);
+
+function toggleFilter(filter: ReviewFilter) {
+	onreviewfilterchange?.(reviewFilter === filter ? "all" : filter);
+}
 const reviews = $derived(reviewComments.reviews);
 const activeReviewId = $derived(reviewComments.activeReviewId);
 const activeReview = $derived(
@@ -609,65 +655,94 @@ $effect(() => {
 		aria-label="Review threads"
 		class="flex flex-col min-h-0 overflow-hidden"
 	>
-		<!-- Panel-level header (Phase 72): hosts the Copy button. Disabled until the
-       session has >=1 comment; the disabled tooltip and the hard backstop in
-       commands/review.rs (no_comments TrunkError) form the gate. The header
-       sits above the scrollable list body so the button is always visible
-       while the list scrolls. -->
-		<div
-			class="flex items-center gap-2 h-bar py-0 px-3 bg-surface shadow-hairline shrink-0 text-callout"
-		>
-			{#if oncommentonfile && reviewFilter !== "none"}
-				<Button
-					size="sm"
-					onclick={oncommentonfile}
-					title="Comment on any tracked file, including one no change touches"
-				>
-					<MessageSquarePlus size={14} />
-					<span>Comment on a file…</span>
-				</Button>
-			{/if}
-			<span class="flex-1"></span>
-			{#if activeReview && !activeReview.published}
-				<Button
-					size="sm"
-					variant={endConfirming ? "accent" : "secondary"}
-					onclick={onEndClick}
-					disabled={!hasAnyComment}
-					title={hasAnyComment
-          ? endConfirming
-            ? ""
-            : "Publish this review so an agent can read it. Nothing is deleted."
-          : "A review needs at least one comment before it can be published"}
-				>
-					<Check size={14} />
-					<span>{endConfirming ? "Click again to confirm" : "End review"}</span>
-				</Button>
-			{/if}
-			<Button
-				size="sm"
-				onclick={onCopyClick}
-				disabled={!hasAnyComment}
-				title={hasAnyComment ? "" : "Add at least one comment to generate"}
-			>
-				{#if copied}
-					<span aria-hidden="true">✓</span>
-					<span>Copied</span>
-				{:else}
-					<Clipboard size={14} />
-					<span>Copy</span>
+		<!-- The selected review's name and state over its actions, and a count of
+		     its threads in each state that filters the list below. Copy is disabled
+		     until the review has a comment; commands/review.rs refuses an empty one
+		     too (no_comments). The header stays put while the list scrolls. -->
+		<header class="flex flex-col gap-1 py-2 px-3 shadow-hairline shrink-0">
+			<div class="flex items-center gap-2 min-w-0">
+				{#if activeReview}
+					<h1
+						class="m-0 min-w-0 truncate text-body font-semibold text-text-strong"
+					>
+						{activeReview.title}
+					</h1>
+					<span class="shrink-0 font-mono text-caption text-text-muted"
+						>{activeReview.id}</span
+					>
+					<StatePill state={activeReview.state} />
 				{/if}
-			</Button>
-		</div>
+				<span class="flex-1"></span>
+				{#if oncommentonfile && reviewFilter !== "none"}
+					<Button
+						size="sm"
+						onclick={oncommentonfile}
+						title="Comment on any tracked file, including one no change touches"
+					>
+						<MessageSquarePlus size={14} />
+						<span>Comment on a file…</span>
+					</Button>
+				{/if}
+				{#if activeReview && !activeReview.published}
+					<Button
+						size="sm"
+						variant={endConfirming ? "accent" : "secondary"}
+						onclick={onEndClick}
+						disabled={!hasAnyComment}
+						title={hasAnyComment
+							? endConfirming
+								? ""
+								: "Publish this review so an agent can read it. Nothing is deleted."
+							: "A review needs at least one comment before it can be published"}
+					>
+						<Check size={14} />
+						<span
+							>{endConfirming ? "Click again to confirm" : "End review"}</span
+						>
+					</Button>
+				{/if}
+				<Button
+					size="sm"
+					onclick={onCopyClick}
+					disabled={!hasAnyComment}
+					title={hasAnyComment ? "" : "Add at least one comment to generate"}
+				>
+					{#if copied}
+						<span aria-hidden="true">✓</span>
+						<span>Copied</span>
+					{:else}
+						<Clipboard size={14} />
+						<span>Copy</span>
+					{/if}
+				</Button>
+			</div>
+			{#if activeReview}
+				<fieldset
+					aria-label="Filter threads by state"
+					class="flex items-center gap-1 min-w-auto text-small"
+				>
+					{#each STATE_FILTERS as filter (filter.value)}
+						{@const count = stateCounts[filter.value]}
+						<Button
+							size="sm"
+							variant="ghost"
+							aria-pressed={reviewFilter === filter.value}
+							aria-label="{filter.label} threads: {count}"
+							title="Show only {filter.label.toLowerCase()} threads"
+							onclick={() => toggleFilter(filter.value)}
+						>
+							<span class="inline-flex {filter.tone}" aria-hidden="true">
+								<filter.icon size={12} strokeWidth={2.5} />
+							</span>
+							<span>{count}</span>
+						</Button>
+					{/each}
+				</fieldset>
+			{/if}
+		</header>
 		<div
 			class="flex flex-col flex-1 min-h-0 overflow-auto p-3 bg-surface text-text text-callout leading-normal"
 		>
-			{#if activeReview && reviewFilter !== "none"}
-				<span class="text-text-muted text-small leading-normal py-1 px-0">
-					{`${visibleComments.length} ${visibleComments.length === 1 ? "comment" : "comments"} · ${commits.length} ${commits.length === 1 ? "commit" : "commits"}`}
-				</span>
-			{/if}
-
 			<!-- Phase 73-03 — Three-way empty-state branching (D-06). Order is specificity-
        first: cold (no session) → warm-no-commits (existing copy preserved
        verbatim) → warm-with-commits-zero-comments (replaces prior "No comments

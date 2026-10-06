@@ -88,6 +88,29 @@ export class ReviewDriver {
 		});
 	}
 
+	/** Presses the panel header's count for one thread state, which hands the
+	 *  filter to the toolbar's selector, and waits for the selector to show it. */
+	async pressStateCount(filterValue: ReviewFilter): Promise<void> {
+		const label = filterValue[0].toUpperCase() + filterValue.slice(1);
+		const count = await waitFor(`the ${filterValue} threads count`, () =>
+			document.querySelector<HTMLButtonElement>(
+				`[aria-label^="${label} threads: "]`,
+			),
+		);
+		count.click();
+
+		await waitFor(`the review filter to become ${filterValue}`, () =>
+			this.reviewFilter() === filterValue ? true : null,
+		);
+	}
+
+	/** The toolbar selector's current review filter, or null while it is hidden. */
+	reviewFilter(): string | null {
+		return (
+			document.querySelector<HTMLSelectElement>(REVIEW_FILTER)?.value ?? null
+		);
+	}
+
 	/** Comments the hunk at `ordinal`, topmost first. With no line selection this
 	 *  is the whole-hunk affordance. */
 	async commentOnHunk(ordinal: number): Promise<void> {

@@ -78,6 +78,18 @@ describe("a comment left on a commit's diff", () => {
 		expect(doc).toContain(`${ANCHOR} (${commit}, after) — done`);
 	});
 
+	it("filters the panel to a state from that state's count", async () => {
+		const app = await setup({ repo: TWO_COMMITS });
+		await createReviewThread(app);
+
+		await app.review.pressStateCount("done");
+
+		await waitFor("the open thread to leave the done filter", () =>
+			app.review.threads().length === 0 ? true : null,
+		);
+		expect(app.review.reviewFilter()).toBe("done");
+	});
+
 	it.each(["none", "done"] as const)(
 		"copies the raw review when the %s filter hides every thread",
 		async (filter) => {

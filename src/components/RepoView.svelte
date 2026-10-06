@@ -119,6 +119,8 @@ interface Props {
 	reviewActive: boolean;
 	// Global review presentation filter, owned by App (persisted pref).
 	reviewFilter?: ReviewFilter;
+	// Asks App to change that filter, from the review panel's state counts.
+	onreviewfilterchange?: (filter: ReviewFilter) => void;
 	contentMode: ContentMode;
 	oncontentmodechange: (mode: ContentMode) => void;
 	// Reports whether the active review tab's center pane is showing the review PANEL
@@ -156,6 +158,7 @@ let {
 	tabActive,
 	reviewActive,
 	reviewFilter = "all",
+	onreviewfilterchange,
 	contentMode,
 	oncontentmodechange,
 	onreviewpanelshowingchange,
@@ -2251,6 +2254,7 @@ function stepRightPane(delta: number) {
 							session={reviewSession}
 							{reviewComments}
 							{reviewFilter}
+							{onreviewfilterchange}
 							editorSessionForThread={editorSessionForPanelThread}
 							{editorNoteSessionFor}
 							onJump={handleReviewJump}

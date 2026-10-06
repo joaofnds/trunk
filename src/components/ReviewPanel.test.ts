@@ -13,6 +13,7 @@ import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommentResolution,
 	Review,
+	ReviewFilter,
 	SessionCommit,
 	Thread,
 } from "../lib/types.js";
@@ -1979,72 +1980,102 @@ describe("empty states", () => {
 // Phase 73-03 — Session summary caption. `{N} comments · {M} commits` above the
 // list whenever a review is active; hidden when the repo has none.
 // The middle dot is U+00B7 (literal · character — NOT * or -).
-describe("summary line", () => {
-	it("renders a singular summary line for one comment and one commit", async () => {
-		installReads({
-			commits: commits.slice(0, 1),
-			comments: [lineAnchoredComment("c1", COMMIT_A, "note on A")],
-			resolutions: [resolvable("c1")],
-		});
-		render(ReviewPanel, {
+describe("header", () => {
+	function renderPanel(
+		props: {
+			reviewFilter?: ReviewFilter;
+			onreviewfilterchange?: () => void;
+		} = {},
+	) {
+		return render(ReviewPanel, {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				...props,
 			},
 		});
-		await flush();
+	}
 
-		expect(screen.getByText("1 comment · 1 commit")).toBeInTheDocument();
-	});
+	const THREADS = [
+		aThread({ id: "t1", commit_oid: COMMIT_A, state: "open" }),
+		aThread({ id: "t2", commit_oid: COMMIT_A, state: "open", stale: true }),
+		aThread({ id: "t3", commit_oid: COMMIT_A, state: "addressed" }),
+		aThread({ id: "t4", commit_oid: COMMIT_A, state: "done" }),
+	];
 
-	it("renders session summary line when session active", async () => {
+	it("names the active review by title, id and state", async () => {
 		installReads({
 			commits,
-			comments: [
-				lineAnchoredComment("c1", COMMIT_A, "x"),
-				lineAnchoredComment("c2", COMMIT_A, "y"),
-			],
-			resolutions: [resolvable("c1"), resolvable("c2")],
+			comments: THREADS,
+			reviews: [aReview({ title: "Watcher review", state: "ready" })],
 		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
+		renderPanel();
 		await flush();
 
-		expect(screen.getByText("2 comments · 2 commits")).toBeInTheDocument();
+		const heading = screen.getByRole("heading", { level: 1 });
+		expect(heading).toHaveTextContent("Watcher review");
+		const header = heading.closest("header") as HTMLElement;
+		expect(header).toHaveTextContent(ACTIVE_REVIEW);
+		expect(header).toHaveTextContent("Ready");
 	});
 
-	it("no summary line when cold", async () => {
-		installReads({
-			commits: [],
-			comments: [],
-			resolutions: [],
-			reviews: [],
-			activeReviewId: null,
-		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
+	it("counts the active review's threads in each state", async () => {
+		installReads({ commits, comments: THREADS });
+		renderPanel();
 		await flush();
 
-		// The "comments · " substring is unique to the caption — it cannot appear
-		// in the cold-state copy ("No active review" / "Toggle review mode…").
-		expect(screen.queryByText(/comments · /)).toBeNull();
+		expect(
+			screen.getByRole("button", { name: "Open threads: 2" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Addressed threads: 1" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Done threads: 1" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Dismissed threads: 0" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Stale threads: 1" }),
+		).toBeInTheDocument();
+	});
+
+	it("filters the list to a state when its count is pressed", async () => {
+		const onreviewfilterchange = vi.fn();
+		installReads({ commits, comments: THREADS });
+		renderPanel({ onreviewfilterchange });
+		await flush();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Addressed threads: 1" }),
+		);
+
+		expect(onreviewfilterchange).toHaveBeenCalledWith("addressed");
+	});
+
+	it("shows every thread again when the pressed count is pressed", async () => {
+		const onreviewfilterchange = vi.fn();
+		installReads({ commits, comments: THREADS });
+		renderPanel({ reviewFilter: "open", onreviewfilterchange });
+		await flush();
+
+		const open = screen.getByRole("button", { name: "Open threads: 2" });
+		expect(open).toHaveAttribute("aria-pressed", "true");
+		await fireEvent.click(open);
+
+		expect(onreviewfilterchange).toHaveBeenCalledWith("all");
+	});
+	it("names no review when the repo has none", async () => {
+		installReads({ reviews: [], activeReviewId: null });
+		renderPanel();
+		await flush();
+
+		expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+		expect(screen.queryByRole("button", { name: /threads: / })).toBeNull();
 	});
 });
 
