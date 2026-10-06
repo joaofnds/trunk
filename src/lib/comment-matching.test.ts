@@ -4,7 +4,8 @@ import {
 	commentsForLine,
 	commentsForView,
 	resolveViewOid,
-	spannedByComment,
+	threadsCovering,
+	threadsStartingOn,
 	type ViewDescriptor,
 } from "./comment-matching.js";
 import type { Anchor, ReviewSnapshots, Side, Thread } from "./types.js";
@@ -444,7 +445,7 @@ describe("commentsForLine", () => {
 	});
 });
 
-describe("spannedByComment", () => {
+describe("threadsCovering", () => {
 	const FILE = "src/main.ts";
 
 	function range(side: Side, startLine: number, endLine: number): Thread[] {
@@ -463,37 +464,74 @@ describe("spannedByComment", () => {
 	}
 
 	it("includes the start line of the range", () => {
-		expect(spannedByComment(range("New", 10, 13), "New", 10)).toBe(true);
+		expect(threadsCovering(range("New", 10, 13), "New", 10)).toEqual(
+			range("New", 10, 13),
+		);
 	});
 
 	it("includes a middle line of the range", () => {
-		expect(spannedByComment(range("New", 10, 13), "New", 11)).toBe(true);
+		expect(threadsCovering(range("New", 10, 13), "New", 11)).toEqual(
+			range("New", 10, 13),
+		);
 	});
 
 	it("includes the end line of the range", () => {
-		expect(spannedByComment(range("New", 10, 13), "New", 13)).toBe(true);
+		expect(threadsCovering(range("New", 10, 13), "New", 13)).toEqual(
+			range("New", 10, 13),
+		);
 	});
 
 	it("excludes the line just before the range", () => {
-		expect(spannedByComment(range("New", 10, 13), "New", 9)).toBe(false);
+		expect(threadsCovering(range("New", 10, 13), "New", 9)).toEqual([]);
 	});
 
 	it("excludes the line just after the range", () => {
-		expect(spannedByComment(range("New", 10, 13), "New", 14)).toBe(false);
+		expect(threadsCovering(range("New", 10, 13), "New", 14)).toEqual([]);
 	});
 
 	it("does not span a line on the other side", () => {
-		expect(spannedByComment(range("New", 10, 13), "Old", 11)).toBe(false);
+		expect(threadsCovering(range("New", 10, 13), "Old", 11)).toEqual([]);
 	});
 
-	it("returns false for a null lineno", () => {
-		expect(spannedByComment(range("New", 10, 13), "New", null)).toBe(false);
+	it("returns none for a null lineno", () => {
+		expect(threadsCovering(range("New", 10, 13), "New", null)).toEqual([]);
 	});
 
-	it("returns false for an undefined lineno", () => {
-		expect(spannedByComment(range("New", 10, 13), "New", undefined)).toBe(
-			false,
-		);
+	it("returns none for an undefined lineno", () => {
+		expect(threadsCovering(range("New", 10, 13), "New", undefined)).toEqual([]);
+	});
+});
+
+describe("threadsStartingOn", () => {
+	const block = lineComment(
+		"c1",
+		anchor({
+			commitOid: "oid",
+			filePath: "src/main.ts",
+			side: "New",
+			startLine: 10,
+			endLine: 13,
+		}),
+	);
+
+	it("names a thread on the first line of its range", () => {
+		expect(threadsStartingOn([block], "New", 10)).toEqual([block]);
+	});
+
+	it("leaves out a thread on any later line of its range", () => {
+		expect(threadsStartingOn([block], "New", 13)).toEqual([]);
+	});
+
+	it("leaves out a thread anchored on the other side", () => {
+		expect(threadsStartingOn([block], "Old", 10)).toEqual([]);
+	});
+
+	it("names a content-pinned thread where its resolved range starts", () => {
+		expect(threadsStartingOn([resolvedPin], "New", 20)).toEqual([resolvedPin]);
+	});
+
+	it("returns none for a line with no number on that side", () => {
+		expect(threadsStartingOn([block], "New", null)).toEqual([]);
 	});
 });
 
@@ -533,23 +571,25 @@ describe("commentsForLine when the thread is content-pinned", () => {
 	});
 });
 
-describe("spannedByComment when the thread is content-pinned", () => {
+describe("threadsCovering when the thread is content-pinned", () => {
 	it.each([20, 21, 22])("spans line %i of its resolved range", (lineno) => {
-		expect(spannedByComment([resolvedPin], "New", lineno)).toBe(true);
+		expect(threadsCovering([resolvedPin], "New", lineno)).toEqual([
+			resolvedPin,
+		]);
 	});
 
 	it.each([19, 23])(
 		"spans no line outside its resolved range (%i)",
 		(lineno) => {
-			expect(spannedByComment([resolvedPin], "New", lineno)).toBe(false);
+			expect(threadsCovering([resolvedPin], "New", lineno)).toEqual([]);
 		},
 	);
 
 	it("answers for the New side only, so a current-file diff cannot double it", () => {
-		expect(spannedByComment([resolvedPin], "Old", 21)).toBe(false);
+		expect(threadsCovering([resolvedPin], "Old", 21)).toEqual([]);
 	});
 
 	it("spans nothing while the file no longer holds its block", () => {
-		expect(spannedByComment([lostPin], "New", 11)).toBe(false);
+		expect(threadsCovering([lostPin], "New", 11)).toEqual([]);
 	});
 });

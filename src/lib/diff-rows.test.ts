@@ -190,33 +190,44 @@ describe("buildInlineRows", () => {
 		expect(model.rows.some((row) => row.kind === "comment")).toBe(false);
 	});
 
-	it("marks a line spanned when a comment's range covers it", () => {
+	it("tones a covered line with the most urgent state among its threads", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
-			comments: [thread("t1", "New", 1, 2)],
+			comments: [
+				{ ...thread("t1", "New", 1, 2), state: "done" },
+				{ ...thread("t2", "New", 2, 2), state: "addressed" },
+			],
 		});
 
-		const spanned = model.rows
+		const tones = model.rows
 			.filter((row) => row.kind === "line")
-			.map((row) => row.spanned);
+			.map((row) => row.spanTone);
 
-		expect(spanned).toEqual([true, true, false]);
+		expect(tones).toEqual(["done", "addressed", null]);
 	});
 
-	it("counts the threads that hang on each line", () => {
+	it("marks where threads start with their count and most urgent state", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
-			comments: [thread("t1", "New", 1, 2), thread("t2", "New", 2, 2)],
+			comments: [
+				thread("t1", "New", 1, 2),
+				{ ...thread("t2", "New", 2, 2), state: "done" },
+				{ ...thread("t3", "New", 2, 2), state: "dismissed" },
+			],
 		});
 
-		const counts = model.rows
+		const markers = model.rows
 			.filter((row) => row.kind === "line")
-			.map((row) => row.threadCount);
+			.map((row) => row.marker);
 
-		expect(counts).toEqual([0, 2, 0]);
+		expect(markers).toEqual([
+			{ count: 1, tone: "open" },
+			{ count: 2, tone: "done" },
+			null,
+		]);
 	});
 
-	it("counts only the threads the selected filter shows", () => {
+	it("marks only the threads the selected filter shows", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
 			reviewFilter: "open",
@@ -226,11 +237,11 @@ describe("buildInlineRows", () => {
 			],
 		});
 
-		const counts = model.rows
+		const markers = model.rows
 			.filter((row) => row.kind === "line")
-			.map((row) => row.threadCount);
+			.map((row) => row.marker);
 
-		expect(counts).toEqual([0, 1, 0]);
+		expect(markers).toEqual([null, { count: 1, tone: "open" }, null]);
 	});
 
 	it("reserves a marker column only when a thread hangs on a line", () => {
@@ -243,6 +254,15 @@ describe("buildInlineRows", () => {
 		expect([bare.markerChars, commented.markerChars]).toEqual([0, 3]);
 	});
 
+	it("reserves a marker column for a thread that starts in view and ends past it", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			comments: [thread("t1", "New", 2, 5)],
+		});
+
+		expect(model.markerChars).toBe(3);
+	});
+
 	it("reserves no marker column when inline comments are hidden", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
@@ -253,16 +273,16 @@ describe("buildInlineRows", () => {
 		expect(model.markerChars).toBe(0);
 	});
 
-	it("leaves lines unspanned when inline comments are hidden", () => {
+	it("leaves lines untoned when inline comments are hidden", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
 			reviewCommentsVisible: false,
 			comments: [thread("t1", "New", 1, 2)],
 		});
 
-		expect(model.rows.every((row) => row.kind !== "line" || !row.spanned)).toBe(
-			true,
-		);
+		expect(
+			model.rows.every((row) => row.kind !== "line" || row.spanTone === null),
+		).toBe(true);
 	});
 
 	it("emits a header row and a binary row, and no line rows, for a binary file", () => {
@@ -579,7 +599,7 @@ describe("buildSplitRows", () => {
 		expect(model.rows.some((row) => row.kind === "comment")).toBe(false);
 	});
 
-	it("marks each side spanned from that side's own comments", () => {
+	it("tones each side from that side's own threads", () => {
 		const model = buildSplitRows([pairable], {
 			...fullMode,
 			comments: [thread("t1", "New", 1, 2)],
@@ -587,11 +607,15 @@ describe("buildSplitRows", () => {
 
 		const pairs = model.rows.filter((row) => row.kind === "pair");
 
-		expect(pairs.map((row) => row.spannedRight)).toEqual([true, true, false]);
-		expect(pairs.map((row) => row.spannedLeft)).toEqual([false, false, false]);
+		expect(pairs.map((row) => row.spanToneRight)).toEqual([
+			"open",
+			"open",
+			null,
+		]);
+		expect(pairs.map((row) => row.spanToneLeft)).toEqual([null, null, null]);
 	});
 
-	it("counts each side's threads on the side they hang from", () => {
+	it("marks each side's threads on the side they start from", () => {
 		const model = buildSplitRows([pairable], {
 			...fullMode,
 			comments: [thread("tNew", "New", 2, 2), thread("tOld", "Old", 3, 3)],
@@ -599,10 +623,10 @@ describe("buildSplitRows", () => {
 
 		const pairs = model.rows.filter((row) => row.kind === "pair");
 
-		expect(pairs.map((row) => [row.threadsLeft, row.threadsRight])).toEqual([
-			[0, 0],
-			[0, 1],
-			[1, 0],
+		expect(pairs.map((row) => [row.markerLeft, row.markerRight])).toEqual([
+			[null, null],
+			[null, { count: 1, tone: "open" }],
+			[{ count: 1, tone: "open" }, null],
 		]);
 	});
 
@@ -996,10 +1020,10 @@ describe("buildInlineRows with a content-pinned thread", () => {
 			]),
 		);
 
-		const spanned = model.rows
+		const tones = model.rows
 			.filter((row) => row.kind === "line")
-			.map((row) => row.kind === "line" && row.spanned);
-		expect(spanned).toEqual([false, true, true, false]);
+			.map((row) => row.kind === "line" && row.spanTone);
+		expect(tones).toEqual([null, "open", "open", null]);
 	});
 });
 
@@ -1036,10 +1060,9 @@ describe("buildSplitRows with a content-pinned thread", () => {
 			]),
 		);
 
-		const spanned = model.rows
+		const tones = model.rows
 			.filter((row) => row.kind === "pair")
-			.map((row) => row.kind === "pair" && row.spannedRight);
-
-		expect(spanned).toEqual([false, true, true, false]);
+			.map((row) => row.kind === "pair" && row.spanToneRight);
+		expect(tones).toEqual([null, "open", "open", null]);
 	});
 });

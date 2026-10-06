@@ -1,21 +1,28 @@
 <script lang="ts">
-// The count of threads hanging on a diff line, in the column the row model
-// reserves while any thread hangs in view. A line with none draws the empty
-// column, so every row's code starts at the same place. The thread cards right
-// under the line say the same thing to assistive tech, so the pill is hidden
-// from it.
+// The threads starting on a diff line, counted in the state of the most urgent,
+// in the column the row model reserves while any thread is in view. A line with
+// none draws the empty column, so every row's code starts at the same place.
+// The thread cards under the thread's last line say the same thing to
+// assistive tech, so the pill is hidden from it.
+import type { LineMarker } from "../../lib/diff-rows.js";
+import { threadToneColor } from "../../lib/review-filter.js";
 
 interface Props {
-	count: number;
+	marker: LineMarker | null;
 	width: string;
 }
 
-let { count, width }: Props = $props();
+let { marker, width }: Props = $props();
 </script>
 
 <span class="thread-marker-cell" style:min-width={width}
-	>{#if count > 0}
-		<span class="thread-marker" aria-hidden="true">{count}</span>
+	>{#if marker}
+		<span
+			class="thread-marker"
+			aria-hidden="true"
+			style:--thread-tone={threadToneColor(marker.tone)}
+			>{marker.count}</span
+		>
 	{/if}</span
 >
 
@@ -33,7 +40,7 @@ let { count, width }: Props = $props();
 	min-width: calc(4 * var(--u));
 	padding: 0 var(--space-1);
 	border-radius: var(--radius);
-	background: var(--color-accent);
+	background: var(--thread-tone);
 	color: var(--color-on-accent);
 	font-family: var(--font-sans);
 	font-size: var(--text-caption);

@@ -106,16 +106,28 @@ export function commentsForLine(
 	return viewComments.filter((c) => rangeOn(c, side)?.end === lineno);
 }
 
-export function spannedByComment(
+/** The threads whose range covers this line, which tint its gutter edge. */
+export function threadsCovering(
 	viewComments: Thread[],
 	side: Side,
 	lineno: number | null | undefined,
-): boolean {
-	if (lineno === null || lineno === undefined) return false;
+): Thread[] {
+	if (lineno === null || lineno === undefined) return [];
 
-	return viewComments.some((c) => {
+	return viewComments.filter((c) => {
 		const range = rangeOn(c, side);
 
 		return range !== null && range.start <= lineno && lineno <= range.end;
 	});
+}
+
+/** The threads whose range opens on this line, which the gutter marker counts. */
+export function threadsStartingOn(
+	viewComments: Thread[],
+	side: Side,
+	lineno: number | null | undefined,
+): Thread[] {
+	if (lineno === null || lineno === undefined) return [];
+
+	return viewComments.filter((c) => rangeOn(c, side)?.start === lineno);
 }

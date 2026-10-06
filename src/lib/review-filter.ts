@@ -78,6 +78,18 @@ export function combineReviewTone(
 	return null;
 }
 
+/** The state a gutter draws for several threads at once: the most urgent. */
+export function mostUrgentTone(threads: Thread[]): ReviewTone | null {
+	let tone: ReviewTone | null = null;
+	for (const thread of threads) tone = combineReviewTone(tone, thread.state);
+	return tone;
+}
+
+/** The colour a state's tone draws in, for a stylesheet that reads `--thread-tone`. */
+export function threadToneColor(tone: ReviewTone): string {
+	return `var(--color-thread-${tone})`;
+}
+
 export function isValidReviewFilter(value: unknown): value is ReviewFilter {
 	return (
 		typeof value === "string" &&

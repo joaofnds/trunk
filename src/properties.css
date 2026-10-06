@@ -85,6 +85,13 @@
 	initial-value: 0px;
 }
 
+/* ── Thread tones: the state colour a diff line hands its edge and gutter pill ── */
+@property --thread-tone {
+	syntax: "<color>";
+	inherits: true;
+	initial-value: transparent;
+}
+
 /* ── Graph lanes: the lane colour a section hands the refs and rails it draws ── */
 @property --lane {
 	syntax: "<color>";

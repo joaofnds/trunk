@@ -14,6 +14,7 @@ import {
 import { measure } from "../../lib/perf.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
+import { threadToneColor } from "../../lib/review-filter.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type {
 	DiffLine,
@@ -238,7 +239,7 @@ function lineBackground(origin: string, isSelected: boolean): string {
 		{@const isSelected = selectedPath === item.path && selectedIndices.has(item.flatIdx)}
 		{@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
 		<div
-			class="diff-line flex items-start px-2 text-diff-text {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{item.spanned ? ' diff-line-commented' : ''}"
+			class="diff-line flex items-start px-2 text-diff-text {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{item.spanTone ? ' diff-line-commented' : ''}"
 			class:whitespace-pre-wrap={vd.wrapActive}
 			class:whitespace-pre={!vd.wrapActive}
 			class:break-all={vd.wrapActive}
@@ -247,11 +248,12 @@ function lineBackground(origin: string, isSelected: boolean): string {
 			style:font-size={DIFF_ROW_FONT.fontSize}
 			style:line-height={DIFF_ROW_FONT.lineHeight}
 			style:background={lineBackground(line.origin, isSelected)}
+			style:--thread-tone={item.spanTone ? threadToneColor(item.spanTone) : undefined}
 			data-line-path={item.path}
 			data-flat-index={item.flatIdx}
 			data-new-side={isSelectable ? "" : undefined}
 			>{#if model.markerChars > 0}
-				<ThreadMarker count={item.threadCount} width={vd.markerW} />
+				<ThreadMarker marker={item.marker} width={vd.markerW} />
 			{/if}{#if isSelectable}
 				<GutterGrip
 					aria-label={gripLabel(line)}
@@ -495,7 +497,7 @@ function lineBackground(origin: string, isSelected: boolean): string {
      layered via box-shadow so it never tints the diff add/delete/context
      background and never overrides the per-origin change-indicator border. */
 .diff-line-commented {
-	box-shadow: inset 2px 0 0 0 var(--color-accent);
+	box-shadow: inset 2px 0 0 0 var(--thread-tone);
 }
 
 /* Comment rows hang as full-width block siblings directly under their anchored

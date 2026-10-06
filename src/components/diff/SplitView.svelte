@@ -16,6 +16,7 @@ import {
 import { measure } from "../../lib/perf.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
+import { threadToneColor } from "../../lib/review-filter.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type {
 	ContentMode,
@@ -306,14 +307,15 @@ function originClass(origin: string): string {
 				{@const line = item.row.left.line}
 				{@const isSelected = selectedHunkKey === hunkKey && selectedLineIndices.has(item.row.left.lineIdx)}
 				<div
-					class="split-cell split-cell-left diff-line text-diff-text {originClass(line.origin)}{item.spannedLeft ? ' diff-line-commented' : ''}"
+					class="split-cell split-cell-left diff-line text-diff-text {originClass(line.origin)}{item.spanToneLeft ? ' diff-line-commented' : ''}"
 					style:font-family={DIFF_ROW_FONT.fontFamily}
 					style:font-size={DIFF_ROW_FONT.fontSize}
 					style:line-height={DIFF_ROW_FONT.lineHeight}
 					style:background={lineBackground(line.origin, isSelected)}
+					style:--thread-tone={item.spanToneLeft ? threadToneColor(item.spanToneLeft) : undefined}
 				>
 					{#if model.markerChars > 0}
-						<ThreadMarker count={item.threadsLeft} width={vd.markerW} />
+						<ThreadMarker marker={item.markerLeft} width={vd.markerW} />
 					{/if}
 					<span class="split-gutter" style:min-width={vd.gutterW}
 						>{line.old_lineno ?? ''}</span
@@ -338,17 +340,18 @@ function originClass(origin: string): string {
 				{@const isSelectable = line.origin === 'Add'}
 				{@const isSelected = selectedHunkKey === hunkKey && selectedLineIndices.has(lineIdx)}
 				<div
-					class="split-cell diff-line text-diff-text {originClass(line.origin)}{item.spannedRight ? ' diff-line-commented' : ''}"
+					class="split-cell diff-line text-diff-text {originClass(line.origin)}{item.spanToneRight ? ' diff-line-commented' : ''}"
 					style:font-family={DIFF_ROW_FONT.fontFamily}
 					style:font-size={DIFF_ROW_FONT.fontSize}
 					style:line-height={DIFF_ROW_FONT.lineHeight}
 					style:background={lineBackground(line.origin, isSelected)}
+					style:--thread-tone={item.spanToneRight ? threadToneColor(item.spanToneRight) : undefined}
 					data-line-path={item.path}
 					data-hunk-index={item.hunkIdx}
 					data-line-index={lineIdx}
 				>
 					{#if model.markerChars > 0}
-						<ThreadMarker count={item.threadsRight} width={vd.markerW} />
+						<ThreadMarker marker={item.markerRight} width={vd.markerW} />
 					{/if}
 					{#if isSelectable}
 						<GutterGrip
@@ -779,11 +782,11 @@ function originClass(origin: string): string {
 	pointer-events: none;
 }
 
-/* Left-edge accent on lines spanned by an inline comment. Inset box-shadow
+/* Left edge on lines a thread covers, in its most urgent state. Inset box-shadow
      rather than a background tint so it doesn't fight the add/delete/context
      row backgrounds; layered over the existing 3px change-indicator border. */
 .diff-line-commented {
-	box-shadow: inset 3px 0 0 0 var(--color-accent);
+	box-shadow: inset 3px 0 0 0 var(--thread-tone);
 }
 
 /* Inline comment row: a plain full-width row spanning both halves. */

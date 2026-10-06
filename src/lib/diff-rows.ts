@@ -6,18 +6,29 @@
  */
 
 import { BAR_HEIGHT, UNIT } from "./chrome-heights.js";
-import { commentsForLine, spannedByComment } from "./comment-matching.js";
+import {
+	commentsForLine,
+	threadsCovering,
+	threadsStartingOn,
+} from "./comment-matching.js";
 import { type PairedRow, pairLines } from "./diff-utils.js";
 import { displayColumns } from "./display-columns.js";
-import { filterThreads } from "./review-filter.js";
+import { filterThreads, mostUrgentTone } from "./review-filter.js";
 import { type RowMetrics, rowHeightFor } from "./row-metrics.js";
 import type {
 	ContentMode,
 	DiffLine,
 	FileDiff,
 	ReviewFilter,
+	ReviewTone,
 	Thread,
 } from "./types.js";
+
+/** The gutter pill on a line where threads start: how many, in which state. */
+export interface LineMarker {
+	count: number;
+	tone: ReviewTone;
+}
 
 export type DiffRow =
 	| { kind: "file-header"; path: string; collapsed: boolean }
@@ -32,9 +43,9 @@ export type DiffRow =
 			line: DiffLine;
 			/** Display columns the content occupies, from the same pass. */
 			columns: number;
-			spanned: boolean;
-			/** Threads the comment row under this line holds. */
-			threadCount: number;
+			/** The most urgent state among the threads covering this line. */
+			spanTone: ReviewTone | null;
+			marker: LineMarker | null;
 	  }
 	| {
 			kind: "pair";
@@ -44,11 +55,10 @@ export type DiffRow =
 			/** Display columns each side's content occupies, from the same pass. */
 			leftColumns: number;
 			rightColumns: number;
-			spannedLeft: boolean;
-			spannedRight: boolean;
-			/** Threads hanging from each side, which its gutter marker counts. */
-			threadsLeft: number;
-			threadsRight: number;
+			spanToneLeft: ReviewTone | null;
+			spanToneRight: ReviewTone | null;
+			markerLeft: LineMarker | null;
+			markerRight: LineMarker | null;
 	  }
 	| {
 			kind: "comment";
@@ -175,12 +185,14 @@ export function buildInlineRows(
 				);
 
 				const threads = opts.reviewCommentsVisible
-					? threadsOn(line, opts.comments)
+					? threadsAcross(commentsForLine, opts.comments, line)
 					: [];
 
 				const visibleThreads = threads.filter((thread) =>
 					visibleComments.includes(thread),
 				);
+
+				const shown = opts.reviewCommentsVisible ? visibleComments : [];
 
 				rows.push({
 					kind: "line",
@@ -190,9 +202,8 @@ export function buildInlineRows(
 					flatIdx,
 					line,
 					columns,
-					spanned:
-						opts.reviewCommentsVisible && isSpanned(line, visibleComments),
-					threadCount: visibleThreads.length,
+					spanTone: mostUrgentTone(threadsAcross(threadsCovering, shown, line)),
+					marker: markerFor(threadsAcross(threadsStartingOn, shown, line)),
 				});
 
 				if (visibleThreads.length > 0) {
@@ -293,6 +304,7 @@ export function buildSplitRows(
 					commentsForLine(opts.comments, "Old", pair.left?.line.old_lineno),
 				);
 				const visibleThreads = [...rightThreads, ...leftThreads];
+				const shown = opts.reviewCommentsVisible ? visibleComments : [];
 
 				rows.push({
 					kind: "pair",
@@ -301,20 +313,18 @@ export function buildSplitRows(
 					row: pair,
 					leftColumns,
 					rightColumns,
-					spannedLeft:
-						opts.reviewCommentsVisible &&
-						pair.left !== null &&
-						spannedByComment(visibleComments, "Old", pair.left.line.old_lineno),
-					spannedRight:
-						opts.reviewCommentsVisible &&
-						pair.right !== null &&
-						spannedByComment(
-							visibleComments,
-							"New",
-							pair.right.line.new_lineno,
-						),
-					threadsLeft: leftThreads.length,
-					threadsRight: rightThreads.length,
+					spanToneLeft: mostUrgentTone(
+						threadsCovering(shown, "Old", pair.left?.line.old_lineno),
+					),
+					spanToneRight: mostUrgentTone(
+						threadsCovering(shown, "New", pair.right?.line.new_lineno),
+					),
+					markerLeft: markerFor(
+						threadsStartingOn(shown, "Old", pair.left?.line.old_lineno),
+					),
+					markerRight: markerFor(
+						threadsStartingOn(shown, "New", pair.right?.line.new_lineno),
+					),
 				});
 
 				if (visibleThreads.length > 0) {
@@ -385,24 +395,36 @@ export function rowIndexForLine(
 /** Two cells wide plus one for the gap: room for a count of up to 99. */
 const MARKER_CHARS = 3;
 
-/** The marker column exists only while some comment row does, so a file with
- *  no thread in view keeps its gutter as narrow as before. */
+/** The marker column exists only while some thread is in view, so a file with
+ *  none keeps its gutter as narrow as before. A thread can start in view and
+ *  end past it, which leaves a marker and no comment row. */
 function markerCharsFor(rows: DiffRow[]): number {
-	return rows.some((row) => row.kind === "comment") ? MARKER_CHARS : 0;
+	return rows.some(
+		(row) =>
+			row.kind === "comment" ||
+			(row.kind === "line" && row.marker !== null) ||
+			(row.kind === "pair" &&
+				(row.markerLeft !== null || row.markerRight !== null)),
+	)
+		? MARKER_CHARS
+		: 0;
 }
 
-function threadsOn(line: DiffLine, comments: Thread[]): Thread[] {
+function markerFor(threads: Thread[]): LineMarker | null {
+	const tone = mostUrgentTone(threads);
+	return tone === null ? null : { count: threads.length, tone };
+}
+
+/** One matcher's threads on either side of an inline line. */
+function threadsAcross(
+	match: typeof threadsCovering,
+	comments: Thread[],
+	line: DiffLine,
+): Thread[] {
 	return [
-		...commentsForLine(comments, "New", line.new_lineno),
-		...commentsForLine(comments, "Old", line.old_lineno),
+		...match(comments, "New", line.new_lineno),
+		...match(comments, "Old", line.old_lineno),
 	];
-}
-
-function isSpanned(line: DiffLine, comments: Thread[]): boolean {
-	return (
-		spannedByComment(comments, "New", line.new_lineno) ||
-		spannedByComment(comments, "Old", line.old_lineno)
-	);
 }
 
 /** One exact height per row, in row order. Nothing here measures: a line's

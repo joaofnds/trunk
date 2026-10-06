@@ -124,7 +124,9 @@ check("excerpt line number on a removed line", "var(--color-text-muted)", "var(-
 check("excerpt line number on a context line", "var(--color-text-muted)", "var(--color-comment-card-bg)");
 check("dismissed pill label on a card", "var(--color-thread-dismissed)", "var(--color-comment-card-bg)", { layers: ["var(--color-hover)"] });
 check("agent name on a card", "var(--color-accent-alt)", "var(--color-comment-card-bg)");
-check("thread count in the diff gutter", "var(--color-on-accent)", "var(--color-accent)");
+for (const [state, color] of THREAD_TONES.filter(([state]) => state !== "stale")) {
+	check(`${state} thread count in the diff gutter`, "var(--color-on-accent)", color);
+}
 for (const [state, color] of THREAD_TONES) {
 	check(`${state} comment count on a resting row`, color, "var(--color-surface)");
 	check(`${state} comment count on a hovered row`, color, "var(--color-hover)");
