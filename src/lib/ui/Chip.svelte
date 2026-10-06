@@ -48,8 +48,8 @@ const HOVERS: Record<ChipTone, string> = {
 </script>
 
 <!--
-	A pill that names a commit and jumps to it: a parent or a child in the
-	lineage row. Its children are a glyph and the short SHA.
+	A pill that names a ref or a commit and acts on it. Its children are a
+	glyph and the name or short SHA.
 -->
 {#if variant === "label"}
 	<span class={[FRAME, LABEL, TONES[tone]]}>{@render children?.()}</span>
