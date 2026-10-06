@@ -162,12 +162,53 @@ fn drop_empty_lines(excerpt: String) -> String {
         .join("\n")
 }
 
+/// The lines a full-file excerpt's skipped-lines marker stands for, in the form
+/// `full-file-anchor.ts` writes it, or `None` for a line of code.
+fn gap_length(line: &str) -> Option<u32> {
+    line.strip_prefix("… ")?
+        .strip_suffix(" lines unchanged …")?
+        .parse()
+        .ok()
+}
+
+/// The full-file form of the same mend. An empty line here can be the file's
+/// own, so the doubled shape is told apart by the range: undoubling is kept
+/// only when it, and not the excerpt as stored, covers exactly the anchored
+/// lines. Each code line of a doubled capture is followed by an empty one,
+/// while a skipped-lines marker never carried a newline of its own.
+fn undouble_full_file(excerpt: String, anchor: &Anchor) -> String {
+    let lines: Vec<&str> = excerpt.split('\n').collect();
+    let covers =
+        |lines: &[&str]| -> u32 { lines.iter().map(|line| gap_length(line).unwrap_or(1)).sum() };
+    let anchored = anchor.end_line - anchor.start_line + 1;
+    if covers(&lines) == anchored {
+        return excerpt;
+    }
+
+    let mut undoubled = Vec::with_capacity(lines.len() / 2);
+    let mut rest = lines.as_slice();
+    while let Some((&line, after)) = rest.split_first() {
+        undoubled.push(line);
+        rest = match after.split_first() {
+            _ if gap_length(line).is_some() => after,
+            Some((&"", after_newline)) => after_newline,
+            _ => return excerpt,
+        };
+    }
+    if covers(&undoubled) == anchored {
+        undoubled.join("\n")
+    } else {
+        excerpt
+    }
+}
+
 fn read_thread(row: &rusqlite::Row) -> Result<Thread, TrunkError> {
     let (anchor, commit_oid) = anchor::from_row(row, ANCHOR_FIRST_COLUMN)?;
     let content_pin = read_pin(row)?;
     let stored_excerpt: Option<String> = row.get(3).map_err(sqlite_error)?;
     let cached_excerpt = match &anchor {
         Some(a) if a.source == Source::Diff => stored_excerpt.map(drop_empty_lines),
+        Some(a) => stored_excerpt.map(|excerpt| undouble_full_file(excerpt, a)),
         _ => stored_excerpt,
     };
     let state: String = row.get(4).map_err(sqlite_error)?;

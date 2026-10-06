@@ -244,6 +244,55 @@ fn a_listed_diff_excerpt_holds_no_empty_line_a_diff_cannot_have() {
     );
 }
 
+fn full_file_submission(excerpt: &str, start_line: u32, end_line: u32) -> SubmitThreadRequest {
+    SubmitThreadRequest {
+        anchor: Some(Anchor {
+            source: Source::FullFile,
+            start_line,
+            end_line,
+            ..diff_anchor()
+        }),
+        cached_excerpt: Some(excerpt.to_string()),
+        ..submission("full file")
+    }
+}
+
+/// The same doubling reached full-file captures, where an empty line can also
+/// be the file's own, so only the range can tell the two shapes apart.
+#[test]
+fn a_listed_full_file_excerpt_loses_the_doubled_newlines_of_its_capture() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let doubled = full_file_submission("a\n\n\n\n… 3 lines unchanged …\nb\n", 10, 15);
+    submit_thread_inner(&store, &canonical, doubled, 1_000).unwrap();
+
+    let threads = list_threads_inner(&store, &canonical).unwrap();
+
+    assert_eq!(
+        threads[0].cached_excerpt.as_deref(),
+        Some("a\n\n… 3 lines unchanged …\nb"),
+    );
+}
+
+#[test]
+fn a_listed_full_file_excerpt_keeps_the_file_s_own_empty_lines() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(
+        &store,
+        &canonical,
+        full_file_submission("a\n\nb", 10, 12),
+        1_000,
+    )
+    .unwrap();
+
+    let threads = list_threads_inner(&store, &canonical).unwrap();
+
+    assert_eq!(threads[0].cached_excerpt.as_deref(), Some("a\n\nb"));
+}
+
 #[test]
 fn a_second_submit_lands_in_the_same_review() {
     let ctx = TestContext::new_empty();
