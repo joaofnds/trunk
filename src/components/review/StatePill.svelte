@@ -1,4 +1,4 @@
-<script lang="ts">
+<script module lang="ts">
 // The state of a thread or a review as a tinted pill: a glyph and a word in the
 // state's color. A label and no control, so it sits beside a control without
 // competing with it. The stale marker is a flag rather than a state, but it is
@@ -15,24 +15,36 @@ import type { ReviewState, ThreadState } from "../../lib/types.js";
 
 type PillState = ThreadState | ReviewState | "stale";
 
+export const THREAD_LOOKS: Record<
+	ThreadState | "stale",
+	{ label: string; icon: Component }
+> = {
+	open: { label: "Open", icon: Circle },
+	addressed: { label: "Addressed", icon: Contrast },
+	done: { label: "Done", icon: Check },
+	dismissed: { label: "Dismissed", icon: CircleSlash },
+	stale: { label: "Stale", icon: Clock },
+};
+
+const STATE_LOOKS: Record<
+	PillState,
+	{ label: string; icon: Component | null }
+> = {
+	...THREAD_LOOKS,
+	composing: { label: "Composing", icon: CircleDashed },
+	ready: { label: "Ready", icon: null },
+	settled: { label: "Settled", icon: null },
+};
+</script>
+
+<script lang="ts">
 interface Props {
 	state: PillState;
 }
 
 let { state }: Props = $props();
 
-const LOOKS: Record<PillState, { label: string; icon: Component | null }> = {
-	open: { label: "Open", icon: Circle },
-	addressed: { label: "Addressed", icon: Contrast },
-	done: { label: "Done", icon: Check },
-	dismissed: { label: "Dismissed", icon: CircleSlash },
-	stale: { label: "Stale", icon: Clock },
-	composing: { label: "Composing", icon: CircleDashed },
-	ready: { label: "Ready", icon: null },
-	settled: { label: "Settled", icon: null },
-};
-
-const look = $derived(LOOKS[state]);
+const look = $derived(STATE_LOOKS[state]);
 
 const PILL =
 	"state-pill inline-flex items-center gap-1 shrink-0 px-1 rounded-full text-caption leading-none font-medium whitespace-nowrap";

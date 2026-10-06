@@ -5,17 +5,13 @@
 // in the center pane (UI-SPEC:133); jump is driven by the host via onJump.
 
 import Check from "@lucide/svelte/icons/check";
-import Circle from "@lucide/svelte/icons/circle";
-import CircleSlash from "@lucide/svelte/icons/circle-slash";
 import Clipboard from "@lucide/svelte/icons/clipboard";
-import Clock from "@lucide/svelte/icons/clock";
-import Contrast from "@lucide/svelte/icons/contrast";
 import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
 import Pencil from "@lucide/svelte/icons/pencil";
 import Plus from "@lucide/svelte/icons/plus";
 import Trash2 from "@lucide/svelte/icons/trash-2";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { type Component, untrack } from "svelte";
+import { untrack } from "svelte";
 import { commitOidForComment } from "../lib/comment-counts.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
@@ -40,7 +36,7 @@ import LinkButton from "../lib/ui/LinkButton.svelte";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import CommitChip from "./CommitChip.svelte";
-import StatePill from "./review/StatePill.svelte";
+import StatePill, { THREAD_LOOKS } from "./review/StatePill.svelte";
 import ThreadCard from "./ThreadCard.svelte";
 
 interface Props {
@@ -90,37 +86,13 @@ const visibleComments = $derived(filterThreads(comments, reviewFilter));
 
 // The header's counts, one per state a thread can be filtered to, in the
 // toolbar selector's order. Each counts what pressing it would show.
-const STATE_FILTERS: readonly {
-	value: Exclude<ReviewFilter, "all" | "none">;
-	label: string;
-	icon: Component;
-	tone: string;
-}[] = [
-	{ value: "open", label: "Open", icon: Circle, tone: "text-thread-open" },
-	{
-		value: "addressed",
-		label: "Addressed",
-		icon: Contrast,
-		tone: "text-thread-addressed",
-	},
-	{ value: "done", label: "Done", icon: Check, tone: "text-thread-done" },
-	{
-		value: "dismissed",
-		label: "Dismissed",
-		icon: CircleSlash,
-		tone: "text-thread-dismissed",
-	},
-	{ value: "stale", label: "Stale", icon: Clock, tone: "text-thread-stale" },
-];
-
-const stateCounts = $derived(
-	Object.fromEntries(
-		STATE_FILTERS.map((f) => [
-			f.value,
-			comments.filter((t) => threadMatchesFilter(t, f.value)).length,
-		]),
-	) as Record<(typeof STATE_FILTERS)[number]["value"], number>,
-);
+const STATE_FILTERS = [
+	{ value: "open", tone: "text-thread-open" },
+	{ value: "addressed", tone: "text-thread-addressed" },
+	{ value: "done", tone: "text-thread-done" },
+	{ value: "dismissed", tone: "text-thread-dismissed" },
+	{ value: "stale", tone: "text-thread-stale" },
+] as const;
 
 function toggleFilter(filter: ReviewFilter) {
 	onreviewfilterchange?.(reviewFilter === filter ? "all" : filter);
@@ -719,17 +691,20 @@ $effect(() => {
 					class="flex items-center gap-1 min-w-auto text-small"
 				>
 					{#each STATE_FILTERS as filter (filter.value)}
-						{@const count = stateCounts[filter.value]}
+						{@const look = THREAD_LOOKS[filter.value]}
+						{@const count = comments.filter((t) =>
+							threadMatchesFilter(t, filter.value),
+						).length}
 						<Button
 							size="sm"
 							variant="ghost"
 							aria-pressed={reviewFilter === filter.value}
-							aria-label="{filter.label} threads: {count}"
-							title="Show only {filter.label.toLowerCase()} threads"
+							aria-label="{look.label} threads: {count}"
+							title="Show only {look.label.toLowerCase()} threads"
 							onclick={() => toggleFilter(filter.value)}
 						>
 							<span class="inline-flex {filter.tone}" aria-hidden="true">
-								<filter.icon size={12} strokeWidth={2.5} />
+								<look.icon size={12} strokeWidth={2.5} />
 							</span>
 							<span>{count}</span>
 						</Button>
