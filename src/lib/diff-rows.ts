@@ -119,6 +119,9 @@ export interface BuildOptions {
 	invisibles: boolean;
 	/** The open composer's place, or nothing when none is open in this view. */
 	composer?: ComposerPlace | null;
+	/** Whether a line can take a new comment, whose control the marker column
+	 *  then holds on every line. */
+	commentable?: boolean;
 }
 
 /** Heights the fixed row shapes declare rather than discover. Each row's own
@@ -255,7 +258,7 @@ export function buildInlineRows(
 		rows,
 		hunkNav,
 		gutterChars: String(maxLineNumber).length + 1,
-		markerChars: markerCharsFor(rows),
+		markerChars: markerCharsFor(rows, opts.commentable ?? false),
 		columns: [widest],
 	};
 }
@@ -399,7 +402,7 @@ export function buildSplitRows(
 		rows,
 		hunkNav,
 		gutterChars: String(maxLineNumber).length + 1,
-		markerChars: markerCharsFor(rows),
+		markerChars: markerCharsFor(rows, opts.commentable ?? false),
 		columns: [widestLeft, widestRight],
 	};
 }
@@ -444,14 +447,15 @@ const MARKER_CHARS = 3;
 /** The marker column exists only while some thread is in view, so a file with
  *  none keeps its gutter as narrow as before. A thread can start in view and
  *  end past it, which leaves a marker and no comment row. */
-function markerCharsFor(rows: DiffRow[]): number {
-	return rows.some(
-		(row) =>
-			row.kind === "comment" ||
-			(row.kind === "line" && row.marker !== null) ||
-			(row.kind === "pair" &&
-				(row.markerLeft !== null || row.markerRight !== null)),
-	)
+function markerCharsFor(rows: DiffRow[], commentable: boolean): number {
+	return commentable ||
+		rows.some(
+			(row) =>
+				row.kind === "comment" ||
+				(row.kind === "line" && row.marker !== null) ||
+				(row.kind === "pair" &&
+					(row.markerLeft !== null || row.markerRight !== null)),
+		)
 		? MARKER_CHARS
 		: 0;
 }

@@ -10,6 +10,7 @@ import {
 	rowIndexForLine,
 } from "../../lib/diff-rows.js";
 import {
+	commentLabel,
 	gripLabel,
 	splitInvisibles,
 	trailingWhitespaceStart,
@@ -81,6 +82,12 @@ interface Props {
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	/** The open comment composer, drawn under the line its comment ends on. */
 	composer?: DiffComposer | null;
+	/** Opens a comment on one line, from the control its marker cell shows. */
+	oncommentline?: (
+		filePath: string,
+		hunkIndex: number,
+		lineIndex: number,
+	) => void;
 }
 
 let {
@@ -112,7 +119,16 @@ let {
 	viewComments = [],
 	editorSessionForThread,
 	composer = null,
+	oncommentline,
 }: Props = $props();
+
+// Whether a line can take a new comment here, as the hunk's Comment action can.
+const commentable = $derived(
+	oncommentline !== undefined &&
+		reviewCommentsVisible &&
+		reviewFilter !== "none" &&
+		!isMerge,
+);
 
 const FLASH_MS = 600;
 
@@ -151,6 +167,7 @@ const model = $derived(
 			tabSize: TAB_SIZE,
 			invisibles: showInvisibles,
 			composer: composer?.place,
+			commentable,
 		});
 	}),
 );
@@ -273,7 +290,14 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 			data-hunk-index={item.hunkIdx}
 			data-line-index={item.lineIdx}
 			>{#if model.markerChars > 0}
-				<ThreadMarker marker={item.marker} width={vd.markerW} />
+				<ThreadMarker
+					marker={item.marker}
+					width={vd.markerW}
+					oncomment={commentable && isSelectable
+						? () => oncommentline?.(item.path, item.hunkIdx, item.lineIdx)
+						: undefined}
+					commentLabel={commentLabel(line)}
+				/>
 			{/if}{#if isSelectable}
 				<GutterGrip
 					aria-label={gripLabel(line)}

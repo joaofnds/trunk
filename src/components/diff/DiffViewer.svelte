@@ -87,6 +87,11 @@ interface Props {
 	composer?: DiffComposer | null;
 	oncommentfullfile: (filePath: string, selectedIndices: Set<number>) => void;
 	onextendcomment?: (filePath: string, selectedIndices: Set<number>) => void;
+	oncommentline?: (
+		filePath: string,
+		hunkIndex: number,
+		lineIndex: number,
+	) => void;
 	fullFileView?: import("./FullFileView.svelte").default | null;
 	/** Set by the mounted virtualized view, null when none is. */
 	diffNav?: DiffNav | null;
@@ -138,6 +143,7 @@ let {
 	composer = null,
 	oncommentfullfile,
 	onextendcomment,
+	oncommentline,
 	fullFileView = $bindable(null),
 	diffNav = $bindable(null),
 	refreshToken = 0,
@@ -286,6 +292,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{ondiscardlines}
 			{oncommentlines}
 			{oncommenthunk}
+			{oncommentline}
 			{repoPath}
 			{reviewCommentsVisible}
 			{reviewFilter}
@@ -336,6 +343,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{ondiscardlines}
 			{oncommentlines}
 			{oncommenthunk}
+			{oncommentline}
 			{repoPath}
 			{reviewCommentsVisible}
 			{reviewFilter}

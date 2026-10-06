@@ -1149,3 +1149,23 @@ describe("the composer row", () => {
 		);
 	});
 });
+
+describe("the marker column where lines take comments", () => {
+	it("is reserved with no thread in view, so the add control has room", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			commentable: true,
+		});
+
+		expect(model.markerChars).toBe(3);
+	});
+
+	it("is reserved in the split view too", () => {
+		const model = buildSplitRows([pairable], {
+			...fullMode,
+			commentable: true,
+		});
+
+		expect(model.markerChars).toBe(3);
+	});
+});

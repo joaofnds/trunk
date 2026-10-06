@@ -154,6 +154,13 @@ export function gripLabel(line: DiffLine): string {
 	return `Select line ${line.new_lineno}`;
 }
 
+/** The name of the control that opens a comment on one diff line. */
+export function commentLabel(line: DiffLine): string {
+	if (line.origin === "Delete")
+		return `Comment on removed line ${line.old_lineno}`;
+	return `Comment on line ${line.new_lineno}`;
+}
+
 export interface InvisibleSegment {
 	text: string;
 	glyph: string;

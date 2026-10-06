@@ -190,7 +190,7 @@ describe("FullFileView", () => {
 		await fireEvent.click(gutterGrip("added three"), { shiftKey: true });
 		await tick();
 
-		const affordance = screen.getByRole("button", { name: /comment/i });
+		const affordance = screen.getByRole("button", { name: /^comment \(/i });
 		await fireEvent.click(affordance);
 
 		expect(oncommentfullfile).toHaveBeenCalledTimes(1);
@@ -228,7 +228,7 @@ describe("FullFileView", () => {
 			buttons: 1,
 		});
 		await tick();
-		await fireEvent.click(screen.getByRole("button", { name: /comment/i }));
+		await fireEvent.click(screen.getByRole("button", { name: /^comment \(/i }));
 
 		const indices = oncommentfullfile.mock.calls[0][1] as Set<number>;
 		expect(Array.from(indices).sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
@@ -310,7 +310,7 @@ describe("FullFileView", () => {
 		await tick();
 
 		const affordance = screen.getByRole("button", {
-			name: /comment/i,
+			name: /^comment \(/i,
 		}) as HTMLButtonElement;
 		expect(affordance).toBeTruthy();
 		expect(affordance.disabled).toBe(false);
@@ -351,11 +351,11 @@ describe("FullFileView", () => {
 	it("sizes the content from the column arithmetic plus the row chrome", () => {
 		const { container } = render(FullFileView, { props: defaultProps() });
 
-		// Three gutter columns for line 13 plus one, twice, and 14 columns for
-		// "context before", at the measured 9px per column, plus 35px of padding,
-		// border and gutter gaps.
+		// Three marker columns for the add control, three gutter columns for
+		// line 13 plus one, twice, and 14 columns for "context before", at the
+		// measured 9px per column, plus 35px of padding, border and gutter gaps.
 		const content = container.querySelector(".exact-virtual-content");
-		expect(content?.getAttribute("style")).toContain("width: 215px");
+		expect(content?.getAttribute("style")).toContain("width: 242px");
 	});
 
 	it("gives the content the pane's own width when rows wrap", () => {
@@ -445,8 +445,14 @@ describe("FullFileView", () => {
 			],
 		};
 
+		// A staged view takes no comments, so no marker column narrows the code
+		// and the column arithmetic below stays round.
 		const { container } = render(FullFileView, {
-			props: defaultProps({ fileDiffs: [wide], wordWrap: true }),
+			props: defaultProps({
+				fileDiffs: [wide],
+				wordWrap: true,
+				diffKind: "staged" as const,
+			}),
 		});
 		const viewport = container.querySelector(
 			".exact-virtual-viewport",
@@ -518,7 +524,7 @@ describe("FullFileView", () => {
 
 		await fireEvent.click(gutterGrip("line 2500"), { shiftKey: true });
 		await tick();
-		await fireEvent.click(screen.getByRole("button", { name: /comment/i }));
+		await fireEvent.click(screen.getByRole("button", { name: /^comment \(/i }));
 
 		const indices = oncommentfullfile.mock.calls[0][1] as Set<number>;
 		expect(indices.size).toBe(2491);
@@ -569,7 +575,7 @@ describe("FullFileView", () => {
 			buttons: 1,
 		});
 		await tick();
-		await fireEvent.click(screen.getByRole("button", { name: /comment/i }));
+		await fireEvent.click(screen.getByRole("button", { name: /^comment \(/i }));
 
 		const indices = oncommentfullfile.mock.calls[0][1] as Set<number>;
 		expect(indices.size).toBe(2491);
@@ -793,9 +799,45 @@ describe("FullFileView thread marker", () => {
 		expect(markerCellOn("added two")).not.toBeNull();
 	});
 
-	it("reserves no marker column when no thread hangs in view", () => {
-		const { container } = render(FullFileView, { props: defaultProps() });
+	it("reserves no marker column where no thread hangs and no line takes a comment", () => {
+		const { container } = render(FullFileView, {
+			props: defaultProps({ diffKind: "staged" as const }),
+		});
 
 		expect(container.querySelector(".thread-marker-cell")).toBeNull();
+	});
+
+	it("reserves the column on every line where lines take comments", () => {
+		const { container } = render(FullFileView, { props: defaultProps() });
+
+		expect(container.querySelectorAll(".thread-marker-cell")).toHaveLength(
+			container.querySelectorAll(".diff-line:not(.metrics-probe)").length,
+		);
+	});
+});
+
+// The control shows only under the pointer, which jsdom cannot hover, so the
+// queries look past the display rule that hides it at rest.
+describe("FullFileView one-click comment", () => {
+	it("comments on the one line its marker cell's control sits on", async () => {
+		const oncommentfullfile = vi.fn();
+		render(FullFileView, { props: defaultProps({ oncommentfullfile }) });
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Comment on line 11", hidden: true }),
+		);
+
+		expect(oncommentfullfile).toHaveBeenCalledWith("src/main.ts", new Set([1]));
+	});
+
+	it("offers none on a removed line", () => {
+		render(FullFileView, { props: defaultProps() });
+
+		expect(
+			screen.queryByRole("button", {
+				name: /^Comment on removed line/,
+				hidden: true,
+			}),
+		).toBeNull();
 	});
 });

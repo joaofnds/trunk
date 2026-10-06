@@ -8,6 +8,7 @@ import {
 	FIXED_ROW_HEIGHT_VARS,
 } from "../../lib/diff-rows.js";
 import {
+	commentLabel,
 	gripLabel,
 	splitInvisibles,
 	trailingWhitespaceStart,
@@ -102,6 +103,7 @@ const model = $derived(
 			tabSize: TAB_SIZE,
 			invisibles: showInvisibles,
 			composer: composer?.place,
+			commentable,
 		});
 	}),
 );
@@ -115,6 +117,22 @@ const vd = createVirtualizedDiff({
 
 // An allowlist, not a denylist: a diff kind the store cannot anchor a thread
 // against must not gain the affordance by being forgotten here.
+// Whether a line can take a new comment here, as the Comment action can.
+const commentable = $derived(
+	reviewCommentsVisible &&
+		reviewFilter !== "none" &&
+		(diffKind === "commit" ||
+			diffKind === "unstaged" ||
+			diffKind === "current_file"),
+);
+
+// The marker cell's control: comment on that one line, selecting it as a click
+// on its grip would.
+function commentOnLine(path: string, line: DiffLine, index: number) {
+	selectLine(path, line, index, false);
+	oncommentfullfile(path, new Set([index]));
+}
+
 const affordanceVisible = $derived(
 	reviewCommentsVisible &&
 		reviewFilter !== "none" &&
@@ -263,7 +281,14 @@ function lineBackground(origin: string, isSelected: boolean): string {
 			data-flat-index={item.flatIdx}
 			data-new-side={isSelectable ? "" : undefined}
 			>{#if model.markerChars > 0}
-				<ThreadMarker marker={item.marker} width={vd.markerW} />
+				<ThreadMarker
+					marker={item.marker}
+					width={vd.markerW}
+					oncomment={commentable && isSelectable
+						? () => commentOnLine(item.path, line, item.flatIdx)
+						: undefined}
+					commentLabel={commentLabel(line)}
+				/>
 			{/if}{#if isSelectable}
 				<GutterGrip
 					aria-label={gripLabel(line)}

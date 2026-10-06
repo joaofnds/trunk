@@ -2618,6 +2618,27 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		expect(screen.queryByText(/to extend/)).toBeNull();
 	});
 
+	it("opens a comment on one line from its marker cell's control", async () => {
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: nonMergeCommit,
+				onclose: vi.fn(),
+				diffKind: "commit",
+				repoPath: "/repo",
+			},
+		});
+		await flushPrefs();
+
+		// The control shows under the pointer, which jsdom cannot hover.
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Comment on line 2", hidden: true }),
+		);
+
+		expect(await screen.findByText("Comment on line 2")).toBeTruthy();
+		expect(screen.getByText(/to extend/)).toBeTruthy();
+	});
+
 	it("does not paint after a release that arrived while the discard prompt was open", async () => {
 		const { ask } = await import("@tauri-apps/plugin-dialog");
 		const askMock = vi.mocked(ask);

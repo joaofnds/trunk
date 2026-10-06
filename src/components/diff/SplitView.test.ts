@@ -517,3 +517,29 @@ describe("SplitView thread marker", () => {
 		expect(container.querySelector(".thread-marker-cell")).toBeNull();
 	});
 });
+
+// The control shows only under the pointer, which jsdom cannot hover, so the
+// queries look past the display rule that hides it at rest.
+describe("SplitView one-click comment", () => {
+	it("offers to comment on an added line from its marker cell", async () => {
+		const oncommentline = vi.fn();
+		render(SplitView, { props: defaultProps({ oncommentline }) });
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Comment on line 11", hidden: true }),
+		);
+
+		expect(oncommentline).toHaveBeenCalledWith("src/main.ts", 0, 3);
+	});
+
+	it("offers none on the removed side", () => {
+		render(SplitView, { props: defaultProps({ oncommentline: vi.fn() }) });
+
+		expect(
+			screen.queryByRole("button", {
+				name: /^Comment on removed line/,
+				hidden: true,
+			}),
+		).toBeNull();
+	});
+});

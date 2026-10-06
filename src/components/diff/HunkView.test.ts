@@ -369,3 +369,39 @@ describe("HunkView composer", () => {
 		]);
 	});
 });
+
+// The control shows only under the pointer, which jsdom cannot hover, so the
+// queries look past the display rule that hides it at rest.
+describe("HunkView one-click comment", () => {
+	it("offers to comment on a changed line from its marker cell", async () => {
+		const oncommentline = vi.fn();
+		render(HunkView, { props: defaultProps({ oncommentline }) });
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Comment on line 11", hidden: true }),
+		);
+
+		expect(oncommentline).toHaveBeenCalledWith("src/main.ts", 0, 1);
+	});
+
+	it("offers none on a context line", () => {
+		render(HunkView, { props: defaultProps({ oncommentline: vi.fn() }) });
+
+		expect(
+			screen.queryByRole("button", {
+				name: "Comment on line 10",
+				hidden: true,
+			}),
+		).toBeNull();
+	});
+
+	it("offers none while the threads are hidden", () => {
+		render(HunkView, {
+			props: defaultProps({ oncommentline: vi.fn(), reviewFilter: "none" }),
+		});
+
+		expect(
+			screen.queryByRole("button", { name: /^Comment on line/, hidden: true }),
+		).toBeNull();
+	});
+});

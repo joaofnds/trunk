@@ -463,6 +463,22 @@ async function handleCommentLines(filePath: string, hunkIndex: number) {
 	await openDiffComposer(fd, hunkIndex, new Set(selectedLineIndices));
 }
 
+// One line's comment control: select that line and comment on it, in one click.
+async function handleCommentLine(
+	filePath: string,
+	hunkIndex: number,
+	lineIndex: number,
+) {
+	const fd = fileDiffs.find((f) => f.path === filePath);
+	if (!fd) return;
+	if (composerOpen && !(await confirmComposerReplacement())) return;
+
+	selectedHunkKey = `${filePath}-${hunkIndex}`;
+	selectedLineIndices = new Set([lineIndex]);
+	lastClickedIndex = lineIndex;
+	await openDiffComposer(fd, hunkIndex, new Set([lineIndex]));
+}
+
 // Whole-hunk Comment affordance (260531-l02): comment a hunk without first
 // selecting lines. Synthesize the hunk's selectable (non-context) indices and open
 // the composer with that stable set. Does NOT mutate the visible selection.
@@ -1301,6 +1317,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			ondiscardlines={handleDiscardLines}
 			oncommentlines={handleCommentLines}
 			oncommenthunk={handleCommentHunk}
+			oncommentline={handleCommentLine}
 			{commitOid}
 			{repoPath}
 			reviewCommentsVisible={commentCardsMounted}
