@@ -310,20 +310,24 @@ async function requestDeleteReply(replyId: string) {
 
 <article class="comment-card comment-card-{variant}">
 	<header class="comment-card-header">
-		<Button
-			icon
-			size="xs"
-			variant="ghost"
-			aria-expanded={!collapsed}
-			aria-label={collapsed ? "Expand thread" : "Collapse thread"}
-			onclick={() => { collapsed = !collapsed; }}
-		>
-			{#if collapsed}
-				<ChevronRight size={12} aria-hidden="true" />
-			{:else}
-				<ChevronDown size={12} aria-hidden="true" />
-			{/if}
-		</Button>
+		<!-- An inline card's height comes from a hidden copy measured once, so
+		     only the panel's card may change its own height. -->
+		{#if variant === "panel"}
+			<Button
+				icon
+				size="xs"
+				variant="ghost"
+				aria-expanded={!collapsed}
+				aria-label={collapsed ? "Expand thread" : "Collapse thread"}
+				onclick={() => { collapsed = !collapsed; }}
+			>
+				{#if collapsed}
+					<ChevronRight size={12} aria-hidden="true" />
+				{:else}
+					<ChevronDown size={12} aria-hidden="true" />
+				{/if}
+			</Button>
+		{/if}
 		<span class="thread-state-chip contents"
 			><StatePill state={thread.state} /></span
 		>

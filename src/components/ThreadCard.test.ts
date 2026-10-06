@@ -318,6 +318,16 @@ describe("ThreadCard", () => {
 		expect(excerptNumbers(container)).toEqual(["10", "", "14"]);
 	});
 
+	// An inline card's height is measured once from a hidden copy, so a card
+	// that changed its own height would leave the diff's rows misplaced.
+	it("offers no collapse inside the diff", () => {
+		renderCard({ variant: "inline" });
+
+		expect(
+			screen.queryByRole("button", { name: "Collapse thread" }),
+		).not.toBeInTheDocument();
+	});
+
 	it("collapses to its header", async () => {
 		renderCard();
 
