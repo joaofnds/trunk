@@ -41,6 +41,16 @@ function gutterOf(text: string): HTMLElement {
 	return grip;
 }
 
+// The full-file view's grip is a click target rather than a press one.
+function fullFileGutterOf(text: string): HTMLElement {
+	const grip = screen
+		.getByText(text)
+		.closest("[data-flat-index]")
+		?.querySelector("[data-gutter-grip]") as HTMLElement | null;
+	if (!grip) throw new Error(`no full-file gutter grip for "${text}"`);
+	return grip;
+}
+
 // Mock invoke and toast for hunk staging operations. Every command resolves to
 // undefined; tests that need a return value override safeInvoke per case.
 vi.mock("../lib/invoke.js", async () => {
@@ -440,7 +450,10 @@ describe("DiffPanel", () => {
 		await fireEvent.click(screen.getByText("Comment File"));
 		await flushPrefs();
 
-		expect(screen.getByText("Comments on lines 1-4")).toBeInTheDocument();
+		expect(screen.getByText("Comment on this file")).toHaveAttribute(
+			"title",
+			"Lines 1-4",
+		);
 	});
 
 	it("loads the whole file before commenting from hunk mode", async () => {
@@ -462,7 +475,10 @@ describe("DiffPanel", () => {
 		await fireEvent.click(screen.getByText("Comment File"));
 		await flushPrefs();
 
-		expect(screen.getByText("Comments on lines 1-4")).toBeInTheDocument();
+		expect(screen.getByText("Comment on this file")).toHaveAttribute(
+			"title",
+			"Lines 1-4",
+		);
 		expect(screen.getByTitle("Show full file")).toBeInTheDocument();
 	});
 
@@ -486,7 +502,10 @@ describe("DiffPanel", () => {
 		await fireEvent.click(screen.getByText("Comment File"));
 		await flushPrefs();
 
-		expect(screen.getByText("Comments on lines 1-4")).toBeInTheDocument();
+		expect(screen.getByText("Comment on this file")).toHaveAttribute(
+			"title",
+			"Lines 1-4",
+		);
 	});
 
 	it("stretches the comment composer across the diff panel", async () => {
@@ -564,15 +583,13 @@ describe("DiffPanel", () => {
 
 		await fireEvent.click(screen.getByText("Comment File"));
 		await flushPrefs();
-		expect(screen.getByText("Comments on lines 1-4")).toBeInTheDocument();
+		expect(screen.getByTitle("Lines 1-4")).toBeInTheDocument();
 
 		await view.rerender({ ...baseProps, fileDiffs: [reloadedFile] });
 		await flushPrefs();
 
-		expect(screen.getByText("Comments on lines 1-4")).toBeInTheDocument();
-		expect(
-			screen.queryByText("Comments on lines 40-43"),
-		).not.toBeInTheDocument();
+		expect(screen.getByTitle("Lines 1-4")).toBeInTheDocument();
+		expect(screen.queryByTitle("Lines 40-43")).not.toBeInTheDocument();
 	});
 
 	it("blocks a retained composer after the active review changes", async () => {
@@ -2499,6 +2516,106 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		await fireEvent.mouseDown(gutterOf("const y = 3;"));
 
 		await waitFor(() => expect(askMock).toHaveBeenCalledTimes(1));
+	});
+
+	it("extends the comment's range on a shift-press, keeping the text", async () => {
+		const { ask } = await import("@tauri-apps/plugin-dialog");
+		const askMock = vi.mocked(ask);
+		askMock.mockClear();
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: nonMergeCommit,
+				onclose: vi.fn(),
+				diffKind: "commit",
+				repoPath: "/repo",
+			},
+		});
+		await flushPrefs();
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
+		await fireEvent.mouseUp(window);
+		await fireEvent.click(screen.getByRole("button", { name: /^Comment \(/ }));
+		await fireEvent.input(screen.getByRole("textbox"), {
+			target: { value: "keep me" },
+		});
+
+		await fireEvent.mouseDown(gutterOf("const y = 3;"), { shiftKey: true });
+		await fireEvent.mouseUp(window);
+
+		expect(await screen.findByText("Comments on lines 2-3")).toBeTruthy();
+		expect(screen.getByRole("textbox")).toHaveValue("keep me");
+		expect(askMock).not.toHaveBeenCalled();
+	});
+
+	it("offers the shift extension only on a comment opened from selected lines", async () => {
+		const props = {
+			fileDiffs: [testDiff],
+			commitDetail: nonMergeCommit,
+			onclose: vi.fn(),
+			diffKind: "commit" as const,
+			repoPath: "/repo",
+		};
+		render(DiffPanel, { props });
+		await flushPrefs();
+
+		await fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+		expect(await screen.findByRole("textbox")).toBeTruthy();
+		expect(screen.queryByText(/to extend/)).toBeNull();
+
+		await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+		await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
+		await fireEvent.mouseUp(window);
+		await fireEvent.click(screen.getByRole("button", { name: /^Comment \(/ }));
+
+		expect(await screen.findByText(/to extend/)).toBeTruthy();
+	});
+
+	it("extends a full-file comment's range on a shift-click, keeping the text", async () => {
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+				contentMode: "full",
+			},
+		});
+		await flushPrefs();
+		await fireEvent.click(fullFileGutterOf("const x = 2;"));
+		await fireEvent.click(screen.getByTestId("full-file-comment"));
+		await fireEvent.input(await screen.findByRole("textbox"), {
+			target: { value: "keep me" },
+		});
+		expect(screen.getByText(/to extend/)).toBeTruthy();
+
+		await fireEvent.click(fullFileGutterOf("const y = 3;"), { shiftKey: true });
+
+		expect(await screen.findByText("Comments on lines 2-3")).toBeTruthy();
+		expect(screen.getByRole("textbox")).toHaveValue("keep me");
+	});
+
+	it("names a whole-file comment as on the file and offers no extension", async () => {
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+				contentMode: "full",
+			},
+		});
+		await flushPrefs();
+
+		await fireEvent.click(screen.getByText("Comment File"));
+		await flushPrefs();
+
+		expect(screen.getByText("Comment on this file")).toBeInTheDocument();
+		expect(screen.queryByText(/to extend/)).toBeNull();
 	});
 
 	it("does not paint after a release that arrived while the discard prompt was open", async () => {

@@ -197,12 +197,19 @@ export class ReviewDriver {
 		field.dispatchEvent(new Event("input", { bubbles: true }));
 	}
 
-	/** The visible composer's unsent text and captured line range. */
+	/** The visible composer's unsent text and captured line range. A comment on
+	 *  the whole file names the file and keeps its lines in the heading's title. */
 	composerDraft(): { text: string; range: string } | null {
 		const field = visibleElement<HTMLTextAreaElement>(COMPOSER_TEXT);
 		const composer = field?.closest<HTMLElement>(".comment-composer");
+		const lines = composer?.querySelector<HTMLElement>(
+			".composer-preview [title]",
+		)?.title;
 		return field && composer
-			? { text: field.value, range: textIn(composer, ".composer-preview") }
+			? {
+					text: field.value,
+					range: lines ?? textIn(composer, ".composer-preview"),
+				}
 			: null;
 	}
 

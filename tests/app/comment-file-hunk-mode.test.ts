@@ -68,7 +68,7 @@ async function commentOnTheFile(app: AppDriver): Promise<void> {
 	const draft = await waitFor("the whole-file composer", () =>
 		app.review.composerDraft(),
 	);
-	expect(draft.range).toBe("Comments on lines 1-12");
+	expect(draft.range).toBe("Lines 1-12");
 }
 
 function fileOf(lines: string[]): string {

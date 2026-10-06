@@ -477,7 +477,11 @@ async function handleCommentHunk(filePath: string, hunkIndex: number) {
 // NO Old-side guard (full-file is always New-side, buildFullFileAnchor). Establishes
 // nothing on open (see openDiffComposer); the EXPENSIVE working-tree snapshot stays
 // deferred to submit (resolveCommentCommitOid).
-async function openFullFileComposer(fd: FileDiff, indices: Set<number>) {
+async function openFullFileComposer(
+	fd: FileDiff,
+	indices: Set<number>,
+	wholeFile = false,
+) {
 	if (indices.size === 0) return;
 	const session = activeComposerSession;
 	const target = activeComposerTarget;
@@ -492,7 +496,7 @@ async function openFullFileComposer(fd: FileDiff, indices: Set<number>) {
 
 	session.openFullFile(
 		fd.path,
-		buildFullFileAnchor(commitOid, fd, indices),
+		{ ...buildFullFileAnchor(commitOid, fd, indices), wholeFile },
 		reviewId,
 		target,
 	);
@@ -503,6 +507,26 @@ async function handleCommentFullFile(filePath: string, indices: Set<number>) {
 	if (!fd) return;
 
 	await openFullFileComposer(fd, indices);
+}
+
+// The full-file selection stretched while a comment on that file is open: the
+// comment follows it and keeps its text.
+function handleExtendFullFileComment(filePath: string, indices: Set<number>) {
+	const fd = fileDiffs.find((file) => file.path === filePath);
+	if (
+		!fd ||
+		!fullFileComposerOpen ||
+		fullFileComposerPath !== filePath ||
+		activeComposerSession.submitting
+	)
+		return;
+
+	activeComposerSession.openFullFile(
+		filePath,
+		buildFullFileAnchor(commitOid, fd, indices),
+		activeReviewId,
+		activeComposerTarget,
+	);
 }
 
 async function loadFullFileForComment(
@@ -549,7 +573,7 @@ async function handleCommentFile() {
 		showToast("Commenting on removed lines isn't supported yet", "error");
 		return;
 	}
-	await openFullFileComposer(fd, indices);
+	await openFullFileComposer(fd, indices, true);
 }
 
 $effect(() => {
@@ -895,6 +919,77 @@ async function handleDiscardHunk(filePath: string, hunkIndex: number) {
 	}
 }
 
+// Whether the open diff composer is on exactly the selected lines, as one opened
+// from a selection is. Only then can a shift-press stretch it: a comment on a
+// whole hunk, or on one hunk while the selection sits in another, has no
+// selection of its own to grow.
+const composerFollowsSelection = $derived.by(() => {
+	const anchor = diffCaptured?.anchor;
+	if (!anchor || lastClickedIndex === null || selectedLineIndices.size === 0)
+		return false;
+
+	const prefix = `${anchor.file_path}-`;
+	if (!selectedHunkKey?.startsWith(prefix)) return false;
+
+	const fd = fileDiffs.find((file) => file.path === anchor.file_path);
+	const hunkIdx = Number(selectedHunkKey.slice(prefix.length));
+	if (!fd || !Number.isInteger(hunkIdx)) return false;
+
+	const selected = buildDiffAnchor("", fd, hunkIdx, selectedLineIndices).anchor;
+	return (
+		selected.side === anchor.side &&
+		selected.start_line === anchor.start_line &&
+		selected.end_line === anchor.end_line
+	);
+});
+
+// The selection with the lines from the last clicked one to this one added,
+// leaving context lines out as a press does.
+function shiftExtended(
+	from: number,
+	to: number,
+	hunkLines: DiffLine[],
+): Set<number> {
+	const extended = new Set(selectedLineIndices);
+	for (let i = Math.min(from, to); i <= Math.max(from, to); i++) {
+		if (i < hunkLines.length && hunkLines[i].origin !== "Context") {
+			extended.add(i);
+		}
+	}
+	return extended;
+}
+
+// A shift-press while composing on lines of this hunk stretches the comment's
+// range to the pressed line and keeps what was written, as the composer's hint
+// promises. Anything else is not an extension, and the caller goes on to treat
+// the press as a new selection. Returns whether it extended.
+function extendComposerTo(
+	filePath: string,
+	hunkIdx: number,
+	lineIndex: number,
+	hunkLines: DiffLine[],
+): boolean {
+	const fd = fileDiffs.find((file) => file.path === filePath);
+	if (
+		!composerFollowsSelection ||
+		activeComposerSession.submitting ||
+		!fd ||
+		`${filePath}-${hunkIdx}` !== selectedHunkKey ||
+		lastClickedIndex === null
+	)
+		return false;
+
+	const extended = shiftExtended(lastClickedIndex, lineIndex, hunkLines);
+	selectedLineIndices = extended;
+	lastClickedIndex = lineIndex;
+	activeComposerSession.openDiff(
+		buildDiffAnchor("", fd, hunkIdx, extended),
+		activeReviewId,
+		activeComposerTarget,
+	);
+	return true;
+}
+
 async function handleLineClick(
 	filePath: string,
 	hunkIdx: number,
@@ -904,6 +999,9 @@ async function handleLineClick(
 	e: MouseEvent,
 ) {
 	if (origin === "Context") return;
+
+	if (e.shiftKey && extendComposerTo(filePath, hunkIdx, lineIndex, hunkLines))
+		return;
 
 	// D-02: switching to a new range while an open composer holds a dirty draft
 	// prompts a discard confirmation. On cancel, keep the current selection and
@@ -921,15 +1019,7 @@ async function handleLineClick(
 
 	if (e.shiftKey && lastClickedIndex !== null) {
 		e.preventDefault();
-		const start = Math.min(lastClickedIndex, lineIndex);
-		const end = Math.max(lastClickedIndex, lineIndex);
-		const newSet = new Set(selectedLineIndices);
-		for (let i = start; i <= end; i++) {
-			if (i < hunkLines.length && hunkLines[i].origin !== "Context") {
-				newSet.add(i);
-			}
-		}
-		selectedLineIndices = newSet;
+		selectedLineIndices = shiftExtended(lastClickedIndex, lineIndex, hunkLines);
 	} else {
 		const newSet = new Set(selectedLineIndices);
 		if (newSet.has(lineIndex)) {
@@ -980,22 +1070,16 @@ async function handleLineMouseDown(
 	e.preventDefault();
 	pressHeld = true;
 
+	const hunkKey = `${filePath}-${hunkIdx}`;
+	if (e.shiftKey && extendComposerTo(filePath, hunkIdx, lineIndex, hunkLines))
+		return;
+
 	// D-02: switching to a new range while an open composer holds a dirty draft
 	// prompts a discard confirmation. On cancel, keep selection and composer.
 	if (composerOpen && !(await confirmComposerReplacement())) return;
 
-	const hunkKey = `${filePath}-${hunkIdx}`;
-
 	if (e.shiftKey && hunkKey === selectedHunkKey && lastClickedIndex !== null) {
-		const start = Math.min(lastClickedIndex, lineIndex);
-		const end = Math.max(lastClickedIndex, lineIndex);
-		const newSet = new Set(selectedLineIndices);
-		for (let i = start; i <= end; i++) {
-			if (i < hunkLines.length && hunkLines[i].origin !== "Context") {
-				newSet.add(i);
-			}
-		}
-		selectedLineIndices = newSet;
+		selectedLineIndices = shiftExtended(lastClickedIndex, lineIndex, hunkLines);
 		lastClickedIndex = lineIndex;
 		return;
 	}
@@ -1121,6 +1205,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			bind:this={composer}
 			captured={diffCaptured}
 			composerSession={activeComposerSession}
+			extendable={composerFollowsSelection}
 			{commitOid}
 			resolveCommitOid={resolveCommentCommitOid}
 			{repoPath}
@@ -1135,6 +1220,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			bind:this={composer}
 			captured={fullFileCaptured}
 			composerSession={activeComposerSession}
+			extendable={!fullFileCaptured.wholeFile}
 			currentFile={currentFileTarget}
 			{commitOid}
 			resolveCommitOid={currentFileTarget
@@ -1223,6 +1309,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			{editorSessionForThread}
 			{refreshToken}
 			oncommentfullfile={handleCommentFullFile}
+			onextendcomment={handleExtendFullFileComment}
 			composer={diffComposer}
 			bind:fullFileView
 		/>

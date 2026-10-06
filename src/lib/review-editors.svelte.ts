@@ -77,6 +77,8 @@ export function reviewComposerTargetsEqual(
 export interface ReviewComposerCapture {
 	readonly anchor: Anchor;
 	readonly cachedExcerpt: string;
+	/** Opened on the whole file (Comment File) rather than on chosen lines. */
+	readonly wholeFile?: boolean;
 }
 
 /** A diff composer that survives conditional DiffPanel mounts. */

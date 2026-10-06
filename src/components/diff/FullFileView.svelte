@@ -44,6 +44,9 @@ interface Props {
 	// hunks.flatMap(h => h.lines)) up to the DiffPanel host when the user clicks
 	// the Comment affordance.
 	oncommentfullfile: (filePath: string, selectedIndices: Set<number>) => void;
+	/** A shift-click stretched the selection to these lines, which the comment
+	 *  being written follows. */
+	onextendcomment?: (filePath: string, selectedIndices: Set<number>) => void;
 	reviewCommentsVisible?: boolean;
 	reviewFilter?: ReviewFilter;
 	viewComments?: Thread[];
@@ -60,6 +63,7 @@ let {
 	diffKind,
 	isMerge,
 	oncommentfullfile,
+	onextendcomment,
 	reviewCommentsVisible = true,
 	reviewFilter = "all",
 	viewComments = [],
@@ -150,6 +154,7 @@ function selectLine(
 
 	if (shift && selectedPath === path && anchorIndex !== null) {
 		focusIndex = index;
+		onextendcomment?.(path, computeSpan(anchorIndex, index));
 		return;
 	}
 

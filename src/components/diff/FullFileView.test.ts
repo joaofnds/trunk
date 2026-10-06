@@ -201,6 +201,21 @@ describe("FullFileView", () => {
 		expect(sorted).toEqual([1, 2, 3, 4]);
 	});
 
+	it("reports a shift-extended span for the comment being written", async () => {
+		const onextendcomment = vi.fn();
+		render(FullFileView, { props: defaultProps({ onextendcomment }) });
+
+		await fireEvent.click(gutterGrip("added one"));
+		await fireEvent.click(gutterGrip("added three"), { shiftKey: true });
+
+		expect(onextendcomment).toHaveBeenCalledTimes(1);
+		const [filePath, indices] = onextendcomment.mock.calls[0];
+		expect(filePath).toBe("src/main.ts");
+		expect([...(indices as Set<number>)].sort((a, b) => a - b)).toEqual([
+			1, 2, 3, 4,
+		]);
+	});
+
 	it("selects the span between the pressed row and the row the pointer reaches", async () => {
 		const oncommentfullfile = vi.fn();
 		render(FullFileView, {

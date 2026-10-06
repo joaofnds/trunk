@@ -26,6 +26,9 @@ interface Props {
 	/** Fill a box of fixed height, as a diff row is, with the text taking the
 	 *  slack; the text cannot be dragged taller than the box. */
 	fill?: boolean;
+	/** Whether a shift-click on a line number stretches the range, which the
+	 *  hint then says. */
+	extendHint?: boolean;
 }
 
 let {
@@ -43,6 +46,7 @@ let {
 	oninput,
 	onescape,
 	fill = false,
+	extendHint = false,
 }: Props = $props();
 
 const headingId = $props.id();
@@ -101,7 +105,10 @@ function onkeydown(event: KeyboardEvent) {
 	></textarea>
 	<footer class="composer-actions">
 		<span class="composer-hint"
-			><Keycap>⌘</Keycap><Keycap>↵</Keycap>
+			>{#if extendHint}
+				<Keycap>⇧</Keycap>
+				click a line number to extend ·{" "}
+			{/if}<Keycap>⌘</Keycap><Keycap>↵</Keycap>
 			submit</span
 		>
 		<span class="flex-1"></span>

@@ -222,6 +222,30 @@ describe("CommentComposer", () => {
 		);
 	});
 
+	it("says a shift-click extends the range where the host lets it", () => {
+		render(CommentComposer, {
+			props: {
+				file: modifiedFile,
+				hunkIdx: 0,
+				selectedLineIndices: new Set([1]),
+				commitOid: "abc123",
+				repoPath: "/repo",
+				onclose: () => {},
+				extendable: true,
+			},
+		});
+
+		expect(screen.getByText(/click a line number to extend/)).toHaveTextContent(
+			"⇧ click a line number to extend · ⌘↵ submit",
+		);
+	});
+
+	it("promises no extension where the host offers none", () => {
+		renderComposer();
+
+		expect(screen.queryByText(/to extend/)).toBeNull();
+	});
+
 	it("names the review the comment lands in", () => {
 		renderComposer({
 			activeReview: { id: "r3m9", title: "Graph lane colors" },

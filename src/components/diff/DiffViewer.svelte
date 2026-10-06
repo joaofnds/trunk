@@ -86,6 +86,7 @@ interface Props {
 	/** The open comment composer, if any. */
 	composer?: DiffComposer | null;
 	oncommentfullfile: (filePath: string, selectedIndices: Set<number>) => void;
+	onextendcomment?: (filePath: string, selectedIndices: Set<number>) => void;
 	fullFileView?: import("./FullFileView.svelte").default | null;
 	/** Set by the mounted virtualized view, null when none is. */
 	diffNav?: DiffNav | null;
@@ -136,6 +137,7 @@ let {
 	editorSessionForThread,
 	composer = null,
 	oncommentfullfile,
+	onextendcomment,
 	fullFileView = $bindable(null),
 	diffNav = $bindable(null),
 	refreshToken = 0,
@@ -301,6 +303,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{diffKind}
 			{isMerge}
 			{oncommentfullfile}
+			{onextendcomment}
 			{reviewCommentsVisible}
 			{reviewFilter}
 			{viewComments}

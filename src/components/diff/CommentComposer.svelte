@@ -23,7 +23,7 @@ interface Props {
 	// the captured result via buildDiffAnchor. The full-file host instead injects
 	// a pre-built `captured` result (from buildFullFileAnchor) and omits the three
 	// diff-path props. Exactly one of the two contracts is satisfied by the caller.
-	captured?: { anchor: Anchor; cachedExcerpt: string };
+	captured?: { anchor: Anchor; cachedExcerpt: string; wholeFile?: boolean };
 	// The current-file contract, exclusive with the other two. A current-file
 	// thread pins the file's own content, so it carries no anchor and no commit
 	// oid: the backend reads the range out of the file at submit and stores the
@@ -41,6 +41,8 @@ interface Props {
 	resolveCommitOid?: () => Promise<string | null>;
 	repoPath: string;
 	onclose: () => void;
+	/** Whether the host stretches the range on a shift-click on a line number. */
+	extendable?: boolean;
 	/** Hide-all keeps the editor mounted but must make submission impossible. */
 	canSubmit?: boolean;
 	/** The review active when this composer was opened. */
@@ -68,6 +70,7 @@ let {
 	activeReviewId = null,
 	composerSession,
 	activeReview = null,
+	extendable = false,
 }: Props = $props();
 
 const localSession = createReviewComposerSession();
@@ -279,6 +282,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	placeholder="Leave a comment… Markdown supported"
 	newReviewName="a new composing review"
 	fill
+	extendHint={extendable}
 	bind:text={composerDraft.text}
 	busy={submitting}
 	submitLabel="Submit"
@@ -289,6 +293,13 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 >
 	{#snippet heading()}
 		<MessageSquare size={12} class="shrink-0 text-accent" aria-hidden="true" />
-		{rangeHeading(capturedResult.anchor.start_line, capturedResult.anchor.end_line)}
+		{#if captured?.wholeFile}
+			<span
+				title="Lines {capturedResult.anchor.start_line}-{capturedResult.anchor.end_line}"
+				>Comment on this file</span
+			>
+		{:else}
+			{rangeHeading(capturedResult.anchor.start_line, capturedResult.anchor.end_line)}
+		{/if}
 	{/snippet}
 </ComposerFrame>
