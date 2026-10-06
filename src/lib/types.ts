@@ -363,6 +363,13 @@ export interface RebaseTodo {
 	items: RebaseTodoItem[];
 }
 
+// What an interactive rebase replays its commits onto: the branch that points
+// at the base commit, the commit itself when no branch does, or the root.
+export type RebaseBase =
+	| { kind: "branch"; name: string }
+	| { kind: "commit"; oid: string }
+	| { kind: "root" };
+
 // Review session schema (mirrors src-tauri/review/src/types.rs Phase 65 keystone)
 // String-for-string with the Rust on-wire shape: PascalCase enum strings,
 // snake_case fields, nullable optionals for Rust Option<T>.

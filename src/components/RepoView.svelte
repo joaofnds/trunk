@@ -63,6 +63,7 @@ import type {
 	FileDiff,
 	GraphCommit,
 	GraphResponse,
+	RebaseBase,
 	RebaseTodo,
 	RebaseTodoItem,
 	RefsResponse,
@@ -546,7 +547,7 @@ let showRebaseEditor = $state(false);
 let rebaseEditorCommits = $state<RebaseTodoItem[]>([]);
 let rebaseBaseOid = $state<string | null>(null);
 let rebaseBranchName = $state("");
-let rebaseBaseName = $state("");
+let rebaseBase = $state<RebaseBase | null>(null);
 let rebaseFocusedCommitDetail = $state<CommitDetailType | null>(null);
 let rebaseFocusedCommitStat = $state<DiffStat | null>(null);
 // Replace this array wholesale: $state.raw ignores an in-place mutation, so a
@@ -1799,10 +1800,13 @@ async function branchNameAt(oid: string): Promise<string | null> {
 	return null;
 }
 
-async function resolveBaseName(base: string | null): Promise<string> {
-	if (base === null) return "root";
+async function resolveBase(oid: string | null): Promise<RebaseBase> {
+	if (oid === null) return { kind: "root" };
 
-	return (await branchNameAt(base)) ?? base.slice(0, 7);
+	const name = await branchNameAt(oid);
+	if (name === null) return { kind: "commit", oid };
+
+	return { kind: "branch", name };
 }
 
 async function handleOpenRebaseEditor(baseOid: string, inclusive = false) {
@@ -1817,7 +1821,7 @@ async function handleOpenRebaseEditor(baseOid: string, inclusive = false) {
 		rebaseEditorCommits = todo.items;
 		rebaseBaseOid = todo.base_oid;
 		rebaseBranchName = headBranch ?? "HEAD";
-		rebaseBaseName = await resolveBaseName(todo.base_oid);
+		rebaseBase = await resolveBase(todo.base_oid);
 		// Clear any open diffs/selections before showing editor
 		clearStagingDiff();
 		clearCommit();
@@ -1838,7 +1842,7 @@ function handleRebaseEditorClose() {
 	rebaseEditorCommits = [];
 	rebaseBaseOid = null;
 	rebaseBranchName = "";
-	rebaseBaseName = "";
+	rebaseBase = null;
 	rebaseFocusedCommitDetail = null;
 	rebaseFocusedCommitStat = null;
 	rebaseFocusedFileDiffs = [];
@@ -2114,7 +2118,7 @@ function stepRightPane(delta: number) {
 <div class="flex-1 overflow-hidden flex flex-col">
 	<PushRecoveryPrompt {repoPath} {remoteState} {refreshSignal} />
 	<main class="flex-1 overflow-hidden flex">
-		{#if showRebaseEditor}
+		{#if showRebaseEditor && rebaseBase}
 			<!-- Full-window takeover for interactive rebase -->
 			<div class="flex-1 overflow-hidden">
 				<div
@@ -2126,7 +2130,7 @@ function stepRightPane(delta: number) {
 						{repoPath}
 						commits={rebaseEditorCommits}
 						branchName={rebaseBranchName}
-						baseName={rebaseBaseName}
+						base={rebaseBase}
 						onclose={handleRebaseEditorClose}
 						onstart={handleRebaseStart}
 						onfocuschange={handleRebaseFocusChange}

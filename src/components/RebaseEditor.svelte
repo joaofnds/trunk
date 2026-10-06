@@ -1,7 +1,9 @@
 <script lang="ts">
+import GitBranch from "@lucide/svelte/icons/git-branch";
+import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
 import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
 import Sortable from "sortablejs";
-import { copySha } from "../lib/clipboard.js";
+import { copyRefName, copySha } from "../lib/clipboard.js";
 import { exactDate } from "../lib/exact-date.js";
 import { COLUMN_PADDING_X } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
@@ -19,7 +21,7 @@ import {
 	setRebaseColumnWidths,
 } from "../lib/store.js";
 import { measureTextWidth } from "../lib/text-measure.js";
-import type { RebaseTodoItem } from "../lib/types.js";
+import type { RebaseBase, RebaseTodoItem } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Chip from "../lib/ui/Chip.svelte";
 import Dialog from "../lib/ui/Dialog.svelte";
@@ -42,7 +44,7 @@ interface Props {
 	repoPath: string;
 	commits: RebaseTodoItem[];
 	branchName: string;
-	baseName: string;
+	base: RebaseBase;
 	onclose: () => void;
 	onstart: (
 		items: {
@@ -59,7 +61,7 @@ let {
 	repoPath,
 	commits,
 	branchName,
-	baseName,
+	base,
 	onclose,
 	onstart,
 	onfocuschange,
@@ -533,8 +535,22 @@ let lastVisibleColumn = $derived.by(() => {
 		<div class="rebase-toolbar-left">
 			<span class="rebase-toolbar-title">Interactive Rebase</span>
 			<span class="rebase-toolbar-meta"
-				>Rebasing <Chip variant="label">{branchName}</Chip> onto
-				<Chip variant="label">{baseName}</Chip></span
+				>Rebasing
+				<Chip title="Copy {branchName}" onclick={() => copyRefName(branchName)}
+					><GitBranch size={11} />{branchName}</Chip
+				>
+				onto
+				{#if base.kind === "branch"}
+					<Chip title="Copy {base.name}" onclick={() => copyRefName(base.name)}
+						><GitBranch size={11} />{base.name}</Chip
+					>
+				{:else if base.kind === "commit"}
+					<Chip title="Copy SHA" onclick={() => copySha(base.oid)}
+						><GitCommitHorizontal size={11} />{base.oid.slice(0, 7)}</Chip
+					>
+				{:else}
+					<Chip variant="label">root</Chip>
+				{/if}</span
 			>
 		</div>
 		<div class="rebase-toolbar-right">

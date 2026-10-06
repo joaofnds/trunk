@@ -13,7 +13,7 @@ import {
 } from "vitest";
 import { exactLabel } from "../lib/relative-time.js";
 import { SHOW_DELAY_MS } from "../lib/tooltip.js";
-import type { RebaseTodoItem } from "../lib/types.js";
+import type { RebaseBase, RebaseTodoItem } from "../lib/types.js";
 import RebaseEditor from "./RebaseEditor.svelte";
 
 // Stub OffscreenCanvas for jsdom — used by text-measure.ts (measureTextWidth)
@@ -143,7 +143,7 @@ describe("RebaseEditor", () => {
 				repoPath: "/test/repo",
 				commits: TEST_ITEMS,
 				branchName: "feature/login",
-				baseName: "main",
+				base: { kind: "branch", name: "main" },
 				onclose,
 				onstart: vi.fn(),
 			},
@@ -284,7 +284,7 @@ describe("RebaseEditor", () => {
 				repoPath: "/test/repo",
 				commits: TEST_ITEMS,
 				branchName: "feature/login",
-				baseName: "main",
+				base: { kind: "branch", name: "main" },
 				onclose: vi.fn(),
 				onstart: vi.fn(),
 			},
@@ -298,7 +298,7 @@ describe("RebaseEditor", () => {
 				repoPath: "/test/repo",
 				commits: TEST_ITEMS,
 				branchName: "feature/login",
-				baseName: "main",
+				base: { kind: "branch", name: "main" },
 				onclose: vi.fn(),
 				onstart: vi.fn(),
 			},
@@ -312,7 +312,7 @@ describe("RebaseEditor", () => {
 				repoPath: "/test/repo",
 				commits: TEST_ITEMS,
 				branchName: "feature/login",
-				baseName: "main",
+				base: { kind: "branch", name: "main" },
 				onclose: vi.fn(),
 				onstart: vi.fn(),
 			},
@@ -321,30 +321,63 @@ describe("RebaseEditor", () => {
 		expect(screen.getByText("main")).toBeInTheDocument();
 	});
 
-	it.each(["feature/login", "main"])(
-		"draws %s as a ref chip that does nothing when pressed",
-		(name) => {
+	describe("header refs", () => {
+		const BASE_OID = "9959ac6f00d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5";
+
+		function renderOnto(base: RebaseBase) {
 			render(RebaseEditor, {
 				props: {
 					repoPath: "/test/repo",
 					commits: TEST_ITEMS,
 					branchName: "feature/login",
-					baseName: "main",
+					base,
 					onclose: vi.fn(),
 					onstart: vi.fn(),
 				},
 			});
+		}
 
-			const pill = screen.getByText(name);
+		beforeEach(() => {
+			vi.mocked(writeText).mockClear();
+		});
 
-			expect(pill.tagName).toBe("SPAN");
-			expect(pill).toHaveClass(
-				"rounded-full",
-				"bg-chip-accent-bg",
-				"font-mono",
+		it("copies the branch name when its chip is pressed", async () => {
+			renderOnto({ kind: "branch", name: "main" });
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "feature/login" }),
 			);
-		},
-	);
+
+			expect(vi.mocked(writeText)).toHaveBeenCalledWith("feature/login");
+		});
+
+		it("copies the base branch name when its chip is pressed", async () => {
+			renderOnto({ kind: "branch", name: "main" });
+
+			await fireEvent.click(screen.getByRole("button", { name: "main" }));
+
+			expect(vi.mocked(writeText)).toHaveBeenCalledWith("main");
+		});
+
+		describe("when the base is a commit no branch points at", () => {
+			it("copies the full oid of the short one it shows", async () => {
+				renderOnto({ kind: "commit", oid: BASE_OID });
+
+				await fireEvent.click(screen.getByRole("button", { name: "9959ac6" }));
+
+				expect(vi.mocked(writeText)).toHaveBeenCalledWith(BASE_OID);
+			});
+		});
+
+		describe("when the base is the repository root", () => {
+			it("names the root without offering anything to copy", () => {
+				renderOnto({ kind: "root" });
+
+				expect(screen.getByText("root")).toBeVisible();
+				expect(screen.queryByRole("button", { name: "root" })).toBeNull();
+			});
+		});
+	});
 
 	it("renders commit summaries", () => {
 		render(RebaseEditor, {
@@ -352,7 +385,7 @@ describe("RebaseEditor", () => {
 				repoPath: "/test/repo",
 				commits: TEST_ITEMS,
 				branchName: "feature/login",
-				baseName: "main",
+				base: { kind: "branch", name: "main" },
 				onclose: vi.fn(),
 				onstart: vi.fn(),
 			},
@@ -369,7 +402,7 @@ describe("RebaseEditor", () => {
 				repoPath: "/test/repo",
 				commits: TEST_ITEMS,
 				branchName: "feature/login",
-				baseName: "main",
+				base: { kind: "branch", name: "main" },
 				onclose: vi.fn(),
 				onstart: vi.fn(),
 			},
@@ -391,7 +424,7 @@ describe("RebaseEditor", () => {
 					repoPath: "/test/repo",
 					commits: TEST_ITEMS,
 					branchName: "feature/login",
-					baseName: "main",
+					base: { kind: "branch", name: "main" },
 					onclose: vi.fn(),
 					onstart: vi.fn(),
 				},
@@ -412,7 +445,7 @@ describe("RebaseEditor", () => {
 					repoPath: "/test/repo",
 					commits: TEST_ITEMS,
 					branchName: "feature/login",
-					baseName: "main",
+					base: { kind: "branch", name: "main" },
 					onclose: vi.fn(),
 					onstart: vi.fn(),
 				},
@@ -431,7 +464,7 @@ describe("RebaseEditor", () => {
 				repoPath: "/test/repo",
 				commits: TEST_ITEMS,
 				branchName: "feature/login",
-				baseName: "main",
+				base: { kind: "branch", name: "main" },
 				onclose: vi.fn(),
 				onstart: vi.fn(),
 			},
@@ -446,7 +479,7 @@ describe("RebaseEditor", () => {
 				repoPath: "/test/repo",
 				commits: TEST_ITEMS,
 				branchName: "feature/login",
-				baseName: "main",
+				base: { kind: "branch", name: "main" },
 				onclose: vi.fn(),
 				onstart: vi.fn(),
 			},
@@ -467,7 +500,7 @@ describe("RebaseEditor", () => {
 				repoPath: "/test/repo",
 				commits: TEST_ITEMS,
 				branchName: "feature/login",
-				baseName: "main",
+				base: { kind: "branch", name: "main" },
 				onclose,
 				onstart: vi.fn(),
 			},
@@ -482,7 +515,7 @@ describe("RebaseEditor", () => {
 				repoPath: "/test/repo",
 				commits: TEST_ITEMS,
 				branchName: "feature/login",
-				baseName: "main",
+				base: { kind: "branch", name: "main" },
 				onclose: vi.fn(),
 				onstart: vi.fn(),
 			},
@@ -498,7 +531,7 @@ describe("RebaseEditor", () => {
 				repoPath: "/test/repo",
 				commits: TEST_ITEMS,
 				branchName: "feature/login",
-				baseName: "main",
+				base: { kind: "branch", name: "main" },
 				onclose: vi.fn(),
 				onstart: vi.fn(),
 			},
@@ -528,7 +561,7 @@ describe("RebaseEditor", () => {
 						},
 					],
 					branchName: "feature/login",
-					baseName: "main",
+					base: { kind: "branch", name: "main" },
 					onclose: vi.fn(),
 					onstart: vi.fn(),
 				},
