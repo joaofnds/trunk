@@ -1,5 +1,11 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import {
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
@@ -247,11 +253,10 @@ describe("ReviewPanel", () => {
 		await flush();
 
 		expect(screen.getByText("src/untouched.ts:L4-L4")).toBeInTheDocument();
-		const shaLabels = screen
-			.queryAllByRole("button")
-			.map((b) => b.getAttribute("aria-label"))
-			.filter((l) => l?.startsWith("Copy SHA"));
-		expect(shaLabels).toEqual(["Copy SHA aaaaaaa", "Copy SHA bbbbbbb"]);
+		const shas = screen
+			.getAllByTitle("Copy SHA")
+			.map((b) => b.textContent?.trim());
+		expect(shas).toEqual(["aaaaaaa", "bbbbbbb"]);
 	});
 
 	it("groups comments under their commit headers", async () => {
@@ -280,6 +285,37 @@ describe("ReviewPanel", () => {
 		// Comments nested under their commit.
 		expect(screen.getByText("note on A")).toBeInTheDocument();
 		expect(screen.getByText("note on B")).toBeInTheDocument();
+	});
+
+	it("counts the threads under each commit", async () => {
+		installReads({
+			commits,
+			comments: [
+				lineAnchoredComment("c1", COMMIT_A, "first on A"),
+				lineAnchoredComment("c2", COMMIT_A, "second on A"),
+				commitLevelComment("c3", COMMIT_B, "note on B"),
+			],
+			resolutions: [resolvable("c1"), resolvable("c2"), resolvable("c3")],
+		});
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+		await flush();
+
+		const groupA = screen.getByRole("listitem", { name: "Commit aaaaaaa" });
+		expect(
+			within(groupA).getByTitle("Threads on this commit"),
+		).toHaveTextContent("2");
+		const groupB = screen.getByRole("listitem", { name: "Commit bbbbbbb" });
+		expect(
+			within(groupB).getByTitle("Threads on this commit"),
+		).toHaveTextContent("1");
 	});
 
 	// 260531-l02d: an auto-added snapshot with no comments is noise — hide it. An empty
@@ -1094,7 +1130,7 @@ describe("ReviewPanel", () => {
 			await flush();
 
 			await fireEvent.click(
-				screen.getByLabelText(`Copy SHA ${commits[0].short_oid}`),
+				screen.getByRole("button", { name: commits[0].short_oid }),
 			);
 			await flush();
 

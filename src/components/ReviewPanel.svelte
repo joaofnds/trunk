@@ -16,7 +16,6 @@ import Plus from "@lucide/svelte/icons/plus";
 import Trash2 from "@lucide/svelte/icons/trash-2";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { type Component, untrack } from "svelte";
-import { copySha } from "../lib/clipboard.js";
 import { commitOidForComment } from "../lib/comment-counts.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
@@ -40,6 +39,7 @@ import Button from "../lib/ui/Button.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
+import CommitChip from "./CommitChip.svelte";
 import StatePill from "./review/StatePill.svelte";
 import ThreadCard from "./ThreadCard.svelte";
 
@@ -786,25 +786,18 @@ $effect(() => {
 					{#each groups as group (group.oid)}
 						{@const visibleGroupComments = filterThreads(group.comments, reviewFilter)}
 						<li
+							aria-label="Commit {group.shortOid}"
 							class="flex flex-col gap-1"
 							style:display={reviewFilter === 'none' || (reviewFilter !== 'all' && group.comments.length > 0 && visibleGroupComments.length === 0) ? 'none' : 'flex'}
 						>
-							<!-- Commit group header (focal point): short SHA mono 600 + summary -->
+							<!-- The commit the threads under it were left on: its SHA, which
+							     copies itself, its summary, which jumps to it in the graph, how
+							     many threads it holds, and a note on the commit as a whole. -->
 							<div
-								class="flex items-center gap-2 py-1 px-0 border-b border-border"
+								class="flex items-center gap-2 h-bar py-0 px-2 rounded bg-surface-raised text-callout"
 							>
-								<span class="shrink-0 text-body leading-normal font-semibold">
-									<LinkButton
-										mono
-										title="Copy SHA"
-										aria-label="Copy SHA {group.shortOid}"
-										onclick={() => copySha(group.oid)}
-										>{group.shortOid}</LinkButton
-									>
-								</span>
-								<span
-									class="min-w-0 flex-1 text-body leading-normal font-semibold"
-								>
+								<CommitChip oid={group.oid} />
+								<span class="min-w-0 flex-1 text-text">
 									<LinkButton
 										truncate
 										aria-label="Jump to commit {group.shortOid}"
@@ -812,6 +805,11 @@ $effect(() => {
 										>{group.summary}</LinkButton
 									>
 								</span>
+								<span
+									class="shrink-0 text-caption text-text-muted"
+									title="Threads on this commit"
+									>{group.comments.length}</span
+								>
 								{#if reviewFilter !== "none"}
 									<Button
 										size="sm"
