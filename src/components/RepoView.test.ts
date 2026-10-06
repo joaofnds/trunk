@@ -2051,6 +2051,26 @@ describe("RepoView", () => {
 			});
 		}
 
+		function stubBranchAt(name: string, oid: string) {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				switch (cmd) {
+					case "list_refs":
+						return Promise.resolve({
+							local: [{ name }],
+							remote: [],
+							tags: [],
+							stashes: [],
+						});
+					case "resolve_ref":
+						return Promise.resolve(oid);
+					default:
+						return base(cmd, args);
+				}
+			});
+		}
+
 		async function flush() {
 			await new Promise((r) => setTimeout(r, 0));
 		}
@@ -2099,6 +2119,27 @@ describe("RepoView", () => {
 			await openTheEditorOnTheClickedCommit();
 
 			expect(await screen.findByText("root")).toBeTruthy();
+		});
+
+		it("names the base by the branch that points at it", async () => {
+			stubRebaseTodo(PARENT_OID);
+			stubBranchAt("release", PARENT_OID);
+
+			await openTheEditorOnTheClickedCommit();
+
+			expect(
+				await screen.findByRole("button", { name: "release" }),
+			).toBeTruthy();
+		});
+
+		it("names a base no branch points at by its short SHA", async () => {
+			stubRebaseTodo(PARENT_OID);
+
+			await openTheEditorOnTheClickedCommit();
+
+			expect(
+				await screen.findByRole("button", { name: PARENT_OID.slice(0, 7) }),
+			).toBeTruthy();
 		});
 
 		it("starts the rebase at the base the backend resolved, not the clicked commit", async () => {

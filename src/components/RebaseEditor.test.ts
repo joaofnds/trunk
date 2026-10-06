@@ -12,6 +12,7 @@ import {
 	vi,
 } from "vitest";
 import { exactLabel } from "../lib/relative-time.js";
+import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import { SHOW_DELAY_MS } from "../lib/tooltip.js";
 import type { RebaseBase, RebaseTodoItem } from "../lib/types.js";
 import RebaseEditor from "./RebaseEditor.svelte";
@@ -46,8 +47,6 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
 	writeText: vi.fn().mockResolvedValue(undefined),
 }));
-
-vi.mock("../lib/toast.svelte.js", () => ({ showToast: vi.fn() }));
 
 vi.mock("@tauri-apps/api/path", () => ({
 	homeDir: vi.fn().mockResolvedValue("/Users/test"),
@@ -306,21 +305,6 @@ describe("RebaseEditor", () => {
 		expect(screen.getByText("Interactive Rebase")).toBeInTheDocument();
 	});
 
-	it("renders branch name and base name pills", () => {
-		render(RebaseEditor, {
-			props: {
-				repoPath: "/test/repo",
-				commits: TEST_ITEMS,
-				branchName: "feature/login",
-				base: { kind: "branch", name: "main" },
-				onclose: vi.fn(),
-				onstart: vi.fn(),
-			},
-		});
-		expect(screen.getByText("feature/login")).toBeInTheDocument();
-		expect(screen.getByText("main")).toBeInTheDocument();
-	});
-
 	describe("header refs", () => {
 		const BASE_OID = "9959ac6f00d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5";
 
@@ -339,24 +323,55 @@ describe("RebaseEditor", () => {
 
 		beforeEach(() => {
 			vi.mocked(writeText).mockClear();
+			_resetToasts();
+		});
+
+		it.each([
+			["feature/login", { kind: "branch", name: "release/2.0" }],
+			["release/2.0", { kind: "branch", name: "release/2.0" }],
+			["9959ac6", { kind: "commit", oid: BASE_OID }],
+		] as const)("draws %s as a ref chip", (name, base) => {
+			renderOnto(base);
+
+			expect(screen.getByRole("button", { name })).toHaveClass(
+				"rounded-full",
+				"bg-chip-accent-bg",
+				"font-mono",
+			);
 		});
 
 		it("copies the branch name when its chip is pressed", async () => {
-			renderOnto({ kind: "branch", name: "main" });
+			renderOnto({ kind: "branch", name: "release/2.0" });
 
 			await fireEvent.click(
 				screen.getByRole("button", { name: "feature/login" }),
 			);
 
 			expect(vi.mocked(writeText)).toHaveBeenCalledWith("feature/login");
+			expect(toasts.items).toEqual([
+				{
+					id: expect.any(Number),
+					message: "Copied feature/login",
+					kind: "success",
+				},
+			]);
 		});
 
 		it("copies the base branch name when its chip is pressed", async () => {
-			renderOnto({ kind: "branch", name: "main" });
+			renderOnto({ kind: "branch", name: "release/2.0" });
 
-			await fireEvent.click(screen.getByRole("button", { name: "main" }));
+			await fireEvent.click(
+				screen.getByRole("button", { name: "release/2.0" }),
+			);
 
-			expect(vi.mocked(writeText)).toHaveBeenCalledWith("main");
+			expect(vi.mocked(writeText)).toHaveBeenCalledWith("release/2.0");
+			expect(toasts.items).toEqual([
+				{
+					id: expect.any(Number),
+					message: "Copied release/2.0",
+					kind: "success",
+				},
+			]);
 		});
 
 		describe("when the base is a commit no branch points at", () => {
@@ -366,6 +381,13 @@ describe("RebaseEditor", () => {
 				await fireEvent.click(screen.getByRole("button", { name: "9959ac6" }));
 
 				expect(vi.mocked(writeText)).toHaveBeenCalledWith(BASE_OID);
+				expect(toasts.items).toEqual([
+					{
+						id: expect.any(Number),
+						message: "Copied 9959ac6",
+						kind: "success",
+					},
+				]);
 			});
 		});
 
@@ -373,7 +395,13 @@ describe("RebaseEditor", () => {
 			it("names the root without offering anything to copy", () => {
 				renderOnto({ kind: "root" });
 
-				expect(screen.getByText("root")).toBeVisible();
+				const root = screen.getByText("root");
+				expect(root).toBeVisible();
+				expect(root).toHaveClass(
+					"rounded-full",
+					"bg-chip-accent-bg",
+					"font-mono",
+				);
 				expect(screen.queryByRole("button", { name: "root" })).toBeNull();
 			});
 		});
