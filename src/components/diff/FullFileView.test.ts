@@ -721,3 +721,39 @@ describe("FullFileView", () => {
 		);
 	});
 });
+
+describe("FullFileView thread marker", () => {
+	function markerOn(text: string): Element | null | undefined {
+		return screen
+			.getByText(text)
+			.closest(".diff-line")
+			?.querySelector(".thread-marker");
+	}
+
+	it("counts the threads hanging on a line beside its numbers", () => {
+		const onAddedLine = aThread({
+			id: "t1",
+			anchor: {
+				commit_oid: "abc123",
+				file_path: "src/main.ts",
+				source: "FullFile",
+				side: "New",
+				start_line: 11,
+				end_line: 11,
+			},
+		});
+
+		render(FullFileView, {
+			props: defaultProps({ viewComments: [onAddedLine] }),
+		});
+
+		expect(markerOn("added one")).toHaveTextContent("1");
+		expect(markerOn("added two")).toBeNull();
+	});
+
+	it("reserves no marker column when no thread hangs in view", () => {
+		const { container } = render(FullFileView, { props: defaultProps() });
+
+		expect(container.querySelector(".thread-marker-cell")).toBeNull();
+	});
+});

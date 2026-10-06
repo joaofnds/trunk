@@ -456,3 +456,47 @@ describe("SplitView gutter grip", () => {
 		expect(grip).toHaveAccessibleName("Select added line 11");
 	});
 });
+
+describe("SplitView thread marker", () => {
+	function threadOn(id: string, side: "Old" | "New", line: number) {
+		return aThread({
+			id,
+			anchor: {
+				commit_oid: "abc123",
+				file_path: "src/main.ts",
+				source: "FullFile",
+				side,
+				start_line: line,
+				end_line: line,
+			},
+		});
+	}
+
+	function markerOn(text: string): Element | null | undefined {
+		return screen
+			.getByText(text)
+			.closest(".diff-line")
+			?.querySelector(".thread-marker");
+	}
+
+	it("counts each side's threads in that side's gutter", () => {
+		render(SplitView, {
+			props: defaultProps({
+				viewComments: [
+					threadOn("tNew", "New", 11),
+					threadOn("tOld", "Old", 12),
+				],
+			}),
+		});
+
+		expect(markerOn("added one")).toHaveTextContent("1");
+		expect(markerOn("removed two")).toHaveTextContent("1");
+		expect(markerOn("removed one")).toBeNull();
+	});
+
+	it("reserves no marker column when no thread hangs in view", () => {
+		const { container } = render(SplitView, { props: defaultProps() });
+
+		expect(container.querySelector(".thread-marker-cell")).toBeNull();
+	});
+});

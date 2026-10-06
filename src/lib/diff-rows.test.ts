@@ -203,6 +203,56 @@ describe("buildInlineRows", () => {
 		expect(spanned).toEqual([true, true, false]);
 	});
 
+	it("counts the threads that hang on each line", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			comments: [thread("t1", "New", 1, 2), thread("t2", "New", 2, 2)],
+		});
+
+		const counts = model.rows
+			.filter((row) => row.kind === "line")
+			.map((row) => row.threadCount);
+
+		expect(counts).toEqual([0, 2, 0]);
+	});
+
+	it("counts only the threads the selected filter shows", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			reviewFilter: "open",
+			comments: [
+				thread("t1", "New", 2, 2),
+				{ ...thread("t2", "New", 2, 2), state: "done" },
+			],
+		});
+
+		const counts = model.rows
+			.filter((row) => row.kind === "line")
+			.map((row) => row.threadCount);
+
+		expect(counts).toEqual([0, 1, 0]);
+	});
+
+	it("reserves a marker column only when a thread hangs on a line", () => {
+		const bare = buildInlineRows([twoHunks], fullMode);
+		const commented = buildInlineRows([twoHunks], {
+			...fullMode,
+			comments: [thread("t1", "New", 2, 2)],
+		});
+
+		expect([bare.markerChars, commented.markerChars]).toEqual([0, 3]);
+	});
+
+	it("reserves no marker column when inline comments are hidden", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			reviewCommentsVisible: false,
+			comments: [thread("t1", "New", 2, 2)],
+		});
+
+		expect(model.markerChars).toBe(0);
+	});
+
 	it("leaves lines unspanned when inline comments are hidden", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
@@ -539,6 +589,31 @@ describe("buildSplitRows", () => {
 
 		expect(pairs.map((row) => row.spannedRight)).toEqual([true, true, false]);
 		expect(pairs.map((row) => row.spannedLeft)).toEqual([false, false, false]);
+	});
+
+	it("counts each side's threads on the side they hang from", () => {
+		const model = buildSplitRows([pairable], {
+			...fullMode,
+			comments: [thread("tNew", "New", 2, 2), thread("tOld", "Old", 3, 3)],
+		});
+
+		const pairs = model.rows.filter((row) => row.kind === "pair");
+
+		expect(pairs.map((row) => [row.threadsLeft, row.threadsRight])).toEqual([
+			[0, 0],
+			[0, 1],
+			[1, 0],
+		]);
+	});
+
+	it("reserves a marker column only when a thread hangs on a pair", () => {
+		const bare = buildSplitRows([pairable], fullMode);
+		const commented = buildSplitRows([pairable], {
+			...fullMode,
+			comments: [thread("t1", "Old", 3, 3)],
+		});
+
+		expect([bare.markerChars, commented.markerChars]).toEqual([0, 3]);
 	});
 
 	it("reports the widest old-side and new-side content as two column entries", () => {

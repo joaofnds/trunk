@@ -33,6 +33,8 @@ export type DiffRow =
 			/** Display columns the content occupies, from the same pass. */
 			columns: number;
 			spanned: boolean;
+			/** Threads the comment row under this line holds. */
+			threadCount: number;
 	  }
 	| {
 			kind: "pair";
@@ -44,6 +46,9 @@ export type DiffRow =
 			rightColumns: number;
 			spannedLeft: boolean;
 			spannedRight: boolean;
+			/** Threads hanging from each side, which its gutter marker counts. */
+			threadsLeft: number;
+			threadsRight: number;
 	  }
 	| {
 			kind: "comment";
@@ -70,6 +75,8 @@ export interface DiffRowModel {
 	hunkNav: HunkNavEntry[];
 	/** Digits of the largest line number, plus one. */
 	gutterChars: number;
+	/** Width of the thread-marker column, zero when no thread hangs in view. */
+	markerChars: number;
 	/** Widest content per column, in display columns. */
 	columns: number[];
 }
@@ -167,6 +174,14 @@ export function buildInlineRows(
 					line.new_lineno ?? 0,
 				);
 
+				const threads = opts.reviewCommentsVisible
+					? threadsOn(line, opts.comments)
+					: [];
+
+				const visibleThreads = threads.filter((thread) =>
+					visibleComments.includes(thread),
+				);
+
 				rows.push({
 					kind: "line",
 					path: fd.path,
@@ -177,15 +192,9 @@ export function buildInlineRows(
 					columns,
 					spanned:
 						opts.reviewCommentsVisible && isSpanned(line, visibleComments),
+					threadCount: visibleThreads.length,
 				});
 
-				const threads = opts.reviewCommentsVisible
-					? threadsOn(line, opts.comments)
-					: [];
-
-				const visibleThreads = threads.filter((thread) =>
-					visibleComments.includes(thread),
-				);
 				if (visibleThreads.length > 0) {
 					rows.push({
 						kind: "comment",
@@ -206,6 +215,7 @@ export function buildInlineRows(
 		rows,
 		hunkNav,
 		gutterChars: String(maxLineNumber).length + 1,
+		markerChars: markerCharsFor(rows),
 		columns: [widest],
 	};
 }
@@ -272,6 +282,18 @@ export function buildSplitRows(
 				widestLeft = Math.max(widestLeft, leftColumns);
 				widestRight = Math.max(widestRight, rightColumns);
 
+				const visibleOn = (threads: Thread[]): Thread[] =>
+					opts.reviewCommentsVisible
+						? threads.filter((thread) => visibleComments.includes(thread))
+						: [];
+				const rightThreads = visibleOn(
+					commentsForLine(opts.comments, "New", pair.right?.line.new_lineno),
+				);
+				const leftThreads = visibleOn(
+					commentsForLine(opts.comments, "Old", pair.left?.line.old_lineno),
+				);
+				const visibleThreads = [...rightThreads, ...leftThreads];
+
 				rows.push({
 					kind: "pair",
 					path: fd.path,
@@ -291,15 +313,10 @@ export function buildSplitRows(
 							"New",
 							pair.right.line.new_lineno,
 						),
+					threadsLeft: leftThreads.length,
+					threadsRight: rightThreads.length,
 				});
 
-				const threads = opts.reviewCommentsVisible
-					? pairThreads(pair, opts.comments)
-					: [];
-
-				const visibleThreads = threads.filter((thread) =>
-					visibleComments.includes(thread),
-				);
 				if (visibleThreads.length > 0) {
 					// The right side anchors the row where it exists: it is the side
 					// the gutter arms selection from, and the one a New-side comment
@@ -326,6 +343,7 @@ export function buildSplitRows(
 		rows,
 		hunkNav,
 		gutterChars: String(maxLineNumber).length + 1,
+		markerChars: markerCharsFor(rows),
 		columns: [widestLeft, widestRight],
 	};
 }
@@ -364,11 +382,13 @@ export function rowIndexForLine(
 	return -1;
 }
 
-function pairThreads(pair: PairedRow, comments: Thread[]): Thread[] {
-	return [
-		...commentsForLine(comments, "New", pair.right?.line.new_lineno ?? null),
-		...commentsForLine(comments, "Old", pair.left?.line.old_lineno ?? null),
-	];
+/** Two cells wide plus one for the gap: room for a count of up to 99. */
+const MARKER_CHARS = 3;
+
+/** The marker column exists only while some comment row does, so a file with
+ *  no thread in view keeps its gutter as narrow as before. */
+function markerCharsFor(rows: DiffRow[]): number {
+	return rows.some((row) => row.kind === "comment") ? MARKER_CHARS : 0;
 }
 
 function threadsOn(line: DiffLine, comments: Thread[]): Thread[] {

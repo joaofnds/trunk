@@ -56,6 +56,7 @@ export interface InlineVirtualizedDiff {
 	readonly heights: number[];
 	readonly contentWidth: string;
 	readonly gutterW: string;
+	readonly markerW: string;
 }
 
 export interface SplitVirtualizedDiff extends InlineVirtualizedDiff {
@@ -96,6 +97,10 @@ export function createVirtualizedDiff(
 
 	// Inline wraps into the full pane less two gutters; a split side has half
 	// the pane and one gutter — what a single side actually has to wrap into.
+	// Each layout's marker column sits beside its gutters, once per side.
+	const inlineGutterChars = $derived(2 * model.gutterChars + model.markerChars);
+	const sideGutterChars = $derived(model.gutterChars + model.markerChars);
+
 	const availableColumns = $derived.by(() => {
 		const measured = state.metrics;
 		if (!measured) return 0;
@@ -103,13 +108,13 @@ export function createVirtualizedDiff(
 		return split
 			? availableCharsFor(
 					state.paneWidthPx / 2,
-					model.gutterChars,
+					sideGutterChars,
 					SPLIT_ROW_CHROME_PX,
 					measured,
 				)
 			: availableCharsFor(
 					state.paneWidthPx,
-					2 * model.gutterChars,
+					inlineGutterChars,
 					ROW_CHROME_PX,
 					measured,
 				);
@@ -151,14 +156,14 @@ export function createVirtualizedDiff(
 	// widest line's tail by the gutter plus this half's chrome.
 	const maxLeftPx = $derived(
 		state.metrics
-			? (model.gutterChars + (model.columns[0] ?? 0)) *
+			? (sideGutterChars + (model.columns[0] ?? 0)) *
 					state.metrics.charWidthPx +
 					SPLIT_ROW_CHROME_PX
 			: 0,
 	);
 	const maxRightPx = $derived(
 		state.metrics
-			? (model.gutterChars + (model.columns[1] ?? 0)) *
+			? (sideGutterChars + (model.columns[1] ?? 0)) *
 					state.metrics.charWidthPx +
 					SPLIT_ROW_CHROME_PX
 			: 0,
@@ -177,10 +182,11 @@ export function createVirtualizedDiff(
 
 		return split
 			? `calc(${Math.max(maxLeftPx, maxRightPx)}px + 50cqi)`
-			: `${(2 * model.gutterChars + (model.columns[0] ?? 0)) * measured.charWidthPx + ROW_CHROME_PX}px`;
+			: `${(inlineGutterChars + (model.columns[0] ?? 0)) * measured.charWidthPx + ROW_CHROME_PX}px`;
 	});
 
 	const gutterW = $derived(`${model.gutterChars}ch`);
+	const markerW = $derived(`${model.markerChars}ch`);
 
 	onMount(() => {
 		if (state.metricsProbe) {
@@ -278,6 +284,9 @@ export function createVirtualizedDiff(
 		},
 		get gutterW() {
 			return gutterW;
+		},
+		get markerW() {
+			return markerW;
 		},
 		get maxLeftPx() {
 			return maxLeftPx;

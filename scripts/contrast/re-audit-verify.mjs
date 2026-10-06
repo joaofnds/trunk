@@ -132,6 +132,7 @@ for (const [state, color] of [
 }
 check("dismissed pill label on a card", "var(--color-thread-dismissed)", "var(--color-comment-card-bg)", { layers: ["var(--color-hover)"] });
 check("agent name on a card", "var(--color-accent-alt)", "var(--color-comment-card-bg)");
+check("thread count in the diff gutter", "var(--color-on-accent)", "var(--color-accent)");
 
 section("Chip (lineage pills and branch chips, on --color-surface, the merge banner and the staging header)");
 check("accent chip label", "var(--color-accent-strong)", "var(--color-surface)", { layers: ["var(--color-chip-accent-bg)"] });

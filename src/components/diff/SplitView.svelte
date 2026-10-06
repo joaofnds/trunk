@@ -33,6 +33,7 @@ import {
 } from "../../lib/virtualized-diff.svelte.js";
 import ThreadCard from "../ThreadCard.svelte";
 import ExactVirtualList from "./ExactVirtualList.svelte";
+import ThreadMarker from "./ThreadMarker.svelte";
 
 interface Props {
 	contentMode: ContentMode;
@@ -311,6 +312,9 @@ function originClass(origin: string): string {
 					style:line-height={DIFF_ROW_FONT.lineHeight}
 					style:background={lineBackground(line.origin, isSelected)}
 				>
+					{#if model.markerChars > 0}
+						<ThreadMarker count={item.threadsLeft} width={vd.markerW} />
+					{/if}
 					<span class="split-gutter" style:min-width={vd.gutterW}
 						>{line.old_lineno ?? ''}</span
 					>
@@ -343,6 +347,9 @@ function originClass(origin: string): string {
 					data-hunk-index={item.hunkIdx}
 					data-line-index={lineIdx}
 				>
+					{#if model.markerChars > 0}
+						<ThreadMarker count={item.threadsRight} width={vd.markerW} />
+					{/if}
 					{#if isSelectable}
 						<GutterGrip
 							aria-label={gripLabel(line)}

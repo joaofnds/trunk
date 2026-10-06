@@ -29,6 +29,7 @@ import {
 } from "../../lib/virtualized-diff.svelte.js";
 import ThreadCard from "../ThreadCard.svelte";
 import ExactVirtualList from "./ExactVirtualList.svelte";
+import ThreadMarker from "./ThreadMarker.svelte";
 
 interface Props {
 	fileDiffs: FileDiff[];
@@ -249,7 +250,9 @@ function lineBackground(origin: string, isSelected: boolean): string {
 			data-line-path={item.path}
 			data-flat-index={item.flatIdx}
 			data-new-side={isSelectable ? "" : undefined}
-			>{#if isSelectable}
+			>{#if model.markerChars > 0}
+				<ThreadMarker count={item.threadCount} width={vd.markerW} />
+			{/if}{#if isSelectable}
 				<GutterGrip
 					aria-label={gripLabel(line)}
 					onmousedown={(e) => startDrag(item.path, line, item.flatIdx, e)}

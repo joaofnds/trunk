@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
+import { aThread } from "../../__tests__/helpers/thread-fixture.js";
 import { describeThreadedCommentActions } from "../../__tests__/helpers/threaded-comment-actions.js";
 import { safeInvoke } from "../../lib/invoke.js";
 import {
@@ -246,5 +247,44 @@ describe("HunkView gutter grip", () => {
 			?.querySelector("[data-gutter-grip]");
 
 		expect(grip).toHaveAccessibleName("Select added line 11");
+	});
+});
+
+describe("HunkView thread marker", () => {
+	const onAddedLine = (id: string) =>
+		aThread({
+			id,
+			anchor: {
+				commit_oid: "abc123",
+				file_path: "src/main.ts",
+				source: "FullFile",
+				side: "New",
+				start_line: 11,
+				end_line: 11,
+			},
+		});
+
+	function markerOn(text: string): Element | null | undefined {
+		return screen
+			.getByText(text)
+			.closest(".diff-line")
+			?.querySelector(".thread-marker");
+	}
+
+	it("counts the threads hanging on a line beside its numbers", () => {
+		render(HunkView, {
+			props: defaultProps({
+				viewComments: [onAddedLine("t1"), onAddedLine("t2")],
+			}),
+		});
+
+		expect(markerOn("added one")).toHaveTextContent("2");
+		expect(markerOn("context before")).toBeNull();
+	});
+
+	it("reserves no marker column when no thread hangs in view", () => {
+		const { container } = render(HunkView, { props: defaultProps() });
+
+		expect(container.querySelector(".thread-marker-cell")).toBeNull();
 	});
 });

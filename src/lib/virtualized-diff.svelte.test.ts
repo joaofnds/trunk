@@ -167,6 +167,28 @@ describe("createVirtualizedDiff", () => {
 		expect(split.availableColumns).toBe(43);
 	});
 
+	it("takes a thread-marker column out of both layouts' column budgets", () => {
+		const { vd: inline } = mount({
+			layout: "inline",
+			comments: [anchoredThread()],
+		});
+		const { vd: split } = mount({
+			layout: "split",
+			comments: [anchoredThread()],
+		});
+
+		// The budgets above, less three marker columns at 9px: once inline,
+		// once per split side.
+		expect(inline.availableColumns).toBe(87);
+		expect(split.availableColumns).toBe(40);
+	});
+
+	it("reports the marker width in ch from the model's marker columns", () => {
+		const { vd } = mount({ comments: [anchoredThread()] });
+
+		expect(vd.markerW).toBe("3ch");
+	});
+
 	it("reports the gutter width in ch from the model's gutter columns", () => {
 		const { vd } = mount();
 
@@ -245,6 +267,13 @@ describe("createVirtualizedDiff", () => {
 
 		const { vd: split } = mount({ layout: "split" });
 		expect(split.contentWidth).toMatch(/^calc\(\d+px \+ 50cqi\)$/);
+	});
+
+	it("widens the content by the thread-marker column", () => {
+		const { vd } = mount({ comments: [anchoredThread()] });
+
+		// The 215px above plus three marker columns at 9px.
+		expect(vd.contentWidth).toBe("242px");
 	});
 
 	it("gives each side its own pan ceiling from that side's full width", () => {
