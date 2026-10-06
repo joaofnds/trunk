@@ -294,7 +294,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 			Lands in
 			{#if activeReview}
 				<span class="font-mono text-text">{activeReview.id}</span>
-				<span class="text-text">{activeReview.title}</span>
+				<span class="text-text truncate">{activeReview.title}</span>
 			{:else if activeReviewId}
 				<span class="font-mono text-text">{activeReviewId}</span>
 			{:else}

@@ -2122,6 +2122,22 @@ describe("header", () => {
 		expect(onreviewfilterchange).toHaveBeenCalledWith("all");
 	});
 
+	it.each([
+		["all", "Show only open threads"],
+		["open", "Show all threads"],
+	] as const)(
+		"titles the open count under the %s filter as %s",
+		async (reviewFilter, title) => {
+			installReads({ commits, comments: THREADS });
+			renderPanel({ reviewFilter });
+			await flush();
+
+			expect(
+				screen.getByRole("button", { name: "Open threads: 2" }),
+			).toHaveAttribute("title", title);
+		},
+	);
+
 	it("names no review when the repo has none", async () => {
 		installReads({ reviews: [], activeReviewId: null });
 		renderPanel();

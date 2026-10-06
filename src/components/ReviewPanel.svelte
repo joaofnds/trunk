@@ -700,7 +700,9 @@ $effect(() => {
 							variant="ghost"
 							aria-pressed={reviewFilter === filter.value}
 							aria-label="{look.label} threads: {count}"
-							title="Show only {look.label.toLowerCase()} threads"
+							title={reviewFilter === filter.value
+								? "Show all threads"
+								: `Show only ${look.label.toLowerCase()} threads`}
 							onclick={() => toggleFilter(filter.value)}
 						>
 							<span class="inline-flex {filter.tone}" aria-hidden="true">
