@@ -4,8 +4,7 @@ import ChevronUp from "@lucide/svelte/icons/chevron-up";
 import FolderTree from "@lucide/svelte/icons/folder-tree";
 import List from "@lucide/svelte/icons/list";
 import X from "@lucide/svelte/icons/x";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { copySha } from "../lib/clipboard.js";
+import { copySha, copyText } from "../lib/clipboard.js";
 import { fileCountsForOid, fileTonesForOid } from "../lib/comment-counts.js";
 import type { Draft } from "../lib/draft.svelte.js";
 import { pathMenuEntriesOf } from "../lib/file-menu.js";
@@ -111,7 +110,7 @@ async function showFileContextMenu(e: MouseEvent, file: FileStatus) {
 					MenuItem.new({
 						text: entry.text,
 						action: () => {
-							writeText(entry.value).catch(() => {});
+							copyText(entry.value);
 						},
 					}),
 			),

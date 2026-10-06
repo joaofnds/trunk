@@ -18,7 +18,6 @@ import {
 	PredefinedMenuItem,
 	Submenu,
 } from "@tauri-apps/api/menu";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { type Component, onDestroy, tick, untrack } from "svelte";
 import { buildGraphData } from "../lib/active-lanes.js";
@@ -27,7 +26,7 @@ import {
 	rebaseBranch,
 	resolveForkPoint,
 } from "../lib/branch-op.js";
-import { copySha } from "../lib/clipboard.js";
+import { copySha, copyText } from "../lib/clipboard.js";
 import {
 	type CoalescedTask,
 	createCoalescedTask,
@@ -1102,7 +1101,7 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 			await MenuItem.new({
 				text: "Copy Message",
 				action: () => {
-					writeText(commit.summary).catch(() => {});
+					copyText(commit.summary);
 				},
 			}),
 			await PredefinedMenuItem.new({ item: "Separator" }),

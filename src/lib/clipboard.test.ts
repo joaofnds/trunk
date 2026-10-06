@@ -1,6 +1,6 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { copyRefName, copySha } from "./clipboard.js";
+import { copySha, copyText } from "./clipboard.js";
 import { _resetToasts, toasts } from "./toast.svelte.js";
 
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
@@ -27,31 +27,9 @@ describe("copySha", () => {
 			{ id: expect.any(Number), message: "Copied abc1234", kind: "success" },
 		]);
 	});
-
-	describe("when the clipboard write fails", () => {
-		beforeEach(() => {
-			vi.mocked(writeText).mockRejectedValue(new Error("plugin disabled"));
-		});
-
-		it("shows an error toast with the failure message", async () => {
-			await copySha("abc1234567890");
-
-			expect(toasts.items).toEqual([
-				{
-					id: expect.any(Number),
-					message: "Failed to copy: plugin disabled",
-					kind: "error",
-				},
-			]);
-		});
-
-		it("never rejects", async () => {
-			await expect(copySha("abc1234567890")).resolves.toBeUndefined();
-		});
-	});
 });
 
-describe("copyRefName", () => {
+describe("copyText", () => {
 	beforeEach(() => {
 		_resetToasts();
 		vi.mocked(writeText).mockReset();
@@ -59,13 +37,13 @@ describe("copyRefName", () => {
 	});
 
 	it("copies the name to the clipboard", async () => {
-		await copyRefName("feature/login");
+		await copyText("feature/login");
 
 		expect(vi.mocked(writeText)).toHaveBeenCalledWith("feature/login");
 	});
 
 	it("confirms the copy with a success toast of the whole name", async () => {
-		await copyRefName("feature/login");
+		await copyText("feature/login");
 
 		expect(toasts.items).toEqual([
 			{
@@ -75,26 +53,31 @@ describe("copyRefName", () => {
 			},
 		]);
 	});
+});
 
-	describe("when the clipboard write fails", () => {
-		beforeEach(() => {
-			vi.mocked(writeText).mockRejectedValue(new Error("plugin disabled"));
-		});
+describe.each([
+	["copySha", () => copySha("abc1234567890")],
+	["copyText", () => copyText("feature/login")],
+])("%s when the clipboard write fails", (_name, copy) => {
+	beforeEach(() => {
+		_resetToasts();
+		vi.mocked(writeText).mockReset();
+		vi.mocked(writeText).mockRejectedValue(new Error("plugin disabled"));
+	});
 
-		it("shows an error toast with the failure message", async () => {
-			await copyRefName("feature/login");
+	it("shows an error toast with the failure message", async () => {
+		await copy();
 
-			expect(toasts.items).toEqual([
-				{
-					id: expect.any(Number),
-					message: "Failed to copy: plugin disabled",
-					kind: "error",
-				},
-			]);
-		});
+		expect(toasts.items).toEqual([
+			{
+				id: expect.any(Number),
+				message: "Failed to copy: plugin disabled",
+				kind: "error",
+			},
+		]);
+	});
 
-		it("never rejects", async () => {
-			await expect(copyRefName("feature/login")).resolves.toBeUndefined();
-		});
+	it("never rejects", async () => {
+		await expect(copy()).resolves.toBeUndefined();
 	});
 });

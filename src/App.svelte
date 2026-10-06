@@ -9,6 +9,7 @@ import TabBar from "./components/TabBar.svelte";
 import Toast from "./components/Toast.svelte";
 import Toolbar from "./components/Toolbar.svelte";
 import WelcomeScreen from "./components/WelcomeScreen.svelte";
+import { copyText } from "./lib/clipboard.js";
 import {
 	type CoalescedTask,
 	createCoalescedTask,
@@ -237,7 +238,6 @@ async function showTabContextMenu(tabId: string, _event: MouseEvent) {
 	const { Menu, MenuItem, PredefinedMenuItem } = await import(
 		"@tauri-apps/api/menu"
 	);
-	const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
 	const tab = tabs.find((t) => t.id === tabId);
 
 	const menu = await Menu.new({
@@ -260,7 +260,7 @@ async function showTabContextMenu(tabId: string, _event: MouseEvent) {
 				text: "Copy Path",
 				enabled: !!tab?.repoPath,
 				action: () => {
-					if (tab?.repoPath) writeText(tab.repoPath);
+					if (tab?.repoPath) copyText(tab.repoPath);
 				},
 			}),
 		],

@@ -6,9 +6,9 @@ import ChevronsDownUp from "@lucide/svelte/icons/chevrons-down-up";
 import ChevronsUpDown from "@lucide/svelte/icons/chevrons-up-down";
 import FolderTree from "@lucide/svelte/icons/folder-tree";
 import List from "@lucide/svelte/icons/list";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { onDestroy } from "svelte";
 import { buildTree, collectFilePaths } from "../lib/build-tree.js";
+import { copyText } from "../lib/clipboard.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { fileCountsForOid, fileTonesForOid } from "../lib/comment-counts.js";
 import { resolveViewOid } from "../lib/comment-matching.js";
@@ -372,13 +372,13 @@ async function showUnstagedContextMenu(
 			await MenuItem.new({
 				text: "Copy Relative Path",
 				action: () => {
-					writeText(filePath).catch(() => {});
+					copyText(filePath);
 				},
 			}),
 			await MenuItem.new({
 				text: "Copy Absolute Path",
 				action: () => {
-					writeText(absPath).catch(() => {});
+					copyText(absPath);
 				},
 			}),
 			await PredefinedMenuItem.new({ item: "Separator" }),
@@ -414,13 +414,13 @@ async function showUnstagedDirContextMenu(_e: MouseEvent, dirPath: string) {
 			await MenuItem.new({
 				text: "Copy Relative Path",
 				action: () => {
-					writeText(dirPath).catch(() => {});
+					copyText(dirPath);
 				},
 			}),
 			await MenuItem.new({
 				text: "Copy Absolute Path",
 				action: () => {
-					writeText(absPath).catch(() => {});
+					copyText(absPath);
 				},
 			}),
 			await PredefinedMenuItem.new({ item: "Separator" }),
@@ -456,7 +456,7 @@ async function showStagedContextMenu(
 					MenuItem.new({
 						text: entry.text,
 						action: () => {
-							writeText(entry.value).catch(() => {});
+							copyText(entry.value);
 						},
 					}),
 				),
@@ -488,13 +488,13 @@ async function showStagedDirContextMenu(_e: MouseEvent, dirPath: string) {
 			await MenuItem.new({
 				text: "Copy Relative Path",
 				action: () => {
-					writeText(dirPath).catch(() => {});
+					copyText(dirPath);
 				},
 			}),
 			await MenuItem.new({
 				text: "Copy Absolute Path",
 				action: () => {
-					writeText(absPath).catch(() => {});
+					copyText(absPath);
 				},
 			}),
 			await PredefinedMenuItem.new({ item: "Separator" }),
@@ -555,13 +555,13 @@ async function showConflictedContextMenu(_e: MouseEvent, filePath: string) {
 			await MenuItem.new({
 				text: "Copy Relative Path",
 				action: () => {
-					writeText(filePath).catch(() => {});
+					copyText(filePath);
 				},
 			}),
 			await MenuItem.new({
 				text: "Copy Absolute Path",
 				action: () => {
-					writeText(absPath).catch(() => {});
+					copyText(absPath);
 				},
 			}),
 		],
@@ -606,13 +606,13 @@ async function showConflictedDirContextMenu(_e: MouseEvent, dirPath: string) {
 			await MenuItem.new({
 				text: "Copy Relative Path",
 				action: () => {
-					writeText(dirPath).catch(() => {});
+					copyText(dirPath);
 				},
 			}),
 			await MenuItem.new({
 				text: "Copy Absolute Path",
 				action: () => {
-					writeText(absPath).catch(() => {});
+					copyText(absPath);
 				},
 			}),
 			await PredefinedMenuItem.new({ item: "Separator" }),

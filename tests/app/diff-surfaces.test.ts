@@ -177,6 +177,52 @@ describe("the diff surfaces", () => {
 		expect(app.clipboard.text).toBe("src/util.ts");
 	});
 
+	it("confirms a path copied from a commit's file", async () => {
+		const app = await setup({ repo: RENAMED_WITH_ONE_EDIT });
+		await app.repo.open();
+		await app.repo.selectCommit("rename a file and edit one line");
+		await app.repo.commitFileContextMenu("math-util.ts");
+
+		app.contextMenu.choose("Copy Old Relative Path");
+
+		await waitFor("the copy's confirmation", () =>
+			app.toasts().includes("Copied src/util.ts") ? true : null,
+		);
+	});
+
+	it("tells the user when the clipboard refuses a commit file's path", async () => {
+		const app = await setup({ repo: RENAMED_WITH_ONE_EDIT });
+		await app.repo.open();
+		await app.repo.selectCommit("rename a file and edit one line");
+		await app.repo.commitFileContextMenu("math-util.ts");
+		app.clipboard.refuseWrites("clipboard is locked");
+
+		app.contextMenu.choose("Copy Old Relative Path");
+
+		await waitFor("the failure's toast", () =>
+			app.toasts().includes("Failed to copy: clipboard is locked")
+				? true
+				: null,
+		);
+	});
+
+	it("tells the user when the clipboard refuses a staged file's path", async () => {
+		const app = await setup({ repo: RENAMED_UNCOMMITTED });
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.stageEverything();
+		await app.staging.stagedFileContextMenu("math-util.ts");
+		app.clipboard.refuseWrites("clipboard is locked");
+
+		app.contextMenu.choose("Copy Old Relative Path");
+
+		await waitFor("the failure's toast", () =>
+			app.toasts().includes("Failed to copy: clipboard is locked")
+				? true
+				: null,
+		);
+	});
+
 	it("offers both of a staged renamed file's paths in its context menu", async () => {
 		const app = await setup({ repo: RENAMED_UNCOMMITTED });
 		await app.repo.open();
