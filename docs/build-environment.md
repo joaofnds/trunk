@@ -203,7 +203,11 @@ distinct from the installed `/Applications/Trunk.app` (`Trunk`,
 `com.joaofnds.trunk`), so the two running apps are easy to tell apart and a
 session can drive its own copy while the developer's stays untouched. It embeds
 the built frontend rather than pointing at Vite, so it needs no dev server and
-does not hot-reload: rebuild to see a change.
+does not hot-reload: rebuild to see a change. A rebuild replaces the bundle
+on disk under a running copy, and that copy keeps drawing the frontend it
+loaded at launch, so quit it and open the bundle again before observing.
+`ps -axo lstart,command | grep "Trunk Dev.app"` gives the running copy's start
+time to compare with the commit you mean to observe.
 
 Screenshots of the dev window work from the background as they are. Clicks
 need one more thing: WebKit drops a mouse event aimed at a window that is not
