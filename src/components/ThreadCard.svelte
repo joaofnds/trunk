@@ -49,6 +49,9 @@ interface Props {
 	// Under its file's header in the panel, the card names only the lines it
 	// covers, since the header already names the file.
 	scoped?: boolean;
+	// The thread the panel's keys act on, and how a click makes it that thread.
+	focused?: boolean;
+	onfocusrequest?: () => void;
 	editorSession?: ThreadEditorSession;
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 }
@@ -65,6 +68,8 @@ let {
 	orphaned = false,
 	orphanLabel = null,
 	scoped = false,
+	focused = false,
+	onfocusrequest,
 	editorSession,
 	editorSessionForThread,
 }: Props = $props();
@@ -379,6 +384,9 @@ async function requestDeleteReply(replyId: string) {
 
 <article
 	class="comment-card comment-card-{variant}"
+	data-thread-id={thread.id}
+	aria-current={focused ? "true" : undefined}
+	onpointerdown={onfocusrequest}
 	class:comment-card-resolved={thread.state === "done" ||
 		thread.state === "dismissed"}
 	class:comment-card-open={!collapsed}
@@ -619,6 +627,10 @@ async function requestDeleteReply(replyId: string) {
        different defaults. */
 	font-family: var(--font-sans);
 	font-size: var(--text-callout);
+}
+.comment-card[aria-current="true"] {
+	border-color: var(--color-accent);
+	outline: 1px solid var(--color-accent-border);
 }
 .comment-card-inline {
 	width: 100%;

@@ -5,20 +5,24 @@
 // in the center pane (UI-SPEC:133); jump is driven by the host via onJump.
 
 import Clipboard from "@lucide/svelte/icons/clipboard";
+import ClipboardCheck from "@lucide/svelte/icons/clipboard-check";
 import File from "@lucide/svelte/icons/file";
 import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
+import MessageSquare from "@lucide/svelte/icons/message-square";
 import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
 import Pencil from "@lucide/svelte/icons/pencil";
 import Plus from "@lucide/svelte/icons/plus";
 import Send from "@lucide/svelte/icons/send";
 import Trash2 from "@lucide/svelte/icons/trash-2";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { untrack } from "svelte";
+import { tick, untrack } from "svelte";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import { laneColor } from "../lib/lanes.js";
 import { currentMinute } from "../lib/now.svelte.js";
 import { exactLabel, relativeLabel } from "../lib/relative-time.js";
+import { setThreadState } from "../lib/review-comment-actions.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import {
 	createReviewEditorStore,
@@ -40,10 +44,12 @@ import type {
 	Review,
 	ReviewFilter,
 	Thread,
+	ThreadState,
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Chip from "../lib/ui/Chip.svelte";
 import Dialog from "../lib/ui/Dialog.svelte";
+import Keycap from "../lib/ui/Keycap.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Radio from "../lib/ui/Radio.svelte";
 import Row from "../lib/ui/Row.svelte";
@@ -51,8 +57,10 @@ import RowAction from "../lib/ui/RowAction.svelte";
 import BranchChip from "./BranchChip.svelte";
 import CommitChip from "./CommitChip.svelte";
 import ComposerFrame from "./review/ComposerFrame.svelte";
+import ReviewEmpty from "./review/ReviewEmpty.svelte";
 import StateGlyph from "./review/StateGlyph.svelte";
 import StatePill, { THREAD_LABELS } from "./review/StatePill.svelte";
+import WaysToComment from "./review/WaysToComment.svelte";
 import ThreadCard from "./ThreadCard.svelte";
 
 interface Props {
@@ -219,6 +227,7 @@ function splitPath(path: string): { dir: string; name: string } {
 
 const hasAnyComment = $derived(comments.length > 0);
 const hasVisibleComment = $derived(visibleComments.length > 0);
+const shownIsActive = $derived(shownReviewId === activeReviewId);
 
 let endPopoverOpen = $state(false);
 let endAnchor = $state<HTMLElement>();
@@ -238,6 +247,93 @@ function orphanLabel(c: Thread): string | null {
 // comments are not (D-07 / D-08).
 function isJumpable(c: Thread): boolean {
 	return c.anchor !== null && !isOrphan(c);
+}
+
+// The thread J and K move between, and D, X, O, R and Enter act on.
+let focusedId = $state<string | null>(null);
+const shownThreads = $derived(
+	sections
+		.flatMap((section) => section.groups)
+		.flatMap((group) => group.threads)
+		.filter(shows),
+);
+let bodyEl = $state<HTMLElement>();
+
+const KEY_LEGEND: [string[], string][] = [
+	[["J", "K"], "move"],
+	[["↵"], "open code"],
+	[["R"], "reply"],
+	[["D"], "done"],
+	[["X"], "dismiss"],
+	[["O"], "reopen"],
+];
+
+const STEP_KEYS: Partial<Record<string, ThreadState>> = {
+	d: "done",
+	x: "dismissed",
+	o: "open",
+};
+
+function cardOf(id: string): HTMLElement | null {
+	return (
+		bodyEl?.querySelector<HTMLElement>(
+			`[data-thread-id="${CSS.escape(id)}"]`,
+		) ?? null
+	);
+}
+
+function focusThreadAt(index: number) {
+	const thread =
+		shownThreads[Math.max(0, Math.min(shownThreads.length - 1, index))];
+	if (!thread) return;
+
+	focusedId = thread.id;
+	void tick().then(() =>
+		cardOf(thread.id)?.scrollIntoView({ block: "nearest" }),
+	);
+}
+
+// Enter on a focused button presses that button; it is not a request to open code.
+function pressesAControl(element: Element | null): boolean {
+	return (
+		element instanceof HTMLButtonElement || element instanceof HTMLAnchorElement
+	);
+}
+
+function threadKeys(event: KeyboardEvent) {
+	if (focusInEditable(document.activeElement)) return;
+
+	const chord = keyChord(event);
+	const at = shownThreads.findIndex((thread) => thread.id === focusedId);
+	if (chord === "j") {
+		focusThreadAt(at + 1);
+		return;
+	}
+	if (chord === "k") {
+		focusThreadAt(at - 1);
+		return;
+	}
+
+	const thread = shownThreads[at];
+	if (!thread) return;
+
+	const step = STEP_KEYS[chord];
+	if (step !== undefined) {
+		if (thread.allowed_transitions.includes(step)) {
+			void setThreadState(repoPath, thread.id, step);
+		}
+		return;
+	}
+	if (chord === "Enter" && !pressesAControl(document.activeElement)) {
+		if (isJumpable(thread)) onJump(thread);
+		return;
+	}
+	if (chord === "r") {
+		event.preventDefault();
+		cardOf(thread.id)
+			?.querySelector<HTMLElement>("[aria-label='Reply']")
+			?.focus();
+	}
 }
 
 // The retry the copy promises is a remount: that is what re-runs both the
@@ -481,7 +577,7 @@ $effect(() => {
 });
 </script>
 
-<svelte:window onpointerdown={dismissEndPopover} />
+<svelte:window onpointerdown={dismissEndPopover} onkeydown={threadKeys} />
 
 <div class="review-layout flex-1 min-h-0 overflow-hidden bg-surface">
 	<!-- The repo's reviews, one row each. Pressing a row shows that review; the
@@ -798,44 +894,69 @@ $effect(() => {
 			{/if}
 		</header>
 		<div
+			bind:this={bodyEl}
 			class="flex flex-col flex-1 min-h-0 overflow-auto p-3 bg-surface text-text text-callout leading-normal"
 		>
-			<!-- Phase 73-03 — Three-way empty-state branching (D-06). Order is specificity-
-       first: cold (no session) → warm-no-commits (existing copy preserved
-       verbatim) → warm-with-commits-zero-comments (replaces prior "No comments
-       yet." copy). The three branches are mutually exclusive; when the user has
-       added at least one comment, none render and the list below takes over. -->
 			{#if reviews.length === 0}
-				<div class="flex flex-col gap-1 p-3">
-					<span>No reviews yet</span>
-					<span class="text-text-muted text-small leading-normal">
-						Comment on a diff line to start one, or create an empty review
-						above.
-					</span>
-				</div>
-			{:else if commits.length === 0 && !hasAnyComment}
-				<div class="flex flex-col gap-1 p-3">
-					<span>No commits in this review yet.</span>
-					<span class="text-text-muted text-small leading-normal">
-						Add commits from the graph to start reviewing.
-					</span>
-				</div>
+				<ReviewEmpty title="No reviews in this repository">
+					{#snippet icon()}
+						<ClipboardCheck size={18} />
+					{/snippet}
+					<p>
+						A review collects comment threads on commits and uncommitted work.
+						When you end it, an agent can read the threads through the trunk
+						CLI, reply, and claim fixes for you to confirm.
+					</p>
+					<p>Your first comment starts a review automatically.</p>
+					<WaysToComment />
+					{#snippet actions()}
+						<Button variant="primary" size="sm" onclick={startNewReview}>
+							<Plus size={13} aria-hidden="true" />New review
+						</Button>
+					{/snippet}
+				</ReviewEmpty>
 			{:else if !hasAnyComment}
+				<ReviewEmpty
+					title={shownIsActive
+						? "This review is active and empty"
+						: "No comments in this review"}
+				>
+					{#snippet icon()}
+						<MessageSquare size={18} />
+					{/snippet}
+					<p>
+						{shownIsActive
+							? "New comments you write anywhere in this repo land here."
+							: "Make it active to collect new comments here."}
+						The agent can’t see the review until you end it, which needs at
+						least one thread.
+					</p>
+					<WaysToComment />
+				</ReviewEmpty>
+			{:else if reviewFilter === "none"}
 				<div class="flex flex-col gap-1 p-3">
-					<span>Review started.</span>
-					<span class="text-text-muted text-small leading-normal">
-						Select diff lines or add a commit note to comment.
-					</span>
-				</div>
-			{:else if !hasVisibleComment}
-				<div class="flex flex-col gap-1 p-3">
-					<span
-						>{reviewFilter === "none" ? "Review threads hidden." : "No threads match this filter."}</span
-					>
+					<span>Review threads hidden.</span>
 					<span class="text-text-muted text-small leading-normal">
 						The review inventory remains available above.
 					</span>
 				</div>
+			{:else if !hasVisibleComment && reviewFilter !== "all"}
+				<ReviewEmpty
+					title="No {THREAD_LABELS[reviewFilter].toLowerCase()} threads"
+				>
+					{#snippet icon()}
+						<StateGlyph state={reviewFilter} size={18} />
+					{/snippet}
+					<p>
+						None of the {plural(comments.length, "thread")} in this review are
+						{THREAD_LABELS[reviewFilter].toLowerCase()}.
+					</p>
+					{#snippet actions()}
+						<Button size="sm" onclick={() => onreviewfilterchange?.("all")}>
+							Show all {plural(comments.length, "thread")}
+						</Button>
+					{/snippet}
+				</ReviewEmpty>
 			{/if}
 
 			{#each sections as section (section.key)}
@@ -1027,6 +1148,20 @@ $effect(() => {
 				</section>
 			{/each}
 		</div>
+		{#if shownThreads.length > 0}
+			<p
+				role="note"
+				aria-label="Keyboard shortcuts"
+				class="review-keys flex items-center gap-1 h-bar px-4 m-0 shrink-0 overflow-hidden whitespace-nowrap text-small text-text-subtle"
+			>
+				{#each KEY_LEGEND as [keys, meaning] (meaning)}
+					{#each keys as key (key)}
+						<Keycap>{key}</Keycap>
+					{/each}
+					<span class="mr-2">{meaning}</span>
+				{/each}
+			</p>
+		{/if}
 	</section>
 </div>
 
@@ -1039,6 +1174,8 @@ $effect(() => {
 		confirmDelete={true}
 		variant="panel"
 		scoped
+		focused={focusedId === comment.id}
+		onfocusrequest={() => (focusedId = comment.id)}
 		onjump={onJump}
 		jumpable={isJumpable(comment)}
 		orphaned={isOrphan(comment)}
@@ -1091,6 +1228,10 @@ $effect(() => {
 .review-branch-ref {
 	max-width: 60%;
 }
+.review-keys {
+	border-top: 1px solid var(--color-border);
+}
+
 .review-meta {
 	font-family: var(--font-mono);
 	font-size: var(--text-caption);

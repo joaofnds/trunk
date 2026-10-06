@@ -2,6 +2,7 @@
 import type { Snippet } from "svelte";
 import type { Review } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
+import Keycap from "../../lib/ui/Keycap.svelte";
 
 interface Props {
 	/** The icon and line naming what the comment is on. */
@@ -87,7 +88,10 @@ function onkeydown(event: KeyboardEvent) {
 		{onkeydown}
 	></textarea>
 	<footer class="composer-actions">
-		<span class="composer-hint"><kbd>⌘</kbd><kbd>↵</kbd> submit</span>
+		<span class="composer-hint"
+			><Keycap>⌘</Keycap><Keycap>↵</Keycap>
+			submit</span
+		>
 		<span class="flex-1"></span>
 		<Button size="sm" variant="ghost" disabled={busy} onclick={oncancel}
 			>Cancel</Button
@@ -181,12 +185,5 @@ function onkeydown(event: KeyboardEvent) {
 	gap: var(--space-1);
 	color: var(--color-text-subtle);
 	font-size: var(--text-caption);
-}
-
-.composer-hint kbd {
-	padding: 0 var(--space-1);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius);
-	font-family: var(--font-sans);
 }
 </style>

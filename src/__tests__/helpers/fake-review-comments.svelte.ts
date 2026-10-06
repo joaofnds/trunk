@@ -77,7 +77,9 @@ export function createFakeReviewComments(): FakeReviewComments {
 	);
 
 	const oids = $derived(
-		new Set(state.commits.map((c) => c.oid)) as ReadonlySet<string>,
+		new Set(
+			state.commits.filter((c) => c.picked).map((c) => c.oid),
+		) as ReadonlySet<string>,
 	);
 
 	const counts = $derived(buildCommentCounts(state.threads, state.snapshots));

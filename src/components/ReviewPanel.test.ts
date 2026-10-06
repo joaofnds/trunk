@@ -52,6 +52,11 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
 	writeText: vi.fn().mockResolvedValue(undefined),
 }));
 
+// jsdom lays nothing out, so it has no scrollIntoView for the panel to call.
+if (typeof Element.prototype.scrollIntoView === "undefined") {
+	Element.prototype.scrollIntoView = () => {};
+}
+
 const COMMIT_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const COMMIT_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
@@ -372,38 +377,6 @@ describe("ReviewPanel", () => {
 		expect(calledCommands()).toEqual(["resolve_threads"]);
 	});
 
-	it("shows the warm-with-commits empty state when commits exist but no comments", async () => {
-		installReads({ commits, comments: [], resolutions: [] });
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
-		await flush();
-		expect(screen.getByText("Review started.")).toBeInTheDocument();
-	});
-
-	it("shows the no-commits empty state when the session has no commits", async () => {
-		installReads({ commits: [], comments: [], resolutions: [] });
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
-		await flush();
-		expect(
-			screen.getByText("No commits in this review yet."),
-		).toBeInTheDocument();
-	});
-
 	// Regression: a comment whose anchor.commit_oid is not in session.commits
 	// (e.g. user commented from a diff without marking the commit "in review"
 	// via the graph) must still render in a fallback group — the resolver, not
@@ -429,9 +402,11 @@ describe("ReviewPanel", () => {
 		// when the resolver says the comment is resolvable.
 		expect(screen.getByText("aaaaaaa")).toBeInTheDocument();
 		expect(screen.queryByText("(commit gone)")).not.toBeInTheDocument();
-		// The no-commits empty state must NOT fire when comments exist.
+		// The empty-review state must NOT fire when comments exist.
 		expect(
-			screen.queryByText("No commits in this review yet."),
+			screen.queryByRole("heading", {
+				name: "This review is active and empty",
+			}),
 		).not.toBeInTheDocument();
 	});
 
@@ -1533,12 +1508,6 @@ describe("End review", () => {
 	});
 });
 
-// Phase 73-03 — Empty-state branching. Three mutually exclusive empty states
-// gated on the lifecycle rune + groups + comments arity:
-//   no reviews at all                → cold ("No reviews yet")
-//   a review, no commits, no threads → warm-no-commits (existing copy preserved)
-//   a review with commits, no threads → warm-with-commits ("Review started.")
-// REAL timers — these tests use the file-global `flush()` (setTimeout(r,0) + tick).
 // The rail lists every review. Pressing a row shows that review; the radio
 // beside it is what makes a review the active one, where new comments land.
 describe("review list", () => {
@@ -1785,84 +1754,106 @@ describe("review list", () => {
 });
 
 describe("empty states", () => {
-	it("renders the cold empty state for a repo with no reviews", async () => {
-		installReads({
-			commits: [],
-			comments: [],
-			resolutions: [],
-			reviews: [],
-			activeReviewId: null,
-		});
-		render(ReviewPanel, {
+	function renderPanel(
+		onreviewfilterchange?: (filter: ReviewFilter) => void,
+		reviewFilter: ReviewFilter = "all",
+	) {
+		return render(ReviewPanel, {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				reviewFilter,
+				onreviewfilterchange,
 			},
 		});
+	}
+
+	it("explains reviews and how to comment when the repository has none", async () => {
+		installReads({ reviews: [], activeReviewId: null });
+		renderPanel();
 		await flush();
 
-		expect(screen.getByText("No reviews yet")).toBeInTheDocument();
+		expect(
+			screen.getByRole("heading", { name: "No reviews in this repository" }),
+		).toBeInTheDocument();
+		expect(
+			within(screen.getByRole("list", { name: "Ways to comment" }))
+				.getAllByRole("listitem")
+				.map((step) => step.textContent?.trim()),
+		).toEqual([
+			"Comment on selected diff lines",
+			"Note on a whole commit",
+			"Comment on any tracked file",
+		]);
+	});
+
+	it("starts a review from the empty repository", async () => {
+		installReads({ reviews: [], activeReviewId: null });
+		renderPanel();
+		await flush();
+
+		const empty = screen.getByRole("region", {
+			name: "No reviews in this repository",
+		});
+		await fireEvent.click(
+			within(empty).getByRole("button", { name: "New review" }),
+		);
+
+		expect(callArgs("create_review")).toEqual({ path: "/repo", title: null });
+	});
+
+	it("says the active review is empty and that new comments land in it", async () => {
+		installReads({ commits, comments: [] });
+		renderPanel();
+		await flush();
+
+		expect(
+			screen.getByRole("heading", { name: "This review is active and empty" }),
+		).toBeInTheDocument();
 		expect(
 			screen.getByText(
-				"Comment on a diff line to start one, or create an empty review above.",
+				/New comments you write anywhere in this repo land here/,
 			),
 		).toBeInTheDocument();
-		// Warm copy and prior "No comments yet" must NOT be visible in the cold branch.
-		expect(screen.queryByText("Review started.")).toBeNull();
-		expect(screen.queryByText("No comments yet.")).toBeNull();
 	});
 
-	it("renders warm-with-commits empty state when session active and zero comments", async () => {
+	it("says a review that is not active collects no comments until it is", async () => {
+		const other = aReview({ id: "OTHER001", title: "Other review" });
+		installReads({ reviews: [aReview(), other], comments: [] });
+		renderPanel();
+		await flush();
+
+		await reviewComments.select(other.id);
+		await flush();
+
+		expect(
+			screen.getByRole("heading", { name: "No comments in this review" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(/Make it active to collect new comments here/),
+		).toBeInTheDocument();
+	});
+
+	it("offers every thread back when the filter hides them all", async () => {
 		installReads({
 			commits,
-			comments: [],
-			resolutions: [],
+			comments: [lineAnchoredComment("c1", COMMIT_A, "still open")],
 		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
+		const onreviewfilterchange = vi.fn();
+		renderPanel(onreviewfilterchange, "done");
 		await flush();
 
-		expect(screen.getByText("Review started.")).toBeInTheDocument();
-		expect(
-			screen.getByText("Select diff lines or add a commit note to comment."),
-		).toBeInTheDocument();
-		// Cold copy must NOT be visible when a session is active.
-		expect(screen.queryByText("No active review")).toBeNull();
-	});
-
-	it("renders existing warm-no-commits empty state when session active and zero commits", async () => {
-		installReads({
-			commits: [],
-			comments: [],
-			resolutions: [],
-		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
-		await flush();
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Show all 1 thread" }),
+		);
 
 		expect(
-			screen.getByText("No commits in this review yet."),
+			screen.getByRole("heading", { name: "No done threads" }),
 		).toBeInTheDocument();
-		expect(
-			screen.getByText("Add commits from the graph to start reviewing."),
-		).toBeInTheDocument();
+		expect(onreviewfilterchange).toHaveBeenCalledWith("all");
 	});
 });
 
@@ -2308,9 +2299,10 @@ describe("multi-tab coordination", () => {
 
 		// Cold empty state now visible; warm copy and prior comment gone; End
 		// button hidden (no active review → the {#if} gate hides it).
-		expect(screen.getByText("No reviews yet")).toBeInTheDocument();
+		expect(
+			screen.getByRole("heading", { name: "No reviews in this repository" }),
+		).toBeInTheDocument();
 		expect(screen.queryByText("tab-A note")).toBeNull();
-		expect(screen.queryByText("Review started.")).toBeNull();
 		expect(screen.queryByRole("button", { name: /End review/ })).toBeNull();
 	});
 });
@@ -2619,6 +2611,240 @@ describe("ReviewPanel branch sections", () => {
 			await flush();
 
 			expect(screen.queryByText("Note on aaaaaaa")).not.toBeInTheDocument();
+		});
+	});
+});
+
+describe("ReviewPanel keyboard", () => {
+	const main: RefLabel = {
+		name: "refs/heads/main",
+		short_name: "main",
+		ref_type: "LocalBranch",
+		is_head: true,
+		color_index: 0,
+	};
+
+	function renderPanel(onJump: (thread: Thread) => void = vi.fn()) {
+		return render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump,
+				onJumpToCommit: vi.fn(),
+				headBranch: "main",
+			},
+		});
+	}
+
+	async function aCommitWithANoteAndALineThread() {
+		installReads({
+			commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+			comments: [
+				lineAnchoredComment("line", COMMIT_A, "on the lines"),
+				commitLevelComment("note", COMMIT_A, "on the commit"),
+			],
+		});
+	}
+
+	async function press(key: string) {
+		await fireEvent.keyDown(window, { key });
+		await flush();
+	}
+
+	function focusedThread(): HTMLElement | null {
+		return document.querySelector<HTMLElement>("article[aria-current='true']");
+	}
+
+	it("moves through the threads in the order the panel shows them with J and K", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+
+		await press("j");
+		const first = focusedThread()?.textContent;
+		await press("j");
+		const second = focusedThread()?.textContent;
+		await press("k");
+
+		expect([first, second, focusedThread()?.textContent]).toEqual([
+			expect.stringContaining("on the commit"),
+			expect.stringContaining("on the lines"),
+			expect.stringContaining("on the commit"),
+		]);
+	});
+
+	it("stays on the first thread when K is pressed at the top", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+
+		await press("j");
+		await press("j");
+		for (const _ of [1, 2, 3, 4, 5]) await press("k");
+
+		expect(focusedThread()).toHaveTextContent("on the commit");
+	});
+
+	it("focuses a thread the user clicks into", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+
+		await fireEvent.pointerDown(screen.getByText("on the lines"));
+
+		expect(focusedThread()).toHaveTextContent("on the lines");
+	});
+
+	it("marks the focused thread done with D", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+
+		await press("j");
+		await press("d");
+
+		expect(callArgs("set_thread_state")).toEqual({
+			path: "/repo",
+			id: "note",
+			next: "done",
+		});
+	});
+
+	it("dismisses the focused thread with X", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+
+		await press("j");
+		await press("x");
+
+		expect(callArgs("set_thread_state")).toEqual({
+			path: "/repo",
+			id: "note",
+			next: "dismissed",
+		});
+	});
+
+	it("reopens a finished thread with O", async () => {
+		installReads({
+			commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+			comments: [
+				aThread({
+					id: "finished",
+					commit_oid: COMMIT_A,
+					state: "done",
+					allowed_transitions: ["open"],
+				}),
+			],
+		});
+		renderPanel();
+		await flush();
+
+		await press("j");
+		await press("o");
+
+		expect(callArgs("set_thread_state")).toEqual({
+			path: "/repo",
+			id: "finished",
+			next: "open",
+		});
+	});
+
+	it("opens the focused thread's code with Enter", async () => {
+		await aCommitWithANoteAndALineThread();
+		const onJump = vi.fn();
+		renderPanel(onJump);
+		await flush();
+
+		await press("j");
+		await press("j");
+		await press("Enter");
+
+		expect(onJump).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "line" }),
+		);
+	});
+
+	it("leaves Enter to a button that has focus", async () => {
+		await aCommitWithANoteAndALineThread();
+		const onJump = vi.fn();
+		renderPanel(onJump);
+		await flush();
+		await press("j");
+		await press("j");
+		screen.getAllByRole("button", { name: "Mark done" })[0].focus();
+
+		await press("Enter");
+
+		expect(onJump).not.toHaveBeenCalled();
+	});
+
+	it("puts the cursor in the focused thread's reply box with R", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+
+		await press("j");
+		await press("r");
+
+		const focused = focusedThread();
+		expect(document.activeElement).toBe(
+			focused && within(focused).getByRole("textbox", { name: "Reply" }),
+		);
+	});
+
+	it("names the keys under the threads", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+
+		const legend = screen.getByRole("note", { name: "Keyboard shortcuts" });
+
+		expect(legend.textContent?.replace(/\s/g, "")).toBe(
+			"JKmove↵opencodeRreplyDdoneXdismissOreopen",
+		);
+	});
+
+	describe("when the user is typing", () => {
+		it("leaves the keys to the text", async () => {
+			await aCommitWithANoteAndALineThread();
+			renderPanel();
+			await flush();
+			await press("j");
+			const reply = within(focusedThread() as HTMLElement).getByRole(
+				"textbox",
+				{ name: "Reply" },
+			);
+			reply.focus();
+
+			await fireEvent.keyDown(reply, { key: "d" });
+			await flush();
+
+			expect(calledCommands()).not.toContain("set_thread_state");
+		});
+	});
+
+	describe("when the focused thread cannot take the step", () => {
+		it("does nothing", async () => {
+			installReads({
+				commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+				comments: [
+					aThread({
+						id: "finished",
+						commit_oid: COMMIT_A,
+						state: "done",
+						allowed_transitions: ["open"],
+					}),
+				],
+			});
+			renderPanel();
+			await flush();
+
+			await press("j");
+			await press("x");
+
+			expect(calledCommands()).not.toContain("set_thread_state");
 		});
 	});
 });

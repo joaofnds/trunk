@@ -56,6 +56,7 @@ import Chip from "./Chip.svelte";
 import Dialog from "./Dialog.svelte";
 import GutterGrip from "./GutterGrip.svelte";
 import HitArea from "./HitArea.svelte";
+import Keycap from "./Keycap.svelte";
 import LinkButton from "./LinkButton.svelte";
 import ListOption from "./ListOption.svelte";
 import Radio from "./Radio.svelte";
@@ -424,6 +425,17 @@ import ToastCard from "./ToastCard.svelte";
 			<Tag dashed variant="label"
 				><span data-catalog-text>Whole commit</span></Tag
 			>
+		</div>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>Keycap</h2
+		>
+		<div class="flex items-center gap-1">
+			<Keycap><span data-catalog-text>J</span></Keycap>
+			<Keycap><span data-catalog-text>⌘</span></Keycap>
+			<Keycap><span data-catalog-text>↵</span></Keycap>
 		</div>
 	</section>
 
