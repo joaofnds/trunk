@@ -85,6 +85,20 @@ describe("Chip", () => {
 		expect(menus).toHaveLength(1);
 	});
 
+	describe("when told to truncate", () => {
+		it("shrinks to the width its container leaves", () => {
+			render(Chip, { props: { truncate: true, children: label } });
+
+			expect(screen.getByRole("button")).toHaveClass("min-w-0", "max-w-full");
+		});
+	});
+
+	it("keeps its whole width unless told to truncate", () => {
+		render(Chip, { props: { children: label } });
+
+		expect(screen.getByRole("button")).not.toHaveClass("min-w-0");
+	});
+
 	describe("as a label", () => {
 		it("names a ref without being a control", () => {
 			render(Chip, { props: { variant: "label", children: refName } });

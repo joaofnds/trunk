@@ -10,11 +10,13 @@ interface ButtonChip extends Omit<HTMLButtonAttributes, "class" | "style"> {
 	variant?: "button";
 	/** `accent` for the chip a row leads with; `neutral` for the ones beside it. */
 	tone?: ChipTone;
+	truncate?: boolean;
 }
 
 interface LabelChip {
 	variant: "label";
 	tone?: ChipTone;
+	truncate?: never;
 	type?: never;
 	children: Snippet;
 }
@@ -22,6 +24,7 @@ interface LabelChip {
 let {
 	variant = "button",
 	tone = "accent",
+	truncate = false,
 	type = "button",
 	children,
 	...rest
@@ -35,6 +38,8 @@ const BUTTON =
 	"focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent";
 
 const LABEL = "px-2";
+
+const SHRINK = "min-w-0 max-w-full";
 
 const TONES: Record<ChipTone, string> = {
 	accent: "border-chip-accent-border bg-chip-accent-bg text-accent-strong",
@@ -54,7 +59,17 @@ const HOVERS: Record<ChipTone, string> = {
 {#if variant === "label"}
 	<span class={[FRAME, LABEL, TONES[tone]]}>{@render children?.()}</span>
 {:else}
-	<button {type} class={[FRAME, BUTTON, TONES[tone], HOVERS[tone]]} {...rest}>
+	<button
+		{type}
+		class={[
+			FRAME,
+			BUTTON,
+			TONES[tone],
+			HOVERS[tone],
+			truncate ? SHRINK : null,
+		]}
+		{...rest}
+	>
 		{@render children?.()}
 	</button>
 {/if}

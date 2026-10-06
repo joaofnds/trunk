@@ -6,6 +6,8 @@ import { safeInvoke } from "../lib/invoke.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { OperationInfo } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import Chip from "../lib/ui/Chip.svelte";
+import BranchChip from "./BranchChip.svelte";
 
 interface Props {
 	info: OperationInfo;
@@ -26,11 +28,6 @@ let isMerge = $derived(info.op_type === "Merge");
 let isRebase = $derived(info.op_type === "Rebase");
 let isRevert = $derived(info.op_type === "Revert");
 let isCherryPick = $derived(info.op_type === "CherryPick");
-
-let sourceBranch = $derived(info.source_branch ?? "???");
-let targetBranch = $derived(info.target_branch ?? "???");
-let sourceColor = $derived(`var(--lane-${(info.source_color_index ?? 1) % 8})`);
-let targetColor = $derived(`var(--lane-${(info.target_color_index ?? 0) % 8})`);
 
 let label = $derived.by(() => {
 	if (info.op_type === "CherryPick") return "Cherry-pick in progress";
@@ -174,6 +171,14 @@ async function handleRevertAbort() {
 }
 </script>
 
+{#snippet branch(name: string | null)}
+	{#if name === null}
+		<Chip variant="label">???</Chip>
+	{:else}
+		<BranchChip {name} />
+	{/if}
+{/snippet}
+
 <div
 	class="shrink-0 min-h-banded-lg py-1 px-3 flex items-center gap-2"
 	style:box-shadow="inset 0 -1px 0 var(--color-border), inset 3px 0 0 {isMerge ? 'var(--color-banner-warning-border)' : 'var(--color-banner-info-border)'}"
@@ -194,21 +199,9 @@ async function handleRevertAbort() {
 	>
 		{#if isMerge || isRebase}
 			<span class="shrink-0">{isMerge ? 'Merging' : 'Rebasing'}</span>
-			<!-- The branch chips are inline-block, not inline-flex: text-overflow
-           does not apply to a flex container, so an over-long branch name
-           would hard-clip instead of showing an ellipsis. line-height does
-           the vertical centring that align-items would have done. -->
-			<span
-				class="rounded-full py-0 px-2 text-small h-control-sm inline-block leading-control-sm text-bg font-semibold overflow-hidden text-ellipsis min-w-0"
-				style:background={sourceColor}
-				>{sourceBranch}</span
-			>
+			{@render branch(info.source_branch)}
 			<span class="shrink-0">{isMerge ? 'into' : 'onto'}</span>
-			<span
-				class="rounded-full py-0 px-2 text-small h-control-sm inline-block leading-control-sm text-bg font-semibold overflow-hidden text-ellipsis min-w-0"
-				style:background={targetColor}
-				>{targetBranch}</span
-			>
+			{@render branch(info.target_branch)}
 			{#if isRebase && info.progress}
 				<span class="text-text-muted">({info.progress})</span>
 			{/if}

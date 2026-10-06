@@ -1,9 +1,8 @@
 <script lang="ts">
-import GitBranch from "@lucide/svelte/icons/git-branch";
 import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
 import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
 import Sortable from "sortablejs";
-import { copyRefName, copySha } from "../lib/clipboard.js";
+import { copySha } from "../lib/clipboard.js";
 import { exactDate } from "../lib/exact-date.js";
 import { COLUMN_PADDING_X } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
@@ -27,6 +26,7 @@ import Chip from "../lib/ui/Chip.svelte";
 import Dialog from "../lib/ui/Dialog.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Splitter from "../lib/ui/Splitter.svelte";
+import BranchChip from "./BranchChip.svelte";
 
 type RebaseAction = "pick" | "squash" | "reword" | "drop";
 
@@ -530,22 +530,16 @@ let lastVisibleColumn = $derived.by(() => {
 	bind:this={editorEl}
 	use:autofocus
 >
-	{#snippet refChip(name: string)}
-		<Chip title="Copy {name}" onclick={() => copyRefName(name)}
-			><GitBranch size={11} />{name}</Chip
-		>
-	{/snippet}
-
 	<!-- Header -->
 	<div class="rebase-toolbar">
 		<div class="rebase-toolbar-left">
 			<span class="rebase-toolbar-title">Interactive Rebase</span>
 			<span class="rebase-toolbar-meta"
 				>Rebasing
-				{@render refChip(branchName)}
+				<BranchChip name={branchName} />
 				onto
 				{#if base.kind === "branch"}
-					{@render refChip(base.name)}
+					<BranchChip name={base.name} />
 				{:else if base.kind === "commit"}
 					<Chip title="Copy SHA" onclick={() => copySha(base.oid)}
 						><GitCommitHorizontal size={11} />{base.oid.slice(0, 7)}</Chip

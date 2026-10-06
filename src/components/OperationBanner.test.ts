@@ -19,13 +19,14 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 
 function makeInfo(overrides: Partial<OperationInfo> = {}): OperationInfo {
 	return {
-		op_type: overrides.op_type ?? "Merge",
-		source_branch: overrides.source_branch ?? "feature",
-		target_branch: overrides.target_branch ?? "main",
-		progress: overrides.progress ?? null,
-		source_color_index: overrides.source_color_index ?? 1,
-		target_color_index: overrides.target_color_index ?? 0,
-		rebase_message: overrides.rebase_message ?? null,
+		op_type: "Merge",
+		source_branch: "feature",
+		target_branch: "main",
+		progress: null,
+		source_color_index: 1,
+		target_color_index: 0,
+		rebase_message: null,
+		...overrides,
 	};
 }
 
@@ -53,6 +54,41 @@ describe("OperationBanner", () => {
 		});
 		expect(screen.getByText("feature")).toBeInTheDocument();
 		expect(screen.getByText("main")).toBeInTheDocument();
+	});
+
+	it.each(["feature", "main"])(
+		"offers %s as a branch chip that copies itself",
+		(name) => {
+			render(OperationBanner, {
+				props: {
+					info: makeInfo({
+						op_type: "Rebase",
+						source_branch: "feature",
+						target_branch: "main",
+					}),
+					repoPath: "/repo",
+				},
+			});
+
+			expect(screen.getByRole("button", { name })).toHaveAttribute(
+				"title",
+				`Copy ${name}`,
+			);
+		},
+	);
+
+	describe("when git names no branch for a side", () => {
+		it("marks the side unknown without offering anything to copy", () => {
+			render(OperationBanner, {
+				props: {
+					info: makeInfo({ op_type: "Rebase", target_branch: null }),
+					repoPath: "/repo",
+				},
+			});
+
+			expect(screen.getByText("???")).toBeVisible();
+			expect(screen.queryByRole("button", { name: "???" })).toBeNull();
+		});
 	});
 
 	it("shows 'Rebasing' for rebase operations", () => {

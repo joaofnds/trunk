@@ -29,6 +29,7 @@ import type {
 import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
 import Splitter from "../lib/ui/Splitter.svelte";
+import BranchChip from "./BranchChip.svelte";
 import CommitForm from "./CommitForm.svelte";
 import FileRow from "./FileRow.svelte";
 import OperationBanner from "./OperationBanner.svelte";
@@ -825,14 +826,7 @@ $effect(() => {
 			</span>
 			{#if currentBranch}
 				<span class="text-small text-text-muted">on</span>
-				<!-- inline-block, not inline-flex: text-overflow does not apply to a
-             flex container, so a long branch name would hard-clip instead of
-             showing an ellipsis. line-height does the vertical centring. -->
-				<span
-					class="branch-chip rounded-full py-0 px-2 text-small h-control-sm inline-block leading-control-sm font-semibold whitespace-nowrap overflow-hidden text-ellipsis min-w-0"
-				>
-					{currentBranch}
-				</span>
+				<BranchChip name={currentBranch} />
 			{/if}
 		</span>
 		{#if treeViewEnabled}
@@ -895,19 +889,11 @@ $effect(() => {
 		>
 			Rebasing
 			{#if operationInfo.source_branch}
-				<span
-					class="rounded-full py-0 px-2 text-caption h-control-sm inline-block leading-control-sm text-bg font-semibold"
-					style:background="var(--lane-{operationInfo.source_color_index ?? 0})"
-					>{operationInfo.source_branch}</span
-				>
+				<BranchChip name={operationInfo.source_branch} />
 			{/if}
 			onto
 			{#if operationInfo.target_branch}
-				<span
-					class="rounded-full py-0 px-2 text-caption h-control-sm inline-block leading-control-sm text-bg font-semibold"
-					style:background="var(--lane-{operationInfo.target_color_index ?? 0})"
-					>{operationInfo.target_branch}</span
-				>
+				<BranchChip name={operationInfo.target_branch} />
 			{/if}
 		</div>
 	{:else if operationInfo && operationInfo.op_type !== 'None'}
@@ -1252,13 +1238,6 @@ $effect(() => {
 <style>
 .section-count {
 	letter-spacing: 0;
-}
-
-.branch-chip {
-	background: color-mix(in oklch, var(--lane-0) 14%, transparent);
-	box-shadow: inset 0 0 0 1px
-		color-mix(in oklch, var(--lane-0) 50%, transparent);
-	color: var(--lane-0);
 }
 
 /* A section left open on its own stops short of the other section's collapsed bar */

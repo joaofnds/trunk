@@ -236,6 +236,19 @@ describe("StagingPanel", () => {
 		});
 	});
 
+	it("offers the current branch as a chip that copies itself", async () => {
+		render(StagingPanel, {
+			props: {
+				repoPath: "/test/repo",
+				currentBranch: "feature/test",
+			},
+		});
+
+		expect(
+			await screen.findByRole("button", { name: "feature/test" }),
+		).toHaveAttribute("title", "Copy feature/test");
+	});
+
 	it("routes filtered snapshot badges and tones to both staging sections", async () => {
 		const workingTree = "working-tree-snapshot";
 		const index = "index-snapshot";
@@ -489,6 +502,18 @@ describe("StagingPanel rebase form", () => {
 			await fireEvent.keyDown(handle, { key });
 		}
 	}
+
+	it.each(["feature", "main"])(
+		"offers %s as a branch chip that copies itself",
+		async (name) => {
+			await renderRebaseForm();
+
+			expect(screen.getByRole("button", { name })).toHaveAttribute(
+				"title",
+				`Copy ${name}`,
+			);
+		},
+	);
 
 	it("grows by a step when the handle above it takes ArrowUp", async () => {
 		const { form, handle } = await renderRebaseForm();
