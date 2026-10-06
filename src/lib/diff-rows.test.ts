@@ -4,6 +4,7 @@ import {
 	type BuildOptions,
 	buildInlineRows,
 	buildSplitRows,
+	diffHoldsComposer,
 	FIXED_ROW_HEIGHTS,
 	rowHeights,
 	rowIndexForLine,
@@ -1147,6 +1148,55 @@ describe("the composer row", () => {
 		expect(rowHeights(model, metrics, 80, false, new Map())[2]).toBe(
 			FIXED_ROW_HEIGHTS.composer,
 		);
+	});
+});
+
+describe("the whole-file composer row", () => {
+	const onTheFile = {
+		path: "src/main.ts",
+		side: "New" as const,
+		endLine: 3,
+		wholeFile: true,
+	};
+
+	it("opens above the file's first line rather than under its last", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			fileHeaders: true,
+			composer: onTheFile,
+		});
+
+		expect(model.rows.map((row) => row.kind)).toEqual([
+			"file-header",
+			"composer",
+			"line",
+			"line",
+			"line",
+		]);
+	});
+
+	it("opens above the first pair in the split view", () => {
+		const model = buildSplitRows([pairable], {
+			...fullMode,
+			composer: { ...onTheFile, endLine: 2 },
+		});
+
+		expect(model.rows.map((row) => row.kind)).toEqual([
+			"composer",
+			"pair",
+			"pair",
+			"pair",
+		]);
+	});
+
+	it("is held by a diff that shows the file", () => {
+		expect(diffHoldsComposer([twoHunks], onTheFile, new Set())).toBe(true);
+	});
+
+	it("is not held while the file is collapsed", () => {
+		expect(
+			diffHoldsComposer([twoHunks], onTheFile, new Set(["src/main.ts"])),
+		).toBe(false);
 	});
 });
 

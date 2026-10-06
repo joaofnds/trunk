@@ -285,6 +285,7 @@ const diffComposer = $derived<DiffComposer | null>(
 					path: openCaptured.anchor.file_path,
 					side: openCaptured.anchor.side,
 					endLine: openCaptured.anchor.end_line,
+					wholeFile: "wholeFile" in openCaptured && openCaptured.wholeFile,
 				},
 				card: composerCard,
 			}

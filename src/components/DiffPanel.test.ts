@@ -456,6 +456,57 @@ describe("DiffPanel", () => {
 		);
 	});
 
+	// Which comes first in the diff: the composer or a line.
+	function composerThenLines(): string[] {
+		return [
+			...document.querySelectorAll(
+				".composer-row, .inline-composer-row, .diff-line",
+			),
+		]
+			.filter((el) => !el.classList.contains("metrics-probe"))
+			.map((el) => (el.classList.contains("diff-line") ? "line" : "composer"));
+	}
+
+	it("opens a comment on the whole file above the file's first line", async () => {
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+				contentMode: "full",
+			},
+		});
+		await flushPrefs();
+
+		await fireEvent.click(screen.getByText("Comment File"));
+		await flushPrefs();
+
+		expect(composerThenLines().slice(0, 2)).toEqual(["composer", "line"]);
+	});
+
+	it("opens a comment on the whole file above the hunks in hunk mode", async () => {
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+				onloadfullfile: async () => testDiff,
+			},
+		});
+		await flushPrefs();
+
+		await fireEvent.click(screen.getByText("Comment File"));
+		await flushPrefs();
+
+		expect(composerThenLines().slice(0, 2)).toEqual(["composer", "line"]);
+	});
+
 	it("loads the whole file before commenting from hunk mode", async () => {
 		const hunkOnlyDiff = shiftDiffLines(testDiff, 39);
 		render(DiffPanel, {

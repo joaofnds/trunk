@@ -72,11 +72,13 @@ export type DiffRow =
 	  }
 	| { kind: "composer"; path: string; hunkIdx: number };
 
-/** Where an open comment composer sits: under the last line its range covers. */
+/** Where an open comment composer sits: under the last line its range covers,
+ * or above the file's first line when the comment is on the whole file. */
 export interface ComposerPlace {
 	path: string;
 	side: Side;
 	endLine: number;
+	wholeFile?: boolean;
 }
 
 /** The open composer a view draws in its row: where it goes and the card. */
@@ -175,6 +177,9 @@ export function buildInlineRows(
 		if (fd.is_binary) {
 			rows.push({ kind: "binary", path: fd.path });
 			continue;
+		}
+		if (composerOpensAbove(opts.composer, fd)) {
+			rows.push({ kind: "composer", path: fd.path, hunkIdx: 0 });
 		}
 
 		let flatIdx = 0;
@@ -290,6 +295,9 @@ export function buildSplitRows(
 		if (fd.is_binary) {
 			rows.push({ kind: "binary", path: fd.path });
 			continue;
+		}
+		if (composerOpensAbove(opts.composer, fd)) {
+			rows.push({ kind: "composer", path: fd.path, hunkIdx: 0 });
 		}
 
 		let flatBase = 0;
@@ -541,13 +549,26 @@ export function diffHoldsComposer(
 		(fd) =>
 			fd.path === place.path &&
 			!collapsed.has(fd.path) &&
-			fd.hunks.some((hunk) =>
-				hunk.lines.some(
-					(line) =>
-						composerEndsOn(place, fd.path, "Old", line.old_lineno) ||
-						composerEndsOn(place, fd.path, "New", line.new_lineno),
-				),
-			),
+			(composerOpensAbove(place, fd) ||
+				fd.hunks.some((hunk) =>
+					hunk.lines.some(
+						(line) =>
+							composerEndsOn(place, fd.path, "Old", line.old_lineno) ||
+							composerEndsOn(place, fd.path, "New", line.new_lineno),
+					),
+				)),
+	);
+}
+
+function composerOpensAbove(
+	composer: ComposerPlace | null | undefined,
+	fd: FileDiff,
+): boolean {
+	return (
+		composer?.wholeFile === true &&
+		composer.path === fd.path &&
+		!fd.is_binary &&
+		fd.hunks.length > 0
 	);
 }
 
@@ -559,6 +580,7 @@ function composerEndsOn(
 ): boolean {
 	return (
 		composer != null &&
+		composer.wholeFile !== true &&
 		composer.path === path &&
 		composer.side === side &&
 		composer.endLine === lineno
