@@ -65,9 +65,10 @@ app-wide and the themed thumb is a `position: fixed` overlay painted from `<body
 width the reader sees, and a half is a plain `50cqi`. Do not reintroduce a measured
 scrollbar-width correction; it compensates a reservation that no longer exists.
 
-Each side's pan ceiling is that side's **full** width — `(gutterChars + columns[n]) *
-charWidthPx + SPLIT_ROW_CHROME_PX` — because the gutter is pinned outside the translated
-window. A ceiling built from text columns alone stops short of the widest line's tail.
+Each side's pan ceiling is that side's **full** width, `(sideGutterChars + columns[n]) *
+charWidthPx + SPLIT_ROW_CHROME_PX`, where `sideGutterChars` is the line-number gutter
+plus the thread-marker column (`markerChars`), because both are pinned outside the
+translated window. A ceiling built from text columns alone stops short of the widest line's tail.
 The list's content width is the widest side plus one half, since a half only ever shows
 `50cqi` of it.
 
