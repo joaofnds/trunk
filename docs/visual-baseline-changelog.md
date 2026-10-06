@@ -255,3 +255,11 @@ catalog shows Chip's new label variant
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-10-06
+
+catalog shows a long and a short truncating chip in a narrow row
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png
