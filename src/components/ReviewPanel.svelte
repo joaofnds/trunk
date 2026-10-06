@@ -574,8 +574,7 @@ $effect(() => {
 						</div>
 					{:else}
 						<Row
-							variant="flush"
-							selected={isActive}
+							variant="entry"
 							onclick={() => activateReview(review.id)}
 							ondblclick={() => openRename(review.id, review.title)}
 							onkeydown={(e) => {
@@ -937,7 +936,6 @@ $effect(() => {
 	row-gap: var(--space-1);
 	align-items: center;
 	width: 100%;
-	padding: var(--space-2) var(--space-2) var(--space-2) 0;
 }
 .review-meta {
 	grid-column: 2;
