@@ -239,3 +239,11 @@ TRUNK-307: catalog sections for Row, the framed Tab, GutterGrip, HitArea and Spl
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-10-06
+
+catalog: add the anchored Dialog
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png

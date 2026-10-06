@@ -52,6 +52,7 @@ import { treeIndent } from "../chrome-heights";
 import Button from "./Button.svelte";
 import ButtonGroup from "./ButtonGroup.svelte";
 import Chip from "./Chip.svelte";
+import Dialog from "./Dialog.svelte";
 import GutterGrip from "./GutterGrip.svelte";
 import HitArea from "./HitArea.svelte";
 import LinkButton from "./LinkButton.svelte";
@@ -428,6 +429,20 @@ import ToastCard from "./ToastCard.svelte";
 			<ToastCard tone="danger"
 				><span data-catalog-text>Push rejected: fetch first</span></ToastCard
 			>
+		</div>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>Dialog</h2
+		>
+		<div data-catalog-headings class="w-dialog-max">
+			<Dialog variant="anchored" title="Reword commit message">
+				<span data-catalog-text class="text-body">feat: add login</span>
+				<span data-catalog-text class="text-body text-text-muted"
+					>Checks the token before the session opens.</span
+				>
+			</Dialog>
 		</div>
 	</section>
 

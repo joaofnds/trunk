@@ -237,7 +237,9 @@ export class CatalogHarness {
 			await painted(this.page);
 			return catalog.screenshot({
 				animations: "disabled",
-				mask: [this.page.locator("[data-catalog-text]")],
+				mask: [
+					this.page.locator("[data-catalog-text], [data-catalog-headings] h3"),
+				],
 				signal: test.signal,
 			});
 		});
