@@ -6,6 +6,7 @@ import {
 	resolveSide,
 } from "../lib/diff-anchor.js";
 import type { DiffNav } from "../lib/diff-nav.js";
+import type { DiffComposer } from "../lib/diff-rows.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import {
 	buildFullFileAnchor,
@@ -13,6 +14,10 @@ import {
 } from "../lib/full-file-anchor.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
+import {
+	askToDiscardComment,
+	deleteDraft,
+} from "../lib/review-comment-actions.js";
 import {
 	createReviewComposerSession,
 	type ReviewComposerContext,
@@ -264,6 +269,28 @@ const fullFileCaptured = $derived(
 	fullFileComposerOpen ? activeComposerSession.captured : null,
 );
 
+// The open composer's capture, whichever path opened it. Hide all puts the
+// composer away with the threads; its draft stays in the session.
+const openCaptured = $derived(
+	composerOpen && diffCaptured
+		? diffCaptured
+		: fullFileComposerOpen && fullFileCaptured
+			? fullFileCaptured
+			: null,
+);
+const diffComposer = $derived<DiffComposer | null>(
+	openCaptured && reviewFilter !== "none"
+		? {
+				place: {
+					path: openCaptured.anchor.file_path,
+					side: openCaptured.anchor.side,
+					endLine: openCaptured.anchor.end_line,
+				},
+				card: composerCard,
+			}
+		: null,
+);
+
 // A current-file view is the whole file by definition: there is no diff to show
 // hunks of, so the user's hunk/full preference has nothing to choose between and
 // the selection gestures full-file mode carries are the only ones that apply.
@@ -293,8 +320,32 @@ async function confirmComposerReplacement(): Promise<boolean> {
 	if (session.submitting) return false;
 	if (session.mode === null) return true;
 
+	// The card is not mounted while its row is scrolled away or the threads are
+	// hidden, so the panel asks itself; there is no autosave left to settle.
 	if (!composer) {
-		return !activeComposerSession.draft.valid;
+		if (!session.draft.valid) {
+			session.close();
+			return true;
+		}
+		const revision = session.draft.revision;
+		if (!(await askToDiscardComment())) return false;
+		if (
+			session !== activeComposerSession ||
+			session.draft.revision !== revision ||
+			!reviewComposerTargetsEqual(target, activeComposerTarget) ||
+			reviewId !== activeReviewId
+		)
+			return false;
+		await deleteDraft(repoPath).catch((error) =>
+			reportErrorToast(error, "Discard draft failed"),
+		);
+		if (
+			session !== activeComposerSession ||
+			session.draft.revision !== revision
+		)
+			return false;
+		session.close();
+		return true;
 	}
 
 	const proceed = await composer.confirmDiscardIfDirty();
@@ -857,11 +908,7 @@ async function handleLineClick(
 	// D-02: switching to a new range while an open composer holds a dirty draft
 	// prompts a discard confirmation. On cancel, keep the current selection and
 	// composer; on confirm (or empty draft), close the composer and proceed.
-	if (composerOpen && composer) {
-		const proceed = await composer.confirmDiscardIfDirty();
-		if (!proceed) return;
-		activeComposerSession.close();
-	}
+	if (composerOpen && !(await confirmComposerReplacement())) return;
 
 	const hunkKey = `${filePath}-${hunkIdx}`;
 
@@ -935,11 +982,7 @@ async function handleLineMouseDown(
 
 	// D-02: switching to a new range while an open composer holds a dirty draft
 	// prompts a discard confirmation. On cancel, keep selection and composer.
-	if (composerOpen && composer) {
-		const proceed = await composer.confirmDiscardIfDirty();
-		if (!proceed) return;
-		activeComposerSession.close();
-	}
+	if (composerOpen && !(await confirmComposerReplacement())) return;
 
 	const hunkKey = `${filePath}-${hunkIdx}`;
 
@@ -1072,6 +1115,41 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 }
 </script>
 
+{#snippet composerCard()}
+	{#if composerOpen && diffCaptured}
+		<CommentComposer
+			bind:this={composer}
+			captured={diffCaptured}
+			composerSession={activeComposerSession}
+			{commitOid}
+			resolveCommitOid={resolveCommentCommitOid}
+			{repoPath}
+			{activeReviewId}
+			{activeReview}
+			originatingReviewId={composerReviewId}
+			canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
+			onclose={composerOnClose}
+		/>
+	{:else if fullFileComposerOpen && fullFileCaptured}
+		<CommentComposer
+			bind:this={composer}
+			captured={fullFileCaptured}
+			composerSession={activeComposerSession}
+			currentFile={currentFileTarget}
+			{commitOid}
+			resolveCommitOid={currentFileTarget
+				? undefined
+				: resolveCommentCommitOid}
+			{repoPath}
+			{activeReviewId}
+			{activeReview}
+			originatingReviewId={composerReviewId}
+			canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
+			onclose={composerOnClose}
+		/>
+	{/if}
+{/snippet}
+
 <div class="h-full flex flex-col overflow-hidden bg-surface">
 	<DiffToolbar
 		{contentMode}
@@ -1145,49 +1223,8 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			{editorSessionForThread}
 			{refreshToken}
 			oncommentfullfile={handleCommentFullFile}
+			composer={diffComposer}
 			bind:fullFileView
 		/>
-	{/if}
-	{#if composerOpen && diffCaptured}
-		<div
-			style:display={reviewFilter === "none" ? "none" : "flex"}
-			aria-hidden={reviewFilter === "none"}
-		>
-			<CommentComposer
-				bind:this={composer}
-				captured={diffCaptured}
-				composerSession={activeComposerSession}
-				{commitOid}
-				resolveCommitOid={resolveCommentCommitOid}
-				{repoPath}
-				{activeReviewId}
-				{activeReview}
-				originatingReviewId={composerReviewId}
-				canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
-				onclose={composerOnClose}
-			/>
-		</div>
-	{:else if fullFileComposerOpen && fullFileCaptured}
-		<div
-			style:display={reviewFilter === "none" ? "none" : "flex"}
-			aria-hidden={reviewFilter === "none"}
-		>
-			<CommentComposer
-				bind:this={composer}
-				captured={fullFileCaptured}
-				composerSession={activeComposerSession}
-				currentFile={currentFileTarget}
-				{commitOid}
-				resolveCommitOid={currentFileTarget
-						? undefined
-						: resolveCommentCommitOid}
-				{repoPath}
-				{activeReviewId}
-				{activeReview}
-				originatingReviewId={composerReviewId}
-				canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
-				onclose={composerOnClose}
-			/>
-		</div>
 	{/if}
 </div>

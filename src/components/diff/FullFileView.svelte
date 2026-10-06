@@ -3,6 +3,7 @@ import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import {
 	buildInlineRows,
 	countLines,
+	type DiffComposer,
 	type DiffRow,
 	FIXED_ROW_HEIGHT_VARS,
 } from "../../lib/diff-rows.js";
@@ -47,6 +48,8 @@ interface Props {
 	reviewFilter?: ReviewFilter;
 	viewComments?: Thread[];
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
+	/** The open comment composer, drawn under the line its comment ends on. */
+	composer?: DiffComposer | null;
 }
 
 let {
@@ -61,6 +64,7 @@ let {
 	reviewFilter = "all",
 	viewComments = [],
 	editorSessionForThread,
+	composer = null,
 }: Props = $props();
 
 // Net-new contiguous selection state (D-01): a click sets a single-line anchor;
@@ -93,6 +97,7 @@ const model = $derived(
 			fileHeaders: false,
 			tabSize: TAB_SIZE,
 			invisibles: showInvisibles,
+			composer: composer?.place,
 		});
 	}),
 );
@@ -305,6 +310,8 @@ function lineBackground(origin: string, isSelected: boolean): string {
 		{#each item.threads as c (c.id)}
 			<div class="comment-row">{@render threadCard(c)}</div>
 		{/each}
+	{:else if item.kind === "composer" && composer}
+		<div class="composer-row">{@render composer.card()}</div>
 	{:else if item.kind === "binary"}
 		<div class="binary-row">Binary file — no diff available</div>
 	{/if}
@@ -315,6 +322,7 @@ function lineBackground(origin: string, isSelected: boolean): string {
 	style:--diff-file-header-height={FIXED_ROW_HEIGHT_VARS["--diff-file-header-height"]}
 	style:--diff-hunk-header-height={FIXED_ROW_HEIGHT_VARS["--diff-hunk-header-height"]}
 	style:--diff-binary-row-height={FIXED_ROW_HEIGHT_VARS["--diff-binary-row-height"]}
+	style:--diff-composer-row-height={FIXED_ROW_HEIGHT_VARS["--diff-composer-row-height"]}
 >
 	{#if affordanceVisible}
 		<!-- Full-file Comment affordance (L-05: no isMerge disable). Appears on
@@ -545,5 +553,14 @@ function lineBackground(origin: string, isSelected: boolean): string {
 }
 .word-delete.trailing-ws {
 	background-color: var(--color-diff-word-delete-bg);
+}
+
+/* The composer row holds its declared height, and the card fills it, so the
+   height the row model counts is the height drawn. */
+.composer-row {
+	display: flex;
+	height: var(--diff-composer-row-height);
+	padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+	box-sizing: border-box;
 }
 </style>

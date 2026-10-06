@@ -6,6 +6,7 @@ import { reportErrorToast } from "../../lib/error-report.js";
 import { safeInvoke } from "../../lib/invoke.js";
 import { createOwnedTimer } from "../../lib/owned-timer.js";
 import {
+	askToDiscardComment,
 	deleteDraft,
 	getDraft,
 	saveDraft,
@@ -260,11 +261,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	const path = repoPath;
 	if (!session.draft.valid) return true;
 
-	const { ask } = await import("@tauri-apps/plugin-dialog");
-	const discard = await ask("Discard your unsaved comment?", {
-		title: "Discard Comment",
-		kind: "warning",
-	});
+	const discard = await askToDiscardComment();
 	if (
 		!discard ||
 		session !== activeSession ||
@@ -281,6 +278,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	{activeReviewId}
 	placeholder="Leave a comment… Markdown supported"
 	newReviewName="a new composing review"
+	fill
 	bind:text={composerDraft.text}
 	busy={submitting}
 	submitLabel="Submit"

@@ -23,6 +23,9 @@ interface Props {
 	oninput?: () => void;
 	/** What Escape does in the text; nothing when absent. */
 	onescape?: () => void;
+	/** Fill a box of fixed height, as a diff row is, with the text taking the
+	 *  slack; the text cannot be dragged taller than the box. */
+	fill?: boolean;
 }
 
 let {
@@ -39,6 +42,7 @@ let {
 	oncancel,
 	oninput,
 	onescape,
+	fill = false,
 }: Props = $props();
 
 const headingId = $props.id();
@@ -66,7 +70,11 @@ function onkeydown(event: KeyboardEvent) {
 	A comment being written: what it is on, the review it lands in, the text, and
 	the way to submit or abandon it. The host owns what submitting writes.
 -->
-<fieldset class="comment-composer" aria-labelledby={headingId}>
+<fieldset
+	class="comment-composer"
+	class:composer-fill={fill}
+	aria-labelledby={headingId}
+>
 	<header class="composer-header">
 		<span class="composer-preview" id={headingId}>{@render heading()}</span>
 		<span class="flex-1"></span>
@@ -182,6 +190,13 @@ function onkeydown(event: KeyboardEvent) {
 	background: var(--color-bg);
 	border: none;
 	box-sizing: border-box;
+}
+
+.composer-fill .composer-textarea {
+	flex: 1 1 0;
+	height: auto;
+	min-height: 0;
+	resize: none;
 }
 
 .composer-textarea::placeholder {

@@ -5,6 +5,7 @@
  * reports a zero-height viewport and truncates silently.
  */
 
+import type { Snippet } from "svelte";
 import { BAR_HEIGHT, UNIT } from "./chrome-heights.js";
 import {
 	commentsForLine,
@@ -21,6 +22,7 @@ import type {
 	FileDiff,
 	ReviewFilter,
 	ReviewTone,
+	Side,
 	Thread,
 } from "./types.js";
 
@@ -67,7 +69,21 @@ export type DiffRow =
 			lineIdx: number;
 			flatIdx: number;
 			threads: Thread[];
-	  };
+	  }
+	| { kind: "composer"; path: string; hunkIdx: number };
+
+/** Where an open comment composer sits: under the last line its range covers. */
+export interface ComposerPlace {
+	path: string;
+	side: Side;
+	endLine: number;
+}
+
+/** The open composer a view draws in its row: where it goes and the card. */
+export interface DiffComposer {
+	place: ComposerPlace;
+	card: Snippet;
+}
 
 /** One hunk's place in the rendered document. The sequence is an ordinal one,
  *  not a per-file index: `[` and `]` step through every hunk of every rendered
@@ -101,6 +117,8 @@ export interface BuildOptions {
 	fileHeaders: boolean;
 	tabSize: number;
 	invisibles: boolean;
+	/** The open composer's place, or nothing when none is open in this view. */
+	composer?: ComposerPlace | null;
 }
 
 /** Heights the fixed row shapes declare rather than discover. Each row's own
@@ -111,6 +129,9 @@ export const FIXED_ROW_HEIGHTS = {
 	fileHeader: BAR_HEIGHT,
 	hunkHeader: BAR_HEIGHT,
 	binary: 8 * UNIT,
+	/** The composer card and the row's padding around it. The card fills the
+	 *  row, so its text area takes whatever the header and actions leave. */
+	composer: 41 * UNIT,
 } as const;
 
 /** The custom properties the rows read, declared from the same numbers. */
@@ -118,6 +139,7 @@ export const FIXED_ROW_HEIGHT_VARS = {
 	"--diff-file-header-height": `${FIXED_ROW_HEIGHTS.fileHeader}px`,
 	"--diff-hunk-header-height": `${FIXED_ROW_HEIGHTS.hunkHeader}px`,
 	"--diff-binary-row-height": `${FIXED_ROW_HEIGHTS.binary}px`,
+	"--diff-composer-row-height": `${FIXED_ROW_HEIGHTS.composer}px`,
 } as const;
 
 /** Total diff lines across files — the `lines` attribute every view's
@@ -215,6 +237,13 @@ export function buildInlineRows(
 						flatIdx,
 						threads: visibleThreads,
 					});
+				}
+
+				if (
+					composerEndsOn(opts.composer, fd.path, "Old", line.old_lineno) ||
+					composerEndsOn(opts.composer, fd.path, "New", line.new_lineno)
+				) {
+					rows.push({ kind: "composer", path: fd.path, hunkIdx });
 				}
 
 				flatIdx++;
@@ -342,6 +371,23 @@ export function buildSplitRows(
 							threads: visibleThreads,
 						});
 					}
+				}
+
+				if (
+					composerEndsOn(
+						opts.composer,
+						fd.path,
+						"Old",
+						pair.left?.line.old_lineno,
+					) ||
+					composerEndsOn(
+						opts.composer,
+						fd.path,
+						"New",
+						pair.right?.line.new_lineno,
+					)
+				) {
+					rows.push({ kind: "composer", path: fd.path, hunkIdx });
 				}
 			}
 
@@ -474,10 +520,45 @@ function heightOf(
 		);
 	}
 
+	if (row.kind === "composer") return FIXED_ROW_HEIGHTS.composer;
 	if (row.kind === "file-header") return FIXED_ROW_HEIGHTS.fileHeader;
 	if (row.kind === "hunk-header") return FIXED_ROW_HEIGHTS.hunkHeader;
 
 	return FIXED_ROW_HEIGHTS.binary;
+}
+
+/** Whether a line the views draw is the one the composer sits under. */
+export function diffHoldsComposer(
+	fileDiffs: FileDiff[],
+	place: ComposerPlace,
+	collapsed: Set<string>,
+): boolean {
+	return fileDiffs.some(
+		(fd) =>
+			fd.path === place.path &&
+			!collapsed.has(fd.path) &&
+			fd.hunks.some((hunk) =>
+				hunk.lines.some(
+					(line) =>
+						composerEndsOn(place, fd.path, "Old", line.old_lineno) ||
+						composerEndsOn(place, fd.path, "New", line.new_lineno),
+				),
+			),
+	);
+}
+
+function composerEndsOn(
+	composer: ComposerPlace | null | undefined,
+	path: string,
+	side: Side,
+	lineno: number | null | undefined,
+): boolean {
+	return (
+		composer != null &&
+		composer.path === path &&
+		composer.side === side &&
+		composer.endLine === lineno
+	);
 }
 
 function probedHeight(probed: Map<string, number>, threadId: string): number {

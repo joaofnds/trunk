@@ -1066,3 +1066,86 @@ describe("buildSplitRows with a content-pinned thread", () => {
 		expect(tones).toEqual([null, "open", "open", null]);
 	});
 });
+
+describe("the composer row", () => {
+	const onNewTwo = { path: "src/main.ts", side: "New" as const, endLine: 2 };
+
+	it("sits under the last line the comment covers", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			composer: onNewTwo,
+		});
+
+		expect(model.rows.map((row) => row.kind)).toEqual([
+			"line",
+			"line",
+			"composer",
+			"line",
+		]);
+	});
+
+	it("sits under the threads already hanging on that line", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			comments: [thread("t1", "New", 2, 2)],
+			composer: onNewTwo,
+		});
+
+		expect(model.rows.map((row) => row.kind)).toEqual([
+			"line",
+			"line",
+			"comment",
+			"composer",
+			"line",
+		]);
+	});
+
+	it("matches the line on the side the comment is on", () => {
+		const model = buildInlineRows([pairable], {
+			...fullMode,
+			composer: { path: "src/main.ts", side: "Old", endLine: 2 },
+		});
+
+		expect(model.rows.map((row) => row.kind)).toEqual([
+			"line",
+			"line",
+			"composer",
+			"line",
+			"line",
+		]);
+	});
+
+	it("stays out of another file's diff", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			composer: { ...onNewTwo, path: "src/other.ts" },
+		});
+
+		expect(model.rows.some((row) => row.kind === "composer")).toBe(false);
+	});
+
+	it("sits under the split row holding that line on its side", () => {
+		const model = buildSplitRows([pairable], {
+			...fullMode,
+			composer: { path: "src/main.ts", side: "Old", endLine: 3 },
+		});
+
+		expect(model.rows.map((row) => row.kind)).toEqual([
+			"pair",
+			"pair",
+			"pair",
+			"composer",
+		]);
+	});
+
+	it("takes the height the composer declares", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			composer: onNewTwo,
+		});
+
+		expect(rowHeights(model, metrics, 80, false, new Map())[2]).toBe(
+			FIXED_ROW_HEIGHTS.composer,
+		);
+	});
+});

@@ -1,6 +1,7 @@
 <script lang="ts">
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import type { DiffNav } from "../../lib/diff-nav.js";
+import { type DiffComposer, diffHoldsComposer } from "../../lib/diff-rows.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
 import type {
@@ -82,6 +83,8 @@ interface Props {
 	reviewFilter?: ReviewFilter;
 	viewComments?: Thread[];
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
+	/** The open comment composer, if any. */
+	composer?: DiffComposer | null;
 	oncommentfullfile: (filePath: string, selectedIndices: Set<number>) => void;
 	fullFileView?: import("./FullFileView.svelte").default | null;
 	/** Set by the mounted virtualized view, null when none is. */
@@ -131,6 +134,7 @@ let {
 	reviewFilter = "all",
 	viewComments = [],
 	editorSessionForThread,
+	composer = null,
 	oncommentfullfile,
 	fullFileView = $bindable(null),
 	diffNav = $bindable(null),
@@ -160,6 +164,41 @@ const hasContent = $derived(
 			: fileDiffs.length > 0 || commitDetail !== null),
 );
 
+// What the pane shows, in the order the cases take precedence.
+const pane = $derived.by(() => {
+	if (
+		fileDiffs.length === 0 &&
+		commitDetail === null &&
+		!loading &&
+		!payloadStale &&
+		!loadError
+	)
+		return "placeholder";
+	if (emptyCommit) return "empty-commit";
+	if (
+		renderMode === "rendered" &&
+		selectedPath &&
+		isMarkdownPath(selectedPath) &&
+		selectedFileDiff
+	)
+		return "rendered";
+	if (loadError) return "error";
+	if ((loading || payloadStale) && !hasContent) return "loading";
+	if (layoutMode === "inline") return contentMode === "hunk" ? "hunk" : "full";
+	return "split";
+});
+
+// The composer sits under its line when a line view shows that line. Anywhere
+// else (the rendered Markdown, a load error, a line a refetch took away) it
+// sits below the diff, so a draft in progress never leaves the screen.
+const inlineComposer = $derived(
+	composer !== null &&
+		(pane === "hunk" || pane === "full" || pane === "split") &&
+		diffHoldsComposer(fileDiffs, composer.place, collapsedFiles)
+		? composer
+		: null,
+);
+
 // A commit's file list arrives as one hunkless entry per file before any of
 // them is fetched, so a hunkless entry is metadata rather than content. A
 // binary file carries no hunks either and is content all the same.
@@ -175,19 +214,19 @@ function isLoaded(diff: FileDiff | undefined): boolean {
      scrollIntoView and scroll chaining can move, and WebKit hands it a phantom
      scroll range the size of the rendered pane's content (TRUNK-127). -->
 <div class="flex-1 overflow-clip min-h-0 relative @container overscroll-x-none">
-	{#if fileDiffs.length === 0 && commitDetail === null && !loading && !payloadStale && !loadError}
+	{#if pane === "placeholder"}
 		<div
 			class="flex-1 flex items-center justify-center text-text-muted text-body"
 		>
 			Select a file or commit to view its diff
 		</div>
-	{:else if emptyCommit}
+	{:else if pane === "empty-commit"}
 		<div
 			class="flex-1 flex items-center justify-center text-text-muted text-body"
 		>
 			Empty commit — no changes
 		</div>
-	{:else if renderMode === "rendered" && selectedPath && isMarkdownPath(selectedPath) && selectedFileDiff}
+	{:else if pane === "rendered" && selectedPath && selectedFileDiff}
 		<RenderedDiff
 			{layoutMode}
 			{selectedPath}
@@ -204,7 +243,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{refreshToken}
 			{hunkElements}
 		/>
-	{:else if loadError}
+	{:else if pane === "error"}
 		<div
 			class="h-full flex flex-col items-center justify-center gap-2 text-text-muted text-body"
 		>
@@ -214,13 +253,13 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 				<Button data-testid="diff-retry" onclick={onretry}>Retry</Button>
 			{/if}
 		</div>
-	{:else if (loading || payloadStale) && !hasContent}
+	{:else if pane === "loading"}
 		<div
 			class="h-full flex items-center justify-center text-text-muted text-body"
 		>
 			Loading diff…
 		</div>
-	{:else if layoutMode === "inline" && contentMode === "hunk"}
+	{:else if pane === "hunk"}
 		<HunkView
 			bind:this={diffNav}
 			{fileDiffs}
@@ -250,8 +289,9 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{reviewFilter}
 			{viewComments}
 			{editorSessionForThread}
+			composer={inlineComposer}
 		/>
-	{:else if layoutMode === "inline" && contentMode === "full"}
+	{:else if pane === "full"}
 		<FullFileView
 			bind:this={fullFileView}
 			{fileDiffs}
@@ -265,6 +305,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{reviewFilter}
 			{viewComments}
 			{editorSessionForThread}
+			composer={inlineComposer}
 		/>
 	{:else}
 		<SplitView
@@ -297,6 +338,10 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{reviewFilter}
 			{viewComments}
 			{editorSessionForThread}
+			composer={inlineComposer}
 		/>
 	{/if}
 </div>
+{#if composer && !inlineComposer}
+	<div class="flex">{@render composer.card()}</div>
+{/if}

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/svelte";
-import { tick } from "svelte";
+import { createRawSnippet, tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
 import { aThread } from "../../__tests__/helpers/thread-fixture.js";
@@ -334,5 +334,38 @@ describe("HunkView thread marker", () => {
 		const { container } = render(HunkView, { props: defaultProps() });
 
 		expect(container.querySelector(".thread-marker-cell")).toBeNull();
+	});
+});
+
+describe("HunkView composer", () => {
+	const card = createRawSnippet(() => ({
+		render: () => "<p>the composer card</p>",
+	}));
+
+	it("draws the composer under the line the comment ends on", () => {
+		render(HunkView, {
+			props: defaultProps({
+				composer: {
+					place: { path: "src/main.ts", side: "New", endLine: 10 },
+					card,
+				},
+			}),
+		});
+
+		const row = screen
+			.getByText("the composer card")
+			.closest(".inline-composer-row");
+		const lines = [
+			...document.querySelectorAll(".diff-line, .inline-composer-row"),
+		]
+			.filter((el) => !el.classList.contains("metrics-probe"))
+			.map((el) => el.textContent?.trim());
+
+		expect(row).not.toBeNull();
+		expect(lines).toEqual([
+			expect.stringContaining("context before"),
+			"the composer card",
+			expect.stringContaining("added one"),
+		]);
 	});
 });

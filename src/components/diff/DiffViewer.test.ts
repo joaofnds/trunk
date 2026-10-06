@@ -1,4 +1,5 @@
-import { render } from "@testing-library/svelte";
+import { render, screen } from "@testing-library/svelte";
+import { createRawSnippet } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	restoreLayout,
@@ -252,5 +253,65 @@ describe("DiffViewer while a diff is loading", () => {
 
 		expect(queryByText("STABLE CONTENT")).toBeNull();
 		expect(queryByText("Loading diff…")).not.toBeNull();
+	});
+});
+
+describe("DiffViewer's comment composer", () => {
+	beforeEach(() => stubLayout({ width: 900, height: 400 }));
+	afterEach(restoreLayout);
+
+	const card = createRawSnippet(() => ({
+		render: () => "<p>the composer card</p>",
+	}));
+	const mainTs: FileDiff = {
+		path: "src/main.ts",
+		old_path: null,
+		status: "Modified",
+		is_binary: false,
+		hunks: [
+			{
+				header: "@@ -1,1 +1,1 @@",
+				old_start: 1,
+				old_lines: 1,
+				new_start: 1,
+				new_lines: 1,
+				lines: [
+					{
+						origin: "Context",
+						content: "only line",
+						old_lineno: 1,
+						new_lineno: 1,
+						spans: [],
+					},
+				],
+			},
+		],
+	};
+	const onLine = (endLine: number) => ({
+		...baseProps,
+		fileDiffs: [mainTs],
+		selectedPath: "src/main.ts",
+		composer: {
+			place: { path: "src/main.ts", side: "New" as const, endLine },
+			card,
+		},
+	});
+
+	it("draws it once, inside the diff, under the line it comments on", () => {
+		const { container } = render(DiffViewer, { props: onLine(1) });
+
+		expect(screen.getAllByText("the composer card")).toHaveLength(1);
+		expect(container.querySelector(".hunk-view")).toContainElement(
+			screen.getByText("the composer card"),
+		);
+	});
+
+	it("draws it below the diff when no line in view holds it", () => {
+		const { container } = render(DiffViewer, { props: onLine(40) });
+
+		expect(screen.getAllByText("the composer card")).toHaveLength(1);
+		expect(container.querySelector(".hunk-view")).not.toContainElement(
+			screen.getByText("the composer card"),
+		);
 	});
 });

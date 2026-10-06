@@ -4,6 +4,7 @@ import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import {
 	buildSplitRows,
 	countLines,
+	type DiffComposer,
 	type DiffRow,
 	FIXED_ROW_HEIGHT_VARS,
 	rowIndexForLine,
@@ -49,6 +50,8 @@ interface Props {
 	selectedCount: number;
 	reviewFilter?: import("../../lib/types.js").ReviewFilter;
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
+	/** The open comment composer, drawn under the line its comment ends on. */
+	composer?: DiffComposer | null;
 	isMerge: boolean;
 	collapsedFiles: Set<string>;
 	onfilecollapsetoggle: (path: string) => void;
@@ -110,6 +113,7 @@ let {
 	reviewFilter = "all",
 	viewComments = [],
 	editorSessionForThread,
+	composer = null,
 }: Props = $props();
 
 const FLASH_MS = 600;
@@ -148,6 +152,7 @@ const model = $derived(
 			fileHeaders: selectedPath === null,
 			tabSize: TAB_SIZE,
 			invisibles: showInvisibles,
+			composer: composer?.place,
 		});
 	}),
 );
@@ -507,6 +512,8 @@ function originClass(origin: string): string {
 				<div> {@render threadCard(c)} </div>
 			{/each}
 		</div>
+	{:else if item.kind === "composer" && composer}
+		<div class="split-composer-row pan-pinned">{@render composer.card()}</div>
 	{:else if item.kind === "file-header"}
 		<div class="split-file-header pan-pinned">
 			<Row variant="title" onclick={() => onfilecollapsetoggle(item.path)}>
@@ -526,6 +533,7 @@ function originClass(origin: string): string {
 	style:--diff-file-header-height={FIXED_ROW_HEIGHT_VARS["--diff-file-header-height"]}
 	style:--diff-hunk-header-height={FIXED_ROW_HEIGHT_VARS["--diff-hunk-header-height"]}
 	style:--diff-binary-row-height={FIXED_ROW_HEIGHT_VARS["--diff-binary-row-height"]}
+	style:--diff-composer-row-height={FIXED_ROW_HEIGHT_VARS["--diff-composer-row-height"]}
 	style:--max-l="{vd.maxLeftPx}px"
 	style:--max-r="{vd.maxRightPx}px"
 	bind:this={vd.pane}
@@ -837,5 +845,14 @@ function originClass(origin: string): string {
 }
 .word-delete.trailing-ws {
 	background-color: var(--color-diff-word-delete-bg);
+}
+
+/* The composer row holds its declared height, and the card fills it, so the
+   height the row model counts is the height drawn. */
+.split-composer-row {
+	display: flex;
+	height: var(--diff-composer-row-height);
+	padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+	box-sizing: border-box;
 }
 </style>

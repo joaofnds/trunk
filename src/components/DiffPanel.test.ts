@@ -2473,6 +2473,34 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		);
 	});
 
+	it("still asks before replacing a dirty draft whose card is put away", async () => {
+		const { ask } = await import("@tauri-apps/plugin-dialog");
+		const askMock = vi.mocked(ask);
+		askMock.mockClear();
+		askMock.mockResolvedValue(false);
+		const props = {
+			fileDiffs: [testDiff],
+			commitDetail: nonMergeCommit,
+			onclose: vi.fn(),
+			diffKind: "commit" as const,
+			repoPath: "/repo",
+		};
+		const view = render(DiffPanel, { props });
+		await flushPrefs();
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
+		await fireEvent.mouseUp(window);
+		await fireEvent.click(screen.getByRole("button", { name: /^Comment \(/ }));
+		await fireEvent.input(screen.getByRole("textbox"), {
+			target: { value: "unsaved note" },
+		});
+		await view.rerender({ ...props, reviewFilter: "none" });
+		expect(screen.queryByRole("textbox")).toBeNull();
+
+		await fireEvent.mouseDown(gutterOf("const y = 3;"));
+
+		await waitFor(() => expect(askMock).toHaveBeenCalledTimes(1));
+	});
+
 	it("does not paint after a release that arrived while the discard prompt was open", async () => {
 		const { ask } = await import("@tauri-apps/plugin-dialog");
 		const askMock = vi.mocked(ask);

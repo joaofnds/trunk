@@ -119,6 +119,16 @@ export function getDraft(repoPath: string): Promise<Draft | null> {
 	return safeInvoke("get_draft", { path: repoPath });
 }
 
+/** Asks whether to throw away the comment being written. */
+export async function askToDiscardComment(): Promise<boolean> {
+	const { ask } = await import("@tauri-apps/plugin-dialog");
+
+	return ask("Discard your unsaved comment?", {
+		title: "Discard Comment",
+		kind: "warning",
+	});
+}
+
 export function deleteDraft(repoPath: string): Promise<void> {
 	return safeInvoke("delete_draft", { path: repoPath });
 }
