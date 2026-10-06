@@ -24,14 +24,6 @@ function checkSurfaces(label, base, layersA, layersB, target) {
 	record(label, ratio(compose(base, layersA), compose(base, layersB)), target, "non-text");
 }
 const section = (t) => rows.push(`\n== ${t} ==`);
-// Two opaque surfaces against each other (a patch against the line it sits on).
-// Non-text, so no WCAG letter grade: the target is the design's own floor.
-function checkSurfaces(label, base, layersA, layersB, target) {
-	const r = ratio(compose(base, layersA), compose(base, layersB));
-	const ok = r >= target;
-	if (!ok) fails++;
-	rows.push(`  ${ok ? "OK " : "!! "} ${r.toFixed(2)} ${"non-text".padEnd(4)} (>=${target}) ${label}`);
-}
 
 // The source diff views sit in DiffPanel's --bg-1 pane; a rendered markdown
 // block paints --bg-0 itself (.rendered-block.md-*.no-wash).
