@@ -431,6 +431,8 @@ export interface Thread {
 	// `{@html}`s it, falling back to escaped raw `text` when absent.
 	text_html?: string;
 	replies: readonly Reply[];
+	// Wall-clock seconds when the root comment was submitted.
+	created_at: number;
 }
 
 // A flat reply under a thread. Mirrors the Rust RenderedReply — no anchor, no

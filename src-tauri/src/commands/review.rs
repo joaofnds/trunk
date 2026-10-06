@@ -357,6 +357,9 @@ pub struct RenderedThread {
     pub allowed_transitions: Vec<trunk_review::types::ThreadState>,
     pub text_html: String,
     pub replies: Vec<RenderedReply>,
+    /// Wall-clock seconds when the root comment was submitted, which the card
+    /// shows as an age beside the author, as each reply shows its own.
+    pub created_at: i64,
 }
 
 impl RenderedThread {
@@ -380,6 +383,7 @@ impl RenderedThread {
                 .allowed_transitions(trunk_review::types::Channel::Human),
             text_html,
             replies: replies.into_iter().map(RenderedReply::from_reply).collect(),
+            created_at: t.created_at,
         }
     }
 }

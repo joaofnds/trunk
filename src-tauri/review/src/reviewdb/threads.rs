@@ -33,6 +33,8 @@ pub struct Thread {
     /// that carries no pin, for one whose block the file has lost, and for one
     /// written before the insert stored it, until a pass fills it in.
     pub resolved_start_line: Option<u32>,
+    /// Wall-clock seconds when the root comment was submitted.
+    pub created_at: i64,
 }
 
 pub struct NewThread {
@@ -46,7 +48,7 @@ pub struct NewThread {
 const SELECT: &str = "
     SELECT id, review_id, body, excerpt, state, stale, channel,
            anchor_kind, commit_oid, file_path, source, side, start_line, end_line,
-           pin_block, pin_ordinal, resolved_start_line
+           pin_block, pin_ordinal, resolved_start_line, created_at
     FROM threads";
 
 const ANCHOR_FIRST_COLUMN: usize = 7;
@@ -166,6 +168,7 @@ fn read_thread(row: &rusqlite::Row) -> Result<Thread, TrunkError> {
         commit_oid,
         content_pin,
         resolved_start_line: optional_line(row, PIN_FIRST_COLUMN + 2)?,
+        created_at: row.get(PIN_FIRST_COLUMN + 3).map_err(sqlite_error)?,
     })
 }
 

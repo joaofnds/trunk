@@ -208,6 +208,21 @@ fn a_submitted_thread_survives_a_restart() {
 }
 
 #[test]
+fn a_listed_thread_carries_the_time_it_was_submitted() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(&store, &canonical, submission("when was this?"), 1_234).unwrap();
+
+    let threads = list_threads_inner(&store, &canonical).unwrap();
+
+    assert_eq!(
+        threads[0].created_at, 1_234,
+        "the card shows how long ago the root comment was written",
+    );
+}
+
+#[test]
 fn a_second_submit_lands_in_the_same_review() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();

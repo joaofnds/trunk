@@ -21,6 +21,7 @@ export function aThread(overrides: Partial<Thread> = {}): Thread {
 		// `state` overrides this alongside it, as the backend would.
 		allowed_transitions: ["done", "dismissed"],
 		replies: [],
+		created_at: 0,
 		...overrides,
 	};
 }
