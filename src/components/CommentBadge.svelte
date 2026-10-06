@@ -1,8 +1,10 @@
 <script lang="ts">
-// Filled accent pill showing a review-comment count. Shares the look of the
-// toolbar badge (.toolbar-badge) but is statically positioned so it flows
-// inline at the trailing edge of a row. Self-hides at 0 so a parent can enforce
-// the filter gate simply by zeroing the count — children stay dumb.
+// A review-comment count at the trailing edge of a row: a message glyph and the
+// number, in the tone of the threads it counts. Outlined rather than filled, so
+// it clears AAA on a selected row as well as a resting one. Self-hides at 0 so
+// a parent can enforce the filter gate simply by zeroing the count, which keeps
+// children dumb.
+import MessageSquare from "@lucide/svelte/icons/message-square";
 import type { ReviewTone } from "../lib/types.js";
 
 interface Props {
@@ -19,39 +21,51 @@ let { count, tone = "open" }: Props = $props();
 		class="comment-badge tone-{effectiveTone}"
 		role="img"
 		aria-label="{count} review {count === 1 ? 'comment' : 'comments'}"
-		>{count}</span
+		><MessageSquare size={10} strokeWidth={2.5} aria-hidden="true" />
+		{count}</span
 	>
 {/if}
 
 <style>
 .comment-badge {
 	flex-shrink: 0;
-	min-width: calc(4 * var(--u));
 	height: calc(4 * var(--u));
 	padding: 0 var(--space-1);
 	display: inline-flex;
 	align-items: center;
-	justify-content: center;
+	gap: var(--space-1);
+	border: 1px solid var(--color-border);
 	border-radius: var(--radius-pill);
-	background: var(--color-accent);
-	color: var(--color-on-accent);
 	font-size: var(--text-caption);
 	font-weight: var(--weight-semibold);
 	line-height: var(--leading-none);
 }
 .tone-open {
-	background: var(--color-thread-open);
+	color: var(--color-thread-open);
+	border-color: color-mix(in oklch, var(--color-thread-open) 35%, transparent);
 }
 .tone-addressed {
-	background: var(--color-thread-addressed);
+	color: var(--color-thread-addressed);
+	border-color: color-mix(
+		in oklch,
+		var(--color-thread-addressed) 35%,
+		transparent
+	);
 }
 .tone-done {
-	background: var(--color-thread-done);
+	color: var(--color-thread-done);
+	border-color: color-mix(in oklch, var(--color-thread-done) 35%, transparent);
 }
 .tone-dismissed {
-	background: var(--color-thread-dismissed);
+	color: var(--color-thread-dismissed);
+	border-color: color-mix(
+		in oklch,
+		var(--color-thread-dismissed) 35%,
+		transparent
+	);
 }
 .tone-stale {
-	background: var(--color-thread-stale);
+	color: var(--color-thread-stale);
+	border-color: color-mix(in oklch, var(--color-thread-stale) 35%, transparent);
 }
 </style>

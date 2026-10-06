@@ -15,6 +15,15 @@ describe("CommentBadge", () => {
 		expect(screen.getByText("3")).toBeInTheDocument();
 	});
 
+	it("draws a message glyph beside the count", () => {
+		render(CommentBadge, { props: { count: 3 } });
+
+		const badge = screen.getByRole("img", { name: "3 review comments" });
+
+		expect(badge.querySelector("svg")).not.toBeNull();
+		expect(badge).toHaveTextContent("3");
+	});
+
 	it("renders nothing when count is zero", () => {
 		const { container } = render(CommentBadge, { props: { count: 0 } });
 		expect(container.textContent).toBe("");
