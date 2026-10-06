@@ -1,7 +1,7 @@
 <script lang="ts">
 // The orphan badge, the file-ref jump affordance, and the diff excerpt are
-// panel-context decorations; inline hosts omit those optional props. `variant`
-// swaps width/padding tokens between the panel and inline hosts.
+// panel-context decorations. An inline card sits under the code it is on, so
+// it names its lines and its review in place of the file and the excerpt.
 
 import Check from "@lucide/svelte/icons/check";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
@@ -39,7 +39,7 @@ interface Props {
 	// delete immediately (inline hosts).
 	confirmDelete?: boolean;
 	// "panel" (default) for the center-pane review panel; "inline" for diff /
-	// commit-detail hosts — controls width/padding via theme tokens.
+	// commit-detail hosts, the compact card with no excerpt.
 	variant?: "panel" | "inline";
 	// Optional panel-only header decorations. Inline hosts omit these.
 	onjump?: (thread: Thread) => void;
@@ -415,7 +415,18 @@ async function requestDeleteReply(replyId: string) {
 		<span class="thread-state-chip contents"
 			><StatePill state={thread.state} /></span
 		>
-		{#if scoped}
+		{#if variant === "inline"}
+			{#if location !== null}
+				<span
+					class="comment-card-range"
+					title="{location.path}:L{location.start}-L{location.end}"
+					>{location.start === location.end
+						? `L${location.start}`
+						: `L${location.start}-L${location.end}`}</span
+				>
+			{/if}
+			<Tag variant="label">{thread.review_id}</Tag>
+		{:else if scoped}
 			{#if location === null}
 				<Tag variant="label" dashed
 					><GitCommitHorizontal size={11} aria-hidden="true" />Whole commit</Tag
@@ -491,7 +502,7 @@ async function requestDeleteReply(replyId: string) {
 	</header>
 
 	{#if !collapsed}
-		{#if excerptLines.length > 0}
+		{#if variant === "panel" && excerptLines.length > 0}
 			<div
 				class="comment-card-diff"
 				class:comment-card-diff-dim={thread.stale || orphaned}
@@ -632,6 +643,15 @@ async function requestDeleteReply(replyId: string) {
 	border-color: var(--color-accent);
 	outline: 1px solid var(--color-accent-border);
 }
+.comment-card-range {
+	flex-shrink: 0;
+	color: var(--color-text-muted);
+	font-family: var(--font-mono);
+	font-size: var(--text-small);
+	line-height: var(--text-small--line-height);
+	font-weight: var(--weight-medium);
+}
+
 .comment-card-inline {
 	width: 100%;
 }

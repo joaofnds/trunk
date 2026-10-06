@@ -457,6 +457,26 @@ describe("ThreadCard", () => {
 		).not.toBeInTheDocument();
 	});
 
+	describe("inside the diff", () => {
+		it("names its lines and its review, since the diff shows the file", () => {
+			renderCard({ variant: "inline" });
+
+			const header = screen.getByRole("banner");
+
+			expect(screen.getByTitle("src/foo.ts:L10-L11")).toHaveTextContent(
+				"L10-L11",
+			);
+			expect(header).toHaveTextContent(comment.review_id);
+			expect(header).not.toHaveTextContent("src/foo.ts");
+		});
+
+		it("leaves out the excerpt, since the code sits right above it", () => {
+			renderCard({ variant: "inline" });
+
+			expect(screen.queryByText("const x = 2;")).not.toBeInTheDocument();
+		});
+	});
+
 	it("collapses to its header", async () => {
 		renderCard();
 

@@ -13,6 +13,8 @@ const SUBMIT = '[data-testid="comment-submit"]';
 const CARD = ".comment-card";
 const PROBE = ".comment-probe";
 const FILE_REF = ".comment-card-fileref";
+/** A card in the diff names only its lines; their tooltip names the file too. */
+const RANGE = ".comment-card-range";
 /** A card in the review panel names only its lines; their tag's tooltip names
  *  the file too, in the same form a card elsewhere spells out. */
 const SCOPE_TAG = ".comment-card-scope button";
@@ -612,6 +614,7 @@ function locationOf(card: HTMLElement): string {
 	return (
 		textIn(card, FILE_REF) ||
 		card.querySelector<HTMLElement>(SCOPE_TAG)?.title ||
+		card.querySelector<HTMLElement>(RANGE)?.title ||
 		""
 	);
 }
