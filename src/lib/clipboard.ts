@@ -7,7 +7,6 @@ export async function copySha(oid: string): Promise<void> {
 	await copy({ text: oid, shown: oid.slice(0, 7) });
 }
 
-/** Copy text whose whole is worth showing back: a ref's name, a path, a message. */
 export async function copyText(text: string): Promise<void> {
 	await copy({ text, shown: text });
 }

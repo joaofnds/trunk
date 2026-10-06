@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +10,10 @@ import OperationBanner from "./OperationBanner.svelte";
 // hoisting binds the invoke/ask the component sees to these mocks (76-03 decision).
 vi.mock("@tauri-apps/api/core", () => ({
 	invoke: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
+	writeText: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -47,7 +52,6 @@ describe("OperationBanner", () => {
 					op_type: "Merge",
 					source_branch: "feature",
 					target_branch: "main",
-					onto_oid: null,
 				}),
 				repoPath: "/repo",
 			},
@@ -57,24 +61,16 @@ describe("OperationBanner", () => {
 	});
 
 	it.each(["feature", "main"])(
-		"offers %s as a branch chip that copies itself",
-		(name) => {
+		"copies %s when its branch chip is pressed",
+		async (name) => {
+			vi.mocked(writeText).mockClear();
 			render(OperationBanner, {
-				props: {
-					info: makeInfo({
-						op_type: "Rebase",
-						source_branch: "feature",
-						target_branch: "main",
-						onto_oid: null,
-					}),
-					repoPath: "/repo",
-				},
+				props: { info: makeInfo({ op_type: "Merge" }), repoPath: "/repo" },
 			});
 
-			expect(screen.getByRole("button", { name })).toHaveAttribute(
-				"title",
-				`Copy ${name}`,
-			);
+			await fireEvent.click(screen.getByRole("button", { name }));
+
+			expect(vi.mocked(writeText)).toHaveBeenCalledWith(name);
 		},
 	);
 
@@ -82,7 +78,7 @@ describe("OperationBanner", () => {
 		it("marks the side unknown without offering anything to copy", () => {
 			render(OperationBanner, {
 				props: {
-					info: makeInfo({ op_type: "Rebase", target_branch: null }),
+					info: makeInfo({ op_type: "Merge", source_branch: null }),
 					repoPath: "/repo",
 				},
 			});

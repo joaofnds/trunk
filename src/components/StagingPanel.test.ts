@@ -236,7 +236,8 @@ describe("StagingPanel", () => {
 		});
 	});
 
-	it("offers the current branch as a chip that copies itself", async () => {
+	it("copies the current branch when its chip is pressed", async () => {
+		vi.mocked(writeText).mockClear();
 		render(StagingPanel, {
 			props: {
 				repoPath: "/test/repo",
@@ -244,9 +245,11 @@ describe("StagingPanel", () => {
 			},
 		});
 
-		expect(
+		await fireEvent.click(
 			await screen.findByRole("button", { name: "feature/test" }),
-		).toHaveAttribute("title", "Copy feature/test");
+		);
+
+		expect(vi.mocked(writeText)).toHaveBeenCalledWith("feature/test");
 	});
 
 	it("routes filtered snapshot badges and tones to both staging sections", async () => {
