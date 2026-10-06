@@ -830,7 +830,7 @@ let lastVisibleColumn = $derived.by(() => {
 	font-size: var(--text-small);
 	font-weight: var(--weight-semibold);
 	padding: 0 var(--space-2);
-	border-radius: var(--radius);
+	border-radius: var(--radius-pill);
 }
 
 .rebase-toolbar-right {
