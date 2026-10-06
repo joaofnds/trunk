@@ -11,7 +11,7 @@
  *   absolute 1-based blob line numbers on the new side only (L-01).
  * - The range covers only new-side lines; lines with no new-side number (the
  *   removed lines) are excluded from both the range and the excerpt (D-02).
- * - `cachedExcerpt` is plain code content (each line's `content` verbatim), with
+ * - `cachedExcerpt` is plain code content (each line's text, less its newline), with
  *   NO diff prefix characters — Phase 70 renders it language-fenced, not
  *   diff-fenced (D-04).
  * - A selection straddling a dropped region keeps a correct monotonic range and
@@ -20,6 +20,7 @@
  * All functions are pure: no IPC, no mutation of inputs, no Svelte.
  */
 
+import { lineText } from "./diff-anchor.js";
 import type { Anchor, DiffLine, FileDiff } from "./types.js";
 
 export interface FullFileAnchorResult {
@@ -92,7 +93,7 @@ export function buildFullFileAnchor(
 }
 
 /**
- * Join the surviving new-side lines' content by newline, inserting a
+ * Join the surviving new-side lines' text by newline, inserting a
  * "… N lines unchanged …" marker wherever consecutive survivors skip new-side
  * line numbers (a dropped region). N = the skipped count = (next - prev - 1).
  */
@@ -109,7 +110,7 @@ function buildExcerpt(survivors: DiffLine[]): string {
 				parts.push(GAP_MARKER(skipped));
 			}
 		}
-		parts.push(line.content);
+		parts.push(lineText(line));
 	}
 
 	return parts.join("\n");

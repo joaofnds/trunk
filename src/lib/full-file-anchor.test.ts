@@ -151,6 +151,19 @@ describe("buildFullFileAnchor", () => {
 		expect(cachedExcerpt).toBe("before-gap\n… 44 lines unchanged …\nafter-gap");
 	});
 
+	it("drops the newline libgit2 leaves on each line, keeping an empty line", () => {
+		const lines = [
+			addLine(10, "first\n"),
+			addLine(11, "\n"),
+			addLine(12, "last"),
+		];
+		const f = file("Modified", "src/e.ts", lines);
+
+		const { cachedExcerpt } = buildFullFileAnchor(OID, f, new Set([0, 1, 2]));
+
+		expect(cachedExcerpt).toBe("first\n\nlast");
+	});
+
 	it("writes a gap marker that reads back as the lines it skipped", () => {
 		const lines = [contextLine(5, 5, "before"), contextLine(50, 50, "after")];
 		const f = file("Modified", "src/d.ts", lines);
