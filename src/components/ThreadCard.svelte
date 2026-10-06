@@ -67,7 +67,21 @@ const fallbackEditorSession = createThreadEditorSession();
 const editor = $derived(
 	editorSessionForThread?.(thread) ?? editorSession ?? fallbackEditorSession,
 );
-let collapsed = $state(false);
+// A resolved thread folds to its header and an unresolved one opens, whenever
+// the state changes. A toggle holds only while the state it was made in does.
+let toggle = $state<{ state: ThreadState; collapsed: boolean } | null>(null);
+const collapsed = $derived(
+	toggle !== null && toggle.state === thread.state
+		? toggle.collapsed
+		: thread.state === "done" || thread.state === "dismissed",
+);
+const peek = $derived(
+	thread.text
+		.replace(/```[\s\S]*?```/g, "")
+		.replace(/[`*]/g, "")
+		.replace(/\s+/g, " ")
+		.trim(),
+);
 const draft = $derived(editor.rootEdit);
 const replyDraft = $derived(editor.reply);
 const replySaving = $derived(editor.replySaving);
@@ -319,7 +333,9 @@ async function requestDeleteReply(replyId: string) {
 				variant="ghost"
 				aria-expanded={!collapsed}
 				aria-label={collapsed ? "Expand thread" : "Collapse thread"}
-				onclick={() => { collapsed = !collapsed; }}
+				onclick={() => {
+					toggle = { state: thread.state, collapsed: !collapsed };
+				}}
 			>
 				{#if collapsed}
 					<ChevronRight size={12} aria-hidden="true" />
@@ -353,7 +369,21 @@ async function requestDeleteReply(replyId: string) {
 				{/if}
 			</span>
 		{/if}
-		<span class="flex-1"></span>
+		{#if collapsed}
+			<span
+				class="min-w-0 flex-1 truncate text-callout text-text-subtle"
+				class:line-through={thread.state === "dismissed"}
+				>{peek}</span
+			>
+			{#if thread.replies.length > 0}
+				<span class="shrink-0 whitespace-nowrap text-small text-text-subtle"
+					>{thread.replies.length}
+					{thread.replies.length === 1 ? "reply" : "replies"}</span
+				>
+			{/if}
+		{:else}
+			<span class="flex-1"></span>
+		{/if}
 		{#if !draft.editing}
 			<RowAction size="compact" aria-label="Edit comment" onclick={openEdit}>
 				<Pencil size={12} aria-hidden="true" />

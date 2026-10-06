@@ -37,6 +37,11 @@ function callArgs(cmd: string): Record<string, unknown> | undefined {
 
 // The delete-confirmation flow awaits a dynamic `import()` before calling `ask`;
 // a plain `fireEvent.click` doesn't wait for that microtask to settle.
+async function expandCard() {
+	const expand = screen.queryByRole("button", { name: "Expand thread" });
+	if (expand) await fireEvent.click(expand);
+}
+
 async function flush() {
 	await Promise.resolve();
 	await Promise.resolve();
@@ -346,10 +351,64 @@ describe("ThreadCard", () => {
 			screen.getByRole("button", { name: "Collapse thread" }),
 		);
 
-		expect(screen.queryByText(comment.text)).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("textbox", { name: "Reply" }),
+		).not.toBeInTheDocument();
 		expect(
 			screen.getByRole("button", { name: "Expand thread" }),
 		).toHaveAttribute("aria-expanded", "false");
+	});
+
+	it.each(["done", "dismissed"] as const)(
+		"starts a %s thread collapsed",
+		(state) => {
+			renderCard({
+				thread: { ...comment, state, allowed_transitions: ["open"] },
+			});
+
+			expect(
+				screen.getByRole("button", { name: "Expand thread" }),
+			).toHaveAttribute("aria-expanded", "false");
+		},
+	);
+
+	it("collapses a thread once it is resolved", async () => {
+		const { rerender } = renderCard();
+
+		await rerender({
+			thread: { ...comment, state: "done", allowed_transitions: ["open"] },
+		});
+
+		expect(
+			screen.getByRole("button", { name: "Expand thread" }),
+		).toBeInTheDocument();
+	});
+
+	it("peeks the comment's plain text while collapsed", async () => {
+		renderCard({
+			thread: { ...comment, text: "needs a `null` check\n\nhere" },
+		});
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Collapse thread" }),
+		);
+
+		expect(screen.getByText("needs a null check here")).toBeInTheDocument();
+	});
+
+	it("counts the replies while collapsed", async () => {
+		renderCard({
+			thread: {
+				...comment,
+				replies: [aReply({ id: "r1" }), aReply({ id: "r2" })],
+			},
+		});
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Collapse thread" }),
+		);
+
+		expect(screen.getByText("2 replies")).toBeInTheDocument();
 	});
 
 	it("collapses to the last three replies", () => {
@@ -447,13 +506,17 @@ describe("ThreadCard", () => {
 			allowed: ["open"] as const,
 			labels: ["Reopen"],
 		},
-	])("offers $labels for a $state thread", ({ state, allowed, labels }) => {
-		const { container } = renderCard({
-			thread: { ...comment, state, allowed_transitions: [...allowed] },
-		});
+	])(
+		"offers $labels for a $state thread",
+		async ({ state, allowed, labels }) => {
+			const { container } = renderCard({
+				thread: { ...comment, state, allowed_transitions: [...allowed] },
+			});
+			await expandCard();
 
-		expect(stateActionLabels(container)).toEqual(labels);
-	});
+			expect(stateActionLabels(container)).toEqual(labels);
+		},
+	);
 
 	it("paints Delete comment in the danger tone", () => {
 		renderCard({ thread: comment });
@@ -510,6 +573,7 @@ describe("ThreadCard", () => {
 			allowed_transitions: ["open"],
 		};
 		renderCard({ thread: done });
+		await expandCard();
 
 		await fireEvent.click(screen.getByText("Reopen"));
 
