@@ -810,6 +810,7 @@ let lastVisibleColumn = $derived.by(() => {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	gap: var(--space-2);
 	height: var(--bar-h);
 	flex-shrink: 0;
 	background: var(--color-surface);
@@ -821,15 +822,23 @@ let lastVisibleColumn = $derived.by(() => {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
+	min-width: 0;
 }
 
 .rebase-toolbar-title {
+	flex-shrink: 0;
+	white-space: nowrap;
 	font-size: var(--text-body);
 	font-weight: var(--weight-semibold);
 	color: var(--color-text);
 }
 
 .rebase-toolbar-meta {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	min-width: 0;
+	white-space: nowrap;
 	font-size: var(--text-callout);
 	color: var(--color-text-muted);
 }
