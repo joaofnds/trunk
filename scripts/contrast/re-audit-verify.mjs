@@ -100,25 +100,22 @@ section("ReviewPanel orphan comment (opacity-on-text removed)");
 check("fileref dim -> solid --fg-3", "var(--fg-3)", "var(--color-surface)");
 check("diff gutter now full --fg-2 (add line)", "var(--color-text-muted)", "var(--color-bg)", { layers: ["var(--color-diff-add-bg)"] });
 
-section("State-aware review count pills and filter control (TRUNK-155)");
-for (const [state, color] of [
+const THREAD_TONES = [
 	["open", "var(--color-thread-open)"],
 	["addressed", "var(--color-thread-addressed)"],
 	["done", "var(--color-thread-done)"],
 	["dismissed", "var(--color-thread-dismissed)"],
 	["stale", "var(--color-thread-stale)"],
-]) {
+];
+
+section("State-aware review count pills and filter control (TRUNK-155)");
+for (const [state, color] of THREAD_TONES) {
 	check(`${state} pill`, "var(--accent-fg)", color);
 }
 check("review filter selector", "var(--color-text)", "var(--color-surface)");
 
 section("Review state pills and thread attribution (TRUNK-334)");
-for (const [state, color] of [
-	["open", "var(--color-thread-open)"],
-	["addressed", "var(--color-thread-addressed)"],
-	["done", "var(--color-thread-done)"],
-	["stale", "var(--color-thread-stale)"],
-]) {
+for (const [state, color] of THREAD_TONES.filter(([state]) => state !== "dismissed")) {
 	check(`${state} pill label on a card`, color, "var(--color-comment-card-bg)", { layers: [t(color, 12)] });
 	check(`${state} pill label on the panel`, color, "var(--color-surface)", { layers: [t(color, 12)] });
 }
@@ -128,13 +125,7 @@ check("excerpt line number on a context line", "var(--color-text-muted)", "var(-
 check("dismissed pill label on a card", "var(--color-thread-dismissed)", "var(--color-comment-card-bg)", { layers: ["var(--color-hover)"] });
 check("agent name on a card", "var(--color-accent-alt)", "var(--color-comment-card-bg)");
 check("thread count in the diff gutter", "var(--color-on-accent)", "var(--color-accent)");
-for (const [state, color] of [
-	["open", "var(--color-thread-open)"],
-	["addressed", "var(--color-thread-addressed)"],
-	["done", "var(--color-thread-done)"],
-	["dismissed", "var(--color-thread-dismissed)"],
-	["stale", "var(--color-thread-stale)"],
-]) {
+for (const [state, color] of THREAD_TONES) {
 	check(`${state} comment count on a resting row`, color, "var(--color-surface)");
 	check(`${state} comment count on a hovered row`, color, "var(--color-hover)");
 	check(`${state} comment count on a selected row`, color, "var(--color-selected-row)");
