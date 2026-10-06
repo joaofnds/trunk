@@ -1,4 +1,6 @@
 <script lang="ts">
+import Pencil from "@lucide/svelte/icons/pencil";
+import Trash2 from "@lucide/svelte/icons/trash-2";
 import { externalLinks } from "../lib/external-links.js";
 import {
 	createThreadEditorSession,
@@ -7,6 +9,8 @@ import {
 import type { Reply } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
+import RowAction from "../lib/ui/RowAction.svelte";
+import ThreadAuthor from "./review/ThreadAuthor.svelte";
 
 interface Props {
 	replies: readonly Reply[];
@@ -80,7 +84,7 @@ async function saveReplyEdit() {
 
 {#if replies.length > 0}
 	{#if hiddenReplyCount > 0 && !repliesExpanded && editingReplyId === null}
-		<span class="mx-2 mt-2 self-start text-small leading-normal">
+		<span class="thread-replies-more text-small leading-normal">
 			<LinkButton tone="accent" onclick={() => { repliesExpanded = true; }}
 				>{`Show ${hiddenReplyCount} more ${hiddenReplyCount === 1 ? "reply" : "replies"}`}</LinkButton
 			>
@@ -88,25 +92,33 @@ async function saveReplyEdit() {
 	{/if}
 	<ul class="thread-replies">
 		{#each visibleReplies as reply (reply.id)}
-			<li class="thread-reply">
+			<li
+				class="thread-reply"
+				class:thread-reply-agent={reply.channel === "agent"}
+			>
 				<div class="thread-reply-header">
-					<span class="thread-reply-channel">{reply.channel}</span>
+					<ThreadAuthor channel={reply.channel} createdAt={reply.created_at} />
+					<span class="flex-1"></span>
 					{#if reply.channel === "human" && editingReplyId !== reply.id}
-						<LinkButton
-							tone="muted"
+						<RowAction
+							size="compact"
+							aria-label="Edit reply"
 							disabled={replyEditSaving}
 							onclick={() => openReplyEdit(reply.id, reply.text)}
-							>Edit reply</LinkButton
 						>
+							<Pencil size={12} aria-hidden="true" />
+						</RowAction>
 					{/if}
-					<span class="comment-card-spacer"></span>
 					{#if !published}
-						<LinkButton
-							tone="muted"
+						<RowAction
+							size="compact"
+							tone="danger"
+							aria-label="Delete reply"
 							disabled={replyEditSaving}
 							onclick={() => onreplydelete(reply.id)}
-							>Delete reply</LinkButton
 						>
+							<Trash2 size={12} aria-hidden="true" />
+						</RowAction>
 					{/if}
 				</div>
 				{#if editingReplyId === reply.id}
@@ -146,10 +158,6 @@ async function saveReplyEdit() {
 {/if}
 
 <style>
-.comment-card-spacer {
-	flex: 1;
-}
-
 /* Inline editor inside a reply — mirrors ThreadCard's own .card-textarea;
      Svelte scoped styles don't cross component boundaries, so the reply-edit
      textarea needs its own copy here. */
@@ -165,36 +173,36 @@ async function saveReplyEdit() {
 	font-family: inherit;
 }
 
+.thread-replies-more {
+	display: block;
+	padding: var(--space-1) var(--space-2);
+	border-top: 1px solid var(--color-border);
+}
 .thread-replies {
 	list-style: none;
 	margin: 0;
-	padding: var(--space-2) var(--space-2) 0;
+	padding: 0;
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-2);
-	border-top: 1px solid var(--color-border);
 }
 .thread-reply {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
+	padding: var(--space-2);
+	border-top: 1px solid var(--color-border);
+	border-left: 2px solid transparent;
+}
+/* The agent's turns carry its color down their edge, so a long thread still
+     reads as who said what without reading every name. */
+.thread-reply-agent {
+	border-left-color: var(--color-accent-alt);
+	background: color-mix(in oklch, var(--color-accent-alt) 6%, transparent);
 }
 .thread-reply-header {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	font-size: var(--text-small);
-}
-.thread-reply-channel {
-	align-self: flex-start;
-	font-size: var(--text-caption);
-	line-height: var(--text-caption--line-height);
-	text-transform: uppercase;
-	letter-spacing: var(--tracking-wide);
-	color: var(--color-text-muted);
-	background: var(--color-comment-card-header-bg);
-	border-radius: var(--radius);
-	padding: 0 var(--space-2);
 }
 .thread-reply-text {
 	font-size: var(--text-callout);

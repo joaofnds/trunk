@@ -3,6 +3,11 @@
 // panel-context decorations; inline hosts omit those optional props. `variant`
 // swaps width/padding tokens between the panel and inline hosts.
 
+import Check from "@lucide/svelte/icons/check";
+import ChevronDown from "@lucide/svelte/icons/chevron-down";
+import ChevronRight from "@lucide/svelte/icons/chevron-right";
+import Pencil from "@lucide/svelte/icons/pencil";
+import Trash2 from "@lucide/svelte/icons/trash-2";
 import { externalLinks } from "../lib/external-links.js";
 import {
 	addReply,
@@ -14,9 +19,12 @@ import {
 	createThreadEditorSession,
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
-import type { Thread, ThreadState } from "../lib/types.js";
-import Button from "../lib/ui/Button.svelte";
+import type { Side, Thread, ThreadState } from "../lib/types.js";
+import Button, { type ButtonVariant } from "../lib/ui/Button.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
+import RowAction from "../lib/ui/RowAction.svelte";
+import StatePill from "./review/StatePill.svelte";
+import ThreadAuthor from "./review/ThreadAuthor.svelte";
 import ThreadReplies from "./ThreadReplies.svelte";
 
 interface Props {
@@ -58,6 +66,7 @@ const fallbackEditorSession = createThreadEditorSession();
 const editor = $derived(
 	editorSessionForThread?.(thread) ?? editorSession ?? fallbackEditorSession,
 );
+let collapsed = $state(false);
 const draft = $derived(editor.rootEdit);
 const replyDraft = $derived(editor.reply);
 const replySaving = $derived(editor.replySaving);
@@ -90,6 +99,16 @@ const location = $derived.by(() => {
 // file's own lines, with no diff prefixes to strip.
 const excerptSource = $derived(thread.anchor?.source ?? "FullFile");
 
+// The directory recedes so the file name and the range carry the location.
+const locationDir = $derived(
+	location === null
+		? ""
+		: location.path.slice(0, location.path.lastIndexOf("/") + 1),
+);
+const locationName = $derived(
+	location === null ? "" : location.path.slice(locationDir.length),
+);
+
 // Parse the comment's cached_excerpt into rendered lines. Diff-source excerpts
 // carry +/-/space prefixes per `prefixLine` in diff-anchor.ts; full-file ones
 // are plain code with no prefix. Splitting the gutter out (vs. inlining the
@@ -98,11 +117,12 @@ interface ExcerptLine {
 	kind: "add" | "del" | "context" | "plain";
 	gutter: string;
 	content: string;
+	number: number | null;
 }
 function parseExcerpt(
 	text: string,
 	source: "Diff" | "FullFile",
-): ExcerptLine[] {
+): Omit<ExcerptLine, "number">[] {
 	const lines = text.split("\n");
 	if (source === "FullFile") {
 		return lines.map((content) => ({ kind: "plain", gutter: " ", content }));
@@ -121,6 +141,32 @@ function parseExcerpt(
 		return { kind: "plain", gutter: " ", content: line };
 	});
 }
+
+// The anchored side's line numbers, counted from the range's first line. A line
+// only the other side holds has no number on this one, so it shows none.
+function numberLines(
+	lines: Omit<ExcerptLine, "number">[],
+	side: Side,
+	start: number,
+): ExcerptLine[] {
+	const otherSide = side === "New" ? "del" : "add";
+	let next = start;
+	return lines.map((line) => {
+		if (line.kind === otherSide) return { ...line, number: null };
+		next += 1;
+		return { ...line, number: next - 1 };
+	});
+}
+
+const excerptLines = $derived(
+	location === null || !thread.cached_excerpt
+		? []
+		: numberLines(
+				parseExcerpt(thread.cached_excerpt, excerptSource),
+				thread.anchor?.side ?? "New",
+				location.start,
+			),
+);
 
 function openEdit() {
 	draft.open(thread.text);
@@ -171,9 +217,25 @@ const TRANSITION_LABELS: Record<ThreadState, string> = {
 	addressed: "Mark addressed",
 };
 
+// Done is the step the thread is waiting for, so it leads in the success tone;
+// dismissing is the step least often meant, so it recedes.
+const TRANSITION_VARIANTS: Record<ThreadState, ButtonVariant> = {
+	done: "success",
+	dismissed: "ghost",
+	open: "secondary",
+	addressed: "secondary",
+};
+
+// Done on a thread the agent addressed confirms the agent's claimed fix.
+function transitionLabel(next: ThreadState): string {
+	if (next === "done" && thread.state === "addressed") return "Confirm fix";
+	return TRANSITION_LABELS[next];
+}
+
 const stateActions = $derived(
 	thread.allowed_transitions.map((next) => ({
-		label: TRANSITION_LABELS[next],
+		label: transitionLabel(next),
+		variant: TRANSITION_VARIANTS[next],
 		next,
 	})),
 );
@@ -206,126 +268,162 @@ async function requestDeleteReply(replyId: string) {
 }
 </script>
 
-<div class="comment-card comment-card-{variant}">
-	<!-- Header: file ref (jump affordance) + orphan badge + actions -->
+<article class="comment-card comment-card-{variant}">
 	<header class="comment-card-header">
-		{#if location !== null}
-			{#if jumpable && onjump}
-				<span class="font-mono comment-card-fileref">
-					<LinkButton aria-label="Jump to code" onclick={() => onjump?.(thread)}
-						>{location.path}:L{location.start}-L{location.end}</LinkButton
-					>
-				</span>
+		<Button
+			icon
+			size="xs"
+			variant="ghost"
+			aria-expanded={!collapsed}
+			aria-label={collapsed ? "Expand thread" : "Collapse thread"}
+			onclick={() => { collapsed = !collapsed; }}
+		>
+			{#if collapsed}
+				<ChevronRight size={12} aria-hidden="true" />
 			{:else}
-				<span
-					class="font-mono comment-card-fileref"
-					class:comment-card-fileref-dim={orphaned}
-					>{location.path}:L{location.start}-L{location.end}</span
-				>
+				<ChevronDown size={12} aria-hidden="true" />
 			{/if}
+		</Button>
+		<span class="thread-state-chip contents"
+			><StatePill state={thread.state} /></span
+		>
+		{#if thread.stale}
+			<span class="thread-stale-chip contents"
+				><StatePill state="stale" /></span
+			>
 		{/if}
-		<span class="comment-card-spacer"></span>
 		{#if orphanLabel}
 			<span class="orphan-badge">{orphanLabel}</span>
 		{/if}
-		{#if thread.stale}
-			<span class="thread-stale-chip">stale</span>
-		{/if}
-		<span class="comment-card-channel">{thread.channel}</span>
-		<span class="thread-state-chip thread-state-{thread.state}"
-			>{thread.state}</span
-		>
-		<fieldset
-			class="flex min-w-auto gap-4 text-callout leading-normal"
-			aria-label="Thread actions"
-		>
-			{#each stateActions as action (action.next)}
-				<LinkButton
-					tone="muted"
-					onclick={() => setThreadState(repoPath, thread.id, action.next)}
-					>{action.label}</LinkButton
-				>
-			{/each}
-			{#if !draft.editing}
-				<LinkButton tone="muted" onclick={openEdit}>Edit</LinkButton>
-				{#if !thread.published}
-					<LinkButton tone="danger" onclick={requestDelete}>Delete</LinkButton>
+		{#if location !== null}
+			<span
+				class="comment-card-fileref min-w-0 truncate font-mono text-small"
+				class:comment-card-fileref-dim={orphaned}
+			>
+				{#if jumpable && onjump}
+					<LinkButton aria-label="Jump to code" onclick={() => onjump?.(thread)}
+						>{@render fileref()}</LinkButton
+					>
+				{:else}
+					{@render fileref()}
 				{/if}
+			</span>
+		{/if}
+		<span class="flex-1"></span>
+		{#if !draft.editing}
+			<RowAction size="compact" aria-label="Edit comment" onclick={openEdit}>
+				<Pencil size={12} aria-hidden="true" />
+			</RowAction>
+			{#if !thread.published}
+				<RowAction
+					size="compact"
+					tone="danger"
+					aria-label="Delete comment"
+					onclick={requestDelete}
+				>
+					<Trash2 size={12} aria-hidden="true" />
+				</RowAction>
 			{/if}
-		</fieldset>
+		{/if}
 	</header>
 
-	<!-- Diff hunk: line-anchored comments only. The cached_excerpt is the
-       canonical body; render with red/green per-line bg for Diff-source +/-
-       lines, plain for full-file content. No syntax highlighting (the project's
-       syntect-based path isn't wired into the panel — deferred). -->
-	{#if location !== null && thread.cached_excerpt}
-		<div class="comment-card-diff">
-			{#each parseExcerpt(thread.cached_excerpt, excerptSource) as line, i (i)}
-				<div class="diff-line diff-line-{line.kind}">
-					<span class="diff-gutter select-none">{line.gutter}</span>
-					<span class="diff-content select-text">{line.content}</span>
+	{#if !collapsed}
+		{#if excerptLines.length > 0}
+			<div class="comment-card-diff">
+				{#each excerptLines as line, i (i)}
+					<div class="diff-line diff-line-{line.kind}">
+						<span class="diff-number select-none">{line.number ?? ""}</span>
+						<span class="diff-gutter select-none">{line.gutter}</span>
+						<span class="diff-content select-text">{line.content}</span>
+					</div>
+				{/each}
+			</div>
+		{/if}
+
+		<!-- Comment text stays at full --color-text even when orphaned (D-08). -->
+		<div class="comment-card-body">
+			<ThreadAuthor channel={thread.channel} createdAt={thread.created_at} />
+			{#if draft.editing}
+				<textarea
+					bind:value={draft.text}
+					rows="3"
+					class="card-textarea"
+				></textarea>
+				<div class="flex gap-1">
+					<Button size="sm" onclick={saveEdit} disabled={!draft.valid}
+						>Save</Button
+					>
+					<Button size="sm" onclick={cancelEdit}>Cancel</Button>
 				</div>
-			{/each}
+			{:else if thread.text_html !== undefined}
+				<!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
+	           (comrak unsafe-off + ammonia); see commands/markdown.rs -->
+				<div
+					class="comment-card-text markdown-body select-text"
+					use:externalLinks
+					>{@html thread.text_html}</div
+				>
+			{:else}
+				<span class="comment-card-text select-text">{thread.text}</span>
+			{/if}
+		</div>
+
+		<ThreadReplies
+			replies={thread.replies}
+			published={thread.published}
+			editorSession={editor}
+			onreplyedit={(id, text) => editReply(repoPath, id, text)}
+			onreplydelete={requestDeleteReply}
+		/>
+
+		<div class="thread-reply-composer">
+			<textarea
+				bind:value={replyDraft.text}
+				rows="1"
+				placeholder="Reply…"
+				aria-label="Reply"
+				class="card-textarea flex-1"
+				disabled={replySaving}
+			></textarea>
+			{#if replyDraft.valid || replySaving}
+				<Button
+					size="sm"
+					variant="primary"
+					onclick={submitReply}
+					disabled={!replyDraft.valid || replySaving}
+					>Reply</Button
+				>
+			{/if}
+			<fieldset
+				class="flex min-w-auto items-center gap-1"
+				aria-label="Thread actions"
+			>
+				{#each stateActions as action (action.next)}
+					<Button
+						size="sm"
+						variant={action.variant}
+						onclick={() => setThreadState(repoPath, thread.id, action.next)}
+					>
+						{#if action.next === "done"}
+							<Check size={12} aria-hidden="true" />
+						{/if}
+						{action.label}
+					</Button>
+				{/each}
+			</fieldset>
 		</div>
 	{/if}
+</article>
 
-	<!-- Body: comment text or inline editor (D-10). Comment text stays at full
-       --color-text even when orphaned (D-08). -->
-	<div class="comment-card-body">
-		{#if draft.editing}
-			<textarea
-				bind:value={draft.text}
-				rows="3"
-				class="card-textarea"
-			></textarea>
-			<div class="flex gap-1">
-				<Button size="sm" onclick={saveEdit} disabled={!draft.valid}
-					>Save</Button
-				>
-				<Button size="sm" onclick={cancelEdit}>Cancel</Button>
-			</div>
-		{:else if thread.text_html !== undefined}
-			<!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
-           (comrak unsafe-off + ammonia); see commands/markdown.rs -->
-			<div class="comment-card-text markdown-body select-text" use:externalLinks
-				>{@html thread.text_html}</div
-			>
-		{:else}
-			<span class="comment-card-text select-text">{thread.text}</span>
-		{/if}
-	</div>
-
-	<ThreadReplies
-		replies={thread.replies}
-		published={thread.published}
-		editorSession={editor}
-		onreplyedit={(id, text) => editReply(repoPath, id, text)}
-		onreplydelete={requestDeleteReply}
-	/>
-
-	<div class="thread-reply-composer">
-		<textarea
-			bind:value={replyDraft.text}
-			rows="2"
-			placeholder="Reply…"
-			aria-label="Reply"
-			class="card-textarea"
-			disabled={replySaving}
-		></textarea>
-		<span class="self-end">
-			<Button
-				size="sm"
-				onclick={submitReply}
-				disabled={!replyDraft.valid || replySaving}
-				>Reply</Button
-			>
-		</span>
-	</div>
-</div>
+{#snippet fileref()}
+	{#if location !== null}
+		<span class="fileref-dir">{locationDir}</span
+		><span class="fileref-name">{locationName}</span
+		><span class="fileref-range">:L{location.start}-L{location.end}</span>
+	{/if}
+{/snippet}
 
 <style>
-/* GitHub-review-style card per comment. */
 .comment-card {
 	display: flex;
 	flex-direction: column;
@@ -350,22 +448,25 @@ async function requestDeleteReply(replyId: string) {
 	align-items: center;
 	gap: var(--space-2);
 	padding: var(--space-1) var(--space-2);
-	background: var(--color-comment-card-header-bg);
 	border-bottom: 1px solid var(--color-border);
-	font-size: var(--text-small);
 }
-.comment-card-spacer {
-	flex: 1;
-}
-.comment-card-fileref {
-	font-size: var(--text-small);
-	line-height: var(--text-small--line-height);
+
+.fileref-dir {
 	color: var(--color-text-muted);
+}
+.fileref-name {
+	color: var(--color-text-strong);
+	font-weight: var(--weight-medium);
+}
+.fileref-range {
+	color: var(--color-accent);
 }
 /* Orphan de-emphasis via a solid dim color, not opacity-on-text (which would
      composite the glyph toward the card and drop it below AAA). --fg-3 on the
      card surface is 7.68:1 (AAA) while still reading as muted. */
-.comment-card-fileref-dim {
+.comment-card-fileref-dim .fileref-dir,
+.comment-card-fileref-dim .fileref-name,
+.comment-card-fileref-dim .fileref-range {
 	color: var(--color-text-subtle);
 }
 
@@ -376,24 +477,30 @@ async function requestDeleteReply(replyId: string) {
 	font-size: var(--text-small);
 	line-height: var(--leading-normal);
 	border-bottom: 1px solid var(--color-border);
+	background: var(--color-bg);
 }
 .diff-line {
 	display: flex;
+	border-left: 2px solid transparent;
 }
 .diff-line-add {
 	background: var(--color-diff-add-bg);
+	border-left-color: var(--color-diff-add);
 }
 .diff-line-del {
 	background: var(--color-diff-delete-bg);
+	border-left-color: var(--color-diff-delete);
 }
-.diff-line-context,
-.diff-line-plain {
-	background: transparent;
+.diff-number {
+	flex-shrink: 0;
+	width: calc(8 * var(--u));
+	padding-right: var(--space-1);
+	text-align: right;
+	color: var(--color-text-subtle);
 }
 .diff-gutter {
 	flex-shrink: 0;
 	width: calc(9 * var(--u) / 2);
-	padding: 0 var(--space-1);
 	text-align: center;
 	color: var(--color-text-muted);
 }
@@ -405,7 +512,6 @@ async function requestDeleteReply(replyId: string) {
 	word-break: break-all;
 }
 
-/* Body */
 .comment-card-body {
 	padding: var(--space-2);
 	display: flex;
@@ -417,62 +523,16 @@ async function requestDeleteReply(replyId: string) {
 	word-break: break-word;
 }
 
-/* Inline action buttons in the header. */
-
-/* Orphan badge */
 .orphan-badge {
-	font-size: var(--text-small);
-	line-height: var(--text-small--line-height);
+	font-size: var(--text-caption);
+	line-height: var(--text-caption--line-height);
 	color: var(--color-warning);
 	background: var(--color-warning-bg);
 	border-radius: var(--radius);
-	padding: 0 var(--space-2);
+	padding: 0 var(--space-1);
 	white-space: nowrap;
 }
 
-.comment-card-channel,
-.thread-stale-chip,
-.thread-state-chip {
-	font-size: var(--text-caption);
-	line-height: var(--text-caption--line-height);
-	text-transform: uppercase;
-	letter-spacing: var(--tracking-wide);
-	border-radius: var(--radius);
-	padding: 0 var(--space-2);
-	white-space: nowrap;
-}
-
-.thread-stale-chip {
-	color: var(--color-on-accent);
-	background: var(--color-thread-stale);
-}
-
-/* Root channel chip — mirrors .thread-reply-channel so the root's
-     attribution reads the same as a reply's. */
-.comment-card-channel {
-	color: var(--color-text-muted);
-	background: var(--color-muted-bg);
-}
-
-/* Thread state chip — color carries no meaning alone; the text is the
-     state's own name, so it survives color blindness and grayscale. */
-.thread-state-chip {
-	background: var(--color-muted-bg);
-}
-.thread-state-open {
-	color: var(--color-thread-open);
-}
-.thread-state-addressed {
-	color: var(--color-thread-addressed);
-}
-.thread-state-done {
-	color: var(--color-thread-done);
-}
-.thread-state-dismissed {
-	color: var(--color-thread-dismissed);
-}
-
-/* Inline editor inside the body. */
 .card-textarea {
 	width: 100%;
 	resize: vertical;
@@ -485,15 +545,16 @@ async function requestDeleteReply(replyId: string) {
 	font-family: inherit;
 }
 
-/* Reply composer, always available under a thread's replies. */
+/* One line under the replies: the reply field, then the state actions. */
 .thread-reply-composer {
 	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
+	align-items: center;
+	gap: var(--space-2);
 	padding: var(--space-2);
 	border-top: 1px solid var(--color-border);
 }
 .thread-reply-composer .card-textarea {
-	font-size: var(--text-callout);
+	resize: none;
+	background: var(--color-bg);
 }
 </style>

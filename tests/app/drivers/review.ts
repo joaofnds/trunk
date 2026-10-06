@@ -14,7 +14,8 @@ const CARD = ".comment-card";
 const PROBE = ".comment-probe";
 const FILE_REF = ".comment-card-fileref";
 const STATE_CHIP = ".thread-state-chip";
-const CARD_ACTION = '[aria-label="Thread actions"] button';
+const CARD_ACTION =
+	'.comment-card-header button[aria-label$=" comment"], [aria-label="Thread actions"] button';
 const ORPHAN_BADGE = ".orphan-badge";
 const STALE_CHIP = ".thread-stale-chip";
 const EXCERPT_LINE = ".comment-card-diff .diff-content";
@@ -230,7 +231,7 @@ export class ReviewDriver {
 
 	async startRootEdit(): Promise<void> {
 		const button = await waitFor("the root comment edit control", () =>
-			enabledIn(cards()[0], "Edit"),
+			enabledIn(cards()[0], "Edit comment"),
 		);
 		button.click();
 		await waitFor("the root comment editor", () =>
@@ -334,7 +335,7 @@ export class ReviewDriver {
 		button.click();
 		await waitFor(`${fileRef} to become dismissed`, () => {
 			const card = cardFor(fileRef);
-			return card && textIn(card, STATE_CHIP) === "dismissed" ? true : null;
+			return card && stateOf(card) === "dismissed" ? true : null;
 		});
 	}
 
@@ -441,12 +442,12 @@ export class ReviewDriver {
 
 	/** The visible stale marker each thread card carries, empty while fresh. */
 	staleMarkers(): string[] {
-		return cards().map((card) => textIn(card, STALE_CHIP));
+		return cards().map((card) => textIn(card, STALE_CHIP).toLowerCase());
 	}
 
-	/** The state chip each thread card carries, topmost first. */
+	/** The state each thread card shows, topmost first, as the wire names it. */
 	states(): string[] {
-		return cards().map((card) => textIn(card, STATE_CHIP));
+		return cards().map(stateOf);
 	}
 
 	/** Reads the badge on the Review button, or null when the count is hidden. */
@@ -497,7 +498,9 @@ export class ReviewDriver {
 		const card = cards()[0];
 		if (!card) return [];
 
-		return [...card.querySelectorAll<HTMLElement>(CARD_ACTION)].map(collapse);
+		return [...card.querySelectorAll<HTMLElement>(CARD_ACTION)].map(
+			accessibleName,
+		);
 	}
 
 	/** Ends the review, which publishes it. Two clicks: the first arms a confirm
@@ -552,6 +555,11 @@ function cards(): HTMLElement[] {
 	);
 }
 
+/** The state a card shows, as the wire names it. */
+function stateOf(card: HTMLElement): string {
+	return textIn(card, STATE_CHIP).toLowerCase();
+}
+
 function cardFor(fileRef: string): HTMLElement | undefined {
 	return cards().find((card) => textIn(card, FILE_REF) === fileRef);
 }
@@ -603,10 +611,16 @@ function enabledIn(
 	if (!container) return null;
 
 	const action = [...container.querySelectorAll("button")].find((button) =>
-		collapse(button).startsWith(label),
+		accessibleName(button).startsWith(label),
 	);
 
 	return action && !action.disabled ? action : null;
+}
+
+/** What a control is called: its aria-label, or its text when it has none,
+ *  so an icon-only action reads by the name a screen reader gives it. */
+function accessibleName(control: Element): string {
+	return control.getAttribute("aria-label") ?? collapse(control);
 }
 
 function collapse(node: Element): string {

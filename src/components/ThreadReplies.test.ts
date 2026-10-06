@@ -31,7 +31,7 @@ describe("ThreadReplies", () => {
 			},
 		});
 
-		await fireEvent.click(screen.getByText("Edit reply"));
+		await fireEvent.click(screen.getByRole("button", { name: "Edit reply" }));
 		await fireEvent.input(screen.getByRole("textbox", { name: "Edit reply" }), {
 			target: { value: "saved edit" },
 		});
@@ -60,7 +60,7 @@ describe("ThreadReplies", () => {
 			},
 		});
 
-		await fireEvent.click(screen.getByText("Edit reply"));
+		await fireEvent.click(screen.getByRole("button", { name: "Edit reply" }));
 		const textarea = screen.getByRole("textbox", { name: "Edit reply" });
 		await fireEvent.input(textarea, { target: { value: "refused edit" } });
 		await fireEvent.click(screen.getByText("Save"));
@@ -89,7 +89,7 @@ describe("ThreadReplies", () => {
 		};
 		const view = render(ThreadReplies, { props });
 
-		await fireEvent.click(screen.getByText("Edit reply"));
+		await fireEvent.click(screen.getByRole("button", { name: "Edit reply" }));
 		await fireEvent.input(screen.getByRole("textbox", { name: "Edit reply" }), {
 			target: { value: "edit for first card" },
 		});
@@ -102,7 +102,7 @@ describe("ThreadReplies", () => {
 			onreplydelete: props.onreplydelete,
 			editorSession: replacementSession,
 		});
-		await fireEvent.click(screen.getByText("Edit reply"));
+		await fireEvent.click(screen.getByRole("button", { name: "Edit reply" }));
 		await fireEvent.input(screen.getByRole("textbox", { name: "Edit reply" }), {
 			target: { value: "edit for replacement card" },
 		});
@@ -132,7 +132,9 @@ describe("ThreadReplies", () => {
 		let view = render(ThreadReplies, { props });
 
 		await fireEvent.click(screen.getByText("Show 1 more reply"));
-		await fireEvent.click(screen.getAllByText("Edit reply")[0]);
+		await fireEvent.click(
+			screen.getAllByRole("button", { name: "Edit reply" })[0],
+		);
 		await fireEvent.input(screen.getByRole("textbox", { name: "Edit reply" }), {
 			target: { value: "keep this older edit" },
 		});

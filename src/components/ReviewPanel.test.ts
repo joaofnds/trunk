@@ -241,7 +241,7 @@ describe("ReviewPanel", () => {
 			],
 			resolutions: [resolvable("c1"), resolvable("cf")],
 		});
-		render(ReviewPanel, {
+		const { container } = render(ReviewPanel, {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
@@ -252,7 +252,10 @@ describe("ReviewPanel", () => {
 		});
 		await flush();
 
-		expect(screen.getByText("src/untouched.ts:L4-L4")).toBeInTheDocument();
+		const locations = Array.from(
+			container.querySelectorAll(".comment-card-fileref"),
+		).map((l) => l.textContent?.trim());
+		expect(locations).toContain("src/untouched.ts:L4-L4");
 		const shas = screen
 			.getAllByTitle("Copy SHA")
 			.map((b) => b.textContent?.trim());
@@ -628,7 +631,9 @@ describe("ReviewPanel", () => {
 			});
 			await flush();
 
-			await fireEvent.click(screen.getByText("Edit"));
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Edit comment" }),
+			);
 			await tick();
 
 			// The card also renders its own reply composer textarea; the edit
@@ -668,7 +673,9 @@ describe("ReviewPanel", () => {
 			};
 			const view = render(ReviewPanel, { props });
 			await flush();
-			await fireEvent.click(screen.getByText("Edit"));
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Edit comment" }),
+			);
 			await fireEvent.input(screen.getAllByRole("textbox")[0], {
 				target: { value: "retained root edit" },
 			});
@@ -722,7 +729,7 @@ describe("ReviewPanel", () => {
 			};
 			const view = render(ReviewPanel, { props });
 			await flush();
-			await fireEvent.click(screen.getByText("Edit reply"));
+			await fireEvent.click(screen.getByRole("button", { name: "Edit reply" }));
 			await fireEvent.input(
 				screen.getByRole("textbox", { name: "Edit reply" }),
 				{ target: { value: "retained reply edit" } },
@@ -763,7 +770,9 @@ describe("ReviewPanel", () => {
 			});
 			await flush();
 
-			await fireEvent.click(screen.getByText("Edit"));
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Edit comment" }),
+			);
 			await tick();
 
 			const textarea = screen.getAllByRole("textbox")[0] as HTMLTextAreaElement;
@@ -790,7 +799,9 @@ describe("ReviewPanel", () => {
 			});
 			await flush();
 
-			await fireEvent.click(screen.getByText("Edit"));
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Edit comment" }),
+			);
 			await tick();
 			await fireEvent.click(screen.getByText("Cancel"));
 			await flush();
@@ -888,7 +899,7 @@ describe("ReviewPanel", () => {
 			});
 			await flush();
 
-			await fireEvent.click(screen.getByText("Edit reply"));
+			await fireEvent.click(screen.getByRole("button", { name: "Edit reply" }));
 			const textarea = screen.getByRole("textbox", {
 				name: "Edit reply",
 			}) as HTMLTextAreaElement;
@@ -933,7 +944,9 @@ describe("ReviewPanel", () => {
 			});
 			await flush();
 
-			await fireEvent.click(screen.getByText("Delete reply"));
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Delete reply" }),
+			);
 			await waitFor(() => expect(calledCommands()).toContain("delete_reply"));
 
 			expect(calledCommands()).toContain("delete_reply");
@@ -961,7 +974,9 @@ describe("ReviewPanel", () => {
 			});
 			await flush();
 
-			await fireEvent.click(screen.getByText("Delete"));
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Delete comment" }),
+			);
 			await waitFor(() => expect(vi.mocked(ask)).toHaveBeenCalledTimes(1));
 
 			expect(vi.mocked(ask)).toHaveBeenCalledTimes(1);
@@ -987,7 +1002,9 @@ describe("ReviewPanel", () => {
 			});
 			await flush();
 
-			await fireEvent.click(screen.getByText("Delete"));
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Delete comment" }),
+			);
 			await waitFor(() => expect(calledCommands()).toContain("delete_thread"));
 
 			expect(calledCommands()).toContain("delete_thread");

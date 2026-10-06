@@ -93,17 +93,21 @@ describe("ThreadCard", () => {
 	});
 
 	it("locates a current-file comment by its pin, which carries no anchor", () => {
-		renderCard({ thread: currentFileComment });
+		const { container } = renderCard({ thread: currentFileComment });
 
-		expect(screen.getByText("src/untouched.ts:L1-L1")).toBeTruthy();
+		expect(container.querySelector(".comment-card-fileref")).toHaveTextContent(
+			"src/untouched.ts:L1-L1",
+		);
 	});
 
 	it("locates it at the line the backend last resolved the block to", () => {
-		renderCard({
+		const { container } = renderCard({
 			thread: { ...currentFileComment, resolved_start_line: 7 },
 		});
 
-		expect(screen.getByText("src/untouched.ts:L7-L7")).toBeTruthy();
+		expect(container.querySelector(".comment-card-fileref")).toHaveTextContent(
+			"src/untouched.ts:L7-L7",
+		);
 	});
 
 	it.each<ThreadState>(["open", "addressed", "done", "dismissed"])(
@@ -113,7 +117,7 @@ describe("ThreadCard", () => {
 				thread: { ...comment, state, stale: false },
 			});
 
-			expect(screen.queryByText("stale")).not.toBeInTheDocument();
+			expect(screen.queryByText("Stale")).not.toBeInTheDocument();
 
 			await view.rerender({
 				thread: { ...comment, state, stale: true },
@@ -121,7 +125,7 @@ describe("ThreadCard", () => {
 				onedit: () => {},
 				ondelete: () => {},
 			});
-			expect(screen.getByText("stale")).toBeInTheDocument();
+			expect(screen.getByText("Stale")).toBeInTheDocument();
 			expect(
 				view.container.querySelector(".orphan-badge"),
 			).not.toBeInTheDocument();
@@ -132,7 +136,7 @@ describe("ThreadCard", () => {
 				onedit: () => {},
 				ondelete: () => {},
 			});
-			expect(screen.queryByText("stale")).not.toBeInTheDocument();
+			expect(screen.queryByText("Stale")).not.toBeInTheDocument();
 		},
 	);
 
@@ -147,7 +151,7 @@ describe("ThreadCard", () => {
 
 		expect(screen.getByText("const answer = 42;")).toBeTruthy();
 		expect(screen.getByText("code gone")).toBeTruthy();
-		expect(screen.getByText("stale")).toBeTruthy();
+		expect(screen.getByText("Stale")).toBeTruthy();
 	});
 
 	it("keeps the comment body and excerpt code selectable while the gutter stays unselectable", () => {
@@ -199,21 +203,75 @@ describe("ThreadCard", () => {
 		renderCard({ thread: withReply });
 
 		expect(screen.getByText("fixed")).toBeInTheDocument();
-		expect(screen.getByText("agent")).toBeInTheDocument();
+		expect(screen.getByText("Agent")).toBeInTheDocument();
+		expect(screen.getByText("via trunk CLI")).toBeInTheDocument();
 	});
 
-	it("renders the root's own channel attribution in the card header", () => {
-		// A reply's channel chip has always rendered; the root's never did.
+	it("attributes a human reply to you", () => {
+		const withReply: Thread = {
+			...comment,
+			replies: [aReply({ id: "r1", channel: "human" })],
+		};
+
+		renderCard({ thread: withReply });
+
+		expect(screen.getAllByText("You")).toHaveLength(2);
+	});
+
+	it("attributes a human root comment to you", () => {
+		renderCard();
+
+		expect(screen.getByText("You")).toBeInTheDocument();
+	});
+
+	it("attributes an agent root comment to the agent", () => {
 		// Agent-originated roots are spec-deferred (every root is `human` in
-		// practice today), so this overrides the fixture to cover
-		// the gap while it's cheap, ahead of that channel shipping.
-		const agentRoot: Thread = { ...comment, channel: "agent" };
+		// practice today), so this overrides the fixture to cover the gap while
+		// it's cheap, ahead of that channel shipping.
+		renderCard({ thread: { ...comment, channel: "agent" } });
 
-		const { container } = renderCard({ thread: agentRoot });
+		expect(screen.getByText("Agent")).toBeInTheDocument();
+	});
 
-		const chip = container.querySelector(".comment-card-channel");
-		expect(chip).toBeInTheDocument();
-		expect(chip).toHaveTextContent("agent");
+	it("says how long ago the root comment was written", () => {
+		const twoDaysAgo = Math.floor(Date.now() / 1000) - 2 * 86_400;
+
+		renderCard({ thread: { ...comment, created_at: twoDaysAgo } });
+
+		expect(screen.getByText("2d ago")).toBeInTheDocument();
+	});
+
+	it("numbers the excerpt's lines from the anchored start line", () => {
+		const { container } = renderCard();
+
+		const numbers = Array.from(
+			container.querySelectorAll(".comment-card-diff .diff-number"),
+		).map((n) => n.textContent);
+		expect(numbers).toEqual(["10", "11"]);
+	});
+
+	it("leaves the other side's lines unnumbered", () => {
+		const { container } = renderCard({
+			thread: { ...comment, cached_excerpt: "-const x = 1;\n+const x = 2;" },
+		});
+
+		const numbers = Array.from(
+			container.querySelectorAll(".comment-card-diff .diff-number"),
+		).map((n) => n.textContent);
+		expect(numbers).toEqual(["", "10"]);
+	});
+
+	it("collapses to its header", async () => {
+		renderCard();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Collapse thread" }),
+		);
+
+		expect(screen.queryByText(comment.text)).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Expand thread" }),
+		).toHaveAttribute("aria-expanded", "false");
 	});
 
 	it("collapses to the last three replies", () => {
@@ -280,20 +338,15 @@ describe("ThreadCard", () => {
 
 		renderCard({ thread: dismissed });
 
-		expect(screen.getByText("dismissed")).toBeInTheDocument();
+		expect(screen.getByText("Dismissed")).toBeInTheDocument();
 	});
 
-	// Edit/Delete sit in the same actions group but never vary by state; excluding
-	// them by name (rather than keeping only the labels each row expects)
-	// means a label neither list names still shows up here and fails the
-	// comparison, instead of being silently filtered away.
-	const STATIC_ACTION_LABELS = ["Edit", "Delete"];
 	const THREAD_ACTIONS = '[aria-label="Thread actions"] button';
 
 	function stateActionLabels(container: HTMLElement) {
-		return Array.from(container.querySelectorAll(THREAD_ACTIONS))
-			.map((b) => b.textContent)
-			.filter((label) => !STATIC_ACTION_LABELS.includes(label ?? ""));
+		return Array.from(container.querySelectorAll(THREAD_ACTIONS)).map((b) =>
+			b.textContent?.trim(),
+		);
 	}
 
 	// Each row mirrors what the wire sends for that state (the backend's
@@ -308,7 +361,7 @@ describe("ThreadCard", () => {
 		{
 			state: "addressed" as const,
 			allowed: ["done", "dismissed", "open"] as const,
-			labels: ["Mark done", "Dismiss", "Reopen"],
+			labels: ["Confirm fix", "Dismiss", "Reopen"],
 		},
 		{ state: "done" as const, allowed: ["open"] as const, labels: ["Reopen"] },
 		{
@@ -324,11 +377,12 @@ describe("ThreadCard", () => {
 		expect(stateActionLabels(container)).toEqual(labels);
 	});
 
-	it("paints Delete in the danger tone and the rest muted", () => {
+	it("paints Delete comment in the danger tone", () => {
 		renderCard({ thread: comment });
 
-		expect(screen.getByText("Delete")).toHaveClass("text-danger");
-		expect(screen.getByText("Edit")).toHaveClass("text-text-muted");
+		expect(screen.getByRole("button", { name: "Delete comment" })).toHaveClass(
+			"text-danger",
+		);
 	});
 
 	it("renders its state actions from allowed_transitions, not from the state", () => {
@@ -389,6 +443,24 @@ describe("ThreadCard", () => {
 		});
 	});
 
+	it("marks an addressed thread done when its fix is confirmed", async () => {
+		renderCard({
+			thread: {
+				...comment,
+				state: "addressed",
+				allowed_transitions: ["done", "dismissed", "open"],
+			},
+		});
+
+		await fireEvent.click(screen.getByText("Confirm fix"));
+
+		expect(callArgs("set_thread_state")).toEqual({
+			path: "/repo",
+			id: "c1",
+			next: "done",
+		});
+	});
+
 	it("seeds the reply editor with the reply's text", async () => {
 		const humanReply: Thread = {
 			...comment,
@@ -396,7 +468,7 @@ describe("ThreadCard", () => {
 		};
 		renderCard({ thread: humanReply });
 
-		await fireEvent.click(screen.getByText("Edit reply"));
+		await fireEvent.click(screen.getByRole("button", { name: "Edit reply" }));
 
 		const textarea = screen.getByRole("textbox", {
 			name: "Edit reply",
@@ -408,7 +480,7 @@ describe("ThreadCard", () => {
 		const editorSession = createThreadEditorSession();
 		const first = renderCard({ editorSession });
 
-		await fireEvent.click(screen.getByText("Edit"));
+		await fireEvent.click(screen.getByRole("button", { name: "Edit comment" }));
 		await fireEvent.input(screen.getAllByRole("textbox")[0], {
 			target: { value: "unfinished root" },
 		});
@@ -431,7 +503,7 @@ describe("ThreadCard", () => {
 		const editorSession = createThreadEditorSession();
 		const first = renderCard({ thread: humanReply, editorSession });
 
-		await fireEvent.click(screen.getByText("Edit reply"));
+		await fireEvent.click(screen.getByRole("button", { name: "Edit reply" }));
 		await fireEvent.input(screen.getByRole("textbox", { name: "Edit reply" }), {
 			target: { value: "unfinished reply edit" },
 		});
@@ -451,7 +523,7 @@ describe("ThreadCard", () => {
 		};
 		renderCard({ thread: humanReply });
 
-		await fireEvent.click(screen.getByText("Edit reply"));
+		await fireEvent.click(screen.getByRole("button", { name: "Edit reply" }));
 		const textarea = screen.getByRole("textbox", {
 			name: "Edit reply",
 		}) as HTMLTextAreaElement;
@@ -477,7 +549,7 @@ describe("ThreadCard", () => {
 		};
 		renderCard({ thread: humanReply });
 
-		await fireEvent.click(screen.getByText("Edit reply"));
+		await fireEvent.click(screen.getByRole("button", { name: "Edit reply" }));
 		const textarea = screen.getByRole("textbox", {
 			name: "Edit reply",
 		}) as HTMLTextAreaElement;
@@ -488,6 +560,18 @@ describe("ThreadCard", () => {
 		expect(screen.getByRole("textbox", { name: "Edit reply" })).toHaveValue(
 			"keep this edit",
 		);
+	});
+
+	it("offers Reply only once the reply has text", async () => {
+		renderCard();
+
+		expect(screen.queryByText("Reply")).not.toBeInTheDocument();
+
+		await fireEvent.input(screen.getByLabelText("Reply"), {
+			target: { value: "on it" },
+		});
+
+		expect(screen.getByText("Reply")).toBeInTheDocument();
 	});
 
 	it("submits the typed reply via addReply with the repo path and clears the composer", async () => {
@@ -575,7 +659,9 @@ describe("ThreadCard", () => {
 
 		renderCard({ thread: agentReply });
 
-		expect(screen.queryByText("Edit reply")).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Edit reply" }),
+		).not.toBeInTheDocument();
 	});
 
 	it("offers Delete for every reply and calls deleteReply with the repo path and id once confirmed", async () => {
@@ -587,7 +673,7 @@ describe("ThreadCard", () => {
 		};
 		renderCard({ thread: withReply });
 
-		await fireEvent.click(screen.getByText("Delete reply"));
+		await fireEvent.click(screen.getByRole("button", { name: "Delete reply" }));
 		await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
 		await waitFor(() => expect(calledCommands()).toContain("delete_reply"));
 
@@ -605,7 +691,7 @@ describe("ThreadCard", () => {
 		};
 		renderCard({ thread: withReply });
 
-		await fireEvent.click(screen.getByText("Delete reply"));
+		await fireEvent.click(screen.getByRole("button", { name: "Delete reply" }));
 		await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
 
 		expect(ask).toHaveBeenCalledTimes(1);
@@ -618,7 +704,9 @@ describe("ThreadCard", () => {
 	it("offers Delete for an unpublished thread and hides it once the review is published", async () => {
 		const { rerender } = renderCard();
 
-		expect(screen.getByText("Delete")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Delete comment" }),
+		).toBeInTheDocument();
 
 		await rerender({
 			thread: { ...comment, published: true },
@@ -627,7 +715,9 @@ describe("ThreadCard", () => {
 			ondelete: () => {},
 		});
 
-		expect(screen.queryByText("Delete")).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Delete comment" }),
+		).not.toBeInTheDocument();
 	});
 
 	it("hides Delete reply once the owning review is published", () => {
@@ -639,6 +729,8 @@ describe("ThreadCard", () => {
 
 		renderCard({ thread: published });
 
-		expect(screen.queryByText("Delete reply")).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Delete reply" }),
+		).not.toBeInTheDocument();
 	});
 });

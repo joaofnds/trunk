@@ -782,7 +782,7 @@ describe("CommitDetail", () => {
 			});
 			renderWithThreads([withReply]);
 
-			await fireEvent.click(screen.getByText("Edit reply"));
+			await fireEvent.click(screen.getByRole("button", { name: "Edit reply" }));
 			const textarea = screen.getByRole("textbox", {
 				name: "Edit reply",
 			}) as HTMLTextAreaElement;
@@ -812,7 +812,9 @@ describe("CommitDetail", () => {
 			});
 			renderWithThreads([withReply]);
 
-			await fireEvent.click(screen.getByText("Delete reply"));
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Delete reply" }),
+			);
 
 			expect(calledCommands()).toContain("delete_reply");
 			expect(callArgs("delete_reply")).toEqual({

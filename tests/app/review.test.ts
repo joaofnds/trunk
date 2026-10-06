@@ -38,12 +38,12 @@ describe("a comment left on a commit's diff", () => {
 			"the actions a published thread offers",
 			() => {
 				const offered = app.review.actions();
-				return offered.length > 0 && !offered.includes("Delete")
+				return offered.length > 0 && !offered.includes("Delete comment")
 					? offered
 					: null;
 			},
 		);
-		expect(published).toEqual(["Mark done", "Dismiss", "Edit"]);
+		expect(published).toEqual(["Edit comment", "Mark done", "Dismiss"]);
 		expect(app.review.threads()).toEqual([ANCHOR]);
 		expect(app.review.states()).toEqual(["open"]);
 	});
@@ -125,12 +125,16 @@ describe("a comment left on a commit's diff", () => {
 			await app.review.publish();
 			await app.review.showReviewFilter("all", () => {
 				const actions = app.review.actions();
-				return actions.length > 0 && !actions.includes("Delete");
+				return actions.length > 0 && !actions.includes("Delete comment");
 			});
 
 			expect(app.review.threads()).toEqual([ANCHOR]);
 			expect(app.review.states()).toEqual(["open"]);
-			expect(app.review.actions()).toEqual(["Mark done", "Dismiss", "Edit"]);
+			expect(app.review.actions()).toEqual([
+				"Edit comment",
+				"Mark done",
+				"Dismiss",
+			]);
 		},
 	);
 

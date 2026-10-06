@@ -120,7 +120,9 @@ export function describeThreadedCommentActions(
 		});
 		const card = visibleCard(container);
 
-		await fireEvent.click(within(card).getByText("Edit reply"));
+		await fireEvent.click(
+			within(card).getByRole("button", { name: "Edit reply" }),
+		);
 		const textarea = within(card).getByRole("textbox", {
 			name: "Edit reply",
 		}) as HTMLTextAreaElement;
@@ -141,7 +143,9 @@ export function describeThreadedCommentActions(
 		});
 		const card = visibleCard(container);
 
-		await fireEvent.click(within(card).getByText("Delete reply"));
+		await fireEvent.click(
+			within(card).getByRole("button", { name: "Delete reply" }),
+		);
 
 		expect(calledCommands()).toContain("delete_reply");
 		expect(callArgs("delete_reply")).toEqual({ path: "/repo", id: "r1" });

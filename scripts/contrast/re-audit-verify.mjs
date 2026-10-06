@@ -120,6 +120,19 @@ for (const [state, color] of [
 }
 check("review filter selector", "var(--color-text)", "var(--color-surface)");
 
+section("Review state pills and thread attribution (TRUNK-334)");
+for (const [state, color] of [
+	["open", "var(--color-thread-open)"],
+	["addressed", "var(--color-thread-addressed)"],
+	["done", "var(--color-thread-done)"],
+	["stale", "var(--color-thread-stale)"],
+]) {
+	check(`${state} pill label on a card`, color, "var(--color-comment-card-bg)", { layers: [t(color, 12)] });
+	check(`${state} pill label on the panel`, color, "var(--color-surface)", { layers: [t(color, 12)] });
+}
+check("dismissed pill label on a card", "var(--color-thread-dismissed)", "var(--color-comment-card-bg)", { layers: ["var(--color-hover)"] });
+check("agent name on a card", "var(--color-accent-alt)", "var(--color-comment-card-bg)");
+
 section("Chip (lineage pills and branch chips, on --color-surface, the merge banner and the staging header)");
 check("accent chip label", "var(--color-accent-strong)", "var(--color-surface)", { layers: ["var(--color-chip-accent-bg)"] });
 check("accent chip label under the pointer", "var(--color-accent-strong)", "var(--color-surface)", { layers: ["var(--color-chip-accent-bg-hover)"] });
