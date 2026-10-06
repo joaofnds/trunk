@@ -79,4 +79,34 @@ describe("Chip", () => {
 
 		expect(menus).toHaveLength(1);
 	});
+
+	describe("as a label", () => {
+		it("names a ref without being a control", () => {
+			render(Chip, { props: { variant: "label", children: label } });
+
+			expect(screen.queryByRole("button")).toBeNull();
+			expect(screen.getByText("a1b2c3d")).toBeVisible();
+		});
+
+		it("draws the same tinted pill without the pressable cues", () => {
+			render(Chip, { props: { variant: "label", children: label } });
+
+			const chip = screen.getByText("a1b2c3d").parentElement;
+			expect(chip).toHaveClass(
+				"h-control-sm",
+				"px-2",
+				"rounded-full",
+				"border",
+				"font-mono",
+				"text-small",
+				"bg-chip-accent-bg",
+				"border-chip-accent-border",
+				"text-accent-strong",
+			);
+			expect(chip).not.toHaveClass(
+				"cursor-pointer",
+				"hover:bg-chip-accent-bg-hover",
+			);
+		});
+	});
 });

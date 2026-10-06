@@ -21,6 +21,7 @@ import {
 import { measureTextWidth } from "../lib/text-measure.js";
 import type { RebaseTodoItem } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import Chip from "../lib/ui/Chip.svelte";
 import Dialog from "../lib/ui/Dialog.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Splitter from "../lib/ui/Splitter.svelte";
@@ -532,8 +533,8 @@ let lastVisibleColumn = $derived.by(() => {
 		<div class="rebase-toolbar-left">
 			<span class="rebase-toolbar-title">Interactive Rebase</span>
 			<span class="rebase-toolbar-meta"
-				>Rebasing <span class="rebase-branch-pill">{branchName}</span> onto
-				<span class="rebase-branch-pill">{baseName}</span></span
+				>Rebasing <Chip variant="label">{branchName}</Chip> onto
+				<Chip variant="label">{baseName}</Chip></span
 			>
 		</div>
 		<div class="rebase-toolbar-right">
@@ -819,18 +820,6 @@ let lastVisibleColumn = $derived.by(() => {
 .rebase-toolbar-meta {
 	font-size: var(--text-callout);
 	color: var(--color-text-muted);
-}
-
-.rebase-branch-pill {
-	display: inline-flex;
-	align-items: center;
-	height: var(--control-sm-h);
-	background: var(--color-accent);
-	color: var(--color-on-accent);
-	font-size: var(--text-small);
-	font-weight: var(--weight-semibold);
-	padding: 0 var(--space-2);
-	border-radius: var(--radius-pill);
 }
 
 .rebase-toolbar-right {

@@ -380,6 +380,7 @@ import ToastCard from "./ToastCard.svelte";
 					><ArrowDown size={11} /><span data-catalog-text>{parent}</span></Chip
 				>
 			{/each}
+			<Chip variant="label"><span data-catalog-text>main</span></Chip>
 		</div>
 	</section>
 
