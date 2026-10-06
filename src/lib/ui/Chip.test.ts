@@ -7,6 +7,10 @@ const label = createRawSnippet(() => ({
 	render: () => "<span>a1b2c3d</span>",
 }));
 
+const refName = createRawSnippet(() => ({
+	render: () => "<span>main</span>",
+}));
+
 describe("Chip", () => {
 	it("is a button that submits nothing", () => {
 		render(Chip, { props: { children: label } });
@@ -55,7 +59,8 @@ describe("Chip", () => {
 			"text-text",
 			"hover:bg-muted-bg-hover",
 		);
-		expect(chip).not.toHaveClass("bg-chip-accent-bg", "text-accent-strong");
+		expect(chip).not.toHaveClass("bg-chip-accent-bg");
+		expect(chip).not.toHaveClass("text-accent-strong");
 	});
 
 	it("reports a click to its caller", async () => {
@@ -82,17 +87,22 @@ describe("Chip", () => {
 
 	describe("as a label", () => {
 		it("names a ref without being a control", () => {
-			render(Chip, { props: { variant: "label", children: label } });
+			render(Chip, { props: { variant: "label", children: refName } });
 
 			expect(screen.queryByRole("button")).toBeNull();
-			expect(screen.getByText("a1b2c3d")).toBeVisible();
+			expect(screen.getByText("main")).toBeVisible();
 		});
 
 		it("draws the same tinted pill without the pressable cues", () => {
-			render(Chip, { props: { variant: "label", children: label } });
+			const { container } = render(Chip, {
+				props: { variant: "label", children: refName },
+			});
 
-			const chip = screen.getByText("a1b2c3d").parentElement;
+			const chip = container.firstElementChild;
 			expect(chip).toHaveClass(
+				"inline-flex",
+				"items-center",
+				"gap-1",
 				"h-control-sm",
 				"px-2",
 				"rounded-full",
@@ -103,10 +113,8 @@ describe("Chip", () => {
 				"border-chip-accent-border",
 				"text-accent-strong",
 			);
-			expect(chip).not.toHaveClass(
-				"cursor-pointer",
-				"hover:bg-chip-accent-bg-hover",
-			);
+			expect(chip).not.toHaveClass("cursor-pointer");
+			expect(chip).not.toHaveClass("hover:bg-chip-accent-bg-hover");
 		});
 	});
 });

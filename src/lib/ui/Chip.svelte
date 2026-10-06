@@ -15,12 +15,14 @@ interface ButtonChip extends Omit<HTMLButtonAttributes, "class" | "style"> {
 interface LabelChip {
 	variant: "label";
 	tone?: ChipTone;
+	type?: never;
 	children: Snippet;
 }
 
 let {
 	variant = "button",
 	tone = "accent",
+	type = "button",
 	children,
 	...rest
 }: ButtonChip | LabelChip = $props();
@@ -47,17 +49,12 @@ const HOVERS: Record<ChipTone, string> = {
 
 <!--
 	A pill that names a commit and jumps to it: a parent or a child in the
-	lineage row. Its children are a glyph and the short SHA. As a label it
-	names a ref the user cannot act on from where it is drawn, by the name alone.
+	lineage row. Its children are a glyph and the short SHA.
 -->
 {#if variant === "label"}
 	<span class={[FRAME, LABEL, TONES[tone]]}>{@render children?.()}</span>
 {:else}
-	<button
-		type="button"
-		class={[FRAME, BUTTON, TONES[tone], HOVERS[tone]]}
-		{...rest}
-	>
+	<button {type} class={[FRAME, BUTTON, TONES[tone], HOVERS[tone]]} {...rest}>
 		{@render children?.()}
 	</button>
 {/if}

@@ -321,6 +321,31 @@ describe("RebaseEditor", () => {
 		expect(screen.getByText("main")).toBeInTheDocument();
 	});
 
+	it.each(["feature/login", "main"])(
+		"draws %s as a ref chip that does nothing when pressed",
+		(name) => {
+			render(RebaseEditor, {
+				props: {
+					repoPath: "/test/repo",
+					commits: TEST_ITEMS,
+					branchName: "feature/login",
+					baseName: "main",
+					onclose: vi.fn(),
+					onstart: vi.fn(),
+				},
+			});
+
+			const pill = screen.getByText(name);
+
+			expect(pill.tagName).toBe("SPAN");
+			expect(pill).toHaveClass(
+				"rounded-full",
+				"bg-chip-accent-bg",
+				"font-mono",
+			);
+		},
+	);
+
 	it("renders commit summaries", () => {
 		render(RebaseEditor, {
 			props: {
