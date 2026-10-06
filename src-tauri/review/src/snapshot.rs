@@ -143,13 +143,14 @@ impl SnapshotKind {
 ///   nothing changed → reuse, `(prior, false)`. The comparison is tree-vs-tree:
 ///   `kind.tree_oid(repo)` against `repo.find_commit(prior)?.tree_id()`. `prior` is
 ///   a COMMIT oid, never compared against the tree oid directly.
-/// - Otherwise (changed tree, or `prior` is `None`) create a fresh snapshot commit
-///   → `(new_oid, true)`.
+/// - Otherwise (changed tree, `prior` is `None`, or the repository no longer
+///   holds `prior`, as after a gc or a rebuild at the same path) create a fresh
+///   snapshot commit → `(new_oid, true)`.
 ///
 /// # Errors
 ///
-/// Returns the git error when the current tree will not build, `prior` names no
-/// commit, or a fresh snapshot will not write.
+/// Returns the git error when the current tree will not build, `prior` is
+/// present and will not read, or a fresh snapshot will not write.
 pub fn decide_snapshot(
     repo: &git2::Repository,
     kind: SnapshotKind,
@@ -157,9 +158,11 @@ pub fn decide_snapshot(
 ) -> Result<(git2::Oid, bool), TrunkError> {
     let current_tree = kind.tree_oid(repo)?;
     if let Some(prior_oid) = prior {
-        let prior_tree = repo.find_commit(prior_oid)?.tree_id();
-        if prior_tree == current_tree {
-            return Ok((prior_oid, false));
+        match repo.find_commit(prior_oid) {
+            Ok(commit) if commit.tree_id() == current_tree => return Ok((prior_oid, false)),
+            Ok(_) => {}
+            Err(absent) if absent.code() == git2::ErrorCode::NotFound => {}
+            Err(unreadable) => return Err(unreadable.into()),
         }
     }
     let new_oid = snapshot(repo, kind)?;

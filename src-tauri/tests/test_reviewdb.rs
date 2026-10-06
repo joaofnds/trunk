@@ -627,6 +627,35 @@ fn ensure_snapshot_reuses_the_repos_prior_oid() {
 }
 
 #[test]
+fn a_stored_snapshot_the_repo_no_longer_holds_is_minted_again() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let collected = "58838e427dca16fb2e2f16f53934bd91064b43b0";
+    store
+        .write(|tx| {
+            reviewdb::snapshots::set(tx, &canonical, SnapshotKind::Workdir, collected, 1_000)
+        })
+        .unwrap();
+
+    let minted =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+            .unwrap();
+
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    assert_ne!(minted, collected);
+    assert!(
+        repo.find_commit(git2::Oid::from_str(&minted).unwrap())
+            .is_ok(),
+        "a gc'd or rebuilt repo must still take a comment on its working tree",
+    );
+}
+
+#[test]
 fn a_changed_worktree_mints_a_fresh_snapshot() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
