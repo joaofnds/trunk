@@ -543,11 +543,11 @@ let commitGraphRef = $state<{
 let refVisibilityResolved = $state(false);
 
 // Rebase editor state
-let showRebaseEditor = $state(false);
 let rebaseEditorCommits = $state<RebaseTodoItem[]>([]);
 let rebaseBaseOid = $state<string | null>(null);
 let rebaseBranchName = $state("");
 let rebaseBase = $state<RebaseBase | null>(null);
+const showRebaseEditor = $derived(rebaseBase !== null);
 let rebaseFocusedCommitDetail = $state<CommitDetailType | null>(null);
 let rebaseFocusedCommitStat = $state<DiffStat | null>(null);
 // Replace this array wholesale: $state.raw ignores an in-place mutation, so a
@@ -1821,7 +1821,7 @@ async function handleOpenRebaseEditor(baseOid: string, inclusive = false) {
 		rebaseEditorCommits = todo.items;
 		rebaseBaseOid = todo.base_oid;
 		rebaseBranchName = headBranch ?? "HEAD";
-		rebaseBase = await resolveBase(todo.base_oid);
+		const base = await resolveBase(todo.base_oid);
 		// Clear any open diffs/selections before showing editor
 		clearStagingDiff();
 		clearCommit();
@@ -1829,7 +1829,7 @@ async function handleOpenRebaseEditor(baseOid: string, inclusive = false) {
 		rebaseFocusedCommitStat = null;
 		rebaseFocusedFileDiffs = [];
 		rebaseFocusedFileSelected = null;
-		showRebaseEditor = true;
+		rebaseBase = base;
 	} catch (e) {
 		reportErrorToast(e, "Failed to load commits for rebase");
 	}
@@ -1838,7 +1838,6 @@ async function handleOpenRebaseEditor(baseOid: string, inclusive = false) {
 function handleRebaseEditorClose() {
 	rebaseFocusLoadSeq++;
 	rebaseDiffLoadSeq++;
-	showRebaseEditor = false;
 	rebaseEditorCommits = [];
 	rebaseBaseOid = null;
 	rebaseBranchName = "";
@@ -2118,7 +2117,7 @@ function stepRightPane(delta: number) {
 <div class="flex-1 overflow-hidden flex flex-col">
 	<PushRecoveryPrompt {repoPath} {remoteState} {refreshSignal} />
 	<main class="flex-1 overflow-hidden flex">
-		{#if showRebaseEditor && rebaseBase}
+		{#if rebaseBase}
 			<!-- Full-window takeover for interactive rebase -->
 			<div class="flex-1 overflow-hidden">
 				<div

@@ -530,20 +530,22 @@ let lastVisibleColumn = $derived.by(() => {
 	bind:this={editorEl}
 	use:autofocus
 >
+	{#snippet refChip(name: string)}
+		<Chip title="Copy {name}" onclick={() => copyRefName(name)}
+			><GitBranch size={11} />{name}</Chip
+		>
+	{/snippet}
+
 	<!-- Header -->
 	<div class="rebase-toolbar">
 		<div class="rebase-toolbar-left">
 			<span class="rebase-toolbar-title">Interactive Rebase</span>
 			<span class="rebase-toolbar-meta"
 				>Rebasing
-				<Chip title="Copy {branchName}" onclick={() => copyRefName(branchName)}
-					><GitBranch size={11} />{branchName}</Chip
-				>
+				{@render refChip(branchName)}
 				onto
 				{#if base.kind === "branch"}
-					<Chip title="Copy {base.name}" onclick={() => copyRefName(base.name)}
-						><GitBranch size={11} />{base.name}</Chip
-					>
+					{@render refChip(base.name)}
 				{:else if base.kind === "commit"}
 					<Chip title="Copy SHA" onclick={() => copySha(base.oid)}
 						><GitCommitHorizontal size={11} />{base.oid.slice(0, 7)}</Chip
