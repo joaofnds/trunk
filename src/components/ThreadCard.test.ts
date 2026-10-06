@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { aReply, aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createThreadEditorSession } from "../lib/review-editors.svelte.js";
-import type { Thread, ThreadState } from "../lib/types.js";
+import type { Anchor, Thread, ThreadState } from "../lib/types.js";
 import ThreadCard from "./ThreadCard.svelte";
 
 // Shared Tauri mock (provides @tauri-apps/plugin-dialog `ask`, defaulting to false).
@@ -49,17 +49,18 @@ describe("ThreadCard", () => {
 		vi.mocked(safeInvoke).mockResolvedValue(undefined);
 	});
 
+	const anchor: Anchor = {
+		commit_oid: "abc123",
+		file_path: "src/foo.ts",
+		source: "Diff",
+		side: "New",
+		start_line: 10,
+		end_line: 11,
+	};
 	const comment: Thread = aThread({
 		id: "c1",
 		text: "needs a null check here",
-		anchor: {
-			commit_oid: "abc123",
-			file_path: "src/foo.ts",
-			source: "Diff",
-			side: "New",
-			start_line: 10,
-			end_line: 11,
-		},
+		anchor,
 		cached_excerpt: "+const x = 2;\n const y = 3;",
 		commit_oid: "abc123",
 	});
@@ -252,13 +253,69 @@ describe("ThreadCard", () => {
 
 	it("leaves the other side's lines unnumbered", () => {
 		const { container } = renderCard({
-			thread: { ...comment, cached_excerpt: "-const x = 1;\n+const x = 2;" },
+			thread: {
+				...comment,
+				anchor: { ...anchor, end_line: 10 },
+				cached_excerpt: "-const x = 1;\n+const x = 2;",
+			},
 		});
 
 		const numbers = Array.from(
 			container.querySelectorAll(".comment-card-diff .diff-number"),
 		).map((n) => n.textContent);
 		expect(numbers).toEqual(["", "10"]);
+	});
+
+	function excerptNumbers(container: HTMLElement): (string | null)[] {
+		return Array.from(
+			container.querySelectorAll(".comment-card-diff .diff-number"),
+		).map((n) => n.textContent);
+	}
+
+	it("numbers a context line before the first changed line from the range", () => {
+		const { container } = renderCard({
+			thread: {
+				...comment,
+				anchor: { ...anchor, start_line: 3, end_line: 3 },
+				cached_excerpt: "-old\n b\n+new",
+			},
+		});
+
+		expect(excerptNumbers(container)).toEqual(["", "2", "3"]);
+	});
+
+	it("numbers an old-side excerpt by the old file's lines", () => {
+		const { container } = renderCard({
+			thread: {
+				...comment,
+				anchor: {
+					...anchor,
+					side: "Old",
+					start_line: 10,
+					end_line: 10,
+				},
+				cached_excerpt: "-a\n+b\n c",
+			},
+		});
+
+		expect(excerptNumbers(container)).toEqual(["10", "", "11"]);
+	});
+
+	it("numbers a full-file excerpt across its unchanged-lines gap", () => {
+		const { container } = renderCard({
+			thread: {
+				...comment,
+				anchor: {
+					...anchor,
+					source: "FullFile",
+					start_line: 10,
+					end_line: 14,
+				},
+				cached_excerpt: "a\n\u2026 3 lines unchanged \u2026\nb",
+			},
+		});
+
+		expect(excerptNumbers(container)).toEqual(["10", "", "14"]);
 	});
 
 	it("collapses to its header", async () => {

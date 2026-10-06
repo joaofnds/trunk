@@ -28,6 +28,13 @@ export interface FullFileAnchorResult {
 }
 
 const GAP_MARKER = (count: number): string => `… ${count} lines unchanged …`;
+const GAP_PATTERN = /^… (\d+) lines unchanged …$/;
+
+/** How many lines an excerpt line marks as skipped, or null for a code line. */
+export function gapLength(line: string): number | null {
+	const match = GAP_PATTERN.exec(line);
+	return match === null ? null : Number(match[1]);
+}
 
 /**
  * The flat indices (into `file.hunks.flatMap(h => h.lines)`) of every new-side

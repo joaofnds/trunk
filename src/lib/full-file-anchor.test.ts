@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildFullFileAnchor,
 	fileSelectableIndices,
+	gapLength,
 } from "./full-file-anchor.js";
 import type { DiffHunk, DiffLine, DiffStatus, FileDiff } from "./types.js";
 
@@ -148,6 +149,15 @@ describe("buildFullFileAnchor", () => {
 		expect(anchor.start_line).toBe(5);
 		expect(anchor.end_line).toBe(50);
 		expect(cachedExcerpt).toBe("before-gap\n… 44 lines unchanged …\nafter-gap");
+	});
+
+	it("writes a gap marker that reads back as the lines it skipped", () => {
+		const lines = [contextLine(5, 5, "before"), contextLine(50, 50, "after")];
+		const f = file("Modified", "src/d.ts", lines);
+
+		const { cachedExcerpt } = buildFullFileAnchor(OID, f, new Set([0, 1]));
+
+		expect(cachedExcerpt.split("\n").map(gapLength)).toEqual([null, 44, null]);
 	});
 });
 

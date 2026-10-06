@@ -9,6 +9,7 @@ import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import Pencil from "@lucide/svelte/icons/pencil";
 import Trash2 from "@lucide/svelte/icons/trash-2";
 import { externalLinks } from "../lib/external-links.js";
+import { gapLength } from "../lib/full-file-anchor.js";
 import {
 	addReply,
 	deleteReply,
@@ -111,50 +112,89 @@ const locationName = $derived(
 
 // Parse the comment's cached_excerpt into rendered lines. Diff-source excerpts
 // carry +/-/space prefixes per `prefixLine` in diff-anchor.ts; full-file ones
-// are plain code with no prefix. Splitting the gutter out (vs. inlining the
-// `+/-` into the content span) keeps copy-paste clean.
-interface ExcerptLine {
-	kind: "add" | "del" | "context" | "plain";
+// are plain code with no prefix, broken by a marker where lines were skipped.
+// Splitting the gutter out (vs. inlining the `+/-` into the content span) keeps
+// copy-paste clean.
+interface ParsedLine {
+	kind: "add" | "del" | "context" | "plain" | "gap";
 	gutter: string;
 	content: string;
+	skipped: number;
+}
+interface ExcerptLine extends ParsedLine {
 	number: number | null;
 }
-function parseExcerpt(
-	text: string,
-	source: "Diff" | "FullFile",
-): Omit<ExcerptLine, "number">[] {
+function parseExcerpt(text: string, source: "Diff" | "FullFile"): ParsedLine[] {
 	const lines = text.split("\n");
 	if (source === "FullFile") {
-		return lines.map((content) => ({ kind: "plain", gutter: " ", content }));
+		return lines.map((content) => {
+			const skipped = gapLength(content);
+			return skipped === null
+				? { kind: "plain", gutter: " ", content, skipped: 0 }
+				: { kind: "gap", gutter: " ", content, skipped };
+		});
 	}
 	return lines.map((line) => {
 		if (line.startsWith("+")) {
-			return { kind: "add", gutter: "+", content: line.slice(1) };
+			return { kind: "add", gutter: "+", content: line.slice(1), skipped: 0 };
 		}
 		if (line.startsWith("-")) {
-			return { kind: "del", gutter: "-", content: line.slice(1) };
+			return { kind: "del", gutter: "-", content: line.slice(1), skipped: 0 };
 		}
 		if (line.startsWith(" ")) {
-			return { kind: "context", gutter: " ", content: line.slice(1) };
+			return {
+				kind: "context",
+				gutter: " ",
+				content: line.slice(1),
+				skipped: 0,
+			};
 		}
 		// Defensive fallback (e.g. blank line in the source slice).
-		return { kind: "plain", gutter: " ", content: line };
+		return { kind: "plain", gutter: " ", content: line, skipped: 0 };
 	});
 }
 
-// The anchored side's line numbers, counted from the range's first line. A line
-// only the other side holds has no number on this one, so it shows none.
+// The range bounds the selected lines, while a diff excerpt also holds the
+// unselected lines between them. So the excerpt's first numbered line is known
+// only when an end of the excerpt is a numbered line, or when the numbered
+// lines fill the range exactly. Otherwise no number is shown rather than a
+// wrong one.
+function firstNumber(
+	lines: ParsedLine[],
+	otherSide: ParsedLine["kind"],
+	range: { start: number; end: number },
+): number | null {
+	const numbered = lines.filter(
+		(line) => line.kind !== otherSide && line.kind !== "gap",
+	).length;
+	if (lines[0]?.kind !== otherSide) return range.start;
+	if (lines[lines.length - 1].kind !== otherSide) {
+		return range.end - numbered + 1;
+	}
+	if (numbered === range.end - range.start + 1) return range.start;
+	return null;
+}
+
+// The anchored side's line numbers. A line only the other side holds has no
+// number on this one, and a gap marker advances past the lines it stands for.
 function numberLines(
-	lines: Omit<ExcerptLine, "number">[],
+	lines: ParsedLine[],
 	side: Side,
-	start: number,
+	range: { start: number; end: number },
 ): ExcerptLine[] {
 	const otherSide = side === "New" ? "del" : "add";
-	let next = start;
+	let next = firstNumber(lines, otherSide, range);
 	return lines.map((line) => {
-		if (line.kind === otherSide) return { ...line, number: null };
+		if (next === null || line.kind === otherSide) {
+			return { ...line, number: null };
+		}
+		if (line.kind === "gap") {
+			next += line.skipped;
+			return { ...line, number: null };
+		}
+		const number = next;
 		next += 1;
-		return { ...line, number: next - 1 };
+		return { ...line, number };
 	});
 }
 
@@ -164,7 +204,7 @@ const excerptLines = $derived(
 		: numberLines(
 				parseExcerpt(thread.cached_excerpt, excerptSource),
 				thread.anchor?.side ?? "New",
-				location.start,
+				location,
 			),
 );
 
