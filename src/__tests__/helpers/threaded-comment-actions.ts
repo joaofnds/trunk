@@ -86,11 +86,9 @@ export function describeThreadedCommentActions(
 		const { container } = render(Component, { props: commentedProps() });
 		const card = visibleCard(container);
 
-		const textarea = within(card).getByLabelText(
-			"Reply",
-		) as HTMLTextAreaElement;
+		const textarea = within(card).getByLabelText("Reply") as HTMLInputElement;
 		await fireEvent.input(textarea, { target: { value: "reply text" } });
-		await fireEvent.click(within(card).getByText("Reply"));
+		await fireEvent.keyDown(textarea, { key: "Enter" });
 
 		expect(calledCommands()).toContain("add_reply");
 		expect(callArgs("add_reply")).toEqual({

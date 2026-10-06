@@ -341,6 +341,28 @@ describe("ThreadCard", () => {
 		});
 	});
 
+	it("dedents the excerpt to its least indented line", () => {
+		const { container } = renderCard({
+			thread: {
+				...comment,
+				cached_excerpt: "+\t\tif (x) {\n \t\t\treturn;\n \t\t}",
+			},
+		});
+
+		const code = Array.from(
+			container.querySelectorAll(".comment-card-diff .diff-content"),
+		).map((n) => n.textContent);
+		expect(code).toEqual(["if (x) {", "\treturn;", "}"]);
+	});
+
+	it("dims the excerpt of a stale thread", () => {
+		const { container } = renderCard({ thread: { ...comment, stale: true } });
+
+		expect(container.querySelector(".comment-card-diff")).toHaveClass(
+			"comment-card-diff-dim",
+		);
+	});
+
 	it("numbers the excerpt's lines from the anchored start line", () => {
 		const { container } = renderCard();
 
@@ -535,10 +557,10 @@ describe("ThreadCard", () => {
 		expect(screen.getByText("reply 2")).toBeInTheDocument();
 	});
 
-	it("shows every reply with no expand control when there are three or fewer", () => {
+	it("shows every reply with no expand control when there are four or fewer", () => {
 		const threeReplies: Thread = {
 			...comment,
-			replies: [1, 2, 3].map((n) =>
+			replies: [1, 2, 3, 4].map((n) =>
 				aReply({
 					id: `r${n}`,
 					text: `reply ${n}`,
@@ -787,24 +809,44 @@ describe("ThreadCard", () => {
 		);
 	});
 
-	it("offers Reply only once the reply has text", async () => {
+	it("sends the typed reply on Enter", async () => {
 		renderCard();
 
-		expect(screen.queryByText("Reply")).not.toBeInTheDocument();
+		const field = screen.getByLabelText("Reply") as HTMLInputElement;
+		await fireEvent.input(field, { target: { value: "on it" } });
+		await fireEvent.keyDown(field, { key: "Enter" });
 
-		await fireEvent.input(screen.getByLabelText("Reply"), {
-			target: { value: "on it" },
+		expect(callArgs("add_reply")).toEqual({
+			path: "/repo",
+			threadId: "c1",
+			text: "on it",
 		});
+	});
 
-		expect(screen.getByText("Reply")).toBeInTheDocument();
+	it("tells the reviewer the agent sees a reply only once the review ends", () => {
+		renderCard();
+
+		expect(screen.getByLabelText("Reply")).toHaveAttribute(
+			"placeholder",
+			"Reply… (the agent sees this once the review ends)",
+		);
+	});
+
+	it("drops the caveat once the review is published", () => {
+		renderCard({ thread: { ...comment, published: true } });
+
+		expect(screen.getByLabelText("Reply")).toHaveAttribute(
+			"placeholder",
+			"Reply…",
+		);
 	});
 
 	it("submits the typed reply via addReply with the repo path and clears the composer", async () => {
 		renderCard();
 
-		const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
+		const textarea = screen.getByLabelText("Reply") as HTMLInputElement;
 		await fireEvent.input(textarea, { target: { value: "sounds good" } });
-		await fireEvent.click(screen.getByText("Reply"));
+		await fireEvent.keyDown(textarea, { key: "Enter" });
 
 		expect(calledCommands()).toContain("add_reply");
 		expect(callArgs("add_reply")).toEqual({
@@ -822,9 +864,9 @@ describe("ThreadCard", () => {
 		});
 		renderCard();
 
-		const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
+		const textarea = screen.getByLabelText("Reply") as HTMLInputElement;
 		await fireEvent.input(textarea, { target: { value: "keep this reply" } });
-		await fireEvent.click(screen.getByText("Reply"));
+		await fireEvent.keyDown(textarea, { key: "Enter" });
 		await flush();
 
 		expect(textarea).toHaveValue("keep this reply");
@@ -844,7 +886,7 @@ describe("ThreadCard", () => {
 		await fireEvent.input(screen.getByLabelText("Reply"), {
 			target: { value: "reply for first card" },
 		});
-		await fireEvent.click(screen.getByText("Reply"));
+		await fireEvent.keyDown(screen.getByLabelText("Reply"), { key: "Enter" });
 
 		await view.rerender({
 			thread: comment,
@@ -873,7 +915,7 @@ describe("ThreadCard", () => {
 		await fireEvent.input(screen.getByLabelText("Reply"), {
 			target: { value: "reply after the first save" },
 		});
-		expect(screen.getByText("Reply")).toBeEnabled();
+		expect(screen.getByLabelText("Reply")).toBeEnabled();
 	});
 
 	it("does not offer Edit for an agent reply", () => {
@@ -943,6 +985,112 @@ describe("ThreadCard", () => {
 		expect(
 			screen.queryByRole("button", { name: "Delete comment" }),
 		).not.toBeInTheDocument();
+	});
+
+	describe("deleting the thread", () => {
+		it("asks in the card before deleting", async () => {
+			const deleted: string[] = [];
+			renderCard({ ondelete: (id) => deleted.push(id) });
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Delete comment" }),
+			);
+
+			expect(
+				screen.getByText("Delete this thread? It hasn't been published."),
+			).toBeInTheDocument();
+			expect(deleted).toEqual([]);
+		});
+
+		it("deletes once the reviewer confirms", async () => {
+			const deleted: string[] = [];
+			renderCard({ ondelete: (id) => deleted.push(id) });
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Delete comment" }),
+			);
+			await fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+			expect(deleted).toEqual(["c1"]);
+		});
+
+		it("keeps the thread when the reviewer cancels", async () => {
+			const deleted: string[] = [];
+			renderCard({ ondelete: (id) => deleted.push(id) });
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Delete comment" }),
+			);
+			await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+			expect(deleted).toEqual([]);
+			expect(
+				screen.queryByText("Delete this thread? It hasn't been published."),
+			).not.toBeInTheDocument();
+		});
+
+		it("deletes at once where the host asks for no confirmation", async () => {
+			const deleted: string[] = [];
+			renderCard({
+				confirmDelete: false,
+				ondelete: (id) => deleted.push(id),
+			});
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Delete comment" }),
+			);
+
+			expect(deleted).toEqual(["c1"]);
+		});
+	});
+
+	describe("editing the comment", () => {
+		it("saves on Cmd-Enter", async () => {
+			const edits: [string, string][] = [];
+			renderCard({ onedit: (id, text) => edits.push([id, text]) });
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Edit comment" }),
+			);
+			const field = screen.getByLabelText("Edit comment");
+			await fireEvent.input(field, { target: { value: "a sharper note" } });
+			await fireEvent.keyDown(field, { key: "Enter", metaKey: true });
+
+			expect(edits).toEqual([["c1", "a sharper note"]]);
+		});
+
+		it("cancels on Escape", async () => {
+			const edits: [string, string][] = [];
+			renderCard({ onedit: (id, text) => edits.push([id, text]) });
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Edit comment" }),
+			);
+			await fireEvent.keyDown(screen.getByLabelText("Edit comment"), {
+				key: "Escape",
+			});
+
+			expect(edits).toEqual([]);
+			expect(
+				screen.queryByRole("textbox", { name: "Edit comment" }),
+			).toBeNull();
+		});
+	});
+
+	describe("avatars", () => {
+		it("draws the agent as a prompt", () => {
+			renderCard({ thread: { ...comment, channel: "agent" } });
+
+			expect(screen.getByTitle("Agent (via trunk CLI)")).toHaveTextContent(
+				">_",
+			);
+		});
+
+		it("draws the reviewer as themselves", () => {
+			renderCard();
+
+			expect(screen.getByTitle("You")).toBeInTheDocument();
+		});
 	});
 
 	it("hides Delete reply once the owning review is published", () => {

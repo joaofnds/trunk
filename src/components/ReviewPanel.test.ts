@@ -859,9 +859,9 @@ describe("ReviewPanel", () => {
 			});
 			await flush();
 
-			const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
+			const textarea = screen.getByLabelText("Reply") as HTMLInputElement;
 			await fireEvent.input(textarea, { target: { value: "reply text" } });
-			await fireEvent.click(screen.getByText("Reply"));
+			await fireEvent.keyDown(screen.getByLabelText("Reply"), { key: "Enter" });
 			await flush();
 
 			expect(calledCommands()).toContain("add_reply");
@@ -956,8 +956,6 @@ describe("ReviewPanel", () => {
 
 	describe("delete", () => {
 		it("does not invoke delete_thread when the confirm is cancelled", async () => {
-			const { ask } = await import("@tauri-apps/plugin-dialog");
-			vi.mocked(ask).mockResolvedValue(false);
 			installReads({
 				commits,
 				comments: [lineAnchoredComment("c1", COMMIT_A, "doomed")],
@@ -977,15 +975,13 @@ describe("ReviewPanel", () => {
 			await fireEvent.click(
 				screen.getByRole("button", { name: "Delete comment" }),
 			);
-			await waitFor(() => expect(vi.mocked(ask)).toHaveBeenCalledTimes(1));
+			await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+			await flush();
 
-			expect(vi.mocked(ask)).toHaveBeenCalledTimes(1);
 			expect(calledCommands()).not.toContain("delete_thread");
 		});
 
 		it("invokes delete_thread by id when the confirm is accepted", async () => {
-			const { ask } = await import("@tauri-apps/plugin-dialog");
-			vi.mocked(ask).mockResolvedValue(true);
 			installReads({
 				commits,
 				comments: [lineAnchoredComment("c1", COMMIT_A, "doomed")],
@@ -1005,6 +1001,7 @@ describe("ReviewPanel", () => {
 			await fireEvent.click(
 				screen.getByRole("button", { name: "Delete comment" }),
 			);
+			await fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 			await waitFor(() => expect(calledCommands()).toContain("delete_thread"));
 
 			expect(calledCommands()).toContain("delete_thread");

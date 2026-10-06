@@ -31,9 +31,9 @@ const SELECTABLE_LINE = "[data-gutter-grip]";
 const FULL_FILE_COMMENT = '[data-testid="full-file-comment"]';
 const JUMP_TO_CODE = '[aria-label="Jump to code"]';
 const DIFF_PATH = '[data-testid="diff-path"]';
-const REPLY_TEXT = 'textarea[aria-label="Reply"]';
+const REPLY_TEXT = 'input[aria-label="Reply"]';
 const REPLY_BODY = ".thread-reply-text";
-const ROOT_EDIT_TEXT = ".comment-card-body textarea";
+const ROOT_EDIT_TEXT = 'textarea[aria-label="Edit comment"]';
 const REPLY_EDIT_TEXT = 'textarea[aria-label="Edit reply"]';
 const COMMIT_NOTES = ".commit-notes";
 const ACTIVE_REVIEW_ROW = 'nav[aria-label="Reviews"] [aria-current="true"]';
@@ -219,7 +219,7 @@ export class ReviewDriver {
 	async writeReply(text: string): Promise<void> {
 		const field = await waitFor(
 			"the thread reply composer",
-			() => cards()[0]?.querySelector<HTMLTextAreaElement>(REPLY_TEXT) ?? null,
+			() => cards()[0]?.querySelector<HTMLInputElement>(REPLY_TEXT) ?? null,
 		);
 		field.value = text;
 		field.dispatchEvent(new Event("input", { bubbles: true }));
@@ -227,15 +227,19 @@ export class ReviewDriver {
 
 	replyDraft(): string | null {
 		return (
-			cards()[0]?.querySelector<HTMLTextAreaElement>(REPLY_TEXT)?.value ?? null
+			cards()[0]?.querySelector<HTMLInputElement>(REPLY_TEXT)?.value ?? null
 		);
 	}
 
+	/** Sends the typed reply the way the field takes it: Enter. */
 	async submitReply(): Promise<void> {
-		const button = await waitFor("an enabled reply button", () =>
-			enabledIn(cards()[0], "Reply"),
+		const field = await waitFor("an enabled reply field", () => {
+			const input = cards()[0]?.querySelector<HTMLInputElement>(REPLY_TEXT);
+			return input && !input.disabled ? input : null;
+		});
+		field.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
 		);
-		button.click();
 	}
 
 	replies(): string[] {
@@ -267,7 +271,7 @@ export class ReviewDriver {
 			visibleElement<HTMLTextAreaElement>(ROOT_EDIT_TEXT),
 		);
 		const button = await waitFor("the root comment save control", () =>
-			enabledIn(editor.closest<HTMLElement>(".comment-card-body"), "Save"),
+			enabledIn(editor.parentElement, "Save"),
 		);
 		button.click();
 	}

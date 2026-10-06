@@ -27,7 +27,7 @@ import LinkButton from "../lib/ui/LinkButton.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import Tag from "../lib/ui/Tag.svelte";
 import StatePill from "./review/StatePill.svelte";
-import ThreadAuthor from "./review/ThreadAuthor.svelte";
+import ThreadMessage from "./review/ThreadMessage.svelte";
 import ThreadReplies from "./ThreadReplies.svelte";
 
 interface Props {
@@ -238,13 +238,29 @@ function numberLines(
 	});
 }
 
+// The excerpt is shown from its least indented line, so a block deep in a
+// function keeps its shape without spending the card's width on indentation.
+function dedent(lines: ExcerptLine[]): ExcerptLine[] {
+	const indents = lines
+		.filter((line) => line.kind !== "gap" && line.content.trim() !== "")
+		.map((line) => line.content.length - line.content.trimStart().length);
+	const indent = indents.length === 0 ? 0 : Math.min(...indents);
+	return lines.map((line) =>
+		line.kind === "gap"
+			? line
+			: { ...line, content: line.content.slice(indent) },
+	);
+}
+
 const excerptLines = $derived(
 	location === null || !thread.cached_excerpt
 		? []
-		: numberLines(
-				parseExcerpt(thread.cached_excerpt, excerptSource),
-				thread.anchor?.side ?? "New",
-				location,
+		: dedent(
+				numberLines(
+					parseExcerpt(thread.cached_excerpt, excerptSource),
+					thread.anchor?.side ?? "New",
+					location,
+				),
 			),
 );
 
@@ -261,6 +277,18 @@ function saveEdit() {
 	const text = draft.text;
 	draft.close();
 	onedit(thread.id, text);
+}
+
+function editKeys(event: KeyboardEvent) {
+	if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) saveEdit();
+	if (event.key === "Escape") cancelEdit();
+}
+
+function replyKeys(event: KeyboardEvent) {
+	if (event.key === "Enter" && !event.isComposing) submitReply();
+	if (event.key === "Escape" && event.target instanceof HTMLElement) {
+		event.target.blur();
+	}
 }
 
 async function submitReply() {
@@ -329,12 +357,13 @@ async function confirmedDeletion(
 	return ask(prompt, { title, kind: "warning" });
 }
 
-async function requestDelete() {
-	const confirmed = await confirmedDeletion(
-		"Delete this comment? This cannot be undone.",
-		"Delete comment",
-	);
-	if (!confirmed) return;
+let confirmingDelete = $state(false);
+
+function requestDelete() {
+	if (confirmDelete) {
+		confirmingDelete = true;
+		return;
+	}
 	ondelete(thread.id);
 }
 
@@ -348,7 +377,12 @@ async function requestDeleteReply(replyId: string) {
 }
 </script>
 
-<article class="comment-card comment-card-{variant}">
+<article
+	class="comment-card comment-card-{variant}"
+	class:comment-card-resolved={thread.state === "done" ||
+		thread.state === "dismissed"}
+	class:comment-card-open={!collapsed}
+>
 	<header class="comment-card-header">
 		<!-- An inline card's height comes from a hidden copy measured once, so
 		     only the panel's card may change its own height. -->
@@ -445,7 +479,10 @@ async function requestDeleteReply(replyId: string) {
 
 	{#if !collapsed}
 		{#if excerptLines.length > 0}
-			<div class="comment-card-diff">
+			<div
+				class="comment-card-diff"
+				class:comment-card-diff-dim={thread.stale || orphaned}
+			>
 				{#if excerptNote}
 					<p
 						class="flex items-center gap-1 px-3 pb-1 font-sans text-small text-text-subtle"
@@ -464,19 +501,24 @@ async function requestDeleteReply(replyId: string) {
 		{/if}
 
 		<!-- Comment text stays at full --color-text even when orphaned (D-08). -->
-		<div class="comment-card-body">
-			<ThreadAuthor channel={thread.channel} createdAt={thread.created_at} />
+		<ThreadMessage channel={thread.channel} createdAt={thread.created_at}>
 			{#if draft.editing}
 				<textarea
 					bind:value={draft.text}
-					rows="3"
+					rows="4"
+					aria-label="Edit comment"
 					class="card-textarea"
+					onkeydown={editKeys}
 				></textarea>
-				<div class="flex gap-1">
-					<Button size="sm" onclick={saveEdit} disabled={!draft.valid}
+				<div class="flex justify-end gap-2">
+					<Button size="sm" variant="ghost" onclick={cancelEdit}>Cancel</Button>
+					<Button
+						size="sm"
+						variant="primary"
+						onclick={saveEdit}
+						disabled={!draft.valid}
 						>Save</Button
 					>
-					<Button size="sm" onclick={cancelEdit}>Cancel</Button>
 				</div>
 			{:else if thread.text_html !== undefined}
 				<!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
@@ -489,7 +531,7 @@ async function requestDeleteReply(replyId: string) {
 			{:else}
 				<span class="comment-card-text select-text">{thread.text}</span>
 			{/if}
-		</div>
+		</ThreadMessage>
 
 		<ThreadReplies
 			replies={thread.replies}
@@ -499,26 +541,19 @@ async function requestDeleteReply(replyId: string) {
 			onreplydelete={requestDeleteReply}
 		/>
 
-		<div class="thread-reply-composer">
-			<textarea
+		<div class="thread-reply-composer flex items-center gap-2 p-2">
+			<input
 				bind:value={replyDraft.text}
-				rows="1"
-				placeholder="Reply…"
+				placeholder={thread.published
+					? "Reply…"
+					: "Reply… (the agent sees this once the review ends)"}
 				aria-label="Reply"
-				class="card-textarea flex-1"
+				class="reply-field h-control-sm min-w-0 flex-1 px-2 text-small"
 				disabled={replySaving}
-			></textarea>
-			{#if replyDraft.valid || replySaving}
-				<Button
-					size="sm"
-					variant="primary"
-					onclick={submitReply}
-					disabled={!replyDraft.valid || replySaving}
-					>Reply</Button
-				>
-			{/if}
+				onkeydown={replyKeys}
+			>
 			<fieldset
-				class="flex min-w-auto items-center gap-1"
+				class="flex min-w-auto items-center gap-2"
 				aria-label="Thread actions"
 			>
 				{#each stateActions as action (action.next)}
@@ -534,6 +569,26 @@ async function requestDeleteReply(replyId: string) {
 					</Button>
 				{/each}
 			</fieldset>
+		</div>
+	{/if}
+
+	{#if confirmingDelete}
+		<div
+			class="thread-delete-bar flex items-center gap-2 py-2 pr-2 pl-3 text-callout text-text"
+		>
+			<span>Delete this thread? It hasn't been published.</span>
+			<span class="flex-1"></span>
+			<Button
+				size="sm"
+				variant="ghost"
+				onclick={() => {
+					confirmingDelete = false;
+				}}
+				>Cancel</Button
+			>
+			<Button size="sm" variant="danger" onclick={() => ondelete(thread.id)}
+				>Delete</Button
+			>
 		</div>
 	{/if}
 </article>
@@ -555,14 +610,11 @@ async function requestDeleteReply(replyId: string) {
 	background: var(--color-comment-card-bg);
 	overflow: hidden;
 	/* Own the typography so the card renders identically regardless of the
-       host's inherited font — the inline diff host and the review panel pass
-       different defaults, which is why the body prose drifted in size. */
+       host's inherited font: the inline diff host and the review panel pass
+       different defaults. */
 	font-family: var(--font-sans);
 	font-size: var(--text-callout);
 }
-/* Inline hosts (diff / commit-detail) span the full row width naturally; the
-     panel card sits inside the per-commit list. The variants exist so width and
-     padding can diverge without a host-side override. */
 .comment-card-inline {
 	width: 100%;
 }
@@ -570,8 +622,17 @@ async function requestDeleteReply(replyId: string) {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	padding: var(--space-1) var(--space-2);
-	border-bottom: 1px solid var(--color-border);
+	height: var(--control-h);
+	min-width: 0;
+	padding: 0 var(--space-1);
+	background: var(--color-comment-card-header-bg);
+}
+.comment-card-open .comment-card-header {
+	box-shadow: var(--shadow-hairline);
+}
+/* A settled thread recedes: its header drops the tint an open one carries. */
+.comment-card-resolved .comment-card-header {
+	background: transparent;
 }
 
 .fileref-dir {
@@ -585,75 +646,64 @@ async function requestDeleteReply(replyId: string) {
 	color: var(--color-accent);
 }
 /* Orphan de-emphasis via a solid dim color, not opacity-on-text (which would
-     composite the glyph toward the card and drop it below AAA). --fg-3 on the
-     card surface is 7.68:1 (AAA) while still reading as muted. */
+     composite the glyph toward the card and drop it below AAA). */
 .comment-card-fileref-dim .fileref-dir,
 .comment-card-fileref-dim .fileref-name,
 .comment-card-fileref-dim .fileref-range {
 	color: var(--color-text-subtle);
 }
 
-/* Diff hunk inside the card — line-level red/green backgrounds, no
-     syntax highlighting (deferred). */
+/* The saved excerpt: one line per row, cut with an ellipsis rather than
+     wrapped, so it reads as the code it was. */
 .comment-card-diff {
 	font-family: var(--font-mono);
 	font-size: var(--text-small);
 	line-height: var(--leading-normal);
-	border-bottom: 1px solid var(--color-border);
 	background: var(--color-bg);
+	box-shadow: var(--shadow-hairline);
+	padding: var(--space-1) 0;
 }
 .diff-line {
-	display: flex;
-	border-left: 2px solid transparent;
+	display: grid;
+	grid-template-columns: calc(10 * var(--u)) calc(3 * var(--u)) minmax(0, 1fr);
+	box-shadow: inset 2px 0 0 transparent;
 }
 .diff-line-add {
 	background: var(--color-diff-add-bg);
-	border-left-color: var(--color-diff-add);
+	box-shadow: inset 2px 0 0 var(--color-diff-add);
 }
 .diff-line-del {
 	background: var(--color-diff-delete-bg);
-	border-left-color: var(--color-diff-delete);
+	box-shadow: inset 2px 0 0 var(--color-diff-delete);
 }
 .diff-number {
-	flex-shrink: 0;
-	width: calc(8 * var(--u));
-	padding-right: var(--space-1);
+	padding-right: var(--space-2);
 	text-align: right;
 	color: var(--color-text-muted);
 }
 .diff-gutter {
-	flex-shrink: 0;
-	width: calc(9 * var(--u) / 2);
-	text-align: center;
-	color: var(--color-text-muted);
+	color: var(--color-text-subtle);
+}
+.diff-line-add .diff-gutter {
+	color: var(--color-diff-add);
+}
+.diff-line-del .diff-gutter {
+	color: var(--color-diff-delete);
 }
 .diff-content {
-	flex: 1;
-	min-width: 0;
-	padding-right: var(--space-2);
-	white-space: pre-wrap;
-	word-break: break-all;
+	padding-right: var(--space-3);
+	white-space: pre;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--color-diff-text);
+}
+.comment-card-diff-dim .diff-content {
+	color: var(--color-text-subtle);
 }
 
-.comment-card-body {
-	padding: var(--space-2);
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-}
 .comment-card-text {
-	white-space: pre-wrap;
-	word-break: break-word;
-}
-
-.orphan-badge {
-	font-size: var(--text-caption);
-	line-height: var(--text-caption--line-height);
-	color: var(--color-warning);
-	background: var(--color-warning-bg);
-	border-radius: var(--radius);
-	padding: 0 var(--space-1);
-	white-space: nowrap;
+	line-height: var(--leading-normal);
+	overflow-wrap: anywhere;
 }
 
 .card-textarea {
@@ -661,23 +711,31 @@ async function requestDeleteReply(replyId: string) {
 	resize: vertical;
 	background: var(--color-comment-card-bg);
 	color: var(--color-text);
-	border: 1px solid var(--color-border);
+	border: 1px solid var(--color-accent);
 	border-radius: var(--radius);
-	padding: var(--space-1) var(--space-2);
+	padding: var(--space-2);
 	font-size: var(--text-callout);
 	font-family: inherit;
 }
 
 /* One line under the replies: the reply field, then the state actions. */
 .thread-reply-composer {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: var(--space-2);
-	border-top: 1px solid var(--color-border);
+	box-shadow: inset 0 1px 0 var(--color-border);
 }
-.thread-reply-composer .card-textarea {
-	resize: none;
+.reply-field {
 	background: var(--color-bg);
+	color: var(--color-text);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	font-family: inherit;
+}
+.reply-field:focus-visible {
+	outline: 1px solid var(--color-accent);
+	border-color: var(--color-accent);
+}
+
+.thread-delete-bar {
+	background: var(--color-danger-bg);
+	box-shadow: inset 0 1px 0 var(--color-danger-border);
 }
 </style>

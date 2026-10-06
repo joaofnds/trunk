@@ -8,7 +8,7 @@ import ThreadReplies from "./ThreadReplies.svelte";
 const reply = aReply({ id: "r1", text: "original", channel: "human" });
 
 describe("ThreadReplies", () => {
-	it("paints the expand link in the accent tone", () => {
+	it("keeps four replies whole", () => {
 		render(ThreadReplies, {
 			props: {
 				replies: ["r1", "r2", "r3", "r4"].map((id) => aReply({ id })),
@@ -18,7 +18,30 @@ describe("ThreadReplies", () => {
 			},
 		});
 
-		expect(screen.getByText("Show 1 more reply")).toHaveClass("text-accent");
+		expect(screen.queryByText(/Show \d+ more/)).toBeNull();
+	});
+
+	it("shows the faces of the authors it hides", () => {
+		render(ThreadReplies, {
+			props: {
+				replies: [
+					aReply({ id: "r1", channel: "agent" }),
+					aReply({ id: "r2", channel: "human" }),
+					aReply({ id: "r3" }),
+					aReply({ id: "r4" }),
+					aReply({ id: "r5" }),
+				],
+				published: false,
+				onreplyedit: () => true,
+				onreplydelete: () => {},
+			},
+		});
+
+		const more = screen.getByRole("button", { name: /Show 2 more replies/ });
+		expect(
+			more.querySelector('[title="Agent (via trunk CLI)"]'),
+		).not.toBeNull();
+		expect(more.querySelector('[title="You"]')).not.toBeNull();
 	});
 
 	it("closes a reply edit once its save succeeds", async () => {
@@ -119,7 +142,8 @@ describe("ThreadReplies", () => {
 			aReply({ id: "r1", text: "oldest" }),
 			aReply({ id: "r2", text: "second" }),
 			aReply({ id: "r3", text: "third" }),
-			aReply({ id: "r4", text: "newest" }),
+			aReply({ id: "r4", text: "fourth" }),
+			aReply({ id: "r5", text: "newest" }),
 		];
 		const editorSession = createThreadEditorSession();
 		const props = {
@@ -131,7 +155,7 @@ describe("ThreadReplies", () => {
 		};
 		let view = render(ThreadReplies, { props });
 
-		await fireEvent.click(screen.getByText("Show 1 more reply"));
+		await fireEvent.click(screen.getByText("Show 2 more replies"));
 		await fireEvent.click(
 			screen.getAllByRole("button", { name: "Edit reply" })[0],
 		);
