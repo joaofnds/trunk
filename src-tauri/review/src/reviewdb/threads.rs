@@ -178,9 +178,16 @@ fn gap_length(line: &str) -> Option<u32> {
 /// while a skipped-lines marker never carried a newline of its own.
 fn undouble_full_file(excerpt: String, anchor: &Anchor) -> String {
     let lines: Vec<&str> = excerpt.split('\n').collect();
-    let covers =
-        |lines: &[&str]| -> u32 { lines.iter().map(|line| gap_length(line).unwrap_or(1)).sum() };
-    let anchored = anchor.end_line - anchor.start_line + 1;
+    let covers = |lines: &[&str]| -> u64 {
+        lines
+            .iter()
+            .map(|line| u64::from(gap_length(line).unwrap_or(1)))
+            .sum()
+    };
+    let Some(anchored) = (u64::from(anchor.end_line) + 1).checked_sub(u64::from(anchor.start_line))
+    else {
+        return excerpt;
+    };
     if covers(&lines) == anchored {
         return excerpt;
     }

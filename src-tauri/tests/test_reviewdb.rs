@@ -293,6 +293,26 @@ fn a_listed_full_file_excerpt_keeps_the_file_s_own_empty_lines() {
     assert_eq!(threads[0].cached_excerpt.as_deref(), Some("a\n\nb"));
 }
 
+/// An anchor arrives over IPC without a validating constructor, so a stored
+/// range can run backwards; listing it must not fail.
+#[test]
+fn a_listed_full_file_excerpt_with_a_reversed_range_keeps_its_stored_text() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(
+        &store,
+        &canonical,
+        full_file_submission("a\n\nb", 12, 10),
+        1_000,
+    )
+    .unwrap();
+
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
+
+    assert_eq!(threads[0].cached_excerpt.as_deref(), Some("a\n\nb"));
+}
+
 #[test]
 fn a_second_submit_lands_in_the_same_review() {
     let ctx = TestContext::new_empty();
