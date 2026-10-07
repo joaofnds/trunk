@@ -1513,9 +1513,8 @@ describe("End review", () => {
 	});
 });
 
-// The rail lists every review. Pressing a row shows that review; the radio
-// beside it is what makes a review the active one, where new comments land.
-describe("review list", () => {
+// The reviews list beside the panel picks which review it shows.
+describe("the shown review", () => {
 	const READY: Review = {
 		id: "READYRV1",
 		title: "Auth review",
@@ -1538,100 +1537,6 @@ describe("review list", () => {
 		});
 	}
 
-	function twoReviews() {
-		installReads({
-			reviews: [aReview(), READY],
-			activeReviewId: ACTIVE_REVIEW,
-		});
-	}
-
-	it("lists reviews with their derived state, short id and title", async () => {
-		twoReviews();
-		renderPanel();
-		await flush();
-
-		const ready = screen.getByRole("button", {
-			name: `Show review ${READY.id}`,
-		});
-		expect(ready).toHaveTextContent("Auth review");
-		expect(ready).toHaveTextContent(READY.id);
-		expect(ready).toHaveTextContent("Ready");
-		expect(
-			screen.getByRole("button", { name: `Show review ${ACTIVE_REVIEW}` }),
-		).toHaveTextContent("Composing");
-	});
-
-	it("heads the list with the number of reviews", async () => {
-		twoReviews();
-		renderPanel();
-		await flush();
-
-		expect(
-			screen.getByRole("heading", { name: "Reviews 2" }),
-		).toBeInTheDocument();
-	});
-
-	it.each([
-		[1, "1/2"],
-		[0, "2"],
-	])(
-		"counts %i unresolved of two threads as %s",
-		async (unresolved_count, shown) => {
-			installReads({ reviews: [{ ...READY, unresolved_count }] });
-			renderPanel();
-			await flush();
-
-			const count = screen.getByTitle(`${unresolved_count} unresolved of 2`);
-			expect(count).toHaveTextContent(new RegExp(`^${shown}$`));
-		},
-	);
-
-	it("starts a new review from the list's header and shows it", async () => {
-		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
-		renderPanel();
-		await flush();
-		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
-			Promise.resolve(cmd === "create_review" ? READY.id : undefined),
-		);
-		reviewComments.seed({ reviews: [aReview(), READY] });
-
-		await fireEvent.click(screen.getByRole("button", { name: "New review" }));
-		await flush();
-
-		expect(callArgs("create_review")).toEqual({ path: "/repo", title: null });
-		expect(reviewComments.shownReviewId).toBe(READY.id);
-	});
-
-	it("marks the shown review, and only it, as current", async () => {
-		twoReviews();
-		renderPanel();
-		await flush();
-
-		expect(
-			screen.getByRole("button", { name: `Show review ${ACTIVE_REVIEW}` }),
-		).toHaveAttribute("aria-current", "true");
-		expect(
-			screen.getByRole("button", { name: `Show review ${READY.id}` }),
-		).not.toHaveAttribute("aria-current");
-	});
-
-	it("pressing a row shows that review without making it active", async () => {
-		twoReviews();
-		renderPanel();
-		await flush();
-
-		await fireEvent.click(
-			screen.getByRole("button", { name: `Show review ${READY.id}` }),
-		);
-		await flush();
-
-		expect(reviewComments.shownReviewId).toBe(READY.id);
-		expect(
-			screen.getByRole("button", { name: `Show review ${READY.id}` }),
-		).toHaveAttribute("aria-current", "true");
-		expect(calledCommands()).not.toContain("set_active_review");
-	});
-
 	it("shows the threads of the review it shows, not the active one's", async () => {
 		installReads({
 			reviews: [aReview(), READY],
@@ -1649,146 +1554,11 @@ describe("review list", () => {
 		renderPanel();
 		await flush();
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: `Show review ${READY.id}` }),
-		);
+		await reviewComments.select(READY.id);
 		await flush();
 
 		expect(screen.getByText("on the other review")).toBeInTheDocument();
 		expect(screen.queryByText("on the active review")).toBeNull();
-	});
-
-	it("the radio makes a review the active one", async () => {
-		twoReviews();
-		renderPanel();
-		await flush();
-
-		const radio = screen.getByRole("button", {
-			name: `Active review ${READY.id}`,
-		});
-		expect(radio).toHaveAttribute("aria-pressed", "false");
-		expect(radio).toHaveAttribute("title", "Make active");
-		await fireEvent.click(radio);
-		await flush();
-
-		expect(callArgs("set_active_review")).toEqual({
-			path: "/repo",
-			reviewId: READY.id,
-		});
-	});
-
-	it("does not re-activate the review that is already active", async () => {
-		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
-		renderPanel();
-		await flush();
-
-		const radio = screen.getByRole("button", {
-			name: `Active review ${ACTIVE_REVIEW}`,
-		});
-		expect(radio).toHaveAttribute("aria-pressed", "true");
-		expect(radio).toHaveAttribute("title", "Active: new comments land here");
-		await fireEvent.click(radio);
-		await flush();
-
-		expect(calledCommands()).not.toContain("set_active_review");
-	});
-
-	describe("deleting a review", () => {
-		async function askToDelete(review: Review) {
-			installReads({ reviews: [review], activeReviewId: review.id });
-			renderPanel();
-			await flush();
-			await fireEvent.click(
-				screen.getByRole("button", { name: `Delete review ${review.id}` }),
-			);
-			await flush();
-			return screen.getByRole("group", { name: `Delete ${review.title}?` });
-		}
-
-		it("asks inline before deleting, naming what goes with it", async () => {
-			const confirm = await askToDelete(READY);
-
-			expect(confirm).toHaveTextContent(
-				"Delete Auth review and its 2 threads? The agent loses access to it. This can\u2019t be undone.",
-			);
-			expect(calledCommands()).not.toContain("delete_review");
-		});
-
-		it("says nothing of the agent for a review it never saw", async () => {
-			const confirm = await askToDelete(aReview({ thread_count: 1 }));
-
-			expect(confirm).toHaveTextContent(
-				`Delete ${aReview().title} and its 1 thread? This can\u2019t be undone.`,
-			);
-		});
-
-		it("puts the question mark right after the title of a review with no threads", async () => {
-			const confirm = await askToDelete(aReview({ thread_count: 0 }));
-
-			expect(confirm).toHaveTextContent(
-				`Delete ${aReview().title}? This can\u2019t be undone.`,
-			);
-		});
-
-		it("deletes the review once confirmed", async () => {
-			const confirm = await askToDelete(READY);
-
-			await fireEvent.click(
-				within(confirm).getByRole("button", { name: "Delete review" }),
-			);
-			await flush();
-
-			expect(callArgs("delete_review")).toEqual({
-				path: "/repo",
-				reviewId: READY.id,
-			});
-		});
-
-		it("keeps the review on Cancel", async () => {
-			const confirm = await askToDelete(READY);
-
-			await fireEvent.click(
-				within(confirm).getByRole("button", { name: "Cancel" }),
-			);
-			await flush();
-
-			expect(screen.queryByRole("group", { name: /^Delete / })).toBeNull();
-			expect(calledCommands()).not.toContain("delete_review");
-		});
-	});
-
-	it("renames a review through the inline title editor", async () => {
-		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
-		renderPanel();
-		await flush();
-
-		await fireEvent.dblClick(
-			screen.getByRole("button", { name: `Show review ${ACTIVE_REVIEW}` }),
-		);
-		await tick();
-		const input = screen.getByLabelText("Review title") as HTMLInputElement;
-		await fireEvent.input(input, { target: { value: "Renamed" } });
-		await fireEvent.blur(input);
-		await flush();
-
-		expect(callArgs("rename_review")).toEqual({
-			path: "/repo",
-			reviewId: ACTIVE_REVIEW,
-			title: "Renamed",
-		});
-	});
-
-	it("opens the title editor from the row's rename action", async () => {
-		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
-		renderPanel();
-		await flush();
-
-		await fireEvent.click(
-			screen.getByRole("button", { name: `Rename review ${ACTIVE_REVIEW}` }),
-		);
-		await tick();
-
-		expect(screen.getByLabelText("Review title")).toHaveValue(aReview().title);
 	});
 });
 
@@ -2858,6 +2628,33 @@ describe("ReviewPanel keyboard", () => {
 		await press("j");
 
 		expect(focusedThread()).toBeNull();
+	});
+
+	it("keeps the keys while focus sits in the reviews list", async () => {
+		await aCommitWithANoteAndALineThread();
+		const reviewList = document.createElement("nav");
+		const row = document.createElement("button");
+		reviewList.append(row);
+		document.body.append(reviewList);
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+				headBranch: "main",
+				reviewList,
+			},
+		});
+		await flush();
+		row.focus();
+
+		await fireEvent.keyDown(row, { key: "j" });
+		await flush();
+		reviewList.remove();
+
+		expect(focusedThread()).not.toBeNull();
 	});
 
 	it("leaves the keys to a control outside the panel", async () => {

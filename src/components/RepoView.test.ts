@@ -243,6 +243,7 @@ describe("RepoView", () => {
 				onrightpanecollapsedchange: vi.fn(),
 				onleftpanewidthchange: vi.fn(),
 				onrightpanewidthchange: vi.fn(),
+				onleavereview: vi.fn(),
 			},
 		});
 		expect(container).toBeTruthy();
@@ -269,6 +270,7 @@ describe("RepoView", () => {
 				onrightpanecollapsedchange: vi.fn(),
 				onleftpanewidthchange: vi.fn(),
 				onrightpanewidthchange: vi.fn(),
+				onleavereview: vi.fn(),
 			},
 		});
 		// BranchSidebar renders as <aside>, verify it exists
@@ -294,6 +296,7 @@ describe("RepoView", () => {
 				onrightpanecollapsedchange: vi.fn(),
 				onleftpanewidthchange: vi.fn(),
 				onrightpanewidthchange: vi.fn(),
+				onleavereview: vi.fn(),
 			},
 		});
 		await vi.waitFor(() => {
@@ -322,6 +325,7 @@ describe("RepoView", () => {
 				onrightpanecollapsedchange: vi.fn(),
 				onleftpanewidthchange: vi.fn(),
 				onrightpanewidthchange: vi.fn(),
+				onleavereview: vi.fn(),
 			},
 		});
 		// When collapsed, the left pane div should have width: 0
@@ -335,6 +339,7 @@ describe("RepoView", () => {
 		rightPaneWidth?: number;
 		leftPaneCollapsed?: boolean;
 		rightPaneCollapsed?: boolean;
+		reviewActive?: boolean;
 	}) {
 		const changes: string[] = [];
 		const view = render(RepoView, {
@@ -547,6 +552,177 @@ describe("RepoView", () => {
 		expect(screen.queryByRole("slider", { name: "Resize sidebar" })).toBeNull();
 	});
 
+	// Review mode is a window of its own: the reviews take the sidebar's place
+	// and its width, and nothing stands beside the review on the right.
+	describe("in review mode", () => {
+		async function flush() {
+			await new Promise((r) => setTimeout(r, 0));
+			await tick();
+		}
+
+		it("puts the reviews where the branches and stashes were", async () => {
+			renderWithPanes({ reviewActive: true });
+
+			expect(
+				await screen.findByRole("navigation", { name: "Reviews" }),
+			).toBeVisible();
+			expect(screen.getByTestId("branch-sidebar")).not.toBeVisible();
+		});
+
+		it("resizes the reviews with the sidebar's divider", async () => {
+			const changes = renderWithPanes({
+				leftPaneWidth: 200,
+				reviewActive: true,
+			});
+
+			await drag(
+				screen.getByRole("slider", { name: "Resize sidebar" }),
+				1000,
+				1040,
+			);
+
+			expect(changes).toEqual(["left collapsed false", "left width 240"]);
+		});
+
+		it("takes the reviews away while the sidebar is collapsed", async () => {
+			renderWithPanes({ leftPaneCollapsed: true, reviewActive: true });
+			await flush();
+
+			expect(screen.queryByRole("navigation", { name: "Reviews" })).toBeNull();
+		});
+
+		it("shows no detail pane", async () => {
+			renderWithPanes({ rightPaneWidth: 300, reviewActive: true });
+			await flush();
+
+			expect(
+				screen.queryByRole("slider", { name: "Resize detail pane" }),
+			).toBeNull();
+		});
+
+		// The graph is not on screen in review mode, so a commit is shown by
+		// leaving it.
+		it("leaves review mode for the graph to show a commit's header jump", async () => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const commit = makeCommit({ oid: "oid-1", summary: "the commit" });
+			mockInvoke.mockImplementation((cmd, args) => {
+				switch (cmd) {
+					case "get_commit_graph":
+						return Promise.resolve({ commits: [commit], max_columns: 1 });
+					case "list_reviews":
+						return Promise.resolve([
+							{
+								id: "r1",
+								title: "r1",
+								state: "composing",
+								published: false,
+								thread_count: 0,
+								unresolved_count: 0,
+								created_at: 0,
+							},
+						]);
+					case "get_active_review":
+						return Promise.resolve("r1");
+					case "list_session_commits":
+						return Promise.resolve([
+							aSessionCommit({ oid: commit.oid, summary: "the commit" }),
+						]);
+					default:
+						return base(cmd, args);
+				}
+			});
+			const leaves = vi.fn();
+			render(RepoView, {
+				props: {
+					...baseProps(createMockRemoteState()),
+					reviewActive: true,
+					onleavereview: leaves,
+				},
+			});
+
+			await fireEvent.click(
+				await screen.findByRole("button", {
+					name: `Jump to commit ${commit.oid.slice(0, 7)}`,
+				}),
+			);
+
+			expect(leaves).toHaveBeenCalledOnce();
+		});
+
+		it("keeps a collapsed detail pane collapsed through a jump to code", async () => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const commit = makeCommit({ oid: "oid-1", summary: "the commit" });
+			mockInvoke.mockImplementation((cmd, args) => {
+				switch (cmd) {
+					case "get_commit_graph":
+						return Promise.resolve({ commits: [commit], max_columns: 1 });
+					case "list_reviews":
+						return Promise.resolve([
+							{
+								id: "r1",
+								title: "r1",
+								state: "composing",
+								published: false,
+								thread_count: 1,
+								unresolved_count: 1,
+								created_at: 0,
+							},
+						]);
+					case "get_active_review":
+						return Promise.resolve("r1");
+					case "list_session_commits":
+						return Promise.resolve([aSessionCommit({ oid: commit.oid })]);
+					case "list_threads":
+						return Promise.resolve([
+							aThread({
+								id: "t1",
+								review_id: "r1",
+								anchor: {
+									commit_oid: commit.oid,
+									file_path: "src/a.ts",
+									source: "Diff",
+									side: "New",
+									start_line: 1,
+									end_line: 1,
+								},
+							}),
+						]);
+					case "resolve_threads":
+					case "list_commit_files":
+						return Promise.resolve([]);
+					default:
+						return base(cmd, args);
+				}
+			});
+			const changes = renderWithPanes({
+				rightPaneCollapsed: true,
+				reviewActive: true,
+			});
+
+			await fireEvent.click(
+				await screen.findByRole("button", { name: "Line 1" }),
+			);
+			await flush();
+
+			expect(changes).not.toContain("right collapsed false");
+		});
+
+		it("gives the branches back when review mode ends", async () => {
+			const view = render(RepoView, {
+				props: { ...baseProps(createMockRemoteState()), reviewActive: true },
+			});
+			await flush();
+
+			await view.rerender({ reviewActive: false });
+			await flush();
+
+			expect(screen.getByTestId("branch-sidebar")).toBeVisible();
+			expect(screen.queryByRole("navigation", { name: "Reviews" })).toBeNull();
+		});
+	});
+
 	function baseProps(remoteState: RemoteState) {
 		return {
 			repoPath: "/test/repo",
@@ -565,6 +741,7 @@ describe("RepoView", () => {
 			onrightpanecollapsedchange: vi.fn(),
 			onleftpanewidthchange: vi.fn(),
 			onrightpanewidthchange: vi.fn(),
+			onleavereview: vi.fn(),
 		};
 	}
 
@@ -793,6 +970,7 @@ describe("RepoView", () => {
 				onrightpanecollapsedchange: vi.fn(),
 				onleftpanewidthchange: vi.fn(),
 				onrightpanewidthchange: vi.fn(),
+				onleavereview: vi.fn(),
 			},
 		});
 		expect(container.querySelector("main")).toBeTruthy();
@@ -820,6 +998,7 @@ describe("RepoView", () => {
 			onrightpanecollapsedchange: vi.fn(),
 			onleftpanewidthchange: vi.fn(),
 			onrightpanewidthchange: vi.fn(),
+			onleavereview: vi.fn(),
 		});
 
 		async function flush() {

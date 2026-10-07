@@ -1,6 +1,6 @@
 <script lang="ts">
 import { listen } from "@tauri-apps/api/event";
-import { onDestroy, untrack } from "svelte";
+import { onDestroy, tick, untrack } from "svelte";
 import { buildTree, collectFilePaths } from "../lib/build-tree.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { buildCommentCounts } from "../lib/comment-counts.js";
@@ -88,6 +88,7 @@ import MergeEditor from "./MergeEditor.svelte";
 import MessageEditor from "./MessageEditor.svelte";
 import PushRecoveryPrompt from "./PushRecoveryPrompt.svelte";
 import RebaseEditor from "./RebaseEditor.svelte";
+import ReviewList from "./ReviewList.svelte";
 import ReviewPanel from "./ReviewPanel.svelte";
 import StagingPanel from "./StagingPanel.svelte";
 
@@ -145,6 +146,8 @@ interface Props {
 	onrightpanecollapsedchange: (collapsed: boolean) => void;
 	onleftpanewidthchange: (width: number) => void;
 	onrightpanewidthchange: (width: number) => void;
+	// Review mode hides the graph, so showing a commit there means leaving it.
+	onleavereview: () => void;
 }
 
 let {
@@ -169,6 +172,7 @@ let {
 	onrightpanecollapsedchange,
 	onleftpanewidthchange,
 	onrightpanewidthchange,
+	onleavereview,
 }: Props = $props();
 const LEFT_PANE_MAX = 600;
 const RIGHT_PANE_MAX = 700;
@@ -307,6 +311,8 @@ function handleReviewJump(comment: Thread) {
 // idempotent variant so re-clicking the currently-selected commit's header
 // does not toggle it off (CR-03's sister path).
 async function handleReviewJumpToCommit(oid: string) {
+	onleavereview();
+	await tick();
 	await selectCommitIdempotent(oid);
 	await commitGraphRef?.scrollToOid(oid);
 }
@@ -590,10 +596,14 @@ let showDiff = $derived(
 		selectedCurrentFile !== null,
 );
 
+// Review mode holds the window: the reviews in the left pane, the shown review
+// or one of its diffs in the center, and no right pane.
+const reviewMode = $derived(reviewSession.state.reviewActive);
+let reviewListPane = $state<HTMLDivElement | null>(null);
+
 // The review panel claims the center pane until a selection swaps it for the diff.
 const reviewPanelShown = $derived(
-	reviewSession.state.reviewActive &&
-		!(reviewSession.state.rightPaneMode === "diff" && showDiff),
+	reviewMode && !(reviewSession.state.rightPaneMode === "diff" && showDiff),
 );
 let showMergeEditor = $derived(selectedFile?.kind === "conflicted");
 
@@ -1229,8 +1239,8 @@ async function selectCommitIdempotent(oid: string) {
 	selectedCommitFile = null;
 	commitEmpty = false;
 
-	// Auto-open right pane if collapsed (LAYOUT-01)
-	if (rightPaneCollapsed) {
+	// Auto-open right pane if collapsed (LAYOUT-01). Review mode has none to open.
+	if (rightPaneCollapsed && !reviewMode) {
 		onrightpanecollapsedchange(false);
 	}
 
@@ -2230,9 +2240,12 @@ function stepRightPane(delta: number) {
 				{/if}
 			</div>
 		{:else}
+			<!-- Review mode puts the reviews where the branches were. The sidebar stays
+			     mounted under it, since the graph's first page waits on its read. -->
 			<div
 				class="shrink-0 overflow-hidden flex flex-col"
 				style:width="{leftPaneSize}px"
+				hidden={reviewMode}
 			>
 				<BranchSidebar
 					{repoPath}
@@ -2248,6 +2261,15 @@ function stepRightPane(delta: number) {
 					onopenmessageeditor={handleOpenMessageEditor}
 				/>
 			</div>
+			{#if reviewMode && !leftPaneCollapsed}
+				<div
+					class="shrink-0 overflow-hidden flex flex-col"
+					style:width="{leftPaneSize}px"
+					bind:this={reviewListPane}
+				>
+					<ReviewList {repoPath} {reviewComments} />
+				</div>
+			{/if}
 			<Splitter
 				variant="pane"
 				aria-label="Resize sidebar"
@@ -2284,6 +2306,7 @@ function stepRightPane(delta: number) {
 							onopenfile={openCurrentFile}
 							headBranch={headBranch ?? null}
 							keysActive={tabActive}
+							reviewList={reviewListPane}
 						/>
 					</div>
 				{:else if showMergeEditor && selectedFile}
@@ -2383,13 +2406,14 @@ function stepRightPane(delta: number) {
 				value={rightPaneSize}
 				min={0}
 				max={RIGHT_PANE_MAX}
-				hidden={rightPaneCollapsed}
+				hidden={rightPaneCollapsed || reviewMode}
 				onstep={stepRightPane}
 				onmousedown={startRightResize}
 			/>
 			<div
 				class="shrink-0 overflow-hidden flex flex-col"
 				style:width="{rightPaneSize}px"
+				hidden={reviewMode}
 			>
 				{#if compare && compareTargetDetail}
 					<ComparePanel
@@ -2424,7 +2448,7 @@ function stepRightPane(delta: number) {
 						{treeViewEnabled}
 						ontreeviewtoggle={handleTreeViewToggle}
 						nav={commitNav}
-						pagerKeys={!reviewPanelShown}
+						pagerKeys={!reviewMode}
 						onnavigate={navigateToCommit}
 					/>
 				{:else if draftLoaded}

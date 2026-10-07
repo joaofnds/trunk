@@ -803,6 +803,7 @@ $effect(() => {
 								onrightpanecollapsedchange={(c) => { rightPaneCollapsed = c; setRightPaneCollapsed(c); }}
 								onleftpanewidthchange={(w) => { leftPaneWidth = w; setLeftPaneWidth(w); }}
 								onrightpanewidthchange={(w) => { rightPaneWidth = w; setRightPaneWidth(w); }}
+								onleavereview={() => { reviewPanelOpen = false; }}
 							/>
 						{/key}
 					{:else}
