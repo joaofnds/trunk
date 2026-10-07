@@ -32,7 +32,7 @@ let {
 }: ButtonChip | LabelChip = $props();
 
 const FRAME =
-	"inline-flex items-center gap-1 h-control-sm rounded-full border font-mono text-small";
+	"inline-flex items-center gap-1 h-control-sm rounded-full border text-small";
 
 const BUTTON =
 	"pl-1 pr-2 cursor-pointer " +
@@ -48,6 +48,13 @@ const TONES: Record<ChipTone, string> = {
 	lane: "chip-lane",
 };
 
+/* A lane chip stands for the graph's ref pill, so it takes that pill's face. */
+const FACES: Record<ChipTone, string> = {
+	accent: "font-mono",
+	neutral: "font-mono",
+	lane: "font-sans font-semibold",
+};
+
 const HOVERS: Record<ChipTone, string> = {
 	accent: "hover:bg-chip-accent-bg-hover",
 	neutral: "hover:bg-muted-bg-hover",
@@ -60,7 +67,9 @@ const HOVERS: Record<ChipTone, string> = {
 	glyph and the name or short SHA.
 -->
 {#if variant === "label"}
-	<span class={[FRAME, LABEL, TONES[tone]]}>{@render children?.()}</span>
+	<span class={[FRAME, LABEL, TONES[tone], FACES[tone]]}
+		>{@render children?.()}</span
+	>
 {:else}
 	<button
 		{type}
@@ -68,6 +77,7 @@ const HOVERS: Record<ChipTone, string> = {
 			FRAME,
 			BUTTON,
 			TONES[tone],
+			FACES[tone],
 			HOVERS[tone],
 			truncate ? SHRINK : null,
 		]}

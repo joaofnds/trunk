@@ -71,6 +71,14 @@ describe("Chip", () => {
 		expect(chip).not.toHaveClass("bg-chip-accent-bg");
 	});
 
+	it("is set like the graph's ref pill under the lane tone, in semibold sans", () => {
+		render(Chip, { props: { tone: "lane", children: refName } });
+
+		const chip = screen.getByRole("button");
+		expect(chip).toHaveClass("font-sans", "font-semibold");
+		expect(chip).not.toHaveClass("font-mono");
+	});
+
 	it("reports a click to its caller", async () => {
 		const clicks: MouseEvent[] = [];
 		render(Chip, {

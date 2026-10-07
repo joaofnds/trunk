@@ -32,6 +32,21 @@ describe("BranchChip", () => {
 		);
 	});
 
+	it("marks a branch with the branch glyph", () => {
+		const { container } = render(BranchChip, { props: { name: "main" } });
+
+		expect(container.querySelector(".lucide-git-branch")).not.toBeNull();
+	});
+
+	it("marks a lane-toned branch with the graph's local-branch glyph", () => {
+		const { container } = render(BranchChip, {
+			props: { name: "main", tone: "lane" },
+		});
+
+		expect(container.querySelector(".lucide-laptop")).not.toBeNull();
+		expect(container.querySelector(".lucide-git-branch")).toBeNull();
+	});
+
 	it("lets a name too long for its row end in an ellipsis", () => {
 		render(BranchChip, { props: { name: "feature/login" } });
 
