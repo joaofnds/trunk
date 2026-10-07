@@ -192,6 +192,17 @@ describe("ReviewList", () => {
 		).not.toHaveAttribute("aria-current");
 	});
 
+	it("lights a review's radio with its row under the pointer", async () => {
+		twoReviews();
+		await renderList();
+
+		const item = screen
+			.getByRole("button", { name: `Show review ${OPEN.id}` })
+			.closest("li");
+
+		expect(item).toHaveClass("hover:bg-hover");
+	});
+
 	it("pressing a row shows that review without making it active", async () => {
 		twoReviews();
 		await renderList();

@@ -93,7 +93,7 @@ function deletePrompt(review: Review): string {
 	{@const isActive = review.id === activeReviewId}
 	{@const isShown = review.id === shownReviewId}
 	<li
-		class="review-item"
+		class="review-item hover:bg-hover"
 		class:review-item-shown={isShown}
 		class:review-item-renaming={renamingId === review.id}
 	>

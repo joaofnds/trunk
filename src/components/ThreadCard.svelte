@@ -4,8 +4,6 @@
 // it names its lines and its review in place of the file and the excerpt.
 
 import Check from "@lucide/svelte/icons/check";
-import ChevronDown from "@lucide/svelte/icons/chevron-down";
-import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
 import Pencil from "@lucide/svelte/icons/pencil";
 import Trash2 from "@lucide/svelte/icons/trash-2";
@@ -36,6 +34,7 @@ import LinkButton from "../lib/ui/LinkButton.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import Tag from "../lib/ui/Tag.svelte";
 import CommentEditor from "./review/CommentEditor.svelte";
+import FoldBar from "./review/FoldBar.svelte";
 import StatePill from "./review/StatePill.svelte";
 import ThreadMessage from "./review/ThreadMessage.svelte";
 import ThreadReplies from "./ThreadReplies.svelte";
@@ -453,133 +452,21 @@ async function requestDeleteReply(replyId: string) {
 		<!-- An inline card's height comes from a hidden copy measured once, so
 		     only the panel's card may change its own height. -->
 		{#if variant === "panel"}
-			<Button
-				icon
-				size="xs"
-				variant="ghost"
-				aria-expanded={!collapsed}
-				aria-label={collapsed ? "Expand thread" : "Collapse thread"}
-				onclick={() => {
+			<FoldBar
+				noun="thread"
+				inset="thread"
+				{collapsed}
+				ontoggle={() => {
 					toggle = { state: thread.state, collapsed: !collapsed };
 				}}
 			>
-				{#if collapsed}
-					<ChevronRight size={12} aria-hidden="true" />
-				{:else}
-					<ChevronDown size={12} aria-hidden="true" />
-				{/if}
-			</Button>
-		{/if}
-		<span class="thread-state-chip contents"
-			><StatePill state={thread.state} /></span
-		>
-		{#if variant === "inline"}
-			{#if location !== null}
-				<span
-					class="comment-card-range"
-					title="{location.path}:L{location.start}-L{location.end}"
-					>{location.start === location.end
-						? `L${location.start}`
-						: `L${location.start}-L${location.end}`}</span
-				>
-			{/if}
-			<span
-				class="shrink-0 font-mono text-small text-text-subtle"
-				title="Review {thread.review_id}"
-				>{thread.review_id}</span
-			>
-		{:else if scoped}
-			{#if location === null}
-				<Tag variant="label" dashed
-					><GitCommitHorizontal size={11} aria-hidden="true" />Whole commit</Tag
-				>
-			{:else if onjump}
-				<span class="comment-card-scope contents"
-					><Tag
-						title="{location.path}:L{location.start}-L{location.end}"
-						disabled={orphaned || !jumpable}
-						onclick={() => onjump?.(thread)}
-						>{scopeLabel}</Tag
-					></span
-				>
-			{:else}
-				<Tag variant="label">{scopeLabel}</Tag>
-			{/if}
-		{:else if location !== null}
-			<span
-				class="comment-card-fileref min-w-0 truncate font-mono text-small"
-				class:comment-card-fileref-dim={orphaned}
-			>
-				{#if jumpable && onjump}
-					<LinkButton aria-label="Jump to code" onclick={() => onjump?.(thread)}
-						>{@render fileref()}</LinkButton
-					>
-				{:else}
-					{@render fileref()}
-				{/if}
-			</span>
-		{/if}
-		{#if thread.stale}
-			<span class="thread-stale-chip contents"
-				><StatePill state="stale" /></span
-			>
-		{/if}
-		{#if orphanReason}
-			<span
-				class="orphan-badge contents"
-				title="{orphanReason}. Only the saved excerpt survives."
-				><StatePill state="orphaned" /></span
-			>
-		{/if}
-		{#if collapsed}
-			<span
-				class="min-w-0 flex-1 truncate text-callout text-text-subtle"
-				class:line-through={thread.state === "dismissed"}
-				>{peek}</span
-			>
+				{@render headerContent()}
+			</FoldBar>
 		{:else}
-			<span class="flex-1"></span>
+			<div class="flex min-w-0 flex-1 items-center gap-2 px-1">
+				{@render headerContent()}
+			</div>
 		{/if}
-		{#if lastChange}
-			<span class="shrink-0 whitespace-nowrap text-small text-text-subtle"
-				><span
-					class="font-semibold"
-					class:text-accent-alt={lastChange.channel === "agent"}
-					class:text-text-muted={lastChange.channel === "human"}
-					>{lastChange.channel === "agent" ? "Agent" : "You"}</span
-				>
-				{CHANGE_TEXT[lastChange.state]}
-				·
-				{compactLabel(
-					lastChange.created_at,
-					currentMinute(),
-				)}</span
-			>
-		{:else if collapsed}
-			{#if thread.replies.length > 0}
-				<span class="shrink-0 whitespace-nowrap text-small text-text-subtle"
-					>{thread.replies.length}
-					{thread.replies.length === 1 ? "reply" : "replies"}</span
-				>
-			{/if}
-		{/if}
-		<fieldset
-			class="flex min-w-auto items-center gap-1"
-			aria-label="Thread actions"
-		>
-			{#each stateActions as action (action.next)}
-				<Button
-					size="xs"
-					variant={action.variant}
-					onclick={() => setThreadState(repoPath, thread.id, action.next)}
-				>
-					{#if action.next === "done"}
-						<Check size={12} aria-hidden="true" />
-					{/if}
-					{action.label}
-				</Button>
-			{/each}
-		</fieldset>
 	</header>
 
 	{#if !collapsed}
@@ -709,6 +596,118 @@ async function requestDeleteReply(replyId: string) {
 	{/if}
 </article>
 
+{#snippet headerContent()}
+	<span class="thread-state-chip contents"
+		><StatePill state={thread.state} /></span
+	>
+	{#if variant === "inline"}
+		{#if location !== null}
+			<span
+				class="comment-card-range"
+				title="{location.path}:L{location.start}-L{location.end}"
+				>{location.start === location.end
+					? `L${location.start}`
+					: `L${location.start}-L${location.end}`}</span
+			>
+		{/if}
+		<span
+			class="shrink-0 font-mono text-small text-text-subtle"
+			title="Review {thread.review_id}"
+			>{thread.review_id}</span
+		>
+	{:else if scoped}
+		{#if location === null}
+			<Tag variant="label" dashed
+				><GitCommitHorizontal size={11} aria-hidden="true" />Whole commit</Tag
+			>
+		{:else if onjump}
+			<span class="comment-card-scope pointer-events-auto contents"
+				><Tag
+					title="{location.path}:L{location.start}-L{location.end}"
+					disabled={orphaned || !jumpable}
+					onclick={() => onjump?.(thread)}
+					>{scopeLabel}</Tag
+				></span
+			>
+		{:else}
+			<Tag variant="label">{scopeLabel}</Tag>
+		{/if}
+	{:else if location !== null}
+		<span
+			class="comment-card-fileref min-w-0 truncate font-mono text-small"
+			class:comment-card-fileref-dim={orphaned}
+			class:pointer-events-auto={jumpable && onjump}
+		>
+			{#if jumpable && onjump}
+				<LinkButton aria-label="Jump to code" onclick={() => onjump?.(thread)}
+					>{@render fileref()}</LinkButton
+				>
+			{:else}
+				{@render fileref()}
+			{/if}
+		</span>
+	{/if}
+	{#if thread.stale}
+		<span class="thread-stale-chip contents"><StatePill state="stale" /></span>
+	{/if}
+	{#if orphanReason}
+		<span
+			class="orphan-badge pointer-events-auto contents"
+			title="{orphanReason}. Only the saved excerpt survives."
+			><StatePill state="orphaned" /></span
+		>
+	{/if}
+	{#if collapsed}
+		<span
+			class="min-w-0 flex-1 truncate text-callout text-text-subtle"
+			class:line-through={thread.state === "dismissed"}
+			>{peek}</span
+		>
+	{:else}
+		<span class="flex-1"></span>
+	{/if}
+	{#if lastChange}
+		<span class="shrink-0 whitespace-nowrap text-small text-text-subtle"
+			><span
+				class="font-semibold"
+				class:text-accent-alt={lastChange.channel === "agent"}
+				class:text-text-muted={lastChange.channel === "human"}
+				>{lastChange.channel === "agent" ? "Agent" : "You"}</span
+			>
+			{CHANGE_TEXT[lastChange.state]}
+			·
+			{compactLabel(
+				lastChange.created_at,
+				currentMinute(),
+			)}</span
+		>
+	{:else if collapsed}
+		{#if thread.replies.length > 0}
+			<span class="shrink-0 whitespace-nowrap text-small text-text-subtle"
+				>{thread.replies.length}
+				{thread.replies.length === 1 ? "reply" : "replies"}</span
+			>
+		{/if}
+	{/if}
+	<fieldset
+		class="flex min-w-auto items-center gap-1 pointer-events-auto"
+		aria-label="Thread actions"
+	>
+		{#each stateActions as action (action.next)}
+			<Button
+				size="xs"
+				variant={action.variant}
+				onclick={() => setThreadState(repoPath, thread.id, action.next)}
+			>
+				{#if action.next === "done"}
+					<Check size={12} aria-hidden="true" />
+				{/if}
+				{action.label}
+			</Button>
+		{/each}
+	</fieldset>
+{/snippet}
+
 {#snippet fileref()}
 	{#if location !== null}
 		<span class="fileref-dir">{locationDir}</span
@@ -753,11 +752,8 @@ async function requestDeleteReply(replyId: string) {
 }
 .comment-card-header {
 	display: flex;
-	align-items: center;
-	gap: var(--space-2);
 	height: var(--control-h);
 	min-width: 0;
-	padding: 0 var(--space-1);
 	background: var(--color-comment-card-header-bg);
 }
 .comment-card-open .comment-card-header {

@@ -47,6 +47,21 @@ async function expandCard() {
 	if (expand) await fireEvent.click(expand);
 }
 
+// The header's whole background folds the card. The chevron stays the
+// keyboard's way to the same toggle, so the target is hidden from the tree.
+function foldTarget(): HTMLElement {
+	const [target] = screen
+		.getAllByRole("button", { hidden: true })
+		.filter(
+			(button) =>
+				button.getAttribute("aria-hidden") === "true" &&
+				/^(Collapse|Expand) thread$/.test(
+					button.getAttribute("aria-label") ?? "",
+				),
+		);
+	return target;
+}
+
 async function flush() {
 	await Promise.resolve();
 	await Promise.resolve();
@@ -510,7 +525,7 @@ describe("ThreadCard", () => {
 		renderCard({ variant: "inline" });
 
 		expect(
-			screen.queryByRole("button", { name: "Collapse thread" }),
+			screen.queryByRole("button", { name: "Collapse thread", hidden: true }),
 		).not.toBeInTheDocument();
 	});
 
@@ -572,6 +587,34 @@ describe("ThreadCard", () => {
 		expect(
 			screen.getByRole("button", { name: "Expand thread" }),
 		).toHaveAttribute("aria-expanded", "false");
+	});
+
+	it("collapses from a press anywhere on its header", async () => {
+		renderCard();
+
+		await fireEvent.click(foldTarget());
+
+		expect(
+			screen.queryByRole("textbox", { name: "Reply" }),
+		).not.toBeInTheDocument();
+	});
+
+	it("expands from a press anywhere on its header", async () => {
+		renderCard({
+			thread: { ...comment, state: "done", allowed_transitions: ["open"] },
+		});
+
+		await fireEvent.click(foldTarget());
+
+		expect(screen.getByRole("textbox", { name: "Reply" })).toBeInTheDocument();
+	});
+
+	it("acts on a press on its header's actions without folding", async () => {
+		renderCard();
+
+		await fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+		expect(screen.getByRole("textbox", { name: "Reply" })).toBeInTheDocument();
 	});
 
 	it.each(["done", "dismissed"] as const)(
