@@ -667,9 +667,16 @@ async function requestDeleteReply(replyId: string) {
 	font-family: var(--font-sans);
 	font-size: var(--text-callout);
 }
-/* The keys' thread takes a soft accent edge, so the reply field inside it,
-   which takes the full accent while focused, stays the one bright ring. */
-.comment-card[aria-current="true"] {
+/* The keys' thread takes the accent edge. While a field inside it holds the
+   focus, the edge softens, so the field's own accent border stays the one
+   bright ring. The card's own focus ring is that same edge, since an outline
+   drawn over it doubles the ring. */
+.comment-card[aria-current="true"],
+.comment-card:focus-visible {
+	outline: none;
+	border-color: var(--color-accent);
+}
+.comment-card[aria-current="true"]:focus-within:not(:focus) {
 	border-color: var(--color-accent-border);
 }
 .comment-card-range {

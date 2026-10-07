@@ -538,9 +538,10 @@ function lineBackground(origin: string, isSelected: boolean): string {
 }
 
 /* Comment rows hang as full-width block siblings directly under their anchored
-     line, indented to clear the change-indicator rail. */
+     line, indented to clear the change-indicator rail by as much as the
+     composer row, so a card and the composer under it share their edges. */
 .comment-row {
-	padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
+	padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
 }
 
 /* Invisible character styling (Phase 63 -- WHSP-03, D-11). Real whitespace stays
