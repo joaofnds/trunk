@@ -1363,16 +1363,25 @@ pub async fn list_session_commits<R: Runtime>(
                     ),
                     None => (vec![], vec![]),
                 };
-            Ok((picked, threaded, snapshots::get(conn, &canonical)?.oids()))
+            // The repo holds only its current pair of snapshots, but a thread
+            // keeps an older one alive, and the mint record still names it.
+            let mut snapshot_oids = snapshots::get(conn, &canonical)?.oids();
+            for oid in &threaded {
+                if minted::was_minted(conn, &canonical, oid)? {
+                    snapshot_oids.push(oid.clone());
+                }
+            }
+            Ok((picked, threaded, snapshot_oids))
         })?;
 
         let repo = git2::Repository::open(&path).map_err(TrunkError::from)?;
-        let mut result = review_commits(&picked, &threaded, &graph.layout, &repo);
-        for commit in &mut result {
-            commit.is_snapshot = snapshot_oids.contains(&commit.oid);
-        }
-
-        Ok(result)
+        Ok(review_commits(
+            &picked,
+            &threaded,
+            &snapshot_oids,
+            &graph.layout,
+            &repo,
+        ))
     })
     .await
 }

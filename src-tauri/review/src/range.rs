@@ -142,12 +142,16 @@ pub fn intersect_graph_order(
     out
 }
 
-/// The review's commits as the panel reads them: the ones someone added and the
-/// ones a thread was left on, in graph order, each marked by which it is.
+/// The review's commits as the panel reads them, in graph order.
+///
+/// Each is one someone added or one a thread was left on, marked by which it
+/// is, and by whether it is one of the `snapshots` Trunk took of uncommitted
+/// work.
 #[must_use]
 pub fn review_commits(
     picked: &[String],
     threaded: &[String],
+    snapshots: &[String],
     graph: &trunk_git::types::GraphResult,
     repo: &git2::Repository,
 ) -> Vec<SessionCommit> {
@@ -155,6 +159,7 @@ pub fn review_commits(
     let mut out = intersect_graph_order(&all, graph, repo);
     for commit in &mut out {
         commit.picked = picked.contains(&commit.oid);
+        commit.is_snapshot = snapshots.contains(&commit.oid);
     }
 
     out
@@ -454,6 +459,7 @@ mod tests {
         let out = review_commits(
             &[t.c.to_string()],
             &[t.d.to_string(), t.c.to_string()],
+            &[],
             &graph,
             &t.repo,
         );
@@ -461,6 +467,33 @@ mod tests {
         assert_eq!(
             out.iter()
                 .map(|c| (c.summary.as_str(), c.picked))
+                .collect::<Vec<_>>(),
+            vec![("D", false), ("C", true)]
+        );
+    }
+
+    #[test]
+    fn a_review_commit_trunk_minted_is_marked_a_snapshot() {
+        let t = make_repo();
+        let graph = trunk_git::types::GraphResult {
+            commits: vec![
+                graph_commit(&t.d.to_string(), "D"),
+                graph_commit(&t.c.to_string(), "C"),
+            ],
+            max_columns: 1,
+        };
+
+        let out = review_commits(
+            &[],
+            &[t.d.to_string(), t.c.to_string()],
+            &[t.c.to_string()],
+            &graph,
+            &t.repo,
+        );
+
+        assert_eq!(
+            out.iter()
+                .map(|c| (c.summary.as_str(), c.is_snapshot))
                 .collect::<Vec<_>>(),
             vec![("D", false), ("C", true)]
         );
