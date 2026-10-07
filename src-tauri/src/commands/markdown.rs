@@ -3125,6 +3125,13 @@ pub fn render_comment_text(text: &str) -> String {
     render_html(text, &options, &|_| None)
 }
 
+/// A comment's text as its card will show it, for the editor's preview.
+#[tauri::command]
+#[must_use]
+pub fn render_comment_preview(text: &str) -> String {
+    render_comment_text(text)
+}
+
 fn sanitize_html(html: &str) -> String {
     let mut builder = ammonia::Builder::default();
     builder

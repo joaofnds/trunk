@@ -200,6 +200,7 @@ pub fn configure<R: tauri::Runtime>(
         commands::fs::validate_recent_path,
         commands::markdown::read_file_at,
         commands::markdown::render_markdown_diff,
+        commands::markdown::render_comment_preview,
         commands::history::get_commit_graph,
         commands::history::refresh_commit_graph,
         commands::history::set_ref_visibility,

@@ -1,5 +1,8 @@
 <script lang="ts">
-import type { Snippet } from "svelte";
+import { type Snippet, tick } from "svelte";
+import { reportErrorToast } from "../../lib/error-report.js";
+import { externalLinks } from "../../lib/external-links.js";
+import { safeInvoke } from "../../lib/invoke.js";
 import {
 	continueList,
 	type FieldState,
@@ -54,6 +57,8 @@ let {
 let field = $state<HTMLTextAreaElement | null>(null);
 let focused = $state(false);
 const open = $derived(!collapsible || focused || text !== "");
+let previewing = $state(false);
+let previewHtml = $state<string | null>(null);
 
 // An editor that opens does so to be typed in, so it takes the focus at once.
 $effect(() => {
@@ -81,6 +86,28 @@ function apply(node: HTMLTextAreaElement, edit: TextEdit) {
 		node.dispatchEvent(new Event("input", { bubbles: true }));
 	}
 	node.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+}
+
+// The preview is the backend's render of the text, the same one a submitted
+// comment's card shows, so the two cannot disagree.
+async function togglePreview() {
+	if (previewing) {
+		previewing = false;
+		previewHtml = null;
+		await tick();
+		field?.focus();
+		return;
+	}
+
+	previewing = true;
+	if (text.trim() === "") return;
+	try {
+		const html = await safeInvoke<string>("render_comment_preview", { text });
+		if (previewing) previewHtml = html;
+	} catch (error) {
+		reportErrorToast(error, "Preview failed");
+		previewing = false;
+	}
 }
 
 function shortcutEdit(
@@ -135,6 +162,13 @@ function onkeydown(event: KeyboardEvent) {
 	}
 
 	if (!command || event.altKey) return;
+	if (event.shiftKey && event.code === "KeyP") {
+		event.preventDefault();
+		event.stopPropagation();
+		void togglePreview();
+		return;
+	}
+
 	const edit = shortcutEdit(event, fieldState(node));
 	if (!edit) return;
 	event.preventDefault();
@@ -160,8 +194,8 @@ function onpaste(event: ClipboardEvent) {
 <!--
 	The one place a review comment is written: a new comment, a reply, and the
 	edit of either. Enter starts a new line, and a list goes on to its next item;
-	Cmd+Enter submits; Cmd+B, I, E and K write bold, italic, code and a link, as
-	GitHub's comment box does.
+	Cmd+Enter submits; Cmd+B, I, E and K write bold, italic, code and a link;
+	Cmd+Shift+P shows the comment as it will render, as GitHub's comment box does.
 -->
 <div
 	class="comment-editor comment-editor-{variant}"
@@ -169,7 +203,21 @@ function onpaste(event: ClipboardEvent) {
 	onfocusin={() => (focused = true)}
 	{onfocusout}
 >
-	<div class="comment-editor-grow" data-value={text}>
+	{#if previewing}
+		<div
+			class="comment-editor-preview markdown-body select-text"
+			use:externalLinks
+		>
+			{#if text.trim() === ""}
+				<p class="text-text-subtle">Nothing to preview</p>
+			{:else if previewHtml !== null}
+				<!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
+				     (comrak unsafe-off + ammonia); see commands/markdown.rs -->
+				{@html previewHtml}
+			{/if}
+		</div>
+	{/if}
+	<div class="comment-editor-grow" data-value={text} hidden={previewing}>
 		<textarea
 			bind:this={field}
 			bind:value={text}
@@ -191,6 +239,9 @@ function onpaste(event: ClipboardEvent) {
 				to {submitLabel.toLowerCase()}</span
 			>
 			<span class="ml-auto flex items-center gap-2">
+				<Button size="sm" variant="ghost" onclick={() => void togglePreview()}
+					>{previewing ? "Write" : "Preview"}</Button
+				>
 				<Button size="sm" variant="ghost" disabled={busy} onclick={oncancel}
 					>Cancel</Button
 				>
@@ -231,6 +282,28 @@ function onpaste(event: ClipboardEvent) {
    which the field scrolls. */
 .comment-editor-grow {
 	display: grid;
+}
+
+.comment-editor-grow[hidden] {
+	display: none;
+}
+
+.comment-editor-preview {
+	box-sizing: border-box;
+	min-height: calc(20 * var(--u));
+	max-height: calc(75 * var(--u));
+	overflow-y: auto;
+	padding: var(--space-2) var(--space-3);
+	color: var(--color-text);
+	font-size: var(--text-callout);
+	line-height: var(--leading-normal);
+	overflow-wrap: anywhere;
+}
+
+.comment-editor-fill .comment-editor-preview {
+	flex: 1 1 0;
+	min-height: 0;
+	max-height: none;
 }
 
 .comment-editor-grow::after {

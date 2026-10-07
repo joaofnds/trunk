@@ -1,6 +1,18 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { safeInvoke } from "../../lib/invoke.js";
 import CommentEditor from "./CommentEditor.svelte";
+
+vi.mock("../../lib/invoke.js", async () => {
+	const actual = await vi.importActual<typeof import("../../lib/invoke.js")>(
+		"../../lib/invoke.js",
+	);
+	return { ...actual, safeInvoke: vi.fn() };
+});
+
+beforeEach(() => {
+	vi.mocked(safeInvoke).mockReset();
+});
 
 function renderEditor(
 	overrides: Partial<{
@@ -166,6 +178,58 @@ describe("CommentEditor", () => {
 			"data-value",
 			"one\ntwo\nthree",
 		);
+	});
+
+	describe("preview", () => {
+		it("shows the comment as it will render", async () => {
+			vi.mocked(safeInvoke).mockResolvedValueOnce(
+				"<p><strong>looks good</strong></p>",
+			);
+			const { field } = renderEditor({ text: "**looks good**" });
+
+			await fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+			expect(await screen.findByText("looks good")).toBeVisible();
+			expect(field).not.toBeVisible();
+			expect(vi.mocked(safeInvoke).mock.calls).toEqual([
+				["render_comment_preview", { text: "**looks good**" }],
+			]);
+		});
+
+		it("opens on Cmd+Shift+P", async () => {
+			vi.mocked(safeInvoke).mockResolvedValueOnce("<p>looks good</p>");
+			const { field } = renderEditor({ text: "looks good" });
+
+			await fireEvent.keyDown(field, {
+				key: "p",
+				code: "KeyP",
+				metaKey: true,
+				shiftKey: true,
+			});
+
+			expect(await screen.findByText("looks good")).toBeVisible();
+		});
+
+		it("goes back to writing with the field focused", async () => {
+			vi.mocked(safeInvoke).mockResolvedValueOnce("<p>looks good</p>");
+			const { field } = renderEditor({ text: "looks good" });
+			await fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+			await screen.findByText("looks good");
+
+			await fireEvent.click(screen.getByRole("button", { name: "Write" }));
+
+			expect(field).toBeVisible();
+			expect(field).toHaveFocus();
+		});
+
+		it("says an empty comment has nothing to preview", async () => {
+			renderEditor();
+
+			await fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+			expect(screen.getByText("Nothing to preview")).toBeVisible();
+			expect(vi.mocked(safeInvoke)).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("when submitting is disabled", () => {
