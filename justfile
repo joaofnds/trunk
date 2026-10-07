@@ -42,6 +42,10 @@ perf:
 perf-report over="":
     bun run scripts/perf-report.ts {{ if over == "" { "" } else { "--over " + over } }}
 
+# The review UI over mock data, no app around it: http://localhost:1430/src/prototype/review/
+prototype:
+    bunx vite --port 1430 --strictPort
+
 # Production build
 build:
     bun run tauri build
