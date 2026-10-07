@@ -33,8 +33,8 @@ describe("a comment left on a commit's diff", () => {
 		await createReviewThread(app);
 
 		expect(app.review.actions()).toEqual([
-			"Mark done",
 			"Dismiss",
+			"Mark done",
 			"Edit comment",
 			"Delete comment",
 		]);

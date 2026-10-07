@@ -373,35 +373,37 @@ const TRANSITION_LABELS: Record<ThreadState, string> = {
 	addressed: "Mark addressed",
 };
 
-// Done is the step the thread is waiting for, so it leads in the success tone;
-// dismissing is the step least often meant, so it recedes.
+// Done is the step the thread is waiting for, so it takes the success tone.
 const TRANSITION_VARIANTS: Record<ThreadState, ButtonVariant> = {
 	done: "success",
-	dismissed: "ghost",
+	dismissed: "secondary",
 	open: "secondary",
 	addressed: "secondary",
 };
 
-// Done on a thread the agent addressed confirms the agent's claimed fix.
-function transitionLabel(next: ThreadState): string {
-	if (next === "done" && thread.state === "addressed") return "Confirm fix";
-	return TRANSITION_LABELS[next];
-}
-
-// The step the thread waits for leads, undoing it follows, and dismissing,
-// the step least often meant, comes last, whatever order the wire sends.
+// Dismiss comes first and Mark done last, so the step that closes the thread
+// sits at the card's edge, whatever order the wire sends.
 const TRANSITION_ORDER: ThreadState[] = [
-	"done",
+	"dismissed",
 	"addressed",
 	"open",
-	"dismissed",
+	"done",
 ];
 
+// A thread still waiting on the human offers only the two ways to settle it.
+// Reopen beside Mark done on an addressed thread read as a contradiction, so
+// rejecting the agent's claim is left to the panel's O key.
+const unsettled = $derived(
+	thread.state === "open" || thread.state === "addressed",
+);
+
 const stateActions = $derived(
-	TRANSITION_ORDER.filter((next) =>
-		thread.allowed_transitions.includes(next),
+	TRANSITION_ORDER.filter(
+		(next) =>
+			thread.allowed_transitions.includes(next) &&
+			!(unsettled && next === "open"),
 	).map((next) => ({
-		label: transitionLabel(next),
+		label: TRANSITION_LABELS[next],
 		variant: TRANSITION_VARIANTS[next],
 		next,
 	})),

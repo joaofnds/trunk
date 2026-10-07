@@ -757,18 +757,18 @@ describe("ThreadCard", () => {
 
 	// Each row mirrors what the wire sends for that state (the backend's
 	// human-channel allowed_transitions, in wire order) and pins the label and
-	// order per target. The set itself is the backend's; the wording and order
-	// are the card's.
+	// order per target. The set itself is the backend's; the wording, the order
+	// and what an unsettled thread leaves out are the card's.
 	it.each([
 		{
 			state: "open" as const,
 			allowed: ["done", "dismissed"] as const,
-			labels: ["Mark done", "Dismiss"],
+			labels: ["Dismiss", "Mark done"],
 		},
 		{
 			state: "addressed" as const,
 			allowed: ["done", "dismissed", "open"] as const,
-			labels: ["Confirm fix", "Reopen", "Dismiss"],
+			labels: ["Dismiss", "Mark done"],
 		},
 		{ state: "done" as const, allowed: ["open"] as const, labels: ["Reopen"] },
 		{
@@ -804,18 +804,19 @@ describe("ThreadCard", () => {
 		expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
 	});
 
-	it("renders its state actions from allowed_transitions, not from the state", () => {
-		// A list the matrix would never pair with "open": a local switch on the
-		// state would offer Mark done / Dismiss and this expectation would fail.
+	it("renders its state actions from allowed_transitions, not from the state", async () => {
+		// A list the matrix would never pair with "done": a local switch on the
+		// state would offer Reopen and this expectation would fail.
 		const mismatched: Thread = {
 			...comment,
-			state: "open",
-			allowed_transitions: ["open"],
+			state: "done",
+			allowed_transitions: ["done", "dismissed"],
 		};
 
 		const { container } = renderCard({ thread: mismatched });
+		await expandCard();
 
-		expect(stateActionLabels(container)).toEqual(["Reopen"]);
+		expect(stateActionLabels(container)).toEqual(["Dismiss", "Mark done"]);
 	});
 
 	it("calls setThreadState with the repo path and target state when Mark done is clicked", async () => {
@@ -863,7 +864,7 @@ describe("ThreadCard", () => {
 		});
 	});
 
-	it("marks an addressed thread done when its fix is confirmed", async () => {
+	it("marks an addressed thread done", async () => {
 		renderCard({
 			thread: {
 				...comment,
@@ -872,7 +873,7 @@ describe("ThreadCard", () => {
 			},
 		});
 
-		await fireEvent.click(screen.getByText("Confirm fix"));
+		await fireEvent.click(screen.getByText("Mark done"));
 
 		expect(callArgs("set_thread_state")).toEqual({
 			path: "/repo",
