@@ -5,6 +5,7 @@ import {
 	combineReviewTone,
 	countBadgeThreads,
 	filterThreads,
+	tallyBadgeThreads,
 	threadMatchesFilter,
 } from "./review-filter.js";
 
@@ -53,5 +54,29 @@ describe("review filter projection", () => {
 		expect(badgeToneForThread(done, "all")).toBeNull();
 		expect(badgeToneForThread(staleDone, "stale")).toBe("stale");
 		expect(threadMatchesFilter(staleDone, "done")).toBe(true);
+	});
+});
+
+describe("tallyBadgeThreads", () => {
+	const threads = [
+		aThread({ id: "o1", state: "open" }),
+		aThread({ id: "o2", state: "open" }),
+		aThread({ id: "a1", state: "addressed" }),
+		aThread({ id: "d1", state: "done" }),
+	];
+
+	it("counts the unresolved threads by state under All threads", () => {
+		expect(tallyBadgeThreads(threads, "all")).toEqual({
+			open: 2,
+			addressed: 1,
+		});
+	});
+
+	it("counts only the filter's state under an explicit filter", () => {
+		expect(tallyBadgeThreads(threads, "done")).toEqual({ done: 1 });
+	});
+
+	it("counts nothing under Hide all", () => {
+		expect(tallyBadgeThreads(threads, "none")).toEqual({});
 	});
 });

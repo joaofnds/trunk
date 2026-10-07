@@ -3,6 +3,7 @@ import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DiffPanel from "../__tests__/helpers/controlled-diff-panel.svelte";
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
+import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import {
 	pairLines,
 	splitInvisibles,
@@ -428,6 +429,44 @@ describe("DiffPanel", () => {
 		});
 		await flushPrefs();
 		expect(screen.getByText("Comment File")).toBeInTheDocument();
+	});
+
+	it("counts the selected file's threads by state in its header", async () => {
+		const on = (id: string, path: string, state: "open" | "addressed") =>
+			aThread({
+				id,
+				state,
+				anchor: {
+					commit_oid: "abc123",
+					file_path: path,
+					source: "Diff",
+					side: "New",
+					start_line: 2,
+					end_line: 2,
+				},
+			});
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+				viewComments: [
+					on("t1", "src/main.ts", "open"),
+					on("t2", "src/main.ts", "addressed"),
+					on("t3", "src/other.ts", "open"),
+				],
+			},
+		});
+		await flushPrefs();
+
+		expect(
+			screen.getByRole("img", {
+				name: "2 review comments, 1 open and 1 addressed",
+			}),
+		).toBeInTheDocument();
 	});
 
 	// Comment File anchors the WHOLE file: every new-side line. testDiff's new side is

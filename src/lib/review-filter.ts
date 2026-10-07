@@ -64,6 +64,19 @@ export function countBadgeThreads(
 	return count;
 }
 
+/** The threads that receive a count pill for a filter, counted by tone. */
+export function tallyBadgeThreads(
+	threads: Thread[],
+	filter: ReviewFilter,
+): ReviewTally {
+	let tally: ReviewTally = {};
+	for (const thread of threads) {
+		const tone = badgeToneForThread(thread, filter);
+		if (tone !== null) tally = tallyWith(tally, tone);
+	}
+	return tally;
+}
+
 /** Combine tones for a roll-up bucket. The first tone in this order wins, so
  * an unresolved/open item keeps a bucket visually actionable. */
 export function combineReviewTone(

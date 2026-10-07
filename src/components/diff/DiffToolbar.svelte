@@ -25,8 +25,10 @@ import type {
 	LayoutMode,
 	RenderMode,
 	ReviewFilter,
+	ReviewTally,
 } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
+import CommentBadge from "../CommentBadge.svelte";
 
 interface Props {
 	contentMode: ContentMode;
@@ -45,6 +47,8 @@ interface Props {
 	wordWrap: boolean;
 	reviewCommentsVisible?: boolean;
 	reviewFilter?: ReviewFilter;
+	/** The selected file's threads the badge counts, by state. */
+	commentTally?: ReviewTally | null;
 	onignorewhitespacechange: (value: boolean) => void;
 	onshowinvisibleschange: (value: boolean) => void;
 	onwordwrapchange: (value: boolean) => void;
@@ -72,6 +76,7 @@ let {
 	wordWrap,
 	reviewCommentsVisible = true,
 	reviewFilter = "all",
+	commentTally = null,
 	onignorewhitespacechange,
 	onshowinvisibleschange,
 	onwordwrapchange,
@@ -109,6 +114,12 @@ const rename = $derived(
 	selectedPath === null ? null : renamePartsOf(selectedPath, selectedOldPath),
 );
 
+const commentCount = $derived(
+	reviewCommentsVisible && reviewFilter !== "none"
+		? Object.values(commentTally ?? {}).reduce((sum, n) => sum + n, 0)
+		: 0,
+);
+
 const renderedActive = $derived(
 	renderMode === "rendered" &&
 		selectedPath !== null &&
@@ -138,6 +149,7 @@ const renderedActive = $derived(
 		{:else if selectedPath}
 			<span data-testid="diff-path" class="new-path">{selectedPath}</span>
 		{/if}
+		<CommentBadge count={commentCount} tally={commentTally} />
 	</span>
 
 	{#if selectedPath && isMarkdownPath(selectedPath)}

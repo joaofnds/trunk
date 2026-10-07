@@ -26,6 +26,7 @@ import {
 	reviewComposerTargetsEqual,
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
+import { tallyBadgeThreads } from "../lib/review-filter.js";
 import {
 	getDiffContextLines,
 	getDiffIgnoreWhitespace,
@@ -290,6 +291,20 @@ const diffComposer = $derived<DiffComposer | null>(
 				card: composerCard,
 			}
 		: null,
+);
+
+// The selected file's threads, counted by state for the badge in its header.
+const selectedFileTally = $derived(
+	selectedPath === null
+		? null
+		: tallyBadgeThreads(
+				viewComments.filter(
+					(thread) =>
+						thread.anchor?.file_path === selectedPath ||
+						thread.content_pin?.file_path === selectedPath,
+				),
+				reviewFilter,
+			),
 );
 
 // A current-file view is the whole file by definition: there is no diff to show
@@ -1271,6 +1286,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		{wordWrap}
 		{reviewCommentsVisible}
 		{reviewFilter}
+		commentTally={selectedFileTally}
 		onignorewhitespacechange={handleIgnoreWhitespaceChange}
 		onshowinvisibleschange={handleShowInvisiblesChange}
 		onwordwrapchange={handleWordWrapChange}

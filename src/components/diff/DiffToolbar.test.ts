@@ -42,6 +42,37 @@ describe("DiffToolbar review actions", () => {
 	});
 });
 
+describe("DiffToolbar comment badge", () => {
+	it("counts the file's threads by state beside its path", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "src/main.rs",
+				commentTally: { open: 2, addressed: 1 },
+			},
+		});
+
+		expect(
+			screen.getByRole("img", {
+				name: "3 review comments, 2 open and 1 addressed",
+			}),
+		).toBeInTheDocument();
+	});
+
+	it("shows no count under Hide all", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "src/main.rs",
+				reviewFilter: "none",
+				commentTally: { open: 2 },
+			},
+		});
+
+		expect(screen.queryByRole("img", { name: /review comment/ })).toBeNull();
+	});
+});
+
 describe("DiffToolbar Source|Rendered toggle", () => {
 	it("shows the toggle when the selected file is markdown", () => {
 		render(DiffToolbar, {
