@@ -10,8 +10,10 @@ import StateGlyph from "../../components/review/StateGlyph.svelte";
 import StatePill from "../../components/review/StatePill.svelte";
 import { laneColor } from "../../lib/lanes.js";
 import Button from "../../lib/ui/Button.svelte";
+import ButtonGroup from "../../lib/ui/ButtonGroup.svelte";
 import Chip from "../../lib/ui/Chip.svelte";
 import Keycap from "../../lib/ui/Keycap.svelte";
+import LinkButton from "../../lib/ui/LinkButton.svelte";
 import Radio from "../../lib/ui/Radio.svelte";
 import FoldBar from "./FoldBar.svelte";
 import type { Group, Review, Thread } from "./mock.js";
@@ -40,14 +42,37 @@ const KEYS: [string[], string][] = [
 	[["O"], "reopen"],
 ];
 
+const VIEW_IDS = ["all", "needs", "settled"] as const;
+type ViewId = (typeof VIEW_IDS)[number];
+
+const VIEWS: Record<ViewId, { label: string; has: (t: Thread) => boolean }> = {
+	all: { label: "All", has: () => true },
+	needs: {
+		label: "Needs me",
+		has: (t) => t.state === "open" || t.state === "addressed",
+	},
+	settled: {
+		label: "Settled",
+		has: (t) => t.state === "done" || t.state === "dismissed",
+	},
+};
+
+let view = $state<ViewId>("all");
+
 const threads = $derived(
 	review.sections.flatMap((s) => s.groups.flatMap((g) => g.threads)),
 );
 const staleCount = $derived(threads.filter((t) => t.stale).length);
+const matches = $derived(VIEWS[view].has);
+const hiddenCount = $derived(threads.length - threads.filter(matches).length);
+
+function visible(group: Group): Thread[] {
+	return group.threads.filter(matches);
+}
 
 function byFile(group: Group): { path: string | null; threads: Thread[] }[] {
 	const files = new Map<string | null, Thread[]>();
-	for (const thread of group.threads) {
+	for (const thread of visible(group)) {
 		const path = thread.scope.kind === "commit" ? null : thread.scope.path;
 		files.set(path, [...(files.get(path) ?? []), thread]);
 	}
@@ -140,6 +165,22 @@ function removeThread(group: Group, thread: Thread) {
 						</li>
 					{/if}
 				</ul>
+				<span class="flex-1"></span>
+				<ButtonGroup>
+					{#each VIEW_IDS as id (id)}
+						<Button
+							joined
+							size="xs"
+							aria-pressed={view === id}
+							onclick={() => (view = id)}
+						>
+							{VIEWS[id].label}
+							<span class="font-mono"
+								>{threads.filter(VIEWS[id].has).length}</span
+							>
+						</Button>
+					{/each}
+				</ButtonGroup>
 			{/if}
 		</div>
 	</header>
@@ -149,8 +190,15 @@ function removeThread(group: Group, thread: Thread) {
 	>
 		{#if threads.length === 0}
 			<p class="m-0 px-4 py-6 text-text-muted">No comments in this review.</p>
+		{:else if hiddenCount === threads.length}
+			<p class="m-0 px-4 py-6 text-text-muted">
+				No threads here.
+				<LinkButton tone="accent" onclick={() => (view = "all")}
+					>Show all</LinkButton
+				>
+			</p>
 		{/if}
-		{#each review.sections as section (section.branch)}
+		{#each review.sections.filter((sec) => sec.groups.some((g) => visible(g).length > 0)) as section (section.branch)}
 			<section
 				class="proto-branch"
 				aria-label="Branch {section.branch}"
@@ -166,13 +214,13 @@ function removeThread(group: Group, thread: Thread) {
 					<span class="flex-1"></span>
 					<span class="proto-meta"
 						>{plural(
-							section.groups.reduce((n, g) => n + g.threads.length, 0),
+section.groups.reduce((n, g) => n + visible(g).length, 0),
 							"thread",
 						)}</span
 					>
 				</header>
 				<ul class="m-0 list-none p-0">
-					{#each section.groups as group (group.key)}
+					{#each section.groups.filter((g) => visible(g).length > 0) as group (group.key)}
 						<li class="proto-group">
 							<div class="proto-group-head h-bar bg-surface">
 								<FoldBar
@@ -201,7 +249,7 @@ function removeThread(group: Group, thread: Thread) {
 									{/if}
 									<span
 										class="inline-flex h-control-xs shrink-0 items-center rounded bg-surface-chip px-1 font-mono text-caption text-text-muted"
-										>{group.threads.length}</span
+										>{visible(group).length}</span
 									>
 								</FoldBar>
 							</div>
@@ -245,6 +293,15 @@ function removeThread(group: Group, thread: Thread) {
 				</ul>
 			</section>
 		{/each}
+		{#if hiddenCount > 0 && hiddenCount < threads.length}
+			<p class="m-0 px-4 pt-3 text-small text-text-muted">
+				{plural(hiddenCount, "thread")}
+				hidden.
+				<LinkButton tone="accent" onclick={() => (view = "all")}
+					>Show all</LinkButton
+				>
+			</p>
+		{/if}
 	</div>
 
 	<p
