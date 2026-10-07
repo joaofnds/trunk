@@ -836,7 +836,9 @@ $effect(() => {
 				<p>
 					{shownIsActive
 						? "New comments you write anywhere in this repo land here."
-						: "Make it active to collect new comments here."}
+						: shownReview?.archived
+							? "Unarchive it to collect new comments here."
+							: "Make it active to collect new comments here."}
 					The agent reads each comment as soon as you add it, or when you send
 					the batch you hold it in.
 				</p>

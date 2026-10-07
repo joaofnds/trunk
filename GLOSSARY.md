@@ -320,7 +320,7 @@ answers any other review's ids as missing. Watch reports `review_added` when a
 review becomes visible, through its first sent thread or by being unarchived, and
 `review_deleted` when deleting its last sent thread hides it again.
 
-**Archived review** — a review the user put away. It is listed apart in the app,
+**Archived review**: a review the user put away. It is listed apart in the app,
 folded under its own heading, and the agent no longer sees it: the CLI answers its
 ids as missing and watch reports `review_archived`. Archiving is a stored fact,
 separate from the derived state, and unarchiving brings the review back as it was.

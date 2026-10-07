@@ -4,7 +4,8 @@
 // competing with it. Stale and orphaned are flags rather than states, drawn the
 // same way so a card shows them beside the state they qualify, as is pending,
 // which marks a comment held in its review's batch. A review's state carries no
-// glyph, and shares its color with the thread state of the same name.
+// glyph: open takes the open thread's color, stale is dashed, and settled takes
+// the done color.
 
 import type { ReviewState, ThreadState } from "../../lib/types.js";
 

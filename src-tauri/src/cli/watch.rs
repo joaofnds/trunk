@@ -127,8 +127,9 @@ mod watch_feed {
         pub text: String,
     }
 
-    /// One NDJSON line of `watch --json`. Additive evolution only: fields
-    /// and variants may appear, existing ones keep their meaning.
+    /// One NDJSON line of `watch --json`. Additive evolution: fields and
+    /// variants may appear and existing ones keep their meaning, save the one
+    /// break `docs/review-cli.md` records for the review lifecycle.
     #[derive(Serialize)]
     #[serde(tag = "event", rename_all = "snake_case")]
     pub enum WatchChange {

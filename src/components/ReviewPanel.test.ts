@@ -1745,6 +1745,24 @@ describe("empty states", () => {
 		).toBeInTheDocument();
 	});
 
+	it("says an empty archived review collects no comments until it is unarchived", async () => {
+		const archived = aReview({
+			id: "OTHER001",
+			title: "Other review",
+			archived: true,
+		});
+		installReads({ reviews: [aReview(), archived], comments: [] });
+		renderPanel();
+		await flush();
+
+		await reviewComments.select(archived.id);
+		await flush();
+
+		expect(
+			screen.getByText(/Unarchive it to collect new comments here/),
+		).toBeInTheDocument();
+	});
+
 	it("offers every thread back when the filter hides them all", async () => {
 		installReads({
 			commits,

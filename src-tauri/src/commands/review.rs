@@ -351,7 +351,7 @@ pub struct RenderedThread {
     pub stale: bool,
     pub channel: trunk_review::types::Channel,
     /// Held in the review's batch: the agent cannot read it until the user
-    /// sends the batch, which the reply field's placeholder tells the user.
+    /// sends the batch.
     pub pending: bool,
     /// Whether the thread's review holds a batch, which every comment the user
     /// adds to it joins until they send it, so the card offers no way to send
@@ -1101,8 +1101,10 @@ pub async fn rename_review<R: Runtime>(
     Ok(())
 }
 
-/// Ending a review is a publish, never a delete: nothing is removed, the snapshot
-/// keepalive refs stay, and the active pointer stays on the published review.
+/// Archiving puts a review away from the list and the agent, never deletes it.
+///
+/// Nothing is removed and the snapshot keepalive refs stay. Archiving the active
+/// review clears the pointer, so the next comment opens a fresh review.
 ///
 /// Pruning superseded refs is milestone 2's, deliberately paired with the renderer's
 /// excerpt-source flip.

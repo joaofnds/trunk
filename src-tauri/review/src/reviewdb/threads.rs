@@ -385,8 +385,7 @@ pub fn set_state_at_commit(
     Ok(())
 }
 
-/// Human-authored text is editable at any time, published review included — publication
-/// gates deletion, never editing (criterion 4).
+/// Human-authored text is editable at any time, in any review, sent or held.
 ///
 /// Refusing an agent-authored edit with `not_editable`, distinct from `not_found`,
 /// means an agent-authored id is never indistinguishable from a missing one. Edits
