@@ -1221,20 +1221,12 @@ describe("ThreadCard", () => {
 	});
 
 	describe("deleting the thread", () => {
-		it("keeps the delete out of sight until the pointer or focus reaches the header, and the edit in sight", () => {
+		it("keeps the delete in sight beside the edit without waiting for the pointer", () => {
 			renderCard();
 
-			const hidden = screen.getByRole("button", {
-				name: "Delete comment",
-			}).parentElement;
-			expect(hidden).toHaveClass(
-				"opacity-0",
-				"group-hover/head:opacity-100",
-				"group-focus-within/head:opacity-100",
-			);
-			expect(
-				screen.getByRole("button", { name: "Edit comment" }).parentElement,
-			).not.toHaveClass("opacity-0");
+			const remove = screen.getByRole("button", { name: "Delete comment" });
+
+			expect(remove.closest(".opacity-0")).toBeNull();
 		});
 
 		it("asks in the card before deleting", async () => {

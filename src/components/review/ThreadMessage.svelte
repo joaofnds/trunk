@@ -14,8 +14,7 @@ interface Props {
 	createdAt: number;
 	/** Held in the review's batch, which the agent cannot read until it is sent. */
 	pending?: boolean;
-	/** Controls drawn at the end of the author line, such as edit and delete,
-	 *  which fade in under the pointer or focus and hold their width at rest. */
+	/** Controls drawn at the end of the author line, such as edit and delete. */
 	actions?: Snippet;
 	children: Snippet;
 }
@@ -30,7 +29,7 @@ let {
 </script>
 
 <div
-	class="thread-message group/message grid gap-2 py-2 pr-3 pl-2"
+	class="thread-message grid gap-2 py-2 pr-3 pl-2"
 	class:thread-message-agent={channel === "agent"}
 >
 	<MessageAvatar {channel} />
@@ -42,9 +41,7 @@ let {
 			{/if}
 			<span class="flex-1"></span>
 			{#if actions}
-				<span
-					class="thread-message-actions flex items-center gap-2 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100"
-				>
+				<span class="thread-message-actions flex items-center gap-2">
 					{@render actions()}
 				</span>
 			{/if}

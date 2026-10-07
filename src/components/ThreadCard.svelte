@@ -447,7 +447,7 @@ async function requestDeleteReply(replyId: string) {
 		thread.state === "dismissed"}
 	class:comment-card-open={!collapsed}
 >
-	<header class="comment-card-header group/head">
+	<header class="comment-card-header">
 		<!-- An inline card's height comes from a hidden copy measured once, so
 		     only the panel's card may change its own height. -->
 		{#if variant === "panel"}
@@ -565,19 +565,14 @@ async function requestDeleteReply(replyId: string) {
 			<RowAction size="compact" aria-label="Edit comment" onclick={openEdit}>
 				<Pencil size={12} aria-hidden="true" />
 			</RowAction>
-			<!-- The design keeps only the pencil in sight at rest; delete fades in
-			     under the pointer or focus, holding its width so nothing shifts. -->
-			<span
-				class="flex opacity-0 transition-opacity group-hover/head:opacity-100 group-focus-within/head:opacity-100"
-				><RowAction
-					size="compact"
-					tone="destructive"
-					aria-label="Delete comment"
-					onclick={requestDelete}
-				>
-					<Trash2 size={12} aria-hidden="true" />
-				</RowAction></span
+			<RowAction
+				size="compact"
+				tone="destructive"
+				aria-label="Delete comment"
+				onclick={requestDelete}
 			>
+				<Trash2 size={12} aria-hidden="true" />
+			</RowAction>
 		{/if}
 	</header>
 
