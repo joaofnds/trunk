@@ -21,7 +21,7 @@ const RANGE = ".comment-card-range";
 const SCOPE_TAG = ".comment-card-scope button";
 const STATE_CHIP = ".thread-state-chip";
 const CARD_ACTION =
-	'.comment-card-header button[aria-label$=" comment"], [aria-label="Thread actions"] button';
+	'[aria-label="Thread actions"] button, .thread-message button[aria-label$=" comment"]';
 const ORPHAN_BADGE = ".orphan-badge";
 const STALE_CHIP = ".thread-stale-chip";
 const EXCERPT_LINE = ".comment-card-diff .diff-content";

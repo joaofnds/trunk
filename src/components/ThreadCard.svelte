@@ -561,19 +561,23 @@ async function requestDeleteReply(replyId: string) {
 				>
 			{/if}
 		{/if}
-		{#if !draft.editing}
-			<RowAction size="compact" aria-label="Edit comment" onclick={openEdit}>
-				<Pencil size={12} aria-hidden="true" />
-			</RowAction>
-			<RowAction
-				size="compact"
-				tone="destructive"
-				aria-label="Delete comment"
-				onclick={requestDelete}
-			>
-				<Trash2 size={12} aria-hidden="true" />
-			</RowAction>
-		{/if}
+		<fieldset
+			class="flex min-w-auto items-center gap-1"
+			aria-label="Thread actions"
+		>
+			{#each stateActions as action (action.next)}
+				<Button
+					size="xs"
+					variant={action.variant}
+					onclick={() => setThreadState(repoPath, thread.id, action.next)}
+				>
+					{#if action.next === "done"}
+						<Check size={12} aria-hidden="true" />
+					{/if}
+					{action.label}
+				</Button>
+			{/each}
+		</fieldset>
 	</header>
 
 	{#if !collapsed}
@@ -615,6 +619,25 @@ async function requestDeleteReply(replyId: string) {
 			createdAt={thread.created_at}
 			pending={thread.pending}
 		>
+			{#snippet actions()}
+				{#if !draft.editing}
+					<RowAction
+						size="compact"
+						aria-label="Edit comment"
+						onclick={openEdit}
+					>
+						<Pencil size={12} aria-hidden="true" />
+					</RowAction>
+					<RowAction
+						size="compact"
+						tone="destructive"
+						aria-label="Delete comment"
+						onclick={requestDelete}
+					>
+						<Trash2 size={12} aria-hidden="true" />
+					</RowAction>
+				{/if}
+			{/snippet}
 			{#if draft.editing}
 				<CommentEditor
 					bind:text={draft.text}
@@ -660,23 +683,6 @@ async function requestDeleteReply(replyId: string) {
 				oncancel={() => replyDraft.close()}
 				collapsible
 			/>
-			<fieldset
-				class="ml-auto flex min-w-auto items-center gap-2"
-				aria-label="Thread actions"
-			>
-				{#each stateActions as action (action.next)}
-					<Button
-						size="sm"
-						variant={action.variant}
-						onclick={() => setThreadState(repoPath, thread.id, action.next)}
-					>
-						{#if action.next === "done"}
-							<Check size={12} aria-hidden="true" />
-						{/if}
-						{action.label}
-					</Button>
-				{/each}
-			</fieldset>
 		</div>
 	{/if}
 

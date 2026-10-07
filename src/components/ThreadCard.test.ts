@@ -727,6 +727,26 @@ describe("ThreadCard", () => {
 		expect(screen.getByText("Dismissed")).toBeInTheDocument();
 	});
 
+	it("puts the thread's state actions in its header", () => {
+		renderCard();
+
+		const markDone = screen.getByRole("button", { name: "Mark done" });
+
+		expect(markDone.closest("header")).not.toBeNull();
+	});
+
+	it.each(["Edit comment", "Delete comment"])(
+		"draws %s on the comment's author line, as a reply draws its own",
+		(name) => {
+			renderCard({ thread: comment });
+
+			const action = screen.getByRole("button", { name });
+
+			expect(action.closest("header")).toBeNull();
+			expect(action.closest(".thread-message")).toHaveTextContent(comment.text);
+		},
+	);
+
 	const THREAD_ACTIONS = '[aria-label="Thread actions"] button';
 
 	function stateActionLabels(container: HTMLElement) {
@@ -776,7 +796,7 @@ describe("ThreadCard", () => {
 		expect(remove).not.toHaveClass("text-danger");
 	});
 
-	it("rests its reply field on one line beside the thread's actions", () => {
+	it("rests its reply field on one line with the thread's actions in sight", () => {
 		renderCard({ thread: comment });
 
 		expect(screen.getByRole("textbox", { name: "Reply" })).toBeVisible();
