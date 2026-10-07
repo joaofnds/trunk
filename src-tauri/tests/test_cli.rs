@@ -157,41 +157,129 @@ fn cli_list_leaves_out_an_archived_review() {
         .with_file("a.txt", "one")
         .with_commit("c1")
         .build();
-    let (_, published) = seed_reviews(&ctx);
+    let (other, published) = seed_reviews(&ctx);
+    send_thread(&ctx, &other);
     archive(&ctx, &published);
 
     let out = trunk_review_in(ctx.repo_path(), &["list"], ctx.data_dir());
 
     assert_eq!(out.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        !String::from_utf8_lossy(&out.stdout).contains(&published),
-        "an archived review is put away from the agent, got {:?}",
-        String::from_utf8_lossy(&out.stdout),
+        stdout.contains(&other) && !stdout.contains(&published),
+        "only the archived review is put away from the agent, got {stdout:?}",
+    );
+}
+
+/// Send a thread into `review`, which hands it to the agent.
+fn send_thread(ctx: &TestContext, review: &str) {
+    reviewdb::open(ctx.data_dir())
+        .unwrap()
+        .write(|tx| {
+            threads::insert(
+                tx,
+                review,
+                threads::NewThread {
+                    text: "sent".to_string(),
+                    anchor: None,
+                    commit_oid: None,
+                    content_pin: None,
+                    cached_excerpt: None,
+                    delivery: Delivery::Send,
+                },
+                400,
+            )
+        })
+        .unwrap();
+}
+
+fn list_line(ctx: &TestContext, review: &str) -> String {
+    let out = trunk_review_in(ctx.repo_path(), &["list"], ctx.data_dir());
+    assert!(out.status.success());
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .find(|line| line.contains(review))
+        .unwrap_or_else(|| panic!("{review} is not listed"))
+        .to_string()
+}
+
+#[test]
+fn cli_list_says_settled_once_every_sent_thread_is_resolved() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let (_, published) = seed_reviews(&ctx);
+    let note = published_thread_id(&ctx, &published);
+    reviewdb::open(ctx.data_dir())
+        .unwrap()
+        .write(|tx| {
+            threads::set_state(
+                tx,
+                &canonical,
+                &note,
+                ThreadState::Done,
+                Channel::Human,
+                400,
+            )
+        })
+        .unwrap();
+
+    let line = list_line(&ctx, &published);
+
+    assert!(line.contains(&format!("{published} settled ")), "{line}");
+}
+
+#[test]
+fn cli_list_says_stale_once_every_unresolved_thread_points_at_code_that_is_gone() {
+    let ctx = TestContext::new_empty();
+    let (_, published) = seed_reviews(&ctx);
+    let note = published_thread_id(&ctx, &published);
+    reviewdb::open(ctx.data_dir())
+        .unwrap()
+        .write(|tx| {
+            tx.execute("UPDATE threads SET stale = 1 WHERE id = ?1", [&note])
+                .unwrap();
+            Ok(())
+        })
+        .unwrap();
+
+    let line = list_line(&ctx, &published);
+
+    assert!(line.contains(&format!("{published} stale ")), "{line}");
+}
+
+#[test]
+fn cli_answers_an_archived_review_exactly_as_missing() {
+    let ctx = TestContext::new_empty();
+    let (_, published) = seed_reviews(&ctx);
+    archive(&ctx, &published);
+
+    let of_archived = trunk_review_in(ctx.repo_path(), &["show", &published], ctx.data_dir());
+    let of_missing = trunk_review_in(ctx.repo_path(), &["show", "ZZZZZZZZ"], ctx.data_dir());
+
+    assert_ne!(of_archived.status.code(), Some(0));
+    assert_eq!(of_archived.status.code(), of_missing.status.code());
+    assert_eq!(
+        String::from_utf8_lossy(&of_archived.stderr).replace(&published, "ZZZZZZZZ"),
+        String::from_utf8_lossy(&of_missing.stderr),
     );
 }
 
 #[test]
-fn cli_answers_an_archived_review_and_its_threads_exactly_as_missing() {
-    let ctx = TestContext::builder()
-        .with_file("a.txt", "one")
-        .with_commit("c1")
-        .build();
+fn cli_answers_an_archived_reviews_thread_exactly_as_missing() {
+    let ctx = TestContext::new_empty();
     let (_, published) = seed_reviews(&ctx);
     let thread_id = published_thread_id(&ctx, &published);
     archive(&ctx, &published);
 
-    let of_review = trunk_review_in(ctx.repo_path(), &["show", &published], ctx.data_dir());
-    let of_thread = trunk_review_in(ctx.repo_path(), &["thread", &thread_id], ctx.data_dir());
+    let of_archived = trunk_review_in(ctx.repo_path(), &["thread", &thread_id], ctx.data_dir());
+    let of_missing = trunk_review_in(ctx.repo_path(), &["thread", "ZZZZZZZZ"], ctx.data_dir());
 
+    assert_ne!(of_archived.status.code(), Some(0));
+    assert_eq!(of_archived.status.code(), of_missing.status.code());
     assert_eq!(
-        String::from_utf8_lossy(&of_review.stderr).replace(&published, "ZZZZZZZZ"),
-        String::from_utf8_lossy(
-            &trunk_review_in(ctx.repo_path(), &["show", "ZZZZZZZZ"], ctx.data_dir()).stderr
-        ),
+        String::from_utf8_lossy(&of_archived.stderr).replace(&thread_id, "ZZZZZZZZ"),
+        String::from_utf8_lossy(&of_missing.stderr),
     );
-    assert_ne!(of_review.status.code(), Some(0));
-    assert_ne!(of_thread.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&of_thread.stderr).contains("no thread"));
 }
 
 #[test]
@@ -690,25 +778,58 @@ fn cli_thread_on_a_held_comment_answers_as_missing() {
 }
 
 #[test]
-fn cli_show_leaves_out_a_held_reply() {
+fn cli_threads_leaves_out_a_held_thread() {
     let ctx = TestContext::new_empty();
-    let canonical = ctx.repo_path().canonicalize().unwrap();
     let (_, published) = seed_reviews(&ctx);
-    let thread_id = published_thread_id(&ctx, &published);
+    let held = hold_thread(&ctx, &published, "HELD_THREAD_BODY");
+
+    let out = trunk_review_in(ctx.repo_path(), &["threads", &published], ctx.data_dir());
+
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("a note"), "{stdout}");
+    assert!(!stdout.contains(&held) && !stdout.contains("HELD_THREAD_BODY"));
+}
+
+fn hold_reply(ctx: &TestContext, thread_id: &str, text: &str) {
+    let canonical = ctx.repo_path().canonicalize().unwrap();
     reviewdb::open(ctx.data_dir())
         .unwrap()
         .write(|tx| {
             trunk_review::reviewdb::replies::add(
                 tx,
                 &canonical,
-                &thread_id,
-                "HELD_REPLY_BODY",
+                thread_id,
+                text,
                 Channel::Human,
                 Delivery::Hold,
                 700,
             )
         })
         .unwrap();
+}
+
+#[test]
+fn cli_thread_leaves_out_a_held_reply() {
+    let ctx = TestContext::new_empty();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+    hold_reply(&ctx, &thread_id, "HELD_REPLY_BODY");
+
+    let out = trunk_review_in(ctx.repo_path(), &["thread", &thread_id], ctx.data_dir());
+
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("a note"), "{stdout}");
+    assert!(!stdout.contains("HELD_REPLY_BODY"));
+}
+
+#[test]
+fn cli_show_leaves_out_a_held_reply() {
+    let ctx = TestContext::new_empty();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+    hold_reply(&ctx, &thread_id, "HELD_REPLY_BODY");
 
     let out = trunk_review_in(ctx.repo_path(), &["show", &published], ctx.data_dir());
 
@@ -770,7 +891,7 @@ fn watch_json_reports_a_held_comment_only_once_its_batch_is_sent() {
     };
 
     let held = hold_thread(&ctx, &published, "not sent yet");
-    trunk_review_in(
+    let barrier = trunk_review_in(
         ctx.repo_path(),
         &["reply", &thread_id, "seen"],
         ctx.data_dir(),
@@ -782,6 +903,7 @@ fn watch_json_reports_a_held_comment_only_once_its_batch_is_sent() {
         .unwrap();
     let sent = next_event();
 
+    assert!(barrier.status.success());
     assert_eq!(while_held["event"], "reply_added", "{while_held}");
     assert_eq!(sent["event"], "thread_added", "{sent}");
     assert_eq!(sent["thread"], held.as_str());
@@ -1848,22 +1970,22 @@ fn watch_stays_silent_for_unsent_changes_and_drafts() {
             .unwrap();
     }
 
-    assert_eq!(
-        watch.next_line(Duration::from_millis(900)),
-        None,
-        "unsent edits and drafts must print nothing",
-    );
-
-    // Liveness, not deafness: the same watcher still reports a real change.
-    trunk_review_in(
-        ctx.repo_path(),
-        &["reply", &thread_id, "now a real one"],
-        ctx.data_dir(),
-    );
-    assert_eq!(
-        watch.next_line(Duration::from_secs(10)).as_deref(),
-        Some(published.as_str()),
-    );
+    // Two visible replies are the barriers: every line a held edit or a draft
+    // could print lands before the first reply's line, or in the same diff and
+    // so before the second's.
+    for text in ["now a real one", "and another"] {
+        let reply = trunk_review_in(
+            ctx.repo_path(),
+            &["reply", &thread_id, text],
+            ctx.data_dir(),
+        );
+        assert!(reply.status.success());
+        assert_eq!(
+            watch.next_line(Duration::from_secs(10)).as_deref(),
+            Some(published.as_str()),
+            "unsent edits and drafts must print nothing",
+        );
+    }
 }
 
 /// A published review holding one thread anchored to a fresh workdir snapshot

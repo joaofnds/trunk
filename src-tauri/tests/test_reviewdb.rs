@@ -584,11 +584,11 @@ fn migrates_v1_to_v2_additively() {
 }
 
 #[test]
-fn deleting_a_unsent_thread_cascades_to_replies() {
+fn deleting_a_held_thread_cascades_to_replies() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
-    let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, held("root"), 1_000).unwrap();
     store
         .write(|tx| {
             reviewdb::replies::add(
@@ -597,7 +597,7 @@ fn deleting_a_unsent_thread_cascades_to_replies() {
                 &thread_id,
                 "a reply",
                 Channel::Human,
-                Delivery::Send,
+                Delivery::Hold,
                 1_001,
             )
         })
@@ -2410,17 +2410,6 @@ fn renders_a_stored_review() {
         !doc.contains("review reply"),
         "an unsent review's doc must omit the CLI instructions (criterion 11)",
     );
-
-    store
-        .write(|tx| reviewdb::reviews::send_batch(tx, &canonical, &review.id, 2_000))
-        .unwrap();
-    let published_doc =
-        generate_review_doc_inner(&store, &canonical, ctx.path(), &review.id).unwrap();
-    let exe = std::env::current_exe().unwrap().display().to_string();
-    assert!(
-        published_doc.contains(&format!("{exe} review reply")),
-        "a published review's doc must teach the generating binary's own path and verbs",
-    );
     assert!(doc.contains("second note"));
     assert!(
         doc.contains(&review.id),
@@ -2430,6 +2419,20 @@ fn renders_a_stored_review() {
         doc.contains("## Commits"),
         "the commit set still feeds the Commits section"
     );
+}
+
+#[test]
+fn a_sent_reviews_doc_teaches_the_generating_binarys_own_path_and_verbs() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(&store, &canonical, submission("sent note"), 1_000).unwrap();
+    let id = only_review(&store, &canonical).id;
+
+    let doc = generate_review_doc_inner(&store, &canonical, ctx.path(), &id).unwrap();
+
+    let exe = std::env::current_exe().unwrap().display().to_string();
+    assert!(doc.contains(&format!("{exe} review reply")));
 }
 
 #[test]
@@ -3076,7 +3079,7 @@ fn deleting_a_published_reply_removes_it() {
 }
 
 #[test]
-fn deleting_a_unsent_reply_removes_it() {
+fn deleting_a_held_reply_removes_it() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
@@ -3089,7 +3092,7 @@ fn deleting_a_unsent_reply_removes_it() {
                 &thread_id,
                 "a reply",
                 Channel::Human,
-                Delivery::Send,
+                Delivery::Hold,
                 1_001,
             )
         })

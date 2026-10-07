@@ -118,6 +118,18 @@ fn a_sent_comment_joins_a_batch_the_review_already_holds() {
 }
 
 #[test]
+fn a_sent_comment_joins_a_batch_held_by_a_reply_alone() {
+    let (_ctx, store, canonical) = setup();
+    let review = a_review(&store, &canonical);
+    let first = comment(&store, &review, Delivery::Send);
+    reply(&store, &canonical, &first, Channel::Human, Delivery::Hold);
+
+    comment(&store, &review, Delivery::Send);
+
+    assert_eq!(thread_ids(&store, &review, Channel::Agent), vec![first]);
+}
+
+#[test]
 fn a_held_reply_on_a_sent_thread_is_hidden_from_the_agent() {
     let (_ctx, store, canonical) = setup();
     let review = a_review(&store, &canonical);
@@ -229,6 +241,7 @@ fn sending_a_review_from_another_repo_answers_not_found() {
         .unwrap_err();
 
     assert_eq!(refused.code, "not_found");
+    assert_eq!(review(&store, &id).pending_count, 1, "the batch stays held");
 }
 
 fn listed_batch_held(store: &Store, canonical: &Path, review: &str) -> Vec<bool> {

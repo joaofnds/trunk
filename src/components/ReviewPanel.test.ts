@@ -1971,27 +1971,6 @@ describe("header", () => {
 			});
 		});
 
-		it("offers to unarchive it in place of making it active once archived", async () => {
-			installReads({
-				commits,
-				comments: THREADS,
-				reviews: [aReview({ thread_count: 4 }), { ...OTHER, archived: true }],
-			});
-			renderPanel();
-			await flush();
-			await reviewComments.select(OTHER.id);
-			await flush();
-
-			expect(header()).toHaveTextContent("Archived");
-			expect(screen.queryByRole("button", { name: "Make active" })).toBeNull();
-			await fireEvent.click(screen.getByRole("button", { name: "Unarchive" }));
-			await flush();
-			expect(callArgs("unarchive_review")).toEqual({
-				path: "/repo",
-				reviewId: OTHER.id,
-			});
-		});
-
 		async function showArchived(overrides: Partial<Review> = {}) {
 			installReads({
 				commits,
@@ -2006,6 +1985,26 @@ describe("header", () => {
 			await reviewComments.select(OTHER.id);
 			await flush();
 		}
+
+		it("says it is archived and offers no way to make it active", async () => {
+			await showArchived();
+
+			expect(header()).toHaveTextContent("Archived");
+			expect(screen.queryByRole("button", { name: "Make active" })).toBeNull();
+			expect(screen.queryByRole("button", { name: "Archive" })).toBeNull();
+		});
+
+		it("unarchives it from its header", async () => {
+			await showArchived();
+
+			await fireEvent.click(screen.getByRole("button", { name: "Unarchive" }));
+			await flush();
+
+			expect(callArgs("unarchive_review")).toEqual({
+				path: "/repo",
+				reviewId: OTHER.id,
+			});
+		});
 
 		it("says the agent cannot see it once archived, whatever it was sent", async () => {
 			await showArchived();
@@ -2040,10 +2039,15 @@ describe("header", () => {
 			});
 		});
 
-		it("says the agent sees it and offers nothing to send", async () => {
+		it("says the agent sees it", async () => {
 			await showOther();
 
 			expect(header()).toHaveTextContent("Visible to the agent");
+		});
+
+		it("offers nothing to send when it holds no batch", async () => {
+			await showOther();
+
 			expect(screen.queryByRole("button", { name: /^Send/ })).toBeNull();
 		});
 
