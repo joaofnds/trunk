@@ -49,6 +49,7 @@ import { selectOnOpen } from "../lib/select-on-open.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommentResolution,
+	Delivery,
 	OrphanReason,
 	Review,
 	ReviewFilter,
@@ -148,6 +149,11 @@ const STATE_TALLY = [
 
 const reviews = $derived(reviewComments.reviews);
 const activeReviewId = $derived(reviewComments.activeReviewId);
+// A note lands in the active review, so the active review's batch decides
+// whether it can be sent alone, whichever review the panel shows.
+const noteBatchHeld = $derived(
+	(reviewComments.activeReview?.pending_count ?? 0) > 0,
+);
 // The review the panel shows, which is the active one until the user picks
 // another from the list. Picking one never moves where new comments land.
 const shownReviewId = $derived(reviewComments.shownReviewId);
@@ -254,8 +260,8 @@ const hasAnyComment = $derived(comments.length > 0);
 const hasVisibleComment = $derived(visibleComments.length > 0);
 const shownIsActive = $derived(shownReviewId === activeReviewId);
 
-let endPopoverOpen = $state(false);
-let endAnchor = $state<HTMLElement>();
+let sendPopoverOpen = $state(false);
+let sendAnchor = $state<HTMLElement>();
 
 function isOrphan(c: Thread): boolean {
 	const r = resolutionById.get(c.id);
@@ -442,7 +448,7 @@ function cancelComposer() {
 	noteSession.close();
 }
 
-async function saveAddNote(oid: string) {
+async function saveAddNote(oid: string, delivery: Delivery) {
 	const submittedSession = noteSession;
 	const submittedTarget = submittedSession.target;
 	const submittedDraft = submittedSession.draft;
@@ -461,7 +467,7 @@ async function saveAddNote(oid: string) {
 			path: repoPath,
 			commitOid: submittedTarget,
 			text,
-			delivery: "send",
+			delivery,
 		});
 		if (
 			submittedSession.target === submittedTarget &&
@@ -508,8 +514,8 @@ async function onCopyClick() {
 // Sending hands the held batch to the agent and deletes nothing. The owner's
 // reviews-changed refresh re-reads the review, and with nothing left held the
 // button's gate hides it.
-async function publishShown() {
-	endPopoverOpen = false;
+async function sendShown() {
+	sendPopoverOpen = false;
 	if (!shownReviewId) return;
 	const reviewId = shownReviewId;
 
@@ -525,9 +531,10 @@ async function publishShown() {
 }
 
 function dismissEndPopover(event: PointerEvent) {
-	if (!endPopoverOpen) return;
-	if (event.target instanceof Node && endAnchor?.contains(event.target)) return;
-	endPopoverOpen = false;
+	if (!sendPopoverOpen) return;
+	if (event.target instanceof Node && sendAnchor?.contains(event.target))
+		return;
+	sendPopoverOpen = false;
 }
 
 async function deleteComment(id: string) {
@@ -670,25 +677,25 @@ $effect(() => {
 					</Button>
 				{/if}
 				{#if shownReview && shownReview.pending_count > 0}
-					<div class="relative" bind:this={endAnchor}>
+					<div class="relative" bind:this={sendAnchor}>
 						<Button
 							size="sm"
 							variant="primary"
 							title="Send the held comments to the agent"
 							onclick={() => {
-							endPopoverOpen = !endPopoverOpen;
+							sendPopoverOpen = !sendPopoverOpen;
 						}}
 						>
 							<Send size={12} />
-							<span>End review</span>
+							<span>Send {shownReview.pending_count}</span>
 						</Button>
-						{#if endPopoverOpen}
-							<div class="end-popover">
+						{#if sendPopoverOpen}
+							<div class="send-popover">
 								<Dialog
 									variant="anchored"
 									title="Send {shownReview.id}?"
 									onkeydown={(e) => {
-									if (e.key === "Escape") endPopoverOpen = false;
+									if (e.key === "Escape") sendPopoverOpen = false;
 								}}
 								>
 									<p class="m-0 text-callout leading-normal text-text-muted">
@@ -703,12 +710,12 @@ $effect(() => {
 											size="sm"
 											variant="ghost"
 											onclick={() => {
-											endPopoverOpen = false;
+											sendPopoverOpen = false;
 										}}
 											>Cancel</Button
 										>
-										<Button size="sm" variant="primary" onclick={publishShown}
-											>End review</Button
+										<Button size="sm" variant="primary" onclick={sendShown}
+											>Send</Button
 										>
 									</div>
 								</Dialog>
@@ -965,9 +972,13 @@ $effect(() => {
 											placeholder="Whole-commit note… Markdown supported"
 											bind:text={noteDraft.text}
 											busy={noteSaving}
-											submitLabel="Add note"
+											submitLabel={noteBatchHeld ? "Add to batch" : "Add note"}
 											submitDisabled={!noteDraft.valid || noteSaving}
-											onsubmit={() => void saveAddNote(commit.oid)}
+											onsubmit={() =>
+												void saveAddNote(commit.oid, noteBatchHeld ? "hold" : "send")}
+											onhold={noteBatchHeld
+												? undefined
+												: () => void saveAddNote(commit.oid, "hold")}
 											oncancel={cancelComposer}
 											onescape={cancelComposer}
 										>
@@ -1186,8 +1197,8 @@ $effect(() => {
 	width: calc(70 * var(--u));
 }
 
-/* The End review popover, under its button and aligned to its trailing edge. */
-.end-popover {
+/* The Send popover, under its button and aligned to its trailing edge. */
+.send-popover {
 	position: absolute;
 	top: 100%;
 	right: 0;

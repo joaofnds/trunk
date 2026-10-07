@@ -93,6 +93,44 @@ describe("CommitNotes", () => {
 		});
 	});
 
+	it("holds a composed note in a new batch from Start a batch", async () => {
+		renderNotes();
+		await fireEvent.click(screen.getByText("Add note"));
+		await fireEvent.input(
+			screen.getByPlaceholderText("Leave a note on this commit…"),
+			{ target: { value: "a new note" } },
+		);
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Start a batch" }),
+		);
+
+		expect(callArgs("add_commit_thread")).toEqual({
+			path: "/repo",
+			commitOid,
+			text: "a new note",
+			delivery: "hold",
+		});
+	});
+
+	it("adds a composed note to the batch the review holds", async () => {
+		renderNotes([], { batchHeld: true });
+		await fireEvent.click(screen.getByText("Add note"));
+		await fireEvent.input(
+			screen.getByPlaceholderText("Leave a note on this commit…"),
+			{ target: { value: "a new note" } },
+		);
+
+		await fireEvent.click(screen.getByRole("button", { name: "Add to batch" }));
+
+		expect(callArgs("add_commit_thread")).toEqual({
+			path: "/repo",
+			commitOid,
+			text: "a new note",
+			delivery: "hold",
+		});
+	});
+
 	it("adds the composed note on Cmd-Enter", async () => {
 		renderNotes();
 		await fireEvent.click(screen.getByText("Add note"));

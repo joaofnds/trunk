@@ -26,16 +26,19 @@ beforeEach(() => {
 });
 
 describe("addReply", () => {
-	it("sends the repo path, thread id and text to add_reply, live", async () => {
-		await addReply("/repo", "thread-1", "looks good");
+	it.each(["send", "hold"] as const)(
+		"sends the repo path, thread id, text and %s to add_reply",
+		async (delivery) => {
+			await addReply("/repo", "thread-1", "looks good", delivery);
 
-		expect(mockInvoke).toHaveBeenCalledWith("add_reply", {
-			path: "/repo",
-			threadId: "thread-1",
-			text: "looks good",
-			delivery: "send",
-		});
-	});
+			expect(mockInvoke).toHaveBeenCalledWith("add_reply", {
+				path: "/repo",
+				threadId: "thread-1",
+				text: "looks good",
+				delivery,
+			});
+		},
+	);
 
 	it("raises a toast and resolves, rather than rejecting, when the backend refuses", async () => {
 		mockInvoke.mockRejectedValue({
@@ -43,9 +46,9 @@ describe("addReply", () => {
 			message: "database is locked",
 		});
 
-		await expect(addReply("/repo", "thread-1", "too late")).resolves.toBe(
-			false,
-		);
+		await expect(
+			addReply("/repo", "thread-1", "too late", "send"),
+		).resolves.toBe(false);
 		expect(errorMessages()).toEqual(["database is locked"]);
 	});
 });

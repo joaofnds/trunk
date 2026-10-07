@@ -26,6 +26,10 @@ const ORPHAN_BADGE = ".orphan-badge";
 const STALE_CHIP = ".thread-stale-chip";
 const EXCERPT_LINE = ".comment-card-diff .diff-content";
 const COPY = "Copy";
+const HOLD = "Start a batch";
+const SEND = /^Send \d+$/;
+const SEND_POPOVER = "dialog[aria-labelledby]";
+const PENDING_PILL = ".pill-pending";
 const SHOW_ALL = "Show all";
 const MARK_DONE = "Mark done";
 const DISMISS = "Dismiss";
@@ -389,6 +393,54 @@ export class ReviewDriver {
 		);
 
 		button.click();
+	}
+
+	/** Holds the composer's comment in a new batch instead of sending it. */
+	async holdInBatch(): Promise<void> {
+		const button = await waitFor("an enabled hold button", () =>
+			enabledButton(HOLD),
+		);
+
+		button.click();
+	}
+
+	/** How many comments and replies on the visible cards are marked Pending. */
+	pendingCount(): number {
+		return cards().flatMap((card) => [...card.querySelectorAll(PENDING_PILL)])
+			.length;
+	}
+
+	/** The header's Send N, which reads null while the review holds nothing. */
+	sendLabel(): string | null {
+		return (
+			firstMatching("button", (text) => SEND.test(text))?.textContent?.trim() ??
+			null
+		);
+	}
+
+	/** Sends the held batch: the header's Send N opens a popover that says
+	 *  what sending does, and its own Send is the press that sends. Resolves
+	 *  once the header stops offering Send N, which it does only once nothing
+	 *  is held. */
+	async send(): Promise<void> {
+		const button = await waitFor("an enabled send button", () => {
+			const found = firstMatching("button", (text) => SEND.test(text));
+			return found instanceof HTMLButtonElement && !found.disabled
+				? found
+				: null;
+		});
+
+		button.click();
+
+		const confirm = await waitFor("the send popover", () =>
+			enabledIn(document.querySelector<HTMLElement>(SEND_POPOVER), "Send"),
+		);
+
+		confirm.click();
+
+		await waitFor("the batch to send", () =>
+			this.sendLabel() === null ? true : null,
+		);
 	}
 
 	/** Presses the toolbar's Review button, swapping the center pane to the

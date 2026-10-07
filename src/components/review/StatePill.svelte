@@ -2,12 +2,13 @@
 // The state of a thread or a review as a tinted pill: a glyph and a word in the
 // state's color. A label and no control, so it sits beside a control without
 // competing with it. Stale and orphaned are flags rather than states, drawn the
-// same way so a card shows them beside the state they qualify. A review's state
-// carries no glyph: composing is dashed and muted, since nothing is published.
+// same way so a card shows them beside the state they qualify, as is pending,
+// which marks a comment held in its review's batch. A review's state carries no
+// glyph: composing is dashed and muted, since nothing is published.
 
 import type { ReviewState, ThreadState } from "../../lib/types.js";
 
-type PillState = ThreadState | ReviewState | "stale" | "orphaned";
+type PillState = ThreadState | ReviewState | "stale" | "orphaned" | "pending";
 
 export const THREAD_LABELS: Record<ThreadState | "stale", string> = {
 	open: "Open",
@@ -20,6 +21,7 @@ export const THREAD_LABELS: Record<ThreadState | "stale", string> = {
 const LABELS: Record<PillState, string> = {
 	...THREAD_LABELS,
 	orphaned: "Orphaned",
+	pending: "Pending",
 	composing: "Composing",
 	ready: "Ready",
 	settled: "Settled",
@@ -78,13 +80,15 @@ const PILL =
 .pill-orphaned {
 	--pill-color: var(--color-danger);
 }
-.pill-composing {
+.pill-composing,
+.pill-pending {
 	--pill-color: var(--color-text-muted);
 }
 .pill-stale {
 	--pill-color: var(--color-thread-stale);
 }
 .pill-composing,
+.pill-pending,
 .pill-stale {
 	background: transparent;
 	box-shadow: none;

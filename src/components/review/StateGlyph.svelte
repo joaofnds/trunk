@@ -1,15 +1,16 @@
 <script lang="ts">
 // A thread's state as a shape that survives without its color: a ring while it
 // is open, half filled once the agent addressed it, filled with a check once
-// done, struck through once dismissed. The stale and orphaned flags take
-// their icons, since they qualify a state rather than being one.
+// done, struck through once dismissed. The stale, orphaned and pending flags
+// take their icons, since they qualify a state rather than being one.
 
+import Clock from "@lucide/svelte/icons/clock";
 import History from "@lucide/svelte/icons/history";
 import Unlink from "@lucide/svelte/icons/unlink";
 import type { ThreadState } from "../../lib/types.js";
 
 interface Props {
-	state: ThreadState | "stale" | "orphaned";
+	state: ThreadState | "stale" | "orphaned" | "pending";
 	size?: number;
 }
 
@@ -20,6 +21,8 @@ let { state, size = 12 }: Props = $props();
 	<History {size} aria-hidden="true" class="shrink-0" />
 {:else if state === "orphaned"}
 	<Unlink {size} aria-hidden="true" class="shrink-0" />
+{:else if state === "pending"}
+	<Clock {size} aria-hidden="true" class="shrink-0" />
 {:else}
 	<svg
 		class="shrink-0"

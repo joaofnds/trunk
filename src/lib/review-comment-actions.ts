@@ -1,6 +1,6 @@
 import { reportErrorToast } from "./error-report.js";
 import { safeInvoke } from "./invoke.js";
-import type { Anchor, Draft, ThreadState } from "./types.js";
+import type { Anchor, Delivery, Draft, ThreadState } from "./types.js";
 
 // Thin wrappers over the review IPC commands so every inline host (diff views,
 // commit-detail) shares one source of the exact command names + arg shapes:
@@ -34,12 +34,13 @@ export function addCommitThread(
 	repoPath: string,
 	commitOid: string,
 	text: string,
+	delivery: Delivery,
 ): Promise<void> {
 	return safeInvoke("add_commit_thread", {
 		path: repoPath,
 		commitOid,
 		text,
-		delivery: "send",
+		delivery,
 	});
 }
 
@@ -66,6 +67,7 @@ export function addReply(
 	repoPath: string,
 	threadId: string,
 	text: string,
+	delivery: Delivery,
 ): Promise<boolean> {
 	return reportRefusal(
 		() =>
@@ -73,7 +75,7 @@ export function addReply(
 				path: repoPath,
 				threadId,
 				text,
-				delivery: "send",
+				delivery,
 			}),
 		"Failed to add reply",
 	);

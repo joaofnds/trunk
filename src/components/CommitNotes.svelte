@@ -10,7 +10,7 @@ import {
 } from "../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
 import { filterThreads, threadMatchesFilter } from "../lib/review-filter.js";
-import type { ReviewFilter, Thread } from "../lib/types.js";
+import type { Delivery, ReviewFilter, Thread } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import ComposerFrame from "./review/ComposerFrame.svelte";
 import ThreadCard from "./ThreadCard.svelte";
@@ -22,6 +22,8 @@ interface Props {
 	commitOid: string;
 	reviewFilter?: ReviewFilter;
 	activeReviewId?: string | null;
+	/** Whether the active review holds a batch, which a new note joins. */
+	batchHeld?: boolean;
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	editorDraftFor?: (
 		reviewId: string | null,
@@ -36,6 +38,7 @@ let {
 	commitOid,
 	reviewFilter = "all",
 	activeReviewId = null,
+	batchHeld = false,
 	editorSessionForThread,
 	editorDraftFor,
 }: Props = $props();
@@ -59,7 +62,7 @@ function cancelAddNote() {
 	draft.close();
 }
 
-async function saveNote() {
+async function saveNote(delivery: Delivery) {
 	const submittedDraft = draft;
 	const submittedCommitOid = commitOid;
 	if (!submittedDraft.valid || noteSaving) return;
@@ -68,7 +71,7 @@ async function saveNote() {
 	const submittedRevision = submittedDraft.revision;
 	noteSaving = true;
 	try {
-		await addCommitThread(repoPath, submittedCommitOid, text);
+		await addCommitThread(repoPath, submittedCommitOid, text, delivery);
 		if (submittedDraft.revision === submittedRevision) {
 			submittedDraft.close();
 		}
@@ -110,9 +113,10 @@ async function saveNote() {
 				placeholder="Leave a note on this commit…"
 				bind:text={draft.text}
 				busy={noteSaving}
-				submitLabel="Add note"
+				submitLabel={batchHeld ? "Add to batch" : "Add note"}
 				submitDisabled={!draft.valid || noteSaving}
-				onsubmit={() => void saveNote()}
+				onsubmit={() => void saveNote(batchHeld ? "hold" : "send")}
+				onhold={batchHeld ? undefined : () => void saveNote("hold")}
 				oncancel={cancelAddNote}
 				onescape={cancelAddNote}
 			>

@@ -418,6 +418,8 @@ export interface Thread {
 	channel: Channel;
 	// Held in the review's batch: the agent cannot read it until the batch is sent.
 	pending: boolean;
+	// Whether the thread's review holds a batch, which a new reply joins.
+	batch_held: boolean;
 	// The states a UI gesture may legally move this thread to, in presentation
 	// order — precomputed by the backend from the one transition matrix
 	// (ThreadState::allowed_transitions, human channel). ThreadCard renders

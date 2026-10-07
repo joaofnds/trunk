@@ -93,7 +93,7 @@ interface Props {
 	activeReviewId?: string | null;
 	/** The review a new comment lands in; null when submitting starts one. */
 	/** The active review's id and title, for the composer to name. */
-	activeReview?: Pick<Review, "id" | "title"> | null;
+	activeReview?: Pick<Review, "id" | "title" | "pending_count"> | null;
 	viewComments?: Thread[];
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	composerSession?: ReviewComposerSession;

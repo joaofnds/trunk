@@ -42,6 +42,26 @@ describe("a comment left on a commit's diff", () => {
 		expect(app.review.states()).toEqual(["open"]);
 	});
 
+	it("holds a comment until its batch is sent", async () => {
+		const app = await setup({ repo: TWO_COMMITS });
+		await app.repo.open();
+		await app.repo.selectCommit("Change main");
+		await app.repo.openCommitFile(FILE);
+		await app.review.commentOnHunk(0);
+		await app.review.write(COMMENT);
+		await app.review.holdInBatch();
+		await app.review.openPanel();
+		await waitFor("the held comment's Pending mark", () =>
+			app.review.pendingCount() === 1 ? true : null,
+		);
+		expect(app.review.sendLabel()).toBe("Send 1");
+
+		await app.review.send();
+
+		expect(app.review.pendingCount()).toBe(0);
+		expect(app.review.threads()).toEqual([ANCHOR]);
+	});
+
 	it("filters a completed thread, leaving nothing to copy", async () => {
 		const app = await setup({ repo: TWO_COMMITS });
 		await createReviewThread(app);

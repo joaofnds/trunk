@@ -6,6 +6,7 @@ mod common;
 
 use common::context::TestContext;
 use std::path::{Path, PathBuf};
+use trunk_lib::commands::review::list_threads_inner;
 use trunk_review::reviewdb::{self, Store, replies, reviews, threads};
 use trunk_review::types::{Channel, Delivery};
 
@@ -228,6 +229,45 @@ fn sending_a_review_from_another_repo_answers_not_found() {
         .unwrap_err();
 
     assert_eq!(refused.code, "not_found");
+}
+
+fn listed_batch_held(store: &Store, canonical: &Path, review: &str) -> Vec<bool> {
+    list_threads_inner(store, canonical, Some(review))
+        .unwrap()
+        .into_iter()
+        .map(|t| t.batch_held)
+        .collect()
+}
+
+#[test]
+fn every_listed_thread_says_its_review_holds_a_batch() {
+    let (_ctx, store, canonical) = setup();
+    let id = a_review(&store, &canonical);
+    comment(&store, &id, Delivery::Send);
+    comment(&store, &id, Delivery::Hold);
+
+    assert_eq!(listed_batch_held(&store, &canonical, &id), vec![true, true]);
+}
+
+#[test]
+fn a_held_reply_alone_holds_the_batch() {
+    let (_ctx, store, canonical) = setup();
+    let id = a_review(&store, &canonical);
+    let thread = comment(&store, &id, Delivery::Send);
+    reply(&store, &canonical, &thread, Channel::Human, Delivery::Hold);
+
+    assert_eq!(listed_batch_held(&store, &canonical, &id), vec![true]);
+}
+
+#[test]
+fn a_listed_thread_holds_no_batch_once_it_is_sent() {
+    let (_ctx, store, canonical) = setup();
+    let id = a_review(&store, &canonical);
+    comment(&store, &id, Delivery::Hold);
+
+    send(&store, &canonical, &id);
+
+    assert_eq!(listed_batch_held(&store, &canonical, &id), vec![false]);
 }
 
 mod migrating_from_v11 {

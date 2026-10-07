@@ -456,6 +456,41 @@ describe("ReviewPanel", () => {
 			expect(args?.text).toBe("a fresh note");
 		});
 
+		it.each([
+			["holds the note in a new batch from Start a batch", 0, "Start a batch"],
+			["adds the note to the batch the review holds", 1, "Add to batch"],
+		] as const)("%s", async (_, pendingCount, label) => {
+			installReads({
+				commits,
+				comments: [],
+				resolutions: [],
+				reviews: [aReview({ pending_count: pendingCount })],
+			});
+			render(ReviewPanel, {
+				props: {
+					repoPath: "/repo",
+					session: createReviewSession(),
+					reviewComments,
+					onJump: vi.fn(),
+					onJumpToCommit: vi.fn(),
+				},
+			});
+			await flush();
+			await fireEvent.click(screen.getAllByText("Add note")[0]);
+			await fireEvent.input(screen.getByRole("textbox"), {
+				target: { value: "a fresh note" },
+			});
+
+			await fireEvent.click(
+				within(
+					screen.getByRole("group", { name: "Note on aaaaaaa" }),
+				).getByRole("button", { name: label }),
+			);
+			await flush();
+
+			expect(callArgs("add_commit_thread")?.delivery).toBe("hold");
+		});
+
 		it("disables Add note while the add-note textarea is empty/whitespace", async () => {
 			installReads({ commits, comments: [], resolutions: [] });
 			render(ReviewPanel, {
@@ -1400,7 +1435,7 @@ describe("ReviewPanel", () => {
 
 // Ending a review sends its held comments, after a popover under the button
 // says what that means.
-describe("End review", () => {
+describe("Send", () => {
 	function renderWithSession(opts: { sendRejection?: unknown } = {}) {
 		installReads({
 			commits,
@@ -1420,10 +1455,31 @@ describe("End review", () => {
 	}
 
 	async function openPopover() {
-		await fireEvent.click(screen.getByRole("button", { name: "End review" }));
+		await fireEvent.click(screen.getByRole("button", { name: "Send 1" }));
 		await flush();
 		return screen.getByRole("dialog", { name: `Send ${ACTIVE_REVIEW}?` });
 	}
+
+	it("counts the held comments it sends", async () => {
+		installReads({
+			commits,
+			comments: [lineAnchoredComment("c1", COMMIT_A, "x")],
+			reviews: [aReview({ thread_count: 1, pending_count: 3 })],
+		});
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+
+		await flush();
+
+		expect(screen.getByRole("button", { name: "Send 3" })).toBeInTheDocument();
+	});
 
 	it("asks before sending, and says what sending does", async () => {
 		renderWithSession();
@@ -1443,7 +1499,7 @@ describe("End review", () => {
 		const popover = await openPopover();
 
 		await fireEvent.click(
-			within(popover).getByRole("button", { name: "End review" }),
+			within(popover).getByRole("button", { name: "Send" }),
 		);
 		await flush();
 
@@ -1497,7 +1553,7 @@ describe("End review", () => {
 		});
 		await flush();
 
-		expect(screen.queryByRole("button", { name: "End review" })).toBeNull();
+		expect(screen.queryByRole("button", { name: /^Send/ })).toBeNull();
 	});
 
 	it("surfaces a send-failure toast when send_review rejects", async () => {
@@ -1511,7 +1567,7 @@ describe("End review", () => {
 		const popover = await openPopover();
 
 		await fireEvent.click(
-			within(popover).getByRole("button", { name: "End review" }),
+			within(popover).getByRole("button", { name: "Send" }),
 		);
 		await flush();
 
@@ -1909,11 +1965,11 @@ describe("header", () => {
 			});
 		});
 
-		it("says it is published and offers no End review", async () => {
+		it("says it is published and offers nothing to send", async () => {
 			await showOther();
 
 			expect(header()).toHaveTextContent("Published");
-			expect(screen.queryByRole("button", { name: "End review" })).toBeNull();
+			expect(screen.queryByRole("button", { name: /^Send/ })).toBeNull();
 		});
 
 		it("reads its own resolutions", async () => {
@@ -2176,11 +2232,9 @@ describe("multi-tab coordination", () => {
 		});
 		await flush();
 
-		// Initial warm render: comment visible, End button visible.
+		// Initial warm render: comment visible, Send button visible.
 		expect(screen.getByText("tab-A note")).toBeInTheDocument();
-		expect(
-			screen.getByRole("button", { name: /End review/ }),
-		).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /^Send/ })).toBeInTheDocument();
 
 		// Tab A deletes the review: the rune's reviews-changed refresh lands an
 		// empty store.
@@ -2193,13 +2247,13 @@ describe("multi-tab coordination", () => {
 		await reviewComments.refresh();
 		await flush();
 
-		// Cold empty state now visible; warm copy and prior comment gone; End
+		// Cold empty state now visible; warm copy and prior comment gone; Send
 		// button hidden (no active review → the {#if} gate hides it).
 		expect(
 			screen.getByRole("heading", { name: "No reviews in this repository" }),
 		).toBeInTheDocument();
 		expect(screen.queryByText("tab-A note")).toBeNull();
-		expect(screen.queryByRole("button", { name: /End review/ })).toBeNull();
+		expect(screen.queryByRole("button", { name: /^Send/ })).toBeNull();
 	});
 });
 

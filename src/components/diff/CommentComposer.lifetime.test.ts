@@ -212,7 +212,7 @@ describe("composer operation lifetime", () => {
 		});
 		scheduler.flush();
 		await waitFor(() => expect(host.entered.has("save_draft")).toBe(true));
-		await fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+		await fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
 		await view.rerender({
 			...p,
 			originatingReviewId: "review-b",
@@ -238,7 +238,7 @@ describe("composer operation lifetime", () => {
 		});
 
 		await view.rerender({ ...p, activeReviewId: "review-b" });
-		const submit = screen.getByRole("button", { name: "Submit" });
+		const submit = screen.getByRole("button", { name: "Add comment" });
 		expect(submit).toBeDisabled();
 		await fireEvent.click(submit);
 
@@ -311,7 +311,7 @@ describe("composer operation lifetime", () => {
 		});
 		scheduler.flush();
 		await waitFor(() => expect(host.entered.has("save_draft")).toBe(true));
-		await fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+		await fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
 		await view.rerender({ ...p, commitDetail: { ...commit, oid: "commit-b" } });
 
 		release();

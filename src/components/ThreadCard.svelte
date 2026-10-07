@@ -24,7 +24,13 @@ import {
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
 import { CHANGE_TEXT } from "../lib/thread-timeline.js";
-import type { MergedSpan, Side, Thread, ThreadState } from "../lib/types.js";
+import type {
+	Delivery,
+	MergedSpan,
+	Side,
+	Thread,
+	ThreadState,
+} from "../lib/types.js";
 import Button, { type ButtonVariant } from "../lib/ui/Button.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
@@ -334,7 +340,7 @@ function saveEdit() {
 	onedit(thread.id, text);
 }
 
-async function submitReply() {
+async function submitReply(delivery: Delivery) {
 	const submittedEditor = editor;
 	const submittedDraft = replyDraft;
 	if (!submittedDraft.valid || replySaving) return;
@@ -346,7 +352,7 @@ async function submitReply() {
 	// rethrowing, but this still awaits it before clearing the draft so a
 	// refused reply keeps the typed text on screen until the write settles.
 	try {
-		const saved = await addReply(repoPath, thread.id, text);
+		const saved = await addReply(repoPath, thread.id, text, delivery);
 		if (saved && submittedDraft.revision === submittedRevision) {
 			submittedDraft.close();
 		}
@@ -609,7 +615,11 @@ async function requestDeleteReply(replyId: string) {
 		{/if}
 
 		<!-- Comment text stays at full --color-text even when orphaned (D-08). -->
-		<ThreadMessage channel={thread.channel} createdAt={thread.created_at}>
+		<ThreadMessage
+			channel={thread.channel}
+			createdAt={thread.created_at}
+			pending={thread.pending}
+		>
 			{#if draft.editing}
 				<CommentEditor
 					bind:text={draft.text}
@@ -646,13 +656,12 @@ async function requestDeleteReply(replyId: string) {
 			<CommentEditor
 				bind:text={replyDraft.text}
 				label="Reply"
-				placeholder={thread.pending
-					? "Reply… (the agent sees this once you send the batch)"
-					: "Reply…"}
-				submitLabel="Reply"
+				placeholder="Reply…"
+				submitLabel={thread.batch_held ? "Add to batch" : "Reply"}
 				submitDisabled={!replyDraft.valid || replySaving}
 				busy={replySaving}
-				onsubmit={() => void submitReply()}
+				onsubmit={() => void submitReply(thread.batch_held ? "hold" : "send")}
+				onhold={thread.batch_held ? undefined : () => void submitReply("hold")}
 				oncancel={() => replyDraft.close()}
 				collapsible
 			/>

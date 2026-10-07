@@ -711,7 +711,7 @@ describe("DiffPanel", () => {
 
 		await view.rerender({ ...baseProps, activeReviewId: "review-b" });
 
-		const submit = screen.getByRole("button", { name: /submit/i });
+		const submit = screen.getByRole("button", { name: "Add comment" });
 		expect(submit).toBeDisabled();
 		await fireEvent.click(submit);
 		expect(
@@ -719,8 +719,8 @@ describe("DiffPanel", () => {
 		).not.toContain("add_thread");
 
 		await view.rerender({ ...baseProps, activeReviewId: "review-a" });
-		expect(screen.getByRole("button", { name: /submit/i })).toBeEnabled();
-		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+		expect(screen.getByRole("button", { name: "Add comment" })).toBeEnabled();
+		await fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
 		await flushPrefs();
 		expect(vi.mocked(safeInvoke).mock.calls.map((call) => call[0])).toContain(
 			"add_thread",
@@ -773,7 +773,7 @@ describe("DiffPanel", () => {
 		await fireEvent.input(screen.getByRole("textbox"), {
 			target: { value: "comment on a compare" },
 		});
-		const submit = screen.getByRole("button", { name: /submit/i });
+		const submit = screen.getByRole("button", { name: "Add comment" });
 		vi.mocked(safeInvoke).mockClear();
 		await fireEvent.click(submit);
 
@@ -851,7 +851,7 @@ describe("DiffPanel", () => {
 		await fireEvent.input(screen.getByRole("textbox"), {
 			target: { value: "comment for target A" },
 		});
-		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+		await fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
 		await tick();
 
 		sessionB.openDiff(
@@ -2790,7 +2790,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
 		await fireEvent.input(textarea, { target: { value: note } });
 		await tick();
-		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+		await fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
 		await flushPrefs();
 	}
 

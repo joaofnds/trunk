@@ -91,7 +91,11 @@ describe("CommentComposer", () => {
 	function renderComposer(
 		opts: {
 			scheduler?: FakeScheduler;
-			activeReview?: { id: string; title: string } | null;
+			activeReview?: {
+				id: string;
+				title: string;
+				pending_count: number;
+			} | null;
 			activeReviewId?: string | null;
 		} = {},
 	) {
@@ -105,6 +109,8 @@ describe("CommentComposer", () => {
 				onclose: () => {},
 				activeReview: opts.activeReview ?? null,
 				activeReviewId: opts.activeReviewId ?? opts.activeReview?.id ?? null,
+				originatingReviewId:
+					opts.activeReviewId ?? opts.activeReview?.id ?? null,
 			},
 			...(opts.scheduler
 				? { context: new Map([[SCHEDULER, opts.scheduler]]) }
@@ -236,7 +242,7 @@ describe("CommentComposer", () => {
 		});
 
 		expect(screen.getByText(/click a line number to extend/)).toHaveTextContent(
-			"⇧ click a line number to extend · ⌘↵ to submit",
+			"⇧ click a line number to extend · ⌘↵ to add comment",
 		);
 	});
 
@@ -248,7 +254,11 @@ describe("CommentComposer", () => {
 
 	it("names the review the comment lands in", () => {
 		renderComposer({
-			activeReview: { id: "r3m9", title: "Graph lane colors" },
+			activeReview: {
+				id: "r3m9",
+				title: "Graph lane colors",
+				pending_count: 0,
+			},
 		});
 
 		expect(screen.getByText(/Lands in/)).toHaveTextContent(
@@ -303,7 +313,7 @@ describe("CommentComposer", () => {
 		["an untouched draft", null, true],
 		["a whitespace-only draft", "   ", true],
 		["a non-empty draft", "looks good", false],
-	])("Submit is disabled for %s: %s", async (_name, value, disabled) => {
+	])("Add comment is disabled for %s: %s", async (_name, value, disabled) => {
 		render(CommentComposer, {
 			props: {
 				file: modifiedFile,
@@ -321,7 +331,7 @@ describe("CommentComposer", () => {
 		}
 
 		const submit = screen.getByRole("button", {
-			name: /submit/i,
+			name: "Add comment",
 		}) as HTMLButtonElement;
 		expect(submit.disabled).toBe(disabled);
 	});
@@ -343,9 +353,9 @@ describe("CommentComposer", () => {
 		await fireEvent.input(screen.getByRole("textbox"), {
 			target: { value: "hidden comment" },
 		});
-		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+		await fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
 
-		expect(screen.getByRole("button", { name: /submit/i })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Add comment" })).toBeDisabled();
 		expect(mockedInvoke.mock.calls.map((call) => call[0])).not.toContain(
 			"add_thread",
 		);
@@ -381,7 +391,7 @@ describe("CommentComposer", () => {
 			originatingReviewId: "review-a",
 		});
 
-		const submit = screen.getByRole("button", { name: /submit/i });
+		const submit = screen.getByRole("button", { name: "Add comment" });
 		expect(submit).toBeDisabled();
 		await fireEvent.click(submit);
 
@@ -430,6 +440,76 @@ describe("CommentComposer", () => {
 		expect(args.anchor.start_line).toBe(11);
 	});
 
+	describe("delivery", () => {
+		function deliveryOf(): unknown {
+			const call = mockedInvoke.mock.calls.find((c) => c[0] === "add_thread");
+			return (call?.[1] as { delivery?: unknown } | undefined)?.delivery;
+		}
+
+		async function type(text: string) {
+			await fireEvent.input(screen.getByRole("textbox"), {
+				target: { value: text },
+			});
+		}
+
+		it("sends the comment from Add comment", async () => {
+			renderComposer({
+				activeReview: { id: "r3m9", title: "t", pending_count: 0 },
+			});
+			await type("ship it");
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Add comment" }),
+			);
+			await flush();
+
+			expect(deliveryOf()).toBe("send");
+		});
+
+		it("holds the comment in a new batch from Start a batch", async () => {
+			renderComposer({
+				activeReview: { id: "r3m9", title: "t", pending_count: 0 },
+			});
+			await type("ship it");
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Start a batch" }),
+			);
+			await flush();
+
+			expect(deliveryOf()).toBe("hold");
+		});
+
+		describe("when the review holds a batch", () => {
+			const batching = { id: "r3m9", title: "t", pending_count: 2 };
+
+			it("adds the comment to the batch", async () => {
+				renderComposer({ activeReview: batching });
+				await type("ship it");
+
+				await fireEvent.click(
+					screen.getByRole("button", { name: "Add to batch" }),
+				);
+				await flush();
+
+				expect(deliveryOf()).toBe("hold");
+			});
+
+			it("offers no way to send the comment alone", async () => {
+				renderComposer({ activeReview: batching });
+
+				await type("ship it");
+
+				expect(
+					screen.queryByRole("button", { name: "Add comment" }),
+				).toBeNull();
+				expect(
+					screen.queryByRole("button", { name: "Start a batch" }),
+				).toBeNull();
+			});
+		});
+	});
+
 	it("submits via add_thread with the buildDiffAnchor anchor + cachedExcerpt and clears on success", async () => {
 		const onclose = vi.fn();
 		render(CommentComposer, {
@@ -447,7 +527,7 @@ describe("CommentComposer", () => {
 		await fireEvent.input(textarea, { target: { value: "ship it" } });
 		await tick();
 
-		const submit = screen.getByRole("button", { name: /submit/i });
+		const submit = screen.getByRole("button", { name: "Add comment" });
 		await fireEvent.click(submit);
 		await tick();
 
@@ -495,15 +575,15 @@ describe("CommentComposer", () => {
 		await fireEvent.input(screen.getByRole("textbox"), {
 			target: { value: "one pending comment" },
 		});
-		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+		await fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
 		await tick();
 
 		expect(session.submitting).toBe(true);
 		view.unmount();
 		view = render(CommentComposer, { props });
-		expect(screen.getByRole("button", { name: /submit/i })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Add comment" })).toBeDisabled();
 
-		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+		await fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
 		expect(
 			mockedInvoke.mock.calls.filter((call) => call[0] === "add_thread"),
 		).toHaveLength(1);
@@ -633,7 +713,9 @@ describe("CommentComposer", () => {
 			renderComposer({ scheduler });
 			await typeAndFireTheAutosave(scheduler);
 
-			await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Add comment" }),
+			);
 			await tick();
 			expect(commands()).not.toContain("add_thread");
 
@@ -665,7 +747,7 @@ describe("CommentComposer", () => {
 		const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
 		await fireEvent.input(textarea, { target: { value: "worth keeping" } });
 		await tick();
-		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+		await fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
 		await tick();
 
 		expect(toasts.items.map((t) => [t.message, t.kind])).toEqual([
@@ -727,7 +809,7 @@ describe("CommentComposer", () => {
 		await fireEvent.input(textarea, { target: { value: "full file note" } });
 		await tick();
 
-		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+		await fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
 		await tick();
 
 		const addCalls = mockedInvoke.mock.calls.filter(
@@ -831,7 +913,7 @@ describe("CommentComposer", () => {
 		const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
 		await fireEvent.input(textarea, { target: { value: "new side only" } });
 		await tick();
-		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+		await fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
 		await tick();
 
 		const addCalls = mockedInvoke.mock.calls.filter(

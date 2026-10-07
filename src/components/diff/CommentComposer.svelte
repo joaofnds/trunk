@@ -15,7 +15,7 @@ import {
 	createReviewComposerSession,
 	type ReviewComposerSession,
 } from "../../lib/review-editors.svelte.js";
-import type { Anchor, FileDiff, Review } from "../../lib/types.js";
+import type { Anchor, Delivery, FileDiff, Review } from "../../lib/types.js";
 import ComposerFrame from "../review/ComposerFrame.svelte";
 
 interface Props {
@@ -51,8 +51,9 @@ interface Props {
 	activeReviewId?: string | null;
 	/** Repository-tab-owned submission latch that survives conditional mounts. */
 	composerSession?: ReviewComposerSession;
-	/** The active review's id and title, null while the host has not read them. */
-	activeReview?: Pick<Review, "id" | "title"> | null;
+	/** The active review's id, title and held count, null while the host has
+	 *  not read them. */
+	activeReview?: Pick<Review, "id" | "title" | "pending_count"> | null;
 }
 
 let {
@@ -131,6 +132,7 @@ function deriveDiffCapture(): { anchor: Anchor; cachedExcerpt: string } {
 const capturedResult = $derived(captured ?? deriveDiffCapture());
 
 const reviewMatches = $derived(originatingReviewId === activeReviewId);
+const batchHeld = $derived((activeReview?.pending_count ?? 0) > 0);
 const submitDisabled = $derived(
 	!canSubmit ||
 		!reviewMatches ||
@@ -173,7 +175,7 @@ async function discardDraft(path: string) {
 	}
 }
 
-async function handleSubmit() {
+async function handleSubmit(delivery: Delivery) {
 	const submittedDraft = composerDraft;
 	const submittedText = composerDraft.text;
 	const submittedRevision = submittedDraft.revision;
@@ -200,7 +202,7 @@ async function handleSubmit() {
 				startLine: submittedCurrentFile.startLine,
 				endLine: submittedCurrentFile.endLine,
 				text: submittedText,
-				delivery: "send",
+				delivery,
 			});
 		} else {
 			let anchor = submittedCaptured.anchor;
@@ -215,7 +217,7 @@ async function handleSubmit() {
 				text: submittedText,
 				anchor,
 				cachedExcerpt: submittedCaptured.cachedExcerpt,
-				delivery: "send",
+				delivery,
 			});
 		}
 	} catch (e) {
@@ -287,9 +289,10 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	extendHint={extendable}
 	bind:text={composerDraft.text}
 	busy={submitting}
-	submitLabel="Submit"
+	submitLabel={batchHeld ? "Add to batch" : "Add comment"}
 	{submitDisabled}
-	onsubmit={() => void handleSubmit()}
+	onsubmit={() => void handleSubmit(batchHeld ? "hold" : "send")}
+	onhold={batchHeld ? undefined : () => void handleSubmit("hold")}
 	oncancel={handleCancel}
 	oninput={scheduleDraftSave}
 >

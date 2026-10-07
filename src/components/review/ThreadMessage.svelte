@@ -6,18 +6,27 @@
 import type { Snippet } from "svelte";
 import type { Channel } from "../../lib/types.js";
 import MessageAvatar from "./MessageAvatar.svelte";
+import StatePill from "./StatePill.svelte";
 import ThreadAuthor from "./ThreadAuthor.svelte";
 
 interface Props {
 	channel: Channel;
 	createdAt: number;
+	/** Held in the review's batch, which the agent cannot read until it is sent. */
+	pending?: boolean;
 	/** Controls drawn at the end of the author line, such as edit and delete,
 	 *  which fade in under the pointer or focus and hold their width at rest. */
 	actions?: Snippet;
 	children: Snippet;
 }
 
-let { channel, createdAt, actions, children }: Props = $props();
+let {
+	channel,
+	createdAt,
+	pending = false,
+	actions,
+	children,
+}: Props = $props();
 </script>
 
 <div
@@ -28,6 +37,9 @@ let { channel, createdAt, actions, children }: Props = $props();
 	<div class="flex min-w-0 flex-col gap-1">
 		<div class="flex min-w-0 items-center gap-2">
 			<ThreadAuthor {channel} {createdAt} />
+			{#if pending}
+				<StatePill state="pending" />
+			{/if}
 			<span class="flex-1"></span>
 			{#if actions}
 				<span

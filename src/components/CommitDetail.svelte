@@ -237,6 +237,7 @@ let commitNotes = $derived(
 			commitOid={commitDetail.oid}
 			{reviewFilter}
 			{activeReviewId}
+			batchHeld={(reviewComments?.activeReview?.pending_count ?? 0) > 0}
 			{editorSessionForThread}
 			{editorDraftFor}
 		/>

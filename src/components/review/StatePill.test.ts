@@ -26,6 +26,12 @@ describe("StatePill", () => {
 		});
 	});
 
+	it("labels a held comment as Pending", () => {
+		render(StatePill, { props: { state: "pending" } });
+
+		expect(screen.getByText("Pending")).toBeInTheDocument();
+	});
+
 	it("labels the stale marker as Stale", () => {
 		render(StatePill, { props: { state: "stale" } });
 		expect(screen.getByText("Stale")).toBeInTheDocument();

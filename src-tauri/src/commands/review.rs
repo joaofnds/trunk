@@ -353,6 +353,10 @@ pub struct RenderedThread {
     /// Held in the review's batch: the agent cannot read it until the user
     /// sends the batch, which the reply field's placeholder tells the user.
     pub pending: bool,
+    /// Whether the thread's review holds a batch, which every comment the user
+    /// adds to it joins until they send it, so the card offers no way to send
+    /// a reply alone.
+    pub batch_held: bool,
     // The states a UI gesture may legally move this thread to, in the order
     // the card presents them — `ThreadState::allowed_transitions` for
     // `Channel::Human`, precomputed here so the card never re-derives the
@@ -415,6 +419,7 @@ impl RenderedThread {
         t: threads::Thread,
         replies: Vec<replies::Reply>,
         history: Vec<trunk_review::reviewdb::history::StateChange>,
+        batch_held: bool,
     ) -> Self {
         let text_html = crate::commands::markdown::render_comment_text(&t.text);
         let excerpt_spans = excerpt_spans(&t);
@@ -431,6 +436,7 @@ impl RenderedThread {
             stale: t.stale,
             channel: t.channel,
             pending: t.pending,
+            batch_held,
             allowed_transitions: t
                 .state
                 .allowed_transitions(trunk_review::types::Channel::Human),
@@ -465,11 +471,15 @@ pub fn list_threads_inner(
             threads::list_with_replies(conn, &review_id, trunk_review::types::Channel::Human)?;
         let ids: Vec<String> = listed.iter().map(|(t, _)| t.id.clone()).collect();
         let mut histories = trunk_review::reviewdb::history::list_for_threads(conn, &ids)?;
+        let batch_held = listed
+            .iter()
+            .any(|(t, replies)| t.pending || replies.iter().any(|r| r.pending));
+
         Ok(listed
             .into_iter()
             .map(|(t, replies)| {
                 let history = histories.remove(&t.id).unwrap_or_default();
-                RenderedThread::from_thread(t, replies, history)
+                RenderedThread::from_thread(t, replies, history, batch_held)
             })
             .collect())
     })

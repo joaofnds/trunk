@@ -1000,22 +1000,88 @@ describe("ThreadCard", () => {
 		).not.toBeInTheDocument();
 	});
 
-	it("tells the reviewer the agent sees a reply on a held thread only once the batch is sent", () => {
-		renderCard({ thread: { ...comment, pending: true } });
+	it("holds a reply in a new batch from Start a batch", async () => {
+		renderCard();
+		await fireEvent.input(screen.getByLabelText("Reply"), {
+			target: { value: "on it" },
+		});
 
-		expect(screen.getByLabelText("Reply")).toHaveAttribute(
-			"placeholder",
-			"Reply… (the agent sees this once you send the batch)",
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Start a batch" }),
 		);
+
+		expect(callArgs("add_reply")).toEqual({
+			path: "/repo",
+			threadId: "c1",
+			text: "on it",
+			delivery: "hold",
+		});
 	});
 
-	it("drops the caveat on a sent thread", () => {
-		renderCard({ thread: { ...comment, pending: false } });
+	describe("when its review holds a batch", () => {
+		const batched = { ...comment, batch_held: true };
 
-		expect(screen.getByLabelText("Reply")).toHaveAttribute(
-			"placeholder",
-			"Reply…",
-		);
+		it("adds a reply to the batch instead of sending it", async () => {
+			renderCard({ thread: batched });
+			await fireEvent.input(screen.getByLabelText("Reply"), {
+				target: { value: "on it" },
+			});
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Add to batch" }),
+			);
+
+			expect(callArgs("add_reply")).toEqual({
+				path: "/repo",
+				threadId: "c1",
+				text: "on it",
+				delivery: "hold",
+			});
+		});
+
+		it("offers no way to send a reply alone", async () => {
+			renderCard({ thread: batched });
+
+			await fireEvent.input(screen.getByLabelText("Reply"), {
+				target: { value: "on it" },
+			});
+
+			expect(screen.queryByRole("button", { name: "Reply" })).toBeNull();
+			expect(
+				screen.queryByRole("button", { name: "Start a batch" }),
+			).toBeNull();
+		});
+	});
+
+	it("marks a held comment Pending", () => {
+		renderCard({ thread: { ...comment, pending: true, batch_held: true } });
+
+		expect(screen.getByText("Pending")).toBeInTheDocument();
+	});
+
+	it("marks only the held reply Pending", () => {
+		renderCard({
+			thread: {
+				...comment,
+				batch_held: true,
+				replies: [
+					aReply({ id: "r1", text_html: "<p>sent</p>", pending: false }),
+					aReply({ id: "r2", text_html: "<p>held</p>", pending: true }),
+				],
+			},
+		});
+
+		const pending = screen.getAllByText("Pending");
+		expect(pending).toHaveLength(1);
+		expect(pending[0]?.closest(".thread-reply")).toHaveTextContent("held");
+	});
+
+	it("marks nothing Pending once its batch is sent", () => {
+		renderCard({
+			thread: { ...comment, replies: [aReply({ id: "r1", text: "sent" })] },
+		});
+
+		expect(screen.queryByText("Pending")).toBeNull();
 	});
 
 	it("submits the typed reply via addReply with the repo path and clears the composer", async () => {

@@ -129,7 +129,11 @@ async function saveReplyEdit() {
 					<ThreadEvent change={entry.change} />
 				{:else}
 					{@const reply = entry.reply}
-					<ThreadMessage channel={reply.channel} createdAt={reply.created_at}>
+					<ThreadMessage
+						channel={reply.channel}
+						createdAt={reply.created_at}
+						pending={reply.pending}
+					>
 						{#snippet actions()}
 							{#if reply.channel === "human" && editingReplyId !== reply.id}
 								<RowAction

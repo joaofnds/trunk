@@ -20,6 +20,8 @@ interface Props {
 	submitLabel: string;
 	submitDisabled: boolean;
 	onsubmit: () => void;
+	/** Holds the comment in a new batch, offered while the review holds none. */
+	onhold?: () => void;
 	oncancel: () => void;
 	oninput?: () => void;
 	/** What Escape does in the text; nothing when absent. */
@@ -43,6 +45,7 @@ let {
 	submitLabel,
 	submitDisabled,
 	onsubmit,
+	onhold,
 	oncancel,
 	oninput,
 	onescape,
@@ -80,6 +83,7 @@ const headingId = $props.id();
 		{submitLabel}
 		{submitDisabled}
 		{onsubmit}
+		{onhold}
 		{oncancel}
 		{oninput}
 		{onescape}

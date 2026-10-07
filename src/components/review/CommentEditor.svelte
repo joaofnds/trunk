@@ -24,6 +24,9 @@ interface Props {
 	submitDisabled: boolean;
 	busy?: boolean;
 	onsubmit: () => void;
+	/** Holds the comment in a new batch rather than sending it, offered beside
+	 *  submit while the review holds no batch. */
+	onhold?: () => void;
 	oncancel: () => void;
 	oninput?: () => void;
 	/** What Escape does in the text; without it Escape lets go of the focus. */
@@ -46,6 +49,7 @@ let {
 	submitDisabled,
 	busy = false,
 	onsubmit,
+	onhold,
 	oncancel,
 	oninput,
 	onescape,
@@ -245,6 +249,11 @@ function onpaste(event: ClipboardEvent) {
 				<Button size="sm" variant="ghost" disabled={busy} onclick={oncancel}
 					>Cancel</Button
 				>
+				{#if onhold}
+					<Button size="sm" disabled={submitDisabled} onclick={onhold}
+						>Start a batch</Button
+					>
+				{/if}
 				<Button
 					size="sm"
 					variant="primary"
