@@ -1,6 +1,7 @@
-//! Repository discovery and id resolution for the review verbs: finding the
-//! canonical repo root the store keys by, and resolving a user-typed id
-//! against the published rows the CLI may serve (§5.1).
+//! Repository discovery and id resolution for the review verbs.
+//!
+//! Finds the canonical repo root the store keys by, and resolves a user-typed
+//! id against the rows the CLI may serve, those visible to the agent (§5.1).
 
 use std::path::PathBuf;
 use trunk_git::error::TrunkError;
@@ -43,10 +44,10 @@ pub(crate) fn discover_repo(repo: Option<PathBuf>) -> Result<PathBuf, TrunkError
     std::fs::canonicalize(workdir).map_err(|e| TrunkError::new("io", e.to_string()))
 }
 
-/// Resolve `raw` against this repo's published-review *threads*, with the
-/// same exact-or-unique-prefix rule and the same no-leak posture as
-/// `published_review`: an unsent review's thread answers as missing.
-pub(crate) fn published_thread(
+/// Resolve `raw` against the *threads* visible to the agent in this repo, with
+/// the same exact-or-unique-prefix rule and the same no-leak posture as
+/// `visible_review`: a held, unsent or archived thread answers as missing.
+pub(crate) fn visible_thread(
     store: &trunk_review::reviewdb::Store,
     canonical: &std::path::Path,
     raw: &str,
@@ -70,30 +71,30 @@ pub(crate) fn published_thread(
     resolve_unique(candidates, |t| &t.id, raw, "thread")
 }
 
-/// Resolve `raw` against this repo's *published* reviews only: exact id, or a
+/// Resolve `raw` against this repo's reviews *visible to the agent* only: exact id, or a
 /// prefix matching exactly one. Anything else, whether missing, unsent, archived,
 /// or another repo's, answers with one identical `not_found`, and ambiguity is
-/// judged after the published filter, so an unpublished review's existence
+/// judged after the visibility filter, so a hidden review's existence
 /// never leaks, not even through a prefix collision (§5.1).
-pub(crate) fn published_review(
+pub(crate) fn visible_review(
     store: &trunk_review::reviewdb::Store,
     canonical: &std::path::Path,
     raw: &str,
 ) -> Result<trunk_review::reviewdb::reviews::Review, TrunkError> {
-    let published: Vec<trunk_review::reviewdb::reviews::Review> = store
+    let visible: Vec<trunk_review::reviewdb::reviews::Review> = store
         .read(|conn| trunk_review::reviewdb::reviews::list(conn, canonical))?
         .into_iter()
         .filter(|review| review.visible_to_agent)
         .collect();
 
-    resolve_unique(published, |r| &r.id, raw, "review")
+    resolve_unique(visible, |r| &r.id, raw, "review")
 }
 
 /// Exact id, or a prefix matching exactly one candidate (Crockford
 /// normalization, like the app's `ids::resolve_prefix`). The candidate list
 /// is already scoped and filtered by the caller, so ambiguity and misses are
 /// judged only over what the CLI may serve — that scoping is what keeps an
-/// unpublished review from leaking even through a prefix collision.
+/// hidden review from leaking even through a prefix collision.
 pub(crate) fn resolve_unique<T>(
     candidates: Vec<T>,
     id_of: impl Fn(&T) -> &str,
@@ -157,7 +158,7 @@ mod tests {
 
     #[test]
     fn a_prefix_matching_two_candidates_is_ambiguous_not_a_silent_pick() {
-        // Ambiguity is judged after the caller's published filter, so this
+        // Ambiguity is judged after the caller's visibility filter, so this
         // arm is what stops a colliding prefix from resolving to whichever
         // row the store happened to return first.
         let err = resolve(&["3F7K2QAB", "3F7K9ZZZ"], "3F7").unwrap_err();

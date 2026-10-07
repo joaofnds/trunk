@@ -31,9 +31,9 @@ use trunk_git::error::TrunkError;
 pub struct RenderInput {
     pub review_id: String,
     pub title: String,
-    /// The binary answering the four review verbs — `current_exe()` at
-    /// generation time (§5.5), `Some` only for a published review: the CLI
-    /// cannot serve an unsent one, so its doc omits the instructions
+    /// The binary answering the four review verbs: `current_exe()` at
+    /// generation time (§5.5), `Some` only for a review visible to the agent.
+    /// The CLI cannot serve an unsent or archived one, so its doc omits the instructions
     /// (criterion 11). The path is the caller's fact, like the two below:
     /// the renderer stays pure.
     pub cli_binary: Option<PathBuf>,

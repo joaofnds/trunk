@@ -10,7 +10,7 @@ use trunk_git::error::TrunkError;
 use trunk_review::reviewdb::{self, reviews};
 use trunk_review::types::{Channel, ThreadState};
 
-/// One markdown bullet per published review, in the store's list order.
+/// One markdown bullet per review visible to the agent, in the store's list order.
 /// Unsent and archived reviews are absent by contract: the CLI does not
 /// serve them, and their existence must not leak (§5.1).
 pub(crate) fn render_list(listed: &[reviews::Review]) -> String {

@@ -7,7 +7,7 @@
 //! (D13). Discovery must canonicalize exactly like the app
 //! (`std::fs::canonicalize`) or the `repo_path` keys miss.
 
-use crate::cli::lookup::{RepoPaths, discover_repo, published_review, published_thread};
+use crate::cli::lookup::{RepoPaths, discover_repo, visible_review, visible_thread};
 use clap::Subcommand;
 use std::io::Write;
 use std::path::PathBuf;
@@ -17,7 +17,7 @@ use trunk_review::types::{Channel, Delivery, ThreadState};
 
 #[derive(Subcommand, Debug, PartialEq, Eq)]
 pub enum ReviewCmd {
-    /// Every published review in this repository
+    /// Every review in this repository that you can read
     List {
         #[arg(long, value_name = "PATH")]
         repo: Option<PathBuf>,
@@ -52,7 +52,7 @@ pub enum ReviewCmd {
         #[arg(long, value_name = "PATH")]
         repo: Option<PathBuf>,
     },
-    /// Block and stream changes to the repo's published reviews
+    /// Block and stream changes to the reviews you can read
     Watch {
         #[arg(long, value_name = "PATH")]
         repo: Option<PathBuf>,
@@ -173,7 +173,7 @@ pub fn run(cmd: ReviewCmd, identifier: &str, out: &mut dyn Write) -> Result<(), 
     }
 }
 
-/// Every published review in the repository, one per line.
+/// Every review visible to the agent in the repository, one per line.
 fn list(
     store: &reviewdb::Store,
     canonical: PathBuf,
@@ -185,14 +185,14 @@ fn list(
         .map_err(|e| TrunkError::new("io", e.to_string()))
 }
 
-/// One published review rendered as its full markdown document.
+/// One review visible to the agent, rendered as its full markdown document.
 fn show(
     store: &reviewdb::Store,
     canonical: PathBuf,
     id: &str,
     out: &mut dyn Write,
 ) -> Result<(), TrunkError> {
-    let review = published_review(store, &canonical, id)?;
+    let review = visible_review(store, &canonical, id)?;
     let paths = RepoPaths::of(&canonical);
 
     let doc = trunk_review::doc::render_review_doc(
@@ -206,7 +206,7 @@ fn show(
     write!(out, "{doc}").map_err(|e| TrunkError::new("io", e.to_string()))
 }
 
-/// Append an agent reply to a published thread.
+/// Append an agent reply to a thread visible to the agent.
 fn reply(
     store: &reviewdb::Store,
     canonical: PathBuf,
@@ -214,7 +214,7 @@ fn reply(
     text: ReplyText,
     out: &mut dyn Write,
 ) -> Result<(), TrunkError> {
-    let thread = published_thread(store, &canonical, id)?;
+    let thread = visible_thread(store, &canonical, id)?;
 
     let body = match text {
         ReplyText::Inline(s) => s,
@@ -252,7 +252,7 @@ fn read_stdin() -> Result<String, TrunkError> {
     Ok(buf)
 }
 
-/// Claim a published thread as addressed, on the agent channel.
+/// Claim a visible thread as addressed, on the agent channel.
 fn address(
     store: &reviewdb::Store,
     canonical: PathBuf,
@@ -260,7 +260,7 @@ fn address(
     commit: Option<&str>,
     out: &mut dyn Write,
 ) -> Result<(), TrunkError> {
-    let thread = published_thread(store, &canonical, id)?;
+    let thread = visible_thread(store, &canonical, id)?;
     let commit = commit
         .map(|rev| resolve_commit(&canonical, rev))
         .transpose()?;
@@ -295,7 +295,7 @@ fn resolve_commit(repo: &std::path::Path, rev: &str) -> Result<String, TrunkErro
     Ok(commit.id().to_string())
 }
 
-/// A published review's threads, optionally narrowed to one state.
+/// A visible review's threads, optionally narrowed to one state.
 fn threads(
     store: &reviewdb::Store,
     canonical: PathBuf,
@@ -304,7 +304,7 @@ fn threads(
     json: bool,
     out: &mut dyn Write,
 ) -> Result<(), TrunkError> {
-    let review = published_review(store, &canonical, review)?;
+    let review = visible_review(store, &canonical, review)?;
     let listed = store.read(|conn| {
         trunk_review::reviewdb::threads::list_for_review(conn, &review.id, Channel::Agent)
     })?;
@@ -321,7 +321,7 @@ fn threads(
     write!(out, "{rendered}").map_err(|e| TrunkError::new("io", e.to_string()))
 }
 
-/// One published thread with its replies.
+/// One visible thread with its replies.
 fn thread(
     store: &reviewdb::Store,
     canonical: PathBuf,
@@ -329,7 +329,7 @@ fn thread(
     json: bool,
     out: &mut dyn Write,
 ) -> Result<(), TrunkError> {
-    let thread = published_thread(store, &canonical, id)?;
+    let thread = visible_thread(store, &canonical, id)?;
 
     // Keyed by thread id, and one id went in, so the chain is that one key's
     // value. Draining the map instead would interleave on `HashMap`'s

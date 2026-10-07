@@ -1,11 +1,11 @@
 //! The `watch` verb: blocks on the store's doorbell (`reviewdb::events`) and
-//! streams changes to published reviews through the caller's sink.
+//! streams changes to the reviews visible to the agent through the caller's sink.
 
 use std::io::Write;
 use trunk_git::error::TrunkError;
 use trunk_review::reviewdb;
 
-/// Block on the store's doorbell and stream changes to published reviews.
+/// Block on the store's doorbell and stream changes to the reviews visible to the agent.
 ///
 /// Plain mode writes one review id per changed review; `--json` writes one
 /// self-contained NDJSON event per change with its full data, so a harness
@@ -27,7 +27,7 @@ pub fn watch(
     // Subscribe before the baseline: a commit before the baseline is already
     // inside it, one after leaves a queued ring — no ordering loses a change.
     let events = reviewdb::events::subscribe(store.data_dir())?;
-    let mut seen = published_snapshot(store, canonical)?;
+    let mut seen = agent_snapshot(store, canonical)?;
 
     // The readiness line: a harness (and the tests) must know the doorbell
     // is bound before mutating, or the change precedes the watch.
@@ -43,7 +43,7 @@ pub fn watch(
                 ));
             }
             reviewdb::events::StoreEvent::Changed { .. } => {
-                let current = published_snapshot(store, canonical)?;
+                let current = agent_snapshot(store, canonical)?;
                 let changes = diff_snapshots(&seen, &current);
 
                 if json {
@@ -229,10 +229,11 @@ mod watch_feed {
 #[cfg(unix)]
 use watch_feed::{ReplySnap, ReviewSnap, Snapshot, ThreadSnap, WatchChange};
 
-/// Everything the events may need to say about this repo's published
-/// reviews. Unsent reviews are excluded, which is the no-leak rule again.
+/// Everything the events may need to say about the reviews the agent was sent
+/// in this repo. Unsent reviews are excluded, which is the no-leak rule again,
+/// and an archived one leaves only a marker.
 #[cfg(unix)]
-fn published_snapshot(
+fn agent_snapshot(
     store: &reviewdb::Store,
     canonical: &std::path::Path,
 ) -> Result<Snapshot, TrunkError> {
@@ -301,7 +302,7 @@ fn published_snapshot(
 }
 
 /// Entity-level diff, ordered by review id, then threads, then replies. A
-/// freshly published review unrolls into its full content — the watcher gets
+/// newly visible review unrolls into its full content, so the watcher gets
 /// everything without a fetch.
 #[cfg(unix)]
 fn diff_snapshots(old: &Snapshot, new: &Snapshot) -> Vec<WatchChange> {

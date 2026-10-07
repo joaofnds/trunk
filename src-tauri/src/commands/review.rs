@@ -172,7 +172,7 @@ pub struct SubmitThreadRequest {
 /// One transaction covers all three writes — create the review, insert the
 /// thread, clear the draft — so a submit either lands whole or not at all. A
 /// partial commit would strand a review with no thread, which is a review the
-/// user can neither publish nor explain.
+/// user can neither send nor explain.
 ///
 /// # Errors
 ///
@@ -1360,7 +1360,7 @@ pub async fn seed_review_range<R: Runtime>(
 
         // One transaction: creating the review and seeding it are one gesture, and
         // a failure between them would strand an empty active review the user can
-        // neither publish nor explain.
+        // neither send nor explain.
         let now = trunk_review::reviewdb::now_secs();
         // A range walks real history, so subjects are plain summaries — no
         // snapshot can appear in it.
