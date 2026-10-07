@@ -1614,6 +1614,14 @@ describe("empty states", () => {
 		expect(callArgs("create_review")).toEqual({ path: "/repo", title: null });
 	});
 
+	it("draws no thread tally for a review without threads", async () => {
+		installReads({ commits, comments: [] });
+		renderPanel();
+		await flush();
+
+		expect(screen.queryByRole("list", { name: "Threads by state" })).toBeNull();
+	});
+
 	it("says the active review is empty and that new comments land in it", async () => {
 		installReads({ commits, comments: [] });
 		renderPanel();

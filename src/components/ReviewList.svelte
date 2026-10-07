@@ -140,7 +140,7 @@ function deletePrompt(review: Review): string {
 					>
 						<span class="flex flex-col gap-1 min-w-0 w-full">
 							<span
-								class="min-w-0 font-medium text-text-strong leading-tight line-clamp-2 whitespace-normal"
+								class="min-w-0 font-medium text-text-strong leading-tight line-clamp-2 whitespace-normal text-balance"
 								>{review.title}</span
 							>
 							<span

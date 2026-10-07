@@ -718,25 +718,30 @@ $effect(() => {
 						? "Published"
 						: "Not visible to the agent"}</span
 				>
-				<span class="text-text-disabled" aria-hidden="true">·</span>
-				<ul aria-label="Threads by state" class="flex gap-3 list-none m-0 p-0">
-					{#each STATE_TALLY as tally (tally.value)}
-						{@const count = comments.filter((t) =>
-							threadMatchesFilter(t, tally.value),
-						).length}
-						{#if count > 0}
-							<li
-								title={THREAD_LABELS[tally.value]}
-								class="inline-flex items-center gap-1 font-mono text-text-muted"
-							>
-								<span class="inline-flex {tally.tone}" aria-hidden="true">
-									<StateGlyph state={tally.value} size={11} />
-								</span>
-								{count}
-							</li>
-						{/if}
-					{/each}
-				</ul>
+				{#if comments.length > 0}
+					<span class="text-text-disabled" aria-hidden="true">·</span>
+					<ul
+						aria-label="Threads by state"
+						class="flex gap-3 list-none m-0 p-0"
+					>
+						{#each STATE_TALLY as tally (tally.value)}
+							{@const count = comments.filter((t) =>
+								threadMatchesFilter(t, tally.value),
+							).length}
+							{#if count > 0}
+								<li
+									title={THREAD_LABELS[tally.value]}
+									class="inline-flex items-center gap-1 font-mono text-text-muted"
+								>
+									<span class="inline-flex {tally.tone}" aria-hidden="true">
+										<StateGlyph state={tally.value} size={11} />
+									</span>
+									{count}
+								</li>
+							{/if}
+						{/each}
+					</ul>
+				{/if}
 				{#if reviewFilter !== "all" && reviewFilter !== "none" && hasAnyComment}
 					<span class="flex-1"></span>
 					<span class="text-accent-strong"
