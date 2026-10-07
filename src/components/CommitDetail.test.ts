@@ -236,6 +236,27 @@ describe("CommitDetail", () => {
 			expect(onnavigate).toHaveBeenCalledWith("newerOid123");
 		});
 
+		it("leaves j and k to the review panel while it claims them", async () => {
+			const onnavigate = vi.fn();
+			render(CommitDetailComponent, {
+				props: {
+					commitDetail: detail,
+					fileDiffs,
+					selectedFile: null,
+					onfileselect: vi.fn(),
+					onclose: vi.fn(),
+					nav,
+					onnavigate,
+					pagerKeys: false,
+				},
+			});
+
+			await fireEvent.keyDown(window, { key: "j" });
+			await fireEvent.keyDown(window, { key: "k" });
+
+			expect(onnavigate).not.toHaveBeenCalled();
+		});
+
 		it.each([
 			{ name: "Cmd+J", key: "j", metaKey: true },
 			{ name: "Cmd+K", key: "k", metaKey: true },

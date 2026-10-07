@@ -589,6 +589,12 @@ let showDiff = $derived(
 		selectedCompareFile !== null ||
 		selectedCurrentFile !== null,
 );
+
+// The review panel claims the center pane until a selection swaps it for the diff.
+const reviewPanelShown = $derived(
+	reviewSession.state.reviewActive &&
+		!(reviewSession.state.rightPaneMode === "diff" && showDiff),
+);
 let showMergeEditor = $derived(selectedFile?.kind === "conflicted");
 
 // The diffs to display: filtered commit file diff, staging diff, or the whole
@@ -2247,7 +2253,7 @@ function stepRightPane(delta: number) {
 				onmousedown={startLeftResize}
 			/>
 			<div class="flex-1 overflow-hidden">
-				{#if reviewSession.state.reviewActive && !(reviewSession.state.rightPaneMode === 'diff' && showDiff)}
+				{#if reviewPanelShown}
 					<!-- Review panel claims the center pane (UI-SPEC:133). When the user selects a
              commit/file/ref (or jumps from a comment), rightPaneMode flips to 'diff' and
              the SAME full DiffPanel below renders — with the correct per-source diffKind
@@ -2411,6 +2417,7 @@ function stepRightPane(delta: number) {
 						{treeViewEnabled}
 						ontreeviewtoggle={handleTreeViewToggle}
 						nav={commitNav}
+						pagerKeys={!reviewPanelShown}
 						onnavigate={navigateToCommit}
 					/>
 				{:else if draftLoaded}

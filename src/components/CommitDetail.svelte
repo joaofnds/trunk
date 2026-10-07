@@ -42,6 +42,8 @@ interface Props {
 	ontreeviewtoggle?: () => void;
 	nav?: CommitNav | null;
 	onnavigate?: (oid: string) => void;
+	/** False while the review panel holds the center, whose J and K move between threads. */
+	pagerKeys?: boolean;
 	// The shared comments store, threaded from RepoView so the commit-notes block
 	// and the per-file badges read one source of truth.
 	reviewComments?: ReviewCommentsManager;
@@ -71,6 +73,7 @@ let {
 	ontreeviewtoggle,
 	nav = null,
 	onnavigate,
+	pagerKeys = true,
 	reviewComments,
 	reviewCommentsVisible = false,
 	reviewFilter = "all",
@@ -123,7 +126,7 @@ async function showFileContextMenu(e: MouseEvent, file: FileStatus) {
 // flows without focusing the graph. Vim-style: j = down = older, k = up = newer.
 // Arrow keys are left to CommitGraph's own (container-scoped) handler.
 function handlePaneKeydown(e: KeyboardEvent) {
-	if (!nav) return;
+	if (!nav || !pagerKeys) return;
 	const chord = keyChord(e);
 	if (chord !== "j" && chord !== "k") return;
 	if (focusInEditable(document.activeElement)) return;
