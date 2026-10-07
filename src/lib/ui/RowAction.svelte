@@ -1,5 +1,11 @@
 <script lang="ts" module>
-export type RowActionTone = "subtle" | "muted" | "text" | "success" | "danger";
+export type RowActionTone =
+	| "subtle"
+	| "muted"
+	| "text"
+	| "success"
+	| "danger"
+	| "destructive";
 export type RowActionSize = "target" | "compact";
 </script>
 
@@ -7,7 +13,9 @@ export type RowActionSize = "target" | "compact";
 import type { HTMLButtonAttributes } from "svelte/elements";
 
 interface Props extends Omit<HTMLButtonAttributes, "class" | "style"> {
-	/** The text color the glyph takes; `subtle` for an action a row reveals. */
+	/** The text color the glyph takes; `subtle` for an action a row reveals,
+	 *  `destructive` for a delete that rests subtle and turns danger when
+	 *  pointed at, so a list of them does not shout. */
 	tone?: RowActionTone;
 	/** `target` fills the minimum hit target; `compact` hugs the glyph. */
 	size?: RowActionSize;
@@ -27,11 +35,12 @@ const BASE =
 	"focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent";
 
 const TONES: Record<RowActionTone, string> = {
-	subtle: "text-text-subtle",
-	muted: "text-text-muted",
-	text: "text-text",
+	subtle: "text-text-subtle hover:text-text",
+	muted: "text-text-muted hover:text-text",
+	text: "text-text hover:text-text-strong",
 	success: "text-success",
 	danger: "text-danger",
+	destructive: "text-text-subtle hover:text-danger focus-visible:text-danger",
 };
 
 const SIZES: Record<RowActionSize, string> = {

@@ -440,7 +440,11 @@ async function requestDeleteReply(replyId: string) {
 						: `L${location.start}-L${location.end}`}</span
 				>
 			{/if}
-			<Tag variant="label">{thread.review_id}</Tag>
+			<span
+				class="shrink-0 font-mono text-small text-text-subtle"
+				title="Review {thread.review_id}"
+				>{thread.review_id}</span
+			>
 		{:else if scoped}
 			{#if location === null}
 				<Tag variant="label" dashed
@@ -506,7 +510,7 @@ async function requestDeleteReply(replyId: string) {
 			{#if !thread.published}
 				<RowAction
 					size="compact"
-					tone="danger"
+					tone="destructive"
 					aria-label="Delete comment"
 					onclick={requestDelete}
 				>
@@ -663,13 +667,14 @@ async function requestDeleteReply(replyId: string) {
 	font-family: var(--font-sans);
 	font-size: var(--text-callout);
 }
+/* The keys' thread takes a soft accent edge, so the reply field inside it,
+   which takes the full accent while focused, stays the one bright ring. */
 .comment-card[aria-current="true"] {
-	border-color: var(--color-accent);
-	outline: 1px solid var(--color-accent-border);
+	border-color: var(--color-accent-border);
 }
 .comment-card-range {
 	flex-shrink: 0;
-	color: var(--color-text-muted);
+	color: var(--color-text);
 	font-family: var(--font-mono);
 	font-size: var(--text-small);
 	line-height: var(--text-small--line-height);
@@ -791,7 +796,7 @@ async function requestDeleteReply(replyId: string) {
 	font-family: inherit;
 }
 .reply-field:focus-visible {
-	outline: 1px solid var(--color-accent);
+	outline: none;
 	border-color: var(--color-accent);
 }
 

@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { Snippet } from "svelte";
+import { reviewTitle } from "../../lib/review-title.js";
 import type { Review } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
 import Keycap from "../../lib/ui/Keycap.svelte";
@@ -85,7 +86,7 @@ function onkeydown(event: KeyboardEvent) {
 			Lands in
 			{#if activeReview}
 				<Tag variant="label">{activeReview.id}</Tag>
-				<span class="composer-landing-name">{activeReview.title}</span>
+				<span class="composer-landing-name">{reviewTitle(activeReview)}</span>
 			{:else if activeReviewId}
 				<Tag variant="label">{activeReviewId}</Tag>
 			{:else}

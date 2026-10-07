@@ -32,7 +32,12 @@ import {
 	type ReviewNoteEditorSession,
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
-import { filterThreads, threadMatchesFilter } from "../lib/review-filter.js";
+import {
+	countBadgeThreads,
+	filterThreads,
+	tallyBadgeThreads,
+	threadMatchesFilter,
+} from "../lib/review-filter.js";
 import {
 	type ReviewFile,
 	type ReviewGroup,
@@ -40,6 +45,7 @@ import {
 	reviewSections,
 } from "../lib/review-sections.js";
 import type { ReviewSessionManager } from "../lib/review-session.svelte.js";
+import { reviewTitle } from "../lib/review-title.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommentResolution,
@@ -56,9 +62,11 @@ import Keycap from "../lib/ui/Keycap.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Radio from "../lib/ui/Radio.svelte";
 import BranchChip from "./BranchChip.svelte";
+import CommentBadge from "./CommentBadge.svelte";
 import CommitChip from "./CommitChip.svelte";
 import ComposerFrame from "./review/ComposerFrame.svelte";
 import ReviewEmpty from "./review/ReviewEmpty.svelte";
+import ReviewTitle from "./review/ReviewTitle.svelte";
 import StateGlyph from "./review/StateGlyph.svelte";
 import StatePill, { THREAD_LABELS } from "./review/StatePill.svelte";
 import WaysToComment from "./review/WaysToComment.svelte";
@@ -530,7 +538,7 @@ let renameText = $state("");
 
 function openRename(review: Review) {
 	renaming = review.id;
-	renameText = review.title;
+	renameText = reviewTitle(review);
 }
 
 function renameKeys(event: KeyboardEvent) {
@@ -611,7 +619,7 @@ $effect(() => {
 								truncate
 								title="Click to rename"
 								onclick={() => openRename(shownReview)}
-								>{shownReview.title}</LinkButton
+								><ReviewTitle title={reviewTitle(shownReview)} /></LinkButton
 							>
 						</h1>
 					{/if}
@@ -896,11 +904,10 @@ $effect(() => {
 										>Current file content · HEAD</span
 									>
 								{/if}
-								<span
-									class="shrink-0 text-caption text-text-muted"
-									title="Threads on this commit"
-									>{group.threads.length}</span
-								>
+								<CommentBadge
+									count={countBadgeThreads(group.threads, reviewFilter)}
+									tally={tallyBadgeThreads(group.threads, reviewFilter)}
+								/>
 								<span class="flex-1"></span>
 								{#if group.kind === "commit" && group.commit && reviewFilter !== "none"}
 									{@const oid = group.commit.oid}

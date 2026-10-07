@@ -71,6 +71,36 @@ describe("RowAction", () => {
 		expect(screen.getByRole("button")).toHaveClass(paint);
 	});
 
+	it.each([
+		["subtle", "hover:text-text"],
+		["muted", "hover:text-text"],
+		["text", "hover:text-text-strong"],
+	] as const)("brightens the %s tone under the pointer", (tone, hover) => {
+		render(RowAction, {
+			props: { tone, "aria-label": "Hide topic", children: glyph },
+		});
+
+		expect(screen.getByRole("button")).toHaveClass(hover);
+	});
+
+	it("rests subtle in the destructive tone and turns danger when pointed at", () => {
+		render(RowAction, {
+			props: {
+				tone: "destructive",
+				"aria-label": "Delete comment",
+				children: glyph,
+			},
+		});
+
+		const button = screen.getByRole("button");
+		expect(button).toHaveClass(
+			"text-text-subtle",
+			"hover:text-danger",
+			"focus-visible:text-danger",
+		);
+		expect(button).not.toHaveClass("text-danger");
+	});
+
 	it("reports a click to its caller", async () => {
 		const clicks: MouseEvent[] = [];
 		render(RowAction, {

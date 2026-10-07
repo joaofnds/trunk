@@ -127,7 +127,7 @@ async function saveReplyEdit() {
 						{#if !published}
 							<RowAction
 								size="compact"
-								tone="danger"
+								tone="destructive"
 								aria-label="Delete reply"
 								disabled={replyEditSaving}
 								onclick={() => onreplydelete(reply.id)}

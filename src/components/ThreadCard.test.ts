@@ -470,6 +470,15 @@ describe("ThreadCard", () => {
 			expect(header).not.toHaveTextContent("src/foo.ts");
 		});
 
+		it("sets its review quieter than its lines, as plain text", () => {
+			renderCard({ variant: "inline" });
+
+			const review = screen.getByTitle(`Review ${comment.review_id}`);
+			expect(review).toHaveClass("text-text-subtle");
+			expect(review.tagName).toBe("SPAN");
+			expect(review).not.toHaveClass("border");
+		});
+
 		// With no toggle to open it, a folded card would hide its replies and
 		// its Reopen for good.
 		it.each(["done", "dismissed"] as const)(
@@ -668,12 +677,12 @@ describe("ThreadCard", () => {
 		},
 	);
 
-	it("paints Delete comment in the danger tone", () => {
+	it("keeps Delete comment quiet until it is pointed at", () => {
 		renderCard({ thread: comment });
 
-		expect(screen.getByRole("button", { name: "Delete comment" })).toHaveClass(
-			"text-danger",
-		);
+		const remove = screen.getByRole("button", { name: "Delete comment" });
+		expect(remove).toHaveClass("text-text-subtle", "hover:text-danger");
+		expect(remove).not.toHaveClass("text-danger");
 	});
 
 	it("renders its state actions from allowed_transitions, not from the state", () => {

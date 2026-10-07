@@ -296,8 +296,8 @@ async function handleBranchCreate(values: Record<string, string>) {
 
 .toolbar-badge {
 	position: absolute;
-	top: calc(-3 * var(--u) / 2);
-	right: calc(-3 * var(--u) / 2);
+	top: calc(-2 * var(--u));
+	right: calc(-2 * var(--u));
 	min-width: calc(4 * var(--u));
 	height: calc(4 * var(--u));
 	padding: 0 var(--space-1);
@@ -305,6 +305,9 @@ async function handleBranchCreate(values: Record<string, string>) {
 	align-items: center;
 	justify-content: center;
 	border-radius: var(--radius-pill);
+	/* A ring of the bar's own color parts the badge from a pressed button,
+	   which is painted in the same accent. */
+	box-shadow: 0 0 0 2px var(--color-surface);
 	background: var(--color-accent);
 	color: var(--color-on-accent);
 	font-size: var(--text-caption);

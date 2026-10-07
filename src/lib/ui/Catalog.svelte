@@ -21,7 +21,14 @@ const VARIANTS: ButtonVariant[] = [
 	"warning",
 ];
 const SIZES: ButtonSize[] = ["sm", "md", "lg"];
-const TONES: RowActionTone[] = ["subtle", "muted", "text", "success", "danger"];
+const TONES: RowActionTone[] = [
+	"subtle",
+	"muted",
+	"text",
+	"success",
+	"danger",
+	"destructive",
+];
 const FILES = ["src/main.rs", "src/lib.rs", "Cargo.toml"];
 const REPOS = ["trunk", "dotfiles"];
 const STRATEGIES = ["Fetch", "Fast-forward only", "Pull (rebase)"];

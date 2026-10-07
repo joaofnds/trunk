@@ -105,6 +105,39 @@ describe("ReviewList", () => {
 		).toHaveTextContent("Composing");
 	});
 
+	it("shows an older default title without the id it repeated", async () => {
+		seedReviews([aReview({ title: `Review 2026-08-12 · ${ACTIVE_REVIEW}` })]);
+		await renderList();
+
+		const row = screen.getByRole("button", {
+			name: `Show review ${ACTIVE_REVIEW}`,
+		});
+		expect(within(row).getByText("2026-08-12").parentElement).toHaveTextContent(
+			/^Review 2026-08-12$/,
+		);
+	});
+
+	it("keeps a date in the title on one line", async () => {
+		seedReviews([aReview()]);
+		await renderList();
+
+		expect(screen.getByText("2026-08-12")).toHaveClass("whitespace-nowrap");
+	});
+
+	it("keeps its row actions to their glyphs, leaving the title the width", async () => {
+		seedReviews([aReview()]);
+		await renderList();
+
+		for (const name of [
+			`Rename review ${ACTIVE_REVIEW}`,
+			`Delete review ${ACTIVE_REVIEW}`,
+		]) {
+			expect(screen.getByRole("button", { name })).not.toHaveClass(
+				"min-w-target",
+			);
+		}
+	});
+
 	it("heads the list with the number of reviews", async () => {
 		twoReviews();
 		await renderList();
@@ -322,5 +355,19 @@ describe("ReviewList", () => {
 		await tick();
 
 		expect(screen.getByLabelText("Review title")).toHaveValue(aReview().title);
+	});
+
+	it("opens the title editor on the title as shown", async () => {
+		seedReviews([aReview({ title: `Review 2026-08-12 · ${ACTIVE_REVIEW}` })]);
+		await renderList();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: `Rename review ${ACTIVE_REVIEW}` }),
+		);
+		await tick();
+
+		expect(screen.getByLabelText("Review title")).toHaveValue(
+			"Review 2026-08-12",
+		);
 	});
 });

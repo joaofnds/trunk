@@ -170,7 +170,7 @@ const GAPS: Record<RowVariant, string> = {
 	flush: "ml-2",
 	header: "",
 	band: "gap-1",
-	entry: "ml-4",
+	entry: "ml-2",
 	title: "",
 	divider: "",
 	fill: "",

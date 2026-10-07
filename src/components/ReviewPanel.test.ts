@@ -323,12 +323,12 @@ describe("ReviewPanel", () => {
 
 		const groupA = screen.getByRole("listitem", { name: "Commit aaaaaaa" });
 		expect(
-			within(groupA).getByTitle("Threads on this commit"),
-		).toHaveTextContent("2");
+			within(groupA).getByRole("img", { name: "2 review comments" }),
+		).toBeInTheDocument();
 		const groupB = screen.getByRole("listitem", { name: "Commit bbbbbbb" });
 		expect(
-			within(groupB).getByTitle("Threads on this commit"),
-		).toHaveTextContent("1");
+			within(groupB).getByRole("img", { name: "1 review comment" }),
+		).toBeInTheDocument();
 	});
 
 	// 260531-l02d: an auto-added snapshot with no comments is noise — hide it. An empty
@@ -1732,6 +1732,21 @@ describe("header", () => {
 		);
 		expect(header()).toHaveTextContent(ACTIVE_REVIEW);
 		expect(header()).toHaveTextContent("Ready");
+	});
+
+	it("names a review by an older default title without its id twice", async () => {
+		installReads({
+			commits,
+			comments: THREADS,
+			reviews: [aReview({ title: `Review 2026-08-12 · ${ACTIVE_REVIEW}` })],
+		});
+		renderPanel();
+		await flush();
+
+		expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+			/^Review 2026-08-12$/,
+		);
+		expect(screen.getByText("2026-08-12")).toHaveClass("whitespace-nowrap");
 	});
 
 	describe("renaming from the title", () => {

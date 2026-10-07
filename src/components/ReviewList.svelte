@@ -14,12 +14,14 @@ import {
 	startNewReview,
 } from "../lib/review-actions.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
+import { reviewTitle } from "../lib/review-title.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { Review } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Radio from "../lib/ui/Radio.svelte";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
+import ReviewTitle from "./review/ReviewTitle.svelte";
 import StatePill from "./review/StatePill.svelte";
 
 interface Props {
@@ -43,7 +45,7 @@ let renameText = $state("");
 
 function openRename(review: Review) {
 	renamingId = review.id;
-	renameText = review.title;
+	renameText = reviewTitle(review);
 }
 
 function renameKeys(event: KeyboardEvent) {
@@ -141,7 +143,7 @@ function deletePrompt(review: Review): string {
 						<span class="flex flex-col gap-1 min-w-0 w-full">
 							<span
 								class="min-w-0 font-medium text-text-strong leading-tight line-clamp-2 whitespace-normal text-balance"
-								>{review.title}</span
+								><ReviewTitle title={reviewTitle(review)} /></span
 							>
 							<span
 								class="flex items-center gap-2 min-w-0 font-mono text-caption text-text-subtle"
@@ -159,6 +161,7 @@ function deletePrompt(review: Review): string {
 						</span>
 						{#snippet actions()}
 							<RowAction
+								size="compact"
 								onclick={() => openRename(review)}
 								aria-label="Rename review {review.id}"
 								title="Rename"
@@ -166,7 +169,8 @@ function deletePrompt(review: Review): string {
 								<Pencil size={12} />
 							</RowAction>
 							<RowAction
-								tone="danger"
+								size="compact"
+								tone="destructive"
 								onclick={() => {
 									deleteConfirmingId = review.id;
 								}}
@@ -180,12 +184,12 @@ function deletePrompt(review: Review): string {
 				{/if}
 				{#if deleteConfirmingId === review.id}
 					<fieldset
-						aria-label="Delete {review.title}?"
+						aria-label="Delete {reviewTitle(review)}?"
 						class="review-confirm flex flex-col gap-2 m-0 p-2 rounded text-small leading-normal text-text"
 					>
 						<p class="m-0">
 							Delete
-							<b class="font-semibold text-text-strong">{review.title}</b
+							<b class="font-semibold text-text-strong">{reviewTitle(review)}</b
 							><span>{deletePrompt(review)}</span>
 						</p>
 						<div class="flex justify-end gap-2">
