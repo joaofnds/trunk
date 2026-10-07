@@ -53,10 +53,8 @@ function renameKeys(event: KeyboardEvent) {
 
 function commitRename() {
 	const id = renamingId;
-	const title = renameText.trim();
 	renamingId = null;
-	if (!id || title.length === 0) return;
-	void renameReview(repoPath, id, title);
+	if (id) void renameReview(repoPath, id, renameText);
 }
 
 let deleteConfirmingId = $state<string | null>(null);

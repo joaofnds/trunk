@@ -512,10 +512,8 @@ function renameKeys(event: KeyboardEvent) {
 
 function commitRename() {
 	const id = renaming;
-	const title = renameText.trim();
 	renaming = null;
-	if (!id || title.length === 0) return;
-	void renameReview(repoPath, id, title);
+	if (id) void renameReview(repoPath, id, renameText);
 }
 
 // The owner only refreshes on reviews-changed, but list_session_commits takes

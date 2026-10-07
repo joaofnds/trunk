@@ -32,11 +32,14 @@ export async function startNewReview(
 	}
 }
 
+// A blank title keeps the one the review has.
 export async function renameReview(
 	repoPath: string,
 	reviewId: string,
-	title: string,
+	typed: string,
 ): Promise<void> {
+	const title = typed.trim();
+	if (title.length === 0) return;
 	try {
 		await safeInvoke("rename_review", { path: repoPath, reviewId, title });
 	} catch (e) {

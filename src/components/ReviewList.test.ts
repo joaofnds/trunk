@@ -296,6 +296,22 @@ describe("ReviewList", () => {
 		});
 	});
 
+	it("keeps the title when the edit is left blank", async () => {
+		seedReviews([aReview()]);
+		await renderList();
+
+		await fireEvent.dblClick(
+			screen.getByRole("button", { name: `Show review ${ACTIVE_REVIEW}` }),
+		);
+		await tick();
+		const input = screen.getByLabelText("Review title") as HTMLInputElement;
+		await fireEvent.input(input, { target: { value: "   " } });
+		await fireEvent.blur(input);
+		await flush();
+
+		expect(calledCommands()).not.toContain("rename_review");
+	});
+
 	it("opens the title editor from the row's rename action", async () => {
 		seedReviews([aReview()]);
 		await renderList();
