@@ -2281,17 +2281,22 @@ function stepRightPane(delta: number) {
 				onmousedown={startLeftResize}
 			/>
 			<div class="flex-1 overflow-hidden">
-				{#if reviewPanelShown}
+				{#if reviewMode}
 					<!-- Review panel claims the center pane (UI-SPEC:133). When the user selects a
              commit/file/ref (or jumps from a comment), rightPaneMode flips to 'diff' and
              the SAME full DiffPanel below renders — with the correct per-source diffKind
              and the complete handler set — rather than a separate stripped mount. The old
              diffKind="commit" clone here rendered every review diff (including dirty files
              reached via the panel→diff swap) as a commit diff, which dropped the staging
-             buttons and mis-resolved comment anchors (260531-l02e). Wrapper uses
+             buttons and mis-resolved comment anchors (260531-l02e). The panel stays
+             mounted, hidden, while that diff shows, so closing the diff returns to the
+             thread the jump left from rather than to the top of a fresh panel. Wrapper uses
              height:100% (not flex:1) so the ReviewPanel scroll body has a constrained
              height — its parent .flex-1 is a flex *child* (Phase 72 gap closure). -->
-					<div class="flex flex-col h-full min-h-0 overflow-hidden">
+					<div
+						class="flex flex-col h-full min-h-0 overflow-hidden"
+						hidden={!reviewPanelShown}
+					>
 						<ReviewPanel
 							{repoPath}
 							session={reviewSession}
@@ -2305,10 +2310,14 @@ function stepRightPane(delta: number) {
 							oncommentonfile={openFileFinder}
 							onopenfile={openCurrentFile}
 							headBranch={headBranch ?? null}
-							keysActive={tabActive}
+							shown={reviewPanelShown}
+							keysActive={tabActive && reviewPanelShown}
 							reviewList={reviewListPane}
 						/>
 					</div>
+				{/if}
+				{#if reviewPanelShown}
+				<!-- The review panel above holds the pane. -->
 				{:else if showMergeEditor && selectedFile}
 					<MergeEditor
 						{repoPath}
@@ -2375,6 +2384,7 @@ function stepRightPane(delta: number) {
 						onclose={reviewSession.state.reviewActive
             ? () => { handleDiffClose(); reviewSession.showPanel(); }
             : handleDiffClose}
+						backLabel={reviewMode ? "Review" : null}
 					/>
 				{:else}
 					<CommitGraph

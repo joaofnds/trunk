@@ -70,7 +70,7 @@ interface Props {
 	// drive panel-internal swaps and call the Phase 70 Generate IPC via the rune).
 	session: ReviewSessionManager;
 	// The review session itself: lifecycle state, commits and comments. Owned by
-	// RepoView, which outlives this panel — every jump into a diff destroys it.
+	// RepoView, which outlives this panel: leaving review mode destroys it.
 	reviewComments: ReviewCommentsManager;
 	// Resolvable-comment jump: the host (RepoView) binds this to the review-session
 	// rune's jumpTo, wiring commit/file selection + scroll-to-range.
@@ -98,6 +98,9 @@ interface Props {
 	// Every repo tab keeps its panel mounted, so only the shown tab's panel may
 	// answer the thread keys the window hears.
 	keysActive?: boolean;
+	// False while a diff a jump opened covers the panel, which stays mounted
+	// underneath so it comes back where it was.
+	shown?: boolean;
 	// The reviews list in the pane beside the panel. Focus there, left by
 	// pressing a review, still leaves the thread keys to the panel.
 	reviewList?: HTMLElement | null;
@@ -117,6 +120,7 @@ let {
 	editorSessionForThread,
 	editorNoteSessionFor,
 	keysActive = true,
+	shown = true,
 	reviewList = null,
 }: Props = $props();
 
@@ -228,7 +232,7 @@ function groupLabel(group: ReviewGroup): string {
 
 function openFile(group: ReviewGroup, file: ReviewFile) {
 	if (group.kind === "current") onopenfile?.(file.path);
-	else onJump(file.threads[0]);
+	else jump(file.threads[0]);
 }
 
 function splitPath(path: string): { dir: string; name: string } {
@@ -304,6 +308,28 @@ function focusThreadAt(index: number) {
 	);
 }
 
+// The thread a jump to code leaves from is the one to come back to.
+function jump(thread: Thread) {
+	focusedId = thread.id;
+	onJump(thread);
+}
+
+// Coming back from the diff puts the keys on the thread the jump left from,
+// where its card was, instead of on nothing.
+let wasShown = untrack(() => shown);
+$effect(() => {
+	const returning = shown && !wasShown;
+	wasShown = shown;
+	if (!returning || focusedId === null) return;
+
+	const id = focusedId;
+	void tick().then(() => {
+		const card = cardOf(id);
+		card?.focus({ preventScroll: true });
+		card?.scrollIntoView({ block: "nearest" });
+	});
+});
+
 // Enter on a focused button presses that button; it is not a request to open code.
 function pressesAControl(element: Element | null): boolean {
 	return (
@@ -324,7 +350,9 @@ function keysAreOurs(): boolean {
 }
 
 function threadKeys(event: KeyboardEvent) {
-	if (!keysActive || !keysAreOurs()) return;
+	// A key typed into a field is the field's, wherever focus has since gone.
+	const target = event.target instanceof Element ? event.target : null;
+	if (!keysActive || !keysAreOurs() || focusInEditable(target)) return;
 
 	const chord = keyChord(event);
 	const at = shownThreads.findIndex((thread) => thread.id === focusedId);
@@ -348,7 +376,7 @@ function threadKeys(event: KeyboardEvent) {
 		return;
 	}
 	if (chord === "Enter" && !pressesAControl(document.activeElement)) {
-		if (isJumpable(thread)) onJump(thread);
+		if (isJumpable(thread)) jump(thread);
 		return;
 	}
 	if (chord === "r") {
@@ -562,104 +590,109 @@ $effect(() => {
 	     whether it is the active one, whether the agent can see it, and a tally
 	     of its threads by state. The header stays put while the list scrolls. -->
 	<header class="flex flex-col gap-2 py-3 px-4 shadow-hairline shrink-0">
-		<div class="flex items-center gap-2 min-w-0">
-			{#if shownReview}
-				{#if renaming === shownReview.id}
-					<input
-						bind:value={renameText}
-						onblur={commitRename}
-						onkeydown={renameKeys}
-						aria-label="Review title"
-						class="review-title-field bg-bg text-text-strong border border-accent rounded h-control py-0 px-1 text-title font-semibold"
-					>
-				{:else}
-					<h1
-						class="m-0 min-w-0 truncate text-title font-semibold text-text-strong"
-					>
-						<LinkButton
-							truncate
-							title="Click to rename"
-							onclick={() => openRename(shownReview)}
-							>{shownReview.title}</LinkButton
+		<!-- The actions wrap under a title too long to share the line with them,
+		     rather than squeezing it to a few letters. -->
+		<div class="flex flex-wrap items-center gap-2 min-w-0">
+			<div class="review-title-row flex items-center gap-2 min-w-0">
+				{#if shownReview}
+					{#if renaming === shownReview.id}
+						<input
+							bind:value={renameText}
+							onblur={commitRename}
+							onkeydown={renameKeys}
+							aria-label="Review title"
+							class="review-title-field bg-bg text-text-strong border border-accent rounded h-control py-0 px-1 text-title font-semibold"
 						>
-					</h1>
+					{:else}
+						<h1
+							class="m-0 min-w-0 truncate text-title font-semibold text-text-strong"
+						>
+							<LinkButton
+								truncate
+								title="Click to rename"
+								onclick={() => openRename(shownReview)}
+								>{shownReview.title}</LinkButton
+							>
+						</h1>
+					{/if}
+					<span class="shrink-0 font-mono text-caption text-text-muted"
+						>{shownReview.id}</span
+					>
+					<StatePill state={shownReview.state} />
 				{/if}
-				<span class="shrink-0 font-mono text-caption text-text-muted"
-					>{shownReview.id}</span
-				>
-				<StatePill state={shownReview.state} />
-			{/if}
-			<span class="flex-1"></span>
-			{#if oncommentonfile && reviewFilter !== "none"}
-				<Button
-					size="sm"
-					onclick={oncommentonfile}
-					title="Comment on any tracked file, including one no change touches"
-				>
-					<MessageSquarePlus size={12} />
-					<span>Comment on a file…</span>
-				</Button>
-			{/if}
-			<Button
-				size="sm"
-				onclick={onCopyClick}
-				disabled={unresolvedCount === 0}
-				title={unresolvedCount === 0
-					? "No unresolved threads to copy"
-					: "Copy unresolved threads as a prompt for an agent"}
-			>
-				<Clipboard size={12} />
-				<span>Copy</span>
-			</Button>
-			{#if shownReview && !shownReview.published}
-				<div class="relative" bind:this={endAnchor}>
+			</div>
+			<div class="flex items-center gap-2 ml-auto">
+				{#if oncommentonfile && reviewFilter !== "none"}
 					<Button
 						size="sm"
-						variant="primary"
-						disabled={!hasAnyComment}
-						title={hasAnyComment
+						onclick={oncommentonfile}
+						title="Comment on any tracked file, including one no change touches"
+					>
+						<MessageSquarePlus size={12} />
+						<span>Comment on a file…</span>
+					</Button>
+				{/if}
+				<Button
+					size="sm"
+					onclick={onCopyClick}
+					disabled={unresolvedCount === 0}
+					title={unresolvedCount === 0
+					? "No unresolved threads to copy"
+					: "Copy unresolved threads as a prompt for an agent"}
+				>
+					<Clipboard size={12} />
+					<span>Copy</span>
+				</Button>
+				{#if shownReview && !shownReview.published}
+					<div class="relative" bind:this={endAnchor}>
+						<Button
+							size="sm"
+							variant="primary"
+							disabled={!hasAnyComment}
+							title={hasAnyComment
 							? "Publish to the agent"
 							: "Add at least one thread first"}
-						onclick={() => {
+							onclick={() => {
 							endPopoverOpen = !endPopoverOpen;
 						}}
-					>
-						<Send size={12} />
-						<span>End review</span>
-					</Button>
-					{#if endPopoverOpen}
-						<div class="end-popover">
-							<Dialog
-								variant="anchored"
-								title="Publish {shownReview.id}?"
-								onkeydown={(e) => {
+						>
+							<Send size={12} />
+							<span>End review</span>
+						</Button>
+						{#if endPopoverOpen}
+							<div class="end-popover">
+								<Dialog
+									variant="anchored"
+									title="Publish {shownReview.id}?"
+									onkeydown={(e) => {
 									if (e.key === "Escape") endPopoverOpen = false;
 								}}
-							>
-								<p class="m-0 text-callout leading-normal text-text-muted">
-									The agent will be able to read and reply to
-									{comments.length}
-									{comments.length === 1 ? "thread" : "threads"}. You can keep
-									adding comments. Nothing is deleted.
-								</p>
-								<div class="flex justify-end gap-2">
-									<Button
-										size="sm"
-										variant="ghost"
-										onclick={() => {
+								>
+									<p class="m-0 text-callout leading-normal text-text-muted">
+										The agent will be able to read and reply to
+										{comments.length}
+										{comments.length === 1 ? "thread" : "threads"}. You can keep
+										adding comments. Nothing is deleted.
+									</p>
+									<div class="flex justify-end gap-2">
+										<Button
+											size="sm"
+											variant="ghost"
+											onclick={() => {
 											endPopoverOpen = false;
 										}}
-										>Cancel</Button
-									>
-									<Button size="sm" variant="primary" onclick={publishShown}
-										>End review</Button
-									>
-								</div>
-							</Dialog>
-						</div>
-					{/if}
-				</div>
-			{/if}
+											>Cancel</Button
+										>
+										<Button size="sm" variant="primary" onclick={publishShown}
+											>End review</Button
+										>
+									</div>
+								</Dialog>
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
 		</div>
 		{#if shownReview}
 			<div
@@ -1002,7 +1035,7 @@ $effect(() => {
 		scoped
 		focused={focusedId === comment.id}
 		onfocusrequest={() => (focusedId = comment.id)}
-		onjump={onJump}
+		onjump={jump}
 		jumpable={isJumpable(comment)}
 		orphaned={isOrphan(comment)}
 		orphanLabel={orphanLabel(comment)}
@@ -1011,6 +1044,12 @@ $effect(() => {
 {/snippet}
 
 <style>
+/* The title gives way to the actions only down to a readable width, and past
+   that the actions wrap onto their own row. */
+.review-title-row {
+	flex: 1 1 var(--review-title-min);
+}
+
 /* A branch's section: its head stays in view while its commits scroll under
    it, and each commit's head stays under that. The rail down the left joins a
    commit's node to the threads under it, in the branch's lane colour. */
@@ -1019,7 +1058,9 @@ $effect(() => {
 }
 .review-branch-head {
 	position: sticky;
-	top: 0;
+	/* The body's top padding scrolls threads into view above a head stuck at
+	   its padding edge, so it sticks at the scrollport's edge instead. */
+	top: calc(-1 * var(--space-3));
 	z-index: 4;
 	border-top: 1px solid var(--color-border);
 	box-shadow: var(--shadow-hairline);
@@ -1054,7 +1095,7 @@ $effect(() => {
 }
 .review-group-head {
 	position: sticky;
-	top: var(--bar-h);
+	top: calc(var(--bar-h) - var(--space-3));
 	z-index: 3;
 	box-shadow: var(--shadow-hairline);
 }

@@ -67,8 +67,12 @@ describe("reaching a file no pending change touches", () => {
 			return lines.length > 0 ? lines : null;
 		});
 
+		// The review panel stays mounted, hidden, under the diff, and a hidden
+		// control offers nothing.
 		const commentButtons = [...document.querySelectorAll("button")].filter(
-			(button) => /comment/i.test(button.textContent ?? ""),
+			(button) =>
+				button.closest("[hidden]") === null &&
+				/comment/i.test(button.textContent ?? ""),
 		);
 		expect(commentButtons).toEqual([]);
 	});

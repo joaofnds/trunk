@@ -49,6 +49,12 @@ if (typeof Element.prototype.scrollTo === "undefined") {
 	Element.prototype.scrollTo = () => {};
 }
 
+// jsdom lays nothing out, so it has no scrollIntoView for the review panel to
+// call when it brings back the thread a jump to code left from.
+if (typeof Element.prototype.scrollIntoView === "undefined") {
+	Element.prototype.scrollIntoView = () => {};
+}
+
 // All Tauri module mocks — declared locally for proper vi.mock hoisting
 vi.mock("@tauri-apps/api/core", () => ({
 	invoke: vi.fn().mockResolvedValue(undefined),
@@ -650,7 +656,9 @@ describe("RepoView", () => {
 			expect(leaves).toHaveBeenCalledOnce();
 		});
 
-		it("keeps a collapsed detail pane collapsed through a jump to code", async () => {
+		// One review with one thread on line 1 of a commit's file, so pressing
+		// "Line 1" jumps to code.
+		function reviewWithOneLineThread() {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
 			const commit = makeCommit({ oid: "oid-1", summary: "the commit" });
@@ -696,6 +704,10 @@ describe("RepoView", () => {
 						return base(cmd, args);
 				}
 			});
+		}
+
+		it("keeps a collapsed detail pane collapsed through a jump to code", async () => {
+			reviewWithOneLineThread();
 			const changes = renderWithPanes({
 				rightPaneCollapsed: true,
 				reviewActive: true,
@@ -707,6 +719,21 @@ describe("RepoView", () => {
 			await flush();
 
 			expect(changes).not.toContain("right collapsed false");
+		});
+
+		it("puts focus back on the thread a jump to code left from", async () => {
+			reviewWithOneLineThread();
+			renderWithPanes({ reviewActive: true });
+			await fireEvent.click(
+				await screen.findByRole("button", { name: "Line 1" }),
+			);
+			await flush();
+
+			await fireEvent.click(screen.getByRole("button", { name: "Close diff" }));
+			await flush();
+
+			const threads = screen.getByRole("region", { name: "Review threads" });
+			expect(within(threads).getByRole("article")).toHaveFocus();
 		});
 
 		it("gives the branches back when review mode ends", async () => {

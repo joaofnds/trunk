@@ -28,7 +28,11 @@ let { channel, createdAt, actions, children }: Props = $props();
 		<div class="flex min-w-0 items-center gap-2">
 			<ThreadAuthor {channel} {createdAt} />
 			<span class="flex-1"></span>
-			{@render actions?.()}
+			{#if actions}
+				<span class="thread-message-actions flex items-center gap-2">
+					{@render actions()}
+				</span>
+			{/if}
 		</div>
 		{@render children()}
 	</div>
@@ -37,6 +41,11 @@ let { channel, createdAt, actions, children }: Props = $props();
 <style>
 .thread-message {
 	grid-template-columns: calc(5 * var(--u)) minmax(0, 1fr);
+}
+/* The card header holds its actions a step from the edge, where the message
+   holds its text three; the actions take the header's column. */
+.thread-message-actions {
+	margin-right: calc(-1 * var(--space-2));
 }
 .thread-message-agent {
 	background: color-mix(in oklch, var(--color-accent-alt) 6%, transparent);

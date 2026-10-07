@@ -1,4 +1,5 @@
 <script lang="ts">
+import ChevronLeft from "@lucide/svelte/icons/chevron-left";
 import Code2 from "@lucide/svelte/icons/code-2";
 import Columns2 from "@lucide/svelte/icons/columns-2";
 import Eye from "@lucide/svelte/icons/eye";
@@ -57,6 +58,8 @@ interface Props {
 	ondiscardfile: () => void;
 	oncommentfile: () => void;
 	onclose: () => void;
+	/** Names the view the diff covers, where closing it returns to. */
+	backLabel?: string | null;
 }
 
 let {
@@ -85,6 +88,7 @@ let {
 	ondiscardfile,
 	oncommentfile,
 	onclose,
+	backLabel = null,
 }: Props = $props();
 
 // Rendered prose collapses whitespace by nature, so the invisibles toggle
@@ -128,6 +132,11 @@ const renderedActive = $derived(
 </script>
 
 <div class="toolbar">
+	{#if backLabel !== null}
+		<Button size="sm" variant="ghost" onclick={onclose}>
+			<ChevronLeft size={12} aria-hidden="true" />{backLabel}
+		</Button>
+	{/if}
 	{#if badge !== null}
 		<span
 			data-testid="diff-status-badge"

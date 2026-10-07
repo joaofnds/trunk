@@ -207,6 +207,34 @@ describe("DiffToolbar toggles", () => {
 	});
 });
 
+describe("DiffToolbar way back", () => {
+	it("goes back to where the diff was opened from", async () => {
+		let closes = 0;
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "src/main.rs",
+				backLabel: "Review",
+				onclose: () => {
+					closes += 1;
+				},
+			},
+		});
+
+		await fireEvent.click(screen.getByRole("button", { name: "Review" }));
+
+		expect(closes).toBe(1);
+	});
+
+	it("offers no way back where the diff has nothing behind it", () => {
+		render(DiffToolbar, {
+			props: { ...baseProps, selectedPath: "src/main.rs" },
+		});
+
+		expect(screen.queryByRole("button", { name: "Review" })).toBeNull();
+	});
+});
+
 describe("DiffToolbar word wrap toggle", () => {
 	afterEach(restoreLayout);
 

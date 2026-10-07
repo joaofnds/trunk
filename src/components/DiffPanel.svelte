@@ -69,6 +69,8 @@ interface Props {
 	compareBaseOid?: string | null;
 	selectedPath?: string | null;
 	onclose: () => void;
+	/** Names the view the diff covers, where closing it returns to. */
+	backLabel?: string | null;
 	diffKind?: PanelDiffKind;
 	repoPath?: string;
 	onhunkaction?: (filePath: string) => Promise<void>;
@@ -107,6 +109,7 @@ let {
 	compareBaseOid = null,
 	selectedPath = null,
 	onclose,
+	backLabel = null,
 	diffKind = "commit",
 	repoPath = "",
 	onhunkaction,
@@ -1295,6 +1298,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		ondiscardfile={handleDiscardFile}
 		oncommentfile={handleCommentFile}
 		{onclose}
+		{backLabel}
 	/>
 	{#if prefsLoaded}
 		<DiffViewer

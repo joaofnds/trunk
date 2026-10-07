@@ -52,6 +52,8 @@
 	--dialog-lg-min: calc(105 * var(--u));
 	--dialog-lg-max: calc(160 * var(--u));
 	--dropdown-max-h: calc(96 * var(--u)); /* a dropdown list scrolls past this */
+	/* a review's title keeps this much before the header's actions wrap under it */
+	--review-title-min: calc(60 * var(--u));
 
 	/* ── Surfaces — cool-neutral ramp (oklch, hue 260) ── */
 	--bg-0: oklch(0.08 0.003 260); /* deepest — body, editor & input wells */

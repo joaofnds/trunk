@@ -2593,6 +2593,21 @@ describe("ReviewPanel keyboard", () => {
 		expect(onJump).not.toHaveBeenCalled();
 	});
 
+	it("leaves Enter to the reply field it was typed into", async () => {
+		await aCommitWithANoteAndALineThread();
+		const onJump = vi.fn();
+		renderPanel(onJump);
+		await flush();
+		await press("j");
+		await press("j");
+		const cards = screen.getAllByRole("article");
+		const reply = within(cards[cards.length - 1]).getByLabelText("Reply");
+
+		await fireEvent.keyDown(reply, { key: "Enter" });
+
+		expect(onJump).not.toHaveBeenCalled();
+	});
+
 	it("puts the cursor in the focused thread's reply box with R", async () => {
 		await aCommitWithANoteAndALineThread();
 		renderPanel();

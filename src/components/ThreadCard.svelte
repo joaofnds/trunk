@@ -399,6 +399,7 @@ async function requestDeleteReply(replyId: string) {
 <article
 	class="comment-card comment-card-{variant}"
 	data-thread-id={thread.id}
+	tabindex="-1"
 	aria-current={focused ? "true" : undefined}
 	onpointerdown={onfocusrequest}
 	class:comment-card-resolved={thread.state === "done" ||
@@ -590,6 +591,15 @@ async function requestDeleteReply(replyId: string) {
 				disabled={replySaving}
 				onkeydown={replyKeys}
 			>
+			{#if replyDraft.valid}
+				<Button
+					size="sm"
+					variant="primary"
+					disabled={replySaving}
+					onclick={submitReply}
+					>Reply</Button
+				>
+			{/if}
 			<fieldset
 				class="flex min-w-auto items-center gap-2"
 				aria-label="Thread actions"

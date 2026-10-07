@@ -868,6 +868,28 @@ describe("ThreadCard", () => {
 		});
 	});
 
+	it("sends the typed reply from its Reply button", async () => {
+		renderCard();
+
+		const field = screen.getByLabelText("Reply") as HTMLInputElement;
+		await fireEvent.input(field, { target: { value: "on it" } });
+		await fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+
+		expect(callArgs("add_reply")).toEqual({
+			path: "/repo",
+			threadId: "c1",
+			text: "on it",
+		});
+	});
+
+	it("offers no Reply button before anything is typed", () => {
+		renderCard();
+
+		expect(
+			screen.queryByRole("button", { name: "Reply" }),
+		).not.toBeInTheDocument();
+	});
+
 	it("tells the reviewer the agent sees a reply only once the review ends", () => {
 		renderCard();
 
