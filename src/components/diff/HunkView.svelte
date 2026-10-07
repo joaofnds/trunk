@@ -293,7 +293,7 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 				<ThreadMarker
 					marker={item.marker}
 					width={vd.markerW}
-					oncomment={commentable && isSelectable
+					oncomment={commentable && isSelectable && !(diffKind === 'unstaged' && line.origin === 'Delete')
 						? () => oncommentline?.(item.path, item.hunkIdx, item.lineIdx)
 						: undefined}
 					commentLabel={commentLabel(line)}

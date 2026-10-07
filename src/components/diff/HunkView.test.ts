@@ -433,6 +433,54 @@ describe("HunkView one-click comment", () => {
 		).toBeNull();
 	});
 
+	// The working tree has no old side to anchor to, so the panel refuses a
+	// comment there, and offering one would discard an open draft for nothing.
+	describe("on a removed line", () => {
+		const withRemoval = fileOf("src/main.ts", [
+			{
+				origin: "Delete",
+				content: "removed one",
+				old_lineno: 7,
+				new_lineno: null,
+				spans: [],
+			},
+		]);
+
+		it("offers none in the working tree", () => {
+			render(HunkView, {
+				props: defaultProps({
+					oncommentline: vi.fn(),
+					fileDiffs: [withRemoval],
+					diffKind: "unstaged",
+				}),
+			});
+
+			expect(
+				screen.queryByRole("button", {
+					name: "Comment on removed line 7",
+					hidden: true,
+				}),
+			).toBeNull();
+		});
+
+		it("offers one in a commit", () => {
+			render(HunkView, {
+				props: defaultProps({
+					oncommentline: vi.fn(),
+					fileDiffs: [withRemoval],
+					diffKind: "commit",
+				}),
+			});
+
+			expect(
+				screen.getByRole("button", {
+					name: "Comment on removed line 7",
+					hidden: true,
+				}),
+			).toBeInTheDocument();
+		});
+	});
+
 	it("offers none while the threads are hidden", () => {
 		render(HunkView, {
 			props: defaultProps({ oncommentline: vi.fn(), reviewFilter: "none" }),
