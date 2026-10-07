@@ -1276,7 +1276,7 @@ describe("RepoView", () => {
 			resolveComment([stagingDiff("STALE COMMENT")]);
 			await tick();
 
-			expect(document.querySelector(".composer-textarea")).toBeNull();
+			expect(document.querySelector(".comment-composer textarea")).toBeNull();
 		});
 
 		it("ignores a superseded Comment File read failure", async () => {
@@ -1334,7 +1334,7 @@ describe("RepoView", () => {
 			expect(toasts.items).not.toContainEqual(
 				expect.objectContaining({ message: "stale comment load failed" }),
 			);
-			expect(document.querySelector(".composer-textarea")).toBeNull();
+			expect(document.querySelector(".comment-composer textarea")).toBeNull();
 		});
 
 		it("ignores a stale staging failure while the newest mode is loading", async () => {

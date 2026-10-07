@@ -236,7 +236,7 @@ describe("CommentComposer", () => {
 		});
 
 		expect(screen.getByText(/click a line number to extend/)).toHaveTextContent(
-			"⇧ click a line number to extend · ⌘↵ submit",
+			"⇧ click a line number to extend · ⌘↵ to submit",
 		);
 	});
 

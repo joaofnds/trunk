@@ -765,9 +765,9 @@ describe("CommitDetail", () => {
 		it("submits a note reply via add_reply with the repo path", async () => {
 			renderWithThreads([note]);
 
-			const textarea = screen.getByLabelText("Reply") as HTMLInputElement;
+			const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
 			await fireEvent.input(textarea, { target: { value: "reply text" } });
-			await fireEvent.keyDown(screen.getByLabelText("Reply"), { key: "Enter" });
+			await fireEvent.keyDown(textarea, { key: "Enter", metaKey: true });
 
 			expect(calledCommands()).toContain("add_reply");
 			expect(callArgs("add_reply")).toEqual({

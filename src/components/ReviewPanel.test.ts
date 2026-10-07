@@ -844,9 +844,9 @@ describe("ReviewPanel", () => {
 			});
 			await flush();
 
-			const textarea = screen.getByLabelText("Reply") as HTMLInputElement;
+			const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
 			await fireEvent.input(textarea, { target: { value: "reply text" } });
-			await fireEvent.keyDown(screen.getByLabelText("Reply"), { key: "Enter" });
+			await fireEvent.keyDown(textarea, { key: "Enter", metaKey: true });
 			await flush();
 
 			expect(calledCommands()).toContain("add_reply");

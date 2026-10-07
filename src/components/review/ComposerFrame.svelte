@@ -2,9 +2,9 @@
 import type { Snippet } from "svelte";
 import { reviewTitle } from "../../lib/review-title.js";
 import type { Review } from "../../lib/types.js";
-import Button from "../../lib/ui/Button.svelte";
 import Keycap from "../../lib/ui/Keycap.svelte";
 import Tag from "../../lib/ui/Tag.svelte";
+import CommentEditor from "./CommentEditor.svelte";
 
 interface Props {
 	/** The icon and line naming what the comment is on. */
@@ -51,35 +51,13 @@ let {
 }: Props = $props();
 
 const headingId = $props.id();
-
-// Focus the textarea as soon as the composer mounts (it mounts fresh on each open)
-// so the user can type immediately without clicking into it.
-let textareaEl = $state<HTMLTextAreaElement | null>(null);
-$effect(() => {
-	textareaEl?.focus();
-});
-
-function onkeydown(event: KeyboardEvent) {
-	if (event.key === "Escape" && onescape) {
-		event.preventDefault();
-		onescape();
-		return;
-	}
-	if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
-	event.preventDefault();
-	onsubmit();
-}
 </script>
 
 <!--
 	A comment being written: what it is on, the review it lands in, the text, and
 	the way to submit or abandon it. The host owns what submitting writes.
 -->
-<fieldset
-	class="comment-composer"
-	class:composer-fill={fill}
-	aria-labelledby={headingId}
->
+<fieldset class="comment-composer" aria-labelledby={headingId}>
 	<header class="composer-header">
 		<span class="composer-preview" id={headingId}>{@render heading()}</span>
 		<p class="composer-landing">
@@ -94,38 +72,26 @@ function onkeydown(event: KeyboardEvent) {
 			{/if}
 		</p>
 	</header>
-	<textarea
-		bind:this={textareaEl}
-		class="composer-textarea"
+	<CommentEditor
+		bind:text
+		label="Comment"
 		{placeholder}
-		disabled={busy}
-		bind:value={text}
+		{busy}
+		{submitLabel}
+		{submitDisabled}
+		{onsubmit}
+		{oncancel}
 		{oninput}
-		{onkeydown}
-	></textarea>
-	<footer class="composer-actions">
-		<span class="composer-hint"
-			>{#if extendHint}
+		{onescape}
+		variant={fill ? "fill" : "flush"}
+	>
+		{#snippet hint()}
+			{#if extendHint}
 				<Keycap>⇧</Keycap>
 				click a line number to extend ·{" "}
-			{/if}<Keycap>⌘</Keycap><Keycap>↵</Keycap>
-			submit</span
-		>
-		<span class="flex items-center gap-2 ml-auto">
-			<Button size="sm" variant="ghost" disabled={busy} onclick={oncancel}
-				>Cancel</Button
-			>
-			<Button
-				variant="primary"
-				size="sm"
-				data-testid="comment-submit"
-				disabled={submitDisabled}
-				onclick={onsubmit}
-			>
-				{submitLabel}
-			</Button>
-		</span>
-	</footer>
+			{/if}
+		{/snippet}
+	</CommentEditor>
 </fieldset>
 
 <style>
@@ -185,51 +151,5 @@ function onkeydown(event: KeyboardEvent) {
 	text-overflow: ellipsis;
 	color: var(--color-text);
 	font-weight: var(--weight-medium);
-}
-
-.composer-textarea {
-	height: calc(20 * var(--u));
-	resize: vertical;
-	padding: var(--space-2) var(--space-3);
-	font-size: var(--text-callout);
-	line-height: var(--leading-normal);
-	font-family: var(--font-sans);
-	color: var(--color-text-strong);
-	background: var(--color-bg);
-	border: none;
-	box-sizing: border-box;
-}
-
-.composer-fill .composer-textarea {
-	flex: 1 1 0;
-	height: auto;
-	min-height: 0;
-	resize: none;
-}
-
-.composer-textarea::placeholder {
-	color: var(--color-text-subtle);
-}
-
-.composer-textarea:focus {
-	outline: none;
-}
-
-.composer-actions {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: var(--space-2);
-	padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
-	border-top: 1px solid var(--color-border);
-}
-
-.composer-hint {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: var(--space-1);
-	color: var(--color-text-subtle);
-	font-size: var(--text-small);
 }
 </style>

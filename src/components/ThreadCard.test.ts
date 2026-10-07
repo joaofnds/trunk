@@ -685,13 +685,12 @@ describe("ThreadCard", () => {
 		expect(remove).not.toHaveClass("text-danger");
 	});
 
-	it("draws its reply field at a standard control's height and type, level with its actions", () => {
+	it("rests its reply field on one line beside the thread's actions", () => {
 		renderCard({ thread: comment });
 
-		const field = screen.getByRole("textbox", { name: "Reply" });
-		const done = screen.getByRole("button", { name: "Mark done" });
-		expect(field).toHaveClass("h-control", "text-callout");
-		expect(done).toHaveClass("h-control", "text-callout");
+		expect(screen.getByRole("textbox", { name: "Reply" })).toBeVisible();
+		expect(screen.getByRole("button", { name: "Mark done" })).toBeVisible();
+		expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
 	});
 
 	it("renders its state actions from allowed_transitions, not from the state", () => {
@@ -872,12 +871,12 @@ describe("ThreadCard", () => {
 		);
 	});
 
-	it("sends the typed reply on Enter", async () => {
+	it("sends the typed reply on Cmd+Enter", async () => {
 		renderCard();
 
-		const field = screen.getByLabelText("Reply") as HTMLInputElement;
+		const field = screen.getByLabelText("Reply") as HTMLTextAreaElement;
 		await fireEvent.input(field, { target: { value: "on it" } });
-		await fireEvent.keyDown(field, { key: "Enter" });
+		await fireEvent.keyDown(field, { key: "Enter", metaKey: true });
 
 		expect(callArgs("add_reply")).toEqual({
 			path: "/repo",
@@ -929,9 +928,9 @@ describe("ThreadCard", () => {
 	it("submits the typed reply via addReply with the repo path and clears the composer", async () => {
 		renderCard();
 
-		const textarea = screen.getByLabelText("Reply") as HTMLInputElement;
+		const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
 		await fireEvent.input(textarea, { target: { value: "sounds good" } });
-		await fireEvent.keyDown(textarea, { key: "Enter" });
+		await fireEvent.keyDown(textarea, { key: "Enter", metaKey: true });
 
 		expect(calledCommands()).toContain("add_reply");
 		expect(callArgs("add_reply")).toEqual({
@@ -949,9 +948,9 @@ describe("ThreadCard", () => {
 		});
 		renderCard();
 
-		const textarea = screen.getByLabelText("Reply") as HTMLInputElement;
+		const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
 		await fireEvent.input(textarea, { target: { value: "keep this reply" } });
-		await fireEvent.keyDown(textarea, { key: "Enter" });
+		await fireEvent.keyDown(textarea, { key: "Enter", metaKey: true });
 		await flush();
 
 		expect(textarea).toHaveValue("keep this reply");
@@ -971,7 +970,10 @@ describe("ThreadCard", () => {
 		await fireEvent.input(screen.getByLabelText("Reply"), {
 			target: { value: "reply for first card" },
 		});
-		await fireEvent.keyDown(screen.getByLabelText("Reply"), { key: "Enter" });
+		await fireEvent.keyDown(screen.getByLabelText("Reply"), {
+			key: "Enter",
+			metaKey: true,
+		});
 
 		await view.rerender({
 			thread: comment,

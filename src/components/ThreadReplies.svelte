@@ -10,6 +10,7 @@ import type { Reply } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
+import CommentEditor from "./review/CommentEditor.svelte";
 import MessageAvatar from "./review/MessageAvatar.svelte";
 import ThreadMessage from "./review/ThreadMessage.svelte";
 
@@ -137,29 +138,17 @@ async function saveReplyEdit() {
 						{/if}
 					{/snippet}
 					{#if editingReplyId === reply.id}
-						<textarea
-							bind:value={replyEditDraft.text}
-							rows="2"
-							aria-label="Edit reply"
-							class="card-textarea"
-							disabled={replyEditSaving}
-						></textarea>
-						<div class="flex justify-end gap-2">
-							<Button
-								size="sm"
-								variant="ghost"
-								onclick={cancelReplyEdit}
-								disabled={replyEditSaving}
-								>Cancel</Button
-							>
-							<Button
-								size="sm"
-								variant="primary"
-								onclick={saveReplyEdit}
-								disabled={!replyEditDraft.valid || replyEditSaving}
-								>Save</Button
-							>
-						</div>
+						<CommentEditor
+							bind:text={replyEditDraft.text}
+							label="Edit reply"
+							placeholder="Leave a reply"
+							submitLabel="Save"
+							submitDisabled={!replyEditDraft.valid || replyEditSaving}
+							busy={replyEditSaving}
+							onsubmit={() => void saveReplyEdit()}
+							oncancel={cancelReplyEdit}
+							onescape={cancelReplyEdit}
+						/>
 					{:else}
 						<!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
                (comrak unsafe-off + ammonia); see commands/markdown.rs -->
@@ -176,20 +165,6 @@ async function saveReplyEdit() {
 {/if}
 
 <style>
-/* Inline editor inside a reply: mirrors ThreadCard's own .card-textarea, since
-     Svelte scoped styles don't cross component boundaries. */
-.card-textarea {
-	width: 100%;
-	resize: vertical;
-	background: var(--color-comment-card-bg);
-	color: var(--color-text);
-	border: 1px solid var(--color-accent);
-	border-radius: var(--radius);
-	padding: var(--space-2);
-	font-size: var(--text-callout);
-	font-family: inherit;
-}
-
 .thread-replies-more {
 	box-shadow: inset 0 1px 0 var(--color-border);
 	background: var(--color-surface);

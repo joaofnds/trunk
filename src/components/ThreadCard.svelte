@@ -26,6 +26,7 @@ import Button, { type ButtonVariant } from "../lib/ui/Button.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import Tag from "../lib/ui/Tag.svelte";
+import CommentEditor from "./review/CommentEditor.svelte";
 import StatePill from "./review/StatePill.svelte";
 import ThreadMessage from "./review/ThreadMessage.svelte";
 import ThreadReplies from "./ThreadReplies.svelte";
@@ -290,18 +291,6 @@ function saveEdit() {
 	onedit(thread.id, text);
 }
 
-function editKeys(event: KeyboardEvent) {
-	if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) saveEdit();
-	if (event.key === "Escape") cancelEdit();
-}
-
-function replyKeys(event: KeyboardEvent) {
-	if (event.key === "Enter" && !event.isComposing) submitReply();
-	if (event.key === "Escape" && event.target instanceof HTMLElement) {
-		event.target.blur();
-	}
-}
-
 async function submitReply() {
 	const submittedEditor = editor;
 	const submittedDraft = replyDraft;
@@ -550,23 +539,16 @@ async function requestDeleteReply(replyId: string) {
 		<!-- Comment text stays at full --color-text even when orphaned (D-08). -->
 		<ThreadMessage channel={thread.channel} createdAt={thread.created_at}>
 			{#if draft.editing}
-				<textarea
-					bind:value={draft.text}
-					rows="4"
-					aria-label="Edit comment"
-					class="card-textarea"
-					onkeydown={editKeys}
-				></textarea>
-				<div class="flex justify-end gap-2">
-					<Button size="sm" variant="ghost" onclick={cancelEdit}>Cancel</Button>
-					<Button
-						size="sm"
-						variant="primary"
-						onclick={saveEdit}
-						disabled={!draft.valid}
-						>Save</Button
-					>
-				</div>
+				<CommentEditor
+					bind:text={draft.text}
+					label="Edit comment"
+					placeholder="Leave a comment"
+					submitLabel="Save"
+					submitDisabled={!draft.valid}
+					onsubmit={saveEdit}
+					oncancel={cancelEdit}
+					onescape={cancelEdit}
+				/>
 			{:else if thread.text_html !== undefined}
 				<!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
 	           (comrak unsafe-off + ammonia); see commands/markdown.rs -->
@@ -588,28 +570,22 @@ async function requestDeleteReply(replyId: string) {
 			onreplydelete={requestDeleteReply}
 		/>
 
-		<div class="thread-reply-composer flex items-center gap-2 p-2">
-			<input
-				bind:value={replyDraft.text}
+		<div class="thread-reply-composer flex flex-wrap items-center gap-2 p-2">
+			<CommentEditor
+				bind:text={replyDraft.text}
+				label="Reply"
 				placeholder={thread.published
 					? "Reply…"
 					: "Reply… (the agent sees this once the review ends)"}
-				aria-label="Reply"
-				class="reply-field h-control min-w-0 flex-1 px-2 text-callout"
-				disabled={replySaving}
-				onkeydown={replyKeys}
-			>
-			{#if replyDraft.valid}
-				<Button
-					size="md"
-					variant="primary"
-					disabled={replySaving}
-					onclick={submitReply}
-					>Reply</Button
-				>
-			{/if}
+				submitLabel="Reply"
+				submitDisabled={!replyDraft.valid || replySaving}
+				busy={replySaving}
+				onsubmit={() => void submitReply()}
+				oncancel={() => replyDraft.close()}
+				collapsible
+			/>
 			<fieldset
-				class="flex min-w-auto items-center gap-2"
+				class="ml-auto flex min-w-auto items-center gap-2"
 				aria-label="Thread actions"
 			>
 				{#each stateActions as action (action.next)}
@@ -779,32 +755,16 @@ async function requestDeleteReply(replyId: string) {
 	overflow-wrap: anywhere;
 }
 
-.card-textarea {
-	width: 100%;
-	resize: vertical;
-	background: var(--color-comment-card-bg);
-	color: var(--color-text);
-	border: 1px solid var(--color-accent);
-	border-radius: var(--radius);
-	padding: var(--space-2);
-	font-size: var(--text-callout);
-	font-family: inherit;
-}
-
-/* One line under the replies: the reply field, then the state actions. */
+/* Under the replies: the reply field, then the state actions on the same line
+   while the field rests, and on their own line once it opens to write. */
 .thread-reply-composer {
 	box-shadow: inset 0 1px 0 var(--color-border);
 }
-.reply-field {
-	background: var(--color-bg);
-	color: var(--color-text);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius);
-	font-family: inherit;
+.thread-reply-composer > :global(.comment-editor) {
+	flex: 1 1 0;
 }
-/* The caret shows where the typing goes, so the field draws no ring. */
-.reply-field:focus {
-	outline: none;
+.thread-reply-composer > :global(.comment-editor-open) {
+	flex-basis: 100%;
 }
 
 .thread-delete-bar {
