@@ -523,10 +523,10 @@ describe("Toolbar", () => {
 				onreviewfilterchange,
 			},
 		});
-		const select = screen.getByRole("combobox", {
-			name: "Review filter selection",
-		});
-		await fireEvent.change(select, { target: { value: "done" } });
+		await fireEvent.click(
+			screen.getByRole("combobox", { name: "Review filter selection" }),
+		);
+		await fireEvent.click(screen.getByRole("option", { name: /^Done/ }));
 		expect(onreviewfilterchange).toHaveBeenCalledWith("done");
 	});
 
@@ -542,7 +542,7 @@ describe("Toolbar", () => {
 		});
 		expect(
 			screen.getByRole("combobox", { name: "Review filter selection" }),
-		).toHaveValue("addressed");
+		).toHaveTextContent("Addressed");
 	});
 
 	it("renders the filter selector before the review threads toggle in DOM order", () => {
@@ -710,7 +710,7 @@ describe("Toolbar", () => {
 		expect(onreviewfilterchange).toHaveBeenLastCalledWith("addressed");
 	});
 
-	it("offers every visible thread filter and no hidden state", () => {
+	it("offers every visible thread filter and no hidden state", async () => {
 		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
@@ -721,18 +721,21 @@ describe("Toolbar", () => {
 			},
 		});
 
+		await fireEvent.click(
+			screen.getByRole("combobox", { name: "Review filter selection" }),
+		);
+
 		expect(
-			screen.getAllByRole("option").map((option) => ({
-				label: option.textContent,
-				value: (option as HTMLOptionElement).value,
-			})),
+			screen
+				.getAllByRole("option")
+				.map((option) => option.textContent?.replace(/\s*\d+\s*$/, "").trim()),
 		).toEqual([
-			{ label: "All threads", value: "all" },
-			{ label: "Open", value: "open" },
-			{ label: "Addressed", value: "addressed" },
-			{ label: "Done", value: "done" },
-			{ label: "Dismissed", value: "dismissed" },
-			{ label: "Stale", value: "stale" },
+			"All threads",
+			"Open",
+			"Addressed",
+			"Done",
+			"Dismissed",
+			"Stale",
 		]);
 	});
 });

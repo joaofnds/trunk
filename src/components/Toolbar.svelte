@@ -25,10 +25,6 @@ import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
-import {
-	isValidReviewFilter,
-	REVIEW_FILTER_OPTIONS,
-} from "../lib/review-filter.js";
 import { getScheduler } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { ReviewFilter, ReviewTone, StashEntry } from "../lib/types.js";
@@ -37,6 +33,7 @@ import ButtonGroup from "../lib/ui/ButtonGroup.svelte";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
 import InputDialog from "./InputDialog.svelte";
 import PullDropdown from "./PullDropdown.svelte";
+import ReviewFilterMenu from "./review/ReviewFilterMenu.svelte";
 
 interface Props {
 	repoPath: string;
@@ -55,6 +52,8 @@ interface Props {
 	viewCommentTone?: ReviewTone | null;
 	reviewCommentTone?: ReviewTone | null;
 	onreviewfilterchange?: (filter: ReviewFilter) => void;
+	/** How many threads each filter would show, for its option in the menu. */
+	reviewFilterCounts?: Partial<Record<ReviewFilter, number>>;
 }
 
 let {
@@ -69,6 +68,7 @@ let {
 	viewCommentTone = null,
 	reviewCommentTone = null,
 	onreviewfilterchange,
+	reviewFilterCounts = {},
 }: Props = $props();
 const scheduler = getScheduler();
 let lastVisibleReviewFilter = $state<Exclude<ReviewFilter, "none">>("all");
@@ -315,18 +315,6 @@ async function handleBranchCreate(values: Record<string, string>) {
 .review-filter-select {
 	display: flex;
 	align-items: center;
-	overflow: hidden;
-}
-.review-filter-select select {
-	max-width: calc(23 * var(--u));
-	height: var(--control-h);
-	border: none;
-	border-radius: var(--radius);
-	background: transparent;
-	color: var(--color-text-strong);
-	font: inherit;
-	font-size: var(--text-small);
-	padding: 0 var(--space-2);
 }
 .toolbar-badge.tone-open {
 	background: var(--color-thread-open);
@@ -406,32 +394,13 @@ async function handleBranchCreate(values: Record<string, string>) {
 	<div class="toolbar-group">
 		<ButtonGroup tone={reviewFilter !== "none" ? "accent" : "neutral"}>
 			{#if reviewFilter !== "none"}
-				<label
-					class="review-filter-select"
-					title="Filter review threads"
-					transition:reviewFilterSlide
-				>
-					<span class="sr-only">Review filter</span>
-					<select
-						aria-label="Review filter selection"
-						aria-describedby="review-filter-help"
+				<div class="review-filter-select" transition:reviewFilterSlide>
+					<ReviewFilterMenu
 						value={reviewFilter}
-						onchange={(event) => {
-              const value = (event.currentTarget as HTMLSelectElement).value;
-              if (isValidReviewFilter(value)) onreviewfilterchange?.(value);
-            }}
-					>
-						{#each REVIEW_FILTER_OPTIONS as option (option.value)}
-							<option value={option.value}>{option.label}</option>
-						{/each}
-					</select>
-					<span id="review-filter-help" class="sr-only">
-						All threads shows every card; its badges count only open and
-						addressed threads. Other filters show matching thread states. Use
-						the review threads button to hide review content and creation
-						controls.
-					</span>
-				</label>
+						counts={reviewFilterCounts}
+						onchange={(value) => onreviewfilterchange?.(value)}
+					/>
+				</div>
 			{/if}
 			<Button
 				icon

@@ -37,6 +37,7 @@ import {
 	badgeToneForThread,
 	combineReviewTone,
 	countBadgeThreads,
+	countByFilter,
 } from "../lib/review-filter.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
@@ -138,6 +139,7 @@ interface Props {
 		total: number;
 		viewTone: ReviewTone | null;
 		totalTone: ReviewTone | null;
+		byFilter: Partial<Record<ReviewFilter, number>>;
 	}) => void;
 	onleftpanecollapsedchange: (collapsed: boolean) => void;
 	onrightpanecollapsedchange: (collapsed: boolean) => void;
@@ -813,6 +815,9 @@ let reviewCommentTotal = $derived(
 );
 let reviewCommentTone = $derived(toneForThreads(reviewComments.threads));
 
+// How many threads each filter would show, for the toolbar's filter menu.
+let reviewFilterCounts = $derived(countByFilter(reviewComments.threads));
+
 // Report both counts up through untrack: App's setCommentCounts copies the
 // counts map (`new Map(commentCounts)`) before writing it, so calling the
 // callback inside a tracked effect would make this effect depend on the very
@@ -824,7 +829,10 @@ $effect(() => {
 	const total = reviewCommentTotal;
 	const viewTone = inlineCommentTone;
 	const totalTone = reviewCommentTone;
-	untrack(() => oncommentcountschange?.({ view, total, viewTone, totalTone }));
+	const byFilter = reviewFilterCounts;
+	untrack(() =>
+		oncommentcountschange?.({ view, total, viewTone, totalTone, byFilter }),
+	);
 });
 
 $effect(() => {

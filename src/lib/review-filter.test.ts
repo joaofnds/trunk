@@ -4,6 +4,7 @@ import {
 	badgeToneForThread,
 	combineReviewTone,
 	countBadgeThreads,
+	countByFilter,
 	filterThreads,
 	tallyBadgeThreads,
 	threadMatchesFilter,
@@ -78,5 +79,24 @@ describe("tallyBadgeThreads", () => {
 
 	it("counts nothing under Hide all", () => {
 		expect(tallyBadgeThreads(threads, "none")).toEqual({});
+	});
+});
+
+describe("countByFilter", () => {
+	it("counts how many threads each visible filter would show", () => {
+		const threads = [
+			aThread({ id: "o1", state: "open" }),
+			aThread({ id: "o2", state: "open", stale: true }),
+			aThread({ id: "d1", state: "done" }),
+		];
+
+		expect(countByFilter(threads)).toEqual({
+			all: 3,
+			open: 2,
+			addressed: 0,
+			done: 1,
+			dismissed: 0,
+			stale: 1,
+		});
 	});
 });

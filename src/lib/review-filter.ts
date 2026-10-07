@@ -64,6 +64,19 @@ export function countBadgeThreads(
 	return count;
 }
 
+/** How many threads each filter the reader can pick would show. */
+export function countByFilter(
+	threads: Thread[],
+): Partial<Record<ReviewFilter, number>> {
+	return Object.fromEntries(
+		REVIEW_FILTER_OPTIONS.map((option) => [
+			option.value,
+			threads.filter((thread) => threadMatchesFilter(thread, option.value))
+				.length,
+		]),
+	);
+}
+
 /** The threads that receive a count pill for a filter, counted by tone. */
 export function tallyBadgeThreads(
 	threads: Thread[],

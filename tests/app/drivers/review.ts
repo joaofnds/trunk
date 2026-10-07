@@ -1,6 +1,7 @@
+import { REVIEW_FILTER_OPTIONS } from "../../../src/lib/review-filter.js";
 import type { ReviewFilter } from "../../../src/lib/types.js";
 import { waitFor } from "../harness/wait.js";
-import { enabledButton } from "./dom.js";
+import { enabledButton, firstMatching } from "./dom.js";
 
 const REVIEW_FILTER = '[aria-label="Review filter selection"]';
 const REVIEW = '[aria-label="Review"]';
@@ -54,6 +55,12 @@ const COMMIT_NOTE_TEXT = 'textarea[placeholder="Leave a note on this commit…"]
  * until the review has a comment. jsdom dispatches no click on a disabled
  * button, so a gesture issued early does nothing, quietly.
  */
+function filterLabel(filter: ReviewFilter): string {
+	const option = REVIEW_FILTER_OPTIONS.find((o) => o.value === filter);
+	if (!option) throw new Error(`no filter option for ${filter}`);
+	return option.label;
+}
+
 export class ReviewDriver {
 	/** Selects a review-thread presentation and waits for its visible effect. */
 	async showReviewFilter(
@@ -82,20 +89,23 @@ export class ReviewDriver {
 		showToggle?.click();
 
 		const filter = await waitFor("the review filter", () =>
-			selectEnabled(REVIEW_FILTER),
+			document.querySelector<HTMLElement>(REVIEW_FILTER),
 		);
 
-		if (filter.value !== filterValue) {
-			filter.value = filterValue;
-			filter.dispatchEvent(new Event("change", { bubbles: true }));
+		if (this.reviewFilter() !== filterValue) {
+			const label = filterLabel(filterValue);
+			filter.click();
+			const option = await waitFor(`the ${label} filter option`, () =>
+				firstMatching('[role="option"]', (text) => text.startsWith(label)),
+			);
+			option.click();
 		}
 
-		await waitFor(`the review filter to become ${filterValue}`, () => {
-			const current = document.querySelector<HTMLSelectElement>(REVIEW_FILTER);
-			return current?.value === filterValue && observePresentation()
+		await waitFor(`the review filter to become ${filterValue}`, () =>
+			this.reviewFilter() === filterValue && observePresentation()
 				? true
-				: null;
-		});
+				: null,
+		);
 	}
 
 	/** Presses the header's Show all, which hands the toolbar's selector back
@@ -113,8 +123,10 @@ export class ReviewDriver {
 
 	/** The toolbar selector's current review filter, or null while it is hidden. */
 	reviewFilter(): string | null {
+		const shown = document.querySelector(REVIEW_FILTER)?.textContent?.trim();
 		return (
-			document.querySelector<HTMLSelectElement>(REVIEW_FILTER)?.value ?? null
+			REVIEW_FILTER_OPTIONS.find((option) => option.label === shown)?.value ??
+			null
 		);
 	}
 
@@ -656,12 +668,6 @@ function textIn(card: HTMLElement, selector: string): string {
 
 function enabled(selector: string): HTMLButtonElement | null {
 	const control = visibleElement<HTMLButtonElement>(selector);
-
-	return control && !control.disabled ? control : null;
-}
-
-function selectEnabled(selector: string): HTMLSelectElement | null {
-	const control = document.querySelector<HTMLSelectElement>(selector);
 
 	return control && !control.disabled ? control : null;
 }

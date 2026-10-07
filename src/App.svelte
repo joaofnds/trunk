@@ -92,6 +92,7 @@ let commentCounts = $state<
 			total: number;
 			viewTone: ReviewTone | null;
 			totalTone: ReviewTone | null;
+			byFilter: Partial<Record<ReviewFilter, number>>;
 		}
 	>
 >(new Map());
@@ -103,6 +104,7 @@ function setCommentCounts(
 		total: number;
 		viewTone: ReviewTone | null;
 		totalTone: ReviewTone | null;
+		byFilter: Partial<Record<ReviewFilter, number>>;
 	},
 ) {
 	const next = new Map(commentCounts);
@@ -144,6 +146,9 @@ const activeInlineCommentTone = $derived(
 );
 const activeReviewCommentTone = $derived(
 	commentCounts.get(activeTabId)?.totalTone ?? null,
+);
+const activeReviewFilterCounts = $derived(
+	commentCounts.get(activeTabId)?.byFilter ?? {},
 );
 
 // Drop counts for closed tabs so the per-tab map can't grow unbounded across a
@@ -759,6 +764,7 @@ $effect(() => {
 				reviewCommentCount={activeReviewCommentCount}
 				viewCommentTone={activeInlineCommentTone}
 				reviewCommentTone={activeReviewCommentTone}
+				reviewFilterCounts={activeReviewFilterCounts}
 				onreviewfilterchange={handleReviewFilterChange}
 			/>
 		{/if}

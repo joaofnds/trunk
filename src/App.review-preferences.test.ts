@@ -26,6 +26,7 @@ import { restoreLayout, stubLayout } from "./__tests__/helpers/layout-stub.js";
 import { aSessionCommit } from "./__tests__/helpers/session-commit-fixture.js";
 import { aReply, aThread } from "./__tests__/helpers/thread-fixture.js";
 import App from "./App.svelte";
+import { REVIEW_FILTER_OPTIONS } from "./lib/review-filter.js";
 import type {
 	CommitDetail,
 	DiffRequestOptions,
@@ -393,9 +394,7 @@ describe("App review preference", () => {
 		await nextTask();
 		await tick();
 
-		expect(screen.getByRole("combobox", { name: REVIEW_FILTER })).toHaveValue(
-			"done",
-		);
+		await selectedFilter("done");
 	});
 
 	it("shows counts only from the selected review when switching away and back", async () => {
@@ -685,11 +684,17 @@ function fileDiff(path: string, content?: string): FileDiff {
 	};
 }
 
+function filterLabel(filter: ReviewFilter): string {
+	const option = REVIEW_FILTER_OPTIONS.find((o) => o.value === filter);
+	if (!option) throw new Error(`no filter option for ${filter}`);
+	return option.label;
+}
+
 async function selectedFilter(expected: ReviewFilter): Promise<void> {
 	await waitFor(() =>
-		expect(screen.getByRole("combobox", { name: REVIEW_FILTER })).toHaveValue(
-			expected,
-		),
+		expect(
+			screen.getByRole("combobox", { name: REVIEW_FILTER }),
+		).toHaveTextContent(filterLabel(expected)),
 	);
 }
 
@@ -698,7 +703,12 @@ async function chooseFilter(filter: ReviewFilter): Promise<void> {
 		name: REVIEW_FILTER,
 	});
 
-	await fireEvent.change(selection, { target: { value: filter } });
+	await fireEvent.click(selection);
+	await fireEvent.click(
+		screen.getByRole("option", {
+			name: new RegExp(`^${filterLabel(filter)}`),
+		}),
+	);
 	await selectedFilter(filter);
 }
 
