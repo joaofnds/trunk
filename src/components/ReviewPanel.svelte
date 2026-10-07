@@ -4,6 +4,7 @@
 // and jump-to-anchor with read-only orphan rows (D-07 / D-08). The panel lives
 // in the center pane (UI-SPEC:133); jump is driven by the host via onJump.
 
+import Archive from "@lucide/svelte/icons/archive";
 import ClipboardCheck from "@lucide/svelte/icons/clipboard-check";
 import Copy from "@lucide/svelte/icons/copy";
 import File from "@lucide/svelte/icons/file";
@@ -23,6 +24,7 @@ import { currentMinute } from "../lib/now.svelte.js";
 import { exactLabel, relativeLabel } from "../lib/relative-time.js";
 import {
 	activateReview,
+	archiveReview,
 	renameReview,
 	startNewReview,
 	unarchiveReview,
@@ -656,6 +658,16 @@ $effect(() => {
 					<Copy size={12} />
 					<span>Copy</span>
 				</Button>
+				{#if shownReview && !shownReview.archived}
+					<Button
+						size="sm"
+						onclick={() => archiveReview(repoPath, shownReview.id)}
+						title="Put this review away from the list and the agent"
+					>
+						<Archive size={12} />
+						<span>Archive</span>
+					</Button>
+				{/if}
 				{#if shownReview && !shownReview.published}
 					<div class="relative" bind:this={endAnchor}>
 						<Button

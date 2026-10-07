@@ -1847,6 +1847,18 @@ describe("header", () => {
 			await flush();
 		}
 
+		it("archives it from its header", async () => {
+			await showOther();
+
+			await fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+			await flush();
+
+			expect(callArgs("archive_review")).toEqual({
+				path: "/repo",
+				reviewId: OTHER.id,
+			});
+		});
+
 		it("offers to unarchive it in place of making it active once archived", async () => {
 			installReads({
 				commits,

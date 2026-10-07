@@ -251,21 +251,6 @@ describe("ReviewList", () => {
 	describe("archiving a review", () => {
 		const ARCHIVED: Review = { ...READY, archived: true };
 
-		it("archives a review from its row", async () => {
-			seedReviews([READY]);
-			await renderList();
-
-			await fireEvent.click(
-				screen.getByRole("button", { name: `Archive review ${READY.id}` }),
-			);
-			await flush();
-
-			expect(callArgs("archive_review")).toEqual({
-				path: "/repo",
-				reviewId: READY.id,
-			});
-		});
-
 		it("folds archived reviews under their own heading, out of the count", async () => {
 			seedReviews([aReview(), ARCHIVED]);
 			await renderList();
@@ -281,23 +266,15 @@ describe("ReviewList", () => {
 			).toHaveAttribute("aria-expanded", "false");
 		});
 
-		it("opens the archived reviews to show and unarchive one", async () => {
+		it("opens the archived reviews to show one", async () => {
 			seedReviews([aReview(), ARCHIVED]);
 			await renderList();
 
 			await fireEvent.click(screen.getByRole("button", { name: "Archived 1" }));
-			await fireEvent.click(
-				screen.getByRole("button", { name: `Unarchive review ${READY.id}` }),
-			);
-			await flush();
 
 			expect(
 				screen.getByRole("button", { name: `Show review ${READY.id}` }),
 			).toBeInTheDocument();
-			expect(callArgs("unarchive_review")).toEqual({
-				path: "/repo",
-				reviewId: READY.id,
-			});
 		});
 
 		it("offers no way to make an archived review active", async () => {
@@ -309,6 +286,9 @@ describe("ReviewList", () => {
 			expect(
 				screen.queryByRole("button", { name: `Active review ${READY.id}` }),
 			).toBeNull();
+			expect(
+				screen.getByTitle("Archived: unarchive to make it active"),
+			).toBeInTheDocument();
 		});
 
 		it("offers no heading when nothing is archived", async () => {

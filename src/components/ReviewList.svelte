@@ -5,7 +5,6 @@
 // heading at the foot.
 
 import Archive from "@lucide/svelte/icons/archive";
-import ArchiveRestore from "@lucide/svelte/icons/archive-restore";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import Pencil from "@lucide/svelte/icons/pencil";
@@ -15,10 +14,8 @@ import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
 	activateReview,
-	archiveReview,
 	renameReview,
 	startNewReview,
-	unarchiveReview,
 } from "../lib/review-actions.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { reviewTitle } from "../lib/review-title.js";
@@ -101,7 +98,13 @@ function deletePrompt(review: Review): string {
 		class:review-item-renaming={renamingId === review.id}
 	>
 		<span class="review-item-radio">
-			{#if !review.archived}
+			{#if review.archived}
+				<span
+					class="inline-flex text-text-subtle"
+					title="Archived: unarchive to make it active"
+					><Archive size={14} aria-hidden="true" /></span
+				>
+			{:else}
 				<Radio
 					checked={isActive}
 					aria-label="Active review {review.id}"
@@ -165,25 +168,6 @@ function deletePrompt(review: Review): string {
 					>
 						<Pencil size={12} />
 					</RowAction>
-					{#if review.archived}
-						<RowAction
-							size="compact"
-							onclick={() => unarchiveReview(repoPath, review.id)}
-							aria-label="Unarchive review {review.id}"
-							title="Unarchive"
-						>
-							<ArchiveRestore size={12} />
-						</RowAction>
-					{:else}
-						<RowAction
-							size="compact"
-							onclick={() => archiveReview(repoPath, review.id)}
-							aria-label="Archive review {review.id}"
-							title="Archive"
-						>
-							<Archive size={12} />
-						</RowAction>
-					{/if}
 					<RowAction
 						size="compact"
 						tone="destructive"
