@@ -841,8 +841,10 @@ async function requestDeleteReply(replyId: string) {
 .thread-reply-composer {
 	box-shadow: inset 0 1px 0 var(--color-border);
 }
+/* The field keeps room to type in, and the actions wrap under it in a pane too
+   narrow for both. */
 .thread-reply-composer > :global(.comment-editor) {
-	flex: 1 1 0;
+	flex: 1 1 calc(40 * var(--u));
 }
 .thread-reply-composer > :global(.comment-editor-open) {
 	flex-basis: 100%;
