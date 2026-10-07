@@ -40,6 +40,7 @@ import {
 	countByFilter,
 } from "../lib/review-filter.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
+import { initials, provideReviewer } from "../lib/reviewer.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
 import {
 	clearCommitDraft,
@@ -209,6 +210,23 @@ const reviewComments = createReviewComments(
 	scheduler,
 );
 const reviewEditors: ReviewEditorStore = createReviewEditorStore();
+
+// The review draws the reviewer by their initials, read once from the name the
+// repository signs commits with. A repo with no name set, or a read that fails,
+// leaves the person glyph, which is all the initials would replace.
+let reviewerName = $state<string | null>(null);
+void safeInvoke<string | null>("get_user_name", {
+	path: untrack(() => repoPath),
+})
+	.then((name) => {
+		reviewerName = name ?? null;
+	})
+	.catch(() => {});
+provideReviewer({
+	get initials() {
+		return reviewerName === null ? null : initials(reviewerName);
+	},
+});
 onDestroy(() => reviewComments.destroy());
 
 const editorSessionFor = (host: ReviewEditorHost) => (thread: Thread) =>

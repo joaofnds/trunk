@@ -10,6 +10,7 @@ import ThreadCard from "./ThreadCard.svelte";
 
 // Shared Tauri mock (provides @tauri-apps/plugin-dialog `ask`, defaulting to false).
 import "../__tests__/helpers/tauri-mock";
+import { REVIEWER } from "../lib/reviewer.svelte.js";
 
 // review-comment-actions.ts is owned code (a thin wrapper over safeInvoke), so
 // this asserts on safeInvoke, the real IPC boundary, matching the pattern used
@@ -1183,6 +1184,20 @@ describe("ThreadCard", () => {
 			renderCard();
 
 			expect(screen.getByTitle("You")).toBeInTheDocument();
+		});
+
+		it("draws the reviewer by their initials once the repo names them", () => {
+			render(ThreadCard, {
+				props: {
+					thread: comment,
+					repoPath: "/repo",
+					onedit: () => {},
+					ondelete: () => {},
+				},
+				context: new Map([[REVIEWER, { initials: "JF" }]]),
+			});
+
+			expect(screen.getByTitle("You")).toHaveTextContent("JF");
 		});
 	});
 

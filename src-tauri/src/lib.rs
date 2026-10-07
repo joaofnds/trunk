@@ -234,6 +234,7 @@ pub fn configure<R: tauri::Runtime>(
         commands::commit::create_commit,
         commands::commit::amend_commit,
         commands::commit::get_head_commit_message,
+        commands::commit::get_user_name,
         commands::diff::diff_unstaged,
         commands::diff::diff_staged,
         commands::diff::list_commit_files,

@@ -128,6 +128,23 @@ fn amend_commit_includes_newly_staged_files() {
     );
 }
 
+// -- get_user_name tests --
+
+#[test]
+fn get_user_name_reads_the_name_commits_are_signed_with() {
+    let ctx = TestContext::new_empty();
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_str("user.name", "Ada Lovelace")
+        .unwrap();
+
+    assert_eq!(
+        ctx.get_user_name().unwrap().as_deref(),
+        Some("Ada Lovelace")
+    );
+}
+
 // -- get_head_commit_message tests --
 
 #[test]

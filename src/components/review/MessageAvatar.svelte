@@ -1,9 +1,11 @@
 <script lang="ts">
 // Who wrote a message, as a face beside it: the reviewer in a round avatar,
 // the agent as a terminal prompt in a square one in its own color, so a long
-// thread reads as a conversation between the two at a glance.
+// thread reads as a conversation between the two at a glance. The reviewer's
+// face is their initials once the repo names them, and a person glyph before.
 
 import User from "@lucide/svelte/icons/user";
+import { reviewer } from "../../lib/reviewer.svelte.js";
 import type { Channel } from "../../lib/types.js";
 
 interface Props {
@@ -12,6 +14,8 @@ interface Props {
 }
 
 let { channel, size = "md" }: Props = $props();
+
+const me = reviewer();
 </script>
 
 {#if channel === "agent"}
@@ -24,7 +28,13 @@ let { channel, size = "md" }: Props = $props();
 	<span
 		class="message-avatar message-avatar-{size} inline-flex shrink-0 items-center justify-center rounded-full bg-surface-chip text-text select-none"
 		title="You"
-		><User size={size === "md" ? 12 : 10} aria-hidden="true" /></span
+		>{#if me?.initials}
+			<span class="font-sans text-caption leading-none font-semibold"
+				>{me.initials}</span
+			>
+		{:else}
+			<User size={size === "md" ? 12 : 10} aria-hidden="true" />
+		{/if}</span
 	>
 {/if}
 

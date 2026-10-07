@@ -104,6 +104,43 @@ pub fn get_head_commit_message_inner(
     })
 }
 
+/// The name the repository's commits are signed with, `user.name` read
+/// through its whole config chain, or `None` when no level sets it. The review
+/// shows the reviewer's initials from it.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error
+/// when its config will not load.
+pub fn get_user_name_inner(
+    path: &str,
+    state_map: &OpenRepos,
+) -> Result<Option<String>, TrunkError> {
+    let repo = state_map.open(path)?;
+    let config = repo.config()?;
+    match config.get_string("user.name") {
+        Ok(name) => Ok(Some(name)),
+        Err(e) if e.code() == git2::ErrorCode::NotFound => Ok(None),
+        Err(e) => Err(TrunkError::from(e)),
+    }
+}
+
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+#[tauri::command]
+pub async fn get_user_name(
+    path: String,
+    state: State<'_, RepoState>,
+) -> Result<Option<String>, String> {
+    let state_map = state.snapshot();
+    tauri::async_runtime::spawn_blocking(move || get_user_name_inner(&path, &state_map))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
+}
+
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses, or

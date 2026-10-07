@@ -15,4 +15,8 @@ impl TestContext {
     pub fn get_head_commit_message(&self) -> Result<HeadCommitMessage, TrunkError> {
         commit::get_head_commit_message_inner(self.path(), self.state_map())
     }
+
+    pub fn get_user_name(&self) -> Result<Option<String>, TrunkError> {
+        commit::get_user_name_inner(self.path(), self.state_map())
+    }
 }
