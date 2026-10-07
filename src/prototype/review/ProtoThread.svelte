@@ -5,8 +5,6 @@
 // and the reply field last.
 
 import Check from "@lucide/svelte/icons/check";
-import ChevronDown from "@lucide/svelte/icons/chevron-down";
-import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
 import Pencil from "@lucide/svelte/icons/pencil";
 import Trash2 from "@lucide/svelte/icons/trash-2";
@@ -15,10 +13,10 @@ import ThreadEvent from "../../components/review/ThreadEvent.svelte";
 import ThreadMessage from "../../components/review/ThreadMessage.svelte";
 import type { ThreadState } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
-import HitArea from "../../lib/ui/HitArea.svelte";
 import RowAction from "../../lib/ui/RowAction.svelte";
 import Tag from "../../lib/ui/Tag.svelte";
 import Excerpt from "./Excerpt.svelte";
+import FoldBar from "./FoldBar.svelte";
 import type { Message, Thread } from "./mock.js";
 
 interface Props {
@@ -48,7 +46,6 @@ const settled = $derived(
 );
 let collapsedByUser = $state<boolean | null>(null);
 const collapsed = $derived(collapsedByUser ?? settled);
-const toggleLabel = $derived(collapsed ? "Expand thread" : "Collapse thread");
 
 function toggleCollapsed() {
 	collapsedByUser = !collapsed;
@@ -146,29 +143,12 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 	class:proto-card-open={!collapsed}
 >
 	<header class="proto-card-header">
-		<HitArea
-			cursor="pointer"
-			aria-label={toggleLabel}
-			aria-expanded={!collapsed}
-			onclick={toggleCollapsed}
-		/>
-		<div class="proto-card-header-content">
-			<span class="flex pointer-events-auto">
-				<Button
-					icon
-					size="xs"
-					variant="ghost"
-					aria-expanded={!collapsed}
-					aria-label={toggleLabel}
-					onclick={toggleCollapsed}
-				>
-					{#if collapsed}
-						<ChevronRight size={12} aria-hidden="true" />
-					{:else}
-						<ChevronDown size={12} aria-hidden="true" />
-					{/if}
-				</Button>
-			</span>
+		<FoldBar
+			noun="thread"
+			inset="thread"
+			{collapsed}
+			ontoggle={toggleCollapsed}
+		>
 			<StatePill state={thread.state} />
 			{#if thread.scope.kind === "commit"}
 				<Tag variant="label" dashed
@@ -208,7 +188,7 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 					</Button>
 				{/each}
 			</fieldset>
-		</div>
+		</FoldBar>
 	</header>
 
 	{#if !collapsed}
@@ -317,22 +297,9 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 	font-size: var(--text-callout);
 }
 .proto-card-header {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr);
 	height: var(--control-h);
 	min-width: 0;
 	background: var(--color-comment-card-header-bg);
-}
-.proto-card-header > :global(*) {
-	grid-area: 1 / 1;
-	min-width: 0;
-}
-.proto-card-header-content {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: 0 var(--space-1);
-	pointer-events: none;
 }
 .proto-card-open .proto-card-header {
 	box-shadow: var(--shadow-hairline);
