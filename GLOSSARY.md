@@ -344,6 +344,10 @@ lives on the thread. The CLI may only move `open → addressed`; the UI may move
 nothing reaches `addressed` from the UI — it is the agent's claim by definition.
 Text edits never change state. Attribution is by channel: UI = human, CLI = agent.
 
+**Settled thread** — a thread that is `done` or `dismissed`, which waits on nobody.
+One that is `open` or `addressed` still needs the user. A review is settled when
+none of its sent threads needs the user.
+
 **State change** — one move of a thread's state, kept in the thread's history: the
 state it moved to, the channel that moved it, when, and for an agent's claim the
 commit it named as the fix (`trunk review address --commit`). The card shows each

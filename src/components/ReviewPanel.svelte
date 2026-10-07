@@ -213,22 +213,52 @@ function hidesSection(section: ReviewSection): boolean {
 	return section.groups.every((group) => hidesAll(group.threads));
 }
 
-// The commits and files the user folded, by key. A file's key is its
-// group's key and its path, since one path can sit under several commits.
-let folded = $state<Record<string, boolean>>({});
+// A commit or a file whose threads are all settled when it first shows starts
+// folded, and one the reader settles stays open under them. A thread reopened
+// there, or a new one, unfolds it, and a press on its bar holds only until
+// such a change. A file's key is its group's key and its path, since one path
+// can sit under several commits.
+let folds = $state<Record<string, { settled: boolean; collapsed: boolean }>>(
+	{},
+);
+// Not state: it is written while the bars render, and only ever once a key.
+const settledAtFirstSight = new Map<string, boolean>();
 
 function fileKey(group: ReviewGroup, file: ReviewFile): string {
 	return `${group.key}:${file.path}`;
 }
 
-function toggleFold(key: string) {
-	folded[key] = !folded[key];
+function allSettled(threads: Thread[]): boolean {
+	return (
+		threads.length > 0 &&
+		threads.every((t) => t.state === "done" || t.state === "dismissed")
+	);
+}
+
+function isFolded(key: string, threads: Thread[]): boolean {
+	const fold = folds[key];
+	const settled = allSettled(threads);
+	if (fold !== undefined && fold.settled === settled) return fold.collapsed;
+
+	const sighting = `${shownReviewId}:${key}`;
+	if (!settledAtFirstSight.has(sighting))
+		settledAtFirstSight.set(sighting, settled);
+	return settled && settledAtFirstSight.get(sighting) === true;
+}
+
+function toggleFold(key: string, threads: Thread[]) {
+	folds[key] = {
+		settled: allSettled(threads),
+		collapsed: !isFolded(key, threads),
+	};
 }
 
 function foldedAway(group: ReviewGroup, thread: Thread): boolean {
-	if (folded[group.key]) return true;
+	if (isFolded(group.key, group.threads)) return true;
 	return group.files.some(
-		(file) => folded[fileKey(group, file)] && file.threads.includes(thread),
+		(file) =>
+			isFolded(fileKey(group, file), file.threads) &&
+			file.threads.includes(thread),
 	);
 }
 
@@ -937,6 +967,7 @@ $effect(() => {
 				</header>
 				<ul class="list-none m-0 p-0">
 					{#each section.groups as group (group.key)}
+						{@const groupFolded = isFolded(group.key, group.threads)}
 						<li
 							class="review-group"
 							aria-label={groupLabel(group)}
@@ -948,8 +979,8 @@ $effect(() => {
 								<FoldBar
 									noun={FOLD_NOUNS[group.kind]}
 									inset="group"
-									collapsed={!!folded[group.key]}
-									ontoggle={() => toggleFold(group.key)}
+									collapsed={groupFolded}
+									ontoggle={() => toggleFold(group.key, group.threads)}
 								>
 									{#snippet lead()}
 										<span class="review-node" data-kind={group.kind}></span>
@@ -1020,7 +1051,7 @@ $effect(() => {
 
 							<div
 								class="review-group-list flex flex-col gap-2"
-								style:display={folded[group.key] ? "none" : "flex"}
+								style:display={groupFolded ? "none" : "flex"}
 							>
 								{#if group.commit && noteSession.target === group.commit.oid}
 									{@const commit = group.commit}
@@ -1074,6 +1105,7 @@ $effect(() => {
 
 								{#each group.files as file (file.path)}
 									{@const path = splitPath(file.path)}
+									{@const fileFolded = isFolded(fileKey(group, file), file.threads)}
 									<div
 										class="flex flex-col gap-2"
 										style:display={hidesAll(file.threads) ? "none" : "flex"}
@@ -1082,8 +1114,8 @@ $effect(() => {
 											<FoldBar
 												noun="file"
 												inset="file"
-												collapsed={!!folded[fileKey(group, file)]}
-												ontoggle={() => toggleFold(fileKey(group, file))}
+												collapsed={fileFolded}
+												ontoggle={() => toggleFold(fileKey(group, file), file.threads)}
 											>
 												<File size={12} class="shrink-0" aria-hidden="true" />
 												<span
@@ -1113,7 +1145,7 @@ $effect(() => {
 										</div>
 										<ul
 											class="flex flex-col gap-2 list-none m-0 p-0"
-											style:display={folded[fileKey(group, file)] ? "none" : "flex"}
+											style:display={fileFolded ? "none" : "flex"}
 										>
 											{#each file.threads as comment (comment.id)}
 												<li

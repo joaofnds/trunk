@@ -183,8 +183,9 @@ describe("an interactive-rebase diff comment", () => {
 		await app.review.saveCommitNote();
 		await app.rebaseEditor.cancel();
 		await app.review.openPanel();
-		await waitFor("the rebase note and thread", () =>
-			app.review.threads().length === 3 ? true : null,
+		await waitFor(
+			"the rebase notes, over the dismissed thread's folded file",
+			() => (app.review.threads().length === 2 ? true : null),
 		);
 		await app.review.copyDoc();
 

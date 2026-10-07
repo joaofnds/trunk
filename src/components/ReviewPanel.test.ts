@@ -2680,6 +2680,127 @@ describe("ReviewPanel branch sections", () => {
 			expect(screen.getByText("a note on the first")).toBeVisible();
 		});
 
+		function done(thread: Thread): Thread {
+			return { ...thread, state: "done", allowed_transitions: ["open"] };
+		}
+
+		it("starts a commit whose threads are all settled folded", async () => {
+			installReads({
+				commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+				comments: [
+					done(lineAnchoredComment("a1", COMMIT_A, "on the first")),
+					{
+						...commitLevelComment("a2", COMMIT_A, "a note on the first"),
+						state: "dismissed",
+						allowed_transitions: ["open"],
+					},
+				],
+			});
+
+			renderPanel();
+			await flush();
+
+			expect(
+				within(commit("aaaaaaa")).getByRole("button", {
+					name: "Expand commit",
+				}),
+			).toHaveAttribute("aria-expanded", "false");
+			expect(screen.getByText("a note on the first")).not.toBeVisible();
+		});
+
+		it("leaves a commit open while one of its threads needs the user", async () => {
+			installReads({
+				commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+				comments: [
+					done(lineAnchoredComment("a1", COMMIT_A, "on the first")),
+					commitLevelComment("a2", COMMIT_A, "a note on the first"),
+				],
+			});
+
+			renderPanel();
+			await flush();
+
+			expect(screen.getByText("a note on the first")).toBeVisible();
+		});
+
+		it("starts a settled file folded under a commit that still needs the user", async () => {
+			installReads({
+				commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+				comments: [
+					done(lineAnchoredComment("a1", COMMIT_A, "on the first")),
+					commitLevelComment("a2", COMMIT_A, "a note on the first"),
+				],
+			});
+
+			renderPanel();
+			await flush();
+
+			expect(
+				within(commit("aaaaaaa")).getByRole("button", {
+					name: "Expand file",
+				}),
+			).toHaveAttribute("aria-expanded", "false");
+		});
+
+		it("unfolds a settled commit from its bar", async () => {
+			installReads({
+				commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+				comments: [
+					done(commitLevelComment("a2", COMMIT_A, "a note on the first")),
+				],
+			});
+			renderPanel();
+			await flush();
+
+			await fireEvent.click(
+				within(commit("aaaaaaa")).getByRole("button", {
+					name: "Expand commit",
+				}),
+			);
+
+			expect(screen.getByText("a note on the first")).toBeVisible();
+		});
+
+		it("keeps a commit open when its last thread settles under the reader", async () => {
+			const note = commitLevelComment("a2", COMMIT_A, "a note on the first");
+			installReads({
+				commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+				comments: [note],
+			});
+			renderPanel();
+			await flush();
+
+			installReads({
+				commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+				comments: [done(note)],
+			});
+			await flush();
+
+			expect(
+				within(commit("aaaaaaa")).getByRole("button", {
+					name: "Collapse commit",
+				}),
+			).toHaveAttribute("aria-expanded", "true");
+		});
+
+		it("unfolds a settled commit when one of its threads reopens", async () => {
+			const note = commitLevelComment("a2", COMMIT_A, "a note on the first");
+			installReads({
+				commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+				comments: [done(note)],
+			});
+			renderPanel();
+			await flush();
+
+			installReads({
+				commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+				comments: [note],
+			});
+			await flush();
+
+			expect(screen.getByText("a note on the first")).toBeVisible();
+		});
+
 		it("passes J and K over the threads a folded commit hides", async () => {
 			twoCommitsWithThreads();
 			renderPanel();
@@ -2914,6 +3035,9 @@ describe("ReviewPanel keyboard", () => {
 		});
 		renderPanel();
 		await flush();
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Expand commit" }),
+		);
 
 		await press("j");
 		await press("o");
