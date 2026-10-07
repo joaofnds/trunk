@@ -4,16 +4,17 @@
 // and jump-to-anchor with read-only orphan rows (D-07 / D-08). The panel lives
 // in the center pane (UI-SPEC:133); jump is driven by the host via onJump.
 
-import Clipboard from "@lucide/svelte/icons/clipboard";
 import ClipboardCheck from "@lucide/svelte/icons/clipboard-check";
+import Copy from "@lucide/svelte/icons/copy";
 import File from "@lucide/svelte/icons/file";
 import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
 import MessageSquare from "@lucide/svelte/icons/message-square";
-import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
+import MessageSquareText from "@lucide/svelte/icons/message-square-text";
 import Plus from "@lucide/svelte/icons/plus";
 import Send from "@lucide/svelte/icons/send";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { tick, untrack } from "svelte";
+import { copySha } from "../lib/clipboard.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
@@ -32,12 +33,7 @@ import {
 	type ReviewNoteEditorSession,
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
-import {
-	countBadgeThreads,
-	filterThreads,
-	tallyBadgeThreads,
-	threadMatchesFilter,
-} from "../lib/review-filter.js";
+import { filterThreads, threadMatchesFilter } from "../lib/review-filter.js";
 import {
 	type ReviewFile,
 	type ReviewGroup,
@@ -63,8 +59,6 @@ import Keycap from "../lib/ui/Keycap.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Radio from "../lib/ui/Radio.svelte";
 import BranchChip from "./BranchChip.svelte";
-import CommentBadge from "./CommentBadge.svelte";
-import CommitChip from "./CommitChip.svelte";
 import ComposerFrame from "./review/ComposerFrame.svelte";
 import ReviewEmpty from "./review/ReviewEmpty.svelte";
 import ReviewTitle from "./review/ReviewTitle.svelte";
@@ -231,6 +225,10 @@ function sectionLane(section: ReviewSection): string {
 	return section.colorIndex === null
 		? "var(--color-text-subtle)"
 		: laneColor(section.colorIndex);
+}
+
+function shownCount(group: ReviewGroup): number {
+	return filterThreads(group.threads, reviewFilter).length;
 }
 
 function groupLabel(group: ReviewGroup): string {
@@ -628,7 +626,8 @@ $effect(() => {
 							>
 						</h1>
 					{/if}
-					<span class="shrink-0 font-mono text-caption text-text-muted"
+					<span
+						class="inline-flex items-center shrink-0 h-control-xs px-1 rounded bg-surface-chip font-mono text-caption font-medium text-text"
 						>{shownReview.id}</span
 					>
 					<StatePill state={shownReview.state} />
@@ -641,7 +640,7 @@ $effect(() => {
 						onclick={oncommentonfile}
 						title="Comment on any tracked file, including one no change touches"
 					>
-						<MessageSquarePlus size={12} />
+						<File size={12} />
 						<span>Comment on a file…</span>
 					</Button>
 				{/if}
@@ -653,7 +652,7 @@ $effect(() => {
 					? "No unresolved threads to copy"
 					: "Copy unresolved threads as a prompt for an agent"}
 				>
-					<Clipboard size={12} />
+					<Copy size={12} />
 					<span>Copy</span>
 				</Button>
 				{#if shownReview && !shownReview.published}
@@ -719,10 +718,10 @@ $effect(() => {
 						Active
 					</span>
 				{:else}
-					<LinkButton
-						tone="muted"
+					<Button
+						size="xs"
 						onclick={() => activateReview(repoPath, shownReview.id)}
-						>Make active</LinkButton
+						>Make active</Button
 					>
 				{/if}
 				<span class="text-text-disabled" aria-hidden="true">·</span>
@@ -771,7 +770,7 @@ $effect(() => {
 	</header>
 	<div
 		bind:this={bodyEl}
-		class="flex flex-col flex-1 min-h-0 overflow-auto p-3 bg-surface text-text text-callout leading-normal"
+		class="flex flex-col flex-1 min-h-0 overflow-auto pb-6 bg-surface text-text text-callout leading-normal"
 	>
 		{#if reviews.length === 0}
 			<ReviewEmpty title="No reviews in this repository">
@@ -814,7 +813,7 @@ $effect(() => {
 				<WaysToComment />
 			</ReviewEmpty>
 		{:else if reviewFilter === "none"}
-			<div class="flex flex-col gap-1 p-3">
+			<div class="flex flex-col gap-1 py-3 px-4">
 				<span>Review threads hidden.</span>
 				<span class="text-text-muted text-small leading-normal">
 					The review inventory remains available above.
@@ -876,7 +875,12 @@ $effect(() => {
 							>
 								<span class="review-node" data-kind={group.kind}></span>
 								{#if group.kind === "commit" && group.commit}
-									<CommitChip oid={group.commit.oid} />
+									<Chip
+										tone="neutral"
+										title="Copy SHA"
+										onclick={() => group.commit && copySha(group.commit.oid)}
+										>{group.commit.short_oid}</Chip
+									>
 									<span class="min-w-0 shrink">
 										<LinkButton
 											truncate
@@ -909,10 +913,11 @@ $effect(() => {
 										>Current file content · HEAD</span
 									>
 								{/if}
-								<CommentBadge
-									count={countBadgeThreads(group.threads, reviewFilter)}
-									tally={tallyBadgeThreads(group.threads, reviewFilter)}
-								/>
+								<span
+									class="inline-flex items-center shrink-0 h-control-xs px-1 rounded bg-surface-chip font-mono text-caption text-text-muted"
+									title={plural(shownCount(group), "thread")}
+									>{shownCount(group)}</span
+								>
 								<span class="flex-1"></span>
 								{#if group.kind === "commit" && group.commit && reviewFilter !== "none"}
 									{@const oid = group.commit.oid}
@@ -922,7 +927,7 @@ $effect(() => {
 										onclick={() => openAddNote(oid)}
 										disabled={noteSaving}
 									>
-										<MessageSquarePlus size={14} />
+										<MessageSquareText size={12} />
 										<span>Add note</span>
 									</Button>
 								{/if}
@@ -1079,9 +1084,7 @@ $effect(() => {
 }
 .review-branch-head {
 	position: sticky;
-	/* The body's top padding scrolls threads into view above a head stuck at
-	   its padding edge, so it sticks at the scrollport's edge instead. */
-	top: calc(-1 * var(--space-3));
+	top: 0;
 	z-index: 4;
 	border-top: 1px solid var(--color-border);
 	box-shadow: var(--shadow-hairline);
@@ -1116,7 +1119,7 @@ $effect(() => {
 }
 .review-group-head {
 	position: sticky;
-	top: calc(var(--bar-h) - var(--space-3));
+	top: var(--bar-h);
 	z-index: 3;
 	box-shadow: var(--shadow-hairline);
 }

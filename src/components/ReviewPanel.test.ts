@@ -266,10 +266,10 @@ describe("ReviewPanel", () => {
 				screen.getByRole("listitem", { name: "Current file content" }),
 			).getByRole("button", { name: "Open src/untouched.ts" }),
 		).toBeInTheDocument();
-		const shas = screen
-			.getAllByTitle("Copy SHA")
-			.map((b) => b.textContent?.trim());
-		expect(shas).toEqual(["aaaaaaa", "bbbbbbb"]);
+		const groups = screen
+			.getAllByRole("listitem", { name: /^Commit / })
+			.map((group) => group.getAttribute("aria-label"));
+		expect(groups).toEqual(["Commit aaaaaaa", "Commit bbbbbbb"]);
 	});
 
 	it("groups comments under their commit headers", async () => {
@@ -322,13 +322,9 @@ describe("ReviewPanel", () => {
 		await flush();
 
 		const groupA = screen.getByRole("listitem", { name: "Commit aaaaaaa" });
-		expect(
-			within(groupA).getByRole("img", { name: "2 review comments" }),
-		).toBeInTheDocument();
+		expect(within(groupA).getByTitle("2 threads")).toHaveTextContent("2");
 		const groupB = screen.getByRole("listitem", { name: "Commit bbbbbbb" });
-		expect(
-			within(groupB).getByRole("img", { name: "1 review comment" }),
-		).toBeInTheDocument();
+		expect(within(groupB).getByTitle("1 thread")).toHaveTextContent("1");
 	});
 
 	// 260531-l02d: an auto-added snapshot with no comments is noise — hide it. An empty
