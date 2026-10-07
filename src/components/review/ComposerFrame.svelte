@@ -81,7 +81,6 @@ function onkeydown(event: KeyboardEvent) {
 >
 	<header class="composer-header">
 		<span class="composer-preview" id={headingId}>{@render heading()}</span>
-		<span class="flex-1"></span>
 		<p class="composer-landing">
 			Lands in
 			{#if activeReview}
@@ -111,19 +110,20 @@ function onkeydown(event: KeyboardEvent) {
 			{/if}<Keycap>⌘</Keycap><Keycap>↵</Keycap>
 			submit</span
 		>
-		<span class="flex-1"></span>
-		<Button size="sm" variant="ghost" disabled={busy} onclick={oncancel}
-			>Cancel</Button
-		>
-		<Button
-			variant="primary"
-			size="sm"
-			data-testid="comment-submit"
-			disabled={submitDisabled}
-			onclick={onsubmit}
-		>
-			{submitLabel}
-		</Button>
+		<span class="flex items-center gap-2 ml-auto">
+			<Button size="sm" variant="ghost" disabled={busy} onclick={oncancel}
+				>Cancel</Button
+			>
+			<Button
+				variant="primary"
+				size="sm"
+				data-testid="comment-submit"
+				disabled={submitDisabled}
+				onclick={onsubmit}
+			>
+				{submitLabel}
+			</Button>
+		</span>
 	</footer>
 </fieldset>
 
@@ -149,15 +149,17 @@ function onkeydown(event: KeyboardEvent) {
 	border-color: var(--color-accent);
 }
 
+/* In a narrow pane the landing line and the buttons wrap under what comes
+   before them rather than being cut off. */
 .composer-header {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
-	gap: var(--space-2);
-	height: var(--control-h);
-	padding: 0 var(--space-3);
+	gap: var(--space-1) var(--space-2);
+	min-height: var(--control-h);
+	padding: var(--space-1) var(--space-3);
 	background: var(--color-comment-card-header-bg);
 	box-shadow: var(--shadow-hairline);
-	white-space: nowrap;
 }
 
 .composer-preview {
@@ -167,14 +169,16 @@ function onkeydown(event: KeyboardEvent) {
 	color: var(--color-text-strong);
 	font-size: var(--text-callout);
 	font-weight: var(--weight-medium);
+	white-space: nowrap;
 }
 
 .composer-landing {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	margin: 0;
+	margin: 0 0 0 auto;
 	min-width: 0;
+	white-space: nowrap;
 	color: var(--color-text-subtle);
 	font-size: var(--text-small);
 }
@@ -216,6 +220,7 @@ function onkeydown(event: KeyboardEvent) {
 
 .composer-actions {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--space-2);
 	padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
@@ -224,11 +229,10 @@ function onkeydown(event: KeyboardEvent) {
 
 .composer-hint {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--space-1);
-	overflow: hidden;
 	color: var(--color-text-subtle);
 	font-size: var(--text-small);
-	white-space: nowrap;
 }
 </style>

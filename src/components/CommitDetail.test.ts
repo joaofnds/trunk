@@ -753,7 +753,7 @@ describe("CommitDetail", () => {
 				screen.getByPlaceholderText("Leave a note on this commit…"),
 				{ target: { value: "on the whole commit" } },
 			);
-			await fireEvent.click(screen.getByText("Save"));
+			await fireEvent.click(screen.getByRole("button", { name: "Add note" }));
 
 			expect(callArgs("add_commit_thread")).toEqual({
 				path: "/repo",

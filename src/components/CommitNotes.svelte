@@ -1,4 +1,5 @@
 <script lang="ts">
+import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
 import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
 import { createDraft, type Draft } from "../lib/draft.svelte.js";
 import { reportErrorToast } from "../lib/error-report.js";
@@ -11,6 +12,7 @@ import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
 import { filterThreads, threadMatchesFilter } from "../lib/review-filter.js";
 import type { ReviewFilter, Thread } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import ComposerFrame from "./review/ComposerFrame.svelte";
 import ThreadCard from "./ThreadCard.svelte";
 
 interface Props {
@@ -102,24 +104,27 @@ async function saveNote() {
 			class="add-note-composer"
 			style:display={reviewFilter === "none" ? "none" : "flex"}
 		>
-			<textarea
-				bind:value={draft.text}
-				rows="3"
+			<ComposerFrame
+				activeReview={null}
+				{activeReviewId}
 				placeholder="Leave a note on this commit…"
-				class="add-note-textarea"
-				disabled={noteSaving}
-			></textarea>
-			<div class="flex gap-1">
-				<Button
-					size="sm"
-					onclick={saveNote}
-					disabled={!draft.valid || noteSaving}
-					>Save</Button
-				>
-				<Button size="sm" onclick={cancelAddNote} disabled={noteSaving}
-					>Cancel</Button
-				>
-			</div>
+				bind:text={draft.text}
+				busy={noteSaving}
+				submitLabel="Add note"
+				submitDisabled={!draft.valid || noteSaving}
+				onsubmit={() => void saveNote()}
+				oncancel={cancelAddNote}
+				onescape={cancelAddNote}
+			>
+				{#snippet heading()}
+					<GitCommitHorizontal
+						size={13}
+						class="shrink-0 text-accent"
+						aria-hidden="true"
+					/>
+					Note on this commit
+				{/snippet}
+			</ComposerFrame>
 		</div>
 	{/if}
 
@@ -172,19 +177,7 @@ async function saveNote() {
 .add-note-composer {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-1);
 	padding: 0 var(--space-3) var(--space-2);
-}
-.add-note-textarea {
-	width: 100%;
-	resize: vertical;
-	background: var(--color-bg);
-	color: var(--color-text);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius);
-	padding: var(--space-1) var(--space-2);
-	font-size: var(--text-callout);
-	font-family: inherit;
 }
 .commit-notes-list {
 	display: flex;

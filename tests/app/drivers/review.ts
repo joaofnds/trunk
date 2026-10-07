@@ -353,7 +353,7 @@ export class ReviewDriver {
 			visibleElement<HTMLTextAreaElement>(COMMIT_NOTE_TEXT),
 		);
 		const button = await waitFor("the commit note save control", () =>
-			enabledIn(editor.closest<HTMLElement>(".add-note-composer"), "Save"),
+			enabledIn(editor.closest<HTMLElement>(".add-note-composer"), "Add note"),
 		);
 		button.click();
 	}

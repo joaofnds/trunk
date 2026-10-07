@@ -83,13 +83,38 @@ describe("CommitNotes", () => {
 			"Leave a note on this commit…",
 		);
 		await fireEvent.input(textarea, { target: { value: "  a new note  " } });
-		await fireEvent.click(screen.getByText("Save"));
+		await fireEvent.click(screen.getByRole("button", { name: "Add note" }));
 
 		expect(callArgs("add_commit_thread")).toEqual({
 			path: "/repo",
 			commitOid,
 			text: "a new note",
 		});
+	});
+
+	it("adds the composed note on Cmd-Enter", async () => {
+		renderNotes();
+		await fireEvent.click(screen.getByText("Add note"));
+		const textarea = screen.getByPlaceholderText(
+			"Leave a note on this commit…",
+		);
+		await fireEvent.input(textarea, { target: { value: "a new note" } });
+
+		await fireEvent.keyDown(textarea, { key: "Enter", metaKey: true });
+
+		expect(callArgs("add_commit_thread")).toEqual({
+			path: "/repo",
+			commitOid,
+			text: "a new note",
+		});
+	});
+
+	it("names the review the note lands in", async () => {
+		renderNotes([], { activeReviewId: "REVIEW01" });
+
+		await fireEvent.click(screen.getByText("Add note"));
+
+		expect(screen.getByText(/Lands in/)).toHaveTextContent("REVIEW01");
 	});
 
 	it("closes the composer once the note is saved", async () => {
@@ -100,7 +125,7 @@ describe("CommitNotes", () => {
 			"Leave a note on this commit…",
 		);
 		await fireEvent.input(textarea, { target: { value: "a new note" } });
-		await fireEvent.click(screen.getByText("Save"));
+		await fireEvent.click(screen.getByRole("button", { name: "Add note" }));
 
 		expect(
 			screen.queryByPlaceholderText("Leave a note on this commit…"),
@@ -115,13 +140,13 @@ describe("CommitNotes", () => {
 			"Leave a note on this commit…",
 		);
 		await fireEvent.input(textarea, { target: { value: "   " } });
-		await fireEvent.click(screen.getByText("Save"));
+		await fireEvent.click(screen.getByRole("button", { name: "Add note" }));
 
 		expect(callArgs("add_commit_thread")).toBeUndefined();
 		expect(textarea).toBeInTheDocument();
 	});
 
-	it("saves once when Save is clicked again while the first save is in flight", async () => {
+	it("saves once when Add note is clicked again while the first save is in flight", async () => {
 		let settleSave = () => {};
 		vi.mocked(safeInvoke).mockReturnValue(
 			new Promise<void>((resolve) => {
@@ -135,8 +160,8 @@ describe("CommitNotes", () => {
 			screen.getByPlaceholderText("Leave a note on this commit…"),
 			{ target: { value: "a new note" } },
 		);
-		await fireEvent.click(screen.getByText("Save"));
-		await fireEvent.click(screen.getByText("Save"));
+		await fireEvent.click(screen.getByRole("button", { name: "Add note" }));
+		await fireEvent.click(screen.getByRole("button", { name: "Add note" }));
 		settleSave();
 
 		expect(callCount("add_commit_thread")).toBe(1);
@@ -165,7 +190,7 @@ describe("CommitNotes", () => {
 			screen.getByPlaceholderText("Leave a note on this commit…"),
 			{ target: { value: "note for first commit" } },
 		);
-		await fireEvent.click(screen.getByText("Save"));
+		await fireEvent.click(screen.getByRole("button", { name: "Add note" }));
 
 		await view.rerender({
 			notes: [],
@@ -196,7 +221,7 @@ describe("CommitNotes", () => {
 			screen.getByPlaceholderText("Leave a note on this commit…"),
 			{ target: { value: "a new note" } },
 		);
-		await fireEvent.click(screen.getByText("Save"));
+		await fireEvent.click(screen.getByRole("button", { name: "Add note" }));
 
 		expect(vi.mocked(showToast)).toHaveBeenCalledWith(
 			"review is published",
@@ -297,7 +322,7 @@ describe("CommitNotes", () => {
 			"Leave a note on this commit…",
 		);
 		expect(restored).toHaveValue("retained commit note");
-		await fireEvent.click(screen.getByText("Save"));
+		await fireEvent.click(screen.getByRole("button", { name: "Add note" }));
 		expect(callArgs("add_commit_thread")).toEqual({
 			path: "/repo",
 			commitOid,
