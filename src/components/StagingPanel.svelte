@@ -933,9 +933,9 @@ $effect(() => {
 						<AlertTriangle size={12} />
 					</span>
 					<span
-						class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 inline-flex items-center gap-2"
+						class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 min-w-0 inline-flex items-center gap-2"
 					>
-						<span>Conflicted Files</span>
+						<span class="min-w-0 truncate">Conflicted Files</span>
 						{@render sectionCount(status?.conflicted.length ?? 0)}
 					</span>
 					{#snippet actions()}
@@ -987,16 +987,16 @@ $effect(() => {
 							<AlertTriangle size={12} />
 						</span>
 						<span
-							class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 whitespace-nowrap inline-flex items-center gap-2"
+							class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 min-w-0 inline-flex items-center gap-2"
 						>
-							<span>Conflicted Files</span>
+							<span class="min-w-0 truncate">Conflicted Files</span>
 							{@render sectionCount(status?.conflicted.length ?? 0)}
 						</span>
 					{:else}
 						<span
-							class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 inline-flex items-center gap-2"
+							class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 min-w-0 inline-flex items-center gap-2"
 						>
-							<span>Unstaged Files</span>
+							<span class="min-w-0 truncate">Unstaged Files</span>
 							{@render sectionCount(status?.unstaged.length ?? 0)}
 						</span>
 					{/if}
@@ -1027,7 +1027,7 @@ $effect(() => {
 								onclick={stageAll}
 								aria-label="Stage all changes"
 							>
-								Stage All Changes
+								Stage All
 							</Button>
 						{/if}
 					{/snippet}
@@ -1091,9 +1091,11 @@ $effect(() => {
 					{/if}
 				</span>
 				<span
-					class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 inline-flex items-center gap-2"
+					class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 min-w-0 inline-flex items-center gap-2"
 				>
-					<span>{isOperation ? 'Resolved Files' : 'Staged Files'}</span>
+					<span class="min-w-0 truncate"
+						>{isOperation ? 'Resolved Files' : 'Staged Files'}</span
+					>
 					{@render sectionCount(status?.staged.length ?? 0)}
 				</span>
 				{#snippet actions()}

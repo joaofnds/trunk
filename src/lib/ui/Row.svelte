@@ -73,8 +73,8 @@ const CONTAINER = "row group shrink-0";
 const SHAPES: Record<RowVariant, string> = {
 	inset: "h-row mx-2 rounded text-callout",
 	flush: "h-row text-callout",
-	header: "row-whole-label h-bar",
-	band: "row-whole-label h-bar shadow-hairline",
+	header: "h-bar",
+	band: "h-bar shadow-hairline",
 	entry: "rounded",
 	title: "size-full bg-surface shadow-hairline text-callout select-none",
 	divider: "row-ruled size-full bg-surface text-small",
@@ -253,11 +253,6 @@ const REVEALS: Record<RowReveal, string> = {
 .row {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
-}
-/* A section's bar keeps its label whole and lets its actions run off the edge,
-   where every other row truncates its label to keep them in view. */
-.row-whole-label {
-	grid-template-columns: minmax(min-content, 1fr) auto;
 }
 .row-ruled {
 	box-shadow:
