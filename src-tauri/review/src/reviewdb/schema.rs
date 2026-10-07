@@ -239,28 +239,6 @@ CREATE INDEX threads_by_anchor ON threads(commit_oid, file_path);
 /// still judged by the snapshot author, so a commit fetched after the upgrade
 /// can never be taken for a snapshot, while a thread on an old snapshot keeps
 /// its stale marker.
-/// A review the user put away. The agent reads only reviews that are not
-/// archived, and the app lists them apart.
-const V11: &str = r"
-ALTER TABLE reviews ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
-";
-
-/// A thread's history, one row per state change (`reviewdb::history`). Rows
-/// order by their write time, which the app and the CLI read off this one
-/// host's clock; the order only decides where the card draws a change among
-/// the replies, so a clock step back can misplace a row and nothing else.
-const V10: &str = r"
-CREATE TABLE thread_history (
-    thread_id  TEXT    NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
-    state      TEXT    NOT NULL,
-    channel    TEXT    NOT NULL CHECK (channel IN ('human', 'agent')),
-    commit_oid TEXT,
-    created_at INTEGER NOT NULL
-);
-
-CREATE INDEX thread_history_by_thread ON thread_history(thread_id, created_at);
-";
-
 const V9: &str = r"
 CREATE TABLE minted_snapshots (
     repo_path TEXT NOT NULL,
@@ -286,6 +264,28 @@ SELECT repo_path, working_tree_snapshot FROM repo_snapshots
 WHERE working_tree_snapshot IS NOT NULL
 UNION
 SELECT repo_path, index_snapshot FROM repo_snapshots WHERE index_snapshot IS NOT NULL;
+";
+
+/// A thread's history, one row per state change (`reviewdb::history`). Rows
+/// order by their write time, which the app and the CLI read off this one
+/// host's clock; the order only decides where the card draws a change among
+/// the replies, so a clock step back can misplace a row and nothing else.
+const V10: &str = r"
+CREATE TABLE thread_history (
+    thread_id  TEXT    NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    state      TEXT    NOT NULL,
+    channel    TEXT    NOT NULL CHECK (channel IN ('human', 'agent')),
+    commit_oid TEXT,
+    created_at INTEGER NOT NULL
+);
+
+CREATE INDEX thread_history_by_thread ON thread_history(thread_id, created_at);
+";
+
+/// A review the user put away. The agent reads only reviews that are not
+/// archived, and the app lists them apart.
+const V11: &str = r"
+ALTER TABLE reviews ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
 ";
 
 /// A dev store may carry `user_version = 8` from an unreleased commit that numbered
