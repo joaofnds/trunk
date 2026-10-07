@@ -6,9 +6,11 @@
 import Archive from "@lucide/svelte/icons/archive";
 import Copy from "@lucide/svelte/icons/copy";
 import File from "@lucide/svelte/icons/file";
+import type { Attachment } from "svelte/attachments";
 import StateGlyph from "../../components/review/StateGlyph.svelte";
 import StatePill from "../../components/review/StatePill.svelte";
 import { laneColor } from "../../lib/lanes.js";
+import { tooltip } from "../../lib/tooltip.js";
 import type { ThreadState } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
 import ButtonGroup from "../../lib/ui/ButtonGroup.svelte";
@@ -104,6 +106,13 @@ function plural(count: number, word: string): string {
 	return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 
+function hint(text: string): Attachment<HTMLElement> {
+	return (node) => {
+		const handle = tooltip(node, text);
+		return () => handle.destroy();
+	};
+}
+
 let folded = $state<Record<string, boolean>>({});
 
 function fileKey(group: Group, path: string): string {
@@ -120,7 +129,7 @@ function removeThread(group: Group, thread: Thread) {
 </script>
 
 {#snippet toggle(
-label: string,
+name: string,
 glyph: ThreadState | "stale",
 tone: string,
 count: number,
@@ -130,18 +139,18 @@ ontoggle: () => void,
 	<LinkButton
 		tone="muted"
 		aria-pressed={on}
-		aria-label={label}
-		title={on ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+		aria-label="{name} threads"
 		onclick={ontoggle}
+		{@attach hint(
+			`${name}: ${plural(count, "thread")}. Click to ${on ? "hide" : "show"}.`,
+		)}
 	>
 		<span
 			class="inline-flex items-center gap-1 font-mono"
-			class:line-through={!on}
+			class:proto-toggle-off={!on}
+			class:text-text-disabled={!on}
 		>
-			<span
-				class="inline-flex {on ? tone : 'text-text-disabled'}"
-				aria-hidden="true"
-			>
+			<span class="inline-flex {tone}" aria-hidden="true">
 				<StateGlyph state={glyph} size={11} />
 			</span>
 			{count}
@@ -200,7 +209,7 @@ ontoggle: () => void,
 						{#if count > 0}
 							<li class="inline-flex">
 								{@render toggle(
-`${tally.label} threads`,
+tally.label,
 tally.state,
 tally.tone,
 count,
@@ -213,7 +222,7 @@ shown[tally.state],
 					{#if staleCount > 0}
 						<li class="inline-flex">
 							{@render toggle(
-"Stale threads",
+"Stale",
 "stale",
 "text-thread-stale",
 staleCount,
@@ -436,5 +445,10 @@ section.groups.reduce((n, g) => n + visible(g).length, 0),
 }
 .proto-keys {
 	border-top: 1px solid var(--color-border);
+}
+.proto-toggle-off {
+	outline: 1px dashed var(--color-border-strong);
+	outline-offset: 3px;
+	border-radius: var(--radius);
 }
 </style>
