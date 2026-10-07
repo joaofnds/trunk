@@ -17,12 +17,18 @@ describe("StatePill", () => {
 
 	describe("for a review", () => {
 		it.each([
-			["composing", "Composing"],
-			["ready", "Ready"],
+			["open", "Open"],
+			["stale", "Stale"],
 			["settled", "Settled"],
-		] as const)("labels the %s state as %s", (state, label) => {
-			render(StatePill, { props: { state } });
+		] as const)("labels the %s state as %s", (review, label) => {
+			render(StatePill, { props: { review } });
 			expect(screen.getByText(label)).toBeInTheDocument();
+		});
+
+		it("draws the state without a glyph, unlike a thread's", () => {
+			const { container } = render(StatePill, { props: { review: "open" } });
+
+			expect(container.querySelector("svg")).toBeNull();
 		});
 	});
 

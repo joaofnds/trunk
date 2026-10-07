@@ -134,7 +134,7 @@ function aReview(overrides: Partial<Review> = {}): Review {
 	return {
 		id: ACTIVE_REVIEW,
 		title: "Review 2026-08-12",
-		state: "composing",
+		state: "settled",
 		published: false,
 		archived: false,
 		thread_count: 0,
@@ -1584,7 +1584,7 @@ describe("the shown review", () => {
 	const READY: Review = {
 		id: "READYRV1",
 		title: "Auth review",
-		state: "ready",
+		state: "open",
 		published: true,
 		archived: false,
 		thread_count: 2,
@@ -1667,6 +1667,17 @@ describe("empty states", () => {
 		]);
 	});
 
+	it("says an agent reads a comment as soon as it is added", async () => {
+		installReads({ reviews: [], activeReviewId: null });
+		renderPanel();
+		await flush();
+
+		expect(
+			screen.getByText(/An agent reads each comment .* as soon as you add it/),
+		).toBeInTheDocument();
+		expect(screen.queryByText(/end it/)).toBeNull();
+	});
+
 	it("starts a review from the empty repository", async () => {
 		installReads({ reviews: [], activeReviewId: null });
 		renderPanel();
@@ -1701,6 +1712,18 @@ describe("empty states", () => {
 		expect(
 			screen.getByText(
 				/New comments you write anywhere in this repo land here/,
+			),
+		).toBeInTheDocument();
+	});
+
+	it("says the agent reads an empty review's comments once they are sent", async () => {
+		installReads({ commits, comments: [] });
+		renderPanel();
+		await flush();
+
+		expect(
+			screen.getByText(
+				/The agent reads each comment as soon as you add it, or when you send the batch you hold it in/,
 			),
 		).toBeInTheDocument();
 	});
@@ -1773,7 +1796,7 @@ describe("header", () => {
 	const OTHER: Review = {
 		id: "OTHERRV1",
 		title: "Other review",
-		state: "ready",
+		state: "open",
 		published: true,
 		archived: false,
 		thread_count: 0,
@@ -1792,7 +1815,7 @@ describe("header", () => {
 		installReads({
 			commits,
 			comments: THREADS,
-			reviews: [aReview({ title: "Watcher review", state: "ready" })],
+			reviews: [aReview({ title: "Watcher review", state: "open" })],
 		});
 		renderPanel();
 		await flush();
@@ -1801,7 +1824,7 @@ describe("header", () => {
 			"Watcher review",
 		);
 		expect(header()).toHaveTextContent(ACTIVE_REVIEW);
-		expect(header()).toHaveTextContent("Ready");
+		expect(header()).toHaveTextContent("Open");
 	});
 
 	it("names a review by an older default title without its id twice", async () => {
@@ -1965,10 +1988,10 @@ describe("header", () => {
 			});
 		});
 
-		it("says it is published and offers nothing to send", async () => {
+		it("says the agent sees it and offers nothing to send", async () => {
 			await showOther();
 
-			expect(header()).toHaveTextContent("Published");
+			expect(header()).toHaveTextContent("Visible to the agent");
 			expect(screen.queryByRole("button", { name: /^Send/ })).toBeNull();
 		});
 

@@ -10,7 +10,7 @@ use trunk_review::reviewdb;
 /// Plain mode writes one review id per changed review; `--json` writes one
 /// self-contained NDJSON event per change with its full data, so a harness
 /// never refetches or rediffs. Both modes read off the same entity diff.
-/// Composing reviews never enter the snapshot, so their edits wake the
+/// Unsent reviews never enter the snapshot, so their edits wake the
 /// process and write nothing. Output is unbounded, unlike the other verbs.
 ///
 /// # Errors
@@ -132,7 +132,7 @@ mod watch_feed {
     #[derive(Serialize)]
     #[serde(tag = "event", rename_all = "snake_case")]
     pub enum WatchChange {
-        ReviewPublished {
+        ReviewAdded {
             review: String,
             title: String,
             state: ReviewState,
@@ -207,7 +207,7 @@ mod watch_feed {
     impl WatchChange {
         pub fn review(&self) -> &str {
             match self {
-                Self::ReviewPublished { review, .. }
+                Self::ReviewAdded { review, .. }
                 | Self::ReviewRetitled { review, .. }
                 | Self::ReviewStateChanged { review, .. }
                 | Self::ReviewDeleted { review }
@@ -229,7 +229,7 @@ mod watch_feed {
 use watch_feed::{ReplySnap, ReviewSnap, Snapshot, ThreadSnap, WatchChange};
 
 /// Everything the events may need to say about this repo's published
-/// reviews. Composing reviews are excluded, which is the no-leak rule again.
+/// reviews. Unsent reviews are excluded, which is the no-leak rule again.
 #[cfg(unix)]
 fn published_snapshot(
     store: &reviewdb::Store,
@@ -316,7 +316,7 @@ fn diff_snapshots(old: &Snapshot, new: &Snapshot) -> Vec<WatchChange> {
         }
         match before {
             None => {
-                changes.push(WatchChange::ReviewPublished {
+                changes.push(WatchChange::ReviewAdded {
                     review: id.clone(),
                     title: review.title.clone(),
                     state: review.state,

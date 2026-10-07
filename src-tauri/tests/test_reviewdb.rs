@@ -192,7 +192,7 @@ fn submit_with_no_active_review_creates_one() {
     );
     assert_eq!(
         reviews[0].state,
-        ReviewState::Ready,
+        ReviewState::Open,
         "the comment that created the review went live with it",
     );
     assert_eq!(reviews[0].thread_count, 1);
@@ -583,7 +583,7 @@ fn migrates_v1_to_v2_additively() {
 }
 
 #[test]
-fn deleting_a_composing_thread_cascades_to_replies() {
+fn deleting_a_unsent_thread_cascades_to_replies() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
@@ -2404,7 +2404,7 @@ fn renders_a_stored_review() {
     );
     assert!(
         !doc.contains("review reply"),
-        "a composing review's doc must omit the CLI instructions (criterion 11)",
+        "an unsent review's doc must omit the CLI instructions (criterion 11)",
     );
 
     store
@@ -2505,10 +2505,10 @@ fn lists_every_review_for_the_repo_with_state_and_title() {
 
     assert_eq!(listed.len(), 2, "every review for the repo is listed");
     assert_eq!(listed[0].id, first);
-    assert_eq!(listed[0].state, ReviewState::Ready);
+    assert_eq!(listed[0].state, ReviewState::Open);
     assert_eq!(listed[0].thread_count, 1);
     assert_eq!(listed[1].id, second);
-    assert_eq!(listed[1].state, ReviewState::Composing);
+    assert_eq!(listed[1].state, ReviewState::Settled);
     assert_eq!(
         listed[1].title, "Second pass",
         "each row carries its own editable title and short id",
@@ -2609,17 +2609,15 @@ fn the_schema_rejects_a_side_outside_the_set() {
 
 // ── The derived state triple, one arm per test ───────────────────────────────
 
-/// A published review holding one thread, driven from `open` to `state` through
-/// a real transition (never a direct `UPDATE`).
-fn published_review_with(state: ThreadState) -> (TestContext, Store, String, String) {
+/// A review holding one sent thread, driven from `open` to `state` through a
+/// real transition (never a direct `UPDATE`).
+fn sent_review_with(state: ThreadState) -> (TestContext, Store, String, String) {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
-    let thread_id = submit_thread_inner(&store, &canonical, held("please fix"), 1_000).unwrap();
+    let thread_id =
+        submit_thread_inner(&store, &canonical, submission("please fix"), 1_000).unwrap();
     let id = only_review(&store, &canonical).id;
-    store
-        .write(|tx| reviewdb::reviews::send_batch(tx, &canonical, &id, 1_000))
-        .unwrap();
 
     let channel = if state == ThreadState::Addressed {
         Channel::Agent
@@ -2637,8 +2635,39 @@ fn published_review_with(state: ThreadState) -> (TestContext, Store, String, Str
     (ctx, store, id, thread_id)
 }
 
+/// Marks a thread as pointing at code that is gone. The real pass needs the
+/// repository to move, which is not what these tests are about.
+fn mark_stale(store: &Store, thread_id: &str) {
+    store
+        .write(|tx| {
+            tx.execute("UPDATE threads SET stale = 1 WHERE id = ?1", [thread_id])
+                .map_err(reviewdb::sqlite_error)
+        })
+        .unwrap();
+}
+
+fn add_thread(store: &Store, review_id: &str, text: &str, delivery: Delivery) -> String {
+    store
+        .write(|tx| {
+            reviewdb::threads::insert(
+                tx,
+                review_id,
+                reviewdb::threads::NewThread {
+                    text: text.to_string(),
+                    anchor: None,
+                    commit_oid: None,
+                    content_pin: None,
+                    cached_excerpt: None,
+                    delivery,
+                },
+                1_003,
+            )
+        })
+        .unwrap()
+}
+
 #[test]
-fn an_unpublished_review_is_composing() {
+fn a_review_with_nothing_sent_is_settled() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
@@ -2647,21 +2676,34 @@ fn an_unpublished_review_is_composing() {
 
     assert_eq!(
         only_review(&store, &canonical).state,
-        ReviewState::Composing
+        ReviewState::Settled,
+        "a held thread waits on nobody until it is sent",
     );
 }
 
 #[test]
-fn a_published_review_with_an_open_thread_is_ready() {
-    let (ctx, store, _, _) = published_review_with(ThreadState::Open);
+fn a_sent_open_thread_makes_the_review_open() {
+    let (ctx, store, _, _) = sent_review_with(ThreadState::Open);
 
     let canonical = ctx.repo_path().canonicalize().unwrap();
-    assert_eq!(only_review(&store, &canonical).state, ReviewState::Ready);
+    assert_eq!(only_review(&store, &canonical).state, ReviewState::Open);
 }
 
 #[test]
-fn a_published_review_with_every_thread_resolved_is_settled() {
-    let (ctx, store, _, _) = published_review_with(ThreadState::Done);
+fn an_addressed_thread_keeps_the_review_open() {
+    let (ctx, store, _, _) = sent_review_with(ThreadState::Addressed);
+
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    assert_eq!(
+        only_review(&store, &canonical).state,
+        ReviewState::Open,
+        "an addressed thread still waits on the user",
+    );
+}
+
+#[test]
+fn a_review_with_every_thread_resolved_is_settled() {
+    let (ctx, store, _, _) = sent_review_with(ThreadState::Done);
 
     let canonical = ctx.repo_path().canonicalize().unwrap();
     assert_eq!(
@@ -2672,22 +2714,72 @@ fn a_published_review_with_every_thread_resolved_is_settled() {
 }
 
 #[test]
-fn an_addressed_thread_keeps_the_review_ready() {
-    let (ctx, store, _, _) = published_review_with(ThreadState::Addressed);
-
+fn a_review_whose_every_unresolved_thread_is_stale_is_stale() {
+    let (ctx, store, review_id, first) = sent_review_with(ThreadState::Open);
     let canonical = ctx.repo_path().canonicalize().unwrap();
+    let second = add_thread(&store, &review_id, "and this", Delivery::Send);
+
+    mark_stale(&store, &first);
+    mark_stale(&store, &second);
+
+    assert_eq!(only_review(&store, &canonical).state, ReviewState::Stale);
+}
+
+#[test]
+fn one_fresh_unresolved_thread_keeps_a_partly_stale_review_open() {
+    let (ctx, store, review_id, first) = sent_review_with(ThreadState::Open);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    add_thread(&store, &review_id, "still here", Delivery::Send);
+
+    mark_stale(&store, &first);
+
+    assert_eq!(only_review(&store, &canonical).state, ReviewState::Open);
+}
+
+#[test]
+fn a_stale_resolved_thread_leaves_the_review_settled() {
+    let (ctx, store, _, thread_id) = sent_review_with(ThreadState::Done);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
+    mark_stale(&store, &thread_id);
+
     assert_eq!(
         only_review(&store, &canonical).state,
-        ReviewState::Ready,
-        "an addressed thread is still actionable",
+        ReviewState::Settled,
+        "staleness speaks only for threads still waiting on someone",
     );
+}
+
+#[test]
+fn a_held_open_thread_leaves_a_settled_review_settled() {
+    let (ctx, store, review_id, _) = sent_review_with(ThreadState::Done);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
+    add_thread(&store, &review_id, "not sent yet", Delivery::Hold);
+
+    assert_eq!(
+        only_review(&store, &canonical).state,
+        ReviewState::Settled,
+        "the state reads only what the agent was sent",
+    );
+}
+
+#[test]
+fn a_held_fresh_thread_leaves_a_stale_review_stale() {
+    let (ctx, store, review_id, thread_id) = sent_review_with(ThreadState::Open);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    mark_stale(&store, &thread_id);
+
+    add_thread(&store, &review_id, "not sent yet", Delivery::Hold);
+
+    assert_eq!(only_review(&store, &canonical).state, ReviewState::Stale);
 }
 
 // ── Milestone 2, Task 4: derived settling reaches the UI ─────────────────────
 
 #[test]
-fn reopening_a_thread_makes_a_settled_review_ready() {
-    let (ctx, store, _, thread_id) = published_review_with(ThreadState::Done);
+fn reopening_a_thread_makes_a_settled_review_open() {
+    let (ctx, store, _, thread_id) = sent_review_with(ThreadState::Done);
     let canonical = ctx.repo_path().canonicalize().unwrap();
 
     store
@@ -2705,53 +2797,36 @@ fn reopening_a_thread_makes_a_settled_review_ready() {
 
     assert_eq!(
         only_review(&store, &canonical).state,
-        ReviewState::Ready,
-        "reopening a thread in a settled review flips it back to ready",
+        ReviewState::Open,
+        "reopening a thread in a settled review flips it back to open",
     );
 }
 
 #[test]
-fn a_new_thread_in_a_settled_review_makes_it_ready() {
-    let (ctx, store, review_id, _) = published_review_with(ThreadState::Done);
+fn a_new_thread_in_a_settled_review_makes_it_open() {
+    let (ctx, store, review_id, _) = sent_review_with(ThreadState::Done);
     let canonical = ctx.repo_path().canonicalize().unwrap();
     assert_eq!(only_review(&store, &canonical).state, ReviewState::Settled);
 
-    store
-        .write(|tx| {
-            reviewdb::threads::insert(
-                tx,
-                &review_id,
-                reviewdb::threads::NewThread {
-                    text: "one more thing".to_string(),
-                    anchor: None,
-                    commit_oid: None,
-                    content_pin: None,
-                    cached_excerpt: None,
-                    delivery: Delivery::Send,
-                },
-                1_003,
-            )
-            .map(|_| ())
-        })
-        .unwrap();
+    add_thread(&store, &review_id, "one more thing", Delivery::Send);
 
     assert_eq!(
         only_review(&store, &canonical).state,
-        ReviewState::Ready,
-        "a new thread in a settled review makes it ready again",
+        ReviewState::Open,
+        "a new thread in a settled review makes it open again",
     );
 }
 
 #[test]
-fn publishing_an_all_resolved_review_derives_settled() {
+fn sending_an_all_resolved_batch_derives_settled() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let thread_id = submit_thread_inner(&store, &canonical, held("x"), 1_000).unwrap();
     let review_id = only_review(&store, &canonical).id;
 
-    // Resolve BEFORE publishing — the review derives directly to settled the
-    // moment it is published, with no intermediate `ready`.
+    // Resolve BEFORE sending: the review derives directly to settled the
+    // moment the batch is sent, with no intermediate `open`.
     store
         .write(|tx| {
             reviewdb::threads::set_state(
@@ -2769,80 +2844,6 @@ fn publishing_an_all_resolved_review_derives_settled() {
         .unwrap();
 
     assert_eq!(only_review(&store, &canonical).state, ReviewState::Settled);
-}
-
-#[test]
-fn nine_reviews_hold_three_of_each_derived_state() {
-    let ctx = TestContext::builder()
-        .with_file("a.txt", "alpha\n")
-        .with_commit("c1")
-        .build();
-    let canonical = ctx.repo_path().canonicalize().unwrap();
-    let store = reviewdb::open(ctx.data_dir()).unwrap();
-
-    let make = |label: &str| -> (String, String) {
-        let review_id = store
-            .write(|tx| reviewdb::reviews::create(tx, &canonical, Some(label), 1_000))
-            .unwrap();
-        store
-            .write(|tx| reviewdb::reviews::set_active(tx, &canonical, &review_id))
-            .unwrap();
-        let thread_id = submit_thread_inner(&store, &canonical, held(label), 1_000).unwrap();
-        (review_id, thread_id)
-    };
-
-    (0..3).for_each(|i| {
-        make(&format!("composing {i}"));
-    });
-    (0..3).for_each(|i| {
-        let pair = make(&format!("ready {i}"));
-        store
-            .write(|tx| reviewdb::reviews::send_batch(tx, &canonical, &pair.0, 1_000))
-            .unwrap();
-    });
-    (0..3).for_each(|i| {
-        let pair = make(&format!("settled {i}"));
-        store
-            .write(|tx| reviewdb::reviews::send_batch(tx, &canonical, &pair.0, 1_000))
-            .unwrap();
-        store
-            .write(|tx| {
-                reviewdb::threads::set_state(
-                    tx,
-                    &canonical,
-                    &pair.1,
-                    ThreadState::Done,
-                    Channel::Human,
-                    1_001,
-                )
-            })
-            .unwrap();
-    });
-
-    let reviews = store
-        .read(|c| reviewdb::reviews::list(c, &canonical))
-        .unwrap();
-    assert_eq!(
-        reviews
-            .iter()
-            .filter(|r| r.state == ReviewState::Composing)
-            .count(),
-        3
-    );
-    assert_eq!(
-        reviews
-            .iter()
-            .filter(|r| r.state == ReviewState::Ready)
-            .count(),
-        3
-    );
-    assert_eq!(
-        reviews
-            .iter()
-            .filter(|r| r.state == ReviewState::Settled)
-            .count(),
-        3
-    );
 }
 
 // ── Milestone 2, Task 6: human text is editable anytime, agent text is not ──
@@ -2930,7 +2931,7 @@ fn a_published_review_still_accepts_a_reply_and_a_text_edit() {
 
 #[test]
 fn editing_human_text_leaves_state_untouched() {
-    let (ctx, store, review_id, thread_id) = published_review_with(ThreadState::Addressed);
+    let (ctx, store, review_id, thread_id) = sent_review_with(ThreadState::Addressed);
     let canonical = ctx.repo_path().canonicalize().unwrap();
 
     store
@@ -3006,7 +3007,7 @@ fn editing_an_agent_thread_is_refused() {
 
 #[test]
 fn deleting_a_published_thread_removes_it() {
-    let (ctx, store, _, thread_id) = published_review_with(ThreadState::Open);
+    let (ctx, store, _, thread_id) = sent_review_with(ThreadState::Open);
     let canonical = ctx.repo_path().canonicalize().unwrap();
 
     store
@@ -3022,7 +3023,7 @@ fn deleting_a_published_thread_removes_it() {
 
 #[test]
 fn deleting_a_published_reply_removes_it() {
-    let (ctx, store, _, thread_id) = published_review_with(ThreadState::Open);
+    let (ctx, store, _, thread_id) = sent_review_with(ThreadState::Open);
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let reply_id = store
         .write(|tx| {
@@ -3051,7 +3052,7 @@ fn deleting_a_published_reply_removes_it() {
 }
 
 #[test]
-fn deleting_a_composing_reply_removes_it() {
+fn deleting_a_unsent_reply_removes_it() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();

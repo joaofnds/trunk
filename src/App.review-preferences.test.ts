@@ -622,7 +622,7 @@ function reviewWith(
 		review: {
 			id,
 			title: `${state} review`,
-			state: "composing",
+			state: "settled",
 			published: false,
 			archived: false,
 			thread_count: storedThreads.length,

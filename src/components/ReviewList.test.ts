@@ -26,7 +26,7 @@ function aReview(overrides: Partial<Review> = {}): Review {
 	return {
 		id: ACTIVE_REVIEW,
 		title: "Review 2026-08-12",
-		state: "composing",
+		state: "settled",
 		published: false,
 		archived: false,
 		thread_count: 0,
@@ -37,10 +37,10 @@ function aReview(overrides: Partial<Review> = {}): Review {
 	};
 }
 
-const READY: Review = {
+const OPEN: Review = {
 	id: "READYRV1",
 	title: "Auth review",
-	state: "ready",
+	state: "open",
 	published: true,
 	archived: false,
 	thread_count: 2,
@@ -60,7 +60,7 @@ function seedReviews(
 }
 
 function twoReviews() {
-	seedReviews([aReview(), READY], ACTIVE_REVIEW);
+	seedReviews([aReview(), OPEN], ACTIVE_REVIEW);
 }
 
 async function renderList() {
@@ -98,15 +98,15 @@ describe("ReviewList", () => {
 		twoReviews();
 		await renderList();
 
-		const ready = screen.getByRole("button", {
-			name: `Show review ${READY.id}`,
+		const open = screen.getByRole("button", {
+			name: `Show review ${OPEN.id}`,
 		});
-		expect(ready).toHaveTextContent("Auth review");
-		expect(ready).toHaveTextContent(READY.id);
-		expect(ready).toHaveTextContent("Ready");
+		expect(open).toHaveTextContent("Auth review");
+		expect(open).toHaveTextContent(OPEN.id);
+		expect(open).toHaveTextContent("Open");
 		expect(
 			screen.getByRole("button", { name: `Show review ${ACTIVE_REVIEW}` }),
-		).toHaveTextContent("Composing");
+		).toHaveTextContent("Settled");
 	});
 
 	it("shows an older default title without the id it repeated", async () => {
@@ -157,7 +157,7 @@ describe("ReviewList", () => {
 	])(
 		"counts %i unresolved of two threads as %s",
 		async (unresolved_count, shown) => {
-			seedReviews([{ ...READY, unresolved_count }]);
+			seedReviews([{ ...OPEN, unresolved_count }]);
 			await renderList();
 
 			const count = screen.getByTitle(`${unresolved_count} unresolved of 2`);
@@ -169,15 +169,15 @@ describe("ReviewList", () => {
 		seedReviews([aReview()]);
 		await renderList();
 		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
-			Promise.resolve(cmd === "create_review" ? READY.id : undefined),
+			Promise.resolve(cmd === "create_review" ? OPEN.id : undefined),
 		);
-		reviewComments.seed({ reviews: [aReview(), READY] });
+		reviewComments.seed({ reviews: [aReview(), OPEN] });
 
 		await fireEvent.click(screen.getByRole("button", { name: "New review" }));
 		await flush();
 
 		expect(callArgs("create_review")).toEqual({ path: "/repo", title: null });
-		expect(reviewComments.shownReviewId).toBe(READY.id);
+		expect(reviewComments.shownReviewId).toBe(OPEN.id);
 	});
 
 	it("marks the shown review, and only it, as current", async () => {
@@ -188,7 +188,7 @@ describe("ReviewList", () => {
 			screen.getByRole("button", { name: `Show review ${ACTIVE_REVIEW}` }),
 		).toHaveAttribute("aria-current", "true");
 		expect(
-			screen.getByRole("button", { name: `Show review ${READY.id}` }),
+			screen.getByRole("button", { name: `Show review ${OPEN.id}` }),
 		).not.toHaveAttribute("aria-current");
 	});
 
@@ -197,13 +197,13 @@ describe("ReviewList", () => {
 		await renderList();
 
 		await fireEvent.click(
-			screen.getByRole("button", { name: `Show review ${READY.id}` }),
+			screen.getByRole("button", { name: `Show review ${OPEN.id}` }),
 		);
 		await flush();
 
-		expect(reviewComments.shownReviewId).toBe(READY.id);
+		expect(reviewComments.shownReviewId).toBe(OPEN.id);
 		expect(
-			screen.getByRole("button", { name: `Show review ${READY.id}` }),
+			screen.getByRole("button", { name: `Show review ${OPEN.id}` }),
 		).toHaveAttribute("aria-current", "true");
 		expect(calledCommands()).not.toContain("set_active_review");
 	});
@@ -213,7 +213,7 @@ describe("ReviewList", () => {
 		await renderList();
 
 		const radio = screen.getByRole("button", {
-			name: `Active review ${READY.id}`,
+			name: `Active review ${OPEN.id}`,
 		});
 		expect(radio).toHaveAttribute("aria-pressed", "false");
 		expect(radio).toHaveAttribute("title", "Make active");
@@ -222,7 +222,7 @@ describe("ReviewList", () => {
 
 		expect(callArgs("set_active_review")).toEqual({
 			path: "/repo",
-			reviewId: READY.id,
+			reviewId: OPEN.id,
 		});
 	});
 
@@ -251,7 +251,7 @@ describe("ReviewList", () => {
 	});
 
 	describe("archiving a review", () => {
-		const ARCHIVED: Review = { ...READY, archived: true };
+		const ARCHIVED: Review = { ...OPEN, archived: true };
 
 		it("folds archived reviews under their own heading, out of the count", async () => {
 			seedReviews([aReview(), ARCHIVED]);
@@ -261,7 +261,7 @@ describe("ReviewList", () => {
 				screen.getByRole("heading", { name: "Reviews 1" }),
 			).toBeInTheDocument();
 			expect(
-				screen.queryByRole("button", { name: `Show review ${READY.id}` }),
+				screen.queryByRole("button", { name: `Show review ${OPEN.id}` }),
 			).toBeNull();
 			expect(
 				screen.getByRole("button", { name: "Archived 1" }),
@@ -275,7 +275,7 @@ describe("ReviewList", () => {
 			await fireEvent.click(screen.getByRole("button", { name: "Archived 1" }));
 
 			expect(
-				screen.getByRole("button", { name: `Show review ${READY.id}` }),
+				screen.getByRole("button", { name: `Show review ${OPEN.id}` }),
 			).toBeInTheDocument();
 		});
 
@@ -286,7 +286,7 @@ describe("ReviewList", () => {
 			await fireEvent.click(screen.getByRole("button", { name: "Archived 1" }));
 
 			expect(
-				screen.queryByRole("button", { name: `Active review ${READY.id}` }),
+				screen.queryByRole("button", { name: `Active review ${OPEN.id}` }),
 			).toBeNull();
 			expect(
 				screen.getByTitle("Archived: unarchive to make it active"),
@@ -313,7 +313,7 @@ describe("ReviewList", () => {
 		}
 
 		it("asks inline before deleting, naming what goes with it", async () => {
-			const confirm = await askToDelete(READY);
+			const confirm = await askToDelete(OPEN);
 
 			expect(confirm).toHaveTextContent(
 				"Delete Auth review and its 2 threads? The agent loses access to it. This can’t be undone.",
@@ -338,7 +338,7 @@ describe("ReviewList", () => {
 		});
 
 		it("deletes the review once confirmed", async () => {
-			const confirm = await askToDelete(READY);
+			const confirm = await askToDelete(OPEN);
 
 			await fireEvent.click(
 				within(confirm).getByRole("button", { name: "Delete review" }),
@@ -347,12 +347,12 @@ describe("ReviewList", () => {
 
 			expect(callArgs("delete_review")).toEqual({
 				path: "/repo",
-				reviewId: READY.id,
+				reviewId: OPEN.id,
 			});
 		});
 
 		it("keeps the review on Cancel", async () => {
-			const confirm = await askToDelete(READY);
+			const confirm = await askToDelete(OPEN);
 
 			await fireEvent.click(
 				within(confirm).getByRole("button", { name: "Cancel" }),

@@ -75,7 +75,7 @@ const thread: Thread = aThread({
 const review: Review = {
 	id: "REVIEW01",
 	title: "Review 2026-08-12",
-	state: "composing",
+	state: "settled",
 	published: false,
 	archived: false,
 	thread_count: 1,
@@ -88,7 +88,7 @@ const commits: SessionCommit[] = [
 	aSessionCommit({ oid: "abc", short_oid: "abc", summary: "one" }),
 ];
 
-/** A repo with one composing review holding one thread. */
+/** A repo with one review holding one thread. */
 function aPopulatedStore(overrides: Record<string, unknown> = {}) {
 	mockInvoke.mockImplementation((cmd: string) => {
 		if (cmd in overrides) return Promise.resolve(overrides[cmd]);

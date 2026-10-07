@@ -14,15 +14,15 @@ use std::time::{Duration, Instant};
 use trunk_review::reviewdb::{self, reviews, threads};
 use trunk_review::types::{Channel, Delivery, ThreadState};
 
-/// A store seeded the way the app would seed it: one composing review (title
+/// A store seeded the way the app would seed it: one unsent review (title
 /// "draft in progress") and one published review (title "ready for reading")
 /// with a single thread, both keyed by the repo's canonical path. Returns the
-/// two review ids `(composing, published)`.
+/// two review ids `(unsent, published)`.
 fn seed_reviews(ctx: &TestContext) -> (String, String) {
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
 
-    let composing = store
+    let unsent = store
         .write(|tx| reviews::create(tx, &canonical, Some("draft in progress"), 100))
         .unwrap();
     let published = store
@@ -46,7 +46,7 @@ fn seed_reviews(ctx: &TestContext) -> (String, String) {
         })
         .unwrap();
 
-    (composing, published)
+    (unsent, published)
 }
 
 /// Wait for the child with a Rust-side deadline (macOS ships no `timeout`
@@ -122,7 +122,7 @@ fn cli_lists_only_published_reviews() {
         .with_file("a.txt", "one")
         .with_commit("c1")
         .build();
-    let (composing, published) = seed_reviews(&ctx);
+    let (unsent, published) = seed_reviews(&ctx);
 
     let out = trunk_review_in(ctx.repo_path(), &["list"], ctx.data_dir());
 
@@ -134,14 +134,12 @@ fn cli_lists_only_published_reviews() {
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains(&published)
-            && stdout.contains("ready")
-            && stdout.contains("ready for reading"),
+        stdout.contains(&format!("{published} open ")) && stdout.contains("ready for reading"),
         "the published review must be listed with state and title, got {stdout:?}",
     );
     assert!(
-        !stdout.contains(&composing) && !stdout.contains("draft in progress"),
-        "a composing review must not leak through the CLI, got {stdout:?}",
+        !stdout.contains(&unsent) && !stdout.contains("draft in progress"),
+        "an unsent review must not leak through the CLI, got {stdout:?}",
     );
 }
 
@@ -466,29 +464,29 @@ fn a_thread_added_after_publish_shows_in_cli_show() {
 }
 
 #[test]
-fn cli_show_answers_a_composing_review_exactly_as_missing() {
+fn cli_show_answers_a_unsent_review_exactly_as_missing() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
         .with_commit("c1")
         .build();
-    let (composing, _) = seed_reviews(&ctx);
+    let (unsent, _) = seed_reviews(&ctx);
 
-    let of_composing = trunk_review_in(ctx.repo_path(), &["show", &composing], ctx.data_dir());
+    let of_unsent = trunk_review_in(ctx.repo_path(), &["show", &unsent], ctx.data_dir());
     let of_missing = trunk_review_in(ctx.repo_path(), &["show", "ZZZZZZZZ"], ctx.data_dir());
 
     assert_eq!(
-        of_composing.status.code(),
+        of_unsent.status.code(),
         of_missing.status.code(),
         "same exit code",
     );
-    assert_ne!(of_composing.status.code(), Some(0));
+    assert_ne!(of_unsent.status.code(), Some(0));
     assert_eq!(
-        String::from_utf8_lossy(&of_composing.stderr).replace(&composing, "ZZZZZZZZ"),
+        String::from_utf8_lossy(&of_unsent.stderr).replace(&unsent, "ZZZZZZZZ"),
         String::from_utf8_lossy(&of_missing.stderr),
-        "a composing review must be indistinguishable from a missing one",
+        "an unsent review must be indistinguishable from a missing one",
     );
     assert!(
-        of_composing.stdout.is_empty(),
+        of_unsent.stdout.is_empty(),
         "no partial write on the error path",
     );
 }
@@ -703,6 +701,48 @@ fn cli_show_leaves_out_a_held_reply() {
 }
 
 #[test]
+fn watch_json_reports_a_review_added_when_its_first_thread_is_sent() {
+    let ctx = TestContext::new_empty();
+    let (unsent, _) = seed_reviews(&ctx);
+    let watch = WatchChild::spawn_json(&ctx);
+
+    let thread = reviewdb::open(ctx.data_dir())
+        .unwrap()
+        .write(|tx| {
+            threads::insert(
+                tx,
+                &unsent,
+                threads::NewThread {
+                    text: "first word".to_string(),
+                    anchor: None,
+                    commit_oid: None,
+                    content_pin: None,
+                    cached_excerpt: None,
+                    delivery: Delivery::Send,
+                },
+                900,
+            )
+        })
+        .unwrap();
+    let added: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let content: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+
+    assert_eq!(
+        added,
+        serde_json::json!({
+            "event": "review_added",
+            "review": unsent,
+            "title": "draft in progress",
+            "state": "open",
+        }),
+    );
+    assert_eq!(content["event"], "thread_added", "{content}");
+    assert_eq!(content["thread"], thread.as_str());
+}
+
+#[test]
 fn watch_json_reports_a_held_comment_only_once_its_batch_is_sent() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
@@ -732,19 +772,19 @@ fn watch_json_reports_a_held_comment_only_once_its_batch_is_sent() {
 }
 
 #[test]
-fn cli_reply_to_a_composing_thread_answers_as_missing() {
+fn cli_reply_to_a_unsent_thread_answers_as_missing() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
         .with_commit("c1")
         .build();
-    let (composing, _) = seed_reviews(&ctx);
-    let composing_thread = {
+    let (unsent, _) = seed_reviews(&ctx);
+    let unsent_thread = {
         let store = reviewdb::open(ctx.data_dir()).unwrap();
         store
             .write(|tx| {
                 threads::insert(
                     tx,
-                    &composing,
+                    &unsent,
                     threads::NewThread {
                         text: "unpublished".to_string(),
                         anchor: None,
@@ -759,9 +799,9 @@ fn cli_reply_to_a_composing_thread_answers_as_missing() {
             .unwrap()
     };
 
-    let of_composing = trunk_review_in(
+    let of_unsent = trunk_review_in(
         ctx.repo_path(),
-        &["reply", &composing_thread, "hello"],
+        &["reply", &unsent_thread, "hello"],
         ctx.data_dir(),
     );
     let of_missing = trunk_review_in(
@@ -770,9 +810,9 @@ fn cli_reply_to_a_composing_thread_answers_as_missing() {
         ctx.data_dir(),
     );
 
-    assert_ne!(of_composing.status.code(), Some(0));
+    assert_ne!(of_unsent.status.code(), Some(0));
     assert_eq!(
-        String::from_utf8_lossy(&of_composing.stderr).replace(&composing_thread, "ZZZZZZZZ"),
+        String::from_utf8_lossy(&of_unsent.stderr).replace(&unsent_thread, "ZZZZZZZZ"),
         String::from_utf8_lossy(&of_missing.stderr),
         "an unpublished review must not leak through reply either",
     );
@@ -1096,29 +1136,29 @@ fn cli_threads_filters_by_state() {
 }
 
 #[test]
-fn cli_threads_answers_a_composing_review_exactly_as_missing() {
+fn cli_threads_answers_a_unsent_review_exactly_as_missing() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
         .with_commit("c1")
         .build();
-    let (composing, _) = seed_reviews(&ctx);
+    let (unsent, _) = seed_reviews(&ctx);
 
-    let of_composing = trunk_review_in(ctx.repo_path(), &["threads", &composing], ctx.data_dir());
+    let of_unsent = trunk_review_in(ctx.repo_path(), &["threads", &unsent], ctx.data_dir());
     let of_missing = trunk_review_in(ctx.repo_path(), &["threads", "ZZZZZZZZ"], ctx.data_dir());
 
     assert_eq!(
-        of_composing.status.code(),
+        of_unsent.status.code(),
         Some(1),
         "a served verb refusing a target exits 1, not the usage code 2; stderr: {}",
-        String::from_utf8_lossy(&of_composing.stderr),
+        String::from_utf8_lossy(&of_unsent.stderr),
     );
-    assert_eq!(of_composing.status.code(), of_missing.status.code());
+    assert_eq!(of_unsent.status.code(), of_missing.status.code());
     assert_eq!(
-        String::from_utf8_lossy(&of_composing.stderr).replace(&composing, "ZZZZZZZZ"),
+        String::from_utf8_lossy(&of_unsent.stderr).replace(&unsent, "ZZZZZZZZ"),
         String::from_utf8_lossy(&of_missing.stderr),
-        "a composing review must be indistinguishable from a missing one",
+        "an unsent review must be indistinguishable from a missing one",
     );
-    assert!(of_composing.stdout.is_empty(), "no partial write");
+    assert!(of_unsent.stdout.is_empty(), "no partial write");
 }
 
 #[test]
@@ -1426,19 +1466,19 @@ fn json_omits_absent_anchor_and_commit_keys_like_watch_does() {
 }
 
 #[test]
-fn cli_thread_answers_a_composing_thread_exactly_as_missing() {
+fn cli_thread_answers_a_unsent_thread_exactly_as_missing() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
         .with_commit("c1")
         .build();
-    let (composing, _) = seed_reviews(&ctx);
-    let composing_thread = {
+    let (unsent, _) = seed_reviews(&ctx);
+    let unsent_thread = {
         let store = reviewdb::open(ctx.data_dir()).unwrap();
         store
             .write(|tx| {
                 threads::insert(
                     tx,
-                    &composing,
+                    &unsent,
                     threads::NewThread {
                         text: "unpublished".to_string(),
                         anchor: None,
@@ -1453,26 +1493,22 @@ fn cli_thread_answers_a_composing_thread_exactly_as_missing() {
             .unwrap()
     };
 
-    let of_composing = trunk_review_in(
-        ctx.repo_path(),
-        &["thread", &composing_thread],
-        ctx.data_dir(),
-    );
+    let of_unsent = trunk_review_in(ctx.repo_path(), &["thread", &unsent_thread], ctx.data_dir());
     let of_missing = trunk_review_in(ctx.repo_path(), &["thread", "ZZZZZZZZ"], ctx.data_dir());
 
     assert_eq!(
-        of_composing.status.code(),
+        of_unsent.status.code(),
         Some(1),
         "a served verb refusing a target exits 1, not the usage code 2; stderr: {}",
-        String::from_utf8_lossy(&of_composing.stderr),
+        String::from_utf8_lossy(&of_unsent.stderr),
     );
-    assert_eq!(of_composing.status.code(), of_missing.status.code());
+    assert_eq!(of_unsent.status.code(), of_missing.status.code());
     assert_eq!(
-        String::from_utf8_lossy(&of_composing.stderr).replace(&composing_thread, "ZZZZZZZZ"),
+        String::from_utf8_lossy(&of_unsent.stderr).replace(&unsent_thread, "ZZZZZZZZ"),
         String::from_utf8_lossy(&of_missing.stderr),
         "an unpublished review's thread must not leak through the thread verb",
     );
-    assert!(of_composing.stdout.is_empty(), "no partial write");
+    assert!(of_unsent.stdout.is_empty(), "no partial write");
 }
 
 fn thread_state(ctx: &TestContext, review_id: &str, thread_id: &str) -> ThreadState {
@@ -1763,13 +1799,13 @@ fn watch_emits_the_review_id_when_a_published_review_changes() {
 }
 
 #[test]
-fn watch_stays_silent_for_composing_changes_and_drafts() {
+fn watch_stays_silent_for_unsent_changes_and_drafts() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
         .with_commit("c1")
         .build();
     let canonical = ctx.repo_path().canonicalize().unwrap();
-    let (composing, published) = seed_reviews(&ctx);
+    let (unsent, published) = seed_reviews(&ctx);
     let thread_id = published_thread_id(&ctx, &published);
     let watch = WatchChild::spawn(&ctx);
 
@@ -1779,7 +1815,7 @@ fn watch_stays_silent_for_composing_changes_and_drafts() {
             .write(|tx| {
                 threads::insert(
                     tx,
-                    &composing,
+                    &unsent,
                     threads::NewThread {
                         text: "unpublished edit".to_string(),
                         anchor: None,
@@ -1799,7 +1835,7 @@ fn watch_stays_silent_for_composing_changes_and_drafts() {
     assert_eq!(
         watch.next_line(Duration::from_millis(900)),
         None,
-        "composing edits and drafts must print nothing",
+        "unsent edits and drafts must print nothing",
     );
 
     // Liveness, not deafness: the same watcher still reports a real change.
@@ -1885,6 +1921,52 @@ fn watch_json_reports_a_thread_going_stale() {
     assert_eq!(event["event"], "thread_stale_changed");
     assert_eq!(event["review"], published.as_str());
     assert_eq!(event["stale"], true);
+}
+
+#[test]
+fn watch_json_reports_a_review_going_stale_with_its_last_open_thread() {
+    use trunk_lib::commands::review::{ensure_review_snapshot_inner, recompute_staleness};
+    use trunk_review::snapshot::SnapshotKind;
+
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let (published, _) = a_published_thread_on_uncommitted_work(&ctx);
+    let note = published_thread_id(&ctx, &published);
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    store
+        .write(|tx| {
+            threads::set_state(
+                tx,
+                &canonical,
+                &note,
+                ThreadState::Done,
+                Channel::Human,
+                650,
+            )
+        })
+        .unwrap();
+    let watch = WatchChild::spawn_json(&ctx);
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited again").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 700)
+        .unwrap();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+    let event: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+
+    assert_eq!(
+        event,
+        serde_json::json!({
+            "event": "review_state_changed",
+            "review": published,
+            "from": "open",
+            "to": "stale",
+        }),
+    );
 }
 
 /// A collected anchor is the one staleness case that can never clear: the code
@@ -2103,7 +2185,7 @@ fn watch_json_reports_an_archived_review_and_unrolls_it_once_unarchived() {
         archived,
         serde_json::json!({ "event": "review_archived", "review": published }),
     );
-    assert_eq!(back["event"], "review_published", "{back}");
+    assert_eq!(back["event"], "review_added", "{back}");
     assert_eq!(back["review"], published.as_str());
     assert_eq!(thread["event"], "thread_added", "{thread}");
     assert_eq!(thread["thread"], thread_id.as_str());
@@ -2147,14 +2229,14 @@ fn watch_json_omits_the_content_pin_on_commit_level_and_target_less_threads() {
         .with_file("a.txt", "one")
         .with_commit("c1")
         .build();
-    let (composing, _) = seed_reviews(&ctx);
+    let (unsent, _) = seed_reviews(&ctx);
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let (commit_level, target_less) = store
         .write(|tx| {
             let commit_level = threads::insert(
                 tx,
-                &composing,
+                &unsent,
                 threads::NewThread {
                     text: "about the whole commit".to_string(),
                     anchor: None,
@@ -2167,7 +2249,7 @@ fn watch_json_omits_the_content_pin_on_commit_level_and_target_less_threads() {
             )?;
             let target_less = threads::insert(
                 tx,
-                &composing,
+                &unsent,
                 threads::NewThread {
                     text: "about nothing in particular".to_string(),
                     anchor: None,
@@ -2184,7 +2266,7 @@ fn watch_json_omits_the_content_pin_on_commit_level_and_target_less_threads() {
     let watch = WatchChild::spawn_json(&ctx);
 
     store
-        .write(|tx| reviews::send_batch(tx, &canonical, &composing, 700))
+        .write(|tx| reviews::send_batch(tx, &canonical, &unsent, 700))
         .unwrap();
 
     let events: Vec<serde_json::Value> = (0..3)
@@ -2200,7 +2282,7 @@ fn watch_json_omits_the_content_pin_on_commit_level_and_target_less_threads() {
         added(&commit_level),
         &serde_json::json!({
             "event": "thread_added",
-            "review": composing,
+            "review": unsent,
             "thread": commit_level,
             "state": "open",
             "text": "about the whole commit",
@@ -2211,7 +2293,7 @@ fn watch_json_omits_the_content_pin_on_commit_level_and_target_less_threads() {
         added(&target_less),
         &serde_json::json!({
             "event": "thread_added",
-            "review": composing,
+            "review": unsent,
             "thread": target_less,
             "state": "open",
             "text": "about nothing in particular",

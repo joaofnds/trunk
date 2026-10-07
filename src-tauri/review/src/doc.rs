@@ -33,7 +33,7 @@ pub struct RenderInput {
     pub title: String,
     /// The binary answering the four review verbs — `current_exe()` at
     /// generation time (§5.5), `Some` only for a published review: the CLI
-    /// cannot serve a composing one, so its doc omits the instructions
+    /// cannot serve an unsent one, so its doc omits the instructions
     /// (criterion 11). The path is the caller's fact, like the two below:
     /// the renderer stays pure.
     pub cli_binary: Option<PathBuf>,
@@ -2123,7 +2123,7 @@ mod tests {
     #[test]
     fn header_names_the_current_exe_and_verbs() {
         // §5.5 / criterion 11: a published review's doc teaches the exact
-        // binary path and the verbs it may run; a composing review's doc omits
+        // binary path and the verbs it may run; an unsent review's doc omits
         // the CLI instructions entirely, since the CLI cannot serve it.
         let (_dir, repo) = make_repo();
         let b = commit_with_file(&repo, "B", &[], "f.rs", b"x\n");
@@ -2153,10 +2153,10 @@ mod tests {
         }
 
         session.cli_binary = None;
-        let composing = render(&session);
+        let unsent = render(&session);
         assert!(
-            !composing.contains("review reply"),
-            "a composing doc must omit the CLI instructions; got: {composing}"
+            !unsent.contains("review reply"),
+            "an unsent doc must omit the CLI instructions; got: {unsent}"
         );
     }
 

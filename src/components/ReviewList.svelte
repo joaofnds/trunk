@@ -149,7 +149,7 @@ function deletePrompt(review: Review): string {
 						class="flex flex-1 items-center gap-2 min-w-0 font-mono text-caption text-text-subtle"
 					>
 						<span>{review.id}</span>
-						<StatePill state={review.state} />
+						<StatePill review={review.state} />
 						<span class="flex-1"></span>
 						<span
 							title="{review.unresolved_count} unresolved of {review.thread_count}"

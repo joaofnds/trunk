@@ -494,8 +494,10 @@ export type ReviewTone = "open" | "addressed" | "done" | "dismissed" | "stale";
 /** How many counted threads fall in each tone, for a badge that splits by state. */
 export type ReviewTally = Partial<Record<ReviewTone, number>>;
 
-// A durable, per-repo collection of threads plus a derived lifecycle state.
-export type ReviewState = "composing" | "ready" | "settled";
+// A durable, per-repo collection of threads plus a state derived from its sent
+// threads: open while one still waits on someone, stale once every such thread
+// points at code that is gone, settled when none waits.
+export type ReviewState = "open" | "stale" | "settled";
 
 export interface Review {
 	id: string;

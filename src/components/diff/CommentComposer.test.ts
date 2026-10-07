@@ -278,7 +278,7 @@ describe("CommentComposer", () => {
 		renderComposer({ activeReview: null });
 
 		expect(screen.getByText(/Lands in/)).toHaveTextContent(
-			"Lands in a new composing review",
+			"Lands in a new review",
 		);
 	});
 

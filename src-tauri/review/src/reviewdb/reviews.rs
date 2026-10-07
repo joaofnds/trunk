@@ -1,8 +1,8 @@
 //! Reviews: create, list, rename, send the held batch, archive, delete, and the
 //! per-repo active pointer.
 //!
-//! `composing` / `ready` / `settled` and `published` are computed in SQL from
-//! the threads, never stored, so no code path can desynchronise them.
+//! `open` / `stale` / `settled` and `published` are computed in SQL from the
+//! threads, never stored, so no code path can desynchronise them.
 
 use super::ids::{self, IdKind};
 use super::{repo_key, sqlite_error};
@@ -14,8 +14,11 @@ use trunk_git::error::TrunkError;
 #[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ReviewState {
-    Composing,
-    Ready,
+    /// A sent thread still waits on someone and points at code that is there.
+    Open,
+    /// Every sent thread still waiting on someone points at code that is gone.
+    Stale,
+    /// No sent thread waits on anyone.
     Settled,
 }
 
@@ -48,7 +51,8 @@ impl Review {
 }
 
 /// Every column `read_review` reads, in its order. A review is published
-/// once any thread is sent, and its state is derived from the thread states.
+/// once any thread is sent, and its state is derived from the sent threads
+/// alone, since a held one waits on nobody until it is sent.
 const SELECT: &str = "
     SELECT r.id, r.title,
            EXISTS (SELECT 1 FROM threads t WHERE t.review_id = r.id AND t.pending = 0),
@@ -62,17 +66,19 @@ const SELECT: &str = "
                 WHERE t.review_id = r.id AND p.pending = 1),
            CASE
                WHEN NOT EXISTS (
-                   SELECT 1 FROM threads t WHERE t.review_id = r.id AND t.pending = 0
-               ) THEN 'composing'
-               WHEN EXISTS (
                    SELECT 1 FROM threads t
                    WHERE t.review_id = r.id AND t.pending = 0
                      AND t.state IN ('open', 'addressed')
-               ) THEN 'ready'
-               ELSE 'settled'
+               ) THEN 'settled'
+               WHEN EXISTS (
+                   SELECT 1 FROM threads t
+                   WHERE t.review_id = r.id AND t.pending = 0
+                     AND t.state IN ('open', 'addressed') AND t.stale = 0
+               ) THEN 'open'
+               ELSE 'stale'
            END";
 
-/// Create a composing review for `repo_path` and return its id.
+/// Create an empty review for `repo_path` and return its id.
 ///
 /// # Errors
 ///
@@ -150,8 +156,8 @@ fn read_review(row: &rusqlite::Row) -> rusqlite::Result<Review> {
         archived: row.get::<_, i64>(6)? != 0,
         pending_count: row.get(7)?,
         state: match state.as_str() {
-            "composing" => ReviewState::Composing,
-            "ready" => ReviewState::Ready,
+            "open" => ReviewState::Open,
+            "stale" => ReviewState::Stale,
             _ => ReviewState::Settled,
         },
     })
@@ -214,7 +220,7 @@ pub fn set_active(conn: &Connection, repo_path: &Path, review_id: &str) -> Resul
     Ok(())
 }
 
-/// The active review, creating a fresh composing one when the repo has none.
+/// The active review, creating a fresh one when the repo has none.
 ///
 /// This is the whole of the spec's auto-create-at-submit rule: it runs inside the
 /// submit transaction, never at composer open.

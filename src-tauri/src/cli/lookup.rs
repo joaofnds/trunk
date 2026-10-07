@@ -45,7 +45,7 @@ pub(crate) fn discover_repo(repo: Option<PathBuf>) -> Result<PathBuf, TrunkError
 
 /// Resolve `raw` against this repo's published-review *threads*, with the
 /// same exact-or-unique-prefix rule and the same no-leak posture as
-/// `published_review`: a composing review's thread answers as missing.
+/// `published_review`: an unsent review's thread answers as missing.
 pub(crate) fn published_thread(
     store: &trunk_review::reviewdb::Store,
     canonical: &std::path::Path,
@@ -71,8 +71,8 @@ pub(crate) fn published_thread(
 }
 
 /// Resolve `raw` against this repo's *published* reviews only: exact id, or a
-/// prefix matching exactly one. Anything else — missing, composing, archived,
-/// another repo's — answers with one identical `not_found`, and ambiguity is
+/// prefix matching exactly one. Anything else, whether missing, unsent, archived,
+/// or another repo's, answers with one identical `not_found`, and ambiguity is
 /// judged after the published filter, so an unpublished review's existence
 /// never leaks, not even through a prefix collision (§5.1).
 pub(crate) fn published_review(

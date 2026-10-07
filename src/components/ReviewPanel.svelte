@@ -641,7 +641,7 @@ $effect(() => {
 						class="inline-flex items-center shrink-0 h-control-xs px-1 rounded bg-surface-chip font-mono text-caption font-medium text-text"
 						>{shownReview.id}</span
 					>
-					<StatePill state={shownReview.state} />
+					<StatePill review={shownReview.state} />
 				{/if}
 			</div>
 			<div class="flex items-center gap-2 ml-auto">
@@ -753,7 +753,7 @@ $effect(() => {
 				<span class="text-text-disabled" aria-hidden="true">·</span>
 				<span
 					>{shownReview.published
-						? "Published"
+						? "Visible to the agent"
 						: "Not visible to the agent"}</span
 				>
 				{#if comments.length > 0}
@@ -804,9 +804,9 @@ $effect(() => {
 					<ClipboardCheck size={18} />
 				{/snippet}
 				<p>
-					A review collects comment threads on commits and uncommitted work.
-					When you end it, an agent can read the threads through the trunk CLI,
-					reply, and claim fixes for you to confirm.
+					A review collects comment threads on commits and uncommitted work. An
+					agent reads each comment through the trunk CLI as soon as you add it,
+					replies, and claims fixes for you to confirm.
 				</p>
 				<p>Your first comment starts a review automatically.</p>
 				<WaysToComment />
@@ -833,8 +833,8 @@ $effect(() => {
 					{shownIsActive
 						? "New comments you write anywhere in this repo land here."
 						: "Make it active to collect new comments here."}
-					The agent can’t see the review until you end it, which needs at least
-					one thread.
+					The agent reads each comment as soon as you add it, or when you send
+					the batch you hold it in.
 				</p>
 				<WaysToComment />
 			</ReviewEmpty>

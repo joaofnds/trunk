@@ -11,7 +11,7 @@ use trunk_review::reviewdb::{self, reviews};
 use trunk_review::types::{Channel, ThreadState};
 
 /// One markdown bullet per published review, in the store's list order.
-/// `composing` and archived reviews are absent by contract: the CLI does not
+/// Unsent and archived reviews are absent by contract: the CLI does not
 /// serve them, and their existence must not leak (§5.1).
 pub(crate) fn render_list(listed: &[reviews::Review]) -> String {
     listed
@@ -37,8 +37,8 @@ pub(crate) fn render_list(listed: &[reviews::Review]) -> String {
 
 const fn state_word(state: reviews::ReviewState) -> &'static str {
     match state {
-        reviews::ReviewState::Composing => "composing",
-        reviews::ReviewState::Ready => "ready",
+        reviews::ReviewState::Open => "open",
+        reviews::ReviewState::Stale => "stale",
         reviews::ReviewState::Settled => "settled",
     }
 }

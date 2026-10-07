@@ -621,7 +621,7 @@ describe("RepoView", () => {
 							{
 								id: "r1",
 								title: "r1",
-								state: "composing",
+								state: "settled",
 								published: false,
 								thread_count: 0,
 								unresolved_count: 0,
@@ -672,7 +672,7 @@ describe("RepoView", () => {
 							{
 								id: "r1",
 								title: "r1",
-								state: "composing",
+								state: "settled",
 								published: false,
 								thread_count: 1,
 								unresolved_count: 1,
@@ -847,7 +847,7 @@ describe("RepoView", () => {
 						{
 							id: "review-1",
 							title: "Review",
-							state: "ready",
+							state: "open",
 							published: false,
 							thread_count: 1,
 							unresolved_count: 1,
@@ -887,7 +887,7 @@ describe("RepoView", () => {
 		const review = (id: string) => ({
 			id,
 			title: id,
-			state: "ready",
+			state: "open",
 			published: false,
 			thread_count: 1,
 			unresolved_count: 1,
@@ -2755,7 +2755,7 @@ describe("RepoView", () => {
 						{
 							id: "review-1",
 							title: "Review",
-							state: "ready",
+							state: "open",
 							published: false,
 							thread_count: 1,
 							unresolved_count: 1,

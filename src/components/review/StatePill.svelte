@@ -4,11 +4,11 @@
 // competing with it. Stale and orphaned are flags rather than states, drawn the
 // same way so a card shows them beside the state they qualify, as is pending,
 // which marks a comment held in its review's batch. A review's state carries no
-// glyph: composing is dashed and muted, since nothing is published.
+// glyph, and shares its color with the thread state of the same name.
 
 import type { ReviewState, ThreadState } from "../../lib/types.js";
 
-type PillState = ThreadState | ReviewState | "stale" | "orphaned" | "pending";
+type ThreadPill = ThreadState | "stale" | "orphaned" | "pending";
 
 export const THREAD_LABELS: Record<ThreadState | "stale", string> = {
 	open: "Open",
@@ -18,42 +18,37 @@ export const THREAD_LABELS: Record<ThreadState | "stale", string> = {
 	stale: "Stale",
 };
 
-const LABELS: Record<PillState, string> = {
+const LABELS: Record<ThreadPill | ReviewState, string> = {
 	...THREAD_LABELS,
 	orphaned: "Orphaned",
 	pending: "Pending",
-	composing: "Composing",
-	ready: "Ready",
 	settled: "Settled",
 };
-
-function isReviewState(state: PillState): state is ReviewState {
-	return state === "composing" || state === "ready" || state === "settled";
-}
 </script>
 
 <script lang="ts">
 import StateGlyph from "./StateGlyph.svelte";
 
-interface Props {
-	state: PillState;
-}
+type Props = { state: ThreadPill } | { review: ReviewState };
 
-let { state }: Props = $props();
+let props: Props = $props();
+
+const glyph = $derived("state" in props ? props.state : null);
+const shown = $derived("state" in props ? props.state : props.review);
 
 const PILL =
 	"state-pill inline-flex items-center gap-1 shrink-0 h-control-xs pr-2 rounded-full text-caption font-medium font-sans whitespace-nowrap";
 </script>
 
 <span
-	class="{PILL} pill-{state}"
-	class:pl-1={!isReviewState(state)}
-	class:pl-2={isReviewState(state)}
+	class="{PILL} pill-{shown}"
+	class:pl-1={glyph !== null}
+	class:pl-2={glyph === null}
 >
-	{#if !isReviewState(state)}
-		<StateGlyph {state} size={11} />
+	{#if glyph !== null}
+		<StateGlyph state={glyph} size={11} />
 	{/if}
-	<span>{LABELS[state]}</span>
+	<span>{LABELS[shown]}</span>
 </span>
 
 <style>
@@ -63,8 +58,7 @@ const PILL =
 	box-shadow: inset 0 0 0 1px
 		color-mix(in oklch, var(--pill-color) 30%, transparent);
 }
-.pill-open,
-.pill-ready {
+.pill-open {
 	--pill-color: var(--color-thread-open);
 }
 .pill-addressed {
@@ -80,14 +74,12 @@ const PILL =
 .pill-orphaned {
 	--pill-color: var(--color-danger);
 }
-.pill-composing,
 .pill-pending {
 	--pill-color: var(--color-text-muted);
 }
 .pill-stale {
 	--pill-color: var(--color-thread-stale);
 }
-.pill-composing,
 .pill-pending,
 .pill-stale {
 	background: transparent;

@@ -284,7 +284,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	{activeReview}
 	{activeReviewId}
 	placeholder="Leave a comment… Markdown supported"
-	newReviewName="a new composing review"
+	newReviewName="a new review"
 	fill
 	extendHint={extendable}
 	bind:text={composerDraft.text}
