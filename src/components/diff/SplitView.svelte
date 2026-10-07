@@ -32,6 +32,7 @@ import GutterGrip from "../../lib/ui/GutterGrip.svelte";
 import Row from "../../lib/ui/Row.svelte";
 import {
 	createVirtualizedDiff,
+	type DiffListHandle,
 	TAB_SIZE,
 } from "../../lib/virtualized-diff.svelte.js";
 import ThreadCard from "../ThreadCard.svelte";
@@ -141,12 +142,9 @@ const FLASH_MS = 600;
 const stagingDisabled = $derived(hunkOperationInFlight);
 const stagingDisabledTitle: string | undefined = undefined;
 
-let list = $state<{
-	topIndex: () => number;
-	anchorTo: (index: number) => void;
-	revealIndex: (index: number) => void;
-	scrollToIndex: (index: number) => void;
-} | null>(null);
+let list = $state<
+	(DiffListHandle & { scrollToIndex: (index: number) => void }) | null
+>(null);
 
 // The flashed hunk's identity, not a class on an element: the element a jump
 // targets may not be mounted when the jump happens, and will be replaced by

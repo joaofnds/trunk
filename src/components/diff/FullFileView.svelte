@@ -28,6 +28,7 @@ import Button from "../../lib/ui/Button.svelte";
 import GutterGrip from "../../lib/ui/GutterGrip.svelte";
 import {
 	createVirtualizedDiff,
+	type DiffListHandle,
 	TAB_SIZE,
 } from "../../lib/virtualized-diff.svelte.js";
 import ThreadCard from "../ThreadCard.svelte";
@@ -81,11 +82,7 @@ let selectedPath = $state<string | null>(null);
 let anchorIndex = $state<number | null>(null);
 let focusIndex = $state<number | null>(null);
 
-let list = $state<{
-	topIndex: () => number;
-	anchorTo: (index: number) => void;
-	revealIndex: (index: number) => void;
-} | null>(null);
+let list = $state<DiffListHandle | null>(null);
 
 // The contiguous span as flat indices into the active file's line list.
 const selectedIndices = $derived(computeSpan(anchorIndex, focusIndex));
