@@ -470,6 +470,22 @@ describe("ThreadCard", () => {
 			expect(header).not.toHaveTextContent("src/foo.ts");
 		});
 
+		// With no toggle to open it, a folded card would hide its replies and
+		// its Reopen for good.
+		it.each(["done", "dismissed"] as const)(
+			"keeps a %s thread open, since it has nothing to expand it",
+			(state) => {
+				renderCard({
+					variant: "inline",
+					thread: { ...comment, state, allowed_transitions: ["open"] },
+				});
+
+				expect(
+					screen.getByRole("button", { name: "Reopen" }),
+				).toBeInTheDocument();
+			},
+		);
+
 		it("leaves out the excerpt, since the code sits right above it", () => {
 			renderCard({ variant: "inline" });
 

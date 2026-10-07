@@ -80,11 +80,14 @@ const editor = $derived(
 );
 // A resolved thread folds to its header and an unresolved one opens, whenever
 // the state changes. A toggle holds only while the state it was made in does.
+// Only the panel folds: the diff has no toggle, since it measures each card
+// once from a hidden copy, so a folded card there could never open again.
 let toggle = $state<{ state: ThreadState; collapsed: boolean } | null>(null);
 const collapsed = $derived(
-	toggle !== null && toggle.state === thread.state
-		? toggle.collapsed
-		: thread.state === "done" || thread.state === "dismissed",
+	variant === "panel" &&
+		(toggle !== null && toggle.state === thread.state
+			? toggle.collapsed
+			: thread.state === "done" || thread.state === "dismissed"),
 );
 const peek = $derived(
 	thread.text
