@@ -50,6 +50,30 @@ export function presetOf(filter: ReviewFilter): ThreadPreset | null {
 	return found?.id ?? null;
 }
 
+/** The filter with `state` flipped, in the tally's order. Pressed while every
+ * thread is hidden, it shows that state alone. */
+export function toggleState(
+	filter: ReviewFilter,
+	state: ThreadState,
+): ThreadFilter {
+	if (filter === "none") return { states: [state], stale: true };
+
+	const shown = filter.states.includes(state);
+	return {
+		states: THREAD_STATES.filter((candidate) =>
+			candidate === state ? !shown : filter.states.includes(candidate),
+		),
+		stale: filter.stale,
+	};
+}
+
+/** The filter with stale threads flipped. Pressed while every thread is
+ * hidden, it turns stale threads on and no state. */
+export function toggleStale(filter: ReviewFilter): ThreadFilter {
+	if (filter === "none") return { states: [], stale: true };
+	return { states: filter.states, stale: !filter.stale };
+}
+
 export function threadMatchesFilter(
 	thread: Thread,
 	filter: ReviewFilter,

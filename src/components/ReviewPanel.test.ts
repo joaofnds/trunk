@@ -7,7 +7,7 @@ import {
 	within,
 } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
@@ -15,6 +15,7 @@ import { createReviewEditorStore } from "../lib/review-editors.svelte.js";
 import { ALL_THREADS, THREAD_PRESETS } from "../lib/review-filter.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
+import { SHOW_DELAY_MS } from "../lib/tooltip.js";
 import type {
 	CommentResolution,
 	RefLabel,
@@ -1703,7 +1704,9 @@ describe("empty states", () => {
 		renderPanel();
 		await flush();
 
-		expect(screen.queryByRole("list", { name: "Threads by state" })).toBeNull();
+		expect(
+			screen.queryByRole("list", { name: "Show threads by state" }),
+		).toBeNull();
 	});
 
 	it("says the active review is empty and that new comments land in it", async () => {
@@ -1941,17 +1944,101 @@ describe("header", () => {
 		});
 	});
 
-	it("tallies the shown review's threads in each state it holds", async () => {
-		installReads({ commits, comments: THREADS });
-		renderPanel();
-		await flush();
+	describe("tally toggles", () => {
+		afterEach(() => {
+			vi.useRealTimers();
+		});
 
-		const tally = screen.getByRole("list", { name: "Threads by state" });
-		expect(within(tally).getByTitle("Open")).toHaveTextContent("2");
-		expect(within(tally).getByTitle("Addressed")).toHaveTextContent("1");
-		expect(within(tally).getByTitle("Done")).toHaveTextContent("1");
-		expect(within(tally).getByTitle("Stale")).toHaveTextContent("1");
-		expect(within(tally).queryByTitle("Dismissed")).toBeNull();
+		function toggle(name: string): HTMLElement {
+			return within(
+				screen.getByRole("list", { name: "Show threads by state" }),
+			).getByRole("button", { name: `${name} threads` });
+		}
+
+		it("counts the shown review's threads in each state it holds", async () => {
+			installReads({ commits, comments: THREADS });
+			renderPanel();
+			await flush();
+
+			expect(toggle("Open")).toHaveTextContent("2");
+			expect(toggle("Addressed")).toHaveTextContent("1");
+			expect(toggle("Done")).toHaveTextContent("1");
+			expect(toggle("Stale")).toHaveTextContent("1");
+			expect(
+				screen.queryByRole("button", { name: "Dismissed threads" }),
+			).toBeNull();
+		});
+
+		it("presses every toggle while every thread shows", async () => {
+			installReads({ commits, comments: THREADS });
+			renderPanel();
+			await flush();
+
+			for (const name of ["Open", "Addressed", "Done", "Stale"]) {
+				expect(toggle(name)).toHaveAttribute("aria-pressed", "true");
+			}
+		});
+
+		it("releases the toggle of a state the filter hides", async () => {
+			installReads({ commits, comments: THREADS });
+			renderPanel({ reviewFilter: NEEDS_ME });
+			await flush();
+
+			expect(toggle("Done")).toHaveAttribute("aria-pressed", "false");
+			expect(toggle("Open")).toHaveAttribute("aria-pressed", "true");
+		});
+
+		it("releases every toggle while review threads are hidden", async () => {
+			installReads({ commits, comments: THREADS });
+			renderPanel({ reviewFilter: "none" });
+			await flush();
+
+			for (const name of ["Open", "Addressed", "Done", "Stale"]) {
+				expect(toggle(name)).toHaveAttribute("aria-pressed", "false");
+			}
+		});
+
+		it("hides a state's threads when its toggle is pressed", async () => {
+			const onreviewfilterchange = vi.fn();
+			installReads({ commits, comments: THREADS });
+			renderPanel({ onreviewfilterchange });
+			await flush();
+
+			await fireEvent.click(toggle("Done"));
+
+			expect(onreviewfilterchange).toHaveBeenCalledWith({
+				states: ["open", "addressed", "dismissed"],
+				stale: true,
+			});
+		});
+
+		it("hides the stale threads when the stale toggle is pressed", async () => {
+			const onreviewfilterchange = vi.fn();
+			installReads({ commits, comments: THREADS });
+			renderPanel({ onreviewfilterchange });
+			await flush();
+
+			await fireEvent.click(toggle("Stale"));
+
+			expect(onreviewfilterchange).toHaveBeenCalledWith({
+				...ALL_THREADS,
+				stale: false,
+			});
+		});
+
+		it("says what a toggle counts and what pressing it does", async () => {
+			vi.useFakeTimers();
+			installReads({ commits, comments: THREADS });
+			renderPanel({ reviewFilter: NEEDS_ME });
+			await flush();
+
+			await fireEvent.mouseEnter(toggle("Done"));
+			vi.advanceTimersByTime(SHOW_DELAY_MS);
+
+			expect(document.querySelector(".tooltip-pop")).toHaveTextContent(
+				"Done: 1 thread. Click to show.",
+			);
+		});
 	});
 
 	it("says the review is active and not yet visible to the agent", async () => {
@@ -2190,7 +2277,9 @@ describe("header", () => {
 		await flush();
 
 		expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
-		expect(screen.queryByRole("list", { name: "Threads by state" })).toBeNull();
+		expect(
+			screen.queryByRole("list", { name: "Show threads by state" }),
+		).toBeNull();
 	});
 });
 

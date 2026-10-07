@@ -15,6 +15,7 @@ import Plus from "@lucide/svelte/icons/plus";
 import Send from "@lucide/svelte/icons/send";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { tick, untrack } from "svelte";
+import { fromAction } from "svelte/attachments";
 import { copySha } from "../lib/clipboard.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
@@ -42,6 +43,8 @@ import {
 	presetOf,
 	THREAD_PRESETS,
 	threadMatchesFilter,
+	toggleStale,
+	toggleState,
 } from "../lib/review-filter.js";
 import {
 	type ReviewFile,
@@ -53,6 +56,7 @@ import type { ReviewSessionManager } from "../lib/review-session.svelte.js";
 import { reviewTitle } from "../lib/review-title.js";
 import { selectOnOpen } from "../lib/select-on-open.js";
 import { showToast } from "../lib/toast.svelte.js";
+import { tooltip } from "../lib/tooltip.js";
 import type {
 	CommentResolution,
 	Delivery,
@@ -222,6 +226,20 @@ function tallyCount(value: ThreadState | "stale"): number {
 	return comments.filter((thread) =>
 		value === "stale" ? thread.stale : thread.state === value,
 	).length;
+}
+
+function tallyOn(value: ThreadState | "stale"): boolean {
+	if (reviewFilter === "none") return false;
+	if (value === "stale") return reviewFilter.stale;
+	return reviewFilter.states.includes(value);
+}
+
+function toggleTally(value: ThreadState | "stale") {
+	onreviewfilterchange?.(
+		value === "stale"
+			? toggleStale(reviewFilter)
+			: toggleState(reviewFilter, value),
+	);
 }
 
 function presetCount(states: readonly ThreadState[]): number {
@@ -847,20 +865,37 @@ $effect(() => {
 				{#if comments.length > 0}
 					<span class="text-text-disabled" aria-hidden="true">·</span>
 					<ul
-						aria-label="Threads by state"
+						aria-label="Show threads by state"
 						class="flex gap-3 list-none m-0 p-0"
 					>
 						{#each STATE_TALLY as tally (tally.value)}
 							{@const count = tallyCount(tally.value)}
+							{@const on = tallyOn(tally.value)}
+							{@const label = THREAD_LABELS[tally.value]}
 							{#if count > 0}
-								<li
-									title={THREAD_LABELS[tally.value]}
-									class="inline-flex items-center gap-1 font-mono text-text-muted"
-								>
-									<span class="inline-flex {tally.tone}" aria-hidden="true">
-										<StateGlyph state={tally.value} size={11} />
-									</span>
-									{count}
+								<li class="inline-flex">
+									<LinkButton
+										tone="muted"
+										aria-pressed={on}
+										aria-label="{label} threads"
+										onclick={() => toggleTally(tally.value)}
+										{@attach fromAction(
+											tooltip,
+											() =>
+												`${label}: ${plural(count, "thread")}. Click to ${on ? "hide" : "show"}.`,
+										)}
+									>
+										<span
+											class="inline-flex items-center gap-1 font-mono"
+											class:review-toggle-off={!on}
+											class:text-text-disabled={!on}
+										>
+											<span class="inline-flex {tally.tone}" aria-hidden="true">
+												<StateGlyph state={tally.value} size={11} />
+											</span>
+											{count}
+										</span>
+									</LinkButton>
 								</li>
 							{/if}
 						{/each}
@@ -1227,6 +1262,12 @@ $effect(() => {
 {/snippet}
 
 <style>
+.review-toggle-off {
+	outline: 1px dashed var(--color-border-strong);
+	outline-offset: calc(3 * var(--u) / 4);
+	border-radius: var(--radius);
+}
+
 /* The title gives way to the actions only down to a readable width, and past
    that the actions wrap onto their own row. */
 .review-title-row {

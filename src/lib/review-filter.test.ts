@@ -9,6 +9,8 @@ import {
 	presetOf,
 	THREAD_PRESETS,
 	tallyBadgeThreads,
+	toggleStale,
+	toggleState,
 } from "./review-filter.js";
 import type { ReviewFilter } from "./types.js";
 
@@ -126,5 +128,41 @@ describe("tallyBadgeThreads", () => {
 
 	it("counts nothing while review threads are hidden", () => {
 		expect(tallyBadgeThreads(threads, "none")).toEqual({});
+	});
+});
+
+describe("toggleState", () => {
+	it("hides a state that shows", () => {
+		expect(toggleState(ALL_THREADS, "done")).toEqual({
+			states: ["open", "addressed", "dismissed"],
+			stale: true,
+		});
+	});
+
+	it("shows a hidden state in the tally's order", () => {
+		expect(toggleState({ states: ["done"], stale: false }, "open")).toEqual({
+			states: ["open", "done"],
+			stale: false,
+		});
+	});
+
+	it("shows only the pressed state while review threads are hidden", () => {
+		expect(toggleState("none", "addressed")).toEqual({
+			states: ["addressed"],
+			stale: true,
+		});
+	});
+});
+
+describe("toggleStale", () => {
+	it.each([true, false])("flips stale threads from %s", (stale) => {
+		expect(toggleStale({ ...ALL_THREADS, stale })).toEqual({
+			...ALL_THREADS,
+			stale: !stale,
+		});
+	});
+
+	it("turns only the stale threads on while review threads are hidden", () => {
+		expect(toggleStale("none")).toEqual({ states: [], stale: true });
 	});
 });
