@@ -471,9 +471,7 @@ pub fn list_threads_inner(
             threads::list_with_replies(conn, &review_id, trunk_review::types::Channel::Human)?;
         let ids: Vec<String> = listed.iter().map(|(t, _)| t.id.clone()).collect();
         let mut histories = trunk_review::reviewdb::history::list_for_threads(conn, &ids)?;
-        let batch_held = listed
-            .iter()
-            .any(|(t, replies)| t.pending || replies.iter().any(|r| r.pending));
+        let batch_held = reviews::holds_batch(conn, &review_id)?;
 
         Ok(listed
             .into_iter()
