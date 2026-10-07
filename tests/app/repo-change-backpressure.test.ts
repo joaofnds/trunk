@@ -152,6 +152,9 @@ describe("repository changes during a sustained event stream", () => {
 		expect(calls(app, "get_dirty_counts")).toBe(before + 2);
 		app.repo.writeWorkingTreeFile("dirty.txt", "final state\n");
 		await app.events.externalChange(app.repo.path);
+		// Without this the status read that finds dirty.txt can land after a
+		// catch-up read has started, and RepoView rightly asks for one more.
+		await app.settled();
 		release();
 		await app.settled();
 		expect(calls(app, "get_dirty_counts")).toBe(before + 4);
