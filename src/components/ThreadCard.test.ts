@@ -685,6 +685,15 @@ describe("ThreadCard", () => {
 		expect(remove).not.toHaveClass("text-danger");
 	});
 
+	it("draws its reply field at a standard control's height and type, level with its actions", () => {
+		renderCard({ thread: comment });
+
+		const field = screen.getByRole("textbox", { name: "Reply" });
+		const done = screen.getByRole("button", { name: "Mark done" });
+		expect(field).toHaveClass("h-control", "text-callout");
+		expect(done).toHaveClass("h-control", "text-callout");
+	});
+
 	it("renders its state actions from allowed_transitions, not from the state", () => {
 		// A list the matrix would never pair with "open": a local switch on the
 		// state would offer Mark done / Dismiss and this expectation would fail.

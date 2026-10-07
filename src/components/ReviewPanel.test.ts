@@ -1767,6 +1767,13 @@ describe("header", () => {
 			expect(field).toHaveValue(aReview().title);
 		});
 
+		it("opens a plain field, since the caret shows where typing goes", async () => {
+			const field = await openTitleEditor();
+
+			expect(field).toHaveClass("border-border", "outline-none");
+			expect(field).not.toHaveClass("border-accent");
+		});
+
 		it("saves the new title on Enter", async () => {
 			const field = await openTitleEditor();
 
@@ -2530,6 +2537,38 @@ describe("ReviewPanel keyboard", () => {
 		await fireEvent.pointerDown(screen.getByText("on the lines"));
 
 		expect(focusedThread()).toHaveTextContent("on the lines");
+	});
+
+	it("marks the thread J moves to, so the keys show where they are", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+
+		await press("j");
+
+		expect(focusedThread()).toHaveClass("comment-card-cursor");
+	});
+
+	it("leaves a thread the pointer pressed unmarked, since the pointer shows where it is", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+		await press("j");
+
+		await fireEvent.pointerDown(screen.getByText("on the lines"));
+
+		expect(focusedThread()).not.toHaveClass("comment-card-cursor");
+	});
+
+	it("marks the thread again once J moves on from a pressed one", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+		await fireEvent.pointerDown(screen.getByText("on the commit"));
+
+		await press("j");
+
+		expect(focusedThread()).toHaveClass("comment-card-cursor");
 	});
 
 	it("marks the focused thread done with D", async () => {

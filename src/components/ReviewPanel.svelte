@@ -274,6 +274,8 @@ function isJumpable(c: Thread): boolean {
 
 // The thread J and K move between, and D, X, O, R and Enter act on.
 let focusedId = $state<string | null>(null);
+// Only the keys draw it: a pointer press already shows where it landed.
+let cursorFromKeys = $state(false);
 const shownThreads = $derived(
 	sections
 		.flatMap((section) => section.groups)
@@ -311,6 +313,7 @@ function focusThreadAt(index: number) {
 	if (!thread) return;
 
 	focusedId = thread.id;
+	cursorFromKeys = true;
 	void tick().then(() =>
 		cardOf(thread.id)?.scrollIntoView({ block: "nearest" }),
 	);
@@ -609,7 +612,7 @@ $effect(() => {
 							onblur={commitRename}
 							onkeydown={renameKeys}
 							aria-label="Review title"
-							class="review-title-field bg-bg text-text-strong border border-accent rounded h-control py-0 px-1 text-title font-semibold"
+							class="review-title-field bg-bg text-text-strong border border-border rounded outline-none h-control py-0 px-1 text-title font-semibold"
 						>
 					{:else}
 						<h1
@@ -1046,7 +1049,11 @@ $effect(() => {
 		variant="panel"
 		scoped
 		focused={focusedId === comment.id}
-		onfocusrequest={() => (focusedId = comment.id)}
+		cursorShown={cursorFromKeys}
+		onfocusrequest={() => {
+			focusedId = comment.id;
+			cursorFromKeys = false;
+		}}
 		onjump={jump}
 		jumpable={isJumpable(comment)}
 		orphaned={isOrphan(comment)}

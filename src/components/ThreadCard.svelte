@@ -51,6 +51,8 @@ interface Props {
 	scoped?: boolean;
 	// The thread the panel's keys act on, and how a click makes it that thread.
 	focused?: boolean;
+	// Whether the focused card draws the cursor, which only the keys need.
+	cursorShown?: boolean;
 	onfocusrequest?: () => void;
 	editorSession?: ThreadEditorSession;
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
@@ -69,6 +71,7 @@ let {
 	orphanLabel = null,
 	scoped = false,
 	focused = false,
+	cursorShown = false,
 	onfocusrequest,
 	editorSession,
 	editorSessionForThread,
@@ -401,6 +404,7 @@ async function requestDeleteReply(replyId: string) {
 	data-thread-id={thread.id}
 	tabindex="-1"
 	aria-current={focused ? "true" : undefined}
+	class:comment-card-cursor={focused && cursorShown}
 	onpointerdown={onfocusrequest}
 	class:comment-card-resolved={thread.state === "done" ||
 		thread.state === "dismissed"}
@@ -591,13 +595,13 @@ async function requestDeleteReply(replyId: string) {
 					? "Reply…"
 					: "Reply… (the agent sees this once the review ends)"}
 				aria-label="Reply"
-				class="reply-field h-control-sm min-w-0 flex-1 px-2 text-small"
+				class="reply-field h-control min-w-0 flex-1 px-2 text-callout"
 				disabled={replySaving}
 				onkeydown={replyKeys}
 			>
 			{#if replyDraft.valid}
 				<Button
-					size="sm"
+					size="md"
 					variant="primary"
 					disabled={replySaving}
 					onclick={submitReply}
@@ -610,7 +614,7 @@ async function requestDeleteReply(replyId: string) {
 			>
 				{#each stateActions as action (action.next)}
 					<Button
-						size="sm"
+						size="md"
 						variant={action.variant}
 						onclick={() => setThreadState(repoPath, thread.id, action.next)}
 					>
@@ -667,17 +671,13 @@ async function requestDeleteReply(replyId: string) {
 	font-family: var(--font-sans);
 	font-size: var(--text-callout);
 }
-/* The keys' thread takes the accent edge. While a field inside it holds the
-   focus, the edge softens, so the field's own accent border stays the one
-   bright ring. The card's own focus ring is that same edge, since an outline
-   drawn over it doubles the ring. */
-.comment-card[aria-current="true"],
-.comment-card:focus-visible {
+/* The card takes the focus only to hold the keys, and the cursor edge is what
+   shows them where they are. */
+.comment-card:focus {
 	outline: none;
-	border-color: var(--color-accent);
 }
-.comment-card[aria-current="true"]:focus-within:not(:focus) {
-	border-color: var(--color-accent-border);
+.comment-card-cursor {
+	border-color: color-mix(in oklch, var(--color-accent) 55%, transparent);
 }
 .comment-card-range {
 	flex-shrink: 0;
@@ -802,9 +802,9 @@ async function requestDeleteReply(replyId: string) {
 	border-radius: var(--radius);
 	font-family: inherit;
 }
-.reply-field:focus-visible {
+/* The caret shows where the typing goes, so the field draws no ring. */
+.reply-field:focus {
 	outline: none;
-	border-color: var(--color-accent);
 }
 
 .thread-delete-bar {

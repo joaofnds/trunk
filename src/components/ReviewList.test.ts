@@ -357,6 +357,20 @@ describe("ReviewList", () => {
 		expect(screen.getByLabelText("Review title")).toHaveValue(aReview().title);
 	});
 
+	it("opens the title editor as a plain standard field, since the caret shows where typing goes", async () => {
+		seedReviews([aReview()]);
+		await renderList();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: `Rename review ${ACTIVE_REVIEW}` }),
+		);
+		await tick();
+
+		const field = screen.getByLabelText("Review title");
+		expect(field).toHaveClass("border-border", "outline-none", "h-control");
+		expect(field).not.toHaveClass("border-accent");
+	});
+
 	it("opens the title editor on the title as shown", async () => {
 		seedReviews([aReview({ title: `Review 2026-08-12 · ${ACTIVE_REVIEW}` })]);
 		await renderList();

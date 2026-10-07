@@ -146,10 +146,6 @@ function onkeydown(event: KeyboardEvent) {
 	overflow: hidden;
 }
 
-.comment-composer:focus-within {
-	border-color: var(--color-accent);
-}
-
 /* In a narrow pane the landing line and the buttons wrap under what comes
    before them rather than being cut off. */
 .composer-header {

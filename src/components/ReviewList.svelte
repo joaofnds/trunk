@@ -105,7 +105,11 @@ function deletePrompt(review: Review): string {
 		{#each reviews as review (review.id)}
 			{@const isActive = review.id === activeReviewId}
 			{@const isShown = review.id === shownReviewId}
-			<li class="review-item" class:review-item-shown={isShown}>
+			<li
+				class="review-item"
+				class:review-item-shown={isShown}
+				class:review-item-renaming={renamingId === review.id}
+			>
 				<span class="review-item-radio">
 					<Radio
 						checked={isActive}
@@ -121,7 +125,7 @@ function deletePrompt(review: Review): string {
 							onblur={commitRename}
 							onkeydown={renameKeys}
 							aria-label="Review title"
-							class="w-full bg-bg text-text border border-accent rounded h-control-sm py-0 px-1 text-callout"
+							class="w-full bg-bg text-text border border-border rounded outline-none h-control py-0 px-2 text-callout"
 						>
 					</div>
 				{:else}
@@ -232,6 +236,14 @@ function deletePrompt(review: Review): string {
 .review-item-radio {
 	display: flex;
 	padding: var(--space-2) 0 0 var(--space-3);
+}
+/* The radio sits on the title's first line, and on the title field's middle
+   while the field replaces it. */
+.review-item-renaming {
+	align-items: center;
+}
+.review-item-renaming .review-item-radio {
+	padding-top: 0;
 }
 .review-item-shown {
 	background: var(--color-selected-row);
