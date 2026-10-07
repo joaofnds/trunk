@@ -1745,6 +1745,23 @@ describe("empty states", () => {
 		).toBeInTheDocument();
 	});
 
+	it("says the next comment starts a review when none is active or shown", async () => {
+		installReads({
+			reviews: [aReview({ archived: true })],
+			activeReviewId: null,
+			comments: [],
+		});
+		renderPanel();
+		await flush();
+
+		expect(
+			screen.getByRole("heading", { name: "No review is active" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(/Your next comment starts a new review/),
+		).toBeInTheDocument();
+	});
+
 	it("says an empty archived review collects no comments until it is unarchived", async () => {
 		const archived = aReview({
 			id: "OTHER001",

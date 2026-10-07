@@ -824,6 +824,17 @@ $effect(() => {
 					</Button>
 				{/snippet}
 			</ReviewEmpty>
+		{:else if !shownReview}
+			<ReviewEmpty title="No review is active">
+				{#snippet icon()}
+					<MessageSquare size={18} />
+				{/snippet}
+				<p>
+					Your next comment starts a new review. Pick one from the list to read
+					it.
+				</p>
+				<WaysToComment />
+			</ReviewEmpty>
 		{:else if !hasAnyComment}
 			<ReviewEmpty
 				title={shownIsActive
