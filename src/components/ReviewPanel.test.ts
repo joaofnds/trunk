@@ -2608,6 +2608,97 @@ describe("ReviewPanel branch sections", () => {
 		expect(opened).toEqual(["src/untouched.ts"]);
 	});
 
+	describe("folding", () => {
+		function twoCommitsWithThreads() {
+			installReads({
+				commits: [
+					aSessionCommit({
+						oid: COMMIT_A,
+						short_oid: "aaaaaaa",
+						lane_ref: main,
+					}),
+					aSessionCommit({
+						oid: COMMIT_B,
+						short_oid: "bbbbbbb",
+						lane_ref: main,
+					}),
+				],
+				comments: [
+					lineAnchoredComment("a1", COMMIT_A, "on the first"),
+					commitLevelComment("a2", COMMIT_A, "a note on the first"),
+					lineAnchoredComment("b1", COMMIT_B, "on the second"),
+				],
+			});
+		}
+
+		function commit(shortOid: string): HTMLElement {
+			return screen.getByRole("listitem", { name: `Commit ${shortOid}` });
+		}
+
+		it("folds a commit's threads and notes away under its bar", async () => {
+			twoCommitsWithThreads();
+			renderPanel();
+			await flush();
+
+			await fireEvent.click(
+				within(commit("aaaaaaa")).getByRole("button", {
+					name: "Collapse commit",
+				}),
+			);
+
+			expect(screen.getByText("on the first")).not.toBeVisible();
+			expect(screen.getByText("a note on the first")).not.toBeVisible();
+			expect(screen.getByText("on the second")).toBeVisible();
+		});
+
+		it("unfolds a folded commit from its bar", async () => {
+			twoCommitsWithThreads();
+			renderPanel();
+			await flush();
+			const bar = within(commit("aaaaaaa"));
+			await fireEvent.click(
+				bar.getByRole("button", { name: "Collapse commit" }),
+			);
+
+			await fireEvent.click(bar.getByRole("button", { name: "Expand commit" }));
+
+			expect(screen.getByText("on the first")).toBeVisible();
+		});
+
+		it("folds a file's threads away under its bar, leaving the commit's notes", async () => {
+			twoCommitsWithThreads();
+			renderPanel();
+			await flush();
+
+			await fireEvent.click(
+				within(commit("aaaaaaa")).getByRole("button", {
+					name: "Collapse file",
+				}),
+			);
+
+			expect(screen.getByText("on the first")).not.toBeVisible();
+			expect(screen.getByText("a note on the first")).toBeVisible();
+		});
+
+		it("passes J and K over the threads a folded commit hides", async () => {
+			twoCommitsWithThreads();
+			renderPanel();
+			await flush();
+			await fireEvent.click(
+				within(commit("aaaaaaa")).getByRole("button", {
+					name: "Collapse commit",
+				}),
+			);
+
+			await fireEvent.keyDown(window, { key: "j" });
+			await flush();
+
+			expect(
+				document.querySelector("article[aria-current='true']"),
+			).toHaveTextContent("on the second");
+		});
+	});
+
 	describe("the note composer", () => {
 		async function openComposer() {
 			installReads({

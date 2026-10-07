@@ -1,5 +1,5 @@
 <script lang="ts" module>
-export type FoldInset = "thread";
+export type FoldInset = "thread" | "group" | "file";
 </script>
 
 <script lang="ts">
@@ -22,13 +22,17 @@ interface Props {
 	/** How far the content sits in from the bar's edges. */
 	inset: FoldInset;
 	ontoggle: () => void;
+	/** Drawn before the chevron. */
+	lead?: Snippet;
 	children: Snippet;
 }
 
-let { collapsed, noun, inset, ontoggle, children }: Props = $props();
+let { collapsed, noun, inset, ontoggle, lead, children }: Props = $props();
 
 const INSETS: Record<FoldInset, string> = {
 	thread: "px-1",
+	group: "pr-2 pl-4",
+	file: "",
 };
 
 const label = $derived(`${collapsed ? "Expand" : "Collapse"} ${noun}`);
@@ -42,6 +46,7 @@ const label = $derived(`${collapsed ? "Expand" : "Collapse"} ${noun}`);
 		onclick={ontoggle}
 	/>
 	<div class="fold-bar-content flex items-center gap-2 {INSETS[inset]}">
+		{@render lead?.()}
 		<span class="pointer-events-auto flex">
 			<Button
 				icon

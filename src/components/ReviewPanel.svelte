@@ -64,6 +64,7 @@ import LinkButton from "../lib/ui/LinkButton.svelte";
 import Radio from "../lib/ui/Radio.svelte";
 import BranchChip from "./BranchChip.svelte";
 import ComposerFrame from "./review/ComposerFrame.svelte";
+import FoldBar from "./review/FoldBar.svelte";
 import ReviewEmpty from "./review/ReviewEmpty.svelte";
 import ReviewTitle from "./review/ReviewTitle.svelte";
 import StateGlyph from "./review/StateGlyph.svelte";
@@ -212,6 +213,32 @@ function hidesSection(section: ReviewSection): boolean {
 	return section.groups.every((group) => hidesAll(group.threads));
 }
 
+// The commits and files the user folded, by key. A file's key is its
+// group's key and its path, since one path can sit under several commits.
+let folded = $state<Record<string, boolean>>({});
+
+function fileKey(group: ReviewGroup, file: ReviewFile): string {
+	return `${group.key}:${file.path}`;
+}
+
+function toggleFold(key: string) {
+	folded[key] = !folded[key];
+}
+
+function foldedAway(group: ReviewGroup, thread: Thread): boolean {
+	if (folded[group.key]) return true;
+	return group.files.some(
+		(file) => folded[fileKey(group, file)] && file.threads.includes(thread),
+	);
+}
+
+const FOLD_NOUNS: Record<ReviewGroup["kind"], string> = {
+	commit: "commit",
+	gone: "commit",
+	uncommitted: "uncommitted changes",
+	current: "current file content",
+};
+
 function plural(count: number, noun: string): string {
 	return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
@@ -295,7 +322,9 @@ let cursorFromKeys = $state(false);
 const shownThreads = $derived(
 	sections
 		.flatMap((section) => section.groups)
-		.flatMap((group) => group.threads)
+		.flatMap((group) =>
+			group.threads.filter((thread) => !foldedAway(group, thread)),
+		)
 		.filter(shows),
 );
 let bodyEl = $state<HTMLElement>();
@@ -914,69 +943,85 @@ $effect(() => {
 							style:display={hidesAll(group.threads) ? "none" : "block"}
 						>
 							<div
-								class="review-group-head flex items-center gap-2 h-bar pl-4 pr-2 bg-surface text-callout text-text"
+								class="review-group-head flex h-bar bg-surface text-callout text-text"
 							>
-								<span class="review-node" data-kind={group.kind}></span>
-								{#if group.kind === "commit" && group.commit}
-									<Chip
-										tone="neutral"
-										title="Copy SHA"
-										onclick={() => group.commit && copySha(group.commit.oid)}
-										>{group.commit.short_oid}</Chip
-									>
-									<span class="min-w-0 shrink">
-										<LinkButton
-											truncate
-											aria-label="Jump to commit {group.commit.short_oid}"
-											onclick={() => group.commit && onJumpToCommit(group.commit.oid)}
-											>{group.commit.summary}</LinkButton
+								<FoldBar
+									noun={FOLD_NOUNS[group.kind]}
+									inset="group"
+									collapsed={!!folded[group.key]}
+									ontoggle={() => toggleFold(group.key)}
+								>
+									{#snippet lead()}
+										<span class="review-node" data-kind={group.kind}></span>
+									{/snippet}
+									{#if group.kind === "commit" && group.commit}
+										<span class="pointer-events-auto flex">
+											<Chip
+												tone="neutral"
+												title="Copy SHA"
+												onclick={() => group.commit && copySha(group.commit.oid)}
+												>{group.commit.short_oid}</Chip
+											>
+										</span>
+										<span class="pointer-events-auto min-w-0 shrink">
+											<LinkButton
+												truncate
+												aria-label="Jump to commit {group.commit.short_oid}"
+												onclick={() => group.commit && onJumpToCommit(group.commit.oid)}
+												>{group.commit.summary}</LinkButton
+											>
+										</span>
+										{#if group.commit.author_timestamp !== null}
+											<span
+												class="review-meta pointer-events-auto"
+												title={exactLabel(group.commit.author_timestamp)}
+												>{relativeLabel(group.commit.author_timestamp, currentMinute())}</span
+											>
+										{/if}
+									{:else if group.kind === "gone" && group.commit}
+										<Chip variant="label" tone="neutral"
+											>{group.commit.short_oid}</Chip
 										>
-									</span>
-									{#if group.commit.author_timestamp !== null}
-										<span
-											class="review-meta"
-											title={exactLabel(group.commit.author_timestamp)}
-											>{relativeLabel(group.commit.author_timestamp, currentMinute())}</span
+										<span class="min-w-0 truncate text-text-subtle"
+											>{group.commit.summary}
+											· commit no longer exists</span
+										>
+									{:else if group.kind === "uncommitted"}
+										<span class="font-medium text-text-strong"
+											>Uncommitted changes</span
+										>
+									{:else}
+										<span class="font-medium text-text-strong"
+											>Current file content · HEAD</span
 										>
 									{/if}
-								{:else if group.kind === "gone" && group.commit}
-									<Chip variant="label" tone="neutral"
-										>{group.commit.short_oid}</Chip
+									<span
+										class="pointer-events-auto inline-flex items-center shrink-0 h-control-xs px-1 rounded bg-surface-chip font-mono text-caption text-text-muted"
+										title={plural(shownCount(group), "thread")}
+										>{shownCount(group)}</span
 									>
-									<span class="min-w-0 truncate text-text-subtle"
-										>{group.commit.summary}
-										· commit no longer exists</span
-									>
-								{:else if group.kind === "uncommitted"}
-									<span class="font-medium text-text-strong"
-										>Uncommitted changes</span
-									>
-								{:else}
-									<span class="font-medium text-text-strong"
-										>Current file content · HEAD</span
-									>
-								{/if}
-								<span
-									class="inline-flex items-center shrink-0 h-control-xs px-1 rounded bg-surface-chip font-mono text-caption text-text-muted"
-									title={plural(shownCount(group), "thread")}
-									>{shownCount(group)}</span
-								>
-								<span class="flex-1"></span>
-								{#if group.kind === "commit" && group.commit && reviewFilter !== "none"}
-									{@const oid = group.commit.oid}
-									<Button
-										size="sm"
-										variant="ghost"
-										onclick={() => openAddNote(oid)}
-										disabled={noteSaving}
-									>
-										<MessageSquareText size={12} />
-										<span>Add note</span>
-									</Button>
-								{/if}
+									<span class="flex-1"></span>
+									{#if group.kind === "commit" && group.commit && reviewFilter !== "none"}
+										{@const oid = group.commit.oid}
+										<span class="pointer-events-auto flex">
+											<Button
+												size="sm"
+												variant="ghost"
+												onclick={() => openAddNote(oid)}
+												disabled={noteSaving}
+											>
+												<MessageSquareText size={12} />
+												<span>Add note</span>
+											</Button>
+										</span>
+									{/if}
+								</FoldBar>
 							</div>
 
-							<div class="review-group-list flex flex-col gap-2">
+							<div
+								class="review-group-list flex flex-col gap-2"
+								style:display={folded[group.key] ? "none" : "flex"}
+							>
 								{#if group.commit && noteSession.target === group.commit.oid}
 									{@const commit = group.commit}
 									<div
@@ -1033,33 +1078,43 @@ $effect(() => {
 										class="flex flex-col gap-2"
 										style:display={hidesAll(file.threads) ? "none" : "flex"}
 									>
-										<div
-											class="flex items-center gap-2 min-w-0 h-control-sm text-text-subtle"
-										>
-											<File size={12} class="shrink-0" aria-hidden="true" />
-											<span class="flex min-w-0 text-small">
-												<LinkButton
-													tone="muted"
-													mono
-													aria-label="Open {file.path}"
-													title={group.kind === "gone" ? "Commit was garbage-collected" : `Open ${file.path}`}
-													disabled={group.kind === "gone"}
-													onclick={() => openFile(group, file)}
-												>
-													<span class="flex min-w-0">
-														<span class="review-path-dir"
-															><bdi>{path.dir}</bdi></span
-														>
-														<span class="review-path-name">{path.name}</span>
-													</span>
-												</LinkButton>
-											</span>
-											<span class="flex-1"></span>
-											<span class="review-meta"
-												>{plural(file.threads.length, "thread")}</span
+										<div class="flex h-control-sm min-w-0 text-text-subtle">
+											<FoldBar
+												noun="file"
+												inset="file"
+												collapsed={!!folded[fileKey(group, file)]}
+												ontoggle={() => toggleFold(fileKey(group, file))}
 											>
+												<File size={12} class="shrink-0" aria-hidden="true" />
+												<span
+													class="pointer-events-auto flex min-w-0 text-small"
+												>
+													<LinkButton
+														tone="muted"
+														mono
+														aria-label="Open {file.path}"
+														title={group.kind === "gone" ? "Commit was garbage-collected" : `Open ${file.path}`}
+														disabled={group.kind === "gone"}
+														onclick={() => openFile(group, file)}
+													>
+														<span class="flex min-w-0">
+															<span class="review-path-dir"
+																><bdi>{path.dir}</bdi></span
+															>
+															<span class="review-path-name">{path.name}</span>
+														</span>
+													</LinkButton>
+												</span>
+												<span class="flex-1"></span>
+												<span class="review-meta"
+													>{plural(file.threads.length, "thread")}</span
+												>
+											</FoldBar>
 										</div>
-										<ul class="flex flex-col gap-2 list-none m-0 p-0">
+										<ul
+											class="flex flex-col gap-2 list-none m-0 p-0"
+											style:display={folded[fileKey(group, file)] ? "none" : "flex"}
+										>
 											{#each file.threads as comment (comment.id)}
 												<li
 													style:display={shows(comment) ? "list-item" : "none"}
