@@ -9,6 +9,7 @@ import File from "@lucide/svelte/icons/file";
 import StateGlyph from "../../components/review/StateGlyph.svelte";
 import StatePill from "../../components/review/StatePill.svelte";
 import { laneColor } from "../../lib/lanes.js";
+import type { ThreadState } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
 import ButtonGroup from "../../lib/ui/ButtonGroup.svelte";
 import Chip from "../../lib/ui/Chip.svelte";
@@ -27,11 +28,13 @@ interface Props {
 let { review = $bindable(), active }: Props = $props();
 
 const TALLY = [
-	{ state: "open", tone: "text-thread-open" },
-	{ state: "addressed", tone: "text-thread-addressed" },
-	{ state: "done", tone: "text-thread-done" },
-	{ state: "dismissed", tone: "text-thread-dismissed" },
+	{ state: "open", label: "Open", tone: "text-thread-open" },
+	{ state: "addressed", label: "Addressed", tone: "text-thread-addressed" },
+	{ state: "done", label: "Done", tone: "text-thread-done" },
+	{ state: "dismissed", label: "Dismissed", tone: "text-thread-dismissed" },
 ] as const;
+
+const STATES: readonly ThreadState[] = TALLY.map((tally) => tally.state);
 
 const KEYS: [string[], string][] = [
 	[["J", "K"], "move"],
@@ -45,26 +48,44 @@ const KEYS: [string[], string][] = [
 const VIEW_IDS = ["all", "needs", "settled"] as const;
 type ViewId = (typeof VIEW_IDS)[number];
 
-const VIEWS: Record<ViewId, { label: string; has: (t: Thread) => boolean }> = {
-	all: { label: "All", has: () => true },
-	needs: {
-		label: "Needs me",
-		has: (t) => t.state === "open" || t.state === "addressed",
-	},
-	settled: {
-		label: "Settled",
-		has: (t) => t.state === "done" || t.state === "dismissed",
-	},
-};
+const VIEWS: Record<ViewId, { label: string; states: readonly ThreadState[] }> =
+	{
+		all: { label: "All", states: STATES },
+		needs: { label: "Needs me", states: ["open", "addressed"] },
+		settled: { label: "Settled", states: ["done", "dismissed"] },
+	};
 
-let view = $state<ViewId>("all");
+let shown = $state<Record<ThreadState, boolean>>({
+	open: true,
+	addressed: true,
+	done: true,
+	dismissed: true,
+});
+let showStale = $state(true);
 
 const threads = $derived(
 	review.sections.flatMap((s) => s.groups.flatMap((g) => g.threads)),
 );
 const staleCount = $derived(threads.filter((t) => t.stale).length);
-const matches = $derived(VIEWS[view].has);
 const hiddenCount = $derived(threads.length - threads.filter(matches).length);
+const activeView = $derived(
+	VIEW_IDS.find(
+		(id) =>
+			showStale &&
+			STATES.every(
+				(state) => shown[state] === VIEWS[id].states.includes(state),
+			),
+	),
+);
+
+function matches(thread: Thread): boolean {
+	return shown[thread.state] && (showStale || !thread.stale);
+}
+
+function pick(id: ViewId) {
+	for (const state of STATES) shown[state] = VIEWS[id].states.includes(state);
+	showStale = true;
+}
 
 function visible(group: Group): Thread[] {
 	return group.threads.filter(matches);
@@ -97,6 +118,36 @@ function removeThread(group: Group, thread: Thread) {
 	group.threads = group.threads.filter((t) => t !== thread);
 }
 </script>
+
+{#snippet toggle(
+label: string,
+glyph: ThreadState | "stale",
+tone: string,
+count: number,
+on: boolean,
+ontoggle: () => void,
+)}
+	<LinkButton
+		tone="muted"
+		aria-pressed={on}
+		aria-label={label}
+		title={on ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+		onclick={ontoggle}
+	>
+		<span
+			class="inline-flex items-center gap-1 font-mono"
+			class:line-through={!on}
+		>
+			<span
+				class="inline-flex {on ? tone : 'text-text-disabled'}"
+				aria-hidden="true"
+			>
+				<StateGlyph state={glyph} size={11} />
+			</span>
+			{count}
+		</span>
+	</LinkButton>
+{/snippet}
 
 <section
 	aria-label="Review threads"
@@ -140,28 +191,35 @@ function removeThread(group: Group, thread: Thread) {
 			>
 			{#if threads.length > 0}
 				<span class="text-text-disabled" aria-hidden="true">·</span>
-				<ul class="m-0 flex list-none gap-3 p-0" aria-label="Threads by state">
+				<ul
+					class="m-0 flex list-none gap-3 p-0"
+					aria-label="Show threads by state"
+				>
 					{#each TALLY as tally (tally.state)}
 						{@const count = threads.filter((t) => t.state === tally.state).length}
 						{#if count > 0}
-							<li
-								class="inline-flex items-center gap-1 font-mono text-text-muted"
-							>
-								<span class="inline-flex {tally.tone}" aria-hidden="true">
-									<StateGlyph state={tally.state} size={11} />
-								</span>
-								{count}
+							<li class="inline-flex">
+								{@render toggle(
+`${tally.label} threads`,
+tally.state,
+tally.tone,
+count,
+shown[tally.state],
+() => (shown[tally.state] = !shown[tally.state]),
+)}
 							</li>
 						{/if}
 					{/each}
 					{#if staleCount > 0}
-						<li
-							class="inline-flex items-center gap-1 font-mono text-text-muted"
-						>
-							<span class="inline-flex text-thread-stale" aria-hidden="true">
-								<StateGlyph state="stale" size={11} />
-							</span>
-							{staleCount}
+						<li class="inline-flex">
+							{@render toggle(
+"Stale threads",
+"stale",
+"text-thread-stale",
+staleCount,
+showStale,
+() => (showStale = !showStale),
+)}
 						</li>
 					{/if}
 				</ul>
@@ -171,12 +229,12 @@ function removeThread(group: Group, thread: Thread) {
 						<Button
 							joined
 							size="xs"
-							aria-pressed={view === id}
-							onclick={() => (view = id)}
+							aria-pressed={activeView === id}
+							onclick={() => pick(id)}
 						>
 							{VIEWS[id].label}
 							<span class="font-mono"
-								>{threads.filter(VIEWS[id].has).length}</span
+								>{threads.filter((t) => VIEWS[id].states.includes(t.state)).length}</span
 							>
 						</Button>
 					{/each}
@@ -193,7 +251,7 @@ function removeThread(group: Group, thread: Thread) {
 		{:else if hiddenCount === threads.length}
 			<p class="m-0 px-4 py-6 text-text-muted">
 				No threads here.
-				<LinkButton tone="accent" onclick={() => (view = "all")}
+				<LinkButton tone="accent" onclick={() => pick("all")}
 					>Show all</LinkButton
 				>
 			</p>
@@ -297,7 +355,7 @@ section.groups.reduce((n, g) => n + visible(g).length, 0),
 			<p class="m-0 px-4 pt-3 text-small text-text-muted">
 				{plural(hiddenCount, "thread")}
 				hidden.
-				<LinkButton tone="accent" onclick={() => (view = "all")}
+				<LinkButton tone="accent" onclick={() => pick("all")}
 					>Show all</LinkButton
 				>
 			</p>
