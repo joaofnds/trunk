@@ -212,7 +212,7 @@ const sections = $derived(
 );
 
 function shows(thread: Thread): boolean {
-	return reviewFilter !== "none" && threadMatchesFilter(thread, reviewFilter);
+	return threadMatchesFilter(thread, reviewFilter);
 }
 
 // A block of threads hides once the filter hides every one of them. A commit
@@ -329,7 +329,7 @@ function sectionSummary(section: ReviewSection): string {
 			!hidesAll(group.threads),
 	).length;
 	const threadCount = section.groups.reduce(
-		(sum, group) => sum + shownCount(group),
+		(sum, group) => sum + shownCount(group.threads),
 		0,
 	);
 	const threads = plural(threadCount, "thread");
@@ -344,8 +344,8 @@ function sectionLane(section: ReviewSection): string {
 		: laneColor(section.colorIndex);
 }
 
-function shownCount(group: ReviewGroup): number {
-	return filterThreads(group.threads, reviewFilter).length;
+function shownCount(threads: Thread[]): number {
+	return filterThreads(threads, reviewFilter).length;
 }
 
 function groupLabel(group: ReviewGroup): string {
@@ -1079,8 +1079,8 @@ $effect(() => {
 									{/if}
 									<span
 										class="pointer-events-auto inline-flex items-center shrink-0 h-control-xs px-1 rounded bg-surface-chip font-mono text-caption text-text-muted"
-										title={plural(shownCount(group), "thread")}
-										>{shownCount(group)}</span
+										title={plural(shownCount(group.threads), "thread")}
+										>{shownCount(group.threads)}</span
 									>
 									<span class="flex-1"></span>
 									{#if group.kind === "commit" && group.commit && reviewFilter !== "none"}
@@ -1190,7 +1190,7 @@ $effect(() => {
 												</span>
 												<span class="flex-1"></span>
 												<span class="review-meta"
-													>{plural(filterThreads(file.threads, reviewFilter).length, "thread")}</span
+													>{plural(shownCount(file.threads), "thread")}</span
 												>
 											</FoldBar>
 										</div>
