@@ -624,6 +624,7 @@ function reviewWith(
 			title: `${state} review`,
 			state: "composing",
 			published: false,
+			archived: false,
 			thread_count: storedThreads.length,
 			unresolved_count: storedThreads.filter((t) => t.state === "open").length,
 			created_at: 0,

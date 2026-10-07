@@ -8,7 +8,7 @@ use super::sqlite_error;
 use rusqlite::Connection;
 use trunk_git::error::TrunkError;
 
-pub const CURRENT_VERSION: i64 = 10;
+pub const CURRENT_VERSION: i64 = 11;
 
 const V1: &str = r"
 CREATE TABLE reviews (
@@ -239,6 +239,12 @@ CREATE INDEX threads_by_anchor ON threads(commit_oid, file_path);
 /// still judged by the snapshot author, so a commit fetched after the upgrade
 /// can never be taken for a snapshot, while a thread on an old snapshot keeps
 /// its stale marker.
+/// A review the user put away. The agent reads only reviews that are not
+/// archived, and the app lists them apart.
+const V11: &str = r"
+ALTER TABLE reviews ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+";
+
 /// A thread's history, one row per state change (`reviewdb::history`). Rows
 /// order by their write time, which the app and the CLI read off this one
 /// host's clock; the order only decides where the card draws a change among
@@ -440,6 +446,10 @@ fn apply_pending(conn: &Connection) -> Result<(), TrunkError> {
     }
     if user_version(conn)? < 10 {
         conn.execute_batch(&format!("{V10} PRAGMA user_version = 10;"))
+            .map_err(sqlite_error)?;
+    }
+    if user_version(conn)? < 11 {
+        conn.execute_batch(&format!("{V11} PRAGMA user_version = 11;"))
             .map_err(sqlite_error)?;
     }
 

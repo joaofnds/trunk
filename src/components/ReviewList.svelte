@@ -1,8 +1,13 @@
 <script lang="ts">
 // The repo's reviews, one row each, in the left pane while review mode holds the
 // window. Pressing a row shows that review; the radio beside it makes it the
-// active one, where new comments land.
+// active one, where new comments land. Archived reviews fold under their own
+// heading at the foot.
 
+import Archive from "@lucide/svelte/icons/archive";
+import ArchiveRestore from "@lucide/svelte/icons/archive-restore";
+import ChevronDown from "@lucide/svelte/icons/chevron-down";
+import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import Pencil from "@lucide/svelte/icons/pencil";
 import Plus from "@lucide/svelte/icons/plus";
 import Trash2 from "@lucide/svelte/icons/trash-2";
@@ -10,8 +15,10 @@ import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
 	activateReview,
+	archiveReview,
 	renameReview,
 	startNewReview,
+	unarchiveReview,
 } from "../lib/review-actions.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { reviewTitle } from "../lib/review-title.js";
@@ -32,7 +39,11 @@ interface Props {
 
 let { repoPath, reviewComments }: Props = $props();
 
-const reviews = $derived(reviewComments.reviews);
+const reviews = $derived(reviewComments.reviews.filter((r) => !r.archived));
+const archivedReviews = $derived(
+	reviewComments.reviews.filter((r) => r.archived),
+);
+let archivedOpen = $state(false);
 const activeReviewId = $derived(reviewComments.activeReviewId);
 const shownReviewId = $derived(reviewComments.shownReviewId);
 
@@ -81,6 +92,143 @@ function deletePrompt(review: Review): string {
 }
 </script>
 
+{#snippet reviewItem(review: Review)}
+	{@const isActive = review.id === activeReviewId}
+	{@const isShown = review.id === shownReviewId}
+	<li
+		class="review-item"
+		class:review-item-shown={isShown}
+		class:review-item-renaming={renamingId === review.id}
+	>
+		<span class="review-item-radio">
+			{#if !review.archived}
+				<Radio
+					checked={isActive}
+					aria-label="Active review {review.id}"
+					title={isActive ? "Active: new comments land here" : "Make active"}
+					onclick={() => activate(review.id)}
+				/>
+			{/if}
+		</span>
+		{#if renamingId === review.id}
+			<div class="py-1 pr-2">
+				<input
+					bind:value={renameText}
+					onblur={commitRename}
+					onkeydown={renameKeys}
+					aria-label="Review title"
+					use:selectOnOpen
+					class="w-full bg-bg text-text border border-border rounded outline-none h-control py-0 px-2 text-callout"
+				>
+			</div>
+		{:else}
+			<Row
+				variant="entry"
+				reveal="fade"
+				onclick={() => reviewComments.select(review.id)}
+				ondblclick={() => openRename(review)}
+				onkeydown={(e) => {
+					if (e.key === "F2") {
+						e.preventDefault();
+						openRename(review);
+					}
+				}}
+				title="Click to show · double-click or F2 to rename"
+				aria-label="Show review {review.id}"
+				aria-current={isShown ? "true" : undefined}
+			>
+				<span
+					class="min-w-0 font-medium text-text-strong line-clamp-2 whitespace-normal text-pretty"
+					><ReviewTitle title={reviewTitle(review)} /></span
+				>
+				{#snippet detail()}
+					<span
+						class="flex flex-1 items-center gap-2 min-w-0 font-mono text-caption text-text-subtle"
+					>
+						<span>{review.id}</span>
+						<StatePill state={review.state} />
+						<span class="flex-1"></span>
+						<span
+							title="{review.unresolved_count} unresolved of {review.thread_count}"
+							>{review.unresolved_count > 0
+									? `${review.unresolved_count}/${review.thread_count}`
+									: review.thread_count}</span
+						>
+					</span>
+				{/snippet}
+				{#snippet actions()}
+					<RowAction
+						size="compact"
+						onclick={() => openRename(review)}
+						aria-label="Rename review {review.id}"
+						title="Rename"
+					>
+						<Pencil size={12} />
+					</RowAction>
+					{#if review.archived}
+						<RowAction
+							size="compact"
+							onclick={() => unarchiveReview(repoPath, review.id)}
+							aria-label="Unarchive review {review.id}"
+							title="Unarchive"
+						>
+							<ArchiveRestore size={12} />
+						</RowAction>
+					{:else}
+						<RowAction
+							size="compact"
+							onclick={() => archiveReview(repoPath, review.id)}
+							aria-label="Archive review {review.id}"
+							title="Archive"
+						>
+							<Archive size={12} />
+						</RowAction>
+					{/if}
+					<RowAction
+						size="compact"
+						tone="destructive"
+						onclick={() => {
+							deleteConfirmingId = review.id;
+						}}
+						aria-label="Delete review {review.id}"
+						title="Delete review"
+					>
+						<Trash2 size={12} />
+					</RowAction>
+				{/snippet}
+			</Row>
+		{/if}
+		{#if deleteConfirmingId === review.id}
+			<fieldset
+				aria-label="Delete {reviewTitle(review)}?"
+				class="review-confirm flex flex-col gap-2 m-0 p-2 rounded text-small leading-normal text-text"
+			>
+				<p class="m-0">
+					Delete
+					<b class="font-semibold text-text-strong">{reviewTitle(review)}</b
+					><span>{deletePrompt(review)}</span>
+				</p>
+				<div class="flex justify-end gap-2">
+					<Button
+						size="sm"
+						variant="ghost"
+						onclick={() => {
+							deleteConfirmingId = null;
+						}}
+						>Cancel</Button
+					>
+					<Button
+						size="sm"
+						variant="danger"
+						onclick={() => deleteReview(review.id)}
+						>Delete review</Button
+					>
+				</div>
+			</fieldset>
+		{/if}
+	</li>
+{/snippet}
+
 <nav
 	aria-label="Reviews"
 	class="flex flex-col flex-1 min-h-0 bg-surface text-callout"
@@ -110,120 +258,36 @@ function deletePrompt(review: Review): string {
 		class="flex flex-col flex-1 min-h-0 overflow-auto list-none m-0 py-1 px-0"
 	>
 		{#each reviews as review (review.id)}
-			{@const isActive = review.id === activeReviewId}
-			{@const isShown = review.id === shownReviewId}
-			<li
-				class="review-item"
-				class:review-item-shown={isShown}
-				class:review-item-renaming={renamingId === review.id}
-			>
-				<span class="review-item-radio">
-					<Radio
-						checked={isActive}
-						aria-label="Active review {review.id}"
-						title={isActive ? "Active: new comments land here" : "Make active"}
-						onclick={() => activate(review.id)}
-					/>
-				</span>
-				{#if renamingId === review.id}
-					<div class="py-1 pr-2">
-						<input
-							bind:value={renameText}
-							onblur={commitRename}
-							onkeydown={renameKeys}
-							aria-label="Review title"
-							use:selectOnOpen
-							class="w-full bg-bg text-text border border-border rounded outline-none h-control py-0 px-2 text-callout"
-						>
-					</div>
-				{:else}
-					<Row
-						variant="entry"
-						reveal="fade"
-						onclick={() => reviewComments.select(review.id)}
-						ondblclick={() => openRename(review)}
-						onkeydown={(e) => {
-							if (e.key === "F2") {
-								e.preventDefault();
-								openRename(review);
-							}
-						}}
-						title="Click to show · double-click or F2 to rename"
-						aria-label="Show review {review.id}"
-						aria-current={isShown ? "true" : undefined}
-					>
-						<span
-							class="min-w-0 font-medium text-text-strong line-clamp-2 whitespace-normal text-pretty"
-							><ReviewTitle title={reviewTitle(review)} /></span
-						>
-						{#snippet detail()}
-							<span
-								class="flex flex-1 items-center gap-2 min-w-0 font-mono text-caption text-text-subtle"
-							>
-								<span>{review.id}</span>
-								<StatePill state={review.state} />
-								<span class="flex-1"></span>
-								<span
-									title="{review.unresolved_count} unresolved of {review.thread_count}"
-									>{review.unresolved_count > 0
-										? `${review.unresolved_count}/${review.thread_count}`
-										: review.thread_count}</span
-								>
-							</span>
-						{/snippet}
-						{#snippet actions()}
-							<RowAction
-								size="compact"
-								onclick={() => openRename(review)}
-								aria-label="Rename review {review.id}"
-								title="Rename"
-							>
-								<Pencil size={12} />
-							</RowAction>
-							<RowAction
-								size="compact"
-								tone="destructive"
-								onclick={() => {
-									deleteConfirmingId = review.id;
-								}}
-								aria-label="Delete review {review.id}"
-								title="Delete review"
-							>
-								<Trash2 size={12} />
-							</RowAction>
-						{/snippet}
-					</Row>
-				{/if}
-				{#if deleteConfirmingId === review.id}
-					<fieldset
-						aria-label="Delete {reviewTitle(review)}?"
-						class="review-confirm flex flex-col gap-2 m-0 p-2 rounded text-small leading-normal text-text"
-					>
-						<p class="m-0">
-							Delete
-							<b class="font-semibold text-text-strong">{reviewTitle(review)}</b
-							><span>{deletePrompt(review)}</span>
-						</p>
-						<div class="flex justify-end gap-2">
-							<Button
-								size="sm"
-								variant="ghost"
-								onclick={() => {
-									deleteConfirmingId = null;
-								}}
-								>Cancel</Button
-							>
-							<Button
-								size="sm"
-								variant="danger"
-								onclick={() => deleteReview(review.id)}
-								>Delete review</Button
-							>
-						</div>
-					</fieldset>
-				{/if}
-			</li>
+			{@render reviewItem(review)}
 		{/each}
+		{#if archivedReviews.length > 0}
+			<li>
+				<Row
+					variant="header"
+					tone="muted"
+					aria-expanded={archivedOpen}
+					onclick={() => {
+						archivedOpen = !archivedOpen;
+					}}
+				>
+					{#if archivedOpen}
+						<ChevronDown size={12} aria-hidden="true" />
+					{:else}
+						<ChevronRight size={12} aria-hidden="true" />
+					{/if}
+					<span class="text-caption font-semibold uppercase">Archived</span>
+					<span
+						class="inline-flex items-center h-control-xs px-1 rounded bg-surface-chip font-mono text-caption"
+						>{archivedReviews.length}</span
+					>
+				</Row>
+			</li>
+			{#if archivedOpen}
+				{#each archivedReviews as review (review.id)}
+					{@render reviewItem(review)}
+				{/each}
+			{/if}
+		{/if}
 	</ul>
 	<p
 		class="flex items-center gap-2 shrink-0 m-0 py-2 px-3 shadow-hairline text-small text-text-subtle"

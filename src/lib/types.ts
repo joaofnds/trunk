@@ -495,6 +495,8 @@ export interface Review {
 	title: string;
 	state: ReviewState;
 	published: boolean;
+	/** Put away by the user: listed apart and unseen by the agent. */
+	archived: boolean;
 	thread_count: number;
 	/** Threads still waiting on someone: open or addressed. */
 	unresolved_count: number;

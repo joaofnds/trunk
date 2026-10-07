@@ -168,7 +168,7 @@ fn a_v9_store_gains_the_history_table_and_keeps_its_threads() {
     drop(store);
     {
         let conn = rusqlite::Connection::open(ctx.data_dir().join(reviewdb::DB_FILE)).unwrap();
-        conn.execute_batch("DROP TABLE thread_history; PRAGMA user_version = 9;")
+        conn.execute_batch("ALTER TABLE reviews DROP COLUMN archived; DROP TABLE thread_history; PRAGMA user_version = 9;")
             .unwrap();
     }
 

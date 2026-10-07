@@ -272,6 +272,8 @@ pub fn configure<R: tauri::Runtime>(
         commands::review::rename_review,
         commands::review::publish_review,
         commands::review::delete_review,
+        commands::review::archive_review,
+        commands::review::unarchive_review,
         commands::review::save_draft,
         commands::review::get_draft,
         commands::review::delete_draft,

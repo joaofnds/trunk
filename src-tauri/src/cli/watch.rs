@@ -104,6 +104,9 @@ mod watch_feed {
     pub type Snapshot = BTreeMap<String, ReviewSnap>;
 
     pub struct ReviewSnap {
+        /// An archived review is kept as a bare marker with no content, so
+        /// its leaving reads as archived rather than deleted.
+        pub archived: bool,
         pub title: String,
         pub state: ReviewState,
         pub threads: BTreeMap<String, ThreadSnap>,
@@ -144,6 +147,9 @@ mod watch_feed {
             to: ReviewState,
         },
         ReviewDeleted {
+            review: String,
+        },
+        ReviewArchived {
             review: String,
         },
         ThreadAdded {
@@ -205,6 +211,7 @@ mod watch_feed {
                 | Self::ReviewRetitled { review, .. }
                 | Self::ReviewStateChanged { review, .. }
                 | Self::ReviewDeleted { review }
+                | Self::ReviewArchived { review }
                 | Self::ThreadAdded { review, .. }
                 | Self::ThreadEdited { review, .. }
                 | Self::ThreadStateChanged { review, .. }
@@ -232,6 +239,18 @@ fn published_snapshot(
         let mut snapshot = Snapshot::new();
         for review in trunk_review::reviewdb::reviews::list(conn, canonical)? {
             if !review.published {
+                continue;
+            }
+            if review.archived {
+                snapshot.insert(
+                    review.id,
+                    ReviewSnap {
+                        archived: true,
+                        title: review.title,
+                        state: review.state,
+                        threads: std::collections::BTreeMap::new(),
+                    },
+                );
                 continue;
             }
 
@@ -267,6 +286,7 @@ fn published_snapshot(
             snapshot.insert(
                 review.id,
                 ReviewSnap {
+                    archived: false,
                     title: review.title,
                     state: review.state,
                     threads,
@@ -285,7 +305,14 @@ fn diff_snapshots(old: &Snapshot, new: &Snapshot) -> Vec<WatchChange> {
     let mut changes = Vec::new();
 
     for (id, review) in new {
-        match old.get(id) {
+        let before = old.get(id).filter(|before| !before.archived);
+        if review.archived {
+            if before.is_some() {
+                changes.push(WatchChange::ReviewArchived { review: id.clone() });
+            }
+            continue;
+        }
+        match before {
             None => {
                 changes.push(WatchChange::ReviewPublished {
                     review: id.clone(),
@@ -328,8 +355,8 @@ fn diff_snapshots(old: &Snapshot, new: &Snapshot) -> Vec<WatchChange> {
         }
     }
 
-    for id in old.keys() {
-        if !new.contains_key(id) {
+    for (id, review) in old {
+        if !review.archived && !new.contains_key(id) {
             changes.push(WatchChange::ReviewDeleted { review: id.clone() });
         }
     }

@@ -1080,6 +1080,62 @@ pub async fn rename_review<R: Runtime>(
 ///
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
+pub async fn archive_review<R: Runtime>(
+    path: String,
+    review_id: String,
+    state: State<'_, RepoState>,
+    store: State<'_, ReviewStoreState>,
+    app: AppHandle<R>,
+) -> Result<(), String> {
+    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+
+    let target = canonical.clone();
+    write_and_notify(&app, &canonical, move || {
+        let now = trunk_review::reviewdb::now_secs();
+        store.write(|tx| reviews::archive(tx, &target, &review_id, now))
+    })
+    .await?;
+
+    Ok(())
+}
+
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn unarchive_review<R: Runtime>(
+    path: String,
+    review_id: String,
+    state: State<'_, RepoState>,
+    store: State<'_, ReviewStoreState>,
+    app: AppHandle<R>,
+) -> Result<(), String> {
+    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+
+    let target = canonical.clone();
+    write_and_notify(&app, &canonical, move || {
+        let now = trunk_review::reviewdb::now_secs();
+        store.write(|tx| reviews::unarchive(tx, &target, &review_id, now))
+    })
+    .await?;
+
+    Ok(())
+}
+
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
 pub async fn publish_review<R: Runtime>(
     path: String,
     review_id: String,

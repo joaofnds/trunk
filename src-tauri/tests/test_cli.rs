@@ -145,6 +145,57 @@ fn cli_lists_only_published_reviews() {
     );
 }
 
+fn archive(ctx: &TestContext, review: &str) {
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    reviewdb::open(ctx.data_dir())
+        .unwrap()
+        .write(|tx| reviews::archive(tx, &canonical, review, 500))
+        .unwrap();
+}
+
+#[test]
+fn cli_list_leaves_out_an_archived_review() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    archive(&ctx, &published);
+
+    let out = trunk_review_in(ctx.repo_path(), &["list"], ctx.data_dir());
+
+    assert_eq!(out.status.code(), Some(0));
+    assert!(
+        !String::from_utf8_lossy(&out.stdout).contains(&published),
+        "an archived review is put away from the agent, got {:?}",
+        String::from_utf8_lossy(&out.stdout),
+    );
+}
+
+#[test]
+fn cli_answers_an_archived_review_and_its_threads_exactly_as_missing() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+    archive(&ctx, &published);
+
+    let of_review = trunk_review_in(ctx.repo_path(), &["show", &published], ctx.data_dir());
+    let of_thread = trunk_review_in(ctx.repo_path(), &["thread", &thread_id], ctx.data_dir());
+
+    assert_eq!(
+        String::from_utf8_lossy(&of_review.stderr).replace(&published, "ZZZZZZZZ"),
+        String::from_utf8_lossy(
+            &trunk_review_in(ctx.repo_path(), &["show", "ZZZZZZZZ"], ctx.data_dir()).stderr
+        ),
+    );
+    assert_ne!(of_review.status.code(), Some(0));
+    assert_ne!(of_thread.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&of_thread.stderr).contains("no thread"));
+}
+
 #[test]
 fn discovery_from_a_subdirectory_and_a_symlink_matches_the_app() {
     let ctx = TestContext::builder()
@@ -1880,6 +1931,41 @@ fn watch_json_reports_a_deleted_reply_and_thread() {
             "thread": thread_id,
         }),
     );
+}
+
+#[test]
+fn watch_json_reports_an_archived_review_and_unrolls_it_once_unarchived() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let watch = WatchChild::spawn_json(&ctx);
+
+    store
+        .write(|tx| reviews::archive(tx, &canonical, &published, 5_000))
+        .unwrap();
+    let archived: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    store
+        .write(|tx| reviews::unarchive(tx, &canonical, &published, 6_000))
+        .unwrap();
+    let back: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let thread: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+
+    assert_eq!(
+        archived,
+        serde_json::json!({ "event": "review_archived", "review": published }),
+    );
+    assert_eq!(back["event"], "review_published", "{back}");
+    assert_eq!(back["review"], published.as_str());
+    assert_eq!(thread["event"], "thread_added", "{thread}");
+    assert_eq!(thread["thread"], thread_id.as_str());
 }
 
 #[test]

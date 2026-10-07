@@ -25,6 +25,7 @@ import {
 	activateReview,
 	renameReview,
 	startNewReview,
+	unarchiveReview,
 } from "../lib/review-actions.js";
 import { setThreadState } from "../lib/review-comment-actions.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
@@ -710,7 +711,14 @@ $effect(() => {
 			<div
 				class="flex items-center gap-2 min-w-0 whitespace-nowrap text-small text-text-subtle"
 			>
-				{#if shownReview.id === activeReviewId}
+				{#if shownReview.archived}
+					<span class="font-medium text-text-muted">Archived</span>
+					<Button
+						size="xs"
+						onclick={() => unarchiveReview(repoPath, shownReview.id)}
+						>Unarchive</Button
+					>
+				{:else if shownReview.id === activeReviewId}
 					<span
 						class="inline-flex items-center gap-1 font-medium text-accent-strong"
 					>

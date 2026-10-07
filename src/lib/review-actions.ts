@@ -32,6 +32,28 @@ export async function startNewReview(
 	}
 }
 
+export async function archiveReview(
+	repoPath: string,
+	reviewId: string,
+): Promise<void> {
+	try {
+		await safeInvoke("archive_review", { path: repoPath, reviewId });
+	} catch (e) {
+		showToast(errorMessage(e, "Failed to archive review"), "error");
+	}
+}
+
+export async function unarchiveReview(
+	repoPath: string,
+	reviewId: string,
+): Promise<void> {
+	try {
+		await safeInvoke("unarchive_review", { path: repoPath, reviewId });
+	} catch (e) {
+		showToast(errorMessage(e, "Failed to unarchive review"), "error");
+	}
+}
+
 // A blank title keeps the one the review has.
 export async function renameReview(
 	repoPath: string,

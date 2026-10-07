@@ -111,8 +111,8 @@ trunk review watch [--repo <path>]
 - **watch** — block and stream changes to the repo's published reviews. After
   a `# watching …` readiness line, output arrives as changes land —
   event-driven, no polling: every Trunk process that writes the store rings
-  the watcher over a local socket. macOS/Linux only for now. Composing
-  reviews and draft typing never produce output. Plain mode prints the
+  the watcher over a local socket. macOS/Linux only for now. Composing and
+  archived reviews and draft typing never produce output. Plain mode prints the
   changed review's id, one per line (format unstable). `--json` prints one
   self-contained NDJSON event per change, so a harness never refetches or
   rediffs.
@@ -138,6 +138,7 @@ new fields and event kinds may appear; existing ones keep their meaning.
 | `review_retitled` | `review`, `title` |
 | `review_state_changed` | `review`, `from`, `to` (`ready`/`settled`) |
 | `review_deleted` | `review` |
+| `review_archived` | `review`, sent when the user puts a review away. Its ids stop resolving, and unarchiving it sends `review_published` with its full content again |
 | `thread_added` | `review`, `thread`, `state`, `text`, and its location: `anchor` (`file_path`, `start_line`, `end_line`, `commit_oid`, `source`, `side`), `commit_oid` for a commit-level note, or `content_pin` (`file_path`, `start_line`, `end_line`, `block`, `ordinal`) for a comment on a file's current content. A pin's lines are where the block stood when the comment was written, `block` is the text it pinned, read from the working tree and as untrusted as any excerpt, and `ordinal` is which occurrence of a repeated block was picked, counting from 0. A target-less thread carries none of the three, and a key that does not apply is absent, never null |
 | `thread_edited` | `review`, `thread`, `text` |
 | `thread_state_changed` | `review`, `thread`, `from`, `to` |
@@ -165,9 +166,9 @@ else exits 1. A mistyped verb is refused naming the closest real one when one
 is close enough to suggest. `--json` on a verb with no JSON form (`list`,
 `show`, `reply`, `address`) is a usage error, not accepted and ignored. An
 illegal state claim fails naming the thread's current state and changes
-nothing. A target inside an unpublished (composing) review answers exactly as
-a missing id does — an unpublished review's existence never leaks through the
-CLI, not even through an ambiguous prefix.
+nothing. A target inside an unpublished (composing) or archived review answers
+exactly as a missing id does — such a review's existence never leaks through
+the CLI, not even through an ambiguous prefix.
 
 ## Concurrency and versions
 

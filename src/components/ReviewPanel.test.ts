@@ -136,6 +136,7 @@ function aReview(overrides: Partial<Review> = {}): Review {
 		title: "Review 2026-08-12",
 		state: "composing",
 		published: false,
+		archived: false,
 		thread_count: 0,
 		unresolved_count: 0,
 		created_at: 0,
@@ -1516,6 +1517,7 @@ describe("the shown review", () => {
 		title: "Auth review",
 		state: "ready",
 		published: true,
+		archived: false,
 		thread_count: 2,
 		unresolved_count: 1,
 		created_at: 0,
@@ -1703,6 +1705,7 @@ describe("header", () => {
 		title: "Other review",
 		state: "ready",
 		published: true,
+		archived: false,
 		thread_count: 0,
 		unresolved_count: 0,
 		created_at: 0,
@@ -1843,6 +1846,27 @@ describe("header", () => {
 			await reviewComments.select(OTHER.id);
 			await flush();
 		}
+
+		it("offers to unarchive it in place of making it active once archived", async () => {
+			installReads({
+				commits,
+				comments: THREADS,
+				reviews: [aReview({ thread_count: 4 }), { ...OTHER, archived: true }],
+			});
+			renderPanel();
+			await flush();
+			await reviewComments.select(OTHER.id);
+			await flush();
+
+			expect(header()).toHaveTextContent("Archived");
+			expect(screen.queryByRole("button", { name: "Make active" })).toBeNull();
+			await fireEvent.click(screen.getByRole("button", { name: "Unarchive" }));
+			await flush();
+			expect(callArgs("unarchive_review")).toEqual({
+				path: "/repo",
+				reviewId: OTHER.id,
+			});
+		});
 
 		it("offers to make it active", async () => {
 			await showOther();

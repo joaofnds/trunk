@@ -11,12 +11,12 @@ use trunk_review::reviewdb::{self, reviews};
 use trunk_review::types::{Channel, ThreadState};
 
 /// One markdown bullet per published review, in the store's list order.
-/// `composing` reviews are absent by contract: the CLI does not serve them,
-/// and their existence must not leak (§5.1).
+/// `composing` and archived reviews are absent by contract: the CLI does not
+/// serve them, and their existence must not leak (§5.1).
 pub(crate) fn render_list(listed: &[reviews::Review]) -> String {
     listed
         .iter()
-        .filter(|r| r.published)
+        .filter(|r| r.is_visible_to_agent())
         .fold(String::new(), |mut out, r| {
             let _ = writeln!(
                 out,

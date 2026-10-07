@@ -309,8 +309,15 @@ settled review gaining or reopening a thread is `ready` again. Destructive
 operations: deleting a review, a thread or a reply, in any state; the agent's watch
 reports each deletion.
 
+**Archived review** — a review the user put away. It is listed apart in the app,
+folded under its own heading, and the agent no longer sees it: the CLI answers its
+ids as missing and watch reports `review_archived`. Archiving is a stored fact,
+separate from the derived state, and unarchiving brings the review back as it was.
+An archived review cannot be the active one, so archiving the active review leaves
+the repo with none and the next comment opens a fresh review.
+
 **Active review** — the single review, per repo, that comment gestures land in; may
-be any review in any state (published reviews keep gaining threads; a settled one
+be any review that is not archived, in any state (published reviews keep gaining threads; a settled one
 flips back to `ready`). Switching it is a one-step UI action; a gesture with no
 active review auto-creates a fresh composing one, never silently activating an
 existing review.

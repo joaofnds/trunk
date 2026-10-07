@@ -1,5 +1,5 @@
-//! Reviews: create, list, rename, publish, delete, and the per-repo active
-//! pointer.
+//! Reviews: create, list, rename, publish, archive, delete, and the per-repo
+//! active pointer.
 //!
 //! `published` is the only stored state bit. `composing` / `ready` / `settled`
 //! are computed in SQL from it plus the thread states, never stored, so no code
@@ -26,10 +26,21 @@ pub struct Review {
     pub title: String,
     pub state: ReviewState,
     pub published: bool,
+    /// Put away by the user: listed apart in the app and unseen by the agent.
+    pub archived: bool,
     pub thread_count: i64,
     /// Threads still waiting on someone: open or addressed.
     pub unresolved_count: i64,
     pub created_at: i64,
+}
+
+impl Review {
+    /// Whether the agent may read this review through the CLI and watch: a
+    /// review it was handed and the user has not put away.
+    #[must_use]
+    pub const fn is_visible_to_agent(&self) -> bool {
+        self.published && !self.archived
+    }
 }
 
 /// The derived-state expression. In this milestone every thread is `open`, so a
@@ -49,7 +60,8 @@ const SELECT: &str = "
     SELECT r.id, r.title, r.published, r.created_at,
            (SELECT COUNT(*) FROM threads t WHERE t.review_id = r.id),
            (SELECT COUNT(*) FROM threads t
-            WHERE t.review_id = r.id AND t.state IN ('open', 'addressed'))";
+            WHERE t.review_id = r.id AND t.state IN ('open', 'addressed')),
+           r.archived";
 
 /// Create a composing review for `repo_path` and return its id.
 ///
@@ -118,7 +130,7 @@ pub fn get(conn: &Connection, id: &str) -> Result<Option<Review>, TrunkError> {
 }
 
 fn read_review(row: &rusqlite::Row) -> rusqlite::Result<Review> {
-    let state: String = row.get(6)?;
+    let state: String = row.get(7)?;
 
     Ok(Review {
         id: row.get(0)?,
@@ -127,6 +139,7 @@ fn read_review(row: &rusqlite::Row) -> rusqlite::Result<Review> {
         created_at: row.get(3)?,
         thread_count: row.get(4)?,
         unresolved_count: row.get(5)?,
+        archived: row.get::<_, i64>(6)? != 0,
         state: match state.as_str() {
             "composing" => ReviewState::Composing,
             "ready" => ReviewState::Ready,
@@ -300,6 +313,59 @@ pub fn publish(conn: &Connection, repo_path: &Path, id: &str, now: i64) -> Resul
     Ok(())
 }
 
+/// Put a review away. Archiving the active review clears the repo's pointer,
+/// so the next comment opens a fresh review rather than landing in one the
+/// user put away.
+///
+/// # Errors
+///
+/// Returns `not_found` when `id` names no review in `repo_path`, and the
+/// `SQLite` error when a query or the write fails.
+pub fn archive(conn: &Connection, repo_path: &Path, id: &str, now: i64) -> Result<(), TrunkError> {
+    set_archived(conn, repo_path, id, true, now)?;
+
+    conn.execute(
+        "DELETE FROM active_review WHERE repo_path = ?1 AND review_id = ?2",
+        rusqlite::params![repo_key(repo_path), id],
+    )
+    .map_err(sqlite_error)?;
+
+    Ok(())
+}
+
+/// Bring an archived review back as it was.
+///
+/// # Errors
+///
+/// Returns `not_found` when `id` names no review in `repo_path`, and the
+/// `SQLite` error when a query or the write fails.
+pub fn unarchive(
+    conn: &Connection,
+    repo_path: &Path,
+    id: &str,
+    now: i64,
+) -> Result<(), TrunkError> {
+    set_archived(conn, repo_path, id, false, now)
+}
+
+fn set_archived(
+    conn: &Connection,
+    repo_path: &Path,
+    id: &str,
+    archived: bool,
+    now: i64,
+) -> Result<(), TrunkError> {
+    belongs_to(conn, repo_path, id)?;
+
+    conn.execute(
+        "UPDATE reviews SET archived = ?2, updated_at = ?3 WHERE id = ?1",
+        rusqlite::params![id, archived, now],
+    )
+    .map_err(sqlite_error)?;
+
+    Ok(())
+}
+
 /// Delete a review.
 ///
 /// `threads`, `review_commits` and `active_review` all cascade, which is what `PRAGMA
@@ -320,18 +386,26 @@ pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), Trunk
     Ok(())
 }
 
-/// Point the repo at `review_id`, refusing an id that belongs to another repo.
+/// Point the repo at `review_id`, refusing an id that belongs to another repo
+/// and a review the user archived, since new comments land in the active one.
 ///
 /// # Errors
 ///
-/// Returns `not_found` when `review_id` belongs to another repo or to none, and
-/// the `SQLite` error when a query or the write fails.
+/// Returns `not_found` when `review_id` belongs to another repo or to none,
+/// `archived` when the review is archived, and the `SQLite` error when a query
+/// or the write fails.
 pub fn set_active_checked(
     conn: &Connection,
     repo_path: &Path,
     review_id: &str,
 ) -> Result<(), TrunkError> {
     belongs_to(conn, repo_path, review_id)?;
+    if get(conn, review_id)?.is_some_and(|review| review.archived) {
+        return Err(TrunkError::new(
+            "archived",
+            "Unarchive this review before making it active",
+        ));
+    }
 
     set_active(conn, repo_path, review_id)
 }

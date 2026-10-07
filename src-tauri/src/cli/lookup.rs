@@ -56,7 +56,7 @@ pub(crate) fn published_thread(
     let candidates: Vec<threads::Thread> = store.read(|conn| {
         let mut all = Vec::new();
         for review in trunk_review::reviewdb::reviews::list(conn, canonical)? {
-            if review.published {
+            if review.is_visible_to_agent() {
                 all.extend(threads::list_for_review(conn, &review.id)?);
             }
         }
@@ -67,7 +67,7 @@ pub(crate) fn published_thread(
 }
 
 /// Resolve `raw` against this repo's *published* reviews only: exact id, or a
-/// prefix matching exactly one. Anything else — missing, composing,
+/// prefix matching exactly one. Anything else — missing, composing, archived,
 /// another repo's — answers with one identical `not_found`, and ambiguity is
 /// judged after the published filter, so an unpublished review's existence
 /// never leaks, not even through a prefix collision (§5.1).
@@ -79,7 +79,7 @@ pub(crate) fn published_review(
     let published: Vec<trunk_review::reviewdb::reviews::Review> = store
         .read(|conn| trunk_review::reviewdb::reviews::list(conn, canonical))?
         .into_iter()
-        .filter(|r| r.published)
+        .filter(trunk_review::reviewdb::reviews::Review::is_visible_to_agent)
         .collect();
 
     resolve_unique(published, |r| &r.id, raw, "review")

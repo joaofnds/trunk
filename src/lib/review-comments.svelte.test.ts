@@ -77,6 +77,7 @@ const review: Review = {
 	title: "Review 2026-08-12",
 	state: "composing",
 	published: false,
+	archived: false,
 	thread_count: 1,
 	unresolved_count: 1,
 	created_at: 0,

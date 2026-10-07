@@ -28,6 +28,7 @@ function aReview(overrides: Partial<Review> = {}): Review {
 		title: "Review 2026-08-12",
 		state: "composing",
 		published: false,
+		archived: false,
 		thread_count: 0,
 		unresolved_count: 0,
 		created_at: 0,
@@ -40,6 +41,7 @@ const READY: Review = {
 	title: "Auth review",
 	state: "ready",
 	published: true,
+	archived: false,
 	thread_count: 2,
 	unresolved_count: 1,
 	created_at: 0,
@@ -244,6 +246,77 @@ describe("ReviewList", () => {
 		expect(
 			screen.getByText("Active review. New comments land here."),
 		).toBeInTheDocument();
+	});
+
+	describe("archiving a review", () => {
+		const ARCHIVED: Review = { ...READY, archived: true };
+
+		it("archives a review from its row", async () => {
+			seedReviews([READY]);
+			await renderList();
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: `Archive review ${READY.id}` }),
+			);
+			await flush();
+
+			expect(callArgs("archive_review")).toEqual({
+				path: "/repo",
+				reviewId: READY.id,
+			});
+		});
+
+		it("folds archived reviews under their own heading, out of the count", async () => {
+			seedReviews([aReview(), ARCHIVED]);
+			await renderList();
+
+			expect(
+				screen.getByRole("heading", { name: "Reviews 1" }),
+			).toBeInTheDocument();
+			expect(
+				screen.queryByRole("button", { name: `Show review ${READY.id}` }),
+			).toBeNull();
+			expect(
+				screen.getByRole("button", { name: "Archived 1" }),
+			).toHaveAttribute("aria-expanded", "false");
+		});
+
+		it("opens the archived reviews to show and unarchive one", async () => {
+			seedReviews([aReview(), ARCHIVED]);
+			await renderList();
+
+			await fireEvent.click(screen.getByRole("button", { name: "Archived 1" }));
+			await fireEvent.click(
+				screen.getByRole("button", { name: `Unarchive review ${READY.id}` }),
+			);
+			await flush();
+
+			expect(
+				screen.getByRole("button", { name: `Show review ${READY.id}` }),
+			).toBeInTheDocument();
+			expect(callArgs("unarchive_review")).toEqual({
+				path: "/repo",
+				reviewId: READY.id,
+			});
+		});
+
+		it("offers no way to make an archived review active", async () => {
+			seedReviews([aReview(), ARCHIVED]);
+			await renderList();
+
+			await fireEvent.click(screen.getByRole("button", { name: "Archived 1" }));
+
+			expect(
+				screen.queryByRole("button", { name: `Active review ${READY.id}` }),
+			).toBeNull();
+		});
+
+		it("offers no heading when nothing is archived", async () => {
+			twoReviews();
+			await renderList();
+
+			expect(screen.queryByRole("button", { name: /^Archived/ })).toBeNull();
+		});
 	});
 
 	describe("deleting a review", () => {
