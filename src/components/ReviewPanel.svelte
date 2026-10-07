@@ -708,8 +708,8 @@ $effect(() => {
 						>
 							<p class="m-0">
 								Delete
-								<b class="font-semibold text-text-strong">{review.title}</b>
-								{deletePrompt(review)}
+								<b class="font-semibold text-text-strong">{review.title}</b
+								><span>{deletePrompt(review)}</span>
 							</p>
 							<div class="flex justify-end gap-2">
 								<Button

@@ -1691,6 +1691,14 @@ describe("review list", () => {
 			);
 		});
 
+		it("puts the question mark right after the title of a review with no threads", async () => {
+			const confirm = await askToDelete(aReview({ thread_count: 0 }));
+
+			expect(confirm).toHaveTextContent(
+				`Delete ${aReview().title}? This can\u2019t be undone.`,
+			);
+		});
+
 		it("deletes the review once confirmed", async () => {
 			const confirm = await askToDelete(READY);
 
