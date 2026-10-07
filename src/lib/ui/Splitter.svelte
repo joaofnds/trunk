@@ -138,23 +138,23 @@ function stepOnArrow(event: KeyboardEvent) {
 		transition: none;
 	}
 }
+/* A 1px line down the middle of a 4px handle sits on a half pixel. Drawn as
+   gradient stops at 1.5px, a 1x display paints it in broken segments; a
+   background positioned at the centre is snapped to a whole pixel instead. */
+.splitter-pane,
+.splitter-column {
+	background-position: center;
+	background-size: 1px 100%;
+	background-repeat: no-repeat;
+}
 .splitter-pane {
-	background: linear-gradient(
-		to right,
-		transparent 1.5px,
-		var(--color-border-strong) 1.5px,
-		var(--color-border-strong) 2.5px,
-		transparent 2.5px
+	background-image: linear-gradient(
+		var(--color-border-strong),
+		var(--color-border-strong)
 	);
 }
 .splitter-column {
-	background: linear-gradient(
-		to right,
-		transparent 1.5px,
-		var(--color-border) 1.5px,
-		var(--color-border) 2.5px,
-		transparent 2.5px
-	);
+	background-image: linear-gradient(var(--color-border), var(--color-border));
 }
 .splitter-pane[role="slider"]:hover,
 .splitter-column[role="slider"]:hover {
