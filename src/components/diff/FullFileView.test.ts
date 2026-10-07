@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/svelte";
-import { tick } from "svelte";
+import { createRawSnippet, tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	restoreLayout,
@@ -839,5 +839,46 @@ describe("FullFileView one-click comment", () => {
 				hidden: true,
 			}),
 		).toBeNull();
+	});
+});
+
+describe("FullFileView composer", () => {
+	const card = createRawSnippet(() => ({
+		render: () => "<p>the composer card</p>",
+	}));
+	const longFile: FileDiff = {
+		...modifiedFile,
+		path: "src/long.ts",
+		hunks: [
+			{
+				header: "@@ -1,3000 +1,3000 @@",
+				old_start: 1,
+				old_lines: 3000,
+				new_start: 1,
+				new_lines: 3000,
+				lines: Array.from({ length: 3000 }, (_, index) => ({
+					origin: "Context" as const,
+					content: `line ${index + 1}`,
+					old_lineno: index + 1,
+					new_lineno: index + 1,
+					spans: [],
+				})),
+			},
+		],
+	};
+
+	it("scrolls a composer that opens below the viewport into view", async () => {
+		const props = defaultProps({ fileDiffs: [longFile] });
+		const view = render(FullFileView, { props });
+
+		await view.rerender({
+			...props,
+			composer: {
+				place: { path: "src/long.ts", side: "New", endLine: 2500 },
+				card,
+			},
+		});
+
+		expect(screen.getByText("the composer card")).toBeInTheDocument();
 	});
 });

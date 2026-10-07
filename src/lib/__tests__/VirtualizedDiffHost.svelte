@@ -8,6 +8,7 @@ import { DIFF_ROW_FONT } from "../row-metrics.js";
 import type { FileDiff, Thread } from "../types.js";
 import {
 	createVirtualizedDiff,
+	type DiffListHandle,
 	type InlineVirtualizedDiff,
 	type SplitVirtualizedDiff,
 	TAB_SIZE,
@@ -18,7 +19,7 @@ interface Props {
 	fileDiffs: FileDiff[];
 	wordWrap: boolean;
 	comments?: Thread[];
-	list?: { topIndex(): number; anchorTo(index: number): void } | null;
+	list?: DiffListHandle | null;
 	onready: (vd: InlineVirtualizedDiff | SplitVirtualizedDiff) => void;
 }
 
@@ -50,6 +51,7 @@ const model = $derived(
 const deps = {
 	model: () => model,
 	wordWrap: () => wordWrap,
+	composer: () => undefined,
 	list: () => list,
 };
 

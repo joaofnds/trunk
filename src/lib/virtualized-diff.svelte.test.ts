@@ -11,6 +11,7 @@ import VirtualizedDiffHost from "./__tests__/VirtualizedDiffHost.svelte";
 import { disablePerf, enablePerf, flushPerf, type PerfSink } from "./perf.js";
 import type { FileDiff, Thread } from "./types.js";
 import type {
+	DiffListHandle,
 	InlineVirtualizedDiff,
 	SplitVirtualizedDiff,
 } from "./virtualized-diff.svelte.js";
@@ -101,7 +102,7 @@ interface HostProps {
 	fileDiffs: FileDiff[];
 	wordWrap: boolean;
 	comments?: Thread[];
-	list?: { topIndex(): number; anchorTo(index: number): void } | null;
+	list?: DiffListHandle | null;
 	onready: (vd: InlineVirtualizedDiff | SplitVirtualizedDiff) => void;
 }
 
@@ -353,9 +354,17 @@ describe("createVirtualizedDiff", () => {
 			},
 		);
 
-		const wrapped = { topIndex: () => 7, anchorTo: vi.fn() };
+		const wrapped = {
+			topIndex: () => 7,
+			anchorTo: vi.fn(),
+			revealIndex: vi.fn(),
+		};
 		mount({ wordWrap: true, list: wrapped });
-		const unwrapped = { topIndex: () => 7, anchorTo: vi.fn() };
+		const unwrapped = {
+			topIndex: () => 7,
+			anchorTo: vi.fn(),
+			revealIndex: vi.fn(),
+		};
 		mount({ wordWrap: false, list: unwrapped });
 
 		for (const resize of resizes) resize();

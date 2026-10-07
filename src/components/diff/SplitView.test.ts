@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
-import { tick } from "svelte";
+import { createRawSnippet, tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
 import { aThread } from "../../__tests__/helpers/thread-fixture.js";
@@ -541,5 +541,29 @@ describe("SplitView one-click comment", () => {
 				hidden: true,
 			}),
 		).toBeNull();
+	});
+});
+
+describe("SplitView composer", () => {
+	const card = createRawSnippet(() => ({
+		render: () => "<p>the composer card</p>",
+	}));
+
+	it("scrolls a composer that opens below the viewport into view", async () => {
+		const props = defaultProps({
+			fileDiffs: [fileOf("src/long.ts", contextLines(3000))],
+			selectedPath: "src/long.ts",
+		});
+		const view = render(SplitView, { props });
+
+		await view.rerender({
+			...props,
+			composer: {
+				place: { path: "src/long.ts", side: "New", endLine: 2500 },
+				card,
+			},
+		});
+
+		expect(screen.getByText("the composer card")).toBeInTheDocument();
 	});
 });

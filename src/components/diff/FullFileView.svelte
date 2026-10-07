@@ -84,6 +84,7 @@ let focusIndex = $state<number | null>(null);
 let list = $state<{
 	topIndex: () => number;
 	anchorTo: (index: number) => void;
+	revealIndex: (index: number) => void;
 } | null>(null);
 
 // The contiguous span as flat indices into the active file's line list.
@@ -112,6 +113,7 @@ const vd = createVirtualizedDiff({
 	layout: "inline",
 	model: () => model,
 	wordWrap: () => wordWrap,
+	composer: () => composer?.place,
 	list: () => list,
 });
 

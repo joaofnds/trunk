@@ -133,6 +133,36 @@ describe("scrollToIndex", () => {
 	});
 });
 
+describe("revealIndex", () => {
+	it("scrolls a row below the viewport up until its bottom edge shows", () => {
+		const { container, component } = mountList(5000);
+
+		component.revealIndex(100);
+
+		expect(viewportOf(container).scrollTop).toBe(
+			101 * ROW_HEIGHT - VIEWPORT_HEIGHT,
+		);
+	});
+
+	it("scrolls a row above the viewport down until its top edge shows", () => {
+		const { container, component } = mountList(5000);
+		component.scrollToIndex(300);
+
+		component.revealIndex(250);
+
+		expect(viewportOf(container).scrollTop).toBe(250 * ROW_HEIGHT);
+	});
+
+	it("leaves the scroll alone when the row already shows whole", () => {
+		const { container, component } = mountList(5000);
+		component.scrollToIndex(300);
+
+		component.revealIndex(303);
+
+		expect(viewportOf(container).scrollTop).toBe(300 * ROW_HEIGHT);
+	});
+});
+
 describe("anchorTo", () => {
 	it("restores a row to the top after every height has changed", async () => {
 		const { container, component, rerender } = mountList(5000);

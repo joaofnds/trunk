@@ -142,6 +142,7 @@ const stagingDisabledTitle: string | undefined = undefined;
 let list = $state<{
 	topIndex: () => number;
 	anchorTo: (index: number) => void;
+	revealIndex: (index: number) => void;
 	scrollToIndex: (index: number) => void;
 } | null>(null);
 
@@ -176,6 +177,7 @@ const vd = createVirtualizedDiff({
 	layout: "inline",
 	model: () => model,
 	wordWrap: () => wordWrap,
+	composer: () => composer?.place,
 	list: () => list,
 });
 

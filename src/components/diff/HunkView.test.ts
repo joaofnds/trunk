@@ -368,6 +368,44 @@ describe("HunkView composer", () => {
 			expect.stringContaining("added one"),
 		]);
 	});
+
+	it("scrolls a composer that opens below the viewport into view", async () => {
+		const props = defaultProps({
+			fileDiffs: [fileOf("src/long.ts", contextLines(3000))],
+			selectedPath: "src/long.ts",
+		});
+		const view = render(HunkView, { props });
+
+		await view.rerender({
+			...props,
+			composer: {
+				place: { path: "src/long.ts", side: "New", endLine: 2500 },
+				card,
+			},
+		});
+
+		expect(screen.getByText("the composer card")).toBeInTheDocument();
+	});
+
+	it("leaves the reader where they scrolled when the open composer is rebuilt in place", async () => {
+		const props = defaultProps({
+			fileDiffs: [fileOf("src/long.ts", contextLines(3000))],
+			selectedPath: "src/long.ts",
+		});
+		const place = {
+			path: "src/long.ts",
+			side: "New" as const,
+			endLine: 2500,
+		};
+		const view = render(HunkView, { props });
+		await view.rerender({ ...props, composer: { place, card } });
+		scrollTo(view.container, 0);
+		await tick();
+
+		await view.rerender({ ...props, composer: { place: { ...place }, card } });
+
+		expect(screen.queryByText("the composer card")).toBeNull();
+	});
 });
 
 // The control shows only under the pointer, which jsdom cannot hover, so the

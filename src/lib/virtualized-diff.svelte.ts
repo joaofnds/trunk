@@ -10,8 +10,12 @@
  * component init. The view `bind:this`es the pane, the metrics probe and the
  * comment probe into the settable refs.
  */
-import { onMount, tick } from "svelte";
-import { type DiffRowModel, rowHeights } from "./diff-rows.js";
+import { onMount, tick, untrack } from "svelte";
+import {
+	type ComposerPlace,
+	type DiffRowModel,
+	rowHeights,
+} from "./diff-rows.js";
 import { measure } from "./perf.js";
 import {
 	availableCharsFor,
@@ -36,10 +40,17 @@ const ROW_CHROME_PX = 35;
 // gutter gaps here; a split half has one.
 const SPLIT_ROW_CHROME_PX = 28;
 
+export interface DiffListHandle {
+	topIndex(): number;
+	anchorTo(index: number): void;
+	revealIndex(index: number): void;
+}
+
 export interface VirtualizedDiffDeps {
 	model: () => DiffRowModel;
 	wordWrap: () => boolean;
-	list: () => { topIndex(): number; anchorTo(index: number): void } | null;
+	composer: () => ComposerPlace | undefined;
+	list: () => DiffListHandle | null;
 }
 
 export interface InlineVirtualizedDiff {
@@ -234,6 +245,29 @@ export function createVirtualizedDiff(
 		if (wanted.every((thread) => measured.has(thread.id))) {
 			state.probedHeights = measured;
 		}
+	});
+
+	// Keyed on where the composer sits rather than on the place object, which is
+	// rebuilt whenever its owner re-derives: a reader who scrolled away from an
+	// open composer is not pulled back to it.
+	let revealedComposer: string | null = null;
+	$effect(() => {
+		const place = deps.composer();
+		const list = deps.list();
+		if (!place) {
+			revealedComposer = null;
+			return;
+		}
+		if (!list || !ready) return;
+
+		const key = `${place.path}:${place.side}:${place.endLine}:${place.wholeFile ?? false}`;
+		if (key === revealedComposer) return;
+
+		revealedComposer = key;
+		const index = untrack(() =>
+			model.rows.findIndex((row) => row.kind === "composer"),
+		);
+		if (index >= 0) list.revealIndex(index);
 	});
 
 	return {

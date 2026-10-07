@@ -64,6 +64,22 @@ export function scrollToIndex(index: number): void {
 	scrollTop = viewport.scrollTop;
 }
 
+/** Scrolls the least distance that shows the whole row, and not at all when it
+ *  already shows. */
+export function revealIndex(index: number): void {
+	if (!viewport) return;
+
+	const top = offsets[index];
+	const bottom = offsets[index + 1];
+	if (top < scrollTop) {
+		viewport.scrollTop = top;
+	} else if (bottom > scrollTop + viewportHeight) {
+		viewport.scrollTop = bottom - viewportHeight;
+	}
+
+	scrollTop = viewport.scrollTop;
+}
+
 export function anchorTo(index: number): void {
 	scrollToIndex(index);
 }
