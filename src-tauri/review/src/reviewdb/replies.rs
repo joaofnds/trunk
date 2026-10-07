@@ -107,38 +107,24 @@ pub fn edit(
     Ok(())
 }
 
-/// Remove a reply.
+/// Remove a reply, whichever channel wrote it.
 ///
-/// A missing id is an idempotent no-op. Publication gates this, not editing (criterion
-/// 12): a published review's replies are permanent, so a reply belonging to one refuses
-/// with `review_published` before anything is written — same read-then-check shape as
-/// `threads::delete`.
+/// A missing id, or one belonging to another repository, is an idempotent no-op.
 ///
 /// # Errors
 ///
-/// Returns `review_published` when the reply's review is published, and the
-/// `SQLite` error when a query or the delete fails. A missing id is not an
-/// error.
+/// Returns the `SQLite` error when the delete fails.
 pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), TrunkError> {
-    let published: Option<bool> = conn
-        .query_row(
-            "SELECT r.published FROM replies rep
-             JOIN threads t ON t.id = rep.thread_id
+    conn.execute(
+        "DELETE FROM replies WHERE id = ?1
+         AND thread_id IN (
+             SELECT t.id FROM threads t
              JOIN reviews r ON r.id = t.review_id
-             WHERE rep.id = ?1 AND r.repo_path = ?2",
-            rusqlite::params![id, repo_key(repo_path)],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(sqlite_error)?;
-
-    let Some(published) = published else {
-        return Ok(());
-    };
-    super::require_unpublished(published, "replies")?;
-
-    conn.execute("DELETE FROM replies WHERE id = ?1", [id])
-        .map_err(sqlite_error)?;
+             WHERE r.repo_path = ?2
+         )",
+        rusqlite::params![id, repo_key(repo_path)],
+    )
+    .map_err(sqlite_error)?;
 
     Ok(())
 }

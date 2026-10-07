@@ -45,8 +45,8 @@ export function addCommitThread(
 // Unlike the wrappers above, these four catch their own refusal instead of
 // rethrowing: their callers are bare arrow functions at five call sites
 // (ReviewPanel, CommitDetail, and the three diff hosts), none of which await
-// or catch the promise. A published-review refusal, an agent-text edit, or an
-// illegal state transition would otherwise be an unhandled rejection the user
+// or catch the promise. A store failure, an agent-text edit, or an illegal
+// state transition would otherwise be an unhandled rejection the user
 // never sees.
 async function reportRefusal(
 	action: () => Promise<void>,

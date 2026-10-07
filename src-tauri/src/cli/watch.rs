@@ -94,8 +94,6 @@ mod watch_feed {
     //! The watch verb's view of the store and its wire events. The snapshot
     //! holds everything the events may need to say, so a diff is
     //! self-contained; `BTreeMap` keys make event order deterministic.
-    //! Post-publish, threads and replies are permanent (spec §2), so the only
-    //! disappearance is a whole review's deletion.
 
     use serde::Serialize;
     use std::collections::BTreeMap;
@@ -176,6 +174,10 @@ mod watch_feed {
             thread: String,
             stale: bool,
         },
+        ThreadDeleted {
+            review: String,
+            thread: String,
+        },
         ReplyAdded {
             review: String,
             thread: String,
@@ -188,6 +190,11 @@ mod watch_feed {
             thread: String,
             reply: String,
             text: String,
+        },
+        ReplyDeleted {
+            review: String,
+            thread: String,
+            reply: String,
         },
     }
 
@@ -202,8 +209,10 @@ mod watch_feed {
                 | Self::ThreadEdited { review, .. }
                 | Self::ThreadStateChanged { review, .. }
                 | Self::ThreadStaleChanged { review, .. }
+                | Self::ThreadDeleted { review, .. }
                 | Self::ReplyAdded { review, .. }
-                | Self::ReplyEdited { review, .. } => review,
+                | Self::ReplyEdited { review, .. }
+                | Self::ReplyDeleted { review, .. } => review,
             }
         }
     }
@@ -307,6 +316,14 @@ fn diff_snapshots(old: &Snapshot, new: &Snapshot) -> Vec<WatchChange> {
                         Some(t) => diff_thread(&mut changes, id, thread_id, t, thread),
                     }
                 }
+                for thread_id in before.threads.keys() {
+                    if !review.threads.contains_key(thread_id) {
+                        changes.push(WatchChange::ThreadDeleted {
+                            review: id.clone(),
+                            thread: thread_id.clone(),
+                        });
+                    }
+                }
             }
         }
     }
@@ -394,6 +411,15 @@ fn diff_thread(
                 text: reply.text.clone(),
             }),
             Some(_) => {}
+        }
+    }
+    for reply_id in before.replies.keys() {
+        if !after.replies.contains_key(reply_id) {
+            changes.push(WatchChange::ReplyDeleted {
+                review: review.to_string(),
+                thread: thread_id.to_string(),
+                reply: reply_id.clone(),
+            });
         }
     }
 }

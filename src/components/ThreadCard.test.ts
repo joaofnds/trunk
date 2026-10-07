@@ -849,8 +849,8 @@ describe("ThreadCard", () => {
 
 	it("keeps an edited reply when editReply is refused", async () => {
 		vi.mocked(safeInvoke).mockRejectedValueOnce({
-			code: "review_published",
-			message: "a published review's replies are permanent",
+			code: "sqlite",
+			message: "database is locked",
 		});
 		const humanReply: Thread = {
 			...comment,
@@ -943,8 +943,8 @@ describe("ThreadCard", () => {
 
 	it("keeps a typed reply when addReply is refused", async () => {
 		vi.mocked(safeInvoke).mockRejectedValueOnce({
-			code: "review_published",
-			message: "a published review's replies are permanent",
+			code: "sqlite",
+			message: "database is locked",
 		});
 		renderCard();
 
@@ -1052,26 +1052,12 @@ describe("ThreadCard", () => {
 		expect(calledCommands()).not.toContain("delete_reply");
 	});
 
-	// Once the owning review is published, the store refuses to delete a
-	// thread or a reply (criterion 12) — offering the control anyway just
-	// buys a round trip to the same refusal, so it's hidden instead.
-	it("offers Delete for an unpublished thread and hides it once the review is published", async () => {
-		const { rerender } = renderCard();
+	it("offers Delete for a thread the agent can already read", () => {
+		renderCard({ thread: { ...comment, published: true } });
 
 		expect(
 			screen.getByRole("button", { name: "Delete comment" }),
 		).toBeInTheDocument();
-
-		await rerender({
-			thread: { ...comment, published: true },
-			repoPath: "/repo",
-			onedit: () => {},
-			ondelete: () => {},
-		});
-
-		expect(
-			screen.queryByRole("button", { name: "Delete comment" }),
-		).not.toBeInTheDocument();
 	});
 
 	describe("deleting the thread", () => {
@@ -1084,7 +1070,9 @@ describe("ThreadCard", () => {
 			);
 
 			expect(
-				screen.getByText("Delete this thread? It hasn't been published."),
+				screen.getByText(
+					"Delete this thread and its replies? This cannot be undone.",
+				),
 			).toBeInTheDocument();
 			expect(deleted).toEqual([]);
 		});
@@ -1112,7 +1100,9 @@ describe("ThreadCard", () => {
 
 			expect(deleted).toEqual([]);
 			expect(
-				screen.queryByText("Delete this thread? It hasn't been published."),
+				screen.queryByText(
+					"Delete this thread and its replies? This cannot be undone.",
+				),
 			).not.toBeInTheDocument();
 		});
 
@@ -1180,7 +1170,7 @@ describe("ThreadCard", () => {
 		});
 	});
 
-	it("hides Delete reply once the owning review is published", () => {
+	it("offers Delete reply on a reply the agent can already read", () => {
 		const published: Thread = {
 			...comment,
 			published: true,
@@ -1190,7 +1180,7 @@ describe("ThreadCard", () => {
 		renderCard({ thread: published });
 
 		expect(
-			screen.queryByRole("button", { name: "Delete reply" }),
-		).not.toBeInTheDocument();
+			screen.getByRole("button", { name: "Delete reply" }),
+		).toBeInTheDocument();
 	});
 });

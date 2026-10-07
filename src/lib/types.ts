@@ -416,10 +416,7 @@ export interface Thread {
 	state: ThreadState;
 	stale: boolean;
 	channel: Channel;
-	// The owning review's published bit (criterion 12): once true, the store
-	// refuses to delete this thread or its replies, so ThreadCard hides the
-	// Delete / Delete reply controls rather than offer an action that only
-	// fails on the round trip.
+	// The owning review's published bit: whether the agent can read this thread.
 	published: boolean;
 	// The states a UI gesture may legally move this thread to, in presentation
 	// order — precomputed by the backend from the one transition matrix

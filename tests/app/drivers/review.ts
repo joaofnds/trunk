@@ -567,7 +567,8 @@ export class ReviewDriver {
 
 	/** Ends the review, which publishes it: the header's End review opens a
 	 *  popover that says what publishing does, and its own End review is the
-	 *  press that publishes. */
+	 *  press that publishes. Resolves once the header stops offering End
+	 *  review, which it does only for a published review. */
 	async publish(): Promise<void> {
 		const button = await waitFor("an enabled end-review button", () =>
 			enabledButton(PUBLISH),
@@ -580,6 +581,12 @@ export class ReviewDriver {
 		);
 
 		confirm.click();
+
+		await waitFor("the review to publish", () =>
+			firstMatching("button", (text) => text === PUBLISH) === null
+				? true
+				: null,
+		);
 	}
 
 	/** Takes the topmost thread to `done`, the gesture only a human has. */

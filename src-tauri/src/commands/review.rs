@@ -346,9 +346,8 @@ pub struct RenderedThread {
     pub state: trunk_review::types::ThreadState,
     pub stale: bool,
     pub channel: trunk_review::types::Channel,
-    // The owning review's published bit (criterion 12): once set, the store
-    // refuses to delete this thread or its replies, so the frontend needs it
-    // to gate the Delete/Delete-reply controls it would otherwise offer.
+    // The owning review's published bit: whether the agent can read this
+    // thread, which the reply field's placeholder tells the user.
     pub published: bool,
     // The states a UI gesture may legally move this thread to, in the order
     // the card presents them — `ThreadState::allowed_transitions` for

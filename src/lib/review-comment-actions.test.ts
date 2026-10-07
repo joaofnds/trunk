@@ -38,16 +38,14 @@ describe("addReply", () => {
 
 	it("raises a toast and resolves, rather than rejecting, when the backend refuses", async () => {
 		mockInvoke.mockRejectedValue({
-			code: "review_published",
-			message: "a published review's threads are permanent",
+			code: "sqlite",
+			message: "database is locked",
 		});
 
 		await expect(addReply("/repo", "thread-1", "too late")).resolves.toBe(
 			false,
 		);
-		expect(errorMessages()).toEqual([
-			"a published review's threads are permanent",
-		]);
+		expect(errorMessages()).toEqual(["database is locked"]);
 	});
 });
 
@@ -64,16 +62,14 @@ describe("editReply", () => {
 
 	it("raises a toast and returns false when the backend refuses", async () => {
 		mockInvoke.mockRejectedValue({
-			code: "review_published",
-			message: "a published review's replies are permanent",
+			code: "sqlite",
+			message: "database is locked",
 		});
 
 		await expect(editReply("/repo", "reply-1", "too late")).resolves.toBe(
 			false,
 		);
-		expect(errorMessages()).toEqual([
-			"a published review's replies are permanent",
-		]);
+		expect(errorMessages()).toEqual(["database is locked"]);
 	});
 });
 
@@ -87,19 +83,14 @@ describe("deleteReply", () => {
 		});
 	});
 
-	// The finding's own Verify step: a stale render in a non-owning window
-	// still offers Delete after the review is published elsewhere; the click
-	// must surface a toast instead of an unhandled rejection.
-	it("raises a toast and resolves when a published review refuses the delete", async () => {
+	it("raises a toast and resolves when the backend refuses the delete", async () => {
 		mockInvoke.mockRejectedValue({
-			code: "review_published",
-			message: "a published review's replies are permanent",
+			code: "sqlite",
+			message: "database is locked",
 		});
 
 		await expect(deleteReply("/repo", "reply-1")).resolves.toBeUndefined();
-		expect(errorMessages()).toEqual([
-			"a published review's replies are permanent",
-		]);
+		expect(errorMessages()).toEqual(["database is locked"]);
 	});
 });
 

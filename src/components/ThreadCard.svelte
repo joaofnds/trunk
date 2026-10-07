@@ -500,16 +500,14 @@ async function requestDeleteReply(replyId: string) {
 			<RowAction size="compact" aria-label="Edit comment" onclick={openEdit}>
 				<Pencil size={12} aria-hidden="true" />
 			</RowAction>
-			{#if !thread.published}
-				<RowAction
-					size="compact"
-					tone="destructive"
-					aria-label="Delete comment"
-					onclick={requestDelete}
-				>
-					<Trash2 size={12} aria-hidden="true" />
-				</RowAction>
-			{/if}
+			<RowAction
+				size="compact"
+				tone="destructive"
+				aria-label="Delete comment"
+				onclick={requestDelete}
+			>
+				<Trash2 size={12} aria-hidden="true" />
+			</RowAction>
 		{/if}
 	</header>
 
@@ -564,7 +562,6 @@ async function requestDeleteReply(replyId: string) {
 
 		<ThreadReplies
 			replies={thread.replies}
-			published={thread.published}
 			editorSession={editor}
 			onreplyedit={(id, text) => editReply(repoPath, id, text)}
 			onreplydelete={requestDeleteReply}
@@ -608,7 +605,7 @@ async function requestDeleteReply(replyId: string) {
 		<div
 			class="thread-delete-bar flex items-center gap-2 py-2 pr-2 pl-3 text-callout text-text"
 		>
-			<span>Delete this thread? It hasn't been published.</span>
+			<span>Delete this thread and its replies? This cannot be undone.</span>
 			<span class="flex-1"></span>
 			<Button
 				size="sm"

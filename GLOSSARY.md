@@ -306,9 +306,8 @@ Ending a review is a publish, never a delete; publishing an all-resolved review
 derives directly to `settled`. No close- or reopen-review gesture exists, and no
 review state gates a thread action: thread states dictate actionability, so a
 settled review gaining or reopening a thread is `ready` again. Destructive
-operations: deleting a review (any state, confirmed), and deleting threads or
-replies inside a *composing* review; a published thread leaves discussion only via
-`dismissed`.
+operations: deleting a review, a thread or a reply, in any state; the agent's watch
+reports each deletion.
 
 **Active review** — the single review, per repo, that comment gestures land in; may
 be any review in any state (published reviews keep gaining threads; a settled one

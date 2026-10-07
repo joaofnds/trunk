@@ -141,9 +141,11 @@ new fields and event kinds may appear; existing ones keep their meaning.
 | `thread_stale_changed` | `review`, `thread`, `stale` |
 | `reply_added` | `review`, `thread`, `reply`, `channel` (`human`/`agent`), `text` |
 | `reply_edited` | `review`, `thread`, `reply`, `text` |
+| `thread_deleted` | `review`, `thread`, sent when the user removes a thread with its replies |
+| `reply_deleted` | `review`, `thread`, `reply` |
 
-Post-publish permanence means nothing below a review ever disappears; the
-only removal event is `review_deleted`.
+The user can delete a thread or a reply at any time, so an id read earlier can
+stop resolving. A thread's deletion carries no `reply_deleted` for its replies.
 
 The repository is discovered from the working directory (any subdirectory
 works) or named with `--repo`; symlinked paths resolve to the same reviews the

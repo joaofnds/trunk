@@ -12,7 +12,7 @@ use std::path::Path;
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
 use trunk_review::reviewdb::{self, reviews, threads};
-use trunk_review::types::ThreadState;
+use trunk_review::types::{Channel, ThreadState};
 
 /// A store seeded the way the app would seed it: one composing review (title
 /// "draft in progress") and one published review (title "ready for reading")
@@ -1748,6 +1748,63 @@ fn watch_json_streams_the_events_full_data() {
     assert_eq!(event["anchor"]["start_line"], 4);
     assert_eq!(event["anchor"]["end_line"], 9);
     assert!(event.get("content_pin").is_none(), "{event:?}");
+}
+
+#[test]
+fn watch_json_reports_a_deleted_reply_and_thread() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let reply_id = store
+        .write(|tx| {
+            trunk_review::reviewdb::replies::add(
+                tx,
+                &canonical,
+                &thread_id,
+                "sent by mistake",
+                Channel::Human,
+                5_000,
+            )
+        })
+        .unwrap();
+    let watch = WatchChild::spawn_json(&ctx);
+
+    store
+        .write(|tx| trunk_review::reviewdb::replies::delete(tx, &canonical, &reply_id))
+        .unwrap();
+    let reply_deleted: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    store
+        .write(|tx| threads::delete(tx, &canonical, &thread_id))
+        .unwrap();
+    let settled: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let thread_deleted: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+
+    assert_eq!(
+        reply_deleted,
+        serde_json::json!({
+            "event": "reply_deleted",
+            "review": published,
+            "thread": thread_id,
+            "reply": reply_id,
+        }),
+    );
+    assert_eq!(settled["event"], "review_state_changed", "{settled}");
+    assert_eq!(
+        thread_deleted,
+        serde_json::json!({
+            "event": "thread_deleted",
+            "review": published,
+            "thread": thread_id,
+        }),
+    );
 }
 
 #[test]

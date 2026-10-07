@@ -16,9 +16,6 @@ import ThreadMessage from "./review/ThreadMessage.svelte";
 
 interface Props {
 	replies: readonly Reply[];
-	// The owning thread's published bit — once true, "Delete reply" is hidden
-	// (mirrors ThreadCard's own Delete control, criterion 12).
-	published: boolean;
 	// Awaited before the editor clears its draft, so a caller that reports its
 	// own refusal (review-comment-actions.ts) keeps the typed text on screen
 	// until the write settles.
@@ -27,8 +24,7 @@ interface Props {
 	editorSession?: ThreadEditorSession;
 }
 
-let { replies, published, onreplyedit, onreplydelete, editorSession }: Props =
-	$props();
+let { replies, onreplyedit, onreplydelete, editorSession }: Props = $props();
 
 let repliesExpanded = $state(false);
 const fallbackEditorSession = createThreadEditorSession();
@@ -125,17 +121,15 @@ async function saveReplyEdit() {
 								<Pencil size={12} aria-hidden="true" />
 							</RowAction>
 						{/if}
-						{#if !published}
-							<RowAction
-								size="compact"
-								tone="destructive"
-								aria-label="Delete reply"
-								disabled={replyEditSaving}
-								onclick={() => onreplydelete(reply.id)}
-							>
-								<Trash2 size={12} aria-hidden="true" />
-							</RowAction>
-						{/if}
+						<RowAction
+							size="compact"
+							tone="destructive"
+							aria-label="Delete reply"
+							disabled={replyEditSaving}
+							onclick={() => onreplydelete(reply.id)}
+						>
+							<Trash2 size={12} aria-hidden="true" />
+						</RowAction>
 					{/snippet}
 					{#if editingReplyId === reply.id}
 						<CommentEditor

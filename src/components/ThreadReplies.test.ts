@@ -12,7 +12,6 @@ describe("ThreadReplies", () => {
 		render(ThreadReplies, {
 			props: {
 				replies: ["r1", "r2", "r3", "r4"].map((id) => aReply({ id })),
-				published: false,
 				onreplyedit: () => true,
 				onreplydelete: () => {},
 			},
@@ -31,7 +30,6 @@ describe("ThreadReplies", () => {
 					aReply({ id: "r4" }),
 					aReply({ id: "r5" }),
 				],
-				published: false,
 				onreplyedit: () => true,
 				onreplydelete: () => {},
 			},
@@ -48,7 +46,6 @@ describe("ThreadReplies", () => {
 		render(ThreadReplies, {
 			props: {
 				replies: [reply],
-				published: false,
 				onreplyedit: () => true,
 				onreplydelete: () => {},
 			},
@@ -76,7 +73,6 @@ describe("ThreadReplies", () => {
 		render(ThreadReplies, {
 			props: {
 				replies: [reply],
-				published: false,
 				onreplyedit,
 				onreplydelete: () => {},
 				editorSession,
@@ -105,7 +101,6 @@ describe("ThreadReplies", () => {
 		const replacementSession = createThreadEditorSession();
 		const props = {
 			replies: [reply],
-			published: false,
 			onreplyedit,
 			onreplydelete: () => {},
 			editorSession: firstSession,
@@ -120,7 +115,6 @@ describe("ThreadReplies", () => {
 
 		await view.rerender({
 			replies: [reply],
-			published: false,
 			onreplyedit,
 			onreplydelete: props.onreplydelete,
 			editorSession: replacementSession,
@@ -148,7 +142,6 @@ describe("ThreadReplies", () => {
 		const editorSession = createThreadEditorSession();
 		const props = {
 			replies,
-			published: false,
 			onreplyedit: () => true,
 			onreplydelete: () => {},
 			editorSession,

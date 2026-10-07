@@ -353,26 +353,6 @@ pub fn require_human(
     Ok(())
 }
 
-/// The published-is-permanent policy shared by `threads::delete` and `replies::delete`:
-/// a published review's rows are permanent.
-///
-/// `noun` names what's permanent in the error message (`"threads"` / `"replies"`); the
-/// missing-row case is each caller's own idempotent no-op, not this guard's concern.
-///
-/// # Errors
-///
-/// Returns `review_published` when `published` is true.
-pub fn require_unpublished(published: bool, noun: &str) -> Result<(), TrunkError> {
-    if published {
-        Err(TrunkError::new(
-            "review_published",
-            format!("a published review's {noun} are permanent"),
-        ))
-    } else {
-        Ok(())
-    }
-}
-
 /// Wall-clock seconds, for `created_at` / `updated_at`. Every store function
 /// takes the timestamp as an argument instead of reading the clock itself, so a
 /// test can pin it.

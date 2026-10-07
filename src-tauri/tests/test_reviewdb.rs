@@ -2954,27 +2954,26 @@ fn editing_an_agent_thread_is_refused() {
     assert_eq!(err.code, "not_editable");
 }
 
-// ── Milestone 2, Task 7: deletion permanence after publish ──────────────────
+// ── Deleting a comment the agent may already have read ──────────────────────
 
 #[test]
-fn deleting_a_published_thread_is_refused() {
+fn deleting_a_published_thread_removes_it() {
     let (ctx, store, _, thread_id) = published_review_with(ThreadState::Open);
     let canonical = ctx.repo_path().canonicalize().unwrap();
 
-    let err = store
+    store
         .write(|tx| reviewdb::threads::delete(tx, &canonical, &thread_id))
-        .unwrap_err();
+        .unwrap();
 
-    assert_eq!(err.code, "review_published");
     let review_id = only_review(&store, &canonical).id;
     let threads = store
         .read(|c| reviewdb::threads::list_for_review(c, &review_id))
         .unwrap();
-    assert_eq!(threads.len(), 1, "the refused delete must mutate nothing");
+    assert!(threads.is_empty(), "{threads:?}");
 }
 
 #[test]
-fn deleting_a_published_reply_is_refused() {
+fn deleting_a_published_reply_removes_it() {
     let (ctx, store, _, thread_id) = published_review_with(ThreadState::Open);
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let reply_id = store
@@ -2983,19 +2982,14 @@ fn deleting_a_published_reply_is_refused() {
         })
         .unwrap();
 
-    let err = store
+    store
         .write(|tx| reviewdb::replies::delete(tx, &canonical, &reply_id))
-        .unwrap_err();
+        .unwrap();
 
-    assert_eq!(err.code, "review_published");
     let replies = store
         .read(|c| reviewdb::replies::list_for_threads(c, std::slice::from_ref(&thread_id)))
         .unwrap();
-    assert_eq!(
-        replies.get(&thread_id).map(Vec::len),
-        Some(1),
-        "the refused delete must mutate nothing",
-    );
+    assert!(replies.get(&thread_id).is_none_or(Vec::is_empty));
 }
 
 #[test]
