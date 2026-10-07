@@ -46,6 +46,7 @@ import {
 } from "../lib/review-sections.js";
 import type { ReviewSessionManager } from "../lib/review-session.svelte.js";
 import { reviewTitle } from "../lib/review-title.js";
+import { selectOnOpen } from "../lib/select-on-open.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommentResolution,
@@ -612,6 +613,7 @@ $effect(() => {
 							onblur={commitRename}
 							onkeydown={renameKeys}
 							aria-label="Review title"
+							use:selectOnOpen
 							class="review-title-field bg-bg text-text-strong border border-border rounded outline-none h-control py-0 px-1 text-title font-semibold"
 						>
 					{:else}

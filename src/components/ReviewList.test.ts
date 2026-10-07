@@ -357,6 +357,23 @@ describe("ReviewList", () => {
 		expect(screen.getByLabelText("Review title")).toHaveValue(aReview().title);
 	});
 
+	it("puts the focus in the title editor with the title selected, ready to type over", async () => {
+		seedReviews([aReview()]);
+		await renderList();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: `Rename review ${ACTIVE_REVIEW}` }),
+		);
+		await tick();
+
+		const field = screen.getByLabelText("Review title") as HTMLInputElement;
+		expect(field).toHaveFocus();
+		expect([field.selectionStart, field.selectionEnd]).toEqual([
+			0,
+			field.value.length,
+		]);
+	});
+
 	it("opens the title editor as a plain standard field, since the caret shows where typing goes", async () => {
 		seedReviews([aReview()]);
 		await renderList();

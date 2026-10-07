@@ -1767,6 +1767,16 @@ describe("header", () => {
 			expect(field).toHaveValue(aReview().title);
 		});
 
+		it("puts the focus in the field with the title selected, ready to type over", async () => {
+			const field = (await openTitleEditor()) as HTMLInputElement;
+
+			expect(field).toHaveFocus();
+			expect([field.selectionStart, field.selectionEnd]).toEqual([
+				0,
+				field.value.length,
+			]);
+		});
+
 		it("opens a plain field, since the caret shows where typing goes", async () => {
 			const field = await openTitleEditor();
 

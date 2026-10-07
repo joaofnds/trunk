@@ -15,6 +15,7 @@ import {
 } from "../lib/review-actions.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { reviewTitle } from "../lib/review-title.js";
+import { selectOnOpen } from "../lib/select-on-open.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { Review } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
@@ -125,6 +126,7 @@ function deletePrompt(review: Review): string {
 							onblur={commitRename}
 							onkeydown={renameKeys}
 							aria-label="Review title"
+							use:selectOnOpen
 							class="w-full bg-bg text-text border border-border rounded outline-none h-control py-0 px-2 text-callout"
 						>
 					</div>
