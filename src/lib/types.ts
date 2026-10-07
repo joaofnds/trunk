@@ -427,6 +427,10 @@ export interface Thread {
 	// optional so optimistic/raw shapes elsewhere still type-check. ThreadCard
 	// `{@html}`s it, falling back to escaped raw `text` when absent.
 	text_html?: string;
+	// Syntax spans for each line of `cached_excerpt`, over the code past a diff
+	// line's gutter, in UTF-16 offsets. Present only from `list_threads`, like
+	// `text_html`; the excerpt renders uncoloured without it.
+	excerpt_spans?: readonly (readonly MergedSpan[])[];
 	replies: readonly Reply[];
 	// Wall-clock seconds when the root comment was submitted.
 	created_at: number;

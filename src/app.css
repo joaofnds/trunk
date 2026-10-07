@@ -100,7 +100,8 @@ textarea::placeholder {
    Applies to {@html} output: comment bodies (.comment-card-text.markdown-body)
    and the .md diff view (.rendered-col.markdown-body). GLOBAL on purpose —
    {@html} markup escapes Svelte's scoped-style hashing, so a scoped rule would
-   never reach it; the reused .syn-* rules below are global for the same reason. */
+   never reach it; the reused .syn-* rules below are global for the same reason,
+   and also colour a review card's code excerpt (.comment-card-diff). */
 .markdown-body {
 	--md-list-gutter: 1.6em;
 	user-select: text;
@@ -239,49 +240,49 @@ textarea::placeholder {
 .markdown-body del {
 	color: var(--color-text-muted);
 }
-.markdown-body .syn-keyword {
+:is(.markdown-body, .comment-card-diff) .syn-keyword {
 	color: var(--color-syn-keyword);
 }
-.markdown-body .syn-string {
+:is(.markdown-body, .comment-card-diff) .syn-string {
 	color: var(--color-syn-string);
 }
-.markdown-body .syn-comment {
+:is(.markdown-body, .comment-card-diff) .syn-comment {
 	color: var(--color-syn-comment);
 }
-.markdown-body .syn-number {
+:is(.markdown-body, .comment-card-diff) .syn-number {
 	color: var(--color-syn-number);
 }
-.markdown-body .syn-type {
+:is(.markdown-body, .comment-card-diff) .syn-type {
 	color: var(--color-syn-type);
 }
-.markdown-body .syn-function {
+:is(.markdown-body, .comment-card-diff) .syn-function {
 	color: var(--color-syn-function);
 }
-.markdown-body .syn-variable {
+:is(.markdown-body, .comment-card-diff) .syn-variable {
 	color: var(--color-syn-variable);
 }
-.markdown-body .syn-constant {
+:is(.markdown-body, .comment-card-diff) .syn-constant {
 	color: var(--color-syn-constant);
 }
-.markdown-body .syn-operator {
+:is(.markdown-body, .comment-card-diff) .syn-operator {
 	color: var(--color-syn-operator);
 }
-.markdown-body .syn-punctuation {
+:is(.markdown-body, .comment-card-diff) .syn-punctuation {
 	color: var(--color-syn-punctuation);
 }
-.markdown-body .syn-attribute {
+:is(.markdown-body, .comment-card-diff) .syn-attribute {
 	color: var(--color-syn-attribute);
 }
-.markdown-body .syn-tag {
+:is(.markdown-body, .comment-card-diff) .syn-tag {
 	color: var(--color-syn-tag);
 }
-.markdown-body .syn-property {
+:is(.markdown-body, .comment-card-diff) .syn-property {
 	color: var(--color-syn-property);
 }
-.markdown-body .syn-regex {
+:is(.markdown-body, .comment-card-diff) .syn-regex {
 	color: var(--color-syn-regex);
 }
-.markdown-body .syn-escape {
+:is(.markdown-body, .comment-card-diff) .syn-escape {
 	color: var(--color-syn-escape);
 }
 

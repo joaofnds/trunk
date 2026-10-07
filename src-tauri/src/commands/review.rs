@@ -355,15 +355,58 @@ pub struct RenderedThread {
     // matrix. The CLI claims `Channel::Agent` and computes its own set.
     pub allowed_transitions: Vec<trunk_review::types::ThreadState>,
     pub text_html: String,
+    /// Syntax spans for each line of `cached_excerpt`, over the line's code
+    /// past the gutter a diff excerpt carries, in the UTF-16 offsets the card
+    /// slices by. Empty when there is no excerpt.
+    pub excerpt_spans: Vec<Vec<crate::types::MergedSpan>>,
     pub replies: Vec<RenderedReply>,
     /// Wall-clock seconds when the root comment was submitted, which the card
     /// shows as an age beside the author, as each reply shows its own.
     pub created_at: i64,
 }
 
+/// Highlights a thread's saved excerpt line by line with one highlighter, so a
+/// construct that spans lines keeps its colour. A diff excerpt's lines start
+/// with the gutter character the card strips, so the spans start past it; a
+/// current-file excerpt is the file's own lines. A language Trunk cannot
+/// highlight gets one uncoloured span per line.
+fn excerpt_spans(t: &threads::Thread) -> Vec<Vec<crate::types::MergedSpan>> {
+    let Some(excerpt) = t.cached_excerpt.as_deref() else {
+        return Vec::new();
+    };
+    let (path, diff) = match (&t.anchor, &t.content_pin) {
+        (Some(anchor), _) => (
+            Some(anchor.file_path.as_str()),
+            anchor.source == trunk_review::types::Source::Diff,
+        ),
+        (None, Some(pin)) => (Some(pin.file_path.as_str()), false),
+        (None, None) => (None, false),
+    };
+    let mut highlighter =
+        path.and_then(|p| crate::syntax::create_highlighter(crate::syntax::extension_from_path(p)));
+    excerpt
+        .split('\n')
+        .map(|line| {
+            let code = match line.strip_prefix(['+', '-', ' ']) {
+                Some(code) if diff => code,
+                _ => line,
+            };
+            let tokens = highlighter
+                .as_mut()
+                .map(|h| crate::syntax::highlight_line_with(h, code))
+                .unwrap_or_default();
+            let len = u32::try_from(code.len()).unwrap_or(u32::MAX);
+            let mut spans = crate::syntax::merge_spans(&tokens, &[], len);
+            crate::syntax::merged_spans_to_utf16(&mut spans, code);
+            spans
+        })
+        .collect()
+}
+
 impl RenderedThread {
     fn from_thread(t: threads::Thread, replies: Vec<replies::Reply>, published: bool) -> Self {
         let text_html = crate::commands::markdown::render_comment_text(&t.text);
+        let excerpt_spans = excerpt_spans(&t);
         Self {
             id: t.id,
             review_id: t.review_id,
@@ -381,6 +424,7 @@ impl RenderedThread {
                 .state
                 .allowed_transitions(trunk_review::types::Channel::Human),
             text_html,
+            excerpt_spans,
             replies: replies.into_iter().map(RenderedReply::from_reply).collect(),
             created_at: t.created_at,
         }

@@ -350,6 +350,58 @@ describe("ThreadCard", () => {
 		});
 	});
 
+	it("colours the excerpt's code by the spans the backend sends", () => {
+		const { container } = renderCard({
+			thread: {
+				...comment,
+				cached_excerpt: "+let x",
+				excerpt_spans: [
+					[
+						{
+							start: 0,
+							end: 3,
+							syntax_class: "syn-keyword",
+							emphasized: false,
+						},
+						{ start: 3, end: 6, syntax_class: "", emphasized: false },
+					],
+				],
+			},
+		});
+
+		expect(
+			container.querySelector(".comment-card-diff .syn-keyword"),
+		).toHaveTextContent("let");
+	});
+
+	it("keeps each span on its own code once the excerpt is dedented", () => {
+		const { container } = renderCard({
+			thread: {
+				...comment,
+				cached_excerpt: "+  let x",
+				excerpt_spans: [
+					[
+						{ start: 0, end: 2, syntax_class: "", emphasized: false },
+						{
+							start: 2,
+							end: 5,
+							syntax_class: "syn-keyword",
+							emphasized: false,
+						},
+						{ start: 5, end: 7, syntax_class: "", emphasized: false },
+					],
+				],
+			},
+		});
+
+		expect(
+			container.querySelector(".comment-card-diff .syn-keyword"),
+		).toHaveTextContent(/^let$/);
+		expect(
+			container.querySelector(".comment-card-diff .diff-content"),
+		).toHaveTextContent(/^let x$/);
+	});
+
 	it("dedents the excerpt to its least indented line", () => {
 		const { container } = renderCard({
 			thread: {

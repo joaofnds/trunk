@@ -368,9 +368,11 @@ describe("rendered markdown word marks", () => {
 		expect(rule).toMatch(/color:\s*var\(--color-diff-text\)/);
 
 		const markRule = ruleIndex(".markdown-body .md-word-delete,");
-		const synRules = [...css.matchAll(/\.markdown-body \.syn-[a-z]+ \{/g)].map(
-			(m) => m.index,
-		);
+		const synRules = [
+			...css.matchAll(
+				/:is\(\.markdown-body, \.comment-card-diff\) \.syn-[a-z]+ \{/g,
+			),
+		].map((m) => m.index);
 		expect(synRules.length).toBeGreaterThan(0);
 		expect(Math.max(...synRules)).toBeLessThan(markRule);
 	});

@@ -21,7 +21,7 @@ import {
 	createThreadEditorSession,
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
-import type { Side, Thread, ThreadState } from "../lib/types.js";
+import type { MergedSpan, Side, Thread, ThreadState } from "../lib/types.js";
 import Button, { type ButtonVariant } from "../lib/ui/Button.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
@@ -172,11 +172,25 @@ interface ParsedLine {
 	gutter: string;
 	content: string;
 	skipped: number;
+	spans: readonly MergedSpan[];
 }
 interface ExcerptLine extends ParsedLine {
 	number: number | null;
 }
-function parseExcerpt(text: string, source: "Diff" | "FullFile"): ParsedLine[] {
+function parseExcerpt(
+	text: string,
+	source: "Diff" | "FullFile",
+	spans: readonly (readonly MergedSpan[])[],
+): ParsedLine[] {
+	return parseLines(text, source).map((line, i) => ({
+		...line,
+		spans: spans[i] ?? [],
+	}));
+}
+function parseLines(
+	text: string,
+	source: "Diff" | "FullFile",
+): Omit<ParsedLine, "spans">[] {
 	const lines = text.split("\n");
 	if (source === "FullFile") {
 		return lines.map((content) => {
@@ -260,8 +274,27 @@ function dedent(lines: ExcerptLine[]): ExcerptLine[] {
 	return lines.map((line) =>
 		line.kind === "gap"
 			? line
-			: { ...line, content: line.content.slice(indent) },
+			: {
+					...line,
+					content: line.content.slice(indent),
+					spans: shiftSpans(line.spans, indent),
+				},
 	);
+}
+
+// A span's offsets count from the line's code, so the indent the dedent drops
+// moves every span back by it, and a span wholly inside the indent goes.
+function shiftSpans(
+	spans: readonly MergedSpan[],
+	by: number,
+): readonly MergedSpan[] {
+	return spans
+		.map((span) => ({
+			...span,
+			start: Math.max(0, span.start - by),
+			end: span.end - by,
+		}))
+		.filter((span) => span.end > span.start);
 }
 
 const excerptLines = $derived(
@@ -269,7 +302,11 @@ const excerptLines = $derived(
 		? []
 		: dedent(
 				numberLines(
-					parseExcerpt(thread.cached_excerpt, excerptSource),
+					parseExcerpt(
+						thread.cached_excerpt,
+						excerptSource,
+						thread.excerpt_spans ?? [],
+					),
 					thread.anchor?.side ?? "New",
 					location,
 				),
@@ -533,7 +570,17 @@ async function requestDeleteReply(replyId: string) {
 					<div class="diff-line diff-line-{line.kind}">
 						<span class="diff-number select-none">{line.number ?? ""}</span>
 						<span class="diff-gutter select-none">{line.gutter}</span>
-						<span class="diff-content select-text">{line.content}</span>
+						<span class="diff-content select-text"
+							>{#if line.spans.length > 0}
+								{#each line.spans as span, j (j)}
+									<span class={span.syntax_class}
+										>{line.content.slice(span.start, span.end)}</span
+									>
+								{/each}
+							{:else}
+								{line.content}
+							{/if}</span
+						>
 					</div>
 				{/each}
 			</div>
