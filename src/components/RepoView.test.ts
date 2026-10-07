@@ -672,6 +672,66 @@ describe("RepoView", () => {
 		});
 	});
 
+	// The toolbar's filter narrows what the panel shows, so its counts are the
+	// shown review's, not the active one's.
+	it("counts the filter over the review the panel shows", async () => {
+		const base = mockInvoke.getMockImplementation();
+		if (!base) throw new Error("base invoke implementation missing");
+		const review = (id: string) => ({
+			id,
+			title: id,
+			state: "ready",
+			published: false,
+			thread_count: 1,
+			unresolved_count: 1,
+			created_at: 0,
+		});
+		mockInvoke.mockImplementation((cmd, args) => {
+			const a = args as Record<string, unknown> | undefined;
+			switch (cmd) {
+				case "list_reviews":
+					return Promise.resolve([review("active"), review("other")]);
+				case "get_active_review":
+					return Promise.resolve("active");
+				case "list_session_commits":
+				case "resolve_threads":
+					return Promise.resolve([]);
+				case "list_threads":
+					return Promise.resolve(
+						a?.reviewId === "other"
+							? [
+									aThread({ id: "d1", review_id: "other", state: "done" }),
+									aThread({ id: "d2", review_id: "other", state: "done" }),
+								]
+							: [aThread({ id: "o1", review_id: "active", state: "open" })],
+					);
+				default:
+					return base(cmd, args);
+			}
+		});
+		const counts = vi.fn();
+		render(RepoView, {
+			props: {
+				...baseProps(createMockRemoteState()),
+				reviewActive: true,
+				oncommentcountschange: counts,
+			},
+		});
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Show review other" }),
+		);
+
+		await vi.waitFor(() =>
+			expect(counts.mock.calls.at(-1)?.[0].byFilter).toMatchObject({
+				done: 2,
+			}),
+		);
+		expect(counts.mock.calls.at(-1)?.[0].byFilter).toMatchObject({
+			open: 0,
+			done: 2,
+		});
+	});
+
 	describe("background fetch", () => {
 		// Long enough that the assertion reads "the interval fires", not "the
 		// interval is 60s" (DEFAULT_FETCH_INTERVAL_MS, src/lib/store.ts).

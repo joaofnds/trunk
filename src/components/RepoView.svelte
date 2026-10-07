@@ -821,8 +821,14 @@ let reviewCommentTotal = $derived(
 );
 let reviewCommentTone = $derived(toneForThreads(reviewComments.threads));
 
-// How many threads each filter would show, for the toolbar's filter menu.
-let reviewFilterCounts = $derived(countByFilter(reviewComments.threads));
+// How many threads each filter would show, for the toolbar's filter menu. The
+// filter narrows the panel while it is up, which may show a review that is not
+// the active one, and the diff's threads otherwise.
+let reviewFilterCounts = $derived(
+	countByFilter(
+		reviewPanelShown ? reviewComments.shownThreads : reviewComments.threads,
+	),
+);
 
 // Report both counts up through untrack: App's setCommentCounts copies the
 // counts map (`new Map(commentCounts)`) before writing it, so calling the
