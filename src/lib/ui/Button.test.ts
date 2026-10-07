@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
-import { type ComponentProps, createRawSnippet } from "svelte";
+import { createRawSnippet } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SHOW_DELAY_MS } from "../tooltip.js";
 import Button from "./Button.svelte";
@@ -89,14 +89,14 @@ describe("Button", () => {
 		);
 	});
 
-	it("keeps xs off a text button", () => {
-		// @ts-expect-error svelte-check fails here once Sizing lets a text button take xs
-		const textAtXs: ComponentProps<typeof Button> = {
-			size: "xs",
-			children: label,
-		};
+	it("sets an xs text button in the small step, whose line fills the frame", () => {
+		render(Button, { props: { size: "xs", children: label } });
 
-		expect(textAtXs.size).toBe("xs");
+		expect(screen.getByRole("button")).toHaveClass(
+			"h-control-xs",
+			"px-2",
+			"text-small",
+		);
 	});
 
 	it("anchors a badge a caller places inside it", () => {

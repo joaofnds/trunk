@@ -7,34 +7,27 @@ export type ButtonVariant =
 	| "danger"
 	| "success"
 	| "warning";
-export type ButtonSize = "sm" | "md" | "lg";
-/** Only an icon button takes `xs`: a text button there puts a caption line box
- *  in a 16px frame, where no split centers it. */
-type IconButtonSize = ButtonSize | "xs";
+/** `xs` sets its text in the small step, whose 14px line fills the 16px frame
+ *  inside its border with nothing to split. */
+export type ButtonSize = "xs" | "sm" | "md" | "lg";
 </script>
 
 <script lang="ts">
 import type { HTMLButtonAttributes } from "svelte/elements";
 import { tooltip as attachTooltip } from "../tooltip.js";
 
-type Sizing =
-	| { icon?: false; size?: ButtonSize }
-	| {
-			/** Square, sized by its height, for a button whose only child is an icon.
-			 *  It still needs an aria-label: the icon gives it no accessible name. */
-			icon: true;
-			size?: IconButtonSize;
-	  };
-
-type Props = Omit<HTMLButtonAttributes, "class" | "style"> &
-	Sizing & {
-		variant?: ButtonVariant;
-		/** Inside a ButtonGroup, which draws the one frame around all of its
-		 *  buttons and sets their height; the button keeps only its end corners. */
-		joined?: boolean;
-		/** The visual tooltip from `$lib/tooltip`, under the trigger after its delay. */
-		tooltip?: string;
-	};
+type Props = Omit<HTMLButtonAttributes, "class" | "style"> & {
+	size?: ButtonSize;
+	/** Square, sized by its height, for a button whose only child is an icon.
+	 *  It still needs an aria-label: the icon gives it no accessible name. */
+	icon?: boolean;
+	variant?: ButtonVariant;
+	/** Inside a ButtonGroup, which draws the one frame around all of its
+	 *  buttons and sets their height; the button keeps only its end corners. */
+	joined?: boolean;
+	/** The visual tooltip from `$lib/tooltip`, under the trigger after its delay. */
+	tooltip?: string;
+};
 
 let {
 	variant = "secondary",
@@ -72,7 +65,7 @@ const VARIANTS: Record<ButtonVariant, string> = {
 	warning: "border-warning-border bg-warning-bg text-warning",
 };
 
-const HEIGHTS: Record<IconButtonSize, string> = {
+const HEIGHTS: Record<ButtonSize, string> = {
 	xs: "h-control-xs",
 	sm: "h-control-sm",
 	md: "h-control",
@@ -80,12 +73,13 @@ const HEIGHTS: Record<IconButtonSize, string> = {
 };
 
 const SIZES: Record<ButtonSize, string> = {
+	xs: "gap-1 px-2 text-small",
 	sm: "gap-1 px-2 text-small",
 	md: "gap-1 px-3 text-callout",
 	lg: "gap-2 px-4 text-body",
 };
 
-const ICON_WIDTHS: Record<IconButtonSize, string> = {
+const ICON_WIDTHS: Record<ButtonSize, string> = {
 	xs: "w-control-xs",
 	sm: "w-control-sm",
 	md: "w-control",
@@ -105,8 +99,7 @@ function optionalTooltip(node: HTMLElement, text: string | undefined) {
 		joined ? FRAMES.joined : FRAMES.standalone,
 		VARIANTS[variant],
 		joined ? null : HEIGHTS[size],
-		// Sizing keeps xs off a text button; the destructured props lose that link.
-		icon ? ICON_WIDTHS[size] : SIZES[size as ButtonSize],
+		icon ? ICON_WIDTHS[size] : SIZES[size],
 	]}
 	use:optionalTooltip={tooltip}
 	{...rest}
