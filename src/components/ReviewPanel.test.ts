@@ -157,11 +157,16 @@ function installReads(opts: {
 	generateDoc?: string;
 	publishRejection?: unknown;
 	generateRejection?: unknown;
+	otherReviews?: Record<
+		string,
+		{ threads: Thread[]; commits: SessionCommit[] }
+	>;
 }) {
 	const comments = opts.comments ?? [];
 	reviewComments.seed({
 		commits: opts.commits ?? [],
 		threads: comments,
+		otherReviews: opts.otherReviews ?? {},
 		reviews: opts.reviews ?? [aReview({ thread_count: comments.length })],
 		activeReviewId:
 			opts.activeReviewId === undefined ? ACTIVE_REVIEW : opts.activeReviewId,
@@ -1625,6 +1630,32 @@ describe("review list", () => {
 			screen.getByRole("button", { name: `Show review ${READY.id}` }),
 		).toHaveAttribute("aria-current", "true");
 		expect(calledCommands()).not.toContain("set_active_review");
+	});
+
+	it("shows the threads of the review it shows, not the active one's", async () => {
+		installReads({
+			reviews: [aReview(), READY],
+			activeReviewId: ACTIVE_REVIEW,
+			comments: [commitLevelComment("mine", COMMIT_A, "on the active review")],
+			otherReviews: {
+				[READY.id]: {
+					threads: [
+						commitLevelComment("theirs", COMMIT_A, "on the other review"),
+					],
+					commits: [aSessionCommit({ oid: COMMIT_A })],
+				},
+			},
+		});
+		renderPanel();
+		await flush();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: `Show review ${READY.id}` }),
+		);
+		await flush();
+
+		expect(screen.getByText("on the other review")).toBeInTheDocument();
+		expect(screen.queryByText("on the active review")).toBeNull();
 	});
 
 	it("the radio makes a review the active one", async () => {

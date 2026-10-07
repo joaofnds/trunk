@@ -738,6 +738,29 @@ describe("Toolbar", () => {
 			"Stale",
 		]);
 	});
+	it("shows how many threads each filter would show", async () => {
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+				reviewFilter: "all",
+				reviewFilterCounts: { all: 4, open: 3, done: 1 },
+			},
+		});
+
+		await fireEvent.click(
+			screen.getByRole("combobox", { name: "Review filter selection" }),
+		);
+
+		expect(screen.getByRole("option", { name: /^Open/ })).toHaveTextContent(
+			"Open 3",
+		);
+		expect(screen.getByRole("option", { name: /^Done/ })).toHaveTextContent(
+			"Done 1",
+		);
+	});
 });
 
 describe("Toolbar remote failure feedback", () => {

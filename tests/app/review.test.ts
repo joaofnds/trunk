@@ -69,7 +69,7 @@ describe("a comment left on a commit's diff", () => {
 			() => app.review.reviewBadgeCount() === 1,
 		);
 
-		expect(app.review.canCopy()).toBe(false);
+		expect(app.review.copyState()).toBe("disabled");
 	});
 
 	it("shows every thread again from the header's Show all", async () => {

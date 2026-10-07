@@ -48,19 +48,19 @@ const ACTIVE_REVIEW_RADIO =
 const NEW_REVIEW = 'nav[aria-label="Reviews"] [aria-label="New review"]';
 const COMMIT_NOTE_TEXT = 'textarea[placeholder="Leave a note on this commit…"]';
 
-/**
- * A review, from the comment that creates it to the doc it renders. Every
- * gesture waits for its control to be enabled before clicking: the composer's
- * Submit is dead until the text is non-empty, and End review and Copy are dead
- * until the review has a comment. jsdom dispatches no click on a disabled
- * button, so a gesture issued early does nothing, quietly.
- */
 function filterLabel(filter: ReviewFilter): string {
 	const option = REVIEW_FILTER_OPTIONS.find((o) => o.value === filter);
 	if (!option) throw new Error(`no filter option for ${filter}`);
 	return option.label;
 }
 
+/**
+ * A review, from the comment that creates it to the doc it renders. Every
+ * gesture waits for its control to be enabled before clicking: the composer's
+ * Submit is dead until the text is non-empty, End review is dead until the review
+ * has a comment, and Copy until one of its threads is unresolved. jsdom dispatches no click on a disabled
+ * button, so a gesture issued early does nothing, quietly.
+ */
 export class ReviewDriver {
 	/** Selects a review-thread presentation and waits for its visible effect. */
 	async showReviewFilter(
@@ -587,13 +587,16 @@ export class ReviewDriver {
 		button.click();
 	}
 
-	/** Copies the review doc, which is what renders it. */
-	/** Whether the header's Copy would copy anything: it is off while no thread
-	 *  is unresolved. */
-	canCopy(): boolean {
-		return enabledButton(COPY) !== null;
+	/** The header's Copy: off while no thread is unresolved, and absent when
+	 *  no review header is on screen. */
+	copyState(): "absent" | "disabled" | "enabled" {
+		const button = firstMatching("button", (text) => text === COPY);
+		if (!(button instanceof HTMLButtonElement)) return "absent";
+
+		return button.disabled ? "disabled" : "enabled";
 	}
 
+	/** Copies the review doc, which is what renders it. */
 	async copyDoc(): Promise<void> {
 		const button = await waitFor("an enabled copy button", () =>
 			enabledButton(COPY),
