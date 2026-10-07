@@ -16,6 +16,7 @@ import type {
 	Thread,
 } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
+import ReviewEmpty from "../review/ReviewEmpty.svelte";
 import FullFileView from "./FullFileView.svelte";
 import HunkView from "./HunkView.svelte";
 import RenderedDiff from "./RenderedDiff.svelte";
@@ -192,6 +193,7 @@ const pane = $derived.by(() => {
 		return "rendered";
 	if (loadError) return "error";
 	if ((loading || payloadStale) && !hasContent) return "loading";
+	if (selectedFileDiff && !isLoaded(selectedFileDiff)) return "no-changes";
 	if (layoutMode === "inline") return contentMode === "hunk" ? "hunk" : "full";
 	return "split";
 });
@@ -267,6 +269,10 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 		>
 			Loading diff…
 		</div>
+	{:else if pane === "no-changes"}
+		<ReviewEmpty title="No changes to show">
+			<p>This file has no diff here.</p>
+		</ReviewEmpty>
 	{:else if pane === "hunk"}
 		<HunkView
 			bind:this={diffNav}

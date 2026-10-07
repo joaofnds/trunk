@@ -2,7 +2,7 @@
 import type { Snippet } from "svelte";
 
 interface Props {
-	icon: Snippet;
+	icon?: Snippet;
 	title: string;
 	/** The paragraphs that say why it is empty and what fills it. */
 	children: Snippet;
@@ -20,11 +20,13 @@ const headingId = $props.id();
 	class="flex flex-1 items-center justify-center p-6"
 >
 	<div class="review-empty flex flex-col gap-2">
-		<span
-			class="review-empty-icon inline-flex items-center justify-center mb-1 rounded border border-border bg-surface-raised text-text-muted"
-			aria-hidden="true"
-			>{@render icon()}</span
-		>
+		{#if icon}
+			<span
+				class="review-empty-icon inline-flex items-center justify-center mb-1 rounded border border-border bg-surface-raised text-text-muted"
+				aria-hidden="true"
+				>{@render icon()}</span
+			>
+		{/if}
 		<h3 id={headingId} class="m-0 text-title font-semibold text-text-strong">
 			{title}
 		</h3>

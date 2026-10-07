@@ -256,6 +256,29 @@ describe("DiffViewer while a diff is loading", () => {
 	});
 });
 
+describe("DiffViewer with a file that has no hunks", () => {
+	beforeEach(() => stubLayout({ width: 900, height: 600 }));
+	afterEach(restoreLayout);
+
+	it("says there are no changes to show once the file has loaded", () => {
+		render(DiffViewer, {
+			props: { ...baseProps, fileDiffs: [selectedReadme] },
+		});
+
+		expect(
+			screen.getByRole("region", { name: "No changes to show" }),
+		).toHaveTextContent("This file has no diff here.");
+	});
+
+	it("says nothing about changes while the file is still loading", () => {
+		render(DiffViewer, {
+			props: { ...baseProps, loading: true, fileDiffs: [selectedReadme] },
+		});
+
+		expect(screen.queryByText("No changes to show")).toBeNull();
+	});
+});
+
 describe("DiffViewer's comment composer", () => {
 	beforeEach(() => stubLayout({ width: 900, height: 400 }));
 	afterEach(restoreLayout);
