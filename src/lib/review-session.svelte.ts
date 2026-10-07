@@ -32,6 +32,8 @@ export interface ReviewPaneState {
 export interface JumpDeps {
 	selectCommit(oid: string): void | Promise<void>;
 	selectFile(path: string): void | Promise<void>;
+	// A thread pinned to a file's own content opens that file as it stands.
+	openCurrentFile(path: string): void | Promise<void>;
 	scrollToRange(startLine: number, endLine: number, side: Side): void;
 }
 
@@ -76,8 +78,23 @@ export function createReviewSession(): ReviewSessionManager {
 			state.rightPaneMode = "diff";
 		},
 		async jumpTo(comment: Thread, deps: JumpDeps) {
-			// Commit-level or orphaned comments have no line anchor and thus no
-			// jump target (D-08) — stay on the panel, navigate nowhere.
+			// A thread pinned to a file's content opens that file at the lines
+			// the backend last found the block on, or where it was pinned before
+			// any recompute ran.
+			const pin = comment.content_pin;
+			if (comment.anchor === null && pin) {
+				const start = comment.resolved_start_line ?? pin.start_line;
+				await deps.openCurrentFile(pin.file_path);
+				state.rightPaneMode = "diff";
+				deps.scrollToRange(
+					start,
+					start + (pin.end_line - pin.start_line),
+					"New",
+				);
+				return;
+			}
+			// Commit-level comments have no line anchor and thus no jump target
+			// (D-08), so the panel stays and navigates nowhere.
 			if (comment.anchor === null) return;
 
 			const anchor = comment.anchor;

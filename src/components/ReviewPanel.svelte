@@ -266,10 +266,10 @@ function orphanLabel(c: Thread): string | null {
 	return ORPHAN_LABEL[r.reason];
 }
 
-// A line-anchored, resolvable comment is jumpable; commit-level and orphaned
-// comments are not (D-07 / D-08).
+// A resolvable comment on lines, of a commit or of a file as it stands, is
+// jumpable; commit-level and orphaned comments are not (D-07 / D-08).
 function isJumpable(c: Thread): boolean {
-	return c.anchor !== null && !isOrphan(c);
+	return (c.anchor !== null || c.content_pin != null) && !isOrphan(c);
 }
 
 // The thread J and K move between, and D, X, O, R and Enter act on.

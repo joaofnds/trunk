@@ -2602,6 +2602,36 @@ describe("ReviewPanel keyboard", () => {
 		);
 	});
 
+	it("opens a current-file thread's code with Enter", async () => {
+		installReads({
+			commits: [],
+			comments: [currentFileComment("pinned", "on the file")],
+			resolutions: [resolvable("pinned")],
+		});
+		const onJump = vi.fn();
+		renderPanel(onJump);
+		await flush();
+
+		await press("j");
+		await press("Enter");
+
+		expect(onJump).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "pinned" }),
+		);
+	});
+
+	it("lets a current-file thread's lines open its code", async () => {
+		installReads({
+			commits: [],
+			comments: [currentFileComment("pinned", "on the file")],
+			resolutions: [resolvable("pinned")],
+		});
+		renderPanel();
+		await flush();
+
+		expect(screen.getByRole("button", { name: "Line 4" })).toBeEnabled();
+	});
+
 	it("leaves Enter to a button that has focus", async () => {
 		await aCommitWithANoteAndALineThread();
 		const onJump = vi.fn();

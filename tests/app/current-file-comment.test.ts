@@ -77,4 +77,21 @@ describe("commenting on a file no pending change touches", () => {
 				: null,
 		);
 	});
+
+	it("jumps from the thread to the lines it pins", async () => {
+		const app = await setup({ repo: ONE_UNTOUCHED_FILE });
+		await openTheUntouchedFile(app);
+		await app.review.selectLine(2);
+		await app.review.commentOnSelection();
+		await app.review.write("export the type too");
+		await app.review.submit();
+		await app.review.openPanel();
+		await waitFor("the thread", () =>
+			app.review.threads().length > 0 ? true : null,
+		);
+
+		await app.review.jumpToThread();
+
+		expect(app.diffPane.selectedPath()).toBe(UNTOUCHED);
+	});
 });

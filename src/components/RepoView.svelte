@@ -283,6 +283,7 @@ function handleReviewJump(comment: Thread) {
 	reviewSession.jumpTo(comment, {
 		selectCommit: selectCommitIdempotent,
 		selectFile: selectCommitFileIdempotent,
+		openCurrentFile,
 		scrollToRange: (startLine, endLine, side) => {
 			// The panel→diff swap destroys ReviewPanel and mounts a fresh DiffPanel;
 			// diffPanelRef is bound during that render. Poll up to ~0.5s of frames
