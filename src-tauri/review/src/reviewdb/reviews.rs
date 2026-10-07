@@ -59,7 +59,7 @@ impl Review {
 /// alone, since a held one waits on nobody until it is sent.
 const SELECT: &str = "
     SELECT r.id, r.title,
-           EXISTS (SELECT 1 FROM threads t WHERE t.review_id = r.id AND t.pending = 0),
+           (SELECT COUNT(*) FROM threads t WHERE t.review_id = r.id AND t.pending = 0),
            r.created_at,
            (SELECT COUNT(*) FROM threads t WHERE t.review_id = r.id),
            (SELECT COUNT(*) FROM threads t
@@ -80,8 +80,7 @@ const SELECT: &str = "
                      AND t.state IN ('open', 'addressed') AND t.stale = 0
                ) THEN 'open'
                ELSE 'stale'
-           END,
-           (SELECT COUNT(*) FROM threads t WHERE t.review_id = r.id AND t.pending = 0)";
+           END";
 
 /// Create an empty review for `repo_path` and return its id.
 ///
@@ -150,14 +149,15 @@ pub fn get(conn: &Connection, id: &str) -> Result<Option<Review>, TrunkError> {
 
 fn read_review(row: &rusqlite::Row) -> rusqlite::Result<Review> {
     let state: String = row.get(8)?;
+    let sent_thread_count: i64 = row.get(2)?;
 
     Ok(Review {
         id: row.get(0)?,
         title: row.get(1)?,
-        published: row.get::<_, i64>(2)? != 0,
+        published: sent_thread_count > 0,
         created_at: row.get(3)?,
         thread_count: row.get(4)?,
-        sent_thread_count: row.get(9)?,
+        sent_thread_count,
         unresolved_count: row.get(5)?,
         archived: row.get::<_, i64>(6)? != 0,
         pending_count: row.get(7)?,
