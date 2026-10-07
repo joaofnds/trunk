@@ -12,6 +12,7 @@ import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comme
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createReviewEditorStore } from "../lib/review-editors.svelte.js";
+import { ALL_THREADS, THREAD_PRESETS } from "../lib/review-filter.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
@@ -21,6 +22,7 @@ import type {
 	ReviewFilter,
 	SessionCommit,
 	Thread,
+	ThreadFilter,
 } from "../lib/types.js";
 import ReviewPanel from "./ReviewPanel.svelte";
 
@@ -59,6 +61,9 @@ if (typeof Element.prototype.scrollIntoView === "undefined") {
 
 const COMMIT_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const COMMIT_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+const NEEDS_ME = THREAD_PRESETS[1].filter;
+const SETTLED = THREAD_PRESETS[2].filter;
 
 const commits: SessionCommit[] = [
 	aSessionCommit({
@@ -572,7 +577,7 @@ describe("ReviewPanel", () => {
 				onJumpToCommit: vi.fn(),
 				editorNoteSessionFor: (reviewId: string | null, surface: string) =>
 					editors.note(reviewId, surface),
-				reviewFilter: "all" as const,
+				reviewFilter: ALL_THREADS as ReviewFilter,
 			};
 			const view = render(ReviewPanel, { props });
 			await flush();
@@ -693,7 +698,7 @@ describe("ReviewPanel", () => {
 				onJumpToCommit: vi.fn(),
 				editorSessionForThread: (thread: Thread) =>
 					editors.thread(ACTIVE_REVIEW, "review-panel", thread.id),
-				reviewFilter: "all" as const,
+				reviewFilter: ALL_THREADS as ReviewFilter,
 			};
 			const view = render(ReviewPanel, { props });
 			await flush();
@@ -704,7 +709,7 @@ describe("ReviewPanel", () => {
 				target: { value: "retained root edit" },
 			});
 
-			await view.rerender({ ...props, reviewFilter: "done" });
+			await view.rerender({ ...props, reviewFilter: SETTLED });
 			expect(
 				screen.queryByDisplayValue("retained root edit"),
 			).not.toBeVisible();
@@ -750,7 +755,7 @@ describe("ReviewPanel", () => {
 				onJumpToCommit: vi.fn(),
 				editorSessionForThread: (thread: Thread) =>
 					editors.thread(ACTIVE_REVIEW, "review-panel", thread.id),
-				reviewFilter: "all" as const,
+				reviewFilter: ALL_THREADS as ReviewFilter,
 			};
 			const view = render(ReviewPanel, { props });
 			await flush();
@@ -1633,7 +1638,7 @@ describe("the shown review", () => {
 describe("empty states", () => {
 	function renderPanel(
 		onreviewfilterchange?: (filter: ReviewFilter) => void,
-		reviewFilter: ReviewFilter = "all",
+		reviewFilter: ReviewFilter = ALL_THREADS,
 	) {
 		return render(ReviewPanel, {
 			props: {
@@ -1786,17 +1791,13 @@ describe("empty states", () => {
 			comments: [lineAnchoredComment("c1", COMMIT_A, "still open")],
 		});
 		const onreviewfilterchange = vi.fn();
-		renderPanel(onreviewfilterchange, "done");
+		renderPanel(onreviewfilterchange, SETTLED);
 		await flush();
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: "Show all 1 thread" }),
-		);
+		await fireEvent.click(screen.getByRole("button", { name: "Show all" }));
 
-		expect(
-			screen.getByRole("heading", { name: "No done threads" }),
-		).toBeInTheDocument();
-		expect(onreviewfilterchange).toHaveBeenCalledWith("all");
+		expect(screen.getByText(/No threads here/)).toBeVisible();
+		expect(onreviewfilterchange).toHaveBeenCalledWith(ALL_THREADS);
 	});
 });
 
@@ -1806,7 +1807,7 @@ describe("header", () => {
 	function renderPanel(
 		props: {
 			reviewFilter?: ReviewFilter;
-			onreviewfilterchange?: () => void;
+			onreviewfilterchange?: (filter: ThreadFilter) => void;
 		} = {},
 	) {
 		return render(ReviewPanel, {
@@ -2078,24 +2079,108 @@ describe("header", () => {
 		});
 	});
 
-	describe("under a filter", () => {
-		it("says how many threads it shows", async () => {
+	describe("presets", () => {
+		function preset(label: string): HTMLElement {
+			return within(header()).getByRole("button", {
+				name: new RegExp(`^${label}`),
+			});
+		}
+
+		it("counts the threads each preset shows", async () => {
 			installReads({ commits, comments: THREADS });
-			renderPanel({ reviewFilter: "open" });
+			renderPanel();
 			await flush();
 
-			expect(header()).toHaveTextContent("Showing open only · 2 of 4");
+			expect(preset("All")).toHaveTextContent("4");
+			expect(preset("Needs me")).toHaveTextContent("3");
+			expect(preset("Settled")).toHaveTextContent("1");
+		});
+
+		it("presses the preset whose threads show", async () => {
+			installReads({ commits, comments: THREADS });
+			renderPanel({ reviewFilter: NEEDS_ME });
+			await flush();
+
+			expect(preset("Needs me")).toHaveAttribute("aria-pressed", "true");
+			expect(preset("All")).toHaveAttribute("aria-pressed", "false");
+		});
+
+		it("presses no preset for a mix of states none holds", async () => {
+			installReads({ commits, comments: THREADS });
+			renderPanel({ reviewFilter: { states: ["open", "done"], stale: true } });
+			await flush();
+
+			for (const label of ["All", "Needs me", "Settled"]) {
+				expect(preset(label)).toHaveAttribute("aria-pressed", "false");
+			}
+		});
+
+		it("asks for a preset's threads when it is pressed", async () => {
+			const onreviewfilterchange = vi.fn();
+			installReads({ commits, comments: THREADS });
+			renderPanel({ onreviewfilterchange });
+			await flush();
+
+			await fireEvent.click(preset("Settled"));
+
+			expect(onreviewfilterchange).toHaveBeenCalledWith(SETTLED);
+		});
+	});
+
+	describe("under a filter", () => {
+		it("says how many threads it hides", async () => {
+			installReads({ commits, comments: THREADS });
+			renderPanel({ reviewFilter: NEEDS_ME });
+			await flush();
+
+			expect(screen.getByText(/1 thread\s+hidden\./)).toBeVisible();
 		});
 
 		it("shows every thread again from Show all", async () => {
 			const onreviewfilterchange = vi.fn();
 			installReads({ commits, comments: THREADS });
-			renderPanel({ reviewFilter: "open", onreviewfilterchange });
+			renderPanel({ reviewFilter: NEEDS_ME, onreviewfilterchange });
 			await flush();
 
 			await fireEvent.click(screen.getByRole("button", { name: "Show all" }));
 
-			expect(onreviewfilterchange).toHaveBeenCalledWith("all");
+			expect(onreviewfilterchange).toHaveBeenCalledWith(ALL_THREADS);
+		});
+
+		it("says nothing is hidden while every thread shows", async () => {
+			installReads({ commits, comments: THREADS });
+			renderPanel();
+			await flush();
+
+			expect(screen.queryByText(/hidden\./)).toBeNull();
+		});
+
+		it("drops a commit whose threads it hides", async () => {
+			installReads({
+				commits,
+				comments: [
+					aThread({ id: "t1", commit_oid: COMMIT_A, state: "open" }),
+					aThread({ id: "t4", commit_oid: COMMIT_B, state: "done" }),
+				],
+			});
+			renderPanel({ reviewFilter: NEEDS_ME });
+			await flush();
+
+			expect(screen.getByText("bbbbbbb")).not.toBeVisible();
+		});
+
+		it("counts only the commits and threads it shows on the branch", async () => {
+			installReads({
+				commits,
+				comments: [
+					aThread({ id: "t1", commit_oid: COMMIT_A, state: "open" }),
+					aThread({ id: "t4", commit_oid: COMMIT_B, state: "done" }),
+				],
+			});
+			renderPanel({ reviewFilter: NEEDS_ME });
+			await flush();
+
+			expect(screen.getByText("1 commit · 1 thread")).toBeVisible();
 		});
 	});
 

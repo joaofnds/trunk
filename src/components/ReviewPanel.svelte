@@ -36,7 +36,13 @@ import {
 	type ReviewNoteEditorSession,
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
-import { filterThreads, threadMatchesFilter } from "../lib/review-filter.js";
+import {
+	ALL_THREADS,
+	filterThreads,
+	presetOf,
+	THREAD_PRESETS,
+	threadMatchesFilter,
+} from "../lib/review-filter.js";
 import {
 	type ReviewFile,
 	type ReviewGroup,
@@ -54,9 +60,11 @@ import type {
 	Review,
 	ReviewFilter,
 	Thread,
+	ThreadFilter,
 	ThreadState,
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import ButtonGroup from "../lib/ui/ButtonGroup.svelte";
 import Chip from "../lib/ui/Chip.svelte";
 import Dialog from "../lib/ui/Dialog.svelte";
 import Keycap from "../lib/ui/Keycap.svelte";
@@ -95,9 +103,9 @@ interface Props {
 	// belong to. Null while HEAD is detached.
 	headBranch?: string | null;
 	reviewFilter?: ReviewFilter;
-	// Pressing a state's count in the header asks the owner of the filter, the
-	// toolbar's selector, to show only that state, or every thread again.
-	onreviewfilterchange?: (filter: ReviewFilter) => void;
+	// The header's presets and its Show all ask the owner of the filter, App,
+	// which shares it with the diff and the graph, to show other threads.
+	onreviewfilterchange?: (filter: ThreadFilter) => void;
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	editorNoteSessionFor?: (
 		reviewId: string | null,
@@ -123,7 +131,7 @@ let {
 	oncommentonfile,
 	onopenfile,
 	headBranch = null,
-	reviewFilter = "all",
+	reviewFilter = ALL_THREADS,
 	onreviewfilterchange,
 	editorSessionForThread,
 	editorNoteSessionFor,
@@ -137,9 +145,10 @@ let panelEl = $state<HTMLElement | null>(null);
 const commits = $derived(reviewComments.shownCommits);
 const comments = $derived(reviewComments.shownThreads);
 const visibleComments = $derived(filterThreads(comments, reviewFilter));
+const hiddenCount = $derived(comments.length - visibleComments.length);
+const activePreset = $derived(presetOf(reviewFilter));
 
-// The header's tally, one count per state a thread can be filtered to, in the
-// toolbar selector's order.
+// The header's tally, one count per state, and the stale threads among them.
 const STATE_TALLY = [
 	{ value: "open", tone: "text-thread-open" },
 	{ value: "addressed", tone: "text-thread-addressed" },
@@ -206,7 +215,21 @@ function shows(thread: Thread): boolean {
 // nobody commented on yet stays, for its Add note.
 function hidesAll(threads: Thread[]): boolean {
 	if (reviewFilter === "none") return true;
-	return reviewFilter !== "all" && threads.length > 0 && !threads.some(shows);
+	return threads.length > 0 && !threads.some(shows);
+}
+
+function tallyCount(value: ThreadState | "stale"): number {
+	return comments.filter((thread) =>
+		value === "stale" ? thread.stale : thread.state === value,
+	).length;
+}
+
+function presetCount(states: readonly ThreadState[]): number {
+	return comments.filter((thread) => states.includes(thread.state)).length;
+}
+
+function showAll() {
+	onreviewfilterchange?.(ALL_THREADS);
 }
 
 function hidesSection(section: ReviewSection): boolean {
@@ -283,10 +306,12 @@ function sendSummary(review: Review): string {
 
 function sectionSummary(section: ReviewSection): string {
 	const commitCount = section.groups.filter(
-		(group) => group.kind === "commit" || group.kind === "gone",
+		(group) =>
+			(group.kind === "commit" || group.kind === "gone") &&
+			!hidesAll(group.threads),
 	).length;
 	const threadCount = section.groups.reduce(
-		(sum, group) => sum + group.threads.length,
+		(sum, group) => sum + shownCount(group),
 		0,
 	);
 	const threads = plural(threadCount, "thread");
@@ -826,9 +851,7 @@ $effect(() => {
 						class="flex gap-3 list-none m-0 p-0"
 					>
 						{#each STATE_TALLY as tally (tally.value)}
-							{@const count = comments.filter((t) =>
-								threadMatchesFilter(t, tally.value),
-							).length}
+							{@const count = tallyCount(tally.value)}
 							{#if count > 0}
 								<li
 									title={THREAD_LABELS[tally.value]}
@@ -842,17 +865,22 @@ $effect(() => {
 							{/if}
 						{/each}
 					</ul>
-				{/if}
-				{#if reviewFilter !== "all" && reviewFilter !== "none" && hasAnyComment}
 					<span class="flex-1"></span>
-					<span class="text-accent-strong"
-						>Showing {THREAD_LABELS[reviewFilter].toLowerCase()} only ·
-						{visibleComments.length}
-						of {comments.length}</span
-					>
-					<LinkButton tone="muted" onclick={() => onreviewfilterchange?.("all")}
-						>Show all</LinkButton
-					>
+					<ButtonGroup>
+						{#each THREAD_PRESETS as preset (preset.id)}
+							<Button
+								joined
+								size="xs"
+								aria-pressed={activePreset === preset.id}
+								onclick={() => onreviewfilterchange?.(preset.filter)}
+							>
+								{preset.label}
+								<span class="font-mono"
+									>{presetCount(preset.filter.states)}</span
+								>
+							</Button>
+						{/each}
+					</ButtonGroup>
 				{/if}
 			</div>
 		{/if}
@@ -921,23 +949,11 @@ $effect(() => {
 					The review inventory remains available above.
 				</span>
 			</div>
-		{:else if !hasVisibleComment && reviewFilter !== "all"}
-			<ReviewEmpty
-				title="No {THREAD_LABELS[reviewFilter].toLowerCase()} threads"
-			>
-				{#snippet icon()}
-					<StateGlyph state={reviewFilter} size={18} />
-				{/snippet}
-				<p>
-					None of the {plural(comments.length, "thread")} in this review are
-					{THREAD_LABELS[reviewFilter].toLowerCase()}.
-				</p>
-				{#snippet actions()}
-					<Button size="sm" onclick={() => onreviewfilterchange?.("all")}>
-						Show all {plural(comments.length, "thread")}
-					</Button>
-				{/snippet}
-			</ReviewEmpty>
+		{:else if !hasVisibleComment}
+			<p class="m-0 px-4 py-6 text-text-muted">
+				No threads here.
+				<LinkButton tone="accent" onclick={showAll}>Show all</LinkButton>
+			</p>
 		{/if}
 
 		{#each sections as section (section.key)}
@@ -1139,7 +1155,7 @@ $effect(() => {
 												</span>
 												<span class="flex-1"></span>
 												<span class="review-meta"
-													>{plural(file.threads.length, "thread")}</span
+													>{plural(filterThreads(file.threads, reviewFilter).length, "thread")}</span
 												>
 											</FoldBar>
 										</div>
@@ -1163,6 +1179,13 @@ $effect(() => {
 				</ul>
 			</section>
 		{/each}
+		{#if hasVisibleComment && hiddenCount > 0}
+			<p class="m-0 px-4 pt-3 text-small text-text-muted">
+				{plural(hiddenCount, "thread")}
+				hidden.
+				<LinkButton tone="accent" onclick={showAll}>Show all</LinkButton>
+			</p>
+		{/if}
 	</div>
 	{#if shownThreads.length > 0}
 		<p

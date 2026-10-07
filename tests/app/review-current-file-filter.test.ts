@@ -26,12 +26,9 @@ describe("a current-file comment filtered out before autosave", () => {
 		await app.review.commentOnSelection();
 		await app.review.write("name this constant");
 
-		await app.review.showReviewFilter(
-			"none",
-			() => app.review.composerDraft() === null,
-		);
+		await app.review.hideThreads(() => app.review.composerDraft() === null);
 		await app.review.openPanel();
-		await app.review.showReviewFilter("all", () => !app.review.finderVisible());
+		await app.review.showThreads(() => !app.review.finderVisible());
 		await openCurrentFileFromPanel(app);
 
 		expect(app.review.composerDraft()).toEqual({
@@ -78,11 +75,8 @@ describe("a current-file comment filtered out before autosave", () => {
 				: null,
 		);
 
-		await app.review.showReviewFilter(
-			"none",
-			() => app.review.composerDraft() === null,
-		);
-		await app.review.showReviewFilter("all", () => true);
+		await app.review.hideThreads(() => app.review.composerDraft() === null);
+		await app.review.showThreads(() => true);
 		await app.review.openPanel();
 		await openFileFromPanel(app, "other");
 		await app.review.selectLine(1);
@@ -127,8 +121,8 @@ describe("a current-file comment filtered out before autosave", () => {
 				: null,
 		);
 
-		await app.review.showReviewFilter(
-			"done",
+		await app.review.pickPreset(
+			"settled",
 			() => app.review.finderBadge()?.count === 1,
 		);
 

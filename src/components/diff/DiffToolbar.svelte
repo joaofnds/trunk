@@ -15,6 +15,7 @@ import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import { fileStatusOf } from "../../lib/file-status.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
 import { renamePartsOf } from "../../lib/rename-display.js";
+import { ALL_THREADS } from "../../lib/review-filter.js";
 import { DIFF_ROW_FONT, measureRowMetrics } from "../../lib/row-metrics.js";
 import {
 	STATUS_BADGES,
@@ -78,7 +79,7 @@ let {
 	showInvisibles,
 	wordWrap,
 	reviewCommentsVisible = true,
-	reviewFilter = "all",
+	reviewFilter = ALL_THREADS,
 	commentTally = null,
 	onignorewhitespacechange,
 	onshowinvisibleschange,

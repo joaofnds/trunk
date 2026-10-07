@@ -1,9 +1,13 @@
-import { REVIEW_FILTER_OPTIONS } from "../../../src/lib/review-filter.js";
-import type { ReviewFilter } from "../../../src/lib/types.js";
+import {
+	THREAD_PRESETS,
+	type ThreadPreset,
+} from "../../../src/lib/review-filter.js";
 import { waitFor } from "../harness/wait.js";
 import { enabledButton, firstMatching } from "./dom.js";
 
-const REVIEW_FILTER = '[aria-label="Review filter selection"]';
+const PRESETS =
+	'section[aria-label="Review threads"] header fieldset button[aria-pressed]';
+const SHOW_THREADS = '[aria-label="Show review threads"]';
 const REVIEW = '[aria-label="Review"]';
 const VIEW_BADGE = '[aria-label$="review comments in this view"]';
 const HUNK_TOOLBAR = ".hunk-toolbar";
@@ -50,10 +54,15 @@ const ACTIVE_REVIEW_RADIO =
 const NEW_REVIEW = 'nav[aria-label="Reviews"] [aria-label="New review"]';
 const COMMIT_NOTE_TEXT = 'textarea[placeholder="Leave a note on this commit…"]';
 
-function filterLabel(filter: ReviewFilter): string {
-	const option = REVIEW_FILTER_OPTIONS.find((o) => o.value === filter);
-	if (!option) throw new Error(`no filter option for ${filter}`);
-	return option.label;
+function presetLabel(preset: ThreadPreset): string {
+	const found = THREAD_PRESETS.find((candidate) => candidate.id === preset);
+	if (!found) throw new Error(`no preset ${preset}`);
+	return found.label;
+}
+
+function presetButton(preset: ThreadPreset): HTMLElement | null {
+	const label = presetLabel(preset);
+	return firstMatching(PRESETS, (text) => text.startsWith(label));
 }
 
 /**
@@ -63,72 +72,77 @@ function filterLabel(filter: ReviewFilter): string {
  * button, so a gesture issued early does nothing, quietly.
  */
 export class ReviewDriver {
-	/** Selects a review-thread presentation and waits for its visible effect. */
-	async showReviewFilter(
-		filterValue: ReviewFilter,
-		observePresentation: () => boolean,
-	): Promise<void> {
-		if (filterValue === "none") {
-			const toggle = await waitFor("the review threads toggle", () =>
-				enabled('[aria-label="Hide review threads"]'),
-			);
-			toggle.click();
-
-			await waitFor("the review filter to become none", () =>
-				document.querySelector('[aria-label="Show review threads"]') &&
-				!document.querySelector(REVIEW_FILTER) &&
-				observePresentation()
-					? true
-					: null,
-			);
-			return;
-		}
-
-		const showToggle = document.querySelector<HTMLButtonElement>(
-			'[aria-label="Show review threads"]',
+	/** Hides every review thread from the toolbar's threads toggle and waits
+	 *  for its visible effect. */
+	async hideThreads(observePresentation: () => boolean): Promise<void> {
+		const toggle = await waitFor("the review threads toggle", () =>
+			enabled('[aria-label="Hide review threads"]'),
 		);
-		showToggle?.click();
+		toggle.click();
 
-		const filter = await waitFor("the review filter", () =>
-			document.querySelector<HTMLElement>(REVIEW_FILTER),
-		);
-
-		if (this.reviewFilter() !== filterValue) {
-			const label = filterLabel(filterValue);
-			filter.click();
-			const option = await waitFor(`the ${label} filter option`, () =>
-				firstMatching('[role="option"]', (text) => text.startsWith(label)),
-			);
-			option.click();
-		}
-
-		await waitFor(`the review filter to become ${filterValue}`, () =>
-			this.reviewFilter() === filterValue && observePresentation()
+		await waitFor("the review threads to hide", () =>
+			document.querySelector(SHOW_THREADS) && observePresentation()
 				? true
 				: null,
 		);
 	}
 
-	/** Presses the header's Show all, which hands the toolbar's selector back
-	 *  every thread, and waits for the selector to show it. */
+	/** Shows the review threads again from the toolbar's threads toggle, which
+	 *  restores the threads the panel showed before, and waits for its visible
+	 *  effect. */
+	async showThreads(observePresentation: () => boolean): Promise<void> {
+		const toggle = await waitFor("the review threads toggle", () =>
+			enabled(SHOW_THREADS),
+		);
+		toggle.click();
+
+		await waitFor("the review threads to show", () =>
+			!document.querySelector(SHOW_THREADS) && observePresentation()
+				? true
+				: null,
+		);
+	}
+
+	/** Presses one of the review panel's presets, which needs the panel open
+	 *  on a review with threads, and waits for its visible effect. */
+	async pickPreset(
+		preset: ThreadPreset,
+		observePresentation: () => boolean,
+	): Promise<void> {
+		const label = presetLabel(preset);
+		const button = await waitFor(`the ${label} preset`, () =>
+			presetButton(preset),
+		);
+		button.click();
+
+		await waitFor(`the ${label} preset to show`, () =>
+			this.preset() === preset && observePresentation() ? true : null,
+		);
+	}
+
+	/** Presses the panel's Show all, which shows every thread again, and waits
+	 *  for its All preset to be pressed. */
 	async showAll(): Promise<void> {
-		const button = await waitFor("the header's Show all", () =>
+		const button = await waitFor("the panel's Show all", () =>
 			enabledButton(SHOW_ALL),
 		);
 		button.click();
 
-		await waitFor("the review filter to become all", () =>
-			this.reviewFilter() === "all" ? true : null,
+		await waitFor("the All preset to show", () =>
+			this.preset() === "all" ? true : null,
 		);
 	}
 
-	/** The toolbar selector's current review filter, or null while it is hidden. */
-	reviewFilter(): string | null {
-		const shown = document.querySelector(REVIEW_FILTER)?.textContent?.trim();
-		return (
-			REVIEW_FILTER_OPTIONS.find((option) => option.label === shown)?.value ??
-			null
+	/** "none" while the toolbar hides every thread, otherwise the preset the
+	 *  panel shows, or null when it shows a mix no preset holds or is not
+	 *  mounted. */
+	preset(): ThreadPreset | "none" | null {
+		if (document.querySelector(SHOW_THREADS)) return "none";
+		const pressed = THREAD_PRESETS.find(
+			(candidate) =>
+				presetButton(candidate.id)?.getAttribute("aria-pressed") === "true",
 		);
+		return pressed?.id ?? null;
 	}
 
 	/** Comments the hunk at `ordinal`, topmost first. With no line selection this

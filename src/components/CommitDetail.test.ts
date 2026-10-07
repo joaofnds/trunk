@@ -727,7 +727,7 @@ describe("CommitDetail", () => {
 					repoPath: "/repo",
 					reviewCommentsVisible: true,
 					reviewComments,
-					reviewFilter: "done",
+					reviewFilter: { states: ["done"], stale: true },
 					commentCounts: new Map([[`${detail.oid}\0${fileDiffs[0].path}`, 2]]),
 					commentTallies: new Map<string, ReviewTally>([
 						[`${detail.oid}\0${fileDiffs[0].path}`, { done: 2 }],

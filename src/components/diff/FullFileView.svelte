@@ -16,7 +16,7 @@ import {
 import { measure } from "../../lib/perf.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
-import { threadToneColor } from "../../lib/review-filter.js";
+import { ALL_THREADS, threadToneColor } from "../../lib/review-filter.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type {
 	DiffLine,
@@ -67,7 +67,7 @@ let {
 	oncommentfullfile,
 	onextendcomment,
 	reviewCommentsVisible = true,
-	reviewFilter = "all",
+	reviewFilter = ALL_THREADS,
 	viewComments = [],
 	editorSessionForThread,
 	composer = null,

@@ -34,10 +34,10 @@ import {
 	type ReviewEditorStore,
 } from "../lib/review-editors.svelte.js";
 import {
+	ALL_THREADS,
 	badgeToneForThread,
 	combineReviewTone,
 	countBadgeThreads,
-	countByFilter,
 } from "../lib/review-filter.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
 import { initials, provideReviewer } from "../lib/reviewer.svelte.js";
@@ -141,7 +141,6 @@ interface Props {
 		total: number;
 		viewTone: ReviewTone | null;
 		totalTone: ReviewTone | null;
-		byFilter: Partial<Record<ReviewFilter, number>>;
 	}) => void;
 	onleftpanecollapsedchange: (collapsed: boolean) => void;
 	onrightpanecollapsedchange: (collapsed: boolean) => void;
@@ -163,7 +162,7 @@ let {
 	windowVisible,
 	tabActive,
 	reviewActive,
-	reviewFilter = "all",
+	reviewFilter = ALL_THREADS,
 	onreviewfilterchange,
 	contentMode,
 	oncontentmodechange,
@@ -850,15 +849,6 @@ let reviewCommentTotal = $derived(
 );
 let reviewCommentTone = $derived(toneForThreads(reviewComments.threads));
 
-// How many threads each filter would show, for the toolbar's filter menu. The
-// filter narrows the panel while it is up, which may show a review that is not
-// the active one, and the diff's threads otherwise.
-let reviewFilterCounts = $derived(
-	countByFilter(
-		reviewPanelShown ? reviewComments.shownThreads : reviewComments.threads,
-	),
-);
-
 // Report both counts up through untrack: App's setCommentCounts copies the
 // counts map (`new Map(commentCounts)`) before writing it, so calling the
 // callback inside a tracked effect would make this effect depend on the very
@@ -870,10 +860,7 @@ $effect(() => {
 	const total = reviewCommentTotal;
 	const viewTone = inlineCommentTone;
 	const totalTone = reviewCommentTone;
-	const byFilter = reviewFilterCounts;
-	untrack(() =>
-		oncommentcountschange?.({ view, total, viewTone, totalTone, byFilter }),
-	);
+	untrack(() => oncommentcountschange?.({ view, total, viewTone, totalTone }));
 });
 
 $effect(() => {

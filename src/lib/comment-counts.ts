@@ -9,7 +9,7 @@
  * hand-buildable `Thread` fixtures.
  */
 
-import { badgeToneForThread, tallyWith } from "./review-filter.js";
+import { ALL_THREADS, badgeToneForThread, tallyWith } from "./review-filter.js";
 import type {
 	ReviewFilter,
 	ReviewSnapshots,
@@ -49,7 +49,7 @@ export function fileCountKey(commitOid: string, filePath: string): string {
 export function buildCommentCounts(
 	comments: Thread[],
 	snapshots: ReviewSnapshots,
-	filter: ReviewFilter = "all",
+	filter: ReviewFilter = ALL_THREADS,
 ): CommentCounts {
 	const byCommit = new Map<string, number>();
 	const byFile = new Map<string, number>();

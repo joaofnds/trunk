@@ -21,6 +21,7 @@ import {
 	type RemoteState,
 } from "./lib/remote-state.svelte.js";
 import type { RepoChanged } from "./lib/repo-change-subscription.js";
+import { ALL_THREADS } from "./lib/review-filter.js";
 import { getScheduler } from "./lib/scheduler.js";
 import {
 	addRecentRepo,
@@ -31,7 +32,7 @@ import {
 	getLeftPaneWidth,
 	getOpenRepo,
 	getOpenTabs,
-	getReviewFilter,
+	getReviewThreadsHidden,
 	getRightPaneCollapsed,
 	getRightPaneWidth,
 	getZoomLevel,
@@ -42,7 +43,7 @@ import {
 	setLeftPaneWidth,
 	setOpenRepo,
 	setOpenTabs,
-	setReviewFilter,
+	setReviewThreadsHidden,
 	setRightPaneCollapsed,
 	setRightPaneWidth,
 	setZoomLevel,
@@ -77,9 +78,11 @@ let reviewPanelOpen = $state(false);
 // ending review (260531-l02e). Defaults true (panel shows on review entry).
 let activeReviewPanelShowing = $state(true);
 
-// Review presentation: App owns the persisted global filter; RepoView reports
-// per-tab filtered badge counts up. The active tab alone feeds the toolbar.
-let reviewFilter = $state<ReviewFilter>("all");
+// Review presentation: App owns the global filter, which the review panel
+// narrows and the toolbar hides; only whether it hides is persisted. RepoView
+// reports per-tab filtered badge counts up. The active tab alone feeds the
+// toolbar.
+let reviewFilter = $state<ReviewFilter>(ALL_THREADS);
 let reviewFilterChanged = false;
 let diffContentMode = $state<ContentMode>("hunk");
 let diffContentModeChanged = false;
@@ -92,7 +95,6 @@ let commentCounts = $state<
 			total: number;
 			viewTone: ReviewTone | null;
 			totalTone: ReviewTone | null;
-			byFilter: Partial<Record<ReviewFilter, number>>;
 		}
 	>
 >(new Map());
@@ -104,7 +106,6 @@ function setCommentCounts(
 		total: number;
 		viewTone: ReviewTone | null;
 		totalTone: ReviewTone | null;
-		byFilter: Partial<Record<ReviewFilter, number>>;
 	},
 ) {
 	const next = new Map(commentCounts);
@@ -114,8 +115,9 @@ function setCommentCounts(
 
 async function handleReviewFilterChange(filter: ReviewFilter) {
 	reviewFilterChanged = true;
+	const hiddenChanged = (filter === "none") !== (reviewFilter === "none");
 	reviewFilter = filter;
-	await setReviewFilter(filter);
+	if (hiddenChanged) await setReviewThreadsHidden(filter === "none");
 }
 
 async function handleDiffContentModeChange(mode: ContentMode) {
@@ -146,9 +148,6 @@ const activeInlineCommentTone = $derived(
 );
 const activeReviewCommentTone = $derived(
 	commentCounts.get(activeTabId)?.totalTone ?? null,
-);
-const activeReviewFilterCounts = $derived(
-	commentCounts.get(activeTabId)?.byFilter ?? {},
 );
 
 // Drop counts for closed tabs so the per-tab map can't grow unbounded across a
@@ -488,8 +487,8 @@ $effect(() => {
 
 // Review filter persistence
 $effect(() => {
-	getReviewFilter().then((filter) => {
-		if (!reviewFilterChanged) reviewFilter = filter;
+	getReviewThreadsHidden().then((hidden) => {
+		if (!reviewFilterChanged && hidden) reviewFilter = "none";
 	});
 });
 
@@ -764,7 +763,6 @@ $effect(() => {
 				reviewCommentCount={activeReviewCommentCount}
 				viewCommentTone={activeInlineCommentTone}
 				reviewCommentTone={activeReviewCommentTone}
-				reviewFilterCounts={activeReviewFilterCounts}
 				onreviewfilterchange={handleReviewFilterChange}
 			/>
 		{/if}

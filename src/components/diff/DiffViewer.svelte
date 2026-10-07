@@ -4,6 +4,7 @@ import type { DiffNav } from "../../lib/diff-nav.js";
 import { type DiffComposer, diffHoldsComposer } from "../../lib/diff-rows.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
+import { ALL_THREADS } from "../../lib/review-filter.js";
 import type {
 	CommitDetail,
 	ContentMode,
@@ -138,7 +139,7 @@ let {
 	commitOid,
 	repoPath,
 	reviewCommentsVisible = true,
-	reviewFilter = "all",
+	reviewFilter = ALL_THREADS,
 	viewComments = [],
 	editorSessionForThread,
 	composer = null,

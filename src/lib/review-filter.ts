@@ -1,48 +1,75 @@
-import type { ReviewFilter, ReviewTally, ReviewTone, Thread } from "./types.js";
+import type {
+	ReviewFilter,
+	ReviewTally,
+	ReviewTone,
+	Thread,
+	ThreadFilter,
+	ThreadState,
+} from "./types.js";
 
-export const REVIEW_FILTER_OPTIONS: readonly {
-	readonly value: ReviewFilter;
-	readonly label: string;
-}[] = [
-	{ value: "all", label: "All threads" },
-	{ value: "open", label: "Open" },
-	{ value: "addressed", label: "Addressed" },
-	{ value: "done", label: "Done" },
-	{ value: "dismissed", label: "Dismissed" },
-	{ value: "stale", label: "Stale" },
+export const THREAD_STATES: readonly ThreadState[] = [
+	"open",
+	"addressed",
+	"done",
+	"dismissed",
 ];
+
+export const ALL_THREADS: ThreadFilter = { states: THREAD_STATES, stale: true };
+
+export type ThreadPreset = "all" | "needs" | "settled";
+
+/** The review panel's one-press filters, each showing its states and the
+ * stale threads among them. */
+export const THREAD_PRESETS: readonly {
+	id: ThreadPreset;
+	label: string;
+	filter: ThreadFilter;
+}[] = [
+	{ id: "all", label: "All", filter: ALL_THREADS },
+	{
+		id: "needs",
+		label: "Needs me",
+		filter: { states: ["open", "addressed"], stale: true },
+	},
+	{
+		id: "settled",
+		label: "Settled",
+		filter: { states: ["done", "dismissed"], stale: true },
+	},
+];
+
+/** The preset a filter shows exactly the threads of, if any. */
+export function presetOf(filter: ReviewFilter): ThreadPreset | null {
+	if (filter === "none" || !filter.stale) return null;
+	const found = THREAD_PRESETS.find((preset) =>
+		THREAD_STATES.every(
+			(state) =>
+				preset.filter.states.includes(state) === filter.states.includes(state),
+		),
+	);
+	return found?.id ?? null;
+}
 
 export function threadMatchesFilter(
 	thread: Thread,
 	filter: ReviewFilter,
 ): boolean {
 	if (filter === "none") return false;
-	if (filter === "all") return true;
-	if (filter === "stale") return thread.stale;
-	return thread.state === filter;
+	return (
+		filter.states.includes(thread.state) && (filter.stale || !thread.stale)
+	);
 }
 
-/** The threads that receive a count pill for a filter. The default view only
- * counts unresolved work; explicit state/stale filters count their matches. */
+/** The threads that receive a count pill for a filter. While every thread
+ * shows, only unresolved work counts; a narrower filter counts what it shows. */
 export function badgeToneForThread(
 	thread: Thread,
 	filter: ReviewFilter,
 ): ReviewTone | null {
 	if (!threadMatchesFilter(thread, filter)) return null;
-	if (filter === "all") {
-		if (thread.state === "open") return "open";
-		if (thread.state === "addressed") return "addressed";
-		return null;
-	}
-	if (filter === "stale") return "stale";
-	if (
-		filter === "open" ||
-		filter === "addressed" ||
-		filter === "done" ||
-		filter === "dismissed"
-	) {
-		return filter;
-	}
+	if (presetOf(filter) !== "all") return thread.state;
+	if (thread.state === "open" || thread.state === "addressed")
+		return thread.state;
 	return null;
 }
 
@@ -62,19 +89,6 @@ export function countBadgeThreads(
 		if (badgeToneForThread(thread, filter) !== null) count++;
 	}
 	return count;
-}
-
-/** How many threads each filter the reader can pick would show. */
-export function countByFilter(
-	threads: Thread[],
-): Partial<Record<ReviewFilter, number>> {
-	return Object.fromEntries(
-		REVIEW_FILTER_OPTIONS.map((option) => [
-			option.value,
-			threads.filter((thread) => threadMatchesFilter(thread, option.value))
-				.length,
-		]),
-	);
 }
 
 /** The threads that receive a count pill for a filter, counted by tone. */
@@ -154,12 +168,4 @@ export function mostUrgentTone(threads: Thread[]): ReviewTone | null {
 /** The colour a state's tone draws in, for a stylesheet that reads `--thread-tone`. */
 export function threadToneColor(tone: ReviewTone): string {
 	return `var(--color-thread-${tone})`;
-}
-
-export function isValidReviewFilter(value: unknown): value is ReviewFilter {
-	return (
-		typeof value === "string" &&
-		(value === "none" ||
-			REVIEW_FILTER_OPTIONS.some((option) => option.value === value))
-	);
 }

@@ -26,7 +26,7 @@ import {
 	reviewComposerTargetsEqual,
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
-import { tallyBadgeThreads } from "../lib/review-filter.js";
+import { ALL_THREADS, tallyBadgeThreads } from "../lib/review-filter.js";
 import {
 	getDiffContextLines,
 	getDiffIgnoreWhitespace,
@@ -123,7 +123,7 @@ let {
 	onretry,
 	onloadfullfile,
 	reviewCommentsVisible = true,
-	reviewFilter = "all",
+	reviewFilter = ALL_THREADS,
 	activeReviewId = null,
 	activeReview = null,
 	viewComments = [],

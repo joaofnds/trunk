@@ -9,7 +9,11 @@ import {
 	editThread,
 } from "../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
-import { filterThreads, threadMatchesFilter } from "../lib/review-filter.js";
+import {
+	ALL_THREADS,
+	filterThreads,
+	threadMatchesFilter,
+} from "../lib/review-filter.js";
 import type { Delivery, ReviewFilter, Thread } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import ComposerFrame from "./review/ComposerFrame.svelte";
@@ -36,7 +40,7 @@ let {
 	notes,
 	repoPath,
 	commitOid,
-	reviewFilter = "all",
+	reviewFilter = ALL_THREADS,
 	activeReviewId = null,
 	batchHeld = false,
 	editorSessionForThread,

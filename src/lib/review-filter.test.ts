@@ -1,14 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import {
+	ALL_THREADS,
 	badgeToneForThread,
 	combineReviewTone,
 	countBadgeThreads,
-	countByFilter,
 	filterThreads,
+	presetOf,
+	THREAD_PRESETS,
 	tallyBadgeThreads,
-	threadMatchesFilter,
 } from "./review-filter.js";
+import type { ReviewFilter } from "./types.js";
+
+function preset(id: (typeof THREAD_PRESETS)[number]["id"]): ReviewFilter {
+	const found = THREAD_PRESETS.find((candidate) => candidate.id === id);
+	if (!found) throw new Error(`no preset ${id}`);
+	return found.filter;
+}
 
 describe("review filter projection", () => {
 	const open = aThread({ id: "open", state: "open" });
@@ -16,6 +24,7 @@ describe("review filter projection", () => {
 	const done = aThread({ id: "done", state: "done" });
 	const dismissed = aThread({ id: "dismissed", state: "dismissed" });
 	const staleDone = aThread({ id: "stale", state: "done", stale: true });
+	const threads = [open, addressed, done, dismissed, staleDone];
 
 	it.each([
 		["open", "addressed"],
@@ -29,32 +38,70 @@ describe("review filter projection", () => {
 
 	it.each([
 		["all", ["open", "addressed", "done", "dismissed", "stale"]],
-		["open", ["open"]],
-		["addressed", ["addressed"]],
-		["done", ["done", "stale"]],
-		["dismissed", ["dismissed"]],
-		["stale", ["stale"]],
-		["none", []],
-	] as const)("matches the %s bucket", (filter, ids) => {
-		const threads = [open, addressed, done, dismissed, staleDone];
-		expect(filterThreads(threads, filter).map((thread) => thread.id)).toEqual(
-			ids,
+		["needs", ["open", "addressed"]],
+		["settled", ["done", "dismissed", "stale"]],
+	] as const)("shows the %s preset's threads", (id, ids) => {
+		expect(filterThreads(threads, preset(id)).map((t) => t.id)).toEqual(ids);
+	});
+
+	it("shows the threads in any of a filter's states", () => {
+		const filter = { states: ["open", "done"], stale: true } as const;
+
+		expect(filterThreads(threads, filter).map((t) => t.id)).toEqual([
+			"open",
+			"done",
+			"stale",
+		]);
+	});
+
+	it("hides a stale thread while stale threads are off", () => {
+		const filter = { ...ALL_THREADS, stale: false };
+
+		expect(filterThreads(threads, filter).map((t) => t.id)).not.toContain(
+			"stale",
 		);
 	});
 
-	it("counts unresolved threads by default but every matching state explicitly", () => {
-		const threads = [open, addressed, done, dismissed, staleDone];
-		expect(countBadgeThreads(threads, "all")).toBe(2);
-		expect(countBadgeThreads(threads, "done")).toBe(2);
-		expect(countBadgeThreads(threads, "stale")).toBe(1);
+	it("shows nothing while review threads are hidden", () => {
+		expect(filterThreads(threads, "none")).toEqual([]);
 	});
 
-	it("uses the filter tone, with stale taking precedence in the stale bucket", () => {
-		expect(badgeToneForThread(open, "all")).toBe("open");
-		expect(badgeToneForThread(addressed, "all")).toBe("addressed");
-		expect(badgeToneForThread(done, "all")).toBeNull();
-		expect(badgeToneForThread(staleDone, "stale")).toBe("stale");
-		expect(threadMatchesFilter(staleDone, "done")).toBe(true);
+	it("pills only open and addressed threads while every thread shows", () => {
+		expect(countBadgeThreads(threads, ALL_THREADS)).toBe(2);
+		expect(badgeToneForThread(done, ALL_THREADS)).toBeNull();
+	});
+
+	it("pills each shown thread in its own state's tone under a narrower filter", () => {
+		expect(badgeToneForThread(staleDone, preset("settled"))).toBe("done");
+		expect(badgeToneForThread(dismissed, preset("settled"))).toBe("dismissed");
+		expect(badgeToneForThread(open, preset("settled"))).toBeNull();
+	});
+});
+
+describe("presetOf", () => {
+	it.each(["all", "needs", "settled"] as const)(
+		"names the %s preset from its filter",
+		(id) => {
+			expect(presetOf(preset(id))).toBe(id);
+		},
+	);
+
+	it("names the preset whatever order its states are in", () => {
+		expect(presetOf({ states: ["addressed", "open"], stale: true })).toBe(
+			"needs",
+		);
+	});
+
+	it("names no preset for a mix of states no preset holds", () => {
+		expect(presetOf({ states: ["open", "done"], stale: true })).toBeNull();
+	});
+
+	it("names no preset while stale threads are off", () => {
+		expect(presetOf({ ...ALL_THREADS, stale: false })).toBeNull();
+	});
+
+	it("names no preset while review threads are hidden", () => {
+		expect(presetOf("none")).toBeNull();
 	});
 });
 
@@ -66,37 +113,18 @@ describe("tallyBadgeThreads", () => {
 		aThread({ id: "d1", state: "done" }),
 	];
 
-	it("counts the unresolved threads by state under All threads", () => {
-		expect(tallyBadgeThreads(threads, "all")).toEqual({
+	it("counts the unresolved threads by state while every thread shows", () => {
+		expect(tallyBadgeThreads(threads, ALL_THREADS)).toEqual({
 			open: 2,
 			addressed: 1,
 		});
 	});
 
-	it("counts only the filter's state under an explicit filter", () => {
-		expect(tallyBadgeThreads(threads, "done")).toEqual({ done: 1 });
+	it("counts only the shown states under a narrower filter", () => {
+		expect(tallyBadgeThreads(threads, preset("settled"))).toEqual({ done: 1 });
 	});
 
-	it("counts nothing under Hide all", () => {
+	it("counts nothing while review threads are hidden", () => {
 		expect(tallyBadgeThreads(threads, "none")).toEqual({});
-	});
-});
-
-describe("countByFilter", () => {
-	it("counts how many threads each visible filter would show", () => {
-		const threads = [
-			aThread({ id: "o1", state: "open" }),
-			aThread({ id: "o2", state: "open", stale: true }),
-			aThread({ id: "d1", state: "done" }),
-		];
-
-		expect(countByFilter(threads)).toEqual({
-			all: 3,
-			open: 2,
-			addressed: 0,
-			done: 1,
-			dismissed: 0,
-			stale: 1,
-		});
 	});
 });

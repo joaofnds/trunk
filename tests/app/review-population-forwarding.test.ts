@@ -57,12 +57,15 @@ describe("review population forwarding", () => {
 			`${COMMIT_FILE}:L1-L1`,
 			"dismissed commit comment",
 		);
-		await app.review.showReviewFilter(
-			"dismissed",
-			() =>
-				app.repo.workingTreeCommentBadge()?.count === 2 &&
-				app.repo.commitCommentBadge("Change commit")?.count === 1 &&
-				app.review.reviewBadgeCount() === 3,
+		await app.review.openPanel();
+		await app.review.pickPreset("settled", () => true);
+		await app.review.closePanel();
+		await waitFor("the settled population's badges", () =>
+			app.repo.workingTreeCommentBadge()?.count === 2 &&
+			app.repo.commitCommentBadge("Change commit")?.count === 1 &&
+			app.review.reviewBadgeCount() === 3
+				? true
+				: null,
 		);
 		expect(app.repo.workingTreeCommentBadge()).toEqual({
 			count: 2,
@@ -82,14 +85,12 @@ describe("review population forwarding", () => {
 			app.review.viewBadgeCount() === 1 ? true : null,
 		);
 		expect(app.review.viewBadgeTone()).toBe("dismissed");
-		await app.review.showReviewFilter(
-			"none",
+		await app.review.hideThreads(
 			() =>
 				app.review.viewBadgeCount() === null &&
 				app.review.reviewBadgeCount() === null,
 		);
-		await app.review.showReviewFilter(
-			"dismissed",
+		await app.review.showThreads(
 			() =>
 				app.review.viewBadgeCount() === 1 &&
 				app.review.reviewBadgeCount() === 3,
@@ -113,8 +114,7 @@ describe("review population forwarding", () => {
 			tone: "dismissed",
 		});
 
-		await app.review.showReviewFilter(
-			"none",
+		await app.review.hideThreads(
 			() =>
 				app.repo.workingTreeCommentBadge() === null &&
 				app.repo.commitCommentBadge("Change commit") === null &&
@@ -122,8 +122,7 @@ describe("review population forwarding", () => {
 				app.staging.stagedFileCommentBadge(STAGED_FILE) === null &&
 				app.review.reviewBadgeCount() === null,
 		);
-		await app.review.showReviewFilter(
-			"dismissed",
+		await app.review.showThreads(
 			() =>
 				app.repo.workingTreeCommentBadge()?.count === 2 &&
 				app.repo.commitCommentBadge("Change commit")?.count === 1 &&

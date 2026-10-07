@@ -37,8 +37,8 @@ const {
 	removeRecentRepo,
 	getZoomLevel,
 	setZoomLevel,
-	getReviewFilter,
-	setReviewFilter,
+	getReviewThreadsHidden,
+	setReviewThreadsHidden,
 	getDiffContextLines,
 	setDiffContextLines,
 	getDiffIgnoreWhitespace,
@@ -221,20 +221,25 @@ describe("store", () => {
 		});
 	});
 
-	describe("review filter", () => {
-		it("defaults to all when the preference is absent", async () => {
-			expect(await getReviewFilter()).toBe("all");
+	describe("review threads hidden", () => {
+		it("shows threads when the preference is absent", async () => {
+			expect(await getReviewThreadsHidden()).toBe(false);
 		});
 
-		it("persists a valid filter", async () => {
-			await setReviewFilter("stale");
-			expect(await getReviewFilter()).toBe("stale");
+		it.each([true, false])("persists hidden as %s", async (hidden) => {
+			await setReviewThreadsHidden(hidden);
+
+			expect(await getReviewThreadsHidden()).toBe(hidden);
 		});
 
-		it("falls back to all for an invalid stored value", async () => {
-			backingStore.set("review_filter", "legacy-toggle");
-			expect(await getReviewFilter()).toBe("all");
-		});
+		it.each(["done", "legacy-toggle"])(
+			"shows threads for the old stored value %s",
+			async (stored) => {
+				backingStore.set("review_filter", stored);
+
+				expect(await getReviewThreadsHidden()).toBe(false);
+			},
+		);
 	});
 
 	describe("diff preferences", () => {

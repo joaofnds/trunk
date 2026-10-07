@@ -71,14 +71,11 @@ describe("an interactive-rebase diff comment", () => {
 			app.diffPane.contextLines().includes("one") ? true : null,
 		);
 
-		await app.review.showReviewFilter(
-			"none",
-			() => app.review.composerDraft() === null,
-		);
+		await app.review.hideThreads(() => app.review.composerDraft() === null);
 		await app.rebaseEditor.closeDiff();
 		await app.rebaseEditor.focus("C2");
 		await app.rebaseEditor.focus("C3");
-		await app.review.showReviewFilter("all", () => true);
+		await app.review.showThreads(() => true);
 		await app.rebaseEditor.openFile(FILE);
 
 		await expect(
@@ -118,28 +115,28 @@ describe("an interactive-rebase diff comment", () => {
 		await waitFor("the rebase thread", () =>
 			app.review.threads().length === 1 ? true : null,
 		);
-		await app.review.dismissThread(ANCHOR);
-		await app.review.showReviewFilter(
-			"dismissed",
-			() => app.review.states()[0] === "dismissed",
-		);
 		await app.rebaseEditor.closeDiff();
 		await waitFor("the rebase commit-detail file badge", () =>
 			app.repo.commitFileCommentBadge(FILE)?.count === 1 ? true : null,
 		);
 		expect(app.repo.commitFileCommentBadge(FILE)).toEqual({
 			count: 1,
-			tone: "dismissed",
+			tone: "open",
 		});
-		await app.review.showReviewFilter(
-			"none",
+		await app.review.hideThreads(
 			() => app.repo.commitFileCommentBadge(FILE) === null,
 		);
-		await app.review.showReviewFilter(
-			"dismissed",
+		await app.review.showThreads(
 			() => app.repo.commitFileCommentBadge(FILE)?.count === 1,
 		);
-		await app.review.showReviewFilter("all", () => true);
+		await app.rebaseEditor.focus("C2");
+		await app.rebaseEditor.focus("C3");
+		await app.rebaseEditor.openFile(FILE);
+		await app.review.dismissThread(ANCHOR);
+		await waitFor("the dismissed rebase thread", () =>
+			app.review.states()[0] === "dismissed" ? true : null,
+		);
+		await app.rebaseEditor.closeDiff();
 		await app.review.startCommitNote();
 		await app.review.writeCommitNote("rebase commit root before editing");
 		await app.review.saveCommitNote();
@@ -159,15 +156,12 @@ describe("an interactive-rebase diff comment", () => {
 		await app.review.startCommitNote();
 		await app.review.writeCommitNote(NOTE_DRAFT);
 
-		await app.review.showReviewFilter(
-			"none",
-			() => app.review.rootEditDraft() === null,
-		);
+		await app.review.hideThreads(() => app.review.rootEditDraft() === null);
 		await app.rebaseEditor.cancel();
 		await app.repo.contextMenu("C2");
 		app.contextMenu.choose("Interactive Rebase...");
 		await app.rebaseEditor.focus("C3");
-		await app.review.showReviewFilter("all", () => true);
+		await app.review.showThreads(() => true);
 
 		await expect(
 			waitFor("the retained rebase root edit", () =>

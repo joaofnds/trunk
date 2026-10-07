@@ -29,10 +29,7 @@ describe("the review file finder while comments are hidden", () => {
 				: null,
 		);
 
-		await app.review.showReviewFilter(
-			"none",
-			() => !app.review.finderVisible(),
-		);
+		await app.review.hideThreads(() => !app.review.finderVisible());
 		release();
 		await app.settled();
 
@@ -51,11 +48,8 @@ describe("the review file finder while comments are hidden", () => {
 				: null,
 		);
 
-		await app.review.showReviewFilter(
-			"none",
-			() => !app.review.finderVisible(),
-		);
-		await app.review.showReviewFilter("all", () => !app.review.finderVisible());
+		await app.review.hideThreads(() => !app.review.finderVisible());
+		await app.review.showThreads(() => !app.review.finderVisible());
 		release();
 		await app.settled();
 

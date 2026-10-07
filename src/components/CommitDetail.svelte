@@ -12,6 +12,7 @@ import { toFileStatusList } from "../lib/file-status.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
+import { ALL_THREADS } from "../lib/review-filter.js";
 import type {
 	CommitDetail,
 	CommitNav,
@@ -76,7 +77,7 @@ let {
 	pagerKeys = true,
 	reviewComments,
 	reviewCommentsVisible = false,
-	reviewFilter = "all",
+	reviewFilter = ALL_THREADS,
 	commentCounts,
 	commentTallies,
 	activeReviewId = null,

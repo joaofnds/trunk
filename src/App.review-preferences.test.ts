@@ -26,13 +26,11 @@ import { restoreLayout, stubLayout } from "./__tests__/helpers/layout-stub.js";
 import { aSessionCommit } from "./__tests__/helpers/session-commit-fixture.js";
 import { aReply, aThread } from "./__tests__/helpers/thread-fixture.js";
 import App from "./App.svelte";
-import { REVIEW_FILTER_OPTIONS } from "./lib/review-filter.js";
 import type {
 	CommitDetail,
 	DiffRequestOptions,
 	FileDiff,
 	Review,
-	ReviewFilter,
 	SessionCommit,
 	Thread,
 } from "./lib/types.js";
@@ -59,7 +57,6 @@ if (typeof Element.prototype.scrollIntoView === "undefined") {
 
 const REPO_A = "/repo/A";
 const REPO_B = "/repo/B";
-const REVIEW_FILTER = "Review filter selection";
 
 interface RepositoryReview {
 	review: Review;
@@ -332,27 +329,51 @@ afterEach(async () => {
 });
 
 describe("App review preference", () => {
-	it("applies one selected filter across repository tabs and restores it after remount", async () => {
+	it("narrows every repository tab to the preset the panel picks", async () => {
 		seedTwoTabs();
 		host.seedReview(REPO_A, reviewWith("open"));
 		host.seedReview(REPO_B, reviewWith("done"));
-		const firstMount = render(App);
-		await selectedFilter("all");
+		render(App);
 		await reviewBadge(1);
+		await openReviewPanel();
 
-		await chooseFilter("done");
+		await fireEvent.click(await preset("Settled"));
 		await reviewBadge(null);
 		await activateTab("tab-b");
 
-		await selectedFilter("done");
 		await reviewBadge(1);
+	});
+
+	it("opens on every thread after a remount, keeping no preset", async () => {
+		seedOneTab();
+		host.seedReview(REPO_A, reviewWith("open"));
+		const firstMount = render(App);
+		await openReviewPanel();
+		await fireEvent.click(await preset("Settled"));
+		await reviewBadge(null);
 		firstMount.unmount();
 
 		render(App);
 
-		await selectedFilter("done");
 		await reviewBadge(1);
-		expect(host.preference("review_filter")).toBe("done");
+		expect(host.preference("review_filter")).toBeUndefined();
+	});
+
+	it("keeps review threads hidden across a remount", async () => {
+		seedOneTab();
+		host.seedReview(REPO_A, reviewWith("open"));
+		const firstMount = render(App);
+		await reviewBadge(1);
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Hide review threads" }),
+		);
+		await reviewBadge(null);
+		firstMount.unmount();
+
+		render(App);
+
+		await screen.findByRole("button", { name: "Show review threads" });
+		expect(host.preference("review_filter")).toBe("none");
 	});
 
 	it.each([
@@ -364,37 +385,54 @@ describe("App review preference", () => {
 			name: "an invalid preference",
 			stored: "legacy-toggle",
 		},
+		{
+			name: "a single-state filter from before the presets",
+			stored: "done",
+		},
 	])(
-		"uses all for $name without converting legacy data",
+		"shows every thread for $name without converting legacy data",
 		async ({ stored }) => {
 			seedOneTab();
 			if (stored !== undefined) host.seedPreference("review_filter", stored);
 			host.seedPreference("show_inline_comments", false);
 
 			render(App);
+			await waitFor(() =>
+				expect(host.preferenceReads()).toContain("review_filter"),
+			);
+			await nextTask();
+			await tick();
 
-			await selectedFilter("all");
+			expect(
+				screen.getByRole("button", { name: "Hide review threads" }),
+			).toBeInTheDocument();
 			expect(host.preference("review_filter")).toBe(stored);
 			expect(host.preference("show_inline_comments")).toBe(false);
 			expect(host.preferenceReads()).not.toContain("show_inline_comments");
 		},
 	);
 
-	it("keeps a user selection when the captured initial read resolves later", async () => {
+	it("keeps a user's choice when the captured initial read resolves later", async () => {
 		seedOneTab();
-		host.seedPreference("review_filter", "open");
+		host.seedPreference("review_filter", "none");
 		const read = host.holdPreferenceRead("review_filter");
 		render(App);
 		await read.entered;
-		await selectedFilter("all");
 
-		await chooseFilter("done");
-		await waitFor(() => expect(host.preference("review_filter")).toBe("done"));
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Hide review threads" }),
+		);
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Show review threads" }),
+		);
+		await waitFor(() => expect(host.preference("review_filter")).toBe("all"));
 		read.release();
 		await nextTask();
 		await tick();
 
-		await selectedFilter("done");
+		expect(
+			screen.getByRole("button", { name: "Hide review threads" }),
+		).toBeInTheDocument();
 	});
 
 	it("shows counts only from the selected review when switching away and back", async () => {
@@ -686,32 +724,8 @@ function fileDiff(path: string, content?: string): FileDiff {
 	};
 }
 
-function filterLabel(filter: ReviewFilter): string {
-	const option = REVIEW_FILTER_OPTIONS.find((o) => o.value === filter);
-	if (!option) throw new Error(`no filter option for ${filter}`);
-	return option.label;
-}
-
-async function selectedFilter(expected: ReviewFilter): Promise<void> {
-	await waitFor(() =>
-		expect(
-			screen.getByRole("combobox", { name: REVIEW_FILTER }),
-		).toHaveTextContent(filterLabel(expected)),
-	);
-}
-
-async function chooseFilter(filter: ReviewFilter): Promise<void> {
-	const selection = await screen.findByRole("combobox", {
-		name: REVIEW_FILTER,
-	});
-
-	await fireEvent.click(selection);
-	await fireEvent.click(
-		screen.getByRole("option", {
-			name: new RegExp(`^${filterLabel(filter)}`),
-		}),
-	);
-	await selectedFilter(filter);
+async function preset(label: string): Promise<HTMLElement> {
+	return screen.findByRole("button", { name: new RegExp(`^${label}`) });
 }
 
 async function activateTab(tabId: string): Promise<void> {

@@ -8,10 +8,13 @@ import {
 	createRemoteState,
 	type RemoteState,
 } from "../lib/remote-state.svelte.js";
+import { THREAD_PRESETS } from "../lib/review-filter.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { UndoEntry } from "../lib/undo-redo.svelte.js";
-import Toolbar, { reviewFilterSlide } from "./Toolbar.svelte";
+import Toolbar from "./Toolbar.svelte";
+
+const NEEDS_ME = THREAD_PRESETS[1].filter;
 
 // All Tauri module mocks — declared locally (NOT via ../__tests__/helpers/tauri-mock)
 // for proper vi.mock hoisting before Toolbar.svelte's static imports resolve.
@@ -512,76 +515,7 @@ describe("Toolbar", () => {
 		).toBeInTheDocument();
 	});
 
-	it("fires onreviewfilterchange when the filter changes", async () => {
-		const onreviewfilterchange = vi.fn();
-		render(Toolbar, {
-			props: {
-				repoPath: "/test/repo",
-				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
-				reviewActive: false,
-				onreviewfilterchange,
-			},
-		});
-		await fireEvent.click(
-			screen.getByRole("combobox", { name: "Review filter selection" }),
-		);
-		await fireEvent.click(screen.getByRole("option", { name: /^Done/ }));
-		expect(onreviewfilterchange).toHaveBeenCalledWith("done");
-	});
-
-	it("reflects the selected review filter", () => {
-		render(Toolbar, {
-			props: {
-				repoPath: "/test/repo",
-				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
-				reviewActive: false,
-				reviewFilter: "addressed",
-			},
-		});
-		expect(
-			screen.getByRole("combobox", { name: "Review filter selection" }),
-		).toHaveTextContent("Addressed");
-	});
-
-	it("renders the filter selector before the review threads toggle in DOM order", () => {
-		render(Toolbar, {
-			props: {
-				repoPath: "/test/repo",
-				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
-				reviewActive: false,
-			},
-		});
-
-		expect(
-			screen.getByRole("combobox", { name: "Review filter selection" }),
-		).toAppearBefore(
-			screen.getByRole("button", { name: "Hide review threads" }),
-		);
-	});
-
-	it("groups the active filter and toggle in one container", () => {
-		render(Toolbar, {
-			props: {
-				repoPath: "/test/repo",
-				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
-				reviewActive: false,
-			},
-		});
-		const select = screen.getByRole("combobox", {
-			name: "Review filter selection",
-		});
-		const threadsButton = screen.getByRole("button", {
-			name: "Hide review threads",
-		});
-
-		expect(threadsButton.parentElement).toContainElement(select);
-	});
-
-	it("paints the active filter and toggle as one accent sleeve", () => {
+	it("paints the toggle in the accent sleeve while threads show", () => {
 		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
@@ -619,7 +553,7 @@ describe("Toolbar", () => {
 		expect(threadsButton.parentElement).not.toHaveClass("bg-accent-bg");
 	});
 
-	it("hides the filter selector when review threads are hidden", () => {
+	it("presses the toggle off when review threads are hidden", () => {
 		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
@@ -629,58 +563,33 @@ describe("Toolbar", () => {
 				reviewFilter: "none",
 			},
 		});
-		expect(
-			screen.queryByRole("combobox", { name: "Review filter selection" }),
-		).not.toBeInTheDocument();
+
 		expect(
 			screen.getByRole("button", { name: "Show review threads" }),
 		).toHaveAttribute("aria-pressed", "false");
 	});
 
-	it("slides the filter horizontally and removes motion when requested", () => {
-		const node = document.createElement("label");
-		node.style.cssText =
-			"display: flex; width: 92px; height: 28px; padding: 0; margin: 0; border-width: 0";
-		document.body.append(node);
+	it.each(
+		THREAD_PRESETS.map((preset) => [preset.label, preset.filter] as const),
+	)("hides review threads from the %s preset", async (_label, reviewFilter) => {
+		const onreviewfilterchange = vi.fn();
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+				reviewFilter,
+				onreviewfilterchange,
+			},
+		});
 
-		try {
-			vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
-			const horizontal = reviewFilterSlide(node);
-			const collapsedDeclarations = (horizontal.css?.(0, 1) ?? "").split(";");
-			expect(collapsedDeclarations).toContain("width: 0px");
-			expect(collapsedDeclarations).not.toContain("height: 0px");
-			expect(horizontal.duration).toBe(160);
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Hide review threads" }),
+		);
 
-			vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
-			expect(reviewFilterSlide(node).duration).toBe(0);
-		} finally {
-			node.remove();
-			vi.unstubAllGlobals();
-		}
+		expect(onreviewfilterchange).toHaveBeenLastCalledWith("none");
 	});
-
-	it.each(["all", "open", "addressed", "done", "dismissed", "stale"] as const)(
-		"hides review threads from the %s filter",
-		async (reviewFilter) => {
-			const onreviewfilterchange = vi.fn();
-			render(Toolbar, {
-				props: {
-					repoPath: "/test/repo",
-					remoteState: makeRemoteState(),
-					undoRedo: makeUndoRedo(),
-					reviewActive: false,
-					reviewFilter,
-					onreviewfilterchange,
-				},
-			});
-
-			await fireEvent.click(
-				screen.getByRole("button", { name: "Hide review threads" }),
-			);
-
-			expect(onreviewfilterchange).toHaveBeenLastCalledWith("none");
-		},
-	);
 
 	it("restores the selected filter when review threads are shown", async () => {
 		const onreviewfilterchange = vi.fn();
@@ -690,7 +599,7 @@ describe("Toolbar", () => {
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
 				reviewActive: false,
-				reviewFilter: "addressed",
+				reviewFilter: NEEDS_ME,
 				onreviewfilterchange,
 			},
 		});
@@ -707,59 +616,7 @@ describe("Toolbar", () => {
 			screen.getByRole("button", { name: "Show review threads" }),
 		);
 
-		expect(onreviewfilterchange).toHaveBeenLastCalledWith("addressed");
-	});
-
-	it("offers every visible thread filter and no hidden state", async () => {
-		render(Toolbar, {
-			props: {
-				repoPath: "/test/repo",
-				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
-				reviewActive: false,
-				reviewFilter: "all",
-			},
-		});
-
-		await fireEvent.click(
-			screen.getByRole("combobox", { name: "Review filter selection" }),
-		);
-
-		expect(
-			screen
-				.getAllByRole("option")
-				.map((option) => option.textContent?.replace(/\s*\d+\s*$/, "").trim()),
-		).toEqual([
-			"All threads",
-			"Open",
-			"Addressed",
-			"Done",
-			"Dismissed",
-			"Stale",
-		]);
-	});
-	it("shows how many threads each filter would show", async () => {
-		render(Toolbar, {
-			props: {
-				repoPath: "/test/repo",
-				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
-				reviewActive: false,
-				reviewFilter: "all",
-				reviewFilterCounts: { all: 4, open: 3, done: 1 },
-			},
-		});
-
-		await fireEvent.click(
-			screen.getByRole("combobox", { name: "Review filter selection" }),
-		);
-
-		expect(screen.getByRole("option", { name: /^Open/ })).toHaveTextContent(
-			"Open 3",
-		);
-		expect(screen.getByRole("option", { name: /^Done/ })).toHaveTextContent(
-			"Done 1",
-		);
+		expect(onreviewfilterchange).toHaveBeenLastCalledWith(NEEDS_ME);
 	});
 });
 

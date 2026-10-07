@@ -477,16 +477,16 @@ export interface Draft {
 export type ThreadState = "open" | "addressed" | "done" | "dismissed";
 export type Channel = "human" | "agent";
 
-/** Presentation filters for the active review. "none" hides review content
+/** Which review threads show: those in one of `states`, and a stale one only
+ * while `stale` is on. */
+export interface ThreadFilter {
+	readonly states: readonly ThreadState[];
+	readonly stale: boolean;
+}
+
+/** Presentation filter for the active review. "none" hides review content
  * while keeping the review store and management actions alive. */
-export type ReviewFilter =
-	| "all"
-	| "open"
-	| "addressed"
-	| "done"
-	| "dismissed"
-	| "stale"
-	| "none";
+export type ReviewFilter = ThreadFilter | "none";
 
 /** Semantic color bucket for review count pills. */
 export type ReviewTone = "open" | "addressed" | "done" | "dismissed" | "stale";

@@ -263,7 +263,7 @@ describe("buildCommentCounts", () => {
 				}),
 			],
 			EMPTY_SNAPSHOTS,
-			"done",
+			{ states: ["done"], stale: true },
 		);
 
 		expect(byCommit.get("abc")).toBe(1);

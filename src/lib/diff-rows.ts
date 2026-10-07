@@ -14,7 +14,7 @@ import {
 } from "./comment-matching.js";
 import { type PairedRow, pairLines } from "./diff-utils.js";
 import { displayColumns } from "./display-columns.js";
-import { filterThreads, mostUrgentTone } from "./review-filter.js";
+import { ALL_THREADS, filterThreads, mostUrgentTone } from "./review-filter.js";
 import { type RowMetrics, rowHeightFor } from "./row-metrics.js";
 import type {
 	ContentMode,
@@ -185,7 +185,7 @@ export function buildInlineRows(
 		let flatIdx = 0;
 		const visibleComments = filterThreads(
 			opts.comments,
-			opts.reviewFilter ?? "all",
+			opts.reviewFilter ?? ALL_THREADS,
 		);
 
 		for (const [hunkIdx, hunk] of fd.hunks.entries()) {
@@ -303,7 +303,7 @@ export function buildSplitRows(
 		let flatBase = 0;
 		const visibleComments = filterThreads(
 			opts.comments,
-			opts.reviewFilter ?? "all",
+			opts.reviewFilter ?? ALL_THREADS,
 		);
 
 		for (const [hunkIdx, hunk] of fd.hunks.entries()) {

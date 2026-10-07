@@ -1,14 +1,3 @@
-<script module lang="ts">
-import { slide } from "svelte/transition";
-
-export function reviewFilterSlide(node: Element) {
-	const reduceMotion =
-		typeof window !== "undefined" &&
-		window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-	return slide(node, { axis: "x", duration: reduceMotion ? 0 : 160 });
-}
-</script>
-
 <script lang="ts">
 import Archive from "@lucide/svelte/icons/archive";
 import ArchiveRestore from "@lucide/svelte/icons/archive-restore";
@@ -25,15 +14,20 @@ import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
+import { ALL_THREADS } from "../lib/review-filter.js";
 import { getScheduler } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
-import type { ReviewFilter, ReviewTone, StashEntry } from "../lib/types.js";
+import type {
+	ReviewFilter,
+	ReviewTone,
+	StashEntry,
+	ThreadFilter,
+} from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import ButtonGroup from "../lib/ui/ButtonGroup.svelte";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
 import InputDialog from "./InputDialog.svelte";
 import PullDropdown from "./PullDropdown.svelte";
-import ReviewFilterMenu from "./review/ReviewFilterMenu.svelte";
 
 interface Props {
 	repoPath: string;
@@ -45,15 +39,13 @@ interface Props {
 	// (260531-l02e).
 	reviewPanelShowing?: boolean;
 	reviewFilter?: ReviewFilter;
-	// Comments in the current view (review-filter badge).
+	// Comments in the current view (the review threads toggle's badge).
 	viewCommentCount?: number;
 	// Total comments in the session (Review button badge).
 	reviewCommentCount?: number;
 	viewCommentTone?: ReviewTone | null;
 	reviewCommentTone?: ReviewTone | null;
 	onreviewfilterchange?: (filter: ReviewFilter) => void;
-	/** How many threads each filter would show, for its option in the menu. */
-	reviewFilterCounts?: Partial<Record<ReviewFilter, number>>;
 }
 
 let {
@@ -62,16 +54,15 @@ let {
 	undoRedo,
 	reviewActive,
 	reviewPanelShowing = true,
-	reviewFilter = "all",
+	reviewFilter = ALL_THREADS,
 	viewCommentCount = 0,
 	reviewCommentCount = 0,
 	viewCommentTone = null,
 	reviewCommentTone = null,
 	onreviewfilterchange,
-	reviewFilterCounts = {},
 }: Props = $props();
 const scheduler = getScheduler();
-let lastVisibleReviewFilter = $state<Exclude<ReviewFilter, "none">>("all");
+let lastVisibleReviewFilter = $state<ThreadFilter>(ALL_THREADS);
 
 $effect(() => {
 	if (reviewFilter !== "none") lastVisibleReviewFilter = reviewFilter;
@@ -315,10 +306,6 @@ async function handleBranchCreate(values: Record<string, string>) {
 	line-height: var(--leading-none);
 }
 
-.review-filter-select {
-	display: flex;
-	align-items: center;
-}
 .toolbar-badge.tone-open {
 	background: var(--color-thread-open);
 }
@@ -396,15 +383,6 @@ async function handleBranchCreate(values: Record<string, string>) {
 
 	<div class="toolbar-group">
 		<ButtonGroup tone={reviewFilter !== "none" ? "accent" : "neutral"}>
-			{#if reviewFilter !== "none"}
-				<div class="review-filter-select" transition:reviewFilterSlide>
-					<ReviewFilterMenu
-						value={reviewFilter}
-						counts={reviewFilterCounts}
-						onchange={(value) => onreviewfilterchange?.(value)}
-					/>
-				</div>
-			{/if}
 			<Button
 				icon
 				joined

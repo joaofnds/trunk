@@ -8,7 +8,6 @@ import {
 } from "./column-widths.js";
 import { safeInvoke } from "./invoke.js";
 import { EVERYTHING_VISIBLE, type RefVisibility } from "./ref-visibility.js";
-import { isValidReviewFilter } from "./review-filter.js";
 import type { PersistedTab } from "./tab-types.js";
 import type {
 	ContentMode,
@@ -351,17 +350,18 @@ export async function setTreeViewEnabled(enabled: boolean): Promise<void> {
 	await setPref(TREE_VIEW_KEY, enabled);
 }
 
-// Review presentation preference. The legacy show_inline_comments key remains
+// Whether review threads are hidden. Which of them show is not kept, since
+// the review panel opens on every thread. The key once held a single-state
+// filter, which reads as shown. The legacy show_inline_comments key remains
 // untouched on disk; it is deliberately not read or rewritten by this API.
 const REVIEW_FILTER_KEY = "review_filter";
 
-export async function getReviewFilter(): Promise<ReviewFilter> {
-	const stored = await getPref<unknown>(REVIEW_FILTER_KEY);
-	return isValidReviewFilter(stored) ? stored : "all";
+export async function getReviewThreadsHidden(): Promise<boolean> {
+	return (await getPref<unknown>(REVIEW_FILTER_KEY)) === "none";
 }
 
-export async function setReviewFilter(filter: ReviewFilter): Promise<void> {
-	await setPref(REVIEW_FILTER_KEY, filter);
+export async function setReviewThreadsHidden(hidden: boolean): Promise<void> {
+	await setPref(REVIEW_FILTER_KEY, hidden ? "none" : "all");
 }
 
 // Diff display preferences (global, shared across tabs — per D-06)

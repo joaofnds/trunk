@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createReviewEditorStore } from "../lib/review-editors.svelte.js";
+import { ALL_THREADS } from "../lib/review-filter.js";
 import { showToast } from "../lib/toast.svelte.js";
 import CommitNotes from "./CommitNotes.svelte";
 
@@ -302,7 +303,7 @@ describe("CommitNotes", () => {
 			notes: [],
 			repoPath: "/repo",
 			commitOid,
-			reviewFilter: "all",
+			reviewFilter: ALL_THREADS,
 		});
 		await fireEvent.click(screen.getByText("Add note"));
 		await rerender({
@@ -332,7 +333,7 @@ describe("CommitNotes", () => {
 		const view = renderNotes([], {
 			activeReviewId: "review-a",
 			editorDraftFor,
-			reviewFilter: "all",
+			reviewFilter: ALL_THREADS,
 		});
 		await fireEvent.click(screen.getByText("Add note"));
 		await fireEvent.input(
@@ -355,7 +356,7 @@ describe("CommitNotes", () => {
 		renderNotes([], {
 			activeReviewId: "review-a",
 			editorDraftFor,
-			reviewFilter: "all",
+			reviewFilter: ALL_THREADS,
 		});
 
 		const restored = screen.getByPlaceholderText(

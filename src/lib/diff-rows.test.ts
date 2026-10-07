@@ -10,6 +10,7 @@ import {
 	rowIndexForLine,
 } from "./diff-rows.js";
 import { displayColumns } from "./display-columns.js";
+import { ALL_THREADS } from "./review-filter.js";
 import type {
 	DiffHunk,
 	DiffLine,
@@ -174,7 +175,7 @@ describe("buildInlineRows", () => {
 	it("removes a comment row when its threads do not match the selected filter", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
-			reviewFilter: "open",
+			reviewFilter: { states: ["open"], stale: true },
 			comments: [{ ...thread("t1", "New", 2, 2), state: "done" }],
 		});
 
@@ -231,7 +232,7 @@ describe("buildInlineRows", () => {
 	it("marks only the threads the selected filter shows", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
-			reviewFilter: "open",
+			reviewFilter: { states: ["open"], stale: true },
 			comments: [
 				thread("t1", "New", 2, 2),
 				{ ...thread("t2", "New", 2, 2), state: "done" },
@@ -583,7 +584,7 @@ describe("buildSplitRows", () => {
 	it("removes a comment row when its threads do not match the selected filter", () => {
 		const model = buildSplitRows([pairable], {
 			...fullMode,
-			reviewFilter: "open",
+			reviewFilter: { states: ["open"], stale: true },
 			comments: [{ ...thread("t1", "New", 2, 2), state: "done" }],
 		});
 
@@ -917,7 +918,7 @@ const wholeFile = file("src/main.ts", [
 ]);
 
 function withPin(threads: Thread[]): BuildOptions {
-	return { ...fullMode, comments: threads, reviewFilter: "all" };
+	return { ...fullMode, comments: threads, reviewFilter: ALL_THREADS };
 }
 
 describe("buildInlineRows with a content-pinned thread", () => {

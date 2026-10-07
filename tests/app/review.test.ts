@@ -3,6 +3,8 @@ import type { RepoSpec } from "./harness/host-client.js";
 import { setup, teardown } from "./harness/index.js";
 import { waitFor } from "./harness/wait.js";
 
+type RunningApp = Awaited<ReturnType<typeof setup>>;
+
 const FILE = "src/main.ts";
 /** How the panel writes an anchored thread's file reference. */
 const ANCHOR = `${FILE}:L3-L3`;
@@ -76,8 +78,8 @@ describe("a comment left on a commit's diff", () => {
 			app.review.reviewBadgeCount() === null ? true : null,
 		);
 
-		await app.review.showReviewFilter(
-			"done",
+		await app.review.pickPreset(
+			"settled",
 			() => app.review.reviewBadgeCount() === 1,
 		);
 
@@ -87,8 +89,8 @@ describe("a comment left on a commit's diff", () => {
 	it("shows every thread again from the header's Show all", async () => {
 		const app = await setup({ repo: TWO_COMMITS });
 		await createReviewThread(app);
-		await app.review.showReviewFilter(
-			"done",
+		await app.review.pickPreset(
+			"settled",
 			() => app.review.threads().length === 0,
 		);
 
@@ -97,18 +99,26 @@ describe("a comment left on a commit's diff", () => {
 		await waitFor("the open thread to come back", () =>
 			app.review.threads().length === 1 ? true : null,
 		);
-		expect(app.review.reviewFilter()).toBe("all");
+		expect(app.review.preset()).toBe("all");
 	});
 
-	it.each(["none", "done"] as const)(
-		"copies the raw review when the %s filter hides every thread",
-		async (filter) => {
+	it.each([
+		[
+			"hiding every thread",
+			(app: RunningApp, observe: () => boolean) =>
+				app.review.hideThreads(observe),
+		],
+		[
+			"the Settled preset",
+			(app: RunningApp, observe: () => boolean) =>
+				app.review.pickPreset("settled", observe),
+		],
+	] as const)(
+		"copies the raw review when %s leaves no thread shown",
+		async (_name, gesture) => {
 			const app = await setup({ repo: TWO_COMMITS });
 			const commit = await createReviewThread(app);
-			await app.review.showReviewFilter(
-				filter,
-				() => app.review.threads().length === 0,
-			);
+			await gesture(app, () => app.review.threads().length === 0);
 
 			await app.review.copyDoc();
 
@@ -129,15 +139,9 @@ describe("a comment left on a commit's diff", () => {
 		await app.review.commentOnHunk(0);
 		await app.review.write("keep this unsaved comment");
 
-		await app.review.showReviewFilter(
-			"none",
-			() => app.review.composerDraft() === null,
-		);
+		await app.review.hideThreads(() => app.review.composerDraft() === null);
 		await app.review.openPanel();
-		await app.review.showReviewFilter(
-			"all",
-			() => app.review.threads().length === 1,
-		);
+		await app.review.showThreads(() => app.review.threads().length === 1);
 		await app.review.jumpToThread();
 
 		const restored = await waitFor("the retained diff comment", () =>
@@ -182,15 +186,9 @@ describe("a comment left on a commit's diff", () => {
 		await app.review.jumpToThread();
 		await app.review.writeReply("inline reply in progress");
 
-		await app.review.showReviewFilter(
-			"none",
-			() => app.review.threads().length === 0,
-		);
+		await app.review.hideThreads(() => app.review.threads().length === 0);
 		await app.review.openPanel();
-		await app.review.showReviewFilter(
-			"all",
-			() => app.review.threads().length === 1,
-		);
+		await app.review.showThreads(() => app.review.threads().length === 1);
 		const panelReply = await waitFor("the panel reply", () =>
 			app.review.replyDraft(),
 		);
