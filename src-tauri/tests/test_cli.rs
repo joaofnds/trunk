@@ -658,6 +658,22 @@ fn hold_thread(ctx: &TestContext, review: &str, text: &str) -> String {
 }
 
 #[test]
+fn cli_list_counts_only_the_threads_the_agent_was_sent() {
+    let ctx = TestContext::new_empty();
+    let (_, published) = seed_reviews(&ctx);
+    hold_thread(&ctx, &published, "not sent yet");
+
+    let out = trunk_review_in(ctx.repo_path(), &["list"], ctx.data_dir());
+
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("(1 thread)"),
+        "a held thread must not show in the count, got {stdout:?}",
+    );
+}
+
+#[test]
 fn cli_thread_on_a_held_comment_answers_as_missing() {
     let ctx = TestContext::new_empty();
     let (_, published) = seed_reviews(&ctx);

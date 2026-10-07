@@ -24,8 +24,8 @@ pub(crate) fn render_list(listed: &[reviews::Review]) -> String {
                 r.id,
                 state_word(r.state),
                 r.title,
-                r.thread_count,
-                if r.thread_count == 1 {
+                r.sent_thread_count,
+                if r.sent_thread_count == 1 {
                     "thread"
                 } else {
                     "threads"

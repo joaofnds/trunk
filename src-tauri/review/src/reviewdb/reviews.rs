@@ -33,6 +33,10 @@ pub struct Review {
     /// Put away by the user: listed apart in the app and unseen by the agent.
     pub archived: bool,
     pub thread_count: i64,
+    /// Threads the agent was sent, the count the CLI may print. The app shows
+    /// `thread_count`, which includes the user's held threads.
+    #[serde(skip)]
+    pub sent_thread_count: i64,
     /// Threads still waiting on someone: open or addressed.
     pub unresolved_count: i64,
     /// Held threads and replies, which the agent receives when the user sends
@@ -76,7 +80,8 @@ const SELECT: &str = "
                      AND t.state IN ('open', 'addressed') AND t.stale = 0
                ) THEN 'open'
                ELSE 'stale'
-           END";
+           END,
+           (SELECT COUNT(*) FROM threads t WHERE t.review_id = r.id AND t.pending = 0)";
 
 /// Create an empty review for `repo_path` and return its id.
 ///
@@ -152,6 +157,7 @@ fn read_review(row: &rusqlite::Row) -> rusqlite::Result<Review> {
         published: row.get::<_, i64>(2)? != 0,
         created_at: row.get(3)?,
         thread_count: row.get(4)?,
+        sent_thread_count: row.get(9)?,
         unresolved_count: row.get(5)?,
         archived: row.get::<_, i64>(6)? != 0,
         pending_count: row.get(7)?,
