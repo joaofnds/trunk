@@ -104,7 +104,7 @@ import type {
 	OverlayRefPill,
 	RefLabel,
 	RefType,
-	ReviewTone,
+	ReviewTally,
 	SearchResult,
 	StashEntry,
 	WipStats,
@@ -146,7 +146,7 @@ interface Props {
 	reviewCommentsVisible?: boolean;
 	/** Filtered per-commit badge projection from RepoView. */
 	commentCounts?: Map<string, number>;
-	commentTones?: Map<string, ReviewTone>;
+	commentTallies?: Map<string, ReviewTally>;
 	/** Shared comments store; supplies the per-commit count map. */
 	reviewComments?: ReviewCommentsManager;
 	/** Whether BranchSidebar's stored-visibility read for this repo has resolved
@@ -174,7 +174,7 @@ let {
 	tabActive,
 	reviewCommentsVisible = false,
 	commentCounts,
-	commentTones,
+	commentTallies,
 	reviewComments,
 	// Defaults true (load immediately) rather than false: RepoView is the one
 	// caller that has a BranchSidebar sibling to gate on and opts in explicitly.
@@ -206,9 +206,9 @@ function commentCountFor(oid: string): number {
 	);
 }
 
-function commentToneFor(oid: string): ReviewTone | null {
+function commentTallyFor(oid: string): ReviewTally | null {
 	if (!reviewCommentsVisible) return null;
-	return commentTones?.get(oid) ?? null;
+	return commentTallies?.get(oid) ?? null;
 }
 
 const BATCH = 200;
@@ -2676,7 +2676,7 @@ $effect(() => {
 							inSession={reviewOids.has(commit.oid)}
 							isPendingBase={pendingBase === commit.oid}
 							commentCount={commentCountFor(commit.oid)}
-							commentTone={commentToneFor(commit.oid)}
+							commentTally={commentTallyFor(commit.oid)}
 							wipStats={commit.oid === '__wip__' ? wipStats : undefined}
 							diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)}
 							{messageScrollX}

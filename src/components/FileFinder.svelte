@@ -7,7 +7,8 @@
 // itself; picking a row reports the path and the host opens it.
 
 import { rankFiles } from "../lib/file-finder.js";
-import type { ReviewTone, TrackedFile } from "../lib/types.js";
+import { tallyEntries } from "../lib/review-filter.js";
+import type { ReviewTally, TrackedFile } from "../lib/types.js";
 import ListOption from "../lib/ui/ListOption.svelte";
 
 interface Props {
@@ -15,7 +16,7 @@ interface Props {
 	// How many current-file comments each path already carries, so a user sees
 	// where the discussion already is before opening anything.
 	commentCounts?: Map<string, number>;
-	commentTones?: Map<string, ReviewTone>;
+	commentTallies?: Map<string, ReviewTally>;
 	onselect: (path: string) => void;
 	onclose: () => void;
 }
@@ -23,7 +24,7 @@ interface Props {
 let {
 	files,
 	commentCounts = new Map<string, number>(),
-	commentTones = new Map<string, ReviewTone>(),
+	commentTallies = new Map<string, ReviewTally>(),
 	onselect,
 	onclose,
 }: Props = $props();
@@ -135,7 +136,7 @@ function rowLabel(file: TrackedFile): string {
 							class="finder-comment-count ml-auto shrink-0 py-0 px-1 rounded text-on-accent text-small"
 							role="img"
 							aria-label="{commentCounts.get(file.path)} review comments"
-							style:background="var(--color-thread-{commentTones.get(file.path) ?? 'open'})"
+							style:background="var(--color-thread-{tallyEntries(commentTallies.get(file.path))[0]?.tone ?? 'open'})"
 							>{commentCounts.get(file.path)}</span
 						>
 					{/if}

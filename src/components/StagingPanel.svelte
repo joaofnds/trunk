@@ -10,7 +10,7 @@ import { onDestroy } from "svelte";
 import { buildTree, collectFilePaths } from "../lib/build-tree.js";
 import { copyText } from "../lib/clipboard.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
-import { fileCountsForOid, fileTonesForOid } from "../lib/comment-counts.js";
+import { fileCountsForOid, fileTalliesForOid } from "../lib/comment-counts.js";
 import { resolveViewOid } from "../lib/comment-matching.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { pathMenuEntriesOf } from "../lib/file-menu.js";
@@ -23,7 +23,7 @@ import type {
 	FileStatusType,
 	MergeSides,
 	OperationInfo,
-	ReviewTone,
+	ReviewTally,
 	WorkingTreeStatus,
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
@@ -69,7 +69,7 @@ interface Props {
 	reviewComments?: ReviewCommentsManager;
 	reviewCommentsVisible?: boolean;
 	commentCounts?: Map<string, number>;
-	commentTones?: Map<string, ReviewTone>;
+	commentTallies?: Map<string, ReviewTally>;
 }
 
 let {
@@ -91,7 +91,7 @@ let {
 	reviewComments,
 	reviewCommentsVisible = false,
 	commentCounts,
-	commentTones,
+	commentTallies,
 }: Props = $props();
 const scheduler = getScheduler();
 
@@ -123,7 +123,7 @@ function sectionCounts(kind: "unstaged" | "staged"): Map<string, number> {
 	);
 }
 
-function sectionTones(kind: "unstaged" | "staged"): Map<string, ReviewTone> {
+function sectionTones(kind: "unstaged" | "staged"): Map<string, ReviewTally> {
 	if (!countsEnabled) return new Map();
 	const oid = resolveViewOid({
 		kind,
@@ -133,13 +133,13 @@ function sectionTones(kind: "unstaged" | "staged"): Map<string, ReviewTone> {
 			index_snapshot: null,
 		},
 	});
-	return fileTonesForOid(commentTones ?? new Map(), oid);
+	return fileTalliesForOid(commentTallies ?? new Map(), oid);
 }
 
 let unstagedCommentCounts = $derived(sectionCounts("unstaged"));
 let stagedCommentCounts = $derived(sectionCounts("staged"));
-let unstagedCommentTones = $derived(sectionTones("unstaged"));
-let stagedCommentTones = $derived(sectionTones("staged"));
+let unstagedCommentTallies = $derived(sectionTones("unstaged"));
+let stagedCommentTallies = $derived(sectionTones("staged"));
 
 export function optimisticMove(
 	filePath: string,
@@ -1062,7 +1062,7 @@ $effect(() => {
 							ondirectorycontextmenu={(e, dirPath) => showUnstagedDirContextMenu(e, dirPath)}
 							selectedPath={selectedKind === 'unstaged' ? selectedPath : null}
 							commentCounts={unstagedCommentCounts}
-							commentTones={unstagedCommentTones}
+							commentTallies={unstagedCommentTallies}
 							{expandAllSignal}
 							{collapseAllSignal}
 						/>
@@ -1123,7 +1123,7 @@ $effect(() => {
 					ondirectorycontextmenu={(e, dirPath) => showStagedDirContextMenu(e, dirPath)}
 					selectedPath={selectedKind === 'staged' ? selectedPath : null}
 					commentCounts={stagedCommentCounts}
-					commentTones={stagedCommentTones}
+					commentTallies={stagedCommentTallies}
 					{expandAllSignal}
 					{collapseAllSignal}
 				/>

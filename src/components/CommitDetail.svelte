@@ -5,7 +5,7 @@ import FolderTree from "@lucide/svelte/icons/folder-tree";
 import List from "@lucide/svelte/icons/list";
 import X from "@lucide/svelte/icons/x";
 import { copySha, copyText } from "../lib/clipboard.js";
-import { fileCountsForOid, fileTonesForOid } from "../lib/comment-counts.js";
+import { fileCountsForOid, fileTalliesForOid } from "../lib/comment-counts.js";
 import type { Draft } from "../lib/draft.svelte.js";
 import { pathMenuEntriesOf } from "../lib/file-menu.js";
 import { toFileStatusList } from "../lib/file-status.js";
@@ -19,7 +19,7 @@ import type {
 	FileDiff,
 	FileStatus,
 	ReviewFilter,
-	ReviewTone,
+	ReviewTally,
 	Thread,
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
@@ -49,7 +49,7 @@ interface Props {
 	reviewCommentsVisible?: boolean;
 	reviewFilter?: ReviewFilter;
 	commentCounts?: Map<string, number>;
-	commentTones?: Map<string, ReviewTone>;
+	commentTallies?: Map<string, ReviewTally>;
 	activeReviewId?: string | null;
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	editorDraftFor?: (
@@ -75,7 +75,7 @@ let {
 	reviewCommentsVisible = false,
 	reviewFilter = "all",
 	commentCounts,
-	commentTones,
+	commentTallies,
 	activeReviewId = null,
 	editorSessionForThread,
 	editorDraftFor,
@@ -92,10 +92,10 @@ let fileCommentCounts = $derived(
 			)
 		: new Map<string, number>(),
 );
-let fileCommentTones = $derived(
+let fileCommentTallies = $derived(
 	reviewCommentsVisible
-		? fileTonesForOid(commentTones ?? new Map(), commitDetail.oid)
-		: new Map<string, ReviewTone>(),
+		? fileTalliesForOid(commentTallies ?? new Map(), commitDetail.oid)
+		: new Map<string, ReviewTally>(),
 );
 
 let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
@@ -281,7 +281,7 @@ let commitNotes = $derived(
 				onfileclick={(path) => onfileselect(path)}
 				onfilecontextmenu={(e, _path, file) => showFileContextMenu(e, file)}
 				commentCounts={fileCommentCounts}
-				commentTones={fileCommentTones}
+				commentTallies={fileCommentTallies}
 			/>
 		</div>
 	</div>

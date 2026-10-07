@@ -18,7 +18,7 @@ import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { THUMB_CLASS, trackScrollActivity } from "../lib/scrollbar-activity.js";
 import { resetCache } from "../lib/text-measure.js";
-import type { ReviewTone } from "../lib/types.js";
+import type { ReviewTally } from "../lib/types.js";
 import CommitGraph from "./CommitGraph.svelte";
 
 // Stub OffscreenCanvas for jsdom — used by text-measure.ts (measureTextWidth).
@@ -312,15 +312,15 @@ describe("CommitGraph", () => {
 					[TEST_COMMITS[0].oid, 2],
 					["__wip__", 1],
 				]),
-				commentTones: new Map<string, ReviewTone>([
-					[TEST_COMMITS[0].oid, "addressed"],
-					["__wip__", "stale"],
+				commentTallies: new Map<string, ReviewTally>([
+					[TEST_COMMITS[0].oid, { addressed: 2 }],
+					["__wip__", { stale: 1 }],
 				]),
 			},
 		});
 		await screen.findByText("first commit");
 
-		const badges = container.querySelectorAll(".comment-badge");
+		const badges = container.querySelectorAll(".comment-badge-pill");
 		expect(badges).toHaveLength(2);
 		expect(badges[0]).toHaveTextContent("1");
 		expect(badges[0]).toHaveClass("tone-stale");

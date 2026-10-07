@@ -6,7 +6,7 @@ import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
-import type { ReviewTone } from "../lib/types.js";
+import type { ReviewTally } from "../lib/types.js";
 import StagingPanel from "./StagingPanel.svelte";
 
 // All Tauri module mocks — declared locally for proper vi.mock hoisting.
@@ -274,9 +274,9 @@ describe("StagingPanel", () => {
 					[`${workingTree}\0README.md`, 2],
 					[`${index}\0src/main.ts`, 1],
 				]),
-				commentTones: new Map<string, ReviewTone>([
-					[`${workingTree}\0README.md`, "addressed"],
-					[`${index}\0src/main.ts`, "done"],
+				commentTallies: new Map<string, ReviewTally>([
+					[`${workingTree}\0README.md`, { addressed: 2 }],
+					[`${index}\0src/main.ts`, { done: 1 }],
 				]),
 			},
 		});
@@ -285,11 +285,13 @@ describe("StagingPanel", () => {
 		const unstaged = screen.getByTestId("staging-unstaged-section");
 		const staged = screen.getByTestId("staging-staged-section");
 		expect(unstaged.querySelector(".comment-badge")).toHaveTextContent("2");
-		expect(unstaged.querySelector(".comment-badge")).toHaveClass(
+		expect(unstaged.querySelector(".comment-badge-pill")).toHaveClass(
 			"tone-addressed",
 		);
 		expect(staged.querySelector(".comment-badge")).toHaveTextContent("1");
-		expect(staged.querySelector(".comment-badge")).toHaveClass("tone-done");
+		expect(staged.querySelector(".comment-badge-pill")).toHaveClass(
+			"tone-done",
+		);
 	});
 
 	it("calls get_status on mount with repo path", async () => {

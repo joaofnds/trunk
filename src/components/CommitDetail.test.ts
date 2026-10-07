@@ -9,7 +9,7 @@ import type {
 	CommitDetail,
 	DiffStat,
 	FileDiff,
-	ReviewTone,
+	ReviewTally,
 	Thread,
 } from "../lib/types.js";
 import CommitDetailComponent from "./CommitDetail.svelte";
@@ -708,14 +708,16 @@ describe("CommitDetail", () => {
 					reviewComments,
 					reviewFilter: "done",
 					commentCounts: new Map([[`${detail.oid}\0${fileDiffs[0].path}`, 2]]),
-					commentTones: new Map<string, ReviewTone>([
-						[`${detail.oid}\0${fileDiffs[0].path}`, "done"],
+					commentTallies: new Map<string, ReviewTally>([
+						[`${detail.oid}\0${fileDiffs[0].path}`, { done: 2 }],
 					]),
 				},
 			});
 
 			const badge = screen.getByLabelText("2 review comments");
-			expect(badge).toHaveClass("tone-done");
+			expect(badge.querySelector(".comment-badge-pill")).toHaveClass(
+				"tone-done",
+			);
 			expect(screen.getByText("completed note")).toBeVisible();
 			expect(
 				screen.getByText("left on the whole commit").closest("li"),

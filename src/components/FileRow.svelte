@@ -4,7 +4,7 @@ import Plus from "@lucide/svelte/icons/plus";
 import { treeIndent } from "../lib/chrome-heights.js";
 import { renamePartsOf } from "../lib/rename-display.js";
 import { STATUS_BADGES, UNKNOWN_STATUS_BADGE } from "../lib/status-badges.js";
-import type { FileStatus, ReviewTone } from "../lib/types.js";
+import type { FileStatus, ReviewTally } from "../lib/types.js";
 import Row, { type RowRole } from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import CommentBadge from "./CommentBadge.svelte";
@@ -24,7 +24,7 @@ interface Props {
 	displayName?: string;
 	focused?: boolean;
 	commentCount?: number;
-	commentTone?: ReviewTone | null;
+	commentTally?: ReviewTally | null;
 }
 
 let {
@@ -40,7 +40,7 @@ let {
 	displayName,
 	focused = false,
 	commentCount = 0,
-	commentTone = null,
+	commentTally = null,
 }: Props = $props();
 
 let badge = $derived(STATUS_BADGES[file.status] ?? UNKNOWN_STATUS_BADGE);
@@ -132,7 +132,7 @@ function openMenu(e: MouseEvent) {
 	</span>
 
 	<!-- Review-comment count for this file -->
-	<CommentBadge count={commentCount} tone={commentTone} />
+	<CommentBadge count={commentCount} tally={commentTally} />
 </Row>
 
 <style>

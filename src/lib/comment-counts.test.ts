@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { makeFile } from "../__tests__/helpers/factories.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
-import { buildTree, toneInSubtree } from "./build-tree.js";
+import { buildTree, tallyInSubtree } from "./build-tree.js";
 import {
 	buildCommentCounts,
 	commitOidForComment,
 	fileCountKey,
 	fileCountsForOid,
-	fileTonesForOid,
+	fileTalliesForOid,
 } from "./comment-counts.js";
 import type { Anchor, ReviewSnapshots, Thread } from "./types.js";
 
@@ -58,8 +58,8 @@ describe("current-file projection", () => {
 	it.each([
 		["open", "addressed"],
 		["addressed", "open"],
-	] as const)("keeps finder tones local with %s before %s", (first, next) => {
-		const { byCurrentFile, toneByCurrentFile } = buildCommentCounts(
+	] as const)("keeps finder tallies local with %s before %s", (first, next) => {
+		const { byCurrentFile, tallyByCurrentFile } = buildCommentCounts(
 			[
 				currentFileComment("first", "src/mixed.ts", first),
 				currentFileComment("next", "src/mixed.ts", next),
@@ -75,10 +75,10 @@ describe("current-file projection", () => {
 				["src/addressed.ts", 1],
 			]),
 		);
-		expect(toneByCurrentFile).toEqual(
+		expect(tallyByCurrentFile).toEqual(
 			new Map([
-				["src/mixed.ts", "open"],
-				["src/addressed.ts", "addressed"],
+				["src/mixed.ts", { open: 1, addressed: 1 }],
+				["src/addressed.ts", { addressed: 1 }],
 			]),
 		);
 	});
@@ -129,7 +129,7 @@ describe("buildCommentCounts", () => {
 		["open", "addressed"],
 		["addressed", "open"],
 	] as const)(
-		"keeps commit and file tones local with %s before %s",
+		"keeps commit and file tallies local with %s before %s",
 		(first, next) => {
 			const counts = buildCommentCounts(
 				[
@@ -164,11 +164,11 @@ describe("buildCommentCounts", () => {
 					["__wip__", 4],
 				]),
 			);
-			expect(counts.toneByCommit).toEqual(
+			expect(counts.tallyByCommit).toEqual(
 				new Map([
-					["wt", "open"],
-					["idx", "addressed"],
-					["__wip__", "open"],
+					["wt", { open: 1, addressed: 2 }],
+					["idx", { addressed: 1 }],
+					["__wip__", { open: 1, addressed: 3 }],
 				]),
 			);
 			expect(counts.byFile).toEqual(
@@ -178,11 +178,11 @@ describe("buildCommentCounts", () => {
 					["idx\0mixed.ts", 1],
 				]),
 			);
-			expect(counts.toneByFile).toEqual(
+			expect(counts.tallyByFile).toEqual(
 				new Map([
-					["wt\0mixed.ts", "open"],
-					["wt\0addressed.ts", "addressed"],
-					["idx\0mixed.ts", "addressed"],
+					["wt\0mixed.ts", { open: 1, addressed: 1 }],
+					["wt\0addressed.ts", { addressed: 1 }],
+					["idx\0mixed.ts", { addressed: 1 }],
 				]),
 			);
 		},
@@ -251,8 +251,8 @@ describe("buildCommentCounts", () => {
 		expect(byCurrentFile.has("a.ts")).toBe(false);
 	});
 
-	it("projects an explicit state filter and carries its tone to commit/file buckets", () => {
-		const { byCommit, byFile, toneByCommit, toneByFile } = buildCommentCounts(
+	it("projects an explicit state filter and tallies its state in commit/file buckets", () => {
+		const { byCommit, byFile, tallyByCommit, tallyByFile } = buildCommentCounts(
 			[
 				lineComment("open", anchor("abc", "a.ts")),
 				aThread({
@@ -268,9 +268,11 @@ describe("buildCommentCounts", () => {
 
 		expect(byCommit.get("abc")).toBe(1);
 		expect(byFile.get(fileCountKey("abc", "a.ts"))).toBe(1);
-		expect(toneByCommit.get("abc")).toBe("done");
-		expect(toneByFile.get(fileCountKey("abc", "a.ts"))).toBe("done");
-		expect(fileTonesForOid(toneByFile, "abc").get("a.ts")).toBe("done");
+		expect(tallyByCommit.get("abc")).toEqual({ done: 1 });
+		expect(tallyByFile.get(fileCountKey("abc", "a.ts"))).toEqual({ done: 1 });
+		expect(fileTalliesForOid(tallyByFile, "abc").get("a.ts")).toEqual({
+			done: 1,
+		});
 	});
 
 	it("folds working-tree and index snapshot comments into the __wip__ bucket", () => {
@@ -306,13 +308,13 @@ describe("buildCommentCounts", () => {
 });
 
 describe("directory badge projection", () => {
-	it("prioritizes open descendants without changing an addressed-only subtree", () => {
+	it("sums its descendants' tallies by state", () => {
 		const mixedFiles = [
 			makeFile("src/open/a.ts"),
 			makeFile("src/addressed/b.ts"),
 		];
 		const addressedFiles = [makeFile("src/addressed/b.ts")];
-		const { toneByFile } = buildCommentCounts(
+		const { tallyByFile } = buildCommentCounts(
 			[
 				lineComment("open", anchor("abc", "src/open/a.ts")),
 				aThread({
@@ -323,10 +325,15 @@ describe("directory badge projection", () => {
 			],
 			EMPTY_SNAPSHOTS,
 		);
-		const tones = fileTonesForOid(toneByFile, "abc");
+		const tallies = fileTalliesForOid(tallyByFile, "abc");
 
-		expect(toneInSubtree(buildTree(mixedFiles), tones)).toBe("open");
-		expect(toneInSubtree(buildTree(addressedFiles), tones)).toBe("addressed");
+		expect(tallyInSubtree(buildTree(mixedFiles), tallies)).toEqual({
+			open: 1,
+			addressed: 1,
+		});
+		expect(tallyInSubtree(buildTree(addressedFiles), tallies)).toEqual({
+			addressed: 1,
+		});
 	});
 });
 

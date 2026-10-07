@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
 import { makeFile } from "../__tests__/helpers/factories";
-import type { ReviewTone } from "../lib/types.js";
+import type { ReviewTally } from "../lib/types.js";
 import TreeFileList from "./TreeFileList.svelte";
 
 // Shared Tauri mock
@@ -41,7 +41,7 @@ describe("TreeFileList", () => {
 		expect(screen.getByText("README.md")).toBeInTheDocument();
 	});
 
-	it("rolls descendant comment counts and strongest tone into a collapsed directory", () => {
+	it("rolls descendant comment counts by state into a collapsed directory", () => {
 		const files = [makeFile("src/a.ts"), makeFile("src/b.ts")];
 
 		render(TreeFileList, {
@@ -54,17 +54,18 @@ describe("TreeFileList", () => {
 					["src/a.ts", 1],
 					["src/b.ts", 2],
 				]),
-				commentTones: new Map<string, ReviewTone>([
-					["src/a.ts", "addressed"],
-					["src/b.ts", "open"],
+				commentTallies: new Map<string, ReviewTally>([
+					["src/a.ts", { addressed: 1 }],
+					["src/b.ts", { open: 2 }],
 				]),
 			},
 		});
 
 		const directory = screen.getByRole("treeitem", { name: /src/ });
-		const badge = directory.querySelector(".comment-badge");
-		expect(badge).toHaveTextContent("3");
-		expect(badge).toHaveClass("tone-open");
+		const pills = [...directory.querySelectorAll(".comment-badge-pill")];
+		expect(pills.map((pill) => pill.textContent?.trim())).toEqual(["2", "1"]);
+		expect(pills[0]).toHaveClass("tone-open");
+		expect(pills[1]).toHaveClass("tone-addressed");
 		expect(screen.queryByText("a.ts")).not.toBeInTheDocument();
 	});
 

@@ -2194,7 +2194,7 @@ function stepRightPane(delta: number) {
 						reviewCommentsVisible={reviewFilter !== "none"}
 						{reviewFilter}
 						commentCounts={presentation.byFile}
-						commentTones={presentation.toneByFile}
+						commentTallies={presentation.tallyByFile}
 						activeReviewId={reviewComments.activeReviewId}
 						editorSessionForThread={editorSessionForCommitNoteThread}
 						{editorDraftFor}
@@ -2349,7 +2349,7 @@ function stepRightPane(delta: number) {
 						{tabActive}
 						reviewCommentsVisible={reviewFilter !== "none"}
 						commentCounts={presentation.byCommit}
-						commentTones={presentation.toneByCommit}
+						commentTallies={presentation.tallyByCommit}
 						{reviewComments}
 						{compareOids}
 						visibilityResolved={refVisibilityResolved}
@@ -2396,7 +2396,7 @@ function stepRightPane(delta: number) {
 						reviewCommentsVisible={reviewFilter !== "none"}
 						{reviewFilter}
 						commentCounts={presentation.byFile}
-						commentTones={presentation.toneByFile}
+						commentTallies={presentation.tallyByFile}
 						activeReviewId={reviewComments.activeReviewId}
 						editorSessionForThread={editorSessionForCommitNoteThread}
 						{editorDraftFor}
@@ -2430,7 +2430,7 @@ function stepRightPane(delta: number) {
 						{reviewComments}
 						reviewCommentsVisible={reviewFilter !== "none"}
 						commentCounts={presentation.byFile}
-						commentTones={presentation.toneByFile}
+						commentTallies={presentation.tallyByFile}
 					/>
 				{/if}
 			</div>
@@ -2442,7 +2442,7 @@ function stepRightPane(delta: number) {
 	<FileFinder
 		files={finderFiles}
 		commentCounts={presentation.byCurrentFile}
-		commentTones={presentation.toneByCurrentFile}
+		commentTallies={presentation.tallyByCurrentFile}
 		onselect={openCurrentFile}
 		onclose={() => (finderOpen = false)}
 	/>

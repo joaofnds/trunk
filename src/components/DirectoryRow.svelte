@@ -7,10 +7,10 @@ import type { DirectoryNode } from "../lib/build-tree.js";
 import {
 	countFiles,
 	sumCommentsInSubtree,
-	toneInSubtree,
+	tallyInSubtree,
 } from "../lib/build-tree.js";
 import { treeIndent } from "../lib/chrome-heights.js";
-import type { ReviewTone } from "../lib/types.js";
+import type { ReviewTally } from "../lib/types.js";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import CommentBadge from "./CommentBadge.svelte";
@@ -25,7 +25,7 @@ interface Props {
 	onaction?: () => void;
 	oncontextmenu?: (e: MouseEvent) => void;
 	commentCounts?: Map<string, number>;
-	commentTones?: Map<string, ReviewTone>;
+	commentTallies?: Map<string, ReviewTally>;
 }
 
 let {
@@ -38,7 +38,7 @@ let {
 	onaction,
 	oncontextmenu,
 	commentCounts,
-	commentTones,
+	commentTallies,
 }: Props = $props();
 
 let fileCount = $derived(countFiles(node.children));
@@ -48,8 +48,8 @@ let fileCount = $derived(countFiles(node.children));
 let commentCount = $derived(
 	commentCounts ? sumCommentsInSubtree(node.children, commentCounts) : 0,
 );
-let commentTone = $derived(
-	commentTones ? toneInSubtree(node.children, commentTones) : null,
+let commentTally = $derived(
+	commentTallies ? tallyInSubtree(node.children, commentTallies) : null,
 );
 
 // WebKit leaves a clicked button unfocused, and the focus is what sends Enter
@@ -111,6 +111,6 @@ function openMenu(e: MouseEvent) {
 	>
 	<span class="flex-1"></span>
 	{#if !expanded}
-		<CommentBadge count={commentCount} tone={commentTone} />
+		<CommentBadge count={commentCount} tally={commentTally} />
 	{/if}
 </Row>

@@ -9,11 +9,11 @@
  * hand-buildable `Thread` fixtures.
  */
 
-import { badgeToneForThread, combineReviewTone } from "./review-filter.js";
+import { badgeToneForThread, tallyWith } from "./review-filter.js";
 import type {
 	ReviewFilter,
 	ReviewSnapshots,
-	ReviewTone,
+	ReviewTally,
 	Thread,
 } from "./types.js";
 
@@ -29,9 +29,9 @@ export interface CommentCounts {
 	readonly byCommit: Map<string, number>;
 	readonly byFile: Map<string, number>;
 	readonly byCurrentFile: Map<string, number>;
-	readonly toneByCommit: Map<string, ReviewTone>;
-	readonly toneByFile: Map<string, ReviewTone>;
-	readonly toneByCurrentFile: Map<string, ReviewTone>;
+	readonly tallyByCommit: Map<string, ReviewTally>;
+	readonly tallyByFile: Map<string, ReviewTally>;
+	readonly tallyByCurrentFile: Map<string, ReviewTally>;
 }
 
 /** The commit a comment is located through: a line comment's anchor, or a
@@ -54,9 +54,9 @@ export function buildCommentCounts(
 	const byCommit = new Map<string, number>();
 	const byFile = new Map<string, number>();
 	const byCurrentFile = new Map<string, number>();
-	const toneByCommit = new Map<string, ReviewTone>();
-	const toneByFile = new Map<string, ReviewTone>();
-	const toneByCurrentFile = new Map<string, ReviewTone>();
+	const tallyByCommit = new Map<string, ReviewTally>();
+	const tallyByFile = new Map<string, ReviewTally>();
+	const tallyByCurrentFile = new Map<string, ReviewTally>();
 
 	const snapshotOids = new Set(
 		[snapshots.working_tree_snapshot, snapshots.index_snapshot].filter(
@@ -70,24 +70,18 @@ export function buildCommentCounts(
 		if (c.content_pin?.file_path !== undefined) {
 			const path = c.content_pin.file_path;
 			byCurrentFile.set(path, (byCurrentFile.get(path) ?? 0) + 1);
-			toneByCurrentFile.set(
+			tallyByCurrentFile.set(
 				path,
-				combineReviewTone(toneByCurrentFile.get(path), tone) ?? tone,
+				tallyWith(tallyByCurrentFile.get(path), tone),
 			);
 		}
 		const oid = commitOidForComment(c);
 		if (oid) {
 			byCommit.set(oid, (byCommit.get(oid) ?? 0) + 1);
-			toneByCommit.set(
-				oid,
-				combineReviewTone(toneByCommit.get(oid), tone) ?? tone,
-			);
+			tallyByCommit.set(oid, tallyWith(tallyByCommit.get(oid), tone));
 			if (snapshotOids.has(oid)) {
 				byCommit.set(WIP_OID, (byCommit.get(WIP_OID) ?? 0) + 1);
-				toneByCommit.set(
-					WIP_OID,
-					combineReviewTone(toneByCommit.get(WIP_OID), tone) ?? tone,
-				);
+				tallyByCommit.set(WIP_OID, tallyWith(tallyByCommit.get(WIP_OID), tone));
 			}
 		}
 
@@ -96,7 +90,7 @@ export function buildCommentCounts(
 		if (c.anchor !== null) {
 			const key = fileCountKey(c.anchor.commit_oid, c.anchor.file_path);
 			byFile.set(key, (byFile.get(key) ?? 0) + 1);
-			toneByFile.set(key, combineReviewTone(toneByFile.get(key), tone) ?? tone);
+			tallyByFile.set(key, tallyWith(tallyByFile.get(key), tone));
 		}
 	}
 
@@ -104,9 +98,9 @@ export function buildCommentCounts(
 		byCommit,
 		byFile,
 		byCurrentFile,
-		toneByCommit,
-		toneByFile,
-		toneByCurrentFile,
+		tallyByCommit,
+		tallyByFile,
+		tallyByCurrentFile,
 	};
 }
 
@@ -129,16 +123,16 @@ export function fileCountsForOid(
 	return result;
 }
 
-export function fileTonesForOid(
-	toneByFile: Map<string, ReviewTone>,
+export function fileTalliesForOid(
+	tallyByFile: Map<string, ReviewTally>,
 	oid: string | null,
-): Map<string, ReviewTone> {
-	const result = new Map<string, ReviewTone>();
+): Map<string, ReviewTally> {
+	const result = new Map<string, ReviewTally>();
 	if (oid === null) return result;
 
 	const prefix = `${oid}\0`;
-	for (const [key, tone] of toneByFile) {
-		if (key.startsWith(prefix)) result.set(key.slice(prefix.length), tone);
+	for (const [key, tally] of tallyByFile) {
+		if (key.startsWith(prefix)) result.set(key.slice(prefix.length), tally);
 	}
 	return result;
 }

@@ -8,7 +8,7 @@ import {
 	flattenTree,
 	migrateExpanded,
 } from "../lib/flatten-tree.js";
-import type { FileStatus, ReviewTone } from "../lib/types.js";
+import type { FileStatus, ReviewTally } from "../lib/types.js";
 import DirectoryRow from "./DirectoryRow.svelte";
 import FileRow from "./FileRow.svelte";
 
@@ -28,7 +28,7 @@ interface Props {
 	/** path → review-comment count for this list's OID. Empty (default) hides
 	 *  all badges, which is how the toggle/active gate reaches the rows. */
 	commentCounts?: Map<string, number>;
-	commentTones?: Map<string, ReviewTone>;
+	commentTallies?: Map<string, ReviewTally>;
 }
 
 let {
@@ -45,7 +45,7 @@ let {
 	expandAllSignal = 0,
 	collapseAllSignal = 0,
 	commentCounts,
-	commentTones,
+	commentTallies,
 }: Props = $props();
 
 let expanded = $state<Set<string>>(new Set());
@@ -249,7 +249,7 @@ function handleKeydown(e: KeyboardEvent) {
 				onaction={ondirectoryaction ? () => ondirectoryaction(row.node.path) : undefined}
 				oncontextmenu={ondirectorycontextmenu ? (e) => ondirectorycontextmenu(e, row.node.path) : undefined}
 				{commentCounts}
-				{commentTones}
+				{commentTallies}
 			/>
 		{:else}
 			<FileRow
@@ -265,7 +265,7 @@ function handleKeydown(e: KeyboardEvent) {
 				displayName={treeMode ? row.node.name : undefined}
 				focused={i === focusIndex}
 				commentCount={commentCounts?.get(row.node.file.path) ?? 0}
-				commentTone={commentTones?.get(row.node.file.path) ?? null}
+				commentTally={commentTallies?.get(row.node.file.path) ?? null}
 			/>
 		{/if}
 	{/each}

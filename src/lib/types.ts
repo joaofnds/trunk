@@ -471,6 +471,9 @@ export type ReviewFilter =
 /** Semantic color bucket for review count pills. */
 export type ReviewTone = "open" | "addressed" | "done" | "dismissed" | "stale";
 
+/** How many counted threads fall in each tone, for a badge that splits by state. */
+export type ReviewTally = Partial<Record<ReviewTone, number>>;
+
 // A durable, per-repo collection of threads plus a derived lifecycle state.
 export type ReviewState = "composing" | "ready" | "settled";
 

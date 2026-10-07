@@ -6,15 +6,24 @@ export interface CommentBadge {
 	tone: string;
 }
 
-/** The count and semantic tone of a review pill inside one rendered owner. */
+/** The count and semantic tone of a review badge inside one rendered owner. A
+ *  badge split by state reads as its total in its most urgent tone, the first
+ *  pill. */
 export function commentBadgeIn(owner: HTMLElement | null): CommentBadge | null {
-	const badge = owner?.querySelector<HTMLElement>(".comment-badge");
-	if (!badge) return null;
+	const pills = [
+		...(owner
+			?.querySelector(".comment-badge")
+			?.querySelectorAll<HTMLElement>(".comment-badge-pill") ?? []),
+	];
+	if (pills.length === 0) return null;
 
-	const tone = [...badge.classList]
+	const tone = [...pills[0].classList]
 		.find((name) => name.startsWith("tone-"))
 		?.slice("tone-".length);
-	const count = Number(badge.textContent?.trim());
+	const count = pills.reduce(
+		(sum, pill) => sum + Number(pill.textContent?.trim()),
+		0,
+	);
 	return tone && Number.isFinite(count) ? { count, tone } : null;
 }
 

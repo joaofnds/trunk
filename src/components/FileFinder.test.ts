@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
-import type { ReviewTone, TrackedFile } from "../lib/types.js";
+import type { ReviewTally, TrackedFile } from "../lib/types.js";
 import FileFinder from "./FileFinder.svelte";
 
 const FILES: TrackedFile[] = [
@@ -13,7 +13,7 @@ function open(
 	props: Partial<{
 		files: TrackedFile[];
 		commentCounts: Map<string, number>;
-		commentTones: Map<string, ReviewTone>;
+		commentTallies: Map<string, ReviewTally>;
 	}> = {},
 ) {
 	const onselect = vi.fn();
@@ -58,7 +58,7 @@ describe("FileFinder", () => {
 	it("shows how many comments an unchanged file already carries", () => {
 		open({
 			commentCounts: new Map([["src/alpha.ts", 2]]),
-			commentTones: new Map([["src/alpha.ts", "done"]]),
+			commentTallies: new Map([["src/alpha.ts", { done: 2 }]]),
 		});
 
 		const alpha = screen

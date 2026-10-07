@@ -51,6 +51,43 @@ describe("CommentBadge", () => {
 
 		const badge = screen.getByLabelText("2 review comments");
 		expect(badge).toBeInTheDocument();
-		expect(container.querySelector(".comment-badge")).toHaveClass("tone-done");
+		expect(container.querySelector(".comment-badge-pill")).toHaveClass(
+			"tone-done",
+		);
+	});
+
+	it("splits the count into a pill per state it holds, most urgent first", () => {
+		const { container } = render(CommentBadge, {
+			props: { count: 3, tally: { addressed: 1, open: 2 } },
+		});
+
+		const pills = [...container.querySelectorAll(".comment-badge-pill")];
+
+		expect(pills.map((pill) => pill.textContent?.trim())).toEqual(["2", "1"]);
+		expect(pills[0]).toHaveClass("tone-open");
+		expect(pills[1]).toHaveClass("tone-addressed");
+	});
+
+	it("names each state's share when it splits", () => {
+		render(CommentBadge, {
+			props: { count: 3, tally: { open: 2, addressed: 1 } },
+		});
+
+		expect(
+			screen.getByRole("img", {
+				name: "3 review comments, 2 open and 1 addressed",
+			}),
+		).toBeInTheDocument();
+	});
+
+	it("draws the message glyph once, on the first pill", () => {
+		const { container } = render(CommentBadge, {
+			props: { count: 3, tally: { open: 2, addressed: 1 } },
+		});
+
+		const pills = container.querySelectorAll(".comment-badge-pill");
+
+		expect(pills[0].querySelector("svg")).not.toBeNull();
+		expect(pills[1].querySelector("svg")).toBeNull();
 	});
 });

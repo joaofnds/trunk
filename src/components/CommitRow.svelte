@@ -14,7 +14,7 @@ import { cutTooltip, tooltip } from "../lib/tooltip.js";
 import type {
 	DiffStat,
 	GraphCommit,
-	ReviewTone,
+	ReviewTally,
 	WipStats,
 } from "../lib/types.js";
 import LinkButton from "../lib/ui/LinkButton.svelte";
@@ -46,7 +46,7 @@ interface Props {
 	/** Review-comment count anchored to this commit (line comments + notes).
 	 *  Parent zeroes it to enforce the toggle/active gate; badge self-hides at 0. */
 	commentCount?: number;
-	commentTone?: ReviewTone | null;
+	commentTally?: ReviewTally | null;
 	/** File-status breakdown for the synthetic WIP row (only set when isWip). */
 	wipStats?: WipStats;
 	/** Diff size for the Diff column. `undefined` = not yet computed (placeholder);
@@ -72,7 +72,7 @@ let {
 	inSession = false,
 	isPendingBase = false,
 	commentCount = 0,
-	commentTone = null,
+	commentTally = null,
 	wipStats,
 	diffStat,
 	messageScrollX = 0,
@@ -226,7 +226,7 @@ const rowShadow = $derived(
 				></span
 			>
 		{/if}
-		<CommentBadge count={commentCount} tone={commentTone} />
+		<CommentBadge count={commentCount} tally={commentTally} />
 	</div>
 
 	<!-- Column 4: Diff size — log-scaled add/delete bar + counts. Renders for

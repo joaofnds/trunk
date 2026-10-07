@@ -1,5 +1,5 @@
-import { combineReviewTone } from "./review-filter.js";
-import type { FileStatus, ReviewTone } from "./types.js";
+import { sumTallies } from "./review-filter.js";
+import type { FileStatus, ReviewTally } from "./types.js";
 
 export interface DirectoryNode {
 	type: "directory";
@@ -162,20 +162,20 @@ export function sumCommentsInSubtree(
 	return sum;
 }
 
-/** Roll up the semantic tone alongside a collapsed directory's count. */
-export function toneInSubtree(
+/** Roll up the count by state alongside a collapsed directory's count. */
+export function tallyInSubtree(
 	nodes: TreeNode[],
-	perFileTones: Map<string, ReviewTone>,
-): ReviewTone | null {
-	let tone: ReviewTone | null = null;
+	perFileTallies: Map<string, ReviewTally>,
+): ReviewTally {
+	let tally: ReviewTally = {};
 	for (const node of nodes) {
-		const childTone =
+		const childTally =
 			node.type === "file"
-				? (perFileTones.get(node.path) ?? null)
-				: toneInSubtree(node.children, perFileTones);
-		tone = combineReviewTone(tone, childTone);
+				? perFileTallies.get(node.path)
+				: tallyInSubtree(node.children, perFileTallies);
+		tally = sumTallies(tally, childTally);
 	}
-	return tone;
+	return tally;
 }
 
 /**
