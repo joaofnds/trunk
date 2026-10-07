@@ -9,12 +9,7 @@ import {
 import { safeInvoke } from "./invoke.js";
 import { EVERYTHING_VISIBLE, type RefVisibility } from "./ref-visibility.js";
 import type { PersistedTab } from "./tab-types.js";
-import type {
-	ContentMode,
-	LayoutMode,
-	RenderMode,
-	ReviewFilter,
-} from "./types.js";
+import type { ContentMode, LayoutMode, RenderMode } from "./types.js";
 
 export type { PersistedTab } from "./tab-types.js";
 
