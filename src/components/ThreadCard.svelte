@@ -348,8 +348,19 @@ function transitionLabel(next: ThreadState): string {
 	return TRANSITION_LABELS[next];
 }
 
+// The step the thread waits for leads, undoing it follows, and dismissing,
+// the step least often meant, comes last, whatever order the wire sends.
+const TRANSITION_ORDER: ThreadState[] = [
+	"done",
+	"addressed",
+	"open",
+	"dismissed",
+];
+
 const stateActions = $derived(
-	thread.allowed_transitions.map((next) => ({
+	TRANSITION_ORDER.filter((next) =>
+		thread.allowed_transitions.includes(next),
+	).map((next) => ({
 		label: transitionLabel(next),
 		variant: TRANSITION_VARIANTS[next],
 		next,

@@ -636,8 +636,9 @@ describe("ThreadCard", () => {
 	}
 
 	// Each row mirrors what the wire sends for that state (the backend's
-	// human-channel allowed_transitions, in wire order) and pins the label per
-	// target. The set itself is the backend's; only the wording is the card's.
+	// human-channel allowed_transitions, in wire order) and pins the label and
+	// order per target. The set itself is the backend's; the wording and order
+	// are the card's.
 	it.each([
 		{
 			state: "open" as const,
@@ -647,7 +648,7 @@ describe("ThreadCard", () => {
 		{
 			state: "addressed" as const,
 			allowed: ["done", "dismissed", "open"] as const,
-			labels: ["Confirm fix", "Dismiss", "Reopen"],
+			labels: ["Confirm fix", "Reopen", "Dismiss"],
 		},
 		{ state: "done" as const, allowed: ["open"] as const, labels: ["Reopen"] },
 		{
