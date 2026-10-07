@@ -45,8 +45,11 @@ function utility(word: string): boolean {
 	return result;
 }
 
-/** Tailwind's variant anchors. `group` emits nothing itself; `group-hover:` reads it. */
+/** Tailwind's variant anchors. `group` emits nothing itself; `group-hover:` reads it.
+ *  A named one, `group/head`, is read only by `group-hover/head:`, so a group
+ *  nested in another answers to its own pointer. */
 const MARKERS = new Set(["group", "peer"]);
+const NAMED_MARKER = /^(?:group|peer)\/[a-z][a-z-]*$/;
 
 /** A class a script or test reaches for by selector is a hook, styled or not. */
 const SELECTOR = /["'`](?:[^"'`]*[\s>,(+~])?\.(-?[a-zA-Z_][\w-]*)/g;
@@ -236,7 +239,8 @@ function component(file: string) {
 
 function classOffences(file: string): string[] {
 	const { declared, attributes, bindings } = component(file);
-	const vouched = (word: string) => declared.has(word) || utility(word);
+	const vouched = (word: string) =>
+		declared.has(word) || NAMED_MARKER.test(word) || utility(word);
 	const offences = new Set<string>();
 	for (const attribute of attributes) {
 		if (attribute.type === "ClassDirective" && !vouched(attribute.name)) {

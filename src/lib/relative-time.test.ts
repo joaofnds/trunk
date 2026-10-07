@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exactLabel, relativeLabel } from "./relative-time.js";
+import { compactLabel, exactLabel, relativeLabel } from "./relative-time.js";
 
 const nowMinute = 30_000_000;
 
@@ -33,6 +33,23 @@ describe("relativeLabel", () => {
 
 	it("counts a timestamp one second into the previous calendar minute as a minute", () => {
 		expect(relativeLabel(nowMinute * 60 - 1, nowMinute)).toBe("1m ago");
+	});
+});
+
+describe("compactLabel", () => {
+	it.each([
+		{ name: "the current minute", m: 0, expected: "now" },
+		{ name: "one minute", m: 1, expected: "1m" },
+		{ name: "the first whole hour", m: 60, expected: "1h" },
+		{ name: "two days", m: 2880, expected: "2d" },
+		{ name: "the first whole month", m: 43200, expected: "1mo" },
+		{ name: "the first whole year", m: 525600, expected: "1y" },
+	])("renders $name as $expected", ({ m, expected }) => {
+		expect(compactLabel((nowMinute - m) * 60, nowMinute)).toBe(expected);
+	});
+
+	it("renders an absent timestamp as an empty label", () => {
+		expect(compactLabel(0, nowMinute)).toBe("");
 	});
 });
 

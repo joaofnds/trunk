@@ -376,11 +376,24 @@ function onpaste(event: ClipboardEvent) {
 	font-size: var(--text-small);
 }
 
-/* A collapsible editor at rest is one line, and opens to the full editor once
-   it holds the focus or any text. */
+/* A collapsible editor at rest is one line of small text in a frame of the
+   small control height, and opens to the full editor once it holds the focus
+   or any text. The frame sets the height, border included, and the line is as
+   tall as the frame, so the text sits on its middle and the frame clips the
+   border's share of the line. */
+.comment-editor:not(.comment-editor-open) {
+	height: var(--control-sm-h);
+}
+.comment-editor:not(.comment-editor-open) .comment-editor-grow {
+	flex: 1 1 0;
+	min-height: 0;
+	overflow: hidden;
+}
 .comment-editor:not(.comment-editor-open) .comment-editor-grow > textarea,
 .comment-editor:not(.comment-editor-open) .comment-editor-grow::after {
 	min-height: 0;
-	padding-block: var(--space-1);
+	padding: 0 var(--space-2);
+	font-size: var(--text-small);
+	line-height: var(--control-sm-h);
 }
 </style>

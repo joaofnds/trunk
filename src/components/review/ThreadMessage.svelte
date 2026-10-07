@@ -11,7 +11,8 @@ import ThreadAuthor from "./ThreadAuthor.svelte";
 interface Props {
 	channel: Channel;
 	createdAt: number;
-	/** Controls drawn at the end of the author line, such as edit and delete. */
+	/** Controls drawn at the end of the author line, such as edit and delete,
+	 *  which fade in under the pointer or focus and hold their width at rest. */
 	actions?: Snippet;
 	children: Snippet;
 }
@@ -20,7 +21,7 @@ let { channel, createdAt, actions, children }: Props = $props();
 </script>
 
 <div
-	class="thread-message grid gap-2 py-2 pr-3 pl-2"
+	class="thread-message group/message grid gap-2 py-2 pr-3 pl-2"
 	class:thread-message-agent={channel === "agent"}
 >
 	<MessageAvatar {channel} />
@@ -29,7 +30,9 @@ let { channel, createdAt, actions, children }: Props = $props();
 			<ThreadAuthor {channel} {createdAt} />
 			<span class="flex-1"></span>
 			{#if actions}
-				<span class="thread-message-actions flex items-center gap-2">
+				<span
+					class="thread-message-actions flex items-center gap-2 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100"
+				>
 					{@render actions()}
 				</span>
 			{/if}

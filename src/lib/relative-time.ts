@@ -37,3 +37,10 @@ export function relativeLabel(tsSeconds: number, nowMinute: number): string {
 		return `${Math.floor(minutesAgo / MINUTES_PER_MONTH)}mo ago`;
 	return `${Math.floor(minutesAgo / MINUTES_PER_YEAR)}y ago`;
 }
+
+/** The relative label without its "ago", for a message beside its author where
+ *  the design sets the age in as few characters as it takes: "now", "3h", "2d". */
+export function compactLabel(tsSeconds: number, nowMinute: number): string {
+	const label = relativeLabel(tsSeconds, nowMinute);
+	return label === "just now" ? "now" : label.replace(/ ago$/, "");
+}

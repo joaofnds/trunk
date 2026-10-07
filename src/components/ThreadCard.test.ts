@@ -345,7 +345,7 @@ describe("ThreadCard", () => {
 
 			renderCard({ thread: { ...comment, created_at: twoDaysAgo } });
 
-			expect(screen.getByText("2d ago")).toBeInTheDocument();
+			expect(screen.getByText("2d")).toBeInTheDocument();
 		});
 	});
 
@@ -1061,6 +1061,22 @@ describe("ThreadCard", () => {
 	});
 
 	describe("deleting the thread", () => {
+		it("keeps the delete out of sight until the pointer or focus reaches the header, and the edit in sight", () => {
+			renderCard();
+
+			const hidden = screen.getByRole("button", {
+				name: "Delete comment",
+			}).parentElement;
+			expect(hidden).toHaveClass(
+				"opacity-0",
+				"group-hover/head:opacity-100",
+				"group-focus-within/head:opacity-100",
+			);
+			expect(
+				screen.getByRole("button", { name: "Edit comment" }).parentElement,
+			).not.toHaveClass("opacity-0");
+		});
+
 		it("asks in the card before deleting", async () => {
 			const deleted: string[] = [];
 			renderCard({ ondelete: (id) => deleted.push(id) });

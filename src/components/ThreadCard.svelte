@@ -399,7 +399,7 @@ async function requestDeleteReply(replyId: string) {
 		thread.state === "dismissed"}
 	class:comment-card-open={!collapsed}
 >
-	<header class="comment-card-header">
+	<header class="comment-card-header group/head">
 		<!-- An inline card's height comes from a hidden copy measured once, so
 		     only the panel's card may change its own height. -->
 		{#if variant === "panel"}
@@ -500,14 +500,19 @@ async function requestDeleteReply(replyId: string) {
 			<RowAction size="compact" aria-label="Edit comment" onclick={openEdit}>
 				<Pencil size={12} aria-hidden="true" />
 			</RowAction>
-			<RowAction
-				size="compact"
-				tone="destructive"
-				aria-label="Delete comment"
-				onclick={requestDelete}
+			<!-- The design keeps only the pencil in sight at rest; delete fades in
+			     under the pointer or focus, holding its width so nothing shifts. -->
+			<span
+				class="flex opacity-0 transition-opacity group-hover/head:opacity-100 group-focus-within/head:opacity-100"
+				><RowAction
+					size="compact"
+					tone="destructive"
+					aria-label="Delete comment"
+					onclick={requestDelete}
+				>
+					<Trash2 size={12} aria-hidden="true" />
+				</RowAction></span
 			>
-				<Trash2 size={12} aria-hidden="true" />
-			</RowAction>
 		{/if}
 	</header>
 
@@ -587,7 +592,7 @@ async function requestDeleteReply(replyId: string) {
 			>
 				{#each stateActions as action (action.next)}
 					<Button
-						size="md"
+						size="sm"
 						variant={action.variant}
 						onclick={() => setThreadState(repoPath, thread.id, action.next)}
 					>
@@ -725,7 +730,7 @@ async function requestDeleteReply(replyId: string) {
 .diff-number {
 	padding-right: var(--space-2);
 	text-align: right;
-	color: var(--color-text-muted);
+	color: var(--color-text-subtle);
 }
 .diff-gutter {
 	color: var(--color-text-subtle);

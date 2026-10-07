@@ -4,7 +4,7 @@
 // it wrote through.
 
 import { currentMinute } from "../../lib/now.svelte.js";
-import { exactLabel, relativeLabel } from "../../lib/relative-time.js";
+import { compactLabel, exactLabel } from "../../lib/relative-time.js";
 import type { Channel } from "../../lib/types.js";
 
 interface Props {
@@ -25,6 +25,6 @@ let { channel, createdAt }: Props = $props();
 	<time
 		class="font-mono text-caption text-text-subtle"
 		title={exactLabel(createdAt)}
-		>{relativeLabel(createdAt, currentMinute())}</time
+		>{compactLabel(createdAt, currentMinute())}</time
 	>
 </span>

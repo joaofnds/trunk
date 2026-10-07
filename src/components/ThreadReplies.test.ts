@@ -20,6 +20,24 @@ describe("ThreadReplies", () => {
 		expect(screen.queryByText(/Show \d+ more/)).toBeNull();
 	});
 
+	it("keeps a reply's actions out of sight until the pointer or focus reaches it", () => {
+		render(ThreadReplies, {
+			props: {
+				replies: [reply],
+				onreplyedit: () => true,
+				onreplydelete: () => {},
+			},
+		});
+
+		expect(
+			screen.getByRole("button", { name: "Edit reply" }).parentElement,
+		).toHaveClass(
+			"opacity-0",
+			"group-hover/message:opacity-100",
+			"group-focus-within/message:opacity-100",
+		);
+	});
+
 	it("shows the faces of the authors it hides", () => {
 		render(ThreadReplies, {
 			props: {
