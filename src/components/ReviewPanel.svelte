@@ -94,6 +94,9 @@ interface Props {
 		reviewId: string | null,
 		surface: string,
 	) => ReviewNoteEditorSession;
+	// Every repo tab keeps its panel mounted, so only the shown tab's panel may
+	// answer the thread keys the window hears.
+	keysActive?: boolean;
 }
 
 let {
@@ -109,7 +112,10 @@ let {
 	onreviewfilterchange,
 	editorSessionForThread,
 	editorNoteSessionFor,
+	keysActive = true,
 }: Props = $props();
+
+let panelEl = $state<HTMLDivElement | null>(null);
 
 const commits = $derived(reviewComments.shownCommits);
 const comments = $derived(reviewComments.shownThreads);
@@ -300,8 +306,16 @@ function pressesAControl(element: Element | null): boolean {
 	);
 }
 
+// The keys belong to the panel while nothing else holds focus, or while focus
+// sits inside it: a toolbar control or a dialog keeps its own keys.
+function keysAreOurs(): boolean {
+	const focused = document.activeElement;
+	if (focused === null || focused === document.body) return true;
+	return panelEl?.contains(focused) === true && !focusInEditable(focused);
+}
+
 function threadKeys(event: KeyboardEvent) {
-	if (focusInEditable(document.activeElement)) return;
+	if (!keysActive || !keysAreOurs()) return;
 
 	const chord = keyChord(event);
 	const at = shownThreads.findIndex((thread) => thread.id === focusedId);
@@ -579,7 +593,10 @@ $effect(() => {
 
 <svelte:window onpointerdown={dismissEndPopover} onkeydown={threadKeys} />
 
-<div class="review-layout flex-1 min-h-0 overflow-hidden bg-surface">
+<div
+	class="review-layout flex-1 min-h-0 overflow-hidden bg-surface"
+	bind:this={panelEl}
+>
 	<!-- The repo's reviews, one row each. Pressing a row shows that review; the
 	     radio beside it makes it the active one, where new comments land. -->
 	<nav

@@ -2277,6 +2277,7 @@ function stepRightPane(delta: number) {
 							oncommentonfile={openFileFinder}
 							onopenfile={openCurrentFile}
 							headBranch={headBranch ?? null}
+							keysActive={tabActive}
 						/>
 					</div>
 				{:else if showMergeEditor && selectedFile}

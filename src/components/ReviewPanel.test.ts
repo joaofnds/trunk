@@ -2624,7 +2624,10 @@ describe("ReviewPanel keyboard", () => {
 		color_index: 0,
 	};
 
-	function renderPanel(onJump: (thread: Thread) => void = vi.fn()) {
+	function renderPanel(
+		onJump: (thread: Thread) => void = vi.fn(),
+		keysActive = true,
+	) {
 		return render(ReviewPanel, {
 			props: {
 				repoPath: "/repo",
@@ -2633,6 +2636,7 @@ describe("ReviewPanel keyboard", () => {
 				onJump,
 				onJumpToCommit: vi.fn(),
 				headBranch: "main",
+				keysActive,
 			},
 		});
 	}
@@ -2804,6 +2808,32 @@ describe("ReviewPanel keyboard", () => {
 		expect(legend.textContent?.replace(/\s/g, "")).toBe(
 			"JKmove↵opencodeRreplyDdoneXdismissOreopen",
 		);
+	});
+
+	// Every repo tab keeps its panel mounted, and the window hears every key.
+	it("leaves the keys alone while its tab is hidden", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel(vi.fn(), false);
+		await flush();
+
+		await press("j");
+
+		expect(focusedThread()).toBeNull();
+	});
+
+	it("leaves the keys to a control outside the panel", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+		const elsewhere = document.createElement("button");
+		document.body.append(elsewhere);
+		elsewhere.focus();
+
+		await fireEvent.keyDown(elsewhere, { key: "j" });
+		await flush();
+		elsewhere.remove();
+
+		expect(focusedThread()).toBeNull();
 	});
 
 	describe("when the user is typing", () => {
