@@ -1822,19 +1822,14 @@ fn a_rename_round_trips_through_a_restart() {
 }
 
 #[test]
-fn a_default_title_carries_the_date_and_short_id() {
+fn a_default_title_carries_the_date_it_was_opened() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
 
     submit_thread_inner(&store, &canonical, submission("x"), 1_000).unwrap();
 
-    let review = only_review(&store, &canonical);
-    assert!(
-        review.title.starts_with("Review ") && review.title.ends_with(&review.id),
-        "an auto-created review needs a readable default title, got {:?}",
-        review.title,
-    );
+    assert_eq!(only_review(&store, &canonical).title, "Review 1970-01-01");
 }
 
 #[test]

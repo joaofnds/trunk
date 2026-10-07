@@ -63,7 +63,7 @@ pub fn create(
     now: i64,
 ) -> Result<String, TrunkError> {
     let id = ids::mint_unique(conn, IdKind::Review)?;
-    let title = title.map_or_else(|| default_title(&id, now), ToString::to_string);
+    let title = title.map_or_else(|| default_title(now), ToString::to_string);
 
     conn.execute(
         "INSERT INTO reviews (id, repo_path, title, published, created_at, updated_at)
@@ -75,11 +75,11 @@ pub fn create(
     Ok(id)
 }
 
-/// Readable without being clever: the ISO date the review was opened plus its
-/// short id, e.g. `Review 2026-08-12 · 3F7K2QAB`.
+/// The ISO date the review was opened, e.g. `Review 2026-08-12`. The short id
+/// stays out of it, since every place that shows a title prints the id beside it.
 #[must_use]
-pub fn default_title(id: &str, now: i64) -> String {
-    format!("Review {} · {}", iso_date(now), id)
+pub fn default_title(now: i64) -> String {
+    format!("Review {}", iso_date(now))
 }
 
 /// Every review for `repo_path`, oldest first.
@@ -371,10 +371,7 @@ mod tests {
     }
 
     #[test]
-    fn the_default_title_carries_the_date_and_the_short_id() {
-        assert_eq!(
-            default_title("3F7K2QAB", 1_755_000_000),
-            "Review 2025-08-12 · 3F7K2QAB",
-        );
+    fn the_default_title_carries_the_date_alone() {
+        assert_eq!(default_title(1_755_000_000), "Review 2025-08-12");
     }
 }

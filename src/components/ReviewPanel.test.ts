@@ -133,7 +133,7 @@ const ACTIVE_REVIEW = "REVIEW01";
 function aReview(overrides: Partial<Review> = {}): Review {
 	return {
 		id: ACTIVE_REVIEW,
-		title: "Review 2026-08-12 · REVIEW01",
+		title: "Review 2026-08-12",
 		state: "composing",
 		published: false,
 		thread_count: 0,

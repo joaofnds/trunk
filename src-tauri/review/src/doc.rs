@@ -1133,7 +1133,7 @@ mod tests {
     ) -> RenderInput {
         RenderInput {
             review_id: "3F7K2QAB".to_string(),
-            title: "Review 2026-08-12 · 3F7K2QAB".to_string(),
+            title: "Review 2026-08-12".to_string(),
             cli_binary: None,
             workdir: repo.workdir().map(std::path::Path::to_path_buf),
             repo_dir: repo.path().to_path_buf(),

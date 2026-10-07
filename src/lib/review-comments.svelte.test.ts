@@ -74,7 +74,7 @@ const thread: Thread = aThread({
 
 const review: Review = {
 	id: "REVIEW01",
-	title: "Review 2026-08-12 · REVIEW01",
+	title: "Review 2026-08-12",
 	state: "composing",
 	published: false,
 	thread_count: 1,
