@@ -6,7 +6,8 @@ mod common;
 use common::context::TestContext;
 use common::repository_manifest::repository_manifest;
 use trunk_lib::commands::review::{
-    SubmitThreadRequest, list_threads_inner, set_thread_state_inner, submit_thread_inner,
+    SubmitThreadRequest, list_threads_inner, set_active_review_inner, set_thread_state_inner,
+    submit_thread_inner,
 };
 use trunk_review::types::{Anchor, Side, Source};
 use trunk_review::types::{Channel, Delivery, ThreadState};
@@ -3435,9 +3436,7 @@ fn a_review_id_from_another_repo_is_not_found() {
     submit_thread_inner(&store, &my_path, submission("mine"), 1_000).unwrap();
     let mine_id = only_review(&store, &my_path).id;
 
-    let err = store
-        .write(|tx| reviewdb::reviews::set_active_checked(tx, &their_path, &mine_id))
-        .unwrap_err();
+    let err = set_active_review_inner(&store, &their_path, &mine_id).unwrap_err();
 
     assert_eq!(
         err.code, "not_found",

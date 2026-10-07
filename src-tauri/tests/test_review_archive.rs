@@ -5,6 +5,7 @@ mod common;
 
 use common::context::TestContext;
 use std::path::{Path, PathBuf};
+use trunk_lib::commands::review::set_active_review_inner;
 use trunk_review::reviewdb::{self, Store, reviews};
 
 fn setup() -> (TestContext, Store, PathBuf) {
@@ -134,9 +135,7 @@ fn an_archived_review_cannot_be_made_active() {
         .write(|tx| reviews::archive(tx, &canonical, &id, 2_000))
         .unwrap();
 
-    let err = store
-        .write(|tx| reviews::set_active_checked(tx, &canonical, &id))
-        .unwrap_err();
+    let err = set_active_review_inner(&store, &canonical, &id).unwrap_err();
 
     assert_eq!(err.code, "archived");
     assert_eq!(

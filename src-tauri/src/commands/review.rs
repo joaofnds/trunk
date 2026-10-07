@@ -1049,11 +1049,27 @@ pub async fn set_active_review<R: Runtime>(
 
     let target = canonical.clone();
     write_and_notify(&app, &canonical, move || {
-        store.write(|tx| reviews::set_active(tx, &target, &review_id))
+        set_active_review_inner(&store, &target, &review_id)
     })
     .await?;
 
     Ok(())
+}
+
+/// Point the repo's new comments at `review_id`, the seam the app's Make
+/// active goes through.
+///
+/// # Errors
+///
+/// Returns `not_found` when `review_id` belongs to another repo or to none,
+/// `archived` when the review is archived, and whatever the store returns
+/// when the write fails.
+pub fn set_active_review_inner(
+    store: &Store,
+    canonical: &Path,
+    review_id: &str,
+) -> Result<(), TrunkError> {
+    store.write(|tx| reviews::set_active_checked(tx, canonical, review_id))
 }
 
 /// # Errors
