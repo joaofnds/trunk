@@ -294,20 +294,31 @@ the remembered file path survives the hop.
 
 ## Reviews (persistent model, spec 2026-08-11)
 
-**Review** — a durable, per-repo collection of threads plus a lifecycle state. Persists
-across restarts and across End Review. Identified by a short id and an editable title.
-Multiple reviews per repo may exist in every state.
+**Review**: a durable, per-repo collection of threads plus a derived state. Persists
+across restarts. Identified by a short id and an editable title. Multiple reviews per
+repo may exist in every state.
 
-**Review states** — fully derived from one non-derived bit, **published** (set once
-by Ending the review, never unset): `composing` = not published (not served by the
-CLI; needs ≥1 thread to publish), `ready` = published with an `open` or `addressed`
-thread ("ready for reading"; discussion runs), `settled` = published with none.
-Ending a review is a publish, never a delete; publishing an all-resolved review
-derives directly to `settled`. No close- or reopen-review gesture exists, and no
+**Review states**: derived from the review's sent threads, never stored: `open`
+while a sent thread is `open` or `addressed` and its code is still there, `stale`
+when every such thread carries the stale marker, `settled` when none is `open` or
+`addressed`. A review with nothing sent reads `settled`, and a held thread counts
+for nothing until it is sent. No close- or reopen-review gesture exists, and no
 review state gates a thread action: thread states dictate actionability, so a
-settled review gaining or reopening a thread is `ready` again. Destructive
+settled review gaining or reopening a thread is `open` again. Destructive
 operations: deleting a review, a thread or a reply, in any state; the agent's watch
 reports each deletion.
+
+**Held comment**: a thread or reply the user kept back from the agent with Start a
+batch, as GitHub's pending review holds one. It wears a Pending pill until the user
+sends the review's batch from its header, and the whole batch reaches the agent at
+once. While a review holds a batch, every new comment in it joins the batch. A
+comment that is not held reaches the agent the moment it is submitted.
+
+**Visible to the agent**: a review that is not archived and holds at least one sent
+thread, and inside it only the threads and replies that are not held. The CLI
+answers any other review's ids as missing. Watch reports `review_added` when a
+review becomes visible, through its first sent thread or by being unarchived, and
+`review_deleted` when deleting its last sent thread hides it again.
 
 **Archived review** — a review the user put away. It is listed apart in the app,
 folded under its own heading, and the agent no longer sees it: the CLI answers its
@@ -317,15 +328,15 @@ An archived review cannot be the active one, so archiving the active review leav
 the repo with none and the next comment opens a fresh review.
 
 **Active review** — the single review, per repo, that comment gestures land in; may
-be any review that is not archived, in any state (published reviews keep gaining threads; a settled one
-flips back to `ready`). Switching it is a one-step UI action; a gesture with no
-active review auto-creates a fresh composing one, never silently activating an
+be any review that is not archived, in any state (reviews keep gaining threads; a settled one
+flips back to `open`). Switching it is a one-step UI action; a gesture with no
+active review auto-creates a fresh one, never silently activating an
 existing review.
 
 **Thread** — one anchored root comment plus a flat, one-level list of replies.
 The selection is the thread; replies carry no anchors and no states.
 
-**Thread states** — `open` (default at creation, so composing-review threads carry
+**Thread states**: `open` (default at creation, so held threads carry
 states too), `addressed` (the agent's claim, settable via CLI), `done`
 (user-confirmed fixed), `dismissed` (user withdrew or rejected the comment). State
 lives on the thread. The CLI may only move `open → addressed`; the UI may move
@@ -400,7 +411,7 @@ resolved line to lose), and for a comment written before Trunk stored it at subm
 until the next pass fills it in.
 
 **Review CLI** — the Trunk-shipped, fully local command-line tool agents use to list
-`ready`/`settled` reviews, read one in full, reply to threads, and claim `addressed`.
+the reviews visible to it, read one in full, reply to threads, and claim `addressed`.
 It inverts the integration dependency: Trunk never connects to an agent; the agent's
 process invokes the CLI.
 

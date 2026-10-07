@@ -4,7 +4,7 @@
 app binary itself, and it reads and writes the same store the GUI uses, fully
 offline. The running app reflects CLI writes within about a second, no restart.
 
-The published review document teaches agents everything below automatically:
+The review document teaches agents everything below automatically:
 its header names the absolute binary path and every verb. This page is the
 human-facing reference.
 
@@ -47,8 +47,9 @@ trunk review address <thread-id> [--commit <rev>] [--repo <path>]
 trunk review watch [--repo <path>]
 ```
 
-- **list** — the repository's published reviews: id, state
-  (`ready`/`settled`), title, thread count.
+- **list**: the repository's reviews visible to the agent: id, state
+  (`open`/`stale`/`settled`), title, and the number of threads it was sent. A
+  review is visible once it holds a sent thread and until the user archives it.
 - **show** — one review in full, as the same markdown document the app's
   Copy-as-markdown produces: threads, states, excerpts, replies. A thread whose
   heading ends `(stale)` was written against code the repository has moved past.
@@ -108,11 +109,12 @@ trunk review watch [--repo <path>]
   `--commit <rev>` names the commit that fixes it. Any revision git understands
   works, and the full oid is kept, so the card reads "Agent marked addressed in
   a3f9c21". A revision the repository lacks fails and writes nothing.
-- **watch** — block and stream changes to the repo's published reviews. After
+- **watch**: block and stream changes to the repo's visible reviews. After
   a `# watching …` readiness line, output arrives as changes land —
   event-driven, no polling: every Trunk process that writes the store rings
-  the watcher over a local socket. macOS/Linux only for now. Composing and
-  archived reviews and draft typing never produce output. Plain mode prints the
+  the watcher over a local socket. macOS/Linux only for now. Held comments,
+  reviews with nothing sent, archived reviews and draft typing never produce
+  output. Plain mode prints the
   changed review's id, one per line (format unstable). `--json` prints one
   self-contained NDJSON event per change, so a harness never refetches or
   rediffs.
@@ -131,14 +133,18 @@ taken from the same matrix the writes enforce, never restated.
 
 One JSON object per line, discriminated by `event`. Evolution is additive:
 new fields and event kinds may appear; existing ones keep their meaning.
+The one exception came when comments began reaching the agent the moment they
+are sent: `review_added` replaced `review_published`, and a review's state
+became `open`, `stale` or `settled` where it had been `composing`, `ready` or
+`settled`. A harness written against the old names has to move to the new ones.
 
 | `event` | carries |
 |---------|---------|
-| `review_published` | `review`, `title`, `state` — followed by `thread_added`/`reply_added` for its full content |
+| `review_added` | `review`, `title`, `state`, sent when a review becomes visible through its first sent thread, and followed by `thread_added`/`reply_added` for its full content |
 | `review_retitled` | `review`, `title` |
-| `review_state_changed` | `review`, `from`, `to` (`ready`/`settled`) |
-| `review_deleted` | `review` |
-| `review_archived` | `review`, sent when the user puts a review away. Its ids stop resolving, and unarchiving it sends `review_published` with its full content again |
+| `review_state_changed` | `review`, `from`, `to` (`open`/`stale`/`settled`). A review is `stale` when every thread still waiting on someone points at code that is gone |
+| `review_deleted` | `review`, sent when the user deletes the review or the last thread the agent was sent |
+| `review_archived` | `review`, sent when the user puts a review away. Its ids stop resolving, and unarchiving it sends `review_added` with its full content again |
 | `thread_added` | `review`, `thread`, `state`, `text`, and its location: `anchor` (`file_path`, `start_line`, `end_line`, `commit_oid`, `source`, `side`), `commit_oid` for a commit-level note, or `content_pin` (`file_path`, `start_line`, `end_line`, `block`, `ordinal`) for a comment on a file's current content. A pin's lines are where the block stood when the comment was written, `block` is the text it pinned, read from the working tree and as untrusted as any excerpt, and `ordinal` is which occurrence of a repeated block was picked, counting from 0. A target-less thread carries none of the three, and a key that does not apply is absent, never null |
 | `thread_edited` | `review`, `thread`, `text` |
 | `thread_state_changed` | `review`, `thread`, `from`, `to` |
@@ -166,8 +172,8 @@ else exits 1. A mistyped verb is refused naming the closest real one when one
 is close enough to suggest. `--json` on a verb with no JSON form (`list`,
 `show`, `reply`, `address`) is a usage error, not accepted and ignored. An
 illegal state claim fails naming the thread's current state and changes
-nothing. A target inside an unpublished (composing) or archived review answers
-exactly as a missing id does — such a review's existence never leaks through
+nothing. A held comment, a review with nothing sent, and anything inside an
+archived review answer exactly as a missing id does, so such a review's existence never leaks through
 the CLI, not even through an ambiguous prefix.
 
 ## Concurrency and versions
