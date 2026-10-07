@@ -13,6 +13,7 @@ import Button from "../../lib/ui/Button.svelte";
 import Chip from "../../lib/ui/Chip.svelte";
 import Keycap from "../../lib/ui/Keycap.svelte";
 import Radio from "../../lib/ui/Radio.svelte";
+import FoldBar from "./FoldBar.svelte";
 import type { Group, Review, Thread } from "./mock.js";
 import ProtoThread from "./ProtoThread.svelte";
 
@@ -55,6 +56,16 @@ function byFile(group: Group): { path: string | null; threads: Thread[] }[] {
 
 function plural(count: number, word: string): string {
 	return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+
+let folded = $state<Record<string, boolean>>({});
+
+function fileKey(group: Group, path: string): string {
+	return `${group.key}:${path}`;
+}
+
+function toggleFold(key: string) {
+	folded[key] = !folded[key];
 }
 
 function removeThread(group: Group, thread: Thread) {
@@ -163,50 +174,72 @@ function removeThread(group: Group, thread: Thread) {
 				<ul class="m-0 list-none p-0">
 					{#each section.groups as group (group.key)}
 						<li class="proto-group">
-							<div
-								class="proto-group-head flex h-bar items-center gap-2 bg-surface pr-2 pl-4"
-							>
-								<span class="proto-node" data-kind={group.target.kind}></span>
-								{#if group.target.kind === "commit"}
-									<Chip tone="neutral">{group.target.sha}</Chip>
-									<span class="min-w-0 truncate text-text-strong"
-										>{group.target.summary}</span
-									>
-								{:else}
-									<span class="font-medium text-text-strong"
-										>Uncommitted changes</span
-									>
-								{/if}
-								<span
-									class="inline-flex h-control-xs shrink-0 items-center rounded bg-surface-chip px-1 font-mono text-caption text-text-muted"
-									>{group.threads.length}</span
+							<div class="proto-group-head h-bar bg-surface">
+								<FoldBar
+									noun={group.target.kind === "commit" ? "commit" : "uncommitted changes"}
+									inset="group"
+									collapsed={!!folded[group.key]}
+									ontoggle={() => toggleFold(group.key)}
 								>
+									{#snippet lead()}
+										<span
+											class="proto-node"
+											data-kind={group.target.kind}
+										></span>
+									{/snippet}
+									{#if group.target.kind === "commit"}
+										<Chip variant="label" tone="neutral"
+											>{group.target.sha}</Chip
+										>
+										<span class="min-w-0 truncate text-text-strong"
+											>{group.target.summary}</span
+										>
+									{:else}
+										<span class="font-medium text-text-strong"
+											>Uncommitted changes</span
+										>
+									{/if}
+									<span
+										class="inline-flex h-control-xs shrink-0 items-center rounded bg-surface-chip px-1 font-mono text-caption text-text-muted"
+										>{group.threads.length}</span
+									>
+								</FoldBar>
 							</div>
-							<div class="proto-group-list flex flex-col gap-3">
-								{#each byFile(group) as file (file.path)}
-									<div class="flex flex-col gap-2">
-										{#if file.path !== null}
-											<div
-												class="flex items-center gap-2 font-mono text-small text-text-strong"
-											>
-												<File size={12} aria-hidden="true" />
-												<span class="min-w-0 truncate">{file.path}</span>
-												<span class="flex-1"></span>
-												<span class="proto-meta"
-													>{plural(file.threads.length, "thread")}</span
-												>
-											</div>
-										{/if}
-										{#each file.threads as thread (thread.id)}
-											{@const at = group.threads.indexOf(thread)}
-											<ProtoThread
-												bind:thread={group.threads[at]}
-												ondelete={() => removeThread(group, thread)}
-											/>
-										{/each}
-									</div>
-								{/each}
-							</div>
+							{#if !folded[group.key]}
+								<div class="proto-group-list flex flex-col gap-3">
+									{#each byFile(group) as file (file.path)}
+										<div class="flex flex-col gap-2">
+											{#if file.path !== null}
+												{@const key = fileKey(group, file.path)}
+												<div class="font-mono text-small text-text-strong">
+													<FoldBar
+														noun="file"
+														inset="file"
+														collapsed={!!folded[key]}
+														ontoggle={() => toggleFold(key)}
+													>
+														<File size={12} aria-hidden="true" />
+														<span class="min-w-0 truncate">{file.path}</span>
+														<span class="flex-1"></span>
+														<span class="proto-meta"
+															>{plural(file.threads.length, "thread")}</span
+														>
+													</FoldBar>
+												</div>
+											{/if}
+											{#if file.path === null || !folded[fileKey(group, file.path)]}
+												{#each file.threads as thread (thread.id)}
+													{@const at = group.threads.indexOf(thread)}
+													<ProtoThread
+														bind:thread={group.threads[at]}
+														ondelete={() => removeThread(group, thread)}
+													/>
+												{/each}
+											{/if}
+										</div>
+									{/each}
+								</div>
+							{/if}
 						</li>
 					{/each}
 				</ul>
