@@ -2021,7 +2021,10 @@ fn publishing_keeps_threads_and_refs() {
         .unwrap();
 
     let review = only_review(&store, &canonical);
-    assert!(review.published, "publishing sets the latch");
+    assert!(
+        review.visible_to_agent,
+        "sending hands the review to the agent"
+    );
     assert_eq!(review.thread_count, 1, "publishing deletes no thread");
     assert_eq!(
         store
@@ -2426,6 +2429,26 @@ fn renders_a_stored_review() {
     assert!(
         doc.contains("## Commits"),
         "the commit set still feeds the Commits section"
+    );
+}
+
+#[test]
+fn an_archived_reviews_doc_omits_the_cli_the_agent_cannot_use_on_it() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(&store, &canonical, submission("sent note"), 1_000).unwrap();
+    let id = only_review(&store, &canonical).id;
+    store
+        .write(|tx| reviewdb::reviews::archive(tx, &canonical, &id, 2_000))
+        .unwrap();
+
+    let doc = generate_review_doc_inner(&store, &canonical, ctx.path(), &id).unwrap();
+
+    assert!(doc.contains("sent note"));
+    assert!(
+        !doc.contains("review reply"),
+        "the CLI answers an archived review's ids as missing, so its doc must not teach it",
     );
 }
 

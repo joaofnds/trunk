@@ -84,7 +84,7 @@ function deletePrompt(review: Review): string {
 		review.thread_count === 0
 			? ""
 			: ` and its ${review.thread_count} ${review.thread_count === 1 ? "thread" : "threads"}`;
-	const agent = review.published ? " The agent loses access to it." : "";
+	const agent = review.visible_to_agent ? " The agent loses access to it." : "";
 	return `${threads}?${agent} This can’t be undone.`;
 }
 </script>

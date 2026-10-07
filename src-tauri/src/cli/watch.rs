@@ -238,7 +238,7 @@ fn published_snapshot(
     store.read(|conn| {
         let mut snapshot = Snapshot::new();
         for review in trunk_review::reviewdb::reviews::list(conn, canonical)? {
-            if !review.published {
+            if review.sent_thread_count == 0 {
                 continue;
             }
             if review.archived {

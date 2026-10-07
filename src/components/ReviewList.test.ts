@@ -27,7 +27,7 @@ function aReview(overrides: Partial<Review> = {}): Review {
 		id: ACTIVE_REVIEW,
 		title: "Review 2026-08-12",
 		state: "settled",
-		published: false,
+		visible_to_agent: false,
 		archived: false,
 		thread_count: 0,
 		unresolved_count: 0,
@@ -41,7 +41,7 @@ const OPEN: Review = {
 	id: "READYRV1",
 	title: "Auth review",
 	state: "open",
-	published: true,
+	visible_to_agent: true,
 	archived: false,
 	thread_count: 2,
 	unresolved_count: 1,
@@ -305,6 +305,11 @@ describe("ReviewList", () => {
 		async function askToDelete(review: Review) {
 			seedReviews([review]);
 			await renderList();
+			if (review.archived) {
+				await fireEvent.click(
+					screen.getByRole("button", { name: "Archived 1" }),
+				);
+			}
 			await fireEvent.click(
 				screen.getByRole("button", { name: `Delete review ${review.id}` }),
 			);
@@ -319,6 +324,18 @@ describe("ReviewList", () => {
 				"Delete Auth review and its 2 threads? The agent loses access to it. This can’t be undone.",
 			);
 			expect(calledCommands()).not.toContain("delete_review");
+		});
+
+		it("says nothing of the agent for an archived review it no longer sees", async () => {
+			const confirm = await askToDelete({
+				...OPEN,
+				archived: true,
+				visible_to_agent: false,
+			});
+
+			expect(confirm).toHaveTextContent(
+				"Delete Auth review and its 2 threads? This can’t be undone.",
+			);
 		});
 
 		it("says nothing of the agent for a review it never saw", async () => {

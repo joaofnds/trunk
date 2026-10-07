@@ -6,7 +6,8 @@ mod common;
 use common::context::TestContext;
 use std::path::{Path, PathBuf};
 use trunk_lib::commands::review::set_active_review_inner;
-use trunk_review::reviewdb::{self, Store, reviews};
+use trunk_review::reviewdb::{self, Store, reviews, threads};
+use trunk_review::types::Delivery;
 
 fn setup() -> (TestContext, Store, PathBuf) {
     let ctx = TestContext::new_empty();
@@ -44,6 +45,36 @@ fn an_archived_review_reads_archived_until_it_is_unarchived() {
 
     assert!(after_archive);
     assert!(!archived(&store, &id));
+}
+
+#[test]
+fn an_archived_review_is_not_visible_to_the_agent_whatever_it_was_sent() {
+    let (_ctx, store, canonical) = setup();
+    let id = a_review(&store, &canonical);
+    store
+        .write(|tx| {
+            threads::insert(
+                tx,
+                &id,
+                threads::NewThread {
+                    text: "sent".to_string(),
+                    anchor: None,
+                    commit_oid: None,
+                    content_pin: None,
+                    cached_excerpt: None,
+                    delivery: Delivery::Send,
+                },
+                1_000,
+            )
+        })
+        .unwrap();
+
+    store
+        .write(|tx| reviews::archive(tx, &canonical, &id, 2_000))
+        .unwrap();
+
+    let review = store.read(|c| reviews::get(c, &id)).unwrap().unwrap();
+    assert!(!review.visible_to_agent);
 }
 
 #[test]

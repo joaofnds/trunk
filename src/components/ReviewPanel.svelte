@@ -216,6 +216,14 @@ function plural(count: number, noun: string): string {
 	return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
+// An archived review stays unseen after its batch is sent, so the promise
+// waits on unarchiving it.
+function sendSummary(review: Review): string {
+	const held = plural(review.pending_count, "held comment");
+	const when = review.archived ? " once the review is unarchived" : "";
+	return `The agent will be able to read and reply to ${held}${when}. Nothing is deleted.`;
+}
+
 function sectionSummary(section: ReviewSection): string {
 	const commitCount = section.groups.filter(
 		(group) => group.kind === "commit" || group.kind === "gone",
@@ -699,11 +707,7 @@ $effect(() => {
 								}}
 								>
 									<p class="m-0 text-callout leading-normal text-text-muted">
-										The agent will be able to read and reply to
-										{shownReview.pending_count}
-										held
-										{shownReview.pending_count === 1 ? "comment" : "comments"}.
-										Nothing is deleted.
+										{sendSummary(shownReview)}
 									</p>
 									<div class="flex justify-end gap-2">
 										<Button
@@ -752,7 +756,7 @@ $effect(() => {
 				{/if}
 				<span class="text-text-disabled" aria-hidden="true">·</span>
 				<span
-					>{shownReview.published
+					>{shownReview.visible_to_agent
 						? "Visible to the agent"
 						: "Not visible to the agent"}</span
 				>

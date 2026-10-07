@@ -503,8 +503,8 @@ export interface Review {
 	id: string;
 	title: string;
 	state: ReviewState;
-	/** Whether any thread has been sent, which hands the review to the agent. */
-	published: boolean;
+	/** Whether the agent may read it: sent a thread and not archived. */
+	visible_to_agent: boolean;
 	/** Put away by the user: listed apart and unseen by the agent. */
 	archived: boolean;
 	thread_count: number;

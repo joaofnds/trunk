@@ -76,7 +76,7 @@ const review: Review = {
 	id: "REVIEW01",
 	title: "Review 2026-08-12",
 	state: "settled",
-	published: false,
+	visible_to_agent: false,
 	archived: false,
 	thread_count: 1,
 	unresolved_count: 1,

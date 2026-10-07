@@ -623,7 +623,7 @@ function reviewWith(
 			id,
 			title: `${state} review`,
 			state: "settled",
-			published: false,
+			visible_to_agent: false,
 			archived: false,
 			thread_count: storedThreads.length,
 			unresolved_count: storedThreads.filter((t) => t.state === "open").length,

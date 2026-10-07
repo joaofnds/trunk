@@ -735,10 +735,10 @@ pub fn render_review_doc(
         Ok(RenderInput {
             review_id: review.id.clone(),
             title: review.title,
-            // The CLI serves published reviews only, so only their docs
-            // teach it (criterion 11). `current_exe` at generation time is
-            // §5.5's ruling: the doc names the binary that will answer.
-            cli_binary: if review.published {
+            // The CLI serves only the reviews visible to the agent, so only
+            // their docs teach it (criterion 11). `current_exe` at generation
+            // time is §5.5's ruling: the doc names the binary that will answer.
+            cli_binary: if review.visible_to_agent {
                 std::env::current_exe().ok()
             } else {
                 None

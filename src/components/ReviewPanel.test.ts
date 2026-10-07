@@ -135,7 +135,7 @@ function aReview(overrides: Partial<Review> = {}): Review {
 		id: ACTIVE_REVIEW,
 		title: "Review 2026-08-12",
 		state: "settled",
-		published: false,
+		visible_to_agent: false,
 		archived: false,
 		thread_count: 0,
 		unresolved_count: 0,
@@ -1585,7 +1585,7 @@ describe("the shown review", () => {
 		id: "READYRV1",
 		title: "Auth review",
 		state: "open",
-		published: true,
+		visible_to_agent: true,
 		archived: false,
 		thread_count: 2,
 		unresolved_count: 1,
@@ -1797,7 +1797,7 @@ describe("header", () => {
 		id: "OTHERRV1",
 		title: "Other review",
 		state: "open",
-		published: true,
+		visible_to_agent: true,
 		archived: false,
 		thread_count: 0,
 		unresolved_count: 0,
@@ -1972,6 +1972,40 @@ describe("header", () => {
 				path: "/repo",
 				reviewId: OTHER.id,
 			});
+		});
+
+		async function showArchived(overrides: Partial<Review> = {}) {
+			installReads({
+				commits,
+				comments: THREADS,
+				reviews: [
+					aReview({ thread_count: 4 }),
+					{ ...OTHER, archived: true, visible_to_agent: false, ...overrides },
+				],
+			});
+			renderPanel();
+			await flush();
+			await reviewComments.select(OTHER.id);
+			await flush();
+		}
+
+		it("says the agent cannot see it once archived, whatever it was sent", async () => {
+			await showArchived();
+
+			expect(header()).toHaveTextContent("Not visible to the agent");
+		});
+
+		it("says held comments sent from an archived review wait on unarchiving", async () => {
+			await showArchived({ pending_count: 1 });
+
+			await fireEvent.click(screen.getByRole("button", { name: "Send 1" }));
+			await flush();
+
+			expect(
+				screen.getByRole("dialog", { name: `Send ${OTHER.id}?` }),
+			).toHaveTextContent(
+				"The agent will be able to read and reply to 1 held comment once the review is unarchived. Nothing is deleted.",
+			);
 		});
 
 		it("offers to make it active", async () => {

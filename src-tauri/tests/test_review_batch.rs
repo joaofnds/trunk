@@ -184,23 +184,23 @@ fn sending_one_review_leaves_another_reviews_batch_held() {
 }
 
 #[test]
-fn a_review_holding_only_held_comments_is_unpublished() {
+fn a_review_holding_only_held_comments_is_not_visible_to_the_agent() {
     let (_ctx, store, canonical) = setup();
     let id = a_review(&store, &canonical);
 
     comment(&store, &id, Delivery::Hold);
 
-    assert!(!review(&store, &id).published);
+    assert!(!review(&store, &id).visible_to_agent);
 }
 
 #[test]
-fn a_review_is_published_once_a_comment_is_sent() {
+fn a_review_is_visible_to_the_agent_once_a_comment_is_sent() {
     let (_ctx, store, canonical) = setup();
     let id = a_review(&store, &canonical);
 
     comment(&store, &id, Delivery::Send);
 
-    assert!(review(&store, &id).published);
+    assert!(review(&store, &id).visible_to_agent);
 }
 
 #[test]

@@ -16,7 +16,7 @@ use trunk_review::types::{Channel, ThreadState};
 pub(crate) fn render_list(listed: &[reviews::Review]) -> String {
     listed
         .iter()
-        .filter(|r| r.is_visible_to_agent())
+        .filter(|r| r.visible_to_agent)
         .fold(String::new(), |mut out, r| {
             let _ = writeln!(
                 out,

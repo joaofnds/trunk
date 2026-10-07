@@ -1,8 +1,8 @@
 //! Reviews: create, list, rename, send the held batch, archive, delete, and the
 //! per-repo active pointer.
 //!
-//! `open` / `stale` / `settled` and `published` are computed in SQL from the
-//! threads, never stored, so no code path can desynchronise them.
+//! `open` / `stale` / `settled` and the sent-thread count are computed in SQL
+//! from the threads, never stored, so no code path can desynchronise them.
 
 use super::ids::{self, IdKind};
 use super::{repo_key, sqlite_error};
@@ -27,9 +27,9 @@ pub struct Review {
     pub id: String,
     pub title: String,
     pub state: ReviewState,
-    /// Whether any thread has been sent, which is what hands the review to
-    /// the agent.
-    pub published: bool,
+    /// Whether the agent may read this review through the CLI and watch: a
+    /// review that was sent a thread and that the user has not put away.
+    pub visible_to_agent: bool,
     /// Put away by the user: listed apart in the app and unseen by the agent.
     pub archived: bool,
     pub thread_count: i64,
@@ -45,16 +45,7 @@ pub struct Review {
     pub created_at: i64,
 }
 
-impl Review {
-    /// Whether the agent may read this review through the CLI and watch: a
-    /// review it was handed and the user has not put away.
-    #[must_use]
-    pub const fn is_visible_to_agent(&self) -> bool {
-        self.published && !self.archived
-    }
-}
-
-/// Every column `read_review` reads, in its order. A review is published
+/// Every column `read_review` reads, in its order. A review reaches the agent
 /// once any thread is sent, and its state is derived from the sent threads
 /// alone, since a held one waits on nobody until it is sent.
 const SELECT: &str = "
@@ -150,16 +141,17 @@ pub fn get(conn: &Connection, id: &str) -> Result<Option<Review>, TrunkError> {
 fn read_review(row: &rusqlite::Row) -> rusqlite::Result<Review> {
     let state: String = row.get(8)?;
     let sent_thread_count: i64 = row.get(2)?;
+    let archived = row.get::<_, i64>(6)? != 0;
 
     Ok(Review {
         id: row.get(0)?,
         title: row.get(1)?,
-        published: sent_thread_count > 0,
+        visible_to_agent: sent_thread_count > 0 && !archived,
         created_at: row.get(3)?,
         thread_count: row.get(4)?,
         sent_thread_count,
         unresolved_count: row.get(5)?,
-        archived: row.get::<_, i64>(6)? != 0,
+        archived,
         pending_count: row.get(7)?,
         state: match state.as_str() {
             "open" => ReviewState::Open,

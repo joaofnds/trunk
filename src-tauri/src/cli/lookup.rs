@@ -56,7 +56,7 @@ pub(crate) fn published_thread(
     let candidates: Vec<threads::Thread> = store.read(|conn| {
         let mut all = Vec::new();
         for review in trunk_review::reviewdb::reviews::list(conn, canonical)? {
-            if review.is_visible_to_agent() {
+            if review.visible_to_agent {
                 all.extend(threads::list_for_review(
                     conn,
                     &review.id,
@@ -83,7 +83,7 @@ pub(crate) fn published_review(
     let published: Vec<trunk_review::reviewdb::reviews::Review> = store
         .read(|conn| trunk_review::reviewdb::reviews::list(conn, canonical))?
         .into_iter()
-        .filter(trunk_review::reviewdb::reviews::Review::is_visible_to_agent)
+        .filter(|review| review.visible_to_agent)
         .collect();
 
     resolve_unique(published, |r| &r.id, raw, "review")
