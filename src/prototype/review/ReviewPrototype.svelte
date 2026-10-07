@@ -57,7 +57,7 @@ let inlineThread = $state(
 				<ul class="m-0 list-none p-0">
 					{#each reviews as review (review.id)}
 						<li
-							class="proto-rail-item"
+							class="proto-rail-item hover:bg-hover"
 							class:proto-rail-item-shown={review.id === shownId}
 						>
 							<span class="proto-rail-radio">

@@ -15,6 +15,7 @@ import ThreadEvent from "../../components/review/ThreadEvent.svelte";
 import ThreadMessage from "../../components/review/ThreadMessage.svelte";
 import type { ThreadState } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
+import HitArea from "../../lib/ui/HitArea.svelte";
 import RowAction from "../../lib/ui/RowAction.svelte";
 import Tag from "../../lib/ui/Tag.svelte";
 import Excerpt from "./Excerpt.svelte";
@@ -31,13 +32,12 @@ let { thread = $bindable(), variant = "panel", ondelete }: Props = $props();
 
 const ACTIONS: Record<ThreadState, { next: ThreadState; label: string }[]> = {
 	open: [
-		{ next: "done", label: "Mark done" },
 		{ next: "dismissed", label: "Dismiss" },
+		{ next: "done", label: "Mark done" },
 	],
 	addressed: [
-		{ next: "done", label: "Confirm fix" },
-		{ next: "open", label: "Reopen" },
 		{ next: "dismissed", label: "Dismiss" },
+		{ next: "done", label: "Mark done" },
 	],
 	done: [{ next: "open", label: "Reopen" }],
 	dismissed: [{ next: "open", label: "Reopen" }],
@@ -48,6 +48,11 @@ const settled = $derived(
 );
 let collapsedByUser = $state<boolean | null>(null);
 const collapsed = $derived(collapsedByUser ?? settled);
+const toggleLabel = $derived(collapsed ? "Expand thread" : "Collapse thread");
+
+function toggleCollapsed() {
+	collapsedByUser = !collapsed;
+}
 
 let editingId = $state<string | null>(null);
 let editText = $state("");
@@ -141,61 +146,69 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 	class:proto-card-open={!collapsed}
 >
 	<header class="proto-card-header">
-		<Button
-			icon
-			size="xs"
-			variant="ghost"
+		<HitArea
+			cursor="pointer"
+			aria-label={toggleLabel}
 			aria-expanded={!collapsed}
-			aria-label={collapsed ? "Expand thread" : "Collapse thread"}
-			onclick={() => {
-				collapsedByUser = !collapsed;
-			}}
-		>
-			{#if collapsed}
-				<ChevronRight size={12} aria-hidden="true" />
-			{:else}
-				<ChevronDown size={12} aria-hidden="true" />
-			{/if}
-		</Button>
-		<StatePill state={thread.state} />
-		{#if thread.scope.kind === "commit"}
-			<Tag variant="label" dashed
-				><GitCommitHorizontal size={11} aria-hidden="true" />Whole commit</Tag
-			>
-		{:else if thread.scope.kind === "file"}
-			<Tag variant="label" dashed>Whole file</Tag>
-		{:else if scopeLabel}
-			<Tag>{scopeLabel}</Tag>
-		{/if}
-		{#if thread.stale}
-			<StatePill state="stale" />
-		{/if}
-		{#if collapsed}
-			<span
-				class="min-w-0 flex-1 truncate text-callout text-text-subtle"
-				class:line-through={thread.state === "dismissed"}
-				>{peek}</span
-			>
-		{:else}
-			<span class="flex-1"></span>
-		{/if}
-		<fieldset
-			class="flex min-w-auto items-center gap-1"
-			aria-label="Thread actions"
-		>
-			{#each ACTIONS[thread.state] as action (action.next)}
+			onclick={toggleCollapsed}
+		/>
+		<div class="proto-card-header-content">
+			<span class="flex pointer-events-auto">
 				<Button
+					icon
 					size="xs"
-					variant={action.next === "done" ? "success" : "secondary"}
-					onclick={() => moveTo(action.next)}
+					variant="ghost"
+					aria-expanded={!collapsed}
+					aria-label={toggleLabel}
+					onclick={toggleCollapsed}
 				>
-					{#if action.next === "done"}
-						<Check size={12} aria-hidden="true" />
+					{#if collapsed}
+						<ChevronRight size={12} aria-hidden="true" />
+					{:else}
+						<ChevronDown size={12} aria-hidden="true" />
 					{/if}
-					{action.label}
 				</Button>
-			{/each}
-		</fieldset>
+			</span>
+			<StatePill state={thread.state} />
+			{#if thread.scope.kind === "commit"}
+				<Tag variant="label" dashed
+					><GitCommitHorizontal size={11} aria-hidden="true" />Whole commit</Tag
+				>
+			{:else if thread.scope.kind === "file"}
+				<Tag variant="label" dashed>Whole file</Tag>
+			{:else if scopeLabel}
+				<Tag>{scopeLabel}</Tag>
+			{/if}
+			{#if thread.stale}
+				<StatePill state="stale" />
+			{/if}
+			{#if collapsed}
+				<span
+					class="min-w-0 flex-1 truncate text-callout text-text-subtle"
+					class:line-through={thread.state === "dismissed"}
+					>{peek}</span
+				>
+			{:else}
+				<span class="flex-1"></span>
+			{/if}
+			<fieldset
+				class="flex min-w-auto items-center gap-1 pointer-events-auto"
+				aria-label="Thread actions"
+			>
+				{#each ACTIONS[thread.state] as action (action.next)}
+					<Button
+						size="xs"
+						variant={action.next === "done" ? "success" : "secondary"}
+						onclick={() => moveTo(action.next)}
+					>
+						{#if action.next === "done"}
+							<Check size={12} aria-hidden="true" />
+						{/if}
+						{action.label}
+					</Button>
+				{/each}
+			</fieldset>
+		</div>
 	</header>
 
 	{#if !collapsed}
@@ -304,13 +317,22 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 	font-size: var(--text-callout);
 }
 .proto-card-header {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	height: var(--control-h);
+	min-width: 0;
+	background: var(--color-comment-card-header-bg);
+}
+.proto-card-header > :global(*) {
+	grid-area: 1 / 1;
+	min-width: 0;
+}
+.proto-card-header-content {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	height: var(--control-h);
-	min-width: 0;
 	padding: 0 var(--space-1);
-	background: var(--color-comment-card-header-bg);
+	pointer-events: none;
 }
 .proto-card-open .proto-card-header {
 	box-shadow: var(--shadow-hairline);
