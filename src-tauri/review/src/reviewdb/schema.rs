@@ -8,7 +8,7 @@ use super::sqlite_error;
 use rusqlite::Connection;
 use trunk_git::error::TrunkError;
 
-pub const CURRENT_VERSION: i64 = 9;
+pub const CURRENT_VERSION: i64 = 10;
 
 const V1: &str = r"
 CREATE TABLE reviews (
@@ -239,6 +239,22 @@ CREATE INDEX threads_by_anchor ON threads(commit_oid, file_path);
 /// still judged by the snapshot author, so a commit fetched after the upgrade
 /// can never be taken for a snapshot, while a thread on an old snapshot keeps
 /// its stale marker.
+/// A thread's history, one row per state change (`reviewdb::history`). Rows
+/// order by their write time, which the app and the CLI read off this one
+/// host's clock; the order only decides where the card draws a change among
+/// the replies, so a clock step back can misplace a row and nothing else.
+const V10: &str = r"
+CREATE TABLE thread_history (
+    thread_id  TEXT    NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    state      TEXT    NOT NULL,
+    channel    TEXT    NOT NULL CHECK (channel IN ('human', 'agent')),
+    commit_oid TEXT,
+    created_at INTEGER NOT NULL
+);
+
+CREATE INDEX thread_history_by_thread ON thread_history(thread_id, created_at);
+";
+
 const V9: &str = r"
 CREATE TABLE minted_snapshots (
     repo_path TEXT NOT NULL,
@@ -420,6 +436,10 @@ fn apply_pending(conn: &Connection) -> Result<(), TrunkError> {
     }
     if user_version(conn)? < 9 {
         conn.execute_batch(&format!("{V9} PRAGMA user_version = 9;"))
+            .map_err(sqlite_error)?;
+    }
+    if user_version(conn)? < 10 {
+        conn.execute_batch(&format!("{V10} PRAGMA user_version = 10;"))
             .map_err(sqlite_error)?;
     }
 

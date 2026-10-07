@@ -46,6 +46,9 @@ pub enum ReviewCmd {
     Address {
         /// A thread id, or any unambiguous prefix of one
         id: String,
+        /// The commit that fixes it, shown on the thread's history
+        #[arg(long, value_name = "REV")]
+        commit: Option<String>,
         #[arg(long, value_name = "PATH")]
         repo: Option<PathBuf>,
     },
@@ -152,7 +155,9 @@ pub fn run(cmd: ReviewCmd, identifier: &str, out: &mut dyn Write) -> Result<(), 
             let text = ReplyText::from_parts(text, stdin)?;
             reply(&store, discover_repo(repo)?, &id, text, out)
         }
-        ReviewCmd::Address { id, repo } => address(&store, discover_repo(repo)?, &id, out),
+        ReviewCmd::Address { id, commit, repo } => {
+            address(&store, discover_repo(repo)?, &id, commit.as_deref(), out)
+        }
         ReviewCmd::Watch { repo, json } => {
             crate::cli::watch::watch(&store, &discover_repo(repo)?, json, out)
         }
@@ -250,27 +255,42 @@ fn address(
     store: &reviewdb::Store,
     canonical: PathBuf,
     id: &str,
+    commit: Option<&str>,
     out: &mut dyn Write,
 ) -> Result<(), TrunkError> {
     let thread = published_thread(store, &canonical, id)?;
+    let commit = commit
+        .map(|rev| resolve_commit(&canonical, rev))
+        .transpose()?;
 
     // `set_state` runs `ThreadState::transition` with the agent channel — the
     // one matrix, never re-derived here (TRUNK-17). An illegal claim fails
     // naming the current state and writes nothing.
     let now = reviewdb::now_secs();
     store.write(|tx| {
-        reviewdb::threads::set_state(
+        reviewdb::threads::set_state_at_commit(
             tx,
             &canonical,
             &thread.id,
             trunk_review::types::ThreadState::Addressed,
             trunk_review::types::Channel::Agent,
+            commit.as_deref(),
             now,
         )
     })?;
 
     writeln!(out, "{} claimed as addressed", thread.id)
         .map_err(|e| TrunkError::new("io", e.to_string()))
+}
+
+/// The full oid of the commit `rev` names in the repo, so the history keeps a
+/// name that a later branch move cannot change.
+fn resolve_commit(repo: &std::path::Path, rev: &str) -> Result<String, TrunkError> {
+    let not_found = || TrunkError::new("bad_request", format!("no commit named {rev}"));
+    let repo = git2::Repository::open(repo).map_err(|e| TrunkError::new("io", e.to_string()))?;
+    let object = repo.revparse_single(rev).map_err(|_| not_found())?;
+    let commit = object.peel_to_commit().map_err(|_| not_found())?;
+    Ok(commit.id().to_string())
 }
 
 /// A published review's threads, optionally narrowed to one state.

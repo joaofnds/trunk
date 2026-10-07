@@ -43,7 +43,7 @@ trunk review show <review-id> [--repo <path>]
 trunk review threads <review-id> [--state <state>] [--json] [--repo <path>]
 trunk review thread <thread-id> [--json] [--repo <path>]
 trunk review reply <thread-id> <text> | --stdin [--repo <path>]
-trunk review address <thread-id> [--repo <path>]
+trunk review address <thread-id> [--commit <rev>] [--repo <path>]
 trunk review watch [--repo <path>]
 ```
 
@@ -105,6 +105,9 @@ trunk review watch [--repo <path>]
 - **address** — claim an `open` thread as `addressed` after acting on it. This
   is the only state the CLI can set: `done`, `dismissed`, and reopening are
   the human's, in the app, so an agent can never settle a review.
+  `--commit <rev>` names the commit that fixes it. Any revision git understands
+  works, and the full oid is kept, so the card reads "Agent marked addressed in
+  a3f9c21". A revision the repository lacks fails and writes nothing.
 - **watch** — block and stream changes to the repo's published reviews. After
   a `# watching …` readiness line, output arrives as changes land —
   event-driven, no polling: every Trunk process that writes the store rings

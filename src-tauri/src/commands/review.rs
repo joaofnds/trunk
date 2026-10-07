@@ -360,6 +360,9 @@ pub struct RenderedThread {
     /// slices by. Empty when there is no excerpt.
     pub excerpt_spans: Vec<Vec<crate::types::MergedSpan>>,
     pub replies: Vec<RenderedReply>,
+    /// Each state change the thread went through, oldest first, which the
+    /// card draws among the replies by time.
+    pub history: Vec<trunk_review::reviewdb::history::StateChange>,
     /// Wall-clock seconds when the root comment was submitted, which the card
     /// shows as an age beside the author, as each reply shows its own.
     pub created_at: i64,
@@ -404,7 +407,12 @@ fn excerpt_spans(t: &threads::Thread) -> Vec<Vec<crate::types::MergedSpan>> {
 }
 
 impl RenderedThread {
-    fn from_thread(t: threads::Thread, replies: Vec<replies::Reply>, published: bool) -> Self {
+    fn from_thread(
+        t: threads::Thread,
+        replies: Vec<replies::Reply>,
+        history: Vec<trunk_review::reviewdb::history::StateChange>,
+        published: bool,
+    ) -> Self {
         let text_html = crate::commands::markdown::render_comment_text(&t.text);
         let excerpt_spans = excerpt_spans(&t);
         Self {
@@ -426,6 +434,7 @@ impl RenderedThread {
             text_html,
             excerpt_spans,
             replies: replies.into_iter().map(RenderedReply::from_reply).collect(),
+            history,
             created_at: t.created_at,
         }
     }
@@ -453,9 +462,15 @@ pub fn list_threads_inner(
         // published bit is read once rather than per-thread.
         let published = reviews::get(conn, &review_id)?.is_some_and(|r| r.published);
 
-        Ok(threads::list_with_replies(conn, &review_id)?
+        let listed = threads::list_with_replies(conn, &review_id)?;
+        let ids: Vec<String> = listed.iter().map(|(t, _)| t.id.clone()).collect();
+        let mut histories = trunk_review::reviewdb::history::list_for_threads(conn, &ids)?;
+        Ok(listed
             .into_iter()
-            .map(|(t, replies)| RenderedThread::from_thread(t, replies, published))
+            .map(|(t, replies)| {
+                let history = histories.remove(&t.id).unwrap_or_default();
+                RenderedThread::from_thread(t, replies, history, published)
+            })
             .collect())
     })
 }

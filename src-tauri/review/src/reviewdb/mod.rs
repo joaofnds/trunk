@@ -11,6 +11,7 @@ pub mod commits;
 pub mod drafts;
 #[cfg(unix)]
 pub mod events;
+pub mod history;
 pub mod ids;
 pub mod minted;
 pub mod pins;

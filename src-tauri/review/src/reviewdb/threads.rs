@@ -319,6 +319,24 @@ pub fn set_state(
     channel: Channel,
     now: i64,
 ) -> Result<(), TrunkError> {
+    set_state_at_commit(conn, repo_path, id, next, channel, None, now)
+}
+
+/// `set_state`, naming the commit the change rests on, as an agent's addressed
+/// claim names its fix. The change and the commit go into the thread's history.
+///
+/// # Errors
+///
+/// As `set_state`.
+pub fn set_state_at_commit(
+    conn: &Connection,
+    repo_path: &Path,
+    id: &str,
+    next: ThreadState,
+    channel: Channel,
+    commit: Option<&str>,
+    now: i64,
+) -> Result<(), TrunkError> {
     let current: Option<String> = conn
         .query_row(
             "SELECT state FROM threads
@@ -343,6 +361,7 @@ pub fn set_state(
         rusqlite::params![id, next.as_str(), now],
     )
     .map_err(sqlite_error)?;
+    super::history::record(conn, id, next, channel, commit, now)?;
 
     Ok(())
 }

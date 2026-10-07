@@ -93,6 +93,7 @@ fn the_v8_rebuild_keeps_the_replies_hanging_off_a_thread() {
             "ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
+             DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
              PRAGMA user_version = 7;",
@@ -3956,6 +3957,7 @@ fn a_store_from_the_earlier_v5_is_reconciled() {
              ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
+             DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
              PRAGMA user_version = 5;",
@@ -4802,6 +4804,7 @@ fn a_store_from_the_unreleased_v8_is_accepted() {
         let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
         conn.execute_batch(
             "CREATE TABLE pin_seq (repo_path TEXT PRIMARY KEY, next INTEGER NOT NULL);
+             DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
              PRAGMA user_version = 8;",
@@ -4868,6 +4871,7 @@ fn a_store_stamped_eight_without_the_pin_columns_is_migrated() {
             "ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
+             DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
              PRAGMA user_version = 8;",
@@ -5312,11 +5316,13 @@ fn a_commit_under_a_keepalive_ref_trunk_never_minted_never_goes_stale() {
     );
 }
 
-/// Wind a store back to what a v8 build left: no mint record at all.
+/// Wind a store back to what a v8 build left: no mint record at all, and no
+/// thread history.
 fn wind_back_to_v8(ctx: &TestContext) {
     let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
     conn.execute_batch(
-        "DROP TABLE minted_snapshots;
+        "DROP TABLE thread_history;
+         DROP TABLE minted_snapshots;
          DROP TABLE legacy_snapshot_candidates;
          PRAGMA user_version = 8;",
     )

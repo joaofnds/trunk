@@ -1,4 +1,4 @@
-import type { Reply, Thread } from "../../lib/types.js";
+import type { Reply, StateChange, Thread } from "../../lib/types.js";
 
 /**
  * A Thread with the fields every stored thread carries filled in, so a test
@@ -59,6 +59,18 @@ export function aReply(overrides: Partial<Reply> = {}): Reply {
 		text: "",
 		text_html: "",
 		channel: "human",
+		created_at: 1_000,
+		...overrides,
+	};
+}
+
+export function aStateChange(
+	overrides: Partial<StateChange> = {},
+): StateChange {
+	return {
+		state: "addressed",
+		channel: "agent",
+		commit: null,
 		created_at: 1_000,
 		...overrides,
 	};

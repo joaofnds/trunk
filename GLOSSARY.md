@@ -326,6 +326,12 @@ lives on the thread. The CLI may only move `open → addressed`; the UI may move
 nothing reaches `addressed` from the UI — it is the agent's claim by definition.
 Text edits never change state. Attribution is by channel: UI = human, CLI = agent.
 
+**State change** — one move of a thread's state, kept in the thread's history: the
+state it moved to, the channel that moved it, when, and for an agent's claim the
+commit it named as the fix (`trunk review address --commit`). The card shows each
+change between the replies it came between and sums up the latest in its header.
+The history is a record for display only; the thread's own state stays the truth.
+
 **Stale marker** — an orthogonal, derived flag on a thread whose pinned content no
 longer occurs on the surface the thread targets (current-file → the pinned block is
 absent from the working-tree file; snapshot → superseded; any anchor oid → the

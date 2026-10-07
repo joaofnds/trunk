@@ -11,6 +11,8 @@ import Pencil from "@lucide/svelte/icons/pencil";
 import Trash2 from "@lucide/svelte/icons/trash-2";
 import { externalLinks } from "../lib/external-links.js";
 import { gapLength } from "../lib/full-file-anchor.js";
+import { currentMinute } from "../lib/now.svelte.js";
+import { compactLabel } from "../lib/relative-time.js";
 import {
 	addReply,
 	deleteReply,
@@ -21,6 +23,7 @@ import {
 	createThreadEditorSession,
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
+import { CHANGE_TEXT } from "../lib/thread-timeline.js";
 import type { MergedSpan, Side, Thread, ThreadState } from "../lib/types.js";
 import Button, { type ButtonVariant } from "../lib/ui/Button.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
@@ -100,6 +103,9 @@ const peek = $derived(
 		.replace(/\s+/g, " ")
 		.trim(),
 );
+// The header names the thread's latest move, so a collapsed card still says
+// whether the agent claimed it.
+const lastChange = $derived(thread.history?.at(-1) ?? null);
 const draft = $derived(editor.rootEdit);
 const replyDraft = $derived(editor.reply);
 const replySaving = $derived(editor.replySaving);
@@ -524,14 +530,31 @@ async function requestDeleteReply(replyId: string) {
 				class:line-through={thread.state === "dismissed"}
 				>{peek}</span
 			>
+		{:else}
+			<span class="flex-1"></span>
+		{/if}
+		{#if lastChange}
+			<span class="shrink-0 whitespace-nowrap text-small text-text-subtle"
+				><span
+					class="font-semibold"
+					class:text-accent-alt={lastChange.channel === "agent"}
+					class:text-text-muted={lastChange.channel === "human"}
+					>{lastChange.channel === "agent" ? "Agent" : "You"}</span
+				>
+				{CHANGE_TEXT[lastChange.state]}
+				·
+				{compactLabel(
+					lastChange.created_at,
+					currentMinute(),
+				)}</span
+			>
+		{:else if collapsed}
 			{#if thread.replies.length > 0}
 				<span class="shrink-0 whitespace-nowrap text-small text-text-subtle"
 					>{thread.replies.length}
 					{thread.replies.length === 1 ? "reply" : "replies"}</span
 				>
 			{/if}
-		{:else}
-			<span class="flex-1"></span>
 		{/if}
 		{#if !draft.editing}
 			<RowAction size="compact" aria-label="Edit comment" onclick={openEdit}>
@@ -614,6 +637,7 @@ async function requestDeleteReply(replyId: string) {
 
 		<ThreadReplies
 			replies={thread.replies}
+			history={thread.history}
 			editorSession={editor}
 			onreplyedit={(id, text) => editReply(repoPath, id, text)}
 			onreplydelete={requestDeleteReply}

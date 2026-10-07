@@ -432,6 +432,9 @@ export interface Thread {
 	// `text_html`; the excerpt renders uncoloured without it.
 	excerpt_spans?: readonly (readonly MergedSpan[])[];
 	replies: readonly Reply[];
+	// Every state change the thread went through, oldest first. Present only
+	// from `list_threads`; the card shows no events without it.
+	history?: readonly StateChange[];
 	// Wall-clock seconds when the root comment was submitted.
 	created_at: number;
 }
@@ -443,6 +446,15 @@ export interface Reply {
 	readonly text: string;
 	readonly text_html: string;
 	readonly channel: Channel;
+	readonly created_at: number;
+}
+
+// One move of a thread's state: to which state, by which channel, when, and
+// the commit the agent named as its fix. Mirrors the Rust StateChange.
+export interface StateChange {
+	readonly state: ThreadState;
+	readonly channel: Channel;
+	readonly commit: string | null;
 	readonly created_at: number;
 }
 

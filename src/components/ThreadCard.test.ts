@@ -2,7 +2,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import type { ComponentProps } from "svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { aReply, aThread } from "../__tests__/helpers/thread-fixture.js";
+import {
+	aReply,
+	aStateChange,
+	aThread,
+} from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createThreadEditorSession } from "../lib/review-editors.svelte.js";
 import type { Anchor, Thread, ThreadState } from "../lib/types.js";
@@ -620,6 +624,40 @@ describe("ThreadCard", () => {
 		);
 
 		expect(screen.getByText("2 replies")).toBeInTheDocument();
+	});
+
+	it("sums up its latest state change in the header, open or not", async () => {
+		const { container } = renderCard({
+			thread: {
+				...comment,
+				state: "addressed",
+				replies: [aReply({ id: "r1" })],
+				history: [
+					aStateChange({ state: "addressed", channel: "agent" }),
+					aStateChange({ state: "open", channel: "human" }),
+					aStateChange({ state: "addressed", channel: "agent" }),
+				],
+			},
+		});
+		const header = () => container.querySelector(".comment-card-header");
+
+		expect(header()).toHaveTextContent(/Agent marked addressed · /);
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Collapse thread" }),
+		);
+		expect(header()).toHaveTextContent(/Agent marked addressed · /);
+		expect(header()).not.toHaveTextContent("1 reply");
+	});
+
+	it("tells its state changes among the replies", () => {
+		renderCard({
+			thread: {
+				...comment,
+				history: [aStateChange({ state: "done", channel: "human" })],
+			},
+		});
+
+		expect(screen.getByText("marked done")).toBeInTheDocument();
 	});
 
 	it("collapses to the last three replies", () => {

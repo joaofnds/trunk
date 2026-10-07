@@ -1343,6 +1343,81 @@ fn cli_address_moves_open_to_addressed() {
     );
 }
 
+fn named_commits(ctx: &TestContext, thread_id: &str) -> Vec<Option<String>> {
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    store
+        .read(|c| reviewdb::history::list_for_threads(c, &[thread_id.to_string()]))
+        .unwrap()
+        .remove(thread_id)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|change| change.commit)
+        .collect()
+}
+
+#[test]
+fn cli_address_keeps_the_commit_it_names_as_the_fix() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+    let head = ctx
+        .repo()
+        .head()
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .id()
+        .to_string();
+
+    let out = trunk_review_in(
+        ctx.repo_path(),
+        &["address", &thread_id, "--commit", &head[..7]],
+        ctx.data_dir(),
+    );
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(named_commits(&ctx, &thread_id), vec![Some(head)]);
+}
+
+#[test]
+fn cli_address_refuses_a_commit_the_repo_lacks_and_writes_nothing() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+
+    let out = trunk_review_in(
+        ctx.repo_path(),
+        &["address", &thread_id, "--commit", "0badc0de"],
+        ctx.data_dir(),
+    );
+
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("0badc0de"),
+        "the error must name the commit, got {:?}",
+        String::from_utf8_lossy(&out.stderr),
+    );
+    assert_eq!(
+        thread_state(&ctx, &published, &thread_id),
+        ThreadState::Open
+    );
+    assert_eq!(
+        named_commits(&ctx, &thread_id),
+        Vec::<Option<String>>::new()
+    );
+}
+
 #[test]
 fn cli_illegal_transition_names_the_current_state_and_writes_nothing() {
     let ctx = TestContext::builder()

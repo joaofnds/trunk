@@ -1,13 +1,86 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { describe, expect, it } from "vitest";
-import { aReply } from "../__tests__/helpers/thread-fixture.js";
+import { aReply, aStateChange } from "../__tests__/helpers/thread-fixture.js";
 import { createThreadEditorSession } from "../lib/review-editors.svelte.js";
 import ThreadReplies from "./ThreadReplies.svelte";
 
 const reply = aReply({ id: "r1", text: "original", channel: "human" });
 
 describe("ThreadReplies", () => {
+	it("tells a state change between the replies it came between", () => {
+		const { container } = render(ThreadReplies, {
+			props: {
+				replies: [
+					aReply({ id: "r1", text_html: "before", created_at: 100 }),
+					aReply({ id: "r2", text_html: "after", created_at: 300 }),
+				],
+				history: [
+					aStateChange({
+						state: "addressed",
+						channel: "agent",
+						commit: "a3f9c21e0b8d4f6a9c1e2b3d4f5a6b7c8d9e0f1a",
+						created_at: 200,
+					}),
+				],
+				onreplyedit: () => true,
+				onreplydelete: () => {},
+			},
+		});
+
+		const items = [...container.querySelectorAll(".thread-replies > li")].map(
+			(li) => li.textContent?.replace(/\s+/g, " ").trim(),
+		);
+		expect(items[0]).toContain("before");
+		expect(items[1]).toMatch(/^Agent marked addressed in a3f9c21 · /);
+		expect(items[2]).toContain("after");
+	});
+
+	it("puts a change after the reply written in the same second", () => {
+		const { container } = render(ThreadReplies, {
+			props: {
+				replies: [aReply({ id: "r1", text_html: "fixed it", created_at: 100 })],
+				history: [aStateChange({ created_at: 100 })],
+				onreplyedit: () => true,
+				onreplydelete: () => {},
+			},
+		});
+
+		const items = container.querySelectorAll(".thread-replies > li");
+		expect(items[0].textContent).toContain("fixed it");
+		expect(items[1].textContent).toContain("marked addressed");
+	});
+
+	it("names a reopen by the person at the keyboard", () => {
+		render(ThreadReplies, {
+			props: {
+				replies: [],
+				history: [aStateChange({ state: "open", channel: "human" })],
+				onreplyedit: () => true,
+				onreplydelete: () => {},
+			},
+		});
+
+		expect(screen.getByText("reopened").parentElement).toHaveTextContent(
+			/^You reopened/,
+		);
+	});
+
+	it("counts a state change among the entries it folds away", () => {
+		render(ThreadReplies, {
+			props: {
+				replies: ["r1", "r2", "r3", "r4"].map((id, n) =>
+					aReply({ id, created_at: n }),
+				),
+				history: [aStateChange({ created_at: 10 })],
+				onreplyedit: () => true,
+				onreplydelete: () => {},
+			},
+		});
+
+		expect(screen.getByText("Show 2 more replies")).toBeInTheDocument();
+	});
+
 	it("keeps four replies whole", () => {
 		render(ThreadReplies, {
 			props: {

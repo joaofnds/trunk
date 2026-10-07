@@ -6,16 +6,19 @@ import {
 	createThreadEditorSession,
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
-import type { Reply } from "../lib/types.js";
+import { threadTimeline } from "../lib/thread-timeline.js";
+import type { Reply, StateChange } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import CommentEditor from "./review/CommentEditor.svelte";
 import MessageAvatar from "./review/MessageAvatar.svelte";
+import ThreadEvent from "./review/ThreadEvent.svelte";
 import ThreadMessage from "./review/ThreadMessage.svelte";
 
 interface Props {
 	replies: readonly Reply[];
+	history?: readonly StateChange[];
 	// Awaited before the editor clears its draft, so a caller that reports its
 	// own refusal (review-comment-actions.ts) keeps the typed text on screen
 	// until the write settles.
@@ -24,7 +27,13 @@ interface Props {
 	editorSession?: ThreadEditorSession;
 }
 
-let { replies, onreplyedit, onreplydelete, editorSession }: Props = $props();
+let {
+	replies,
+	history = [],
+	onreplyedit,
+	onreplydelete,
+	editorSession,
+}: Props = $props();
 
 let repliesExpanded = $state(false);
 const fallbackEditorSession = createThreadEditorSession();
@@ -33,18 +42,25 @@ const replyEditDraft = $derived(editor.replyEdit);
 const editingReplyId = $derived(editor.editingReplyId);
 const replyEditSaving = $derived(editor.replyEditSaving);
 
-// More than four replies collapse to the last three, with a control that
-// reveals the rest: hiding a single reply would save no room. Expand state
+// More than four entries collapse to the last three, with a control that
+// reveals the rest: hiding a single entry would save no room. Expand state
 // belongs to the list, never a parent map.
-const hiddenReplyCount = $derived(replies.length > 4 ? replies.length - 3 : 0);
-const collapsedReplies = $derived(
-	hiddenReplyCount > 0 && !repliesExpanded && editingReplyId === null,
+const timeline = $derived(threadTimeline(replies, history));
+const hiddenCount = $derived(timeline.length > 4 ? timeline.length - 3 : 0);
+const collapsed = $derived(
+	hiddenCount > 0 && !repliesExpanded && editingReplyId === null,
 );
-const visibleReplies = $derived(
-	collapsedReplies ? replies.slice(hiddenReplyCount) : replies,
+const visibleEntries = $derived(
+	collapsed ? timeline.slice(hiddenCount) : timeline,
 );
 const hiddenAuthors = $derived([
-	...new Set(replies.slice(0, hiddenReplyCount).map((r) => r.channel)),
+	...new Set(
+		timeline
+			.slice(0, hiddenCount)
+			.flatMap((entry) =>
+				entry.kind === "reply" ? [entry.reply.channel] : [],
+			),
+	),
 ]);
 
 function openReplyEdit(replyId: string, text: string) {
@@ -85,8 +101,8 @@ async function saveReplyEdit() {
 }
 </script>
 
-{#if replies.length > 0}
-	{#if collapsedReplies}
+{#if timeline.length > 0}
+	{#if collapsed}
 		<div class="thread-replies-more">
 			<Row
 				variant="flush"
@@ -101,58 +117,63 @@ async function saveReplyEdit() {
 					{/each}
 				</span>
 				<span class="text-small font-medium"
-					>Show {hiddenReplyCount} more replies</span
+					>Show {hiddenCount} more replies</span
 				>
 			</Row>
 		</div>
 	{/if}
 	<ul class="thread-replies">
-		{#each visibleReplies as reply (reply.id)}
+		{#each visibleEntries as entry (entry.key)}
 			<li class="thread-reply">
-				<ThreadMessage channel={reply.channel} createdAt={reply.created_at}>
-					{#snippet actions()}
-						{#if reply.channel === "human" && editingReplyId !== reply.id}
+				{#if entry.kind === "change"}
+					<ThreadEvent change={entry.change} />
+				{:else}
+					{@const reply = entry.reply}
+					<ThreadMessage channel={reply.channel} createdAt={reply.created_at}>
+						{#snippet actions()}
+							{#if reply.channel === "human" && editingReplyId !== reply.id}
+								<RowAction
+									size="compact"
+									aria-label="Edit reply"
+									disabled={replyEditSaving}
+									onclick={() => openReplyEdit(reply.id, reply.text)}
+								>
+									<Pencil size={12} aria-hidden="true" />
+								</RowAction>
+							{/if}
 							<RowAction
 								size="compact"
-								aria-label="Edit reply"
+								tone="destructive"
+								aria-label="Delete reply"
 								disabled={replyEditSaving}
-								onclick={() => openReplyEdit(reply.id, reply.text)}
+								onclick={() => onreplydelete(reply.id)}
 							>
-								<Pencil size={12} aria-hidden="true" />
+								<Trash2 size={12} aria-hidden="true" />
 							</RowAction>
-						{/if}
-						<RowAction
-							size="compact"
-							tone="destructive"
-							aria-label="Delete reply"
-							disabled={replyEditSaving}
-							onclick={() => onreplydelete(reply.id)}
-						>
-							<Trash2 size={12} aria-hidden="true" />
-						</RowAction>
-					{/snippet}
-					{#if editingReplyId === reply.id}
-						<CommentEditor
-							bind:text={replyEditDraft.text}
-							label="Edit reply"
-							placeholder="Leave a reply"
-							submitLabel="Save"
-							submitDisabled={!replyEditDraft.valid || replyEditSaving}
-							busy={replyEditSaving}
-							onsubmit={() => void saveReplyEdit()}
-							oncancel={cancelReplyEdit}
-							onescape={cancelReplyEdit}
-						/>
-					{:else}
-						<!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
+						{/snippet}
+						{#if editingReplyId === reply.id}
+							<CommentEditor
+								bind:text={replyEditDraft.text}
+								label="Edit reply"
+								placeholder="Leave a reply"
+								submitLabel="Save"
+								submitDisabled={!replyEditDraft.valid || replyEditSaving}
+								busy={replyEditSaving}
+								onsubmit={() => void saveReplyEdit()}
+								oncancel={cancelReplyEdit}
+								onescape={cancelReplyEdit}
+							/>
+						{:else}
+							<!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
                (comrak unsafe-off + ammonia); see commands/markdown.rs -->
-						<div
-							class="thread-reply-text markdown-body select-text"
-							use:externalLinks
-							>{@html reply.text_html}</div
-						>
-					{/if}
-				</ThreadMessage>
+							<div
+								class="thread-reply-text markdown-body select-text"
+								use:externalLinks
+								>{@html reply.text_html}</div
+							>
+						{/if}
+					</ThreadMessage>
+				{/if}
 			</li>
 		{/each}
 	</ul>
