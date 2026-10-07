@@ -386,7 +386,7 @@ fn rows(conn: &Connection, repo_path: &Path) -> Result<Vec<StaleRow>, TrunkError
 mod tests {
     use super::*;
     use crate::reviewdb::{Store, open, reviews, threads};
-    use crate::types::{Anchor, Side, Source};
+    use crate::types::{Anchor, Delivery, Side, Source};
     use std::cell::Cell;
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -426,6 +426,7 @@ mod tests {
                         commit_oid: None,
                         content_pin: None,
                         cached_excerpt: Some("fn main() {}".into()),
+                        delivery: Delivery::Send,
                     },
                     0,
                 )

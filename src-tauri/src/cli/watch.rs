@@ -255,9 +255,11 @@ fn published_snapshot(
             }
 
             let mut threads = std::collections::BTreeMap::new();
-            for (thread, replies) in
-                trunk_review::reviewdb::threads::list_with_replies(conn, &review.id)?
-            {
+            for (thread, replies) in trunk_review::reviewdb::threads::list_with_replies(
+                conn,
+                &review.id,
+                trunk_review::types::Channel::Agent,
+            )? {
                 threads.insert(
                     thread.id,
                     ThreadSnap {

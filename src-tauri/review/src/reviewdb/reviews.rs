@@ -1,9 +1,8 @@
-//! Reviews: create, list, rename, publish, archive, delete, and the per-repo
-//! active pointer.
+//! Reviews: create, list, rename, send the held batch, archive, delete, and the
+//! per-repo active pointer.
 //!
-//! `published` is the only stored state bit. `composing` / `ready` / `settled`
-//! are computed in SQL from it plus the thread states, never stored, so no code
-//! path can desynchronise them.
+//! `composing` / `ready` / `settled` and `published` are computed in SQL from
+//! the threads, never stored, so no code path can desynchronise them.
 
 use super::ids::{self, IdKind};
 use super::{repo_key, sqlite_error};
@@ -25,12 +24,17 @@ pub struct Review {
     pub id: String,
     pub title: String,
     pub state: ReviewState,
+    /// Whether any thread has been sent, which is what hands the review to
+    /// the agent.
     pub published: bool,
     /// Put away by the user: listed apart in the app and unseen by the agent.
     pub archived: bool,
     pub thread_count: i64,
     /// Threads still waiting on someone: open or addressed.
     pub unresolved_count: i64,
+    /// Held threads and replies, which the agent receives when the user sends
+    /// the batch.
+    pub pending_count: i64,
     pub created_at: i64,
 }
 
@@ -43,25 +47,30 @@ impl Review {
     }
 }
 
-/// The derived-state expression. In this milestone every thread is `open`, so a
-/// published review is always `ready`; the `settled` arm is written now and
-/// first reachable through the UI in milestone 2.
-const STATE_SQL: &str = "
-    CASE
-        WHEN r.published = 0 THEN 'composing'
-        WHEN EXISTS (
-            SELECT 1 FROM threads t
-            WHERE t.review_id = r.id AND t.state IN ('open', 'addressed')
-        ) THEN 'ready'
-        ELSE 'settled'
-    END";
-
+/// Every column `read_review` reads, in its order. A review is published
+/// once any thread is sent, and its state is derived from the thread states.
 const SELECT: &str = "
-    SELECT r.id, r.title, r.published, r.created_at,
+    SELECT r.id, r.title,
+           EXISTS (SELECT 1 FROM threads t WHERE t.review_id = r.id AND t.pending = 0),
+           r.created_at,
            (SELECT COUNT(*) FROM threads t WHERE t.review_id = r.id),
            (SELECT COUNT(*) FROM threads t
             WHERE t.review_id = r.id AND t.state IN ('open', 'addressed')),
-           r.archived";
+           r.archived,
+           (SELECT COUNT(*) FROM threads t WHERE t.review_id = r.id AND t.pending = 1)
+             + (SELECT COUNT(*) FROM replies p JOIN threads t ON t.id = p.thread_id
+                WHERE t.review_id = r.id AND p.pending = 1),
+           CASE
+               WHEN NOT EXISTS (
+                   SELECT 1 FROM threads t WHERE t.review_id = r.id AND t.pending = 0
+               ) THEN 'composing'
+               WHEN EXISTS (
+                   SELECT 1 FROM threads t
+                   WHERE t.review_id = r.id AND t.pending = 0
+                     AND t.state IN ('open', 'addressed')
+               ) THEN 'ready'
+               ELSE 'settled'
+           END";
 
 /// Create a composing review for `repo_path` and return its id.
 ///
@@ -78,8 +87,8 @@ pub fn create(
     let title = title.map_or_else(|| default_title(now), ToString::to_string);
 
     conn.execute(
-        "INSERT INTO reviews (id, repo_path, title, published, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 0, ?4, ?4)",
+        "INSERT INTO reviews (id, repo_path, title, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?4)",
         rusqlite::params![&id, repo_key(repo_path), &title, now],
     )
     .map_err(sqlite_error)?;
@@ -100,9 +109,8 @@ pub fn default_title(now: i64) -> String {
 ///
 /// Returns the `SQLite` error when the query fails.
 pub fn list(conn: &Connection, repo_path: &Path) -> Result<Vec<Review>, TrunkError> {
-    let sql = format!(
-        "{SELECT}, {STATE_SQL} FROM reviews r WHERE r.repo_path = ?1 ORDER BY r.created_at, r.rowid"
-    );
+    let sql =
+        format!("{SELECT} FROM reviews r WHERE r.repo_path = ?1 ORDER BY r.created_at, r.rowid");
     let mut stmt = conn.prepare(&sql).map_err(sqlite_error)?;
     let rows = stmt
         .query_map([repo_key(repo_path)], read_review)
@@ -119,7 +127,7 @@ pub fn list(conn: &Connection, repo_path: &Path) -> Result<Vec<Review>, TrunkErr
 ///
 /// Returns the `SQLite` error when the query fails.
 pub fn get(conn: &Connection, id: &str) -> Result<Option<Review>, TrunkError> {
-    let sql = format!("{SELECT}, {STATE_SQL} FROM reviews r WHERE r.id = ?1");
+    let sql = format!("{SELECT} FROM reviews r WHERE r.id = ?1");
     let mut stmt = conn.prepare(&sql).map_err(sqlite_error)?;
     let mut rows = stmt.query_map([id], read_review).map_err(sqlite_error)?;
 
@@ -130,7 +138,7 @@ pub fn get(conn: &Connection, id: &str) -> Result<Option<Review>, TrunkError> {
 }
 
 fn read_review(row: &rusqlite::Row) -> rusqlite::Result<Review> {
-    let state: String = row.get(7)?;
+    let state: String = row.get(8)?;
 
     Ok(Review {
         id: row.get(0)?,
@@ -140,6 +148,7 @@ fn read_review(row: &rusqlite::Row) -> rusqlite::Result<Review> {
         thread_count: row.get(4)?,
         unresolved_count: row.get(5)?,
         archived: row.get::<_, i64>(6)? != 0,
+        pending_count: row.get(7)?,
         state: match state.as_str() {
             "composing" => ReviewState::Composing,
             "ready" => ReviewState::Ready,
@@ -274,43 +283,55 @@ fn belongs_to(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), Trunk
     Ok(())
 }
 
-/// Set the `published` latch. Refuses a review with no threads, adopting the
-/// floor that gates doc generation today; publishing cannot be undone, so no
-/// unpublish function exists.
+/// Hand every held thread and reply in the review to the agent.
 ///
 /// # Errors
 ///
-/// Returns `not_found` when `id` names no review in `repo_path`, `no_threads`
-/// when the review has none, and the `SQLite` error when a query or the write
-/// fails.
-pub fn publish(conn: &Connection, repo_path: &Path, id: &str, now: i64) -> Result<(), TrunkError> {
-    // Resolve the review BEFORE counting threads: COUNT over a missing id
-    // returns 0, which would report "add a comment first" for a review that is
-    // gone.
+/// Returns `not_found` when `id` names no review in `repo_path`, and the
+/// `SQLite` error when a write fails.
+pub fn send_batch(
+    conn: &Connection,
+    repo_path: &Path,
+    id: &str,
+    now: i64,
+) -> Result<(), TrunkError> {
     belongs_to(conn, repo_path, id)?;
 
-    let threads: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM threads WHERE review_id = ?1",
-            [id],
-            |row| row.get(0),
-        )
-        .map_err(sqlite_error)?;
-
-    if threads == 0 {
-        return Err(TrunkError::new(
-            "no_threads",
-            "A review needs at least one thread before it can be published",
-        ));
-    }
-
     conn.execute(
-        "UPDATE reviews SET published = 1, updated_at = ?2 WHERE id = ?1",
+        "UPDATE replies SET pending = 0
+         WHERE pending = 1 AND thread_id IN (SELECT id FROM threads WHERE review_id = ?1)",
+        [id],
+    )
+    .map_err(sqlite_error)?;
+    conn.execute(
+        "UPDATE threads SET pending = 0 WHERE pending = 1 AND review_id = ?1",
+        [id],
+    )
+    .map_err(sqlite_error)?;
+    conn.execute(
+        "UPDATE reviews SET updated_at = ?2 WHERE id = ?1",
         rusqlite::params![id, now],
     )
     .map_err(sqlite_error)?;
 
     Ok(())
+}
+
+/// Whether the review holds a batch, which a comment submitted to send joins
+/// rather than overtaking.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
+pub fn holds_batch(conn: &Connection, id: &str) -> Result<bool, TrunkError> {
+    conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM threads WHERE review_id = ?1 AND pending = 1)
+             OR EXISTS (SELECT 1 FROM replies p JOIN threads t ON t.id = p.thread_id
+                        WHERE t.review_id = ?1 AND p.pending = 1)",
+        [id],
+        |row| row.get(0),
+    )
+    .map_err(sqlite_error)
 }
 
 /// Put a review away. Archiving the active review clears the repo's pointer,

@@ -16,7 +16,7 @@ export function aThread(overrides: Partial<Thread> = {}): Thread {
 		state: "open",
 		stale: false,
 		channel: "human",
-		published: false,
+		pending: false,
 		// What the wire sends for the default "open" state; a test overriding
 		// `state` overrides this alongside it, as the backend would.
 		allowed_transitions: ["done", "dismissed"],
@@ -60,6 +60,7 @@ export function aReply(overrides: Partial<Reply> = {}): Reply {
 		text_html: "",
 		channel: "human",
 		created_at: 1_000,
+		pending: false,
 		...overrides,
 	};
 }

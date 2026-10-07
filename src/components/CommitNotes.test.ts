@@ -89,6 +89,7 @@ describe("CommitNotes", () => {
 			path: "/repo",
 			commitOid,
 			text: "a new note",
+			delivery: "send",
 		});
 	});
 
@@ -106,6 +107,7 @@ describe("CommitNotes", () => {
 			path: "/repo",
 			commitOid,
 			text: "a new note",
+			delivery: "send",
 		});
 	});
 
@@ -327,6 +329,7 @@ describe("CommitNotes", () => {
 			path: "/repo",
 			commitOid,
 			text: "retained commit note",
+			delivery: "send",
 		});
 	});
 });

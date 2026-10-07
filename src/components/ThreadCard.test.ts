@@ -973,6 +973,7 @@ describe("ThreadCard", () => {
 			path: "/repo",
 			threadId: "c1",
 			text: "on it",
+			delivery: "send",
 		});
 	});
 
@@ -987,6 +988,7 @@ describe("ThreadCard", () => {
 			path: "/repo",
 			threadId: "c1",
 			text: "on it",
+			delivery: "send",
 		});
 	});
 
@@ -998,17 +1000,17 @@ describe("ThreadCard", () => {
 		).not.toBeInTheDocument();
 	});
 
-	it("tells the reviewer the agent sees a reply only once the review ends", () => {
-		renderCard();
+	it("tells the reviewer the agent sees a reply on a held thread only once the batch is sent", () => {
+		renderCard({ thread: { ...comment, pending: true } });
 
 		expect(screen.getByLabelText("Reply")).toHaveAttribute(
 			"placeholder",
-			"Reply… (the agent sees this once the review ends)",
+			"Reply… (the agent sees this once you send the batch)",
 		);
 	});
 
-	it("drops the caveat once the review is published", () => {
-		renderCard({ thread: { ...comment, published: true } });
+	it("drops the caveat on a sent thread", () => {
+		renderCard({ thread: { ...comment, pending: false } });
 
 		expect(screen.getByLabelText("Reply")).toHaveAttribute(
 			"placeholder",
@@ -1028,6 +1030,7 @@ describe("ThreadCard", () => {
 			path: "/repo",
 			threadId: "c1",
 			text: "sounds good",
+			delivery: "send",
 		});
 		expect(textarea.value).toBe("");
 	});
@@ -1144,7 +1147,7 @@ describe("ThreadCard", () => {
 	});
 
 	it("offers Delete for a thread the agent can already read", () => {
-		renderCard({ thread: { ...comment, published: true } });
+		renderCard({ thread: { ...comment, pending: false } });
 
 		expect(
 			screen.getByRole("button", { name: "Delete comment" }),
@@ -1294,7 +1297,7 @@ describe("ThreadCard", () => {
 	it("offers Delete reply on a reply the agent can already read", () => {
 		const published: Thread = {
 			...comment,
-			published: true,
+			pending: false,
 			replies: [aReply({ id: "r1", text: "fixed", channel: "agent" })],
 		};
 

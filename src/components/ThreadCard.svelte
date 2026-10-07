@@ -344,8 +344,7 @@ async function submitReply() {
 	submittedEditor.setReplySaving(true);
 	// addReply reports its own refusal (review-comment-actions.ts) rather than
 	// rethrowing, but this still awaits it before clearing the draft so a
-	// published-review refusal keeps the typed text on screen until the write
-	// settles.
+	// refused reply keeps the typed text on screen until the write settles.
 	try {
 		const saved = await addReply(repoPath, thread.id, text);
 		if (saved && submittedDraft.revision === submittedRevision) {
@@ -647,9 +646,9 @@ async function requestDeleteReply(replyId: string) {
 			<CommentEditor
 				bind:text={replyDraft.text}
 				label="Reply"
-				placeholder={thread.published
-					? "Reply…"
-					: "Reply… (the agent sees this once the review ends)"}
+				placeholder={thread.pending
+					? "Reply… (the agent sees this once you send the batch)"
+					: "Reply…"}
 				submitLabel="Reply"
 				submitDisabled={!replyDraft.valid || replySaving}
 				busy={replySaving}

@@ -7,8 +7,8 @@
 
 use super::ids::{self, IdKind};
 use super::replies::{self, Reply};
-use super::{anchor, repo_key, sqlite_error};
-use crate::types::{Anchor, Channel, ContentPin, Source, ThreadState};
+use super::{anchor, repo_key, reviews, sqlite_error};
+use crate::types::{Anchor, Channel, ContentPin, Delivery, Source, ThreadState};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use std::collections::HashSet;
@@ -35,6 +35,8 @@ pub struct Thread {
     pub resolved_start_line: Option<u32>,
     /// Wall-clock seconds when the root comment was submitted.
     pub created_at: i64,
+    /// Held in the review's batch, so the agent cannot see it yet.
+    pub pending: bool,
 }
 
 pub struct NewThread {
@@ -43,12 +45,13 @@ pub struct NewThread {
     pub commit_oid: Option<String>,
     pub content_pin: Option<ContentPin>,
     pub cached_excerpt: Option<String>,
+    pub delivery: Delivery,
 }
 
 const SELECT: &str = "
     SELECT id, review_id, body, excerpt, state, stale, channel,
            anchor_kind, commit_oid, file_path, source, side, start_line, end_line,
-           pin_block, pin_ordinal, resolved_start_line, created_at
+           pin_block, pin_ordinal, resolved_start_line, created_at, pending
     FROM threads";
 
 const ANCHOR_FIRST_COLUMN: usize = 7;
@@ -65,6 +68,7 @@ pub fn insert(
     new: NewThread,
     now: i64,
 ) -> Result<String, TrunkError> {
+    let pending = new.delivery == Delivery::Hold || reviews::holds_batch(conn, review_id)?;
     let id = ids::mint_unique(conn, IdKind::Thread)?;
     let target = match new.content_pin.as_ref() {
         Some(pin) => anchor::Target::CurrentFile(pin),
@@ -76,9 +80,9 @@ pub fn insert(
         &format!(
             "INSERT INTO threads (id, review_id, body, channel, state, stale, excerpt,
                                   {}, pin_block, pin_ordinal, resolved_start_line,
-                                  created_at, updated_at)
+                                  created_at, updated_at, pending)
              VALUES (?1, ?2, ?3, ?4, 'open', 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                     ?13, ?14, ?15, ?16, ?16)",
+                     ?13, ?14, ?15, ?16, ?16, ?17)",
             anchor::COLUMNS
         ),
         rusqlite::params![
@@ -98,6 +102,7 @@ pub fn insert(
             new.content_pin.as_ref().map(|p| i64::from(p.ordinal)),
             new.content_pin.as_ref().map(|p| i64::from(p.start_line)),
             now,
+            pending,
         ],
     )
     .map_err(sqlite_error)?;
@@ -105,16 +110,25 @@ pub fn insert(
     Ok(id)
 }
 
-/// The review's threads, oldest first.
+/// The review's threads as `reader` may see them, oldest first: the agent
+/// never sees a held thread.
 ///
 /// # Errors
 ///
 /// Returns the `SQLite` error when the query fails, and the stored value when a
 /// row's state or channel is not one this build knows.
-pub fn list_for_review(conn: &Connection, review_id: &str) -> Result<Vec<Thread>, TrunkError> {
+pub fn list_for_review(
+    conn: &Connection,
+    review_id: &str,
+    reader: Channel,
+) -> Result<Vec<Thread>, TrunkError> {
+    let visible = match reader {
+        Channel::Human => "",
+        Channel::Agent => "AND pending = 0",
+    };
     // rowid, never id: ids are random, so two threads inside one second would
     // sort by a coin flip — permanently, since the order is deterministic.
-    let sql = format!("{SELECT} WHERE review_id = ?1 ORDER BY created_at, rowid");
+    let sql = format!("{SELECT} WHERE review_id = ?1 {visible} ORDER BY created_at, rowid");
     let mut stmt = conn.prepare(&sql).map_err(sqlite_error)?;
     let rows = stmt
         .query_map([review_id], |row| Ok(read_thread(row)))
@@ -136,10 +150,11 @@ pub fn list_for_review(conn: &Connection, review_id: &str) -> Result<Vec<Thread>
 pub fn list_with_replies(
     conn: &Connection,
     review_id: &str,
+    reader: Channel,
 ) -> Result<Vec<(Thread, Vec<Reply>)>, TrunkError> {
-    let threads = list_for_review(conn, review_id)?;
+    let threads = list_for_review(conn, review_id, reader)?;
     let thread_ids: Vec<String> = threads.iter().map(|t| t.id.clone()).collect();
-    let mut replies_by_thread = replies::list_for_threads(conn, &thread_ids)?;
+    let mut replies_by_thread = replies::list_for_threads(conn, &thread_ids, reader)?;
 
     Ok(threads
         .into_iter()
@@ -234,6 +249,10 @@ fn read_thread(row: &rusqlite::Row) -> Result<Thread, TrunkError> {
         content_pin,
         resolved_start_line: optional_line(row, PIN_FIRST_COLUMN + 2)?,
         created_at: row.get(PIN_FIRST_COLUMN + 3).map_err(sqlite_error)?,
+        pending: row
+            .get::<_, i64>(PIN_FIRST_COLUMN + 4)
+            .map_err(sqlite_error)?
+            != 0,
     })
 }
 

@@ -6,8 +6,8 @@ import type { Anchor, Draft, ThreadState } from "./types.js";
 // commit-detail) shares one source of the exact command names + arg shapes:
 //   edit_thread        { path, id, text }
 //   delete_thread      { path, id }
-//   add_commit_thread  { path, commitOid, text }
-//   add_reply          { path, threadId, text }
+//   add_commit_thread  { path, commitOid, text, delivery }
+//   add_reply          { path, threadId, text, delivery }
 //   edit_reply         { path, id, text }
 //   delete_reply       { path, id }
 //   set_thread_state   { path, id, next }
@@ -39,6 +39,7 @@ export function addCommitThread(
 		path: repoPath,
 		commitOid,
 		text,
+		delivery: "send",
 	});
 }
 
@@ -67,7 +68,13 @@ export function addReply(
 	text: string,
 ): Promise<boolean> {
 	return reportRefusal(
-		() => safeInvoke("add_reply", { path: repoPath, threadId, text }),
+		() =>
+			safeInvoke("add_reply", {
+				path: repoPath,
+				threadId,
+				text,
+				delivery: "send",
+			}),
 		"Failed to add reply",
 	);
 }

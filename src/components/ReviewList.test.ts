@@ -31,6 +31,7 @@ function aReview(overrides: Partial<Review> = {}): Review {
 		archived: false,
 		thread_count: 0,
 		unresolved_count: 0,
+		pending_count: 0,
 		created_at: 0,
 		...overrides,
 	};
@@ -44,6 +45,7 @@ const READY: Review = {
 	archived: false,
 	thread_count: 2,
 	unresolved_count: 1,
+	pending_count: 0,
 	created_at: 0,
 };
 

@@ -200,6 +200,7 @@ async function handleSubmit() {
 				startLine: submittedCurrentFile.startLine,
 				endLine: submittedCurrentFile.endLine,
 				text: submittedText,
+				delivery: "send",
 			});
 		} else {
 			let anchor = submittedCaptured.anchor;
@@ -214,6 +215,7 @@ async function handleSubmit() {
 				text: submittedText,
 				anchor,
 				cachedExcerpt: submittedCaptured.cachedExcerpt,
+				delivery: "send",
 			});
 		}
 	} catch (e) {

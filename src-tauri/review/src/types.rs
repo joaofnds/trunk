@@ -133,6 +133,18 @@ impl std::str::FromStr for Channel {
     }
 }
 
+/// Whether a human comment reaches the agent now or waits for the user to send.
+///
+/// A held comment waits in the review's batch. A comment submitted to send
+/// still joins a batch the review already holds, as GitHub's pending review
+/// does, so a batch always lands together.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Delivery {
+    Send,
+    Hold,
+}
+
 /// A single commit in the review session, rendered by the panel (D-05) and consumed as
 /// a membership set by the graph (D-04/D-06).
 ///

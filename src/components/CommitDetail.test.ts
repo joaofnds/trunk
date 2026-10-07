@@ -759,6 +759,7 @@ describe("CommitDetail", () => {
 				path: "/repo",
 				commitOid: detail.oid,
 				text: "on the whole commit",
+				delivery: "send",
 			});
 		});
 
@@ -774,6 +775,7 @@ describe("CommitDetail", () => {
 				path: "/repo",
 				threadId: "note-1",
 				text: "reply text",
+				delivery: "send",
 			});
 		});
 
@@ -800,6 +802,7 @@ describe("CommitDetail", () => {
 						text_html: "",
 						channel: "human",
 						created_at: 1_000,
+						pending: false,
 					},
 				],
 			});
@@ -830,6 +833,7 @@ describe("CommitDetail", () => {
 						text_html: "",
 						channel: "human",
 						created_at: 1_000,
+						pending: false,
 					},
 				],
 			});

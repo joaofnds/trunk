@@ -4,7 +4,7 @@ use tauri::test::MockRuntime;
 use tauri::{Listener, Manager};
 use trunk_lib::commands::review::{RenderedThread, add_reply, add_thread, list_threads};
 use trunk_lib::state::{RepoState, ReviewStoreState, StoreSlot, SweptRepos};
-use trunk_review::types::Anchor;
+use trunk_review::types::{Anchor, Delivery};
 
 /// Drives review commands against a real `mock_app`, the only seam that reaches
 /// `add_thread`'s and `add_reply`'s emit: it lives in `write_and_notify`, which
@@ -73,6 +73,7 @@ impl ReviewDriver<'_> {
             text.to_string(),
             anchor,
             cached_excerpt.to_string(),
+            Delivery::Send,
             self.app.state::<RepoState>(),
             self.app.state::<ReviewStoreState>(),
             self.app.handle().clone(),
@@ -84,6 +85,7 @@ impl ReviewDriver<'_> {
             self.ctx.path().to_string(),
             thread_id.to_string(),
             text.to_string(),
+            Delivery::Send,
             self.app.state::<RepoState>(),
             self.app.state::<ReviewStoreState>(),
             self.app.handle().clone(),

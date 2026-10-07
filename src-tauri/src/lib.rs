@@ -270,7 +270,7 @@ pub fn configure<R: tauri::Runtime>(
         commands::review::get_active_review,
         commands::review::set_active_review,
         commands::review::rename_review,
-        commands::review::publish_review,
+        commands::review::send_review,
         commands::review::delete_review,
         commands::review::archive_review,
         commands::review::unarchive_review,

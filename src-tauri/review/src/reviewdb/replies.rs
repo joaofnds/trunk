@@ -1,6 +1,6 @@
 use super::ids::{self, IdKind};
-use super::{repo_key, sqlite_error};
-use crate::types::Channel;
+use super::{repo_key, reviews, sqlite_error};
+use crate::types::{Channel, Delivery};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -15,11 +15,17 @@ pub struct Reply {
     pub text: String,
     pub channel: Channel,
     pub created_at: i64,
+    /// Held in the review's batch, so the agent cannot see it yet.
+    pub pending: bool,
 }
 
 /// Add a reply to a thread. Scoped by `repo_path`, same ownership subquery as
 /// `edit`/`delete`: a `thread_id` belonging to another repo is `not_found`,
 /// never a foreign-key error from an unscoped insert.
+///
+/// A human reply is held when `delivery` asks for it or the review already
+/// holds a batch. An agent reply is never held, whatever `delivery` says,
+/// since the agent has no batch to send.
 ///
 /// # Errors
 ///
@@ -31,11 +37,12 @@ pub fn add(
     thread_id: &str,
     body: &str,
     channel: Channel,
+    delivery: Delivery,
     now: i64,
 ) -> Result<String, TrunkError> {
-    let owned: Option<String> = conn
+    let review_id: Option<String> = conn
         .query_row(
-            "SELECT id FROM threads
+            "SELECT review_id FROM threads
              WHERE id = ?1 AND review_id IN (SELECT id FROM reviews WHERE repo_path = ?2)",
             rusqlite::params![thread_id, repo_key(repo_path)],
             |row| row.get(0),
@@ -43,19 +50,21 @@ pub fn add(
         .optional()
         .map_err(sqlite_error)?;
 
-    if owned.is_none() {
+    let Some(review_id) = review_id else {
         return Err(TrunkError::new(
             "not_found",
             format!("no thread with id {thread_id}"),
         ));
-    }
+    };
 
+    let pending = channel == Channel::Human
+        && (delivery == Delivery::Hold || reviews::holds_batch(conn, &review_id)?);
     let id = ids::mint_unique(conn, IdKind::Reply)?;
 
     conn.execute(
-        "INSERT INTO replies (id, thread_id, body, channel, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-        rusqlite::params![&id, thread_id, body, channel.as_str(), now],
+        "INSERT INTO replies (id, thread_id, body, channel, created_at, updated_at, pending)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6)",
+        rusqlite::params![&id, thread_id, body, channel.as_str(), now, pending],
     )
     .map_err(sqlite_error)?;
 
@@ -129,8 +138,8 @@ pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), Trunk
     Ok(())
 }
 
-/// Every reply for a set of threads, keyed by thread id — one query over an `IN` list
-/// rather than N+1.
+/// Every reply for a set of threads that `reader` may see, keyed by thread id: one
+/// query over an `IN` list rather than N+1. The agent never sees a held reply.
 ///
 /// Within each thread, replies are oldest first; ties within one second break on
 /// `rowid`, never `id`: ids are random, so a same-second pair would sort by a coin flip
@@ -142,15 +151,20 @@ pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), Trunk
 pub fn list_for_threads(
     conn: &Connection,
     thread_ids: &[String],
+    reader: Channel,
 ) -> Result<HashMap<String, Vec<Reply>>, TrunkError> {
     if thread_ids.is_empty() {
         return Ok(HashMap::new());
     }
 
     let placeholders = vec!["?"; thread_ids.len()].join(",");
+    let visible = match reader {
+        Channel::Human => "",
+        Channel::Agent => "AND pending = 0",
+    };
     let sql = format!(
-        "SELECT id, thread_id, body, channel, created_at FROM replies
-         WHERE thread_id IN ({placeholders}) ORDER BY created_at, rowid"
+        "SELECT id, thread_id, body, channel, created_at, pending FROM replies
+         WHERE thread_id IN ({placeholders}) {visible} ORDER BY created_at, rowid"
     );
     let mut stmt = conn.prepare(&sql).map_err(sqlite_error)?;
     let mut rows = stmt
@@ -178,5 +192,6 @@ fn read_reply(row: &rusqlite::Row) -> Result<Reply, TrunkError> {
         text: row.get(2).map_err(sqlite_error)?,
         channel: Channel::from_str(&channel)?,
         created_at: row.get(4).map_err(sqlite_error)?,
+        pending: row.get::<_, i64>(5).map_err(sqlite_error)? != 0,
     })
 }

@@ -9,7 +9,7 @@ use trunk_lib::commands::review::{
     SubmitThreadRequest, list_threads_inner, set_thread_state_inner, submit_thread_inner,
 };
 use trunk_review::types::{Anchor, Side, Source};
-use trunk_review::types::{Channel, ThreadState};
+use trunk_review::types::{Channel, Delivery, ThreadState};
 
 /// A sweep clock past every test's mint time plus the in-flight grace window,
 /// so a test that wants the grace window's protection asks for it explicitly.
@@ -43,6 +43,14 @@ fn submission(text: &str) -> SubmitThreadRequest {
         content_pin: None,
         cached_excerpt: Some("let x = 1;".to_string()),
         clears_draft: true,
+        delivery: Delivery::Send,
+    }
+}
+
+fn held(text: &str) -> SubmitThreadRequest {
+    SubmitThreadRequest {
+        delivery: Delivery::Hold,
+        ..submission(text)
     }
 }
 
@@ -81,8 +89,15 @@ fn the_v8_rebuild_keeps_the_replies_hanging_off_a_thread() {
     let thread_id = {
         let store = reviewdb::open(ctx.data_dir()).unwrap();
         let id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
-        trunk_lib::commands::review::add_reply_inner(&store, &canonical, &id, "a reply", 1_001)
-            .unwrap();
+        trunk_lib::commands::review::add_reply_inner(
+            &store,
+            &canonical,
+            &id,
+            "a reply",
+            Delivery::Send,
+            1_001,
+        )
+        .unwrap();
         id
     };
 
@@ -93,7 +108,7 @@ fn the_v8_rebuild_keeps_the_replies_hanging_off_a_thread() {
             "ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
-             ALTER TABLE reviews DROP COLUMN archived;
+             ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
              DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
@@ -141,6 +156,7 @@ fn a_current_file_thread_stores_its_pinned_block_and_ordinal() {
             }),
             cached_excerpt: Some("fn main() {}".into()),
             clears_draft: true,
+            delivery: Delivery::Send,
         },
         1_000,
     )
@@ -176,8 +192,8 @@ fn submit_with_no_active_review_creates_one() {
     );
     assert_eq!(
         reviews[0].state,
-        ReviewState::Composing,
-        "an auto-created review is composing — nothing publishes it",
+        ReviewState::Ready,
+        "the comment that created the review went live with it",
     );
     assert_eq!(reviews[0].thread_count, 1);
 }
@@ -198,7 +214,7 @@ fn a_submitted_thread_survives_a_restart() {
         .unwrap();
     assert_eq!(reviews.len(), 1);
     let threads = reopened
-        .read(|c| reviewdb::threads::list_for_review(c, &reviews[0].id))
+        .read(|c| reviewdb::threads::list_for_review(c, &reviews[0].id, Channel::Human))
         .unwrap();
     assert_eq!(threads.len(), 1);
     assert_eq!(threads[0].text, "still here?");
@@ -405,7 +421,15 @@ fn a_reply_survives_a_restart() {
         let id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
         store
             .write(|tx| {
-                reviewdb::replies::add(tx, &canonical, &id, "a reply", Channel::Human, 1_001)
+                reviewdb::replies::add(
+                    tx,
+                    &canonical,
+                    &id,
+                    "a reply",
+                    Channel::Human,
+                    Delivery::Send,
+                    1_001,
+                )
             })
             .unwrap();
         id
@@ -413,7 +437,9 @@ fn a_reply_survives_a_restart() {
 
     let reopened = reviewdb::open(ctx.data_dir()).unwrap();
     let replies = reopened
-        .read(|c| reviewdb::replies::list_for_threads(c, std::slice::from_ref(&thread_id)))
+        .read(|c| {
+            reviewdb::replies::list_for_threads(c, std::slice::from_ref(&thread_id), Channel::Human)
+        })
         .unwrap();
     let replies = replies.get(&thread_id).cloned().unwrap_or_default();
 
@@ -538,12 +564,13 @@ fn migrates_v1_to_v2_additively() {
                 "THREAD01",
                 "a v2 reply",
                 Channel::Human,
+                Delivery::Send,
                 1_001,
             )
         })
         .unwrap();
     let replies = store
-        .read(|c| reviewdb::replies::list_for_threads(c, &["THREAD01".to_string()]))
+        .read(|c| reviewdb::replies::list_for_threads(c, &["THREAD01".to_string()], Channel::Human))
         .unwrap();
     assert_eq!(
         replies
@@ -563,7 +590,15 @@ fn deleting_a_composing_thread_cascades_to_replies() {
     let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
     store
         .write(|tx| {
-            reviewdb::replies::add(tx, &canonical, &thread_id, "a reply", Channel::Human, 1_001)
+            reviewdb::replies::add(
+                tx,
+                &canonical,
+                &thread_id,
+                "a reply",
+                Channel::Human,
+                Delivery::Send,
+                1_001,
+            )
         })
         .unwrap();
 
@@ -572,7 +607,9 @@ fn deleting_a_composing_thread_cascades_to_replies() {
         .unwrap();
 
     let replies = store
-        .read(|c| reviewdb::replies::list_for_threads(c, std::slice::from_ref(&thread_id)))
+        .read(|c| {
+            reviewdb::replies::list_for_threads(c, std::slice::from_ref(&thread_id), Channel::Human)
+        })
         .unwrap();
     assert!(
         replies.get(&thread_id).is_none_or(std::vec::Vec::is_empty),
@@ -595,6 +632,7 @@ fn each_thread_gets_only_its_own_replies() {
                 &thread_a,
                 "reply on a",
                 Channel::Human,
+                Delivery::Send,
                 1_002,
             )
         })
@@ -607,13 +645,20 @@ fn each_thread_gets_only_its_own_replies() {
                 &thread_b,
                 "reply on b",
                 Channel::Human,
+                Delivery::Send,
                 1_003,
             )
         })
         .unwrap();
 
     let by_thread = store
-        .read(|c| reviewdb::replies::list_for_threads(c, &[thread_a.clone(), thread_b.clone()]))
+        .read(|c| {
+            reviewdb::replies::list_for_threads(
+                c,
+                &[thread_a.clone(), thread_b.clone()],
+                Channel::Human,
+            )
+        })
         .unwrap();
 
     let texts_a: Vec<&str> = by_thread[&thread_a]
@@ -648,13 +693,23 @@ fn replies_keep_their_insertion_order_within_one_second() {
     for text in ["first", "second", "third"] {
         store
             .write(|tx| {
-                reviewdb::replies::add(tx, &canonical, &thread_id, text, Channel::Human, 1_001)
+                reviewdb::replies::add(
+                    tx,
+                    &canonical,
+                    &thread_id,
+                    text,
+                    Channel::Human,
+                    Delivery::Send,
+                    1_001,
+                )
             })
             .unwrap();
     }
 
     let by_thread = store
-        .read(|c| reviewdb::replies::list_for_threads(c, std::slice::from_ref(&thread_id)))
+        .read(|c| {
+            reviewdb::replies::list_for_threads(c, std::slice::from_ref(&thread_id), Channel::Human)
+        })
         .unwrap();
     let texts: Vec<&str> = by_thread[&thread_id]
         .iter()
@@ -672,8 +727,15 @@ fn a_ui_reply_is_attributed_human() {
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
 
-    trunk_lib::commands::review::add_reply_inner(&store, &canonical, &thread_id, "a reply", 1_001)
-        .unwrap();
+    trunk_lib::commands::review::add_reply_inner(
+        &store,
+        &canonical,
+        &thread_id,
+        "a reply",
+        Delivery::Send,
+        1_001,
+    )
+    .unwrap();
 
     let threads = list_threads_inner(&store, &canonical, None).unwrap();
     let thread = threads.iter().find(|t| t.id == thread_id).unwrap();
@@ -697,6 +759,7 @@ fn a_reply_aimed_at_another_repos_thread_is_refused() {
         &canonical,
         &other_thread_id,
         "planted",
+        Delivery::Send,
         1_001,
     )
     .unwrap_err();
@@ -1851,7 +1914,7 @@ fn gestures_land_in_the_switched_review() {
     submit_thread_inner(&store, &canonical, submission("into the second"), 1_000).unwrap();
 
     let threads = store
-        .read(|c| reviewdb::threads::list_for_review(c, &second))
+        .read(|c| reviewdb::threads::list_for_review(c, &second, Channel::Human))
         .unwrap();
     assert_eq!(
         threads.len(),
@@ -1861,7 +1924,7 @@ fn gestures_land_in_the_switched_review() {
     assert_eq!(threads[0].text, "into the second");
     assert_eq!(
         store
-            .read(|c| reviewdb::threads::list_for_review(c, &first))
+            .read(|c| reviewdb::threads::list_for_review(c, &first, Channel::Human))
             .unwrap()
             .len(),
         1,
@@ -1947,13 +2010,13 @@ fn publishing_keeps_threads_and_refs() {
     std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
-    submit_thread_inner(&store, &canonical, submission("keep me"), 1_000).unwrap();
+    submit_thread_inner(&store, &canonical, held("keep me"), 1_000).unwrap();
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
         .unwrap();
     let id = only_review(&store, &canonical).id;
 
     store
-        .write(|tx| reviewdb::reviews::publish(tx, &canonical, &id, 0))
+        .write(|tx| reviewdb::reviews::send_batch(tx, &canonical, &id, 0))
         .unwrap();
 
     let review = only_review(&store, &canonical);
@@ -1961,7 +2024,7 @@ fn publishing_keeps_threads_and_refs() {
     assert_eq!(review.thread_count, 1, "publishing deletes no thread");
     assert_eq!(
         store
-            .read(|c| reviewdb::threads::list_for_review(c, &id))
+            .read(|c| reviewdb::threads::list_for_review(c, &id, Channel::Human))
             .unwrap()[0]
             .text,
         "keep me",
@@ -1978,26 +2041,6 @@ fn publishing_keeps_threads_and_refs() {
         pins.len(),
         1,
         "End Review no longer clears the snapshot keepalive refs — pruning is milestone 2's",
-    );
-}
-
-#[test]
-fn publishing_an_empty_review_is_refused() {
-    let ctx = TestContext::new_empty();
-    let canonical = ctx.repo_path().canonicalize().unwrap();
-    let store = reviewdb::open(ctx.data_dir()).unwrap();
-    let id = store
-        .write(|tx| reviewdb::reviews::create(tx, &canonical, None, 0))
-        .unwrap();
-
-    let err = store
-        .write(|tx| reviewdb::reviews::publish(tx, &canonical, &id, 0))
-        .expect_err("a review with zero threads cannot be published");
-
-    assert_eq!(err.code, "no_threads");
-    assert!(
-        !only_review(&store, &canonical).published,
-        "a refused publish must leave the latch unset",
     );
 }
 
@@ -2022,7 +2065,7 @@ fn delete_review_removes_threads_and_pointer_in_one_transaction() {
     );
     assert_eq!(
         store
-            .read(|c| reviewdb::threads::list_for_review(c, &id))
+            .read(|c| reviewdb::threads::list_for_review(c, &id, Channel::Human))
             .unwrap()
             .len(),
         0,
@@ -2065,7 +2108,7 @@ fn deleting_one_review_leaves_anothers_threads_intact() {
     assert_eq!(left[0].id, keeper);
     assert_eq!(
         store
-            .read(|c| reviewdb::threads::list_for_review(c, &keeper))
+            .read(|c| reviewdb::threads::list_for_review(c, &keeper, Channel::Human))
             .unwrap()[0]
             .text,
         "survivor",
@@ -2342,6 +2385,7 @@ fn renders_a_stored_review() {
                 content_pin: None,
                 cached_excerpt: Some(excerpt.to_string()),
                 clears_draft: true,
+                delivery: Delivery::Hold,
             },
             1_000,
         )
@@ -2364,7 +2408,7 @@ fn renders_a_stored_review() {
     );
 
     store
-        .write(|tx| reviewdb::reviews::publish(tx, &canonical, &review.id, 2_000))
+        .write(|tx| reviewdb::reviews::send_batch(tx, &canonical, &review.id, 2_000))
         .unwrap();
     let published_doc =
         generate_review_doc_inner(&store, &canonical, ctx.path(), &review.id).unwrap();
@@ -2406,7 +2450,7 @@ fn mutating_one_review_leaves_another_doc_byte_identical() {
         .build();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
-    submit_thread_inner(&store, &canonical, submission("in the first"), 1_000).unwrap();
+    submit_thread_inner(&store, &canonical, held("in the first"), 1_000).unwrap();
     let first = only_review(&store, &canonical).id;
     let before = generate_review_doc_inner(&store, &canonical, ctx.path(), &first).unwrap();
 
@@ -2416,9 +2460,9 @@ fn mutating_one_review_leaves_another_doc_byte_identical() {
     store
         .write(|tx| reviewdb::reviews::set_active(tx, &canonical, &second))
         .unwrap();
-    submit_thread_inner(&store, &canonical, submission("in the second"), 1_000).unwrap();
+    submit_thread_inner(&store, &canonical, held("in the second"), 1_000).unwrap();
     store
-        .write(|tx| reviewdb::reviews::publish(tx, &canonical, &second, 0))
+        .write(|tx| reviewdb::reviews::send_batch(tx, &canonical, &second, 0))
         .unwrap();
     store
         .write(|tx| reviewdb::reviews::rename(tx, &canonical, &second, "renamed", 0))
@@ -2447,9 +2491,9 @@ fn lists_every_review_for_the_repo_with_state_and_title() {
     store
         .write(|tx| reviewdb::reviews::set_active(tx, &canonical, &first))
         .unwrap();
-    submit_thread_inner(&store, &canonical, submission("in the first"), 1_000).unwrap();
+    submit_thread_inner(&store, &canonical, held("in the first"), 1_000).unwrap();
     store
-        .write(|tx| reviewdb::reviews::publish(tx, &canonical, &first, 1_000))
+        .write(|tx| reviewdb::reviews::send_batch(tx, &canonical, &first, 1_000))
         .unwrap();
     let second = store
         .write(|tx| reviewdb::reviews::create(tx, &canonical, Some("Second pass"), 2_000))
@@ -2476,11 +2520,11 @@ fn publish_leaves_the_pointer_on_the_published_review() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
-    submit_thread_inner(&store, &canonical, submission("x"), 1_000).unwrap();
+    submit_thread_inner(&store, &canonical, held("x"), 1_000).unwrap();
     let id = only_review(&store, &canonical).id;
 
     store
-        .write(|tx| reviewdb::reviews::publish(tx, &canonical, &id, 0))
+        .write(|tx| reviewdb::reviews::send_batch(tx, &canonical, &id, 0))
         .unwrap();
 
     assert_eq!(
@@ -2492,7 +2536,7 @@ fn publish_leaves_the_pointer_on_the_published_review() {
          receiving gestures",
     );
 
-    submit_thread_inner(&store, &canonical, submission("after publish"), 1_000).unwrap();
+    submit_thread_inner(&store, &canonical, held("after publish"), 1_000).unwrap();
     assert_eq!(
         only_review(&store, &canonical).thread_count,
         2,
@@ -2571,11 +2615,10 @@ fn published_review_with(state: ThreadState) -> (TestContext, Store, String, Str
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
-    let thread_id =
-        submit_thread_inner(&store, &canonical, submission("please fix"), 1_000).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, held("please fix"), 1_000).unwrap();
     let id = only_review(&store, &canonical).id;
     store
-        .write(|tx| reviewdb::reviews::publish(tx, &canonical, &id, 1_000))
+        .write(|tx| reviewdb::reviews::send_batch(tx, &canonical, &id, 1_000))
         .unwrap();
 
     let channel = if state == ThreadState::Addressed {
@@ -2600,7 +2643,7 @@ fn an_unpublished_review_is_composing() {
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
 
-    submit_thread_inner(&store, &canonical, submission("x"), 1_000).unwrap();
+    submit_thread_inner(&store, &canonical, held("x"), 1_000).unwrap();
 
     assert_eq!(
         only_review(&store, &canonical).state,
@@ -2684,6 +2727,7 @@ fn a_new_thread_in_a_settled_review_makes_it_ready() {
                     commit_oid: None,
                     content_pin: None,
                     cached_excerpt: None,
+                    delivery: Delivery::Send,
                 },
                 1_003,
             )
@@ -2703,7 +2747,7 @@ fn publishing_an_all_resolved_review_derives_settled() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
-    let thread_id = submit_thread_inner(&store, &canonical, submission("x"), 1_000).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, held("x"), 1_000).unwrap();
     let review_id = only_review(&store, &canonical).id;
 
     // Resolve BEFORE publishing — the review derives directly to settled the
@@ -2721,7 +2765,7 @@ fn publishing_an_all_resolved_review_derives_settled() {
         })
         .unwrap();
     store
-        .write(|tx| reviewdb::reviews::publish(tx, &canonical, &review_id, 1_002))
+        .write(|tx| reviewdb::reviews::send_batch(tx, &canonical, &review_id, 1_002))
         .unwrap();
 
     assert_eq!(only_review(&store, &canonical).state, ReviewState::Settled);
@@ -2743,7 +2787,7 @@ fn nine_reviews_hold_three_of_each_derived_state() {
         store
             .write(|tx| reviewdb::reviews::set_active(tx, &canonical, &review_id))
             .unwrap();
-        let thread_id = submit_thread_inner(&store, &canonical, submission(label), 1_000).unwrap();
+        let thread_id = submit_thread_inner(&store, &canonical, held(label), 1_000).unwrap();
         (review_id, thread_id)
     };
 
@@ -2753,13 +2797,13 @@ fn nine_reviews_hold_three_of_each_derived_state() {
     (0..3).for_each(|i| {
         let pair = make(&format!("ready {i}"));
         store
-            .write(|tx| reviewdb::reviews::publish(tx, &canonical, &pair.0, 1_000))
+            .write(|tx| reviewdb::reviews::send_batch(tx, &canonical, &pair.0, 1_000))
             .unwrap();
     });
     (0..3).for_each(|i| {
         let pair = make(&format!("settled {i}"));
         store
-            .write(|tx| reviewdb::reviews::publish(tx, &canonical, &pair.0, 1_000))
+            .write(|tx| reviewdb::reviews::send_batch(tx, &canonical, &pair.0, 1_000))
             .unwrap();
         store
             .write(|tx| {
@@ -2804,28 +2848,21 @@ fn nine_reviews_hold_three_of_each_derived_state() {
 // ── Milestone 2, Task 6: human text is editable anytime, agent text is not ──
 
 #[test]
-fn list_threads_reports_the_owning_reviews_published_bit() {
+fn list_threads_reports_a_held_thread_until_its_batch_is_sent() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
-    let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, held("root"), 1_000).unwrap();
     let review_id = only_review(&store, &canonical).id;
-
     let before = list_threads_inner(&store, &canonical, None).unwrap();
-    assert!(
-        !before.iter().find(|t| t.id == thread_id).unwrap().published,
-        "a composing review's threads report published: false",
-    );
 
     store
-        .write(|tx| reviewdb::reviews::publish(tx, &canonical, &review_id, 1_000))
+        .write(|tx| reviewdb::reviews::send_batch(tx, &canonical, &review_id, 1_000))
         .unwrap();
 
     let after = list_threads_inner(&store, &canonical, None).unwrap();
-    assert!(
-        after.iter().find(|t| t.id == thread_id).unwrap().published,
-        "a published review's threads report published: true",
-    );
+    assert!(before.iter().find(|t| t.id == thread_id).unwrap().pending);
+    assert!(!after.iter().find(|t| t.id == thread_id).unwrap().pending);
 }
 
 /// The wire precomputes the human-legal moves (`ThreadState::allowed_transitions`)
@@ -2859,15 +2896,23 @@ fn a_published_review_still_accepts_a_reply_and_a_text_edit() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
-    let thread_id = submit_thread_inner(&store, &canonical, submission("x"), 1_000).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, held("x"), 1_000).unwrap();
     let review_id = only_review(&store, &canonical).id;
     store
-        .write(|tx| reviewdb::reviews::publish(tx, &canonical, &review_id, 1_000))
+        .write(|tx| reviewdb::reviews::send_batch(tx, &canonical, &review_id, 1_000))
         .unwrap();
 
     let reply_id = store
         .write(|tx| {
-            reviewdb::replies::add(tx, &canonical, &thread_id, "a reply", Channel::Human, 1_001)
+            reviewdb::replies::add(
+                tx,
+                &canonical,
+                &thread_id,
+                "a reply",
+                Channel::Human,
+                Delivery::Send,
+                1_001,
+            )
         })
         .unwrap();
     store
@@ -2893,7 +2938,7 @@ fn editing_human_text_leaves_state_untouched() {
         .unwrap();
 
     let threads = store
-        .read(|c| reviewdb::threads::list_for_review(c, &review_id))
+        .read(|c| reviewdb::threads::list_for_review(c, &review_id, Channel::Human))
         .unwrap();
     assert_eq!(
         threads[0].state,
@@ -2916,6 +2961,7 @@ fn editing_an_agent_reply_is_refused() {
                 &thread_id,
                 "agent reply",
                 Channel::Agent,
+                Delivery::Send,
                 1_001,
             )
         })
@@ -2969,7 +3015,7 @@ fn deleting_a_published_thread_removes_it() {
 
     let review_id = only_review(&store, &canonical).id;
     let threads = store
-        .read(|c| reviewdb::threads::list_for_review(c, &review_id))
+        .read(|c| reviewdb::threads::list_for_review(c, &review_id, Channel::Human))
         .unwrap();
     assert!(threads.is_empty(), "{threads:?}");
 }
@@ -2980,7 +3026,15 @@ fn deleting_a_published_reply_removes_it() {
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let reply_id = store
         .write(|tx| {
-            reviewdb::replies::add(tx, &canonical, &thread_id, "a reply", Channel::Human, 1_002)
+            reviewdb::replies::add(
+                tx,
+                &canonical,
+                &thread_id,
+                "a reply",
+                Channel::Human,
+                Delivery::Send,
+                1_002,
+            )
         })
         .unwrap();
 
@@ -2989,7 +3043,9 @@ fn deleting_a_published_reply_removes_it() {
         .unwrap();
 
     let replies = store
-        .read(|c| reviewdb::replies::list_for_threads(c, std::slice::from_ref(&thread_id)))
+        .read(|c| {
+            reviewdb::replies::list_for_threads(c, std::slice::from_ref(&thread_id), Channel::Human)
+        })
         .unwrap();
     assert!(replies.get(&thread_id).is_none_or(Vec::is_empty));
 }
@@ -3002,7 +3058,15 @@ fn deleting_a_composing_reply_removes_it() {
     let thread_id = submit_thread_inner(&store, &canonical, submission("x"), 1_000).unwrap();
     let reply_id = store
         .write(|tx| {
-            reviewdb::replies::add(tx, &canonical, &thread_id, "a reply", Channel::Human, 1_001)
+            reviewdb::replies::add(
+                tx,
+                &canonical,
+                &thread_id,
+                "a reply",
+                Channel::Human,
+                Delivery::Send,
+                1_001,
+            )
         })
         .unwrap();
 
@@ -3011,7 +3075,9 @@ fn deleting_a_composing_reply_removes_it() {
         .unwrap();
 
     let replies = store
-        .read(|c| reviewdb::replies::list_for_threads(c, std::slice::from_ref(&thread_id)))
+        .read(|c| {
+            reviewdb::replies::list_for_threads(c, std::slice::from_ref(&thread_id), Channel::Human)
+        })
         .unwrap();
     assert!(replies.get(&thread_id).is_none_or(Vec::is_empty));
 }
@@ -3048,6 +3114,7 @@ fn a_thread_anchor_round_trips_every_field() {
             content_pin: None,
             cached_excerpt: Some("x".to_string()),
             clears_draft: true,
+            delivery: Delivery::Send,
         },
         1_000,
     )
@@ -3055,7 +3122,7 @@ fn a_thread_anchor_round_trips_every_field() {
 
     let id = only_review(&store, &canonical).id;
     let threads = store
-        .read(|c| reviewdb::threads::list_for_review(c, &id))
+        .read(|c| reviewdb::threads::list_for_review(c, &id, Channel::Human))
         .unwrap();
     // Anchor derives no PartialEq, so compare the whole shape rather than the
     // one field a partial assertion would happen to cover.
@@ -3074,7 +3141,7 @@ fn editing_a_thread_targets_it_by_id() {
     submit_thread_inner(&store, &canonical, submission("second"), 2_000).unwrap();
     let id = only_review(&store, &canonical).id;
     let target = store
-        .read(|c| reviewdb::threads::list_for_review(c, &id))
+        .read(|c| reviewdb::threads::list_for_review(c, &id, Channel::Human))
         .unwrap()[0]
         .id
         .clone();
@@ -3084,7 +3151,7 @@ fn editing_a_thread_targets_it_by_id() {
         .unwrap();
 
     let threads = store
-        .read(|c| reviewdb::threads::list_for_review(c, &id))
+        .read(|c| reviewdb::threads::list_for_review(c, &id, Channel::Human))
         .unwrap();
     assert_eq!(threads[0].text, "first (edited)");
     assert_eq!(threads[1].text, "second", "the other thread is untouched");
@@ -3105,7 +3172,7 @@ fn editing_an_unknown_thread_is_not_found() {
     let id = only_review(&store, &canonical).id;
     assert_eq!(
         store
-            .read(|c| reviewdb::threads::list_for_review(c, &id))
+            .read(|c| reviewdb::threads::list_for_review(c, &id, Channel::Human))
             .unwrap()[0]
             .text,
         "untouched",
@@ -3126,7 +3193,7 @@ fn deleting_an_unknown_thread_is_an_idempotent_no_op() {
 
     assert_eq!(
         store
-            .read(|c| reviewdb::threads::list_for_review(c, &id))
+            .read(|c| reviewdb::threads::list_for_review(c, &id, Channel::Human))
             .unwrap()
             .len(),
         1,
@@ -3147,7 +3214,7 @@ fn threads_keep_their_insertion_order_within_one_second() {
 
     let id = only_review(&store, &canonical).id;
     let texts: Vec<String> = store
-        .read(|c| reviewdb::threads::list_for_review(c, &id))
+        .read(|c| reviewdb::threads::list_for_review(c, &id, Channel::Human))
         .unwrap()
         .into_iter()
         .map(|t| t.text)
@@ -3343,6 +3410,7 @@ fn a_commit_note_leaves_the_diff_composers_draft_alone() {
             content_pin: None,
             cached_excerpt: None,
             clears_draft: false,
+            delivery: Delivery::Send,
         },
         1_000,
     )
@@ -3958,7 +4026,7 @@ fn a_store_from_the_earlier_v5_is_reconciled() {
              ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
-             ALTER TABLE reviews DROP COLUMN archived;
+             ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
              DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
@@ -4806,7 +4874,7 @@ fn a_store_from_the_unreleased_v8_is_accepted() {
         let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
         conn.execute_batch(
             "CREATE TABLE pin_seq (repo_path TEXT PRIMARY KEY, next INTEGER NOT NULL);
-             ALTER TABLE reviews DROP COLUMN archived;
+             ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
              DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
@@ -4874,7 +4942,7 @@ fn a_store_stamped_eight_without_the_pin_columns_is_migrated() {
             "ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
-             ALTER TABLE reviews DROP COLUMN archived;
+             ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
              DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
@@ -5325,7 +5393,7 @@ fn a_commit_under_a_keepalive_ref_trunk_never_minted_never_goes_stale() {
 fn wind_back_to_v8(ctx: &TestContext) {
     let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
     conn.execute_batch(
-        "ALTER TABLE reviews DROP COLUMN archived;
+        "ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
          DROP TABLE thread_history;
          DROP TABLE minted_snapshots;
          DROP TABLE legacy_snapshot_candidates;
@@ -5633,7 +5701,7 @@ fn a_store_with_many_anchors_on_one_snapshot_upgrades() {
     let threads = store
         .read(|conn| {
             let review_id = reviewdb::reviews::active(conn, &canonical)?.unwrap();
-            reviewdb::threads::list_for_review(conn, &review_id)
+            reviewdb::threads::list_for_review(conn, &review_id, Channel::Human)
         })
         .unwrap();
     assert_eq!(threads.len(), 2);
@@ -5774,6 +5842,7 @@ fn a_repo_with_a_pinned_block(
             }),
             cached_excerpt: Some(block.into()),
             clears_draft: true,
+            delivery: Delivery::Send,
         },
         1_000,
     )
@@ -5802,6 +5871,7 @@ fn pinning_a_line_range_captures_that_range_from_the_file() {
         2,
         3,
         "look at this",
+        Delivery::Send,
         1_000,
     )
     .unwrap();
@@ -5836,6 +5906,7 @@ fn submitting_a_current_file_thread_stores_the_line_the_user_selected() {
         2,
         3,
         "look at this",
+        Delivery::Send,
         1_000,
     )
     .unwrap();
@@ -5868,6 +5939,7 @@ fn submitting_against_a_later_twin_stores_that_twins_line() {
         3,
         3,
         "look at this",
+        Delivery::Send,
         1_000,
     )
     .unwrap();
@@ -5902,6 +5974,7 @@ fn a_recompute_over_an_unchanged_file_leaves_the_submitted_line_alone() {
         2,
         2,
         "look at this",
+        Delivery::Send,
         1_000,
     )
     .unwrap();
@@ -5930,6 +6003,7 @@ fn losing_the_pinned_block_clears_the_resolved_line() {
         2,
         2,
         "look at this",
+        Delivery::Send,
         1_000,
     )
     .unwrap();
@@ -5960,6 +6034,7 @@ fn restoring_the_pinned_block_restores_the_resolved_line() {
         2,
         2,
         "look at this",
+        Delivery::Send,
         1_000,
     )
     .unwrap();
@@ -5995,6 +6070,7 @@ fn pinning_a_nested_file_keeps_its_full_path() {
         2,
         2,
         "look at this",
+        Delivery::Send,
         1_000,
     )
     .unwrap();
@@ -6024,6 +6100,7 @@ fn pinning_a_later_twin_records_its_own_ordinal() {
         3,
         3,
         "this one",
+        Delivery::Send,
         1_000,
     )
     .unwrap();
@@ -6190,6 +6267,7 @@ fn pinning_refuses_a_path_the_index_does_not_hold() {
             1,
             1,
             "look",
+            Delivery::Send,
             1_000,
         )
         .unwrap_err();
@@ -6227,6 +6305,7 @@ fn pinning_refuses_a_tracked_symlink() {
         1,
         1,
         "look",
+        Delivery::Send,
         1_000,
     )
     .unwrap_err();
@@ -6257,6 +6336,7 @@ fn pinning_refuses_a_regular_index_entry_replaced_by_a_symlink_before_writing() 
         1,
         1,
         "look",
+        Delivery::Send,
         1_000,
     )
     .unwrap_err();
@@ -6287,6 +6367,7 @@ fn pinning_refuses_a_regular_index_entry_below_a_symlinked_parent_before_writing
         1,
         1,
         "look",
+        Delivery::Send,
         1_000,
     )
     .unwrap_err();
@@ -6314,6 +6395,7 @@ fn pinning_reports_an_unreadable_index_as_not_found_before_writing() {
         1,
         1,
         "look",
+        Delivery::Send,
         1_000,
     )
     .unwrap_err();
@@ -6344,6 +6426,7 @@ fn pinning_refuses_a_file_the_current_file_view_calls_binary() {
         2,
         2,
         "look",
+        Delivery::Send,
         1_000,
     )
     .unwrap_err();
@@ -6388,6 +6471,7 @@ fn a_current_file_thread_survives_a_restart_on_the_same_lines() {
             2,
             2,
             "look",
+            Delivery::Send,
             1_000,
         )
         .unwrap();
@@ -6445,7 +6529,7 @@ fn only_thread(store: &reviewdb::Store, canonical: &std::path::Path) -> reviewdb
     store
         .read(|conn| {
             let review_id = reviewdb::reviews::active(conn, canonical)?.unwrap();
-            let mut listed = reviewdb::threads::list_for_review(conn, &review_id)?;
+            let mut listed = reviewdb::threads::list_for_review(conn, &review_id, Channel::Human)?;
             Ok(listed.remove(0))
         })
         .unwrap()
@@ -6457,7 +6541,7 @@ fn thread_count(store: &reviewdb::Store, canonical: &std::path::Path) -> usize {
             let Some(review_id) = reviewdb::reviews::active(connection, canonical)? else {
                 return Ok(0);
             };
-            Ok(reviewdb::threads::list_for_review(connection, &review_id)?.len())
+            Ok(reviewdb::threads::list_for_review(connection, &review_id, Channel::Human)?.len())
         })
         .unwrap()
 }
@@ -6560,6 +6644,7 @@ fn a_fifty_thread_recompute_pass_is_reported() {
             i + 1,
             i + 1,
             "look",
+            Delivery::Send,
             1_000,
         )
         .unwrap();
@@ -6588,6 +6673,7 @@ fn a_review_lists_the_commits_its_threads_sit_on_in_the_order_they_arrived() {
         content_pin: None,
         cached_excerpt: None,
         clears_draft: false,
+        delivery: Delivery::Send,
     };
     submit_thread_inner(&store, &canonical, note("deadbeef"), 1_000).unwrap();
     submit_thread_inner(&store, &canonical, submission("on a line"), 1_001).unwrap();

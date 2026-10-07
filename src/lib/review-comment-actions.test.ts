@@ -26,13 +26,14 @@ beforeEach(() => {
 });
 
 describe("addReply", () => {
-	it("sends the repo path, thread id and text to add_reply", async () => {
+	it("sends the repo path, thread id and text to add_reply, live", async () => {
 		await addReply("/repo", "thread-1", "looks good");
 
 		expect(mockInvoke).toHaveBeenCalledWith("add_reply", {
 			path: "/repo",
 			threadId: "thread-1",
 			text: "looks good",
+			delivery: "send",
 		});
 	});
 

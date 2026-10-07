@@ -76,6 +76,7 @@ export function describeThreadedCommentActions(
 					text_html: "",
 					channel: "human",
 					created_at: 1_000,
+					pending: false,
 				},
 			],
 		});
@@ -97,6 +98,7 @@ export function describeThreadedCommentActions(
 			path: "/repo",
 			threadId: "t1",
 			text: "reply text",
+			delivery: "send",
 		});
 	});
 

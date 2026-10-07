@@ -195,8 +195,8 @@ mod tests {
             .write(|tx| {
                 for id in ids {
                     tx.execute(
-                        "INSERT INTO reviews (id, repo_path, title, published, created_at, updated_at)
-                         VALUES (?1, '/repo', 't', 0, 0, 0)",
+                        "INSERT INTO reviews (id, repo_path, title, created_at, updated_at)
+                         VALUES (?1, '/repo', 't', 0, 0)",
                         [id],
                     )
                     .map_err(sqlite_error)?;

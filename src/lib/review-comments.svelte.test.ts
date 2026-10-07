@@ -80,6 +80,7 @@ const review: Review = {
 	archived: false,
 	thread_count: 1,
 	unresolved_count: 1,
+	pending_count: 0,
 	created_at: 0,
 };
 
@@ -472,6 +473,7 @@ describe("createReviewComments — the shown review", () => {
 		title: "Second pass",
 		thread_count: 1,
 		unresolved_count: 1,
+		pending_count: 0,
 	};
 	const otherThread = aThread({ id: "c2", review_id: "REVIEW02" });
 	const otherCommits: SessionCommit[] = [

@@ -139,6 +139,7 @@ function aReview(overrides: Partial<Review> = {}): Review {
 		archived: false,
 		thread_count: 0,
 		unresolved_count: 0,
+		pending_count: 0,
 		created_at: 0,
 		...overrides,
 	};
@@ -156,7 +157,7 @@ function installReads(opts: {
 	activeReviewId?: string | null;
 	resolutions?: CommentResolution[];
 	generateDoc?: string;
-	publishRejection?: unknown;
+	sendRejection?: unknown;
 	generateRejection?: unknown;
 	otherReviews?: Record<
 		string,
@@ -168,7 +169,12 @@ function installReads(opts: {
 		commits: opts.commits ?? [],
 		threads: comments,
 		otherReviews: opts.otherReviews ?? {},
-		reviews: opts.reviews ?? [aReview({ thread_count: comments.length })],
+		reviews: opts.reviews ?? [
+			aReview({
+				thread_count: comments.length,
+				pending_count: comments.length,
+			}),
+		],
 		activeReviewId:
 			opts.activeReviewId === undefined ? ACTIVE_REVIEW : opts.activeReviewId,
 	});
@@ -184,9 +190,9 @@ function installReads(opts: {
 					return Promise.reject(opts.generateRejection);
 				}
 				return Promise.resolve(opts.generateDoc ?? "# stub\n");
-			case "publish_review":
-				if (opts.publishRejection !== undefined) {
-					return Promise.reject(opts.publishRejection);
+			case "send_review":
+				if (opts.sendRejection !== undefined) {
+					return Promise.reject(opts.sendRejection);
 				}
 				return Promise.resolve(undefined);
 			default:
@@ -552,6 +558,7 @@ describe("ReviewPanel", () => {
 				path: "/repo",
 				commitOid: COMMIT_A,
 				text: "retained panel note",
+				delivery: "send",
 			});
 		});
 
@@ -690,6 +697,7 @@ describe("ReviewPanel", () => {
 						text_html: "",
 						channel: "human",
 						created_at: 1_000,
+						pending: false,
 					},
 				],
 			});
@@ -851,6 +859,7 @@ describe("ReviewPanel", () => {
 				path: "/repo",
 				threadId: "c1",
 				text: "reply text",
+				delivery: "send",
 			});
 		});
 
@@ -863,6 +872,7 @@ describe("ReviewPanel", () => {
 					text_html: "",
 					channel: "human",
 					created_at: 1_000,
+					pending: false,
 				},
 			];
 			installReads({
@@ -908,6 +918,7 @@ describe("ReviewPanel", () => {
 					text_html: "",
 					channel: "agent",
 					created_at: 1_000,
+					pending: false,
 				},
 			];
 			installReads({
@@ -1387,15 +1398,15 @@ describe("ReviewPanel", () => {
 	});
 });
 
-// Ending a review publishes it, after a popover under the button says what
-// that means.
+// Ending a review sends its held comments, after a popover under the button
+// says what that means.
 describe("End review", () => {
-	function renderWithSession(opts: { publishRejection?: unknown } = {}) {
+	function renderWithSession(opts: { sendRejection?: unknown } = {}) {
 		installReads({
 			commits,
 			comments: [lineAnchoredComment("c1", COMMIT_A, "x")],
 			resolutions: [resolvable("c1")],
-			publishRejection: opts.publishRejection,
+			sendRejection: opts.sendRejection,
 		});
 		return render(ReviewPanel, {
 			props: {
@@ -1411,22 +1422,22 @@ describe("End review", () => {
 	async function openPopover() {
 		await fireEvent.click(screen.getByRole("button", { name: "End review" }));
 		await flush();
-		return screen.getByRole("dialog", { name: `Publish ${ACTIVE_REVIEW}?` });
+		return screen.getByRole("dialog", { name: `Send ${ACTIVE_REVIEW}?` });
 	}
 
-	it("asks before publishing, and says what publishing does", async () => {
+	it("asks before sending, and says what sending does", async () => {
 		renderWithSession();
 		await flush();
 
 		const popover = await openPopover();
 
 		expect(popover).toHaveTextContent(
-			"The agent will be able to read and reply to 1 thread. You can keep adding comments. Nothing is deleted.",
+			"The agent will be able to read and reply to 1 held comment. Nothing is deleted.",
 		);
-		expect(calledCommands()).not.toContain("publish_review");
+		expect(calledCommands()).not.toContain("send_review");
 	});
 
-	it("publishes the shown review from the popover", async () => {
+	it("sends the shown review's batch from the popover", async () => {
 		renderWithSession();
 		await flush();
 		const popover = await openPopover();
@@ -1436,12 +1447,12 @@ describe("End review", () => {
 		);
 		await flush();
 
-		expect(callArgs("publish_review")).toEqual({
+		expect(callArgs("send_review")).toEqual({
 			path: "/repo",
 			reviewId: ACTIVE_REVIEW,
 		});
 		expect(vi.mocked(showToast)).toHaveBeenCalledWith(
-			`${ACTIVE_REVIEW} published`,
+			`${ACTIVE_REVIEW} sent`,
 			"success",
 		);
 		expect(screen.queryByRole("dialog")).toBeNull();
@@ -1457,7 +1468,7 @@ describe("End review", () => {
 			"Escape",
 			(popover: HTMLElement) => fireEvent.keyDown(popover, { key: "Escape" }),
 		],
-	])("closes without publishing on %s", async (_, dismiss) => {
+	])("closes without sending on %s", async (_, dismiss) => {
 		renderWithSession();
 		await flush();
 		const popover = await openPopover();
@@ -1466,11 +1477,15 @@ describe("End review", () => {
 		await flush();
 
 		expect(screen.queryByRole("dialog")).toBeNull();
-		expect(calledCommands()).not.toContain("publish_review");
+		expect(calledCommands()).not.toContain("send_review");
 	});
 
-	it("is disabled until the review has a thread", async () => {
-		installReads({ commits, comments: [] });
+	it("is hidden while the review holds nothing", async () => {
+		installReads({
+			commits,
+			comments: [lineAnchoredComment("c1", COMMIT_A, "x")],
+			reviews: [aReview({ thread_count: 1, pending_count: 0 })],
+		});
 		render(ReviewPanel, {
 			props: {
 				repoPath: "/repo",
@@ -1482,14 +1497,12 @@ describe("End review", () => {
 		});
 		await flush();
 
-		const end = screen.getByRole("button", { name: "End review" });
-		expect(end).toBeDisabled();
-		expect(end).toHaveAttribute("title", "Add at least one thread first");
+		expect(screen.queryByRole("button", { name: "End review" })).toBeNull();
 	});
 
-	it("surfaces a publish-failure toast when publish_review rejects", async () => {
+	it("surfaces a send-failure toast when send_review rejects", async () => {
 		renderWithSession({
-			publishRejection: {
+			sendRejection: {
 				code: "no_session",
 				message: "No active review session",
 			},
@@ -1503,7 +1516,7 @@ describe("End review", () => {
 		await flush();
 
 		expect(vi.mocked(showToast)).toHaveBeenCalledWith(
-			"Failed to publish review: No active review session",
+			"Failed to send review: No active review session",
 			"error",
 		);
 		expect(screen.getByText("x")).toBeInTheDocument();
@@ -1520,6 +1533,7 @@ describe("the shown review", () => {
 		archived: false,
 		thread_count: 2,
 		unresolved_count: 1,
+		pending_count: 0,
 		created_at: 0,
 	};
 
@@ -1708,6 +1722,7 @@ describe("header", () => {
 		archived: false,
 		thread_count: 0,
 		unresolved_count: 0,
+		pending_count: 0,
 		created_at: 0,
 	};
 
@@ -2479,6 +2494,7 @@ describe("ReviewPanel branch sections", () => {
 				path: "/repo",
 				commitOid: COMMIT_A,
 				text: "ship it",
+				delivery: "send",
 			});
 		});
 

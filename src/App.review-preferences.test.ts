@@ -627,6 +627,7 @@ function reviewWith(
 			archived: false,
 			thread_count: storedThreads.length,
 			unresolved_count: storedThreads.filter((t) => t.state === "open").length,
+			pending_count: 0,
 			created_at: 0,
 		},
 		threads: storedThreads.map((thread) => ({ ...thread, review_id: id })),

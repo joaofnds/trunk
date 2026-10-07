@@ -57,7 +57,11 @@ pub(crate) fn published_thread(
         let mut all = Vec::new();
         for review in trunk_review::reviewdb::reviews::list(conn, canonical)? {
             if review.is_visible_to_agent() {
-                all.extend(threads::list_for_review(conn, &review.id)?);
+                all.extend(threads::list_for_review(
+                    conn,
+                    &review.id,
+                    trunk_review::types::Channel::Agent,
+                )?);
             }
         }
         Ok(all)

@@ -6,7 +6,7 @@ mod common;
 use common::context::TestContext;
 use trunk_lib::commands::review::{SubmitThreadRequest, list_threads_inner, submit_thread_inner};
 use trunk_review::reviewdb::{self, Store, history::StateChange};
-use trunk_review::types::{Anchor, Channel, Side, Source, ThreadState};
+use trunk_review::types::{Anchor, Channel, Delivery, Side, Source, ThreadState};
 
 fn submission() -> SubmitThreadRequest {
     SubmitThreadRequest {
@@ -23,6 +23,7 @@ fn submission() -> SubmitThreadRequest {
         content_pin: None,
         cached_excerpt: Some("let x = 1;".to_string()),
         clears_draft: true,
+        delivery: Delivery::Send,
     }
 }
 
@@ -168,7 +169,7 @@ fn a_v9_store_gains_the_history_table_and_keeps_its_threads() {
     drop(store);
     {
         let conn = rusqlite::Connection::open(ctx.data_dir().join(reviewdb::DB_FILE)).unwrap();
-        conn.execute_batch("ALTER TABLE reviews DROP COLUMN archived; DROP TABLE thread_history; PRAGMA user_version = 9;")
+        conn.execute_batch("ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived; DROP TABLE thread_history; PRAGMA user_version = 9;")
             .unwrap();
     }
 

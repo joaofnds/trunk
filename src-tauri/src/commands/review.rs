@@ -163,6 +163,7 @@ pub struct SubmitThreadRequest {
     /// commit-level note is independent of the composer and must leave a
     /// half-typed line comment alone.
     pub clears_draft: bool,
+    pub delivery: trunk_review::types::Delivery,
 }
 
 /// Submit a thread into the repo's active review, creating one when there is
@@ -279,6 +280,7 @@ fn submit_thread_write(
                 commit_oid: req.commit_oid,
                 content_pin: req.content_pin,
                 cached_excerpt: req.cached_excerpt,
+                delivery: req.delivery,
             },
             now,
         )?;
@@ -310,6 +312,7 @@ pub struct RenderedReply {
     pub text_html: String,
     pub channel: trunk_review::types::Channel,
     pub created_at: i64,
+    pub pending: bool,
 }
 
 impl RenderedReply {
@@ -321,6 +324,7 @@ impl RenderedReply {
             text_html,
             channel: r.channel,
             created_at: r.created_at,
+            pending: r.pending,
         }
     }
 }
@@ -346,9 +350,9 @@ pub struct RenderedThread {
     pub state: trunk_review::types::ThreadState,
     pub stale: bool,
     pub channel: trunk_review::types::Channel,
-    // The owning review's published bit: whether the agent can read this
-    // thread, which the reply field's placeholder tells the user.
-    pub published: bool,
+    /// Held in the review's batch: the agent cannot read it until the user
+    /// sends the batch, which the reply field's placeholder tells the user.
+    pub pending: bool,
     // The states a UI gesture may legally move this thread to, in the order
     // the card presents them — `ThreadState::allowed_transitions` for
     // `Channel::Human`, precomputed here so the card never re-derives the
@@ -411,7 +415,6 @@ impl RenderedThread {
         t: threads::Thread,
         replies: Vec<replies::Reply>,
         history: Vec<trunk_review::reviewdb::history::StateChange>,
-        published: bool,
     ) -> Self {
         let text_html = crate::commands::markdown::render_comment_text(&t.text);
         let excerpt_spans = excerpt_spans(&t);
@@ -427,7 +430,7 @@ impl RenderedThread {
             state: t.state,
             stale: t.stale,
             channel: t.channel,
-            published,
+            pending: t.pending,
             allowed_transitions: t
                 .state
                 .allowed_transitions(trunk_review::types::Channel::Human),
@@ -458,18 +461,15 @@ pub fn list_threads_inner(
         let Some(review_id) = reviews::requested_or_active(conn, canonical, review_id)? else {
             return Ok(vec![]);
         };
-        // Every thread in this batch belongs to the same review, so its
-        // published bit is read once rather than per-thread.
-        let published = reviews::get(conn, &review_id)?.is_some_and(|r| r.published);
-
-        let listed = threads::list_with_replies(conn, &review_id)?;
+        let listed =
+            threads::list_with_replies(conn, &review_id, trunk_review::types::Channel::Human)?;
         let ids: Vec<String> = listed.iter().map(|(t, _)| t.id.clone()).collect();
         let mut histories = trunk_review::reviewdb::history::list_for_threads(conn, &ids)?;
         Ok(listed
             .into_iter()
             .map(|(t, replies)| {
                 let history = histories.remove(&t.id).unwrap_or_default();
-                RenderedThread::from_thread(t, replies, history, published)
+                RenderedThread::from_thread(t, replies, history)
             })
             .collect())
     })
@@ -489,6 +489,7 @@ pub async fn add_thread<R: Runtime>(
     text: String,
     anchor: trunk_review::types::Anchor,
     cached_excerpt: String,
+    delivery: trunk_review::types::Delivery,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
@@ -502,6 +503,7 @@ pub async fn add_thread<R: Runtime>(
         content_pin: None,
         cached_excerpt: Some(cached_excerpt),
         clears_draft: true,
+        delivery,
     };
     let target = canonical.clone();
     let now = trunk_review::reviewdb::now_secs();
@@ -540,6 +542,7 @@ pub fn submit_current_file_thread_inner(
     start_line: u32,
     end_line: u32,
     text: &str,
+    delivery: trunk_review::types::Delivery,
     now: i64,
 ) -> Result<String, TrunkError> {
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
@@ -560,6 +563,7 @@ pub fn submit_current_file_thread_inner(
         cached_excerpt: Some(pin.block.clone()),
         content_pin: Some(pin),
         clears_draft: true,
+        delivery,
     };
 
     submit_thread_inner(store, canonical, req, now)
@@ -580,6 +584,7 @@ pub async fn add_current_file_thread<R: Runtime>(
     start_line: u32,
     end_line: u32,
     text: String,
+    delivery: trunk_review::types::Delivery,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
@@ -590,7 +595,7 @@ pub async fn add_current_file_thread<R: Runtime>(
     let now = trunk_review::reviewdb::now_secs();
     write_and_notify(&app, &canonical, move || {
         submit_current_file_thread_inner(
-            &store, &target, &path, &file_path, start_line, end_line, &text, now,
+            &store, &target, &path, &file_path, start_line, end_line, &text, delivery, now,
         )
         .map(|_| ())
     })
@@ -612,6 +617,7 @@ pub async fn add_commit_thread<R: Runtime>(
     path: String,
     commit_oid: String,
     text: String,
+    delivery: trunk_review::types::Delivery,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
@@ -625,6 +631,7 @@ pub async fn add_commit_thread<R: Runtime>(
         content_pin: None,
         cached_excerpt: None,
         clears_draft: false,
+        delivery,
     };
     let target = canonical.clone();
     let now = trunk_review::reviewdb::now_secs();
@@ -706,6 +713,7 @@ pub fn add_reply_inner(
     repo_path: &Path,
     thread_id: &str,
     text: &str,
+    delivery: trunk_review::types::Delivery,
     now: i64,
 ) -> Result<String, TrunkError> {
     store.write(|tx| {
@@ -715,6 +723,7 @@ pub fn add_reply_inner(
             thread_id,
             text,
             trunk_review::types::Channel::Human,
+            delivery,
             now,
         )
     })
@@ -733,6 +742,7 @@ pub async fn add_reply<R: Runtime>(
     path: String,
     thread_id: String,
     text: String,
+    delivery: trunk_review::types::Delivery,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
@@ -742,7 +752,7 @@ pub async fn add_reply<R: Runtime>(
     let target = canonical.clone();
     write_and_notify(&app, &canonical, move || {
         let now = trunk_review::reviewdb::now_secs();
-        add_reply_inner(&store, &target, &thread_id, &text, now)
+        add_reply_inner(&store, &target, &thread_id, &text, delivery, now)
     })
     .await?;
 
@@ -1136,7 +1146,7 @@ pub async fn unarchive_review<R: Runtime>(
 ///
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
-pub async fn publish_review<R: Runtime>(
+pub async fn send_review<R: Runtime>(
     path: String,
     review_id: String,
     state: State<'_, RepoState>,
@@ -1148,7 +1158,7 @@ pub async fn publish_review<R: Runtime>(
     let target = canonical.clone();
     write_and_notify(&app, &canonical, move || {
         let now = trunk_review::reviewdb::now_secs();
-        store.write(|tx| reviews::publish(tx, &target, &review_id, now))
+        store.write(|tx| reviews::send_batch(tx, &target, &review_id, now))
     })
     .await?;
 
@@ -1848,7 +1858,7 @@ pub async fn resolve_threads<R: Runtime>(
             else {
                 return Ok(vec![]);
             };
-            threads::list_for_review(conn, &review_id)
+            threads::list_for_review(conn, &review_id, trunk_review::types::Channel::Human)
         })?;
 
         let repo = git2::Repository::open(&path).map_err(TrunkError::from)?;
@@ -1877,7 +1887,14 @@ pub fn generate_review_doc_inner(
     // same doc with the repo closed (D13).
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
 
-    trunk_review::doc::render_review_doc(store, canonical, review_id, repo.workdir(), repo.path())
+    trunk_review::doc::render_review_doc(
+        store,
+        canonical,
+        review_id,
+        trunk_review::types::Channel::Human,
+        repo.workdir(),
+        repo.path(),
+    )
 }
 
 /// # Errors

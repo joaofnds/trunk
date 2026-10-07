@@ -382,8 +382,8 @@ mod tests {
         store
             .write(|tx| {
                 tx.execute(
-                    "INSERT INTO reviews (id, repo_path, title, published, created_at, updated_at)
-                     VALUES (?1, '/repo', 'title', 0, 0, 0)",
+                    "INSERT INTO reviews (id, repo_path, title, created_at, updated_at)
+                     VALUES (?1, '/repo', 'title', 0, 0)",
                     [id],
                 )
                 .map_err(sqlite_error)?;
@@ -436,13 +436,13 @@ mod tests {
                         .write(|tx| {
                             let seen: i64 = tx
                                 .query_row(
-                                    "SELECT published FROM reviews WHERE id = 'COUNTER1'",
+                                    "SELECT updated_at FROM reviews WHERE id = 'COUNTER1'",
                                     [],
                                     |r| r.get(0),
                                 )
                                 .map_err(sqlite_error)?;
                             tx.execute(
-                                "UPDATE reviews SET published = ?1 WHERE id = 'COUNTER1'",
+                                "UPDATE reviews SET updated_at = ?1 WHERE id = 'COUNTER1'",
                                 [seen + 1],
                             )
                             .map_err(sqlite_error)?;
@@ -461,7 +461,7 @@ mod tests {
         let total: i64 = first
             .read(|conn| {
                 conn.query_row(
-                    "SELECT published FROM reviews WHERE id = 'COUNTER1'",
+                    "SELECT updated_at FROM reviews WHERE id = 'COUNTER1'",
                     [],
                     |r| r.get(0),
                 )

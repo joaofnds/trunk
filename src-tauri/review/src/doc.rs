@@ -696,7 +696,8 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
     emit_replies(out, &thread.replies);
 }
 
-/// Render `review_id`'s doc from stored rows.
+/// Render `review_id`'s doc from stored rows, holding only what `reader` may
+/// see: the CLI renders for the agent, which never reads a held comment.
 ///
 /// `workdir` and `repo_dir` are the caller's two path facts: the app takes them from
 /// its open repo, the CLI from discovery — neither reads repository content for the doc
@@ -720,6 +721,7 @@ pub fn render_review_doc(
     store: &Store,
     canonical: &Path,
     review_id: &str,
+    reader: Channel,
     workdir: Option<&Path>,
     repo_dir: &Path,
 ) -> Result<String, TrunkError> {
@@ -727,7 +729,7 @@ pub fn render_review_doc(
         let review = reviews::get(conn, review_id)?.ok_or_else(|| {
             TrunkError::new("not_found", format!("no review with id {review_id}"))
         })?;
-        let threads_with_replies = threads::list_with_replies(conn, review_id)?;
+        let threads_with_replies = threads::list_with_replies(conn, review_id, reader)?;
         let snapshots = snapshots::get(conn, canonical)?;
 
         Ok(RenderInput {

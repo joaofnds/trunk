@@ -461,6 +461,7 @@ async function saveAddNote(oid: string) {
 			path: repoPath,
 			commitOid: submittedTarget,
 			text,
+			delivery: "send",
 		});
 		if (
 			submittedSession.target === submittedTarget &&
@@ -504,20 +505,20 @@ async function onCopyClick() {
 	}
 }
 
-// Publishing deletes nothing: the review stays listed, its threads stay
-// visible, and the snapshot keepalive refs stay. The owner's reviews-changed
-// refresh re-reads the now-published review and the button's gate hides it.
+// Sending hands the held batch to the agent and deletes nothing. The owner's
+// reviews-changed refresh re-reads the review, and with nothing left held the
+// button's gate hides it.
 async function publishShown() {
 	endPopoverOpen = false;
 	if (!shownReviewId) return;
 	const reviewId = shownReviewId;
 
 	try {
-		await safeInvoke("publish_review", { path: repoPath, reviewId });
-		showToast(`${reviewId} published`, "success");
+		await safeInvoke("send_review", { path: repoPath, reviewId });
+		showToast(`${reviewId} sent`, "success");
 	} catch (e) {
 		showToast(
-			`Failed to publish review: ${errorMessage(e, "unknown error")}`,
+			`Failed to send review: ${errorMessage(e, "unknown error")}`,
 			"error",
 		);
 	}
@@ -668,15 +669,12 @@ $effect(() => {
 						<span>Archive</span>
 					</Button>
 				{/if}
-				{#if shownReview && !shownReview.published}
+				{#if shownReview && shownReview.pending_count > 0}
 					<div class="relative" bind:this={endAnchor}>
 						<Button
 							size="sm"
 							variant="primary"
-							disabled={!hasAnyComment}
-							title={hasAnyComment
-							? "Publish to the agent"
-							: "Add at least one thread first"}
+							title="Send the held comments to the agent"
 							onclick={() => {
 							endPopoverOpen = !endPopoverOpen;
 						}}
@@ -688,16 +686,17 @@ $effect(() => {
 							<div class="end-popover">
 								<Dialog
 									variant="anchored"
-									title="Publish {shownReview.id}?"
+									title="Send {shownReview.id}?"
 									onkeydown={(e) => {
 									if (e.key === "Escape") endPopoverOpen = false;
 								}}
 								>
 									<p class="m-0 text-callout leading-normal text-text-muted">
 										The agent will be able to read and reply to
-										{comments.length}
-										{comments.length === 1 ? "thread" : "threads"}. You can keep
-										adding comments. Nothing is deleted.
+										{shownReview.pending_count}
+										held
+										{shownReview.pending_count === 1 ? "comment" : "comments"}.
+										Nothing is deleted.
 									</p>
 									<div class="flex justify-end gap-2">
 										<Button

@@ -113,7 +113,7 @@ fn a_v10_store_gains_the_archived_flag_with_every_review_unarchived() {
     drop(store);
     {
         let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
-        conn.execute_batch("ALTER TABLE reviews DROP COLUMN archived; PRAGMA user_version = 10;")
+        conn.execute_batch("ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived; PRAGMA user_version = 10;")
             .unwrap();
     }
 

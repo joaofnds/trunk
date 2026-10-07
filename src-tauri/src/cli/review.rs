@@ -13,7 +13,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use trunk_git::error::TrunkError;
 use trunk_review::reviewdb::{self, reviews};
-use trunk_review::types::ThreadState;
+use trunk_review::types::{Channel, Delivery, ThreadState};
 
 #[derive(Subcommand, Debug, PartialEq, Eq)]
 pub enum ReviewCmd {
@@ -199,6 +199,7 @@ fn show(
         store,
         &canonical,
         &review.id,
+        Channel::Agent,
         paths.workdir.as_deref(),
         &paths.repo_dir,
     )?;
@@ -230,7 +231,8 @@ fn reply(
             &canonical,
             &thread.id,
             &body,
-            trunk_review::types::Channel::Agent,
+            Channel::Agent,
+            Delivery::Send,
             now,
         )
     })?;
@@ -273,7 +275,7 @@ fn address(
             &canonical,
             &thread.id,
             trunk_review::types::ThreadState::Addressed,
-            trunk_review::types::Channel::Agent,
+            Channel::Agent,
             commit.as_deref(),
             now,
         )
@@ -303,8 +305,9 @@ fn threads(
     out: &mut dyn Write,
 ) -> Result<(), TrunkError> {
     let review = published_review(store, &canonical, review)?;
-    let listed =
-        store.read(|conn| trunk_review::reviewdb::threads::list_for_review(conn, &review.id))?;
+    let listed = store.read(|conn| {
+        trunk_review::reviewdb::threads::list_for_review(conn, &review.id, Channel::Agent)
+    })?;
     let matching: Vec<_> = listed
         .into_iter()
         .filter(|t| state.is_none_or(|wanted| t.state == wanted))
@@ -332,7 +335,11 @@ fn thread(
     // value. Draining the map instead would interleave on `HashMap`'s
     // unspecified order the day a second id is passed.
     let replies = store.read(|conn| {
-        trunk_review::reviewdb::replies::list_for_threads(conn, std::slice::from_ref(&thread.id))
+        trunk_review::reviewdb::replies::list_for_threads(
+            conn,
+            std::slice::from_ref(&thread.id),
+            Channel::Agent,
+        )
     })?;
     let replies = replies.get(&thread.id).cloned().unwrap_or_default();
 

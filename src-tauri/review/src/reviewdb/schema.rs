@@ -8,7 +8,7 @@ use super::sqlite_error;
 use rusqlite::Connection;
 use trunk_git::error::TrunkError;
 
-pub const CURRENT_VERSION: i64 = 11;
+pub const CURRENT_VERSION: i64 = 12;
 
 const V1: &str = r"
 CREATE TABLE reviews (
@@ -288,6 +288,23 @@ const V11: &str = r"
 ALTER TABLE reviews ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
 ";
 
+/// A comment the user holds back from the agent until they send the batch. It
+/// replaces the review-wide `published` latch, so a review is published once
+/// any of its threads is sent. Everything in a review that was not yet
+/// published becomes held, so nothing the user never sent reaches the agent.
+const V12: &str = r"
+ALTER TABLE threads ADD COLUMN pending INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE replies ADD COLUMN pending INTEGER NOT NULL DEFAULT 0;
+
+UPDATE threads SET pending = 1
+WHERE review_id IN (SELECT id FROM reviews WHERE published = 0);
+
+UPDATE replies SET pending = 1
+WHERE thread_id IN (SELECT id FROM threads WHERE pending = 1);
+
+ALTER TABLE reviews DROP COLUMN published;
+";
+
 /// A dev store may carry `user_version = 8` from an unreleased commit that numbered
 /// an earlier cleanup 8, before this build's own v8 existed.
 ///
@@ -450,6 +467,10 @@ fn apply_pending(conn: &Connection) -> Result<(), TrunkError> {
     }
     if user_version(conn)? < 11 {
         conn.execute_batch(&format!("{V11} PRAGMA user_version = 11;"))
+            .map_err(sqlite_error)?;
+    }
+    if user_version(conn)? < 12 {
+        conn.execute_batch(&format!("{V12} PRAGMA user_version = 12;"))
             .map_err(sqlite_error)?;
     }
 

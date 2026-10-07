@@ -28,11 +28,9 @@ const TWO_COMMITS: RepoSpec = {
 describe("a comment left on a commit's diff", () => {
 	afterEach(teardown);
 
-	it("becomes a thread the panel keeps through publishing", async () => {
+	it("becomes a thread the panel offers to resolve", async () => {
 		const app = await setup({ repo: TWO_COMMITS });
 		await createReviewThread(app);
-
-		await app.review.publish();
 
 		expect(app.review.actions()).toEqual([
 			"Edit comment",
@@ -47,8 +45,6 @@ describe("a comment left on a commit's diff", () => {
 	it("filters a completed thread, leaving nothing to copy", async () => {
 		const app = await setup({ repo: TWO_COMMITS });
 		await createReviewThread(app);
-
-		await app.review.publish();
 
 		await app.review.markDone();
 
@@ -103,33 +99,6 @@ describe("a comment left on a commit's diff", () => {
 			expect(app.review.threads()).toEqual([]);
 			expect(doc).toContain(`${ANCHOR} (${commit}, after) — open`);
 			expect(doc).toContain(COMMENT);
-		},
-	);
-
-	it.each(["none", "done"] as const)(
-		"ends the raw review when the %s filter hides every thread",
-		async (filter) => {
-			const app = await setup({ repo: TWO_COMMITS });
-			await createReviewThread(app);
-			await app.review.showReviewFilter(
-				filter,
-				() => app.review.threads().length === 0,
-			);
-
-			await app.review.publish();
-			await app.review.showReviewFilter(
-				"all",
-				() => app.review.actions().length > 0,
-			);
-
-			expect(app.review.threads()).toEqual([ANCHOR]);
-			expect(app.review.states()).toEqual(["open"]);
-			expect(app.review.actions()).toEqual([
-				"Edit comment",
-				"Delete comment",
-				"Mark done",
-				"Dismiss",
-			]);
 		},
 	);
 

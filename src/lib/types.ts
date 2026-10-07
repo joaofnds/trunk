@@ -416,8 +416,8 @@ export interface Thread {
 	state: ThreadState;
 	stale: boolean;
 	channel: Channel;
-	// The owning review's published bit: whether the agent can read this thread.
-	published: boolean;
+	// Held in the review's batch: the agent cannot read it until the batch is sent.
+	pending: boolean;
 	// The states a UI gesture may legally move this thread to, in presentation
 	// order — precomputed by the backend from the one transition matrix
 	// (ThreadState::allowed_transitions, human channel). ThreadCard renders
@@ -447,7 +447,12 @@ export interface Reply {
 	readonly text_html: string;
 	readonly channel: Channel;
 	readonly created_at: number;
+	/** Held in the review's batch: the agent cannot read it until the batch is sent. */
+	readonly pending: boolean;
 }
+
+/** Whether a comment reaches the agent on submit or waits in the review's batch. */
+export type Delivery = "send" | "hold";
 
 // One move of a thread's state: to which state, by which channel, when, and
 // the commit the agent named as its fix. Mirrors the Rust StateChange.
@@ -494,12 +499,15 @@ export interface Review {
 	id: string;
 	title: string;
 	state: ReviewState;
+	/** Whether any thread has been sent, which hands the review to the agent. */
 	published: boolean;
 	/** Put away by the user: listed apart and unseen by the agent. */
 	archived: boolean;
 	thread_count: number;
 	/** Threads still waiting on someone: open or addressed. */
 	unresolved_count: number;
+	/** Held threads and replies, which reach the agent when the batch is sent. */
+	pending_count: number;
 	created_at: number;
 }
 

@@ -25,8 +25,6 @@ const CARD_ACTION =
 const ORPHAN_BADGE = ".orphan-badge";
 const STALE_CHIP = ".thread-stale-chip";
 const EXCERPT_LINE = ".comment-card-diff .diff-content";
-const PUBLISH = "End review";
-const PUBLISH_POPOVER = "dialog[aria-labelledby]";
 const COPY = "Copy";
 const SHOW_ALL = "Show all";
 const MARK_DONE = "Mark done";
@@ -57,8 +55,7 @@ function filterLabel(filter: ReviewFilter): string {
 /**
  * A review, from the comment that creates it to the doc it renders. Every
  * gesture waits for its control to be enabled before clicking: the composer's
- * Submit is dead until the text is non-empty, End review is dead until the review
- * has a comment, and Copy until one of its threads is unresolved. jsdom dispatches no click on a disabled
+ * Submit is dead until the text is non-empty, and Copy until one of its threads is unresolved. jsdom dispatches no click on a disabled
  * button, so a gesture issued early does nothing, quietly.
  */
 export class ReviewDriver {
@@ -562,30 +559,6 @@ export class ReviewDriver {
 
 		return [...card.querySelectorAll<HTMLElement>(CARD_ACTION)].map(
 			accessibleName,
-		);
-	}
-
-	/** Ends the review, which publishes it: the header's End review opens a
-	 *  popover that says what publishing does, and its own End review is the
-	 *  press that publishes. Resolves once the header stops offering End
-	 *  review, which it does only for a published review. */
-	async publish(): Promise<void> {
-		const button = await waitFor("an enabled end-review button", () =>
-			enabledButton(PUBLISH),
-		);
-
-		button.click();
-
-		const confirm = await waitFor("the end-review popover", () =>
-			enabledIn(document.querySelector<HTMLElement>(PUBLISH_POPOVER), PUBLISH),
-		);
-
-		confirm.click();
-
-		await waitFor("the review to publish", () =>
-			firstMatching("button", (text) => text === PUBLISH) === null
-				? true
-				: null,
 		);
 	}
 

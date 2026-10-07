@@ -625,6 +625,7 @@ describe("RepoView", () => {
 								published: false,
 								thread_count: 0,
 								unresolved_count: 0,
+								pending_count: 0,
 								created_at: 0,
 							},
 						]);
@@ -675,6 +676,7 @@ describe("RepoView", () => {
 								published: false,
 								thread_count: 1,
 								unresolved_count: 1,
+								pending_count: 0,
 								created_at: 0,
 							},
 						]);
@@ -849,6 +851,7 @@ describe("RepoView", () => {
 							published: false,
 							thread_count: 1,
 							unresolved_count: 1,
+							pending_count: 0,
 							created_at: 0,
 						},
 					]);
@@ -888,6 +891,7 @@ describe("RepoView", () => {
 			published: false,
 			thread_count: 1,
 			unresolved_count: 1,
+			pending_count: 0,
 			created_at: 0,
 		});
 		mockInvoke.mockImplementation((cmd, args) => {
@@ -2755,6 +2759,7 @@ describe("RepoView", () => {
 							published: false,
 							thread_count: 1,
 							unresolved_count: 1,
+							pending_count: 0,
 							created_at: 0,
 						},
 					]);
