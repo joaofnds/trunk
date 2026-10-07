@@ -637,7 +637,7 @@ export class ReviewDriver {
 		button.click();
 	}
 
-	/** The header's Copy: off while no thread is unresolved, and absent when
+	/** The header's Copy: off while the panel shows no thread, and absent when
 	 *  no review header is on screen. */
 	copyState(): "absent" | "disabled" | "enabled" {
 		const button = firstMatching("button", (text) => text === COPY);

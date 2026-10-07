@@ -51,7 +51,8 @@ trunk review watch [--repo <path>]
   (`open`/`stale`/`settled`), title, and the number of threads it was sent. A
   review is visible once it holds a sent thread and until the user archives it.
 - **show** — one review in full, as the same markdown document the app's
-  Copy-as-markdown produces: threads, states, excerpts, replies. A thread whose
+  Copy-as-markdown produces while its panel shows every thread: threads, states,
+  excerpts, replies. The app's Copy holds only the threads its filter shows. A thread whose
   heading ends `(stale)` was written against code the repository has moved past.
   Three shapes reach that state. A comment on uncommitted work is stale once the
   user has edited that work again. A comment on a tracked file's current content

@@ -2400,7 +2400,14 @@ fn renders_a_stored_review() {
         .write(|tx| reviewdb::commits::add(tx, &review.id, &head, "head subject"))
         .unwrap();
 
-    let doc = generate_review_doc_inner(&store, &canonical, ctx.path(), &review.id).unwrap();
+    let doc = generate_review_doc_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        &review.id,
+        &every_thread(&store, &review.id),
+    )
+    .unwrap();
 
     assert!(
         doc.contains("first note"),
@@ -2429,7 +2436,14 @@ fn a_sent_reviews_doc_teaches_the_generating_binarys_own_path_and_verbs() {
     submit_thread_inner(&store, &canonical, submission("sent note"), 1_000).unwrap();
     let id = only_review(&store, &canonical).id;
 
-    let doc = generate_review_doc_inner(&store, &canonical, ctx.path(), &id).unwrap();
+    let doc = generate_review_doc_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        &id,
+        &every_thread(&store, &id),
+    )
+    .unwrap();
 
     let exe = std::env::current_exe().unwrap().display().to_string();
     assert!(doc.contains(&format!("{exe} review reply")));
@@ -2446,7 +2460,14 @@ fn an_archived_reviews_doc_omits_the_cli_the_agent_cannot_use_on_it() {
         .write(|tx| reviewdb::reviews::archive(tx, &canonical, &id, 2_000))
         .unwrap();
 
-    let doc = generate_review_doc_inner(&store, &canonical, ctx.path(), &id).unwrap();
+    let doc = generate_review_doc_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        &id,
+        &every_thread(&store, &id),
+    )
+    .unwrap();
 
     assert!(doc.contains("sent note"));
     assert!(
@@ -2464,9 +2485,53 @@ fn a_review_with_no_threads_refuses_to_render() {
         .write(|tx| reviewdb::reviews::create(tx, &canonical, None, 0))
         .unwrap();
 
-    let err = generate_review_doc_inner(&store, &canonical, ctx.path(), &id).unwrap_err();
+    let err = generate_review_doc_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        &id,
+        &every_thread(&store, &id),
+    )
+    .unwrap_err();
 
     assert_eq!(err.code, "no_threads");
+}
+
+#[test]
+fn a_doc_holds_only_the_threads_the_panel_shows() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let shown = submit_thread_inner(&store, &canonical, submission("shown note"), 1_000).unwrap();
+    submit_thread_inner(&store, &canonical, submission("filtered note"), 1_000).unwrap();
+    let id = only_review(&store, &canonical).id;
+
+    let doc = generate_review_doc_inner(&store, &canonical, ctx.path(), &id, &[shown]).unwrap();
+
+    assert!(doc.contains("shown note"));
+    assert!(!doc.contains("filtered note"), "got: {doc}");
+}
+
+#[test]
+fn a_doc_with_none_of_its_threads_shown_refuses_to_render() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(&store, &canonical, submission("filtered note"), 1_000).unwrap();
+    let id = only_review(&store, &canonical).id;
+
+    let err = generate_review_doc_inner(&store, &canonical, ctx.path(), &id, &[]).unwrap_err();
+
+    assert_eq!(err.code, "no_threads");
+}
+
+fn every_thread(store: &Store, review_id: &str) -> Vec<String> {
+    store
+        .read(|c| reviewdb::threads::list_for_review(c, review_id, Channel::Human))
+        .unwrap()
+        .into_iter()
+        .map(|t| t.id)
+        .collect()
 }
 
 #[test]
@@ -2479,7 +2544,14 @@ fn mutating_one_review_leaves_another_doc_byte_identical() {
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     submit_thread_inner(&store, &canonical, held("in the first"), 1_000).unwrap();
     let first = only_review(&store, &canonical).id;
-    let before = generate_review_doc_inner(&store, &canonical, ctx.path(), &first).unwrap();
+    let before = generate_review_doc_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        &first,
+        &every_thread(&store, &first),
+    )
+    .unwrap();
 
     let second = store
         .write(|tx| reviewdb::reviews::create(tx, &canonical, Some("other"), 0))
@@ -2496,7 +2568,14 @@ fn mutating_one_review_leaves_another_doc_byte_identical() {
         .unwrap();
 
     assert_eq!(
-        generate_review_doc_inner(&store, &canonical, ctx.path(), &first).unwrap(),
+        generate_review_doc_inner(
+            &store,
+            &canonical,
+            ctx.path(),
+            &first,
+            &every_thread(&store, &first)
+        )
+        .unwrap(),
         before,
         "any operation on one review must leave the others' printed content unchanged",
     );

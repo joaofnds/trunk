@@ -49,6 +49,23 @@ pub struct RenderInput {
     pub index_snapshot: Option<String>,
 }
 
+/// Which of the review's threads the document holds.
+pub enum Shown<'a> {
+    /// Every thread the reader may see: the agent's document through the CLI.
+    Every,
+    /// Only the threads with these ids: the app copies what its panel shows.
+    Only(&'a [String]),
+}
+
+impl Shown<'_> {
+    fn holds(&self, thread_id: &str) -> bool {
+        match self {
+            Self::Every => true,
+            Self::Only(ids) => ids.iter().any(|id| id == thread_id),
+        }
+    }
+}
+
 /// One `## Commits` bullet: the oid plus the subject stored at add time.
 ///
 /// Stored, not resolved: a snapshot commit gc has collected keeps the label
@@ -696,8 +713,11 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
     emit_replies(out, &thread.replies);
 }
 
-/// Render `review_id`'s doc from stored rows, holding only what `reader` may
-/// see: the CLI renders for the agent, which never reads a held comment.
+/// Render `review_id`'s doc from stored rows, holding what `reader` may see and
+/// `shown` selects.
+///
+/// The CLI renders every thread for the agent, which never reads a held
+/// comment, and the app renders the threads its panel shows.
 ///
 /// `workdir` and `repo_dir` are the caller's two path facts: the app takes them from
 /// its open repo, the CLI from discovery — neither reads repository content for the doc
@@ -722,6 +742,7 @@ pub fn render_review_doc(
     canonical: &Path,
     review_id: &str,
     reader: Channel,
+    shown: &Shown,
     workdir: Option<&Path>,
     repo_dir: &Path,
 ) -> Result<String, TrunkError> {
@@ -729,7 +750,8 @@ pub fn render_review_doc(
         let review = reviews::get(conn, review_id)?.ok_or_else(|| {
             TrunkError::new("not_found", format!("no review with id {review_id}"))
         })?;
-        let threads_with_replies = threads::list_with_replies(conn, review_id, reader)?;
+        let mut threads_with_replies = threads::list_with_replies(conn, review_id, reader)?;
+        threads_with_replies.retain(|(thread, _)| shown.holds(&thread.id));
         let snapshots = snapshots::get(conn, canonical)?;
 
         Ok(RenderInput {

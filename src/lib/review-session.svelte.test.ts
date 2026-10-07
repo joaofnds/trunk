@@ -20,10 +20,11 @@ describe("createReviewSession — generate", () => {
 	it("generate returns the markdown string", async () => {
 		mockInvoke.mockResolvedValueOnce("# generated markdown");
 		const m = createReviewSession();
-		const result = await m.generate("/some/path", "REVIEW01");
+		const result = await m.generate("/some/path", "REVIEW01", ["t1", "t2"]);
 		expect(mockInvoke).toHaveBeenCalledWith("generate_review_doc", {
 			path: "/some/path",
 			reviewId: "REVIEW01",
+			threadIds: ["t1", "t2"],
 		});
 		expect(result).toBe("# generated markdown");
 	});
@@ -33,9 +34,11 @@ describe("createReviewSession — generate", () => {
 			'{"code":"no_threads","message":"Generate requires at least one thread in the review"}',
 		);
 		const m = createReviewSession();
-		await expect(m.generate("/repo", "REVIEW01")).rejects.toMatchObject({
-			code: "no_threads",
-		});
+		await expect(m.generate("/repo", "REVIEW01", ["t1"])).rejects.toMatchObject(
+			{
+				code: "no_threads",
+			},
+		);
 	});
 });
 

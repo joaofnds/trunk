@@ -43,10 +43,14 @@ export interface ReviewSessionManager {
 	showPanel(): void;
 	showDiff(): void;
 	jumpTo(comment: Thread, deps: JumpDeps): Promise<void>;
-	// Phase 72: calls `generate_review_doc` IPC and returns the markdown.
-	// State is untouched; the caller composes the result (e.g. writeText for
-	// clipboard). Rejection propagates verbatim.
-	generate(repoPath: string, reviewId: string): Promise<string>;
+	// Phase 72: calls `generate_review_doc` IPC and returns the markdown of the
+	// threads `threadIds` names. State is untouched; the caller composes the
+	// result (e.g. writeText for clipboard). Rejection propagates verbatim.
+	generate(
+		repoPath: string,
+		reviewId: string,
+		threadIds: readonly string[],
+	): Promise<string>;
 }
 
 export function createReviewSession(): ReviewSessionManager {
@@ -65,10 +69,15 @@ export function createReviewSession(): ReviewSessionManager {
 			// freshly-opened panel look inactive.
 			if (active) state.rightPaneMode = "panel";
 		},
-		async generate(repoPath: string, reviewId: string): Promise<string> {
+		async generate(
+			repoPath: string,
+			reviewId: string,
+			threadIds: readonly string[],
+		): Promise<string> {
 			return await safeInvoke<string>("generate_review_doc", {
 				path: repoPath,
 				reviewId,
+				threadIds,
 			});
 		},
 		showPanel() {

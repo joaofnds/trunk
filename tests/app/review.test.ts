@@ -64,26 +64,26 @@ describe("a comment left on a commit's diff", () => {
 		expect(app.review.threads()).toEqual([ANCHOR]);
 	});
 
-	it("filters a completed thread, leaving nothing to copy", async () => {
+	it("copies a completed thread while the panel shows it", async () => {
 		const app = await setup({ repo: TWO_COMMITS });
 		await createReviewThread(app);
-
 		await app.review.markDone();
-
 		await waitFor("the thread to reach done", () =>
 			app.review.states()[0] === "done" ? true : null,
 		);
-		expect(app.review.states()).toEqual(["done"]);
-		await waitFor("the unresolved review badge to disappear", () =>
-			app.review.reviewBadgeCount() === null ? true : null,
-		);
-
 		await app.review.pickPreset(
 			"settled",
-			() => app.review.reviewBadgeCount() === 1,
+			() => app.review.threads().length === 1,
 		);
 
-		expect(app.review.copyState()).toBe("disabled");
+		await app.review.copyDoc();
+
+		const doc = await waitFor(
+			"the copied review document",
+			() => app.clipboard.text,
+		);
+		expect(doc).toContain(ANCHOR);
+		expect(doc).toContain(COMMENT);
 	});
 
 	it("shows every thread again from the header's Show all", async () => {
@@ -114,21 +114,14 @@ describe("a comment left on a commit's diff", () => {
 				app.review.pickPreset("settled", observe),
 		],
 	] as const)(
-		"copies the raw review when %s leaves no thread shown",
+		"leaves nothing to copy when %s leaves no thread shown",
 		async (_name, gesture) => {
 			const app = await setup({ repo: TWO_COMMITS });
-			const commit = await createReviewThread(app);
+			await createReviewThread(app);
+
 			await gesture(app, () => app.review.threads().length === 0);
 
-			await app.review.copyDoc();
-
-			const doc = await waitFor(
-				"the copied review doc",
-				() => app.clipboard.text,
-			);
-			expect(app.review.threads()).toEqual([]);
-			expect(doc).toContain(`${ANCHOR} (${commit}, after) — open`);
-			expect(doc).toContain(COMMENT);
+			expect(app.review.copyState()).toBe("disabled");
 		},
 	);
 

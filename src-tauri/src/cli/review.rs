@@ -200,6 +200,7 @@ fn show(
         &canonical,
         &review.id,
         Channel::Agent,
+        &trunk_review::doc::Shown::Every,
         paths.workdir.as_deref(),
         &paths.repo_dir,
     )?;

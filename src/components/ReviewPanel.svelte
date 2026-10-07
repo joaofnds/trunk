@@ -172,9 +172,6 @@ const noteBatchHeld = $derived(
 // another from the list. Picking one never moves where new comments land.
 const shownReviewId = $derived(reviewComments.shownReviewId);
 const shownReview = $derived(reviewComments.shownReview);
-const unresolvedCount = $derived(
-	comments.filter((t) => t.state === "open" || t.state === "addressed").length,
-);
 
 // Orphan resolution stays here: resolve_threads walks a blob per
 // comment, and only this panel renders the badge it feeds.
@@ -600,20 +597,21 @@ async function saveEdit(id: string, text: string) {
 	}
 }
 
-// The button is disabled while nothing is unresolved, so the no_comments
+// Copy takes what the panel shows, so the filter decides what the agent reads.
+// The button is disabled while the view shows nothing, so the no_threads
 // TrunkError from session.generate is reachable only by a race (another window
-// emptied the review between render and click), and it lands in the same toast
-// as a clipboard failure.
+// deleted the shown threads between render and click), and it lands in the
+// same toast as a clipboard failure.
 async function onCopyClick() {
 	if (!shownReviewId) return;
 	const reviewId = shownReviewId;
-	const unresolved = unresolvedCount;
+	const threadIds = visibleComments.map((t) => t.id);
 
 	try {
-		const md = await session.generate(repoPath, reviewId);
+		const md = await session.generate(repoPath, reviewId, threadIds);
 		await writeText(md);
 		showToast(
-			`Copied ${unresolved} unresolved ${unresolved === 1 ? "thread" : "threads"} from ${reviewId} as an agent prompt`,
+			`Copied ${plural(threadIds.length, "thread")} from ${reviewId} as an agent prompt`,
 			"success",
 		);
 	} catch (e) {
@@ -768,10 +766,10 @@ $effect(() => {
 				<Button
 					size="sm"
 					onclick={onCopyClick}
-					disabled={unresolvedCount === 0}
-					title={unresolvedCount === 0
-					? "No unresolved threads to copy"
-					: "Copy unresolved threads as a prompt for an agent"}
+					disabled={visibleComments.length === 0}
+					title={visibleComments.length === 0
+					? "No threads shown to copy"
+					: "Copy the shown threads as a prompt for an agent"}
 				>
 					<Copy size={12} />
 					<span>Copy</span>

@@ -1321,28 +1321,24 @@ describe("ReviewPanel", () => {
 		});
 	});
 
-	// Phase 72: Copy button replaces Generate. Click invokes generate_review_doc,
-	// then writeText with the returned markdown; ✓ Copied for 1500ms with
-	// clearTimeout-before-setTimeout re-arm; failure surfaces toast via
-	// instanceof Error narrowing.
+	// Copy writes the doc of the threads the panel shows, so the filter decides
+	// what reaches the clipboard (João, 2026-10-08).
 	describe("Copy", () => {
+		const OPEN = lineAnchoredComment("c1", COMMIT_A, "look here");
+		const DONE = aThread({ id: "c2", commit_oid: COMMIT_A, state: "done" });
+
 		function renderCopy(
-			opts: { comments?: Thread[]; generateRejection?: unknown } = {},
+			opts: {
+				comments?: Thread[];
+				reviewFilter?: ReviewFilter;
+				generateRejection?: unknown;
+			} = {},
 		) {
-			const comments = opts.comments ?? [
-				lineAnchoredComment("c1", COMMIT_A, "look here"),
-			];
+			const comments = opts.comments ?? [OPEN];
 			installReads({
 				commits,
 				comments,
-				reviews: [
-					aReview({
-						thread_count: comments.length,
-						unresolved_count: comments.filter(
-							(t) => t.state === "open" || t.state === "addressed",
-						).length,
-					}),
-				],
+				reviews: [aReview({ thread_count: comments.length })],
 				generateDoc: "the doc",
 				generateRejection: opts.generateRejection,
 			});
@@ -1351,6 +1347,7 @@ describe("ReviewPanel", () => {
 					repoPath: "/repo",
 					session: createReviewSession(),
 					reviewComments,
+					reviewFilter: opts.reviewFilter ?? ALL_THREADS,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -1361,8 +1358,8 @@ describe("ReviewPanel", () => {
 			return screen.getByRole("button", { name: "Copy" });
 		}
 
-		it("copies the shown review's doc to the clipboard", async () => {
-			renderCopy();
+		it("copies the doc of every thread the panel shows", async () => {
+			renderCopy({ comments: [OPEN, DONE] });
 			await flush();
 
 			await fireEvent.click(getCopyButton());
@@ -1371,34 +1368,59 @@ describe("ReviewPanel", () => {
 			expect(callArgs("generate_review_doc")).toEqual({
 				path: "/repo",
 				reviewId: ACTIVE_REVIEW,
+				threadIds: ["c1", "c2"],
 			});
 			expect(vi.mocked(writeText)).toHaveBeenCalledWith("the doc");
 		});
 
-		it("says how many unresolved threads it copied", async () => {
-			renderCopy();
+		it("says how many threads it copied", async () => {
+			renderCopy({ comments: [OPEN, DONE] });
 			await flush();
 
 			await fireEvent.click(getCopyButton());
 			await flush();
 
 			expect(vi.mocked(showToast)).toHaveBeenCalledWith(
-				`Copied 1 unresolved thread from ${ACTIVE_REVIEW} as an agent prompt`,
+				`Copied 2 threads from ${ACTIVE_REVIEW} as an agent prompt`,
 				"success",
 			);
 		});
 
-		it("is disabled with nothing unresolved", async () => {
-			renderCopy({
-				comments: [aThread({ id: "c1", commit_oid: COMMIT_A, state: "done" })],
-			});
-			await flush();
+		describe("when the filter hides some threads", () => {
+			it("leaves the hidden threads out", async () => {
+				renderCopy({ comments: [OPEN, DONE], reviewFilter: NEEDS_ME });
+				await flush();
 
-			expect(getCopyButton()).toBeDisabled();
-			expect(getCopyButton()).toHaveAttribute(
-				"title",
-				"No unresolved threads to copy",
-			);
+				await fireEvent.click(getCopyButton());
+				await flush();
+
+				expect(callArgs("generate_review_doc")).toMatchObject({
+					threadIds: ["c1"],
+				});
+			});
+
+			it("copies a view of settled threads alone", async () => {
+				renderCopy({ comments: [OPEN, DONE], reviewFilter: SETTLED });
+				await flush();
+
+				await fireEvent.click(getCopyButton());
+				await flush();
+
+				expect(callArgs("generate_review_doc")).toMatchObject({
+					threadIds: ["c2"],
+				});
+			});
+
+			it("is disabled while the view shows no thread", async () => {
+				renderCopy({ comments: [OPEN], reviewFilter: SETTLED });
+				await flush();
+
+				expect(getCopyButton()).toBeDisabled();
+				expect(getCopyButton()).toHaveAttribute(
+					"title",
+					"No threads shown to copy",
+				);
+			});
 		});
 
 		it.each([

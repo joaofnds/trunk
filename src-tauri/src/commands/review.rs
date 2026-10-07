@@ -1895,7 +1895,8 @@ pub async fn resolve_threads<R: Runtime>(
 }
 
 /// Open `repo_path` for its two path facts and assemble the review doc from
-/// store rows; see `trunk_review::doc::render_review_doc` for the assembly itself.
+/// store rows, holding only the threads `shown` names; see
+/// `trunk_review::doc::render_review_doc` for the assembly itself.
 ///
 /// # Errors
 ///
@@ -1907,6 +1908,7 @@ pub fn generate_review_doc_inner(
     canonical: &Path,
     repo_path: &str,
     review_id: &str,
+    shown: &[String],
 ) -> Result<String, TrunkError> {
     // The repository contributes two path facts and nothing else — content
     // (subjects, excerpts) is stored, which is what lets the CLI render the
@@ -1918,6 +1920,7 @@ pub fn generate_review_doc_inner(
         canonical,
         review_id,
         trunk_review::types::Channel::Human,
+        &trunk_review::doc::Shown::Only(shown),
         repo.workdir(),
         repo.path(),
     )
@@ -1935,13 +1938,17 @@ pub fn generate_review_doc_inner(
 pub async fn generate_review_doc<R: Runtime>(
     path: String,
     review_id: String,
+    thread_ids: Vec<String>,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<String, String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
-    blocking_store(move || generate_review_doc_inner(&store, &canonical, &path, &review_id)).await
+    blocking_store(move || {
+        generate_review_doc_inner(&store, &canonical, &path, &review_id, &thread_ids)
+    })
+    .await
 }
 
 /// The canonical path the backend keys this repo's reviews by.
