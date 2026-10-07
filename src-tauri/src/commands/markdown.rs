@@ -2919,11 +2919,18 @@ pub fn render_markdown_html(
     markdown: &str,
     rewrite_image: &dyn Fn(&str) -> Option<String>,
 ) -> String {
+    render_html(markdown, &build_options(), rewrite_image)
+}
+
+fn render_html(
+    markdown: &str,
+    options: &comrak::Options<'_>,
+    rewrite_image: &dyn Fn(&str) -> Option<String>,
+) -> String {
     let arena = comrak::Arena::new();
-    let options = build_options();
-    let root = comrak::parse_document(&arena, markdown, &options);
+    let root = comrak::parse_document(&arena, markdown, options);
     apply_image_rewrite(root, rewrite_image);
-    sanitize_html(&format_node(root, &options))
+    sanitize_html(&format_node(root, options))
 }
 
 /// The comrak options shared by the whole-doc renderer and the per-block diff
@@ -3106,9 +3113,16 @@ pub fn resolve_trunk_asset<R: tauri::Runtime>(
 /// Comment text has no file or rev, so scheme-less image URLs are not
 /// rewritten. Relative images have nothing to resolve against and the sanitizer
 /// drops them; remote `http(s)` images render.
+///
+/// A comment renders as GitHub renders one: each line break the writer typed
+/// stays a line break, and a leading `---` is a rule rather than the start of
+/// front matter, which would hide the text under it.
 #[must_use]
 pub fn render_comment_text(text: &str) -> String {
-    render_markdown_html(text, &|_| None)
+    let mut options = build_options();
+    options.render.hardbreaks = true;
+    options.extension.front_matter_delimiter = None;
+    render_html(text, &options, &|_| None)
 }
 
 fn sanitize_html(html: &str) -> String {
@@ -3138,6 +3152,20 @@ mod tests {
 
     fn no_rewrite(_: &str) -> Option<String> {
         None
+    }
+
+    #[test]
+    fn a_comment_keeps_each_line_it_was_written_on() {
+        let html = render_comment_text("Agreed, but\nsee the second point.");
+
+        assert!(html.contains("Agreed, but<br>"), "{html}");
+    }
+
+    #[test]
+    fn a_comment_opening_with_a_rule_keeps_the_text_under_it() {
+        let html = render_comment_text("---\nnot front matter\n---\n\nbody");
+
+        assert!(html.contains("not front matter"), "{html}");
     }
 
     /// The app's own default (`src/lib/store.ts` `getDiffContextLines`), used
