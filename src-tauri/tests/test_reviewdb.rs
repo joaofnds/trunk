@@ -313,6 +313,45 @@ fn a_listed_full_file_excerpt_with_a_reversed_range_keeps_its_stored_text() {
     assert_eq!(threads[0].cached_excerpt.as_deref(), Some("a\n\nb"));
 }
 
+/// A line followed by code rather than an empty one breaks the doubled shape,
+/// so the excerpt is the file's own and stays, even where dropping its other
+/// empty lines would happen to fit the range.
+#[test]
+fn a_listed_full_file_excerpt_that_is_not_doubled_throughout_keeps_its_stored_text() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(
+        &store,
+        &canonical,
+        full_file_submission("a\n\nb\nc", 10, 12),
+        1_000,
+    )
+    .unwrap();
+
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
+
+    assert_eq!(threads[0].cached_excerpt.as_deref(), Some("a\n\nb\nc"));
+}
+
+#[test]
+fn a_listed_full_file_excerpt_that_neither_form_fits_keeps_its_stored_text() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(
+        &store,
+        &canonical,
+        full_file_submission("a\n\nb\n", 10, 12),
+        1_000,
+    )
+    .unwrap();
+
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
+
+    assert_eq!(threads[0].cached_excerpt.as_deref(), Some("a\n\nb\n"));
+}
+
 #[test]
 fn a_second_submit_lands_in_the_same_review() {
     let ctx = TestContext::new_empty();
@@ -1873,9 +1912,19 @@ fn a_review_counts_its_unresolved_threads() {
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     submit_thread_inner(&store, &canonical, submission("open"), 1_000).unwrap();
+    let addressed =
+        submit_thread_inner(&store, &canonical, submission("addressed"), 1_000).unwrap();
     let done = submit_thread_inner(&store, &canonical, submission("done"), 1_000).unwrap();
     store
         .write(|tx| {
+            reviewdb::threads::set_state(
+                tx,
+                &canonical,
+                &addressed,
+                ThreadState::Addressed,
+                Channel::Agent,
+                1_001,
+            )?;
             reviewdb::threads::set_state(
                 tx,
                 &canonical,
@@ -1889,7 +1938,7 @@ fn a_review_counts_its_unresolved_threads() {
 
     let review = only_review(&store, &canonical);
 
-    assert_eq!((review.unresolved_count, review.thread_count), (1, 2));
+    assert_eq!((review.unresolved_count, review.thread_count), (2, 3));
 }
 
 #[test]
