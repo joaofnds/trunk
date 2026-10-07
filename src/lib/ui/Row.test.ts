@@ -300,6 +300,57 @@ describe("Row", () => {
 			expect(shown).not.toHaveClass("hidden");
 			expect(container.querySelector("button + div")).toHaveClass("pr-3");
 		});
+
+		describe("with a detail", () => {
+			const detail = createRawSnippet(() => ({
+				render: () => "<span>r7k2</span>",
+			}));
+
+			it("lays the detail on a second line inside the primary button", () => {
+				render(Row, {
+					props: {
+						variant: "entry",
+						"aria-label": "trunk",
+						children: name,
+						detail,
+					},
+				});
+
+				const line = screen.getByText("r7k2").parentElement;
+				expect(screen.getByRole("button", { name: "trunk" })).toContainElement(
+					line,
+				);
+				expect(line).toHaveClass("row-start-2", "col-span-2", "pl-3", "pb-2");
+			});
+
+			it("runs the detail under the actions, which stay on the label's line", () => {
+				const { container } = render(Row, {
+					props: {
+						variant: "entry",
+						reveal: "fade",
+						"aria-label": "trunk",
+						children: name,
+						detail,
+						actions: eye,
+					},
+				});
+
+				expect(container.querySelector("button")).toHaveClass(
+					"row-span-2",
+					"grid-rows-subgrid",
+				);
+				expect(container.querySelector("button > span")).toHaveClass(
+					"pl-3",
+					"pt-2",
+				);
+				expect(container.querySelector("button > span")).not.toHaveClass(
+					"py-2",
+				);
+				expect(container.querySelector("button + div")).toHaveClass(
+					"row-start-1",
+				);
+			});
+		});
 	});
 
 	describe("when it names the rows under it in a scrolling list", () => {

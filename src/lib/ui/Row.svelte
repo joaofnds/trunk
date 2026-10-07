@@ -47,6 +47,10 @@ interface Props extends Omit<HTMLButtonAttributes, "class" | "style" | "role"> {
 	tone?: RowTone;
 	/** The controls drawn at the row's trailing edge, beside the primary button. */
 	actions?: Snippet;
+	/** A second line under an `entry`'s label, inside the primary button, which
+	 *  runs the row's whole width beneath the actions while they stay on the
+	 *  label's line. */
+	detail?: Snippet;
 	/** `hover` shows the actions under the pointer or focus and `fade` does the
 	 *  same while holding their width at rest; `pointer` shows them under the
 	 *  pointer alone, for a row that keeps the focus after a click; `always`
@@ -61,6 +65,7 @@ let {
 	indent,
 	tone = "plain",
 	actions,
+	detail,
 	reveal = "hover",
 	type = "button",
 	tabindex = 0,
@@ -119,6 +124,16 @@ const SELECTED = "bg-selected-row";
 
 const PRIMARY =
 	"col-start-1 col-span-2 row-start-1 grid grid-cols-subgrid text-left";
+
+/* With a detail the primary button takes both lines, so the detail can run
+   under the actions' column while the label keeps the first line beside them. */
+const STACKED = "row-span-2 grid-rows-subgrid";
+
+/* An entry's label gives its bottom padding to the detail under it. */
+const STACKED_LEAD = "pl-3 pt-2";
+
+const DETAIL =
+	"row-start-2 col-span-2 flex items-center min-w-0 pl-3 pr-2 pt-1 pb-2";
 
 const POINTERS: Record<RowVariant, string> = {
 	inset: "rounded cursor-pointer overflow-hidden",
@@ -187,9 +202,14 @@ const REVEALS: Record<RowReveal, string> = {
 </script>
 
 {#snippet label()}
-	<span class={[CONTENT, LEADS[variant]]} style:padding-left={indent}
+	<span
+		class={[CONTENT, detail ? STACKED_LEAD : LEADS[variant]]}
+		style:padding-left={indent}
 		>{@render children?.()}</span
 	>
+	{#if detail}
+		<span class={DETAIL}>{@render detail()}</span>
+	{/if}
 {/snippet}
 
 <!--
@@ -219,7 +239,7 @@ const REVEALS: Record<RowReveal, string> = {
 			role="option"
 			{tabindex}
 			aria-selected={selected}
-			class={[PRIMARY, POINTERS[variant]]}
+			class={[PRIMARY, detail && STACKED, POINTERS[variant]]}
 			{...rest}
 		>
 			{@render label()}
@@ -230,13 +250,18 @@ const REVEALS: Record<RowReveal, string> = {
 			role="treeitem"
 			{tabindex}
 			aria-selected={selected}
-			class={[PRIMARY, POINTERS[variant]]}
+			class={[PRIMARY, detail && STACKED, POINTERS[variant]]}
 			{...rest}
 		>
 			{@render label()}
 		</button>
 	{:else}
-		<button {type} {tabindex} class={[PRIMARY, POINTERS[variant]]} {...rest}>
+		<button
+			{type}
+			{tabindex}
+			class={[PRIMARY, detail && STACKED, POINTERS[variant]]}
+			{...rest}
+		>
 			{@render label()}
 		</button>
 	{/if}

@@ -298,6 +298,12 @@ import ToastCard from "./ToastCard.svelte";
 						><span data-catalog-text>{reveal}</span></Row
 					>
 				{/each}
+				<Row variant="entry" actions={eye} reveal="always"
+					><span data-catalog-text>entry</span>
+					{#snippet detail()}
+						<span data-catalog-text>detail</span>
+					{/snippet}</Row
+				>
 			</div>
 			<div class="flex flex-col gap-1 bg-surface py-1">
 				{#each ROW_TONES as tone (tone)}

@@ -85,9 +85,15 @@ function deletePrompt(review: Review): string {
 	aria-label="Reviews"
 	class="flex flex-col flex-1 min-h-0 bg-surface text-callout"
 >
-	<div class="flex items-center gap-2 h-bar shrink-0 pl-3 pr-1">
-		<h2 class="flex-1 m-0 text-caption font-semibold uppercase text-text-muted">
-			Reviews <span class="font-regular">{reviews.length}</span>
+	<div class="flex items-center gap-2 h-bar shrink-0 pl-3 pr-1 shadow-hairline">
+		<h2
+			class="flex flex-1 items-center gap-2 m-0 text-caption font-semibold uppercase text-text-muted"
+		>
+			Reviews
+			<span
+				class="inline-flex items-center h-control-xs px-1 rounded bg-surface-chip font-mono font-regular text-text-muted"
+				>{reviews.length}</span
+			>
 		</h2>
 		<Button
 			size="sm"
@@ -146,13 +152,13 @@ function deletePrompt(review: Review): string {
 						aria-label="Show review {review.id}"
 						aria-current={isShown ? "true" : undefined}
 					>
-						<span class="flex flex-col gap-1 min-w-0 w-full">
+						<span
+							class="min-w-0 font-medium text-text-strong line-clamp-2 whitespace-normal text-pretty"
+							><ReviewTitle title={reviewTitle(review)} /></span
+						>
+						{#snippet detail()}
 							<span
-								class="min-w-0 font-medium text-text-strong leading-tight line-clamp-2 whitespace-normal text-balance"
-								><ReviewTitle title={reviewTitle(review)} /></span
-							>
-							<span
-								class="flex items-center gap-2 min-w-0 font-mono text-caption text-text-subtle"
+								class="flex flex-1 items-center gap-2 min-w-0 font-mono text-caption text-text-subtle"
 							>
 								<span>{review.id}</span>
 								<StatePill state={review.state} />
@@ -164,7 +170,7 @@ function deletePrompt(review: Review): string {
 										: review.thread_count}</span
 								>
 							</span>
-						</span>
+						{/snippet}
 						{#snippet actions()}
 							<RowAction
 								size="compact"
