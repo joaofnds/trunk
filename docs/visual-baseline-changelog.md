@@ -263,3 +263,11 @@ catalog shows a long and a short truncating chip in a narrow row
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-10-07
+
+catalog shows the review UI's new primitives: xs buttons, destructive row action, entry row, lane chip, Radio, Tag and Keycap
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png
