@@ -2826,7 +2826,7 @@ describe("ReviewPanel branch sections", () => {
 			});
 		});
 
-		it("scrolls a card the keys reach to below the pinned branch, commit and file", async () => {
+		it("pads its scroller's top by the branch, commit and file bars", async () => {
 			installReads({
 				commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
 				comments: [lineAnchoredComment("c1", COMMIT_A, "one")],
