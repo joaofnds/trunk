@@ -22,6 +22,7 @@ import { reviewTitle } from "../lib/review-title.js";
 import { selectOnOpen } from "../lib/select-on-open.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { Review } from "../lib/types.js";
+import Badge from "../lib/ui/Badge.svelte";
 import Button from "../lib/ui/Button.svelte";
 import Radio from "../lib/ui/Radio.svelte";
 import Row from "../lib/ui/Row.svelte";
@@ -222,10 +223,7 @@ function deletePrompt(review: Review): string {
 			class="flex flex-1 items-center gap-2 m-0 text-caption font-semibold uppercase text-text-muted"
 		>
 			Reviews
-			<span
-				class="inline-flex items-center h-control-xs px-1 rounded bg-surface-chip font-mono font-regular text-text-muted"
-				>{reviews.length}</span
-			>
+			<Badge variant="label" tone="muted">{reviews.length}</Badge>
 		</h2>
 		<Button
 			size="sm"
@@ -260,10 +258,7 @@ function deletePrompt(review: Review): string {
 						<ChevronRight size={12} aria-hidden="true" />
 					{/if}
 					<span class="text-caption font-semibold uppercase">Archived</span>
-					<span
-						class="inline-flex items-center h-control-xs px-1 rounded bg-surface-chip font-mono text-caption"
-						>{archivedReviews.length}</span
-					>
+					<Badge variant="label" tone="muted">{archivedReviews.length}</Badge>
 				</Row>
 			</li>
 			{#if archivedOpen}

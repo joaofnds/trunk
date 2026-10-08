@@ -67,9 +67,9 @@ import type {
 	ThreadFilter,
 	ThreadState,
 } from "../lib/types.js";
+import Badge from "../lib/ui/Badge.svelte";
 import Button from "../lib/ui/Button.svelte";
 import ButtonGroup from "../lib/ui/ButtonGroup.svelte";
-import Chip from "../lib/ui/Chip.svelte";
 import Dialog from "../lib/ui/Dialog.svelte";
 import Keycap from "../lib/ui/Keycap.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
@@ -745,10 +745,7 @@ $effect(() => {
 							>
 						</h1>
 					{/if}
-					<span
-						class="inline-flex items-center shrink-0 h-control-xs px-1 rounded bg-surface-chip font-mono text-caption font-medium text-text"
-						>{shownReview.id}</span
-					>
+					<Badge variant="label">{shownReview.id}</Badge>
 					<StatePill review={shownReview.state} />
 				{/if}
 			</div>
@@ -1036,11 +1033,10 @@ $effect(() => {
 									{/snippet}
 									{#if group.kind === "commit" && group.commit}
 										<span class="pointer-events-auto flex">
-											<Chip
-												tone="neutral"
+											<Badge
 												title="Copy SHA"
 												onclick={() => group.commit && copySha(group.commit.oid)}
-												>{group.commit.short_oid}</Chip
+												>{group.commit.short_oid}</Badge
 											>
 										</span>
 										<span class="pointer-events-auto min-w-0 shrink">
@@ -1059,9 +1055,7 @@ $effect(() => {
 											>
 										{/if}
 									{:else if group.kind === "gone" && group.commit}
-										<Chip variant="label" tone="neutral"
-											>{group.commit.short_oid}</Chip
-										>
+										<Badge variant="label">{group.commit.short_oid}</Badge>
 										<span class="min-w-0 truncate text-text-subtle"
 											>{group.commit.summary}
 											· commit no longer exists</span

@@ -5,6 +5,7 @@
 
 import ReviewTitle from "../../components/review/ReviewTitle.svelte";
 import StatePill from "../../components/review/StatePill.svelte";
+import Badge from "../../lib/ui/Badge.svelte";
 import Button from "../../lib/ui/Button.svelte";
 import ButtonGroup from "../../lib/ui/ButtonGroup.svelte";
 import Radio from "../../lib/ui/Radio.svelte";
@@ -78,10 +79,7 @@ let inlineThread = $state(
 						class="m-0 flex flex-1 items-center gap-2 text-caption font-semibold text-text-muted uppercase"
 					>
 						Reviews
-						<span
-							class="inline-flex h-control-xs items-center rounded bg-surface-chip px-1 font-mono font-regular text-text-muted"
-							>{reviews.length}</span
-						>
+						<Badge variant="label" tone="muted">{reviews.length}</Badge>
 					</h2>
 				</div>
 				<ul class="m-0 list-none p-0">

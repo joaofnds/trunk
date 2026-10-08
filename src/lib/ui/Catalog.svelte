@@ -57,6 +57,7 @@ import GitBranch from "@lucide/svelte/icons/git-branch";
 import Plus from "@lucide/svelte/icons/plus";
 import X from "@lucide/svelte/icons/x";
 import { treeIndent } from "../chrome-heights";
+import Badge from "./Badge.svelte";
 import Button from "./Button.svelte";
 import ButtonGroup from "./ButtonGroup.svelte";
 import Chip from "./Chip.svelte";
@@ -447,6 +448,19 @@ import ToastCard from "./ToastCard.svelte";
 			<Tag disabled><span data-catalog-text>Line 4</span></Tag>
 			<Tag dashed variant="label"
 				><span data-catalog-text>Whole commit</span></Tag
+			>
+		</div>
+	</section>
+
+	<section class="flex flex-col gap-3">
+		<h2 data-catalog-text class="text-title font-semibold text-text-strong"
+			>Badge</h2
+		>
+		<div class="flex items-center gap-2">
+			<Badge><span data-catalog-text>a3f9c21</span></Badge>
+			<Badge variant="label"><span data-catalog-text>FHT6H3B5</span></Badge>
+			<Badge variant="label" tone="muted"
+				><span data-catalog-text>12</span></Badge
 			>
 		</div>
 	</section>

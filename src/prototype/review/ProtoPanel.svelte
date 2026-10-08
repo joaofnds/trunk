@@ -12,6 +12,7 @@ import StatePill from "../../components/review/StatePill.svelte";
 import { laneColor } from "../../lib/lanes.js";
 import { tooltip } from "../../lib/tooltip.js";
 import type { ThreadState } from "../../lib/types.js";
+import Badge from "../../lib/ui/Badge.svelte";
 import Button from "../../lib/ui/Button.svelte";
 import ButtonGroup from "../../lib/ui/ButtonGroup.svelte";
 import Chip from "../../lib/ui/Chip.svelte";
@@ -188,10 +189,7 @@ ontoggle: () => void,
 			>
 				{review.title}
 			</h1>
-			<span
-				class="inline-flex h-control-xs shrink-0 items-center rounded bg-surface-chip px-1 font-mono text-caption font-medium text-text"
-				>{review.id}</span
-			>
+			<Badge variant="label">{review.id}</Badge>
 			<StatePill review={review.state} />
 			<span class="flex-1"></span>
 			<Button size="xs"><File size={12} />Comment on a file…</Button>
@@ -325,10 +323,7 @@ section.groups.reduce((n, g) => n + visible(g).length, 0),
 										</span>
 									{/snippet}
 									{#if group.target.kind === "commit"}
-										<span
-											class="inline-flex h-control-xs shrink-0 items-center rounded bg-surface-chip px-1 font-mono text-caption font-medium text-text"
-											>{group.target.sha}</span
-										>
+										<Badge variant="label">{group.target.sha}</Badge>
 										<span
 											class="min-w-0 truncate text-body font-medium text-text-strong"
 											>{group.target.summary}</span

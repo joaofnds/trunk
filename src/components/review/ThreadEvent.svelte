@@ -6,6 +6,7 @@ import { currentMinute } from "../../lib/now.svelte.js";
 import { compactLabel, exactLabel } from "../../lib/relative-time.js";
 import { CHANGE_TEXT } from "../../lib/thread-timeline.js";
 import type { StateChange } from "../../lib/types.js";
+import Badge from "../../lib/ui/Badge.svelte";
 import StateGlyph from "./StateGlyph.svelte";
 
 interface Props {
@@ -29,10 +30,8 @@ let { change }: Props = $props();
 	<span>{CHANGE_TEXT[change.state]}</span>
 	{#if change.commit}
 		<span>in</span>
-		<code
-			class="inline-flex h-control-xs items-center rounded bg-surface-chip px-1 font-mono text-caption font-medium text-text-strong"
-			title={change.commit}
-			>{change.commit.slice(0, 7)}</code
+		<Badge variant="label" title={change.commit}
+			>{change.commit.slice(0, 7)}</Badge
 		>
 	{/if}
 	<time
