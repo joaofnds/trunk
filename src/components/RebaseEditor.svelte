@@ -1010,7 +1010,6 @@ let lastVisibleColumn = $derived.by(() => {
 	white-space: nowrap;
 }
 
-/* Click-to-copy SHA: reset the button to read as the plain mono cell text. */
 .rebase-cell-message {
 	overflow: hidden;
 	text-overflow: ellipsis;
