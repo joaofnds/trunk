@@ -230,7 +230,7 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 				{#each ACTIONS[thread.state] as action (action.next)}
 					<Button
 						size="xs"
-						variant={action.next === "done" ? "success" : "ghost"}
+						variant={action.next === "done" ? "success" : "secondary"}
 						onclick={() => moveTo(action.next)}
 					>
 						{#if action.next === "done"}
@@ -384,17 +384,9 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 	background: var(--color-bg);
 	box-shadow: var(--shadow-hairline);
 }
-/* A thread that waits on someone carries its state's color down its edge, so
-   the eye finds the open work by scanning one line. */
 .proto-state-open,
 .proto-state-addressed {
 	border-color: var(--color-border-strong);
-}
-.proto-state-open {
-	border-left: 3px solid var(--color-thread-open);
-}
-.proto-state-addressed {
-	border-left: 3px solid var(--color-thread-addressed);
 }
 .proto-card-open .proto-card-header {
 	box-shadow: var(--shadow-hairline);

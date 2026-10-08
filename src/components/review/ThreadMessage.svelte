@@ -1,7 +1,7 @@
 <script lang="ts">
 // One turn of a thread: the author's face, who they are and how long ago they
-// wrote, then what they wrote. The agent's turns carry its color down their
-// edge, so a long thread still reads as who said what without the names.
+// wrote, then what they wrote. The agent's turns sit on a faint wash of its
+// color, so a long thread still reads as who said what without the names.
 
 import type { Snippet } from "svelte";
 import type { Channel } from "../../lib/types.js";
@@ -61,6 +61,5 @@ let {
 }
 .thread-message-agent {
 	background: color-mix(in oklch, var(--color-accent-alt) 6%, transparent);
-	box-shadow: inset 2px 0 0 var(--color-accent-alt);
 }
 </style>

@@ -166,7 +166,7 @@ ontoggle: () => void,
 	>
 		<span
 			class="inline-flex items-center gap-1 font-mono"
-			class:proto-toggle-off={!on}
+			class:line-through={!on}
 			class:text-text-disabled={!on}
 		>
 			<span class="inline-flex {tone}" aria-hidden="true">
@@ -252,7 +252,7 @@ showStale,
 					{/if}
 				</ul>
 				<span class="flex-1"></span>
-				<ButtonGroup>
+				<ButtonGroup size="xs">
 					{#each VIEW_IDS as id (id)}
 						<Button
 							joined
@@ -291,7 +291,7 @@ showStale,
 				style:--lane={laneColor(section.lane)}
 			>
 				<header
-					class="proto-branch-head flex h-bar items-center gap-2 bg-surface-raised pr-4 pl-3"
+					class="proto-branch-head flex h-bar items-center gap-2 bg-surface-raised px-4"
 				>
 					<Chip variant="label" tone="lane">{section.branch}</Chip>
 					{#if section.checkedOut}
@@ -322,8 +322,9 @@ section.groups.reduce((n, g) => n + visible(g).length, 0),
 										></span>
 									{/snippet}
 									{#if group.target.kind === "commit"}
-										<Chip variant="label" tone="neutral"
-											>{group.target.sha}</Chip
+										<span
+											class="inline-flex h-control-xs shrink-0 items-center rounded bg-surface-chip px-1 font-mono text-caption font-medium text-text"
+											>{group.target.sha}</span
 										>
 										<span
 											class="min-w-0 truncate text-body font-medium text-text-strong"
@@ -334,9 +335,9 @@ section.groups.reduce((n, g) => n + visible(g).length, 0),
 											>Uncommitted changes</span
 										>
 									{/if}
-									<span
-										class="inline-flex h-control-xs shrink-0 items-center rounded bg-surface-chip px-1 font-mono text-caption text-text-muted"
-										>{visible(group).length}</span
+									<span class="flex-1"></span>
+									<span class="proto-meta"
+										>{plural(visible(group).length, "thread")}</span
 									>
 								</FoldBar>
 							</div>
@@ -440,21 +441,6 @@ file.threads.filter((t) => !isNote(t)).length,
 	color: var(--color-text-subtle);
 	white-space: nowrap;
 }
-.proto-group {
-	position: relative;
-}
-.proto-group::before {
-	content: "";
-	position: absolute;
-	left: calc(var(--space-4) + var(--u));
-	top: calc(var(--bar-h) / 2);
-	bottom: 0;
-	width: calc(var(--u) / 2);
-	background: color-mix(in oklch, var(--lane) 55%, transparent);
-}
-.proto-group:last-child::before {
-	bottom: var(--space-3);
-}
 .proto-group-head {
 	position: sticky;
 	top: var(--bar-h);
@@ -465,8 +451,6 @@ file.threads.filter((t) => !isNote(t)).length,
 	border-top: 1px solid var(--color-border);
 }
 .proto-node {
-	position: relative;
-	z-index: 1;
 	flex-shrink: 0;
 	width: calc(5 * var(--u) / 2);
 	height: calc(5 * var(--u) / 2);
@@ -479,14 +463,9 @@ file.threads.filter((t) => !isNote(t)).length,
 }
 .proto-group-list {
 	padding: var(--space-3) var(--space-4) var(--space-6)
-		calc(var(--space-4) + var(--space-5));
+		calc(var(--space-4) + 5 * var(--u) / 2 + var(--space-2));
 }
 .proto-keys {
 	border-top: 1px solid var(--color-border);
-}
-.proto-toggle-off {
-	outline: 1px dashed var(--color-border-strong);
-	outline-offset: 3px;
-	border-radius: var(--radius);
 }
 </style>

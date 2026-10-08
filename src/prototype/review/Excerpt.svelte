@@ -47,11 +47,9 @@ const GUTTER = { add: "+", del: "-", context: " " } as const;
 }
 .proto-line-add {
 	background: var(--color-diff-add-bg);
-	box-shadow: inset 2px 0 0 var(--color-diff-add);
 }
 .proto-line-del {
 	background: var(--color-diff-delete-bg);
-	box-shadow: inset 2px 0 0 var(--color-diff-delete);
 }
 .proto-number {
 	padding-right: var(--space-2);

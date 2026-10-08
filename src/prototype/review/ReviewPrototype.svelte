@@ -52,7 +52,7 @@ let inlineThread = $state(
 		>
 			<div class="flex items-center gap-2">
 				<span class="font-medium text-text-strong">Whole-file threads</span>
-				<ButtonGroup>
+				<ButtonGroup size="xs">
 					{#each FILE_VARIANT_IDS as id (id)}
 						<Button
 							joined
@@ -154,6 +154,5 @@ let inlineThread = $state(
 }
 .proto-rail-item-shown {
 	background: var(--color-selected-row);
-	box-shadow: inset 2px 0 0 var(--color-accent);
 }
 </style>
