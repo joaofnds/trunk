@@ -83,12 +83,25 @@ const mask = (value: string) =>
 
 describe("spacing scale", () => {
 	it("carries no raw pixel value in a gap, padding or margin", () => {
+		// `scroll-padding` and `scroll-margin` are read by the next test: they
+		// offset a scroll by the chrome pinned over it, which the scale does not own.
 		const raw = offences(
-			/\b(?:gap|row-gap|column-gap|(?:padding|margin)(?:-(?:top|right|bottom|left))?): ([^;"\n]+)/g,
+			/(?<![\w-])(?:gap|row-gap|column-gap|(?:padding|margin)(?:-(?:top|right|bottom|left))?): ([^;"\n]+)/g,
 			(value) =>
 				mask(value)
 					.split(/\s+/)
 					.every((part) => namedPart.test(part)),
+		);
+
+		expect(raw).toEqual([]);
+	});
+
+	it("offsets a scroll by named heights, never by a raw pixel", () => {
+		const named =
+			/^(0|var\(--[\w-]+\)|calc\((?:\s|\d+|\*|\+|-|\/|\(|\)|var\(--[\w-]+\))+\))$/;
+		const raw = offences(
+			/\bscroll-(?:padding|margin)(?:-(?:top|right|bottom|left|block|inline)(?:-(?:start|end))?)?: ([^;"\n]+)/g,
+			(value) => named.test(value),
 		);
 
 		expect(raw).toEqual([]);
