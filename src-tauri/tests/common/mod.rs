@@ -10,5 +10,6 @@ pub mod exports;
 pub mod goldens;
 pub mod graph_shapes;
 pub mod repository_manifest;
+pub mod review_schema;
 pub mod rule_inputs;
 pub mod snapshots;

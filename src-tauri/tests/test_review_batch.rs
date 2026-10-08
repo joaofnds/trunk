@@ -301,13 +301,9 @@ mod migrating_from_v11 {
         drop(store);
 
         let conn = Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
-        conn.execute_batch(
-            "ALTER TABLE threads DROP COLUMN whole_file; ALTER TABLE threads DROP COLUMN pending;
-             ALTER TABLE replies DROP COLUMN pending;
-             ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 0;
-             PRAGMA user_version = 11;",
-        )
-        .unwrap();
+        common::review_schema::undo_steps_after(&conn, 11);
+        conn.execute_batch("UPDATE reviews SET published = 0; PRAGMA user_version = 11;")
+            .unwrap();
         conn.execute(
             "UPDATE reviews SET published = 1 WHERE id = ?1",
             [&published],

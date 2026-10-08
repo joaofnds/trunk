@@ -106,11 +106,11 @@ fn the_v8_rebuild_keeps_the_replies_hanging_off_a_thread() {
     // Wind the store back to v7's shape and let the ladder run v8 over real data.
     {
         let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+        common::review_schema::undo_steps_after(&conn, 10);
         conn.execute_batch(
             "ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
-             ALTER TABLE threads DROP COLUMN whole_file; ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
              DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
@@ -323,10 +323,10 @@ fn a_thread_saved_before_whole_file_comments_reads_back_as_about_its_lines() {
     )
     .unwrap();
     drop(store);
-    rusqlite::Connection::open(ctx.data_dir().join("reviews.db"))
-        .unwrap()
-        .execute_batch("ALTER TABLE threads DROP COLUMN whole_file; PRAGMA user_version = 12;")
-        .unwrap();
+    let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+    common::review_schema::undo_steps_after(&conn, 12);
+    conn.execute_batch("PRAGMA user_version = 12;").unwrap();
+    drop(conn);
 
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let threads = list_threads_inner(&store, &canonical, None).unwrap();
@@ -4203,6 +4203,7 @@ fn a_store_from_the_earlier_v5_is_reconciled() {
     reviewdb::open(ctx.data_dir()).unwrap();
     {
         let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+        common::review_schema::undo_steps_after(&conn, 10);
         conn.execute_batch(
             "DROP TABLE snapshot_pins;
              CREATE TABLE unanchored_pins (
@@ -4211,7 +4212,6 @@ fn a_store_from_the_earlier_v5_is_reconciled() {
              ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
-             ALTER TABLE threads DROP COLUMN whole_file; ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
              DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
@@ -5057,9 +5057,9 @@ fn a_store_from_the_unreleased_v8_is_accepted() {
     reviewdb::open(ctx.data_dir()).unwrap();
     {
         let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+        common::review_schema::undo_steps_after(&conn, 10);
         conn.execute_batch(
             "CREATE TABLE pin_seq (repo_path TEXT PRIMARY KEY, next INTEGER NOT NULL);
-             ALTER TABLE threads DROP COLUMN whole_file; ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
              DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
@@ -5123,11 +5123,11 @@ fn a_store_stamped_eight_without_the_pin_columns_is_migrated() {
     reviewdb::open(ctx.data_dir()).unwrap();
     {
         let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+        common::review_schema::undo_steps_after(&conn, 10);
         conn.execute_batch(
             "ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
-             ALTER TABLE threads DROP COLUMN whole_file; ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
              DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
@@ -5577,9 +5577,9 @@ fn a_commit_under_a_keepalive_ref_trunk_never_minted_never_goes_stale() {
 /// thread history.
 fn wind_back_to_v8(ctx: &TestContext) {
     let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+    common::review_schema::undo_steps_after(&conn, 10);
     conn.execute_batch(
-        "ALTER TABLE threads DROP COLUMN whole_file; ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
-         DROP TABLE thread_history;
+        "DROP TABLE thread_history;
          DROP TABLE minted_snapshots;
          DROP TABLE legacy_snapshot_candidates;
          PRAGMA user_version = 8;",

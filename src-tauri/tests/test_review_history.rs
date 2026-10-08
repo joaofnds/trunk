@@ -170,7 +170,8 @@ fn a_v9_store_gains_the_history_table_and_keeps_its_threads() {
     drop(store);
     {
         let conn = rusqlite::Connection::open(ctx.data_dir().join(reviewdb::DB_FILE)).unwrap();
-        conn.execute_batch("ALTER TABLE threads DROP COLUMN whole_file; ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived; DROP TABLE thread_history; PRAGMA user_version = 9;")
+        common::review_schema::undo_steps_after(&conn, 10);
+        conn.execute_batch("DROP TABLE thread_history; PRAGMA user_version = 9;")
             .unwrap();
     }
 
