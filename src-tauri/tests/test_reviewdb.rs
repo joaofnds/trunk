@@ -1014,8 +1014,15 @@ fn every_write_bumps_the_revision_except_the_draft_autosave() {
         "a thread submit must move the revision ({before} -> {after_thread})",
     );
 
-    trunk_lib::commands::review::save_draft_inner(&store, &canonical, "typing…", None, 1_001)
-        .unwrap();
+    trunk_lib::commands::review::save_draft_inner(
+        &store,
+        &canonical,
+        "typing…",
+        None,
+        false,
+        1_001,
+    )
+    .unwrap();
     assert_eq!(
         store.read(reviewdb::revision).unwrap(),
         after_thread,
@@ -1534,8 +1541,15 @@ fn store_events_stay_silent_for_a_draft_autosave() {
     let events = reviewdb::events::subscribe(ctx.data_dir()).unwrap();
 
     let foreign = reviewdb::open(ctx.data_dir()).unwrap();
-    trunk_lib::commands::review::save_draft_inner(&foreign, &canonical, "typing…", None, 1_000)
-        .unwrap();
+    trunk_lib::commands::review::save_draft_inner(
+        &foreign,
+        &canonical,
+        "typing…",
+        None,
+        false,
+        1_000,
+    )
+    .unwrap();
 
     assert!(events.sync(), "the feed must still be live");
     assert!(
@@ -1624,8 +1638,15 @@ fn a_draft_write_triggers_no_emit() {
     });
 
     let foreign = reviewdb::open(ctx.data_dir()).unwrap();
-    trunk_lib::commands::review::save_draft_inner(&foreign, &canonical, "typing…", None, 1_000)
-        .unwrap();
+    trunk_lib::commands::review::save_draft_inner(
+        &foreign,
+        &canonical,
+        "typing…",
+        None,
+        false,
+        1_000,
+    )
+    .unwrap();
 
     assert!(driver.run_cycle(), "the poll must keep running");
     assert!(
@@ -2211,6 +2232,7 @@ fn a_draft_saves_with_no_review_in_existence() {
         &canonical,
         "half typed",
         Some(&diff_anchor()),
+        false,
         1_000,
     )
     .unwrap();
@@ -2231,12 +2253,33 @@ fn a_draft_saves_with_no_review_in_existence() {
 }
 
 #[test]
+fn a_whole_file_draft_reads_back_as_about_the_whole_file() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let whole_file = true;
+    save_draft_inner(
+        &store,
+        &canonical,
+        "split this file",
+        Some(&diff_anchor()),
+        whole_file,
+        1_000,
+    )
+    .unwrap();
+
+    let draft = get_draft_inner(&store, &canonical).unwrap().unwrap();
+
+    assert!(draft.whole_file);
+}
+
+#[test]
 fn a_draft_survives_a_restart() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     {
         let store = reviewdb::open(ctx.data_dir()).unwrap();
-        save_draft_inner(&store, &canonical, "typing...", None, 1_000).unwrap();
+        save_draft_inner(&store, &canonical, "typing...", None, false, 1_000).unwrap();
     }
 
     let reopened = reviewdb::open(ctx.data_dir()).unwrap();
@@ -2261,6 +2304,7 @@ fn submit_creates_review_thread_and_clears_draft() {
         &canonical,
         "half typed",
         Some(&diff_anchor()),
+        false,
         1_000,
     )
     .unwrap();
@@ -2284,7 +2328,7 @@ fn cancelled_composer_creates_nothing() {
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
 
-    save_draft_inner(&store, &canonical, "never sent", None, 1_000).unwrap();
+    save_draft_inner(&store, &canonical, "never sent", None, false, 1_000).unwrap();
     store
         .write(|tx| reviewdb::drafts::delete(tx, &canonical))
         .unwrap();
@@ -2417,7 +2461,7 @@ fn a_v2_session_file_is_left_byte_identical_and_ignored() {
     );
 
     submit_thread_inner(&store, &canonical, submission("new world"), 1_000).unwrap();
-    save_draft_inner(&store, &canonical, "d", None, 1_000).unwrap();
+    save_draft_inner(&store, &canonical, "d", None, false, 1_000).unwrap();
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
         .unwrap();
 
@@ -3582,6 +3626,7 @@ fn a_commit_note_leaves_the_diff_composers_draft_alone() {
         &canonical,
         "half-typed line comment",
         Some(&diff_anchor()),
+        false,
         1_000,
     )
     .unwrap();
@@ -5644,6 +5689,7 @@ fn a_draft_on_a_snapshot_minted_before_the_mint_record_goes_stale_once_submitted
         &canonical,
         "half typed",
         drafted.anchor.as_ref(),
+        false,
         1_000,
     )
     .unwrap();
@@ -5867,6 +5913,7 @@ fn a_store_with_many_anchors_on_one_snapshot_upgrades() {
         &canonical,
         "half typed",
         drafted.anchor.as_ref(),
+        false,
         1_003,
     )
     .unwrap();
@@ -5875,6 +5922,7 @@ fn a_store_with_many_anchors_on_one_snapshot_upgrades() {
         &canonical.join("elsewhere"),
         "no anchor",
         None,
+        false,
         1_004,
     )
     .unwrap();
@@ -5942,6 +5990,7 @@ fn a_submit_after_the_upgrade_does_not_pin_a_snapshot_from_before_the_mint_recor
         &canonical,
         "half typed",
         drafted.anchor.as_ref(),
+        false,
         1_000,
     )
     .unwrap();

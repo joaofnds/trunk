@@ -120,8 +120,9 @@ export function saveDraft(
 	repoPath: string,
 	text: string,
 	anchor: Anchor | null,
+	wholeFile: boolean,
 ): Promise<void> {
-	return safeInvoke("save_draft", { path: repoPath, text, anchor });
+	return safeInvoke("save_draft", { path: repoPath, text, anchor, wholeFile });
 }
 
 export function getDraft(repoPath: string): Promise<Draft | null> {

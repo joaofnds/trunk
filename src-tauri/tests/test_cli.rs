@@ -2158,8 +2158,15 @@ fn watch_stays_silent_for_unsent_changes_and_drafts() {
                 )
             })
             .unwrap();
-        trunk_lib::commands::review::save_draft_inner(&store, &canonical, "typing…", None, 700)
-            .unwrap();
+        trunk_lib::commands::review::save_draft_inner(
+            &store,
+            &canonical,
+            "typing…",
+            None,
+            false,
+            700,
+        )
+        .unwrap();
     }
 
     // Two visible replies are the barriers: every line a held edit or a draft

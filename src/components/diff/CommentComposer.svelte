@@ -95,10 +95,12 @@ $effect(() => {
 	const path = repoPath;
 	untrack(async () => {
 		const anchor = capturedResult.anchor;
+		const aboutWholeFile = wholeFile;
 		try {
 			await session.restoreDraft(async () => {
 				const draft = await getDraft(path);
 				if (!draft || !anchorsEqual(draft.anchor, anchor)) return null;
+				if (draft.whole_file !== aboutWholeFile) return null;
 				return draft.text;
 			});
 		} catch (error) {
@@ -130,6 +132,7 @@ function deriveDiffCapture(): { anchor: Anchor; cachedExcerpt: string } {
 	return buildDiffAnchor(commitOid, file, hunkIdx, selectedLineIndices);
 }
 const capturedResult = $derived(captured ?? deriveDiffCapture());
+const wholeFile = $derived(captured?.wholeFile === true);
 
 const reviewMatches = $derived(originatingReviewId === activeReviewId);
 const batchHeld = $derived((activeReview?.pending_count ?? 0) > 0);
@@ -157,6 +160,7 @@ async function persistDraft() {
 		repoPath,
 		composerDraft.text,
 		capturedResult.anchor,
+		wholeFile,
 	).catch((e) => reportErrorToast(e, "Save draft failed"));
 	await saveInFlight;
 }
@@ -180,7 +184,7 @@ async function handleSubmit(delivery: Delivery) {
 	const submittedText = composerDraft.text;
 	const submittedRevision = submittedDraft.revision;
 	const submittedCaptured = capturedResult;
-	const submittedWholeFile = captured?.wholeFile === true;
+	const submittedWholeFile = wholeFile;
 	const submittedCurrentFile = currentFile;
 	const submittedResolveCommitOid = resolveCommitOid;
 	const submittedComposerSession = activeSession;

@@ -130,10 +130,14 @@ describe("CommentComposer", () => {
 			end_line: 12,
 		};
 
-		function draftOnDisk(text: string, anchor: Anchor | null = draftAnchor) {
+		function draftOnDisk(
+			text: string,
+			anchor: Anchor | null = draftAnchor,
+			wholeFile = false,
+		) {
 			mockedInvoke.mockImplementation((cmd: string) =>
 				cmd === "get_draft"
-					? Promise.resolve({ text, anchor })
+					? Promise.resolve({ text, anchor, whole_file: wholeFile })
 					: Promise.resolve(undefined),
 			);
 		}
@@ -170,6 +174,35 @@ describe("CommentComposer", () => {
 
 			expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
 				"",
+			);
+		});
+
+		it("does not restore a whole-file draft into a selection of the same lines", async () => {
+			draftOnDisk("about the whole file", draftAnchor, true);
+			renderComposer();
+
+			await flush();
+
+			expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+				"",
+			);
+		});
+
+		it("restores a whole-file draft into a whole-file composer", async () => {
+			draftOnDisk("about the whole file", draftAnchor, true);
+			render(CommentComposer, {
+				props: {
+					captured: { anchor: draftAnchor, cachedExcerpt: "", wholeFile: true },
+					commitOid: "abc123",
+					repoPath: "/repo",
+					onclose: () => {},
+				},
+			});
+
+			await flush();
+
+			expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+				"about the whole file",
 			);
 		});
 
@@ -939,6 +972,38 @@ describe("CommentComposer", () => {
 		expect(args.text).toBe("draft full file");
 		expect(args.anchor.source).toBe("FullFile");
 		expect(args.anchor.start_line).toBe(40);
+	});
+
+	it("saves a whole-file comment's draft as about the whole file", async () => {
+		vi.useFakeTimers();
+		render(CommentComposer, {
+			props: {
+				captured: {
+					anchor: {
+						commit_oid: "abc123",
+						file_path: "src/main.ts",
+						source: "FullFile",
+						side: "New",
+						start_line: 1,
+						end_line: 3,
+					},
+					cachedExcerpt: "",
+					wholeFile: true,
+				},
+				commitOid: "abc123",
+				repoPath: "/repo",
+				onclose: () => {},
+			},
+		});
+
+		await fireEvent.input(screen.getByRole("textbox"), {
+			target: { value: "split this file" },
+		});
+		await vi.advanceTimersByTimeAsync(300);
+		await tick();
+
+		const saved = mockedInvoke.mock.calls.find((c) => c[0] === "save_draft");
+		expect(saved?.[1]).toMatchObject({ wholeFile: true });
 	});
 
 	it("never saves the draft once the composer is gone", async () => {

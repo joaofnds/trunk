@@ -8,7 +8,7 @@ use super::sqlite_error;
 use rusqlite::Connection;
 use trunk_git::error::TrunkError;
 
-pub const CURRENT_VERSION: i64 = 13;
+pub const CURRENT_VERSION: i64 = 14;
 
 const V1: &str = r"
 CREATE TABLE reviews (
@@ -312,6 +312,12 @@ const V13: &str = r"
 ALTER TABLE threads ADD COLUMN whole_file INTEGER NOT NULL DEFAULT 0;
 ";
 
+/// A draft written for a whole-file comment. Its anchor is the same as a
+/// selection of every line, so only this tells the two drafts apart.
+const V14: &str = r"
+ALTER TABLE drafts ADD COLUMN whole_file INTEGER NOT NULL DEFAULT 0;
+";
+
 /// A dev store may carry `user_version = 8` from an unreleased commit that numbered
 /// an earlier cleanup 8, before this build's own v8 existed.
 ///
@@ -482,6 +488,10 @@ fn apply_pending(conn: &Connection) -> Result<(), TrunkError> {
     }
     if user_version(conn)? < 13 {
         conn.execute_batch(&format!("{V13} PRAGMA user_version = 13;"))
+            .map_err(sqlite_error)?;
+    }
+    if user_version(conn)? < 14 {
+        conn.execute_batch(&format!("{V14} PRAGMA user_version = 14;"))
             .map_err(sqlite_error)?;
     }
 

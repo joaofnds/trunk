@@ -19,7 +19,7 @@ import {
 } from "../../__tests__/helpers/layout-stub.js";
 import { createReviewComposerSession } from "../../lib/review-editors.svelte.js";
 import { SCHEDULER } from "../../lib/scheduler.js";
-import type { Anchor, CommitDetail, FileDiff } from "../../lib/types.js";
+import type { Anchor, CommitDetail, Draft, FileDiff } from "../../lib/types.js";
 import CommentComposer from "./CommentComposer.svelte";
 
 async function flushTransport() {
@@ -37,7 +37,7 @@ const anchor: Anchor = {
 };
 
 class DraftHost implements HostChannel {
-	draft: { text: string; anchor: Anchor } | null = null;
+	draft: Draft | null = null;
 	readonly threads: Record<string, unknown>[] = [];
 	private held = new Map<string, Promise<void>>();
 	readonly entered = new Set<string>();
@@ -75,7 +75,11 @@ class DraftHost implements HostChannel {
 				result = snapshot;
 				break;
 			case "save_draft":
-				this.draft = { text: String(args.text), anchor: args.anchor as Anchor };
+				this.draft = {
+					text: String(args.text),
+					anchor: args.anchor as Anchor,
+					whole_file: args.wholeFile === true,
+				};
 				break;
 			case "delete_draft":
 				this.draft = null;
@@ -125,7 +129,7 @@ describe("composer operation lifetime", () => {
 	}
 
 	it("keeps a newer empty edit when a disk read arrives", async () => {
-		host.draft = { text: "old disk text", anchor };
+		host.draft = { text: "old disk text", anchor, whole_file: false };
 		const release = host.hold("get_draft");
 		mount();
 		await fireEvent.input(screen.getByRole("textbox"), {
@@ -142,7 +146,7 @@ describe("composer operation lifetime", () => {
 	});
 
 	it("does not seed an already restored editor again after remount", async () => {
-		host.draft = { text: "old disk text", anchor };
+		host.draft = { text: "old disk text", anchor, whole_file: false };
 		const p = props();
 		const view = mount(p);
 		await waitFor(() =>
@@ -175,7 +179,11 @@ describe("composer operation lifetime", () => {
 		scheduler.flush();
 
 		await waitFor(() =>
-			expect(host.draft).toEqual({ text: "save replacement", anchor }),
+			expect(host.draft).toEqual({
+				text: "save replacement",
+				anchor,
+				whole_file: false,
+			}),
 		);
 	});
 

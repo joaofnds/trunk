@@ -16,6 +16,7 @@ use trunk_git::error::TrunkError;
 pub struct Draft {
     pub text: String,
     pub anchor: Option<Anchor>,
+    pub whole_file: bool,
 }
 
 /// Store the repo's single draft, replacing whatever was there.
@@ -28,14 +29,15 @@ pub fn save(
     repo_path: &Path,
     text: &str,
     target: Option<&Anchor>,
+    whole_file: bool,
     now: i64,
 ) -> Result<(), TrunkError> {
     let cols = anchor::to_columns(&anchor::target_of(target, None));
 
     conn.execute(
         &format!(
-            "INSERT INTO drafts (repo_path, body, {}, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "INSERT INTO drafts (repo_path, body, {}, updated_at, whole_file)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
              ON CONFLICT(repo_path) DO UPDATE SET
                  body = excluded.body,
                  anchor_kind = excluded.anchor_kind,
@@ -45,7 +47,8 @@ pub fn save(
                  side = excluded.side,
                  start_line = excluded.start_line,
                  end_line = excluded.end_line,
-                 updated_at = excluded.updated_at",
+                 updated_at = excluded.updated_at,
+                 whole_file = excluded.whole_file",
             anchor::COLUMNS
         ),
         rusqlite::params![
@@ -59,6 +62,7 @@ pub fn save(
             cols.start_line,
             cols.end_line,
             now,
+            whole_file,
         ],
     )
     .map_err(sqlite_error)?;
@@ -74,24 +78,29 @@ pub fn save(
 pub fn get(conn: &Connection, repo_path: &Path) -> Result<Option<Draft>, TrunkError> {
     let mut stmt = conn
         .prepare(&format!(
-            "SELECT body, {} FROM drafts WHERE repo_path = ?1",
+            "SELECT body, whole_file, {} FROM drafts WHERE repo_path = ?1",
             anchor::COLUMNS
         ))
         .map_err(sqlite_error)?;
     let mut rows = stmt
         .query_map([repo_key(repo_path)], |row| {
-            Ok((row.get::<_, String>(0), anchor::from_row(row, 1)))
+            Ok((
+                row.get::<_, String>(0),
+                row.get::<_, bool>(1),
+                anchor::from_row(row, 2),
+            ))
         })
         .map_err(sqlite_error)?;
 
     match rows.next() {
         None => Ok(None),
         Some(row) => {
-            let (text, target) = row.map_err(sqlite_error)?;
+            let (text, whole_file, target) = row.map_err(sqlite_error)?;
             let (anchor, _) = target?;
             Ok(Some(Draft {
                 text: text.map_err(sqlite_error)?,
                 anchor,
+                whole_file: whole_file.map_err(sqlite_error)?,
             }))
         }
     }

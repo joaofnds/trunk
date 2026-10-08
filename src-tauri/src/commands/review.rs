@@ -1264,11 +1264,12 @@ pub fn save_draft_inner(
     canonical: &Path,
     text: &str,
     anchor: Option<&trunk_review::types::Anchor>,
+    whole_file: bool,
     now: i64,
 ) -> Result<(), TrunkError> {
     // Quiet on purpose: a per-keystroke bump would make the poll refetch
     // every thread while the user types (plan §3).
-    store.write_quiet(|tx| drafts::save(tx, canonical, text, anchor, now))
+    store.write_quiet(|tx| drafts::save(tx, canonical, text, anchor, whole_file, now))
 }
 
 /// The repo's draft, or `None` when it has none.
@@ -1296,6 +1297,7 @@ pub async fn save_draft<R: Runtime>(
     path: String,
     text: String,
     anchor: Option<trunk_review::types::Anchor>,
+    whole_file: bool,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
@@ -1304,7 +1306,7 @@ pub async fn save_draft<R: Runtime>(
 
     blocking_store(move || {
         let now = trunk_review::reviewdb::now_secs();
-        save_draft_inner(&store, &canonical, &text, anchor.as_ref(), now)
+        save_draft_inner(&store, &canonical, &text, anchor.as_ref(), whole_file, now)
     })
     .await
 }

@@ -409,6 +409,7 @@ fn bench_draft_write(c: &mut Criterion) {
                 &repo,
                 &format!("keystroke burst {n}"),
                 None,
+                false,
                 1_000,
             )
             .unwrap();

@@ -6,6 +6,7 @@ use rusqlite::Connection;
 /// The undo of each schema step from v11 up, newest first. A step added to the
 /// ladder adds its undo here, and every wind-back below it follows.
 const UNDO: &[(u32, &str)] = &[
+    (14, "ALTER TABLE drafts DROP COLUMN whole_file;"),
     (13, "ALTER TABLE threads DROP COLUMN whole_file;"),
     (
         12,

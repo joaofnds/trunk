@@ -473,6 +473,7 @@ export interface StateChange {
 export interface Draft {
 	text: string;
 	anchor: Anchor | null;
+	whole_file: boolean;
 }
 
 // The closed sets the store's CHECK constraints enforce. Milestone 2 owns the
