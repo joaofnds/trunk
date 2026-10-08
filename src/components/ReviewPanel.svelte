@@ -899,7 +899,7 @@ $effect(() => {
 						{/each}
 					</ul>
 					<span class="flex-1"></span>
-					<ButtonGroup>
+					<ButtonGroup size="xs">
 						{#each THREAD_PRESETS as preset (preset.id)}
 							<Button
 								joined

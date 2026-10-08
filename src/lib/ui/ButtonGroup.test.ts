@@ -24,6 +24,20 @@ describe("ButtonGroup", () => {
 		expect(screen.getByRole("group")).toHaveClass("h-control", "items-stretch");
 	});
 
+	it.each([
+		["xs", "h-control-xs"],
+		["sm", "h-control-sm"],
+		["md", "h-control"],
+		["lg", "h-control-lg"],
+	] as const)(
+		"stands at the %s control height when that size is named",
+		(size, height) => {
+			render(ButtonGroup, { props: { size, children: buttons } });
+
+			expect(screen.getByRole("group")).toHaveClass(height);
+		},
+	);
+
 	it("paints the accent tone as the soft sleeve", () => {
 		render(ButtonGroup, { props: { tone: "accent", children: buttons } });
 

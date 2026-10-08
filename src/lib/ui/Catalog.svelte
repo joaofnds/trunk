@@ -225,6 +225,16 @@ import ToastCard from "./ToastCard.svelte";
 				>
 			</ButtonGroup>
 		</div>
+		<div class="flex items-center gap-4">
+			{#each SIZES as size (size)}
+				<ButtonGroup {size}>
+					<Button joined {size} aria-pressed="true"
+						><span data-catalog-text>All</span></Button
+					>
+					<Button joined {size}><span data-catalog-text>{size}</span></Button>
+				</ButtonGroup>
+			{/each}
+		</div>
 	</section>
 
 	<section class="flex flex-col gap-3">
