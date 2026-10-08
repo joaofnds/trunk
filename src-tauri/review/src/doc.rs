@@ -91,6 +91,9 @@ pub struct DocThread {
     pub anchor: Option<Anchor>,
     pub commit_oid: Option<String>,
     pub content_pin: Option<ContentPin>,
+    /// About the whole file: the heading names the file with no lines, and
+    /// no excerpt is printed.
+    pub whole_file: bool,
     pub excerpt: Option<String>,
     pub channel: Channel,
     pub replies: Vec<DocReply>,
@@ -627,6 +630,21 @@ pub const fn stale_marker(stale: bool) -> &'static str {
     if stale { " (stale)" } else { "" }
 }
 
+/// A line thread's `:Lstart-Lend`, and nothing for a thread about the whole
+/// file, whose lines span the file only because its pin needs them to.
+fn line_range(whole_file: bool, start: u32, end: u32) -> String {
+    if whole_file {
+        String::new()
+    } else {
+        format!(":L{start}-L{end}")
+    }
+}
+
+/// What a whole-file thread's heading says in place of a line range.
+const fn whole_file_scope(whole_file: bool) -> &'static str {
+    if whole_file { "whole file, " } else { "" }
+}
+
 /// The per-thread body all three document sections and the CLI's `thread`
 /// verb emit. Heading depth is the section's, not a parameter: an anchored
 /// thread sits under its `### file (sha)` group heading, the other two shapes
@@ -650,11 +668,11 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
             let short = short_sha(&anchor.commit_oid);
             let _ = writeln!(
                 out,
-                "#### [{id}] {file_path}:L{start}-L{end} ({short}, {side}) — {state}{stale}",
+                "#### [{id}] {file_path}{range} ({scope}{short}, {side}) — {state}{stale}",
                 id = thread.id,
                 file_path = sanitize_heading_text(&anchor.file_path),
-                start = anchor.start_line,
-                end = anchor.end_line,
+                range = line_range(thread.whole_file, anchor.start_line, anchor.end_line),
+                scope = whole_file_scope(thread.whole_file),
                 side = side_label(&anchor.side),
                 state = thread.state.as_str(),
                 stale = stale_marker(thread.stale),
@@ -667,7 +685,9 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
                 );
                 let _ = writeln!(out);
             }
-            emit_excerpt(out, thread.excerpt.as_deref(), info);
+            if !thread.whole_file {
+                emit_excerpt(out, thread.excerpt.as_deref(), info);
+            }
         }
         ThreadTarget::CommitLevel { thread, commit_oid } => {
             let short = short_sha(commit_oid);
@@ -686,16 +706,18 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
             // commit's tree, so there is nothing to shorten into the heading.
             let _ = writeln!(
                 out,
-                "#### [{id}] {file_path}:L{start}-L{end} (current file) — {state}{stale}",
+                "#### [{id}] {file_path}{range} ({scope}current file) — {state}{stale}",
                 id = thread.id,
                 file_path = sanitize_heading_text(&pin.file_path),
-                start = pin.start_line,
-                end = pin.end_line,
+                range = line_range(thread.whole_file, pin.start_line, pin.end_line),
+                scope = whole_file_scope(thread.whole_file),
                 state = thread.state.as_str(),
                 stale = stale_marker(thread.stale),
             );
             let _ = writeln!(out);
-            emit_excerpt(out, thread.excerpt.as_deref(), info);
+            if !thread.whole_file {
+                emit_excerpt(out, thread.excerpt.as_deref(), info);
+            }
         }
         ThreadTarget::NoTarget { thread } => {
             let _ = writeln!(
@@ -805,6 +827,7 @@ fn as_doc_threads(
             anchor: t.anchor,
             commit_oid: t.commit_oid,
             content_pin: t.content_pin,
+            whole_file: t.whole_file,
             excerpt: t.cached_excerpt,
             channel: t.channel,
             replies: replies
@@ -1084,6 +1107,7 @@ mod tests {
         cached_excerpt: Option<&str>,
     ) -> DocThread {
         DocThread {
+            whole_file: false,
             id: id.to_string(),
             text: text.to_string(),
             state: ThreadState::Open,
@@ -1112,6 +1136,7 @@ mod tests {
         cached_excerpt: Option<&str>,
     ) -> DocThread {
         DocThread {
+            whole_file: false,
             id: id.to_string(),
             text: text.to_string(),
             state: ThreadState::Open,
@@ -1134,6 +1159,7 @@ mod tests {
 
     fn commit_level_comment(id: &str, text: &str, commit_oid: Oid) -> DocThread {
         DocThread {
+            whole_file: false,
             id: id.to_string(),
             text: text.to_string(),
             state: ThreadState::Open,
@@ -1235,6 +1261,7 @@ mod tests {
                 commit_level_comment("c1", "this commit needs review", child),
                 // (iv) no target at all
                 DocThread {
+                    whole_file: false,
                     id: "nt".to_string(),
                     text: "no target comment".to_string(),
                     state: ThreadState::Open,
@@ -1668,6 +1695,7 @@ mod tests {
     #[test]
     fn a_current_file_thread_names_its_file_and_shows_its_code() {
         let thread = DocThread {
+            whole_file: false,
             id: "cf".to_string(),
             text: "this constant needs a name".to_string(),
             state: ThreadState::Open,
@@ -1704,6 +1732,7 @@ mod tests {
     #[test]
     fn a_stale_current_file_thread_marks_its_heading() {
         let thread = DocThread {
+            whole_file: false,
             id: "cf".to_string(),
             text: "gone now".to_string(),
             state: ThreadState::Open,
@@ -2612,6 +2641,7 @@ mod tests {
             &repo,
             vec![],
             vec![DocThread {
+                whole_file: false,
                 id: "nt".to_string(),
                 text: "note".to_string(),
                 state: ThreadState::Open,
@@ -2750,6 +2780,7 @@ mod tests {
             &repo,
             vec![],
             vec![DocThread {
+                whole_file: false,
                 id: "no-target".to_string(),
                 text: "orphaned by hand".to_string(),
                 state: ThreadState::Open,
@@ -2809,6 +2840,7 @@ mod tests {
             vec![],
             vec![
                 DocThread {
+                    whole_file: false,
                     id: "first".to_string(),
                     text: "a".to_string(),
                     state: ThreadState::Open,
@@ -2821,6 +2853,7 @@ mod tests {
                     replies: vec![],
                 },
                 DocThread {
+                    whole_file: false,
                     id: "second".to_string(),
                     text: "b".to_string(),
                     state: ThreadState::Open,
@@ -2999,6 +3032,7 @@ mod tests {
             ),
             commit_level_comment("c1", "this commit needs review", child),
             DocThread {
+                whole_file: false,
                 id: "nt".to_string(),
                 text: "no target comment".to_string(),
                 state: ThreadState::Open,

@@ -74,6 +74,7 @@ impl ReviewDriver<'_> {
             anchor,
             cached_excerpt.to_string(),
             Delivery::Send,
+            false,
             self.app.state::<RepoState>(),
             self.app.state::<ReviewStoreState>(),
             self.app.handle().clone(),

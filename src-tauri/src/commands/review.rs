@@ -164,6 +164,8 @@ pub struct SubmitThreadRequest {
     /// half-typed line comment alone.
     pub clears_draft: bool,
     pub delivery: trunk_review::types::Delivery,
+    /// About the whole file the anchor or pin spans rather than those lines.
+    pub whole_file: bool,
 }
 
 /// Submit a thread into the repo's active review, creating one when there is
@@ -281,6 +283,7 @@ fn submit_thread_write(
                 content_pin: req.content_pin,
                 cached_excerpt: req.cached_excerpt,
                 delivery: req.delivery,
+                whole_file: req.whole_file,
             },
             now,
         )?;
@@ -353,6 +356,8 @@ pub struct RenderedThread {
     /// Held in the review's batch: the agent cannot read it until the user
     /// sends the batch.
     pub pending: bool,
+    /// About the whole file rather than the lines its anchor spans.
+    pub whole_file: bool,
     /// Whether the thread's review holds a batch, which every comment the user
     /// adds to it joins until they send it, so the card offers no way to send
     /// a reply alone.
@@ -436,6 +441,7 @@ impl RenderedThread {
             stale: t.stale,
             channel: t.channel,
             pending: t.pending,
+            whole_file: t.whole_file,
             batch_held,
             allowed_transitions: t
                 .state
@@ -498,6 +504,7 @@ pub async fn add_thread<R: Runtime>(
     anchor: trunk_review::types::Anchor,
     cached_excerpt: String,
     delivery: trunk_review::types::Delivery,
+    whole_file: bool,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
@@ -512,6 +519,7 @@ pub async fn add_thread<R: Runtime>(
         cached_excerpt: Some(cached_excerpt),
         clears_draft: true,
         delivery,
+        whole_file,
     };
     let target = canonical.clone();
     let now = trunk_review::reviewdb::now_secs();
@@ -551,6 +559,7 @@ pub fn submit_current_file_thread_inner(
     end_line: u32,
     text: &str,
     delivery: trunk_review::types::Delivery,
+    whole_file: bool,
     now: i64,
 ) -> Result<String, TrunkError> {
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
@@ -572,6 +581,7 @@ pub fn submit_current_file_thread_inner(
         content_pin: Some(pin),
         clears_draft: true,
         delivery,
+        whole_file,
     };
 
     submit_thread_inner(store, canonical, req, now)
@@ -593,6 +603,7 @@ pub async fn add_current_file_thread<R: Runtime>(
     end_line: u32,
     text: String,
     delivery: trunk_review::types::Delivery,
+    whole_file: bool,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
@@ -603,7 +614,8 @@ pub async fn add_current_file_thread<R: Runtime>(
     let now = trunk_review::reviewdb::now_secs();
     write_and_notify(&app, &canonical, move || {
         submit_current_file_thread_inner(
-            &store, &target, &path, &file_path, start_line, end_line, &text, delivery, now,
+            &store, &target, &path, &file_path, start_line, end_line, &text, delivery, whole_file,
+            now,
         )
         .map(|_| ())
     })
@@ -640,6 +652,7 @@ pub async fn add_commit_thread<R: Runtime>(
         cached_excerpt: None,
         clears_draft: false,
         delivery,
+        whole_file: false,
     };
     let target = canonical.clone();
     let now = trunk_review::reviewdb::now_secs();

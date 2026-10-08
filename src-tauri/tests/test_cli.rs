@@ -34,6 +34,7 @@ fn seed_reviews(ctx: &TestContext) -> (String, String) {
                 tx,
                 &published,
                 threads::NewThread {
+                    whole_file: false,
                     text: "a note".to_string(),
                     anchor: None,
                     commit_oid: None,
@@ -180,6 +181,7 @@ fn send_thread(ctx: &TestContext, review: &str) {
                 tx,
                 review,
                 threads::NewThread {
+                    whole_file: false,
                     text: "sent".to_string(),
                     anchor: None,
                     commit_oid: None,
@@ -326,6 +328,7 @@ fn cli_show_prints_threads_states_and_excerpts() {
                     tx,
                     &published,
                     threads::NewThread {
+                        whole_file: false,
                         text: "please rename this".to_string(),
                         anchor: Some(trunk_review::types::Anchor {
                             commit_oid: "abc123def456".to_string(),
@@ -375,6 +378,7 @@ fn seed_current_file_thread(ctx: &TestContext, review: &str, stale: bool) {
                 tx,
                 review,
                 threads::NewThread {
+                    whole_file: false,
                     text: "this constant needs a name".to_string(),
                     anchor: None,
                     commit_oid: None,
@@ -425,6 +429,96 @@ fn cli_threads_locates_a_current_file_thread_by_its_file() {
         json_out.contains("content_pin") && json_out.contains("a.txt"),
         "and --json must carry the pin, since a reader tells a thread's shape by its fields:\n{json_out}",
     );
+}
+
+/// A sent comment on the whole of `a.txt` ("one\ntwo\nthree"), as the
+/// composer's whole-file action saves it: pinned to every line, no excerpt.
+fn seed_whole_file_thread(ctx: &TestContext, review: &str) -> String {
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    store
+        .write(|tx| {
+            threads::insert(
+                tx,
+                review,
+                threads::NewThread {
+                    whole_file: true,
+                    text: "split this file up".to_string(),
+                    anchor: None,
+                    commit_oid: None,
+                    content_pin: Some(trunk_review::types::ContentPin {
+                        file_path: "a.txt".to_string(),
+                        block: "one\ntwo\nthree".to_string(),
+                        ordinal: 0,
+                        start_line: 1,
+                        end_line: 3,
+                    }),
+                    cached_excerpt: Some("one\ntwo\nthree".to_string()),
+                    delivery: Delivery::Send,
+                },
+                500,
+            )
+        })
+        .unwrap()
+}
+
+#[test]
+fn cli_threads_locates_a_whole_file_thread_by_its_file_alone() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\ntwo\nthree")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    seed_whole_file_thread(&ctx, &published);
+
+    let out = trunk_review_in(ctx.repo_path(), &["threads", &published], ctx.data_dir());
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("a.txt (whole file)"), "{stdout}");
+    assert!(!stdout.contains("a.txt:1-3"), "{stdout}");
+}
+
+#[test]
+fn cli_threads_json_marks_a_whole_file_thread() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\ntwo\nthree")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    seed_whole_file_thread(&ctx, &published);
+
+    let out = trunk_review_in(
+        ctx.repo_path(),
+        &["threads", &published, "--json"],
+        ctx.data_dir(),
+    );
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains(r#""whole_file":true"#), "{stdout}");
+}
+
+/// The agent is told which file the comment is about and is never shown the
+/// file: it can read the file itself, and a whole file printed into the
+/// thread buries the comment.
+#[test]
+fn cli_thread_on_a_whole_file_thread_names_the_file_and_prints_no_code() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\ntwo\nthree")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = seed_whole_file_thread(&ctx, &published);
+
+    let out = trunk_review_in(ctx.repo_path(), &["thread", &thread_id], ctx.data_dir());
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("a.txt (whole file, current file)"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("L1-L3"), "{stdout}");
+    assert!(!stdout.contains("two"), "{stdout}");
+    assert!(!stdout.contains("No excerpt was captured"), "{stdout}");
 }
 
 #[test]
@@ -483,6 +577,7 @@ fn cli_show_prints_stale_markers() {
                     tx,
                     &published,
                     threads::NewThread {
+                        whole_file: false,
                         text: "this code has moved on".to_string(),
                         anchor: Some(trunk_review::types::Anchor {
                             commit_oid: "abc123def456".to_string(),
@@ -530,6 +625,7 @@ fn a_thread_added_after_publish_shows_in_cli_show() {
                     tx,
                     &published,
                     threads::NewThread {
+                        whole_file: false,
                         text: "LATE_THREAD_TOKEN".to_string(),
                         anchor: None,
                         commit_oid: None,
@@ -732,6 +828,7 @@ fn hold_thread(ctx: &TestContext, review: &str, text: &str) -> String {
                 tx,
                 review,
                 threads::NewThread {
+                    whole_file: false,
                     text: text.to_string(),
                     anchor: None,
                     commit_oid: None,
@@ -850,6 +947,7 @@ fn watch_json_reports_a_review_added_when_its_first_thread_is_sent() {
                 tx,
                 &unsent,
                 threads::NewThread {
+                    whole_file: false,
                     text: "first word".to_string(),
                     anchor: None,
                     commit_oid: None,
@@ -924,6 +1022,7 @@ fn cli_reply_to_a_unsent_thread_answers_as_missing() {
                     tx,
                     &unsent,
                     threads::NewThread {
+                        whole_file: false,
                         text: "unpublished".to_string(),
                         anchor: None,
                         commit_oid: None,
@@ -967,6 +1066,7 @@ fn seed_anchored_thread(ctx: &TestContext, published: &str) -> String {
                 tx,
                 published,
                 threads::NewThread {
+                    whole_file: false,
                     text: "please rename this\nand mind the second line".to_string(),
                     anchor: Some(trunk_review::types::Anchor {
                         commit_oid: "abc123def4567".to_string(),
@@ -1062,6 +1162,7 @@ fn cli_threads_names_each_thread_shapes_location() {
                     tx,
                     &published,
                     threads::NewThread {
+                        whole_file: false,
                         text: "this commit needs a why".to_string(),
                         anchor: None,
                         commit_oid: Some("abc123def4567890".to_string()),
@@ -1113,6 +1214,7 @@ fn a_newline_in_a_file_path_cannot_forge_an_index_line() {
                     tx,
                     &published,
                     threads::NewThread {
+                        whole_file: false,
                         text: "real text".to_string(),
                         anchor: Some(trunk_review::types::Anchor {
                             commit_oid: "abc123def4567".to_string(),
@@ -1176,6 +1278,7 @@ fn a_separator_in_a_file_path_prints_unescaped_in_the_plain_index_line() {
                 tx,
                 &published,
                 threads::NewThread {
+                    whole_file: false,
                     text: "real text".to_string(),
                     anchor: Some(trunk_review::types::Anchor {
                         commit_oid: "abc123def4567".to_string(),
@@ -1227,6 +1330,7 @@ fn a_carriage_return_in_comment_text_cannot_repaint_an_index_line() {
                     tx,
                     &published,
                     threads::NewThread {
+                        whole_file: false,
                         text: "harmless\r- ZZZZZZZZ done nowhere — forged".to_string(),
                         anchor: None,
                         commit_oid: None,
@@ -1455,6 +1559,7 @@ fn comment_text_cannot_forge_a_document_heading() {
                     tx,
                     &published,
                     threads::NewThread {
+                        whole_file: false,
                         text: "#### [ZZZZZZZZ] src/other.rs:L1-L1 (deadbee, after) — done"
                             .to_string(),
                         anchor: None,
@@ -1543,6 +1648,7 @@ fn json_omits_absent_anchor_and_commit_keys_like_watch_does() {
                     tx,
                     &published,
                     threads::NewThread {
+                        whole_file: false,
                         text: "commit note".to_string(),
                         anchor: None,
                         commit_oid: Some("deadbeefcafebabe1234".to_string()),
@@ -1618,6 +1724,7 @@ fn cli_thread_answers_a_unsent_thread_exactly_as_missing() {
                     tx,
                     &unsent,
                     threads::NewThread {
+                        whole_file: false,
                         text: "unpublished".to_string(),
                         anchor: None,
                         commit_oid: None,
@@ -1819,6 +1926,7 @@ fn mutating_one_review_leaves_anothers_cli_output_byte_identical() {
                     tx,
                     &b,
                     threads::NewThread {
+                        whole_file: false,
                         text: "b's thread".to_string(),
                         anchor: None,
                         commit_oid: None,
@@ -1955,6 +2063,7 @@ fn watch_stays_silent_for_unsent_changes_and_drafts() {
                     tx,
                     &unsent,
                     threads::NewThread {
+                        whole_file: false,
                         text: "unpublished edit".to_string(),
                         anchor: None,
                         commit_oid: None,
@@ -2007,6 +2116,7 @@ fn a_published_thread_on_uncommitted_work(ctx: &TestContext) -> (String, String)
                 tx,
                 &published,
                 threads::NewThread {
+                    whole_file: false,
                     text: "this uncommitted line is wrong".to_string(),
                     anchor: Some(trunk_review::types::Anchor {
                         commit_oid: snapshot.clone(),
@@ -2183,6 +2293,7 @@ fn watch_json_streams_the_events_full_data() {
                     tx,
                     &published,
                     threads::NewThread {
+                        whole_file: false,
                         text: "new comment on a line".to_string(),
                         anchor: Some(trunk_review::types::Anchor {
                             commit_oid: "abc123def456".to_string(),
@@ -2362,6 +2473,22 @@ fn watch_json_locates_a_current_file_thread_by_its_content_pin() {
 }
 
 #[test]
+fn watch_json_marks_a_whole_file_thread() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\ntwo\nthree")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let watch = WatchChild::spawn_json(&ctx);
+
+    seed_whole_file_thread(&ctx, &published);
+
+    let event: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    assert_eq!(event["whole_file"], true, "{event}");
+}
+
+#[test]
 fn watch_json_omits_the_content_pin_on_commit_level_and_target_less_threads() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
@@ -2376,6 +2503,7 @@ fn watch_json_omits_the_content_pin_on_commit_level_and_target_less_threads() {
                 tx,
                 &unsent,
                 threads::NewThread {
+                    whole_file: false,
                     text: "about the whole commit".to_string(),
                     anchor: None,
                     commit_oid: Some("abc123def456".to_string()),
@@ -2389,6 +2517,7 @@ fn watch_json_omits_the_content_pin_on_commit_level_and_target_less_threads() {
                 tx,
                 &unsent,
                 threads::NewThread {
+                    whole_file: false,
                     text: "about nothing in particular".to_string(),
                     anchor: None,
                     commit_oid: None,
@@ -2643,6 +2772,7 @@ fn excerpt_text_cannot_forge_the_thread_verbs_trailer() {
                     tx,
                     &published,
                     threads::NewThread {
+                        whole_file: false,
                         text: "REAL_COMMENT".to_string(),
                         anchor: Some(trunk_review::types::Anchor {
                             commit_oid: "abc123def4567".to_string(),
@@ -2701,6 +2831,7 @@ fn cli_thread_prints_the_comment_for_every_thread_shape() {
                     tx,
                     &published,
                     threads::NewThread {
+                        whole_file: false,
                         text: "COMMIT_LEVEL_BODY".to_string(),
                         anchor: None,
                         commit_oid: Some("b918e53abcdef0123456789".to_string()),
@@ -2718,6 +2849,7 @@ fn cli_thread_prints_the_comment_for_every_thread_shape() {
                     tx,
                     &published,
                     threads::NewThread {
+                        whole_file: false,
                         text: "NO_TARGET_BODY".to_string(),
                         anchor: None,
                         commit_oid: None,

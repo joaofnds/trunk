@@ -37,6 +37,8 @@ pub struct Thread {
     pub created_at: i64,
     /// Held in the review's batch, so the agent cannot see it yet.
     pub pending: bool,
+    /// About the whole file rather than the lines its anchor spans.
+    pub whole_file: bool,
 }
 
 pub struct NewThread {
@@ -46,12 +48,15 @@ pub struct NewThread {
     pub content_pin: Option<ContentPin>,
     pub cached_excerpt: Option<String>,
     pub delivery: Delivery,
+    /// Keeps no excerpt: a comment on a whole file is never shown its code.
+    pub whole_file: bool,
 }
 
 const SELECT: &str = "
     SELECT id, review_id, body, excerpt, state, stale, channel,
            anchor_kind, commit_oid, file_path, source, side, start_line, end_line,
-           pin_block, pin_ordinal, resolved_start_line, created_at, pending
+           pin_block, pin_ordinal, resolved_start_line, created_at, pending,
+           whole_file
     FROM threads";
 
 const ANCHOR_FIRST_COLUMN: usize = 7;
@@ -75,14 +80,19 @@ pub fn insert(
         None => anchor::target_of(new.anchor.as_ref(), new.commit_oid.as_deref()),
     };
     let cols = anchor::to_columns(&target);
+    let excerpt = if new.whole_file {
+        None
+    } else {
+        new.cached_excerpt
+    };
 
     conn.execute(
         &format!(
             "INSERT INTO threads (id, review_id, body, channel, state, stale, excerpt,
                                   {}, pin_block, pin_ordinal, resolved_start_line,
-                                  created_at, updated_at, pending)
+                                  created_at, updated_at, pending, whole_file)
              VALUES (?1, ?2, ?3, ?4, 'open', 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                     ?13, ?14, ?15, ?16, ?16, ?17)",
+                     ?13, ?14, ?15, ?16, ?16, ?17, ?18)",
             anchor::COLUMNS
         ),
         rusqlite::params![
@@ -90,7 +100,7 @@ pub fn insert(
             review_id,
             &new.text,
             Channel::Human.as_str(),
-            new.cached_excerpt,
+            excerpt,
             cols.kind,
             cols.commit_oid,
             cols.file_path,
@@ -103,6 +113,7 @@ pub fn insert(
             new.content_pin.as_ref().map(|p| i64::from(p.start_line)),
             now,
             pending,
+            new.whole_file,
         ],
     )
     .map_err(sqlite_error)?;
@@ -251,6 +262,10 @@ fn read_thread(row: &rusqlite::Row) -> Result<Thread, TrunkError> {
         created_at: row.get(PIN_FIRST_COLUMN + 3).map_err(sqlite_error)?,
         pending: row
             .get::<_, i64>(PIN_FIRST_COLUMN + 4)
+            .map_err(sqlite_error)?
+            != 0,
+        whole_file: row
+            .get::<_, i64>(PIN_FIRST_COLUMN + 5)
             .map_err(sqlite_error)?
             != 0,
     })

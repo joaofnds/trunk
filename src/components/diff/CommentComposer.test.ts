@@ -833,6 +833,67 @@ describe("CommentComposer", () => {
 		expect(onclose).toHaveBeenCalledTimes(1);
 	});
 
+	describe("whole-file scope", () => {
+		const fileAnchor: Anchor = {
+			commit_oid: "abc123",
+			file_path: "src/main.ts",
+			source: "FullFile",
+			side: "New",
+			start_line: 1,
+			end_line: 3,
+		};
+
+		async function submitComment(props: Record<string, unknown>) {
+			render(CommentComposer, {
+				props: {
+					commitOid: "abc123",
+					repoPath: "/repo",
+					onclose: () => {},
+					...props,
+				},
+			});
+			await fireEvent.input(screen.getByRole("textbox"), {
+				target: { value: "split this file" },
+			});
+			await tick();
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Add comment" }),
+			);
+			await tick();
+		}
+
+		function argsOf(command: string) {
+			return mockedInvoke.mock.calls.find((c) => c[0] === command)?.[1];
+		}
+
+		it("sends a comment on the whole file as about the whole file", async () => {
+			await submitComment({
+				captured: { anchor: fileAnchor, cachedExcerpt: "", wholeFile: true },
+			});
+
+			expect(argsOf("add_thread")).toMatchObject({ wholeFile: true });
+		});
+
+		it("sends a comment on lines as about those lines", async () => {
+			await submitComment({
+				captured: { anchor: fileAnchor, cachedExcerpt: "a\nb\nc" },
+			});
+
+			expect(argsOf("add_thread")).toMatchObject({ wholeFile: false });
+		});
+
+		it("sends a comment on the whole current file as about the whole file", async () => {
+			await submitComment({
+				captured: { anchor: fileAnchor, cachedExcerpt: "", wholeFile: true },
+				currentFile: { filePath: "src/main.ts", startLine: 1, endLine: 3 },
+			});
+
+			expect(argsOf("add_current_file_thread")).toMatchObject({
+				wholeFile: true,
+			});
+		});
+	});
+
 	it("persists a draft via save_draft with the injected anchor on the debounce (V8)", async () => {
 		vi.useFakeTimers();
 		const capturedAnchor: Anchor = {

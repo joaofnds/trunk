@@ -69,6 +69,14 @@ pub(crate) fn render_threads(threads: &[trunk_review::reviewdb::threads::Thread]
 
 /// Where a thread points, in the index's one-line spelling.
 fn thread_location(thread: &trunk_review::reviewdb::threads::Thread) -> String {
+    let file = thread
+        .content_pin
+        .as_ref()
+        .map(|pin| &pin.file_path)
+        .or_else(|| thread.anchor.as_ref().map(|anchor| &anchor.file_path));
+    if let (true, Some(file)) = (thread.whole_file, file) {
+        return format!("{file} (whole file)");
+    }
     if let Some(pin) = &thread.content_pin {
         return format!("{}:{}-{}", pin.file_path, pin.start_line, pin.end_line);
     }
@@ -109,6 +117,8 @@ struct ThreadLine<'a> {
     commit_oid: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     content_pin: Option<&'a trunk_review::types::ContentPin>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    whole_file: bool,
 }
 
 /// One `thread --json` object: the index line's fields plus everything the
@@ -142,6 +152,7 @@ impl<'a> ThreadLine<'a> {
             anchor: thread.anchor.as_ref(),
             commit_oid: thread.commit_oid.as_deref(),
             content_pin: thread.content_pin.as_ref(),
+            whole_file: thread.whole_file,
         }
     }
 }
@@ -239,6 +250,7 @@ pub(crate) fn render_thread(
         anchor: thread.anchor.clone(),
         commit_oid: thread.commit_oid.clone(),
         content_pin: thread.content_pin.clone(),
+        whole_file: thread.whole_file,
         excerpt: thread.cached_excerpt.clone(),
         channel: thread.channel,
         replies: replies

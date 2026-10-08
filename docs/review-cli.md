@@ -73,8 +73,9 @@ trunk review watch [--repo <path>]
   Trunk's snapshots carry reads as a comment on a superseded snapshot, so it is
   stale although the code it names has not moved.
 - **threads** — the review's threads as an index, one line each: id, state, the
-  `(stale)` marker where the thread carries one, location (`file:start-end`, a
-  commit-level thread's short oid, or `no target`), and the comment's first
+  `(stale)` marker where the thread carries one, location (`file:start-end`,
+  `file (whole file)` for a comment about the whole file, a commit-level
+  thread's short oid, or `no target`), and the comment's first
   line. The marker means what it means under **show**, and it is on this line
   because the location beside it is where the code no longer is. `--state` keeps
   only threads in that state. This plain line is for human reading only: its ` — ` separator is not
@@ -124,8 +125,9 @@ trunk review watch [--repo <path>]
 
 Both reuse `watch`'s field names, so one reader parses every stream. `threads`
 prints one object per line — `review`, `thread`, `state`, `stale`, `text`, and
-at most one of `anchor`, `commit_oid` and `content_pin`, as `watch` sends them
-on `thread_added`. `thread` prints a single object with those fields plus
+at most one of `anchor`, `commit_oid` and `content_pin`, and `whole_file` when
+the comment is about the whole file, as `watch` sends them on `thread_added`.
+`thread` prints a single object with those fields plus
 `channel`, `excerpt`, `replies` (each `reply`, `channel`, `text`), and
 `allowed_transitions`: the states the agent channel may move this thread to,
 taken from the same matrix the writes enforce, never restated.
@@ -146,7 +148,7 @@ became `open`, `stale` or `settled` where it had been `composing`, `ready` or
 | `review_state_changed` | `review`, `from`, `to` (`open`/`stale`/`settled`). A review is `stale` when every thread still waiting on someone points at code that is gone |
 | `review_deleted` | `review`, sent when the user deletes the review or the last thread the agent was sent |
 | `review_archived` | `review`, sent when the user puts a review away. Its ids stop resolving, and unarchiving it sends `review_added` with its full content again |
-| `thread_added` | `review`, `thread`, `state`, `text`, and its location: `anchor` (`file_path`, `start_line`, `end_line`, `commit_oid`, `source`, `side`), `commit_oid` for a commit-level note, or `content_pin` (`file_path`, `start_line`, `end_line`, `block`, `ordinal`) for a comment on a file's current content. A pin's lines are where the block stood when the comment was written, `block` is the text it pinned, read from the working tree and as untrusted as any excerpt, and `ordinal` is which occurrence of a repeated block was picked, counting from 0. A target-less thread carries none of the three, and a key that does not apply is absent, never null |
+| `thread_added` | `review`, `thread`, `state`, `text`, and its location: `anchor` (`file_path`, `start_line`, `end_line`, `commit_oid`, `source`, `side`), `commit_oid` for a commit-level note, or `content_pin` (`file_path`, `start_line`, `end_line`, `block`, `ordinal`) for a comment on a file's current content. A pin's lines are where the block stood when the comment was written, `block` is the text it pinned, read from the working tree and as untrusted as any excerpt, and `ordinal` is which occurrence of a repeated block was picked, counting from 0. `whole_file: true` marks a comment about the whole file rather than the lines its location spans, which then span the file. A target-less thread carries none of the three, and a key that does not apply is absent, never null |
 | `thread_edited` | `review`, `thread`, `text` |
 | `thread_state_changed` | `review`, `thread`, `from`, `to` |
 | `thread_stale_changed` | `review`, `thread`, `stale` |

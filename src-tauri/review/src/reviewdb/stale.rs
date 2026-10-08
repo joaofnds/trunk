@@ -4,7 +4,8 @@
 //! past the snapshot it names. A thread anchored to an oid the repository no
 //! longer holds is stale whatever that oid was, because the code it describes
 //! is unrecoverable and the excerpt is the only surviving copy. A current-file
-//! thread is stale once its pinned block occurs nowhere in the file, and fresh
+//! thread is stale once its pinned block occurs nowhere in the file (for one
+//! about the whole file, once the file is not exactly its block), and fresh
 //! again the moment the content returns — the spec's branch-switch example,
 //! which supersession can never undo.
 //!
@@ -145,7 +146,13 @@ fn plan(
     let mut changes = Vec::new();
     for row in rows {
         let resolved = row.pin.as_ref().map(|pin| {
-            read_file(&pin.file_path).and_then(|text| find_block(&text, &pin.block, pin.ordinal))
+            read_file(&pin.file_path).and_then(|text| {
+                if pin.whole_file {
+                    find_whole_file(&text, &pin.block)
+                } else {
+                    find_block(&text, &pin.block, pin.ordinal)
+                }
+            })
         });
         let is_stale = match resolved {
             Some(found) => found.is_none(),
@@ -227,6 +234,7 @@ struct PinRef {
     file_path: String,
     block: String,
     ordinal: u32,
+    whole_file: bool,
 }
 
 /// The 1-based line the `ordinal`-th occurrence of `block` starts on, or `None`
@@ -254,6 +262,18 @@ fn find_block(text: &str, block: &str, ordinal: u32) -> Option<u32> {
     let index = (ordinal as usize).min(starts.len().checked_sub(1)?);
 
     u32::try_from(starts[index] + 1).ok()
+}
+
+/// Line 1 when the file is still exactly `block`, or `None` after any edit.
+///
+/// A thread about the whole file cannot say which edit it is about, so every
+/// edit is one. A block search alone misses an append, which keeps the old
+/// content intact as a block.
+fn find_whole_file(text: &str, block: &str) -> Option<u32> {
+    normalize_endings(text)
+        .lines()
+        .eq(normalize_endings(block).lines())
+        .then_some(1)
 }
 
 /// The 0-based line indices every occurrence of `block` starts at.
@@ -345,7 +365,8 @@ fn rows(conn: &Connection, repo_path: &Path) -> Result<Vec<StaleRow>, TrunkError
                     EXISTS(SELECT 1 FROM minted_snapshots
                            WHERE repo_path = ?1 AND oid = threads.commit_oid),
                     EXISTS(SELECT 1 FROM legacy_snapshot_candidates
-                           WHERE repo_path = ?1 AND oid = threads.commit_oid)
+                           WHERE repo_path = ?1 AND oid = threads.commit_oid),
+                    whole_file
              FROM threads
              WHERE review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)",
         )
@@ -356,6 +377,7 @@ fn rows(conn: &Connection, repo_path: &Path) -> Result<Vec<StaleRow>, TrunkError
             let block: Option<String> = row.get(4)?;
             let ordinal: Option<i64> = row.get(5)?;
             let resolved: Option<i64> = row.get(6)?;
+            let whole_file: bool = row.get(9)?;
             let provenance = if row.get(7)? {
                 Provenance::Minted
             } else if row.get(8)? {
@@ -372,6 +394,7 @@ fn rows(conn: &Connection, repo_path: &Path) -> Result<Vec<StaleRow>, TrunkError
                     file_path,
                     block,
                     ordinal: ordinal.and_then(|o| u32::try_from(o).ok()).unwrap_or(0),
+                    whole_file,
                 }),
                 was_stale: row.get::<_, i64>(2)? != 0,
                 resolved_start_line: resolved.and_then(|r| u32::try_from(r).ok()),
@@ -414,6 +437,7 @@ mod tests {
                     tx,
                     &review_id,
                     threads::NewThread {
+                        whole_file: false,
                         text: "comment".into(),
                         anchor: Some(Anchor {
                             commit_oid: oid.into(),

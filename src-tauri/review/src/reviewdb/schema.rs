@@ -8,7 +8,7 @@ use super::sqlite_error;
 use rusqlite::Connection;
 use trunk_git::error::TrunkError;
 
-pub const CURRENT_VERSION: i64 = 12;
+pub const CURRENT_VERSION: i64 = 13;
 
 const V1: &str = r"
 CREATE TABLE reviews (
@@ -305,6 +305,13 @@ WHERE thread_id IN (SELECT id FROM threads WHERE pending = 1);
 ALTER TABLE reviews DROP COLUMN published;
 ";
 
+/// A thread about a whole file rather than a range of its lines. Its line
+/// columns still span the file, which is what the content pin of a current-file
+/// thread needs to go stale on any edit.
+const V13: &str = r"
+ALTER TABLE threads ADD COLUMN whole_file INTEGER NOT NULL DEFAULT 0;
+";
+
 /// A dev store may carry `user_version = 8` from an unreleased commit that numbered
 /// an earlier cleanup 8, before this build's own v8 existed.
 ///
@@ -471,6 +478,10 @@ fn apply_pending(conn: &Connection) -> Result<(), TrunkError> {
     }
     if user_version(conn)? < 12 {
         conn.execute_batch(&format!("{V12} PRAGMA user_version = 12;"))
+            .map_err(sqlite_error)?;
+    }
+    if user_version(conn)? < 13 {
+        conn.execute_batch(&format!("{V13} PRAGMA user_version = 13;"))
             .map_err(sqlite_error)?;
     }
 

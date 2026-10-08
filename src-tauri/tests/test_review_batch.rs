@@ -30,6 +30,7 @@ fn comment(store: &Store, review: &str, delivery: Delivery) -> String {
                 tx,
                 review,
                 threads::NewThread {
+                    whole_file: false,
                     text: "a comment".to_string(),
                     anchor: None,
                     commit_oid: None,
@@ -301,7 +302,7 @@ mod migrating_from_v11 {
 
         let conn = Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
         conn.execute_batch(
-            "ALTER TABLE threads DROP COLUMN pending;
+            "ALTER TABLE threads DROP COLUMN whole_file; ALTER TABLE threads DROP COLUMN pending;
              ALTER TABLE replies DROP COLUMN pending;
              ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 0;
              PRAGMA user_version = 11;",

@@ -119,6 +119,7 @@ mod watch_feed {
         pub anchor: Option<Anchor>,
         pub commit_oid: Option<String>,
         pub content_pin: Option<ContentPin>,
+        pub whole_file: bool,
         pub replies: BTreeMap<String, ReplySnap>,
     }
 
@@ -164,6 +165,8 @@ mod watch_feed {
             commit_oid: Option<String>,
             #[serde(skip_serializing_if = "Option::is_none")]
             content_pin: Option<ContentPin>,
+            #[serde(skip_serializing_if = "std::ops::Not::not")]
+            whole_file: bool,
         },
         ThreadEdited {
             review: String,
@@ -271,6 +274,7 @@ fn agent_snapshot(
                         anchor: thread.anchor,
                         commit_oid: thread.commit_oid,
                         content_pin: thread.content_pin,
+                        whole_file: thread.whole_file,
                         replies: replies
                             .into_iter()
                             .map(|r| {
@@ -383,6 +387,7 @@ fn push_thread_added(
         anchor: thread.anchor.clone(),
         commit_oid: thread.commit_oid.clone(),
         content_pin: thread.content_pin.clone(),
+        whole_file: thread.whole_file,
     });
     for (reply_id, reply) in &thread.replies {
         changes.push(WatchChange::ReplyAdded {

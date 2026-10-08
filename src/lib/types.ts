@@ -418,6 +418,9 @@ export interface Thread {
 	channel: Channel;
 	// Held in the review's batch: the agent cannot read it until the batch is sent.
 	pending: boolean;
+	// About the whole file rather than the lines its anchor or pin spans, which
+	// then span the file. Such a thread carries no excerpt.
+	whole_file: boolean;
 	// Whether the thread's review holds a batch, which a new reply joins.
 	batch_held: boolean;
 	// The states a UI gesture may legally move this thread to, in presentation

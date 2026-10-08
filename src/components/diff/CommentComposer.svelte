@@ -180,6 +180,7 @@ async function handleSubmit(delivery: Delivery) {
 	const submittedText = composerDraft.text;
 	const submittedRevision = submittedDraft.revision;
 	const submittedCaptured = capturedResult;
+	const submittedWholeFile = captured?.wholeFile === true;
 	const submittedCurrentFile = currentFile;
 	const submittedResolveCommitOid = resolveCommitOid;
 	const submittedComposerSession = activeSession;
@@ -203,6 +204,7 @@ async function handleSubmit(delivery: Delivery) {
 				endLine: submittedCurrentFile.endLine,
 				text: submittedText,
 				delivery,
+				wholeFile: submittedWholeFile,
 			});
 		} else {
 			let anchor = submittedCaptured.anchor;
@@ -218,6 +220,7 @@ async function handleSubmit(delivery: Delivery) {
 				anchor,
 				cachedExcerpt: submittedCaptured.cachedExcerpt,
 				delivery,
+				wholeFile: submittedWholeFile,
 			});
 		}
 	} catch (e) {

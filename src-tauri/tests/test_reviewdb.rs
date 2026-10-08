@@ -38,6 +38,7 @@ fn diff_anchor() -> Anchor {
 
 fn submission(text: &str) -> SubmitThreadRequest {
     SubmitThreadRequest {
+        whole_file: false,
         text: text.to_string(),
         anchor: Some(diff_anchor()),
         commit_oid: None,
@@ -109,7 +110,7 @@ fn the_v8_rebuild_keeps_the_replies_hanging_off_a_thread() {
             "ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
-             ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
+             ALTER TABLE threads DROP COLUMN whole_file; ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
              DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
@@ -145,6 +146,7 @@ fn a_current_file_thread_stores_its_pinned_block_and_ordinal() {
         &store,
         &canonical,
         SubmitThreadRequest {
+            whole_file: false,
             text: "pin this".into(),
             anchor: None,
             commit_oid: None,
@@ -274,6 +276,40 @@ fn full_file_submission(excerpt: &str, start_line: u32, end_line: u32) -> Submit
         cached_excerpt: Some(excerpt.to_string()),
         ..submission("full file")
     }
+}
+
+#[test]
+fn a_whole_file_thread_reads_back_as_about_the_whole_file() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let whole = SubmitThreadRequest {
+        whole_file: true,
+        ..full_file_submission("a\nb\nc", 1, 3)
+    };
+    submit_thread_inner(&store, &canonical, whole, 1_000).unwrap();
+
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
+
+    assert!(threads[0].whole_file);
+}
+
+#[test]
+fn a_line_range_thread_reads_back_as_about_its_lines() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(
+        &store,
+        &canonical,
+        full_file_submission("a\nb\nc", 1, 3),
+        1_000,
+    )
+    .unwrap();
+
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
+
+    assert!(!threads[0].whole_file);
 }
 
 /// The same doubling reached full-file captures, where an empty line can also
@@ -2383,6 +2419,7 @@ fn renders_a_stored_review() {
             &store,
             &canonical,
             SubmitThreadRequest {
+                whole_file: false,
                 text: text.to_string(),
                 anchor: Some(anchor),
                 commit_oid: None,
@@ -2759,6 +2796,7 @@ fn add_thread(store: &Store, review_id: &str, text: &str, delivery: Delivery) ->
                 tx,
                 review_id,
                 reviewdb::threads::NewThread {
+                    whole_file: false,
                     text: text.to_string(),
                     anchor: None,
                     commit_oid: None,
@@ -3215,6 +3253,7 @@ fn a_thread_anchor_round_trips_every_field() {
         &store,
         &canonical,
         SubmitThreadRequest {
+            whole_file: false,
             text: "whole-file note".to_string(),
             anchor: Some(anchor.clone()),
             commit_oid: None,
@@ -3511,6 +3550,7 @@ fn a_commit_note_leaves_the_diff_composers_draft_alone() {
         &store,
         &canonical,
         SubmitThreadRequest {
+            whole_file: false,
             text: "a note about the commit".to_string(),
             anchor: None,
             commit_oid: Some("deadbeef".to_string()),
@@ -4131,7 +4171,7 @@ fn a_store_from_the_earlier_v5_is_reconciled() {
              ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
-             ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
+             ALTER TABLE threads DROP COLUMN whole_file; ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
              DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
@@ -4979,7 +5019,7 @@ fn a_store_from_the_unreleased_v8_is_accepted() {
         let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
         conn.execute_batch(
             "CREATE TABLE pin_seq (repo_path TEXT PRIMARY KEY, next INTEGER NOT NULL);
-             ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
+             ALTER TABLE threads DROP COLUMN whole_file; ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
              DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
@@ -5047,7 +5087,7 @@ fn a_store_stamped_eight_without_the_pin_columns_is_migrated() {
             "ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
-             ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
+             ALTER TABLE threads DROP COLUMN whole_file; ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
              DROP TABLE thread_history;
              DROP TABLE minted_snapshots;
              DROP TABLE legacy_snapshot_candidates;
@@ -5498,7 +5538,7 @@ fn a_commit_under_a_keepalive_ref_trunk_never_minted_never_goes_stale() {
 fn wind_back_to_v8(ctx: &TestContext) {
     let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
     conn.execute_batch(
-        "ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
+        "ALTER TABLE threads DROP COLUMN whole_file; ALTER TABLE threads DROP COLUMN pending; ALTER TABLE replies DROP COLUMN pending; ALTER TABLE reviews ADD COLUMN published INTEGER NOT NULL DEFAULT 1; ALTER TABLE reviews DROP COLUMN archived;
          DROP TABLE thread_history;
          DROP TABLE minted_snapshots;
          DROP TABLE legacy_snapshot_candidates;
@@ -5935,6 +5975,7 @@ fn a_repo_with_a_pinned_block(
         &store,
         &canonical,
         SubmitThreadRequest {
+            whole_file: false,
             text: "look at this".into(),
             anchor: None,
             commit_oid: None,
@@ -5977,6 +6018,7 @@ fn pinning_a_line_range_captures_that_range_from_the_file() {
         3,
         "look at this",
         Delivery::Send,
+        false,
         1_000,
     )
     .unwrap();
@@ -6012,6 +6054,7 @@ fn submitting_a_current_file_thread_stores_the_line_the_user_selected() {
         3,
         "look at this",
         Delivery::Send,
+        false,
         1_000,
     )
     .unwrap();
@@ -6045,6 +6088,7 @@ fn submitting_against_a_later_twin_stores_that_twins_line() {
         3,
         "look at this",
         Delivery::Send,
+        false,
         1_000,
     )
     .unwrap();
@@ -6080,6 +6124,7 @@ fn a_recompute_over_an_unchanged_file_leaves_the_submitted_line_alone() {
         2,
         "look at this",
         Delivery::Send,
+        false,
         1_000,
     )
     .unwrap();
@@ -6109,6 +6154,7 @@ fn losing_the_pinned_block_clears_the_resolved_line() {
         2,
         "look at this",
         Delivery::Send,
+        false,
         1_000,
     )
     .unwrap();
@@ -6140,6 +6186,7 @@ fn restoring_the_pinned_block_restores_the_resolved_line() {
         2,
         "look at this",
         Delivery::Send,
+        false,
         1_000,
     )
     .unwrap();
@@ -6176,6 +6223,7 @@ fn pinning_a_nested_file_keeps_its_full_path() {
         2,
         "look at this",
         Delivery::Send,
+        false,
         1_000,
     )
     .unwrap();
@@ -6206,6 +6254,7 @@ fn pinning_a_later_twin_records_its_own_ordinal() {
         3,
         "this one",
         Delivery::Send,
+        false,
         1_000,
     )
     .unwrap();
@@ -6232,6 +6281,64 @@ fn a_current_file_thread_whose_block_left_the_file_is_stale() {
         only_thread(&store, &canonical).stale,
         "a pinned block that occurs nowhere in the file is stale",
     );
+}
+
+/// Nobody can say which edit a comment on the whole file is about, so every
+/// edit is one. Appending leaves the old content intact as a block, which is
+/// the edit a block search alone would miss.
+#[test]
+fn a_whole_file_current_file_thread_goes_stale_on_any_edit() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\ntwo\nthree\n")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_current_file_thread_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        "a.txt",
+        1,
+        3,
+        "about the whole file",
+        Delivery::Send,
+        true,
+        1_000,
+    )
+    .unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "one\ntwo\nthree\nfour\n").unwrap();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(only_thread(&store, &canonical).stale);
+}
+
+#[test]
+fn a_whole_file_current_file_thread_on_an_unchanged_file_is_not_stale() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\ntwo\nthree\n")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_current_file_thread_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        "a.txt",
+        1,
+        3,
+        "about the whole file",
+        Delivery::Send,
+        true,
+        1_000,
+    )
+    .unwrap();
+
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(!only_thread(&store, &canonical).stale);
 }
 
 #[test]
@@ -6373,6 +6480,7 @@ fn pinning_refuses_a_path_the_index_does_not_hold() {
             1,
             "look",
             Delivery::Send,
+            false,
             1_000,
         )
         .unwrap_err();
@@ -6411,6 +6519,7 @@ fn pinning_refuses_a_tracked_symlink() {
         1,
         "look",
         Delivery::Send,
+        false,
         1_000,
     )
     .unwrap_err();
@@ -6442,6 +6551,7 @@ fn pinning_refuses_a_regular_index_entry_replaced_by_a_symlink_before_writing() 
         1,
         "look",
         Delivery::Send,
+        false,
         1_000,
     )
     .unwrap_err();
@@ -6473,6 +6583,7 @@ fn pinning_refuses_a_regular_index_entry_below_a_symlinked_parent_before_writing
         1,
         "look",
         Delivery::Send,
+        false,
         1_000,
     )
     .unwrap_err();
@@ -6501,6 +6612,7 @@ fn pinning_reports_an_unreadable_index_as_not_found_before_writing() {
         1,
         "look",
         Delivery::Send,
+        false,
         1_000,
     )
     .unwrap_err();
@@ -6532,6 +6644,7 @@ fn pinning_refuses_a_file_the_current_file_view_calls_binary() {
         2,
         "look",
         Delivery::Send,
+        false,
         1_000,
     )
     .unwrap_err();
@@ -6577,6 +6690,7 @@ fn a_current_file_thread_survives_a_restart_on_the_same_lines() {
             2,
             "look",
             Delivery::Send,
+            false,
             1_000,
         )
         .unwrap();
@@ -6750,6 +6864,7 @@ fn a_fifty_thread_recompute_pass_is_reported() {
             i + 1,
             "look",
             Delivery::Send,
+            false,
             1_000,
         )
         .unwrap();
@@ -6772,6 +6887,7 @@ fn a_review_lists_the_commits_its_threads_sit_on_in_the_order_they_arrived() {
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let note = |oid: &str| SubmitThreadRequest {
+        whole_file: false,
         text: "a note about the commit".to_string(),
         anchor: None,
         commit_oid: Some(oid.to_string()),
