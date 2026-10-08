@@ -279,3 +279,11 @@ the catalog shows a button group at each size, xs to lg, now that a group stands
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-10-08
+
+review panel port: the Badge primitive for a short id or count, and the 24px base button size
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png
