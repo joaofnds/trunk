@@ -60,6 +60,8 @@
 	--leading-none: var(--leading-none);
 	--leading-tight: var(--leading-tight);
 	--leading-normal: var(--leading-normal);
+	--leading-prose: var(--leading-prose);
+	--leading-code: var(--leading-code);
 	--tracking-wide: var(--tracking-wide);
 	--tracking-wider: var(--tracking-wider);
 	--tracking-widest: var(--tracking-widest);

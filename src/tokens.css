@@ -155,6 +155,10 @@
 	--leading-none: 1;
 	--leading-tight: 1.25;
 	--leading-normal: 1.5;
+	/* A paragraph at a fixed step, a comment's text, and a line of a code
+	   excerpt, as lengths so n lines stand on the grid. */
+	--leading-prose: calc(5 * var(--u));
+	--leading-code: calc(4 * var(--u));
 	--tracking-wide: 0.02em;
 	--tracking-wider: 0.04em;
 	--tracking-widest: 0.08em;

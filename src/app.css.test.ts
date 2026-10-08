@@ -289,6 +289,13 @@ describe("tokens.css type scale", () => {
 		expect(declared("--leading-normal")).toBe("1.5");
 	});
 
+	/* Lengths, so a paragraph of n lines at a fixed step stands a whole number
+	   of units tall, where 1.5 of 13px or 11px would land between pixels. */
+	it("declares the line heights a fixed-step paragraph and a code excerpt take on the grid", () => {
+		expect(declared("--leading-prose")).toBe("calc(5 * var(--u))");
+		expect(declared("--leading-code")).toBe("calc(4 * var(--u))");
+	});
+
 	it("declares tracking in em, so it follows the step it is set on", () => {
 		expect(declared("--tracking-wide")).toBe("0.02em");
 		expect(declared("--tracking-wider")).toBe("0.04em");
