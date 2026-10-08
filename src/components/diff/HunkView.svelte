@@ -18,7 +18,7 @@ import {
 import { measure } from "../../lib/perf.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
-import { ALL_THREADS, threadToneColor } from "../../lib/review-filter.js";
+import { ALL_THREADS } from "../../lib/review-filter.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type {
 	DiffLine,
@@ -276,7 +276,7 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 		{@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
 		{@const hunkLines = fileDiffs.find((fd) => fd.path === item.path)?.hunks[item.hunkIdx]?.lines ?? []}
 		<div
-			class="diff-line flex items-start px-2 text-diff-text {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{item.spanTone ? ' diff-line-commented' : ''}"
+			class="diff-line flex items-start px-2 text-diff-text {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}"
 			class:whitespace-pre-wrap={vd.wrapActive}
 			class:whitespace-pre={!vd.wrapActive}
 			class:break-all={vd.wrapActive}
@@ -285,7 +285,6 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 			style:font-size={DIFF_ROW_FONT.fontSize}
 			style:line-height={DIFF_ROW_FONT.lineHeight}
 			style:background={lineBackground(line.origin, isSelected)}
-			style:--thread-tone={item.spanTone ? threadToneColor(item.spanTone) : undefined}
 			data-line-path={item.path}
 			data-hunk-index={item.hunkIdx}
 			data-line-index={item.lineIdx}
@@ -712,13 +711,6 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 .diff-line-delete {
 	border-left-color: var(--color-diff-delete);
 }
-/* Left edge on lines a thread covers, in its most urgent state. Inset box-shadow
-     rather than a background tint so it doesn't fight the add/delete/context
-     row backgrounds; layered over the existing 3px change-indicator border. */
-.diff-line-commented {
-	box-shadow: inset 3px 0 0 0 var(--thread-tone);
-}
-
 /* Inline comment row: a plain block sibling stacked under its line (not a grid
      cell), one viewport wide, so the probe measures a card at the width the
      pinned row draws it. */

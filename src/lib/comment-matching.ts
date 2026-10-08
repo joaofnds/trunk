@@ -109,21 +109,6 @@ export function commentsForLine(
 	return viewComments.filter((c) => rangeOn(c, side)?.end === lineno);
 }
 
-/** The threads whose range covers this line, which tint its gutter edge. */
-export function threadsCovering(
-	viewComments: Thread[],
-	side: Side,
-	lineno: number | null | undefined,
-): Thread[] {
-	if (lineno === null || lineno === undefined) return [];
-
-	return viewComments.filter((c) => {
-		const range = rangeOn(c, side);
-
-		return range !== null && range.start <= lineno && lineno <= range.end;
-	});
-}
-
 /** The threads about the whole of `filePath`, which sit above its first line. */
 export function threadsOnWholeFile(
 	viewComments: Thread[],

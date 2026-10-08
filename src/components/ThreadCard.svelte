@@ -819,15 +819,12 @@ async function requestDeleteReply(replyId: string) {
 .diff-line {
 	display: grid;
 	grid-template-columns: calc(10 * var(--u)) calc(3 * var(--u)) minmax(0, 1fr);
-	box-shadow: inset 2px 0 0 transparent;
 }
 .diff-line-add {
 	background: var(--color-diff-add-bg);
-	box-shadow: inset 2px 0 0 var(--color-diff-add);
 }
 .diff-line-del {
 	background: var(--color-diff-delete-bg);
-	box-shadow: inset 2px 0 0 var(--color-diff-delete);
 }
 .diff-number {
 	padding-right: var(--space-2);

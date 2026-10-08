@@ -192,22 +192,6 @@ describe("buildInlineRows", () => {
 		expect(model.rows.some((row) => row.kind === "comment")).toBe(false);
 	});
 
-	it("tones a covered line with the most urgent state among its threads", () => {
-		const model = buildInlineRows([twoHunks], {
-			...fullMode,
-			comments: [
-				{ ...thread("t1", "New", 1, 2), state: "done" },
-				{ ...thread("t2", "New", 2, 2), state: "addressed" },
-			],
-		});
-
-		const tones = model.rows
-			.filter((row) => row.kind === "line")
-			.map((row) => row.spanTone);
-
-		expect(tones).toEqual(["done", "addressed", null]);
-	});
-
 	it("marks where threads start with their count and most urgent state", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
@@ -273,18 +257,6 @@ describe("buildInlineRows", () => {
 		});
 
 		expect(model.markerChars).toBe(0);
-	});
-
-	it("leaves lines untoned when inline comments are hidden", () => {
-		const model = buildInlineRows([twoHunks], {
-			...fullMode,
-			reviewCommentsVisible: false,
-			comments: [thread("t1", "New", 1, 2)],
-		});
-
-		expect(
-			model.rows.every((row) => row.kind !== "line" || row.spanTone === null),
-		).toBe(true);
 	});
 
 	it("emits a header row and a binary row, and no line rows, for a binary file", () => {
@@ -599,22 +571,6 @@ describe("buildSplitRows", () => {
 		});
 
 		expect(model.rows.some((row) => row.kind === "comment")).toBe(false);
-	});
-
-	it("tones each side from that side's own threads", () => {
-		const model = buildSplitRows([pairable], {
-			...fullMode,
-			comments: [thread("t1", "New", 1, 2)],
-		});
-
-		const pairs = model.rows.filter((row) => row.kind === "pair");
-
-		expect(pairs.map((row) => row.spanToneRight)).toEqual([
-			"open",
-			"open",
-			null,
-		]);
-		expect(pairs.map((row) => row.spanToneLeft)).toEqual([null, null, null]);
 	});
 
 	it("marks each side's threads on the side they start from", () => {
@@ -1008,7 +964,7 @@ describe("buildInlineRows with a content-pinned thread", () => {
 		expect(model.rows.every((row) => row.kind === "line")).toBe(true);
 	});
 
-	it("marks every line of the pinned block as commented", () => {
+	it("marks the pinned block where it starts", () => {
 		const model = buildInlineRows(
 			[wholeFile],
 			withPin([
@@ -1022,10 +978,10 @@ describe("buildInlineRows with a content-pinned thread", () => {
 			]),
 		);
 
-		const tones = model.rows
+		const markers = model.rows
 			.filter((row) => row.kind === "line")
-			.map((row) => row.kind === "line" && row.spanTone);
-		expect(tones).toEqual([null, "open", "open", null]);
+			.map((row) => row.kind === "line" && row.marker);
+		expect(markers).toEqual([null, { count: 1, tone: "open" }, null, null]);
 	});
 });
 
@@ -1048,7 +1004,7 @@ describe("buildSplitRows with a content-pinned thread", () => {
 		]);
 	});
 
-	it("marks every line of a multi-line pin on the right-hand side", () => {
+	it("marks a multi-line pin where it starts, on the right-hand side", () => {
 		const model = buildSplitRows(
 			[wholeFile],
 			withPin([
@@ -1062,10 +1018,10 @@ describe("buildSplitRows with a content-pinned thread", () => {
 			]),
 		);
 
-		const tones = model.rows
+		const markers = model.rows
 			.filter((row) => row.kind === "pair")
-			.map((row) => row.kind === "pair" && row.spanToneRight);
-		expect(tones).toEqual([null, "open", "open", null]);
+			.map((row) => row.kind === "pair" && row.markerRight);
+		expect(markers).toEqual([null, { count: 1, tone: "open" }, null, null]);
 	});
 });
 
@@ -1169,19 +1125,17 @@ describe("a whole-file thread", () => {
 		).toEqual(["file-header", ["w1"], "line", "line", "line"]);
 	});
 
-	it("marks and tints none of the file's lines", () => {
+	it("marks none of the file's lines", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
 			comments: [onTheFile],
 		});
 
 		const lines = model.rows.filter((row) => row.kind === "line");
-		expect(
-			lines.map((row) => row.kind === "line" && [row.marker, row.spanTone]),
-		).toEqual([
-			[null, null],
-			[null, null],
-			[null, null],
+		expect(lines.map((row) => row.kind === "line" && row.marker)).toEqual([
+			null,
+			null,
+			null,
 		]);
 	});
 

@@ -318,20 +318,6 @@ describe("HunkView thread marker", () => {
 		).toBe("var(--color-thread-addressed)");
 	});
 
-	it("edges a covered line in its thread's state", () => {
-		render(HunkView, {
-			props: defaultProps({
-				viewComments: [{ ...onAddedLine("t1"), state: "done" }],
-			}),
-		});
-
-		const row = screen.getByText("added one").closest(".diff-line");
-
-		expect((row as HTMLElement).style.getPropertyValue("--thread-tone")).toBe(
-			"var(--color-thread-done)",
-		);
-	});
-
 	it("keeps the empty column on a line no thread hangs on, so the code stays aligned", () => {
 		render(HunkView, {
 			props: defaultProps({

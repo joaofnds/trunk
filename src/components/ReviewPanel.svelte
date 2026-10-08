@@ -1267,8 +1267,7 @@ $effect(() => {
 }
 
 /* A branch's section: its head stays in view while its commits scroll under
-   it, and each commit's head stays under that. The rail down the left joins a
-   commit's node to the threads under it, in the branch's lane colour. */
+   it, and each commit's head stays under that. */
 .review-branch + .review-branch {
 	margin-top: var(--space-3);
 }
@@ -1292,21 +1291,6 @@ $effect(() => {
 	color: var(--color-text-subtle);
 	white-space: nowrap;
 }
-.review-group {
-	position: relative;
-}
-.review-group::before {
-	content: "";
-	position: absolute;
-	left: calc(var(--space-4) + var(--u));
-	top: calc(var(--bar-h) / 2);
-	bottom: 0;
-	width: calc(var(--u) / 2);
-	background: color-mix(in oklch, var(--lane) 55%, transparent);
-}
-.review-group:last-child::before {
-	bottom: var(--space-3);
-}
 .review-group-head {
 	position: sticky;
 	top: var(--bar-h);
@@ -1317,8 +1301,6 @@ $effect(() => {
 	border-top: 1px solid var(--color-border);
 }
 .review-node {
-	position: relative;
-	z-index: 1;
 	flex-shrink: 0;
 	width: calc(5 * var(--u) / 2);
 	height: calc(5 * var(--u) / 2);

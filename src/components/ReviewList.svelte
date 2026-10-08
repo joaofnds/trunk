@@ -298,7 +298,6 @@ function deletePrompt(review: Review): string {
 }
 .review-item-shown {
 	background: var(--color-selected-row);
-	box-shadow: inset 2px 0 0 var(--color-accent);
 }
 .review-confirm {
 	grid-column: 1 / -1;

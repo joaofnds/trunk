@@ -4,7 +4,6 @@ import {
 	commentsForLine,
 	commentsForView,
 	resolveViewOid,
-	threadsCovering,
 	threadsStartingOn,
 	type ViewDescriptor,
 } from "./comment-matching.js";
@@ -445,63 +444,6 @@ describe("commentsForLine", () => {
 	});
 });
 
-describe("threadsCovering", () => {
-	const FILE = "src/main.ts";
-
-	function range(side: Side, startLine: number, endLine: number): Thread[] {
-		return [
-			lineComment(
-				"c1",
-				anchor({
-					commitOid: "oid",
-					filePath: FILE,
-					side,
-					startLine,
-					endLine,
-				}),
-			),
-		];
-	}
-
-	it("includes the start line of the range", () => {
-		expect(threadsCovering(range("New", 10, 13), "New", 10)).toEqual(
-			range("New", 10, 13),
-		);
-	});
-
-	it("includes a middle line of the range", () => {
-		expect(threadsCovering(range("New", 10, 13), "New", 11)).toEqual(
-			range("New", 10, 13),
-		);
-	});
-
-	it("includes the end line of the range", () => {
-		expect(threadsCovering(range("New", 10, 13), "New", 13)).toEqual(
-			range("New", 10, 13),
-		);
-	});
-
-	it("excludes the line just before the range", () => {
-		expect(threadsCovering(range("New", 10, 13), "New", 9)).toEqual([]);
-	});
-
-	it("excludes the line just after the range", () => {
-		expect(threadsCovering(range("New", 10, 13), "New", 14)).toEqual([]);
-	});
-
-	it("does not span a line on the other side", () => {
-		expect(threadsCovering(range("New", 10, 13), "Old", 11)).toEqual([]);
-	});
-
-	it("returns none for a null lineno", () => {
-		expect(threadsCovering(range("New", 10, 13), "New", null)).toEqual([]);
-	});
-
-	it("returns none for an undefined lineno", () => {
-		expect(threadsCovering(range("New", 10, 13), "New", undefined)).toEqual([]);
-	});
-});
-
 describe("threadsStartingOn", () => {
 	const block = lineComment(
 		"c1",
@@ -568,28 +510,5 @@ describe("commentsForLine when the thread is content-pinned", () => {
 
 	it("hangs nowhere while the file no longer holds its block", () => {
 		expect(commentsForLine([lostPin], "New", 12)).toEqual([]);
-	});
-});
-
-describe("threadsCovering when the thread is content-pinned", () => {
-	it.each([20, 21, 22])("spans line %i of its resolved range", (lineno) => {
-		expect(threadsCovering([resolvedPin], "New", lineno)).toEqual([
-			resolvedPin,
-		]);
-	});
-
-	it.each([19, 23])(
-		"spans no line outside its resolved range (%i)",
-		(lineno) => {
-			expect(threadsCovering([resolvedPin], "New", lineno)).toEqual([]);
-		},
-	);
-
-	it("answers for the New side only, so a current-file diff cannot double it", () => {
-		expect(threadsCovering([resolvedPin], "Old", 21)).toEqual([]);
-	});
-
-	it("spans nothing while the file no longer holds its block", () => {
-		expect(threadsCovering([lostPin], "New", 11)).toEqual([]);
 	});
 });

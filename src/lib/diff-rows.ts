@@ -9,7 +9,6 @@ import type { Snippet } from "svelte";
 import { BAR_HEIGHT, UNIT } from "./chrome-heights.js";
 import {
 	commentsForLine,
-	threadsCovering,
 	threadsOnWholeFile,
 	threadsStartingOn,
 } from "./comment-matching.js";
@@ -46,8 +45,6 @@ export type DiffRow =
 			line: DiffLine;
 			/** Display columns the content occupies, from the same pass. */
 			columns: number;
-			/** The most urgent state among the threads covering this line. */
-			spanTone: ReviewTone | null;
 			marker: LineMarker | null;
 	  }
 	| {
@@ -58,8 +55,6 @@ export type DiffRow =
 			/** Display columns each side's content occupies, from the same pass. */
 			leftColumns: number;
 			rightColumns: number;
-			spanToneLeft: ReviewTone | null;
-			spanToneRight: ReviewTone | null;
 			markerLeft: LineMarker | null;
 			markerRight: LineMarker | null;
 	  }
@@ -230,7 +225,6 @@ export function buildInlineRows(
 					flatIdx,
 					line,
 					columns,
-					spanTone: mostUrgentTone(threadsAcross(threadsCovering, shown, line)),
 					marker: markerFor(threadsAcross(threadsStartingOn, shown, line)),
 				});
 
@@ -348,12 +342,6 @@ export function buildSplitRows(
 					row: pair,
 					leftColumns,
 					rightColumns,
-					spanToneLeft: mostUrgentTone(
-						threadsCovering(shown, "Old", pair.left?.line.old_lineno),
-					),
-					spanToneRight: mostUrgentTone(
-						threadsCovering(shown, "New", pair.right?.line.new_lineno),
-					),
 					markerLeft: markerFor(
 						threadsStartingOn(shown, "Old", pair.left?.line.old_lineno),
 					),
@@ -470,7 +458,7 @@ function markerFor(threads: Thread[]): LineMarker | null {
 
 /** One matcher's threads on either side of an inline line. */
 function threadsAcross(
-	match: typeof threadsCovering,
+	match: typeof threadsStartingOn,
 	comments: Thread[],
 	line: DiffLine,
 ): Thread[] {
