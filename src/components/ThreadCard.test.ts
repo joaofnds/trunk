@@ -573,6 +573,101 @@ describe("ThreadCard", () => {
 		expect(excerptNumbers(container)).toEqual(["10", "", "14"]);
 	});
 
+	describe("with an excerpt longer than 10 lines", () => {
+		const long = linesOf(25);
+		// jsdom lays nothing out, so it has no scrollIntoView to call.
+		const original = Element.prototype.scrollIntoView;
+		const scrolled = vi.fn();
+		beforeEach(() => {
+			scrolled.mockClear();
+			Element.prototype.scrollIntoView = scrolled;
+		});
+		afterEach(() => {
+			Element.prototype.scrollIntoView = original;
+		});
+
+		function excerptCode(container: HTMLElement): (string | null)[] {
+			return Array.from(
+				container.querySelectorAll(".comment-card-diff .diff-content"),
+			).map((n) => n.textContent);
+		}
+
+		function renderLong(excerpt: string[]) {
+			return renderCard({
+				thread: {
+					...comment,
+					anchor: { ...anchor, start_line: 1, end_line: excerpt.length },
+					cached_excerpt: excerpt.map((line) => `+${line}`).join("\n"),
+				},
+			});
+		}
+
+		it("shows its first 10 lines and how many more it holds", () => {
+			const { container } = renderLong(long);
+
+			expect(excerptCode(container)).toEqual(long.slice(0, 10));
+			expect(
+				screen.getByRole("button", { name: "Show 15 more lines" }),
+			).toBeInTheDocument();
+		});
+
+		it("shows every line once asked", async () => {
+			const { container } = renderLong(long);
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Show 15 more lines" }),
+			);
+
+			expect(excerptCode(container)).toEqual(long);
+		});
+
+		it("folds back to its first 10 lines", async () => {
+			const { container } = renderLong(long);
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Show 15 more lines" }),
+			);
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Show fewer lines" }),
+			);
+
+			expect(excerptCode(container)).toEqual(long.slice(0, 10));
+		});
+
+		it("brings its control back into view once folded, so the reader stays on the card", async () => {
+			renderLong(long);
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Show 15 more lines" }),
+			);
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Show fewer lines" }),
+			);
+			await tick();
+
+			expect(scrolled.mock.contexts).toEqual([
+				screen.getByRole("button", { name: "Show 15 more lines" }),
+			]);
+		});
+
+		it("names one folded line in the singular", () => {
+			renderLong(linesOf(11));
+
+			expect(
+				screen.getByRole("button", { name: "Show 1 more line" }),
+			).toBeInTheDocument();
+		});
+
+		it("shows an excerpt of exactly 10 lines whole, with nothing to open", () => {
+			const { container } = renderLong(linesOf(10));
+
+			expect(excerptCode(container)).toEqual(linesOf(10));
+			expect(
+				screen.queryByRole("button", { name: /more line|fewer lines/ }),
+			).not.toBeInTheDocument();
+		});
+	});
+
 	// An inline card's height is measured once from a hidden copy, so a card
 	// that changed its own height would leave the diff's rows misplaced.
 	it("offers no collapse inside the diff", () => {
@@ -1484,3 +1579,7 @@ describe("ThreadCard", () => {
 		).toBeInTheDocument();
 	});
 });
+
+function linesOf(count: number): string[] {
+	return Array.from({ length: count }, (_, at) => `line ${at + 1}`);
+}

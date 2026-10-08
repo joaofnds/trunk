@@ -8,6 +8,7 @@ import FileText from "@lucide/svelte/icons/file-text";
 import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
 import Pencil from "@lucide/svelte/icons/pencil";
 import Trash2 from "@lucide/svelte/icons/trash-2";
+import { tick } from "svelte";
 import { externalLinks } from "../lib/external-links.js";
 import { gapLength } from "../lib/full-file-anchor.js";
 import { currentMinute } from "../lib/now.svelte.js";
@@ -341,6 +342,15 @@ const excerptLines = $derived(
 			),
 );
 
+// A long excerpt opens on its first lines, so the conversation under it stays
+// in view, and the rest is one press away.
+const EXCERPT_CAP = 10;
+let excerptOpen = $state(false);
+const excerptFolded = $derived(Math.max(0, excerptLines.length - EXCERPT_CAP));
+const excerptShown = $derived(
+	excerptOpen ? excerptLines : excerptLines.slice(0, EXCERPT_CAP),
+);
+
 function openEdit() {
 	draft.open(thread.text);
 }
@@ -499,7 +509,7 @@ async function requestDeleteReply(replyId: string) {
 						{excerptNote}
 					</p>
 				{/if}
-				{#each excerptLines as line, i (i)}
+				{#each excerptShown as line, i (i)}
 					<div class="diff-line diff-line-{line.kind}">
 						<span class="diff-number select-none">{line.number ?? ""}</span>
 						<span class="diff-gutter select-none">{line.gutter}</span>
@@ -516,6 +526,25 @@ async function requestDeleteReply(replyId: string) {
 						>
 					</div>
 				{/each}
+				{#if excerptFolded > 0}
+					<p class="m-0 flex px-3 pt-1 font-sans text-small">
+						<LinkButton
+							tone="accent"
+							onclick={async (event) => {
+								const control = event.currentTarget;
+								excerptOpen = !excerptOpen;
+								if (excerptOpen) return;
+								// Folding drops hundreds of lines above the reader, so the
+								// control comes back into view to keep them on this card.
+								await tick();
+								control.scrollIntoView({ block: "nearest" });
+							}}
+							>{excerptOpen
+								? "Show fewer lines"
+								: `Show ${excerptFolded} more ${excerptFolded === 1 ? "line" : "lines"}`}</LinkButton
+						>
+					</p>
+				{/if}
 			</div>
 		{/if}
 
