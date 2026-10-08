@@ -271,3 +271,11 @@ catalog shows the review UI's new primitives: xs buttons, destructive row action
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-10-08
+
+the catalog shows a button group at each size, xs to lg, now that a group stands at the height of its buttons
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png
