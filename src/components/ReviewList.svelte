@@ -195,7 +195,7 @@ function deletePrompt(review: Review): string {
 				</p>
 				<div class="flex justify-end gap-2">
 					<Button
-						size="xs"
+						size="sm"
 						variant="ghost"
 						onclick={() => {
 							deleteConfirmingId = null;
@@ -203,7 +203,7 @@ function deletePrompt(review: Review): string {
 						>Cancel</Button
 					>
 					<Button
-						size="xs"
+						size="sm"
 						variant="danger"
 						onclick={() => deleteReview(review.id)}
 						>Delete review</Button
@@ -226,7 +226,7 @@ function deletePrompt(review: Review): string {
 			<Badge variant="label" tone="muted">{reviews.length}</Badge>
 		</h2>
 		<Button
-			size="xs"
+			size="sm"
 			variant="ghost"
 			onclick={() => startNewReview(repoPath, reviewComments)}
 			aria-label="New review"

@@ -50,8 +50,8 @@ const headingId = $props.id();
 .review-empty :global(p) {
 	margin: 0;
 	color: var(--color-text-muted);
-	font-size: var(--text-callout);
-	line-height: var(--leading-normal);
+	font-size: var(--text-body);
+	line-height: var(--leading-prose);
 	text-wrap: pretty;
 }
 </style>

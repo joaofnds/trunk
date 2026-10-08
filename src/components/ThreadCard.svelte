@@ -494,6 +494,7 @@ async function requestDeleteReply(replyId: string) {
 	onpointerdown={onfocusrequest}
 	class:comment-card-resolved={thread.state === "done" ||
 		thread.state === "dismissed"}
+	class:comment-card-dismissed={thread.state === "dismissed"}
 	class:comment-card-open={!collapsed}
 >
 	<header class="comment-card-header">
@@ -525,30 +526,32 @@ async function requestDeleteReply(replyId: string) {
 			>
 				{#if excerptNote}
 					<p
-						class="flex items-center gap-1 px-3 pb-1 font-sans text-small text-text-subtle"
+						class="m-0 flex h-control items-center gap-1 px-3 font-sans text-small text-text-subtle shadow-hairline"
 					>
 						{excerptNote}
 					</p>
 				{/if}
-				{#each excerptShown as line, i (i)}
-					<div class="diff-line diff-line-{line.kind}">
-						<span class="diff-number select-none">{line.number ?? ""}</span>
-						<span class="diff-gutter select-none">{line.gutter}</span>
-						<span class="diff-content select-text"
-							>{#if line.spans.length > 0}
-								{#each line.spans as span, j (j)}
-									<span class={span.syntax_class}
-										>{line.content.slice(span.start, span.end)}</span
-									>
-								{/each}
-							{:else}
-								{line.content}
-							{/if}</span
-						>
-					</div>
-				{/each}
+				<div class="py-1">
+					{#each excerptShown as line, i (i)}
+						<div class="diff-line diff-line-{line.kind}">
+							<span class="diff-number select-none">{line.number ?? ""}</span>
+							<span class="diff-gutter select-none">{line.gutter}</span>
+							<span class="diff-content select-text"
+								>{#if line.spans.length > 0}
+									{#each line.spans as span, j (j)}
+										<span class={span.syntax_class}
+											>{line.content.slice(span.start, span.end)}</span
+										>
+									{/each}
+								{:else}
+									{line.content}
+								{/if}</span
+							>
+						</div>
+					{/each}
+				</div>
 				{#if linesPastCap > 0}
-					<p class="m-0 flex px-3 pt-1 font-sans text-small">
+					<p class="m-0 flex h-control items-center px-3 font-sans text-small">
 						<LinkButton
 							tone="accent"
 							onclick={(event) => toggleExcerpt(event.currentTarget)}
@@ -561,7 +564,8 @@ async function requestDeleteReply(replyId: string) {
 			</div>
 		{/if}
 
-		<!-- Comment text stays at full --color-text even when orphaned (D-08). -->
+		<!-- Comment text stays strong even when orphaned (D-08), and dims only once
+		     the thread is dismissed. -->
 		<ThreadMessage
 			channel={thread.channel}
 			createdAt={thread.created_at}
@@ -616,9 +620,12 @@ async function requestDeleteReply(replyId: string) {
 			editorSession={editor}
 			onreplyedit={(id, text) => editReply(repoPath, id, text)}
 			onreplydelete={requestDeleteReply}
+			dismissed={thread.state === "dismissed"}
 		/>
 
-		<div class="thread-reply-composer flex flex-wrap items-center gap-2 p-2">
+		<div
+			class="thread-reply-composer flex flex-wrap items-center gap-2 px-1 py-2"
+		>
 			<CommentEditor
 				bind:text={replyDraft.text}
 				label="Reply"
@@ -636,7 +643,7 @@ async function requestDeleteReply(replyId: string) {
 
 	{#if confirmingDelete}
 		<div
-			class="thread-delete-bar flex items-center gap-2 py-2 pr-2 pl-3 text-callout text-text"
+			class="thread-delete-bar flex items-center gap-2 py-1 pr-1 pl-3 text-callout text-text"
 		>
 			<span>Delete this thread and its replies? This cannot be undone.</span>
 			<span class="flex-1"></span>
@@ -755,7 +762,7 @@ async function requestDeleteReply(replyId: string) {
 	>
 		{#each stateActions as action (action.next)}
 			<Button
-				size="xs"
+				size="sm"
 				variant={action.variant}
 				onclick={() => setThreadState(repoPath, thread.id, action.next)}
 			>
@@ -853,10 +860,9 @@ async function requestDeleteReply(replyId: string) {
 .comment-card-diff {
 	font-family: var(--font-mono);
 	font-size: var(--text-small);
-	line-height: var(--leading-normal);
+	line-height: var(--leading-code);
 	background: var(--color-bg);
 	box-shadow: var(--shadow-hairline);
-	padding: var(--space-1) 0;
 }
 .diff-line {
 	display: grid;
@@ -894,8 +900,13 @@ async function requestDeleteReply(replyId: string) {
 }
 
 .comment-card-text {
-	line-height: var(--leading-normal);
+	color: var(--color-text-strong);
+	font-size: var(--text-body);
+	line-height: var(--leading-prose);
 	overflow-wrap: anywhere;
+}
+.comment-card-dismissed .comment-card-text {
+	color: var(--color-text-subtle);
 }
 
 /* Under the replies: the reply field, then the state actions on the same line

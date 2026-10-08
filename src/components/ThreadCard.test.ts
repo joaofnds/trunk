@@ -948,6 +948,26 @@ describe("ThreadCard", () => {
 		expect(screen.getByText("Dismissed")).toBeInTheDocument();
 	});
 
+	it("dims what a dismissed thread says", () => {
+		const dismissed: Thread = { ...comment, state: "dismissed" };
+
+		const { container } = renderCard({ thread: dismissed });
+
+		expect(container.querySelector("article")).toHaveClass(
+			"comment-card-dismissed",
+		);
+	});
+
+	it("keeps what a done thread says strong", () => {
+		const done: Thread = { ...comment, state: "done" };
+
+		const { container } = renderCard({ thread: done });
+
+		expect(container.querySelector("article")).not.toHaveClass(
+			"comment-card-dismissed",
+		);
+	});
+
 	it("puts the thread's state actions in its header", () => {
 		renderCard();
 

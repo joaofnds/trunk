@@ -8,6 +8,36 @@ import ThreadReplies from "./ThreadReplies.svelte";
 const reply = aReply({ id: "r1", text: "original", channel: "human" });
 
 describe("ThreadReplies", () => {
+	it("dims what the replies say once the thread is dismissed", () => {
+		const { container } = render(ThreadReplies, {
+			props: {
+				replies: [reply],
+				onreplyedit: () => true,
+				onreplydelete: () => {},
+				dismissed: true,
+			},
+		});
+
+		expect(container.querySelector(".thread-replies")).toHaveClass(
+			"thread-replies-dismissed",
+		);
+	});
+
+	it("keeps the replies strong while the thread is not dismissed", () => {
+		const { container } = render(ThreadReplies, {
+			props: {
+				replies: [reply],
+				onreplyedit: () => true,
+				onreplydelete: () => {},
+				dismissed: false,
+			},
+		});
+
+		expect(container.querySelector(".thread-replies")).not.toHaveClass(
+			"thread-replies-dismissed",
+		);
+	});
+
 	it("tells a state change between the replies it came between", () => {
 		const { container } = render(ThreadReplies, {
 			props: {
@@ -25,6 +55,7 @@ describe("ThreadReplies", () => {
 				],
 				onreplyedit: () => true,
 				onreplydelete: () => {},
+				dismissed: false,
 			},
 		});
 
@@ -43,6 +74,7 @@ describe("ThreadReplies", () => {
 				history: [aStateChange({ created_at: 100 })],
 				onreplyedit: () => true,
 				onreplydelete: () => {},
+				dismissed: false,
 			},
 		});
 
@@ -58,6 +90,7 @@ describe("ThreadReplies", () => {
 				history: [aStateChange({ state: "open", channel: "human" })],
 				onreplyedit: () => true,
 				onreplydelete: () => {},
+				dismissed: false,
 			},
 		});
 
@@ -75,6 +108,7 @@ describe("ThreadReplies", () => {
 				history: [aStateChange({ created_at: 10 })],
 				onreplyedit: () => true,
 				onreplydelete: () => {},
+				dismissed: false,
 			},
 		});
 
@@ -87,6 +121,7 @@ describe("ThreadReplies", () => {
 				replies: ["r1", "r2", "r3", "r4"].map((id) => aReply({ id })),
 				onreplyedit: () => true,
 				onreplydelete: () => {},
+				dismissed: false,
 			},
 		});
 
@@ -101,6 +136,7 @@ describe("ThreadReplies", () => {
 					replies: [reply],
 					onreplyedit: () => true,
 					onreplydelete: () => {},
+					dismissed: false,
 				},
 			});
 
@@ -122,6 +158,7 @@ describe("ThreadReplies", () => {
 				],
 				onreplyedit: () => true,
 				onreplydelete: () => {},
+				dismissed: false,
 			},
 		});
 
@@ -138,6 +175,7 @@ describe("ThreadReplies", () => {
 				replies: [reply],
 				onreplyedit: () => true,
 				onreplydelete: () => {},
+				dismissed: false,
 			},
 		});
 
@@ -165,6 +203,7 @@ describe("ThreadReplies", () => {
 				replies: [reply],
 				onreplyedit,
 				onreplydelete: () => {},
+				dismissed: false,
 				editorSession,
 			},
 		});
@@ -193,6 +232,7 @@ describe("ThreadReplies", () => {
 			replies: [reply],
 			onreplyedit,
 			onreplydelete: () => {},
+			dismissed: false,
 			editorSession: firstSession,
 		};
 		const view = render(ThreadReplies, { props });
@@ -207,6 +247,7 @@ describe("ThreadReplies", () => {
 			replies: [reply],
 			onreplyedit,
 			onreplydelete: props.onreplydelete,
+			dismissed: false,
 			editorSession: replacementSession,
 		});
 		await fireEvent.click(screen.getByRole("button", { name: "Edit reply" }));
@@ -234,6 +275,7 @@ describe("ThreadReplies", () => {
 			replies,
 			onreplyedit: () => true,
 			onreplydelete: () => {},
+			dismissed: false,
 			editorSession,
 		};
 		let view = render(ThreadReplies, { props });

@@ -335,9 +335,12 @@ describe("ReviewPanel", () => {
 		await flush();
 
 		const groupA = screen.getByRole("listitem", { name: "Commit aaaaaaa" });
-		expect(within(groupA).getByTitle("2 threads")).toHaveTextContent("2");
+		const [countA] = within(groupA).getAllByText("2 threads");
+		expect(countA.closest(".review-group-head")).not.toBeNull();
 		const groupB = screen.getByRole("listitem", { name: "Commit bbbbbbb" });
-		expect(within(groupB).getByTitle("1 thread")).toHaveTextContent("1");
+		expect(
+			within(groupB).getByText("1 thread").closest(".review-group-head"),
+		).not.toBeNull();
 	});
 
 	// 260531-l02d: an auto-added snapshot with no comments is noise — hide it. An empty
@@ -1931,10 +1934,10 @@ describe("header", () => {
 			]);
 		});
 
-		it("opens a plain field, since the caret shows where typing goes", async () => {
+		it("opens a plain field framed by a ring, since the caret shows where typing goes", async () => {
 			const field = await openTitleEditor();
 
-			expect(field).toHaveClass("border-border", "outline-none");
+			expect(field).toHaveClass("shadow-field", "outline-none");
 			expect(field).not.toHaveClass("border-accent");
 		});
 
@@ -2836,7 +2839,7 @@ describe("ReviewPanel branch sections", () => {
 			await flush();
 
 			expect(container.querySelector(".review-body")).toHaveStyle({
-				"scroll-padding-top": "calc(2 * var(--bar-h) + var(--control-sm-h))",
+				"scroll-padding-top": "calc(3 * var(--bar-h))",
 			});
 		});
 	});

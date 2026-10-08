@@ -31,7 +31,7 @@ let { collapsed, noun, inset, ontoggle, lead, children }: Props = $props();
 
 const INSETS: Record<FoldInset, string> = {
 	thread: "px-1",
-	group: "pr-2 pl-4",
+	group: "px-4",
 	file: "",
 };
 

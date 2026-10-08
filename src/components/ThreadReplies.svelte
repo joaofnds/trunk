@@ -24,6 +24,8 @@ interface Props {
 	// until the write settles.
 	onreplyedit: (id: string, text: string) => boolean | Promise<boolean>;
 	onreplydelete: (id: string) => void;
+	/** The thread is dismissed, so what its replies say recedes with it. */
+	dismissed: boolean;
 	editorSession?: ThreadEditorSession;
 }
 
@@ -32,6 +34,7 @@ let {
 	history = [],
 	onreplyedit,
 	onreplydelete,
+	dismissed,
 	editorSession,
 }: Props = $props();
 
@@ -122,7 +125,7 @@ async function saveReplyEdit() {
 			</Row>
 		</div>
 	{/if}
-	<ul class="thread-replies">
+	<ul class="thread-replies" class:thread-replies-dismissed={dismissed}>
 		{#each visibleEntries as entry (entry.key)}
 			<li class="thread-reply">
 				{#if entry.kind === "change"}
@@ -205,8 +208,12 @@ async function saveReplyEdit() {
 	box-shadow: inset 0 1px 0 var(--color-border);
 }
 .thread-reply-text {
-	font-size: var(--text-callout);
-	line-height: var(--leading-normal);
+	color: var(--color-text-strong);
+	font-size: var(--text-body);
+	line-height: var(--leading-prose);
 	overflow-wrap: anywhere;
+}
+.thread-replies-dismissed .thread-reply-text {
+	color: var(--color-text-subtle);
 }
 </style>

@@ -731,7 +731,7 @@ $effect(() => {
 							onkeydown={renameKeys}
 							aria-label="Review title"
 							use:selectOnOpen
-							class="review-title-field bg-bg text-text-strong border border-border rounded outline-none h-control py-0 px-1 text-title font-semibold"
+							class="review-title-field bg-bg text-text-strong shadow-field rounded outline-none h-control py-0 px-1 text-title font-semibold"
 						>
 					{:else}
 						<h1
@@ -752,7 +752,7 @@ $effect(() => {
 			<div class="flex items-center gap-2 ml-auto">
 				{#if oncommentonfile && reviewFilter !== "none"}
 					<Button
-						size="sm"
+						size="base"
 						onclick={oncommentonfile}
 						title="Comment on any tracked file, including one no change touches"
 					>
@@ -761,7 +761,7 @@ $effect(() => {
 					</Button>
 				{/if}
 				<Button
-					size="sm"
+					size="base"
 					onclick={onCopyClick}
 					disabled={visibleComments.length === 0}
 					title={visibleComments.length === 0
@@ -773,7 +773,7 @@ $effect(() => {
 				</Button>
 				{#if shownReview && !shownReview.archived}
 					<Button
-						size="sm"
+						size="base"
 						onclick={() => archiveReview(repoPath, shownReview.id)}
 						title="Put this review away from the list and the agent"
 					>
@@ -784,7 +784,7 @@ $effect(() => {
 				{#if shownReview && shownReview.pending_count > 0}
 					<div class="relative" bind:this={sendAnchor}>
 						<Button
-							size="sm"
+							size="base"
 							variant="primary"
 							title="Send the held comments to the agent"
 							onclick={() => {
@@ -808,14 +808,14 @@ $effect(() => {
 									</p>
 									<div class="flex justify-end gap-2">
 										<Button
-											size="sm"
+											size="base"
 											variant="ghost"
 											onclick={() => {
 											sendPopoverOpen = false;
 										}}
 											>Cancel</Button
 										>
-										<Button size="sm" variant="primary" onclick={sendShown}
+										<Button size="base" variant="primary" onclick={sendShown}
 											>Send</Button
 										>
 									</div>
@@ -833,7 +833,7 @@ $effect(() => {
 				{#if shownReview.archived}
 					<span class="font-medium text-text-muted">Archived</span>
 					<Button
-						size="xs"
+						size="base"
 						onclick={() => unarchiveReview(repoPath, shownReview.id)}
 						>Unarchive</Button
 					>
@@ -846,7 +846,7 @@ $effect(() => {
 					</span>
 				{:else}
 					<Button
-						size="xs"
+						size="base"
 						onclick={() => activateReview(repoPath, shownReview.id)}
 						>Make active</Button
 					>
@@ -896,11 +896,11 @@ $effect(() => {
 						{/each}
 					</ul>
 					<span class="flex-1"></span>
-					<ButtonGroup size="xs">
+					<ButtonGroup size="base">
 						{#each THREAD_PRESETS as preset (preset.id)}
 							<Button
 								joined
-								size="xs"
+								size="base"
 								aria-pressed={activePreset === preset.id}
 								onclick={() => onreviewfilterchange?.(preset.filter)}
 							>
@@ -917,7 +917,7 @@ $effect(() => {
 	</header>
 	<div
 		bind:this={bodyEl}
-		class="review-body flex flex-col flex-1 min-h-0 overflow-auto pb-6 bg-surface text-text text-callout leading-normal"
+		class="review-body flex flex-col flex-1 min-h-0 overflow-auto pb-6 bg-bg text-text text-callout leading-normal"
 	>
 		{#if reviews.length === 0}
 			<ReviewEmpty title="No reviews in this repository">
@@ -934,7 +934,7 @@ $effect(() => {
 				{#snippet actions()}
 					<Button
 						variant="primary"
-						size="sm"
+						size="base"
 						onclick={() => startNewReview(repoPath, reviewComments)}
 					>
 						<Plus size={13} aria-hidden="true" />New review
@@ -988,13 +988,12 @@ $effect(() => {
 
 		{#each sections as section (section.key)}
 			<section
-				class="review-branch"
 				aria-label={section.branch === null ? "Not on any branch" : `Branch ${section.branch}`}
 				style:--lane={sectionLane(section)}
 				style:display={hidesSection(section) ? "none" : "block"}
 			>
 				<header
-					class="review-branch-head flex items-center gap-2 h-bar pl-3 pr-4 bg-surface-raised"
+					class="review-branch-head flex items-center gap-2 h-bar px-4 bg-surface-raised"
 				>
 					{#if section.branch === null}
 						<span class="font-medium text-callout text-text-subtle"
@@ -1015,7 +1014,6 @@ $effect(() => {
 					{#each section.groups as group (group.key)}
 						{@const groupFolded = isFolded(group.key, group.threads)}
 						<li
-							class="review-group"
 							aria-label={groupLabel(group)}
 							style:display={hidesAll(group.threads) ? "none" : "block"}
 						>
@@ -1029,7 +1027,13 @@ $effect(() => {
 									ontoggle={() => toggleFold(group.key, group.threads)}
 								>
 									{#snippet lead()}
-										<span class="review-node" data-kind={group.kind}></span>
+										<span
+											class="inline-flex w-control-xs shrink-0 justify-center"
+											><span
+												class="review-node"
+												data-kind={group.kind}
+											></span></span
+										>
 									{/snippet}
 									{#if group.kind === "commit" && group.commit}
 										<span class="pointer-events-auto flex">
@@ -1039,7 +1043,9 @@ $effect(() => {
 												>{group.commit.short_oid}</Badge
 											>
 										</span>
-										<span class="pointer-events-auto min-w-0 shrink">
+										<span
+											class="pointer-events-auto min-w-0 shrink text-body font-medium text-text-strong"
+										>
 											<LinkButton
 												truncate
 												aria-label="Jump to commit {group.commit.short_oid}"
@@ -1061,19 +1067,14 @@ $effect(() => {
 											· commit no longer exists</span
 										>
 									{:else if group.kind === "uncommitted"}
-										<span class="font-medium text-text-strong"
+										<span class="text-body font-medium text-text-strong"
 											>Uncommitted changes</span
 										>
 									{:else}
-										<span class="font-medium text-text-strong"
+										<span class="text-body font-medium text-text-strong"
 											>Current file content · HEAD</span
 										>
 									{/if}
-									<span
-										class="pointer-events-auto inline-flex items-center shrink-0 h-control-xs px-1 rounded bg-surface-chip font-mono text-caption text-text-muted"
-										title={plural(shownCount(group.threads), "thread")}
-										>{shownCount(group.threads)}</span
-									>
 									<span class="flex-1"></span>
 									{#if group.kind === "commit" && group.commit && reviewFilter !== "none"}
 										{@const oid = group.commit.oid}
@@ -1089,6 +1090,9 @@ $effect(() => {
 											</Button>
 										</span>
 									{/if}
+									<span class="review-meta"
+										>{plural(shownCount(group.threads), "thread")}</span
+									>
 								</FoldBar>
 							</div>
 
@@ -1131,7 +1135,9 @@ $effect(() => {
 								{/if}
 
 								{#if group.threads.length === 0}
-									<span class="text-text-muted text-small leading-normal">
+									<span
+										class="flex h-bar items-center text-text-muted text-small"
+									>
 										No comments on this commit.
 									</span>
 								{/if}
@@ -1150,11 +1156,11 @@ $effect(() => {
 									{@const path = splitPath(file.path)}
 									{@const fileFolded = isFolded(fileKey(group, file), file.threads)}
 									<div
-										class="flex flex-col gap-2"
+										class="flex flex-col gap-2 review-file"
 										style:display={hidesAll(file.threads) ? "none" : "flex"}
 									>
 										<div
-											class="review-file-head flex h-control-sm min-w-0 bg-surface text-text-subtle"
+											class="review-file-head flex h-bar min-w-0 bg-bg text-text-subtle"
 										>
 											<FoldBar
 												noun="file"
@@ -1270,14 +1276,10 @@ $effect(() => {
 
 /* A branch's section: its head stays in view while its commits scroll under
    it, and each commit's head stays under that. */
-.review-branch + .review-branch {
-	margin-top: var(--space-3);
-}
 .review-branch-head {
 	position: sticky;
 	top: 0;
 	z-index: 4;
-	border-top: 1px solid var(--color-border);
 	box-shadow: var(--shadow-hairline);
 }
 .review-branch-ref {
@@ -1308,10 +1310,7 @@ $effect(() => {
 }
 /* A card the keys move to stops below those three bars, not under them. */
 .review-body {
-	scroll-padding-top: calc(2 * var(--bar-h) + var(--control-sm-h));
-}
-.review-group + .review-group .review-group-head {
-	border-top: 1px solid var(--color-border);
+	scroll-padding-top: calc(3 * var(--bar-h));
 }
 .review-node {
 	flex-shrink: 0;
@@ -1329,9 +1328,16 @@ $effect(() => {
 	background: var(--color-surface);
 	border: 1px dashed var(--color-text-subtle);
 }
+/* A commit's files and cards start under its chevron, past the slot that holds
+   its dot, and the commit ends in its own hairline 16px under them. A file's
+   bar sits right under the commit's, and anything else 8px under it. */
 .review-group-list {
-	padding: var(--space-2) var(--space-4) var(--space-3)
-		calc(var(--space-4) + var(--space-5));
+	padding: 0 var(--space-4) var(--space-4)
+		calc(var(--space-4) + var(--control-xs-h) + var(--space-2));
+	box-shadow: var(--shadow-hairline);
+}
+.review-group-list > :first-child:not(.review-file) {
+	margin-top: var(--space-2);
 }
 .review-path-dir {
 	min-width: 0;

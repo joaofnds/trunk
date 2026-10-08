@@ -243,19 +243,19 @@ function onpaste(event: ClipboardEvent) {
 				to {submitLabel.toLowerCase()}</span
 			>
 			<span class="ml-auto flex items-center gap-2">
-				<Button size="xs" variant="ghost" onclick={() => void togglePreview()}
+				<Button size="sm" variant="ghost" onclick={() => void togglePreview()}
 					>{previewing ? "Write" : "Preview"}</Button
 				>
-				<Button size="xs" variant="ghost" disabled={busy} onclick={oncancel}
+				<Button size="sm" variant="ghost" disabled={busy} onclick={oncancel}
 					>Cancel</Button
 				>
 				{#if onhold}
-					<Button size="xs" disabled={submitDisabled} onclick={onhold}
+					<Button size="sm" disabled={submitDisabled} onclick={onhold}
 						>Start a batch</Button
 					>
 				{/if}
 				<Button
-					size="xs"
+					size="sm"
 					variant="primary"
 					data-testid="comment-submit"
 					disabled={submitDisabled}
