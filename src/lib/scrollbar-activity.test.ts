@@ -107,6 +107,15 @@ function sidewaysThumbFor(el: HTMLElement): HTMLDivElement | null {
 	);
 }
 
+// A background tab stays laid out under the active one with only its
+// visibility hidden, so its panes keep their rects and keep scrolling.
+function putInHiddenTab(el: HTMLElement) {
+	const tab = document.createElement("div");
+	tab.style.visibility = "hidden";
+	document.body.append(tab);
+	tab.append(el);
+}
+
 function press(thumb: HTMLElement | null, clientY: number) {
 	thumb?.dispatchEvent(
 		new MouseEvent("pointerdown", { bubbles: true, clientY }),
@@ -591,6 +600,26 @@ describe("trackScrollActivity", () => {
 			scrollSidewaysTo(el, 100);
 
 			expect(sidewaysThumbFor(el)?.style.width).toBe("0px");
+		});
+	});
+
+	describe("when the pane sits in a hidden tab", () => {
+		it("shows no thumb while it scrolls", () => {
+			const el = makeScroller();
+			putInHiddenTab(el);
+
+			el.dispatchEvent(new Event("scroll"));
+
+			expect(thumbFor(el)).toBeNull();
+		});
+
+		it("shows no thumb while a component pans it", () => {
+			const el = makePane();
+			putInHiddenTab(el);
+
+			announcePan(el, new FakePan());
+
+			expect(sidewaysThumbFor(el)).toBeNull();
 		});
 	});
 });

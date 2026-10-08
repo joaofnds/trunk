@@ -164,6 +164,14 @@ function scrollsSideways(el: HTMLElement): boolean {
 	return overflowX === "auto" || overflowX === "scroll";
 }
 
+/** Whether the user can see this pane. A background tab stays laid out under
+ *  the active one with only its visibility hidden, so its panes keep their
+ *  rects and keep scrolling, and a body-level thumb would draw over the tab
+ *  the user is looking at. */
+function isShown(el: HTMLElement): boolean {
+	return getComputedStyle(el).visibility === "visible";
+}
+
 /** One capture-phase listener covers every scroller in the app, including ones
  *  added later: `scroll` doesn't bubble, but it does capture. A second catches
  *  the pans components announce, which no `scroll` event reports.
@@ -261,7 +269,7 @@ export function trackScrollActivity(): () => void {
 
 	function onScroll(event: Event) {
 		const el = event.target;
-		if (!(el instanceof HTMLElement)) return;
+		if (!(el instanceof HTMLElement) || !isShown(el)) return;
 
 		// A pan's band is a column of the table its pane scrolls, so a pan's
 		// thumb that is up moves with the pane even though the pan did not.
@@ -288,7 +296,7 @@ export function trackScrollActivity(): () => void {
 
 	function onPan(event: CustomEvent<Pan>) {
 		const el = event.target;
-		if (!(el instanceof HTMLElement)) return;
+		if (!(el instanceof HTMLElement) || !isShown(el)) return;
 
 		const pan = event.detail;
 		let axis = panAxes.get(pan);
