@@ -547,7 +547,7 @@ export class ReviewDriver {
 	}
 
 	/** What each thread card's scope tag in the review panel says it covers,
-	 *  topmost first: its lines, or the whole file or commit. */
+	 *  topmost first: its lines, or the whole file. */
 	threadScopes(): string[] {
 		return cards().map((card) => textIn(card, SCOPE_TAG));
 	}

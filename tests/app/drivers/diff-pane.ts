@@ -11,6 +11,10 @@ const CONTEXT_LINE = ".diff-line-context .diff-line-content";
 const DIFF_PATH = '[data-testid="diff-path"]';
 const LOAD_ERROR = '[data-testid="diff-retry"]';
 const RENDERED_VIEW = ".rendered-diff";
+const COMMENT_ROW = ".inline-comment-row";
+const HUNK_HEADER = ".hunk-toolbar";
+const DIFF_LINE = ".diff-line";
+const PROBES = ".comment-probe, .metrics-probe";
 const ADDED_BLOCK = ".rendered-diff .md-added";
 const REMOVED_BLOCK = ".rendered-diff .md-removed";
 
@@ -86,6 +90,22 @@ export class DiffPaneDriver {
 	/** Whether the pane remains in hunk mode. */
 	isInHunkMode(): boolean {
 		return document.querySelector(SHOW_FULL_FILE) !== null;
+	}
+
+	/** What the hunk view shows, topmost first, as a comment row, a hunk header
+	 *  or a line. The off-screen probes that measure rows are not shown. */
+	rowsFromTop(): ("comment" | "hunk" | "line")[] {
+		const rows = document.querySelectorAll<HTMLElement>(
+			`.hunk-view :is(${COMMENT_ROW}, ${HUNK_HEADER}, ${DIFF_LINE})`,
+		);
+
+		return [...rows]
+			.filter((row) => !row.closest(PROBES))
+			.map((row) => {
+				if (row.matches(COMMENT_ROW)) return "comment";
+				if (row.matches(HUNK_HEADER)) return "hunk";
+				return "line";
+			});
 	}
 
 	/** Switches the pane from inline to side-by-side, if it is not there already. */

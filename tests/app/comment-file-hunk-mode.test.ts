@@ -80,6 +80,23 @@ describe("commenting on an entire file from hunk mode", () => {
 		expect(app.review.threads()).toEqual([FILE]);
 		expect(app.review.threadExcerpt()).toEqual([]);
 	});
+
+	it("hangs the comment above the file's first line in the diff", async () => {
+		const app = await setup({ repo: REPOSITORY });
+		await app.repo.open();
+		await app.repo.selectCommit("Change file");
+		await app.repo.openCommitFile(FILE);
+		await commentOnTheFile(app);
+		await app.review.write("split this file up");
+
+		await app.review.submit();
+
+		const rows = await waitFor("the thread in the diff", () => {
+			const shown = app.diffPane.rowsFromTop();
+			return shown.includes("comment") ? shown : null;
+		});
+		expect(rows.slice(0, 3)).toEqual(["comment", "hunk", "line"]);
+	});
 });
 
 async function commentOnTheFile(app: AppDriver): Promise<void> {
