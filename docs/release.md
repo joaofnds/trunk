@@ -45,6 +45,18 @@ retried), a re-run refuses rather than committing a second bump on top of the fi
 recognizes a HEAD commit whose subject is `chore(release): bump version to <version>` with
 no matching `v<version>` tag, and tells you to tag it by hand or reset past it.
 
+The release workflow's build jobs retry `tauri build` once on their own, after deleting
+`src-tauri/target`, and annotate the run with a warning when they do. The clean comes first
+because a build script binary whose bytes are not a valid executable fails with `exit
+status: 126` and `cannot execute binary file`, and when cargo's own hashed copy of it is
+bad too, a retry in the same target directory runs it again. That is why tauri-action's
+`retryAttempts` alone does not cover it. Before deleting, the step lists every build
+script binary's size and first bytes under a collapsed group in the log, the only record
+of the failing file once the runner is gone. A job that fails both attempts has a real
+failure. When a run fails some other way, re-run
+its failed jobs (`gh run rerun <run-id> --failed`). `publish` waits for every build, and
+tauri-action replaces an asset already on the draft release, so the re-run is safe.
+
 ## Version logic
 
 The pure bump-and-validate logic lives in `scripts/release.ts`, unit-tested in

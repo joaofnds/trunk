@@ -80,16 +80,41 @@ jobs:
           workspaces: "src-tauri -> target"
           save-if: "false"
 
-      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
-        env:
+      - id: build
+        name: Build and upload
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        continue-on-error: true
+        env: &tauri-env
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
+        with: &tauri-with
           tagName: ${{ github.ref_name }}
           releaseName: ${{ github.ref_name }}
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           args: ${{ matrix.args }}
           tauriScript: bunx tauri
+
+      # Retrying in the same target directory can run a corrupt build-script
+      # binary again instead of relinking it (docs/release.md). The listing is
+      # the only record of that binary once the directory is gone.
+      - name: Clear the failed build before retrying
+        if: steps.build.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::warning::The release build failed once and is retrying from a clean target directory."
+          echo "::group::Build script binaries: size, then first 16 bytes"
+          find src-tauri/target -path '*/build/*' -name 'build-script-build*' -type f ! -name '*.d' | while read -r f; do
+            echo "$(wc -c < "$f") $f"
+            head -c 16 "$f" | od -An -tx1
+          done
+          echo "::endgroup::"
+          rm -rf src-tauri/target
+
+      - name: Retry build and upload
+        if: steps.build.outcome == 'failure'
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        env: *tauri-env
+        with: *tauri-with
 
       - name: Create portable archive (macOS)
         if: runner.os == 'macOS'
