@@ -16,17 +16,19 @@ const REPOSITORY: RepoSpec = {
 	],
 };
 
-describe("a current-file comment filtered out before autosave", () => {
+describe("a current-file comment under the thread filter", () => {
 	afterEach(teardown);
 
-	it("retains its text and line target through leaving and reopening", async () => {
+	it("retains its text and line target through hiding threads, leaving and reopening", async () => {
 		const app = await setup({ repo: REPOSITORY });
 		await openCurrentFile(app);
 		await app.review.selectLine(1);
 		await app.review.commentOnSelection();
 		await app.review.write("name this constant");
 
-		await app.review.hideThreads(() => app.review.composerDraft() === null);
+		await app.review.hideThreads(
+			() => app.review.composerDraft()?.text === "name this constant",
+		);
 		await app.review.openPanel();
 		await app.review.showThreads(() => !app.review.finderVisible());
 		await openCurrentFileFromPanel(app);
@@ -52,7 +54,7 @@ describe("a current-file comment filtered out before autosave", () => {
 		expect(doc).toContain("name this constant");
 	});
 
-	it("finishes an accepted submission while hiding threads removes its editor", async () => {
+	it("finishes an accepted submission after its editor is left", async () => {
 		const app = await setup({ repo: REPOSITORY });
 		await openCurrentFile(app);
 		await app.review.selectLine(2);
@@ -75,8 +77,6 @@ describe("a current-file comment filtered out before autosave", () => {
 				: null,
 		);
 
-		await app.review.hideThreads(() => app.review.composerDraft() === null);
-		await app.review.showThreads(() => true);
 		await app.review.openPanel();
 		await openFileFromPanel(app, "other");
 		await app.review.selectLine(1);

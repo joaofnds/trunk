@@ -71,7 +71,9 @@ describe("an interactive-rebase diff comment", () => {
 			app.diffPane.contextLines().includes("one") ? true : null,
 		);
 
-		await app.review.hideThreads(() => app.review.composerDraft() === null);
+		await app.review.hideThreads(
+			() => app.review.composerDraft()?.text === DRAFT,
+		);
 		await app.rebaseEditor.closeDiff();
 		await app.rebaseEditor.focus("C2");
 		await app.rebaseEditor.focus("C3");

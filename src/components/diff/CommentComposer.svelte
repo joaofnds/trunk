@@ -43,7 +43,7 @@ interface Props {
 	onclose: () => void;
 	/** Whether the host stretches the range on a shift-click on a line number. */
 	extendable?: boolean;
-	/** Hide-all keeps the editor mounted but must make submission impossible. */
+	/** Whether the view behind the editor takes comments. A retained draft stays mounted where it does not, but cannot be submitted. */
 	canSubmit?: boolean;
 	/** The review active when this composer was opened. */
 	originatingReviewId?: string | null;

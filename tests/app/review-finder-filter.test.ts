@@ -14,49 +14,38 @@ const REPOSITORY: RepoSpec = {
 	],
 };
 
-describe("the review file finder while comments are hidden", () => {
+describe("the review file finder while review threads are hidden", () => {
 	afterEach(teardown);
 
-	it("ignores a finder response invalidated by hiding threads", async () => {
+	it("opens from the review panel", async () => {
 		const app = await setup({ repo: REPOSITORY });
 		await app.repo.open();
+		await app.review.hideThreads(() => true);
 		await app.review.openPanel();
-		const release = app.holdCommand("list_tracked_files");
+
 		await app.review.openFileFinder();
-		await waitFor("the pending finder request", () =>
-			app.invokes().some(({ cmd }) => cmd === "list_tracked_files")
-				? true
-				: null,
-		);
 
-		await app.review.hideThreads(() => !app.review.finderVisible());
-		release();
-		await app.settled();
-
-		expect(app.review.finderVisible()).toBe(false);
-	});
-
-	it("requires a fresh finder gesture after the invalidated response", async () => {
-		const app = await setup({ repo: REPOSITORY });
-		await app.repo.open();
-		await app.review.openPanel();
-		const release = app.holdCommand("list_tracked_files");
-		await app.review.openFileFinder();
-		await waitFor("the pending finder request", () =>
-			app.invokes().some(({ cmd }) => cmd === "list_tracked_files")
-				? true
-				: null,
-		);
-
-		await app.review.hideThreads(() => !app.review.finderVisible());
-		await app.review.showThreads(() => !app.review.finderVisible());
-		release();
-		await app.settled();
-
-		expect(app.review.finderVisible()).toBe(false);
-		await app.review.openFileFinder();
-		await waitFor("the fresh finder response", () =>
+		await waitFor("the finder", () =>
 			app.review.finderVisible() ? true : null,
 		);
+	});
+
+	it("shows a response that lands after threads are hidden", async () => {
+		const app = await setup({ repo: REPOSITORY });
+		await app.repo.open();
+		await app.review.openPanel();
+		const release = app.holdCommand("list_tracked_files");
+		await app.review.openFileFinder();
+		await waitFor("the pending finder request", () =>
+			app.invokes().some(({ cmd }) => cmd === "list_tracked_files")
+				? true
+				: null,
+		);
+		await app.review.hideThreads(() => true);
+
+		release();
+		await app.settled();
+
+		expect(app.review.finderVisible()).toBe(true);
 	});
 });

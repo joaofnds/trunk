@@ -28,7 +28,7 @@ const baseProps = {
 };
 
 describe("DiffToolbar review actions", () => {
-	it("hides Comment File under Hide all", () => {
+	it("offers Comment File while review threads are hidden", () => {
 		render(DiffToolbar, {
 			props: {
 				...baseProps,
@@ -38,7 +38,9 @@ describe("DiffToolbar review actions", () => {
 			},
 		});
 
-		expect(screen.queryByRole("button", { name: "Comment File" })).toBeNull();
+		expect(
+			screen.getByRole("button", { name: "Comment File" }),
+		).toBeInTheDocument();
 	});
 });
 

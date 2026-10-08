@@ -130,7 +130,9 @@ describe("a comment left on a commit's diff", () => {
 		await app.review.commentOnHunk(0);
 		await app.review.write("keep this unsaved comment");
 
-		await app.review.hideThreads(() => app.review.composerDraft() === null);
+		await app.review.hideThreads(
+			() => app.review.composerDraft()?.text === "keep this unsaved comment",
+		);
 		await app.review.openPanel();
 		await app.review.showThreads(() => app.review.threads().length === 1);
 		await app.review.jumpToThread();

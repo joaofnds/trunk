@@ -150,11 +150,11 @@ describe("SplitView", () => {
 		);
 	});
 
-	it("hides whole-hunk and selected-line comment actions under Hide all", async () => {
+	it("offers whole-hunk and selected-line comment actions while review threads are hidden", async () => {
 		const hidden = { reviewFilter: "none" as const };
 		const view = render(SplitView, { props: defaultProps(hidden) });
 
-		expect(screen.queryByRole("button", { name: /^Comment/ })).toBeNull();
+		expect(screen.getByRole("button", { name: "Comment" })).toBeInTheDocument();
 
 		await view.rerender(
 			defaultProps({
@@ -165,7 +165,9 @@ describe("SplitView", () => {
 			}),
 		);
 
-		expect(screen.queryByRole("button", { name: /^Comment/ })).toBeNull();
+		expect(
+			screen.getByRole("button", { name: /^Comment \(1\)/ }),
+		).toBeInTheDocument();
 	});
 
 	it("mounts a bounded number of pair rows for a file far larger than the viewport", () => {

@@ -44,7 +44,9 @@ describe("a full-file comment on a commit", () => {
 		await app.review.commentOnSelection();
 		await app.review.write("keep this full-file target");
 
-		await app.review.hideThreads(() => app.review.composerDraft() === null);
+		await app.review.hideThreads(
+			() => app.review.composerDraft()?.text === "keep this full-file target",
+		);
 		await app.review.openPanel();
 		await app.review.showThreads(() => app.review.threads().length === 1);
 		await app.review.jumpToThread();

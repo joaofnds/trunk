@@ -439,7 +439,7 @@ async function openFileFinder() {
 		const files = await safeInvoke<TrackedFile[]>("list_tracked_files", {
 			path: repoPath,
 		});
-		if (seq !== finderLoadSeq || reviewFilter === "none") return;
+		if (seq !== finderLoadSeq) return;
 		finderFiles = files;
 		finderOpen = true;
 	} catch (e) {
@@ -880,13 +880,6 @@ $effect(() => {
 	const viewTone = inlineCommentTone;
 	const totalTone = reviewCommentTone;
 	untrack(() => oncommentcountschange?.({ view, total, viewTone, totalTone }));
-});
-
-$effect(() => {
-	if (reviewFilter === "none") {
-		finderLoadSeq += 1;
-		finderOpen = false;
-	}
 });
 
 async function loadDirtyCounts() {
@@ -2200,7 +2193,6 @@ function stepRightPane(delta: number) {
 						selectedPath={rebaseDiffFile}
 						diffKind="commit"
 						{repoPath}
-						reviewCommentsVisible={reviewFilter !== "none"}
 						{reviewFilter}
 						viewComments={rebaseViewComments}
 						activeReviewId={reviewComments.activeReviewId}
@@ -2332,7 +2324,7 @@ function stepRightPane(delta: number) {
 							{editorNoteSessionFor}
 							onJump={handleReviewJump}
 							onJumpToCommit={handleReviewJumpToCommit}
-							oncommentonfile={reviewFilter === "none" ? undefined : openFileFinder}
+							oncommentonfile={openFileFinder}
 							onopenfile={openCurrentFile}
 							headBranch={headBranch ?? null}
 							shown={reviewPanelShown}
@@ -2363,7 +2355,7 @@ function stepRightPane(delta: number) {
 						{diffKind}
 						emptyCommit={commitEmpty}
 						{repoPath}
-						reviewCommentsVisible={selectedCompareFile ? false : reviewFilter !== "none"}
+						reviewCommentsVisible={!selectedCompareFile}
 						{reviewFilter}
 						{viewComments}
 						activeReviewId={reviewComments.activeReviewId}

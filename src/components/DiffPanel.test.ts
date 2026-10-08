@@ -11,7 +11,12 @@ import {
 } from "../lib/diff-utils.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createReviewEditorStore } from "../lib/review-editors.svelte.js";
-import type { CommitDetail, DiffLine, FileDiff } from "../lib/types.js";
+import type {
+	CommitDetail,
+	DiffLine,
+	FileDiff,
+	ReviewFilter,
+} from "../lib/types.js";
 
 // Shared Tauri mock
 import "../__tests__/helpers/tauri-mock";
@@ -2580,11 +2585,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		);
 	});
 
-	it("still asks before replacing a dirty draft whose card is put away", async () => {
-		const { ask } = await import("@tauri-apps/plugin-dialog");
-		const askMock = vi.mocked(ask);
-		askMock.mockClear();
-		askMock.mockResolvedValue(false);
+	it("keeps an open comment's draft while review threads are hidden", async () => {
 		const props = {
 			fileDiffs: [testDiff],
 			commitDetail: nonMergeCommit,
@@ -2600,12 +2601,10 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		await fireEvent.input(screen.getByRole("textbox"), {
 			target: { value: "unsaved note" },
 		});
+
 		await view.rerender({ ...props, reviewFilter: "none" });
-		expect(screen.queryByRole("textbox")).toBeNull();
 
-		await fireEvent.mouseDown(gutterOf("const y = 3;"));
-
-		await waitFor(() => expect(askMock).toHaveBeenCalledTimes(1));
+		expect(screen.getByRole("textbox")).toHaveValue("unsaved note");
 	});
 
 	it("extends the comment's range on a shift-press, keeping the text", async () => {
@@ -2798,7 +2797,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		return vi.mocked(safeInvoke).mock.calls.map((c) => c[0] as string);
 	}
 
-	function renderPanel() {
+	function renderPanel(overrides: { reviewFilter?: ReviewFilter } = {}) {
 		render(DiffPanel, {
 			props: {
 				fileDiffs: [testDiff],
@@ -2806,6 +2805,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 				onclose: vi.fn(),
 				diffKind: "commit",
 				repoPath: "/repo",
+				...overrides,
 			},
 		});
 	}
@@ -2834,6 +2834,17 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		await openComposerOnAddLine();
 
 		await submitComposer("first note");
+
+		expect(calledCommands()).toContain("add_thread");
+	});
+
+	it("submits a comment while review threads are hidden", async () => {
+		mockStoreCommands();
+		renderPanel({ reviewFilter: "none" });
+		await flushPrefs();
+		await openComposerOnAddLine();
+
+		await submitComposer("note while hidden");
 
 		expect(calledCommands()).toContain("add_thread");
 	});

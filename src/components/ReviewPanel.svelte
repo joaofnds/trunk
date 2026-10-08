@@ -97,8 +97,7 @@ interface Props {
 	// Commit-header jump: show the commit in the graph, which takes the window
 	// out of review mode.
 	onJumpToCommit: (commitOid: string) => void;
-	// Open the file finder. Absent while review threads are hidden, because the
-	// diff it leads to takes no new comment then.
+	// Open the file finder.
 	oncommentonfile?: () => void;
 	// Open a file's current content, where its current-file threads live.
 	onopenfile?: (filePath: string) => void;

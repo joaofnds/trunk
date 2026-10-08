@@ -447,7 +447,7 @@ describe("App review preference", () => {
 		).toBeInTheDocument();
 	});
 
-	it("withholds Comment on a file while review threads are hidden", async () => {
+	it("offers Comment on a file while review threads are hidden", async () => {
 		seedOneTab();
 		host.seedReview(REPO_A, reviewWith("open"));
 		render(App);
@@ -457,8 +457,8 @@ describe("App review preference", () => {
 		await openReviewPanel();
 
 		expect(
-			screen.queryByRole("button", { name: "Comment on a file…" }),
-		).toBeNull();
+			screen.getByRole("button", { name: "Comment on a file…" }),
+		).toBeInTheDocument();
 	});
 
 	it.each([

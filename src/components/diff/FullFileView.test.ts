@@ -146,7 +146,7 @@ describe("FullFileView", () => {
 		expect(screen.getByRole("button", { name: /comment \(1\)/i })).toBeTruthy();
 	});
 
-	it("hides the selected-line comment action under Hide all", async () => {
+	it("offers the selected-line comment action while review threads are hidden", async () => {
 		render(FullFileView, {
 			props: defaultProps({ reviewFilter: "none" as const }),
 		});
@@ -154,7 +154,7 @@ describe("FullFileView", () => {
 		await fireEvent.click(gutterGrip("added one"));
 		await tick();
 
-		expect(screen.queryByRole("button", { name: /comment/i })).toBeNull();
+		expect(screen.getByRole("button", { name: /comment \(1\)/i })).toBeTruthy();
 	});
 
 	it("offers no Comment affordance in a staged view, which is not on the allowlist", async () => {

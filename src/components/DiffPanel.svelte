@@ -135,13 +135,6 @@ let {
 	emptyCommit = false,
 }: Props = $props();
 
-// Keep review inputs active while "Hide all" is selected for a view with comments
-// so a diff composer survives a filter round trip. The row models omit hidden
-// comment rows before layout, while the composer below stays display-hidden.
-let commentCardsMounted = $derived(
-	reviewCommentsVisible || (reviewFilter === "none" && viewComments.length > 0),
-);
-
 let layoutMode = $state<LayoutMode>("inline");
 let renderMode = $state<RenderMode>("source");
 let contextLines = $state(3);
@@ -273,8 +266,7 @@ const fullFileCaptured = $derived(
 	fullFileComposerOpen ? activeComposerSession.captured : null,
 );
 
-// The open composer's capture, whichever path opened it. Hide all puts the
-// composer away with the threads; its draft stays in the session.
+// The open composer's capture, whichever path opened it.
 const openCaptured = $derived(
 	composerOpen && diffCaptured
 		? diffCaptured
@@ -283,7 +275,7 @@ const openCaptured = $derived(
 			: null,
 );
 const diffComposer = $derived<DiffComposer | null>(
-	openCaptured && reviewFilter !== "none"
+	openCaptured
 		? {
 				place: {
 					path: openCaptured.anchor.file_path,
@@ -1247,7 +1239,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			{activeReviewId}
 			{activeReview}
 			originatingReviewId={composerReviewId}
-			canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
+			canSubmit={reviewCommentsVisible}
 			onclose={composerOnClose}
 		/>
 	{:else if fullFileComposerOpen && fullFileCaptured}
@@ -1265,7 +1257,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			{activeReviewId}
 			{activeReview}
 			originatingReviewId={composerReviewId}
-			canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
+			canSubmit={reviewCommentsVisible}
 			onclose={composerOnClose}
 		/>
 	{/if}
@@ -1341,7 +1333,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			oncommentline={handleCommentLine}
 			{commitOid}
 			{repoPath}
-			reviewCommentsVisible={commentCardsMounted}
+			{reviewCommentsVisible}
 			{reviewFilter}
 			{viewComments}
 			{editorSessionForThread}

@@ -139,11 +139,11 @@ describe("HunkView", () => {
 		);
 	});
 
-	it("hides whole-hunk and selected-line comment actions under Hide all", async () => {
+	it("offers whole-hunk and selected-line comment actions while review threads are hidden", async () => {
 		const hidden = { reviewFilter: "none" as const };
 		const view = render(HunkView, { props: defaultProps(hidden) });
 
-		expect(screen.queryByRole("button", { name: /^Comment/ })).toBeNull();
+		expect(screen.getByRole("button", { name: "Comment" })).toBeInTheDocument();
 
 		await view.rerender(
 			defaultProps({
@@ -154,7 +154,9 @@ describe("HunkView", () => {
 			}),
 		);
 
-		expect(screen.queryByRole("button", { name: /^Comment/ })).toBeNull();
+		expect(
+			screen.getByRole("button", { name: /^Comment \(1\)/ }),
+		).toBeInTheDocument();
 	});
 
 	it("reports the row a gutter press landed on after the reader scrolled to it", async () => {
@@ -496,13 +498,13 @@ describe("HunkView one-click comment", () => {
 		});
 	});
 
-	it("offers none while the threads are hidden", () => {
+	it("offers it while review threads are hidden", () => {
 		render(HunkView, {
 			props: defaultProps({ oncommentline: vi.fn(), reviewFilter: "none" }),
 		});
 
 		expect(
-			screen.queryByRole("button", { name: /^Comment on line/, hidden: true }),
-		).toBeNull();
+			screen.getByRole("button", { name: "Comment on line 11", hidden: true }),
+		).toBeInTheDocument();
 	});
 });

@@ -119,7 +119,6 @@ const vd = createVirtualizedDiff({
 // Whether a line can take a new comment here, as the Comment action can.
 const commentable = $derived(
 	reviewCommentsVisible &&
-		reviewFilter !== "none" &&
 		(diffKind === "commit" ||
 			diffKind === "unstaged" ||
 			diffKind === "current_file"),
@@ -134,7 +133,6 @@ function commentOnLine(path: string, line: DiffLine, index: number) {
 
 const affordanceVisible = $derived(
 	reviewCommentsVisible &&
-		reviewFilter !== "none" &&
 		(diffKind === "commit" ||
 			diffKind === "unstaged" ||
 			diffKind === "current_file") &&

@@ -261,7 +261,7 @@ const renderedActive = $derived(
        anywhere in the file. Gated on review mode (reviewCommentsVisible) like the hunk
        toolbar's Comment buttons, so a clean read-only diff shows no comment
        affordances; never gated on whitespace-ignore since it never stages. -->
-	{#if reviewCommentsVisible && reviewFilter !== "none" && diffKind !== "current_file"}
+	{#if reviewCommentsVisible && diffKind !== "current_file"}
 		<Button size="sm" variant="accent" onclick={oncommentfile}
 			>Comment File</Button
 		>
