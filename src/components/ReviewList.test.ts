@@ -457,7 +457,7 @@ describe("ReviewList", () => {
 		]);
 	});
 
-	it("opens the title editor as a plain standard field, since the caret shows where typing goes", async () => {
+	it("opens the title editor as a plain field framed by a ring, since the caret shows where typing goes", async () => {
 		seedReviews([aReview()]);
 		await renderList();
 
@@ -467,7 +467,7 @@ describe("ReviewList", () => {
 		await tick();
 
 		const field = screen.getByLabelText("Review title");
-		expect(field).toHaveClass("border-border", "outline-none", "h-control");
+		expect(field).toHaveClass("shadow-field", "outline-none", "h-control");
 		expect(field).not.toHaveClass("border-accent");
 	});
 

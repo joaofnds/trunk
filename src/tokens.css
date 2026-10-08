@@ -353,6 +353,9 @@
 	--shadow-lg: var(--shadow-2);
 	/* The 1px rule a bar paints inside its own box, so its band keeps its height */
 	--shadow-hairline: inset 0 -1px 0 var(--color-border);
+	/* A text field's frame, drawn inside its box so a field of n lines stands a
+	   whole number of units tall */
+	--shadow-field: inset 0 0 0 1px var(--color-border);
 
 	/* De-emphasis opacity for rebase "drop" rows. Raised to 0.8 so the dimmed
 	   primary text (commit message / author, --fg-1) clears AAA (7.65) on the

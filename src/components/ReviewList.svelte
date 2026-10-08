@@ -122,7 +122,7 @@ function deletePrompt(review: Review): string {
 					onkeydown={renameKeys}
 					aria-label="Review title"
 					use:selectOnOpen
-					class="w-full bg-bg text-text border border-border rounded outline-none h-control py-0 px-2 text-callout"
+					class="w-full bg-bg text-text shadow-field rounded outline-none h-control py-0 px-2 text-callout"
 				>
 			</div>
 		{:else}
@@ -195,7 +195,7 @@ function deletePrompt(review: Review): string {
 				</p>
 				<div class="flex justify-end gap-2">
 					<Button
-						size="sm"
+						size="xs"
 						variant="ghost"
 						onclick={() => {
 							deleteConfirmingId = null;
@@ -203,7 +203,7 @@ function deletePrompt(review: Review): string {
 						>Cancel</Button
 					>
 					<Button
-						size="sm"
+						size="xs"
 						variant="danger"
 						onclick={() => deleteReview(review.id)}
 						>Delete review</Button
@@ -226,7 +226,7 @@ function deletePrompt(review: Review): string {
 			<Badge variant="label" tone="muted">{reviews.length}</Badge>
 		</h2>
 		<Button
-			size="sm"
+			size="xs"
 			variant="ghost"
 			onclick={() => startNewReview(repoPath, reviewComments)}
 			aria-label="New review"

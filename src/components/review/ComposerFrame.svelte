@@ -2,8 +2,8 @@
 import type { Snippet } from "svelte";
 import { reviewTitle } from "../../lib/review-title.js";
 import type { Review } from "../../lib/types.js";
+import Badge from "../../lib/ui/Badge.svelte";
 import Keycap from "../../lib/ui/Keycap.svelte";
-import Tag from "../../lib/ui/Tag.svelte";
 import CommentEditor from "./CommentEditor.svelte";
 
 interface Props {
@@ -66,10 +66,10 @@ const headingId = $props.id();
 		<p class="composer-landing">
 			Lands in
 			{#if activeReview}
-				<Tag variant="label">{activeReview.id}</Tag>
+				<Badge variant="label">{activeReview.id}</Badge>
 				<span class="composer-landing-name">{reviewTitle(activeReview)}</span>
 			{:else if activeReviewId}
-				<Tag variant="label">{activeReviewId}</Tag>
+				<Badge variant="label">{activeReviewId}</Badge>
 			{:else}
 				<span class="composer-landing-name">{newReviewName}</span>
 			{/if}

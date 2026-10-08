@@ -243,19 +243,19 @@ function onpaste(event: ClipboardEvent) {
 				to {submitLabel.toLowerCase()}</span
 			>
 			<span class="ml-auto flex items-center gap-2">
-				<Button size="sm" variant="ghost" onclick={() => void togglePreview()}
+				<Button size="xs" variant="ghost" onclick={() => void togglePreview()}
 					>{previewing ? "Write" : "Preview"}</Button
 				>
-				<Button size="sm" variant="ghost" disabled={busy} onclick={oncancel}
+				<Button size="xs" variant="ghost" disabled={busy} onclick={oncancel}
 					>Cancel</Button
 				>
 				{#if onhold}
-					<Button size="sm" disabled={submitDisabled} onclick={onhold}
+					<Button size="xs" disabled={submitDisabled} onclick={onhold}
 						>Start a batch</Button
 					>
 				{/if}
 				<Button
-					size="sm"
+					size="xs"
 					variant="primary"
 					data-testid="comment-submit"
 					disabled={submitDisabled}
@@ -276,7 +276,7 @@ function onpaste(event: ClipboardEvent) {
 }
 
 .comment-editor-framed {
-	border: 1px solid var(--color-border);
+	box-shadow: var(--shadow-field);
 	border-radius: var(--radius);
 	overflow: hidden;
 }
@@ -303,9 +303,9 @@ function onpaste(event: ClipboardEvent) {
 	max-height: calc(75 * var(--u));
 	overflow-y: auto;
 	padding: var(--space-2) var(--space-3);
-	color: var(--color-text);
-	font-size: var(--text-callout);
-	line-height: var(--leading-normal);
+	color: var(--color-text-strong);
+	font-size: var(--text-body);
+	line-height: var(--leading-prose);
 	overflow-wrap: anywhere;
 }
 
@@ -332,15 +332,15 @@ function onpaste(event: ClipboardEvent) {
 	padding: var(--space-2) var(--space-3);
 	border: none;
 	font-family: var(--font-sans);
-	font-size: var(--text-callout);
-	line-height: var(--leading-normal);
+	font-size: var(--text-body);
+	line-height: var(--leading-prose);
 }
 
 .comment-editor-grow > textarea {
 	resize: none;
 	overflow-y: auto;
 	color: var(--color-text-strong);
-	background: var(--color-bg);
+	background: transparent;
 }
 
 .comment-editor-grow > textarea::placeholder {
@@ -372,8 +372,19 @@ function onpaste(event: ClipboardEvent) {
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--space-2);
-	padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
-	border-top: 1px solid var(--color-border);
+	padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+	box-shadow: inset 0 1px 0 var(--color-border);
+}
+
+/* A framed editor sits 4px in from what holds it, so its text and hint start
+   8px inside the ring, where an unframed one starts 12px in, as a card does. */
+.comment-editor-framed .comment-editor-preview,
+.comment-editor-framed .comment-editor-grow > textarea,
+.comment-editor-framed .comment-editor-grow::after {
+	padding: var(--space-1) var(--space-2);
+}
+.comment-editor-framed .comment-editor-actions {
+	padding-left: var(--space-2);
 }
 
 .comment-editor-hint {
@@ -383,15 +394,13 @@ function onpaste(event: ClipboardEvent) {
 	gap: var(--space-1);
 	color: var(--color-text-subtle);
 	font-size: var(--text-small);
+	line-height: var(--text-small--line-height);
 }
 
-/* A collapsible editor at rest is one line of small text in a frame of the
-   small control height, and opens to the full editor once it holds the focus
-   or any text. The frame sets the height, border included, and the line is as
-   tall as the frame, so the text sits on its middle and the frame clips the
-   border's share of the line. */
+/* A collapsible editor at rest is one line in a frame of the control height,
+   and opens to the full editor once it holds the focus or any text. */
 .comment-editor:not(.comment-editor-open) {
-	height: var(--control-sm-h);
+	height: var(--control-h);
 }
 .comment-editor:not(.comment-editor-open) .comment-editor-grow {
 	flex: 1 1 0;
@@ -401,8 +410,5 @@ function onpaste(event: ClipboardEvent) {
 .comment-editor:not(.comment-editor-open) .comment-editor-grow > textarea,
 .comment-editor:not(.comment-editor-open) .comment-editor-grow::after {
 	min-height: 0;
-	padding: 0 var(--space-2);
-	font-size: var(--text-small);
-	line-height: var(--control-sm-h);
 }
 </style>
