@@ -2804,6 +2804,43 @@ describe("ReviewPanel branch sections", () => {
 		expect(opened).toEqual(["src/untouched.ts"]);
 	});
 
+	describe("while its threads scroll", () => {
+		function fileBarOf(path: string): HTMLElement | null {
+			return screen
+				.getByRole("button", { name: `Open ${path}` })
+				.closest(".review-file-head");
+		}
+
+		it("keeps a file's path pinned under its commit", async () => {
+			installReads({
+				commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+				comments: [lineAnchoredComment("c1", COMMIT_A, "one")],
+				resolutions: [resolvable("c1")],
+			});
+			renderPanel();
+			await flush();
+
+			expect(fileBarOf("src/main.ts")).toHaveStyle({
+				position: "sticky",
+				top: "calc(2 * var(--bar-h))",
+			});
+		});
+
+		it("scrolls a card the keys reach to below the pinned branch, commit and file", async () => {
+			installReads({
+				commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+				comments: [lineAnchoredComment("c1", COMMIT_A, "one")],
+				resolutions: [resolvable("c1")],
+			});
+			const { container } = renderPanel();
+			await flush();
+
+			expect(container.querySelector(".review-body")).toHaveStyle({
+				"scroll-padding-top": "calc(2 * var(--bar-h) + var(--control-sm-h))",
+			});
+		});
+	});
+
 	describe("folding", () => {
 		function twoCommitsWithThreads() {
 			installReads({

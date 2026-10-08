@@ -917,7 +917,7 @@ $effect(() => {
 	</header>
 	<div
 		bind:this={bodyEl}
-		class="flex flex-col flex-1 min-h-0 overflow-auto pb-6 bg-surface text-text text-callout leading-normal"
+		class="review-body flex flex-col flex-1 min-h-0 overflow-auto pb-6 bg-surface text-text text-callout leading-normal"
 	>
 		{#if reviews.length === 0}
 			<ReviewEmpty title="No reviews in this repository">
@@ -1153,7 +1153,9 @@ $effect(() => {
 										class="flex flex-col gap-2"
 										style:display={hidesAll(file.threads) ? "none" : "flex"}
 									>
-										<div class="flex h-control-sm min-w-0 text-text-subtle">
+										<div
+											class="review-file-head flex h-control-sm min-w-0 bg-surface text-text-subtle"
+										>
 											<FoldBar
 												noun="file"
 												inset="file"
@@ -1296,6 +1298,17 @@ $effect(() => {
 	top: var(--bar-h);
 	z-index: 3;
 	box-shadow: var(--shadow-hairline);
+}
+/* A file's bar stays under its commit's head while the file's threads scroll,
+   so every card in view shows its branch, its commit and its file. */
+.review-file-head {
+	position: sticky;
+	top: calc(2 * var(--bar-h));
+	z-index: 2;
+}
+/* A card the keys move to stops below those three bars, not under them. */
+.review-body {
+	scroll-padding-top: calc(2 * var(--bar-h) + var(--control-sm-h));
 }
 .review-group + .review-group .review-group-head {
 	border-top: 1px solid var(--color-border);
