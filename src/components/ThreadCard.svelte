@@ -342,14 +342,35 @@ const excerptLines = $derived(
 			),
 );
 
-// A long excerpt opens on its first lines, so the conversation under it stays
-// in view, and the rest is one press away.
 const EXCERPT_CAP = 10;
 let excerptOpen = $state(false);
-const excerptFolded = $derived(Math.max(0, excerptLines.length - EXCERPT_CAP));
-const excerptShown = $derived(
-	excerptOpen ? excerptLines : excerptLines.slice(0, EXCERPT_CAP),
+const excerptCut = $derived(rowsHolding(excerptLines, EXCERPT_CAP));
+const linesPastCap = $derived(
+	excerptLines.slice(excerptCut).filter((line) => line.kind !== "gap").length,
 );
+const excerptShown = $derived(
+	excerptOpen ? excerptLines : excerptLines.slice(0, excerptCut),
+);
+
+// An unchanged-lines marker is a row but stands for no line of the selection,
+// so the cap counts lines of code.
+function rowsHolding(lines: readonly ExcerptLine[], count: number): number {
+	let seen = 0;
+	for (const [at, line] of lines.entries()) {
+		if (line.kind !== "gap") seen += 1;
+		if (seen === count) return at + 1;
+	}
+	return lines.length;
+}
+
+async function toggleExcerpt(control: HTMLElement) {
+	excerptOpen = !excerptOpen;
+	if (excerptOpen) return;
+	// Folding drops the lines above the reader, so the control comes back into
+	// view to keep them on this card.
+	await tick();
+	control.scrollIntoView({ block: "nearest" });
+}
 
 function openEdit() {
 	draft.open(thread.text);
@@ -526,22 +547,14 @@ async function requestDeleteReply(replyId: string) {
 						>
 					</div>
 				{/each}
-				{#if excerptFolded > 0}
+				{#if linesPastCap > 0}
 					<p class="m-0 flex px-3 pt-1 font-sans text-small">
 						<LinkButton
 							tone="accent"
-							onclick={async (event) => {
-								const control = event.currentTarget;
-								excerptOpen = !excerptOpen;
-								if (excerptOpen) return;
-								// Folding drops hundreds of lines above the reader, so the
-								// control comes back into view to keep them on this card.
-								await tick();
-								control.scrollIntoView({ block: "nearest" });
-							}}
+							onclick={(event) => toggleExcerpt(event.currentTarget)}
 							>{excerptOpen
 								? "Show fewer lines"
-								: `Show ${excerptFolded} more ${excerptFolded === 1 ? "line" : "lines"}`}</LinkButton
+								: `Show ${linesPastCap} more ${linesPastCap === 1 ? "line" : "lines"}`}</LinkButton
 						>
 					</p>
 				{/if}

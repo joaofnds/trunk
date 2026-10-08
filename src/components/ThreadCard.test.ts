@@ -573,13 +573,13 @@ describe("ThreadCard", () => {
 		expect(excerptNumbers(container)).toEqual(["10", "", "14"]);
 	});
 
-	describe("with an excerpt longer than 10 lines", () => {
+	describe("capping a long excerpt at 10 lines", () => {
 		const long = linesOf(25);
 		// jsdom lays nothing out, so it has no scrollIntoView to call.
 		const original = Element.prototype.scrollIntoView;
 		const scrolled = vi.fn();
 		beforeEach(() => {
-			scrolled.mockClear();
+			scrolled.mockReset();
 			Element.prototype.scrollIntoView = scrolled;
 		});
 		afterEach(() => {
@@ -635,7 +635,11 @@ describe("ThreadCard", () => {
 		});
 
 		it("brings its control back into view once folded, so the reader stays on the card", async () => {
-			renderLong(long);
+			const { container } = renderLong(long);
+			const rowsAtScroll: number[] = [];
+			scrolled.mockImplementation(() => {
+				rowsAtScroll.push(excerptCode(container).length);
+			});
 			await fireEvent.click(
 				screen.getByRole("button", { name: "Show 15 more lines" }),
 			);
@@ -648,6 +652,31 @@ describe("ThreadCard", () => {
 			expect(scrolled.mock.contexts).toEqual([
 				screen.getByRole("button", { name: "Show 15 more lines" }),
 			]);
+			expect(rowsAtScroll).toEqual([10]);
+		});
+
+		it("counts lines of code, not an unchanged-lines marker, toward its 10 and its rest", () => {
+			const { container } = renderCard({
+				thread: {
+					...comment,
+					anchor: {
+						...anchor,
+						source: "FullFile",
+						start_line: 1,
+						end_line: 320,
+					},
+					cached_excerpt: [
+						...linesOf(4),
+						"\u2026 300 lines unchanged \u2026",
+						...linesOf(10),
+					].join("\n"),
+				},
+			});
+
+			expect(excerptCode(container)).toHaveLength(11);
+			expect(
+				screen.getByRole("button", { name: "Show 4 more lines" }),
+			).toBeInTheDocument();
 		});
 
 		it("names one folded line in the singular", () => {
