@@ -373,6 +373,40 @@ describe("App review preference", () => {
 		expect(host.preference("review_filter")).toBe("none");
 	});
 
+	it("hides review threads and reports a persistence failure", async () => {
+		seedOneTab();
+		host.seedReview(REPO_A, reviewWith("open"));
+		host.rejectPreferenceWrite("review_filter");
+		render(App);
+		await reviewBadge(1);
+
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Hide review threads" }),
+		);
+
+		expect(
+			await screen.findByRole("button", { name: "Show review threads" }),
+		).toBeTruthy();
+		expect(
+			await screen.findByText("Could not save hidden review threads"),
+		).toBeTruthy();
+	});
+
+	it("shows review threads and reports a preference read failure", async () => {
+		seedOneTab();
+		host.seedReview(REPO_A, reviewWith("open"));
+		host.rejectPreferenceRead("review_filter");
+
+		render(App);
+
+		expect(
+			await screen.findByRole("button", { name: "Hide review threads" }),
+		).toBeTruthy();
+		expect(
+			await screen.findByText("Could not load hidden review threads"),
+		).toBeTruthy();
+	});
+
 	it("shows the review panel's threads while review threads are hidden", async () => {
 		seedOneTab();
 		host.seedReview(REPO_A, reviewWith("open"));

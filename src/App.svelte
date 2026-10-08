@@ -117,7 +117,11 @@ function setCommentCounts(
 async function handleReviewThreadsHiddenChange(hidden: boolean) {
 	reviewThreadsHiddenChanged = true;
 	reviewThreadsHidden = hidden;
-	await setReviewThreadsHidden(hidden);
+	try {
+		await setReviewThreadsHidden(hidden);
+	} catch {
+		showToast("Could not save hidden review threads", "error");
+	}
 }
 
 async function handleDiffContentModeChange(mode: ContentMode) {
@@ -487,9 +491,13 @@ $effect(() => {
 
 // Review filter persistence
 $effect(() => {
-	getReviewThreadsHidden().then((hidden) => {
-		if (!reviewThreadsHiddenChanged && hidden) reviewThreadsHidden = true;
-	});
+	getReviewThreadsHidden()
+		.then((hidden) => {
+			if (!reviewThreadsHiddenChanged && hidden) reviewThreadsHidden = true;
+		})
+		.catch(() => {
+			showToast("Could not load hidden review threads", "error");
+		});
 });
 
 // Content mode is one global preference and must be known before any RepoView
