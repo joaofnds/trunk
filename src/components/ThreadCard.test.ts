@@ -170,6 +170,60 @@ describe("ThreadCard", () => {
 			expect(screen.getByText("Whole commit")).toBeInTheDocument();
 		});
 
+		describe("when it is about the whole file", () => {
+			const wholeFile: Thread = {
+				...comment,
+				whole_file: true,
+				anchor: { ...anchor, source: "FullFile", start_line: 1, end_line: 609 },
+				cached_excerpt: null,
+			};
+
+			it("names the whole file instead of its lines", () => {
+				renderCard({ scoped: true, thread: wholeFile });
+
+				expect(screen.getByText("Whole file")).toBeInTheDocument();
+				expect(screen.queryByText("Lines 1–609")).not.toBeInTheDocument();
+			});
+
+			it("titles its tag with the file alone", () => {
+				renderCard({ scoped: true, thread: wholeFile, onjump: () => {} });
+
+				expect(
+					screen.getByRole("button", { name: "Whole file" }),
+				).toHaveAttribute("title", "src/foo.ts");
+			});
+
+			it("opens the file", async () => {
+				const jumped: Thread[] = [];
+				renderCard({
+					scoped: true,
+					thread: wholeFile,
+					jumpable: true,
+					onjump: (thread) => jumped.push(thread),
+				});
+
+				await fireEvent.click(
+					screen.getByRole("button", { name: "Whole file" }),
+				);
+
+				expect(jumped.map((t) => t.id)).toEqual(["c1"]);
+			});
+
+			it("names the file with no lines outside its file's group", () => {
+				const { container } = renderCard({ thread: wholeFile });
+
+				expect(
+					container.querySelector(".comment-card-fileref"),
+				).toHaveTextContent(/^src\/foo\.ts$/);
+			});
+
+			it("names the whole file inside the diff", () => {
+				renderCard({ variant: "inline", thread: wholeFile });
+
+				expect(screen.getByTitle("src/foo.ts")).toHaveTextContent("Whole file");
+			});
+		});
+
 		it("opens the code of a current-file comment at its lines", async () => {
 			const jumped: Thread[] = [];
 			renderCard({

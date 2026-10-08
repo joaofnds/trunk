@@ -76,6 +76,9 @@ function rangeOn(
 	thread: Thread,
 	side: Side,
 ): { start: number; end: number } | null {
+	// Its lines span the file only so its pin can go stale. It sits above the
+	// file instead (threadsOnWholeFile).
+	if (thread.whole_file) return null;
 	if (thread.anchor !== null) {
 		if (thread.anchor.side !== side) return null;
 
@@ -119,6 +122,18 @@ export function threadsCovering(
 
 		return range !== null && range.start <= lineno && lineno <= range.end;
 	});
+}
+
+/** The threads about the whole of `filePath`, which sit above its first line. */
+export function threadsOnWholeFile(
+	viewComments: Thread[],
+	filePath: string,
+): Thread[] {
+	return viewComments.filter(
+		(c) =>
+			c.whole_file &&
+			(c.anchor?.file_path ?? c.content_pin?.file_path) === filePath,
+	);
 }
 
 /** The threads whose range opens on this line, which the gutter marker counts. */

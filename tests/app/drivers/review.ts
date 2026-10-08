@@ -546,6 +546,12 @@ export class ReviewDriver {
 		return cards().map(locationOf);
 	}
 
+	/** What each thread card's scope tag in the review panel says it covers,
+	 *  topmost first: its lines, or the whole file or commit. */
+	threadScopes(): string[] {
+		return cards().map((card) => textIn(card, SCOPE_TAG));
+	}
+
 	/** The pinned code the topmost thread card shows, line by line. For a
 	 *  current-file thread this is the block the backend read at submit, which is
 	 *  what tells a test whether the selected line numbers named the block the

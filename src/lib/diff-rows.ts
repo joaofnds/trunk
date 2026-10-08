@@ -10,6 +10,7 @@ import { BAR_HEIGHT, UNIT } from "./chrome-heights.js";
 import {
 	commentsForLine,
 	threadsCovering,
+	threadsOnWholeFile,
 	threadsStartingOn,
 } from "./comment-matching.js";
 import { type PairedRow, pairLines } from "./diff-utils.js";
@@ -178,15 +179,12 @@ export function buildInlineRows(
 			rows.push({ kind: "binary", path: fd.path });
 			continue;
 		}
-		if (composerOpensAbove(opts.composer, fd)) {
-			rows.push({ kind: "composer", path: fd.path, hunkIdx: 0 });
-		}
-
 		let flatIdx = 0;
 		const visibleComments = filterThreads(
 			opts.comments,
 			opts.reviewFilter ?? ALL_THREADS,
 		);
+		rows.push(...rowsAboveFile(fd, opts, visibleComments));
 
 		for (const [hunkIdx, hunk] of fd.hunks.entries()) {
 			hunkNav.push({ path: fd.path, hunkIdx, rowIndex: rows.length });
@@ -296,15 +294,12 @@ export function buildSplitRows(
 			rows.push({ kind: "binary", path: fd.path });
 			continue;
 		}
-		if (composerOpensAbove(opts.composer, fd)) {
-			rows.push({ kind: "composer", path: fd.path, hunkIdx: 0 });
-		}
-
 		let flatBase = 0;
 		const visibleComments = filterThreads(
 			opts.comments,
 			opts.reviewFilter ?? ALL_THREADS,
 		);
+		rows.push(...rowsAboveFile(fd, opts, visibleComments));
 
 		for (const [hunkIdx, hunk] of fd.hunks.entries()) {
 			hunkNav.push({ path: fd.path, hunkIdx, rowIndex: rows.length });
@@ -558,6 +553,35 @@ export function diffHoldsComposer(
 					),
 				)),
 	);
+}
+
+/** What opens a file before its first line: the threads about the whole file,
+ *  then a composer for a new one, as a line's threads come before its composer. */
+function rowsAboveFile(
+	fd: FileDiff,
+	opts: BuildOptions,
+	visibleComments: Thread[],
+): DiffRow[] {
+	const rows: DiffRow[] = [];
+	const threads = opts.reviewCommentsVisible
+		? threadsOnWholeFile(visibleComments, fd.path)
+		: [];
+	if (threads.length > 0) {
+		// It hangs under no line, so it takes the first line's indices.
+		rows.push({
+			kind: "comment",
+			path: fd.path,
+			hunkIdx: 0,
+			lineIdx: 0,
+			flatIdx: 0,
+			threads,
+		});
+	}
+	if (composerOpensAbove(opts.composer, fd)) {
+		rows.push({ kind: "composer", path: fd.path, hunkIdx: 0 });
+	}
+
+	return rows;
 }
 
 function composerOpensAbove(

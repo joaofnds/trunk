@@ -4,6 +4,7 @@
 // it names its lines and its review in place of the file and the excerpt.
 
 import Check from "@lucide/svelte/icons/check";
+import FileText from "@lucide/svelte/icons/file-text";
 import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
 import Pencil from "@lucide/svelte/icons/pencil";
 import Trash2 from "@lucide/svelte/icons/trash-2";
@@ -139,12 +140,30 @@ const location = $derived.by(() => {
 	};
 });
 
+// A comment on the whole file spans every line only so its pin can go stale,
+// so it names the file and never those lines.
+const wholeFile = $derived(thread.whole_file === true);
+
 const scopeLabel = $derived(
 	location === null
 		? ""
-		: location.start === location.end
-			? `Line ${location.start}`
-			: `Lines ${location.start}–${location.end}`,
+		: wholeFile
+			? "Whole file"
+			: location.start === location.end
+				? `Line ${location.start}`
+				: `Lines ${location.start}–${location.end}`,
+);
+
+const locationRange = $derived(
+	location === null || wholeFile ? "" : `:L${location.start}-L${location.end}`,
+);
+
+const locationTitle = $derived(
+	location === null
+		? ""
+		: wholeFile
+			? location.path
+			: `${location.path}:L${location.start}-L${location.end}`,
 );
 
 const orphanReason = $derived(
@@ -602,12 +621,12 @@ async function requestDeleteReply(replyId: string) {
 	>
 	{#if variant === "inline"}
 		{#if location !== null}
-			<span
-				class="comment-card-range"
-				title="{location.path}:L{location.start}-L{location.end}"
-				>{location.start === location.end
-					? `L${location.start}`
-					: `L${location.start}-L${location.end}`}</span
+			<span class="comment-card-range" title={locationTitle}
+				>{wholeFile
+					? "Whole file"
+					: location.start === location.end
+						? `L${location.start}`
+						: `L${location.start}-L${location.end}`}</span
 			>
 		{/if}
 		<span
@@ -623,14 +642,15 @@ async function requestDeleteReply(replyId: string) {
 		{:else if onjump}
 			<span class="comment-card-scope pointer-events-auto contents"
 				><Tag
-					title="{location.path}:L{location.start}-L{location.end}"
+					title={locationTitle}
+					dashed={wholeFile}
 					disabled={orphaned || !jumpable}
 					onclick={() => onjump?.(thread)}
-					>{scopeLabel}</Tag
+					>{@render scopeContent()}</Tag
 				></span
 			>
 		{:else}
-			<Tag variant="label">{scopeLabel}</Tag>
+			<Tag variant="label" dashed={wholeFile}>{@render scopeContent()}</Tag>
 		{/if}
 	{:else if location !== null}
 		<span
@@ -712,8 +732,14 @@ async function requestDeleteReply(replyId: string) {
 	{#if location !== null}
 		<span class="fileref-dir">{locationDir}</span
 		><span class="fileref-name">{locationName}</span
-		><span class="fileref-range">:L{location.start}-L{location.end}</span>
+		><span class="fileref-range">{locationRange}</span>
 	{/if}
+{/snippet}
+
+{#snippet scopeContent()}
+	{#if wholeFile}
+		<FileText size={11} aria-hidden="true" />
+	{/if}{scopeLabel}
 {/snippet}
 
 <style>

@@ -1152,6 +1152,63 @@ describe("the composer row", () => {
 	});
 });
 
+describe("a whole-file thread", () => {
+	const onTheFile: Thread = { ...thread("w1", "New", 1, 9), whole_file: true };
+
+	it("hangs above the file's first line rather than under its last", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			fileHeaders: true,
+			comments: [onTheFile],
+		});
+
+		expect(
+			model.rows.map((row) =>
+				row.kind === "comment" ? row.threads.map((t) => t.id) : row.kind,
+			),
+		).toEqual(["file-header", ["w1"], "line", "line", "line"]);
+	});
+
+	it("marks and tints none of the file's lines", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			comments: [onTheFile],
+		});
+
+		const lines = model.rows.filter((row) => row.kind === "line");
+		expect(
+			lines.map((row) => row.kind === "line" && [row.marker, row.spanTone]),
+		).toEqual([
+			[null, null],
+			[null, null],
+			[null, null],
+		]);
+	});
+
+	it("hangs above the first pair in the split view", () => {
+		const model = buildSplitRows([pairable], {
+			...fullMode,
+			comments: [onTheFile],
+		});
+
+		expect(
+			model.rows.map((row) =>
+				row.kind === "comment" ? row.threads.map((t) => t.id) : row.kind,
+			),
+		).toEqual([["w1"], "pair", "pair", "pair"]);
+	});
+
+	it("stays hidden while review comments are", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			reviewCommentsVisible: false,
+			comments: [onTheFile],
+		});
+
+		expect(model.rows.map((row) => row.kind)).toEqual(["line", "line", "line"]);
+	});
+});
+
 describe("the whole-file composer row", () => {
 	const onTheFile = {
 		path: "src/main.ts",

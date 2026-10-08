@@ -60,6 +60,26 @@ describe("commenting on an entire file from hunk mode", () => {
 
 		expect(app.diffPane.isInHunkMode()).toBe(true);
 	});
+
+	it("lists the comment as about the whole file, with none of its code", async () => {
+		const app = await setup({ repo: REPOSITORY });
+		await app.repo.open();
+		await app.repo.selectCommit("Change file");
+		await app.repo.openCommitFile(FILE);
+		await commentOnTheFile(app);
+		await app.review.write("split this file up");
+
+		await app.review.submit();
+		await app.review.openPanel();
+
+		const scopes = await waitFor("the thread", () => {
+			const listed = app.review.threadScopes();
+			return listed.length > 0 ? listed : null;
+		});
+		expect(scopes).toEqual(["Whole file"]);
+		expect(app.review.threads()).toEqual([FILE]);
+		expect(app.review.threadExcerpt()).toEqual([]);
+	});
 });
 
 async function commentOnTheFile(app: AppDriver): Promise<void> {
