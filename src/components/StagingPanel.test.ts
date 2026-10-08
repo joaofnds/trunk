@@ -1,5 +1,11 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import {
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/svelte";
 import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
@@ -172,30 +178,30 @@ describe("StagingPanel", () => {
 		expect(header).toHaveClass("h-bar");
 	});
 
-	it("renders unstaged files section header", async () => {
-		render(StagingPanel, {
-			props: {
-				repoPath: "/test/repo",
-			},
+	it("counts each section's files in a muted badge set apart from the label's tracking", async () => {
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "get_status")
+				return Promise.resolve({
+					unstaged: [
+						{ path: "README.md", status: "Modified", is_binary: false },
+						{ path: "LICENSE", status: "Modified", is_binary: false },
+					],
+					staged: [{ path: "src/main.ts", status: "New", is_binary: false }],
+					conflicted: [],
+				});
+			if (cmd === "get_operation_state")
+				return Promise.resolve({ op_type: "None" });
+			return Promise.resolve(undefined);
 		});
-		// Section header: "Unstaged Files" label + count badge
-		await waitFor(() => {
-			const label = screen.getByText("Unstaged Files");
-			expect(label.parentElement).toHaveTextContent("1");
-		});
-	});
+		render(StagingPanel, { props: { repoPath: "/test/repo" } });
 
-	it("renders staged files section header", async () => {
-		render(StagingPanel, {
-			props: {
-				repoPath: "/test/repo",
-			},
-		});
-		// Section header: "Staged Files" label + count badge
-		await waitFor(() => {
-			const label = screen.getByText("Staged Files");
-			expect(label.parentElement).toHaveTextContent("1");
-		});
+		const unstaged = await screen.findByTestId("staging-unstaged-section");
+		const staged = screen.getByTestId("staging-staged-section");
+
+		const unstagedCount = await within(unstaged).findByText("2");
+		expect(within(staged).getByText("1")).toHaveClass("text-text-muted");
+		expect(unstagedCount).toHaveClass("bg-surface-chip", "text-text-muted");
+		expect(unstagedCount.closest(".tracking-widest")).toBeNull();
 	});
 
 	it("folds a section's files away when its header is clicked", async () => {

@@ -177,7 +177,7 @@ describe("CommitDetail", () => {
 			}
 		});
 
-		it("sets the SHA on a chip that copies it", () => {
+		it("sets the SHA in a plain badge", () => {
 			render(CommitDetailComponent, {
 				props: {
 					commitDetail: detail,
@@ -189,9 +189,12 @@ describe("CommitDetail", () => {
 				},
 			});
 
-			const sha = screen.getByTitle("Copy SHA");
-			expect(sha).toHaveClass("font-mono");
-			expect(sha.parentElement).toHaveClass("bg-surface-chip");
+			expect(screen.getByTitle("Copy SHA")).toHaveClass(
+				"bg-surface-chip",
+				"font-mono",
+				"font-medium",
+				"text-text",
+			);
 		});
 
 		it("navigates newer/older from the chevrons", async () => {

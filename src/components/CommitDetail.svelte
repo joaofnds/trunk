@@ -23,8 +23,8 @@ import type {
 	ReviewTally,
 	Thread,
 } from "../lib/types.js";
+import Badge from "../lib/ui/Badge.svelte";
 import Button from "../lib/ui/Button.svelte";
-import LinkButton from "../lib/ui/LinkButton.svelte";
 import CommitAuthor from "./CommitAuthor.svelte";
 import CommitMessage from "./CommitMessage.svelte";
 import CommitNotes from "./CommitNotes.svelte";
@@ -164,16 +164,9 @@ let commitNotes = $derived(
 			class="text-small text-text-muted font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
 		>
 			commit:
-			<span
-				class="inline-flex items-center rounded bg-surface-chip px-2 py-1 text-text-strong"
+			<Badge title="Copy SHA" onclick={() => copySha(commitDetail.oid)}
+				>{commitDetail.short_oid}</Badge
 			>
-				<LinkButton
-					mono
-					title="Copy SHA"
-					onclick={() => copySha(commitDetail.oid)}
-					>{commitDetail.short_oid}</LinkButton
-				>
-			</span>
 		</span>
 		{#if nav}
 			<span class="pager">
@@ -293,8 +286,6 @@ let commitNotes = $derived(
 </div>
 
 <style>
-/* Click-to-copy SHA: reset the button to read as inline mono text. */
-
 /* Toolbar pager — step to the newer/older adjacent commit in graph order. */
 .pager {
 	display: inline-flex;

@@ -15,8 +15,8 @@ import type {
 	FileDiff,
 	FileStatus,
 } from "../lib/types.js";
+import Badge from "../lib/ui/Badge.svelte";
 import Button from "../lib/ui/Button.svelte";
-import LinkButton from "../lib/ui/LinkButton.svelte";
 import Avatar from "./Avatar.svelte";
 import TreeFileList from "./TreeFileList.svelte";
 
@@ -74,13 +74,9 @@ let filesChanged = $derived(fileDiffs.length);
 				>{relativeLabel(commit.author_timestamp, currentMinute())}</span
 			>
 			<span class="flex-1"></span>
-			<span
-				class="inline-flex shrink-0 items-center rounded bg-surface-chip px-2 py-1 text-small text-text-strong"
+			<Badge title="Copy SHA" onclick={() => copySha(commit.oid)}
+				>{commit.short_oid}</Badge
 			>
-				<LinkButton mono title="Copy SHA" onclick={() => copySha(commit.oid)}
-					>{commit.short_oid}</LinkButton
-				>
-			</span>
 		</div>
 	</div>
 {/snippet}

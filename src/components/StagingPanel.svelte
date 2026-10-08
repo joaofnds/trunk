@@ -26,6 +26,7 @@ import type {
 	ReviewTally,
 	WorkingTreeStatus,
 } from "../lib/types.js";
+import Badge from "../lib/ui/Badge.svelte";
 import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
 import Splitter from "../lib/ui/Splitter.svelte";
@@ -809,11 +810,14 @@ $effect(() => {
 });
 </script>
 
-{#snippet sectionCount(n: number)}
-	<span
-		class="inline-flex items-center justify-center min-w-4 h-4 py-0 px-1 rounded bg-surface-chip text-text font-mono font-semibold text-caption section-count shrink-0"
-		>{n}</span
-	>
+{#snippet sectionTitle(label: string, count: number)}
+	<span class="flex-1 min-w-0 inline-flex items-center gap-2">
+		<span
+			class="min-w-0 truncate text-text-muted text-caption font-semibold tracking-widest uppercase"
+			>{label}</span
+		>
+		<Badge variant="label" tone="muted">{count}</Badge>
+	</span>
 {/snippet}
 
 <div class="w-full min-w-0 flex flex-col h-full overflow-hidden bg-surface">
@@ -932,12 +936,7 @@ $effect(() => {
 					<span class="text-badge-warning inline-flex items-center mr-1">
 						<AlertTriangle size={12} />
 					</span>
-					<span
-						class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 min-w-0 inline-flex items-center gap-2"
-					>
-						<span class="min-w-0 truncate">Conflicted Files</span>
-						{@render sectionCount(status?.conflicted.length ?? 0)}
-					</span>
+					{@render sectionTitle('Conflicted Files', status?.conflicted.length ?? 0)}
 					{#snippet actions()}
 						<Button size="sm" variant="warning" onclick={markAllResolved}
 							>Mark All Resolved</Button
@@ -986,19 +985,9 @@ $effect(() => {
 						<span class="text-badge-warning inline-flex items-center mr-1">
 							<AlertTriangle size={12} />
 						</span>
-						<span
-							class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 min-w-0 inline-flex items-center gap-2"
-						>
-							<span class="min-w-0 truncate">Conflicted Files</span>
-							{@render sectionCount(status?.conflicted.length ?? 0)}
-						</span>
+						{@render sectionTitle('Conflicted Files', status?.conflicted.length ?? 0)}
 					{:else}
-						<span
-							class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 min-w-0 inline-flex items-center gap-2"
-						>
-							<span class="min-w-0 truncate">Unstaged Files</span>
-							{@render sectionCount(status?.unstaged.length ?? 0)}
-						</span>
+						{@render sectionTitle('Unstaged Files', status?.unstaged.length ?? 0)}
 					{/if}
 					{#snippet actions()}
 						{#if isMerge}
@@ -1090,14 +1079,7 @@ $effect(() => {
 						<ChevronRight size={12} />
 					{/if}
 				</span>
-				<span
-					class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 min-w-0 inline-flex items-center gap-2"
-				>
-					<span class="min-w-0 truncate"
-						>{isOperation ? 'Resolved Files' : 'Staged Files'}</span
-					>
-					{@render sectionCount(status?.staged.length ?? 0)}
-				</span>
+				{@render sectionTitle(isOperation ? 'Resolved Files' : 'Staged Files', status?.staged.length ?? 0)}
 				{#snippet actions()}
 					{#if (status?.staged.length ?? 0) > 0}
 						<Button
@@ -1241,10 +1223,6 @@ $effect(() => {
 </div>
 
 <style>
-.section-count {
-	letter-spacing: 0;
-}
-
 /* A section left open on its own stops short of the other section's collapsed bar */
 .section-capped {
 	max-height: calc(100% - var(--bar-h));

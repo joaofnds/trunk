@@ -1,3 +1,4 @@
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
 import { exactLabel } from "../lib/relative-time.js";
@@ -6,6 +7,10 @@ import type { CommitDetail, FileDiff } from "../lib/types.js";
 import ComparePanel from "./ComparePanel.svelte";
 
 import "../__tests__/helpers/tauri-mock";
+
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
+	writeText: vi.fn().mockResolvedValue(undefined),
+}));
 
 function detail(oid: string, summary: string): CommitDetail {
 	return {
@@ -98,14 +103,27 @@ describe("ComparePanel", () => {
 		}
 	});
 
-	it("sets each SHA on a chip that copies it", () => {
+	it("sets each SHA in a plain badge", () => {
 		renderPanel();
 
 		for (const sha of screen.getAllByTitle("Copy SHA")) {
-			expect(sha).toHaveClass("font-mono");
-			expect(sha.parentElement).toHaveClass("bg-surface-chip");
+			expect(sha).toHaveClass(
+				"bg-surface-chip",
+				"font-mono",
+				"font-medium",
+				"text-text",
+			);
 		}
 		expect(screen.getAllByTitle("Copy SHA")).toHaveLength(2);
+	});
+
+	it("copies a side's full oid from its SHA", async () => {
+		vi.mocked(writeText).mockClear();
+		renderPanel();
+
+		await fireEvent.click(screen.getByText("aaaa111"));
+
+		expect(vi.mocked(writeText)).toHaveBeenCalledWith(base.oid);
 	});
 
 	it("selects a file from the list", async () => {
