@@ -1,45 +1,47 @@
 <script lang="ts">
 // The code a thread was left on, one line per row, cut with an ellipsis rather
-// than wrapped, under an optional note about it.
+// than wrapped.
 
-import type { Snippet } from "svelte";
 import type { ExcerptLine } from "./mock.js";
 
 interface Props {
 	lines: ExcerptLine[];
-	/** Drawn faded, for code that has moved or changed since. */
-	dim?: boolean;
-	children?: Snippet;
+	/** Saved code that has moved or changed since, drawn faded under a note
+	 *  that says so. */
+	stale?: boolean;
 }
 
-let { lines, dim = false, children }: Props = $props();
+let { lines, stale = false }: Props = $props();
 
 const GUTTER = { add: "+", del: "-", context: " " } as const;
 </script>
 
-<div class="proto-excerpt" class:proto-excerpt-dim={dim}>
-	{#if children}
-		<p class="m-0 px-3 pb-1 font-sans text-small text-text-subtle">
-			{@render children()}
+<div class="proto-excerpt" class:proto-excerpt-stale={stale}>
+	{#if stale}
+		<p
+			class="m-0 flex h-control items-center px-3 font-sans text-small text-text-subtle shadow-hairline"
+		>
+			Saved excerpt. These lines have moved or changed since.
 		</p>
 	{/if}
-	{#each lines as line, i (i)}
-		<div class="proto-line proto-line-{line.kind}">
-			<span class="proto-number select-none">{line.number ?? ""}</span>
-			<span class="proto-gutter select-none">{GUTTER[line.kind]}</span>
-			<span class="proto-content select-text">{line.content}</span>
-		</div>
-	{/each}
+	<div class="py-1">
+		{#each lines as line, i (i)}
+			<div class="proto-line proto-line-{line.kind}">
+				<span class="proto-number select-none">{line.number ?? ""}</span>
+				<span class="proto-gutter select-none">{GUTTER[line.kind]}</span>
+				<span class="proto-content select-text">{line.content}</span>
+			</div>
+		{/each}
+	</div>
 </div>
 
 <style>
 .proto-excerpt {
 	font-family: var(--font-mono);
 	font-size: var(--text-small);
-	line-height: var(--leading-normal);
+	line-height: var(--leading-code);
 	background: var(--color-bg);
 	box-shadow: var(--shadow-hairline);
-	padding: var(--space-1) 0;
 }
 .proto-line {
 	display: grid;
@@ -72,7 +74,7 @@ const GUTTER = { add: "+", del: "-", context: " " } as const;
 	text-overflow: ellipsis;
 	color: var(--color-diff-text);
 }
-.proto-excerpt-dim .proto-content {
+.proto-excerpt-stale .proto-content {
 	color: var(--color-text-subtle);
 }
 </style>

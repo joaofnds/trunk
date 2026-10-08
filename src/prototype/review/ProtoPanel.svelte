@@ -194,9 +194,9 @@ ontoggle: () => void,
 			>
 			<StatePill review={review.state} />
 			<span class="flex-1"></span>
-			<Button size="sm"><File size={12} />Comment on a file…</Button>
-			<Button size="sm"><Copy size={12} />Copy</Button>
-			<Button size="sm"><Archive size={12} />Archive</Button>
+			<Button size="xs"><File size={12} />Comment on a file…</Button>
+			<Button size="xs"><Copy size={12} />Copy</Button>
+			<Button size="xs"><Archive size={12} />Archive</Button>
 		</div>
 		<div
 			class="flex min-w-0 items-center gap-2 whitespace-nowrap text-small text-text-subtle"
@@ -286,7 +286,6 @@ showStale,
 		{/if}
 		{#each review.sections.filter((sec) => sec.groups.some((g) => visible(g).length > 0)) as section (section.branch)}
 			<section
-				class="proto-branch"
 				aria-label="Branch {section.branch}"
 				style:--lane={laneColor(section.lane)}
 			>
@@ -307,7 +306,7 @@ section.groups.reduce((n, g) => n + visible(g).length, 0),
 				</header>
 				<ul class="m-0 list-none p-0">
 					{#each section.groups.filter((g) => visible(g).length > 0) as group (group.key)}
-						<li class="proto-group">
+						<li>
 							<div class="proto-group-head h-bar bg-surface">
 								<FoldBar
 									noun={group.target.kind === "commit" ? "commit" : "uncommitted changes"}
@@ -317,9 +316,13 @@ section.groups.reduce((n, g) => n + visible(g).length, 0),
 								>
 									{#snippet lead()}
 										<span
-											class="proto-node"
-											data-kind={group.target.kind}
-										></span>
+											class="inline-flex w-control-xs shrink-0 justify-center"
+										>
+											<span
+												class="proto-node"
+												data-kind={group.target.kind}
+											></span>
+										</span>
 									{/snippet}
 									{#if group.target.kind === "commit"}
 										<span
@@ -342,13 +345,15 @@ section.groups.reduce((n, g) => n + visible(g).length, 0),
 								</FoldBar>
 							</div>
 							{#if !folded[group.key]}
-								<div class="proto-group-list flex flex-col gap-5">
+								<div class="proto-group-list flex flex-col gap-2">
 									{#each byFile(group) as file (file.path)}
-										<div class="flex flex-col gap-3">
+										<div class="flex flex-col gap-2">
 											{#if file.path !== null}
 												{@const key = fileKey(group, file.path)}
 												{@const parts = splitPath(file.path)}
-												<div class="font-mono text-small text-text-subtle">
+												<div
+													class="h-bar font-mono text-small text-text-subtle"
+												>
 													<FoldBar
 														noun="file"
 														inset="file"
@@ -425,14 +430,10 @@ file.threads.filter((t) => !isNote(t)).length,
 </section>
 
 <style>
-.proto-branch + .proto-branch {
-	margin-top: var(--space-3);
-}
 .proto-branch-head {
 	position: sticky;
 	top: 0;
 	z-index: 4;
-	border-top: 1px solid var(--color-border);
 	box-shadow: var(--shadow-hairline);
 }
 .proto-meta {
@@ -447,9 +448,6 @@ file.threads.filter((t) => !isNote(t)).length,
 	z-index: 3;
 	box-shadow: var(--shadow-hairline);
 }
-.proto-group + .proto-group .proto-group-head {
-	border-top: 1px solid var(--color-border);
-}
 .proto-node {
 	flex-shrink: 0;
 	width: calc(5 * var(--u) / 2);
@@ -462,8 +460,9 @@ file.threads.filter((t) => !isNote(t)).length,
 	border: 1px dashed var(--lane);
 }
 .proto-group-list {
-	padding: var(--space-3) var(--space-4) var(--space-6)
-		calc(var(--space-4) + 5 * var(--u) / 2 + var(--space-2));
+	padding: 0 var(--space-4) var(--space-4)
+		calc(var(--space-4) + var(--control-xs-h) + var(--space-2));
+	box-shadow: var(--shadow-hairline);
 }
 .proto-keys {
 	border-top: 1px solid var(--color-border);

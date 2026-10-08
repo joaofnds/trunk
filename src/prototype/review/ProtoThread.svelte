@@ -267,11 +267,7 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 					</LinkButton>
 				</div>
 			{/if}
-			<Excerpt lines={thread.excerpt.slice(hiddenAbove)} dim={thread.stale}>
-				{#if thread.stale}
-					Saved excerpt. These lines have moved or changed since.
-				{/if}
-			</Excerpt>
+			<Excerpt lines={thread.excerpt.slice(hiddenAbove)} stale={thread.stale} />
 		{/if}
 
 		<ol class="m-0 list-none p-0">
@@ -317,21 +313,21 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 									></textarea>
 									<div class="flex justify-end gap-2">
 										<Button
-											size="sm"
+											size="xs"
 											variant="ghost"
 											onclick={() => {
 												editingId = null;
 											}}
 											>Cancel</Button
 										>
-										<Button size="sm" variant="primary" onclick={saveEdit}
+										<Button size="xs" variant="primary" onclick={saveEdit}
 											>Save</Button
 										>
 									</div>
 								</div>
 							{:else}
 								<p
-									class="m-0 select-text text-body leading-normal"
+									class="m-0 select-text text-body leading-prose"
 									class:text-text-strong={thread.state !== "dismissed"}
 									class:text-text-subtle={thread.state === "dismissed"}
 								>
@@ -344,7 +340,7 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 			{/each}
 		</ol>
 
-		<div class="proto-reply flex items-end gap-2 p-2">
+		<div class="proto-reply flex items-center gap-2 px-1 py-2">
 			<textarea
 				class="proto-field proto-reply-field flex-1"
 				aria-label="Reply"
@@ -354,7 +350,7 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 				onkeydown={(e) => submitOnChord(e, sendReply)}
 			></textarea>
 			{#if reply.trim() !== ""}
-				<Button size="sm" variant="primary" onclick={sendReply}>Reply</Button>
+				<Button size="xs" variant="primary" onclick={sendReply}>Reply</Button>
 			{/if}
 		</div>
 	{/if}
@@ -400,28 +396,31 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 .proto-reply {
 	box-shadow: inset 0 1px 0 var(--color-border);
 }
+/* Framed by a ring rather than a border, so a field of n lines stands
+   a whole number of units tall. */
 .proto-field {
 	min-width: 0;
 	resize: vertical;
 	padding: var(--space-1) var(--space-2);
-	border: 1px solid var(--color-border);
+	border: 0;
 	border-radius: var(--radius);
+	box-shadow: inset 0 0 0 1px var(--color-border);
 	background: var(--color-bg);
 	color: var(--color-text);
 	font-family: var(--font-sans);
-	font-size: var(--text-callout);
-	line-height: var(--leading-normal);
+	font-size: var(--text-body);
+	line-height: var(--leading-prose);
 	outline: none;
 }
-.proto-field:focus {
-	border-color: var(--color-accent);
-}
 .proto-reply-field {
-	border-color: transparent;
 	background: transparent;
+	box-shadow: none;
 	resize: none;
 }
 .proto-reply-field:hover {
-	border-color: var(--color-border);
+	box-shadow: inset 0 0 0 1px var(--color-border);
+}
+.proto-field:focus {
+	box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 </style>
