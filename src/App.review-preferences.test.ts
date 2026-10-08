@@ -708,6 +708,69 @@ describe("App diff content mode", () => {
 	});
 });
 
+describe("App side panes", () => {
+	it("keeps the graph's sidebar collapsed after the reviews are opened", async () => {
+		seedOneTab();
+		host.seedReview(REPO_A, reviewWith("open"));
+		host.seedPreference("left_pane_collapsed", true);
+		host.seedPreference("review_left_pane_collapsed", true);
+		render(App);
+		await openReviewPanel();
+		await pressShortcut("j");
+		expect(
+			await screen.findByRole("navigation", { name: "Reviews" }),
+		).toBeVisible();
+
+		await leaveReview();
+
+		expect(screen.queryByRole("slider", { name: "Resize sidebar" })).toBeNull();
+	});
+
+	it("opens review mode on the reviews' own collapsed state", async () => {
+		seedOneTab();
+		host.seedReview(REPO_A, reviewWith("open"));
+		host.seedPreference("review_left_pane_collapsed", true);
+		render(App);
+		await screen.findByRole("slider", { name: "Resize sidebar" });
+
+		await openReviewPanel();
+		await tick();
+
+		expect(screen.queryByRole("navigation", { name: "Reviews" })).toBeNull();
+	});
+
+	it("keeps the graph's sidebar preference when the reviews are dragged closed", async () => {
+		seedOneTab();
+		host.seedReview(REPO_A, reviewWith("open"));
+		render(App);
+		await openReviewPanel();
+
+		const divider = await screen.findByRole("slider", {
+			name: "Resize sidebar",
+		});
+		await fireEvent.mouseDown(divider, { clientX: 1000 });
+		await fireEvent.mouseMove(window, { clientX: 700 });
+		await fireEvent.mouseUp(window);
+
+		expect(host.preference("review_left_pane_collapsed")).toBe(true);
+		expect(host.preference("left_pane_collapsed")).toBeUndefined();
+	});
+
+	it("keeps the graph's detail pane open through the shortcut in review mode", async () => {
+		seedOneTab();
+		host.seedReview(REPO_A, reviewWith("open"));
+		render(App);
+		await openReviewPanel();
+
+		await pressShortcut("k");
+		await leaveReview();
+
+		expect(
+			screen.getByRole("slider", { name: "Resize detail pane" }),
+		).toBeInTheDocument();
+	});
+});
+
 function seedOneTab(): void {
 	host.seedPreference("open_tabs", [
 		{ id: "tab-a", repoPath: REPO_A, repoName: "A" },
@@ -848,6 +911,17 @@ async function hideReviewThreads(): Promise<void> {
 async function openReviewPanel(): Promise<void> {
 	await fireEvent.click(await screen.findByRole("button", { name: "Review" }));
 	await screen.findByText("First commit");
+}
+
+async function leaveReview(): Promise<void> {
+	await fireEvent.click(screen.getByRole("button", { name: "Review" }));
+	await waitFor(() =>
+		expect(screen.getByTestId("branch-sidebar")).toBeVisible(),
+	);
+}
+
+async function pressShortcut(key: string): Promise<void> {
+	await fireEvent.keyDown(window, { key, metaKey: true });
 }
 
 function noteComposer(): HTMLElement {

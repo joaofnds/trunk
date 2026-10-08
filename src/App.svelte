@@ -32,6 +32,7 @@ import {
 	getLeftPaneWidth,
 	getOpenRepo,
 	getOpenTabs,
+	getReviewLeftPaneCollapsed,
 	getReviewThreadsHidden,
 	getRightPaneCollapsed,
 	getRightPaneWidth,
@@ -43,6 +44,7 @@ import {
 	setLeftPaneWidth,
 	setOpenRepo,
 	setOpenTabs,
+	setReviewLeftPaneCollapsed,
 	setReviewThreadsHidden,
 	setRightPaneCollapsed,
 	setRightPaneWidth,
@@ -63,6 +65,7 @@ let leftPaneWidth = $state(220);
 let leftPaneCollapsed = $state(false);
 let rightPaneWidth = $state(240);
 let rightPaneCollapsed = $state(false);
+let reviewLeftPaneCollapsed = $state(false);
 let isFullscreen = $state(false);
 let windowVisible = $state(true);
 
@@ -487,6 +490,9 @@ $effect(() => {
 	getRightPaneCollapsed().then((c) => {
 		rightPaneCollapsed = c;
 	});
+	getReviewLeftPaneCollapsed().then((c) => {
+		reviewLeftPaneCollapsed = c;
+	});
 });
 
 // Review filter persistence
@@ -582,6 +588,25 @@ function activateNeighbourTab(step: 1 | -1) {
 	activeTabId = tabs[(cur + step + tabs.length) % tabs.length].id;
 }
 
+function changeLeftPaneCollapsed(collapsed: boolean) {
+	if (reviewPanelOpen) {
+		reviewLeftPaneCollapsed = collapsed;
+		setReviewLeftPaneCollapsed(collapsed);
+		return;
+	}
+
+	leftPaneCollapsed = collapsed;
+	setLeftPaneCollapsed(collapsed);
+}
+
+// Review mode has no detail pane, so nothing in it may close the graph's.
+function changeRightPaneCollapsed(collapsed: boolean) {
+	if (reviewPanelOpen) return;
+
+	rightPaneCollapsed = collapsed;
+	setRightPaneCollapsed(collapsed);
+}
+
 function applyZoom(level: number) {
 	zoomLevel = level;
 	setZoomLevel(level);
@@ -647,14 +672,14 @@ $effect(() => {
 			case "Meta+j":
 			case "Ctrl+j":
 				e.preventDefault();
-				leftPaneCollapsed = !leftPaneCollapsed;
-				setLeftPaneCollapsed(leftPaneCollapsed);
+				changeLeftPaneCollapsed(
+					reviewPanelOpen ? !reviewLeftPaneCollapsed : !leftPaneCollapsed,
+				);
 				return;
 			case "Meta+k":
 			case "Ctrl+k":
 				e.preventDefault();
-				rightPaneCollapsed = !rightPaneCollapsed;
-				setRightPaneCollapsed(rightPaneCollapsed);
+				changeRightPaneCollapsed(!rightPaneCollapsed);
 				return;
 		}
 	}
@@ -787,18 +812,19 @@ $effect(() => {
 					{#if diffContentModeLoaded}
 						{#key tab.repoPath}
 							{@const tabState = getOrCreateTabState(tab.id)}
+							{@const tabReviewActive = reviewPanelOpen && tab.id === activeTabId}
 							<RepoView
 								repoPath={tab.repoPath}
 								repoName={tab.repoName}
 								remoteState={tabState.remoteState}
 								undoRedo={tabState.undoRedo}
 								{leftPaneWidth}
-								{leftPaneCollapsed}
+								leftPaneCollapsed={tabReviewActive ? reviewLeftPaneCollapsed : leftPaneCollapsed}
 								{rightPaneWidth}
 								{rightPaneCollapsed}
 								{windowVisible}
 								tabActive={tab.id === activeTabId}
-								reviewActive={reviewPanelOpen && tab.id === activeTabId}
+								reviewActive={tabReviewActive}
 								{reviewThreadsHidden}
 								{threadFilter}
 								onthreadfilterchange={(filter) => { threadFilter = filter; }}
@@ -806,8 +832,8 @@ $effect(() => {
 								oncontentmodechange={handleDiffContentModeChange}
 								oncommentcountschange={(c) => setCommentCounts(tab.id, c)}
 								onreviewpanelshowingchange={(s) => { activeReviewPanelShowing = s; }}
-								onleftpanecollapsedchange={(c) => { leftPaneCollapsed = c; setLeftPaneCollapsed(c); }}
-								onrightpanecollapsedchange={(c) => { rightPaneCollapsed = c; setRightPaneCollapsed(c); }}
+								onleftpanecollapsedchange={changeLeftPaneCollapsed}
+								onrightpanecollapsedchange={changeRightPaneCollapsed}
 								onleftpanewidthchange={(w) => { leftPaneWidth = w; setLeftPaneWidth(w); }}
 								onrightpanewidthchange={(w) => { rightPaneWidth = w; setRightPaneWidth(w); }}
 								onleavereview={() => { reviewPanelOpen = false; }}

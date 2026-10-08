@@ -50,9 +50,7 @@ import {
 	getFetchIntervalMs,
 	getTreeViewEnabled,
 	setCommitDraft,
-	setLeftPaneCollapsed,
 	setLeftPaneWidth,
-	setRightPaneCollapsed,
 	setRightPaneWidth,
 	setTreeViewEnabled,
 } from "../lib/store.js";
@@ -2085,12 +2083,7 @@ function resizeLeftPane(width: number) {
 }
 
 function storeLeftPane() {
-	if (leftPaneCollapsed) {
-		setLeftPaneCollapsed(true);
-	} else {
-		setLeftPaneWidth(leftPaneWidth);
-		setLeftPaneCollapsed(false);
-	}
+	if (!leftPaneCollapsed) setLeftPaneWidth(leftPaneWidth);
 }
 
 function startLeftResize(e: MouseEvent) {
@@ -2127,12 +2120,7 @@ function resizeRightPane(width: number) {
 }
 
 function storeRightPane() {
-	if (rightPaneCollapsed) {
-		setRightPaneCollapsed(true);
-	} else {
-		setRightPaneWidth(rightPaneWidth);
-		setRightPaneCollapsed(false);
-	}
+	if (!rightPaneCollapsed) setRightPaneWidth(rightPaneWidth);
 }
 
 function startRightResize(e: MouseEvent) {

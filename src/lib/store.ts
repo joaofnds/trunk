@@ -78,6 +78,7 @@ export async function setRightPaneWidth(width: number): Promise<void> {
 
 const LEFT_PANE_COLLAPSED_KEY = "left_pane_collapsed";
 const RIGHT_PANE_COLLAPSED_KEY = "right_pane_collapsed";
+const REVIEW_LEFT_PANE_COLLAPSED_KEY = "review_left_pane_collapsed";
 
 export async function getLeftPaneCollapsed(): Promise<boolean> {
 	return (await getPref<boolean>(LEFT_PANE_COLLAPSED_KEY)) ?? false;
@@ -85,6 +86,16 @@ export async function getLeftPaneCollapsed(): Promise<boolean> {
 
 export async function setLeftPaneCollapsed(collapsed: boolean): Promise<void> {
 	await setPref(LEFT_PANE_COLLAPSED_KEY, collapsed);
+}
+
+export async function getReviewLeftPaneCollapsed(): Promise<boolean> {
+	return (await getPref<boolean>(REVIEW_LEFT_PANE_COLLAPSED_KEY)) ?? false;
+}
+
+export async function setReviewLeftPaneCollapsed(
+	collapsed: boolean,
+): Promise<void> {
+	await setPref(REVIEW_LEFT_PANE_COLLAPSED_KEY, collapsed);
 }
 
 export async function getRightPaneCollapsed(): Promise<boolean> {
