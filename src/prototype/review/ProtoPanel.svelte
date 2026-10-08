@@ -19,15 +19,18 @@ import Keycap from "../../lib/ui/Keycap.svelte";
 import LinkButton from "../../lib/ui/LinkButton.svelte";
 import Radio from "../../lib/ui/Radio.svelte";
 import FoldBar from "./FoldBar.svelte";
+import type { FileVariant } from "./file-variants.js";
 import type { Group, Review, Thread } from "./mock.js";
 import ProtoThread from "./ProtoThread.svelte";
 
 interface Props {
 	review: Review;
 	active: boolean;
+	/** How a whole-file thread and a long excerpt are drawn. */
+	fileVariant: FileVariant;
 }
 
-let { review = $bindable(), active }: Props = $props();
+let { review = $bindable(), active, fileVariant }: Props = $props();
 
 const TALLY = [
 	{ state: "open", label: "Open", tone: "text-thread-open" },
@@ -99,7 +102,18 @@ function byFile(group: Group): { path: string | null; threads: Thread[] }[] {
 		const path = thread.scope.kind === "commit" ? null : thread.scope.path;
 		files.set(path, [...(files.get(path) ?? []), thread]);
 	}
-	return [...files].map(([path, threads]) => ({ path, threads }));
+	// A thread on the whole file leads its file's threads, as the file's header
+	// leads its lines, except today, when it is a range starting at line 1.
+	const lead = (thread: Thread) =>
+		fileVariant !== "today" && thread.scope.kind === "file" ? 0 : 1;
+	return [...files].map(([path, threads]) => ({
+		path,
+		threads: threads.toSorted((a, b) => lead(a) - lead(b)),
+	}));
+}
+
+function isNote(thread: Thread): boolean {
+	return fileVariant === "note" && thread.scope.kind === "file";
 }
 
 function plural(count: number, word: string): string {
@@ -336,8 +350,17 @@ section.groups.reduce((n, g) => n + visible(g).length, 0),
 														<File size={12} aria-hidden="true" />
 														<span class="min-w-0 truncate">{file.path}</span>
 														<span class="flex-1"></span>
+														{#if file.threads.some(isNote)}
+															<span class="proto-meta"
+																>{plural(file.threads.filter(isNote).length, "file note")}
+																·</span
+															>
+														{/if}
 														<span class="proto-meta"
-															>{plural(file.threads.length, "thread")}</span
+															>{plural(
+file.threads.filter((t) => !isNote(t)).length,
+																"thread",
+															)}</span
 														>
 													</FoldBar>
 												</div>
@@ -347,6 +370,8 @@ section.groups.reduce((n, g) => n + visible(g).length, 0),
 													{@const at = group.threads.indexOf(thread)}
 													<ProtoThread
 														bind:thread={group.threads[at]}
+														variant={isNote(thread) ? "note" : "panel"}
+														{fileVariant}
 														ondelete={() => removeThread(group, thread)}
 													/>
 												{/each}

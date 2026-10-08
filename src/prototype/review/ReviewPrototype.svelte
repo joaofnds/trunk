@@ -5,10 +5,17 @@
 
 import ReviewTitle from "../../components/review/ReviewTitle.svelte";
 import StatePill from "../../components/review/StatePill.svelte";
+import Button from "../../lib/ui/Button.svelte";
+import ButtonGroup from "../../lib/ui/ButtonGroup.svelte";
 import Radio from "../../lib/ui/Radio.svelte";
 import Row from "../../lib/ui/Row.svelte";
 import Tab from "../../lib/ui/Tab.svelte";
 import TabStrip from "../../lib/ui/TabStrip.svelte";
+import {
+	FILE_VARIANT_IDS,
+	FILE_VARIANTS,
+	type FileVariant,
+} from "./file-variants.js";
 import { inlineFile, reviews as mockReviews } from "./mock.js";
 import ProtoInline from "./ProtoInline.svelte";
 import ProtoPanel from "./ProtoPanel.svelte";
@@ -17,6 +24,10 @@ let reviews = $state(mockReviews);
 let shownId = $state(mockReviews[0].id);
 let activeId = $state(mockReviews[0].id);
 let view = $state<"panel" | "inline">("panel");
+const firstVariant = new URLSearchParams(location.search).get("files");
+let fileVariant = $state<FileVariant>(
+	FILE_VARIANT_IDS.find((id) => id === firstVariant) ?? "today",
+);
 
 const shownAt = $derived(reviews.findIndex((r) => r.id === shownId));
 
@@ -36,6 +47,25 @@ let inlineThread = $state(
 	</TabStrip>
 
 	{#if view === "panel"}
+		<div
+			class="flex shrink-0 flex-col gap-1 bg-surface-raised px-4 py-2 text-small shadow-hairline"
+		>
+			<div class="flex items-center gap-2">
+				<span class="font-medium text-text-strong">Whole-file threads</span>
+				<ButtonGroup>
+					{#each FILE_VARIANT_IDS as id (id)}
+						<Button
+							joined
+							size="xs"
+							aria-pressed={fileVariant === id}
+							onclick={() => (fileVariant = id)}
+							>{FILE_VARIANTS[id].label}</Button
+						>
+					{/each}
+				</ButtonGroup>
+			</div>
+			<p class="m-0 text-text-muted">{FILE_VARIANTS[fileVariant].about}</p>
+		</div>
 		<div class="proto-split min-h-0 flex-1">
 			<nav
 				aria-label="Reviews"
@@ -92,6 +122,7 @@ let inlineThread = $state(
 			<ProtoPanel
 				bind:review={reviews[shownAt]}
 				active={shownId === activeId}
+				{fileVariant}
 			/>
 		</div>
 	{:else}

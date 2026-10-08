@@ -5,28 +5,45 @@
 // and the reply field last.
 
 import Check from "@lucide/svelte/icons/check";
+import ChevronsUp from "@lucide/svelte/icons/chevrons-up";
+import Code from "@lucide/svelte/icons/code";
 import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
 import Pencil from "@lucide/svelte/icons/pencil";
+import StickyNote from "@lucide/svelte/icons/sticky-note";
 import Trash2 from "@lucide/svelte/icons/trash-2";
 import StatePill from "../../components/review/StatePill.svelte";
 import ThreadEvent from "../../components/review/ThreadEvent.svelte";
 import ThreadMessage from "../../components/review/ThreadMessage.svelte";
 import type { ThreadState } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
+import LinkButton from "../../lib/ui/LinkButton.svelte";
 import RowAction from "../../lib/ui/RowAction.svelte";
 import Tag from "../../lib/ui/Tag.svelte";
 import Excerpt from "./Excerpt.svelte";
 import FoldBar from "./FoldBar.svelte";
+import {
+	EXCERPT_CAP,
+	EXCERPT_TAIL,
+	type FileVariant,
+} from "./file-variants.js";
 import type { Message, Thread } from "./mock.js";
 
 interface Props {
 	thread: Thread;
-	/** Where it is drawn: in the review panel, or under a line of the diff. */
-	variant?: "panel" | "inline";
+	/** Where it is drawn: in the review panel, under a line of the diff, or
+	 *  as the note on a file's row of the panel, which names the file itself. */
+	variant?: "panel" | "inline" | "note";
+	/** How a whole-file thread and a long excerpt are drawn. */
+	fileVariant?: FileVariant;
 	ondelete: () => void;
 }
 
-let { thread = $bindable(), variant = "panel", ondelete }: Props = $props();
+let {
+	thread = $bindable(),
+	variant = "panel",
+	fileVariant = "tag",
+	ondelete,
+}: Props = $props();
 
 const ACTIONS: Record<ThreadState, { next: ThreadState; label: string }[]> = {
 	open: [
@@ -70,8 +87,17 @@ const entries = $derived(
 	].sort((a, b) => a.at - b.at),
 );
 
+// Today a whole-file comment is saved as a range over every line of the file,
+// which is how it is drawn too.
+const wholeFileAsRange = $derived(
+	thread.scope.kind === "file" &&
+		fileVariant === "today" &&
+		thread.excerpt.length > 0,
+);
+
 const scopeLabel = $derived.by(() => {
 	const scope = thread.scope;
+	if (wholeFileAsRange) return `Lines 1-${thread.excerpt.length}`;
 	if (scope.kind !== "lines") return null;
 	return scope.start === scope.end
 		? `Line ${scope.start}`
@@ -79,6 +105,23 @@ const scopeLabel = $derived.by(() => {
 });
 
 const peek = $derived(thread.messages[0]?.text ?? "");
+
+const hasCode = $derived(
+	variant === "panel" &&
+		thread.excerpt.length > 0 &&
+		(thread.scope.kind === "lines" || wholeFileAsRange),
+);
+const caps = $derived(
+	fileVariant === "capped" || fileVariant === "conversation",
+);
+let codeShown = $state(false);
+let codeWhole = $state(false);
+const codeFolded = $derived(fileVariant === "conversation" && !codeShown);
+const hiddenAbove = $derived(
+	caps && !codeWhole && thread.excerpt.length > EXCERPT_CAP
+		? thread.excerpt.length - EXCERPT_TAIL
+		: 0,
+);
 
 function moveTo(next: ThreadState) {
 	thread.state = next;
@@ -154,8 +197,17 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 				<Tag variant="label" dashed
 					><GitCommitHorizontal size={11} aria-hidden="true" />Whole commit</Tag
 				>
-			{:else if thread.scope.kind === "file"}
-				<Tag variant="label" dashed>Whole file</Tag>
+			{:else if thread.scope.kind === "file" && !wholeFileAsRange}
+				{#if variant === "note"}
+					<span
+						class="inline-flex items-center gap-1 text-small font-medium text-text-muted"
+						><StickyNote size={12} aria-hidden="true" />Note on this file</span
+					>
+				{:else}
+					<span class="pointer-events-auto flex">
+						<Tag dashed title="Open {thread.scope.path}">Whole file</Tag>
+					</span>
+				{/if}
 			{:else if scopeLabel}
 				<Tag>{scopeLabel}</Tag>
 			{/if}
@@ -192,8 +244,30 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 	</header>
 
 	{#if !collapsed}
-		{#if thread.excerpt.length > 0 && variant === "panel"}
-			<Excerpt lines={thread.excerpt} dim={thread.stale}>
+		{#if hasCode && codeFolded}
+			<div class="proto-code-bar flex items-center px-3 text-small">
+				<LinkButton tone="muted" onclick={() => (codeShown = true)}>
+					<span class="inline-flex items-center gap-1">
+						<Code size={12} aria-hidden="true" />
+						Show the
+						{thread.excerpt.length === 1
+							? "line"
+							: `${thread.excerpt.length} lines`}
+					</span>
+				</LinkButton>
+			</div>
+		{:else if hasCode}
+			{#if hiddenAbove > 0}
+				<div class="proto-code-bar flex items-center px-3 text-small">
+					<LinkButton tone="accent" onclick={() => (codeWhole = true)}>
+						<span class="inline-flex items-center gap-1">
+							<ChevronsUp size={12} aria-hidden="true" />
+							Show {hiddenAbove} more lines above
+						</span>
+					</LinkButton>
+				</div>
+			{/if}
+			<Excerpt lines={thread.excerpt.slice(hiddenAbove)} dim={thread.stale}>
 				{#if thread.stale}
 					Saved excerpt. These lines have moved or changed since.
 				{/if}
@@ -300,6 +374,14 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 	height: var(--control-h);
 	min-width: 0;
 	background: var(--color-comment-card-header-bg);
+}
+.proto-card-note {
+	border: 1px dashed var(--color-border-strong);
+}
+.proto-code-bar {
+	block-size: var(--control-h);
+	background: var(--color-bg);
+	box-shadow: var(--shadow-hairline);
 }
 .proto-card-open .proto-card-header {
 	box-shadow: var(--shadow-hairline);

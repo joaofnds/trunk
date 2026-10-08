@@ -112,6 +112,69 @@ const WATCHER_EXCERPT: ExcerptLine[] = [
 	},
 ];
 
+const ACTIVITY_PATH =
+	"src/activity-log-entries/repositories/activity-log.repository.test.ts";
+
+const ACTIVITY_HEAD = [
+	'import { get } from "lodash";',
+	'import { PipelineStage, Types } from "mongoose";',
+	'import { MongoErrorCodes } from "src/mongodb/error-codes.enum";',
+	'import { FakeClock } from "test/utils/fake-clock";',
+	'import { describe, expect, test } from "vitest";',
+	'import { ActivityLogRepository } from "./activity-log.repository";',
+	"",
+	'const now = new Date("2026-09-24T12:00:00.000Z");',
+	"",
+	"class FailingSortModel {",
+	"    aggregateCalls: { pipeline: PipelineStage[] }[] = [];",
+	"",
+	"    aggregate(pipeline: PipelineStage[], options?: AggregateOptions) {",
+	"        this.aggregateCalls.push({ pipeline, options });",
+	"        if (!options?.allowDiskUse) {",
+	"            return Promise.reject(new Error(SORT_MEMORY_ERROR));",
+	"        }",
+	"        return Promise.resolve(emptyAggregateResult(pipeline));",
+	"    }",
+	"}",
+	"",
+];
+
+const ACTIVITY_CASES = [
+	"retries the sort with allowDiskUse",
+	"derives the grade level from the graduation year",
+	"keeps entries of an archived student",
+	"filters by sport event category",
+	"pages through entries newest first",
+	"rejects a duplicate entry",
+];
+
+/** A long test file, numbered from 1, whose case blocks repeat to `length`. */
+function activityLog(length: number): ExcerptLine[] {
+	const lines = [...ACTIVITY_HEAD];
+	for (let n = 0; lines.length < length; n++) {
+		lines.push(
+			`describe("${ACTIVITY_CASES[n % ACTIVITY_CASES.length]}", () => {`,
+			'    test("on a fresh repository", async () => {',
+			"        const model = new FailingSortModel();",
+			"        const repository = makeRepository(model);",
+			"        await repository.find(new ActivityLogEntriesFilterDTO());",
+			"        expect(model.aggregateCalls).toHaveLength(2);",
+			"    });",
+			"});",
+			"",
+		);
+	}
+	return lines.slice(0, length).map(
+		(content, i): ExcerptLine => ({
+			kind: "context",
+			number: i + 1,
+			content,
+		}),
+	);
+}
+
+const ACTIVITY_FILE = activityLog(609);
+
 export const reviews: Review[] = [
 	{
 		id: "FHT6H3B5",
@@ -164,6 +227,89 @@ export const reviews: Review[] = [
 									change("done", "human", 8),
 									change("open", "human", 8),
 								],
+							},
+						],
+					},
+					{
+						key: "c3",
+						target: {
+							kind: "commit",
+							sha: "19869b1",
+							summary:
+								"feat(grades): store graduation year and derive grade level at read",
+							authoredAt: minutesAgo(60 * 24 * 3),
+						},
+						threads: [
+							{
+								id: "t6",
+								state: "open",
+								stale: false,
+								scope: { kind: "file", path: ACTIVITY_PATH },
+								// The whole file, as the app saves a whole-file comment today.
+								excerpt: ACTIVITY_FILE,
+								messages: [
+									{
+										id: "m10",
+										channel: "human",
+										text: "This file fakes Mongo by hand for 600 lines. Move FailingSortModel and its helpers to test/utils and keep only the cases here.",
+										createdAt: minutesAgo(70),
+									},
+									{
+										id: "m11",
+										channel: "agent",
+										text: "Agreed. I'll move the fake into test/utils/fake-aggregate.ts and import it from both repository tests.",
+										createdAt: minutesAgo(64),
+									},
+								],
+								history: [],
+							},
+							{
+								id: "t7",
+								state: "open",
+								stale: false,
+								scope: {
+									kind: "lines",
+									path: ACTIVITY_PATH,
+									start: 212,
+									end: 251,
+								},
+								excerpt: ACTIVITY_FILE.slice(211, 251),
+								messages: [
+									{
+										id: "m12",
+										channel: "human",
+										text: "These four cases differ only in the filter. Make them one table-driven test.",
+										createdAt: minutesAgo(69),
+									},
+								],
+								history: [],
+							},
+							{
+								id: "t8",
+								state: "addressed",
+								stale: false,
+								scope: {
+									kind: "lines",
+									path: ACTIVITY_PATH,
+									start: 8,
+									end: 8,
+								},
+								excerpt: ACTIVITY_FILE.slice(5, 8),
+								messages: [
+									{
+										id: "m13",
+										channel: "human",
+										text: "Use the FakeClock's own epoch instead of a second hard-coded date.",
+										createdAt: minutesAgo(68),
+									},
+									{
+										id: "m14",
+										channel: "agent",
+										text: "Now reads FakeClock.EPOCH.",
+										createdAt: minutesAgo(50),
+									},
+								],
+								history: [change("addressed", "agent", 50, "108b6ab2c4d1")],
 							},
 						],
 					},
