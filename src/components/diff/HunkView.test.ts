@@ -278,6 +278,18 @@ describe("HunkView thread marker", () => {
 			?.querySelector(".thread-marker-cell");
 	}
 
+	it("holds a thread's card at the pane's left edge while the code pans", () => {
+		const { container } = render(HunkView, {
+			props: defaultProps({ viewComments: [onAddedLine("t1")] }),
+		});
+
+		const row = container.querySelector(
+			".exact-virtual-rows .inline-comment-row",
+		);
+
+		expect(row).toHaveStyle("position: sticky; left: 0");
+	});
+
 	it("counts the threads hanging on a line beside its numbers", () => {
 		render(HunkView, {
 			props: defaultProps({
@@ -341,6 +353,23 @@ describe("HunkView composer", () => {
 	const card = createRawSnippet(() => ({
 		render: () => "<p>the composer card</p>",
 	}));
+
+	it("holds the composer at the pane's left edge while the code pans", () => {
+		render(HunkView, {
+			props: defaultProps({
+				composer: {
+					place: { path: "src/main.ts", side: "New", endLine: 10 },
+					card,
+				},
+			}),
+		});
+
+		const row = screen
+			.getByText("the composer card")
+			.closest(".inline-composer-row");
+
+		expect(row).toHaveStyle("position: sticky; left: 0");
+	});
 
 	it("draws the composer under the line the comment ends on", () => {
 		render(HunkView, {

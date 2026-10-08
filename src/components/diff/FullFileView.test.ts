@@ -779,6 +779,28 @@ describe("FullFileView thread marker", () => {
 		expect(markerOn("added two")).toBeNull();
 	});
 
+	it("holds a thread's card at the pane's left edge while the code pans", () => {
+		const onAddedLine = aThread({
+			id: "t1",
+			anchor: {
+				commit_oid: "abc123",
+				file_path: "src/main.ts",
+				source: "FullFile",
+				side: "New",
+				start_line: 11,
+				end_line: 11,
+			},
+		});
+
+		const { container } = render(FullFileView, {
+			props: defaultProps({ viewComments: [onAddedLine] }),
+		});
+
+		const row = container.querySelector(".exact-virtual-rows .comment-row");
+
+		expect(row).toHaveStyle("position: sticky; left: 0");
+	});
+
 	it("keeps the empty column on a line no thread hangs on, so the code stays aligned", () => {
 		const onAddedLine = aThread({
 			id: "t1",
@@ -866,6 +888,21 @@ describe("FullFileView composer", () => {
 			},
 		],
 	};
+
+	it("holds the composer at the pane's left edge while the code pans", () => {
+		render(FullFileView, {
+			props: defaultProps({
+				composer: {
+					place: { path: "src/main.ts", side: "New", endLine: 10 },
+					card,
+				},
+			}),
+		});
+
+		const row = screen.getByText("the composer card").closest(".composer-row");
+
+		expect(row).toHaveStyle("position: sticky; left: 0");
+	});
 
 	it("scrolls a composer that opens below the viewport into view", async () => {
 		const props = defaultProps({ fileDiffs: [longFile] });

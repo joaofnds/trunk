@@ -479,13 +479,13 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 			{/if}
 		</div>
 	{:else if item.kind === "comment"}
-		<div class="inline-comment-row">
+		<div class="inline-comment-row pan-pinned">
 			{#each item.threads as c (c.id)}
 				<div> {@render threadCard(c)} </div>
 			{/each}
 		</div>
 	{:else if item.kind === "composer" && composer}
-		<div class="inline-composer-row">{@render composer.card()}</div>
+		<div class="inline-composer-row pan-pinned">{@render composer.card()}</div>
 	{:else if item.kind === "file-header"}
 		<div class="file-header pan-pinned">
 			<Row variant="title" onclick={() => onfilecollapsetoggle(item.path)}>
@@ -719,8 +719,9 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 	box-shadow: inset 3px 0 0 0 var(--thread-tone);
 }
 
-/* Inline comment row: a plain full-width block sibling stacked under its line
-     (not a grid cell). Cards span the diff body width. */
+/* Inline comment row: a plain block sibling stacked under its line (not a grid
+     cell), one viewport wide, so the probe measures a card at the width the
+     pinned row draws it. */
 .inline-comment-row {
 	display: flex;
 	flex-direction: column;

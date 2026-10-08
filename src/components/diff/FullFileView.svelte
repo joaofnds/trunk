@@ -337,10 +337,10 @@ function lineBackground(origin: string, isSelected: boolean): string {
 		>
 	{:else if item.kind === "comment"}
 		{#each item.threads as c (c.id)}
-			<div class="comment-row">{@render threadCard(c)}</div>
+			<div class="comment-row pan-pinned">{@render threadCard(c)}</div>
 		{/each}
 	{:else if item.kind === "composer" && composer}
-		<div class="composer-row">{@render composer.card()}</div>
+		<div class="composer-row pan-pinned">{@render composer.card()}</div>
 	{:else if item.kind === "binary"}
 		<div class="binary-row">Binary file — no diff available</div>
 	{/if}
@@ -537,11 +537,22 @@ function lineBackground(origin: string, isSelected: boolean): string {
 	box-shadow: inset 2px 0 0 0 var(--thread-tone);
 }
 
-/* Comment rows hang as full-width block siblings directly under their anchored
-     line, indented to clear the change-indicator rail by as much as the
-     composer row, so a card and the composer under it share their edges. */
+/* Pinned against the pan: one viewport wide and held at the scrollport's left
+   edge, so a wide file scrolling sideways leaves it where it is. */
+.pan-pinned {
+	position: sticky;
+	left: 0;
+	width: 100cqi;
+}
+
+/* Comment rows hang as block siblings directly under their anchored line,
+     indented to clear the change-indicator rail by as much as the composer row,
+     so a card and the composer under it share their edges. One viewport wide,
+     so the probe measures a card at the width the pinned row draws it. */
 .comment-row {
 	padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+	width: 100cqi;
+	box-sizing: border-box;
 }
 
 /* Invisible character styling (Phase 63 -- WHSP-03, D-11). Real whitespace stays
