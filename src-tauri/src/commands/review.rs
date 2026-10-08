@@ -540,6 +540,10 @@ pub async fn add_thread<R: Runtime>(
 /// range is, so the thread renders against the lines the user picked rather
 /// than against the file's first identical twin.
 ///
+/// A whole-file thread pins the file as it reads here and ignores the range,
+/// which is as old as the composer: a file that grew while the comment was
+/// written would otherwise be pinned short and read stale at once.
+///
 /// Nothing is written into the repository. That is the whole reason a
 /// current-file comment pins content instead of minting a snapshot commit.
 ///
@@ -570,14 +574,17 @@ pub fn submit_current_file_thread_inner(
             WorkingTreeFile::Text(bytes) => String::from_utf8(bytes).map_err(|_| not_text())?,
         };
 
-    let pin =
-        trunk_review::reviewdb::stale::pin_range(&text_of_file, file_path, start_line, end_line)?;
+    let pin = if whole_file {
+        trunk_review::reviewdb::stale::pin_whole_file(&text_of_file, file_path)
+    } else {
+        trunk_review::reviewdb::stale::pin_range(&text_of_file, file_path, start_line, end_line)?
+    };
 
     let req = SubmitThreadRequest {
         text: text.to_string(),
         anchor: None,
         commit_oid: None,
-        cached_excerpt: Some(pin.block.clone()),
+        cached_excerpt: (!whole_file).then(|| pin.block.clone()),
         content_pin: Some(pin),
         clears_draft: true,
         delivery,
@@ -1864,6 +1871,7 @@ fn as_comments(threads: Vec<threads::Thread>) -> Vec<trunk_review::types::Commen
             cached_excerpt: t.cached_excerpt,
             commit_oid: t.commit_oid,
             content_pin: t.content_pin,
+            whole_file: t.whole_file,
         })
         .collect()
 }

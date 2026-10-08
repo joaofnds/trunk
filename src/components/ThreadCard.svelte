@@ -140,9 +140,7 @@ const location = $derived.by(() => {
 	};
 });
 
-// A comment on the whole file spans every line only so its pin can go stale,
-// so it names the file and never those lines.
-const wholeFile = $derived(thread.whole_file === true);
+const wholeFile = $derived(thread.whole_file);
 
 const scopeLabel = $derived(
 	location === null

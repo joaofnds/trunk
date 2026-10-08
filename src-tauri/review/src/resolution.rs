@@ -95,23 +95,35 @@ pub(crate) fn classify_anchor(
     }
 }
 
+/// The working-tree text a content pin names. A file that will not read as
+/// text is gone as far as the comment is concerned.
+fn read_pinned_file(
+    pin: &crate::types::ContentPin,
+    repo: &git2::Repository,
+) -> Result<String, OrphanReason> {
+    let file = trunk_git::blob_reader::read_working_tree_file_without_links(repo, &pin.file_path)
+        .map_err(|_| OrphanReason::FileGone)?;
+    match file {
+        WorkingTreeFile::Binary => Err(OrphanReason::FileGone),
+        WorkingTreeFile::Text(bytes) => {
+            String::from_utf8(bytes).map_err(|_| OrphanReason::FileGone)
+        }
+    }
+}
+
 /// Classify a content pin against the working tree. The file must be readable
 /// and its pinned block must still occur in it; where it does not, the comment
-/// is an orphan even though nothing about the repository's history changed.
+/// is an orphan even though nothing about the repository's history changed. A
+/// comment about the whole file needs only the file: an edit makes it stale,
+/// and the file is still there to open.
 fn classify_pin(
+    comment: &Comment,
     pin: &crate::types::ContentPin,
     repo: &git2::Repository,
 ) -> Result<(), OrphanReason> {
-    let file = trunk_git::blob_reader::read_working_tree_file_without_links(repo, &pin.file_path)
-        .map_err(|_| OrphanReason::FileGone)?;
-    let text = match file {
-        WorkingTreeFile::Binary => return Err(OrphanReason::FileGone),
-        WorkingTreeFile::Text(bytes) => {
-            String::from_utf8(bytes).map_err(|_| OrphanReason::FileGone)?
-        }
-    };
+    let text = read_pinned_file(pin, repo)?;
 
-    if crate::reviewdb::stale::block_occurs(&text, &pin.block) {
+    if comment.whole_file || crate::reviewdb::stale::block_occurs(&text, &pin.block) {
         Ok(())
     } else {
         Err(OrphanReason::ContentGone)
@@ -130,7 +142,7 @@ pub fn resolve_all(comments: &[Comment], repo: &git2::Repository) -> Vec<Comment
         .iter()
         .map(|c| {
             if let Some(pin) = &c.content_pin {
-                let reason = classify_pin(pin, repo).err();
+                let reason = classify_pin(c, pin, repo).err();
                 return CommentResolution {
                     id: c.id.clone(),
                     resolvable: reason.is_none(),
@@ -272,6 +284,7 @@ mod tests {
             cached_excerpt: Some("excerpt".to_string()),
             commit_oid: None,
             content_pin: None,
+            whole_file: false,
         }
     }
 
@@ -284,6 +297,7 @@ mod tests {
             cached_excerpt: None,
             commit_oid: Some(commit_oid.to_string()),
             content_pin: None,
+            whole_file: false,
         }
     }
 
@@ -507,6 +521,7 @@ mod current_file_tests {
                 start_line: 1,
                 end_line: 1,
             }),
+            whole_file: false,
         }
     }
 
@@ -540,6 +555,36 @@ mod current_file_tests {
         let resolved = resolve_all(&[a_thread_pinned_to("a.txt", "two")], &repo);
 
         assert_eq!(resolved[0].reason, Some(OrphanReason::ContentGone));
+    }
+
+    fn a_thread_about_the_whole_of(file_path: &str, contents: &str) -> Comment {
+        Comment {
+            whole_file: true,
+            ..a_thread_pinned_to(file_path, contents)
+        }
+    }
+
+    /// An edit makes a whole-file comment stale, never an orphan: the file it
+    /// is about is still there to open.
+    #[test]
+    fn a_whole_file_pin_on_an_edited_file_resolves() {
+        let (_dir, repo) = a_repo_holding("a.txt", "one\nTWO\nthree\n");
+
+        let resolved = resolve_all(
+            &[a_thread_about_the_whole_of("a.txt", "one\ntwo\nthree\n")],
+            &repo,
+        );
+
+        assert!(resolved[0].resolvable);
+    }
+
+    #[test]
+    fn a_whole_file_pin_naming_a_file_that_is_gone_reports_file_gone() {
+        let (_dir, repo) = a_repo_holding("a.txt", "one\n");
+
+        let resolved = resolve_all(&[a_thread_about_the_whole_of("absent.txt", "one\n")], &repo);
+
+        assert_eq!(resolved[0].reason, Some(OrphanReason::FileGone));
     }
 
     #[test]

@@ -76,8 +76,8 @@ function rangeOn(
 	thread: Thread,
 	side: Side,
 ): { start: number; end: number } | null {
-	// Its lines span the file only so its pin can go stale. It sits above the
-	// file instead (threadsOnWholeFile).
+	// A thread about the whole file marks no line. It sits above the file
+	// instead (threadsOnWholeFile).
 	if (thread.whole_file) return null;
 	if (thread.anchor !== null) {
 		if (thread.anchor.side !== side) return null;

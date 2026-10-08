@@ -5,7 +5,7 @@
 //! longer holds is stale whatever that oid was, because the code it describes
 //! is unrecoverable and the excerpt is the only surviving copy. A current-file
 //! thread is stale once its pinned block occurs nowhere in the file (for one
-//! about the whole file, once the file is not exactly its block), and fresh
+//! about the whole file, once the file differs from it by a byte), and fresh
 //! again the moment the content returns — the spec's branch-switch example,
 //! which supersession can never undo.
 //!
@@ -145,17 +145,9 @@ fn plan(
 ) -> Result<Vec<StaleChange>, TrunkError> {
     let mut changes = Vec::new();
     for row in rows {
-        let resolved = row.pin.as_ref().map(|pin| {
-            read_file(&pin.file_path).and_then(|text| {
-                if pin.whole_file {
-                    find_whole_file(&text, &pin.block)
-                } else {
-                    find_block(&text, &pin.block, pin.ordinal)
-                }
-            })
-        });
-        let is_stale = match resolved {
-            Some(found) => found.is_none(),
+        let observed = row.pin.as_ref().map(|pin| observe(pin, read_file));
+        let is_stale = match &observed {
+            Some(pin) => pin.stale,
             None => match row.commit_oid.as_deref() {
                 Some(oid) => matches!(
                     standing(oid, row.provenance)?,
@@ -164,7 +156,7 @@ fn plan(
                 None => false,
             },
         };
-        let resolved_line = resolved.flatten();
+        let resolved_line = observed.and_then(|pin| pin.line);
         if is_stale == row.was_stale && resolved_line == row.resolved_start_line {
             continue;
         }
@@ -264,16 +256,35 @@ fn find_block(text: &str, block: &str, ordinal: u32) -> Option<u32> {
     u32::try_from(starts[index] + 1).ok()
 }
 
-/// Line 1 when the file is still exactly `block`, or `None` after any edit.
-///
-/// A thread about the whole file cannot say which edit it is about, so every
-/// edit is one. A block search alone misses an append, which keeps the old
-/// content intact as a block.
-fn find_whole_file(text: &str, block: &str) -> Option<u32> {
-    normalize_endings(text)
-        .lines()
-        .eq(normalize_endings(block).lines())
-        .then_some(1)
+/// What the working tree says about one content pin.
+struct PinObservation {
+    stale: bool,
+    line: Option<u32>,
+}
+
+/// A pin about the whole file is stale after any edit, byte for byte, because
+/// it cannot say which edit it is about. It still hangs above the file's first
+/// line, which exists for as long as the file does.
+fn observe(pin: &PinRef, read_file: &impl Fn(&str) -> Option<String>) -> PinObservation {
+    let Some(text) = read_file(&pin.file_path) else {
+        return PinObservation {
+            stale: true,
+            line: None,
+        };
+    };
+
+    if pin.whole_file {
+        return PinObservation {
+            stale: text != pin.block,
+            line: Some(1),
+        };
+    }
+
+    let line = find_block(&text, &pin.block, pin.ordinal);
+    PinObservation {
+        stale: line.is_none(),
+        line,
+    }
 }
 
 /// The 0-based line indices every occurrence of `block` starts at.
@@ -286,6 +297,22 @@ fn occurrences(lines: &[&str], block: &str) -> Vec<usize> {
     (0..=lines.len() - wanted.len())
         .filter(|&i| lines[i..i + wanted.len()] == wanted[..])
         .collect()
+}
+
+/// The content pin for the whole of `text`. The block is the file byte for
+/// byte, so the comment goes stale on any edit, a final newline or a line
+/// ending included.
+#[must_use]
+pub fn pin_whole_file(text: &str, file_path: &str) -> ContentPin {
+    let lines = normalize_endings(text).lines().count();
+
+    ContentPin {
+        file_path: file_path.to_string(),
+        block: text.to_string(),
+        ordinal: 0,
+        start_line: 1,
+        end_line: u32::try_from(lines).unwrap_or(u32::MAX).max(1),
+    }
 }
 
 /// The content pin for a line range of `text`, 1-based and inclusive.

@@ -47,8 +47,9 @@ const fn state_word(state: reviews::ReviewState) -> &'static str {
 /// the first line of its text — the index an agent scans before asking for a
 /// thread in full. A stale thread carries the marker here as well as in the
 /// document, because the location it prints is where the code no longer is. The
-/// location is the content pin's or the anchor's `file:start-end`, a
-/// commit-level thread's short oid, or `no target`, mirroring the document's
+/// location is the content pin's or the anchor's `file:start-end`, or
+/// `file (whole file)` for a thread about the whole file, a commit-level
+/// thread's short oid, or `no target`, mirroring the document's
 /// thread shapes. A file path may legally contain a newline, so the location
 /// passes through the renderer's sanitizer: one thread must never print as two
 /// lines, or the second is a thread an agent will act on that nobody wrote.
@@ -69,12 +70,13 @@ pub(crate) fn render_threads(threads: &[trunk_review::reviewdb::threads::Thread]
 
 /// Where a thread points, in the index's one-line spelling.
 fn thread_location(thread: &trunk_review::reviewdb::threads::Thread) -> String {
-    let file = thread
-        .content_pin
-        .as_ref()
-        .map(|pin| &pin.file_path)
-        .or_else(|| thread.anchor.as_ref().map(|anchor| &anchor.file_path));
-    if let (true, Some(file)) = (thread.whole_file, file) {
+    if thread.whole_file
+        && let Some(file) = thread
+            .content_pin
+            .as_ref()
+            .map(|pin| &pin.file_path)
+            .or_else(|| thread.anchor.as_ref().map(|anchor| &anchor.file_path))
+    {
         return format!("{file} (whole file)");
     }
     if let Some(pin) = &thread.content_pin {
@@ -100,6 +102,53 @@ fn first_line(text: &str) -> String {
     trunk_review::doc::sanitize_heading_text(text.lines().next().unwrap_or("").trim())
 }
 
+/// A content pin as the JSON streams show it. A whole-file pin's block is the
+/// entire file, which the comment is about rather than quoting, so its block
+/// and ordinal are left out and only the file and its span remain.
+#[derive(serde::Serialize, Clone)]
+pub(crate) struct PinJson {
+    file_path: String,
+    start_line: u32,
+    end_line: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    block: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ordinal: Option<u32>,
+}
+
+impl PinJson {
+    pub(crate) fn of_lines(pin: &trunk_review::types::ContentPin) -> Self {
+        Self {
+            block: Some(pin.block.clone()),
+            ordinal: Some(pin.ordinal),
+            ..Self::of_whole_file(pin)
+        }
+    }
+
+    pub(crate) fn of_whole_file(pin: &trunk_review::types::ContentPin) -> Self {
+        Self {
+            file_path: pin.file_path.clone(),
+            start_line: pin.start_line,
+            end_line: pin.end_line,
+            block: None,
+            ordinal: None,
+        }
+    }
+}
+
+/// The pin a thread shows in JSON, in the shape its scope calls for.
+pub(crate) fn pin_json(
+    pin: Option<&trunk_review::types::ContentPin>,
+    whole_file: bool,
+) -> Option<PinJson> {
+    let pin = pin?;
+    if whole_file {
+        Some(PinJson::of_whole_file(pin))
+    } else {
+        Some(PinJson::of_lines(pin))
+    }
+}
+
 /// One `threads --json` line. Optional fields are skipped rather than sent as
 /// null, exactly as `watch`'s `ThreadAdded` does: a reader tells a thread's
 /// shape by which of `anchor`, `commit_oid` and `content_pin` is present, and a
@@ -116,7 +165,7 @@ struct ThreadLine<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     commit_oid: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    content_pin: Option<&'a trunk_review::types::ContentPin>,
+    content_pin: Option<PinJson>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     whole_file: bool,
 }
@@ -151,7 +200,7 @@ impl<'a> ThreadLine<'a> {
             text: &thread.text,
             anchor: thread.anchor.as_ref(),
             commit_oid: thread.commit_oid.as_deref(),
-            content_pin: thread.content_pin.as_ref(),
+            content_pin: pin_json(thread.content_pin.as_ref(), thread.whole_file),
             whole_file: thread.whole_file,
         }
     }

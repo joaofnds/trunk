@@ -427,7 +427,7 @@ fn emit_where_to_work(out: &mut String, session: &RenderInput) {
 
     let _ = writeln!(
         out,
-        "The line range and hash in each heading are the reviewer's coordinates in a past commit, on the side the heading names — `after` is the commit's own tree, `before` is its parent's: never edit by line number. Find the code by searching for a distinctive line from the excerpt, stripping the leading `+`, `-`, or space first in a `diff`-labelled excerpt, then act on the code as it stands now. If you cannot find it at all, report it as `skipped` and say what you searched for, rather than guessing."
+        "The line range and hash in each heading are the reviewer's coordinates in a past commit, on the side the heading names — `after` is the commit's own tree, `before` is its parent's: never edit by line number. Find the code by searching for a distinctive line from the excerpt, stripping the leading `+`, `-`, or space first in a `diff`-labelled excerpt, then act on the code as it stands now. If you cannot find it at all, report it as `skipped` and say what you searched for, rather than guessing. A heading that says `whole file` is about the file as a whole and carries no line range and no excerpt: read the file itself."
     );
     let _ = writeln!(out);
 }
@@ -630,19 +630,15 @@ pub const fn stale_marker(stale: bool) -> &'static str {
     if stale { " (stale)" } else { "" }
 }
 
-/// A line thread's `:Lstart-Lend`, and nothing for a thread about the whole
-/// file, whose lines span the file only because its pin needs them to.
-fn line_range(whole_file: bool, start: u32, end: u32) -> String {
-    if whole_file {
-        String::new()
+/// How a heading names what its thread is about: a `:Lstart-Lend` range after
+/// the file, or `whole file, ` inside the parenthesis. A thread about the whole
+/// file prints no range, since its lines are only where the file spanned.
+fn heading_scope(thread: &DocThread, start: u32, end: u32) -> (String, &'static str) {
+    if thread.whole_file {
+        (String::new(), "whole file, ")
     } else {
-        format!(":L{start}-L{end}")
+        (format!(":L{start}-L{end}"), "")
     }
-}
-
-/// What a whole-file thread's heading says in place of a line range.
-const fn whole_file_scope(whole_file: bool) -> &'static str {
-    if whole_file { "whole file, " } else { "" }
 }
 
 /// The per-thread body all three document sections and the CLI's `thread`
@@ -666,13 +662,12 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
             thread,
         } => {
             let short = short_sha(&anchor.commit_oid);
+            let (range, scope) = heading_scope(thread, anchor.start_line, anchor.end_line);
             let _ = writeln!(
                 out,
                 "#### [{id}] {file_path}{range} ({scope}{short}, {side}) — {state}{stale}",
                 id = thread.id,
                 file_path = sanitize_heading_text(&anchor.file_path),
-                range = line_range(thread.whole_file, anchor.start_line, anchor.end_line),
-                scope = whole_file_scope(thread.whole_file),
                 side = side_label(&anchor.side),
                 state = thread.state.as_str(),
                 stale = stale_marker(thread.stale),
@@ -704,13 +699,12 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
         ThreadTarget::CurrentFile { thread, pin, info } => {
             // No sha: the pin names the file's content as it stands, not a
             // commit's tree, so there is nothing to shorten into the heading.
+            let (range, scope) = heading_scope(thread, pin.start_line, pin.end_line);
             let _ = writeln!(
                 out,
                 "#### [{id}] {file_path}{range} ({scope}current file) — {state}{stale}",
                 id = thread.id,
                 file_path = sanitize_heading_text(&pin.file_path),
-                range = line_range(thread.whole_file, pin.start_line, pin.end_line),
-                scope = whole_file_scope(thread.whole_file),
                 state = thread.state.as_str(),
                 stale = stale_marker(thread.stale),
             );
@@ -925,7 +919,7 @@ pub fn render(session: &RenderInput) -> String {
         let _ = writeln!(out);
         let _ = writeln!(
             out,
-            "Each comment below is about a file's content as it stands in the working tree, not at any commit. The line numbers are where the code sat when the comment was written; a comment marked stale points at code no longer in the file, and its excerpt is the only record of it."
+            "Each comment below is about a file's content as it stands in the working tree, not at any commit. The line numbers are where the code sat when the comment was written; a comment marked stale points at code no longer in the file, and its excerpt is the only record of it. A comment about the whole file is marked stale after any edit to the file and has no excerpt: read the file as it stands."
         );
         let _ = writeln!(out);
         for r in &current_files {

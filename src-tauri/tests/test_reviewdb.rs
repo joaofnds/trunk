@@ -295,6 +295,46 @@ fn a_whole_file_thread_reads_back_as_about_the_whole_file() {
 }
 
 #[test]
+fn a_whole_file_thread_keeps_none_of_the_file_as_its_excerpt() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let whole = SubmitThreadRequest {
+        whole_file: true,
+        ..full_file_submission("a\nb\nc", 1, 3)
+    };
+    submit_thread_inner(&store, &canonical, whole, 1_000).unwrap();
+
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
+
+    assert_eq!(threads[0].cached_excerpt, None);
+}
+
+#[test]
+fn a_thread_saved_before_whole_file_comments_reads_back_as_about_its_lines() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(
+        &store,
+        &canonical,
+        full_file_submission("a\nb\nc", 1, 3),
+        1_000,
+    )
+    .unwrap();
+    drop(store);
+    rusqlite::Connection::open(ctx.data_dir().join("reviews.db"))
+        .unwrap()
+        .execute_batch("ALTER TABLE threads DROP COLUMN whole_file; PRAGMA user_version = 12;")
+        .unwrap();
+
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let threads = list_threads_inner(&store, &canonical, None).unwrap();
+
+    assert!(!threads[0].whole_file);
+}
+
+#[test]
 fn a_line_range_thread_reads_back_as_about_its_lines() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
@@ -6283,13 +6323,14 @@ fn a_current_file_thread_whose_block_left_the_file_is_stale() {
     );
 }
 
-/// Nobody can say which edit a comment on the whole file is about, so every
-/// edit is one. Appending leaves the old content intact as a block, which is
-/// the edit a block search alone would miss.
-#[test]
-fn a_whole_file_current_file_thread_goes_stale_on_any_edit() {
+/// A store holding one whole-file comment on `a.txt` as it reads now. `lines`
+/// is the range the view sent, which can lag the file it was opened on.
+fn a_whole_file_comment_on(
+    contents: &str,
+    lines: u32,
+) -> (TestContext, reviewdb::Store, std::path::PathBuf) {
     let ctx = TestContext::builder()
-        .with_file("a.txt", "one\ntwo\nthree\n")
+        .with_file("a.txt", contents)
         .with_commit("c1")
         .build();
     let canonical = ctx.repo_path().canonicalize().unwrap();
@@ -6300,7 +6341,7 @@ fn a_whole_file_current_file_thread_goes_stale_on_any_edit() {
         ctx.path(),
         "a.txt",
         1,
-        3,
+        lines,
         "about the whole file",
         Delivery::Send,
         true,
@@ -6308,37 +6349,75 @@ fn a_whole_file_current_file_thread_goes_stale_on_any_edit() {
     )
     .unwrap();
 
-    std::fs::write(ctx.repo_path().join("a.txt"), "one\ntwo\nthree\nfour\n").unwrap();
+    (ctx, store, canonical)
+}
+
+/// The whole-file comment on `before` once `a.txt` reads `after`.
+fn whole_file_comment_after_edit(before: &str, after: &str) -> reviewdb::threads::Thread {
+    let lines = u32::try_from(before.lines().count()).unwrap();
+    let (ctx, store, canonical) = a_whole_file_comment_on(before, lines);
+
+    std::fs::write(ctx.repo_path().join("a.txt"), after).unwrap();
     recompute_staleness(&store, &canonical, ctx.path()).unwrap();
 
-    assert!(only_thread(&store, &canonical).stale);
+    only_thread(&store, &canonical)
+}
+
+/// Appending leaves the old content intact as a block, which is the edit a
+/// block search alone would miss.
+#[test]
+fn a_whole_file_current_file_thread_goes_stale_when_a_line_is_appended() {
+    let thread = whole_file_comment_after_edit("one\ntwo\nthree\n", "one\ntwo\nthree\nfour\n");
+
+    assert!(thread.stale);
+}
+
+#[test]
+fn a_whole_file_current_file_thread_goes_stale_when_its_final_newline_is_removed() {
+    let thread = whole_file_comment_after_edit("one\ntwo\nthree\n", "one\ntwo\nthree");
+
+    assert!(thread.stale);
+}
+
+#[test]
+fn a_whole_file_current_file_thread_goes_stale_when_its_line_endings_change() {
+    let thread = whole_file_comment_after_edit("one\ntwo\nthree\n", "one\r\ntwo\r\nthree\r\n");
+
+    assert!(thread.stale);
+}
+
+#[test]
+fn a_stale_whole_file_current_file_thread_still_hangs_above_the_file() {
+    let thread = whole_file_comment_after_edit("one\ntwo\nthree\n", "one\ntwo\nthree\nfour\n");
+
+    assert_eq!(thread.resolved_start_line, Some(1));
 }
 
 #[test]
 fn a_whole_file_current_file_thread_on_an_unchanged_file_is_not_stale() {
-    let ctx = TestContext::builder()
-        .with_file("a.txt", "one\ntwo\nthree\n")
-        .with_commit("c1")
-        .build();
-    let canonical = ctx.repo_path().canonicalize().unwrap();
-    let store = reviewdb::open(ctx.data_dir()).unwrap();
-    submit_current_file_thread_inner(
-        &store,
-        &canonical,
-        ctx.path(),
-        "a.txt",
-        1,
-        3,
-        "about the whole file",
-        Delivery::Send,
-        true,
-        1_000,
-    )
-    .unwrap();
+    let thread = whole_file_comment_after_edit("one\ntwo\nthree\n", "one\ntwo\nthree\n");
+
+    assert!(!thread.stale);
+}
+
+#[test]
+fn a_whole_file_current_file_thread_on_a_file_ending_in_a_blank_line_is_not_stale() {
+    let thread = whole_file_comment_after_edit("one\ntwo\n\n", "one\ntwo\n\n");
+
+    assert!(!thread.stale);
+}
+
+/// The view's range is as old as the composer, so a file that grew while the
+/// comment was written would otherwise be pinned short and read stale at once.
+#[test]
+fn a_whole_file_current_file_thread_covers_the_file_as_it_reads_at_submit() {
+    let (ctx, store, canonical) = a_whole_file_comment_on("one\ntwo\nthree\n", 2);
 
     recompute_staleness(&store, &canonical, ctx.path()).unwrap();
 
-    assert!(!only_thread(&store, &canonical).stale);
+    let thread = only_thread(&store, &canonical);
+    assert!(!thread.stale);
+    assert_eq!(thread.content_pin.map(|pin| pin.end_line), Some(3));
 }
 
 #[test]

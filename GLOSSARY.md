@@ -394,13 +394,15 @@ kept until a grace window passes. See
 **Current-file comment** — a comment anchored to the present content of a tracked
 file, independent of any pending change. Pins to the content at comment time; the
 stale marker arrives when that pinned block no longer occurs anywhere in the file,
-not on any edit elsewhere in it. A **Whole-file comment** is the exception. Never re-anchored forward. Takes no comment on a
+not on any edit elsewhere in it, except for a **Whole-file comment**, which goes stale on
+any edit. Never re-anchored forward. Takes no comment on a
 file the current-file view shows as binary, by the same rule the view applies.
 
 **Whole-file comment** — a comment about a file as a whole rather than any of its
 lines, left from the file's Comment action. It names the file and shows no code. On a
 commit or a snapshot it targets that file there. On the current file it goes stale on
-any edit to the file, since no single edit can be told apart as the one it is about.
+any edit to the file, a final newline or a line ending included, since no single edit
+can be told apart as the one it is about, and it still sits above the file's first line.
 A selection that happens to cover every line is a comment on those lines, not this.
 
 **Content pin** — what a current-file comment is attached to: the block of text the

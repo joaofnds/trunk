@@ -478,14 +478,16 @@ fn cli_threads_locates_a_whole_file_thread_by_its_file_alone() {
     assert!(!stdout.contains("a.txt:1-3"), "{stdout}");
 }
 
+/// The pin's block is the whole file, which the comment is about rather than
+/// quoting, so the line names the file and leaves its text out.
 #[test]
-fn cli_threads_json_marks_a_whole_file_thread() {
+fn cli_threads_json_marks_a_whole_file_thread_and_leaves_out_the_file() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one\ntwo\nthree")
         .with_commit("c1")
         .build();
     let (_, published) = seed_reviews(&ctx);
-    seed_whole_file_thread(&ctx, &published);
+    let thread_id = seed_whole_file_thread(&ctx, &published);
 
     let out = trunk_review_in(
         ctx.repo_path(),
@@ -493,8 +495,23 @@ fn cli_threads_json_marks_a_whole_file_thread() {
         ctx.data_dir(),
     );
 
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains(r#""whole_file":true"#), "{stdout}");
+    let line = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).expect("one object per line"))
+        .find(|v| v["thread"] == thread_id.as_str())
+        .expect("the whole-file thread is listed");
+    assert_eq!(
+        line,
+        serde_json::json!({
+            "review": published,
+            "thread": thread_id,
+            "state": "open",
+            "stale": false,
+            "text": "split this file up",
+            "content_pin": { "file_path": "a.txt", "start_line": 1, "end_line": 3 },
+            "whole_file": true,
+        }),
+    );
 }
 
 /// The agent is told which file the comment is about and is never shown the
@@ -518,6 +535,72 @@ fn cli_thread_on_a_whole_file_thread_names_the_file_and_prints_no_code() {
     );
     assert!(!stdout.contains("L1-L3"), "{stdout}");
     assert!(!stdout.contains("two"), "{stdout}");
+    assert!(!stdout.contains("No excerpt was captured"), "{stdout}");
+}
+
+/// A whole-file thread on a commit, the shape Comment File makes outside the
+/// current-file view: located by its anchor, with no pin.
+fn seed_anchored_whole_file_thread(ctx: &TestContext, review: &str) -> String {
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    store
+        .write(|tx| {
+            threads::insert(
+                tx,
+                review,
+                threads::NewThread {
+                    whole_file: true,
+                    text: "split this file up".to_string(),
+                    anchor: Some(trunk_review::types::Anchor {
+                        commit_oid: "abc123def4567".to_string(),
+                        file_path: "a.txt".to_string(),
+                        source: trunk_review::types::Source::FullFile,
+                        side: trunk_review::types::Side::New,
+                        start_line: 1,
+                        end_line: 3,
+                    }),
+                    commit_oid: None,
+                    content_pin: None,
+                    cached_excerpt: Some("EXCERPT_TOKEN".to_string()),
+                    delivery: Delivery::Send,
+                },
+                500,
+            )
+        })
+        .unwrap()
+}
+
+#[test]
+fn cli_threads_locates_a_whole_file_thread_on_a_commit_by_its_file_alone() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\ntwo\nthree")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    seed_anchored_whole_file_thread(&ctx, &published);
+
+    let out = trunk_review_in(ctx.repo_path(), &["threads", &published], ctx.data_dir());
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("a.txt (whole file)"), "{stdout}");
+    assert!(!stdout.contains("a.txt:1-3"), "{stdout}");
+}
+
+#[test]
+fn cli_thread_on_a_whole_file_thread_on_a_commit_names_the_file_and_prints_no_code() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\ntwo\nthree")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = seed_anchored_whole_file_thread(&ctx, &published);
+
+    let out = trunk_review_in(ctx.repo_path(), &["thread", &thread_id], ctx.data_dir());
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("a.txt (whole file, abc123d"), "{stdout}");
+    assert!(!stdout.contains("L1-L3"), "{stdout}");
+    assert!(!stdout.contains("EXCERPT_TOKEN"), "{stdout}");
     assert!(!stdout.contains("No excerpt was captured"), "{stdout}");
 }
 
@@ -2473,7 +2556,7 @@ fn watch_json_locates_a_current_file_thread_by_its_content_pin() {
 }
 
 #[test]
-fn watch_json_marks_a_whole_file_thread() {
+fn watch_json_marks_a_whole_file_thread_and_leaves_out_the_file() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one\ntwo\nthree")
         .with_commit("c1")
@@ -2485,7 +2568,18 @@ fn watch_json_marks_a_whole_file_thread() {
 
     let event: serde_json::Value =
         serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
-    assert_eq!(event["whole_file"], true, "{event}");
+    assert_eq!(
+        event,
+        serde_json::json!({
+            "event": "thread_added",
+            "review": published,
+            "thread": event["thread"],
+            "state": "open",
+            "text": "split this file up",
+            "content_pin": { "file_path": "a.txt", "start_line": 1, "end_line": 3 },
+            "whole_file": true,
+        }),
+    );
 }
 
 #[test]

@@ -1207,6 +1207,60 @@ describe("a whole-file thread", () => {
 
 		expect(model.rows.map((row) => row.kind)).toEqual(["line", "line", "line"]);
 	});
+
+	it("stays hidden when the review filter leaves it out", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			reviewFilter: { states: ["open"], stale: true },
+			comments: [{ ...onTheFile, state: "done" }],
+		});
+
+		expect(model.rows.map((row) => row.kind)).toEqual(["line", "line", "line"]);
+	});
+
+	it("hangs above a whole-file composer opened on the same file", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			comments: [onTheFile],
+			composer: {
+				path: "src/main.ts",
+				side: "New",
+				endLine: 3,
+				wholeFile: true,
+			},
+		});
+
+		expect(model.rows.map((row) => row.kind).slice(0, 2)).toEqual([
+			"comment",
+			"composer",
+		]);
+	});
+
+	it("hangs above only the file it is about", () => {
+		const other = file("src/other.ts", [
+			hunk("@@ -1,1 +1,1 @@", [line("Context", "elsewhere", 1, 1)]),
+		]);
+
+		const model = buildInlineRows([other, twoHunks], {
+			...fullMode,
+			fileHeaders: true,
+			comments: [onTheFile],
+		});
+
+		expect(
+			model.rows.map((row) =>
+				row.kind === "comment" ? row.threads.map((t) => t.id) : row.kind,
+			),
+		).toEqual([
+			"file-header",
+			"line",
+			"file-header",
+			["w1"],
+			"line",
+			"line",
+			"line",
+		]);
+	});
 });
 
 describe("the whole-file composer row", () => {

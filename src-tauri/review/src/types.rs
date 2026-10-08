@@ -241,6 +241,8 @@ pub struct Comment {
     // A current-file comment's target: the file's content rather than a commit.
     #[serde(default)]
     pub content_pin: Option<ContentPin>,
+    #[serde(default)]
+    pub whole_file: bool,
 }
 
 #[cfg(test)]

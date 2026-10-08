@@ -164,7 +164,7 @@ mod watch_feed {
             #[serde(skip_serializing_if = "Option::is_none")]
             commit_oid: Option<String>,
             #[serde(skip_serializing_if = "Option::is_none")]
-            content_pin: Option<ContentPin>,
+            content_pin: Option<crate::cli::render::PinJson>,
             #[serde(skip_serializing_if = "std::ops::Not::not")]
             whole_file: bool,
         },
@@ -386,7 +386,7 @@ fn push_thread_added(
         text: thread.text.clone(),
         anchor: thread.anchor.clone(),
         commit_oid: thread.commit_oid.clone(),
-        content_pin: thread.content_pin.clone(),
+        content_pin: super::render::pin_json(thread.content_pin.as_ref(), thread.whole_file),
         whole_file: thread.whole_file,
     });
     for (reply_id, reply) in &thread.replies {
