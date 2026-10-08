@@ -170,7 +170,10 @@ literal. `tokens-length.grit` is on, so a length a `<style>` rule states as a
 literal fails there, inside a `calc()` or a fallback included, apart from the
 pixel counts the table above names, and
 `src/spacing-scale.test.ts` holds a gap, padding or margin to the spacing tokens
-by name, which the plugin's `var(--...)` does not.
+by name, which the plugin's `var(--...)` does not. The same file holds a
+`scroll-padding` or `scroll-margin` to tokens alone, since it offsets a scroll by
+the chrome pinned over it, which the bar heights own and the spacing scale does
+not, and the plugin lets a literal there through.
 
 Biome's `nursery/noUndeclaredCustomProperties` is on, as an error. It reports a
 `var(--name)` in a stylesheet, a `<style>` block or a `style="..."` attribute that

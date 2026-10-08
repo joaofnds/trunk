@@ -86,7 +86,7 @@ describe("spacing scale", () => {
 		// `scroll-padding` and `scroll-margin` are read by the next test: they
 		// offset a scroll by the chrome pinned over it, which the scale does not own.
 		const raw = offences(
-			/(?<![\w-])(?:gap|row-gap|column-gap|(?:padding|margin)(?:-(?:top|right|bottom|left))?): ([^;"\n]+)/g,
+			/(?<!scroll-)\b(?:gap|row-gap|column-gap|(?:padding|margin)(?:-(?:top|right|bottom|left))?): ([^;"\n]+)/g,
 			(value) =>
 				mask(value)
 					.split(/\s+/)
