@@ -116,6 +116,11 @@ function isNote(thread: Thread): boolean {
 	return fileVariant === "note" && thread.scope.kind === "file";
 }
 
+function splitPath(path: string): { dir: string; name: string } {
+	const slash = path.lastIndexOf("/");
+	return { dir: path.slice(0, slash + 1), name: path.slice(slash + 1) };
+}
+
 function plural(count: number, word: string): string {
 	return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
@@ -267,7 +272,7 @@ showStale,
 	</header>
 
 	<div
-		class="flex min-h-0 flex-1 flex-col overflow-auto bg-surface pb-6 text-callout leading-normal text-text"
+		class="flex min-h-0 flex-1 flex-col overflow-auto bg-bg pb-6 text-callout leading-normal text-text"
 	>
 		{#if threads.length === 0}
 			<p class="m-0 px-4 py-6 text-text-muted">No comments in this review.</p>
@@ -320,11 +325,12 @@ section.groups.reduce((n, g) => n + visible(g).length, 0),
 										<Chip variant="label" tone="neutral"
 											>{group.target.sha}</Chip
 										>
-										<span class="min-w-0 truncate text-text-strong"
+										<span
+											class="min-w-0 truncate text-body font-medium text-text-strong"
 											>{group.target.summary}</span
 										>
 									{:else}
-										<span class="font-medium text-text-strong"
+										<span class="text-body font-medium text-text-strong"
 											>Uncommitted changes</span
 										>
 									{/if}
@@ -335,12 +341,13 @@ section.groups.reduce((n, g) => n + visible(g).length, 0),
 								</FoldBar>
 							</div>
 							{#if !folded[group.key]}
-								<div class="proto-group-list flex flex-col gap-3">
+								<div class="proto-group-list flex flex-col gap-5">
 									{#each byFile(group) as file (file.path)}
-										<div class="flex flex-col gap-2">
+										<div class="flex flex-col gap-3">
 											{#if file.path !== null}
 												{@const key = fileKey(group, file.path)}
-												<div class="font-mono text-small text-text-strong">
+												{@const parts = splitPath(file.path)}
+												<div class="font-mono text-small text-text-subtle">
 													<FoldBar
 														noun="file"
 														inset="file"
@@ -348,7 +355,13 @@ section.groups.reduce((n, g) => n + visible(g).length, 0),
 														ontoggle={() => toggleFold(key)}
 													>
 														<File size={12} aria-hidden="true" />
-														<span class="min-w-0 truncate">{file.path}</span>
+														<span class="flex min-w-0">
+															<span class="min-w-0 truncate">{parts.dir}</span>
+															<span
+																class="shrink-0 font-medium text-text-strong"
+																>{parts.name}</span
+															>
+														</span>
 														<span class="flex-1"></span>
 														{#if file.threads.some(isNote)}
 															<span class="proto-meta"
@@ -465,7 +478,7 @@ file.threads.filter((t) => !isNote(t)).length,
 	border: 1px dashed var(--lane);
 }
 .proto-group-list {
-	padding: var(--space-2) var(--space-4) var(--space-3)
+	padding: var(--space-3) var(--space-4) var(--space-6)
 		calc(var(--space-4) + var(--space-5));
 }
 .proto-keys {

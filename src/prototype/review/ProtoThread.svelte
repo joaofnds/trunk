@@ -181,7 +181,7 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 </script>
 
 <article
-	class="proto-card proto-card-{variant}"
+	class="proto-card proto-card-{variant} proto-state-{thread.state}"
 	class:proto-card-settled={settled}
 	class:proto-card-open={!collapsed}
 >
@@ -230,7 +230,7 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 				{#each ACTIONS[thread.state] as action (action.next)}
 					<Button
 						size="xs"
-						variant={action.next === "done" ? "success" : "secondary"}
+						variant={action.next === "done" ? "success" : "ghost"}
 						onclick={() => moveTo(action.next)}
 					>
 						{#if action.next === "done"}
@@ -331,7 +331,8 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 								</div>
 							{:else}
 								<p
-									class="m-0 select-text leading-normal"
+									class="m-0 select-text text-body leading-normal"
+									class:text-text-strong={thread.state !== "dismissed"}
 									class:text-text-subtle={thread.state === "dismissed"}
 								>
 									{message.text}
@@ -345,7 +346,7 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 
 		<div class="proto-reply flex items-end gap-2 p-2">
 			<textarea
-				class="proto-field flex-1"
+				class="proto-field proto-reply-field flex-1"
 				aria-label="Reply"
 				placeholder="Reply…"
 				rows="1"
@@ -383,6 +384,18 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 	background: var(--color-bg);
 	box-shadow: var(--shadow-hairline);
 }
+/* A thread that waits on someone carries its state's color down its edge, so
+   the eye finds the open work by scanning one line. */
+.proto-state-open,
+.proto-state-addressed {
+	border-color: var(--color-border-strong);
+}
+.proto-state-open {
+	border-left: 3px solid var(--color-thread-open);
+}
+.proto-state-addressed {
+	border-left: 3px solid var(--color-thread-addressed);
+}
 .proto-card-open .proto-card-header {
 	box-shadow: var(--shadow-hairline);
 }
@@ -410,5 +423,13 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 }
 .proto-field:focus {
 	border-color: var(--color-accent);
+}
+.proto-reply-field {
+	border-color: transparent;
+	background: transparent;
+	resize: none;
+}
+.proto-reply-field:hover {
+	border-color: var(--color-border);
 }
 </style>
