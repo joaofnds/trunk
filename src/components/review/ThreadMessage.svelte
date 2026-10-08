@@ -29,12 +29,12 @@ let {
 </script>
 
 <div
-	class="thread-message grid gap-2 py-2 pr-3 pl-2"
+	class="thread-message grid gap-2 px-3 py-2"
 	class:thread-message-agent={channel === "agent"}
 >
 	<MessageAvatar {channel} />
-	<div class="flex min-w-0 flex-col gap-1">
-		<div class="flex min-w-0 items-center gap-2">
+	<div class="flex min-w-0 flex-col">
+		<div class="flex h-control-sm min-w-0 items-center gap-2">
 			<ThreadAuthor {channel} {createdAt} />
 			{#if pending}
 				<StatePill state="pending" />

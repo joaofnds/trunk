@@ -18,7 +18,9 @@ let { change }: Props = $props();
 <div
 	class="flex h-control items-center gap-2 overflow-hidden whitespace-nowrap px-3 text-small text-text-muted"
 >
-	<StateGlyph state={change.state} size={12} />
+	<span class="inline-flex w-control-sm shrink-0 justify-center">
+		<StateGlyph state={change.state} size={12} />
+	</span>
 	{#if change.channel === "agent"}
 		<span class="font-semibold text-accent-alt">Agent</span>
 	{:else}
