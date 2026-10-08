@@ -9,7 +9,7 @@ export type ButtonVariant =
 	| "warning";
 /** `xs` sets its text in the small step, whose 14px line fills the 16px frame
  *  inside its border with nothing to split. */
-export type ButtonSize = "xs" | "sm" | "md" | "lg";
+export type ButtonSize = "xs" | "sm" | "base" | "md" | "lg";
 </script>
 
 <script lang="ts">
@@ -68,6 +68,7 @@ const VARIANTS: Record<ButtonVariant, string> = {
 const HEIGHTS: Record<ButtonSize, string> = {
 	xs: "h-control-xs",
 	sm: "h-control-sm",
+	base: "h-control-base",
 	md: "h-control",
 	lg: "h-control-lg",
 };
@@ -75,6 +76,7 @@ const HEIGHTS: Record<ButtonSize, string> = {
 const SIZES: Record<ButtonSize, string> = {
 	xs: "gap-1 px-2 text-small",
 	sm: "gap-1 px-2 text-small",
+	base: "gap-1 px-3 text-callout",
 	md: "gap-1 px-3 text-callout",
 	lg: "gap-2 px-4 text-body",
 };
@@ -82,6 +84,7 @@ const SIZES: Record<ButtonSize, string> = {
 const ICON_WIDTHS: Record<ButtonSize, string> = {
 	xs: "w-control-xs",
 	sm: "w-control-sm",
+	base: "w-control-base",
 	md: "w-control",
 	lg: "w-control-lg",
 };

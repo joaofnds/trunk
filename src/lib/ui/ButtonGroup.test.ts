@@ -27,6 +27,7 @@ describe("ButtonGroup", () => {
 	it.each([
 		["xs", "h-control-xs"],
 		["sm", "h-control-sm"],
+		["base", "h-control-base"],
 		["md", "h-control"],
 		["lg", "h-control-lg"],
 	] as const)(

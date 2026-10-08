@@ -33,6 +33,7 @@
 	/* ── Control heights ── */
 	--control-xs-h: calc(4 * var(--u));
 	--control-sm-h: calc(5 * var(--u));
+	--control-base-h: calc(6 * var(--u));
 	--control-h: calc(7 * var(--u));
 	--control-lg-h: calc(8 * var(--u));
 

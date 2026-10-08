@@ -45,6 +45,7 @@ describe("Button", () => {
 
 	it.each([
 		["sm", "h-control-sm"],
+		["base", "h-control-base"],
 		["md", "h-control"],
 		["lg", "h-control-lg"],
 	] as const)("stands %s at its control height", (size, height) => {

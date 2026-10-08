@@ -19,6 +19,7 @@
 	--spacing-target: var(--target-min);
 	--spacing-control-xs: var(--control-xs-h);
 	--spacing-control-sm: var(--control-sm-h);
+	--spacing-control-base: var(--control-base-h);
 	--spacing-control: var(--control-h);
 	--spacing-control-lg: var(--control-lg-h);
 	--spacing-dropdown-max: var(--dropdown-max-h);

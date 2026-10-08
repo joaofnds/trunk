@@ -27,6 +27,7 @@ const TONES: Record<ButtonGroupTone, string> = {
 const HEIGHTS: Record<ButtonSize, string> = {
 	xs: "h-control-xs",
 	sm: "h-control-sm",
+	base: "h-control-base",
 	md: "h-control",
 	lg: "h-control-lg",
 };

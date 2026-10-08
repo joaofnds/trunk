@@ -20,7 +20,7 @@ const VARIANTS: ButtonVariant[] = [
 	"success",
 	"warning",
 ];
-const SIZES: ButtonSize[] = ["xs", "sm", "md", "lg"];
+const SIZES: ButtonSize[] = ["xs", "sm", "base", "md", "lg"];
 const TONES: RowActionTone[] = [
 	"subtle",
 	"muted",
