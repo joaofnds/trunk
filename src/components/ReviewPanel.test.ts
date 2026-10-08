@@ -20,7 +20,6 @@ import type {
 	CommentResolution,
 	RefLabel,
 	Review,
-	ReviewFilter,
 	SessionCommit,
 	Thread,
 	ThreadFilter,
@@ -570,42 +569,6 @@ describe("ReviewPanel", () => {
 			expect(noteRequests).toContainEqual([ACTIVE_REVIEW, "review-note"]);
 		});
 
-		it("restores and saves an externally owned note after Hide all", async () => {
-			installReads({ commits, comments: [], resolutions: [] });
-			const editors = createReviewEditorStore();
-			const props = {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				editorNoteSessionFor: (reviewId: string | null, surface: string) =>
-					editors.note(reviewId, surface),
-				reviewFilter: ALL_THREADS as ReviewFilter,
-			};
-			const view = render(ReviewPanel, { props });
-			await flush();
-			await fireEvent.click(screen.getAllByText("Add note")[0]);
-			await fireEvent.input(screen.getByRole("textbox"), {
-				target: { value: "retained panel note" },
-			});
-
-			await view.rerender({ ...props, reviewFilter: "none" });
-			expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-			view.unmount();
-			render(ReviewPanel, { props });
-			await tick();
-
-			expect(screen.getByRole("textbox")).toHaveValue("retained panel note");
-			await fireEvent.click(noteSubmit());
-			expect(callArgs("add_commit_thread")).toEqual({
-				path: "/repo",
-				commitOid: COMMIT_A,
-				text: "retained panel note",
-				delivery: "send",
-			});
-		});
-
 		it("allows only one add-note write while one is pending", async () => {
 			installReads({ commits, comments: [], resolutions: [] });
 			let settleSave!: () => void;
@@ -702,7 +665,6 @@ describe("ReviewPanel", () => {
 				onJumpToCommit: vi.fn(),
 				editorSessionForThread: (thread: Thread) =>
 					editors.thread(ACTIVE_REVIEW, "review-panel", thread.id),
-				reviewFilter: ALL_THREADS as ReviewFilter,
 			};
 			const view = render(ReviewPanel, { props });
 			await flush();
@@ -713,7 +675,7 @@ describe("ReviewPanel", () => {
 				target: { value: "retained root edit" },
 			});
 
-			await view.rerender({ ...props, reviewFilter: SETTLED });
+			await view.rerender({ ...props, threadFilter: SETTLED });
 			expect(
 				screen.queryByDisplayValue("retained root edit"),
 			).not.toBeVisible();
@@ -731,7 +693,7 @@ describe("ReviewPanel", () => {
 			});
 		});
 
-		it("restores and saves a reply edit after Hide all", async () => {
+		it("restores and saves a reply edit after a remount", async () => {
 			const comment = aThread({
 				...lineAnchoredComment("c1", COMMIT_A, "original"),
 				replies: [
@@ -759,7 +721,6 @@ describe("ReviewPanel", () => {
 				onJumpToCommit: vi.fn(),
 				editorSessionForThread: (thread: Thread) =>
 					editors.thread(ACTIVE_REVIEW, "review-panel", thread.id),
-				reviewFilter: ALL_THREADS as ReviewFilter,
 			};
 			const view = render(ReviewPanel, { props });
 			await flush();
@@ -769,10 +730,6 @@ describe("ReviewPanel", () => {
 				{ target: { value: "retained reply edit" } },
 			);
 
-			await view.rerender({ ...props, reviewFilter: "none" });
-			expect(
-				screen.queryByRole("textbox", { name: "Edit reply" }),
-			).not.toBeInTheDocument();
 			view.unmount();
 			render(ReviewPanel, { props });
 			await tick();
@@ -1333,7 +1290,7 @@ describe("ReviewPanel", () => {
 		function renderCopy(
 			opts: {
 				comments?: Thread[];
-				reviewFilter?: ReviewFilter;
+				threadFilter?: ThreadFilter;
 				generateRejection?: unknown;
 			} = {},
 		) {
@@ -1350,7 +1307,7 @@ describe("ReviewPanel", () => {
 					repoPath: "/repo",
 					session: createReviewSession(),
 					reviewComments,
-					reviewFilter: opts.reviewFilter ?? ALL_THREADS,
+					threadFilter: opts.threadFilter ?? ALL_THREADS,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -1391,7 +1348,7 @@ describe("ReviewPanel", () => {
 
 		describe("when the filter hides some threads", () => {
 			it("leaves the hidden threads out", async () => {
-				renderCopy({ comments: [OPEN, DONE], reviewFilter: NEEDS_ME });
+				renderCopy({ comments: [OPEN, DONE], threadFilter: NEEDS_ME });
 				await flush();
 
 				await fireEvent.click(getCopyButton());
@@ -1403,7 +1360,7 @@ describe("ReviewPanel", () => {
 			});
 
 			it("copies a view of settled threads alone", async () => {
-				renderCopy({ comments: [OPEN, DONE], reviewFilter: SETTLED });
+				renderCopy({ comments: [OPEN, DONE], threadFilter: SETTLED });
 				await flush();
 
 				await fireEvent.click(getCopyButton());
@@ -1415,7 +1372,7 @@ describe("ReviewPanel", () => {
 			});
 
 			it("is disabled while the view shows no thread", async () => {
-				renderCopy({ comments: [OPEN], reviewFilter: SETTLED });
+				renderCopy({ comments: [OPEN], threadFilter: SETTLED });
 				await flush();
 
 				expect(getCopyButton()).toBeDisabled();
@@ -1663,8 +1620,8 @@ describe("the shown review", () => {
 
 describe("empty states", () => {
 	function renderPanel(
-		onreviewfilterchange?: (filter: ReviewFilter) => void,
-		reviewFilter: ReviewFilter = ALL_THREADS,
+		onthreadfilterchange?: (filter: ThreadFilter) => void,
+		threadFilter: ThreadFilter = ALL_THREADS,
 	) {
 		return render(ReviewPanel, {
 			props: {
@@ -1673,8 +1630,8 @@ describe("empty states", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
-				reviewFilter,
-				onreviewfilterchange,
+				threadFilter,
+				onthreadfilterchange,
 			},
 		});
 	}
@@ -1818,14 +1775,14 @@ describe("empty states", () => {
 			commits,
 			comments: [lineAnchoredComment("c1", COMMIT_A, "still open")],
 		});
-		const onreviewfilterchange = vi.fn();
-		renderPanel(onreviewfilterchange, SETTLED);
+		const onthreadfilterchange = vi.fn();
+		renderPanel(onthreadfilterchange, SETTLED);
 		await flush();
 
 		await fireEvent.click(screen.getByRole("button", { name: "Show all" }));
 
 		expect(screen.getByText(/No threads here/)).toBeVisible();
-		expect(onreviewfilterchange).toHaveBeenCalledWith(ALL_THREADS);
+		expect(onthreadfilterchange).toHaveBeenCalledWith(ALL_THREADS);
 	});
 });
 
@@ -1834,8 +1791,8 @@ describe("empty states", () => {
 describe("header", () => {
 	function renderPanel(
 		props: {
-			reviewFilter?: ReviewFilter;
-			onreviewfilterchange?: (filter: ThreadFilter) => void;
+			threadFilter?: ThreadFilter;
+			onthreadfilterchange?: (filter: ThreadFilter) => void;
 		} = {},
 	) {
 		return render(ReviewPanel, {
@@ -2006,46 +1963,36 @@ describe("header", () => {
 
 		it("releases the toggle of a state the filter hides", async () => {
 			installReads({ commits, comments: THREADS });
-			renderPanel({ reviewFilter: NEEDS_ME });
+			renderPanel({ threadFilter: NEEDS_ME });
 			await flush();
 
 			expect(toggle("Done")).toHaveAttribute("aria-pressed", "false");
 			expect(toggle("Open")).toHaveAttribute("aria-pressed", "true");
 		});
 
-		it("releases every toggle while review threads are hidden", async () => {
-			installReads({ commits, comments: THREADS });
-			renderPanel({ reviewFilter: "none" });
-			await flush();
-
-			for (const name of ["Open", "Addressed", "Done", "Stale"]) {
-				expect(toggle(name)).toHaveAttribute("aria-pressed", "false");
-			}
-		});
-
 		it("hides a state's threads when its toggle is pressed", async () => {
-			const onreviewfilterchange = vi.fn();
+			const onthreadfilterchange = vi.fn();
 			installReads({ commits, comments: THREADS });
-			renderPanel({ onreviewfilterchange });
+			renderPanel({ onthreadfilterchange });
 			await flush();
 
 			await fireEvent.click(toggle("Done"));
 
-			expect(onreviewfilterchange).toHaveBeenCalledWith({
+			expect(onthreadfilterchange).toHaveBeenCalledWith({
 				states: ["open", "addressed", "dismissed"],
 				stale: true,
 			});
 		});
 
 		it("hides the stale threads when the stale toggle is pressed", async () => {
-			const onreviewfilterchange = vi.fn();
+			const onthreadfilterchange = vi.fn();
 			installReads({ commits, comments: THREADS });
-			renderPanel({ onreviewfilterchange });
+			renderPanel({ onthreadfilterchange });
 			await flush();
 
 			await fireEvent.click(toggle("Stale"));
 
-			expect(onreviewfilterchange).toHaveBeenCalledWith({
+			expect(onthreadfilterchange).toHaveBeenCalledWith({
 				...ALL_THREADS,
 				stale: false,
 			});
@@ -2054,7 +2001,7 @@ describe("header", () => {
 		it("says what a toggle counts and what pressing it does", async () => {
 			vi.useFakeTimers();
 			installReads({ commits, comments: THREADS });
-			renderPanel({ reviewFilter: NEEDS_ME });
+			renderPanel({ threadFilter: NEEDS_ME });
 			await flush();
 
 			await fireEvent.mouseEnter(toggle("Done"));
@@ -2210,7 +2157,7 @@ describe("header", () => {
 
 		it("presses the preset whose threads show", async () => {
 			installReads({ commits, comments: THREADS });
-			renderPanel({ reviewFilter: NEEDS_ME });
+			renderPanel({ threadFilter: NEEDS_ME });
 			await flush();
 
 			expect(preset("Needs me")).toHaveAttribute("aria-pressed", "true");
@@ -2219,7 +2166,7 @@ describe("header", () => {
 
 		it("presses no preset for a mix of states none holds", async () => {
 			installReads({ commits, comments: THREADS });
-			renderPanel({ reviewFilter: { states: ["open", "done"], stale: true } });
+			renderPanel({ threadFilter: { states: ["open", "done"], stale: true } });
 			await flush();
 
 			for (const label of ["All", "Needs me", "Settled"]) {
@@ -2228,35 +2175,35 @@ describe("header", () => {
 		});
 
 		it("asks for a preset's threads when it is pressed", async () => {
-			const onreviewfilterchange = vi.fn();
+			const onthreadfilterchange = vi.fn();
 			installReads({ commits, comments: THREADS });
-			renderPanel({ onreviewfilterchange });
+			renderPanel({ onthreadfilterchange });
 			await flush();
 
 			await fireEvent.click(preset("Settled"));
 
-			expect(onreviewfilterchange).toHaveBeenCalledWith(SETTLED);
+			expect(onthreadfilterchange).toHaveBeenCalledWith(SETTLED);
 		});
 	});
 
 	describe("under a filter", () => {
 		it("says how many threads it hides", async () => {
 			installReads({ commits, comments: THREADS });
-			renderPanel({ reviewFilter: NEEDS_ME });
+			renderPanel({ threadFilter: NEEDS_ME });
 			await flush();
 
 			expect(screen.getByText(/1 thread\s+hidden\./)).toBeVisible();
 		});
 
 		it("shows every thread again from Show all", async () => {
-			const onreviewfilterchange = vi.fn();
+			const onthreadfilterchange = vi.fn();
 			installReads({ commits, comments: THREADS });
-			renderPanel({ reviewFilter: NEEDS_ME, onreviewfilterchange });
+			renderPanel({ threadFilter: NEEDS_ME, onthreadfilterchange });
 			await flush();
 
 			await fireEvent.click(screen.getByRole("button", { name: "Show all" }));
 
-			expect(onreviewfilterchange).toHaveBeenCalledWith(ALL_THREADS);
+			expect(onthreadfilterchange).toHaveBeenCalledWith(ALL_THREADS);
 		});
 
 		it("says nothing is hidden while every thread shows", async () => {
@@ -2275,7 +2222,7 @@ describe("header", () => {
 					aThread({ id: "t4", commit_oid: COMMIT_B, state: "done" }),
 				],
 			});
-			renderPanel({ reviewFilter: NEEDS_ME });
+			renderPanel({ threadFilter: NEEDS_ME });
 			await flush();
 
 			expect(screen.getByText("bbbbbbb")).not.toBeVisible();
@@ -2289,7 +2236,7 @@ describe("header", () => {
 					aThread({ id: "t4", commit_oid: COMMIT_B, state: "done" }),
 				],
 			});
-			renderPanel({ reviewFilter: NEEDS_ME });
+			renderPanel({ threadFilter: NEEDS_ME });
 			await flush();
 
 			expect(screen.getByText("1 commit · 1 thread")).toBeVisible();
@@ -2305,43 +2252,6 @@ describe("header", () => {
 		expect(
 			screen.queryByRole("list", { name: "Show threads by state" }),
 		).toBeNull();
-	});
-});
-
-describe("Hide all filter", () => {
-	it("hides review cards and creation affordances but leaves management available", async () => {
-		installReads({
-			commits: commits.slice(0, 1),
-			comments: [lineAnchoredComment("c1", COMMIT_A, "hidden note")],
-			resolutions: [resolvable("c1")],
-		});
-		const oncommentonfile = vi.fn();
-		const { container } = render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				reviewFilter: "none",
-				oncommentonfile,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
-		await flush();
-
-		expect(
-			screen.queryByRole("button", { name: "Comment on a file…" }),
-		).not.toBeInTheDocument();
-		expect(
-			screen.queryByRole("button", { name: "Add note" }),
-		).not.toBeInTheDocument();
-		expect(container.querySelector(".comment-card")?.parentElement).toHaveStyle(
-			{
-				display: "none",
-			},
-		);
-		expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
-		expect(oncommentonfile).not.toHaveBeenCalled();
 	});
 });
 

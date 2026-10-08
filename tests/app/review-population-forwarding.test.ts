@@ -88,7 +88,7 @@ describe("review population forwarding", () => {
 		await app.review.hideThreads(
 			() =>
 				app.review.viewBadgeCount() === null &&
-				app.review.reviewBadgeCount() === null,
+				app.review.reviewBadgeCount() === 3,
 		);
 		await app.review.showThreads(
 			() =>
@@ -120,7 +120,7 @@ describe("review population forwarding", () => {
 				app.repo.commitCommentBadge("Change commit") === null &&
 				app.staging.unstagedDirectoryCommentBadge("src/dir") === null &&
 				app.staging.stagedFileCommentBadge(STAGED_FILE) === null &&
-				app.review.reviewBadgeCount() === null,
+				app.review.reviewBadgeCount() === 3,
 		);
 		await app.review.showThreads(
 			() =>

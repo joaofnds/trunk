@@ -51,7 +51,7 @@ import {
 import type { TabInfo } from "./lib/tab-types.js";
 import { createTabId } from "./lib/tab-types.js";
 import { showToast } from "./lib/toast.svelte.js";
-import type { ContentMode, ReviewFilter, ReviewTone } from "./lib/types.js";
+import type { ContentMode, ReviewTone, ThreadFilter } from "./lib/types.js";
 import {
 	createUndoRedoState,
 	type UndoRedoManager,
@@ -78,12 +78,13 @@ let reviewPanelOpen = $state(false);
 // ending review (260531-l02e). Defaults true (panel shows on review entry).
 let activeReviewPanelShowing = $state(true);
 
-// Review presentation: App owns the global filter, which the review panel
-// narrows and the toolbar hides; only whether it hides is persisted. RepoView
-// reports per-tab filtered badge counts up. The active tab alone feeds the
-// toolbar.
-let reviewFilter = $state<ReviewFilter>(ALL_THREADS);
-let reviewFilterChanged = false;
+// Review presentation: App owns the thread filter, which the review panel
+// narrows, and whether the toolbar hides review threads from the graph and the
+// diff. Only the hiding is persisted. RepoView reports per-tab filtered badge
+// counts up. The active tab alone feeds the toolbar.
+let threadFilter = $state<ThreadFilter>(ALL_THREADS);
+let reviewThreadsHidden = $state(false);
+let reviewThreadsHiddenChanged = false;
 let diffContentMode = $state<ContentMode>("hunk");
 let diffContentModeChanged = false;
 let diffContentModeLoaded = $state(false);
@@ -113,11 +114,10 @@ function setCommentCounts(
 	commentCounts = next;
 }
 
-async function handleReviewFilterChange(filter: ReviewFilter) {
-	reviewFilterChanged = true;
-	const hiddenChanged = (filter === "none") !== (reviewFilter === "none");
-	reviewFilter = filter;
-	if (hiddenChanged) await setReviewThreadsHidden(filter === "none");
+async function handleReviewThreadsHiddenChange(hidden: boolean) {
+	reviewThreadsHiddenChanged = true;
+	reviewThreadsHidden = hidden;
+	await setReviewThreadsHidden(hidden);
 }
 
 async function handleDiffContentModeChange(mode: ContentMode) {
@@ -488,7 +488,7 @@ $effect(() => {
 // Review filter persistence
 $effect(() => {
 	getReviewThreadsHidden().then((hidden) => {
-		if (!reviewFilterChanged && hidden) reviewFilter = "none";
+		if (!reviewThreadsHiddenChanged && hidden) reviewThreadsHidden = true;
 	});
 });
 
@@ -758,12 +758,12 @@ $effect(() => {
 				undoRedo={activeState.undoRedo}
 				reviewActive={reviewPanelOpen}
 				reviewPanelShowing={activeReviewPanelShowing}
-				{reviewFilter}
+				{reviewThreadsHidden}
 				viewCommentCount={activeInlineCommentCount}
 				reviewCommentCount={activeReviewCommentCount}
 				viewCommentTone={activeInlineCommentTone}
 				reviewCommentTone={activeReviewCommentTone}
-				onreviewfilterchange={handleReviewFilterChange}
+				onreviewthreadshiddenchange={handleReviewThreadsHiddenChange}
 			/>
 		{/if}
 	</div>
@@ -791,8 +791,9 @@ $effect(() => {
 								{windowVisible}
 								tabActive={tab.id === activeTabId}
 								reviewActive={reviewPanelOpen && tab.id === activeTabId}
-								{reviewFilter}
-								onreviewfilterchange={handleReviewFilterChange}
+								{reviewThreadsHidden}
+								{threadFilter}
+								onthreadfilterchange={(filter) => { threadFilter = filter; }}
 								contentMode={diffContentMode}
 								oncontentmodechange={handleDiffContentModeChange}
 								oncommentcountschange={(c) => setCommentCounts(tab.id, c)}

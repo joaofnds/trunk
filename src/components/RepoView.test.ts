@@ -867,7 +867,7 @@ describe("RepoView", () => {
 		render(RepoView, {
 			props: {
 				...baseProps(createMockRemoteState()),
-				reviewFilter: { states: ["open"], stale: true },
+				threadFilter: { states: ["open"], stale: true },
 			},
 		});
 

@@ -3,8 +3,6 @@ import type { RepoSpec } from "./harness/host-client.js";
 import { setup, teardown } from "./harness/index.js";
 import { waitFor } from "./harness/wait.js";
 
-type RunningApp = Awaited<ReturnType<typeof setup>>;
-
 const FILE = "src/main.ts";
 /** How the panel writes an anchored thread's file reference. */
 const ANCHOR = `${FILE}:L3-L3`;
@@ -102,28 +100,28 @@ describe("a comment left on a commit's diff", () => {
 		expect(app.review.preset()).toBe("all");
 	});
 
-	it.each([
-		[
-			"hiding every thread",
-			(app: RunningApp, observe: () => boolean) =>
-				app.review.hideThreads(observe),
-		],
-		[
-			"the Settled preset",
-			(app: RunningApp, observe: () => boolean) =>
-				app.review.pickPreset("settled", observe),
-		],
-	] as const)(
-		"leaves nothing to copy when %s leaves no thread shown",
-		async (_name, gesture) => {
-			const app = await setup({ repo: TWO_COMMITS });
-			await createReviewThread(app);
+	it("leaves nothing to copy when the Settled preset leaves no thread shown", async () => {
+		const app = await setup({ repo: TWO_COMMITS });
+		await createReviewThread(app);
 
-			await gesture(app, () => app.review.threads().length === 0);
+		await app.review.pickPreset(
+			"settled",
+			() => app.review.threads().length === 0,
+		);
 
-			expect(app.review.copyState()).toBe("disabled");
-		},
-	);
+		expect(app.review.copyState()).toBe("disabled");
+	});
+
+	it("keeps the panel's threads when review threads are hidden", async () => {
+		const app = await setup({ repo: TWO_COMMITS });
+		await createReviewThread(app);
+
+		await app.review.hideThreads(() => true);
+		await app.settled();
+
+		expect(app.review.threads()).toHaveLength(1);
+		expect(app.review.copyState()).toBe("enabled");
+	});
 
 	it("retains an unsaved diff comment and its range through hiding and leaving the diff", async () => {
 		const app = await setup({ repo: TWO_COMMITS });

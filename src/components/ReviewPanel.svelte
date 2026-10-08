@@ -62,7 +62,6 @@ import type {
 	Delivery,
 	OrphanReason,
 	Review,
-	ReviewFilter,
 	Thread,
 	ThreadFilter,
 	ThreadState,
@@ -98,18 +97,18 @@ interface Props {
 	// Commit-header jump: show the commit in the graph, which takes the window
 	// out of review mode.
 	onJumpToCommit: (commitOid: string) => void;
-	// Open the file finder. One suppressible affordance rather than several, so
-	// milestone 5's hide-all has a single thing to hide.
+	// Open the file finder. Absent while review threads are hidden, because the
+	// diff it leads to takes no new comment then.
 	oncommentonfile?: () => void;
 	// Open a file's current content, where its current-file threads live.
 	onopenfile?: (filePath: string) => void;
 	// The checked-out branch, which uncommitted work and current-file threads
 	// belong to. Null while HEAD is detached.
 	headBranch?: string | null;
-	reviewFilter?: ReviewFilter;
+	threadFilter?: ThreadFilter;
 	// The header's presets and its Show all ask the owner of the filter, App,
 	// which shares it with the diff and the graph, to show other threads.
-	onreviewfilterchange?: (filter: ThreadFilter) => void;
+	onthreadfilterchange?: (filter: ThreadFilter) => void;
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	editorNoteSessionFor?: (
 		reviewId: string | null,
@@ -135,8 +134,8 @@ let {
 	oncommentonfile,
 	onopenfile,
 	headBranch = null,
-	reviewFilter = ALL_THREADS,
-	onreviewfilterchange,
+	threadFilter = ALL_THREADS,
+	onthreadfilterchange,
 	editorSessionForThread,
 	editorNoteSessionFor,
 	keysActive = true,
@@ -148,9 +147,9 @@ let panelEl = $state<HTMLElement | null>(null);
 
 const commits = $derived(reviewComments.shownCommits);
 const comments = $derived(reviewComments.shownThreads);
-const visibleComments = $derived(filterThreads(comments, reviewFilter));
+const visibleComments = $derived(filterThreads(comments, threadFilter));
 const hiddenCount = $derived(comments.length - visibleComments.length);
-const activePreset = $derived(presetOf(reviewFilter));
+const activePreset = $derived(presetOf(threadFilter));
 
 // The header's tally, one count per state, and the stale threads among them.
 const STATE_TALLY = [
@@ -209,13 +208,12 @@ const sections = $derived(
 );
 
 function shows(thread: Thread): boolean {
-	return threadMatchesFilter(thread, reviewFilter);
+	return threadMatchesFilter(thread, threadFilter);
 }
 
 // A block of threads hides once the filter hides every one of them. A commit
 // nobody commented on yet stays, for its Add note.
 function hidesAll(threads: Thread[]): boolean {
-	if (reviewFilter === "none") return true;
 	return threads.length > 0 && !threads.some(shows);
 }
 
@@ -226,16 +224,15 @@ function tallyCount(value: ThreadState | "stale"): number {
 }
 
 function tallyOn(value: ThreadState | "stale"): boolean {
-	if (reviewFilter === "none") return false;
-	if (value === "stale") return reviewFilter.stale;
-	return reviewFilter.states.includes(value);
+	if (value === "stale") return threadFilter.stale;
+	return threadFilter.states.includes(value);
 }
 
 function toggleTally(value: ThreadState | "stale") {
-	onreviewfilterchange?.(
+	onthreadfilterchange?.(
 		value === "stale"
-			? toggleStale(reviewFilter)
-			: toggleState(reviewFilter, value),
+			? toggleStale(threadFilter)
+			: toggleState(threadFilter, value),
 	);
 }
 
@@ -244,7 +241,7 @@ function presetCount(states: readonly ThreadState[]): number {
 }
 
 function showAll() {
-	onreviewfilterchange?.(ALL_THREADS);
+	onthreadfilterchange?.(ALL_THREADS);
 }
 
 function hidesSection(section: ReviewSection): boolean {
@@ -342,7 +339,7 @@ function sectionLane(section: ReviewSection): string {
 }
 
 function shownCount(threads: Thread[]): number {
-	return filterThreads(threads, reviewFilter).length;
+	return filterThreads(threads, threadFilter).length;
 }
 
 function groupLabel(group: ReviewGroup): string {
@@ -750,7 +747,7 @@ $effect(() => {
 				{/if}
 			</div>
 			<div class="flex items-center gap-2 ml-auto">
-				{#if oncommentonfile && reviewFilter !== "none"}
+				{#if oncommentonfile}
 					<Button
 						size="base"
 						onclick={oncommentonfile}
@@ -902,7 +899,7 @@ $effect(() => {
 								joined
 								size="base"
 								aria-pressed={activePreset === preset.id}
-								onclick={() => onreviewfilterchange?.(preset.filter)}
+								onclick={() => onthreadfilterchange?.(preset.filter)}
 							>
 								{preset.label}
 								<span class="font-mono"
@@ -972,13 +969,6 @@ $effect(() => {
 				</p>
 				<WaysToComment />
 			</ReviewEmpty>
-		{:else if reviewFilter === "none"}
-			<div class="flex flex-col gap-1 py-3 px-4">
-				<span>Review threads hidden.</span>
-				<span class="text-text-muted text-small leading-normal">
-					The review inventory remains available above.
-				</span>
-			</div>
 		{:else if !hasVisibleComment}
 			<p class="m-0 px-4 py-6 text-text-muted">
 				No threads here.
@@ -1076,7 +1066,7 @@ $effect(() => {
 										>
 									{/if}
 									<span class="flex-1"></span>
-									{#if group.kind === "commit" && group.commit && reviewFilter !== "none"}
+									{#if group.kind === "commit" && group.commit}
 										{@const oid = group.commit.oid}
 										<span class="pointer-events-auto flex">
 											<Button
@@ -1102,10 +1092,7 @@ $effect(() => {
 							>
 								{#if group.commit && noteSession.target === group.commit.oid}
 									{@const commit = group.commit}
-									<div
-										class="flex"
-										style:display={reviewFilter === "none" ? "none" : "flex"}
-									>
+									<div class="flex">
 										<ComposerFrame
 											activeReview={reviewComments.activeReview}
 											{activeReviewId}

@@ -8,13 +8,10 @@ import {
 	createRemoteState,
 	type RemoteState,
 } from "../lib/remote-state.svelte.js";
-import { THREAD_PRESETS } from "../lib/review-filter.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { UndoEntry } from "../lib/undo-redo.svelte.js";
 import Toolbar from "./Toolbar.svelte";
-
-const NEEDS_ME = THREAD_PRESETS[1].filter;
 
 // All Tauri module mocks — declared locally (NOT via ../__tests__/helpers/tauri-mock)
 // for proper vi.mock hoisting before Toolbar.svelte's static imports resolve.
@@ -542,7 +539,7 @@ describe("Toolbar", () => {
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
 				reviewActive: false,
-				reviewFilter: "none",
+				reviewThreadsHidden: true,
 			},
 		});
 		const threadsButton = screen.getByRole("button", {
@@ -560,7 +557,7 @@ describe("Toolbar", () => {
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
 				reviewActive: false,
-				reviewFilter: "none",
+				reviewThreadsHidden: true,
 			},
 		});
 
@@ -569,55 +566,29 @@ describe("Toolbar", () => {
 		).toHaveAttribute("aria-pressed", "false");
 	});
 
-	it.each(
-		THREAD_PRESETS.map((preset) => [preset.label, preset.filter] as const),
-	)("hides review threads from the %s preset", async (_label, reviewFilter) => {
-		const onreviewfilterchange = vi.fn();
-		render(Toolbar, {
-			props: {
-				repoPath: "/test/repo",
-				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
-				reviewActive: false,
-				reviewFilter,
-				onreviewfilterchange,
-			},
-		});
+	it.each([
+		{ hidden: false, press: "Hide review threads", asks: true },
+		{ hidden: true, press: "Show review threads", asks: false },
+	])(
+		"asks for hidden $asks when $press is pressed",
+		async ({ hidden, press, asks }) => {
+			const onreviewthreadshiddenchange = vi.fn();
+			render(Toolbar, {
+				props: {
+					repoPath: "/test/repo",
+					remoteState: makeRemoteState(),
+					undoRedo: makeUndoRedo(),
+					reviewActive: false,
+					reviewThreadsHidden: hidden,
+					onreviewthreadshiddenchange,
+				},
+			});
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: "Hide review threads" }),
-		);
+			await fireEvent.click(screen.getByRole("button", { name: press }));
 
-		expect(onreviewfilterchange).toHaveBeenLastCalledWith("none");
-	});
-
-	it("restores the selected filter when review threads are shown", async () => {
-		const onreviewfilterchange = vi.fn();
-		const view = render(Toolbar, {
-			props: {
-				repoPath: "/test/repo",
-				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
-				reviewActive: false,
-				reviewFilter: NEEDS_ME,
-				onreviewfilterchange,
-			},
-		});
-
-		await view.rerender({
-			repoPath: "/test/repo",
-			remoteState: makeRemoteState(),
-			undoRedo: makeUndoRedo(),
-			reviewActive: false,
-			reviewFilter: "none",
-			onreviewfilterchange,
-		});
-		await fireEvent.click(
-			screen.getByRole("button", { name: "Show review threads" }),
-		);
-
-		expect(onreviewfilterchange).toHaveBeenLastCalledWith(NEEDS_ME);
-	});
+			expect(onreviewthreadshiddenchange).toHaveBeenLastCalledWith(asks);
+		},
+	);
 });
 
 describe("Toolbar remote failure feedback", () => {

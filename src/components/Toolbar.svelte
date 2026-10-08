@@ -14,15 +14,9 @@ import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
-import { ALL_THREADS } from "../lib/review-filter.js";
 import { getScheduler } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
-import type {
-	ReviewFilter,
-	ReviewTone,
-	StashEntry,
-	ThreadFilter,
-} from "../lib/types.js";
+import type { ReviewTone, StashEntry } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import ButtonGroup from "../lib/ui/ButtonGroup.svelte";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
@@ -38,14 +32,15 @@ interface Props {
 	// Defaults true so a consumer that only sets reviewActive still styles correctly
 	// (260531-l02e).
 	reviewPanelShowing?: boolean;
-	reviewFilter?: ReviewFilter;
+	// Hides review threads in the graph and the diff. The review panel keeps them.
+	reviewThreadsHidden?: boolean;
 	// Comments in the current view (the review threads toggle's badge).
 	viewCommentCount?: number;
 	// Total comments in the session (Review button badge).
 	reviewCommentCount?: number;
 	viewCommentTone?: ReviewTone | null;
 	reviewCommentTone?: ReviewTone | null;
-	onreviewfilterchange?: (filter: ReviewFilter) => void;
+	onreviewthreadshiddenchange?: (hidden: boolean) => void;
 }
 
 let {
@@ -54,19 +49,14 @@ let {
 	undoRedo,
 	reviewActive,
 	reviewPanelShowing = true,
-	reviewFilter = ALL_THREADS,
+	reviewThreadsHidden = false,
 	viewCommentCount = 0,
 	reviewCommentCount = 0,
 	viewCommentTone = null,
 	reviewCommentTone = null,
-	onreviewfilterchange,
+	onreviewthreadshiddenchange,
 }: Props = $props();
 const scheduler = getScheduler();
-let lastVisibleReviewFilter = $state<ThreadFilter>(ALL_THREADS);
-
-$effect(() => {
-	if (reviewFilter !== "none") lastVisibleReviewFilter = reviewFilter;
-});
 
 // The Review button reflects whether the review PANEL is showing, not merely that a
 // session is alive: active only when reviewActive AND the center pane shows the panel.
@@ -83,9 +73,7 @@ function handleReviewToggle() {
 }
 
 function handleReviewThreadsToggle() {
-	onreviewfilterchange?.(
-		reviewFilter === "none" ? lastVisibleReviewFilter : "none",
-	);
+	onreviewthreadshiddenchange?.(!reviewThreadsHidden);
 }
 
 // Listen to remote-progress events from backend (relocated from StatusBar)
@@ -382,13 +370,13 @@ async function handleBranchCreate(values: Record<string, string>) {
 	<div class="toolbar-divider"></div>
 
 	<div class="toolbar-group">
-		<ButtonGroup tone={reviewFilter !== "none" ? "accent" : "neutral"}>
+		<ButtonGroup tone={reviewThreadsHidden ? "neutral" : "accent"}>
 			<Button
 				icon
 				joined
-				aria-pressed={reviewFilter !== "none"}
-				aria-label={reviewFilter === "none" ? "Show review threads" : "Hide review threads"}
-				tooltip={reviewFilter === "none" ? "Show review threads" : "Hide review threads"}
+				aria-pressed={!reviewThreadsHidden}
+				aria-label={reviewThreadsHidden ? "Show review threads" : "Hide review threads"}
+				tooltip={reviewThreadsHidden ? "Show review threads" : "Hide review threads"}
 				onclick={handleReviewThreadsToggle}
 			>
 				<MessageSquare size={14} />

@@ -364,16 +364,67 @@ describe("App review preference", () => {
 		host.seedReview(REPO_A, reviewWith("open"));
 		const firstMount = render(App);
 		await reviewBadge(1);
-		await fireEvent.click(
-			await screen.findByRole("button", { name: "Hide review threads" }),
-		);
-		await reviewBadge(null);
+		await hideReviewThreads();
 		firstMount.unmount();
 
 		render(App);
 
 		await screen.findByRole("button", { name: "Show review threads" });
 		expect(host.preference("review_filter")).toBe("none");
+	});
+
+	it("shows the review panel's threads while review threads are hidden", async () => {
+		seedOneTab();
+		host.seedReview(REPO_A, reviewWith("open"));
+		render(App);
+		await reviewBadge(1);
+		await hideReviewThreads();
+
+		await openReviewPanel();
+
+		expect(await screen.findByText("open thread")).toBeVisible();
+	});
+
+	it("keeps the Review button's count while review threads are hidden", async () => {
+		seedOneTab();
+		host.seedReview(REPO_A, reviewWith("open"));
+		render(App);
+		await reviewBadge(1);
+
+		await hideReviewThreads();
+		await tick();
+
+		await reviewBadge(1);
+	});
+
+	it("keeps review threads hidden when the panel picks a preset", async () => {
+		seedOneTab();
+		host.seedReview(REPO_A, reviewWith("open"));
+		render(App);
+		await reviewBadge(1);
+		await hideReviewThreads();
+		await openReviewPanel();
+
+		await fireEvent.click(await preset("Settled"));
+
+		expect(await preset("Settled")).toHaveAttribute("aria-pressed", "true");
+		expect(
+			screen.getByRole("button", { name: "Show review threads" }),
+		).toBeInTheDocument();
+	});
+
+	it("withholds Comment on a file while review threads are hidden", async () => {
+		seedOneTab();
+		host.seedReview(REPO_A, reviewWith("open"));
+		render(App);
+		await reviewBadge(1);
+
+		await hideReviewThreads();
+		await openReviewPanel();
+
+		expect(
+			screen.queryByRole("button", { name: "Comment on a file…" }),
+		).toBeNull();
 	});
 
 	it.each([
@@ -751,6 +802,13 @@ async function reviewBadge(expected: number | null): Promise<void> {
 			.querySelector<HTMLElement>(".toolbar-badge");
 		expect(badge ? Number(badge.textContent) : null).toBe(expected);
 	});
+}
+
+async function hideReviewThreads(): Promise<void> {
+	await fireEvent.click(
+		await screen.findByRole("button", { name: "Hide review threads" }),
+	);
+	await waitFor(() => expect(host.preference("review_filter")).toBe("none"));
 }
 
 async function openReviewPanel(): Promise<void> {

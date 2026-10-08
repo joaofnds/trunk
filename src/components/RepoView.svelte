@@ -73,6 +73,7 @@ import type {
 	ReviewTone,
 	Side,
 	Thread,
+	ThreadFilter,
 	TrackedFile,
 	WipStats,
 	WorkingTreeStatus,
@@ -120,10 +121,13 @@ interface Props {
 	// Review mode is toggled by the OS menu (review-toggle) at the App level so the
 	// global event only affects the active tab; App passes the flag down per tab.
 	reviewActive: boolean;
-	// Global review presentation filter, owned by App (persisted pref).
-	reviewFilter?: ReviewFilter;
-	// Asks App to change that filter, from the review panel's state counts.
-	onreviewfilterchange?: (filter: ReviewFilter) => void;
+	// Hides review threads from the graph and the diff. Owned by App.
+	reviewThreadsHidden?: boolean;
+	// The global thread filter, owned by App. The review panel always shows
+	// what it picks, and the graph and the diff do unless threads are hidden.
+	threadFilter?: ThreadFilter;
+	// Asks App to change the panel's filter, from its presets and state counts.
+	onthreadfilterchange?: (filter: ThreadFilter) => void;
 	contentMode: ContentMode;
 	oncontentmodechange: (mode: ContentMode) => void;
 	// Reports whether the active review tab's center pane is showing the review PANEL
@@ -162,8 +166,9 @@ let {
 	windowVisible,
 	tabActive,
 	reviewActive,
-	reviewFilter = ALL_THREADS,
-	onreviewfilterchange,
+	reviewThreadsHidden = false,
+	threadFilter = ALL_THREADS,
+	onthreadfilterchange,
 	contentMode,
 	oncontentmodechange,
 	onreviewpanelshowingchange,
@@ -174,6 +179,12 @@ let {
 	onrightpanewidthchange,
 	onleavereview,
 }: Props = $props();
+
+// What the graph and the diff show: nothing while review threads are hidden.
+const reviewFilter = $derived<ReviewFilter>(
+	reviewThreadsHidden ? "none" : threadFilter,
+);
+
 const LEFT_PANE_MAX = 600;
 const RIGHT_PANE_MAX = 700;
 const NARROWEST_PANE = 50;
@@ -803,10 +814,13 @@ let presentation = $derived(
 	),
 );
 
-function toneForThreads(threads: Thread[]): ReviewTone | null {
+function toneForThreads(
+	threads: Thread[],
+	filter: ReviewFilter,
+): ReviewTone | null {
 	let tone: ReviewTone | null = null;
 	for (const thread of threads) {
-		const next = badgeToneForThread(thread, reviewFilter);
+		const next = badgeToneForThread(thread, filter);
 		if (next !== null) tone = combineReviewTone(tone, next);
 	}
 	return tone;
@@ -840,14 +854,19 @@ let inlineCommentCount = $derived(
 	countBadgeThreads(currentViewComments, reviewFilter),
 );
 
-let inlineCommentTone = $derived(toneForThreads(currentViewComments));
+let inlineCommentTone = $derived(
+	toneForThreads(currentViewComments, reviewFilter),
+);
 
 // Total threads in the active review, for the Review button badge — independent
-// of which pane the user is looking at. 0 with no threads, so the badge hides.
+// of which pane the user is looking at and of hiding review threads, like the
+// panel it opens. 0 with no threads, so the badge hides.
 let reviewCommentTotal = $derived(
-	countBadgeThreads(reviewComments.threads, reviewFilter),
+	countBadgeThreads(reviewComments.threads, threadFilter),
 );
-let reviewCommentTone = $derived(toneForThreads(reviewComments.threads));
+let reviewCommentTone = $derived(
+	toneForThreads(reviewComments.threads, threadFilter),
+);
 
 // Report both counts up through untrack: App's setCommentCounts copies the
 // counts map (`new Map(commentCounts)`) before writing it, so calling the
@@ -2307,13 +2326,13 @@ function stepRightPane(delta: number) {
 							{repoPath}
 							session={reviewSession}
 							{reviewComments}
-							{reviewFilter}
-							{onreviewfilterchange}
+							{threadFilter}
+							{onthreadfilterchange}
 							editorSessionForThread={editorSessionForPanelThread}
 							{editorNoteSessionFor}
 							onJump={handleReviewJump}
 							onJumpToCommit={handleReviewJumpToCommit}
-							oncommentonfile={openFileFinder}
+							oncommentonfile={reviewFilter === "none" ? undefined : openFileFinder}
 							onopenfile={openCurrentFile}
 							headBranch={headBranch ?? null}
 							shown={reviewPanelShown}
