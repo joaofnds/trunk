@@ -497,6 +497,33 @@ describe("App review preference", () => {
 		},
 	);
 
+	it("withholds Comment File from a graph diff while review threads are hidden", async () => {
+		seedOneTab();
+		host.seedCommitDiff(REPO_A, "commit-a", "a.ts");
+		render(App);
+		await hideReviewThreads();
+
+		await fireEvent.click(await screen.findByTestId("commit-row"));
+		await fireEvent.click(await screen.findByText("a.ts"));
+		await screen.findByText(`HUNK ${REPO_A}`);
+
+		expect(screen.queryByRole("button", { name: "Comment File" })).toBeNull();
+	});
+
+	it("offers Comment File in a graph diff while review threads show", async () => {
+		seedOneTab();
+		host.seedCommitDiff(REPO_A, "commit-a", "a.ts");
+		render(App);
+
+		await fireEvent.click(await screen.findByTestId("commit-row"));
+		await fireEvent.click(await screen.findByText("a.ts"));
+		await screen.findByText(`HUNK ${REPO_A}`);
+
+		expect(
+			screen.getByRole("button", { name: "Comment File" }),
+		).toBeInTheDocument();
+	});
+
 	it("keeps a user's choice when the captured initial read resolves later", async () => {
 		seedOneTab();
 		host.seedPreference("review_filter", "none");

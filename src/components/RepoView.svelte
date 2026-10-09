@@ -2181,6 +2181,7 @@ function stepRightPane(delta: number) {
 						selectedPath={rebaseDiffFile}
 						diffKind="commit"
 						{repoPath}
+						reviewCommentsVisible={reviewFilter !== "none"}
 						{reviewFilter}
 						viewComments={rebaseViewComments}
 						activeReviewId={reviewComments.activeReviewId}
@@ -2343,7 +2344,7 @@ function stepRightPane(delta: number) {
 						{diffKind}
 						emptyCommit={commitEmpty}
 						{repoPath}
-						reviewCommentsVisible={!selectedCompareFile}
+						reviewCommentsVisible={!selectedCompareFile && (reviewMode || reviewFilter !== "none")}
 						{reviewFilter}
 						{viewComments}
 						activeReviewId={reviewComments.activeReviewId}
