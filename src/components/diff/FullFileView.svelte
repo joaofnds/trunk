@@ -101,7 +101,7 @@ const model = $derived(
 			tabSize: TAB_SIZE,
 			invisibles: showInvisibles,
 			composer: composer?.place,
-			commentable,
+			markerColumn,
 		});
 	}),
 );
@@ -116,13 +116,15 @@ const vd = createVirtualizedDiff({
 
 // An allowlist, not a denylist: a diff kind the store cannot anchor a thread
 // against must not gain the affordance by being forgotten here.
-// Whether a line can take a new comment here, as the Comment action can.
-const commentable = $derived(
-	reviewCommentsVisible &&
-		(diffKind === "commit" ||
-			diffKind === "unstaged" ||
-			diffKind === "current_file"),
+// Whether this kind takes comments with threads shown, so the gutter keeps its
+// width across the threads toggle.
+const markerColumn = $derived(
+	diffKind === "commit" ||
+		diffKind === "unstaged" ||
+		diffKind === "current_file",
 );
+// Whether a line can take a new comment here, as the Comment action can.
+const commentable = $derived(reviewCommentsVisible && markerColumn);
 
 // The marker cell's control: comment on that one line, selecting it as a click
 // on its grip would.

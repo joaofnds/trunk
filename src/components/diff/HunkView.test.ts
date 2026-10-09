@@ -330,6 +330,19 @@ describe("HunkView thread marker", () => {
 		expect(markerCellOn("context before")).not.toBeNull();
 	});
 
+	it("keeps the marker column while review threads are hidden and comments withheld", () => {
+		render(HunkView, {
+			props: defaultProps({
+				viewComments: [onAddedLine("t1")],
+				oncommentline: vi.fn(),
+				reviewCommentsVisible: false,
+				reviewFilter: "none",
+			}),
+		});
+
+		expect(markerCellOn("context before")).not.toBeNull();
+	});
+
 	it("reserves no marker column when no thread hangs in view", () => {
 		const { container } = render(HunkView, { props: defaultProps() });
 

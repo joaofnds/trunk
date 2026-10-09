@@ -129,6 +129,9 @@ let {
 const commentable = $derived(
 	oncommentline !== undefined && reviewCommentsVisible && !isMerge,
 );
+// Where a line could take one with threads shown, so the gutter keeps its width
+// across the threads toggle.
+const markerColumn = $derived(oncommentline !== undefined && !isMerge);
 
 const FLASH_MS = 600;
 
@@ -165,7 +168,7 @@ const model = $derived(
 			tabSize: TAB_SIZE,
 			invisibles: showInvisibles,
 			composer: composer?.place,
-			commentable,
+			markerColumn,
 		});
 	}),
 );

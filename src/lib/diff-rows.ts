@@ -117,9 +117,10 @@ export interface BuildOptions {
 	invisibles: boolean;
 	/** The open composer's place, or nothing when none is open in this view. */
 	composer?: ComposerPlace | null;
-	/** Whether a line can take a new comment, whose control the marker column
-	 *  then holds on every line. */
-	commentable?: boolean;
+	/** Whether this view takes comments at all, whatever the threads toggle
+	 *  says. The marker column is then reserved on every line, so showing or
+	 *  hiding threads never moves the code. */
+	markerColumn?: boolean;
 }
 
 /** Heights the fixed row shapes declare rather than discover. Each row's own
@@ -255,7 +256,7 @@ export function buildInlineRows(
 		rows,
 		hunkNav,
 		gutterChars: String(maxLineNumber).length + 1,
-		markerChars: markerCharsFor(rows, opts.commentable ?? false),
+		markerChars: markerCharsFor(rows, opts.markerColumn ?? false),
 		columns: [widest],
 	};
 }
@@ -393,7 +394,7 @@ export function buildSplitRows(
 		rows,
 		hunkNav,
 		gutterChars: String(maxLineNumber).length + 1,
-		markerChars: markerCharsFor(rows, opts.commentable ?? false),
+		markerChars: markerCharsFor(rows, opts.markerColumn ?? false),
 		columns: [widestLeft, widestRight],
 	};
 }
@@ -438,8 +439,8 @@ const MARKER_CHARS = 3;
 /** The marker column exists only while some thread is in view, so a file with
  *  none keeps its gutter as narrow as before. A thread can start in view and
  *  end past it, which leaves a marker and no comment row. */
-function markerCharsFor(rows: DiffRow[], commentable: boolean): number {
-	return commentable ||
+function markerCharsFor(rows: DiffRow[], markerColumn: boolean): number {
+	return markerColumn ||
 		rows.some(
 			(row) =>
 				row.kind === "comment" ||
