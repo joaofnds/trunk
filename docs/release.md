@@ -57,6 +57,28 @@ failure. When a run fails some other way, re-run
 its failed jobs (`gh run rerun <run-id> --failed`). `publish` waits for every build, and
 tauri-action replaces an asset already on the draft release, so the re-run is safe.
 
+## Build cache
+
+A tag build restores compiled dependencies from a cache it cannot save, because GitHub
+lets a cache saved from a tag be read only by that same tag. The release workflow's
+`warm-cache` job saves that cache from main instead, once a day on a schedule, with a
+read-only token. It runs the same setup steps as the tag build, since rust-cache keys the
+entry on the toolchains and environment those steps leave, then only looks the key up.
+When the entry exists it stops there. When it does not, it compiles every target with
+`tauri build --no-bundle` from a clean target directory and saves the dependencies.
+
+Package versions do not enter the key, so a version bump keeps the cache. A dependency
+change does change it, and so does a new Rust preinstalled on a GitHub runner image,
+because rust-cache hashes every installed toolchain. A tag build in the day between such
+a change and the next scheduled run restores an older entry for the same toolchains if
+one exists, and otherwise compiles cold, as every release did before this cache existed.
+
+A release binary therefore links dependency objects compiled by an earlier scheduled run
+on main, not only ones compiled from source in its own job. A build failure caused by a
+bad cached build script still recovers through the clean retry above. To make the next
+scheduled run rebuild an entry from scratch, delete it with `gh cache delete <key>`; its
+key starts with `v0-rust-release-`.
+
 ## Version logic
 
 The pure bump-and-validate logic lives in `scripts/release.ts`, unit-tested in

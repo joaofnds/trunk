@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+  schedule:
+    - cron: '17 4 * * *'
 
 permissions:
   contents: write
@@ -14,7 +16,8 @@ concurrency:
 
 jobs:
   build:
-    strategy:
+    if: github.ref_type == 'tag'
+    strategy: &targets
       fail-fast: false
       matrix:
         include:
@@ -36,7 +39,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install system dependencies (Linux)
+      - &linux-dependencies
+        name: Install system dependencies (Linux)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
@@ -54,7 +58,8 @@ jobs:
 
       # Installs bun at the mise.toml pin; rust is handled below by
       # dtolnay/rust-toolchain instead, per the comment on that step.
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - &mise
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           version: 2026.9.2
           install_args: bun
@@ -68,16 +73,21 @@ jobs:
       # "stable" would install the cross-compile targets for stable and then
       # build on the pinned version, which does not have them. Keep the version
       # here in lockstep with rust-toolchain.toml and mise.toml.
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
+      - &rust-toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
         with:
           toolchain: 1.98.0
           targets: ${{ matrix.rust_target }}
 
       # Restore only: a cache saved from a tag ref is readable only by that
       # same tag, so saving here fills the shared budget with dead entries.
+      # warm-cache saves what this restores, and the two steps' inputs other
+      # than save-if and lookup-only must stay equal or every restore misses.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: "src-tauri -> target"
+          shared-key: release-${{ matrix.rust_target || matrix.platform }}
+          cache-bin: "false"
           save-if: "false"
 
       - id: build
@@ -145,6 +155,43 @@ jobs:
             src-tauri/target/**/release/bundle/**/*.tar.gz
             src-tauri/target/**/release/*.tar.gz
           if-no-files-found: error
+
+  # Compiles each target's dependencies on main and saves them where build can
+  # restore them (docs/release.md). It runs build's setup steps unchanged,
+  # because rust-cache keys on the toolchains and environment they leave.
+  warm-cache:
+    if: github.event_name == 'schedule'
+    permissions:
+      contents: read
+    strategy: *targets
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - *linux-dependencies
+
+      - *mise
+
+      - run: bun install --frozen-lockfile
+
+      - *rust-toolchain
+
+      # Lookup only: a miss builds from a clean target directory rather than
+      # from an older entry, so nothing a past build left there is saved again.
+      - id: rust-cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "src-tauri -> target"
+          shared-key: release-${{ matrix.rust_target || matrix.platform }}
+          cache-bin: "false"
+          lookup-only: "true"
+
+      - name: Build without bundling to fill the cache
+        if: steps.rust-cache.outputs.cache-hit != 'true'
+        run: bunx tauri build ${{ matrix.args }} --no-bundle
 
   publish:
     needs: [build]
