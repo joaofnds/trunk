@@ -59,7 +59,7 @@ jobs:
       # Installs bun at the mise.toml pin; rust is handled below by
       # dtolnay/rust-toolchain instead, per the comment on that step.
       - &mise
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
           version: 2026.9.2
           install_args: bun
@@ -74,7 +74,7 @@ jobs:
       # build on the pinned version, which does not have them. Keep the version
       # here in lockstep with rust-toolchain.toml and mise.toml.
       - &rust-toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # stable
         with:
           toolchain: 1.98.0
           targets: ${{ matrix.rust_target }}
