@@ -139,6 +139,9 @@ impl Output {
 }
 
 fn main() {
+    if trunk_lib::fetch_worker::run_if_worker() {
+        return;
+    }
     let output = Output::new();
     let (app, webview) = boot();
     let mut repos: Vec<TestContext> = Vec::new();

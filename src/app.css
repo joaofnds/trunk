@@ -82,6 +82,11 @@ textarea::placeholder {
 .tooltip-pop-shown {
 	opacity: 1;
 }
+.tooltip-pop-multiline {
+	max-width: calc(100% - 4 * var(--space-2));
+	white-space: pre-line;
+	overflow-wrap: anywhere;
+}
 @keyframes pulse {
 	50% {
 		opacity: 0.5;

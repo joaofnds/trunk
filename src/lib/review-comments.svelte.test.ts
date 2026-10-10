@@ -27,6 +27,10 @@ class TestScheduler implements Scheduler {
 	private callbacks: Array<() => void> = [];
 	private nextHandle = 1;
 
+	currentTimeMs(): number {
+		return 0;
+	}
+
 	setTimeout(callback: () => void, _delayMs: number): number {
 		this.callbacks.push(callback);
 		return this.nextHandle++;

@@ -3,9 +3,10 @@ use notify_debouncer_mini::{DebounceEventResult, Debouncer, new_debouncer};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
+use trunk_git::error::TrunkError;
 
 /// The `repo-changed` payload.
 ///
@@ -18,6 +19,10 @@ use tauri::{AppHandle, Emitter, Runtime};
 pub struct RepoChanged {
     pub repo: String,
     pub paths: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_revision: Option<u64>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub refs_only: bool,
 }
 
 impl RepoChanged {
@@ -27,6 +32,18 @@ impl RepoChanged {
         Self {
             repo: repo.into(),
             paths: Vec::new(),
+            graph_revision: None,
+            refs_only: false,
+        }
+    }
+
+    #[must_use]
+    pub fn reconciled(repo: impl Into<String>, graph: &crate::state::ReconciledGraph) -> Self {
+        Self {
+            repo: repo.into(),
+            paths: Vec::new(),
+            graph_revision: Some(graph.revision),
+            refs_only: !graph.worktree_context_changed,
         }
     }
 
@@ -64,14 +81,186 @@ impl RepoChanged {
         Self {
             repo: repo_string,
             paths,
+            graph_revision: None,
+            refs_only: false,
         }
     }
+}
+
+#[derive(Clone)]
+struct GitDirectories {
+    private: PathBuf,
+    common: PathBuf,
+}
+
+impl GitDirectories {
+    fn open(path: &Path) -> Option<Self> {
+        let repo = git2::Repository::open(path).ok()?;
+        Some(Self {
+            private: repo.path().canonicalize().ok()?,
+            common: repo.commondir().canonicalize().ok()?,
+        })
+    }
+
+    fn classify(&self, path: &Path) -> GitChange {
+        if self.private != self.common
+            && !path.starts_with(&self.private)
+            && let Ok(relative) = path.strip_prefix(&self.common)
+        {
+            let relative = relative.to_string_lossy().replace('\\', "/");
+            if matches!(
+                relative.as_str(),
+                "HEAD"
+                    | "index"
+                    | "MERGE_HEAD"
+                    | "MERGE_MSG"
+                    | "MERGE_MODE"
+                    | "AUTO_MERGE"
+                    | "COMMIT_EDITMSG"
+                    | "REBASE_HEAD"
+                    | "CHERRY_PICK_HEAD"
+                    | "REVERT_HEAD"
+                    | "BISECT_LOG"
+                    | "BISECT_START"
+                    | "SQUASH_MSG"
+            ) || relative.starts_with("rebase-merge/")
+                || relative == "rebase-merge"
+                || relative.starts_with("rebase-apply/")
+                || relative == "rebase-apply"
+                || relative.starts_with("sequencer/")
+                || relative == "sequencer"
+                || relative.starts_with("refs/bisect/")
+                || relative.starts_with("refs/worktree/")
+                || relative.starts_with("refs/rewritten/")
+            {
+                return GitChange::Bookkeeping;
+            }
+        }
+        let relative = path
+            .strip_prefix(&self.private)
+            .or_else(|_| path.strip_prefix(&self.common));
+        let Ok(relative) = relative else {
+            return GitChange::Worktree;
+        };
+        let relative = relative.to_string_lossy().replace('\\', "/");
+        // Stashes change the worktree's graph placement and WIP context. They
+        // must remain observable while remote authentication is still blocked.
+        if relative == "refs/stash" || relative == "logs/refs/stash" {
+            return GitChange::Worktree;
+        }
+        if relative == "FETCH_HEAD"
+            || relative == "ORIG_HEAD"
+            || relative == "objects"
+            || relative.starts_with("objects/")
+            || relative == "logs"
+            || relative.starts_with("logs/")
+            || std::path::Path::new(&relative).extension() == Some(std::ffi::OsStr::new("lock"))
+        {
+            return GitChange::Bookkeeping;
+        }
+        if relative == "refs" || relative.starts_with("refs/") || relative == "packed-refs" {
+            return GitChange::Refs;
+        }
+        // Another worktree's private files do not describe this worktree.
+        if relative == "worktrees" || relative.starts_with("worktrees/") {
+            return GitChange::Bookkeeping;
+        }
+        GitChange::Worktree
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GitChange {
+    Bookkeeping,
+    Refs,
+    Worktree,
+}
+
+fn route_changes<R: Runtime>(
+    watched: &Path,
+    roots: &[PathBuf],
+    git: Option<&GitDirectories>,
+    changed: Vec<PathBuf>,
+    app: &AppHandle<R>,
+    pending: &Arc<Mutex<HashMap<String, bool>>>,
+) {
+    let mut relevant = Vec::new();
+    let mut worktree = changed.is_empty();
+    for path in changed {
+        match git.map_or(GitChange::Worktree, |git| git.classify(&path)) {
+            GitChange::Bookkeeping => {}
+            GitChange::Refs => relevant.push(path),
+            GitChange::Worktree => {
+                worktree = true;
+                relevant.push(path);
+            }
+        }
+    }
+    if relevant.is_empty() && !worktree {
+        return;
+    }
+    let repo = watched.to_string_lossy().to_string();
+    let cache = app.state::<crate::state::CommitCache>();
+    if worktree {
+        cache.invalidate(&repo);
+        let _ = app.emit(
+            "repo-changed",
+            RepoChanged::scoped_to(watched, roots, &relevant),
+        );
+        return;
+    }
+    {
+        let mut pending = pending.lock().unwrap();
+        if let Some(dirty) = pending.get_mut(&repo) {
+            *dirty = true;
+            return;
+        }
+        pending.insert(repo.clone(), false);
+    }
+    let common = git.map(|git| git.common.to_string_lossy().to_string());
+    let pending = Arc::clone(pending);
+    let app = app.clone();
+    let location = watched.to_path_buf();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            if let Some(common) = &common {
+                let running = app.state::<crate::state::RunningOp>();
+                crate::remote_ops::wait_remote_idle(&running.0, common).await;
+            }
+            pending.lock().unwrap().insert(repo.clone(), false);
+            let cache = app.state::<crate::state::CommitCache>();
+            let visibility = app.state::<crate::state::RefVisibilityState>();
+            match crate::state::GraphRebuild::new(&cache, &visibility)
+                .reconcile_refs(repo.clone(), location.clone())
+                .await
+            {
+                Ok(Some(graph)) => {
+                    let _ = app.emit(
+                        "repo-changed",
+                        RepoChanged::reconciled(repo.clone(), &graph),
+                    );
+                }
+                Ok(None) => {}
+                Err(error) if error.code == "not_open" => {}
+                Err(_) => {
+                    let _ = app.emit("repo-changed", RepoChanged::whole_repo(repo.clone()));
+                }
+            }
+            let mut pending = pending.lock().unwrap();
+            if !pending.get(&repo).copied().unwrap_or(false) {
+                pending.remove(&repo);
+                drop(pending);
+                break;
+            }
+        }
+    });
 }
 
 pub type WatcherMap = HashMap<String, Debouncer<RecommendedWatcher>>;
 pub struct WatcherState {
     pub watchers: Mutex<WatcherMap>,
     pub enabled: bool,
+    pending_refs: Arc<Mutex<HashMap<String, bool>>>,
 }
 
 impl Default for WatcherState {
@@ -79,6 +268,7 @@ impl Default for WatcherState {
         Self {
             watchers: Mutex::new(HashMap::new()),
             enabled: true,
+            pending_refs: Arc::default(),
         }
     }
 }
@@ -98,34 +288,44 @@ impl WatcherState {
 /// Watch `path` and emit `repo-changed` when it changes. A disabled state
 /// watches nothing.
 ///
+/// # Errors
+/// Returns `watcher_unavailable` if a watcher or required registration fails.
+///
 /// # Panics
 ///
-/// Panics when the debouncer cannot be created, the path cannot be watched, or
-/// the watcher lock is poisoned.
-pub fn start_watcher<R: Runtime>(path: &Path, app: AppHandle<R>, state: &WatcherState) {
+/// Panics when the watcher lock is poisoned.
+pub fn start_watcher<R: Runtime>(
+    path: &Path,
+    app: AppHandle<R>,
+    state: &WatcherState,
+) -> Result<(), TrunkError> {
     start_watcher_with_registration(path, app, state, |debouncer, path| {
         debouncer.watcher().watch(path, RecursiveMode::Recursive)
-    });
+    })
 }
 
 fn start_watcher_with_registration<R, F>(
     path: &Path,
     app: AppHandle<R>,
     state: &WatcherState,
-    register: F,
-) where
+    mut register: F,
+) -> Result<(), TrunkError>
+where
     R: Runtime,
-    F: FnOnce(
+    F: FnMut(
         &mut Debouncer<RecommendedWatcher>,
         &Path,
     ) -> notify_debouncer_mini::notify::Result<()>,
 {
     if !state.enabled {
-        return;
+        return Ok(());
     }
 
     let watched = path.to_path_buf();
     let roots = root_forms(path);
+    let git = GitDirectories::open(path);
+    let callback_git = git.clone();
+    let pending = Arc::clone(&state.pending_refs);
 
     let mut debouncer = new_debouncer(
         Duration::from_millis(300),
@@ -134,21 +334,50 @@ fn start_watcher_with_registration<R, F>(
 
             let changed: Vec<PathBuf> = events.into_iter().map(|event| event.path).collect();
 
-            let _ = app.emit(
-                "repo-changed",
-                RepoChanged::scoped_to(&watched, &roots, &changed),
+            route_changes(
+                &watched,
+                &roots,
+                callback_git.as_ref(),
+                changed,
+                &app,
+                &pending,
             );
         },
     )
-    .expect("failed to create debouncer");
+    .map_err(|_| TrunkError::new("watcher_unavailable", "Repository watcher could not start"))?;
 
-    register(&mut debouncer, path).expect("failed to watch path");
+    register(&mut debouncer, path).map_err(|_| {
+        TrunkError::new(
+            "watcher_unavailable",
+            "Repository path could not be watched",
+        )
+    })?;
+    if let Some(git) = git {
+        let canonical_root = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        if !git.common.starts_with(&canonical_root) {
+            register(&mut debouncer, &git.common).map_err(|_| {
+                TrunkError::new(
+                    "watcher_unavailable",
+                    "Shared Git directory could not be watched",
+                )
+            })?;
+        }
+        if !git.private.starts_with(&canonical_root) && !git.private.starts_with(&git.common) {
+            register(&mut debouncer, &git.private).map_err(|_| {
+                TrunkError::new(
+                    "watcher_unavailable",
+                    "Worktree Git directory could not be watched",
+                )
+            })?;
+        }
+    }
 
     state
         .watchers
         .lock()
         .unwrap()
         .insert(path.to_string_lossy().to_string(), debouncer);
+    Ok(())
 }
 
 /// The forms of `path` a reported event may carry: the path itself, and its
@@ -179,6 +408,86 @@ mod tests {
     use std::cell::Cell;
 
     use super::*;
+
+    #[test]
+    fn linked_worktrees_ignore_the_primary_worktrees_private_metadata() {
+        let git = GitDirectories {
+            private: PathBuf::from("/repo/.git/worktrees/linked"),
+            common: PathBuf::from("/repo/.git"),
+        };
+        for path in [
+            "HEAD",
+            "index",
+            "MERGE_HEAD",
+            "COMMIT_EDITMSG",
+            "rebase-merge/head-name",
+        ] {
+            assert_eq!(
+                git.classify(&git.common.join(path)),
+                GitChange::Bookkeeping,
+                "{path}"
+            );
+        }
+        assert_eq!(git.classify(&git.private.join("HEAD")), GitChange::Worktree);
+        assert_eq!(
+            git.classify(&git.private.join("index")),
+            GitChange::Worktree
+        );
+        assert_eq!(
+            git.classify(&git.common.join("config")),
+            GitChange::Worktree
+        );
+        assert_eq!(
+            git.classify(&git.common.join("refs/heads/main")),
+            GitChange::Refs
+        );
+        assert_eq!(
+            git.classify(&git.common.join("refs/stash")),
+            GitChange::Worktree
+        );
+    }
+
+    #[test]
+    fn fetch_bookkeeping_never_emits_a_repository_change() {
+        let app = tauri::test::mock_builder()
+            .manage(crate::state::CommitCache::new(
+                crate::state::GraphCache::default(),
+            ))
+            .manage(crate::state::RunningOp(Mutex::new(
+                crate::state::RemoteOps::default(),
+            )))
+            .manage(crate::state::RefVisibilityState::default())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let observed = Arc::clone(&events);
+        tauri::Listener::listen(app.handle(), "repo-changed", move |event| {
+            observed.lock().unwrap().push(event.payload().to_owned());
+        });
+        let git = GitDirectories {
+            private: PathBuf::from("/repo/.git"),
+            common: PathBuf::from("/repo/.git"),
+        };
+        for path in [
+            "FETCH_HEAD",
+            "ORIG_HEAD",
+            "objects",
+            "objects/aa/pack",
+            "logs/refs/remotes/origin/main",
+            "refs/remotes/origin/main.lock",
+            "worktrees/other/index",
+        ] {
+            route_changes(
+                Path::new("/repo"),
+                &[PathBuf::from("/repo")],
+                Some(&git),
+                vec![git.common.join(path)],
+                app.handle(),
+                &Arc::default(),
+            );
+        }
+        assert!(events.lock().unwrap().is_empty());
+    }
 
     #[test]
     fn an_unscoped_change_names_no_path() {
@@ -272,7 +581,8 @@ mod tests {
 
         start_watcher_with_registration(Path::new("repo"), app.handle().clone(), &state, |_, _| {
             Ok(())
-        });
+        })
+        .unwrap();
 
         assert!(state.watchers.lock().unwrap().contains_key("repo"));
     }
@@ -285,8 +595,10 @@ mod tests {
 
         start_watcher_with_registration(Path::new("repo-one"), handle.clone(), &state, |_, _| {
             Ok(())
-        });
-        start_watcher_with_registration(Path::new("repo-two"), handle, &state, |_, _| Ok(()));
+        })
+        .unwrap();
+        start_watcher_with_registration(Path::new("repo-two"), handle, &state, |_, _| Ok(()))
+            .unwrap();
         stop_watcher("repo-one", &state);
 
         assert_eq!(
@@ -304,31 +616,65 @@ mod tests {
         start_watcher_with_registration(Path::new("repo"), app.handle().clone(), &state, |_, _| {
             registration_called.set(true);
             Ok(())
-        });
+        })
+        .unwrap();
 
         assert!(!registration_called.get());
         assert!(state.watchers.lock().unwrap().is_empty());
     }
 
     #[test]
-    fn a_registration_error_panics_before_recording_the_path() {
+    fn a_registration_error_is_reported_without_recording_the_path() {
         let app = tauri::test::mock_app();
         let state = WatcherState::default();
 
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            start_watcher_with_registration(
-                Path::new("repo"),
-                app.handle().clone(),
-                &state,
-                |_, _| {
-                    Err(notify_debouncer_mini::notify::Error::generic(
-                        "registration failed",
-                    ))
-                },
-            );
-        }));
+        let result = start_watcher_with_registration(
+            Path::new("repo"),
+            app.handle().clone(),
+            &state,
+            |_, _| {
+                Err(notify_debouncer_mini::notify::Error::generic(
+                    "registration failed",
+                ))
+            },
+        );
 
-        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code, "watcher_unavailable");
+        assert!(state.watchers.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_shared_directory_registration_failure_leaves_no_partial_worktree_watch() {
+        let directory = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(directory.path().join("primary")).unwrap();
+        let signature = git2::Signature::now("Fixture", "fixture@example.com").unwrap();
+        let tree_id = repo.treebuilder(None).unwrap().write().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let commit_id = repo
+            .commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
+            .unwrap();
+        let commit = repo.find_commit(commit_id).unwrap();
+        repo.branch("linked", &commit, false).unwrap();
+        let branch = repo.find_reference("refs/heads/linked").unwrap();
+        let mut options = git2::WorktreeAddOptions::new();
+        options.reference(Some(&branch));
+        let linked = directory.path().join("linked");
+        repo.worktree("linked", &linked, Some(&options)).unwrap();
+        let app = tauri::test::mock_app();
+        let state = WatcherState::default();
+
+        let result =
+            start_watcher_with_registration(&linked, app.handle().clone(), &state, |_, path| {
+                if path == linked {
+                    Ok(())
+                } else {
+                    Err(notify_debouncer_mini::notify::Error::generic(
+                        "shared registration failed",
+                    ))
+                }
+            });
+
+        assert_eq!(result.unwrap_err().code, "watcher_unavailable");
         assert!(state.watchers.lock().unwrap().is_empty());
     }
 }

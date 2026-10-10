@@ -558,13 +558,22 @@ hold is the `not_open` error every command seam owes the frontend, pinned at eac
 
 **Graph cache** — the built commit graph held for each open repository. A rebuild writes a
 whole entry rather than mutating one, so a reader sees either the graph as it was or the
-graph as it now is, never a half-updated one. An operation that rebuilds several
-repositories' graphs builds them aside and absorbs them in one step, so a concurrent
-refresh of another repository is not rolled back.
+graph as it now is, never a half-updated one. Per-worktree publication gates, opening
+sessions and publication generations prevent an older capture from replacing a newer
+graph or reopening a closed cache. Input epochs track local invalidations without
+discarding a capture already in progress. A multi-worktree operation publishes each
+worktree separately.
 
-**Remote operation registry** — the fetch, pull or push running for each repository, by
-process id. It answers two questions with one entry: which process the cancel button
-signals, and whether a second remote operation may start on that repository at all.
+**Graph revision** — a monotonically increasing identity for a published graph cache
+entry. Change notifications and graph responses carry it. Page and graph-indexed stats
+requests name their expected revision, so a cache replacement rejects an older read
+even before its notification reaches the frontend.
+
+**Remote operation registry** — identity-based reservations for fetch, pull and push,
+acquired before spawning a process and held through its exit and graph reconciliation.
+Canonical Git common directories serialize aliases and linked worktrees. Background jobs
+also require the application-wide permit. Cancellation keeps the reservation until the
+executing owner joins its process and releases it.
 
 **Stats cache** — the diff stat computed for each commit, per repository, filling the
 graph's Diff column. A commit's diff never changes, so an entry is never invalidated,

@@ -101,6 +101,18 @@ describe("tooltip", () => {
 		expect(popup()?.textContent).toBe("Pop");
 	});
 
+	it("keeps a multiline freshness report readable when its label updates", () => {
+		node.dispatchEvent(new MouseEvent("mouseenter"));
+		vi.advanceTimersByTime(SHOW_DELAY_MS);
+
+		handle.update("Pull\norigin: last checked\nbackup: fetch failed");
+
+		expect(popup()?.classList.contains("tooltip-pop-multiline")).toBe(true);
+		expect(popup()?.textContent).toContain("\nbackup: fetch failed");
+		handle.update("Pull");
+		expect(popup()?.classList.contains("tooltip-pop-multiline")).toBe(false);
+	});
+
 	it("stops responding to events after destroy", () => {
 		handle.destroy();
 		node.dispatchEvent(new MouseEvent("mouseenter"));

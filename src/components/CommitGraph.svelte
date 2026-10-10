@@ -131,6 +131,8 @@ interface Props {
 	wipStats?: WipStats;
 	onWipClick?: () => void;
 	refreshSignal?: number;
+	wipRefreshSignal?: number;
+	cachedGraphRevision?: number;
 	selectedCommitOid?: string | null;
 	/** OIDs of the active compare's picked rows, highlighted like the selection. */
 	compareOids?: ReadonlySet<string>;
@@ -167,6 +169,8 @@ let {
 	wipStats,
 	onWipClick,
 	refreshSignal,
+	wipRefreshSignal,
+	cachedGraphRevision,
 	selectedCommitOid,
 	compareOids = new Set<string>(),
 	onopenrebaseeditor,
@@ -301,6 +305,7 @@ let graphActive = true;
 // Whole-graph generation. showGraph can replace the page independently while a
 // refresh is active, so an older response must not overwrite that replacement.
 let refreshSeq = 0;
+let graphRevision = 0;
 
 let columnWidths = $state<ColumnWidths>({ ...DEFAULT_WIDTHS });
 let columnVisibility = $state<ColumnVisibility>({
@@ -1649,19 +1654,30 @@ function keepFocusOnList() {
 async function readPageStats(pageOffset: number) {
 	if (!graphActive || !columnVisibilityResolved || !columnVisibility.diff)
 		return;
+	const page = commits.slice(pageOffset, pageOffset + BATCH);
+	if (page.length === 0 || page.every((commit) => commitStats.has(commit.oid)))
+		return;
 	try {
+		const revision = graphRevision;
 		const stats = await safeInvoke<Record<string, DiffStat>>(
 			"get_commit_stats",
-			{ path: repoPath, offset: pageOffset },
+			{
+				path: repoPath,
+				offset: pageOffset,
+				revision,
+			},
 		);
 		// Re-check after the await: the column may have been toggled off while the
 		// request was in flight — honor "hidden column does zero work".
-		if (!graphActive || !columnVisibility.diff) return;
+		if (!graphActive || !columnVisibility.diff || revision !== graphRevision)
+			return;
 		const next = new Map(commitStats);
 		for (const [oid, stat] of Object.entries(stats)) next.set(oid, stat);
 		commitStats = next;
-	} catch {
-		// Stats are an enhancement; a failure must never disrupt the graph.
+	} catch (error) {
+		if (graphActive && isTrunkError(error) && error.code === "graph_changed") {
+			cachedGraphRefresh.request();
+		}
 	}
 }
 
@@ -1751,11 +1767,13 @@ async function loadMore(): Promise<PageResult> {
 		const response = await safeInvoke<GraphResponse>("get_commit_graph", {
 			path: repoPath,
 			offset,
+			...(offset > 0 ? { revision: graphRevision } : {}),
 		});
 		// Drop it rather than append: these rows were laid out under the old
 		// graph, and offset now indexes the new one. The viewport re-triggers a
 		// load for whatever it still needs.
 		if (!graphActive || seq !== refreshSeq) return "stale";
+		graphRevision = response.revision;
 		commits.push(...response.commits);
 		maxColumns = response.max_columns;
 		updateContentWidths(response.commits);
@@ -1767,6 +1785,10 @@ async function loadMore(): Promise<PageResult> {
 		// A page that failed for the graph we no longer show is not this graph's
 		// error, and reporting it would bury the rebuilt view under a stale bar.
 		if (!graphActive || seq !== refreshSeq) return "stale";
+		if (isTrunkError(e) && e.code === "graph_changed") {
+			await cachedGraphRefresh.run();
+			return "stale";
+		}
 		error = errorMessage(e, "Failed to load commits");
 		return "failed";
 	} finally {
@@ -1820,9 +1842,13 @@ export function loadedRows(): number {
 /** Replaces the graph with a freshly laid-out first page, as a rebuild or a
  *  visibility change returns it. Any refresh still in flight is older than this
  *  page and is dropped when it lands. */
-export function showGraph(response: GraphResponse): void {
+export function showGraph(
+	response: GraphResponse,
+	refreshWorktree = true,
+): void {
 	if (!graphActive) return;
 	refreshSeq += 1;
+	graphRevision = response.revision;
 	// Swap data atomically -- old data stays visible until this assignment
 	commits = response.commits;
 	maxColumns = response.max_columns;
@@ -1830,27 +1856,69 @@ export function showGraph(response: GraphResponse): void {
 	offset = response.commits.length;
 	hasMore = response.commits.length >= BATCH;
 	error = null;
-	// Drop stale per-oid stats (amend/rebase may have rewritten oids) and
-	// refetch the now-current first page + the WIP row.
-	commitStats = new Map();
+	// Keep immutable stats for rows still loaded, and read stats only for missing OIDs.
+	const loadedOids = new Set(response.commits.map((commit) => commit.oid));
+	commitStats = new Map(
+		[...commitStats].filter(([oid]) => loadedOids.has(oid)),
+	);
 	requestPageStats(0);
-	requestWipStats();
+	if (refreshWorktree) requestWipStats();
 }
+
+async function readCachedGraph() {
+	const seq = ++refreshSeq;
+	try {
+		const response = await safeInvoke<GraphResponse>("get_commit_graph", {
+			path: repoPath,
+			offset: 0,
+			loaded: offset,
+		});
+		if (!graphActive || seq !== refreshSeq) return;
+		showGraph(response, false);
+		await backfillAllPageStats();
+	} catch (e) {
+		if (graphActive && seq === refreshSeq)
+			error = errorMessage(e, "Failed to load commits");
+	}
+}
+
+const cachedGraphRefresh = createCoalescedTask(scheduler, readCachedGraph);
+onDestroy(() => cachedGraphRefresh.dispose());
+
+$effect(() => {
+	if (!tabActive || !refVisibilityResolved || cachedGraphRevision === undefined)
+		return;
+	const revision = cachedGraphRevision;
+	untrack(() => {
+		if (revision > graphRevision) cachedGraphRefresh.request();
+	});
+});
+
+$effect(() => {
+	if (wipRefreshSignal !== undefined && wipRefreshSignal > 0) {
+		untrack(() => {
+			requestWipStats();
+			stashMapRefresh.request();
+		});
+	}
+});
 
 async function refreshGraph() {
 	const seq = ++refreshSeq;
+	const worktree = Promise.all([wipStatsRefresh.run(), stashMapRefresh.run()]);
 	try {
 		const response = await safeInvoke<GraphResponse>("refresh_commit_graph", {
 			path: repoPath,
 			loaded: offset,
 		});
 		if (!graphActive || seq !== refreshSeq) return;
-		showGraph(response);
-		await stashMapRefresh.run();
+		showGraph(response, false);
 	} catch (e) {
 		if (!graphActive || seq !== refreshSeq) return;
 		error = errorMessage(e, "Failed to load commits");
 		// Keep old commits visible on error -- do NOT clear
+	} finally {
+		await worktree;
 	}
 }
 

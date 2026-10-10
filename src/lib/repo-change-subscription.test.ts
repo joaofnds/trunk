@@ -1,6 +1,9 @@
 import { listen } from "@tauri-apps/api/event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { subscribeToRepoChanges } from "./repo-change-subscription.js";
+import {
+	type RepoChanged,
+	subscribeToRepoChanges,
+} from "./repo-change-subscription.js";
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 
@@ -58,21 +61,30 @@ describe("subscribeToRepoChanges", () => {
 // particular files reads them to skip a write concerning none of them
 // (TRUNK-232).
 describe("subscribeToRepoChanges payload", () => {
-	it("hands the changed paths to the subscriber", async () => {
-		let handler: ((event: { payload: unknown }) => void) | undefined;
-		mockListen.mockImplementation(async (_name, callback) => {
-			handler = callback as (event: { payload: unknown }) => void;
-			return () => {};
-		});
-		const seen: Array<readonly string[]> = [];
-		const dispose = subscribeToRepoChanges("/repo", {
-			invalidate: (changed) => seen.push(changed),
-		});
-		await Promise.resolve();
+	it.each<RepoChanged>([
+		{ repo: "/repo", paths: ["src/a.ts", "src/b.ts"] },
+		{ repo: "/repo", paths: [], graph_revision: 2 },
+		{ repo: "/repo", paths: [], refs_only: true, graph_revision: 3 },
+	])(
+		"hands the paths and complete event to the subscriber for %j",
+		async (payload) => {
+			let handler: ((event: { payload: unknown }) => void) | undefined;
+			mockListen.mockImplementation(async (_name, callback) => {
+				handler = callback as (event: { payload: unknown }) => void;
+				return () => {};
+			});
+			const seen: Array<{ changed: readonly string[]; event?: RepoChanged }> =
+				[];
+			const dispose = subscribeToRepoChanges("/repo", {
+				includeRefs: true,
+				invalidate: (changed, event) => seen.push({ changed, event }),
+			});
+			await Promise.resolve();
 
-		handler?.({ payload: { repo: "/repo", paths: ["src/a.ts", "src/b.ts"] } });
+			handler?.({ payload });
 
-		expect(seen).toEqual([["src/a.ts", "src/b.ts"]]);
-		dispose();
-	});
+			expect(seen).toEqual([{ changed: payload.paths, event: payload }]);
+			dispose();
+		},
+	);
 });

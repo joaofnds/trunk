@@ -39,7 +39,7 @@ impl TestContext {
             self.state_map(),
         )?;
         Ok((
-            GraphSnapshot::new(source, RefVisibility::default()),
+            GraphSnapshot::new(source.source, RefVisibility::default()),
             outcome,
         ))
     }

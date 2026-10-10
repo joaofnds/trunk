@@ -50,13 +50,19 @@ function attachTooltip(
 		el.style.top = `${rect.bottom + TRIGGER_GAP}px`;
 	}
 
+	function renderLabel() {
+		if (!el) return;
+		el.textContent = label;
+		el.classList.toggle("tooltip-pop-multiline", label.includes("\n"));
+	}
+
 	function show() {
 		// Skip blank labels so a trigger with no text (e.g. a not-yet-computed
 		// value) never flashes an empty popup.
 		if (el || !label.trim() || !isWanted()) return;
 		el = document.createElement("div");
 		el.className = "tooltip-pop";
-		el.textContent = label;
+		renderLabel();
 		document.body.appendChild(el);
 		place();
 		requestAnimationFrame(() => el?.classList.add("tooltip-pop-shown"));
@@ -83,8 +89,10 @@ function attachTooltip(
 		update(next: string) {
 			label = next;
 			if (!el) return;
-			if (next.trim()) el.textContent = next;
-			else hide();
+			if (next.trim()) {
+				renderLabel();
+				place();
+			} else hide();
 		},
 		destroy() {
 			hide();

@@ -806,12 +806,17 @@ fn graph_response_serializes_correctly() {
     let response = GraphResponse {
         commits: graph_result.layout.commits.clone(),
         max_columns: graph_result.layout.max_columns,
+        revision: 42,
     };
 
     let json = serde_json::to_value(&response).expect("GraphResponse serialization failed");
 
     assert!(json.is_object(), "GraphResponse should be an object");
     assert!(json["commits"].is_array(), "commits should be an array");
+    assert_eq!(
+        json["revision"], 42,
+        "revision should cross the IPC boundary"
+    );
     assert!(
         json["max_columns"].is_number(),
         "max_columns should be a number"

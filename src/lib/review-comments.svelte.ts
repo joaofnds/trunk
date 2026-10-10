@@ -288,11 +288,16 @@ export function createReviewComments(
 		}),
 	);
 
-	// A file changed, so a comment written against a superseded snapshot may
+	// Repository files or refs changed, so a comment against a superseded snapshot may
 	// have gone stale. The backend decides and stays silent unless a thread
 	// actually moved; when one did, its own reviews-changed brings the new
 	// rows back through the listener above.
-	unlisteners.push(subscribeToRepoChanges(repoPath, stalenessRefresh));
+	unlisteners.push(
+		subscribeToRepoChanges(repoPath, {
+			includeRefs: true,
+			invalidate: () => stalenessRefresh.invalidate(),
+		}),
+	);
 
 	// Retried on every refresh, not resolved once: a single rejection would
 	// otherwise leave the filter failing closed for the rest of the tab's life,

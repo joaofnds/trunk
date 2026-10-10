@@ -8,8 +8,8 @@ use serde_json::{Value, json};
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{INVOKE_KEY, MockRuntime, get_ipc_response, mock_builder};
 use tauri::webview::InvokeRequest;
-use tauri::{App, Manager, WebviewWindow};
-use trunk_lib::state::{RepoState, TrafficLights};
+use tauri::{App, Listener, Manager, WebviewWindow};
+use trunk_lib::state::{CommitCache, RepoState, TrafficLights};
 use trunk_lib::watcher::WatcherState;
 
 /// Invariant 2: `http://tauri.localhost` is refused by the real capability set, and
@@ -35,13 +35,31 @@ fn invoke(webview: &WebviewWindow<MockRuntime>, cmd: &str, args: Value) -> Resul
     })
 }
 
+struct CloseRepoOnDrop<'a> {
+    webview: &'a WebviewWindow<MockRuntime>,
+    path: &'a str,
+}
+
+impl Drop for CloseRepoOnDrop<'_> {
+    fn drop(&mut self) {
+        let _ = invoke(self.webview, "close_repo", json!({ "path": self.path }));
+    }
+}
+
 /// The real application on `MockRuntime`, with the real capability set: the host
 /// builds what `run()` builds, minus the runtime and the two plugins `configure`
 /// leaves to `run()`.
 fn boot(watcher: WatcherState) -> (App<MockRuntime>, WebviewWindow<MockRuntime>) {
-    let app = trunk_lib::configure(mock_builder(), watcher, TrafficLights::disabled())
-        .build(trunk_lib::context())
-        .expect("build the app on MockRuntime");
+    let app = trunk_lib::configure_with_fetch_worker(
+        mock_builder(),
+        watcher,
+        TrafficLights::disabled(),
+        trunk_lib::background_fetch::BackgroundFetch::new(std::path::PathBuf::from(env!(
+            "CARGO_BIN_EXE_trunk"
+        ))),
+    )
+    .build(trunk_lib::context())
+    .expect("build the app on MockRuntime");
     let webview = tauri::WebviewWindowBuilder::new(&app, "main", tauri::WebviewUrl::default())
         .build()
         .expect("create the main webview");
@@ -68,6 +86,73 @@ fn the_real_handler_list_registers_on_a_mock_runtime() {
             .unwrap()
             .is_open(ctx.path()),
         "open_repo should register the repository in RepoState"
+    );
+}
+
+#[test]
+fn an_unchanged_background_fetch_preserves_the_cached_capture() {
+    let source = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    let remote_dir = tempfile::tempdir().unwrap();
+    git2::Repository::init_bare(remote_dir.path()).unwrap();
+    source
+        .repo()
+        .remote_anonymous(remote_dir.path().to_str().unwrap())
+        .unwrap()
+        .push(&["refs/heads/main:refs/heads/main"], None)
+        .unwrap();
+    let clone_dir = tempfile::tempdir().unwrap();
+    git2::Repository::clone(remote_dir.path().to_str().unwrap(), clone_dir.path()).unwrap();
+    let path = clone_dir.path().to_str().unwrap();
+    let (app, webview) = boot(WatcherState::default());
+    invoke(&webview, "open_repo", json!({ "path": path })).unwrap();
+    let _close = CloseRepoOnDrop {
+        webview: &webview,
+        path,
+    };
+    let before = app.state::<CommitCache>().snapshot(path).unwrap();
+    let (sentinel, drained) = std::sync::mpsc::channel();
+    let changes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let recorded = std::sync::Arc::clone(&changes);
+    app.listen_any("repo-changed", move |event| {
+        let change: trunk_lib::watcher::RepoChanged =
+            serde_json::from_str(event.payload()).unwrap();
+        let is_sentinel = change
+            .paths
+            .iter()
+            .any(|path| path == "watcher-drain-marker");
+        recorded.lock().unwrap().push(change);
+        if is_sentinel {
+            sentinel.send(()).unwrap();
+        }
+    });
+
+    let outcome = invoke(&webview, "git_fetch_background", json!({ "path": path })).unwrap();
+    assert_eq!(outcome["outcome"], "unchanged");
+    assert!(outcome["remotes"][0]["last_success_ms"].is_u64());
+    // Observe the watcher's delivery after the fetch writes, rather than sleeping
+    // longer than its debounce. The marker itself is an intentional local change.
+    std::fs::write(clone_dir.path().join("watcher-drain-marker"), "marker").unwrap();
+    drained
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("watcher must deliver the marker; timeout only bounds a stalled test");
+    assert_eq!(
+        *changes.lock().unwrap(),
+        vec![trunk_lib::watcher::RepoChanged {
+            repo: path.to_owned(),
+            paths: vec!["watcher-drain-marker".to_owned()],
+            graph_revision: None,
+            refs_only: false,
+        }],
+        "unchanged fetch bookkeeping must leave only the deliberate watcher marker"
+    );
+
+    let after = app.state::<CommitCache>().snapshot(path).unwrap();
+    assert!(
+        after.same_capture_as(&before),
+        "an unchanged fetch must not recapture or lay out repository history"
     );
 }
 

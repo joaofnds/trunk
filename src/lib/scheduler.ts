@@ -7,6 +7,7 @@ import { getContext } from "svelte";
 export interface Scheduler {
 	setTimeout(callback: () => void, delayMs: number): number;
 	clearTimeout(handle: number): void;
+	currentTimeMs(): number;
 }
 
 export const SCHEDULER = Symbol("scheduler");
@@ -16,6 +17,7 @@ export const SCHEDULER = Symbol("scheduler");
  * `vi.useFakeTimers()` after this module loads still intercepts.
  */
 export const realScheduler: Scheduler = {
+	currentTimeMs: () => performance.now(),
 	setTimeout: (callback, delayMs) =>
 		globalThis.setTimeout(callback, delayMs) as unknown as number,
 	clearTimeout: (handle) => globalThis.clearTimeout(handle),

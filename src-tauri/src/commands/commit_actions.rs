@@ -4,8 +4,7 @@ use crate::types::UndoResult;
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
-use trunk_git::graph;
-use trunk_git::graph_input::{GraphSnapshot, GraphSource};
+use trunk_git::graph_input::GraphSnapshot;
 
 /// Outcome of a clean two-step revert begin.
 ///
@@ -30,7 +29,7 @@ pub fn checkout_commit_inner(
     path: &str,
     oid: &str,
     state_map: &OpenRepos,
-) -> Result<GraphSource, TrunkError> {
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
 
@@ -48,7 +47,7 @@ pub fn checkout_commit_inner(
     drop(repo);
 
     let mut repo2 = git2::Repository::open(path_buf)?;
-    graph::capture(&mut repo2)
+    crate::state::read_graph(&mut repo2)
 }
 
 /// Create an annotated tag on a commit.
@@ -63,7 +62,7 @@ pub fn create_tag_inner(
     tag_name: &str,
     message: &str,
     state_map: &OpenRepos,
-) -> Result<GraphSource, TrunkError> {
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
     let obj = repo.revparse_single(oid)?;
@@ -78,7 +77,7 @@ pub fn create_tag_inner(
     drop(repo);
 
     let mut repo2 = git2::Repository::open(path_buf)?;
-    graph::capture(&mut repo2)
+    crate::state::read_graph(&mut repo2)
 }
 
 /// Delete a tag.
@@ -91,7 +90,7 @@ pub fn delete_tag_inner(
     path: &str,
     tag_name: &str,
     state_map: &OpenRepos,
-) -> Result<GraphSource, TrunkError> {
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
     let tag_ref_name = format!("refs/tags/{tag_name}");
@@ -101,7 +100,7 @@ pub fn delete_tag_inner(
     drop(repo);
 
     let mut repo2 = git2::Repository::open(path_buf)?;
-    graph::capture(&mut repo2)
+    crate::state::read_graph(&mut repo2)
 }
 
 /// Cherry-pick a commit onto HEAD.
@@ -115,7 +114,7 @@ pub fn cherry_pick_inner(
     path: &str,
     oid: &str,
     state_map: &OpenRepos,
-) -> Result<GraphSource, TrunkError> {
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
     let output = std::process::Command::new("git")
@@ -136,7 +135,7 @@ pub fn cherry_pick_inner(
     }
 
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 /// Conclude a conflicted cherry-pick by committing the resolved tree.
@@ -149,7 +148,7 @@ pub fn cherry_pick_continue_inner(
     path: &str,
     message: &str,
     state_map: &OpenRepos,
-) -> Result<GraphSource, TrunkError> {
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     // Mirrors revert_continue: --cleanup=strip drops git's `# Conflicts:` block,
     // and `git commit -m` concludes the pick, clearing CHERRY_PICK_HEAD.
@@ -164,7 +163,7 @@ pub fn cherry_pick_continue_inner(
         return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 /// Abandon an in-progress cherry-pick and restore the previous tree.
@@ -176,7 +175,7 @@ pub fn cherry_pick_continue_inner(
 pub fn cherry_pick_abort_inner(
     path: &str,
     state_map: &OpenRepos,
-) -> Result<GraphSource, TrunkError> {
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     // merge_abort cannot stand in here: `git merge --abort` needs MERGE_HEAD,
     // which a cherry-pick never sets.
@@ -191,7 +190,7 @@ pub fn cherry_pick_abort_inner(
         return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 /// Stage a revert without committing, so the message can be edited first.
@@ -205,7 +204,7 @@ pub fn revert_commit_begin_inner(
     path: &str,
     oid: &str,
     state_map: &OpenRepos,
-) -> Result<(GraphSource, Option<String>), TrunkError> {
+) -> Result<(crate::state::GraphRead, Option<String>), TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
     // Stage the revert without committing so the editor can edit the message.
@@ -232,7 +231,7 @@ pub fn revert_commit_begin_inner(
     // Verbatim default — `# Conflicts:` lines (conflicted revert) are stripped at
     // commit time via --cleanup=strip, never here.
     let message = std::fs::read_to_string(repo.path().join("MERGE_MSG")).ok();
-    let source = graph::capture(&mut repo)?;
+    let source = crate::state::read_graph(&mut repo)?;
     Ok((source, message))
 }
 
@@ -246,7 +245,7 @@ pub fn revert_continue_inner(
     path: &str,
     message: &str,
     state_map: &OpenRepos,
-) -> Result<GraphSource, TrunkError> {
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     // --cleanup=strip drops git's `# Conflicts:` comment block so conflicted
     // revert bodies stay clean (MSG-03 fidelity). git commit -m clears REVERT_HEAD.
@@ -261,7 +260,7 @@ pub fn revert_continue_inner(
         return Err(TrunkError::new("revert_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 /// Abandon an in-progress revert and restore a clean tree.
@@ -270,7 +269,10 @@ pub fn revert_continue_inner(
 ///
 /// Returns `not_open` when `path` names no open repository, and `revert_error` carrying git's
 /// own message when `git` will not run or the abort fails.
-pub fn revert_abort_inner(path: &str, state_map: &OpenRepos) -> Result<GraphSource, TrunkError> {
+pub fn revert_abort_inner(
+    path: &str,
+    state_map: &OpenRepos,
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     // The MSG-06 recovery path for revert: clears REVERT_HEAD + restores a clean
     // tree. Without it a cancelled revert traps the user (RESEARCH finding 4).
@@ -285,7 +287,7 @@ pub fn revert_abort_inner(path: &str, state_map: &OpenRepos) -> Result<GraphSour
         return Err(TrunkError::new("revert_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 /// Reset HEAD to a commit in soft, mixed or hard mode.
@@ -300,7 +302,7 @@ pub fn reset_to_commit_inner(
     oid: &str,
     mode: &str,
     state_map: &OpenRepos,
-) -> Result<GraphSource, TrunkError> {
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
     let valid_modes = ["soft", "mixed", "hard"];
@@ -324,7 +326,7 @@ pub fn reset_to_commit_inner(
     }
 
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 /// # Errors
@@ -797,7 +799,7 @@ pub async fn undo_commit<R: Runtime>(
             let undo = undo_commit_inner(&path_clone, &state_map)?;
             let path_buf = state_map.path_for(&path_clone)?;
             let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-            let source = graph::capture(&mut repo)?;
+            let source = crate::state::read_graph(&mut repo)?;
             Ok((source, undo))
         })
         .await
@@ -844,7 +846,7 @@ pub async fn redo_commit<R: Runtime>(
             )?;
             let path_buf = state_map.path_for(&path_clone)?;
             let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-            graph::capture(&mut repo)
+            crate::state::read_graph(&mut repo)
         })
         .await
         .map_err(|e| e.to_json())?;

@@ -491,16 +491,30 @@ export async function clearCommitDraft(path: string): Promise<void> {
 
 // Periodic background fetch interval. 0 disables. Default 1 min.
 const FETCH_INTERVAL_KEY = "fetch_interval_ms";
-const DEFAULT_FETCH_INTERVAL_MS = 60 * 1000;
+export const DEFAULT_FETCH_INTERVAL_MS = 60 * 1000;
+const fetchIntervalSubscribers = new Set<(ms: number) => void>();
+
+function validFetchInterval(ms: unknown): number {
+	return typeof ms === "number" && Number.isFinite(ms)
+		? Math.max(0, Math.floor(ms))
+		: DEFAULT_FETCH_INTERVAL_MS;
+}
 
 export async function getFetchIntervalMs(): Promise<number> {
-	return (
-		(await getPref<number>(FETCH_INTERVAL_KEY)) ?? DEFAULT_FETCH_INTERVAL_MS
-	);
+	return validFetchInterval(await getPref<number>(FETCH_INTERVAL_KEY));
 }
 
 export async function setFetchIntervalMs(ms: number): Promise<void> {
-	await setPref(FETCH_INTERVAL_KEY, ms);
+	const interval = validFetchInterval(ms);
+	await setPref(FETCH_INTERVAL_KEY, interval);
+	for (const subscriber of fetchIntervalSubscribers) subscriber(interval);
+}
+
+export function subscribeFetchInterval(
+	subscriber: (ms: number) => void,
+): () => void {
+	fetchIntervalSubscribers.add(subscriber);
+	return () => fetchIntervalSubscribers.delete(subscriber);
 }
 
 // Which refs each repository hides from its graph, keyed by absolute repo path like

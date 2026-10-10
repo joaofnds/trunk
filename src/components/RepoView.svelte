@@ -47,7 +47,6 @@ import {
 	getCommitDraft,
 	getDiffContextLines,
 	getDiffIgnoreWhitespace,
-	getFetchIntervalMs,
 	getTreeViewEnabled,
 	setCommitDraft,
 	setLeftPaneWidth,
@@ -112,7 +111,6 @@ interface Props {
 	leftPaneCollapsed: boolean;
 	rightPaneWidth: number;
 	rightPaneCollapsed: boolean;
-	windowVisible: boolean;
 	// Whether this is the active tab. Every tab stays mounted, so window-global
 	// menu events (search-toggle) need it to tell themselves apart.
 	tabActive: boolean;
@@ -161,7 +159,6 @@ let {
 	leftPaneCollapsed,
 	rightPaneWidth,
 	rightPaneCollapsed,
-	windowVisible,
 	tabActive,
 	reviewActive,
 	reviewThreadsHidden = false,
@@ -346,6 +343,11 @@ async function handleReviewJumpToCommit(oid: string) {
 
 // Per-repo state
 let refreshSignal = $state(0);
+let graphRefreshSignal = $state(0);
+let worktreeRefreshSignal = $state(0);
+let refsRefreshSignal = $state(0);
+let cachedGraphRevision = $state<number | undefined>();
+let pendingRefsRevision = $state<number | undefined>();
 let dirtyCounts = $state<DirtyCounts>({
 	staged: 0,
 	unstaged: 0,
@@ -926,6 +928,7 @@ onDestroy(() => {
 
 function handleRefresh() {
 	refreshSignal += 1;
+	graphRefreshSignal += 1;
 }
 
 function clearStagingDiff() {
@@ -1732,30 +1735,6 @@ $effect(() => {
 	return () => clearTimeout(timer);
 });
 
-// Silent periodic background fetch. Pauses while the window is unfocused;
-// backend swallows auth/rebase/busy cases so errors never surface.
-$effect(() => {
-	const path = repoPath;
-	let timer: ReturnType<typeof setInterval> | undefined;
-	let cancelled = false;
-
-	(async () => {
-		const intervalMs = await getFetchIntervalMs();
-		if (cancelled || intervalMs <= 0) return;
-		timer = setInterval(() => {
-			// A remote op releases the per-repo lock before refresh_graph runs, so
-			// without the isRunning guard an autonomous fetch races into that gap.
-			if (!windowVisible || remoteState.isRunning) return;
-			safeInvoke("git_fetch_background", { path }).catch(() => {});
-		}, intervalMs);
-	})();
-
-	return () => {
-		cancelled = true;
-		if (timer) clearInterval(timer);
-	};
-});
-
 // Listen for repo-changed events scoped to this repo. Status, HEAD and the
 // notification read the whole repository, so every change concerns them. The
 // open file's diff is the one piece of work a change can miss, and it refetches
@@ -1766,8 +1745,23 @@ $effect(() => {
 $effect(() => {
 	const path = repoPath;
 	return subscribeToRepoChanges(path, {
-		invalidate(changed) {
-			repoNotification.invalidate();
+		includeRefs: true,
+		invalidate(changed, event) {
+			if (event?.refs_only && event.graph_revision !== undefined) {
+				pendingRefsRevision = Math.max(
+					pendingRefsRevision ?? 0,
+					event.graph_revision,
+				);
+				return;
+			}
+			if (event?.graph_revision !== undefined) {
+				cachedGraphRevision = Math.max(
+					cachedGraphRevision ?? 0,
+					event.graph_revision,
+				);
+				refreshSignal += 1;
+				worktreeRefreshSignal += 1;
+			} else repoNotification.invalidate();
 			dirtyCountsRefresh.invalidate();
 			headBranchRefresh.invalidate();
 			if (!concernsOpenFiles(changed)) return;
@@ -1791,6 +1785,17 @@ $effect(() => {
 				currentFileRefresh.invalidate();
 			}
 		},
+	});
+});
+
+$effect(() => {
+	if (!tabActive || pendingRefsRevision === undefined) return;
+	const revision = pendingRefsRevision;
+	untrack(() => {
+		cachedGraphRevision = Math.max(cachedGraphRevision ?? 0, revision);
+		pendingRefsRevision = undefined;
+		refsRefreshSignal += 1;
+		headBranchRefresh.invalidate();
 	});
 });
 
@@ -2261,7 +2266,7 @@ function stepRightPane(delta: number) {
 					loadedRows={() => commitGraphRef?.loadedRows() ?? 0}
 					onstashselect={handleCommitSelect}
 					onrefnavigate={handleRefNavigate}
-					{refreshSignal}
+					refreshSignal={refreshSignal + refsRefreshSignal}
 					workingTreeDirty={wipCount > 0}
 					onopenrebaseeditor={handleOpenRebaseEditor}
 					onopenmessageeditor={handleOpenMessageEditor}
@@ -2402,7 +2407,9 @@ function stepRightPane(delta: number) {
 						wipMessage={wipSubject.trim() || '// WIP'}
 						{wipStats}
 						onWipClick={handleWipClick}
-						{refreshSignal}
+						refreshSignal={graphRefreshSignal}
+						wipRefreshSignal={worktreeRefreshSignal}
+						{cachedGraphRevision}
 						{selectedCommitOid}
 						onopenrebaseeditor={handleOpenRebaseEditor}
 						onopenmessageeditor={handleOpenMessageEditor}

@@ -45,8 +45,12 @@ So something on trunk's side interfered after/around the pull. Leading suspects
 1. The recursive fs-watcher reacting to git's own `.git` writes during the
    rebase (`repo-changed` → `refresh_graph` opening the repo with git2 while the
    git CLI is mid-write). See the "writing to .git triggers a UI reload" hazard.
-2. The periodic `git_fetch_background` (RepoView.svelte ~553) racing the pull.
-   It's guarded by `RunningOp` + an `is_clean` check, but the guard is a TOCTOU.
+2. The then-periodic per-tab `git_fetch_background` racing the pull.
+   Its `RunningOp` + `is_clean` guard had a TOCTOU gap. As of 2026-10-10,
+   background and foreground commands acquire atomic common-directory reservations
+   through `remote_ops::RemoteReservation`. This excludes a Trunk pull from concurrent
+   automatic fetch on the same shared repository. It does not exclude local Git
+   mutations or terminal commands; the June incident's cause remains unconfirmed.
 3. The pull subprocess being cancelled/killed mid-rebase (`cancel_remote_op`).
 
 ## Why this can't be pinned now

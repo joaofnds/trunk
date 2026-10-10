@@ -14,6 +14,7 @@ use trunk_git::{
 pub struct GraphResponse {
     pub commits: Vec<GraphCommit>,
     pub max_columns: usize,
+    pub revision: u64,
 }
 
 /// Rows per page. The frontend's own BATCH must match: it decides there whether a
@@ -47,7 +48,13 @@ impl GraphResponse {
         Self {
             commits: slice(layout, start, end).to_vec(),
             max_columns: layout.max_columns,
+            revision: 0,
         }
+    }
+
+    const fn at_revision(mut self, revision: u64) -> Self {
+        self.revision = revision;
+        self
     }
 }
 
@@ -62,11 +69,20 @@ impl GraphResponse {
 pub async fn get_commit_graph(
     path: String,
     offset: usize,
+    loaded: Option<usize>,
+    revision: Option<u64>,
     cache: State<'_, CommitCache>,
 ) -> Result<GraphResponse, String> {
-    let page = cache.read(&path, |graph| GraphResponse::page(&graph.layout, offset));
-
-    page.ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())
+    cache
+        .read_versioned(&path, revision, |graph, revision| {
+            loaded
+                .map_or_else(
+                    || GraphResponse::page(&graph.layout, offset),
+                    |loaded| GraphResponse::head(&graph.layout, loaded),
+                )
+                .at_revision(revision)
+        })
+        .map_err(|e| e.to_json())
 }
 
 /// # Errors
@@ -85,20 +101,34 @@ pub async fn refresh_commit_graph(
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
 ) -> Result<GraphResponse, String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let session = cache.capture_session(&path).map_err(|e| e.to_json())?;
     let state_map = state.snapshot();
-    let path_clone = path.clone();
+    refresh_graph_in_session(&path, loaded, state_map, &cache, &ref_visibility, session)
+        .await
+        .map_err(|e| e.to_json())
+}
 
-    let graph_result = rebuild
-        .rebuild(path, move || {
+async fn refresh_graph_in_session(
+    path: &str,
+    loaded: usize,
+    state_map: OpenRepos,
+    cache: &CommitCache,
+    ref_visibility: &crate::state::RefVisibilityState,
+    session: u64,
+) -> Result<GraphResponse, TrunkError> {
+    let rebuild = crate::state::GraphRebuild::new(cache, ref_visibility);
+    let path_clone = path.to_owned();
+    rebuild
+        .rebuild_in_session(path.to_owned(), session, move || {
             let path_buf = state_map.path_for(&path_clone)?;
             let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-            graph::capture(&mut repo)
+            crate::state::read_graph(&mut repo)
         })
-        .await
-        .map_err(|e| e.to_json())?;
+        .await?;
 
-    Ok(GraphResponse::head(&graph_result.layout, loaded))
+    cache.read_versioned(path, None, |graph, revision| {
+        GraphResponse::head(&graph.layout, loaded).at_revision(revision)
+    })
 }
 
 /// Record which refs the user has hidden for a repository and rebuild its graph.
@@ -124,25 +154,48 @@ pub async fn set_ref_visibility(
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
 ) -> Result<GraphResponse, String> {
+    let session = cache.capture_session(&path).map_err(|e| e.to_json())?;
     ref_visibility.set(path.clone(), visibility.clone());
 
-    let cached = cache.snapshot(&path);
+    let (gate, ticket) = cache
+        .begin_rebuild(&path, session)
+        .await
+        .map_err(|e| e.to_json())?;
+    let visibility = ref_visibility.get(&path);
+
+    let Some(cached) = cache.snapshot(&path) else {
+        drop(gate);
+        return refresh_graph_in_session(
+            &path,
+            loaded,
+            state.snapshot(),
+            &cache,
+            &ref_visibility,
+            session,
+        )
+        .await
+        .map_err(|e| e.to_json());
+    };
     let state_map = state.snapshot();
     let path_clone = path.clone();
     let read = cached.clone();
 
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        set_ref_visibility_inner(&path_clone, &visibility, cached.as_ref(), &state_map)
+        set_ref_visibility_inner(&path_clone, &visibility, Some(&cached), &state_map)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
     .map_err(|e| e.to_json())?;
 
-    let response = GraphResponse::head(&graph_result.layout, loaded);
-
-    cache.write_relaid_out(path, read.as_ref(), graph_result);
-
-    Ok(response)
+    crate::state::GraphRebuild::new(&cache, &ref_visibility)
+        .publish_relayout(path.clone(), &read, graph_result, ticket)
+        .await
+        .map_err(|e| e.to_json())?;
+    cache
+        .read_versioned(&path, None, |graph, revision| {
+            GraphResponse::head(&graph.layout, loaded).at_revision(revision)
+        })
+        .map_err(|e| e.to_json())
 }
 
 /// The graph under a new visibility.
@@ -293,19 +346,54 @@ pub fn wip_diff_stats_inner(path: &str, state_map: &OpenRepos) -> Result<DiffSta
 pub async fn get_commit_stats(
     path: String,
     offset: usize,
+    revision: Option<u64>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     commit_stats: State<'_, CommitStatsCache>,
 ) -> Result<HashMap<String, DiffStat>, String> {
+    let compute_path = path.clone();
+    cached_commit_stats(
+        &path,
+        offset,
+        revision,
+        &cache,
+        &commit_stats,
+        |uncached| async move {
+            let state_map = state.snapshot();
+            tauri::async_runtime::spawn_blocking(move || {
+                compute_commit_stats_batch(&compute_path, &uncached, &state_map)
+            })
+            .await
+            .map_err(|error| TrunkError::new("spawn_error", error.to_string()))
+        },
+    )
+    .await
+    .map_err(|error| error.to_json())
+}
+
+async fn cached_commit_stats<F, C>(
+    path: &str,
+    offset: usize,
+    revision: Option<u64>,
+    cache: &CommitCache,
+    commit_stats: &CommitStatsCache,
+    compute: F,
+) -> Result<HashMap<String, DiffStat>, TrunkError>
+where
+    F: FnOnce(Vec<String>) -> C,
+    C: std::future::Future<Output = Result<HashMap<String, DiffStat>, TrunkError>>,
+{
     // Resolve the page's oids from the topology cache (lock dropped immediately).
-    let page_oids: Vec<String> = cache
-        .read(&path, |graph| {
-            slice(&graph.layout, offset, offset + PAGE)
-                .iter()
-                .map(|c| c.oid.clone())
-                .collect()
-        })
-        .ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?;
+    let ((page_oids, page_revision), session): ((Vec<String>, u64), u64) = cache
+        .read_versioned_with_session(path, revision, |graph, revision| {
+            (
+                slice(&graph.layout, offset, offset + PAGE)
+                    .iter()
+                    .map(|c| c.oid.clone())
+                    .collect(),
+                revision,
+            )
+        })?;
 
     // Partition into already-cached (return verbatim) and uncached (compute).
     let (uncached, mut result): (Vec<String>, HashMap<String, DiffStat>) = {
@@ -313,7 +401,7 @@ pub async fn get_commit_stats(
         let mut uncached = Vec::new();
         let mut result = HashMap::new();
         for oid in page_oids {
-            match cached.get(&path, &oid) {
+            match cached.get(path, &oid) {
                 Some(stat) => {
                     result.insert(oid, stat.clone());
                 }
@@ -328,20 +416,19 @@ pub async fn get_commit_stats(
         return Ok(result);
     }
 
-    let state_map = state.snapshot();
-    let path_clone = path.clone();
-    let computed = tauri::async_runtime::spawn_blocking(move || {
-        compute_commit_stats_batch(&path_clone, &uncached, &state_map)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?;
+    let computed = compute(uncached).await?;
 
-    // Merge the newly computed stats into the immutable per-oid cache.
-    commit_stats
-        .0
-        .lock()
-        .unwrap()
-        .extend(path, computed.iter().map(|(o, s)| (o.clone(), s.clone())));
+    // The OID results stay useful after a revision change, but belong only to
+    // the opening session that requested them. Keep them before rejecting a stale response.
+    cache.store_stats_in_session(
+        path,
+        session,
+        commit_stats,
+        computed
+            .iter()
+            .map(|(oid, stat)| (oid.clone(), stat.clone())),
+    )?;
+    cache.read_versioned(path, Some(page_revision), |_, _| ())?;
     result.extend(computed);
     Ok(result)
 }
@@ -388,27 +475,45 @@ pub async fn commit_stat(
     path: String,
     oid: String,
     state: State<'_, RepoState>,
+    cache: State<'_, CommitCache>,
     commit_stats: State<'_, CommitStatsCache>,
 ) -> Result<DiffStat, String> {
-    if let Some(stat) = commit_stats.0.lock().unwrap().get(&path, &oid) {
-        return Ok(stat.clone());
-    }
-
-    let state_map = state.snapshot();
     let path_clone = path.clone();
     let oid_clone = oid.clone();
-    let stat = tauri::async_runtime::spawn_blocking(move || {
-        commit_stat_inner(&path_clone, &oid_clone, &state_map)
+    cached_commit_stat(&path, &oid, &cache, &commit_stats, || async move {
+        let state_map = state.snapshot();
+        tauri::async_runtime::spawn_blocking(move || {
+            commit_stat_inner(&path_clone, &oid_clone, &state_map)
+        })
+        .await
+        .map_err(|error| TrunkError::new("spawn_error", error.to_string()))?
     })
     .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    .map_err(|e| e.to_json())
+}
 
-    commit_stats
-        .0
-        .lock()
-        .unwrap()
-        .extend(path, [(oid, stat.clone())]);
+async fn cached_commit_stat<F, C>(
+    path: &str,
+    oid: &str,
+    cache: &CommitCache,
+    commit_stats: &CommitStatsCache,
+    compute: F,
+) -> Result<DiffStat, TrunkError>
+where
+    F: FnOnce() -> C,
+    C: std::future::Future<Output = Result<DiffStat, TrunkError>>,
+{
+    let session = cache.capture_session(path)?;
+    if let Some(stat) = commit_stats.0.lock().unwrap().get(path, oid) {
+        return Ok(stat.clone());
+    }
+    let stat = compute().await?;
+    cache.store_stats_in_session(
+        path,
+        session,
+        commit_stats,
+        [(oid.to_owned(), stat.clone())],
+    )?;
     Ok(stat)
 }
 
@@ -490,4 +595,191 @@ pub async fn search_commits(
 ) -> Result<Vec<SearchResult>, String> {
     let graph = cache.snapshot(&path);
     search_commits_inner(&path, &query, graph.as_ref()).map_err(|e| e.to_json())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cached_commit_stat, cached_commit_stats};
+    use crate::state::{
+        CommitCache, CommitStatsCache, GraphCache, GraphRebuild, RefVisibilityState, StatsCache,
+    };
+    use crate::types::DiffStat;
+    use std::collections::{HashMap, HashSet};
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use trunk_git::graph_input::{CommitFacts, GraphSnapshot, GraphSource, RefVisibility};
+    use trunk_git::placement::PlacementInput;
+    use trunk_git::types::{RefLabel, RefType};
+
+    fn source() -> GraphSource {
+        let oid = git2::Oid::from_str("0000000000000000000000000000000000000001").unwrap();
+        GraphSource {
+            placement: PlacementInput {
+                oids: vec![oid],
+                parents: HashMap::from([(oid, vec![])]),
+                stashes: HashSet::new(),
+                head_tip: Some(oid),
+                tracked_upstream: None,
+                worktree_dirty: false,
+            },
+            commits: HashMap::from([(
+                oid,
+                CommitFacts {
+                    summary: "one".into(),
+                    body: None,
+                    author_name: "T".into(),
+                    author_email: "t@example.com".into(),
+                    author_timestamp: 1000,
+                },
+            )]),
+            refs: HashMap::from([(
+                oid,
+                vec![RefLabel {
+                    name: "refs/heads/main".into(),
+                    short_name: "main".into(),
+                    ref_type: RefType::LocalBranch,
+                    is_head: true,
+                    color_index: 0,
+                }],
+            )]),
+            stash_order: vec![],
+        }
+    }
+
+    fn cache() -> CommitCache {
+        let mut graphs = GraphCache::default();
+        graphs.insert(
+            "/repo".into(),
+            GraphSnapshot::new(source(), RefVisibility::default()),
+        );
+        CommitCache::new(graphs)
+    }
+
+    fn stats(oid: String) -> HashMap<String, DiffStat> {
+        HashMap::from([(
+            oid,
+            DiffStat {
+                insertions: 7,
+                deletions: 2,
+                files_changed: 1,
+            },
+        )])
+    }
+
+    #[test]
+    fn stats_completed_across_a_revision_change_are_reused() {
+        let cache = cache();
+        let stored = CommitStatsCache(Mutex::new(StatsCache::default()));
+        let visibility = RefVisibilityState::default();
+        let computations = AtomicUsize::new(0);
+
+        let stale = tauri::async_runtime::block_on(cached_commit_stats(
+            "/repo",
+            0,
+            None,
+            &cache,
+            &stored,
+            |oids| {
+                let computed = stats(oids[0].clone());
+                let cache = &cache;
+                let visibility = &visibility;
+                let computations = &computations;
+                async move {
+                    computations.fetch_add(1, Ordering::Relaxed);
+                    GraphRebuild::new(cache, visibility)
+                        .rebuild("/repo".into(), || Ok(source()))
+                        .await?;
+                    Ok(computed)
+                }
+            },
+        ))
+        .unwrap_err();
+        let reused = tauri::async_runtime::block_on(cached_commit_stats(
+            "/repo",
+            0,
+            None,
+            &cache,
+            &stored,
+            |oids| {
+                computations.fetch_add(1, Ordering::Relaxed);
+                std::future::ready(Ok(stats(oids[0].clone())))
+            },
+        ))
+        .unwrap();
+
+        assert_eq!(stale.code, "graph_changed");
+        assert_eq!(
+            computations.load(Ordering::Relaxed),
+            1,
+            "immutable stats were recomputed after the graph revision changed"
+        );
+        assert_eq!(reused.values().next().unwrap().insertions, 7);
+    }
+
+    #[test]
+    fn stats_from_a_closed_opening_session_are_discarded() {
+        let cache = cache();
+        let stored = CommitStatsCache(Mutex::new(StatsCache::default()));
+        let visibility = RefVisibilityState::default();
+
+        let stale = tauri::async_runtime::block_on(cached_commit_stats(
+            "/repo",
+            0,
+            None,
+            &cache,
+            &stored,
+            |oids| {
+                let computed = stats(oids[0].clone());
+                let cache = &cache;
+                let stored = &stored;
+                let visibility = &visibility;
+                async move {
+                    cache.forget("/repo");
+                    stored.0.lock().unwrap().forget("/repo");
+                    cache.open_session("/repo");
+                    GraphRebuild::new(cache, visibility)
+                        .rebuild("/repo".into(), || Ok(source()))
+                        .await?;
+                    Ok(computed)
+                }
+            },
+        ))
+        .unwrap_err();
+
+        assert_eq!(stale.code, "not_open");
+        assert!(
+            stored
+                .0
+                .lock()
+                .unwrap()
+                .get("/repo", "0000000000000000000000000000000000000001")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn detail_stats_from_a_closed_opening_session_are_discarded() {
+        let cache = cache();
+        let stored = CommitStatsCache(Mutex::new(StatsCache::default()));
+        let oid = "0000000000000000000000000000000000000001";
+        let computed = stats(oid.to_owned()).remove(oid).unwrap();
+
+        let stale = tauri::async_runtime::block_on(cached_commit_stat(
+            "/repo",
+            oid,
+            &cache,
+            &stored,
+            || async {
+                cache.forget("/repo");
+                stored.0.lock().unwrap().forget("/repo");
+                cache.open_session("/repo");
+                Ok(computed)
+            },
+        ));
+
+        assert_eq!(stale.unwrap_err().code, "not_open");
+        assert!(stored.0.lock().unwrap().get("/repo", oid).is_none());
+    }
 }

@@ -1,6 +1,6 @@
 use crate::common::context::TestContext;
 use trunk_git::error::TrunkError;
-use trunk_git::graph_input::{GraphSnapshot, GraphSource, RefVisibility};
+use trunk_git::graph_input::{GraphSnapshot, RefVisibility};
 use trunk_lib::commands::operation_state;
 use trunk_lib::commands::operation_state::MergeBeginResult;
 use trunk_lib::types::OperationInfo;
@@ -8,9 +8,11 @@ use trunk_lib::types::OperationInfo;
 /// A driver method's contract predates `GraphRebuild`'s capture/lay-out split: it hands back
 /// a laid-out `GraphSnapshot`, same as before. Laying the capture out under the default
 /// (nothing hidden) visibility here is what keeps that contract, now that `*_inner` returns
-/// the bare capture (TRUNK-125).
-fn snapshot(source: Result<GraphSource, TrunkError>) -> Result<GraphSnapshot, TrunkError> {
-    source.map(|source| GraphSnapshot::new(source, RefVisibility::default()))
+/// a checked capture (TRUNK-125).
+fn snapshot(
+    source: Result<trunk_lib::state::GraphRead, TrunkError>,
+) -> Result<GraphSnapshot, TrunkError> {
+    source.map(|source| GraphSnapshot::new(source.source, RefVisibility::default()))
 }
 
 impl TestContext {
@@ -58,7 +60,7 @@ impl TestContext {
     pub fn merge_branch_begin(&self, branch: &str) -> Result<MergeBeginResult, TrunkError> {
         let (source, outcome) =
             operation_state::merge_branch_begin_inner(self.path(), branch, self.state_map())?;
-        let graph = GraphSnapshot::new(source, RefVisibility::default());
+        let graph = GraphSnapshot::new(source.source, RefVisibility::default());
         Ok(match outcome {
             operation_state::MergeBeginOutcome::FastForwarded => {
                 MergeBeginResult::FastForwarded { graph }

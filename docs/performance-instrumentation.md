@@ -49,6 +49,11 @@ A frame gap is filed under the innermost span open when it happened, which is wh
 overlap across an `await` attribute to the most recently opened one: an approximation in the
 *name*, never in the timing.
 
+Automatic fetch completion calls `record("autofetch:outcome", 0, attributes)`: a
+zero-duration completion sample containing the outcome, graph rebuild count and remote
+count. `tests/app/autofetch.test.ts` checks that an unchanged fetch reports zero rebuilds
+through the complete application.
+
 ## Attributes
 
 A duration says which operation is slow and never on what input. A span's body is handed an

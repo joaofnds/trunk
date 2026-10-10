@@ -75,6 +75,16 @@ rebuild returns and page one alone would drop every page the user had scrolled t
 visibility change re-lays out the same capture through `GraphSnapshot::with_visibility`
 without opening the repository.
 
+Application producers call `state::read_graph`, which checks ref/HEAD/upstream/stash identity
+and dirtiness around capture. `GraphRebuild` serializes capture and publication per worktree,
+applies the latest visibility and fences results by opening session and generation. Ref
+reconciliation compares those stamps before walking history, so duplicate fetch/watcher
+reports retain the existing capture. The cached response carries a revision; page and
+commit-stat requests naming an older revision fail with `graph_changed`. A refs-only
+notification reads the cached head at the view's loaded depth, preserving selection and
+avoiding another capture. The pipeline's ordering, placement and hydration remain the
+stages described below.
+
 ### Commit ordering
 
 1. Stash OIDs are collected via `repo.stash_foreach()`. A stash joins the walk only if it

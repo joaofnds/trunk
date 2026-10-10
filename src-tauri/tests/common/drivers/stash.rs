@@ -1,6 +1,6 @@
 use crate::common::context::TestContext;
 use trunk_git::error::TrunkError;
-use trunk_git::graph_input::{GraphSnapshot, GraphSource, RefVisibility};
+use trunk_git::graph_input::{GraphSnapshot, RefVisibility};
 use trunk_lib::commands::stash;
 use trunk_lib::types::StashEntry;
 
@@ -8,8 +8,10 @@ use trunk_lib::types::StashEntry;
 /// a laid-out `GraphSnapshot`, same as before. Laying the capture out under the default
 /// (nothing hidden) visibility here is what keeps that contract, now that `*_inner` returns
 /// the bare capture (TRUNK-125).
-fn snapshot(source: Result<GraphSource, TrunkError>) -> Result<GraphSnapshot, TrunkError> {
-    source.map(|source| GraphSnapshot::new(source, RefVisibility::default()))
+fn snapshot(
+    source: Result<trunk_lib::state::GraphRead, TrunkError>,
+) -> Result<GraphSnapshot, TrunkError> {
+    source.map(|source| GraphSnapshot::new(source.source, RefVisibility::default()))
 }
 
 impl TestContext {

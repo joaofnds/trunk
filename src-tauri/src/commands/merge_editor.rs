@@ -3,7 +3,6 @@ use crate::types::MergeSides;
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
-use trunk_git::graph;
 
 /// The file's conflict entry, or `not_conflicted` when the index holds none for
 /// it. Both the read and the write path ask this first: the editor outlives the
@@ -174,7 +173,7 @@ pub async fn save_merge_result<R: Runtime>(
         .rebuild(path.clone(), move || {
             let path_buf = state_map.path_for(&path_for_cache)?;
             let mut repo = git2::Repository::open(path_buf)?;
-            graph::capture(&mut repo)
+            crate::state::read_graph(&mut repo)
         })
         .await
         .map_err(|e| e.to_json())?;

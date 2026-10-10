@@ -5,10 +5,7 @@ use crate::watcher::RepoChanged;
 use git2::BranchType;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
-use trunk_git::{
-    graph,
-    types::{RefLabel, RefType},
-};
+use trunk_git::types::{RefLabel, RefType};
 
 /// Inner implementation of `list_refs` — separated for testability without Tauri state.
 ///
@@ -167,8 +164,8 @@ pub fn delete_branch_inner(
 
     // Rebuild graph cache
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let graph_result = graph::snapshot(&mut repo2, visibility)?;
-    cache_map.insert(path.to_owned(), graph_result);
+    let read = crate::state::read_graph(&mut repo2)?;
+    cache_map.insert_read(path.to_owned(), read, visibility.clone());
 
     Ok(())
 }
@@ -196,8 +193,8 @@ pub fn rename_branch_inner(
 
     // Rebuild graph cache
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let graph_result = graph::snapshot(&mut repo2, visibility)?;
-    cache_map.insert(path.to_owned(), graph_result);
+    let read = crate::state::read_graph(&mut repo2)?;
+    cache_map.insert_read(path.to_owned(), read, visibility.clone());
 
     Ok(())
 }
@@ -304,8 +301,8 @@ pub fn checkout_branch_inner(
 
     // Rebuild graph cache after checkout
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let graph_result = graph::snapshot(&mut repo2, visibility)?;
-    cache_map.insert(path.to_owned(), graph_result);
+    let read = crate::state::read_graph(&mut repo2)?;
+    cache_map.insert_read(path.to_owned(), read, visibility.clone());
 
     Ok(())
 }
@@ -374,8 +371,8 @@ pub fn fast_forward_to_inner(
 
     // Rebuild graph cache
     let mut repo = git2::Repository::open(path_buf)?;
-    let graph_result = graph::snapshot(&mut repo, visibility)?;
-    cache_map.insert(path.to_owned(), graph_result);
+    let read = crate::state::read_graph(&mut repo)?;
+    cache_map.insert_read(path.to_owned(), read, visibility.clone());
 
     Ok(())
 }
@@ -454,8 +451,8 @@ pub fn create_branch_inner(
         drop(repo);
         // Rebuild cache even though checkout didn't happen — branch was created
         let mut repo2 = git2::Repository::open(path_buf)?;
-        let graph_result = graph::snapshot(&mut repo2, visibility)?;
-        cache_map.insert(path.to_owned(), graph_result);
+        let read = crate::state::read_graph(&mut repo2)?;
+        cache_map.insert_read(path.to_owned(), read, visibility.clone());
         return Err(TrunkError::new(
             "dirty_workdir",
             "Branch created but working tree has uncommitted changes — checkout skipped",
@@ -476,8 +473,8 @@ pub fn create_branch_inner(
 
     // Rebuild graph cache after branch creation
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let graph_result = graph::snapshot(&mut repo2, visibility)?;
-    cache_map.insert(path.to_owned(), graph_result);
+    let read = crate::state::read_graph(&mut repo2)?;
+    cache_map.insert_read(path.to_owned(), read, visibility.clone());
 
     Ok(())
 }

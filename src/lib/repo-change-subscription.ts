@@ -7,6 +7,8 @@ export interface RepoChanged {
 	 *  the writer could not name them, which every subscriber treats as a change
 	 *  it must refresh for. */
 	paths: string[];
+	refs_only?: boolean;
+	graph_revision?: number;
 }
 
 /** Notified of a change to the repository it was subscribed for.
@@ -16,7 +18,8 @@ export interface RepoChanged {
  *  reads it to skip a write that concerns none of them; one that reads the whole
  *  repository ignores it (TRUNK-232). */
 export interface RepoChangeSubscriber {
-	invalidate(changed: readonly string[]): void;
+	includeRefs?: boolean;
+	invalidate(changed: readonly string[], event?: RepoChanged): void;
 }
 
 /**
@@ -33,8 +36,9 @@ export function subscribeToRepoChanges(
 
 	void listen<RepoChanged>("repo-changed", (event) => {
 		if (disposed || event.payload.repo !== repoPath) return;
+		if (event.payload.refs_only && !subscriber.includeRefs) return;
 
-		subscriber.invalidate(event.payload.paths);
+		subscriber.invalidate(event.payload.paths, event.payload);
 	}).then((registeredUnlisten) => {
 		if (disposed) registeredUnlisten();
 		else unlisten = registeredUnlisten;

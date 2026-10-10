@@ -146,7 +146,7 @@ describe("App", () => {
 			case "validate_recent_path":
 				return Promise.resolve(true);
 			case "get_commit_graph":
-				return Promise.resolve({ commits: [], max_columns: 0 });
+				return Promise.resolve({ commits: [], max_columns: 0, revision: 1 });
 			case "list_refs":
 				return Promise.resolve({
 					local: [],
@@ -224,7 +224,11 @@ describe("App", () => {
 			mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
 				switch (cmd) {
 					case "get_commit_graph":
-						return Promise.resolve({ commits: history, max_columns: 1 });
+						return Promise.resolve({
+							commits: history,
+							max_columns: 1,
+							revision: 1,
+						});
 					case "get_commit_detail":
 						return Promise.resolve(detailOf((args as { oid: string }).oid));
 					case "list_commit_files":

@@ -10,6 +10,10 @@ class TestScheduler implements Scheduler {
 		{ readonly at: number; readonly callback: () => void }
 	>();
 
+	currentTimeMs(): number {
+		return this.now;
+	}
+
 	setTimeout(callback: () => void, delayMs: number): number {
 		const handle = this.nextHandle++;
 		this.timers.set(handle, { at: this.now + delayMs, callback });

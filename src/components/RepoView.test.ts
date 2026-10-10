@@ -91,10 +91,15 @@ vi.mock("@tauri-apps/api/event", () => ({
 	),
 }));
 
-function fireRepoChanged(repo: string, paths: string[]): void {
+function fireRepoChanged(
+	repo: string,
+	paths: string[],
+	extra: { refs_only?: boolean; graph_revision?: number } = {},
+): void {
 	const registered = eventHandlers.get("repo-changed") ?? [];
 	if (registered.length === 0) throw new Error("no repo-changed listener");
-	for (const handler of registered) handler({ payload: { repo, paths } });
+	for (const handler of registered)
+		handler({ payload: { repo, paths, ...extra } });
 }
 
 function fireReviewShowPanel(): void {
@@ -182,7 +187,7 @@ describe("RepoView", () => {
 		mockInvoke.mockImplementation((cmd: string) => {
 			switch (cmd) {
 				case "get_commit_graph":
-					return Promise.resolve({ commits: [], max_columns: 0 });
+					return Promise.resolve({ commits: [], max_columns: 0, revision: 1 });
 				case "list_refs":
 					return Promise.resolve({
 						local: [],
@@ -241,7 +246,6 @@ describe("RepoView", () => {
 				leftPaneCollapsed: false,
 				rightPaneWidth: 300,
 				rightPaneCollapsed: false,
-				windowVisible: true,
 				tabActive: true,
 				reviewActive: false,
 				onreviewpanelshowingchange: vi.fn(),
@@ -268,7 +272,6 @@ describe("RepoView", () => {
 				leftPaneCollapsed: false,
 				rightPaneWidth: 300,
 				rightPaneCollapsed: false,
-				windowVisible: true,
 				tabActive: true,
 				reviewActive: false,
 				onreviewpanelshowingchange: vi.fn(),
@@ -294,7 +297,6 @@ describe("RepoView", () => {
 				leftPaneCollapsed: false,
 				rightPaneWidth: 300,
 				rightPaneCollapsed: false,
-				windowVisible: true,
 				tabActive: true,
 				reviewActive: false,
 				onreviewpanelshowingchange: vi.fn(),
@@ -323,7 +325,6 @@ describe("RepoView", () => {
 				leftPaneCollapsed: true,
 				rightPaneWidth: 300,
 				rightPaneCollapsed: false,
-				windowVisible: true,
 				tabActive: true,
 				reviewActive: false,
 				onreviewpanelshowingchange: vi.fn(),
@@ -615,7 +616,11 @@ describe("RepoView", () => {
 			mockInvoke.mockImplementation((cmd, args) => {
 				switch (cmd) {
 					case "get_commit_graph":
-						return Promise.resolve({ commits: [commit], max_columns: 1 });
+						return Promise.resolve({
+							commits: [commit],
+							max_columns: 1,
+							revision: 1,
+						});
 					case "list_reviews":
 						return Promise.resolve([
 							{
@@ -666,7 +671,11 @@ describe("RepoView", () => {
 			mockInvoke.mockImplementation((cmd, args) => {
 				switch (cmd) {
 					case "get_commit_graph":
-						return Promise.resolve({ commits: [commit], max_columns: 1 });
+						return Promise.resolve({
+							commits: [commit],
+							max_columns: 1,
+							revision: 1,
+						});
 					case "list_reviews":
 						return Promise.resolve([
 							{
@@ -762,7 +771,6 @@ describe("RepoView", () => {
 			leftPaneCollapsed: false,
 			rightPaneWidth: 300,
 			rightPaneCollapsed: false,
-			windowVisible: true,
 			tabActive: true,
 			reviewActive: false,
 			onreviewpanelshowingchange: vi.fn(),
@@ -835,7 +843,11 @@ describe("RepoView", () => {
 			const a = args as Record<string, unknown> | undefined;
 			switch (cmd) {
 				case "get_commit_graph":
-					return Promise.resolve({ commits: [commit], max_columns: 1 });
+					return Promise.resolve({
+						commits: [commit],
+						max_columns: 1,
+						revision: 1,
+					});
 				case "list_commit_files":
 					return Promise.resolve([]);
 				case "get_commit_detail":
@@ -879,42 +891,190 @@ describe("RepoView", () => {
 		});
 	});
 
-	describe("background fetch", () => {
-		// Long enough that the assertion reads "the interval fires", not "the
-		// interval is 60s" (DEFAULT_FETCH_INTERVAL_MS, src/lib/store.ts).
-		const SEVERAL_INTERVALS_MS = 10 * 60_000;
-
-		beforeEach(() => {
-			vi.useFakeTimers();
+	it("leaves automatic fetching to the application scheduler", async () => {
+		const scheduler = new FakeScheduler();
+		render(RepoView, {
+			props: baseProps(createMockRemoteState()),
+			context: new Map([[SCHEDULER, scheduler]]),
 		});
-
-		afterEach(() => {
-			vi.useRealTimers();
-		});
-
-		it("is suppressed while a remote operation is running", async () => {
-			const remoteState = createMockRemoteState();
-			remoteState.isRunning = true;
-
-			render(RepoView, { props: baseProps(remoteState) });
-			await vi.advanceTimersByTimeAsync(SEVERAL_INTERVALS_MS);
-
-			expect(mockInvoke).not.toHaveBeenCalledWith(
-				"git_fetch_background",
+		await vi.waitFor(() =>
+			expect(mockInvoke).toHaveBeenCalledWith(
+				"get_commit_graph",
 				expect.anything(),
-			);
-		});
-
-		it("runs when idle and the window is visible", async () => {
-			render(RepoView, { props: baseProps(createMockRemoteState()) });
-
-			await vi.advanceTimersByTimeAsync(SEVERAL_INTERVALS_MS);
-
-			expect(mockInvoke).toHaveBeenCalledWith("git_fetch_background", {
-				path: "/test/repo",
-			});
-		});
+			),
+		);
+		scheduler.advanceBy(600_000);
+		await tick();
+		expect(mockInvoke).not.toHaveBeenCalledWith(
+			"git_fetch_background",
+			expect.anything(),
+		);
 	});
+
+	it.each(["rebuild", "cached publication"] as const)(
+		"reads WIP stats and stashes once during a whole repository %s",
+		async (refreshKind) => {
+			const scheduler = new FakeScheduler();
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base implementation missing");
+			const graphCommand =
+				refreshKind === "rebuild" ? "refresh_commit_graph" : "get_commit_graph";
+			let initialGraphRead = false;
+			let finishRefresh!: (value: unknown) => void;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd === "get_commit_graph" && !initialGraphRead) {
+					initialGraphRead = true;
+					return Promise.resolve({
+						commits: [makeCommit({ oid: "before", summary: "before refresh" })],
+						max_columns: 1,
+						revision: 1,
+					});
+				}
+				if (cmd === graphCommand)
+					return new Promise((resolve) => {
+						finishRefresh = resolve;
+					});
+				if (cmd === "get_wip_diff_stats")
+					return Promise.resolve({
+						files_changed: 1,
+						insertions: 1,
+						deletions: 0,
+					});
+				return base(cmd, args);
+			});
+			render(RepoView, {
+				props: baseProps(createMockRemoteState()),
+				context: new Map([[SCHEDULER, scheduler]]),
+			});
+			await screen.findByText("before refresh");
+			await vi.waitFor(() => {
+				expect(mockInvoke).toHaveBeenCalledWith("get_wip_diff_stats", {
+					path: "/test/repo",
+				});
+				expect(mockInvoke).toHaveBeenCalledWith("list_stashes", {
+					path: "/test/repo",
+				});
+			});
+			await tick();
+			mockInvoke.mockClear();
+
+			fireRepoChanged(
+				"/test/repo",
+				["readme"],
+				refreshKind === "cached publication" ? { graph_revision: 2 } : {},
+			);
+			await tick();
+			scheduler.advanceBy(REPO_CHANGE_DELAY_MS);
+			await vi.waitFor(() => expect(finishRefresh).toBeTypeOf("function"));
+			finishRefresh({
+				commits: [makeCommit({ oid: "after", summary: "after refresh" })],
+				max_columns: 1,
+				revision: 2,
+			});
+			await screen.findByText("after refresh");
+			scheduler.advanceBy(REPO_CHANGE_DELAY_MS);
+			await tick();
+
+			const calls = (command: string) =>
+				mockInvoke.mock.calls.filter(([cmd]) => cmd === command).length;
+			expect({
+				graph: calls(graphCommand),
+				captures: calls("refresh_commit_graph"),
+				wip: calls("get_wip_diff_stats"),
+				stashes: calls("list_stashes"),
+			}).toEqual({
+				graph: 1,
+				captures: refreshKind === "rebuild" ? 1 : 0,
+				wip: 1,
+				stashes: 1,
+			});
+		},
+	);
+
+	it.each([true, false])(
+		"applies cached ref revisions without ref-triggered worktree scans (active=%s)",
+		async (active) => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base implementation missing");
+			let revision = 1;
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "get_commit_graph"
+					? Promise.resolve({
+							commits: [
+								makeCommit({ oid: "oid-1", summary: `revision ${revision}` }),
+							],
+							max_columns: 1,
+							revision,
+						})
+					: base(cmd, args),
+			);
+			const scheduler = new FakeScheduler();
+			const props = {
+				...baseProps(createMockRemoteState()),
+				tabActive: active,
+			};
+			const view = render(RepoView, {
+				props,
+				context: new Map([[SCHEDULER, scheduler]]),
+			});
+			await screen.findByText("revision 1");
+			await tick();
+			scheduler.advanceBy(REPO_CHANGE_DELAY_MS);
+			await tick();
+			mockInvoke.mockClear();
+			revision = 3;
+			fireRepoChanged("/test/repo", [], { refs_only: true, graph_revision: 2 });
+			fireRepoChanged("/test/repo", [], { refs_only: true, graph_revision: 3 });
+			await tick();
+			scheduler.advanceBy(REPO_CHANGE_DELAY_MS);
+			await tick();
+			if (!active) {
+				for (const command of [
+					"get_commit_graph",
+					"get_status",
+					"get_dirty_counts",
+					"get_wip_diff_stats",
+					"refresh_commit_graph",
+					"list_stashes",
+					"get_operation_state",
+				]) {
+					expect(
+						mockInvoke.mock.calls.filter(([cmd]) => cmd === command),
+					).toHaveLength(0);
+				}
+				expect(
+					mockInvoke.mock.calls.filter(([cmd]) => cmd === "get_commit_graph"),
+				).toHaveLength(0);
+				expect(screen.queryByText("revision 1")).toBeTruthy();
+				await view.rerender({ ...props, tabActive: true });
+				scheduler.advanceBy(REPO_CHANGE_DELAY_MS);
+			}
+			await screen.findByText("revision 3");
+			expect(
+				mockInvoke.mock.calls.filter(([cmd]) => cmd === "get_commit_graph"),
+			).toHaveLength(1);
+			for (const command of [
+				"refresh_commit_graph",
+				"get_status",
+				"get_dirty_counts",
+				"get_wip_diff_stats",
+				"list_stashes",
+				"get_operation_state",
+				"diff_unstaged",
+			]) {
+				expect(
+					mockInvoke.mock.calls.filter(([cmd]) => cmd === command),
+				).toHaveLength(
+					!active &&
+						["get_status", "get_dirty_counts", "get_operation_state"].includes(
+							command,
+						)
+						? 1
+						: 0,
+				);
+			}
+		},
+	);
 
 	// RepoView hosts a single MessageEditor and threads onopenmessageeditor to its
 	// merge/revert trigger children. The editor renders nothing until open() is
@@ -932,7 +1092,6 @@ describe("RepoView", () => {
 				leftPaneCollapsed: false,
 				rightPaneWidth: 300,
 				rightPaneCollapsed: false,
-				windowVisible: true,
 				tabActive: true,
 				reviewActive: false,
 				onreviewpanelshowingchange: vi.fn(),
@@ -960,7 +1119,6 @@ describe("RepoView", () => {
 			leftPaneCollapsed: false,
 			rightPaneWidth: 300,
 			rightPaneCollapsed: false,
-			windowVisible: true,
 			tabActive: true,
 			reviewActive: false,
 			onreviewpanelshowingchange: vi.fn(),
@@ -1517,7 +1675,7 @@ describe("RepoView", () => {
 				const a = args as Record<string, unknown> | undefined;
 				switch (cmd) {
 					case "get_commit_graph":
-						return Promise.resolve({ commits, max_columns: 1 });
+						return Promise.resolve({ commits, max_columns: 1, revision: 1 });
 					case "list_commit_files":
 						return Promise.resolve(filesByOid[a?.oid as string] ?? []);
 					case "get_commit_detail": {
@@ -2244,6 +2402,7 @@ describe("RepoView", () => {
 								}),
 							],
 							max_columns: 1,
+							revision: 1,
 						});
 					case "start_interactive_rebase":
 						return Promise.resolve(startResult);
@@ -2795,7 +2954,7 @@ describe("RepoView", () => {
 				const a = args as Record<string, unknown> | undefined;
 				switch (cmd) {
 					case "get_commit_graph":
-						return Promise.resolve({ commits, max_columns: 1 });
+						return Promise.resolve({ commits, max_columns: 1, revision: 1 });
 					case "list_commit_files":
 						return Promise.resolve([]);
 					case "get_commit_detail":

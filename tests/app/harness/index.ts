@@ -21,6 +21,8 @@ export type { RepoSpec, SpecStep } from "./host-client.js";
 
 export interface SetupOptions {
 	repo?: RepoSpec;
+	/** Routine workflows disable automatic checks; scheduling scenarios opt in. */
+	fetchIntervalMs?: number;
 	/** The scroll viewport's height, for a test that needs a list shorter than
 	 *  its own content so it scrolls and culls. Defaults to a viewport tall
 	 *  enough that nothing does. */
@@ -50,40 +52,40 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 		throw new Error("an application is already running; teardown first");
 
 	const host = await HostClient.spawn();
-	// A wait that expires can then say what the host was still owed, which is the
-	// difference between a slow round trip and one the frontend ignored (TRUNK-62).
-	describeTimeout(() => host.describeOutstanding());
-	const repoPath = options.repo ? await host.seedRepo(options.repo) : "";
-	if (repoPath) await offerInRecents(host, repoPath);
-
 	const internals = new TauriInternals(host);
-	const fakes = {
-		window: new FakeWindow(),
-		webview: new FakeWebview(),
-		path: new FakePath(host.home),
-		menu: new FakeMenu(internals),
-		dialog: new FakeDialog(),
-		clipboard: new FakeClipboard(),
-		opener: new FakeOpener(),
-	};
-	internals.route(Object.values(fakes));
-
-	const scheduler = new FakeScheduler();
-	driveWaitsWith((elapsedMs) => scheduler.advanceBy(elapsedMs));
-
-	installDomPolyfills({ viewportHeight: options.viewportHeight });
-	internals.install();
-
 	const root = document.createElement("div");
-	document.body.appendChild(root);
+	let domInstalled = false;
+	let untrackScroll: (() => void) | undefined;
 
-	// Everything above outlives this function: the layout stubs sit on the
-	// prototypes and the reporting `ResizeObserver` on `globalThis`. A throw here
-	// leaves `running` null, so `teardown()` returns early and hands the next test
-	// a 4000px viewport and an observer that fires, where it expects jsdom's
-	// do-nothing one. Unwind what we installed before letting the failure out.
 	try {
-		const untrackScroll = startAppServices();
+		await host.invoke("prefs_set", {
+			key: "fetch_interval_ms",
+			value: options.fetchIntervalMs ?? 0,
+		});
+		// A wait can distinguish a pending host command from a reply the UI ignored.
+		describeTimeout(() => host.describeOutstanding());
+		const repoPath = options.repo ? await host.seedRepo(options.repo) : "";
+		if (repoPath) await offerInRecents(host, repoPath);
+
+		const fakes = {
+			window: new FakeWindow(),
+			webview: new FakeWebview(),
+			path: new FakePath(host.home),
+			menu: new FakeMenu(internals),
+			dialog: new FakeDialog(),
+			clipboard: new FakeClipboard(),
+			opener: new FakeOpener(),
+		};
+		internals.route(Object.values(fakes));
+
+		const scheduler = new FakeScheduler();
+		driveWaitsWith((elapsedMs) => scheduler.advanceBy(elapsedMs));
+		domInstalled = true;
+		installDomPolyfills({ viewportHeight: options.viewportHeight });
+		internals.install();
+		document.body.appendChild(root);
+
+		untrackScroll = startAppServices();
 		const app = mount(App, {
 			target: root,
 			context: new Map([[SCHEDULER, scheduler]]),
@@ -92,10 +94,12 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 		running = { host, internals, root, app, untrackScroll };
 		return new AppDriver(host, internals, fakes, scheduler, repoPath);
 	} catch (error) {
+		// Setup owns the host and every installed global even before mount succeeds.
 		driveWaitsWith(null);
+		untrackScroll?.();
 		root.remove();
 		internals.uninstall();
-		restoreDomPolyfills();
+		if (domInstalled) restoreDomPolyfills();
 		describeTimeout(null);
 		await host.shutdown();
 		throw error;

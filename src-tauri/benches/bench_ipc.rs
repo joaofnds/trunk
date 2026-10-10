@@ -135,6 +135,7 @@ fn bench_ipc_get_graph(c: &mut Criterion) {
             let response = trunk_lib::commands::history::GraphResponse {
                 commits: result.commits[..end].to_vec(),
                 max_columns: result.max_columns,
+                revision: 0,
             };
             serde_json::to_string(&response).unwrap()
         });
@@ -219,6 +220,7 @@ fn bench_startup_sequence(c: &mut Criterion) {
                     let _ = serde_json::to_string(&trunk_lib::commands::history::GraphResponse {
                         commits: graph.commits[..200.min(graph.commits.len())].to_vec(),
                         max_columns: graph.max_columns,
+                        revision: 0,
                     })
                     .unwrap();
 

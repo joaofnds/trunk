@@ -3,12 +3,15 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { untrack } from "svelte";
+import { SvelteMap } from "svelte/reactivity";
 import RecentReposPicker from "./components/RecentReposPicker.svelte";
 import RepoView from "./components/RepoView.svelte";
 import TabBar from "./components/TabBar.svelte";
 import Toast from "./components/Toast.svelte";
 import Toolbar from "./components/Toolbar.svelte";
 import WelcomeScreen from "./components/WelcomeScreen.svelte";
+import { AutofetchScheduler } from "./lib/autofetch.js";
+import type { FetchReport } from "./lib/autofetch-status.js";
 import { copyText } from "./lib/clipboard.js";
 import {
 	type CoalescedTask,
@@ -16,6 +19,7 @@ import {
 } from "./lib/coalesced-task.js";
 import { safeInvoke } from "./lib/invoke.js";
 import { focusInEditable, keyChord } from "./lib/keyboard.js";
+import { perfEnabled, record } from "./lib/perf.js";
 import {
 	createRemoteState,
 	type RemoteState,
@@ -26,8 +30,10 @@ import { getScheduler } from "./lib/scheduler.js";
 import {
 	addRecentRepo,
 	copyLegacyUserWidthsOnce,
+	DEFAULT_FETCH_INTERVAL_MS,
 	getActiveTabId,
 	getDiffContentMode,
+	getFetchIntervalMs,
 	getLeftPaneCollapsed,
 	getLeftPaneWidth,
 	getOpenRepo,
@@ -49,6 +55,7 @@ import {
 	setRightPaneCollapsed,
 	setRightPaneWidth,
 	setZoomLevel,
+	subscribeFetchInterval,
 } from "./lib/store.js";
 import type { TabInfo } from "./lib/tab-types.js";
 import { createTabId } from "./lib/tab-types.js";
@@ -67,7 +74,7 @@ let rightPaneWidth = $state(240);
 let rightPaneCollapsed = $state(false);
 let reviewLeftPaneCollapsed = $state(false);
 let isFullscreen = $state(false);
-let windowVisible = $state(true);
+let windowVisible = $state(false);
 
 // Recent-projects picker (quick-260514-356)
 let pickerOpen = $state(false);
@@ -141,7 +148,83 @@ async function handleDiffContentModeChange(mode: ContentMode) {
 let tabs = $state<TabInfo[]>([]);
 let activeTabId = $state<string>("");
 const scheduler = getScheduler();
+let fetchIntervalMs = DEFAULT_FETCH_INTERVAL_MS;
+const manualFetchVersions = new WeakMap<RemoteState, number>();
+const autofetch = new AutofetchScheduler(
+	scheduler,
+	() => scheduler.currentTimeMs(),
+	runAutofetch,
+);
 const dirtyCountRefreshes = new Map<string, CoalescedTask>();
+
+async function runAutofetch(path: string): Promise<void> {
+	const tab = tabs.find((tab) => tab.repoPath === path);
+	const target = tab ? tabStates.get(tab.id)?.remoteState : undefined;
+	let report: FetchReport;
+	try {
+		report = await safeInvoke<FetchReport>("git_fetch_background", {
+			path,
+			intervalMs: fetchIntervalMs,
+		});
+	} catch {
+		report = {
+			outcome: "failed",
+			remotes: target?.autofetch?.remotes ?? [],
+			graph_error: null,
+			graph_rebuilds: 0,
+			job_error: "Automatic fetch could not start; try Fetch.",
+		};
+	}
+	if (perfEnabled())
+		record("autofetch:outcome", 0, {
+			outcome: report.outcome,
+			graph_rebuilds: report.graph_rebuilds,
+			remotes: report.remotes.length,
+		});
+	if (tab && tabStates.get(tab.id)?.remoteState === target && target)
+		target.autofetch = report;
+}
+
+$effect(() => {
+	let disposed = false;
+	let preferenceChanged = false;
+	const unsubscribe = subscribeFetchInterval((ms) => {
+		preferenceChanged = true;
+		fetchIntervalMs = ms;
+		autofetch.setInterval(ms);
+	});
+	void getFetchIntervalMs().then((ms) => {
+		if (!disposed && !preferenceChanged) {
+			fetchIntervalMs = ms;
+			autofetch.setInterval(ms);
+		}
+	});
+	return () => {
+		disposed = true;
+		unsubscribe();
+		autofetch.dispose();
+	};
+});
+
+$effect(() => {
+	const paths = tabs.flatMap((tab) => (tab.repoPath ? [tab.repoPath] : []));
+	const activePath =
+		tabs.find((tab) => tab.id === activeTabId)?.repoPath ?? null;
+	const manualBusy = [...tabStates.values()].some(
+		(state) => state.remoteState.isRunning,
+	);
+	for (const tab of tabs) {
+		const remote = tabStates.get(tab.id)?.remoteState;
+		const path = tab.repoPath;
+		if (!path || !remote) continue;
+		const version = remote.manualFetchVersion;
+		const previous = manualFetchVersions.get(remote) ?? 0;
+		if (version > previous) untrack(() => autofetch.checked(path));
+		manualFetchVersions.set(remote, version);
+	}
+	const focused = windowVisible;
+	untrack(() => autofetch.update({ paths, activePath, focused, manualBusy }));
+});
 
 const activeInlineCommentCount = $derived(
 	commentCounts.get(activeTabId)?.view ?? 0,
@@ -185,17 +268,18 @@ interface TabState {
 	undoRedo: UndoRedoManager;
 }
 
-let tabStates = $state<Map<string, TabState>>(new Map());
+const tabStates = new SvelteMap<string, TabState>();
 
-function getOrCreateTabState(tabId: string): TabState {
-	let state = tabStates.get(tabId);
-	if (!state) {
-		state = {
-			remoteState: createRemoteState(),
-			undoRedo: createUndoRedoState(),
-		};
-		tabStates.set(tabId, state);
-	}
+function createTabState(tabId: string): void {
+	tabStates.set(tabId, {
+		remoteState: createRemoteState(),
+		undoRedo: createUndoRedoState(),
+	});
+}
+
+function getTabState(tabId: string): TabState {
+	const state = tabStates.get(tabId);
+	if (!state) throw new Error(`Missing state for tab ${tabId}`);
 	return state;
 }
 
@@ -216,6 +300,7 @@ function addNewTab() {
 		repoName: "New Tab",
 		dirty: false,
 	};
+	createTabState(tab.id);
 	tabs = [...tabs, tab];
 	activeTabId = tab.id;
 	persistTabs();
@@ -305,7 +390,8 @@ function openRepoInTab(tabId: string, path: string, name: string) {
 		// following the tab to a repository it says nothing about — a pull still
 		// marked running would leave the incoming repository's Pull and Push
 		// disabled with no way back.
-		tabStates = new Map([...tabStates].filter(([id]) => id !== tabId));
+		tabStates.delete(tabId);
+		createTabState(tabId);
 		tab.repoPath = path;
 		tab.repoName = name;
 		persistTabs();
@@ -454,6 +540,7 @@ $effect(() => {
 					// non-fatal
 				}
 			}
+			createTabState(tab.id);
 			restoredTabs.push(tab);
 		}
 
@@ -542,8 +629,7 @@ $effect(() => {
 	};
 });
 
-// Track window focus — gates the periodic background fetch so hidden tabs
-// don't hit the network.
+// Pause automatic fetches while the window is unfocused.
 $effect(() => {
 	const appWindow = getCurrentWindow();
 	appWindow.isFocused().then((f) => {
@@ -730,6 +816,7 @@ $effect(() => {
 	}
 
 	listen<RepoChanged>("repo-changed", (event) => {
+		if (event.payload.refs_only) return;
 		const repoPath = event.payload.repo;
 		const tab = tabs.find((t) => t.repoPath === repoPath);
 		if (!tab) return;
@@ -784,7 +871,7 @@ $effect(() => {
 		/>
 		<div data-tauri-drag-region class="flex-1 h-full"></div>
 		{#if activeTab?.repoPath}
-			{@const activeState = getOrCreateTabState(activeTabId)}
+			{@const activeState = getTabState(activeTabId)}
 			<Toolbar
 				repoPath={activeTab.repoPath}
 				remoteState={activeState.remoteState}
@@ -811,7 +898,7 @@ $effect(() => {
 				{#if tab.repoPath}
 					{#if diffContentModeLoaded}
 						{#key tab.repoPath}
-							{@const tabState = getOrCreateTabState(tab.id)}
+							{@const tabState = getTabState(tab.id)}
 							{@const tabReviewActive = reviewPanelOpen && tab.id === activeTabId}
 							<RepoView
 								repoPath={tab.repoPath}
@@ -822,7 +909,6 @@ $effect(() => {
 								leftPaneCollapsed={tabReviewActive ? reviewLeftPaneCollapsed : leftPaneCollapsed}
 								{rightPaneWidth}
 								{rightPaneCollapsed}
-								{windowVisible}
 								tabActive={tab.id === activeTabId}
 								reviewActive={tabReviewActive}
 								{reviewThreadsHidden}

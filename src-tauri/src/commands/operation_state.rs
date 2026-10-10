@@ -4,8 +4,7 @@ use crate::types::{OperationInfo, OperationType};
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
-use trunk_git::graph;
-use trunk_git::graph_input::{GraphSnapshot, GraphSource};
+use trunk_git::graph_input::GraphSnapshot;
 
 /// Outcome of a two-step merge begin.
 ///
@@ -28,7 +27,7 @@ pub enum MergeBeginResult {
 
 /// `MergeBeginResult`, minus the `GraphSnapshot` each variant carries.
 ///
-/// `merge_branch_begin_inner` returns this alongside a bare `GraphSource`, so it has no way
+/// `merge_branch_begin_inner` returns this alongside a checked `GraphRead`, so it has no way
 /// to hand back a `GraphSnapshot` built under a visibility of its own choosing — same
 /// reasoning as `GraphRebuild::rebuild`'s closure shape (state.rs). `merge_branch_begin` pairs
 /// it back with the `GraphSnapshot` `rebuild_carrying` produced from the looked-up visibility.
@@ -188,7 +187,7 @@ pub fn merge_continue_inner(
     path: &str,
     message: Option<&str>,
     state_map: &OpenRepos,
-) -> Result<GraphSource, TrunkError> {
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     // The editor flow always supplies a message (frontend aborts on null and
     // never invokes). --cleanup=strip drops git's `# Conflicts:` comment block
@@ -207,7 +206,7 @@ pub fn merge_continue_inner(
         return Err(TrunkError::new("merge_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 /// Abandon an in-progress merge and restore the previous tree.
@@ -216,7 +215,10 @@ pub fn merge_continue_inner(
 ///
 /// Returns `not_open` when `path` names no open repository, and `merge_error` carrying git's
 /// own message when `git` will not run or the abort fails.
-pub fn merge_abort_inner(path: &str, state_map: &OpenRepos) -> Result<GraphSource, TrunkError> {
+pub fn merge_abort_inner(
+    path: &str,
+    state_map: &OpenRepos,
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let output = std::process::Command::new("git")
         .args(["merge", "--abort"])
@@ -229,7 +231,7 @@ pub fn merge_abort_inner(path: &str, state_map: &OpenRepos) -> Result<GraphSourc
         return Err(TrunkError::new("merge_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 /// `git rebase <step>` with the commit-message editor pinned to a no-op.
@@ -263,7 +265,7 @@ pub fn rebase_continue_inner(
     path: &str,
     message: Option<&str>,
     state_map: &OpenRepos,
-) -> Result<GraphSource, TrunkError> {
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
     // Write edited message to .git/rebase-merge/message before continuing
@@ -297,7 +299,7 @@ pub fn rebase_continue_inner(
         }
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 /// Skip the commit a rebase is stuck on and carry on.
@@ -306,7 +308,10 @@ pub fn rebase_continue_inner(
 ///
 /// Returns `not_open` when `path` names no open repository, and `rebase_error` carrying git's
 /// own message when `git` will not run or the skip fails.
-pub fn rebase_skip_inner(path: &str, state_map: &OpenRepos) -> Result<GraphSource, TrunkError> {
+pub fn rebase_skip_inner(
+    path: &str,
+    state_map: &OpenRepos,
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let editor = trunk_git::editor::keyed_rebase_editor()?;
     let output = rebase_command(path_buf, "--skip")
@@ -318,7 +323,7 @@ pub fn rebase_skip_inner(path: &str, state_map: &OpenRepos) -> Result<GraphSourc
         return Err(TrunkError::new("rebase_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 /// Abandon an in-progress rebase and restore the original branch.
@@ -327,7 +332,10 @@ pub fn rebase_skip_inner(path: &str, state_map: &OpenRepos) -> Result<GraphSourc
 ///
 /// Returns `not_open` when `path` names no open repository, and `rebase_error` carrying git's
 /// own message when `git` will not run or the abort fails.
-pub fn rebase_abort_inner(path: &str, state_map: &OpenRepos) -> Result<GraphSource, TrunkError> {
+pub fn rebase_abort_inner(
+    path: &str,
+    state_map: &OpenRepos,
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let output = rebase_command(path_buf, "--abort")
         .output()
@@ -337,7 +345,7 @@ pub fn rebase_abort_inner(path: &str, state_map: &OpenRepos) -> Result<GraphSour
         return Err(TrunkError::new("rebase_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 // --- Start merge/rebase ---
@@ -368,7 +376,7 @@ pub fn merge_branch_begin_inner(
     path: &str,
     branch: &str,
     state_map: &OpenRepos,
-) -> Result<(GraphSource, MergeBeginOutcome), TrunkError> {
+) -> Result<(crate::state::GraphRead, MergeBeginOutcome), TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
     // 1. Probe fast-forward (RESEARCH OQ-1). `--ff-only` succeeds silently on an
@@ -382,7 +390,7 @@ pub fn merge_branch_begin_inner(
         .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
     if probe.status.success() {
         let mut repo = git2::Repository::open(path_buf)?;
-        let source = graph::capture(&mut repo)?;
+        let source = crate::state::read_graph(&mut repo)?;
         return Ok((source, MergeBeginOutcome::FastForwarded));
     }
 
@@ -406,7 +414,7 @@ pub fn merge_branch_begin_inner(
             // Conflicts: rebuild graph so the merge-continue UI picks up the
             // state. NOT an error, NOT an editor — the message isn't ready yet.
             let mut repo = git2::Repository::open(path_buf)?;
-            let source = graph::capture(&mut repo)?;
+            let source = crate::state::read_graph(&mut repo)?;
             return Ok((source, MergeBeginOutcome::Conflicts));
         }
         return Err(TrunkError::new("merge_error", stderr.to_string()));
@@ -416,7 +424,7 @@ pub fn merge_branch_begin_inner(
     let mut repo = git2::Repository::open(path_buf)?;
     let message = std::fs::read_to_string(repo.path().join("MERGE_MSG"))
         .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
-    let source = graph::capture(&mut repo)?;
+    let source = crate::state::read_graph(&mut repo)?;
     Ok((source, MergeBeginOutcome::Ready { message }))
 }
 
@@ -430,7 +438,7 @@ pub fn rebase_branch_inner(
     path: &str,
     onto_branch: &str,
     state_map: &OpenRepos,
-) -> Result<GraphSource, TrunkError> {
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let output = std::process::Command::new("git")
         .args(["rebase", "--", onto_branch])
@@ -442,12 +450,12 @@ pub fn rebase_branch_inner(
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.to_lowercase().contains("conflict") {
             let mut repo = git2::Repository::open(path_buf)?;
-            return graph::capture(&mut repo);
+            return crate::state::read_graph(&mut repo);
         }
         return Err(TrunkError::new("rebase_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 // --- Tauri command wrappers ---
@@ -851,7 +859,10 @@ mod tests {
     /// or a dropped `rename_all`.
     #[test]
     fn merge_begin_result_serializes_the_kind_tags_the_frontend_reads() {
-        let empty = GraphSnapshot::new(GraphSource::default(), RefVisibility::default());
+        let empty = GraphSnapshot::new(
+            trunk_git::graph_input::GraphSource::default(),
+            RefVisibility::default(),
+        );
         let cases = [
             (
                 MergeBeginResult::FastForwarded {

@@ -24,6 +24,12 @@ export class EventsDriver {
 		await this.host.emit("repo-changed", { repo: path, paths });
 	}
 
+	/** The OS focus event that arms or disarms background checks. */
+	async windowFocusChanged(focused: boolean): Promise<void> {
+		await this.internals.registrationsSettled();
+		await this.host.emit(focused ? "tauri://focus" : "tauri://blur", null);
+	}
+
 	/** The rebase the user aborted in a terminal: the repository changes with no
 	 *  gesture in the app, and the only thing that reaches it is the watcher. */
 	async rebaseAbortedElsewhere(path: string): Promise<void> {

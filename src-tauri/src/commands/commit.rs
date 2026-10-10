@@ -3,13 +3,14 @@ use crate::types::HeadCommitMessage;
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
-use trunk_git::graph;
-use trunk_git::graph_input::GraphSource;
 
-fn refresh_commit_cache(path: &str, state_map: &OpenRepos) -> Result<GraphSource, TrunkError> {
+fn refresh_commit_cache(
+    path: &str,
+    state_map: &OpenRepos,
+) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 fn build_message(subject: &str, body: Option<&str>) -> String {

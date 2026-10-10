@@ -4,14 +4,24 @@
 
 mod common;
 
+use std::sync::Mutex;
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
-use tauri::Listener;
+use tauri::{Listener, Manager};
+use trunk_lib::state::{CommitCache, GraphCache, RefVisibilityState, RemoteOps, RunningOp};
 use trunk_lib::watcher::{RepoChanged, WatcherState, start_watcher};
 
 /// How long a test waits for an event before calling it absent. Generous per
 /// D-05: it bounds a failure, never a pass.
 const EVENT_TIMEOUT: Duration = Duration::from_secs(2);
+
+fn watcher_app() -> tauri::App<tauri::test::MockRuntime> {
+    let app = tauri::test::mock_app();
+    app.manage(CommitCache::new(GraphCache::default()));
+    app.manage(RunningOp(Mutex::new(RemoteOps::default())));
+    app.manage(RefVisibilityState::default());
+    app
+}
 
 /// Listen for `repo-changed` on `handle`, returning the receiving half of a
 /// channel the listener sends to. The test blocks on that channel, so the
@@ -47,7 +57,7 @@ fn await_event_naming(events: &Receiver<String>, relative_path: &str) -> RepoCha
 
 #[test]
 fn watcher_names_the_repository_for_rapid_nested_writes() {
-    let app = tauri::test::mock_app();
+    let app = watcher_app();
     let handle = app.handle().clone();
     let events = repo_changed_events(&handle);
     let dir = tempfile::tempdir().unwrap();
@@ -57,7 +67,7 @@ fn watcher_names_the_repository_for_rapid_nested_writes() {
     let watcher_state = WatcherState::default();
     let path = dir.path().to_string_lossy().to_string();
 
-    start_watcher(dir.path(), handle, &watcher_state);
+    start_watcher(dir.path(), handle, &watcher_state).unwrap();
     for index in 0..5 {
         std::fs::write(
             nested_dir.join(format!("rapid-{index}.txt")),
@@ -77,7 +87,7 @@ fn watcher_names_the_repository_for_rapid_nested_writes() {
 /// write to it from a write to anything else under the repository (TRUNK-232).
 #[test]
 fn watcher_names_the_written_file_relative_to_the_repository() {
-    let app = tauri::test::mock_app();
+    let app = watcher_app();
     let handle = app.handle().clone();
     let events = repo_changed_events(&handle);
     let dir = tempfile::tempdir().unwrap();
@@ -86,7 +96,7 @@ fn watcher_names_the_written_file_relative_to_the_repository() {
     std::fs::create_dir(&nested_dir).unwrap();
     let watcher_state = WatcherState::default();
 
-    start_watcher(dir.path(), handle, &watcher_state);
+    start_watcher(dir.path(), handle, &watcher_state).unwrap();
     std::fs::write(nested_dir.join("only.txt"), "content").unwrap();
     let emitted = await_event_naming(&events, "nested/only.txt");
 

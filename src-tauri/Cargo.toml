@@ -19,6 +19,9 @@ name = "trunk_lib"
 crate-type = ["rlib"]
 bench = false
 
+[features]
+test-util = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -42,7 +45,7 @@ ammonia = "4"
 # diffable key/value table. Pinned to the version syntect resolves so nothing new
 # is pulled in.
 yaml-rust = "0.4"
-tokio = { version = "1", features = ["process", "io-util"] }
+tokio = { version = "1", features = ["process", "io-util", "sync", "time", "macros"] }
 libc = { workspace = true }
 similar = { version = "3.1", features = ["unicode", "inline"] }
 syntect = { version = "5", default-features = false, features = ["default-onig"] }
@@ -56,6 +59,7 @@ tempfile = { workspace = true }
 windows-sys = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_System_Console",
+  "Win32_System_Threading",
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -76,6 +80,9 @@ objc2-foundation = { version = "0.3", features = [
 block2 = "0.6"
 
 [dev-dependencies]
+# Enable the app's driven-clock affordance only for test and example targets.
+trunk = { path = ".", features = ["test-util"] }
+tokio = { version = "1", features = ["test-util", "rt", "macros"] }
 # The member crates' test-only affordances, on for the test and bench targets
 # and off in the shipped build.
 trunk-git = { path = "git", features = ["test-util"] }
@@ -103,7 +110,7 @@ workspace = true
 members = ["fixtures", "git", "review"]
 
 [workspace.dependencies]
-git2 = { version = "0.21", features = ["vendored-libgit2", "vendored-openssl"] }
+git2 = { version = "0.21", features = ["vendored-libgit2", "vendored-openssl", "https", "ssh"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 libc = "0.2"

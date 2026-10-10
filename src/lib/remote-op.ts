@@ -1,3 +1,4 @@
+import type { FetchReport } from "./autofetch-status.js";
 import { isTrunkError, safeInvoke } from "./invoke.js";
 import type { RemoteOpKind, RemoteState } from "./remote-state.svelte.js";
 import { showToast } from "./toast.svelte.js";
@@ -23,7 +24,13 @@ export async function runRemoteOp(
 	remoteState.progressLine = "";
 	remoteState.lastOp = OP_KINDS[cmd];
 	try {
-		await safeInvoke(cmd, { path: repoPath, ...extra });
+		const report = await safeInvoke<FetchReport | undefined>(cmd, {
+			path: repoPath,
+			...extra,
+		});
+		if ((cmd === "git_fetch" || cmd === "git_pull") && report)
+			remoteState.autofetch = report;
+		if (cmd === "git_fetch") remoteState.manualFetchVersion += 1;
 		remoteState.isRunning = false;
 		remoteState.progressLine = "";
 		showToast(successMsg, "success");

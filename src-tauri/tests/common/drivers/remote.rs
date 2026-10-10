@@ -1,5 +1,6 @@
 use crate::common::context::TestContext;
 use std::sync::Mutex;
+use tauri::Manager;
 use tauri::test::MockRuntime;
 use trunk_git::error::TrunkError;
 use trunk_git::graph_input::GraphSnapshot;
@@ -12,17 +13,20 @@ use trunk_lib::state::{CommitCache, GraphCache, RemoteOps, RunningOp};
 pub struct RemoteDriver<'a> {
     ctx: &'a TestContext,
     app: tauri::App<MockRuntime>,
-    cache: CommitCache,
-    running: RunningOp,
 }
 
 impl TestContext {
     pub fn remote(&self) -> RemoteDriver<'_> {
+        let cache = CommitCache::new(GraphCache::default());
+        cache.open_session(self.path());
         RemoteDriver {
             ctx: self,
-            app: tauri::test::mock_app(),
-            cache: CommitCache::new(GraphCache::default()),
-            running: RunningOp(Mutex::new(RemoteOps::default())),
+            app: tauri::test::mock_builder()
+                .manage(cache)
+                .manage(RunningOp(Mutex::new(RemoteOps::default())))
+                .manage(trunk_lib::background_fetch::BackgroundFetch::default())
+                .build(tauri::test::mock_context(tauri::test::noop_assets()))
+                .unwrap(),
         }
     }
 }
@@ -33,8 +37,8 @@ impl RemoteDriver<'_> {
             self.ctx.path(),
             strategy,
             self.ctx.state_map(),
-            &self.cache,
-            &self.running.0,
+            &self.app.state::<CommitCache>(),
+            &self.app.state::<RunningOp>().0,
             &trunk_lib::state::RefVisibilityState::default(),
             self.app.handle(),
         ))
@@ -44,8 +48,8 @@ impl RemoteDriver<'_> {
         tauri::async_runtime::block_on(remote::git_push_inner(
             self.ctx.path(),
             self.ctx.state_map(),
-            &self.cache,
-            &self.running.0,
+            &self.app.state::<CommitCache>(),
+            &self.app.state::<RunningOp>().0,
             &trunk_lib::state::RefVisibilityState::default(),
             self.app.handle(),
         ))
@@ -56,8 +60,8 @@ impl RemoteDriver<'_> {
             self.ctx.path(),
             remote::ConfirmedPush { remote, branch },
             self.ctx.state_map(),
-            &self.cache,
-            &self.running.0,
+            &self.app.state::<CommitCache>(),
+            &self.app.state::<RunningOp>().0,
             &trunk_lib::state::RefVisibilityState::default(),
             self.app.handle(),
         ))
@@ -65,12 +69,25 @@ impl RemoteDriver<'_> {
 
     /// Mark `path` as having a remote op in flight, as a live `git` child would. Lets a
     /// test observe the mutual-exclusion guard without a real process to signal.
-    pub fn seed_running_op(&self, path: &str, pid: u32) {
-        self.running.0.lock().unwrap().start(path.to_owned(), pid);
+    pub fn seed_running_op(&self, path: &str) {
+        let common = git2::Repository::open(path)
+            .ok()
+            .and_then(|repo| repo.commondir().canonicalize().ok())
+            .map_or_else(
+                || path.to_owned(),
+                |path| path.to_string_lossy().into_owned(),
+            );
+        self.app
+            .state::<RunningOp>()
+            .0
+            .lock()
+            .unwrap()
+            .reserve(path, &common, false)
+            .unwrap();
     }
 
     /// The graph the last successful command cached, as the UI would receive it.
     pub fn cached_graph(&self) -> Option<GraphSnapshot> {
-        self.cache.snapshot(self.ctx.path())
+        self.app.state::<CommitCache>().snapshot(self.ctx.path())
     }
 }

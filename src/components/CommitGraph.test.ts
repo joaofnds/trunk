@@ -18,7 +18,7 @@ import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { THUMB_CLASS, trackScrollActivity } from "../lib/scrollbar-activity.js";
 import { resetCache } from "../lib/text-measure.js";
-import type { ReviewTally } from "../lib/types.js";
+import type { GraphCommit, ReviewTally } from "../lib/types.js";
 import CommitGraph from "./CommitGraph.svelte";
 
 // Stub OffscreenCanvas for jsdom — used by text-measure.ts (measureTextWidth).
@@ -187,9 +187,9 @@ function installReads(
 		if (overridden !== undefined) return overridden as Promise<unknown>;
 		switch (cmd) {
 			case "get_commit_graph":
-				return Promise.resolve({ commits, max_columns: 1 });
+				return Promise.resolve({ commits, max_columns: 1, revision: 1 });
 			case "refresh_commit_graph":
-				return Promise.resolve({ commits, max_columns: 1 });
+				return Promise.resolve({ commits, max_columns: 1, revision: 2 });
 			case "list_stashes":
 				return Promise.resolve([]);
 			default:
@@ -851,6 +851,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: TEST_COMMITS,
 							max_columns: lanes,
+							revision: 1,
 						});
 					if (cmd !== "prefs_get") return undefined;
 					if (args?.key === "column_user_widths:/test/repo")
@@ -1164,6 +1165,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: commitsOf(options.refreshedTo),
 							max_columns: 1,
+							revision: 1,
 						});
 					if (cmd !== "prefs_get") return undefined;
 					if (args?.key === "column_user_widths:/test/repo")
@@ -2216,6 +2218,7 @@ describe("CommitGraph", () => {
 						? Promise.resolve({
 								commits: pages.shift() ?? [],
 								max_columns: 1,
+								revision: 1,
 							})
 						: undefined,
 			});
@@ -2249,6 +2252,7 @@ describe("CommitGraph", () => {
 			return {
 				commits: [makeCommit({ oid: oidChar.repeat(40), summary })],
 				max_columns: 1,
+				revision: 1,
 			};
 		}
 
@@ -2461,6 +2465,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: page(0, "old"),
 							max_columns: 1,
+							revision: 1,
 						});
 					}
 					return new Promise((resolve) => pending.push(resolve));
@@ -2487,11 +2492,12 @@ describe("CommitGraph", () => {
 			rendered.component.showGraph({
 				commits: page(0, "new"),
 				max_columns: 1,
+				revision: 1,
 			});
 		}
 
 		function resolveStalePage(pending: ((page: unknown) => void)[]) {
-			pending[0]({ commits: page(BATCH, "old"), max_columns: 1 });
+			pending[0]({ commits: page(BATCH, "old"), max_columns: 1, revision: 1 });
 		}
 
 		it("drops a page that describes the graph it replaced", async () => {
@@ -2517,7 +2523,11 @@ describe("CommitGraph", () => {
 			// offset must still index the new layout. scrollToOid, still hunting the
 			// row it was asked for, re-issues the load, and that request is the one
 			// answered here with the new layout's page two.
-			pending.at(-1)?.({ commits: page(BATCH, "new"), max_columns: 1 });
+			pending.at(-1)?.({
+				commits: page(BATCH, "new"),
+				max_columns: 1,
+				revision: 1,
+			});
 			await flush();
 
 			expect(await isLoaded(rendered, oidOf(BATCH, "new"))).toBe(true);
@@ -2533,6 +2543,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: page(0, "new"),
 							max_columns: 1,
+							revision: 1,
 						});
 					}
 					if (cmd !== "get_commit_graph") return undefined;
@@ -2540,6 +2551,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: page(0, "old"),
 							max_columns: 1,
+							revision: 1,
 						});
 					}
 					return new Promise((resolve) => pending.push(resolve));
@@ -2631,13 +2643,18 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: page(0, "old"),
 							max_columns: 1,
+							revision: 1,
 						});
 					}
 					attempts += 1;
 					// Escape hatch: report history exhausted so a still-unbounded
 					// loop terminates and the count below is the assertion.
 					if (attempts > RUNAWAY) {
-						return Promise.resolve({ commits: [], max_columns: 1 });
+						return Promise.resolve({
+							commits: [],
+							max_columns: 1,
+							revision: 1,
+						});
 					}
 					return Promise.reject(new Error("page unavailable"));
 				},
@@ -2660,21 +2677,28 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: page(0, "old"),
 							max_columns: 1,
+							revision: 1,
 						});
 					}
 					attempts += 1;
 					if (attempts > RUNAWAY) {
-						return Promise.resolve({ commits: [], max_columns: 1 });
+						return Promise.resolve({
+							commits: [],
+							max_columns: 1,
+							revision: 1,
+						});
 					}
 					// Rebuild before the page lands, so the seq guard drops it. No
 					// error is set on this path -- the list simply does not grow.
 					rendered.component.showGraph({
 						commits: page(0, "new"),
 						max_columns: 1,
+						revision: 1,
 					});
 					return Promise.resolve({
 						commits: page(BATCH, "old"),
 						max_columns: 1,
+						revision: 1,
 					});
 				},
 			});
@@ -2695,11 +2719,16 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: page(0, "old"),
 							max_columns: 1,
+							revision: 1,
 						});
 					}
 					attempts += 1;
 					if (attempts > RUNAWAY) {
-						return Promise.resolve({ commits: [], max_columns: 1 });
+						return Promise.resolve({
+							commits: [],
+							max_columns: 1,
+							revision: 1,
+						});
 					}
 					return Promise.reject(new Error("page unavailable"));
 				},
@@ -2758,6 +2787,7 @@ describe("CommitGraph", () => {
 				return Promise.resolve({
 					commits: rows(Math.min(asked, available)),
 					max_columns: 1,
+					revision: 1,
 				});
 			};
 		}
@@ -2786,6 +2816,7 @@ describe("CommitGraph", () => {
 											? page(BATCH, WIDE_AUTHOR)
 											: [],
 								max_columns: 1,
+								revision: 1,
 							})
 						: undefined;
 				},
@@ -2851,6 +2882,113 @@ describe("CommitGraph", () => {
 			expect(
 				await nextRequestedOffset(rendered, `${BATCH}`.padStart(40, "0")),
 			).toBeUndefined();
+		});
+
+		it("consumes active and deferred cached revisions without losing depth or selection", async () => {
+			const scheduler = new FakeScheduler();
+			const selectedCommitOid = "0".padStart(40, "0");
+			const oncommitselect = vi.fn();
+			const oncommitschange = vi.fn<(commits: GraphCommit[]) => void>();
+			let cacheRevision = 2;
+			installReads({
+				override: (cmd, args) => {
+					if (cmd !== "get_commit_graph") return undefined;
+					if (args?.loaded !== undefined) {
+						const commits = rows(2 * BATCH);
+						commits[0].refs = [
+							makeRef({ short_name: `cached-${cacheRevision}` }),
+						];
+						return Promise.resolve({
+							commits,
+							max_columns: 1,
+							revision: cacheRevision,
+						});
+					}
+					return Promise.resolve({
+						commits:
+							args?.offset === 0
+								? page(0, NARROW_AUTHOR)
+								: args?.offset === BATCH
+									? page(BATCH, WIDE_AUTHOR)
+									: [],
+						max_columns: 1,
+						revision: 1,
+					});
+				},
+			});
+			const props = (tabActive: boolean, cachedGraphRevision: number) => ({
+				repoPath: "/test/repo",
+				tabActive,
+				cachedGraphRevision,
+				selectedCommitOid,
+				oncommitselect,
+				oncommitschange,
+			});
+			const rendered = render(CommitGraph, {
+				props: props(true, 1),
+				context: new Map([[SCHEDULER, scheduler]]),
+			});
+			await screen.findByText("commit 0");
+			await rendered.component.scrollToOid(`${BATCH}`.padStart(40, "0"));
+			await tick();
+			expect(rendered.component.loadedRows()).toBe(2 * BATCH);
+
+			const selectedRow = () =>
+				screen.getByText("commit 0").closest('[data-testid="commit-row"]');
+			const cachedReads = () =>
+				vi
+					.mocked(safeInvoke)
+					.mock.calls.filter(
+						([cmd, args]) =>
+							cmd === "get_commit_graph" && args?.loaded !== undefined,
+					);
+			const showsRef = (shortName: string) =>
+				oncommitschange.mock.calls.some(([items]) =>
+					items.some(
+						(commit) =>
+							commit.oid === selectedCommitOid &&
+							commit.refs.some((ref) => ref.short_name === shortName),
+					),
+				);
+			expect(selectedRow()).toHaveAttribute("aria-selected", "true");
+			vi.mocked(safeInvoke).mockClear();
+			oncommitschange.mockClear();
+
+			// An inactive tab defers the refs-only revision until it is shown.
+			await rendered.rerender(props(false, 2));
+			expect(cachedReads()).toHaveLength(0);
+			await rendered.rerender(props(true, 2));
+			scheduler.flush();
+			await waitFor(() => {
+				expect(cachedReads()).toHaveLength(1);
+				expect(showsRef("cached-2")).toBe(true);
+			});
+			expect(rendered.component.loadedRows()).toBe(2 * BATCH);
+			expect(selectedRow()).toHaveAttribute("aria-selected", "true");
+
+			// A later revision is consumed while this same tab remains active.
+			cacheRevision = 3;
+			await rendered.rerender(props(true, 3));
+			await waitFor(() => {
+				expect(cachedReads().length + scheduler.pending).toBeGreaterThan(1);
+			});
+			scheduler.flush();
+			await waitFor(() => {
+				expect(cachedReads()).toHaveLength(2);
+				expect(showsRef("cached-3")).toBe(true);
+			});
+			expect(cachedReads().map(([, args]) => args)).toEqual([
+				{ path: "/test/repo", offset: 0, loaded: 2 * BATCH },
+				{ path: "/test/repo", offset: 0, loaded: 2 * BATCH },
+			]);
+			expect(rendered.component.loadedRows()).toBe(2 * BATCH);
+			expect(selectedRow()).toHaveAttribute("aria-selected", "true");
+			expect(oncommitselect).not.toHaveBeenCalled();
+			expect(
+				vi
+					.mocked(safeInvoke)
+					.mock.calls.filter(([cmd]) => cmd === "refresh_commit_graph"),
+			).toHaveLength(0);
 		});
 
 		it("keeps the author width the paged-in commits earned", async () => {

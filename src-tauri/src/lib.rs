@@ -1,8 +1,12 @@
+pub mod background_fetch;
 pub mod cli;
 pub mod commands;
+pub mod fetch_worker;
 pub mod launch;
 #[cfg(target_os = "macos")]
 mod macos_traffic_lights;
+pub use trunk_git::ref_state;
+pub mod remote_ops;
 pub mod shell_env;
 pub mod state;
 mod storage;
@@ -90,13 +94,19 @@ pub fn context<R: tauri::Runtime>() -> tauri::Context<R> {
     tauri::generate_context!()
 }
 
-/// Start the application, or run the `trunk` CLI and exit.
+/// Run an isolated fetch worker, the `trunk` CLI, or the desktop application.
 ///
 /// # Panics
 ///
-/// Panics when the Tauri runtime cannot start.
+/// Panics when libgit2 cannot initialize or the Tauri runtime cannot start.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if fetch_worker::run_if_worker() {
+        return;
+    }
+    // git2's HTTPS initialization probes certificate locations and sets process
+    // environment on Linux. Complete it before Tauri starts its worker threads.
+    drop(git2::Config::new().expect("initialize libgit2 before starting the application"));
     let args: Vec<String> = std::env::args().collect();
 
     match launch::Launch::of(&args) {
@@ -176,6 +186,24 @@ pub fn configure<R: tauri::Runtime>(
     watcher: WatcherState,
     traffic_lights: TrafficLights,
 ) -> tauri::Builder<R> {
+    configure_with_fetch_worker(
+        builder,
+        watcher,
+        traffic_lights,
+        background_fetch::BackgroundFetch::default(),
+    )
+}
+
+/// Build the application with an explicit worker executable (also used by the IPC host).
+///
+/// # Panics
+/// Panics when a managed state is already registered or a plugin fails to initialize.
+pub fn configure_with_fetch_worker<R: tauri::Runtime>(
+    builder: tauri::Builder<R>,
+    watcher: WatcherState,
+    traffic_lights: TrafficLights,
+    worker: background_fetch::BackgroundFetch,
+) -> tauri::Builder<R> {
     let builder = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -188,7 +216,8 @@ pub fn configure<R: tauri::Runtime>(
         .on_window_event(reposition_traffic_lights_on)
         .setup(setup_app);
 
-    register_state(builder, watcher, traffic_lights).invoke_handler(tauri::generate_handler![
+    let builder = register_state(builder, watcher, traffic_lights).manage(worker);
+    builder.invoke_handler(tauri::generate_handler![
         set_traffic_light_zoom,
         commands::perf::perf_append,
         commands::perf::perf_reset,

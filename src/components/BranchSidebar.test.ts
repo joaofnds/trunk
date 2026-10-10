@@ -1093,7 +1093,7 @@ describe("BranchSidebar ref visibility", () => {
 		const base = mockInvoke.getMockImplementation();
 		mockInvoke.mockImplementation((cmd, args) => {
 			if (cmd === "set_ref_visibility")
-				return Promise.resolve({ commits: [], max_columns: 0 });
+				return Promise.resolve({ commits: [], max_columns: 0, revision: 1 });
 			if (cmd === "prefs_set")
 				return Promise.reject(
 					JSON.stringify({ code: "io_error", message: "disk full" }),
@@ -1114,7 +1114,7 @@ describe("BranchSidebar ref visibility", () => {
 		await fireEvent.click(screen.getByLabelText("Hide topic"));
 
 		await waitFor(() => {
-			expect(received).toEqual([{ commits: [], max_columns: 0 }]);
+			expect(received).toEqual([{ commits: [], max_columns: 0, revision: 1 }]);
 		});
 		await waitFor(() => {
 			expect(toasts.items.map((t) => t.message)).toContain(

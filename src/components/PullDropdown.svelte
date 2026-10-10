@@ -1,6 +1,7 @@
 <script lang="ts">
 import ArrowDown from "@lucide/svelte/icons/arrow-down";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
+import { autofetchSummary } from "../lib/autofetch-status.js";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import Button from "../lib/ui/Button.svelte";
@@ -111,7 +112,7 @@ $effect(() => {
 			{disabled}
 			onclick={onpull}
 			aria-label="Pull"
-			tooltip="Pull"
+			tooltip={autofetchSummary(remoteState.autofetch)}
 		>
 			<ArrowDown size={14} />
 		</Button>

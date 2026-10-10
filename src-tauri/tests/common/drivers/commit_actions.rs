@@ -7,11 +7,11 @@ use trunk_lib::types::UndoResult;
 /// A driver method's contract predates `GraphRebuild`'s capture/lay-out split: it hands back
 /// a laid-out `GraphSnapshot`, same as before. Laying the capture out under the default
 /// (nothing hidden) visibility here is what keeps that contract, now that `*_inner` returns
-/// the bare capture (TRUNK-125).
+/// a checked capture (TRUNK-125).
 fn snapshot(
-    source: Result<trunk_git::graph_input::GraphSource, TrunkError>,
+    source: Result<trunk_lib::state::GraphRead, TrunkError>,
 ) -> Result<GraphSnapshot, TrunkError> {
-    source.map(|source| GraphSnapshot::new(source, RefVisibility::default()))
+    source.map(|source| GraphSnapshot::new(source.source, RefVisibility::default()))
 }
 
 impl TestContext {
@@ -81,7 +81,7 @@ impl TestContext {
         let (source, message) =
             commit_actions::revert_commit_begin_inner(self.path(), oid, self.state_map())?;
         Ok(RevertBeginResult {
-            graph: GraphSnapshot::new(source, RefVisibility::default()),
+            graph: GraphSnapshot::new(source.source, RefVisibility::default()),
             message,
         })
     }

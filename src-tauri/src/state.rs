@@ -68,6 +68,12 @@ impl OpenRepos {
     pub fn forget(&mut self, path: &str) {
         self.0.remove(path);
     }
+
+    pub fn locations(&self) -> impl Iterator<Item = (&str, &Path)> {
+        self.0
+            .iter()
+            .map(|(path, location)| (path.as_str(), location.as_path()))
+    }
 }
 
 impl FromIterator<(String, PathBuf)> for OpenRepos {
@@ -112,103 +118,429 @@ impl RepoState {
     }
 }
 
-/// The remote operation running for each repository, by process id.
-///
-/// It serves two purposes at once: the cancel button needs the pid to signal,
-/// and the presence of an entry is what keeps a second remote operation off the
-/// same repository.
-#[derive(Debug, Default)]
-pub struct RemoteOps(HashMap<String, u32>);
+pub use crate::remote_ops::RemoteOps;
 
-impl RemoteOps {
-    /// Whether a remote operation is already running for `path`.
-    #[must_use]
-    pub fn busy(&self, path: &str) -> bool {
-        self.0.contains_key(path)
-    }
-
-    /// Record `pid` as the operation running for `path`.
-    pub fn start(&mut self, path: String, pid: u32) {
-        self.0.insert(path, pid);
-    }
-
-    /// Forget the operation for `path`, answering the pid it was running under.
-    pub fn finish(&mut self, path: &str) -> Option<u32> {
-        self.0.remove(path)
-    }
-}
-
-/// Stores the PID of the currently running remote operation per repo.
-///
-/// Used for: (a) cancel button kills the subprocess, (b) mutual exclusion prevents
-/// concurrent ops on the SAME repo.
+/// Remote reservations span execution and graph publication, exclude aliases and
+/// linked worktrees sharing a common Git directory, and own cancellation.
 pub struct RunningOp(pub Mutex<RemoteOps>);
-
-/// Terminate a process by PID. Uses SIGTERM on Unix and taskkill on Windows.
-///
-/// A pid that does not fit `i32` is ignored rather than wrapped: a wrapped value
-/// is negative, and a negative pid signals a whole process group.
-pub fn kill_process(pid: u32) {
-    #[cfg(unix)]
-    if let Ok(pid) = i32::try_from(pid) {
-        // SAFETY: `kill` with a positive pid and a valid signal has no
-        // preconditions this call can violate.
-        unsafe {
-            libc::kill(pid, libc::SIGTERM);
-        }
-    }
-    #[cfg(windows)]
-    {
-        let _ = std::process::Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/F"])
-            .output();
-    }
-}
 
 /// The cached graph for each open repository, keyed by the frontend's path.
 ///
 /// A rebuild writes a whole entry rather than mutating one, so a reader either
 /// sees the graph as it was or the graph as it now is, never a half-updated one.
 #[derive(Clone, Debug, Default)]
-pub struct GraphCache(HashMap<String, trunk_git::graph_input::GraphSnapshot>);
+pub struct GraphCache {
+    graphs: HashMap<String, GraphSnapshot>,
+    sessions: HashMap<String, u64>,
+    generations: HashMap<String, u64>,
+    revisions: HashMap<String, u64>,
+    inputs: HashMap<String, crate::ref_state::RefState>,
+    input_epochs: HashMap<String, u64>,
+    closed: HashSet<String>,
+    sequence: u64,
+}
+
+#[derive(Clone, Copy)]
+pub struct GraphTicket {
+    session: u64,
+    generation: u64,
+    input_epoch: u64,
+}
+
+pub struct ReconciledGraph {
+    pub revision: u64,
+    pub worktree_context_changed: bool,
+}
+
+/// A capture and the inexpensive input state it was checked against.
+#[derive(Debug)]
+pub struct GraphRead {
+    pub source: GraphSource,
+    inputs: Option<crate::ref_state::RefState>,
+    changed: bool,
+}
+
+impl GraphRead {
+    fn checked(
+        source: GraphSource,
+        before: crate::ref_state::RefState,
+        after: crate::ref_state::RefState,
+        dirty: bool,
+    ) -> Self {
+        let changed = before != after || source.placement.worktree_dirty != dirty;
+        Self {
+            source,
+            inputs: (!changed).then_some(after),
+            changed,
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test-util"))]
+impl From<GraphSource> for GraphRead {
+    fn from(source: GraphSource) -> Self {
+        Self {
+            source,
+            inputs: None,
+            changed: false,
+        }
+    }
+}
+
+impl std::ops::Deref for GraphRead {
+    type Target = GraphSource;
+
+    fn deref(&self) -> &Self::Target {
+        &self.source
+    }
+}
+
+/// Capture after a command's mutation, retrying concurrent input changes.
+///
+/// # Errors
+///
+/// Returns repository read errors. A repeatedly superseded capture is returned as
+/// changed so publication can preserve the command's outcome without caching it.
+pub fn read_graph(repo: &mut git2::Repository) -> Result<GraphRead, TrunkError> {
+    for attempt in 0..3 {
+        let before = crate::ref_state::RefState::read(repo)?;
+        let source = trunk_git::graph::capture(repo)?;
+        let after = crate::ref_state::RefState::read(repo)?;
+        let read = GraphRead::checked(
+            source,
+            before,
+            after,
+            trunk_git::status::worktree_dirty(repo),
+        );
+        if !read.changed || attempt == 2 {
+            return Ok(read);
+        }
+    }
+    unreachable!("the final attempt returns its capture")
+}
 
 impl GraphCache {
     /// The cached graph for `path`, or `None` when nothing has been built yet.
     #[must_use]
     pub fn get(&self, path: &str) -> Option<&trunk_git::graph_input::GraphSnapshot> {
-        self.0.get(path)
+        self.graphs.get(path)
     }
 
     /// Store `snapshot` as the graph for `path`, replacing any earlier one.
     pub fn insert(&mut self, path: String, snapshot: trunk_git::graph_input::GraphSnapshot) {
-        self.0.insert(path, snapshot);
+        self.sequence += 1;
+        self.sessions.entry(path.clone()).or_insert(self.sequence);
+        self.generations.insert(path.clone(), self.sequence);
+        self.revisions.insert(path.clone(), self.sequence);
+        self.inputs.remove(&path);
+        self.graphs.insert(path, snapshot);
     }
 
     /// Whether a graph has been cached for `path`.
     #[must_use]
     pub fn holds(&self, path: &str) -> bool {
-        self.0.contains_key(path)
+        self.graphs.contains_key(path)
     }
 
     /// Drop the cached graph for `path`.
     pub fn forget(&mut self, path: &str) {
-        self.0.remove(path);
+        self.graphs.remove(path);
+        self.sessions.remove(path);
+        self.generations.remove(path);
+        self.revisions.remove(path);
+        self.inputs.remove(path);
+        self.input_epochs.remove(path);
+        self.closed.insert(path.to_owned());
     }
 
     /// Take every entry of `other`, replacing any entry of the same name here.
     pub fn absorb(&mut self, other: Self) {
-        self.0.extend(other.0);
+        for (path, graph) in other.graphs {
+            self.insert(path, graph);
+        }
+    }
+
+    fn capture_session(&mut self, path: &str) -> Result<u64, TrunkError> {
+        if self.closed.contains(path) {
+            return Err(TrunkError::new("not_open", "Repository closed"));
+        }
+        if let Some(session) = self.sessions.get(path) {
+            return Ok(*session);
+        }
+        self.sequence += 1;
+        self.sessions.insert(path.to_owned(), self.sequence);
+        Ok(self.sequence)
+    }
+
+    fn begin(&mut self, path: &str) -> Result<GraphTicket, TrunkError> {
+        if self.closed.contains(path) {
+            return Err(TrunkError::new("not_open", "Repository closed"));
+        }
+        self.sequence += 1;
+        let session = *self
+            .sessions
+            .entry(path.to_owned())
+            .or_insert(self.sequence);
+        self.generations.insert(path.to_owned(), self.sequence);
+        Ok(GraphTicket {
+            session,
+            generation: self.sequence,
+            input_epoch: self.input_epochs.get(path).copied().unwrap_or_default(),
+        })
+    }
+
+    fn publish(
+        &mut self,
+        path: String,
+        ticket: GraphTicket,
+        snapshot: GraphSnapshot,
+        inputs: Option<crate::ref_state::RefState>,
+    ) -> Result<GraphSnapshot, TrunkError> {
+        if self.sessions.get(&path) != Some(&ticket.session) {
+            return Err(TrunkError::new("not_open", "Repository session closed"));
+        }
+        if self.generations.get(&path) != Some(&ticket.generation) {
+            return self.get(&path).cloned().ok_or_else(|| {
+                TrunkError::new("graph_changed", "A newer graph read superseded this result")
+            });
+        }
+        let input_epoch = self.input_epochs.get(&path).copied().unwrap_or_default();
+        self.insert(path.clone(), snapshot.clone());
+        if let Some(inputs) = inputs.filter(|_| input_epoch == ticket.input_epoch) {
+            self.inputs.insert(path, inputs);
+        }
+        Ok(snapshot)
+    }
+
+    /// Add a coherent capture to a command's local publication delta. Concurrently
+    /// superseded captures leave the prior shared graph for the next refresh.
+    pub fn insert_read(&mut self, path: String, read: GraphRead, visibility: RefVisibility) {
+        if read.changed {
+            return;
+        }
+        self.insert(path.clone(), GraphSnapshot::new(read.source, visibility));
+        if let Some(inputs) = read.inputs {
+            self.inputs.insert(path, inputs);
+        }
+    }
+
+    fn retain_current(
+        &mut self,
+        path: &str,
+        ticket: GraphTicket,
+    ) -> Result<GraphSnapshot, TrunkError> {
+        if self.sessions.get(path) != Some(&ticket.session) {
+            return Err(TrunkError::new("not_open", "Repository session closed"));
+        }
+        self.inputs.remove(path);
+        self.get(path).cloned().ok_or_else(|| {
+            TrunkError::new(
+                "graph_changed",
+                "Repository changed while reading its first graph",
+            )
+        })
     }
 }
 
 // Caches the full commit graph per open repo path.
 // Populated on open_repo, cleared on close_repo, sliced by get_commit_graph.
-pub struct CommitCache(Mutex<GraphCache>);
+pub struct CommitCache(
+    Mutex<GraphCache>,
+    Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+);
 
 impl CommitCache {
     #[must_use]
-    pub const fn new(cache: GraphCache) -> Self {
-        Self(Mutex::new(cache))
+    pub fn new(cache: GraphCache) -> Self {
+        Self(Mutex::new(cache), Mutex::new(HashMap::new()))
+    }
+
+    /// Start a new opening session, fencing any earlier close/reopen completion.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the cache lock is poisoned.
+    pub fn open_session(&self, path: &str) {
+        let mut cache = self.0.lock().unwrap();
+        cache.forget(path);
+        cache.closed.remove(path);
+        let _ = cache.begin(path);
+    }
+
+    /// Serialize capture and visibility publication for one worktree.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the gate lock is poisoned.
+    pub async fn lock_rebuild(&self, path: &str) -> tokio::sync::OwnedMutexGuard<()> {
+        let gate = self
+            .1
+            .lock()
+            .unwrap()
+            .entry(path.to_owned())
+            .or_default()
+            .clone();
+        gate.lock_owned().await
+    }
+
+    /// Capture the opening session before queueing work, including a first graph read.
+    ///
+    /// # Errors
+    ///
+    /// Returns `not_open` when the repository closed.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the cache lock is poisoned.
+    pub fn capture_session(&self, path: &str) -> Result<u64, TrunkError> {
+        self.0.lock().unwrap().capture_session(path)
+    }
+
+    /// Reserve publication after the prior capture finishes, within the session
+    /// that queued this work. Waiting work cannot enter a reopened repository.
+    ///
+    /// # Errors
+    ///
+    /// Returns `not_open` when the captured opening session closed.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a cache or gate lock is poisoned.
+    pub async fn begin_rebuild(
+        &self,
+        path: &str,
+        session: u64,
+    ) -> Result<(tokio::sync::OwnedMutexGuard<()>, GraphTicket), TrunkError> {
+        let gate = self.lock_rebuild(path).await;
+        let ticket = {
+            let mut cache = self.0.lock().unwrap();
+            if cache.sessions.get(path) != Some(&session) {
+                return Err(TrunkError::new("not_open", "Repository session closed"));
+            }
+            cache.begin(path)?
+        };
+        Ok((gate, ticket))
+    }
+
+    /// Mark a local watcher input change before notifying frontend readers.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the cache lock is poisoned.
+    pub fn invalidate(&self, path: &str) {
+        let mut cache = self.0.lock().unwrap();
+        if cache.sessions.contains_key(path) {
+            cache.sequence += 1;
+            let epoch = cache.sequence;
+            cache.input_epochs.insert(path.to_owned(), epoch);
+            cache.inputs.remove(path);
+        }
+    }
+
+    /// Reserve a publication directly for tests that exercise publication fencing.
+    ///
+    /// # Errors
+    ///
+    /// Returns `not_open` when the session closed.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the cache lock is poisoned.
+    #[cfg(feature = "test-util")]
+    pub fn begin_write(&self, path: &str) -> Result<GraphTicket, TrunkError> {
+        self.0.lock().unwrap().begin(path)
+    }
+
+    /// # Panics
+    ///
+    /// Panics when the cache lock is poisoned.
+    #[must_use]
+    pub fn session_id(&self, path: &str) -> Option<u64> {
+        self.0.lock().unwrap().sessions.get(path).copied()
+    }
+
+    /// Read one consistent graph revision, rejecting stale page/stat requests.
+    ///
+    /// # Errors
+    ///
+    /// Returns `not_open` for an absent graph and `graph_changed` for a stale revision.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the cache lock is poisoned.
+    pub fn read_versioned<T>(
+        &self,
+        path: &str,
+        expected: Option<u64>,
+        render: impl FnOnce(&GraphSnapshot, u64) -> T,
+    ) -> Result<T, TrunkError> {
+        self.read_versioned_with_session(path, expected, render)
+            .map(|(result, _)| result)
+    }
+
+    /// Read a graph revision and its opening session atomically.
+    ///
+    /// # Errors
+    ///
+    /// Returns `not_open` for an absent graph and `graph_changed` for a stale revision.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the cache lock is poisoned.
+    pub fn read_versioned_with_session<T>(
+        &self,
+        path: &str,
+        expected: Option<u64>,
+        render: impl FnOnce(&GraphSnapshot, u64) -> T,
+    ) -> Result<(T, u64), TrunkError> {
+        let cache = self.0.lock().unwrap();
+        let graph = cache
+            .get(path)
+            .ok_or_else(|| TrunkError::new("not_open", "Repository not open"))?;
+        let revision = cache.revisions[path];
+        if expected.is_some_and(|expected| expected != revision) {
+            return Err(TrunkError::new(
+                "graph_changed",
+                "The graph revision changed",
+            ));
+        }
+        let result = render(graph, revision);
+        let session = cache.sessions[path];
+        drop(cache);
+        Ok((result, session))
+    }
+
+    /// Keep immutable per-commit statistics across graph revisions, while fencing
+    /// work completed after its repository's opening session closed.
+    ///
+    /// The cache lock remains held through insertion, in the same Cache→Stats
+    /// order used by versioned readers, so close cannot race the session check.
+    ///
+    /// # Errors
+    ///
+    /// Returns `not_open` when the captured opening session closed.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a cache lock is poisoned.
+    pub fn store_stats_in_session(
+        &self,
+        path: &str,
+        session: u64,
+        commit_stats: &CommitStatsCache,
+        stats: impl IntoIterator<Item = (String, crate::types::DiffStat)>,
+    ) -> Result<(), TrunkError> {
+        let cache = self.0.lock().unwrap();
+        if cache.sessions.get(path) != Some(&session) {
+            return Err(TrunkError::new("not_open", "Repository session closed"));
+        }
+        commit_stats
+            .0
+            .lock()
+            .unwrap()
+            .extend(path.to_owned(), stats);
+        drop(cache);
+        Ok(())
     }
 
     /// The cached graph for `path`, or `None` when nothing has been built yet.
@@ -260,37 +592,6 @@ impl CommitCache {
     /// Panics when the lock is poisoned.
     pub fn forget(&self, path: &str) {
         self.0.lock().unwrap().forget(path);
-    }
-
-    /// Store a visibility toggle's re-laid-out graph, unless a fresher rebuild already
-    /// replaced the entry this toggle read. That rebuild's capture is newer than the one
-    /// this graph was re-laid out from, so writing over it would show a graph from before
-    /// whatever it just did (TRUNK-129).
-    ///
-    /// This is the one legitimate cache write outside `GraphRebuild`: `set_ref_visibility`
-    /// re-lays out an existing capture rather than walking the repository, so it has no
-    /// visibility to look up here — it already carries the one it just set. Keep this the
-    /// only door: a second general-purpose insert would let a future caller skip both this
-    /// staleness guard and `GraphRebuild`'s visibility lookup.
-    ///
-    /// # Panics
-    ///
-    /// Panics when the lock is poisoned.
-    pub fn write_relaid_out(
-        &self,
-        path: String,
-        read: Option<&GraphSnapshot>,
-        relaid_out: GraphSnapshot,
-    ) {
-        let mut cache = self.0.lock().unwrap();
-        let still_current = match (cache.get(&path), read) {
-            (Some(current), Some(read)) => current.same_capture_as(read),
-            (None, None) => true,
-            _ => false,
-        };
-        if still_current {
-            cache.insert(path, relaid_out);
-        }
     }
 }
 
@@ -454,7 +755,7 @@ impl RefVisibilityState {
 /// an existing capture rather than rebuilding — this struct only bundles the handles a
 /// rebuild site needs so the triple has one call instead of three statements.
 ///
-/// `rebuild`'s closure returns a `GraphSource` — the capture, not a laid-out snapshot — so
+/// Production closures return a checked `GraphRead` containing a `GraphSource` — the capture, not a laid-out snapshot — so
 /// it has no way to hand back a `GraphSnapshot` built under a visibility of its own choosing.
 /// `rebuild` itself is the only place that turns a capture into a `GraphSnapshot`, always
 /// under the value it looked up: the compiler, not a convention, is what stops a new site
@@ -479,10 +780,9 @@ impl<'a> GraphRebuild<'a> {
     /// repository, lay the capture out under the visibility just looked up, and write the
     /// resulting snapshot into the cache under `path`.
     ///
-    /// `walk` returns a `GraphSource`, not a `GraphSnapshot`: it has no way to choose which
-    /// visibility the cached snapshot is laid out under, because it never holds anything that
-    /// can build one. Use `graph::capture` to produce it, the same repository read
-    /// `graph::snapshot` does internally.
+    /// Production `walk` closures use `read_graph` to capture and stamp ref inputs.
+    /// The closure cannot choose the published visibility: this owner reads its latest
+    /// value and checks the opening session and publication generation before writing.
     ///
     /// # Errors
     ///
@@ -492,11 +792,37 @@ impl<'a> GraphRebuild<'a> {
     /// # Panics
     ///
     /// Panics when the cache's lock is poisoned.
-    pub async fn rebuild<F>(&self, path: String, walk: F) -> Result<GraphSnapshot, TrunkError>
+    pub async fn rebuild<F, S>(&self, path: String, walk: F) -> Result<GraphSnapshot, TrunkError>
     where
-        F: FnOnce() -> Result<GraphSource, TrunkError> + Send + 'static,
+        F: FnOnce() -> Result<S, TrunkError> + Send + 'static,
+        S: Into<GraphRead> + Send + 'static,
     {
         self.rebuild_carrying(path, || walk().map(|source| (source, ())))
+            .await
+            .map(|(snapshot, ())| snapshot)
+    }
+
+    /// Rebuild for the opening session that owned a completed remote command.
+    ///
+    /// # Errors
+    ///
+    /// Returns `not_open` if that session closed, or capture and publication errors.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the cache lock is poisoned.
+    pub async fn rebuild_in_session<F, S>(
+        &self,
+        path: String,
+        session: u64,
+        walk: F,
+    ) -> Result<GraphSnapshot, TrunkError>
+    where
+        F: FnOnce() -> Result<S, TrunkError> + Send + 'static,
+        S: Into<GraphRead> + Send + 'static,
+    {
+        let (_gate, ticket) = self.cache.begin_rebuild(&path, session).await?;
+        self.rebuild_locked(path, ticket, || walk().map(|read| (read, ())))
             .await
             .map(|(snapshot, ())| snapshot)
     }
@@ -514,25 +840,168 @@ impl<'a> GraphRebuild<'a> {
     /// # Panics
     ///
     /// Panics when the cache's lock is poisoned.
-    pub async fn rebuild_carrying<F, T>(
+    pub async fn rebuild_carrying<F, S, T>(
         &self,
         path: String,
         walk: F,
     ) -> Result<(GraphSnapshot, T), TrunkError>
     where
-        F: FnOnce() -> Result<(GraphSource, T), TrunkError> + Send + 'static,
+        F: FnOnce() -> Result<(S, T), TrunkError> + Send + 'static,
+        S: Into<GraphRead> + Send + 'static,
         T: Send + 'static,
     {
-        let visibility = self.ref_visibility.get(&path);
+        let session = self.cache.capture_session(&path)?;
+        let (_gate, ticket) = self.cache.begin_rebuild(&path, session).await?;
+        self.rebuild_locked(path, ticket, walk).await
+    }
 
-        let (source, extra) = tauri::async_runtime::spawn_blocking(walk)
+    async fn rebuild_locked<F, S, T>(
+        &self,
+        path: String,
+        ticket: GraphTicket,
+        walk: F,
+    ) -> Result<(GraphSnapshot, T), TrunkError>
+    where
+        F: FnOnce() -> Result<(S, T), TrunkError> + Send + 'static,
+        S: Into<GraphRead> + Send + 'static,
+        T: Send + 'static,
+    {
+        let (read, extra) = tauri::async_runtime::spawn_blocking(walk)
             .await
             .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
-        let snapshot = GraphSnapshot::new(source, visibility);
-
-        self.cache.0.lock().unwrap().insert(path, snapshot.clone());
-
+        let read: GraphRead = read.into();
+        if read.changed {
+            return self
+                .cache
+                .0
+                .lock()
+                .unwrap()
+                .retain_current(&path, ticket)
+                .map(|snapshot| (snapshot, extra));
+        }
+        let inputs = read.inputs;
+        let visibility = self.ref_visibility.get(&path);
+        let snapshot = tauri::async_runtime::spawn_blocking(move || {
+            GraphSnapshot::new(read.source, visibility)
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()))?;
+        let snapshot = self.publish(path, ticket, snapshot, inputs).await?;
         Ok((snapshot, extra))
+    }
+
+    /// Publish a cached capture under the latest visibility, retaining its checked
+    /// inputs and fencing a concurrent capture or a closed opening session.
+    ///
+    /// # Errors
+    ///
+    /// Returns session or layout errors.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a state lock is poisoned.
+    pub async fn publish_relayout(
+        &self,
+        path: String,
+        read: &GraphSnapshot,
+        snapshot: GraphSnapshot,
+        ticket: GraphTicket,
+    ) -> Result<GraphSnapshot, TrunkError> {
+        let inputs = {
+            let cache = self.cache.0.lock().unwrap();
+            if cache.sessions.get(&path) != Some(&ticket.session) {
+                return Err(TrunkError::new("not_open", "Repository session closed"));
+            }
+            let current = cache
+                .get(&path)
+                .ok_or_else(|| TrunkError::new("not_open", "Repository closed"))?;
+            if !current.same_capture_as(read) {
+                return Ok(current.clone());
+            }
+            cache.inputs.get(&path).cloned()
+        };
+        self.publish(path, ticket, snapshot, inputs).await
+    }
+
+    async fn publish(
+        &self,
+        path: String,
+        ticket: GraphTicket,
+        mut snapshot: GraphSnapshot,
+        inputs: Option<crate::ref_state::RefState>,
+    ) -> Result<GraphSnapshot, TrunkError> {
+        for _ in 0..3 {
+            let visibility = self.ref_visibility.get(&path);
+            if snapshot.visibility() != &visibility {
+                snapshot = tauri::async_runtime::spawn_blocking(move || {
+                    snapshot.with_visibility(visibility)
+                })
+                .await
+                .map_err(|e| TrunkError::new("spawn_error", e.to_string()))?;
+            }
+            // Visibility cannot change between this comparison and publication.
+            let visibility = self.ref_visibility.0.lock().unwrap();
+            if visibility.get(&path).cloned().unwrap_or_default() == *snapshot.visibility() {
+                return self
+                    .cache
+                    .0
+                    .lock()
+                    .unwrap()
+                    .publish(path, ticket, snapshot, inputs);
+            }
+        }
+        self.cache.0.lock().unwrap().retain_current(&path, ticket)
+    }
+
+    /// Reconcile a ref notification against the last checked capture, without recapturing
+    /// duplicates from fetch and the filesystem watcher.
+    ///
+    /// # Errors
+    ///
+    /// Returns repository, capture or publication errors.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the cache lock is poisoned.
+    pub async fn reconcile_refs(
+        &self,
+        path: String,
+        location: PathBuf,
+    ) -> Result<Option<ReconciledGraph>, TrunkError> {
+        let session = self.cache.0.lock().unwrap().sessions.get(&path).copied();
+        let _gate = self.cache.lock_rebuild(&path).await;
+        let probe = location.clone();
+        let inputs = tauri::async_runtime::spawn_blocking(move || {
+            let repo = git2::Repository::open(probe)?;
+            crate::ref_state::RefState::read(&repo)
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
+        let (ticket, worktree_context_changed) = {
+            let mut cache = self.cache.0.lock().unwrap();
+            if session.is_none() || cache.sessions.get(&path) != session.as_ref() {
+                return Err(TrunkError::new("not_open", "Repository session closed"));
+            }
+            if cache.inputs.get(&path) == Some(&inputs) {
+                return Ok(None);
+            }
+            let worktree_context_changed = cache
+                .inputs
+                .get(&path)
+                .is_none_or(|previous| inputs.changes_worktree_context(previous));
+            (cache.begin(&path)?, worktree_context_changed)
+        };
+        self.rebuild_locked(path.clone(), ticket, move || {
+            let mut repo = git2::Repository::open(location)?;
+            read_graph(&mut repo).map(|read| (read, ()))
+        })
+        .await?;
+        self.cache.read_versioned(&path, None, |_, revision| {
+            Some(ReconciledGraph {
+                revision,
+                worktree_context_changed,
+            })
+        })
     }
 
     /// Look up the visibility set for `path`, run `walk` under it off the calling task
@@ -553,6 +1022,8 @@ impl<'a> GraphRebuild<'a> {
     where
         F: FnOnce(&RefVisibility, &mut GraphCache) -> Result<(), TrunkError> + Send + 'static,
     {
+        let session = self.cache.capture_session(&path)?;
+        let (_gate, ticket) = self.cache.begin_rebuild(&path, session).await?;
         let visibility = self.ref_visibility.get(&path);
 
         let rebuilt = tauri::async_runtime::spawn_blocking(move || {
@@ -562,7 +1033,13 @@ impl<'a> GraphRebuild<'a> {
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
 
-        self.cache.0.lock().unwrap().absorb(rebuilt);
+        let mut rebuilt = rebuilt;
+        if let Some(snapshot) = rebuilt.graphs.remove(&path) {
+            let inputs = rebuilt.inputs.remove(&path);
+            self.publish(path, ticket, snapshot, inputs).await?;
+        } else {
+            self.cache.invalidate(&path);
+        }
         Ok(())
     }
 }
@@ -571,12 +1048,29 @@ impl<'a> GraphRebuild<'a> {
 mod tests {
     use super::{CommitCache, GraphCache, GraphRebuild, OpenRepos, RefVisibilityState};
     use std::collections::{HashMap, HashSet};
+    use std::future::Future;
     use std::path::{Path, PathBuf};
-    use std::sync::{Arc, Mutex};
+    use std::pin::Pin;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    use std::task::{Context, Poll, Waker};
     use trunk_git::error::TrunkError;
     use trunk_git::graph_input::{CommitFacts, GraphSnapshot, GraphSource, RefVisibility};
     use trunk_git::placement::PlacementInput;
     use trunk_git::types::{RefLabel, RefType};
+
+    #[test]
+    fn cancellation_does_not_admit_a_new_operation_before_exit() {
+        let mut running = super::RemoteOps::default();
+        running.reserve("/repo", "/common", true).unwrap();
+
+        running.cancel("/repo");
+        let next = running.reserve("/repo", "/common", false);
+
+        assert_eq!(next.unwrap_err().code, "op_in_progress");
+    }
 
     fn oid(n: u8) -> git2::Oid {
         git2::Oid::from_str(&format!("{n:040x}")).expect("build a hex oid")
@@ -639,7 +1133,7 @@ mod tests {
 
     #[test]
     fn a_rebuild_lays_out_under_the_visibility_set_for_the_path() {
-        let cache = CommitCache(Mutex::new(GraphCache::default()));
+        let cache = CommitCache::new(GraphCache::default());
         let ref_visibility = RefVisibilityState::default();
         let mut hidden = RefVisibility::default();
         hidden.hidden_refs.insert("refs/heads/topic".to_owned());
@@ -664,6 +1158,349 @@ mod tests {
         assert_eq!(snapshot.layout.commits[0].oid, oid(1).to_string());
     }
 
+    #[derive(Clone, Copy, Debug)]
+    enum RebuildMode {
+        Carrying,
+        InSession,
+        Merging,
+    }
+
+    fn queued_rebuild<'a>(
+        mode: RebuildMode,
+        cache: &'a CommitCache,
+        visibility: &'a RefVisibilityState,
+        ran: Arc<AtomicBool>,
+    ) -> Pin<Box<dyn Future<Output = Result<(), TrunkError>> + 'a>> {
+        Box::pin(async move {
+            let rebuild = GraphRebuild::new(cache, visibility);
+            let walk = move || {
+                ran.store(true, Ordering::Release);
+                Ok(GraphSource::default())
+            };
+            match mode {
+                RebuildMode::Carrying => {
+                    rebuild.rebuild("/repo".to_owned(), walk).await.map(|_| ())
+                }
+                RebuildMode::InSession => rebuild
+                    .rebuild_in_session(
+                        "/repo".to_owned(),
+                        cache.session_id("/repo").unwrap(),
+                        walk,
+                    )
+                    .await
+                    .map(|_| ()),
+                RebuildMode::Merging => {
+                    rebuild
+                        .rebuild_merging("/repo".to_owned(), move |visibility, delta| {
+                            delta.insert(
+                                "/repo".to_owned(),
+                                GraphSnapshot::new(walk()?, visibility.clone()),
+                            );
+                            Ok(())
+                        })
+                        .await
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn queued_rebuild_preserves_the_capture_holding_the_gate() {
+        for mode in [
+            RebuildMode::Carrying,
+            RebuildMode::InSession,
+            RebuildMode::Merging,
+        ] {
+            let cache = Arc::new(CommitCache::new(GraphCache::default()));
+            cache.0.lock().unwrap().insert("/repo".to_owned(), graph(0));
+            let pending_cache = Arc::clone(&cache);
+            let (started, entered) = std::sync::mpsc::channel();
+            let (release, resume) = std::sync::mpsc::channel();
+            let pending = std::thread::spawn(move || {
+                let visibility = RefVisibilityState::default();
+                tauri::async_runtime::block_on(
+                    GraphRebuild::new(&pending_cache, &visibility).rebuild(
+                        "/repo".to_owned(),
+                        move || {
+                            started.send(()).unwrap();
+                            resume.recv().unwrap();
+                            Ok(two_root_source_with_topic_tip())
+                        },
+                    ),
+                )
+            });
+            entered.recv().unwrap();
+            let visibility = RefVisibilityState::default();
+            let mut queued =
+                queued_rebuild(mode, &cache, &visibility, Arc::new(AtomicBool::new(false)));
+            assert!(matches!(
+                queued
+                    .as_mut()
+                    .poll(&mut Context::from_waker(Waker::noop())),
+                Poll::Pending
+            ));
+
+            release.send(()).unwrap();
+            let published = pending.join().unwrap().unwrap();
+            tauri::async_runtime::block_on(queued).unwrap();
+
+            assert_eq!(
+                published.layout.commits.len(),
+                2,
+                "the queued {mode:?} rebuild discarded the capture already in flight"
+            );
+            assert!(cache.snapshot("/repo").unwrap().layout.commits.is_empty());
+        }
+    }
+
+    #[test]
+    fn queued_rebuild_does_not_run_after_its_opening_session_reopens() {
+        for mode in [
+            RebuildMode::Carrying,
+            RebuildMode::InSession,
+            RebuildMode::Merging,
+        ] {
+            let cache = CommitCache::new(GraphCache::default());
+            cache.open_session("/repo");
+            let gate = tauri::async_runtime::block_on(cache.lock_rebuild("/repo"));
+            let visibility = RefVisibilityState::default();
+            let ran = Arc::new(AtomicBool::new(false));
+            let mut queued = queued_rebuild(mode, &cache, &visibility, Arc::clone(&ran));
+            assert!(matches!(
+                queued
+                    .as_mut()
+                    .poll(&mut Context::from_waker(Waker::noop())),
+                Poll::Pending
+            ));
+
+            cache.forget("/repo");
+            cache.open_session("/repo");
+            drop(gate);
+            let error = tauri::async_runtime::block_on(queued).unwrap_err();
+
+            assert_eq!(error.code, "not_open");
+            assert!(
+                !ran.load(Ordering::Acquire),
+                "the closed session's queued {mode:?} closure ran in the reopened session"
+            );
+            assert!(!cache.holds("/repo"));
+        }
+    }
+
+    #[test]
+    fn a_closed_session_cannot_be_repopulated_by_a_blocked_capture() {
+        assert_old_capture_is_fenced(false);
+    }
+
+    #[test]
+    fn input_invalidation_does_not_supersede_a_capture_in_flight() {
+        let cache = Arc::new(CommitCache::new(GraphCache::default()));
+        cache.0.lock().unwrap().insert("/repo".to_owned(), graph(0));
+        let pending_cache = Arc::clone(&cache);
+        let (started, entered) = std::sync::mpsc::channel();
+        let (release, resume) = std::sync::mpsc::channel();
+        let pending = std::thread::spawn(move || {
+            let visibility = RefVisibilityState::default();
+            tauri::async_runtime::block_on(GraphRebuild::new(&pending_cache, &visibility).rebuild(
+                "/repo".to_owned(),
+                move || {
+                    started.send(()).unwrap();
+                    resume.recv().unwrap();
+                    Ok(two_root_source_with_topic_tip())
+                },
+            ))
+        });
+        entered.recv().unwrap();
+
+        cache.invalidate("/repo");
+        release.send(()).unwrap();
+        pending.join().unwrap().unwrap();
+
+        assert_eq!(cache.snapshot("/repo").unwrap().layout.commits.len(), 2);
+    }
+
+    #[test]
+    fn a_superseded_capture_preserves_the_completed_commands_outcome() {
+        let cache = CommitCache::new(GraphCache::default());
+        cache.0.lock().unwrap().insert("/repo".to_owned(), graph(0));
+        let visibility = RefVisibilityState::default();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init_bare(temp.path()).unwrap();
+        let inputs = crate::ref_state::RefState::read(&repo).unwrap();
+        let result = tauri::async_runtime::block_on(
+            GraphRebuild::new(&cache, &visibility).rebuild_carrying(
+                "/repo".to_owned(),
+                move || {
+                    Ok((
+                        super::GraphRead::checked(
+                            two_root_source_with_topic_tip(),
+                            inputs.clone(),
+                            inputs,
+                            true,
+                        ),
+                        "commit succeeded",
+                    ))
+                },
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(result.1, "commit succeeded");
+        assert!(result.0.layout.commits.is_empty());
+        assert!(cache.snapshot("/repo").unwrap().layout.commits.is_empty());
+    }
+
+    #[test]
+    fn a_reference_change_during_capture_is_never_stamped_as_current() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut repo = git2::Repository::init_bare(temp.path()).unwrap();
+        let tree_oid = repo.treebuilder(None).unwrap().write().unwrap();
+        let signature = git2::Signature::now("Test", "test@example.com").unwrap();
+        let oid = repo
+            .commit(
+                Some("refs/heads/main"),
+                &signature,
+                &signature,
+                "Initial",
+                &repo.find_tree(tree_oid).unwrap(),
+                &[],
+            )
+            .unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+        let before = crate::ref_state::RefState::read(&repo).unwrap();
+        let source = trunk_git::graph::capture(&mut repo).unwrap();
+        repo.reference("refs/remotes/origin/main", oid, true, "fetch")
+            .unwrap();
+        let after = crate::ref_state::RefState::read(&repo).unwrap();
+
+        let read = super::GraphRead::checked(source, before, after, false);
+
+        assert!(read.changed);
+        assert!(read.inputs.is_none());
+    }
+
+    #[test]
+    fn a_visibility_change_during_a_blocked_capture_controls_publication() {
+        let cache = Arc::new(CommitCache::new(GraphCache::default()));
+        let visibility = Arc::new(RefVisibilityState::default());
+        let pending_cache = Arc::clone(&cache);
+        let pending_visibility = Arc::clone(&visibility);
+        let (started, entered) = std::sync::mpsc::channel();
+        let (release, resume) = std::sync::mpsc::channel();
+        let pending = std::thread::spawn(move || {
+            tauri::async_runtime::block_on(
+                GraphRebuild::new(&pending_cache, &pending_visibility).rebuild(
+                    "/repo".to_owned(),
+                    move || {
+                        let source = two_root_source_with_topic_tip();
+                        started.send(()).unwrap();
+                        resume.recv().unwrap();
+                        Ok(source)
+                    },
+                ),
+            )
+        });
+        entered.recv().unwrap();
+        let mut hidden = RefVisibility::default();
+        hidden.hidden_refs.insert("refs/heads/topic".to_owned());
+        visibility.set("/repo".to_owned(), hidden.clone());
+        release.send(()).unwrap();
+        let published = pending.join().unwrap().unwrap();
+
+        assert_eq!(published.visibility(), &hidden);
+        assert_eq!(published.layout.commits.len(), 1);
+        assert_eq!(published.layout.commits[0].oid, oid(1).to_string());
+    }
+
+    #[test]
+    fn a_newer_publication_survives_an_older_blocked_capture() {
+        let cache = Arc::new(CommitCache::new(GraphCache::default()));
+        let pending_cache = Arc::clone(&cache);
+        let (started, entered) = std::sync::mpsc::channel();
+        let (release, resume) = std::sync::mpsc::channel();
+        let pending = std::thread::spawn(move || {
+            let visibility = RefVisibilityState::default();
+            tauri::async_runtime::block_on(GraphRebuild::new(&pending_cache, &visibility).rebuild(
+                "/repo".to_owned(),
+                move || {
+                    let source = two_root_source_with_topic_tip();
+                    started.send(()).unwrap();
+                    resume.recv().unwrap();
+                    Ok(source)
+                },
+            ))
+        });
+        entered.recv().unwrap();
+        let ticket = cache.begin_write("/repo").unwrap();
+        let newer = graph(9);
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .publish("/repo".to_owned(), ticket, newer.clone(), None)
+            .unwrap();
+        release.send(()).unwrap();
+        let returned = pending.join().unwrap().unwrap();
+
+        assert!(returned.same_capture_as(&newer));
+        assert!(cache.snapshot("/repo").unwrap().same_capture_as(&newer));
+        assert_eq!(
+            cache.snapshot("/repo").unwrap().visibility(),
+            newer.visibility()
+        );
+    }
+
+    #[test]
+    fn a_reopened_session_keeps_its_capture_when_the_old_one_finishes() {
+        assert_old_capture_is_fenced(true);
+    }
+
+    fn assert_old_capture_is_fenced(reopened: bool) {
+        let cache = Arc::new(CommitCache::new(GraphCache::default()));
+        let pending_cache = Arc::clone(&cache);
+        let (started, entered) = std::sync::mpsc::channel();
+        let (release, resume) = std::sync::mpsc::channel();
+        let pending = std::thread::spawn(move || {
+            let visibility = RefVisibilityState::default();
+            tauri::async_runtime::block_on(GraphRebuild::new(&pending_cache, &visibility).rebuild(
+                "/repo".to_owned(),
+                move || {
+                    started.send(()).unwrap();
+                    resume.recv().unwrap();
+                    Ok(GraphSource::default())
+                },
+            ))
+        });
+        entered.recv().unwrap();
+
+        cache.forget("/repo");
+        let current = if reopened {
+            cache.open_session("/repo");
+            let ticket = cache.begin_write("/repo").unwrap();
+            let current = tagged_graph("new-session");
+            cache
+                .0
+                .lock()
+                .unwrap()
+                .publish("/repo".to_owned(), ticket, current.clone(), None)
+                .unwrap();
+            Some(current)
+        } else {
+            None
+        };
+        release.send(()).unwrap();
+        let error = pending.join().unwrap().unwrap_err();
+        assert_eq!(error.code, "not_open");
+        if let Some(current) = current {
+            assert!(cache.snapshot("/repo").unwrap().same_capture_as(&current));
+        } else {
+            assert!(
+                !cache.holds("/repo"),
+                "the closed session's capture was published"
+            );
+        }
+    }
+
     /// An empty graph tagged by the ref it hides, so a test can tell two snapshots apart
     /// by their visibility while both carry an empty capture.
     fn tagged_graph(tag: &str) -> GraphSnapshot {
@@ -674,13 +1511,14 @@ mod tests {
 
     #[test]
     fn a_toggle_does_not_overwrite_a_rebuild_that_landed_while_it_relaid_out() {
-        let cache = CommitCache(Mutex::new(GraphCache::default()));
+        let cache = CommitCache::new(GraphCache::default());
         let read = tagged_graph("pre-commit");
         cache
             .0
             .lock()
             .unwrap()
             .insert("/repo".to_owned(), read.clone());
+        let ticket = cache.begin_write("/repo").unwrap();
 
         // A commit's rebuild replaces the entry with a fresh capture while the toggle's
         // relayout of the stale one is still in flight off-thread.
@@ -692,7 +1530,15 @@ mod tests {
             .insert("/repo".to_owned(), fresher.clone());
 
         let relaid_out = read.with_visibility(tagged_graph("toggled").visibility().clone());
-        cache.write_relaid_out("/repo".to_owned(), Some(&read), relaid_out);
+        let visibility = RefVisibilityState::default();
+        visibility.set("/repo".to_owned(), relaid_out.visibility().clone());
+        tauri::async_runtime::block_on(GraphRebuild::new(&cache, &visibility).publish_relayout(
+            "/repo".to_owned(),
+            &read,
+            relaid_out,
+            ticket,
+        ))
+        .unwrap();
 
         let cached = cache.0.lock().unwrap();
         assert_eq!(
@@ -704,7 +1550,7 @@ mod tests {
 
     #[test]
     fn a_toggle_writes_its_graph_when_nothing_landed_ahead_of_it() {
-        let cache = CommitCache(Mutex::new(GraphCache::default()));
+        let cache = CommitCache::new(GraphCache::default());
         let read = tagged_graph("pre-toggle");
         cache
             .0
@@ -713,7 +1559,16 @@ mod tests {
             .insert("/repo".to_owned(), read.clone());
 
         let relaid_out = read.with_visibility(tagged_graph("toggled").visibility().clone());
-        cache.write_relaid_out("/repo".to_owned(), Some(&read), relaid_out.clone());
+        let ticket = cache.begin_write("/repo").unwrap();
+        let visibility = RefVisibilityState::default();
+        visibility.set("/repo".to_owned(), relaid_out.visibility().clone());
+        tauri::async_runtime::block_on(GraphRebuild::new(&cache, &visibility).publish_relayout(
+            "/repo".to_owned(),
+            &read,
+            relaid_out.clone(),
+            ticket,
+        ))
+        .unwrap();
 
         let cached = cache.0.lock().unwrap();
         assert_eq!(
@@ -731,13 +1586,14 @@ mod tests {
 
     #[test]
     fn another_repos_graph_refreshed_mid_rebuild_is_not_rolled_back() {
-        let cache = Arc::new(CommitCache(Mutex::new(GraphCache::default())));
+        let cache = Arc::new(CommitCache::new(GraphCache::default()));
         cache
             .0
             .lock()
             .unwrap()
             .insert("/repo/b".to_owned(), graph(1));
         let ref_visibility = RefVisibilityState::default();
+        ref_visibility.set("/repo/a".to_owned(), graph(1).visibility().clone());
         let rebuild = GraphRebuild::new(&cache, &ref_visibility);
         let concurrent_cache = Arc::clone(&cache);
 
@@ -769,7 +1625,7 @@ mod tests {
 
     #[test]
     fn a_failed_rebuild_merge_leaves_the_cache_untouched() {
-        let cache = CommitCache(Mutex::new(GraphCache::default()));
+        let cache = CommitCache::new(GraphCache::default());
         cache
             .0
             .lock()

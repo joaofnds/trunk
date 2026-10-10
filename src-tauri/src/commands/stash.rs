@@ -7,8 +7,6 @@ use crate::types::StashEntry;
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
-use trunk_git::graph;
-use trunk_git::graph_input::GraphSource;
 
 /// Kept apart: only pop can leave an entry behind, so only pop's message may say so.
 const POP_CONFLICT_MESSAGE: &str = "Stash applied with conflicts — resolve conflicts before continuing. Note: stash was NOT removed.";
@@ -118,7 +116,7 @@ pub fn stash_save_inner(
     path: &str,
     message: &str,
     state_map: &OpenRepos,
-) -> Result<GraphSource, TrunkError> {
+) -> Result<crate::state::GraphRead, TrunkError> {
     let mut repo = state_map.open(path)?;
     let workdir = repo
         .workdir()
@@ -388,7 +386,7 @@ pub fn stash_save_inner(
     drop(index_commit);
     drop(statuses);
 
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 /// Apply a stash and drop it, keeping it when the apply conflicts.
@@ -402,7 +400,7 @@ pub fn stash_pop_inner(
     path: &str,
     oid: &str,
     state_map: &OpenRepos,
-) -> Result<GraphSource, TrunkError> {
+) -> Result<crate::state::GraphRead, TrunkError> {
     let mut repo = state_map.open(path)?;
     let index = stash_index_of(&mut repo, oid)?;
     // Apply and drop separately rather than `stash_pop`: git2's pop drops the entry even
@@ -419,7 +417,7 @@ pub fn stash_pop_inner(
         return Err(TrunkError::new("conflict_state", POP_CONFLICT_MESSAGE));
     }
     repo.stash_drop(index).map_err(TrunkError::from)?;
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 /// Apply a stash, leaving it in the reflog.
@@ -433,7 +431,7 @@ pub fn stash_apply_inner(
     path: &str,
     oid: &str,
     state_map: &OpenRepos,
-) -> Result<GraphSource, TrunkError> {
+) -> Result<crate::state::GraphRead, TrunkError> {
     let mut repo = state_map.open(path)?;
     let index = stash_index_of(&mut repo, oid)?;
     repo.stash_apply(index, None).map_err(|e| {
@@ -446,7 +444,7 @@ pub fn stash_apply_inner(
     if trunk_git::repository::has_unmerged_paths(&repo)? {
         return Err(TrunkError::new("conflict_state", APPLY_CONFLICT_MESSAGE));
     }
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 /// Drop a stash without applying it.
@@ -459,11 +457,11 @@ pub fn stash_drop_inner(
     path: &str,
     oid: &str,
     state_map: &OpenRepos,
-) -> Result<GraphSource, TrunkError> {
+) -> Result<crate::state::GraphRead, TrunkError> {
     let mut repo = state_map.open(path)?;
     let index = stash_index_of(&mut repo, oid)?;
     repo.stash_drop(index).map_err(TrunkError::from)?;
-    graph::capture(&mut repo)
+    crate::state::read_graph(&mut repo)
 }
 
 /// # Errors

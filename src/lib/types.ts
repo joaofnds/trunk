@@ -76,6 +76,7 @@ export interface GraphCommit {
 export interface GraphResponse {
 	commits: GraphCommit[];
 	max_columns: number;
+	revision: number;
 }
 
 // Navigation context for the currently-selected commit, derived from the

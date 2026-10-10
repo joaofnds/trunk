@@ -287,7 +287,7 @@ fn push_is_refused_while_the_same_repo_has_an_op_running() {
         .build();
     track_upstream(&ctx, "origin", "main");
     let remote = ctx.remote();
-    remote.seed_running_op(ctx.path(), 4242);
+    remote.seed_running_op(ctx.path());
 
     let err = remote.push().unwrap_err();
 
@@ -303,7 +303,7 @@ fn push_proceeds_while_a_different_repo_has_an_op_running() {
         .build();
     track_upstream(&ctx, "origin", "main");
     let remote = ctx.remote();
-    remote.seed_running_op("/another/repo", 4242);
+    remote.seed_running_op("/another/repo");
 
     remote.push().unwrap();
 

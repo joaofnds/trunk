@@ -5,8 +5,6 @@ use crate::watcher::RepoChanged;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
-use trunk_git::graph;
-use trunk_git::graph_input::GraphSource;
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -151,7 +149,7 @@ pub fn start_interactive_rebase_blocking(
     todo_items: &[RebaseTodoAction],
     session_dir: &std::path::Path,
     state_map: &OpenRepos,
-) -> Result<(GraphSource, RebaseStartResult), TrunkError> {
+) -> Result<(crate::state::GraphRead, RebaseStartResult), TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
     // 1. Write todo file (drop = omit from list, not the 'drop' keyword)
@@ -239,7 +237,7 @@ pub fn start_interactive_rebase_blocking(
         let _ = std::fs::remove_dir_all(&msg_dir);
     }
 
-    let source = graph::capture(&mut repo)?;
+    let source = crate::state::read_graph(&mut repo)?;
 
     let outcome = if stopped_at_a_commit {
         RebaseStartResult::Stopped

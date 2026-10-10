@@ -1,3 +1,4 @@
+import type { FetchReport } from "./autofetch-status.js";
 import type { TrunkError } from "./invoke.js";
 
 export type RemoteOpKind = "push" | "pull" | "fetch";
@@ -7,6 +8,8 @@ export interface RemoteState {
 	progressLine: string;
 	error: TrunkError | null;
 	lastOp: RemoteOpKind | null;
+	manualFetchVersion: number;
+	autofetch?: FetchReport;
 }
 
 export function createRemoteState(): RemoteState {
@@ -15,6 +18,7 @@ export function createRemoteState(): RemoteState {
 		progressLine: "",
 		error: null as TrunkError | null,
 		lastOp: null as RemoteOpKind | null,
+		manualFetchVersion: 0,
 	});
 	return state;
 }

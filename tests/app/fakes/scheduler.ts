@@ -15,7 +15,15 @@ interface Armed {
 export class FakeScheduler implements Scheduler {
 	private armed: Armed[] = [];
 	private nextHandle = 1;
-	private now = 0;
+	private currentTime = 0;
+
+	get time(): number {
+		return this.currentTime;
+	}
+
+	currentTimeMs(): number {
+		return this.currentTime;
+	}
 
 	/** How many timers the application is currently waiting on. */
 	get pending(): number {
@@ -24,7 +32,7 @@ export class FakeScheduler implements Scheduler {
 
 	setTimeout(callback: () => void, delayMs: number): number {
 		const handle = this.nextHandle++;
-		this.armed.push({ handle, at: this.now + delayMs, callback });
+		this.armed.push({ handle, at: this.currentTime + delayMs, callback });
 
 		return handle;
 	}
@@ -33,27 +41,30 @@ export class FakeScheduler implements Scheduler {
 		this.armed = this.armed.filter((timer) => timer.handle !== handle);
 	}
 
-	/** Fires everything armed right now, oldest first. A callback that arms
+	/** Fires everything armed right now in deadline order. A callback that arms
 	 *  another timer leaves it for the next flush. */
 	flush(): void {
 		const firing = this.armed;
 		this.armed = [];
 
-		for (const timer of firing) timer.callback();
+		for (const timer of firing.sort((a, b) => a.at - b.at)) {
+			this.currentTime = Math.max(this.currentTime, timer.at);
+			timer.callback();
+		}
 	}
 
 	/** Advances virtual time and fires each timer whose deadline is reached. */
 	advanceBy(elapsedMs: number): void {
-		const until = this.now + elapsedMs;
+		const until = this.currentTime + elapsedMs;
 		for (;;) {
 			const next = this.armed
 				.filter((timer) => timer.at <= until)
 				.sort((left, right) => left.at - right.at)[0];
 			if (!next) break;
-			this.now = next.at;
+			this.currentTime = next.at;
 			this.armed = this.armed.filter((timer) => timer.handle !== next.handle);
 			next.callback();
 		}
-		this.now = until;
+		this.currentTime = until;
 	}
 }

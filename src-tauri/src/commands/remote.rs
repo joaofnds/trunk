@@ -1,16 +1,15 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use tauri::{AppHandle, Emitter, Runtime, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
+use crate::remote_ops::{RemoteProcess, RemoteReservation};
 use crate::shell_env;
-use crate::state::{CommitCache, OpenRepos, RemoteOps, RepoState, RunningOp, kill_process};
+use crate::state::{CommitCache, OpenRepos, RemoteOps, RepoState, RunningOp};
 use crate::watcher::RepoChanged;
 use trunk_git::error::TrunkError;
-use trunk_git::graph;
-use trunk_git::graph_input::GraphSource;
 
 /// git's own stderr lines, with the ones the remote wrote dropped. Scoping the lease
 /// markers to these is what keeps a hook printing either phrase from turning every
@@ -59,30 +58,45 @@ pub fn classify_git_error(stderr: &str) -> TrunkError {
     }
 }
 
-/// Spawns a git subprocess with async stderr streaming and progress events.
+struct RemoteCompletion<'a> {
+    _reservation: RemoteReservation<'a>,
+    session: u64,
+}
+
+/// Spawns a foreground git subprocess with stderr progress events and an owned
+/// reservation retained through the caller's graph reconciliation.
 ///
 /// Stores child PID in `running` for cancel support.
 /// Emits `remote-progress` Tauri events per stderr line.
 /// On failure, classifies the error using `classify_git_error`.
-async fn run_git_remote<R: Runtime>(
+async fn run_git_remote<'a, R: Runtime>(
     args: &[&str],
     cwd: &std::path::Path,
     app: &AppHandle<R>,
     repo_path: &str,
-    running: &Mutex<RemoteOps>,
-) -> Result<(), TrunkError> {
-    // Check mutual exclusion (per-repo)
-    {
-        let guard = running.lock().unwrap();
-        if guard.busy(repo_path) {
-            return Err(TrunkError::new(
-                "op_in_progress",
-                "A remote operation is already running for this repository",
-            ));
-        }
-    }
+    running: &'a Mutex<RemoteOps>,
+) -> Result<RemoteCompletion<'a>, TrunkError> {
+    let expected_session = app
+        .state::<CommitCache>()
+        .session_id(repo_path)
+        .ok_or_else(|| TrunkError::new("not_open", "Repository session was closed"))?;
+    let location = cwd.to_path_buf();
+    let common = tauri::async_runtime::spawn_blocking(move || {
+        let repo = git2::Repository::open(location)?;
+        repo.commondir()
+            .canonicalize()
+            .map(|path| path.to_string_lossy().to_string())
+            .map_err(|error| TrunkError::new("remote_error", error.to_string()))
+    })
+    .await
+    .map_err(|error| TrunkError::new("spawn_error", error.to_string()))??;
+    let reservation =
+        RemoteReservation::acquire_checked(running, repo_path, &common, false, || {
+            app.state::<CommitCache>().session_id(repo_path) == Some(expected_session)
+        })?;
 
-    let mut child = Command::new("git")
+    let mut command = Command::new("git");
+    command
         .args(args)
         .current_dir(cwd)
         .env("PATH", shell_env::system_path())
@@ -90,13 +104,16 @@ async fn run_git_remote<R: Runtime>(
         // into a full pipe while this task blocks in wait().
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = command
         .spawn()
         .map_err(|e| TrunkError::new("remote_error", e.to_string()))?;
 
     // Store PID for cancel support (keyed by repo path)
     if let Some(pid) = child.id() {
-        let mut guard = running.lock().unwrap();
-        guard.start(repo_path.to_owned(), pid);
+        reservation.attach(RemoteProcess::foreground(pid));
     }
 
     // Read stderr lines and emit progress events
@@ -126,15 +143,15 @@ async fn run_git_remote<R: Runtime>(
         }
     }
 
-    let status = child
-        .wait()
-        .await
-        .map_err(|e| TrunkError::new("remote_error", e.to_string()))?;
-
-    // Clear RunningOp for this repo regardless of outcome
-    {
-        let mut guard = running.lock().unwrap();
-        guard.finish(repo_path);
+    let status = child.wait().await;
+    if status.is_err() {
+        let _ = child.kill().await;
+        let _ = child.wait().await;
+    }
+    reservation.exited();
+    let status = status.map_err(|e| TrunkError::new("remote_error", e.to_string()))?;
+    if reservation.cancelled() {
+        return Err(TrunkError::new("cancelled", "Remote operation cancelled"));
     }
 
     if !status.success() {
@@ -142,7 +159,54 @@ async fn run_git_remote<R: Runtime>(
         return Err(classify_git_error(&full_stderr));
     }
 
-    Ok(())
+    Ok(RemoteCompletion {
+        _reservation: reservation,
+        session: expected_session,
+    })
+}
+
+async fn checked_manual_fetch<R: Runtime>(
+    app: &AppHandle<R>,
+    path: &str,
+    session: u64,
+    location: PathBuf,
+) {
+    let names = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<String>, TrunkError> {
+        let repo = git2::Repository::open(location)?;
+        trunk_git::fetch::applicable_remotes(&repo)
+    })
+    .await;
+    if let Ok(Ok(names)) = names {
+        let service = app.state::<crate::background_fetch::BackgroundFetch>();
+        let cache = app.state::<CommitCache>();
+        for name in names {
+            service.checked(path, session, Some(&name), &cache);
+        }
+    }
+}
+
+async fn checked_manual_pull<R: Runtime>(
+    app: &AppHandle<R>,
+    path: &str,
+    session: u64,
+    location: PathBuf,
+) {
+    let remote = tauri::async_runtime::spawn_blocking(move || {
+        let repo = git2::Repository::open(location).ok()?;
+        let head = repo.head().ok()?;
+        let branch = head.shorthand().ok()?;
+        repo.config()
+            .ok()?
+            .get_string(&format!("branch.{branch}.remote"))
+            .ok()
+    })
+    .await;
+    if let Ok(Some(remote)) = remote
+        && remote != "."
+    {
+        app.state::<crate::background_fetch::BackgroundFetch>()
+            .checked(path, session, Some(&remote), &app.state::<CommitCache>());
+    }
 }
 
 /// Rebuild the commit graph and update the cache after a successful remote operation.
@@ -152,16 +216,18 @@ async fn refresh_graph<R: Runtime>(
     cache: &CommitCache,
     ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
+    session: u64,
 ) -> Result<(), TrunkError> {
     let path_owned = path.to_owned();
     let rebuild = crate::state::GraphRebuild::new(cache, ref_visibility);
     rebuild
-        .rebuild(
+        .rebuild_in_session(
             path_owned.clone(),
-            move || -> Result<GraphSource, TrunkError> {
+            session,
+            move || -> Result<crate::state::GraphRead, TrunkError> {
                 let mut repo = git2::Repository::open(&path_buf)
                     .map_err(|e| TrunkError::new("git_error", e.to_string()))?;
-                graph::capture(&mut repo)
+                crate::state::read_graph(&mut repo)
             },
         )
         .await?;
@@ -186,14 +252,14 @@ pub async fn git_fetch<R: Runtime>(
     running: State<'_, RunningOp>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
-) -> Result<(), String> {
+) -> Result<crate::background_fetch::FetchReport, String> {
     let state_map = state.snapshot();
     let path_buf = state_map
         .path_for(&path)
         .map_err(|e| e.to_json())?
         .to_path_buf();
 
-    run_git_remote(
+    let completion = run_git_remote(
         &["fetch", "--all", "--progress"],
         &path_buf,
         &app,
@@ -203,69 +269,55 @@ pub async fn git_fetch<R: Runtime>(
     .await
     .map_err(|e| e.to_json())?;
 
-    refresh_graph(&path, path_buf, &cache, &ref_visibility, &app)
-        .await
-        .map_err(|e| e.to_json())
+    checked_manual_fetch(&app, &path, completion.session, path_buf.clone()).await;
+    refresh_graph(
+        &path,
+        path_buf,
+        &cache,
+        &ref_visibility,
+        &app,
+        completion.session,
+    )
+    .await
+    .map_err(|e| e.to_json())?;
+    let session = cache
+        .session_id(&path)
+        .ok_or_else(|| TrunkError::new("not_open", "Repository is closed").to_json())?;
+    Ok(app
+        .state::<crate::background_fetch::BackgroundFetch>()
+        .report(&path, session))
 }
 
-/// Fetch every remote quietly, skipping when the repo is busy.
-///
-/// Best-effort: skips when the repo is mid-operation (rebase/merge/cherry-pick/revert)
-/// or another remote op is already running, and swallows any error so the UI never
-/// surfaces a popup or toast.
-///
+/// Check all configured remotes without progress events or foreground dialogs.
+/// The reservation spans worker exit and change-aware graph reconciliation.
 /// # Errors
 ///
-/// Never returns an error. The `Result` is the shape every command shares. A
-/// repository that is closed, mid-operation, or already running a remote
-/// operation is skipped, and a failed fetch is swallowed.
-///
-/// # Panics
-///
-/// Panics when one of the shared state locks it takes is poisoned.
+/// Returns an error when the repository is closed or its fetch configuration cannot be read.
 #[tauri::command]
 pub async fn git_fetch_background<R: Runtime>(
     path: String,
+    interval_ms: Option<u64>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     running: State<'_, RunningOp>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
+    background: State<'_, crate::background_fetch::BackgroundFetch>,
     app: AppHandle<R>,
-) -> Result<(), String> {
-    let state_map = state.snapshot();
-    let Some(path_buf) = state_map
-        .location_of(&path)
-        .map(std::path::Path::to_path_buf)
-    else {
-        return Ok(());
-    };
-
-    let path_for_state = path_buf.clone();
-    let is_clean = tauri::async_runtime::spawn_blocking(move || {
-        git2::Repository::open(&path_for_state)
-            .is_ok_and(|r| r.state() == git2::RepositoryState::Clean)
-    })
-    .await
-    .unwrap_or(false);
-    if !is_clean {
-        return Ok(());
-    }
-
-    if run_git_remote(
-        &["fetch", "--all", "--tags", "--prune", "--progress"],
-        &path_buf,
-        &app,
+) -> Result<crate::background_fetch::FetchReport, String> {
+    crate::background_fetch::fetch(
         &path,
-        &running.0,
+        interval_ms.unwrap_or(crate::background_fetch::DEFAULT_FETCH_INTERVAL_MS),
+        crate::background_fetch::FetchContext {
+            state: &state,
+            cache: &cache,
+            running: &running,
+            visibility: &ref_visibility,
+            service: &background,
+            app: &app,
+        },
     )
     .await
-    .is_err()
-    {
-        return Ok(());
-    }
-
-    let _ = refresh_graph(&path, path_buf, &cache, &ref_visibility, &app).await;
-    Ok(())
+    .map_err(|error| error.to_json())
 }
 
 /// Which remote and branch a push from here would target.
@@ -316,7 +368,7 @@ pub async fn git_pull<R: Runtime>(
     running: State<'_, RunningOp>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
-) -> Result<(), String> {
+) -> Result<crate::background_fetch::FetchReport, String> {
     let state_map = state.snapshot();
     git_pull_inner(
         &path,
@@ -328,7 +380,13 @@ pub async fn git_pull<R: Runtime>(
         &app,
     )
     .await
-    .map_err(|e| e.to_json())
+    .map_err(|e| e.to_json())?;
+    let session = cache
+        .session_id(&path)
+        .ok_or_else(|| TrunkError::new("not_open", "Repository is closed").to_json())?;
+    Ok(app
+        .state::<crate::background_fetch::BackgroundFetch>()
+        .report(&path, session))
 }
 
 /// Pull with the chosen strategy, then rebuild the graph.
@@ -356,8 +414,9 @@ pub async fn git_pull_inner<R: Runtime>(
         _ => vec!["pull", "--progress"],
     };
 
-    run_git_remote(&args, &path_buf, app, path, running).await?;
+    let completion = run_git_remote(&args, &path_buf, app, path, running).await?;
 
+    checked_manual_pull(app, path, completion.session, path_buf.clone()).await;
     let probe_path = path_buf.clone();
     let conflicted = tauri::async_runtime::spawn_blocking(move || {
         let repo = git2::Repository::open(&probe_path).map_err(TrunkError::from)?;
@@ -368,7 +427,15 @@ pub async fn git_pull_inner<R: Runtime>(
 
     // Refresh before reporting the conflict, or the UI never repaints and the files the
     // message points at stay invisible.
-    refresh_graph(path, path_buf, cache, ref_visibility, app).await?;
+    refresh_graph(
+        path,
+        path_buf,
+        cache,
+        ref_visibility,
+        app,
+        completion.session,
+    )
+    .await?;
 
     if conflicted {
         return Err(TrunkError::new(
@@ -420,9 +487,17 @@ pub async fn git_push_inner<R: Runtime>(
 ) -> Result<(), TrunkError> {
     let path_buf = state_map.path_for(path)?.to_path_buf();
 
-    run_git_remote(&["push", "--progress"], &path_buf, app, path, running).await?;
+    let completion = run_git_remote(&["push", "--progress"], &path_buf, app, path, running).await?;
 
-    refresh_graph(path, path_buf, cache, ref_visibility, app).await
+    refresh_graph(
+        path,
+        path_buf,
+        cache,
+        ref_visibility,
+        app,
+        completion.session,
+    )
+    .await
 }
 
 /// Fixed prefix of the recovery force push.
@@ -588,9 +663,17 @@ pub async fn git_push_force_inner<R: Runtime>(
     args.push(confirmed_remote);
     args.push(&refspec);
 
-    run_git_remote(&args, &path_buf, app, path, running).await?;
+    let completion = run_git_remote(&args, &path_buf, app, path, running).await?;
 
-    refresh_graph(path, path_buf, cache, ref_visibility, app).await
+    refresh_graph(
+        path,
+        path_buf,
+        cache,
+        ref_visibility,
+        app,
+        completion.session,
+    )
+    .await
 }
 
 /// # Errors
@@ -628,7 +711,7 @@ pub async fn delete_remote_branch<R: Runtime>(
     let remote = &branch_name[..slash];
     let branch = &branch_name[slash + 1..];
 
-    run_git_remote(
+    let completion = run_git_remote(
         &["push", "--delete", "--progress", "--", remote, branch],
         &path_buf,
         &app,
@@ -638,9 +721,16 @@ pub async fn delete_remote_branch<R: Runtime>(
     .await
     .map_err(|e| e.to_json())?;
 
-    refresh_graph(&path, path_buf, &cache, &ref_visibility, &app)
-        .await
-        .map_err(|e| e.to_json())
+    refresh_graph(
+        &path,
+        path_buf,
+        &cache,
+        &ref_visibility,
+        &app,
+        completion.session,
+    )
+    .await
+    .map_err(|e| e.to_json())
 }
 
 /// # Errors
@@ -652,9 +742,9 @@ pub async fn delete_remote_branch<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn cancel_remote_op(path: String, running: State<'_, RunningOp>) -> Result<(), String> {
-    let running = running.0.lock().unwrap().finish(&path);
-    if let Some(pid) = running {
-        kill_process(pid);
+    let process = running.0.lock().unwrap().cancel(&path);
+    if let Some(process) = process {
+        process.stop();
     }
     Ok(())
 }

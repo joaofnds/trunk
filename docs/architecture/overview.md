@@ -72,7 +72,7 @@
 | `commands/staging.rs` | Full staging surface: status, stage/unstage/discard file/hunk/lines | `src-tauri/src/commands/staging.rs` |
 | `commands/diff.rs` | `diff_unstaged`, `diff_staged`, `diff_commit`, `diff_commit_file`, `list_commit_files`, `list_compare_files`, `diff_compare_file`, `compare_stat`, `get_commit_detail` — the compare pair diffs any two commit trees (Base → Target, no ancestry required; null Base = empty tree); highlighting parses a bounded window above each side's first displayed line, with no cache and no warming | `src-tauri/src/commands/diff.rs` |
 | `commands/branches.rs` | `list_refs`, `resolve_ref`, `checkout_branch`, `fast_forward_to`, `create_branch`, `delete_branch`, `rename_branch` | `src-tauri/src/commands/branches.rs` |
-| `commands/remote.rs` | `git_fetch`, `git_fetch_background`, `git_pull`, `git_push`, `delete_remote_branch`, `cancel_remote_op` — subprocess with progress streaming | `src-tauri/src/commands/remote.rs` |
+| `commands/remote.rs` | `git_fetch`, `git_fetch_background`, `git_pull`, `git_push`, `delete_remote_branch`, `cancel_remote_op` — foreground subprocess/progress; background git2 worker | `src-tauri/src/commands/remote.rs` |
 | `commands/commit.rs` | `create_commit`, `amend_commit`, `get_head_commit_message` | `src-tauri/src/commands/commit.rs` |
 | `commands/commit_actions.rs` | `checkout_commit`, `create_tag`, `delete_tag`, `cherry_pick`, `revert_commit`, `reset_to_commit`, `undo_commit`, `redo_commit`, `check_undo_available` | `src-tauri/src/commands/commit_actions.rs` |
 | `commands/stash.rs` | `list_stashes`, `stash_save`, `stash_pop`, `stash_apply`, `stash_drop` | `src-tauri/src/commands/stash.rs` |
@@ -83,10 +83,12 @@
 | `git/placement.rs` | `assign_lanes()` — the pure lane assignment algorithm, columns, colours and edges | `src-tauri/git/src/placement.rs` |
 | `git/graph_input.rs` | `layout()` — page slice and row hydration, and the committed capture format the golden suite reads | `src-tauri/git/src/graph_input.rs` |
 | `git/repository.rs` | `validate_and_open()`, `build_ref_map()` | `src-tauri/git/src/repository.rs` |
+| `git/fetch.rs` | Native noninteractive fetch policy, applicable remotes, preflight, credential/ref safety and metadata receipts | `src-tauri/git/src/fetch.rs` |
+| `git/ref_state.rs` | Lightweight ref/HEAD/upstream/stash identity used to decide whether graph capture is needed | `src-tauri/git/src/ref_state.rs` |
 | `git/types.rs` | The commit graph's DTOs (`GraphCommit`, `GraphEdge`, `RefLabel`), owned, with no git2 types | `src-tauri/git/src/types.rs` |
 | `types.rs` | The app's other IPC DTOs (`FileDiff`, `WorkingTreeStatus`, etc.), owned, with no git2 types | `src-tauri/src/types.rs` |
-| `state.rs` | `RepoState`, `CommitCache`, `RunningOp` — all `Mutex<HashMap<String, …>>` keyed by repo path; `GraphRebuild` bundles `CommitCache` and `RefVisibilityState` behind the one method every rebuild site calls instead of repeating the read-visibility/walk/write-cache triple | `src-tauri/src/state.rs` |
-| `watcher.rs` | `start_watcher` / `stop_watcher` — `notify_debouncer_mini` emitting `"repo-changed"` events; `RepoChanged` carries the changed paths; `WatcherState::disabled()` turns the watch off | `src-tauri/src/watcher.rs` |
+| `state.rs` | `RepoState` (open paths), `CommitCache` (versioned worktree graphs), `RunningOp` (shared-repository reservations); `GraphRebuild` owns checked capture and publication under current visibility | `src-tauri/src/state.rs` |
+| `watcher.rs` | `start_watcher` / `stop_watcher` — `notify_debouncer_mini` emitting `"repo-changed"` events; `RepoChanged` carries changed paths, an optional graph revision and a refs-only marker; `WatcherState::disabled()` turns the watch off | `src-tauri/src/watcher.rs` |
 
 ## Pattern Overview
 
@@ -148,8 +150,8 @@
 **Managed State Layer:**
 - Purpose: Cross-command shared state, Tauri-managed singletons
 - Location: `src-tauri/src/state.rs`, `src-tauri/src/watcher.rs`
-- Contains: `RepoState` (path registry), `CommitCache` (one `GraphSnapshot` per repo: capture, visibility and layout), `RunningOp` (PID for cancel), `WatcherState` (fs watchers)
-- All state is `Mutex<HashMap<String, T>>` keyed by repo path string. `WatcherState` wraps that map beside an `enabled` flag: `WatcherState::disabled()` makes `start_watcher` register nothing, which is how a test host runs `open_repo` unchanged with no filesystem watch
+- Contains: `RepoState` (path registry), `CommitCache` (one `GraphSnapshot` per repo: capture, visibility and layout), `RunningOp` (operation reservations and process identity for cancel), `WatcherState` (fs watchers)
+- Repository and graph entries use worktree paths. Remote reservations use operation identities and canonical common directories. `WatcherState::disabled()` makes `start_watcher` register nothing, which is how a test host runs `open_repo` unchanged with no filesystem watch
 - Used by: All command modules via `State<'_, T>` injection
 
 ## Data Flow
@@ -169,18 +171,21 @@
 2. `watcher.rs:start_watcher` emits Tauri event `"repo-changed"` with a `RepoChanged`
    payload: the repo path plus the changed paths relative to it. The write sites in
    `commands/` emit the same event with an empty path list, meaning the extent is
-   unknown and every subscriber refreshes
+   unknown and every subscriber refreshes. Reconciled ref changes additionally carry
+   a graph revision and distinguish refs-only changes from worktree context changes
 3. Path-scoped frontend consumers arm a fixed 200 ms first deadline; more events do not move it.
    `subscribeToRepoChanges` hands each event's changed paths to its subscriber, so a
-   subscriber whose work depends on particular files can skip a write naming none of them
+   subscriber whose work depends on particular files can skip a write naming none of them.
+   Refs-only events reach only subscribers that opt into ref changes
 4. Each consumer admits one active read and one pending catch-up, so status, graph, review,
    toolbar and dirty-count work complete independently without growing with the event count
 5. `App.svelte` refreshes each open tab's dirty badge; `RepoView.svelte` notifies its graph,
    refs, recovery prompt and rendered working-tree diff while separately refreshing its own
    dirty counts, HEAD branch and selected file. Status, HEAD and the change notification
-   refresh for every event, while the selected file's diff refetches only for a change
+   refresh for worktree events, while the selected file's diff refetches only for a change
    naming that file or anything under `.git`, since the index and HEAD move what a staged
-   diff compares against
+   diff compares against. Refs-only events update refs and consume the published cached
+   graph without refreshing status, dirty badges or file diffs
 6. Post-mutation status and review callers enter the same guard and wait for a run admitted
    after the active read rather than returning its older completion
 
@@ -199,18 +204,40 @@ established.
 ### Remote Operation (Fetch/Pull/Push) Path
 
 1. User clicks Fetch in `Toolbar.svelte` → `safeInvoke("git_fetch", { path })`
-2. Rust `git_fetch` (`src-tauri/src/commands/remote.rs:159`) calls `run_git_remote()` which spawns `git fetch --all --progress` subprocess
-3. PID stored in `RunningOp` for cancel support; stderr lines emitted as `"remote-progress"` events per line
+2. Rust `git_fetch` (`src-tauri/src/commands/remote.rs`) calls `run_git_remote()` which spawns `git fetch --all --progress` subprocess
+3. The command reserves the shared repository before spawning; `RunningOp` attaches its owned process group for cancellation. The reservation lasts through exit and graph refresh. Stderr lines emit `"remote-progress"` events.
 4. `Toolbar.svelte` listens to `"remote-progress"` → updates `remoteState.progressLine`
 5. On subprocess exit: cache refreshed via `refresh_graph()`, `"repo-changed"` event emitted
 6. Frontend graph auto-refreshes via step 3-5 of Filesystem Change Path
 
 ### Background Periodic Fetch
 
-1. `RepoView.svelte` sets up a `setInterval` using `getFetchIntervalMs()` (default 60s) when `windowVisible` is true
-2. Calls `safeInvoke("git_fetch_background", { path })` — a silent best-effort fetch
-3. Rust `git_fetch_background` skips if repo is in non-clean state (merge/rebase in progress) or another op is running
-4. On success emits `"repo-changed"` → triggers normal refresh cycle
+1. `App.svelte` owns `AutofetchScheduler`: one completion-based deadline for all open repositories, staggered across the configured interval (default 60 seconds; `0` disables). Focus loss and manual remote work disarm it. The active tab gets preference while overdue inactive tabs retain fairness.
+2. `git_fetch_background` acquires an atomic reservation keyed by canonical Git common directory. One complete background job, including graph reconciliation, can run application-wide; a manual operation on the same shared repository reports busy. The operation identity controls cleanup after execution exits.
+3. A private worker entry point in the Trunk executable runs git2 before GUI/runtime startup. Its parent bounds each remote to 60 seconds, kills the owned process group on cancellation/deadline and joins it before releasing exclusion. Background work emits no progress lines. Foreground fetch/pull/push retain their existing Git subprocess path.
+4. The worker checks configured remotes with all tags and pruning, honors `skipFetchAll`, guards checked-out destinations across linked worktrees, preserves accumulated per-worktree FETCH_HEAD metadata and creates a missing remote HEAD. The parent compares lightweight ref state and reconciles successful updates even after a later remote fails.
+5. Unchanged input causes no history capture or repository event. Changed refs build one graph per affected open worktree and publish a path-scoped revision. The active view consumes its cached head at the loaded depth; inactive views retain the newest revision until activation. Ref-only events leave status, WIP and file-diff readers idle. Index, HEAD, config, stash and local file events retain their worktree refresh path.
+6. Typed per-remote results keep last success separate from attempt and graph publication. Transient failures double their retry ceiling up to 15 minutes (or the configured interval, if longer), with jitter between 80% and 100% of the ceiling and never below the configured interval. Unsupported configurations use the same capped jittered retry or retry after a configuration change. Manual checks clear backoff and defer redundant automatic checks for the remotes checked; Fetch and Pull return their updated freshness. The Pull tooltip exposes freshness/failure without recurring dialogs.
+
+The libgit2 worker supports local, HTTP(S) and SSH transports, configured credential helpers,
+SSH agent authentication, simple OpenSSH Host/IdentityFile settings, URL rewrites and native
+HTTPS CONNECT proxy settings. It preserves native host/certificate verification. Configurations the adapter
+cannot preserve produce an inspectable capability result, including negative refspecs,
+shallow repositories, plain HTTP proxies, partial-clone filters and custom SSH commands,
+proxy jumps or trust/algorithm policies. Those repositories lose automatic remote updates
+until their configuration is supported; foreground Fetch remains available.
+
+Git normally considers submodule fetching without an explicit recursion setting. The
+worker conservatively refuses repositories containing `.gitmodules` or any effective
+`submodule.*` configuration unless `remote.<name>.fetchRecurseSubmodules=false` or
+`fetch.recurseSubmodules=false` disables recursion. That setting enables background checks
+of the parent repository; fetching submodules still requires foreground Fetch.
+
+The watcher filters fetch bookkeeping (FETCH_HEAD, objects, ordinary reflogs and lock files),
+watches shared Git directories for linked worktrees and compares ref input stamps rather
+than dropping notifications for a time window. Session/generation checks fence closed or
+superseded graph publications. Graph page/stat requests name the revision they index and
+reject a replacement that happened before notification delivery.
 
 **State Management:**
 - `App.svelte` owns: tab array, active tab, layout dimensions (pane widths, zoom) — all `$state`
@@ -236,9 +263,10 @@ established.
 **`CommitCache`:**
 - Purpose: One `GraphSnapshot` per repository: the capture the walk read, the ref visibility it was laid out under, and the full layout, served in 200-row pages
 - Location: `src-tauri/src/state.rs`
-- Populated: every command that reads the repository and rebuilds the graph goes through `GraphRebuild`, whose `rebuild`/`rebuild_carrying` take a closure returning a bare `GraphSource` (the capture) rather than a `GraphSnapshot`. `GraphRebuild` looks up the repo's current `RefVisibility` and is the only thing that turns a capture into a `GraphSnapshot`, so a closure has no path to hand back a snapshot laid out under a visibility of its own choosing — one call instead of the three steps spelled out at each site, and the visibility argument is applied, not merely received (TRUNK-125: the earlier `FnOnce(&RefVisibility) -> GraphSnapshot` shape let a closure receive the value and ignore it, confirmed by a review-code probe). `set_ref_visibility` is the one exception: it re-lays out the cached capture under the new visibility without opening the repository, through `CommitCache::write_relaid_out`
-- Consumed: `get_commit_graph` slices one 200-row page from the cached layout via `CommitCache::read`; the rebuild commands slice from the top to the depth the caller reports, so a rebuild returns the pages the caller already had
-- `CommitCache`'s field is private to `state.rs`: a caller outside it reaches the cache only through `GraphRebuild`, `write_relaid_out`, or a named read accessor (`snapshot`, `read`, `all`, `forget`), never a raw `Mutex` lock. This closes the visibility-skipping bypass for the 24 command sites that write a `GraphSnapshot` straight into `CommitCache` (group A2). It does not reach the 5 sites in `commands/branches.rs` that write into a `GraphCache` value first and merge it in through `GraphRebuild::rebuild_merging` (group A1): `GraphCache` and its `insert` stay `pub`, because the `*_inner` helpers that mutate it are also called directly by integration tests linking as a separate crate. A new command could still call one of those helpers with a hand-built `GraphCache` and default visibility and it would compile — see TRUNK-184
+- Populated: commands that rebuild the graph go through `GraphRebuild`. Its capture closures return a checked `GraphRead` containing the capture and ref input stamp. The publisher applies the current `RefVisibility`, rechecking it before publication. `set_ref_visibility` usually re-lays out the cached capture without opening the repository, through `GraphRebuild::publish_relayout`; its uncached path uses the same checked capture producer.
+- Consumed: `get_commit_graph` slices one 200-row page from the cached layout via `CommitCache::read_versioned`; the rebuild commands slice from the top to the depth the caller reports, so a rebuild returns the pages the caller already had
+- Opening sessions, publication generations, visibility checks and per-worktree capture gates prevent an older result from replacing a newer graph. Responses carry a revision; graph-indexed reads reject stale revisions.
+- `CommitCache`'s fields are private to `state.rs`. Commands publish through `GraphRebuild` and use named read accessors. Branch helpers build a local `GraphCache` delta through `insert_read`; `rebuild_merging` publishes their worktree under its opening session, publication generation and latest visibility. Input invalidation clears the checked stamp without superseding a capture already in progress. A capture that observes concurrent input changes is retried; if it remains unstable, the publisher retains the cached graph and preserves the completed command's result. The next refresh can capture coherent inputs.
 
 **`RepoState` (path registry):**
 - Purpose: Maps repo path strings to `PathBuf` — proof that a repo is "open"
@@ -281,13 +309,13 @@ established.
 
 ## Architectural Constraints
 
-- **Threading:** Tauri uses tokio async runtime. All git2 calls run in `spawn_blocking` because git2 is synchronous. Remote ops use `tokio::process::Command` for async subprocess with stderr streaming.
-- **git2 not Sync:** `git2::Repository` cannot be stored in shared state. Each command opens its own fresh `Repository` handle. Constraint is documented in `src-tauri/src/state.rs:5`.
-- **No git shelling out for local ops:** All local git operations (stage, commit, checkout, etc.) use git2 API. Only remote ops (fetch/pull/push/delete-remote-branch, rebase/merge message editing) shell out — documented in `AGENTS.md`.
-- **Global state:** `RepoState`, `CommitCache`, `RunningOp`, `WatcherState` are module-level singletons managed by Tauri, each holding a `Mutex<HashMap<String, T>>` keyed by repo path string (`CommitCache`'s map is one layer down, inside the `GraphCache` its own `Mutex` wraps). `WatcherState` is the one with a second field, `enabled`, and it is passed into `configure` rather than constructed there, because `Builder::manage` panics on a duplicate type.
+- **Threading:** Tauri uses tokio async runtime. Repository mutation/capture work runs in `spawn_blocking`; automatic transport work runs synchronously in its isolated worker. Foreground remote subprocesses use `tokio::process::Command` with stderr streaming.
+- **git2 not Sync:** `git2::Repository` cannot be stored in shared state. Each command opens its own fresh handle, as `state::RepoState` documents.
+- **Git execution:** Local operations and automatic fetch use git2. Legacy foreground remote commands and rebase/merge message editing retain their Git subprocess paths.
+- **Global state:** Tauri manages `RepoState`'s path registry, `CommitCache`'s graph/session/revision maps, `RunningOp`'s identity-based remote reservations and `WatcherState`'s watchers/pending ref reconciliations. Worktree UI/cache entries use repository paths; remote exclusion uses canonical common directories. `WatcherState.enabled` lets the App harness disable filesystem watching, and the state is passed into `configure` because `Builder::manage` panics on a duplicate type.
 - **Circular imports:** None detected. Frontend has a clear dependency direction: `components/` → `lib/` → `@tauri-apps/`.
 - **macOS PATH:** `src-tauri/src/shell_env.rs` uses `/usr/libexec/path_helper` to resolve full system PATH for git subprocess calls — required because GUI apps inherit a minimal launchd PATH.
-- **Multi-tab:** All backend state is keyed by repo path string. Multiple tabs can have the same or different repos open simultaneously. Per-tab frontend state (`RemoteState`, `UndoRedoManager`) is created in `App.svelte` via factory functions and passed as props.
+- **Multi-tab:** Repository/cache state uses worktree paths, and remote exclusion resolves their common Git directories. Per-tab frontend state (`RemoteState`, `UndoRedoManager`) is created in `App.svelte` via factory functions and passed as props.
 
 ## Anti-Patterns
 
@@ -323,7 +351,7 @@ established.
 
 **Logging:** No structured logging framework — Rust uses `eprintln!` sparingly; frontend uses `console.error` for non-fatal catch blocks.
 **Validation:** Input validation in Rust commands (repo path must be in `RepoState`, OIDs parsed via `git2::Oid::from_str()`). No frontend validation layer.
-**Authentication:** No app-level auth. Git remote auth is handled by the `git` subprocess using the user's existing credentials (SSH agent, credential helper, etc.).
+**Authentication:** No app-level auth. Foreground Git subprocesses and the background libgit2 worker use the user's existing SSH agent and credential helpers. Unsupported background authentication policies return a capability result for manual Fetch.
 **Persistence:** `@tauri-apps/plugin-store` → `trunk-prefs.json` via `src/lib/store.ts`. Covers: recent repos, open tabs, zoom level, pane sizes, column visibility/widths, diff preferences, fetch interval.
 
 ---
