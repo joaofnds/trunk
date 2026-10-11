@@ -42,6 +42,8 @@ export interface ReviewCommentsManager {
 	readonly oids: ReadonlySet<string>;
 	/** Advances once per refresh that lands its reads, so consumers can follow. */
 	readonly revision: number;
+	/** Which repository inputs the accepted refresh changed. */
+	readonly revisionScope: "full" | "refs";
 	/** True when the thread read completed with a non-ambiguous active-review batch. */
 	readonly threadsAuthoritative: boolean;
 	/**
@@ -58,6 +60,7 @@ export interface ReviewCommentsManager {
 	readonly countByFile: Map<string, number>;
 	select(reviewId: string): Promise<void>;
 	refresh(): Promise<void>;
+	setActive(active: boolean): void;
 	destroy(): void;
 }
 
@@ -92,6 +95,7 @@ export function createReviewComments(
 			commits: SessionCommit[];
 		} | null,
 		revision: 0,
+		revisionScope: "full" as "full" | "refs",
 		threadsAuthoritative: false,
 		lastError: null as string | null,
 	});
@@ -134,9 +138,14 @@ export function createReviewComments(
 
 	// Generation guard protects this batch from an independent state replacement.
 	let loadSeq = 0;
+	let fullRefreshPending = true;
+	let runningScope: "full" | "refs" | null = null;
 
 	async function readReviewState(): Promise<void> {
 		const seq = ++loadSeq;
+		const scope = fullRefreshPending ? "full" : "refs";
+		fullRefreshPending = false;
+		runningScope = scope;
 		await learnCanonicalPath();
 		if (cancelled || seq !== loadSeq) return;
 
@@ -211,7 +220,9 @@ export function createReviewComments(
 			...selectedR,
 		]);
 
+		state.revisionScope = scope;
 		state.revision += 1;
+		runningScope = null;
 	}
 
 	// The active review's reads above feed every surface; a review the user
@@ -255,8 +266,37 @@ export function createReviewComments(
 	const stalenessRefresh = createCoalescedTask(scheduler, async () => {
 		await safeInvoke("refresh_thread_staleness", { path: repoPath });
 	});
+	let active = true;
+	let refsPending = false;
+	const refStalenessRefresh = createCoalescedTask(scheduler, async () => {
+		if (!active || !refsPending) return;
+
+		refsPending = false;
+		try {
+			await safeInvoke("refresh_thread_ref_staleness", { path: repoPath });
+		} catch (error) {
+			refsPending = true;
+			throw error;
+		}
+
+		if (cancelled) return;
+
+		if (!active) {
+			refsPending = true;
+			return;
+		}
+
+		fullRefreshPending ||= runningScope === "full";
+		reviewRefresh.invalidate();
+	});
+
+	function setActive(value: boolean): void {
+		active = value;
+		if (active && refsPending) refStalenessRefresh.invalidate();
+	}
 
 	function refresh(): Promise<void> {
+		fullRefreshPending = true;
 		return reviewRefresh.run();
 	}
 
@@ -284,18 +324,20 @@ export function createReviewComments(
 		listen<string | null>("reviews-changed", (event) => {
 			if (!canonicalPath) return;
 			if (event.payload != null && event.payload !== canonicalPath) return;
+			fullRefreshPending = true;
 			reviewRefresh.invalidate();
 		}),
 	);
 
-	// Repository files or refs changed, so a comment against a superseded snapshot may
-	// have gone stale. The backend decides and stays silent unless a thread
-	// actually moved; when one did, its own reviews-changed brings the new
-	// rows back through the listener above.
 	unlisteners.push(
 		subscribeToRepoChanges(repoPath, {
 			includeRefs: true,
-			invalidate: () => stalenessRefresh.invalidate(),
+			invalidate(event) {
+				if (event.refs_only) {
+					refsPending = true;
+					if (active) refStalenessRefresh.invalidate();
+				} else stalenessRefresh.invalidate();
+			},
 		}),
 	);
 
@@ -361,6 +403,9 @@ export function createReviewComments(
 		get revision() {
 			return state.revision;
 		},
+		get revisionScope() {
+			return state.revisionScope;
+		},
 		get threadsAuthoritative() {
 			return state.threadsAuthoritative;
 		},
@@ -378,11 +423,13 @@ export function createReviewComments(
 		},
 		select,
 		refresh,
+		setActive,
 		destroy() {
 			cancelled = true;
 			loadSeq += 1;
 			reviewRefresh.dispose();
 			stalenessRefresh.dispose();
+			refStalenessRefresh.dispose();
 			for (const unlisten of unlisteners) unlisten();
 		},
 	};

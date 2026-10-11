@@ -847,8 +847,9 @@ fn a_reply_aimed_at_another_repos_thread_is_refused() {
 // ── Task 4: per-repo snapshot rows ───────────────────────────────────────────
 
 use trunk_lib::commands::review::{
-    ensure_review_snapshot_inner, read_snapshots_inner, recompute_staleness,
-    submit_current_file_thread_inner, submit_thread_into, sweep_once, sweep_unanchored_pins,
+    ensure_review_snapshot_inner, read_snapshots_inner, recompute_ref_staleness,
+    recompute_staleness, resolve_thread_refs_inner, submit_current_file_thread_inner,
+    submit_thread_into, sweep_once, sweep_unanchored_pins,
 };
 use trunk_review::snapshot::{SnapshotKind, pinned_snapshot_oids};
 
@@ -6084,6 +6085,121 @@ fn a_repo_with_a_pinned_block(
     .unwrap();
 
     (ctx, store)
+}
+
+#[test]
+fn refs_refresh_preserves_current_file_staleness_and_resolution() {
+    let (ctx, store) = a_repo_with_a_pinned_block("a.txt", "pinned\n", "pinned", 1);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "changed\n").unwrap();
+
+    assert_eq!(
+        recompute_ref_staleness(&store, &canonical, ctx.path()).unwrap(),
+        0
+    );
+    assert!(!only_thread(&store, &canonical).stale);
+    assert!(
+        resolve_thread_refs_inner(&store, &canonical, ctx.path(), None)
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        recompute_staleness(&store, &canonical, ctx.path()).unwrap(),
+        1
+    );
+}
+
+#[test]
+fn refs_refresh_preserves_snapshot_supersession() {
+    let (ctx, store, _) = a_thread_on_a_workdir_snapshot("snapshot comment");
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "changed\n").unwrap();
+
+    assert_eq!(
+        recompute_ref_staleness(&store, &canonical, ctx.path()).unwrap(),
+        0
+    );
+    assert!(!only_thread(&store, &canonical).stale);
+    assert_eq!(
+        recompute_staleness(&store, &canonical, ctx.path()).unwrap(),
+        1
+    );
+    assert_eq!(
+        recompute_ref_staleness(&store, &canonical, ctx.path()).unwrap(),
+        0
+    );
+    assert!(only_thread(&store, &canonical).stale);
+}
+
+#[test]
+fn refs_refresh_recovers_a_snapshot_anchor_without_clearing_supersession() {
+    let (ctx, store, snapshot) = a_thread_on_a_workdir_snapshot("snapshot comment");
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "changed\n").unwrap();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+    let object = ctx
+        .repo_path()
+        .join(".git/objects")
+        .join(&snapshot[..2])
+        .join(&snapshot[2..]);
+    let bytes = std::fs::read(&object).unwrap();
+    std::fs::remove_file(&object).unwrap();
+
+    let missing = resolve_thread_refs_inner(&store, &canonical, ctx.path(), None).unwrap();
+
+    assert_eq!(missing.len(), 1);
+    assert_eq!(
+        missing[0].reason,
+        Some(trunk_review::resolution::OrphanReason::CommitGone)
+    );
+    assert!(only_thread(&store, &canonical).stale);
+
+    std::fs::write(&object, bytes).unwrap();
+    assert_eq!(
+        recompute_ref_staleness(&store, &canonical, ctx.path()).unwrap(),
+        0
+    );
+    let restored = resolve_thread_refs_inner(&store, &canonical, ctx.path(), None).unwrap();
+
+    assert_eq!(restored.len(), 1);
+    assert!(restored[0].resolvable);
+    assert_eq!(restored[0].reason, None);
+    assert!(only_thread(&store, &canonical).stale);
+}
+
+#[test]
+fn refs_refresh_recovers_a_restored_commit_anchor() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let oid = common::snapshots::a_commit_off_every_branch(&ctx);
+    submit_thread_inner(&store, &canonical, a_diff_thread_on(&oid), 1_000).unwrap();
+    let object = ctx
+        .repo_path()
+        .join(".git/objects")
+        .join(&oid[..2])
+        .join(&oid[2..]);
+    let bytes = std::fs::read(&object).unwrap();
+    std::fs::remove_file(&object).unwrap();
+    assert_eq!(
+        recompute_ref_staleness(&store, &canonical, ctx.path()).unwrap(),
+        1
+    );
+    assert!(only_thread(&store, &canonical).stale);
+    assert!(
+        !resolve_thread_refs_inner(&store, &canonical, ctx.path(), None).unwrap()[0].resolvable
+    );
+    std::fs::write(&object, bytes).unwrap();
+
+    assert_eq!(
+        recompute_ref_staleness(&store, &canonical, ctx.path()).unwrap(),
+        1
+    );
+    assert!(!only_thread(&store, &canonical).stale);
+    assert!(resolve_thread_refs_inner(&store, &canonical, ctx.path(), None).unwrap()[0].resolvable);
 }
 
 /// The pin's block is taken from the file itself at submit time, not from

@@ -261,6 +261,19 @@ sessions it admitted; completion cannot begin reconciliation for a reopened sess
 Graph page/stat requests name the revision they index and
 reject a replacement that happened before notification delivery.
 
+Ref reconciliation waits for an automatic owner, whose transport has a deadline. It does
+not wait for a foreground owner: terminal ref changes still pass through the capture and
+publication fences while a foreground network command is held. Changed refs update graph
+and branch projections on activation of an inactive tab. Review refreshes check commit
+anchor availability and resolve anchors only; they preserve current-file results and
+snapshot supersession markers. File/index/HEAD/config/stash events keep the full local
+staleness path. Local and ref observations have separate generation fences, so a partial
+ref refresh cannot discard an in-flight local observation. Ref-derived staleness writes
+are quiet for the database revision poll; the scoped caller refreshes its projection
+directly. Primary review writes retain broad notifications. Each app instance observes
+its own repository ref events, so these derived writes do not announce an external
+store revision.
+
 **State Management:**
 - `App.svelte` owns: tab array, active tab, layout dimensions (pane widths, zoom) — all `$state`
 - `RepoView.svelte` owns: per-repo selection state (selected commit OID, selected file, dirty counts, head branch) — all `$state`

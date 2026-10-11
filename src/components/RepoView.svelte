@@ -214,6 +214,7 @@ const reviewComments = createReviewComments(
 	untrack(() => repoPath),
 	scheduler,
 );
+$effect(() => reviewComments.setActive(tabActive));
 const reviewEditors: ReviewEditorStore = createReviewEditorStore();
 
 // The review draws the reviewer by their initials, read once from the name the
@@ -345,7 +346,7 @@ async function handleReviewJumpToCommit(oid: string) {
 let refreshSignal = $state(0);
 let graphRefreshSignal = $state(0);
 let worktreeRefreshSignal = $state(0);
-let refsRefreshSignal = $state(0);
+let sidebarRefreshSignal = $state(0);
 let cachedGraphRevision = $state<number | undefined>();
 let pendingRefsRevision = $state<number | undefined>();
 let dirtyCounts = $state<DirtyCounts>({
@@ -929,6 +930,7 @@ onDestroy(() => {
 function handleRefresh() {
 	refreshSignal += 1;
 	graphRefreshSignal += 1;
+	sidebarRefreshSignal += 1;
 }
 
 function clearStagingDiff() {
@@ -1735,32 +1737,36 @@ $effect(() => {
 	return () => clearTimeout(timer);
 });
 
-// Listen for repo-changed events scoped to this repo. Status, HEAD and the
-// notification read the whole repository, so every change concerns them. The
-// open file's diff is the one piece of work a change can miss, and it refetches
-// only for a change naming that file: every write anywhere under the repository
-// reaches the watcher, build output and ignored paths included, so a concurrent
-// process writing an unrelated file used to refetch the diff on screen
-// (TRUNK-232).
+function newestGraphRevision(
+	current: number | undefined,
+	received: number,
+): number {
+	return Math.max(current ?? 0, received);
+}
+
+// Ref publications wait for activation; local changes refresh worktree readers
+// immediately. File-specific diffs exclude writes to unrelated paths (TRUNK-232).
 $effect(() => {
 	const path = repoPath;
 	return subscribeToRepoChanges(path, {
 		includeRefs: true,
-		invalidate(changed, event) {
-			if (event?.refs_only && event.graph_revision !== undefined) {
-				pendingRefsRevision = Math.max(
-					pendingRefsRevision ?? 0,
+		invalidate(event) {
+			const changed = event.paths;
+			if (event.refs_only && event.graph_revision !== undefined) {
+				pendingRefsRevision = newestGraphRevision(
+					pendingRefsRevision,
 					event.graph_revision,
 				);
 				return;
 			}
-			if (event?.graph_revision !== undefined) {
-				cachedGraphRevision = Math.max(
-					cachedGraphRevision ?? 0,
+			if (event.graph_revision !== undefined) {
+				cachedGraphRevision = newestGraphRevision(
+					cachedGraphRevision,
 					event.graph_revision,
 				);
 				refreshSignal += 1;
 				worktreeRefreshSignal += 1;
+				sidebarRefreshSignal += 1;
 			} else repoNotification.invalidate();
 			dirtyCountsRefresh.invalidate();
 			headBranchRefresh.invalidate();
@@ -1792,9 +1798,9 @@ $effect(() => {
 	if (!tabActive || pendingRefsRevision === undefined) return;
 	const revision = pendingRefsRevision;
 	untrack(() => {
-		cachedGraphRevision = Math.max(cachedGraphRevision ?? 0, revision);
+		cachedGraphRevision = newestGraphRevision(cachedGraphRevision, revision);
 		pendingRefsRevision = undefined;
-		refsRefreshSignal += 1;
+		sidebarRefreshSignal += 1;
 		headBranchRefresh.invalidate();
 	});
 });
@@ -2266,7 +2272,7 @@ function stepRightPane(delta: number) {
 					loadedRows={() => commitGraphRef?.loadedRows() ?? 0}
 					onstashselect={handleCommitSelect}
 					onrefnavigate={handleRefNavigate}
-					refreshSignal={refreshSignal + refsRefreshSignal}
+					refreshSignal={sidebarRefreshSignal}
 					workingTreeDirty={wipCount > 0}
 					onopenrebaseeditor={handleOpenRebaseEditor}
 					onopenmessageeditor={handleOpenMessageEditor}

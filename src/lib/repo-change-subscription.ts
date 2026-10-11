@@ -3,23 +3,16 @@ import { listen } from "@tauri-apps/api/event";
 /** The `repo-changed` payload the backend emits (`src-tauri/src/watcher.rs`). */
 export interface RepoChanged {
 	repo: string;
-	/** The files the change touched, relative to the repository root. Empty when
-	 *  the writer could not name them, which every subscriber treats as a change
-	 *  it must refresh for. */
+	/** Paths relative to the repository root. Empty denotes an unscoped change;
+	 * refs-only publications are delivered only to subscribers that include refs. */
 	paths: string[];
 	refs_only?: boolean;
 	graph_revision?: number;
 }
 
-/** Notified of a change to the repository it was subscribed for.
- *
- *  `changed` names the files the change touched, and is empty when the writer
- *  could not name them. A subscriber whose work depends on particular files
- *  reads it to skip a write that concerns none of them; one that reads the whole
- *  repository ignores it (TRUNK-232). */
 export interface RepoChangeSubscriber {
 	includeRefs?: boolean;
-	invalidate(changed: readonly string[], event?: RepoChanged): void;
+	invalidate(event: RepoChanged): void;
 }
 
 /**
@@ -38,7 +31,7 @@ export function subscribeToRepoChanges(
 		if (disposed || event.payload.repo !== repoPath) return;
 		if (event.payload.refs_only && !subscriber.includeRefs) return;
 
-		subscriber.invalidate(event.payload.paths, event.payload);
+		subscriber.invalidate(event.payload);
 	}).then((registeredUnlisten) => {
 		if (disposed) registeredUnlisten();
 		else unlisten = registeredUnlisten;

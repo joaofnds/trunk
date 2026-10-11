@@ -33,7 +33,19 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use trunk_git::error::TrunkError;
 
-type RecomputeGenerations = Mutex<HashMap<GenerationKey, Weak<Mutex<u64>>>>;
+type RecomputeGenerations = Mutex<HashMap<GenerationKey, Weak<Mutex<ObservationGeneration>>>>;
+
+#[derive(Clone, Copy, Default)]
+struct ObservationGeneration {
+    local: u64,
+    refs: u64,
+}
+
+#[derive(Clone, Copy)]
+enum ObservationKind {
+    Local,
+    Refs,
+}
 
 #[derive(Hash, PartialEq, Eq)]
 struct GenerationKey {
@@ -90,29 +102,86 @@ pub fn recompute(
     let generation_clock = generation_clock(store, repo_path);
     let generation = {
         let mut current = generation_clock.lock().unwrap();
-        *current = current.wrapping_add(1);
+        current.local = current.local.wrapping_add(1);
+        current.refs = current.refs.wrapping_add(1);
         *current
     };
     let rows = store.read(|conn| rows(conn, repo_path))?;
-    let changes = plan(rows, standing, read_file)?;
+    let mut changes = plan(rows, standing, read_file)?;
 
     // Hold the generation only across the short store write. A newer pass can
     // invalidate this observation while repository I/O is in flight, but can
     // never start between this check and the write it protects.
     let current = generation_clock.lock().unwrap();
-    if *current != generation {
+    changes.retain(|change| match change.observation {
+        ObservationKind::Local => current.local == generation.local,
+        ObservationKind::Refs => current.refs == generation.refs,
+    });
+
+    let result = store.write_if(|tx| apply(tx, &changes), |changed| *changed > 0);
+    drop(current);
+    result
+}
+
+/// Refresh only real-commit availability. `None` preserves a snapshot marker;
+/// file pins are never observed. A refs pass cannot cancel a local observation.
+/// # Errors
+/// Returns a store or repository observation error.
+/// # Panics
+/// Panics when the repository generation lock is poisoned.
+pub fn recompute_refs(
+    store: &Store,
+    repo_path: &Path,
+    stale_anchor: &impl Fn(&str, Provenance) -> Result<Option<bool>, TrunkError>,
+) -> Result<usize, TrunkError> {
+    let clock = generation_clock(store, repo_path);
+    let generation = {
+        let mut current = clock.lock().unwrap();
+        current.refs = current.refs.wrapping_add(1);
+        current.refs
+    };
+    let rows = store.read(|conn| rows(conn, repo_path))?;
+    let mut changes = Vec::new();
+
+    for row in rows {
+        if row.pin.is_some() {
+            continue;
+        }
+
+        let Some(oid) = row.commit_oid.as_deref() else {
+            continue;
+        };
+
+        let Some(is_stale) = stale_anchor(oid, row.provenance)? else {
+            continue;
+        };
+
+        if is_stale != row.was_stale {
+            changes.push(StaleChange {
+                id: row.id,
+                is_stale,
+                resolved_start_line: row.resolved_start_line,
+                was_stale: row.was_stale,
+                was_resolved_start_line: row.resolved_start_line,
+                observation: ObservationKind::Refs,
+            });
+        }
+    }
+
+    let current = clock.lock().unwrap();
+    if current.refs != generation {
         return Ok(0);
     }
 
-    let result = store.write_if(|tx| apply(tx, &changes), |changed| *changed > 0);
-    debug_assert_eq!(*current, generation);
+    let result = store.write_quiet(|tx| apply(tx, &changes));
+    drop(current);
 
     result
 }
 
 /// The latest observation started for each repository. The registry keeps weak
 /// entries so closing a repository leaves no permanent process state behind.
-fn generation_clock(store: &Store, repo_path: &Path) -> Arc<Mutex<u64>> {
+fn generation_clock(store: &Store, repo_path: &Path) -> Arc<Mutex<ObservationGeneration>> {
     static GENERATIONS: OnceLock<RecomputeGenerations> = OnceLock::new();
 
     let key = GenerationKey {
@@ -128,7 +197,7 @@ fn generation_clock(store: &Store, repo_path: &Path) -> Arc<Mutex<u64>> {
         return generation;
     }
 
-    let generation = Arc::new(Mutex::new(0));
+    let generation = Arc::new(Mutex::new(ObservationGeneration::default()));
     generations.insert(key, Arc::downgrade(&generation));
 
     generation
@@ -146,14 +215,28 @@ fn plan(
     let mut changes = Vec::new();
     for row in rows {
         let observed = row.pin.as_ref().map(|pin| observe(pin, read_file));
-        let is_stale = match &observed {
-            Some(pin) => pin.stale,
+        let (is_stale, observation) = match &observed {
+            Some(pin) => (pin.stale, ObservationKind::Local),
             None => match row.commit_oid.as_deref() {
-                Some(oid) => matches!(
-                    standing(oid, row.provenance)?,
-                    SnapshotStanding::Superseded | SnapshotStanding::Collected
-                ),
-                None => false,
+                Some(oid) => {
+                    let state = standing(oid, row.provenance)?;
+                    let observation = if state == SnapshotStanding::NotASnapshot
+                        || (state == SnapshotStanding::Collected
+                            && row.provenance == Provenance::Unrecorded)
+                    {
+                        ObservationKind::Refs
+                    } else {
+                        ObservationKind::Local
+                    };
+                    (
+                        matches!(
+                            state,
+                            SnapshotStanding::Superseded | SnapshotStanding::Collected
+                        ),
+                        observation,
+                    )
+                }
+                None => (false, ObservationKind::Local),
             },
         };
         let resolved_line = observed.and_then(|pin| pin.line);
@@ -167,6 +250,7 @@ fn plan(
             resolved_start_line: resolved_line,
             was_stale: row.was_stale,
             was_resolved_start_line: row.resolved_start_line,
+            observation,
         });
     }
 
@@ -218,6 +302,7 @@ struct StaleChange {
     resolved_start_line: Option<u32>,
     was_stale: bool,
     was_resolved_start_line: Option<u32>,
+    observation: ObservationKind,
 }
 
 /// What the block search needs from a row. Not the full `ContentPin`: the
@@ -569,6 +654,30 @@ mod tests {
     }
 
     #[test]
+    fn a_refs_projection_updates_staleness_without_triggering_a_full_poll_refresh() {
+        let (dir, store) = store();
+        let id = thread_anchored_to(&store, "MISSING");
+        let (ticker, driver) = crate::reviewdb::poll::ManualTicker::new();
+        let poll_events = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let notified = std::sync::Arc::clone(&poll_events);
+        let poll = crate::reviewdb::poll::spawn_ticked(dir.path(), ticker, move || {
+            notified.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        });
+
+        let changed = recompute_refs(&store, &repo_path(), &|_, _| Ok(Some(true))).unwrap();
+        assert!(driver.run_cycle());
+
+        assert_eq!(changed, 1);
+        assert!(staleness_of(&store, &id));
+        assert_eq!(poll_events.load(std::sync::atomic::Ordering::SeqCst), 0);
+        store.write(|_| Ok(())).unwrap();
+        assert!(driver.run_cycle());
+        assert_eq!(poll_events.load(std::sync::atomic::Ordering::SeqCst), 1);
+        drop(driver);
+        assert!(poll.ran_and_stopped());
+    }
+
+    #[test]
     fn a_standing_error_aborts_recomputation() {
         let (_dir, store) = store();
         let first = thread_anchored_to(&store, "FIRST");
@@ -678,6 +787,68 @@ mod tests {
         release_older.send(()).unwrap();
         assert_eq!(older.join().unwrap().unwrap(), 0);
         assert!(staleness_of(&store, &id));
+    }
+
+    #[test]
+    fn a_refs_refresh_does_not_cancel_a_pending_local_observation() {
+        let (_dir, store) = store();
+        let store = Arc::new(store);
+        let id = thread_anchored_to(&store, "SNAPSHOT");
+        let (observed, wait_for_observation) = mpsc::sync_channel(0);
+        let (release, released) = mpsc::sync_channel(0);
+        let local_store = Arc::clone(&store);
+        let local = thread::spawn(move || {
+            recompute(
+                &local_store,
+                &repo_path(),
+                &|_, _| {
+                    observed.send(()).unwrap();
+                    released.recv().unwrap();
+                    Ok(SnapshotStanding::Superseded)
+                },
+                &no_file,
+            )
+        });
+        wait_for_observation.recv().unwrap();
+        assert_eq!(
+            recompute_refs(&store, &repo_path(), &|_, _| Ok(None)).unwrap(),
+            0
+        );
+        release.send(()).unwrap();
+
+        assert_eq!(local.join().unwrap().unwrap(), 1);
+        assert!(staleness_of(&store, &id));
+    }
+
+    #[test]
+    fn a_newer_refs_observation_fences_an_older_full_anchor_read() {
+        let (_dir, store) = store();
+        let store = Arc::new(store);
+        let id = thread_anchored_to(&store, "COMMIT");
+        let (observed, wait_for_observation) = mpsc::sync_channel(0);
+        let (release, released) = mpsc::sync_channel(0);
+        let old_store = Arc::clone(&store);
+        let old = thread::spawn(move || {
+            recompute(
+                &old_store,
+                &repo_path(),
+                &|_, _| {
+                    observed.send(()).unwrap();
+                    released.recv().unwrap();
+                    Ok(SnapshotStanding::Collected)
+                },
+                &no_file,
+            )
+        });
+        wait_for_observation.recv().unwrap();
+        assert_eq!(
+            recompute_refs(&store, &repo_path(), &|_, _| Ok(Some(false))).unwrap(),
+            0
+        );
+        release.send(()).unwrap();
+
+        assert_eq!(old.join().unwrap().unwrap(), 0);
+        assert!(!staleness_of(&store, &id));
     }
 
     /// This proves only that `recompute` has the extra match arm. The defect

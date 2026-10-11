@@ -523,20 +523,62 @@ function reportReadFailure(reason: unknown) {
 // read of the pair — it walks to a blob per comment — so a stale answer would
 // otherwise land on top of a fresh one.
 let loadSeq = 0;
+let fullResolutionPending = false;
+let refsResolutionPending = false;
 
 // resolve_threads answers for the shown review, or with an empty list when the
 // repo has none — a normal state, not a failure.
 async function loadResolutions(reviewId: string | null) {
 	const seq = ++loadSeq;
+	fullResolutionPending = true;
+
 	try {
 		const next = await safeInvoke<CommentResolution[]>("resolve_threads", {
 			path: repoPath,
 			reviewId,
 		});
 		if (seq !== loadSeq) return;
+
 		resolutions = next;
 	} catch (e) {
 		if (seq !== loadSeq) return;
+
+		reportReadFailure(e);
+	} finally {
+		if (seq === loadSeq) {
+			fullResolutionPending = false;
+			if (refsResolutionPending) {
+				refsResolutionPending = false;
+				void loadRefResolutions(shownReviewId);
+			}
+		}
+	}
+}
+
+async function loadRefResolutions(reviewId: string | null) {
+	if (fullResolutionPending) {
+		refsResolutionPending = true;
+		return;
+	}
+
+	const seq = ++loadSeq;
+	try {
+		const next = await safeInvoke<CommentResolution[]>("resolve_thread_refs", {
+			path: repoPath,
+			reviewId,
+		});
+		if (seq !== loadSeq) return;
+
+		const anchors = new Map(
+			next.map((resolution) => [resolution.id, resolution]),
+		);
+		resolutions = [
+			...resolutions.filter((resolution) => !anchors.has(resolution.id)),
+			...next,
+		];
+	} catch (e) {
+		if (seq !== loadSeq) return;
+
 		reportReadFailure(e);
 	}
 }
@@ -681,12 +723,17 @@ $effect(() => {
 	untrack(() => reviewComments.refresh());
 });
 
-// Re-resolve whenever the owner lands a refresh. A counter, not the comments
-// array: array identity happens to change on every refresh today, but nothing
-// pins that, and a deep-equal skip there would silently freeze orphan badges.
+// Ref publications preserve file-pin resolutions; a new review needs a full
+// first resolution even when the last repository publication touched refs.
+let resolutionReviewId: string | null | undefined;
 $effect(() => {
 	void reviewComments.revision;
-	loadResolutions(shownReviewId);
+	const reviewId = shownReviewId;
+	const scope =
+		resolutionReviewId === reviewId ? reviewComments.revisionScope : "full";
+	resolutionReviewId = reviewId;
+	if (scope === "refs") void loadRefResolutions(reviewId);
+	else void loadResolutions(reviewId);
 });
 
 // Keyed on the failure, NOT on revision: a refused store fails every read and

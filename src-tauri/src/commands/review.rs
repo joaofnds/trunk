@@ -973,6 +973,39 @@ pub async fn refresh_thread_staleness<R: Runtime>(
     Ok(changed)
 }
 
+/// Refresh real commit availability after a refs-only event. The requesting view
+/// reads the result directly, avoiding a broad review event and file resolution.
+/// # Errors
+/// Returns a store, repository or blocking-task error as JSON.
+#[tauri::command]
+pub async fn refresh_thread_ref_staleness<R: Runtime>(
+    path: String,
+    state: State<'_, RepoState>,
+    store: State<'_, ReviewStoreState>,
+    app: AppHandle<R>,
+) -> Result<usize, String> {
+    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    blocking_store(move || recompute_ref_staleness(&store, &canonical, &path)).await
+}
+
+/// Resolve only commit anchors after a refs-only event; retain file-pin results.
+/// # Errors
+/// Returns a store, repository or blocking-task error as JSON.
+#[tauri::command]
+pub async fn resolve_thread_refs<R: Runtime>(
+    path: String,
+    review_id: Option<String>,
+    state: State<'_, RepoState>,
+    store: State<'_, ReviewStoreState>,
+    app: AppHandle<R>,
+) -> Result<Vec<CommentResolution>, String> {
+    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    blocking_store(move || {
+        resolve_thread_refs_inner(&store, &canonical, &path, review_id.as_deref())
+    })
+    .await
+}
+
 // ── Reviews ──────────────────────────────────────────────────────────────────
 
 /// # Errors
@@ -1714,6 +1747,55 @@ pub fn recompute_staleness(
         &standing_of,
         &read_working_tree_file,
     )
+}
+
+/// Refresh the ref-dependent part of a thread's state without observing local files.
+/// # Errors
+/// Returns the store or repository observation error.
+pub fn recompute_ref_staleness(
+    store: &Store,
+    canonical: &Path,
+    repo_path: &str,
+) -> Result<usize, TrunkError> {
+    use trunk_review::reviewdb::minted::Provenance;
+    let repo = git2::Repository::open(repo_path)?;
+
+    trunk_review::reviewdb::stale::recompute_refs(store, canonical, &|oid, provenance| {
+        let Ok(oid) = git2::Oid::from_str(oid) else {
+            return Ok(Some(false));
+        };
+
+        match repo.find_commit(oid) {
+            Ok(commit) => Ok((!provenance.names_a_snapshot(&commit)).then_some(false)),
+            Err(error) if error.code() == git2::ErrorCode::NotFound => {
+                Ok((provenance == Provenance::Unrecorded).then_some(true))
+            }
+            Err(error) => Err(error.into()),
+        }
+    })
+}
+
+/// Resolve anchors after remote refs change, retaining current-file projections.
+/// # Errors
+/// Returns the store or repository read error.
+pub fn resolve_thread_refs_inner(
+    store: &Store,
+    canonical: &Path,
+    repo_path: &str,
+    review_id: Option<&str>,
+) -> Result<Vec<CommentResolution>, TrunkError> {
+    let threads = store.read(|conn| {
+        let Some(id) = reviews::requested_or_active(conn, canonical, review_id)? else {
+            return Ok(vec![]);
+        };
+        threads::list_for_review(conn, &id, trunk_review::types::Channel::Human)
+    })?;
+    let repo = git2::Repository::open(repo_path)?;
+    let anchors = threads
+        .into_iter()
+        .filter(|thread| thread.content_pin.is_none())
+        .collect();
+    Ok(resolve_all(&as_comments(anchors), &repo))
 }
 
 /// Delete the keepalive refs of snapshots that are finished with.

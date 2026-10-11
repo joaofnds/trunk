@@ -198,9 +198,9 @@ impl Store {
         self.write_bumping(f, |_| true)
     }
 
-    /// A write the poll must not announce: today only the per-keystroke draft
-    /// autosave, whose bump would refetch every thread while the user types
-    /// (plan §3). Everything else goes through `write`.
+    /// A write the poll must not announce: draft autosave and refs-only
+    /// staleness projections. Their owners refresh directly; a broad poll
+    /// announcement would reread every thread and current-file pin.
     ///
     /// # Errors
     ///

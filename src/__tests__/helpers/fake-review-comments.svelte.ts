@@ -124,6 +124,9 @@ export function createFakeReviewComments(): FakeReviewComments {
 		get revision() {
 			return state.revision;
 		},
+		get revisionScope(): "full" | "refs" {
+			return "full";
+		},
 		get threadsAuthoritative() {
 			return state.threadsAuthoritative;
 		},
@@ -160,6 +163,7 @@ export function createFakeReviewComments(): FakeReviewComments {
 			return this.refresh();
 		},
 		destroy() {},
+		setActive() {},
 		seed(next: Partial<Store>) {
 			seeded = { ...seeded, ...next };
 		},
