@@ -200,7 +200,7 @@ fn completed_fetch_and_drained_watcher_delivery_publish_each_ref_change_once() {
 #[test]
 fn terminal_ref_changes_publish_while_a_foreground_owner_is_held() {
     let fixture = RemoteFixture::new();
-    let mut harness = Harness::with_watcher(WatcherState::default());
+    let mut harness = Harness::setup();
     harness.open(fixture.clone.path());
     let path = fixture.clone.path().to_str().unwrap().to_owned();
     let repo = fixture.clone();
@@ -220,22 +220,9 @@ fn terminal_ref_changes_publish_while_a_foreground_owner_is_held() {
         || true,
     )
     .unwrap();
-    let (send, received) = std::sync::mpsc::channel();
-    let watched = path.clone();
     let prior = harness.graph(fixture.clone.path())["revision"]
         .as_u64()
         .unwrap();
-    harness.app.listen_any("repo-changed", move |event| {
-        let change: RepoChanged = serde_json::from_str(event.payload()).unwrap();
-        if change.repo == watched
-            && change.refs_only
-            && change
-                .graph_revision
-                .is_some_and(|revision| revision > prior)
-        {
-            let _ = send.send(change);
-        }
-    });
     repo.reference(
         "refs/heads/terminal",
         fixture.existing,
@@ -243,10 +230,33 @@ fn terminal_ref_changes_publish_while_a_foreground_owner_is_held() {
         "terminal edit",
     )
     .unwrap();
-    let change = received
-        .recv_timeout(std::time::Duration::from_secs(10))
+    let observed_root = fixture.clone.path().canonicalize().unwrap();
+    let watcher = harness.app.state::<WatcherState>();
+    tauri::async_runtime::block_on(async {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            watcher.deliver_changes(
+                fixture.clone.path(),
+                vec![observed_root.join(".git/refs/heads/terminal")],
+                harness.app.handle(),
+            ),
+        )
+        .await
+        .expect("terminal refs must publish before foreground completion")
+        .unwrap();
+    });
+    let change = harness
+        .changes()
+        .into_iter()
+        .find(|change| {
+            change.repo == path
+                && change
+                    .graph_revision
+                    .is_some_and(|revision| revision > prior)
+        })
         .expect("terminal refs must publish before foreground completion");
 
+    assert!(change.refs_only);
     assert!(change.graph_revision.unwrap() > prior);
     assert!(running.0.lock().unwrap().busy(&path));
     assert!(
