@@ -137,6 +137,132 @@ fn invoke(
     .map(|body| body.deserialize::<Value>().unwrap())
 }
 
+#[test]
+fn completed_fetch_and_drained_watcher_delivery_publish_each_ref_change_once() {
+    let fixture = RemoteFixture::new();
+    let mut harness = Harness::setup();
+    harness.open(fixture.clone.path());
+    fixture.advance_main();
+    let observed_root = fixture.clone.path().canonicalize().unwrap();
+
+    let fetched = harness.fetch(fixture.clone.path());
+    let watcher = harness.app.state::<WatcherState>();
+    tauri::async_runtime::block_on(watcher.deliver_changes(
+        fixture.clone.path(),
+        vec![observed_root.join(".git/refs/remotes/origin/main")],
+        harness.app.handle(),
+    ))
+    .unwrap();
+
+    assert_eq!(fetched["graph_rebuilds"], 1);
+    assert_eq!(harness.changes().len(), 1);
+
+    fixture
+        .clone()
+        .reference(
+            "refs/heads/terminal",
+            fixture.root,
+            false,
+            "terminal update",
+        )
+        .unwrap();
+    tauri::async_runtime::block_on(watcher.deliver_changes(
+        fixture.clone.path(),
+        vec![observed_root.join(".git/refs/heads/terminal")],
+        harness.app.handle(),
+    ))
+    .unwrap();
+    let projected = harness.graph(fixture.clone.path());
+
+    assert_eq!(harness.changes().len(), 2);
+    assert!(
+        projected["commits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|row| row["refs"].as_array().unwrap())
+            .any(|reference| reference["name"] == "refs/heads/terminal")
+    );
+
+    let unchanged = harness.fetch(fixture.clone.path());
+    tauri::async_runtime::block_on(watcher.deliver_changes(
+        fixture.clone.path(),
+        vec![observed_root.join(".git/refs/remotes/origin/main")],
+        harness.app.handle(),
+    ))
+    .unwrap();
+
+    assert_eq!(unchanged["outcome"], "unchanged");
+    assert_eq!(unchanged["graph_rebuilds"], 0);
+    assert_eq!(harness.changes().len(), 2);
+}
+
+#[test]
+fn terminal_ref_changes_publish_while_a_foreground_owner_is_held() {
+    let fixture = RemoteFixture::new();
+    let mut harness = Harness::with_watcher(WatcherState::default());
+    harness.open(fixture.clone.path());
+    let path = fixture.clone.path().to_str().unwrap().to_owned();
+    let repo = fixture.clone();
+    let common = repo
+        .commondir()
+        .canonicalize()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let running = harness.app.state::<trunk_lib::state::RunningOp>();
+    let owner = trunk_lib::remote_ops::RemoteReservation::acquire_foreground_checked(
+        &running.0,
+        trunk_lib::remote_ops::RemoteTarget {
+            path: &path,
+            common: &common,
+        },
+        || true,
+    )
+    .unwrap();
+    let (send, received) = std::sync::mpsc::channel();
+    let watched = path.clone();
+    let prior = harness.graph(fixture.clone.path())["revision"]
+        .as_u64()
+        .unwrap();
+    harness.app.listen_any("repo-changed", move |event| {
+        let change: RepoChanged = serde_json::from_str(event.payload()).unwrap();
+        if change.repo == watched
+            && change.refs_only
+            && change
+                .graph_revision
+                .is_some_and(|revision| revision > prior)
+        {
+            let _ = send.send(change);
+        }
+    });
+    repo.reference(
+        "refs/heads/terminal",
+        fixture.existing,
+        false,
+        "terminal edit",
+    )
+    .unwrap();
+    let change = received
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("terminal refs must publish before foreground completion");
+
+    assert!(change.graph_revision.unwrap() > prior);
+    assert!(running.0.lock().unwrap().busy(&path));
+    assert!(
+        harness.graph(fixture.clone.path())["commits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|commit| commit["refs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|label| label["name"] == "refs/heads/terminal"))
+    );
+    drop(owner);
+}
+
 struct RemoteFixture {
     source: TestContext,
     remote: tempfile::TempDir,
@@ -1254,6 +1380,67 @@ mod cancellation {
     }
 
     #[test]
+    fn closing_a_blocked_fetch_cannot_publish_or_freshen_the_reopened_session() {
+        let fixture = RemoteFixture::new();
+        let repo = fixture.clone();
+        repo.remote("blocked", fixture.remote.path().to_str().unwrap())
+            .unwrap();
+        let (events, observations) = mpsc::channel();
+        let worker = BlockedWorker::setup(events.clone());
+        let mut harness = Harness::with_worker(WatcherState::disabled(), worker.executable.clone());
+        harness.open(fixture.clone.path());
+        let path = fixture.clone.path().to_str().unwrap().to_owned();
+        let old_session = harness
+            .app
+            .state::<CommitCache>()
+            .session_id(&path)
+            .unwrap();
+        let webview = harness.webview.clone();
+        let worker_path = path.clone();
+        let job = thread::spawn(move || {
+            let report = invoke(
+                &webview,
+                "git_fetch_background",
+                json!({"path": worker_path}),
+            )
+            .unwrap();
+            let _ = events.send(FetchEvent::Finished(report.clone()));
+            report
+        });
+        BlockedWorker::wait_for_request(&observations);
+
+        harness.invoke("close_repo", json!({"path": path})).unwrap();
+        harness.open(fixture.clone.path());
+        let reopened = harness.snapshot(fixture.clone.path());
+        let reopened_session = harness
+            .app
+            .state::<CommitCache>()
+            .session_id(&path)
+            .unwrap();
+        let cancelled = job.join().unwrap();
+        BlockedWorker::wait_for_exit(&observations);
+        repo.remote_delete("blocked").unwrap();
+        let checked = harness.fetch(fixture.clone.path());
+
+        assert_ne!(old_session, reopened_session);
+        assert_eq!(cancelled["outcome"], "cancelled");
+        assert_eq!(cancelled["graph_rebuilds"], 0);
+        assert_eq!(remote_outcome(&checked, "origin")["outcome"], "unchanged");
+        assert!(remote_outcome(&checked, "origin")["last_success_ms"].is_u64());
+        assert!(
+            harness
+                .changes()
+                .iter()
+                .all(|change| change.graph_revision.is_some())
+        );
+        assert!(reopened_session > old_session);
+        assert_eq!(
+            head_oid(&serde_json::to_value(&reopened).unwrap()),
+            fixture.root.to_string()
+        );
+    }
+
+    #[test]
     fn cancellation_survives_a_fetch_metadata_repair_failure() {
         let fixture = RemoteFixture::new();
         let repo = fixture.clone();
@@ -1316,7 +1503,7 @@ mod cancellation {
     }
 
     #[test]
-    fn cancellation_joins_a_blocked_worker_and_allows_the_next_job() {
+    fn cancellation_joins_a_blocked_worker_and_its_descendant_before_the_next_job() {
         let fixture = RemoteFixture::new();
         let other = RemoteFixture::new();
         let repo = fixture.clone();

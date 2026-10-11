@@ -5,7 +5,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
-use crate::remote_ops::{RemoteProcess, RemoteReservation};
+use crate::remote_ops::{RemoteProcess, RemoteReservation, RemoteTarget};
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RemoteOps, RepoState, RunningOp};
 use crate::watcher::RepoChanged;
@@ -90,10 +90,14 @@ async fn run_git_remote<'a, R: Runtime>(
     })
     .await
     .map_err(|error| TrunkError::new("spawn_error", error.to_string()))??;
-    let reservation =
-        RemoteReservation::acquire_checked(running, repo_path, &common, false, || {
-            app.state::<CommitCache>().session_id(repo_path) == Some(expected_session)
-        })?;
+    let reservation = RemoteReservation::acquire_foreground_checked(
+        running,
+        RemoteTarget {
+            path: repo_path,
+            common: &common,
+        },
+        || app.state::<CommitCache>().session_id(repo_path) == Some(expected_session),
+    )?;
 
     let mut command = Command::new("git");
     command

@@ -1279,10 +1279,18 @@ mod tests {
     #[test]
     fn cancellation_does_not_admit_a_new_operation_before_exit() {
         let mut running = super::RemoteOps::default();
-        running.reserve("/repo", "/common", true).unwrap();
+        running
+            .reserve_background(crate::remote_ops::RemoteTarget {
+                path: "/repo",
+                common: "/common",
+            })
+            .unwrap();
 
         running.cancel("/repo");
-        let next = running.reserve("/repo", "/common", false);
+        let next = running.reserve_foreground(crate::remote_ops::RemoteTarget {
+            path: "/repo",
+            common: "/common",
+        });
 
         assert_eq!(next.unwrap_err().code, "op_in_progress");
     }

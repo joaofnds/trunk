@@ -82,7 +82,10 @@ impl RemoteDriver<'_> {
             .0
             .lock()
             .unwrap()
-            .reserve(path, &common, false)
+            .reserve_foreground(trunk_lib::remote_ops::RemoteTarget {
+                path,
+                common: &common,
+            })
             .unwrap();
     }
 

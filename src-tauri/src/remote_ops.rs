@@ -102,14 +102,28 @@ impl RemoteProcess {
 struct Operation {
     path: String,
     common: String,
+    kind: OperationKind,
     process: Option<RemoteProcess>,
     cancelled: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum OperationKind {
+    Background,
+    Foreground,
+}
+
+#[derive(Clone, Copy)]
+pub struct RemoteTarget<'a> {
+    pub path: &'a str,
+    pub common: &'a str,
 }
 
 /// Atomic reservations, held through process exit and graph reconciliation.
 #[derive(Debug, Default)]
 pub struct RemoteOps {
     operations: HashMap<u64, Operation>,
+    ref_reconciliations: HashMap<String, usize>,
     sequence: u64,
     changed: Arc<Notify>,
 }
@@ -126,13 +140,26 @@ impl RemoteOps {
     ///
     /// Returns `op_in_progress` for a shared-repository conflict, or for any operation
     /// while a new background job is trying to acquire the application-wide permit.
-    pub fn reserve(
+    pub fn reserve_background(&mut self, target: RemoteTarget<'_>) -> Result<u64, TrunkError> {
+        if !self.operations.is_empty() || self.ref_reconciliations.contains_key(target.common) {
+            return Err(operation_in_progress());
+        }
+
+        self.reserve(target, OperationKind::Background)
+    }
+
+    /// # Errors
+    /// Returns `op_in_progress` for a shared-repository conflict.
+    pub fn reserve_foreground(&mut self, target: RemoteTarget<'_>) -> Result<u64, TrunkError> {
+        self.reserve(target, OperationKind::Foreground)
+    }
+
+    fn reserve(
         &mut self,
-        path: &str,
-        common: &str,
-        background: bool,
+        target: RemoteTarget<'_>,
+        kind: OperationKind,
     ) -> Result<u64, TrunkError> {
-        if self.busy(path) || self.busy(common) || (background && !self.operations.is_empty()) {
+        if self.busy(target.path) || self.busy(target.common) {
             return Err(TrunkError::new(
                 "op_in_progress",
                 "A remote operation is already running",
@@ -142,8 +169,9 @@ impl RemoteOps {
         self.operations.insert(
             self.sequence,
             Operation {
-                path: path.to_owned(),
-                common: common.to_owned(),
+                path: target.path.to_owned(),
+                common: target.common.to_owned(),
+                kind,
                 process: None,
                 cancelled: false,
             },
@@ -182,13 +210,12 @@ impl<'a> RemoteReservation<'a> {
     /// # Panics
     ///
     /// Panics when the registry lock is poisoned.
-    pub fn acquire(
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn acquire_background(
         running: &'a Mutex<RemoteOps>,
-        path: &str,
-        common: &str,
-        background: bool,
+        target: RemoteTarget<'_>,
     ) -> Result<Self, TrunkError> {
-        let id = running.lock().unwrap().reserve(path, common, background)?;
+        let id = running.lock().unwrap().reserve_background(target)?;
         Ok(Self { running, id })
     }
 
@@ -201,18 +228,41 @@ impl<'a> RemoteReservation<'a> {
     /// # Panics
     ///
     /// Panics when the registry lock is poisoned.
-    pub fn acquire_checked(
+    pub fn acquire_background_checked(
         running: &'a Mutex<RemoteOps>,
-        path: &str,
-        common: &str,
-        background: bool,
+        target: RemoteTarget<'_>,
         valid: impl FnOnce() -> bool,
+    ) -> Result<Self, TrunkError> {
+        Self::acquire_checked(running, valid, |registry| {
+            registry.reserve_background(target)
+        })
+    }
+
+    /// # Errors
+    /// Returns `not_open` for a closed session or `op_in_progress` for a conflicting job.
+    /// # Panics
+    /// Panics when the registry lock is poisoned.
+    pub fn acquire_foreground_checked(
+        running: &'a Mutex<RemoteOps>,
+        target: RemoteTarget<'_>,
+        valid: impl FnOnce() -> bool,
+    ) -> Result<Self, TrunkError> {
+        Self::acquire_checked(running, valid, |registry| {
+            registry.reserve_foreground(target)
+        })
+    }
+
+    fn acquire_checked(
+        running: &'a Mutex<RemoteOps>,
+        valid: impl FnOnce() -> bool,
+        reserve: impl FnOnce(&mut RemoteOps) -> Result<u64, TrunkError>,
     ) -> Result<Self, TrunkError> {
         let mut registry = running.lock().unwrap();
         if !valid() {
             return Err(TrunkError::new("not_open", "Repository session was closed"));
         }
-        let id = registry.reserve(path, common, background)?;
+
+        let id = reserve(&mut registry)?;
         drop(registry);
         Ok(Self { running, id })
     }
@@ -276,26 +326,129 @@ impl Drop for RemoteReservation<'_> {
     }
 }
 
-/// Await the executing owner, without polling or dropping watcher notifications.
+pub struct RefReconciliation<'a> {
+    running: &'a Mutex<RemoteOps>,
+    common: String,
+}
+
+impl Drop for RefReconciliation<'_> {
+    fn drop(&mut self) {
+        let mut running = self.running.lock().unwrap();
+        let readers = running.ref_reconciliations.get_mut(&self.common).unwrap();
+        *readers -= 1;
+        if *readers == 0 {
+            running.ref_reconciliations.remove(&self.common);
+        }
+    }
+}
+
+/// Await the executing owner and exclude a new background job through reconciliation.
 ///
 /// # Panics
 ///
 /// Panics when the registry lock is poisoned.
-pub async fn wait_remote_idle(running: &Mutex<RemoteOps>, common: &str) {
+pub async fn wait_background_idle<'a>(
+    running: &'a Mutex<RemoteOps>,
+    common: &str,
+) -> RefReconciliation<'a> {
     let changed = Arc::clone(&running.lock().unwrap().changed);
     loop {
         let mut notified = std::pin::pin!(changed.notified());
         notified.as_mut().enable();
-        if !running.lock().unwrap().busy(common) {
-            return;
+        let admitted = {
+            let mut registry = running.lock().unwrap();
+            let busy = registry.operations.values().any(|operation| {
+                operation.common == common && operation.kind == OperationKind::Background
+            });
+            if !busy {
+                *registry
+                    .ref_reconciliations
+                    .entry(common.to_owned())
+                    .or_default() += 1;
+            }
+            !busy
+        };
+        if admitted {
+            return RefReconciliation {
+                running,
+                common: common.to_owned(),
+            };
         }
         notified.await;
     }
 }
 
+fn operation_in_progress() -> TrunkError {
+    TrunkError::new("op_in_progress", "A remote operation is already running")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn ref_reconciliation_excludes_a_new_background_owner() {
+        let running = Mutex::new(RemoteOps::default());
+        let target = RemoteTarget {
+            path: "/repo",
+            common: "/shared.git",
+        };
+        let observation = wait_background_idle(&running, target.common).await;
+
+        let attempted = running.lock().unwrap().reserve_background(target);
+
+        assert_eq!(attempted.unwrap_err().code, "op_in_progress");
+        drop(observation);
+        assert!(running.lock().unwrap().reserve_background(target).is_ok());
+    }
+
+    #[tokio::test]
+    async fn ref_reconciliation_allows_foreground_and_unrelated_background_work() {
+        let running = Mutex::new(RemoteOps::default());
+        let first = wait_background_idle(&running, "/shared.git").await;
+        let second = wait_background_idle(&running, "/shared.git").await;
+        let foreground = running
+            .lock()
+            .unwrap()
+            .reserve_foreground(RemoteTarget {
+                path: "/repo",
+                common: "/shared.git",
+            })
+            .unwrap();
+        running.lock().unwrap().complete(foreground);
+        let unrelated = running
+            .lock()
+            .unwrap()
+            .reserve_background(RemoteTarget {
+                path: "/other",
+                common: "/other.git",
+            })
+            .unwrap();
+        running.lock().unwrap().complete(unrelated);
+        drop(first);
+
+        assert!(
+            running
+                .lock()
+                .unwrap()
+                .reserve_background(RemoteTarget {
+                    path: "/repo",
+                    common: "/shared.git",
+                })
+                .is_err()
+        );
+        drop(second);
+        assert!(
+            running
+                .lock()
+                .unwrap()
+                .reserve_background(RemoteTarget {
+                    path: "/repo",
+                    common: "/shared.git",
+                })
+                .is_ok()
+        );
+    }
 
     #[cfg(unix)]
     #[test]
@@ -345,21 +498,33 @@ mod tests {
     fn worktree_aliases_share_exclusion_and_old_completion_cannot_release_a_new_owner() {
         let mut operations = RemoteOps::default();
         let first = operations
-            .reserve("worktree-a", "canonical-common", true)
+            .reserve_background(RemoteTarget {
+                path: "worktree-a",
+                common: "canonical-common",
+            })
             .unwrap();
         assert!(
             operations
-                .reserve("worktree-b", "canonical-common", false)
+                .reserve_foreground(RemoteTarget {
+                    path: "worktree-b",
+                    common: "canonical-common"
+                })
                 .is_err()
         );
         assert!(
             operations
-                .reserve("another-repo", "another-common", true)
+                .reserve_background(RemoteTarget {
+                    path: "another-repo",
+                    common: "another-common"
+                })
                 .is_err()
         );
         operations.complete(first);
         let second = operations
-            .reserve("worktree-b", "canonical-common", false)
+            .reserve_foreground(RemoteTarget {
+                path: "worktree-b",
+                common: "canonical-common",
+            })
             .unwrap();
         operations.complete(first);
         assert!(operations.busy("canonical-common"));

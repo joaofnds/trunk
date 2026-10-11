@@ -176,14 +176,20 @@ enum GitChange {
     Worktree,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RefRefresh {
+    Running,
+    Pending,
+}
+
 fn route_changes<R: Runtime>(
     watched: &Path,
     roots: &[PathBuf],
     git: Option<&GitDirectories>,
     changed: Vec<PathBuf>,
     app: &AppHandle<R>,
-    pending: &Arc<Mutex<HashMap<String, bool>>>,
-) {
+    pending: &Arc<Mutex<HashMap<String, RefRefresh>>>,
+) -> Option<tauri::async_runtime::JoinHandle<()>> {
     let mut relevant = Vec::new();
     let mut worktree = changed.is_empty();
     for path in changed {
@@ -197,7 +203,7 @@ fn route_changes<R: Runtime>(
         }
     }
     if relevant.is_empty() && !worktree {
-        return;
+        return None;
     }
     let repo = watched.to_string_lossy().to_string();
     let cache = app.state::<crate::state::CommitCache>();
@@ -207,27 +213,33 @@ fn route_changes<R: Runtime>(
             "repo-changed",
             RepoChanged::scoped_to(watched, roots, &relevant),
         );
-        return;
+        return None;
     }
     {
         let mut pending = pending.lock().unwrap();
-        if let Some(dirty) = pending.get_mut(&repo) {
-            *dirty = true;
-            return;
+        if let Some(refresh) = pending.get_mut(&repo) {
+            *refresh = RefRefresh::Pending;
+            return None;
         }
-        pending.insert(repo.clone(), false);
+        pending.insert(repo.clone(), RefRefresh::Running);
     }
     let common = git.map(|git| git.common.to_string_lossy().to_string());
     let pending = Arc::clone(pending);
     let app = app.clone();
     let location = watched.to_path_buf();
-    tauri::async_runtime::spawn(async move {
+    Some(tauri::async_runtime::spawn(async move {
         loop {
-            if let Some(common) = &common {
-                let running = app.state::<crate::state::RunningOp>();
-                crate::remote_ops::wait_remote_idle(&running.0, common).await;
-            }
-            pending.lock().unwrap().insert(repo.clone(), false);
+            let running = app.state::<crate::state::RunningOp>();
+            let _reconciliation = match &common {
+                Some(common) => {
+                    Some(crate::remote_ops::wait_background_idle(&running.0, common).await)
+                }
+                None => None,
+            };
+            pending
+                .lock()
+                .unwrap()
+                .insert(repo.clone(), RefRefresh::Running);
             let cache = app.state::<crate::state::CommitCache>();
             let visibility = app.state::<crate::state::RefVisibilityState>();
             match crate::state::GraphRebuild::new(&cache, &visibility)
@@ -247,20 +259,20 @@ fn route_changes<R: Runtime>(
                 }
             }
             let mut pending = pending.lock().unwrap();
-            if !pending.get(&repo).copied().unwrap_or(false) {
+            if pending.get(&repo) != Some(&RefRefresh::Pending) {
                 pending.remove(&repo);
                 drop(pending);
                 break;
             }
         }
-    });
+    }))
 }
 
 pub type WatcherMap = HashMap<String, Debouncer<RecommendedWatcher>>;
 pub struct WatcherState {
     pub watchers: Mutex<WatcherMap>,
     pub enabled: bool,
-    pending_refs: Arc<Mutex<HashMap<String, bool>>>,
+    pending_refs: Arc<Mutex<HashMap<String, RefRefresh>>>,
 }
 
 impl Default for WatcherState {
@@ -282,6 +294,32 @@ impl WatcherState {
             enabled: false,
             ..Default::default()
         }
+    }
+
+    /// Deliver an observed batch and join its ref reconciliation without an OS debounce.
+    /// # Errors
+    /// Returns `spawn_error` if the reconciliation task fails to join.
+    #[cfg(feature = "test-util")]
+    pub async fn deliver_changes<R: Runtime>(
+        &self,
+        path: &Path,
+        changed: Vec<PathBuf>,
+        app: &AppHandle<R>,
+    ) -> Result<(), TrunkError> {
+        let git = GitDirectories::open(path);
+        if let Some(task) = route_changes(
+            path,
+            &root_forms(path),
+            git.as_ref(),
+            changed,
+            app,
+            &self.pending_refs,
+        ) {
+            task.await
+                .map_err(|error| TrunkError::new("spawn_error", error.to_string()))?;
+        }
+
+        Ok(())
     }
 }
 
@@ -334,14 +372,14 @@ where
 
             let changed: Vec<PathBuf> = events.into_iter().map(|event| event.path).collect();
 
-            route_changes(
+            drop(route_changes(
                 &watched,
                 &roots,
                 callback_git.as_ref(),
                 changed,
                 &app,
                 &pending,
-            );
+            ));
         },
     )
     .map_err(|_| TrunkError::new("watcher_unavailable", "Repository watcher could not start"))?;

@@ -252,8 +252,13 @@ of the parent repository; fetching submodules still requires foreground Fetch.
 
 The watcher filters fetch bookkeeping (FETCH_HEAD, objects, ordinary reflogs and lock files),
 watches shared Git directories for linked worktrees and compares ref input stamps rather
-than dropping notifications for a time window. Session/generation checks fence closed or
-superseded graph publications. Graph page/stat requests name the revision they index and
+than dropping notifications for a time window. Ref reconciliation waits for an automatic
+owner and holds an admission guard through capture and publication, excluding a new
+automatic fetch on that shared repository. Foreground ownership does not block independent
+terminal ref reconciliation. Session/generation checks fence closed or
+superseded graph publications. A background job reconciles only the worktree opening
+sessions it admitted; completion cannot begin reconciliation for a reopened session.
+Graph page/stat requests name the revision they index and
 reject a replacement that happened before notification delivery.
 
 **State Management:**

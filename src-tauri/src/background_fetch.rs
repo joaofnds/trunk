@@ -13,7 +13,7 @@ use trunk_git::error::TrunkError;
 
 use crate::fetch_worker::{WorkerRequest, WorkerResult};
 use crate::ref_state::RefState;
-use crate::remote_ops::{RemoteProcess, RemoteReservation};
+use crate::remote_ops::{RemoteProcess, RemoteReservation, RemoteTarget};
 use crate::state::{CommitCache, GraphRebuild, RefVisibilityState, RepoState, RunningOp};
 use crate::watcher::RepoChanged;
 
@@ -536,7 +536,16 @@ pub async fn fetch<R: Runtime>(
     let session = cache
         .session_id(path)
         .ok_or_else(|| TrunkError::new("not_open", "Repository is closed"))?;
-    let location = state.snapshot().path_for(path)?.to_path_buf();
+    let open = state.snapshot();
+    let opening_sessions = open
+        .locations()
+        .filter_map(|(key, _)| {
+            cache
+                .session_id(key)
+                .map(|session| (key.to_owned(), session))
+        })
+        .collect::<HashMap<_, _>>();
+    let location = open.path_for(path)?.to_path_buf();
     let probe = location.clone();
     let info = tauri::async_runtime::spawn_blocking(move || trunk_git::fetch::preflight(&probe))
         .await
@@ -544,16 +553,20 @@ pub async fn fetch<R: Runtime>(
     if !info.clean {
         return Ok(FetchReport::skipped(Outcome::SkippedOperation));
     }
-    let reservation =
-        match RemoteReservation::acquire_checked(&running.0, path, &info.common, true, || {
-            cache.session_id(path) == Some(session)
-        }) {
-            Ok(reservation) => reservation,
-            Err(error) if error.code == "op_in_progress" => {
-                return Ok(FetchReport::skipped(Outcome::SkippedBusy));
-            }
-            Err(error) => return Err(error),
-        };
+    let reservation = match RemoteReservation::acquire_background_checked(
+        &running.0,
+        RemoteTarget {
+            path,
+            common: &info.common,
+        },
+        || cache.session_id(path) == Some(session),
+    ) {
+        Ok(reservation) => reservation,
+        Err(error) if error.code == "op_in_progress" => {
+            return Ok(FetchReport::skipped(Outcome::SkippedBusy));
+        }
+        Err(error) => return Err(error),
+    };
     let mut report = FetchReport::skipped(Outcome::Unchanged);
     let mut appended = false;
     for (name, config) in info.remotes {
@@ -681,7 +694,6 @@ pub async fn fetch<R: Runtime>(
 
     // Reconcile every affected open worktree after success OR partial failure. Cheap
     // input comparisons also fold the watcher's later notifications into this revision.
-    let open = state.snapshot();
     let open_keys = open
         .locations()
         .map(|(key, _)| key.to_owned())
@@ -705,7 +717,9 @@ pub async fn fetch<R: Runtime>(
     let Ok(affected) = affected else {
         report.graph_error = Some("spawn_error".to_owned());
         for key in open_keys {
-            if cache.session_id(&key).is_some() {
+            if opening_sessions.get(&key) == cache.session_id(&key).as_ref()
+                && opening_sessions.contains_key(&key)
+            {
                 let _ = app.emit("repo-changed", RepoChanged::whole_repo(key));
             }
         }
@@ -713,18 +727,28 @@ pub async fn fetch<R: Runtime>(
     };
     let rebuild = GraphRebuild::new(cache, visibility);
     for (key, location) in affected {
+        let Some(&opening_session) = opening_sessions.get(&key) else {
+            continue;
+        };
+        if cache.session_id(&key) != Some(opening_session) {
+            continue;
+        }
+
         let location = match location {
             Ok(Some(location)) => location,
             Ok(None) => continue,
             Err(error) => {
                 report.graph_error = Some(error.code);
-                if cache.session_id(&key).is_some() {
+                if cache.session_id(&key) == Some(opening_session) {
                     let _ = app.emit("repo-changed", RepoChanged::whole_repo(key));
                 }
                 continue;
             }
         };
-        match rebuild.reconcile_refs(key.clone(), location).await {
+        match rebuild
+            .reconcile_refs_in_session(key.clone(), location, opening_session)
+            .await
+        {
             Ok(Some(graph)) => {
                 report.graph_rebuilds += 1;
                 if report.outcome == Outcome::Unchanged {
@@ -736,7 +760,9 @@ pub async fn fetch<R: Runtime>(
             Err(error) if error.code == "not_open" => {}
             Err(error) => {
                 report.graph_error = Some(error.code);
-                let _ = app.emit("repo-changed", RepoChanged::whole_repo(key));
+                if cache.session_id(&key) == Some(opening_session) {
+                    let _ = app.emit("repo-changed", RepoChanged::whole_repo(key));
+                }
             }
         }
     }
@@ -922,8 +948,14 @@ mod tests {
             let (release_tx, release_rx) = oneshot::channel();
             let owner = std::sync::Arc::clone(&running);
             let job = tokio::spawn(async move {
-                let reservation =
-                    RemoteReservation::acquire(&owner, "repo", "common", true).unwrap();
+                let reservation = RemoteReservation::acquire_background(
+                    &owner,
+                    RemoteTarget {
+                        path: "repo",
+                        common: "common",
+                    },
+                )
+                .unwrap();
                 let error = worker
                     .execute(&request, &reservation, Duration::from_secs(60))
                     .await
@@ -949,15 +981,28 @@ mod tests {
             );
             assert!(running.lock().unwrap().busy("common"));
             assert_eq!(
-                RemoteReservation::acquire(&running, "repo", "common", true)
-                    .err()
-                    .unwrap()
-                    .code,
+                RemoteReservation::acquire_background(
+                    &running,
+                    RemoteTarget {
+                        path: "repo",
+                        common: "common"
+                    }
+                )
+                .err()
+                .unwrap()
+                .code,
                 "op_in_progress"
             );
             release_tx.send(()).unwrap();
             job.await.unwrap();
-            let next = RemoteReservation::acquire(&running, "repo", "common", true).unwrap();
+            let next = RemoteReservation::acquire_background(
+                &running,
+                RemoteTarget {
+                    path: "repo",
+                    common: "common",
+                },
+            )
+            .unwrap();
             drop(next);
         });
     }
@@ -1028,8 +1073,14 @@ mod tests {
             let (release_tx, release_rx) = oneshot::channel();
             let owner = std::sync::Arc::clone(&running);
             let job = tokio::spawn(async move {
-                let reservation =
-                    RemoteReservation::acquire(&owner, "repo", "common", true).unwrap();
+                let reservation = RemoteReservation::acquire_background(
+                    &owner,
+                    RemoteTarget {
+                        path: "repo",
+                        common: "common",
+                    },
+                )
+                .unwrap();
                 let error = worker
                     .execute(&request, &reservation, Duration::from_secs(60))
                     .await
@@ -1074,15 +1125,28 @@ mod tests {
             descendant_reader.join().unwrap();
             assert!(running.lock().unwrap().busy("common"));
             assert_eq!(
-                RemoteReservation::acquire(&running, "repo", "common", true)
-                    .err()
-                    .unwrap()
-                    .code,
+                RemoteReservation::acquire_background(
+                    &running,
+                    RemoteTarget {
+                        path: "repo",
+                        common: "common"
+                    }
+                )
+                .err()
+                .unwrap()
+                .code,
                 "op_in_progress"
             );
             release_tx.send(()).unwrap();
             job.await.unwrap();
-            let next = RemoteReservation::acquire(&running, "repo", "common", true).unwrap();
+            let next = RemoteReservation::acquire_background(
+                &running,
+                RemoteTarget {
+                    path: "repo",
+                    common: "common",
+                },
+            )
+            .unwrap();
             drop(next);
         });
     }

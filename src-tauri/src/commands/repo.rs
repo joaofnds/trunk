@@ -114,19 +114,15 @@ pub async fn force_close_repo(
     background: State<'_, crate::background_fetch::BackgroundFetch>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
 ) -> Result<(), String> {
-    let mut repositories = state.0.lock().unwrap();
-    cache.forget(&path);
-    repositories.forget(&path);
-    {
-        let mut guard = running.0.lock().unwrap();
-        if let Some(process) = guard.cancel(&path) {
-            process.stop();
-        }
-    }
-    background.forget(&path);
-    commit_stats.0.lock().unwrap().forget(&path);
-    ref_visibility.forget(&path);
-    watcher::stop_watcher(&path, &watcher_state);
-    drop(repositories);
-    Ok(())
+    close_repo(
+        path,
+        state,
+        cache,
+        commit_stats,
+        watcher_state,
+        running,
+        background,
+        ref_visibility,
+    )
+    .await
 }

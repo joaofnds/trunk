@@ -55,7 +55,8 @@ tempfile = { workspace = true }
 [target.'cfg(windows)'.dependencies]
 # AttachConsole for the `trunk review` argv branch: the release binary is
 # windows_subsystem = "windows", so an interactive invocation has no console
-# until it attaches to its parent's.
+# until it attaches to its parent's. Threading waits retain an aborted remote
+# operation's ownership until its child has exited.
 windows-sys = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_System_Console",
