@@ -3608,9 +3608,11 @@ describe("RepoView", () => {
 			// Leaving review mode hands the centre pane back to the diff, which is
 			// where the file the finder was opened over becomes visible again.
 			await rerender({ ...props, reviewActive: false });
-			await flush();
 
-			expect(screen.queryByText("FILE BEHIND THE FINDER")).toBeTruthy();
+			await vi.dynamicImportSettled();
+			await tick();
+
+			expect(screen.getByText("FILE BEHIND THE FINDER")).toBeVisible();
 		});
 
 		it("escape with no overlay up still closes the file", async () => {
@@ -3737,8 +3739,10 @@ describe("RepoView", () => {
 			await flush();
 			const outsideReview = { ...props, reviewActive: false };
 			await view.rerender(outsideReview);
-			await flush();
-			expect(screen.getByText("const answer = 42;")).toBeTruthy();
+			await vi.dynamicImportSettled();
+			await tick();
+
+			expect(screen.getByText("const answer = 42;")).toBeVisible();
 
 			return {
 				changeContentMode: async (mode: ContentMode) => {
