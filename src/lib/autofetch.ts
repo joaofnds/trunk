@@ -1,5 +1,7 @@
 import type { Scheduler } from "./scheduler.js";
 
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
 interface Entry {
 	due: number;
 }
@@ -25,21 +27,19 @@ export class AutofetchScheduler {
 
 	constructor(
 		private readonly scheduler: Scheduler,
-		private readonly now: () => number,
-		private readonly fetch: (path: string) => Promise<void>,
+		private readonly fetch: (path: string, intervalMs: number) => Promise<void>,
 	) {}
 
 	setInterval(interval: number): void {
-		const next = Number.isFinite(interval)
-			? Math.max(0, Math.floor(interval))
-			: 0;
-		if (next === this.interval) return;
-		this.interval = next;
-		const started = this.now();
+		if (interval === this.interval) return;
+
+		this.interval = interval;
+		const started = this.scheduler.currentTimeMs();
 		let index = 0;
 		for (const entry of this.entries.values()) {
-			entry.due = started + (++index * next) / this.entries.size;
+			entry.due = started + (++index * interval) / this.entries.size;
 		}
+
 		this.arm();
 	}
 
@@ -49,7 +49,7 @@ export class AutofetchScheduler {
 			if (!paths.has(path)) this.entries.delete(path);
 		}
 		const added = [...paths].filter((path) => !this.entries.has(path));
-		const started = this.now();
+		const started = this.scheduler.currentTimeMs();
 		for (const [index, path] of added.entries()) {
 			this.entries.set(path, {
 				due: started + ((index + 1) * this.interval) / added.length,
@@ -64,7 +64,7 @@ export class AutofetchScheduler {
 	/** A successful manual all-remotes fetch already performed this check. */
 	checked(path: string): void {
 		const entry = this.entries.get(path);
-		if (entry) entry.due = this.now() + this.interval;
+		if (entry) entry.due = this.scheduler.currentTimeMs() + this.interval;
 		this.arm();
 	}
 
@@ -98,14 +98,17 @@ export class AutofetchScheduler {
 				this.timer = undefined;
 				void this.run();
 			},
-			Math.min(2_147_483_647, Math.max(0, due - this.now())),
+			Math.min(
+				MAX_TIMER_DELAY_MS,
+				Math.max(0, due - this.scheduler.currentTimeMs()),
+			),
 		);
 	}
 
 	private async run(): Promise<void> {
 		if (this.disposed || this.running || !this.focused || this.manualBusy)
 			return;
-		const now = this.now();
+		const now = this.scheduler.currentTimeMs();
 		const overdue = [...this.entries.entries()]
 			.filter(([, entry]) => entry.due <= now)
 			.sort((left, right) => left[1].due - right[1].due);
@@ -123,12 +126,12 @@ export class AutofetchScheduler {
 		const [path, entry] = preferred ?? oldest;
 		this.running = true;
 		try {
-			await this.fetch(path);
+			await this.fetch(path, this.interval);
 		} catch {
 			// The adapter records errors quietly. IPC failure still releases the queue.
 		} finally {
 			if (this.entries.get(path) === entry)
-				entry.due = this.now() + this.interval;
+				entry.due = this.scheduler.currentTimeMs() + this.interval;
 			this.running = false;
 			this.arm();
 		}

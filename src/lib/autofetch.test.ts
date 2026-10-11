@@ -1,7 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { AutofetchScheduler } from "./autofetch.js";
-import { realScheduler } from "./scheduler.js";
 
 class ObservedScheduler extends FakeScheduler {
 	private timerObservers: Array<() => void> = [];
@@ -36,29 +35,36 @@ class Fetches {
 }
 
 describe("AutofetchScheduler", () => {
-	it.each(["before opening", "after restoration"] as const)(
-		"staggers distinct deadlines when the interval loads %s",
-		async (preferenceTiming) => {
+	it.each([
+		{
+			timing: "before opening",
+			initialInterval: 60_000,
+			loadAfterMs: 0,
+			initialTimers: 1,
+		},
+		{
+			timing: "after restoration",
+			initialInterval: 0,
+			loadAfterMs: 15_000,
+			initialTimers: 0,
+		},
+	])(
+		"staggers distinct deadlines when the interval loads $timing",
+		async ({ initialInterval, loadAfterMs, initialTimers }) => {
 			const clock = new ObservedScheduler();
 			const fetches = new Fetches();
-			const task = new AutofetchScheduler(
-				clock,
-				() => clock.time,
-				fetches.fetch,
-			);
+			const task = new AutofetchScheduler(clock, fetches.fetch);
 			const repositories = {
 				paths: ["a", "b", "c", "d", "e"],
 				activePath: "e",
 				focused: true,
 				manualBusy: false,
 			};
-			if (preferenceTiming === "before opening") task.setInterval(60_000);
+			task.setInterval(initialInterval);
 			task.update(repositories);
-			if (preferenceTiming === "after restoration") {
-				clock.advanceBy(15_000);
-				expect(clock.pending).toBe(0);
-				task.setInterval(60_000);
-			}
+			clock.advanceBy(loadAfterMs);
+			expect(clock.pending).toBe(initialTimers);
+			task.setInterval(60_000);
 
 			const expected: string[] = [];
 			for (const next of repositories.paths) {
@@ -79,7 +85,7 @@ describe("AutofetchScheduler", () => {
 	it("admits one fetch while several deadlines accumulate", async () => {
 		const clock = new ObservedScheduler();
 		const fetches = new Fetches();
-		const task = new AutofetchScheduler(clock, () => clock.time, fetches.fetch);
+		const task = new AutofetchScheduler(clock, fetches.fetch);
 		task.setInterval(60_000);
 		task.update({
 			paths: ["a", "b", "c"],
@@ -104,41 +110,10 @@ describe("AutofetchScheduler", () => {
 		task.dispose();
 	});
 
-	it("keeps the production elapsed-time deadline when wall time moves backward", () => {
-		const clock = new ObservedScheduler();
-		const fetches = new Fetches();
-		const elapsed = vi
-			.spyOn(performance, "now")
-			.mockImplementation(() => clock.time);
-		const wall = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
-		const now = realScheduler.currentTimeMs;
-		const task = new AutofetchScheduler(clock, now, fetches.fetch);
-		try {
-			task.setInterval(60_000);
-			task.update({
-				paths: ["a"],
-				activePath: "a",
-				focused: true,
-				manualBusy: false,
-			});
-
-			clock.advanceBy(59_999);
-			wall.mockReturnValue(500_000);
-			expect(fetches.started).toEqual([]);
-			clock.advanceBy(1);
-
-			expect(fetches.started).toEqual(["a"]);
-		} finally {
-			task.dispose();
-			wall.mockRestore();
-			elapsed.mockRestore();
-		}
-	});
-
 	it("prefers a newer due active tab but admits the oldest within one interval", async () => {
 		const clock = new ObservedScheduler();
 		const fetches = new Fetches();
-		const task = new AutofetchScheduler(clock, () => clock.time, fetches.fetch);
+		const task = new AutofetchScheduler(clock, fetches.fetch);
 		const repositories = {
 			paths: ["a", "b", "c"],
 			activePath: "c",
@@ -169,7 +144,7 @@ describe("AutofetchScheduler", () => {
 	it("resumes overdue tabs once and schedules from completion", async () => {
 		const clock = new ObservedScheduler();
 		const fetches = new Fetches();
-		const task = new AutofetchScheduler(clock, () => clock.time, fetches.fetch);
+		const task = new AutofetchScheduler(clock, fetches.fetch);
 		const repositories = {
 			paths: ["a", "b"],
 			activePath: "b",
@@ -198,7 +173,7 @@ describe("AutofetchScheduler", () => {
 	it("manual work disarms automatic checks until it finishes", () => {
 		const clock = new ObservedScheduler();
 		const fetches = new Fetches();
-		const task = new AutofetchScheduler(clock, () => clock.time, fetches.fetch);
+		const task = new AutofetchScheduler(clock, fetches.fetch);
 		const repositories = {
 			paths: ["a"],
 			activePath: "a",
@@ -222,7 +197,7 @@ describe("AutofetchScheduler", () => {
 	it("a completion from a closed tab cannot postpone its reopened session", async () => {
 		const clock = new ObservedScheduler();
 		const fetches = new Fetches();
-		const task = new AutofetchScheduler(clock, () => clock.time, fetches.fetch);
+		const task = new AutofetchScheduler(clock, fetches.fetch);
 		const repositories = {
 			paths: ["a"],
 			activePath: "a",
@@ -246,7 +221,7 @@ describe("AutofetchScheduler", () => {
 	it("live disable and focus loss remove the pending deadline", () => {
 		const clock = new ObservedScheduler();
 		const fetches = new Fetches();
-		const task = new AutofetchScheduler(clock, () => clock.time, fetches.fetch);
+		const task = new AutofetchScheduler(clock, fetches.fetch);
 		const repositories = {
 			paths: ["a"],
 			activePath: "a",

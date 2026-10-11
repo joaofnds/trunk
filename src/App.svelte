@@ -2,7 +2,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { untrack } from "svelte";
+import { tick, untrack } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
 import RecentReposPicker from "./components/RecentReposPicker.svelte";
 import RepoView from "./components/RepoView.svelte";
@@ -30,7 +30,6 @@ import { getScheduler } from "./lib/scheduler.js";
 import {
 	addRecentRepo,
 	copyLegacyUserWidthsOnce,
-	DEFAULT_FETCH_INTERVAL_MS,
 	getActiveTabId,
 	getDiffContentMode,
 	getFetchIntervalMs,
@@ -148,23 +147,17 @@ async function handleDiffContentModeChange(mode: ContentMode) {
 let tabs = $state<TabInfo[]>([]);
 let activeTabId = $state<string>("");
 const scheduler = getScheduler();
-let fetchIntervalMs = DEFAULT_FETCH_INTERVAL_MS;
-const manualFetchVersions = new WeakMap<RemoteState, number>();
-const autofetch = new AutofetchScheduler(
-	scheduler,
-	() => scheduler.currentTimeMs(),
-	runAutofetch,
-);
+const autofetch = new AutofetchScheduler(scheduler, runAutofetch);
 const dirtyCountRefreshes = new Map<string, CoalescedTask>();
 
-async function runAutofetch(path: string): Promise<void> {
+async function runAutofetch(path: string, intervalMs: number): Promise<void> {
 	const tab = tabs.find((tab) => tab.repoPath === path);
 	const target = tab ? tabStates.get(tab.id)?.remoteState : undefined;
 	let report: FetchReport;
 	try {
 		report = await safeInvoke<FetchReport>("git_fetch_background", {
 			path,
-			intervalMs: fetchIntervalMs,
+			intervalMs,
 		});
 	} catch {
 		report = {
@@ -181,7 +174,7 @@ async function runAutofetch(path: string): Promise<void> {
 			graph_rebuilds: report.graph_rebuilds,
 			remotes: report.remotes.length,
 		});
-	if (tab && tabStates.get(tab.id)?.remoteState === target && target)
+	if (target && tab && tabStates.get(tab.id)?.remoteState === target)
 		target.autofetch = report;
 }
 
@@ -190,12 +183,10 @@ $effect(() => {
 	let preferenceChanged = false;
 	const unsubscribe = subscribeFetchInterval((ms) => {
 		preferenceChanged = true;
-		fetchIntervalMs = ms;
 		autofetch.setInterval(ms);
 	});
 	void getFetchIntervalMs().then((ms) => {
 		if (!disposed && !preferenceChanged) {
-			fetchIntervalMs = ms;
 			autofetch.setInterval(ms);
 		}
 	});
@@ -213,15 +204,6 @@ $effect(() => {
 	const manualBusy = [...tabStates.values()].some(
 		(state) => state.remoteState.isRunning,
 	);
-	for (const tab of tabs) {
-		const remote = tabStates.get(tab.id)?.remoteState;
-		const path = tab.repoPath;
-		if (!path || !remote) continue;
-		const version = remote.manualFetchVersion;
-		const previous = manualFetchVersions.get(remote) ?? 0;
-		if (version > previous) untrack(() => autofetch.checked(path));
-		manualFetchVersions.set(remote, version);
-	}
 	const focused = windowVisible;
 	untrack(() => autofetch.update({ paths, activePath, focused, manualBusy }));
 });
@@ -271,8 +253,14 @@ interface TabState {
 const tabStates = new SvelteMap<string, TabState>();
 
 function createTabState(tabId: string): void {
+	const remoteState = createRemoteState(() => {
+		const tab = tabs.find((tab) => tab.id === tabId);
+		if (tab?.repoPath && tabStates.get(tabId)?.remoteState === remoteState)
+			autofetch.checked(tab.repoPath);
+	});
+
 	tabStates.set(tabId, {
-		remoteState: createRemoteState(),
+		remoteState,
 		undoRedo: createUndoRedoState(),
 	});
 }
@@ -364,7 +352,7 @@ async function showTabContextMenu(tabId: string, _event: MouseEvent) {
 	await menu.popup();
 }
 
-function openRepoInTab(tabId: string, path: string, name: string) {
+async function openRepoInTab(tabId: string, path: string, name: string) {
 	// TAB-10: Duplicate detection — switch to existing tab instead of creating duplicate
 	const normalizedPath = path.replace(/\/+$/, "");
 	const existing = tabs.find(
@@ -384,6 +372,7 @@ function openRepoInTab(tabId: string, path: string, name: string) {
 
 	const tab = tabs.find((t) => t.id === tabId);
 	if (tab) {
+		const previousPath = tab.repoPath;
 		// Every field of a tab's state describes the repository it was gathered
 		// in: an in-flight pull, its progress line, its failure, the undone
 		// commit. Dropping the whole thing is what keeps a stale field from
@@ -395,6 +384,17 @@ function openRepoInTab(tabId: string, path: string, name: string) {
 		tab.repoPath = path;
 		tab.repoName = name;
 		persistTabs();
+		if (previousPath) {
+			await tick();
+			const previousNormalizedPath = previousPath.replace(/\/+$/, "");
+			if (
+				!tabs.some(
+					(current) =>
+						current.repoPath?.replace(/\/+$/, "") === previousNormalizedPath,
+				)
+			)
+				safeInvoke("close_repo", { path: previousPath }).catch(() => {});
+		}
 	}
 }
 
@@ -414,7 +414,7 @@ async function handlePickerPick(path: string, name: string) {
 		return;
 	}
 	await addRecentRepo({ name, path });
-	openRepoInTab(activeTabId, path, name);
+	await openRepoInTab(activeTabId, path, name);
 	pickerOpen = false;
 }
 
@@ -433,11 +433,7 @@ function closeTab(tabId: string) {
 	// If last tab closed, add empty tab
 	if (tabs.length === 0) {
 		addNewTab();
-		return;
-	}
-
-	// If active tab was closed, switch to adjacent
-	if (activeTabId === tabId) {
+	} else if (activeTabId === tabId) {
 		const newIdx = Math.min(idx, tabs.length - 1);
 		activeTabId = tabs[newIdx].id;
 	}
@@ -632,20 +628,26 @@ $effect(() => {
 // Pause automatic fetches while the window is unfocused.
 $effect(() => {
 	const appWindow = getCurrentWindow();
-	appWindow.isFocused().then((f) => {
-		windowVisible = f;
+	let disposed = false;
+	let focusChanged = false;
+	appWindow.isFocused().then((focused) => {
+		if (!disposed && !focusChanged) windowVisible = focused;
 	});
 
 	let unlistenFocus: (() => void) | undefined;
 	appWindow
 		.onFocusChanged(({ payload: focused }) => {
+			if (disposed) return;
+			focusChanged = true;
 			windowVisible = focused;
 		})
 		.then((fn) => {
-			unlistenFocus = fn;
+			if (disposed) fn();
+			else unlistenFocus = fn;
 		});
 
 	return () => {
+		disposed = true;
 		unlistenFocus?.();
 	};
 });
@@ -937,7 +939,7 @@ $effect(() => {
 				{:else}
 					<WelcomeScreen
 						{isFullscreen}
-						onopen={(path, name) => openRepoInTab(tab.id, path, name)}
+						onopen={(path, name) => { void openRepoInTab(tab.id, path, name); }}
 					/>
 				{/if}
 			</div>

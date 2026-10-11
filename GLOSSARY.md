@@ -529,8 +529,9 @@ behavior, João 2026-08-30).
 (`setTimeout`/`clearTimeout` today; intervals and rAF join under TRUNK-111). Lives in
 `src/lib/scheduler.ts`; components read it from Svelte context under an exported key and
 fall back to the real one when nothing set it, so a plain mount and the unit suites'
-`vi.useFakeTimers` keep working. Distinct from the **clock** (reading the current time,
-`now.svelte.ts`), which TRUNK-111 owns.
+`vi.useFakeTimers` keep working. It also reads monotonic time through `currentTimeMs()`
+(`performance.now()` in production), so automatic-fetch deadlines use the same driven
+clock as their timers. `now.svelte.ts` supplies wall-clock time for displayed ages.
 
 **Owned timer** — a component's single pending callback, created during initialisation
 from `src/lib/owned-timer.ts`. Arming it replaces whatever was pending, destroying the

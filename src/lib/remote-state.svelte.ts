@@ -8,17 +8,19 @@ export interface RemoteState {
 	progressLine: string;
 	error: TrunkError | null;
 	lastOp: RemoteOpKind | null;
-	manualFetchVersion: number;
+	fetchCompleted(): void;
 	autofetch?: FetchReport;
 }
 
-export function createRemoteState(): RemoteState {
+export function createRemoteState(
+	fetchCompleted: () => void = () => {},
+): RemoteState {
 	const state: RemoteState = $state({
 		isRunning: false,
 		progressLine: "",
 		error: null as TrunkError | null,
 		lastOp: null as RemoteOpKind | null,
-		manualFetchVersion: 0,
+		fetchCompleted,
 	});
 	return state;
 }

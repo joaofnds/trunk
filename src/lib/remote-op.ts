@@ -24,13 +24,16 @@ export async function runRemoteOp(
 	remoteState.progressLine = "";
 	remoteState.lastOp = OP_KINDS[cmd];
 	try {
-		const report = await safeInvoke<FetchReport | undefined>(cmd, {
+		const args = {
 			path: repoPath,
 			...extra,
-		});
-		if ((cmd === "git_fetch" || cmd === "git_pull") && report)
+		};
+		if (cmd === "git_fetch" || cmd === "git_pull") {
+			const report = await safeInvoke<FetchReport>(cmd, args);
 			remoteState.autofetch = report;
-		if (cmd === "git_fetch") remoteState.manualFetchVersion += 1;
+			if (cmd === "git_fetch") remoteState.fetchCompleted();
+		} else await safeInvoke<void>(cmd, args);
+
 		remoteState.isRunning = false;
 		remoteState.progressLine = "";
 		showToast(successMsg, "success");
