@@ -1,11 +1,9 @@
 mod common;
 
-use trunk_lib::state::OpenRepos;
-
 use common::context::TestContext;
 use trunk_git::graph_input::RefVisibility;
 use trunk_git::types::GraphResult;
-use trunk_lib::commands::history::{GraphResponse, set_ref_visibility_inner};
+use trunk_lib::commands::history::GraphResponse;
 use trunk_lib::types::MatchType;
 
 /// Build a `TestContext` with a merge topology and populate its cache.
@@ -149,23 +147,20 @@ fn author_match_case_insensitive() {
 #[test]
 fn multi_field_match() {
     let ctx = build_search_ctx();
-    // "main" matches ref "main" AND message "Merge branch 'feature'"
-    let results = ctx.search_commits("main").unwrap();
-    let multi = results.iter().find(|r| {
-        r.match_types.contains(&MatchType::Ref) && r.match_types.contains(&MatchType::Message)
-    });
-    // Note: whether both Ref and Message match depends on the merge message text.
-    // The builder creates merge messages like "Merge branch 'feature'", which contains
-    // no literal "main". So we just check Ref match exists.
-    assert!(
-        results
-            .iter()
-            .any(|r| r.match_types.contains(&MatchType::Ref)),
-        "expected at least a ref match for 'main'"
-    );
-    // If multi is Some, great; if not, the original test's assertion may have depended on
-    // make_test_repo's specific merge message format. We accept ref-only match.
-    let _ = multi;
+    let results = ctx.search_commits("feature").unwrap();
+    let feature = ctx
+        .repo()
+        .find_reference("refs/heads/feature")
+        .unwrap()
+        .target()
+        .unwrap();
+    let matched = results
+        .iter()
+        .find(|result| result.oid == feature.to_string())
+        .unwrap();
+
+    assert!(matched.match_types.contains(&MatchType::Ref));
+    assert!(matched.match_types.contains(&MatchType::Message));
 }
 
 #[test]
@@ -434,8 +429,7 @@ fn results_in_graph_order() {
 }
 
 /// TRUNK-129: a visibility change re-lays out the cached capture and never opens the
-/// repository, which is what keeps a sidebar toggle at a few milliseconds. The repository
-/// path is unknown to the state map here, so a walk would fail with `not_open`.
+/// repository, which is what keeps a sidebar toggle at a few milliseconds.
 #[test]
 fn a_visibility_change_re_lays_out_the_cached_graph_without_the_repository() {
     let mut ctx = TestContext::builder()
@@ -451,10 +445,7 @@ fn a_visibility_change_re_lays_out_the_cached_graph_without_the_repository() {
     let cached = ctx.cache_map.get(ctx.path()).unwrap().clone();
     let mut hidden = RefVisibility::default();
     hidden.hidden_refs.insert("refs/heads/feature".to_owned());
-    let no_repositories = OpenRepos::default();
-
-    let toggled =
-        set_ref_visibility_inner("/nowhere", &hidden, Some(&cached), &no_repositories).unwrap();
+    let toggled = cached.with_visibility(hidden.clone());
 
     let summaries: Vec<&str> = toggled
         .layout
@@ -487,23 +478,26 @@ fn layout_of(n: usize) -> GraphResult {
 /// user had scrolled through.
 #[test]
 fn a_rebuild_returns_as_many_rows_as_the_caller_had_loaded() {
-    let restored = GraphResponse::head(&layout_of(450), 400);
+    let restored = GraphResponse::head(&layout_of(450), 400, 9);
 
     assert_eq!(restored.commits.len(), 400);
+    assert_eq!(restored.revision, 9);
 }
 
 /// A caller with nothing loaded asks for the default page, so a fresh open is unchanged.
 #[test]
 fn a_rebuild_with_no_loaded_depth_returns_one_page() {
-    let fresh = GraphResponse::head(&layout_of(450), 0);
+    let fresh = GraphResponse::head(&layout_of(450), 0, 9);
 
     assert_eq!(fresh.commits.len(), 200);
+    assert_eq!(fresh.revision, 9);
 }
 
 /// A rebuild that shortened the history answers with what is left, never past the end.
 #[test]
 fn a_rebuild_shorter_than_the_loaded_depth_returns_what_remains() {
-    let shortened = GraphResponse::head(&layout_of(120), 400);
+    let shortened = GraphResponse::head(&layout_of(120), 400, 9);
 
     assert_eq!(shortened.commits.len(), 120);
+    assert_eq!(shortened.revision, 9);
 }

@@ -165,9 +165,8 @@ impl GraphRead {
         source: GraphSource,
         before: crate::ref_state::RefState,
         after: crate::ref_state::RefState,
-        dirty: bool,
     ) -> Self {
-        let changed = before != after || source.placement.worktree_dirty != dirty;
+        let changed = before != after;
         Self {
             source,
             inputs: (!changed).then_some(after),
@@ -202,21 +201,25 @@ impl std::ops::Deref for GraphRead {
 /// Returns repository read errors. A repeatedly superseded capture is returned as
 /// changed so publication can preserve the command's outcome without caching it.
 pub fn read_graph(repo: &mut git2::Repository) -> Result<GraphRead, TrunkError> {
-    for attempt in 0..3 {
+    read_graph_with_capture(repo, trunk_git::graph::capture)
+}
+
+fn read_graph_with_capture(
+    repo: &mut git2::Repository,
+    mut capture: impl FnMut(&mut git2::Repository) -> Result<GraphSource, TrunkError>,
+) -> Result<GraphRead, TrunkError> {
+    const CAPTURE_ATTEMPTS: usize = 3;
+    let mut remaining = CAPTURE_ATTEMPTS;
+    loop {
         let before = crate::ref_state::RefState::read(repo)?;
-        let source = trunk_git::graph::capture(repo)?;
+        let source = capture(repo)?;
         let after = crate::ref_state::RefState::read(repo)?;
-        let read = GraphRead::checked(
-            source,
-            before,
-            after,
-            trunk_git::status::worktree_dirty(repo),
-        );
-        if !read.changed || attempt == 2 {
+        let read = GraphRead::checked(source, before, after);
+        remaining -= 1;
+        if !read.changed || remaining == 0 {
             return Ok(read);
         }
     }
-    unreachable!("the final attempt returns its capture")
 }
 
 impl GraphCache {
@@ -227,13 +230,19 @@ impl GraphCache {
     }
 
     /// Store `snapshot` as the graph for `path`, replacing any earlier one.
-    pub fn insert(&mut self, path: String, snapshot: trunk_git::graph_input::GraphSnapshot) {
+    fn insert(&mut self, path: String, snapshot: trunk_git::graph_input::GraphSnapshot) {
         self.sequence += 1;
         self.sessions.entry(path.clone()).or_insert(self.sequence);
         self.generations.insert(path.clone(), self.sequence);
         self.revisions.insert(path.clone(), self.sequence);
         self.inputs.remove(&path);
         self.graphs.insert(path, snapshot);
+    }
+
+    /// Seed a fixture cache without passing through application publication.
+    #[cfg(feature = "test-util")]
+    pub fn seed(&mut self, path: String, snapshot: GraphSnapshot) {
+        self.insert(path, snapshot);
     }
 
     /// Whether a graph has been cached for `path`.
@@ -243,7 +252,7 @@ impl GraphCache {
     }
 
     /// Drop the cached graph for `path`.
-    pub fn forget(&mut self, path: &str) {
+    fn forget(&mut self, path: &str) {
         self.graphs.remove(path);
         self.sessions.remove(path);
         self.generations.remove(path);
@@ -251,13 +260,6 @@ impl GraphCache {
         self.inputs.remove(path);
         self.input_epochs.remove(path);
         self.closed.insert(path.to_owned());
-    }
-
-    /// Take every entry of `other`, replacing any entry of the same name here.
-    pub fn absorb(&mut self, other: Self) {
-        for (path, graph) in other.graphs {
-            self.insert(path, graph);
-        }
     }
 
     fn capture_session(&mut self, path: &str) -> Result<u64, TrunkError> {
@@ -314,7 +316,7 @@ impl GraphCache {
 
     /// Add a coherent capture to a command's local publication delta. Concurrently
     /// superseded captures leave the prior shared graph for the next refresh.
-    pub fn insert_read(&mut self, path: String, read: GraphRead, visibility: RefVisibility) {
+    pub(crate) fn insert_read(&mut self, path: String, read: GraphRead, visibility: RefVisibility) {
         if read.changed {
             return;
         }
@@ -349,6 +351,12 @@ pub struct CommitCache(
     Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
 );
 
+pub(crate) struct CachedGraphRead<T> {
+    pub value: T,
+    pub revision: u64,
+    pub session: u64,
+}
+
 impl CommitCache {
     #[must_use]
     pub fn new(cache: GraphCache) -> Self {
@@ -372,7 +380,7 @@ impl CommitCache {
     /// # Panics
     ///
     /// Panics when the gate lock is poisoned.
-    pub async fn lock_rebuild(&self, path: &str) -> tokio::sync::OwnedMutexGuard<()> {
+    async fn lock_rebuild(&self, path: &str) -> tokio::sync::OwnedMutexGuard<()> {
         let gate = self
             .1
             .lock()
@@ -392,7 +400,7 @@ impl CommitCache {
     /// # Panics
     ///
     /// Panics when the cache lock is poisoned.
-    pub fn capture_session(&self, path: &str) -> Result<u64, TrunkError> {
+    pub(crate) fn capture_session(&self, path: &str) -> Result<u64, TrunkError> {
         self.0.lock().unwrap().capture_session(path)
     }
 
@@ -406,7 +414,7 @@ impl CommitCache {
     /// # Panics
     ///
     /// Panics when a cache or gate lock is poisoned.
-    pub async fn begin_rebuild(
+    pub(crate) async fn begin_rebuild(
         &self,
         path: &str,
         session: u64,
@@ -468,14 +476,14 @@ impl CommitCache {
     /// # Panics
     ///
     /// Panics when the cache lock is poisoned.
-    pub fn read_versioned<T>(
+    pub(crate) fn read_versioned<T>(
         &self,
         path: &str,
         expected: Option<u64>,
         render: impl FnOnce(&GraphSnapshot, u64) -> T,
     ) -> Result<T, TrunkError> {
         self.read_versioned_with_session(path, expected, render)
-            .map(|(result, _)| result)
+            .map(|read| read.value)
     }
 
     /// Read a graph revision and its opening session atomically.
@@ -487,12 +495,12 @@ impl CommitCache {
     /// # Panics
     ///
     /// Panics when the cache lock is poisoned.
-    pub fn read_versioned_with_session<T>(
+    pub(crate) fn read_versioned_with_session<T>(
         &self,
         path: &str,
         expected: Option<u64>,
         render: impl FnOnce(&GraphSnapshot, u64) -> T,
-    ) -> Result<(T, u64), TrunkError> {
+    ) -> Result<CachedGraphRead<T>, TrunkError> {
         let cache = self.0.lock().unwrap();
         let graph = cache
             .get(path)
@@ -507,7 +515,16 @@ impl CommitCache {
         let result = render(graph, revision);
         let session = cache.sessions[path];
         drop(cache);
-        Ok((result, session))
+        Ok(CachedGraphRead {
+            value: result,
+            revision,
+            session,
+        })
+    }
+
+    /// Reject a response whose graph revision changed while its data was computed.
+    pub(crate) fn require_revision(&self, path: &str, revision: u64) -> Result<(), TrunkError> {
+        self.read_versioned(path, Some(revision), |_, _| ())
     }
 
     /// Keep immutable per-commit statistics across graph revisions, while fencing
@@ -523,7 +540,7 @@ impl CommitCache {
     /// # Panics
     ///
     /// Panics when a cache lock is poisoned.
-    pub fn store_stats_in_session(
+    pub(crate) fn store_stats_in_session(
         &self,
         path: &str,
         session: u64,
@@ -572,17 +589,6 @@ impl CommitCache {
     #[must_use]
     pub fn holds(&self, path: &str) -> bool {
         self.0.lock().unwrap().holds(path)
-    }
-
-    /// A snapshot of every cached graph, for a reader that scans across repositories rather
-    /// than looking one up by path.
-    ///
-    /// # Panics
-    ///
-    /// Panics when the lock is poisoned.
-    #[must_use]
-    pub fn all(&self) -> GraphCache {
-        self.0.lock().unwrap().clone()
     }
 
     /// Drop the cached graph for `path`.
@@ -968,7 +974,24 @@ impl<'a> GraphRebuild<'a> {
         path: String,
         location: PathBuf,
     ) -> Result<Option<ReconciledGraph>, TrunkError> {
-        let session = self.cache.0.lock().unwrap().sessions.get(&path).copied();
+        let session = self.cache.capture_session(&path)?;
+        self.reconcile_refs_in_session(path, location, session)
+            .await
+    }
+
+    /// Reconcile only the opening session that admitted a remote job.
+    ///
+    /// # Errors
+    /// Returns capture errors or `not_open` when that session has closed.
+    ///
+    /// # Panics
+    /// Panics when a shared state lock is poisoned.
+    pub async fn reconcile_refs_in_session(
+        &self,
+        path: String,
+        location: PathBuf,
+        session: u64,
+    ) -> Result<Option<ReconciledGraph>, TrunkError> {
         let _gate = self.cache.lock_rebuild(&path).await;
         let probe = location.clone();
         let inputs = tauri::async_runtime::spawn_blocking(move || {
@@ -979,7 +1002,7 @@ impl<'a> GraphRebuild<'a> {
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
         let (ticket, worktree_context_changed) = {
             let mut cache = self.cache.0.lock().unwrap();
-            if session.is_none() || cache.sessions.get(&path) != session.as_ref() {
+            if cache.sessions.get(&path) != Some(&session) {
                 return Err(TrunkError::new("not_open", "Repository session closed"));
             }
             if cache.inputs.get(&path) == Some(&inputs) {
@@ -996,12 +1019,19 @@ impl<'a> GraphRebuild<'a> {
             read_graph(&mut repo).map(|read| (read, ()))
         })
         .await?;
-        self.cache.read_versioned(&path, None, |_, revision| {
-            Some(ReconciledGraph {
-                revision,
-                worktree_context_changed,
-            })
-        })
+        let read = self
+            .cache
+            .read_versioned_with_session(&path, None, |_, revision| {
+                Some(ReconciledGraph {
+                    revision,
+                    worktree_context_changed,
+                })
+            })?;
+        if read.session != session {
+            return Err(TrunkError::new("not_open", "Repository session closed"));
+        }
+
+        Ok(read.value)
     }
 
     /// Look up the visibility set for `path`, run `walk` under it off the calling task
@@ -1053,13 +1083,198 @@ mod tests {
     use std::pin::Pin;
     use std::sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     };
     use std::task::{Context, Poll, Waker};
     use trunk_git::error::TrunkError;
     use trunk_git::graph_input::{CommitFacts, GraphSnapshot, GraphSource, RefVisibility};
     use trunk_git::placement::PlacementInput;
     use trunk_git::types::{RefLabel, RefType};
+
+    fn capture_repository() -> (tempfile::TempDir, git2::Repository) {
+        let directory = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(directory.path()).unwrap();
+        let config = git2::Config::open(&repo.path().join("config")).unwrap();
+        repo.set_config(&config).unwrap();
+        let tree_oid = repo.treebuilder(None).unwrap().write().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let signature = git2::Signature::new(
+            "Fixture",
+            "fixture@example.invalid",
+            &git2::Time::new(1_000, 0),
+        )
+        .unwrap();
+        repo.commit(
+            Some("refs/heads/main"),
+            &signature,
+            &signature,
+            "initial",
+            &tree,
+            &[],
+        )
+        .unwrap();
+        drop(tree);
+        repo.set_head("refs/heads/main").unwrap();
+
+        (directory, repo)
+    }
+
+    #[test]
+    fn a_capture_retries_until_refs_stop_changing() {
+        let (_directory, mut repo) = capture_repository();
+        let mut attempts = 0;
+
+        let read = super::read_graph_with_capture(&mut repo, |repo| {
+            attempts += 1;
+            let source = trunk_git::graph::capture(repo)?;
+            if attempts < 3 {
+                repo.reference(
+                    &format!("refs/heads/change-{attempts}"),
+                    repo.head()?.target().unwrap(),
+                    false,
+                    "fixture",
+                )?;
+            }
+            Ok(source)
+        })
+        .unwrap();
+
+        assert_eq!(attempts, 3);
+        assert!(!read.changed);
+        assert!(read.inputs.is_some());
+        assert!(
+            read.refs
+                .values()
+                .flatten()
+                .any(|label| label.name == "refs/heads/change-2")
+        );
+    }
+
+    #[test]
+    fn an_unstable_capture_retains_the_graph_after_a_completed_mutation() {
+        let (_directory, mut repo) = capture_repository();
+        let cache = CommitCache::new(GraphCache::default());
+        let previous = graph(7);
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .insert("/repo".to_owned(), previous.clone());
+        let visibility = RefVisibilityState::default();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let observed_attempts = Arc::clone(&attempts);
+
+        let outcome =
+            tauri::async_runtime::block_on(GraphRebuild::new(&cache, &visibility).rebuild_merging(
+                "/repo".to_owned(),
+                move |visibility, delta| {
+                    let read = super::read_graph_with_capture(&mut repo, |repo| {
+                        let attempt = observed_attempts.fetch_add(1, Ordering::Relaxed) + 1;
+                        let source = trunk_git::graph::capture(repo)?;
+                        repo.reference(
+                            &format!("refs/heads/change-{attempt}"),
+                            repo.head()?.target().unwrap(),
+                            false,
+                            "fixture",
+                        )?;
+                        Ok(source)
+                    })?;
+                    delta.insert_read("/repo".to_owned(), read, visibility.clone());
+                    Ok(())
+                },
+            ));
+
+        assert!(outcome.is_ok());
+        assert_eq!(attempts.load(Ordering::Relaxed), 3);
+        assert!(cache.snapshot("/repo").unwrap().same_capture_as(&previous));
+    }
+
+    #[test]
+    fn a_late_ref_change_is_rechecked_after_the_worktree_observation() {
+        let (_directory, mut repo) = capture_repository();
+        let mut observations = 0;
+
+        let read = super::read_graph_with_capture(&mut repo, |repo| {
+            trunk_git::graph::capture_with_worktree_observation(repo, |repo| {
+                observations += 1;
+                if observations == 1 {
+                    std::fs::write(repo.workdir().unwrap().join("late.txt"), "late work").unwrap();
+                    repo.reference(
+                        "refs/heads/late",
+                        repo.head().unwrap().target().unwrap(),
+                        false,
+                        "fixture",
+                    )
+                    .unwrap();
+                }
+                trunk_git::status::worktree_dirty(repo)
+            })
+        })
+        .unwrap();
+
+        assert_eq!(observations, 2);
+        assert!(!read.changed);
+        assert!(read.inputs.is_some());
+        assert!(read.placement.worktree_dirty);
+        assert!(
+            read.refs
+                .values()
+                .flatten()
+                .any(|label| label.name == "refs/heads/late")
+        );
+    }
+
+    #[test]
+    fn a_changed_fetch_mapping_retries_with_the_current_upstream() {
+        let (_directory, mut repo) = capture_repository();
+        let initial = repo.head().unwrap().target().unwrap();
+        let tree = repo.find_commit(initial).unwrap().tree().unwrap();
+        let signature = git2::Signature::new(
+            "Fixture",
+            "fixture@example.invalid",
+            &git2::Time::new(2_000, 0),
+        )
+        .unwrap();
+        let upstream = repo
+            .commit(
+                None,
+                &signature,
+                &signature,
+                "upstream",
+                &tree,
+                &[&repo.find_commit(initial).unwrap()],
+            )
+            .unwrap();
+        drop(tree);
+        repo.remote("origin", "file:///unused-fixture-remote")
+            .unwrap();
+        repo.reference("refs/remotes/origin/main", initial, false, "fixture")
+            .unwrap();
+        repo.reference("refs/remotes/alternate/main", upstream, false, "fixture")
+            .unwrap();
+        let mut config = repo.config().unwrap();
+        config.set_str("branch.main.remote", "origin").unwrap();
+        config
+            .set_str("branch.main.merge", "refs/heads/main")
+            .unwrap();
+        let mut attempts = 0;
+
+        let read = super::read_graph_with_capture(&mut repo, |repo| {
+            attempts += 1;
+            let source = trunk_git::graph::capture(repo)?;
+            config.set_str(
+                "remote.origin.fetch",
+                "+refs/heads/*:refs/remotes/alternate/*",
+            )?;
+            Ok(source)
+        })
+        .unwrap();
+
+        assert_eq!(attempts, 2);
+        assert!(!read.changed);
+        assert!(read.inputs.is_some());
+        assert_eq!(read.placement.tracked_upstream, Some(upstream));
+    }
 
     #[test]
     fn cancellation_does_not_admit_a_new_operation_before_exit() {
@@ -1324,20 +1539,22 @@ mod tests {
         let cache = CommitCache::new(GraphCache::default());
         cache.0.lock().unwrap().insert("/repo".to_owned(), graph(0));
         let visibility = RefVisibilityState::default();
-        let temp = tempfile::tempdir().unwrap();
-        let repo = git2::Repository::init_bare(temp.path()).unwrap();
-        let inputs = crate::ref_state::RefState::read(&repo).unwrap();
+        let (_directory, repo) = capture_repository();
+        let before = crate::ref_state::RefState::read(&repo).unwrap();
+        repo.reference(
+            "refs/heads/late",
+            repo.head().unwrap().target().unwrap(),
+            false,
+            "fixture",
+        )
+        .unwrap();
+        let after = crate::ref_state::RefState::read(&repo).unwrap();
         let result = tauri::async_runtime::block_on(
             GraphRebuild::new(&cache, &visibility).rebuild_carrying(
                 "/repo".to_owned(),
                 move || {
                     Ok((
-                        super::GraphRead::checked(
-                            two_root_source_with_topic_tip(),
-                            inputs.clone(),
-                            inputs,
-                            true,
-                        ),
+                        super::GraphRead::checked(two_root_source_with_topic_tip(), before, after),
                         "commit succeeded",
                     ))
                 },
@@ -1373,7 +1590,7 @@ mod tests {
             .unwrap();
         let after = crate::ref_state::RefState::read(&repo).unwrap();
 
-        let read = super::GraphRead::checked(source, before, after, false);
+        let read = super::GraphRead::checked(source, before, after);
 
         assert!(read.changed);
         assert!(read.inputs.is_none());
@@ -1448,6 +1665,34 @@ mod tests {
             cache.snapshot("/repo").unwrap().visibility(),
             newer.visibility()
         );
+    }
+
+    #[test]
+    fn an_old_remote_job_cannot_begin_ref_reconciliation_for_a_reopened_session() {
+        let (_directory, repo) = capture_repository();
+        let cache = CommitCache::new(GraphCache::default());
+        cache.open_session("/repo");
+        let old_session = cache.session_id("/repo").unwrap();
+        cache.forget("/repo");
+        cache.open_session("/repo");
+        let previous = graph(7);
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .insert("/repo".to_owned(), previous.clone());
+        let visibility = RefVisibilityState::default();
+
+        let result = tauri::async_runtime::block_on(
+            GraphRebuild::new(&cache, &visibility).reconcile_refs_in_session(
+                "/repo".to_owned(),
+                repo.workdir().unwrap().to_path_buf(),
+                old_session,
+            ),
+        );
+
+        assert_eq!(result.err().unwrap().code, "not_open");
+        assert!(cache.snapshot("/repo").unwrap().same_capture_as(&previous));
     }
 
     #[test]

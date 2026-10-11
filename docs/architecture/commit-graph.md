@@ -75,11 +75,15 @@ rebuild returns and page one alone would drop every page the user had scrolled t
 visibility change re-lays out the same capture through `GraphSnapshot::with_visibility`
 without opening the repository.
 
-Application producers call `state::read_graph`, which checks ref/HEAD/upstream/stash identity
-and dirtiness around capture. `GraphRebuild` serializes capture and publication per worktree,
+Application producers call `state::read_graph`, which reads ref/HEAD/upstream/stash identity
+before and after capture and retries up to three times. The stamp includes ordered remote
+fetch mappings: libgit2 resolves an upstream through the first matching fetch refspec.
+Capture makes one full staged/unstaged/conflict/untracked dirtiness observation at its end,
+inside that stamp fence; the application does not repeat the status scan. An unstable
+capture cannot replace the prior cached graph. `GraphRebuild` serializes publication per worktree,
 applies the latest visibility and fences results by opening session and generation. Ref
 reconciliation compares those stamps before walking history, so duplicate fetch/watcher
-reports retain the existing capture. The cached response carries a revision; page and
+reports retain the existing capture. The cached response always carries a revision; page and
 commit-stat requests naming an older revision fail with `graph_changed`. A refs-only
 notification reads the cached head at the view's loaded depth, preserving selection and
 avoiding another capture. The pipeline's ordering, placement and hydration remain the

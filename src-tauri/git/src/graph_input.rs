@@ -431,7 +431,7 @@ pub struct GraphSnapshot {
 }
 
 /// Over the wire a snapshot is its layout: the capture never leaves the backend, and every
-/// command that returns a graph to the frontend returns the same shape it always did.
+/// graph IPC wraps the layout with its publication revision in `GraphResponse`.
 impl Serialize for GraphSnapshot {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.layout.serialize(serializer)

@@ -7,7 +7,7 @@ use trunk_lib::types::StashEntry;
 /// A driver method's contract predates `GraphRebuild`'s capture/lay-out split: it hands back
 /// a laid-out `GraphSnapshot`, same as before. Laying the capture out under the default
 /// (nothing hidden) visibility here is what keeps that contract, now that `*_inner` returns
-/// the bare capture (TRUNK-125).
+/// a checked `GraphRead` whose source is the capture (TRUNK-125).
 fn snapshot(
     source: Result<trunk_lib::state::GraphRead, TrunkError>,
 ) -> Result<GraphSnapshot, TrunkError> {

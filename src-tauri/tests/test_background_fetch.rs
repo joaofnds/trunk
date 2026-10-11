@@ -503,6 +503,35 @@ fn a_shared_ref_update_preserves_each_worktrees_head_dirtiness_and_visibility() 
 }
 
 #[test]
+fn cached_visibility_changes_preserve_the_capture_without_a_repository_read() {
+    let fixture = RemoteFixture::new();
+    let mut harness = Harness::setup();
+    harness.open(fixture.clone.path());
+    let before = harness.snapshot(fixture.clone.path());
+    let git_dir = fixture.clone().path().to_path_buf();
+    let parked = fixture.clone.path().join("parked-git");
+    std::fs::rename(&git_dir, &parked).unwrap();
+
+    let changed = harness.invoke(
+        "set_ref_visibility",
+        json!({
+            "path": fixture.clone.path().to_str().unwrap(),
+            "visibility": { "hiddenRefs": ["refs/remotes/origin/other"], "hiddenStashes": [] },
+            "loaded": 200,
+        }),
+    );
+    std::fs::rename(&parked, &git_dir).unwrap();
+    let changed = changed.unwrap();
+
+    assert!(
+        harness
+            .snapshot(fixture.clone.path())
+            .same_capture_as(&before)
+    );
+    assert!(!has_ref(&changed, "refs/remotes/origin/other"));
+}
+
+#[test]
 fn uncached_visibility_capture_is_stamped_for_the_next_unchanged_fetch() {
     let fixture = RemoteFixture::new();
     let mut harness = Harness::setup();
@@ -884,10 +913,13 @@ fn a_successful_manual_pull_resets_only_its_healthy_upstream_remote() {
         .unwrap();
     let mut harness = Harness::setup();
     harness.open(fixture.clone.path());
+    let clock = harness.app.state::<BackgroundFetch>();
+    clock.set_time_ms(10_000);
     let previous = harness.fetch(fixture.clone.path());
     assert_eq!(remote_outcome(&previous, "origin")["outcome"], "unchanged");
     assert_eq!(remote_outcome(&previous, "z-failed")["outcome"], "failed");
     let oid = fixture.advance_main();
+    clock.set_time_ms(20_000);
 
     let pulled = harness
         .invoke(
@@ -1344,7 +1376,11 @@ mod cancellation {
                 .unwrap()
                 .busy(&path)
         );
-        assert_eq!(next["outcome"], "unchanged");
+        assert_eq!(
+            next["outcome"], "changed",
+            "removing the blocked remote invalidates the captured fetch mappings"
+        );
+        assert_eq!(next["remotes"][0]["outcome"], "unchanged");
         assert!(next["remotes"][0]["last_success_ms"].is_u64());
     }
 

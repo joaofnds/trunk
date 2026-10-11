@@ -2,10 +2,11 @@ use std::path::{Path, PathBuf};
 
 use trunk_git::types::GraphResult;
 
-/// One fixture's layout as the app receives it over IPC, plus the `wipCount`
+/// One fixture's layout, plus the `wipCount`
 /// `RepoView` derives alongside it. The TypeScript render goldens mount the
 /// graph column against these, so their inputs are placements the backend
-/// really produces rather than hand-authored shapes.
+/// really produces rather than hand-authored shapes. Graph IPC adds a revision
+/// envelope; that publication identity is not part of a layout golden.
 #[derive(serde::Serialize)]
 struct LayoutExport<'a> {
     #[serde(rename = "wipCount")]

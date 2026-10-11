@@ -57,10 +57,13 @@ fn parent_map(
 /// Returns the git error when the revwalk, the refs, or the stash reflog will
 /// not read.
 pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {
-    // Step 0: Worktree state, read once — the frontend draws a WIP row in column 0
-    // whenever this is true, so inline stash placement has to yield the lane.
-    let worktree_dirty = status::worktree_dirty(repo);
+    capture_with_worktree_reader(repo, status::worktree_dirty)
+}
 
+fn capture_with_worktree_reader(
+    repo: &mut git2::Repository,
+    read_worktree: impl FnOnce(&git2::Repository) -> bool,
+) -> Result<GraphSource, TrunkError> {
     // Step 1: Build ref map (needs &mut repo for stash_foreach)
     let ref_map = repository::build_ref_map(repo);
 
@@ -141,6 +144,10 @@ pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {
         .filter_map(|oid| ref_map.get(oid).map(|labels| (*oid, labels.clone())))
         .collect();
 
+    // Observe dirtiness once, after collecting graph inputs and before the caller's
+    // final ref check. Dirty work yields column 0 to the frontend's WIP row.
+    let worktree_dirty = read_worktree(repo);
+
     Ok(GraphSource {
         placement: PlacementInput {
             oids,
@@ -154,6 +161,19 @@ pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {
         refs,
         stash_order: stash_oids,
     })
+}
+
+/// Capture with a controlled worktree observation for concurrent-input fixtures.
+///
+/// # Errors
+///
+/// Returns repository capture errors.
+#[cfg(feature = "test-util")]
+pub fn capture_with_worktree_observation(
+    repo: &mut git2::Repository,
+    read_worktree: impl FnOnce(&git2::Repository) -> bool,
+) -> Result<GraphSource, TrunkError> {
+    capture_with_worktree_reader(repo, read_worktree)
 }
 
 /// The whole history laid out under `visibility`, together with the capture it came from,
@@ -172,4 +192,55 @@ pub fn snapshot(
     visibility: &RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
     Ok(GraphSnapshot::new(capture(repo)?, visibility.clone()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::capture_with_worktree_reader;
+
+    #[test]
+    fn capture_observes_worktree_after_refs() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut repo = git2::Repository::init(directory.path()).unwrap();
+        let config = git2::Config::open(&repo.path().join("config")).unwrap();
+        repo.set_config(&config).unwrap();
+        let tree_oid = repo.treebuilder(None).unwrap().write().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let signature = git2::Signature::new(
+            "Fixture",
+            "fixture@example.invalid",
+            &git2::Time::new(1_000, 0),
+        )
+        .unwrap();
+        let oid = repo
+            .commit(
+                Some("refs/heads/main"),
+                &signature,
+                &signature,
+                "initial",
+                &tree,
+                &[],
+            )
+            .unwrap();
+        drop(tree);
+        repo.set_head("refs/heads/main").unwrap();
+
+        let captured = capture_with_worktree_reader(&mut repo, |repo| {
+            std::fs::write(repo.workdir().unwrap().join("late.txt"), "late work").unwrap();
+            repo.reference("refs/heads/late", oid, false, "fixture")
+                .unwrap();
+            crate::status::worktree_dirty(repo)
+        })
+        .unwrap();
+
+        assert!(captured.placement.worktree_dirty);
+        assert!(
+            captured
+                .refs
+                .values()
+                .flatten()
+                .all(|label| label.name != "refs/heads/late")
+        );
+        assert!(repo.find_reference("refs/heads/late").is_ok());
+    }
 }

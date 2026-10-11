@@ -234,9 +234,9 @@ of fixture size. Worse than an empty render, because nothing about the artifact 
 
 **Tie-break ordering / time ordering** — the two paths a fixture can take through the walk's
 `TOPOLOGICAL | TIME` sort. Commits sharing a second resolve by tie-break; commits with distinct,
-spaced timestamps resolve by time, and the two can yield different row orders. Fixtures built by
-`TestContext::builder` always take the tie-break path, since it has no timestamp control; the
-shell fixture corpus is day-spaced and takes the time path.
+spaced timestamps resolve by time, and the two can yield different row orders.
+`TestContext::builder` spaces commits by a day and provides `with_commit_at` for explicit
+ordering cases. The shell fixture corpus is also day-spaced.
 
 ## Diff surfaces
 

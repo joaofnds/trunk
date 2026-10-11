@@ -37,6 +37,6 @@ impl TestContext {
         let mut repo = self.repo();
         let result = trunk_git::graph::snapshot(&mut repo, &RefVisibility::default())
             .expect("snapshot failed");
-        self.cache_map.insert(self.path.clone(), result);
+        self.cache_map.seed(self.path.clone(), result);
     }
 }

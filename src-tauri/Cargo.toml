@@ -80,7 +80,7 @@ objc2-foundation = { version = "0.3", features = [
 block2 = "0.6"
 
 [dev-dependencies]
-# Enable the app's driven-clock affordance only for test and example targets.
+# Enable app test affordances for test, example and bench targets, never shipped builds.
 trunk = { path = ".", features = ["test-util"] }
 tokio = { version = "1", features = ["test-util", "rt", "macros"] }
 # The member crates' test-only affordances, on for the test and bench targets

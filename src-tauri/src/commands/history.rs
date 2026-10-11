@@ -5,10 +5,7 @@ use std::collections::HashMap;
 use tauri::State;
 use trunk_git::error::TrunkError;
 use trunk_git::graph_input::GraphSnapshot;
-use trunk_git::{
-    graph,
-    types::{GraphCommit, GraphResult},
-};
+use trunk_git::types::{GraphCommit, GraphResult};
 
 #[derive(Debug, Serialize, Clone)]
 pub struct GraphResponse {
@@ -30,8 +27,8 @@ fn slice(layout: &GraphResult, start: usize, end: usize) -> &[GraphCommit] {
 
 impl GraphResponse {
     /// The `PAGE`-row page of `layout` starting at `offset`, empty past the end.
-    fn page(layout: &GraphResult, offset: usize) -> Self {
-        Self::rows(layout, offset, offset + PAGE)
+    fn page(layout: &GraphResult, offset: usize, revision: u64) -> Self {
+        Self::rows(layout, offset, offset.saturating_add(PAGE), revision)
     }
 
     /// The first `loaded` rows of `layout`, or one page when the caller has none.
@@ -40,21 +37,16 @@ impl GraphResponse {
     /// in. Returning page one alone would drop every later page it holds, and it has
     /// no way to tell that loss from a history that genuinely shrank.
     #[must_use]
-    pub fn head(layout: &GraphResult, loaded: usize) -> Self {
-        Self::rows(layout, 0, loaded.max(PAGE))
+    pub fn head(layout: &GraphResult, loaded: usize, revision: u64) -> Self {
+        Self::rows(layout, 0, loaded.max(PAGE), revision)
     }
 
-    fn rows(layout: &GraphResult, start: usize, end: usize) -> Self {
+    fn rows(layout: &GraphResult, start: usize, end: usize, revision: u64) -> Self {
         Self {
             commits: slice(layout, start, end).to_vec(),
             max_columns: layout.max_columns,
-            revision: 0,
+            revision,
         }
-    }
-
-    const fn at_revision(mut self, revision: u64) -> Self {
-        self.revision = revision;
-        self
     }
 }
 
@@ -75,12 +67,10 @@ pub async fn get_commit_graph(
 ) -> Result<GraphResponse, String> {
     cache
         .read_versioned(&path, revision, |graph, revision| {
-            loaded
-                .map_or_else(
-                    || GraphResponse::page(&graph.layout, offset),
-                    |loaded| GraphResponse::head(&graph.layout, loaded),
-                )
-                .at_revision(revision)
+            loaded.map_or_else(
+                || GraphResponse::page(&graph.layout, offset, revision),
+                |loaded| GraphResponse::head(&graph.layout, loaded, revision),
+            )
         })
         .map_err(|e| e.to_json())
 }
@@ -127,7 +117,7 @@ async fn refresh_graph_in_session(
         .await?;
 
     cache.read_versioned(path, None, |graph, revision| {
-        GraphResponse::head(&graph.layout, loaded).at_revision(revision)
+        GraphResponse::head(&graph.layout, loaded, revision)
     })
 }
 
@@ -176,16 +166,12 @@ pub async fn set_ref_visibility(
         .await
         .map_err(|e| e.to_json());
     };
-    let state_map = state.snapshot();
-    let path_clone = path.clone();
     let read = cached.clone();
 
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        set_ref_visibility_inner(&path_clone, &visibility, Some(&cached), &state_map)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    let graph_result =
+        tauri::async_runtime::spawn_blocking(move || cached.with_visibility(visibility))
+            .await
+            .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?;
 
     crate::state::GraphRebuild::new(&cache, &ref_visibility)
         .publish_relayout(path.clone(), &read, graph_result, ticket)
@@ -193,33 +179,9 @@ pub async fn set_ref_visibility(
         .map_err(|e| e.to_json())?;
     cache
         .read_versioned(&path, None, |graph, revision| {
-            GraphResponse::head(&graph.layout, loaded).at_revision(revision)
+            GraphResponse::head(&graph.layout, loaded, revision)
         })
         .map_err(|e| e.to_json())
-}
-
-/// The graph under a new visibility.
-///
-/// The cached snapshot answers without touching the repository; only a repository whose
-/// first graph is still being built has none, and that one is walked as it always was.
-///
-/// # Errors
-///
-/// Returns `not_open` when `path` names no open repository and no cached snapshot was
-/// given, and the git error when the walk fails.
-pub fn set_ref_visibility_inner(
-    path: &str,
-    visibility: &trunk_git::graph_input::RefVisibility,
-    cached: Option<&GraphSnapshot>,
-    state_map: &OpenRepos,
-) -> Result<GraphSnapshot, TrunkError> {
-    if let Some(snapshot) = cached {
-        return Ok(snapshot.with_visibility(visibility.clone()));
-    }
-
-    let path_buf = state_map.path_for(path)?;
-    let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-    graph::snapshot(&mut repo, visibility)
 }
 
 /// Diff-stat (`insertions/deletions/files_changed`) for one commit against its
@@ -384,23 +346,19 @@ where
     C: std::future::Future<Output = Result<HashMap<String, DiffStat>, TrunkError>>,
 {
     // Resolve the page's oids from the topology cache (lock dropped immediately).
-    let ((page_oids, page_revision), session): ((Vec<String>, u64), u64) = cache
-        .read_versioned_with_session(path, revision, |graph, revision| {
-            (
-                slice(&graph.layout, offset, offset + PAGE)
-                    .iter()
-                    .map(|c| c.oid.clone())
-                    .collect(),
-                revision,
-            )
-        })?;
+    let page = cache.read_versioned_with_session(path, revision, |graph, _| {
+        slice(&graph.layout, offset, offset.saturating_add(PAGE))
+            .iter()
+            .map(|commit| commit.oid.clone())
+            .collect::<Vec<_>>()
+    })?;
 
     // Partition into already-cached (return verbatim) and uncached (compute).
     let (uncached, mut result): (Vec<String>, HashMap<String, DiffStat>) = {
         let cached = commit_stats.0.lock().unwrap();
         let mut uncached = Vec::new();
         let mut result = HashMap::new();
-        for oid in page_oids {
+        for oid in page.value {
             match cached.get(path, &oid) {
                 Some(stat) => {
                     result.insert(oid, stat.clone());
@@ -422,13 +380,13 @@ where
     // the opening session that requested them. Keep them before rejecting a stale response.
     cache.store_stats_in_session(
         path,
-        session,
+        page.session,
         commit_stats,
         computed
             .iter()
             .map(|(oid, stat)| (oid.clone(), stat.clone())),
     )?;
-    cache.read_versioned(path, Some(page_revision), |_, _| ())?;
+    cache.require_revision(path, page.revision)?;
     result.extend(computed);
     Ok(result)
 }
@@ -599,7 +557,7 @@ pub async fn search_commits(
 
 #[cfg(test)]
 mod tests {
-    use super::{cached_commit_stat, cached_commit_stats};
+    use super::{GraphResponse, cached_commit_stat, cached_commit_stats};
     use crate::state::{
         CommitCache, CommitStatsCache, GraphCache, GraphRebuild, RefVisibilityState, StatsCache,
     };
@@ -650,7 +608,7 @@ mod tests {
 
     fn cache() -> CommitCache {
         let mut graphs = GraphCache::default();
-        graphs.insert(
+        graphs.seed(
             "/repo".into(),
             GraphSnapshot::new(source(), RefVisibility::default()),
         );
@@ -666,6 +624,27 @@ mod tests {
                 files_changed: 1,
             },
         )])
+    }
+
+    #[test]
+    fn a_maximum_offset_returns_no_graph_rows_or_stats_and_keeps_the_cache_readable() {
+        let cache = cache();
+        let stored = CommitStatsCache(Mutex::new(StatsCache::default()));
+        let graph = cache.snapshot("/repo").unwrap();
+        let page = GraphResponse::page(&graph.layout, usize::MAX, 1);
+        let result = tauri::async_runtime::block_on(cached_commit_stats(
+            "/repo",
+            usize::MAX,
+            None,
+            &cache,
+            &stored,
+            |_| async { panic!("an empty page must not compute stats") },
+        ))
+        .unwrap();
+
+        assert!(page.commits.is_empty());
+        assert!(result.is_empty());
+        assert!(cache.snapshot("/repo").is_some());
     }
 
     #[test]
