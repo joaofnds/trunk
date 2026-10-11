@@ -536,6 +536,14 @@ let commitDetailStat = $state<DiffStat | null>(null);
 // Replace this array wholesale: $state.raw ignores an in-place mutation, so a
 // push here updates nothing on screen.
 let commitFileDiffs = $state.raw<FileDiff[]>([]);
+const loadedCommitFiles = new WeakMap<
+	FileDiff,
+	{
+		readonly repo: string;
+		readonly oid: string;
+		readonly options: Readonly<DiffRequestOptions>;
+	}
+>();
 let selectedCommitFile = $state<string | null>(null);
 let commitDiffLoadSeq = 0;
 let commitDiffLoading = $state(false);
@@ -1534,9 +1542,11 @@ async function reloadCommitFile(
 	observeOpen = false,
 ) {
 	if (!repoPath || !selectedCommitOid) return;
+
 	const fireRepo = repoPath;
 	const fireOid = selectedCommitOid;
 	const loadSeq = ++commitDiffLoadSeq;
+	const retained = commitFileDiffs.find((file) => file.path === path);
 	const requestMode = modeFor(options);
 	const requestIsCurrent = () =>
 		repoViewActive &&
@@ -1544,8 +1554,11 @@ async function reloadCommitFile(
 		repoPath === fireRepo &&
 		selectedCommitOid === fireOid &&
 		selectedCommitFile === path;
+
+	if (retained) loadedCommitFiles.delete(retained);
 	commitDiffLoading = true;
 	commitDiffError = null;
+
 	try {
 		const load = async () => {
 			const fileDiffs = await requestCommitFileDiff(
@@ -1555,7 +1568,15 @@ async function reloadCommitFile(
 				options,
 			);
 			if (!requestIsCurrent()) return;
+
 			commitFileDiffs = patchLoadedDiff(commitFileDiffs, path, fileDiffs);
+			if (fileDiffs[0]) {
+				loadedCommitFiles.set(fileDiffs[0], {
+					repo: fireRepo,
+					oid: fireOid,
+					options: { ...options },
+				});
+			}
 			commitDiffMode = requestMode;
 			commitDiffLoading = false;
 		};
@@ -1583,11 +1604,32 @@ async function reloadCommitFile(
 
 async function selectCommitFileIdempotent(path: string) {
 	if (selectedCommitFile === path) return;
+
 	selectedCommitFile = path;
 	diffInViewPath = path;
 	// Close the review panel (swap to diff) so the clicked file is visible (260531-l02d).
 	if (reviewSession.state.reviewActive) reviewSession.showDiff();
-	await reloadCommitFile(path, buildDiffOptions(), true);
+
+	const options = buildDiffOptions();
+	const retained = commitFileDiffs.find((file) => file.path === path);
+	const loaded = retained && loadedCommitFiles.get(retained);
+	if (
+		loaded &&
+		loaded.repo === repoPath &&
+		loaded.oid === selectedCommitOid &&
+		loaded.options.contextLines === options.contextLines &&
+		loaded.options.ignoreWhitespace === options.ignoreWhitespace &&
+		loaded.options.showFullFile === options.showFullFile
+	) {
+		commitDiffLoadSeq += 1;
+		commitDiffLoading = false;
+		commitDiffError = null;
+		commitDiffMode = modeFor(options);
+
+		return;
+	}
+
+	await reloadCommitFile(path, options, true);
 }
 
 // Toggle wrapper for CommitDetail file clicks: re-clicking the selected file
