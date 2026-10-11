@@ -9,6 +9,7 @@ use crate::types::{
 use crate::word_spans::compute_word_spans_for_hunk;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use tauri::State;
 use trunk_git::blob_reader;
 use trunk_git::error::TrunkError;
@@ -1207,15 +1208,138 @@ pub async fn open_current_file(
     path: String,
     file_path: String,
     state: State<'_, RepoState>,
+    cache: State<'_, CurrentSourceCache>,
 ) -> Result<Vec<FileDiff>, String> {
     let state_map = state.snapshot();
+    let cache = cache.inner().clone();
+
     tauri::async_runtime::spawn_blocking(move || {
         let repo = state_map.open(&path)?;
-        current_file_diff(&repo, &file_path).map(|fd| vec![fd])
+        cache
+            .current_file_diff(&repo, &file_path)
+            .map(|fd| vec![fd.as_ref().clone()])
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
     .map_err(|e| e.to_json())
+}
+
+const MAX_CURRENT_SOURCE_RETAINED_BYTES: usize = 2 * 1024 * 1024;
+
+/// The sole current-source entry is app-owned so reopen requests on different
+/// blocking threads can share it. A hit still requires a fresh secure read.
+#[derive(Clone, Default)]
+pub struct CurrentSourceCache(Arc<Mutex<Option<CurrentSourceEntry>>>);
+
+struct CurrentSourceEntry {
+    path: String,
+    bytes: Vec<u8>,
+    result: Arc<FileDiff>,
+}
+
+/// Counts the owned capacity retained by an entry, including nested diff
+/// collections and strings. The Arc control block is an approximate allowance.
+fn current_source_retained_bytes(entry: &CurrentSourceEntry) -> usize {
+    let mut size = std::mem::size_of::<CurrentSourceEntry>()
+        .saturating_add(entry.path.capacity())
+        .saturating_add(entry.bytes.capacity())
+        .saturating_add(std::mem::size_of::<FileDiff>() + 2 * std::mem::size_of::<usize>());
+
+    let result = entry.result.as_ref();
+
+    size = size
+        .saturating_add(result.path.capacity())
+        .saturating_add(result.old_path.as_ref().map_or(0, String::capacity))
+        .saturating_add(
+            result
+                .hunks
+                .capacity()
+                .saturating_mul(std::mem::size_of::<DiffHunk>()),
+        );
+    for hunk in &result.hunks {
+        size = size.saturating_add(hunk.header.capacity()).saturating_add(
+            hunk.lines
+                .capacity()
+                .saturating_mul(std::mem::size_of::<DiffLine>()),
+        );
+        for line in &hunk.lines {
+            size = size.saturating_add(line.content.capacity()).saturating_add(
+                line.spans
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<crate::types::MergedSpan>()),
+            );
+            for span in &line.spans {
+                size = size.saturating_add(span.syntax_class.capacity());
+            }
+        }
+    }
+
+    size
+}
+
+impl CurrentSourceCache {
+    /// Read and display one indexed working-tree file, reusing only the last
+    /// matching text result after validating the current path and bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns the secure working-tree reader's error when the path is absent,
+    /// no longer indexed, or cannot be read.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the cache lock is poisoned.
+    pub fn current_file_diff(
+        &self,
+        repo: &git2::Repository,
+        file_path: &str,
+    ) -> Result<Arc<FileDiff>, TrunkError> {
+        let bytes = match blob_reader::read_tracked_working_tree_file(repo, file_path)? {
+            blob_reader::WorkingTreeFile::Binary => {
+                let previous = self
+                    .0
+                    .lock()
+                    .expect("current source cache lock poisoned")
+                    .take();
+                drop(previous);
+
+                return Ok(Arc::new(binary_current_file_diff(file_path)));
+            }
+            blob_reader::WorkingTreeFile::Text(bytes) => bytes,
+        };
+
+        {
+            let entry = self.0.lock().expect("current source cache lock poisoned");
+
+            if let Some(entry) = entry.as_ref()
+                && entry.path == file_path
+                && entry.bytes == bytes
+            {
+                return Ok(Arc::clone(&entry.result));
+            }
+        }
+
+        // Parsing and token construction can take tens of milliseconds; neither
+        // runs under the shared cache lock.
+        let result = Arc::new(build_current_file_diff(file_path, bytes.clone()));
+        let entry = CurrentSourceEntry {
+            path: file_path.to_string(),
+            bytes,
+            result: Arc::clone(&result),
+        };
+        let retains_within_budget =
+            current_source_retained_bytes(&entry) <= MAX_CURRENT_SOURCE_RETAINED_BYTES;
+        let next = retains_within_budget.then_some(entry);
+
+        let previous = {
+            let mut slot = self.0.lock().expect("current source cache lock poisoned");
+
+            std::mem::replace(&mut *slot, next)
+        };
+        drop(previous);
+
+        Ok(result)
+    }
 }
 
 /// The whole of a tracked file's current working-tree content, shaped as a
@@ -1238,18 +1362,24 @@ pub async fn open_current_file(
 /// returned as `io_error`.
 pub fn current_file_diff(repo: &git2::Repository, file_path: &str) -> Result<FileDiff, TrunkError> {
     let bytes = match blob_reader::read_tracked_working_tree_file(repo, file_path)? {
-        blob_reader::WorkingTreeFile::Binary => {
-            return Ok(FileDiff {
-                path: file_path.to_string(),
-                old_path: None,
-                status: DiffStatus::Unknown,
-                is_binary: true,
-                hunks: vec![],
-            });
-        }
+        blob_reader::WorkingTreeFile::Binary => return Ok(binary_current_file_diff(file_path)),
         blob_reader::WorkingTreeFile::Text(bytes) => bytes,
     };
 
+    Ok(build_current_file_diff(file_path, bytes))
+}
+
+fn binary_current_file_diff(file_path: &str) -> FileDiff {
+    FileDiff {
+        path: file_path.to_string(),
+        old_path: None,
+        status: DiffStatus::Unknown,
+        is_binary: true,
+        hunks: vec![],
+    }
+}
+
+fn build_current_file_diff(file_path: &str, bytes: Vec<u8>) -> FileDiff {
     let text = String::from_utf8_lossy(&bytes);
     let lines: Vec<DiffLine> = text
         .split_inclusive('\n')
@@ -1292,7 +1422,7 @@ pub fn current_file_diff(repo: &git2::Repository, file_path: &str) -> Result<Fil
 
     enrich_file_diffs(&mut file_diffs, &sides);
 
-    Ok(file_diffs.remove(0))
+    file_diffs.remove(0)
 }
 
 /// The 1-based line number for a 0-based index, saturating rather than wrapping
@@ -1329,6 +1459,173 @@ mod current_file_tests {
             .flat_map(|h| h.lines.iter())
             .map(|l| l.content.as_str())
             .collect()
+    }
+
+    #[test]
+    fn reuses_the_last_current_source_for_the_same_path_and_bytes() {
+        let (_dir, repo) = repo_with_file("main.rs", "let total = 1;\n");
+        let cache = CurrentSourceCache::default();
+
+        let first = cache.current_file_diff(&repo, "main.rs").unwrap();
+        let second = cache.current_file_diff(&repo, "main.rs").unwrap();
+
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+        assert!(!first.hunks[0].lines[0].spans.is_empty());
+    }
+
+    #[test]
+    fn different_paths_with_identical_bytes_build_separate_current_sources() {
+        let (dir, repo) = repo_with_file("main.rs", "let total = 1;\n");
+        fs::write(dir.path().join("notes.nolang"), "let total = 1;\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index
+            .add_path(std::path::Path::new("notes.nolang"))
+            .unwrap();
+        index.write().unwrap();
+        let cache = CurrentSourceCache::default();
+
+        let rust = cache.current_file_diff(&repo, "main.rs").unwrap();
+        let text = cache.current_file_diff(&repo, "notes.nolang").unwrap();
+        let rust_again = cache.current_file_diff(&repo, "main.rs").unwrap();
+
+        assert_eq!(text.path, "notes.nolang");
+        assert!(text.hunks[0].lines[0].spans.is_empty());
+        assert!(!Arc::ptr_eq(&rust, &text));
+        assert!(!Arc::ptr_eq(&rust, &rust_again));
+    }
+
+    #[test]
+    fn edited_bytes_replace_the_cached_current_source() {
+        let (dir, repo) = repo_with_file("main.rs", "let total = 1;\n");
+        let cache = CurrentSourceCache::default();
+        let first = cache.current_file_diff(&repo, "main.rs").unwrap();
+        fs::write(dir.path().join("main.rs"), "let total = 2;\n").unwrap();
+
+        let edited = cache.current_file_diff(&repo, "main.rs").unwrap();
+        let edited_again = cache.current_file_diff(&repo, "main.rs").unwrap();
+
+        assert_eq!(contents(&edited), vec!["let total = 2;\n"]);
+        assert!(!Arc::ptr_eq(&first, &edited));
+        assert!(Arc::ptr_eq(&edited, &edited_again));
+    }
+
+    #[test]
+    fn different_raw_bytes_with_identical_decoded_text_replace_the_cache() {
+        let (dir, repo) = repo_with_file("notes.txt", "initial\n");
+        let cache = CurrentSourceCache::default();
+        fs::write(dir.path().join("notes.txt"), [0xff]).unwrap();
+        let first = cache.current_file_diff(&repo, "notes.txt").unwrap();
+        fs::write(dir.path().join("notes.txt"), [0xfe]).unwrap();
+
+        let second = cache.current_file_diff(&repo, "notes.txt").unwrap();
+
+        assert_eq!(contents(&first), contents(&second));
+        assert!(!Arc::ptr_eq(&first, &second));
+    }
+
+    #[test]
+    fn a_payload_over_two_mib_is_returned_without_retention() {
+        let content = "x".repeat(1_100_000);
+        let (dir, repo) = repo_with_file("large.txt", "small\n");
+        let cache = CurrentSourceCache::default();
+        cache.current_file_diff(&repo, "large.txt").unwrap();
+        fs::write(dir.path().join("large.txt"), &content).unwrap();
+
+        let result = cache.current_file_diff(&repo, "large.txt").unwrap();
+        let again = cache.current_file_diff(&repo, "large.txt").unwrap();
+
+        assert_eq!(result.hunks[0].lines[0].content.len(), content.len());
+        assert!(!Arc::ptr_eq(&result, &again));
+    }
+
+    #[test]
+    fn many_short_lines_exceed_the_output_collection_budget() {
+        // Input and copied text total 120,000 bytes; the DiffLine vector must count.
+        let content = "x\n".repeat(30_000);
+        let (_dir, repo) = repo_with_file("many.txt", &content);
+        let cache = CurrentSourceCache::default();
+
+        let first = cache.current_file_diff(&repo, "many.txt").unwrap();
+        let second = cache.current_file_diff(&repo, "many.txt").unwrap();
+
+        assert_eq!(first.hunks[0].lines.len(), 30_000);
+        assert!(!Arc::ptr_eq(&first, &second));
+    }
+
+    #[test]
+    fn a_deleted_cached_file_is_refused() {
+        let (dir, repo) = repo_with_file("notes.txt", "one\n");
+        let cache = CurrentSourceCache::default();
+        cache.current_file_diff(&repo, "notes.txt").unwrap();
+        fs::remove_file(dir.path().join("notes.txt")).unwrap();
+
+        let error = cache.current_file_diff(&repo, "notes.txt").unwrap_err();
+
+        assert_eq!(error.code, "not_found");
+    }
+
+    #[test]
+    fn a_deindexed_cached_file_is_refused() {
+        let (_dir, repo) = repo_with_file("notes.txt", "one\n");
+        let cache = CurrentSourceCache::default();
+        cache.current_file_diff(&repo, "notes.txt").unwrap();
+        let mut index = repo.index().unwrap();
+        index
+            .remove_path(std::path::Path::new("notes.txt"))
+            .unwrap();
+        index.write().unwrap();
+
+        let error = cache.current_file_diff(&repo, "notes.txt").unwrap_err();
+
+        assert_eq!(error.code, "not_found");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_replacing_a_cached_file_is_refused() {
+        let (dir, repo) = repo_with_file("notes.txt", "one\n");
+        let cache = CurrentSourceCache::default();
+        cache.current_file_diff(&repo, "notes.txt").unwrap();
+        fs::write(dir.path().join("secret.env"), "DUMMY_SECRET\n").unwrap();
+        fs::remove_file(dir.path().join("notes.txt")).unwrap();
+        std::os::unix::fs::symlink("secret.env", dir.path().join("notes.txt")).unwrap();
+
+        let error = cache.current_file_diff(&repo, "notes.txt").unwrap_err();
+
+        assert_eq!(error.code, "not_found");
+        assert!(!error.message.contains("DUMMY_SECRET"));
+    }
+
+    #[test]
+    fn a_binary_transition_replaces_a_cached_text_view() {
+        let (dir, repo) = repo_with_file("notes.txt", "one\n");
+        let cache = CurrentSourceCache::default();
+        let text_before = cache.current_file_diff(&repo, "notes.txt").unwrap();
+        fs::write(dir.path().join("notes.txt"), [0, 1, 2]).unwrap();
+
+        let binary = cache.current_file_diff(&repo, "notes.txt").unwrap();
+        fs::write(dir.path().join("notes.txt"), "one\n").unwrap();
+        let text_after = cache.current_file_diff(&repo, "notes.txt").unwrap();
+
+        assert!(binary.is_binary);
+        assert!(binary.hunks.is_empty());
+        assert_eq!(contents(&text_after), vec!["one\n"]);
+        assert!(!Arc::ptr_eq(&text_before, &text_after));
+    }
+
+    #[test]
+    fn text_after_binary_is_read_and_cached_again() {
+        let (dir, repo) = repo_with_file("notes.txt", "one\n");
+        let cache = CurrentSourceCache::default();
+        fs::write(dir.path().join("notes.txt"), [0, 1, 2]).unwrap();
+        cache.current_file_diff(&repo, "notes.txt").unwrap();
+        fs::write(dir.path().join("notes.txt"), "two\n").unwrap();
+
+        let text = cache.current_file_diff(&repo, "notes.txt").unwrap();
+        let text_again = cache.current_file_diff(&repo, "notes.txt").unwrap();
+
+        assert_eq!(contents(&text), vec!["two\n"]);
+        assert!(Arc::ptr_eq(&text, &text_again));
     }
 
     #[test]

@@ -675,6 +675,7 @@ Key test cases to maintain (in `src-tauri/tests/test_graph.rs` unless a bullet n
 | `src/components/CommitGraph.scrolled.test.ts` | Pins the overlay behind a viewport shorter than the fixture: the culled window, its row height, and that it moves on scroll. The render goldens all mount unscrolled and cannot see any of it |
 | `src/components/CommitGraph.test.ts` | Pins the graph column's component behaviour that no golden covers |
 | `src/components/CommitGraph.autofetch.test.ts` | Pins initial/revised graph reads, graph_changed recovery, retained OID statistics, and refs-only replacement at the loaded depth with selection and viewport preserved |
+| `src/components/CommitGraph.runtime.test.ts` | Pins refresh consumption across pane remounts and bounded, active-tab stats reads for the virtual list's rendered range |
 | `tests/visual/graph.test.ts` | Screenshots the real app's graph column in Playwright's WebKit for every `graph-lanes`, `graph-merges`, `stash-lanes` and `kitchen-sink` repository, and one narrowed column, unpanned and panned sideways, and compares each with its committed baseline in `tests/visual/baselines/`. It is the only suite that sees paint. The render goldens compare markup, in which an erased rail and a drawn one are identical, so a green render golden is not evidence the graph draws (`docs/visual-regression.md`) |
 
 This table and the `paths:` list in `.claude/rules/commit-graph.md` are **no longer the same

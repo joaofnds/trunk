@@ -85,6 +85,29 @@ Repeat views of one diff got slower too: 816.63 µs from the cache before, about
 Below perception, and the reason the cache was not worth its 197 lines plus the warming
 machinery around it.
 
+### Current-source reuse
+
+The current-file view has a different cost: a measured reopen of unchanged full source spent
+32–99 ms in its native command, almost entirely in `build_side_lines`. It therefore keeps one
+app-owned result for the last current-source view. A request first passes through
+`read_tracked_working_tree_file`, including its index and no-symlink checks, and then matches the
+exact file path and raw text bytes. An edit or a different path builds a new result. A binary
+read clears the text entry and returns the binary view. A failed secure read returns its error
+without consulting the entry.
+
+The result is built outside the cache lock and only retained when the approximate owned
+allocation is at most 2 MiB. That accounting includes the input bytes, the output's nested
+vectors and strings, and their capacities. Larger files still open, without retention. This
+does not change the ordinary diff enrichment path or the 5,000-line parsing guard. The
+uncached `current_file_diff` remains for direct callers and baseline measurements.
+
+An optimized native comparison on the M5 Pro opened three current source files twice, in
+two runs per build with background fetch disabled. Repeat `open_current_file` IPC latency
+fell from 40–115 ms to 4–7 ms. The reuse helper took about 0.5 ms and did no enrichment on
+a hit; command response cloning and serialization remain included in IPC latency. A miss
+still builds and enriches the source. These observations cover that bounded workflow, not
+overall application CPU or responsiveness.
+
 ### Where the time goes inside one parse
 
 Measured separately on the same fixture, splitting a cold highlight into its halves:
@@ -143,9 +166,9 @@ and a shutdown path; the bounded window reaches it by deletion instead.
 
 ## What this pipeline is not responsible for
 
-The backend is fast and bounded. When a large file feels slow to open, measure before assuming
-this is why. Cached fetches of a 3,201-line file were measured at 15-17 ms while the app still
-felt sluggish, and the cause was the frontend rendering every line of the file with no
+The backend's narrow-diff path is bounded. When a large file feels slow to open, measure before
+assuming this is why. Cached fetches of a 3,201-line file were measured at 15-17 ms while the
+app still felt sluggish, and the cause was the frontend rendering every line of the file with no
 virtualisation. That is tracked separately. Per-row CSS `content-visibility: auto` was tried
 against it and made scrolling materially worse, because per-row containment moves style, layout
 and paint onto the scroll thread thousands of times.

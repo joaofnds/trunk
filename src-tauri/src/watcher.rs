@@ -4,6 +4,7 @@ use notify_debouncer_mini::notify::{
 };
 use notify_debouncer_mini::{Config, DebounceEventResult, Debouncer, new_debouncer_opt};
 use serde::{Deserialize, Serialize};
+use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -185,6 +186,57 @@ enum RefRefresh {
     Pending,
 }
 
+fn ignored_worktree_path(
+    path: &Path,
+    roots: &[PathBuf],
+    repo: &git2::Repository,
+    index: &git2::Index,
+) -> bool {
+    let Some(relative) = roots.iter().find_map(|root| path.strip_prefix(root).ok()) else {
+        return false;
+    };
+
+    if relative.as_os_str().is_empty()
+        || relative.file_name() == Some(std::ffi::OsStr::new(".gitignore"))
+        || relative.starts_with(".git")
+        || relative
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return false;
+    }
+
+    // Include conflict stages. Directory notifications and paths inside
+    // tracked submodules can describe tracked changes without an exact entry.
+    if (0..=3).any(|stage| index.get_path(relative, stage).is_some()) {
+        return false;
+    }
+
+    let mut directory_prefix = relative.as_os_str().to_os_string();
+    directory_prefix.push("/");
+
+    match index.find_prefix(directory_prefix) {
+        Err(error) if error.code() == git2::ErrorCode::NotFound => {}
+        Ok(_) | Err(_) => return false,
+    }
+
+    for parent in relative
+        .ancestors()
+        .skip(1)
+        .take_while(|parent| !parent.as_os_str().is_empty())
+    {
+        if (0..=3).any(|stage| {
+            index
+                .get_path(parent, stage)
+                .is_some_and(|entry| entry.mode == 0o160_000)
+        }) {
+            return false;
+        }
+    }
+
+    repo.is_path_ignored(relative).unwrap_or(false)
+}
+
 fn route_changes<R: Runtime>(
     watched: &Path,
     roots: &[PathBuf],
@@ -195,11 +247,28 @@ fn route_changes<R: Runtime>(
 ) -> Option<tauri::async_runtime::JoinHandle<()>> {
     let mut relevant = Vec::new();
     let mut worktree = changed.is_empty();
+    let ignore_context = OnceCell::new();
+
     for path in changed {
         match git.map_or(GitChange::Worktree, |git| git.classify(&path)) {
             GitChange::Bookkeeping => {}
             GitChange::Refs => relevant.push(path),
             GitChange::Worktree => {
+                let metadata = git.is_some_and(|git| {
+                    path.starts_with(&git.private) || path.starts_with(&git.common)
+                });
+                if !metadata {
+                    let context = ignore_context.get_or_init(|| {
+                        let repo = git2::Repository::open(watched).ok()?;
+                        let index = repo.index().ok()?;
+                        Some((repo, index))
+                    });
+                    if context.as_ref().is_some_and(|(repo, index)| {
+                        ignored_worktree_path(&path, roots, repo, index)
+                    }) {
+                        continue;
+                    }
+                }
                 worktree = true;
                 relevant.push(path);
             }

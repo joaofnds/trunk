@@ -833,6 +833,48 @@ impl<'a> GraphRebuild<'a> {
             .map(|(snapshot, ())| snapshot)
     }
 
+    /// Refresh an open graph only when this read can replace its cached capture.
+    /// A changed repository or visibility can cause publication to retain the old
+    /// capture; the caller must retry rather than acknowledge that refresh.
+    ///
+    /// # Errors
+    ///
+    /// Returns `graph_changed` when the old capture was retained, `not_open` when
+    /// the session closed, or capture and publication errors.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the cache lock is poisoned.
+    pub async fn refresh_in_session<F, S>(
+        &self,
+        path: String,
+        session: u64,
+        walk: F,
+    ) -> Result<GraphSnapshot, TrunkError>
+    where
+        F: FnOnce() -> Result<S, TrunkError> + Send + 'static,
+        S: Into<GraphRead> + Send + 'static,
+    {
+        let (_gate, ticket) = self.cache.begin_rebuild(&path, session).await?;
+        let previous = self.cache.snapshot(&path);
+
+        let (snapshot, ()) = self
+            .rebuild_locked(path, ticket, || walk().map(|read| (read, ())))
+            .await?;
+
+        if previous
+            .as_ref()
+            .is_some_and(|previous| snapshot.same_capture_as(previous))
+        {
+            return Err(TrunkError::new(
+                "graph_changed",
+                "Repository changed while refreshing its graph",
+            ));
+        }
+
+        Ok(snapshot)
+    }
+
     /// `rebuild`, for a `walk` that carries extra data alongside the snapshot back to the
     /// caller (an editor's opening message, say). `walk` returns the capture and the extra
     /// value as a pair; the capture is laid out under the looked-up visibility and only that
@@ -1187,6 +1229,73 @@ mod tests {
         assert!(outcome.is_ok());
         assert_eq!(attempts.load(Ordering::Relaxed), 3);
         assert!(cache.snapshot("/repo").unwrap().same_capture_as(&previous));
+    }
+
+    #[test]
+    fn an_unstable_refresh_is_retryable_and_keeps_the_previous_capture() {
+        let (_directory, mut repo) = capture_repository();
+        let cache = CommitCache::new(GraphCache::default());
+        let previous = graph(7);
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .insert("/repo".to_owned(), previous.clone());
+        let session = cache.capture_session("/repo").unwrap();
+        let visibility = RefVisibilityState::default();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let observed_attempts = Arc::clone(&attempts);
+
+        let error = tauri::async_runtime::block_on(
+            GraphRebuild::new(&cache, &visibility).refresh_in_session(
+                "/repo".to_owned(),
+                session,
+                move || {
+                    super::read_graph_with_capture(&mut repo, |repo| {
+                        let attempt = observed_attempts.fetch_add(1, Ordering::Relaxed) + 1;
+                        let source = trunk_git::graph::capture(repo)?;
+                        repo.reference(
+                            &format!("refs/heads/change-{attempt}"),
+                            repo.head()?.target().unwrap(),
+                            false,
+                            "fixture",
+                        )?;
+                        Ok(source)
+                    })
+                },
+            ),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, "graph_changed");
+        assert_eq!(attempts.load(Ordering::Relaxed), 3);
+        assert!(cache.snapshot("/repo").unwrap().same_capture_as(&previous));
+    }
+
+    #[test]
+    fn a_coherent_refresh_publishes_a_new_capture() {
+        let (_directory, mut repo) = capture_repository();
+        let cache = CommitCache::new(GraphCache::default());
+        let previous = graph(7);
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .insert("/repo".to_owned(), previous.clone());
+        let session = cache.capture_session("/repo").unwrap();
+        let visibility = RefVisibilityState::default();
+
+        let refreshed = tauri::async_runtime::block_on(
+            GraphRebuild::new(&cache, &visibility).refresh_in_session(
+                "/repo".to_owned(),
+                session,
+                move || super::read_graph_with_capture(&mut repo, trunk_git::graph::capture),
+            ),
+        )
+        .unwrap();
+
+        assert!(!refreshed.same_capture_as(&previous));
+        assert!(cache.snapshot("/repo").unwrap().same_capture_as(&refreshed));
     }
 
     #[test]

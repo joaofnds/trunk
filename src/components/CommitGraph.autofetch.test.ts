@@ -147,12 +147,6 @@ describe("CommitGraph automatic ref updates", () => {
 		const secondStats = host.holdNextReply("get_commit_stats");
 		await view.rerender({ selectedCommitOid: "oid-250" });
 		await view.component.scrollToOid("oid-250");
-		expect(await secondStats.entered).toEqual({
-			path: "/repo",
-			offset: 200,
-			revision: 1,
-		});
-		secondStats.release(stats(200, 400));
 		vi.advanceTimersToNextFrame();
 		await tick();
 		await fireEvent.scroll(graphViewport(view.container), {
@@ -160,6 +154,18 @@ describe("CommitGraph automatic ref updates", () => {
 		});
 		vi.advanceTimersToNextFrame();
 		await tick();
+		const requestedStats = await secondStats.entered;
+		expect(requestedStats.path).toBe("/repo");
+		expect(requestedStats.revision).toBe(1);
+		expect(Number(requestedStats.count)).toBeLessThanOrEqual(32);
+		expect(Number(requestedStats.offset)).toBeGreaterThanOrEqual(200);
+		host.seedResponse("get_commit_stats", stats(200, 400));
+		secondStats.release(
+			stats(
+				Number(requestedStats.offset),
+				Number(requestedStats.offset) + Number(requestedStats.count),
+			),
+		);
 		await screen.findByText("commit 250");
 		await waitFor(() =>
 			expect(
@@ -248,6 +254,8 @@ describe("CommitGraph automatic ref updates", () => {
 		oldStats.release({
 			head: { files_changed: 1, insertions: 11, deletions: 0 },
 		});
+		await waitFor(() => expect(clock.pending).toBeGreaterThan(0));
+		clock.flush();
 		await newStats.entered;
 		await tick();
 

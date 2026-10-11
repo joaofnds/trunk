@@ -20,10 +20,7 @@ import {
 	resolveForkPoint,
 } from "../lib/branch-op.js";
 import { copySha, copyText } from "../lib/clipboard.js";
-import {
-	type CoalescedTask,
-	createCoalescedTask,
-} from "../lib/coalesced-task.js";
+import { createCoalescedTask } from "../lib/coalesced-task.js";
 import {
 	authorContentWidth,
 	columnFloors,
@@ -126,6 +123,9 @@ interface Props {
 	wipStats?: WipStats;
 	onWipClick?: () => void;
 	refreshSignal?: number;
+	/** Last notification captured successfully, retained by RepoView across pane changes. */
+	consumedRefreshSignal?: number;
+	onrefreshconsumed?: (generation: number) => void;
 	wipRefreshSignal?: number;
 	cachedGraphRevision?: number;
 	selectedCommitOid?: string | null;
@@ -165,6 +165,8 @@ let {
 	wipStats,
 	onWipClick,
 	refreshSignal,
+	consumedRefreshSignal = 0,
+	onrefreshconsumed,
 	wipRefreshSignal,
 	cachedGraphRevision,
 	selectedCommitOid,
@@ -294,8 +296,10 @@ let wipDiffStat = $state<DiffStat | undefined>(undefined);
 // persisted diff:false pays a full page + WIP diff computation on every load for
 // a column they turned off.
 let columnVisibilityResolved = $state(false);
-// Plain (non-reactive) latch for the hidden→visible backfill trigger.
-let diffColumnWasVisible = false;
+let statsWereActive = false;
+let renderedStart = $state(0);
+let renderedEnd = $state(0);
+let attemptedStats = new Set<string>();
 let graphActive = true;
 
 // Whole-graph generation. showGraph can replace the page independently while a
@@ -1652,76 +1656,79 @@ function keepFocusOnList() {
 	containerRef?.focus();
 }
 
-// Lazy diff-stats for the page starting at `pageOffset`. Fire-and-forget so the
-// graph never waits on stats; merges into the latest commitStats map AFTER the
-// await (synchronous read-modify-write) so concurrent page fetches can't drop
-// each other's entries. Gated on the column being visible.
-async function readPageStats(pageOffset: number) {
-	if (!graphActive || !columnVisibilityResolved || !columnVisibility.diff)
-		return;
-	const page = commits.slice(pageOffset, pageOffset + BATCH);
-	if (page.length === 0 || page.every((commit) => commitStats.has(commit.oid)))
-		return;
-	try {
+// One reader follows the latest rendered window. Missing OIDs are attempted
+// once per revision/activation so an unreadable row cannot starve later rows.
+async function readVisibleStats() {
+	while (
+		graphActive &&
+		tabActive &&
+		columnVisibilityResolved &&
+		columnVisibility.diff
+	) {
+		const wipRows = wipCount > 0 ? 1 : 0;
+		const start = Math.max(0, renderedStart - wipRows);
+		const end = Math.min(commits.length, Math.max(0, renderedEnd - wipRows));
+		let first = start;
+		while (
+			first < end &&
+			(commitStats.has(commits[first].oid) ||
+				attemptedStats.has(commits[first].oid))
+		)
+			first++;
+		if (first >= end) return;
+
+		let stop = first + 1;
+		while (
+			stop < Math.min(end, first + 32) &&
+			!commitStats.has(commits[stop].oid) &&
+			!attemptedStats.has(commits[stop].oid)
+		)
+			stop++;
+
+		const count = stop - first;
 		const revision = graphRevision;
-		const stats = await safeInvoke<Record<string, DiffStat>>(
-			"get_commit_stats",
-			{
-				path: repoPath,
-				offset: pageOffset,
-				revision,
-			},
-		);
-		// Re-check after the await: the column may have been toggled off while the
-		// request was in flight — honor "hidden column does zero work".
-		if (!graphActive || !columnVisibility.diff || revision !== graphRevision)
-			return;
-		const next = new Map(commitStats);
-		for (const [oid, stat] of Object.entries(stats)) next.set(oid, stat);
-		commitStats = next;
-	} catch (error) {
-		if (graphActive && isTrunkError(error) && error.code === "graph_changed") {
-			cachedGraphRefresh.request();
+
+		for (const commit of commits.slice(first, first + count))
+			attemptedStats.add(commit.oid);
+		try {
+			const stats = await safeInvoke<Record<string, DiffStat>>(
+				"get_commit_stats",
+				{
+					path: repoPath,
+					offset: first,
+					count,
+					revision,
+				},
+			);
+			if (!graphActive || revision !== graphRevision) return;
+
+			const next = new Map(commitStats);
+			for (const [oid, stat] of Object.entries(stats)) next.set(oid, stat);
+
+			commitStats = next;
+		} catch (error) {
+			if (!graphActive) return;
+
+			if (isTrunkError(error) && error.code === "graph_changed") {
+				cachedGraphRefresh.request();
+				return;
+			}
+
+			throw error;
 		}
 	}
 }
 
-const pageStatsRefreshes = new Map<number, CoalescedTask>();
-
-function pageStatsRefresh(pageOffset: number): CoalescedTask {
-	let refresh = pageStatsRefreshes.get(pageOffset);
-	if (!refresh) {
-		refresh = createCoalescedTask(scheduler, () => readPageStats(pageOffset));
-		pageStatsRefreshes.set(pageOffset, refresh);
-	}
-	return refresh;
-}
-
-function fetchPageStats(pageOffset: number): Promise<void> {
-	return pageStatsRefresh(pageOffset).run();
-}
-
-function requestPageStats(pageOffset: number): void {
-	pageStatsRefresh(pageOffset).request();
-}
-
-// Backfill every loaded page's stats — used when the column is toggled on after
-// pages were loaded with it hidden (so no per-page fetch fired at load time).
-async function backfillAllPageStats() {
-	if (!columnVisibilityResolved || !columnVisibility.diff) return;
-	for (let o = 0; o < commits.length; o += BATCH) {
-		await fetchPageStats(o);
-	}
-}
+const visibleStatsRefresh = createCoalescedTask(scheduler, readVisibleStats);
 
 // WIP row stat (uncached, recomputed each refresh). Gated only on column
-// visibility — NOT on wipCount: repo-changed bumps refreshSignal synchronously
+// visibility and active tab — NOT on wipCount: repo-changed bumps refreshSignal synchronously
 // but refreshes wipCount via an async get_dirty_counts, so wipCount still reads
 // 0 during a clean→dirty refresh. The working tree is already in its new state,
 // so get_wip_diff_stats returns the correct value; when wipCount catches up and
 // the WIP row appears, its stat is already loaded.
 async function readWipStats() {
-	if (!graphActive) return;
+	if (!graphActive || !tabActive) return;
 	if (!columnVisibilityResolved || !columnVisibility.diff) {
 		wipDiffStat = undefined;
 		return;
@@ -1732,7 +1739,7 @@ async function readWipStats() {
 		});
 		// Drop the response if a newer fetch won (rapid working-tree edits) or the
 		// column was toggled off in flight — honor "hidden column does zero work",
-		// matching fetchPageStats' post-await re-check.
+		// matching the visible history reader.
 		if (!graphActive || !columnVisibility.diff) return;
 		wipDiffStat = stat;
 	} catch {
@@ -1750,7 +1757,7 @@ onDestroy(() => {
 	graphActive = false;
 	wipStatsRefresh.dispose();
 	stashMapRefresh.dispose();
-	for (const refresh of pageStatsRefreshes.values()) refresh.dispose();
+	visibleStatsRefresh.dispose();
 });
 
 async function loadMore(): Promise<PageResult> {
@@ -1768,7 +1775,6 @@ async function loadMore(): Promise<PageResult> {
 	// response describe a layout that no longer exists.
 	const seq = refreshSeq;
 	try {
-		const requestedOffset = offset;
 		const response = await safeInvoke<GraphResponse>("get_commit_graph", {
 			path: repoPath,
 			offset,
@@ -1785,7 +1791,6 @@ async function loadMore(): Promise<PageResult> {
 		updateContentWidths(response.commits);
 		offset += response.commits.length;
 		if (response.commits.length < BATCH) hasMore = false;
-		requestPageStats(requestedOffset);
 		return "appended";
 	} catch (e) {
 		// A page that failed for the graph we no longer show is not this graph's
@@ -1871,7 +1876,7 @@ function replaceGraph(response: GraphResponse): void {
 	commitStats = new Map(
 		[...commitStats].filter(([oid]) => loadedOids.has(oid)),
 	);
-	requestPageStats(0);
+	attemptedStats = new Set();
 }
 
 async function readCachedGraph() {
@@ -1884,7 +1889,6 @@ async function readCachedGraph() {
 		});
 		if (!graphActive || seq !== refreshSeq) return;
 		replaceGraph(response);
-		await backfillAllPageStats();
 	} catch (e) {
 		if (graphActive && seq === refreshSeq)
 			error = errorMessage(e, "Failed to load commits");
@@ -1919,12 +1923,16 @@ $effect(() => {
 
 async function refreshGraph() {
 	const seq = ++refreshSeq;
+	const generation = refreshSignal ?? 0;
 	const worktree = Promise.all([wipStatsRefresh.run(), stashMapRefresh.run()]);
 	try {
 		const response = await safeInvoke<GraphResponse>("refresh_commit_graph", {
 			path: repoPath,
 			loaded: offset,
 		});
+		// The backend rejects retained captures. This success consumes only the
+		// generation it started with, even if the graph pane has since unmounted.
+		onrefreshconsumed?.(generation);
 		if (!graphActive || seq !== refreshSeq) return;
 		replaceGraph(response);
 	} catch (e) {
@@ -1949,7 +1957,7 @@ $effect(() => {
 	untrack(async () => {
 		await loadMore();
 		await stashMapRefresh.run();
-		// Diff stats (page + WIP) are driven by the visibility-resolution effect
+		// Diff stats (visible rows + WIP) are driven by the visibility-resolution effect
 		// below, so the column does zero stat work until the persisted visibility
 		// is known.
 	});
@@ -1966,24 +1974,23 @@ $effect(() => {
 	});
 });
 
-// Loads the diff stats once the persisted visibility resolves, and re-fires when
-// the column is toggled on after pages loaded while hidden: backfill every loaded
-// page + the WIP row. Writes a plain latch and calls untracked async work, so it
-// cannot form a reactive loop.
+// Persisted visibility, activation, data and the virtual list's measured range
+// drive stats. Background tabs and hidden columns do not start requests.
 $effect(() => {
-	// Wait for the persisted visibility before latching — at mount columnVisibility
-	// still holds the optimistic default, and latching against it would suppress
-	// the real backfill once the store resolves. This is also the single trigger
-	// that loads the initial page's stats once visibility is known.
 	if (!columnVisibilityResolved) return;
-	const visible = columnVisibility.diff;
-	if (visible && !diffColumnWasVisible) {
-		untrack(() => {
-			void backfillAllPageStats();
+	const active = tabActive && columnVisibility.diff;
+	void renderedStart;
+	void renderedEnd;
+	void commits.length;
+	void wipCount;
+	untrack(() => {
+		if (active && !statsWereActive) {
+			attemptedStats = new Set();
 			requestWipStats();
-		});
-	}
-	diffColumnWasVisible = visible;
+		}
+		statsWereActive = active;
+		if (active) visibleStatsRefresh.request();
+	});
 });
 
 // Clear the transient range base whenever the active review changes — the base
@@ -2001,11 +2008,12 @@ $effect(() => {
 // refresh signalled during that window fires the moment the gate opens, rather
 // than running unfiltered now or being dropped.
 $effect(() => {
-	// Access refreshSignal to create reactive dependency
 	if (!refVisibilityResolved) return;
-	if (refreshSignal !== undefined && refreshSignal > 0) {
-		untrack(() => graphRefresh.request());
-	}
+	const generation = refreshSignal;
+	untrack(() => {
+		if (generation !== undefined && generation > consumedRefreshSignal)
+			graphRefresh.request();
+	});
 });
 
 $effect(() => {
@@ -2747,6 +2755,7 @@ $effect(() => {
 					defaultEstimatedItemHeight={displaySettings.rowHeight}
 					bind:measuredItemHeight={svgRowHeight}
 					onLoadMore={() => void loadMore()}
+					onrangechange={(start, end) => { renderedStart = start; renderedEnd = end; }}
 					loadMoreThreshold={50}
 					{hasMore}
 					overlaySnippet={graphOverlay}

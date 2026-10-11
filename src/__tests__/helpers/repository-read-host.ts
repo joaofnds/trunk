@@ -32,13 +32,14 @@ export class RepositoryReadHost implements HostChannel {
 	private readonly registrations = new Map<string, number[]>();
 	private nextListener = 1;
 	private readonly transport = new TauriInternals(this);
+	readonly contextMenu = new FakeMenu(this.transport);
 
 	install(): void {
 		this.transport.route([
 			new FakeWindow(),
 			new FakeWebview(),
 			new FakePath("/test"),
-			new FakeMenu(this.transport),
+			this.contextMenu,
 			new FakeDialog(),
 			new FakeClipboard(),
 			new FakeOpener(),
@@ -149,6 +150,17 @@ export class RepositoryReadHost implements HostChannel {
 				...this.graph,
 				commits: this.graph.commits.slice(offset, offset + count),
 			};
+		}
+		if (cmd === "get_commit_stats" && this.graph && this.responses.has(cmd)) {
+			const stats = this.responses.get(cmd) as Record<string, unknown>;
+			const offset = Number(args.offset ?? 0);
+			const count = Math.min(200, Number(args.count ?? 200));
+			return Object.fromEntries(
+				this.graph.commits
+					.slice(offset, offset + count)
+					.filter(({ oid }) => oid in stats)
+					.map(({ oid }) => [oid, stats[oid]]),
+			);
 		}
 		if (this.responses.has(cmd)) return this.responses.get(cmd);
 

@@ -109,7 +109,7 @@ async fn refresh_graph_in_session(
     let rebuild = crate::state::GraphRebuild::new(cache, ref_visibility);
     let path_clone = path.to_owned();
     rebuild
-        .rebuild_in_session(path.to_owned(), session, move || {
+        .refresh_in_session(path.to_owned(), session, move || {
             let path_buf = state_map.path_for(&path_clone)?;
             let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
             crate::state::read_graph(&mut repo)
@@ -289,12 +289,13 @@ pub fn wip_diff_stats_inner(path: &str, state_map: &OpenRepos) -> Result<DiffSta
     })
 }
 
-/// Lazy per-page diff-stats for the graph's Diff column.
+/// Lazy diff-stats for a bounded range of the graph's Diff column.
 ///
-/// Reads the cached graph to resolve the page's oids, returns already-cached
+/// Reads the cached graph to resolve the range's oids, returns already-cached
 /// stats immediately, and computes only the uncached ones on a blocking thread —
 /// caching them immutably (a commit's diff never changes). Gated on the column
-/// being visible by the caller, so a hidden column does zero work.
+/// being visible by the caller, so a hidden column does zero work. Omitting count
+/// preserves the original one-page request.
 ///
 /// # Errors
 ///
@@ -308,6 +309,7 @@ pub fn wip_diff_stats_inner(path: &str, state_map: &OpenRepos) -> Result<DiffSta
 pub async fn get_commit_stats(
     path: String,
     offset: usize,
+    count: Option<usize>,
     revision: Option<u64>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
@@ -317,6 +319,7 @@ pub async fn get_commit_stats(
     cached_commit_stats(
         &path,
         offset,
+        count,
         revision,
         &cache,
         &commit_stats,
@@ -336,6 +339,7 @@ pub async fn get_commit_stats(
 async fn cached_commit_stats<F, C>(
     path: &str,
     offset: usize,
+    count: Option<usize>,
     revision: Option<u64>,
     cache: &CommitCache,
     commit_stats: &CommitStatsCache,
@@ -345,12 +349,16 @@ where
     F: FnOnce(Vec<String>) -> C,
     C: std::future::Future<Output = Result<HashMap<String, DiffStat>, TrunkError>>,
 {
-    // Resolve the page's oids from the topology cache (lock dropped immediately).
+    // Resolve the range's oids from the topology cache (lock dropped immediately).
     let page = cache.read_versioned_with_session(path, revision, |graph, _| {
-        slice(&graph.layout, offset, offset.saturating_add(PAGE))
-            .iter()
-            .map(|commit| commit.oid.clone())
-            .collect::<Vec<_>>()
+        slice(
+            &graph.layout,
+            offset,
+            offset.saturating_add(count.unwrap_or(PAGE).min(PAGE)),
+        )
+        .iter()
+        .map(|commit| commit.oid.clone())
+        .collect::<Vec<_>>()
     })?;
 
     // Partition into already-cached (return verbatim) and uncached (compute).
@@ -559,14 +567,17 @@ pub async fn search_commits(
 mod tests {
     use super::{GraphResponse, cached_commit_stat, cached_commit_stats};
     use crate::state::{
-        CommitCache, CommitStatsCache, GraphCache, GraphRebuild, RefVisibilityState, StatsCache,
+        CommitCache, CommitStatsCache, GraphCache, GraphRebuild, OpenRepos, RefVisibilityState,
+        RepoState, StatsCache,
     };
     use crate::types::DiffStat;
     use std::collections::{HashMap, HashSet};
+    use std::ops::Range;
     use std::sync::{
         Mutex,
         atomic::{AtomicUsize, Ordering},
     };
+    use tauri::{App, Manager};
     use trunk_git::graph_input::{CommitFacts, GraphSnapshot, GraphSource, RefVisibility};
     use trunk_git::placement::PlacementInput;
     use trunk_git::types::{RefLabel, RefType};
@@ -615,6 +626,42 @@ mod tests {
         CommitCache::new(graphs)
     }
 
+    fn cache_with_commits(count: usize) -> CommitCache {
+        let mut graph = source();
+        let oids: Vec<_> = (1..=count)
+            .map(|number| git2::Oid::from_str(&format!("{number:040x}")).unwrap())
+            .collect();
+        graph.placement.oids.clone_from(&oids);
+        graph.placement.parents = oids
+            .iter()
+            .enumerate()
+            .map(|(index, oid)| (*oid, oids.get(index + 1).copied().into_iter().collect()))
+            .collect();
+        graph.commits = oids
+            .iter()
+            .enumerate()
+            .map(|(index, oid)| {
+                (
+                    *oid,
+                    CommitFacts {
+                        summary: format!("commit {index}"),
+                        body: None,
+                        author_name: "T".into(),
+                        author_email: "t@example.com".into(),
+                        author_timestamp: 1000 - i64::try_from(index).unwrap(),
+                    },
+                )
+            })
+            .collect();
+
+        let mut graphs = GraphCache::default();
+        graphs.seed(
+            "/repo".into(),
+            GraphSnapshot::new(graph, RefVisibility::default()),
+        );
+        CommitCache::new(graphs)
+    }
+
     fn stats(oid: String) -> HashMap<String, DiffStat> {
         HashMap::from([(
             oid,
@@ -626,25 +673,107 @@ mod tests {
         )])
     }
 
+    struct StatsCommandFixture {
+        app: App<tauri::test::MockRuntime>,
+        oids: Vec<String>,
+    }
+
+    impl StatsCommandFixture {
+        fn with_rows(depth: usize) -> Self {
+            let cache = cache_with_commits(depth);
+            let oids = cache
+                .snapshot("/repo")
+                .unwrap()
+                .layout
+                .commits
+                .into_iter()
+                .map(|row| row.oid)
+                .collect::<Vec<_>>();
+            let stored = CommitStatsCache(Mutex::new(StatsCache::default()));
+            stored
+                .0
+                .lock()
+                .unwrap()
+                .extend("/repo".into(), oids.iter().cloned().flat_map(stats));
+
+            let app = tauri::test::mock_app();
+            app.manage(RepoState(Mutex::new(OpenRepos::default())));
+            app.manage(cache);
+            app.manage(stored);
+
+            Self { app, oids }
+        }
+
+        fn request(&self, offset: usize, count: Option<usize>) -> HashMap<String, DiffStat> {
+            tauri::async_runtime::block_on(super::get_commit_stats(
+                "/repo".into(),
+                offset,
+                count,
+                None,
+                self.app.state(),
+                self.app.state(),
+                self.app.state(),
+            ))
+            .unwrap()
+        }
+
+        fn stats_for(&self, rows: Range<usize>) -> HashMap<String, DiffStat> {
+            self.oids[rows].iter().cloned().flat_map(stats).collect()
+        }
+    }
+
     #[test]
-    fn a_maximum_offset_returns_no_graph_rows_or_stats_and_keeps_the_cache_readable() {
+    fn a_count_limits_stats_to_the_requested_rows() {
+        let fixture = StatsCommandFixture::with_rows(5);
+
+        let result = fixture.request(1, Some(2));
+
+        assert_eq!(result, fixture.stats_for(1..3));
+    }
+
+    #[test]
+    fn an_omitted_count_requests_one_full_page() {
+        let fixture = StatsCommandFixture::with_rows(201);
+
+        let result = fixture.request(0, None);
+
+        assert_eq!(result, fixture.stats_for(0..super::PAGE));
+    }
+
+    #[test]
+    fn an_oversized_count_stops_at_one_page() {
+        let fixture = StatsCommandFixture::with_rows(201);
+
+        let result = fixture.request(0, Some(usize::MAX));
+
+        assert_eq!(result, fixture.stats_for(0..super::PAGE));
+    }
+
+    #[test]
+    fn a_zero_count_returns_no_stats_without_computing() {
+        let fixture = StatsCommandFixture::with_rows(1);
+
+        let result = fixture.request(0, Some(0));
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn a_maximum_offset_returns_no_graph_rows() {
         let cache = cache();
-        let stored = CommitStatsCache(Mutex::new(StatsCache::default()));
         let graph = cache.snapshot("/repo").unwrap();
         let page = GraphResponse::page(&graph.layout, usize::MAX, 1);
-        let result = tauri::async_runtime::block_on(cached_commit_stats(
-            "/repo",
-            usize::MAX,
-            None,
-            &cache,
-            &stored,
-            |_| async { panic!("an empty page must not compute stats") },
-        ))
-        .unwrap();
 
         assert!(page.commits.is_empty());
+    }
+
+    #[test]
+    fn a_maximum_offset_returns_no_stats() {
+        let fixture = StatsCommandFixture::with_rows(1);
+
+        let result = fixture.request(usize::MAX, Some(usize::MAX));
+
         assert!(result.is_empty());
-        assert!(cache.snapshot("/repo").is_some());
     }
 
     #[test]
@@ -657,6 +786,7 @@ mod tests {
         let stale = tauri::async_runtime::block_on(cached_commit_stats(
             "/repo",
             0,
+            None,
             None,
             &cache,
             &stored,
@@ -678,6 +808,7 @@ mod tests {
         let reused = tauri::async_runtime::block_on(cached_commit_stats(
             "/repo",
             0,
+            None,
             None,
             &cache,
             &stored,
@@ -706,6 +837,7 @@ mod tests {
         let stale = tauri::async_runtime::block_on(cached_commit_stats(
             "/repo",
             0,
+            None,
             None,
             &cache,
             &stored,

@@ -360,6 +360,7 @@ async function handleReviewJumpToCommit(oid: string) {
 // Per-repo state
 let refreshSignal = $state(0);
 let graphRefreshSignal = $state(0);
+let consumedGraphRefreshSignal = $state(0);
 let worktreeRefreshSignal = $state(0);
 let sidebarRefreshSignal = $state(0);
 let cachedGraphRevision = $state<number | undefined>();
@@ -2470,6 +2471,8 @@ function stepRightPane(delta: number) {
 						{wipStats}
 						onWipClick={handleWipClick}
 						refreshSignal={graphRefreshSignal}
+						consumedRefreshSignal={consumedGraphRefreshSignal}
+						onrefreshconsumed={(generation) => { consumedGraphRefreshSignal = Math.max(consumedGraphRefreshSignal, generation); }}
 						wipRefreshSignal={worktreeRefreshSignal}
 						{cachedGraphRevision}
 						{selectedCommitOid}

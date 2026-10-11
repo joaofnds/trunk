@@ -44,6 +44,8 @@ interface Props {
 	renderItem: Snippet<[TItem, number]>;
 	bufferSize?: number;
 	onLoadMore?: () => void | Promise<void>;
+	/** Rendered range, including the buffer; end is exclusive. */
+	onrangechange?: (start: number, end: number) => void;
 	loadMoreThreshold?: number;
 	hasMore?: boolean;
 	overlaySnippet?: Snippet<
@@ -67,6 +69,7 @@ let {
 	renderItem,
 	bufferSize = 20,
 	onLoadMore,
+	onrangechange,
 	loadMoreThreshold = 20,
 	hasMore = true,
 	overlaySnippet,
@@ -409,6 +412,11 @@ const visibleItems = $derived.by((): SvelteVirtualListPreviousVisibleRange => {
 });
 
 let stabilizedContentHeight = 0;
+
+$effect(() => {
+	const { start, end } = visibleItems;
+	untrack(() => onrangechange?.(start, end));
+});
 
 const contentHeight = $derived.by(() => {
 	const raw = Math.max(height, totalHeight);

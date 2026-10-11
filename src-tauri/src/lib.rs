@@ -493,4 +493,5 @@ fn register_state<R: tauri::Runtime>(
         .manage(crate::state::RefVisibilityState::default())
         .manage(commands::prefs::PrefsState::default())
         .manage(commands::markdown::MarkdownDiffCache(Mutex::default()))
+        .manage(commands::diff::CurrentSourceCache::default())
 }

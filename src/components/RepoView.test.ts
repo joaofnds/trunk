@@ -1075,9 +1075,12 @@ describe("RepoView", () => {
 					mockInvoke.mock.calls.filter(([cmd]) => cmd === command),
 				).toHaveLength(
 					!active &&
-						["get_status", "get_dirty_counts", "get_operation_state"].includes(
-							command,
-						)
+						[
+							"get_status",
+							"get_dirty_counts",
+							"get_operation_state",
+							"get_wip_diff_stats",
+						].includes(command)
 						? 1
 						: 0,
 				);

@@ -48,6 +48,8 @@ paths:
   - "scripts/graph-connector-render.ts"
   - "src/components/CommitGraph.test.ts"
   - "src/components/CommitGraph.autofetch.test.ts"
+  - "src/components/CommitGraph.runtime.test.ts"
+  - "src/__tests__/helpers/graph-refresh-harness.svelte"
   - "tests/visual/graph.test.ts"
   - "tests/visual/harness.ts"
   - "tests/visual/page/boot.ts"
