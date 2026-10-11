@@ -2,10 +2,10 @@
 
 **Analysis Date:** 2026-05-14
 
-> Snapshot, not a live contract. It maps the whole system as of that date and has not been
-> re-derived since — v0.14 and later work (push recovery, markdown diffs, the prefs store)
-> is missing. Trust `docs/architecture/commit-graph.md` and the source over this file where
-> they disagree.
+> Most sections retain the May analysis. The automatic-fetch, graph-publication and
+> remote-ownership sections were checked against source on 2026-10-11; this is not a
+> fresh audit of the whole system. Trust `docs/architecture/commit-graph.md` and the
+> source where an older section disagrees.
 
 ## System Overview
 
@@ -44,8 +44,8 @@
 ┌───────────────────────────────▼──────────────────────────────────────┐
 │                      Git Repository (disk)                            │
 │  All reads: git2::Repository opened fresh per command in             │
-│  spawn_blocking. All writes: git2 API (except remote ops which       │
-│  shell out to `git` subprocess for progress streaming).              │
+│  spawn_blocking. Automatic fetch uses an isolated git2 worker.        │
+│  Legacy foreground remote writes use Git subprocesses.               │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -85,6 +85,9 @@
 | `git/repository.rs` | `validate_and_open()`, `build_ref_map()` | `src-tauri/git/src/repository.rs` |
 | `git/fetch.rs` | Native noninteractive fetch policy, applicable remotes, preflight, credential/ref safety and metadata receipts | `src-tauri/git/src/fetch.rs` |
 | `git/ref_state.rs` | Lightweight ref/HEAD/upstream/stash identity used to decide whether graph capture is needed | `src-tauri/git/src/ref_state.rs` |
+| `background_fetch.rs` | Freshness/backoff, worker deadlines, metadata repair and shared-worktree reconciliation | `src-tauri/src/background_fetch.rs` |
+| `fetch_worker.rs` | Private executable entry point and serialized native fetch receipt | `src-tauri/src/fetch_worker.rs` |
+| `remote_ops.rs` | Labeled worktree/common-directory targets, operation identities and process ownership | `src-tauri/src/remote_ops.rs` |
 | `git/types.rs` | The commit graph's DTOs (`GraphCommit`, `GraphEdge`, `RefLabel`), owned, with no git2 types | `src-tauri/git/src/types.rs` |
 | `types.rs` | The app's other IPC DTOs (`FileDiff`, `WorkingTreeStatus`, etc.), owned, with no git2 types | `src-tauri/src/types.rs` |
 | `state.rs` | `RepoState` (open paths), `CommitCache` (versioned worktree graphs), `RunningOp` (shared-repository reservations); `GraphRebuild` owns checked capture and publication under current visibility | `src-tauri/src/state.rs` |
@@ -99,7 +102,7 @@
 - Backend is stateless per-command: each command receives Tauri-managed state via `State<'_, T>` and opens a fresh `git2::Repository` inside `spawn_blocking`
 - `git2::Repository` is not `Sync` — it is NEVER stored in `RepoState`. Only `PathBuf` is stored. Every command calls `git2::Repository::open(path)` fresh.
 - Events flow backend→frontend via Tauri `Emitter`: `"repo-changed"` (fs watcher + after write ops) and `"remote-progress"` (per stderr line of git subprocess)
-- Remote ops (fetch/pull/push) shell out to `git` subprocess for real-time progress streaming; all other git ops use git2 API directly
+- Automatic fetch uses git2 in a private worker. Legacy foreground remote commands retain their Git subprocesses for progress streaming.
 
 ## Layers
 
@@ -217,7 +220,7 @@ established.
 3. A private worker entry point in the Trunk executable runs git2 before GUI/runtime startup. Its parent bounds each remote to 60 seconds, kills the owned process group on cancellation/deadline and joins it before releasing exclusion. Background work emits no progress lines. Foreground fetch/pull/push retain their existing Git subprocess path.
 4. The worker checks configured remotes with all tags and pruning, honors `skipFetchAll`, guards checked-out destinations across linked worktrees, preserves accumulated per-worktree FETCH_HEAD metadata and creates a missing remote HEAD. The parent compares lightweight ref state and reconciles successful updates even after a later remote fails.
 5. Unchanged input causes no history capture or repository event. Changed refs build one graph per affected open worktree and publish a path-scoped revision. The active view consumes its cached head at the loaded depth; inactive views retain the newest revision until activation. Ref-only events leave status, WIP and file-diff readers idle. Index, HEAD, config, stash and local file events retain their worktree refresh path.
-6. Typed per-remote results keep last success separate from attempt and graph publication. Transient failures double their retry ceiling up to 15 minutes (or the configured interval, if longer), with jitter between 80% and 100% of the ceiling and never below the configured interval. Unsupported configurations use the same capped jittered retry or retry after a configuration change. Manual checks clear backoff and defer redundant automatic checks for the remotes checked; Fetch and Pull return their updated freshness. The Pull tooltip exposes freshness/failure without recurring dialogs.
+6. Typed per-remote results keep last success separate from attempt and graph publication. Transient failures double their retry ceiling up to 15 minutes (or the configured interval, if longer), with jitter between 80% and 100% of the ceiling and never below the configured interval. Unsupported configurations use the same capped jittered retry or retry after a configuration change. Manual checks clear backoff and defer automatic checks for the remotes checked. Repeated manual checks can keep postponing the background tag/prune check; manual and background fetch scope is not identical. Pull exposes freshness, failure and retry through its accessible description.
 
 Cancellation and timeout remain the primary terminal result if restoring earlier
 FETCH_HEAD bytes fails. The report exposes that repair error separately. Cancellation

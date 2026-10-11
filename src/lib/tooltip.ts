@@ -50,10 +50,9 @@ function attachTooltip(
 		el.style.top = `${rect.bottom + TRIGGER_GAP}px`;
 	}
 
-	function renderLabel() {
-		if (!el) return;
-		el.textContent = label;
-		el.classList.toggle("tooltip-pop-multiline", label.includes("\n"));
+	function renderLabel(element: HTMLDivElement) {
+		element.textContent = label;
+		element.classList.toggle("tooltip-pop-multiline", label.includes("\n"));
 	}
 
 	function show() {
@@ -62,7 +61,7 @@ function attachTooltip(
 		if (el || !label.trim() || !isWanted()) return;
 		el = document.createElement("div");
 		el.className = "tooltip-pop";
-		renderLabel();
+		renderLabel(el);
 		document.body.appendChild(el);
 		place();
 		requestAnimationFrame(() => el?.classList.add("tooltip-pop-shown"));
@@ -90,7 +89,7 @@ function attachTooltip(
 			label = next;
 			if (!el) return;
 			if (next.trim()) {
-				renderLabel();
+				renderLabel(el);
 				place();
 			} else hide();
 		},

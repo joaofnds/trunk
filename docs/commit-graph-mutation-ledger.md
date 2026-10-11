@@ -15,7 +15,9 @@ past 64 are sites later changes introduced, appended as they land (row 65: TRUNK
 **Run 2026-08-12** against the suite as it stands after the capture migration. Regenerate with
 `just graph-sweep`; the table below is that command's stdout, pasted unedited — except rows
 11-14 and 65, a sanctioned partial splice from the 2026-08-30 `--only` re-measure after
-TRUNK-43's `can_inline` narrowing.
+TRUNK-43's `can_inline` narrowing, row 25 dated 2026-09-02, row 49 dated
+2026-09-03, and rows 7, 46–48 and 55 from the 2026-10-11
+`--only` re-measure of the capture changes.
 
 **This is a dated audit, not a gate.** The measurement takes 26-32 minutes and nothing runs it
 for you. What runs in `just check` is the *alarm* — `just graph-sweep-check`, milliseconds — which
@@ -54,12 +56,13 @@ and an embedded newline renders as `⏎`. Rows 1-37 key to Appendix A; rows 38-6
 enumerated with `cargo mutants --list` and anchored by hand; rows past 64 are appended as
 later changes introduce sites. Rows 11-14 and 65 carry the 2026-08-30 `--only` re-measure
 after TRUNK-43's `can_inline` narrowing — a sanctioned partial splice into the 2026-08-12
-run's stdout.
+run's stdout. Row 25 is dated 2026-09-02 and row 49 is dated 2026-09-03. Rows 7,
+46–48 and 55 carry the 2026-10-11 `--only` re-measure.
 
-**36 killed, 17 survive, 12 unviable.** Every one of the 17 survivors carries a construction
+**39 killed, 17 survive, 9 unviable.** Every one of the 17 survivors carries a construction
 proof below. No row is open.
 
-An `UNVIABLE` row is a mutant that does not compile — `Oid`, `GraphSource`, `GraphResult` and
+An `UNVIABLE` row is a mutant that does not compile — `Oid`, `GraphResult`, `CommitFacts` and
 `CapturedGraph` have no `Default`, and a let-chain cannot take `||`. The tool proposes them; the
 compiler refuses them. They are recorded rather than dropped so the coverage denominator stays
 honest.
@@ -72,7 +75,7 @@ honest.
 | 4 | placement.rs | find_free_column_near | `let left = target - delta;` → `let left = target / delta;` | killed | 2026-08-12 |
 | 5 | placement.rs | find_free_column_near | `if left >= min_col && active_lanes[left].is_none() {` → `if left < min_col && active_lanes[left].is_none() {` | killed | 2026-08-12 |
 | 6 | placement.rs | find_free_column_near | `if left >= min_col && active_lanes[left].is_none() {` → `if left >= min_col \|\| active_lanes[left].is_none() {` | killed | 2026-08-12 |
-| 7 | graph.rs | capture | `git2::Sort::TOPOLOGICAL \| git2::Sort::TIME` → `git2::Sort::TOPOLOGICAL ^ git2::Sort::TIME` | SURVIVES | 2026-08-12 |
+| 7 | graph.rs | capture | `git2::Sort::TOPOLOGICAL \| git2::Sort::TIME` → `git2::Sort::TOPOLOGICAL ^ git2::Sort::TIME` | SURVIVES | 2026-10-11 |
 | 8 | placement.rs | assign_lanes/head-ext colour | `lane_colors.insert(0, next_color);⏎            next_color += 1;` → `lane_colors.insert(0, next_color);⏎            next_color -= 1;` | killed | 2026-08-12 |
 | 9 | placement.rs | assign_lanes/head-ext colour | `lane_colors.insert(0, next_color);⏎            next_color += 1;` → `lane_colors.insert(0, next_color);⏎            next_color *= 1;` | killed | 2026-08-12 |
 | 10 | placement.rs | assign_lanes/is_merge | `let is_merge = !is_stash && commit_parents.len() >= 2;` → `let is_merge = !is_stash \|\| commit_parents.len() >= 2;` | SURVIVES | 2026-08-12 |
@@ -111,16 +114,16 @@ honest.
 | 43 | graph.rs | parent_map | `) -> Result<HashMap<git2::Oid, Vec<git2::Oid>>, TrunkError> {` → `) -> Result<HashMap<git2::Oid, Vec<git2::Oid>>, TrunkError> {⏎    if true {⏎        return Ok(HashMap::from_iter([(⏎            Default::default(),⏎            vec![Default::default()],⏎        )]));⏎    }` | UNVIABLE | 2026-08-12 |
 | 44 | graph.rs | parent_map | `        while let Some(oid) = current⏎            && !parents.contains_key(&oid)` → `        while let Some(oid) = current⏎            \|\| !parents.contains_key(&oid)` | UNVIABLE | 2026-08-12 |
 | 45 | graph.rs | parent_map | `            && !parents.contains_key(&oid)` → `            && parents.contains_key(&oid)` | killed | 2026-08-12 |
-| 46 | graph.rs | capture | `pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {` → `pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {⏎    if true {⏎        return Ok(Default::default());⏎    }` | UNVIABLE | 2026-08-12 |
-| 47 | graph.rs | capture | `git2::Sort::TOPOLOGICAL \| git2::Sort::TIME` → `git2::Sort::TOPOLOGICAL & git2::Sort::TIME` | killed | 2026-08-12 |
-| 48 | graph.rs | capture | `    oids.retain(\|oid\| !stash_internals.contains(oid));` → `    oids.retain(\|oid\| stash_internals.contains(oid));` | killed | 2026-08-12 |
+| 46 | graph.rs | capture | `pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {` → `pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {⏎    if true {⏎        return Ok(Default::default());⏎    }` | killed | 2026-10-11 |
+| 47 | graph.rs | capture | `git2::Sort::TOPOLOGICAL \| git2::Sort::TIME` → `git2::Sort::TOPOLOGICAL & git2::Sort::TIME` | killed | 2026-10-11 |
+| 48 | graph.rs | capture | `    oids.retain(\|oid\| !stash_internals.contains(oid));` → `    oids.retain(\|oid\| stash_internals.contains(oid));` | killed | 2026-10-11 |
 | 49 | graph.rs | snapshot | `    Ok(GraphSnapshot::new(capture(repo)?, visibility.clone()))` → `    Ok(GraphSnapshot::new(GraphSource::default(), visibility.clone()))` | killed | 2026-09-03 |
 | 50 | graph_input.rs | parse_oid | `fn parse_oid(hex: &str) -> Oid {` → `fn parse_oid(hex: &str) -> Oid {⏎    if true {⏎        return Default::default();⏎    }` | UNVIABLE | 2026-08-12 |
 | 51 | graph_input.rs | parse_oid | `    assert_eq!(hex.len(), 40, "graph_input: malformed oid {hex}");` → `    assert_ne!(hex.len(), 40, "graph_input: malformed oid {hex}");` | killed | 2026-08-12 |
 | 52 | graph_input.rs | hex | `fn hex(oid: &Oid) -> String {⏎    oid.to_string()⏎}` → `fn hex(oid: &Oid) -> String {⏎    let _ = oid;⏎    String::new()⏎}` | killed | 2026-08-12 |
 | 53 | graph_input.rs | hex | `fn hex(oid: &Oid) -> String {⏎    oid.to_string()⏎}` → `fn hex(oid: &Oid) -> String {⏎    let _ = oid;⏎    "xyzzy".into()⏎}` | killed | 2026-08-12 |
 | 54 | graph_input.rs | CapturedGraph::from_source | `    pub fn from_source(source: &GraphSource) -> Self {` → `    pub fn from_source(source: &GraphSource) -> Self {⏎        if true {⏎            return Default::default();⏎        }` | UNVIABLE | 2026-08-12 |
-| 55 | graph_input.rs | CapturedGraph::to_source | `    pub fn to_source(&self) -> GraphSource {` → `    pub fn to_source(&self) -> GraphSource {⏎        if true {⏎            return Default::default();⏎        }` | UNVIABLE | 2026-08-12 |
+| 55 | graph_input.rs | CapturedGraph::to_source | `    pub fn to_source(&self) -> GraphSource {` → `    pub fn to_source(&self) -> GraphSource {⏎        if true {⏎            return Default::default();⏎        }` | killed | 2026-10-11 |
 | 56 | graph_input.rs | commit_facts | `fn commit_facts(source: &GraphSource, oid: Oid) -> &CommitFacts {` → `fn commit_facts(source: &GraphSource, oid: Oid) -> &CommitFacts {⏎    if true {⏎        return Box::leak(Box::new(Default::default()));⏎    }` | UNVIABLE | 2026-08-12 |
 | 57 | graph_input.rs | parent_list | `fn parent_list(source: &GraphSource, oid: Oid) -> &[Oid] {` → `fn parent_list(source: &GraphSource, oid: Oid) -> &[Oid] {⏎    if true {⏎        return Vec::leak(Vec::new());⏎    }` | killed | 2026-08-12 |
 | 58 | graph_input.rs | parent_list | `fn parent_list(source: &GraphSource, oid: Oid) -> &[Oid] {` → `fn parent_list(source: &GraphSource, oid: Oid) -> &[Oid] {⏎    if true {⏎        return Vec::leak(vec![Default::default()]);⏎    }` | UNVIABLE | 2026-08-12 |
@@ -160,7 +163,7 @@ All three guards are permanently false, so all three bodies are unreachable. Thr
 establish that.
 
 **Lemma 1. `active_lanes.len()` never decreases.** Only two kinds of operation change its length:
-the `push` in `reserve_head_lane`, and the five `resize` calls (two in `find_free_column_near`,
+the column-0 pre-reservation `push` in `assign_lanes`, and the five `resize` calls (two in `find_free_column_near`,
 plus the three above). Every
 resize is `resize(x + 1, None)` under a guard proving `x >= active_lanes.len()`. So the new length
 `x + 1` always exceeds the old one. The file contains no `truncate`, `pop`, `clear`, `drain`, or
@@ -174,7 +177,7 @@ index; the last returns `left`, which is smaller than `target`, and that site is
 `right < active_lanes.len()` held at the loop's bound check.
 
 **Lemma 3. Every value stored in `pending_parents` indexes `active_lanes` validly.** There are
-four insert sites. The two unpaired inserts in `reserve_head_lane` insert column 0 after that
+four insert sites. The two unpaired inserts in `assign_lanes`’s pre-reservation insert column 0 after that
 function's `push`, so the length is at least 1. The first paired insert inserts `col`, which the
 post-phase-1 resize has already brought into range. The second inserts a column from
 `find_free_column_near`, and the line above it indexes `active_lanes` at that column immediately. Lemma 1 keeps every such value valid for the rest of the walk.
@@ -252,7 +255,7 @@ live reservation at a freed column survives the root that freed it.
 
 One path writes no colour: the `can_inline` branch. It requires a column that is reserved and free
 at once. The unpaired-insert rule in `.claude/rules/commit-graph.md` confines that state to column
-0. At column 0 the retained value is `0`, written by `reserve_head_lane` or the post-phase-1
+0. At column 0 the retained value is `0`, written by the column-0 pre-reservation in `assign_lanes` or the post-phase-1
 colour assignment, and every default for column 0 is also `0`. So the two agree there as well.
 
 **Falsifier, run and silent.** `placement.rs` was instrumented with a shadow map of what the root

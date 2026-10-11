@@ -18,6 +18,8 @@ interface Props {
 
 let { repoPath, disabled, remoteState, onpull }: Props = $props();
 let open = $state(false);
+const statusId = $props.id();
+const fetchStatus = $derived(autofetchSummary(remoteState.autofetch));
 
 interface PullOption {
 	label: string;
@@ -112,7 +114,8 @@ $effect(() => {
 			{disabled}
 			onclick={onpull}
 			aria-label="Pull"
-			tooltip={autofetchSummary(remoteState.autofetch)}
+			aria-describedby={remoteState.autofetch ? statusId : undefined}
+			tooltip={fetchStatus}
 		>
 			<ArrowDown size={14} />
 		</Button>
@@ -132,6 +135,9 @@ $effect(() => {
 			<ChevronDown size={12} />
 		</Button>
 	</ButtonGroup>
+	{#if remoteState.autofetch}
+		<span id={statusId} class="sr-only">{fetchStatus}</span>
+	{/if}
 
 	{#if open}
 		<div class="dropdown-panel" role="menu" aria-label="Pull options">
