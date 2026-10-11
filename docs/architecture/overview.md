@@ -81,7 +81,7 @@
 | `commands/operation_state.rs` | `get_operation_state`, `merge_continue/abort`, `rebase_continue/skip/abort`, `merge_branch`, `rebase_branch` | `src-tauri/src/commands/operation_state.rs` |
 | `commands/interactive_rebase.rs` | `get_rebase_todo`, `get_fork_point`, `start_interactive_rebase` | `src-tauri/src/commands/interactive_rebase.rs` |
 | `commands/merge_editor.rs` | `get_merge_sides`, `save_merge_result` | `src-tauri/src/commands/merge_editor.rs` |
-| `git/graph.rs` | `snapshot()` = `capture()` piped into `graph_input::apply_visibility()` and `layout()`, kept as a `GraphSnapshot` — commit ordering and every git2 read the pipeline makes | `src-tauri/git/src/graph.rs` |
+| `git/graph.rs` | `snapshot()` captures the repository, filters it when refs or stashes are hidden, then lays it out and keeps both in a `GraphSnapshot` — commit ordering and every git2 read the pipeline makes | `src-tauri/git/src/graph.rs` |
 | `git/placement.rs` | `assign_lanes()` — the pure lane assignment algorithm, columns, colours and edges | `src-tauri/git/src/placement.rs` |
 | `git/graph_input.rs` | `layout()` — page slice and row hydration, and the committed capture format the golden suite reads | `src-tauri/git/src/graph_input.rs` |
 | `git/repository.rs` | `validate_and_open()`, `build_ref_map()` | `src-tauri/git/src/repository.rs` |

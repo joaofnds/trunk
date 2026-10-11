@@ -19,7 +19,7 @@ git repo
   │
   ▼
 [Rust: graph.rs] snapshot()
-  │    = capture() |> graph_input::apply_visibility() |> graph_input::layout(), kept as a GraphSnapshot
+  │    = capture() |> optional apply_visibility() |> layout(), kept as a GraphSnapshot
   │  capture() reads the repository into plain data; apply_visibility() drops the
   │  refs the user hid and every commit only they reached; placement.rs::assign_lanes()
   │  assigns columns, colors, edge types and dashed flags; graph_input.rs hydrates.
@@ -74,6 +74,10 @@ holds, never fewer than one page, because the frontend replaces its whole list w
 rebuild returns and page one alone would drop every page the user had scrolled through. A
 visibility change re-lays out the same capture through `GraphSnapshot::with_visibility`
 without opening the repository.
+
+When no refs or stashes are hidden, snapshot construction lays out the captured
+source directly. A nonempty visibility builds the filtered source before layout.
+Both paths retain the original capture for later visibility changes.
 
 Application producers call `state::read_graph`, which reads ref/HEAD/upstream/stash identity
 before and after capture and retries up to three times. The stamp includes ordered remote

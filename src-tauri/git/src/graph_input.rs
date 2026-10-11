@@ -464,8 +464,12 @@ impl GraphSnapshot {
     }
 
     fn lay_out(capture: Arc<GraphSource>, visibility: RefVisibility) -> Self {
-        let source = apply_visibility(&capture, &visibility);
-        let layout = layout(&source, 0, usize::MAX);
+        let layout = if visibility.is_empty() {
+            layout(&capture, 0, usize::MAX)
+        } else {
+            let source = apply_visibility(&capture, &visibility);
+            layout(&source, 0, usize::MAX)
+        };
 
         Self {
             capture,
