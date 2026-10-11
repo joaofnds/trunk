@@ -610,7 +610,7 @@ describe("RepoView", () => {
 	// and its width, and nothing stands beside the review on the right.
 	describe("in review mode", () => {
 		async function flush() {
-			await new Promise((r) => setTimeout(r, 0));
+			await vi.dynamicImportSettled();
 			await tick();
 		}
 
