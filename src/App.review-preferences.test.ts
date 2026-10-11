@@ -7,7 +7,7 @@ import {
 	within,
 } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeClipboard } from "../tests/app/fakes/clipboard.js";
 import { FakeDialog } from "../tests/app/fakes/dialog.js";
 import { FakeMenu } from "../tests/app/fakes/menu.js";
@@ -944,6 +944,8 @@ async function openReviewPanel(): Promise<void> {
 	await fireEvent.click(
 		await screen.findByLabelText("Review", { selector: "button" }),
 	);
+	await vi.dynamicImportSettled();
+	await tick();
 	await screen.findByText("First commit");
 }
 
