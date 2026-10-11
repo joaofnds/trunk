@@ -640,7 +640,10 @@ mod tests {
                 vec![git.common.join(path)],
                 app.handle(),
                 &Arc::default(),
-            );
+            )
+            .map(tauri::async_runtime::block_on)
+            .transpose()
+            .unwrap();
         }
         assert!(events.lock().unwrap().is_empty());
     }
