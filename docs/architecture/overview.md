@@ -219,13 +219,21 @@ established.
 5. Unchanged input causes no history capture or repository event. Changed refs build one graph per affected open worktree and publish a path-scoped revision. The active view consumes its cached head at the loaded depth; inactive views retain the newest revision until activation. Ref-only events leave status, WIP and file-diff readers idle. Index, HEAD, config, stash and local file events retain their worktree refresh path.
 6. Typed per-remote results keep last success separate from attempt and graph publication. Transient failures double their retry ceiling up to 15 minutes (or the configured interval, if longer), with jitter between 80% and 100% of the ceiling and never below the configured interval. Unsupported configurations use the same capped jittered retry or retry after a configuration change. Manual checks clear backoff and defer redundant automatic checks for the remotes checked; Fetch and Pull return their updated freshness. The Pull tooltip exposes freshness/failure without recurring dialogs.
 
-The libgit2 worker supports local, HTTP(S) and SSH transports, configured credential helpers,
-SSH agent authentication, simple OpenSSH Host/IdentityFile settings, URL rewrites and native
-HTTPS CONNECT proxy settings. It preserves native host/certificate verification. Configurations the adapter
-cannot preserve produce an inspectable capability result, including negative refspecs,
-shallow repositories, plain HTTP proxies, partial-clone filters and custom SSH commands,
-proxy jumps or trust/algorithm policies. Those repositories lose automatic remote updates
-until their configuration is supported; foreground Fetch remains available.
+The libgit2 worker supports local, unauthenticated HTTP(S) and SSH transports, SSH agent
+authentication, simple OpenSSH Host/IdentityFile settings, URL rewrites and native HTTPS
+CONNECT proxy settings. Authenticated HTTP(S) returns `unsupported_transport` before
+running a credential helper or supplying credentials. URLs containing user information
+are refused before network access. The pinned libgit2 can replay credentials across
+redirects without another credential callback, and its redirect setting does not block
+same-host port changes. The worker therefore cannot safely authenticate HTTP(S) through
+that API. Foreground Fetch remains available for these repositories.
+
+Nonempty global `http.extraheader` settings are also refused before network access because
+the native HTTP stack can replay them across redirects; an empty reset remains supported.
+Native host/certificate verification remains enabled. Other inspectable capability
+refusals include negative refspecs, shallow repositories, plain HTTP proxies, partial-clone
+filters and custom SSH commands, proxy jumps or trust/algorithm policies. Refused
+repositories receive no automatic remote updates until their configuration is supported.
 
 Git normally considers submodule fetching without an explicit recursion setting. The
 worker conservatively refuses repositories containing `.gitmodules` or any effective
@@ -351,7 +359,7 @@ reject a replacement that happened before notification delivery.
 
 **Logging:** No structured logging framework — Rust uses `eprintln!` sparingly; frontend uses `console.error` for non-fatal catch blocks.
 **Validation:** Input validation in Rust commands (repo path must be in `RepoState`, OIDs parsed via `git2::Oid::from_str()`). No frontend validation layer.
-**Authentication:** No app-level auth. Foreground Git subprocesses and the background libgit2 worker use the user's existing SSH agent and credential helpers. Unsupported background authentication policies return a capability result for manual Fetch.
+**Authentication:** No app-level auth. Foreground Git subprocesses use the user's existing authentication configuration. The background libgit2 worker supports the documented SSH policies and unauthenticated HTTP(S); HTTP(S) authentication challenges return a capability result for manual Fetch.
 **Persistence:** `@tauri-apps/plugin-store` → `trunk-prefs.json` via `src/lib/store.ts`. Covers: recent repos, open tabs, zoom level, pane sizes, column visibility/widths, diff preferences, fetch interval.
 
 ---

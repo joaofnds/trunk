@@ -3,9 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use trunk_git::error::TrunkError;
-pub use trunk_git::fetch::{
-    FetchOutcome, FetchRequest as WorkerRequest, execute, execute_with_receipt,
-};
+pub use trunk_git::fetch::{FetchOutcome, FetchRequest as WorkerRequest, execute_with_receipt};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct WorkerResult {

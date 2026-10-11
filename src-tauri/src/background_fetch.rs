@@ -906,7 +906,7 @@ mod tests {
         std::fs::write(
             &script,
             format!(
-                "#!/bin/sh\nprintf '%s\\n' \"$$\" > '{}'\n/bin/sh -c 'exec 3>\"$1\"; printf \"%s\\n\" \"$$\" >&3; read ignored < \"$2\"' sh '{}' '{}' &\nexit 0\n",
+                "#!/bin/sh\n/bin/cat > /dev/null\nprintf '%s\\n' \"$$\" > '{}'\n/bin/sh -c 'exec 3>\"$1\"; printf \"%s\\n\" \"$$\" >&3; read ignored < \"$2\"' sh '{}' '{}' &\nexit 0\n",
                 parent_ready.display(),
                 descendant_ready.display(),
                 blocked.display(),

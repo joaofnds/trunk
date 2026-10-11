@@ -1,6 +1,7 @@
 //! Noninteractive native fetching and Git ref/metadata safety checks.
 //! The caller runs this blocking transport in an isolated process with a deadline.
 
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -87,14 +88,6 @@ pub fn preflight(path: &Path) -> Result<FetchPreflight, TrunkError> {
     })
 }
 
-/// Fetch one configured remote without prompting or emitting progress.
-///
-/// # Errors
-/// Returns a classified transport, compatibility, or ref-update failure.
-pub fn execute(request: &FetchRequest) -> Result<(), TrunkError> {
-    execute_with_receipt(request).result
-}
-
 #[derive(Debug)]
 pub struct FetchOutcome {
     pub result: Result<(), TrunkError>,
@@ -105,28 +98,27 @@ pub struct FetchOutcome {
 
 #[must_use]
 pub fn execute_with_receipt(request: &FetchRequest) -> FetchOutcome {
-    let mut metadata_written = false;
-    let result = execute_inner(request, &mut metadata_written);
-    FetchOutcome {
-        result,
-        metadata_written,
+    match Repository::open(&request.path)
+        .map_err(fetch_error)
+        .and_then(|repo| execute_repository(&repo, request, append_fetch_head))
+    {
+        Ok(outcome) => outcome,
+        Err(error) => FetchOutcome {
+            result: Err(error),
+            metadata_written: false,
+        },
     }
-}
-
-fn execute_inner(request: &FetchRequest, metadata_written: &mut bool) -> Result<(), TrunkError> {
-    let repo = Repository::open(&request.path).map_err(fetch_error)?;
-    execute_repository(&repo, request, metadata_written)
 }
 
 fn execute_repository(
     repo: &Repository,
     request: &FetchRequest,
-    metadata_written: &mut bool,
-) -> Result<(), TrunkError> {
+    preserve_metadata: impl FnOnce(&Path, &[u8]) -> Result<(), TrunkError>,
+) -> Result<FetchOutcome, TrunkError> {
     let config = validate_configuration(repo, &request.remote)?;
     let configured = repo.find_remote(&request.remote).map_err(fetch_error)?;
     let url = configured.url().map_err(fetch_error)?;
-    let headers = http_headers(&config, url)?;
+    validate_http_headers(&config, url)?;
     validate_http_proxy(&config, &request.remote, url)?;
     validate_url(repo, url)?;
     let ssh = SshAddress::parse(url)?
@@ -155,24 +147,31 @@ fn execute_repository(
         None => repo.find_remote(&request.remote).map_err(fetch_error)?,
     };
     reject_checked_out_destinations(repo, &configured)?;
+    let refused_http_auth = Cell::new(false);
     let mut options = FetchOptions::new();
     options
         .download_tags(AutotagOption::All)
         .prune(FetchPrune::On)
-        .remote_callbacks(credentials(&config, ssh.as_ref()));
+        .remote_callbacks(credentials(ssh.as_ref(), &refused_http_auth));
     let mut proxy = ProxyOptions::new();
     proxy.auto();
     options.proxy_options(proxy);
-    options.custom_headers(&headers.iter().map(String::as_str).collect::<Vec<_>>());
+    let download_error = |error| {
+        if refused_http_auth.get() {
+            unsupported("authenticated HTTP remotes require a manual fetch")
+        } else {
+            fetch_error(error)
+        }
+    };
     let (specs, adjusted) = effective_refspecs(&configured)?;
     if transport_url.is_some() || adjusted {
         remote
             .download(&specs, Some(&mut options))
-            .map_err(fetch_error)?;
+            .map_err(&download_error)?;
     } else {
         remote
             .download(&[] as &[&str], Some(&mut options))
-            .map_err(fetch_error)?;
+            .map_err(&download_error)?;
     }
     // Download only writes objects. A checkout or ref change while it was in
     // progress must be considered before update_tips or prune touches any ref.
@@ -197,7 +196,7 @@ fn execute_repository(
         // the entire original scope before recomputing safe destinations.
         selective
             .download(&specs, Some(&mut options))
-            .map_err(fetch_error)?;
+            .map_err(&download_error)?;
         reject_checked_out_destinations(repo, &configured)?;
         updates = ref_updates(repo, &selective, &configured, true)?;
         options.download_tags(AutotagOption::None);
@@ -208,7 +207,7 @@ fn execute_repository(
                 &updates.specs.iter().collect::<Vec<_>>(),
                 Some(&mut options),
             )
-            .map_err(fetch_error)?;
+            .map_err(&download_error)?;
         reject_checked_out_destinations(repo, &configured)?;
         Some(selective)
     } else {
@@ -231,9 +230,9 @@ fn execute_repository(
     let mut result = tips
         .update_tips(None, RemoteUpdateFlags::UPDATE_FETCHHEAD, tags, None)
         .map_err(fetch_error);
-    *metadata_written =
+    let metadata_written =
         std::fs::metadata(repo.path().join("FETCH_HEAD")).is_ok_and(|metadata| metadata.len() != 0);
-    if filtered.is_some() && *metadata_written {
+    if filtered.is_some() && metadata_written {
         let normalized = normalize_fetch_head_merge(repo, &config, &configured, &request.remote);
         result = result.and(normalized);
     }
@@ -262,8 +261,12 @@ fn execute_repository(
     result = result.and(prune).and(head);
     // Native update_tips truncates FETCH_HEAD even on the path where writing is
     // disabled. Keep ordinary writing and preserve earlier remotes on failure.
-    append_fetch_head(repo.path(), &prefix)?;
-    result.and_then(|()| updates.refusal.map_or(Ok(()), Err))
+    let result = preserve_metadata(repo.path(), &prefix)
+        .and_then(|()| result.and_then(|()| updates.refusal.map_or(Ok(()), Err)));
+    Ok(FetchOutcome {
+        result,
+        metadata_written,
+    })
 }
 
 fn effective_refspecs(configured: &git2::Remote<'_>) -> Result<(Vec<String>, bool), TrunkError> {
@@ -359,22 +362,19 @@ fn validate_configuration(repo: &Repository, remote: &str) -> Result<Config, Tru
     Ok(config)
 }
 
-fn http_headers(config: &Config, url: &str) -> Result<Vec<String>, TrunkError> {
+fn validate_http_headers(config: &Config, url: &str) -> Result<(), TrunkError> {
     if !url.starts_with("http://") && !url.starts_with("https://") {
-        return Ok(Vec::new());
+        return Ok(());
     }
-    let mut headers = Vec::new();
+
+    let mut has_global_header = false;
     let mut entries = config.entries(Some("http.*")).map_err(fetch_error)?;
     while let Some(entry) = entries.next() {
         let entry = entry.map_err(fetch_error)?;
         let name = entry.name().map_err(fetch_error)?;
         let value = entry.value().map_err(fetch_error)?;
         if name == "http.extraheader" {
-            if value.is_empty() {
-                headers.clear();
-            } else {
-                headers.push(value.into());
-            }
+            has_global_header = !value.is_empty();
         } else if name.ends_with(".extraheader") {
             let scope = name
                 .strip_prefix("http.")
@@ -407,7 +407,12 @@ fn http_headers(config: &Config, url: &str) -> Result<Vec<String>, TrunkError> {
             }
         }
     }
-    Ok(headers)
+    if has_global_header {
+        return Err(unsupported(
+            "global HTTP extra headers require a manual fetch",
+        ));
+    }
+    Ok(())
 }
 
 fn http_scope_applies(scope: &str, url: &str) -> bool {
@@ -500,14 +505,19 @@ fn environment_http_proxy_applies(url: &str) -> bool {
     })
 }
 
-fn credentials<'a>(config: &'a Config, ssh: Option<&'a SshSettings>) -> RemoteCallbacks<'a> {
+fn credentials<'a>(
+    ssh: Option<&'a SshSettings>,
+    refused_http_auth: &'a Cell<bool>,
+) -> RemoteCallbacks<'a> {
     let mut callbacks = RemoteCallbacks::new();
-    let mut password_attempts = 0;
     let mut agent_attempted = false;
     let mut identity_index = 0;
     callbacks.credentials(move |url, username, allowed| {
+        if url.starts_with("http://") || url.starts_with("https://") {
+            refused_http_auth.set(true);
+            return Err(credential_input_error());
+        }
         validate_credential_input(url, username)?;
-        let helper_username = username;
         let username = ssh.map_or_else(|| username.unwrap_or("git"), |ssh| ssh.username.as_str());
         if allowed.contains(CredentialType::USERNAME) {
             return Cred::username(username);
@@ -539,18 +549,6 @@ fn credentials<'a>(config: &'a Config, ssh: Option<&'a SshSettings>) -> RemoteCa
                 }
             }
         }
-        if allowed.contains(CredentialType::USER_PASS_PLAINTEXT) {
-            password_attempts += 1;
-            if password_attempts <= 2 {
-                let mut helper = git2::CredentialHelper::new(url);
-                helper.username(helper_username).config(config);
-                validate_credential_input("", helper.username.as_deref())?;
-                let (username, password) = helper.execute().ok_or_else(credential_input_error)?;
-                validate_credential_input("", Some(&username))?;
-                validate_credential_input("", Some(&password))?;
-                return Cred::userpass_plaintext(&username, &password);
-            }
-        }
         if allowed.contains(CredentialType::DEFAULT) {
             return Cred::default();
         }
@@ -574,8 +572,6 @@ fn credential_input_error() -> git2::Error {
 fn validate_credential_input(url: &str, username: Option<&str>) -> Result<(), git2::Error> {
     let control = |byte: u8| matches!(byte, 0 | b'\r' | b'\n');
     // The native URL parser decodes user and host fields before invoking us.
-    // The Rust helper independently parses the URL and writes protocol, host,
-    // path and username as newline-delimited fields without validating them.
     if url.bytes().any(control)
         || username.is_some_and(|username| username.bytes().any(control))
         || url.as_bytes().windows(3).any(|bytes| {
@@ -590,10 +586,20 @@ fn validate_credential_input(url: &str, username: Option<&str>) -> Result<(), gi
 }
 
 fn validate_url(repo: &Repository, url: &str) -> Result<(), TrunkError> {
-    if let Some((scheme, _)) = url.split_once("://") {
+    if let Some((scheme, rest)) = url.split_once("://") {
         if !matches!(scheme, "http" | "https" | "ssh" | "git" | "file") {
             return Err(unsupported(
                 "this remote URL requires a transport helper that background fetch does not support",
+            ));
+        }
+        if matches!(scheme, "http" | "https")
+            && rest
+                .split(['/', '?', '#'])
+                .next()
+                .is_some_and(|authority| authority.contains('@'))
+        {
+            return Err(unsupported(
+                "HTTP remote URLs with embedded credentials require a manual fetch",
             ));
         }
     } else if url.split_once(':').is_some_and(|(prefix, suffix)| {
@@ -1345,11 +1351,12 @@ mod tests {
     fn execute_with_receipt(request: &FetchRequest) -> super::FetchOutcome {
         let repo = Repository::open(&request.path).unwrap();
         isolate_repository(&repo);
-        let mut metadata_written = false;
-        let result = super::execute_repository(&repo, request, &mut metadata_written);
-        super::FetchOutcome {
-            result,
-            metadata_written,
+        match super::execute_repository(&repo, request, super::append_fetch_head) {
+            Ok(outcome) => outcome,
+            Err(error) => super::FetchOutcome {
+                result: Err(error),
+                metadata_written: false,
+            },
         }
     }
 
@@ -1357,10 +1364,18 @@ mod tests {
         execute_with_receipt(request).result
     }
 
+    struct RequestAuthorization {
+        host: String,
+        value: Option<String>,
+    }
+
     struct HttpRemote {
         address: SocketAddr,
         stopping: Arc<AtomicBool>,
+        require_auth: Arc<AtomicBool>,
+        authenticated_redirect: Arc<Mutex<Option<String>>>,
         authorized: Arc<Mutex<Vec<String>>>,
+        observed_auth: Arc<Mutex<Vec<RequestAuthorization>>>,
         requests: Arc<Mutex<Vec<String>>>,
         server: Option<JoinHandle<()>>,
     }
@@ -1370,14 +1385,26 @@ mod tests {
             Self::with_redirect(repo, commit, None)
         }
 
+        fn public(repo: &Repository, commit: Oid) -> Self {
+            let remote = Self::new(repo, commit);
+            remote.require_auth.store(false, Ordering::Release);
+            remote
+        }
+
         fn with_redirect(repo: &Repository, commit: Oid, redirect_username: Option<&str>) -> Self {
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
             let address = listener.local_addr().unwrap();
             let redirect = redirect_username.map(|username| format!("Location: http://{username}@{address}/remote.git/info/refs?service=git-upload-pack\r\n"));
             let stopping = Arc::new(AtomicBool::new(false));
             let server_stopping = Arc::clone(&stopping);
+            let require_auth = Arc::new(AtomicBool::new(true));
+            let server_require_auth = Arc::clone(&require_auth);
+            let authenticated_redirect = Arc::new(Mutex::new(None::<String>));
+            let server_authenticated_redirect = Arc::clone(&authenticated_redirect);
             let authorized = Arc::new(Mutex::new(Vec::new()));
             let server_authorized = Arc::clone(&authorized);
+            let observed_auth = Arc::new(Mutex::new(Vec::new()));
+            let server_observed_auth = Arc::clone(&observed_auth);
             let requests = Arc::new(Mutex::new(Vec::new()));
             let server_requests = Arc::clone(&requests);
             let advertisement = [
@@ -1409,6 +1436,13 @@ mod tests {
                         continue;
                     };
                     server_requests.lock().unwrap().push(method.clone());
+                    server_observed_auth
+                        .lock()
+                        .unwrap()
+                        .push(RequestAuthorization {
+                            host: headers.get("host").cloned().unwrap_or_default(),
+                            value: headers.get("authorization").cloned(),
+                        });
                     if let Some(redirect) = &redirect
                         && server_requests.lock().unwrap().len() == 1
                     {
@@ -1419,8 +1453,9 @@ mod tests {
                         write_http(&mut stream, "502 Bad Gateway", "", &[]);
                         continue;
                     }
-                    if headers.get("authorization").map(String::as_str)
-                        != Some("Basic ZmV0Y2hlcjpzZWNyZXQ=")
+                    if server_require_auth.load(Ordering::Acquire)
+                        && headers.get("authorization").map(String::as_str)
+                            != Some("Basic ZmV0Y2hlcjpzZWNyZXQ=")
                     {
                         write_http(
                             &mut stream,
@@ -1431,6 +1466,20 @@ mod tests {
                         continue;
                     }
                     server_authorized.lock().unwrap().push(method.clone());
+                    if method == "GET"
+                        && let Some(location) =
+                            server_authenticated_redirect.lock().unwrap().as_ref()
+                    {
+                        write_http(
+                            &mut stream,
+                            "302 Found",
+                            &format!(
+                                "Location: {location}\r\nWWW-Authenticate: Basic realm=\"fetch-fixture\"\r\n"
+                            ),
+                            &[],
+                        );
+                        continue;
+                    }
                     let (content_type, body) = if method == "GET" {
                         (
                             "application/x-git-upload-pack-advertisement",
@@ -1450,7 +1499,10 @@ mod tests {
             Self {
                 address,
                 stopping,
+                require_auth,
+                authenticated_redirect,
                 authorized,
+                observed_auth,
                 requests,
                 server: Some(server),
             }
@@ -1458,6 +1510,10 @@ mod tests {
 
         fn url(&self) -> String {
             format!("http://{}/remote.git", self.address)
+        }
+
+        fn redirect_after_auth(&self, location: String) {
+            *self.authenticated_redirect.lock().unwrap() = Some(location);
         }
     }
 
@@ -1654,6 +1710,25 @@ mod tests {
                 .unwrap(),
             Some("refs/remotes/origin/main")
         );
+    }
+
+    #[test]
+    fn all_remotes_excludes_the_explicitly_skipped_remote() {
+        let fixture = FetchFixture::new();
+        fixture
+            .local
+            .remote("skipped", fixture.remote.path().to_str().unwrap())
+            .unwrap();
+        fixture
+            .local
+            .config()
+            .unwrap()
+            .set_bool("remote.skipped.skipFetchAll", true)
+            .unwrap();
+
+        let remotes = super::applicable_remotes(&fixture.local).unwrap();
+
+        assert_eq!(remotes, vec!["origin"]);
     }
 
     #[test]
@@ -1894,6 +1969,34 @@ mod tests {
     }
 
     #[test]
+    fn reports_written_metadata_when_preserving_the_batch_prefix_fails() {
+        let fixture = FetchFixture::new();
+        execute(&fixture.request()).unwrap();
+        let prefix = std::fs::read(fixture.local.path().join("FETCH_HEAD")).unwrap();
+        let advanced = fixture.advance();
+        let mut request = fixture.request();
+        request.append_fetch_head = true;
+
+        let outcome = super::execute_repository(&fixture.local, &request, |gitdir, earlier| {
+            assert_eq!(earlier, prefix);
+            let written = std::fs::read_to_string(gitdir.join("FETCH_HEAD")).unwrap();
+            assert!(written.contains(&advanced.to_string()));
+            Err(super::metadata_error())
+        })
+        .unwrap();
+
+        assert_eq!(outcome.result.unwrap_err().code, "fetch_metadata");
+        assert!(outcome.metadata_written);
+        assert_eq!(
+            fixture
+                .local
+                .refname_to_id("refs/remotes/origin/main")
+                .unwrap(),
+            advanced
+        );
+    }
+
+    #[test]
     fn restores_earlier_fetch_metadata_when_a_ref_update_fails() {
         let fixture = FetchFixture::new();
         let seed = Repository::init_bare(fixture.directory.path().join("earlier.git")).unwrap();
@@ -2022,19 +2125,194 @@ mod tests {
     }
 
     #[test]
-    fn fetches_over_http_with_a_configured_noninteractive_credential_helper() {
+    fn authenticated_http_challenge_refuses_without_calling_a_helper() {
         let fixture = FetchFixture::new();
         let http = HttpRemote::new(&fixture.remote, fixture.first);
-        fixture.local.remote_set_url("origin", &http.url()).unwrap();
+        fixture
+            .local
+            .remote_set_url(
+                "origin",
+                &format!("http://localhost:{}/remote.git", http.address.port()),
+            )
+            .unwrap();
+        let captured = capture_helper(&fixture);
+
+        let outcome = execute_with_receipt(&fixture.request());
+
+        assert_eq!(outcome.result.unwrap_err().code, "unsupported_transport");
+        assert!(!outcome.metadata_written);
+        assert!(!captured.exists());
+        assert!(!http.requests.lock().unwrap().is_empty());
+        assert!(
+            http.observed_auth
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|auth| auth.value.is_none())
+        );
+        assert!(
+            fixture
+                .local
+                .find_reference("refs/remotes/origin/main")
+                .is_err()
+        );
+        assert!(!fixture.local.path().join("FETCH_HEAD").exists());
+    }
+
+    #[test]
+    fn an_http_url_with_embedded_credentials_is_refused_before_network_access() {
+        let fixture = FetchFixture::new();
+        let http = HttpRemote::public(&fixture.remote, fixture.first);
+        fixture
+            .local
+            .remote_set_url(
+                "origin",
+                &format!(
+                    "http://fetcher:dummy-secret@localhost:{}/remote.git",
+                    http.address.port()
+                ),
+            )
+            .unwrap();
+        let captured = capture_helper(&fixture);
+
+        let outcome = execute_with_receipt(&fixture.request());
+
+        assert_eq!(outcome.result.unwrap_err().code, "unsupported_transport");
+        assert!(!outcome.metadata_written);
+        assert!(!captured.exists());
+        assert!(http.requests.lock().unwrap().is_empty());
+        assert!(!fixture.local.path().join("FETCH_HEAD").exists());
+    }
+
+    #[test]
+    fn a_scoped_empty_helper_reset_never_runs_a_global_helper() {
+        let fixture = FetchFixture::new();
+        let http = HttpRemote::new(&fixture.remote, fixture.first);
+        fixture
+            .local
+            .remote_set_url(
+                "origin",
+                &format!("http://localhost:{}/remote.git", http.address.port()),
+            )
+            .unwrap();
+        let captured = capture_helper(&fixture);
         fixture
             .local
             .config()
             .unwrap()
-            .set_str(
-                "credential.helper",
-                "!printf 'username=fetcher\\npassword=secret\\n'",
+            .set_str("credential.http://localhost.helper", "")
+            .unwrap();
+
+        let error = execute(&fixture.request()).unwrap_err();
+
+        assert_eq!(error.code, "unsupported_transport");
+        assert!(!captured.exists());
+        assert!(!http.requests.lock().unwrap().is_empty());
+        assert!(
+            http.observed_auth
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|auth| auth.value.is_none())
+        );
+        assert!(
+            fixture
+                .local
+                .find_reference("refs/remotes/origin/main")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn a_public_domain_remote_ignores_configured_helpers() {
+        let fixture = FetchFixture::new();
+        let http = HttpRemote::public(&fixture.remote, fixture.first);
+        fixture
+            .local
+            .remote_set_url(
+                "origin",
+                &format!("http://localhost:{}/remote.git", http.address.port()),
             )
             .unwrap();
+        let captured = capture_helper(&fixture);
+        fixture
+            .local
+            .config()
+            .unwrap()
+            .set_str("credential.http://unrelated.example.helper", "")
+            .unwrap();
+
+        execute(&fixture.request()).unwrap();
+
+        assert!(!captured.exists());
+        assert_eq!(
+            fixture
+                .local
+                .refname_to_id("refs/remotes/origin/main")
+                .unwrap(),
+            fixture.first
+        );
+    }
+
+    fn assert_http_auth_refusal_prevents_redirected_credential(destination_host: &str) {
+        let fixture = FetchFixture::new();
+        let origin = HttpRemote::new(&fixture.remote, fixture.first);
+        let destination = HttpRemote::public(&fixture.remote, fixture.first);
+        fixture
+            .local
+            .remote_set_url(
+                "origin",
+                &format!("http://localhost:{}/remote.git", origin.address.port()),
+            )
+            .unwrap();
+        origin.redirect_after_auth(format!(
+            "http://{destination_host}:{}/remote.git/info/refs?service=git-upload-pack",
+            destination.address.port()
+        ));
+        let captured = capture_helper(&fixture);
+
+        let outcome = execute_with_receipt(&fixture.request());
+
+        assert_eq!(outcome.result.unwrap_err().code, "unsupported_transport");
+        assert!(!outcome.metadata_written);
+        assert!(!captured.exists());
+        assert!(!origin.requests.lock().unwrap().is_empty());
+        assert!(origin.authorized.lock().unwrap().is_empty());
+        assert!(
+            origin
+                .observed_auth
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|auth| auth.value.is_none())
+        );
+        assert!(destination.requests.lock().unwrap().is_empty());
+        assert!(
+            destination
+                .observed_auth
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|auth| auth.value.as_deref() != Some("Basic ZmV0Y2hlcjpzZWNyZXQ="))
+        );
+    }
+
+    #[test]
+    fn http_auth_refusal_prevents_a_different_host_redirect() {
+        assert_http_auth_refusal_prevents_redirected_credential("127.0.0.1");
+    }
+
+    #[test]
+    fn http_auth_refusal_prevents_a_different_port_redirect() {
+        assert_http_auth_refusal_prevents_redirected_credential("localhost");
+    }
+
+    #[test]
+    fn a_public_ip_remote_ignores_configured_helpers() {
+        let fixture = FetchFixture::new();
+        let http = HttpRemote::public(&fixture.remote, fixture.first);
+        fixture.local.remote_set_url("origin", &http.url()).unwrap();
+        let captured = capture_helper(&fixture);
 
         execute(&fixture.request()).unwrap();
 
@@ -2045,11 +2323,145 @@ mod tests {
                 .unwrap(),
             fixture.first
         );
+        assert!(!captured.exists());
+        assert!(!http.requests.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_ip_challenge_never_reads_or_sends_helper_credentials() {
+        let fixture = FetchFixture::new();
+        let http = HttpRemote::new(&fixture.remote, fixture.first);
+        fixture.local.remote_set_url("origin", &http.url()).unwrap();
+        let captured = capture_helper(&fixture);
+
+        let error = execute(&fixture.request()).unwrap_err();
+
+        assert!(
+            http.observed_auth
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|auth| auth.value.is_none())
+        );
+        assert!(!captured.exists());
+        assert_eq!(error.code, "unsupported_transport");
+        assert!(
+            fixture
+                .local
+                .find_reference("refs/remotes/origin/main")
+                .is_err()
+        );
+        assert!(!fixture.local.path().join("FETCH_HEAD").exists());
+    }
+
+    #[test]
+    fn a_redirect_to_an_ip_challenge_never_reads_or_sends_helper_credentials() {
+        let fixture = FetchFixture::new();
+        let http = HttpRemote::with_redirect(&fixture.remote, fixture.first, Some("fetcher"));
+        fixture
+            .local
+            .remote_set_url(
+                "origin",
+                &format!("http://localhost:{}/remote.git", http.address.port()),
+            )
+            .unwrap();
+        let captured = capture_helper(&fixture);
+
+        let error = execute(&fixture.request()).unwrap_err();
+
+        assert!(
+            http.observed_auth
+                .lock()
+                .unwrap()
+                .iter()
+                // libgit2 may first try the username from the redirect URL
+                // with an empty password, before asking our callback.
+                .all(|auth| auth
+                    .value
+                    .as_deref()
+                    .is_none_or(|value| value == "Basic ZmV0Y2hlcjo="))
+        );
+        assert!(!captured.exists());
+        assert_eq!(error.code, "unsupported_transport");
+        assert!(http.requests.lock().unwrap().len() >= 2);
+        assert!(
+            fixture
+                .local
+                .find_reference("refs/remotes/origin/main")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn a_global_authorization_header_never_reaches_a_redirected_host() {
+        let fixture = FetchFixture::new();
+        let http = HttpRemote::with_redirect(&fixture.remote, fixture.first, Some("fetcher"));
+        fixture
+            .local
+            .remote_set_url(
+                "origin",
+                &format!("http://localhost:{}/remote.git", http.address.port()),
+            )
+            .unwrap();
+        fixture
+            .local
+            .config()
+            .unwrap()
+            .set_str("http.extraheader", "Authorization: Bearer dummy-header")
+            .unwrap();
+
+        let error = execute(&fixture.request()).unwrap_err();
+
+        assert!(http.observed_auth.lock().unwrap().iter().all(|auth| {
+            !auth.host.starts_with("127.0.0.1:")
+                || auth.value.as_deref() != Some("Bearer dummy-header")
+        }));
+        assert_eq!(error.code, "unsupported_transport");
+        assert!(http.requests.lock().unwrap().is_empty());
+        assert!(
+            fixture
+                .local
+                .find_reference("refs/remotes/origin/main")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn an_empty_global_header_reset_keeps_the_direct_http_fetch_available() {
+        let fixture = FetchFixture::new();
+        let http = HttpRemote::public(&fixture.remote, fixture.first);
+        fixture
+            .local
+            .remote_set_url(
+                "origin",
+                &format!("http://localhost:{}/remote.git", http.address.port()),
+            )
+            .unwrap();
+        let mut config = fixture.local.config().unwrap();
+        config
+            .set_str("http.extraheader", "Authorization: Bearer stale")
+            .unwrap();
+        config.set_multivar("http.extraheader", "^$", "").unwrap();
+        drop(config);
+        let captured = capture_helper(&fixture);
+
+        execute(&fixture.request()).unwrap();
+
         assert_eq!(
-            fixture.local.refname_to_id("refs/tags/v1").unwrap(),
+            fixture
+                .local
+                .refname_to_id("refs/remotes/origin/main")
+                .unwrap(),
             fixture.first
         );
-        assert_eq!(*http.authorized.lock().unwrap(), vec!["GET", "POST"]);
+        assert!(
+            http.observed_auth
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|auth| { auth.value.as_deref() != Some("Bearer stale") })
+        );
+        assert!(!captured.exists());
     }
 
     #[test]
@@ -2180,7 +2592,7 @@ mod tests {
             .set_bool("http.https://127.0.0.1:1/.sslVerify", false)
             .unwrap();
 
-        let error = super::http_headers(
+        let error = super::validate_http_headers(
             &fixture.local.config().unwrap(),
             "https://127.0.0.1:1/repo.git",
         )
@@ -2199,7 +2611,7 @@ mod tests {
             .set_str("http.https://127.0.0.1:1/.extraHeader", "X-Fixture: true")
             .unwrap();
 
-        let error = super::http_headers(
+        let error = super::validate_http_headers(
             &fixture.local.config().unwrap(),
             "https://fetcher@127.0.0.1:1/repo.git",
         )
@@ -2331,7 +2743,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_decoded_credential_username_before_calling_a_helper() {
+    fn refuses_an_encoded_http_url_username_before_connecting() {
         let fixture = FetchFixture::new();
         let http = HttpRemote::new(&fixture.remote, fixture.first);
         fixture
@@ -2348,15 +2760,16 @@ mod tests {
 
         let error = execute(&fixture.request()).unwrap_err();
 
-        assert_eq!(error.code, "git_auth");
+        assert_eq!(error.code, "unsupported_transport");
         assert!(
             !captured.exists(),
             "malicious fields reached the credential helper"
         );
+        assert!(http.requests.lock().unwrap().is_empty());
     }
 
     #[test]
-    fn rejects_redirected_credential_username_injection_before_a_helper() {
+    fn refuses_redirected_http_auth_without_calling_a_helper() {
         let fixture = FetchFixture::new();
         let http = HttpRemote::with_redirect(
             &fixture.remote,
@@ -2368,7 +2781,7 @@ mod tests {
 
         let error = execute(&fixture.request()).unwrap_err();
 
-        assert_eq!(error.code, "git_auth");
+        assert_eq!(error.code, "unsupported_transport");
         assert!(
             !captured.exists(),
             "redirected malicious fields reached the credential helper"
@@ -2488,10 +2901,16 @@ mod tests {
         assert_eq!(fixture.local.refname_to_id("refs/tags/v2").unwrap(), third);
     }
     #[test]
-    fn rejects_unsafe_configured_helper_username_before_a_helper() {
+    fn configured_http_username_never_reaches_a_helper_or_remote() {
         let fixture = FetchFixture::new();
         let http = HttpRemote::new(&fixture.remote, fixture.first);
-        fixture.local.remote_set_url("origin", &http.url()).unwrap();
+        fixture
+            .local
+            .remote_set_url(
+                "origin",
+                &format!("http://localhost:{}/remote.git", http.address.port()),
+            )
+            .unwrap();
         let captured = capture_helper(&fixture);
         fixture
             .local
@@ -2499,8 +2918,18 @@ mod tests {
             .unwrap()
             .set_str("credential.username", "fetcher\nhost=victim.example")
             .unwrap();
-        assert_eq!(execute(&fixture.request()).unwrap_err().code, "git_auth");
+        assert_eq!(
+            execute(&fixture.request()).unwrap_err().code,
+            "unsupported_transport"
+        );
         assert!(!captured.exists());
+        assert!(
+            http.observed_auth
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|auth| auth.value.is_none())
+        );
     }
 
     #[test]
@@ -2547,13 +2976,18 @@ mod tests {
         assert!(outcome.metadata_written);
     }
     #[test]
-    fn partial_http_updates_preserve_noninteractive_helper_transport() {
+    fn partial_public_http_updates_preserve_ref_and_metadata_behavior() {
         let fixture = FetchFixture::new();
         execute(&fixture.request()).unwrap();
         let second = fixture.advance();
-        let http = HttpRemote::new(&fixture.remote, second);
-        fixture.local.remote_set_url("origin", &http.url()).unwrap();
-        let captured = capture_helper(&fixture);
+        let http = HttpRemote::public(&fixture.remote, second);
+        fixture
+            .local
+            .remote_set_url(
+                "origin",
+                &format!("http://localhost:{}/remote.git", http.address.port()),
+            )
+            .unwrap();
         let outcome = execute_with_receipt(&fixture.request());
         assert_eq!(outcome.result.unwrap_err().code, "fetch_tag_conflict");
         assert!(outcome.metadata_written);
@@ -2567,11 +3001,6 @@ mod tests {
         assert_eq!(
             fixture.local.refname_to_id("refs/tags/v1").unwrap(),
             fixture.first
-        );
-        assert!(
-            std::fs::read_to_string(captured)
-                .unwrap()
-                .contains("protocol=http")
         );
         assert!(http.authorized.lock().unwrap().len() >= 3);
     }

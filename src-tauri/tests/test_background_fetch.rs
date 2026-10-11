@@ -30,11 +30,15 @@ impl Harness {
     }
 
     fn with_watcher(watcher: WatcherState) -> Self {
+        Self::with_worker(watcher, PathBuf::from(env!("CARGO_BIN_EXE_trunk")))
+    }
+
+    fn with_worker(watcher: WatcherState, worker: PathBuf) -> Self {
         let app = trunk_lib::configure_with_fetch_worker(
             mock_builder(),
             watcher,
             TrafficLights::disabled(),
-            BackgroundFetch::new(PathBuf::from(env!("CARGO_BIN_EXE_trunk"))),
+            BackgroundFetch::new(worker),
         )
         .build(trunk_lib::context())
         .unwrap();
@@ -993,59 +997,16 @@ fn graph_indexed_reads_reject_a_replaced_revision_before_any_notification() {
 #[cfg(unix)]
 mod cancellation {
     use std::io::{BufRead, BufReader, Read, Write};
-    use std::net::{SocketAddr, TcpListener, TcpStream};
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::os::unix::fs::PermissionsExt;
     use std::sync::mpsc::{self, Receiver, Sender};
     use std::thread::{self, JoinHandle};
 
     use super::*;
     use trunk_lib::state::RunningOp;
 
-    struct AuthenticationServer {
-        address: SocketAddr,
-        stopped: Arc<AtomicBool>,
-        task: Option<JoinHandle<()>>,
-    }
-
-    impl AuthenticationServer {
-        fn setup() -> Self {
-            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-            let address = listener.local_addr().unwrap();
-            let stopped = Arc::new(AtomicBool::new(false));
-            let stop = Arc::clone(&stopped);
-            let task = thread::spawn(move || {
-                while !stop.load(Ordering::Acquire) {
-                    let (mut connection, _) = listener.accept().unwrap();
-                    if stop.load(Ordering::Acquire) {
-                        break;
-                    }
-                    let mut request = [0_u8; 4096];
-                    let _ = connection.read(&mut request);
-                    let _ = connection.write_all(b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"fixture\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-                }
-            });
-            Self {
-                address,
-                stopped,
-                task: Some(task),
-            }
-        }
-
-        fn url(&self) -> String {
-            format!("http://{}/repo.git", self.address)
-        }
-    }
-
-    impl Drop for AuthenticationServer {
-        fn drop(&mut self) {
-            self.stopped.store(true, Ordering::Release);
-            let _ = TcpStream::connect(self.address);
-            self.task.take().unwrap().join().unwrap();
-        }
-    }
-
-    struct BlockedCredentials {
+    struct BlockedWorker {
         _dir: tempfile::TempDir,
+        executable: PathBuf,
         wake: std::fs::File,
         reader: Option<JoinHandle<()>>,
         exit: PathBuf,
@@ -1053,14 +1014,14 @@ mod cancellation {
     }
 
     enum FetchEvent {
-        HelperRequested,
-        HelperExited,
+        WorkerBlocked,
+        DescendantExited,
         WorktreeChanged(RepoChanged),
         Finished(Value),
     }
 
-    impl BlockedCredentials {
-        fn setup(repo: &Repository, events: Sender<FetchEvent>) -> Self {
+    impl BlockedWorker {
+        fn setup(events: Sender<FetchEvent>) -> Self {
             let dir = tempfile::tempdir().unwrap();
             let ready = dir.path().join("ready");
             let blocked = dir.path().join("blocked");
@@ -1073,9 +1034,9 @@ mod cancellation {
                 .write(true)
                 .open(&ready)
                 .unwrap();
-            let script = dir.path().join("credential-helper.sh");
+            let descendant_script = dir.path().join("blocked-descendant.sh");
             std::fs::write(
-                &script,
+                &descendant_script,
                 format!(
                     "exec 3> {}\nprintf 'ready\\n' > {}\nIFS= read -r marker < {}\n",
                     shell_quote(&exit),
@@ -1084,32 +1045,36 @@ mod cancellation {
                 ),
             )
             .unwrap();
-            let mut config = repo.config().unwrap();
-            config.set_str("credential.username", "fixture").unwrap();
-            config
-                .set_str(
-                    "credential.helper",
-                    &format!("!/bin/sh {}", shell_quote(&script)),
-                )
-                .unwrap();
+            let executable = dir.path().join("fetch-worker");
+            std::fs::write(
+                &executable,
+                format!(
+                    "#!/bin/sh\nIFS= read -r request || [ -n \"$request\" ]\ncase \"$request\" in\n  *'\"remote\":\"blocked\"'*) /bin/sh {} & descendant=$!; wait \"$descendant\" ;;\n  *) printf '%s' \"$request\" | {} --background-fetch-worker ;;\nesac\n",
+                    shell_quote(&descendant_script),
+                    shell_quote(Path::new(env!("CARGO_BIN_EXE_trunk"))),
+                ),
+            )
+            .unwrap();
+            std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
             let exit_path = exit.clone();
             let exit_events = events.clone();
             let exit_reader = thread::spawn(move || {
                 let mut lifetime = std::fs::File::open(exit_path).unwrap();
                 let mut byte = [0_u8; 1];
                 assert_eq!(lifetime.read(&mut byte).unwrap(), 0);
-                let _ = exit_events.send(FetchEvent::HelperExited);
+                let _ = exit_events.send(FetchEvent::DescendantExited);
             });
             let mut ready = BufReader::new(ready_file.try_clone().unwrap());
             let reader = thread::spawn(move || {
                 let mut line = String::new();
                 ready.read_line(&mut line).unwrap();
                 if line == "ready\n" {
-                    let _ = events.send(FetchEvent::HelperRequested);
+                    let _ = events.send(FetchEvent::WorkerBlocked);
                 }
             });
             Self {
                 _dir: dir,
+                executable,
                 wake: ready_file,
                 reader: Some(reader),
                 exit,
@@ -1119,26 +1084,26 @@ mod cancellation {
 
         fn wait_for_request(events: &Receiver<FetchEvent>) {
             match events.recv().unwrap() {
-                FetchEvent::HelperRequested => {}
-                FetchEvent::HelperExited => {
-                    panic!("the helper exited before reaching its request barrier")
+                FetchEvent::WorkerBlocked => {}
+                FetchEvent::DescendantExited => {
+                    panic!("the descendant exited before reaching its request barrier")
                 }
                 FetchEvent::WorktreeChanged(_) => {
-                    panic!("a local edit was reported before the helper request barrier")
+                    panic!("a local edit was reported before the descendant request barrier")
                 }
-                FetchEvent::Finished(report) => panic!(
-                    "the fetch finished before reaching the credential-helper barrier: {report}"
-                ),
+                FetchEvent::Finished(report) => {
+                    panic!("the fetch finished before reaching the worker barrier: {report}")
+                }
             }
         }
 
         fn wait_for_exit(events: &Receiver<FetchEvent>) {
             loop {
                 match events.recv().unwrap() {
-                    FetchEvent::HelperExited => break,
+                    FetchEvent::DescendantExited => break,
                     FetchEvent::Finished(_) | FetchEvent::WorktreeChanged(_) => {}
-                    FetchEvent::HelperRequested => {
-                        panic!("the helper request barrier was reported twice")
+                    FetchEvent::WorkerBlocked => {
+                        panic!("the descendant request barrier was reported twice")
                     }
                 }
             }
@@ -1157,11 +1122,11 @@ mod cancellation {
                     return change;
                 }
                 FetchEvent::WorktreeChanged(_) => {}
-                FetchEvent::HelperRequested => {
-                    panic!("the helper request barrier was reported twice")
+                FetchEvent::WorkerBlocked => {
+                    panic!("the descendant request barrier was reported twice")
                 }
-                FetchEvent::HelperExited => {
-                    panic!("the helper exited before the local edit was observed")
+                FetchEvent::DescendantExited => {
+                    panic!("the descendant exited before the local edit was observed")
                 }
                 FetchEvent::Finished(report) => {
                     panic!("the fetch finished before the local edit was observed: {report}")
@@ -1170,12 +1135,12 @@ mod cancellation {
         }
     }
 
-    impl Drop for BlockedCredentials {
+    impl Drop for BlockedWorker {
         fn drop(&mut self) {
             let _ = self.wake.write_all(b"closed\n");
             self.reader.take().unwrap().join().unwrap();
             // Also unblock the lifetime reader if a transport failure never launched
-            // the helper. Opening both ends never waits for a second FIFO opener.
+            // the descendant. Opening both ends never waits for a second FIFO opener.
             drop(
                 std::fs::OpenOptions::new()
                     .read(true)
@@ -1198,15 +1163,15 @@ mod cancellation {
     }
 
     #[test]
-    fn cancellation_joins_a_blocked_helper_and_allows_the_next_job() {
+    fn cancellation_joins_a_blocked_worker_and_allows_the_next_job() {
         let fixture = RemoteFixture::new();
         let other = RemoteFixture::new();
-        let server = AuthenticationServer::setup();
         let repo = fixture.clone();
-        repo.remote("blocked", &server.url()).unwrap();
+        repo.remote("blocked", fixture.remote.path().to_str().unwrap())
+            .unwrap();
         let (events, observations) = mpsc::channel();
-        let _credentials = BlockedCredentials::setup(&repo, events.clone());
-        let mut harness = Harness::setup();
+        let worker = BlockedWorker::setup(events.clone());
+        let mut harness = Harness::with_worker(WatcherState::disabled(), worker.executable.clone());
         harness.open(fixture.clone.path());
         harness.open(other.clone.path());
         let path = fixture.clone.path().to_str().unwrap().to_owned();
@@ -1222,7 +1187,7 @@ mod cancellation {
             let _ = events.send(FetchEvent::Finished(report.clone()));
             report
         });
-        BlockedCredentials::wait_for_request(&observations);
+        BlockedWorker::wait_for_request(&observations);
         assert!(
             harness
                 .app
@@ -1240,7 +1205,7 @@ mod cancellation {
             .invoke("cancel_remote_op", json!({ "path": path }))
             .unwrap();
         let cancelled = job.join().unwrap();
-        BlockedCredentials::wait_for_exit(&observations);
+        BlockedWorker::wait_for_exit(&observations);
         repo.remote_delete("blocked").unwrap();
         let next = harness.fetch(fixture.clone.path());
 
@@ -1265,12 +1230,12 @@ mod cancellation {
     #[test]
     fn a_local_edit_remains_observable_while_a_background_fetch_is_blocked() {
         let fixture = RemoteFixture::new();
-        let server = AuthenticationServer::setup();
         let repo = fixture.clone();
-        repo.remote("blocked", &server.url()).unwrap();
+        repo.remote("blocked", fixture.remote.path().to_str().unwrap())
+            .unwrap();
         let (events, observations) = mpsc::channel();
-        let _credentials = BlockedCredentials::setup(&repo, events.clone());
-        let mut harness = Harness::with_watcher(WatcherState::default());
+        let worker = BlockedWorker::setup(events.clone());
+        let mut harness = Harness::with_worker(WatcherState::default(), worker.executable.clone());
         harness.open(fixture.clone.path());
         let path = fixture.clone.path().to_str().unwrap().to_owned();
         let worker_webview = harness.webview.clone();
@@ -1286,7 +1251,7 @@ mod cancellation {
             let _ = worker_events.send(FetchEvent::Finished(report.clone()));
             report
         });
-        BlockedCredentials::wait_for_request(&observations);
+        BlockedWorker::wait_for_request(&observations);
         let watched_path = path.clone();
         harness.app.listen_any("repo-changed", move |event| {
             let change: RepoChanged = serde_json::from_str(event.payload()).unwrap();
@@ -1330,7 +1295,7 @@ mod cancellation {
             .invoke("cancel_remote_op", json!({ "path": path }))
             .unwrap();
         let cancelled = job.join().unwrap();
-        BlockedCredentials::wait_for_exit(&observations);
+        BlockedWorker::wait_for_exit(&observations);
 
         assert_eq!(change.repo, path);
         assert!(change.paths.iter().any(|file| file == "README.md"));
@@ -1372,7 +1337,6 @@ mod cancellation {
     #[test]
     fn head_config_and_stash_changes_remain_observable_while_a_fetch_is_blocked() {
         let fixture = RemoteFixture::new();
-        let server = AuthenticationServer::setup();
         let mut repo = fixture.clone();
         std::fs::write(
             fixture.clone.path().join("README.md"),
@@ -1382,10 +1346,11 @@ mod cancellation {
         let stash = repo
             .stash_save(&sig_at(1_700_100_000), "Saved before fetch", None)
             .unwrap();
-        repo.remote("blocked", &server.url()).unwrap();
+        repo.remote("blocked", fixture.remote.path().to_str().unwrap())
+            .unwrap();
         let (events, observations) = mpsc::channel();
-        let _credentials = BlockedCredentials::setup(&repo, events.clone());
-        let mut harness = Harness::with_watcher(WatcherState::default());
+        let worker = BlockedWorker::setup(events.clone());
+        let mut harness = Harness::with_worker(WatcherState::default(), worker.executable.clone());
         harness.open(fixture.clone.path());
         assert!(
             harness.graph(fixture.clone.path())["commits"]
@@ -1408,7 +1373,7 @@ mod cancellation {
             let _ = worker_events.send(FetchEvent::Finished(report.clone()));
             report
         });
-        BlockedCredentials::wait_for_request(&observations);
+        BlockedWorker::wait_for_request(&observations);
         let watched_path = path.clone();
         harness.app.listen_any("repo-changed", move |event| {
             let change: RepoChanged = serde_json::from_str(event.payload()).unwrap();
@@ -1474,7 +1439,7 @@ mod cancellation {
             .invoke("cancel_remote_op", json!({ "path": path }))
             .unwrap();
         let cancelled = job.join().unwrap();
-        BlockedCredentials::wait_for_exit(&observations);
+        BlockedWorker::wait_for_exit(&observations);
 
         assert_local_context_event(&head_change, &path);
         assert_local_context_event(&config_change, &path);
