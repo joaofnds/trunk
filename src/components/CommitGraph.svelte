@@ -306,6 +306,7 @@ let graphActive = true;
 // refresh is active, so an older response must not overwrite that replacement.
 let refreshSeq = 0;
 let graphRevision = 0;
+let graphReady = $state(false);
 
 let columnWidths = $state<ColumnWidths>({ ...DEFAULT_WIDTHS });
 let columnVisibility = $state<ColumnVisibility>({
@@ -1774,6 +1775,7 @@ async function loadMore(): Promise<PageResult> {
 		// load for whatever it still needs.
 		if (!graphActive || seq !== refreshSeq) return "stale";
 		graphRevision = response.revision;
+		graphReady = true;
 		commits.push(...response.commits);
 		maxColumns = response.max_columns;
 		updateContentWidths(response.commits);
@@ -1842,13 +1844,17 @@ export function loadedRows(): number {
 /** Replaces the graph with a freshly laid-out first page, as a rebuild or a
  *  visibility change returns it. Any refresh still in flight is older than this
  *  page and is dropped when it lands. */
-export function showGraph(
-	response: GraphResponse,
-	refreshWorktree = true,
-): void {
+export function showGraph(response: GraphResponse): void {
+	replaceGraph(response);
+	requestWipStats();
+}
+
+function replaceGraph(response: GraphResponse): void {
 	if (!graphActive) return;
+
 	refreshSeq += 1;
 	graphRevision = response.revision;
+	graphReady = true;
 	// Swap data atomically -- old data stays visible until this assignment
 	commits = response.commits;
 	maxColumns = response.max_columns;
@@ -1862,7 +1868,6 @@ export function showGraph(
 		[...commitStats].filter(([oid]) => loadedOids.has(oid)),
 	);
 	requestPageStats(0);
-	if (refreshWorktree) requestWipStats();
 }
 
 async function readCachedGraph() {
@@ -1874,7 +1879,7 @@ async function readCachedGraph() {
 			loaded: offset,
 		});
 		if (!graphActive || seq !== refreshSeq) return;
-		showGraph(response, false);
+		replaceGraph(response);
 		await backfillAllPageStats();
 	} catch (e) {
 		if (graphActive && seq === refreshSeq)
@@ -1886,7 +1891,12 @@ const cachedGraphRefresh = createCoalescedTask(scheduler, readCachedGraph);
 onDestroy(() => cachedGraphRefresh.dispose());
 
 $effect(() => {
-	if (!tabActive || !refVisibilityResolved || cachedGraphRevision === undefined)
+	if (
+		!graphReady ||
+		!tabActive ||
+		!refVisibilityResolved ||
+		cachedGraphRevision === undefined
+	)
 		return;
 	const revision = cachedGraphRevision;
 	untrack(() => {
@@ -1912,7 +1922,7 @@ async function refreshGraph() {
 			loaded: offset,
 		});
 		if (!graphActive || seq !== refreshSeq) return;
-		showGraph(response, false);
+		replaceGraph(response);
 	} catch (e) {
 		if (!graphActive || seq !== refreshSeq) return;
 		error = errorMessage(e, "Failed to load commits");

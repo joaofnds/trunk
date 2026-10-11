@@ -47,6 +47,7 @@ paths:
   - "scripts/graph-fixture-render.ts"
   - "scripts/graph-connector-render.ts"
   - "src/components/CommitGraph.test.ts"
+  - "src/components/CommitGraph.autofetch.test.ts"
   - "tests/visual/graph.test.ts"
   - "tests/visual/harness.ts"
   - "tests/visual/page/boot.ts"
