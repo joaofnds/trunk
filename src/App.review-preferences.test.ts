@@ -901,7 +901,10 @@ function fileDiff(path: string, content?: string): FileDiff {
 }
 
 async function preset(label: string): Promise<HTMLElement> {
-	return screen.findByRole("button", { name: new RegExp(`^${label}`) });
+	const panel = await screen.findByLabelText("Review threads", {
+		selector: "section",
+	});
+	return within(panel).findByRole("button", { name: new RegExp(`^${label}`) });
 }
 
 async function activateTab(tabId: string): Promise<void> {
@@ -922,9 +925,8 @@ async function activateTab(tabId: string): Promise<void> {
 
 async function reviewBadge(expected: number | null): Promise<void> {
 	await waitFor(() => {
-		const badge = screen
-			.getByRole("button", { name: "Review" })
-			.querySelector<HTMLElement>(".toolbar-badge");
+		const review = screen.getByLabelText("Review", { selector: "button" });
+		const badge = review.querySelector<HTMLElement>(".toolbar-badge");
 		expect(badge ? Number(badge.textContent) : null).toBe(expected);
 	});
 }
@@ -937,12 +939,16 @@ async function hideReviewThreads(): Promise<void> {
 }
 
 async function openReviewPanel(): Promise<void> {
-	await fireEvent.click(await screen.findByRole("button", { name: "Review" }));
+	await fireEvent.click(
+		await screen.findByLabelText("Review", { selector: "button" }),
+	);
 	await screen.findByText("First commit");
 }
 
 async function leaveReview(): Promise<void> {
-	await fireEvent.click(screen.getByRole("button", { name: "Review" }));
+	await fireEvent.click(
+		screen.getByLabelText("Review", { selector: "button" }),
+	);
 	await waitFor(() =>
 		expect(screen.getByTestId("branch-sidebar")).toBeVisible(),
 	);
