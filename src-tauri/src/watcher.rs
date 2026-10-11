@@ -1,5 +1,8 @@
-use notify_debouncer_mini::notify::{RecommendedWatcher, RecursiveMode};
-use notify_debouncer_mini::{DebounceEventResult, Debouncer, new_debouncer};
+use notify_debouncer_mini::notify::event::{AccessKind, AccessMode};
+use notify_debouncer_mini::notify::{
+    self, Event, EventHandler, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
+};
+use notify_debouncer_mini::{Config, DebounceEventResult, Debouncer, new_debouncer_opt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -268,7 +271,54 @@ fn route_changes<R: Runtime>(
     }))
 }
 
-pub type WatcherMap = HashMap<String, Debouncer<RecommendedWatcher>>;
+struct FileChangeEvents<F>(F);
+
+fn is_nonmutating_access(event: &Event) -> bool {
+    matches!(event.kind, EventKind::Access(kind) if kind != AccessKind::Close(AccessMode::Write))
+        && !event.need_rescan()
+}
+
+impl<F: EventHandler> EventHandler for FileChangeEvents<F> {
+    fn handle_event(&mut self, event: notify::Result<Event>) {
+        if let Ok(event) = &event
+            && is_nonmutating_access(event)
+        {
+            return;
+        }
+
+        self.0.handle_event(event);
+    }
+}
+
+pub struct FileChangeWatcher(RecommendedWatcher);
+
+impl Watcher for FileChangeWatcher {
+    fn new<F: EventHandler>(handler: F, config: notify::Config) -> notify::Result<Self> {
+        RecommendedWatcher::new(FileChangeEvents(handler), config).map(Self)
+    }
+
+    fn watch(&mut self, path: &Path, recursive_mode: RecursiveMode) -> notify::Result<()> {
+        self.0.watch(path, recursive_mode)
+    }
+
+    fn unwatch(&mut self, path: &Path) -> notify::Result<()> {
+        self.0.unwatch(path)
+    }
+
+    fn paths_mut(&mut self) -> Box<dyn notify::PathsMut + '_> {
+        self.0.paths_mut()
+    }
+
+    fn configure(&mut self, config: notify::Config) -> notify::Result<bool> {
+        self.0.configure(config)
+    }
+
+    fn kind() -> notify::WatcherKind {
+        RecommendedWatcher::kind()
+    }
+}
+
+pub type WatcherMap = HashMap<String, Debouncer<FileChangeWatcher>>;
 pub struct WatcherState {
     pub watchers: Mutex<WatcherMap>,
     pub enabled: bool,
@@ -350,10 +400,7 @@ fn start_watcher_with_registration<R, F>(
 ) -> Result<(), TrunkError>
 where
     R: Runtime,
-    F: FnMut(
-        &mut Debouncer<RecommendedWatcher>,
-        &Path,
-    ) -> notify_debouncer_mini::notify::Result<()>,
+    F: FnMut(&mut Debouncer<FileChangeWatcher>, &Path) -> notify::Result<()>,
 {
     if !state.enabled {
         return Ok(());
@@ -365,8 +412,8 @@ where
     let callback_git = git.clone();
     let pending = Arc::clone(&state.pending_refs);
 
-    let mut debouncer = new_debouncer(
-        Duration::from_millis(300),
+    let mut debouncer = new_debouncer_opt::<_, FileChangeWatcher>(
+        Config::default().with_timeout(Duration::from_millis(300)),
         move |res: DebounceEventResult| {
             let Ok(events) = res else { return };
 
@@ -443,9 +490,80 @@ pub fn stop_watcher(path: &str, state: &WatcherState) {
 
 #[cfg(test)]
 mod tests {
+    use notify_debouncer_mini::notify::event::{CreateKind, ModifyKind, RemoveKind};
     use std::cell::Cell;
 
     use super::*;
+
+    fn forwarded(event: notify::Result<Event>) -> Vec<notify::Result<Event>> {
+        let (send, received) = std::sync::mpsc::channel();
+        let mut handler = FileChangeEvents(move |event| send.send(event).unwrap());
+
+        handler.handle_event(event);
+
+        received.try_iter().collect()
+    }
+
+    macro_rules! ignored_access {
+        ($($name:ident => $kind:expr;)*) => {$(
+            #[test]
+            fn $name() {
+                let event = Event::new(EventKind::Access($kind)).add_path("/repo/file.txt".into());
+
+                let delivered = forwarded(Ok(event));
+
+                assert!(delivered.is_empty());
+            }
+        )*};
+    }
+
+    ignored_access!(
+        opening_a_file_emits_no_change => AccessKind::Open(AccessMode::Any);
+        reading_a_file_emits_no_change => AccessKind::Read;
+        closing_a_read_handle_emits_no_change => AccessKind::Close(AccessMode::Read);
+    );
+
+    macro_rules! preserved_change {
+        ($($name:ident => $event:expr;)*) => {$(
+            #[test]
+            fn $name() {
+                let event = $event.add_path("/repo/file.txt".into());
+
+                let delivered = forwarded(Ok(event.clone()));
+
+                assert_eq!(
+                    delivered
+                        .into_iter()
+                        .map(Result::unwrap)
+                        .collect::<Vec<_>>(),
+                    vec![event]
+                );
+            }
+        )*};
+    }
+
+    preserved_change!(
+        closing_a_write_handle_preserves_the_change =>
+            Event::new(EventKind::Access(AccessKind::Close(AccessMode::Write)));
+        creating_a_file_preserves_the_change => Event::new(EventKind::Create(CreateKind::File));
+        modifying_a_file_preserves_the_change => Event::new(EventKind::Modify(ModifyKind::Any));
+        removing_a_file_preserves_the_change => Event::new(EventKind::Remove(RemoveKind::File));
+        an_unknown_event_preserves_the_change => Event::new(EventKind::Any);
+        a_rescan_flag_exempts_an_access_event_from_filtering =>
+            Event::new(EventKind::Access(AccessKind::Open(AccessMode::Any)))
+                .set_flag(notify::event::Flag::Rescan);
+    );
+
+    #[test]
+    fn a_backend_error_reaches_the_handler() {
+        let error = notify::Error::path_not_found().add_path("/repo".into());
+
+        let delivered = forwarded(Err(error));
+
+        let error = delivered.into_iter().next().unwrap().unwrap_err();
+        assert!(matches!(error.kind, notify::ErrorKind::PathNotFound));
+        assert_eq!(error.paths, vec![PathBuf::from("/repo")]);
+    }
 
     #[test]
     fn linked_worktrees_ignore_the_primary_worktrees_private_metadata() {
