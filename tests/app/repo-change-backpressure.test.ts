@@ -133,7 +133,7 @@ describe("repository changes during a sustained event stream", () => {
 		);
 	});
 
-	it("bounds both dirty-count owners while their reads are busy", async () => {
+	it("bounds dirty-count work while its read is busy and updates the tab badge", async () => {
 		const app = await setup({ repo: REPO });
 		await app.repo.open();
 		await app.settled();
@@ -149,7 +149,7 @@ describe("repository changes during a sustained event stream", () => {
 			await tick();
 		}
 
-		expect(calls(app, "get_dirty_counts")).toBe(before + 2);
+		expect(calls(app, "get_dirty_counts")).toBe(before + 1);
 		app.repo.writeWorkingTreeFile("dirty.txt", "final state\n");
 		await app.events.externalChange(app.repo.path);
 		// Without this the status read that finds dirty.txt can land after a
@@ -157,7 +157,7 @@ describe("repository changes during a sustained event stream", () => {
 		await app.settled();
 		release();
 		await app.settled();
-		expect(calls(app, "get_dirty_counts")).toBe(before + 4);
+		expect(calls(app, "get_dirty_counts")).toBe(before + 2);
 		expect(document.querySelector(".dirty-dot")).not.toBeNull();
 	});
 });

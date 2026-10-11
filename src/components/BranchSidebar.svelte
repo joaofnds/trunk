@@ -46,6 +46,7 @@ import VisibilityIcon from "./VisibilityIcon.svelte";
 interface Props {
 	repoPath: string;
 	onrefreshed?: () => void;
+	onrefschange?: (refs: RefsResponse) => void;
 	/** The graph as the backend re-laid it out after a visibility change. */
 	onvisibilitychanged?: (graph: GraphResponse) => void;
 	/** How many rows the graph holds, so a rebuild answers with the same depth. */
@@ -69,6 +70,7 @@ interface Props {
 let {
 	repoPath,
 	onrefreshed,
+	onrefschange,
 	onvisibilitychanged,
 	loadedRows,
 	onstashselect,
@@ -279,6 +281,7 @@ async function refreshRefs() {
 		const result = await safeInvoke<RefsResponse>("list_refs", { path });
 		if (sidebarActive && seq === loadSeq && path === refsPath) {
 			refs = result;
+			onrefschange?.(result);
 		}
 	} catch {
 		if (sidebarActive && seq === loadSeq && path === refsPath) {

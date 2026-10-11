@@ -334,7 +334,13 @@ describe("App review preference", () => {
 		seedTwoTabs();
 		host.seedReview(REPO_A, reviewWith("open"));
 		host.seedReview(REPO_B, reviewWith("done"));
+		host.seedCommitDiff(REPO_B, "commit-b", "b.ts");
 		render(App);
+		await reviewBadge(1);
+		await activateTab("tab-b");
+		await screen.findByText(`${REPO_B} commit`);
+		await reviewBadge(null);
+		await activateTab("tab-a");
 		await reviewBadge(1);
 		await openReviewPanel();
 
@@ -669,19 +675,17 @@ describe("App diff content mode", () => {
 		host.seedCommitDiff(REPO_B, "commit-b", "b.ts");
 		host.holdDiffMode(false);
 		render(App);
-		const rows = await waitFor(() => {
-			const mounted = screen.getAllByTestId("commit-row");
-			expect(mounted).toHaveLength(2);
-			return mounted;
-		});
+		const firstRow = await screen.findByTestId("commit-row");
 
-		await fireEvent.click(rows[0]);
+		await fireEvent.click(firstRow);
 		await fireEvent.click(await screen.findByText("a.ts"));
 		await screen.findByText(`FULL ${REPO_A}`);
-		await fireEvent.click(rows[1]);
+		await activateTab("tab-b");
+		await fireEvent.click(await screen.findByTestId("commit-row"));
 		await fireEvent.click(await screen.findByText("b.ts"));
 		await screen.findByText(`FULL ${REPO_B}`);
 
+		await activateTab("tab-a");
 		await fireEvent.click(screen.getAllByTitle("Show hunks")[0]);
 
 		await waitFor(() => {
@@ -711,18 +715,16 @@ describe("App diff content mode", () => {
 		host.seedCommitDiff(REPO_B, "commit-b", "b.ts");
 		host.holdDiffMode(true);
 		render(App);
-		const rows = await waitFor(() => {
-			const mounted = screen.getAllByTestId("commit-row");
-			expect(mounted).toHaveLength(2);
-			return mounted;
-		});
-		await fireEvent.click(rows[0]);
+		const firstRow = await screen.findByTestId("commit-row");
+		await fireEvent.click(firstRow);
 		await fireEvent.click(await screen.findByText("a.ts"));
 		await screen.findByText(`HUNK ${REPO_A}`);
-		await fireEvent.click(rows[1]);
+		await activateTab("tab-b");
+		await fireEvent.click(await screen.findByTestId("commit-row"));
 		await fireEvent.click(await screen.findByText("b.ts"));
 		await screen.findByText(`HUNK ${REPO_B}`);
 
+		await activateTab("tab-a");
 		await fireEvent.click(screen.getAllByTitle("Show full file")[0]);
 
 		await waitFor(() => {

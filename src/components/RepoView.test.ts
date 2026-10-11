@@ -1,5 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
-import { fireEvent, render, screen, within } from "@testing-library/svelte";
+import {
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
@@ -26,6 +32,7 @@ import type {
 	ContentMode,
 	FileDiff,
 } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
 
 // Stub OffscreenCanvas for jsdom — used by text-measure.ts (measureTextWidth) via CommitGraph
@@ -740,7 +747,9 @@ describe("RepoView", () => {
 			);
 			await flush();
 
-			await fireEvent.click(screen.getByRole("button", { name: "Close diff" }));
+			await fireEvent.click(
+				await screen.findByRole("button", { name: "Close diff" }),
+			);
 			await flush();
 
 			const threads = screen.getByRole("region", { name: "Review threads" });
@@ -1589,7 +1598,7 @@ describe("RepoView", () => {
 			resolveFirst([]);
 			await tick();
 
-			expect(screen.getByText("Loading diff…")).toBeTruthy();
+			expect(await screen.findByText("Loading diff…")).toBeTruthy();
 			await vi.waitFor(() => expect(resolveSecond).toBeTypeOf("function"));
 			resolveSecond([stagingDiff("SECOND TARGET", "second.ts")]);
 
@@ -2448,13 +2457,17 @@ describe("RepoView", () => {
 
 		async function openTheEditorOnTheClickedCommit(
 			props = baseProps(createMockRemoteState()),
+			waitForEditor = true,
 		) {
 			const view = render(RepoView, { props });
 			const rows = await screen.findAllByTestId("commit-row");
 			await fireEvent.contextMenu(rows[1]);
-			await flush();
+			await waitFor(() => {
+				expect(menuActions.has("Interactive Rebase...")).toBe(true);
+			});
 			await getMenuAction("Interactive Rebase...")();
-			await flush();
+			if (waitForEditor)
+				await screen.findByRole("listbox", { name: "Commits to rebase" });
 			return view;
 		}
 
@@ -2466,6 +2479,95 @@ describe("RepoView", () => {
 
 			return row;
 		}
+
+		it.each(["pending", "failed"] as const)(
+			"can cancel a %s rebase editor load without starting the rebase",
+			async (state) => {
+				const editor = Promise.withResolvers<{ default: typeof Button }>();
+				vi.doMock("./RebaseEditor.svelte", () => editor.promise);
+				stubRebaseTodo(PARENT_OID);
+
+				try {
+					await openTheEditorOnTheClickedCommit(undefined, false);
+					await screen.findByText("Opening rebase editor…");
+					if (state === "failed") {
+						editor.reject(new Error("editor unavailable"));
+						await screen.findByText("Could not load rebase editor.");
+					}
+
+					await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+					expect(
+						(await screen.findAllByTestId("commit-row")).length,
+					).toBeGreaterThan(0);
+					expect(screen.queryByText("Opening rebase editor…")).toBeNull();
+					expect(
+						screen.queryByText("Could not load rebase editor."),
+					).toBeNull();
+					expect(
+						mockInvoke.mock.calls.some(
+							([command]) => command === "start_interactive_rebase",
+						),
+					).toBe(false);
+				} finally {
+					if (state === "pending") editor.resolve({ default: Button });
+					await vi.dynamicImportSettled();
+					vi.doUnmock("./RebaseEditor.svelte");
+				}
+			},
+		);
+
+		it.each(["pending", "failed"] as const)(
+			"returns to the rebase plan when a %s diff module is cancelled",
+			async (state) => {
+				const diff = Promise.withResolvers<{ default: typeof Button }>();
+				vi.doMock("./DiffPanel.svelte", () => diff.promise);
+				stubRebaseTodo(PARENT_OID);
+				const base = mockInvoke.getMockImplementation();
+				if (!base) throw new Error("base invoke implementation missing");
+				const file = makeRebaseFile("src/rebase.ts");
+				mockInvoke.mockImplementation((command, args) => {
+					const request = args as Record<string, unknown> | undefined;
+					if (
+						command === "get_commit_detail" &&
+						typeof request?.oid === "string"
+					)
+						return Promise.resolve(
+							makeRebaseDetail(request.oid, "focused commit"),
+						);
+					if (command === "list_commit_files") return Promise.resolve([file]);
+					if (command === "diff_commit_file") return Promise.resolve([file]);
+					return base(command, args);
+				});
+
+				try {
+					await openTheEditorOnTheClickedCommit();
+					await fireEvent.click(await screen.findByText(file.path));
+					await screen.findByText("Opening diff…");
+					if (state === "failed") {
+						diff.reject(new Error("diff unavailable"));
+						await screen.findByText("Could not load diff.");
+					}
+
+					await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+					expect(screen.queryByText("Opening diff…")).toBeNull();
+					expect(screen.queryByText("Could not load diff.")).toBeNull();
+					expect(
+						screen.getByRole("button", { name: "Start Rebase" }),
+					).toBeInTheDocument();
+					expect(
+						mockInvoke.mock.calls.some(
+							([command]) => command === "start_interactive_rebase",
+						),
+					).toBe(false);
+				} finally {
+					if (state === "pending") diff.resolve({ default: Button });
+					await vi.dynamicImportSettled();
+					vi.doUnmock("./DiffPanel.svelte");
+				}
+			},
+		);
 
 		it("raises a toast when the rebase stops", async () => {
 			stubRebaseTodo(PARENT_OID, { kind: "stopped" });
@@ -2775,6 +2877,7 @@ describe("RepoView", () => {
 			await fireEvent.click(rebaseRow(1));
 			await fireEvent.click(await screen.findByText(path));
 			await vi.waitFor(() => expect(resolveDiff).toBeTypeOf("function"));
+			await screen.findByText("Loading diff…");
 			await fireEvent.click(screen.getByTestId("staging-file"));
 			resolveDiff([makeRebaseFileWithContent(path, "CLOSED REBASE")]);
 			await flush();
@@ -3216,6 +3319,7 @@ describe("RepoView", () => {
 
 			await fireEvent.click(await screen.findByText("f.ts"));
 			await fireEvent.click(await screen.findByText("g.ts"));
+			await screen.findByText("Loading diff…");
 			resolveF([makeFileDiffWithContent("f.ts", "OLD FILE")]);
 			await flush();
 			expect(screen.queryByText("OLD FILE")).toBeFalsy();
@@ -3363,6 +3467,7 @@ describe("RepoView", () => {
 			await fireEvent.click(await screen.findByText("f.ts"));
 			await flush();
 
+			await screen.findByLabelText("Close diff");
 			expect(screen.queryByText("Comment File")).toBeNull();
 		});
 
@@ -3677,7 +3782,7 @@ describe("RepoView", () => {
 			await fireEvent.click(screen.getByText("src/edited.ts"));
 			await vi.waitFor(() => expect(requestHeld()).toBe(true));
 
-			expect(screen.getByText("Loading diff…")).toBeTruthy();
+			expect(await screen.findByText("Loading diff…")).toBeTruthy();
 			expect(screen.queryByText("let count = 1;")).toBeNull();
 		});
 
@@ -3688,7 +3793,7 @@ describe("RepoView", () => {
 			await fireEvent.click(screen.getByText("src/other.ts"));
 			await vi.waitFor(() => expect(requestHeld()).toBe(true));
 
-			expect(screen.getByText("Loading diff…")).toBeTruthy();
+			expect(await screen.findByText("Loading diff…")).toBeTruthy();
 			expect(screen.queryByText("let count = 1;")).toBeNull();
 		});
 	});

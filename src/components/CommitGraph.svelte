@@ -11,13 +11,6 @@ import Network from "@lucide/svelte/icons/network";
 import Tag from "@lucide/svelte/icons/tag";
 import User from "@lucide/svelte/icons/user";
 import { listen } from "@tauri-apps/api/event";
-import {
-	CheckMenuItem,
-	Menu,
-	MenuItem,
-	PredefinedMenuItem,
-	Submenu,
-} from "@tauri-apps/api/menu";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { type Component, onDestroy, tick, untrack } from "svelte";
 import { buildGraphData } from "../lib/active-lanes.js";
@@ -119,6 +112,8 @@ import SearchBar from "./SearchBar.svelte";
 import VirtualList from "./VirtualList.svelte";
 
 interface Props {
+	/** The initial page has settled and its rows or error have rendered. */
+	onready?: () => void;
 	repoPath: string;
 	oncommitselect?: (oid: string, mods?: SelectModifiers) => void;
 	// Reports the WIP-inclusive display list + pagination state whenever they
@@ -162,6 +157,7 @@ interface Props {
 
 let {
 	repoPath,
+	onready,
 	oncommitselect,
 	oncommitschange,
 	wipCount = 0,
@@ -931,6 +927,9 @@ async function handleInteractiveRebaseBranch(branchName: string) {
 
 async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 	e.preventDefault();
+	const { Menu, MenuItem, PredefinedMenuItem, Submenu } = await import(
+		"@tauri-apps/api/menu"
+	);
 
 	// Determine if merge/rebase options should be shown
 	const clickedBranch = commit.refs.find(
@@ -1206,6 +1205,7 @@ async function handleStashDrop(commit: GraphCommit) {
 
 async function showStashContextMenu(e: MouseEvent, commit: GraphCommit) {
 	e.preventDefault();
+	const { Menu, MenuItem } = await import("@tauri-apps/api/menu");
 	if (!stashOids.has(commit.oid)) return;
 	const menu = await Menu.new({
 		items: [
@@ -1393,6 +1393,9 @@ async function handleRefCheckout(e: MouseEvent, ref: RefInfo) {
 async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 	e.preventDefault();
 	e.stopPropagation();
+	const { Menu, MenuItem, PredefinedMenuItem } = await import(
+		"@tauri-apps/api/menu"
+	);
 
 	const headCommit = commits.find((c) => c.is_head);
 	const headRef = headCommit?.refs.find(
@@ -1519,6 +1522,7 @@ function openMenuIfOnHeader(e: MouseEvent) {
 
 async function showHeaderContextMenu(e: MouseEvent) {
 	e.preventDefault();
+	const { Menu, CheckMenuItem } = await import("@tauri-apps/api/menu");
 	const items = await Promise.all(
 		columnLabels.map((col) =>
 			CheckMenuItem.new({
@@ -1948,6 +1952,17 @@ $effect(() => {
 		// Diff stats (page + WIP) are driven by the visibility-resolution effect
 		// below, so the column does zero stat work until the persisted visibility
 		// is known.
+	});
+});
+
+let readyReported = false;
+$effect(() => {
+	if (readyReported || loading || (!graphReady && error === null)) return;
+	readyReported = true;
+	untrack(() => {
+		void tick().then(() => {
+			if (graphActive) onready?.();
+		});
 	});
 });
 

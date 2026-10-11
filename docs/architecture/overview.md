@@ -2,7 +2,7 @@
 
 **Analysis Date:** 2026-05-14
 
-> Most sections retain the May analysis. The automatic-fetch, graph-publication and
+> Most sections retain the May analysis. The startup-restoration, dirty-badge, automatic-fetch, graph-publication and
 > remote-ownership sections were checked against source on 2026-10-11; this is not a
 > fresh audit of the whole system. Trust `docs/architecture/commit-graph.md` and the
 > source where an older section disagrees.
@@ -53,7 +53,9 @@
 
 | Component | Responsibility | File |
 |-----------|----------------|------|
-| `App.svelte` | Tab lifecycle, global layout state, keyboard shortcuts, window events, `repo-changed` dirty tracking | `src/App.svelte` |
+| `App.svelte` | Tab lifecycle, global layout state, keyboard shortcuts, window events, dirty tracking for unvisited tabs | `src/App.svelte` |
+| `RepositoryTabs` | Active-first restoration, preparation queue and visited-view lifetime | `src/lib/repository-tabs.svelte.ts` |
+| `LazyView.svelte` | Optional module loading, readiness, retry and cancellation | `src/components/LazyView.svelte` |
 | `RepoView.svelte` | Per-repo orchestration: commit selection, staging selection, diff state, `refreshSignal`, repo-changed listener | `src/components/RepoView.svelte` |
 | `CommitGraph.svelte` | Fetches & paginates commit history, renders 4-layer graph pipeline, context menus, search | `src/components/CommitGraph.svelte` |
 | `BranchSidebar.svelte` | Lists local/remote branches, tags, stashes; checkout/create/delete | `src/components/BranchSidebar.svelte` |
@@ -168,6 +170,18 @@
 5. `RepoView` → `CommitGraph` calls `safeInvoke("get_commit_graph", { path, offset: 0 })` → returns first 200 `GraphCommit` rows from cache
 6. `CommitGraph` runs `buildGraphData()` → `buildOverlayPaths()` → renders SVG overlay via `VirtualList`
 
+### Startup Restoration
+
+Saved sessions restore the tab strip before opening repositories. `RepositoryTabs`
+opens the saved active repository first; App mounts its view. After its graph or
+alternate diff, merge, rebase or review view renders,
+it prepares the remaining backends one at a time, yielding between repositories.
+Selecting a pending tab takes priority after the current open completes. Inactive
+views mount on first selection and stay mounted thereafter to preserve selection,
+scroll and editor state. Optional diff, merge, rebase and review views load their
+JavaScript on first use; a failed module load offers a retry. The rebase editor and its diff previews
+also permit cancellation while their modules load or after a load failure.
+
 ### Filesystem Change Path
 
 1. `notify_debouncer_mini` detects change in watched repo directory (300ms debounce)
@@ -182,9 +196,11 @@
    Refs-only events reach only subscribers that opt into ref changes
 4. Each consumer admits one active read and one pending catch-up, so status, graph, review,
    toolbar and dirty-count work complete independently without growing with the event count
-5. `App.svelte` refreshes each open tab's dirty badge; `RepoView.svelte` notifies its graph,
+5. `RepoView.svelte` publishes its dirty counts to its tab badge; `App.svelte` reads counts
+   for prepared repositories whose views have not mounted. `RepoView.svelte` notifies its graph,
    refs, recovery prompt and rendered working-tree diff while separately refreshing its own
-   dirty counts, HEAD branch and selected file. Status, HEAD and the change notification
+   dirty counts and selected file. The branch sidebar publishes the HEAD branch from
+   its refs response. Status, refs and the change notification
    refresh for worktree events, while the selected file's diff refetches only for a change
    naming that file or anything under `.git`, since the index and HEAD move what a staged
    diff compares against. Refs-only events update refs and consume the published cached
@@ -215,7 +231,7 @@ established.
 
 ### Background Periodic Fetch
 
-1. `App.svelte` owns `AutofetchScheduler`: one completion-based deadline for all open repositories, staggered across the configured interval (default 60 seconds; `0` disables). Focus loss and manual remote work disarm it. The active tab gets preference while overdue inactive tabs retain fairness.
+1. `App.svelte` owns `AutofetchScheduler`: one completion-based deadline for prepared repositories. Repositories added together are staggered across the configured interval (default 60 seconds; `0` disables). Restored tabs join individually after their backends open, each with a full interval before its first fetch (about 60 seconds by default). Focus loss and manual remote work disarm it. The active tab gets preference while overdue inactive tabs retain fairness.
 2. `git_fetch_background` acquires an atomic reservation keyed by canonical Git common directory. One complete background job, including graph reconciliation, can run application-wide; a manual operation on the same shared repository reports busy. The operation identity controls cleanup after execution exits.
 3. A private worker entry point in the Trunk executable runs git2 before GUI/runtime startup. Its parent bounds each remote to 60 seconds, kills the owned process group on cancellation/deadline and joins it before releasing exclusion. Background work emits no progress lines. Foreground fetch/pull/push retain their existing Git subprocess path.
 4. The worker checks configured remotes with all tags and pruning, honors `skipFetchAll`, guards checked-out destinations across linked worktrees, preserves accumulated per-worktree FETCH_HEAD metadata and creates a missing remote HEAD. The parent compares lightweight ref state and reconciles successful updates even after a later remote fails.
@@ -279,6 +295,7 @@ store revision.
 
 **State Management:**
 - `App.svelte` owns: tab array, active tab, layout dimensions (pane widths, zoom) — all `$state`
+- `RepositoryTabs` tracks backend readiness and whether each restored repository has been visited, separately from App's persisted tab list
 - `RepoView.svelte` owns: per-repo selection state (selected commit OID, selected file, dirty counts, head branch) — all `$state`
 - `App.svelte` creates per-tab `RemoteState` and `UndoRedoManager` via factory functions and passes them as props to `RepoView` and `Toolbar`
 - `toast.svelte.ts` and `undo-redo.svelte.ts` use module-level `$state` as lightweight global stores (toast is truly global; undo-redo has a singleton shim but the canonical API is per-tab factory)

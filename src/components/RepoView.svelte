@@ -81,14 +81,11 @@ import BranchSidebar from "./BranchSidebar.svelte";
 import CommitDetail from "./CommitDetail.svelte";
 import CommitGraph from "./CommitGraph.svelte";
 import ComparePanel from "./ComparePanel.svelte";
-import DiffPanel from "./DiffPanel.svelte";
 import FileFinder from "./FileFinder.svelte";
-import MergeEditor from "./MergeEditor.svelte";
+import LazyView from "./LazyView.svelte";
 import MessageEditor from "./MessageEditor.svelte";
 import PushRecoveryPrompt from "./PushRecoveryPrompt.svelte";
-import RebaseEditor from "./RebaseEditor.svelte";
 import ReviewList from "./ReviewList.svelte";
-import ReviewPanel from "./ReviewPanel.svelte";
 import StagingPanel from "./StagingPanel.svelte";
 
 interface DirtyCounts {
@@ -103,6 +100,8 @@ interface DirtyCounts {
 }
 
 interface Props {
+	onready?: () => void;
+	ondirtychange?: (counts: { staged: number; unstaged: number }) => void;
 	repoPath: string;
 	repoName: string;
 	remoteState: RemoteState;
@@ -111,7 +110,7 @@ interface Props {
 	leftPaneCollapsed: boolean;
 	rightPaneWidth: number;
 	rightPaneCollapsed: boolean;
-	// Whether this is the active tab. Every tab stays mounted, so window-global
+	// Whether this is the active tab. Visited tabs stay mounted, so window-global
 	// menu events (search-toggle) need it to tell themselves apart.
 	tabActive: boolean;
 	// Review mode is toggled by the OS menu (review-toggle) at the App level so the
@@ -173,6 +172,8 @@ let {
 	onleftpanewidthchange,
 	onrightpanewidthchange,
 	onleavereview,
+	onready,
+	ondirtychange,
 }: Props = $props();
 
 // What the graph and the diff show: nothing while review threads are hidden.
@@ -297,6 +298,32 @@ let diffPanelRef = $state<{
 	scrollToLine: (startLine: number, endLine: number, side: Side) => void;
 } | null>(null);
 
+let pendingReviewScroll = $state<{
+	path: string | null;
+	startLine: number;
+	endLine: number;
+	side: Side;
+} | null>(null);
+
+$effect(() => {
+	const scroll = pendingReviewScroll;
+	const panel = diffPanelRef;
+	const targetPath = selectedCompareFile ?? selectedDiffPath;
+	if (!scroll) return;
+
+	if (!showDiff || scroll.path !== targetPath) {
+		pendingReviewScroll = null;
+		return;
+	}
+	if (!panel) return;
+
+	pendingReviewScroll = null;
+	requestAnimationFrame(() => {
+		if (panel === diffPanelRef)
+			panel.scrollToLine(scroll.startLine, scroll.endLine, scroll.side);
+	});
+});
+
 // Bind the panel's jump affordance to the rune, wiring the existing RepoView
 // machinery as the rune's navigation seams. The rune uses the IDEMPOTENT
 // variants — handleCommitSelect/handleCommitFileSelect are toggles for graph
@@ -309,24 +336,12 @@ function handleReviewJump(comment: Thread) {
 		selectFile: selectCommitFileIdempotent,
 		openCurrentFile,
 		scrollToRange: (startLine, endLine, side) => {
-			// The panel→diff swap destroys ReviewPanel and mounts a fresh DiffPanel;
-			// diffPanelRef is bound during that render. Poll up to ~0.5s of frames
-			// until it's available, then toast on exhaustion — the previous 3-frame
-			// budget would silently no-op on slow machines or under heavy reactivity
-			// work, contradicting the "never silently no-ops" guarantee (WR-05).
-			// Budget passed explicitly at the seed call so the dependency is visible
-			// (subsumes IN-04's brittle default-parameter call site).
-			const SCROLL_RETRY_BUDGET = 30;
-			const tryScroll = (retries: number) => {
-				if (diffPanelRef) {
-					diffPanelRef.scrollToLine(startLine, endLine, side);
-				} else if (retries > 0) {
-					requestAnimationFrame(() => tryScroll(retries - 1));
-				} else {
-					showToast("Could not scroll to comment location", "error");
-				}
+			pendingReviewScroll = {
+				path: selectedCompareFile ?? selectedDiffPath,
+				startLine,
+				endLine,
+				side,
 			};
-			requestAnimationFrame(() => tryScroll(SCROLL_RETRY_BUDGET));
 		},
 	});
 }
@@ -892,26 +907,13 @@ async function loadDirtyCounts() {
 		});
 		if (!repoViewActive || path !== repoPath || seq !== dirtyCountsSeq) return;
 		dirtyCounts = result;
+		ondirtychange?.(result);
 	} catch {
 		// non-fatal -- keep previous counts
 	}
 }
 
-async function loadHeadBranch() {
-	const path = repoPath;
-	try {
-		const refs = await safeInvoke<RefsResponse>("list_refs", {
-			path,
-		});
-		if (!repoViewActive || path !== repoPath) return;
-		headBranch = refs.local.find((b) => b.is_head)?.name;
-	} catch {
-		// non-fatal -- keep previous value
-	}
-}
-
 const dirtyCountsRefresh = createCoalescedTask(scheduler, loadDirtyCounts);
-const headBranchRefresh = createCoalescedTask(scheduler, loadHeadBranch);
 
 onDestroy(() => {
 	repoViewActive = false;
@@ -922,7 +924,6 @@ onDestroy(() => {
 	repoNotification.dispose();
 	displayedDiffNotification.dispose();
 	dirtyCountsRefresh.dispose();
-	headBranchRefresh.dispose();
 	selectedDiffRefresh.dispose();
 	currentFileRefresh.dispose();
 });
@@ -948,7 +949,9 @@ function clearStagingDiff() {
 // conflict, so when the status no longer lists that file as conflicted there is
 // nothing left for the merge editor to show, whatever ended the operation.
 function handleStatusChange(s: WorkingTreeStatus) {
-	const filesMoved = cachedStatus === null || !listsSameFiles(cachedStatus, s);
+	// Mount already reads the counters once. Only subsequent list changes need
+	// another walk; the first staging status is an independent initial read.
+	const filesMoved = cachedStatus !== null && !listsSameFiles(cachedStatus, s);
 	cachedStatus = s;
 
 	// Staging and discarding emit no repo-changed, so without this the graph's
@@ -1699,7 +1702,6 @@ function handleTreeViewToggle() {
 $effect(() => {
 	void repoPath;
 	void dirtyCountsRefresh.run();
-	void headBranchRefresh.run();
 	getTreeViewEnabled().then((v) => {
 		if (repoViewActive) treeViewEnabled = v;
 	});
@@ -1717,14 +1719,18 @@ getCommitDraft(untrack(() => repoPath)).then((d) => {
 	draftLoaded = true;
 });
 
-// Debounce-persist the draft to disk. Empty drafts clear the entry immediately
-// (no debounce window) so a hard kill right after committing or clearing can't
-// resurface stale text. Guarded on `draftLoaded` so the initial rehydration
-// doesn't trigger a write before the load resolves.
+// Persist edits after rehydration. Clearing a draft writes immediately so a
+// hard kill cannot restore stale text; other edits use the existing debounce.
+let initialDraftEffect = true;
 $effect(() => {
 	const subject = wipSubject;
 	const body = wipBody;
 	if (!draftLoaded) return;
+	// Rehydration has not edited the saved draft.
+	if (initialDraftEffect) {
+		initialDraftEffect = false;
+		return;
+	}
 
 	if (subject.trim() === "" && body.trim() === "") {
 		clearCommitDraft(repoPath);
@@ -1769,7 +1775,6 @@ $effect(() => {
 				sidebarRefreshSignal += 1;
 			} else repoNotification.invalidate();
 			dirtyCountsRefresh.invalidate();
-			headBranchRefresh.invalidate();
 			if (!concernsOpenFiles(changed)) return;
 
 			displayedDiffNotification.invalidate();
@@ -1801,14 +1806,13 @@ $effect(() => {
 		cachedGraphRevision = newestGraphRevision(cachedGraphRevision, revision);
 		pendingRefsRevision = undefined;
 		sidebarRefreshSignal += 1;
-		headBranchRefresh.invalidate();
 	});
 });
 
 // Escape key handler for closing diffs
 $effect(() => {
 	function handleKeydown(e: KeyboardEvent) {
-		// Every tab's RepoView stays mounted, so this window listener fires in
+		// Visited RepoViews stay mounted, so this window listener fires in
 		// hidden tabs too — only the active tab may act on Escape.
 		if (!tabActive) return;
 		if (e.key !== "Escape" || showRebaseEditor) return;
@@ -1910,6 +1914,10 @@ function handleRebaseEditorClose() {
 	rebaseDiffLoading = false;
 	rebaseDiffError = null;
 	rebaseDiffMode = null;
+}
+
+function handleRebaseDiffClose() {
+	rebaseDiffFile = null;
 }
 
 async function handleRebaseFocusChange(oid: string) {
@@ -2168,6 +2176,7 @@ function stepRightPane(delta: number) {
 	<PushRecoveryPrompt {repoPath} {remoteState} {refreshSignal} />
 	<main class="flex-1 overflow-hidden flex">
 		{#if rebaseBase}
+			{@const editorBase = rebaseBase}
 			<!-- Full-window takeover for interactive rebase -->
 			<div class="flex-1 overflow-hidden">
 				<div
@@ -2175,44 +2184,63 @@ function stepRightPane(delta: number) {
 					class:flex={!rebaseDiffFile}
 					class:hidden={rebaseDiffFile}
 				>
-					<RebaseEditor
-						{repoPath}
-						commits={rebaseEditorCommits}
-						branchName={rebaseBranchName}
-						base={rebaseBase}
-						onclose={handleRebaseEditorClose}
-						onstart={handleRebaseStart}
-						onfocuschange={handleRebaseFocusChange}
-					/>
+					<LazyView
+						{onready}
+						active={!rebaseDiffFile}
+						load={() => import("./RebaseEditor.svelte")}
+						label="rebase editor"
+						oncancel={handleRebaseEditorClose}
+					>
+						{#snippet children(RebaseEditor)}
+							<RebaseEditor
+								{repoPath}
+								commits={rebaseEditorCommits}
+								branchName={rebaseBranchName}
+								base={editorBase}
+								onclose={handleRebaseEditorClose}
+								onstart={handleRebaseStart}
+								onfocuschange={handleRebaseFocusChange}
+							/>
+						{/snippet}
+					</LazyView>
 				</div>
 				{#if rebaseDiffFile}
-					<DiffPanel
-						fileDiffs={rebaseFocusedFileDiffs.filter((f) => f.path === rebaseDiffFile)}
-						commitDetail={rebaseFocusedCommitDetail}
-						selectedPath={rebaseDiffFile}
-						diffKind="commit"
-						{repoPath}
-						reviewCommentsVisible={reviewFilter !== "none"}
-						{reviewFilter}
-						viewComments={rebaseViewComments}
-						activeReviewId={reviewComments.activeReviewId}
-						activeReview={reviewComments.activeReview}
-						editorSessionForThread={editorSessionForDiffThread}
-						composerSession={diffComposerSession}
-						composerTarget={diffComposerTarget}
-						{contentMode}
-						{oncontentmodechange}
-						loading={rebaseDiffLoading}
-						payloadStale={rebaseDiffFile !== null && !rebaseDiffError && rebaseDiffMode !== contentMode}
-						loadError={rebaseDiffError}
-						onloadfullfile={loadRebaseFullFileForComment}
-						onretry={() => { if (rebaseDiffFile) void reloadRebaseFile(rebaseDiffFile, buildDiffOptions()); }}
-						ondiffoptionschange={async (options) => {
-			  rememberLocalDiffOptions(options);
-              if (rebaseDiffFile) await reloadRebaseFile(rebaseDiffFile, options);
-            }}
-						onclose={() => { rebaseDiffFile = null; }}
-					/>
+					<LazyView
+						{onready}
+						oncancel={handleRebaseDiffClose}
+						load={() => import("./DiffPanel.svelte")}
+						label="diff"
+					>
+						{#snippet children(DiffPanel)}
+							<DiffPanel
+								fileDiffs={rebaseFocusedFileDiffs.filter((f) => f.path === rebaseDiffFile)}
+								commitDetail={rebaseFocusedCommitDetail}
+								selectedPath={rebaseDiffFile}
+								diffKind="commit"
+								{repoPath}
+								reviewCommentsVisible={reviewFilter !== "none"}
+								{reviewFilter}
+								viewComments={rebaseViewComments}
+								activeReviewId={reviewComments.activeReviewId}
+								activeReview={reviewComments.activeReview}
+								editorSessionForThread={editorSessionForDiffThread}
+								composerSession={diffComposerSession}
+								composerTarget={diffComposerTarget}
+								{contentMode}
+								{oncontentmodechange}
+								loading={rebaseDiffLoading}
+								payloadStale={rebaseDiffFile !== null && !rebaseDiffError && rebaseDiffMode !== contentMode}
+								loadError={rebaseDiffError}
+								onloadfullfile={loadRebaseFullFileForComment}
+								onretry={() => { if (rebaseDiffFile) void reloadRebaseFile(rebaseDiffFile, buildDiffOptions()); }}
+								ondiffoptionschange={async (options) => {
+									rememberLocalDiffOptions(options);
+									if (rebaseDiffFile) await reloadRebaseFile(rebaseDiffFile, options);
+								}}
+								onclose={handleRebaseDiffClose}
+							/>
+						{/snippet}
+					</LazyView>
 				{/if}
 			</div>
 			<Splitter
@@ -2265,6 +2293,7 @@ function stepRightPane(delta: number) {
 				hidden={reviewMode}
 			>
 				<BranchSidebar
+					onrefschange={(refs) => { headBranch = refs.local.find((branch) => branch.is_head)?.name; }}
 					{repoPath}
 					onrefreshed={handleRefresh}
 					onvisibilitychanged={(graph) => commitGraphRef?.showGraph(graph)}
@@ -2314,97 +2343,124 @@ function stepRightPane(delta: number) {
 						class="flex flex-col h-full min-h-0 overflow-hidden"
 						hidden={!reviewPanelShown}
 					>
-						<ReviewPanel
-							{repoPath}
-							session={reviewSession}
-							{reviewComments}
-							{threadFilter}
-							{onthreadfilterchange}
-							editorSessionForThread={editorSessionForPanelThread}
-							{editorNoteSessionFor}
-							onJump={handleReviewJump}
-							onJumpToCommit={handleReviewJumpToCommit}
-							oncommentonfile={openFileFinder}
-							onopenfile={openCurrentFile}
-							headBranch={headBranch ?? null}
-							shown={reviewPanelShown}
-							keysActive={tabActive && reviewPanelShown}
-							reviewList={reviewListPane}
-						/>
+						<LazyView
+							{onready}
+							active={reviewPanelShown}
+							load={() => import("./ReviewPanel.svelte")}
+							label="review"
+						>
+							{#snippet children(ReviewPanel)}
+								<ReviewPanel
+									{repoPath}
+									session={reviewSession}
+									{reviewComments}
+									{threadFilter}
+									{onthreadfilterchange}
+									editorSessionForThread={editorSessionForPanelThread}
+									{editorNoteSessionFor}
+									onJump={handleReviewJump}
+									onJumpToCommit={handleReviewJumpToCommit}
+									oncommentonfile={openFileFinder}
+									onopenfile={openCurrentFile}
+									headBranch={headBranch ?? null}
+									shown={reviewPanelShown}
+									keysActive={tabActive && reviewPanelShown}
+									reviewList={reviewListPane}
+								/>
+							{/snippet}
+						</LazyView>
 					</div>
 				{/if}
 				{#if reviewPanelShown}
 				<!-- The review panel above holds the pane. -->
 				{:else if showMergeEditor && selectedFile}
-					<MergeEditor
-						{repoPath}
-						filePath={selectedFile.path}
-						onclose={handleDiffClose}
-						onresolved={handleFileResolved}
-					/>
+					{@const conflictedFile = selectedFile}
+					<LazyView
+						{onready}
+						load={() => import("./MergeEditor.svelte")}
+						label="merge editor"
+					>
+						{#snippet children(MergeEditor)}
+							<MergeEditor
+								{repoPath}
+								filePath={conflictedFile.path}
+								onclose={handleDiffClose}
+								onresolved={handleFileResolved}
+							/>
+						{/snippet}
+					</LazyView>
 				{:else if showDiff}
 					<!-- Single DiffPanel mount, shared by normal and review mode. In review mode
              rightPaneMode==='diff' routes here (260531-l02e); bind:this exposes the
              jump-to-comment scroll seam, and onclose returns to the review panel. -->
-					<DiffPanel
-						bind:this={diffPanelRef}
-						fileDiffs={currentDiffFiles}
-						commitDetail={selectedCompareFile ? compareTargetDetail : commitDetail}
-						compareBaseOid={selectedCompareFile ? (compareBaseDetail?.oid ?? null) : null}
-						selectedPath={selectedCompareFile ?? selectedDiffPath}
-						{diffKind}
-						emptyCommit={commitEmpty}
-						{repoPath}
-						reviewCommentsVisible={!selectedCompareFile && (reviewMode || reviewFilter !== "none")}
-						{reviewFilter}
-						{viewComments}
-						activeReviewId={reviewComments.activeReviewId}
-						activeReview={reviewComments.activeReview}
-						editorSessionForThread={editorSessionForDiffThread}
-						composerSession={diffComposerSession}
-						composerTarget={diffComposerTarget}
-						refreshToken={diffRefreshToken}
-						{contentMode}
-						{oncontentmodechange}
-						loading={currentSourceLoading}
-						payloadStale={currentSourcePayloadStale}
-						loadError={currentSourceError}
-						onloadfullfile={loadFullFileForComment}
-						onretry={() => { void retryVisibleDiff(); }}
-						onhunkaction={async (filePath) => {
-            if (selectedFile) {
-              const { path, kind } = selectedFile;
-              const isEmpty = await refetchFileDiff(filePath, kind);
-              if (isEmpty && selectedFile?.path === path && selectedFile?.kind === kind) {
-                advanceToNextFile(path, kind);
-              }
-            }
-            await stagingPanelRef?.loadStatus();
-          }}
-						onfileemptied={(filePath, action) => {
-            if (selectedFile?.path === filePath) {
-              const { kind } = selectedFile;
-              advanceToNextFile(filePath, kind);
-              stagingPanelRef?.optimisticMove(filePath, kind, action);
-            }
-          }}
-						ondiffoptionschange={async (options) => {
-			rememberLocalDiffOptions(options);
-            if (selectedFile && selectedFile.kind !== "conflicted") {
-              await refetchFileDiff(selectedFile.path, selectedFile.kind, options);
-            } else if (selectedCompareFile && compare) {
-              await reloadCompareFile(selectedCompareFile, options);
-            } else if (selectedCommitFile && selectedCommitOid) {
-              await reloadCommitFile(selectedCommitFile, options);
-            }
-          }}
-						onclose={reviewSession.state.reviewActive
-            ? () => { handleDiffClose(); reviewSession.showPanel(); }
-            : handleDiffClose}
-						backLabel={reviewMode ? "Review" : null}
-					/>
+					<LazyView
+						{onready}
+						load={() => import("./DiffPanel.svelte")}
+						label="diff"
+					>
+						{#snippet children(DiffPanel)}
+							<DiffPanel
+								bind:this={diffPanelRef}
+								fileDiffs={currentDiffFiles}
+								commitDetail={selectedCompareFile ? compareTargetDetail : commitDetail}
+								compareBaseOid={selectedCompareFile ? (compareBaseDetail?.oid ?? null) : null}
+								selectedPath={selectedCompareFile ?? selectedDiffPath}
+								{diffKind}
+								emptyCommit={commitEmpty}
+								{repoPath}
+								reviewCommentsVisible={!selectedCompareFile && (reviewMode || reviewFilter !== "none")}
+								{reviewFilter}
+								{viewComments}
+								activeReviewId={reviewComments.activeReviewId}
+								activeReview={reviewComments.activeReview}
+								editorSessionForThread={editorSessionForDiffThread}
+								composerSession={diffComposerSession}
+								composerTarget={diffComposerTarget}
+								refreshToken={diffRefreshToken}
+								{contentMode}
+								{oncontentmodechange}
+								loading={currentSourceLoading}
+								payloadStale={currentSourcePayloadStale}
+								loadError={currentSourceError}
+								onloadfullfile={loadFullFileForComment}
+								onretry={() => { void retryVisibleDiff(); }}
+								onhunkaction={async (filePath) => {
+									if (selectedFile) {
+										const { path, kind } = selectedFile;
+										const isEmpty = await refetchFileDiff(filePath, kind);
+										if (isEmpty && selectedFile?.path === path && selectedFile?.kind === kind) {
+											advanceToNextFile(path, kind);
+										}
+									}
+									await stagingPanelRef?.loadStatus();
+								}}
+								onfileemptied={(filePath, action) => {
+									if (selectedFile?.path === filePath) {
+										const { kind } = selectedFile;
+										advanceToNextFile(filePath, kind);
+										stagingPanelRef?.optimisticMove(filePath, kind, action);
+									}
+								}}
+								ondiffoptionschange={async (options) => {
+									rememberLocalDiffOptions(options);
+									if (selectedFile && selectedFile.kind !== "conflicted") {
+										await refetchFileDiff(selectedFile.path, selectedFile.kind, options);
+									} else if (selectedCompareFile && compare) {
+										await reloadCompareFile(selectedCompareFile, options);
+									} else if (selectedCommitFile && selectedCommitOid) {
+										await reloadCommitFile(selectedCommitFile, options);
+									}
+								}}
+								onclose={reviewSession.state.reviewActive
+									? () => { handleDiffClose(); reviewSession.showPanel(); }
+									: handleDiffClose}
+								backLabel={reviewMode ? "Review" : null}
+							/>
+						{/snippet}
+					</LazyView>
 				{:else}
 					<CommitGraph
+						{onready}
 						bind:this={commitGraphRef}
 						{repoPath}
 						oncommitselect={handleCommitSelect}

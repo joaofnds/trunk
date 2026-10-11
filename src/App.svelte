@@ -25,6 +25,7 @@ import {
 	type RemoteState,
 } from "./lib/remote-state.svelte.js";
 import type { RepoChanged } from "./lib/repo-change-subscription.js";
+import { RepositoryTabs } from "./lib/repository-tabs.svelte.js";
 import { ALL_THREADS } from "./lib/review-filter.js";
 import { getScheduler } from "./lib/scheduler.js";
 import {
@@ -146,9 +147,42 @@ async function handleDiffContentModeChange(mode: ContentMode) {
 // Tab state
 let tabs = $state<TabInfo[]>([]);
 let activeTabId = $state<string>("");
+let initialActiveId: string | null = null;
 const scheduler = getScheduler();
 const autofetch = new AutofetchScheduler(scheduler, runAutofetch);
+let repositoryTabsDisposed = false;
 const dirtyCountRefreshes = new Map<string, CoalescedTask>();
+const repositories = new RepositoryTabs(scheduler, {
+	open: (path) => safeInvoke<void>("open_repo", { path }),
+	close: closeUnusedRepository,
+	loadUnvisitedBadge: async ({ id, repoPath: path }) => {
+		try {
+			const counts = await safeInvoke<{ staged: number; unstaged: number }>(
+				"get_dirty_counts",
+				{ path },
+			);
+			const tab = tabs.find((tab) => tab.id === id && tab.repoPath === path);
+			if (tab && !isRepoViewMounted(tab)) updateDirtyBadge(tab, counts);
+		} catch {
+			// Keep the previous marker if the initial status read fails.
+		}
+	},
+	failed: (id) => {
+		if (activeTabId === id && initialActiveId === id)
+			activeTabId = tabs.find((tab) => tab.id !== id)?.id ?? "";
+		closeTab(id);
+	},
+});
+
+$effect(() => {
+	const currentTabs = tabs.map(({ id, repoPath }) => ({
+		id,
+		repoPath,
+	}));
+	const active = activeTabId;
+	if (initialActiveId !== active) initialActiveId = null;
+	untrack(() => repositories.update(currentTabs, active));
+});
 
 async function runAutofetch(path: string, intervalMs: number): Promise<void> {
 	const tab = tabs.find((tab) => tab.repoPath === path);
@@ -198,7 +232,9 @@ $effect(() => {
 });
 
 $effect(() => {
-	const paths = tabs.flatMap((tab) => (tab.repoPath ? [tab.repoPath] : []));
+	const paths = tabs.flatMap((tab) =>
+		tab.repoPath && repositories.isReady(tab) ? [tab.repoPath] : [],
+	);
 	const activePath =
 		tabs.find((tab) => tab.id === activeTabId)?.repoPath ?? null;
 	const manualBusy = [...tabStates.values()].some(
@@ -296,25 +332,26 @@ function addNewTab() {
 
 function closeOtherTabs(keepTabId: string) {
 	const toClose = tabs.filter((t) => t.id !== keepTabId);
+	tabs = tabs.filter((t) => t.id === keepTabId);
 	for (const t of toClose) {
 		if (t.repoPath) {
-			safeInvoke("close_repo", { path: t.repoPath }).catch(() => {});
+			void closeUnusedRepository(t.repoPath);
 		}
 		tabStates.delete(t.id);
 	}
-	tabs = tabs.filter((t) => t.id === keepTabId);
 	activeTabId = keepTabId;
 	persistTabs();
 }
 
 function closeAllTabs() {
-	for (const t of tabs) {
+	const toClose = tabs;
+	tabs = [];
+	for (const t of toClose) {
 		if (t.repoPath) {
-			safeInvoke("close_repo", { path: t.repoPath }).catch(() => {});
+			void closeUnusedRepository(t.repoPath);
 		}
 		tabStates.delete(t.id);
 	}
-	tabs = [];
 	addNewTab();
 }
 
@@ -354,9 +391,9 @@ async function showTabContextMenu(tabId: string, _event: MouseEvent) {
 
 async function openRepoInTab(tabId: string, path: string, name: string) {
 	// TAB-10: Duplicate detection — switch to existing tab instead of creating duplicate
-	const normalizedPath = path.replace(/\/+$/, "");
+	const normalizedPath = repositoryPathKey(path);
 	const existing = tabs.find(
-		(t) => t.repoPath && t.repoPath.replace(/\/+$/, "") === normalizedPath,
+		(t) => t.repoPath && repositoryPathKey(t.repoPath) === normalizedPath,
 	);
 	if (existing) {
 		activeTabId = existing.id;
@@ -381,19 +418,13 @@ async function openRepoInTab(tabId: string, path: string, name: string) {
 		// disabled with no way back.
 		tabStates.delete(tabId);
 		createTabState(tabId);
+		repositories.opened({ id: tabId, repoPath: path });
 		tab.repoPath = path;
 		tab.repoName = name;
 		persistTabs();
 		if (previousPath) {
 			await tick();
-			const previousNormalizedPath = previousPath.replace(/\/+$/, "");
-			if (
-				!tabs.some(
-					(current) =>
-						current.repoPath?.replace(/\/+$/, "") === previousNormalizedPath,
-				)
-			)
-				safeInvoke("close_repo", { path: previousPath }).catch(() => {});
+			void closeUnusedRepository(previousPath);
 		}
 	}
 }
@@ -401,6 +432,16 @@ async function openRepoInTab(tabId: string, path: string, name: string) {
 async function handlePickerPick(path: string, name: string) {
 	// No-op if the active tab already shows this repo (CONTEXT.md decision).
 	if (activeTab?.repoPath === path) {
+		pickerOpen = false;
+		return;
+	}
+	if (
+		tabs.some(
+			(tab) => repositoryPathKey(tab.repoPath) === repositoryPathKey(path),
+		)
+	) {
+		await addRecentRepo({ name, path });
+		await openRepoInTab(activeTabId, path, name);
 		pickerOpen = false;
 		return;
 	}
@@ -440,7 +481,7 @@ function closeTab(tabId: string) {
 
 	// Close repo on backend (after removing from DOM to prevent stale effects)
 	if (repoPath) {
-		safeInvoke("close_repo", { path: repoPath }).catch(() => {});
+		void closeUnusedRepository(repoPath);
 	}
 
 	persistTabs();
@@ -487,10 +528,14 @@ function persistTabs() {
 
 // Restore on mount
 $effect(() => {
-	copyLegacyUserWidthsOnce();
+	void copyLegacyUserWidthsOnce();
+	let disposed = false;
 
 	(async () => {
-		let restored = await getOpenTabs();
+		let [restored, savedActive] = await Promise.all([
+			getOpenTabs(),
+			getActiveTabId(),
+		]);
 
 		// Legacy migration: if no tabs but old open_repo exists
 		if (restored.length === 0) {
@@ -503,53 +548,32 @@ $effect(() => {
 			}
 		}
 
+		if (disposed) return;
 		if (restored.length === 0) {
 			addNewTab();
 			return;
 		}
 
-		// Restore tabs
-		const restoredTabs: TabInfo[] = [];
-		for (const pt of restored) {
-			const tab: TabInfo = {
+		const restoredTabs: TabInfo[] = restored.map((pt) => {
+			createTabState(pt.id);
+			return {
 				id: pt.id,
 				repoPath: pt.repoPath,
 				repoName: pt.repoName,
 				dirty: false,
 			};
-			if (pt.repoPath) {
-				try {
-					await safeInvoke("open_repo", { path: pt.repoPath });
-				} catch {
-					// Repo no longer exists -- skip this tab
-					continue;
-				}
-				// Initial dirty check for restored tab
-				try {
-					const counts = await safeInvoke<{
-						staged: number;
-						unstaged: number;
-						conflicted: number;
-					}>("get_dirty_counts", { path: pt.repoPath });
-					tab.dirty = counts.staged + counts.unstaged > 0;
-				} catch {
-					// non-fatal
-				}
-			}
-			createTabState(tab.id);
-			restoredTabs.push(tab);
-		}
-
-		if (restoredTabs.length === 0) {
-			addNewTab();
-			return;
-		}
-
+		});
+		repositories.restore(restoredTabs);
 		tabs = restoredTabs;
-		const savedActive = await getActiveTabId();
-		activeTabId =
+		initialActiveId =
 			restoredTabs.find((t) => t.id === savedActive)?.id ?? restoredTabs[0].id;
+		activeTabId = initialActiveId;
 	})();
+	return () => {
+		disposed = true;
+		repositoryTabsDisposed = true;
+		repositories.dispose();
+	};
 });
 
 // Zoom persistence
@@ -775,7 +799,29 @@ $effect(() => {
 	return () => window.removeEventListener("keydown", handleKeydown);
 });
 
-// Dirty detection: listen for repo-changed events and update tab.dirty for ALL tabs (TAB-07, D-04, D-05)
+function repositoryPathKey(path: string | null): string | null {
+	return path?.replace(/\/+$/, "") ?? null;
+}
+
+async function closeUnusedRepository(path: string): Promise<void> {
+	if (!repositoryTabsDisposed && tabs.some((tab) => tab.repoPath === path))
+		return;
+
+	await safeInvoke<void>("close_repo", { path }).catch(() => {});
+}
+
+function isRepoViewMounted(tab: TabInfo): boolean {
+	return diffContentModeLoaded && repositories.wasVisited(tab);
+}
+
+function updateDirtyBadge(
+	tab: TabInfo,
+	counts: { staged: number; unstaged: number },
+) {
+	tab.dirty = counts.staged + counts.unstaged > 0;
+}
+
+// Unvisited tabs have no RepoView to publish counts for their badges.
 $effect(() => {
 	const livePaths = new Set(
 		tabs.flatMap((tab) => (tab.repoPath ? [tab.repoPath] : [])),
@@ -806,8 +852,8 @@ $effect(() => {
 					unstaged: number;
 					conflicted: number;
 				}>("get_dirty_counts", { path: repoPath });
-				if (tabs.includes(tab)) {
-					tab.dirty = counts.staged + counts.unstaged > 0;
+				if (tabs.includes(tab) && !isRepoViewMounted(tab)) {
+					updateDirtyBadge(tab, counts);
 				}
 			} catch {
 				// Non-fatal: keep the previous dirty state.
@@ -822,6 +868,7 @@ $effect(() => {
 		const repoPath = event.payload.repo;
 		const tab = tabs.find((t) => t.repoPath === repoPath);
 		if (!tab) return;
+		if (isRepoViewMounted(tab)) return;
 		refreshFor(repoPath).invalidate();
 	}).then((fn) => {
 		if (disposed) fn();
@@ -872,7 +919,7 @@ $effect(() => {
 			onreorder={(newTabs) => { tabs = newTabs; persistTabs(); }}
 		/>
 		<div data-tauri-drag-region class="flex-1 h-full"></div>
-		{#if activeTab?.repoPath}
+		{#if activeTab?.repoPath && repositories.isReady(activeTab)}
 			{@const activeState = getTabState(activeTabId)}
 			<Toolbar
 				repoPath={activeTab.repoPath}
@@ -898,7 +945,7 @@ $effect(() => {
 				class:pointer-events-none={tab.id !== activeTabId}
 			>
 				{#if tab.repoPath}
-					{#if diffContentModeLoaded}
+					{#if isRepoViewMounted(tab)}
 						{#key tab.repoPath}
 							{@const tabState = getTabState(tab.id)}
 							{@const tabReviewActive = reviewPanelOpen && tab.id === activeTabId}
@@ -925,6 +972,8 @@ $effect(() => {
 								onleftpanewidthchange={(w) => { leftPaneWidth = w; setLeftPaneWidth(w); }}
 								onrightpanewidthchange={(w) => { rightPaneWidth = w; setRightPaneWidth(w); }}
 								onleavereview={() => { reviewPanelOpen = false; }}
+								onready={() => { if (tab.repoPath) repositories.viewReady(tab); }}
+								ondirtychange={(counts) => { updateDirtyBadge(tab, counts); }}
 							/>
 						{/key}
 					{:else}
