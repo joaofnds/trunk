@@ -47,6 +47,7 @@ fn configure_worker() -> Result<(), TrunkError> {
     // This entry point runs before Tauri or any thread. Libgit2 timeout options
     // and noninteractive environment policy are process-global state.
     unsafe {
+        std::env::set_var("PATH", crate::shell_env::system_path());
         std::env::set_var("GIT_TERMINAL_PROMPT", "0");
         std::env::set_var("GCM_INTERACTIVE", "never");
         std::env::set_var("SSH_ASKPASS_REQUIRE", "never");

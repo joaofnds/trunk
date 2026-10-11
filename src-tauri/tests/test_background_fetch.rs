@@ -1005,7 +1005,7 @@ mod cancellation {
     use trunk_lib::state::RunningOp;
 
     struct BlockedWorker {
-        _dir: tempfile::TempDir,
+        directory: tempfile::TempDir,
         executable: PathBuf,
         wake: std::fs::File,
         reader: Option<JoinHandle<()>>,
@@ -1073,13 +1073,32 @@ mod cancellation {
                 }
             });
             Self {
-                _dir: dir,
+                directory: dir,
                 executable,
                 wake: ready_file,
                 reader: Some(reader),
                 exit,
                 exit_reader: Some(exit_reader),
             }
+        }
+
+        fn shell_setup(events: Sender<FetchEvent>) -> Self {
+            let worker = Self::setup(events);
+            let shell = worker.directory.path().join("blocked-descendant.sh");
+            let script = std::fs::read_to_string(&shell).unwrap();
+            std::fs::write(&shell, format!("#!/bin/sh\n{script}")).unwrap();
+            std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o700)).unwrap();
+            std::fs::write(
+                &worker.executable,
+                format!(
+                    "#!/bin/sh\nexport SHELL={}\nexec {} --background-fetch-worker\n",
+                    shell_quote(&shell),
+                    shell_quote(Path::new(env!("CARGO_BIN_EXE_trunk"))),
+                ),
+            )
+            .unwrap();
+
+            worker
         }
 
         fn wait_for_request(events: &Receiver<FetchEvent>) {
@@ -1160,6 +1179,108 @@ mod cancellation {
 
     fn shell_quote(path: &Path) -> String {
         format!("'{}'", path.to_str().unwrap().replace('\'', "'\\''"))
+    }
+
+    #[test]
+    fn cancellation_covers_a_worker_blocked_in_login_shell_initialization() {
+        let fixture = RemoteFixture::new();
+        let (events, observations) = mpsc::channel();
+        let worker = BlockedWorker::shell_setup(events.clone());
+        let mut harness = Harness::with_worker(WatcherState::disabled(), worker.executable.clone());
+        harness.open(fixture.clone.path());
+        let path = fixture.clone.path().to_str().unwrap().to_owned();
+        let webview = harness.webview.clone();
+        let worker_path = path.clone();
+        let job = thread::spawn(move || {
+            let report = invoke(
+                &webview,
+                "git_fetch_background",
+                json!({"path": worker_path}),
+            )
+            .unwrap();
+            let _ = events.send(FetchEvent::Finished(report.clone()));
+            report
+        });
+        BlockedWorker::wait_for_request(&observations);
+
+        harness
+            .invoke("cancel_remote_op", json!({"path": path}))
+            .unwrap();
+        let report = job.join().unwrap();
+        BlockedWorker::wait_for_exit(&observations);
+
+        assert_eq!(report["outcome"], "cancelled");
+        assert!(
+            !harness
+                .app
+                .state::<RunningOp>()
+                .0
+                .lock()
+                .unwrap()
+                .busy(&path)
+        );
+    }
+
+    #[test]
+    fn cancellation_survives_a_fetch_metadata_repair_failure() {
+        let fixture = RemoteFixture::new();
+        let repo = fixture.clone();
+        repo.remote_delete("origin").unwrap();
+        repo.remote("aaa", fixture.remote.path().to_str().unwrap())
+            .unwrap();
+        repo.remote("blocked", fixture.remote.path().to_str().unwrap())
+            .unwrap();
+        repo.remote("zzz", fixture.remote.path().to_str().unwrap())
+            .unwrap();
+        let (events, observations) = mpsc::channel();
+        let worker = BlockedWorker::setup(events.clone());
+        let mut harness = Harness::with_worker(WatcherState::disabled(), worker.executable.clone());
+        harness.open(fixture.clone.path());
+        let path = fixture.clone.path().to_str().unwrap().to_owned();
+        let webview = harness.webview.clone();
+        let worker_path = path.clone();
+        let job = thread::spawn(move || {
+            let report = invoke(
+                &webview,
+                "git_fetch_background",
+                json!({ "path": worker_path }),
+            )
+            .unwrap();
+            let _ = events.send(FetchEvent::Finished(report.clone()));
+            report
+        });
+        BlockedWorker::wait_for_request(&observations);
+        let metadata = repo.path().join("FETCH_HEAD");
+        assert!(!std::fs::read(&metadata).unwrap().is_empty());
+        std::fs::remove_file(&metadata).unwrap();
+        std::fs::create_dir(&metadata).unwrap();
+        harness
+            .invoke("cancel_remote_op", json!({ "path": path }))
+            .unwrap();
+        let report = job.join().unwrap();
+        BlockedWorker::wait_for_exit(&observations);
+
+        assert_eq!(report["outcome"], "cancelled");
+        let remotes = report["remotes"].as_array().unwrap();
+        assert_eq!(
+            remotes.len(),
+            2,
+            "cancellation must not start the last remote"
+        );
+        assert_eq!(remotes[1]["remote"], "blocked");
+        assert_eq!(remotes[1]["outcome"], "cancelled");
+        assert_eq!(remotes[1]["error_code"], "cancelled");
+        assert_eq!(remotes[1]["metadata_error_code"], "fetch_head_error");
+        assert!(remotes[1]["metadata_error_message"].is_string());
+        assert!(
+            !harness
+                .app
+                .state::<RunningOp>()
+                .0
+                .lock()
+                .unwrap()
+                .busy(&path)
+        );
     }
 
     #[test]

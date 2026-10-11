@@ -78,6 +78,8 @@ pub struct RemoteOutcome {
     pub retry_at_ms: Option<u64>,
     pub error_code: Option<String>,
     pub error_message: Option<String>,
+    pub metadata_error_code: Option<String>,
+    pub metadata_error_message: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -109,9 +111,20 @@ struct Freshness {
     failures: u32,
     retry: u64,
     unsupported_config: Option<Vec<String>>,
-    error: Option<String>,
-    message: Option<String>,
+    failure: Option<FetchFailure>,
     jitter: std::collections::hash_map::RandomState,
+}
+
+struct FetchFailure {
+    primary: TrunkError,
+    metadata: Option<TrunkError>,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct FreshnessKey {
+    path: String,
+    session: u64,
+    remote: String,
 }
 
 impl Freshness {
@@ -120,15 +133,14 @@ impl Freshness {
         now: u64,
         interval: u64,
         outcome: Outcome,
-        error: Option<String>,
+        failure: Option<FetchFailure>,
         config: Vec<String>,
     ) {
         self.outcome = outcome;
         self.interval = interval;
         self.manual_fresh_until = 0;
         self.attempt = Some(now);
-        self.error = error;
-        self.message = None;
+        self.failure = failure;
         if matches!(outcome, Outcome::Changed | Outcome::Unchanged) {
             self.success = Some(now);
             self.failures = 0;
@@ -162,8 +174,24 @@ impl Freshness {
             last_attempt_ms: self.attempt,
             last_success_ms: self.success,
             retry_at_ms: (self.retry > 0).then_some(self.retry),
-            error_code: self.error.clone(),
-            error_message: self.message.clone(),
+            error_code: self
+                .failure
+                .as_ref()
+                .map(|failure| failure.primary.code.clone()),
+            error_message: self
+                .failure
+                .as_ref()
+                .map(|failure| failure.primary.message.clone()),
+            metadata_error_code: self
+                .failure
+                .as_ref()
+                .and_then(|failure| failure.metadata.as_ref())
+                .map(|error| error.code.clone()),
+            metadata_error_message: self
+                .failure
+                .as_ref()
+                .and_then(|failure| failure.metadata.as_ref())
+                .map(|error| error.message.clone()),
         }
     }
 
@@ -182,7 +210,7 @@ impl Freshness {
 
 pub struct BackgroundFetch {
     executable: Option<PathBuf>,
-    freshness: Mutex<HashMap<(String, u64, String), Freshness>>,
+    freshness: Mutex<HashMap<FreshnessKey, Freshness>>,
     clock: Clock,
 }
 
@@ -223,7 +251,7 @@ impl BackgroundFetch {
         self.freshness
             .lock()
             .unwrap()
-            .retain(|(key, _, _), _| key != path);
+            .retain(|key, _| key.path != path);
     }
 
     /// A manual fetch checks all remotes; a pull checks only its upstream remote.
@@ -239,11 +267,18 @@ impl BackgroundFetch {
         }
         if let Some(remote) = remote {
             freshness
-                .entry((path.to_owned(), session, remote.to_owned()))
+                .entry(FreshnessKey {
+                    path: path.to_owned(),
+                    session,
+                    remote: remote.to_owned(),
+                })
                 .or_default();
         }
-        for ((key, generation, name), value) in &mut *freshness {
-            if key == path && *generation == session && remote.is_none_or(|remote| remote == name) {
+        for (key, value) in &mut *freshness {
+            if key.path == path
+                && key.session == session
+                && remote.is_none_or(|remote| remote == key.remote)
+            {
                 let interval = if value.interval == 0 {
                     DEFAULT_FETCH_INTERVAL_MS
                 } else {
@@ -268,8 +303,8 @@ impl BackgroundFetch {
             .lock()
             .unwrap()
             .iter()
-            .filter(|((key, generation, _), _)| key == path && *generation == session)
-            .map(|((_, _, name), value)| value.response(name, value.outcome))
+            .filter(|(key, _)| key.path == path && key.session == session)
+            .map(|(key, value)| value.response(&key.remote, value.outcome))
             .collect::<Vec<_>>();
         remotes.sort_by(|left, right| left.remote.cmp(&right.remote));
         FetchReport {
@@ -296,7 +331,6 @@ impl BackgroundFetch {
         let mut command = Command::new(executable);
         command
             .arg("--background-fetch-worker")
-            .env("PATH", crate::shell_env::system_path())
             .env("GIT_TERMINAL_PROMPT", "0")
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -329,14 +363,25 @@ impl BackgroundFetch {
                 .read_to_end(&mut bytes)
                 .await
                 .map(|_| bytes)
+                .map_err(|_| {
+                    TrunkError::new("worker_output", "Fetch worker output could not be read")
+                })
         };
         let completed = tokio::time::timeout(deadline, async {
-            stdin.write_all(&input).await?;
+            stdin.write_all(&input).await.map_err(|_| {
+                TrunkError::new("worker_input", "Fetch worker input could not be written")
+            })?;
             drop(stdin);
-            tokio::try_join!(child.wait(), output)
+            tokio::try_join!(
+                async {
+                    child.wait().await.map_err(|_| {
+                        TrunkError::new("worker_wait", "Fetch worker exit could not be observed")
+                    })
+                },
+                output
+            )
         })
         .await;
-        let timed_out = completed.is_err();
         if !matches!(completed, Ok(Ok(_))) {
             process.stop();
             let _ = child.wait().await;
@@ -345,15 +390,15 @@ impl BackgroundFetch {
         if reservation.cancelled() {
             return Err(TrunkError::new("cancelled", "Automatic fetch cancelled"));
         }
-        if timed_out {
-            return Err(TrunkError::new(
-                "timed_out",
-                "Automatic fetch exceeded its deadline",
-            ));
-        }
-        let (status, bytes) = completed
-            .unwrap()
-            .map_err(|_| TrunkError::new("worker_failed", "Fetch worker did not exit normally"))?;
+        let (status, bytes) = match completed {
+            Err(_) => {
+                return Err(TrunkError::new(
+                    "timed_out",
+                    "Automatic fetch exceeded its deadline",
+                ));
+            }
+            Ok(result) => result?,
+        };
         if !status.success() {
             return Err(TrunkError::new(
                 "worker_failed",
@@ -512,7 +557,11 @@ pub async fn fetch<R: Runtime>(
     let mut report = FetchReport::skipped(Outcome::Unchanged);
     let mut appended = false;
     for (name, config) in info.remotes {
-        let key = (path.to_owned(), session, name.clone());
+        let key = FreshnessKey {
+            path: path.to_owned(),
+            session,
+            remote: name.clone(),
+        };
         let now = service.clock.now();
         {
             let mut records = service.freshness.lock().unwrap();
@@ -538,10 +587,12 @@ pub async fn fetch<R: Runtime>(
                         now,
                         interval_ms.max(1),
                         Outcome::Failed,
-                        Some(error.code),
+                        Some(FetchFailure {
+                            primary: error,
+                            metadata: None,
+                        }),
                         config,
                     );
-                    record.message = Some(error.message);
                     report.remotes.push(record.response(&name, Outcome::Failed));
                 }
                 drop(records);
@@ -558,6 +609,7 @@ pub async fn fetch<R: Runtime>(
         } else {
             Ok(Vec::new())
         };
+        let mut metadata_error = None;
         let result = match prefix {
             Ok(prefix) => {
                 let result = service
@@ -568,23 +620,25 @@ pub async fn fetch<R: Runtime>(
                         appended |= receipt.metadata_written;
                         receipt.result
                     }
-                    Err(error) => restore_fetch_head(info.fetch_head.clone(), prefix)
-                        .await
-                        .and(Err(error)),
+                    Err(error) => {
+                        metadata_error = restore_fetch_head(info.fetch_head.clone(), prefix)
+                            .await
+                            .err();
+                        Err(error)
+                    }
                 }
             }
             Err(error) => Err(error),
         };
         let after = ref_state(location.clone()).await;
         let changed = after.as_ref().is_ok_and(|after| after != &before);
-        let (outcome, error, message) = match result {
+        let (outcome, failure) = match result {
             Ok(()) => (
                 if changed {
                     Outcome::Changed
                 } else {
                     Outcome::Unchanged
                 },
-                None,
                 None,
             ),
             Err(error) => (
@@ -594,8 +648,10 @@ pub async fn fetch<R: Runtime>(
                     "unsupported_transport" => Outcome::Unsupported,
                     _ => Outcome::Failed,
                 },
-                Some(error.code),
-                Some(error.message),
+                Some(FetchFailure {
+                    primary: error,
+                    metadata: metadata_error,
+                }),
             ),
         };
         let mut records = service.freshness.lock().unwrap();
@@ -608,10 +664,9 @@ pub async fn fetch<R: Runtime>(
             service.clock.now(),
             interval_ms.max(1),
             outcome,
-            error,
+            failure,
             config,
         );
-        record.message = message;
         report.remotes.push(record.response(&name, outcome));
         drop(records);
         if outcome == Outcome::Cancelled {
@@ -696,7 +751,16 @@ mod tests {
     fn backoff_preserves_success_and_resets_only_on_a_successful_check() {
         let mut freshness = Freshness::default();
         freshness.record(10, 100, Outcome::Unchanged, None, Vec::new());
-        freshness.record(20, 100, Outcome::Failed, Some("auth".into()), Vec::new());
+        freshness.record(
+            20,
+            100,
+            Outcome::Failed,
+            Some(FetchFailure {
+                primary: TrunkError::new("auth", "fixture"),
+                metadata: None,
+            }),
+            Vec::new(),
+        );
         assert_eq!(freshness.success, Some(10));
         let first_retry = freshness.retry;
         assert!((160..=200).contains(&(first_retry - 20)));
@@ -704,7 +768,10 @@ mod tests {
             first_retry,
             100,
             Outcome::Failed,
-            Some("auth".into()),
+            Some(FetchFailure {
+                primary: TrunkError::new("auth", "fixture"),
+                metadata: None,
+            }),
             Vec::new(),
         );
         let second_retry = freshness.retry;
@@ -725,7 +792,10 @@ mod tests {
                 now,
                 100,
                 Outcome::Failed,
-                Some("network".into()),
+                Some(FetchFailure {
+                    primary: TrunkError::new("network", "fixture"),
+                    metadata: None,
+                }),
                 Vec::new(),
             );
             now = freshness.retry;
@@ -751,7 +821,10 @@ mod tests {
             10,
             100,
             Outcome::Unsupported,
-            Some("unsupported_transport".into()),
+            Some(FetchFailure {
+                primary: TrunkError::new("unsupported_transport", "fixture"),
+                metadata: None,
+            }),
             config_a.clone(),
         );
         let capability_retry = freshness.retry;
@@ -770,7 +843,10 @@ mod tests {
             capability_retry,
             100,
             Outcome::Failed,
-            Some("network".into()),
+            Some(FetchFailure {
+                primary: TrunkError::new("network", "fixture"),
+                metadata: None,
+            }),
             config_b.clone(),
         );
         let failed_retry = freshness.retry;

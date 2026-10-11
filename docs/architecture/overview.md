@@ -219,6 +219,15 @@ established.
 5. Unchanged input causes no history capture or repository event. Changed refs build one graph per affected open worktree and publish a path-scoped revision. The active view consumes its cached head at the loaded depth; inactive views retain the newest revision until activation. Ref-only events leave status, WIP and file-diff readers idle. Index, HEAD, config, stash and local file events retain their worktree refresh path.
 6. Typed per-remote results keep last success separate from attempt and graph publication. Transient failures double their retry ceiling up to 15 minutes (or the configured interval, if longer), with jitter between 80% and 100% of the ceiling and never below the configured interval. Unsupported configurations use the same capped jittered retry or retry after a configuration change. Manual checks clear backoff and defer redundant automatic checks for the remotes checked; Fetch and Pull return their updated freshness. The Pull tooltip exposes freshness/failure without recurring dialogs.
 
+Cancellation and timeout remain the primary terminal result if restoring earlier
+FETCH_HEAD bytes fails. The report exposes that repair error separately. Cancellation
+starts no later remote. Login-shell PATH initialization runs inside the owned worker, so
+a stuck startup script remains cancellable and bounded by its deadline. Worker input,
+output and exit-observation failures have distinct
+codes. The deadline covers one remote, including its credential descendants; it is not a
+whole-job budget. Several stalled remotes can therefore hold the reservation for several
+deadlines, followed by reconciliation. Ownership lasts until process exit and publication.
+
 The libgit2 worker supports local, unauthenticated HTTP(S) and SSH transports, SSH agent
 authentication, simple OpenSSH Host/IdentityFile settings, URL rewrites and native HTTPS
 CONNECT proxy settings. Authenticated HTTP(S) returns `unsupported_transport` before
@@ -322,7 +331,7 @@ reject a replacement that happened before notification delivery.
 - **Git execution:** Local operations and automatic fetch use git2. Legacy foreground remote commands and rebase/merge message editing retain their Git subprocess paths.
 - **Global state:** Tauri manages `RepoState`'s path registry, `CommitCache`'s graph/session/revision maps, `RunningOp`'s identity-based remote reservations and `WatcherState`'s watchers/pending ref reconciliations. Worktree UI/cache entries use repository paths; remote exclusion uses canonical common directories. `WatcherState.enabled` lets the App harness disable filesystem watching, and the state is passed into `configure` because `Builder::manage` panics on a duplicate type.
 - **Circular imports:** None detected. Frontend has a clear dependency direction: `components/` → `lib/` → `@tauri-apps/`.
-- **macOS PATH:** `src-tauri/src/shell_env.rs` uses `/usr/libexec/path_helper` to resolve full system PATH for git subprocess calls — required because GUI apps inherit a minimal launchd PATH.
+- **macOS PATH:** `src-tauri/src/shell_env.rs` reads the user's login-shell PATH, with `/usr/libexec/path_helper` as a fallback, because GUI apps inherit a minimal launchd PATH.
 - **Multi-tab:** Repository/cache state uses worktree paths, and remote exclusion resolves their common Git directories. Per-tab frontend state (`RemoteState`, `UndoRedoManager`) is created in `App.svelte` via factory functions and passed as props.
 
 ## Anti-Patterns
