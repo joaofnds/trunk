@@ -178,9 +178,12 @@ alternate diff, merge, rebase or review view renders,
 it prepares the remaining backends one at a time, yielding between repositories.
 Selecting a pending tab takes priority after the current open completes. Inactive
 views mount on first selection and stay mounted thereafter to preserve selection,
-scroll and editor state. Optional diff, merge, rebase and review views load their
-JavaScript on first use; a failed module load offers a retry. The rebase editor and its diff previews
-also permit cancellation while their modules load or after a load failure.
+scroll and editor state. Diff, merge, rebase, review, commit-detail and comparison
+views load their JavaScript on first use; a failed module load offers a retry.
+The rebase editor, its diff previews, commit details and comparisons also permit
+cancellation while their modules load or after a load failure. The tab strip loads
+SortableJS asynchronously when more than one tab exists, so a single-tab session
+needs no drag handler.
 
 ### Filesystem Change Path
 

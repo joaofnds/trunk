@@ -78,14 +78,11 @@ import type {
 import Splitter from "../lib/ui/Splitter.svelte";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
 import BranchSidebar from "./BranchSidebar.svelte";
-import CommitDetail from "./CommitDetail.svelte";
 import CommitGraph from "./CommitGraph.svelte";
-import ComparePanel from "./ComparePanel.svelte";
 import FileFinder from "./FileFinder.svelte";
 import LazyView from "./LazyView.svelte";
 import MessageEditor from "./MessageEditor.svelte";
 import PushRecoveryPrompt from "./PushRecoveryPrompt.svelte";
-import ReviewList from "./ReviewList.svelte";
 import StagingPanel from "./StagingPanel.svelte";
 
 interface DirtyCounts {
@@ -1921,6 +1918,11 @@ function handleRebaseDiffClose() {
 	rebaseDiffFile = null;
 }
 
+function handleRebaseDetailClose() {
+	rebaseFocusedCommitDetail = null;
+	rebaseFocusedCommitStat = null;
+}
+
 async function handleRebaseFocusChange(oid: string) {
 	if (!repoPath) return;
 	const loadSeq = ++rebaseFocusLoadSeq;
@@ -2258,25 +2260,34 @@ function stepRightPane(delta: number) {
 				style:width="{rightPaneSize}px"
 			>
 				{#if rebaseFocusedCommitDetail}
-					<CommitDetail
-						commitDetail={rebaseFocusedCommitDetail}
-						stat={rebaseFocusedCommitStat}
-						fileDiffs={rebaseFocusedFileDiffs}
-						selectedFile={rebaseFocusedFileSelected}
-						onfileselect={handleRebaseFileSelect}
-						onclose={() => { rebaseFocusedCommitDetail = null; rebaseFocusedCommitStat = null; }}
-						{repoPath}
-						{reviewComments}
-						reviewCommentsVisible={reviewFilter !== "none"}
-						{reviewFilter}
-						commentCounts={presentation.byFile}
-						commentTallies={presentation.tallyByFile}
-						activeReviewId={reviewComments.activeReviewId}
-						editorSessionForThread={editorSessionForCommitNoteThread}
-						{editorDraftFor}
-						{treeViewEnabled}
-						ontreeviewtoggle={handleTreeViewToggle}
-					/>
+					{@const focusedDetail = rebaseFocusedCommitDetail}
+					<LazyView
+						load={() => import("./CommitDetail.svelte")}
+						label="commit details"
+						oncancel={handleRebaseDetailClose}
+					>
+						{#snippet children(CommitDetail)}
+							<CommitDetail
+								commitDetail={focusedDetail}
+								stat={rebaseFocusedCommitStat}
+								fileDiffs={rebaseFocusedFileDiffs}
+								selectedFile={rebaseFocusedFileSelected}
+								onfileselect={handleRebaseFileSelect}
+								onclose={handleRebaseDetailClose}
+								{repoPath}
+								{reviewComments}
+								reviewCommentsVisible={reviewFilter !== "none"}
+								{reviewFilter}
+								commentCounts={presentation.byFile}
+								commentTallies={presentation.tallyByFile}
+								activeReviewId={reviewComments.activeReviewId}
+								editorSessionForThread={editorSessionForCommitNoteThread}
+								{editorDraftFor}
+								{treeViewEnabled}
+								ontreeviewtoggle={handleTreeViewToggle}
+							/>
+						{/snippet}
+					</LazyView>
 				{:else}
 					<div
 						class="flex items-center justify-center h-full text-text-muted text-body"
@@ -2314,7 +2325,11 @@ function stepRightPane(delta: number) {
 					style:width="{leftPaneSize}px"
 					bind:this={reviewListPane}
 				>
-					<ReviewList {repoPath} {reviewComments} />
+					<LazyView load={() => import("./ReviewList.svelte")} label="reviews">
+						{#snippet children(ReviewList)}
+							<ReviewList {repoPath} {reviewComments} />
+						{/snippet}
+					</LazyView>
 				</div>
 			{/if}
 			<Splitter
@@ -2504,41 +2519,59 @@ function stepRightPane(delta: number) {
 				hidden={reviewMode}
 			>
 				{#if compare && compareTargetDetail}
-					<ComparePanel
-						base={compareBaseDetail}
-						target={compareTargetDetail}
-						fileDiffs={compareFileDiffs}
-						stat={compareStat}
-						selectedFile={selectedCompareFile}
-						onfileselect={handleCompareFileSelect}
-						onswap={handleCompareSwap}
-						onclose={clearCompare}
-						{treeViewEnabled}
-						ontreeviewtoggle={handleTreeViewToggle}
-					/>
+					{@const comparisonTarget = compareTargetDetail}
+					<LazyView
+						load={() => import("./ComparePanel.svelte")}
+						label="comparison"
+						oncancel={clearCompare}
+					>
+						{#snippet children(ComparePanel)}
+							<ComparePanel
+								base={compareBaseDetail}
+								target={comparisonTarget}
+								fileDiffs={compareFileDiffs}
+								stat={compareStat}
+								selectedFile={selectedCompareFile}
+								onfileselect={handleCompareFileSelect}
+								onswap={handleCompareSwap}
+								onclose={clearCompare}
+								{treeViewEnabled}
+								ontreeviewtoggle={handleTreeViewToggle}
+							/>
+						{/snippet}
+					</LazyView>
 				{:else if selectedCommitOid && commitDetail}
-					<CommitDetail
-						{commitDetail}
-						stat={commitDetailStat}
-						fileDiffs={commitFileDiffs}
-						selectedFile={selectedCommitFile}
-						onfileselect={handleCommitFileSelect}
-						onclose={clearCommit}
-						{repoPath}
-						{reviewComments}
-						reviewCommentsVisible={reviewFilter !== "none"}
-						{reviewFilter}
-						commentCounts={presentation.byFile}
-						commentTallies={presentation.tallyByFile}
-						activeReviewId={reviewComments.activeReviewId}
-						editorSessionForThread={editorSessionForCommitNoteThread}
-						{editorDraftFor}
-						{treeViewEnabled}
-						ontreeviewtoggle={handleTreeViewToggle}
-						nav={commitNav}
-						pagerKeys={!reviewMode}
-						onnavigate={navigateToCommit}
-					/>
+					{@const selectedDetail = commitDetail}
+					<LazyView
+						load={() => import("./CommitDetail.svelte")}
+						label="commit details"
+						oncancel={clearCommit}
+					>
+						{#snippet children(CommitDetail)}
+							<CommitDetail
+								commitDetail={selectedDetail}
+								stat={commitDetailStat}
+								fileDiffs={commitFileDiffs}
+								selectedFile={selectedCommitFile}
+								onfileselect={handleCommitFileSelect}
+								onclose={clearCommit}
+								{repoPath}
+								{reviewComments}
+								reviewCommentsVisible={reviewFilter !== "none"}
+								{reviewFilter}
+								commentCounts={presentation.byFile}
+								commentTallies={presentation.tallyByFile}
+								activeReviewId={reviewComments.activeReviewId}
+								editorSessionForThread={editorSessionForCommitNoteThread}
+								{editorDraftFor}
+								{treeViewEnabled}
+								ontreeviewtoggle={handleTreeViewToggle}
+								nav={commitNav}
+								pagerKeys={!reviewMode}
+								onnavigate={navigateToCommit}
+							/>
+						{/snippet}
+					</LazyView>
 				{:else if draftLoaded}
 					<StagingPanel
 						bind:this={stagingPanelRef}

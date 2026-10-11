@@ -1,9 +1,10 @@
 <script lang="ts">
 import Plus from "@lucide/svelte/icons/plus";
 import X from "@lucide/svelte/icons/x";
-import Sortable from "sortablejs";
+import type Sortable from "sortablejs";
 import { displayPath } from "../lib/path.js";
 import type { TabInfo } from "../lib/tab-types.js";
+import { showToast } from "../lib/toast.svelte.js";
 import Button from "../lib/ui/Button.svelte";
 import Tab from "../lib/ui/Tab.svelte";
 
@@ -50,28 +51,54 @@ $effect(() => {
 	activeButton?.scrollIntoView({ block: "nearest", inline: "nearest" });
 });
 
+const canReorder = $derived(tabs.length > 1);
+
 $effect(() => {
-	if (!tabBarEl) return;
-	const sortable = Sortable.create(tabBarEl, {
-		animation: 150,
-		direction: "horizontal",
-		forceFallback: true,
-		ghostClass: "tab-ghost",
-		chosenClass: "tab-chosen",
-		dragClass: "tab-drag",
-		draggable: ".tab-item",
-		scroll: true,
-		scrollSensitivity: 50,
-		onEnd: (e) => {
-			if (e.oldIndex == null || e.newIndex == null || e.oldIndex === e.newIndex)
-				return;
-			const updated = [...tabs];
-			const [moved] = updated.splice(e.oldIndex, 1);
-			updated.splice(e.newIndex, 0, moved);
-			onreorder(updated);
-		},
-	});
-	return () => sortable.destroy();
+	if (!tabBarEl || !canReorder) return;
+
+	let disposed = false;
+	let sortable: Sortable | undefined;
+
+	void import("sortablejs")
+		.then(({ default: SortableJS }) => {
+			if (disposed) return;
+
+			sortable = SortableJS.create(tabBarEl, {
+				animation: 150,
+				direction: "horizontal",
+				forceFallback: true,
+				ghostClass: "tab-ghost",
+				chosenClass: "tab-chosen",
+				dragClass: "tab-drag",
+				draggable: ".tab-item",
+				scroll: true,
+				scrollSensitivity: 50,
+				onEnd: (e) => {
+					if (
+						e.oldIndex == null ||
+						e.newIndex == null ||
+						e.oldIndex === e.newIndex
+					)
+						return;
+
+					const updated = [...tabs];
+					const [moved] = updated.splice(e.oldIndex, 1);
+					updated.splice(e.newIndex, 0, moved);
+					onreorder(updated);
+				},
+			});
+		})
+		.catch((error) => {
+			if (disposed) return;
+
+			console.error("Could not enable tab reordering", error);
+			showToast("Could not enable tab reordering", "error");
+		});
+
+	return () => {
+		disposed = true;
+		sortable?.destroy();
+	};
 });
 
 function activateOnPrimary(e: MouseEvent, tabId: string) {

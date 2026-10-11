@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+	cleanup,
 	fireEvent,
 	render,
 	screen,
@@ -7,7 +8,15 @@ import {
 	within,
 } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	onTestFinished,
+	vi,
+} from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import RepoView from "../__tests__/helpers/controlled-repo-view.svelte";
 import { makeCommit } from "../__tests__/helpers/factories.js";
@@ -178,6 +187,37 @@ function createMockUndoRedo(): UndoRedoManager {
 		state: { redoStack: [] },
 		push: vi.fn(),
 		pop: vi.fn(),
+	};
+}
+
+function holdLazyModule(path: string, label: string) {
+	const request = Promise.withResolvers<{ default: typeof Button }>();
+	const entered = Promise.withResolvers<void>();
+	vi.doMock(path, () => {
+		entered.resolve();
+		return request.promise;
+	});
+	onTestFinished(async () => {
+		cleanup();
+		request.resolve({ default: Button });
+		await vi.dynamicImportSettled();
+		vi.doUnmock(path);
+	});
+	const pending = async () => {
+		await screen.findByText(`Opening ${label}…`);
+		await entered.promise;
+	};
+	return {
+		pending,
+		failed: async () => {
+			await pending();
+			request.reject(new Error(`${label} unavailable`));
+			await screen.findByText(`Could not load ${label}.`);
+		},
+		expectCancelled: () => {
+			expect(screen.queryByText(`Opening ${label}…`)).toBeNull();
+			expect(screen.queryByText(`Could not load ${label}.`)).toBeNull();
+		},
 	};
 }
 
@@ -893,9 +933,9 @@ describe("RepoView", () => {
 		});
 
 		await fireEvent.click(await screen.findByTestId("commit-row"));
-		await screen.findByText("commit oid-1");
+		const note = await screen.findByText("done note");
 
-		expect(screen.getByText("done note").closest("li")).toHaveStyle({
+		expect(note.closest("li")).toHaveStyle({
 			display: "none",
 		});
 	});
@@ -2486,45 +2526,64 @@ describe("RepoView", () => {
 		it.each(["pending", "failed"] as const)(
 			"can cancel a %s rebase editor load without starting the rebase",
 			async (state) => {
-				const editor = Promise.withResolvers<{ default: typeof Button }>();
-				vi.doMock("./RebaseEditor.svelte", () => editor.promise);
+				const loader = holdLazyModule("./RebaseEditor.svelte", "rebase editor");
 				stubRebaseTodo(PARENT_OID);
 
-				try {
-					await openTheEditorOnTheClickedCommit(undefined, false);
-					await screen.findByText("Opening rebase editor…");
-					if (state === "failed") {
-						editor.reject(new Error("editor unavailable"));
-						await screen.findByText("Could not load rebase editor.");
-					}
+				await openTheEditorOnTheClickedCommit(undefined, false);
+				await loader[state]();
 
-					await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+				await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-					expect(
-						(await screen.findAllByTestId("commit-row")).length,
-					).toBeGreaterThan(0);
-					expect(screen.queryByText("Opening rebase editor…")).toBeNull();
-					expect(
-						screen.queryByText("Could not load rebase editor."),
-					).toBeNull();
-					expect(
-						mockInvoke.mock.calls.some(
-							([command]) => command === "start_interactive_rebase",
-						),
-					).toBe(false);
-				} finally {
-					if (state === "pending") editor.resolve({ default: Button });
-					await vi.dynamicImportSettled();
-					vi.doUnmock("./RebaseEditor.svelte");
-				}
+				expect(
+					(await screen.findAllByTestId("commit-row")).length,
+				).toBeGreaterThan(0);
+				loader.expectCancelled();
+				expect(
+					mockInvoke.mock.calls.some(
+						([command]) => command === "start_interactive_rebase",
+					),
+				).toBe(false);
+			},
+		);
+
+		it.each(["pending", "failed"] as const)(
+			"keeps the rebase plan when a %s commit detail module is cancelled",
+			async (state) => {
+				const loader = holdLazyModule(
+					"./CommitDetail.svelte",
+					"commit details",
+				);
+				stubRebaseTodo(PARENT_OID);
+				const base = mockInvoke.getMockImplementation();
+				if (!base) throw new Error("base invoke implementation missing");
+				mockInvoke.mockImplementation((command, args) => {
+					const request = args as Record<string, unknown> | undefined;
+					if (
+						command === "get_commit_detail" &&
+						typeof request?.oid === "string"
+					)
+						return Promise.resolve(
+							makeRebaseDetail(request.oid, "focused commit"),
+						);
+					return base(command, args);
+				});
+
+				await openTheEditorOnTheClickedCommit();
+				await loader[state]();
+
+				await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+				expect(
+					screen.getByRole("button", { name: "Start Rebase" }),
+				).toBeInTheDocument();
+				loader.expectCancelled();
 			},
 		);
 
 		it.each(["pending", "failed"] as const)(
 			"returns to the rebase plan when a %s diff module is cancelled",
 			async (state) => {
-				const diff = Promise.withResolvers<{ default: typeof Button }>();
-				vi.doMock("./DiffPanel.svelte", () => diff.promise);
+				const loader = holdLazyModule("./DiffPanel.svelte", "diff");
 				stubRebaseTodo(PARENT_OID);
 				const base = mockInvoke.getMockImplementation();
 				if (!base) throw new Error("base invoke implementation missing");
@@ -2543,32 +2602,21 @@ describe("RepoView", () => {
 					return base(command, args);
 				});
 
-				try {
-					await openTheEditorOnTheClickedCommit();
-					await fireEvent.click(await screen.findByText(file.path));
-					await screen.findByText("Opening diff…");
-					if (state === "failed") {
-						diff.reject(new Error("diff unavailable"));
-						await screen.findByText("Could not load diff.");
-					}
+				await openTheEditorOnTheClickedCommit();
+				await fireEvent.click(await screen.findByText(file.path));
+				await loader[state]();
 
-					await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+				await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-					expect(screen.queryByText("Opening diff…")).toBeNull();
-					expect(screen.queryByText("Could not load diff.")).toBeNull();
-					expect(
-						screen.getByRole("button", { name: "Start Rebase" }),
-					).toBeInTheDocument();
-					expect(
-						mockInvoke.mock.calls.some(
-							([command]) => command === "start_interactive_rebase",
-						),
-					).toBe(false);
-				} finally {
-					if (state === "pending") diff.resolve({ default: Button });
-					await vi.dynamicImportSettled();
-					vi.doUnmock("./DiffPanel.svelte");
-				}
+				loader.expectCancelled();
+				expect(
+					screen.getByRole("button", { name: "Start Rebase" }),
+				).toBeInTheDocument();
+				expect(
+					mockInvoke.mock.calls.some(
+						([command]) => command === "start_interactive_rebase",
+					),
+				).toBe(false);
 			},
 		);
 
@@ -3101,6 +3149,53 @@ describe("RepoView", () => {
 			return mockInvoke.mock.calls.filter((c) => c[0] === "list_compare_files");
 		}
 
+		it.each(["pending", "failed"] as const)(
+			"returns to staging when a %s commit detail module is cancelled",
+			async (state) => {
+				const loader = holdLazyModule(
+					"./CommitDetail.svelte",
+					"commit details",
+				);
+				render(RepoView, {
+					props: baseProps(createMockRemoteState()),
+				});
+
+				const rows = await screen.findAllByTestId("commit-row");
+				await fireEvent.click(rows[0]);
+				await loader[state]();
+
+				await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+				expect(
+					await screen.findByRole("button", { name: "Commit" }),
+				).toBeInTheDocument();
+				loader.expectCancelled();
+			},
+		);
+
+		it.each(["pending", "failed"] as const)(
+			"returns to commit details when a %s comparison module is cancelled",
+			async (state) => {
+				const loader = holdLazyModule("./ComparePanel.svelte", "comparison");
+				render(RepoView, {
+					props: baseProps(createMockRemoteState()),
+				});
+
+				const rows = await screen.findAllByTestId("commit-row");
+				await fireEvent.click(rows[2]);
+				await screen.findByLabelText("Close commit detail");
+				await fireEvent.click(rows[0], { metaKey: true });
+				await loader[state]();
+
+				await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+				expect(
+					await screen.findByLabelText("Close commit detail"),
+				).toBeInTheDocument();
+				loader.expectCancelled();
+			},
+		);
+
 		it("cmd-clicking a second commit opens the compare, first pick as Base", async () => {
 			const rows = await renderAndGetRows();
 			await fireEvent.click(rows[2]); // oid-1
@@ -3372,7 +3467,7 @@ describe("RepoView", () => {
 			await flush();
 			await fireEvent.click(rows[0], { metaKey: true });
 			await flush();
-			expect(screen.queryByTestId("compare-header")).toBeTruthy();
+			expect(await screen.findByTestId("compare-header")).toBeTruthy();
 
 			await fireEvent.keyDown(window, { key: "Escape" });
 			await flush();
@@ -3386,7 +3481,7 @@ describe("RepoView", () => {
 			await flush();
 			await fireEvent.click(rows[0], { metaKey: true }); // oid-3
 			await flush();
-			expect(screen.queryByTestId("compare-header")).toBeTruthy();
+			expect(await screen.findByTestId("compare-header")).toBeTruthy();
 
 			await fireEvent.click(rows[1]); // oid-2, no modifier
 			await flush();
@@ -3418,7 +3513,7 @@ describe("RepoView", () => {
 			await flush();
 			await fireEvent.click(rows[1], { metaKey: true }); // oid-3
 			await flush();
-			expect(screen.queryByTestId("compare-header")).toBeTruthy();
+			expect(await screen.findByTestId("compare-header")).toBeTruthy();
 
 			await fireEvent.click(rows[0]);
 			await flush();
@@ -3449,7 +3544,7 @@ describe("RepoView", () => {
 			await flush();
 			await fireEvent.click(rows[0], { metaKey: true }); // oid-3
 			await flush();
-			expect(screen.queryByTestId("compare-header")).toBeTruthy();
+			expect(await screen.findByTestId("compare-header")).toBeTruthy();
 
 			await rerender({ ...props, reviewActive: true });
 			await flush();
@@ -3493,7 +3588,7 @@ describe("RepoView", () => {
 			await flush();
 
 			expect(screen.queryAllByTestId("commit-row")).toHaveLength(0);
-			expect(screen.queryByTestId("compare-header")).toBeTruthy();
+			expect(await screen.findByTestId("compare-header")).toBeTruthy();
 		});
 
 		it("the comment badge empties while a compare is open", async () => {
