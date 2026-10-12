@@ -35,7 +35,6 @@ let {
 const buildOptions = $derived({
 	content: "full" as const,
 	comments,
-	reviewCommentsVisible: true,
 	collapsed: new Set<string>(),
 	fileHeaders: false,
 	tabSize: TAB_SIZE,

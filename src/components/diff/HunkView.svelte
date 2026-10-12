@@ -154,7 +154,6 @@ const model = $derived(
 		return buildInlineRows(fileDiffs, {
 			content: "hunk",
 			comments: viewComments,
-			reviewCommentsVisible,
 			reviewFilter,
 			collapsed: collapsedFiles,
 			// The per-file header bar is the multi-file view's; with one file

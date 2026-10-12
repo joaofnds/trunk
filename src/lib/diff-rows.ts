@@ -109,7 +109,6 @@ export interface DiffRowModel {
 export interface BuildOptions {
 	content: ContentMode;
 	comments: Thread[];
-	reviewCommentsVisible: boolean;
 	reviewFilter?: ReviewFilter;
 	collapsed: Set<string>;
 	/** Whether the view shows a per-file header bar, as the multi-file views do. */
@@ -205,15 +204,11 @@ export function buildInlineRows(
 					line.new_lineno ?? 0,
 				);
 
-				const threads = opts.reviewCommentsVisible
-					? threadsAcross(commentsForLine, opts.comments, line)
-					: [];
+				const threads = threadsAcross(commentsForLine, opts.comments, line);
 
 				const visibleThreads = threads.filter((thread) =>
 					visibleComments.includes(thread),
 				);
-
-				const shown = opts.reviewCommentsVisible ? visibleComments : [];
 
 				rows.push({
 					kind: "line",
@@ -223,7 +218,9 @@ export function buildInlineRows(
 					flatIdx,
 					line,
 					columns,
-					marker: markerFor(threadsAcross(threadsStartingOn, shown, line)),
+					marker: markerFor(
+						threadsAcross(threadsStartingOn, visibleComments, line),
+					),
 				});
 
 				if (visibleThreads.length > 0) {
@@ -321,9 +318,7 @@ export function buildSplitRows(
 				widestRight = Math.max(widestRight, rightColumns);
 
 				const visibleOn = (threads: Thread[]): Thread[] =>
-					opts.reviewCommentsVisible
-						? threads.filter((thread) => visibleComments.includes(thread))
-						: [];
+					threads.filter((thread) => visibleComments.includes(thread));
 				const rightThreads = visibleOn(
 					commentsForLine(opts.comments, "New", pair.right?.line.new_lineno),
 				);
@@ -331,7 +326,6 @@ export function buildSplitRows(
 					commentsForLine(opts.comments, "Old", pair.left?.line.old_lineno),
 				);
 				const visibleThreads = [...rightThreads, ...leftThreads];
-				const shown = opts.reviewCommentsVisible ? visibleComments : [];
 
 				rows.push({
 					kind: "pair",
@@ -341,10 +335,18 @@ export function buildSplitRows(
 					leftColumns,
 					rightColumns,
 					markerLeft: markerFor(
-						threadsStartingOn(shown, "Old", pair.left?.line.old_lineno),
+						threadsStartingOn(
+							visibleComments,
+							"Old",
+							pair.left?.line.old_lineno,
+						),
 					),
 					markerRight: markerFor(
-						threadsStartingOn(shown, "New", pair.right?.line.new_lineno),
+						threadsStartingOn(
+							visibleComments,
+							"New",
+							pair.right?.line.new_lineno,
+						),
 					),
 				});
 
@@ -533,9 +535,7 @@ function rowsAboveFile(
 	visibleComments: Thread[],
 ): DiffRow[] {
 	const rows: DiffRow[] = [];
-	const threads = opts.reviewCommentsVisible
-		? threadsOnWholeFile(visibleComments, fd.path)
-		: [];
+	const threads = threadsOnWholeFile(visibleComments, fd.path);
 	if (threads.length > 0) {
 		// It hangs under no line, so it takes the first line's indices.
 		rows.push({

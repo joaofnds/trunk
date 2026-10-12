@@ -156,7 +156,6 @@ const model = $derived(
 		return buildSplitRows(fileDiffs, {
 			content: contentMode,
 			comments: viewComments,
-			reviewCommentsVisible,
 			reviewFilter,
 			collapsed: collapsedFiles,
 			// The per-file header bar is the multi-file view's; with one file

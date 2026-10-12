@@ -80,7 +80,6 @@ function thread(
 const fullMode: BuildOptions = {
 	content: "full",
 	comments: [],
-	reviewCommentsVisible: true,
 	collapsed: new Set(),
 	fileHeaders: false,
 	tabSize: 4,
@@ -182,10 +181,10 @@ describe("buildInlineRows", () => {
 		expect(model.rows.some((row) => row.kind === "comment")).toBe(false);
 	});
 
-	it("omits comment rows when inline comments are hidden", () => {
+	it("omits comment rows while every thread is hidden", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
-			reviewCommentsVisible: false,
+			reviewFilter: "none",
 			comments: [thread("t1", "New", 2, 2)],
 		});
 
@@ -534,10 +533,10 @@ describe("buildSplitRows", () => {
 		expect(model.rows.some((row) => row.kind === "comment")).toBe(false);
 	});
 
-	it("omits comment rows when inline comments are hidden", () => {
+	it("omits comment rows while every thread is hidden", () => {
 		const model = buildSplitRows([pairable], {
 			...fullMode,
-			reviewCommentsVisible: false,
+			reviewFilter: "none",
 			comments: [thread("t1", "New", 2, 2)],
 		});
 
@@ -1113,10 +1112,10 @@ describe("a whole-file thread", () => {
 		).toEqual([["w1"], "pair", "pair", "pair"]);
 	});
 
-	it("stays hidden while review comments are", () => {
+	it("stays hidden while every thread is", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
-			reviewCommentsVisible: false,
+			reviewFilter: "none",
 			comments: [onTheFile],
 		});
 

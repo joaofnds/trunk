@@ -94,7 +94,6 @@ const model = $derived(
 		return buildInlineRows(fileDiffs, {
 			content: "full",
 			comments: viewComments,
-			reviewCommentsVisible,
 			reviewFilter,
 			collapsed: new Set<string>(),
 			fileHeaders: false,
