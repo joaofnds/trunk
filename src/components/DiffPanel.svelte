@@ -88,7 +88,7 @@ interface Props {
 	loadError?: string | null;
 	onretry?: () => void;
 	onloadfullfile?: (filePath: string) => Promise<FileDiff | null>;
-	reviewCommentsVisible?: boolean;
+	takesComments?: boolean;
 	reviewFilter?: ReviewFilter;
 	activeReviewId?: string | null;
 	/** The review a new comment lands in; null when submitting starts one. */
@@ -122,7 +122,7 @@ let {
 	loadError = null,
 	onretry,
 	onloadfullfile,
-	reviewCommentsVisible = true,
+	takesComments = true,
 	reviewFilter = ALL_THREADS,
 	activeReviewId = null,
 	activeReview = null,
@@ -1239,7 +1239,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			{activeReviewId}
 			{activeReview}
 			originatingReviewId={composerReviewId}
-			canSubmit={reviewCommentsVisible}
+			canSubmit={takesComments}
 			onclose={composerOnClose}
 		/>
 	{:else if fullFileComposerOpen && fullFileCaptured}
@@ -1257,7 +1257,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			{activeReviewId}
 			{activeReview}
 			originatingReviewId={composerReviewId}
-			canSubmit={reviewCommentsVisible}
+			canSubmit={takesComments}
 			onclose={composerOnClose}
 		/>
 	{/if}
@@ -1279,8 +1279,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		{ignoreWhitespace}
 		{showInvisibles}
 		{wordWrap}
-		{reviewCommentsVisible}
-		{reviewFilter}
+		{takesComments}
 		commentTally={selectedFileTally}
 		onignorewhitespacechange={handleIgnoreWhitespaceChange}
 		onshowinvisibleschange={handleShowInvisiblesChange}
@@ -1333,7 +1332,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			oncommentline={handleCommentLine}
 			{commitOid}
 			{repoPath}
-			{reviewCommentsVisible}
+			{takesComments}
 			{reviewFilter}
 			{viewComments}
 			{editorSessionForThread}

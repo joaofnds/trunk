@@ -88,7 +88,7 @@ interface Props {
 	oncommentlines: (filePath: string, hunkIndex: number) => void;
 	oncommenthunk: (filePath: string, hunkIndex: number) => void;
 	repoPath?: string;
-	reviewCommentsVisible?: boolean;
+	takesComments?: boolean;
 	viewComments?: Thread[];
 }
 
@@ -117,7 +117,7 @@ let {
 	oncommentlines,
 	oncommenthunk,
 	repoPath = "",
-	reviewCommentsVisible = true,
+	takesComments = true,
 	reviewFilter = ALL_THREADS,
 	viewComments = [],
 	editorSessionForThread,
@@ -127,7 +127,7 @@ let {
 
 // Whether a line can take a new comment here, as the hunk's Comment action can.
 const commentable = $derived(
-	oncommentline !== undefined && reviewCommentsVisible && !isMerge,
+	oncommentline !== undefined && takesComments && !isMerge,
 );
 
 const FLASH_MS = 600;
@@ -413,7 +413,7 @@ function originClass(origin: string): string {
                commit-mode accent button class verbatim (no new color). New-side
                scope + Old-side guard live in the host. Leads the action cluster
                (260531-l02 UX: Comment left of staging). -->
-					{#if reviewCommentsVisible}
+					{#if takesComments}
 						<Button
 							size="sm"
 							variant="accent"
@@ -441,7 +441,7 @@ function originClass(origin: string): string {
 					<!-- Whole-hunk Comment affordance (260531-l02): comment the hunk
                without selecting lines. Reuses the accent button class verbatim
                (no new color); host applies the New-side guard. -->
-					{#if reviewCommentsVisible}
+					{#if takesComments}
 						<Button
 							size="sm"
 							variant="accent"
@@ -470,7 +470,7 @@ function originClass(origin: string): string {
 				{#if hasSelection}
 					<!-- Staged Comment (260531-l02b): index-snapshot anchored, both sides
                resolve (no Old-side guard). Leads the cluster. -->
-					{#if reviewCommentsVisible}
+					{#if takesComments}
 						<Button
 							size="sm"
 							variant="accent"
@@ -487,7 +487,7 @@ function originClass(origin: string): string {
 						>Unstage Lines ({selectedCount})</Button
 					>
 				{:else}
-					{#if reviewCommentsVisible}
+					{#if takesComments}
 						<Button
 							size="sm"
 							variant="accent"
@@ -507,7 +507,7 @@ function originClass(origin: string): string {
 			{:else if diffKind === 'commit'}
 				<!-- Commit-diff Comment (260531-l02): whole-hunk when nothing is
              selected, line-scoped otherwise; both carry the isMerge guard. -->
-				{#if reviewCommentsVisible}
+				{#if takesComments}
 					<Button
 						size="sm"
 						variant="accent"

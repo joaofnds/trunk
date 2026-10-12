@@ -15,7 +15,6 @@ import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import { fileStatusOf } from "../../lib/file-status.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
 import { renamePartsOf } from "../../lib/rename-display.js";
-import { ALL_THREADS } from "../../lib/review-filter.js";
 import { DIFF_ROW_FONT, measureRowMetrics } from "../../lib/row-metrics.js";
 import {
 	STATUS_BADGES,
@@ -26,7 +25,6 @@ import type {
 	DiffStatus,
 	LayoutMode,
 	RenderMode,
-	ReviewFilter,
 	ReviewTally,
 } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
@@ -47,8 +45,7 @@ interface Props {
 	ignoreWhitespace: boolean;
 	showInvisibles: boolean;
 	wordWrap: boolean;
-	reviewCommentsVisible?: boolean;
-	reviewFilter?: ReviewFilter;
+	takesComments?: boolean;
 	/** The selected file's threads the badge counts, by state. */
 	commentTally?: ReviewTally | null;
 	onignorewhitespacechange: (value: boolean) => void;
@@ -78,8 +75,7 @@ let {
 	ignoreWhitespace,
 	showInvisibles,
 	wordWrap,
-	reviewCommentsVisible = true,
-	reviewFilter = ALL_THREADS,
+	takesComments = true,
 	commentTally = null,
 	onignorewhitespacechange,
 	onshowinvisibleschange,
@@ -120,9 +116,7 @@ const rename = $derived(
 );
 
 const commentCount = $derived(
-	reviewCommentsVisible && reviewFilter !== "none"
-		? Object.values(commentTally ?? {}).reduce((sum, n) => sum + n, 0)
-		: 0,
+	Object.values(commentTally ?? {}).reduce((sum, n) => sum + n, 0),
 );
 
 const renderedActive = $derived(
@@ -258,10 +252,10 @@ const renderedActive = $derived(
        against — commit diffs as well as the dirty tree (selectedPath is always set
        when this toolbar renders). A current-file view is excluded: commenting on
        one is a line selection, since a whole-file pin would go stale on any edit
-       anywhere in the file. Gated on review mode (reviewCommentsVisible) like the hunk
+       anywhere in the file. Gated on takesComments like the hunk
        toolbar's Comment buttons, so a clean read-only diff shows no comment
        affordances; never gated on whitespace-ignore since it never stages. -->
-	{#if reviewCommentsVisible && diffKind !== "current_file"}
+	{#if takesComments && diffKind !== "current_file"}
 		<Button size="sm" variant="accent" onclick={oncommentfile}
 			>Comment File</Button
 		>

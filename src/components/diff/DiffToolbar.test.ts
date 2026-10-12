@@ -28,19 +28,26 @@ const baseProps = {
 };
 
 describe("DiffToolbar review actions", () => {
-	it("offers Comment File while review threads are hidden", () => {
+	it("offers Comment File where the diff takes comments", () => {
 		render(DiffToolbar, {
-			props: {
-				...baseProps,
-				selectedPath: "src/main.rs",
-				reviewCommentsVisible: true,
-				reviewFilter: "none",
-			},
+			props: { ...baseProps, selectedPath: "src/main.rs", takesComments: true },
 		});
 
 		expect(
 			screen.getByRole("button", { name: "Comment File" }),
 		).toBeInTheDocument();
+	});
+
+	it("offers no Comment File where the diff takes none", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "src/main.rs",
+				takesComments: false,
+			},
+		});
+
+		expect(screen.queryByRole("button", { name: "Comment File" })).toBeNull();
 	});
 });
 
@@ -59,19 +66,6 @@ describe("DiffToolbar comment badge", () => {
 				name: "3 review comments, 2 open and 1 addressed",
 			}),
 		).toBeInTheDocument();
-	});
-
-	it("shows no count under Hide all", () => {
-		render(DiffToolbar, {
-			props: {
-				...baseProps,
-				selectedPath: "src/main.rs",
-				reviewFilter: "none",
-				commentTally: { open: 2 },
-			},
-		});
-
-		expect(screen.queryByRole("img", { name: /review comment/ })).toBeNull();
 	});
 });
 

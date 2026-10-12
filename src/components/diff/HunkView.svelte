@@ -77,7 +77,7 @@ interface Props {
 	oncommentlines: (filePath: string, hunkIndex: number) => void;
 	oncommenthunk: (filePath: string, hunkIndex: number) => void;
 	repoPath?: string;
-	reviewCommentsVisible?: boolean;
+	takesComments?: boolean;
 	reviewFilter?: ReviewFilter;
 	viewComments?: Thread[];
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
@@ -115,7 +115,7 @@ let {
 	oncommentlines,
 	oncommenthunk,
 	repoPath = "",
-	reviewCommentsVisible = true,
+	takesComments = true,
 	reviewFilter = ALL_THREADS,
 	viewComments = [],
 	editorSessionForThread,
@@ -125,7 +125,7 @@ let {
 
 // Whether a line can take a new comment here, as the hunk's Comment action can.
 const commentable = $derived(
-	oncommentline !== undefined && reviewCommentsVisible && !isMerge,
+	oncommentline !== undefined && takesComments && !isMerge,
 );
 
 const FLASH_MS = 600;
@@ -350,7 +350,7 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
                commit-mode Comment button markup/styles verbatim (no new color).
                New-side scope + Old-side guard live in the host. Leads the action
                cluster (260531-l02 UX: Comment to the left of staging). -->
-					{#if reviewCommentsVisible}
+					{#if takesComments}
 						<Button
 							size="sm"
 							variant="accent"
@@ -382,7 +382,7 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
                without selecting lines. Reuses the line-level accent button
                markup verbatim (no new color); host synthesizes the full-hunk
                selection + applies the New-side guard. Leads the action cluster. -->
-					{#if reviewCommentsVisible}
+					{#if takesComments}
 						<Button
 							size="sm"
 							variant="accent"
@@ -415,7 +415,7 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 					<!-- Staged Comment affordance (260531-l02b): anchors to the INDEX
                snapshot (HEAD→index) — both sides resolve, so no Old-side guard.
                Reuses the accent button; leads the cluster. -->
-					{#if reviewCommentsVisible}
+					{#if takesComments}
 						<Button
 							size="sm"
 							variant="accent"
@@ -435,7 +435,7 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 					</Button>
 				{:else}
 					<!-- Whole-hunk staged Comment (260531-l02b): index-snapshot anchored. -->
-					{#if reviewCommentsVisible}
+					{#if takesComments}
 						<Button
 							size="sm"
 							variant="accent"
@@ -455,7 +455,7 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 					</Button>
 				{/if}
 			{:else if diffKind === 'commit'}
-				{#if reviewCommentsVisible}
+				{#if takesComments}
 					<!-- Commit-diff Comment (260531-l02): whole-hunk when nothing is
              selected, line-scoped otherwise; both carry the isMerge guard. -->
 					<Button

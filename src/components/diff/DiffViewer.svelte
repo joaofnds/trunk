@@ -81,7 +81,7 @@ interface Props {
 	oncommenthunk: (filePath: string, hunkIndex: number) => void;
 	commitOid: string;
 	repoPath: string;
-	reviewCommentsVisible?: boolean;
+	takesComments?: boolean;
 	reviewFilter?: ReviewFilter;
 	viewComments?: Thread[];
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
@@ -138,7 +138,7 @@ let {
 	oncommenthunk,
 	commitOid,
 	repoPath,
-	reviewCommentsVisible = true,
+	takesComments = true,
 	reviewFilter = ALL_THREADS,
 	viewComments = [],
 	editorSessionForThread,
@@ -301,7 +301,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{oncommenthunk}
 			{oncommentline}
 			{repoPath}
-			{reviewCommentsVisible}
+			{takesComments}
 			{reviewFilter}
 			{viewComments}
 			{editorSessionForThread}
@@ -318,7 +318,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{isMerge}
 			{oncommentfullfile}
 			{onextendcomment}
-			{reviewCommentsVisible}
+			{takesComments}
 			{reviewFilter}
 			{viewComments}
 			{editorSessionForThread}
@@ -352,7 +352,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{oncommenthunk}
 			{oncommentline}
 			{repoPath}
-			{reviewCommentsVisible}
+			{takesComments}
 			{reviewFilter}
 			{viewComments}
 			{editorSessionForThread}

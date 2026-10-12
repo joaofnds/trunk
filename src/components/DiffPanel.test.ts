@@ -474,6 +474,36 @@ describe("DiffPanel", () => {
 		).toBeInTheDocument();
 	});
 
+	it("shows no count in the header while every thread is hidden", async () => {
+		const open = aThread({
+			id: "t1",
+			state: "open",
+			anchor: {
+				commit_oid: "abc123",
+				file_path: "src/main.ts",
+				source: "Diff",
+				side: "New",
+				start_line: 2,
+				end_line: 2,
+			},
+		});
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+				viewComments: [open],
+				reviewFilter: "none",
+			},
+		});
+		await flushPrefs();
+
+		expect(screen.queryByRole("img", { name: /review comment/ })).toBeNull();
+	});
+
 	// Comment File anchors the WHOLE file: every new-side line. testDiff's new side is
 	// new_lineno 1,2,3,4 (Context 1, Add 2, Add 3, Context 4), so the composer opens
 	// over lines 1-4 — not a single hunk's sub-range.
@@ -767,7 +797,7 @@ describe("DiffPanel", () => {
 			diffKind: "commit" as const,
 			repoPath: "/repo",
 			activeReviewId: "review-a",
-			reviewCommentsVisible: false,
+			takesComments: false,
 			contentMode: "full" as const,
 			composerSession,
 			composerTarget: target,

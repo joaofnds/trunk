@@ -49,7 +49,7 @@ interface Props {
 	/** A shift-click stretched the selection to these lines, which the comment
 	 *  being written follows. */
 	onextendcomment?: (filePath: string, selectedIndices: Set<number>) => void;
-	reviewCommentsVisible?: boolean;
+	takesComments?: boolean;
 	reviewFilter?: ReviewFilter;
 	viewComments?: Thread[];
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
@@ -66,7 +66,7 @@ let {
 	isMerge,
 	oncommentfullfile,
 	onextendcomment,
-	reviewCommentsVisible = true,
+	takesComments = true,
 	reviewFilter = ALL_THREADS,
 	viewComments = [],
 	editorSessionForThread,
@@ -120,7 +120,7 @@ const kindTakesComments = $derived(
 		diffKind === "current_file",
 );
 // Whether a line can take a new comment here, as the Comment action can.
-const commentable = $derived(reviewCommentsVisible && kindTakesComments);
+const commentable = $derived(takesComments && kindTakesComments);
 
 // The marker cell's control: comment on that one line, selecting it as a click
 // on its grip would.
@@ -130,7 +130,7 @@ function commentOnLine(path: string, line: DiffLine, index: number) {
 }
 
 const affordanceVisible = $derived(
-	reviewCommentsVisible &&
+	takesComments &&
 		(diffKind === "commit" ||
 			diffKind === "unstaged" ||
 			diffKind === "current_file") &&

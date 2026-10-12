@@ -113,7 +113,7 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
 		oncommentlines: vi.fn(),
 		oncommenthunk: vi.fn(),
 		repoPath: "/repo",
-		reviewCommentsVisible: true,
+		takesComments: true,
 		viewComments: [],
 		...overrides,
 	};
