@@ -5,9 +5,38 @@ each caught by measurement during TRUNK-63/65/66, plus the Rust-gate patterns fr
 TRUNK-12. Review new code against them; when one seems worth violating, bring a
 measurement. `docs/application-harness.md` §Budget holds the frontend numbers and the cost
 model those rules fall out of; TRUNK-12's implementation notes hold the Rust-gate
-measurements in full. The last two sections are costs the app itself paid at runtime:
+measurements in full. The runtime sections cover startup, as well as
 a libgit2 diff walk, measured in a release build, and a style write on the commit list's
 root, measured in headless WebKit.
+
+## Module startup in the macOS WebView (2026-10-12)
+
+On an M5 Pro, the native WebView received the initial assets within about 3ms of
+the HTML, but often waited 80–160ms before evaluating its module entry. A tiny
+module reproduced the wait; reducing the bundle or inlining its entry did not
+remove it. The exact WebKit scheduling mechanism was not established.
+
+The macOS bundle uses one classic IIFE script after the mount element and one
+stylesheet. Eight serial launches of one release binary, alternating the original
+module page and this build with five saved tabs, recorded median first contentful
+paint at 283ms and 195ms from process launch. All eight traces reported hidden page
+visibility; a gain for a visible launch has not been verified. Active graph
+readiness stayed around 369ms in both. Fetching was disabled and review thread
+reads were stubbed in both pages, so these are bootstrap measurements, not a
+complete workload benchmark.
+
+The tradeoff is initial JavaScript growing from 359KB to 631KB and CSS from 63KB
+to 100KB, uncompressed. Views still mount on demand, and inactive repositories
+still open after the active view is ready. Tauri supplies `TAURI_ENV_PLATFORM` to
+its build hook; only `darwin` selects this format. Other targets and development
+keep the module build. The entry URL is captured while the classic script runs,
+because deferred view callbacks run after `document.currentScript` has cleared.
+
+**Review check:** compare native first paint and graph readiness when changing
+startup packaging, alongside byte counts. `scripts/production-startup.test.ts`
+builds and executes a small app to check mount order, stylesheet loading, a single
+startup, and opening a deferred view. Headless DOM execution cannot measure the
+native WebView's module scheduling.
 
 ## Barrel imports of large libraries
 

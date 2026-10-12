@@ -1,15 +1,59 @@
 /// <reference types="vitest/config" />
 
+import { env } from "node:process";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/postcss";
 import { svelteTesting } from "@testing-library/svelte/vite";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
+const macOSBundle = env.TAURI_ENV_PLATFORM === "darwin";
+const classicStartup: Plugin = {
+	name: "classic-startup",
+	apply: "build",
+	transformIndexHtml: {
+		order: "post",
+		handler(html, { chunk }) {
+			if (!chunk) return html;
+
+			// Vite puts even an IIFE entry in a module script in the head.
+			const entry = [
+				...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"[^>]*><\/script>/g),
+			].find((script) => script[1].endsWith(`/${chunk.fileName}`));
+			if (!entry) throw new Error("Missing production entry script");
+
+			return {
+				html: html.replace(entry[0], ""),
+				tags: [{ tag: "script", attrs: { src: entry[1] }, injectTo: "body" }],
+			};
+		},
+	},
+};
+
 export default defineConfig({
-	plugins: [svelte(), svelteTesting()],
+	plugins: [svelte(), svelteTesting(), macOSBundle && classicStartup],
+	build: macOSBundle
+		? {
+				cssCodeSplit: false,
+				modulePreload: false,
+				rolldownOptions: {
+					output: {
+						format: "iife",
+						codeSplitting: false,
+						// Deferred view callbacks run after document.currentScript clears.
+						intro: "const __trunkEntryUrl = document.currentScript.src;",
+					},
+					transform: {
+						define: {
+							"import.meta.resolve": "undefined",
+							"import.meta.url": "__trunkEntryUrl",
+						},
+					},
+				},
+			}
+		: undefined,
 	css: {
 		postcss: {
 			// Scan only the frontend tree for class candidates — the repo root
