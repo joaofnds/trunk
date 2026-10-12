@@ -26,7 +26,6 @@ import type {
 	FileDiff,
 	Thread,
 } from "../../lib/types.js";
-import Button from "../../lib/ui/Button.svelte";
 import GutterGrip from "../../lib/ui/GutterGrip.svelte";
 import Row from "../../lib/ui/Row.svelte";
 import {
@@ -36,6 +35,7 @@ import {
 } from "../../lib/virtualized-diff.svelte.js";
 import ThreadCard from "../ThreadCard.svelte";
 import ExactVirtualList from "./ExactVirtualList.svelte";
+import HunkActions from "./HunkActions.svelte";
 import ThreadMarker from "./ThreadMarker.svelte";
 
 interface Props {
@@ -135,8 +135,6 @@ const FLASH_MS = 600;
 // under, so a hunk index means the same hunk on both sides and ignoring
 // whitespace no longer has to block the gesture (TRUNK-73). Only an
 // in-flight operation holds the buttons now.
-const stagingDisabled = $derived(hunkOperationInFlight);
-const stagingDisabledTitle: string | undefined = undefined;
 
 let list = $state<
 	(DiffListHandle & { scrollToIndex: (index: number) => void }) | null
@@ -406,117 +404,24 @@ function originClass(origin: string): string {
 			class="split-hunk-header pan-pinned box-border{flashedHunkKey === hunkKey ? ' hunk-highlight' : ''}"
 		>
 			<span class="split-hunk-header-text">{item.header}</span>
-			{#if diffKind === 'unstaged'}
-				{#if hasSelection}
-					<!-- Working-tree Comment affordance (260531-k4j): reuses the
-               commit-mode accent button class verbatim (no new color). New-side
-               scope + Old-side guard live in the host. Leads the action cluster
-               (260531-l02 UX: Comment left of staging). -->
-					{#if takesComments}
-						<Button
-							size="sm"
-							variant="accent"
-							onclick={() => oncommentlines(item.path, item.hunkIdx)}
-							>Comment ({selectedCount})</Button
-						>
-					{/if}
-					<Button
-						size="sm"
-						variant="danger"
-						disabled={stagingDisabled}
-						title={stagingDisabledTitle}
-						onclick={() => ondiscardlines(item.path, item.hunkIdx)}
-						>Discard Lines ({selectedCount})</Button
-					>
-					<Button
-						size="sm"
-						variant="success"
-						disabled={stagingDisabled}
-						title={stagingDisabledTitle}
-						onclick={() => onstagelines(item.path, item.hunkIdx)}
-						>Stage Lines ({selectedCount})</Button
-					>
-				{:else}
-					<!-- Whole-hunk Comment affordance (260531-l02): comment the hunk
-               without selecting lines. Reuses the accent button class verbatim
-               (no new color); host applies the New-side guard. -->
-					{#if takesComments}
-						<Button
-							size="sm"
-							variant="accent"
-							onclick={() => oncommenthunk(item.path, item.hunkIdx)}
-							>Comment</Button
-						>
-					{/if}
-					<Button
-						size="sm"
-						variant="danger"
-						disabled={stagingDisabled}
-						title={stagingDisabledTitle}
-						onclick={() => ondiscardhunk(item.path, item.hunkIdx)}
-						>Discard Hunk</Button
-					>
-					<Button
-						size="sm"
-						variant="success"
-						disabled={stagingDisabled}
-						title={stagingDisabledTitle}
-						onclick={() => onstagehunk(item.path, item.hunkIdx)}
-						>Stage Hunk</Button
-					>
-				{/if}
-			{:else if diffKind === 'staged'}
-				{#if hasSelection}
-					<!-- Staged Comment (260531-l02b): index-snapshot anchored, both sides
-               resolve (no Old-side guard). Leads the cluster. -->
-					{#if takesComments}
-						<Button
-							size="sm"
-							variant="accent"
-							onclick={() => oncommentlines(item.path, item.hunkIdx)}
-							>Comment ({selectedCount})</Button
-						>
-					{/if}
-					<Button
-						size="sm"
-						variant="warning"
-						disabled={stagingDisabled}
-						title={stagingDisabledTitle}
-						onclick={() => onunstagelines(item.path, item.hunkIdx)}
-						>Unstage Lines ({selectedCount})</Button
-					>
-				{:else}
-					{#if takesComments}
-						<Button
-							size="sm"
-							variant="accent"
-							onclick={() => oncommenthunk(item.path, item.hunkIdx)}
-							>Comment</Button
-						>
-					{/if}
-					<Button
-						size="sm"
-						variant="warning"
-						disabled={stagingDisabled}
-						title={stagingDisabledTitle}
-						onclick={() => onunstagehunk(item.path, item.hunkIdx)}
-						>Unstage Hunk</Button
-					>
-				{/if}
-			{:else if diffKind === 'commit'}
-				<!-- Commit-diff Comment (260531-l02): whole-hunk when nothing is
-             selected, line-scoped otherwise; both carry the isMerge guard. -->
-				{#if takesComments}
-					<Button
-						size="sm"
-						variant="accent"
-						disabled={isMerge}
-						title={isMerge ? "Diff comments aren't available on merge commits" : ""}
-						onclick={() => hasSelection ? oncommentlines(item.path, item.hunkIdx) : oncommenthunk(item.path, item.hunkIdx)}
-						>{hasSelection ? `Comment (${selectedCount})` : 'Comment'}</Button
-					>
-				{/if}
-			{/if}
+			<HunkActions
+				path={item.path}
+				hunkIdx={item.hunkIdx}
+				{diffKind}
+				{hasSelection}
+				{selectedCount}
+				{takesComments}
+				{isMerge}
+				{hunkOperationInFlight}
+				{onstagehunk}
+				{onunstagehunk}
+				{ondiscardhunk}
+				{onstagelines}
+				{onunstagelines}
+				{ondiscardlines}
+				{oncommentlines}
+				{oncommenthunk}
+			/>
 		</div>
 	{:else if item.kind === "comment"}
 		<div class="split-comment-row pan-pinned">
