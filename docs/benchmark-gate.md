@@ -35,7 +35,7 @@ and divisor changed. Read-only worktree benchmarks retain their `norm/worktree-v
 visibility toggle measures CPU and allocation work after the repository capture already
 exists, so dividing it by the Git-object calibration adds that calibration's independent
 runner variance instead of removing noise. Both measurements remain in the raw artifact;
-either needs an independent matching calibration before it can join the hard gate.
+Each needs an independent matching calibration before it can join the hard gate.
 
 Attempt 1 of run 34773521544 exposed the mismatch against run 34729512090. The Git
 calibration moved to 0.657x of the baseline while cached toggles moved to 0.935x raw at 1k
@@ -59,7 +59,7 @@ on every run.
 ## Reading a failure
 
 The alert names a benchmark, a previous value and a current one, both normalized. A ratio
-at or above 1.30 fails the build.
+above 1.30 fails the build.
 
 Before looking for a regression, check the artifact: if the raw nanoseconds moved but the
 normalized value did not, the runner was slow and the gate is doing its job. If the
@@ -80,6 +80,11 @@ The unique key replaced a static key that produced an exact hit. The cache actio
 an exact hit, so the baseline sat frozen from 2026-08-19 to 2026-08-28 while every run
 compared against it. A week without a push to `main` can evict that whole cache; the next run
 then starts history for every series again.
+
+The benchmark action compares against the newest suite in the restored history whose
+commit SHA differs from the current one, matching results by benchmark name. A same-SHA
+rerun skips that commit's earlier results. After a calibration generation changes, verify
+its next comparison on a later commit that restores the first successful run's history.
 
 Each calibration's `-vN` suffix is its compatibility generation. When its workload or a
 dependency it calls changes, bump that suffix in the Rust benchmark. The class table matches
