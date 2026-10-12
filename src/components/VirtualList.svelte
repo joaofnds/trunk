@@ -35,15 +35,18 @@ import {
 } from "./virtual-list/utils/virtualListDebug.js";
 
 const rafSchedule = createRafScheduler();
-// The frames the first measurement waits on, cancelled with the list so they
-// never read state it tore down.
-const mountFrames = new Set<number>();
-function mountFrame(run: () => void) {
+// The frames the list requests outside rafSchedule, cancelled with the list so
+// they never read state it tore down. A request that arrives after teardown, as
+// the first measurement's can once its tick resolves, is dropped.
+const pendingFrames = new Set<number>();
+let tornDown = false;
+function requestFrame(run: () => void) {
+	if (tornDown) return;
 	const frame = requestAnimationFrame(() => {
-		mountFrames.delete(frame);
+		pendingFrames.delete(frame);
 		run();
 	});
-	mountFrames.add(frame);
+	pendingFrames.add(frame);
 }
 const mode = "topToBottom" as const;
 
@@ -569,8 +572,8 @@ onMount(() => {
 	if (BROWSER) {
 		updateHeightAndScroll();
 		tick().then(() =>
-			mountFrame(() =>
-				mountFrame(() => {
+			requestFrame(() =>
+				requestFrame(() => {
 					updateHeight();
 				}),
 			),
@@ -590,9 +593,10 @@ onMount(() => {
 		}
 
 		return () => {
+			tornDown = true;
 			rafSchedule.cancel();
-			for (const frame of mountFrames) cancelAnimationFrame(frame);
-			mountFrames.clear();
+			for (const frame of pendingFrames) cancelAnimationFrame(frame);
+			pendingFrames.clear();
 			if (resizeObserver) {
 				resizeObserver.disconnect();
 			}
@@ -687,7 +691,7 @@ export const scroll = async (
 		behavior: smoothScroll ? "smooth" : "auto",
 	});
 
-	requestAnimationFrame(() => {
+	requestFrame(() => {
 		heightManager.scrollTop = scrollTarget;
 	});
 

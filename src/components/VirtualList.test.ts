@@ -139,6 +139,7 @@ describe("VirtualList torn down between a scroll and the next frame", () => {
 	});
 
 	it("leaves no scroll frame pending once the list is gone", async () => {
+		const pending = fakeFrames();
 		const { container, unmount } = render(VirtualList, {
 			props: {
 				items: ["a", "b", "c"],
@@ -146,7 +147,7 @@ describe("VirtualList torn down between a scroll and the next frame", () => {
 			},
 		});
 		await tick();
-		const pending = fakeFrames();
+		runFrames(pending);
 		await fireEvent.scroll(
 			container.querySelector(".virtual-list-viewport") as Element,
 		);
@@ -172,6 +173,55 @@ describe("VirtualList torn down between a scroll and the next frame", () => {
 
 		expect(pending.size).toBe(0);
 	});
+
+	it("requests no measuring frame when torn down before its first tick", async () => {
+		const pending = fakeFrames();
+		const { unmount } = render(VirtualList, {
+			props: {
+				items: ["a", "b", "c"],
+				renderItem: (() => {}) as unknown as Snippet,
+			},
+		});
+
+		unmount();
+		await tick();
+		await tick();
+
+		expect(pending.size).toBe(0);
+	});
+
+	it("leaves no frame of a programmatic scroll pending once the list is gone", async () => {
+		const pending = fakeFrames();
+		const { component, unmount } = render(VirtualList, {
+			props: {
+				items: Array.from({ length: 500 }, (_, i) => `item ${i}`),
+				renderItem: (() => {}) as unknown as Snippet,
+			},
+		});
+		await tick();
+		runFrames(pending);
+		// jsdom has no scrollTo, and the scroll's own frame is what this follows.
+		Element.prototype.scrollTo = () => {};
+		await component.scroll({ index: 400, smoothScroll: false });
+		delete (Element.prototype as Partial<Element>).scrollTo;
+		expect(pending.size).toBeGreaterThan(0);
+
+		unmount();
+
+		expect(pending.size).toBe(0);
+	});
+
+	/** Runs every pending frame, and the frames those request, until none is left. */
+	function runFrames(pending: Map<number, FrameRequestCallback>) {
+		while (pending.size > 0) {
+			const [id, frame] = pending.entries().next().value as [
+				number,
+				FrameRequestCallback,
+			];
+			pending.delete(id);
+			frame(0);
+		}
+	}
 
 	/** A frame clock that only holds what was requested and not cancelled. */
 	function fakeFrames(): Map<number, FrameRequestCallback> {
