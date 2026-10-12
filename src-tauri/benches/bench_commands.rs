@@ -188,18 +188,17 @@ fn bench_get_status(c: &mut Criterion) {
 
 fn bench_stage_hunk(c: &mut Criterion) {
     c.bench_function("stage_hunk_inner", |b| {
-        b.iter_batched(
+        b.iter_batched_ref(
             make_repo_for_stage_hunk,
-            |(_dir, path, state_map)| {
+            |(_, path, state_map)| {
                 trunk_lib::commands::staging::stage_hunk_inner(
-                    &path,
+                    path,
                     "README.md",
                     0,
-                    &state_map,
+                    state_map,
                     &trunk_lib::types::DiffRequestOptions::default(),
                 )
                 .unwrap();
-                // _dir dropped here, cleaning up temp directory
             },
             BatchSize::SmallInput,
         );
@@ -688,6 +687,34 @@ fn measure_worktree_calibration(path: &std::path::Path) -> (usize, usize) {
     (statuses.len(), diff.deltas().len())
 }
 
+fn bench_calibration_staging(c: &mut Criterion) {
+    let fixture = make_worktree_calibration_repo();
+
+    measure_staging_calibration(&fixture.path);
+    let repo = git2::Repository::open(&fixture.path).unwrap();
+    let index = repo.index().unwrap();
+    let entry = index
+        .get_path(std::path::Path::new("calibration.txt"), 0)
+        .unwrap();
+
+    assert_eq!(repo.find_blob(entry.id).unwrap().content(), b"after\n");
+
+    c.bench_function("calibration/staging-v1", |b| {
+        b.iter_batched_ref(
+            make_worktree_calibration_repo,
+            |fixture| measure_staging_calibration(&fixture.path),
+            BatchSize::SmallInput,
+        );
+    });
+}
+
+fn measure_staging_calibration(path: &std::path::Path) {
+    let repo = git2::Repository::open(path).unwrap();
+    let diff = repo.diff_index_to_workdir(None, None).unwrap();
+
+    repo.apply(&diff, git2::ApplyLocation::Index, None).unwrap();
+}
+
 fn make_worktree_calibration_repo() -> BenchRepo {
     let (dir, repo) = support::init_repo_on_main();
     let when = git2::Time::new(1_700_000_000, 0);
@@ -750,6 +777,7 @@ criterion_group!(
     bench_calibration_syntect,
     bench_calibration_git2,
     bench_calibration_worktree,
+    bench_calibration_staging,
     bench_draft_write,
     bench_list_refs,
     bench_diff_unstaged,

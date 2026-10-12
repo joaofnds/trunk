@@ -16,6 +16,7 @@ const CALIBRATIONS = [
 	bench("calibration/syntect-v1", "2,000,000"),
 	bench("calibration/git2-v1", "500,000"),
 	bench("calibration/worktree-v1", "250,000"),
+	bench("calibration/staging-v1", "500,000"),
 ].join("\n");
 
 describe("normalize", () => {
@@ -39,10 +40,36 @@ describe("normalize", () => {
 		);
 	});
 
+	it("normalizes staging against index writes instead of worktree reads", () => {
+		const input = [CALIBRATIONS, bench("stage_hunk_inner", "1,000,000")].join(
+			"\n",
+		);
+
+		const output = normalize(input);
+
+		expect(output).toBe(
+			"test norm/staging-v1/stage_hunk_inner ... bench: 2000000 ns/iter (+/- 2)",
+		);
+	});
+
+	it("starts a new staging series without resetting worktree history", () => {
+		const input = [
+			CALIBRATIONS.replace("calibration/staging-v1", "calibration/staging-v2"),
+			bench("stage_hunk_inner", "1,000,000"),
+			bench("get_status_inner", "250,000"),
+		].join("\n");
+
+		const output = normalize(input);
+
+		expect(output.split("\n")).toEqual([
+			"test norm/staging-v2/stage_hunk_inner ... bench: 2000000 ns/iter (+/- 2)",
+			"test norm/worktree-v1/get_status_inner ... bench: 1000000 ns/iter (+/- 4)",
+		]);
+	});
+
 	it.each([
 		"diff_unstaged_inner",
 		"get_status_inner",
-		"stage_hunk_inner",
 		"ipc_round_trip/diff_unstaged",
 	])("puts $name in the fresh working-tree series", (name) => {
 		const input = `${CALIBRATIONS}\n${bench(name, "500,000")}`;
@@ -134,7 +161,7 @@ describe("normalize", () => {
 			const input = [
 				bench("calibration/syntect-v1", "2,000,000"),
 				bench("calibration/git2-v1", "500,000"),
-				bench("stage_hunk_inner", "500,000"),
+				bench("get_status_inner", "500,000"),
 			].join("\n");
 
 			expectNormalizeError(
@@ -142,17 +169,34 @@ describe("normalize", () => {
 				"calibration/worktree-* is absent from the benchmark output",
 			);
 		});
-	});
 
-	describe("when calibration generations overlap", () => {
-		it("rejects two generations for one workload", () => {
-			const input = `${CALIBRATIONS}\n${bench("calibration/worktree-v2", "250,000")}`;
+		it("throws NormalizeError naming the staging calibration", () => {
+			const input = [
+				bench("calibration/syntect-v1", "2,000,000"),
+				bench("calibration/worktree-v1", "250,000"),
+				bench("calibration/git2-v1", "500,000"),
+				bench("stage_hunk_inner", "1,000,000"),
+			].join("\n");
 
 			expectNormalizeError(
 				input,
-				"calibration/worktree-* appears more than once in the benchmark output",
+				"calibration/staging-* is absent from the benchmark output",
 			);
 		});
+	});
+
+	describe("when calibration generations overlap", () => {
+		it.each(["worktree", "staging"])(
+			"rejects two generations for the %s workload",
+			(workload) => {
+				const input = `${CALIBRATIONS}\n${bench(`calibration/${workload}-v2`, "250,000")}`;
+
+				expectNormalizeError(
+					input,
+					`calibration/${workload}-* appears more than once in the benchmark output`,
+				);
+			},
+		);
 	});
 
 	describe("when a benchmark belongs to no class", () => {

@@ -22,9 +22,13 @@ const CLASSES: readonly WorkloadClass[] = [
 		names: [
 			"diff_unstaged_inner",
 			"get_status_inner",
-			"stage_hunk_inner",
 			"ipc_round_trip/diff_unstaged",
 		],
+		prefixes: [],
+	},
+	{
+		calibrationPrefix: "calibration/staging-",
+		names: ["stage_hunk_inner"],
 		prefixes: [],
 	},
 	{

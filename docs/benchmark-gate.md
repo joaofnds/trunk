@@ -1,7 +1,7 @@
 # The CI benchmark gate
 
 `.github/workflows/benchmarks.yml` runs the criterion suite on every push to `main` and
-fails the build when a gated benchmark gets slower than the previous run. This page says
+fails the build when a gated benchmark gets slower than the restored cached baseline. This page says
 what it compares and why, because the obvious reading of the numbers is wrong.
 
 ## What it compares
@@ -11,13 +11,24 @@ Not nanoseconds. GitHub's hosted runners vary enough that the same code measures
 gate compares each benchmark **divided by a calibration benchmark of the same workload
 class**, so the runner's speed cancels and the code's cost is what is left.
 
-Three calibrations live in `src-tauri/benches/bench_commands.rs`:
+Four calibrations live in `src-tauri/benches/bench_commands.rs`:
 
 | Calibration | Measures | Divides |
 |---|---|---|
 | `calibration/syntect-v1` | A fixed syntect highlight of an embedded TypeScript constant | `diff_ts_full_pipeline`, `enrich_ts_new_perfile`, every `diff_ts_large_file/*` |
 | `calibration/git2-v1` | A fixed revwalk and blob read over a repository the benchmark builds itself | `list_refs_inner`, every `snapshot/*` and `toggle_visibility/walk/*`, the graph and refs `ipc_round_trip/*` benchmarks, and `startup/*` |
-| `calibration/worktree-v1` | Fixed status and diff reads over a modified working tree through git2 directly | `diff_unstaged_inner`, `get_status_inner`, `stage_hunk_inner`, and `ipc_round_trip/diff_unstaged` |
+| `calibration/worktree-v1` | Fixed status and diff reads over a modified working tree through git2 directly | `diff_unstaged_inner`, `get_status_inner`, and `ipc_round_trip/diff_unstaged` |
+| `calibration/staging-v1` | A fixed diff applied to a fresh repository's index through git2 directly | `stage_hunk_inner` |
+
+Staging writes the index, whose cost can move independently of worktree reads. Both the
+staging benchmark and its calibration borrow each fresh fixture through Criterion's
+`iter_batched_ref`, so repository creation and deletion stay outside the timer. Consuming
+the fixture inside the timed closure also measures deleting its `.git` directory. That
+cleanup is unrelated to a staging gesture and was roughly half the measured cost in a
+local decomposition of the previous benchmark.
+
+The staging class starts its own `norm/staging-v1/` history because the measured workload
+and divisor changed. Read-only worktree benchmarks retain their `norm/worktree-v1/` history.
 
 `reviewdb_draft_write` and `toggle_visibility/cached/*` are excluded.
 `reviewdb_draft_write` measures an fsync and fits none of the calibrations. A cached
@@ -62,9 +73,10 @@ correctness gate.
 ## History and calibration generations
 
 The baseline lives in a GitHub Actions cache entry keyed
-`Linux-benchmark-<run_id>-<run_attempt>`, restored by the `Linux-benchmark-` prefix. Every
-run misses its own key and therefore saves a fresh entry, which is the bug this design
-replaced: a static key produced an exact hit, and `actions/cache` skips its post-job save on
+`Linux-benchmark-<run_id>-<run_attempt>`, restored by the `Linux-benchmark-` prefix. Each
+run misses its own key. Successful jobs save updated history under that key; failed jobs
+leave the cached baseline unchanged because `actions/cache` saves only on success.
+The unique key replaced a static key that produced an exact hit. The cache action skips its post-job save on
 an exact hit, so the baseline sat frozen from 2026-08-19 to 2026-08-28 while every run
 compared against it. A week without a push to `main` can evict that whole cache; the next run
 then starts history for every series again.
