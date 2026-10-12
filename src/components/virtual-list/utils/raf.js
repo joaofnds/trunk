@@ -26,19 +26,18 @@
  * </script>
  * <div on:scroll={onScroll}> ... </div>
  *
- * @returns {(fn: () => void) => void} A scheduler function. Call with a callback to schedule it for the next animation frame.
+ * @returns {((fn: () => void) => void) & { cancel: () => void }} A scheduler function. Call with a callback to schedule it for the next animation frame; `cancel` drops the pending frame.
  *
  * @see https://developer.mozilla.org/en-US/docs/Web/API/window/requestAnimationFrame
  */
 export const createRafScheduler = () => {
-  let scheduled = false;
+  let frame = null;
   let callback = null;
-  return (_fn) => {
+  const schedule = (_fn) => {
     callback = _fn;
-    if (!scheduled) {
-      scheduled = true;
-      requestAnimationFrame(() => {
-        scheduled = false;
+    if (frame === null) {
+      frame = requestAnimationFrame(() => {
+        frame = null;
         if (callback) {
           callback();
           callback = null;
@@ -46,4 +45,10 @@ export const createRafScheduler = () => {
       });
     }
   };
+  schedule.cancel = () => {
+    if (frame !== null) cancelAnimationFrame(frame);
+    frame = null;
+    callback = null;
+  };
+  return schedule;
 };

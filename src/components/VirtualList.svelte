@@ -35,6 +35,16 @@ import {
 } from "./virtual-list/utils/virtualListDebug.js";
 
 const rafSchedule = createRafScheduler();
+// The frames the first measurement waits on, cancelled with the list so they
+// never read state it tore down.
+const mountFrames = new Set<number>();
+function mountFrame(run: () => void) {
+	const frame = requestAnimationFrame(() => {
+		mountFrames.delete(frame);
+		run();
+	});
+	mountFrames.add(frame);
+}
 const mode = "topToBottom" as const;
 
 interface Props {
@@ -559,8 +569,8 @@ onMount(() => {
 	if (BROWSER) {
 		updateHeightAndScroll();
 		tick().then(() =>
-			requestAnimationFrame(() =>
-				requestAnimationFrame(() => {
+			mountFrame(() =>
+				mountFrame(() => {
 					updateHeight();
 				}),
 			),
@@ -580,6 +590,9 @@ onMount(() => {
 		}
 
 		return () => {
+			rafSchedule.cancel();
+			for (const frame of mountFrames) cancelAnimationFrame(frame);
+			mountFrames.clear();
 			if (resizeObserver) {
 				resizeObserver.disconnect();
 			}

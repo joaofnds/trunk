@@ -137,6 +137,56 @@ describe("VirtualList torn down between a scroll and the next frame", () => {
 		expect(frames).not.toHaveLength(0);
 		expect(runFrames).not.toThrow();
 	});
+
+	it("leaves no scroll frame pending once the list is gone", async () => {
+		const { container, unmount } = render(VirtualList, {
+			props: {
+				items: ["a", "b", "c"],
+				renderItem: (() => {}) as unknown as Snippet,
+			},
+		});
+		await tick();
+		const pending = fakeFrames();
+		await fireEvent.scroll(
+			container.querySelector(".virtual-list-viewport") as Element,
+		);
+		expect(pending.size).toBeGreaterThan(0);
+
+		unmount();
+
+		expect(pending.size).toBe(0);
+	});
+
+	it("leaves none of its first measuring frames pending once the list is gone", async () => {
+		const pending = fakeFrames();
+		const { unmount } = render(VirtualList, {
+			props: {
+				items: ["a", "b", "c"],
+				renderItem: (() => {}) as unknown as Snippet,
+			},
+		});
+		await tick();
+		expect(pending.size).toBeGreaterThan(0);
+
+		unmount();
+
+		expect(pending.size).toBe(0);
+	});
+
+	/** A frame clock that only holds what was requested and not cancelled. */
+	function fakeFrames(): Map<number, FrameRequestCallback> {
+		const pending = new Map<number, FrameRequestCallback>();
+		let nextId = 1;
+		vi.spyOn(window, "requestAnimationFrame").mockImplementation((frame) => {
+			const id = nextId++;
+			pending.set(id, frame);
+			return id;
+		});
+		vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+			pending.delete(id);
+		});
+		return pending;
+	}
 });
 
 describe("VirtualList given the width its content needs", () => {
