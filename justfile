@@ -181,12 +181,14 @@ biome:
 # inside Svelte markup into code Svelte cannot parse, while the format and lint
 # passes alone leave them intact. The import-sorting assist runs only through
 # `check`, so it gets the script files alone, and a Svelte file's imports are
-# sorted by hand.
+# sorted by hand. It runs first, because merging two imports can leave a line
+# only the format pass wraps. The perl filter drops tracked files deleted from
+# the worktree, which Biome would report as an internal error.
 # Apply Biome's formatting, safe lint fixes and import order in place
 fix:
+    git ls-files --cached --others --exclude-standard -z '*.ts' '*.js' '*.mjs' | perl -0ne 'chomp; print "$_\0" if -e' | xargs -0 bunx biome check --write --formatter-enabled=false --linter-enabled=false
     bunx biome format --write .
     bunx biome lint --write .
-    git ls-files --cached --others --exclude-standard -z '*.ts' '*.js' '*.mjs' | xargs -0 bunx biome check --write --formatter-enabled=false --linter-enabled=false
 
 # Svelte type checking
 svelte-check:
