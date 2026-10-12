@@ -204,10 +204,10 @@ export function buildInlineRows(
 					line.new_lineno ?? 0,
 				);
 
-				const threads = threadsAcross(commentsForLine, opts.comments, line);
-
-				const visibleThreads = threads.filter((thread) =>
-					visibleComments.includes(thread),
+				const visibleThreads = threadsAcross(
+					commentsForLine,
+					visibleComments,
+					line,
 				);
 
 				rows.push({
@@ -317,13 +317,15 @@ export function buildSplitRows(
 				widestLeft = Math.max(widestLeft, leftColumns);
 				widestRight = Math.max(widestRight, rightColumns);
 
-				const visibleOn = (threads: Thread[]): Thread[] =>
-					threads.filter((thread) => visibleComments.includes(thread));
-				const rightThreads = visibleOn(
-					commentsForLine(opts.comments, "New", pair.right?.line.new_lineno),
+				const rightThreads = commentsForLine(
+					visibleComments,
+					"New",
+					pair.right?.line.new_lineno,
 				);
-				const leftThreads = visibleOn(
-					commentsForLine(opts.comments, "Old", pair.left?.line.old_lineno),
+				const leftThreads = commentsForLine(
+					visibleComments,
+					"Old",
+					pair.left?.line.old_lineno,
 				);
 				const visibleThreads = [...rightThreads, ...leftThreads];
 
