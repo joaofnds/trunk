@@ -279,11 +279,14 @@ describe("SplitView panning", () => {
 		const CHAR_WIDTH = 9;
 		// "12" is the largest line number in the fixture, plus one.
 		const GUTTER_CHARS = 3;
+		// The thread-marker column, reserved whether or not a thread shows.
+		const MARKER_CHARS = 3;
 		// "context before", the widest content on either side.
 		const WIDEST = 14;
 		// One half's padding, accent border, gutter gap and divider.
 		const CHROME = 28;
-		const expected = (GUTTER_CHARS + WIDEST) * CHAR_WIDTH + CHROME;
+		const expected =
+			(GUTTER_CHARS + MARKER_CHARS + WIDEST) * CHAR_WIDTH + CHROME;
 
 		const { container } = render(SplitView, { props: defaultProps() });
 
@@ -513,10 +516,12 @@ describe("SplitView thread marker", () => {
 		expect(markerCellOn("removed one")).not.toBeNull();
 	});
 
-	it("reserves no marker column when no thread hangs in view", () => {
-		const { container } = render(SplitView, { props: defaultProps() });
+	it("reserves the marker column on a merge, where a whole-file thread can show", () => {
+		const { container } = render(SplitView, {
+			props: defaultProps({ isMerge: true }),
+		});
 
-		expect(container.querySelector(".thread-marker-cell")).toBeNull();
+		expect(container.querySelector(".thread-marker-cell")).not.toBeNull();
 	});
 });
 

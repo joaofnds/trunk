@@ -180,24 +180,9 @@ describe("createVirtualizedDiff", () => {
 		const { vd: inline } = mount({ layout: "inline" });
 		const { vd: split } = mount({ layout: "split" });
 
-		// Inline: the full 900px pane less 35px chrome and two 3-char gutters at
-		// 9px. Split: half the pane less 28px chrome and one gutter.
-		expect(inline.availableColumns).toBe(90);
-		expect(split.availableColumns).toBe(43);
-	});
-
-	it("takes a thread-marker column out of both layouts' column budgets", () => {
-		const { vd: inline } = mount({
-			layout: "inline",
-			comments: [anchoredThread()],
-		});
-		const { vd: split } = mount({
-			layout: "split",
-			comments: [anchoredThread()],
-		});
-
-		// The budgets above, less three marker columns at 9px: once inline,
-		// once per split side.
+		// Inline: the full 900px pane less 35px chrome, two 3-char gutters and
+		// the 3-char marker column at 9px. Split: half the pane less 28px chrome,
+		// one gutter and that side's marker column.
 		expect(inline.availableColumns).toBe(87);
 		expect(split.availableColumns).toBe(40);
 	});
@@ -279,9 +264,9 @@ describe("createVirtualizedDiff", () => {
 		// Milestone 1's other defect: a width in ch on a div outside the rows
 		// resolves against the app's proportional font, not the diff row's.
 		const { vd: inline } = mount();
-		// Three gutter columns twice plus 14 content columns at 9px, plus 35px
-		// of padding, border and gutter gaps.
-		expect(inline.contentWidth).toBe("215px");
+		// Three gutter columns twice, three marker columns and 14 content columns
+		// at 9px, plus 35px of padding, border and gutter gaps.
+		expect(inline.contentWidth).toBe("242px");
 		expect(inline.contentWidth).not.toContain("ch");
 
 		const { vd: split } = mount({ layout: "split" });
@@ -333,11 +318,12 @@ describe("createVirtualizedDiff", () => {
 		const { vd } = mount({ layout: "split", fileDiffs: [asymmetric] });
 		const split = vd as SplitVirtualizedDiff;
 
-		// Each ceiling is that side's gutter plus its widest content at 9px,
-		// plus the half's 28px chrome — the full width the pan must reach.
-		expect(split.maxLeftPx).toBe((2 + 27) * 9 + 28);
-		expect(split.maxRightPx).toBe((2 + 5) * 9 + 28);
-		expect(split.contentWidth).toBe(`calc(${(2 + 27) * 9 + 28}px + 50cqi)`);
+		// Each ceiling is that side's gutter and marker column plus its widest
+		// content at 9px, plus the half's 28px chrome — the full width the pan
+		// must reach.
+		expect(split.maxLeftPx).toBe((2 + 3 + 27) * 9 + 28);
+		expect(split.maxRightPx).toBe((2 + 3 + 5) * 9 + 28);
+		expect(split.contentWidth).toBe(`calc(${(2 + 3 + 27) * 9 + 28}px + 50cqi)`);
 	});
 
 	it("re-anchors the list after a resize only when wrap is active", async () => {

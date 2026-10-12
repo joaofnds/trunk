@@ -436,7 +436,7 @@ describe("FullFileView", () => {
 					new_lines: 10,
 					lines: Array.from({ length: 10 }, (_, index) => ({
 						origin: "Context" as const,
-						content: "x".repeat(180),
+						content: "x".repeat(174),
 						old_lineno: index + 1,
 						new_lineno: index + 1,
 						spans: [],
@@ -445,8 +445,6 @@ describe("FullFileView", () => {
 			],
 		};
 
-		// A staged view takes no comments, so no marker column narrows the code
-		// and the column arithmetic below stays round.
 		const { container } = render(FullFileView, {
 			props: defaultProps({
 				fileDiffs: [wide],
@@ -461,8 +459,8 @@ describe("FullFileView", () => {
 			".exact-virtual-content",
 		) as HTMLElement;
 
-		// 9px per character over a 900px pane leaves 90 columns, so 180 columns is
-		// two 18px lines; row 5 therefore starts at 180px.
+		// 9px per character over a 900px pane leaves 87 columns beside the marker
+		// column, so 174 columns is two 18px lines; row 5 therefore starts at 180px.
 		expect(content.getAttribute("style")).toContain("height: 360px");
 		viewport.scrollTop = 180;
 		viewport.dispatchEvent(new Event("scroll"));
@@ -475,7 +473,7 @@ describe("FullFileView", () => {
 		await tick();
 		await tick();
 
-		// 40 columns now, so 180 columns is five lines and row 5 starts at 450px.
+		// 37 columns now, so 174 columns is five lines and row 5 starts at 450px.
 		expect(content.getAttribute("style")).toContain("height: 900px");
 		expect(viewport.scrollTop).toBe(450);
 
@@ -821,20 +819,41 @@ describe("FullFileView thread marker", () => {
 		expect(markerCellOn("added two")).not.toBeNull();
 	});
 
-	it("reserves no marker column where no thread hangs and no line takes a comment", () => {
-		const { container } = render(FullFileView, {
-			props: defaultProps({ diffKind: "staged" as const }),
+	it.each(["commit", "unstaged", "staged", "current_file"] as const)(
+		"reserves the column on every line of a %s diff",
+		(diffKind) => {
+			const { container } = render(FullFileView, {
+				props: defaultProps({ diffKind }),
+			});
+
+			expect(container.querySelectorAll(".thread-marker-cell")).toHaveLength(
+				container.querySelectorAll(".diff-line:not(.metrics-probe)").length,
+			);
+		},
+	);
+
+	it("keeps the column on a staged thread while threads are hidden", () => {
+		const onAddedLine = aThread({
+			id: "t1",
+			anchor: {
+				commit_oid: "abc123",
+				file_path: "src/main.ts",
+				source: "FullFile",
+				side: "New",
+				start_line: 11,
+				end_line: 11,
+			},
 		});
 
-		expect(container.querySelector(".thread-marker-cell")).toBeNull();
-	});
+		render(FullFileView, {
+			props: defaultProps({
+				diffKind: "staged" as const,
+				viewComments: [onAddedLine],
+				reviewFilter: "none",
+			}),
+		});
 
-	it("reserves the column on every line where lines take comments", () => {
-		const { container } = render(FullFileView, { props: defaultProps() });
-
-		expect(container.querySelectorAll(".thread-marker-cell")).toHaveLength(
-			container.querySelectorAll(".diff-line:not(.metrics-probe)").length,
-		);
+		expect(markerCellOn("added one")).not.toBeNull();
 	});
 });
 

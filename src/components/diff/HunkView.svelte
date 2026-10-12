@@ -127,9 +127,6 @@ let {
 const commentable = $derived(
 	oncommentline !== undefined && reviewCommentsVisible && !isMerge,
 );
-// Where a line could take one with threads shown, so the gutter keeps its width
-// across the threads toggle.
-const markerColumn = $derived(oncommentline !== undefined && !isMerge);
 
 const FLASH_MS = 600;
 
@@ -166,7 +163,6 @@ const model = $derived(
 			tabSize: TAB_SIZE,
 			invisibles: showInvisibles,
 			composer: composer?.place,
-			markerColumn,
 		});
 	}),
 );
@@ -288,16 +284,14 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 			data-line-path={item.path}
 			data-hunk-index={item.hunkIdx}
 			data-line-index={item.lineIdx}
-			>{#if model.markerChars > 0}
-				<ThreadMarker
-					marker={item.marker}
-					width={vd.markerW}
-					oncomment={commentable && isSelectable && !(diffKind === 'unstaged' && line.origin === 'Delete')
-						? () => oncommentline?.(item.path, item.hunkIdx, item.lineIdx)
-						: undefined}
-					commentLabel={commentLabel(line)}
-				/>
-			{/if}{#if isSelectable}
+			><ThreadMarker
+				marker={item.marker}
+				width={vd.markerW}
+				oncomment={commentable && isSelectable && !(diffKind === 'unstaged' && line.origin === 'Delete')
+					? () => oncommentline?.(item.path, item.hunkIdx, item.lineIdx)
+					: undefined}
+				commentLabel={commentLabel(line)}
+			/>{#if isSelectable}
 				<GutterGrip
 					aria-label={gripLabel(line)}
 					onmousedown={(e) => onlinemousedown(item.path, item.hunkIdx, item.lineIdx, line.origin, hunkLines, e)}

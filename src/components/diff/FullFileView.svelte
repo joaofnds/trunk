@@ -101,7 +101,6 @@ const model = $derived(
 			tabSize: TAB_SIZE,
 			invisibles: showInvisibles,
 			composer: composer?.place,
-			markerColumn,
 		});
 	}),
 );
@@ -116,15 +115,13 @@ const vd = createVirtualizedDiff({
 
 // An allowlist, not a denylist: a diff kind the store cannot anchor a thread
 // against must not gain the affordance by being forgotten here.
-// Whether this kind takes comments with threads shown, so the gutter keeps its
-// width across the threads toggle.
-const markerColumn = $derived(
+const kindTakesComments = $derived(
 	diffKind === "commit" ||
 		diffKind === "unstaged" ||
 		diffKind === "current_file",
 );
 // Whether a line can take a new comment here, as the Comment action can.
-const commentable = $derived(reviewCommentsVisible && markerColumn);
+const commentable = $derived(reviewCommentsVisible && kindTakesComments);
 
 // The marker cell's control: comment on that one line, selecting it as a click
 // on its grip would.
@@ -278,16 +275,14 @@ function lineBackground(origin: string, isSelected: boolean): string {
 			data-line-path={item.path}
 			data-flat-index={item.flatIdx}
 			data-new-side={isSelectable ? "" : undefined}
-			>{#if model.markerChars > 0}
-				<ThreadMarker
-					marker={item.marker}
-					width={vd.markerW}
-					oncomment={commentable && isSelectable
-						? () => commentOnLine(item.path, line, item.flatIdx)
-						: undefined}
-					commentLabel={commentLabel(line)}
-				/>
-			{/if}{#if isSelectable}
+			><ThreadMarker
+				marker={item.marker}
+				width={vd.markerW}
+				oncomment={commentable && isSelectable
+					? () => commentOnLine(item.path, line, item.flatIdx)
+					: undefined}
+				commentLabel={commentLabel(line)}
+			/>{#if isSelectable}
 				<GutterGrip
 					aria-label={gripLabel(line)}
 					onmousedown={(e) => startDrag(item.path, line, item.flatIdx, e)}

@@ -343,10 +343,12 @@ describe("HunkView thread marker", () => {
 		expect(markerCellOn("context before")).not.toBeNull();
 	});
 
-	it("reserves no marker column when no thread hangs in view", () => {
-		const { container } = render(HunkView, { props: defaultProps() });
+	it("reserves the marker column on a merge, where a whole-file thread can show", () => {
+		const { container } = render(HunkView, {
+			props: defaultProps({ isMerge: true }),
+		});
 
-		expect(container.querySelector(".thread-marker-cell")).toBeNull();
+		expect(container.querySelector(".thread-marker-cell")).not.toBeNull();
 	});
 });
 

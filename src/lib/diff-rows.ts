@@ -99,7 +99,8 @@ export interface DiffRowModel {
 	hunkNav: HunkNavEntry[];
 	/** Digits of the largest line number, plus one. */
 	gutterChars: number;
-	/** Width of the thread-marker column, zero when no thread hangs in view. */
+	/** Width of the thread-marker column, reserved on every line whether or not
+	 *  a thread shows, so showing or hiding threads never moves the code. */
 	markerChars: number;
 	/** Widest content per column, in display columns. */
 	columns: number[];
@@ -117,10 +118,6 @@ export interface BuildOptions {
 	invisibles: boolean;
 	/** The open composer's place, or nothing when none is open in this view. */
 	composer?: ComposerPlace | null;
-	/** Whether this view takes comments at all, whatever the threads toggle
-	 *  says. The marker column is then reserved on every line, so showing or
-	 *  hiding threads never moves the code. */
-	markerColumn?: boolean;
 }
 
 /** Heights the fixed row shapes declare rather than discover. Each row's own
@@ -256,7 +253,7 @@ export function buildInlineRows(
 		rows,
 		hunkNav,
 		gutterChars: String(maxLineNumber).length + 1,
-		markerChars: markerCharsFor(rows, opts.markerColumn ?? false),
+		markerChars: MARKER_CHARS,
 		columns: [widest],
 	};
 }
@@ -394,7 +391,7 @@ export function buildSplitRows(
 		rows,
 		hunkNav,
 		gutterChars: String(maxLineNumber).length + 1,
-		markerChars: markerCharsFor(rows, opts.markerColumn ?? false),
+		markerChars: MARKER_CHARS,
 		columns: [widestLeft, widestRight],
 	};
 }
@@ -435,22 +432,6 @@ export function rowIndexForLine(
 
 /** Two cells wide plus one for the gap: room for a count of up to 99. */
 const MARKER_CHARS = 3;
-
-/** The marker column exists only while some thread is in view, so a file with
- *  none keeps its gutter as narrow as before. A thread can start in view and
- *  end past it, which leaves a marker and no comment row. */
-function markerCharsFor(rows: DiffRow[], markerColumn: boolean): number {
-	return markerColumn ||
-		rows.some(
-			(row) =>
-				row.kind === "comment" ||
-				(row.kind === "line" && row.marker !== null) ||
-				(row.kind === "pair" &&
-					(row.markerLeft !== null || row.markerRight !== null)),
-		)
-		? MARKER_CHARS
-		: 0;
-}
 
 function markerFor(threads: Thread[]): LineMarker | null {
 	const tone = mostUrgentTone(threads);

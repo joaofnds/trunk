@@ -230,35 +230,6 @@ describe("buildInlineRows", () => {
 		expect(markers).toEqual([null, { count: 1, tone: "open" }, null]);
 	});
 
-	it("reserves a marker column only when a thread hangs on a line", () => {
-		const bare = buildInlineRows([twoHunks], fullMode);
-		const commented = buildInlineRows([twoHunks], {
-			...fullMode,
-			comments: [thread("t1", "New", 2, 2)],
-		});
-
-		expect([bare.markerChars, commented.markerChars]).toEqual([0, 3]);
-	});
-
-	it("reserves a marker column for a thread that starts in view and ends past it", () => {
-		const model = buildInlineRows([twoHunks], {
-			...fullMode,
-			comments: [thread("t1", "New", 2, 5)],
-		});
-
-		expect(model.markerChars).toBe(3);
-	});
-
-	it("reserves no marker column when inline comments are hidden", () => {
-		const model = buildInlineRows([twoHunks], {
-			...fullMode,
-			reviewCommentsVisible: false,
-			comments: [thread("t1", "New", 2, 2)],
-		});
-
-		expect(model.markerChars).toBe(0);
-	});
-
 	it("emits a header row and a binary row, and no line rows, for a binary file", () => {
 		const binary = file("assets/logo.png", [], true);
 
@@ -586,16 +557,6 @@ describe("buildSplitRows", () => {
 			[null, { count: 1, tone: "open" }],
 			[{ count: 1, tone: "open" }, null],
 		]);
-	});
-
-	it("reserves a marker column only when a thread hangs on a pair", () => {
-		const bare = buildSplitRows([pairable], fullMode);
-		const commented = buildSplitRows([pairable], {
-			...fullMode,
-			comments: [thread("t1", "Old", 3, 3)],
-		});
-
-		expect([bare.markerChars, commented.markerChars]).toEqual([0, 3]);
 	});
 
 	it("reports the widest old-side and new-side content as two column entries", () => {
@@ -1266,20 +1227,20 @@ describe("the whole-file composer row", () => {
 	});
 });
 
-describe("the marker column where lines take comments", () => {
+describe("the marker column", () => {
 	it("is reserved with no thread in view, so the add control has room", () => {
-		const model = buildInlineRows([twoHunks], {
-			...fullMode,
-			markerColumn: true,
-		});
-
-		expect(model.markerChars).toBe(3);
+		expect(buildInlineRows([twoHunks], fullMode).markerChars).toBe(3);
 	});
 
 	it("is reserved in the split view too", () => {
-		const model = buildSplitRows([pairable], {
+		expect(buildSplitRows([pairable], fullMode).markerChars).toBe(3);
+	});
+
+	it("keeps its width while every thread is hidden", () => {
+		const model = buildInlineRows([twoHunks], {
 			...fullMode,
-			markerColumn: true,
+			reviewFilter: "none",
+			comments: [thread("t1", "New", 2, 2)],
 		});
 
 		expect(model.markerChars).toBe(3);

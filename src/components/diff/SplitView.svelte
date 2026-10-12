@@ -129,9 +129,6 @@ let {
 const commentable = $derived(
 	oncommentline !== undefined && reviewCommentsVisible && !isMerge,
 );
-// Where a line could take one with threads shown, so the gutter keeps its width
-// across the threads toggle.
-const markerColumn = $derived(oncommentline !== undefined && !isMerge);
 
 const FLASH_MS = 600;
 
@@ -168,7 +165,6 @@ const model = $derived(
 			tabSize: TAB_SIZE,
 			invisibles: showInvisibles,
 			composer: composer?.place,
-			markerColumn,
 		});
 	}),
 );
@@ -335,9 +331,7 @@ function originClass(origin: string): string {
 					style:line-height={DIFF_ROW_FONT.lineHeight}
 					style:background={lineBackground(line.origin, isSelected)}
 				>
-					{#if model.markerChars > 0}
-						<ThreadMarker marker={item.markerLeft} width={vd.markerW} />
-					{/if}
+					<ThreadMarker marker={item.markerLeft} width={vd.markerW} />
 					<span class="split-gutter" style:min-width={vd.gutterW}
 						>{line.old_lineno ?? ''}</span
 					>
@@ -370,16 +364,14 @@ function originClass(origin: string): string {
 					data-hunk-index={item.hunkIdx}
 					data-line-index={lineIdx}
 				>
-					{#if model.markerChars > 0}
-						<ThreadMarker
-							marker={item.markerRight}
-							width={vd.markerW}
-							oncomment={commentable && isSelectable
-								? () => oncommentline?.(item.path, item.hunkIdx, lineIdx)
-								: undefined}
-							commentLabel={commentLabel(line)}
-						/>
-					{/if}
+					<ThreadMarker
+						marker={item.markerRight}
+						width={vd.markerW}
+						oncomment={commentable && isSelectable
+							? () => oncommentline?.(item.path, item.hunkIdx, lineIdx)
+							: undefined}
+						commentLabel={commentLabel(line)}
+					/>
 					{#if isSelectable}
 						<GutterGrip
 							aria-label={gripLabel(line)}
