@@ -168,6 +168,17 @@ describe("FullFileView", () => {
 		expect(screen.getByTestId("full-file-comment-bar")).toBeInTheDocument();
 	});
 
+	it("draws no Comment bar row on a diff that can never take a comment", async () => {
+		render(FullFileView, {
+			props: defaultProps({ canTakeComments: false, takesComments: false }),
+		});
+
+		await fireEvent.click(gutterGrip("added one"));
+		await tick();
+
+		expect(screen.queryByTestId("full-file-comment-bar")).toBeNull();
+	});
+
 	it("withholds the Comment action where the diff takes no comments", async () => {
 		render(FullFileView, {
 			props: defaultProps({ takesComments: false }),

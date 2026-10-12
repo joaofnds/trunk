@@ -81,6 +81,7 @@ interface Props {
 	oncommenthunk: (filePath: string, hunkIndex: number) => void;
 	commitOid: string;
 	repoPath: string;
+	canTakeComments?: boolean;
 	takesComments?: boolean;
 	reviewFilter?: ReviewFilter;
 	viewComments?: Thread[];
@@ -138,6 +139,7 @@ let {
 	oncommenthunk,
 	commitOid,
 	repoPath,
+	canTakeComments = true,
 	takesComments = true,
 	reviewFilter = ALL_THREADS,
 	viewComments = [],
@@ -318,6 +320,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{isMerge}
 			{oncommentfullfile}
 			{onextendcomment}
+			{canTakeComments}
 			{takesComments}
 			{reviewFilter}
 			{viewComments}

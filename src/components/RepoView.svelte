@@ -53,7 +53,10 @@ import {
 	setRightPaneWidth,
 	setTreeViewEnabled,
 } from "../lib/store.js";
-import { diffTakesComments } from "../lib/takes-comments.js";
+import {
+	diffCanTakeComments,
+	diffTakesComments,
+} from "../lib/takes-comments.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommitDetail as CommitDetailType,
@@ -2264,7 +2267,8 @@ function stepRightPane(delta: number) {
 								selectedPath={rebaseDiffFile}
 								diffKind="commit"
 								{repoPath}
-								takesComments={diffTakesComments({ compare: false, reviewMode: false, reviewFilter })}
+								canTakeComments={diffCanTakeComments({ compare: false })}
+								takesComments={diffTakesComments({ compare: false, reviewMode: false, threadsHidden: reviewThreadsHidden })}
 								{reviewFilter}
 								viewComments={rebaseViewComments}
 								activeReviewId={reviewComments.activeReviewId}
@@ -2466,7 +2470,8 @@ function stepRightPane(delta: number) {
 								{diffKind}
 								emptyCommit={commitEmpty}
 								{repoPath}
-								takesComments={diffTakesComments({ compare: selectedCompareFile !== null, reviewMode, reviewFilter })}
+								canTakeComments={diffCanTakeComments({ compare: selectedCompareFile !== null })}
+								takesComments={diffTakesComments({ compare: selectedCompareFile !== null, reviewMode, threadsHidden: reviewThreadsHidden })}
 								{reviewFilter}
 								{viewComments}
 								activeReviewId={reviewComments.activeReviewId}

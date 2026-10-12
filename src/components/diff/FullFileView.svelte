@@ -49,6 +49,8 @@ interface Props {
 	/** A shift-click stretched the selection to these lines, which the comment
 	 *  being written follows. */
 	onextendcomment?: (filePath: string, selectedIndices: Set<number>) => void;
+	/** Whether this diff can ever take a comment; takesComments says whether it does now. */
+	canTakeComments?: boolean;
 	takesComments?: boolean;
 	reviewFilter?: ReviewFilter;
 	viewComments?: Thread[];
@@ -66,6 +68,7 @@ let {
 	isMerge,
 	oncommentfullfile,
 	onextendcomment,
+	canTakeComments = true,
 	takesComments = true,
 	reviewFilter = ALL_THREADS,
 	viewComments = [],
@@ -130,9 +133,13 @@ function commentOnLine(path: string, line: DiffLine, index: number) {
 }
 
 // The bar's row follows the selection, never takesComments, so a diff that
-// stops taking comments with a selection open keeps its code where it was.
+// stops taking comments with a selection open keeps its code where it was. A
+// diff that can never take one, a compare, draws no row to keep.
 const commentBarShown = $derived(
-	kindTakesComments && selectedPath !== null && selectedIndices.size > 0,
+	canTakeComments &&
+		kindTakesComments &&
+		selectedPath !== null &&
+		selectedIndices.size > 0,
 );
 
 $effect(() => {

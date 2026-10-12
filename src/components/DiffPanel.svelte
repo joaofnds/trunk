@@ -88,6 +88,8 @@ interface Props {
 	loadError?: string | null;
 	onretry?: () => void;
 	onloadfullfile?: (filePath: string) => Promise<FileDiff | null>;
+	/** Whether this diff can ever take a comment; takesComments says whether it does now. */
+	canTakeComments?: boolean;
 	takesComments?: boolean;
 	reviewFilter?: ReviewFilter;
 	activeReviewId?: string | null;
@@ -122,6 +124,7 @@ let {
 	loadError = null,
 	onretry,
 	onloadfullfile,
+	canTakeComments = true,
 	takesComments = true,
 	reviewFilter = ALL_THREADS,
 	activeReviewId = null,
@@ -1332,6 +1335,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			oncommentline={handleCommentLine}
 			{commitOid}
 			{repoPath}
+			{canTakeComments}
 			{takesComments}
 			{reviewFilter}
 			{viewComments}

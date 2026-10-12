@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALL_THREADS } from "./review-filter.js";
-import { diffTakesComments } from "./takes-comments.js";
+import { diffCanTakeComments, diffTakesComments } from "./takes-comments.js";
 
 describe("diffTakesComments", () => {
 	it.each([
@@ -8,50 +7,57 @@ describe("diffTakesComments", () => {
 			view: "a graph, staging or rebase diff with threads shown",
 			compare: false,
 			reviewMode: false,
-			reviewFilter: ALL_THREADS,
+			threadsHidden: false,
 			takes: true,
 		},
 		{
 			view: "a graph, staging or rebase diff with threads hidden",
 			compare: false,
 			reviewMode: false,
-			reviewFilter: "none" as const,
+			threadsHidden: true,
 			takes: false,
 		},
 		{
 			view: "a review-mode diff with threads shown",
 			compare: false,
 			reviewMode: true,
-			reviewFilter: ALL_THREADS,
+			threadsHidden: false,
 			takes: true,
 		},
 		{
 			view: "a review-mode diff with threads hidden",
 			compare: false,
 			reviewMode: true,
-			reviewFilter: "none" as const,
+			threadsHidden: true,
 			takes: true,
 		},
 		{
 			view: "a compare with threads shown",
 			compare: true,
 			reviewMode: false,
-			reviewFilter: ALL_THREADS,
+			threadsHidden: false,
 			takes: false,
 		},
 		{
 			view: "a compare in review mode",
 			compare: true,
 			reviewMode: true,
-			reviewFilter: ALL_THREADS,
+			threadsHidden: false,
 			takes: false,
 		},
 	])(
 		"decides $takes for $view",
-		({ compare, reviewMode, reviewFilter, takes }) => {
-			expect(diffTakesComments({ compare, reviewMode, reviewFilter })).toBe(
+		({ compare, reviewMode, threadsHidden, takes }) => {
+			expect(diffTakesComments({ compare, reviewMode, threadsHidden })).toBe(
 				takes,
 			);
 		},
 	);
+});
+
+describe("diffCanTakeComments", () => {
+	it("lets every diff but a compare take a comment", () => {
+		expect(diffCanTakeComments({ compare: false })).toBe(true);
+		expect(diffCanTakeComments({ compare: true })).toBe(false);
+	});
 });
