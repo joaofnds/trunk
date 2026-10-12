@@ -1,4 +1,3 @@
-import { buildCommentCounts } from "../../lib/comment-counts.js";
 import type { ReviewCommentsManager } from "../../lib/review-comments.svelte.js";
 import type {
 	Review,
@@ -82,8 +81,6 @@ export function createFakeReviewComments(): FakeReviewComments {
 		) as ReadonlySet<string>,
 	);
 
-	const counts = $derived(buildCommentCounts(state.threads, state.snapshots));
-
 	return {
 		get threads() {
 			return state.threads;
@@ -135,12 +132,6 @@ export function createFakeReviewComments(): FakeReviewComments {
 		},
 		get totalCount() {
 			return state.threads.length;
-		},
-		get countByCommit() {
-			return counts.byCommit;
-		},
-		get countByFile() {
-			return counts.byFile;
 		},
 		get refreshCount() {
 			return refreshCount;

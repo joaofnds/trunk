@@ -1,6 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
 import { createCoalescedTask } from "./coalesced-task.js";
-import { buildCommentCounts } from "./comment-counts.js";
 import { errorMessage } from "./error-report.js";
 import { safeInvoke } from "./invoke.js";
 import { subscribeToRepoChanges } from "./repo-change-subscription.js";
@@ -53,11 +52,6 @@ export interface ReviewCommentsManager {
 	 */
 	readonly lastError: string | null;
 	readonly totalCount: number;
-	// Derived comment counts shared by every count badge (commit graph, file
-	// lists, WIP row). Sourced once here so the graph total always equals the
-	// sum of its file badges plus its notes.
-	readonly countByCommit: Map<string, number>;
-	readonly countByFile: Map<string, number>;
 	select(reviewId: string): Promise<void>;
 	refresh(): Promise<void>;
 	setActive(active: boolean): void;
@@ -127,8 +121,6 @@ export function createReviewComments(
 	);
 
 	const totalCount = $derived(state.threads.length);
-
-	const counts = $derived(buildCommentCounts(state.threads, state.snapshots));
 
 	// The canonical path the backend reports for this repo. The reviews-changed
 	// payload is that canonical string, so the listener filters on it. Tracked
@@ -414,12 +406,6 @@ export function createReviewComments(
 		},
 		get totalCount() {
 			return totalCount;
-		},
-		get countByCommit() {
-			return counts.byCommit;
-		},
-		get countByFile() {
-			return counts.byFile;
 		},
 		select,
 		refresh,
