@@ -539,6 +539,20 @@ describe("SplitView one-click comment", () => {
 		expect(oncommentline).toHaveBeenCalledWith("src/main.ts", 0, 3);
 	});
 
+	it("offers no comment action where the diff takes no comments", () => {
+		render(SplitView, {
+			props: defaultProps({ oncommentline: vi.fn(), takesComments: false }),
+		});
+
+		expect(screen.queryByRole("button", { name: "Comment" })).toBeNull();
+		expect(
+			screen.queryByRole("button", {
+				name: "Comment on line 11",
+				hidden: true,
+			}),
+		).toBeNull();
+	});
+
 	it("offers none on the removed side", () => {
 		render(SplitView, { props: defaultProps({ oncommentline: vi.fn() }) });
 

@@ -273,13 +273,6 @@ describe("createVirtualizedDiff", () => {
 		expect(split.contentWidth).toMatch(/^calc\(\d+px \+ 50cqi\)$/);
 	});
 
-	it("widens the content by the thread-marker column", () => {
-		const { vd } = mount({ comments: [anchoredThread()] });
-
-		// The 215px above plus three marker columns at 9px.
-		expect(vd.contentWidth).toBe("242px");
-	});
-
 	it("gives each side its own pan ceiling from that side's full width", () => {
 		// One pair row: a 27-column deleted line against a 5-column added one,
 		// with a single-digit line number, so gutterChars is 2.

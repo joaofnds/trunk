@@ -904,6 +904,17 @@ describe("FullFileView one-click comment", () => {
 		expect(oncommentfullfile).toHaveBeenCalledWith("src/main.ts", new Set([1]));
 	});
 
+	it("offers none where the diff takes no comments", () => {
+		render(FullFileView, { props: defaultProps({ takesComments: false }) });
+
+		expect(
+			screen.queryByRole("button", {
+				name: "Comment on line 11",
+				hidden: true,
+			}),
+		).toBeNull();
+	});
+
 	it("offers none on a removed line", () => {
 		render(FullFileView, { props: defaultProps() });
 

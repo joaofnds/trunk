@@ -45,7 +45,9 @@ describe("DiffToolbar review actions", () => {
 
 		const commentFile = screen.getByRole("button", { name: "Comment File" });
 
-		expect(commentFile.previousElementSibling).toHaveClass("filename");
+		const filename = commentFile.previousElementSibling as HTMLElement;
+		expect(filename).toHaveClass("filename");
+		expect(getComputedStyle(filename).flexGrow).toBe("1");
 	});
 
 	it("offers no Comment File where the diff takes none", () => {
