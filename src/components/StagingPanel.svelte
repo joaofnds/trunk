@@ -65,8 +65,7 @@ interface Props {
 		defaultValue: string,
 		title: string,
 	) => Promise<string | null>;
-	// Shared comments store + center-pane toggle, threaded from RepoView so the
-	// per-file count badges read the one source of truth.
+	// Shared comments store, threaded from RepoView for the review snapshots.
 	reviewComments?: ReviewCommentsManager;
 	commentCounts?: Map<string, number>;
 	commentTallies?: Map<string, ReviewTally>;

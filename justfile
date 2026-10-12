@@ -177,9 +177,10 @@ fmt:
 biome:
     bunx biome ci .
 
-# Apply Biome's formatting and safe lint fixes in place. Two passes, because
-# `biome check --write` (2.5.14) rewrites expressions inside Svelte markup into
-# code Svelte cannot parse, while each pass alone leaves them intact.
+# Two passes, because `biome check --write` (2.5.14) rewrites expressions inside
+# Svelte markup into code Svelte cannot parse, while each pass alone leaves them
+# intact.
+# Apply Biome's formatting and safe lint fixes in place
 fix:
     bunx biome format --write .
     bunx biome lint --write .

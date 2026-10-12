@@ -139,11 +139,10 @@ interface Props {
 	/** Whether this graph's tab is the active one. Every tab stays mounted, so the
 	 *  window-global search-toggle event reaches all of them. */
 	tabActive: boolean;
-	/** Center-pane review visibility; gates the per-row comment badge. */
 	/** Filtered per-commit badge projection from RepoView. */
 	commentCounts?: Map<string, number>;
 	commentTallies?: Map<string, ReviewTally>;
-	/** Shared comments store; supplies the per-commit count map. */
+	/** Shared comments store; supplies the commented oids and the active review. */
 	reviewComments?: ReviewCommentsManager;
 	/** Whether BranchSidebar's stored-visibility read for this repo has resolved
 	 *  (and, if it hid anything, pushed to the backend). The first page load

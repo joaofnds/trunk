@@ -1,7 +1,7 @@
 <script lang="ts">
 // The threads starting on a diff line, counted in the state of the most urgent,
-// in the column the row model reserves while any thread is in view. A line with
-// none draws the empty column, so every row's code starts at the same place.
+// in the column the row model reserves on every diff line. A line with none
+// draws the empty column, so every row's code starts at the same place.
 // The thread cards under the thread's last line say the same thing to
 // assistive tech, so the pill is hidden from it.
 import Plus from "@lucide/svelte/icons/plus";

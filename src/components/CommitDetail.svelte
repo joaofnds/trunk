@@ -46,9 +46,9 @@ interface Props {
 	/** False while the review panel holds the center, whose J and K move between threads. */
 	pagerKeys?: boolean;
 	// The shared comments store, threaded from RepoView so the commit-notes block
-	// and the per-file badges read one source of truth.
+	// reads one source of truth.
 	reviewComments?: ReviewCommentsManager;
-	// Center-pane review visibility; gates the per-file count badges.
+	// Which threads the commit-notes block shows.
 	reviewFilter?: ReviewFilter;
 	commentCounts?: Map<string, number>;
 	commentTallies?: Map<string, ReviewTally>;
