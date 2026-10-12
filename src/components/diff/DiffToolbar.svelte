@@ -45,7 +45,7 @@ interface Props {
 	ignoreWhitespace: boolean;
 	showInvisibles: boolean;
 	wordWrap: boolean;
-	takesComments?: boolean;
+	takesComments: boolean;
 	/** The selected file's threads the badge counts, by state. */
 	commentTally?: ReviewTally | null;
 	onignorewhitespacechange: (value: boolean) => void;
@@ -75,7 +75,7 @@ let {
 	ignoreWhitespace,
 	showInvisibles,
 	wordWrap,
-	takesComments = true,
+	takesComments,
 	commentTally = null,
 	onignorewhitespacechange,
 	onshowinvisibleschange,

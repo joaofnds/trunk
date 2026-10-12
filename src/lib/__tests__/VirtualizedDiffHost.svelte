@@ -4,6 +4,7 @@
 // the way the views build one. It renders no list; the suite asserts on the
 // factory's outputs, which it receives through `onready` at init.
 import { buildInlineRows, buildSplitRows } from "../diff-rows.js";
+import { ALL_THREADS } from "../review-filter.js";
 import { DIFF_ROW_FONT } from "../row-metrics.js";
 import type { FileDiff, Thread } from "../types.js";
 import {
@@ -35,6 +36,7 @@ let {
 const buildOptions = $derived({
 	content: "full" as const,
 	comments,
+	reviewFilter: ALL_THREADS,
 	collapsed: new Set<string>(),
 	fileHeaders: false,
 	tabSize: TAB_SIZE,

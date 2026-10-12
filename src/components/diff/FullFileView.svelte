@@ -16,7 +16,6 @@ import {
 import { measure } from "../../lib/perf.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
-import { ALL_THREADS } from "../../lib/review-filter.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type {
 	DiffLine,
@@ -50,9 +49,9 @@ interface Props {
 	 *  being written follows. */
 	onextendcomment?: (filePath: string, selectedIndices: Set<number>) => void;
 	/** Whether this diff can ever take a comment; takesComments says whether it does now. */
-	canTakeComments?: boolean;
-	takesComments?: boolean;
-	reviewFilter?: ReviewFilter;
+	canTakeComments: boolean;
+	takesComments: boolean;
+	reviewFilter: ReviewFilter;
 	viewComments?: Thread[];
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	/** The open comment composer, drawn under the line its comment ends on. */
@@ -68,9 +67,9 @@ let {
 	isMerge,
 	oncommentfullfile,
 	onextendcomment,
-	canTakeComments = true,
-	takesComments = true,
-	reviewFilter = ALL_THREADS,
+	canTakeComments,
+	takesComments,
+	reviewFilter,
 	viewComments = [],
 	editorSessionForThread,
 	composer = null,

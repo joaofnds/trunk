@@ -67,8 +67,8 @@ interface Props {
 	) => Promise<string | null>;
 	// Shared comments store, threaded from RepoView for the review snapshots.
 	reviewComments?: ReviewCommentsManager;
-	commentCounts?: Map<string, number>;
-	commentTallies?: Map<string, ReviewTally>;
+	commentCounts: Map<string, number>;
+	commentTallies: Map<string, ReviewTally>;
 }
 
 let {
@@ -88,8 +88,8 @@ let {
 	ontreeviewtoggle,
 	onopenmessageeditor,
 	reviewComments,
-	commentCounts = new Map(),
-	commentTallies = new Map(),
+	commentCounts,
+	commentTallies,
 }: Props = $props();
 const scheduler = getScheduler();
 

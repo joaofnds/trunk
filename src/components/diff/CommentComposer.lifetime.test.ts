@@ -17,6 +17,7 @@ import {
 	restoreLayout,
 	stubLayout,
 } from "../../__tests__/helpers/layout-stub.js";
+import { commentingDiff } from "../../__tests__/helpers/review-props.js";
 import { createReviewComposerSession } from "../../lib/review-editors.svelte.js";
 import { SCHEDULER } from "../../lib/scheduler.js";
 import type { Anchor, CommitDetail, Draft, FileDiff } from "../../lib/types.js";
@@ -296,6 +297,7 @@ describe("composer operation lifetime", () => {
 		};
 		const session = createReviewComposerSession();
 		const p = {
+			...commentingDiff,
 			fileDiffs: [file],
 			commitDetail: commit,
 			selectedPath: "a.ts",

@@ -12,7 +12,6 @@ import { toFileStatusList } from "../lib/file-status.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
-import { ALL_THREADS } from "../lib/review-filter.js";
 import type {
 	CommitDetail,
 	CommitNav,
@@ -49,9 +48,9 @@ interface Props {
 	// reads one source of truth.
 	reviewComments?: ReviewCommentsManager;
 	// Which threads the commit-notes block shows.
-	reviewFilter?: ReviewFilter;
-	commentCounts?: Map<string, number>;
-	commentTallies?: Map<string, ReviewTally>;
+	reviewFilter: ReviewFilter;
+	commentCounts: Map<string, number>;
+	commentTallies: Map<string, ReviewTally>;
 	activeReviewId?: string | null;
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	editorDraftFor?: (
@@ -75,9 +74,9 @@ let {
 	onnavigate,
 	pagerKeys = true,
 	reviewComments,
-	reviewFilter = ALL_THREADS,
-	commentCounts = new Map(),
-	commentTallies = new Map(),
+	reviewFilter,
+	commentCounts,
+	commentTallies,
 	activeReviewId = null,
 	editorSessionForThread,
 	editorDraftFor,

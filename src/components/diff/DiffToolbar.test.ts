@@ -4,6 +4,7 @@ import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
 import DiffToolbar from "./DiffToolbar.svelte";
 
 const baseProps = {
+	takesComments: true,
 	contentMode: "hunk" as const,
 	layoutMode: "inline" as const,
 	renderMode: "source" as const,

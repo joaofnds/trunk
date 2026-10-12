@@ -15,6 +15,7 @@ import {
 import { makeCommit } from "../__tests__/helpers/factories.js";
 import GraphRefreshHarness from "../__tests__/helpers/graph-refresh-harness.svelte";
 import { RepositoryReadHost } from "../__tests__/helpers/repository-read-host.js";
+import { noReviewCounts } from "../__tests__/helpers/review-props.js";
 import { ROW_HEIGHT } from "../lib/chrome-heights.js";
 import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
@@ -50,7 +51,7 @@ describe("CommitGraph", () => {
 				head: { files_changed: 1, insertions: 7, deletions: 0 },
 			});
 			const view = render(CommitGraph, {
-				props: { repoPath: "/repo", tabActive: true },
+				props: { ...noReviewCounts(), repoPath: "/repo", tabActive: true },
 				context: new Map([[SCHEDULER, clock]]),
 			});
 			await screen.findByText("revision 1");
@@ -73,7 +74,7 @@ describe("CommitGraph", () => {
 		it("does no stats work for an inactive tab", async () => {
 			host.seedGraph(graph(1));
 			render(CommitGraph, {
-				props: { repoPath: "/repo", tabActive: false },
+				props: { ...noReviewCounts(), repoPath: "/repo", tabActive: false },
 				context: new Map([[SCHEDULER, clock]]),
 			});
 			await screen.findByText("revision 1");
@@ -90,7 +91,7 @@ describe("CommitGraph", () => {
 			host.seedGraph({ commits, max_columns: 1, revision: 1 });
 			host.seedResponse("get_commit_stats", stats(commits.slice(32)));
 			const view = render(CommitGraph, {
-				props: { repoPath: "/repo", tabActive: true },
+				props: { ...noReviewCounts(), repoPath: "/repo", tabActive: true },
 				context: new Map([[SCHEDULER, clock]]),
 			});
 			await waitFor(() =>
@@ -142,7 +143,7 @@ describe("CommitGraph", () => {
 			host.seedResponse("get_commit_stats", stats(commits));
 			const first = host.holdNextReply("get_commit_stats");
 			const view = render(CommitGraph, {
-				props: { repoPath: "/repo", tabActive: true },
+				props: { ...noReviewCounts(), repoPath: "/repo", tabActive: true },
 				context: new Map([[SCHEDULER, clock]]),
 			});
 			const firstArgs = await first.entered;
@@ -179,7 +180,7 @@ describe("CommitGraph", () => {
 				head: { files_changed: 1, insertions: 7, deletions: 0 },
 			});
 			const view = render(CommitGraph, {
-				props: { repoPath: "/repo", tabActive: false },
+				props: { ...noReviewCounts(), repoPath: "/repo", tabActive: false },
 				context: new Map([[SCHEDULER, clock]]),
 			});
 			await screen.findByText("revision 1");
@@ -196,7 +197,7 @@ describe("CommitGraph", () => {
 			const errors: unknown[][] = [];
 			console.error = (...args) => errors.push(args);
 			render(CommitGraph, {
-				props: { repoPath: "/repo", tabActive: true },
+				props: { ...noReviewCounts(), repoPath: "/repo", tabActive: true },
 				context: new Map([[SCHEDULER, clock]]),
 			});
 			await failure.entered;
@@ -227,7 +228,7 @@ describe("CommitGraph", () => {
 				stats(commits.filter((_, i) => i !== 55)),
 			);
 			const view = render(CommitGraph, {
-				props: { repoPath: "/repo", tabActive: true },
+				props: { ...noReviewCounts(), repoPath: "/repo", tabActive: true },
 				context: new Map([[SCHEDULER, clock]]),
 			});
 			await screen.findAllByTestId("diff-stat-bar");

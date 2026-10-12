@@ -78,6 +78,7 @@ function thread(
 }
 
 const fullMode: BuildOptions = {
+	reviewFilter: ALL_THREADS,
 	content: "full",
 	comments: [],
 	collapsed: new Set(),

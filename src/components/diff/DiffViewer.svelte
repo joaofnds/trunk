@@ -4,7 +4,6 @@ import type { DiffNav } from "../../lib/diff-nav.js";
 import { type DiffComposer, diffHoldsComposer } from "../../lib/diff-rows.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
-import { ALL_THREADS } from "../../lib/review-filter.js";
 import type {
 	CommitDetail,
 	ContentMode,
@@ -81,9 +80,9 @@ interface Props {
 	oncommenthunk: (filePath: string, hunkIndex: number) => void;
 	commitOid: string;
 	repoPath: string;
-	canTakeComments?: boolean;
-	takesComments?: boolean;
-	reviewFilter?: ReviewFilter;
+	canTakeComments: boolean;
+	takesComments: boolean;
+	reviewFilter: ReviewFilter;
 	viewComments?: Thread[];
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	/** The open comment composer, if any. */
@@ -139,9 +138,9 @@ let {
 	oncommenthunk,
 	commitOid,
 	repoPath,
-	canTakeComments = true,
-	takesComments = true,
-	reviewFilter = ALL_THREADS,
+	canTakeComments,
+	takesComments,
+	reviewFilter,
 	viewComments = [],
 	editorSessionForThread,
 	composer = null,

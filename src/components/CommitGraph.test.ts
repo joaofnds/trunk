@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
+import { noReviewCounts } from "../__tests__/helpers/review-props.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { MESSAGE_FLOOR } from "../lib/column-widths.js";
 import { COLUMN_PADDING_X, LANE_WIDTH } from "../lib/graph-constants.js";
@@ -287,6 +288,7 @@ describe("CommitGraph", () => {
 
 		const { container } = render(CommitGraph, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/test/repo",
 				tabActive: true,
 				reviewComments,
@@ -329,6 +331,7 @@ describe("CommitGraph", () => {
 	it("renders without crashing", () => {
 		const { container } = render(CommitGraph, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/test/repo",
 				tabActive: true,
 			},
@@ -342,6 +345,7 @@ describe("CommitGraph", () => {
 	it("renders column headers", async () => {
 		render(CommitGraph, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/test/repo",
 				tabActive: true,
 			},
@@ -358,6 +362,7 @@ describe("CommitGraph", () => {
 	it("sizes the header row from the shared panel-header height", async () => {
 		render(CommitGraph, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/test/repo",
 				tabActive: true,
 			},
@@ -373,6 +378,7 @@ describe("CommitGraph", () => {
 	it("renders commit summaries after data loads", async () => {
 		render(CommitGraph, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/test/repo",
 				tabActive: true,
 			},
@@ -384,6 +390,7 @@ describe("CommitGraph", () => {
 	it("is a listbox that takes more than one selected commit", () => {
 		render(CommitGraph, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/test/repo",
 				tabActive: true,
 			},
@@ -399,7 +406,12 @@ describe("CommitGraph", () => {
 		it("selects the first commit on ArrowDown", async () => {
 			const oncommitselect = vi.fn();
 			render(CommitGraph, {
-				props: { repoPath: "/test/repo", tabActive: true, oncommitselect },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					tabActive: true,
+					oncommitselect,
+				},
 			});
 			await screen.findByText("first commit");
 
@@ -417,7 +429,12 @@ describe("CommitGraph", () => {
 		])("leaves the selection alone on $name", async ({ name: _, ...init }) => {
 			const oncommitselect = vi.fn();
 			render(CommitGraph, {
-				props: { repoPath: "/test/repo", tabActive: true, oncommitselect },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					tabActive: true,
+					oncommitselect,
+				},
 			});
 			await screen.findByText("first commit");
 
@@ -430,6 +447,7 @@ describe("CommitGraph", () => {
 	it("calls list_stashes on mount", async () => {
 		render(CommitGraph, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/test/repo",
 				tabActive: true,
 			},
@@ -487,6 +505,7 @@ describe("CommitGraph", () => {
 			});
 			render(CommitGraph, {
 				props: {
+					...noReviewCounts(),
 					repoPath: "/test/repo",
 					tabActive: true,
 				},
@@ -517,6 +536,7 @@ describe("CommitGraph", () => {
 			});
 			render(CommitGraph, {
 				props: {
+					...noReviewCounts(),
 					repoPath: "/test/repo",
 					tabActive: true,
 					onopenmessageeditor,
@@ -554,6 +574,7 @@ describe("CommitGraph", () => {
 			});
 			render(CommitGraph, {
 				props: {
+					...noReviewCounts(),
 					repoPath: "/test/repo",
 					tabActive: true,
 					onopenmessageeditor,
@@ -581,6 +602,7 @@ describe("CommitGraph", () => {
 			});
 			render(CommitGraph, {
 				props: {
+					...noReviewCounts(),
 					repoPath: "/test/repo",
 					tabActive: true,
 					onopenmessageeditor,
@@ -615,6 +637,7 @@ describe("CommitGraph", () => {
 			});
 			render(CommitGraph, {
 				props: {
+					...noReviewCounts(),
 					repoPath: "/test/repo",
 					tabActive: true,
 					onopenmessageeditor,
@@ -642,6 +665,7 @@ describe("CommitGraph", () => {
 			});
 			render(CommitGraph, {
 				props: {
+					...noReviewCounts(),
 					repoPath: "/test/repo",
 					tabActive: true,
 					onopenmessageeditor,
@@ -681,12 +705,14 @@ describe("CommitGraph", () => {
 		function renderPair() {
 			const first = render(CommitGraph, {
 				props: {
+					...noReviewCounts(),
 					repoPath: "/repo/a",
 					tabActive: false,
 				},
 			});
 			const second = render(CommitGraph, {
 				props: {
+					...noReviewCounts(),
 					repoPath: "/repo/b",
 					tabActive: true,
 				},
@@ -754,6 +780,7 @@ describe("CommitGraph", () => {
 
 			return render(CommitGraph, {
 				props: {
+					...noReviewCounts(),
 					repoPath: "/test/repo",
 					tabActive: true,
 				},
@@ -869,7 +896,7 @@ describe("CommitGraph", () => {
 			});
 
 			return render(CommitGraph, {
-				props: { repoPath: "/test/repo", tabActive: true },
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
 			});
 		}
 
@@ -1184,6 +1211,7 @@ describe("CommitGraph", () => {
 
 			return render(CommitGraph, {
 				props: {
+					...noReviewCounts(),
 					repoPath: "/test/repo",
 					tabActive: true,
 					refreshSignal: 0,
@@ -1559,7 +1587,7 @@ describe("CommitGraph", () => {
 			});
 
 			return render(CommitGraph, {
-				props: { repoPath: "/test/repo", tabActive: true },
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
 			});
 		}
 
@@ -1621,7 +1649,7 @@ describe("CommitGraph", () => {
 			});
 
 			return render(CommitGraph, {
-				props: { repoPath, tabActive: true },
+				props: { ...noReviewCounts(), repoPath, tabActive: true },
 			});
 		}
 
@@ -2223,6 +2251,7 @@ describe("CommitGraph", () => {
 
 			render(CommitGraph, {
 				props: {
+					...noReviewCounts(),
 					repoPath: "/test/repo",
 					tabActive: true,
 				},
@@ -2241,6 +2270,7 @@ describe("CommitGraph", () => {
 
 	describe("refresh backpressure", () => {
 		const props = (refreshSignal: number) => ({
+			...noReviewCounts(),
 			repoPath: "/test/repo",
 			tabActive: true,
 			refreshSignal,
@@ -2329,6 +2359,7 @@ describe("CommitGraph", () => {
 			installReads({ commits: [HEAD_COMMIT, BRANCH_COMMIT, REMOTE_COMMIT] });
 			render(CommitGraph, {
 				props: {
+					...noReviewCounts(),
 					repoPath: "/test/repo",
 					tabActive: true,
 				},
@@ -2471,7 +2502,7 @@ describe("CommitGraph", () => {
 			});
 
 			const rendered = render(CommitGraph, {
-				props: { repoPath: "/test/repo", tabActive: true },
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
 			});
 			await waitFor(() => {
 				expect(screen.getByText("old commit 0")).toBeInTheDocument();
@@ -2557,7 +2588,12 @@ describe("CommitGraph", () => {
 			});
 
 			const rendered = render(CommitGraph, {
-				props: { repoPath: "/test/repo", tabActive: true, refreshSignal: 0 },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					tabActive: true,
+					refreshSignal: 0,
+				},
 			});
 			await waitFor(() => {
 				expect(screen.getByText("old commit 0")).toBeInTheDocument();
@@ -2624,7 +2660,7 @@ describe("CommitGraph", () => {
 
 		async function mounted() {
 			const rendered = render(CommitGraph, {
-				props: { repoPath: "/test/repo", tabActive: true },
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
 			});
 			await waitFor(() => {
 				expect(screen.getByText("old commit 0")).toBeInTheDocument();
@@ -2821,7 +2857,12 @@ describe("CommitGraph", () => {
 			});
 
 			const rendered = render(CommitGraph, {
-				props: { repoPath: "/test/repo", tabActive: true, refreshSignal: 0 },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					tabActive: true,
+					refreshSignal: 0,
+				},
 			});
 			await waitFor(() => {
 				expect(screen.getByText("commit 0")).toBeInTheDocument();
@@ -2915,6 +2956,7 @@ describe("CommitGraph", () => {
 				},
 			});
 			const props = (tabActive: boolean, cachedGraphRevision: number) => ({
+				...noReviewCounts(),
 				repoPath: "/test/repo",
 				tabActive,
 				cachedGraphRevision,
@@ -3028,10 +3070,20 @@ describe("CommitGraph", () => {
 	describe("two graphs mounted at once", () => {
 		it("gives each its own clip-path ids", async () => {
 			const first = render(CommitGraph, {
-				props: { repoPath: "/first", wipCount: 0, tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/first",
+					wipCount: 0,
+					tabActive: true,
+				},
 			});
 			const second = render(CommitGraph, {
-				props: { repoPath: "/second", wipCount: 0, tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/second",
+					wipCount: 0,
+					tabActive: true,
+				},
 			});
 			await flush();
 
@@ -3046,7 +3098,12 @@ describe("CommitGraph", () => {
 
 		it("points each graph at its own clip path", async () => {
 			const { container } = render(CommitGraph, {
-				props: { repoPath: "/only", wipCount: 0, tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/only",
+					wipCount: 0,
+					tabActive: true,
+				},
 			});
 			await flush();
 
@@ -3071,7 +3128,7 @@ describe("CommitGraph", () => {
 
 		async function mountGraph() {
 			render(CommitGraph, {
-				props: { repoPath: "/test/repo", tabActive: true },
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
 			});
 			await screen.findAllByTestId("commit-row");
 			await flush();
@@ -3161,7 +3218,7 @@ describe("CommitGraph", () => {
 				],
 			});
 			render(CommitGraph, {
-				props: { repoPath: "/test/repo", tabActive: true },
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
 			});
 			await screen.findAllByTestId("commit-row");
 			await flush();
@@ -3298,7 +3355,12 @@ describe("CommitGraph", () => {
 		async function mountGraph(selectedCommitOid?: string) {
 			installReads({ commits: ON_A_NAMED_LANE });
 			render(CommitGraph, {
-				props: { repoPath: "/test/repo", tabActive: true, selectedCommitOid },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					tabActive: true,
+					selectedCommitOid,
+				},
 			});
 			await flush();
 

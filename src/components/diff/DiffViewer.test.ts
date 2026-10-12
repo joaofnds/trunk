@@ -5,6 +5,7 @@ import {
 	restoreLayout,
 	stubLayout,
 } from "../../__tests__/helpers/layout-stub.js";
+import { commentingDiff } from "../../__tests__/helpers/review-props.js";
 import type { FileDiff } from "../../lib/types.js";
 import DiffViewer from "./DiffViewer.svelte";
 
@@ -30,6 +31,7 @@ const selectedReadme: FileDiff = {
 };
 
 const baseProps = {
+	...commentingDiff,
 	contentMode: "hunk" as const,
 	contextLines: 3,
 	layoutMode: "inline" as const,

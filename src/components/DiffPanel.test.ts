@@ -20,6 +20,7 @@ import type {
 
 // Shared Tauri mock
 import "../__tests__/helpers/tauri-mock";
+import { commentingDiff } from "../__tests__/helpers/review-props.js";
 
 // Both inline views render through a virtual list, which mounts no rows at all
 // against jsdom's zero-height viewport. The box is wide enough for the widest
@@ -283,6 +284,7 @@ describe("DiffPanel", () => {
 	it("renders hunk header", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -295,6 +297,7 @@ describe("DiffPanel", () => {
 	it("renders added lines with + marker", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -307,6 +310,7 @@ describe("DiffPanel", () => {
 	it("renders deleted lines with - marker", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -319,6 +323,7 @@ describe("DiffPanel", () => {
 	it("renders context lines", async () => {
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -335,6 +340,7 @@ describe("DiffPanel", () => {
 	it("renders file path in multi-file view", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				selectedPath: null,
@@ -349,6 +355,7 @@ describe("DiffPanel", () => {
 	it("shows binary file indicator", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [binaryDiff],
 				commitDetail: null,
 				selectedPath: null,
@@ -365,6 +372,7 @@ describe("DiffPanel", () => {
 		const onclose = vi.fn();
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose,
@@ -379,6 +387,7 @@ describe("DiffPanel", () => {
 	it("shows Stage Hunk button for unstaged diffs", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -394,6 +403,7 @@ describe("DiffPanel", () => {
 	it("shows a Comment File button for unstaged diffs", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -409,6 +419,7 @@ describe("DiffPanel", () => {
 	it("shows a Comment File button for staged diffs", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -424,6 +435,7 @@ describe("DiffPanel", () => {
 	it("shows a Comment File button for commit diffs", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -452,6 +464,7 @@ describe("DiffPanel", () => {
 			});
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -489,6 +502,7 @@ describe("DiffPanel", () => {
 		});
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -510,6 +524,7 @@ describe("DiffPanel", () => {
 	it("opens the composer over the file's full new-side range on Comment File click", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -544,6 +559,7 @@ describe("DiffPanel", () => {
 	it("opens a comment on the whole file above the file's first line", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -564,6 +580,7 @@ describe("DiffPanel", () => {
 	it("opens a comment on the whole file above the hunks in hunk mode", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -585,6 +602,7 @@ describe("DiffPanel", () => {
 		const hunkOnlyDiff = shiftDiffLines(testDiff, 39);
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [hunkOnlyDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -611,6 +629,7 @@ describe("DiffPanel", () => {
 		const hunkOnlyDiff = shiftDiffLines(testDiff, 39);
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [hunkOnlyDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -636,6 +655,7 @@ describe("DiffPanel", () => {
 	it("stretches the comment composer across the diff panel", async () => {
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -665,6 +685,7 @@ describe("DiffPanel", () => {
 	// = Infinity. The captured anchor must survive a fileDiffs reload.
 	it("keeps the whole-hunk comment range finite when the diff reloads mid-compose", async () => {
 		const baseProps = {
+			...commentingDiff,
 			commitDetail: null,
 			onclose: vi.fn(),
 			diffKind: "unstaged" as const,
@@ -694,6 +715,7 @@ describe("DiffPanel", () => {
 	it("keeps the full-file comment anchor when the diff reloads mid-compose", async () => {
 		const reloadedFile = shiftDiffLines(testDiff, 39);
 		const baseProps = {
+			...commentingDiff,
 			commitDetail: null,
 			onclose: vi.fn(),
 			diffKind: "unstaged" as const,
@@ -721,6 +743,7 @@ describe("DiffPanel", () => {
 		const editorStore = createReviewEditorStore();
 		const composerSession = editorStore.composer();
 		const baseProps = {
+			...commentingDiff,
 			fileDiffs: [testDiff],
 			commitDetail: nonMergeCommit,
 			onclose: vi.fn(),
@@ -789,6 +812,7 @@ describe("DiffPanel", () => {
 			target,
 		);
 		const props = {
+			...commentingDiff,
 			fileDiffs: [testDiff],
 			commitDetail: nonMergeCommit,
 			compareBaseOid: "compare-base",
@@ -822,6 +846,7 @@ describe("DiffPanel", () => {
 		const editorStore = createReviewEditorStore();
 		const composerSession = editorStore.composer();
 		const baseProps = {
+			...commentingDiff,
 			fileDiffs: [testDiff],
 			commitDetail: nonMergeCommit,
 			onclose: vi.fn(),
@@ -869,6 +894,7 @@ describe("DiffPanel", () => {
 				: Promise.resolve(undefined),
 		);
 		const baseProps = {
+			...commentingDiff,
 			fileDiffs: [testDiff],
 			commitDetail: nonMergeCommit,
 			onclose: vi.fn(),
@@ -925,6 +951,7 @@ describe("DiffPanel", () => {
 	it("shows Unstage Hunk button for staged diffs", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -939,6 +966,7 @@ describe("DiffPanel", () => {
 	it("does not show hunk action buttons for commit diffs", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -954,6 +982,7 @@ describe("DiffPanel", () => {
 	it("renders word-span highlights for emphasized segments", async () => {
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiffWithMergedSpans],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -973,6 +1002,7 @@ describe("DiffPanel", () => {
 	it("renders non-emphasized spans without highlight class", async () => {
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiffWithMergedSpans],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -997,6 +1027,7 @@ describe("DiffPanel", () => {
 	it("falls back to plain rendering when spans is empty", async () => {
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1013,6 +1044,7 @@ describe("DiffPanel", () => {
 	it("renders syntax class on span elements", async () => {
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiffWithMergedSpans],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1028,6 +1060,7 @@ describe("DiffPanel", () => {
 	it("applies opacity reduction class on add/delete lines", async () => {
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiffWithMergedSpans],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1044,6 +1077,7 @@ describe("DiffPanel", () => {
 	it("renders syntax and word-diff classes simultaneously on emphasized spans", async () => {
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiffWithMergedSpans],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1063,6 +1097,7 @@ describe("DiffPanel", () => {
 	it("renders content mode and layout mode toggle buttons", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1078,6 +1113,7 @@ describe("DiffPanel", () => {
 	it("shows hunk view by default", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1090,6 +1126,7 @@ describe("DiffPanel", () => {
 	it("shows full file view when content toggle clicked", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1107,6 +1144,7 @@ describe("DiffPanel", () => {
 	it("shows split view with panels when Split mode selected", async () => {
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1134,6 +1172,7 @@ describe("DiffPanel", () => {
 		);
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1165,6 +1204,7 @@ describe("DiffPanel", () => {
 		);
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1191,6 +1231,7 @@ describe("DiffPanel", () => {
 		);
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1291,6 +1332,7 @@ describe("VIEW-04: Full file view", () => {
 		);
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1315,6 +1357,7 @@ describe("VIEW-04: Full file view", () => {
 		);
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1343,6 +1386,7 @@ describe("VIEW-04: Full file view", () => {
 		);
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1385,6 +1429,7 @@ describe("VIEW-04: a large full-file payload", () => {
 
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				contentMode: "full",
 				fileDiffs: [bigFile],
 				commitDetail: null,
@@ -1416,6 +1461,7 @@ describe("TRUNK-73: staging carries the view's diff options", () => {
 
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1478,6 +1524,7 @@ describe("DISP-02: Word wrap toggle", () => {
 
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1508,6 +1555,7 @@ describe("DISP-02: Word wrap toggle", () => {
 
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1765,6 +1813,7 @@ describe("VIEW-02: Split view layout", () => {
 		);
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				selectedPath: null,
@@ -1795,6 +1844,7 @@ describe("VIEW-02: Split view layout", () => {
 
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1826,6 +1876,7 @@ describe("VIEW-02: Split view layout", () => {
 
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1870,6 +1921,7 @@ describe("VIEW-02: Split view layout", () => {
 
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1906,6 +1958,7 @@ describe("VIEW-05: Staging in split view", () => {
 
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1935,6 +1988,7 @@ describe("VIEW-05: Staging in split view", () => {
 
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1963,6 +2017,7 @@ describe("VIEW-05: Staging in split view", () => {
 
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1995,6 +2050,7 @@ describe("VIEW-05: Staging in split view", () => {
 
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -2030,6 +2086,7 @@ describe("VIEW-05: Staging in split view", () => {
 
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				contentMode: "full",
 				fileDiffs: [testDiff],
 				commitDetail: null,
@@ -2073,6 +2130,7 @@ describe("VIEW-05: Staging in split view", () => {
 		it("a container query context sits above every row, so sticky sizing resolves", async () => {
 			const { container } = render(DiffPanel, {
 				props: {
+					...commentingDiff,
 					fileDiffs: [testDiff],
 					commitDetail: null,
 					onclose: vi.fn(),
@@ -2089,6 +2147,7 @@ describe("VIEW-05: Staging in split view", () => {
 		it("hunk toolbar is horizontally sticky so buttons stay visible", async () => {
 			render(DiffPanel, {
 				props: {
+					...commentingDiff,
 					fileDiffs: [testDiff],
 					commitDetail: null,
 					onclose: vi.fn(),
@@ -2103,6 +2162,7 @@ describe("VIEW-05: Staging in split view", () => {
 		it("file header is horizontally sticky in multi-file view", async () => {
 			render(DiffPanel, {
 				props: {
+					...commentingDiff,
 					fileDiffs: [testDiff],
 					commitDetail: null,
 					selectedPath: null,
@@ -2119,6 +2179,7 @@ describe("VIEW-05: Staging in split view", () => {
 		it("folds a file's rows away when its header is clicked", async () => {
 			render(DiffPanel, {
 				props: {
+					...commentingDiff,
 					fileDiffs: [testDiff],
 					commitDetail: null,
 					selectedPath: null,
@@ -2138,6 +2199,7 @@ describe("VIEW-05: Staging in split view", () => {
 		it("diff lines wrapper ensures full-width backgrounds via min-width", async () => {
 			const { container } = render(DiffPanel, {
 				props: {
+					...commentingDiff,
 					fileDiffs: [testDiff],
 					commitDetail: null,
 					onclose: vi.fn(),
@@ -2289,6 +2351,7 @@ describe("DiffPanel drag-to-select", () => {
 	function renderCommit() {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: nonMergeCommit,
 				onclose: vi.fn(),
@@ -2324,6 +2387,7 @@ describe("DiffPanel drag-to-select", () => {
 	it("keeps a drag inside the hunk it started in", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [hunksOfDifferentLengths],
 				commitDetail: nonMergeCommit,
 				onclose: vi.fn(),
@@ -2453,6 +2517,7 @@ describe("DiffPanel drag-to-select", () => {
 		};
 		const { container } = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [long],
 				commitDetail: nonMergeCommit,
 				onclose: vi.fn(),
@@ -2508,6 +2573,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 	it("shows an enabled Comment affordance on a non-merge commit selection", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: nonMergeCommit,
 				onclose: vi.fn(),
@@ -2531,6 +2597,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 	it("disables the Comment affordance with a tooltip on a merge commit", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: mergeCommit,
 				onclose: vi.fn(),
@@ -2555,6 +2622,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 	it("keeps the Comment affordance enabled on an Added file (status forces side, does not disable)", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [addedFileDiff],
 				commitDetail: nonMergeCommit,
 				onclose: vi.fn(),
@@ -2581,6 +2649,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: nonMergeCommit,
 				onclose: vi.fn(),
@@ -2617,6 +2686,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 
 	it("keeps an open comment's draft while review threads are hidden", async () => {
 		const props = {
+			...commentingDiff,
 			fileDiffs: [testDiff],
 			commitDetail: nonMergeCommit,
 			onclose: vi.fn(),
@@ -2643,6 +2713,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		askMock.mockClear();
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: nonMergeCommit,
 				onclose: vi.fn(),
@@ -2668,6 +2739,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 
 	it("offers the shift extension only on a comment opened from selected lines", async () => {
 		const props = {
+			...commentingDiff,
 			fileDiffs: [testDiff],
 			commitDetail: nonMergeCommit,
 			onclose: vi.fn(),
@@ -2693,6 +2765,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 	it("extends a full-file comment's range on a shift-click, keeping the text", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -2719,6 +2792,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 	it("names a whole-file comment as on the file and offers no extension", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -2740,6 +2814,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 	it("opens a comment on one line from its marker cell's control", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: nonMergeCommit,
 				onclose: vi.fn(),
@@ -2768,6 +2843,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		);
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: nonMergeCommit,
 				onclose: vi.fn(),
@@ -2830,6 +2906,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 	function renderPanel(overrides: { reviewFilter?: ReviewFilter } = {}) {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: nonMergeCommit,
 				onclose: vi.fn(),
@@ -2891,6 +2968,7 @@ describe("Discard File button", () => {
 	it("shows the Discard File button for unstaged diffs", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -2907,6 +2985,7 @@ describe("Discard File button", () => {
 	it("hides the Discard File button for staged diffs", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -2923,6 +3002,7 @@ describe("Discard File button", () => {
 	it("hides the Discard File button for commit diffs", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -2944,6 +3024,7 @@ describe("Discard File button", () => {
 
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -2979,6 +3060,7 @@ describe("Discard File button", () => {
 
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -3003,6 +3085,7 @@ describe("Discard File button", () => {
 	it("renders Discard File before Stage File", async () => {
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -3027,6 +3110,7 @@ describe("Discard File button", () => {
 
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [untrackedDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -3057,6 +3141,7 @@ describe("Discard File button", () => {
 
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -3096,6 +3181,7 @@ describe("Discard File button", () => {
 
 		render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -3185,6 +3271,7 @@ describe("Discard File button", () => {
 			);
 			render(DiffPanel, {
 				props: {
+					...commentingDiff,
 					fileDiffs: [twoHunkDiff],
 					commitDetail: null,
 					onclose: vi.fn(),
@@ -3288,6 +3375,7 @@ describe("DiffPanel hunk navigation", () => {
 	function renderNav() {
 		const result = render(DiffPanel, {
 			props: {
+				...commentingDiff,
 				fileDiffs: [navDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -3462,6 +3550,7 @@ describe("DiffPanel hunk navigation", () => {
 		try {
 			render(DiffPanel, {
 				props: {
+					...commentingDiff,
 					fileDiffs: [{ ...navDiff, path: "README.md" }],
 					commitDetail: null,
 					onclose: vi.fn(),
@@ -3510,6 +3599,7 @@ describe("DiffPanel hunk navigation", () => {
 				: Promise.resolve(undefined),
 		);
 		const props = {
+			...commentingDiff,
 			fileDiffs: [{ ...navDiff, path: "README.md" }],
 			commitDetail: null,
 			onclose: vi.fn(),
@@ -3566,6 +3656,7 @@ describe("DiffPanel hunk navigation", () => {
 		try {
 			render(DiffPanel, {
 				props: {
+					...commentingDiff,
 					fileDiffs: [{ ...navDiff, path: "README.md" }],
 					commitDetail: null,
 					onclose: vi.fn(),
@@ -3621,6 +3712,7 @@ describe("DiffPanel hunk navigation", () => {
 		try {
 			render(DiffPanel, {
 				props: {
+					...commentingDiff,
 					fileDiffs: [{ ...navDiff, path: "README.md" }],
 					commitDetail: {
 						oid: "target",

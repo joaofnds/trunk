@@ -140,8 +140,8 @@ interface Props {
 	 *  window-global search-toggle event reaches all of them. */
 	tabActive: boolean;
 	/** Filtered per-commit badge projection from RepoView. */
-	commentCounts?: Map<string, number>;
-	commentTallies?: Map<string, ReviewTally>;
+	commentCounts: Map<string, number>;
+	commentTallies: Map<string, ReviewTally>;
 	/** Shared comments store; supplies the commented oids and the active review. */
 	reviewComments?: ReviewCommentsManager;
 	/** Whether BranchSidebar's stored-visibility read for this repo has resolved
@@ -172,8 +172,8 @@ let {
 	onopenrebaseeditor,
 	onopenmessageeditor,
 	tabActive,
-	commentCounts = new Map(),
-	commentTallies = new Map(),
+	commentCounts,
+	commentTallies,
 	reviewComments,
 	// Defaults true (load immediately) rather than false: RepoView is the one
 	// caller that has a BranchSidebar sibling to gate on and opts in explicitly.

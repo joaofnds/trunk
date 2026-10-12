@@ -26,7 +26,7 @@ import {
 	reviewComposerTargetsEqual,
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
-import { ALL_THREADS, tallyBadgeThreads } from "../lib/review-filter.js";
+import { tallyBadgeThreads } from "../lib/review-filter.js";
 import {
 	getDiffContextLines,
 	getDiffIgnoreWhitespace,
@@ -89,9 +89,9 @@ interface Props {
 	onretry?: () => void;
 	onloadfullfile?: (filePath: string) => Promise<FileDiff | null>;
 	/** Whether this diff can ever take a comment; takesComments says whether it does now. */
-	canTakeComments?: boolean;
-	takesComments?: boolean;
-	reviewFilter?: ReviewFilter;
+	canTakeComments: boolean;
+	takesComments: boolean;
+	reviewFilter: ReviewFilter;
 	activeReviewId?: string | null;
 	/** The review a new comment lands in; null when submitting starts one. */
 	/** The active review's id and title, for the composer to name. */
@@ -124,9 +124,9 @@ let {
 	loadError = null,
 	onretry,
 	onloadfullfile,
-	canTakeComments = true,
-	takesComments = true,
-	reviewFilter = ALL_THREADS,
+	canTakeComments,
+	takesComments,
+	reviewFilter,
 	activeReviewId = null,
 	activeReview = null,
 	viewComments = [],

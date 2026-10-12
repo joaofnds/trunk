@@ -18,6 +18,7 @@ import {
 	UNSCROLLED_VIEWPORT_HEIGHT,
 } from "./virtual-list-layout.js";
 import "./tauri-mock";
+import { noReviewCounts } from "./review-props.js";
 
 vi.mock("../../lib/invoke.js", async () => {
 	const actual = await vi.importActual<typeof import("../../lib/invoke.js")>(
@@ -135,6 +136,7 @@ async function renderGraph(fixture: LayoutExport, wipCount: number) {
 
 	const rendered = render(await graphComponent(), {
 		props: {
+			...noReviewCounts(),
 			repoPath: "/fixture",
 			wipCount,
 			tabActive: true,

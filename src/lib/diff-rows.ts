@@ -14,7 +14,7 @@ import {
 } from "./comment-matching.js";
 import { type PairedRow, pairLines } from "./diff-utils.js";
 import { displayColumns } from "./display-columns.js";
-import { ALL_THREADS, filterThreads, mostUrgentTone } from "./review-filter.js";
+import { filterThreads, mostUrgentTone } from "./review-filter.js";
 import { type RowMetrics, rowHeightFor } from "./row-metrics.js";
 import type {
 	ContentMode,
@@ -109,7 +109,7 @@ export interface DiffRowModel {
 export interface BuildOptions {
 	content: ContentMode;
 	comments: Thread[];
-	reviewFilter?: ReviewFilter;
+	reviewFilter: ReviewFilter;
 	collapsed: Set<string>;
 	/** Whether the view shows a per-file header bar, as the multi-file views do. */
 	fileHeaders: boolean;
@@ -172,10 +172,7 @@ export function buildInlineRows(
 			continue;
 		}
 		let flatIdx = 0;
-		const visibleComments = filterThreads(
-			opts.comments,
-			opts.reviewFilter ?? ALL_THREADS,
-		);
+		const visibleComments = filterThreads(opts.comments, opts.reviewFilter);
 		rows.push(...rowsAboveFile(fd, opts, visibleComments));
 
 		for (const [hunkIdx, hunk] of fd.hunks.entries()) {
@@ -284,10 +281,7 @@ export function buildSplitRows(
 			continue;
 		}
 		let flatBase = 0;
-		const visibleComments = filterThreads(
-			opts.comments,
-			opts.reviewFilter ?? ALL_THREADS,
-		);
+		const visibleComments = filterThreads(opts.comments, opts.reviewFilter);
 		rows.push(...rowsAboveFile(fd, opts, visibleComments));
 
 		for (const [hunkIdx, hunk] of fd.hunks.entries()) {

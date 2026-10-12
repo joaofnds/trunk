@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { createRawSnippet, tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
+import { commentingLeaf } from "../../__tests__/helpers/review-props.js";
 import { aThread } from "../../__tests__/helpers/thread-fixture.js";
 import { describeThreadedCommentActions } from "../../__tests__/helpers/threaded-comment-actions.js";
 import { safeInvoke } from "../../lib/invoke.js";
@@ -78,6 +79,7 @@ const oneHunk = fileOf("src/main.ts", [
 
 function defaultProps(overrides: Record<string, unknown> = {}) {
 	return {
+		...commentingLeaf,
 		fileDiffs: [oneHunk],
 		selectedPath: "src/main.ts",
 		diffKind: "unstaged" as const,

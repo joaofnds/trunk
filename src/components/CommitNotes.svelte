@@ -9,11 +9,7 @@ import {
 	editThread,
 } from "../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
-import {
-	ALL_THREADS,
-	filterThreads,
-	threadMatchesFilter,
-} from "../lib/review-filter.js";
+import { filterThreads, threadMatchesFilter } from "../lib/review-filter.js";
 import type { Delivery, ReviewFilter, Thread } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import ComposerFrame from "./review/ComposerFrame.svelte";
@@ -24,7 +20,7 @@ interface Props {
 	notes: Thread[];
 	repoPath: string;
 	commitOid: string;
-	reviewFilter?: ReviewFilter;
+	reviewFilter: ReviewFilter;
 	activeReviewId?: string | null;
 	/** Whether the active review holds a batch, which a new note joins. */
 	batchHeld?: boolean;
@@ -40,7 +36,7 @@ let {
 	notes,
 	repoPath,
 	commitOid,
-	reviewFilter = ALL_THREADS,
+	reviewFilter,
 	activeReviewId = null,
 	batchHeld = false,
 	editorSessionForThread,

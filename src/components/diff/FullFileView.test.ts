@@ -6,6 +6,7 @@ import {
 	setLayout,
 	stubLayout,
 } from "../../__tests__/helpers/layout-stub";
+import { commentingDiff } from "../../__tests__/helpers/review-props.js";
 import { aThread } from "../../__tests__/helpers/thread-fixture";
 import { describeThreadedCommentActions } from "../../__tests__/helpers/threaded-comment-actions.js";
 import { safeInvoke } from "../../lib/invoke.js";
@@ -104,6 +105,7 @@ const emptyFile: FileDiff = {
 
 function defaultProps(overrides: Record<string, unknown> = {}) {
 	return {
+		...commentingDiff,
 		fileDiffs: [modifiedFile],
 		showInvisibles: false,
 		wordWrap: false,

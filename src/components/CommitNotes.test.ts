@@ -41,7 +41,13 @@ function renderNotes(
 	overrides: Partial<ComponentProps<typeof CommitNotes>> = {},
 ) {
 	return render(CommitNotes, {
-		props: { notes, repoPath: "/repo", commitOid, ...overrides },
+		props: {
+			reviewFilter: ALL_THREADS,
+			notes,
+			repoPath: "/repo",
+			commitOid,
+			...overrides,
+		},
 	});
 }
 

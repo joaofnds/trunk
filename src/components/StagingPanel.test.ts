@@ -10,6 +10,7 @@ import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
+import { noReviewCounts } from "../__tests__/helpers/review-props.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import type { ReviewTally } from "../lib/types.js";
@@ -122,6 +123,7 @@ describe("StagingPanel", () => {
 	it("renders without crashing", () => {
 		const { container } = render(StagingPanel, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/test/repo",
 			},
 		});
@@ -129,7 +131,9 @@ describe("StagingPanel", () => {
 	});
 
 	it("paints the bulk actions in the tone each carries", async () => {
-		render(StagingPanel, { props: { repoPath: "/test/repo" } });
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/test/repo" },
+		});
 
 		await waitFor(() => {
 			expect(
@@ -145,7 +149,9 @@ describe("StagingPanel", () => {
 	});
 
 	it("draws the view switch as a small icon control", async () => {
-		render(StagingPanel, { props: { repoPath: "/test/repo" } });
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/test/repo" },
+		});
 
 		await waitFor(() => {
 			expect(screen.getByRole("switch")).toHaveClass("w-control-sm");
@@ -155,6 +161,7 @@ describe("StagingPanel", () => {
 	it("renders file count header", async () => {
 		render(StagingPanel, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/test/repo",
 			},
 		});
@@ -167,6 +174,7 @@ describe("StagingPanel", () => {
 	it("sizes the panel header from the shared panel-header height", async () => {
 		render(StagingPanel, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/test/repo",
 			},
 		});
@@ -193,7 +201,9 @@ describe("StagingPanel", () => {
 				return Promise.resolve({ op_type: "None" });
 			return Promise.resolve(undefined);
 		});
-		render(StagingPanel, { props: { repoPath: "/test/repo" } });
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/test/repo" },
+		});
 
 		const unstaged = await screen.findByTestId("staging-unstaged-section");
 		const staged = screen.getByTestId("staging-staged-section");
@@ -205,7 +215,9 @@ describe("StagingPanel", () => {
 	});
 
 	it("folds a section's files away when its header is clicked", async () => {
-		render(StagingPanel, { props: { repoPath: "/test/repo" } });
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/test/repo" },
+		});
 		const header = await screen.findByRole("button", {
 			name: /Unstaged Files/,
 		});
@@ -220,7 +232,9 @@ describe("StagingPanel", () => {
 	it.each(["Stage all changes", "Discard all changes", "Unstage all"])(
 		"keeps both sections open when %s is clicked",
 		async (action) => {
-			render(StagingPanel, { props: { repoPath: "/test/repo" } });
+			render(StagingPanel, {
+				props: { ...noReviewCounts(), repoPath: "/test/repo" },
+			});
 
 			await fireEvent.click(
 				await screen.findByRole("button", { name: action }),
@@ -233,6 +247,7 @@ describe("StagingPanel", () => {
 	it("renders current branch name when provided", async () => {
 		render(StagingPanel, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/test/repo",
 				currentBranch: "feature/test",
 			},
@@ -246,6 +261,7 @@ describe("StagingPanel", () => {
 		vi.mocked(writeText).mockClear();
 		render(StagingPanel, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/test/repo",
 				currentBranch: "feature/test",
 			},
@@ -302,6 +318,7 @@ describe("StagingPanel", () => {
 	it("calls get_status on mount with repo path", async () => {
 		render(StagingPanel, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/my/repo",
 			},
 		});
@@ -341,7 +358,7 @@ describe("StagingPanel", () => {
 		});
 
 		render(StagingPanel, {
-			props: { repoPath: "/test/repo" },
+			props: { ...noReviewCounts(), repoPath: "/test/repo" },
 			context: new Map([[SCHEDULER, scheduler]]),
 		});
 		const row = await screen.findByText("README.md");
@@ -407,6 +424,7 @@ describe("StagingPanel merge-continue", () => {
 		const onopenmessageeditor = vi.fn().mockResolvedValue("edited message");
 		render(StagingPanel, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/repo",
 				onopenmessageeditor,
 			},
@@ -436,6 +454,7 @@ describe("StagingPanel merge-continue", () => {
 		const onopenmessageeditor = vi.fn().mockResolvedValue(null);
 		render(StagingPanel, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/repo",
 				onopenmessageeditor,
 			},
@@ -456,6 +475,7 @@ describe("StagingPanel merge-continue", () => {
 	it("does not render the old inline subject/body merge form", async () => {
 		render(StagingPanel, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/repo",
 			},
 		});
@@ -467,6 +487,7 @@ describe("StagingPanel merge-continue", () => {
 	it("still renders the Abort Merge recovery button in merge state", async () => {
 		render(StagingPanel, {
 			props: {
+				...noReviewCounts(),
 				repoPath: "/repo",
 			},
 		});
@@ -495,7 +516,7 @@ describe("StagingPanel rebase form", () => {
 	});
 
 	async function renderRebaseForm() {
-		render(StagingPanel, { props: { repoPath: "/repo" } });
+		render(StagingPanel, { props: { ...noReviewCounts(), repoPath: "/repo" } });
 		const progress = await screen.findByText("Rebasing commit 2 out of 5");
 		const form = progress.parentElement;
 		if (!form) throw new Error("expected the progress line inside the form");
@@ -635,7 +656,7 @@ describe("StagingPanel with no rebase form", () => {
 			mockOperation(opType);
 
 			const { container } = render(StagingPanel, {
-				props: { repoPath: "/repo" },
+				props: { ...noReviewCounts(), repoPath: "/repo" },
 			});
 			await screen.findByText(shown);
 

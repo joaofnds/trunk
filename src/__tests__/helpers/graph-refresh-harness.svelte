@@ -28,6 +28,8 @@ let wipCount = $state(untrack(() => (withWip ? 1 : 0)));
 	<CommitGraph
 		repoPath="/repo"
 		tabActive={true}
+		commentCounts={new Map()}
+		commentTallies={new Map()}
 		{refreshSignal}
 		{consumedRefreshSignal}
 		{visibilityResolved}

@@ -14,6 +14,7 @@ import {
 } from "../../tests/app/harness/dom.js";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories.js";
 import { RepositoryReadHost } from "../__tests__/helpers/repository-read-host.js";
+import { noReviewCounts } from "../__tests__/helpers/review-props.js";
 import { ROW_HEIGHT } from "../lib/chrome-heights.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import type { GraphResponse } from "../lib/types.js";
@@ -53,6 +54,7 @@ function graph(revision: number): GraphResponse {
 function mountGraph(cachedGraphRevision: number) {
 	return render(CommitGraph, {
 		props: {
+			...noReviewCounts(),
 			repoPath: "/repo",
 			tabActive: true,
 			refreshSignal: 0,
