@@ -728,7 +728,6 @@ describe("CommitDetail", () => {
 					onfileselect: vi.fn(),
 					onclose: vi.fn(),
 					repoPath: "/repo",
-					reviewCommentsVisible: true,
 					reviewComments,
 					reviewFilter: { states: ["done"], stale: true },
 					commentCounts: new Map([[`${detail.oid}\0${fileDiffs[0].path}`, 2]]),

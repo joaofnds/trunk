@@ -2319,7 +2319,6 @@ function stepRightPane(delta: number) {
 								onclose={handleRebaseDetailClose}
 								{repoPath}
 								{reviewComments}
-								reviewCommentsVisible={reviewFilter !== "none"}
 								{reviewFilter}
 								commentCounts={presentation.byFile}
 								commentTallies={presentation.tallyByFile}
@@ -2537,7 +2536,6 @@ function stepRightPane(delta: number) {
 						onopenrebaseeditor={handleOpenRebaseEditor}
 						onopenmessageeditor={handleOpenMessageEditor}
 						{tabActive}
-						reviewCommentsVisible={reviewFilter !== "none"}
 						commentCounts={presentation.byCommit}
 						commentTallies={presentation.tallyByCommit}
 						{reviewComments}
@@ -2600,7 +2598,6 @@ function stepRightPane(delta: number) {
 								onclose={clearCommit}
 								{repoPath}
 								{reviewComments}
-								reviewCommentsVisible={reviewFilter !== "none"}
 								{reviewFilter}
 								commentCounts={presentation.byFile}
 								commentTallies={presentation.tallyByFile}
@@ -2638,7 +2635,6 @@ function stepRightPane(delta: number) {
 						ontreeviewtoggle={handleTreeViewToggle}
 						onopenmessageeditor={handleOpenMessageEditor}
 						{reviewComments}
-						reviewCommentsVisible={reviewFilter !== "none"}
 						commentCounts={presentation.byFile}
 						commentTallies={presentation.tallyByFile}
 					/>

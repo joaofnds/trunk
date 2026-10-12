@@ -194,6 +194,16 @@ describe("buildCommentCounts", () => {
 		expect(byFile.size).toBe(0);
 	});
 
+	it("counts nothing while every thread is hidden", () => {
+		const counts = buildCommentCounts(
+			[lineComment("c1", anchor("abc", "a.ts")), commitNote("n1", "abc")],
+			EMPTY_SNAPSHOTS,
+			"none",
+		);
+
+		expect([counts.byCommit.size, counts.byFile.size]).toEqual([0, 0]);
+	});
+
 	it("counts a line comment under both byCommit and byFile", () => {
 		const { byCommit, byFile } = buildCommentCounts(
 			[lineComment("c1", anchor("abc", "a.ts"))],

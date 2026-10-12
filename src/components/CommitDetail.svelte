@@ -49,7 +49,6 @@ interface Props {
 	// and the per-file badges read one source of truth.
 	reviewComments?: ReviewCommentsManager;
 	// Center-pane review visibility; gates the per-file count badges.
-	reviewCommentsVisible?: boolean;
 	reviewFilter?: ReviewFilter;
 	commentCounts?: Map<string, number>;
 	commentTallies?: Map<string, ReviewTally>;
@@ -76,30 +75,22 @@ let {
 	onnavigate,
 	pagerKeys = true,
 	reviewComments,
-	reviewCommentsVisible = false,
 	reviewFilter = ALL_THREADS,
-	commentCounts,
-	commentTallies,
+	commentCounts = new Map(),
+	commentTallies = new Map(),
 	activeReviewId = null,
 	editorSessionForThread,
 	editorDraftFor,
 }: Props = $props();
 
-// Per-file comment counts for this commit's file list. Gated so the badges
-// follow the toggle + an active session; keyed by the commit's own OID so the
-// badge can never disagree with what the diff pane shows for the same file.
+// Per-file comment counts for this commit's file list, keyed by the commit's
+// own OID so the badge can never disagree with what the diff pane shows for the
+// same file.
 let fileCommentCounts = $derived(
-	reviewCommentsVisible
-		? fileCountsForOid(
-				commentCounts ?? reviewComments?.countByFile ?? new Map(),
-				commitDetail.oid,
-			)
-		: new Map<string, number>(),
+	fileCountsForOid(commentCounts, commitDetail.oid),
 );
 let fileCommentTallies = $derived(
-	reviewCommentsVisible
-		? fileTalliesForOid(commentTallies ?? new Map(), commitDetail.oid)
-		: new Map<string, ReviewTally>(),
+	fileTalliesForOid(commentTallies, commitDetail.oid),
 );
 
 let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));

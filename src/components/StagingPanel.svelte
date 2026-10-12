@@ -68,7 +68,6 @@ interface Props {
 	// Shared comments store + center-pane toggle, threaded from RepoView so the
 	// per-file count badges read the one source of truth.
 	reviewComments?: ReviewCommentsManager;
-	reviewCommentsVisible?: boolean;
 	commentCounts?: Map<string, number>;
 	commentTallies?: Map<string, ReviewTally>;
 }
@@ -90,9 +89,8 @@ let {
 	ontreeviewtoggle,
 	onopenmessageeditor,
 	reviewComments,
-	reviewCommentsVisible = false,
-	commentCounts,
-	commentTallies,
+	commentCounts = new Map(),
+	commentTallies = new Map(),
 }: Props = $props();
 const scheduler = getScheduler();
 
@@ -103,13 +101,7 @@ let status = $state<WorkingTreeStatus | null>(null);
 // unstaged → working_tree_snapshot, staged → index_snapshot. Conflicted files
 // render via MergeEditor (no inline comments), so resolveViewOid('conflicted')
 // is null → no badges there, matching what their merge view shows.
-let countsEnabled = $derived(
-	reviewCommentsVisible &&
-		((reviewComments?.hasThreads ?? false) || (commentCounts?.size ?? 0) > 0),
-);
-
 function sectionCounts(kind: "unstaged" | "staged"): Map<string, number> {
-	if (!countsEnabled) return new Map();
 	const oid = resolveViewOid({
 		kind,
 		commitOid: null,
@@ -118,14 +110,10 @@ function sectionCounts(kind: "unstaged" | "staged"): Map<string, number> {
 			index_snapshot: null,
 		},
 	});
-	return fileCountsForOid(
-		commentCounts ?? reviewComments?.countByFile ?? new Map(),
-		oid,
-	);
+	return fileCountsForOid(commentCounts, oid);
 }
 
 function sectionTones(kind: "unstaged" | "staged"): Map<string, ReviewTally> {
-	if (!countsEnabled) return new Map();
 	const oid = resolveViewOid({
 		kind,
 		commitOid: null,
@@ -134,7 +122,7 @@ function sectionTones(kind: "unstaged" | "staged"): Map<string, ReviewTally> {
 			index_snapshot: null,
 		},
 	});
-	return fileTalliesForOid(commentTallies ?? new Map(), oid);
+	return fileTalliesForOid(commentTallies, oid);
 }
 
 let unstagedCommentCounts = $derived(sectionCounts("unstaged"));

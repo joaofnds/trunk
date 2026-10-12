@@ -140,7 +140,6 @@ interface Props {
 	 *  window-global search-toggle event reaches all of them. */
 	tabActive: boolean;
 	/** Center-pane review visibility; gates the per-row comment badge. */
-	reviewCommentsVisible?: boolean;
 	/** Filtered per-commit badge projection from RepoView. */
 	commentCounts?: Map<string, number>;
 	commentTallies?: Map<string, ReviewTally>;
@@ -174,9 +173,8 @@ let {
 	onopenrebaseeditor,
 	onopenmessageeditor,
 	tabActive,
-	reviewCommentsVisible = false,
-	commentCounts,
-	commentTallies,
+	commentCounts = new Map(),
+	commentTallies = new Map(),
 	reviewComments,
 	// Defaults true (load immediately) rather than false: RepoView is the one
 	// caller that has a BranchSidebar sibling to gate on and opts in explicitly.
@@ -197,20 +195,15 @@ const scheduler = getScheduler();
  */
 const clipScope = `g${nextGraphInstanceId()}`;
 
-// Per-row comment badge count. Gated on the toggle + an active session so the
-// badge's self-hide at 0 also enforces the gate (children stay dumb). The WIP
-// row's oid is the literal "__wip__" key the store folds snapshot counts into.
+// Per-row comment badge count, from counts already built under the thread
+// filter, so hidden threads count nothing. The WIP row's oid is the literal
+// "__wip__" key the store folds snapshot counts into.
 function commentCountFor(oid: string): number {
-	if (!reviewCommentsVisible) return 0;
-	return (
-		commentCounts?.get(oid) ??
-		(commentCounts ? 0 : (reviewComments?.countByCommit.get(oid) ?? 0))
-	);
+	return commentCounts.get(oid) ?? 0;
 }
 
 function commentTallyFor(oid: string): ReviewTally | null {
-	if (!reviewCommentsVisible) return null;
-	return commentTallies?.get(oid) ?? null;
+	return commentTallies.get(oid) ?? null;
 }
 
 const BATCH = 200;

@@ -274,7 +274,6 @@ describe("StagingPanel", () => {
 		render(StagingPanel, {
 			props: {
 				repoPath: "/test/repo",
-				reviewCommentsVisible: true,
 				reviewComments,
 				commentCounts: new Map([
 					[`${workingTree}\0README.md`, 2],

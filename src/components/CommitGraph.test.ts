@@ -289,7 +289,6 @@ describe("CommitGraph", () => {
 			props: {
 				repoPath: "/test/repo",
 				tabActive: true,
-				reviewCommentsVisible: true,
 				reviewComments,
 				commentCounts: new Map(),
 			},
@@ -306,7 +305,6 @@ describe("CommitGraph", () => {
 			props: {
 				repoPath: "/test/repo",
 				tabActive: true,
-				reviewCommentsVisible: true,
 				wipCount: 1,
 				commentCounts: new Map([
 					[TEST_COMMITS[0].oid, 2],
