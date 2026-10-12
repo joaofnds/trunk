@@ -89,7 +89,7 @@ interface Props {
 	composer?: DiffComposer | null;
 	oncommentfullfile: (filePath: string, selectedIndices: Set<number>) => void;
 	onextendcomment?: (filePath: string, selectedIndices: Set<number>) => void;
-	oncommentline?: (
+	oncommentline: (
 		filePath: string,
 		hunkIndex: number,
 		lineIndex: number,

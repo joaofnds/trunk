@@ -113,6 +113,7 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
 		onunstagelines: vi.fn(),
 		ondiscardlines: vi.fn(),
 		oncommentlines: vi.fn(),
+		oncommentline: vi.fn(),
 		oncommenthunk: vi.fn(),
 		repoPath: "/repo",
 		takesComments: true,

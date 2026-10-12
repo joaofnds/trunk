@@ -83,7 +83,7 @@ interface Props {
 	/** The open comment composer, drawn under the line its comment ends on. */
 	composer?: DiffComposer | null;
 	/** Opens a comment on one line, from the control its marker cell shows. */
-	oncommentline?: (
+	oncommentline: (
 		filePath: string,
 		hunkIndex: number,
 		lineIndex: number,
@@ -123,16 +123,9 @@ let {
 }: Props = $props();
 
 // Whether a line can take a new comment here, as the hunk's Comment action can.
-const commentable = $derived(
-	oncommentline !== undefined && takesComments && !isMerge,
-);
+const commentable = $derived(takesComments && !isMerge);
 
 const FLASH_MS = 600;
-
-// Staging rebuilds the diff with the same view options the hunk was rendered
-// under, so a hunk index means the same hunk on both sides and ignoring
-// whitespace no longer has to block the gesture (TRUNK-73). Only an
-// in-flight operation holds the buttons now.
 
 let list = $state<
 	(DiffListHandle & { scrollToIndex: (index: number) => void }) | null
@@ -284,7 +277,7 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 				marker={item.marker}
 				width={vd.markerW}
 				oncomment={commentable && isSelectable && !(diffKind === 'unstaged' && line.origin === 'Delete')
-					? () => oncommentline?.(item.path, item.hunkIdx, item.lineIdx)
+					? () => oncommentline(item.path, item.hunkIdx, item.lineIdx)
 					: undefined}
 				commentLabel={commentLabel(line)}
 			/>{#if isSelectable}

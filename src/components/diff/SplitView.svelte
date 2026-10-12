@@ -24,6 +24,7 @@ import type {
 	DiffLine,
 	DiffOrigin,
 	FileDiff,
+	ReviewFilter,
 	Thread,
 } from "../../lib/types.js";
 import GutterGrip from "../../lib/ui/GutterGrip.svelte";
@@ -49,12 +50,12 @@ interface Props {
 	selectedHunkKey: string | null;
 	selectedLineIndices: Set<number>;
 	selectedCount: number;
-	reviewFilter: import("../../lib/types.js").ReviewFilter;
+	reviewFilter: ReviewFilter;
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	/** The open comment composer, drawn under the line its comment ends on. */
 	composer?: DiffComposer | null;
 	/** Opens a comment on one line, from the control its marker cell shows. */
-	oncommentline?: (
+	oncommentline: (
 		filePath: string,
 		hunkIndex: number,
 		lineIndex: number,
@@ -125,16 +126,9 @@ let {
 }: Props = $props();
 
 // Whether a line can take a new comment here, as the hunk's Comment action can.
-const commentable = $derived(
-	oncommentline !== undefined && takesComments && !isMerge,
-);
+const commentable = $derived(takesComments && !isMerge);
 
 const FLASH_MS = 600;
-
-// Staging rebuilds the diff with the same view options the hunk was rendered
-// under, so a hunk index means the same hunk on both sides and ignoring
-// whitespace no longer has to block the gesture (TRUNK-73). Only an
-// in-flight operation holds the buttons now.
 
 let list = $state<
 	(DiffListHandle & { scrollToIndex: (index: number) => void }) | null
@@ -364,7 +358,7 @@ function originClass(origin: string): string {
 						marker={item.markerRight}
 						width={vd.markerW}
 						oncomment={commentable && isSelectable
-							? () => oncommentline?.(item.path, item.hunkIdx, lineIdx)
+							? () => oncommentline(item.path, item.hunkIdx, lineIdx)
 							: undefined}
 						commentLabel={commentLabel(line)}
 					/>
