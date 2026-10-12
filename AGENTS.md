@@ -15,6 +15,7 @@ just dev          # Vite dev + Tauri watch (no .app bundle, so your screen tools
 just dev-app      # Debug .app you can drive and screenshot (docs/build-environment.md)
 just build        # Production build
 just quick        # Static only: fmt, biome, svelte-check (~3s)
+just fix          # Write Biome's fixes, in place of `biome check --write`, which breaks Svelte markup
 just front        # biome, svelte-check, vitest (~14s)
 just rust         # Everything that touches Rust (~12s; longer after an edit)
 just check        # Run all checks
