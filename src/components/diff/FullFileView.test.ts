@@ -157,6 +157,28 @@ describe("FullFileView", () => {
 		expect(screen.getByRole("button", { name: /comment \(1\)/i })).toBeTruthy();
 	});
 
+	it("keeps the Comment bar's row where the diff takes no comments, so the code stays put", async () => {
+		render(FullFileView, {
+			props: defaultProps({ takesComments: false }),
+		});
+
+		await fireEvent.click(gutterGrip("added one"));
+		await tick();
+
+		expect(screen.getByTestId("full-file-comment-bar")).toBeInTheDocument();
+	});
+
+	it("withholds the Comment action where the diff takes no comments", async () => {
+		render(FullFileView, {
+			props: defaultProps({ takesComments: false }),
+		});
+
+		await fireEvent.click(gutterGrip("added one"));
+		await tick();
+
+		expect(screen.queryByRole("button", { name: /comment \(1\)/i })).toBeNull();
+	});
+
 	it("offers no Comment affordance in a staged view, which is not on the allowlist", async () => {
 		render(FullFileView, {
 			props: defaultProps({ diffKind: "staged" as const }),

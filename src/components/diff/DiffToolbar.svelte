@@ -156,6 +156,22 @@ const renderedActive = $derived(
 		<CommentBadge count={commentCount} tally={commentTally} />
 	</span>
 
+	<!-- One-click whole-file Comment (260531-l02e/l02f): comments every change in the
+       file in one click. Available for every diff kind the store can anchor a thread
+       against — commit diffs as well as the dirty tree (selectedPath is always set
+       when this toolbar renders). A current-file view is excluded: commenting on
+       one is a line selection, since a whole-file pin would go stale on any edit
+       anywhere in the file. Gated on takesComments like the hunk
+       toolbar's Comment buttons, so a clean read-only diff shows no comment
+       affordances; never gated on whitespace-ignore since it never stages. It
+       sits right after the file name, which gives up the width it takes, so its
+       arrival moves no other control. -->
+	{#if takesComments && diffKind !== "current_file"}
+		<Button size="sm" variant="accent" onclick={oncommentfile}
+			>Comment File</Button
+		>
+	{/if}
+
 	{#if selectedPath && isMarkdownPath(selectedPath)}
 		<Button
 			icon
@@ -246,20 +262,6 @@ const renderedActive = $derived(
 		style:font-size={DIFF_ROW_FONT.fontSize}
 		style:line-height={DIFF_ROW_FONT.lineHeight}
 	></span>
-
-	<!-- One-click whole-file Comment (260531-l02e/l02f): comments every change in the
-       file in one click. Available for every diff kind the store can anchor a thread
-       against — commit diffs as well as the dirty tree (selectedPath is always set
-       when this toolbar renders). A current-file view is excluded: commenting on
-       one is a line selection, since a whole-file pin would go stale on any edit
-       anywhere in the file. Gated on takesComments like the hunk
-       toolbar's Comment buttons, so a clean read-only diff shows no comment
-       affordances; never gated on whitespace-ignore since it never stages. -->
-	{#if takesComments && diffKind !== "current_file"}
-		<Button size="sm" variant="accent" onclick={oncommentfile}
-			>Comment File</Button
-		>
-	{/if}
 
 	{#if diffKind === 'unstaged'}
 		<Button

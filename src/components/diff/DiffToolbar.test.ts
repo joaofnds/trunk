@@ -38,6 +38,16 @@ describe("DiffToolbar review actions", () => {
 		).toBeInTheDocument();
 	});
 
+	it("places Comment File right after the file name, so its arrival moves no other control", () => {
+		render(DiffToolbar, {
+			props: { ...baseProps, selectedPath: "src/main.rs", takesComments: true },
+		});
+
+		const commentFile = screen.getByRole("button", { name: "Comment File" });
+
+		expect(commentFile.previousElementSibling).toHaveClass("filename");
+	});
+
 	it("offers no Comment File where the diff takes none", () => {
 		render(DiffToolbar, {
 			props: {

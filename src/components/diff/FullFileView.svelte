@@ -129,13 +129,10 @@ function commentOnLine(path: string, line: DiffLine, index: number) {
 	oncommentfullfile(path, new Set([index]));
 }
 
-const affordanceVisible = $derived(
-	takesComments &&
-		(diffKind === "commit" ||
-			diffKind === "unstaged" ||
-			diffKind === "current_file") &&
-		selectedPath !== null &&
-		selectedIndices.size > 0,
+// The bar's row follows the selection, never takesComments, so a diff that
+// stops taking comments with a selection open keeps its code where it was.
+const commentBarShown = $derived(
+	kindTakesComments && selectedPath !== null && selectedIndices.size > 0,
 );
 
 $effect(() => {
@@ -346,21 +343,26 @@ function lineBackground(origin: string, isSelected: boolean): string {
 	style:--diff-binary-row-height={FIXED_ROW_HEIGHT_VARS["--diff-binary-row-height"]}
 	style:--diff-composer-row-height={FIXED_ROW_HEIGHT_VARS["--diff-composer-row-height"]}
 >
-	{#if affordanceVisible}
+	{#if commentBarShown}
 		<!-- Full-file Comment affordance (L-05: no isMerge disable). Appears on
          comment-capable commit, unstaged working-tree (260531-k4j), and
          current-file views once a selection exists. Lives outside the list
          because it follows the live selection, which the row model must not
          take as an input. -->
-		<div class="flex justify-end py-1 px-2 flex-none">
-			<Button
-				variant="accent"
-				size="sm"
-				data-testid="full-file-comment"
-				onclick={() => selectedPath && oncommentfullfile(selectedPath, selectedIndices)}
-			>
-				Comment ({selectedIndices.size})
-			</Button>
+		<div
+			class="flex items-center justify-end h-bar px-2 flex-none"
+			data-testid="full-file-comment-bar"
+		>
+			{#if takesComments}
+				<Button
+					variant="accent"
+					size="sm"
+					data-testid="full-file-comment"
+					onclick={() => selectedPath && oncommentfullfile(selectedPath, selectedIndices)}
+				>
+					Comment ({selectedIndices.size})
+				</Button>
+			{/if}
 		</div>
 	{/if}
 
