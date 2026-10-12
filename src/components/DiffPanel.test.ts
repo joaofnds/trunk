@@ -1,6 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	onTestFinished,
+	vi,
+} from "vitest";
 import DiffPanel from "../__tests__/helpers/controlled-diff-panel.svelte";
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
@@ -3209,7 +3217,7 @@ describe("Discard File button", () => {
 	});
 
 	// The action buttons' only `disabled` binding is `hunkOperationInFlight`
-	// (HunkView.svelte:103). Clearing it in the `finally` reopens them while the
+	// (HunkActions.svelte). Clearing it in the `finally` reopens them while the
 	// refetch is still in flight, so the second click carries a hunk index from
 	// the stale render and the backend applies it positionally against an
 	// already-updated worktree.
@@ -3299,6 +3307,65 @@ describe("Discard File button", () => {
 			await flushPrefs();
 			expect(stageHunkCalls()).toBe(2);
 		});
+
+		// Discard and Unstage share the guard with Stage, and each sends the
+		// index of the hunk whose button was clicked.
+		it.each([
+			{ diffKind: "unstaged", label: "Discard Hunk", cmd: "discard_hunk" },
+			{ diffKind: "staged", label: "Unstage Hunk", cmd: "unstage_hunk" },
+		] as const)(
+			"$label sends its own hunk and stays closed until the refetch completes",
+			async ({ diffKind, label, cmd }) => {
+				const { ask } = await import("@tauri-apps/plugin-dialog");
+				vi.mocked(ask).mockResolvedValue(true);
+				onTestFinished(() => {
+					vi.mocked(ask).mockResolvedValue(false);
+				});
+				let releaseRefetch: () => void = () => {};
+				const onhunkaction = vi.fn(
+					() =>
+						new Promise<void>((resolve) => {
+							releaseRefetch = resolve;
+						}),
+				);
+				render(DiffPanel, {
+					props: {
+						...commentingDiff,
+						fileDiffs: [twoHunkDiff],
+						commitDetail: null,
+						onclose: vi.fn(),
+						diffKind,
+						repoPath: "/test/repo",
+						selectedPath: "src/main.ts",
+						onhunkaction,
+					},
+				});
+				await flushPrefs();
+				const calls = () =>
+					vi.mocked(safeInvoke).mock.calls.filter(([c]) => c === cmd);
+
+				await fireEvent.click(screen.getAllByText(label)[1]);
+				await waitFor(() => expect(calls()).toHaveLength(1));
+				expect(calls()).toEqual([
+					[
+						cmd,
+						expect.objectContaining({
+							path: "/test/repo",
+							filePath: "src/main.ts",
+							hunkIndex: 1,
+						}),
+					],
+				]);
+
+				await fireEvent.click(screen.getAllByText(label)[0]);
+				await vi.dynamicImportSettled();
+				await flushPrefs();
+				expect(calls()).toHaveLength(1);
+
+				releaseRefetch();
+				await flushPrefs();
+			},
+		);
 	});
 });
 

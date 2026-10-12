@@ -20,3 +20,8 @@ export function noReviewCounts() {
 		commentTallies: new Map<string, ReviewTally>(),
 	};
 }
+
+/** A commit surface that shows every thread and counts none. */
+export function uncountedReview() {
+	return { ...noReviewCounts(), reviewFilter: ALL_THREADS };
+}

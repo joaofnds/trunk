@@ -16,8 +16,7 @@ import CommitDetailComponent from "./CommitDetail.svelte";
 
 // Shared Tauri mock
 import "../__tests__/helpers/tauri-mock";
-import { noReviewCounts } from "../__tests__/helpers/review-props.js";
-import { ALL_THREADS } from "../lib/review-filter.js";
+import { uncountedReview } from "../__tests__/helpers/review-props.js";
 
 vi.mock("../lib/toast.svelte.js", () => ({ showToast: vi.fn() }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
@@ -75,8 +74,7 @@ describe("CommitDetail", () => {
 	it("renders commit summary", () => {
 		render(CommitDetailComponent, {
 			props: {
-				...noReviewCounts(),
-				reviewFilter: ALL_THREADS,
+				...uncountedReview(),
 				commitDetail: detail,
 				fileDiffs,
 				selectedFile: null,
@@ -90,8 +88,7 @@ describe("CommitDetail", () => {
 	it("renders author name and email", () => {
 		render(CommitDetailComponent, {
 			props: {
-				...noReviewCounts(),
-				reviewFilter: ALL_THREADS,
+				...uncountedReview(),
 				commitDetail: detail,
 				fileDiffs,
 				selectedFile: null,
@@ -106,8 +103,7 @@ describe("CommitDetail", () => {
 	it("renders parent OIDs", () => {
 		render(CommitDetailComponent, {
 			props: {
-				...noReviewCounts(),
-				reviewFilter: ALL_THREADS,
+				...uncountedReview(),
 				commitDetail: detail,
 				fileDiffs,
 				selectedFile: null,
@@ -123,8 +119,7 @@ describe("CommitDetail", () => {
 		const onnavigate = vi.fn();
 		render(CommitDetailComponent, {
 			props: {
-				...noReviewCounts(),
-				reviewFilter: ALL_THREADS,
+				...uncountedReview(),
 				commitDetail: detail,
 				fileDiffs,
 				selectedFile: null,
@@ -152,8 +147,7 @@ describe("CommitDetail", () => {
 		it("shows the position readout with a + when hasMore", () => {
 			render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					fileDiffs,
 					selectedFile: null,
@@ -168,8 +162,7 @@ describe("CommitDetail", () => {
 		it("draws the pager and the close as small ghost icon controls", () => {
 			render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					fileDiffs,
 					selectedFile: null,
@@ -194,8 +187,7 @@ describe("CommitDetail", () => {
 		it("sets the SHA in a plain badge", () => {
 			render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					fileDiffs,
 					selectedFile: null,
@@ -217,8 +209,7 @@ describe("CommitDetail", () => {
 			const onnavigate = vi.fn();
 			render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					fileDiffs,
 					selectedFile: null,
@@ -240,8 +231,7 @@ describe("CommitDetail", () => {
 			const onnavigate = vi.fn();
 			render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					fileDiffs,
 					selectedFile: null,
@@ -263,8 +253,7 @@ describe("CommitDetail", () => {
 			const onnavigate = vi.fn();
 			render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					fileDiffs,
 					selectedFile: null,
@@ -291,8 +280,7 @@ describe("CommitDetail", () => {
 			const onnavigate = vi.fn();
 			render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					fileDiffs,
 					selectedFile: null,
@@ -311,8 +299,7 @@ describe("CommitDetail", () => {
 		it("disables the newer chevron at the top of history", () => {
 			render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					fileDiffs,
 					selectedFile: null,
@@ -328,8 +315,7 @@ describe("CommitDetail", () => {
 			const onnavigate = vi.fn();
 			render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					fileDiffs,
 					selectedFile: null,
@@ -348,8 +334,7 @@ describe("CommitDetail", () => {
 	it("renders short oid in toolbar", () => {
 		render(CommitDetailComponent, {
 			props: {
-				...noReviewCounts(),
-				reviewFilter: ALL_THREADS,
+				...uncountedReview(),
 				commitDetail: detail,
 				fileDiffs,
 				selectedFile: null,
@@ -365,8 +350,7 @@ describe("CommitDetail", () => {
 	it("renders file count", () => {
 		render(CommitDetailComponent, {
 			props: {
-				...noReviewCounts(),
-				reviewFilter: ALL_THREADS,
+				...uncountedReview(),
 				commitDetail: detail,
 				fileDiffs,
 				selectedFile: null,
@@ -383,8 +367,7 @@ describe("CommitDetail", () => {
 		it("shows the stat's insertions and deletions before any file's hunks have loaded", () => {
 			render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					stat,
 					fileDiffs,
@@ -400,8 +383,7 @@ describe("CommitDetail", () => {
 		it("shows nothing for insertions and deletions while the stat has not loaded yet", () => {
 			render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					fileDiffs,
 					selectedFile: null,
@@ -416,8 +398,7 @@ describe("CommitDetail", () => {
 		it("does not change when a file's hunks load", async () => {
 			const { rerender } = render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					stat,
 					fileDiffs,
@@ -474,8 +455,7 @@ describe("CommitDetail", () => {
 			];
 			render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					stat: { insertions: 0, deletions: 0, files_changed: 1 },
 					fileDiffs: binaryFileDiffs,
@@ -501,8 +481,7 @@ describe("CommitDetail", () => {
 			];
 			render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					stat: { insertions: 1, deletions: 1, files_changed: 1 },
 					fileDiffs: renameFileDiffs,
@@ -519,8 +498,7 @@ describe("CommitDetail", () => {
 		const onclose = vi.fn();
 		render(CommitDetailComponent, {
 			props: {
-				...noReviewCounts(),
-				reviewFilter: ALL_THREADS,
+				...uncountedReview(),
 				commitDetail: detail,
 				fileDiffs,
 				selectedFile: null,
@@ -542,8 +520,7 @@ describe("CommitDetail", () => {
 		it("copies the full commit oid from the toolbar SHA", async () => {
 			render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					fileDiffs,
 					selectedFile: null,
@@ -565,8 +542,7 @@ describe("CommitDetail", () => {
 		};
 		render(CommitDetailComponent, {
 			props: {
-				...noReviewCounts(),
-				reviewFilter: ALL_THREADS,
+				...uncountedReview(),
 				commitDetail: detailWithBody,
 				fileDiffs,
 				selectedFile: null,
@@ -582,8 +558,7 @@ describe("CommitDetail", () => {
 	it("makes the commit summary selectable", () => {
 		render(CommitDetailComponent, {
 			props: {
-				...noReviewCounts(),
-				reviewFilter: ALL_THREADS,
+				...uncountedReview(),
 				commitDetail: detail,
 				fileDiffs,
 				selectedFile: null,
@@ -601,8 +576,7 @@ describe("CommitDetail", () => {
 		};
 		render(CommitDetailComponent, {
 			props: {
-				...noReviewCounts(),
-				reviewFilter: ALL_THREADS,
+				...uncountedReview(),
 				commitDetail: detailWithBody,
 				fileDiffs,
 				selectedFile: null,
@@ -627,8 +601,7 @@ describe("CommitDetail", () => {
 		function renderWithBody(body: string | null) {
 			return render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: { ...detail, body },
 					fileDiffs,
 					selectedFile: null,
@@ -752,8 +725,7 @@ describe("CommitDetail", () => {
 			reviewComments.refresh();
 			return render(CommitDetailComponent, {
 				props: {
-					...noReviewCounts(),
-					reviewFilter: ALL_THREADS,
+					...uncountedReview(),
 					commitDetail: detail,
 					fileDiffs,
 					selectedFile: null,
