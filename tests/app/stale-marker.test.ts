@@ -50,4 +50,30 @@ describe("staleness on a comment about uncommitted work", () => {
 			app.review.staleMarkers()[0] === "" ? true : null,
 		);
 	});
+
+	it("shows the marker for content rewritten while the repository was closed", async () => {
+		const app = await setup({ repo: EDITED });
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile("a.txt");
+		await waitFor("the unstaged diff", () => {
+			const lines = app.staging.addedLines();
+			return lines.length > 0 ? lines : null;
+		});
+		await app.review.commentOnHunk(0);
+		await app.review.write("this line needs a look");
+		await app.review.submit();
+		await waitFor("the fresh thread", () =>
+			app.review.staleMarkers()[0] === "" ? true : null,
+		);
+		await app.repo.close();
+
+		app.repo.writeWorkingTreeFile("a.txt", "one\nREWRITTEN\nthree\n");
+		await app.repo.open();
+		await app.review.openPanel();
+
+		await app.elapseUntil("the visible stale marker", () =>
+			app.review.staleMarkers()[0] === "stale" ? true : null,
+		);
+	});
 });

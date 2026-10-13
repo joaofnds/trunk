@@ -271,6 +271,20 @@ describe("createReviewComments — refresh", () => {
 	});
 });
 
+describe("createReviewComments — opening", () => {
+	it("recomputes staleness after opening", async () => {
+		aPopulatedStore({ refresh_thread_staleness: 0 });
+
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+
+		expect(mockInvoke).toHaveBeenCalledWith("refresh_thread_staleness", {
+			path: "/repo",
+		});
+		manager.destroy();
+	});
+});
+
 describe("createReviewComments — reviews-changed listener", () => {
 	it("refreshes on an event for its own repo", async () => {
 		aPopulatedStore();
@@ -360,18 +374,6 @@ describe("createReviewComments — reviews-changed listener", () => {
 });
 
 describe("createReviewComments — repo-changed listener", () => {
-	it("recomputes staleness once the repo opens, for edits made while it was closed", async () => {
-		aPopulatedStore({ refresh_thread_staleness: 0 });
-
-		const manager = createReviewComments("/repo", scheduler);
-		await flush();
-
-		expect(mockInvoke).toHaveBeenCalledWith("refresh_thread_staleness", {
-			path: "/repo",
-		});
-		manager.destroy();
-	});
-
 	it("recomputes staleness when this repo's files change", async () => {
 		aPopulatedStore({ refresh_thread_staleness: 0 });
 		const manager = createReviewComments("/repo", scheduler);
