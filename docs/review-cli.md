@@ -48,17 +48,20 @@ trunk review watch [--repo <path>]
 ```
 
 - **list**: the repository's reviews visible to the agent: id, state
-  (`open`/`stale`/`settled`), title, and the number of threads it was sent. A
+  (`open`/`stale`/`settled`, derived from the threads' stale markers as the app
+  last computed them), title, and the number of threads it was sent. A
   review is visible once it holds a sent thread and until the user archives it.
 - **show** — one review in full, as the same markdown document the app's
   Copy-as-markdown produces while its panel shows every thread: threads, states,
   excerpts, replies. The app's Copy holds only the threads its filter shows. A thread whose
-  heading ends `(stale)` was written against code the repository has moved past.
+  heading ends `(stale)` was written against code the repository had moved past
+  when the app last computed the marker.
   Three shapes reach that state. A comment on uncommitted work is stale once the
   user has edited that work again. A comment on a tracked file's current content
   is stale once the lines it pinned occur nowhere in that file, which a rename or
-  a deletion reaches the same way an edit does; it clears again once the
-  content returns, after a branch switch for instance. Deleting one of two
+  a deletion reaches the same way an edit does; it clears again on the app's
+  next full recompute after the content returns, after a branch switch for
+  instance. Deleting one of two
   byte-identical copies of the pinned lines raises no marker, because the comment
   still describes text the file holds. And a comment whose anchor commit is no
   longer in the repository, collected by a `git gc` that reached it, is stale
@@ -72,18 +75,16 @@ trunk review watch [--repo <path>]
   before the review store's version 9 upgrade on a commit that claims the author
   Trunk's snapshots carry reads as a comment on a superseded snapshot, so it is
   stale although the code it names has not moved.
-  The marker is the app's last computation, not a check the CLI makes. The app
-  recomputes it when it first shows a repository's tab and on that repository's
-  file changes from then until the tab closes. An edit the app did not see, one
-  made while Trunk was not running or in a repository whose tab nobody has opened
-  since launch, leaves the marker describing the code as it stood before that
-  edit until the app next shows the repository.
+  The marker is the app's last computation, and the CLI never recomputes it:
+  [How current the stale marker is](#how-current-the-stale-marker-is) says when
+  it moves.
 - **threads** — the review's threads as an index, one line each: id, state, the
   `(stale)` marker where the thread carries one, location (`file:start-end`,
   `file (whole file)` for a comment about the whole file, a commit-level
   thread's short oid, or `no target`), and the comment's first
   line. The marker means what it means under **show**, and it is on this line
-  because the location beside it is where the code no longer is. `--state` keeps
+  because the location beside it is where the code no longer was at the app's
+  last recompute. `--state` keeps
   only threads in that state. This plain line is for human reading only: its ` — ` separator is not
   reserved, so a file path or comment whose first line contains it prints more
   fields than the format implies, and splitting on the separator can misread
@@ -120,12 +121,36 @@ trunk review watch [--repo <path>]
 - **watch**: block and stream changes to the repo's visible reviews. After
   a `# watching …` readiness line, output arrives as changes land —
   event-driven, no polling: every Trunk process that writes the store rings
-  the watcher over a local socket. macOS/Linux only for now. Held comments,
+  the watcher over a local socket, except for the narrower stale pass under
+  [How current the stale marker is](#how-current-the-stale-marker-is).
+  macOS/Linux only for now. Held comments,
   reviews with nothing sent, archived reviews and draft typing never produce
   output. Plain mode prints the
   changed review's id, one per line (format unstable). `--json` prints one
   self-contained NDJSON event per change, so a harness never refetches or
   rediffs.
+
+### How current the stale marker is
+
+The `(stale)` marker and the `stale` field are the app's last computation,
+stored for the CLI to print, and a review's `stale` state is derived from them
+when it is read. No verb recomputes them.
+
+The app runs a full recompute when it first shows a repository's tab, and after
+that on every change to the repository's working tree or checkout until the tab
+closes, whether or not the tab is on screen. Other ref changes, a fetch for
+instance, run a narrower pass over comments on commits that are not Trunk's
+snapshots, and only while the tab is on screen: a ref change in a background
+tab waits until the user selects it. The narrower pass does not ring `watch`.
+Its marker changes show in `list`, `show` and `threads` at once, but `watch`
+reports them only after some later write to the store rings it.
+
+Three things the app does not see leave the marker describing code as it stood
+before them: an edit made while Trunk is not running, an edit to a repository
+that has no tab or whose restored tab nobody has selected since launch, and a
+commit collected from the object store with no other change, as a `git gc` can
+do. The next full recompute for that repository catches each. A recompute that
+fails, for instance during a repack, leaves every marker as it stood.
 
 ### `--json` on `threads` and `thread`
 
@@ -151,13 +176,13 @@ became `open`, `stale` or `settled` where it had been `composing`, `ready` or
 |---------|---------|
 | `review_added` | `review`, `title`, `state`, sent when a review becomes visible through its first sent thread, and followed by `thread_added`/`reply_added` for its full content |
 | `review_retitled` | `review`, `title` |
-| `review_state_changed` | `review`, `from`, `to` (`open`/`stale`/`settled`). A review is `stale` when every thread still waiting on someone points at code that is gone |
+| `review_state_changed` | `review`, `from`, `to` (`open`/`stale`/`settled`). A review is `stale` when every thread still waiting on someone points at code that is gone, as the app last computed it ([How current the stale marker is](#how-current-the-stale-marker-is)) |
 | `review_deleted` | `review`, sent when the user deletes the review or the last thread the agent was sent |
 | `review_archived` | `review`, sent when the user puts a review away. Its ids stop resolving, and unarchiving it sends `review_added` with its full content again |
 | `thread_added` | `review`, `thread`, `state`, `text`, and its location: `anchor` (`file_path`, `start_line`, `end_line`, `commit_oid`, `source`, `side`), `commit_oid` for a commit-level note, or `content_pin` (`file_path`, `start_line`, `end_line`, `block`, `ordinal`) for a comment on a file's current content. A pin's lines are where the block stood when the comment was written, `block` is the text it pinned, read from the working tree and as untrusted as any excerpt, and `ordinal` is which occurrence of a repeated block was picked, counting from 0. `whole_file: true` marks a comment about the whole file rather than the lines its location spans, which then span the file, and its `content_pin` leaves out `block` and `ordinal`, since the block would be the whole file. A target-less thread carries none of the three, and a key that does not apply is absent, never null |
 | `thread_edited` | `review`, `thread`, `text` |
 | `thread_state_changed` | `review`, `thread`, `from`, `to` |
-| `thread_stale_changed` | `review`, `thread`, `stale` |
+| `thread_stale_changed` | `review`, `thread`, `stale`, sent when the stored marker changes, and for a change from the app's narrower ref pass only once a later write rings `watch` ([How current the stale marker is](#how-current-the-stale-marker-is)) |
 | `reply_added` | `review`, `thread`, `reply`, `channel` (`human`/`agent`), `text` |
 | `reply_edited` | `review`, `thread`, `reply`, `text` |
 | `thread_deleted` | `review`, `thread`, sent when the user removes a thread with its replies |
