@@ -941,7 +941,8 @@ pub async fn list_threads<R: Runtime>(
 /// Recompute this repo's thread staleness, announcing the result only when a
 /// thread's value actually moved.
 ///
-/// The frontend calls this from its own `repo-changed` handler. Nothing on the
+/// The frontend calls this once when it starts showing a repository, and from
+/// its own `repo-changed` handler after that. Nothing on the
 /// Rust side consumes that event, and the two existing seams are both wrong for
 /// it: `list_threads` is never reached by a filesystem change, and `sweep_once`
 /// runs at most once per process, so a recompute built to its shape would

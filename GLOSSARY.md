@@ -365,7 +365,7 @@ a read that fails any other way decides nothing, and the recompute stops with ev
 marker as it stood. Presence alone decides it for a
 current-file thread on lines: an edit elsewhere raises no marker, and neither does deleting
 the anchored occurrence while a byte-identical twin survives. Recomputed by the app
-on repo-changed events, persisted
+when it starts showing a repository and on repo-changed events after that, persisted
 only as a last-computed value for the CLI to print, and it can clear again after,
 e.g., a branch switch. Not a state; a thread can be `open` and
 stale at once.
@@ -416,7 +416,8 @@ carries both senses here.
 **Resolved line** — the line a pinned block currently starts at. Written when the
 comment is submitted, then rewritten by the same pass that recomputes the stale
 marker, so it is current as of that pass rather than as of the file on disk: a repo
-edited while Trunk is closed carries the line from before it. Absent for a thread
+edited while Trunk is closed carries the line from before it until the app next
+shows that repository. Absent for a thread
 with no pin at all, for one whose block a pass found gone (the same condition that
 raises the marker for a *pinned* thread, though a snapshot thread goes stale with no
 resolved line to lose), and for a comment written before Trunk stored it at submit,
