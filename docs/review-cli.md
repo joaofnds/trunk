@@ -57,7 +57,7 @@ trunk review watch [--repo <path>]
   Three shapes reach that state. A comment on uncommitted work is stale once the
   user has edited that work again. A comment on a tracked file's current content
   is stale once the lines it pinned occur nowhere in that file, which a rename or
-  a deletion reaches the same way an edit does; it clears again the moment the
+  a deletion reaches the same way an edit does; it clears again once the
   content returns, after a branch switch for instance. Deleting one of two
   byte-identical copies of the pinned lines raises no marker, because the comment
   still describes text the file holds. And a comment whose anchor commit is no
@@ -72,6 +72,12 @@ trunk review watch [--repo <path>]
   before the review store's version 9 upgrade on a commit that claims the author
   Trunk's snapshots carry reads as a comment on a superseded snapshot, so it is
   stale although the code it names has not moved.
+  The marker is the app's last computation, not a check the CLI makes. The app
+  recomputes it when it first shows a repository's tab and on that repository's
+  file changes from then until the tab closes. An edit the app did not see, one
+  made while Trunk was not running or in a repository whose tab nobody has opened
+  since launch, leaves the marker describing the code as it stood before that
+  edit until the app next shows the repository.
 - **threads** — the review's threads as an index, one line each: id, state, the
   `(stale)` marker where the thread carries one, location (`file:start-end`,
   `file (whole file)` for a comment about the whole file, a commit-level
