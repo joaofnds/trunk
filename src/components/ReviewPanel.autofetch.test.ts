@@ -103,6 +103,8 @@ async function mountPanel(): Promise<void> {
 	});
 	await screen.findByTitle("Commit gone. Only the saved excerpt survives.");
 	await screen.findByTitle("Code gone. Only the saved excerpt survives.");
+	clock.advanceBy(200);
+	await waitFor(() => expect(host.count("refresh_thread_staleness")).toBe(1));
 	await manager.refresh();
 	await tick();
 }
@@ -128,6 +130,7 @@ describe("refs-only review refresh", () => {
 		manager.setActive(false);
 		const reads = host.count("list_threads");
 		const fullResolutions = host.count("resolve_threads");
+		const stalenessPasses = host.count("refresh_thread_staleness");
 		host.seedResponse("list_threads", [{ ...anchor, stale: false }, pin]);
 		host.seedResponse("list_session_commits", [
 			aSessionCommit({ oid: "anchor-oid", summary: "anchor commit" }),
@@ -170,7 +173,7 @@ describe("refs-only review refresh", () => {
 		expect(manager.revisionScope).toBe("refs");
 		expect(host.count("resolve_threads")).toBe(fullResolutions);
 		expect(host.count("resolve_thread_refs")).toBe(1);
-		expect(host.count("refresh_thread_staleness")).toBe(0);
+		expect(host.count("refresh_thread_staleness")).toBe(stalenessPasses);
 		expect(host.count("open_current_file")).toBe(0);
 	});
 

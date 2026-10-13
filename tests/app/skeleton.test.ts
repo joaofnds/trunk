@@ -138,6 +138,7 @@ describe("the application", () => {
 	it("ignores a change to a repository it does not have open", async () => {
 		const app = await setup({ repo: FOUR_COMMITS });
 		await app.repo.open();
+		await app.settled();
 		const before = app.refreshes();
 
 		await app.events.externalChange("/somewhere/else");

@@ -348,6 +348,7 @@ export function createReviewComments(
 	}
 
 	refresh().catch((error) => console.error("Review refresh failed", error));
+	stalenessRefresh.invalidate();
 
 	return {
 		get threads() {
