@@ -6,7 +6,7 @@ import {
 	waitFor,
 	within,
 } from "@testing-library/svelte";
-import { tick } from "svelte";
+import { type ComponentProps, tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
@@ -225,6 +225,23 @@ function callArgs(cmd: string): Record<string, unknown> | undefined {
 // per test; `installReads` seeds it alongside the safeInvoke dispatcher.
 const reviewComments = createFakeReviewComments();
 
+// What every mount passes. A test names only the props its behavior turns on.
+function panelProps(
+	overrides: Partial<ComponentProps<typeof ReviewPanel>> = {},
+): ComponentProps<typeof ReviewPanel> {
+	return {
+		repoPath: "/repo",
+		session: createReviewSession(),
+		reviewComments,
+		onJump: vi.fn(),
+		onJumpToCommit: vi.fn(),
+		windowFocused: false,
+		keysActive: true,
+		shown: true,
+		...overrides,
+	};
+}
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	reviewComments.reset();
@@ -238,18 +255,7 @@ describe("ReviewPanel", () => {
 			activeReviewId: ACTIVE_REVIEW,
 		});
 		await reviewComments.refresh();
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		render(ReviewPanel, { props: panelProps() });
 		await flush();
 
 		expect(screen.getByText("aaaaaaa")).toBeInTheDocument();
@@ -265,18 +271,7 @@ describe("ReviewPanel", () => {
 			],
 			resolutions: [resolvable("c1"), resolvable("cf")],
 		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		render(ReviewPanel, { props: panelProps() });
 		await flush();
 
 		expect(
@@ -299,18 +294,7 @@ describe("ReviewPanel", () => {
 			],
 			resolutions: [resolvable("c1"), resolvable("c2")],
 		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		render(ReviewPanel, { props: panelProps() });
 		await flush();
 
 		// Group headers: short SHA of each commit present.
@@ -331,18 +315,7 @@ describe("ReviewPanel", () => {
 			],
 			resolutions: [resolvable("c1"), resolvable("c2"), resolvable("c3")],
 		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		render(ReviewPanel, { props: panelProps() });
 		await flush();
 
 		const groupA = screen.getByRole("listitem", { name: "Commit aaaaaaa" });
@@ -374,18 +347,7 @@ describe("ReviewPanel", () => {
 			comments: [],
 			resolutions: [],
 		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		render(ReviewPanel, { props: panelProps() });
 		await flush();
 
 		// Empty snapshot section hidden; empty hand-picked section shown.
@@ -395,18 +357,7 @@ describe("ReviewPanel", () => {
 
 	it("reads the orphan resolutions on mount", async () => {
 		installReads({ commits, comments: [], resolutions: [] });
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		render(ReviewPanel, { props: panelProps() });
 		await flush();
 		expect(calledCommands()).toEqual(["resolve_threads"]);
 	});
@@ -421,18 +372,7 @@ describe("ReviewPanel", () => {
 			comments: [lineAnchoredComment("c1", COMMIT_A, "i need eyes on this")],
 			resolutions: [resolvable("c1")],
 		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		render(ReviewPanel, { props: panelProps() });
 		await flush();
 		expect(screen.getByText("i need eyes on this")).toBeInTheDocument();
 		// Fallback header uses the short oid; no synthetic "(commit gone)" label
@@ -456,18 +396,7 @@ describe("ReviewPanel", () => {
 
 		it("writes a commit-level comment via add_commit_thread on Add note", async () => {
 			installReads({ commits, comments: [], resolutions: [] });
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			// Open the inline composer for commit A.
@@ -498,18 +427,7 @@ describe("ReviewPanel", () => {
 				resolutions: [],
 				reviews: [aReview({ pending_count: pendingCount })],
 			});
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 			await fireEvent.click(screen.getAllByText("Add note")[0]);
 			await fireEvent.input(screen.getByRole("textbox"), {
@@ -528,18 +446,7 @@ describe("ReviewPanel", () => {
 
 		it("disables Add note while the add-note textarea is empty/whitespace", async () => {
 			installReads({ commits, comments: [], resolutions: [] });
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			const addBtns = screen.getAllByText("Add note");
@@ -563,22 +470,14 @@ describe("ReviewPanel", () => {
 			installReads({ commits, comments: [], resolutions: [] });
 			const editors = createReviewEditorStore();
 			const noteRequests: Array<[string | null, string]> = [];
-			const panelProps = {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
+			const remountProps = panelProps({
 				editorNoteSessionFor: (reviewId: string | null, surface: string) => {
 					noteRequests.push([reviewId, surface]);
 					return editors.note(reviewId, surface);
 				},
-			};
+			});
 
-			const first = render(ReviewPanel, { props: panelProps });
+			const first = render(ReviewPanel, { props: remountProps });
 			await flush();
 			await fireEvent.click(screen.getAllByText("Add note")[0]);
 			await tick();
@@ -588,7 +487,7 @@ describe("ReviewPanel", () => {
 			await tick();
 
 			first.unmount();
-			render(ReviewPanel, { props: panelProps });
+			render(ReviewPanel, { props: remountProps });
 			await tick();
 
 			const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
@@ -612,18 +511,7 @@ describe("ReviewPanel", () => {
 						})
 					: Promise.resolve(undefined),
 			);
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			await fireEvent.click(screen.getAllByText("Add note")[0]);
@@ -652,18 +540,7 @@ describe("ReviewPanel", () => {
 				comments: [lineAnchoredComment("c1", COMMIT_A, "original")],
 				resolutions: [resolvable("c1")],
 			});
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			await fireEvent.click(
@@ -696,18 +573,10 @@ describe("ReviewPanel", () => {
 				resolutions: [resolvable("c1")],
 			});
 			const editors = createReviewEditorStore();
-			const props = {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
+			const props = panelProps({
 				editorSessionForThread: (thread: Thread) =>
 					editors.thread(ACTIVE_REVIEW, "review-panel", thread.id),
-			};
+			});
 			const view = render(ReviewPanel, { props });
 			await flush();
 			await fireEvent.click(
@@ -756,18 +625,10 @@ describe("ReviewPanel", () => {
 				resolutions: [resolvable("c1")],
 			});
 			const editors = createReviewEditorStore();
-			const props = {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
+			const props = panelProps({
 				editorSessionForThread: (thread: Thread) =>
 					editors.thread(ACTIVE_REVIEW, "review-panel", thread.id),
-			};
+			});
 			const view = render(ReviewPanel, { props });
 			await flush();
 			await fireEvent.click(screen.getByRole("button", { name: "Edit reply" }));
@@ -796,18 +657,7 @@ describe("ReviewPanel", () => {
 				comments: [lineAnchoredComment("c1", COMMIT_A, "original")],
 				resolutions: [resolvable("c1")],
 			});
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			await fireEvent.click(
@@ -828,18 +678,7 @@ describe("ReviewPanel", () => {
 				comments: [lineAnchoredComment("c1", COMMIT_A, "original")],
 				resolutions: [resolvable("c1")],
 			});
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			await fireEvent.click(
@@ -861,18 +700,7 @@ describe("ReviewPanel", () => {
 				comments: [lineAnchoredComment("c1", COMMIT_A, "original")],
 				resolutions: [resolvable("c1")],
 			});
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			await fireEvent.click(screen.getByText("Mark done"));
@@ -894,18 +722,7 @@ describe("ReviewPanel", () => {
 				comments: [lineAnchoredComment("c1", COMMIT_A, "original")],
 				resolutions: [resolvable("c1")],
 			});
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
@@ -940,18 +757,7 @@ describe("ReviewPanel", () => {
 				comments: [withReply],
 				resolutions: [resolvable("c1")],
 			});
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			await fireEvent.click(screen.getByRole("button", { name: "Edit reply" }));
@@ -990,18 +796,7 @@ describe("ReviewPanel", () => {
 				comments: [withReply],
 				resolutions: [resolvable("c1")],
 			});
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			await fireEvent.click(
@@ -1021,18 +816,7 @@ describe("ReviewPanel", () => {
 				comments: [lineAnchoredComment("c1", COMMIT_A, "doomed")],
 				resolutions: [resolvable("c1")],
 			});
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			await fireEvent.click(
@@ -1050,18 +834,7 @@ describe("ReviewPanel", () => {
 				comments: [lineAnchoredComment("c1", COMMIT_A, "doomed")],
 				resolutions: [resolvable("c1")],
 			});
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			await fireEvent.click(
@@ -1084,18 +857,7 @@ describe("ReviewPanel", () => {
 				comments: [comment],
 				resolutions: [resolvable("c1")],
 			});
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump,
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps({ onJump }) });
 			await flush();
 
 			await fireEvent.click(
@@ -1113,18 +875,7 @@ describe("ReviewPanel", () => {
 				comments: [lineAnchoredComment("c1", COMMIT_A, "stale note")],
 				resolutions: [orphan("c1", "FileGone")],
 			});
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			// The Orphaned flag names the LOCKED reason.
@@ -1153,18 +904,7 @@ describe("ReviewPanel", () => {
 					? (staged.shift() ?? Promise.resolve([]))
 					: Promise.resolve(undefined),
 			);
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			reviewComments.refresh();
@@ -1189,18 +929,7 @@ describe("ReviewPanel", () => {
 				comments: [lineAnchoredComment("c1", COMMIT_A, "note")],
 				resolutions: [resolvable("c1")],
 			});
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit,
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps({ onJumpToCommit }) });
 			await flush();
 
 			await fireEvent.click(
@@ -1219,18 +948,7 @@ describe("ReviewPanel", () => {
 				comments: [lineAnchoredComment("c1", COMMIT_A, "note")],
 				resolutions: [resolvable("c1")],
 			});
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			await fireEvent.click(
@@ -1257,18 +975,7 @@ describe("ReviewPanel", () => {
 					resolvable("C2"),
 				],
 			});
-			const { container } = render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			const { container } = render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			const order = Array.from(
@@ -1304,18 +1011,7 @@ describe("ReviewPanel", () => {
 				comments: [commentWithDiff],
 				resolutions: [resolvable("c1")],
 			});
-			const { container } = render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			const { container } = render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			const addedRow = screen
@@ -1349,18 +1045,7 @@ describe("ReviewPanel", () => {
 					orphan("c3", "FileGone"),
 				],
 			});
-			render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
-			});
+			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
 			expect(
@@ -1399,17 +1084,7 @@ describe("ReviewPanel", () => {
 				generateRejection: opts.generateRejection,
 			});
 			return render(ReviewPanel, {
-				props: {
-					repoPath: "/repo",
-					session: createReviewSession(),
-					reviewComments,
-					threadFilter: opts.threadFilter ?? ALL_THREADS,
-					onJump: vi.fn(),
-					onJumpToCommit: vi.fn(),
-					windowFocused: false,
-					keysActive: true,
-					shown: true,
-				},
+				props: panelProps({ threadFilter: opts.threadFilter ?? ALL_THREADS }),
 			});
 		}
 
@@ -1530,18 +1205,7 @@ describe("Send", () => {
 			resolutions: [resolvable("c1")],
 			sendRejection: opts.sendRejection,
 		});
-		return render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		return render(ReviewPanel, { props: panelProps() });
 	}
 
 	async function openPopover() {
@@ -1556,18 +1220,7 @@ describe("Send", () => {
 			comments: [lineAnchoredComment("c1", COMMIT_A, "x")],
 			reviews: [aReview({ thread_count: 1, pending_count: 3 })],
 		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		render(ReviewPanel, { props: panelProps() });
 
 		await flush();
 
@@ -1635,18 +1288,7 @@ describe("Send", () => {
 			comments: [lineAnchoredComment("c1", COMMIT_A, "x")],
 			reviews: [aReview({ thread_count: 1, pending_count: 0 })],
 		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		render(ReviewPanel, { props: panelProps() });
 		await flush();
 
 		expect(screen.queryByRole("button", { name: /^Send/ })).toBeNull();
@@ -1690,18 +1332,7 @@ describe("the shown review", () => {
 	};
 
 	function renderPanel() {
-		return render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		return render(ReviewPanel, { props: panelProps() });
 	}
 
 	it("shows the threads of the review it shows, not the active one's", async () => {
@@ -1735,18 +1366,7 @@ describe("empty states", () => {
 		threadFilter: ThreadFilter = ALL_THREADS,
 	) {
 		return render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-				threadFilter,
-				onthreadfilterchange,
-			},
+			props: panelProps({ threadFilter, onthreadfilterchange }),
 		});
 	}
 
@@ -1909,19 +1529,7 @@ describe("header", () => {
 			onthreadfilterchange?: (filter: ThreadFilter) => void;
 		} = {},
 	) {
-		return render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-				...props,
-			},
-		});
+		return render(ReviewPanel, { props: panelProps(props) });
 	}
 
 	const THREADS = [
@@ -2380,18 +1988,7 @@ describe("read failures", () => {
 		installReads({ commits, comments: [] });
 		reviewComments.seed({ lastError: "Repository is not open" });
 		await reviewComments.refresh();
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		render(ReviewPanel, { props: panelProps() });
 		await flush();
 
 		const errorToasts = vi
@@ -2403,18 +2000,7 @@ describe("read failures", () => {
 
 	it("says nothing when the owner reports no failure", async () => {
 		installReads({ commits, comments: [] });
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		render(ReviewPanel, { props: panelProps() });
 		await flush();
 
 		expect(vi.mocked(showToast)).not.toHaveBeenCalled();
@@ -2428,18 +2014,7 @@ describe("read failures", () => {
 		installReads({ commits, comments: [] });
 		reviewComments.seed({ lastError: "Repository is not open" });
 		await reviewComments.refresh();
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		render(ReviewPanel, { props: panelProps() });
 		await flush();
 
 		for (let i = 0; i < 5; i++) {
@@ -2459,18 +2034,7 @@ describe("read failures", () => {
 		installReads({ commits, comments: [] });
 		reviewComments.seed({ lastError: "Repository is not open" });
 		await reviewComments.refresh();
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		render(ReviewPanel, { props: panelProps() });
 		await flush();
 
 		reviewComments.seed({ lastError: null });
@@ -2500,18 +2064,7 @@ describe("remount", () => {
 			comments: [lineAnchoredComment("c1", COMMIT_A, "note")],
 			resolutions: [resolvable("c1")],
 		});
-		const first = render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		const first = render(ReviewPanel, { props: panelProps() });
 		await flush();
 		expect(screen.getByText("first commit")).toBeInTheDocument();
 		first.unmount();
@@ -2529,18 +2082,7 @@ describe("remount", () => {
 		});
 		const refreshesBefore = reviewComments.refreshCount;
 
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		render(ReviewPanel, { props: panelProps() });
 		await flush();
 
 		expect(screen.getByText("amended commit")).toBeInTheDocument();
@@ -2561,18 +2103,7 @@ describe("multi-tab coordination", () => {
 			comments: [lineAnchoredComment("c1", COMMIT_A, "tab-A note")],
 			resolutions: [resolvable("c1")],
 		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-			},
-		});
+		render(ReviewPanel, { props: panelProps() });
 		await flush();
 
 		// Initial warm render: comment visible, Send button visible.
@@ -2606,19 +2137,7 @@ describe("comment on a file", () => {
 	});
 
 	function renderPanel(oncommentonfile = vi.fn()) {
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-				oncommentonfile,
-			},
-		});
+		render(ReviewPanel, { props: panelProps({ oncommentonfile }) });
 		return oncommentonfile;
 	}
 
@@ -2676,18 +2195,11 @@ describe("ReviewPanel branch sections", () => {
 		} = {},
 	) {
 		return render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
+			props: panelProps({
 				onJump: props.onJump ?? vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
 				onopenfile: props.onopenfile,
 				headBranch: "main",
-			},
+			}),
 		});
 	}
 
@@ -3178,17 +2690,7 @@ describe("ReviewPanel keyboard", () => {
 		keysActive = true,
 	) {
 		return render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump,
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				shown: true,
-				headBranch: "main",
-				keysActive,
-			},
+			props: panelProps({ onJump, headBranch: "main", keysActive }),
 		});
 	}
 
@@ -3459,18 +2961,7 @@ describe("ReviewPanel keyboard", () => {
 		reviewList.append(row);
 		document.body.append(reviewList);
 		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-				windowFocused: false,
-				keysActive: true,
-				shown: true,
-				headBranch: "main",
-				reviewList,
-			},
+			props: panelProps({ headBranch: "main", reviewList }),
 		});
 		await flush();
 		row.focus();
