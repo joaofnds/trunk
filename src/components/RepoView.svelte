@@ -243,7 +243,7 @@ provideReviewer({
 onDestroy(() => reviewComments.destroy());
 
 const editorSessionFor = (host: ReviewEditorHost) => (thread: Thread) =>
-	reviewEditors.thread(reviewComments.activeReviewId, host, thread.id);
+	reviewEditors.thread(thread.review_id, host, thread.id);
 const editorSessionForPanelThread = editorSessionFor("review-panel");
 const editorSessionForCommitNoteThread = editorSessionFor("commit-notes");
 const editorSessionForDiffThread = editorSessionFor("diff");

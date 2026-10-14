@@ -800,6 +800,57 @@ describe("RepoView", () => {
 			expect(within(threads).getByRole("article")).toHaveFocus();
 		});
 
+		it("keeps a reply typed on a review that is not active while another review is shown", async () => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const review = (id: string, title: string) => ({
+				id,
+				title,
+				state: "open",
+				visible_to_agent: true,
+				thread_count: 1,
+				unresolved_count: 1,
+				pending_count: 0,
+				created_at: 0,
+			});
+			mockInvoke.mockImplementation((cmd, args) => {
+				switch (cmd) {
+					case "list_reviews":
+						return Promise.resolve([
+							review("r1", "Active one"),
+							review("r2", "Shown one"),
+						]);
+					case "get_active_review":
+						return Promise.resolve("r1");
+					case "list_threads": {
+						const reviewId =
+							(args as { reviewId?: string } | undefined)?.reviewId ?? "r1";
+						return Promise.resolve([
+							aThread({ id: `t-${reviewId}`, review_id: reviewId }),
+						]);
+					}
+					case "resolve_threads":
+						return Promise.resolve([]);
+					default:
+						return base(cmd, args);
+				}
+			});
+			renderWithPanes({ reviewActive: true });
+			await fireEvent.click(await screen.findByText("Shown one"));
+			await flush();
+			const reply = (await screen.findByLabelText(
+				"Reply",
+			)) as HTMLTextAreaElement;
+			await fireEvent.input(reply, { target: { value: "half a reply" } });
+			await fireEvent.click(screen.getByText("Active one"));
+			await flush();
+
+			await fireEvent.click(screen.getByText("Shown one"));
+			await flush();
+
+			expect(await screen.findByLabelText("Reply")).toHaveValue("half a reply");
+		});
+
 		it("gives the branches back when review mode ends", async () => {
 			const view = render(RepoView, {
 				props: { ...baseProps(createMockRemoteState()), reviewActive: true },
