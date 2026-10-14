@@ -337,6 +337,47 @@ describe("ReviewPanel", () => {
 			});
 		});
 
+		describe("when the store keeps refusing the mark", () => {
+			beforeEach(() => {
+				vi.mocked(safeInvoke).mockImplementation((command: string) =>
+					command === "mark_replies_seen"
+						? Promise.reject(new Error("store is read-only"))
+						: Promise.resolve(command === "resolve_threads" ? [] : undefined),
+				);
+			});
+
+			it("tells the user once however often it asks again", async () => {
+				await mount([answered("c1")]);
+				await reportInView(cardOf("c1"), replyOf("c1"));
+				await reportOutOfView(replyOf("c1"));
+
+				await reportInView(replyOf("c1"));
+
+				expect(markedIds()).toEqual(["c1-answer", "c1-answer"]);
+				expect(vi.mocked(showToast)).toHaveBeenCalledTimes(1);
+			});
+
+			it("tells the user again when it refuses after a mark went through", async () => {
+				const answers = [false, true, false];
+				vi.mocked(safeInvoke).mockImplementation((command: string) => {
+					if (command !== "mark_replies_seen")
+						return Promise.resolve(
+							command === "resolve_threads" ? [] : undefined,
+						);
+					return answers.shift()
+						? Promise.resolve(undefined)
+						: Promise.reject(new Error("store is read-only"));
+				});
+				await mount([answered("c1"), answered("c2"), answered("c3")]);
+				await reportInView(cardOf("c1"), replyOf("c1"));
+				await reportInView(cardOf("c2"), replyOf("c2"));
+
+				await reportInView(cardOf("c3"), replyOf("c3"));
+
+				expect(vi.mocked(showToast)).toHaveBeenCalledTimes(2);
+			});
+		});
+
 		describe("when its settled thread folds the card", () => {
 			const settled = (): Thread => ({
 				...answered("c1"),

@@ -19,7 +19,7 @@ import { fromAction } from "svelte/attachments";
 import { SvelteSet } from "svelte/reactivity";
 import { BAR_HEIGHT } from "../lib/chrome-heights.js";
 import { copySha } from "../lib/clipboard.js";
-import { errorMessage, reportErrorToast } from "../lib/error-report.js";
+import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import { laneColor } from "../lib/lanes.js";
@@ -447,13 +447,22 @@ $effect(() => {
 
 // The store's refresh brings the replies back seen. A failed mark leaves them
 // unread, which is what the panel goes on showing, and asks again on the next
-// change that brings them into view.
+// change that brings them into view. Like a read failure, a refusal is a
+// condition: announced when it arrives and when it returns after a mark went
+// through, not once per ask, which would stack a toast per refresh.
+let markFailure: string | null = null;
+
 async function markSeen(ids: string[]) {
 	try {
 		await safeInvoke("mark_replies_seen", { path: repoPath, ids });
+		markFailure = null;
 	} catch (e) {
 		for (const id of ids) markRequested.delete(id);
-		reportErrorToast(e, "Could not mark the shown replies read");
+
+		const failure = errorMessage(e, "Could not mark the shown replies read");
+		if (failure === markFailure) return;
+		markFailure = failure;
+		showToast(failure, "error");
 	}
 }
 
