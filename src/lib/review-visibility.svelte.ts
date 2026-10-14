@@ -32,12 +32,19 @@ class InView {
 
 	connect(root: HTMLElement, topInset: number): () => void {
 		// A second threshold just past 0 reports an element that merely touched
-		// the root's edge again once it shows real area inside.
+		// the root's edge again once it shows real area inside. It is the
+		// smallest ratio above 0, because one pixel of a tall reply is a ratio
+		// far below any round number, and a crossing the observer never reports
+		// leaves that reply unread while the user reads it.
 		this.#observer = new IntersectionObserver(
 			(entries) => {
 				for (const entry of entries) this.#record(entry);
 			},
-			{ root, rootMargin: `-${topInset}px 0px 0px 0px`, threshold: [0, 0.001] },
+			{
+				root,
+				rootMargin: `-${topInset}px 0px 0px 0px`,
+				threshold: [0, Number.EPSILON],
+			},
 		);
 		for (const element of this.#targets.keys()) this.#observer.observe(element);
 

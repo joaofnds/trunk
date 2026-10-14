@@ -1,19 +1,24 @@
 /**
  * The browser's IntersectionObserver, which jsdom does not have. It lays
- * nothing out, so a test says which element entered or left its root, as a
+ * nothing out, so a test says how much of an element shows in its root, as a
  * scroll would. Like the browser, it reports an element's state when it starts
- * observing it, and an element no test placed in view reports outside.
+ * observing it, an element no test placed in view reports outside, and a later
+ * change reaches an observer only when it crosses one of that observer's
+ * thresholds.
  */
 export class FakeIntersectionObserver implements IntersectionObserver {
 	static readonly #live = new Set<FakeIntersectionObserver>();
-	static readonly #inView = new WeakSet<Element>();
+	static readonly #placed = new WeakMap<Element, Placement>();
 
 	readonly root: Element | Document | null;
 	readonly rootMargin: string;
 	readonly scrollMargin = "0px";
 	readonly thresholds: readonly number[];
 	readonly #callback: IntersectionObserverCallback;
-	readonly #observed = new Set<Element>();
+	// The threshold index each observed element last reported at, as the
+	// browser keeps it: -1 outside, else the count of thresholds its ratio
+	// reached.
+	readonly #observed = new Map<Element, number | null>();
 
 	constructor(
 		callback: IntersectionObserverCallback,
@@ -27,12 +32,9 @@ export class FakeIntersectionObserver implements IntersectionObserver {
 	}
 
 	observe(target: Element): void {
-		this.#observed.add(target);
-		const inView = FakeIntersectionObserver.#inView.has(target);
-		queueMicrotask(() => {
-			if (this.#observed.has(target))
-				this.#callback([entryFor(target, inView, inView ? 1 : 0)], this);
-		});
+		this.#observed.set(target, null);
+		const placement = FakeIntersectionObserver.#placed.get(target) ?? OUTSIDE;
+		queueMicrotask(() => this.#deliver(target, placement));
 	}
 
 	unobserve(target: Element): void {
@@ -48,23 +50,26 @@ export class FakeIntersectionObserver implements IntersectionObserver {
 		return [];
 	}
 
-	/** Report `target` as scrolled into its observers' root. */
+	/** Report `target` as scrolled wholly into its observers' root. */
 	static enter(target: Element): void {
-		FakeIntersectionObserver.#inView.add(target);
-		FakeIntersectionObserver.#report(entryFor(target, true, 1));
+		FakeIntersectionObserver.#place(target, { isIntersecting: true, ratio: 1 });
 	}
 
 	/** Report `target` as scrolled out of its observers' root. */
 	static leave(target: Element): void {
-		FakeIntersectionObserver.#inView.delete(target);
-		FakeIntersectionObserver.#report(entryFor(target, false, 0));
+		FakeIntersectionObserver.#place(target, OUTSIDE);
 	}
 
 	/** Report `target` as touching its observers' root at an edge, which the
 	 *  browser counts as intersecting with no area inside. */
 	static touch(target: Element): void {
-		FakeIntersectionObserver.#inView.delete(target);
-		FakeIntersectionObserver.#report(entryFor(target, true, 0));
+		FakeIntersectionObserver.#place(target, { isIntersecting: true, ratio: 0 });
+	}
+
+	/** Report `target` as showing `ratio` of its area inside its observers'
+	 *  root, as a tall element does when one pixel of it scrolls in. */
+	static reveal(target: Element, ratio: number): void {
+		FakeIntersectionObserver.#place(target, { isIntersecting: true, ratio });
 	}
 
 	/** Whether any live observer watches `target`. */
@@ -74,13 +79,31 @@ export class FakeIntersectionObserver implements IntersectionObserver {
 		);
 	}
 
-	static #report(entry: IntersectionObserverEntry): void {
-		const { target } = entry;
-		for (const observer of FakeIntersectionObserver.#live) {
-			if (observer.#observed.has(target)) observer.#callback([entry], observer);
-		}
+	static #place(target: Element, placement: Placement): void {
+		FakeIntersectionObserver.#placed.set(target, placement);
+		for (const observer of FakeIntersectionObserver.#live)
+			observer.#deliver(target, placement);
+	}
+
+	#deliver(target: Element, { isIntersecting, ratio }: Placement): void {
+		if (!this.#observed.has(target)) return;
+
+		const index = isIntersecting
+			? this.thresholds.filter((threshold) => threshold <= ratio).length
+			: -1;
+		if (this.#observed.get(target) === index) return;
+
+		this.#observed.set(target, index);
+		this.#callback([entryFor(target, isIntersecting, ratio)], this);
 	}
 }
+
+interface Placement {
+	isIntersecting: boolean;
+	ratio: number;
+}
+
+const OUTSIDE: Placement = { isIntersecting: false, ratio: 0 };
 
 function entryFor(
 	target: Element,

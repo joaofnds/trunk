@@ -277,6 +277,19 @@ describe("ReviewPanel", () => {
 			expect(markedIds()).toEqual([]);
 		});
 
+		it("marks a tall reply once its first pixel scrolls past the body's edge", async () => {
+			await mount([answered("c1")]);
+			await reportInView(cardOf("c1"));
+			FakeIntersectionObserver.touch(replyOf("c1"));
+			await settle();
+
+			// One pixel of a 4000px reply in view.
+			FakeIntersectionObserver.reveal(replyOf("c1"), 1 / 4000);
+			await settle();
+
+			expect(markedIds()).toEqual(["c1-answer"]);
+		});
+
 		it("keeps a reply in view through a refresh while the window has no focus", async () => {
 			const view = await mount([answered("c1")], { windowFocused: false });
 			await reportInView(cardOf("c1"), replyOf("c1"));
