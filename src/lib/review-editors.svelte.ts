@@ -116,9 +116,10 @@ export interface ReviewThreadSnapshot {
 }
 
 /**
- * Repository-tab lifetime for review editors. The key includes the active
- * review so a draft from one review cannot be submitted into another one after
- * switching the active review.
+ * Repository-tab lifetime for review editors. The key includes a review, the
+ * thread's own for a thread and the active one for a composer or a note, so a
+ * draft from one review cannot be submitted into another one after switching
+ * the active review.
  */
 export interface ReviewEditorStore {
 	thread(
