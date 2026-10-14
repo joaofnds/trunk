@@ -843,7 +843,12 @@ describe("RepoView", () => {
 		});
 
 		// Two reviews, each with a thread on new line 1 of the same file of one
-		// commit: r1 is active, r2 is not.
+		// commit: r1, "Active one", is active, and r2, "Shown one", is not.
+		const NOTE_OF: Record<string, string> = {
+			r1: "a note on the active review",
+			r2: "a note on the review shown",
+		};
+
 		function twoReviewsOnOneLine(props: { secondArchived: boolean }) {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
@@ -885,22 +890,11 @@ describe("RepoView", () => {
 					},
 				],
 			};
-			const review = (id: string, title: string, archived: boolean) => ({
-				id,
-				title,
-				state: "open",
-				visible_to_agent: true,
-				archived,
-				thread_count: 1,
-				unresolved_count: 1,
-				pending_count: 0,
-				created_at: 0,
-			});
 			const threadOf = (reviewId: string) =>
 				aThread({
 					id: `t-${reviewId}`,
 					review_id: reviewId,
-					text: `the note of ${reviewId}`,
+					text: NOTE_OF[reviewId],
 					anchor: {
 						commit_oid: commit.oid,
 						file_path: file.path,
@@ -921,8 +915,12 @@ describe("RepoView", () => {
 						});
 					case "list_reviews":
 						return Promise.resolve([
-							review("r1", "Active one", false),
-							review("r2", "Shown one", props.secondArchived),
+							aReview({ id: "r1", title: "Active one" }),
+							aReview({
+								id: "r2",
+								title: "Shown one",
+								archived: props.secondArchived,
+							}),
 						]);
 					case "get_active_review":
 						return Promise.resolve("r1");
@@ -946,46 +944,57 @@ describe("RepoView", () => {
 			});
 		}
 
-		async function jumpToLineOne() {
-			await fireEvent.click(
-				await screen.findByRole("button", { name: "Line 1" }),
-			);
+		// Enter opens the focused thread's code, and J focuses the only thread.
+		async function openThreadWithEnter() {
+			await screen.findByRole("button", { name: "Line 1" });
+			await fireEvent.keyDown(window, { key: "j" });
+			await flush();
+			await fireEvent.keyDown(window, { key: "Enter" });
 			await flush();
 		}
 
-		it.each([
-			{ name: "a live review", secondArchived: false },
-			{ name: "an archived review", secondArchived: true },
-		])(
-			"draws the thread of $name that is shown and not active in the diff a jump opens",
-			async ({ secondArchived }) => {
-				twoReviewsOnOneLine({ secondArchived });
-				renderWithPanes({ reviewActive: true });
-				if (secondArchived) {
-					await fireEvent.click(
-						await screen.findByRole("button", { name: "Archived 1" }),
-					);
-				}
-				await fireEvent.click(await screen.findByText("Shown one"));
-				await flush();
+		// The panel's own card is hidden while a diff is open, so once the diff
+		// is up the only card on screen is one the diff draws.
+		async function cardInTheDiff() {
+			await screen.findByRole("button", { name: "Close diff" });
+			return screen.getByRole("article");
+		}
 
-				await jumpToLineOne();
+		async function showReview(title: string) {
+			await fireEvent.click(await screen.findByText(title));
+			await flush();
+		}
 
-				expect(await screen.findByRole("article")).toHaveTextContent(
-					"the note of r2",
-				);
-			},
-		);
+		it("draws the thread of a live review that is shown and not active in the diff Enter opens", async () => {
+			twoReviewsOnOneLine({ secondArchived: false });
+			renderWithPanes({ reviewActive: true });
+			await showReview("Shown one");
 
-		it("draws the active review's threads in the diff a jump opens while it is shown", async () => {
+			await openThreadWithEnter();
+
+			expect(await cardInTheDiff()).toHaveTextContent(NOTE_OF.r2);
+		});
+
+		it("draws the thread of an archived review that is shown in the diff Enter opens", async () => {
+			twoReviewsOnOneLine({ secondArchived: true });
+			renderWithPanes({ reviewActive: true });
+			await fireEvent.click(
+				await screen.findByRole("button", { name: "Archived 1" }),
+			);
+			await showReview("Shown one");
+
+			await openThreadWithEnter();
+
+			expect(await cardInTheDiff()).toHaveTextContent(NOTE_OF.r2);
+		});
+
+		it("draws the active review's threads in the diff Enter opens while it is shown", async () => {
 			twoReviewsOnOneLine({ secondArchived: false });
 			renderWithPanes({ reviewActive: true });
 
-			await jumpToLineOne();
+			await openThreadWithEnter();
 
-			expect(await screen.findByRole("article")).toHaveTextContent(
-				"the note of r1",
-			);
+			expect(await cardInTheDiff()).toHaveTextContent(NOTE_OF.r1);
 		});
 
 		it("draws the active review's threads again once review mode ends", async () => {
@@ -993,16 +1002,13 @@ describe("RepoView", () => {
 			const view = render(RepoView, {
 				props: { ...baseProps(createMockRemoteState()), reviewActive: true },
 			});
-			await fireEvent.click(await screen.findByText("Shown one"));
-			await flush();
-			await jumpToLineOne();
+			await showReview("Shown one");
+			await openThreadWithEnter();
 
 			await view.rerender({ reviewActive: false });
 			await flush();
 
-			expect(await screen.findByRole("article")).toHaveTextContent(
-				"the note of r1",
-			);
+			expect(await cardInTheDiff()).toHaveTextContent(NOTE_OF.r1);
 		});
 
 		it("gives the branches back when review mode ends", async () => {
