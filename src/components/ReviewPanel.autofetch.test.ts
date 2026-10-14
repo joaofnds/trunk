@@ -7,13 +7,13 @@ import {
 	restoreDomPolyfills,
 } from "../../tests/app/harness/dom.js";
 import { RepositoryReadHost } from "../__tests__/helpers/repository-read-host.js";
+import { reviewPanelProps } from "../__tests__/helpers/review-props.js";
 import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
 import { aPinnedThread, aThread } from "../__tests__/helpers/thread-fixture.js";
 import {
 	createReviewComments,
 	type ReviewCommentsManager,
 } from "../lib/review-comments.svelte.js";
-import { createReviewSession } from "../lib/review-session.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import type { CommentResolution, Review } from "../lib/types.js";
 import ReviewPanel from "./ReviewPanel.svelte";
@@ -92,16 +92,7 @@ afterEach(() => {
 async function mountPanel(): Promise<void> {
 	manager = createReviewComments("/repo", clock);
 	render(ReviewPanel, {
-		props: {
-			repoPath: "/repo",
-			session: createReviewSession(),
-			reviewComments: manager,
-			onJump() {},
-			onJumpToCommit() {},
-			windowFocused: false,
-			keysActive: true,
-			shown: true,
-		},
+		props: reviewPanelProps({ reviewComments: manager }),
 		context: new Map([[SCHEDULER, clock]]),
 	});
 	await screen.findByTitle("Commit gone. Only the saved excerpt survives.");

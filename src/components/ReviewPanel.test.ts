@@ -13,7 +13,6 @@ import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createReviewEditorStore } from "../lib/review-editors.svelte.js";
 import { ALL_THREADS, THREAD_PRESETS } from "../lib/review-filter.js";
-import { createReviewSession } from "../lib/review-session.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
 import { SHOW_DELAY_MS } from "../lib/tooltip.js";
 import type {
@@ -29,6 +28,7 @@ import ReviewPanel from "./ReviewPanel.svelte";
 // Shared Tauri mock (provides @tauri-apps/plugin-dialog `ask` defaulting to false,
 // @tauri-apps/api/event `listen`, etc.).
 import "../__tests__/helpers/tauri-mock";
+import { reviewPanelProps } from "../__tests__/helpers/review-props.js";
 import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
 
 // Command-aware safeInvoke dispatcher: the panel issues one read and several
@@ -225,21 +225,10 @@ function callArgs(cmd: string): Record<string, unknown> | undefined {
 // per test; `installReads` seeds it alongside the safeInvoke dispatcher.
 const reviewComments = createFakeReviewComments();
 
-// What every mount passes. A test names only the props its behavior turns on.
 function panelProps(
 	overrides: Partial<ComponentProps<typeof ReviewPanel>> = {},
 ): ComponentProps<typeof ReviewPanel> {
-	return {
-		repoPath: "/repo",
-		session: createReviewSession(),
-		reviewComments,
-		onJump: vi.fn(),
-		onJumpToCommit: vi.fn(),
-		windowFocused: false,
-		keysActive: true,
-		shown: true,
-		...overrides,
-	};
+	return reviewPanelProps({ reviewComments, ...overrides });
 }
 
 beforeEach(() => {

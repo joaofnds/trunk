@@ -3,6 +3,7 @@ import { tick } from "svelte";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { FakeIntersectionObserver } from "../__tests__/helpers/fake-intersection-observer.js";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
+import { reviewPanelProps } from "../__tests__/helpers/review-props.js";
 import ReviewVisibilityHost from "../__tests__/helpers/review-visibility-host.svelte";
 import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
 import {
@@ -13,7 +14,6 @@ import {
 import { BAR_HEIGHT } from "../lib/chrome-heights.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { ALL_THREADS, THREAD_PRESETS } from "../lib/review-filter.js";
-import { createReviewSession } from "../lib/review-session.svelte.js";
 import { ReviewVisibility } from "../lib/review-visibility.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { Review, Thread, ThreadFilter } from "../lib/types.js";
@@ -125,18 +125,12 @@ interface Showing {
 }
 
 function props(showing: Showing = {}) {
-	return {
-		repoPath: "/repo",
-		session: createReviewSession(),
+	return reviewPanelProps({
 		reviewComments,
-		onJump: vi.fn(),
-		onJumpToCommit: vi.fn(),
 		windowFocused: true,
-		keysActive: true,
-		shown: true,
 		threadFilter: ALL_THREADS,
 		...showing,
-	};
+	});
 }
 
 async function mount(threads: Thread[], showing: Showing = {}) {
