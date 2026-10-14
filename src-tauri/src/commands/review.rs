@@ -986,6 +986,10 @@ pub async fn refresh_thread_staleness<R: Runtime>(
 ///
 /// Returns the store error as JSON, or `spawn_error` when the blocking task
 /// cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn mark_replies_seen<R: Runtime>(
     path: String,
