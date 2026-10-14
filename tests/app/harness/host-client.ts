@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -41,6 +41,7 @@ interface Pending {
 }
 
 const DEFAULT_HOST = "src-tauri/target/debug/examples/app_host";
+const DEFAULT_CLI = "src-tauri/target/debug/trunk";
 
 /**
  * Starves a chosen host command, so a wait that only fails on a loaded machine
@@ -178,6 +179,25 @@ export class HostClient {
 		await this.request({ verb: "emit", event, payload });
 	}
 
+	/**
+	 * Runs the `trunk` CLI the way an agent does, in this host's environment, so
+	 * it writes the review store the host reads. Resolves to what it printed and
+	 * rejects when it exits non-zero.
+	 */
+	cli(args: string[]): Promise<string> {
+		return new Promise((resolve, reject) => {
+			execFile(
+				cliBinary(),
+				args,
+				{ env: hostEnvironment(this.home) },
+				(error, stdout, stderr) => {
+					if (error) reject(new Error(`trunk ${args.join(" ")}: ${stderr}`));
+					else resolve(stdout);
+				},
+			);
+		});
+	}
+
 	/** How many filesystem watches the application holds. Off means zero. */
 	async watcherCount(): Promise<number> {
 		return (await this.request({ verb: "watcherCount" })) as number;
@@ -289,9 +309,16 @@ function hostBinary(): string {
 	return process.env.TRUNK_APP_HOST ?? join(process.cwd(), DEFAULT_HOST);
 }
 
+function cliBinary(): string {
+	return process.env.TRUNK_CLI ?? join(process.cwd(), DEFAULT_CLI);
+}
+
 /**
  * The host's environment is constructed, never inherited. `HOME` is a fresh
- * tempdir so `app_data_dir()` cannot reach the installed app's store; the editor
+ * tempdir so `app_data_dir()` cannot reach the installed app's store.
+ * `TRUNK_DATA_DIR` names the review store inside it for the host and the CLI
+ * alike: each otherwise derives the directory from its own identifier, and a
+ * debug CLI's is the dev one, so the two would open different stores. The editor
  * variables and the global git config are scrubbed exactly as `justfile:8` does
  * for the Rust suite, or the rebase editor-pin guards pass with the production
  * fix reverted; and `SHELL` is emptied so no host spawns `$SHELL -l -i -c`.
@@ -300,6 +327,7 @@ function hostEnvironment(home: string): NodeJS.ProcessEnv {
 	const env: NodeJS.ProcessEnv = {
 		...process.env,
 		HOME: home,
+		TRUNK_DATA_DIR: join(home, "review-store"),
 		SHELL: "",
 		GIT_CONFIG_GLOBAL: "/dev/null",
 	};

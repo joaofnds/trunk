@@ -258,8 +258,8 @@ vitest-cov:
 
 # Drive the assembled app headlessly: the real Svelte tree against a real Rust backend
 app-test:
-    cargo build --manifest-path {{manifest}} --example app_host
-    TRUNK_APP_HOST="{{target}}/debug/examples/app_host" bun run test:app
+    cargo build --manifest-path {{manifest}} --example app_host --bin trunk
+    TRUNK_APP_HOST="{{target}}/debug/examples/app_host" TRUNK_CLI="{{target}}/debug/trunk" bun run test:app
 
 # Screenshot the graph column of the graph, stash and kitchen-sink fixtures in the real app and compare with the committed baselines (needs: bunx playwright install webkit; docs/visual-regression.md)
 visual:
@@ -274,10 +274,10 @@ visual-accept reason="":
 flake-hunt runs="10":
     #!/usr/bin/env bash
     set -uo pipefail
-    cargo build --manifest-path {{manifest}} --example app_host
+    cargo build --manifest-path {{manifest}} --example app_host --bin trunk
     failures=0
     for i in $(seq {{runs}}); do
-        if ! TRUNK_APP_HOST="{{target}}/debug/examples/app_host" bun run test:app >/tmp/flake-app-$i.log 2>&1; then
+        if ! TRUNK_APP_HOST="{{target}}/debug/examples/app_host" TRUNK_CLI="{{target}}/debug/trunk" bun run test:app >/tmp/flake-app-$i.log 2>&1; then
             failures=$((failures + 1))
             echo "::group::app-test run $i failed"
             cat /tmp/flake-app-$i.log

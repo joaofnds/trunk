@@ -8,10 +8,11 @@ IPC mock sits anywhere in the path.
 just app-test
 ```
 
-The recipe builds `src-tauri/examples/app_host` and runs `vitest.app.config.ts` over
-`tests/app/`. It is part of `just check` and mirrored by the `Application Harness` job in CI,
-a required check on `main`. It is deliberately not inside the `vitest` recipe: `just front`
-and `just quick` are the tiers run most, and neither should wait on a Rust artifact.
+The recipe builds `src-tauri/examples/app_host` and the `trunk` binary, which the agent driver
+runs as the CLI, and runs `vitest.app.config.ts` over `tests/app/`. It is part of `just check`
+and mirrored by the `Application Harness` job in CI, a required check on `main`. It is
+deliberately not inside the `vitest` recipe: `just front` and `just quick` are the tiers run
+most, and neither should wait on a Rust artifact.
 
 ## How it fits together
 
@@ -25,7 +26,7 @@ tests/app/*.test.ts          the tests
        │                           scheduler, host channel
        └─ drivers/                 repo, branches, staging, remote, review, diff pane, search,
                                    toolbar, rebase editor, merge editor, message editor, dom,
-                                   events
+                                   events, agent
 ```
 
 `setup()` spawns a host, seeds a repository, installs the transport seam, runs the polyfills,
@@ -195,13 +196,15 @@ The review store poll is off, because the app's `.setup()` starts it and the hos
 `.setup()`, which reaches the same dangling `NSView*`. A store write from outside the app, such
 as `trunk review reply` from the CLI, reaches the page only on a read the app makes for its own
 reasons: mounting the review panel, selecting a review, or an app write that emits
-`reviews-changed`. To deliver one when the poll would, have the host emit
-`reviews-changed` with a `null` payload, the way `driver.events.externalChange` emits
-`repo-changed`; no driver method makes that emit yet. The listener only arms a coalesced
-refresh on the harness's scheduler, so follow the emit with `app.elapse()`. Run the CLI with
-`TRUNK_DATA_DIR` set to the host's app data directory, or with `HOME` set to `app.home`, so it
-writes the store the host reads. What that gives up is one link: whether the poll notices the
-write.
+`reviews-changed`. To deliver one when the poll would, call `driver.events.reviewStoreChanged()`,
+which has the host emit `reviews-changed` with a `null` payload the way
+`driver.events.externalChange` emits `repo-changed`. The listener only arms a coalesced refresh
+on the harness's scheduler, so wait on the state the refresh brings with `app.elapseUntil`.
+`driver.agent.reply(thread, text)` runs `trunk review reply` in the host's environment, whose
+`TRUNK_DATA_DIR` names one store for both: without it the debug CLI derives the dev
+identifier's directory and writes a store the host never reads. `tests/app/unread-reply.test.ts`
+drives that route through the panel's mark of a shown reply. What that gives up is one link:
+whether the poll notices the write.
 
 A headless DOM cannot observe layout and paint, WKWebView-specific rendering, native OS chrome,
 or real pointer gestures. Those still need a human or a render golden.

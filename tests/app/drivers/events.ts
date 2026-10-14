@@ -24,6 +24,14 @@ export class EventsDriver {
 		await this.host.emit("repo-changed", { repo: path, paths });
 	}
 
+	/** The review store poll noticing a write from outside the app, such as an
+	 *  agent's reply through the CLI. The poll is off in the harness, so this is
+	 *  the host making the emit the poll would. */
+	async reviewStoreChanged(): Promise<void> {
+		await this.internals.registrationsSettled();
+		await this.host.emit("reviews-changed", null);
+	}
+
 	/** The OS focus event that arms or disarms background checks. */
 	async windowFocusChanged(focused: boolean): Promise<void> {
 		await this.internals.registrationsSettled();

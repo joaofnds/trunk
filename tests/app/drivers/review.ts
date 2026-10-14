@@ -1,3 +1,4 @@
+import { FakeIntersectionObserver } from "../../../src/__tests__/helpers/fake-intersection-observer.js";
 import {
 	THREAD_PRESETS,
 	type ThreadPreset,
@@ -49,6 +50,8 @@ const REPLY_BODY = ".thread-reply-text";
 const ROOT_EDIT_TEXT = 'textarea[aria-label="Edit comment"]';
 const REPLY_EDIT_TEXT = 'textarea[aria-label="Edit reply"]';
 const COMMIT_NOTES = ".commit-notes";
+const PANEL_HEADER = 'section[aria-label="Review threads"] header';
+const UNREAD_DOT = ".unread-dot";
 const ACTIVE_REVIEW_RADIO =
 	'nav[aria-label="Reviews"] button[aria-label^="Active review "][aria-pressed="true"]';
 const NEW_REVIEW = 'nav[aria-label="Reviews"] [aria-label="New review"]';
@@ -539,6 +542,38 @@ export class ReviewDriver {
 		});
 
 		row.click();
+	}
+
+	/** The id each thread card stands for, topmost first: what the CLI names a
+	 *  thread by. */
+	threadIds(): string[] {
+		return cards().map((card) => card.dataset.threadId ?? "");
+	}
+
+	/** What the panel's header says about unread threads, or null when it says
+	 *  nothing. */
+	unreadSummary(): string | null {
+		const dot = document.querySelector(`${PANEL_HEADER} ${UNREAD_DOT}`);
+
+		return dot?.parentElement ? collapse(dot.parentElement) : null;
+	}
+
+	/** Scrolls the reply reading `text` into the panel's view. jsdom lays
+	 *  nothing out, so this is the report the browser would make once it did. */
+	async bringReplyIntoView(text: string): Promise<void> {
+		const body = await waitFor(
+			`the reply reading ${text}`,
+			() =>
+				cards()
+					.flatMap((card) => [
+						...card.querySelectorAll<HTMLElement>(REPLY_BODY),
+					])
+					.find((reply) => collapse(reply) === text) ?? null,
+		);
+		const reply = body.closest("li");
+		if (!reply) throw new Error(`the reply reading ${text} is in no list`);
+
+		FakeIntersectionObserver.enter(reply);
 	}
 
 	/** The file each thread card is anchored to, topmost first. */

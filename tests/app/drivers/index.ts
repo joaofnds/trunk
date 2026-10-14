@@ -10,6 +10,7 @@ import type { FakeWindow } from "../fakes/window.js";
 import type { HostClient } from "../harness/host-client.js";
 import type { InvokeRecord, TauriInternals } from "../harness/internals.js";
 import { waitFor } from "../harness/wait.js";
+import { AgentDriver } from "./agent.js";
 import { BranchesDriver } from "./branches.js";
 import { DiffPaneDriver } from "./diff-pane.js";
 import { EventsDriver } from "./events.js";
@@ -52,6 +53,7 @@ export class AppDriver {
 	readonly mergeEditor: MergeEditorDriver;
 	readonly search: SearchDriver;
 	readonly events: EventsDriver;
+	readonly agent: AgentDriver;
 	readonly contextMenu: FakeMenu;
 	readonly dialog: FakeDialog;
 	readonly clipboard: FakeClipboard;
@@ -83,6 +85,7 @@ export class AppDriver {
 		this.mergeEditor = new MergeEditorDriver();
 		this.search = new SearchDriver();
 		this.events = new EventsDriver(host, internals);
+		this.agent = new AgentDriver(host, repoPath);
 		this.contextMenu = fakes.menu;
 		this.dialog = fakes.dialog;
 		this.clipboard = fakes.clipboard;
