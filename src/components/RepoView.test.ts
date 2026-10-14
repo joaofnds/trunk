@@ -21,6 +21,7 @@ import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import RepoView from "../__tests__/helpers/controlled-repo-view.svelte";
 import { makeCommit } from "../__tests__/helpers/factories.js";
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
+import { aReview } from "../__tests__/helpers/review-fixture.js";
 import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { REPO_CHANGE_DELAY_MS } from "../lib/coalesced-task.js";
@@ -803,22 +804,12 @@ describe("RepoView", () => {
 		it("keeps a reply typed on a review that is not active while another review is shown", async () => {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
-			const review = (id: string, title: string) => ({
-				id,
-				title,
-				state: "open",
-				visible_to_agent: true,
-				thread_count: 1,
-				unresolved_count: 1,
-				pending_count: 0,
-				created_at: 0,
-			});
 			mockInvoke.mockImplementation((cmd, args) => {
 				switch (cmd) {
 					case "list_reviews":
 						return Promise.resolve([
-							review("r1", "Active one"),
-							review("r2", "Shown one"),
+							aReview({ id: "r1", title: "Active one" }),
+							aReview({ id: "r2", title: "Shown one" }),
 						]);
 					case "get_active_review":
 						return Promise.resolve("r1");

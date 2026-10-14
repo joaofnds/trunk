@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
+import { aReview } from "../__tests__/helpers/review-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
 import type { Review } from "../lib/types.js";
 import ReviewList from "./ReviewList.svelte";
@@ -21,21 +22,6 @@ vi.mock("../lib/toast.svelte.js", () => ({
 }));
 
 const ACTIVE_REVIEW = "REVIEW01";
-
-function aReview(overrides: Partial<Review> = {}): Review {
-	return {
-		id: ACTIVE_REVIEW,
-		title: "Review 2026-08-12",
-		state: "settled",
-		visible_to_agent: false,
-		archived: false,
-		thread_count: 0,
-		unresolved_count: 0,
-		pending_count: 0,
-		created_at: 0,
-		...overrides,
-	};
-}
 
 const OPEN: Review = {
 	id: "READYRV1",

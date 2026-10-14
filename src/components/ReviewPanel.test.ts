@@ -9,6 +9,7 @@ import {
 import { type ComponentProps, tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
+import { aReview } from "../__tests__/helpers/review-fixture.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createReviewEditorStore } from "../lib/review-editors.svelte.js";
@@ -134,21 +135,6 @@ function orphan(
 }
 
 const ACTIVE_REVIEW = "REVIEW01";
-
-function aReview(overrides: Partial<Review> = {}): Review {
-	return {
-		id: ACTIVE_REVIEW,
-		title: "Review 2026-08-12",
-		state: "settled",
-		visible_to_agent: false,
-		archived: false,
-		thread_count: 0,
-		unresolved_count: 0,
-		pending_count: 0,
-		created_at: 0,
-		...overrides,
-	};
-}
 
 // Seed both owners of what the panel shows: the store contents go into the Fake
 // manager (already refreshed, as RepoView's rune is by the time the panel
