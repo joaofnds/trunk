@@ -316,6 +316,7 @@ pub struct RenderedReply {
     pub channel: trunk_review::types::Channel,
     pub created_at: i64,
     pub pending: bool,
+    pub seen: bool,
 }
 
 impl RenderedReply {
@@ -328,6 +329,7 @@ impl RenderedReply {
             channel: r.channel,
             created_at: r.created_at,
             pending: r.pending,
+            seen: r.seen,
         }
     }
 }
@@ -967,6 +969,41 @@ pub async fn refresh_thread_staleness<R: Runtime>(
 
     let target = canonical.clone();
     let changed = blocking_store(move || recompute_staleness(&store, &target, &path)).await?;
+    if changed > 0 {
+        emit_reviews_changed(&app, &canonical);
+    }
+
+    Ok(changed)
+}
+
+/// Record that the review panel showed the user these agent replies.
+///
+/// It announces the change only when one of them was unseen, so a panel
+/// reporting the same replies again does not refresh every view of the
+/// repository.
+///
+/// # Errors
+///
+/// Returns the store error as JSON, or `spawn_error` when the blocking task
+/// cannot be joined.
+#[tauri::command]
+pub async fn mark_replies_seen<R: Runtime>(
+    path: String,
+    ids: Vec<String>,
+    state: State<'_, RepoState>,
+    store: State<'_, ReviewStoreState>,
+    app: AppHandle<R>,
+) -> Result<usize, String> {
+    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+
+    let target = canonical.clone();
+    let changed = blocking_store(move || {
+        store.write_if(
+            |tx| replies::mark_seen(tx, &target, &ids),
+            |changed| *changed > 0,
+        )
+    })
+    .await?;
     if changed > 0 {
         emit_reviews_changed(&app, &canonical);
     }

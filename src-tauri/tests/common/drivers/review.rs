@@ -2,9 +2,12 @@ use crate::common::context::TestContext;
 use std::sync::{Arc, Mutex};
 use tauri::test::MockRuntime;
 use tauri::{Listener, Manager};
-use trunk_lib::commands::review::{RenderedThread, add_reply, add_thread, list_threads};
+use trunk_lib::commands::review::{
+    RenderedThread, add_reply, add_thread, list_threads, mark_replies_seen,
+};
 use trunk_lib::state::{RepoState, ReviewStoreState, StoreSlot, SweptRepos};
-use trunk_review::types::{Anchor, Delivery};
+use trunk_review::reviewdb;
+use trunk_review::types::{Anchor, Channel, Delivery};
 
 /// Drives review commands against a real `mock_app`, the only seam that reaches
 /// `add_thread`'s and `add_reply`'s emit: it lives in `write_and_notify`, which
@@ -87,6 +90,37 @@ impl ReviewDriver<'_> {
             thread_id.to_string(),
             text.to_string(),
             Delivery::Send,
+            self.app.state::<RepoState>(),
+            self.app.state::<ReviewStoreState>(),
+            self.app.handle().clone(),
+        ))
+    }
+
+    /// Writes an agent reply straight to the store, the way the CLI does from
+    /// another process, so the app has emitted nothing for it.
+    pub fn agent_reply(&self, thread_id: &str, text: &str) -> String {
+        let canonical = self.ctx.repo_path().canonicalize().unwrap();
+        let store = reviewdb::open(self.ctx.data_dir()).unwrap();
+
+        store
+            .write(|tx| {
+                reviewdb::replies::add(
+                    tx,
+                    &canonical,
+                    thread_id,
+                    text,
+                    Channel::Agent,
+                    Delivery::Send,
+                    1_001,
+                )
+            })
+            .unwrap()
+    }
+
+    pub fn mark_replies_seen(&self, ids: &[String]) -> Result<usize, String> {
+        tauri::async_runtime::block_on(mark_replies_seen(
+            self.ctx.path().to_string(),
+            ids.to_vec(),
             self.app.state::<RepoState>(),
             self.app.state::<ReviewStoreState>(),
             self.app.handle().clone(),

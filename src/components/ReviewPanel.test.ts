@@ -704,6 +704,7 @@ describe("ReviewPanel", () => {
 						channel: "human",
 						created_at: 1_000,
 						pending: false,
+						seen: true,
 					},
 				],
 			});
@@ -874,6 +875,7 @@ describe("ReviewPanel", () => {
 					channel: "human",
 					created_at: 1_000,
 					pending: false,
+					seen: true,
 				},
 			];
 			installReads({
@@ -920,6 +922,7 @@ describe("ReviewPanel", () => {
 					channel: "agent",
 					created_at: 1_000,
 					pending: false,
+					seen: true,
 				},
 			];
 			installReads({

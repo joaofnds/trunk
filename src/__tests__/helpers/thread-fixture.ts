@@ -63,6 +63,7 @@ export function aReply(overrides: Partial<Reply> = {}): Reply {
 		channel: "human",
 		created_at: 1_000,
 		pending: false,
+		seen: true,
 		...overrides,
 	};
 }

@@ -77,6 +77,7 @@ export function describeThreadedCommentActions(
 					channel: "human",
 					created_at: 1_000,
 					pending: false,
+					seen: true,
 				},
 			],
 		});

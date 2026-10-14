@@ -294,6 +294,7 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         commands::review::set_thread_state,
         commands::review::list_threads,
         commands::review::refresh_thread_staleness,
+        commands::review::mark_replies_seen,
         commands::review::refresh_thread_ref_staleness,
         commands::review::resolve_thread_refs,
         commands::review::list_reviews,

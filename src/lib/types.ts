@@ -455,6 +455,8 @@ export interface Reply {
 	readonly created_at: number;
 	/** Held in the review's batch: the agent cannot read it until the batch is sent. */
 	readonly pending: boolean;
+	/** The review panel has shown it to the user. A human reply is seen as it is written. */
+	readonly seen: boolean;
 }
 
 /** Whether a comment reaches the agent on submit or waits in the review's batch. */

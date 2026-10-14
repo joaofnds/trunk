@@ -2187,6 +2187,87 @@ fn watch_stays_silent_for_unsent_changes_and_drafts() {
     }
 }
 
+/// Unread is the app's own bookkeeping, so marking a reply seen rings the
+/// store but tells the agent nothing.
+#[test]
+fn watch_stays_silent_when_the_app_marks_a_reply_seen() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+    let watch = WatchChild::spawn_json(&ctx);
+    trunk_review_in(
+        ctx.repo_path(),
+        &["reply", &thread_id, "an answer"],
+        ctx.data_dir(),
+    );
+    let answered: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let answer_id = answered["reply"].as_str().unwrap().to_string();
+
+    reviewdb::open(ctx.data_dir())
+        .unwrap()
+        .write(|tx| reviewdb::replies::mark_seen(tx, &canonical, &[answer_id]))
+        .unwrap();
+    trunk_review_in(
+        ctx.repo_path(),
+        &["reply", &thread_id, "the barrier"],
+        ctx.data_dir(),
+    );
+    let next: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+
+    assert_eq!(
+        (&next["event"], &next["text"]),
+        (
+            &serde_json::json!("reply_added"),
+            &serde_json::json!("the barrier")
+        ),
+        "the mark must print nothing before the barrier's own event",
+    );
+}
+
+#[test]
+fn thread_json_reads_the_same_once_the_app_has_shown_its_reply() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+    trunk_review_in(
+        ctx.repo_path(),
+        &["reply", &thread_id, "an answer"],
+        ctx.data_dir(),
+    );
+    let read = || {
+        trunk_review_in(
+            ctx.repo_path(),
+            &["thread", &thread_id, "--json"],
+            ctx.data_dir(),
+        )
+    };
+    let before = read();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let reply_ids: Vec<String> = store
+        .read(|c| {
+            reviewdb::replies::list_for_threads(c, std::slice::from_ref(&thread_id), Channel::Human)
+        })
+        .unwrap()[&thread_id]
+        .iter()
+        .map(|r| r.id.clone())
+        .collect();
+
+    store
+        .write(|tx| reviewdb::replies::mark_seen(tx, &canonical, &reply_ids))
+        .unwrap();
+    let after = read();
+
+    assert!(before.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&after.stdout),
+        String::from_utf8_lossy(&before.stdout)
+    );
+}
+
 /// A published review holding one thread anchored to a fresh workdir snapshot
 /// of an edited `a.txt`. Returns the review id and the snapshot oid.
 fn a_published_thread_on_uncommitted_work(ctx: &TestContext) -> (String, String) {
