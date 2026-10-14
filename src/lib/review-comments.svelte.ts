@@ -217,8 +217,9 @@ export function createReviewComments(
 		runningScope = null;
 	}
 
-	// The active review's reads above feed every surface; a review the user
-	// picked to look at is read beside them, only while it is not the active one.
+	// The active review's reads above feed every surface but the review panel
+	// and the diff in review mode. Those read the review the user picked, which
+	// is read here beside them, only while it is not the active one.
 	async function readSelectedReview(
 		seq: number,
 	): Promise<PromiseSettledResult<unknown>[]> {
