@@ -1,6 +1,7 @@
 <script lang="ts">
 // A card drawn under a panel's visibility context, without the panel, so a
 // test can tell which variants of the card the context watches.
+import { untrack } from "svelte";
 import ThreadCard from "../../components/ThreadCard.svelte";
 import {
 	provideReviewVisibility,
@@ -16,9 +17,8 @@ interface Props {
 
 let { visibility, thread, variant }: Props = $props();
 
-// The context is set once at mount, as the panel sets its own.
-// svelte-ignore state_referenced_locally
-provideReviewVisibility(visibility);
+// A context is set once, at mount, so the first visibility is the only one.
+provideReviewVisibility(untrack(() => visibility));
 </script>
 
 <ThreadCard
