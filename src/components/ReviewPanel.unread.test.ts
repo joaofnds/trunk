@@ -10,6 +10,7 @@ import {
 	aStateChange,
 	aThread,
 } from "../__tests__/helpers/thread-fixture.js";
+import { BAR_HEIGHT } from "../lib/chrome-heights.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { ALL_THREADS, THREAD_PRESETS } from "../lib/review-filter.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
@@ -63,6 +64,22 @@ function answered(id: string, seen = false): Thread {
 			}),
 		],
 	});
+}
+
+/** A thread on a file of the commit that the agent answered, unseen. */
+function answeredOnFile(id: string): Thread {
+	return {
+		...answered(id),
+		commit_oid: null,
+		anchor: {
+			commit_oid: COMMIT,
+			file_path: "src/main.ts",
+			source: "Diff",
+			side: "New",
+			start_line: 10,
+			end_line: 12,
+		},
+	};
 }
 
 /** A thread the agent answered twice, each answer seen or not. */
@@ -373,6 +390,48 @@ describe("ReviewPanel", () => {
 			expect(markedIds()).toEqual(["c1-answer"]);
 		});
 
+		describe("under the sticky bars", () => {
+			it("marks a whole-commit note's reply once it clears the branch and commit bars", async () => {
+				await mount([answered("n1")]);
+				await reportInView(cardOf("n1"));
+
+				FakeIntersectionObserver.span(replyOf("n1"), {
+					top: 0,
+					bottom: 2 * BAR_HEIGHT + 1,
+				});
+				await settle();
+
+				expect(markedIds()).toEqual(["n1-answer"]);
+			});
+
+			it("leaves a file thread's reply unread at a height that shows a note's", async () => {
+				await mount([answered("n1"), answeredOnFile("f1")]);
+				await reportInView(cardOf("n1"), cardOf("f1"));
+
+				for (const reply of [replyOf("n1"), replyOf("f1")])
+					FakeIntersectionObserver.span(reply, {
+						top: 0,
+						bottom: 2 * BAR_HEIGHT + 1,
+					});
+				await settle();
+
+				expect(markedIds()).toEqual(["n1-answer"]);
+			});
+
+			it("marks a file thread's reply once it clears the file bar", async () => {
+				await mount([answeredOnFile("f1")]);
+				await reportInView(cardOf("f1"));
+
+				FakeIntersectionObserver.span(replyOf("f1"), {
+					top: 0,
+					bottom: 3 * BAR_HEIGHT + 1,
+				});
+				await settle();
+
+				expect(markedIds()).toEqual(["f1-answer"]);
+			});
+		});
+
 		describe("when the store refuses the mark", () => {
 			beforeEach(() => {
 				let refused = false;
@@ -575,7 +634,7 @@ describe("ReviewPanel", () => {
 describe("ThreadCard", () => {
 	async function drawUnderPanelContext(variant: "panel" | "inline") {
 		const visibility = new ReviewVisibility();
-		onTestFinished(visibility.connect(document.body, 0));
+		onTestFinished(visibility.connect(document.body, () => 0));
 		render(ReviewVisibilityHost, {
 			props: { visibility, thread: answered("c1"), variant },
 		});

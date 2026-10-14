@@ -52,7 +52,11 @@ export class FakeIntersectionObserver implements IntersectionObserver {
 
 	/** Report `target` as scrolled wholly into its observers' root. */
 	static enter(target: Element): void {
-		FakeIntersectionObserver.#place(target, { isIntersecting: true, ratio: 1 });
+		FakeIntersectionObserver.#place(target, {
+			kind: "seen",
+			isIntersecting: true,
+			ratio: 1,
+		});
 	}
 
 	/** Report `target` as scrolled out of its observers' root. */
@@ -63,13 +67,29 @@ export class FakeIntersectionObserver implements IntersectionObserver {
 	/** Report `target` as touching its observers' root at an edge, which the
 	 *  browser counts as intersecting with no area inside. */
 	static touch(target: Element): void {
-		FakeIntersectionObserver.#place(target, { isIntersecting: true, ratio: 0 });
+		FakeIntersectionObserver.#place(target, {
+			kind: "seen",
+			isIntersecting: true,
+			ratio: 0,
+		});
 	}
 
 	/** Report `target` as showing `ratio` of its area inside its observers'
 	 *  root, as a tall element does when one pixel of it scrolls in. */
 	static reveal(target: Element, ratio: number): void {
-		FakeIntersectionObserver.#place(target, { isIntersecting: true, ratio });
+		FakeIntersectionObserver.#place(target, {
+			kind: "seen",
+			isIntersecting: true,
+			ratio,
+		});
+	}
+
+	/** Report `target` as spanning `top` to `bottom` pixels below its observers'
+	 *  root's top edge. Each observer clips the span by the top of its own
+	 *  `rootMargin`, as the browser does, so one span can show some area to an
+	 *  observer with a small inset and none to one whose inset covers it. */
+	static span(target: Element, span: { top: number; bottom: number }): void {
+		FakeIntersectionObserver.#place(target, { kind: "span", ...span });
 	}
 
 	/** Whether any live observer watches `target`. */
@@ -85,9 +105,10 @@ export class FakeIntersectionObserver implements IntersectionObserver {
 			observer.#deliver(target, placement);
 	}
 
-	#deliver(target: Element, { isIntersecting, ratio }: Placement): void {
+	#deliver(target: Element, placement: Placement): void {
 		if (!this.#observed.has(target)) return;
 
+		const { isIntersecting, ratio } = this.#seen(placement);
 		const index = isIntersecting
 			? this.thresholds.filter((threshold) => threshold <= ratio).length
 			: -1;
@@ -96,14 +117,40 @@ export class FakeIntersectionObserver implements IntersectionObserver {
 		this.#observed.set(target, index);
 		this.#callback([entryFor(target, isIntersecting, ratio)], this);
 	}
+
+	#seen(placement: Placement): Seen {
+		if (placement.kind === "seen") return placement;
+
+		const edge = -Number.parseFloat(this.rootMargin);
+		const shown = placement.bottom - Math.max(placement.top, edge);
+		if (shown < 0) return OUTSIDE;
+
+		return {
+			kind: "seen",
+			isIntersecting: true,
+			ratio: shown / (placement.bottom - placement.top),
+		};
+	}
 }
 
-interface Placement {
+/** What every observer sees of an element, whatever its root margin. */
+interface Seen {
+	kind: "seen";
 	isIntersecting: boolean;
 	ratio: number;
 }
 
-const OUTSIDE: Placement = { isIntersecting: false, ratio: 0 };
+/** Where an element sits below the root's top edge, which each observer sees
+ *  through its own root margin. */
+interface Span {
+	kind: "span";
+	top: number;
+	bottom: number;
+}
+
+type Placement = Seen | Span;
+
+const OUTSIDE: Seen = { kind: "seen", isIntersecting: false, ratio: 0 };
 
 function entryFor(
 	target: Element,

@@ -2,6 +2,15 @@ import { getContext, setContext } from "svelte";
 import type { Attachment } from "svelte/attachments";
 import { SvelteSet } from "svelte/reactivity";
 
+/** How many pixels at the top of the root the sticky bars above `element`
+ *  cover. */
+export type TopInset = (element: Element) => number;
+
+interface Root {
+	element: HTMLElement;
+	topInsetOf: TopInset;
+}
+
 /** The ids of the watched elements that show some of their area in a root. */
 class InView {
 	readonly #ids = new SvelteSet<string>();
@@ -10,7 +19,10 @@ class InView {
 	// for the same thread or reply keeps its element watched rather than
 	// dropping it from view until the observer next reports.
 	readonly #watches = new Map<string, Attachment<HTMLElement>>();
-	#observer: IntersectionObserver | null = null;
+	// One observer per top inset, because an observer's root margin is fixed
+	// and elements under different sticky bars lose different bands of the root.
+	readonly #observers = new Map<number, IntersectionObserver>();
+	#root: Root | null = null;
 
 	has(id: string): boolean {
 		return this.#ids.has(id);
@@ -22,11 +34,12 @@ class InView {
 
 		const watch: Attachment<HTMLElement> = (element) => {
 			this.#targets.set(element, id);
-			this.#observer?.observe(element);
+			this.#observe(element);
 
 			return () => {
 				this.#targets.delete(element);
-				this.#observer?.unobserve(element);
+				for (const observer of this.#observers.values())
+					observer.unobserve(element);
 				this.#ids.delete(id);
 			};
 		};
@@ -34,13 +47,35 @@ class InView {
 		return watch;
 	}
 
-	connect(root: HTMLElement, topInset: number): () => void {
+	connect(root: HTMLElement, topInsetOf: TopInset): () => void {
+		this.#root = { element: root, topInsetOf };
+		for (const element of this.#targets.keys()) this.#observe(element);
+
+		return () => {
+			for (const observer of this.#observers.values()) observer.disconnect();
+			this.#observers.clear();
+			this.#root = null;
+			this.#ids.clear();
+		};
+	}
+
+	#observe(element: Element) {
+		if (this.#root === null) return;
+
+		const topInset = this.#root.topInsetOf(element);
+		this.#observerBelow(this.#root.element, topInset).observe(element);
+	}
+
+	#observerBelow(root: HTMLElement, topInset: number): IntersectionObserver {
+		const known = this.#observers.get(topInset);
+		if (known) return known;
+
 		// A second threshold just past 0 reports an element that merely touched
 		// the root's edge again once it shows real area inside. It is the
 		// smallest ratio above 0, because one pixel of a tall reply is a ratio
 		// far below any round number, and a crossing the observer never reports
 		// leaves that reply unread while the user reads it.
-		this.#observer = new IntersectionObserver(
+		const observer = new IntersectionObserver(
 			(entries) => {
 				for (const entry of entries) this.#record(entry);
 			},
@@ -50,13 +85,8 @@ class InView {
 				threshold: [0, Number.EPSILON],
 			},
 		);
-		for (const element of this.#targets.keys()) this.#observer.observe(element);
-
-		return () => {
-			this.#observer?.disconnect();
-			this.#observer = null;
-			this.#ids.clear();
-		};
+		this.#observers.set(topInset, observer);
+		return observer;
 	}
 
 	#record(entry: IntersectionObserverEntry) {
@@ -77,10 +107,10 @@ export class ReviewVisibility {
 	readonly cards = new InView();
 	readonly replies = new InView();
 
-	/** Watch inside `root`, below the `topInset` pixels its sticky bars cover. */
-	connect(root: HTMLElement, topInset: number): () => void {
-		const cards = this.cards.connect(root, topInset);
-		const replies = this.replies.connect(root, topInset);
+	/** Watch inside `root`, each element below the sticky bars above it. */
+	connect(root: HTMLElement, topInsetOf: TopInset): () => void {
+		const cards = this.cards.connect(root, topInsetOf);
+		const replies = this.replies.connect(root, topInsetOf);
 
 		return () => {
 			cards();

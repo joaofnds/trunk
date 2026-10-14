@@ -421,10 +421,14 @@ const shownThreadIds = $derived(
 const visibility = new ReviewVisibility();
 provideReviewVisibility(visibility);
 
-const branchCommitAndFileBarsHeight = 3 * BAR_HEIGHT;
+// The branch and commit bars stick over every card, and a file's bar sticks
+// only inside its own section, so a whole-commit note sits under two bars.
+function stickyBarsAbove(element: Element): number {
+	return element.closest(".review-file") ? 3 * BAR_HEIGHT : 2 * BAR_HEIGHT;
+}
 $effect(() => {
 	if (!bodyEl) return;
-	return visibility.connect(bodyEl, branchCommitAndFileBarsHeight);
+	return visibility.connect(bodyEl, stickyBarsAbove);
 });
 
 // Every reply asked for, so one that scrolls out and back before the store's

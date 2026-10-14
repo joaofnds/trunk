@@ -223,8 +223,9 @@ element's size and waits for a callback waits forever.
 lacks. It reports every element outside its root until the test places it:
 `FakeIntersectionObserver.enter(element)` puts it in view and `leave` takes it out. A scroll
 moves nothing into view, so the review panel marks no reply seen until the test enters the
-reply's element. The fake keeps its `rootMargin` but never applies it, so the panel's
-sticky-bar inset is not exercised here.
+reply's element. Those two ignore the observer's `rootMargin`. `span(element, { top, bottom })`
+places the element by its distance below the root's top edge instead, and each observer clips
+it by its own top margin, which is how a test puts a reply under the panel's sticky bars.
 
 The default viewport still fits every fixture unscrolled, so a test that says nothing about scroll
 behaves as it always did. Pass `viewportHeight` to `setup()` for one that should scroll.
