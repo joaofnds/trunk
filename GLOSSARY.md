@@ -333,6 +333,11 @@ flips back to `open`). Switching it is a one-step UI action; a gesture with no
 active review auto-creates a fresh one, never silently activating an
 existing review.
 
+**Shown review**: the review the review panel shows. It is the review the user
+last picked in the review list, or last created, while that review exists, and
+otherwise the active review. Showing a review never makes it active, and making
+another review active does not change which one is shown.
+
 **Thread** — one anchored root comment plus a flat, one-level list of replies.
 The selection is the thread; replies carry no anchors and no states.
 
