@@ -348,6 +348,11 @@ Text edits never change state. Attribution is by channel: UI = human, CLI = agen
 One that is `open` or `addressed` still needs the user. A review is settled when
 none of its sent threads needs the user.
 
+**Unread thread**: a thread holding an agent reply the review panel has not yet
+shown the user, meaning drawn in view in the panel while the app window has
+focus. Not a state: an agent can answer without moving the thread, so unread is
+counted apart from the state tallies (TRUNK-156).
+
 **State change** — one move of a thread's state, kept in the thread's history: the
 state it moved to, the channel that moved it, when, and for an agent's claim the
 commit it named as the fix (`trunk review address --commit`). The card shows each
