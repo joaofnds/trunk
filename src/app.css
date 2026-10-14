@@ -198,15 +198,6 @@ textarea::placeholder {
 	font-family: var(--font-mono);
 	font-size: 0.9em;
 }
-/* A review comment sets its code spans as the design's review view does: the
-   chip surface and the strong text, held to the line's height. */
-.comment-card-text.markdown-body :not(pre) > code,
-.thread-reply-text.markdown-body :not(pre) > code {
-	padding: 0 0.2em;
-	background: var(--color-surface-chip);
-	color: var(--color-text-strong);
-	font-size: 0.92em;
-}
 .markdown-body pre {
 	margin: 0.7em 0;
 	padding: 0.8em 1em;
@@ -221,6 +212,15 @@ textarea::placeholder {
 	font-size: 0.85em;
 	line-height: var(--leading-normal);
 	white-space: pre;
+}
+/* A review comment sets its code spans as the design's review view does: the
+   chip surface and the strong text, held to the line's height. */
+.comment-card-text.markdown-body :not(pre) > code,
+.thread-reply-text.markdown-body :not(pre) > code {
+	padding: 0 0.2em;
+	background: var(--color-surface-chip);
+	color: var(--color-text-strong);
+	font-size: 0.92em;
 }
 .markdown-body table {
 	display: block;
@@ -369,24 +369,6 @@ li.md-added::before {
 li.md-removed::before {
 	background: var(--color-diff-delete-bg);
 }
-/* The item's own rail, on the far edge of its ::before — the pane edge, which
-   is where the source view rails a changed line (HunkView and SplitView's
-   .diff-line border-left), so one edit reads as one shape across the two views
-   and both layouts. This is the carrier the no-wash rule above hands down: a
-   Changed pair's columns rail their changed leaf, not their whole block.
-
-   Not when the block is washing. A wholly added or removed block paints its
-   own background and rail across everything inside it, and a leaf rail there
-   would draw a second edge inside a surface that is already entirely the one
-   colour. */
-.rendered-block:not(.md-added):not(.md-removed) li.md-added::before,
-.rendered-block.no-wash li.md-added::before {
-	box-shadow: inset 3px 0 0 var(--color-diff-add);
-}
-.rendered-block:not(.md-added):not(.md-removed) li.md-removed::before,
-.rendered-block.no-wash li.md-removed::before {
-	box-shadow: inset 3px 0 0 var(--color-diff-delete);
-}
 /* An item of the block's OUTERMOST list spans the pane, exactly as a tinted
    whole block does: its highlight crosses .rendered-block's horizontal padding
    at both ends, so the two ways of saying "this was added" read as one shape
@@ -415,6 +397,24 @@ li.md-removed::before {
 .markdown-body > ol > li.md-removed::before {
 	left: calc(-1 * (var(--md-list-gutter) + var(--md-prose-inset)));
 	width: calc(var(--md-list-gutter) + var(--md-prose-inset));
+}
+/* The item's own rail, on the far edge of its ::before — the pane edge, which
+   is where the source view rails a changed line (HunkView and SplitView's
+   .diff-line border-left), so one edit reads as one shape across the two views
+   and both layouts. This is the carrier the no-wash rule above hands down: a
+   Changed pair's columns rail their changed leaf, not their whole block.
+
+   Not when the block is washing. A wholly added or removed block paints its
+   own background and rail across everything inside it, and a leaf rail there
+   would draw a second edge inside a surface that is already entirely the one
+   colour. */
+.rendered-block.no-wash li.md-added::before,
+.rendered-block:not(.md-added):not(.md-removed) li.md-added::before {
+	box-shadow: inset 3px 0 0 var(--color-diff-add);
+}
+.rendered-block.no-wash li.md-removed::before,
+.rendered-block:not(.md-added):not(.md-removed) li.md-removed::before {
+	box-shadow: inset 3px 0 0 var(--color-diff-delete);
 }
 
 /* ── Word-level inline diff marks ──
