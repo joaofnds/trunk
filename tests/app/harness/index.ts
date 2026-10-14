@@ -106,8 +106,9 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 	}
 }
 
-/** Unmounts the application, reaps the host process and removes its tempdir
- *  `HOME`. A leaked host holds a tempdir open, which is a defect, not untidiness. */
+/** Unmounts the application, ends the CLI runs still going, reaps the host
+ *  process and removes its tempdir `HOME`. A leaked host holds a tempdir open,
+ *  which is a defect, not untidiness. */
 export async function teardown(): Promise<void> {
 	if (!running) return;
 

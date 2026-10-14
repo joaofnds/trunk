@@ -31,7 +31,8 @@ tests/app/*.test.ts          the tests
 
 `setup()` spawns a host, seeds a repository, installs the transport seam, runs the polyfills,
 and mounts the same root `src/main.ts` mounts with the same two side effects. `teardown()`
-unmounts, reaps the process and removes its tempdir.
+unmounts, ends any `trunk` run `HostClient.cli` started that has not exited, reaps the
+process and removes its tempdir.
 
 **The host** (`src-tauri/examples/app_host.rs`) builds the real application on
 `tauri::test::MockRuntime` from `trunk_lib::configure`, with the real capability set from

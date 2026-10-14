@@ -1,9 +1,19 @@
 import { existsSync, readdirSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RefsResponse } from "../../src/lib/types.js";
-import { HostClient, type SpecStep } from "./harness/host-client.js";
+import {
+	HostClient,
+	type RepoSpec,
+	type SpecStep,
+} from "./harness/host-client.js";
 
 describe("host client", () => {
+	const oneCommit: RepoSpec = {
+		steps: [
+			{ step: "file", path: "README.md", content: "hello" },
+			{ step: "commit", message: "Initial commit" },
+		],
+	};
 	let host: HostClient | undefined;
 
 	afterEach(async () => {
@@ -13,12 +23,7 @@ describe("host client", () => {
 
 	it("answers list_refs for a seeded repository", async () => {
 		host = await HostClient.spawn();
-		const path = await host.seedRepo({
-			steps: [
-				{ step: "file", path: "README.md", content: "hello" },
-				{ step: "commit", message: "Initial commit" },
-			],
-		});
+		const path = await host.seedRepo(oneCommit);
 		await host.invoke("open_repo", { path });
 
 		const refs = await host.invoke<RefsResponse>("list_refs", { path });
@@ -61,6 +66,31 @@ describe("host client", () => {
 		await spawned.shutdown();
 
 		expect(existsSync(spawned.home)).toBe(false);
+	});
+
+	it("ends a CLI run that has not exited on shutdown", async () => {
+		host = await HostClient.spawn();
+		const repo = await host.seedRepo(oneCommit);
+		const watching = Promise.withResolvers<void>();
+		const ended = expect(
+			host.cli(["review", "watch", "--repo", repo], (chunk) => {
+				if (chunk.startsWith("# watching")) watching.resolve();
+			}),
+		).rejects.toMatchObject({ cause: { name: "AbortError" } });
+		await watching.promise;
+
+		await host.shutdown();
+
+		await ended;
+	});
+
+	it("refuses a CLI run once shut down", async () => {
+		host = await HostClient.spawn();
+		await host.shutdown();
+
+		const run = host.cli(["--version"]);
+
+		await expect(run).rejects.toThrow("host shut down");
 	});
 });
 

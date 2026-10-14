@@ -76,6 +76,7 @@ export class HostClient {
 	 *  stall knob's delay as well as the round trip itself. */
 	private readonly entered = new Set<{ cmd: string; startedAt: number }>();
 	private readonly handlers: EventHandler[] = [];
+	private readonly cliRuns = new AbortController();
 	private nextId = 1;
 	private inFlight = 0;
 	private stderr = "";
@@ -182,14 +183,24 @@ export class HostClient {
 	/**
 	 * Runs the `trunk` CLI the way an agent does, in this host's environment, so
 	 * it writes the review store the host reads. Resolves to what it printed and
-	 * rejects when it exits non-zero.
+	 * rejects when it exits non-zero, or when the host shuts down before it exits.
+	 * `onOutput` sees what it prints as it prints it, for a verb that never exits.
 	 */
-	cli(args: string[]): Promise<string> {
+	cli(args: string[], onOutput?: (chunk: string) => void): Promise<string> {
+		if (this.closing)
+			return Promise.reject(
+				new Error(`trunk ${args.join(" ")}: host shut down`),
+			);
+
 		return new Promise((resolve, reject) => {
-			execFile(
+			const run = execFile(
 				cliBinary(),
 				args,
-				{ env: hostEnvironment(this.home) },
+				{
+					env: hostEnvironment(this.home),
+					signal: this.cliRuns.signal,
+					killSignal: "SIGKILL",
+				},
 				(error, stdout, stderr) => {
 					if (error)
 						reject(
@@ -200,6 +211,7 @@ export class HostClient {
 					else resolve(stdout);
 				},
 			);
+			if (onOutput) run.stdout?.on("data", (chunk) => onOutput(String(chunk)));
 		});
 	}
 
@@ -209,12 +221,15 @@ export class HostClient {
 	}
 
 	/**
-	 * Reaps the process and removes the tempdir `HOME`. A leaked host holds a
-	 * tempdir open, so this runs even when the process is already gone.
+	 * Ends every CLI run still going, reaps the process and removes the tempdir
+	 * `HOME`. A leaked host holds a tempdir open, so this runs even when the
+	 * process is already gone. A test that times out never sees its CLI exit,
+	 * and nothing else would end a `trunk review watch` or a hung run.
 	 */
 	async shutdown(): Promise<void> {
 		if (this.closing) return;
 		this.closing = true;
+		this.cliRuns.abort();
 
 		if (!this.exited) {
 			this.send({ id: this.nextId++, verb: "shutdown" });
