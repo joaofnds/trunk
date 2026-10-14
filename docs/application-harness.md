@@ -35,6 +35,10 @@ unmounts, reaps the process and removes its tempdir.
 `watcherCount` and `shutdown`. One host process is one application is one test, and each gets
 a fresh tempdir `HOME`, so every managed state and the resolved `app_data_dir` isolate without
 a reset step — and writing to the installed app's data directory is structurally impossible.
+The host never runs the app's `.setup()`, because under `MockRuntime` on macOS it dereferences
+a dangling `NSView*`, so the review store poll that `.setup()` starts never runs. A store write
+from outside the app, such as a `trunk review reply` from the CLI, reaches the page only when
+the test sends `emit("reviews-changed", null)` itself.
 
 **The seam is the global, never a module.** `@tauri-apps/api` reaches the runtime only through
 `window.__TAURI_INTERNALS__`. Installing that before the root mounts means no `vi.mock`, no
