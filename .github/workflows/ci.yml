@@ -263,8 +263,8 @@ jobs:
           workspaces: "src-tauri -> target"
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: bun install --frozen-lockfile
-      # Builds a Rust example and runs vitest over it, so this job needs both
-      # toolchains where the other gate-2 jobs need one.
+      # Builds a Rust example and the trunk CLI and runs vitest over them, so this
+      # job needs both toolchains where the other gate-2 jobs need one.
       - run: just app-test
 
   vitest:
