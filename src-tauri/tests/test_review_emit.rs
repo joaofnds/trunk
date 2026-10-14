@@ -97,6 +97,29 @@ fn marking_a_seen_reply_seen_again_stays_silent() {
 }
 
 #[test]
+fn marking_a_seen_reply_seen_again_leaves_the_store_revision() {
+    let ctx = TestContext::new_empty();
+    let driver = ctx.review();
+    let ids = [thread_with_agent_reply(&driver)];
+    driver.mark_replies_seen(&ids).expect("first mark");
+    let store = trunk_review::reviewdb::open(ctx.data_dir()).expect("open store");
+    let before = store
+        .read(trunk_review::reviewdb::revision)
+        .expect("revision before");
+
+    driver.mark_replies_seen(&ids).expect("second mark");
+    let after = store
+        .read(trunk_review::reviewdb::revision)
+        .expect("revision after");
+    drop(driver);
+
+    assert_eq!(
+        after, before,
+        "a mark that changed nothing must not wake every other window's poll"
+    );
+}
+
+#[test]
 fn a_listed_agent_reply_reads_seen_once_marked() {
     let ctx = TestContext::new_empty();
     let driver = ctx.review();

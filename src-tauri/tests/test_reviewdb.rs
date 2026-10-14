@@ -926,6 +926,28 @@ fn marking_a_human_reply_seen_counts_no_change() {
 }
 
 #[test]
+fn marking_seen_leaves_a_human_reply_the_store_holds_unseen() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
+    let reply_id = reply_from(&store, &canonical, &thread_id, Channel::Human);
+    rusqlite::Connection::open(ctx.data_dir().join(reviewdb::DB_FILE))
+        .unwrap()
+        .execute("UPDATE replies SET seen = 0 WHERE id = ?1", [&reply_id])
+        .unwrap();
+
+    let changed = store
+        .write(|tx| reviewdb::replies::mark_seen(tx, &canonical, std::slice::from_ref(&reply_id)))
+        .unwrap();
+
+    assert_eq!(
+        changed, 0,
+        "only the app showing an agent reply marks it seen"
+    );
+}
+
+#[test]
 fn marking_no_replies_seen_changes_nothing() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();

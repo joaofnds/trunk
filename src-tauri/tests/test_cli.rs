@@ -2205,10 +2205,14 @@ fn watch_stays_silent_when_the_app_marks_a_reply_seen() {
         serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
     let answer_id = answered["reply"].as_str().unwrap().to_string();
 
-    reviewdb::open(ctx.data_dir())
+    let marked = reviewdb::open(ctx.data_dir())
         .unwrap()
         .write(|tx| reviewdb::replies::mark_seen(tx, &canonical, &[answer_id]))
         .unwrap();
+    assert_eq!(
+        marked, 1,
+        "the mark must write for its silence to mean anything"
+    );
     trunk_review_in(
         ctx.repo_path(),
         &["reply", &thread_id, "the barrier"],
@@ -2256,12 +2260,16 @@ fn thread_json_reads_the_same_once_the_app_has_shown_its_reply() {
         .map(|r| r.id.clone())
         .collect();
 
-    store
+    let marked = store
         .write(|tx| reviewdb::replies::mark_seen(tx, &canonical, &reply_ids))
         .unwrap();
     let after = read();
 
     assert!(before.status.success());
+    assert_eq!(
+        marked, 1,
+        "the mark must write for the sameness to mean anything"
+    );
     assert_eq!(
         String::from_utf8_lossy(&after.stdout),
         String::from_utf8_lossy(&before.stdout)

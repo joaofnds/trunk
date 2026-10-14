@@ -141,9 +141,10 @@ pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), Trunk
     Ok(())
 }
 
-/// Record that the app showed the user these agent replies, and return how many
-/// were not seen before. Ids from another repository and replies already seen
-/// change nothing, so a repeat returns 0.
+/// Record that the app showed the user these agent replies.
+///
+/// Returns how many were not seen before. Ids from another repository, human
+/// replies, and replies already seen change nothing, so a repeat returns 0.
 ///
 /// # Errors
 ///
@@ -152,7 +153,7 @@ pub fn mark_seen(conn: &Connection, repo_path: &Path, ids: &[String]) -> Result<
     let placeholders = vec!["?"; ids.len()].join(",");
     let sql = format!(
         "UPDATE replies SET seen = 1
-         WHERE id IN ({placeholders}) AND seen = 0
+         WHERE id IN ({placeholders}) AND seen = 0 AND channel = 'agent'
          AND thread_id IN (
              SELECT t.id FROM threads t
              JOIN reviews r ON r.id = t.review_id
