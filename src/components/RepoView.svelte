@@ -777,17 +777,18 @@ let viewDescriptor = $derived<ViewDescriptor>({
 	snapshots: reviewComments.snapshots,
 });
 
+// The pick of a shown review outlives review mode, so reading shownThreads
+// outside it would hide the active review's threads, and every new comment,
+// from each ordinary diff.
+let diffThreads = $derived(
+	reviewMode ? reviewComments.shownThreads : reviewComments.threads,
+);
+
 // Comments matching the file currently shown in DiffPanel. Empty when no file
-// is selected. In review mode they come from the review the panel shows, so a
-// jump from a review that is not active lands on its thread. Outside it nothing
-// on screen names that review, so the active review's threads are drawn.
+// is selected.
 let viewComments = $derived(
 	selectedDiffPath && !selectedCompareFile
-		? commentsForView(
-				reviewMode ? reviewComments.shownThreads : reviewComments.threads,
-				viewDescriptor,
-				selectedDiffPath,
-			)
+		? commentsForView(diffThreads, viewDescriptor, selectedDiffPath)
 		: [],
 );
 
