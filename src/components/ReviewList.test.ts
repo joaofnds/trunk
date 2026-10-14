@@ -2,7 +2,10 @@ import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
-import { aReview } from "../__tests__/helpers/review-fixture.js";
+import {
+	aReview,
+	FIXTURE_REVIEW_ID,
+} from "../__tests__/helpers/review-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
 import type { Review } from "../lib/types.js";
 import ReviewList from "./ReviewList.svelte";
@@ -21,7 +24,7 @@ vi.mock("../lib/toast.svelte.js", () => ({
 	showToast: vi.fn(),
 }));
 
-const ACTIVE_REVIEW = "REVIEW01";
+const ACTIVE_REVIEW = FIXTURE_REVIEW_ID;
 
 const OPEN: Review = {
 	id: "READYRV1",

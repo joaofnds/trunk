@@ -614,6 +614,13 @@ describe("RepoView", () => {
 	// Review mode is a window of its own: the reviews take the sidebar's place
 	// and its width, and nothing stands beside the review on the right.
 	describe("in review mode", () => {
+		// What a review's counts read once the list read sees its one open thread.
+		const oneOpenThread = {
+			state: "open",
+			thread_count: 1,
+			unresolved_count: 1,
+		} as const;
+
 		async function flush() {
 			await vi.dynamicImportSettled();
 			await tick();
@@ -674,18 +681,7 @@ describe("RepoView", () => {
 							revision: 1,
 						});
 					case "list_reviews":
-						return Promise.resolve([
-							{
-								id: "r1",
-								title: "r1",
-								state: "settled",
-								visible_to_agent: false,
-								thread_count: 0,
-								unresolved_count: 0,
-								pending_count: 0,
-								created_at: 0,
-							},
-						]);
+						return Promise.resolve([aReview({ id: "r1", title: "r1" })]);
 					case "get_active_review":
 						return Promise.resolve("r1");
 					case "list_session_commits":
@@ -730,16 +726,12 @@ describe("RepoView", () => {
 						});
 					case "list_reviews":
 						return Promise.resolve([
-							{
+							aReview({
 								id: "r1",
 								title: "r1",
-								state: "settled",
-								visible_to_agent: false,
 								thread_count: 1,
 								unresolved_count: 1,
-								pending_count: 0,
-								created_at: 0,
-							},
+							}),
 						]);
 					case "get_active_review":
 						return Promise.resolve("r1");
@@ -808,8 +800,8 @@ describe("RepoView", () => {
 				switch (cmd) {
 					case "list_reviews":
 						return Promise.resolve([
-							aReview({ id: "r1", title: "Active one" }),
-							aReview({ id: "r2", title: "Shown one" }),
+							aReview({ id: "r1", title: "Active one", ...oneOpenThread }),
+							aReview({ id: "r2", title: "Shown one", ...oneOpenThread }),
 						]);
 					case "get_active_review":
 						return Promise.resolve("r1");
@@ -915,11 +907,12 @@ describe("RepoView", () => {
 						});
 					case "list_reviews":
 						return Promise.resolve([
-							aReview({ id: "r1", title: "Active one" }),
+							aReview({ id: "r1", title: "Active one", ...oneOpenThread }),
 							aReview({
 								id: "r2",
 								title: "Shown one",
 								archived: props.secondArchived,
+								...oneOpenThread,
 							}),
 						]);
 					case "get_active_review":

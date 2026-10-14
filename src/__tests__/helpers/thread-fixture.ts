@@ -1,4 +1,5 @@
 import type { Reply, StateChange, Thread } from "../../lib/types.js";
+import { FIXTURE_REVIEW_ID } from "./review-fixture.js";
 
 /**
  * A Thread with the fields every stored thread carries filled in, so a test
@@ -8,7 +9,7 @@ import type { Reply, StateChange, Thread } from "../../lib/types.js";
 export function aThread(overrides: Partial<Thread> = {}): Thread {
 	return {
 		id: "thread-1",
-		review_id: "REVIEW01",
+		review_id: FIXTURE_REVIEW_ID,
 		text: "",
 		anchor: null,
 		cached_excerpt: null,
