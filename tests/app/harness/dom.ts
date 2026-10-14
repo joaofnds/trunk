@@ -1,3 +1,4 @@
+import { FakeIntersectionObserver } from "../../../src/__tests__/helpers/fake-intersection-observer.js";
 import {
 	restoreVirtualListLayout,
 	stubVirtualListLayout,
@@ -24,6 +25,7 @@ export function installDomPolyfills(options: DomOptions = {}): void {
 	installScrolling();
 	installLayout(options);
 	installTextMeasurement();
+	installIntersection();
 }
 
 export interface DomOptions {
@@ -119,6 +121,14 @@ export function restoreDomPolyfills(): void {
 	} else {
 		Reflect.deleteProperty(window, "matchMedia");
 	}
+}
+
+/** Reports nothing, so no element is ever in view and the review panel marks
+ *  no reply seen against the real host. */
+function installIntersection(): void {
+	if (typeof globalThis.IntersectionObserver !== "undefined") return;
+
+	globalThis.IntersectionObserver = FakeIntersectionObserver;
 }
 
 function installTextMeasurement(): void {

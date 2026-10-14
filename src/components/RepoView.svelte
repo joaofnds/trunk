@@ -114,6 +114,9 @@ interface Props {
 	// Whether this is the active tab. Visited tabs stay mounted, so window-global
 	// menu events (search-toggle) need it to tell themselves apart.
 	tabActive: boolean;
+	// Whether the window has focus, so the review panel can tell the user is
+	// looking at the replies it shows.
+	windowFocused?: boolean;
 	// Review mode is toggled by the OS menu (review-toggle) at the App level so the
 	// global event only affects the active tab; App passes the flag down per tab.
 	reviewActive: boolean;
@@ -160,6 +163,7 @@ let {
 	rightPaneWidth,
 	rightPaneCollapsed,
 	tabActive,
+	windowFocused = false,
 	reviewActive,
 	reviewThreadsHidden = false,
 	threadFilter = ALL_THREADS,
@@ -2427,6 +2431,7 @@ function stepRightPane(delta: number) {
 									headBranch={headBranch ?? null}
 									shown={reviewPanelShown}
 									keysActive={tabActive && reviewPanelShown}
+									{windowFocused}
 									reviewList={reviewListPane}
 								/>
 							{/snippet}

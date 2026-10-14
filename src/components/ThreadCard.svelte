@@ -23,6 +23,7 @@ import {
 	createThreadEditorSession,
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
+import { reviewVisibility } from "../lib/review-visibility.svelte.js";
 import { CHANGE_TEXT } from "../lib/thread-timeline.js";
 import type {
 	Delivery,
@@ -39,6 +40,7 @@ import CommentEditor from "./review/CommentEditor.svelte";
 import FoldBar from "./review/FoldBar.svelte";
 import StatePill from "./review/StatePill.svelte";
 import ThreadMessage from "./review/ThreadMessage.svelte";
+import UnreadMark from "./review/UnreadMark.svelte";
 import ThreadReplies from "./ThreadReplies.svelte";
 
 interface Props {
@@ -67,6 +69,8 @@ interface Props {
 	onfocusrequest?: () => void;
 	editorSession?: ThreadEditorSession;
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
+	// The panel marks a thread whose agent answer the user has not been shown.
+	unread?: boolean;
 }
 
 let {
@@ -86,7 +90,14 @@ let {
 	onfocusrequest,
 	editorSession,
 	editorSessionForThread,
+	unread = false,
 }: Props = $props();
+
+const visibility = reviewVisibility();
+// A refresh hands the card a new thread object. Watching on the id alone keeps
+// the card watched through it, where re-watching would drop it from view until
+// the observer next reports.
+const threadId = $derived(thread.id);
 
 const fallbackEditorSession = createThreadEditorSession();
 const editor = $derived(
@@ -496,6 +507,7 @@ async function requestDeleteReply(replyId: string) {
 		thread.state === "dismissed"}
 	class:comment-card-dismissed={thread.state === "dismissed"}
 	class:comment-card-open={!collapsed}
+	{@attach visibility?.cards.watch(threadId)}
 >
 	<header class="comment-card-header">
 		<!-- An inline card's height comes from a hidden copy measured once, so
@@ -666,6 +678,9 @@ async function requestDeleteReply(replyId: string) {
 	<span class="thread-state-chip contents"
 		><StatePill state={thread.state} /></span
 	>
+	{#if unread}
+		<UnreadMark>Unread</UnreadMark>
+	{/if}
 	{#if variant === "inline"}
 		{#if location !== null}
 			<span class="comment-card-range" title={locationTitle}

@@ -133,6 +133,12 @@ for (const [state, color] of THREAD_TONES) {
 	check(`${state} comment count on a selected row`, color, "var(--color-selected-row)");
 }
 
+section("Unread marker and count (TRUNK-156)");
+check("unread label on a card header", "var(--color-accent-strong)", "var(--color-comment-card-header-bg)");
+check("unread count in the panel header", "var(--color-accent-strong)", "var(--color-surface)");
+check("unread dot on a card header", "var(--color-accent)", "var(--color-comment-card-header-bg)", { target: 3 });
+check("unread dot in the panel header", "var(--color-accent)", "var(--color-surface)", { target: 3 });
+
 section("Chip (lineage pills and branch chips, on --color-surface, the merge banner and the staging header)");
 check("accent chip label", "var(--color-accent-strong)", "var(--color-surface)", { layers: ["var(--color-chip-accent-bg)"] });
 check("accent chip label under the pointer", "var(--color-accent-strong)", "var(--color-surface)", { layers: ["var(--color-chip-accent-bg-hover)"] });

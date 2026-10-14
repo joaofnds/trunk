@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { FakeIntersectionObserver } from "./src/__tests__/helpers/fake-intersection-observer.js";
 
 // jsdom does not implement ResizeObserver — stub it globally for VirtualList etc.
 if (typeof globalThis.ResizeObserver === "undefined") {
@@ -7,6 +8,11 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 		unobserve() {}
 		disconnect() {}
 	} as unknown as typeof ResizeObserver;
+}
+
+// jsdom does not implement IntersectionObserver. The Fake reports only what a test tells it to.
+if (typeof globalThis.IntersectionObserver === "undefined") {
+	globalThis.IntersectionObserver = FakeIntersectionObserver;
 }
 
 // jsdom does not implement HTMLDialogElement.show/showModal/close: stub them so dialogs render as accessible and open.

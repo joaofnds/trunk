@@ -6,6 +6,7 @@ import {
 	createThreadEditorSession,
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
+import { isUnseen, reviewVisibility } from "../lib/review-visibility.svelte.js";
 import { threadTimeline } from "../lib/thread-timeline.js";
 import type { Reply, StateChange } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
@@ -38,6 +39,7 @@ let {
 	editorSession,
 }: Props = $props();
 
+const visibility = reviewVisibility();
 let repliesExpanded = $state(false);
 const fallbackEditorSession = createThreadEditorSession();
 const editor = $derived(editorSession ?? fallbackEditorSession);
@@ -127,7 +129,12 @@ async function saveReplyEdit() {
 	{/if}
 	<ul class="thread-replies" class:thread-replies-dismissed={dismissed}>
 		{#each visibleEntries as entry (entry.key)}
-			<li class="thread-reply">
+			<li
+				class="thread-reply"
+				{@attach entry.kind === "reply" && isUnseen(entry.reply)
+					? visibility?.replies.watch(entry.reply.id)
+					: undefined}
+			>
 				{#if entry.kind === "change"}
 					<ThreadEvent change={entry.change} />
 				{:else}

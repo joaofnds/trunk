@@ -959,6 +959,7 @@ $effect(() => {
 								{rightPaneWidth}
 								{rightPaneCollapsed}
 								tabActive={tab.id === activeTabId}
+								windowFocused={windowVisible}
 								reviewActive={tabReviewActive}
 								{reviewThreadsHidden}
 								{threadFilter}

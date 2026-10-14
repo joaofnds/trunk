@@ -16,6 +16,8 @@ import Send from "@lucide/svelte/icons/send";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { tick, untrack } from "svelte";
 import { fromAction } from "svelte/attachments";
+import { SvelteSet } from "svelte/reactivity";
+import { BAR_HEIGHT } from "../lib/chrome-heights.js";
 import { copySha } from "../lib/clipboard.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
@@ -54,6 +56,12 @@ import {
 } from "../lib/review-sections.js";
 import type { ReviewSessionManager } from "../lib/review-session.svelte.js";
 import { reviewTitle } from "../lib/review-title.js";
+import {
+	isUnread,
+	provideReviewVisibility,
+	ReviewVisibility,
+	unseenAgentReplies,
+} from "../lib/review-visibility.svelte.js";
 import { selectOnOpen } from "../lib/select-on-open.js";
 import { showToast } from "../lib/toast.svelte.js";
 import { tooltip } from "../lib/tooltip.js";
@@ -80,6 +88,7 @@ import ReviewEmpty from "./review/ReviewEmpty.svelte";
 import ReviewTitle from "./review/ReviewTitle.svelte";
 import StateGlyph from "./review/StateGlyph.svelte";
 import StatePill, { THREAD_LABELS } from "./review/StatePill.svelte";
+import UnreadMark from "./review/UnreadMark.svelte";
 import WaysToComment from "./review/WaysToComment.svelte";
 import ThreadCard from "./ThreadCard.svelte";
 
@@ -122,6 +131,9 @@ interface Props {
 	// The reviews list in the pane beside the panel. Focus there, left by
 	// pressing a review, still leaves the thread keys to the panel.
 	reviewList?: HTMLElement | null;
+	// Whether the app window has focus. A reply on screen in a window the user
+	// is not looking at stays unread.
+	windowFocused?: boolean;
 }
 
 let {
@@ -140,6 +152,7 @@ let {
 	keysActive = true,
 	shown = true,
 	reviewList = null,
+	windowFocused = false,
 }: Props = $props();
 
 let panelEl = $state<HTMLElement | null>(null);
@@ -394,6 +407,73 @@ const shownThreads = $derived(
 		.filter(shows),
 );
 let bodyEl = $state<HTMLElement>();
+
+// Unread counts every thread of the shown review, filtered or folded away
+// included, since only showing its replies clears it.
+const unreadIds = $derived(
+	new Set(comments.filter(isUnread).map((thread) => thread.id)),
+);
+// Tab in front and panel drawn (keysActive), no diff over it, window focused.
+const showing = $derived(keysActive && shown && windowFocused);
+const shownThreadIds = $derived(
+	new Set(shownThreads.map((thread) => thread.id)),
+);
+
+const visibility = new ReviewVisibility();
+provideReviewVisibility(visibility);
+
+// The sticky branch, commit and file bars cover the top of the body.
+$effect(() => {
+	if (!bodyEl) return;
+	return visibility.connect(bodyEl, 3 * BAR_HEIGHT);
+});
+
+// Asked for and not yet reported seen by the store, so a reply that scrolls
+// out and back before the answer lands is not asked for twice.
+const markRequested = new Set<string>();
+
+$effect(() => {
+	if (!showing) return;
+
+	const ids = shownThreads
+		.flatMap((thread) => unseenAgentReplies(thread))
+		.map((reply) => reply.id)
+		.filter((id) => visibility.replies.ids.has(id) && !markRequested.has(id));
+	if (ids.length === 0) return;
+
+	for (const id of ids) markRequested.add(id);
+	void markSeen(ids);
+});
+
+// The store's refresh brings the replies back seen. A failed mark leaves them
+// unread, which is what the panel goes on showing, and asks again on the next
+// change that brings them into view.
+async function markSeen(ids: string[]) {
+	try {
+		await safeInvoke("mark_replies_seen", { path: repoPath, ids });
+	} catch {
+		for (const id of ids) markRequested.delete(id);
+	}
+}
+
+// A card keeps its marker while it stays on screen after its replies were
+// marked seen, or the marker would vanish as the reader reached it. It goes
+// the next time the card is shown with nothing left unseen.
+const held = new SvelteSet<string>();
+
+$effect(() => {
+	for (const thread of comments) {
+		const onScreen =
+			showing &&
+			shownThreadIds.has(thread.id) &&
+			visibility.cards.ids.has(thread.id);
+		const unread = unreadIds.has(thread.id);
+		untrack(() => {
+			if (!onScreen) held.delete(thread.id);
+			else if (unread) held.add(thread.id);
+		});
+	}
+});
 
 const KEY_LEGEND: [string[], string][] = [
 	[["J", "K"], "move"],
@@ -900,6 +980,10 @@ $effect(() => {
 						? "Visible to the agent"
 						: "Not visible to the agent"}</span
 				>
+				{#if unreadIds.size > 0}
+					<span class="text-text-disabled" aria-hidden="true">·</span>
+					<UnreadMark>{plural(unreadIds.size, "unread thread")}</UnreadMark>
+				{/if}
 				{#if comments.length > 0}
 					<span class="text-text-disabled" aria-hidden="true">·</span>
 					<ul
@@ -1291,6 +1375,7 @@ $effect(() => {
 		orphaned={isOrphan(comment)}
 		orphanLabel={orphanLabel(comment)}
 		{editorSessionForThread}
+		unread={unreadIds.has(comment.id) || held.has(comment.id)}
 	/>
 {/snippet}
 
