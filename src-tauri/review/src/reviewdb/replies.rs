@@ -17,6 +17,8 @@ pub struct Reply {
     pub created_at: i64,
     /// Held in the review's batch, so the agent cannot see it yet.
     pub pending: bool,
+    /// The app has shown it to the user. A human reply is seen as it is written.
+    pub seen: bool,
 }
 
 /// Add a reply to a thread. Scoped by `repo_path`, same ownership subquery as
@@ -59,12 +61,13 @@ pub fn add(
 
     let pending = channel == Channel::Human
         && (delivery == Delivery::Hold || reviews::holds_batch(conn, &review_id)?);
+    let seen = channel == Channel::Human;
     let id = ids::mint_unique(conn, IdKind::Reply)?;
 
     conn.execute(
-        "INSERT INTO replies (id, thread_id, body, channel, created_at, updated_at, pending)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6)",
-        rusqlite::params![&id, thread_id, body, channel.as_str(), now, pending],
+        "INSERT INTO replies (id, thread_id, body, channel, created_at, updated_at, pending, seen)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6, ?7)",
+        rusqlite::params![&id, thread_id, body, channel.as_str(), now, pending, seen],
     )
     .map_err(sqlite_error)?;
 
@@ -138,6 +141,34 @@ pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), Trunk
     Ok(())
 }
 
+/// Record that the app showed the user these agent replies, and return how many
+/// were not seen before. Ids from another repository and replies already seen
+/// change nothing, so a repeat returns 0.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the update fails.
+pub fn mark_seen(conn: &Connection, repo_path: &Path, ids: &[String]) -> Result<usize, TrunkError> {
+    let placeholders = vec!["?"; ids.len()].join(",");
+    let sql = format!(
+        "UPDATE replies SET seen = 1
+         WHERE id IN ({placeholders}) AND seen = 0
+         AND thread_id IN (
+             SELECT t.id FROM threads t
+             JOIN reviews r ON r.id = t.review_id
+             WHERE r.repo_path = ?
+         )"
+    );
+    let repo = repo_key(repo_path);
+    let params = ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::ToSql)
+        .chain(std::iter::once(&repo as &dyn rusqlite::ToSql));
+
+    conn.execute(&sql, rusqlite::params_from_iter(params))
+        .map_err(sqlite_error)
+}
+
 /// Every reply for a set of threads that `reader` may see, keyed by thread id: one
 /// query over an `IN` list rather than N+1. The agent never sees a held reply.
 ///
@@ -163,7 +194,7 @@ pub fn list_for_threads(
         Channel::Agent => "AND pending = 0",
     };
     let sql = format!(
-        "SELECT id, thread_id, body, channel, created_at, pending FROM replies
+        "SELECT id, thread_id, body, channel, created_at, pending, seen FROM replies
          WHERE thread_id IN ({placeholders}) {visible} ORDER BY created_at, rowid"
     );
     let mut stmt = conn.prepare(&sql).map_err(sqlite_error)?;
@@ -193,5 +224,6 @@ fn read_reply(row: &rusqlite::Row) -> Result<Reply, TrunkError> {
         channel: Channel::from_str(&channel)?,
         created_at: row.get(4).map_err(sqlite_error)?,
         pending: row.get::<_, i64>(5).map_err(sqlite_error)? != 0,
+        seen: row.get::<_, i64>(6).map_err(sqlite_error)? != 0,
     })
 }

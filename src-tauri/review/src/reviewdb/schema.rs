@@ -8,7 +8,7 @@ use super::sqlite_error;
 use rusqlite::Connection;
 use trunk_git::error::TrunkError;
 
-pub const CURRENT_VERSION: i64 = 14;
+pub const CURRENT_VERSION: i64 = 15;
 
 const V1: &str = r"
 CREATE TABLE reviews (
@@ -318,6 +318,17 @@ const V14: &str = r"
 ALTER TABLE drafts ADD COLUMN whole_file INTEGER NOT NULL DEFAULT 0;
 ";
 
+/// Whether the app has shown the user a reply, which is what makes its thread
+/// unread. Nothing records which earlier replies the user read, so every reply
+/// already stored counts as seen rather than flagging every past answer at once.
+/// The default stays 0 so an insert that forgets the column raises the signal
+/// instead of hiding it.
+const V15: &str = r"
+ALTER TABLE replies ADD COLUMN seen INTEGER NOT NULL DEFAULT 0;
+
+UPDATE replies SET seen = 1;
+";
+
 /// A dev store may carry `user_version = 8` from an unreleased commit that numbered
 /// an earlier cleanup 8, before this build's own v8 existed.
 ///
@@ -492,6 +503,10 @@ fn apply_pending(conn: &Connection) -> Result<(), TrunkError> {
     }
     if user_version(conn)? < 14 {
         conn.execute_batch(&format!("{V14} PRAGMA user_version = 14;"))
+            .map_err(sqlite_error)?;
+    }
+    if user_version(conn)? < 15 {
+        conn.execute_batch(&format!("{V15} PRAGMA user_version = 15;"))
             .map_err(sqlite_error)?;
     }
 

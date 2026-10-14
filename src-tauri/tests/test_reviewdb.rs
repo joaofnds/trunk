@@ -795,6 +795,167 @@ fn replies_keep_their_insertion_order_within_one_second() {
     assert_eq!(texts, vec!["first", "second", "third"]);
 }
 
+// ── Unread signalling: which replies the app has shown ──────────────────────
+
+fn reply_from(
+    store: &reviewdb::Store,
+    repo: &std::path::Path,
+    thread_id: &str,
+    channel: Channel,
+) -> String {
+    store
+        .write(|tx| {
+            reviewdb::replies::add(
+                tx,
+                repo,
+                thread_id,
+                "a reply",
+                channel,
+                Delivery::Send,
+                1_001,
+            )
+        })
+        .unwrap()
+}
+
+fn seen(store: &reviewdb::Store, thread_id: &str, reply_id: &str) -> bool {
+    let by_thread = store
+        .read(|c| reviewdb::replies::list_for_threads(c, &[thread_id.to_string()], Channel::Human))
+        .unwrap();
+
+    by_thread[thread_id]
+        .iter()
+        .find(|r| r.id == reply_id)
+        .unwrap()
+        .seen
+}
+
+#[test]
+fn an_agent_reply_arrives_unseen() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
+
+    let reply_id = reply_from(&store, &canonical, &thread_id, Channel::Agent);
+
+    assert!(!seen(&store, &thread_id, &reply_id));
+}
+
+#[test]
+fn a_human_reply_arrives_seen() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
+
+    let reply_id = reply_from(&store, &canonical, &thread_id, Channel::Human);
+
+    assert!(seen(&store, &thread_id, &reply_id));
+}
+
+#[test]
+fn marking_an_agent_reply_seen_reads_it_back_seen() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
+    let reply_id = reply_from(&store, &canonical, &thread_id, Channel::Agent);
+
+    let changed = store
+        .write(|tx| reviewdb::replies::mark_seen(tx, &canonical, std::slice::from_ref(&reply_id)))
+        .unwrap();
+
+    assert_eq!(changed, 1);
+    assert!(seen(&store, &thread_id, &reply_id));
+}
+
+#[test]
+fn marking_a_seen_reply_again_changes_nothing() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
+    let reply_id = reply_from(&store, &canonical, &thread_id, Channel::Agent);
+    let ids = [reply_id];
+    store
+        .write(|tx| reviewdb::replies::mark_seen(tx, &canonical, &ids))
+        .unwrap();
+
+    let changed = store
+        .write(|tx| reviewdb::replies::mark_seen(tx, &canonical, &ids))
+        .unwrap();
+
+    assert_eq!(changed, 0);
+}
+
+#[test]
+fn marking_seen_leaves_another_repositorys_reply_unseen() {
+    let ctx = TestContext::new_empty();
+    let other = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let other_canonical = other.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let other_thread =
+        submit_thread_inner(&store, &other_canonical, submission("root"), 1_000).unwrap();
+    let other_reply = reply_from(&store, &other_canonical, &other_thread, Channel::Agent);
+
+    let changed = store
+        .write(|tx| {
+            reviewdb::replies::mark_seen(tx, &canonical, std::slice::from_ref(&other_reply))
+        })
+        .unwrap();
+
+    assert_eq!(changed, 0);
+    assert!(!seen(&store, &other_thread, &other_reply));
+}
+
+#[test]
+fn marking_a_human_reply_seen_counts_no_change() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
+    let reply_id = reply_from(&store, &canonical, &thread_id, Channel::Human);
+
+    let changed = store
+        .write(|tx| reviewdb::replies::mark_seen(tx, &canonical, &[reply_id]))
+        .unwrap();
+
+    assert_eq!(changed, 0);
+}
+
+#[test]
+fn marking_no_replies_seen_changes_nothing() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    let changed = store
+        .write(|tx| reviewdb::replies::mark_seen(tx, &canonical, &[]))
+        .unwrap();
+
+    assert_eq!(changed, 0);
+}
+
+#[test]
+fn an_agent_reply_saved_before_unread_signalling_reads_seen() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
+    let reply_id = reply_from(&store, &canonical, &thread_id, Channel::Agent);
+    drop(store);
+    let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+    common::review_schema::undo_steps_after(&conn, 14);
+    conn.execute_batch("PRAGMA user_version = 14;").unwrap();
+    drop(conn);
+
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    assert!(seen(&store, &thread_id, &reply_id));
+}
+
 // ── Milestone 2, Task 3: replying from the UI ────────────────────────────────
 
 #[test]
