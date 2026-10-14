@@ -65,6 +65,31 @@ function answered(id: string, seen = false): Thread {
 	});
 }
 
+/** A thread the agent answered twice, each answer seen or not. */
+function answeredTwice(id: string, seen: [boolean, boolean]): Thread {
+	return aThread({
+		id,
+		text: `question ${id}`,
+		commit_oid: COMMIT,
+		replies: [
+			aReply({
+				id: `${id}-first`,
+				channel: "agent",
+				text_html: `<p>first answer on ${id}</p>`,
+				created_at: 2_000,
+				seen: seen[0],
+			}),
+			aReply({
+				id: `${id}-second`,
+				channel: "agent",
+				text_html: `<p>second answer on ${id}</p>`,
+				created_at: 4_000,
+				seen: seen[1],
+			}),
+		],
+	});
+}
+
 function seed(threads: Thread[]) {
 	reviewComments.seed({
 		commits: [aSessionCommit({ oid: COMMIT, short_oid: "aaaaaaa" })],
@@ -116,8 +141,12 @@ function cardOf(id: string): HTMLElement {
 }
 
 function replyOf(id: string): HTMLElement {
-	const reply = screen.getByText(`answer on ${id}`).closest("li");
-	if (reply === null) throw new Error(`no reply on ${id}`);
+	return replyReading(`answer on ${id}`);
+}
+
+function replyReading(text: string): HTMLElement {
+	const reply = screen.getByText(text).closest("li");
+	if (reply === null) throw new Error(`no reply reading ${text}`);
 	return reply;
 }
 
@@ -188,6 +217,20 @@ describe("ReviewPanel", () => {
 			).toBe(unseenTallies);
 		});
 
+		describe("when a later agent reply is seen and an earlier one is not", () => {
+			it("still counts the thread in the header", async () => {
+				await mount([answeredTwice("c1", [false, true])]);
+
+				expect(headerCount()).toBe("1 unread thread");
+			});
+
+			it("still draws the marker", async () => {
+				await mount([answeredTwice("c1", [false, true])]);
+
+				expect(markerOn("c1")).toBeInTheDocument();
+			});
+		});
+
 		describe("when every agent reply is seen", () => {
 			it("draws no header count", async () => {
 				await mount([answered("c1", true)]);
@@ -246,14 +289,42 @@ describe("ReviewPanel", () => {
 			expect(markedIds()).toEqual([]);
 		});
 
-		it("marks the reply in view once the window regains focus", async () => {
-			const view = await mount([answered("c1")], { windowFocused: false });
+		it.each<[string, Showing]>([
+			["the window regains focus", { windowFocused: false }],
+			["its tab comes to the front", { keysActive: false }],
+			["the diff over the panel closes", { shown: false }],
+		])("marks the reply in view once %s", async (_, hidden) => {
+			const view = await mount([answered("c1")], hidden);
 			await reportInView(cardOf("c1"), replyOf("c1"));
 
-			await view.rerender({ windowFocused: true });
+			await view.rerender(props());
 			await settle();
 
 			expect(markedIds()).toEqual(["c1-answer"]);
+		});
+
+		it("marks every unseen agent reply of a thread in view", async () => {
+			await mount([answeredTwice("c1", [false, false])]);
+
+			await reportInView(
+				cardOf("c1"),
+				replyReading("first answer on c1"),
+				replyReading("second answer on c1"),
+			);
+
+			expect(markedIds()).toEqual(["c1-first", "c1-second"]);
+		});
+
+		it("marks nothing in a commit folded under its bar", async () => {
+			await mount([answered("c1")]);
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Collapse commit" }),
+			);
+			await settle();
+
+			await reportInView(cardOf("c1"), replyOf("c1"));
+
+			expect(markedIds()).toEqual([]);
 		});
 
 		it("marks a reply that arrives while its card is in view", async () => {
@@ -290,7 +361,7 @@ describe("ReviewPanel", () => {
 			expect(markedIds()).toEqual(["c1-answer"]);
 		});
 
-		it("keeps a reply in view through a refresh while the window has no focus", async () => {
+		it("keeps watching the same reply element through a refresh", async () => {
 			const view = await mount([answered("c1")], { windowFocused: false });
 			await reportInView(cardOf("c1"), replyOf("c1"));
 			seed([answered("c1")]);
@@ -315,7 +386,7 @@ describe("ReviewPanel", () => {
 				});
 			});
 
-			it("tells the user the replies stay unread", async () => {
+			it("tells the user why the store refused", async () => {
 				await mount([answered("c1")]);
 
 				await reportInView(cardOf("c1"), replyOf("c1"));
@@ -445,10 +516,11 @@ describe("ReviewPanel", () => {
 
 	describe("the marker after marking", () => {
 		async function readWhileInView() {
-			await mount([answered("c1")]);
+			const view = await mount([answered("c1")]);
 			await reportInView(cardOf("c1"), replyOf("c1"));
 			seed([answered("c1", true)]);
 			await settle();
+			return view;
 		}
 
 		it("stays drawn while the card stays in view", async () => {
@@ -468,6 +540,21 @@ describe("ReviewPanel", () => {
 			await reportOutOfView(cardOf("c1"), replyOf("c1"));
 
 			await reportInView(cardOf("c1"));
+
+			expect(markerOn("c1")).toBeNull();
+		});
+
+		it.each<[string, Showing]>([
+			["the window loses focus", { windowFocused: false }],
+			["another tab comes to the front", { keysActive: false }],
+			["a diff covers the panel", { shown: false }],
+		])("is gone once %s and the card is shown again", async (_, hidden) => {
+			const view = await readWhileInView();
+			await view.rerender(props(hidden));
+			await settle();
+
+			await view.rerender(props());
+			await settle();
 
 			expect(markerOn("c1")).toBeNull();
 		});
