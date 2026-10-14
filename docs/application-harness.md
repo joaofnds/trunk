@@ -21,8 +21,11 @@ tests/app/*.test.ts          the tests
        ├─ harness/host-client.ts   one host process per test, newline-delimited JSON
        ├─ harness/internals.ts     window.__TAURI_INTERNALS__, the invoke router
        ├─ harness/dom.ts           the jsdom polyfills
-       ├─ fakes/                   menu, dialog, clipboard, opener, window, webview, path
-       └─ drivers/                 repo, branches, staging, remote, review, rebase editor, events
+       ├─ fakes/                   menu, dialog, clipboard, opener, window, webview, path,
+       │                           scheduler, host channel
+       └─ drivers/                 repo, branches, staging, remote, review, diff pane, search,
+                                   toolbar, rebase editor, merge editor, message editor, dom,
+                                   events
 ```
 
 `setup()` spawns a host, seeds a repository, installs the transport seam, runs the polyfills,
@@ -35,10 +38,6 @@ unmounts, reaps the process and removes its tempdir.
 `watcherCount` and `shutdown`. One host process is one application is one test, and each gets
 a fresh tempdir `HOME`, so every managed state and the resolved `app_data_dir` isolate without
 a reset step — and writing to the installed app's data directory is structurally impossible.
-The host never runs the app's `.setup()`, because under `MockRuntime` on macOS it dereferences
-a dangling `NSView*`, so the review store poll that `.setup()` starts never runs. A store write
-from outside the app, such as a `trunk review reply` from the CLI, reaches the page only when
-the test sends `emit("reviews-changed", null)` itself.
 
 **The seam is the global, never a module.** `@tauri-apps/api` reaches the runtime only through
 `window.__TAURI_INTERNALS__`. Installing that before the root mounts means no `vi.mock`, no
@@ -192,6 +191,18 @@ The macOS traffic-light reposition is off too, through `TrafficLights::disabled(
 for the native window there segfaults the process. The command still runs; only the AppKit call
 is skipped.
 
+The review store poll is off, because the app's `.setup()` starts it and the host never runs
+`.setup()`, which reaches the same dangling `NSView*`. A store write from outside the app, such
+as `trunk review reply` from the CLI, reaches the page only on a read the app makes for its own
+reasons: mounting the review panel, selecting a review, or an app write that emits
+`reviews-changed`. To deliver one when the poll would, have the host emit
+`reviews-changed` with a `null` payload, the way `driver.events.externalChange` emits
+`repo-changed`; no driver method makes that emit yet. The listener only arms a coalesced
+refresh on the harness's scheduler, so follow the emit with `app.elapse()`. Run the CLI with
+`TRUNK_DATA_DIR` set to the host's app data directory, or with `HOME` set to `app.home`, so it
+writes the store the host reads. What that gives up is one link: whether the poll notices the
+write.
+
 A headless DOM cannot observe layout and paint, WKWebView-specific rendering, native OS chrome,
 or real pointer gestures. Those still need a human or a render golden.
 
@@ -206,6 +217,14 @@ That module also installs a `ResizeObserver` that reports the first observation 
 without which the list is never told a row has a size and never measures one at all. It reports
 that one and nothing after it: nothing watches for a later resize, so a test that changes an
 element's size and waits for a callback waits forever.
+
+`harness/dom.ts` also installs `FakeIntersectionObserver`
+(`src/__tests__/helpers/fake-intersection-observer.ts`) as the `IntersectionObserver` jsdom
+lacks. It reports every element outside its root until the test places it:
+`FakeIntersectionObserver.enter(element)` puts it in view and `leave` takes it out. A scroll
+moves nothing into view, so the review panel marks no reply seen until the test enters the
+reply's element. The fake keeps its `rootMargin` but never applies it, so the panel's
+sticky-bar inset is not exercised here.
 
 The default viewport still fits every fixture unscrolled, so a test that says nothing about scroll
 behaves as it always did. Pass `viewportHeight` to `setup()` for one that should scroll.
