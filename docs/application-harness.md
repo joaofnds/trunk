@@ -200,11 +200,14 @@ reasons: mounting the review panel, selecting a review, or an app write that emi
 which has the host emit `reviews-changed` with a `null` payload the way
 `driver.events.externalChange` emits `repo-changed`. The listener only arms a coalesced refresh
 on the harness's scheduler, so wait on the state the refresh brings with `app.elapseUntil`.
-`driver.agent.reply(thread, text)` runs `trunk review reply` in the host's environment, whose
-`TRUNK_DATA_DIR` names one store for both: without it the debug CLI derives the dev
-identifier's directory and writes a store the host never reads. `tests/app/unread-reply.test.ts`
-drives that route through the panel's mark of a shown reply. What that gives up is one link:
-whether the poll notices the write.
+`driver.agent.reply(thread, text)` runs `trunk review reply` in the host's environment.
+`HostClient` sets `TRUNK_DATA_DIR` there for every host and every CLI run, so both open one
+store inside the scenario's home whatever the shell exports, even when `target/debug/trunk` was
+last built by `just dev` or `just dev-app`, which give it the dev identifier and its own
+directory. `tests/app/unread-reply.test.ts` drives that route through the panel's mark of a
+shown reply. Two links are given up: whether the poll notices the write, and the branch that
+derives the store's directory from the identifier, which `data_dir_matches_the_app_handles` in
+`src-tauri/tests/test_cli.rs` pins against a mock context instead.
 
 A headless DOM cannot observe layout and paint, WKWebView-specific rendering, native OS chrome,
 or real pointer gestures. Those still need a human or a render golden.

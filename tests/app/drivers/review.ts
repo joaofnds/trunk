@@ -7,7 +7,7 @@ import { waitFor } from "../harness/wait.js";
 import { enabledButton, firstMatching } from "./dom.js";
 
 const PRESETS =
-	'section[aria-label="Review threads"] header fieldset button[aria-pressed]';
+	'section[aria-label="Review threads"] > header fieldset button[aria-pressed]';
 const SHOW_THREADS = '[aria-label="Show review threads"]';
 const REVIEW = '[aria-label="Review"]';
 const VIEW_BADGE = '[aria-label$="review comments in this view"]';
@@ -50,7 +50,7 @@ const REPLY_BODY = ".thread-reply-text";
 const ROOT_EDIT_TEXT = 'textarea[aria-label="Edit comment"]';
 const REPLY_EDIT_TEXT = 'textarea[aria-label="Edit reply"]';
 const COMMIT_NOTES = ".commit-notes";
-const PANEL_HEADER = 'section[aria-label="Review threads"] header';
+const PANEL_HEADER = 'section[aria-label="Review threads"] > header';
 const UNREAD_DOT = ".unread-dot";
 const ACTIVE_REVIEW_RADIO =
 	'nav[aria-label="Reviews"] button[aria-label^="Active review "][aria-pressed="true"]';
@@ -547,7 +547,11 @@ export class ReviewDriver {
 	/** The id each thread card stands for, topmost first: what the CLI names a
 	 *  thread by. */
 	threadIds(): string[] {
-		return cards().map((card) => card.dataset.threadId ?? "");
+		return cards().map((card) => {
+			const id = card.dataset.threadId;
+			if (id === undefined) throw new Error("a thread card names no thread");
+			return id;
+		});
 	}
 
 	/** What the panel's header says about unread threads, or null when it says
@@ -559,7 +563,8 @@ export class ReviewDriver {
 	}
 
 	/** Scrolls the reply reading `text` into the panel's view. jsdom lays
-	 *  nothing out, so this is the report the browser would make once it did. */
+	 *  nothing out, so this is the report the browser would make once it did:
+	 *  the reply and the card around it both show. */
 	async bringReplyIntoView(text: string): Promise<void> {
 		const body = await waitFor(
 			`the reply reading ${text}`,
@@ -572,7 +577,10 @@ export class ReviewDriver {
 		);
 		const reply = body.closest("li");
 		if (!reply) throw new Error(`the reply reading ${text} is in no list`);
+		const card = reply.closest<HTMLElement>(CARD);
+		if (!card) throw new Error(`the reply reading ${text} is in no card`);
 
+		FakeIntersectionObserver.enter(card);
 		FakeIntersectionObserver.enter(reply);
 	}
 

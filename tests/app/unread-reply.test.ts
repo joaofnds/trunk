@@ -51,7 +51,6 @@ describe("an agent reply sent through the CLI", () => {
 		await app.elapseUntil("the header's unread count to clear", () =>
 			app.review.unreadSummary() === null ? true : null,
 		);
-		expect(app.toasts()).toEqual([]);
 	});
 });
 

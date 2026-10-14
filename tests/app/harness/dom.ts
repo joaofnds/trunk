@@ -123,8 +123,8 @@ export function restoreDomPolyfills(): void {
 	}
 }
 
-/** Reports nothing, so no element is ever in view and the review panel marks
- *  no reply seen against the real host. */
+/** Reports nothing until a driver enters an element, so the review panel
+ *  marks a reply seen against the real host only when a test shows it. */
 function installIntersection(): void {
 	if (typeof globalThis.IntersectionObserver !== "undefined") return;
 

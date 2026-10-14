@@ -191,7 +191,12 @@ export class HostClient {
 				args,
 				{ env: hostEnvironment(this.home) },
 				(error, stdout, stderr) => {
-					if (error) reject(new Error(`trunk ${args.join(" ")}: ${stderr}`));
+					if (error)
+						reject(
+							new Error(`trunk ${args.join(" ")}: ${stderr || error.message}`, {
+								cause: error,
+							}),
+						);
 					else resolve(stdout);
 				},
 			);
@@ -315,10 +320,12 @@ function cliBinary(): string {
 
 /**
  * The host's environment is constructed, never inherited. `HOME` is a fresh
- * tempdir so `app_data_dir()` cannot reach the installed app's store.
- * `TRUNK_DATA_DIR` names the review store inside it for the host and the CLI
- * alike: each otherwise derives the directory from its own identifier, and a
- * debug CLI's is the dev one, so the two would open different stores. The editor
+ * tempdir, and `XDG_DATA_HOME` is dropped so Linux resolves under it too, so
+ * `app_data_dir()` cannot reach the installed app's store. `TRUNK_DATA_DIR`
+ * names the review store inside it for the host and the CLI alike, so neither
+ * follows one exported in the shell, and a `target/debug/trunk` last built by a
+ * dev-config recipe (`just dev`, `dev-app`), which derives the dev identifier,
+ * still writes the store the host reads. The editor
  * variables and the global git config are scrubbed exactly as `justfile:8` does
  * for the Rust suite, or the rebase editor-pin guards pass with the production
  * fix reverted; and `SHELL` is emptied so no host spawns `$SHELL -l -i -c`.
@@ -331,6 +338,7 @@ function hostEnvironment(home: string): NodeJS.ProcessEnv {
 		SHELL: "",
 		GIT_CONFIG_GLOBAL: "/dev/null",
 	};
+	delete env.XDG_DATA_HOME;
 	delete env.GIT_EDITOR;
 	delete env.EDITOR;
 	delete env.VISUAL;
