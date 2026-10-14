@@ -105,7 +105,7 @@ fn the_v8_rebuild_keeps_the_replies_hanging_off_a_thread() {
 
     // Wind the store back to v7's shape and let the ladder run v8 over real data.
     {
-        let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+        let conn = rusqlite::Connection::open(ctx.data_dir().join(reviewdb::DB_FILE)).unwrap();
         common::review_schema::undo_steps_after(&conn, 10);
         conn.execute_batch(
             "ALTER TABLE threads DROP COLUMN pin_block;
@@ -323,7 +323,7 @@ fn a_thread_saved_before_whole_file_comments_reads_back_as_about_its_lines() {
     )
     .unwrap();
     drop(store);
-    let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+    let conn = rusqlite::Connection::open(ctx.data_dir().join(reviewdb::DB_FILE)).unwrap();
     common::review_schema::undo_steps_after(&conn, 12);
     conn.execute_batch("PRAGMA user_version = 12;").unwrap();
     drop(conn);
@@ -911,21 +911,6 @@ fn marking_seen_leaves_another_repositorys_reply_unseen() {
 }
 
 #[test]
-fn marking_a_human_reply_seen_counts_no_change() {
-    let ctx = TestContext::new_empty();
-    let canonical = ctx.repo_path().canonicalize().unwrap();
-    let store = reviewdb::open(ctx.data_dir()).unwrap();
-    let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
-    let reply_id = reply_from(&store, &canonical, &thread_id, Channel::Human);
-
-    let changed = store
-        .write(|tx| reviewdb::replies::mark_seen(tx, &canonical, &[reply_id]))
-        .unwrap();
-
-    assert_eq!(changed, 0);
-}
-
-#[test]
 fn marking_seen_leaves_a_human_reply_the_store_holds_unseen() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
@@ -945,6 +930,7 @@ fn marking_seen_leaves_a_human_reply_the_store_holds_unseen() {
         changed, 0,
         "only the app showing an agent reply marks it seen"
     );
+    assert!(!seen(&store, &thread_id, &reply_id));
 }
 
 #[test]
@@ -968,7 +954,7 @@ fn an_agent_reply_saved_before_unread_signalling_reads_seen() {
     let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
     let reply_id = reply_from(&store, &canonical, &thread_id, Channel::Agent);
     drop(store);
-    let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+    let conn = rusqlite::Connection::open(ctx.data_dir().join(reviewdb::DB_FILE)).unwrap();
     common::review_schema::undo_steps_after(&conn, 14);
     conn.execute_batch("PRAGMA user_version = 14;").unwrap();
     drop(conn);
@@ -4431,7 +4417,7 @@ fn a_store_from_the_earlier_v5_is_reconciled() {
     // later rung adds, stamped 5.
     reviewdb::open(ctx.data_dir()).unwrap();
     {
-        let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+        let conn = rusqlite::Connection::open(ctx.data_dir().join(reviewdb::DB_FILE)).unwrap();
         common::review_schema::undo_steps_after(&conn, 10);
         conn.execute_batch(
             "DROP TABLE snapshot_pins;
@@ -5285,7 +5271,7 @@ fn a_store_from_the_unreleased_v8_is_accepted() {
 
     reviewdb::open(ctx.data_dir()).unwrap();
     {
-        let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+        let conn = rusqlite::Connection::open(ctx.data_dir().join(reviewdb::DB_FILE)).unwrap();
         common::review_schema::undo_steps_after(&conn, 10);
         conn.execute_batch(
             "CREATE TABLE pin_seq (repo_path TEXT PRIMARY KEY, next INTEGER NOT NULL);
@@ -5312,7 +5298,7 @@ fn a_store_newer_than_the_current_version_is_still_refused() {
 
     reviewdb::open(ctx.data_dir()).unwrap();
     {
-        let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+        let conn = rusqlite::Connection::open(ctx.data_dir().join(reviewdb::DB_FILE)).unwrap();
         conn.execute_batch(&format!(
             "PRAGMA user_version = {};",
             reviewdb::schema::CURRENT_VERSION + 1
@@ -5326,7 +5312,7 @@ fn a_store_newer_than_the_current_version_is_still_refused() {
         "a truly newer store must be refused"
     );
 
-    let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+    let conn = rusqlite::Connection::open(ctx.data_dir().join(reviewdb::DB_FILE)).unwrap();
     let version: i64 = conn
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .unwrap();
@@ -5351,7 +5337,7 @@ fn a_store_stamped_eight_without_the_pin_columns_is_migrated() {
 
     reviewdb::open(ctx.data_dir()).unwrap();
     {
-        let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+        let conn = rusqlite::Connection::open(ctx.data_dir().join(reviewdb::DB_FILE)).unwrap();
         common::review_schema::undo_steps_after(&conn, 10);
         conn.execute_batch(
             "ALTER TABLE threads DROP COLUMN pin_block;
@@ -5805,7 +5791,7 @@ fn a_commit_under_a_keepalive_ref_trunk_never_minted_never_goes_stale() {
 /// Wind a store back to what a v8 build left: no mint record at all, and no
 /// thread history.
 fn wind_back_to_v8(ctx: &TestContext) {
-    let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+    let conn = rusqlite::Connection::open(ctx.data_dir().join(reviewdb::DB_FILE)).unwrap();
     common::review_schema::undo_steps_after(&conn, 10);
     conn.execute_batch(
         "DROP TABLE thread_history;

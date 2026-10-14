@@ -2213,22 +2213,26 @@ fn watch_stays_silent_when_the_app_marks_a_reply_seen() {
         marked, 1,
         "the mark must write for its silence to mean anything"
     );
-    trunk_review_in(
-        ctx.repo_path(),
-        &["reply", &thread_id, "the barrier"],
-        ctx.data_dir(),
-    );
-    let next: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
 
-    assert_eq!(
-        (&next["event"], &next["text"]),
-        (
-            &serde_json::json!("reply_added"),
-            &serde_json::json!("the barrier")
-        ),
-        "the mark must print nothing before the barrier's own event",
-    );
+    // Two barriers, as for held edits: a line the mark printed lands before
+    // the first barrier's line, or in the same diff and so before the second's.
+    for barrier in ["the barrier", "and another"] {
+        trunk_review_in(
+            ctx.repo_path(),
+            &["reply", &thread_id, barrier],
+            ctx.data_dir(),
+        );
+        let next: serde_json::Value =
+            serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+        assert_eq!(
+            (&next["event"], &next["text"]),
+            (
+                &serde_json::json!("reply_added"),
+                &serde_json::json!(barrier)
+            ),
+            "the mark must print nothing before the barrier's own event",
+        );
+    }
 }
 
 #[test]
