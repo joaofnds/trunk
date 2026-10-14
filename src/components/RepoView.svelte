@@ -352,10 +352,11 @@ function handleReviewJump(comment: Thread) {
 	});
 }
 
-// Commit-header click in the review panel: select the commit (loads detail)
-// and scroll the graph to it. Panel stays open — no view swap. Uses the
-// idempotent variant so re-clicking the currently-selected commit's header
-// does not toggle it off (CR-03's sister path).
+// Commit-header click in the review panel: the graph is not on screen in
+// review mode, so leave it, then select the commit (loads detail) and scroll
+// the graph to it. Uses the idempotent variant so re-clicking the
+// currently-selected commit's header does not toggle it off (CR-03's sister
+// path).
 async function handleReviewJumpToCommit(oid: string) {
 	onleavereview();
 	await tick();
