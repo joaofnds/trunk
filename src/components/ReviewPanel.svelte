@@ -132,7 +132,7 @@ interface Props {
 	reviewList?: HTMLElement | null;
 	// Whether the app window has focus. A reply on screen in a window the user
 	// is not looking at stays unread.
-	windowFocused?: boolean;
+	windowFocused: boolean;
 }
 
 let {
@@ -151,7 +151,7 @@ let {
 	keysActive = true,
 	shown = true,
 	reviewList = null,
-	windowFocused = false,
+	windowFocused,
 }: Props = $props();
 
 let panelEl = $state<HTMLElement | null>(null);

@@ -98,6 +98,7 @@ async function mountPanel(): Promise<void> {
 			reviewComments: manager,
 			onJump() {},
 			onJumpToCommit() {},
+			windowFocused: false,
 		},
 		context: new Map([[SCHEDULER, clock]]),
 	});

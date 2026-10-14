@@ -245,6 +245,7 @@ describe("ReviewPanel", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 		await flush();
@@ -269,6 +270,7 @@ describe("ReviewPanel", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 		await flush();
@@ -300,6 +302,7 @@ describe("ReviewPanel", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 		await flush();
@@ -329,6 +332,7 @@ describe("ReviewPanel", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 		await flush();
@@ -369,6 +373,7 @@ describe("ReviewPanel", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 		await flush();
@@ -387,6 +392,7 @@ describe("ReviewPanel", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 		await flush();
@@ -410,6 +416,7 @@ describe("ReviewPanel", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 		await flush();
@@ -442,6 +449,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -481,6 +489,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -508,6 +517,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -539,6 +549,7 @@ describe("ReviewPanel", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 				editorNoteSessionFor: (reviewId: string | null, surface: string) => {
 					noteRequests.push([reviewId, surface]);
 					return editors.note(reviewId, surface);
@@ -586,6 +597,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -623,6 +635,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -663,6 +676,7 @@ describe("ReviewPanel", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 				editorSessionForThread: (thread: Thread) =>
 					editors.thread(ACTIVE_REVIEW, "review-panel", thread.id),
 			};
@@ -720,6 +734,7 @@ describe("ReviewPanel", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 				editorSessionForThread: (thread: Thread) =>
 					editors.thread(ACTIVE_REVIEW, "review-panel", thread.id),
 			};
@@ -758,6 +773,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -787,6 +803,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -817,6 +834,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -847,6 +865,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -890,6 +909,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -937,6 +957,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -965,6 +986,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -991,6 +1013,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -1022,6 +1045,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump,
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -1048,6 +1072,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -1085,6 +1110,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -1118,6 +1144,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit,
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -1145,6 +1172,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -1180,6 +1208,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -1224,6 +1253,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -1266,6 +1296,7 @@ describe("ReviewPanel", () => {
 					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 			await flush();
@@ -1313,6 +1344,7 @@ describe("ReviewPanel", () => {
 					threadFilter: opts.threadFilter ?? ALL_THREADS,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
+					windowFocused: false,
 				},
 			});
 		}
@@ -1441,6 +1473,7 @@ describe("Send", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 	}
@@ -1464,6 +1497,7 @@ describe("Send", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 
@@ -1540,6 +1574,7 @@ describe("Send", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 		await flush();
@@ -1592,6 +1627,7 @@ describe("the shown review", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 	}
@@ -1633,6 +1669,7 @@ describe("empty states", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 				threadFilter,
 				onthreadfilterchange,
 			},
@@ -1805,6 +1842,7 @@ describe("header", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 				...props,
 			},
 		});
@@ -2273,6 +2311,7 @@ describe("read failures", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 		await flush();
@@ -2293,6 +2332,7 @@ describe("read failures", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 		await flush();
@@ -2315,6 +2355,7 @@ describe("read failures", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 		await flush();
@@ -2343,6 +2384,7 @@ describe("read failures", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 		await flush();
@@ -2381,6 +2423,7 @@ describe("remount", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 		await flush();
@@ -2407,6 +2450,7 @@ describe("remount", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 		await flush();
@@ -2436,6 +2480,7 @@ describe("multi-tab coordination", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 			},
 		});
 		await flush();
@@ -2478,6 +2523,7 @@ describe("comment on a file", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 				oncommentonfile,
 			},
 		});
@@ -2544,6 +2590,7 @@ describe("ReviewPanel branch sections", () => {
 				reviewComments,
 				onJump: props.onJump ?? vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 				onopenfile: props.onopenfile,
 				headBranch: "main",
 			},
@@ -3043,6 +3090,7 @@ describe("ReviewPanel keyboard", () => {
 				reviewComments,
 				onJump,
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 				headBranch: "main",
 				keysActive,
 			},
@@ -3322,6 +3370,7 @@ describe("ReviewPanel keyboard", () => {
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
+				windowFocused: false,
 				headBranch: "main",
 				reviewList,
 			},
