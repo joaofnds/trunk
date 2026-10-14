@@ -71,10 +71,10 @@ class InView {
 		if (known) return known;
 
 		// A second threshold just past 0 reports an element that merely touched
-		// the root's edge again once it shows real area inside. It is the
-		// smallest ratio above 0, because one pixel of a tall reply is a ratio
-		// far below any round number, and a crossing the observer never reports
-		// leaves that reply unread while the user reads it.
+		// the root's edge again once it shows real area inside. It is a tiny
+		// positive ratio, because one pixel of a tall reply is a ratio far below
+		// any round number, and a crossing the observer never reports leaves
+		// that reply unread while the user reads it.
 		const observer = new IntersectionObserver(
 			(entries) => {
 				for (const entry of entries) this.#record(entry);
