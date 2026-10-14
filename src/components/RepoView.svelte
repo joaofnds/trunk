@@ -778,10 +778,16 @@ let viewDescriptor = $derived<ViewDescriptor>({
 });
 
 // Comments matching the file currently shown in DiffPanel. Empty when no file
-// is selected.
+// is selected. In review mode they come from the review the panel shows, so a
+// jump from a review that is not active lands on its thread. Outside it nothing
+// on screen names that review, so the active review's threads are drawn.
 let viewComments = $derived(
 	selectedDiffPath && !selectedCompareFile
-		? commentsForView(reviewComments.threads, viewDescriptor, selectedDiffPath)
+		? commentsForView(
+				reviewMode ? reviewComments.shownThreads : reviewComments.threads,
+				viewDescriptor,
+				selectedDiffPath,
+			)
 		: [],
 );
 

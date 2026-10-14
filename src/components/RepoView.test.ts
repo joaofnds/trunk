@@ -851,6 +851,169 @@ describe("RepoView", () => {
 			expect(await screen.findByLabelText("Reply")).toHaveValue("half a reply");
 		});
 
+		// Two reviews, each with a thread on new line 1 of the same file of one
+		// commit: r1 is active, r2 is not.
+		function twoReviewsOnOneLine(props: { secondArchived: boolean }) {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const commit = makeCommit({ oid: "oid-1", summary: "the commit" });
+			const detail: CommitDetailType = {
+				oid: commit.oid,
+				short_oid: commit.short_oid,
+				summary: commit.summary,
+				body: null,
+				author_name: "Test",
+				author_email: "test@test.com",
+				author_timestamp: 0,
+				committer_name: "Test",
+				committer_email: "test@test.com",
+				committer_timestamp: 0,
+				parent_oids: [],
+			};
+			const file: FileDiff = {
+				path: "src/a.ts",
+				old_path: null,
+				status: "Modified",
+				is_binary: false,
+				hunks: [
+					{
+						header: "@@ -1,1 +1,1 @@",
+						old_start: 1,
+						old_lines: 1,
+						new_start: 1,
+						new_lines: 1,
+						lines: [
+							{
+								origin: "Add",
+								content: "export const a = 1;",
+								old_lineno: null,
+								new_lineno: 1,
+								spans: [],
+							},
+						],
+					},
+				],
+			};
+			const review = (id: string, title: string, archived: boolean) => ({
+				id,
+				title,
+				state: "open",
+				visible_to_agent: true,
+				archived,
+				thread_count: 1,
+				unresolved_count: 1,
+				pending_count: 0,
+				created_at: 0,
+			});
+			const threadOf = (reviewId: string) =>
+				aThread({
+					id: `t-${reviewId}`,
+					review_id: reviewId,
+					text: `the note of ${reviewId}`,
+					anchor: {
+						commit_oid: commit.oid,
+						file_path: file.path,
+						source: "Diff",
+						side: "New",
+						start_line: 1,
+						end_line: 1,
+					},
+				});
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				switch (cmd) {
+					case "get_commit_graph":
+						return Promise.resolve({
+							commits: [commit],
+							max_columns: 1,
+							revision: 1,
+						});
+					case "list_reviews":
+						return Promise.resolve([
+							review("r1", "Active one", false),
+							review("r2", "Shown one", props.secondArchived),
+						]);
+					case "get_active_review":
+						return Promise.resolve("r1");
+					case "list_session_commits":
+						return Promise.resolve([aSessionCommit({ oid: commit.oid })]);
+					case "list_threads":
+						return Promise.resolve([
+							threadOf((a?.reviewId as string | undefined) ?? "r1"),
+						]);
+					case "resolve_threads":
+						return Promise.resolve([]);
+					case "get_commit_detail":
+						return Promise.resolve(detail);
+					case "list_commit_files":
+						return Promise.resolve([file]);
+					case "diff_commit_file":
+						return Promise.resolve([file]);
+					default:
+						return base(cmd, args);
+				}
+			});
+		}
+
+		async function jumpToLineOne() {
+			await fireEvent.click(
+				await screen.findByRole("button", { name: "Line 1" }),
+			);
+			await flush();
+		}
+
+		it.each([
+			{ name: "a live review", secondArchived: false },
+			{ name: "an archived review", secondArchived: true },
+		])(
+			"draws the thread of $name that is shown and not active in the diff a jump opens",
+			async ({ secondArchived }) => {
+				twoReviewsOnOneLine({ secondArchived });
+				renderWithPanes({ reviewActive: true });
+				if (secondArchived) {
+					await fireEvent.click(
+						await screen.findByRole("button", { name: "Archived 1" }),
+					);
+				}
+				await fireEvent.click(await screen.findByText("Shown one"));
+				await flush();
+
+				await jumpToLineOne();
+
+				expect(await screen.findByRole("article")).toHaveTextContent(
+					"the note of r2",
+				);
+			},
+		);
+
+		it("draws the active review's threads in the diff a jump opens while it is shown", async () => {
+			twoReviewsOnOneLine({ secondArchived: false });
+			renderWithPanes({ reviewActive: true });
+
+			await jumpToLineOne();
+
+			expect(await screen.findByRole("article")).toHaveTextContent(
+				"the note of r1",
+			);
+		});
+
+		it("draws the active review's threads again once review mode ends", async () => {
+			twoReviewsOnOneLine({ secondArchived: false });
+			const view = render(RepoView, {
+				props: { ...baseProps(createMockRemoteState()), reviewActive: true },
+			});
+			await fireEvent.click(await screen.findByText("Shown one"));
+			await flush();
+			await jumpToLineOne();
+
+			await view.rerender({ reviewActive: false });
+			await flush();
+
+			expect(await screen.findByRole("article")).toHaveTextContent(
+				"the note of r1",
+			);
+		});
+
 		it("gives the branches back when review mode ends", async () => {
 			const view = render(RepoView, {
 				props: { ...baseProps(createMockRemoteState()), reviewActive: true },
