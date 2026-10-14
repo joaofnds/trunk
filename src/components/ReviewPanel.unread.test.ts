@@ -254,6 +254,47 @@ describe("ReviewPanel", () => {
 			expect(markedIds()).toEqual(["c1-answer"]);
 		});
 
+		it("marks a reply that arrives while its card is in view", async () => {
+			await mount([{ ...answered("c1", true), replies: [] }]);
+			await scrollIntoView(cardOf("c1"));
+
+			seed([answered("c1")]);
+			await settle();
+			await scrollIntoView(replyOf("c1"));
+
+			expect(markedIds()).toEqual(["c1-answer"]);
+		});
+
+		describe("when its settled thread folds the card", () => {
+			const settled = (): Thread => ({
+				...answered("c1"),
+				state: "done",
+				allowed_transitions: ["open"],
+			});
+
+			it("marks nothing while the card stays folded", async () => {
+				await mount([answered("c0", true), settled()]);
+
+				await scrollIntoView(cardOf("c1"));
+
+				expect(screen.queryByText("answer on c1")).toBeNull();
+				expect(markedIds()).toEqual([]);
+			});
+
+			it("marks the reply once the card is unfolded into view", async () => {
+				await mount([answered("c0", true), settled()]);
+				await scrollIntoView(cardOf("c1"));
+				await fireEvent.click(
+					within(cardOf("c1")).getByRole("button", { name: "Expand thread" }),
+				);
+				await settle();
+
+				await scrollIntoView(replyOf("c1"));
+
+				expect(markedIds()).toEqual(["c1-answer"]);
+			});
+		});
+
 		describe("when later entries fold the reply away", () => {
 			const buried = (): Thread => ({
 				...answered("c1"),
