@@ -17,7 +17,7 @@ import type { Review, ReviewSnapshots, SessionCommit, Thread } from "./types";
  * or it does not.
  */
 export interface ReviewCommentsManager {
-	/** Threads of the ACTIVE review — the list the panel shows. */
+	/** Threads of the active review, where new comments land. */
 	readonly threads: Thread[];
 	/** Every review for this repo, with its derived state and thread count. */
 	readonly reviews: Review[];
