@@ -10,6 +10,7 @@
 			"*.json",
 			"*.svelte",
 			"!!**/.claude",
+			"!!.boris",
 			"!.delta",
 			"!!src-tauri/target",
 			"!!node_modules",
