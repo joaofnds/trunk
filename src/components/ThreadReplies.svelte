@@ -12,7 +12,7 @@ import type { Reply, StateChange } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
-import { isUnseen } from "../lib/unread.js";
+import { isUnseenAgentReply } from "../lib/unread.js";
 import CommentEditor from "./review/CommentEditor.svelte";
 import MessageAvatar from "./review/MessageAvatar.svelte";
 import ThreadEvent from "./review/ThreadEvent.svelte";
@@ -134,7 +134,7 @@ async function saveReplyEdit() {
 		{#each visibleEntries as entry (entry.key)}
 			<li
 				class="thread-reply"
-				{@attach entry.kind === "reply" && isUnseen(entry.reply)
+				{@attach entry.kind === "reply" && isUnseenAgentReply(entry.reply)
 					? visibility?.replies.watch(entry.reply.id)
 					: undefined}
 			>

@@ -4,13 +4,17 @@ import { SvelteSet } from "svelte/reactivity";
 
 /** The ids of the watched elements that show some of their area in a root. */
 class InView {
-	readonly ids = new SvelteSet<string>();
+	readonly #ids = new SvelteSet<string>();
 	readonly #targets = new Map<Element, string>();
 	// One attachment per id, so a refresh that hands a component a new object
 	// for the same thread or reply keeps its element watched rather than
 	// dropping it from view until the observer next reports.
 	readonly #watches = new Map<string, Attachment<HTMLElement>>();
 	#observer: IntersectionObserver | null = null;
+
+	has(id: string): boolean {
+		return this.#ids.has(id);
+	}
 
 	watch(id: string): Attachment<HTMLElement> {
 		const known = this.#watches.get(id);
@@ -23,7 +27,7 @@ class InView {
 			return () => {
 				this.#targets.delete(element);
 				this.#observer?.unobserve(element);
-				this.ids.delete(id);
+				this.#ids.delete(id);
 			};
 		};
 		this.#watches.set(id, watch);
@@ -51,7 +55,7 @@ class InView {
 		return () => {
 			this.#observer?.disconnect();
 			this.#observer = null;
-			this.ids.clear();
+			this.#ids.clear();
 		};
 	}
 
@@ -59,8 +63,8 @@ class InView {
 		const id = this.#targets.get(entry.target);
 		if (id === undefined) return;
 
-		if (entry.isIntersecting && entry.intersectionRatio > 0) this.ids.add(id);
-		else this.ids.delete(id);
+		if (entry.isIntersecting && entry.intersectionRatio > 0) this.#ids.add(id);
+		else this.#ids.delete(id);
 	}
 }
 

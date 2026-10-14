@@ -421,10 +421,10 @@ const shownThreadIds = $derived(
 const visibility = new ReviewVisibility();
 provideReviewVisibility(visibility);
 
-// The sticky branch, commit and file bars cover the top of the body.
+const branchCommitAndFileBarsHeight = 3 * BAR_HEIGHT;
 $effect(() => {
 	if (!bodyEl) return;
-	return visibility.connect(bodyEl, 3 * BAR_HEIGHT);
+	return visibility.connect(bodyEl, branchCommitAndFileBarsHeight);
 });
 
 // Every reply asked for, so one that scrolls out and back before the store's
@@ -438,7 +438,7 @@ $effect(() => {
 	const ids = shownThreads
 		.flatMap((thread) => unseenAgentReplies(thread))
 		.map((reply) => reply.id)
-		.filter((id) => visibility.replies.ids.has(id) && !markRequested.has(id));
+		.filter((id) => visibility.replies.has(id) && !markRequested.has(id));
 	if (ids.length === 0) return;
 
 	for (const id of ids) markRequested.add(id);
@@ -476,7 +476,7 @@ $effect(() => {
 		const onScreen =
 			showing &&
 			shownThreadIds.has(thread.id) &&
-			visibility.cards.ids.has(thread.id);
+			visibility.cards.has(thread.id);
 		const unread = unreadIds.has(thread.id);
 		untrack(() => {
 			if (!onScreen) held.delete(thread.id);

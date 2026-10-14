@@ -74,7 +74,7 @@ let rightPaneWidth = $state(240);
 let rightPaneCollapsed = $state(false);
 let reviewLeftPaneCollapsed = $state(false);
 let isFullscreen = $state(false);
-let windowVisible = $state(false);
+let windowFocused = $state(false);
 
 // Recent-projects picker (quick-260514-356)
 let pickerOpen = $state(false);
@@ -240,7 +240,7 @@ $effect(() => {
 	const manualBusy = [...tabStates.values()].some(
 		(state) => state.remoteState.isRunning,
 	);
-	const focused = windowVisible;
+	const focused = windowFocused;
 	untrack(() => autofetch.update({ paths, activePath, focused, manualBusy }));
 });
 
@@ -655,7 +655,7 @@ $effect(() => {
 	let disposed = false;
 	let focusChanged = false;
 	appWindow.isFocused().then((focused) => {
-		if (!disposed && !focusChanged) windowVisible = focused;
+		if (!disposed && !focusChanged) windowFocused = focused;
 	});
 
 	let unlistenFocus: (() => void) | undefined;
@@ -663,7 +663,7 @@ $effect(() => {
 		.onFocusChanged(({ payload: focused }) => {
 			if (disposed) return;
 			focusChanged = true;
-			windowVisible = focused;
+			windowFocused = focused;
 		})
 		.then((fn) => {
 			if (disposed) fn();
@@ -959,7 +959,7 @@ $effect(() => {
 								{rightPaneWidth}
 								{rightPaneCollapsed}
 								tabActive={tab.id === activeTabId}
-								windowFocused={windowVisible}
+								{windowFocused}
 								reviewActive={tabReviewActive}
 								{reviewThreadsHidden}
 								{threadFilter}
