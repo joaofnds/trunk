@@ -335,7 +335,7 @@ $effect(() => {
 // variants — handleCommitSelect/handleCommitFileSelect are toggles for graph
 // and CommitDetail clicks (clicking the selected row clears it). The jump
 // gesture must never clear the very target it's about to scroll to, otherwise
-// the panel→diff swap lands on a blank diff with no selection (CR-03 / WR-04).
+// the panel→diff swap lands on a blank diff with no selection.
 function handleReviewJump(comment: Thread) {
 	reviewSession.jumpTo(comment, {
 		selectCommit: selectCommitIdempotent,
@@ -354,8 +354,7 @@ function handleReviewJump(comment: Thread) {
 
 // The graph is not on screen in review mode, so a commit-header click leaves
 // review mode before selecting the commit. The idempotent variant keeps a
-// re-click on the selected commit's header from toggling it off (CR-03's
-// sister path).
+// re-click on the selected commit's header from toggling it off.
 async function handleReviewJumpToCommit(oid: string) {
 	onleavereview();
 	await tick();
@@ -1271,7 +1270,7 @@ async function handleFileSelect(
 
 // Idempotent selection — never clears, never toggles. Loads commit detail
 // for `oid` (or no-ops if already selected with detail loaded). This is the
-// seam the review-panel jump binds to (CR-03): the jump gesture must never
+// seam the review-panel jump binds to: the jump gesture must never
 // clear the very target it's about to scroll to.
 async function selectCommitIdempotent(oid: string) {
 	// A jump or navigation lands on a single commit's diff, so any open compare
