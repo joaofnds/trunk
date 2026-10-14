@@ -99,6 +99,8 @@ async function mountPanel(): Promise<void> {
 			onJump() {},
 			onJumpToCommit() {},
 			windowFocused: false,
+			keysActive: true,
+			shown: true,
 		},
 		context: new Map([[SCHEDULER, clock]]),
 	});

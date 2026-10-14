@@ -123,10 +123,10 @@ interface Props {
 	) => ReviewNoteEditorSession;
 	// Every repo tab keeps its panel mounted, so only the shown tab's panel may
 	// answer the thread keys the window hears.
-	keysActive?: boolean;
+	keysActive: boolean;
 	// False while a diff a jump opened covers the panel, which stays mounted
 	// underneath so it comes back where it was.
-	shown?: boolean;
+	shown: boolean;
 	// The reviews list in the pane beside the panel. Focus there, left by
 	// pressing a review, still leaves the thread keys to the panel.
 	reviewList?: HTMLElement | null;
@@ -148,8 +148,8 @@ let {
 	onthreadfilterchange,
 	editorSessionForThread,
 	editorNoteSessionFor,
-	keysActive = true,
-	shown = true,
+	keysActive,
+	shown,
 	reviewList = null,
 	windowFocused,
 }: Props = $props();

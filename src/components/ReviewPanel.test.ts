@@ -246,6 +246,8 @@ describe("ReviewPanel", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 		await flush();
@@ -271,6 +273,8 @@ describe("ReviewPanel", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 		await flush();
@@ -303,6 +307,8 @@ describe("ReviewPanel", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 		await flush();
@@ -333,6 +339,8 @@ describe("ReviewPanel", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 		await flush();
@@ -374,6 +382,8 @@ describe("ReviewPanel", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 		await flush();
@@ -393,6 +403,8 @@ describe("ReviewPanel", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 		await flush();
@@ -417,6 +429,8 @@ describe("ReviewPanel", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 		await flush();
@@ -450,6 +464,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -490,6 +506,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -518,6 +536,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -550,6 +570,8 @@ describe("ReviewPanel", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 				editorNoteSessionFor: (reviewId: string | null, surface: string) => {
 					noteRequests.push([reviewId, surface]);
 					return editors.note(reviewId, surface);
@@ -598,6 +620,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -636,6 +660,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -677,6 +703,8 @@ describe("ReviewPanel", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 				editorSessionForThread: (thread: Thread) =>
 					editors.thread(ACTIVE_REVIEW, "review-panel", thread.id),
 			};
@@ -735,6 +763,8 @@ describe("ReviewPanel", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 				editorSessionForThread: (thread: Thread) =>
 					editors.thread(ACTIVE_REVIEW, "review-panel", thread.id),
 			};
@@ -774,6 +804,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -804,6 +836,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -835,6 +869,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -866,6 +902,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -910,6 +948,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -958,6 +998,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -987,6 +1029,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -1014,6 +1058,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -1046,6 +1092,8 @@ describe("ReviewPanel", () => {
 					onJump,
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -1073,6 +1121,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -1111,6 +1161,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -1145,6 +1197,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit,
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -1173,6 +1227,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -1209,6 +1265,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -1254,6 +1312,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -1297,6 +1357,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 			await flush();
@@ -1345,6 +1407,8 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 					windowFocused: false,
+					keysActive: true,
+					shown: true,
 				},
 			});
 		}
@@ -1474,6 +1538,8 @@ describe("Send", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 	}
@@ -1498,6 +1564,8 @@ describe("Send", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 
@@ -1575,6 +1643,8 @@ describe("Send", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 		await flush();
@@ -1628,6 +1698,8 @@ describe("the shown review", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 	}
@@ -1670,6 +1742,8 @@ describe("empty states", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 				threadFilter,
 				onthreadfilterchange,
 			},
@@ -1843,6 +1917,8 @@ describe("header", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 				...props,
 			},
 		});
@@ -2312,6 +2388,8 @@ describe("read failures", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 		await flush();
@@ -2333,6 +2411,8 @@ describe("read failures", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 		await flush();
@@ -2356,6 +2436,8 @@ describe("read failures", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 		await flush();
@@ -2385,6 +2467,8 @@ describe("read failures", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 		await flush();
@@ -2424,6 +2508,8 @@ describe("remount", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 		await flush();
@@ -2451,6 +2537,8 @@ describe("remount", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 		await flush();
@@ -2481,6 +2569,8 @@ describe("multi-tab coordination", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 			},
 		});
 		await flush();
@@ -2524,6 +2614,8 @@ describe("comment on a file", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 				oncommentonfile,
 			},
 		});
@@ -2591,6 +2683,8 @@ describe("ReviewPanel branch sections", () => {
 				onJump: props.onJump ?? vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 				onopenfile: props.onopenfile,
 				headBranch: "main",
 			},
@@ -3091,6 +3185,7 @@ describe("ReviewPanel keyboard", () => {
 				onJump,
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				shown: true,
 				headBranch: "main",
 				keysActive,
 			},
@@ -3371,6 +3466,8 @@ describe("ReviewPanel keyboard", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 				windowFocused: false,
+				keysActive: true,
+				shown: true,
 				headBranch: "main",
 				reviewList,
 			},
