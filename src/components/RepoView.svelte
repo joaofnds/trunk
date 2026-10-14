@@ -1547,10 +1547,6 @@ function countDiffLines(fileDiffs: FileDiff[]): number {
 	return total;
 }
 
-// Idempotent file selection — never clears, never toggles. Loads the diff
-// for `path` (or no-ops if already loaded). This is the seam the rune binds
-// to (WR-04): the jump gesture must never clear the file it's about to scroll
-// into, otherwise rightPaneMode='diff' lands on a view with no selected file.
 async function reloadCommitFile(
 	path: string,
 	options: DiffRequestOptions,
@@ -1617,6 +1613,10 @@ async function reloadCommitFile(
 	}
 }
 
+// Idempotent file selection, which never clears and never toggles. Loads the
+// diff for `path` (or no-ops if already loaded). This is the seam the rune
+// binds to: the jump gesture must never clear the file it's about to scroll
+// into, otherwise rightPaneMode='diff' lands on a view with no selected file.
 async function selectCommitFileIdempotent(path: string) {
 	if (selectedCommitFile === path) return;
 
