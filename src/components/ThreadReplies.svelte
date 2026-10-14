@@ -6,12 +6,13 @@ import {
 	createThreadEditorSession,
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
-import { isUnseen, reviewVisibility } from "../lib/review-visibility.svelte.js";
+import type { ReviewVisibility } from "../lib/review-visibility.svelte.js";
 import { threadTimeline } from "../lib/thread-timeline.js";
 import type { Reply, StateChange } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
+import { isUnseen } from "../lib/unread.js";
 import CommentEditor from "./review/CommentEditor.svelte";
 import MessageAvatar from "./review/MessageAvatar.svelte";
 import ThreadEvent from "./review/ThreadEvent.svelte";
@@ -28,6 +29,8 @@ interface Props {
 	/** The thread is dismissed, so what its replies say recedes with it. */
 	dismissed: boolean;
 	editorSession?: ThreadEditorSession;
+	// Watches each unseen agent reply when the card is drawn in the review panel.
+	visibility?: ReviewVisibility;
 }
 
 let {
@@ -37,9 +40,9 @@ let {
 	onreplydelete,
 	dismissed,
 	editorSession,
+	visibility,
 }: Props = $props();
 
-const visibility = reviewVisibility();
 let repliesExpanded = $state(false);
 const fallbackEditorSession = createThreadEditorSession();
 const editor = $derived(editorSession ?? fallbackEditorSession);

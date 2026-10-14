@@ -93,11 +93,10 @@ let {
 	unread = false,
 }: Props = $props();
 
-const visibility = reviewVisibility();
-// A refresh hands the card a new thread object. Watching on the id alone keeps
-// the card watched through it, where re-watching would drop it from view until
-// the observer next reports.
-const threadId = $derived(thread.id);
+// Only the panel shows a thread's replies to the user, so only its cards are
+// watched. A folded card draws no replies, so it counts as out of view.
+const panelVisibility = reviewVisibility();
+const visibility = $derived(variant === "panel" ? panelVisibility : undefined);
 
 const fallbackEditorSession = createThreadEditorSession();
 const editor = $derived(
@@ -507,7 +506,7 @@ async function requestDeleteReply(replyId: string) {
 		thread.state === "dismissed"}
 	class:comment-card-dismissed={thread.state === "dismissed"}
 	class:comment-card-open={!collapsed}
-	{@attach visibility?.cards.watch(threadId)}
+	{@attach collapsed ? undefined : visibility?.cards.watch(thread.id)}
 >
 	<header class="comment-card-header">
 		<!-- An inline card's height comes from a hidden copy measured once, so
@@ -633,6 +632,7 @@ async function requestDeleteReply(replyId: string) {
 			onreplyedit={(id, text) => editReply(repoPath, id, text)}
 			onreplydelete={requestDeleteReply}
 			dismissed={thread.state === "dismissed"}
+			{visibility}
 		/>
 
 		<div

@@ -19,7 +19,7 @@ import { fromAction } from "svelte/attachments";
 import { SvelteSet } from "svelte/reactivity";
 import { BAR_HEIGHT } from "../lib/chrome-heights.js";
 import { copySha } from "../lib/clipboard.js";
-import { errorMessage } from "../lib/error-report.js";
+import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import { laneColor } from "../lib/lanes.js";
@@ -57,10 +57,8 @@ import {
 import type { ReviewSessionManager } from "../lib/review-session.svelte.js";
 import { reviewTitle } from "../lib/review-title.js";
 import {
-	isUnread,
 	provideReviewVisibility,
 	ReviewVisibility,
-	unseenAgentReplies,
 } from "../lib/review-visibility.svelte.js";
 import { selectOnOpen } from "../lib/select-on-open.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -81,6 +79,7 @@ import Dialog from "../lib/ui/Dialog.svelte";
 import Keycap from "../lib/ui/Keycap.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Radio from "../lib/ui/Radio.svelte";
+import { isUnread, unseenAgentReplies } from "../lib/unread.js";
 import BranchChip from "./BranchChip.svelte";
 import ComposerFrame from "./review/ComposerFrame.svelte";
 import FoldBar from "./review/FoldBar.svelte";
@@ -428,8 +427,9 @@ $effect(() => {
 	return visibility.connect(bodyEl, 3 * BAR_HEIGHT);
 });
 
-// Asked for and not yet reported seen by the store, so a reply that scrolls
-// out and back before the answer lands is not asked for twice.
+// Every reply asked for, so one that scrolls out and back before the store's
+// refresh brings it back seen is not asked for twice. A failed ask leaves it,
+// so the next change that brings the reply into view asks again.
 const markRequested = new Set<string>();
 
 $effect(() => {
@@ -451,8 +451,9 @@ $effect(() => {
 async function markSeen(ids: string[]) {
 	try {
 		await safeInvoke("mark_replies_seen", { path: repoPath, ids });
-	} catch {
+	} catch (e) {
 		for (const id of ids) markRequested.delete(id);
+		reportErrorToast(e, "Could not mark the shown replies read");
 	}
 }
 

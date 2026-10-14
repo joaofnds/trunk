@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { FakeIntersectionObserver } from "../__tests__/helpers/fake-intersection-observer.js";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
+import ReviewVisibilityHost from "../__tests__/helpers/review-visibility-host.svelte";
 import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
 import {
 	aReply,
@@ -12,9 +13,10 @@ import {
 import { safeInvoke } from "../lib/invoke.js";
 import { ALL_THREADS, THREAD_PRESETS } from "../lib/review-filter.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
+import { ReviewVisibility } from "../lib/review-visibility.svelte.js";
+import { showToast } from "../lib/toast.svelte.js";
 import type { Review, Thread, ThreadFilter } from "../lib/types.js";
 import ReviewPanel from "./ReviewPanel.svelte";
-import ThreadCard from "./ThreadCard.svelte";
 
 import "../__tests__/helpers/tauri-mock";
 
@@ -119,12 +121,12 @@ function replyOf(id: string): HTMLElement {
 	return reply;
 }
 
-async function scrollIntoView(...elements: HTMLElement[]) {
+async function reportInView(...elements: HTMLElement[]) {
 	for (const element of elements) FakeIntersectionObserver.enter(element);
 	await settle();
 }
 
-async function scrollOutOfView(...elements: HTMLElement[]) {
+async function reportOutOfView(...elements: HTMLElement[]) {
 	for (const element of elements) FakeIntersectionObserver.leave(element);
 	await settle();
 }
@@ -166,7 +168,7 @@ describe("ReviewPanel", () => {
 			expect(markerOn("c1")).toBeInTheDocument();
 		});
 
-		it("counts a thread the filter hides until it is shown", async () => {
+		it("counts a thread the filter hides", async () => {
 			await mount([answered("c1")], { threadFilter: SETTLED });
 
 			expect(headerCount()).toBe("1 unread thread");
@@ -205,7 +207,7 @@ describe("ReviewPanel", () => {
 		it("marks the unseen agent reply once it is in view", async () => {
 			await mount([answered("c1")]);
 
-			await scrollIntoView(cardOf("c1"), replyOf("c1"));
+			await reportInView(cardOf("c1"), replyOf("c1"));
 
 			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("mark_replies_seen", {
 				path: "/repo",
@@ -216,17 +218,17 @@ describe("ReviewPanel", () => {
 		it("marks nothing while only the card's header is in view", async () => {
 			await mount([answered("c1")]);
 
-			await scrollIntoView(cardOf("c1"));
+			await reportInView(cardOf("c1"));
 
 			expect(markedIds()).toEqual([]);
 		});
 
 		it("asks once for a reply that leaves and comes back before the store answers", async () => {
 			await mount([answered("c1")]);
-			await scrollIntoView(cardOf("c1"), replyOf("c1"));
-			await scrollOutOfView(replyOf("c1"));
+			await reportInView(cardOf("c1"), replyOf("c1"));
+			await reportOutOfView(replyOf("c1"));
 
-			await scrollIntoView(replyOf("c1"));
+			await reportInView(replyOf("c1"));
 
 			expect(markedIds()).toEqual(["c1-answer"]);
 		});
@@ -239,16 +241,16 @@ describe("ReviewPanel", () => {
 		])("marks nothing while %s", async (_, showing) => {
 			await mount([answered("c1")], showing);
 
-			await scrollIntoView(cardOf("c1"), replyOf("c1"));
+			await reportInView(cardOf("c1"), replyOf("c1"));
 
 			expect(markedIds()).toEqual([]);
 		});
 
 		it("marks the reply in view once the window regains focus", async () => {
 			const view = await mount([answered("c1")], { windowFocused: false });
-			await scrollIntoView(cardOf("c1"), replyOf("c1"));
+			await reportInView(cardOf("c1"), replyOf("c1"));
 
-			await view.rerender(props({ windowFocused: true }));
+			await view.rerender({ windowFocused: true });
 			await settle();
 
 			expect(markedIds()).toEqual(["c1-answer"]);
@@ -256,13 +258,70 @@ describe("ReviewPanel", () => {
 
 		it("marks a reply that arrives while its card is in view", async () => {
 			await mount([{ ...answered("c1", true), replies: [] }]);
-			await scrollIntoView(cardOf("c1"));
+			await reportInView(cardOf("c1"));
 
 			seed([answered("c1")]);
 			await settle();
-			await scrollIntoView(replyOf("c1"));
+			await reportInView(replyOf("c1"));
 
 			expect(markedIds()).toEqual(["c1-answer"]);
+		});
+
+		it("marks nothing for a reply that only touches the body's edge", async () => {
+			await mount([answered("c1")]);
+			await reportInView(cardOf("c1"));
+
+			FakeIntersectionObserver.touch(replyOf("c1"));
+			await settle();
+
+			expect(markedIds()).toEqual([]);
+		});
+
+		it("keeps a reply in view through a refresh while the window has no focus", async () => {
+			const view = await mount([answered("c1")], { windowFocused: false });
+			await reportInView(cardOf("c1"), replyOf("c1"));
+			seed([answered("c1")]);
+			await settle();
+
+			await view.rerender({ windowFocused: true });
+			await settle();
+
+			expect(markedIds()).toEqual(["c1-answer"]);
+		});
+
+		describe("when the store refuses the mark", () => {
+			beforeEach(() => {
+				let refused = false;
+				vi.mocked(safeInvoke).mockImplementation((command: string) => {
+					if (command !== "mark_replies_seen" || refused)
+						return Promise.resolve(
+							command === "resolve_threads" ? [] : undefined,
+						);
+					refused = true;
+					return Promise.reject(new Error("store is busy"));
+				});
+			});
+
+			it("tells the user the replies stay unread", async () => {
+				await mount([answered("c1")]);
+
+				await reportInView(cardOf("c1"), replyOf("c1"));
+
+				expect(vi.mocked(showToast)).toHaveBeenCalledWith(
+					"store is busy",
+					"error",
+				);
+			});
+
+			it("asks again once the reply comes back into view", async () => {
+				await mount([answered("c1")]);
+				await reportInView(cardOf("c1"), replyOf("c1"));
+				await reportOutOfView(replyOf("c1"));
+
+				await reportInView(replyOf("c1"));
+
+				expect(markedIds()).toEqual(["c1-answer", "c1-answer"]);
+			});
 		});
 
 		describe("when its settled thread folds the card", () => {
@@ -275,7 +334,7 @@ describe("ReviewPanel", () => {
 			it("marks nothing while the card stays folded", async () => {
 				await mount([answered("c0", true), settled()]);
 
-				await scrollIntoView(cardOf("c1"));
+				await reportInView(cardOf("c1"));
 
 				expect(screen.queryByText("answer on c1")).toBeNull();
 				expect(markedIds()).toEqual([]);
@@ -283,13 +342,13 @@ describe("ReviewPanel", () => {
 
 			it("marks the reply once the card is unfolded into view", async () => {
 				await mount([answered("c0", true), settled()]);
-				await scrollIntoView(cardOf("c1"));
+				await reportInView(cardOf("c1"));
 				await fireEvent.click(
 					within(cardOf("c1")).getByRole("button", { name: "Expand thread" }),
 				);
 				await settle();
 
-				await scrollIntoView(replyOf("c1"));
+				await reportInView(replyOf("c1"));
 
 				expect(markedIds()).toEqual(["c1-answer"]);
 			});
@@ -309,7 +368,7 @@ describe("ReviewPanel", () => {
 			it("marks nothing before the reply is expanded", async () => {
 				await mount([buried()]);
 
-				await scrollIntoView(cardOf("c1"));
+				await reportInView(cardOf("c1"));
 
 				expect(screen.queryByText("answer on c1")).toBeNull();
 				expect(markedIds()).toEqual([]);
@@ -317,13 +376,13 @@ describe("ReviewPanel", () => {
 
 			it("marks the reply once it is expanded into view", async () => {
 				await mount([buried()]);
-				await scrollIntoView(cardOf("c1"));
+				await reportInView(cardOf("c1"));
 				await fireEvent.click(
 					screen.getByRole("button", { name: /Show \d+ more replies/ }),
 				);
 				await settle();
 
-				await scrollIntoView(replyOf("c1"));
+				await reportInView(replyOf("c1"));
 
 				expect(markedIds()).toEqual(["c1-answer"]);
 			});
@@ -333,7 +392,7 @@ describe("ReviewPanel", () => {
 	describe("the marker after marking", () => {
 		async function readWhileInView() {
 			await mount([answered("c1")]);
-			await scrollIntoView(cardOf("c1"), replyOf("c1"));
+			await reportInView(cardOf("c1"), replyOf("c1"));
 			seed([answered("c1", true)]);
 			await settle();
 		}
@@ -352,37 +411,44 @@ describe("ReviewPanel", () => {
 
 		it("is gone the next time the card is shown", async () => {
 			await readWhileInView();
-			await scrollOutOfView(cardOf("c1"), replyOf("c1"));
+			await reportOutOfView(cardOf("c1"), replyOf("c1"));
 
-			await scrollIntoView(cardOf("c1"));
+			await reportInView(cardOf("c1"));
 
 			expect(markerOn("c1")).toBeNull();
 		});
 
-		it("comes back with the card while a reply is still unseen", async () => {
-			await mount([answered("c1")]);
-			await scrollIntoView(cardOf("c1"));
-			await scrollOutOfView(cardOf("c1"));
+		it("is gone once the card folds", async () => {
+			await readWhileInView();
 
-			await scrollIntoView(cardOf("c1"));
+			await fireEvent.click(
+				within(cardOf("c1")).getByRole("button", { name: "Collapse thread" }),
+			);
+			await settle();
 
-			expect(markerOn("c1")).toBeInTheDocument();
+			expect(markerOn("c1")).toBeNull();
 		});
 	});
 });
 
 describe("ThreadCard", () => {
-	it("leaves an inline card's replies unwatched, since only the panel shows them", async () => {
-		render(ThreadCard, {
-			props: {
-				thread: answered("c1"),
-				repoPath: "/repo",
-				onedit: vi.fn(),
-				ondelete: vi.fn(),
-				variant: "inline",
-			},
+	async function drawUnderPanelContext(variant: "panel" | "inline") {
+		const visibility = new ReviewVisibility();
+		onTestFinished(visibility.connect(document.body, 0));
+		render(ReviewVisibilityHost, {
+			props: { visibility, thread: answered("c1"), variant },
 		});
 		await settle();
+	}
+
+	it("watches a panel card's unseen reply", async () => {
+		await drawUnderPanelContext("panel");
+
+		expect(FakeIntersectionObserver.observes(replyOf("c1"))).toBe(true);
+	});
+
+	it("leaves an inline card's replies unwatched, since only the panel shows them", async () => {
+		await drawUnderPanelContext("inline");
 
 		expect(FakeIntersectionObserver.observes(replyOf("c1"))).toBe(false);
 	});

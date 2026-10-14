@@ -77,6 +77,7 @@ async function mountRepo(tabActive: boolean) {
 			rightPaneWidth: 300,
 			rightPaneCollapsed: false,
 			tabActive,
+			windowFocused: false,
 			reviewActive: false,
 			contentMode: "hunk",
 			oncontentmodechange() {},

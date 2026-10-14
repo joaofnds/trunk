@@ -536,6 +536,7 @@ describe("RepoView", () => {
 				rightPaneWidth: 300,
 				rightPaneCollapsed: false,
 				tabActive: true,
+				windowFocused: false,
 				reviewActive: false,
 				contentMode: "hunk",
 				oncontentmodechange: () => {},

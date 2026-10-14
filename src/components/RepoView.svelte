@@ -115,8 +115,9 @@ interface Props {
 	// menu events (search-toggle) need it to tell themselves apart.
 	tabActive: boolean;
 	// Whether the window has focus, so the review panel can tell the user is
-	// looking at the replies it shows.
-	windowFocused?: boolean;
+	// looking at the replies it shows. Required, so a mount that forgets it
+	// fails the type check instead of never marking a reply seen.
+	windowFocused: boolean;
 	// Review mode is toggled by the OS menu (review-toggle) at the App level so the
 	// global event only affects the active tab; App passes the flag down per tab.
 	reviewActive: boolean;
@@ -163,7 +164,7 @@ let {
 	rightPaneWidth,
 	rightPaneCollapsed,
 	tabActive,
-	windowFocused = false,
+	windowFocused,
 	reviewActive,
 	reviewThreadsHidden = false,
 	threadFilter = ALL_THREADS,

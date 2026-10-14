@@ -1,30 +1,22 @@
 import { getContext, setContext } from "svelte";
 import type { Attachment } from "svelte/attachments";
 import { SvelteSet } from "svelte/reactivity";
-import type { Reply, Thread } from "./types.js";
-
-/** An agent reply the app has not yet shown the user. */
-export function isUnseen(reply: Reply): boolean {
-	return reply.channel === "agent" && !reply.seen;
-}
-
-export function unseenAgentReplies(thread: Thread): readonly Reply[] {
-	return thread.replies.filter(isUnseen);
-}
-
-/** A thread holding an agent reply the app has not shown the user yet. */
-export function isUnread(thread: Thread): boolean {
-	return unseenAgentReplies(thread).length > 0;
-}
 
 /** The ids of the watched elements that show some of their area in a root. */
 class InView {
 	readonly ids = new SvelteSet<string>();
 	readonly #targets = new Map<Element, string>();
+	// One attachment per id, so a refresh that hands a component a new object
+	// for the same thread or reply keeps its element watched rather than
+	// dropping it from view until the observer next reports.
+	readonly #watches = new Map<string, Attachment<HTMLElement>>();
 	#observer: IntersectionObserver | null = null;
 
 	watch(id: string): Attachment<HTMLElement> {
-		return (element) => {
+		const known = this.#watches.get(id);
+		if (known) return known;
+
+		const watch: Attachment<HTMLElement> = (element) => {
 			this.#targets.set(element, id);
 			this.#observer?.observe(element);
 
@@ -34,6 +26,8 @@ class InView {
 				this.ids.delete(id);
 			};
 		};
+		this.#watches.set(id, watch);
+		return watch;
 	}
 
 	connect(root: HTMLElement, topInset: number): () => void {
