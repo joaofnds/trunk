@@ -246,6 +246,69 @@ describe("createReviewComments — refresh", () => {
 		manager.destroy();
 	});
 
+	describe("shownReadState of the active review", () => {
+		/** Holds every later read of the active review's threads. */
+		function holdActiveThreads() {
+			const answering = mockInvoke.getMockImplementation();
+			mockInvoke.mockImplementation((cmd, args) => {
+				const named = args && "reviewId" in args ? args.reviewId : undefined;
+				if (named === undefined && cmd === "list_threads")
+					return new Promise<Thread[]>(() => {});
+				return answering?.(cmd, args) ?? Promise.resolve(undefined);
+			});
+		}
+
+		it("is ready once the first read lands", async () => {
+			aPopulatedStore();
+
+			const manager = createReviewComments("/repo", scheduler);
+			await flush();
+
+			expect(manager.shownReadState).toBe("ready");
+			manager.destroy();
+		});
+
+		it("is pending until the first read lands", async () => {
+			aPopulatedStore();
+			holdActiveThreads();
+
+			const manager = createReviewComments("/repo", scheduler);
+			await flush();
+
+			expect(manager.shownReadState).toBe("pending");
+			manager.destroy();
+		});
+
+		it.each([
+			"list_reviews",
+			"get_active_review",
+			"list_threads",
+			"list_session_commits",
+		])("is failed when %s rejects", async (cmd) => {
+			failing(cmd);
+
+			const manager = createReviewComments("/repo", scheduler);
+			await flush();
+
+			expect(manager.shownReadState).toBe("failed");
+			manager.destroy();
+		});
+
+		it("is pending again while a failed read is retried", async () => {
+			failing("list_threads");
+			const manager = createReviewComments("/repo", scheduler);
+			await flush();
+			aPopulatedStore();
+			holdActiveThreads();
+
+			manager.refresh();
+			await flush();
+
+			expect(manager.shownReadState).toBe("pending");
+			manager.destroy();
+		});
+	});
+
 	it("clears a read failure once a refresh comes back clean", async () => {
 		failing("list_threads");
 		const manager = createReviewComments("/repo", scheduler);

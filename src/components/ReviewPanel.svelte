@@ -1056,7 +1056,23 @@ $effect(() => {
 		bind:this={bodyEl}
 		class="review-body flex flex-col flex-1 min-h-0 overflow-auto pb-6 bg-bg text-text text-callout leading-normal"
 	>
-		{#if reviews.length === 0}
+		{#if shownReadState === "pending"}
+			<p role="status" class="m-0 px-4 py-6 text-text-muted">
+				{shownReview ? "Reading this review…" : "Reading this repository's reviews…"}
+			</p>
+		{:else if shownReadState === "failed"}
+			<div
+				role="alert"
+				class="flex flex-col items-start gap-2 px-4 py-6 text-text-muted"
+			>
+				{shownReview
+					? "This review's threads could not be read."
+					: "This repository's reviews could not be read."}
+				<Button size="base" onclick={() => reviewComments.refresh()}>
+					Retry
+				</Button>
+			</div>
+		{:else if reviews.length === 0}
 			<ReviewEmpty title="No reviews in this repository">
 				{#snippet icon()}
 					<ClipboardCheck size={18} />
@@ -1089,20 +1105,6 @@ $effect(() => {
 				</p>
 				<WaysToComment />
 			</ReviewEmpty>
-		{:else if shownReadState === "pending"}
-			<p role="status" class="m-0 px-4 py-6 text-text-muted">
-				Reading this review…
-			</p>
-		{:else if shownReadState === "failed"}
-			<div
-				role="alert"
-				class="flex flex-col items-start gap-2 px-4 py-6 text-text-muted"
-			>
-				This review's threads could not be read.
-				<Button size="base" onclick={() => reviewComments.refresh()}>
-					Retry
-				</Button>
-			</div>
 		{:else if !hasAnyComment}
 			<ReviewEmpty
 				title={shownIsActive

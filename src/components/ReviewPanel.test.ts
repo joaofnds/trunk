@@ -1482,6 +1482,42 @@ describe("empty states", () => {
 			).not.toBeInTheDocument();
 		});
 
+		describe("when no review is listed yet", () => {
+			async function showNothingListed(readState: ReviewReadState) {
+				installReads({ reviews: [], activeReviewId: null, comments: [] });
+				reviewComments.seed({ shownReadState: readState });
+				await reviewComments.refresh();
+				renderPanel();
+				await flush();
+			}
+
+			it("says the reviews are being read rather than absent", async () => {
+				await showNothingListed("pending");
+
+				expect(screen.getByRole("status")).toHaveTextContent(
+					"Reading this repository's reviews…",
+				);
+				expect(
+					screen.queryByRole("heading", {
+						name: "No reviews in this repository",
+					}),
+				).not.toBeInTheDocument();
+			});
+
+			it("says the reviews could not be read rather than absent", async () => {
+				await showNothingListed("failed");
+
+				expect(screen.getByRole("alert")).toHaveTextContent(
+					"This repository's reviews could not be read.",
+				);
+				expect(
+					screen.queryByRole("heading", {
+						name: "No reviews in this repository",
+					}),
+				).not.toBeInTheDocument();
+			});
+		});
+
 		it("shows the threads once Retry reads them", async () => {
 			await showOther("failed");
 			reviewComments.seed({

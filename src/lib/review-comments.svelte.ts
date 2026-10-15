@@ -93,6 +93,7 @@ export function createReviewComments(
 			commits: SessionCommit[];
 			failed: boolean;
 		} | null,
+		activeRead: "pending" as ReviewReadState,
 		revision: 0,
 		revisionScope: "full" as "full" | "refs",
 		threadsAuthoritative: false,
@@ -120,7 +121,7 @@ export function createReviewComments(
 	);
 
 	const shownReadState = $derived.by((): ReviewReadState => {
-		if (shownReviewId === state.activeReviewId) return "ready";
+		if (shownReviewId === state.activeReviewId) return state.activeRead;
 		if (state.selected?.reviewId !== shownReviewId) return "pending";
 		return state.selected.failed ? "failed" : "ready";
 	});
@@ -150,13 +151,14 @@ export function createReviewComments(
 		fullRefreshPending = false;
 		runningScope = scope;
 		if (state.selected?.failed) state.selected = null;
+		if (state.activeRead === "failed") state.activeRead = "pending";
 		await learnCanonicalPath();
 		if (cancelled || seq !== loadSeq) return;
 
 		// allSettled, not all: a read can reject while the repo is closing, and
 		// with Promise.all one rejection aborts the whole update, leaving stale
-		// threads on screen. Settling each lets a rejection collapse to the
-		// correct empty state instead.
+		// threads on screen. Settling each lets a rejection collapse to empty
+		// and mark the read failed instead.
 		const [reviewsR, activeR, snapshotsR, threadsR, commitsR] =
 			await Promise.allSettled([
 				safeInvoke<Review[]>("list_reviews", { path: repoPath }),
@@ -211,6 +213,12 @@ export function createReviewComments(
 			commitsR.status === "fulfilled" && Array.isArray(commitsR.value)
 				? commitsR.value
 				: [];
+
+		state.activeRead = [reviewsR, activeR, threadsR, commitsR].some(
+			(result) => result.status === "rejected",
+		)
+			? "failed"
+			: "ready";
 
 		const selectedR = await readSelectedReview(seq);
 		if (cancelled || seq !== loadSeq) return;
