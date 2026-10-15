@@ -65,6 +65,18 @@ async function flush() {
 
 const mockInvoke = vi.mocked(invoke);
 
+function overrideReads(
+	route: (cmd: string, reviewId: unknown) => Promise<unknown> | undefined,
+) {
+	const answering = mockInvoke.getMockImplementation();
+	mockInvoke.mockImplementation(
+		(cmd, args, options) =>
+			route(cmd, args && "reviewId" in args ? args.reviewId : undefined) ??
+			answering?.(cmd, args, options) ??
+			Promise.resolve(undefined),
+	);
+}
+
 const thread: Thread = aThread({
 	id: "c1",
 	text: "looks good",
@@ -227,11 +239,10 @@ describe("createReviewComments — refresh", () => {
 	// any refresh read saw it.
 	function failing(cmd: string) {
 		aPopulatedStore();
-		const base = mockInvoke.getMockImplementation();
-		mockInvoke.mockImplementation((c, args, options) =>
+		overrideReads((c) =>
 			c === cmd
 				? Promise.reject('{"code":"store","message":"database is locked"}')
-				: (base?.(c, args, options) ?? Promise.resolve(undefined)),
+				: undefined,
 		);
 	}
 
@@ -249,13 +260,11 @@ describe("createReviewComments — refresh", () => {
 	describe("shownReadState of the active review", () => {
 		/** Holds every later read of the active review's threads. */
 		function holdActiveThreads() {
-			const answering = mockInvoke.getMockImplementation();
-			mockInvoke.mockImplementation((cmd, args) => {
-				const named = args && "reviewId" in args ? args.reviewId : undefined;
-				if (named === undefined && cmd === "list_threads")
-					return new Promise<Thread[]>(() => {});
-				return answering?.(cmd, args) ?? Promise.resolve(undefined);
-			});
+			overrideReads((cmd, reviewId) =>
+				reviewId === undefined && cmd === "list_threads"
+					? new Promise<Thread[]>(() => {})
+					: undefined,
+			);
 		}
 
 		it("is ready once the first read lands", async () => {
@@ -612,14 +621,12 @@ describe("createReviewComments — the shown review", () => {
 	/** Two reviews, REVIEW01 active; a read that names REVIEW02 answers for it. */
 	function twoReviews() {
 		aPopulatedStore({ list_reviews: [review, other] });
-		const populated = mockInvoke.getMockImplementation();
-		mockInvoke.mockImplementation((cmd, args) => {
-			const named = args && "reviewId" in args ? args.reviewId : undefined;
-			if (named === "REVIEW02" && cmd === "list_threads")
+		overrideReads((cmd, reviewId) => {
+			if (reviewId === "REVIEW02" && cmd === "list_threads")
 				return Promise.resolve([otherThread]);
-			if (named === "REVIEW02" && cmd === "list_session_commits")
+			if (reviewId === "REVIEW02" && cmd === "list_session_commits")
 				return Promise.resolve(otherCommits);
-			return populated?.(cmd, args) ?? Promise.resolve(undefined);
+			return undefined;
 		});
 	}
 
@@ -656,11 +663,8 @@ describe("createReviewComments — the shown review", () => {
 	 */
 	function holdOtherThreads() {
 		const asked: PromiseWithResolvers<Thread[]>[] = [];
-		const answering = mockInvoke.getMockImplementation();
-		mockInvoke.mockImplementation((cmd, args) => {
-			const named = args && "reviewId" in args ? args.reviewId : undefined;
-			if (named !== "REVIEW02" || cmd !== "list_threads")
-				return answering?.(cmd, args) ?? Promise.resolve(undefined);
+		overrideReads((cmd, reviewId) => {
+			if (reviewId !== "REVIEW02" || cmd !== "list_threads") return undefined;
 
 			const read = Promise.withResolvers<Thread[]>();
 			asked.push(read);
@@ -742,13 +746,11 @@ describe("createReviewComments — the shown review", () => {
 			const lockedStore = '{"code":"store","message":"database is locked"}';
 
 			function failOtherCommits() {
-				const answering = mockInvoke.getMockImplementation();
-				mockInvoke.mockImplementation((cmd, args) => {
-					const named = args && "reviewId" in args ? args.reviewId : undefined;
-					if (named === "REVIEW02" && cmd === "list_session_commits")
-						return Promise.reject(lockedStore);
-					return answering?.(cmd, args) ?? Promise.resolve(undefined);
-				});
+				overrideReads((cmd, reviewId) =>
+					reviewId === "REVIEW02" && cmd === "list_session_commits"
+						? Promise.reject(lockedStore)
+						: undefined,
+				);
 			}
 
 			it("is failed when the picked review's threads cannot be read", async () => {
@@ -804,11 +806,8 @@ describe("createReviewComments — the shown review", () => {
 			it("is failed when the review list cannot be read after a pick", async () => {
 				twoReviews();
 				const manager = await aStoreShowing("REVIEW02");
-				const answering = mockInvoke.getMockImplementation();
-				mockInvoke.mockImplementation((cmd, args) =>
-					cmd === "list_reviews"
-						? Promise.reject(lockedStore)
-						: (answering?.(cmd, args) ?? Promise.resolve(undefined)),
+				overrideReads((cmd) =>
+					cmd === "list_reviews" ? Promise.reject(lockedStore) : undefined,
 				);
 
 				await manager.refresh();
@@ -845,11 +844,8 @@ describe("createReviewComments — the shown review", () => {
 
 			it("is pending from the start of a retry, before the picked review is read", async () => {
 				const { manager } = await aStoreAfterAFailedPick();
-				const answering = mockInvoke.getMockImplementation();
-				mockInvoke.mockImplementation((cmd, args) =>
-					cmd === "list_reviews"
-						? new Promise<Review[]>(() => {})
-						: (answering?.(cmd, args) ?? Promise.resolve(undefined)),
+				overrideReads((cmd) =>
+					cmd === "list_reviews" ? new Promise<Review[]>(() => {}) : undefined,
 				);
 
 				manager.refresh();
