@@ -165,6 +165,30 @@ fn a_listed_thread_carries_its_history() {
 }
 
 #[test]
+fn a_history_row_in_a_state_it_does_not_know_fails_the_thread_read() {
+    let (_ctx, store, canonical, thread) = setup();
+    store
+        .write(|tx| {
+            reviewdb::threads::set_state(
+                tx,
+                &canonical,
+                &thread,
+                ThreadState::Done,
+                Channel::Human,
+                1_001,
+            )?;
+            tx.execute("UPDATE thread_history SET state = 'bogus'", [])
+                .map_err(reviewdb::sqlite_error)?;
+            Ok(())
+        })
+        .unwrap();
+
+    let err = list_threads_inner(&store, &canonical, None).unwrap_err();
+
+    assert_eq!(err.code, "store");
+}
+
+#[test]
 fn a_v9_store_gains_the_history_table_and_keeps_its_threads() {
     let (ctx, store, canonical, thread) = setup();
     drop(store);
