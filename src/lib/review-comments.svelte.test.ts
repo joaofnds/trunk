@@ -801,6 +801,22 @@ describe("createReviewComments — the shown review", () => {
 				manager.destroy();
 			});
 
+			it("is failed when the review list cannot be read after a pick", async () => {
+				twoReviews();
+				const manager = await aStoreShowing("REVIEW02");
+				const answering = mockInvoke.getMockImplementation();
+				mockInvoke.mockImplementation((cmd, args) =>
+					cmd === "list_reviews"
+						? Promise.reject(lockedStore)
+						: (answering?.(cmd, args) ?? Promise.resolve(undefined)),
+				);
+
+				await manager.refresh();
+
+				expect(manager.shownReadState).toBe("failed");
+				manager.destroy();
+			});
+
 			/** A store showing REVIEW02 after its threads failed to read, with the next read held. */
 			async function aStoreAfterAFailedPick() {
 				twoReviews();

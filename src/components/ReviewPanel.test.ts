@@ -1523,6 +1523,22 @@ describe("empty states", () => {
 			).not.toBeInTheDocument();
 		});
 
+		it("says the reviews are being read when only the active review is known", async () => {
+			installReads({
+				reviews: [],
+				activeReviewId: ACTIVE_REVIEW,
+				comments: [],
+			});
+			reviewComments.seed({ shownReadState: "pending" });
+			await reviewComments.refresh();
+			renderPanel();
+			await flush();
+
+			expect(screen.getByRole("status")).toHaveTextContent(
+				"Reading this repository's reviews…",
+			);
+		});
+
 		it("says the review store could not be read when only the active review is known", async () => {
 			installReads({
 				reviews: [],
