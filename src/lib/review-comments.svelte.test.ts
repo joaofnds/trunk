@@ -621,6 +621,16 @@ describe("createReviewComments — the shown review", () => {
 		describe("when the read fails", () => {
 			const lockedStore = '{"code":"store","message":"database is locked"}';
 
+			function failOtherCommits() {
+				const answering = mockInvoke.getMockImplementation();
+				mockInvoke.mockImplementation((cmd, args) => {
+					const named = args && "reviewId" in args ? args.reviewId : undefined;
+					if (named === "REVIEW02" && cmd === "list_session_commits")
+						return Promise.reject(lockedStore);
+					return answering?.(cmd, args) ?? Promise.resolve(undefined);
+				});
+			}
+
 			it("is failed when the picked review's threads cannot be read", async () => {
 				twoReviews();
 				const manager = createReviewComments("/repo", scheduler);
@@ -639,17 +649,21 @@ describe("createReviewComments — the shown review", () => {
 
 			it("is failed when only the picked review's commits cannot be read", async () => {
 				twoReviews();
-				const answering = mockInvoke.getMockImplementation();
-				mockInvoke.mockImplementation((cmd, args) => {
-					const named = args && "reviewId" in args ? args.reviewId : undefined;
-					if (named === "REVIEW02" && cmd === "list_session_commits")
-						return Promise.reject(lockedStore);
-					return answering?.(cmd, args) ?? Promise.resolve(undefined);
-				});
+				failOtherCommits();
 
 				const manager = await aStoreShowing("REVIEW02");
 
 				expect(manager.shownReadState).toBe("failed");
+				manager.destroy();
+			});
+
+			it("draws none of a failed pick's threads that did arrive", async () => {
+				twoReviews();
+				failOtherCommits();
+
+				const manager = await aStoreShowing("REVIEW02");
+
+				expect(manager.shownThreads).toEqual([]);
 				manager.destroy();
 			});
 

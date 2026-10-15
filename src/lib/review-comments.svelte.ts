@@ -252,17 +252,16 @@ export function createReviewComments(
 		if (cancelled || seq !== loadSeq) return results;
 
 		const [threadsR, commitsR] = results;
+		if (threadsR.status === "rejected" || commitsR.status === "rejected") {
+			state.selected = { reviewId, threads: [], commits: [], failed: true };
+			return results;
+		}
+
 		state.selected = {
 			reviewId,
-			threads:
-				threadsR.status === "fulfilled" && Array.isArray(threadsR.value)
-					? threadsR.value
-					: [],
-			commits:
-				commitsR.status === "fulfilled" && Array.isArray(commitsR.value)
-					? commitsR.value
-					: [],
-			failed: results.some((result) => result.status === "rejected"),
+			threads: Array.isArray(threadsR.value) ? threadsR.value : [],
+			commits: Array.isArray(commitsR.value) ? commitsR.value : [],
+			failed: false,
 		};
 
 		return results;
