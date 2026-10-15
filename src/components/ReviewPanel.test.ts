@@ -1482,42 +1482,6 @@ describe("empty states", () => {
 			).not.toBeInTheDocument();
 		});
 
-		describe("when no review is listed yet", () => {
-			async function showNothingListed(readState: ReviewReadState) {
-				installReads({ reviews: [], activeReviewId: null, comments: [] });
-				reviewComments.seed({ shownReadState: readState });
-				await reviewComments.refresh();
-				renderPanel();
-				await flush();
-			}
-
-			it("says the reviews are being read rather than absent", async () => {
-				await showNothingListed("pending");
-
-				expect(screen.getByRole("status")).toHaveTextContent(
-					"Reading this repository's reviews…",
-				);
-				expect(
-					screen.queryByRole("heading", {
-						name: "No reviews in this repository",
-					}),
-				).not.toBeInTheDocument();
-			});
-
-			it("says the reviews could not be read rather than absent", async () => {
-				await showNothingListed("failed");
-
-				expect(screen.getByRole("alert")).toHaveTextContent(
-					"This repository's reviews could not be read.",
-				);
-				expect(
-					screen.queryByRole("heading", {
-						name: "No reviews in this repository",
-					}),
-				).not.toBeInTheDocument();
-			});
-		});
-
 		it("shows the threads once Retry reads them", async () => {
 			await showOther("failed");
 			reviewComments.seed({
@@ -1534,6 +1498,42 @@ describe("empty states", () => {
 			await flush();
 
 			expect(screen.getByText("read at last")).toBeInTheDocument();
+		});
+	});
+
+	describe("when no review is listed yet", () => {
+		async function showNothingListed(readState: ReviewReadState) {
+			installReads({ reviews: [], activeReviewId: null, comments: [] });
+			reviewComments.seed({ shownReadState: readState });
+			await reviewComments.refresh();
+			renderPanel();
+			await flush();
+		}
+
+		it("says the reviews are being read rather than absent", async () => {
+			await showNothingListed("pending");
+
+			expect(screen.getByRole("status")).toHaveTextContent(
+				"Reading this repository's reviews…",
+			);
+			expect(
+				screen.queryByRole("heading", {
+					name: "No reviews in this repository",
+				}),
+			).not.toBeInTheDocument();
+		});
+
+		it("says the review store could not be read rather than absent", async () => {
+			await showNothingListed("failed");
+
+			expect(screen.getByRole("alert")).toHaveTextContent(
+				"This repository's review store could not be read.",
+			);
+			expect(
+				screen.queryByRole("heading", {
+					name: "No reviews in this repository",
+				}),
+			).not.toBeInTheDocument();
 		});
 	});
 
@@ -2062,8 +2062,9 @@ describe("read failures", () => {
 		const errorToasts = vi
 			.mocked(showToast)
 			.mock.calls.filter((c) => c[1] === "error");
-		expect(errorToasts).toHaveLength(1);
-		expect(errorToasts[0][0]).toContain("Repository is not open");
+		expect(errorToasts).toEqual([
+			["Failed to load review comments: Repository is not open.", "error"],
+		]);
 	});
 
 	it("says nothing when the owner reports no failure", async () => {

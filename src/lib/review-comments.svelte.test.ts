@@ -279,18 +279,53 @@ describe("createReviewComments — refresh", () => {
 			manager.destroy();
 		});
 
+		it("stays ready with its threads while a loaded review is read again", async () => {
+			aPopulatedStore();
+			const manager = createReviewComments("/repo", scheduler);
+			await flush();
+			holdActiveThreads();
+
+			manager.refresh();
+			await flush();
+
+			expect(manager.shownReadState).toBe("ready");
+			expect(manager.shownThreads.map((t) => t.id)).toEqual(["c1"]);
+			manager.destroy();
+		});
+
 		it.each([
-			"list_reviews",
-			"get_active_review",
-			"list_threads",
-			"list_session_commits",
-		])("is failed when %s rejects", async (cmd) => {
+			["failed", "list_reviews"],
+			["failed", "get_active_review"],
+			["failed", "list_threads"],
+			["failed", "list_session_commits"],
+			["ready", "get_review_snapshots"],
+		])("is %s when %s rejects", async (expected, cmd) => {
 			failing(cmd);
 
 			const manager = createReviewComments("/repo", scheduler);
 			await flush();
 
-			expect(manager.shownReadState).toBe("failed");
+			expect(manager.shownReadState).toBe(expected);
+			manager.destroy();
+		});
+
+		it("draws none of the threads a failed read did get", async () => {
+			failing("list_session_commits");
+
+			const manager = createReviewComments("/repo", scheduler);
+			await flush();
+
+			expect(manager.shownThreads).toEqual([]);
+			manager.destroy();
+		});
+
+		it("draws none of the commits a failed read did get", async () => {
+			failing("list_threads");
+
+			const manager = createReviewComments("/repo", scheduler);
+			await flush();
+
+			expect(manager.shownCommits).toEqual([]);
 			manager.destroy();
 		});
 
@@ -606,8 +641,8 @@ describe("createReviewComments — the shown review", () => {
 	});
 
 	/**
-	 * Holds every later read of REVIEW02's threads. The test settles the latest
-	 * one asked for, so it flushes until the store has asked.
+	 * Holds every later read of REVIEW02's threads. Each settle answers the
+	 * oldest read still held, so the test flushes until the store has asked.
 	 */
 	function holdOtherThreads() {
 		const asked: PromiseWithResolvers<Thread[]>[] = [];
@@ -621,12 +656,18 @@ describe("createReviewComments — the shown review", () => {
 			asked.push(read);
 			return read.promise;
 		});
+		function oldest() {
+			const read = asked.shift();
+			if (!read)
+				throw new Error("the store has not asked for REVIEW02's threads");
+			return read;
+		}
 		return {
 			resolve(threads: Thread[]) {
-				asked.at(-1)?.resolve(threads);
+				oldest().resolve(threads);
 			},
 			reject(reason: unknown) {
-				asked.at(-1)?.reject(reason);
+				oldest().reject(reason);
 			},
 		};
 	}
@@ -770,10 +811,13 @@ describe("createReviewComments — the shown review", () => {
 				manager.destroy();
 			});
 
-			it("is ready with the threads once a re-read lands", async () => {
+			it.each([
+				["picked again", (m: ReviewCommentsManager) => m.select("REVIEW02")],
+				["refreshed", (m: ReviewCommentsManager) => m.refresh()],
+			])("is ready with the threads once it is %s", async (_, reread) => {
 				const { manager, read } = await aStoreAfterAFailedPick();
 
-				const retried = manager.select("REVIEW02");
+				const retried = reread(manager);
 				await flush();
 				read.resolve([otherThread]);
 				await retried;

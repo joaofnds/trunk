@@ -8,6 +8,21 @@ import type { Review, ReviewSnapshots, SessionCommit, Thread } from "./types";
 
 export type ReviewReadState = "ready" | "pending" | "failed";
 
+type SelectedRead =
+	| { reviewId: string; readState: "failed" }
+	| {
+			reviewId: string;
+			readState: "ready";
+			threads: Thread[];
+			commits: SessionCommit[];
+	  };
+
+interface ShownRead {
+	readState: ReviewReadState;
+	threads: Thread[];
+	commits: SessionCommit[];
+}
+
 /**
  * The single reactive source of truth for reviews and their threads, lifted to
  * RepoView and consumed by every surface (ReviewPanel, DiffPanel/diff views,
@@ -34,7 +49,8 @@ export interface ReviewCommentsManager {
 	readonly shownReview: Review | null;
 	readonly shownThreads: Thread[];
 	readonly shownCommits: SessionCommit[];
-	/** Whether the shown review's threads and commits are on hand to draw. */
+	/** Where the read behind shownThreads and shownCommits stands. Both are
+	 *  empty until it is ready. */
 	readonly shownReadState: ReviewReadState;
 	readonly snapshots: ReviewSnapshots;
 	/** True when this repo has threads to show. Replaces the session gate. */
@@ -87,13 +103,8 @@ export function createReviewComments(
 		} as ReviewSnapshots,
 		commits: [] as SessionCommit[],
 		selectedReviewId: null as string | null,
-		selected: null as {
-			reviewId: string;
-			threads: Thread[];
-			commits: SessionCommit[];
-			failed: boolean;
-		} | null,
-		activeRead: "pending" as ReviewReadState,
+		selected: null as SelectedRead | null,
+		activeReadState: "pending" as ReviewReadState,
 		revision: 0,
 		revisionScope: "full" as "full" | "refs",
 		threadsAuthoritative: false,
@@ -113,17 +124,27 @@ export function createReviewComments(
 	const shownReview = $derived(
 		state.reviews.find((review) => review.id === shownReviewId) ?? null,
 	);
-	const shownSelection = $derived(
-		shownReviewId !== state.activeReviewId &&
-			state.selected?.reviewId === shownReviewId
-			? state.selected
-			: null,
-	);
+	const shown = $derived.by((): ShownRead => {
+		if (shownReviewId === state.activeReviewId) {
+			if (state.activeReadState !== "ready")
+				return { readState: state.activeReadState, threads: [], commits: [] };
+			return {
+				readState: "ready",
+				threads: state.threads,
+				commits: state.commits,
+			};
+		}
 
-	const shownReadState = $derived.by((): ReviewReadState => {
-		if (shownReviewId === state.activeReviewId) return state.activeRead;
-		if (state.selected?.reviewId !== shownReviewId) return "pending";
-		return state.selected.failed ? "failed" : "ready";
+		const selected = state.selected;
+		if (selected === null || selected.reviewId !== shownReviewId)
+			return { readState: "pending", threads: [], commits: [] };
+		if (selected.readState === "failed")
+			return { readState: "failed", threads: [], commits: [] };
+		return {
+			readState: "ready",
+			threads: selected.threads,
+			commits: selected.commits,
+		};
 	});
 
 	const oids = $derived(
@@ -150,8 +171,8 @@ export function createReviewComments(
 		const scope = fullRefreshPending ? "full" : "refs";
 		fullRefreshPending = false;
 		runningScope = scope;
-		if (state.selected?.failed) state.selected = null;
-		if (state.activeRead === "failed") state.activeRead = "pending";
+		if (state.selected?.readState === "failed") state.selected = null;
+		if (state.activeReadState === "failed") state.activeReadState = "pending";
 		await learnCanonicalPath();
 		if (cancelled || seq !== loadSeq) return;
 
@@ -214,7 +235,7 @@ export function createReviewComments(
 				? commitsR.value
 				: [];
 
-		state.activeRead = [reviewsR, activeR, threadsR, commitsR].some(
+		state.activeReadState = [reviewsR, activeR, threadsR, commitsR].some(
 			(result) => result.status === "rejected",
 		)
 			? "failed"
@@ -261,15 +282,15 @@ export function createReviewComments(
 
 		const [threadsR, commitsR] = results;
 		if (threadsR.status === "rejected" || commitsR.status === "rejected") {
-			state.selected = { reviewId, threads: [], commits: [], failed: true };
+			state.selected = { reviewId, readState: "failed" };
 			return results;
 		}
 
 		state.selected = {
 			reviewId,
+			readState: "ready",
 			threads: Array.isArray(threadsR.value) ? threadsR.value : [],
 			commits: Array.isArray(commitsR.value) ? commitsR.value : [],
-			failed: false,
 		};
 
 		return results;
@@ -391,19 +412,13 @@ export function createReviewComments(
 			return shownReview;
 		},
 		get shownThreads() {
-			return (
-				shownSelection?.threads ??
-				(shownReviewId === state.activeReviewId ? state.threads : [])
-			);
+			return shown.threads;
 		},
 		get shownCommits() {
-			return (
-				shownSelection?.commits ??
-				(shownReviewId === state.activeReviewId ? state.commits : [])
-			);
+			return shown.commits;
 		},
 		get shownReadState() {
-			return shownReadState;
+			return shown.readState;
 		},
 		get snapshots() {
 			return state.snapshots;

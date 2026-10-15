@@ -1067,7 +1067,7 @@ $effect(() => {
 			>
 				{shownReview
 					? "This review's threads could not be read."
-					: "This repository's reviews could not be read."}
+					: "This repository's review store could not be read."}
 				<Button size="base" onclick={() => reviewComments.refresh()}>
 					Retry
 				</Button>
