@@ -42,8 +42,9 @@ export interface ReviewCommentsManager {
 	/** The review new comments land in, or null while the list lacks it. */
 	readonly activeReview: Review | null;
 	/**
-	 * The review the panel shows: the one the user selected while it exists,
-	 * else the active one. Selecting never moves where new comments land.
+	 * The review the panel shows: the last selection until a list read begun
+	 * with that selection proves it gone, else the active one. Selecting never
+	 * moves where new comments land.
 	 */
 	readonly shownReviewId: string | null;
 	readonly shownReview: Review | null;
@@ -56,8 +57,8 @@ export interface ReviewCommentsManager {
 	readonly shownReadState: ReviewReadState;
 	/**
 	 * The threads the review-mode diff draws: a picked review's once read, and
-	 * the active review's even when another of its reads failed, except while a
-	 * failed review list hides the pick they would stand in for.
+	 * the active review's even when another of its reads failed. An unresolved
+	 * pick never draws another review's threads.
 	 */
 	readonly diffThreads: Thread[];
 	readonly snapshots: ReviewSnapshots;
@@ -126,9 +127,7 @@ export function createReviewComments(
 	);
 
 	const shownReviewId = $derived(
-		state.reviews.some((review) => review.id === state.selectedReviewId)
-			? state.selectedReviewId
-			: state.activeReviewId,
+		state.selectedReviewId ?? state.activeReviewId,
 	);
 	const shownReview = $derived(
 		state.reviews.find((review) => review.id === shownReviewId) ?? null,
@@ -158,11 +157,6 @@ export function createReviewComments(
 
 	const diffThreads = $derived.by((): Thread[] => {
 		if (shownReviewId !== state.activeReviewId) return shown.threads;
-
-		const pickedAnother =
-			state.selectedReviewId !== null &&
-			state.selectedReviewId !== state.activeReviewId;
-		if (pickedAnother && !state.reviewListRead) return [];
 		return state.threads;
 	});
 
@@ -269,7 +263,7 @@ export function createReviewComments(
 			? "failed"
 			: "ready";
 
-		const selectedR = await readSelectedReview(seq);
+		const selectedR = await readSelectedReview(seq, pickAtStart);
 		if (cancelled || seq !== loadSeq) return;
 
 		state.lastError = firstRealFailure([
@@ -291,11 +285,19 @@ export function createReviewComments(
 	// is read here beside them, only while it is not the active one.
 	async function readSelectedReview(
 		seq: number,
+		pickAtStart: string | null,
 	): Promise<PromiseSettledResult<unknown>[]> {
 		const reviewId = state.selectedReviewId;
 		const listed = state.reviews.some((review) => review.id === reviewId);
-		if (reviewId === null || !listed || reviewId === state.activeReviewId) {
+		if (reviewId === null || reviewId === state.activeReviewId) {
 			state.selected = null;
+			return [];
+		}
+		if (!listed) {
+			state.selected =
+				!state.reviewListRead && reviewId === pickAtStart
+					? { reviewId, readState: "failed" }
+					: null;
 			return [];
 		}
 

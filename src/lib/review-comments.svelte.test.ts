@@ -962,31 +962,57 @@ describe("createReviewComments — the shown review", () => {
 			manager.destroy();
 		});
 
-		it("keep the active review's threads while a pick made during a failed refresh waits to be listed", async () => {
-			twoReviews();
-			const manager = createReviewComments("/repo", scheduler);
-			await flush();
-			const olderList = Promise.withResolvers<Review[]>();
-			failActiveRead("list_session_commits");
-			overrideReads((cmd) =>
-				cmd === "list_reviews" ? olderList.promise : undefined,
-			);
-			const reading = manager.refresh();
-			await flush();
-			const newerList = Promise.withResolvers<Review[]>();
-			overrideReads((cmd) =>
-				cmd === "list_reviews" ? newerList.promise : undefined,
-			);
-			const picked = manager.select("REVIEW02");
+		it.each([
+			["successful", false, false],
+			["failed active commit read", true, false],
+			["failed review list", false, true],
+		])(
+			"shows a newly made review as pending through an older %s",
+			async (_, failCommits, failList) => {
+				aPopulatedStore();
+				const manager = createReviewComments("/repo", scheduler);
+				await flush();
+				const olderList = Promise.withResolvers<Review[]>();
+				if (failCommits) failActiveRead("list_session_commits");
+				overrideReads((cmd) =>
+					cmd === "list_reviews" ? olderList.promise : undefined,
+				);
+				const reading = manager.refresh();
+				await flush();
 
-			olderList.resolve([review]);
-			await reading;
+				// Creation makes REVIEW02 active before select() records the new pick.
+				const newerList = Promise.withResolvers<Review[]>();
+				aPopulatedStore({
+					get_active_review: other.id,
+					list_threads: [otherThread],
+					list_session_commits: otherCommits,
+				});
+				overrideReads((cmd) =>
+					cmd === "list_reviews" ? newerList.promise : undefined,
+				);
+				const picked = manager.select(other.id);
 
-			expect(manager.diffThreads.map((t) => t.id)).toEqual(["c1"]);
-			newerList.resolve([review, other]);
-			await picked;
-			manager.destroy();
-		});
+				expect(manager.shownReviewId).toBe(other.id);
+				expect(manager.shownReadState).toBe("pending");
+				expect(manager.diffThreads).toEqual([]);
+				if (failList) olderList.reject(lockedStore);
+				else olderList.resolve([review]);
+				await reading;
+
+				expect(manager.shownReviewId).toBe(other.id);
+				expect(manager.shownReview).toBeNull();
+				expect(manager.shownReadState).toBe("pending");
+				expect(manager.shownThreads).toEqual([]);
+				expect(manager.diffThreads).toEqual([]);
+				newerList.resolve([review, other]);
+				await picked;
+
+				expect(manager.shownReviewId).toBe(other.id);
+				expect(manager.shownReadState).toBe("ready");
+				expect(manager.diffThreads.map((t) => t.id)).toEqual(["c2"]);
+				manager.destroy();
+			},
+		);
 	});
 
 	it("falls back to the active review when the selected one is gone", async () => {
