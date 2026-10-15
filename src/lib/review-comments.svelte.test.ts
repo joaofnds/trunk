@@ -451,15 +451,13 @@ describe("createReviewComments — reviews-changed listener", () => {
 		// One rejection used to disable the listener for the tab's lifetime.
 		aPopulatedStore();
 		let attempts = 0;
-		const base = mockInvoke.getMockImplementation();
-		mockInvoke.mockImplementation((c, args, options) => {
-			if (c === "canonical_repo_path") {
-				attempts += 1;
-				return attempts === 1
-					? Promise.reject('{"code":"io","message":"transient"}')
-					: Promise.resolve("/repo");
-			}
-			return base?.(c, args, options) ?? Promise.resolve(undefined);
+		overrideReads((c) => {
+			if (c !== "canonical_repo_path") return undefined;
+
+			attempts += 1;
+			return attempts === 1
+				? Promise.reject('{"code":"io","message":"transient"}')
+				: Promise.resolve("/repo");
 		});
 		const manager = createReviewComments("/repo", scheduler);
 		await flush();
