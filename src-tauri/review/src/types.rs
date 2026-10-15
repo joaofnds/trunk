@@ -310,6 +310,13 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_stored_state_it_does_not_know_is_a_store_error() {
+        let err = "bogus".parse::<ThreadState>().unwrap_err();
+
+        assert_eq!(err.code, "store");
+    }
+
     /// `allowed_transitions` is `transition`'s legal set and nothing else, for
     /// every state and channel — the two can never disagree.
     #[test]
