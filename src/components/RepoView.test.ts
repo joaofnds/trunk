@@ -998,29 +998,6 @@ describe("RepoView", () => {
 			expect(await cardInTheDiff()).toHaveTextContent(NOTE_OF.r1);
 		});
 
-		it("keeps the active review's threads in the diff when a refresh reads them but not its commits", async () => {
-			twoReviewsOnOneLine({ secondArchived: false });
-			const scheduler = new FakeScheduler();
-			render(RepoView, {
-				props: { ...baseProps(createMockRemoteState()), reviewActive: true },
-				context: new Map([[SCHEDULER, scheduler]]),
-			});
-			await openThreadWithEnter();
-			const twoReviews = mockInvoke.getMockImplementation();
-			if (!twoReviews) throw new Error("two-review invoke missing");
-			mockInvoke.mockImplementation((cmd, args) =>
-				cmd === "list_session_commits"
-					? Promise.reject(new Error("commits unreadable"))
-					: twoReviews(cmd, args),
-			);
-
-			fireReviewsChanged("/test/repo");
-			scheduler.advanceBy(REPO_CHANGE_DELAY_MS);
-			await flush();
-
-			expect(await cardInTheDiff()).toHaveTextContent(NOTE_OF.r1);
-		});
-
 		it("draws the active review's threads again once review mode ends", async () => {
 			twoReviewsOnOneLine({ secondArchived: false });
 			const view = render(RepoView, {
@@ -1033,6 +1010,65 @@ describe("RepoView", () => {
 			await flush();
 
 			expect(await cardInTheDiff()).toHaveTextContent(NOTE_OF.r1);
+		});
+
+		describe("when a refresh fails to read part of the store", () => {
+			const lockedStore = '{"code":"store","message":"database is locked"}';
+
+			beforeEach(_resetToasts);
+
+			function renderOnAScheduler() {
+				const scheduler = new FakeScheduler();
+				render(RepoView, {
+					props: { ...baseProps(createMockRemoteState()), reviewActive: true },
+					context: new Map([[SCHEDULER, scheduler]]),
+				});
+				return scheduler;
+			}
+
+			// Resolves once the refresh has failed, which the toast it raises shows.
+			async function refreshFailing(cmd: string, scheduler: FakeScheduler) {
+				const answering = mockInvoke.getMockImplementation();
+				if (!answering) throw new Error("two-review invoke missing");
+				mockInvoke.mockImplementation((c, args) =>
+					c === cmd ? Promise.reject(lockedStore) : answering(c, args),
+				);
+
+				fireReviewsChanged("/test/repo");
+				scheduler.advanceBy(REPO_CHANGE_DELAY_MS);
+				await flush();
+
+				expect(toasts.items).toContainEqual(
+					expect.objectContaining({
+						message: expect.stringContaining("database is locked"),
+					}),
+				);
+			}
+
+			it.each(["list_session_commits", "list_reviews"])(
+				"keeps the active review's threads in the diff when %s fails",
+				async (cmd) => {
+					twoReviewsOnOneLine({ secondArchived: false });
+					const scheduler = renderOnAScheduler();
+					await openThreadWithEnter();
+
+					await refreshFailing(cmd, scheduler);
+
+					expect(await cardInTheDiff()).toHaveTextContent(NOTE_OF.r1);
+				},
+			);
+
+			it("draws no other review's threads in a picked review's diff when the review list fails", async () => {
+				twoReviewsOnOneLine({ secondArchived: false });
+				const scheduler = renderOnAScheduler();
+				await showReview("Shown one");
+				await openThreadWithEnter();
+
+				await refreshFailing("list_reviews", scheduler);
+
+				await screen.findByRole("button", { name: "Close diff" });
+				expect(screen.queryByRole("article")).toBeNull();
+			});
 		});
 
 		it("gives the branches back when review mode ends", async () => {

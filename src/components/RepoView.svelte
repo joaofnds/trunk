@@ -776,14 +776,11 @@ let viewDescriptor = $derived<ViewDescriptor>({
 	snapshots: reviewComments.snapshots,
 });
 
-// The pick of a shown review outlives review mode, so reading shownThreads
+// The pick of a shown review outlives review mode, so reading diffThreads
 // outside it would hide the active review's threads, and every new comment,
-// from each ordinary diff. The active review's own threads stay drawn when a
-// sibling read of its refresh fails, since shownThreads withholds them then.
+// from each ordinary diff.
 let diffThreads = $derived(
-	reviewMode && reviewComments.shownReviewId !== reviewComments.activeReviewId
-		? reviewComments.shownThreads
-		: reviewComments.threads,
+	reviewMode ? reviewComments.diffThreads : reviewComments.threads,
 );
 
 // Comments matching the file currently shown in DiffPanel. Empty when no file

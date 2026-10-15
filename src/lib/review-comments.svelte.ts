@@ -54,6 +54,12 @@ export interface ReviewCommentsManager {
 	 * empty until it is ready.
 	 */
 	readonly shownReadState: ReviewReadState;
+	/**
+	 * The threads the review-mode diff draws: a picked review's once read, and
+	 * the active review's even when another of its reads failed, except while a
+	 * failed read hides the pick they would stand in for.
+	 */
+	readonly diffThreads: Thread[];
 	readonly snapshots: ReviewSnapshots;
 	/** True when this repo has threads to show. Replaces the session gate. */
 	readonly hasThreads: boolean;
@@ -147,6 +153,16 @@ export function createReviewComments(
 			threads: selected.threads,
 			commits: selected.commits,
 		};
+	});
+
+	const diffThreads = $derived.by((): Thread[] => {
+		if (shownReviewId !== state.activeReviewId) return shown.threads;
+
+		const pickedAnother =
+			state.selectedReviewId !== null &&
+			state.selectedReviewId !== state.activeReviewId;
+		if (pickedAnother && state.activeReadState !== "ready") return [];
+		return state.threads;
 	});
 
 	const oids = $derived(
@@ -421,6 +437,9 @@ export function createReviewComments(
 		},
 		get shownReadState() {
 			return shown.readState;
+		},
+		get diffThreads() {
+			return diffThreads;
 		},
 		get snapshots() {
 			return state.snapshots;

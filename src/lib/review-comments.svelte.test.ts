@@ -873,6 +873,63 @@ describe("createReviewComments — the shown review", () => {
 		});
 	});
 
+	describe("diffThreads", () => {
+		const lockedStore = '{"code":"store","message":"database is locked"}';
+
+		it("are a picked review's threads once they are read", async () => {
+			twoReviews();
+
+			const manager = await aStoreShowing("REVIEW02");
+
+			expect(manager.diffThreads.map((t) => t.id)).toEqual(["c2"]);
+			manager.destroy();
+		});
+
+		it.each(["list_session_commits", "list_reviews"])(
+			"keep the active review's threads when its %s read fails",
+			async (cmd) => {
+				twoReviews();
+				const manager = createReviewComments("/repo", scheduler);
+				await flush();
+				overrideReads((c, reviewId) =>
+					reviewId === undefined && c === cmd
+						? Promise.reject(lockedStore)
+						: undefined,
+				);
+
+				await manager.refresh();
+
+				expect(manager.shownReadState).toBe("failed");
+				expect(manager.diffThreads.map((t) => t.id)).toEqual(["c1"]);
+				manager.destroy();
+			},
+		);
+
+		it("are empty while a failed review list hides a pick", async () => {
+			twoReviews();
+			const manager = await aStoreShowing("REVIEW02");
+			overrideReads((cmd) =>
+				cmd === "list_reviews" ? Promise.reject(lockedStore) : undefined,
+			);
+
+			await manager.refresh();
+
+			expect(manager.diffThreads).toEqual([]);
+			manager.destroy();
+		});
+
+		it("are the active review's once a deleted pick falls back to it", async () => {
+			twoReviews();
+			const manager = await aStoreShowing("REVIEW02");
+
+			aPopulatedStore();
+			await manager.refresh();
+
+			expect(manager.diffThreads.map((t) => t.id)).toEqual(["c1"]);
+			manager.destroy();
+		});
+	});
+
 	it("falls back to the active review when the selected one is gone", async () => {
 		twoReviews();
 		const manager = createReviewComments("/repo", scheduler);

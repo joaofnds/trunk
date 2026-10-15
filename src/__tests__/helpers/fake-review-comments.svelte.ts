@@ -82,6 +82,16 @@ export function createFakeReviewComments(): FakeReviewComments {
 					}),
 	);
 
+	const diffThreads = $derived.by((): Thread[] => {
+		if (shownReviewId !== state.activeReviewId) return shown.threads;
+
+		const pickedAnother =
+			state.selectedReviewId !== null &&
+			state.selectedReviewId !== state.activeReviewId;
+		if (pickedAnother && state.shownReadState !== "ready") return [];
+		return state.threads;
+	});
+
 	const oids = $derived(
 		new Set(
 			state.commits.filter((c) => c.picked).map((c) => c.oid),
@@ -115,6 +125,9 @@ export function createFakeReviewComments(): FakeReviewComments {
 		},
 		get shownReadState() {
 			return state.shownReadState;
+		},
+		get diffThreads() {
+			return diffThreads;
 		},
 		get snapshots() {
 			return state.snapshots;
