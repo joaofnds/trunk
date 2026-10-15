@@ -20,6 +20,14 @@ Most Git GUIs feel heavy or hide what Git is doing. Trunk renders the full commi
 - **Code review** with inline comments anchored to diff lines
 - **Live updates** from a filesystem watcher that refreshes status when files change on disk
 
+## Code review
+
+Review changes with comments on diff lines, current file content, or whole files. The review pane keeps feedback and replies together, with filters for threads that need your attention.
+
+Send feedback to a coding agent as you go or in a batch. Agents can reply and mark fixes addressed through the [`trunk review` CLI](docs/review-cli.md); you decide when a thread is done.
+
+![Trunk's review pane with inline comments, agent replies, and thread statuses](docs/review.png)
+
 ## Stack
 
 Tauri 2 shell, Svelte 5 frontend (runes, Tailwind CSS 4), Rust backend. All Git operations run through the `git2` crate (libgit2 bindings) rather than shelling out.
