@@ -337,8 +337,8 @@ existing review.
 review in the review list or makes one with New review, it is the active review.
 After that it is the review last picked or made that way, archived or not,
 whichever review is made active later. The pick lasts while the repository's tab
-stays open. Once the tab closes or the picked review is deleted, the shown review
-is the active one again. Showing a review never makes it active.
+stays open. Once the tab closes or the picked review is deleted, the pick is
+forgotten and the shown review is the active one again. Showing a review never makes it active.
 
 **Thread** — one anchored root comment plus a flat, one-level list of replies.
 The selection is the thread; replies carry no anchors and no states.

@@ -926,6 +926,44 @@ describe("createReviewComments — the shown review", () => {
 			expect(manager.diffThreads.map((t) => t.id)).toEqual(["c1"]);
 			manager.destroy();
 		});
+
+		it.each(["list_session_commits", "list_reviews"])(
+			"keep the active review's threads when its %s read fails after a deleted pick",
+			async (cmd) => {
+				twoReviews();
+				const manager = await aStoreShowing("REVIEW02");
+				aPopulatedStore();
+				await manager.refresh();
+				overrideReads((c, reviewId) =>
+					reviewId === undefined && c === cmd
+						? Promise.reject(lockedStore)
+						: undefined,
+				);
+
+				await manager.refresh();
+
+				expect(manager.shownReadState).toBe("failed");
+				expect(manager.diffThreads.map((t) => t.id)).toEqual(["c1"]);
+				manager.destroy();
+			},
+		);
+
+		it("keep the active review's threads when its commits read fails after it is picked back", async () => {
+			twoReviews();
+			const manager = await aStoreShowing("REVIEW02");
+			await manager.select("REVIEW01");
+			overrideReads((cmd, reviewId) =>
+				reviewId === undefined && cmd === "list_session_commits"
+					? Promise.reject(lockedStore)
+					: undefined,
+			);
+
+			await manager.refresh();
+
+			expect(manager.shownReadState).toBe("failed");
+			expect(manager.diffThreads.map((t) => t.id)).toEqual(["c1"]);
+			manager.destroy();
+		});
 	});
 
 	it("falls back to the active review when the selected one is gone", async () => {
@@ -940,6 +978,29 @@ describe("createReviewComments — the shown review", () => {
 
 		expect(manager.shownReviewId).toBe("REVIEW01");
 		expect(manager.shownThreads.map((t) => t.id)).toEqual(["c1"]);
+		manager.destroy();
+	});
+
+	it("keeps a pick made while an older review list is still being read", async () => {
+		twoReviews();
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+		const olderList = Promise.withResolvers<Review[]>();
+		overrideReads((cmd) =>
+			cmd === "list_reviews" ? olderList.promise : undefined,
+		);
+		const reading = manager.refresh();
+		await flush();
+		overrideReads((cmd) =>
+			cmd === "list_reviews" ? Promise.resolve([review, other]) : undefined,
+		);
+
+		const picked = manager.select("REVIEW02");
+		olderList.resolve([review]);
+		await reading;
+		await picked;
+
+		expect(manager.shownReviewId).toBe("REVIEW02");
 		manager.destroy();
 	});
 });

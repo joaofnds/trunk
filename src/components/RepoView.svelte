@@ -776,8 +776,8 @@ let viewDescriptor = $derived<ViewDescriptor>({
 	snapshots: reviewComments.snapshots,
 });
 
-// The pick of a shown review outlives review mode, so reading diffThreads
-// outside it would hide the active review's threads, and every new comment,
+// The pick of a shown review outlives review mode, so reading
+// reviewComments.diffThreads outside it would hide the active review's threads, and every new comment,
 // from each ordinary diff.
 let diffThreads = $derived(
 	reviewMode ? reviewComments.diffThreads : reviewComments.threads,

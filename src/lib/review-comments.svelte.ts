@@ -189,6 +189,7 @@ export function createReviewComments(
 		const scope = fullRefreshPending ? "full" : "refs";
 		fullRefreshPending = false;
 		runningScope = scope;
+		const pickAtStart = state.selectedReviewId;
 		if (state.selected?.readState === "failed") state.selected = null;
 		if (state.activeReadState === "failed") state.activeReadState = "pending";
 		await learnCanonicalPath();
@@ -213,6 +214,11 @@ export function createReviewComments(
 			reviewsR.status === "fulfilled" && Array.isArray(reviewsR.value)
 				? reviewsR.value
 				: [];
+		const pickWasDeleted =
+			reviewsR.status === "fulfilled" &&
+			state.selectedReviewId === pickAtStart &&
+			!state.reviews.some((review) => review.id === pickAtStart);
+		if (pickWasDeleted) state.selectedReviewId = null;
 
 		state.activeReviewId =
 			activeR.status === "fulfilled" ? (activeR.value ?? null) : null;

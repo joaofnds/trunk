@@ -1058,7 +1058,7 @@ describe("RepoView", () => {
 				},
 			);
 
-			it("draws no other review's threads in a picked review's diff when the review list fails", async () => {
+			it("draws no threads in a picked review's diff when the review list fails", async () => {
 				twoReviewsOnOneLine({ secondArchived: false });
 				const scheduler = renderOnAScheduler();
 				await showReview("Shown one");
