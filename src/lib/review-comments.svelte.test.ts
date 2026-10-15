@@ -309,6 +309,16 @@ describe("createReviewComments — refresh", () => {
 			manager.destroy();
 		});
 
+		it("keeps the active review's threads for its other readers when a read fails", async () => {
+			failing("list_session_commits");
+
+			const manager = createReviewComments("/repo", scheduler);
+			await flush();
+
+			expect(manager.threads.map((t) => t.id)).toEqual(["c1"]);
+			manager.destroy();
+		});
+
 		it("draws none of the threads a failed read did get", async () => {
 			failing("list_session_commits");
 
@@ -709,18 +719,24 @@ describe("createReviewComments — the shown review", () => {
 			manager.destroy();
 		});
 
-		it("stays ready with the previous threads while a loaded pick is read again", async () => {
-			twoReviews();
-			const manager = await aStoreShowing("REVIEW02");
-			holdOtherThreads();
+		it.each([
+			["picked again", (m: ReviewCommentsManager) => m.select("REVIEW02")],
+			["refreshed", (m: ReviewCommentsManager) => m.refresh()],
+		])(
+			"stays ready with the previous threads while a loaded pick is %s",
+			async (_, reread) => {
+				twoReviews();
+				const manager = await aStoreShowing("REVIEW02");
+				holdOtherThreads();
 
-			manager.refresh();
-			await flush();
+				reread(manager);
+				await flush();
 
-			expect(manager.shownReadState).toBe("ready");
-			expect(manager.shownThreads.map((t) => t.id)).toEqual(["c2"]);
-			manager.destroy();
-		});
+				expect(manager.shownReadState).toBe("ready");
+				expect(manager.shownThreads.map((t) => t.id)).toEqual(["c2"]);
+				manager.destroy();
+			},
+		);
 
 		describe("when the read fails", () => {
 			const lockedStore = '{"code":"store","message":"database is locked"}';
@@ -805,6 +821,22 @@ describe("createReviewComments — the shown review", () => {
 				const { manager } = await aStoreAfterAFailedPick();
 
 				reread(manager);
+				await flush();
+
+				expect(manager.shownReadState).toBe("pending");
+				manager.destroy();
+			});
+
+			it("is pending from the start of a retry, before the picked review is read", async () => {
+				const { manager } = await aStoreAfterAFailedPick();
+				const answering = mockInvoke.getMockImplementation();
+				mockInvoke.mockImplementation((cmd, args) =>
+					cmd === "list_reviews"
+						? new Promise<Review[]>(() => {})
+						: (answering?.(cmd, args) ?? Promise.resolve(undefined)),
+				);
+
+				manager.refresh();
 				await flush();
 
 				expect(manager.shownReadState).toBe("pending");

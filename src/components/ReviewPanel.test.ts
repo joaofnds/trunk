@@ -1523,6 +1523,22 @@ describe("empty states", () => {
 			).not.toBeInTheDocument();
 		});
 
+		it("says the review store could not be read when only the active review is known", async () => {
+			installReads({
+				reviews: [],
+				activeReviewId: ACTIVE_REVIEW,
+				comments: [],
+			});
+			reviewComments.seed({ shownReadState: "failed" });
+			await reviewComments.refresh();
+			renderPanel();
+			await flush();
+
+			expect(screen.getByRole("alert")).toHaveTextContent(
+				"This repository's review store could not be read.",
+			);
+		});
+
 		it("says the review store could not be read rather than absent", async () => {
 			await showNothingListed("failed");
 
