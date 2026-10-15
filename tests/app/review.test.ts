@@ -172,6 +172,27 @@ describe("a comment left on a commit's diff", () => {
 		expect(landing).toContain(`Lands in ${active}`);
 	});
 
+	it("shows a picked review's threads while another review is active", async () => {
+		const app = await setup({ repo: TWO_COMMITS });
+		await createReviewThread(app);
+		const first = await waitFor("the first review", () =>
+			app.review.activeReviewId(),
+		);
+		await app.review.newReview();
+		await waitFor("the new review's empty panel", () =>
+			app.review.threads().length === 0 ? true : null,
+		);
+
+		await app.review.showReview(first);
+
+		const threads = await waitFor("the picked review's thread", () => {
+			const showing = app.review.threads();
+			return showing.length > 0 ? showing : null;
+		});
+		expect(threads).toEqual([ANCHOR]);
+		expect(app.review.readNotice()).toBeNull();
+	});
+
 	it("keeps panel and inline reply drafts separate through hiding and remounting", async () => {
 		const app = await setup({ repo: TWO_COMMITS });
 		await createReviewThread(app);

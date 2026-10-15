@@ -50,6 +50,7 @@ const REPLY_BODY = ".thread-reply-text";
 const ROOT_EDIT_TEXT = 'textarea[aria-label="Edit comment"]';
 const REPLY_EDIT_TEXT = 'textarea[aria-label="Edit reply"]';
 const COMMIT_NOTES = ".commit-notes";
+const PANEL = 'section[aria-label="Review threads"]';
 const PANEL_HEADER = 'section[aria-label="Review threads"] > header';
 const UNREAD_DOT = ".unread-dot";
 const ACTIVE_REVIEW_RADIO =
@@ -247,6 +248,15 @@ export class ReviewDriver {
 	composerLanding(): string | null {
 		const composer = visibleElement<HTMLElement>(".comment-composer");
 		return composer ? textIn(composer, ".composer-landing") : null;
+	}
+
+	/** What the review panel says about a read of its review still running or
+	 *  failed, or null when it says neither. */
+	readNotice(): string | null {
+		const notice = document.querySelector<HTMLElement>(
+			`${PANEL} [role="status"], ${PANEL} [role="alert"]`,
+		);
+		return notice?.textContent?.trim() ?? null;
 	}
 
 	/** The id of the review the panel marks active, or null when none is. */
@@ -483,6 +493,15 @@ export class ReviewDriver {
 			const active = this.activeReviewId();
 			return active !== null && active !== before ? active : null;
 		});
+	}
+
+	/** Picks a review in the panel's review column, so the panel shows it. */
+	async showReview(id: string): Promise<void> {
+		const button = await waitFor(`review ${id} in the review column`, () =>
+			enabled(`nav[aria-label="Reviews"] [aria-label="Show review ${id}"]`),
+		);
+
+		button.click();
 	}
 
 	/** Closes the review panel and returns to the repository layout. */
