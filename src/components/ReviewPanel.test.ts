@@ -15,6 +15,7 @@ import {
 } from "../__tests__/helpers/review-fixture.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
+import type { ReviewReadState } from "../lib/review-comments.svelte.js";
 import { createReviewEditorStore } from "../lib/review-editors.svelte.js";
 import { ALL_THREADS, THREAD_PRESETS } from "../lib/review-filter.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -1445,6 +1446,59 @@ describe("empty states", () => {
 		expect(
 			screen.getByText(/Make it active to collect new comments here/),
 		).toBeInTheDocument();
+	});
+
+	describe("when the shown review's threads are not on hand", () => {
+		const other = aReview({ id: "OTHER001", title: "Other review" });
+
+		async function showOther(readState: ReviewReadState) {
+			installReads({ reviews: [aReview(), other], comments: [] });
+			reviewComments.seed({ shownReadState: readState });
+			renderPanel();
+			await flush();
+			await reviewComments.select(other.id);
+			await flush();
+		}
+
+		it("says the review is being read rather than empty", async () => {
+			await showOther("pending");
+
+			expect(screen.getByRole("status")).toHaveTextContent(
+				"Reading this review…",
+			);
+			expect(
+				screen.queryByRole("heading", { name: "No comments in this review" }),
+			).not.toBeInTheDocument();
+		});
+
+		it("says the review's threads could not be read rather than empty", async () => {
+			await showOther("failed");
+
+			expect(screen.getByRole("alert")).toHaveTextContent(
+				"This review's threads could not be read.",
+			);
+			expect(
+				screen.queryByRole("heading", { name: "No comments in this review" }),
+			).not.toBeInTheDocument();
+		});
+
+		it("shows the threads once Retry reads them", async () => {
+			await showOther("failed");
+			reviewComments.seed({
+				shownReadState: "ready",
+				otherReviews: {
+					[other.id]: {
+						threads: [commitLevelComment("theirs", COMMIT_A, "read at last")],
+						commits: [],
+					},
+				},
+			});
+
+			await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+			await flush();
+
+			expect(screen.getByText("read at last")).toBeInTheDocument();
+		});
 	});
 
 	it("says the next comment starts a review when none is active or shown", async () => {

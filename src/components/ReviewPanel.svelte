@@ -182,6 +182,7 @@ const noteBatchHeld = $derived(
 // another from the list. Picking one never moves where new comments land.
 const shownReviewId = $derived(reviewComments.shownReviewId);
 const shownReview = $derived(reviewComments.shownReview);
+const shownReadState = $derived(reviewComments.shownReadState);
 
 // Orphan resolution stays here: resolve_threads walks a blob per
 // comment, and only this panel renders the badge it feeds.
@@ -603,14 +604,9 @@ function threadKeys(event: KeyboardEvent) {
 	}
 }
 
-// The retry the copy promises is a remount: that is what re-runs both the
-// owner's refresh and the resolutions read below.
 function reportReadFailure(reason: unknown) {
 	const detail = errorMessage(reason, "unknown error");
-	showToast(
-		`Failed to load review comments: ${detail}. Reload the panel to retry.`,
-		"error",
-	);
+	showToast(`Failed to load review comments: ${detail}.`, "error");
 }
 
 // Generation guard. The two owners fetch independently, and this is the slow
@@ -1093,6 +1089,20 @@ $effect(() => {
 				</p>
 				<WaysToComment />
 			</ReviewEmpty>
+		{:else if shownReadState === "pending"}
+			<p role="status" class="m-0 px-4 py-6 text-text-muted">
+				Reading this review…
+			</p>
+		{:else if shownReadState === "failed"}
+			<div
+				role="alert"
+				class="flex flex-col items-start gap-2 px-4 py-6 text-text-muted"
+			>
+				This review's threads could not be read.
+				<Button size="base" onclick={() => reviewComments.refresh()}>
+					Retry
+				</Button>
+			</div>
 		{:else if !hasAnyComment}
 			<ReviewEmpty
 				title={shownIsActive
