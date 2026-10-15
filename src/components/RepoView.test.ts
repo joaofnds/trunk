@@ -125,6 +125,12 @@ function fireReviewShowPanel(): void {
 	for (const handler of registered) handler({ payload: undefined });
 }
 
+function fireReviewsChanged(canonicalPath: string): void {
+	const registered = eventHandlers.get("reviews-changed") ?? [];
+	if (registered.length === 0) throw new Error("no reviews-changed listener");
+	for (const handler of registered) handler({ payload: canonicalPath });
+}
+
 vi.mock("@tauri-apps/api/window", () => ({
 	getCurrentWindow: vi.fn().mockReturnValue({
 		onResized: vi.fn().mockResolvedValue(() => {}),
@@ -915,6 +921,8 @@ describe("RepoView", () => {
 								...oneOpenThread,
 							}),
 						]);
+					case "canonical_repo_path":
+						return Promise.resolve("/test/repo");
 					case "get_active_review":
 						return Promise.resolve("r1");
 					case "list_session_commits":
@@ -986,6 +994,29 @@ describe("RepoView", () => {
 			renderWithPanes({ reviewActive: true });
 
 			await openThreadWithEnter();
+
+			expect(await cardInTheDiff()).toHaveTextContent(NOTE_OF.r1);
+		});
+
+		it("keeps the active review's threads in the diff when a refresh reads them but not its commits", async () => {
+			twoReviewsOnOneLine({ secondArchived: false });
+			const scheduler = new FakeScheduler();
+			render(RepoView, {
+				props: { ...baseProps(createMockRemoteState()), reviewActive: true },
+				context: new Map([[SCHEDULER, scheduler]]),
+			});
+			await openThreadWithEnter();
+			const twoReviews = mockInvoke.getMockImplementation();
+			if (!twoReviews) throw new Error("two-review invoke missing");
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "list_session_commits"
+					? Promise.reject(new Error("commits unreadable"))
+					: twoReviews(cmd, args),
+			);
+
+			fireReviewsChanged("/test/repo");
+			scheduler.advanceBy(REPO_CHANGE_DELAY_MS);
+			await flush();
 
 			expect(await cardInTheDiff()).toHaveTextContent(NOTE_OF.r1);
 		});
