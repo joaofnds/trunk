@@ -375,14 +375,18 @@ async function handleBranchCreate(values: Record<string, string>) {
 				icon
 				joined
 				aria-pressed={!reviewThreadsHidden}
-				aria-label={reviewThreadsHidden ? "Show review threads" : "Hide review threads"}
-				tooltip={reviewThreadsHidden ? "Show review threads" : "Hide review threads"}
+				aria-label={reviewThreadsHidden
+					? "Show review threads"
+					: "Hide review threads"}
+				tooltip={reviewThreadsHidden
+					? "Show review threads"
+					: "Hide review threads"}
 				onclick={handleReviewThreadsToggle}
 			>
 				<MessageSquare size={14} />
 				{#if viewCommentCount > 0}
 					<span
-						class="toolbar-badge tone-{viewCommentTone ?? 'open'}"
+						class="toolbar-badge tone-{viewCommentTone ?? "open"}"
 						role="img"
 						aria-label="{viewCommentCount} review comments in this view"
 						>{viewCommentCount}</span
@@ -400,7 +404,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 			<ClipboardCheck size={14} />
 			{#if reviewCommentCount > 0}
 				<span
-					class="toolbar-badge tone-{reviewCommentTone ?? 'open'}"
+					class="toolbar-badge tone-{reviewCommentTone ?? "open"}"
 					role="img"
 					aria-label="{reviewCommentCount} review comments in this review"
 					>{reviewCommentCount}</span
@@ -413,7 +417,14 @@ async function handleBranchCreate(values: Record<string, string>) {
 {#if branchDialogOpen}
 	<InputDialog
 		title="Create Branch"
-		fields={[{ key: 'name', label: 'Branch name', placeholder: 'feature/my-branch', required: true }]}
+		fields={[
+			{
+				key: "name",
+				label: "Branch name",
+				placeholder: "feature/my-branch",
+				required: true,
+			},
+		]}
 		onsubmit={handleBranchCreate}
 		oncancel={() => (branchDialogOpen = false)}
 	/>

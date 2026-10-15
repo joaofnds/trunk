@@ -898,8 +898,8 @@ $effect(() => {
 					onclick={onCopyClick}
 					disabled={visibleComments.length === 0}
 					title={visibleComments.length === 0
-					? "No threads shown to copy"
-					: "Copy the shown threads as a prompt for an agent"}
+						? "No threads shown to copy"
+						: "Copy the shown threads as a prompt for an agent"}
 				>
 					<Copy size={12} />
 					<span>Copy</span>
@@ -921,8 +921,8 @@ $effect(() => {
 							variant="primary"
 							title="Send the held comments to the agent"
 							onclick={() => {
-							sendPopoverOpen = !sendPopoverOpen;
-						}}
+								sendPopoverOpen = !sendPopoverOpen;
+							}}
 						>
 							<Send size={12} />
 							<span>Send {shownReview.pending_count}</span>
@@ -933,8 +933,8 @@ $effect(() => {
 									variant="anchored"
 									title="Send {shownReview.id}?"
 									onkeydown={(e) => {
-									if (e.key === "Escape") sendPopoverOpen = false;
-								}}
+										if (e.key === "Escape") sendPopoverOpen = false;
+									}}
 								>
 									<p class="m-0 text-callout leading-normal text-text-muted">
 										{sendSummary(shownReview)}
@@ -944,8 +944,8 @@ $effect(() => {
 											size="base"
 											variant="ghost"
 											onclick={() => {
-											sendPopoverOpen = false;
-										}}
+												sendPopoverOpen = false;
+											}}
 											>Cancel</Button
 										>
 										<Button size="base" variant="primary" onclick={sendShown}
@@ -1058,7 +1058,9 @@ $effect(() => {
 	>
 		{#if shownReadState === "pending"}
 			<p role="status" class="m-0 px-4 py-6 text-text-muted">
-				{shownReview ? "Reading this review…" : "Reading this repository's reviews…"}
+				{shownReview
+					? "Reading this review…"
+					: "Reading this repository's reviews…"}
 			</p>
 		{:else if shownReadState === "failed"}
 			<div
@@ -1134,7 +1136,9 @@ $effect(() => {
 
 		{#each sections as section (section.key)}
 			<section
-				aria-label={section.branch === null ? "Not on any branch" : `Branch ${section.branch}`}
+				aria-label={section.branch === null
+					? "Not on any branch"
+					: `Branch ${section.branch}`}
 				style:--lane={sectionLane(section)}
 				style:display={hidesSection(section) ? "none" : "block"}
 			>
@@ -1185,7 +1189,8 @@ $effect(() => {
 										<span class="pointer-events-auto flex">
 											<Badge
 												title="Copy SHA"
-												onclick={() => group.commit && copySha(group.commit.oid)}
+												onclick={() =>
+													group.commit && copySha(group.commit.oid)}
 												>{group.commit.short_oid}</Badge
 											>
 										</span>
@@ -1195,7 +1200,8 @@ $effect(() => {
 											<LinkButton
 												truncate
 												aria-label="Jump to commit {group.commit.short_oid}"
-												onclick={() => group.commit && onJumpToCommit(group.commit.oid)}
+												onclick={() =>
+													group.commit && onJumpToCommit(group.commit.oid)}
 												>{group.commit.summary}</LinkButton
 											>
 										</span>
@@ -1203,7 +1209,10 @@ $effect(() => {
 											<span
 												class="review-meta pointer-events-auto"
 												title={exactLabel(group.commit.author_timestamp)}
-												>{relativeLabel(group.commit.author_timestamp, currentMinute())}</span
+												>{relativeLabel(
+													group.commit.author_timestamp,
+													currentMinute(),
+												)}</span
 											>
 										{/if}
 									{:else if group.kind === "gone" && group.commit}
@@ -1258,7 +1267,10 @@ $effect(() => {
 											submitLabel={noteBatchHeld ? "Add to batch" : "Add note"}
 											submitDisabled={!noteDraft.valid || noteSaving}
 											onsubmit={() =>
-												void saveAddNote(commit.oid, noteBatchHeld ? "hold" : "send")}
+												void saveAddNote(
+													commit.oid,
+													noteBatchHeld ? "hold" : "send",
+												)}
 											onhold={noteBatchHeld
 												? undefined
 												: () => void saveAddNote(commit.oid, "hold")}
@@ -1297,7 +1309,10 @@ $effect(() => {
 
 								{#each group.files as file (file.path)}
 									{@const path = splitPath(file.path)}
-									{@const fileFolded = isFolded(fileKey(group, file), file.threads)}
+									{@const fileFolded = isFolded(
+										fileKey(group, file),
+										file.threads,
+									)}
 									<div
 										class="flex flex-col gap-2 review-file"
 										style:display={hidesAll(file.threads) ? "none" : "flex"}
@@ -1309,7 +1324,8 @@ $effect(() => {
 												noun="file"
 												inset="file"
 												collapsed={fileFolded}
-												ontoggle={() => toggleFold(fileKey(group, file), file.threads)}
+												ontoggle={() =>
+													toggleFold(fileKey(group, file), file.threads)}
 											>
 												<File size={12} class="shrink-0" aria-hidden="true" />
 												<span
@@ -1319,7 +1335,9 @@ $effect(() => {
 														tone="muted"
 														mono
 														aria-label="Open {file.path}"
-														title={group.kind === "gone" ? "Commit was garbage-collected" : `Open ${file.path}`}
+														title={group.kind === "gone"
+															? "Commit was garbage-collected"
+															: `Open ${file.path}`}
 														disabled={group.kind === "gone"}
 														onclick={() => openFile(group, file)}
 													>
@@ -1381,7 +1399,9 @@ $effect(() => {
 	{/if}
 </section>
 
-{#snippet card(comment: Thread)}
+{#snippet card(
+	comment: Thread,
+)}
 	<ThreadCard
 		thread={comment}
 		{repoPath}

@@ -232,7 +232,9 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 }
 </script>
 
-{#snippet threadCard(c: Thread)}
+{#snippet threadCard(
+	c: Thread,
+)}
 	<ThreadCard
 		variant="inline"
 		confirmDelete={false}
@@ -244,24 +246,39 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 	/>
 {/snippet}
 
-{#snippet lineNumbers(line: DiffLine)}
+{#snippet lineNumbers(
+	line: DiffLine,
+)}
 	<span class="gutter-num" style:min-width={vd.gutterW}
-		>{line.old_lineno ?? ''}</span
+		>{line.old_lineno ?? ""}</span
 	><span class="gutter-num" style:min-width={vd.gutterW}
-		>{line.new_lineno ?? ''}</span
+		>{line.new_lineno ?? ""}</span
 	>
 {/snippet}
 
-{#snippet diffRow(item: DiffRow, _index: number)}
+{#snippet diffRow(
+	item: DiffRow,
+	_index: number,
+)}
 	{#if item.kind === "line"}
 		{@const line = item.line}
-		{@const isSelectable = line.origin !== 'Context'}
+		{@const isSelectable = line.origin !== "Context"}
 		{@const hunkKey = `${item.path}-${item.hunkIdx}`}
-		{@const isSelected = selectedHunkKey === hunkKey && selectedLineIndices.has(item.lineIdx)}
-		{@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
-		{@const hunkLines = fileDiffs.find((fd) => fd.path === item.path)?.hunks[item.hunkIdx]?.lines ?? []}
+		{@const isSelected =
+			selectedHunkKey === hunkKey && selectedLineIndices.has(item.lineIdx)}
+		{@const trailStart = showInvisibles
+			? trailingWhitespaceStart(line.content)
+			: line.content.length}
+		{@const hunkLines =
+			fileDiffs.find((fd) => fd.path === item.path)?.hunks[item.hunkIdx]
+				?.lines ?? []}
 		<div
-			class="diff-line flex items-start px-2 text-diff-text {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}"
+			class="diff-line flex items-start px-2 text-diff-text {line.origin ===
+			"Add"
+				? "diff-line-add"
+				: line.origin === "Delete"
+					? "diff-line-delete"
+					: "diff-line-context"}"
 			class:whitespace-pre-wrap={vd.wrapActive}
 			class:whitespace-pre={!vd.wrapActive}
 			class:break-all={vd.wrapActive}
@@ -276,15 +293,37 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 			><ThreadMarker
 				marker={item.marker}
 				width={vd.markerW}
-				oncomment={commentable && isSelectable && !(diffKind === 'unstaged' && line.origin === 'Delete')
+				oncomment={commentable &&
+				isSelectable &&
+				!(diffKind === "unstaged" && line.origin === "Delete")
 					? () => oncommentline(item.path, item.hunkIdx, item.lineIdx)
 					: undefined}
 				commentLabel={commentLabel(line)}
 			/>{#if isSelectable}
 				<GutterGrip
 					aria-label={gripLabel(line)}
-					onmousedown={(e) => onlinemousedown(item.path, item.hunkIdx, item.lineIdx, line.origin, hunkLines, e)}
-					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onlineclick(item.path, item.hunkIdx, item.lineIdx, line.origin, hunkLines, new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
+					onmousedown={(e) =>
+						onlinemousedown(
+							item.path,
+							item.hunkIdx,
+							item.lineIdx,
+							line.origin,
+							hunkLines,
+							e,
+						)}
+					onkeydown={(e) => {
+						if (e.key === "Enter" || e.key === " ") {
+							e.preventDefault();
+							onlineclick(
+								item.path,
+								item.hunkIdx,
+								item.lineIdx,
+								line.origin,
+								hunkLines,
+								new MouseEvent("click", { shiftKey: e.shiftKey }),
+							);
+						}
+					}}
 					>{@render lineNumbers(line)}</GutterGrip
 				>
 			{:else}
@@ -297,16 +336,29 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 						{@const sliced = line.content.slice(span.start, span.end)}
 						{@const spanInTrailing = span.start >= trailStart}
 						{#if showInvisibles}
-							{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}
+							{@const segments = splitInvisibles(
+								sliced,
+								spanInTrailing || span.end > trailStart,
+							)}{#each segments as seg}
 								<span
-									class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}"
+									class="{span.syntax_class}{span.emphasized
+										? line.origin === "Add"
+											? " word-add"
+											: " word-delete"
+										: ""}{seg.isInvisible
+										? " invisible-char"
+										: ""}{seg.isTrailing ? " trailing-ws" : ""}"
 									data-glyph={seg.glyph}
 									>{seg.text}</span
 								>
 							{/each}
 						{:else}
 							<span
-								class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}"
+								class="{span.syntax_class}{span.emphasized
+									? line.origin === "Add"
+										? " word-add"
+										: " word-delete"
+									: ""}"
 								>{sliced}</span
 							>
 						{/if}
@@ -316,7 +368,9 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 						{@const segments = splitInvisibles(line.content, false)}
 						{#each segments as seg}
 							<span
-								class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}"
+								class="{seg.isInvisible ? "invisible-char" : ""}{seg.isTrailing
+									? " trailing-ws"
+									: ""}"
 								data-glyph={seg.glyph}
 								>{seg.text}</span
 							>
@@ -331,7 +385,9 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 		{@const hunkKey = `${item.path}-${item.hunkIdx}`}
 		{@const hasSelection = selectedHunkKey === hunkKey && selectedCount > 0}
 		<div
-			class="hunk-toolbar pan-pinned{flashedHunkKey === hunkKey ? ' hunk-highlight' : ''}"
+			class="hunk-toolbar pan-pinned{flashedHunkKey === hunkKey
+				? " hunk-highlight"
+				: ""}"
 		>
 			<span class="hunk-header-text">{item.header}</span>
 			<HunkActions
@@ -364,7 +420,7 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 	{:else if item.kind === "file-header"}
 		<div class="file-header pan-pinned">
 			<Row variant="title" onclick={() => onfilecollapsetoggle(item.path)}>
-				<span class="file-header-caret">{item.collapsed ? '▶' : '▼'}</span>
+				<span class="file-header-caret">{item.collapsed ? "▶" : "▼"}</span>
 				{item.path}
 			</Row>
 		</div>
@@ -375,10 +431,18 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 
 <div
 	class="hunk-view"
-	style:--diff-file-header-height={FIXED_ROW_HEIGHT_VARS["--diff-file-header-height"]}
-	style:--diff-hunk-header-height={FIXED_ROW_HEIGHT_VARS["--diff-hunk-header-height"]}
-	style:--diff-binary-row-height={FIXED_ROW_HEIGHT_VARS["--diff-binary-row-height"]}
-	style:--diff-composer-row-height={FIXED_ROW_HEIGHT_VARS["--diff-composer-row-height"]}
+	style:--diff-file-header-height={FIXED_ROW_HEIGHT_VARS[
+		"--diff-file-header-height"
+	]}
+	style:--diff-hunk-header-height={FIXED_ROW_HEIGHT_VARS[
+		"--diff-hunk-header-height"
+	]}
+	style:--diff-binary-row-height={FIXED_ROW_HEIGHT_VARS[
+		"--diff-binary-row-height"
+	]}
+	style:--diff-composer-row-height={FIXED_ROW_HEIGHT_VARS[
+		"--diff-composer-row-height"
+	]}
 	bind:this={vd.pane}
 >
 	{#if vd.ready}

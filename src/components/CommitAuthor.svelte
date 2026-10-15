@@ -58,11 +58,14 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 			{#if childOids.length > 0}
 				<div class="topo-row">
 					<span class="topo-lbl"
-						>{childOids.length > 1 ? 'Children' : 'Child'}</span
+						>{childOids.length > 1 ? "Children" : "Child"}</span
 					>
 					{#each childOids as childOid (childOid)}
 						<Chip
-							title="Go to child {childOid.slice(0, 7)} (right-click to copy SHA)"
+							title="Go to child {childOid.slice(
+								0,
+								7,
+							)} (right-click to copy SHA)"
 							onclick={() => onnavigate?.(childOid)}
 							oncontextmenu={(e) => showShaContextMenu(e, childOid)}
 							><ArrowUp size={11} />{childOid.slice(0, 7)}</Chip
@@ -73,12 +76,15 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 			{#if parentOids.length > 0}
 				<div class="topo-row">
 					<span class="topo-lbl"
-						>{parentOids.length > 1 ? 'Parents' : 'Parent'}</span
+						>{parentOids.length > 1 ? "Parents" : "Parent"}</span
 					>
 					{#each parentOids as parentOid, i (parentOid)}
 						<Chip
 							tone={i === 0 ? "accent" : "neutral"}
-							title="Go to parent {parentOid.slice(0, 7)} (right-click to copy SHA)"
+							title="Go to parent {parentOid.slice(
+								0,
+								7,
+							)} (right-click to copy SHA)"
 							onclick={() => onnavigate?.(parentOid)}
 							oncontextmenu={(e) => showShaContextMenu(e, parentOid)}
 							><ArrowDown size={11} />{parentOid.slice(0, 7)}</Chip

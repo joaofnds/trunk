@@ -2282,9 +2282,21 @@ $effect(() => {
 			</div>
 		{:else}
 			<!-- SVG overlay snippet - renders inside virtual list scroll container -->
-			{#snippet graphOverlay(contentHeight: number, visibleStart: number, visibleEnd: number)}
-				{@const visible = getVisibleOverlayElements(paths, graphData.nodes, visibleStart, visibleEnd, pillData)}
-				{@const graphColWidth = columnVisibility.graph ? columnWidths.graph : naturalGraphWidth}
+			{#snippet graphOverlay(
+				contentHeight: number,
+				visibleStart: number,
+				visibleEnd: number,
+			)}
+				{@const visible = getVisibleOverlayElements(
+					paths,
+					graphData.nodes,
+					visibleStart,
+					visibleEnd,
+					pillData,
+				)}
+				{@const graphColWidth = columnVisibility.graph
+					? columnWidths.graph
+					: naturalGraphWidth}
 				{@const scrollX = Math.min(graphScrollX, maxGraphScrollX)}
 				<svg
 					role="presentation"
@@ -2319,11 +2331,11 @@ $effect(() => {
                line ending under the dot, not so much that it stops short of it
                and leaves a gap. -->
 						{@const fadeEndInset =
-            displaySettings.laneWidth / 2 - displaySettings.dotRadius / 2}
+							displaySettings.laneWidth / 2 - displaySettings.dotRadius / 2}
 						{@const hugRight = Math.min(
-            hugMax,
-            Math.max(0, naturalGraphWidth - scrollX - railBandWidth),
-          )}
+							hugMax,
+							Math.max(0, naturalGraphWidth - scrollX - railBandWidth),
+						)}
 						{@const hugLeft = Math.min(hugMax, Math.max(0, scrollX))}
 						<!-- Once the hug takes the whole band there is no stretch of rail left
                to fade from, and a gradient across it leaves the rail opaque at
@@ -2417,18 +2429,20 @@ $effect(() => {
 						<g clip-path="url(#graph-clip-{clipScope})">
 							<g
 								class="overlay-paths"
-								transform="translate({graphStart + COLUMN_PADDING_X - scrollX}, 0)"
+								transform="translate({graphStart +
+									COLUMN_PADDING_X -
+									scrollX}, 0)"
 							>
 								{#each railsHidden ? [] : visible.paths as path}
 									<path
 										d={path.d}
 										fill="none"
 										stroke={hugRight > 0 || hugLeft > 0
-                    ? `url(#rail-fade-${path.colorIndex % 8}-${clipScope})`
-                    : laneColor(path.colorIndex)}
+											? `url(#rail-fade-${path.colorIndex % 8}-${clipScope})`
+											: laneColor(path.colorIndex)}
 										stroke-width={displaySettings.edgeStroke}
 										stroke-linecap="round"
-										stroke-dasharray={path.dashed ? `${DASH} ${DASH}` : 'none'}
+										stroke-dasharray={path.dashed ? `${DASH} ${DASH}` : "none"}
 									/>
 								{/each}
 							</g>
@@ -2443,7 +2457,11 @@ $effect(() => {
 								transform="translate({graphStart + COLUMN_PADDING_X}, 0)"
 							>
 								{#each visible.dots as node}
-									{@const clampedCx = stickyDotX(geometry.cx(node.x), graphColWidth, scrollX)}
+									{@const clampedCx = stickyDotX(
+										geometry.cx(node.x),
+										graphColWidth,
+										scrollX,
+									)}
 									<!-- A stroke straddles the path it is drawn on, so half of it falls
                    outside. Every stroked marker is inset by half its stroke, which
                    makes all four kinds occupy the same width as the filled dot:
@@ -2452,7 +2470,11 @@ $effect(() => {
 									{@const strokeInset = displaySettings.edgeStroke / 2}
 									{#if node.isWip}
 										<path
-											d={wipMarkerPath(clampedCx, geometry.cy(node.y), displaySettings.dotRadius - strokeInset)}
+											d={wipMarkerPath(
+												clampedCx,
+												geometry.cy(node.y),
+												displaySettings.dotRadius - strokeInset,
+											)}
 											fill="none"
 											stroke={laneColor(node.colorIndex)}
 											stroke-width={displaySettings.edgeStroke}
@@ -2460,9 +2482,13 @@ $effect(() => {
 									{:else if node.isStash}
 										<rect
 											x={clampedCx - displaySettings.dotRadius + strokeInset}
-											y={geometry.cy(node.y) - displaySettings.dotRadius + strokeInset}
-											width={displaySettings.dotRadius * 2 - displaySettings.edgeStroke}
-											height={displaySettings.dotRadius * 2 - displaySettings.edgeStroke}
+											y={geometry.cy(node.y) -
+												displaySettings.dotRadius +
+												strokeInset}
+											width={displaySettings.dotRadius * 2 -
+												displaySettings.edgeStroke}
+											height={displaySettings.dotRadius * 2 -
+												displaySettings.edgeStroke}
 											fill="none"
 											stroke={laneColor(node.colorIndex)}
 											stroke-width={displaySettings.edgeStroke}
@@ -2472,7 +2498,8 @@ $effect(() => {
 										<circle
 											cx={clampedCx}
 											cy={geometry.cy(node.y)}
-											r={displaySettings.dotRadius - displaySettings.mergeStroke / 2}
+											r={displaySettings.dotRadius -
+												displaySettings.mergeStroke / 2}
 											fill="var(--color-surface)"
 											stroke={laneColor(node.colorIndex)}
 											stroke-width={displaySettings.mergeStroke}
@@ -2499,24 +2526,39 @@ $effect(() => {
 									height={contentHeight}
 								/>
 							</clipPath>
-							{#each ghostPill ? [...visible.pills, ghostPill] : visible.pills as pill}
+							{#each ghostPill
+								? [...visible.pills, ghostPill]
+								: visible.pills as pill}
 								{@const badgeWidth = overflowBadgeWidth(pill.overflowCount)}
 								{@const pillTop = pill.y - PILL_HEIGHT / 2}
 								{@const badgeX = pill.x + pill.width + PILL_GAP}
 								{@const badgeTop = pill.y - BADGE_HEIGHT / 2}
-								{@const pillGroupRightX = pill.x + pill.width + (pill.overflowCount > 0 ? PILL_GAP + badgeWidth : 0)}
+								{@const pillGroupRightX =
+									pill.x +
+									pill.width +
+									(pill.overflowCount > 0 ? PILL_GAP + badgeWidth : 0)}
 								{@const pillIsBranch = checksOutOnDoubleClick(pill.refType)}
 								<!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (uses sticky X position, scroll-adjusted) -->
 								{#if columnVisibility.graph}
-									{@const stickyDotCx = stickyDotX(pill.dotCx, graphColWidth, scrollX)}
-									{@const connectorEndX = graphStart + COLUMN_PADDING_X + stickyDotCx - (pill.isHollow ? displaySettings.dotRadius : 0)}
+									{@const stickyDotCx = stickyDotX(
+										pill.dotCx,
+										graphColWidth,
+										scrollX,
+									)}
+									{@const connectorEndX =
+										graphStart +
+										COLUMN_PADDING_X +
+										stickyDotCx -
+										(pill.isHollow ? displaySettings.dotRadius : 0)}
 									<line
 										x1={pillGroupRightX}
 										y1={pill.y}
 										x2={connectorEndX}
 										y2={pill.dotCy}
 										stroke={laneColor(pill.commitColorIndex)}
-										stroke-width={pill.isHead ? displaySettings.pillStroke * 2 : displaySettings.pillStroke}
+										stroke-width={pill.isHead
+											? displaySettings.pillStroke * 2
+											: displaySettings.pillStroke}
 										opacity={pill.isGhost ? 0.45 : pill.isRemoteOnly ? 0.67 : 1}
 										class:non-head={pill.isNonHead && !pill.isRemoteOnly}
 									/>
@@ -2528,8 +2570,14 @@ $effect(() => {
 											x2={badgeX}
 											y2={pill.y}
 											stroke={laneColor(pill.commitColorIndex)}
-											stroke-width={pill.isHead ? displaySettings.pillStroke * 2 : displaySettings.pillStroke}
-											opacity={pill.isGhost ? 0.45 : pill.isRemoteOnly ? 0.67 : 1}
+											stroke-width={pill.isHead
+												? displaySettings.pillStroke * 2
+												: displaySettings.pillStroke}
+											opacity={pill.isGhost
+												? 0.45
+												: pill.isRemoteOnly
+													? 0.67
+													: 1}
 											class:non-head={pill.isNonHead && !pill.isRemoteOnly}
 										/>
 									{/if}
@@ -2547,7 +2595,11 @@ $effect(() => {
 										rx={PILL_HEIGHT / 2}
 										ry={PILL_HEIGHT / 2}
 										fill={laneColor(pill.colorIndex)}
-										fill-opacity={pill.isGhost ? 0.06 : pill.isRemoteOnly ? 0.1 : 0.14}
+										fill-opacity={pill.isGhost
+											? 0.06
+											: pill.isRemoteOnly
+												? 0.1
+												: 0.14}
 										stroke={laneColor(pill.colorIndex)}
 										stroke-opacity={pill.isGhost ? 0.25 : 0.5}
 									/>
@@ -2556,7 +2608,8 @@ $effect(() => {
 									{#if PILL_ICONS[pill.refType]}
 										{@const PillIcon = PILL_ICONS[pill.refType]}
 										<g
-											transform="translate({pill.x + PILL_PADDING_X}, {pill.y - ICON_WIDTH / 2})"
+											transform="translate({pill.x + PILL_PADDING_X}, {pill.y -
+												ICON_WIDTH / 2})"
 											opacity={pill.isGhost ? 0.45 : 0.9}
 										>
 											<PillIcon size={ICON_WIDTH} />
@@ -2626,12 +2679,16 @@ $effect(() => {
 											<HitArea
 												aria-label={pill.label}
 												shape="pill"
-												cursor={pillIsBranch ? 'pointer' : 'context-menu'}
+												cursor={pillIsBranch ? "pointer" : "context-menu"}
 												onfocus={keepFocusOnList}
 												onmouseenter={() => pillMouseEnter(pill)}
 												onmouseleave={pillMouseLeave}
-												oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
-												ondblclick={pillIsBranch ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
+												oncontextmenu={(e) =>
+													showRefContextMenu(e, refFromPill(pill))}
+												ondblclick={pillIsBranch
+													? (e: MouseEvent) =>
+															handleRefCheckout(e, refFromPill(pill))
+													: undefined}
 											/>
 										</foreignObject>
 										{#if pill.overflowCount > 0}
@@ -2681,9 +2738,11 @@ $effect(() => {
 										role="menuitem"
 										aria-label={ref.short_name}
 										shape="row"
-										cursor={refIsBranch ? 'pointer' : 'context-menu'}
+										cursor={refIsBranch ? "pointer" : "context-menu"}
 										oncontextmenu={(e) => showRefContextMenu(e, ri)}
-										ondblclick={refIsBranch ? (e: MouseEvent) => handleRefCheckout(e, ri) : undefined}
+										ondblclick={refIsBranch
+											? (e: MouseEvent) => handleRefCheckout(e, ri)
+											: undefined}
 									>
 										<span class="flex items-center gap-1 px-1">
 											{#if PILL_ICONS[ref.ref_type]}
@@ -2708,8 +2767,10 @@ $effect(() => {
 							style:left="{pill.x}px"
 							style:top="{pill.y - PILL_HEIGHT / 2}px"
 							style:height="{PILL_HEIGHT}px"
-							style:background="color-mix(in oklch, var(--lane-{pill.colorIndex % 8}) 14%, var(--color-surface-raised))"
-							style:box-shadow="inset 0 0 0 1px color-mix(in oklch, var(--lane-{pill.colorIndex % 8}) 50%, transparent)"
+							style:background="color-mix(in oklch, var(--lane-{pill.colorIndex %
+								8}) 14%, var(--color-surface-raised))"
+							style:box-shadow="inset 0 0 0 1px color-mix(in oklch, var(--lane-{pill.colorIndex %
+								8}) 50%, transparent)"
 							onfocusin={keepFocusOnList}
 							onmouseenter={overlayMouseEnter}
 							onmouseleave={overlayMouseLeave}
@@ -2718,9 +2779,11 @@ $effect(() => {
 								role="menuitem"
 								aria-label={pill.label}
 								shape="pill"
-								cursor={pillIsBranch ? 'pointer' : 'context-menu'}
+								cursor={pillIsBranch ? "pointer" : "context-menu"}
 								oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))}
-								ondblclick={pillIsBranch ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}
+								ondblclick={pillIsBranch
+									? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill))
+									: undefined}
 							>
 								<span
 									class="flex items-center gap-1 text-small font-medium whitespace-nowrap"
@@ -2747,32 +2810,46 @@ $effect(() => {
 					defaultEstimatedItemHeight={displaySettings.rowHeight}
 					bind:measuredItemHeight={svgRowHeight}
 					onLoadMore={() => void loadMore()}
-					onrangechange={(start, end) => { renderedStart = start; renderedEnd = end; }}
+					onrangechange={(start, end) => {
+						renderedStart = start;
+						renderedEnd = end;
+					}}
 					loadMoreThreshold={50}
 					{hasMore}
 					overlaySnippet={graphOverlay}
 					minContentWidth={tableMinWidth(columnWidths, columnVisibility)}
 				>
-					{#snippet renderItem(commit, index)}
+					{#snippet renderItem(
+						commit,
+						index,
+					)}
 						<CommitRow
 							{commit}
 							rowIndex={index}
-							onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect}
+							onselect={commit.oid === "__wip__"
+								? () => onWipClick?.()
+								: oncommitselect}
 							oncontextmenu={handleRowContextMenu}
 							onenter={() => (hoveredRow = index)}
 							onleave={() => (hoveredRow = null)}
 							{columnVisibility}
-							selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'}
+							selected={(commit.oid === selectedCommitOid ||
+								compareOids.has(commit.oid)) &&
+								commit.oid !== "__wip__"}
 							rowHeight={displaySettings.rowHeight}
 							isSearchMatch={searchMatchOids.has(commit.oid)}
 							isCurrentMatch={commit.oid === searchCurrentOid}
-							isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0}
+							isSearchActive={searchOpen &&
+								searchQuery.length > 0 &&
+								searchResults.length > 0}
 							inSession={reviewOids.has(commit.oid)}
 							isPendingBase={pendingBase === commit.oid}
 							commentCount={commentCountFor(commit.oid)}
 							commentTally={commentTallyFor(commit.oid)}
-							wipStats={commit.oid === '__wip__' ? wipStats : undefined}
-							diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)}
+							wipStats={commit.oid === "__wip__" ? wipStats : undefined}
+							diffStat={commit.oid === "__wip__"
+								? wipDiffStat
+								: commitStats.get(commit.oid)}
 							{messageScrollX}
 						/>
 					{/snippet}

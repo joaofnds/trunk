@@ -187,11 +187,15 @@ async function handleSubmit() {
 
 <div class="flex flex-col shrink-0">
 	<TabStrip aria-label="Commit mode">
-		{#each [['commit', 'Commit'], ['amend', 'Amend'], ['stash', 'Stash']] as [tab, label]}
+		{#each [
+			["commit", "Commit"],
+			["amend", "Amend"],
+			["stash", "Stash"],
+		] as [tab, label]}
 			<Tab
 				selected={mode === tab}
 				disabled={committing}
-				onclick={() => handleModeSwitch(tab as 'commit' | 'amend' | 'stash')}
+				onclick={() => handleModeSwitch(tab as "commit" | "amend" | "stash")}
 			>
 				{label}
 			</Tab>
@@ -205,7 +209,9 @@ async function handleSubmit() {
 				data-testid="commit-form-subject"
 				type="text"
 				bind:value={getSubject, setSubject}
-				placeholder={mode === 'stash' ? 'Stash name (optional)' : 'Summary (required)'}
+				placeholder={mode === "stash"
+					? "Stash name (optional)"
+					: "Summary (required)"}
 				class="w-full box-border border border-border bg-bg text-text rounded h-control-lg py-0 pl-3 pr-counter text-callout"
 			>
 			{#if counterVisible}
@@ -213,7 +219,9 @@ async function handleSubmit() {
 					data-testid="subject-counter"
 					data-over={subjectOverLimit}
 					class="absolute top-1/2 right-2 -translate-y-1/2 pointer-events-none font-mono text-caption"
-					style:color={subjectOverLimit ? 'var(--color-danger)' : 'var(--color-text-subtle)'}
+					style:color={subjectOverLimit
+						? "var(--color-danger)"
+						: "var(--color-text-subtle)"}
 					>{getSubject().length}/72</span
 				>
 			{/if}

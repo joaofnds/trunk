@@ -911,12 +911,21 @@ $effect(() => {
 		<TabBar
 			{tabs}
 			{activeTabId}
-			onactivate={(id) => { activeTabId = id; persistTabs(); }}
-			onclose={(id, force) => { if (force) forceCloseTab(id); else closeTab(id); }}
+			onactivate={(id) => {
+				activeTabId = id;
+				persistTabs();
+			}}
+			onclose={(id, force) => {
+				if (force) forceCloseTab(id);
+				else closeTab(id);
+			}}
 			onnew={addNewTab}
 			oncontextmenu={showTabContextMenu}
 			onauxclose={(id) => closeTab(id)}
-			onreorder={(newTabs) => { tabs = newTabs; persistTabs(); }}
+			onreorder={(newTabs) => {
+				tabs = newTabs;
+				persistTabs();
+			}}
 		/>
 		<div data-tauri-drag-region class="flex-1 h-full"></div>
 		{#if activeTab?.repoPath && repositories.isReady(activeTab)}
@@ -948,14 +957,17 @@ $effect(() => {
 					{#if isRepoViewMounted(tab)}
 						{#key tab.repoPath}
 							{@const tabState = getTabState(tab.id)}
-							{@const tabReviewActive = reviewPanelOpen && tab.id === activeTabId}
+							{@const tabReviewActive =
+								reviewPanelOpen && tab.id === activeTabId}
 							<RepoView
 								repoPath={tab.repoPath}
 								repoName={tab.repoName}
 								remoteState={tabState.remoteState}
 								undoRedo={tabState.undoRedo}
 								{leftPaneWidth}
-								leftPaneCollapsed={tabReviewActive ? reviewLeftPaneCollapsed : leftPaneCollapsed}
+								leftPaneCollapsed={tabReviewActive
+									? reviewLeftPaneCollapsed
+									: leftPaneCollapsed}
 								{rightPaneWidth}
 								{rightPaneCollapsed}
 								tabActive={tab.id === activeTabId}
@@ -963,18 +975,34 @@ $effect(() => {
 								reviewActive={tabReviewActive}
 								{reviewThreadsHidden}
 								{threadFilter}
-								onthreadfilterchange={(filter) => { threadFilter = filter; }}
+								onthreadfilterchange={(filter) => {
+									threadFilter = filter;
+								}}
 								contentMode={diffContentMode}
 								oncontentmodechange={handleDiffContentModeChange}
 								oncommentcountschange={(c) => setCommentCounts(tab.id, c)}
-								onreviewpanelshowingchange={(s) => { activeReviewPanelShowing = s; }}
+								onreviewpanelshowingchange={(s) => {
+									activeReviewPanelShowing = s;
+								}}
 								onleftpanecollapsedchange={changeLeftPaneCollapsed}
 								onrightpanecollapsedchange={changeRightPaneCollapsed}
-								onleftpanewidthchange={(w) => { leftPaneWidth = w; setLeftPaneWidth(w); }}
-								onrightpanewidthchange={(w) => { rightPaneWidth = w; setRightPaneWidth(w); }}
-								onleavereview={() => { reviewPanelOpen = false; }}
-								onready={() => { if (tab.repoPath) repositories.viewReady(tab); }}
-								ondirtychange={(counts) => { updateDirtyBadge(tab, counts); }}
+								onleftpanewidthchange={(w) => {
+									leftPaneWidth = w;
+									setLeftPaneWidth(w);
+								}}
+								onrightpanewidthchange={(w) => {
+									rightPaneWidth = w;
+									setRightPaneWidth(w);
+								}}
+								onleavereview={() => {
+									reviewPanelOpen = false;
+								}}
+								onready={() => {
+									if (tab.repoPath) repositories.viewReady(tab);
+								}}
+								ondirtychange={(counts) => {
+									updateDirtyBadge(tab, counts);
+								}}
 							/>
 						{/key}
 					{:else}
@@ -989,7 +1017,9 @@ $effect(() => {
 				{:else}
 					<WelcomeScreen
 						{isFullscreen}
-						onopen={(path, name) => { void openRepoInTab(tab.id, path, name); }}
+						onopen={(path, name) => {
+							void openRepoInTab(tab.id, path, name);
+						}}
 					/>
 				{/if}
 			</div>

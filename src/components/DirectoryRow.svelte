@@ -70,12 +70,12 @@ function openMenu(e: MouseEvent) {
 {#snippet action()}
 	<RowAction
 		size="compact"
-		tone={actionLabel === '+' ? 'success' : 'danger'}
+		tone={actionLabel === "+" ? "success" : "danger"}
 		onclick={() => onaction?.()}
 		oncontextmenu={openMenu}
-		aria-label={actionLabel === '+' ? 'Stage directory' : 'Unstage directory'}
+		aria-label={actionLabel === "+" ? "Stage directory" : "Unstage directory"}
 	>
-		{#if actionLabel === '+'}
+		{#if actionLabel === "+"}
 			<Plus size={11} />
 		{:else}
 			<Minus size={11} />

@@ -90,7 +90,9 @@ function deletePrompt(review: Review): string {
 }
 </script>
 
-{#snippet reviewItem(review: Review)}
+{#snippet reviewItem(
+	review: Review,
+)}
 	{@const isActive = review.id === activeReviewId}
 	{@const isShown = review.id === shownReviewId}
 	<li
@@ -155,8 +157,8 @@ function deletePrompt(review: Review): string {
 						<span
 							title="{review.unresolved_count} unresolved of {review.thread_count}"
 							>{review.unresolved_count > 0
-									? `${review.unresolved_count}/${review.thread_count}`
-									: review.thread_count}</span
+								? `${review.unresolved_count}/${review.thread_count}`
+								: review.thread_count}</span
 						>
 					</span>
 				{/snippet}

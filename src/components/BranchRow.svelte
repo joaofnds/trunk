@@ -85,20 +85,22 @@ function openMenu(e: MouseEvent) {
 		oncontextmenu={openMenu}
 		actions={ontogglevisibility ? eye : undefined}
 	>
-		{#if kind === 'tag'}
+		{#if kind === "tag"}
 			<span class="shrink-0 inline-flex items-center mr-2 text-text-subtle">
 				<Tag size={12} />
 			</span>
 		{:else}
 			<span
 				class="shrink-0 dot rounded-full mr-2"
-				style:background={isHead ? 'var(--color-accent)' : 'var(--color-text-disabled)'}
+				style:background={isHead
+					? "var(--color-accent)"
+					: "var(--color-text-disabled)"}
 			></span>
 		{/if}
 		<span
 			title={name}
 			class="block overflow-hidden whitespace-nowrap text-ellipsis min-w-0 flex-1"
-			>{name}{isLoading ? ' …' : ''}</span
+			>{name}{isLoading ? " …" : ""}</span
 		>
 		{#if ahead > 0 || behind > 0}
 			<span
@@ -128,7 +130,8 @@ function openMenu(e: MouseEvent) {
 		<div
 			class="error-banner text-small leading-normal py-2 px-3 mt-0 mx-2 mb-1 rounded"
 		>
-			{errorText ?? 'Cannot checkout — working tree has uncommitted changes. Commit or stash your changes first.'}
+			{errorText ??
+				"Cannot checkout — working tree has uncommitted changes. Commit or stash your changes first."}
 		</div>
 	{/if}
 </div>

@@ -2251,7 +2251,9 @@ function stepRightPane(delta: number) {
 						label="rebase editor"
 						oncancel={handleRebaseEditorClose}
 					>
-						{#snippet children(RebaseEditor)}
+						{#snippet children(
+							RebaseEditor,
+						)}
 							<RebaseEditor
 								{repoPath}
 								commits={rebaseEditorCommits}
@@ -2271,15 +2273,23 @@ function stepRightPane(delta: number) {
 						load={() => import("./DiffPanel.svelte")}
 						label="diff"
 					>
-						{#snippet children(DiffPanel)}
+						{#snippet children(
+							DiffPanel,
+						)}
 							<DiffPanel
-								fileDiffs={rebaseFocusedFileDiffs.filter((f) => f.path === rebaseDiffFile)}
+								fileDiffs={rebaseFocusedFileDiffs.filter(
+									(f) => f.path === rebaseDiffFile,
+								)}
 								commitDetail={rebaseFocusedCommitDetail}
 								selectedPath={rebaseDiffFile}
 								diffKind="commit"
 								{repoPath}
 								canTakeComments={diffCanTakeComments({ compare: false })}
-								takesComments={diffTakesComments({ compare: false, reviewMode: false, threadsHidden: reviewThreadsHidden })}
+								takesComments={diffTakesComments({
+									compare: false,
+									reviewMode: false,
+									threadsHidden: reviewThreadsHidden,
+								})}
 								{reviewFilter}
 								viewComments={rebaseViewComments}
 								activeReviewId={reviewComments.activeReviewId}
@@ -2290,13 +2300,19 @@ function stepRightPane(delta: number) {
 								{contentMode}
 								{oncontentmodechange}
 								loading={rebaseDiffLoading}
-								payloadStale={rebaseDiffFile !== null && !rebaseDiffError && rebaseDiffMode !== contentMode}
+								payloadStale={rebaseDiffFile !== null &&
+									!rebaseDiffError &&
+									rebaseDiffMode !== contentMode}
 								loadError={rebaseDiffError}
 								onloadfullfile={loadRebaseFullFileForComment}
-								onretry={() => { if (rebaseDiffFile) void reloadRebaseFile(rebaseDiffFile, buildDiffOptions()); }}
+								onretry={() => {
+									if (rebaseDiffFile)
+										void reloadRebaseFile(rebaseDiffFile, buildDiffOptions());
+								}}
 								ondiffoptionschange={async (options) => {
 									rememberLocalDiffOptions(options);
-									if (rebaseDiffFile) await reloadRebaseFile(rebaseDiffFile, options);
+									if (rebaseDiffFile)
+										await reloadRebaseFile(rebaseDiffFile, options);
 								}}
 								onclose={handleRebaseDiffClose}
 							/>
@@ -2324,7 +2340,9 @@ function stepRightPane(delta: number) {
 						label="commit details"
 						oncancel={handleRebaseDetailClose}
 					>
-						{#snippet children(CommitDetail)}
+						{#snippet children(
+							CommitDetail,
+						)}
 							<CommitDetail
 								commitDetail={focusedDetail}
 								stat={rebaseFocusedCommitStat}
@@ -2362,11 +2380,15 @@ function stepRightPane(delta: number) {
 				hidden={reviewMode}
 			>
 				<BranchSidebar
-					onrefschange={(refs) => { headBranch = refs.local.find((branch) => branch.is_head)?.name; }}
+					onrefschange={(refs) => {
+						headBranch = refs.local.find((branch) => branch.is_head)?.name;
+					}}
 					{repoPath}
 					onrefreshed={handleRefresh}
 					onvisibilitychanged={(graph) => commitGraphRef?.showGraph(graph)}
-					onvisibilityresolved={() => { refVisibilityResolved = true; }}
+					onvisibilityresolved={() => {
+						refVisibilityResolved = true;
+					}}
 					loadedRows={() => commitGraphRef?.loadedRows() ?? 0}
 					onstashselect={handleCommitSelect}
 					onrefnavigate={handleRefNavigate}
@@ -2383,7 +2405,9 @@ function stepRightPane(delta: number) {
 					bind:this={reviewListPane}
 				>
 					<LazyView load={() => import("./ReviewList.svelte")} label="reviews">
-						{#snippet children(ReviewList)}
+						{#snippet children(
+							ReviewList,
+						)}
 							<ReviewList {repoPath} {reviewComments} />
 						{/snippet}
 					</LazyView>
@@ -2422,7 +2446,9 @@ function stepRightPane(delta: number) {
 							load={() => import("./ReviewPanel.svelte")}
 							label="review"
 						>
-							{#snippet children(ReviewPanel)}
+							{#snippet children(
+								ReviewPanel,
+							)}
 								<ReviewPanel
 									{repoPath}
 									session={reviewSession}
@@ -2446,7 +2472,7 @@ function stepRightPane(delta: number) {
 					</div>
 				{/if}
 				{#if reviewPanelShown}
-				<!-- The review panel above holds the pane. -->
+					<!-- The review panel above holds the pane. -->
 				{:else if showMergeEditor && selectedFile}
 					{@const conflictedFile = selectedFile}
 					<LazyView
@@ -2454,7 +2480,9 @@ function stepRightPane(delta: number) {
 						load={() => import("./MergeEditor.svelte")}
 						label="merge editor"
 					>
-						{#snippet children(MergeEditor)}
+						{#snippet children(
+							MergeEditor,
+						)}
 							<MergeEditor
 								{repoPath}
 								filePath={conflictedFile.path}
@@ -2472,18 +2500,30 @@ function stepRightPane(delta: number) {
 						load={() => import("./DiffPanel.svelte")}
 						label="diff"
 					>
-						{#snippet children(DiffPanel)}
+						{#snippet children(
+							DiffPanel,
+						)}
 							<DiffPanel
 								bind:this={diffPanelRef}
 								fileDiffs={currentDiffFiles}
-								commitDetail={selectedCompareFile ? compareTargetDetail : commitDetail}
-								compareBaseOid={selectedCompareFile ? (compareBaseDetail?.oid ?? null) : null}
+								commitDetail={selectedCompareFile
+									? compareTargetDetail
+									: commitDetail}
+								compareBaseOid={selectedCompareFile
+									? (compareBaseDetail?.oid ?? null)
+									: null}
 								selectedPath={selectedCompareFile ?? selectedDiffPath}
 								{diffKind}
 								emptyCommit={commitEmpty}
 								{repoPath}
-								canTakeComments={diffCanTakeComments({ compare: selectedCompareFile !== null })}
-								takesComments={diffTakesComments({ compare: selectedCompareFile !== null, reviewMode, threadsHidden: reviewThreadsHidden })}
+								canTakeComments={diffCanTakeComments({
+									compare: selectedCompareFile !== null,
+								})}
+								takesComments={diffTakesComments({
+									compare: selectedCompareFile !== null,
+									reviewMode,
+									threadsHidden: reviewThreadsHidden,
+								})}
 								{reviewFilter}
 								{viewComments}
 								activeReviewId={reviewComments.activeReviewId}
@@ -2498,12 +2538,18 @@ function stepRightPane(delta: number) {
 								payloadStale={currentSourcePayloadStale}
 								loadError={currentSourceError}
 								onloadfullfile={loadFullFileForComment}
-								onretry={() => { void retryVisibleDiff(); }}
+								onretry={() => {
+									void retryVisibleDiff();
+								}}
 								onhunkaction={async (filePath) => {
 									if (selectedFile) {
 										const { path, kind } = selectedFile;
 										const isEmpty = await refetchFileDiff(filePath, kind);
-										if (isEmpty && selectedFile?.path === path && selectedFile?.kind === kind) {
+										if (
+											isEmpty &&
+											selectedFile?.path === path &&
+											selectedFile?.kind === kind
+										) {
 											advanceToNextFile(path, kind);
 										}
 									}
@@ -2519,7 +2565,11 @@ function stepRightPane(delta: number) {
 								ondiffoptionschange={async (options) => {
 									rememberLocalDiffOptions(options);
 									if (selectedFile && selectedFile.kind !== "conflicted") {
-										await refetchFileDiff(selectedFile.path, selectedFile.kind, options);
+										await refetchFileDiff(
+											selectedFile.path,
+											selectedFile.kind,
+											options,
+										);
 									} else if (selectedCompareFile && compare) {
 										await reloadCompareFile(selectedCompareFile, options);
 									} else if (selectedCommitFile && selectedCommitOid) {
@@ -2527,7 +2577,10 @@ function stepRightPane(delta: number) {
 									}
 								}}
 								onclose={reviewSession.state.reviewActive
-									? () => { handleDiffClose(); reviewSession.showPanel(); }
+									? () => {
+											handleDiffClose();
+											reviewSession.showPanel();
+										}
 									: handleDiffClose}
 								backLabel={reviewMode ? "Review" : null}
 							/>
@@ -2539,14 +2592,22 @@ function stepRightPane(delta: number) {
 						bind:this={commitGraphRef}
 						{repoPath}
 						oncommitselect={handleCommitSelect}
-						oncommitschange={(items, hasMore) => { graphDisplayItems = items; graphHasMore = hasMore; }}
+						oncommitschange={(items, hasMore) => {
+							graphDisplayItems = items;
+							graphHasMore = hasMore;
+						}}
 						{wipCount}
-						wipMessage={wipSubject.trim() || '// WIP'}
+						wipMessage={wipSubject.trim() || "// WIP"}
 						{wipStats}
 						onWipClick={handleWipClick}
 						refreshSignal={graphRefreshSignal}
 						consumedRefreshSignal={consumedGraphRefreshSignal}
-						onrefreshconsumed={(generation) => { consumedGraphRefreshSignal = Math.max(consumedGraphRefreshSignal, generation); }}
+						onrefreshconsumed={(generation) => {
+							consumedGraphRefreshSignal = Math.max(
+								consumedGraphRefreshSignal,
+								generation,
+							);
+						}}
 						wipRefreshSignal={worktreeRefreshSignal}
 						{cachedGraphRevision}
 						{selectedCommitOid}
@@ -2583,7 +2644,9 @@ function stepRightPane(delta: number) {
 						label="comparison"
 						oncancel={clearCompare}
 					>
-						{#snippet children(ComparePanel)}
+						{#snippet children(
+							ComparePanel,
+						)}
 							<ComparePanel
 								base={compareBaseDetail}
 								target={comparisonTarget}
@@ -2605,7 +2668,9 @@ function stepRightPane(delta: number) {
 						label="commit details"
 						oncancel={clearCommit}
 					>
-						{#snippet children(CommitDetail)}
+						{#snippet children(
+							CommitDetail,
+						)}
 							<CommitDetail
 								commitDetail={selectedDetail}
 								stat={commitDetailStat}
@@ -2641,10 +2706,10 @@ function stepRightPane(delta: number) {
 						onbodychange={(v) => (wipBody = v)}
 						onfileresolved={handleFileResolved}
 						onfileadvance={(path, kind) => {
-            if (selectedFile?.path === path && selectedFile?.kind === kind) {
-              advanceToNextFile(path, kind);
-            }
-          }}
+							if (selectedFile?.path === path && selectedFile?.kind === kind) {
+								advanceToNextFile(path, kind);
+							}
+						}}
 						selectedPath={selectedFile?.path ?? null}
 						selectedKind={selectedFile?.kind ?? null}
 						onstatuschange={handleStatusChange}

@@ -271,7 +271,9 @@ function submitOnChord(event: KeyboardEvent, submit: () => void) {
 		{/if}
 
 		<ol class="m-0 list-none p-0">
-			{#each entries as entry (entry.kind === "message" ? entry.message.id : `${entry.change.state}-${entry.at}`)}
+			{#each entries as entry (entry.kind === "message"
+				? entry.message.id
+				: `${entry.change.state}-${entry.at}`)}
 				<li class="proto-entry">
 					{#if entry.kind === "change"}
 						<ThreadEvent change={entry.change} />

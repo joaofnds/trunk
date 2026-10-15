@@ -1480,7 +1480,7 @@ mod cancellation {
         });
         BlockedWorker::wait_for_request(&observations);
         let metadata = repo.path().join("FETCH_HEAD");
-        assert!(!std::fs::read(&metadata).unwrap().is_empty());
+        assert_ne!(std::fs::read(&metadata).unwrap(), [] as [u8; 0]);
         std::fs::remove_file(&metadata).unwrap();
         std::fs::create_dir(&metadata).unwrap();
         harness
@@ -1673,7 +1673,10 @@ mod cancellation {
                 .iter()
                 .any(|file| file["path"] == "README.md")
         );
-        assert!(staged["unstaged"].as_array().unwrap().is_empty());
+        assert_eq!(
+            staged["unstaged"].as_array().unwrap().as_slice(),
+            &[] as &[serde_json::Value]
+        );
         assert_eq!(wip["files_changed"], 1);
         assert!(
             held_during_edit,
@@ -1828,7 +1831,10 @@ mod cancellation {
                 .unwrap()["upstream"],
             "origin/other"
         );
-        assert!(current_refs["stashes"].as_array().unwrap().is_empty());
+        assert_eq!(
+            current_refs["stashes"].as_array().unwrap().as_slice(),
+            &[] as &[serde_json::Value]
+        );
         assert!(
             without_stash["commits"]
                 .as_array()

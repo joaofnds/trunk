@@ -422,7 +422,10 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 }
 </script>
 
-{#snippet conflictHeader(side: 'ours' | 'theirs', row: FlatRow)}
+{#snippet conflictHeader(
+	side: "ours" | "theirs",
+	row: FlatRow,
+)}
 	<div class="w-full conflict-header shrink-0">
 		<Row
 			variant="divider"
@@ -439,7 +442,10 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 	</div>
 {/snippet}
 
-{#snippet conflictLine(row: FlatRow, bgColor: string)}
+{#snippet conflictLine(
+	row: FlatRow,
+	bgColor: string,
+)}
 	{@const taken = takenLines.has(row.key)}
 	<div
 		class="merge-line shrink-0"
@@ -478,7 +484,9 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 	</div>
 {/snippet}
 
-{#snippet contextLine(row: FlatRow)}
+{#snippet contextLine(
+	row: FlatRow,
+)}
 	<div class="flex shrink-0 bg-transparent" style:height="{LINE_HEIGHT}px">
 		<span class="line-no shrink-0 text-right pr-2 text-text-muted select-none"
 			>{row.lineNum}</span
@@ -506,7 +514,30 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 			<span class="text-diff-delete">{error}</span>
 			<Button
 				size="sm"
-				onclick={() => { loading = true; error = null; safeInvoke<MergeSides>('get_merge_sides', { path: repoPath, filePath }).then((result) => { regions = parseConflictRegions(result.base, result.ours, result.theirs); takenLines = new Set(); manualEdit = false; manualText = ''; focusedConflictIdx = 0; loading = false; }).catch((e) => { error = errorMessage(e, 'Failed to load'); loading = false; }); }}
+				onclick={() => {
+					loading = true;
+					error = null;
+					safeInvoke<MergeSides>("get_merge_sides", {
+						path: repoPath,
+						filePath,
+					})
+						.then((result) => {
+							regions = parseConflictRegions(
+								result.base,
+								result.ours,
+								result.theirs,
+							);
+							takenLines = new Set();
+							manualEdit = false;
+							manualText = "";
+							focusedConflictIdx = 0;
+							loading = false;
+						})
+						.catch((e) => {
+							error = errorMessage(e, "Failed to load");
+							loading = false;
+						});
+				}}
 				>Retry</Button
 			>
 		</div>
@@ -538,20 +569,24 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 						class="shrink-0"
 						style:height="{oursOffsets[oursVisible[0]]}px"
 					></div>
-					{#each oursFlat.slice(oursVisible[0], oursVisible[1]) as row, idx (oursVisible[0] + idx)}
-						{#if row.type === 'padding'}
+					{#each oursFlat.slice(
+						oursVisible[0],
+						oursVisible[1],
+					) as row, idx (oursVisible[0] + idx)}
+						{#if row.type === "padding"}
 							<div class="shrink-0" style:height="{row.height}px"></div>
-						{:else if row.type === 'conflict-header'}
-							{@render conflictHeader('ours', row)}
-						{:else if row.type === 'conflict-line'}
-							{@render conflictLine(row, 'var(--color-diff-add-bg)')}
+						{:else if row.type === "conflict-header"}
+							{@render conflictHeader("ours", row)}
+						{:else if row.type === "conflict-line"}
+							{@render conflictLine(row, "var(--color-diff-add-bg)")}
 						{:else}
 							{@render contextLine(row)}
 						{/if}
 					{/each}
 					<div
 						class="shrink-0"
-						style:height="{oursTotalHeight - (oursOffsets[oursVisible[1]] ?? oursTotalHeight)}px"
+						style:height="{oursTotalHeight -
+							(oursOffsets[oursVisible[1]] ?? oursTotalHeight)}px"
 					></div>
 				</div>
 			</div>
@@ -580,20 +615,24 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 						class="shrink-0"
 						style:height="{theirsOffsets[theirsVisible[0]]}px"
 					></div>
-					{#each theirsFlat.slice(theirsVisible[0], theirsVisible[1]) as row, idx (theirsVisible[0] + idx)}
-						{#if row.type === 'padding'}
+					{#each theirsFlat.slice(
+						theirsVisible[0],
+						theirsVisible[1],
+					) as row, idx (theirsVisible[0] + idx)}
+						{#if row.type === "padding"}
 							<div class="shrink-0" style:height="{row.height}px"></div>
-						{:else if row.type === 'conflict-header'}
-							{@render conflictHeader('theirs', row)}
-						{:else if row.type === 'conflict-line'}
-							{@render conflictLine(row, 'var(--color-diff-delete-bg)')}
+						{:else if row.type === "conflict-header"}
+							{@render conflictHeader("theirs", row)}
+						{:else if row.type === "conflict-line"}
+							{@render conflictLine(row, "var(--color-diff-delete-bg)")}
 						{:else}
 							{@render contextLine(row)}
 						{/if}
 					{/each}
 					<div
 						class="shrink-0"
-						style:height="{theirsTotalHeight - (theirsOffsets[theirsVisible[1]] ?? theirsTotalHeight)}px"
+						style:height="{theirsTotalHeight -
+							(theirsOffsets[theirsVisible[1]] ?? theirsTotalHeight)}px"
 					></div>
 				</div>
 			</div>

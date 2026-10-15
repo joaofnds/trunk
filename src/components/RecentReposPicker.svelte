@@ -160,7 +160,7 @@ $effect(() => {
 		>
 
 		{#if loading}
-		<!-- intentionally empty body while pruning -->
+			<!-- intentionally empty body while pruning -->
 		{:else if recents.length === 0}
 			<div class="flex flex-col items-center gap-3 px-4 py-6">
 				<p class="text-body text-text-muted">No recent repositories</p>

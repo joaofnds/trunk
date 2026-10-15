@@ -237,30 +237,44 @@ function handleKeydown(e: KeyboardEvent) {
 </script>
 
 {#snippet rows()}
-	{#each flatRows as row, i (row.type === 'file' ? row.node.path : `dir:${row.node.path}`)}
-		{#if row.type === 'directory'}
+	{#each flatRows as row, i (row.type === "file"
+		? row.node.path
+		: `dir:${row.node.path}`)}
+		{#if row.type === "directory"}
 			<DirectoryRow
 				node={row.node}
 				depth={row.depth}
 				expanded={row.expanded}
 				focused={i === focusIndex}
-				ontoggle={() => { focusRow(i, row.node.path); toggleExpanded(row.node.path); }}
-				actionLabel={ondirectoryaction ? actionLabel : ''}
-				onaction={ondirectoryaction ? () => ondirectoryaction(row.node.path) : undefined}
-				oncontextmenu={ondirectorycontextmenu ? (e) => ondirectorycontextmenu(e, row.node.path) : undefined}
+				ontoggle={() => {
+					focusRow(i, row.node.path);
+					toggleExpanded(row.node.path);
+				}}
+				actionLabel={ondirectoryaction ? actionLabel : ""}
+				onaction={ondirectoryaction
+					? () => ondirectoryaction(row.node.path)
+					: undefined}
+				oncontextmenu={ondirectorycontextmenu
+					? (e) => ondirectorycontextmenu(e, row.node.path)
+					: undefined}
 				{commentCounts}
 				{commentTallies}
 			/>
 		{:else}
 			<FileRow
 				file={row.node.file}
-				role={treeMode ? 'treeitem' : 'option'}
+				role={treeMode ? "treeitem" : "option"}
 				{actionLabel}
 				isLoading={loadingFiles?.has(row.node.file.path) ?? false}
 				onaction={() => onfileaction(row.node.file.path)}
-				onclick={() => { focusRow(i, row.node.file.path); onfileclick?.(row.node.file.path); }}
+				onclick={() => {
+					focusRow(i, row.node.file.path);
+					onfileclick?.(row.node.file.path);
+				}}
 				onfocus={takeFocus}
-				oncontextmenu={onfilecontextmenu ? (e) => onfilecontextmenu(e, row.node.file.path, row.node.file) : undefined}
+				oncontextmenu={onfilecontextmenu
+					? (e) => onfilecontextmenu(e, row.node.file.path, row.node.file)
+					: undefined}
 				depth={treeMode ? row.depth : 0}
 				displayName={treeMode ? row.node.name : undefined}
 				focused={i === focusIndex}

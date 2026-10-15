@@ -776,7 +776,7 @@ fn syntax_tokens_populated_for_rust_file() {
     .unwrap();
 
     let file_diffs = ctx.diff_unstaged_enriched("main.rs").expect("diff failed");
-    assert!(!file_diffs.is_empty());
+    assert_ne!(file_diffs, [] as [trunk_lib::types::FileDiff; 0]);
     let hunk = &file_diffs[0].hunks[0];
 
     // At least some spans should have non-empty syntax_class for .rs files
@@ -799,7 +799,7 @@ fn syntax_extension_detection_unknown_ext_no_syntax() {
     let file_diffs = ctx
         .diff_unstaged_enriched("data.xyz123")
         .expect("diff failed");
-    assert!(!file_diffs.is_empty());
+    assert_ne!(file_diffs, [] as [trunk_lib::types::FileDiff; 0]);
     let hunk = &file_diffs[0].hunks[0];
 
     // Unknown extension: spans should exist (covering content) but all with empty syntax_class
@@ -824,7 +824,7 @@ fn merged_spans_cover_entire_content() {
     std::fs::write(ctx.repo_path().join("test.rs"), "let y = 2;\n").unwrap();
 
     let file_diffs = ctx.diff_unstaged_enriched("test.rs").expect("diff failed");
-    assert!(!file_diffs.is_empty());
+    assert_ne!(file_diffs, [] as [trunk_lib::types::FileDiff; 0]);
 
     for hunk in &file_diffs[0].hunks {
         for line in &hunk.lines {
@@ -868,7 +868,7 @@ fn syntax_and_word_diff_coexist() {
     std::fs::write(ctx.repo_path().join("combo.rs"), "let x = 99;\n").unwrap();
 
     let file_diffs = ctx.diff_unstaged_enriched("combo.rs").expect("diff failed");
-    assert!(!file_diffs.is_empty());
+    assert_ne!(file_diffs, [] as [trunk_lib::types::FileDiff; 0]);
     let hunk = &file_diffs[0].hunks[0];
 
     // Find Add or Delete lines that should have both syntax highlighting and word emphasis
@@ -882,7 +882,7 @@ fn syntax_and_word_diff_coexist() {
             )
         })
         .collect();
-    assert!(!modified_lines.is_empty());
+    assert_ne!(modified_lines, [] as [&trunk_lib::types::DiffLine; 0]);
 
     for line in &modified_lines {
         // Should have some spans with syntax_class (syntax highlighting)

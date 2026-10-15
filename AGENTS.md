@@ -35,7 +35,7 @@ the `check-parity` job fails if that list and the workflow drift apart.
 
 ## Stack
 
-- **Frontend:** Svelte 5 (runes: `$state`, `$derived`), Vite 8, TypeScript 6.0 strict, Tailwind CSS 4
+- **Frontend:** Svelte 5 (runes: `$state`, `$derived`), Vite 8, TypeScript strict, Tailwind CSS 4
 - **Backend:** Tauri 2, git2 0.21 (libgit2), notify 8 (fs watcher), tokio 1
 - **Frontend→Backend:** `invoke("command_name", args)` calls Rust `#[tauri::command]` fns
 - **Paths:** `$lib` → `src/lib`, commands in `src-tauri/src/commands/`

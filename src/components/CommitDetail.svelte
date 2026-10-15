@@ -171,7 +171,7 @@ let commitNotes = $derived(
 					><ChevronUp size={13} /></Button
 				>
 				<span class="pager-pos"
-					>{`${nav.index} / ${nav.total}${nav.hasMore ? '+' : ''}`}</span
+					>{`${nav.index} / ${nav.total}${nav.hasMore ? "+" : ""}`}</span
 				>
 				<Button
 					icon
@@ -230,7 +230,7 @@ let commitNotes = $derived(
 		<div>
 			<div class="h-bar py-0 px-3 flex items-center shadow-hairline shrink-0">
 				<span class="text-callout font-medium text-text flex-1">
-					{`${fileDiffs.length} file${fileDiffs.length === 1 ? '' : 's'} changed`}
+					{`${fileDiffs.length} file${fileDiffs.length === 1 ? "" : "s"} changed`}
 				</span>
 				{#if totalAdds > 0 || totalDels > 0}
 					<span class="inline-flex gap-2 shrink-0 mr-2 font-mono text-caption">
@@ -249,9 +249,14 @@ let commitNotes = $derived(
 						variant="ghost"
 						role="switch"
 						aria-checked={treeViewEnabled}
-						aria-label={treeViewEnabled ? 'Switch to list view' : 'Switch to tree view'}
-						title={treeViewEnabled ? 'List view' : 'Tree view'}
-						onclick={(e) => { e.stopPropagation(); ontreeviewtoggle?.(); }}
+						aria-label={treeViewEnabled
+							? "Switch to list view"
+							: "Switch to tree view"}
+						title={treeViewEnabled ? "List view" : "Tree view"}
+						onclick={(e) => {
+							e.stopPropagation();
+							ontreeviewtoggle?.();
+						}}
 					>
 						{#if treeViewEnabled}
 							<FolderTree size={14} />

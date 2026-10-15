@@ -30,6 +30,15 @@ Why it matters: all sessions share one `src-tauri/target`. Artifacts are keyed
 by compiler version, so every extra version in play multiplies cold builds and
 disk (three versions once grew the dir to 113GB).
 
+## TypeScript checking
+
+Svelte checking installs TypeScript 7 through the `@typescript/native` alias and
+keeps TypeScript 6 for svelte-check's use of TypeScript's JavaScript compiler API,
+as required by the [Svelte checker setup](https://github.com/sveltejs/language-tools/blob/master/packages/svelte-check/README.md#typescript-7-supports).
+Both check scripts select `--tsgo-experimental-api`. Svelte-check marks this
+integration experimental, so verify diagnostics when updating either compiler
+or the checker.
+
 ## Switching between builds must not rebuild the shared layer
 
 `just dev`, `just check` and `just dev-app` build different configurations into
@@ -352,3 +361,7 @@ a force-exclude that outranks positive includes and cannot be overridden even by
 naming a file explicitly, so a `**` pattern would also silently un-check any
 source directory that happened to be called `target` or `node_modules` — plausible
 names in a Git GUI — with the Biome job still reporting green.
+
+Biome also force-excludes the external `backlog` symlink. Its VCS ignore matcher
+expects scanned paths to stay under the repository root and can panic on that
+link. The anchored `!!backlog` exclusion leaves application files checked.

@@ -244,7 +244,9 @@ function originClass(origin: string): string {
 }
 </script>
 
-{#snippet threadCard(c: Thread)}
+{#snippet threadCard(
+	c: Thread,
+)}
 	<ThreadCard
 		variant="inline"
 		confirmDelete={false}
@@ -260,8 +262,12 @@ function originClass(origin: string): string {
      style choice: rowHeights' ceil(columns / available) is only a height when
      the break is unconditional, so it is declared here with the height it
      belongs to. -->
-{#snippet cellContent(line: DiffLine)}
-	{@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
+{#snippet cellContent(
+	line: DiffLine,
+)}
+	{@const trailStart = showInvisibles
+		? trailingWhitespaceStart(line.content)
+		: line.content.length}
 	<span
 		class="diff-line-content select-text cursor-text"
 		class:whitespace-pre-wrap={vd.wrapActive}
@@ -273,16 +279,29 @@ function originClass(origin: string): string {
 				{@const sliced = line.content.slice(span.start, span.end)}
 				{@const spanInTrailing = span.start >= trailStart}
 				{#if showInvisibles}
-					{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}
+					{@const segments = splitInvisibles(
+						sliced,
+						spanInTrailing || span.end > trailStart,
+					)}{#each segments as seg}
 						<span
-							class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}"
+							class="{span.syntax_class}{span.emphasized
+								? line.origin === "Add"
+									? " word-add"
+									: " word-delete"
+								: ""}{seg.isInvisible ? " invisible-char" : ""}{seg.isTrailing
+								? " trailing-ws"
+								: ""}"
 							data-glyph={seg.glyph}
 							>{seg.text}</span
 						>
 					{/each}
 				{:else}
 					<span
-						class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}"
+						class="{span.syntax_class}{span.emphasized
+							? line.origin === "Add"
+								? " word-add"
+								: " word-delete"
+							: ""}"
 						>{sliced}</span
 					>
 				{/if}
@@ -292,7 +311,9 @@ function originClass(origin: string): string {
 				{@const segments = splitInvisibles(line.content, false)}
 				{#each segments as seg}
 					<span
-						class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}"
+						class="{seg.isInvisible ? "invisible-char" : ""}{seg.isTrailing
+							? " trailing-ws"
+							: ""}"
 						data-glyph={seg.glyph}
 						>{seg.text}</span
 					>
@@ -304,7 +325,10 @@ function originClass(origin: string): string {
 	>
 {/snippet}
 
-{#snippet splitRow(item: DiffRow, _index: number)}
+{#snippet splitRow(
+	item: DiffRow,
+	_index: number,
+)}
 	{#if item.kind === "pair"}
 		{@const hunkKey = `${item.path}-${item.hunkIdx}`}
 		<!-- The row, not the cell, is what the pan is held against: it is pinned at
@@ -313,9 +337,13 @@ function originClass(origin: string): string {
 		<div class="split-row pan-pinned flex">
 			{#if item.row.left}
 				{@const line = item.row.left.line}
-				{@const isSelected = selectedHunkKey === hunkKey && selectedLineIndices.has(item.row.left.lineIdx)}
+				{@const isSelected =
+					selectedHunkKey === hunkKey &&
+					selectedLineIndices.has(item.row.left.lineIdx)}
 				<div
-					class="split-cell split-cell-left diff-line text-diff-text {originClass(line.origin)}"
+					class="split-cell split-cell-left diff-line text-diff-text {originClass(
+						line.origin,
+					)}"
 					style:font-family={DIFF_ROW_FONT.fontFamily}
 					style:font-size={DIFF_ROW_FONT.fontSize}
 					style:line-height={DIFF_ROW_FONT.lineHeight}
@@ -323,7 +351,7 @@ function originClass(origin: string): string {
 				>
 					<ThreadMarker marker={item.markerLeft} width={vd.markerW} />
 					<span class="split-gutter" style:min-width={vd.gutterW}
-						>{line.old_lineno ?? ''}</span
+						>{line.old_lineno ?? ""}</span
 					>
 					<div class="split-window overflow-clip">
 						<div
@@ -342,8 +370,9 @@ function originClass(origin: string): string {
 			{#if item.row.right}
 				{@const line = item.row.right.line}
 				{@const lineIdx = item.row.right.lineIdx}
-				{@const isSelectable = line.origin === 'Add'}
-				{@const isSelected = selectedHunkKey === hunkKey && selectedLineIndices.has(lineIdx)}
+				{@const isSelectable = line.origin === "Add"}
+				{@const isSelected =
+					selectedHunkKey === hunkKey && selectedLineIndices.has(lineIdx)}
 				<div
 					class="split-cell diff-line text-diff-text {originClass(line.origin)}"
 					style:font-family={DIFF_ROW_FONT.fontFamily}
@@ -365,16 +394,36 @@ function originClass(origin: string): string {
 					{#if isSelectable}
 						<GutterGrip
 							aria-label={gripLabel(line)}
-							onmousedown={(e) => onlinemousedown(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), e)}
-							onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onlineclick(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
+							onmousedown={(e) =>
+								onlinemousedown(
+									item.path,
+									item.hunkIdx,
+									lineIdx,
+									line.origin,
+									hunkLinesOf(item.path, item.hunkIdx),
+									e,
+								)}
+							onkeydown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									onlineclick(
+										item.path,
+										item.hunkIdx,
+										lineIdx,
+										line.origin,
+										hunkLinesOf(item.path, item.hunkIdx),
+										new MouseEvent("click", { shiftKey: e.shiftKey }),
+									);
+								}
+							}}
 						>
 							<span class="split-gutter" style:min-width={vd.gutterW}
-								>{line.new_lineno ?? ''}</span
+								>{line.new_lineno ?? ""}</span
 							>
 						</GutterGrip>
 					{:else}
 						<span class="split-gutter" style:min-width={vd.gutterW}
-							>{line.new_lineno ?? ''}</span
+							>{line.new_lineno ?? ""}</span
 						>
 					{/if}
 					<div class="split-window overflow-clip">
@@ -395,7 +444,9 @@ function originClass(origin: string): string {
 		{@const hunkKey = `${item.path}-${item.hunkIdx}`}
 		{@const hasSelection = selectedHunkKey === hunkKey && selectedCount > 0}
 		<div
-			class="split-hunk-header pan-pinned box-border{flashedHunkKey === hunkKey ? ' hunk-highlight' : ''}"
+			class="split-hunk-header pan-pinned box-border{flashedHunkKey === hunkKey
+				? " hunk-highlight"
+				: ""}"
 		>
 			<span class="split-hunk-header-text">{item.header}</span>
 			<HunkActions
@@ -429,7 +480,7 @@ function originClass(origin: string): string {
 		<div class="split-file-header pan-pinned">
 			<Row variant="title" onclick={() => onfilecollapsetoggle(item.path)}>
 				<span class="split-file-header-caret"
-					>{item.collapsed ? '▶' : '▼'}</span
+					>{item.collapsed ? "▶" : "▼"}</span
 				>
 				{item.path}
 			</Row>
@@ -441,10 +492,18 @@ function originClass(origin: string): string {
 
 <div
 	class="split-view"
-	style:--diff-file-header-height={FIXED_ROW_HEIGHT_VARS["--diff-file-header-height"]}
-	style:--diff-hunk-header-height={FIXED_ROW_HEIGHT_VARS["--diff-hunk-header-height"]}
-	style:--diff-binary-row-height={FIXED_ROW_HEIGHT_VARS["--diff-binary-row-height"]}
-	style:--diff-composer-row-height={FIXED_ROW_HEIGHT_VARS["--diff-composer-row-height"]}
+	style:--diff-file-header-height={FIXED_ROW_HEIGHT_VARS[
+		"--diff-file-header-height"
+	]}
+	style:--diff-hunk-header-height={FIXED_ROW_HEIGHT_VARS[
+		"--diff-hunk-header-height"
+	]}
+	style:--diff-binary-row-height={FIXED_ROW_HEIGHT_VARS[
+		"--diff-binary-row-height"
+	]}
+	style:--diff-composer-row-height={FIXED_ROW_HEIGHT_VARS[
+		"--diff-composer-row-height"
+	]}
 	style:--max-l="{vd.maxLeftPx}px"
 	style:--max-r="{vd.maxRightPx}px"
 	bind:this={vd.pane}

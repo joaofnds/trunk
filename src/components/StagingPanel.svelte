@@ -797,7 +797,10 @@ $effect(() => {
 });
 </script>
 
-{#snippet sectionTitle(label: string, count: number)}
+{#snippet sectionTitle(
+	label: string,
+	count: number,
+)}
 	<span class="flex-1 min-w-0 inline-flex items-center gap-2">
 		<span
 			class="min-w-0 truncate text-text-muted text-caption font-semibold tracking-widest uppercase"
@@ -814,7 +817,7 @@ $effect(() => {
 	>
 		<span class="flex-1 flex items-center justify-center gap-2 min-w-0">
 			<span class="text-callout text-text">
-				{`${totalCount} file${totalCount === 1 ? '' : 's'} changed`}
+				{`${totalCount} file${totalCount === 1 ? "" : "s"} changed`}
 			</span>
 			{#if currentBranch}
 				<span class="text-small text-text-muted">on</span>
@@ -828,7 +831,10 @@ $effect(() => {
 				variant="ghost"
 				aria-label="Expand all directories"
 				title="Expand All"
-				onclick={(e) => { e.stopPropagation(); expandAllSignal++; }}
+				onclick={(e) => {
+					e.stopPropagation();
+					expandAllSignal++;
+				}}
 			>
 				<ChevronsUpDown size={14} />
 			</Button>
@@ -838,7 +844,10 @@ $effect(() => {
 				variant="ghost"
 				aria-label="Collapse all directories"
 				title="Collapse All"
-				onclick={(e) => { e.stopPropagation(); collapseAllSignal++; }}
+				onclick={(e) => {
+					e.stopPropagation();
+					collapseAllSignal++;
+				}}
 			>
 				<ChevronsDownUp size={14} />
 			</Button>
@@ -849,9 +858,14 @@ $effect(() => {
 			variant="ghost"
 			role="switch"
 			aria-checked={treeViewEnabled}
-			aria-label={treeViewEnabled ? 'Switch to list view' : 'Switch to tree view'}
-			title={treeViewEnabled ? 'List view' : 'Tree view'}
-			onclick={(e) => { e.stopPropagation(); ontreeviewtoggle?.(); }}
+			aria-label={treeViewEnabled
+				? "Switch to list view"
+				: "Switch to tree view"}
+			title={treeViewEnabled ? "List view" : "Tree view"}
+			onclick={(e) => {
+				e.stopPropagation();
+				ontreeviewtoggle?.();
+			}}
 		>
 			{#if treeViewEnabled}
 				<FolderTree size={14} />
@@ -890,12 +904,14 @@ $effect(() => {
 				<CommitChip oid={operationInfo.onto_oid} />
 			{/if}
 		</div>
-	{:else if operationInfo && operationInfo.op_type !== 'None'}
+	{:else if operationInfo && operationInfo.op_type !== "None"}
 		<OperationBanner
 			info={operationInfo}
 			{repoPath}
 			{onopenmessageeditor}
-			onaction={() => { loadStatus(); }}
+			onaction={() => {
+				loadStatus();
+			}}
 		/>
 	{/if}
 
@@ -923,7 +939,10 @@ $effect(() => {
 					<span class="text-badge-warning inline-flex items-center mr-1">
 						<AlertTriangle size={12} />
 					</span>
-					{@render sectionTitle('Conflicted Files', status?.conflicted.length ?? 0)}
+					{@render sectionTitle(
+						"Conflicted Files",
+						status?.conflicted.length ?? 0,
+					)}
 					{#snippet actions()}
 						<Button size="sm" variant="warning" onclick={markAllResolved}
 							>Mark All Resolved</Button
@@ -937,10 +956,11 @@ $effect(() => {
 						treeMode={treeViewEnabled}
 						actionLabel=""
 						onfileaction={() => {}}
-						onfileclick={(path) => onfileselect?.(path, 'conflicted')}
+						onfileclick={(path) => onfileselect?.(path, "conflicted")}
 						onfilecontextmenu={(e, path) => showConflictedContextMenu(e, path)}
-						ondirectorycontextmenu={(e, dirPath) => showConflictedDirContextMenu(e, dirPath)}
-						selectedPath={selectedKind === 'conflicted' ? selectedPath : null}
+						ondirectorycontextmenu={(e, dirPath) =>
+							showConflictedDirContextMenu(e, dirPath)}
+						selectedPath={selectedKind === "conflicted" ? selectedPath : null}
 						{expandAllSignal}
 						{collapseAllSignal}
 					/>
@@ -972,9 +992,15 @@ $effect(() => {
 						<span class="text-badge-warning inline-flex items-center mr-1">
 							<AlertTriangle size={12} />
 						</span>
-						{@render sectionTitle('Conflicted Files', status?.conflicted.length ?? 0)}
+						{@render sectionTitle(
+							"Conflicted Files",
+							status?.conflicted.length ?? 0,
+						)}
 					{:else}
-						{@render sectionTitle('Unstaged Files', status?.unstaged.length ?? 0)}
+						{@render sectionTitle(
+							"Unstaged Files",
+							status?.unstaged.length ?? 0,
+						)}
 					{/if}
 					{#snippet actions()}
 						{#if isMerge}
@@ -1017,11 +1043,13 @@ $effect(() => {
 							actionLabel="+"
 							{loadingFiles}
 							onfileaction={(path) => stageFile(path)}
-							onfileclick={(path) => onfileselect?.(path, 'conflicted')}
-							onfilecontextmenu={(e, path) => showConflictedContextMenu(e, path)}
+							onfileclick={(path) => onfileselect?.(path, "conflicted")}
+							onfilecontextmenu={(e, path) =>
+								showConflictedContextMenu(e, path)}
 							ondirectoryaction={(dirPath) => stageDirectory(dirPath)}
-							ondirectorycontextmenu={(e, dirPath) => showConflictedDirContextMenu(e, dirPath)}
-							selectedPath={selectedKind === 'conflicted' ? selectedPath : null}
+							ondirectorycontextmenu={(e, dirPath) =>
+								showConflictedDirContextMenu(e, dirPath)}
+							selectedPath={selectedKind === "conflicted" ? selectedPath : null}
 							{expandAllSignal}
 							{collapseAllSignal}
 						/>
@@ -1032,11 +1060,13 @@ $effect(() => {
 							actionLabel="+"
 							{loadingFiles}
 							onfileaction={(path) => stageFile(path)}
-							onfileclick={(path) => onfileselect?.(path, 'unstaged')}
-							onfilecontextmenu={(e, path, file) => showUnstagedContextMenu(e, path, file.status)}
+							onfileclick={(path) => onfileselect?.(path, "unstaged")}
+							onfilecontextmenu={(e, path, file) =>
+								showUnstagedContextMenu(e, path, file.status)}
 							ondirectoryaction={(dirPath) => stageDirectory(dirPath)}
-							ondirectorycontextmenu={(e, dirPath) => showUnstagedDirContextMenu(e, dirPath)}
-							selectedPath={selectedKind === 'unstaged' ? selectedPath : null}
+							ondirectorycontextmenu={(e, dirPath) =>
+								showUnstagedDirContextMenu(e, dirPath)}
+							selectedPath={selectedKind === "unstaged" ? selectedPath : null}
 							commentCounts={unstagedCommentCounts}
 							commentTallies={unstagedCommentTallies}
 							{expandAllSignal}
@@ -1066,7 +1096,10 @@ $effect(() => {
 						<ChevronRight size={12} />
 					{/if}
 				</span>
-				{@render sectionTitle(isOperation ? 'Resolved Files' : 'Staged Files', status?.staged.length ?? 0)}
+				{@render sectionTitle(
+					isOperation ? "Resolved Files" : "Staged Files",
+					status?.staged.length ?? 0,
+				)}
 				{#snippet actions()}
 					{#if (status?.staged.length ?? 0) > 0}
 						<Button
@@ -1088,11 +1121,13 @@ $effect(() => {
 					actionLabel="−"
 					{loadingFiles}
 					onfileaction={(path) => unstageFile(path)}
-					onfileclick={(path) => onfileselect?.(path, 'staged')}
-					onfilecontextmenu={(e, path, file) => showStagedContextMenu(e, path, file.old_path ?? null)}
+					onfileclick={(path) => onfileselect?.(path, "staged")}
+					onfilecontextmenu={(e, path, file) =>
+						showStagedContextMenu(e, path, file.old_path ?? null)}
 					ondirectoryaction={(dirPath) => unstageDirectory(dirPath)}
-					ondirectorycontextmenu={(e, dirPath) => showStagedDirContextMenu(e, dirPath)}
-					selectedPath={selectedKind === 'staged' ? selectedPath : null}
+					ondirectorycontextmenu={(e, dirPath) =>
+						showStagedDirContextMenu(e, dirPath)}
+					selectedPath={selectedKind === "staged" ? selectedPath : null}
 					commentCounts={stagedCommentCounts}
 					commentTallies={stagedCommentTallies}
 					{expandAllSignal}
@@ -1181,7 +1216,7 @@ $effect(() => {
 					onclick={runMergeContinue}
 					disabled={!allResolved || mergeLoading}
 				>
-					{mergeLoading ? 'Committing...' : 'Commit merge'}
+					{mergeLoading ? "Committing..." : "Commit merge"}
 				</Button>
 			</div>
 			<div class="col-span-2 grid">

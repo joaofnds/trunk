@@ -748,11 +748,18 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 				expanded={localExpanded}
 				ontoggle={() => (localExpanded = !localExpanded)}
 				showCreateButton={true}
-				oncreate={() => { showCreateInput = true; }}
+				oncreate={() => {
+					showCreateInput = true;
+				}}
 				groupState={groupState(visibility, localMembers)}
-				ontogglevisibility={() => applyVisibility(
-          setGroupHidden(visibility, localMembers, groupState(visibility, localMembers) !== 'all'),
-        )}
+				ontogglevisibility={() =>
+					applyVisibility(
+						setGroupHidden(
+							visibility,
+							localMembers,
+							groupState(visibility, localMembers) !== "all",
+						),
+					)}
 			>
 				{#if showCreateInput}
 					<div class="py-1 px-2">
@@ -764,9 +771,13 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 							use:autoFocus
 							class="w-full box-border bg-bg border border-accent create-input-ring text-text-strong text-callout py-1 px-2 h-control-lg rounded outline-none"
 							onkeydown={(e) => {
-                if (e.key === 'Enter') handleCreateBranch();
-                if (e.key === 'Escape') { showCreateInput = false; newBranchName = ''; createError = null; }
-              }}
+								if (e.key === "Enter") handleCreateBranch();
+								if (e.key === "Escape") {
+									showCreateInput = false;
+									newBranchName = "";
+									createError = null;
+								}
+							}}
 						>
 						{#if createError}
 							<div class="error-text text-small leading-normal mt-1"
@@ -787,11 +798,25 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 						behind={branch.behind}
 						onclick={() => onrefnavigate?.(branch.name)}
 						ondblclick={() => handleCheckout(branch.name)}
-						oncontextmenu={(e) => showBranchContextMenu(e, branch.name, branch.is_head)}
-						hidden={isRefHidden(visibility, refLabel(localRefName(branch.name), 'LocalBranch', branch.is_head))}
+						oncontextmenu={(e) =>
+							showBranchContextMenu(e, branch.name, branch.is_head)}
+						hidden={isRefHidden(
+							visibility,
+							refLabel(
+								localRefName(branch.name),
+								"LocalBranch",
+								branch.is_head,
+							),
+						)}
 						ontogglevisibility={branch.is_head
-              ? undefined
-              : () => applyVisibility(toggleRef(visibility, refLabel(localRefName(branch.name), 'LocalBranch')))}
+							? undefined
+							: () =>
+									applyVisibility(
+										toggleRef(
+											visibility,
+											refLabel(localRefName(branch.name), "LocalBranch"),
+										),
+									)}
 					/>
 				{/each}
 			</BranchSection>
@@ -805,40 +830,56 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 				expanded={remoteExpanded}
 				ontoggle={() => (remoteExpanded = !remoteExpanded)}
 				groupState={groupState(visibility, allRemoteMembers)}
-				ontogglevisibility={() => applyVisibility(
-          setGroupHidden(
-            visibility,
-            allRemoteMembers,
-            groupState(visibility, allRemoteMembers) !== 'all',
-          ),
-        )}
+				ontogglevisibility={() =>
+					applyVisibility(
+						setGroupHidden(
+							visibility,
+							allRemoteMembers,
+							groupState(visibility, allRemoteMembers) !== "all",
+						),
+					)}
 			>
-				{#each Object.entries(remoteGroups) as [remoteName, branches] (remoteName)}
+				{#each Object.entries(
+					remoteGroups,
+				) as [remoteName, branches] (remoteName)}
 					<RemoteGroup
 						{remoteName}
 						{branches}
 						checkingOut={checkingOutBranch}
 						errorBranch={checkoutError?.branch ?? null}
-						errorText={checkoutError?.message ?? ''}
+						errorText={checkoutError?.message ?? ""}
 						oncheckout={(fullName) => onrefnavigate?.(fullName)}
 						ondblclick={handleCheckoutRemoteBranch}
 						oncontextmenu={(e, fullName) => showRemoteContextMenu(e, fullName)}
 						groupState={groupState(visibility, remoteMembers[remoteName] ?? [])}
 						hiddenBranches={Object.fromEntries(
-              branches.map((b) => {
-                const fullName = `${remoteName}/${b}`;
-                return [fullName, isRefHidden(visibility, refLabel(remoteRefName(fullName), 'RemoteBranch'))];
-              }),
-            )}
-						ontogglevisibility={() => applyVisibility(
-              setGroupHidden(
-                visibility,
-                remoteMembers[remoteName] ?? [],
-                groupState(visibility, remoteMembers[remoteName] ?? []) !== 'all',
-              ),
-            )}
+							branches.map((b) => {
+								const fullName = `${remoteName}/${b}`;
+								return [
+									fullName,
+									isRefHidden(
+										visibility,
+										refLabel(remoteRefName(fullName), "RemoteBranch"),
+									),
+								];
+							}),
+						)}
+						ontogglevisibility={() =>
+							applyVisibility(
+								setGroupHidden(
+									visibility,
+									remoteMembers[remoteName] ?? [],
+									groupState(visibility, remoteMembers[remoteName] ?? []) !==
+										"all",
+								),
+							)}
 						ontogglebranchvisibility={(fullName) =>
-              applyVisibility(toggleRef(visibility, refLabel(remoteRefName(fullName), 'RemoteBranch')))}
+							applyVisibility(
+								toggleRef(
+									visibility,
+									refLabel(remoteRefName(fullName), "RemoteBranch"),
+								),
+							)}
 					/>
 				{/each}
 			</BranchSection>
@@ -852,9 +893,14 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 				expanded={tagsExpanded}
 				ontoggle={() => (tagsExpanded = !tagsExpanded)}
 				groupState={groupState(visibility, tagMembers)}
-				ontogglevisibility={() => applyVisibility(
-          setGroupHidden(visibility, tagMembers, groupState(visibility, tagMembers) !== 'all'),
-        )}
+				ontogglevisibility={() =>
+					applyVisibility(
+						setGroupHidden(
+							visibility,
+							tagMembers,
+							groupState(visibility, tagMembers) !== "all",
+						),
+					)}
 			>
 				{#each filteredTags as tag (tag.name)}
 					<BranchRow
@@ -862,8 +908,17 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 						kind="tag"
 						onclick={() => onrefnavigate?.(tag.short_name)}
 						oncontextmenu={(e) => showTagContextMenu(e, tag.short_name)}
-						hidden={isRefHidden(visibility, refLabel(tagRefName(tag.short_name), 'Tag'))}
-						ontogglevisibility={() => applyVisibility(toggleRef(visibility, refLabel(tagRefName(tag.short_name), 'Tag')))}
+						hidden={isRefHidden(
+							visibility,
+							refLabel(tagRefName(tag.short_name), "Tag"),
+						)}
+						ontogglevisibility={() =>
+							applyVisibility(
+								toggleRef(
+									visibility,
+									refLabel(tagRefName(tag.short_name), "Tag"),
+								),
+							)}
 					/>
 				{/each}
 			</BranchSection>
@@ -876,16 +931,22 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 			expanded={stashesExpanded}
 			ontoggle={() => (stashesExpanded = !stashesExpanded)}
 			groupState={stashGroupState(visibility, filteredStashes)}
-			ontogglevisibility={() => applyVisibility(
-        setStashGroupHidden(
-          visibility,
-          filteredStashes,
-          stashGroupState(visibility, filteredStashes) !== 'all',
-        ),
-      )}
+			ontogglevisibility={() =>
+				applyVisibility(
+					setStashGroupHidden(
+						visibility,
+						filteredStashes,
+						stashGroupState(visibility, filteredStashes) !== "all",
+					),
+				)}
 			showCreateButton={true}
 			createLabel="Create new stash"
-			oncreate={() => { showStashForm = !showStashForm; stashCreateError = null; stashName = ''; stashesExpanded = true; }}
+			oncreate={() => {
+				showStashForm = !showStashForm;
+				stashCreateError = null;
+				stashName = "";
+				stashesExpanded = true;
+			}}
 		>
 			<!-- Inline create form -->
 			{#if showStashForm}
@@ -894,7 +955,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 						type="text"
 						placeholder="Stash name (optional)"
 						bind:value={stashName}
-						onkeydown={(e) => e.key === 'Enter' && handleStashSave()}
+						onkeydown={(e) => e.key === "Enter" && handleStashSave()}
 						disabled={stashSaving}
 						class="stash-name-input"
 					>
@@ -904,7 +965,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 						onclick={handleStashSave}
 						disabled={stashSaving}
 					>
-						{stashSaving ? 'Stashing…' : 'Stash'}
+						{stashSaving ? "Stashing…" : "Stash"}
 					</Button>
 				</div>
 				{#if stashCreateError}
@@ -923,7 +984,8 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 				>
 					{#snippet actions()}
 						<RowAction
-							onclick={() => applyVisibility(toggleStash(visibility, stash.oid))}
+							onclick={() =>
+								applyVisibility(toggleStash(visibility, stash.oid))}
 							oncontextmenu={(e) => showStashEntryMenu(e, stash)}
 							aria-label="{visibilityVerb(stashHidden)} {stash.short_name}"
 						>

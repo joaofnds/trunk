@@ -669,10 +669,10 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 </script>
 
 {#snippet block(
-  tint: Tint,
-  html: string,
-  changeIndex: number | null = null,
-  wash = true
+	tint: Tint,
+	html: string,
+	changeIndex: number | null = null,
+	wash = true,
 )}
 	<!-- Tint (bg + rail) on the outer wrapper; the prose lives in an inner
        .markdown-body so the height equalizer can observe natural content
@@ -690,7 +690,9 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 	>
 {/snippet}
 
-{#snippet separator(count: number)}
+{#snippet separator(
+	count: number,
+)}
 	<div class="rendered-sep">
 		<span class="rendered-sep-label"
 			>{`${count} line${count === 1 ? "" : "s"} hidden`}</span
@@ -699,9 +701,9 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 {/snippet}
 
 {#snippet cell(
-  side: "left" | "right",
-  c: SplitCell,
-  changeIndex: number | null = null
+	side: "left" | "right",
+	c: SplitCell,
+	changeIndex: number | null = null,
 )}
 	{#if c}
 		<div class="split-cell" data-side={side}>
@@ -712,7 +714,10 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 	{/if}
 {/snippet}
 
-{#snippet columnStack(rows: SplitRow[], side: "left" | "right")}
+{#snippet columnStack(
+	rows: SplitRow[],
+	side: "left" | "right",
+)}
 	<!-- ONE hidden-scrollbar horizontal scroller per column per run (Source's
        .split-column, d1c299f): every row of the run stacks inside the same
        max-content wrapper, so short rows pan on the run's shared plane and
@@ -725,10 +730,10 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 		>
 			{#each rows as row}
 				{@render cell(
-          side,
-          side === "left" ? row.left : row.right,
-          cellChangeIndex(row, side)
-        )}
+					side,
+					side === "left" ? row.left : row.right,
+					cellChangeIndex(row, side),
+				)}
 			{/each}
 		</div>
 	</div>

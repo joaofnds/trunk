@@ -58,7 +58,7 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 					{:else}
 						<ChevronUp size={12} />
 					{/if}
-					<span>{bodyClamped ? 'Show more' : 'Show less'}</span>
+					<span>{bodyClamped ? "Show more" : "Show less"}</span>
 				</Button>
 			</div>
 		{/if}

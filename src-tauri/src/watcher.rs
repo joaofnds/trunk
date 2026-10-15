@@ -722,7 +722,7 @@ mod tests {
         let payload = RepoChanged::whole_repo("/repo");
 
         assert_eq!(payload.repo, "/repo");
-        assert!(payload.paths.is_empty());
+        assert_eq!(payload.paths, [] as [String; 0]);
     }
 
     #[test]

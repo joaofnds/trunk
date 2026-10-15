@@ -758,10 +758,7 @@ async function requestDeleteReply(replyId: string) {
 			>
 			{CHANGE_TEXT[lastChange.state]}
 			·
-			{compactLabel(
-				lastChange.created_at,
-				currentMinute(),
-			)}</span
+			{compactLabel(lastChange.created_at, currentMinute())}</span
 		>
 	{:else if collapsed}
 		{#if thread.replies.length > 0}

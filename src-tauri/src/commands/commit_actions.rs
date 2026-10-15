@@ -41,7 +41,7 @@ pub fn checkout_commit_inner(
     }
 
     let obj = repo.revparse_single(oid)?;
-    repo.checkout_tree(&obj, Some(&mut git2::build::CheckoutBuilder::new().safe()))?;
+    repo.checkout_tree(&obj, Some(git2::build::CheckoutBuilder::new().safe()))?;
     repo.set_head_detached(obj.id())?;
     drop(obj);
     drop(repo);

@@ -1253,9 +1253,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			extendable={!fullFileCaptured.wholeFile}
 			currentFile={currentFileTarget}
 			{commitOid}
-			resolveCommitOid={currentFileTarget
-				? undefined
-				: resolveCommentCommitOid}
+			resolveCommitOid={currentFileTarget ? undefined : resolveCommentCommitOid}
 			{repoPath}
 			{activeReviewId}
 			{activeReview}

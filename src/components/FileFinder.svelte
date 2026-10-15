@@ -136,7 +136,9 @@ function rowLabel(file: TrackedFile): string {
 							class="finder-comment-count ml-auto shrink-0 py-0 px-1 rounded text-on-accent text-small"
 							role="img"
 							aria-label="{commentCounts.get(file.path)} review comments"
-							style:background="var(--color-thread-{tallyEntries(commentTallies.get(file.path))[0]?.tone ?? 'open'})"
+							style:background="var(--color-thread-{tallyEntries(
+								commentTallies.get(file.path),
+							)[0]?.tone ?? "open"})"
 							>{commentCounts.get(file.path)}</span
 						>
 					{/if}

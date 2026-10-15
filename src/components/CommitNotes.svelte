@@ -136,7 +136,10 @@ async function saveNote(delivery: Delivery) {
 		<ul class="commit-notes-list">
 			{#each notes as comment (comment.id)}
 				<li
-					style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}
+					style:display={reviewFilter !== "none" &&
+					threadMatchesFilter(comment, reviewFilter)
+						? "list-item"
+						: "none"}
 				>
 					<ThreadCard
 						thread={comment}

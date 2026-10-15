@@ -209,6 +209,8 @@ function holdLazyModule(path: string, label: string) {
 		request.resolve({ default: Button });
 		await vi.dynamicImportSettled();
 		vi.doUnmock(path);
+		// Finish the queued unmock before the next test starts concurrent imports.
+		await vi.importActual(path);
 	});
 	const pending = async () => {
 		await screen.findByText(`Opening ${label}…`);

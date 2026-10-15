@@ -738,11 +738,17 @@ function autoObserveItemResize(element: HTMLElement) {
 		<div
 			class="virtual-list-content"
 			style:height="{contentHeight}px"
-			style:min-width={minContentWidth === undefined ? undefined : `${minContentWidth}px`}
+			style:min-width={minContentWidth === undefined
+				? undefined
+				: `${minContentWidth}px`}
 			style:overflow-x={minContentWidth === undefined ? undefined : "clip"}
 		>
 			{#if overlaySnippet}
-				{@render overlaySnippet(contentHeight, visibleItems.start, visibleItems.end)}
+				{@render overlaySnippet(
+					contentHeight,
+					visibleItems.start,
+					visibleItems.end,
+				)}
 			{/if}
 			<div
 				class="virtual-list-items"
@@ -755,9 +761,9 @@ function autoObserveItemResize(element: HTMLElement) {
 						data-original-index={currentItemWithIndex.originalIndex}
 					>
 						{@render renderItem(
-                            currentItemWithIndex.item,
-                            currentItemWithIndex.originalIndex
-                        )}
+							currentItemWithIndex.item,
+							currentItemWithIndex.originalIndex,
+						)}
 					</div>
 				{/each}
 			</div>

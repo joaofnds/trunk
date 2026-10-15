@@ -2912,7 +2912,7 @@ fn write_highlighted_lines(
 /// replacement (or None to leave it) — the caller supplies the `trunk-asset://` rewrite
 /// for local images; tests pass a no-op.
 ///
-/// Raw HTML is stripped and dangerous hrefs emptied (comrak `unsafe_` off), then
+/// Raw HTML is stripped and dangerous hrefs emptied (comrak `render.unsafe` off), then
 /// ammonia re-checks as defense-in-depth so a `{@html}` on the frontend can't execute
 /// injected markup.
 pub fn render_markdown_html(
@@ -2945,8 +2945,8 @@ fn build_options() -> comrak::Options<'static> {
     options.extension.strikethrough = true;
     options.extension.tasklist = true;
     options.extension.autolink = true;
-    options.extension.tagfilter = true;
     options.extension.front_matter_delimiter = Some("---".to_string());
+    options.render.r#unsafe = false;
     options
 }
 

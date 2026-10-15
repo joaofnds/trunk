@@ -238,7 +238,9 @@ function lineBackground(origin: string, isSelected: boolean): string {
 }
 </script>
 
-{#snippet threadCard(c: Thread)}
+{#snippet threadCard(
+	c: Thread,
+)}
 	<ThreadCard
 		variant="inline"
 		confirmDelete={false}
@@ -250,22 +252,35 @@ function lineBackground(origin: string, isSelected: boolean): string {
 	/>
 {/snippet}
 
-{#snippet lineNumbers(line: DiffLine)}
+{#snippet lineNumbers(
+	line: DiffLine,
+)}
 	<span class="gutter-num" style:min-width={vd.gutterW}
-		>{line.old_lineno ?? ''}</span
+		>{line.old_lineno ?? ""}</span
 	><span class="gutter-num" style:min-width={vd.gutterW}
-		>{line.new_lineno ?? ''}</span
+		>{line.new_lineno ?? ""}</span
 	>
 {/snippet}
 
-{#snippet diffRow(item: DiffRow, _index: number)}
+{#snippet diffRow(
+	item: DiffRow,
+	_index: number,
+)}
 	{#if item.kind === "line"}
 		{@const line = item.line}
 		{@const isSelectable = line.new_lineno !== null}
-		{@const isSelected = selectedPath === item.path && selectedIndices.has(item.flatIdx)}
-		{@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
+		{@const isSelected =
+			selectedPath === item.path && selectedIndices.has(item.flatIdx)}
+		{@const trailStart = showInvisibles
+			? trailingWhitespaceStart(line.content)
+			: line.content.length}
 		<div
-			class="diff-line flex items-start px-2 text-diff-text {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}"
+			class="diff-line flex items-start px-2 text-diff-text {line.origin ===
+			"Add"
+				? "diff-line-add"
+				: line.origin === "Delete"
+					? "diff-line-delete"
+					: "diff-line-context"}"
 			class:whitespace-pre-wrap={vd.wrapActive}
 			class:whitespace-pre={!vd.wrapActive}
 			class:break-all={vd.wrapActive}
@@ -301,16 +316,29 @@ function lineBackground(origin: string, isSelected: boolean): string {
 						{@const sliced = line.content.slice(span.start, span.end)}
 						{@const spanInTrailing = span.start >= trailStart}
 						{#if showInvisibles}
-							{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}
+							{@const segments = splitInvisibles(
+								sliced,
+								spanInTrailing || span.end > trailStart,
+							)}{#each segments as seg}
 								<span
-									class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}"
+									class="{span.syntax_class}{span.emphasized
+										? line.origin === "Add"
+											? " word-add"
+											: " word-delete"
+										: ""}{seg.isInvisible
+										? " invisible-char"
+										: ""}{seg.isTrailing ? " trailing-ws" : ""}"
 									data-glyph={seg.glyph}
 									>{seg.text}</span
 								>
 							{/each}
 						{:else}
 							<span
-								class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}"
+								class="{span.syntax_class}{span.emphasized
+									? line.origin === "Add"
+										? " word-add"
+										: " word-delete"
+									: ""}"
 								>{sliced}</span
 							>
 						{/if}
@@ -320,7 +348,9 @@ function lineBackground(origin: string, isSelected: boolean): string {
 						{@const segments = splitInvisibles(line.content, false)}
 						{#each segments as seg}
 							<span
-								class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}"
+								class="{seg.isInvisible ? "invisible-char" : ""}{seg.isTrailing
+									? " trailing-ws"
+									: ""}"
 								data-glyph={seg.glyph}
 								>{seg.text}</span
 							>
@@ -344,10 +374,18 @@ function lineBackground(origin: string, isSelected: boolean): string {
 
 <div
 	class="full-file"
-	style:--diff-file-header-height={FIXED_ROW_HEIGHT_VARS["--diff-file-header-height"]}
-	style:--diff-hunk-header-height={FIXED_ROW_HEIGHT_VARS["--diff-hunk-header-height"]}
-	style:--diff-binary-row-height={FIXED_ROW_HEIGHT_VARS["--diff-binary-row-height"]}
-	style:--diff-composer-row-height={FIXED_ROW_HEIGHT_VARS["--diff-composer-row-height"]}
+	style:--diff-file-header-height={FIXED_ROW_HEIGHT_VARS[
+		"--diff-file-header-height"
+	]}
+	style:--diff-hunk-header-height={FIXED_ROW_HEIGHT_VARS[
+		"--diff-hunk-header-height"
+	]}
+	style:--diff-binary-row-height={FIXED_ROW_HEIGHT_VARS[
+		"--diff-binary-row-height"
+	]}
+	style:--diff-composer-row-height={FIXED_ROW_HEIGHT_VARS[
+		"--diff-composer-row-height"
+	]}
 >
 	{#if commentBarShown}
 		<!-- Full-file Comment affordance (L-05: no isMerge disable). Appears on
@@ -364,7 +402,8 @@ function lineBackground(origin: string, isSelected: boolean): string {
 					variant="accent"
 					size="sm"
 					data-testid="full-file-comment"
-					onclick={() => selectedPath && oncommentfullfile(selectedPath, selectedIndices)}
+					onclick={() =>
+						selectedPath && oncommentfullfile(selectedPath, selectedIndices)}
 				>
 					Comment ({selectedIndices.size})
 				</Button>

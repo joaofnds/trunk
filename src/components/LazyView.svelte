@@ -54,7 +54,12 @@ $effect(() => {
 	>
 		Could not load {label}.
 		<div class="flex gap-2">
-			<Button onclick={() => { pending = load(); }}>Retry</Button>
+			<Button
+				onclick={() => {
+					pending = load();
+				}}
+				>Retry</Button
+			>
 			{#if oncancel}
 				<Button onclick={oncancel}>Cancel</Button>
 			{/if}

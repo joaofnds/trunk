@@ -167,11 +167,11 @@ fn execute_repository(
     if transport_url.is_some() || adjusted {
         remote
             .download(&specs, Some(&mut options))
-            .map_err(&download_error)?;
+            .map_err(download_error)?;
     } else {
         remote
             .download(&[] as &[&str], Some(&mut options))
-            .map_err(&download_error)?;
+            .map_err(download_error)?;
     }
     // Download only writes objects. A checkout or ref change while it was in
     // progress must be considered before update_tips or prune touches any ref.
@@ -196,7 +196,7 @@ fn execute_repository(
         // the entire original scope before recomputing safe destinations.
         selective
             .download(&specs, Some(&mut options))
-            .map_err(&download_error)?;
+            .map_err(download_error)?;
         reject_checked_out_destinations(repo, &configured)?;
         updates = ref_updates(repo, &selective, &configured, true)?;
         options.download_tags(AutotagOption::None);
@@ -207,7 +207,7 @@ fn execute_repository(
                 &updates.specs.iter().collect::<Vec<_>>(),
                 Some(&mut options),
             )
-            .map_err(&download_error)?;
+            .map_err(download_error)?;
         reject_checked_out_destinations(repo, &configured)?;
         Some(selective)
     } else {

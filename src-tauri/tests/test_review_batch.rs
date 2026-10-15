@@ -103,7 +103,10 @@ fn a_held_comment_is_hidden_from_the_agent_and_shown_to_the_reviewer() {
 
     let thread = comment(&store, &review, Delivery::Hold);
 
-    assert!(thread_ids(&store, &review, Channel::Agent).is_empty());
+    assert_eq!(
+        thread_ids(&store, &review, Channel::Agent),
+        [] as [std::string::String; 0]
+    );
     assert_eq!(thread_ids(&store, &review, Channel::Human), vec![thread]);
 }
 
@@ -115,7 +118,10 @@ fn a_sent_comment_joins_a_batch_the_review_already_holds() {
 
     comment(&store, &review, Delivery::Send);
 
-    assert!(thread_ids(&store, &review, Channel::Agent).is_empty());
+    assert_eq!(
+        thread_ids(&store, &review, Channel::Agent),
+        [] as [std::string::String; 0]
+    );
 }
 
 #[test]
@@ -138,7 +144,10 @@ fn a_held_reply_on_a_sent_thread_is_hidden_from_the_agent() {
 
     let held = reply(&store, &canonical, &thread, Channel::Human, Delivery::Hold);
 
-    assert!(reply_ids(&store, &thread, Channel::Agent).is_empty());
+    assert_eq!(
+        reply_ids(&store, &thread, Channel::Agent),
+        [] as [std::string::String; 0]
+    );
     assert_eq!(reply_ids(&store, &thread, Channel::Human), vec![held]);
 }
 
@@ -151,7 +160,10 @@ fn a_sent_reply_joins_a_batch_the_review_already_holds() {
 
     reply(&store, &canonical, &thread, Channel::Human, Delivery::Send);
 
-    assert!(reply_ids(&store, &thread, Channel::Agent).is_empty());
+    assert_eq!(
+        reply_ids(&store, &thread, Channel::Agent),
+        [] as [std::string::String; 0]
+    );
 }
 
 #[test]
@@ -193,7 +205,10 @@ fn sending_one_review_leaves_another_reviews_batch_held() {
 
     send(&store, &canonical, &sent);
 
-    assert!(thread_ids(&store, &kept, Channel::Agent).is_empty());
+    assert_eq!(
+        thread_ids(&store, &kept, Channel::Agent),
+        [] as [std::string::String; 0]
+    );
 }
 
 #[test]
@@ -321,7 +336,10 @@ mod migrating_from_v11 {
 
         let store = reviewdb::open(ctx.data_dir()).unwrap();
 
-        assert!(thread_ids(&store, &unpublished, Channel::Agent).is_empty());
+        assert_eq!(
+            thread_ids(&store, &unpublished, Channel::Agent),
+            [] as [std::string::String; 0]
+        );
         assert_eq!(review(&store, &unpublished).pending_count, 2);
     }
 

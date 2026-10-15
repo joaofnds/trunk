@@ -56,7 +56,9 @@ let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
 let filesChanged = $derived(fileDiffs.length);
 </script>
 
-{#snippet commitCard(commit: CommitDetail)}
+{#snippet commitCard(
+	commit: CommitDetail,
+)}
 	<div class="min-w-0">
 		<div
 			class="text-body font-semibold text-text overflow-hidden text-ellipsis whitespace-nowrap"
@@ -131,7 +133,7 @@ let filesChanged = $derived(fileDiffs.length);
 	<!-- File list, headed by the same stats bar CommitDetail uses -->
 	<div class="h-bar py-0 px-3 flex items-center shadow-hairline shrink-0">
 		<span class="text-callout font-medium text-text flex-1">
-			{`${filesChanged} file${filesChanged === 1 ? '' : 's'} changed`}
+			{`${filesChanged} file${filesChanged === 1 ? "" : "s"} changed`}
 		</span>
 		{#if stat && (stat.insertions > 0 || stat.deletions > 0)}
 			<span class="inline-flex gap-2 shrink-0 mr-2 font-mono text-caption">
@@ -150,9 +152,14 @@ let filesChanged = $derived(fileDiffs.length);
 				variant="ghost"
 				role="switch"
 				aria-checked={treeViewEnabled}
-				aria-label={treeViewEnabled ? 'Switch to list view' : 'Switch to tree view'}
-				title={treeViewEnabled ? 'List view' : 'Tree view'}
-				onclick={(e) => { e.stopPropagation(); ontreeviewtoggle?.(); }}
+				aria-label={treeViewEnabled
+					? "Switch to list view"
+					: "Switch to tree view"}
+				title={treeViewEnabled ? "List view" : "Tree view"}
+				onclick={(e) => {
+					e.stopPropagation();
+					ontreeviewtoggle?.();
+				}}
 			>
 				{#if treeViewEnabled}
 					<FolderTree size={14} />

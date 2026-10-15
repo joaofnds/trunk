@@ -88,7 +88,9 @@ describe.each(PLUGINS)("tokens-%s.grit", (plugin) => {
 describe("inside a component's <style> block", () => {
 	it("flags the off-token declarations and nothing in the compliant rule", () => {
 		const config = configFor(PLUGINS);
-		const component = join(fixtures, "scoped.svelte");
+		const fixture = join(fixtures, "scoped.svelte.txt");
+		const component = join(config, "scoped.svelte");
+		writeFileSync(component, readFileSync(fixture, "utf8"));
 
 		expect(lint(config, component)).toEqual(
 			errorsAt(badDeclarationLines(component)),

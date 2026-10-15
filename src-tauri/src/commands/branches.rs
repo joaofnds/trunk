@@ -290,11 +290,8 @@ pub fn checkout_branch_inner(
     let branch_ref = format!("refs/heads/{branch_name}");
     {
         let (object, _reference) = repo.revparse_ext(&branch_ref)?;
-        repo.checkout_tree(
-            &object,
-            Some(&mut git2::build::CheckoutBuilder::new().safe()),
-        )
-        .map_err(classify_checkout_error)?;
+        repo.checkout_tree(&object, Some(git2::build::CheckoutBuilder::new().safe()))
+            .map_err(classify_checkout_error)?;
     }
     repo.set_head(&branch_ref)?;
     drop(repo);
@@ -463,10 +460,7 @@ pub fn create_branch_inner(
     let branch_ref = format!("refs/heads/{name}");
     {
         let (object, _reference) = repo.revparse_ext(&branch_ref)?;
-        repo.checkout_tree(
-            &object,
-            Some(&mut git2::build::CheckoutBuilder::new().safe()),
-        )?;
+        repo.checkout_tree(&object, Some(git2::build::CheckoutBuilder::new().safe()))?;
     }
     repo.set_head(&branch_ref)?;
     drop(repo);

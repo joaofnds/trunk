@@ -1470,7 +1470,10 @@ mod current_file_tests {
         let second = cache.current_file_diff(&repo, "main.rs").unwrap();
 
         assert!(std::sync::Arc::ptr_eq(&first, &second));
-        assert!(!first.hunks[0].lines[0].spans.is_empty());
+        assert_ne!(
+            first.hunks[0].lines[0].spans,
+            [] as [crate::types::MergedSpan; 0]
+        );
     }
 
     #[test]
@@ -1489,7 +1492,10 @@ mod current_file_tests {
         let rust_again = cache.current_file_diff(&repo, "main.rs").unwrap();
 
         assert_eq!(text.path, "notes.nolang");
-        assert!(text.hunks[0].lines[0].spans.is_empty());
+        assert_eq!(
+            text.hunks[0].lines[0].spans,
+            [] as [crate::types::MergedSpan; 0]
+        );
         assert!(!Arc::ptr_eq(&rust, &text));
         assert!(!Arc::ptr_eq(&rust, &rust_again));
     }
@@ -1608,7 +1614,7 @@ mod current_file_tests {
         let text_after = cache.current_file_diff(&repo, "notes.txt").unwrap();
 
         assert!(binary.is_binary);
-        assert!(binary.hunks.is_empty());
+        assert_eq!(binary.hunks, [] as [crate::types::DiffHunk; 0]);
         assert_eq!(contents(&text_after), vec!["one\n"]);
         assert!(!Arc::ptr_eq(&text_before, &text_after));
     }
@@ -1713,7 +1719,7 @@ mod current_file_tests {
 
         let fd = current_file_diff(&repo, "empty.txt").unwrap();
 
-        assert!(fd.hunks.is_empty());
+        assert_eq!(fd.hunks, [] as [crate::types::DiffHunk; 0]);
     }
 
     #[test]
@@ -1729,7 +1735,7 @@ mod current_file_tests {
         let fd = current_file_diff(&repo, "blob.bin").unwrap();
 
         assert!(fd.is_binary);
-        assert!(fd.hunks.is_empty());
+        assert_eq!(fd.hunks, [] as [crate::types::DiffHunk; 0]);
     }
 
     fn assert_refused(file_path: &str) {

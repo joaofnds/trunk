@@ -511,7 +511,10 @@ let lastVisibleColumn = $derived.by(() => {
 	oncontextmenu={openMenuIfOnHeader}
 />
 
-{#snippet edgeBefore(column: keyof RebaseColumnWidths, label: string)}
+{#snippet edgeBefore(
+	column: keyof RebaseColumnWidths,
+	label: string,
+)}
 	<Splitter
 		variant="column"
 		aria-label="Resize {label} column"
@@ -561,8 +564,8 @@ let lastVisibleColumn = $derived.by(() => {
 		</div>
 		<div class="flex-1 relative" style:padding="0 {COLUMN_PADDING_X}px">
 			Message
-			{#if 'message' !== lastVisibleColumn}
-				{@render edgeBefore('sha', 'SHA')}
+			{#if "message" !== lastVisibleColumn}
+				{@render edgeBefore("sha", "SHA")}
 			{/if}
 		</div>
 		{#if columnVisibility.sha}
@@ -572,8 +575,8 @@ let lastVisibleColumn = $derived.by(() => {
 				style:padding="0 {COLUMN_PADDING_X}px"
 			>
 				SHA
-				{#if 'sha' !== lastVisibleColumn}
-					{@render edgeBefore('author', 'Author')}
+				{#if "sha" !== lastVisibleColumn}
+					{@render edgeBefore("author", "Author")}
 				{/if}
 			</div>
 		{/if}
@@ -584,8 +587,8 @@ let lastVisibleColumn = $derived.by(() => {
 				style:padding="0 {COLUMN_PADDING_X}px"
 			>
 				Author
-				{#if 'author' !== lastVisibleColumn}
-					{@render edgeBefore('date', 'Date')}
+				{#if "author" !== lastVisibleColumn}
+					{@render edgeBefore("date", "Date")}
 				{/if}
 			</div>
 		{/if}
@@ -614,17 +617,29 @@ let lastVisibleColumn = $derived.by(() => {
 						class="rebase-row h-row"
 						role="option"
 						aria-selected={focusedIndex === idx}
-						aria-describedby={errorForIndex(idx) ? `${uid}-error-${idx}` : undefined}
+						aria-describedby={errorForIndex(idx)
+							? `${uid}-error-${idx}`
+							: undefined}
 						tabindex="0"
 						class:rebase-row-focused={focusedIndex === idx}
-						class:rebase-row-drop={item.action === 'drop'}
-						class:rebase-row-squash={item.action === 'squash'}
+						class:rebase-row-drop={item.action === "drop"}
+						class:rebase-row-squash={item.action === "squash"}
 						data-rebase-row={idx}
 						onclick={() => (focusedIndex = idx)}
-						onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (item.action !== 'drop') openMessageEditor(idx); } else if (e.key === ' ') { e.preventDefault(); focusedIndex = idx; } }}
-						ondblclick={() => { if (item.action !== 'drop') openMessageEditor(idx); }}
+						onkeydown={(e) => {
+							if (e.key === "Enter") {
+								e.preventDefault();
+								if (item.action !== "drop") openMessageEditor(idx);
+							} else if (e.key === " ") {
+								e.preventDefault();
+								focusedIndex = idx;
+							}
+						}}
+						ondblclick={() => {
+							if (item.action !== "drop") openMessageEditor(idx);
+						}}
 					>
-						{#if item.action === 'squash'}
+						{#if item.action === "squash"}
 							<span class="rebase-squash-arrow">↓</span>
 						{/if}
 						<!-- Action column -->
@@ -640,7 +655,10 @@ let lastVisibleColumn = $derived.by(() => {
 								class="rebase-select"
 								bind:value={item.action}
 								onclick={(e) => e.stopPropagation()}
-								onchange={() => { if (item.action === 'reword' || item.action === 'squash') openMessageEditor(idx); }}
+								onchange={() => {
+									if (item.action === "reword" || item.action === "squash")
+										openMessageEditor(idx);
+								}}
 							>
 								<option value="pick">Pick</option>
 								<option value="reword">Reword</option>
@@ -654,7 +672,7 @@ let lastVisibleColumn = $derived.by(() => {
 							class="rebase-cell rebase-cell-message flex-1"
 							style:padding="0 {COLUMN_PADDING_X}px"
 						>
-							<span class:rebase-text-drop={item.action === 'drop'}
+							<span class:rebase-text-drop={item.action === "drop"}
 								>{item.newMessage ?? item.summary}</span
 							>
 						</div>
@@ -670,7 +688,10 @@ let lastVisibleColumn = $derived.by(() => {
 									mono
 									truncate
 									title="Copy SHA"
-									onclick={(e) => { e.stopPropagation(); copySha(item.oid); }}
+									onclick={(e) => {
+										e.stopPropagation();
+										copySha(item.oid);
+									}}
 									onkeydown={(e) => e.stopPropagation()}
 									ondblclick={(e) => e.stopPropagation()}
 									>{item.shortOid}</LinkButton
@@ -685,7 +706,7 @@ let lastVisibleColumn = $derived.by(() => {
 								style:width="{columnWidths.author}px"
 								style:padding="0 {COLUMN_PADDING_X}px"
 							>
-								<span class:rebase-text-drop={item.action === 'drop'}
+								<span class:rebase-text-drop={item.action === "drop"}
 									>{item.authorName}</span
 								>
 							</div>
@@ -699,7 +720,7 @@ let lastVisibleColumn = $derived.by(() => {
 								style:padding="0 {COLUMN_PADDING_X}px"
 							>
 								<span
-									class:rebase-text-drop={item.action === 'drop'}
+									class:rebase-text-drop={item.action === "drop"}
 									use:exactDate={item.authorTimestamp}
 									>{relativeLabel(item.authorTimestamp, nowMinute)}</span
 								>
@@ -725,7 +746,9 @@ let lastVisibleColumn = $derived.by(() => {
 								variant="anchored"
 								id={messageEditorId}
 								tabindex={-1}
-								title={items[editingIdx]?.action === 'squash' ? 'Edit squash message' : 'Reword commit message'}
+								title={items[editingIdx]?.action === "squash"
+									? "Edit squash message"
+									: "Reword commit message"}
 							>
 								<input
 									class="rebase-msg-editor-summary"

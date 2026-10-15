@@ -88,7 +88,7 @@ function autofocus(node: HTMLElement) {
 					<textarea
 						id="input-dialog-{field.key}"
 						class="w-full rounded text-body leading-normal bg-bg border border-border text-text p-2 resize-y field-textarea"
-						placeholder={field.placeholder ?? ''}
+						placeholder={field.placeholder ?? ""}
 						bind:value={values[field.key]}
 						onkeydown={handleKeydown}
 						use:autofocus
@@ -97,7 +97,7 @@ function autofocus(node: HTMLElement) {
 					<textarea
 						id="input-dialog-{field.key}"
 						class="w-full rounded text-body leading-normal bg-bg border border-border text-text p-2 resize-y field-textarea"
-						placeholder={field.placeholder ?? ''}
+						placeholder={field.placeholder ?? ""}
 						bind:value={values[field.key]}
 						onkeydown={handleKeydown}
 					></textarea>
@@ -108,7 +108,7 @@ function autofocus(node: HTMLElement) {
 						id="input-dialog-{field.key}"
 						type="text"
 						class="w-full rounded text-body bg-bg border border-border text-text p-2"
-						placeholder={field.placeholder ?? ''}
+						placeholder={field.placeholder ?? ""}
 						bind:value={values[field.key]}
 						onkeydown={handleKeydown}
 						use:autofocus
@@ -118,7 +118,7 @@ function autofocus(node: HTMLElement) {
 						id="input-dialog-{field.key}"
 						type="text"
 						class="w-full rounded text-body bg-bg border border-border text-text p-2"
-						placeholder={field.placeholder ?? ''}
+						placeholder={field.placeholder ?? ""}
 						bind:value={values[field.key]}
 						onkeydown={handleKeydown}
 					>

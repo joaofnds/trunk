@@ -179,7 +179,8 @@ const renderedActive = $derived(
 			variant="ghost"
 			aria-pressed={renderMode === "rendered"}
 			title={renderMode === "source" ? "Show rendered markdown" : "Show source"}
-			onclick={() => onrendermodechange(renderMode === "source" ? "rendered" : "source")}
+			onclick={() =>
+				onrendermodechange(renderMode === "source" ? "rendered" : "source")}
 		>
 			{#if renderMode === "source"}
 				<Eye size={14} />
@@ -195,7 +196,8 @@ const renderedActive = $derived(
 			size="sm"
 			variant="ghost"
 			title={contentMode === "hunk" ? "Show full file" : "Show hunks"}
-			onclick={() => oncontentmodechange(contentMode === "hunk" ? "full" : "hunk")}
+			onclick={() =>
+				oncontentmodechange(contentMode === "hunk" ? "full" : "hunk")}
 		>
 			{#if contentMode === "hunk"}
 				<UnfoldVertical size={14} />
@@ -210,7 +212,8 @@ const renderedActive = $derived(
 		size="sm"
 		variant="ghost"
 		title={layoutMode === "inline" ? "Side-by-side view" : "Inline view"}
-		onclick={() => onlayoutmodechange(layoutMode === "inline" ? "split" : "inline")}
+		onclick={() =>
+			onlayoutmodechange(layoutMode === "inline" ? "split" : "inline")}
 	>
 		{#if layoutMode === "inline"}
 			<Columns2 size={14} />
@@ -236,8 +239,8 @@ const renderedActive = $derived(
 		aria-pressed={showInvisibles}
 		disabled={renderedActive}
 		title={renderedActive
-      ? "Invisible characters aren't rendered in preview"
-      : "Show invisible characters"}
+			? "Invisible characters aren't rendered in preview"
+			: "Show invisible characters"}
 		onclick={() => onshowinvisibleschange(!showInvisibles)}
 	>
 		<Pilcrow size={14} />
@@ -249,8 +252,8 @@ const renderedActive = $derived(
 		aria-pressed={wordWrap}
 		disabled={!fixedPitch}
 		title={fixedPitch
-      ? "Toggle word wrap"
-      : "Word wrap needs a fixed-pitch diff font"}
+			? "Toggle word wrap"
+			: "Word wrap needs a fixed-pitch diff font"}
 		onclick={() => onwordwrapchange(!wordWrap)}
 	>
 		<TextWrap size={14} />
@@ -263,7 +266,7 @@ const renderedActive = $derived(
 		style:line-height={DIFF_ROW_FONT.lineHeight}
 	></span>
 
-	{#if diffKind === 'unstaged'}
+	{#if diffKind === "unstaged"}
 		<Button
 			size="sm"
 			variant="danger"
@@ -276,17 +279,21 @@ const renderedActive = $derived(
 			size="sm"
 			variant="success"
 			disabled={hunkOperationInFlight || ignoreWhitespace}
-			title={ignoreWhitespace ? "Staging is disabled while whitespace changes are ignored" : undefined}
+			title={ignoreWhitespace
+				? "Staging is disabled while whitespace changes are ignored"
+				: undefined}
 			onclick={onstagefile}
 		>
 			Stage File
 		</Button>
-	{:else if diffKind === 'staged'}
+	{:else if diffKind === "staged"}
 		<Button
 			size="sm"
 			variant="warning"
 			disabled={hunkOperationInFlight || ignoreWhitespace}
-			title={ignoreWhitespace ? "Staging is disabled while whitespace changes are ignored" : undefined}
+			title={ignoreWhitespace
+				? "Staging is disabled while whitespace changes are ignored"
+				: undefined}
 			onclick={onunstagefile}
 		>
 			Unstage File

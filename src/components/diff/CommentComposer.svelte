@@ -307,11 +307,15 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 		<MessageSquare size={12} class="shrink-0 text-accent" aria-hidden="true" />
 		{#if captured?.wholeFile}
 			<span
-				title="Lines {capturedResult.anchor.start_line}-{capturedResult.anchor.end_line}"
+				title="Lines {capturedResult.anchor.start_line}-{capturedResult.anchor
+					.end_line}"
 				>Comment on this file</span
 			>
 		{:else}
-			{rangeHeading(capturedResult.anchor.start_line, capturedResult.anchor.end_line)}
+			{rangeHeading(
+				capturedResult.anchor.start_line,
+				capturedResult.anchor.end_line,
+			)}
 		{/if}
 	{/snippet}
 </ComposerFrame>

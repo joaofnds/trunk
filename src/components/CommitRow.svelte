@@ -147,9 +147,23 @@ const rowShadow = $derived(
 	class:search-dim={isSearchActive && !isSearchMatch && !isCurrentMatch}
 	style:height="{rowHeight}px"
 	style:box-shadow={rowShadow}
-	onclick={(e) => onselect?.(commit.oid, { compare: e.metaKey || e.ctrlKey, range: e.shiftKey })}
-	onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onselect?.(commit.oid); } }}
-	oncontextmenu={(e: MouseEvent) => { if (oncontextmenu && !isWip) { e.preventDefault(); oncontextmenu(e, commit); } }}
+	onclick={(e) =>
+		onselect?.(commit.oid, {
+			compare: e.metaKey || e.ctrlKey,
+			range: e.shiftKey,
+		})}
+	onkeydown={(e) => {
+		if (e.key === "Enter" || e.key === " ") {
+			e.preventDefault();
+			onselect?.(commit.oid);
+		}
+	}}
+	oncontextmenu={(e: MouseEvent) => {
+		if (oncontextmenu && !isWip) {
+			e.preventDefault();
+			oncontextmenu(e, commit);
+		}
+	}}
 	onmouseenter={() => onenter?.()}
 	onmouseleave={() => onleave?.()}
 >
@@ -257,14 +271,18 @@ const rowShadow = $derived(
 					{#if diffBar.addFrac > 0}
 						<span
 							data-diff-seg="add"
-							class="h-full min-w-px bg-diff-add {diffBar.delFrac > 0 ? 'rounded-l-full' : 'rounded-full'}"
+							class="h-full min-w-px bg-diff-add {diffBar.delFrac > 0
+								? "rounded-l-full"
+								: "rounded-full"}"
 							style:flex={diffBar.addFrac}
 						></span>
 					{/if}
 					{#if diffBar.delFrac > 0}
 						<span
 							data-diff-seg="delete"
-							class="h-full min-w-px bg-diff-delete {diffBar.addFrac > 0 ? 'rounded-r-full' : 'rounded-full'}"
+							class="h-full min-w-px bg-diff-delete {diffBar.addFrac > 0
+								? "rounded-r-full"
+								: "rounded-full"}"
 							style:flex={diffBar.delFrac}
 						></span>
 					{/if}
@@ -278,7 +296,7 @@ const rowShadow = $derived(
 					class="h-1 w-1 flex-shrink-0 rounded-full bg-text-muted"
 				></span>
 			{:else if diffStat}
-			<!-- Genuinely empty commit (0 files): render nothing — there is no change
+				<!-- Genuinely empty commit (0 files): render nothing — there is no change
              to convey. Distinct from the uncomputed placeholder below. -->
 			{:else}
 				<span
@@ -339,7 +357,10 @@ const rowShadow = $derived(
 					truncate
 					tone="muted"
 					title="Copy SHA"
-					onclick={(e) => { e.stopPropagation(); copySha(commit.oid); }}
+					onclick={(e) => {
+						e.stopPropagation();
+						copySha(commit.oid);
+					}}
 					onkeydown={(e) => e.stopPropagation()}
 					>{commit.short_oid}</LinkButton
 				>

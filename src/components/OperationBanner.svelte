@@ -117,7 +117,9 @@ async function handleRevertAbort() {
 }
 </script>
 
-{#snippet branch(name: string | null)}
+{#snippet branch(
+	name: string | null,
+)}
 	{#if name === null}
 		<Chip variant="label">???</Chip>
 	{:else}
@@ -127,12 +129,18 @@ async function handleRevertAbort() {
 
 <div
 	class="shrink-0 min-h-banded-lg py-1 px-3 flex items-center gap-2"
-	style:box-shadow="inset 0 -1px 0 var(--color-border), inset 3px 0 0 {isMerge ? 'var(--color-banner-warning-border)' : 'var(--color-banner-info-border)'}"
-	style:background={isMerge ? 'var(--color-banner-warning-bg)' : 'var(--color-banner-info-bg)'}
+	style:box-shadow="inset 0 -1px 0 var(--color-border), inset 3px 0 0 {isMerge
+		? "var(--color-banner-warning-border)"
+		: "var(--color-banner-info-border)"}"
+	style:background={isMerge
+		? "var(--color-banner-warning-bg)"
+		: "var(--color-banner-info-bg)"}
 >
 	<span
 		class="inline-flex items-center shrink-0"
-		style:color={isMerge ? 'var(--color-banner-warning-border)' : 'var(--color-banner-info-border)'}
+		style:color={isMerge
+			? "var(--color-banner-warning-border)"
+			: "var(--color-banner-info-border)"}
 	>
 		{#if isMerge}
 			<GitMerge size={14} />

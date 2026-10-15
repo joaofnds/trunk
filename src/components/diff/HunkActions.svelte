@@ -46,51 +46,64 @@ let {
 }: Props = $props();
 </script>
 
-{#if diffKind === 'unstaged' || diffKind === 'staged'}
+{#if diffKind === "unstaged" || diffKind === "staged"}
 	{#if takesComments}
 		<Button
 			size="sm"
 			variant="accent"
-			onclick={() => hasSelection ? oncommentlines(path, hunkIdx) : oncommenthunk(path, hunkIdx)}
+			onclick={() =>
+				hasSelection
+					? oncommentlines(path, hunkIdx)
+					: oncommenthunk(path, hunkIdx)}
 		>
-			{hasSelection ? `Comment (${selectedCount})` : 'Comment'}
+			{hasSelection ? `Comment (${selectedCount})` : "Comment"}
 		</Button>
 	{/if}
-	{#if diffKind === 'unstaged'}
+	{#if diffKind === "unstaged"}
 		<Button
 			size="sm"
 			variant="danger"
 			disabled={hunkOperationInFlight}
-			onclick={() => hasSelection ? ondiscardlines(path, hunkIdx) : ondiscardhunk(path, hunkIdx)}
+			onclick={() =>
+				hasSelection
+					? ondiscardlines(path, hunkIdx)
+					: ondiscardhunk(path, hunkIdx)}
 		>
-			{hasSelection ? `Discard Lines (${selectedCount})` : 'Discard Hunk'}
+			{hasSelection ? `Discard Lines (${selectedCount})` : "Discard Hunk"}
 		</Button>
 		<Button
 			size="sm"
 			variant="success"
 			disabled={hunkOperationInFlight}
-			onclick={() => hasSelection ? onstagelines(path, hunkIdx) : onstagehunk(path, hunkIdx)}
+			onclick={() =>
+				hasSelection ? onstagelines(path, hunkIdx) : onstagehunk(path, hunkIdx)}
 		>
-			{hasSelection ? `Stage Lines (${selectedCount})` : 'Stage Hunk'}
+			{hasSelection ? `Stage Lines (${selectedCount})` : "Stage Hunk"}
 		</Button>
 	{:else}
 		<Button
 			size="sm"
 			variant="warning"
 			disabled={hunkOperationInFlight}
-			onclick={() => hasSelection ? onunstagelines(path, hunkIdx) : onunstagehunk(path, hunkIdx)}
+			onclick={() =>
+				hasSelection
+					? onunstagelines(path, hunkIdx)
+					: onunstagehunk(path, hunkIdx)}
 		>
-			{hasSelection ? `Unstage Lines (${selectedCount})` : 'Unstage Hunk'}
+			{hasSelection ? `Unstage Lines (${selectedCount})` : "Unstage Hunk"}
 		</Button>
 	{/if}
-{:else if diffKind === 'commit' && takesComments}
+{:else if diffKind === "commit" && takesComments}
 	<Button
 		size="sm"
 		variant="accent"
 		disabled={isMerge}
 		title={isMerge ? "Diff comments aren't available on merge commits" : ""}
-		onclick={() => hasSelection ? oncommentlines(path, hunkIdx) : oncommenthunk(path, hunkIdx)}
+		onclick={() =>
+			hasSelection
+				? oncommentlines(path, hunkIdx)
+				: oncommenthunk(path, hunkIdx)}
 	>
-		{hasSelection ? `Comment (${selectedCount})` : 'Comment'}
+		{hasSelection ? `Comment (${selectedCount})` : "Comment"}
 	</Button>
 {/if}

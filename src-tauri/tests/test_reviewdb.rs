@@ -6267,10 +6267,9 @@ fn refs_refresh_preserves_current_file_staleness_and_resolution() {
         0
     );
     assert!(!only_thread(&store, &canonical).stale);
-    assert!(
-        resolve_thread_refs_inner(&store, &canonical, ctx.path(), None)
-            .unwrap()
-            .is_empty()
+    assert_eq!(
+        resolve_thread_refs_inner(&store, &canonical, ctx.path(), None).unwrap(),
+        [] as [trunk_review::resolution::CommentResolution; 0]
     );
     assert_eq!(
         recompute_staleness(&store, &canonical, ctx.path()).unwrap(),

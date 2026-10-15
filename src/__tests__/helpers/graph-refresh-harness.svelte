@@ -21,7 +21,12 @@ let wipCount = $state(untrack(() => (withWip ? 1 : 0)));
 </script>
 
 {#if withWip}
-	<Button onclick={() => { wipCount = 0; }}>Clear WIP</Button>
+	<Button
+		onclick={() => {
+			wipCount = 0;
+		}}
+		>Clear WIP</Button
+	>
 {/if}
 
 {#if visible}
@@ -34,6 +39,9 @@ let wipCount = $state(untrack(() => (withWip ? 1 : 0)));
 		{consumedRefreshSignal}
 		{visibilityResolved}
 		{wipCount}
-		onrefreshconsumed={(generation) => { consumedRefreshSignal = Math.max(consumedRefreshSignal, generation); onconsumed?.(generation); }}
+		onrefreshconsumed={(generation) => {
+			consumedRefreshSignal = Math.max(consumedRefreshSignal, generation);
+			onconsumed?.(generation);
+		}}
 	/>
 {/if}

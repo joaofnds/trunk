@@ -179,8 +179,8 @@ biome:
 
 # Separate passes, because `biome check --write` (2.5.14) rewrites expressions
 # inside Svelte markup into code Svelte cannot parse, while the format and lint
-# passes alone leave them intact. The import-sorting assist runs only through
-# `check`, so it gets the script files alone, and a Svelte file's imports are
+# passes alone preserve valid Svelte markup. The import-sorting assist runs only
+# through `check`, so it gets the script files alone. A Svelte file's imports are
 # sorted by hand. It runs first, because merging two imports can leave a line
 # only the format pass wraps. The perl filter drops tracked files deleted from
 # the worktree, which Biome would report as an internal error.

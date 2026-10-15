@@ -103,7 +103,7 @@ async function handleRemoveRecent(path: string) {
 					onclick={openRepository}
 					disabled={loading}
 				>
-					{loading ? 'Opening...' : 'Open Repository'}
+					{loading ? "Opening..." : "Open Repository"}
 				</Button>
 			</div>
 		</div>
@@ -125,9 +125,9 @@ async function handleRemoveRecent(path: string) {
 							>
 								<span class="text-body truncate min-w-0 flex-1">
 									<span class="text-text-muted"
-										>{dp.substring(0, dp.lastIndexOf('/'))}/</span
+										>{dp.substring(0, dp.lastIndexOf("/"))}/</span
 									><span class="font-semibold text-text"
-										>{dp.split('/').at(-1)}</span
+										>{dp.split("/").at(-1)}</span
 									>
 								</span>
 								{#snippet actions()}

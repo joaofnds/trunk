@@ -1121,7 +1121,7 @@ mod tests {
                 .await
                 .expect("descendant must release its open FIFO on termination")
                 .unwrap();
-            assert!(trailing.is_empty());
+            assert_eq!(trailing, [] as [u8; 0]);
             descendant_reader.join().unwrap();
             assert!(running.lock().unwrap().busy("common"));
             assert_eq!(

@@ -149,12 +149,12 @@ function removeThread(group: Group, thread: Thread) {
 </script>
 
 {#snippet toggle(
-name: string,
-glyph: ThreadState | "stale",
-tone: string,
-count: number,
-on: boolean,
-ontoggle: () => void,
+	name: string,
+	glyph: ThreadState | "stale",
+	tone: string,
+	count: number,
+	on: boolean,
+	ontoggle: () => void,
 )}
 	<LinkButton
 		tone="muted"
@@ -222,30 +222,32 @@ ontoggle: () => void,
 					aria-label="Show threads by state"
 				>
 					{#each TALLY as tally (tally.state)}
-						{@const count = threads.filter((t) => t.state === tally.state).length}
+						{@const count = threads.filter(
+							(t) => t.state === tally.state,
+						).length}
 						{#if count > 0}
 							<li class="inline-flex">
 								{@render toggle(
-tally.label,
-tally.state,
-tally.tone,
-count,
-shown[tally.state],
-() => (shown[tally.state] = !shown[tally.state]),
-)}
+									tally.label,
+									tally.state,
+									tally.tone,
+									count,
+									shown[tally.state],
+									() => (shown[tally.state] = !shown[tally.state]),
+								)}
 							</li>
 						{/if}
 					{/each}
 					{#if staleCount > 0}
 						<li class="inline-flex">
 							{@render toggle(
-"Stale",
-"stale",
-"text-thread-stale",
-staleCount,
-showStale,
-() => (showStale = !showStale),
-)}
+								"Stale",
+								"stale",
+								"text-thread-stale",
+								staleCount,
+								showStale,
+								() => (showStale = !showStale),
+							)}
 						</li>
 					{/if}
 				</ul>
@@ -260,7 +262,8 @@ showStale,
 						>
 							{VIEWS[id].label}
 							<span class="font-mono"
-								>{threads.filter((t) => VIEWS[id].states.includes(t.state)).length}</span
+								>{threads.filter((t) => VIEWS[id].states.includes(t.state))
+									.length}</span
 							>
 						</Button>
 					{/each}
@@ -282,7 +285,9 @@ showStale,
 				>
 			</p>
 		{/if}
-		{#each review.sections.filter((sec) => sec.groups.some((g) => visible(g).length > 0)) as section (section.branch)}
+		{#each review.sections.filter((sec) =>
+			sec.groups.some((g) => visible(g).length > 0),
+		) as section (section.branch)}
 			<section
 				aria-label="Branch {section.branch}"
 				style:--lane={laneColor(section.lane)}
@@ -297,17 +302,21 @@ showStale,
 					<span class="flex-1"></span>
 					<span class="proto-meta"
 						>{plural(
-section.groups.reduce((n, g) => n + visible(g).length, 0),
+							section.groups.reduce((n, g) => n + visible(g).length, 0),
 							"thread",
 						)}</span
 					>
 				</header>
 				<ul class="m-0 list-none p-0">
-					{#each section.groups.filter((g) => visible(g).length > 0) as group (group.key)}
+					{#each section.groups.filter(
+						(g) => visible(g).length > 0,
+					) as group (group.key)}
 						<li>
 							<div class="proto-group-head h-bar bg-surface">
 								<FoldBar
-									noun={group.target.kind === "commit" ? "commit" : "uncommitted changes"}
+									noun={group.target.kind === "commit"
+										? "commit"
+										: "uncommitted changes"}
 									inset="group"
 									collapsed={!!folded[group.key]}
 									ontoggle={() => toggleFold(group.key)}
@@ -366,20 +375,24 @@ section.groups.reduce((n, g) => n + visible(g).length, 0),
 														<span class="flex-1"></span>
 														{#if file.threads.some(isNote)}
 															<span class="proto-meta"
-																>{plural(file.threads.filter(isNote).length, "file note")}
+																>{plural(
+																	file.threads.filter(isNote).length,
+																	"file note",
+																)}
 																·</span
 															>
 														{/if}
 														<span class="proto-meta"
 															>{plural(
-file.threads.filter((t) => !isNote(t)).length,
+																file.threads.filter((t) => !isNote(t)).length,
 																"thread",
 															)}</span
 														>
 													</FoldBar>
 												</div>
 											{/if}
-											{#if file.path === null || !folded[fileKey(group, file.path)]}
+											{#if file.path === null ||
+												!folded[fileKey(group, file.path)]}
 												{#each file.threads as thread (thread.id)}
 													{@const at = group.threads.indexOf(thread)}
 													<ProtoThread

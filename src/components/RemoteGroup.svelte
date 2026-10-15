@@ -78,8 +78,8 @@ let allHidden = $derived(groupState === "all");
 				oncontextmenu={(e) => oncontextmenu?.(e, fullName)}
 				hidden={hiddenBranches[fullName] ?? false}
 				ontogglevisibility={ontogglebranchvisibility
-          ? () => ontogglebranchvisibility?.(fullName)
-          : undefined}
+					? () => ontogglebranchvisibility?.(fullName)
+					: undefined}
 			/>
 		</div>
 	{/each}

@@ -76,12 +76,12 @@ function openMenu(e: MouseEvent) {
 {#snippet action()}
 	<RowAction
 		size="compact"
-		tone={actionLabel === '+' ? 'success' : 'danger'}
+		tone={actionLabel === "+" ? "success" : "danger"}
 		onclick={() => onaction()}
 		oncontextmenu={openMenu}
-		aria-label={actionLabel === '+' ? 'Stage file' : 'Unstage file'}
+		aria-label={actionLabel === "+" ? "Stage file" : "Unstage file"}
 	>
-		{#if actionLabel === '+'}
+		{#if actionLabel === "+"}
 			<Plus size={11} />
 		{:else}
 			<Minus size={11} />
@@ -94,10 +94,10 @@ function openMenu(e: MouseEvent) {
 	variant="item"
 	{role}
 	selected={focused}
-	tone={isLoading ? 'muted' : 'plain'}
+	tone={isLoading ? "muted" : "plain"}
 	indent={treeIndent(depth)}
 	tabindex={-1}
-	aria-level={role === 'treeitem' ? depth + 1 : undefined}
+	aria-level={role === "treeitem" ? depth + 1 : undefined}
 	onclick={() => onclick?.()}
 	onfocus={() => onfocus?.()}
 	oncontextmenu={openMenu}
@@ -106,7 +106,7 @@ function openMenu(e: MouseEvent) {
 	<!-- Status badge -->
 	<span
 		class="shrink-0 inline-flex items-center justify-center size-4 rounded font-mono font-semibold text-caption leading-none"
-		style:color={isLoading ? 'var(--color-text-muted)' : badge.color}
+		style:color={isLoading ? "var(--color-text-muted)" : badge.color}
 		style:background={badgeBg}
 		>{badge.letter}</span
 	>

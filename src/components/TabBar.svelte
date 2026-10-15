@@ -147,7 +147,9 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 	bind:this={tabBarEl}
 >
 	{#each tabs as tab (tab.id)}
-		{@const title = tab.repoPath ? (resolvedPaths[tab.repoPath] ?? tab.repoPath) : tab.repoName || 'New Tab'}
+		{@const title = tab.repoPath
+			? (resolvedPaths[tab.repoPath] ?? tab.repoPath)
+			: tab.repoName || "New Tab"}
 		<div
 			class="tab-item"
 			class:active={tab.id === activeTabId}
@@ -160,7 +162,9 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 				selected={tab.id === activeTabId}
 				{title}
 				onmousedown={(e) => activateOnPrimary(e, tab.id)}
-				onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onactivate(tab.id); }}
+				onkeydown={(e) => {
+					if (e.key === "Enter" || e.key === " ") onactivate(tab.id);
+				}}
 				oncontextmenu={(e) => openMenu(e, tab.id)}
 				onauxclick={(e) => closeOnMiddle(e, tab.id)}
 			>
@@ -168,7 +172,7 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 					<span class="dirty-dot"></span>
 				{/if}
 				<span class="truncate tab-label flex-1"
-					>{tab.repoName || 'New Tab'}</span
+					>{tab.repoName || "New Tab"}</span
 				>
 				{#snippet trailing()}
 					<Button
@@ -179,7 +183,10 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 						onmousedown={(e) => pressClose(e, tab.id)}
 						oncontextmenu={(e) => openMenu(e, tab.id)}
 						onauxclick={(e) => closeOnMiddle(e, tab.id)}
-						onclick={(e) => { e.stopPropagation(); onclose(tab.id, e.shiftKey); }}
+						onclick={(e) => {
+							e.stopPropagation();
+							onclose(tab.id, e.shiftKey);
+						}}
 					>
 						<X size={12} />
 					</Button>
