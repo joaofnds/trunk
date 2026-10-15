@@ -49,8 +49,10 @@ export interface ReviewCommentsManager {
 	readonly shownReview: Review | null;
 	readonly shownThreads: Thread[];
 	readonly shownCommits: SessionCommit[];
-	/** Where the read behind shownThreads and shownCommits stands. Both are
-	 *  empty until it is ready. */
+	/**
+	 * Where the read behind shownThreads and shownCommits stands. Both are
+	 * empty until it is ready.
+	 */
 	readonly shownReadState: ReviewReadState;
 	readonly snapshots: ReviewSnapshots;
 	/** True when this repo has threads to show. Replaces the session gate. */
