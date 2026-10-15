@@ -64,9 +64,7 @@ export function createFakeReviewComments(): FakeReviewComments {
 	);
 
 	const shownReviewId = $derived(
-		state.reviews.some((review) => review.id === state.selectedReviewId)
-			? state.selectedReviewId
-			: state.activeReviewId,
+		state.selectedReviewId ?? state.activeReviewId,
 	);
 	const shownReview = $derived(
 		state.reviews.find((review) => review.id === shownReviewId) ?? null,
@@ -84,11 +82,6 @@ export function createFakeReviewComments(): FakeReviewComments {
 
 	const diffThreads = $derived.by((): Thread[] => {
 		if (shownReviewId !== state.activeReviewId) return shown.threads;
-
-		const pickedAnother =
-			state.selectedReviewId !== null &&
-			state.selectedReviewId !== state.activeReviewId;
-		if (pickedAnother && state.shownReadState !== "ready") return [];
 		return state.threads;
 	});
 

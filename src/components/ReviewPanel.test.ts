@@ -1471,6 +1471,27 @@ describe("empty states", () => {
 			).not.toBeInTheDocument();
 		});
 
+		it("shows an unresolved new pick as reading without the previous review's content", async () => {
+			installReads({
+				commits,
+				comments: [commitLevelComment("old", COMMIT_A, "Old review note")],
+			});
+			renderPanel();
+			await flush();
+			expect(screen.getByText("Old review note")).toBeInTheDocument();
+
+			reviewComments.seed({ shownReadState: "pending" });
+			await reviewComments.select(other.id);
+			await flush();
+
+			expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+			expect(screen.getByRole("status")).toHaveTextContent(
+				"Reading this repository's reviews…",
+			);
+			expect(screen.queryByText("Old review note")).toBeNull();
+			expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
+		});
+
 		it("says the review's threads could not be read rather than empty", async () => {
 			await showOther("failed");
 

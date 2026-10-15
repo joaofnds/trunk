@@ -963,17 +963,29 @@ describe("createReviewComments — the shown review", () => {
 		});
 
 		it.each([
-			["successful", false, false],
-			["failed active commit read", true, false],
-			["failed review list", false, true],
+			[
+				"successful",
+				() => {},
+				(read: PromiseWithResolvers<Review[]>) => read.resolve([review]),
+			],
+			[
+				"failed active commit read",
+				() => failActiveRead("list_session_commits"),
+				(read: PromiseWithResolvers<Review[]>) => read.resolve([review]),
+			],
+			[
+				"failed review list",
+				() => {},
+				(read: PromiseWithResolvers<Review[]>) => read.reject(lockedStore),
+			],
 		])(
 			"shows a newly made review as pending through an older %s",
-			async (_, failCommits, failList) => {
+			async (_, arrangeOlderRead, settleOlderList) => {
 				aPopulatedStore();
 				const manager = createReviewComments("/repo", scheduler);
 				await flush();
 				const olderList = Promise.withResolvers<Review[]>();
-				if (failCommits) failActiveRead("list_session_commits");
+				arrangeOlderRead();
 				overrideReads((cmd) =>
 					cmd === "list_reviews" ? olderList.promise : undefined,
 				);
@@ -995,8 +1007,7 @@ describe("createReviewComments — the shown review", () => {
 				expect(manager.shownReviewId).toBe(other.id);
 				expect(manager.shownReadState).toBe("pending");
 				expect(manager.diffThreads).toEqual([]);
-				if (failList) olderList.reject(lockedStore);
-				else olderList.resolve([review]);
+				settleOlderList(olderList);
 				await reading;
 
 				expect(manager.shownReviewId).toBe(other.id);
@@ -1052,4 +1063,52 @@ describe("createReviewComments — the shown review", () => {
 		expect(manager.shownReviewId).toBe("REVIEW02");
 		manager.destroy();
 	});
+
+	it.each([
+		["still contains", [review, other]],
+		["omits", [review]],
+	])(
+		"keeps a newer pick when an older list %s the prior pick",
+		async (_, olderReviews) => {
+			twoReviews();
+			const manager = await aStoreShowing(other.id);
+			const olderList = Promise.withResolvers<Review[]>();
+			overrideReads((cmd) =>
+				cmd === "list_reviews" ? olderList.promise : undefined,
+			);
+			const reading = manager.refresh();
+			await flush();
+
+			const newest = { ...other, id: "REVIEW03", title: "Third pass" };
+			const newestThread = aThread({ id: "c3", review_id: newest.id });
+			const newerList = Promise.withResolvers<Review[]>();
+			aPopulatedStore({
+				get_active_review: newest.id,
+				list_threads: [newestThread],
+				list_session_commits: otherCommits,
+			});
+			overrideReads((cmd) =>
+				cmd === "list_reviews" ? newerList.promise : undefined,
+			);
+			const picked = manager.select(newest.id);
+
+			expect(manager.shownReviewId).toBe(newest.id);
+			expect(manager.shownReadState).toBe("pending");
+			olderList.resolve(olderReviews);
+			await reading;
+
+			expect(manager.shownReviewId).toBe(newest.id);
+			expect(manager.shownReview).toBeNull();
+			expect(manager.shownReadState).toBe("pending");
+			expect(manager.shownThreads).toEqual([]);
+			expect(manager.diffThreads).toEqual([]);
+			newerList.resolve([review, other, newest]);
+			await picked;
+
+			expect(manager.shownReviewId).toBe(newest.id);
+			expect(manager.shownReadState).toBe("ready");
+			expect(manager.diffThreads.map((t) => t.id)).toEqual(["c3"]);
+			manager.destroy();
+		},
+	);
 });
