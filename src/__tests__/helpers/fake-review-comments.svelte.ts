@@ -72,12 +72,14 @@ export function createFakeReviewComments(): FakeReviewComments {
 		state.reviews.find((review) => review.id === shownReviewId) ?? null,
 	);
 	const shown = $derived(
-		shownReviewId === state.activeReviewId
-			? { threads: state.threads, commits: state.commits }
-			: (state.otherReviews[shownReviewId ?? ""] ?? {
-					threads: [],
-					commits: [],
-				}),
+		state.shownReadState !== "ready"
+			? { threads: [], commits: [] }
+			: shownReviewId === state.activeReviewId
+				? { threads: state.threads, commits: state.commits }
+				: (state.otherReviews[shownReviewId ?? ""] ?? {
+						threads: [],
+						commits: [],
+					}),
 	);
 
 	const oids = $derived(
