@@ -1,4 +1,7 @@
-import type { ReviewCommentsManager } from "../../lib/review-comments.svelte.js";
+import type {
+	ReviewCommentsManager,
+	ReviewReadState,
+} from "../../lib/review-comments.svelte.js";
 import type {
 	Review,
 	ReviewSnapshots,
@@ -16,6 +19,7 @@ interface Store {
 	lastError: string | null;
 	/** What a read naming a review other than the active one returns. */
 	otherReviews: Record<string, { threads: Thread[]; commits: SessionCommit[] }>;
+	shownReadState: ReviewReadState;
 }
 
 export interface FakeReviewComments extends ReviewCommentsManager {
@@ -40,6 +44,7 @@ function emptyStore(): Store {
 		threadsAuthoritative: true,
 		lastError: null,
 		otherReviews: {},
+		shownReadState: "ready",
 	};
 }
 
@@ -106,6 +111,9 @@ export function createFakeReviewComments(): FakeReviewComments {
 		get shownCommits() {
 			return shown.commits;
 		},
+		get shownReadState() {
+			return state.shownReadState;
+		},
 		get snapshots() {
 			return state.snapshots;
 		},
@@ -146,6 +154,7 @@ export function createFakeReviewComments(): FakeReviewComments {
 			state.threadsAuthoritative = seeded.threadsAuthoritative;
 			state.lastError = seeded.lastError;
 			state.otherReviews = seeded.otherReviews;
+			state.shownReadState = seeded.shownReadState;
 			state.revision += 1;
 			return Promise.resolve();
 		},

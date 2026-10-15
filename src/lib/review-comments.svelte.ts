@@ -6,6 +6,8 @@ import { subscribeToRepoChanges } from "./repo-change-subscription.js";
 import { realScheduler, type Scheduler } from "./scheduler.js";
 import type { Review, ReviewSnapshots, SessionCommit, Thread } from "./types";
 
+export type ReviewReadState = "ready" | "pending" | "failed";
+
 /**
  * The single reactive source of truth for reviews and their threads, lifted to
  * RepoView and consumed by every surface (ReviewPanel, DiffPanel/diff views,
@@ -32,6 +34,8 @@ export interface ReviewCommentsManager {
 	readonly shownReview: Review | null;
 	readonly shownThreads: Thread[];
 	readonly shownCommits: SessionCommit[];
+	/** Whether the shown review's threads and commits are on hand to draw. */
+	readonly shownReadState: ReviewReadState;
 	readonly snapshots: ReviewSnapshots;
 	/** True when this repo has threads to show. Replaces the session gate. */
 	readonly hasThreads: boolean;
@@ -87,6 +91,7 @@ export function createReviewComments(
 			reviewId: string;
 			threads: Thread[];
 			commits: SessionCommit[];
+			failed: boolean;
 		} | null,
 		revision: 0,
 		revisionScope: "full" as "full" | "refs",
@@ -114,6 +119,12 @@ export function createReviewComments(
 			: null,
 	);
 
+	const shownReadState = $derived.by((): ReviewReadState => {
+		if (shownReviewId === state.activeReviewId) return "ready";
+		if (state.selected?.reviewId !== shownReviewId) return "pending";
+		return state.selected.failed ? "failed" : "ready";
+	});
+
 	const oids = $derived(
 		new Set(
 			state.commits.filter((c) => c.picked).map((c) => c.oid),
@@ -138,6 +149,7 @@ export function createReviewComments(
 		const scope = fullRefreshPending ? "full" : "refs";
 		fullRefreshPending = false;
 		runningScope = scope;
+		if (state.selected?.failed) state.selected = null;
 		await learnCanonicalPath();
 		if (cancelled || seq !== loadSeq) return;
 
@@ -250,6 +262,7 @@ export function createReviewComments(
 				commitsR.status === "fulfilled" && Array.isArray(commitsR.value)
 					? commitsR.value
 					: [],
+			failed: results.some((result) => result.status === "rejected"),
 		};
 
 		return results;
@@ -381,6 +394,9 @@ export function createReviewComments(
 				shownSelection?.commits ??
 				(shownReviewId === state.activeReviewId ? state.commits : [])
 			);
+		},
+		get shownReadState() {
+			return shownReadState;
 		},
 		get snapshots() {
 			return state.snapshots;

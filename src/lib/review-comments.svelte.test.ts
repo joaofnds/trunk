@@ -2,7 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
-import { createReviewComments } from "./review-comments.svelte.js";
+import {
+	createReviewComments,
+	type ReviewCommentsManager,
+} from "./review-comments.svelte.js";
 import type { Scheduler } from "./scheduler.js";
 import type { Review, SessionCommit, Thread } from "./types";
 
@@ -537,6 +540,172 @@ describe("createReviewComments — the shown review", () => {
 		expect(manager.threads.map((t) => t.id)).toEqual(["c1"]);
 		expect(manager.activeReviewId).toBe("REVIEW01");
 		manager.destroy();
+	});
+
+	/**
+	 * Holds every later read of REVIEW02's threads. The test settles the latest
+	 * one asked for, so it flushes until the store has asked.
+	 */
+	function holdOtherThreads() {
+		const asked: PromiseWithResolvers<Thread[]>[] = [];
+		const answering = mockInvoke.getMockImplementation();
+		mockInvoke.mockImplementation((cmd, args) => {
+			const named = args && "reviewId" in args ? args.reviewId : undefined;
+			if (named !== "REVIEW02" || cmd !== "list_threads")
+				return answering?.(cmd, args) ?? Promise.resolve(undefined);
+
+			const read = Promise.withResolvers<Thread[]>();
+			asked.push(read);
+			return read.promise;
+		});
+		return {
+			resolve(threads: Thread[]) {
+				asked.at(-1)?.resolve(threads);
+			},
+			reject(reason: unknown) {
+				asked.at(-1)?.reject(reason);
+			},
+		};
+	}
+
+	async function aStoreShowing(reviewId: string) {
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+		await manager.select(reviewId);
+		return manager;
+	}
+
+	describe("shownReadState", () => {
+		it("is pending while a picked review's threads are read", async () => {
+			twoReviews();
+			const manager = createReviewComments("/repo", scheduler);
+			await flush();
+			holdOtherThreads();
+
+			manager.select("REVIEW02");
+			await flush();
+
+			expect(manager.shownReadState).toBe("pending");
+			manager.destroy();
+		});
+
+		it("is ready with the picked review's threads once they are read", async () => {
+			twoReviews();
+			const manager = createReviewComments("/repo", scheduler);
+			await flush();
+			const read = holdOtherThreads();
+
+			const picked = manager.select("REVIEW02");
+			await flush();
+			read.resolve([otherThread]);
+			await picked;
+
+			expect(manager.shownReadState).toBe("ready");
+			expect(manager.shownThreads.map((t) => t.id)).toEqual(["c2"]);
+			manager.destroy();
+		});
+
+		it("stays ready with the previous threads while a loaded pick is read again", async () => {
+			twoReviews();
+			const manager = await aStoreShowing("REVIEW02");
+			holdOtherThreads();
+
+			manager.refresh();
+			await flush();
+
+			expect(manager.shownReadState).toBe("ready");
+			expect(manager.shownThreads.map((t) => t.id)).toEqual(["c2"]);
+			manager.destroy();
+		});
+
+		describe("when the read fails", () => {
+			const lockedStore = '{"code":"store","message":"database is locked"}';
+
+			it("is failed when the picked review's threads cannot be read", async () => {
+				twoReviews();
+				const manager = createReviewComments("/repo", scheduler);
+				await flush();
+				const read = holdOtherThreads();
+
+				const picked = manager.select("REVIEW02");
+				await flush();
+				read.reject(lockedStore);
+				await picked;
+
+				expect(manager.shownReadState).toBe("failed");
+				expect(manager.lastError).toBe("database is locked");
+				manager.destroy();
+			});
+
+			it("is failed when only the picked review's commits cannot be read", async () => {
+				twoReviews();
+				const answering = mockInvoke.getMockImplementation();
+				mockInvoke.mockImplementation((cmd, args) => {
+					const named = args && "reviewId" in args ? args.reviewId : undefined;
+					if (named === "REVIEW02" && cmd === "list_session_commits")
+						return Promise.reject(lockedStore);
+					return answering?.(cmd, args) ?? Promise.resolve(undefined);
+				});
+
+				const manager = await aStoreShowing("REVIEW02");
+
+				expect(manager.shownReadState).toBe("failed");
+				manager.destroy();
+			});
+
+			it("is failed when a loaded pick's threads cannot be read again", async () => {
+				twoReviews();
+				const manager = await aStoreShowing("REVIEW02");
+				const read = holdOtherThreads();
+
+				const reread = manager.refresh();
+				await flush();
+				read.reject(lockedStore);
+				await reread;
+
+				expect(manager.shownReadState).toBe("failed");
+				manager.destroy();
+			});
+
+			/** A store showing REVIEW02 after its threads failed to read, with the next read held. */
+			async function aStoreAfterAFailedPick() {
+				twoReviews();
+				const manager = createReviewComments("/repo", scheduler);
+				await flush();
+				const read = holdOtherThreads();
+				const picked = manager.select("REVIEW02");
+				await flush();
+				read.reject(lockedStore);
+				await picked;
+				return { manager, read };
+			}
+
+			it.each([
+				["picked again", (m: ReviewCommentsManager) => m.select("REVIEW02")],
+				["refreshed", (m: ReviewCommentsManager) => m.refresh()],
+			])("is pending again while it is %s", async (_, reread) => {
+				const { manager } = await aStoreAfterAFailedPick();
+
+				reread(manager);
+				await flush();
+
+				expect(manager.shownReadState).toBe("pending");
+				manager.destroy();
+			});
+
+			it("is ready with the threads once a re-read lands", async () => {
+				const { manager, read } = await aStoreAfterAFailedPick();
+
+				const retried = manager.select("REVIEW02");
+				await flush();
+				read.resolve([otherThread]);
+				await retried;
+
+				expect(manager.shownReadState).toBe("ready");
+				expect(manager.shownThreads.map((t) => t.id)).toEqual(["c2"]);
+				manager.destroy();
+			});
+		});
 	});
 
 	it("falls back to the active review when the selected one is gone", async () => {
