@@ -874,6 +874,15 @@ describe("createReviewComments — the shown review", () => {
 	describe("diffThreads", () => {
 		const lockedStore = '{"code":"store","message":"database is locked"}';
 
+		/** Fails the active review's read of cmd; a picked review's reads answer. */
+		function failActiveRead(cmd: string) {
+			overrideReads((c, reviewId) =>
+				reviewId === undefined && c === cmd
+					? Promise.reject(lockedStore)
+					: undefined,
+			);
+		}
+
 		it("are a picked review's threads once they are read", async () => {
 			twoReviews();
 
@@ -889,11 +898,7 @@ describe("createReviewComments — the shown review", () => {
 				twoReviews();
 				const manager = createReviewComments("/repo", scheduler);
 				await flush();
-				overrideReads((c, reviewId) =>
-					reviewId === undefined && c === cmd
-						? Promise.reject(lockedStore)
-						: undefined,
-				);
+				failActiveRead(cmd);
 
 				await manager.refresh();
 
@@ -934,11 +939,7 @@ describe("createReviewComments — the shown review", () => {
 				const manager = await aStoreShowing("REVIEW02");
 				aPopulatedStore();
 				await manager.refresh();
-				overrideReads((c, reviewId) =>
-					reviewId === undefined && c === cmd
-						? Promise.reject(lockedStore)
-						: undefined,
-				);
+				failActiveRead(cmd);
 
 				await manager.refresh();
 
@@ -952,16 +953,38 @@ describe("createReviewComments — the shown review", () => {
 			twoReviews();
 			const manager = await aStoreShowing("REVIEW02");
 			await manager.select("REVIEW01");
-			overrideReads((cmd, reviewId) =>
-				reviewId === undefined && cmd === "list_session_commits"
-					? Promise.reject(lockedStore)
-					: undefined,
-			);
+			failActiveRead("list_session_commits");
 
 			await manager.refresh();
 
 			expect(manager.shownReadState).toBe("failed");
 			expect(manager.diffThreads.map((t) => t.id)).toEqual(["c1"]);
+			manager.destroy();
+		});
+
+		it("keep the active review's threads while a pick made during a failed refresh waits to be listed", async () => {
+			twoReviews();
+			const manager = createReviewComments("/repo", scheduler);
+			await flush();
+			const olderList = Promise.withResolvers<Review[]>();
+			failActiveRead("list_session_commits");
+			overrideReads((cmd) =>
+				cmd === "list_reviews" ? olderList.promise : undefined,
+			);
+			const reading = manager.refresh();
+			await flush();
+			const newerList = Promise.withResolvers<Review[]>();
+			overrideReads((cmd) =>
+				cmd === "list_reviews" ? newerList.promise : undefined,
+			);
+			const picked = manager.select("REVIEW02");
+
+			olderList.resolve([review]);
+			await reading;
+
+			expect(manager.diffThreads.map((t) => t.id)).toEqual(["c1"]);
+			newerList.resolve([review, other]);
+			await picked;
 			manager.destroy();
 		});
 	});

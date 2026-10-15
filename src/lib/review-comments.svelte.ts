@@ -57,7 +57,7 @@ export interface ReviewCommentsManager {
 	/**
 	 * The threads the review-mode diff draws: a picked review's once read, and
 	 * the active review's even when another of its reads failed, except while a
-	 * failed read hides the pick they would stand in for.
+	 * failed review list hides the pick they would stand in for.
 	 */
 	readonly diffThreads: Thread[];
 	readonly snapshots: ReviewSnapshots;
@@ -113,6 +113,7 @@ export function createReviewComments(
 		selectedReviewId: null as string | null,
 		selected: null as SelectedRead | null,
 		activeReadState: "pending" as ReviewReadState,
+		reviewListRead: false,
 		revision: 0,
 		revisionScope: "full" as "full" | "refs",
 		threadsAuthoritative: false,
@@ -161,7 +162,7 @@ export function createReviewComments(
 		const pickedAnother =
 			state.selectedReviewId !== null &&
 			state.selectedReviewId !== state.activeReviewId;
-		if (pickedAnother && state.activeReadState !== "ready") return [];
+		if (pickedAnother && !state.reviewListRead) return [];
 		return state.threads;
 	});
 
@@ -210,12 +211,15 @@ export function createReviewComments(
 
 		if (cancelled || seq !== loadSeq) return;
 
-		state.reviews =
+		const reviewList =
 			reviewsR.status === "fulfilled" && Array.isArray(reviewsR.value)
 				? reviewsR.value
-				: [];
+				: null;
+		state.reviewListRead = reviewList !== null;
+		state.reviews = reviewList ?? [];
 		const pickWasDeleted =
-			reviewsR.status === "fulfilled" &&
+			state.reviewListRead &&
+			pickAtStart !== null &&
 			state.selectedReviewId === pickAtStart &&
 			!state.reviews.some((review) => review.id === pickAtStart);
 		if (pickWasDeleted) state.selectedReviewId = null;
