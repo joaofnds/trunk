@@ -1,6 +1,6 @@
 [package]
 name = "trunk"
-version = "0.57.5"
+version = "0.58.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2024"
