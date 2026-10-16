@@ -117,11 +117,40 @@ Fix (both were needed on 2026-08-30):
 
 ## `src-tauri/target` grows without bound, and slows every build
 
-Cargo keys each artifact by a build hash and never removes a superseded one.
-`cargo clean` is all-or-nothing, so nothing prunes in between and a week of
-builds accumulates artifacts for build configurations that no longer exist.
+Cargo keys each artifact by a build hash and leaves superseded output behind.
+Its automatic cache cleanup covers downloads, not build artifacts. Builds can
+accumulate output for compiler versions and configurations no longer in use.
 
-Measured 2026-09-03, after roughly a week:
+Use Cargo's built-in workspace cleanup to reclaim the project's debug output
+without discarding third-party dependency builds. Preview first:
+
+```bash
+mise exec -- just prune-cache
+```
+
+To remove the selected files, run:
+
+```bash
+mise exec -- just prune-cache --apply
+```
+
+The recipe delegates artifact selection and locking to
+[`cargo clean --workspace --profile dev`](https://doc.rust-lang.org/cargo/commands/cargo-clean.html).
+It removes debug output for workspace members, including their incremental caches.
+**Trunk's own crates rebuild afterward.** Third-party dependencies and release
+output remain cached. Cargo follows the configured target and build directories.
+Neither mode builds Trunk or runs its tests, and nothing runs automatically.
+Run `--apply` between test runs; Cargo's build lock does not cover tests that have
+already started.
+Let `--apply` finish; it runs `cargo clean`.
+
+This trades some recompilation for an upstream-supported command with no custom
+cache-format parsing. It does not collect obsolete third-party dependency builds,
+so it may reclaim little when those dominate. Cargo's dry-run totals can
+substantially overcount; they do not predict recovered disk space.
+
+The following measurements compare a week's accumulated cache with a full
+deletion and rebuild (2026-09-03):
 
 | | |
 |---|---|
@@ -153,8 +182,9 @@ other builds had run. How the cost depends on the command and on what the
 filesystem has cached is not established.
 
 Check it with `find src-tauri/target -type f | wc -l`. Past roughly 100k files,
-time a no-op of the command that is slow. If that no-op is slow too, delete the
-directory:
+time a no-op of the command that is slow. Use the workspace cleanup when retaining
+dependency builds matters more than reclaiming every old artifact. A full deletion
+remains an option when a cold dependency rebuild is acceptable:
 
 ```bash
 rm -rf src-tauri/target
@@ -170,10 +200,10 @@ pgrep -fl 'cargo|rustc'
 
 Deleting artifacts under a running cargo corrupts that build in ways that
 surface later as an unreproducible error, and this machine runs several
-sessions at once — which is why this is a manual step and deliberately not a
-`just` recipe any session could fire.
+sessions at once. The full deletion is a manual step; unlike Cargo's workspace
+cleanup, it has no lock protecting another build.
 
-Prefer `rm -rf` over `cargo clean`, and never interrupt either. Observed
+The full reset above uses `rm -rf`; never interrupt it or `cargo clean`. Observed
 2026-09-03: a `cargo clean` interrupted at 14% left the tree half-deleted and
 the build-directory lock held, and two cargo invocations in another session sat
 on that lock for fifteen minutes accumulating 2.5s of CPU between them — not

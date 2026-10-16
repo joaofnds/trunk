@@ -50,6 +50,19 @@ prototype:
 build:
     bun run tauri build
 
+# Preview Cargo's workspace debug cleanup; --apply removes it and rebuilds our crates next time
+[positional-arguments]
+prune-cache *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "$#:${1-}" in
+        0:) set -- --dry-run ;;
+        1:--apply) set -- ;;
+        *) printf '%s\n' 'Usage: just prune-cache [--apply]' >&2; exit 2 ;;
+    esac
+    printf '%s\n' 'Workspace debug output only. Dependencies stay; our crates rebuild after --apply.'
+    exec cargo clean --manifest-path "{{manifest}}" --workspace --profile dev "$@"
+
 # Rebuild every platform icon from one 1024px master; the icns stays under 1 MiB (scripts/icons.sh)
 icons master="src-tauri/icons/icon.png":
     scripts/icons.sh {{ master }}
