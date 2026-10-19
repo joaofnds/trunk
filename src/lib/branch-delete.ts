@@ -1,20 +1,25 @@
-import { forDisplay, MAX_PATH_CHARS } from "./display-text.js";
+import {
+	forDisplay,
+	MAX_MESSAGE_CHARS,
+	MAX_PATH_CHARS,
+} from "./display-text.js";
 import { isTrunkError, safeInvoke } from "./invoke.js";
 import type { BranchHold, RemovalRisk, WorktreeRemoval } from "./types.js";
 
 export type DeletePrompt =
+	| { readonly kind: "ask"; readonly message: string }
 	| {
-			kind: "ask";
-			message: string;
-			okLabel: string;
-			cancelLabel: string;
-			removal: WorktreeRemoval | null;
+			readonly kind: "remove";
+			readonly message: string;
+			readonly okLabel: string;
+			readonly removal: WorktreeRemoval;
 	  }
-	| { kind: "refuse"; message: string };
+	| { readonly kind: "refuse"; readonly message: string };
 
 const TITLE = "Delete Branch";
 
-/** Codes after which the worktree is not the one the user was asked about. */
+/** Codes after which the user's answer no longer fits the worktree: another one holds
+ *  the branch, or it now holds work the question did not warn about. */
 const ASK_AGAIN = new Set(["worktree_at_risk", "worktree_changed"]);
 
 /**
@@ -50,19 +55,31 @@ async function askThenDelete(
 		return false;
 	}
 
-	const confirmed = await ask(prompt.message, {
-		title: TITLE,
-		kind: "warning",
-		okLabel: prompt.okLabel,
-		cancelLabel: prompt.cancelLabel,
-	});
+	const confirmed = await ask(
+		prompt.message,
+		prompt.kind === "remove"
+			? {
+					title: TITLE,
+					kind: "warning",
+					okLabel: prompt.okLabel,
+					cancelLabel: "Cancel",
+				}
+			: { title: TITLE, kind: "warning" },
+	);
 	if (!confirmed) return false;
 
-	await safeInvoke("delete_branch", {
-		path: repoPath,
-		branchName,
-		worktree: prompt.removal,
-	});
+	try {
+		await safeInvoke("delete_branch", {
+			path: repoPath,
+			branchName,
+			worktree: prompt.kind === "remove" ? prompt.removal : null,
+		});
+	} catch (e) {
+		// The message names worktree paths and the files left behind, which the
+		// repository chose, so it is flattened like the question was.
+		if (!isTrunkError(e)) throw e;
+		throw { ...e, message: forDisplay(e.message, MAX_MESSAGE_CHARS) };
+	}
 	return true;
 }
 
@@ -70,7 +87,7 @@ export function deletePrompt(
 	branchName: string,
 	hold: BranchHold,
 ): DeletePrompt {
-	const branch = forDisplay(branchName);
+	const branch = forDisplay(branchName, MAX_PATH_CHARS);
 
 	switch (hold.kind) {
 		case "not_held":
@@ -78,26 +95,25 @@ export function deletePrompt(
 			return {
 				kind: "ask",
 				message: `Delete branch '${branch}'? This cannot be undone.`,
-				okLabel: "Yes",
-				cancelLabel: "No",
-				removal: null,
 			};
 		case "offer":
 			return {
-				kind: "ask",
+				kind: "remove",
 				message: `'${branch}' is checked out in the worktree at ${pathText(hold.path)}.\n\nRemove that worktree and delete the branch? This cannot be undone.`,
 				okLabel: "Remove Worktree and Delete",
-				cancelLabel: "Cancel",
 				removal: { name: hold.name, path: hold.path, go_ahead: false },
 			};
-		case "warn":
+		case "warn": {
+			const reasons = hold.reasons
+				.map((reason) => `- ${riskText(reason)}`)
+				.join("\n");
 			return {
-				kind: "ask",
-				message: `'${branch}' is checked out in the worktree at ${pathText(hold.path)}, and removing it may lose work:\n\n${hold.reasons.map((reason) => `- ${riskText(reason)}`).join("\n")}\n\nRemove it anyway and delete the branch? This cannot be undone.`,
+				kind: "remove",
+				message: `'${branch}' is checked out in the worktree at ${pathText(hold.path)}, and removing it may lose work:\n\n${reasons}\n\nRemove it anyway and delete the branch? This cannot be undone.`,
 				okLabel: "Remove Anyway and Delete",
-				cancelLabel: "Cancel",
 				removal: { name: hold.name, path: hold.path, go_ahead: true },
 			};
+		}
 		case "refuse":
 			return { kind: "refuse", message: refusalText(branch, hold) };
 	}

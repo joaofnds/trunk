@@ -36,6 +36,22 @@ function askedPath(question: string | undefined): string {
 	return path;
 }
 
+/**
+ * Asks to delete wt-branch a second time and waits for that question. The second
+ * preflight reaches the host after anything the dismissed answer could have sent, so
+ * once it is answered the first answer has been acted on, and a branch it deleted
+ * would no longer be there to ask about.
+ */
+async function askedAgain(
+	app: Awaited<ReturnType<typeof setup>>,
+): Promise<void> {
+	await app.branches.contextMenu("wt-branch");
+	app.contextMenu.choose("Delete");
+	await waitFor("the delete question again", () =>
+		app.dialog.shown.length === 2 ? true : null,
+	);
+}
+
 describe("branch mutation", () => {
 	afterEach(teardown);
 
@@ -100,6 +116,7 @@ describe("branch mutation", () => {
 				"the delete question",
 				() => app.dialog.shown.at(0) ?? null,
 			);
+			await askedAgain(app);
 			expect(app.branches.lists("wt-branch")).toBe(true);
 			expect(existsSync(join(askedPath(question), "c1.txt"))).toBe(true);
 		});
@@ -140,6 +157,7 @@ describe("branch mutation", () => {
 					"the delete warning",
 					() => app.dialog.shown.at(0) ?? null,
 				);
+				await askedAgain(app);
 				expect(question).toContain("removing it may lose work");
 				expect(app.branches.lists("wt-branch")).toBe(true);
 				expect(readFileSync(join(askedPath(question), "c1.txt"), "utf8")).toBe(

@@ -1,11 +1,12 @@
-// Refnames, paths and lock reasons arrive from the repository, and git permits what
+// Refnames, paths, lock reasons and file names arrive from the repository, and git permits what
 // looks unremarkable here: U+2028/U+2029 and the bidi overrides, which the native
 // dialog lays out as hard breaks. Left in, a name adds its own lines to the question
 // and can answer it.
 const RENDER_UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
 
-export const MAX_REFNAME_CHARS = 60;
+const MAX_REFNAME_CHARS = 60;
 export const MAX_PATH_CHARS = 200;
+export const MAX_MESSAGE_CHARS = 4000;
 
 export function forDisplay(text: string, maxChars = MAX_REFNAME_CHARS): string {
 	const flattened = text.replace(RENDER_UNSAFE, "�");
