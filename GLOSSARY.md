@@ -450,11 +450,11 @@ store itself.
 A worktree here is a checkout. Elsewhere in this file "worktree status" and
 `worktree_dirty` mean the state of a checkout's files, not this.
 
-**Main worktree** — the checkout `git init` or `git clone` made, the one the repository's
+**Main worktree**: the checkout `git init` or `git clone` made, the one the repository's
 git directory belongs to. A bare repository has none. Git refuses to remove it
 (`git help worktree`).
 
-**Linked worktree** — an extra checkout of the same repository, made by `git worktree add`,
+**Linked worktree**: an extra checkout of the same repository, made by `git worktree add`,
 sharing its objects and refs, with its own HEAD and index under
 `.git/worktrees/<name>`. Git refuses to delete a branch a worktree has checked out, or is
 rebasing or bisecting. Removing a linked worktree deletes its directory, so
