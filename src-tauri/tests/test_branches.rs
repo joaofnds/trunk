@@ -681,7 +681,7 @@ mod deleting_a_branch_a_linked_worktree_holds {
     );
 
     warns_then_removes_on_the_go_ahead!(
-        when_the_status_cannot_be_read,
+        when_the_index_cannot_be_read,
         |ctx, _| std::fs::write(admin_dir(ctx, "wt").join("index"), "not an index").unwrap(),
         vec![RemovalRisk::Unchecked]
     );
@@ -774,6 +774,40 @@ mod deleting_a_branch_a_linked_worktree_holds {
             &parents,
         )
         .unwrap();
+    }
+
+    mod when_a_changed_tracked_file_cannot_be_read {
+        use super::*;
+        use std::os::unix::fs::PermissionsExt;
+
+        /// Same size as the committed file and a later mtime, so status must read it to
+        /// tell, and the read fails while the index still loads.
+        #[test]
+        fn warns_that_its_changes_could_not_be_checked() {
+            let ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            let readme = path.join("README.md");
+            std::fs::write(&readme, "HELLO").unwrap();
+            let later = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
+            std::fs::File::options()
+                .write(true)
+                .open(&readme)
+                .unwrap()
+                .set_modified(later)
+                .unwrap();
+            std::fs::set_permissions(&readme, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+            let hold = ctx.branch_hold("wt-branch").unwrap();
+
+            assert_eq!(
+                hold,
+                BranchHold::Warn {
+                    name: "wt".into(),
+                    path: path.display().to_string(),
+                    reasons: vec![RemovalRisk::Unchecked],
+                }
+            );
+        }
     }
 
     mod when_an_unpopulated_gitlink_is_in_the_index {
