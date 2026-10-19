@@ -3,6 +3,7 @@ import App from "../../../src/App.svelte";
 import "../../../src/app.css";
 import { startAppServices } from "../../../src/lib/app-services.js";
 import { SCHEDULER } from "../../../src/lib/scheduler.js";
+import { _resetToasts } from "../../../src/lib/toast.svelte.js";
 import { AppDriver } from "../drivers/index.js";
 import { FakeClipboard } from "../fakes/clipboard.js";
 import { FakeDialog } from "../fakes/dialog.js";
@@ -118,6 +119,7 @@ export async function teardown(): Promise<void> {
 	driveWaitsWith(null);
 
 	await unmount(app);
+	_resetToasts();
 	untrackScroll();
 	root.remove();
 	internals.uninstall();
