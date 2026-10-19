@@ -172,6 +172,56 @@ describe("branch mutation", () => {
 			});
 		});
 
+		describe("when the worktree lets go of the branch while the offer is open", () => {
+			it("asks again with the plain question, then deletes only the branch", async () => {
+				const app = await setup({ repo: heldByWorktree() });
+				await app.repo.open();
+				app.dialog.whileAsking(() =>
+					writeFileSync(
+						join(app.repo.path, ".git/worktrees/wt/HEAD"),
+						"ref: refs/heads/main\n",
+					),
+				);
+
+				app.dialog.confirms();
+				await app.branches.contextMenu("wt-branch");
+				app.contextMenu.choose("Delete");
+
+				await waitFor("the wt-branch branch to go", () =>
+					app.branches.lists("wt-branch") ? null : true,
+				);
+				const [offer, plain] = app.dialog.shown;
+				expect(plain).toContain("Delete branch 'wt-branch'?");
+				expect(existsSync(join(askedPath(offer), "c1.txt"))).toBe(true);
+			});
+		});
+
+		describe("when the branch will not delete after the worktree went", () => {
+			it("reports it without asking again", async () => {
+				const app = await setup({ repo: heldByWorktree() });
+				await app.repo.open();
+				app.dialog.whileAsking(() =>
+					writeFileSync(
+						join(app.repo.path, ".git/refs/heads/wt-branch.lock"),
+						"",
+					),
+				);
+
+				app.dialog.confirms();
+				await app.branches.contextMenu("wt-branch");
+				app.contextMenu.choose("Delete");
+
+				const [report] = await waitFor("the delete error", () => {
+					const toasts = app.toasts();
+					return toasts.length > 0 ? toasts : null;
+				});
+				expect(report).toContain(
+					"was removed but the branch could not be deleted",
+				);
+				expect(app.dialog.questions).toHaveLength(1);
+			});
+		});
+
 		describe("when the worktree does not point back at this repository", () => {
 			const mismatched = heldByWorktree({
 				step: "worktreeFile",
@@ -192,9 +242,10 @@ describe("branch mutation", () => {
 					"the delete refusal",
 					() => app.dialog.shown.at(0) ?? null,
 				);
+				expect(app.dialog.questions).toEqual([]);
 				await askedAgain(app);
 				expect(refusal).toContain("does not point back at this repository");
-				expect(app.dialog.questions).toEqual([]);
+				expect(app.toasts()).toEqual([]);
 				expect(app.branches.lists("wt-branch")).toBe(true);
 				expect(existsSync(join(askedPath(refusal), "c1.txt"))).toBe(true);
 			});

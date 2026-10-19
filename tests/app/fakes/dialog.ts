@@ -27,7 +27,8 @@ export class FakeDialog implements TauriFake {
 		return this.asked;
 	}
 
-	/** The next question is answered with its confirming button. */
+	/** Every question from now on is answered with its confirming button, until
+	 *  `dismisses()`. */
 	confirms(): void {
 		this.confirming = true;
 	}
@@ -37,7 +38,8 @@ export class FakeDialog implements TauriFake {
 	}
 
 	/** Runs `effect` while the next question is open, before it is answered, as a
-	 *  user who changes something in another window before clicking would. */
+	 *  user who changes something in another window before clicking would. A message
+	 *  that offers no choice leaves it waiting. */
 	whileAsking(effect: (question: string) => void): void {
 		this.whileOpen = effect;
 	}
@@ -58,12 +60,14 @@ export class FakeDialog implements TauriFake {
 	answer(command: string, args: Record<string, unknown>): unknown {
 		switch (command) {
 			case "message": {
-				const question = String(args.message);
-				this.messages.push(question);
-				if (offersAChoice(args.buttons)) this.asked.push(question);
-				const effect = this.whileOpen;
-				this.whileOpen = null;
-				effect?.(question);
+				const text = String(args.message);
+				this.messages.push(text);
+				if (offersAChoice(args.buttons)) {
+					this.asked.push(text);
+					const effect = this.whileOpen;
+					this.whileOpen = null;
+					effect?.(text);
+				}
 
 				return this.confirming ? okLabelOf(args.buttons) : DISMISSED;
 			}
