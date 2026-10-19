@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onDestroy } from "svelte";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
+import { forDisplay } from "../lib/display-text.js";
 import { safeInvoke, type TrunkError } from "../lib/invoke.js";
 import { remoteErrorMessage } from "../lib/remote-error.js";
 import { runRemoteOp } from "../lib/remote-op.js";
@@ -142,20 +143,6 @@ let display = $derived.by((): Display => {
 
 function dismiss() {
 	remoteState.error = null;
-}
-
-// Refnames arrive by clone and git permits what looks unremarkable here: U+2028/U+2029
-// and the bidi overrides, which the native dialog lays out as hard breaks. Left in, a
-// branch name adds its own lines to the question and can answer it.
-const MAX_REFNAME_CHARS = 60;
-const RENDER_UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
-
-function forDisplay(name: string): string {
-	const flattened = name.replace(RENDER_UNSAFE, "�");
-	const points = Array.from(flattened);
-	return points.length <= MAX_REFNAME_CHARS
-		? flattened
-		: `${points.slice(0, MAX_REFNAME_CHARS).join("")}…`;
 }
 
 async function handleForcePush(target: Target) {

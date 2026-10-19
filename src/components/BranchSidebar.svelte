@@ -2,6 +2,7 @@
 import Archive from "@lucide/svelte/icons/archive";
 import Search from "@lucide/svelte/icons/search";
 import { onDestroy } from "svelte";
+import { deleteBranch } from "../lib/branch-delete.js";
 import {
 	mergeBranch,
 	rebaseBranch,
@@ -490,17 +491,8 @@ function closeDialog() {
 }
 
 async function handleDeleteBranch(branchName: string) {
-	const { ask } = await import("@tauri-apps/plugin-dialog");
-	const confirmed = await ask(
-		`Delete branch '${branchName}'? This cannot be undone.`,
-		{
-			title: "Delete Branch",
-			kind: "warning",
-		},
-	);
-	if (!confirmed) return;
 	try {
-		await safeInvoke("delete_branch", { path: repoPath, branchName });
+		if (!(await deleteBranch(repoPath, branchName))) return;
 		await loadRefs(repoPath);
 		onrefreshed?.();
 		showToast(`Deleted branch ${branchName}`, "success");

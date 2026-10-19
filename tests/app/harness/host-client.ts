@@ -21,7 +21,9 @@ export type SpecStep =
 			path: string;
 			content: string;
 			message: string;
-	  };
+	  }
+	| { step: "worktree"; name: string; branch: string }
+	| { step: "worktreeFile"; worktree: string; path: string; content: string };
 
 export interface RepoSpec {
 	steps: SpecStep[];

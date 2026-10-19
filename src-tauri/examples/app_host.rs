@@ -119,6 +119,18 @@ enum SpecStep {
         content: String,
         message: String,
     },
+    /// A linked worktree checked out on an existing branch, added once the repository
+    /// is built.
+    Worktree {
+        name: String,
+        branch: String,
+    },
+    /// Write a file into a linked worktree an earlier step added, leaving it uncommitted.
+    WorktreeFile {
+        worktree: String,
+        path: String,
+        content: String,
+    },
 }
 
 /// Serializes every line the host writes: `listen_any` handlers run on the
@@ -257,9 +269,14 @@ fn reply_line(id: u64, reply: Reply) -> Value {
 
 fn seed(spec: RepoSpec) -> TestContext {
     let mut builder = TestContext::builder();
+    let mut worktree_steps = Vec::new();
 
     for step in spec.steps {
         match step {
+            SpecStep::Worktree { .. } | SpecStep::WorktreeFile { .. } => {
+                worktree_steps.push(step);
+                continue;
+            }
             SpecStep::File { path, content } => builder.with_file(&path, &content),
             SpecStep::RemoveFile { path } => builder.with_removed_file(&path),
             SpecStep::Commit {
@@ -282,7 +299,24 @@ fn seed(spec: RepoSpec) -> TestContext {
         };
     }
 
-    builder.build()
+    let ctx = builder.build();
+    let mut worktrees = std::collections::HashMap::new();
+    for step in worktree_steps {
+        match step {
+            SpecStep::Worktree { name, branch } => {
+                let path = ctx.add_linked_worktree(&name, &branch);
+                worktrees.insert(name, path);
+            }
+            SpecStep::WorktreeFile {
+                worktree,
+                path,
+                content,
+            } => std::fs::write(worktrees[&worktree].join(path), content)
+                .expect("failed to write into the worktree"),
+            _ => unreachable!("only worktree steps are deferred"),
+        }
+    }
+    ctx
 }
 
 fn invoke(webview: &WebviewWindow<MockRuntime>, cmd: &str, args: Value) -> Result<Value, Value> {

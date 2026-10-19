@@ -14,6 +14,7 @@ import { listen } from "@tauri-apps/api/event";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { type Component, onDestroy, tick, untrack } from "svelte";
 import { buildGraphData } from "../lib/active-lanes.js";
+import { deleteBranch } from "../lib/branch-delete.js";
 import {
 	mergeBranch,
 	rebaseBranch,
@@ -1257,16 +1258,8 @@ async function handleDeleteRemoteBranch(branchName: string) {
 }
 
 async function handleDeleteBranch(branchName: string) {
-	const confirmed = await ask(
-		`Delete branch '${branchName}'? This cannot be undone.`,
-		{
-			title: "Delete Branch",
-			kind: "warning",
-		},
-	);
-	if (!confirmed) return;
 	try {
-		await safeInvoke("delete_branch", { path: repoPath, branchName });
+		if (!(await deleteBranch(repoPath, branchName))) return;
 		showToast(`Deleted branch ${branchName}`, "success");
 	} catch (e) {
 		await reportErrorDialog(

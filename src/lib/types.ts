@@ -106,6 +106,32 @@ export interface BranchInfo {
 	last_commit_timestamp: number;
 }
 
+/** Why removing a linked worktree may lose work. */
+export type RemovalRisk =
+	| { kind: "changes" }
+	| { kind: "unchecked" }
+	| { kind: "locked"; reason: string | null }
+	| { kind: "submodules" };
+
+/** What deleting a local branch would have to do about the worktree holding it. */
+export type BranchHold =
+	| { kind: "not_held" }
+	| { kind: "held_by_main" }
+	| { kind: "offer"; name: string; path: string }
+	| { kind: "warn"; name: string; path: string; reasons: RemovalRisk[] }
+	| {
+			kind: "refuse";
+			paths: string[];
+			reason: "mismatched" | "several_holders" | "open_in_tab";
+	  };
+
+/** The linked worktree the user agreed to remove so its branch can be deleted. */
+export interface WorktreeRemoval {
+	name: string;
+	path: string;
+	go_ahead: boolean;
+}
+
 export interface StashEntry {
 	index: number;
 	name: string;

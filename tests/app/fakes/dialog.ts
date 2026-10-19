@@ -1,6 +1,5 @@
 import { type TauriFake, UnknownFakeCommand } from "./index.js";
 
-const YES_NO = "YesNo";
 const DEFAULT_OK = "Yes";
 const DISMISSED = "";
 
@@ -56,13 +55,15 @@ export class FakeDialog implements TauriFake {
 /**
  * `ask()` reports the button the user pressed by comparing the plugin's answer
  * against the label it asked for, so confirming means returning that exact
- * label rather than a boolean.
+ * label rather than a boolean. Custom labels reach the plugin as
+ * `{ OkCancelCustom: [ok, cancel] }` or `{ OkCustom: ok }`.
  */
 function okLabelOf(buttons: unknown): string {
-	if (buttons === YES_NO || buttons === undefined) return DEFAULT_OK;
-	if (typeof buttons === "object" && buttons !== null && "ok" in buttons) {
-		return String((buttons as { ok: unknown }).ok);
+	if (typeof buttons !== "object" || buttons === null) return DEFAULT_OK;
+	if ("OkCancelCustom" in buttons && Array.isArray(buttons.OkCancelCustom)) {
+		return String(buttons.OkCancelCustom[0]);
 	}
+	if ("OkCustom" in buttons) return String(buttons.OkCustom);
 
 	return DEFAULT_OK;
 }
