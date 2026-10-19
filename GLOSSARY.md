@@ -445,6 +445,23 @@ process invokes the CLI.
 clipboard on demand for any review in any state. One rendering of the store, not the
 store itself.
 
+## Worktrees (TRUNK-378, 2026-10-19)
+
+A worktree here is a checkout. Elsewhere in this file "worktree status" and
+`worktree_dirty` mean the state of a checkout's files, not this.
+
+**Main worktree** — the checkout `git init` or `git clone` made, the one the repository's
+git directory belongs to. A bare repository has none. Git refuses to remove it
+(`git help worktree`).
+
+**Linked worktree** — an extra checkout of the same repository, made by `git worktree add`,
+sharing its objects and refs, with its own HEAD and index under
+`.git/worktrees/<name>`. Git refuses to delete a branch a worktree has checked out, or is
+rebasing or bisecting. Removing a linked worktree deletes its directory, so
+`git worktree remove` refuses without `--force` when it has uncommitted changes or
+untracked files, or contains submodules. It also refuses when the worktree's `.git` file
+does not point back at its entry. A locked worktree needs `--force` twice.
+
 ## Remote operations
 
 **Push recovery prompt** — the persistent in-app surface Trunk shows when a push fails
