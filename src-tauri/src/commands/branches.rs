@@ -136,7 +136,8 @@ pub fn list_refs_inner(path: &str, state_map: &OpenRepos) -> Result<RefsResponse
 ///
 /// Returns `not_open` when `path` names no open repository, `cannot_delete_head` when
 /// `branch_name` is the checked-out branch, the git error when the branch is missing or
-/// will not delete, every error `trunk_git::worktree::remove` names, and
+/// will not delete, every error `trunk_git::worktree::remove` names, `worktree_changed`
+/// when no removal was accepted and a linked worktree now holds the branch, and
 /// `branch_not_deleted` when the worktree went but the branch would not.
 pub fn delete_branch_inner(
     path: &str,
@@ -175,6 +176,7 @@ pub fn delete_branch_inner(
             )
         })?;
     } else {
+        trunk_git::worktree::ensure_no_linked_holder(&repo, branch_name, &open_tabs(state_map))?;
         branch.delete()?;
     }
     drop(branch);

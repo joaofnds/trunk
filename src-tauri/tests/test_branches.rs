@@ -780,21 +780,14 @@ mod deleting_a_branch_a_linked_worktree_holds {
         use super::*;
         use std::os::unix::fs::PermissionsExt;
 
-        /// Same size as the committed file and a later mtime, so status must read it to
-        /// tell, and the read fails while the index still loads.
+        /// Same size as the committed file, so status must read it to tell, and the read
+        /// fails while the index still loads.
         #[test]
         fn warns_that_its_changes_could_not_be_checked() {
             let ctx = repo_with_branch("wt-branch");
             let path = ctx.add_linked_worktree("wt", "wt-branch");
             let readme = path.join("README.md");
             std::fs::write(&readme, "HELLO").unwrap();
-            let later = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
-            std::fs::File::options()
-                .write(true)
-                .open(&readme)
-                .unwrap()
-                .set_modified(later)
-                .unwrap();
             std::fs::set_permissions(&readme, std::fs::Permissions::from_mode(0o000)).unwrap();
 
             let hold = ctx.branch_hold("wt-branch").unwrap();
@@ -1165,6 +1158,21 @@ mod deleting_a_branch_a_linked_worktree_holds {
 
         assert_eq!(error.code, "branch_not_deleted");
         assert!(!path.exists());
+        ctx.assert_branch_exists("wt-branch");
+    }
+
+    #[test]
+    fn deletes_nothing_unasked_when_a_worktree_took_the_branch_after_the_question() {
+        let mut ctx = repo_with_branch("wt-branch");
+        ctx.create_branch("other", None).unwrap();
+        ctx.checkout_branch("main").unwrap();
+        let path = ctx.add_linked_worktree("wt", "wt-branch");
+        let other = ctx.add_linked_worktree("wt2", "other");
+        std::fs::copy(other.join(".git"), path.join(".git")).unwrap();
+
+        let result = ctx.delete_branch("wt-branch");
+
+        assert_eq!(result.unwrap_err().code, "worktree_changed");
         ctx.assert_branch_exists("wt-branch");
     }
 

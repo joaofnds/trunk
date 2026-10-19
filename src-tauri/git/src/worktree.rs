@@ -150,6 +150,27 @@ pub fn assess(
     }
 }
 
+/// Check that no linked worktree took `branch` after the user was asked to delete it
+/// with none to remove.
+///
+/// # Errors
+///
+/// Returns `worktree_changed` when a linked worktree now holds the branch, and the git
+/// error when the repository's worktrees will not list.
+pub fn ensure_no_linked_holder(
+    repo: &Repository,
+    branch: &str,
+    open_tabs: &[PathBuf],
+) -> Result<(), TrunkError> {
+    match assess(repo, branch, open_tabs)? {
+        BranchHold::NotHeld | BranchHold::HeldByMain => Ok(()),
+        _ => Err(TrunkError::new(
+            "worktree_changed",
+            format!("a worktree now holds {branch}, so nothing was deleted"),
+        )),
+    }
+}
+
 /// Remove the worktree the user agreed to remove, after checking it is still the one
 /// holding `branch` and, without the go-ahead, that it still risks nothing.
 ///
