@@ -954,6 +954,24 @@ mod deleting_a_branch_a_linked_worktree_holds {
         }
 
         #[test]
+        fn when_the_tab_opened_the_worktree_through_a_symlink() {
+            let mut ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            let alias = ctx.worktrees_dir().join("alias");
+            std::os::unix::fs::symlink(&path, &alias).unwrap();
+            ctx.open_in_tab(&alias);
+
+            assert_refused_and_unchanged(
+                &mut ctx,
+                &path,
+                BranchHold::Refuse {
+                    paths: vec![path.display().to_string()],
+                    reason: Refusal::OpenInTab,
+                },
+            );
+        }
+
+        #[test]
         fn when_a_repository_inside_the_worktree_is_open_in_a_tab() {
             let mut ctx = repo_with_branch("wt-branch");
             let path = ctx.add_linked_worktree("wt", "wt-branch");
