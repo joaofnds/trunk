@@ -5,6 +5,7 @@ pub struct TestContext {
     /// Held so the temporary directories outlive the context that names them.
     dir: tempfile::TempDir,
     data_dir: tempfile::TempDir,
+    worktrees_dir: tempfile::TempDir,
     pub(crate) path: String,
     pub(crate) state_map: OpenRepos,
     pub(crate) cache_map: GraphCache,
@@ -34,6 +35,7 @@ impl TestContext {
         Self {
             dir,
             data_dir,
+            worktrees_dir: tempfile::tempdir().expect("failed to create worktrees tempdir"),
             path,
             state_map,
             cache_map: GraphCache::default(),
@@ -54,6 +56,11 @@ impl TestContext {
     /// Threaded into `review_store` / review _inner functions as the `data_dir` arg.
     pub fn data_dir(&self) -> &Path {
         self.data_dir.path()
+    }
+
+    /// Where linked worktrees of the test repo are created, outside its checkout.
+    pub fn worktrees_dir(&self) -> &Path {
+        self.worktrees_dir.path()
     }
 
     /// Open a fresh `git2::Repository` handle
@@ -77,6 +84,7 @@ impl TestContext {
         Self {
             dir,
             data_dir,
+            worktrees_dir: tempfile::tempdir().expect("failed to create worktrees tempdir"),
             path,
             state_map,
             cache_map: GraphCache::default(),

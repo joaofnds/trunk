@@ -242,6 +242,7 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         commands::branches::checkout_branch,
         commands::branches::fast_forward_to,
         commands::branches::create_branch,
+        commands::branches::branch_hold,
         commands::branches::delete_branch,
         commands::branches::rename_branch,
         commands::staging::get_dirty_counts,

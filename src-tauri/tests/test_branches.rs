@@ -497,3 +497,604 @@ fn resolve_ref_fails_for_nonexistent_ref() {
         "resolve_ref should fail for nonexistent ref"
     );
 }
+
+mod deleting_a_branch_a_linked_worktree_holds {
+    use super::common::context::TestContext;
+    use trunk_git::worktree::{BranchHold, Refusal, RemovalRisk, WorktreeRemoval};
+
+    fn repo_with_branch(branch: &str) -> TestContext {
+        let mut ctx = TestContext::builder()
+            .with_file("README.md", "hello")
+            .with_commit("Initial commit")
+            .build();
+        ctx.create_branch(branch, None).unwrap();
+        ctx.checkout_branch("main").unwrap();
+        ctx
+    }
+
+    fn removal(name: &str, path: &std::path::Path, go_ahead: bool) -> WorktreeRemoval {
+        WorktreeRemoval {
+            name: name.into(),
+            path: path.display().to_string(),
+            go_ahead,
+        }
+    }
+
+    fn worktree_names(ctx: &TestContext) -> Vec<String> {
+        ctx.repo()
+            .worktrees()
+            .unwrap()
+            .iter()
+            .filter_map(|name| name.ok().flatten().map(str::to_owned))
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    #[test]
+    fn removes_a_clean_worktree_then_the_branch() {
+        let mut ctx = repo_with_branch("wt-branch");
+        let path = ctx.add_linked_worktree("wt", "wt-branch");
+
+        let result = ctx.delete_branch_removing("wt-branch", &removal("wt", &path, false));
+
+        assert_eq!(result, Ok(()));
+        ctx.assert_branch_not_exists("wt-branch");
+        assert_eq!(worktree_names(&ctx), Vec::<String>::new());
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn offers_to_remove_a_clean_worktree() {
+        let ctx = repo_with_branch("wt-branch");
+        let path = ctx.add_linked_worktree("wt", "wt-branch");
+
+        let hold = ctx.branch_hold("wt-branch").unwrap();
+
+        assert_eq!(
+            hold,
+            BranchHold::Offer {
+                name: "wt".into(),
+                path: path.display().to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn reports_an_unheld_branch() {
+        let ctx = repo_with_branch("lonely");
+
+        assert_eq!(ctx.branch_hold("lonely").unwrap(), BranchHold::NotHeld);
+    }
+
+    fn admin_dir(ctx: &TestContext, name: &str) -> std::path::PathBuf {
+        ctx.repo().commondir().join("worktrees").join(name)
+    }
+
+    /// Generates, for one way a worktree may hold work: the preflight warns with
+    /// `$reasons`, a delete without the go-ahead changes nothing, and a delete with it
+    /// removes the worktree and the branch.
+    macro_rules! warns_then_removes_on_the_go_ahead {
+        ($case:ident, $arrange:expr, $reasons:expr) => {
+            mod $case {
+                use super::*;
+
+                fn arranged() -> (TestContext, std::path::PathBuf) {
+                    let ctx = repo_with_branch("wt-branch");
+                    let path = ctx.add_linked_worktree("wt", "wt-branch");
+                    let arrange: fn(&TestContext, &std::path::Path) = $arrange;
+                    arrange(&ctx, &path);
+                    (ctx, path)
+                }
+
+                #[test]
+                fn warns_with_the_reasons() {
+                    let (ctx, path) = arranged();
+
+                    let hold = ctx.branch_hold("wt-branch").unwrap();
+
+                    assert_eq!(
+                        hold,
+                        BranchHold::Warn {
+                            name: "wt".into(),
+                            path: path.display().to_string(),
+                            reasons: $reasons,
+                        }
+                    );
+                }
+
+                #[test]
+                fn refuses_without_the_go_ahead_and_changes_nothing() {
+                    let (mut ctx, path) = arranged();
+                    let before = snapshot(&ctx, &path);
+
+                    let result =
+                        ctx.delete_branch_removing("wt-branch", &removal("wt", &path, false));
+
+                    assert_eq!(result.unwrap_err().code, "worktree_at_risk");
+                    ctx.assert_branch_exists("wt-branch");
+                    assert_eq!(snapshot(&ctx, &path), before);
+                }
+
+                #[test]
+                fn removes_the_worktree_and_the_branch_on_the_go_ahead() {
+                    let (mut ctx, path) = arranged();
+
+                    let result =
+                        ctx.delete_branch_removing("wt-branch", &removal("wt", &path, true));
+
+                    assert_eq!(result, Ok(()));
+                    ctx.assert_branch_not_exists("wt-branch");
+                    assert_eq!(worktree_names(&ctx), Vec::<String>::new());
+                    assert!(!path.exists());
+                }
+            }
+        };
+    }
+
+    /// Every path under the worktree and its admin entry, with each file's bytes.
+    fn snapshot(ctx: &TestContext, path: &std::path::Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
+        fn walk(dir: &std::path::Path, out: &mut Vec<(std::path::PathBuf, Vec<u8>)>) {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                out.push((dir.to_path_buf(), b"<unreadable>".to_vec()));
+                return;
+            };
+            for entry in entries.flatten() {
+                let entry_path = entry.path();
+                if entry_path.is_dir() {
+                    out.push((entry_path.clone(), Vec::new()));
+                    walk(&entry_path, out);
+                } else {
+                    let bytes =
+                        std::fs::read(&entry_path).unwrap_or_else(|_| b"<unreadable>".to_vec());
+                    out.push((entry_path, bytes));
+                }
+            }
+        }
+
+        let mut out = Vec::new();
+        walk(path, &mut out);
+        walk(&admin_dir(ctx, "wt"), &mut out);
+        out.sort();
+        out
+    }
+
+    warns_then_removes_on_the_go_ahead!(
+        when_a_tracked_file_is_modified,
+        |_, path| std::fs::write(path.join("README.md"), "edited").unwrap(),
+        vec![RemovalRisk::Changes]
+    );
+
+    warns_then_removes_on_the_go_ahead!(
+        when_an_untracked_file_is_present,
+        |_, path| {
+            std::fs::create_dir(path.join("notes")).unwrap();
+            std::fs::write(path.join("notes/todo.txt"), "new").unwrap();
+        },
+        vec![RemovalRisk::Changes]
+    );
+
+    warns_then_removes_on_the_go_ahead!(
+        when_the_status_cannot_be_read,
+        |ctx, _| std::fs::write(admin_dir(ctx, "wt").join("index"), "not an index").unwrap(),
+        vec![RemovalRisk::Unchecked]
+    );
+
+    warns_then_removes_on_the_go_ahead!(
+        when_the_worktree_is_locked_with_a_reason,
+        |ctx, _| std::fs::write(admin_dir(ctx, "wt").join("locked"), "on a usb stick\n").unwrap(),
+        vec![RemovalRisk::Locked {
+            reason: Some("on a usb stick".into())
+        }]
+    );
+
+    warns_then_removes_on_the_go_ahead!(
+        when_the_worktree_is_locked_without_a_reason,
+        |ctx, _| std::fs::write(admin_dir(ctx, "wt").join("locked"), "").unwrap(),
+        vec![RemovalRisk::Locked { reason: None }]
+    );
+
+    warns_then_removes_on_the_go_ahead!(
+        when_the_lock_cannot_be_read,
+        |ctx, _| {
+            use std::os::unix::fs::PermissionsExt;
+
+            let lock = admin_dir(ctx, "wt").join("locked");
+            std::fs::write(&lock, "secret").unwrap();
+            std::fs::set_permissions(&lock, std::fs::Permissions::from_mode(0o000)).unwrap();
+        },
+        vec![RemovalRisk::Locked { reason: None }]
+    );
+
+    warns_then_removes_on_the_go_ahead!(
+        when_a_submodule_keeps_its_git_dir_in_the_admin_entry,
+        |ctx, _| {
+            let modules = admin_dir(ctx, "wt").join("modules/lib");
+            std::fs::create_dir_all(&modules).unwrap();
+            std::fs::write(modules.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        },
+        vec![RemovalRisk::Submodules]
+    );
+
+    warns_then_removes_on_the_go_ahead!(
+        when_a_locked_worktree_has_submodules_in_both_places,
+        |ctx, path| {
+            add_embedded_repository(path, "inner");
+            std::fs::create_dir_all(admin_dir(ctx, "wt").join("modules/lib")).unwrap();
+            std::fs::write(admin_dir(ctx, "wt").join("locked"), "").unwrap();
+        },
+        vec![
+            RemovalRisk::Submodules,
+            RemovalRisk::Locked { reason: None }
+        ]
+    );
+
+    warns_then_removes_on_the_go_ahead!(
+        when_an_embedded_repository_is_added_as_a_gitlink,
+        |_, path| add_embedded_repository(path, "inner"),
+        vec![RemovalRisk::Submodules]
+    );
+
+    /// A repository inside the worktree with a commit of its own, staged and committed
+    /// in the worktree as a gitlink, which leaves the worktree's status clean.
+    fn add_embedded_repository(worktree: &std::path::Path, name: &str) {
+        let inner = git2::Repository::init(worktree.join(name)).unwrap();
+        std::fs::write(worktree.join(name).join("only-here.txt"), "precious").unwrap();
+        commit_all(&inner, "inner commit");
+
+        let outer = git2::Repository::open(worktree).unwrap();
+        let mut index = outer.index().unwrap();
+        index.add_path(std::path::Path::new(name)).unwrap();
+        index.write().unwrap();
+        commit_all(&outer, "add inner");
+    }
+
+    fn commit_all(repo: &git2::Repository, message: &str) {
+        let mut index = repo.index().unwrap();
+        index
+            .add_all(["*"], git2::IndexAddOption::DEFAULT, None)
+            .unwrap();
+        index.write().unwrap();
+        let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+        let signature = git2::Signature::now("Test User", "test@example.com").unwrap();
+        let parent = repo.head().ok().and_then(|head| head.peel_to_commit().ok());
+        let parents: Vec<&git2::Commit<'_>> = parent.iter().collect();
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &parents,
+        )
+        .unwrap();
+    }
+
+    mod when_an_unpopulated_gitlink_is_in_the_index {
+        use super::*;
+
+        #[test]
+        fn offers_without_a_warning() {
+            let ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            add_embedded_repository(&path, "inner");
+            std::fs::remove_dir_all(path.join("inner")).unwrap();
+            std::fs::create_dir(path.join("inner")).unwrap();
+
+            let hold = ctx.branch_hold("wt-branch").unwrap();
+
+            assert_eq!(
+                hold,
+                BranchHold::Offer {
+                    name: "wt".into(),
+                    path: path.display().to_string(),
+                }
+            );
+        }
+    }
+
+    mod when_a_directory_cannot_be_read {
+        use super::*;
+        use std::os::unix::fs::PermissionsExt;
+
+        /// Restores search permission so the temporary directory can be cleaned up.
+        struct Unreadable(std::path::PathBuf);
+
+        impl Drop for Unreadable {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+
+        fn with_unreadable_directory(path: &std::path::Path) -> Unreadable {
+            let secret = path.join("secret");
+            std::fs::create_dir(&secret).unwrap();
+            std::fs::write(secret.join("key.txt"), "hidden").unwrap();
+            std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o000)).unwrap();
+            Unreadable(secret)
+        }
+
+        #[test]
+        fn going_ahead_from_the_warning_unregisters_the_worktree_names_what_is_left_and_keeps_the_branch()
+         {
+            let mut ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            std::fs::write(path.join("README.md"), "edited").unwrap();
+            let _guard = with_unreadable_directory(&path);
+
+            let error = ctx
+                .delete_branch_removing("wt-branch", &removal("wt", &path, true))
+                .unwrap_err();
+
+            assert_eq!(error.code, "worktree_partly_removed");
+            assert!(
+                error
+                    .message
+                    .contains(&path.join("secret").display().to_string())
+            );
+            ctx.assert_branch_exists("wt-branch");
+            assert_eq!(worktree_names(&ctx), Vec::<String>::new());
+            assert!(!path.join("README.md").exists());
+        }
+
+        #[test]
+        fn accepting_the_offer_ends_in_the_same_partial_removal() {
+            let mut ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            let _guard = with_unreadable_directory(&path);
+
+            let error = ctx
+                .delete_branch_removing("wt-branch", &removal("wt", &path, false))
+                .unwrap_err();
+
+            assert_eq!(error.code, "worktree_partly_removed");
+            ctx.assert_branch_exists("wt-branch");
+        }
+    }
+
+    fn set_admin_head(ctx: &TestContext, name: &str, branch: &str) {
+        std::fs::write(
+            admin_dir(ctx, name).join("HEAD"),
+            format!("ref: refs/heads/{branch}\n"),
+        )
+        .unwrap();
+    }
+
+    fn assert_refused_and_unchanged(
+        ctx: &mut TestContext,
+        path: &std::path::Path,
+        expected: BranchHold,
+    ) {
+        let before = snapshot(ctx, path);
+
+        let hold = ctx.branch_hold("wt-branch").unwrap();
+        let result = ctx.delete_branch_removing("wt-branch", &removal("wt", path, true));
+
+        assert_eq!(hold, expected);
+        assert_eq!(result.unwrap_err().code, "worktree_refused");
+        ctx.assert_branch_exists("wt-branch");
+        assert_eq!(snapshot(ctx, path), before);
+    }
+
+    mod refuses_and_changes_nothing {
+        use super::*;
+
+        #[test]
+        fn when_the_worktree_does_not_point_back_at_its_admin_entry() {
+            let mut ctx = repo_with_branch("wt-branch");
+            ctx.create_branch("other", None).unwrap();
+            ctx.checkout_branch("main").unwrap();
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            let other = ctx.add_linked_worktree("wt2", "other");
+            std::fs::copy(other.join(".git"), path.join(".git")).unwrap();
+
+            assert_refused_and_unchanged(
+                &mut ctx,
+                &path,
+                BranchHold::Refuse {
+                    paths: vec![path.display().to_string()],
+                    reason: Refusal::Mismatched,
+                },
+            );
+        }
+
+        #[test]
+        fn when_the_admin_entry_records_something_other_than_a_git_file() {
+            let mut ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            std::fs::write(
+                admin_dir(&ctx, "wt").join("gitdir"),
+                format!("{}\n", path.join("README.md").display()),
+            )
+            .unwrap();
+
+            assert_refused_and_unchanged(
+                &mut ctx,
+                &path,
+                BranchHold::Refuse {
+                    paths: vec![path.display().to_string()],
+                    reason: Refusal::Mismatched,
+                },
+            );
+        }
+
+        #[test]
+        fn when_two_linked_worktrees_hold_the_branch() {
+            let mut ctx = repo_with_branch("wt-branch");
+            ctx.create_branch("other", None).unwrap();
+            ctx.checkout_branch("main").unwrap();
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            let second = ctx.add_linked_worktree("wt2", "other");
+            set_admin_head(&ctx, "wt2", "wt-branch");
+
+            assert_refused_and_unchanged(
+                &mut ctx,
+                &path,
+                BranchHold::Refuse {
+                    paths: vec![path.display().to_string(), second.display().to_string()],
+                    reason: Refusal::SeveralHolders,
+                },
+            );
+        }
+
+        #[test]
+        fn when_the_worktree_is_open_in_a_tab() {
+            let mut ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            ctx.open_in_tab(&path);
+
+            assert_refused_and_unchanged(
+                &mut ctx,
+                &path,
+                BranchHold::Refuse {
+                    paths: vec![path.display().to_string()],
+                    reason: Refusal::OpenInTab,
+                },
+            );
+        }
+
+        #[test]
+        fn when_a_repository_inside_the_worktree_is_open_in_a_tab() {
+            let mut ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            git2::Repository::init(path.join("inner")).unwrap();
+            std::fs::write(path.join(".git/info/exclude"), "").ok();
+            ctx.open_in_tab(&path.join("inner"));
+
+            let hold = ctx.branch_hold("wt-branch").unwrap();
+
+            assert_eq!(
+                hold,
+                BranchHold::Refuse {
+                    paths: vec![path.display().to_string()],
+                    reason: Refusal::OpenInTab,
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn leaves_the_worktree_when_the_main_worktree_holds_the_branch_too() {
+        let mut ctx = repo_with_branch("wt-branch");
+        let path = ctx.add_linked_worktree("wt", "wt-branch");
+        set_admin_head(&ctx, "wt", "main");
+
+        let hold = ctx.branch_hold("main").unwrap();
+        let result = ctx.delete_branch_removing("main", &removal("wt", &path, true));
+
+        assert_eq!(hold, BranchHold::HeldByMain);
+        assert_eq!(result.unwrap_err().code, "cannot_delete_head");
+        assert_eq!(worktree_names(&ctx), ["wt"]);
+    }
+
+    #[test]
+    fn removes_nothing_when_another_worktree_took_the_branch_after_the_offer() {
+        let mut ctx = repo_with_branch("wt-branch");
+        let path = ctx.add_linked_worktree("wt", "wt-branch");
+        let offered = removal("wt", &path, false);
+        set_admin_head(&ctx, "wt", "main");
+        ctx.add_linked_worktree("wt2", "wt-branch");
+
+        let result = ctx.delete_branch_removing("wt-branch", &offered);
+
+        assert_eq!(result.unwrap_err().code, "worktree_changed");
+        assert_eq!(worktree_names(&ctx), ["wt", "wt2"]);
+        assert!(path.join("README.md").exists());
+    }
+
+    #[test]
+    fn removes_nothing_when_the_branch_is_already_gone() {
+        let mut ctx = repo_with_branch("wt-branch");
+        let path = ctx.add_linked_worktree("wt", "wt-branch");
+        ctx.repo()
+            .find_reference("refs/heads/wt-branch")
+            .unwrap()
+            .delete()
+            .unwrap();
+
+        let result = ctx.delete_branch_removing("wt-branch", &removal("wt", &path, true));
+
+        assert_eq!(result.unwrap_err().code, "git_not_found");
+        assert_eq!(worktree_names(&ctx), ["wt"]);
+    }
+
+    #[test]
+    fn says_the_worktree_went_when_the_branch_will_not_delete() {
+        let mut ctx = repo_with_branch("wt-branch");
+        let path = ctx.add_linked_worktree("wt", "wt-branch");
+        std::fs::write(ctx.repo().path().join("refs/heads/wt-branch.lock"), "").unwrap();
+
+        let error = ctx
+            .delete_branch_removing("wt-branch", &removal("wt", &path, false))
+            .unwrap_err();
+
+        assert_eq!(error.code, "branch_not_deleted");
+        assert!(!path.exists());
+        ctx.assert_branch_exists("wt-branch");
+    }
+
+    mod offers_without_a_warning {
+        use super::*;
+
+        fn assert_offered(ctx: &TestContext, path: &std::path::Path) {
+            assert_eq!(
+                ctx.branch_hold("wt-branch").unwrap(),
+                BranchHold::Offer {
+                    name: "wt".into(),
+                    path: path.display().to_string(),
+                }
+            );
+        }
+
+        #[test]
+        fn when_the_gitfiles_are_relative() {
+            let mut ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            let admin = admin_dir(&ctx, "wt").canonicalize().unwrap();
+            std::fs::write(
+                admin.join("gitdir"),
+                format!("{}\n", relative(&admin, &path.join(".git")).display()),
+            )
+            .unwrap();
+            std::fs::write(
+                path.join(".git"),
+                format!("gitdir: {}\n", relative(&path, &admin).display()),
+            )
+            .unwrap();
+
+            assert_offered(&ctx, &path);
+            ctx.delete_branch_removing("wt-branch", &removal("wt", &path, false))
+                .unwrap();
+            assert!(!path.exists());
+        }
+
+        #[test]
+        fn when_a_clean_worktree_is_sparse() {
+            let ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            let sparse = std::process::Command::new("git")
+                .args(["sparse-checkout", "set", "keep"])
+                .current_dir(&path)
+                .output()
+                .unwrap();
+            assert!(sparse.status.success(), "{sparse:?}");
+
+            assert_offered(&ctx, &path);
+        }
+    }
+
+    /// `to` relative to directory `from`, both absolute and canonical.
+    fn relative(from: &std::path::Path, to: &std::path::Path) -> std::path::PathBuf {
+        let from: Vec<_> = from.components().collect();
+        let to: Vec<_> = to.components().collect();
+        let shared = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
+        let mut path = std::path::PathBuf::new();
+        for _ in shared..from.len() {
+            path.push("..");
+        }
+        for component in &to[shared..] {
+            path.push(component);
+        }
+        path
+    }
+}
