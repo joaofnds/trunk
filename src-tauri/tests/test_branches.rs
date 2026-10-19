@@ -666,6 +666,12 @@ mod deleting_a_branch_a_linked_worktree_holds {
     );
 
     warns_then_removes_on_the_go_ahead!(
+        when_a_tracked_file_is_deleted,
+        |_, path| std::fs::remove_file(path.join("README.md")).unwrap(),
+        vec![RemovalRisk::Changes]
+    );
+
+    warns_then_removes_on_the_go_ahead!(
         when_an_untracked_file_is_present,
         |_, path| {
             std::fs::create_dir(path.join("notes")).unwrap();
@@ -820,6 +826,7 @@ mod deleting_a_branch_a_linked_worktree_holds {
             let mut ctx = repo_with_branch("wt-branch");
             let path = ctx.add_linked_worktree("wt", "wt-branch");
             std::fs::write(path.join("README.md"), "edited").unwrap();
+            std::fs::write(path.join("zzz.txt"), "after the secret").unwrap();
             let _guard = with_unreadable_directory(&path);
 
             let error = ctx
@@ -835,6 +842,8 @@ mod deleting_a_branch_a_linked_worktree_holds {
             ctx.assert_branch_exists("wt-branch");
             assert_eq!(worktree_names(&ctx), Vec::<String>::new());
             assert!(!path.join("README.md").exists());
+            assert!(!path.join("zzz.txt").exists());
+            assert!(!path.join(".git").exists());
         }
 
         #[test]
@@ -919,6 +928,27 @@ mod deleting_a_branch_a_linked_worktree_holds {
         }
 
         #[test]
+        fn when_the_recorded_file_is_not_named_git_though_it_points_back() {
+            let mut ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            std::fs::copy(path.join(".git"), path.join("notgit")).unwrap();
+            std::fs::write(
+                admin_dir(&ctx, "wt").join("gitdir"),
+                format!("{}\n", path.join("notgit").display()),
+            )
+            .unwrap();
+
+            assert_refused_and_unchanged(
+                &mut ctx,
+                &path,
+                BranchHold::Refuse {
+                    paths: vec![path.display().to_string()],
+                    reason: Refusal::Mismatched,
+                },
+            );
+        }
+
+        #[test]
         fn when_two_linked_worktrees_hold_the_branch() {
             let mut ctx = repo_with_branch("wt-branch");
             ctx.create_branch("other", None).unwrap();
@@ -976,7 +1006,6 @@ mod deleting_a_branch_a_linked_worktree_holds {
             let mut ctx = repo_with_branch("wt-branch");
             let path = ctx.add_linked_worktree("wt", "wt-branch");
             git2::Repository::init(path.join("inner")).unwrap();
-            std::fs::write(path.join(".git/info/exclude"), "").ok();
             ctx.open_in_tab(&path.join("inner"));
 
             let hold = ctx.branch_hold("wt-branch").unwrap();
@@ -1003,6 +1032,60 @@ mod deleting_a_branch_a_linked_worktree_holds {
         assert_eq!(hold, BranchHold::HeldByMain);
         assert_eq!(result.unwrap_err().code, "cannot_delete_head");
         assert_eq!(worktree_names(&ctx), ["wt"]);
+    }
+
+    #[test]
+    fn removes_nothing_from_a_linked_tab_when_the_main_worktree_holds_the_branch_too() {
+        let mut ctx = repo_with_branch("wt-branch");
+        ctx.create_branch("other", None).unwrap();
+        ctx.checkout_branch("main").unwrap();
+        let path = ctx.add_linked_worktree("wt", "wt-branch");
+        let third = ctx.add_linked_worktree("wt3", "other");
+        set_admin_head(&ctx, "wt", "main");
+        let from_third = git2::Repository::open(&third).unwrap();
+
+        let result =
+            trunk_git::worktree::remove(&from_third, "main", &removal("wt", &path, true), &[]);
+
+        assert_eq!(result.unwrap_err().code, "worktree_changed");
+        assert!(path.join("README.md").exists());
+    }
+
+    #[test]
+    fn does_not_take_a_branch_whose_name_is_not_utf8_for_its_lossy_spelling() {
+        let mut ctx = repo_with_branch("wt-branch");
+        let path = ctx.add_linked_worktree("wt", "wt-branch");
+        std::fs::write(
+            admin_dir(&ctx, "wt").join("HEAD"),
+            b"ref: refs/heads/caf\xE9\n",
+        )
+        .unwrap();
+        ctx.create_branch("caf\u{FFFD}", None).unwrap();
+        ctx.checkout_branch("main").unwrap();
+
+        let hold = ctx.branch_hold("caf\u{FFFD}").unwrap();
+
+        assert_eq!(hold, BranchHold::NotHeld);
+        assert!(path.join("README.md").exists());
+    }
+
+    #[test]
+    fn leaves_nothing_at_the_path_when_the_recorded_path_is_a_symlink_to_it() {
+        let mut ctx = repo_with_branch("wt-branch");
+        let path = ctx.add_linked_worktree("wt", "wt-branch");
+        let alias = ctx.worktrees_dir().join("alias");
+        std::os::unix::fs::symlink(&path, &alias).unwrap();
+        std::fs::write(
+            admin_dir(&ctx, "wt").join("gitdir"),
+            format!("{}\n", alias.join(".git").display()),
+        )
+        .unwrap();
+
+        let result = ctx.delete_branch_removing("wt-branch", &removal("wt", &path, false));
+
+        assert_eq!(result, Ok(()));
+        ctx.assert_branch_not_exists("wt-branch");
+        assert!(!path.exists());
     }
 
     #[test]
@@ -1088,14 +1171,25 @@ mod deleting_a_branch_a_linked_worktree_holds {
 
         #[test]
         fn when_a_clean_worktree_is_sparse() {
-            let ctx = repo_with_branch("wt-branch");
+            let mut ctx = TestContext::builder()
+                .with_file("README.md", "hello")
+                .with_file("out/left.txt", "outside the cone")
+                .with_commit("Initial commit")
+                .build();
+            ctx.create_branch("wt-branch", None).unwrap();
+            ctx.checkout_branch("main").unwrap();
             let path = ctx.add_linked_worktree("wt", "wt-branch");
-            let sparse = std::process::Command::new("git")
-                .args(["sparse-checkout", "set", "keep"])
-                .current_dir(&path)
-                .output()
-                .unwrap();
+            let git = |args: &[&str]| {
+                std::process::Command::new("git")
+                    .args(args)
+                    .current_dir(&path)
+                    .output()
+                    .unwrap()
+            };
+            let sparse = git(&["sparse-checkout", "set", "keep"]);
             assert!(sparse.status.success(), "{sparse:?}");
+            let listed = String::from_utf8(git(&["ls-files", "-t"]).stdout).unwrap();
+            assert!(listed.contains("S out/left.txt"), "{listed}");
 
             assert_offered(&ctx, &path);
         }

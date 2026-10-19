@@ -78,7 +78,7 @@ impl Refusal {
     }
 }
 
-struct Linked {
+struct LinkedWorktree {
     name: String,
     admin: PathBuf,
     /// The `.git` path the admin entry records, whose parent prune deletes.
@@ -202,60 +202,85 @@ pub fn remove(
                 .locked(removal.go_ahead),
         ))
     });
-    let Err(error) = pruned else {
-        return Ok(());
-    };
-
     let path = &removal.path;
-    if admin.exists() {
-        Err(TrunkError::new(
+    if let Err(error) = pruned
+        && admin.exists()
+    {
+        return Err(TrunkError::new(
             "worktree_not_removed",
             format!(
                 "the worktree at {path} was not removed: {}",
                 error.message()
             ),
-        ))
-    } else {
-        Err(TrunkError::new(
-            "worktree_partly_removed",
-            format!(
-                "the worktree at {path} was unregistered but some files could not be deleted: {}",
-                left_behind(Path::new(path)).join(", ")
-            ),
-        ))
+        ));
     }
+
+    // libgit2 stops at the first entry it cannot delete, and deletes nothing at all when
+    // the recorded path is a symlink to the checkout, so finish the job and report what
+    // still cannot go.
+    let root = Path::new(path);
+    delete_what_can_be_deleted(root);
+    if root.symlink_metadata().is_err() {
+        return Ok(());
+    }
+    Err(TrunkError::new(
+        "worktree_partly_removed",
+        format!(
+            "the worktree at {path} was unregistered but some files could not be deleted: {}",
+            left_behind(root).join(", ")
+        ),
+    ))
 }
 
-/// The files, and the directories that cannot be read, still under `root`.
+/// Delete every entry under `dir`, then `dir`, skipping what cannot be deleted. Symlinks
+/// are deleted, never followed.
+fn delete_what_can_be_deleted(dir: &Path) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                delete_what_can_be_deleted(&path);
+            } else {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
+    let _ = std::fs::remove_dir(dir);
+}
+
+/// Up to `SHOWN` of the files, and the directories that cannot be read, still under
+/// `root`. The walk stops past `SHOWN`, since it runs while the repository's graph waits.
 fn left_behind(root: &Path) -> Vec<String> {
     const SHOWN: usize = 10;
 
     let mut left = Vec::new();
-    collect_left_behind(root, &mut left);
+    collect_left_behind(root, SHOWN + 1, &mut left);
     if left.len() > SHOWN {
-        let more = left.len() - SHOWN;
         left.truncate(SHOWN);
-        left.push(format!("and {more} more"));
+        left.push("and more".to_owned());
     }
     left
 }
 
-fn collect_left_behind(dir: &Path, left: &mut Vec<String>) {
+fn collect_left_behind(dir: &Path, limit: usize, left: &mut Vec<String>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         left.push(dir.display().to_string());
         return;
     };
     for entry in entries.flatten() {
+        if left.len() >= limit {
+            return;
+        }
         let path = entry.path();
         if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
-            collect_left_behind(&path, left);
+            collect_left_behind(&path, limit, left);
         } else {
             left.push(path.display().to_string());
         }
     }
 }
 
-fn linked_holders(repo: &Repository, target: &str) -> Result<Vec<Linked>, TrunkError> {
+fn linked_holders(repo: &Repository, target: &str) -> Result<Vec<LinkedWorktree>, TrunkError> {
     let common = repo.commondir();
     let mut holders = Vec::new();
 
@@ -274,7 +299,7 @@ fn linked_holders(repo: &Repository, target: &str) -> Result<Vec<Linked>, TrunkE
         let Some(root) = gitfile.parent().and_then(|root| root.canonicalize().ok()) else {
             continue;
         };
-        holders.push(Linked {
+        holders.push(LinkedWorktree {
             name: name.to_owned(),
             admin,
             gitfile,
@@ -285,24 +310,27 @@ fn linked_holders(repo: &Repository, target: &str) -> Result<Vec<Linked>, TrunkE
     Ok(holders)
 }
 
-fn holds(admin: &Path, target: &str) -> bool {
-    read_admin_file(&admin.join("HEAD"))
-        .as_deref()
-        .and_then(|head| head.strip_prefix("ref:"))
-        .is_some_and(|head| head.trim() == target)
+/// Whether the HEAD in `git_dir`, a common directory or an admin entry, names `target`.
+/// Compared as bytes, because a lossy decode would let a branch whose name is not UTF-8
+/// match a different branch.
+fn holds(git_dir: &Path, target: &str) -> bool {
+    std::fs::read(git_dir.join("HEAD")).is_ok_and(|head| {
+        head.strip_prefix(b"ref:")
+            .is_some_and(|name| name.trim_ascii() == target.as_bytes())
+    })
 }
 
 fn recorded_gitfile(admin: &Path) -> Option<PathBuf> {
-    Some(admin.join(read_admin_file(&admin.join("gitdir"))?.trim()))
+    Some(admin.join(read_lossy(&admin.join("gitdir"))?.trim()))
 }
 
 /// Whether the recorded `.git` file names this admin entry, as git checks before it
 /// removes a worktree. libgit2 checks only that the paths exist.
-fn points_back(holder: &Linked) -> bool {
+fn points_back(holder: &LinkedWorktree) -> bool {
     if holder.gitfile.file_name() != Some(".git".as_ref()) {
         return false;
     }
-    let Some(contents) = read_admin_file(&holder.gitfile) else {
+    let Some(contents) = read_lossy(&holder.gitfile) else {
         return false;
     };
     let Some(target) = contents.strip_prefix("gitdir:") else {
@@ -316,7 +344,7 @@ fn points_back(holder: &Linked) -> bool {
     }
 }
 
-fn risks(holder: &Linked) -> Vec<RemovalRisk> {
+fn risks(holder: &LinkedWorktree) -> Vec<RemovalRisk> {
     let mut reasons = Vec::new();
 
     match Repository::open(&holder.root) {
@@ -330,7 +358,7 @@ fn risks(holder: &Linked) -> Vec<RemovalRisk> {
     let lock = holder.admin.join("locked");
     if lock.symlink_metadata().is_ok() {
         reasons.push(RemovalRisk::Locked {
-            reason: read_admin_file(&lock)
+            reason: read_lossy(&lock)
                 .map(|reason| reason.trim().to_owned())
                 .filter(|reason| !reason.is_empty()),
         });
@@ -356,11 +384,27 @@ fn status_risk(worktree: &Repository) -> Option<RemovalRisk> {
         .recurse_untracked_dirs(true)
         .include_ignored(false);
 
-    match worktree.statuses(Some(&mut options)) {
-        Ok(statuses) if statuses.is_empty() => None,
-        Ok(_) => Some(RemovalRisk::Changes),
-        Err(_) => Some(RemovalRisk::Unchecked),
-    }
+    let Ok(statuses) = worktree.statuses(Some(&mut options)) else {
+        return Some(RemovalRisk::Unchecked);
+    };
+    let Ok(index) = worktree.index() else {
+        return Some(RemovalRisk::Unchecked);
+    };
+    statuses
+        .iter()
+        .any(|entry| !outside_the_sparse_cone(&index, &entry))
+        .then_some(RemovalRisk::Changes)
+}
+
+/// libgit2 reports a file a sparse checkout left out of the worktree as deleted, though
+/// its content is in the commit and removing the worktree loses nothing of it.
+fn outside_the_sparse_cone(index: &git2::Index, entry: &git2::StatusEntry) -> bool {
+    const SKIP_WORKTREE: u16 = 0x4000;
+
+    entry.status() == git2::Status::WT_DELETED
+        && index
+            .get_path(Path::new(&*String::from_utf8_lossy(entry.path_bytes())), 0)
+            .is_some_and(|indexed| indexed.flags_extended & SKIP_WORKTREE != 0)
 }
 
 /// A gitlink whose directory holds a `.git` keeps commits status reports as clean. An
@@ -380,7 +424,7 @@ fn gitlink_risk(worktree: &Repository, root: &Path) -> Option<RemovalRisk> {
     populated.then_some(RemovalRisk::Submodules)
 }
 
-fn read_admin_file(path: &Path) -> Option<String> {
+fn read_lossy(path: &Path) -> Option<String> {
     let bytes = std::fs::read(path).ok()?;
     Some(String::from_utf8_lossy(&bytes).into_owned())
 }

@@ -3,7 +3,7 @@ use crate::state::{CommitCache, GraphCache, OpenRepos, RepoState};
 use crate::types::{BranchInfo, RefsResponse, StashEntry};
 use crate::watcher::RepoChanged;
 use git2::BranchType;
-use tauri::{AppHandle, Emitter, Runtime, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use trunk_git::error::TrunkError;
 use trunk_git::types::{RefLabel, RefType};
 use trunk_git::worktree::{BranchHold, WorktreeRemoval};
@@ -127,15 +127,17 @@ pub fn list_refs_inner(path: &str, state_map: &OpenRepos) -> Result<RefsResponse
     })
 }
 
-/// Delete a local branch and rebuild the graph cache.
+/// Delete a local branch and rebuild the graph cache, first removing the linked
+/// worktree that holds it when `worktree` names the one the user agreed to remove.
 ///
 /// Rejects deletion of the currently checked-out (HEAD) branch.
 ///
 /// # Errors
 ///
 /// Returns `not_open` when `path` names no open repository, `cannot_delete_head` when
-/// `branch_name` is the checked-out branch, and the git error when the branch
-/// is missing or will not delete.
+/// `branch_name` is the checked-out branch, the git error when the branch is missing or
+/// will not delete, every error `trunk_git::worktree::remove` names, and
+/// `branch_not_deleted` when the worktree went but the branch would not.
 pub fn delete_branch_inner(
     path: &str,
     branch_name: &str,
@@ -586,17 +588,19 @@ pub async fn delete_branch<R: Runtime>(
     path: String,
     branch_name: String,
     worktree: Option<WorktreeRemoval>,
-    state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let state_map = state.snapshot();
     let path_clone = path.clone();
     let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let tabs = app.clone();
 
     rebuild
         .rebuild_merging(path.clone(), move |visibility, rebuilt| {
+            // Read the open tabs after the gate, not before it, so a tab opened on the
+            // worktree while this delete waited still refuses its removal.
+            let state_map = tabs.state::<RepoState>().snapshot();
             delete_branch_inner(
                 &path_clone,
                 &branch_name,
