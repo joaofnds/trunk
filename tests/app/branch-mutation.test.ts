@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RepoSpec } from "./harness/host-client.js";
@@ -27,10 +27,23 @@ function heldByWorktree(...extra: RepoSpec["steps"]): RepoSpec {
 	};
 }
 
-/** The worktree path the delete question names. */
+/** `wt-branch` alone on C1, so its graph pill is not folded into main's. */
+const heldOnItsOwnCommit: RepoSpec = {
+	steps: [
+		{ step: "file", path: "c1.txt", content: "1" },
+		{ step: "commit", message: "C1" },
+		{ step: "branch", name: "wt-branch" },
+		{ step: "checkout", name: "main" },
+		{ step: "file", path: "c2.txt", content: "2" },
+		{ step: "commit", message: "C2" },
+		{ step: "worktree", name: "wt", branch: "wt-branch" },
+	],
+};
+
+/** The worktree path the delete question or refusal names. */
 function askedPath(question: string | undefined): string {
 	const path = question?.match(
-		/in the worktree at (\/[^,\n]*?)(?:,|\.\n)/,
+		/[Ww]orktree at (\/[^,\n]*?)(?:,|\.\n| has )/,
 	)?.[1];
 	if (!path) throw new Error(`no worktree path in: ${question}`);
 	return path;
@@ -105,6 +118,22 @@ describe("branch mutation", () => {
 			expect(existsSync(askedPath(question))).toBe(false);
 		});
 
+		it("removes the worktree and deletes the branch from its graph pill", async () => {
+			const app = await setup({ repo: heldOnItsOwnCommit });
+			await app.repo.open();
+
+			app.dialog.confirms();
+			await app.repo.openRefPillMenu("wt-branch");
+			app.contextMenu.choose("Delete");
+
+			await waitFor("the wt-branch pill to go", () =>
+				app.repo.refPills().includes("wt-branch") ? null : true,
+			);
+			const [question] = app.dialog.shown;
+			expect(question).toContain("Remove that worktree and delete the branch?");
+			expect(existsSync(askedPath(question))).toBe(false);
+		});
+
 		it("leaves the worktree and the branch when the offer is declined", async () => {
 			const app = await setup({ repo: heldByWorktree() });
 			await app.repo.open();
@@ -119,6 +148,56 @@ describe("branch mutation", () => {
 			await askedAgain(app);
 			expect(app.branches.lists("wt-branch")).toBe(true);
 			expect(existsSync(join(askedPath(question), "c1.txt"))).toBe(true);
+		});
+
+		describe("when the worktree changes while the offer is open", () => {
+			it("asks again with the warning, then removes both on the go-ahead", async () => {
+				const app = await setup({ repo: heldByWorktree() });
+				await app.repo.open();
+				app.dialog.whileAsking((question) =>
+					writeFileSync(join(askedPath(question), "c1.txt"), "unsaved"),
+				);
+
+				app.dialog.confirms();
+				await app.branches.contextMenu("wt-branch");
+				app.contextMenu.choose("Delete");
+
+				await waitFor("the wt-branch branch to go", () =>
+					app.branches.lists("wt-branch") ? null : true,
+				);
+				const [offer, warning] = app.dialog.shown;
+				expect(offer).toContain("Remove that worktree and delete the branch?");
+				expect(warning).toContain("It has uncommitted or untracked changes.");
+				expect(existsSync(askedPath(warning))).toBe(false);
+			});
+		});
+
+		describe("when the worktree does not point back at this repository", () => {
+			const mismatched = heldByWorktree({
+				step: "worktreeFile",
+				worktree: "wt",
+				path: ".git",
+				content: "gitdir: /nowhere\n",
+			});
+
+			it("refuses with the path and removes nothing", async () => {
+				const app = await setup({ repo: mismatched });
+				await app.repo.open();
+
+				app.dialog.confirms();
+				await app.branches.contextMenu("wt-branch");
+				app.contextMenu.choose("Delete");
+
+				const refusal = await waitFor(
+					"the delete refusal",
+					() => app.dialog.shown.at(0) ?? null,
+				);
+				await askedAgain(app);
+				expect(refusal).toContain("does not point back at this repository");
+				expect(app.dialog.questions).toEqual([]);
+				expect(app.branches.lists("wt-branch")).toBe(true);
+				expect(existsSync(join(askedPath(refusal), "c1.txt"))).toBe(true);
+			});
 		});
 
 		describe("when the worktree has uncommitted changes", () => {
