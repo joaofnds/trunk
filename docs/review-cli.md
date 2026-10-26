@@ -188,6 +188,16 @@ became `open`, `stale` or `settled` where it had been `composing`, `ready` or
 | `thread_deleted` | `review`, `thread`, sent when the user removes a thread with its replies |
 | `reply_deleted` | `review`, `thread`, `reply` |
 
+Each time `watch` wakes it reads the store as one consistent snapshot and
+reports what changed since the previous one, so a review's `state` never
+disagrees with the thread events sent beside it. Those events are ordered by
+review, not by when they were written, and nothing in the stream marks where
+one wake's events end. A review's `review_added`, `review_retitled` and
+`review_state_changed` come before the events of its threads, so a
+`review_state_changed` precedes the thread change behind it, such as the
+`thread_stale_changed` that made the review `stale`. `review_deleted` comes
+after every other event of its wake.
+
 The user can delete a thread or a reply at any time, so an id read earlier can
 stop resolving. A thread's deletion carries no `reply_deleted` for its replies.
 

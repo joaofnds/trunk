@@ -2380,23 +2380,78 @@ fn watch_json_reports_a_review_going_stale_with_its_last_open_thread() {
             )
         })
         .unwrap();
+    let open_thread = store
+        .read(|c| threads::list_for_review(c, &published, Channel::Human))
+        .unwrap()
+        .into_iter()
+        .find(|thread| thread.id != note)
+        .expect("the published review has its anchored thread")
+        .id;
     let watch = WatchChild::spawn_json(&ctx);
 
     std::fs::write(ctx.repo_path().join("a.txt"), "edited again").unwrap();
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 700)
         .unwrap();
     recompute_staleness(&store, &canonical, ctx.path()).unwrap();
-    let event: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let next_event = || -> serde_json::Value {
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap()
+    };
+    let events = [next_event(), next_event()];
 
     assert_eq!(
-        event,
-        serde_json::json!({
-            "event": "review_state_changed",
-            "review": published,
-            "from": "open",
-            "to": "stale",
-        }),
+        events,
+        [
+            serde_json::json!({
+                "event": "review_state_changed",
+                "review": published,
+                "from": "open",
+                "to": "stale",
+            }),
+            serde_json::json!({
+                "event": "thread_stale_changed",
+                "review": published,
+                "thread": open_thread,
+                "stale": true,
+            }),
+        ],
+    );
+}
+
+#[test]
+fn watch_json_reports_a_retitle_before_the_thread_change_written_with_it() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let watch = WatchChild::spawn_json(&ctx);
+
+    store
+        .write(|tx| {
+            reviews::rename(tx, &canonical, &published, "renamed", 900)?;
+            threads::edit(tx, &canonical, &thread_id, "reworded", 900)
+        })
+        .unwrap();
+    let next_event = || -> serde_json::Value {
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap()
+    };
+    let events = [next_event(), next_event()];
+
+    assert_eq!(
+        events,
+        [
+            serde_json::json!({
+                "event": "review_retitled",
+                "review": published,
+                "title": "renamed",
+            }),
+            serde_json::json!({
+                "event": "thread_edited",
+                "review": published,
+                "thread": thread_id,
+                "text": "reworded",
+            }),
+        ],
     );
 }
 

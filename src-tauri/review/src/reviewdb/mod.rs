@@ -268,13 +268,15 @@ impl Store {
         Ok(value)
     }
 
-    /// Run `f` against the connection for a read. The version guard runs here
-    /// too: a process must never read a store whose schema it does not know.
+    /// Run `f` inside one read transaction, so every query it makes sees the
+    /// same snapshot even while another process commits between them. The
+    /// version guard runs in that snapshot too: a process must never read a
+    /// store whose schema it does not know.
     ///
     /// # Errors
     ///
-    /// Returns whatever `f` returns, and `store_newer` when the store's schema
-    /// is newer than this build.
+    /// Returns whatever `f` returns, `store_newer` when the store's schema is
+    /// newer than this build, and the `SQLite` error when the transaction fails.
     ///
     /// # Panics
     ///
@@ -283,10 +285,17 @@ impl Store {
         &self,
         f: impl FnOnce(&Connection) -> Result<T, TrunkError>,
     ) -> Result<T, TrunkError> {
-        let conn = self.conn.lock().unwrap();
-        schema::version_guard(&conn)?;
+        let mut conn = self.conn.lock().unwrap();
 
-        f(&conn)
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Deferred)
+            .map_err(sqlite_error)?;
+        schema::version_guard(&tx)?;
+        let value = f(&tx)?;
+        tx.commit().map_err(sqlite_error)?;
+        drop(conn);
+
+        Ok(value)
     }
 }
 
@@ -412,6 +421,33 @@ mod tests {
             1,
             "a row written through the first handle must survive reopening",
         );
+    }
+
+    #[test]
+    fn a_read_sees_one_snapshot_while_another_connection_commits() {
+        let dir = TempDir::new().unwrap();
+        let reader = open(dir.path()).unwrap();
+        let writer = open(dir.path()).unwrap();
+
+        let (before, after) = reader
+            .read(|conn| {
+                let count = || {
+                    conn.query_row("SELECT COUNT(*) FROM reviews", [], |row| {
+                        row.get::<_, i64>(0)
+                    })
+                    .map_err(sqlite_error)
+                };
+                let before = count()?;
+                insert_review(&writer, "MIDREAD1");
+                Ok((before, count()?))
+            })
+            .unwrap();
+
+        assert_eq!(
+            before, after,
+            "a commit landing between two queries of one read must not reach the second",
+        );
+        assert_eq!(count_reviews(&reader), 1, "the next read sees the commit");
     }
 
     /// Two `Store`s over one file, each running the read-then-write shape every
