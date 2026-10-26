@@ -1042,10 +1042,8 @@ fn watch_json_reports_a_review_added_when_its_first_thread_is_sent() {
             )
         })
         .unwrap();
-    let added: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
-    let content: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let added = watch.next_event();
+    let content = watch.next_event();
 
     assert_eq!(
         added,
@@ -1067,9 +1065,6 @@ fn watch_json_reports_a_held_comment_only_once_its_batch_is_sent() {
     let (_, published) = seed_reviews(&ctx);
     let thread_id = published_thread_id(&ctx, &published);
     let watch = WatchChild::spawn_json(&ctx);
-    let next_event = || -> serde_json::Value {
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap()
-    };
 
     let held = hold_thread(&ctx, &published, "not sent yet");
     let barrier = trunk_review_in(
@@ -1077,12 +1072,12 @@ fn watch_json_reports_a_held_comment_only_once_its_batch_is_sent() {
         &["reply", &thread_id, "seen"],
         ctx.data_dir(),
     );
-    let while_held = next_event();
+    let while_held = watch.next_event();
     reviewdb::open(ctx.data_dir())
         .unwrap()
         .write(|tx| reviews::send_batch(tx, &canonical, &published, 800))
         .unwrap();
-    let sent = next_event();
+    let sent = watch.next_event();
 
     assert!(barrier.status.success());
     assert_eq!(while_held["event"], "reply_added", "{while_held}");
@@ -2094,6 +2089,11 @@ impl WatchChild {
     fn next_line(&self, timeout: Duration) -> Option<String> {
         self.lines.recv_timeout(timeout).ok()
     }
+
+    /// The next `--json` event, parsed, failing the test when none arrives.
+    fn next_event(&self) -> serde_json::Value {
+        serde_json::from_str(&self.next_line(Duration::from_secs(10)).unwrap()).unwrap()
+    }
 }
 
 impl Drop for WatchChild {
@@ -2201,8 +2201,7 @@ fn watch_stays_silent_when_the_app_marks_a_reply_seen() {
         &["reply", &thread_id, "an answer"],
         ctx.data_dir(),
     );
-    let answered: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let answered = watch.next_event();
     let answer_id = answered["reply"].as_str().unwrap().to_string();
 
     let marked = reviewdb::open(ctx.data_dir())
@@ -2222,8 +2221,7 @@ fn watch_stays_silent_when_the_app_marks_a_reply_seen() {
             &["reply", &thread_id, barrier],
             ctx.data_dir(),
         );
-        let next: serde_json::Value =
-            serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+        let next = watch.next_event();
         assert_eq!(
             (&next["event"], &next["text"]),
             (
@@ -2347,8 +2345,7 @@ fn watch_json_reports_a_thread_going_stale() {
         assert_eq!(changed, 1, "the thread on {snapshot} must have gone stale");
     }
 
-    let event: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let event = watch.next_event();
     assert_eq!(event["event"], "thread_stale_changed");
     assert_eq!(event["review"], published.as_str());
     assert_eq!(event["stale"], true);
@@ -2393,10 +2390,7 @@ fn watch_json_reports_a_review_going_stale_with_its_last_open_thread() {
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 700)
         .unwrap();
     recompute_staleness(&store, &canonical, ctx.path()).unwrap();
-    let next_event = || -> serde_json::Value {
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap()
-    };
-    let events = [next_event(), next_event()];
+    let events = [watch.next_event(), watch.next_event()];
 
     assert_eq!(
         events,
@@ -2432,10 +2426,7 @@ fn watch_json_reports_a_retitle_before_the_thread_change_written_with_it() {
             threads::edit(tx, &canonical, &thread_id, "reworded", 900)
         })
         .unwrap();
-    let next_event = || -> serde_json::Value {
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap()
-    };
-    let events = [next_event(), next_event()];
+    let events = [watch.next_event(), watch.next_event()];
 
     assert_eq!(
         events,
@@ -2477,8 +2468,7 @@ fn watch_json_reports_a_collected_anchor_stale_and_keeps_it_stale() {
     let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
 
     assert_eq!(changed, 1, "the thread on {snapshot} must have gone stale");
-    let event: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let event = watch.next_event();
     assert_eq!(event["event"], "thread_stale_changed");
     assert_eq!(event["review"], published.as_str());
     assert_eq!(event["stale"], true);
@@ -2507,8 +2497,7 @@ fn watch_json_streams_the_events_full_data() {
         &["reply", &thread_id, "here is what I did"],
         ctx.data_dir(),
     );
-    let event: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let event = watch.next_event();
     assert_eq!(event["event"], "reply_added");
     assert_eq!(event["review"], published.as_str());
     assert_eq!(event["thread"], thread_id.as_str());
@@ -2516,8 +2505,7 @@ fn watch_json_streams_the_events_full_data() {
     assert_eq!(event["text"], "here is what I did");
 
     trunk_review_in(ctx.repo_path(), &["address", &thread_id], ctx.data_dir());
-    let event: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let event = watch.next_event();
     assert_eq!(event["event"], "thread_state_changed");
     assert_eq!(event["thread"], thread_id.as_str());
     assert_eq!(event["from"], "open");
@@ -2551,8 +2539,7 @@ fn watch_json_streams_the_events_full_data() {
             })
             .unwrap();
     }
-    let event: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let event = watch.next_event();
     assert_eq!(event["event"], "thread_added");
     assert_eq!(event["review"], published.as_str());
     assert_eq!(event["text"], "new comment on a line");
@@ -2592,13 +2579,11 @@ fn watch_json_reports_a_deleted_reply_and_thread() {
     store
         .write(|tx| trunk_review::reviewdb::replies::delete(tx, &canonical, &reply_id))
         .unwrap();
-    let reply_deleted: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let reply_deleted = watch.next_event();
     store
         .write(|tx| threads::delete(tx, &canonical, &thread_id))
         .unwrap();
-    let thread_deleted: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let thread_deleted = watch.next_event();
 
     assert_eq!(
         reply_deleted,
@@ -2634,8 +2619,7 @@ fn watch_json_reports_a_review_gone_once_its_last_sent_thread_is_deleted() {
     store
         .write(|tx| threads::delete(tx, &canonical, &thread_id))
         .unwrap();
-    let gone: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let gone = watch.next_event();
 
     assert_eq!(
         gone,
@@ -2658,15 +2642,12 @@ fn watch_json_reports_an_archived_review_and_unrolls_it_once_unarchived() {
     store
         .write(|tx| reviews::archive(tx, &canonical, &published, 5_000))
         .unwrap();
-    let archived: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let archived = watch.next_event();
     store
         .write(|tx| reviews::unarchive(tx, &canonical, &published, 6_000))
         .unwrap();
-    let back: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
-    let thread: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let back = watch.next_event();
+    let thread = watch.next_event();
 
     assert_eq!(
         archived,
@@ -2689,8 +2670,7 @@ fn watch_json_locates_a_current_file_thread_by_its_content_pin() {
 
     seed_current_file_thread(&ctx, &published, false);
 
-    let event: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let event = watch.next_event();
     assert_eq!(
         event,
         serde_json::json!({
@@ -2721,8 +2701,7 @@ fn watch_json_marks_a_whole_file_thread_and_leaves_out_the_file() {
 
     seed_whole_file_thread(&ctx, &published);
 
-    let event: serde_json::Value =
-        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    let event = watch.next_event();
     assert_eq!(
         event,
         serde_json::json!({
@@ -2785,9 +2764,7 @@ fn watch_json_omits_the_content_pin_on_commit_level_and_target_less_threads() {
         .write(|tx| reviews::send_batch(tx, &canonical, &unsent, 700))
         .unwrap();
 
-    let events: Vec<serde_json::Value> = (0..3)
-        .map(|_| serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap())
-        .collect();
+    let events: Vec<serde_json::Value> = (0..3).map(|_| watch.next_event()).collect();
     let added = |thread: &str| {
         events
             .iter()
