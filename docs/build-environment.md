@@ -219,6 +219,14 @@ accumulated tree measured 525s against building it from empty in 46s.
 
 ## `just dev` cannot be driven by an agent's screen tools
 
+Agents no longer drive the app this way. João ruled it out on 2026-10-28: "it
+shouldn't be trying to test it with computer use and screen tools". TRUNK-408
+builds the replacement, a route that drives a dev instance through commands an
+agent issues. Until that card is Done, a check that only the running app can
+answer waits for that route or for João, and no agent takes screen control or
+asks for a computer-use grant. The rest of this section records how the screen
+tools behave, for João's own use and for the history of the cards that used them.
+
 `just dev` runs `target/debug/trunk` directly. A bare Mach-O executable has no
 `.app` around it, so macOS registers no bundle identity for it: LaunchServices
 never lists it, and the accessibility APIs that a session's screenshot and click
@@ -370,12 +378,6 @@ different moment than `app_screenshot` does. Hover-revealed UI present in an
 capture anything that depends on hover through `app_screenshot`, in the same
 batch as the pointer action that reveals it. Re-check that divergence after a
 macOS or computer-use server upgrade.
-
-João has ruled this route out for agents: "it shouldn't be trying to test it
-with computer use and screen tools" (2026-10-28). TRUNK-408 builds its
-replacement, a command channel into a dev-only build of the app. Until that
-card is Done, a check that only the running app can answer waits for the
-channel or for João, rather than taking screen control.
 
 ## Scanners must not walk `src-tauri/target`
 

@@ -25,7 +25,7 @@ default:
 dev:
     bun run tauri dev -c tauri.dev.conf.json
 
-# Build and launch the Trunk Dev .app bundle an agent's screen tools can see (docs/build-environment.md)
+# Build and launch the Trunk Dev .app bundle under the dev identifier (docs/build-environment.md)
 dev-app:
     #!/usr/bin/env bash
     set -euo pipefail
