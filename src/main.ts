@@ -8,6 +8,8 @@ if (!target) throw new Error("Missing #app element");
 
 startAppServices();
 
+if (import.meta.env.VITE_TRUNK_DRIVE === "1") void import("./drive.js");
+
 const app = mount(App, { target });
 
 export default app;

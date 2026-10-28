@@ -1,6 +1,8 @@
 pub mod background_fetch;
 pub mod cli;
 pub mod commands;
+#[cfg(feature = "drive")]
+mod drive;
 pub mod fetch_worker;
 pub mod launch;
 #[cfg(target_os = "macos")]
@@ -122,18 +124,33 @@ pub fn run() {
 /// Panics when the Tauri runtime cannot start.
 fn run_gui() {
     configure(
-        tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
-        })),
+        gui_builder(),
         WatcherState::default(),
         TrafficLights::default(),
     )
     .plugin(tauri_plugin_clipboard_manager::init())
     .run(context())
     .expect("error while running tauri application");
+}
+
+/// The shipped app hands a second launch to the running one.
+#[cfg(not(feature = "drive"))]
+fn gui_builder() -> tauri::Builder<tauri::Wry> {
+    tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+    }))
+}
+
+/// A drive instance runs beside the user's own Trunk and every other drive
+/// instance, so it neither hands off to a running one nor takes focus at launch.
+#[cfg(feature = "drive")]
+fn gui_builder() -> tauri::Builder<tauri::Wry> {
+    tauri::Builder::default()
+        .activate_ignoring_other_apps(false)
+        .plugin(drive::plugin())
 }
 
 /// Reposition the macOS traffic lights when the title bar's layout changes.
@@ -207,8 +224,12 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
     let builder = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(navigation_guard())
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(navigation_guard());
+    // A drive instance keeps no window state: a restored frame would put its
+    // window in front of the user's, and parallel instances would share one file.
+    #[cfg(not(feature = "drive"))]
+    let builder = builder.plugin(tauri_plugin_window_state::Builder::new().build());
+    let builder = builder
         .register_uri_scheme_protocol("trunk-asset", serve_trunk_asset)
         // Live resize is handled flicker-free by the NSWindowDidResize observer
         // (see macos_traffic_lights); this covers the other title-bar relayouts:

@@ -1,6 +1,8 @@
 /.svelte-kit
 /build
 /dist
+# The drive build's frontend (just drive-build)
+/dist-drive
 /package
 !.env.example
 .DS_Store

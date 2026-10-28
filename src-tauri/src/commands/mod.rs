@@ -3,7 +3,15 @@ use tauri::{AppHandle, Manager, Runtime};
 use trunk_git::error::TrunkError;
 
 /// Resolve `app_data_dir`, JSON-stringifying the error like the other commands.
+///
+/// A drive instance keeps its prefs under the `TRUNK_DATA_DIR` its launcher
+/// gives it, beside its review store, so parallel instances share nothing.
 pub(crate) fn resolve_data_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    #[cfg(feature = "drive")]
+    if let Some(dir) = std::env::var_os("TRUNK_DATA_DIR") {
+        return Ok(PathBuf::from(dir));
+    }
+
     app.path()
         .app_data_dir()
         .map_err(|e| TrunkError::new("app_data_dir", e.to_string()).to_json())

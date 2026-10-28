@@ -34,6 +34,18 @@ dev-app:
     PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" bun run tauri build --debug -b app -c tauri.dev.conf.json
     open -n "{{target}}/debug/bundle/macos/Trunk Dev.app"
 
+# Build the drive instance an agent starts and drives through commands, no screen tools (docs/build-environment.md)
+drive-build:
+    VITE_TRUNK_DRIVE=1 bunx vite build --outDir dist-drive --emptyOutDir
+    TAURI_CONFIG="$(cat tauri.drive.conf.json)" cargo build --manifest-path {{manifest}} --bin trunk --features drive,tauri/custom-protocol
+    rm -f "{{target}}/debug/trunk-drive"
+    cp "{{target}}/debug/trunk" "{{target}}/debug/trunk-drive"
+
+# Start a drive instance on a fixture repository and read its commit rows back through the socket
+drive-smoke: drive-build
+    cargo run --quiet --manifest-path {{manifest}} -p trunk-fixtures -- build graph-lanes
+    bun scripts/drive/smoke.ts "{{target}}/debug/trunk-drive" repos/graph-lanes/02-local-ahead-no-remote
+
 # Dev server with performance instrumentation on (samples: /tmp/trunk-perf/samples.jsonl)
 perf:
     VITE_PERF=1 bun run tauri dev -c tauri.dev.conf.json
@@ -161,7 +173,7 @@ mise-parity:
         exit 1
     fi
 
-# Verify the dev overlay's window equals the shipped one plus its one dev-only key (milliseconds)
+# Verify the dev and drive overlays' windows equal the shipped one plus their own keys (milliseconds)
 dev-conf-parity:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -179,6 +191,13 @@ dev-conf-parity:
     missing = [k for w in dev for k, v in dev_only.items() if w.get(k) != v]
     if stripped != shipped or missing:
         print("::error::tauri.dev.conf.json's windows must equal tauri.conf.json's plus acceptFirstMouse=true. The overlay replaces the array whole (RFC 7396), so a shipped window change not copied there is silently absent from `just dev-app`, and without acceptFirstMouse a session's background clicks never reach the webview.")
+        sys.exit(1)
+    drive = json.load(open("tauri.drive.conf.json"))["app"]["windows"]
+    drive_only = {"visible": False, "focus": False}
+    stripped = [{k: v for k, v in w.items() if k not in drive_only} for w in drive]
+    missing = [k for w in drive for k, v in drive_only.items() if w.get(k) != v]
+    if stripped != shipped or missing:
+        print("::error::tauri.drive.conf.json's windows must equal tauri.conf.json's plus visible=false and focus=false. The overlay replaces the array whole (RFC 7396), so a shipped window change not copied there is silently absent from `just drive-build`, and a drive window that is visible or focused at creation covers the user's screen before the drive route can send it to the back.")
         sys.exit(1)
     EOF
 
@@ -207,9 +226,9 @@ fix:
 svelte-check:
     bun run check
 
-# Clippy lints
+# Clippy lints, with the drive route on so its feature-gated module is linted too
 clippy:
-    cargo clippy --workspace --manifest-path {{manifest}} --all-targets -- -D warnings
+    cargo clippy --workspace --manifest-path {{manifest}} --all-targets --features trunk/drive -- -D warnings
 
 # Clippy the configuration that actually ships. `clippy` above passes
 # --all-targets, which pulls in the dev targets, and the app's dev-dependencies

@@ -21,6 +21,9 @@ bench = false
 
 [features]
 test-util = []
+# The drive route an agent's commands reach the running app through
+# (src/drive.rs). Only `just drive-build` turns it on; it never ships.
+drive = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
