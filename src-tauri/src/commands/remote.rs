@@ -421,9 +421,12 @@ pub async fn git_pull<R: Runtime>(
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `rebase_conflict` when an
-/// autostash restore conflicts, `auth_failure` when the remote refuses the
-/// credentials, and `remote_error` carrying git's own message otherwise.
+/// Returns `not_open` when `path` names no open repository, `rebase_conflict` when a
+/// pull with rebase stops on a conflict, `autostash_conflict` when the pull finished
+/// but restoring the autostash conflicted, `cancelled` when the repository closed while
+/// git ran, `auth_failure` when the remote refuses the credentials, and `remote_error`
+/// carrying git's own message otherwise. Each carries `pull_safety_copy` when the pull
+/// kept one.
 pub async fn git_pull_inner<R: Runtime>(
     path: &str,
     strategy: Option<&str>,
