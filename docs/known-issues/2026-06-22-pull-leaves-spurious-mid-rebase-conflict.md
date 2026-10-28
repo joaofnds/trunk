@@ -61,11 +61,17 @@ instrument the pull path** (exact argv + captured stdout/stderr + a marker
 whenever a cancel or background fetch fires during an active remote op), so the
 next occurrence is diagnosable.
 
-## Compounding bug worth fixing regardless
+## Compounding bug: stranded uncommitted work (guarded)
 
-`git_pull` runs against a dirty working tree with no protection. When the
-autostash path misbehaves, the user's uncommitted WIP gets stranded in a
-half-finished rebase — the exact "confusing state that doesn't happen in the
-terminal" that `68bab10` set out to kill. Consider forcing `--autostash` on the
-pull (deterministic WIP protection) or refusing on a dirty tree with a clear
-message, rather than depending on config resolution.
+`git_pull` ran against a dirty working tree with no protection. When the
+autostash path misbehaves, the user's uncommitted work gets stranded in a
+half-finished rebase, and in the state recorded above, where no autostash held
+the change, `git rebase --abort` throws it away.
+
+The pull now saves a pull safety copy (GLOSSARY.md) of the tracked changes
+before git runs, and keeps it in the stash list whenever the pull leaves a
+rebase, a merge, git's held merge autostash or conflicted files behind that
+were not there before. The pull's own git command and the user's autostash
+configuration are unchanged. This protects the work whatever strands it, but
+does not explain the spurious conflict itself, which still needs the
+instrumentation above.

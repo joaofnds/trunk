@@ -503,9 +503,20 @@ of what a stash takes: a change the user has not staged is never stashed, and wi
 nothing staged there is no stash to create, only a message asking the user to stage
 first. Trunk does not infer what an empty index means (João, 2026-09-14).
 
-**Stash entry** — one saved set of staged changes, addressed by the oid of its commit
-rather than by its `stash@{n}` position, because a second window, a terminal, or this
+**Stash entry** — one saved set of changes in the stash list, addressed by the oid of its
+commit rather than by its `stash@{n}` position, because a second window, a terminal, or this
 app on another tab can renumber that position between listing an entry and acting on it.
+Trunk's Stash action saves staged changes only. A pull safety copy, and git's own autostash
+entry, save staged and unstaged changes alike.
+
+**Pull safety copy** — the stash entry "Trunk: changes before pull" that Trunk saves of the
+user's tracked changes, staged and unstaged, before git runs a pull on a dirty tree. It
+stays in the stash list only when the pull leaves behind a rebase in progress, a merge in
+progress, git's held merge autostash, or conflicted files that were not there before, and
+the pull's message then names it. Every other pull drops it. It exists because git's own
+autostash can be stranded inside an unfinished rebase, where an abort or a removed rebase
+directory loses it. When no identity is configured it is signed `Trunk <trunk@localhost>`
+(João, 2026-10-28).
 
 ## Application harness (spec 2026-08-25)
 

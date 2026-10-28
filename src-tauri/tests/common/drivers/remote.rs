@@ -44,6 +44,40 @@ impl RemoteDriver<'_> {
         ))
     }
 
+    /// Pull, and once `reached` returns, cancel the pull the way closing the repository
+    /// does. `reached` blocks until git is at the point the test wants to stop it at.
+    pub fn pull_cancelled_once(
+        &self,
+        strategy: Option<&str>,
+        reached: impl FnOnce() + Send + 'static,
+    ) -> Result<(), TrunkError> {
+        let running = &self.app.state::<RunningOp>().0;
+        let cache = self.app.state::<CommitCache>();
+        let visibility = trunk_lib::state::RefVisibilityState::default();
+        let cancel = async {
+            tauri::async_runtime::spawn_blocking(reached).await.unwrap();
+            let process = running.lock().unwrap().cancel(self.ctx.path());
+            if let Some(process) = process {
+                process.stop();
+            }
+        };
+        tauri::async_runtime::block_on(async {
+            let (pulled, ()) = tokio::join!(
+                remote::git_pull_inner(
+                    self.ctx.path(),
+                    strategy,
+                    self.ctx.state_map(),
+                    &cache,
+                    running,
+                    &visibility,
+                    self.app.handle(),
+                ),
+                cancel
+            );
+            pulled
+        })
+    }
+
     pub fn push(&self) -> Result<(), TrunkError> {
         tauri::async_runtime::block_on(remote::git_push_inner(
             self.ctx.path(),

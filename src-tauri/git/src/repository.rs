@@ -43,6 +43,26 @@ pub fn has_unmerged_paths(repo: &git2::Repository) -> Result<bool, TrunkError> {
         .any(|s| s.status().contains(git2::Status::CONFLICTED)))
 }
 
+/// Where the stash entry `oid` sits in the stash list now, or `None` when it is gone.
+///
+/// # Errors
+///
+/// Returns the git error when the stash list cannot be read.
+pub fn stash_position(
+    repo: &mut git2::Repository,
+    oid: git2::Oid,
+) -> Result<Option<usize>, git2::Error> {
+    let mut found = None;
+    repo.stash_foreach(|idx, _, stash_oid| {
+        if *stash_oid == oid {
+            found = Some(idx);
+            return false;
+        }
+        true
+    })?;
+    Ok(found)
+}
+
 /// Whether the repository is mid-operation for the purposes of a guard that must not
 /// let history be rewritten underneath it.
 ///
@@ -62,10 +82,8 @@ pub fn is_mid_operation(repo: &git2::Repository) -> Result<bool, TrunkError> {
 ///
 /// Returns `not_a_git_repo` carrying git's own message when it is not.
 pub fn validate_and_open(path: &std::path::Path) -> Result<(), TrunkError> {
-    git2::Repository::open(path).map_err(|e| TrunkError {
-        code: "not_a_git_repo".into(),
-        message: e.message().to_owned(),
-    })?;
+    git2::Repository::open(path)
+        .map_err(|e| TrunkError::new("not_a_git_repo", e.message().to_owned()))?;
     Ok(())
 }
 

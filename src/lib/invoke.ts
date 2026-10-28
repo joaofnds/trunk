@@ -6,6 +6,8 @@ import { span } from "./perf.js";
 export interface TrunkError {
 	code: string;
 	message: string;
+	/** The stash entry a failed pull kept of the changes it started with. */
+	pull_safety_copy?: string;
 }
 
 // Type guard for the TrunkError shape thrown by safeInvoke (a plain object with

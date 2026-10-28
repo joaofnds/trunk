@@ -232,6 +232,15 @@ established.
 5. On subprocess exit: cache refreshed via `refresh_graph()`, `"repo-changed"` event emitted
 6. Frontend graph auto-refreshes via step 3-5 of Filesystem Change Path
 
+A pull runs the same `git pull` under the user's configuration, with one step around it.
+After the reservation and before the spawn, `git_pull_inner` saves a pull safety copy
+(`trunk_git::pull_safety`) of the tracked changes with `StashFlags::KEEP_ALL`, which leaves
+the index and tree as they were, and records which mid-operation markers the repository
+holds. After git exits, on every path including cancel, the copy is kept when a marker
+appeared that was not there before and dropped by oid otherwise. A kept copy travels on the
+error as `pull_safety_copy`, and `remoteErrorMessage` names it. The copy is taken before
+git's fetch, so an edit made while the fetch runs is not in it.
+
 ### Background Periodic Fetch
 
 1. `App.svelte` owns `AutofetchScheduler`: one completion-based deadline for prepared repositories. Repositories added together are staggered across the configured interval (default 60 seconds; `0` disables). Restored tabs join individually after their backends open, each with a full interval before its first fetch (about 60 seconds by default). Focus loss and manual remote work disarm it. The active tab gets preference while overdue inactive tabs retain fairness.

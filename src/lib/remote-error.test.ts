@@ -60,4 +60,29 @@ describe("remoteErrorMessage", () => {
 	])("does not blame a push for %s reported by %s", (code, lastOp) => {
 		expect(remoteErrorMessage(err(code), lastOp)).not.toContain("Push");
 	});
+
+	it("names the pull safety copy a stopped pull kept", () => {
+		const stopped: TrunkError = {
+			...err("rebase_conflict"),
+			pull_safety_copy: "Trunk: changes before pull",
+		};
+
+		expect(remoteErrorMessage(stopped, "pull")).toBe(
+			"Pulled with rebase and stopped on a conflict — resolve the conflicted files, then continue the rebase. Your changes from before the pull are also saved in the stash as “Trunk: changes before pull”.",
+		);
+	});
+
+	it("ends a sentence once before naming the copy", () => {
+		const finished: TrunkError = {
+			...err(
+				"autostash_conflict",
+				"Your changes are also saved in the stash.\n",
+			),
+			pull_safety_copy: "Trunk: changes before pull",
+		};
+
+		expect(remoteErrorMessage(finished, "pull")).toBe(
+			"Your changes are also saved in the stash. Your changes from before the pull are also saved in the stash as “Trunk: changes before pull”.",
+		);
+	});
 });

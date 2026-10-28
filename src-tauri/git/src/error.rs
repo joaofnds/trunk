@@ -4,6 +4,9 @@ use serde::Serialize;
 pub struct TrunkError {
     pub code: String,
     pub message: String,
+    /// The message of the pull safety copy the failed pull kept in the stash list.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pull_safety_copy: Option<String>,
 }
 
 impl TrunkError {
@@ -11,6 +14,15 @@ impl TrunkError {
         Self {
             code: code.into(),
             message: message.into(),
+            pull_safety_copy: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_pull_safety_copy(self, copy: Option<&str>) -> Self {
+        Self {
+            pull_safety_copy: copy.map(str::to_owned),
+            ..self
         }
     }
 
@@ -27,10 +39,7 @@ impl TrunkError {
 
 impl From<git2::Error> for TrunkError {
     fn from(e: git2::Error) -> Self {
-        Self {
-            code: git_error_code(e.code()).into(),
-            message: e.message().to_owned(),
-        }
+        Self::new(git_error_code(e.code()), e.message())
     }
 }
 

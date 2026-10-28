@@ -2,6 +2,7 @@ mod common;
 
 use common::context::TestContext;
 use std::path::Path;
+use trunk_git::pull_safety::PullSafetyCopy;
 use trunk_git::repository::has_unmerged_paths;
 use trunk_lib::commands::remote::{
     FORCE_PUSH_ARGS, classify_git_error, get_push_target_inner, resolve_push_target,
@@ -763,4 +764,305 @@ fn classify_a_pull_that_stopped_on_a_conflict() {
     );
 
     assert_eq!(err.code, "rebase_conflict");
+}
+
+/// The tree of the stash entry whose message names the pull safety copy, if one exists.
+fn pull_safety_copy_tree(ctx: &TestContext) -> Option<git2::Oid> {
+    let entry = ctx
+        .list_stashes()
+        .unwrap()
+        .into_iter()
+        .find(|entry| entry.name.ends_with("Trunk: changes before pull"))?;
+    let repo = ctx.repo();
+    let commit = repo
+        .find_commit(git2::Oid::from_str(&entry.oid).unwrap())
+        .unwrap();
+    Some(commit.tree_id())
+}
+
+fn blob_at(ctx: &TestContext, tree: git2::Oid, file: &str) -> String {
+    let repo = ctx.repo();
+    let tree = repo.find_tree(tree).unwrap();
+    let blob = tree
+        .get_path(Path::new(file))
+        .unwrap()
+        .to_object(&repo)
+        .unwrap()
+        .peel_to_blob()
+        .unwrap();
+    String::from_utf8(blob.content().to_vec()).unwrap()
+}
+
+/// A local commit on `file.txt` and an upstream commit on the same file, so a pull
+/// with rebase stops on a conflict, with `notes.txt` left as a tracked file to dirty.
+fn diverged_on_file_txt() -> TestContext {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "base")
+        .with_file("notes.txt", "notes")
+        .with_commit("Initial commit")
+        .with_remote("origin")
+        .build();
+    track_upstream(&ctx, "origin", "main");
+    ctx.remote().push().unwrap();
+    commit_on_remote(
+        &bare_remote(&ctx, "origin"),
+        "main",
+        "file.txt",
+        "remote content",
+        "Remote commit",
+    );
+    std::fs::write(ctx.repo_path().join("file.txt"), "local content").unwrap();
+    ctx.stage_file("file.txt").unwrap();
+    ctx.create_commit("Local commit", None).unwrap();
+    ctx
+}
+
+#[test]
+fn pull_stopped_on_a_rebase_conflict_keeps_a_pull_safety_copy_of_the_uncommitted_change() {
+    let ctx = diverged_on_file_txt();
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_bool("rebase.autostash", true)
+        .unwrap();
+    std::fs::write(ctx.repo_path().join("notes.txt"), "uncommitted notes").unwrap();
+
+    let err = ctx.remote().pull(Some("rebase")).unwrap_err();
+
+    assert_eq!(err.code, "rebase_conflict");
+    let copy = pull_safety_copy_tree(&ctx).expect("the pull leaves a pull safety copy");
+    assert_eq!(blob_at(&ctx, copy, "notes.txt"), "uncommitted notes");
+}
+
+#[test]
+fn saving_a_pull_safety_copy_leaves_the_index_and_the_working_tree_as_they_were() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "base\n")
+        .with_commit("Initial commit")
+        .build();
+    std::fs::write(ctx.repo_path().join("file.txt"), "staged\n").unwrap();
+    ctx.stage_file("file.txt").unwrap();
+    std::fs::write(ctx.repo_path().join("file.txt"), "staged\nunstaged\r\n").unwrap();
+    let staged_blob = |repo: &git2::Repository| {
+        repo.index()
+            .unwrap()
+            .get_path(Path::new("file.txt"), 0)
+            .unwrap()
+            .id
+    };
+    let index_before = staged_blob(&ctx.repo());
+
+    let copy = PullSafetyCopy::save(&mut ctx.repo());
+
+    assert!(copy.is_some(), "a dirty tree gets a copy");
+    assert_eq!(staged_blob(&ctx.repo()), index_before);
+    assert_eq!(
+        std::fs::read(ctx.repo_path().join("file.txt")).unwrap(),
+        b"staged\nunstaged\r\n"
+    );
+    let tree = pull_safety_copy_tree(&ctx).unwrap();
+    assert_eq!(blob_at(&ctx, tree, "file.txt"), "staged\nunstaged\r\n");
+}
+
+#[test]
+fn pull_that_finishes_clean_leaves_the_stash_list_as_it_was() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "base")
+        .with_file("notes.txt", "notes")
+        .with_commit("Initial commit")
+        .with_remote("origin")
+        .build();
+    track_upstream(&ctx, "origin", "main");
+    ctx.remote().push().unwrap();
+    commit_on_remote(
+        &bare_remote(&ctx, "origin"),
+        "main",
+        "file.txt",
+        "remote content",
+        "Remote commit",
+    );
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_bool("rebase.autostash", true)
+        .unwrap();
+    std::fs::write(ctx.repo_path().join("notes.txt"), "uncommitted notes").unwrap();
+
+    ctx.remote().pull(Some("rebase")).unwrap();
+
+    assert!(ctx.list_stashes().unwrap().is_empty());
+    assert_eq!(
+        std::fs::read_to_string(ctx.repo_path().join("notes.txt")).unwrap(),
+        "uncommitted notes"
+    );
+}
+
+#[test]
+fn pull_that_git_refuses_on_a_dirty_tree_leaves_the_stash_list_and_the_tree_as_they_were() {
+    let ctx = diverged_on_file_txt();
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_bool("rebase.autostash", false)
+        .unwrap();
+    std::fs::write(ctx.repo_path().join("notes.txt"), "uncommitted notes").unwrap();
+
+    let err = ctx.remote().pull(Some("rebase")).unwrap_err();
+
+    assert_eq!(err.code, "remote_error");
+    assert_eq!(err.pull_safety_copy, None);
+    assert!(ctx.list_stashes().unwrap().is_empty());
+    assert_eq!(
+        std::fs::read_to_string(ctx.repo_path().join("notes.txt")).unwrap(),
+        "uncommitted notes"
+    );
+}
+
+#[test]
+fn pull_on_a_clean_tree_makes_no_stash_entry() {
+    let ctx = diverged_on_file_txt();
+
+    ctx.remote().pull(Some("rebase")).unwrap_err();
+
+    assert!(ctx.list_stashes().unwrap().is_empty());
+}
+
+fn git(ctx: &TestContext, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args(args)
+        .current_dir(ctx.repo_path())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .unwrap();
+    assert!(status.success(), "git {args:?} failed in setup");
+}
+
+#[test]
+fn pull_whose_autostash_reapply_conflicts_keeps_the_copy_beside_gits_own_entry() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_remote("origin")
+        .build();
+    track_upstream(&ctx, "origin", "main");
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_bool("rebase.autostash", true)
+        .unwrap();
+    ctx.remote().push().unwrap();
+    commit_on_remote(
+        &bare_remote(&ctx, "origin"),
+        "main",
+        "file.txt",
+        "remote content",
+        "Remote commit",
+    );
+    std::fs::write(ctx.repo_path().join("file.txt"), "local content").unwrap();
+
+    let err = ctx.remote().pull(Some("rebase")).unwrap_err();
+
+    assert_eq!(err.code, "autostash_conflict");
+    assert_eq!(
+        err.pull_safety_copy.as_deref(),
+        Some("Trunk: changes before pull")
+    );
+    assert_eq!(
+        ctx.list_stashes().unwrap().len(),
+        2,
+        "git's entry and the copy"
+    );
+    let copy = pull_safety_copy_tree(&ctx).unwrap();
+    assert_eq!(blob_at(&ctx, copy, "file.txt"), "local content");
+}
+
+#[test]
+fn pull_over_a_resolved_merge_that_git_refuses_leaves_the_stash_list_as_it_was() {
+    let ctx = diverged_on_file_txt();
+    git(&ctx, &["branch", "side", "HEAD~1"]);
+    git(&ctx, &["checkout", "-q", "side"]);
+    std::fs::write(ctx.repo_path().join("side.txt"), "side").unwrap();
+    git(&ctx, &["add", "side.txt"]);
+    git(&ctx, &["commit", "-q", "-m", "Side commit"]);
+    git(&ctx, &["checkout", "-q", "main"]);
+    git(&ctx, &["merge", "--no-commit", "--no-ff", "side"]);
+    assert!(ctx.repo_path().join(".git/MERGE_HEAD").exists());
+
+    let err = ctx.remote().pull(Some("rebase")).unwrap_err();
+
+    assert_eq!(err.code, "remote_error");
+    assert_eq!(err.pull_safety_copy, None);
+    assert!(ctx.list_stashes().unwrap().is_empty());
+}
+
+#[test]
+fn merge_pull_that_conflicts_with_merge_autostash_keeps_the_copy() {
+    let ctx = diverged_on_file_txt();
+    set_config(
+        &ctx,
+        &[("pull.rebase", "false"), ("merge.autostash", "true")],
+    );
+    std::fs::write(ctx.repo_path().join("notes.txt"), "uncommitted notes").unwrap();
+
+    let err = ctx.remote().pull(None).unwrap_err();
+
+    assert!(ctx.repo_path().join(".git/MERGE_AUTOSTASH").exists());
+    assert_eq!(
+        err.pull_safety_copy.as_deref(),
+        Some("Trunk: changes before pull")
+    );
+    let copy = pull_safety_copy_tree(&ctx).unwrap();
+    assert_eq!(blob_at(&ctx, copy, "notes.txt"), "uncommitted notes");
+}
+
+#[cfg(unix)]
+#[test]
+fn pull_cancelled_after_git_took_its_autostash_keeps_the_copy() {
+    let ctx = diverged_on_file_txt();
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_bool("rebase.autostash", true)
+        .unwrap();
+    std::fs::write(ctx.repo_path().join("notes.txt"), "uncommitted notes").unwrap();
+    let barrier = tempfile::tempdir().unwrap();
+    let started = barrier.path().join("started");
+    let release = barrier.path().join("release");
+    for fifo in [&started, &release] {
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(fifo)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    let hook = ctx.repo_path().join(".git/hooks/pre-rebase");
+    std::fs::write(
+        &hook,
+        format!(
+            "#!/bin/sh\necho started > '{}'\nread _ < '{}'\n",
+            started.display(),
+            release.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&hook, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+
+    let err = ctx
+        .remote()
+        .pull_cancelled_once(Some("rebase"), move || {
+            std::fs::read(&started).unwrap();
+        })
+        .unwrap_err();
+
+    assert_eq!(err.code, "cancelled");
+    let rebase_dir: Vec<_> = std::fs::read_dir(ctx.repo_path().join(".git/rebase-merge"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(rebase_dir, ["autostash"]);
+    let copy = pull_safety_copy_tree(&ctx).expect("the cancelled pull keeps the copy");
+    assert_eq!(blob_at(&ctx, copy, "notes.txt"), "uncommitted notes");
 }

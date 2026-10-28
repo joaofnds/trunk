@@ -10,6 +10,7 @@ use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RemoteOps, RepoState, RunningOp};
 use crate::watcher::RepoChanged;
 use trunk_git::error::TrunkError;
+use trunk_git::pull_safety::PullSafetyCopy;
 
 /// git's own stderr lines, with the ones the remote wrote dropped. Scoping the lease
 /// markers to these is what keeps a hook printing either phrase from turning every
@@ -59,7 +60,7 @@ pub fn classify_git_error(stderr: &str) -> TrunkError {
 }
 
 struct RemoteCompletion<'a> {
-    _reservation: RemoteReservation<'a>,
+    reservation: RemoteReservation<'a>,
     session: u64,
 }
 
@@ -71,6 +72,19 @@ struct RemoteCompletion<'a> {
 /// On failure, classifies the error using `classify_git_error`.
 async fn run_git_remote<'a, R: Runtime>(
     args: &[&str],
+    cwd: &std::path::Path,
+    app: &AppHandle<R>,
+    repo_path: &str,
+    running: &'a Mutex<RemoteOps>,
+) -> Result<RemoteCompletion<'a>, TrunkError> {
+    let held = reserve_remote(cwd, app, repo_path, running).await?;
+    run_reserved(args, cwd, app, repo_path, &held.reservation).await?;
+    Ok(held)
+}
+
+/// Takes the repository's one foreground remote slot, so nothing else runs git
+/// against it until the returned reservation drops.
+async fn reserve_remote<'a, R: Runtime>(
     cwd: &std::path::Path,
     app: &AppHandle<R>,
     repo_path: &str,
@@ -99,6 +113,19 @@ async fn run_git_remote<'a, R: Runtime>(
         || app.state::<CommitCache>().session_id(repo_path) == Some(expected_session),
     )?;
 
+    Ok(RemoteCompletion {
+        reservation,
+        session: expected_session,
+    })
+}
+
+async fn run_reserved<R: Runtime>(
+    args: &[&str],
+    cwd: &std::path::Path,
+    app: &AppHandle<R>,
+    repo_path: &str,
+    reservation: &RemoteReservation<'_>,
+) -> Result<(), TrunkError> {
     let mut command = Command::new("git");
     command
         .args(args)
@@ -163,10 +190,7 @@ async fn run_git_remote<'a, R: Runtime>(
         return Err(classify_git_error(&full_stderr));
     }
 
-    Ok(RemoteCompletion {
-        _reservation: reservation,
-        session: expected_session,
-    })
+    Ok(())
 }
 
 async fn checked_manual_fetch<R: Runtime>(
@@ -418,9 +442,62 @@ pub async fn git_pull_inner<R: Runtime>(
         _ => vec!["pull", "--progress"],
     };
 
-    let completion = run_git_remote(&args, &path_buf, app, path, running).await?;
+    let completion = reserve_remote(&path_buf, app, path, running).await?;
+    let copy = save_pull_safety_copy(path_buf.clone()).await;
+    let ran = run_reserved(&args, &path_buf, app, path, &completion.reservation).await;
+    let kept = settle_pull_safety_copy(copy, path_buf.clone()).await;
 
-    checked_manual_pull(app, path, completion.session, path_buf.clone()).await;
+    finish_pull(
+        ran,
+        path,
+        path_buf,
+        cache,
+        ref_visibility,
+        app,
+        completion.session,
+    )
+    .await
+    .map_err(|error| error.with_pull_safety_copy(kept))
+}
+
+async fn save_pull_safety_copy(location: PathBuf) -> Option<PullSafetyCopy> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut repo = git2::Repository::open(location).ok()?;
+        PullSafetyCopy::save(&mut repo)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+/// A copy that cannot be settled stays in the stash list, and is reported as kept.
+async fn settle_pull_safety_copy(
+    copy: Option<PullSafetyCopy>,
+    location: PathBuf,
+) -> Option<&'static str> {
+    let copy = copy?;
+    tauri::async_runtime::spawn_blocking(move || {
+        git2::Repository::open(location)
+            .map_or(Some(trunk_git::pull_safety::MESSAGE), |mut repo| {
+                copy.settle(&mut repo)
+            })
+    })
+    .await
+    .unwrap_or(Some(trunk_git::pull_safety::MESSAGE))
+}
+
+async fn finish_pull<R: Runtime>(
+    ran: Result<(), TrunkError>,
+    path: &str,
+    path_buf: PathBuf,
+    cache: &CommitCache,
+    ref_visibility: &crate::state::RefVisibilityState,
+    app: &AppHandle<R>,
+    session: u64,
+) -> Result<(), TrunkError> {
+    ran?;
+
+    checked_manual_pull(app, path, session, path_buf.clone()).await;
     let probe_path = path_buf.clone();
     let conflicted = tauri::async_runtime::spawn_blocking(move || {
         let repo = git2::Repository::open(&probe_path).map_err(TrunkError::from)?;
@@ -431,15 +508,7 @@ pub async fn git_pull_inner<R: Runtime>(
 
     // Refresh before reporting the conflict, or the UI never repaints and the files the
     // message points at stay invisible.
-    refresh_graph(
-        path,
-        path_buf,
-        cache,
-        ref_visibility,
-        app,
-        completion.session,
-    )
-    .await?;
+    refresh_graph(path, path_buf, cache, ref_visibility, app, session).await?;
 
     if conflicted {
         return Err(TrunkError::new(

@@ -5,6 +5,15 @@ export function remoteErrorMessage(
 	error: TrunkError,
 	lastOp: RemoteOpKind | null = null,
 ): string {
+	const message = describe(error, lastOp);
+	if (error.pull_safety_copy === undefined) return message;
+
+	const ended = message.trimEnd();
+	const sentence = /[.!?]$/.test(ended) ? ended : `${ended}.`;
+	return `${sentence} Your changes from before the pull are also saved in the stash as “${error.pull_safety_copy}”.`;
+}
+
+function describe(error: TrunkError, lastOp: RemoteOpKind | null): string {
 	switch (error.code) {
 		case "auth_failure":
 			return "Authentication failed — check your SSH key or credential helper";

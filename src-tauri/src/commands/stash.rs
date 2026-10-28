@@ -48,16 +48,7 @@ fn stash_index_of(repo: &mut git2::Repository, oid: &str) -> Result<usize, Trunk
     let wanted = git2::Oid::from_str(oid)
         .map_err(|_| TrunkError::new("stash_not_found", format!("Not a stash id: {oid}")))?;
 
-    let mut found = None;
-    repo.stash_foreach(|idx, _, stash_oid| {
-        if *stash_oid == wanted {
-            found = Some(idx);
-            return false;
-        }
-        true
-    })?;
-
-    found.ok_or_else(|| {
+    trunk_git::repository::stash_position(repo, wanted)?.ok_or_else(|| {
         TrunkError::new(
             "stash_not_found",
             "That stash is no longer in this repository — it was applied or dropped elsewhere.",
