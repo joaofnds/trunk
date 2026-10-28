@@ -40,12 +40,12 @@
 │  src-tauri/src/shell_env.rs — macOS PATH resolution                  │
 └───────────────────────────────┬──────────────────────────────────────┘
                                 │  git2 (libgit2 bindings)
-                                │  subprocess: git fetch/pull/push/rebase
+                                │  subprocess: git remote ops, merge, rebase, cherry-pick, revert, reset
 ┌───────────────────────────────▼──────────────────────────────────────┐
 │                      Git Repository (disk)                            │
 │  All reads: git2::Repository opened fresh per command in             │
 │  spawn_blocking. Automatic fetch uses an isolated git2 worker.        │
-│  Legacy foreground remote writes use Git subprocesses.               │
+│  Foreground remote operations use Git subprocesses.                  │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -104,7 +104,7 @@
 - Backend is stateless per-command: each command receives Tauri-managed state via `State<'_, T>` and opens a fresh `git2::Repository` inside `spawn_blocking`
 - `git2::Repository` is not `Sync` — it is NEVER stored in `RepoState`. Only `PathBuf` is stored. Every command calls `git2::Repository::open(path)` fresh.
 - Events flow backend→frontend via Tauri `Emitter`: `"repo-changed"` (fs watcher + after write ops) and `"remote-progress"` (per stderr line of git subprocess)
-- Automatic fetch uses git2 in a private worker. Legacy foreground remote commands retain their Git subprocesses for progress streaming.
+- Automatic fetch uses git2 in a private worker. Foreground remote commands run Git subprocesses, which stream progress.
 
 ## Layers
 
@@ -369,7 +369,7 @@ store revision.
 
 - **Threading:** Tauri uses tokio async runtime. Repository mutation/capture work runs in `spawn_blocking`; automatic transport work runs synchronously in its isolated worker. Foreground remote subprocesses use `tokio::process::Command` with stderr streaming.
 - **git2 not Sync:** `git2::Repository` cannot be stored in shared state. Each command opens its own fresh handle, as `state::RepoState` documents.
-- **Git execution:** Local operations and automatic fetch use git2. Legacy foreground remote commands and rebase/merge message editing retain their Git subprocess paths.
+- **Git execution:** Foreground remote commands, merge, rebase, cherry-pick, revert, reset and the merge-base read for interactive rebase run the git binary, as do the commits that conclude a merge, cherry-pick or revert. Other local operations and automatic fetch use git2. AGENTS.md states which operations may run the binary and why.
 - **Global state:** Tauri manages `RepoState`'s path registry, `CommitCache`'s graph/session/revision maps, `RunningOp`'s identity-based remote reservations and `WatcherState`'s watchers/pending ref reconciliations. Worktree UI/cache entries use repository paths; remote exclusion uses canonical common directories. `WatcherState.enabled` lets the App harness disable filesystem watching, and the state is passed into `configure` because `Builder::manage` panics on a duplicate type.
 - **Circular imports:** None detected. Frontend has a clear dependency direction: `components/` → `lib/` → `@tauri-apps/`.
 - **macOS PATH:** `src-tauri/src/shell_env.rs` reads the user's login-shell PATH, with `/usr/libexec/path_helper` as a fallback, because GUI apps inherit a minimal launchd PATH.
