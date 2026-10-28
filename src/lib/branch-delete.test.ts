@@ -94,12 +94,17 @@ describe("deletePrompt", () => {
 			[
 				"several_holders",
 				[PATH, "/work/wt2"],
-				"Cannot delete 'topic'. More than one worktree has it checked out:\n\n- /work/wt\n- /work/wt2",
+				"Cannot delete 'topic'. More than one worktree uses it:\n\n- /work/wt\n- /work/wt2",
 			],
 			[
 				"open_in_tab",
 				[PATH],
 				"Cannot delete 'topic' while the worktree at /work/wt, which has it checked out, is open in a tab. Close that tab, then delete again.",
+			],
+			[
+				"rebasing",
+				[PATH],
+				"Cannot delete 'topic' while the worktree at /work/wt is rebasing it. Finish or abort the rebase there, then delete again.",
 			],
 		] as const)("explains a %s refusal", (reason, paths, message) => {
 			expect(

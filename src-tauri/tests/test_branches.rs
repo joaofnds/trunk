@@ -904,16 +904,87 @@ mod deleting_a_branch_a_linked_worktree_holds {
         let before = snapshot(ctx, path);
 
         let hold = ctx.branch_hold("wt-branch").unwrap();
-        let result = ctx.delete_branch_removing("wt-branch", &removal("wt", path, true));
+        let plain = ctx.delete_branch("wt-branch");
+        let removing = ctx.delete_branch_removing("wt-branch", &removal("wt", path, true));
 
         assert_eq!(hold, expected);
-        assert_eq!(result.unwrap_err().code, "worktree_refused");
+        assert_eq!(plain.unwrap_err().code, "worktree_changed");
+        assert_eq!(removing.unwrap_err().code, "worktree_refused");
         ctx.assert_branch_exists("wt-branch");
         assert_eq!(snapshot(ctx, path), before);
     }
 
+    fn git_in(dir: &std::path::Path, args: &[&str]) -> std::process::Output {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_SEQUENCE_EDITOR", "sed -i.bak s/^pick/edit/")
+            .env("GIT_EDITOR", "true")
+            .output()
+            .unwrap()
+    }
+
+    /// Commit once more in the worktree at `path`, then start `git rebase <args>` there,
+    /// which stops at the first commit it replays.
+    fn stop_mid_rebase(path: &std::path::Path, args: &[&str]) {
+        let committed = git_in(path, &["commit", "--allow-empty", "-qm", "second"]);
+        git_in(path, &[&["rebase"], args].concat());
+
+        let status = git_in(path, &["status"]).stdout;
+
+        assert!(committed.status.success());
+        assert!(
+            String::from_utf8_lossy(&status).contains("rebase in progress"),
+            "the rebase did not stop"
+        );
+    }
+
+    /// The worktree path `git branch -D` names when it refuses to delete `branch`.
+    fn path_git_names(ctx: &TestContext, branch: &str) -> String {
+        let output = git_in(ctx.repo_path(), &["branch", "-D", branch]);
+        let stderr = String::from_utf8(output.stderr).unwrap();
+
+        assert!(!output.status.success(), "git deleted {branch}");
+        stderr
+            .split("used by worktree at '")
+            .nth(1)
+            .and_then(|rest| rest.split('\'').next())
+            .unwrap_or_else(|| panic!("git refused otherwise: {stderr}"))
+            .to_owned()
+    }
+
     mod refuses_and_changes_nothing {
         use super::*;
+
+        #[test]
+        fn and_the_rebase_it_refused_for_still_finishes() {
+            let mut ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            stop_mid_rebase(&path, &["-i", "HEAD~1"]);
+            let _ = ctx.delete_branch("wt-branch");
+
+            let finished = git_in(&path, &["rebase", "--continue"]);
+
+            assert!(finished.status.success(), "{finished:?}");
+            ctx.assert_branch_exists("wt-branch");
+        }
+
+        #[test]
+        fn when_the_worktree_is_rebasing_the_branch_interactively() {
+            let mut ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            stop_mid_rebase(&path, &["-i", "HEAD~1"]);
+            let named = path_git_names(&ctx, "wt-branch");
+
+            assert_refused_and_unchanged(
+                &mut ctx,
+                &path,
+                BranchHold::Refuse {
+                    paths: vec![named],
+                    reason: Refusal::Rebasing,
+                },
+            );
+        }
 
         #[test]
         fn when_the_worktree_does_not_point_back_at_its_admin_entry() {

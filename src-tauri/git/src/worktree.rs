@@ -45,6 +45,8 @@ pub enum Refusal {
     SeveralHolders,
     /// The tab's watcher and any remote operation it runs live on this directory.
     OpenInTab,
+    /// Deleting the branch under a rebase makes `git rebase --continue` fail.
+    Rebasing,
 }
 
 /// Why removing a linked worktree may lose work.
@@ -69,13 +71,57 @@ impl Refusal {
                 format!("the worktree at {paths} does not point back at this repository")
             }
             Self::SeveralHolders => {
-                format!("the worktrees at {paths} all have the branch checked out")
+                format!("the worktrees at {paths} all use the branch")
             }
             Self::OpenInTab => {
                 format!("the worktree at {paths} is open in a tab: close it, then delete again")
             }
+            Self::Rebasing => format!("the worktree at {paths} is rebasing the branch"),
         }
     }
+}
+
+/// How a worktree uses a branch. Git refuses to delete a branch any worktree uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BranchUse {
+    CheckedOut,
+    Rebasing,
+    Bisecting,
+}
+
+/// The branches the worktree whose git directory is `git_dir` uses, each as the full ref
+/// name in the bytes git wrote, since a lossy decode would let a branch whose name is
+/// not UTF-8 match a different branch. `git_dir` is the common directory for the main
+/// worktree, or a linked worktree's admin entry.
+pub(crate) fn branches_used(git_dir: &Path) -> Vec<(BranchUse, Vec<u8>)> {
+    let mut used = Vec::new();
+
+    if let Some(name) = read_trimmed(&git_dir.join("HEAD")).and_then(|head| {
+        head.strip_prefix(b"ref:")
+            .map(|name| name.trim_ascii().to_vec())
+    }) {
+        used.push((BranchUse::CheckedOut, name));
+    }
+
+    for rebase in ["rebase-merge", "rebase-apply"] {
+        if let Some(name) = read_trimmed(&git_dir.join(rebase).join("head-name"))
+            .filter(|name| name.starts_with(b"refs/"))
+        {
+            used.push((BranchUse::Rebasing, name));
+        }
+    }
+
+    if let Some(start) = read_trimmed(&git_dir.join("BISECT_START")) {
+        used.push((BranchUse::Bisecting, [b"refs/heads/", &start[..]].concat()));
+    }
+
+    used
+}
+
+fn read_trimmed(path: &Path) -> Option<Vec<u8>> {
+    std::fs::read(path)
+        .ok()
+        .map(|bytes| bytes.trim_ascii().to_vec())
 }
 
 struct LinkedWorktree {
@@ -84,6 +130,7 @@ struct LinkedWorktree {
     /// The `.git` path the admin entry records, whose parent prune deletes.
     gitfile: PathBuf,
     root: PathBuf,
+    rebasing: bool,
 }
 
 /// Find who holds `branch` and, for a linked worktree, what removing it would lose.
@@ -100,7 +147,9 @@ pub fn assess(
     let target = format!("refs/heads/{branch}");
     let common = repo.commondir();
 
-    if !Repository::open(common)?.is_bare() && holds(common, &target) {
+    if !Repository::open(common)?.is_bare()
+        && branches_used(common).contains(&(BranchUse::CheckedOut, target.clone().into_bytes()))
+    {
         return Ok(BranchHold::HeldByMain);
     }
 
@@ -120,7 +169,9 @@ pub fn assess(
         return Ok(BranchHold::NotHeld);
     };
 
-    let refusal = if !points_back(&holder) {
+    let refusal = if holder.rebasing {
+        Some(Refusal::Rebasing)
+    } else if !points_back(&holder) {
         Some(Refusal::Mismatched)
     } else if open_tabs.iter().any(|tab| tab.starts_with(&holder.root)) {
         Some(Refusal::OpenInTab)
@@ -311,7 +362,12 @@ fn linked_holders(repo: &Repository, target: &str) -> Result<Vec<LinkedWorktree>
         .filter_map(|name| name.ok().flatten())
     {
         let admin = common.join("worktrees").join(name);
-        if !holds(&admin, target) {
+        let uses: Vec<BranchUse> = branches_used(&admin)
+            .into_iter()
+            .filter(|(how, branch)| *how != BranchUse::Bisecting && branch == target.as_bytes())
+            .map(|(how, _)| how)
+            .collect();
+        if uses.is_empty() {
             continue;
         }
         let Some(gitfile) = recorded_gitfile(&admin) else {
@@ -325,20 +381,11 @@ fn linked_holders(repo: &Repository, target: &str) -> Result<Vec<LinkedWorktree>
             admin,
             gitfile,
             root,
+            rebasing: uses.contains(&BranchUse::Rebasing),
         });
     }
 
     Ok(holders)
-}
-
-/// Whether the HEAD in `git_dir`, a common directory or an admin entry, names `target`.
-/// Compared as bytes, because a lossy decode would let a branch whose name is not UTF-8
-/// match a different branch.
-fn holds(git_dir: &Path, target: &str) -> bool {
-    std::fs::read(git_dir.join("HEAD")).is_ok_and(|head| {
-        head.strip_prefix(b"ref:")
-            .is_some_and(|name| name.trim_ascii() == target.as_bytes())
-    })
 }
 
 fn recorded_gitfile(admin: &Path) -> Option<PathBuf> {

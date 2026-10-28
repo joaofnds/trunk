@@ -122,7 +122,7 @@ export type BranchHold =
 	| {
 			kind: "refuse";
 			paths: string[];
-			reason: "mismatched" | "several_holders" | "open_in_tab";
+			reason: "mismatched" | "several_holders" | "open_in_tab" | "rebasing";
 	  };
 
 /** The linked worktree the user agreed to remove so its branch can be deleted. */

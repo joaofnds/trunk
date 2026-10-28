@@ -1253,26 +1253,9 @@ fn reject_checked_out_destinations(
 }
 
 fn collect_held_branches(admin: &Path, branches: &mut BTreeSet<String>) {
-    if let Some(head) = read_admin_file(&admin.join("HEAD"))
-        && let Some(target) = head.strip_prefix("ref:")
-    {
-        branches.insert(target.trim().into());
+    for (_, branch) in crate::worktree::branches_used(admin) {
+        branches.insert(String::from_utf8_lossy(&branch).into_owned());
     }
-
-    for rebase in ["rebase-merge", "rebase-apply"] {
-        if let Some(rebasing) = read_admin_file(&admin.join(rebase).join("head-name")) {
-            branches.insert(rebasing.trim().into());
-        }
-    }
-
-    if let Some(bisecting) = read_admin_file(&admin.join("BISECT_START")) {
-        branches.insert(format!("refs/heads/{}", bisecting.trim()));
-    }
-}
-
-fn read_admin_file(path: &Path) -> Option<String> {
-    let bytes = std::fs::read(path).ok()?;
-    Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn record_remote_head(

@@ -144,9 +144,11 @@ function refusalText(
 		case "mismatched":
 			return `Cannot delete '${branch}'. The worktree at ${paths.join(", ")} has it checked out, and its .git file does not point back at this repository, so Trunk will not remove it.`;
 		case "several_holders":
-			return `Cannot delete '${branch}'. More than one worktree has it checked out:\n\n${paths.map((path) => `- ${path}`).join("\n")}`;
+			return `Cannot delete '${branch}'. More than one worktree uses it:\n\n${paths.map((path) => `- ${path}`).join("\n")}`;
 		case "open_in_tab":
 			return `Cannot delete '${branch}' while the worktree at ${paths.join(", ")}, which has it checked out, is open in a tab. Close that tab, then delete again.`;
+		case "rebasing":
+			return `Cannot delete '${branch}' while the worktree at ${paths.join(", ")} is rebasing it. Finish or abort the rebase there, then delete again.`;
 	}
 }
 
