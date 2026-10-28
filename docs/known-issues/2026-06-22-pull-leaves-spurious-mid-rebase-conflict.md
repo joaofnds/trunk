@@ -4,6 +4,7 @@ title: Pull leaves a spurious mid-rebase "conflict" that a plain git pull never 
 area: commands
 files:
   - src-tauri/src/commands/remote.rs
+  - src-tauri/git/src/pull_safety.rs
   - src-tauri/src/commands/operation_state.rs
   - src/components/RepoView.svelte
 ---
@@ -55,23 +56,20 @@ So something on trunk's side interfered after/around the pull. Leading suspects
 
 ## Why this can't be pinned now
 
-`remote.rs::run_git_remote` logs nothing — no argv, no stdout/stderr, no record
+`remote.rs::run_reserved`, which runs the pull's git, logs nothing: no argv, no stdout/stderr, no record
 of concurrent ops/cancels. The after-the-fact repo state is lossy. **First step:
 instrument the pull path** (exact argv + captured stdout/stderr + a marker
 whenever a cancel or background fetch fires during an active remote op), so the
 next occurrence is diagnosable.
 
-## Compounding bug: stranded uncommitted work (guarded)
+## Compounding risk: stranded uncommitted work
 
-`git_pull` ran against a dirty working tree with no protection. When the
-autostash path misbehaves, the user's uncommitted work gets stranded in a
-half-finished rebase, and in the state recorded above, where no autostash held
-the change, `git rebase --abort` throws it away.
-
-The pull now saves a pull safety copy (GLOSSARY.md) of the tracked changes
-before git runs, and keeps it in the stash list whenever the pull leaves a
-rebase, a merge, git's held merge autostash or conflicted files behind that
-were not there before. The pull's own git command and the user's autostash
-configuration are unchanged. This protects the work whatever strands it, but
-does not explain the spurious conflict itself, which still needs the
+A pull on a dirty tree can strand the user's uncommitted work in a half-finished
+rebase, and in the state recorded above, where no autostash held the change,
+`git rebase --abort` throws it away. The pull safety copy (GLOSSARY.md) guards
+this: it holds the tracked changes as they were before git ran, and stays in the
+stash list whenever the pull leaves a rebase, a merge, git's held merge autostash
+or conflicted files behind. It does not hold an edit made while the pull's fetch
+runs, and when Trunk cannot save it the pull runs unguarded, as git alone would
+run it. It does not explain the spurious conflict itself, which still needs the
 instrumentation above.

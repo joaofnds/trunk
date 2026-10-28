@@ -3,7 +3,8 @@
 **Analysis Date:** 2026-05-14
 
 > Most sections retain the May analysis. The startup-restoration, dirty-badge, automatic-fetch, graph-publication and
-> remote-ownership sections were checked against source on 2026-10-11; this is not a
+> remote-ownership sections were checked against source on 2026-10-11, and the pull's
+> safety copy on 2026-10-28; this is not a
 > fresh audit of the whole system. Trust `docs/architecture/commit-graph.md` and the
 > source where an older section disagrees.
 
@@ -232,14 +233,16 @@ established.
 5. On subprocess exit: cache refreshed via `refresh_graph()`, `"repo-changed"` event emitted
 6. Frontend graph auto-refreshes via step 3-5 of Filesystem Change Path
 
-A pull runs the same `git pull` under the user's configuration, with one step around it.
-After the reservation and before the spawn, `git_pull_inner` saves a pull safety copy
+A pull runs the same `git pull` under the user's configuration, with a step on each side of
+it. After the reservation and before the spawn, `git_pull_inner` saves a pull safety copy
 (`trunk_git::pull_safety`) of the tracked changes with `StashFlags::KEEP_ALL`, which leaves
 the index and tree as they were, and records which mid-operation markers the repository
-holds. After git exits, on every path including cancel, the copy is kept when a marker
-appeared that was not there before and dropped by oid otherwise. A kept copy travels on the
-error as `pull_safety_copy`, and `remoteErrorMessage` names it. The copy is taken before
-git's fetch, so an edit made while the fetch runs is not in it.
+holds. After git exits, on every path including cancel and while the reservation is still
+held, the copy is kept when a marker appeared that was not there before, and is otherwise
+dropped at the position its oid has at that moment. A kept copy travels on the error as
+`pull_safety_copy`, a pull git finished that still kept one returns `pull_kept_copy`, and
+`remoteErrorMessage` names it. The copy is taken before git's fetch, so an edit made while
+the fetch runs is not in it.
 
 ### Background Periodic Fetch
 

@@ -499,24 +499,28 @@ until the user integrates, so Trunk offers no force-push action on a lease refus
 ## Stashing (TRUNK-231, 2026-09-14)
 
 **Staged changes** — what the index holds that HEAD does not. In Trunk this is the whole
-of what a stash takes: a change the user has not staged is never stashed, and with
-nothing staged there is no stash to create, only a message asking the user to stage
-first. Trunk does not infer what an empty index means (João, 2026-09-14).
+of what the Stash action takes: a change the user has not staged is never stashed by it,
+and with nothing staged there is no stash to create, only a message asking the user to
+stage first. Trunk does not infer what an empty index means (João, 2026-09-14).
 
-**Stash entry** — one saved set of changes in the stash list, addressed by the oid of its
+**Stash entry**: one saved set of changes in the stash list, addressed by the oid of its
 commit rather than by its `stash@{n}` position, because a second window, a terminal, or this
 app on another tab can renumber that position between listing an entry and acting on it.
 Trunk's Stash action saves staged changes only. A pull safety copy, and git's own autostash
 entry, save staged and unstaged changes alike.
 
-**Pull safety copy** — the stash entry "Trunk: changes before pull" that Trunk saves of the
-user's tracked changes, staged and unstaged, before git runs a pull on a dirty tree. It
-stays in the stash list only when the pull leaves behind a rebase in progress, a merge in
-progress, git's held merge autostash, or conflicted files that were not there before, and
-the pull's message then names it. Every other pull drops it. It exists because git's own
-autostash can be stranded inside an unfinished rebase, where an abort or a removed rebase
-directory loses it. When no identity is configured it is signed `Trunk <trunk@localhost>`
-(João, 2026-10-28).
+**Pull safety copy**: the stash entry "Trunk: changes before pull" that Trunk saves of the
+user's tracked changes, staged and unstaged, before git runs a pull on a dirty tree with no
+conflicted files. When the pull ends, Trunk drops it unless the pull left behind a rebase in
+progress, a merge in progress, git's held merge autostash, or conflicted files that were not
+there before, and the pull's message then names the copy it kept. A copy whose fate Trunk
+cannot read is kept and named too, and one whose pull was interrupted by Trunk quitting
+stays without a message, so an entry with this name does not by itself mean a pull
+stranded work. It exists because a pull can leave uncommitted work where git alone does not
+give it back: an abort with a rebase in progress and no autostash holding the change throws
+the change away, and a rebase directory removed without git applying its autostash leaves
+the work reachable only through `git fsck`. When no identity is configured the copy is
+signed `Trunk <trunk@localhost>` (João, 2026-10-28).
 
 ## Application harness (spec 2026-08-25)
 
