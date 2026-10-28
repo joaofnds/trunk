@@ -27,8 +27,8 @@ impl TrunkError {
     }
 
     /// Serialize to the JSON string a Tauri command returns as its `Err` payload.
-    /// Serializing a two-string struct cannot realistically fail; the fallback
-    /// avoids a panic on the impossible case instead of `.unwrap()`.
+    /// Serializing strings cannot realistically fail; the fallback avoids a panic on
+    /// the impossible case instead of `.unwrap()`.
     #[must_use]
     pub fn to_json(&self) -> String {
         serde_json::to_string(self).unwrap_or_else(|_| {
@@ -110,6 +110,27 @@ mod tests {
     #[test]
     fn leaves_an_unclassified_failure_as_git_error() {
         assert_eq!(converted(git2::ErrorCode::GenericError).code, "git_error");
+    }
+
+    #[test]
+    fn leaves_the_pull_safety_copy_out_of_the_json_when_there_is_none() {
+        let json: serde_json::Value =
+            serde_json::from_str(&TrunkError::new("remote_error", "boom").to_json()).unwrap();
+
+        assert_eq!(
+            json,
+            serde_json::json!({"code": "remote_error", "message": "boom"})
+        );
+    }
+
+    #[test]
+    fn names_the_pull_safety_copy_in_the_json_the_frontend_reads() {
+        let error = TrunkError::new("rebase_conflict", "stopped")
+            .with_pull_safety_copy(Some("Trunk: changes before pull"));
+
+        let json: serde_json::Value = serde_json::from_str(&error.to_json()).unwrap();
+
+        assert_eq!(json["pull_safety_copy"], "Trunk: changes before pull");
     }
 
     #[test]

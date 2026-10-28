@@ -426,7 +426,8 @@ pub async fn git_pull<R: Runtime>(
 /// but restoring the autostash conflicted, `cancelled` when the repository closed while
 /// git ran, `auth_failure` when the remote refuses the credentials, and `remote_error`
 /// carrying git's own message otherwise. Each carries `pull_safety_copy` when the pull
-/// kept one.
+/// kept one, and a pull git finished that still kept one returns `pull_kept_copy`, so
+/// the copy is always named.
 pub async fn git_pull_inner<R: Runtime>(
     path: &str,
     strategy: Option<&str>,
@@ -450,7 +451,7 @@ pub async fn git_pull_inner<R: Runtime>(
     let ran = run_reserved(&args, &path_buf, app, path, &completion.reservation).await;
     let kept = settle_pull_safety_copy(copy, path_buf.clone()).await;
 
-    finish_pull(
+    let finished = finish_pull(
         ran,
         path,
         path_buf,
@@ -459,34 +460,48 @@ pub async fn git_pull_inner<R: Runtime>(
         app,
         completion.session,
     )
-    .await
-    .map_err(|error| error.with_pull_safety_copy(kept))
+    .await;
+    if !kept {
+        return finished;
+    }
+
+    let copy = Some(trunk_git::pull_safety::MESSAGE);
+    match finished {
+        Ok(()) => {
+            Err(TrunkError::new("pull_kept_copy", "The pull finished.").with_pull_safety_copy(copy))
+        }
+        Err(error) => Err(error.with_pull_safety_copy(copy)),
+    }
 }
 
+/// A copy that cannot be saved leaves the pull to run unguarded, as git alone would run
+/// it, so the failure is logged rather than returned.
 async fn save_pull_safety_copy(location: PathBuf) -> Option<PullSafetyCopy> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let mut repo = git2::Repository::open(location).ok()?;
+    let saved = tauri::async_runtime::spawn_blocking(move || {
+        let mut repo = git2::Repository::open(location)?;
         PullSafetyCopy::save(&mut repo)
     })
     .await
-    .ok()
-    .flatten()
+    .map_err(|error| TrunkError::new("spawn_error", error.to_string()))
+    .flatten();
+
+    saved.unwrap_or_else(|error| {
+        eprintln!("pull safety copy not saved: {}", error.message);
+        None
+    })
 }
 
 /// A copy that cannot be settled stays in the stash list, and is reported as kept.
-async fn settle_pull_safety_copy(
-    copy: Option<PullSafetyCopy>,
-    location: PathBuf,
-) -> Option<&'static str> {
-    let copy = copy?;
+async fn settle_pull_safety_copy(copy: Option<PullSafetyCopy>, location: PathBuf) -> bool {
+    let Some(copy) = copy else {
+        return false;
+    };
+
     tauri::async_runtime::spawn_blocking(move || {
-        git2::Repository::open(location)
-            .map_or(Some(trunk_git::pull_safety::MESSAGE), |mut repo| {
-                copy.settle(&mut repo)
-            })
+        git2::Repository::open(location).map_or(true, |mut repo| copy.settle(&mut repo))
     })
     .await
-    .unwrap_or(Some(trunk_git::pull_safety::MESSAGE))
+    .unwrap_or(true)
 }
 
 async fn finish_pull<R: Runtime>(

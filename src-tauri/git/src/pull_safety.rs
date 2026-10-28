@@ -6,8 +6,6 @@ use crate::repository::{has_unmerged_paths, is_repo_dirty, stash_position};
 
 pub const MESSAGE: &str = "Trunk: changes before pull";
 
-/// The fixed identity a copy is signed with when the repository has none, since git's
-/// own autostash still runs there and the copy must guard that pull too.
 const FALLBACK_NAME: &str = "Trunk";
 const FALLBACK_EMAIL: &str = "trunk@localhost";
 
@@ -56,45 +54,60 @@ pub struct PullSafetyCopy {
 }
 
 impl PullSafetyCopy {
-    /// Saves the copy when tracked files differ from HEAD and nothing is conflicted.
-    /// `KEEP_ALL` leaves the index and the working tree as they were, so git starts
-    /// from the tree the user had. Any failure means no copy, and the pull runs as it
-    /// would without Trunk.
-    pub fn save(repo: &mut git2::Repository) -> Option<Self> {
-        let before = Markers::read(repo).ok()?;
-        if before.conflicted || !is_repo_dirty(repo).ok()? {
-            return None;
+    /// Saves the copy when tracked files differ from HEAD and nothing is conflicted,
+    /// and returns `None` when there is nothing to guard. `KEEP_ALL` leaves the index
+    /// and the working tree as they were, so git starts from the tree the user had.
+    ///
+    /// # Errors
+    ///
+    /// Returns the git error when the tree cannot be read or the entry cannot be
+    /// written. The caller then runs the pull without a copy, as git alone would.
+    pub fn save(repo: &mut git2::Repository) -> Result<Option<Self>, TrunkError> {
+        if !is_repo_dirty(repo)? {
+            return Ok(None);
         }
 
-        let signature = stasher(repo.signature()).ok()?;
-        let oid = repo
-            .stash_save(&signature, MESSAGE, Some(git2::StashFlags::KEEP_ALL))
-            .ok()?;
-        Some(Self { oid, before })
+        let before = Markers::read(repo)?;
+        if before.conflicted {
+            return Ok(None);
+        }
+
+        let signature = copy_signature(repo.signature())?;
+        let oid = repo.stash_save(&signature, MESSAGE, Some(git2::StashFlags::KEEP_ALL))?;
+        Ok(Some(Self { oid, before }))
     }
 
-    /// Keeps the copy when the pull left behind a marker it did not find, and drops it
-    /// by oid otherwise. Returns the kept copy's message, for the pull's report. A copy
-    /// whose fate cannot be read is kept, since a spare entry costs the user one drop
-    /// and a lost one costs their work.
-    pub fn settle(self, repo: &mut git2::Repository) -> Option<&'static str> {
+    /// Whether the copy stays in the stash list: it does when the pull left behind a
+    /// marker it did not find, and is dropped by oid otherwise. A copy whose fate
+    /// cannot be read, or whose drop fails, stays, since a spare entry costs the user
+    /// one drop and a lost one costs their work.
+    pub fn settle(self, repo: &mut git2::Repository) -> bool {
         let gained = Markers::read(repo).map_or(true, |after| self.before.gained_in(after));
         if gained {
-            return Some(MESSAGE);
+            return true;
         }
 
-        match stash_position(repo, self.oid) {
-            Ok(Some(position)) if repo.stash_drop(position).is_ok() => None,
-            Ok(None) => None,
-            _ => Some(MESSAGE),
-        }
+        let Ok(position) = stash_position(repo, self.oid) else {
+            return true;
+        };
+        let Some(position) = position else {
+            return false;
+        };
+        repo.stash_drop(position).is_err()
     }
 }
 
-fn stasher(
+/// The repository's identity, or the fixed one when none is configured, since git's
+/// own autostash derives one there and the copy must guard that pull too.
+fn copy_signature(
     configured: Result<git2::Signature<'static>, git2::Error>,
 ) -> Result<git2::Signature<'static>, git2::Error> {
-    configured.or_else(|_| git2::Signature::now(FALLBACK_NAME, FALLBACK_EMAIL))
+    match configured {
+        Err(error) if error.code() == git2::ErrorCode::NotFound => {
+            git2::Signature::now(FALLBACK_NAME, FALLBACK_EMAIL)
+        }
+        other => other,
+    }
 }
 
 #[cfg(test)]
@@ -162,13 +175,94 @@ mod tests {
 
     #[test]
     fn a_repository_without_an_identity_signs_the_copy_as_trunk() {
-        let missing = git2::Error::from_str("config value 'user.name' was not found");
+        let missing = git2::Error::new(
+            git2::ErrorCode::NotFound,
+            git2::ErrorClass::Config,
+            "config value 'user.name' was not found",
+        );
 
-        let signature = stasher(Err(missing)).unwrap();
+        let signature = copy_signature(Err(missing)).unwrap();
 
         assert_eq!(
             (signature.name(), signature.email()),
             (Ok("Trunk"), Ok("trunk@localhost"))
+        );
+    }
+
+    #[test]
+    fn an_identity_that_will_not_parse_is_not_replaced() {
+        let malformed = git2::Error::new(
+            git2::ErrorCode::GenericError,
+            git2::ErrorClass::Invalid,
+            "failed to parse signature",
+        );
+
+        assert!(copy_signature(Err(malformed)).is_err());
+    }
+
+    fn git_dir_with(entries: &[&str]) -> (tempfile::TempDir, git2::Repository) {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        for entry in entries {
+            let path = repo.path().join(entry);
+            if entry.ends_with("_HEAD") || entry.ends_with("AUTOSTASH") {
+                std::fs::write(path, "0000000000000000000000000000000000000000\n").unwrap();
+            } else {
+                std::fs::create_dir(path).unwrap();
+            }
+        }
+        (dir, repo)
+    }
+
+    #[test]
+    fn reads_a_rebase_from_a_rebase_merge_directory_alone() {
+        let (_dir, repo) = git_dir_with(&["rebase-merge"]);
+
+        assert_eq!(
+            Markers::read(&repo).unwrap(),
+            Markers {
+                rebase: true,
+                ..NONE
+            }
+        );
+    }
+
+    #[test]
+    fn reads_a_rebase_from_a_rebase_apply_directory() {
+        let (_dir, repo) = git_dir_with(&["rebase-apply"]);
+
+        assert_eq!(
+            Markers::read(&repo).unwrap(),
+            Markers {
+                rebase: true,
+                ..NONE
+            }
+        );
+    }
+
+    #[test]
+    fn reads_a_merge_from_merge_head() {
+        let (_dir, repo) = git_dir_with(&["MERGE_HEAD"]);
+
+        assert_eq!(
+            Markers::read(&repo).unwrap(),
+            Markers {
+                merge: true,
+                ..NONE
+            }
+        );
+    }
+
+    #[test]
+    fn reads_a_held_merge_autostash_from_merge_autostash() {
+        let (_dir, repo) = git_dir_with(&["MERGE_AUTOSTASH"]);
+
+        assert_eq!(
+            Markers::read(&repo).unwrap(),
+            Markers {
+                merge_autostash: true,
+                ..NONE
+            }
         );
     }
 }

@@ -67,22 +67,19 @@ describe("remoteErrorMessage", () => {
 			pull_safety_copy: "Trunk: changes before pull",
 		};
 
-		expect(remoteErrorMessage(stopped, "pull")).toBe(
-			"Pulled with rebase and stopped on a conflict — resolve the conflicted files, then continue the rebase. Your changes from before the pull are also saved in the stash as “Trunk: changes before pull”.",
+		expect(remoteErrorMessage(stopped, "pull")).toMatch(
+			/continue the rebase\. Trunk also kept a copy of your changes from before the pull in the stash, named “Trunk: changes before pull”\.$/,
 		);
 	});
 
 	it("ends a sentence once before naming the copy", () => {
 		const finished: TrunkError = {
-			...err(
-				"autostash_conflict",
-				"Your changes are also saved in the stash.\n",
-			),
+			...err("pull_kept_copy", "The pull finished.\n"),
 			pull_safety_copy: "Trunk: changes before pull",
 		};
 
 		expect(remoteErrorMessage(finished, "pull")).toBe(
-			"Your changes are also saved in the stash. Your changes from before the pull are also saved in the stash as “Trunk: changes before pull”.",
+			"The pull finished. Trunk also kept a copy of your changes from before the pull in the stash, named “Trunk: changes before pull”.",
 		);
 	});
 });

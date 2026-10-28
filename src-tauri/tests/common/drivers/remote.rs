@@ -44,8 +44,10 @@ impl RemoteDriver<'_> {
         ))
     }
 
-    /// Pull, and once `reached` returns, cancel the pull the way closing the repository
-    /// does. `reached` blocks until git is at the point the test wants to stop it at.
+    /// Pull, and once `reached` returns, cancel the pull as `cancel_remote_op` does,
+    /// which is also how closing the repository stops it. `reached` blocks until git is
+    /// where the test wants it stopped. A pull that ends first returns its own result,
+    /// so the test fails on it rather than waiting on a cancel that never comes.
     pub fn pull_cancelled_once(
         &self,
         strategy: Option<&str>,
@@ -54,27 +56,27 @@ impl RemoteDriver<'_> {
         let running = &self.app.state::<RunningOp>().0;
         let cache = self.app.state::<CommitCache>();
         let visibility = trunk_lib::state::RefVisibilityState::default();
-        let cancel = async {
-            tauri::async_runtime::spawn_blocking(reached).await.unwrap();
+        let reached = tauri::async_runtime::spawn_blocking(reached);
+        tauri::async_runtime::block_on(async {
+            let pull = remote::git_pull_inner(
+                self.ctx.path(),
+                strategy,
+                self.ctx.state_map(),
+                &cache,
+                running,
+                &visibility,
+                self.app.handle(),
+            );
+            tokio::pin!(pull);
+            tokio::select! {
+                pulled = &mut pull => return pulled,
+                _ = reached => {}
+            }
             let process = running.lock().unwrap().cancel(self.ctx.path());
             if let Some(process) = process {
                 process.stop();
             }
-        };
-        tauri::async_runtime::block_on(async {
-            let (pulled, ()) = tokio::join!(
-                remote::git_pull_inner(
-                    self.ctx.path(),
-                    strategy,
-                    self.ctx.state_map(),
-                    &cache,
-                    running,
-                    &visibility,
-                    self.app.handle(),
-                ),
-                cancel
-            );
-            pulled
+            pull.await
         })
     }
 
