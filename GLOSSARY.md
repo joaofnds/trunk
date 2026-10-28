@@ -445,7 +445,7 @@ process invokes the CLI.
 clipboard on demand for any review in any state. One rendering of the store, not the
 store itself.
 
-## Worktrees (TRUNK-378, 2026-10-19)
+## Worktrees (TRUNK-378, 2026-10-19; TRUNK-380, 2026-10-28)
 
 A worktree here is a checkout. Elsewhere in this file "worktree status" and
 `worktree_dirty` mean the state of a checkout's files, not this.
@@ -456,16 +456,16 @@ git directory belongs to. A bare repository has none. Git refuses to remove it
 
 **Linked worktree**: an extra checkout of the same repository, made by `git worktree add`,
 sharing its objects and refs, with its own HEAD and index under
-`.git/worktrees/<name>`. Git refuses to delete a branch a worktree has checked out, or is
-rebasing or bisecting. Removing a linked worktree deletes its directory, so
-`git worktree remove` refuses without `--force` when it has uncommitted changes or
-untracked files, or contains submodules. It also refuses when the worktree's `.git` file
-does not point back at its entry. A locked worktree needs `--force` twice.
+`.git/worktrees/<name>`. Its branch is a branch in use by a worktree. Removing a linked
+worktree deletes its directory, so `git worktree remove` refuses without `--force` when it
+has uncommitted changes or untracked files, or contains submodules. It also refuses when
+the worktree's `.git` file does not point back at its entry. A locked worktree needs `--force` twice.
 
 **Branch in use by a worktree**: a branch a worktree has checked out, is rebasing
 (including one a rebase with `--update-refs` will move), or is bisecting. Git refuses to
-delete it or fetch into it, even when that worktree's directory is missing, as when it sits
-on an unmounted drive.
+delete it, switch to it, or by default fetch into it. That holds while the worktree's
+directory is missing, as when it sits on an unmounted drive, until `git worktree prune`
+(which `git gc` runs) drops an unlocked worktree's entry. A locked one is never pruned.
 
 ## Remote operations
 
