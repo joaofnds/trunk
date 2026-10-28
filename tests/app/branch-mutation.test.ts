@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -39,6 +40,25 @@ const heldOnItsOwnCommit: RepoSpec = {
 		{ step: "worktree", name: "wt", branch: "wt-branch" },
 	],
 };
+
+/** Stops an interactive rebase in the linked worktree that has `branch` checked out,
+ *  as `git rebase -i` leaves it at an `edit` step, and returns that worktree's path. */
+function stopMidRebase(repoPath: string, branch: string): string {
+	const worktree = execFileSync("git", ["worktree", "list", "--porcelain"], {
+		cwd: repoPath,
+		encoding: "utf8",
+	})
+		.split("\n\n")
+		.find((entry) => entry.includes(`branch refs/heads/${branch}`))
+		?.match(/^worktree (.*)$/m)?.[1];
+	if (!worktree) throw new Error(`no worktree has ${branch} checked out`);
+
+	execFileSync("git", ["rebase", "-i", "HEAD~1"], {
+		cwd: worktree,
+		env: { ...process.env, GIT_SEQUENCE_EDITOR: "sed -i.bak s/^pick/edit/" },
+	});
+	return worktree;
+}
 
 /** The worktree path the delete question or refusal names. */
 function askedPath(question: string | undefined): string {
@@ -248,6 +268,29 @@ describe("branch mutation", () => {
 				expect(app.toasts()).toEqual([]);
 				expect(app.branches.lists("wt-branch")).toBe(true);
 				expect(existsSync(join(askedPath(refusal), "c1.txt"))).toBe(true);
+			});
+		});
+
+		describe("when the worktree is rebasing the branch", () => {
+			it("refuses with the path before asking and keeps the branch", async () => {
+				const app = await setup({ repo: heldByWorktree() });
+				const worktree = stopMidRebase(app.repo.path, "wt-branch");
+				await app.repo.open();
+
+				app.dialog.confirms();
+				await app.branches.contextMenu("wt-branch");
+				app.contextMenu.choose("Delete");
+
+				const refusal = await waitFor(
+					"the delete refusal",
+					() => app.dialog.shown.at(0) ?? null,
+				);
+				expect(app.dialog.questions).toEqual([]);
+				await askedAgain(app);
+				expect(refusal).toBe(
+					`Cannot delete 'wt-branch' while the worktree at ${worktree} is rebasing it. Finish or abort the rebase there, then delete again.`,
+				);
+				expect(app.branches.lists("wt-branch")).toBe(true);
 			});
 		});
 
