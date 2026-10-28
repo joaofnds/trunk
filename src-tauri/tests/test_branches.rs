@@ -924,15 +924,18 @@ mod deleting_a_branch_a_linked_worktree_holds {
             .unwrap()
     }
 
-    /// Commit once more in the worktree at `path`, then start `git rebase <args>` there,
-    /// which stops at the first commit it replays.
+    /// Commit two edits of README.md in the worktree at `path`, then run
+    /// `git rebase <args>` there, which must stop: at an `edit` step, or on a conflict.
     fn stop_mid_rebase(path: &std::path::Path, args: &[&str]) {
-        let committed = git_in(path, &["commit", "--allow-empty", "-qm", "second"]);
-        git_in(path, &[&["rebase"], args].concat());
+        for content in ["first edit", "second edit"] {
+            std::fs::write(path.join("README.md"), content).unwrap();
+            let committed = git_in(path, &["commit", "-qam", content]);
+            assert!(committed.status.success(), "{committed:?}");
+        }
 
+        git_in(path, &[&["rebase"], args].concat());
         let status = git_in(path, &["status"]).stdout;
 
-        assert!(committed.status.success());
         assert!(
             String::from_utf8_lossy(&status).contains("rebase in progress"),
             "the rebase did not stop"
@@ -967,6 +970,47 @@ mod deleting_a_branch_a_linked_worktree_holds {
 
             assert!(finished.status.success(), "{finished:?}");
             ctx.assert_branch_exists("wt-branch");
+        }
+
+        #[test]
+        fn when_the_worktree_is_rebasing_the_branch_with_the_apply_backend() {
+            let mut ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            stop_mid_rebase(&path, &["--apply", "--onto", "HEAD~2", "HEAD~1"]);
+            let named = path_git_names(&ctx, "wt-branch");
+
+            assert_refused_and_unchanged(
+                &mut ctx,
+                &path,
+                BranchHold::Refuse {
+                    paths: vec![named],
+                    reason: Refusal::Rebasing,
+                },
+            );
+        }
+
+        #[test]
+        fn when_a_worktree_rebase_will_move_the_branch_through_update_refs() {
+            let mut ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            std::fs::write(path.join("README.md"), "an earlier edit").unwrap();
+            git_in(&path, &["commit", "-qam", "an earlier edit"]);
+            git_in(&path, &["branch", "side"]);
+            stop_mid_rebase(&path, &["-i", "--update-refs", "HEAD~3"]);
+            let named = path_git_names(&ctx, "side");
+
+            let hold = ctx.branch_hold("side").unwrap();
+            let result = ctx.delete_branch("side");
+
+            assert_eq!(
+                hold,
+                BranchHold::Refuse {
+                    paths: vec![named],
+                    reason: Refusal::Rebasing,
+                }
+            );
+            assert_eq!(result.unwrap_err().code, "worktree_changed");
+            ctx.assert_branch_exists("side");
         }
 
         #[test]

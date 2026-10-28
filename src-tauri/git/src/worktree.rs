@@ -86,6 +86,8 @@ impl Refusal {
 pub(crate) enum BranchUse {
     CheckedOut,
     Rebasing,
+    /// Named in a `rebase --update-refs` todo, which moves it when the rebase finishes.
+    MovedByRebase,
     Bisecting,
 }
 
@@ -108,6 +110,13 @@ pub(crate) fn branches_used(git_dir: &Path) -> Vec<(BranchUse, Vec<u8>)> {
             .filter(|name| name.starts_with(b"refs/"))
         {
             used.push((BranchUse::Rebasing, name));
+        }
+    }
+
+    if let Some(update_refs) = read_trimmed(&git_dir.join("rebase-merge").join("update-refs")) {
+        // Each ref takes three lines: its name, then its oid before and after the rebase.
+        for name in update_refs.split(|byte| *byte == b'\n').step_by(3) {
+            used.push((BranchUse::MovedByRebase, name.trim_ascii().to_vec()));
         }
     }
 
@@ -381,7 +390,9 @@ fn linked_holders(repo: &Repository, target: &str) -> Result<Vec<LinkedWorktree>
             admin,
             gitfile,
             root,
-            rebasing: uses.contains(&BranchUse::Rebasing),
+            rebasing: uses
+                .iter()
+                .any(|how| matches!(how, BranchUse::Rebasing | BranchUse::MovedByRebase)),
         });
     }
 

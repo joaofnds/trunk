@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use crate::error::TrunkError;
+use crate::worktree::BranchUse;
 use git2::{
     AutotagOption, Config, Cred, CredentialType, Direction, FetchOptions, FetchPrune, ProxyOptions,
     RemoteCallbacks, RemoteUpdateFlags, Repository,
@@ -1253,8 +1254,12 @@ fn reject_checked_out_destinations(
 }
 
 fn collect_held_branches(admin: &Path, branches: &mut BTreeSet<String>) {
-    for (_, branch) in crate::worktree::branches_used(admin) {
-        branches.insert(String::from_utf8_lossy(&branch).into_owned());
+    // git fetch also refuses a destination a rebase will move. Whether Trunk's fetch
+    // should is not yet decided, so it refuses only what it refused before.
+    for (how, branch) in crate::worktree::branches_used(admin) {
+        if how != BranchUse::MovedByRebase {
+            branches.insert(String::from_utf8_lossy(&branch).into_owned());
+        }
     }
 }
 
