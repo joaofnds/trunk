@@ -47,6 +47,9 @@ pub enum Refusal {
     OpenInTab,
     /// Deleting the branch under a rebase makes `git rebase --continue` fail.
     Rebasing,
+    /// Git still counts the branch as used by a worktree whose directory is gone, as when
+    /// it sits on an unmounted drive.
+    Missing,
 }
 
 /// Why removing a linked worktree may lose work.
@@ -77,6 +80,7 @@ impl Refusal {
                 format!("the worktree at {paths} is open in a tab: close it, then delete again")
             }
             Self::Rebasing => format!("the worktree at {paths} is rebasing the branch"),
+            Self::Missing => format!("the worktree at {paths}, which uses the branch, is missing"),
         }
     }
 }
@@ -139,6 +143,7 @@ struct LinkedWorktree {
     /// The `.git` path the admin entry records, whose parent prune deletes.
     gitfile: PathBuf,
     root: PathBuf,
+    missing: bool,
     rebasing: bool,
 }
 
@@ -180,6 +185,8 @@ pub fn assess(
 
     let refusal = if holder.rebasing {
         Some(Refusal::Rebasing)
+    } else if holder.missing {
+        Some(Refusal::Missing)
     } else if !points_back(&holder) {
         Some(Refusal::Mismatched)
     } else if open_tabs.iter().any(|tab| tab.starts_with(&holder.root)) {
@@ -382,14 +389,18 @@ fn linked_holders(repo: &Repository, target: &str) -> Result<Vec<LinkedWorktree>
         let Some(gitfile) = recorded_gitfile(&admin) else {
             continue;
         };
-        let Some(root) = gitfile.parent().and_then(|root| root.canonicalize().ok()) else {
+        let Some(recorded) = gitfile.parent() else {
             continue;
         };
+        let resolved = recorded.canonicalize();
+        let missing = resolved.is_err();
+        let root = resolved.unwrap_or_else(|_| resolve_what_exists(recorded));
         holders.push(LinkedWorktree {
             name: name.to_owned(),
             admin,
             gitfile,
             root,
+            missing,
             rebasing: uses
                 .iter()
                 .any(|how| matches!(how, BranchUse::Rebasing | BranchUse::MovedByRebase)),
@@ -397,6 +408,17 @@ fn linked_holders(repo: &Repository, target: &str) -> Result<Vec<LinkedWorktree>
     }
 
     Ok(holders)
+}
+
+/// `path` with its longest existing prefix resolved, as git names a worktree whose
+/// directory is gone.
+fn resolve_what_exists(path: &Path) -> PathBuf {
+    for existing in path.ancestors() {
+        if let (Ok(resolved), Ok(rest)) = (existing.canonicalize(), path.strip_prefix(existing)) {
+            return resolved.join(rest);
+        }
+    }
+    path.to_path_buf()
 }
 
 fn recorded_gitfile(admin: &Path) -> Option<PathBuf> {

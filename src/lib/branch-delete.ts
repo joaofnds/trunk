@@ -149,6 +149,8 @@ function refusalText(
 			return `Cannot delete '${branch}' while the worktree at ${paths.join(", ")}, which has it checked out, is open in a tab. Close that tab, then delete again.`;
 		case "rebasing":
 			return `Cannot delete '${branch}' while the worktree at ${paths.join(", ")} is rebasing it. Finish or abort the rebase there, then delete again.`;
+		case "missing":
+			return `Cannot delete '${branch}'. Git still counts it as used by the worktree at ${paths.join(", ")}, whose directory is missing.`;
 	}
 }
 

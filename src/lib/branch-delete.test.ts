@@ -106,6 +106,11 @@ describe("deletePrompt", () => {
 				[PATH],
 				"Cannot delete 'topic' while the worktree at /work/wt is rebasing it. Finish or abort the rebase there, then delete again.",
 			],
+			[
+				"missing",
+				[PATH],
+				"Cannot delete 'topic'. Git still counts it as used by the worktree at /work/wt, whose directory is missing.",
+			],
 		] as const)("explains a %s refusal", (reason, paths, message) => {
 			expect(
 				deletePrompt("topic", { kind: "refuse", paths: [...paths], reason }),

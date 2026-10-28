@@ -990,6 +990,74 @@ mod deleting_a_branch_a_linked_worktree_holds {
         }
 
         #[test]
+        fn when_the_worktree_directory_was_moved_away() {
+            let mut ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            std::fs::rename(&path, ctx.worktrees_dir().join("elsewhere")).unwrap();
+            let named = path_git_names(&ctx, "wt-branch");
+
+            assert_refused_and_unchanged(
+                &mut ctx,
+                &path,
+                BranchHold::Refuse {
+                    paths: vec![named],
+                    reason: Refusal::Missing,
+                },
+            );
+        }
+
+        #[test]
+        fn when_the_worktree_is_locked_and_its_directory_is_absent() {
+            let mut ctx = repo_with_branch("wt-branch");
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            git_in(
+                ctx.repo_path(),
+                &["worktree", "lock", "--reason", "usb", "wt"],
+            );
+            std::fs::rename(&path, ctx.worktrees_dir().join("unmounted")).unwrap();
+            let named = path_git_names(&ctx, "wt-branch");
+
+            assert_refused_and_unchanged(
+                &mut ctx,
+                &path,
+                BranchHold::Refuse {
+                    paths: vec![named],
+                    reason: Refusal::Missing,
+                },
+            );
+        }
+
+        #[test]
+        fn when_a_worktree_recorded_by_relative_path_was_moved_away() {
+            let ctx = repo_with_branch("wt-branch");
+            let path = ctx.worktrees_dir().join("wt");
+            let added = git_in(
+                ctx.repo_path(),
+                &[
+                    "worktree",
+                    "add",
+                    "-q",
+                    "--relative-paths",
+                    &path.display().to_string(),
+                    "wt-branch",
+                ],
+            );
+            std::fs::rename(&path, ctx.worktrees_dir().join("elsewhere")).unwrap();
+            let named = path_git_names(&ctx, "wt-branch");
+
+            let hold = ctx.branch_hold("wt-branch").unwrap();
+
+            assert!(added.status.success(), "{added:?}");
+            assert_eq!(
+                hold,
+                BranchHold::Refuse {
+                    paths: vec![named],
+                    reason: Refusal::Missing,
+                }
+            );
+        }
+
+        #[test]
         fn when_a_worktree_rebase_will_move_the_branch_through_update_refs() {
             let mut ctx = repo_with_branch("wt-branch");
             let path = ctx.add_linked_worktree("wt", "wt-branch");
