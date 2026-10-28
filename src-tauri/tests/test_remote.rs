@@ -1016,6 +1016,86 @@ fn merge_pull_that_conflicts_with_merge_autostash_keeps_the_copy() {
     assert_eq!(blob_at(&ctx, copy, "notes.txt"), "uncommitted notes");
 }
 
+/// A barrier a git hook or helper script waits on: the script writes `started`, which
+/// unblocks `wait_started`, and then blocks forever on `release`, so only a cancel ends it.
+#[cfg(unix)]
+struct ScriptBarrier {
+    dir: tempfile::TempDir,
+}
+
+#[cfg(unix)]
+impl ScriptBarrier {
+    fn new() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        for fifo in ["started", "release"] {
+            assert!(
+                std::process::Command::new("mkfifo")
+                    .arg(dir.path().join(fifo))
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        Self { dir }
+    }
+
+    fn write_script(&self, path: &Path, after_release: &str) {
+        std::fs::write(
+            path,
+            format!(
+                "#!/bin/sh\necho started > '{}'\nread _ < '{}'\n{after_release}",
+                self.dir.path().join("started").display(),
+                self.dir.path().join("release").display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+    }
+
+    fn wait_started(&self) -> impl FnOnce() + Send + 'static {
+        let started = self.dir.path().join("started");
+        move || {
+            std::fs::read(started).unwrap();
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn pull_cancelled_during_its_fetch_leaves_the_stash_list_and_the_tree_as_they_were() {
+    let ctx = diverged_on_file_txt();
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_bool("rebase.autostash", true)
+        .unwrap();
+    std::fs::write(ctx.repo_path().join("notes.txt"), "uncommitted notes").unwrap();
+    let barrier = ScriptBarrier::new();
+    let upload_pack = barrier.dir.path().join("upload-pack");
+    barrier.write_script(&upload_pack, "exec git-upload-pack \"$@\"\n");
+    set_config(
+        &ctx,
+        &[(
+            "remote.origin.uploadpack",
+            &upload_pack.display().to_string(),
+        )],
+    );
+
+    let err = ctx
+        .remote()
+        .pull_cancelled_once(Some("rebase"), barrier.wait_started())
+        .unwrap_err();
+
+    assert_eq!(err.code, "cancelled");
+    assert_eq!(err.pull_safety_copy, None);
+    assert!(ctx.list_stashes().unwrap().is_empty());
+    assert_eq!(
+        std::fs::read_to_string(ctx.repo_path().join("notes.txt")).unwrap(),
+        "uncommitted notes"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn pull_cancelled_after_git_took_its_autostash_keeps_the_copy() {
@@ -1026,35 +1106,12 @@ fn pull_cancelled_after_git_took_its_autostash_keeps_the_copy() {
         .set_bool("rebase.autostash", true)
         .unwrap();
     std::fs::write(ctx.repo_path().join("notes.txt"), "uncommitted notes").unwrap();
-    let barrier = tempfile::tempdir().unwrap();
-    let started = barrier.path().join("started");
-    let release = barrier.path().join("release");
-    for fifo in [&started, &release] {
-        assert!(
-            std::process::Command::new("mkfifo")
-                .arg(fifo)
-                .status()
-                .unwrap()
-                .success()
-        );
-    }
-    let hook = ctx.repo_path().join(".git/hooks/pre-rebase");
-    std::fs::write(
-        &hook,
-        format!(
-            "#!/bin/sh\necho started > '{}'\nread _ < '{}'\n",
-            started.display(),
-            release.display()
-        ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&hook, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let barrier = ScriptBarrier::new();
+    barrier.write_script(&ctx.repo_path().join(".git/hooks/pre-rebase"), "");
 
     let err = ctx
         .remote()
-        .pull_cancelled_once(Some("rebase"), move || {
-            std::fs::read(&started).unwrap();
-        })
+        .pull_cancelled_once(Some("rebase"), barrier.wait_started())
         .unwrap_err();
 
     assert_eq!(err.code, "cancelled");
