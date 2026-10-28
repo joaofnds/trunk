@@ -96,8 +96,7 @@ pub(crate) enum BranchUse {
 }
 
 /// The branches the worktree whose git directory is `git_dir` uses, each as the full ref
-/// name in the bytes git wrote, since a lossy decode would let a branch whose name is
-/// not UTF-8 match a different branch. `git_dir` is the common directory for the main
+/// name in the bytes git wrote, so a caller can match names exactly. `git_dir` is the common directory for the main
 /// worktree, or a linked worktree's admin entry.
 pub(crate) fn branches_used(git_dir: &Path) -> Vec<(BranchUse, Vec<u8>)> {
     let mut used = Vec::new();
@@ -378,32 +377,44 @@ fn linked_holders(repo: &Repository, target: &str) -> Result<Vec<LinkedWorktree>
         .filter_map(|name| name.ok().flatten())
     {
         let admin = common.join("worktrees").join(name);
-        let uses: Vec<BranchUse> = branches_used(&admin)
-            .into_iter()
-            .filter(|(how, branch)| *how != BranchUse::Bisecting && branch == target.as_bytes())
-            .map(|(how, _)| how)
-            .collect();
-        if uses.is_empty() {
+        let mut held = false;
+        let mut rebasing = false;
+        for (how, branch) in branches_used(&admin) {
+            if branch != target.as_bytes() {
+                continue;
+            }
+            match how {
+                BranchUse::CheckedOut => held = true,
+                BranchUse::Rebasing | BranchUse::MovedByRebase => {
+                    held = true;
+                    rebasing = true;
+                }
+                BranchUse::Bisecting => {}
+            }
+        }
+        if !held {
             continue;
         }
+
         let Some(gitfile) = recorded_gitfile(&admin) else {
             continue;
         };
+
         let Some(recorded) = gitfile.parent() else {
             continue;
         };
+
         let resolved = recorded.canonicalize();
         let missing = resolved.is_err();
         let root = resolved.unwrap_or_else(|_| resolve_what_exists(recorded));
+
         holders.push(LinkedWorktree {
             name: name.to_owned(),
             admin,
             gitfile,
             root,
             missing,
-            rebasing: uses
-                .iter()
-                .any(|how| matches!(how, BranchUse::Rebasing | BranchUse::MovedByRebase)),
+            rebasing,
         });
     }
 
