@@ -55,7 +55,11 @@ function stopMidRebase(repoPath: string, branch: string): string {
 
 	execFileSync("git", ["rebase", "-i", "HEAD~1"], {
 		cwd: worktree,
-		env: { ...process.env, GIT_SEQUENCE_EDITOR: "sed -i.bak s/^pick/edit/" },
+		env: {
+			...process.env,
+			GIT_CONFIG_GLOBAL: "/dev/null",
+			GIT_SEQUENCE_EDITOR: "sed -i.bak s/^pick/edit/",
+		},
 	});
 	return worktree;
 }

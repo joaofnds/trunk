@@ -920,6 +920,7 @@ mod deleting_a_branch_a_linked_worktree_holds {
             .current_dir(dir)
             .env("GIT_SEQUENCE_EDITOR", "sed -i.bak s/^pick/edit/")
             .env("GIT_EDITOR", "true")
+            .env("LC_ALL", "C")
             .output()
             .unwrap()
     }
@@ -1010,10 +1011,11 @@ mod deleting_a_branch_a_linked_worktree_holds {
         fn when_the_worktree_is_locked_and_its_directory_is_absent() {
             let mut ctx = repo_with_branch("wt-branch");
             let path = ctx.add_linked_worktree("wt", "wt-branch");
-            git_in(
+            let locked = git_in(
                 ctx.repo_path(),
                 &["worktree", "lock", "--reason", "usb", "wt"],
             );
+            assert!(locked.status.success(), "{locked:?}");
             std::fs::rename(&path, ctx.worktrees_dir().join("unmounted")).unwrap();
             let named = path_git_names(&ctx, "wt-branch");
 
@@ -1029,7 +1031,7 @@ mod deleting_a_branch_a_linked_worktree_holds {
 
         #[test]
         fn when_a_worktree_recorded_by_relative_path_was_moved_away() {
-            let ctx = repo_with_branch("wt-branch");
+            let mut ctx = repo_with_branch("wt-branch");
             let path = ctx.worktrees_dir().join("wt");
             let added = git_in(
                 ctx.repo_path(),
@@ -1042,43 +1044,68 @@ mod deleting_a_branch_a_linked_worktree_holds {
                     "wt-branch",
                 ],
             );
+            assert!(added.status.success(), "{added:?}");
             std::fs::rename(&path, ctx.worktrees_dir().join("elsewhere")).unwrap();
             let named = path_git_names(&ctx, "wt-branch");
 
-            let hold = ctx.branch_hold("wt-branch").unwrap();
-
-            assert!(added.status.success(), "{added:?}");
-            assert_eq!(
-                hold,
+            assert_refused_and_unchanged(
+                &mut ctx,
+                &path,
                 BranchHold::Refuse {
                     paths: vec![named],
                     reason: Refusal::Missing,
-                }
+                },
             );
         }
 
         #[test]
-        fn when_a_worktree_rebase_will_move_the_branch_through_update_refs() {
+        fn when_two_worktrees_hold_the_branch_and_one_is_missing() {
+            let mut ctx = repo_with_branch("wt-branch");
+            ctx.create_branch("other", None).unwrap();
+            ctx.checkout_branch("main").unwrap();
+            let path = ctx.add_linked_worktree("wt", "wt-branch");
+            let second = ctx.add_linked_worktree("wt2", "other");
+            set_admin_head(&ctx, "wt2", "wt-branch");
+            std::fs::rename(&second, ctx.worktrees_dir().join("elsewhere")).unwrap();
+
+            assert_refused_and_unchanged(
+                &mut ctx,
+                &path,
+                BranchHold::Refuse {
+                    paths: vec![path.display().to_string(), second.display().to_string()],
+                    reason: Refusal::SeveralHolders,
+                },
+            );
+        }
+
+        #[test]
+        fn when_a_worktree_rebase_will_move_the_branches_through_update_refs() {
             let mut ctx = repo_with_branch("wt-branch");
             let path = ctx.add_linked_worktree("wt", "wt-branch");
-            std::fs::write(path.join("README.md"), "an earlier edit").unwrap();
-            git_in(&path, &["commit", "-qam", "an earlier edit"]);
-            git_in(&path, &["branch", "side"]);
-            stop_mid_rebase(&path, &["-i", "--update-refs", "HEAD~3"]);
-            let named = path_git_names(&ctx, "side");
+            for side in ["side", "later-side"] {
+                std::fs::write(path.join("README.md"), side).unwrap();
+                assert!(git_in(&path, &["commit", "-qam", side]).status.success());
+                assert!(git_in(&path, &["branch", side]).status.success());
+            }
+            stop_mid_rebase(&path, &["-i", "--update-refs", "HEAD~4"]);
 
-            let hold = ctx.branch_hold("side").unwrap();
-            let result = ctx.delete_branch("side");
+            for side in ["side", "later-side"] {
+                let named = path_git_names(&ctx, side);
 
-            assert_eq!(
-                hold,
-                BranchHold::Refuse {
-                    paths: vec![named],
-                    reason: Refusal::Rebasing,
-                }
-            );
-            assert_eq!(result.unwrap_err().code, "worktree_changed");
-            ctx.assert_branch_exists("side");
+                let hold = ctx.branch_hold(side).unwrap();
+                let result = ctx.delete_branch(side);
+
+                assert_eq!(
+                    hold,
+                    BranchHold::Refuse {
+                        paths: vec![named],
+                        reason: Refusal::Rebasing,
+                    },
+                    "{side}"
+                );
+                assert_eq!(result.unwrap_err().code, "worktree_changed");
+                ctx.assert_branch_exists(side);
+            }
         }
 
         #[test]
@@ -1259,6 +1286,23 @@ mod deleting_a_branch_a_linked_worktree_holds {
 
         assert_eq!(result.unwrap_err().code, "worktree_changed");
         assert!(path.join("README.md").exists());
+    }
+
+    #[test]
+    fn leaves_a_branch_a_worktree_is_only_bisecting_as_not_held() {
+        let ctx = repo_with_branch("wt-branch");
+        let path = ctx.add_linked_worktree("wt", "wt-branch");
+        std::fs::write(path.join("README.md"), "bisected").unwrap();
+        let committed = git_in(&path, &["commit", "-qam", "bisected"]);
+        let started = git_in(&path, &["bisect", "start", "HEAD", "HEAD~1"]);
+        let detached = git_in(&path, &["switch", "-q", "--detach"]);
+
+        let hold = ctx.branch_hold("wt-branch").unwrap();
+
+        for step in [committed, started, detached] {
+            assert!(step.status.success(), "{step:?}");
+        }
+        assert_eq!(hold, BranchHold::NotHeld);
     }
 
     #[test]
