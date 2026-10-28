@@ -371,10 +371,11 @@ capture anything that depends on hover through `app_screenshot`, in the same
 batch as the pointer action that reveals it. Re-check that divergence after a
 macOS or computer-use server upgrade.
 
-The m-8 chain (TRUNK-233 through TRUNK-240) builds a command channel into the
-running dev build, and TRUNK-241, type docs, then repoints this section and the
-definition-of-done item at it. Whether that channel needs an approval is not
-settled on any card, so do not plan on it replacing the grant.
+João has ruled this route out for agents: "it shouldn't be trying to test it
+with computer use and screen tools" (2026-10-28). TRUNK-408 builds its
+replacement, a command channel into a dev-only build of the app. Until that
+card is Done, a check that only the running app can answer waits for the
+channel or for João, rather than taking screen control.
 
 ## Scanners must not walk `src-tauri/target`
 
