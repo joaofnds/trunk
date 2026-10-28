@@ -462,6 +462,11 @@ rebasing or bisecting. Removing a linked worktree deletes its directory, so
 untracked files, or contains submodules. It also refuses when the worktree's `.git` file
 does not point back at its entry. A locked worktree needs `--force` twice.
 
+**Branch in use by a worktree**: a branch a worktree has checked out, is rebasing
+(including one a rebase with `--update-refs` will move), or is bisecting. Git refuses to
+delete it or fetch into it, even when that worktree's directory is missing, as when it sits
+on an unmounted drive.
+
 ## Remote operations
 
 **Push recovery prompt** — the persistent in-app surface Trunk shows when a push fails
