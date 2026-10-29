@@ -767,3 +767,26 @@ fn a_start_git_refuses_is_an_error_that_leaves_no_rebase() {
     assert_eq!(err.code, "rebase_error");
     assert_nothing_moved(&ctx, head_before);
 }
+
+#[test]
+fn a_dropped_commit_survives_git_checking_for_missing_commits() {
+    let (ctx, oids) = four_commit_ctx();
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_str("rebase.missingCommitsCheck", "error")
+        .unwrap();
+
+    ctx.start_interactive_rebase(
+        Some(&oids[0].to_string()),
+        &[
+            todo(oids[1], "drop", None),
+            todo(oids[2], "pick", None),
+            todo(oids[3], "pick", None),
+        ],
+    )
+    .expect("a drop the user chose is not a commit missing by accident");
+
+    assert_eq!(summaries_newest_first(&ctx), vec!["C4", "C3", "C1"]);
+    assert!(!ctx.repo().path().join("rebase-merge").exists());
+}

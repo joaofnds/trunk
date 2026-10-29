@@ -192,11 +192,10 @@ pub fn start_interactive_rebase_blocking(
 
     ensure_todo_lists_the_range(&git2::Repository::open(path_buf)?, base_oid, todo_items)?;
 
-    // 1. Write todo file (drop = omit from list, not the 'drop' keyword)
+    // 1. Write todo file
     let todo_path = session_dir.join("trunk-rebase-todo");
     let todo_content: String = todo_items
         .iter()
-        .filter(|item| item.action != "drop")
         .map(|item| format!("{} {} {}", item.action, item.oid, item.summary))
         .collect::<Vec<_>>()
         .join("\n")
