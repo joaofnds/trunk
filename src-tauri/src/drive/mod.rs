@@ -92,6 +92,7 @@ enum Request {
     Snapshot { path: PathBuf },
     Alert,
     Press { button: String },
+    MenuBar { path: Vec<String> },
     Quit,
 }
 
@@ -258,6 +259,7 @@ fn handle<R: Runtime>(app: &AppHandle<R>, page: &Page, request: Request) -> Resu
         }
         Request::Alert => native::alert(),
         Request::Press { button } => native::press(button),
+        Request::MenuBar { path } => native::choose_menu_bar(path),
     }
 }
 

@@ -1,5 +1,5 @@
-//! The drive route's reach into `AppKit`: the window's pixels and the alert a
-//! modal loop is showing.
+//! The drive route's reach into `AppKit`: the window's pixels, the alert a
+//! modal loop is showing, and the app's menu bar.
 //!
 //! Everything here runs through the main operation queue, which `AppKit` keeps
 //! draining inside a modal loop. Tauri's own main-thread dispatch goes through
@@ -14,9 +14,10 @@ use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::{MainThreadMarker, Message};
 use objc2_app_kit::{
-    NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSButton, NSImage, NSTextField, NSView,
+    NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSButton, NSImage, NSMenu, NSTextField,
+    NSView,
 };
-use objc2_foundation::{NSDictionary, NSError, NSOperationQueue};
+use objc2_foundation::{NSDictionary, NSError, NSOperationQueue, NSString};
 use objc2_web_kit::WKWebView;
 use serde_json::{Value, json};
 
@@ -138,6 +139,49 @@ pub fn press(title: String) -> Result<Value, String> {
         unsafe { button.performClick(None) };
         Ok(Value::Null)
     })?
+}
+
+/// Chooses the menu bar item `path` names, one title per level from the bar
+/// down, through the action its `NSMenuItem` sends, so the item does what a
+/// click on it does without the menu being drawn.
+pub fn choose_menu_bar(path: Vec<String>) -> Result<Value, String> {
+    on_main(move |main| {
+        let (title, parents) = path
+            .split_last()
+            .ok_or("name the menu bar item to choose")?;
+        let mut menu = NSApplication::sharedApplication(main)
+            .mainMenu()
+            .ok_or("the app has no menu bar")?;
+        for parent in parents {
+            menu = submenu(&menu, parent)?;
+        }
+
+        // Validation sets each item's enabled state, as opening the menu would.
+        menu.update();
+        let index = menu.indexOfItemWithTitle(&NSString::from_str(title));
+        // AppKit raises, and the app aborts, on an index outside the menu.
+        let item = (index >= 0)
+            .then(|| menu.itemAtIndex(index))
+            .flatten()
+            .ok_or_else(|| format!("no menu bar item titled {title}"))?;
+        if !item.isEnabled() {
+            return Err(format!("the menu bar item titled {title} is disabled"));
+        }
+        if item.hasSubmenu() {
+            return Err(format!(
+                "{title} opens a submenu; name one of its items too"
+            ));
+        }
+        menu.performActionForItemAtIndex(index);
+        Ok(Value::Null)
+    })?
+}
+
+fn submenu(menu: &NSMenu, title: &str) -> Result<Retained<NSMenu>, String> {
+    menu.itemWithTitle(&NSString::from_str(title))
+        .ok_or_else(|| format!("no menu bar item titled {title}"))?
+        .submenu()
+        .ok_or_else(|| format!("{title} has no submenu"))
 }
 
 /// The content of the dialog on screen: the window a modal loop runs, or else

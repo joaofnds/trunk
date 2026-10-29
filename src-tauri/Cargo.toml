@@ -29,6 +29,8 @@ drive = [
   "objc2-app-kit/NSBitmapImageRep",
   "objc2-app-kit/NSImage",
   "objc2-app-kit/NSImageRep",
+  "objc2-app-kit/NSMenu",
+  "objc2-app-kit/NSMenuItem",
   "objc2-app-kit/NSTextField",
   "objc2-foundation/NSData",
   "objc2-foundation/NSDictionary",
