@@ -27,6 +27,7 @@ import { inflateSync } from "node:zlib";
 import {
 	callHook,
 	commitRows,
+	evaluate,
 	type Instance,
 	request,
 	until,
@@ -136,6 +137,15 @@ async function commitThroughTheForm(instance: Instance): Promise<void> {
  *  black frame, the failure a capture without the Screen Recording grant
  *  gives, cannot: an interface with text draws many colours. */
 async function showsTheUi(instance: Instance): Promise<void> {
+	await evaluate(
+		instance,
+		`new Promise((drawn) => requestAnimationFrame(() => drawn("drawn")))`,
+		DEADLINE_MS,
+	);
+	console.log(
+		"ok: the page draws frames, so its transitions finish before a snapshot",
+	);
+
 	const path = join(instance.dir, "window.png");
 	await request(instance, { op: "snapshot", path }, DEADLINE_MS);
 	const colours = distinctColours(readFileSync(path));

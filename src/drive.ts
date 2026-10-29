@@ -84,11 +84,10 @@ async function run(id: number, expression: string): Promise<void> {
 }
 
 /**
- * How long a wait watches before it gives up and lets go of its observer. A
- * drive window is always hidden, and WebKit throttles a hidden page's timers
- * (a 15s timer had not fired 25s later), so this often fires after the server
- * has stopped waiting (PAGE_DEADLINE in src-tauri/src/drive/mod.rs, 25s). The
- * client names the call that ran out (callHook in scripts/drive/client.ts).
+ * How long a wait watches before it gives up and lets go of its observer. It
+ * runs out before the server stops waiting (PAGE_DEADLINE in
+ * src-tauri/src/drive/mod.rs, 25s), so the caller reads what the page waited
+ * for rather than the server's bare timeout.
  */
 const WAIT_DEADLINE_MS = 20_000;
 

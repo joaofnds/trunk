@@ -308,10 +308,10 @@ page as the webview draws it, without the title bar or a sheet in front of it.
 `alert` waits for a dialog to begin and prints its texts and buttons, and
 `press` answers the dialog showing now without waiting, so call `alert` first.
 Every wait is on a condition, never a fixed time. A wait on the page fails
-within about 25s, a request to the native side within 10 to 20s, and the client
+within 20s, a request to the native side within 10 to 20s, and the client
 gives up on any request after 60s.
 
-Five places where the drive instance differs from the app a user runs:
+Four places where the drive instance differs from the app a user runs:
 
 - `click`, `type` and `key` send DOM events to the page, not keystrokes to the
   app. `type` appends to the field's value, and a shortcut the native menu owns,
@@ -329,8 +329,6 @@ Five places where the drive instance differs from the app a user runs:
 - `menu-bar` fires a menu bar item through its own action without drawing the
   menu. Items that act on the screen, such as Minimize, Zoom or Hide, are
   refused.
-- The page reports itself hidden, so WebKit throttles its timers. A debounce or
-  a toast that waits on a timer runs late. A 15s timer had not fired after 25s.
 
 Message dialogs are the real ones, shown as a sheet on the drive window.
 

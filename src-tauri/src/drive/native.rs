@@ -16,7 +16,7 @@ use std::time::Duration;
 use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::{NSObjectProtocol, ProtocolObject};
-use objc2::{MainThreadMarker, Message};
+use objc2::{MainThreadMarker, Message, msg_send, sel};
 use objc2_app_kit::{
     NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSButton, NSImage, NSMenu, NSTextField,
     NSView, NSWindowWillBeginSheetNotification,
@@ -63,6 +63,23 @@ fn on_main<T: Send + 'static>(
         abandoned.store(true, Ordering::SeqCst);
         "the main thread did not run the request".to_string()
     })
+}
+
+/// Keeps the page drawing while other windows cover the drive window, which is
+/// where the drive window always sits. `WebKit` otherwise reports a covered page
+/// hidden and runs no animation frame, so a transition never finishes: an
+/// element entering is drawn at its first frame, one leaving stays on the page,
+/// and a snapshot shows neither as the user would see it.
+pub fn keep_drawing_when_covered(webview: &WKWebView) -> Result<(), String> {
+    let switch = sel!(_setWindowOcclusionDetectionEnabled:);
+    if !webview.respondsToSelector(switch) {
+        return Err("this WebKit has no _setWindowOcclusionDetectionEnabled:".to_string());
+    }
+
+    // SAFETY: WKWebView answered that it responds to this selector, which takes
+    // one BOOL and returns nothing.
+    let () = unsafe { msg_send![webview, _setWindowOcclusionDetectionEnabled: false] };
+    Ok(())
 }
 
 /// Writes a PNG of what the page shows to `path`, and answers its size.

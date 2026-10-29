@@ -60,7 +60,14 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
         })
         .on_webview_ready(|webview| {
             let recorded = webview.with_webview(|platform| {
-                let _ = WEBVIEW.set(native::WebViewAddress(platform.inner() as usize));
+                let address = native::WebViewAddress(platform.inner() as usize);
+                // SAFETY: wry hands out its live WKWebView, and with_webview runs
+                // this closure on the main thread AppKit requires.
+                let view: &objc2_web_kit::WKWebView = unsafe { &*platform.inner().cast() };
+                if let Err(e) = native::keep_drawing_when_covered(view) {
+                    eprintln!("drive: the page stops drawing while covered: {e}");
+                }
+                let _ = WEBVIEW.set(address);
             });
             if let Err(e) = recorded {
                 eprintln!("drive: the webview could not be recorded, so snapshots will fail: {e}");

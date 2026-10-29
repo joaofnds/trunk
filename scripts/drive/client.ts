@@ -131,9 +131,7 @@ export function until(
 
 /**
  * Calls one of the page's drive hooks (src/drive.ts) with string arguments. A
- * failure names the call, because a wait that runs out usually reaches the
- * caller as the server's bare timeout: WebKit throttles the timers of the
- * hidden page, so the page's own deadline fires late.
+ * failure names the call, since an agent's script may make many.
  */
 export async function callHook(
 	instance: Instance,
