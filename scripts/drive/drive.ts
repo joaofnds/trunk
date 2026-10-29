@@ -2,7 +2,8 @@
 /**
  * Drives a drive instance of Trunk, built by `just drive-build`, from a shell.
  * `launch` prints the instance's directory; every other
- * verb reads it from TRUNK_DRIVE_DIR.
+ * verb reads it from TRUNK_DRIVE_DIR. A control is named by its role and the
+ * name a user reads on it (src/drive-gestures.ts), as `click button Commit`.
  *
  * Usage:
  *   bun scripts/drive/drive.ts launch <binary> <repository>
@@ -10,6 +11,10 @@
  *   bun scripts/drive/drive.ts eval <expression>
  *   bun scripts/drive/drive.ts until <expression>
  *   bun scripts/drive/drive.ts invoke <command> [<json arguments>]
+ *   bun scripts/drive/drive.ts click <role> <name>
+ *   bun scripts/drive/drive.ts type <role> <name> <text>
+ *   bun scripts/drive/drive.ts key <key, as Escape or Meta+Enter>
+ *   bun scripts/drive/drive.ts list <role>
  *   bun scripts/drive/drive.ts snapshot <png path>
  *   bun scripts/drive/drive.ts press <button title>
  *   bun scripts/drive/drive.ts menu
@@ -36,6 +41,20 @@ function instance() {
 	if (!dir)
 		throw new Error("set TRUNK_DRIVE_DIR to the directory launch printed");
 	return instanceAt(dir);
+}
+
+/** Calls one of the page's drive hooks (src/drive.ts) with every argument given. */
+function page(hook: string, ...args: (string | undefined)[]): Promise<unknown> {
+	const missing = args.indexOf(undefined);
+	if (missing !== -1) {
+		throw new Error(`${hook} takes ${args.length} arguments, got ${missing}`);
+	}
+
+	return evaluate(
+		instance(),
+		`window.__trunkDrive.${hook}(${args.map((arg) => JSON.stringify(arg)).join(", ")})`,
+		DEADLINE_MS,
+	);
 }
 
 async function run(): Promise<unknown> {
@@ -67,6 +86,14 @@ async function run(): Promise<unknown> {
 				JSON.parse(rest[1] ?? "{}"),
 				DEADLINE_MS,
 			);
+		case "click":
+			return page("click", rest[0], rest[1]);
+		case "type":
+			return page("type", rest[0], rest[1], rest[2]);
+		case "key":
+			return page("key", rest[0]);
+		case "list":
+			return page("list", rest[0]);
 		case "snapshot":
 			return request(
 				instance(),
@@ -93,7 +120,7 @@ async function run(): Promise<unknown> {
 			return request(instance(), { op: "quit" }, DEADLINE_MS);
 		default:
 			console.error(
-				"usage: drive.ts launch|ping|rows|eval|until|invoke|snapshot|alert|press|menu|choose|quit",
+				"usage: drive.ts launch|ping|rows|eval|until|invoke|click|type|key|list|snapshot|alert|press|menu|choose|quit",
 			);
 			process.exit(2);
 	}

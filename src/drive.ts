@@ -13,6 +13,14 @@
 
 import { emit } from "@tauri-apps/api/event";
 import { CheckMenuItem, Menu, MenuItem } from "@tauri-apps/api/menu";
+import {
+	click,
+	findByRole,
+	isEnabled,
+	namesOf,
+	pressKey,
+	typeInto,
+} from "./drive-gestures.js";
 
 const READY = "trunk-drive:ready";
 const REPLY = "trunk-drive:reply";
@@ -28,6 +36,10 @@ interface MenuEntry {
 interface DriveHooks {
 	run(id: number, expression: string): Promise<void>;
 	until(expression: string): Promise<unknown>;
+	click(role: string, name: string): Promise<void>;
+	type(role: string, name: string, text: string): Promise<void>;
+	key(combo: string): void;
+	list(role: string): string[];
 	menu(): Promise<MenuEntry[]>;
 	choose(label: string): Promise<void>;
 }
@@ -53,27 +65,26 @@ async function run(id: number, expression: string): Promise<void> {
 	}
 }
 
-/** The first truthy value `expression` takes, re-read after each DOM change. */
 /**
- * How long `until` watches before it gives up, matching the server's wait for an
+ * How long a wait watches before it gives up, matching the server's wait for an
  * answer (PAGE_DEADLINE in src-tauri/src/drive/mod.rs), so no observer outlives
  * the request that started it.
  */
 const UNTIL_DEADLINE_MS = 25_000;
 
-function until(expression: string): Promise<unknown> {
-	const read = compile(expression);
-
+/** The first truthy value `read` returns, re-read after each DOM change. */
+function waitFor<T>(
+	awaited: string,
+	read: () => T | null | undefined | false,
+): Promise<T> {
 	return new Promise((resolve, reject) => {
 		const observer = new MutationObserver(check);
 		const timer = setTimeout(() => {
 			observer.disconnect();
-			reject(
-				new Error(`${expression} stayed falsy for ${UNTIL_DEADLINE_MS}ms`),
-			);
+			reject(new Error(`waited ${UNTIL_DEADLINE_MS}ms for ${awaited}`));
 		}, UNTIL_DEADLINE_MS);
 		function check() {
-			let value: unknown;
+			let value: T | null | undefined | false;
 			try {
 				value = read();
 			} catch (error) {
@@ -97,6 +108,38 @@ function until(expression: string): Promise<unknown> {
 		});
 		check();
 	});
+}
+
+/** The first truthy value `expression` takes. */
+function until(expression: string): Promise<unknown> {
+	return waitFor(expression, compile(expression));
+}
+
+/** The control a user would operate, once it shows and is enabled. */
+function control(role: string, name: string): Promise<HTMLElement> {
+	return waitFor(`an enabled ${role} named "${name}"`, () => {
+		const found = findByRole(role, name);
+		return found && isEnabled(found) ? found : null;
+	});
+}
+
+async function clickControl(role: string, name: string): Promise<void> {
+	click(await control(role, name));
+}
+
+async function typeIntoControl(
+	role: string,
+	name: string,
+	text: string,
+): Promise<void> {
+	const field = await control(role, name);
+	if (
+		!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)
+	) {
+		throw new Error(`the ${role} named "${name}" takes no typed text`);
+	}
+
+	typeInto(field, text);
 }
 
 const actions = new Map<string, MenuAction>();
@@ -162,5 +205,14 @@ async function choose(label: string): Promise<void> {
 	action(item.id);
 }
 
-window.__trunkDrive = { run, until, menu, choose };
+window.__trunkDrive = {
+	run,
+	until,
+	click: clickControl,
+	type: typeIntoControl,
+	key: pressKey,
+	list: namesOf,
+	menu,
+	choose,
+};
 void emit(READY);
