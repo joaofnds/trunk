@@ -131,7 +131,8 @@ export function until(
 
 /**
  * Calls one of the page's drive hooks (src/drive.ts) with string arguments. A
- * failure names the call, since an agent's script may make many.
+ * failure names the call, because the server's own timeout, for a page that
+ * never became ready, names nothing.
  */
 export async function callHook(
 	instance: Instance,

@@ -60,17 +60,19 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
         })
         .on_webview_ready(|webview| {
             let recorded = webview.with_webview(|platform| {
-                let address = native::WebViewAddress(platform.inner() as usize);
                 // SAFETY: wry hands out its live WKWebView, and with_webview runs
                 // this closure on the main thread AppKit requires.
                 let view: &objc2_web_kit::WKWebView = unsafe { &*platform.inner().cast() };
                 if let Err(e) = native::keep_drawing_when_covered(view) {
                     eprintln!("drive: the page stops drawing while covered: {e}");
                 }
-                let _ = WEBVIEW.set(address);
+
+                let _ = WEBVIEW.set(native::WebViewAddress(platform.inner() as usize));
             });
             if let Err(e) = recorded {
-                eprintln!("drive: the webview could not be recorded, so snapshots will fail: {e}");
+                eprintln!(
+                    "drive: the webview could not be reached, so snapshots fail and the page stops drawing while covered: {e}"
+                );
             }
         })
         .on_window_ready(|window| {
@@ -100,6 +102,7 @@ enum Request {
     Alert,
     Press { button: String },
     MenuBar { path: Vec<String> },
+    Drawing,
     Quit,
 }
 
@@ -260,14 +263,22 @@ fn handle<R: Runtime>(app: &AppHandle<R>, page: &Page, request: Request) -> Resu
     match request {
         Request::Ping | Request::Quit => Ok(Value::Null),
         Request::Eval { js } => evaluate(app, page, &js),
-        Request::Snapshot { path } => {
-            let webview = *WEBVIEW.get().ok_or("the webview is not created yet")?;
-            native::snapshot(webview, &path)
-        }
+        Request::Snapshot { path } => native::snapshot(loaded_webview(page)?, &path),
         Request::Alert => native::alert(),
         Request::Press { button } => native::press(button),
         Request::MenuBar { path } => native::choose_menu_bar(path),
+        Request::Drawing => native::drawing(loaded_webview(page)?),
     }
+}
+
+/// The page's webview once the page is ready, since a request sent right after
+/// launch arrives before the webview exists.
+fn loaded_webview(page: &Page) -> Result<native::WebViewAddress, String> {
+    page.wait_ready()?;
+    WEBVIEW
+        .get()
+        .copied()
+        .ok_or_else(|| "the page is ready but its webview was never recorded".to_string())
 }
 
 /// Runs `js`, an expression, in the page and waits for the page to report its

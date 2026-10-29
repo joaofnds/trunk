@@ -19,7 +19,7 @@ use objc2::runtime::{NSObjectProtocol, ProtocolObject};
 use objc2::{MainThreadMarker, Message, msg_send, sel};
 use objc2_app_kit::{
     NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSButton, NSImage, NSMenu, NSTextField,
-    NSView, NSWindowWillBeginSheetNotification,
+    NSView, NSWindowOcclusionState, NSWindowWillBeginSheetNotification,
 };
 use objc2_foundation::{
     NSDictionary, NSError, NSNotification, NSNotificationCenter, NSOperationQueue, NSString,
@@ -80,6 +80,33 @@ pub fn keep_drawing_when_covered(webview: &WKWebView) -> Result<(), String> {
     // one BOOL and returns nothing.
     let () = unsafe { msg_send![webview, _setWindowOcclusionDetectionEnabled: false] };
     Ok(())
+}
+
+/// Whether the page keeps drawing while covered, which is false when
+/// `keep_drawing_when_covered` failed, and whether other windows cover the
+/// drive window now.
+pub fn drawing(webview: WebViewAddress) -> Result<Value, String> {
+    on_main(move |_| {
+        // SAFETY: the address is the live WKWebView, read on the main thread.
+        let webview: &WKWebView = unsafe { &*(webview.0 as *const WKWebView) };
+        let window = webview.window().ok_or("the page has no window")?;
+
+        Ok(json!({
+            "whileCovered": !detects_occlusion(webview)?,
+            "covered": !window.occlusionState().contains(NSWindowOcclusionState::Visible),
+        }))
+    })?
+}
+
+fn detects_occlusion(webview: &WKWebView) -> Result<bool, String> {
+    let reading = sel!(_windowOcclusionDetectionEnabled);
+    if !webview.respondsToSelector(reading) {
+        return Err("this WebKit has no _windowOcclusionDetectionEnabled".to_string());
+    }
+
+    // SAFETY: WKWebView answered that it responds to this selector, which takes
+    // nothing and returns a BOOL.
+    Ok(unsafe { msg_send![webview, _windowOcclusionDetectionEnabled] })
 }
 
 /// Writes a PNG of what the page shows to `path`, and answers its size.

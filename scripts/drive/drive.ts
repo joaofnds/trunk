@@ -12,7 +12,7 @@
  *
  * Usage:
  *   bun scripts/drive/drive.ts launch <binary> <repository>
- *   bun scripts/drive/drive.ts ping | rows | alert | quit
+ *   bun scripts/drive/drive.ts ping | rows | alert | drawing | quit
  *   bun scripts/drive/drive.ts eval <expression>
  *   bun scripts/drive/drive.ts until <expression>
  *   bun scripts/drive/drive.ts invoke <command> [<json arguments>]
@@ -121,6 +121,8 @@ async function run(): Promise<unknown> {
 			);
 		case "alert":
 			return request(instance(), { op: "alert" }, DEADLINE_MS);
+		case "drawing":
+			return request(instance(), { op: "drawing" }, DEADLINE_MS);
 		case "press":
 			return request(
 				instance(),
@@ -148,7 +150,7 @@ async function run(): Promise<unknown> {
 			return request(instance(), { op: "quit" }, DEADLINE_MS);
 		default:
 			throw new UsageError(
-				"usage: drive.ts launch|ping|rows|eval|until|invoke|click|context|type|key|list|snapshot|alert|press|menu|choose|menu-bar|picker|pick|dismiss-picker|quit",
+				"usage: drive.ts launch|ping|rows|eval|until|invoke|click|context|type|key|list|snapshot|alert|drawing|press|menu|choose|menu-bar|picker|pick|dismiss-picker|quit",
 			);
 	}
 }

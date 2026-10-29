@@ -304,14 +304,18 @@ rm -rf "$TRUNK_DRIVE_DIR" "$(dirname "$REPO")"
 control, `key` presses a key in the focused element, and `list <role>` reads the
 names of the controls shown, disabled ones included. `snapshot <png>` writes the
 page as the webview draws it, without the title bar or a sheet in front of it.
+`drawing` says whether the page keeps drawing while other windows cover it and
+whether they cover it now. A page that has stopped drawing leaves every
+transition at its first frame, so its snapshots fall behind the page.
 `eval`, `until` and `invoke` reach the page and the Rust commands directly.
 `alert` waits for a dialog to begin and prints its texts and buttons, and
 `press` answers the dialog showing now without waiting, so call `alert` first.
 Every wait is on a condition, never a fixed time. A wait on the page fails
-within 20s, a request to the native side within 10 to 20s, and the client
-gives up on any request after 60s.
+after 20s, counted from when the page is ready, and the first request after
+`launch` may wait up to 25s for that. A request to the native side fails within
+10 to 20s, and the client gives up on any request after 60s.
 
-Four places where the drive instance differs from the app a user runs:
+Five places where the drive instance differs from the app a user runs:
 
 - `click`, `type` and `key` send DOM events to the page, not keystrokes to the
   app. `type` appends to the field's value, and a shortcut the native menu owns,
@@ -329,6 +333,10 @@ Four places where the drive instance differs from the app a user runs:
 - `menu-bar` fires a menu bar item through its own action without drawing the
   menu. Items that act on the screen, such as Minimize, Zoom or Hide, are
   refused.
+- The page keeps drawing while other windows cover it, so its animation frames
+  and timers run as on a page in view. WebKit counts a user's Trunk under other
+  windows as hidden, stops its frames and throttles its timers, so behaviour
+  that depends on that is not seen through the drive route.
 
 Message dialogs are the real ones, shown as a sheet on the drive window.
 

@@ -4,8 +4,9 @@
  * own copy of a fixture repository. Each shows the commits git lists, read back
  * through the socket alone. A commit typed into one and pressed through its
  * Commit button lands in that repository's git log, and leaves the other
- * instance's repository, prefs and review store byte-identical. A PNG of the
- * committing window shows the interface rather than a black frame. Neither
+ * instance's repository, prefs and review store byte-identical. The page is set
+ * to keep drawing while other windows cover it, and runs an animation frame. A
+ * PNG of the committing window shows the interface rather than a black frame. Neither
  * instance ever becomes the active application, by the log the activation
  * logger (activations.swift) keeps from launch to quit. Run by
  * `just drive-smoke`.
@@ -99,6 +100,7 @@ await driveScenario(
 			`info: the committing instance changed ${own.length} of its own data files${own.length ? `: ${own.join(", ")}` : ""}`,
 		);
 
+		await drawsWhileCovered(committer);
 		await showsTheUi(committer);
 	},
 );
@@ -133,19 +135,57 @@ async function commitThroughTheForm(instance: Instance): Promise<void> {
 	);
 }
 
+/** Checks the page keeps drawing while other windows cover the drive window,
+ *  which is where it sits, since a page that stops drawing stalls every
+ *  transition and leaves a snapshot behind what the page holds. A frame
+ *  running says something about a covered page only when the window is covered
+ *  now, which depends on the user's windows, so the run says which it saw. */
+async function drawsWhileCovered(instance: Instance): Promise<void> {
+	const drawing = await request(instance, { op: "drawing" }, DEADLINE_MS);
+	if (!isDrawing(drawing)) {
+		throw new Error(`drawing answered ${JSON.stringify(drawing)}`);
+	}
+	check(
+		drawing.whileCovered,
+		"the page is set to keep drawing while other windows cover it",
+		`the page stops drawing while covered, so transitions stall (${instance.dir}/app.log says why)`,
+	);
+
+	const framed = await evaluate(
+		instance,
+		`new Promise((drawn) => requestAnimationFrame(() => drawn("drawn")))`,
+		DEADLINE_MS,
+	).then(
+		() => true,
+		() => false,
+	);
+	const where = drawing.covered
+		? "while other windows cover it"
+		: "while part of it shows, which says nothing about a covered page";
+	check(
+		framed,
+		`the page runs an animation frame ${where}`,
+		`the page ran no animation frame ${where}`,
+	);
+}
+
+function isDrawing(
+	value: unknown,
+): value is { whileCovered: boolean; covered: boolean } {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"whileCovered" in value &&
+		typeof value.whileCovered === "boolean" &&
+		"covered" in value &&
+		typeof value.covered === "boolean"
+	);
+}
+
 /** Writes a PNG of the window and checks it shows the interface, which a
  *  black frame, the failure a capture without the Screen Recording grant
  *  gives, cannot: an interface with text draws many colours. */
 async function showsTheUi(instance: Instance): Promise<void> {
-	await evaluate(
-		instance,
-		`new Promise((drawn) => requestAnimationFrame(() => drawn("drawn")))`,
-		DEADLINE_MS,
-	);
-	console.log(
-		"ok: the page draws frames, so its transitions finish before a snapshot",
-	);
-
 	const path = join(instance.dir, "window.png");
 	await request(instance, { op: "snapshot", path }, DEADLINE_MS);
 	const colours = distinctColours(readFileSync(path));
