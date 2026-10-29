@@ -6,6 +6,7 @@
 //! the event loop, which a modal loop stops, so it could not reach an alert.
 
 use std::cell::OnceCell;
+use std::ffi::CStr;
 use std::path::Path;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -234,15 +235,47 @@ pub fn choose_menu_bar(path: Vec<String>) -> Result<Value, String> {
                 "{title} opens a submenu; name one of its items too"
             ));
         }
+        if let Some(action) = item
+            .action()
+            .filter(|action| ON_SCREEN.contains(&action.name()))
+        {
+            return Err(format!(
+                "{title} acts on the screen ({}), which the drive route never does",
+                action.name().to_string_lossy()
+            ));
+        }
+
         menu.performActionForItemAtIndex(index);
         Ok(Value::Null)
     })?
 }
 
+/// The actions of the standard menu items (muda-0.20.0
+/// `platform_impl/macos/mod.rs`, `PredefinedMenuItemType`) that draw a window,
+/// move one, or show or hide other apps, on the operator's screen.
+const ON_SCREEN: [&CStr; 10] = [
+    c"customShowAboutPanel:",
+    c"toggleFullScreen:",
+    c"performMiniaturize:",
+    c"performZoom:",
+    c"arrangeInFront:",
+    c"hide:",
+    c"hideOtherApplications:",
+    c"unhideAllApplications:",
+    c"orderFrontCharacterPalette:",
+    c"startDictation:",
+];
+
 fn submenu(menu: &NSMenu, title: &str) -> Result<Retained<NSMenu>, String> {
-    menu.itemWithTitle(&NSString::from_str(title))
-        .ok_or_else(|| format!("no menu bar item titled {title}"))?
-        .submenu()
+    menu.update();
+    let item = menu
+        .itemWithTitle(&NSString::from_str(title))
+        .ok_or_else(|| format!("no menu bar item titled {title}"))?;
+    if !item.isEnabled() {
+        return Err(format!("the menu bar item titled {title} is disabled"));
+    }
+
+    item.submenu()
         .ok_or_else(|| format!("{title} has no submenu"))
 }
 
