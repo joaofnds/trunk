@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	AmbiguousControl,
 	click,
+	control,
 	findByRole,
 	isEnabled,
 	namesOf,
@@ -48,11 +49,17 @@ describe("findByRole", () => {
 	});
 
 	it("reads an explicit role over the element's own", () => {
-		document.body.innerHTML =
-			'<div role="option">new two</div><div role="tab">Commit</div>';
+		document.body.innerHTML = '<button role="tab">Commit</button>';
 
-		expect(findByRole("option", "new two")).not.toBeNull();
+		expect(findByRole("tab", "Commit")).not.toBeNull();
 		expect(findByRole("button", "Commit")).toBeNull();
+	});
+
+	it("leaves text a screen reader skips out of the name", () => {
+		document.body.innerHTML =
+			'<div role="option">new two <span aria-hidden="true">QF</span> 669d4d8</div>';
+
+		expect(findByRole("option", "new two 669d4d8")).not.toBeNull();
 	});
 
 	it("collapses runs of whitespace in a name", () => {
@@ -69,7 +76,10 @@ describe("findByRole", () => {
 
 	describe("when a control is hidden", () => {
 		it.each([
-			["the hidden attribute", "<div hidden><button>Commit</button></div>"],
+			[
+				"the hidden attribute under a display rule",
+				'<div hidden style="display: block"><button>Commit</button></div>',
+			],
 			["aria-hidden", '<div aria-hidden="true"><button>Commit</button></div>'],
 			[
 				"display none",
@@ -105,19 +115,18 @@ describe("namesOf", () => {
 });
 
 describe("click", () => {
-	it("sends the events a pointer click sends, in order", () => {
+	it("sends the events a pointer click sends, in order, up to the document", () => {
 		document.body.innerHTML = "<button>Commit</button>";
-		const button = document.querySelector("button") as HTMLButtonElement;
+		const button = findByRole("button", "Commit") as HTMLElement;
 		const seen: string[] = [];
 		for (const type of [
 			"pointerdown",
 			"mousedown",
-			"focus",
 			"pointerup",
 			"mouseup",
 			"click",
 		]) {
-			button.addEventListener(type, () => seen.push(type));
+			document.addEventListener(type, () => seen.push(type), { once: true });
 		}
 
 		click(button);
@@ -125,11 +134,19 @@ describe("click", () => {
 		expect(seen).toEqual([
 			"pointerdown",
 			"mousedown",
-			"focus",
 			"pointerup",
 			"mouseup",
 			"click",
 		]);
+	});
+
+	it("focuses the control, as a pointer press does", () => {
+		document.body.innerHTML = "<button>Commit</button>";
+		const button = findByRole("button", "Commit") as HTMLElement;
+
+		click(button);
+
+		expect(document.activeElement).toBe(button);
 	});
 });
 
@@ -138,57 +155,146 @@ describe("isEnabled", () => {
 		["an enabled button", "<button>Go</button>", true],
 		["a disabled button", "<button disabled>Go</button>", false],
 		[
-			"one aria-disabled",
+			"a button marked aria-disabled",
 			'<div role="button" aria-disabled="true">Go</div>',
 			false,
 		],
 		[
-			"one inside a disabled fieldset",
+			"a button inside a disabled fieldset",
 			"<fieldset disabled><button>Go</button></fieldset>",
 			false,
 		],
-	])("reads %s", (_what, markup, enabled) => {
+	])("reports %s as %s", (_what, markup, enabled) => {
 		document.body.innerHTML = markup;
+		const button = document.body.querySelector("button, [role=button]");
+		if (!(button instanceof HTMLElement)) throw new Error("no button");
 
-		expect(isEnabled(findByRole("button", "Go") as HTMLElement)).toBe(enabled);
+		expect(isEnabled(button)).toBe(enabled);
+	});
+});
+
+describe("control", () => {
+	it("resolves once the control it waits for is enabled", async () => {
+		document.body.innerHTML = "<button disabled>Commit</button>";
+		let settled = false;
+		const waiting = control("button", "Commit", 1_000).then((found) => {
+			settled = true;
+			return found;
+		});
+		await Promise.resolve();
+		const stillWaiting = !settled;
+
+		document.querySelector("button")?.removeAttribute("disabled");
+
+		expect(stillWaiting).toBe(true);
+		expect(await waiting).toBe(document.querySelector("button"));
+	});
+
+	describe("when the control never shows", () => {
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("rejects naming the control it waited for", async () => {
+			vi.useFakeTimers();
+			const waiting = control("button", "Push", 1_000);
+
+			vi.advanceTimersByTime(1_000);
+
+			await expect(waiting).rejects.toThrow(
+				'waited 1000ms for an enabled button named "Push"',
+			);
+		});
 	});
 });
 
 describe("typeInto", () => {
-	it("appends the text and tells the field's listeners it changed", () => {
+	it("appends the text and tells listeners up to the document it changed", () => {
 		document.body.innerHTML = '<input type="text" value="fix: ">';
 		const field = document.querySelector("input") as HTMLInputElement;
 		let heard = "";
-		field.addEventListener("input", () => {
+		document.addEventListener("input", () => {
 			heard = field.value;
 		});
 
 		typeInto(field, "keep the drive window back");
 
 		expect(heard).toBe("fix: keep the drive window back");
-		expect(document.activeElement).toBe(field);
+	});
+
+	it("types into a text area too", () => {
+		document.body.innerHTML = "<textarea>body</textarea>";
+		const area = document.querySelector("textarea") as HTMLTextAreaElement;
+
+		typeInto(area, " more");
+
+		expect(area.value).toBe("body more");
 	});
 });
 
 describe("pressKey", () => {
-	it("sends keydown then keyup with the modifiers to the focused element", () => {
+	it("sends keydown then keyup from the focused element up to the window", () => {
 		document.body.innerHTML = "<textarea></textarea>";
-		const field = document.querySelector("textarea") as HTMLTextAreaElement;
-		field.focus();
+		document.querySelector("textarea")?.focus();
 		const seen: string[] = [];
 		const record = (event: KeyboardEvent) =>
 			seen.push(
-				`${event.type} ${event.key} meta=${event.metaKey} shift=${event.shiftKey}`,
+				`${event.type} ${event.key} in ${(event.target as Element).tagName}`,
 			);
-		field.addEventListener("keydown", record);
-		field.addEventListener("keyup", record);
+		window.addEventListener("keydown", record);
+		window.addEventListener("keyup", record);
 
-		pressKey("Meta+Enter");
+		pressKey("Escape");
 
+		window.removeEventListener("keydown", record);
+		window.removeEventListener("keyup", record);
 		expect(seen).toEqual([
-			"keydown Enter meta=true shift=false",
-			"keyup Enter meta=true shift=false",
+			"keydown Escape in TEXTAREA",
+			"keyup Escape in TEXTAREA",
 		]);
+	});
+
+	it.each([
+		["Meta", "metaKey"],
+		["Cmd", "metaKey"],
+		["Control", "ctrlKey"],
+		["Ctrl", "ctrlKey"],
+		["Alt", "altKey"],
+		["Option", "altKey"],
+		["Shift", "shiftKey"],
+	] as const)("holds %s down as %s", (modifier, flag) => {
+		let held: KeyboardEvent | undefined;
+		document.addEventListener(
+			"keydown",
+			(event) => {
+				held = event;
+			},
+			{ once: true },
+		);
+
+		pressKey(`${modifier}+Enter`);
+
+		const flags = ["metaKey", "ctrlKey", "altKey", "shiftKey"] as const;
+		expect(flags.filter((f) => held?.[f])).toEqual([flag]);
+		expect(held?.key).toBe("Enter");
+	});
+
+	it.each([
+		["+", "+ meta=false"],
+		["Meta++", "+ meta=true"],
+	])("presses the plus key itself for %s", (combo, expected) => {
+		let pressed = "";
+		document.addEventListener(
+			"keydown",
+			(event) => {
+				pressed = `${event.key} meta=${event.metaKey}`;
+			},
+			{ once: true },
+		);
+
+		pressKey(combo);
+
+		expect(pressed).toBe(expected);
 	});
 
 	it("names a modifier the platform does not have", () => {

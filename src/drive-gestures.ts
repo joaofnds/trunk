@@ -86,20 +86,35 @@ export function nameOf(element: Element): string {
 		const placeholder = collapse(element.getAttribute("placeholder"));
 		if (placeholder) return placeholder;
 	} else {
-		const text = collapse(element.textContent);
+		const text = collapse(announcedText(element));
 		if (text) return text;
 	}
 
 	return collapse(element.getAttribute("title"));
 }
 
+/** The text under `node` a screen reader reads out, which leaves out every
+ *  subtree marked hidden or aria-hidden, such as an avatar's initials. */
+function announcedText(node: Node): string {
+	if (node instanceof Element && isHiddenItself(node)) return "";
+	if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
+
+	return [...node.childNodes].map(announcedText).join("");
+}
+
+function isHiddenItself(element: Element): boolean {
+	return (
+		element.hasAttribute("hidden") ||
+		element.getAttribute("aria-hidden") === "true" ||
+		getComputedStyle(element).display === "none"
+	);
+}
+
 function isShown(element: Element): boolean {
 	if (getComputedStyle(element).visibility === "hidden") return false;
 
 	for (let node: Element | null = element; node; node = node.parentElement) {
-		if (node.hasAttribute("hidden")) return false;
-		if (node.getAttribute("aria-hidden") === "true") return false;
-		if (getComputedStyle(node).display === "none") return false;
+		if (isHiddenItself(node)) return false;
 	}
 	return true;
 }
@@ -136,6 +151,64 @@ export function isEnabled(element: HTMLElement): boolean {
 	if (element.matches(":disabled")) return false;
 
 	return element.closest('[aria-disabled="true"]') === null;
+}
+
+/**
+ * The first truthy value `read` returns, re-read after each change to the DOM.
+ * It gives up after `deadlineMs`, naming what it `awaited`.
+ */
+export function waitFor<T>(
+	awaited: string,
+	read: () => T | null | undefined | false,
+	deadlineMs: number,
+): Promise<T> {
+	return new Promise((resolve, reject) => {
+		const observer = new MutationObserver(check);
+		const timer = setTimeout(() => {
+			observer.disconnect();
+			reject(new Error(`waited ${deadlineMs}ms for ${awaited}`));
+		}, deadlineMs);
+		function check() {
+			let value: ReturnType<typeof read>;
+			try {
+				value = read();
+			} catch (error) {
+				observer.disconnect();
+				clearTimeout(timer);
+				reject(error);
+				return;
+			}
+			if (!value) return;
+
+			observer.disconnect();
+			clearTimeout(timer);
+			resolve(value);
+		}
+
+		observer.observe(document, {
+			subtree: true,
+			childList: true,
+			characterData: true,
+			attributes: true,
+		});
+		check();
+	});
+}
+
+/** The control a user would operate, once it shows and is enabled. */
+export function control(
+	role: string,
+	name: string,
+	deadlineMs: number,
+): Promise<HTMLElement> {
+	return waitFor(
+		`an enabled ${role} named "${name}"`,
+		() => {
+			const found = findByRole(role, name);
+			return found && isEnabled(found) ? found : null;
+		},
+		deadlineMs,
+	);
 }
 
 /** Clicks the way a pointer does, so a handler on any of the steps fires. */
@@ -180,9 +253,10 @@ const MODIFIERS: Record<string, "metaKey" | "ctrlKey" | "altKey" | "shiftKey"> =
 
 /** Presses a key like "Escape" or "Meta+Enter" on the focused element. */
 export function pressKey(combo: string): void {
-	const parts = combo.split("+");
-	const key = parts.pop() ?? "";
+	const [, held, key] = /^(?:(.*)\+)?(.+)$/.exec(combo) ?? [];
+	if (!key) throw new Error("name a key to press");
 	const init: KeyboardEventInit = { key, bubbles: true, cancelable: true };
+	const parts = held ? held.split("+") : [];
 	for (const modifier of parts) {
 		const flag = MODIFIERS[modifier];
 		if (!flag) throw new Error(`"${modifier}" is not a modifier`);
