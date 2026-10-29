@@ -43,8 +43,9 @@ drive-build:
     rm -f "{{target}}/debug/trunk-drive"
     cp "{{target}}/drive-build/debug/trunk" "{{target}}/debug/trunk-drive"
 
-# Start a drive instance on a fixture repository, read its commit rows back through the socket,
-# and check from an activation log that it never became the active application
+# Start two drive instances on copies of a fixture repository, read their commit rows back through
+# the socket, commit through one's form and check the other's files are untouched, and check from
+# an activation log that neither became the active application
 drive-smoke: drive-build
     cargo run --quiet --manifest-path {{manifest}} -p trunk-fixtures -- build graph-lanes
     mkdir -p "{{target}}/drive"

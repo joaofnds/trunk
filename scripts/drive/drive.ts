@@ -23,6 +23,7 @@
 
 import { resolve } from "node:path";
 import {
+	callHook,
 	commitRows,
 	evaluate,
 	instanceAt,
@@ -43,18 +44,16 @@ function instance() {
 	return instanceAt(dir);
 }
 
-/** Calls one of the page's drive hooks (src/drive.ts) with every argument given. */
+/** Calls a page hook with every argument the verb takes. */
 function page(hook: string, ...args: (string | undefined)[]): Promise<unknown> {
-	const missing = args.indexOf(undefined);
-	if (missing !== -1) {
-		throw new Error(`${hook} takes ${args.length} arguments, got ${missing}`);
+	const given = args.filter((arg) => arg !== undefined);
+	if (given.length < args.length) {
+		throw new Error(
+			`${hook} takes ${args.length} arguments, got ${given.length}`,
+		);
 	}
 
-	return evaluate(
-		instance(),
-		`window.__trunkDrive.${hook}(${args.map((arg) => JSON.stringify(arg)).join(", ")})`,
-		DEADLINE_MS,
-	);
+	return callHook(instance(), hook, given, DEADLINE_MS);
 }
 
 async function run(): Promise<unknown> {

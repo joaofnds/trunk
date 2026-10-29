@@ -133,6 +133,21 @@ export function until(
 	);
 }
 
+/**
+ * Calls one of the page's drive hooks (src/drive.ts), such as
+ * `click("button", "Commit")`, which finds a control by its role and the name
+ * a user reads on it and waits for it to be enabled.
+ */
+export function callHook(
+	instance: Instance,
+	hook: string,
+	args: readonly string[],
+	deadlineMs: number,
+): Promise<unknown> {
+	const call = args.map((arg) => JSON.stringify(arg)).join(", ");
+	return evaluate(instance, `window.__trunkDrive.${hook}(${call})`, deadlineMs);
+}
+
 /** Calls a Tauri command from the page, through the same IPC the UI uses. */
 export function invoke(
 	instance: Instance,
