@@ -46,3 +46,9 @@ export function activationLog(
 		});
 	});
 }
+
+/** The logged activations of any of the processes `pids`, each line being the
+ *  logger's time, then the pid of the application that became active. */
+export function activatedAmong(lines: string[], pids: string[]): string[] {
+	return lines.filter((line) => pids.includes(line.split(" ")[1]));
+}

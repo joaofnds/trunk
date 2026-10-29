@@ -33,7 +33,7 @@ import {
 	request,
 	until,
 } from "./client.js";
-import { activationLog, check, gitLog } from "./scenario.js";
+import { activatedAmong, activationLog, check, gitLog } from "./scenario.js";
 
 const DEADLINE_MS = 60_000;
 const SUMMARY = "feat: commit typed through the drive route";
@@ -124,9 +124,7 @@ try {
 const pids = instances.map((instance) =>
 	readFileSync(join(instance.dir, "listening"), "utf8").trim(),
 );
-const activated = activations.lines.filter((line) =>
-	pids.includes(line.split(" ")[1]),
-);
+const activated = activatedAmong(activations.lines, pids);
 check(
 	activated.length === 0,
 	`neither instance became active (${activations.lines.length - 1} other activations)`,

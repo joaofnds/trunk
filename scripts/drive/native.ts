@@ -28,7 +28,7 @@ import {
 	request,
 	until,
 } from "./client.js";
-import { activationLog, check, gitLog } from "./scenario.js";
+import { activatedAmong, activationLog, check, gitLog } from "./scenario.js";
 
 const DEADLINE_MS = 60_000;
 /** How many times a request asks for a dialog that the app shows a moment
@@ -82,9 +82,7 @@ try {
 const pid = instance
 	? readFileSync(join(instance.dir, "listening"), "utf8").trim()
 	: "";
-const activated = activations.lines.filter(
-	(line) => line.split(" ")[1] === pid,
-);
+const activated = activatedAmong(activations.lines, [pid]);
 check(
 	activated.length === 0,
 	`the instance never became active (${activations.lines.length - 1} other activations)`,
