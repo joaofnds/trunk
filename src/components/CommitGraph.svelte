@@ -992,9 +992,10 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 		interactiveRebaseItems.push(
 			await MenuItem.new({
 				text: "Interactive Rebase...",
-				// Off HEAD's first-parent line, the listing spans a merge or a
-				// divergent branch, and git either refuses the todo or silently
-				// moves the checked-out branch onto that branch.
+				// Off HEAD's first-parent line, the listing spans a divergent
+				// branch, and git would silently move the checked-out branch onto
+				// it. From a merge, the range holds that merge, which the backend
+				// refuses.
 				enabled: commit.in_head_chain && !commit.is_merge,
 				action: () => {
 					onopenrebaseeditor?.(commit.oid, true);
