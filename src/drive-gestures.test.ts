@@ -7,6 +7,7 @@ import {
 	isEnabled,
 	namesOf,
 	pressKey,
+	rightClick,
 	typeInto,
 } from "./drive-gestures.js";
 
@@ -102,6 +103,39 @@ describe("findByRole", () => {
 
 			expect(() => findByRole("button", "OK")).toThrow(AmbiguousControl);
 		});
+
+		it("picks the one inside the landmark it is scoped to", () => {
+			document.body.innerHTML =
+				'<aside><button id="row">feature</button></aside><div role="listbox"><button>feature</button></div>';
+
+			expect(findByRole("button", "feature", "complementary")?.id).toBe("row");
+		});
+
+		it("refuses a scope whose landmark shows more than once", () => {
+			document.body.innerHTML =
+				"<nav><button>feature</button></nav><nav><button>main</button></nav>";
+
+			expect(() => findByRole("button", "feature", "navigation")).toThrow(
+				new AmbiguousControl("2 shown navigations to look within"),
+			);
+		});
+
+		it("finds nothing inside a landmark that is not showing", () => {
+			document.body.innerHTML = "<button>feature</button>";
+
+			expect(findByRole("button", "feature", "complementary")).toBeNull();
+		});
+	});
+
+	it.each([
+		["ASIDE", "complementary", "<aside>Branches</aside>"],
+		["NAV", "navigation", "<nav>Branches</nav>"],
+		["MAIN", "main", "<main>Branches</main>"],
+		["DIALOG", "dialog", "<dialog open>Branches</dialog>"],
+	])("reads an %s as the %s role", (tag, role, markup) => {
+		document.body.innerHTML = markup;
+
+		expect(findByRole(role, "Branches")?.tagName).toBe(tag);
 	});
 });
 
@@ -111,6 +145,51 @@ describe("namesOf", () => {
 			'<div role="option">new two</div><div role="option" hidden>gone</div><div role="option">base one</div>';
 
 		expect(namesOf("option")).toEqual(["new two", "base one"]);
+	});
+});
+
+describe("rightClick", () => {
+	it("sends the events a secondary click sends, in order, up to the document", () => {
+		document.body.innerHTML = "<button>main</button>";
+		const row = findByRole("button", "main") as HTMLElement;
+		const seen: string[] = [];
+		for (const type of [
+			"pointerdown",
+			"mousedown",
+			"contextmenu",
+			"pointerup",
+			"mouseup",
+		]) {
+			document.addEventListener(
+				type,
+				(event) => seen.push(`${type} ${(event as MouseEvent).button}`),
+				{ once: true },
+			);
+		}
+
+		rightClick(row);
+
+		expect(seen).toEqual([
+			"pointerdown 2",
+			"mousedown 2",
+			"contextmenu 2",
+			"pointerup 2",
+			"mouseup 2",
+		]);
+	});
+
+	it("lets the app replace the browser's own menu", () => {
+		document.body.innerHTML = "<button>main</button>";
+		const row = findByRole("button", "main") as HTMLElement;
+		let replaced = false;
+		row.addEventListener("contextmenu", (event) => {
+			event.preventDefault();
+			replaced = event.defaultPrevented;
+		});
+
+		rightClick(row);
+
+		expect(replaced).toBe(true);
 	});
 });
 

@@ -13,6 +13,10 @@ const IMPLICIT_ROLES: Record<string, string> = {
 	SELECT: "combobox",
 	OPTION: "option",
 	LI: "listitem",
+	ASIDE: "complementary",
+	NAV: "navigation",
+	MAIN: "main",
+	DIALOG: "dialog",
 	H1: "heading",
 	H2: "heading",
 	H3: "heading",
@@ -119,15 +123,38 @@ function isShown(element: Element): boolean {
 	return true;
 }
 
-function shownWithRole(role: string): Element[] {
-	return [...document.body.querySelectorAll("*")].filter(
+function shownWithRole(role: string, root: Element = document.body): Element[] {
+	return [...root.querySelectorAll("*")].filter(
 		(element) => roleOf(element) === role && isShown(element),
 	);
 }
 
-/** The one shown control with `role` named `name`, or null while there is none. */
-export function findByRole(role: string, name: string): HTMLElement | null {
-	const matches = shownWithRole(role).filter(
+/** The one shown element with the landmark role `within`, or null while there
+ *  is none. */
+function landmark(within: string): Element | null {
+	const landmarks = shownWithRole(within);
+	if (landmarks.length > 1) {
+		throw new AmbiguousControl(
+			`${landmarks.length} shown ${within}s to look within`,
+		);
+	}
+	return landmarks[0] ?? null;
+}
+
+/**
+ * The one shown control with `role` named `name`, or null while there is none.
+ * A name the page shows twice is told apart by `within`, the role of the one
+ * landmark to look inside, as `complementary` for the branch sidebar.
+ */
+export function findByRole(
+	role: string,
+	name: string,
+	within?: string,
+): HTMLElement | null {
+	const root = within ? landmark(within) : document.body;
+	if (!root) return null;
+
+	const matches = shownWithRole(role, root).filter(
 		(element) => nameOf(element) === name,
 	);
 
@@ -200,11 +227,13 @@ export function control(
 	role: string,
 	name: string,
 	deadlineMs: number,
+	within?: string,
 ): Promise<HTMLElement> {
+	const where = within ? ` within the ${within}` : "";
 	return waitFor(
-		`an enabled ${role} named "${name}"`,
+		`an enabled ${role} named "${name}"${where}`,
 		() => {
-			const found = findByRole(role, name);
+			const found = findByRole(role, name, within);
 			return found && isEnabled(found) ? found : null;
 		},
 		deadlineMs,
@@ -221,6 +250,18 @@ export function click(element: HTMLElement): void {
 	element.dispatchEvent(new PointerEvent("pointerup", pointer));
 	element.dispatchEvent(new MouseEvent("mouseup", pointer));
 	element.dispatchEvent(new MouseEvent("click", pointer));
+}
+
+/** Clicks with the secondary button, which is how a user opens a control's
+ *  context menu. */
+export function rightClick(element: HTMLElement): void {
+	const pointer = { bubbles: true, cancelable: true, button: 2 };
+
+	element.dispatchEvent(new PointerEvent("pointerdown", pointer));
+	element.dispatchEvent(new MouseEvent("mousedown", pointer));
+	element.dispatchEvent(new MouseEvent("contextmenu", pointer));
+	element.dispatchEvent(new PointerEvent("pointerup", pointer));
+	element.dispatchEvent(new MouseEvent("mouseup", pointer));
 }
 
 /** Types `text` at the end of a field, as one input event the way a paste
