@@ -19,7 +19,6 @@ import {
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
-	rmSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,11 +28,10 @@ import {
 	callHook,
 	commitRows,
 	type Instance,
-	launch,
 	request,
 	until,
 } from "./client.js";
-import { activatedAmong, activationLog, check, gitLog } from "./scenario.js";
+import { check, driveScenario, gitLog } from "./scenario.js";
 
 const DEADLINE_MS = 60_000;
 const SUMMARY = "feat: commit typed through the drive route";
@@ -57,90 +55,52 @@ writeFileSync(
 );
 const expected = gitLog(bystander).sort();
 
-const activations = await activationLog(logger);
-const launching = Date.now() / 1000;
-let quitting = 0;
-const instances: Instance[] = [];
-try {
-	const committer = await launch(binary, committing, DEADLINE_MS);
-	instances.push(committer);
-	const watcher = await launch(binary, bystander, DEADLINE_MS);
-	instances.push(watcher);
+await driveScenario(
+	{ logger, work, deadlineMs: DEADLINE_MS },
+	async (launch) => {
+		const committer = await launch(binary, committing);
+		const watcher = await launch(binary, bystander);
 
-	const shown = (await commitRows(watcher, DEADLINE_MS)).sort();
-	check(
-		JSON.stringify(shown) === JSON.stringify(expected),
-		`the graph shows ${shown.length} commits`,
-		`expected ${JSON.stringify(expected)}\nshown    ${JSON.stringify(shown)}`,
-	);
-	await commitRows(committer, DEADLINE_MS);
-	const before = fingerprint(bystander, join(watcher.dir, "data"));
-	const ownBefore = fingerprint(join(committer.dir, "data"));
+		const shown = (await commitRows(watcher, DEADLINE_MS)).sort();
+		check(
+			JSON.stringify(shown) === JSON.stringify(expected),
+			`the graph shows ${shown.length} commits`,
+			`expected ${JSON.stringify(expected)}\nshown    ${JSON.stringify(shown)}`,
+		);
+		await commitRows(committer, DEADLINE_MS);
+		const before = fingerprint(bystander, join(watcher.dir, "data"));
+		const ownBefore = fingerprint(join(committer.dir, "data"));
 
-	await commitThroughTheForm(committer);
+		await commitThroughTheForm(committer);
 
-	const logged = gitLog(committing)[0];
-	check(
-		logged === SUMMARY,
-		"the commit typed and pressed through the form is in git log",
-		`git log's newest commit is "${logged}"`,
-	);
-	const changed = changedBetween(
-		before,
-		fingerprint(bystander, join(watcher.dir, "data")),
-	);
-	check(
-		changed.length === 0,
-		`the other instance's ${before.size} repository, prefs and review store files are unchanged`,
-		`changed under the other instance: ${changed.join(", ")}`,
-	);
-	// Not a check: whether the committing instance wrote its own prefs or review
-	// store says whether the line above could have caught a write to the wrong one.
-	const own = changedBetween(
-		ownBefore,
-		fingerprint(join(committer.dir, "data")),
-	);
-	console.log(
-		`info: the committing instance changed ${own.length} of its own data files${own.length ? `: ${own.join(", ")}` : ""}`,
-	);
+		const logged = gitLog(committing)[0];
+		check(
+			logged === SUMMARY,
+			"the commit typed and pressed through the form is in git log",
+			`git log's newest commit is "${logged}"`,
+		);
+		const changed = changedBetween(
+			before,
+			fingerprint(bystander, join(watcher.dir, "data")),
+		);
+		check(
+			changed.length === 0,
+			`the other instance's ${before.size} repository, prefs and review store files are unchanged`,
+			`changed under the other instance: ${changed.join(", ")}`,
+		);
+		// Not a check: whether the committing instance wrote its own prefs or review
+		// store says whether the line above could have caught a write to the wrong one.
+		const own = changedBetween(
+			ownBefore,
+			fingerprint(join(committer.dir, "data")),
+		);
+		console.log(
+			`info: the committing instance changed ${own.length} of its own data files${own.length ? `: ${own.join(", ")}` : ""}`,
+		);
 
-	await showsTheUi(committer);
-} catch (error) {
-	console.error(error);
-	process.exitCode = 1;
-} finally {
-	quitting = Date.now() / 1000;
-	const quits = await Promise.allSettled(
-		instances.map((instance) => request(instance, { op: "quit" }, DEADLINE_MS)),
-	);
-	activations.process.kill();
-	for (const [i, quit] of quits.entries()) {
-		if (quit.status === "fulfilled") continue;
-		console.error(`${instances[i].dir} did not quit: ${quit.reason}`);
-		process.exitCode = 1;
-	}
-}
-
-const pids = instances.map((instance) =>
-	readFileSync(join(instance.dir, "listening"), "utf8").trim(),
+		await showsTheUi(committer);
+	},
 );
-const activated = activatedAmong(activations.lines, pids);
-check(
-	activated.length === 0,
-	`neither instance became active (${activations.lines.length - 1} other activations)`,
-	`an instance (pids ${pids.join(", ")}) became active: ${activated.join("; ")}\nlaunched at ${launching}, quit sent at ${quitting}\n${activations.lines.join("\n")}`,
-);
-
-if (process.exitCode === 1) {
-	console.error(
-		`kept for inspection: ${work} and ${instances.map((i) => i.dir).join(", ")}`,
-	);
-} else {
-	for (const instance of instances) {
-		rmSync(instance.dir, { recursive: true, force: true });
-	}
-	rmSync(work, { recursive: true, force: true });
-}
 
 /** Stages the change, types the summary and presses Commit, as a user does,
  *  and returns once the graph shows the new commit. The working-tree row shows

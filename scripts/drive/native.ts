@@ -11,24 +11,18 @@
  */
 
 import { execFileSync } from "node:child_process";
-import {
-	cpSync,
-	mkdtempSync,
-	readFileSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { cpSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	callHook,
+	commitRows,
 	DriveError,
 	type Instance,
-	launch,
 	request,
 	until,
 } from "./client.js";
-import { activatedAmong, activationLog, check, gitLog } from "./scenario.js";
+import { check, driveScenario, gitLog } from "./scenario.js";
 
 const DEADLINE_MS = 60_000;
 
@@ -47,51 +41,35 @@ const other = join(work, "other");
 seedRebasingWorktree();
 cpSync(fixture, other, { recursive: true });
 
-const activations = await activationLog(logger);
-let instance: Instance | null = null;
-try {
-	instance = await launch(binary, repo, DEADLINE_MS);
-	await until(
-		instance,
-		`window.__trunkDrive.list("button").includes("Commit") || null`,
-		DEADLINE_MS,
-	);
+await driveScenario(
+	{ logger, work, deadlineMs: DEADLINE_MS },
+	async (launch) => {
+		const instance = await launch(binary, repo);
+		await until(
+			instance,
+			`window.__trunkDrive.list("button").includes("Commit") || null`,
+			DEADLINE_MS,
+		);
 
-	await deleteTheRebasingBranch(instance);
-	await openAnotherRepository(instance);
-	// Last, since the search field it focuses swallows the picker's Meta+R.
-	await findFromTheMenuBar(instance);
-} catch (error) {
-	console.error(error);
-	process.exitCode = 1;
-} finally {
-	if (instance) {
-		try {
-			await request(instance, { op: "quit" }, DEADLINE_MS);
-		} catch (error) {
-			console.error(`${instance.dir} did not quit: ${error}`);
-			process.exitCode = 1;
+		// Delete runs on the launched repository, before Open switches away from
+		// it, and Find runs last, since the search field it focuses takes the
+		// picker's Meta+R. Each step reports its own failure and the next still
+		// runs.
+		for (const step of [
+			deleteTheRebasingBranch,
+			readTheResetSubmenu,
+			openAnotherRepository,
+			findFromTheMenuBar,
+		]) {
+			try {
+				await step(instance);
+			} catch (error) {
+				console.error(`${step.name} failed:`, error);
+				process.exitCode = 1;
+			}
 		}
-	}
-	activations.process.kill();
-}
-
-const pid = instance
-	? readFileSync(join(instance.dir, "listening"), "utf8").trim()
-	: "";
-const activated = activatedAmong(activations.lines, [pid]);
-check(
-	activated.length === 0,
-	`the instance never became active (${activations.lines.length - 1} other activations)`,
-	`the instance (pid ${pid}) became active: ${activated.join("; ")}\n${activations.lines.join("\n")}`,
+	},
 );
-
-if (process.exitCode === 1) {
-	console.error(`kept for inspection: ${work} and ${instance?.dir}`);
-} else {
-	if (instance) rmSync(instance.dir, { recursive: true, force: true });
-	rmSync(work, { recursive: true, force: true });
-}
 
 /** A repository whose branch `feature` is checked out in a linked worktree
  *  stopped partway through an interactive rebase. Its commits are unsigned,
@@ -142,22 +120,33 @@ async function findFromTheMenuBar(instance: Instance): Promise<void> {
 		DEADLINE_MS,
 	);
 
-	await until(instance, `${searching} || null`, DEADLINE_MS);
 	check(
 		before === "false",
-		"Edit > Find from the menu bar opens the history search bar",
+		"the history search bar is closed before Edit > Find is chosen",
 		"the history search bar was open before Edit > Find was chosen",
 	);
+	await until(instance, `${searching} || null`, DEADLINE_MS);
+	console.log("ok: Edit > Find from the menu bar opens the history search bar");
 
-	const missing = await failureOf(
-		request(instance, { op: "menu-bar", path: ["Edit", "Nope"] }, DEADLINE_MS),
-	);
+	for (const [path, refusal] of [
+		[["Edit", "Nope"], "no menu bar item titled Nope"],
+		[["Edit"], "Edit opens a submenu; name one of its items too"],
+		[
+			["Window", "Minimize"],
+			"Minimize acts on the screen (performMiniaturize:), which the drive route never does",
+		],
+	] as const) {
+		const answer = await failureOf(
+			request(instance, { op: "menu-bar", path }, DEADLINE_MS),
+		);
+		check(
+			answer === refusal,
+			`choosing ${path.join(" > ")} from the menu bar is refused: ${refusal}`,
+			`choosing ${path.join(" > ")} answered: ${answer}`,
+		);
+	}
 	await request(instance, { op: "ping" }, DEADLINE_MS);
-	check(
-		missing === "no menu bar item titled Nope",
-		"a menu bar item that does not exist is refused by name, and the instance keeps answering",
-		`choosing Edit > Nope answered: ${missing}`,
-	);
+	console.log("ok: the instance keeps answering after the refusals");
 }
 
 async function deleteTheRebasingBranch(instance: Instance): Promise<void> {
@@ -191,6 +180,31 @@ async function deleteTheRebasingBranch(instance: Instance): Promise<void> {
 	);
 }
 
+async function readTheResetSubmenu(instance: Instance): Promise<void> {
+	const rows = (await callHook(
+		instance,
+		"list",
+		["option"],
+		DEADLINE_MS,
+	)) as string[];
+	const base = rows.find((name) => name.startsWith("base "));
+	if (!base) throw new Error(`no commit row named base: ${rows.join("; ")}`);
+
+	await callHook(instance, "context", ["option", base], DEADLINE_MS);
+	const shown = (await callHook(instance, "menu", [], DEADLINE_MS)) as {
+		label: string;
+		submenu?: { label: string }[];
+	}[];
+	const reset = shown.find((item) => item.label === "Reset...");
+	const modes = reset?.submenu?.map((item) => item.label);
+	check(
+		JSON.stringify(modes) === '["Soft","Mixed","Hard"]',
+		"a commit row's menu is read with its Reset... submenu of Soft, Mixed and Hard",
+		`the commit row's menu read ${JSON.stringify(shown)}`,
+	);
+	await callHook(instance, "key", ["Escape"], DEADLINE_MS);
+}
+
 async function openAnotherRepository(instance: Instance): Promise<void> {
 	await callHook(instance, "key", ["Meta+r"], DEADLINE_MS);
 	await callHook(
@@ -199,7 +213,12 @@ async function openAnotherRepository(instance: Instance): Promise<void> {
 		["button", "Open Repository", "dialog"],
 		DEADLINE_MS,
 	);
-	await until(instance, "window.__trunkDrive.picker()", DEADLINE_MS);
+	const asked = await callHook(instance, "picker", [], DEADLINE_MS);
+	check(
+		JSON.stringify(asked) === '{"directory":true,"multiple":false}',
+		"Open Repository opens a folder picker for one directory",
+		`the picker opened with ${JSON.stringify(asked)}`,
+	);
 	await callHook(instance, "pick", [other], DEADLINE_MS);
 
 	const expected = gitLog(other).sort();
@@ -211,11 +230,11 @@ async function openAnotherRepository(instance: Instance): Promise<void> {
 			return JSON.stringify(rows) === ${JSON.stringify(JSON.stringify(expected))} ? rows : null;
 		})()`,
 		DEADLINE_MS,
-	);
+	).catch(() => commitRows(instance, DEADLINE_MS));
 	check(
-		Array.isArray(shown),
+		JSON.stringify(shown) === JSON.stringify(expected),
 		`Open Repository answered with ${other} shows its ${expected.length} commits`,
-		`the graph shows ${JSON.stringify(shown)}`,
+		`the graph shows ${JSON.stringify(shown)}, not ${JSON.stringify(expected)}`,
 	);
 }
 
