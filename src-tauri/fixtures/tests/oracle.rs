@@ -1,6 +1,9 @@
 //! Every case builds to its committed fingerprint: one test per case, against the oracle
 //! file captured from the shell corpus before the port, or from the Rust builder for a
-//! case added since.
+//! case added since. The same build is checked for the document a person opening each
+//! repository reads, so no test has to build the whole corpus in one go.
+
+use std::path::Path;
 
 use trunk_fixtures::fingerprint;
 
@@ -22,6 +25,34 @@ fn assert_matches_oracle(name: &str) {
         "the built corpus differs from the oracle:\n{}",
         report(&expected, &actual)
     );
+    assert_documented(out.path(), case.repos);
+}
+
+/// 04 and 05 carry no document of their own (the catalogue is theirs); 06 and 07 carry
+/// one for the whole corpus, named here.
+const CORPUS_DOCUMENTS: [(&str, &str); 4] = [
+    ("graph-lanes/", ""),
+    ("graph-merges/", ""),
+    ("stash-lanes/", "stash-lanes/README.md"),
+    ("remote-branch/", "remote-branch/WALKTHROUGH.md"),
+];
+
+fn assert_documented(out: &Path, repos: &[&str]) {
+    let mut missing = Vec::new();
+    for repo in repos {
+        let document = match CORPUS_DOCUMENTS
+            .iter()
+            .find(|(corpus, _)| repo.starts_with(corpus))
+        {
+            Some((_, "")) => continue,
+            Some((_, document)) => (*document).to_owned(),
+            None => format!("{repo}/SCENARIO.md"),
+        };
+        if !out.join(&document).is_file() && !missing.contains(&document) {
+            missing.push(document);
+        }
+    }
+    assert!(missing.is_empty(), "documents missing: {missing:?}");
 }
 
 #[test]
