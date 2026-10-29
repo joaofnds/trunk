@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 
 import { env } from "node:process";
+import { fileURLToPath } from "node:url";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/postcss";
 import { svelteTesting } from "@testing-library/svelte/vite";
@@ -32,9 +33,10 @@ const classicStartup: Plugin = {
 	},
 };
 
-// The drive build answers the folder picker from the agent's commands, since
-// the native panel draws above every app's windows (src/drive-dialog.ts).
-const driveDialog = new URL("./src/drive-dialog.ts", import.meta.url).pathname;
+// The drive build's folder picker (src/drive-dialog.ts).
+const driveDialog = fileURLToPath(
+	new URL("./src/drive-dialog.ts", import.meta.url),
+);
 const driveOpenPanel: Plugin = {
 	name: "drive-open-panel",
 	apply: "build",
