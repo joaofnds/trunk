@@ -7,6 +7,8 @@
 //! JSON reply, then closes. The page half, `src/drive.ts`, answers evaluations
 //! and says when it is ready.
 
+mod native;
+
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::fd::AsRawFd;
@@ -15,7 +17,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -33,6 +35,9 @@ const REPLY_EVENT: &str = "trunk-drive:reply";
 /// page never answers.
 const PAGE_DEADLINE: Duration = Duration::from_secs(120);
 
+/// The main window's `WKWebView`, recorded once tauri creates it.
+static WEBVIEW: OnceLock<native::WebViewAddress> = OnceLock::new();
+
 /// The drive route's plugin: it opens the socket at setup and keeps the window
 /// behind every other one, so a launch never covers the user's work.
 pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
@@ -43,6 +48,11 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
             listen(app, &page);
             serve(app.clone(), &dir, page)?;
             Ok(())
+        })
+        .on_webview_ready(|webview| {
+            let _ = webview.with_webview(|platform| {
+                let _ = WEBVIEW.set(native::WebViewAddress(platform.inner() as usize));
+            });
         })
         .on_window_ready(|window| {
             let target = window.clone();
@@ -63,6 +73,9 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
 enum Request {
     Ping,
     Eval { js: String },
+    Snapshot { path: PathBuf },
+    Alert,
+    Press { button: String },
     Quit,
 }
 
@@ -214,6 +227,12 @@ fn handle<R: Runtime>(app: &AppHandle<R>, page: &Page, request: Request) -> Resu
     match request {
         Request::Ping | Request::Quit => Ok(Value::Null),
         Request::Eval { js } => evaluate(app, page, &js),
+        Request::Snapshot { path } => {
+            let webview = *WEBVIEW.get().ok_or("the webview is not created yet")?;
+            native::snapshot(webview, &path)
+        }
+        Request::Alert => native::alert(),
+        Request::Press { button } => native::press(button),
     }
 }
 

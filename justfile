@@ -34,7 +34,7 @@ dev-app:
     PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" bun run tauri build --debug -b app -c tauri.dev.conf.json
     open -n "{{target}}/debug/bundle/macos/Trunk Dev.app"
 
-# Build the drive instance an agent starts and drives through commands, no screen tools (docs/build-environment.md)
+# Build the drive instance an agent starts and drives through commands, no screen tools (scripts/drive/drive.ts)
 drive-build:
     VITE_TRUNK_DRIVE=1 bunx vite build --outDir dist-drive --emptyOutDir
     TAURI_CONFIG="$(cat tauri.drive.conf.json)" cargo build --manifest-path {{manifest}} --bin trunk --features drive,tauri/custom-protocol

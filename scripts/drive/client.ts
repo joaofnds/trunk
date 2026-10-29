@@ -1,7 +1,7 @@
 /**
  * The agent's half of the drive route: it starts a drive instance of Trunk in
  * the background and sends it one request per connection over the instance's
- * socket (docs/build-environment.md, "Driving the app").
+ * socket (src-tauri/src/drive/mod.rs).
  */
 
 import { type ChildProcess, spawn } from "node:child_process";

@@ -23,7 +23,18 @@ bench = false
 test-util = []
 # The drive route an agent's commands reach the running app through
 # (src/drive.rs). Only `just drive-build` turns it on; it never ships.
-drive = []
+drive = [
+  "dep:objc2-web-kit",
+  "objc2-app-kit/NSAlert",
+  "objc2-app-kit/NSApplication",
+  "objc2-app-kit/NSBitmapImageRep",
+  "objc2-app-kit/NSImage",
+  "objc2-app-kit/NSImageRep",
+  "objc2-app-kit/NSPanel",
+  "objc2-app-kit/NSTextField",
+  "objc2-foundation/NSData",
+  "objc2-foundation/NSDictionary",
+]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -82,6 +93,13 @@ objc2-foundation = { version = "0.3", features = [
   "block2",
 ] }
 block2 = "0.6"
+objc2-web-kit = { version = "0.3", optional = true, default-features = false, features = [
+  "std",
+  "block2",
+  "objc2-app-kit",
+  "WKWebView",
+  "WKSnapshotConfiguration",
+] }
 
 [dev-dependencies]
 # Enable app test affordances for test, example and bench targets, never shipped builds.
