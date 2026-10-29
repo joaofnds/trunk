@@ -101,6 +101,10 @@ enum SpecStep {
     Checkout {
         name: String,
     },
+    /// Merge a branch into HEAD with a merge commit, even when it could fast-forward.
+    Merge {
+        branch: String,
+    },
     Remote {
         name: String,
     },
@@ -286,6 +290,7 @@ fn seed(spec: RepoSpec) -> TestContext {
             SpecStep::Commit { message, at: None } => builder.with_commit(&message),
             SpecStep::Branch { name } => builder.with_branch(&name),
             SpecStep::Checkout { name } => builder.checkout(&name),
+            SpecStep::Merge { branch } => builder.merge(&branch),
             SpecStep::Remote { name } => builder.with_remote(&name),
             SpecStep::TrackUpstream { remote, branch } => builder.with_tracking(&remote, &branch),
             SpecStep::Push { remote, branch } => builder.with_pushed(&remote, &branch),

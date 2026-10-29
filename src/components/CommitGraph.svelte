@@ -995,7 +995,7 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 				// Off HEAD's first-parent line, the listing spans a merge or a
 				// divergent branch, and git either refuses the todo or silently
 				// moves the checked-out branch onto that branch.
-				enabled: commit.in_head_chain,
+				enabled: commit.in_head_chain && !commit.is_merge,
 				action: () => {
 					onopenrebaseeditor?.(commit.oid, true);
 				},

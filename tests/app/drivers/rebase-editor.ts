@@ -96,6 +96,10 @@ export class RebaseEditorDriver {
 		);
 	}
 
+	isOpen(): boolean {
+		return document.querySelector(EDITOR) !== null;
+	}
+
 	/** Closes the takeover without starting its plan. */
 	async cancel(): Promise<void> {
 		const cancel = await waitFor("the cancel-rebase button", () =>
