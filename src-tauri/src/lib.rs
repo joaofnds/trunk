@@ -125,14 +125,22 @@ pub fn run() {
 ///
 /// Panics when the Tauri runtime cannot start.
 fn run_gui() {
-    configure(
+    #[allow(unused_mut)]
+    let mut app = configure(
         gui_builder(),
         WatcherState::default(),
         TrafficLights::default(),
     )
     .plugin(tauri_plugin_clipboard_manager::init())
-    .run(context())
-    .expect("error while running tauri application");
+    .build(context())
+    .expect("error while building tauri application");
+
+    // tao asks to activate the app once it has launched, and macOS grants that
+    // whenever the process that started the drive instance is frontmost. A policy
+    // that prohibits activation, set before the launch, keeps the user's focus.
+    #[cfg(feature = "drive")]
+    app.set_activation_policy(tauri::ActivationPolicy::Prohibited);
+    app.run(|_, _| {});
 }
 
 /// The shipped app hands a second launch to the running one.

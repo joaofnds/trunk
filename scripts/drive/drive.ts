@@ -100,4 +100,14 @@ async function run(): Promise<unknown> {
 }
 
 const value = await run();
-console.log(typeof value === "string" ? value : JSON.stringify(value));
+console.log(
+	typeof value === "string"
+		? // Page text can hold a commit summary's escape bytes, which would drive the terminal.
+			Array.from(value, (c) => {
+				const code = c.charCodeAt(0);
+				const control =
+					(code < 0x20 && c !== "\n" && c !== "\t") || code === 0x7f;
+				return control ? `\\u${code.toString(16).padStart(4, "0")}` : c;
+			}).join("")
+		: JSON.stringify(value),
+);

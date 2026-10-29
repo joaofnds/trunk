@@ -1,6 +1,6 @@
 // Prints one line for each application that becomes active, until killed:
 // `<seconds since epoch> <pid> <name>`. The drive route's launch-focus check
-// runs it across a whole drive session (just drive-smoke).
+// runs it across a whole drive session (scripts/drive/smoke.ts, just drive-smoke).
 import AppKit
 
 setvbuf(stdout, nil, _IOLBF, 0)

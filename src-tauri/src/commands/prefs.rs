@@ -14,7 +14,9 @@
 //! premise an invariant rather than an assumption is `tauri-plugin-single-instance`
 //! (registered first in `lib.rs`), whose lock is keyed on the app identifier —
 //! so dev and the installed app still run side by side, each alone with
-//! its own state dir.
+//! its own state dir. The drive build has no such lock. Its instances share
+//! nothing because the drive plugin refuses to start without a
+//! `TRUNK_DATA_DIR`, and its launcher gives each instance a directory of its own.
 //!
 //! The on-disk contract is unchanged from the plugin: a flat JSON object
 //! (`{"key": value, ...}`) at the same name and location, so existing user

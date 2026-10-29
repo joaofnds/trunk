@@ -76,6 +76,8 @@ export function request(
 ): Promise<unknown> {
 	return new Promise((resolve, reject) => {
 		const socket = createConnection(join(instance.dir, SOCKET));
+		// Decoding as one stream keeps a character split across chunks whole.
+		socket.setEncoding("utf8");
 		let received = "";
 
 		socket.setTimeout(deadlineMs, () => {
@@ -84,9 +86,17 @@ export function request(
 		});
 		socket.on("error", reject);
 		socket.on("data", (chunk) => {
-			received += chunk.toString("utf8");
+			received += chunk;
 		});
 		socket.on("end", () => {
+			if (received.trim() === "") {
+				reject(
+					new DriveError(
+						`the instance closed the connection without answering ${body.op}`,
+					),
+				);
+				return;
+			}
 			const reply = JSON.parse(received) as
 				| { ok: true; value: unknown }
 				| { ok: false; error: string };
@@ -175,8 +185,10 @@ function socketAppears(
 			watcher.close();
 			child.off("exit", exited);
 			child.off("error", finish);
-			if (error) reject(error);
-			else resolve();
+			if (!error) return resolve();
+			// A detached instance that never announced itself would outlive the caller.
+			child.kill();
+			reject(error);
 		}
 
 		child.on("exit", exited);

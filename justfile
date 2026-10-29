@@ -34,17 +34,22 @@ dev-app:
     PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" bun run tauri build --debug -b app -c tauri.dev.conf.json
     open -n "{{target}}/debug/bundle/macos/Trunk Dev.app"
 
-# Build the drive instance an agent starts and drives through commands, no screen tools (scripts/drive/drive.ts)
+# Build the drive instance an agent starts and drives through commands, no screen tools (scripts/drive/drive.ts).
+# It compiles into a target dir of its own, so the shared debug `trunk` stays the plain dev build
+# that the review CLI and `just dev` expect, and switching features rebuilds nothing there.
 drive-build:
     VITE_TRUNK_DRIVE=1 bunx vite build --outDir dist-drive --emptyOutDir
-    TAURI_CONFIG="$(cat tauri.drive.conf.json)" cargo build --manifest-path {{manifest}} --bin trunk --features drive,tauri/custom-protocol
+    TAURI_CONFIG="$(cat tauri.drive.conf.json)" cargo build --manifest-path {{manifest}} --target-dir "{{target}}/drive-build" --bin trunk --features drive,tauri/custom-protocol
     rm -f "{{target}}/debug/trunk-drive"
-    cp "{{target}}/debug/trunk" "{{target}}/debug/trunk-drive"
+    cp "{{target}}/drive-build/debug/trunk" "{{target}}/debug/trunk-drive"
 
-# Start a drive instance on a fixture repository and read its commit rows back through the socket
+# Start a drive instance on a fixture repository, read its commit rows back through the socket,
+# and check from an activation log that it never became the active application
 drive-smoke: drive-build
     cargo run --quiet --manifest-path {{manifest}} -p trunk-fixtures -- build graph-lanes
-    bun scripts/drive/smoke.ts "{{target}}/debug/trunk-drive" repos/graph-lanes/02-local-ahead-no-remote
+    mkdir -p "{{target}}/drive"
+    swiftc -O scripts/drive/activations.swift -o "{{target}}/drive/activations"
+    bun scripts/drive/smoke.ts "{{target}}/debug/trunk-drive" repos/graph-lanes/02-local-ahead-no-remote "{{target}}/drive/activations"
 
 # Dev server with performance instrumentation on (samples: /tmp/trunk-perf/samples.jsonl)
 perf:
@@ -193,11 +198,11 @@ dev-conf-parity:
         print("::error::tauri.dev.conf.json's windows must equal tauri.conf.json's plus acceptFirstMouse=true. The overlay replaces the array whole (RFC 7396), so a shipped window change not copied there is silently absent from `just dev-app`, and without acceptFirstMouse a session's background clicks never reach the webview.")
         sys.exit(1)
     drive = json.load(open("tauri.drive.conf.json"))["app"]["windows"]
-    drive_only = {"visible": False, "focus": False}
+    drive_only = {"visible": False, "focus": False, "incognito": True}
     stripped = [{k: v for k, v in w.items() if k not in drive_only} for w in drive]
     missing = [k for w in drive for k, v in drive_only.items() if w.get(k) != v]
     if stripped != shipped or missing:
-        print("::error::tauri.drive.conf.json's windows must equal tauri.conf.json's plus visible=false and focus=false. The overlay replaces the array whole (RFC 7396), so a shipped window change not copied there is silently absent from `just drive-build`, and a drive window that is visible or focused at creation covers the user's screen before the drive route can send it to the back.")
+        print("::error::tauri.drive.conf.json's windows must equal tauri.conf.json's plus visible=false, focus=false and incognito=true. The overlay replaces the array whole (RFC 7396), so a shipped window change not copied there is silently absent from `just drive-build`, and a drive window that is visible or focused at creation covers the user's screen before the drive route can send it to the back, and one that is not incognito keeps a WebKit store under ~/Library that every drive instance shares.")
         sys.exit(1)
     EOF
 

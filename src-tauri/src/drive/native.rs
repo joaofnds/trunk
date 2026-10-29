@@ -6,7 +6,8 @@
 //! the event loop, which a modal loop stops, so it could not reach an alert.
 
 use std::path::Path;
-use std::sync::{Mutex, mpsc};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 use block2::RcBlock;
@@ -33,7 +34,14 @@ fn on_main<T: Send + 'static>(
 ) -> Result<T, String> {
     let (sender, receiver) = mpsc::channel();
     let work = Mutex::new(Some(work));
+    // A request answered as failed must not run later, or a press the agent was
+    // told failed would click the button after all.
+    let abandoned = Arc::new(AtomicBool::new(false));
+    let skip = Arc::clone(&abandoned);
     let block = RcBlock::new(move || {
+        if skip.load(Ordering::SeqCst) {
+            return;
+        }
         let Some(work) = work.lock().expect("the work lock").take() else {
             return;
         };
@@ -44,9 +52,10 @@ fn on_main<T: Send + 'static>(
     // SAFETY: the block owns everything it touches and may run on any thread
     // the queue picks, which for the main queue is the main thread.
     unsafe { NSOperationQueue::mainQueue().addOperationWithBlock(&block) };
-    receiver
-        .recv_timeout(MAIN_DEADLINE)
-        .map_err(|_| "the main thread did not run the request".to_string())
+    receiver.recv_timeout(MAIN_DEADLINE).map_err(|_| {
+        abandoned.store(true, Ordering::SeqCst);
+        "the main thread did not run the request".to_string()
+    })
 }
 
 /// Writes a PNG of what the page shows to `path`, and answers its size.

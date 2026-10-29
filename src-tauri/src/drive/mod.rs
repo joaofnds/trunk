@@ -30,10 +30,11 @@ const SOCKET: &str = "drive.sock";
 const LISTENING: &str = "listening";
 const READY_EVENT: &str = "trunk-drive:ready";
 const REPLY_EVENT: &str = "trunk-drive:reply";
-/// How long a request may wait on the page before it is answered with a failure.
-/// The client keeps its own deadline; this one only frees a connection whose
-/// page never answers.
-const PAGE_DEADLINE: Duration = Duration::from_secs(120);
+/// How long an evaluation may wait, once for the page to say it is ready and once
+/// for its answer, before it is answered with a failure. Both waits together stay
+/// under the client's 60s (scripts/drive/drive.ts), so the page never runs an
+/// evaluation whose caller was already told it failed.
+const PAGE_DEADLINE: Duration = Duration::from_secs(25);
 
 /// The main window's `WKWebView`, recorded once tauri creates it.
 static WEBVIEW: OnceLock<native::WebViewAddress> = OnceLock::new();
@@ -44,26 +45,41 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri::plugin::Builder::new("trunk-drive")
         .setup(|app, _api| {
             let dir = instance_dir()?;
+            // Without it the prefs and review store fall back to the app data dir
+            // under HOME, which every drive instance would share.
+            if std::env::var_os("TRUNK_DATA_DIR").is_none() {
+                return Err(
+                    "the drive build needs TRUNK_DATA_DIR, the instance's own data directory"
+                        .into(),
+                );
+            }
             let page = Arc::new(Page::default());
-            listen(app, &page);
+            listen_to_page(app, &page);
             serve(app.clone(), &dir, page)?;
             Ok(())
         })
         .on_webview_ready(|webview| {
-            let _ = webview.with_webview(|platform| {
+            let recorded = webview.with_webview(|platform| {
                 let _ = WEBVIEW.set(native::WebViewAddress(platform.inner() as usize));
             });
+            if let Err(e) = recorded {
+                eprintln!("drive: the webview could not be recorded, so snapshots will fail: {e}");
+            }
         })
         .on_window_ready(|window| {
             let target = window.clone();
-            let _ = window.run_on_main_thread(move || {
-                if let Ok(ptr) = target.ns_window() {
+            let ordered = window.run_on_main_thread(move || match target.ns_window() {
+                Ok(ptr) => {
                     // SAFETY: tauri hands out the window's live NSWindow, and this
                     // closure runs on the main thread AppKit requires.
                     let ns_window: &objc2_app_kit::NSWindow = unsafe { &*ptr.cast() };
                     ns_window.orderBack(None);
                 }
+                Err(e) => eprintln!("drive: the window could not be ordered back: {e}"),
             });
+            if let Err(e) = ordered {
+                eprintln!("drive: the window could not be ordered back: {e}");
+            }
         })
         .build()
 }
@@ -133,6 +149,10 @@ impl Page {
         (id, receiver)
     }
 
+    fn forget(&self, id: u64) {
+        self.pending.lock().expect("the pending lock").remove(&id);
+    }
+
     fn deliver(&self, reply: PageReply) {
         let sender = self
             .pending
@@ -162,14 +182,15 @@ fn instance_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn listen<R: Runtime>(app: &AppHandle<R>, page: &Arc<Page>) {
+fn listen_to_page<R: Runtime>(app: &AppHandle<R>, page: &Arc<Page>) {
     let ready = Arc::clone(page);
     app.listen_any(READY_EVENT, move |_| ready.mark_ready());
 
     let replies = Arc::clone(page);
     app.listen_any(REPLY_EVENT, move |event| {
-        if let Ok(reply) = serde_json::from_str::<PageReply>(event.payload()) {
-            replies.deliver(reply);
+        match serde_json::from_str::<PageReply>(event.payload()) {
+            Ok(reply) => replies.deliver(reply),
+            Err(e) => eprintln!("drive: an unreadable page reply: {e}"),
         }
     });
 }
@@ -200,6 +221,10 @@ fn announce_listening(dir: &Path) -> Result<(), String> {
 }
 
 fn answer<R: Runtime>(app: &AppHandle<R>, page: &Page, mut stream: UnixStream) {
+    // A peer that never finishes its line would otherwise hold this thread forever.
+    if stream.set_read_timeout(Some(PAGE_DEADLINE)).is_err() {
+        return;
+    }
     let mut line = String::new();
     if BufReader::new(&stream).read_line(&mut line).is_err() {
         return;
@@ -247,13 +272,15 @@ fn evaluate<R: Runtime>(app: &AppHandle<R>, page: &Page, js: &str) -> Result<Val
 
     let (id, reply) = page.expect_reply();
     let source = serde_json::to_string(js).expect("a string serializes");
-    webview
-        .eval(format!("window.__trunkDrive.run({id}, {source})"))
-        .map_err(|e| format!("eval: {e}"))?;
+    if let Err(e) = webview.eval(format!("window.__trunkDrive.run({id}, {source})")) {
+        page.forget(id);
+        return Err(format!("eval: {e}"));
+    }
 
-    let reply = reply
-        .recv_timeout(PAGE_DEADLINE)
-        .map_err(|_| "the page did not answer".to_string())?;
+    let reply = reply.recv_timeout(PAGE_DEADLINE).map_err(|_| {
+        page.forget(id);
+        "the page did not answer".to_string()
+    })?;
     if reply.ok {
         Ok(reply.value)
     } else {

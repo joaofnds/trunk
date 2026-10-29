@@ -1,5 +1,5 @@
-//! Every case is listed with a summary, and every repository a person opens carries its
-//! own document saying what to look at.
+//! Every case is listed with a summary and in docs/fixtures.md, and has an oracle test,
+//! which also checks that each repository a person opens carries its document.
 
 use trunk_fixtures::cases::CASES;
 

@@ -15,7 +15,8 @@
 				"titleBarStyle": "Overlay",
 				"hiddenTitle": true,
 				"visible": false,
-				"focus": false
+				"focus": false,
+				"incognito": true
 			}
 		]
 	}

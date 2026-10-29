@@ -54,16 +54,38 @@ async function run(id: number, expression: string): Promise<void> {
 }
 
 /** The first truthy value `expression` takes, re-read after each DOM change. */
+/**
+ * How long `until` watches before it gives up, matching the server's wait for an
+ * answer (PAGE_DEADLINE in src-tauri/src/drive/mod.rs), so no observer outlives
+ * the request that started it.
+ */
+const UNTIL_DEADLINE_MS = 25_000;
+
 function until(expression: string): Promise<unknown> {
 	const read = compile(expression);
 
-	return new Promise((resolve) => {
+	return new Promise((resolve, reject) => {
 		const observer = new MutationObserver(check);
+		const timer = setTimeout(() => {
+			observer.disconnect();
+			reject(
+				new Error(`${expression} stayed falsy for ${UNTIL_DEADLINE_MS}ms`),
+			);
+		}, UNTIL_DEADLINE_MS);
 		function check() {
-			const value = read();
+			let value: unknown;
+			try {
+				value = read();
+			} catch (error) {
+				observer.disconnect();
+				clearTimeout(timer);
+				reject(error);
+				return;
+			}
 			if (!value) return;
 
 			observer.disconnect();
+			clearTimeout(timer);
 			resolve(value);
 		}
 

@@ -25,12 +25,10 @@ test-util = []
 # (src/drive/). Only `just drive-build` turns it on, on macOS; it never ships.
 drive = [
   "dep:objc2-web-kit",
-  "objc2-app-kit/NSAlert",
   "objc2-app-kit/NSApplication",
   "objc2-app-kit/NSBitmapImageRep",
   "objc2-app-kit/NSImage",
   "objc2-app-kit/NSImageRep",
-  "objc2-app-kit/NSPanel",
   "objc2-app-kit/NSTextField",
   "objc2-foundation/NSData",
   "objc2-foundation/NSDictionary",
