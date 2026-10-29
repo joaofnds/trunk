@@ -9,7 +9,8 @@
  * their input. Each item's action is kept as the app created it, so choosing an
  * item runs the same code a click on it would, skipping only the native hop
  * from the menu to the item's channel. The recorded menu is dropped once a
- * pointer or key press reaches the page, as a real menu closes on one.
+ * pointer or key press, or typed text, reaches the page, as a real menu closes
+ * on one.
  *
  * The folder picker the dialog plugin opens waits for the agent's answer the
  * same way (src/drive-dialog.ts).
@@ -31,6 +32,7 @@ import {
 import {
 	itemAt,
 	type RecordedItem,
+	ShowingMenu,
 	type ShownItem,
 	shownAs,
 } from "./drive-menu.js";
@@ -53,9 +55,9 @@ interface DriveHooks {
 	): Promise<void>;
 	key(combo: string): void;
 	list(role: string): string[];
-	menu(): Promise<ShownItem[]>;
+	menu(): Promise<readonly ShownItem[]>;
 	choose(...path: string[]): Promise<void>;
-	picker(): OpenDialogOptions | null;
+	picker(): Promise<OpenDialogOptions>;
 	pick(path: string): void;
 	dismissPicker(): void;
 }
@@ -99,7 +101,7 @@ async function clickControl(
 	name: string,
 	within?: string,
 ): Promise<void> {
-	click(await control(role, name, WAIT_DEADLINE_MS, within));
+	click(await control(role, name, WAIT_DEADLINE_MS, { within }));
 }
 
 async function rightClickControl(
@@ -107,7 +109,7 @@ async function rightClickControl(
 	name: string,
 	within?: string,
 ): Promise<void> {
-	rightClick(await control(role, name, WAIT_DEADLINE_MS, within));
+	rightClick(await control(role, name, WAIT_DEADLINE_MS, { within }));
 }
 
 async function typeIntoControl(
@@ -116,7 +118,7 @@ async function typeIntoControl(
 	text: string,
 	within?: string,
 ): Promise<void> {
-	const field = await control(role, name, WAIT_DEADLINE_MS, within);
+	const field = await control(role, name, WAIT_DEADLINE_MS, { within });
 	if (
 		!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)
 	) {
@@ -127,10 +129,7 @@ async function typeIntoControl(
 }
 
 const actions = new Map<string, MenuAction>();
-let showing: readonly RecordedItem[] = [];
-/** Waits on the next menu, released when the app pops one up. Recording a menu
- *  changes nothing in the page, so a wait on the DOM would never see it. */
-const awaitingMenu: (() => void)[] = [];
+const showing = new ShowingMenu();
 
 const newMenuItem = MenuItem.new.bind(MenuItem);
 MenuItem.new = async (options) => {
@@ -149,18 +148,11 @@ CheckMenuItem.new = async (options) => {
 };
 
 Menu.prototype.popup = async function record(this: Menu) {
-	showing = await recorded(await this.items());
-	for (const release of awaitingMenu.splice(0)) release();
+	await showing.record(async () => recorded(await this.items()));
 };
 
-for (const press of ["pointerdown", "keydown"]) {
-	document.addEventListener(
-		press,
-		() => {
-			showing = [];
-		},
-		{ capture: true },
-	);
+for (const press of ["pointerdown", "keydown", "input"]) {
+	document.addEventListener(press, () => showing.close(), { capture: true });
 }
 
 /** The menu's items as they read now, separators and the system's own items
@@ -168,54 +160,43 @@ for (const press of ["pointerdown", "keydown"]) {
 async function recorded(items: readonly unknown[]): Promise<RecordedItem[]> {
 	const entries: RecordedItem[] = [];
 	for (const item of items) {
-		if (item instanceof Submenu) {
-			entries.push({
-				id: item.id,
-				label: await item.text(),
-				enabled: await item.isEnabled(),
-				submenu: await recorded(await item.items()),
-			});
-		} else if (item instanceof MenuItem || item instanceof CheckMenuItem) {
-			entries.push({
-				id: item.id,
-				label: await item.text(),
-				enabled: await item.isEnabled(),
-				submenu: null,
-			});
+		if (
+			item instanceof Submenu ||
+			item instanceof MenuItem ||
+			item instanceof CheckMenuItem
+		) {
+			entries.push(await recordedItem(item));
 		}
 	}
 	return entries;
 }
 
-/** The menu showing, or the next one the app pops up. */
-async function showingMenu(): Promise<readonly RecordedItem[]> {
-	if (showing.length === 0) {
-		await new Promise<void>((release, fail) => {
-			awaitingMenu.push(release);
-			setTimeout(
-				() =>
-					fail(new Error(`no context menu showed in ${WAIT_DEADLINE_MS}ms`)),
-				WAIT_DEADLINE_MS,
-			);
-		});
-	}
-	return showing;
+async function recordedItem(
+	item: Submenu | MenuItem | CheckMenuItem,
+): Promise<RecordedItem> {
+	return {
+		id: item.id,
+		label: await item.text(),
+		enabled: await item.isEnabled(),
+		submenu:
+			item instanceof Submenu ? await recorded(await item.items()) : null,
+	};
 }
 
 /** Every item of the menu the app popped up, once one is showing. */
-async function menu(): Promise<ShownItem[]> {
-	return shownAs(await showingMenu());
+async function menu(): Promise<readonly ShownItem[]> {
+	return shownAs(await showing.next(WAIT_DEADLINE_MS));
 }
 
 /** Picks an item the way a user does, by the label they read on it and on
  *  each submenu that leads to it. */
 async function choose(...path: string[]): Promise<void> {
-	const item = itemAt(await showingMenu(), path);
+	const item = itemAt(await showing.next(WAIT_DEADLINE_MS), path);
 	const action = actions.get(item.id);
 	if (!action)
 		throw new Error(`the menu item labelled "${item.label}" has no action`);
 
-	showing = [];
+	showing.close();
 	action(item.id);
 }
 
@@ -229,7 +210,7 @@ window.__trunkDrive = {
 	list: namesOf,
 	menu,
 	choose,
-	picker: () => openPanel.showing(),
+	picker: () => openPanel.next(WAIT_DEADLINE_MS),
 	pick: (path) => openPanel.answer(path),
 	dismissPicker: () => openPanel.dismiss(),
 };

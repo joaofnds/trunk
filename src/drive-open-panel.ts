@@ -5,6 +5,7 @@
  */
 
 import type { OpenDialogOptions } from "@tauri-apps/plugin-dialog";
+import { Signal } from "./drive-signal.js";
 
 /** What the dialog plugin's open command hands back: a path, a list of them
  *  for a multiple selection, or null when the user cancels. */
@@ -17,6 +18,7 @@ interface Showing {
 
 export class OpenPanel {
 	#showing: Showing | null = null;
+	#asked = new Signal();
 
 	/** The app's request, answered once the agent answers it. */
 	ask(options: OpenDialogOptions): Promise<OpenAnswer> {
@@ -26,12 +28,22 @@ export class OpenPanel {
 
 		return new Promise((settle) => {
 			this.#showing = { options, settle };
+			this.#asked.release();
 		});
 	}
 
 	/** The options of the picker waiting on an answer, or null when none is. */
 	showing(): OpenDialogOptions | null {
 		return this.#showing?.options ?? null;
+	}
+
+	/** The options of the picker showing, or of the next one the app opens
+	 *  within `deadlineMs`. */
+	async next(deadlineMs: number): Promise<OpenDialogOptions> {
+		while (!this.#showing) {
+			await this.#asked.next("folder picker", deadlineMs);
+		}
+		return this.#showing.options;
 	}
 
 	/** Chooses `path`, as a user picking it and pressing Open does. */

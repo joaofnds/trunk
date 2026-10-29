@@ -103,27 +103,46 @@ describe("findByRole", () => {
 
 			expect(() => findByRole("button", "OK")).toThrow(AmbiguousControl);
 		});
+	});
 
-		it("picks the one inside the landmark it is scoped to", () => {
+	describe("when scoped to a landmark", () => {
+		it("picks the one control inside it among two the page shows", () => {
 			document.body.innerHTML =
 				'<aside><button id="row">feature</button></aside><div role="listbox"><button>feature</button></div>';
 
-			expect(findByRole("button", "feature", "complementary")?.id).toBe("row");
+			const found = findByRole("button", "feature", {
+				within: "complementary",
+			});
+
+			expect(found?.id).toBe("row");
 		});
 
-		it("refuses a scope whose landmark shows more than once", () => {
+		it("refuses a landmark that shows more than once", () => {
 			document.body.innerHTML =
 				"<nav><button>feature</button></nav><nav><button>main</button></nav>";
 
-			expect(() => findByRole("button", "feature", "navigation")).toThrow(
-				new AmbiguousControl("2 shown navigations to look within"),
-			);
+			expect(() =>
+				findByRole("button", "feature", { within: "navigation" }),
+			).toThrow(new AmbiguousControl("2 shown navigations to look within"));
 		});
 
-		it("finds nothing inside a landmark that is not showing", () => {
+		it("looks only inside the one that shows, past a hidden one", () => {
+			document.body.innerHTML =
+				'<aside hidden><button>feature</button></aside><aside><button id="row">feature</button></aside>';
+
+			const found = findByRole("button", "feature", {
+				within: "complementary",
+			});
+
+			expect(found?.id).toBe("row");
+		});
+
+		it("finds nothing while the landmark is absent", () => {
 			document.body.innerHTML = "<button>feature</button>";
 
-			expect(findByRole("button", "feature", "complementary")).toBeNull();
+			expect(
+				findByRole("button", "feature", { within: "complementary" }),
+			).toBeNull();
 		});
 	});
 

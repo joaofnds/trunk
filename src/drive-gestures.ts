@@ -129,6 +129,13 @@ function shownWithRole(role: string, root: Element = document.body): Element[] {
 	);
 }
 
+/** Where a control is looked for. A name the page shows twice is told apart by
+ *  `within`, the role of the one landmark to look inside, as `complementary`
+ *  for the branch sidebar. */
+export interface Scope {
+	readonly within?: string;
+}
+
 /** The one shown element with the landmark role `within`, or null while there
  *  is none. */
 function landmark(within: string): Element | null {
@@ -138,18 +145,16 @@ function landmark(within: string): Element | null {
 			`${landmarks.length} shown ${within}s to look within`,
 		);
 	}
+
 	return landmarks[0] ?? null;
 }
 
-/**
- * The one shown control with `role` named `name`, or null while there is none.
- * A name the page shows twice is told apart by `within`, the role of the one
- * landmark to look inside, as `complementary` for the branch sidebar.
- */
+/** The one shown control with `role` named `name`, or null while there is
+ *  none. */
 export function findByRole(
 	role: string,
 	name: string,
-	within?: string,
+	{ within }: Scope = {},
 ): HTMLElement | null {
 	const root = within ? landmark(within) : document.body;
 	if (!root) return null;
@@ -227,13 +232,13 @@ export function control(
 	role: string,
 	name: string,
 	deadlineMs: number,
-	within?: string,
+	scope: Scope = {},
 ): Promise<HTMLElement> {
-	const where = within ? ` within the ${within}` : "";
+	const where = scope.within ? ` within the ${scope.within}` : "";
 	return waitFor(
 		`an enabled ${role} named "${name}"${where}`,
 		() => {
-			const found = findByRole(role, name, within);
+			const found = findByRole(role, name, scope);
 			return found && isEnabled(found) ? found : null;
 		},
 		deadlineMs,

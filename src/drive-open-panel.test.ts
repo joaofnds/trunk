@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenPanel } from "./drive-open-panel.js";
 
 describe("OpenPanel", () => {
@@ -29,16 +29,51 @@ describe("OpenPanel", () => {
 		await expect(chosen).resolves.toBeNull();
 	});
 
-	it("shows the agent the options the app opened it with until it is answered", () => {
+	it("shows the agent the options the app opened it with", () => {
 		const panel = new OpenPanel();
+
 		void panel.ask({ directory: true, title: "Open Repository" });
 
 		expect(panel.showing()).toEqual({
 			directory: true,
 			title: "Open Repository",
 		});
-		panel.answer("/tmp/other-repo");
+	});
+
+	it.each([
+		["answered", (panel: OpenPanel) => panel.answer("/tmp/other-repo")],
+		["dismissed", (panel: OpenPanel) => panel.dismiss()],
+	])("closes once %s", (_how, close) => {
+		const panel = new OpenPanel();
+		void panel.ask({ directory: true });
+
+		close(panel);
+
 		expect(panel.showing()).toBeNull();
+	});
+
+	describe("next", () => {
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("gives a wait the options of the picker the app opens after it began", async () => {
+			const panel = new OpenPanel();
+			const next = panel.next(1_000);
+
+			void panel.ask({ directory: true, multiple: false });
+
+			await expect(next).resolves.toEqual({ directory: true, multiple: false });
+		});
+
+		it("names the picker it waited for once the deadline passes", async () => {
+			vi.useFakeTimers();
+			const next = new OpenPanel().next(1_000);
+
+			vi.advanceTimersByTime(1_000);
+
+			await expect(next).rejects.toThrow("no folder picker showed in 1000ms");
+		});
 	});
 
 	describe("when no picker is showing", () => {
@@ -56,7 +91,7 @@ describe("OpenPanel", () => {
 	});
 
 	describe("when a picker is already showing", () => {
-		it("refuses a second one, as a window holds one sheet at a time", async () => {
+		it("refuses a second one, as the app-modal panel lets no second Open through", async () => {
 			const panel = new OpenPanel();
 			void panel.ask({ directory: true });
 

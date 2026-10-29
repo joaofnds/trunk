@@ -3,6 +3,8 @@
  * it, read as a tree and chosen from by the labels a user reads on it.
  */
 
+import { Signal } from "./drive-signal.js";
+
 /** One item of a recorded menu, as it read when the app popped the menu up. */
 export interface RecordedItem {
 	readonly id: string;
@@ -14,9 +16,9 @@ export interface RecordedItem {
 
 /** What the agent is shown of one item. */
 export interface ShownItem {
-	label: string;
-	enabled: boolean;
-	submenu?: ShownItem[];
+	readonly label: string;
+	readonly enabled: boolean;
+	readonly submenu?: readonly ShownItem[];
 }
 
 export function shownAs(menu: readonly RecordedItem[]): ShownItem[] {
@@ -60,4 +62,38 @@ export function itemAt(
 		throw new Error(`"${label}" has no submenu to find "${rest[0]}" in`);
 
 	return itemAt(item.submenu, rest, label);
+}
+
+/**
+ * The menu the app popped up, held until a press reaches the page, as a real
+ * menu closes on one.
+ */
+export class ShowingMenu {
+	#items: readonly RecordedItem[] | null = null;
+	#closes = 0;
+	#recorded = new Signal();
+
+	/** Holds the menu `read` gives, unless a press closed it while it was
+	 *  being read. */
+	async record(read: () => Promise<readonly RecordedItem[]>): Promise<void> {
+		const closes = this.#closes;
+		const items = await read();
+		if (this.#closes !== closes) return;
+
+		this.#items = items;
+		this.#recorded.release();
+	}
+
+	close(): void {
+		this.#closes += 1;
+		this.#items = null;
+	}
+
+	/** The menu showing, or the next one recorded within `deadlineMs`. */
+	async next(deadlineMs: number): Promise<readonly RecordedItem[]> {
+		while (!this.#items) {
+			await this.#recorded.next("context menu", deadlineMs);
+		}
+		return this.#items;
+	}
 }
