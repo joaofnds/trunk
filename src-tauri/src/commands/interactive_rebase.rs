@@ -11,9 +11,31 @@ use trunk_git::error::TrunkError;
 #[serde(rename_all = "camelCase")]
 pub struct RebaseTodoAction {
     pub oid: String,
-    pub action: String, // "pick", "squash", "reword", "drop"
+    pub action: RebaseAction,
     pub summary: String,
     pub new_message: Option<String>,
+}
+
+/// The todo commands the editor offers. Anything else, `exec` above all, is refused when
+/// the request is parsed, because git runs whatever command the todo names.
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RebaseAction {
+    Pick,
+    Reword,
+    Squash,
+    Drop,
+}
+
+impl RebaseAction {
+    const fn keyword(self) -> &'static str {
+        match self {
+            Self::Pick => "pick",
+            Self::Reword => "reword",
+            Self::Squash => "squash",
+            Self::Drop => "drop",
+        }
+    }
 }
 
 /// The listing and the base it was built from, so a rebase started from this listing
@@ -56,8 +78,9 @@ pub fn get_rebase_todo_inner(
         Some(base)
     };
 
-    let mut items: Vec<RebaseTodoItem> = rebase_range(&repo, resolved_base)?
+    let items: Vec<RebaseTodoItem> = replayable_range(&repo, resolved_base)?
         .iter()
+        .rev()
         .map(|commit| {
             let oid_str = commit.id().to_string();
             RebaseTodoItem {
@@ -70,8 +93,6 @@ pub fn get_rebase_todo_inner(
         })
         .collect();
 
-    items.reverse();
-
     Ok(RebaseTodo {
         base_oid: resolved_base.map(|oid| oid.to_string()),
         items,
@@ -83,7 +104,7 @@ pub fn get_rebase_todo_inner(
 ///
 /// A todo of picks cannot replay a merge, so a range holding one is refused with
 /// `rebase_has_merge`, naming the oldest merge and counting the others.
-fn rebase_range(
+fn replayable_range(
     repo: &git2::Repository,
     base: Option<git2::Oid>,
 ) -> Result<Vec<git2::Commit<'_>>, TrunkError> {
@@ -173,7 +194,8 @@ pub enum RebaseStartResult {
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `rebase_has_merge` when the
+/// Returns `not_open` when `path` names no open repository, `invalid_oid` when `base_oid`
+/// will not parse, the git error when the range walk fails, `rebase_has_merge` when the
 /// range holds a merge commit, `rebase_todo_stale` when the todo does not list the range,
 /// `io_error` when the todo file will not write, and `rebase_error` carrying git's own
 /// message when `git` will not run or the rebase fails.
@@ -196,7 +218,7 @@ pub fn start_interactive_rebase_blocking(
     let todo_path = session_dir.join("trunk-rebase-todo");
     let todo_content: String = todo_items
         .iter()
-        .map(|item| format!("{} {} {}", item.action, item.oid, item.summary))
+        .map(|item| format!("{} {}", item.action.keyword(), item.oid))
         .collect::<Vec<_>>()
         .join("\n")
         + "\n";
@@ -287,8 +309,8 @@ pub fn start_interactive_rebase_blocking(
     Ok((source, outcome))
 }
 
-/// Refuses a todo that is not the rebase range: every commit in it exactly once, drops
-/// included, and nothing else. Git replays whatever the todo names, so a commit that
+/// Refuses a range holding a merge, and a todo that is not the rebase range: every commit
+/// in it exactly once, drops included, and nothing else. Git replays whatever the todo names, so a commit that
 /// landed after the listing was built would be dropped without a word, and a commit
 /// named twice or from outside the range would stop the rebase partway.
 fn ensure_todo_lists_the_range(
@@ -300,7 +322,7 @@ fn ensure_todo_lists_the_range(
         .map(git2::Oid::from_str)
         .transpose()
         .map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
-    let range: HashSet<String> = rebase_range(repo, base)?
+    let range: HashSet<String> = replayable_range(repo, base)?
         .iter()
         .map(|commit| commit.id().to_string())
         .collect();
@@ -336,8 +358,8 @@ fn message_bindings(todo_items: &[RebaseTodoAction]) -> Vec<(String, String)> {
     let mut run_last_oid: Option<String> = None;
     let mut run_message: Option<String> = None;
 
-    for item in todo_items.iter().filter(|i| i.action != "drop") {
-        if item.action == "squash" {
+    for item in todo_items.iter().filter(|i| i.action != RebaseAction::Drop) {
+        if item.action == RebaseAction::Squash {
             run_last_oid = Some(item.oid.clone());
             if let Some(new_msg) = item.new_message.clone() {
                 run_message = Some(new_msg);
@@ -349,7 +371,7 @@ fn message_bindings(todo_items: &[RebaseTodoAction]) -> Vec<(String, String)> {
             bindings.push((oid, message));
         }
 
-        if item.action == "reword"
+        if item.action == RebaseAction::Reword
             && let Some(new_msg) = item.new_message.clone()
         {
             bindings.push((item.oid.clone(), new_msg));
@@ -470,10 +492,10 @@ pub async fn start_interactive_rebase<R: Runtime>(
 mod tests {
     use super::*;
 
-    fn item(oid: &str, action: &str, new_message: Option<&str>) -> RebaseTodoAction {
+    fn item(oid: &str, action: RebaseAction, new_message: Option<&str>) -> RebaseTodoAction {
         RebaseTodoAction {
             oid: oid.to_string(),
-            action: action.to_string(),
+            action,
             summary: "summary".to_string(),
             new_message: new_message.map(str::to_string),
         }
@@ -482,8 +504,8 @@ mod tests {
     #[test]
     fn a_reword_binds_its_message_to_its_own_commit() {
         let bindings = message_bindings(&[
-            item("aaa", "pick", None),
-            item("bbb", "reword", Some("New title")),
+            item("aaa", RebaseAction::Pick, None),
+            item("bbb", RebaseAction::Reword, Some("New title")),
         ]);
 
         assert_eq!(bindings, vec![("bbb".to_string(), "New title".to_string())]);
@@ -493,9 +515,9 @@ mod tests {
     fn a_squash_run_binds_one_message_to_the_commit_git_opens_the_editor_for() {
         // Git opens the editor once for the whole run, at its last item.
         let bindings = message_bindings(&[
-            item("aaa", "pick", None),
-            item("bbb", "squash", Some("Combined A")),
-            item("ccc", "squash", Some("Combined B")),
+            item("aaa", RebaseAction::Pick, None),
+            item("bbb", RebaseAction::Squash, Some("Combined A")),
+            item("ccc", RebaseAction::Squash, Some("Combined B")),
         ]);
 
         assert_eq!(
@@ -507,9 +529,9 @@ mod tests {
     #[test]
     fn a_squash_run_keeps_the_last_edited_message_even_when_later_squashes_have_none() {
         let bindings = message_bindings(&[
-            item("aaa", "pick", None),
-            item("bbb", "squash", Some("Combined A")),
-            item("ccc", "squash", None),
+            item("aaa", RebaseAction::Pick, None),
+            item("bbb", RebaseAction::Squash, Some("Combined A")),
+            item("ccc", RebaseAction::Squash, None),
         ]);
 
         assert_eq!(
@@ -520,7 +542,10 @@ mod tests {
 
     #[test]
     fn an_unedited_squash_run_binds_nothing_and_keeps_gits_default() {
-        let bindings = message_bindings(&[item("aaa", "pick", None), item("bbb", "squash", None)]);
+        let bindings = message_bindings(&[
+            item("aaa", RebaseAction::Pick, None),
+            item("bbb", RebaseAction::Squash, None),
+        ]);
 
         assert!(bindings.is_empty(), "got {bindings:?}");
     }
@@ -528,8 +553,8 @@ mod tests {
     #[test]
     fn a_reword_heading_a_run_keeps_its_message_for_its_own_invocation() {
         let bindings = message_bindings(&[
-            item("aaa", "reword", Some("Reworded head")),
-            item("bbb", "squash", None),
+            item("aaa", RebaseAction::Reword, Some("Reworded head")),
+            item("bbb", RebaseAction::Squash, None),
         ]);
 
         assert_eq!(
@@ -542,9 +567,9 @@ mod tests {
     #[test]
     fn a_squash_without_a_message_cannot_take_a_later_rewords_message() {
         let bindings = message_bindings(&[
-            item("aaa", "pick", None),
-            item("bbb", "squash", None),
-            item("ccc", "reword", Some("New title")),
+            item("aaa", RebaseAction::Pick, None),
+            item("bbb", RebaseAction::Squash, None),
+            item("ccc", RebaseAction::Reword, Some("New title")),
         ]);
 
         assert_eq!(bindings, vec![("ccc".to_string(), "New title".to_string())]);
@@ -553,9 +578,9 @@ mod tests {
     #[test]
     fn dropped_items_bind_nothing() {
         let bindings = message_bindings(&[
-            item("aaa", "pick", None),
-            item("bbb", "drop", Some("Never applied")),
-            item("ccc", "reword", Some("New title")),
+            item("aaa", RebaseAction::Pick, None),
+            item("bbb", RebaseAction::Drop, Some("Never applied")),
+            item("ccc", RebaseAction::Reword, Some("New title")),
         ]);
 
         assert_eq!(bindings, vec![("ccc".to_string(), "New title".to_string())]);

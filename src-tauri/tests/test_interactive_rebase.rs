@@ -1,7 +1,7 @@
 mod common;
 
 use common::context::TestContext;
-use trunk_lib::commands::interactive_rebase::{RebaseStartResult, RebaseTodoAction};
+use trunk_lib::commands::interactive_rebase::{RebaseAction, RebaseStartResult, RebaseTodoAction};
 
 /// Helper to create a repo with 3 linear commits and return the OIDs.
 fn make_three_commit_ctx() -> (TestContext, Vec<git2::Oid>) {
@@ -69,10 +69,10 @@ fn full_message_of_head(ctx: &TestContext) -> String {
     head.message().unwrap_or("").to_string()
 }
 
-fn todo(oid: git2::Oid, action: &str, new_message: Option<&str>) -> RebaseTodoAction {
+fn todo(oid: git2::Oid, action: RebaseAction, new_message: Option<&str>) -> RebaseTodoAction {
     RebaseTodoAction {
         oid: oid.to_string(),
-        action: action.to_string(),
+        action,
         summary: "todo summary".to_string(),
         new_message: new_message.map(str::to_string),
     }
@@ -104,10 +104,10 @@ fn a_squash_without_a_message_does_not_steal_the_next_rewords_message() {
     ctx.start_interactive_rebase(
         Some(&oids[0].to_string()),
         &[
-            todo(oids[1], "pick", None),
-            todo(oids[2], "squash", None),
-            todo(oids[3], "reword", Some("Reworded fourth")),
-            todo(oids[4], "pick", None),
+            todo(oids[1], RebaseAction::Pick, None),
+            todo(oids[2], RebaseAction::Squash, None),
+            todo(oids[3], RebaseAction::Reword, Some("Reworded fourth")),
+            todo(oids[4], RebaseAction::Pick, None),
         ],
     )
     .expect("rebase should complete");
@@ -130,10 +130,10 @@ fn a_squash_run_does_not_leave_a_message_behind_for_a_later_reword() {
     ctx.start_interactive_rebase(
         Some(&oids[0].to_string()),
         &[
-            todo(oids[1], "pick", None),
-            todo(oids[2], "squash", Some("Combined A")),
-            todo(oids[3], "squash", Some("Combined B")),
-            todo(oids[4], "reword", Some("Reworded fifth")),
+            todo(oids[1], RebaseAction::Pick, None),
+            todo(oids[2], RebaseAction::Squash, Some("Combined A")),
+            todo(oids[3], RebaseAction::Squash, Some("Combined B")),
+            todo(oids[4], RebaseAction::Reword, Some("Reworded fifth")),
         ],
     )
     .expect("rebase should complete");
@@ -169,9 +169,13 @@ fn a_message_survives_a_conflict_and_lands_when_the_rebase_continues() {
     ctx.start_interactive_rebase(
         Some(&oids[0].to_string()),
         &[
-            todo(oids[1], "drop", None),
-            todo(oids[2], "pick", None),
-            todo(oids[3], "reword", Some("Reworded after the conflict")),
+            todo(oids[1], RebaseAction::Drop, None),
+            todo(oids[2], RebaseAction::Pick, None),
+            todo(
+                oids[3],
+                RebaseAction::Reword,
+                Some("Reworded after the conflict"),
+            ),
         ],
     )
     .expect("a conflicted rebase reports the pause, not an error");
@@ -217,9 +221,9 @@ fn a_skipped_commit_does_not_hand_its_message_to_another_commit() {
     ctx.start_interactive_rebase(
         Some(&oids[0].to_string()),
         &[
-            todo(oids[1], "pick", None),
-            todo(oids[2], "drop", None),
-            todo(oids[3], "reword", Some("Reworded fourth")),
+            todo(oids[1], RebaseAction::Pick, None),
+            todo(oids[2], RebaseAction::Drop, None),
+            todo(oids[3], RebaseAction::Reword, Some("Reworded fourth")),
         ],
     )
     .expect("an empty pick reports the pause, not an error");
@@ -244,10 +248,10 @@ fn a_squash_with_no_message_anywhere_keeps_gits_combined_default() {
     ctx.start_interactive_rebase(
         Some(&oids[0].to_string()),
         &[
-            todo(oids[1], "pick", None),
-            todo(oids[2], "squash", None),
-            todo(oids[3], "drop", None),
-            todo(oids[4], "drop", None),
+            todo(oids[1], RebaseAction::Pick, None),
+            todo(oids[2], RebaseAction::Squash, None),
+            todo(oids[3], RebaseAction::Drop, None),
+            todo(oids[4], RebaseAction::Drop, None),
         ],
     )
     .expect("rebase should complete");
@@ -409,9 +413,9 @@ fn an_inclusive_rebase_applies_a_reordered_base_commit() {
     ctx.start_interactive_rebase(
         listing.base_oid.as_deref(),
         &[
-            todo(oids[2], "pick", None),
-            todo(oids[3], "pick", None),
-            todo(oids[1], "pick", None),
+            todo(oids[2], RebaseAction::Pick, None),
+            todo(oids[3], RebaseAction::Pick, None),
+            todo(oids[1], RebaseAction::Pick, None),
         ],
     )
     .expect("the reordered list should apply");
@@ -432,9 +436,9 @@ fn an_inclusive_rebase_with_no_edits_leaves_history_untouched() {
     ctx.start_interactive_rebase(
         listing.base_oid.as_deref(),
         &[
-            todo(oids[1], "pick", None),
-            todo(oids[2], "pick", None),
-            todo(oids[3], "pick", None),
+            todo(oids[1], RebaseAction::Pick, None),
+            todo(oids[2], RebaseAction::Pick, None),
+            todo(oids[3], RebaseAction::Pick, None),
         ],
     )
     .expect("an unedited list should apply");
@@ -454,10 +458,10 @@ fn an_inclusive_rebase_from_the_root_reorders_the_root_commit() {
     ctx.start_interactive_rebase(
         listing.base_oid.as_deref(),
         &[
-            todo(oids[1], "pick", None),
-            todo(oids[0], "pick", None),
-            todo(oids[2], "pick", None),
-            todo(oids[3], "pick", None),
+            todo(oids[1], RebaseAction::Pick, None),
+            todo(oids[0], RebaseAction::Pick, None),
+            todo(oids[2], RebaseAction::Pick, None),
+            todo(oids[3], RebaseAction::Pick, None),
         ],
     )
     .expect("a rebase from the root should apply");
@@ -486,7 +490,10 @@ fn a_rebase_that_stops_reports_the_stop_not_a_completion() {
     let (_, outcome) = ctx
         .start_interactive_rebase(
             Some(&oids[0].to_string()),
-            &[todo(oids[1], "drop", None), todo(oids[2], "pick", None)],
+            &[
+                todo(oids[1], RebaseAction::Drop, None),
+                todo(oids[2], RebaseAction::Pick, None),
+            ],
         )
         .expect("a stopped rebase reports the pause, not an error");
 
@@ -500,19 +507,17 @@ fn a_rebase_that_stops_reports_the_stop_not_a_completion() {
 #[test]
 fn an_unknown_base_is_refused_before_anything_moves() {
     let (ctx, oids) = four_commit_ctx();
+    let head_before = head_of_main(&ctx);
 
     let err = ctx
         .start_interactive_rebase(
             Some(&git2::Oid::ZERO_SHA1.to_string()),
-            &[todo(oids[1], "pick", None)],
+            &[todo(oids[1], RebaseAction::Pick, None)],
         )
         .expect_err("an unknown base must not read as a completed rebase");
 
     assert_eq!(err.code, "git_not_found");
-    assert!(
-        !ctx.repo().path().join("rebase-merge").exists(),
-        "nothing should be left in progress"
-    );
+    assert_nothing_moved(&ctx, head_before);
 }
 
 /// A, B, then a side commit S merged back as M, then C on top.
@@ -565,6 +570,45 @@ fn a_todo_over_a_range_holding_a_merge_is_refused_naming_the_merge() {
             "Interactive rebase can't replay merge commits. {} Merge branch 'side' is a merge in this range.",
             short(merge)
         )
+    );
+}
+
+#[test]
+fn a_merge_below_the_base_lists_and_replays_the_commits_above_it() {
+    let ctx = merge_in_range_ctx();
+    let merge = oid_of(&ctx, "Merge branch 'side'");
+
+    let listing = ctx.get_rebase_todo(&merge.to_string(), false).unwrap();
+    let listed: Vec<&str> = listing
+        .items
+        .iter()
+        .map(|item| item.summary.as_str())
+        .collect();
+    assert_eq!(listed, ["C"]);
+
+    let (_, outcome) = ctx
+        .start_interactive_rebase(
+            listing.base_oid.as_deref(),
+            &[todo(
+                oid_of(&ctx, "C"),
+                RebaseAction::Reword,
+                Some("C reworded"),
+            )],
+        )
+        .unwrap();
+
+    assert_eq!(outcome, RebaseStartResult::Completed);
+    assert_eq!(full_message_of_head(&ctx).trim_end(), "C reworded");
+    assert_eq!(
+        ctx.repo()
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .parent_id(0)
+            .unwrap(),
+        merge,
+        "the merge below the base stays as it was"
     );
 }
 
@@ -667,9 +711,9 @@ fn a_start_over_a_range_holding_a_merge_is_refused_before_git_runs() {
         .start_interactive_rebase(
             Some(&oid_of(&ctx, "A").to_string()),
             &[
-                todo(oid_of(&ctx, "B"), "pick", None),
-                todo(oid_of(&ctx, "S"), "pick", None),
-                todo(oid_of(&ctx, "C"), "pick", None),
+                todo(oid_of(&ctx, "B"), RebaseAction::Pick, None),
+                todo(oid_of(&ctx, "S"), RebaseAction::Pick, None),
+                todo(oid_of(&ctx, "C"), RebaseAction::Pick, None),
             ],
         )
         .expect_err("a todo that leaves the merge out must not flatten the branch");
@@ -695,7 +739,7 @@ fn a_start_after_a_commit_landed_since_the_listing_is_refused() {
     let err = ctx
         .start_interactive_rebase(
             listing.base_oid.as_deref(),
-            &[todo(oid_of(&ctx, "B"), "pick", None)],
+            &[todo(oid_of(&ctx, "B"), RebaseAction::Pick, None)],
         )
         .expect_err("a todo that no longer lists the branch must not drop D");
 
@@ -717,9 +761,9 @@ fn a_start_listing_a_commit_twice_is_refused() {
         .start_interactive_rebase(
             Some(&oids[0].to_string()),
             &[
-                todo(oids[1], "pick", None),
-                todo(oids[1], "pick", None),
-                todo(oids[2], "pick", None),
+                todo(oids[1], RebaseAction::Pick, None),
+                todo(oids[1], RebaseAction::Pick, None),
+                todo(oids[2], RebaseAction::Pick, None),
             ],
         )
         .expect_err("a commit listed twice is not the range");
@@ -737,9 +781,9 @@ fn a_start_listing_a_commit_outside_the_range_is_refused() {
     let err = ctx
         .start_interactive_rebase(
             Some(&oids[1].to_string()),
-            &[todo(oids[1], "pick", None), todo(oids[2], "pick", None)],
+            &[todo(oids[1], RebaseAction::Pick, None)],
         )
-        .expect_err("the base itself is not in the range");
+        .expect_err("the base itself is not in the range, though the count matches");
 
     assert_eq!(err.code, "rebase_todo_stale");
     assert_nothing_moved(&ctx, head_before);
@@ -760,7 +804,10 @@ fn a_start_git_refuses_is_an_error_that_leaves_no_rebase() {
     let err = ctx
         .start_interactive_rebase(
             Some(&oids[0].to_string()),
-            &[todo(oids[1], "pick", None), todo(oids[2], "pick", None)],
+            &[
+                todo(oids[1], RebaseAction::Pick, None),
+                todo(oids[2], RebaseAction::Pick, None),
+            ],
         )
         .expect_err("git refuses to rebase a dirty tree without autostash");
 
@@ -780,13 +827,45 @@ fn a_dropped_commit_survives_git_checking_for_missing_commits() {
     ctx.start_interactive_rebase(
         Some(&oids[0].to_string()),
         &[
-            todo(oids[1], "drop", None),
-            todo(oids[2], "pick", None),
-            todo(oids[3], "pick", None),
+            todo(oids[1], RebaseAction::Drop, None),
+            todo(oids[2], RebaseAction::Pick, None),
+            todo(oids[3], RebaseAction::Pick, None),
         ],
     )
     .expect("a drop the user chose is not a commit missing by accident");
 
     assert_eq!(summaries_newest_first(&ctx), vec!["C4", "C3", "C1"]);
     assert!(!ctx.repo().path().join("rebase-merge").exists());
+}
+
+#[test]
+fn a_summary_cannot_add_a_line_to_the_todo_git_runs() {
+    let (ctx, oids) = four_commit_ctx();
+    let marker = ctx.repo().workdir().unwrap().join("ran");
+    let mut tampered = todo(oids[2], RebaseAction::Pick, None);
+    tampered.summary = format!("C3\n\nexec touch {}", marker.display());
+
+    ctx.start_interactive_rebase(
+        Some(&oids[0].to_string()),
+        &[
+            todo(oids[1], RebaseAction::Pick, None),
+            tampered,
+            todo(oids[3], RebaseAction::Pick, None),
+        ],
+    )
+    .expect("the rebase itself is fine");
+
+    assert!(
+        !marker.exists(),
+        "text after a commit's id must never become a command"
+    );
+}
+
+#[test]
+fn an_action_git_would_run_as_a_command_is_rejected_at_the_boundary() {
+    let parsed = serde_json::from_str::<RebaseTodoAction>(
+        r#"{"oid":"0000000000000000000000000000000000000000","action":"exec","summary":"","newMessage":null}"#,
+    );
+
+    assert!(parsed.is_err(), "got {parsed:?}");
 }
