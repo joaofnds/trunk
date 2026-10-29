@@ -279,7 +279,7 @@ fn evaluate<R: Runtime>(app: &AppHandle<R>, page: &Page, js: &str) -> Result<Val
 
     let reply = reply.recv_timeout(PAGE_DEADLINE).map_err(|_| {
         page.forget(id);
-        "the page did not answer".to_string()
+        format!("the page did not answer in {}s", PAGE_DEADLINE.as_secs())
     })?;
     if reply.ok {
         Ok(reply.value)

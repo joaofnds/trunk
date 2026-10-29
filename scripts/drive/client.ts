@@ -126,26 +126,32 @@ export function until(
 	expression: string,
 	deadlineMs: number,
 ): Promise<unknown> {
-	return evaluate(
-		instance,
-		`window.__trunkDrive.until(${JSON.stringify(expression)})`,
-		deadlineMs,
-	);
+	return callHook(instance, "until", [expression], deadlineMs);
 }
 
 /**
- * Calls one of the page's drive hooks (src/drive.ts), such as
- * `click("button", "Commit")`, which finds a control by its role and the name
- * a user reads on it and waits for it to be enabled.
+ * Calls one of the page's drive hooks (src/drive.ts) with string arguments. A
+ * failure names the call, because a wait that runs out usually reaches the
+ * caller as the server's bare timeout: WebKit throttles the timers of the
+ * hidden page, so the page's own deadline fires late.
  */
-export function callHook(
+export async function callHook(
 	instance: Instance,
-	hook: string,
+	hook: keyof Window["__trunkDrive"],
 	args: readonly string[],
 	deadlineMs: number,
 ): Promise<unknown> {
 	const call = args.map((arg) => JSON.stringify(arg)).join(", ");
-	return evaluate(instance, `window.__trunkDrive.${hook}(${call})`, deadlineMs);
+	try {
+		return await evaluate(
+			instance,
+			`window.__trunkDrive.${hook}(${call})`,
+			deadlineMs,
+		);
+	} catch (error) {
+		if (!(error instanceof DriveError)) throw error;
+		throw new DriveError(`${hook}(${call}): ${error.message}`);
+	}
 }
 
 /** Calls a Tauri command from the page, through the same IPC the UI uses. */

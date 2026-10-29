@@ -15,11 +15,11 @@ import { emit } from "@tauri-apps/api/event";
 import { CheckMenuItem, Menu, MenuItem } from "@tauri-apps/api/menu";
 import {
 	click,
-	findByRole,
-	isEnabled,
+	control,
 	namesOf,
 	pressKey,
 	typeInto,
+	waitFor,
 } from "./drive-gestures.js";
 
 const READY = "trunk-drive:ready";
@@ -66,65 +66,20 @@ async function run(id: number, expression: string): Promise<void> {
 }
 
 /**
- * How long a wait watches before it gives up, matching the server's wait for an
- * answer (PAGE_DEADLINE in src-tauri/src/drive/mod.rs), so no observer outlives
- * the request that started it.
+ * How long a wait watches before it gives up and lets go of its observer. A
+ * drive window is always hidden, and WebKit throttles a hidden page's timers
+ * (a 15s timer had not fired 25s later), so this often fires after the server
+ * has stopped waiting (PAGE_DEADLINE in src-tauri/src/drive/mod.rs, 25s). The
+ * client names the call that ran out (callHook in scripts/drive/client.ts).
  */
-const UNTIL_DEADLINE_MS = 25_000;
+const WAIT_DEADLINE_MS = 20_000;
 
-/** The first truthy value `read` returns, re-read after each DOM change. */
-function waitFor<T>(
-	awaited: string,
-	read: () => T | null | undefined | false,
-): Promise<T> {
-	return new Promise((resolve, reject) => {
-		const observer = new MutationObserver(check);
-		const timer = setTimeout(() => {
-			observer.disconnect();
-			reject(new Error(`waited ${UNTIL_DEADLINE_MS}ms for ${awaited}`));
-		}, UNTIL_DEADLINE_MS);
-		function check() {
-			let value: T | null | undefined | false;
-			try {
-				value = read();
-			} catch (error) {
-				observer.disconnect();
-				clearTimeout(timer);
-				reject(error);
-				return;
-			}
-			if (!value) return;
-
-			observer.disconnect();
-			clearTimeout(timer);
-			resolve(value);
-		}
-
-		observer.observe(document, {
-			subtree: true,
-			childList: true,
-			characterData: true,
-			attributes: true,
-		});
-		check();
-	});
-}
-
-/** The first truthy value `expression` takes. */
 function until(expression: string): Promise<unknown> {
-	return waitFor(expression, compile(expression));
-}
-
-/** The control a user would operate, once it shows and is enabled. */
-function control(role: string, name: string): Promise<HTMLElement> {
-	return waitFor(`an enabled ${role} named "${name}"`, () => {
-		const found = findByRole(role, name);
-		return found && isEnabled(found) ? found : null;
-	});
+	return waitFor(expression, compile(expression), WAIT_DEADLINE_MS);
 }
 
 async function clickControl(role: string, name: string): Promise<void> {
-	click(await control(role, name));
+	click(await control(role, name, WAIT_DEADLINE_MS));
 }
 
 async function typeIntoControl(
@@ -132,7 +87,7 @@ async function typeIntoControl(
 	name: string,
 	text: string,
 ): Promise<void> {
-	const field = await control(role, name);
+	const field = await control(role, name, WAIT_DEADLINE_MS);
 	if (
 		!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)
 	) {

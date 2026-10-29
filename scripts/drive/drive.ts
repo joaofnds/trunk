@@ -3,7 +3,8 @@
  * Drives a drive instance of Trunk, built by `just drive-build`, from a shell.
  * `launch` prints the instance's directory; every other
  * verb reads it from TRUNK_DRIVE_DIR. A control is named by its role and the
- * name a user reads on it (src/drive-gestures.ts), as `click button Commit`.
+ * name a user reads on it (src/drive-gestures.ts), as `click button Commit`;
+ * quote a name or text that holds spaces.
  *
  * Usage:
  *   bun scripts/drive/drive.ts launch <binary> <repository>
@@ -37,23 +38,32 @@ const DEADLINE_MS = 60_000;
 
 const [verb, ...rest] = process.argv.slice(2);
 
+/** A command line the verbs cannot read, reported apart from a failure inside
+ *  the instance. */
+class UsageError extends Error {}
+
 function instance() {
 	const dir = process.env.TRUNK_DRIVE_DIR;
 	if (!dir)
-		throw new Error("set TRUNK_DRIVE_DIR to the directory launch printed");
+		throw new UsageError("set TRUNK_DRIVE_DIR to the directory launch printed");
 	return instanceAt(dir);
 }
 
-/** Calls a page hook with every argument the verb takes. */
-function page(hook: string, ...args: (string | undefined)[]): Promise<unknown> {
-	const given = args.filter((arg) => arg !== undefined);
-	if (given.length < args.length) {
-		throw new Error(
-			`${hook} takes ${args.length} arguments, got ${given.length}`,
+/**
+ * Calls a page hook with exactly the `count` words the verb takes, so a name or
+ * text left unquoted is refused rather than cut at its first space.
+ */
+function hook(
+	name: keyof Window["__trunkDrive"],
+	count: number,
+): Promise<unknown> {
+	if (rest.length !== count) {
+		throw new UsageError(
+			`${verb} takes ${count} arguments and got ${rest.length}; quote a name or text that holds spaces`,
 		);
 	}
 
-	return callHook(instance(), hook, given, DEADLINE_MS);
+	return callHook(instance(), name, rest, DEADLINE_MS);
 }
 
 async function run(): Promise<unknown> {
@@ -86,13 +96,13 @@ async function run(): Promise<unknown> {
 				DEADLINE_MS,
 			);
 		case "click":
-			return page("click", rest[0], rest[1]);
+			return hook("click", 2);
 		case "type":
-			return page("type", rest[0], rest[1], rest[2]);
+			return hook("type", 3);
 		case "key":
-			return page("key", rest[0]);
+			return hook("key", 1);
 		case "list":
-			return page("list", rest[0]);
+			return hook("list", 1);
 		case "snapshot":
 			return request(
 				instance(),
@@ -108,28 +118,37 @@ async function run(): Promise<unknown> {
 				DEADLINE_MS,
 			);
 		case "menu":
-			return page("menu");
+			return hook("menu", 0);
 		case "choose":
-			return page("choose", rest.join(" "));
+			return callHook(instance(), "choose", [rest.join(" ")], DEADLINE_MS);
 		case "quit":
 			return request(instance(), { op: "quit" }, DEADLINE_MS);
 		default:
-			console.error(
+			throw new UsageError(
 				"usage: drive.ts launch|ping|rows|eval|until|invoke|click|type|key|list|snapshot|alert|press|menu|choose|quit",
 			);
-			process.exit(2);
 	}
 }
 
-const value = await run();
-console.log(
-	typeof value === "string"
-		? // Page text can hold a commit summary's escape bytes, which would drive the terminal.
-			Array.from(value, (c) => {
-				const code = c.charCodeAt(0);
-				const control =
-					(code < 0x20 && c !== "\n" && c !== "\t") || code === 0x7f;
-				return control ? `\\u${code.toString(16).padStart(4, "0")}` : c;
-			}).join("")
-		: JSON.stringify(value),
-);
+/** Page text can hold a commit summary's escape bytes, C0 and C1 alike, which
+ *  would drive the terminal. */
+function printable(text: string): string {
+	return Array.from(text, (c) => {
+		const code = c.charCodeAt(0);
+		const control =
+			(code < 0x20 && c !== "\n" && c !== "\t") ||
+			(code >= 0x7f && code <= 0x9f);
+		return control ? `\\u${code.toString(16).padStart(4, "0")}` : c;
+	}).join("");
+}
+
+try {
+	const value = await run();
+	console.log(
+		printable(typeof value === "string" ? value : JSON.stringify(value)),
+	);
+} catch (error) {
+	if (!(error instanceof UsageError)) throw error;
+	console.error(error.message);
+	process.exit(2);
+}
