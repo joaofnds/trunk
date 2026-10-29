@@ -108,13 +108,9 @@ async function run(): Promise<unknown> {
 				DEADLINE_MS,
 			);
 		case "menu":
-			return evaluate(instance(), "window.__trunkDrive.menu()", DEADLINE_MS);
+			return page("menu");
 		case "choose":
-			return evaluate(
-				instance(),
-				`window.__trunkDrive.choose(${JSON.stringify(rest.join(" "))})`,
-				DEADLINE_MS,
-			);
+			return page("choose", rest.join(" "));
 		case "quit":
 			return request(instance(), { op: "quit" }, DEADLINE_MS);
 		default:
