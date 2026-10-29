@@ -12,7 +12,6 @@ use trunk_git::error::TrunkError;
 pub struct RebaseTodoAction {
     pub oid: String,
     pub action: RebaseAction,
-    pub summary: String,
     pub new_message: Option<String>,
 }
 
@@ -310,9 +309,9 @@ pub fn start_interactive_rebase_blocking(
 }
 
 /// Refuses a range holding a merge, and a todo that is not the rebase range: every commit
-/// in it exactly once, drops included, and nothing else. Git replays whatever the todo names, so a commit that
-/// landed after the listing was built would be dropped without a word, and a commit
-/// named twice or from outside the range would stop the rebase partway.
+/// in it exactly once, drops included, and nothing else. Git replays whatever the todo
+/// names, so a commit that landed after the listing was built would be dropped without a
+/// word, and a commit named twice or from outside the range would stop the rebase partway.
 fn ensure_todo_lists_the_range(
     repo: &git2::Repository,
     base_oid: Option<&str>,
@@ -496,7 +495,6 @@ mod tests {
         RebaseTodoAction {
             oid: oid.to_string(),
             action,
-            summary: "summary".to_string(),
             new_message: new_message.map(str::to_string),
         }
     }

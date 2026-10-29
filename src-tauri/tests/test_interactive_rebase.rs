@@ -73,7 +73,6 @@ fn todo(oid: git2::Oid, action: RebaseAction, new_message: Option<&str>) -> Reba
     RebaseTodoAction {
         oid: oid.to_string(),
         action,
-        summary: "todo summary".to_string(),
         new_message: new_message.map(str::to_string),
     }
 }
@@ -838,12 +837,22 @@ fn a_dropped_commit_survives_git_checking_for_missing_commits() {
     assert!(!ctx.repo().path().join("rebase-merge").exists());
 }
 
+/// A todo row as the editor sends it over IPC.
+fn wire_row(oid: &str, action: &str, summary: &str) -> String {
+    serde_json::json!({ "oid": oid, "action": action, "summary": summary, "newMessage": null })
+        .to_string()
+}
+
 #[test]
 fn a_summary_cannot_add_a_line_to_the_todo_git_runs() {
     let (ctx, oids) = four_commit_ctx();
     let marker = ctx.repo().workdir().unwrap().join("ran");
-    let mut tampered = todo(oids[2], RebaseAction::Pick, None);
-    tampered.summary = format!("C3\n\nexec touch {}", marker.display());
+    let tampered: RebaseTodoAction = serde_json::from_str(&wire_row(
+        &oids[2].to_string(),
+        "pick",
+        "C3\n\nexec touch ran",
+    ))
+    .unwrap();
 
     ctx.start_interactive_rebase(
         Some(&oids[0].to_string()),
@@ -861,11 +870,33 @@ fn a_summary_cannot_add_a_line_to_the_todo_git_runs() {
     );
 }
 
+macro_rules! an_editor_action_parses {
+    ($($name:ident => $wire:literal, $action:expr;)*) => {
+        $(
+            #[test]
+            fn $name() {
+                let row = wire_row("0000000000000000000000000000000000000000", $wire, "");
+
+                let parsed: RebaseTodoAction = serde_json::from_str(&row).unwrap();
+
+                assert_eq!(parsed.action, $action);
+            }
+        )*
+    };
+}
+
+an_editor_action_parses! {
+    the_editors_pick_parses_as_pick => "pick", RebaseAction::Pick;
+    the_editors_reword_parses_as_reword => "reword", RebaseAction::Reword;
+    the_editors_squash_parses_as_squash => "squash", RebaseAction::Squash;
+    the_editors_drop_parses_as_drop => "drop", RebaseAction::Drop;
+}
+
 #[test]
 fn an_action_git_would_run_as_a_command_is_rejected_at_the_boundary() {
-    let parsed = serde_json::from_str::<RebaseTodoAction>(
-        r#"{"oid":"0000000000000000000000000000000000000000","action":"exec","summary":"","newMessage":null}"#,
-    );
+    let row = wire_row("0000000000000000000000000000000000000000", "exec", "");
+
+    let parsed = serde_json::from_str::<RebaseTodoAction>(&row);
 
     assert!(parsed.is_err(), "got {parsed:?}");
 }
