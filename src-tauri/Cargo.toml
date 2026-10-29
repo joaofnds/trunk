@@ -22,7 +22,7 @@ bench = false
 [features]
 test-util = []
 # The drive route an agent's commands reach the running app through
-# (src/drive.rs). Only `just drive-build` turns it on; it never ships.
+# (src/drive/). Only `just drive-build` turns it on, on macOS; it never ships.
 drive = [
   "dep:objc2-web-kit",
   "objc2-app-kit/NSAlert",

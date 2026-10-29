@@ -226,9 +226,10 @@ fix:
 svelte-check:
     bun run check
 
-# Clippy lints, with the drive route on so its feature-gated module is linted too
+# Clippy lints, with the drive route on so its feature-gated module is linted too.
+# The route reaches into AppKit, so it builds on macOS only and Linux lints without it.
 clippy:
-    cargo clippy --workspace --manifest-path {{manifest}} --all-targets --features trunk/drive -- -D warnings
+    cargo clippy --workspace --manifest-path {{manifest}} --all-targets {{ if os() == "macos" { "--features trunk/drive" } else { "" } }} -- -D warnings
 
 # Clippy the configuration that actually ships. `clippy` above passes
 # --all-targets, which pulls in the dev targets, and the app's dev-dependencies
