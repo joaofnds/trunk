@@ -8,6 +8,9 @@ with the shared layer section below. Warm on a settled tree the full gate is
 cores). If a run is minutes-slow with idle CPUs, the machine is the problem, not
 the checks — start with the target dir's file count below, then Gatekeeper.
 
+The doc also says how an agent checks the running app, in the drive route
+section, ahead of the screen-tools material that agents no longer use.
+
 ## One toolchain, pinned
 
 Three files name the rust version and all three must agree: `rust-toolchain.toml`
@@ -221,9 +224,10 @@ accumulated tree measured 525s against building it from empty in 46s.
 
 When a check needs the running app, an agent starts a drive instance of its own
 and drives it with commands from a shell. It needs no computer-use, Screen
-Recording or Accessibility grant, and nothing it does reaches the screen. It never
-uses the screen tools in the next section (João, 2026-10-28: "it shouldn't be
-trying to test it with computer use and screen tools").
+Recording or Accessibility grant, and the instance itself never takes the user's
+focus or input. It never uses the screen tools in the next section (João,
+2026-10-28: "it shouldn't be trying to test it with computer use and screen
+tools").
 
 ```bash
 mise exec -- just drive-build
@@ -236,47 +240,84 @@ compiles into `src-tauri/target/drive-build`, so the debug `trunk` that `just
 dev` and the review CLI use stays the plain dev build. The release build carries
 none of it, because every piece sits behind the feature or the Vite flag.
 
-A drive instance stays off the screen and out of the way of every other Trunk on
-the machine:
+A drive instance keeps clear of the user and of every other Trunk on the
+machine:
 
 - Its window is created hidden, unfocused and incognito (`tauri.drive.conf.json`,
-  held to the shipped window by `just dev-conf-parity`), and the app prohibits
-  its own activation before launch, so it never becomes the active application.
-- Single-instance is off, so João's running Trunk Dev does not swallow it, and
-  its product name and identifier are `Trunk Drive` and `com.joaofnds.trunk.drive`.
-- Its prefs and review store live in its own directory, which `launch` creates
-  under `$TMPDIR/trunk-drive-*` and passes as `TRUNK_DATA_DIR`. HOME is left
-  alone on purpose, so git runs with the user's identity, hooks and signing.
+  held to the shipped window by `just dev-conf-parity`), then ordered behind
+  every other window so a launch never covers the user's work. It is on screen
+  there, 1280 by 800, and shows wherever the user's own windows leave a gap.
+  The app prohibits its own activation before launch, so it never becomes the
+  active application.
+- Single-instance is off, because every drive instance shares one identifier
+  (`com.joaofnds.trunk.drive`, product name `Trunk Drive`) and the plugin would
+  hand a second agent's launch to the first agent's instance.
+- Its prefs and review store live in the `data` directory inside the instance
+  directory that `launch` creates under `$TMPDIR/trunk-drive-*`, passed as
+  `TRUNK_DATA_DIR`. HOME is left alone on purpose, so git runs with the user's
+  identity, hooks and signing.
 
-`bun scripts/drive/drive.ts` is the client. `launch` starts an instance on a
+Because git is the user's own, the instance can still raise a dialog through it:
+a commit in a repository that signs, with a passphrase-protected key, raises the
+pinentry dialog, and a fetch can raise a credential prompt. Drive a scratch
+repository, never the user's own, and set `commit.gpgsign false` in that
+repository's config, as the fixture corpus does. A `-c commit.gpgsign=false` on
+the seeding commands covers only those commands, not the commits the instance
+makes later.
+
+`scripts/drive/drive.ts` is the client. `launch` starts an instance on a
 repository and prints its directory, and every other verb reads that directory
 from `TRUNK_DRIVE_DIR`. The usage block at the top of `drive.ts` lists every
 verb. A control is named by its role and the name a user reads on it, and a name
-the page shows twice is told apart by its landmark with `--in`. This replays
-Delete on a branch that a linked worktree is rebasing:
+the page shows twice is told apart by its landmark with `--in`. Run from the
+repository root. A shell variable does not outlive an agent's tool call, so
+either run a block like the one below as one script or pass
+`TRUNK_DRIVE_DIR=<dir>` on every call, and always end with `quit`, since the
+instance is detached and outlives the shell that launched it.
+
+This replays Delete on a branch that a linked worktree is rebasing:
 
 ```bash
-export TRUNK_DRIVE_DIR=$(bun scripts/drive/drive.ts launch src-tauri/target/debug/trunk-drive "$REPO")
-bun scripts/drive/drive.ts until 'window.__trunkDrive.list("button").includes("Commit") || null'
-bun scripts/drive/drive.ts context button feature --in complementary
-bun scripts/drive/drive.ts menu            # the context menu's items and whether each is enabled
-bun scripts/drive/drive.ts choose Delete
-bun scripts/drive/drive.ts alert           # {"buttons":["OK"],"texts":["Cannot delete 'feature' while the worktree at … is rebasing it. …"]}
-bun scripts/drive/drive.ts press OK
-git -C "$REPO" branch --list               # feature is still there
-bun scripts/drive/drive.ts quit
-rm -rf "$TRUNK_DRIVE_DIR"
+drive() { mise exec -- bun scripts/drive/drive.ts "$@"; }
+REPO=$(mktemp -d)/repo WORKTREE=$(dirname "$REPO")/worktree
+git init --quiet --initial-branch=main "$REPO"
+git -C "$REPO" config commit.gpgsign false
+echo a > "$REPO/f"; git -C "$REPO" add f; git -C "$REPO" commit --quiet -m base
+git -C "$REPO" branch feature
+git -C "$REPO" worktree add --quiet "$WORKTREE" feature
+echo c > "$WORKTREE/g"; git -C "$WORKTREE" add g; git -C "$WORKTREE" commit --quiet -m "feature one"
+(cd "$WORKTREE" && GIT_SEQUENCE_EDITOR="echo break >" git rebase --quiet --interactive HEAD)
+
+export TRUNK_DRIVE_DIR=$(drive launch src-tauri/target/debug/trunk-drive "$REPO")
+drive until 'window.__trunkDrive.list("button").includes("Commit") || null'
+drive context button feature --in complementary
+drive menu         # the context menu's items and whether each is enabled
+drive choose Delete
+drive alert        # {"buttons":["OK"],"texts":["Cannot delete 'feature' while the worktree at … is rebasing it. …","Delete Branch"]}
+drive press OK
+git -C "$REPO" branch --list   # feature is still there
+drive quit
+rm -rf "$TRUNK_DRIVE_DIR" "$(dirname "$REPO")"
 ```
 
-`rows` prints the commit rows the graph shows, `click`, `type` and `key` act as a
-user would, `list <role>` reads the names of the controls a user can reach, and
-`snapshot <png>` writes the window as it is drawn. `eval`, `until` and `invoke`
-reach the page and the Rust commands directly. A verb that waits waits on a
-condition, never a fixed time, and a request with no answer in 60s fails naming
-the request.
+`rows` prints the commit rows the graph shows, `click` and `type` act on a
+control, `key` presses a key in the focused element, and `list <role>` reads the
+names of the controls shown, disabled ones included. `snapshot <png>` writes the
+page as the webview draws it, without the title bar or a sheet in front of it.
+`eval`, `until` and `invoke` reach the page and the Rust commands directly.
+`alert` waits for a dialog to begin and prints its texts and buttons, and
+`press` answers the dialog showing now without waiting, so call `alert` first.
+Every wait is on a condition, never a fixed time. A wait on the page fails
+within about 25s, a request to the native side within 10 to 20s, and the client
+gives up on any request after 60s.
 
 Five places where the drive instance differs from the app a user runs:
 
+- `click`, `type` and `key` send DOM events to the page, not keystrokes to the
+  app. `type` appends to the field's value, and a shortcut the native menu owns,
+  such as Cmd+F, undo or paste, never reaches the menu. `menu-bar Edit Find`
+  fires Find. Whether `menu-bar` can fire undo or paste is unverified, since
+  their actions go to the key window and a drive window never is one.
 - A context menu is recorded rather than shown, because a menu with no position
   opens under the real cursor and its tracking loop takes the user's input.
   `menu` reads it and `choose` fires an item by its label path, as `choose
@@ -285,13 +326,13 @@ Five places where the drive instance differs from the app a user runs:
 - The folder picker is answered by a stand-in on the page (`picker`, `pick
   <path>`, `dismiss-picker`), because the real panel draws above every app's
   windows.
-- `menu-bar Edit Find` fires a menu bar item through its own action without
-  drawing the menu. Items that act on the screen, such as Minimize, Zoom or
-  Hide, are refused.
-- Confirmation dialogs are the real sheets. `alert` waits up to 10s for one to
-  begin and prints its texts and buttons, and `press` answers it.
-- The page is hidden, so WebKit throttles its timers. A debounce or a toast
-  that waits on a timer runs late. A 15s timer had not fired after 25s.
+- `menu-bar` fires a menu bar item through its own action without drawing the
+  menu. Items that act on the screen, such as Minimize, Zoom or Hide, are
+  refused.
+- The page reports itself hidden, so WebKit throttles its timers. A debounce or
+  a toast that waits on a timer runs late. A 15s timer had not fired after 25s.
+
+Message dialogs are the real ones, shown as a sheet on the drive window.
 
 `just drive-smoke` runs two instances side by side and commits through one, and
 `just drive-native` runs the menu, dialog and picker paths. Both also check from
