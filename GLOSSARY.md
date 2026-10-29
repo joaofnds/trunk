@@ -509,10 +509,12 @@ HEAD when the rebase starts from the root. Interactive Rebase on a commit includ
 commit, so its parent is what the rebase replays onto. Interactive Rebase on a branch
 replays onto the fork point, which is not in the range. Trunk refuses a range holding a
 merge commit before the editor opens, naming the oldest merge, because a todo of picks
-cannot replay one. GitKraken also refuses, as its help states "No merge commits may exist
-on the source branch". Starting the rebase is refused unless the edited list names each
-commit of the range exactly once and nothing else, so a commit that landed after the
-editor opened is never silently dropped.
+cannot replay one, and refuses it again when the rebase starts, so leaving the merge's row
+out of the edited list does not get it through. GitKraken also refuses, as its help states
+"No merge commits may exist on the source branch"
+(https://help.gitkraken.com/gitkraken-client/interactive-rebase). Starting the rebase is
+refused unless the edited list names each commit of the range exactly once and nothing
+else, so a commit that landed after the editor opened is never silently dropped.
 
 ## Stashing (TRUNK-231, 2026-09-14)
 
