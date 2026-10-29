@@ -217,15 +217,92 @@ dir is fast because it is empty, not because it is private, and seeding one by
 cloning is worse than useless: `cp -c` is a per-inode operation, so cloning the
 accumulated tree measured 525s against building it from empty in 46s.
 
+## An agent checks the running app through the drive route
+
+When a check needs the running app, an agent starts a drive instance of its own
+and drives it with commands from a shell. It needs no computer-use, Screen
+Recording or Accessibility grant, and nothing it does reaches the screen. It never
+uses the screen tools in the next section (João, 2026-10-28: "it shouldn't be
+trying to test it with computer use and screen tools").
+
+```bash
+mise exec -- just drive-build
+```
+
+That builds the real app (the Tauri runtime, WKWebView, the Rust-built menu bar
+and the user's own git) with the `drive` cargo feature and a frontend built with
+`VITE_TRUNK_DRIVE=1`, and copies it to `src-tauri/target/debug/trunk-drive`. It
+compiles into `src-tauri/target/drive-build`, so the debug `trunk` that `just
+dev` and the review CLI use stays the plain dev build. The release build carries
+none of it, because every piece sits behind the feature or the Vite flag.
+
+A drive instance stays off the screen and out of the way of every other Trunk on
+the machine:
+
+- Its window is created hidden, unfocused and incognito (`tauri.drive.conf.json`,
+  held to the shipped window by `just dev-conf-parity`), and the app prohibits
+  its own activation before launch, so it never becomes the active application.
+- Single-instance is off, so João's running Trunk Dev does not swallow it, and
+  its product name and identifier are `Trunk Drive` and `com.joaofnds.trunk.drive`.
+- Its prefs and review store live in its own directory, which `launch` creates
+  under `$TMPDIR/trunk-drive-*` and passes as `TRUNK_DATA_DIR`. HOME is left
+  alone on purpose, so git runs with the user's identity, hooks and signing.
+
+`bun scripts/drive/drive.ts` is the client. `launch` starts an instance on a
+repository and prints its directory, and every other verb reads that directory
+from `TRUNK_DRIVE_DIR`. The usage block at the top of `drive.ts` lists every
+verb. A control is named by its role and the name a user reads on it, and a name
+the page shows twice is told apart by its landmark with `--in`. This replays
+Delete on a branch that a linked worktree is rebasing:
+
+```bash
+export TRUNK_DRIVE_DIR=$(bun scripts/drive/drive.ts launch src-tauri/target/debug/trunk-drive "$REPO")
+bun scripts/drive/drive.ts until 'window.__trunkDrive.list("button").includes("Commit") || null'
+bun scripts/drive/drive.ts context button feature --in complementary
+bun scripts/drive/drive.ts menu            # the context menu's items and whether each is enabled
+bun scripts/drive/drive.ts choose Delete
+bun scripts/drive/drive.ts alert           # {"buttons":["OK"],"texts":["Cannot delete 'feature' while the worktree at … is rebasing it. …"]}
+bun scripts/drive/drive.ts press OK
+git -C "$REPO" branch --list               # feature is still there
+bun scripts/drive/drive.ts quit
+rm -rf "$TRUNK_DRIVE_DIR"
+```
+
+`rows` prints the commit rows the graph shows, `click`, `type` and `key` act as a
+user would, `list <role>` reads the names of the controls a user can reach, and
+`snapshot <png>` writes the window as it is drawn. `eval`, `until` and `invoke`
+reach the page and the Rust commands directly. A verb that waits waits on a
+condition, never a fixed time, and a request with no answer in 60s fails naming
+the request.
+
+Five places where the drive instance differs from the app a user runs:
+
+- A context menu is recorded rather than shown, because a menu with no position
+  opens under the real cursor and its tracking loop takes the user's input.
+  `menu` reads it and `choose` fires an item by its label path, as `choose
+  "Reset..." Soft`. Any click or key press drops the recorded menu, as a real
+  menu closes.
+- The folder picker is answered by a stand-in on the page (`picker`, `pick
+  <path>`, `dismiss-picker`), because the real panel draws above every app's
+  windows.
+- `menu-bar Edit Find` fires a menu bar item through its own action without
+  drawing the menu. Items that act on the screen, such as Minimize, Zoom or
+  Hide, are refused.
+- Confirmation dialogs are the real sheets. `alert` waits up to 10s for one to
+  begin and prints its texts and buttons, and `press` answers it.
+- The page is hidden, so WebKit throttles its timers. A debounce or a toast
+  that waits on a timer runs late. A 15s timer had not fired after 25s.
+
+`just drive-smoke` runs two instances side by side and commits through one, and
+`just drive-native` runs the menu, dialog and picker paths. Both also check from
+a log of application activations that no instance became active. They launch
+apps, so `just check` does not run them. Run them after a change to the route.
+
 ## `just dev` cannot be driven by an agent's screen tools
 
-Agents no longer drive the app this way. João ruled it out on 2026-10-28: "it
-shouldn't be trying to test it with computer use and screen tools". TRUNK-408
-builds the replacement, a route that drives a dev instance through commands an
-agent issues. Until that card is Done, a check that only the running app can
-answer waits for that route or for João, and no agent takes screen control or
-asks for a computer-use grant. The rest of this section records how the screen
-tools behave, for João's own use and for the history of the cards that used them.
+Agents no longer drive the app this way, and use the drive route above instead.
+The rest of this section records how the screen tools behave, for João's own use
+and for the history of the cards that used them.
 
 `just dev` runs `target/debug/trunk` directly. A bare Mach-O executable has no
 `.app` around it, so macOS registers no bundle identity for it: LaunchServices
