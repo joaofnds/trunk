@@ -501,6 +501,16 @@ re-classify as `non_fast_forward`, so the error code alone cannot distinguish a 
 from a first-time divergence — the stderr can. Retrying the force push is a guaranteed no-op
 until the user integrates, so Trunk offers no force-push action on a lease refusal.
 
+## Interactive rebase (TRUNK-34, 2026-10-30)
+
+**Rebase range** — the commits an interactive rebase replays: every commit reachable from
+HEAD and not from the commit the rebase replays them onto. A click on a commit is
+inclusive, so that commit is in the range and its parent is what the rebase replays onto.
+Trunk refuses a range holding a merge commit before the editor opens, naming the oldest
+merge, because a todo of picks cannot replay one, as GitKraken refuses it. It refuses a
+Start whose todo does not list each commit of the range exactly once, because a commit that
+landed after the editor opened would otherwise be dropped.
+
 ## Stashing (TRUNK-231, 2026-09-14)
 
 **Staged changes** — what the index holds that HEAD does not. In Trunk this is the whole
@@ -561,7 +571,8 @@ residue is what makes "no manual QA for correctness" an honest claim rather than
 
 **The `_inner` seam is not the command.** Between an `_inner` function and the frontend sit
 the commit-cache write, `app.emit("repo-changed", …)`, the `.to_json()` error flattening and
-argument deserialization (see `src-tauri/src/commands/interactive_rebase.rs:341`). Neither
+argument deserialization (see the `start_interactive_rebase` command in
+`src-tauri/src/commands/interactive_rebase.rs`). Neither
 existing suite exercises that layer.
 
 **Compare** — the A→B diff view between any two commits picked in the graph (TRUNK-1).
