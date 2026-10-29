@@ -32,8 +32,29 @@ const classicStartup: Plugin = {
 	},
 };
 
+// The drive build answers the folder picker from the agent's commands, since
+// the native panel draws above every app's windows (src/drive-dialog.ts).
+const driveDialog = new URL("./src/drive-dialog.ts", import.meta.url).pathname;
+const driveOpenPanel: Plugin = {
+	name: "drive-open-panel",
+	apply: "build",
+	enforce: "pre",
+	resolveId(source, importer) {
+		if (source !== "@tauri-apps/plugin-dialog" || importer === driveDialog) {
+			return null;
+		}
+		return driveDialog;
+	},
+};
+const driveBuild = env.VITE_TRUNK_DRIVE === "1";
+
 export default defineConfig({
-	plugins: [svelte(), svelteTesting(), macOSBundle && classicStartup],
+	plugins: [
+		svelte(),
+		svelteTesting(),
+		macOSBundle && classicStartup,
+		driveBuild && driveOpenPanel,
+	],
 	build: macOSBundle
 		? {
 				cssCodeSplit: false,
