@@ -653,6 +653,7 @@ let lastVisibleColumn = $derived.by(() => {
 							></span>
 							<select
 								class="rebase-select"
+								aria-label="Action for {item.summary}"
 								bind:value={item.action}
 								onclick={(e) => e.stopPropagation()}
 								onchange={() => {

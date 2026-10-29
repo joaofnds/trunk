@@ -45,6 +45,15 @@ export class RebaseEditorDriver {
 		}
 	}
 
+	/** The accessible name of each row's action control, newest first. */
+	async actionNames(): Promise<string[]> {
+		const rows = await this.openRows();
+
+		return rows.map(
+			(row) => row.querySelector("select")?.getAttribute("aria-label") ?? "",
+		);
+	}
+
 	async setAction(row: number, action: string): Promise<void> {
 		const rows = await this.openRows();
 		const select = rows[row].querySelector<HTMLSelectElement>("select");

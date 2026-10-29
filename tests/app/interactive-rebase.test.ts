@@ -112,6 +112,17 @@ describe("an interactive rebase", () => {
 		expect(app.staging.banner()).toBeNull();
 	});
 
+	it("names each row's action control for its commit", async () => {
+		const app = await setup({ repo: FOUR_COMMITS });
+		await app.repo.open();
+		await app.repo.contextMenu("C2");
+		app.contextMenu.choose("Interactive Rebase...");
+
+		const names = await app.rebaseEditor.actionNames();
+
+		expect(names).toEqual(["Action for C4", "Action for C3", "Action for C2"]);
+	});
+
 	it("leaves every commit's hash alone when the plan is unchanged", async () => {
 		const app = await setup({ repo: FOUR_COMMITS });
 		await app.repo.open();
