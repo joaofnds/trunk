@@ -504,12 +504,15 @@ until the user integrates, so Trunk offers no force-push action on a lease refus
 ## Interactive rebase (TRUNK-34, 2026-10-30)
 
 **Rebase range** — the commits an interactive rebase replays: every commit reachable from
-HEAD and not from the commit the rebase replays them onto. A click on a commit is
-inclusive, so that commit is in the range and its parent is what the rebase replays onto.
-Trunk refuses a range holding a merge commit before the editor opens, naming the oldest
-merge, because a todo of picks cannot replay one, as GitKraken refuses it. It refuses a
-Start whose todo does not list each commit of the range exactly once, because a commit that
-landed after the editor opened would otherwise be dropped.
+HEAD and not from the commit the rebase replays them onto, or every commit reachable from
+HEAD when the rebase starts from the root. Interactive Rebase on a commit includes that
+commit, so its parent is what the rebase replays onto. Interactive Rebase on a branch
+replays onto the fork point, which is not in the range. Trunk refuses a range holding a
+merge commit before the editor opens, naming the oldest merge, because a todo of picks
+cannot replay one. GitKraken also refuses, as its help states "No merge commits may exist
+on the source branch". Starting the rebase is refused unless the edited list names each
+commit of the range exactly once and nothing else, so a commit that landed after the
+editor opened is never silently dropped.
 
 ## Stashing (TRUNK-231, 2026-09-14)
 
