@@ -31,7 +31,8 @@ pub struct RebaseTodo {
 /// # Errors
 ///
 /// Returns `not_open` when `path` names no open repository, `invalid_oid` when `base_oid`
-/// will not parse, and the git error when the walk fails.
+/// will not parse, `rebase_has_merge` when the range holds a merge commit, and the git
+/// error when the walk fails.
 pub fn get_rebase_todo_inner(
     path: &str,
     base_oid: &str,
@@ -43,52 +44,87 @@ pub fn get_rebase_todo_inner(
     let base =
         git2::Oid::from_str(base_oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
 
-    let mut revwalk = repo.revwalk().map_err(TrunkError::from)?;
-    revwalk
-        .set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)
-        .map_err(TrunkError::from)?;
-    revwalk.push_head().map_err(TrunkError::from)?;
-
     let resolved_base = if inclusive {
         let commit = repo.find_commit(base).map_err(TrunkError::from)?;
         if commit.parent_count() == 0 {
             None
         } else {
-            let parent = commit.parent_id(0).map_err(TrunkError::from)?;
-            revwalk.hide(parent).map_err(TrunkError::from)?;
-            Some(parent)
+            Some(commit.parent_id(0).map_err(TrunkError::from)?)
         }
     } else {
-        revwalk.hide(base).map_err(TrunkError::from)?;
         Some(base)
     };
 
-    let mut items: Vec<RebaseTodoItem> = Vec::new();
-    for oid_result in revwalk {
-        let oid = oid_result.map_err(TrunkError::from)?;
-        let commit = repo.find_commit(oid).map_err(TrunkError::from)?;
-        let oid_str = oid.to_string();
-        let short_oid = oid_str.chars().take(7).collect();
-        let summary = commit.summary().ok().flatten().unwrap_or("").to_owned();
-        let author_name = commit.author().name().unwrap_or("").to_owned();
-        let author_timestamp = commit.time().seconds();
+    let mut items: Vec<RebaseTodoItem> = rebase_range(&repo, resolved_base)?
+        .iter()
+        .map(|commit| {
+            let oid_str = commit.id().to_string();
+            RebaseTodoItem {
+                short_oid: oid_str.chars().take(7).collect(),
+                oid: oid_str,
+                summary: commit.summary().ok().flatten().unwrap_or("").to_owned(),
+                author_name: commit.author().name().unwrap_or("").to_owned(),
+                author_timestamp: commit.time().seconds(),
+            }
+        })
+        .collect();
 
-        items.push(RebaseTodoItem {
-            oid: oid_str,
-            short_oid,
-            summary,
-            author_name,
-            author_timestamp,
-        });
-    }
-
-    // Revwalk returns newest-first; rebase todo needs oldest-first
     items.reverse();
 
     Ok(RebaseTodo {
         base_oid: resolved_base.map(|oid| oid.to_string()),
         items,
     })
+}
+
+/// The rebase range, newest first: every commit reachable from HEAD and not from
+/// `base`, or every commit reachable from HEAD when `base` is `None`.
+///
+/// A todo of picks cannot replay a merge, so a range holding one is refused with
+/// `rebase_has_merge`, naming the oldest merge and counting the others.
+fn rebase_range(
+    repo: &git2::Repository,
+    base: Option<git2::Oid>,
+) -> Result<Vec<git2::Commit<'_>>, TrunkError> {
+    let mut revwalk = repo.revwalk()?;
+    revwalk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)?;
+    revwalk.push_head()?;
+    if let Some(base) = base {
+        revwalk.hide(base)?;
+    }
+
+    let mut commits = Vec::new();
+    let mut merges = Vec::new();
+    for oid in revwalk {
+        let commit = repo.find_commit(oid?)?;
+        if commit.parent_count() > 1 {
+            merges.push(commit.clone());
+        }
+        commits.push(commit);
+    }
+
+    match merges.split_last() {
+        Some((oldest, newer)) => Err(merge_refusal(oldest, newer.len())),
+        None => Ok(commits),
+    }
+}
+
+fn merge_refusal(merge: &git2::Commit<'_>, others: usize) -> TrunkError {
+    let oid = merge.id().to_string();
+    let summary = merge.summary().ok().flatten().unwrap_or("");
+    let more = if others > 0 {
+        format!(", and {others} more")
+    } else {
+        String::new()
+    };
+
+    TrunkError::new(
+        "rebase_has_merge",
+        format!(
+            "Interactive rebase can't replay merge commits. {} {summary} is a merge in this range{more}.",
+            &oid[..7]
+        ),
+    )
 }
 
 /// Where the current branch diverged from `branch`.

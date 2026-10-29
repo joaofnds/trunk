@@ -504,3 +504,110 @@ fn a_failure_that_leaves_no_rebase_in_progress_is_an_error() {
         "nothing should be left in progress"
     );
 }
+
+/// A, B, then a side commit S merged back as M, then C on top.
+fn merge_in_range_ctx() -> TestContext {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "a")
+        .with_commit("A")
+        .with_file("b.txt", "b")
+        .with_commit("B")
+        .with_branch("side")
+        .checkout("side")
+        .with_file("s.txt", "s")
+        .with_commit("S")
+        .checkout("main")
+        .merge("side")
+        .with_file("c.txt", "c")
+        .with_commit("C")
+        .build();
+    without_commit_signing(&ctx);
+    ctx
+}
+
+fn oid_of(ctx: &TestContext, summary: &str) -> git2::Oid {
+    let repo = ctx.repo();
+    let mut revwalk = repo.revwalk().unwrap();
+    revwalk.push_head().unwrap();
+    revwalk
+        .map(|r| r.unwrap())
+        .find(|oid| repo.find_commit(*oid).unwrap().summary().ok().flatten() == Some(summary))
+        .unwrap_or_else(|| panic!("no commit named {summary:?} reachable from HEAD"))
+}
+
+fn short(oid: git2::Oid) -> String {
+    oid.to_string()[..7].to_string()
+}
+
+#[test]
+fn a_todo_over_a_range_holding_a_merge_is_refused_naming_the_merge() {
+    let ctx = merge_in_range_ctx();
+    let merge = oid_of(&ctx, "Merge branch 'side'");
+
+    let err = ctx
+        .get_rebase_todo(&oid_of(&ctx, "A").to_string(), false)
+        .expect_err("a range holding a merge must not list");
+
+    assert_eq!(err.code, "rebase_has_merge");
+    assert_eq!(
+        err.message,
+        format!(
+            "Interactive rebase can't replay merge commits. {} Merge branch 'side' is a merge in this range.",
+            short(merge)
+        )
+    );
+}
+
+#[test]
+fn a_todo_over_several_merges_names_the_oldest_and_counts_the_rest() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "a")
+        .with_commit("A")
+        .with_file("b.txt", "b")
+        .with_commit("B")
+        .with_branch("side1")
+        .checkout("side1")
+        .with_file("s1.txt", "s1")
+        .with_commit("S1")
+        .checkout("main")
+        .merge("side1")
+        .with_branch("side2")
+        .checkout("side2")
+        .with_file("s2.txt", "s2")
+        .with_commit("S2")
+        .checkout("main")
+        .merge("side2")
+        .with_file("c.txt", "c")
+        .with_commit("C")
+        .build();
+    let oldest_merge = oid_of(&ctx, "Merge branch 'side1'");
+
+    let err = ctx
+        .get_rebase_todo(&oid_of(&ctx, "A").to_string(), false)
+        .expect_err("a range holding merges must not list");
+
+    assert_eq!(
+        err.message,
+        format!(
+            "Interactive rebase can't replay merge commits. {} Merge branch 'side1' is a merge in this range, and 1 more.",
+            short(oldest_merge)
+        )
+    );
+}
+
+#[test]
+fn an_inclusive_todo_from_the_merge_itself_is_refused() {
+    let ctx = merge_in_range_ctx();
+    let merge = oid_of(&ctx, "Merge branch 'side'");
+
+    let err = ctx
+        .get_rebase_todo(&merge.to_string(), true)
+        .expect_err("the clicked merge is in its own range");
+
+    assert_eq!(err.code, "rebase_has_merge");
+    assert!(
+        err.message.contains(&short(merge)),
+        "the refusal names the merge, got {:?}",
+        err.message
+    );
+}
