@@ -169,6 +169,7 @@ fn a_message_survives_a_conflict_and_lands_when_the_rebase_continues() {
     ctx.start_interactive_rebase(
         Some(&oids[0].to_string()),
         &[
+            todo(oids[1], "drop", None),
             todo(oids[2], "pick", None),
             todo(oids[3], "reword", Some("Reworded after the conflict")),
         ],
@@ -217,6 +218,7 @@ fn a_skipped_commit_does_not_hand_its_message_to_another_commit() {
         Some(&oids[0].to_string()),
         &[
             todo(oids[1], "pick", None),
+            todo(oids[2], "drop", None),
             todo(oids[3], "reword", Some("Reworded fourth")),
         ],
     )
@@ -241,7 +243,12 @@ fn a_squash_with_no_message_anywhere_keeps_gits_combined_default() {
 
     ctx.start_interactive_rebase(
         Some(&oids[0].to_string()),
-        &[todo(oids[1], "pick", None), todo(oids[2], "squash", None)],
+        &[
+            todo(oids[1], "pick", None),
+            todo(oids[2], "squash", None),
+            todo(oids[3], "drop", None),
+            todo(oids[4], "drop", None),
+        ],
     )
     .expect("rebase should complete");
 
@@ -477,7 +484,10 @@ fn a_rebase_that_stops_reports_the_stop_not_a_completion() {
     let oids = oids_oldest_first(&ctx);
 
     let (_, outcome) = ctx
-        .start_interactive_rebase(Some(&oids[0].to_string()), &[todo(oids[2], "pick", None)])
+        .start_interactive_rebase(
+            Some(&oids[0].to_string()),
+            &[todo(oids[1], "drop", None), todo(oids[2], "pick", None)],
+        )
         .expect("a stopped rebase reports the pause, not an error");
 
     assert_eq!(outcome, RebaseStartResult::Stopped);
