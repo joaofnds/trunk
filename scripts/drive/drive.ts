@@ -41,25 +41,24 @@ import {
 	request,
 	until,
 } from "./client.js";
+import {
+	type CommandLine,
+	hookArguments,
+	parse,
+	UsageError,
+} from "./command-line.js";
 
 const DEADLINE_MS = 60_000;
 
-/** The verbs that find their control by role and name, and so can be told
- *  which landmark to look within. */
-const SCOPED_VERBS = new Set(["click", "context", "type"]);
-
-const [verb, ...words] = process.argv.slice(2);
-const scoped = SCOPED_VERBS.has(verb) ? words.indexOf("--in") : -1;
-const within = scoped === -1 ? null : words[scoped + 1];
-const rest = scoped === -1 ? words : words.slice(0, scoped);
-if (within === undefined || (within !== null && words.length > scoped + 2)) {
-	console.error("--in takes one landmark role and ends the command line");
+let line: CommandLine;
+try {
+	line = parse(process.argv.slice(2));
+} catch (error) {
+	if (!(error instanceof UsageError)) throw error;
+	console.error(error.message);
 	process.exit(2);
 }
-
-/** A command line the verbs cannot read, reported apart from a failure inside
- *  the instance. */
-class UsageError extends Error {}
+const { verb, words: rest } = line;
 
 function instance() {
 	const dir = process.env.TRUNK_DRIVE_DIR;
@@ -68,26 +67,11 @@ function instance() {
 	return instanceAt(dir);
 }
 
-/**
- * Calls a page hook with exactly the `count` words the verb takes, so a name or
- * text left unquoted is refused rather than cut at its first space.
- */
 function hook(
 	name: keyof Window["__trunkDrive"],
 	count: number,
 ): Promise<unknown> {
-	if (rest.length !== count) {
-		throw new UsageError(
-			`${verb} takes ${count} arguments and got ${rest.length}; quote a name or text that holds spaces`,
-		);
-	}
-
-	return callHook(
-		instance(),
-		name,
-		within === null ? rest : [...rest, within],
-		DEADLINE_MS,
-	);
+	return callHook(instance(), name, hookArguments(line, count), DEADLINE_MS);
 }
 
 async function run(): Promise<unknown> {
@@ -155,6 +139,7 @@ async function run(): Promise<unknown> {
 			if (rest.length !== 1) {
 				throw new UsageError("pick takes 1 argument, the path to answer with");
 			}
+
 			return callHook(instance(), "pick", [resolve(rest[0])], DEADLINE_MS);
 		}
 		case "dismiss-picker":
