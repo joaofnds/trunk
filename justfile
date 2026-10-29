@@ -52,6 +52,15 @@ drive-smoke: drive-build
     swiftc -O scripts/drive/activations.swift -o "{{target}}/drive/activations"
     bun scripts/drive/smoke.ts "{{target}}/debug/trunk-drive" repos/graph-lanes/02-local-ahead-no-remote "{{target}}/drive/activations"
 
+# Drive one instance through the native paths, each on its own: Edit > Find from the app menu bar,
+# Delete from a branch's context menu answered by its dialog, and Open Repository answered with a
+# path, and check from an activation log that it never became the active application
+drive-native: drive-build
+    cargo run --quiet --manifest-path {{manifest}} -p trunk-fixtures -- build graph-lanes
+    mkdir -p "{{target}}/drive"
+    swiftc -O scripts/drive/activations.swift -o "{{target}}/drive/activations"
+    bun scripts/drive/native.ts "{{target}}/debug/trunk-drive" repos/graph-lanes/02-local-ahead-no-remote "{{target}}/drive/activations"
+
 # Dev server with performance instrumentation on (samples: /tmp/trunk-perf/samples.jsonl)
 perf:
     VITE_PERF=1 bun run tauri dev -c tauri.dev.conf.json

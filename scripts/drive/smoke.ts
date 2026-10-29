@@ -13,7 +13,6 @@
  * Usage: bun scripts/drive/smoke.ts <drive binary> <fixture repository> <activation logger>
  */
 
-import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
 	cpSync,
@@ -34,6 +33,7 @@ import {
 	request,
 	until,
 } from "./client.js";
+import { activationLog, check, gitLog } from "./scenario.js";
 
 const DEADLINE_MS = 60_000;
 const SUMMARY = "feat: commit typed through the drive route";
@@ -251,16 +251,6 @@ function changedBetween(
 	);
 }
 
-/** Every commit summary in the repository, newest first. */
-function gitLog(repo: string): string[] {
-	return execFileSync("git", ["log", "--all", "--format=%s"], {
-		cwd: repo,
-		encoding: "utf8",
-	})
-		.split("\n")
-		.filter(Boolean);
-}
-
 /** The sha256 of every file under the given directories, by path. */
 function fingerprint(...dirs: string[]): Map<string, string> {
 	const hashes = new Map<string, string>();
@@ -276,36 +266,4 @@ function fingerprint(...dirs: string[]): Map<string, string> {
 		}
 	}
 	return hashes;
-}
-
-/** Prints the outcome and marks the run failed when `passed` is false, without
- *  exiting, so the instances are still quit. */
-function check(passed: boolean, ok: string, failure: string): void {
-	if (passed) {
-		console.log(`ok: ${ok}`);
-		return;
-	}
-	console.error(failure);
-	process.exitCode = 1;
-}
-
-/** Starts the logger and resolves once it has printed its start line. */
-function activationLog(
-	path: string,
-): Promise<{ process: ChildProcess; lines: string[] }> {
-	return new Promise((resolve, reject) => {
-		const child = spawn(path, [], { stdio: ["ignore", "pipe", "inherit"] });
-		const lines: string[] = [];
-		let pending = "";
-		child.on("error", reject);
-		child.stdout.on("data", (chunk) => {
-			pending += chunk.toString("utf8");
-			const complete = pending.split("\n");
-			pending = complete.pop() ?? "";
-			lines.push(...complete);
-			if (lines.length === complete.length && lines.length > 0) {
-				resolve({ process: child, lines });
-			}
-		});
-	});
 }

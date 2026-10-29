@@ -4,7 +4,11 @@
  * `launch` prints the instance's directory; every other
  * verb reads it from TRUNK_DRIVE_DIR. A control is named by its role and the
  * name a user reads on it (src/drive-gestures.ts), as `click button Commit`;
- * quote a name or text that holds spaces.
+ * quote a name or text that holds spaces. A name the page shows twice is
+ * told apart by the landmark it sits in, as `--in complementary` for the
+ * branch sidebar. A menu item is named by its label
+ * and the label of each menu above it, one argument per level, as
+ * `choose "Reset..." Soft` or `menu-bar Edit Find`.
  *
  * Usage:
  *   bun scripts/drive/drive.ts launch <binary> <repository>
@@ -12,14 +16,18 @@
  *   bun scripts/drive/drive.ts eval <expression>
  *   bun scripts/drive/drive.ts until <expression>
  *   bun scripts/drive/drive.ts invoke <command> [<json arguments>]
- *   bun scripts/drive/drive.ts click <role> <name>
- *   bun scripts/drive/drive.ts type <role> <name> <text>
+ *   bun scripts/drive/drive.ts click <role> <name> [--in <landmark role>]
+ *   bun scripts/drive/drive.ts context <role> <name> [--in <landmark role>]
+ *   bun scripts/drive/drive.ts type <role> <name> <text> [--in <landmark role>]
  *   bun scripts/drive/drive.ts key <key, as Escape or Meta+Enter>
  *   bun scripts/drive/drive.ts list <role>
  *   bun scripts/drive/drive.ts snapshot <png path>
  *   bun scripts/drive/drive.ts press <button title>
  *   bun scripts/drive/drive.ts menu
- *   bun scripts/drive/drive.ts choose <menu item label>
+ *   bun scripts/drive/drive.ts choose <label> [<label of the item in its submenu>...]
+ *   bun scripts/drive/drive.ts menu-bar <menu title> <item title> [...]
+ *   bun scripts/drive/drive.ts picker | dismiss-picker
+ *   bun scripts/drive/drive.ts pick <path>
  */
 
 import { resolve } from "node:path";
@@ -36,7 +44,18 @@ import {
 
 const DEADLINE_MS = 60_000;
 
-const [verb, ...rest] = process.argv.slice(2);
+/** The verbs that find their control by role and name, and so can be told
+ *  which landmark to look within. */
+const SCOPED_VERBS = new Set(["click", "context", "type"]);
+
+const [verb, ...words] = process.argv.slice(2);
+const scoped = SCOPED_VERBS.has(verb) ? words.indexOf("--in") : -1;
+const within = scoped === -1 ? null : words[scoped + 1];
+const rest = scoped === -1 ? words : words.slice(0, scoped);
+if (within === undefined || (within !== null && words.length > scoped + 2)) {
+	console.error("--in takes one landmark role and ends the command line");
+	process.exit(2);
+}
 
 /** A command line the verbs cannot read, reported apart from a failure inside
  *  the instance. */
@@ -63,7 +82,12 @@ function hook(
 		);
 	}
 
-	return callHook(instance(), name, rest, DEADLINE_MS);
+	return callHook(
+		instance(),
+		name,
+		within === null ? rest : [...rest, within],
+		DEADLINE_MS,
+	);
 }
 
 async function run(): Promise<unknown> {
@@ -97,6 +121,8 @@ async function run(): Promise<unknown> {
 			);
 		case "click":
 			return hook("click", 2);
+		case "context":
+			return hook("context", 2);
 		case "type":
 			return hook("type", 3);
 		case "key":
@@ -120,12 +146,24 @@ async function run(): Promise<unknown> {
 		case "menu":
 			return hook("menu", 0);
 		case "choose":
-			return callHook(instance(), "choose", [rest.join(" ")], DEADLINE_MS);
+			return callHook(instance(), "choose", rest, DEADLINE_MS);
+		case "menu-bar":
+			return request(instance(), { op: "menu-bar", path: rest }, DEADLINE_MS);
+		case "picker":
+			return hook("picker", 0);
+		case "pick": {
+			if (rest.length !== 1) {
+				throw new UsageError("pick takes 1 argument, the path to answer with");
+			}
+			return callHook(instance(), "pick", [resolve(rest[0])], DEADLINE_MS);
+		}
+		case "dismiss-picker":
+			return hook("dismissPicker", 0);
 		case "quit":
 			return request(instance(), { op: "quit" }, DEADLINE_MS);
 		default:
 			throw new UsageError(
-				"usage: drive.ts launch|ping|rows|eval|until|invoke|click|type|key|list|snapshot|alert|press|menu|choose|quit",
+				"usage: drive.ts launch|ping|rows|eval|until|invoke|click|context|type|key|list|snapshot|alert|press|menu|choose|menu-bar|picker|pick|dismiss-picker|quit",
 			);
 	}
 }
