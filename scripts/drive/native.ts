@@ -31,9 +31,6 @@ import {
 import { activatedAmong, activationLog, check, gitLog } from "./scenario.js";
 
 const DEADLINE_MS = 60_000;
-/** How many times a request asks for a dialog that the app shows a moment
- *  after the choice that opens it. */
-const DIALOG_ASKS = 200;
 
 const [binary, fixture, logger] = process.argv.slice(2);
 if (!binary || !fixture || !logger) {
@@ -97,21 +94,42 @@ if (process.exitCode === 1) {
 }
 
 /** A repository whose branch `feature` is checked out in a linked worktree
- *  stopped partway through an interactive rebase. */
+ *  stopped partway through an interactive rebase. Its commits are unsigned,
+ *  as the fixture corpus's are, since a signing key's passphrase prompt would
+ *  draw on the operator's screen. */
 function seedRebasingWorktree(): void {
 	git(work, "init", "--quiet", "--initial-branch=main", repo);
 	writeFileSync(join(repo, "f"), "a\n");
 	git(repo, "add", "f");
-	git(repo, "commit", "--quiet", "-m", "base");
+	git(repo, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "base");
 	git(repo, "branch", "feature");
 	git(repo, "worktree", "add", "--quiet", worktree, "feature");
 	writeFileSync(join(worktree, "g"), "c\n");
 	git(worktree, "add", "g");
-	git(worktree, "commit", "--quiet", "-m", "feature one");
-	execFileSync("git", ["rebase", "--quiet", "--interactive", "HEAD"], {
-		cwd: worktree,
-		env: { ...process.env, GIT_SEQUENCE_EDITOR: "echo break >" },
-	});
+	git(
+		worktree,
+		"-c",
+		"commit.gpgsign=false",
+		"commit",
+		"--quiet",
+		"-m",
+		"feature one",
+	);
+	execFileSync(
+		"git",
+		[
+			"-c",
+			"commit.gpgsign=false",
+			"rebase",
+			"--quiet",
+			"--interactive",
+			"HEAD",
+		],
+		{
+			cwd: worktree,
+			env: { ...process.env, GIT_SEQUENCE_EDITOR: "echo break >" },
+		},
+	);
 }
 
 async function findFromTheMenuBar(instance: Instance): Promise<void> {
@@ -151,7 +169,9 @@ async function deleteTheRebasingBranch(instance: Instance): Promise<void> {
 	);
 	await callHook(instance, "choose", ["Delete"], DEADLINE_MS);
 
-	const dialog = await showingDialog(instance);
+	const dialog = asDialog(
+		await request(instance, { op: "alert" }, DEADLINE_MS),
+	);
 	const path = execFileSync("realpath", [worktree], {
 		encoding: "utf8",
 	}).trim();
@@ -200,21 +220,26 @@ async function openAnotherRepository(instance: Instance): Promise<void> {
 }
 
 interface Dialog {
-	texts: string[];
-	buttons: string[];
+	readonly texts: readonly string[];
+	readonly buttons: readonly string[];
 }
 
-/** The dialog the app shows, asked for until it appears, since the choice that
- *  opens it returns before the app has drawn it. */
-async function showingDialog(instance: Instance): Promise<Dialog> {
-	for (let ask = 0; ask < DIALOG_ASKS; ask++) {
-		try {
-			return (await request(instance, { op: "alert" }, DEADLINE_MS)) as Dialog;
-		} catch (error) {
-			if (!(error instanceof DriveError)) throw error;
-		}
+/** The alert request's answer, checked to carry the dialog's texts and button
+ *  titles, so a changed reply fails by name rather than mid-check. */
+function asDialog(reply: unknown): Dialog {
+	const { texts, buttons } = (reply ?? {}) as Partial<
+		Record<keyof Dialog, unknown>
+	>;
+	if (!isStrings(texts) || !isStrings(buttons)) {
+		throw new Error(`the alert request answered ${JSON.stringify(reply)}`);
 	}
-	throw new Error(`no dialog showed after ${DIALOG_ASKS} asks`);
+	return { texts, buttons };
+}
+
+function isStrings(value: unknown): value is string[] {
+	return (
+		Array.isArray(value) && value.every((item) => typeof item === "string")
+	);
 }
 
 async function failureOf(pending: Promise<unknown>): Promise<string> {

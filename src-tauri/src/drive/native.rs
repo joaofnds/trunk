@@ -5,19 +5,24 @@
 //! draining inside a modal loop. Tauri's own main-thread dispatch goes through
 //! the event loop, which a modal loop stops, so it could not reach an alert.
 
+use std::cell::OnceCell;
 use std::path::Path;
+use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 use block2::RcBlock;
 use objc2::rc::Retained;
+use objc2::runtime::{NSObjectProtocol, ProtocolObject};
 use objc2::{MainThreadMarker, Message};
 use objc2_app_kit::{
     NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSButton, NSImage, NSMenu, NSTextField,
-    NSView,
+    NSView, NSWindowWillBeginSheetNotification,
 };
-use objc2_foundation::{NSDictionary, NSError, NSOperationQueue, NSString};
+use objc2_foundation::{
+    NSDictionary, NSError, NSNotification, NSNotificationCenter, NSOperationQueue, NSString,
+};
 use objc2_web_kit::WKWebView;
 use serde_json::{Value, json};
 
@@ -104,8 +109,65 @@ fn png(image: &NSImage) -> Result<(Vec<u8>, isize, isize), String> {
     Ok((data.to_vec(), bitmap.pixelsWide(), bitmap.pixelsHigh()))
 }
 
-/// The texts and button titles of the dialog the app is showing.
+/// Requests waiting for a dialog, released when a window begins a sheet.
+static AWAITING_SHEET: Mutex<Vec<mpsc::Sender<()>>> = Mutex::new(Vec::new());
+
+thread_local! {
+    /// The observer that releases `AWAITING_SHEET`, registered on the main
+    /// thread the first time a request waits, and kept for the app's life.
+    static SHEET_OBSERVER: OnceCell<Retained<ProtocolObject<dyn NSObjectProtocol>>> =
+        const { OnceCell::new() };
+}
+
+/// Returns once a dialog shows: at once when one is up, or else when a window
+/// next begins a sheet, which is how the dialog plugin shows its message.
+fn await_dialog() -> Result<(), String> {
+    let (sender, receiver) = mpsc::channel();
+    on_main(move |main| {
+        if showing_dialog(main).is_ok() {
+            let _ = sender.send(());
+            return;
+        }
+
+        SHEET_OBSERVER.with(|observer| {
+            observer.get_or_init(observe_sheets);
+        });
+        AWAITING_SHEET
+            .lock()
+            .expect("the sheet waiters lock")
+            .push(sender);
+    })?;
+    receiver
+        .recv_timeout(MAIN_DEADLINE)
+        .map_err(|_| "no dialog showed".to_string())
+}
+
+fn observe_sheets() -> Retained<ProtocolObject<dyn NSObjectProtocol>> {
+    let release = RcBlock::new(|_: NonNull<NSNotification>| {
+        for waiting in AWAITING_SHEET
+            .lock()
+            .expect("the sheet waiters lock")
+            .drain(..)
+        {
+            let _ = waiting.send(());
+        }
+    });
+    // SAFETY: the name is AppKit's own constant, no object filters it, and the
+    // block runs on the main queue, where it touches only the waiters' lock.
+    unsafe {
+        NSNotificationCenter::defaultCenter().addObserverForName_object_queue_usingBlock(
+            Some(NSWindowWillBeginSheetNotification),
+            None,
+            Some(&NSOperationQueue::mainQueue()),
+            &release,
+        )
+    }
+}
+
+/// The texts and button titles of the dialog the app is showing, or of the
+/// one it shows next, waiting up to the main thread's deadline for it.
 pub fn alert() -> Result<Value, String> {
+    await_dialog()?;
     on_main(|main| {
         let content = showing_dialog(main)?;
 
