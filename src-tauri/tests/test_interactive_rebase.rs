@@ -498,7 +498,7 @@ fn a_rebase_that_stops_reports_the_stop_not_a_completion() {
 }
 
 #[test]
-fn a_failure_that_leaves_no_rebase_in_progress_is_an_error() {
+fn an_unknown_base_is_refused_before_anything_moves() {
     let (ctx, oids) = four_commit_ctx();
 
     let err = ctx
@@ -506,9 +506,9 @@ fn a_failure_that_leaves_no_rebase_in_progress_is_an_error() {
             Some(&git2::Oid::ZERO_SHA1.to_string()),
             &[todo(oids[1], "pick", None)],
         )
-        .expect_err("git refusing the base must not read as a completed rebase");
+        .expect_err("an unknown base must not read as a completed rebase");
 
-    assert_eq!(err.code, "rebase_error");
+    assert_eq!(err.code, "git_not_found");
     assert!(
         !ctx.repo().path().join("rebase-merge").exists(),
         "nothing should be left in progress"
@@ -620,4 +620,150 @@ fn an_inclusive_todo_from_the_merge_itself_is_refused() {
         "the refusal names the merge, got {:?}",
         err.message
     );
+}
+
+fn head_of_main(ctx: &TestContext) -> git2::Oid {
+    let repo = ctx.repo();
+    let head = repo.head().unwrap();
+    assert_eq!(
+        head.name().ok(),
+        Some("refs/heads/main"),
+        "main is still checked out"
+    );
+    head.peel_to_commit().unwrap().id()
+}
+
+fn assert_nothing_moved(ctx: &TestContext, head_before: git2::Oid) {
+    assert!(
+        !ctx.repo().path().join("rebase-merge").exists(),
+        "a refused start must not leave a rebase in progress"
+    );
+    assert_eq!(head_of_main(ctx), head_before);
+}
+
+/// Commit a new file onto main behind the listing's back, as a terminal would.
+fn commit_from_elsewhere(ctx: &TestContext, summary: &str) {
+    let repo = ctx.repo();
+    let workdir = repo.workdir().unwrap().to_path_buf();
+    std::fs::write(workdir.join("elsewhere.txt"), summary).unwrap();
+    let mut index = repo.index().unwrap();
+    index
+        .add_path(std::path::Path::new("elsewhere.txt"))
+        .unwrap();
+    index.write().unwrap();
+    let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+    let parent = repo.head().unwrap().peel_to_commit().unwrap();
+    let sig = git2::Signature::now("Test User", "test@example.com").unwrap();
+    repo.commit(Some("HEAD"), &sig, &sig, summary, &tree, &[&parent])
+        .unwrap();
+}
+
+#[test]
+fn a_start_over_a_range_holding_a_merge_is_refused_before_git_runs() {
+    let ctx = merge_in_range_ctx();
+    let head_before = head_of_main(&ctx);
+
+    let err = ctx
+        .start_interactive_rebase(
+            Some(&oid_of(&ctx, "A").to_string()),
+            &[
+                todo(oid_of(&ctx, "B"), "pick", None),
+                todo(oid_of(&ctx, "S"), "pick", None),
+                todo(oid_of(&ctx, "C"), "pick", None),
+            ],
+        )
+        .expect_err("a todo that leaves the merge out must not flatten the branch");
+
+    assert_eq!(err.code, "rebase_has_merge");
+    assert_nothing_moved(&ctx, head_before);
+}
+
+#[test]
+fn a_start_after_a_commit_landed_since_the_listing_is_refused() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "a")
+        .with_commit("A")
+        .with_file("b.txt", "b")
+        .with_commit("B")
+        .build();
+    without_commit_signing(&ctx);
+    let base = oid_of(&ctx, "A").to_string();
+    let listing = ctx.get_rebase_todo(&base, false).unwrap();
+    commit_from_elsewhere(&ctx, "D");
+    let head_before = head_of_main(&ctx);
+
+    let err = ctx
+        .start_interactive_rebase(
+            listing.base_oid.as_deref(),
+            &[todo(oid_of(&ctx, "B"), "pick", None)],
+        )
+        .expect_err("a todo that no longer lists the branch must not drop D");
+
+    assert_eq!(err.code, "rebase_todo_stale");
+    assert_eq!(
+        err.message,
+        "The branch changed after the rebase editor opened. Open it again to see the current commits."
+    );
+    assert_nothing_moved(&ctx, head_before);
+}
+
+#[test]
+fn a_start_listing_a_commit_twice_is_refused() {
+    let (ctx, oids) = make_three_commit_ctx();
+    without_commit_signing(&ctx);
+    let head_before = head_of_main(&ctx);
+
+    let err = ctx
+        .start_interactive_rebase(
+            Some(&oids[0].to_string()),
+            &[
+                todo(oids[1], "pick", None),
+                todo(oids[1], "pick", None),
+                todo(oids[2], "pick", None),
+            ],
+        )
+        .expect_err("a commit listed twice is not the range");
+
+    assert_eq!(err.code, "rebase_todo_stale");
+    assert_nothing_moved(&ctx, head_before);
+}
+
+#[test]
+fn a_start_listing_a_commit_outside_the_range_is_refused() {
+    let (ctx, oids) = make_three_commit_ctx();
+    without_commit_signing(&ctx);
+    let head_before = head_of_main(&ctx);
+
+    let err = ctx
+        .start_interactive_rebase(
+            Some(&oids[1].to_string()),
+            &[todo(oids[1], "pick", None), todo(oids[2], "pick", None)],
+        )
+        .expect_err("the base itself is not in the range");
+
+    assert_eq!(err.code, "rebase_todo_stale");
+    assert_nothing_moved(&ctx, head_before);
+}
+
+#[test]
+fn a_start_git_refuses_is_an_error_that_leaves_no_rebase() {
+    let (ctx, oids) = make_three_commit_ctx();
+    without_commit_signing(&ctx);
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_bool("rebase.autostash", false)
+        .unwrap();
+    std::fs::write(ctx.repo().workdir().unwrap().join("file.txt"), "dirty").unwrap();
+    let head_before = head_of_main(&ctx);
+
+    let err = ctx
+        .start_interactive_rebase(
+            Some(&oids[0].to_string()),
+            &[todo(oids[1], "pick", None), todo(oids[2], "pick", None)],
+        )
+        .expect_err("git refuses to rebase a dirty tree without autostash");
+
+    assert_eq!(err.code, "rebase_error");
+    assert_nothing_moved(&ctx, head_before);
 }

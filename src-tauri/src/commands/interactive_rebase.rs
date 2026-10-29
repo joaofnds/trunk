@@ -3,6 +3,7 @@ use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::RebaseTodoItem;
 use crate::watcher::RepoChanged;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
 
@@ -172,9 +173,10 @@ pub enum RebaseStartResult {
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `io_error` when the todo file
-/// will not write, and `rebase_error` carrying git's own message when `git`
-/// will not run or the rebase fails.
+/// Returns `not_open` when `path` names no open repository, `rebase_has_merge` when the
+/// range holds a merge commit, `rebase_todo_stale` when the todo does not list the range,
+/// `io_error` when the todo file will not write, and `rebase_error` carrying git's own
+/// message when `git` will not run or the rebase fails.
 ///
 /// # Panics
 ///
@@ -187,6 +189,8 @@ pub fn start_interactive_rebase_blocking(
     state_map: &OpenRepos,
 ) -> Result<(crate::state::GraphRead, RebaseStartResult), TrunkError> {
     let path_buf = state_map.path_for(path)?;
+
+    ensure_todo_lists_the_range(&git2::Repository::open(path_buf)?, base_oid, todo_items)?;
 
     // 1. Write todo file (drop = omit from list, not the 'drop' keyword)
     let todo_path = session_dir.join("trunk-rebase-todo");
@@ -282,6 +286,39 @@ pub fn start_interactive_rebase_blocking(
     };
 
     Ok((source, outcome))
+}
+
+/// Refuses a todo that is not the rebase range: every commit in it exactly once, drops
+/// included, and nothing else. Git replays whatever the todo names, so a commit that
+/// landed after the listing was built would be dropped without a word, and a commit
+/// named twice or from outside the range would stop the rebase partway.
+fn ensure_todo_lists_the_range(
+    repo: &git2::Repository,
+    base_oid: Option<&str>,
+    todo_items: &[RebaseTodoAction],
+) -> Result<(), TrunkError> {
+    let base = base_oid
+        .map(git2::Oid::from_str)
+        .transpose()
+        .map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
+    let range: HashSet<String> = rebase_range(repo, base)?
+        .iter()
+        .map(|commit| commit.id().to_string())
+        .collect();
+
+    let mut listed: HashSet<&str> = HashSet::new();
+    let lists_each_once = todo_items
+        .iter()
+        .all(|item| range.contains(&item.oid) && listed.insert(&item.oid));
+
+    if lists_each_once && listed.len() == range.len() {
+        Ok(())
+    } else {
+        Err(TrunkError::new(
+            "rebase_todo_stale",
+            "The branch changed after the rebase editor opened. Open it again to see the current commits.",
+        ))
+    }
 }
 
 /// Which commit gets which pre-edited message.
