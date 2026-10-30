@@ -339,7 +339,7 @@ async function handleCheckout(branchName: string) {
 			};
 			showToast(CHECKOUT_CONFLICT_MESSAGE, "error");
 		} else {
-			reportErrorToast(e, "Checkout failed");
+			showToast("Checkout failed", "error");
 		}
 	} finally {
 		checkingOutBranch = null;

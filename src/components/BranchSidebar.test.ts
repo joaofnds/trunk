@@ -416,13 +416,14 @@ describe("BranchSidebar", () => {
 				.querySelector('[data-testid="branch-row"] button');
 			await fireEvent.dblClick(remoteBranchRow as Element);
 
-			// Verify the remote checkout was called (and it rejected)
-			await waitFor(() => {
-				expect(mockInvoke).toHaveBeenCalledWith("checkout_remote_branch", {
-					path: "/test/repo",
-					remoteRef: "refs/remotes/origin/feature",
-				});
-			});
+			await waitFor(() =>
+				expect(
+					toasts.items.map(({ message, kind }) => ({ message, kind })),
+				).toContainEqual({
+					message: "branch 'feature' already exists",
+					kind: "error",
+				}),
+			);
 		});
 	});
 
@@ -1273,11 +1274,11 @@ describe("BranchSidebar checking out or creating a branch", () => {
 	});
 
 	it("toasts the local branch a remote checkout landed on", async () => {
-		answering("checkout_remote_branch", () => Promise.resolve("topic"));
+		answering("checkout_remote_branch", () => Promise.resolve("landed"));
 		await doubleClickRemote();
 		await waitFor(() =>
 			expect(toasted()).toContainEqual({
-				message: "Checked out topic",
+				message: "Checked out landed",
 				kind: "success",
 			}),
 		);
@@ -1361,6 +1362,18 @@ describe("BranchSidebar checking out or creating a branch", () => {
 		);
 	});
 
+	it("keeps its plain toast for a local checkout that fails without a conflict", async () => {
+		answering("checkout_branch", () =>
+			Promise.reject({ code: "git_not_found", message: "reference not found" }),
+		);
+		await doubleClickLocal("feature");
+		await waitFor(() =>
+			expect(toasted()).toEqual([
+				{ message: "Checkout failed", kind: "error" },
+			]),
+		);
+	});
+
 	describe("when uncommitted changes conflict", () => {
 		it("explains the refused local checkout beside the branch and in a toast", async () => {
 			answering("checkout_branch", () => Promise.reject(conflict));
@@ -1395,9 +1408,9 @@ describe("BranchSidebar checking out or creating a branch", () => {
 				}),
 			);
 			expect(screen.getByTestId("branch-create-input")).toHaveValue("fresh");
-			expect(toasted().map((t) => t.message)).not.toContain(
-				expect.stringMatching(/Branch created/),
-			);
+			expect(toasted()).toEqual([
+				{ message: CHECKOUT_CONFLICT_MESSAGE, kind: "error" },
+			]);
 		});
 	});
 });

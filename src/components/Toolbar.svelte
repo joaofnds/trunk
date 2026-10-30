@@ -246,7 +246,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 		if (isCheckoutConflict(e)) {
 			showToast(CHECKOUT_CONFLICT_MESSAGE, "error");
 		} else {
-			showToast("Failed to create branch", "error");
+			reportErrorToast(e, "Failed to create branch");
 		}
 	}
 }

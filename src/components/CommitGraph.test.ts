@@ -3482,12 +3482,12 @@ describe("CommitGraph", () => {
 
 		it("toasts the local branch a remote checkout landed on", async () => {
 			await mountAnswering("checkout_remote_branch", () =>
-				Promise.resolve("topic"),
+				Promise.resolve("landed"),
 			);
 
 			await doubleClick("origin/topic");
 
-			expect(showToast).toHaveBeenCalledWith("Checked out topic", "success");
+			expect(showToast).toHaveBeenCalledWith("Checked out landed", "success");
 		});
 
 		it("toasts the branch it created", async () => {

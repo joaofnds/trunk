@@ -770,4 +770,17 @@ describe("Toolbar branch creation", () => {
 			),
 		);
 	});
+
+	it("names the branch that already holds the name", async () => {
+		const message =
+			"A branch named 'feat' already exists, so 'feat/x' cannot be created";
+		await createBranch(
+			"feat/x",
+			Promise.reject({ code: "branch_exists", message }),
+		);
+
+		await waitFor(() =>
+			expect(mockToast).toHaveBeenCalledWith(message, "error"),
+		);
+	});
 });
