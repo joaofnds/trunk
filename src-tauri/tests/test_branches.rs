@@ -267,30 +267,186 @@ fn rename_branch_changes_name() {
     ctx.assert_branch_exists("new-name");
 }
 
-#[test]
-fn create_branch_dirty_workdir_returns_error() {
-    let mut ctx = TestContext::builder()
-        .with_file("README.md", "hello")
-        .with_commit("Initial commit")
-        .build();
+mod creating_a_branch_over_uncommitted_changes {
+    use super::*;
 
-    let head_oid = ctx.repo().head().unwrap().target().unwrap().to_string();
+    fn edit(ctx: &TestContext, file: &str, content: &str) {
+        std::fs::write(ctx.repo_path().join(file), content).unwrap();
+    }
 
-    // Make workdir dirty
-    std::fs::write(ctx.repo_path().join("README.md"), "dirty content").unwrap();
-    {
+    fn stage(ctx: &TestContext, file: &str) {
         let repo = ctx.repo();
         let mut index = repo.index().unwrap();
-        index.add_path(std::path::Path::new("README.md")).unwrap();
+        index.add_path(std::path::Path::new(file)).unwrap();
         index.write().unwrap();
     }
 
-    let result = ctx.create_branch("dirty-branch", Some(&head_oid));
-    assert!(result.is_err(), "should return error on dirty workdir");
-    assert_eq!(result.unwrap_err().code, "dirty_workdir");
+    fn index_tree(ctx: &TestContext) -> git2::Oid {
+        let repo = ctx.repo();
+        let mut index = repo.index().unwrap();
+        index.write_tree().unwrap()
+    }
 
-    // Branch should still have been created even though checkout was skipped
-    ctx.assert_branch_exists("dirty-branch");
+    fn lock_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+        let mut found = Vec::new();
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                found.extend(lock_files(&path));
+            } else if path.extension().is_some_and(|ext| ext == "lock") {
+                found.push(path);
+            }
+        }
+        found
+    }
+
+    /// Nothing moved: HEAD on main, `a` and `b` as main holds them, `c` keeping its
+    /// edit, the index as it was, and no ref lock left behind.
+    fn assert_refused_untouched(ctx: &TestContext, index_before: git2::Oid) {
+        ctx.assert_head_at("main");
+        ctx.assert_file_content("b", "base");
+        ctx.assert_file_content("c", "edit");
+        assert_eq!(index_tree(ctx), index_before, "the index moved");
+        assert_eq!(
+            lock_files(&ctx.repo_path().join(".git")),
+            Vec::<std::path::PathBuf>::new()
+        );
+    }
+
+    #[test]
+    fn checks_out_a_new_branch_at_head_keeping_an_unstaged_edit() {
+        let mut ctx = repo_where_feat_changes_a_and_b();
+        edit(&ctx, "c", "edit");
+
+        ctx.create_branch("topic", None).unwrap();
+
+        ctx.assert_head_at("topic");
+        ctx.assert_file_content("c", "edit");
+        ctx.assert_file_unstaged("c");
+    }
+
+    #[test]
+    fn checks_out_a_new_branch_at_head_keeping_a_staged_edit() {
+        let mut ctx = repo_where_feat_changes_a_and_b();
+        edit(&ctx, "c", "edit");
+        stage(&ctx, "c");
+
+        ctx.create_branch("topic", None).unwrap();
+
+        ctx.assert_head_at("topic");
+        ctx.assert_file_staged("c");
+    }
+
+    #[test]
+    fn checks_out_a_new_branch_at_another_commit_writing_its_files_and_keeping_the_edit() {
+        let mut ctx = repo_where_feat_changes_a_and_b();
+        let feat = ctx.resolve_ref("feat").unwrap();
+        edit(&ctx, "c", "edit");
+
+        ctx.create_branch("topic", Some(&feat)).unwrap();
+
+        ctx.assert_head_at("topic");
+        ctx.assert_file_content("a", "feat");
+        ctx.assert_file_content("b", "feat");
+        ctx.assert_file_content("c", "edit");
+    }
+
+    #[test]
+    fn refuses_an_edit_the_target_would_overwrite_and_creates_nothing() {
+        let mut ctx = repo_where_feat_changes_a_and_b();
+        let feat = ctx.resolve_ref("feat").unwrap();
+        edit(&ctx, "a", "edit");
+
+        let err = ctx.create_branch("topic", Some(&feat)).unwrap_err();
+
+        assert_eq!(err.code, "dirty_workdir");
+        ctx.assert_branch_not_exists("topic");
+        ctx.assert_head_at("main");
+        ctx.assert_file_content("a", "edit");
+        ctx.assert_file_content("b", "base");
+    }
+
+    #[test]
+    fn refuses_an_untracked_file_the_target_would_overwrite_and_creates_nothing() {
+        let mut ctx = TestContext::builder()
+            .with_file("a", "base")
+            .with_commit("Initial commit")
+            .with_branch("feat")
+            .checkout("feat")
+            .with_file("d", "feat")
+            .with_commit("Add d")
+            .checkout("main")
+            .build();
+        let feat = ctx.resolve_ref("feat").unwrap();
+        edit(&ctx, "d", "untracked");
+
+        let err = ctx.create_branch("topic", Some(&feat)).unwrap_err();
+
+        assert_eq!(err.code, "dirty_workdir");
+        ctx.assert_branch_not_exists("topic");
+        ctx.assert_head_at("main");
+        ctx.assert_file_content("d", "untracked");
+    }
+
+    mod refuses_a_name_before_the_tree_moves {
+        use super::*;
+        use trunk_git::error::TrunkError;
+
+        fn refused(
+            name: &str,
+            existing: Option<&str>,
+            conflict: bool,
+        ) -> (TestContext, TrunkError) {
+            let mut ctx = repo_where_feat_changes_a_and_b();
+            if let Some(existing) = existing {
+                let repo = ctx.repo();
+                let head = repo.head().unwrap().peel_to_commit().unwrap();
+                repo.branch(existing, &head, false).unwrap();
+            }
+            let feat = ctx.resolve_ref("feat").unwrap();
+            edit(&ctx, "c", "edit");
+            if conflict {
+                edit(&ctx, "a", "edit");
+            }
+            let index_before = index_tree(&ctx);
+
+            let err = ctx.create_branch(name, Some(&feat)).unwrap_err();
+
+            assert_refused_untouched(&ctx, index_before);
+            (ctx, err)
+        }
+
+        #[test]
+        fn when_a_branch_holds_the_name_as_a_directory() {
+            let (ctx, err) = refused("feat/x", None, false);
+            ctx.assert_branch_not_exists("feat/x");
+            ctx.assert_file_content("a", "base");
+            assert_eq!(err.code, "git_exists");
+            assert!(err.message.contains("'feat'"), "{}", err.message);
+        }
+
+        #[test]
+        fn when_the_name_is_a_directory_of_branches() {
+            let (ctx, err) = refused("x", Some("x/y"), false);
+            ctx.assert_branch_not_exists("x");
+            ctx.assert_file_content("a", "base");
+            assert_eq!(err.code, "git_exists");
+            assert!(err.message.contains("'x/y'"), "{}", err.message);
+        }
+
+        #[test]
+        fn when_the_name_is_invalid_on_a_conflicting_tree() {
+            let (ctx, _) = refused("bad..name", None, true);
+            ctx.assert_file_content("a", "edit");
+        }
+
+        #[test]
+        fn when_the_name_is_taken_on_a_conflicting_tree() {
+            let (ctx, err) = refused("feat", None, true);
+            assert_eq!(err.code, "git_exists");
+            ctx.assert_file_content("a", "edit");
+        }
+    }
 }
 
 #[test]

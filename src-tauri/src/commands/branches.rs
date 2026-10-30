@@ -455,18 +455,88 @@ pub async fn fast_forward_to<R: Runtime>(
     Ok(())
 }
 
+/// Create local branch `name` at `target` and check it out, carrying every uncommitted
+/// change the checkout does not touch. A refusal writes no ref and no file: the name is
+/// checked and its ref locked before the checkout, and the ref is written only after it.
+fn create_and_check_out(
+    repo: &git2::Repository,
+    name: &str,
+    target: &git2::Commit<'_>,
+    start: &str,
+) -> Result<(), TrunkError> {
+    if !git2::Branch::name_is_valid(name)? {
+        return Err(reference_error(
+            git2::ErrorCode::InvalidSpec,
+            &format!("'{name}' is not a valid branch name"),
+        ));
+    }
+    if let Some(existing) = branch_in_the_path_of(repo, name)? {
+        return Err(reference_error(
+            git2::ErrorCode::Exists,
+            &format!("A branch named '{existing}' already exists, so '{name}' cannot be created"),
+        ));
+    }
+
+    let refname = format!("refs/heads/{name}");
+    let mut transaction = repo.transaction()?;
+    transaction.lock_ref(&refname)?;
+    if repo.find_reference(&refname).is_ok() {
+        return Err(reference_error(
+            git2::ErrorCode::Exists,
+            &format!("A branch named '{name}' already exists"),
+        ));
+    }
+
+    checkout_safely(repo, target.as_object())?;
+
+    transaction.set_target(
+        &refname,
+        target.id(),
+        None,
+        &format!("branch: Created from {start}"),
+    )?;
+    transaction.commit()?;
+    repo.set_head(&refname)?;
+
+    Ok(())
+}
+
+/// The local branch whose ref path holds `name`'s as a directory or a parent file,
+/// `feat` for `feat/x` and `x/y` for `x`, which git refuses to have beside it.
+fn branch_in_the_path_of(
+    repo: &git2::Repository,
+    name: &str,
+) -> Result<Option<String>, TrunkError> {
+    for branch in repo.branches(Some(BranchType::Local))? {
+        let (branch, _) = branch?;
+        let Some(existing) = branch.name()? else {
+            continue;
+        };
+        if name.starts_with(&format!("{existing}/")) || existing.starts_with(&format!("{name}/")) {
+            return Ok(Some(existing.to_owned()));
+        }
+    }
+
+    Ok(None)
+}
+
+/// A refusal raised before libgit2 would have raised it, under the code it uses.
+fn reference_error(code: git2::ErrorCode, message: &str) -> TrunkError {
+    git2::Error::new(code, git2::ErrorClass::Reference, message).into()
+}
+
 /// Inner implementation of `create_branch` — separated for testability.
 ///
-/// When `from_oid` is Some, branches from that OID; when None, branches from HEAD.
-/// Creates the branch first (always safe), then checks out. If dirty workdir at checkout time,
-/// returns `dirty_workdir` error (branch exists but HEAD didn't move).
+/// When `from_oid` is Some, branches from that OID; when None, branches from HEAD. The
+/// new branch is checked out with every uncommitted change it does not conflict with.
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `dirty_workdir` when the branch
-/// was created but the working tree blocked the checkout, `git_error` when
-/// HEAD is unborn, and the git error when the name is taken or `from_oid` does
-/// not resolve.
+/// Returns `not_open` when `path` names no open repository, `dirty_workdir` when the
+/// checkout would overwrite uncommitted changes, `git_error` when HEAD is unborn,
+/// `git_invalid_spec` when the name is invalid, `git_exists` when it is taken or a branch
+/// is in its path, and the git error when `from_oid` does not resolve. On every error no
+/// branch is created and the working tree is as it was.
 pub fn create_branch_inner(
     path: &str,
     name: &str,
@@ -486,31 +556,8 @@ pub fn create_branch_inner(
             .ok_or_else(|| TrunkError::new("git_error", "HEAD has no target (unborn branch?)"))?,
     };
     let target_commit = repo.find_commit(target_oid)?;
-    // false = no force; fails if name already exists
-    repo.branch(name, &target_commit, false)?;
-    // Drop target_commit (and its borrow on repo) before mutable operations
+    create_and_check_out(&repo, name, &target_commit, from_oid.unwrap_or("HEAD"))?;
     drop(target_commit);
-
-    // Check dirty workdir before checkout (branch already created above)
-    if trunk_git::repository::is_repo_dirty(&repo)? {
-        drop(repo);
-        // Rebuild cache even though checkout didn't happen — branch was created
-        let mut repo2 = git2::Repository::open(path_buf)?;
-        let read = crate::state::read_graph(&mut repo2)?;
-        cache_map.insert_read(path.to_owned(), read, visibility.clone());
-        return Err(TrunkError::new(
-            "dirty_workdir",
-            "Branch created but working tree has uncommitted changes — checkout skipped",
-        ));
-    }
-
-    // Auto-checkout the new branch (checkout_tree updates index + working tree, then set_head moves HEAD)
-    let branch_ref = format!("refs/heads/{name}");
-    {
-        let (object, _reference) = repo.revparse_ext(&branch_ref)?;
-        repo.checkout_tree(&object, Some(git2::build::CheckoutBuilder::new().safe()))?;
-    }
-    repo.set_head(&branch_ref)?;
     drop(repo);
 
     // Rebuild graph cache after branch creation
