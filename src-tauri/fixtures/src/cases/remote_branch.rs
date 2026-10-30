@@ -1,7 +1,7 @@
 //! Case 07: the checkout and create-branch walk against a real origin carrying two
 //! remote-only branches, with an uncommitted edit to a tracked file none of the
-//! branches touch. Transcribed from cases/07-remote-branch/build.sh. The shell dated its commits in
-//! local time; the port pins them to UTC (doc-45 §1, decision 3).
+//! branches touch. Transcribed from cases/07-remote-branch/build.sh. The shell dated
+//! its commits in local time; the port pins them to UTC (doc-45 §1, decision 3).
 
 use std::path::Path;
 
@@ -17,7 +17,7 @@ const HOUR_SECS: i64 = 3_600;
 
 pub const CASE: Case = Case {
     name: "07-remote-branch",
-    summary: "Build the fixture repo for the manual walk of checking out and creating branches over an uncommitted edit.",
+    summary: "The manual walk of checking out and creating branches over an uncommitted edit.",
     repos: &["remote-branch/repo", "remote-branch/origin.git"],
     build,
 };
@@ -92,8 +92,9 @@ fn build(out: &Path) {
     std::fs::write(dest.join("WALKTHROUGH.md"), WALKTHROUGH).expect("write the walkthrough");
 }
 
-/// The walk's instructions: every route that checks a branch out, over an uncommitted
-/// edit none of the branches touch, then over one they do.
+/// The walk's instructions: each of the seven routes that creates or checks out a
+/// branch, over an uncommitted edit none of the branches touch, then each route that
+/// moves the tree over an edit they do.
 const WALKTHROUGH: &str = r##"# Checking out and creating branches over uncommitted changes: manual walk
 
 Open the repo at `repo/` in Trunk. `just dev-app` builds a debug app you can drive
@@ -112,20 +113,25 @@ onto it. An edit it would overwrite refuses the whole move, and nothing is
 written: no branch, no HEAD change, no file touched.
 
 `feature/alpha` and `feature/beta` change only `version.ts`, so the README edit
-rides along on every gesture. Do them in order, since each one moves HEAD.
+rides along on every gesture. Do them in order, since each one moves HEAD. After
+each, README.md is still listed as modified.
 
 | # | Gesture | Expected | Observed |
 |---|---------|----------|----------|
-| 1 | Sidebar -> Remote -> double-click `feature/alpha` | Toast "Checked out feature/alpha". `feature/alpha` appears under Local tagged HEAD, tracking `origin/feature/alpha`. README.md is still listed as modified. | |
-| 2 | Sidebar -> new-branch input -> `qa-sidebar` | Toast "Checked out qa-sidebar", HEAD on it, README.md still modified. | |
-| 3 | Toolbar branch button -> `qa-toolbar` | Toast "Checked out qa-toolbar", HEAD on it, README.md still modified. | |
-| 4 | Graph -> right-click any commit -> Create Branch -> `qa-graph` | Toast "Checked out qa-graph", HEAD on it at that commit, README.md still modified. | |
-| 5 | Graph -> double-click the `origin/feature/beta` ref pill | Toast "Checked out feature/beta", HEAD on it, README.md still modified. | |
+| 1 | Sidebar -> Remote -> double-click `feature/alpha` | Toast "Checked out feature/alpha". `feature/alpha` appears under Local tagged HEAD. The sidebar does not show tracking; `git branch -vv` below does. | |
+| 2 | Sidebar -> new-branch input -> `qa-sidebar` | Toast "Checked out qa-sidebar", HEAD on it. | |
+| 3 | Toolbar branch button -> `qa-toolbar` | Toast "Checked out qa-toolbar", HEAD on it. | |
+| 4 | Graph -> right-click "Add README and version" -> Create Branch... -> `qa-graph` | Toast "Checked out qa-graph", HEAD on it at that commit. | |
+| 5 | Sidebar -> Local -> double-click `main` | Toast "Checked out main", HEAD on it. | |
+| 6 | Graph -> double-click the local branch pill on "Work on feature/alpha" | Toast "Checked out" with the name on the pill (`feature/alpha`, `qa-sidebar` or `qa-toolbar`), HEAD on it. | |
+| 7 | Graph -> double-click the `origin/feature/beta` ref pill on "Work on feature/beta" | Toast "Checked out feature/beta", HEAD on it. | |
 
 Confirm with git:
 
-    git -C repo branch -vv          # the five branches, HEAD on feature/beta,
-                                    # both feature branches tracking origin
+    git -C repo branch -vv          # six branches (main, feature/alpha,
+                                    # feature/beta, qa-sidebar, qa-toolbar,
+                                    # qa-graph), HEAD on feature/beta, both
+                                    # feature branches tracking origin
     git -C repo status --short      # still:  M README.md
 
 ## The conflict path
@@ -136,15 +142,17 @@ Make an edit the other branches would overwrite:
     printf 'export const LOCAL = 1;\n' >> repo/version.ts
 
 Creating a branch at HEAD never moves the tree, so only the gestures that move it
-can conflict. HEAD is on `feature/beta`, whose `version.ts` differs from every
-other branch's. Each of these shows the error toast "Your uncommitted changes
-conflict with this branch. Commit or stash them first.":
+can conflict. HEAD is on `feature/beta`, whose `version.ts` differs from that of
+every commit named below. Each of these shows the error toast "Your uncommitted
+changes conflict with this branch. Commit or stash them first.":
 
 | # | Gesture | Also expected | Observed |
 |---|---------|---------------|----------|
-| 6 | Sidebar -> double-click `main` | The same message beside the `main` row. | |
-| 7 | Graph -> double-click the `origin/feature/alpha` ref pill | | |
-| 8 | Graph -> right-click "Add README and version" -> Create Branch -> `qa-refused` | `qa-refused` does not exist afterwards. | |
+| 8 | Sidebar -> Local -> double-click `main` | The same message beside the `main` row. | |
+| 9 | Sidebar -> Remote -> double-click `feature/alpha` | | |
+| 10 | Graph -> double-click the local branch pill on "Work on feature/alpha" | | |
+| 11 | Graph -> hover the pill on "Work on feature/alpha" and double-click `origin/feature/alpha` in the list that opens | | |
+| 12 | Graph -> right-click "Add README and version" -> Create Branch... -> `qa-refused` | `qa-refused` does not exist afterwards. | |
 
 After each one HEAD is still on `feature/beta` and `version.ts` still holds the
 edit:
@@ -154,6 +162,8 @@ edit:
 
 ## Reset
 
-Re-run the builder (`just fixtures 07-remote-branch`). Creation refuses a name that
-already exists, so a second pass over a used fixture reports that instead.
+Re-run the builder (`just fixtures 07-remote-branch`) before another pass. A used
+fixture has lost the README edit, already holds the branches the walk creates, and
+checks out the existing local branch where a remote one is double-clicked, so a
+second pass would not exercise the same routes.
 "##;
