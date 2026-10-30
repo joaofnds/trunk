@@ -539,6 +539,67 @@ describe("CommitForm", () => {
 		});
 	});
 
+	describe("when git refuses the commit", () => {
+		const hookOutput = "lint-staged failed:\n  src/a.ts: missing semicolon";
+
+		// The dialog module the form sees is the one the shared tauri-mock
+		// helper registers, which a static import here would resolve before.
+		let message: typeof import("@tauri-apps/plugin-dialog").message;
+
+		beforeEach(async () => {
+			({ message } = await import("@tauri-apps/plugin-dialog"));
+			vi.mocked(message).mockClear();
+			vi.mocked(safeInvoke).mockReset();
+			vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
+				if (cmd === "get_head_commit_message") {
+					return Promise.resolve({ subject: "Prev subject", body: null });
+				}
+				if (cmd === "create_commit" || cmd === "amend_commit") {
+					return Promise.reject({ code: "commit_error", message: hookOutput });
+				}
+				return Promise.resolve(undefined);
+			});
+		});
+
+		function subjectInput(): HTMLInputElement {
+			return screen.getByTestId("commit-form-subject") as HTMLInputElement;
+		}
+
+		it("shows git's whole output in a dialog the user dismisses", async () => {
+			render(CommitForm, { props: defaultProps });
+			await fireEvent.input(subjectInput(), { target: { value: "wip draft" } });
+
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+
+			await waitFor(() =>
+				expect(message).toHaveBeenCalledWith(hookOutput, {
+					title: "Commit Error",
+					kind: "error",
+				}),
+			);
+			expect(subjectInput().value).toBe("wip draft");
+		});
+
+		it("shows git's whole output for a refused amend and keeps the edited message", async () => {
+			render(CommitForm, { props: defaultProps });
+			await fireEvent.click(screen.getByRole("tab", { name: "Amend" }));
+			await waitFor(() => expect(subjectInput().value).toBe("Prev subject"));
+			await fireEvent.input(subjectInput(), {
+				target: { value: "fixed subject" },
+			});
+
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+
+			await waitFor(() =>
+				expect(message).toHaveBeenCalledWith(hookOutput, {
+					title: "Amend Error",
+					kind: "error",
+				}),
+			);
+			expect(subjectInput().value).toBe("fixed subject");
+		});
+	});
+
 	describe("submitting with nothing staged", () => {
 		beforeEach(() => {
 			vi.mocked(safeInvoke).mockReset();

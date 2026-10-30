@@ -1,6 +1,6 @@
 <script lang="ts">
 import { untrack } from "svelte";
-import { reportErrorToast } from "../lib/error-report.js";
+import { reportErrorDialog, reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { HeadCommitMessage } from "../lib/types.js";
@@ -173,11 +173,11 @@ async function handleSubmit() {
 		}
 		mode = "commit"; // Always reset to commit mode after any successful operation
 	} catch (e) {
-		const action =
-			mode === "commit" ? "Commit" : mode === "amend" ? "Amend" : "Stash";
-		console.error(`${action} failed:`, e);
 		if (mode === "stash") {
 			reportErrorToast(e, "Stash failed");
+		} else {
+			const action = mode === "commit" ? "Commit" : "Amend";
+			await reportErrorDialog(e, `${action} Error`, `${action} failed`);
 		}
 	} finally {
 		committing = false;

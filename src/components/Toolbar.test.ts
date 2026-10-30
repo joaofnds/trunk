@@ -1,4 +1,5 @@
 import { emit, listen } from "@tauri-apps/api/event";
+import { message } from "@tauri-apps/plugin-dialog";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -334,6 +335,44 @@ describe("Toolbar", () => {
 				body: "desc",
 				expectedHeadOid: "abc123",
 				expectedRepoPath: "/test/repo",
+			}),
+		);
+	});
+
+	it("shows git's whole output in a dialog when the redo is refused", async () => {
+		const hookOutput = "lint-staged failed:\n  src/a.ts: missing semicolon";
+		vi.mocked(message).mockClear();
+		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) => {
+			if (cmd === "redo_commit") {
+				throw { code: "commit_error", message: hookOutput };
+			}
+			return cmd === "head_oid" ? "abc123" : false;
+		});
+		const undoRedo = makeUndoRedo();
+		undoRedo.state.redoStack = [
+			{ subject: "C2", body: null, headOid: "abc123", repoPath: "/test/repo" },
+		];
+		undoRedo.pop.mockReturnValue(undoRedo.state.redoStack[0]);
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo,
+				reviewActive: false,
+			},
+		});
+		const redoBtn = await waitFor(() => {
+			const btn = screen.getByRole("button", { name: "Redo" });
+			expect(btn).toBeEnabled();
+			return btn;
+		});
+
+		await fireEvent.click(redoBtn);
+
+		await waitFor(() =>
+			expect(message).toHaveBeenCalledWith(hookOutput, {
+				title: "Redo Error",
+				kind: "error",
 			}),
 		);
 	});
