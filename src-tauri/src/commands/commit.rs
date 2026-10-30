@@ -3,7 +3,6 @@ use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::HeadCommitMessage;
 use crate::watcher::RepoChanged;
 use std::path::Path;
-use std::process::Stdio;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
 
@@ -68,7 +67,6 @@ fn run_git_commit(repo_dir: &Path, args: &[&str]) -> Result<(), TrunkError> {
         .args(args)
         .current_dir(repo_dir)
         .env("PATH", shell_env::system_path())
-        .stdin(Stdio::null())
         .output()
         .map_err(|e| TrunkError::new("commit_error", e.to_string()))?;
 
