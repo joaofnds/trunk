@@ -1828,6 +1828,41 @@ mod checking_out_a_remote_branch {
     }
 
     #[test]
+    fn list_refs_names_no_remote_when_two_remotes_fetch_into_the_ref() {
+        let ctx = repo_with_remote_topic("origin");
+        ctx.repo()
+            .remote_with_fetch(
+                "mirror",
+                "file:///elsewhere",
+                "+refs/heads/*:refs/remotes/origin/*",
+            )
+            .unwrap();
+
+        let refs = ctx.list_refs().unwrap();
+
+        let topic = refs
+            .remote
+            .iter()
+            .find(|b| b.name == "origin/topic")
+            .unwrap();
+        assert_eq!(topic.remote, None);
+    }
+
+    #[test]
+    fn list_refs_names_no_remote_for_a_ref_no_remote_fetches_into() {
+        let ctx = repo_with_remote_topic("origin");
+        let feat = tip(&ctx, "feat");
+        ctx.repo()
+            .reference("refs/remotes/gone/topic", feat, false, "fetch")
+            .unwrap();
+
+        let refs = ctx.list_refs().unwrap();
+
+        let topic = refs.remote.iter().find(|b| b.name == "gone/topic").unwrap();
+        assert_eq!(topic.remote, None);
+    }
+
+    #[test]
     fn refuses_an_edit_the_remote_branch_would_overwrite_and_creates_nothing() {
         let mut ctx = repo_with_remote_topic("origin");
         std::fs::write(ctx.repo_path().join("a"), "edit").unwrap();

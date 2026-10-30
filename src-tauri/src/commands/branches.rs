@@ -60,32 +60,7 @@ pub fn list_refs_inner(path: &str, state_map: &OpenRepos) -> Result<RefsResponse
         })
         .collect();
 
-    // Remote branches — filter out entries where name ends with "/HEAD"
-    let remote: Vec<BranchInfo> = repo
-        .branches(Some(BranchType::Remote))?
-        .filter_map(std::result::Result::ok)
-        .filter_map(|(branch, _)| {
-            let name = branch.name().ok().flatten()?.to_owned();
-            if name.ends_with("/HEAD") {
-                return None;
-            }
-            let remote = branch
-                .get()
-                .name()
-                .ok()
-                .and_then(|refname| repo.branch_remote_name(refname).ok())
-                .and_then(|buf| buf.as_str().ok().map(str::to_owned));
-            Some(BranchInfo {
-                name,
-                is_head: false,
-                upstream: None,
-                ahead: 0,
-                behind: 0,
-                last_commit_timestamp: 0,
-                remote,
-            })
-        })
-        .collect();
+    let remote = remote_branches(&repo)?;
 
     // Tags
     let mut tags: Vec<RefLabel> = Vec::new();
@@ -625,6 +600,77 @@ pub async fn create_branch<R: Runtime>(
     let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
 
     Ok(())
+}
+
+/// Every remote-tracking branch but a remote's HEAD, named with its remote.
+fn remote_branches(repo: &git2::Repository) -> Result<Vec<BranchInfo>, TrunkError> {
+    let remotes = Remotes::read(repo);
+    let branches = repo
+        .branches(Some(BranchType::Remote))?
+        .filter_map(std::result::Result::ok)
+        .filter_map(|(branch, _)| {
+            let name = branch.name().ok().flatten()?.to_owned();
+            if name.ends_with("/HEAD") {
+                return None;
+            }
+            let remote = branch
+                .get()
+                .name()
+                .ok()
+                .and_then(|refname| remotes.name_of(refname));
+            Some(BranchInfo {
+                name,
+                is_head: false,
+                upstream: None,
+                ahead: 0,
+                behind: 0,
+                last_commit_timestamp: 0,
+                remote,
+            })
+        })
+        .collect();
+
+    Ok(branches)
+}
+
+/// The repository's remotes, read once so that naming the remote of every
+/// remote-tracking ref does not reread the config per ref, as
+/// `Repository::branch_remote_name` does.
+struct Remotes<'repo> {
+    remotes: Vec<git2::Remote<'repo>>,
+}
+
+impl<'repo> Remotes<'repo> {
+    fn read(repo: &'repo git2::Repository) -> Self {
+        let remotes = repo
+            .remotes()
+            .map(|names| {
+                names
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .filter_map(|name| repo.find_remote(name).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        Self { remotes }
+    }
+
+    /// The one remote whose fetch refspec writes `remote_ref`, or `None` when no
+    /// remote does or more than one does, the cases `branch_remote_name` refuses.
+    fn name_of(&self, remote_ref: &str) -> Option<String> {
+        let mut writers = self.remotes.iter().filter(|remote| {
+            remote.refspecs().any(|spec| {
+                spec.direction() == git2::Direction::Fetch && spec.dst_matches(remote_ref)
+            })
+        });
+        let writer = writers.next()?;
+
+        if writers.next().is_some() {
+            return None;
+        }
+        writer.name().ok().flatten().map(str::to_owned)
+    }
 }
 
 /// What a remote-tracking ref stands for, read through the fetch refspec that wrote
