@@ -66,28 +66,32 @@ fn list_refs_head_flag_tracks_current_branch() {
     assert!(!main.is_head, "expected main branch NOT to be HEAD");
 }
 
-#[test]
-fn checkout_with_non_conflicting_changes_succeeds() {
-    let mut ctx = TestContext::builder()
-        .with_file("README.md", "hello")
+/// `main` holds `a`, `b` and `c` at "base"; `feat` changes `a` and `b`.
+fn repo_where_feat_changes_a_and_b() -> TestContext {
+    TestContext::builder()
+        .with_file("a", "base")
+        .with_file("b", "base")
+        .with_file("c", "base")
         .with_commit("Initial commit")
-        .with_branch("other")
-        .build();
+        .with_branch("feat")
+        .checkout("feat")
+        .with_file("a", "feat")
+        .with_file("b", "feat")
+        .with_commit("Feature edit")
+        .checkout("main")
+        .build()
+}
 
-    // Modify and stage a tracked file (same content on both branches -- no conflict)
-    std::fs::write(ctx.repo_path().join("README.md"), "dirty content").unwrap();
-    {
-        let repo = ctx.repo();
-        let mut index = repo.index().unwrap();
-        index.add_path(std::path::Path::new("README.md")).unwrap();
-        index.write().unwrap();
-    }
+#[test]
+fn checkout_carries_an_unrelated_edit_onto_the_branch() {
+    let mut ctx = repo_where_feat_changes_a_and_b();
+    std::fs::write(ctx.repo_path().join("c"), "edit").unwrap();
 
-    let result = ctx.checkout_branch("other");
-    assert!(
-        result.is_ok(),
-        "checkout should succeed when changes don't conflict"
-    );
+    ctx.checkout_branch("feat").unwrap();
+
+    ctx.assert_head_at("feat");
+    ctx.assert_file_content("a", "feat");
+    ctx.assert_file_content("c", "edit");
 }
 
 #[test]

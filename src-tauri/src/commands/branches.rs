@@ -312,6 +312,13 @@ fn classify_checkout_error(e: git2::Error) -> TrunkError {
     e.into()
 }
 
+/// Write `target`'s tree over the index and working tree, keeping every uncommitted
+/// change it does not touch. git2 writes nothing when it refuses on a conflict.
+fn checkout_safely(repo: &git2::Repository, target: &git2::Object<'_>) -> Result<(), TrunkError> {
+    repo.checkout_tree(target, Some(git2::build::CheckoutBuilder::new().safe()))
+        .map_err(classify_checkout_error)
+}
+
 /// Inner implementation of `checkout_branch` — separated for testability.
 ///
 /// # Errors
@@ -332,8 +339,7 @@ pub fn checkout_branch_inner(
     let branch_ref = format!("refs/heads/{branch_name}");
     {
         let (object, _reference) = repo.revparse_ext(&branch_ref)?;
-        repo.checkout_tree(&object, Some(git2::build::CheckoutBuilder::new().safe()))
-            .map_err(classify_checkout_error)?;
+        checkout_safely(&repo, &object)?;
     }
     repo.set_head(&branch_ref)?;
     drop(repo);
