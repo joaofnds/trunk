@@ -319,6 +319,14 @@ fn checkout_safely(repo: &git2::Repository, target: &git2::Object<'_>) -> Result
         .map_err(classify_checkout_error)
 }
 
+fn check_out_local(repo: &git2::Repository, branch_ref: &str) -> Result<(), TrunkError> {
+    let (object, _reference) = repo.revparse_ext(branch_ref)?;
+    checkout_safely(repo, &object)?;
+    repo.set_head(branch_ref)?;
+
+    Ok(())
+}
+
 /// Inner implementation of `checkout_branch` — separated for testability.
 ///
 /// # Errors
@@ -336,12 +344,7 @@ pub fn checkout_branch_inner(
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
 
-    let branch_ref = format!("refs/heads/{branch_name}");
-    {
-        let (object, _reference) = repo.revparse_ext(&branch_ref)?;
-        checkout_safely(&repo, &object)?;
-    }
-    repo.set_head(&branch_ref)?;
+    check_out_local(&repo, &format!("refs/heads/{branch_name}"))?;
     drop(repo);
 
     // Rebuild graph cache after checkout
@@ -600,6 +603,93 @@ pub async fn create_branch<R: Runtime>(
                 rebuilt,
                 visibility,
             )
+        })
+        .await
+        .map_err(|e| e.to_json())?;
+
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+
+    Ok(())
+}
+
+/// Inner implementation of `checkout_remote_branch` — separated for testability.
+///
+/// Checks out remote-tracking ref `remote_ref` as `git switch <branch>` does: an
+/// existing local branch of that name is checked out where it is, and otherwise a new
+/// one is created at the remote branch, tracking it, with the same carry-over and
+/// refusals as `create_branch_inner`.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `git_invalid_spec` when
+/// `remote_ref` is not under `refs/remotes/`, `dirty_workdir` when the checkout would
+/// overwrite uncommitted changes, the errors `create_branch_inner` names for the local
+/// name, and the git error when no remote owns `remote_ref` or its upstream will not save.
+pub fn checkout_remote_branch_inner(
+    path: &str,
+    remote_ref: &str,
+    state_map: &OpenRepos,
+    cache_map: &mut GraphCache,
+    visibility: &trunk_git::graph_input::RefVisibility,
+) -> Result<(), TrunkError> {
+    let path_buf = state_map.path_for(path)?;
+    let repo = git2::Repository::open(path_buf)?;
+
+    if !remote_ref.starts_with("refs/remotes/") {
+        return Err(reference_error(
+            git2::ErrorCode::InvalidSpec,
+            &format!("'{remote_ref}' is not a remote branch"),
+        ));
+    }
+    let remote = repo.branch_remote_name(remote_ref)?;
+    let remote = remote.as_str()?;
+    let name = remote_ref
+        .strip_prefix(&format!("refs/remotes/{remote}/"))
+        .ok_or_else(|| TrunkError::new("git_error", "The remote branch has no name"))?;
+
+    let local_ref = format!("refs/heads/{name}");
+    if repo.find_reference(&local_ref).is_ok() {
+        check_out_local(&repo, &local_ref)?;
+    } else {
+        let target = repo.find_reference(remote_ref)?.peel_to_commit()?;
+        create_and_check_out(&repo, name, &target, remote_ref)?;
+        let mut config = repo.config()?;
+        config.set_str(&format!("branch.{name}.remote"), remote)?;
+        config.set_str(&format!("branch.{name}.merge"), &local_ref)?;
+    }
+    drop(repo);
+
+    let mut repo2 = git2::Repository::open(path_buf)?;
+    let read = crate::state::read_graph(&mut repo2)?;
+    cache_map.insert_read(path.to_owned(), read, visibility.clone());
+
+    Ok(())
+}
+
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn checkout_remote_branch<R: Runtime>(
+    path: String,
+    remote_ref: String,
+    state: State<'_, RepoState>,
+    cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
+    app: AppHandle<R>,
+) -> Result<(), String> {
+    let state_map = state.snapshot();
+    let path_clone = path.clone();
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+
+    rebuild
+        .rebuild_merging(path.clone(), move |visibility, rebuilt| {
+            checkout_remote_branch_inner(&path_clone, &remote_ref, &state_map, rebuilt, visibility)
         })
         .await
         .map_err(|e| e.to_json())?;

@@ -331,14 +331,12 @@ async function handleCheckout(branchName: string) {
 }
 
 async function handleCheckoutRemoteBranch(fullName: string) {
-	const shortName = fullName.slice(fullName.indexOf("/") + 1);
 	checkoutError = null;
 	checkingOutBranch = fullName;
 	try {
-		await safeInvoke<void>("create_branch", {
+		await safeInvoke<void>("checkout_remote_branch", {
 			path: repoPath,
-			name: shortName,
-			fromOid: fullName,
+			remoteRef: `refs/remotes/${fullName}`,
 		});
 		await loadRefs(repoPath);
 		onrefreshed?.();

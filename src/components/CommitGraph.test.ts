@@ -2403,17 +2403,16 @@ describe("CommitGraph", () => {
 			});
 		});
 
-		it("branches a remote checkout from the fully-qualified ref", async () => {
+		it("checks out a remote branch by the fully-qualified ref", async () => {
 			await mountGraph();
 
 			await fireEvent.dblClick(await findPill("origin/feature"));
 			await flush();
 
-			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("create_branch", {
-				path: "/test/repo",
-				name: "feature",
-				fromOid: "refs/remotes/origin/feature",
-			});
+			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith(
+				"checkout_remote_branch",
+				{ path: "/test/repo", remoteRef: "refs/remotes/origin/feature" },
+			);
 		});
 
 		it("detects the fork point from the fully-qualified ref", async () => {
@@ -3264,11 +3263,10 @@ describe("CommitGraph", () => {
 			);
 			await flush();
 
-			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("create_branch", {
-				path: "/test/repo",
-				name: "topic",
-				fromOid: "refs/remotes/origin/topic",
-			});
+			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith(
+				"checkout_remote_branch",
+				{ path: "/test/repo", remoteRef: "refs/remotes/origin/topic" },
+			);
 		});
 
 		it("opens a listed ref's own menu on a right click", async () => {

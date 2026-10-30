@@ -344,7 +344,7 @@ describe("BranchSidebar", () => {
 			stashes: [],
 		};
 
-		it("calls create_branch with correct args on remote branch double-click", async () => {
+		it("checks out the remote branch by its full ref on a double-click", async () => {
 			mockInvoke.mockImplementation((cmd: string) => {
 				if (cmd === "list_refs") return Promise.resolve(refsWithRemote);
 				return Promise.resolve(undefined);
@@ -373,18 +373,17 @@ describe("BranchSidebar", () => {
 			await fireEvent.dblClick(remoteBranchRow as Element);
 
 			await waitFor(() => {
-				expect(mockInvoke).toHaveBeenCalledWith("create_branch", {
+				expect(mockInvoke).toHaveBeenCalledWith("checkout_remote_branch", {
 					path: "/test/repo",
-					name: "feature",
-					fromOid: "origin/feature",
+					remoteRef: "refs/remotes/origin/feature",
 				});
 			});
 		});
 
-		it("shows error toast when create_branch fails", async () => {
+		it("shows error toast when the remote checkout fails", async () => {
 			mockInvoke.mockImplementation((cmd: string) => {
 				if (cmd === "list_refs") return Promise.resolve(refsWithRemote);
-				if (cmd === "create_branch")
+				if (cmd === "checkout_remote_branch")
 					return Promise.reject(
 						JSON.stringify({
 							code: "branch_exists",
@@ -413,12 +412,11 @@ describe("BranchSidebar", () => {
 				.querySelector('[data-testid="branch-row"] button');
 			await fireEvent.dblClick(remoteBranchRow as Element);
 
-			// Verify create_branch was called (and it rejected)
+			// Verify the remote checkout was called (and it rejected)
 			await waitFor(() => {
-				expect(mockInvoke).toHaveBeenCalledWith("create_branch", {
+				expect(mockInvoke).toHaveBeenCalledWith("checkout_remote_branch", {
 					path: "/test/repo",
-					name: "feature",
-					fromOid: "origin/feature",
+					remoteRef: "refs/remotes/origin/feature",
 				});
 			});
 		});

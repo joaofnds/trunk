@@ -1639,3 +1639,166 @@ mod deleting_a_branch_a_linked_worktree_holds {
         path
     }
 }
+
+mod checking_out_a_remote_branch {
+    use super::*;
+
+    /// `repo_where_feat_changes_a_and_b`, with `remote` holding branch `topic` at
+    /// `feat`'s commit and no local `topic`.
+    fn repo_with_remote_topic(remote: &str) -> TestContext {
+        let ctx = repo_where_feat_changes_a_and_b();
+        let repo = ctx.repo();
+        repo.remote(remote, "file:///nowhere").unwrap();
+        let feat = repo.revparse_single("feat").unwrap().id();
+        repo.reference(
+            &format!("refs/remotes/{remote}/topic"),
+            feat,
+            false,
+            "fetch",
+        )
+        .unwrap();
+        drop(repo);
+        ctx
+    }
+
+    fn tip(ctx: &TestContext, refname: &str) -> git2::Oid {
+        ctx.repo().revparse_single(refname).unwrap().id()
+    }
+
+    fn upstream(ctx: &TestContext, branch: &str) -> Option<String> {
+        let repo = ctx.repo();
+        let branch = repo.find_branch(branch, git2::BranchType::Local).unwrap();
+        branch
+            .upstream()
+            .ok()
+            .and_then(|upstream| upstream.name().ok().flatten().map(str::to_owned))
+    }
+
+    fn local_branches(ctx: &TestContext) -> Vec<String> {
+        let mut names: Vec<String> = ctx
+            .list_refs()
+            .unwrap()
+            .local
+            .into_iter()
+            .map(|branch| branch.name)
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn creates_a_local_branch_tracking_it_and_keeps_an_unrelated_edit() {
+        let mut ctx = repo_with_remote_topic("origin");
+        std::fs::write(ctx.repo_path().join("c"), "edit").unwrap();
+
+        ctx.checkout_remote_branch("refs/remotes/origin/topic")
+            .unwrap();
+
+        ctx.assert_head_at("topic");
+        assert_eq!(tip(&ctx, "topic"), tip(&ctx, "feat"));
+        assert_eq!(upstream(&ctx, "topic").as_deref(), Some("origin/topic"));
+        ctx.assert_file_content("a", "feat");
+        ctx.assert_file_content("c", "edit");
+    }
+
+    #[test]
+    fn tracks_the_remote_branch_past_a_local_branch_and_a_tag_of_its_short_name() {
+        let mut ctx = repo_with_remote_topic("origin");
+        {
+            let repo = ctx.repo();
+            let main = repo.head().unwrap().peel_to_commit().unwrap();
+            repo.branch("origin/topic", &main, false).unwrap();
+            repo.tag_lightweight("origin/topic", main.as_object(), false)
+                .unwrap();
+        }
+
+        ctx.checkout_remote_branch("refs/remotes/origin/topic")
+            .unwrap();
+
+        assert_eq!(tip(&ctx, "refs/heads/topic"), tip(&ctx, "refs/heads/feat"));
+        assert_eq!(upstream(&ctx, "topic").as_deref(), Some("origin/topic"));
+    }
+
+    #[test]
+    fn names_the_local_branch_after_the_remote_prefix_when_the_remote_name_holds_a_slash() {
+        let mut ctx = repo_with_remote_topic("my/fork");
+
+        ctx.checkout_remote_branch("refs/remotes/my/fork/topic")
+            .unwrap();
+
+        ctx.assert_head_at("topic");
+        assert_eq!(upstream(&ctx, "topic").as_deref(), Some("my/fork/topic"));
+    }
+
+    #[test]
+    fn refuses_an_edit_the_remote_branch_would_overwrite_and_creates_nothing() {
+        let mut ctx = repo_with_remote_topic("origin");
+        std::fs::write(ctx.repo_path().join("a"), "edit").unwrap();
+
+        let err = ctx
+            .checkout_remote_branch("refs/remotes/origin/topic")
+            .unwrap_err();
+
+        assert_eq!(err.code, "dirty_workdir");
+        ctx.assert_branch_not_exists("topic");
+        ctx.assert_head_at("main");
+        ctx.assert_file_content("a", "edit");
+    }
+
+    #[test]
+    fn refuses_a_short_name_and_creates_nothing() {
+        let mut ctx = repo_with_remote_topic("origin");
+
+        let err = ctx.checkout_remote_branch("origin/topic").unwrap_err();
+
+        assert_eq!(err.code, "git_invalid_spec");
+        ctx.assert_branch_not_exists("topic");
+        ctx.assert_head_at("main");
+    }
+
+    mod when_a_local_branch_has_its_name {
+        use super::*;
+
+        fn repo_with_local_topic_at(start: &str) -> TestContext {
+            let ctx = repo_with_remote_topic("origin");
+            {
+                let repo = ctx.repo();
+                let commit = repo
+                    .revparse_single(start)
+                    .unwrap()
+                    .peel_to_commit()
+                    .unwrap();
+                repo.branch("topic", &commit, false).unwrap();
+            }
+            ctx
+        }
+
+        #[test]
+        fn checks_out_the_local_branch_where_it_is() {
+            let mut ctx = repo_with_local_topic_at("main");
+            let main = tip(&ctx, "main");
+            let before = local_branches(&ctx);
+
+            ctx.checkout_remote_branch("refs/remotes/origin/topic")
+                .unwrap();
+
+            ctx.assert_head_at("topic");
+            assert_eq!(tip(&ctx, "topic"), main);
+            assert_eq!(local_branches(&ctx), before);
+        }
+
+        #[test]
+        fn refuses_an_edit_the_local_branch_would_overwrite() {
+            let mut ctx = repo_with_local_topic_at("feat");
+            std::fs::write(ctx.repo_path().join("a"), "edit").unwrap();
+
+            let err = ctx
+                .checkout_remote_branch("refs/remotes/origin/topic")
+                .unwrap_err();
+
+            assert_eq!(err.code, "dirty_workdir");
+            ctx.assert_head_at("main");
+            ctx.assert_file_content("a", "edit");
+        }
+    }
+}

@@ -114,4 +114,15 @@ impl TestContext {
             &trunk_git::graph_input::RefVisibility::default(),
         )
     }
+
+    /// Check out remote-tracking ref `remote_ref` as a local branch (needs &mut self for `cache_map`)
+    pub fn checkout_remote_branch(&mut self, remote_ref: &str) -> Result<(), TrunkError> {
+        branches::checkout_remote_branch_inner(
+            &self.path,
+            remote_ref,
+            &self.state_map,
+            &mut self.cache_map,
+            &trunk_git::graph_input::RefVisibility::default(),
+        )
+    }
 }

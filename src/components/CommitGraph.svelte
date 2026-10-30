@@ -1356,11 +1356,9 @@ function checkoutLocalBranch(name: string) {
 }
 
 function checkoutRemoteBranch(ref: RefInfo) {
-	const localName = ref.shortName.slice(ref.shortName.indexOf("/") + 1);
-	return safeInvoke<void>("create_branch", {
+	return safeInvoke<void>("checkout_remote_branch", {
 		path: repoPath,
-		name: localName,
-		fromOid: ref.name,
+		remoteRef: ref.name,
 	});
 }
 
