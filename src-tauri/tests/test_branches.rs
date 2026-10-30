@@ -1732,6 +1732,64 @@ mod checking_out_a_remote_branch {
         assert_eq!(upstream(&ctx, "topic").as_deref(), Some("my/fork/topic"));
     }
 
+    /// `repo_where_feat_changes_a_and_b`, with remote `remote` fetching through
+    /// `fetch` and its tracking ref `tracking` at `feat`'s commit.
+    fn repo_with_remote_fetching(remote: &str, fetch: &str, tracking: &str) -> TestContext {
+        let ctx = repo_where_feat_changes_a_and_b();
+        let repo = ctx.repo();
+        repo.remote_with_fetch(remote, "file:///nowhere", fetch)
+            .unwrap();
+        let feat = repo.revparse_single("feat").unwrap().id();
+        repo.reference(tracking, feat, false, "fetch").unwrap();
+        drop(repo);
+        ctx
+    }
+
+    fn merge_config(ctx: &TestContext, branch: &str) -> String {
+        ctx.repo()
+            .config()
+            .unwrap()
+            .get_string(&format!("branch.{branch}.merge"))
+            .unwrap()
+    }
+
+    /// git maps the tracking ref back through the fetch refspec, so the upstream names
+    /// the branch on the remote, not one guessed from the local name.
+    #[test]
+    fn tracks_the_remote_branch_a_renaming_refspec_fetched() {
+        let mut ctx = repo_with_remote_fetching(
+            "origin",
+            "+refs/heads/team/*:refs/remotes/origin/*",
+            "refs/remotes/origin/topic",
+        );
+
+        let name = ctx
+            .checkout_remote_branch("refs/remotes/origin/topic")
+            .unwrap();
+
+        assert_eq!(name, "topic");
+        assert_eq!(merge_config(&ctx, "topic"), "refs/heads/team/topic");
+        assert_eq!(upstream(&ctx, "topic").as_deref(), Some("origin/topic"));
+    }
+
+    #[test]
+    fn names_the_branch_from_a_tracking_namespace_the_remote_is_not_named_after() {
+        let mut ctx = repo_with_remote_fetching(
+            "up",
+            "+refs/heads/*:refs/remotes/upstream/*",
+            "refs/remotes/upstream/topic",
+        );
+
+        let name = ctx
+            .checkout_remote_branch("refs/remotes/upstream/topic")
+            .unwrap();
+
+        assert_eq!(name, "topic");
+        ctx.assert_head_at("topic");
+        assert_eq!(merge_config(&ctx, "topic"), "refs/heads/topic");
+        assert_eq!(upstream(&ctx, "topic").as_deref(), Some("upstream/topic"));
+    }
+
     /// The sidebar groups remote branches by this field, and the first "/" in the name
     /// would put `my/fork/topic` under a remote called `my`.
     #[test]

@@ -1328,6 +1328,39 @@ describe("BranchSidebar checking out or creating a branch", () => {
 		);
 	});
 
+	// A remote can fetch into a namespace not named after it, as `up` fetching into
+	// refs/remotes/upstream/*, so the remote's name is not always a prefix of its branches.
+	it("lists a remote branch by its ref when the remote fetches into another namespace", async () => {
+		mockInvoke.mockReset();
+		mockInvoke.mockImplementation((called: string) => {
+			if (called === "list_refs")
+				return Promise.resolve(
+					mockListRefs({
+						remote: [{ ...branch("upstream/topic"), remote: "up" }],
+					}),
+				);
+			return Promise.resolve("topic");
+		});
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		await fireEvent.click(await screen.findByText("Remote (1)"));
+
+		const row = await waitFor(() => {
+			const found = screen
+				.getByTestId("branch-section-remote")
+				.querySelector('[data-testid="branch-row"] button');
+			if (!found) throw new Error("the remote row offers no control");
+			return found;
+		});
+		expect(row).toHaveTextContent("topic");
+		await fireEvent.dblClick(row);
+		await waitFor(() =>
+			expect(mockInvoke).toHaveBeenCalledWith("checkout_remote_branch", {
+				path: "/test/repo",
+				remoteRef: "refs/remotes/upstream/topic",
+			}),
+		);
+	});
+
 	describe("when uncommitted changes conflict", () => {
 		it("explains the refused local checkout beside the branch and in a toast", async () => {
 			answering("checkout_branch", () => Promise.reject(conflict));

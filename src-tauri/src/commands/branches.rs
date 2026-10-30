@@ -620,6 +620,51 @@ pub async fn create_branch<R: Runtime>(
     Ok(())
 }
 
+/// What a remote-tracking ref stands for, read through the fetch refspec that wrote
+/// it, as git reads it when it sets an upstream.
+struct Tracking {
+    /// The remote that fetches into the ref.
+    remote: String,
+    /// The local branch name: the part of the ref the refspec's `*` matched.
+    name: String,
+    /// The branch on the remote, which a renaming refspec makes differ from `name`.
+    merge: String,
+}
+
+impl Tracking {
+    fn of(repo: &git2::Repository, remote_ref: &str) -> Result<Self, TrunkError> {
+        let remote = repo.branch_remote_name(remote_ref)?.as_str()?.to_owned();
+        let found = repo.find_remote(&remote)?;
+        let spec = found
+            .refspecs()
+            .find(|spec| spec.direction() == git2::Direction::Fetch && spec.dst_matches(remote_ref))
+            .ok_or_else(|| {
+                reference_error(
+                    git2::ErrorCode::NotFound,
+                    &format!("No fetch refspec of '{remote}' writes '{remote_ref}'"),
+                )
+            })?;
+        let merge = spec.rtransform(remote_ref)?.as_str()?.to_owned();
+        let name = spec
+            .dst()?
+            .split_once('*')
+            .and_then(|(prefix, _)| remote_ref.strip_prefix(prefix))
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| {
+                reference_error(
+                    git2::ErrorCode::InvalidSpec,
+                    &format!("'{remote_ref}' names no branch of '{remote}'"),
+                )
+            })?
+            .to_owned();
+        Ok(Self {
+            remote,
+            name,
+            merge,
+        })
+    }
+}
+
 /// Inner implementation of `checkout_remote_branch` — separated for testability.
 ///
 /// Checks out remote-tracking ref `remote_ref` as `git switch <branch>` does: an
@@ -649,12 +694,8 @@ pub fn checkout_remote_branch_inner(
             &format!("'{remote_ref}' is not a remote branch"),
         ));
     }
-    let remote = repo.branch_remote_name(remote_ref)?;
-    let remote = remote.as_str()?;
-    let name = remote_ref
-        .strip_prefix(&format!("refs/remotes/{remote}/"))
-        .ok_or_else(|| TrunkError::new("git_error", "The remote branch has no name"))?
-        .to_owned();
+    let tracking = Tracking::of(&repo, remote_ref)?;
+    let name = tracking.name;
 
     let local_ref = format!("refs/heads/{name}");
     if repo.find_reference(&local_ref).is_ok() {
@@ -663,8 +704,8 @@ pub fn checkout_remote_branch_inner(
         let target = repo.find_reference(remote_ref)?.peel_to_commit()?;
         create_and_check_out(&repo, &name, &target, remote_ref)?;
         let mut config = repo.config()?;
-        config.set_str(&format!("branch.{name}.remote"), remote)?;
-        config.set_str(&format!("branch.{name}.merge"), &local_ref)?;
+        config.set_str(&format!("branch.{name}.remote"), &tracking.remote)?;
+        config.set_str(&format!("branch.{name}.merge"), &tracking.merge)?;
     }
     drop(repo);
 

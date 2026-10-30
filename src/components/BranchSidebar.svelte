@@ -35,6 +35,7 @@ import { getScheduler } from "../lib/scheduler.js";
 import { getRefVisibility, setRefVisibility } from "../lib/store.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
+	BranchInfo,
 	GraphResponse,
 	RefLabel,
 	RefsResponse,
@@ -211,11 +212,19 @@ let filteredStashes = $derived<StashEntry[]>(
 		: (refs?.stashes ?? []),
 );
 
-// Group remote branches by remote name: { "origin": ["main", "dev"] }. A remote's own
-// name can hold a "/", so the backend's remote wins over the first "/" in the branch name.
+// Group remote branches by remote name: { "origin": ["main", "dev"] }. Each group
+// rebuilds its refs as `<group>/<short>`, so the group must be a prefix of the name: the
+// backend's remote where it is one, since a remote's name can hold a "/", and the first
+// "/" otherwise, as for a remote that fetches into a namespace not named after it.
+/** Where the remote group ends in a remote branch name, or -1 when nothing does. */
+function remoteGroupEnd(b: BranchInfo): number {
+	if (b.remote && b.name.startsWith(`${b.remote}/`)) return b.remote.length;
+	return b.name.indexOf("/");
+}
+
 let remoteGroups = $derived(
 	filteredRemote.reduce<Record<string, string[]>>((acc, b) => {
-		const slash = b.remote ? b.remote.length : b.name.indexOf("/");
+		const slash = remoteGroupEnd(b);
 		const remote = slash >= 0 ? b.name.slice(0, slash) : "unknown";
 		const short = slash >= 0 ? b.name.slice(slash + 1) : b.name;
 		if (!acc[remote]) acc[remote] = [];
