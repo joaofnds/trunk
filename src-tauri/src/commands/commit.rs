@@ -2,7 +2,9 @@ use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::HeadCommitMessage;
 use crate::watcher::RepoChanged;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
+use std::process::Stdio;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
 
@@ -38,7 +40,7 @@ pub fn create_commit_inner(
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
     let message = build_message(subject, body);
-    run_git_commit(state_map.path_for(path)?, &["commit", "-m", &message])
+    run_git_commit(state_map.path_for(path)?, &["-m", &message])
 }
 
 /// Replace HEAD's commit through `git commit --amend`, with the current index
@@ -56,35 +58,49 @@ pub fn amend_commit_inner(
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
     let message = build_message(subject, body);
-    run_git_commit(
-        state_map.path_for(path)?,
-        &["commit", "--amend", "-m", &message],
-    )
+    run_git_commit(state_map.path_for(path)?, &["--amend", "-m", &message])
 }
 
-fn run_git_commit(repo_dir: &Path, args: &[&str]) -> Result<(), TrunkError> {
-    let output = std::process::Command::new("git")
-        .args(args)
+fn run_git_commit(repo_dir: &Path, flags: &[&str]) -> Result<(), TrunkError> {
+    let to_error = |e: std::io::Error| TrunkError::new("commit_error", e.to_string());
+    // Files rather than pipes: a process a hook leaves running in the
+    // background inherits git's output, and reading a pipe to its end would
+    // wait for that process too, long after the commit is written.
+    let mut stdout = tempfile::tempfile().map_err(to_error)?;
+    let mut stderr = tempfile::tempfile().map_err(to_error)?;
+
+    let status = std::process::Command::new("git")
+        .arg("commit")
+        .args(flags)
         .current_dir(repo_dir)
         .env("PATH", shell_env::system_path())
-        .output()
-        .map_err(|e| TrunkError::new("commit_error", e.to_string()))?;
+        .stdin(Stdio::null())
+        .stdout(stdout.try_clone().map_err(to_error)?)
+        .stderr(stderr.try_clone().map_err(to_error)?)
+        .status()
+        .map_err(to_error)?;
 
-    if output.status.success() {
+    if status.success() {
         return Ok(());
     }
 
-    // "nothing to commit" is printed to stdout with an empty stderr.
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let message = if stderr.trim().is_empty() {
-        String::from_utf8_lossy(&output.stdout)
-    } else {
-        stderr
-    };
-    Err(TrunkError::new(
-        "commit_error",
-        message.trim_end().to_owned(),
-    ))
+    let stderr = read_from_start(&mut stderr).map_err(to_error)?;
+    let stdout = read_from_start(&mut stdout).map_err(to_error)?;
+    // "nothing to commit" is printed to stdout with an empty stderr, and a
+    // hook can refuse without printing anything at all.
+    let message = [stderr.trim_end(), stdout.trim_end()]
+        .into_iter()
+        .find(|output| !output.is_empty())
+        .map_or_else(|| format!("git commit failed with {status}"), str::to_owned);
+
+    Err(TrunkError::new("commit_error", message))
+}
+
+fn read_from_start(file: &mut std::fs::File) -> std::io::Result<String> {
+    let mut text = String::new();
+    file.seek(SeekFrom::Start(0))?;
+    file.read_to_string(&mut text)?;
+    Ok(text)
 }
 
 /// HEAD's commit message, split into subject and body.

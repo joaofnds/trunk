@@ -215,6 +215,59 @@ fn create_commit_keeps_the_trailer_a_commit_msg_hook_adds() {
 }
 
 #[test]
+fn create_commit_with_nothing_staged_reports_gits_reason() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+
+    let err = ctx.create_commit("Nothing", None).unwrap_err();
+
+    assert!(err.message.contains("nothing to commit"), "got: {err:?}");
+}
+
+#[test]
+fn create_commit_refused_by_a_silent_hook_still_explains_the_refusal() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    install_hook(&ctx, "pre-commit", "exit 1");
+    stage_new_file(&ctx, "new_file.txt");
+
+    let err = ctx.create_commit("New commit", None).unwrap_err();
+
+    assert!(err.message.contains("exit status: 1"), "got: {err:?}");
+}
+
+#[test]
+fn create_commit_returns_while_a_process_its_hook_started_still_runs() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    let gate = tempfile::tempdir().unwrap();
+    let fifo = gate.path().join("release");
+    let made = std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .unwrap();
+    assert!(made.success(), "mkfifo failed");
+    install_hook(
+        &ctx,
+        "post-commit",
+        &format!("(read line < '{}') &", fifo.display()),
+    );
+    stage_new_file(&ctx, "new_file.txt");
+
+    let result = ctx.create_commit("New commit", None);
+
+    std::fs::write(&fifo, "go\n").unwrap();
+    result.unwrap();
+    assert_eq!(head_message(&ctx).trim_end(), "New commit");
+}
+
+#[test]
 fn create_commit_during_a_revert_concludes_it() {
     let ctx = TestContext::builder()
         .with_file("README.md", "hello")
