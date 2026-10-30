@@ -32,7 +32,8 @@ export const EVERYTHING_VISIBLE: RefVisibility = {
  * The remote a `refs/remotes/<remote>/<branch>` name belongs to, or null.
  *
  * A remote name may itself contain slashes, so the branch cannot be split off from the
- * right. This takes the first segment, which is what the sidebar groups by.
+ * right. This takes the first segment, which is wrong for such a remote. The sidebar
+ * groups by the remote `list_refs` names instead.
  */
 export function remoteOf(name: string): string | null {
 	const rest = name.startsWith("refs/remotes/")

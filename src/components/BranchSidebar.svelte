@@ -211,10 +211,11 @@ let filteredStashes = $derived<StashEntry[]>(
 		: (refs?.stashes ?? []),
 );
 
-// Group remote branches by remote name: { "origin": ["main", "dev"] }
+// Group remote branches by remote name: { "origin": ["main", "dev"] }. A remote's own
+// name can hold a "/", so the backend's remote wins over the first "/" in the branch name.
 let remoteGroups = $derived(
 	filteredRemote.reduce<Record<string, string[]>>((acc, b) => {
-		const slash = b.name.indexOf("/");
+		const slash = b.remote ? b.remote.length : b.name.indexOf("/");
 		const remote = slash >= 0 ? b.name.slice(0, slash) : "unknown";
 		const short = slash >= 0 ? b.name.slice(slash + 1) : b.name;
 		if (!acc[remote]) acc[remote] = [];

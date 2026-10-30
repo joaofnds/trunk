@@ -55,6 +55,7 @@ pub fn list_refs_inner(path: &str, state_map: &OpenRepos) -> Result<RefsResponse
                 ahead,
                 behind,
                 last_commit_timestamp,
+                remote: None,
             }
         })
         .collect();
@@ -68,6 +69,12 @@ pub fn list_refs_inner(path: &str, state_map: &OpenRepos) -> Result<RefsResponse
             if name.ends_with("/HEAD") {
                 return None;
             }
+            let remote = branch
+                .get()
+                .name()
+                .ok()
+                .and_then(|refname| repo.branch_remote_name(refname).ok())
+                .and_then(|buf| buf.as_str().ok().map(str::to_owned));
             Some(BranchInfo {
                 name,
                 is_head: false,
@@ -75,6 +82,7 @@ pub fn list_refs_inner(path: &str, state_map: &OpenRepos) -> Result<RefsResponse
                 ahead: 0,
                 behind: 0,
                 last_commit_timestamp: 0,
+                remote,
             })
         })
         .collect();

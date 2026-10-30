@@ -48,6 +48,9 @@ pub struct BranchInfo {
     pub ahead: usize,
     pub behind: usize,
     pub last_commit_timestamp: i64,
+    /// The remote a remote-tracking branch belongs to, which may itself hold a "/".
+    /// None for a local branch, and for a remote branch whose remote git2 cannot name.
+    pub remote: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]

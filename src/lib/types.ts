@@ -104,6 +104,9 @@ export interface BranchInfo {
 	ahead: number;
 	behind: number;
 	last_commit_timestamp: number;
+	/** The remote of a remote-tracking branch, which may itself hold a "/". Null for a
+	 *  local branch, and for a remote branch whose remote the backend could not name. */
+	remote: string | null;
 }
 
 /** Why removing a linked worktree may lose work. */

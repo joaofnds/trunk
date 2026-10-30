@@ -91,6 +91,7 @@ function mockListRefs(overrides?: {
 		ahead: number;
 		behind: number;
 		last_commit_timestamp: number;
+		remote?: string | null;
 	}>;
 	tags?: Array<{
 		name: string;
@@ -1289,6 +1290,40 @@ describe("BranchSidebar checking out or creating a branch", () => {
 			expect(toasted()).toContainEqual({
 				message: "Checked out fresh",
 				kind: "success",
+			}),
+		);
+	});
+
+	// TRUNK-277: the remote's own name can hold a "/", so the first "/" in a branch name
+	// does not mark where the remote ends.
+	it("groups a remote branch under its remote and checks it out by its full ref", async () => {
+		mockInvoke.mockReset();
+		mockInvoke.mockImplementation((called: string) => {
+			if (called === "list_refs")
+				return Promise.resolve(
+					mockListRefs({
+						remote: [{ ...branch("my/fork/topic"), remote: "my/fork" }],
+					}),
+				);
+			return Promise.resolve("topic");
+		});
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		await fireEvent.click(await screen.findByText("Remote (1)"));
+
+		const subheader = await screen.findByTestId("remote-group-subheader");
+		expect(subheader).toHaveTextContent("my/fork");
+		const row = screen
+			.getByTestId("branch-section-remote")
+			.querySelector('[data-testid="branch-row"] button');
+		if (!row) throw new Error("the remote row offers no control");
+		expect(row).toHaveTextContent("topic");
+		expect(row).not.toHaveTextContent("fork");
+
+		await fireEvent.dblClick(row);
+		await waitFor(() =>
+			expect(mockInvoke).toHaveBeenCalledWith("checkout_remote_branch", {
+				path: "/test/repo",
+				remoteRef: "refs/remotes/my/fork/topic",
 			}),
 		);
 	});

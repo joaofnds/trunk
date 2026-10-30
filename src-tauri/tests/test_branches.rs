@@ -1732,6 +1732,23 @@ mod checking_out_a_remote_branch {
         assert_eq!(upstream(&ctx, "topic").as_deref(), Some("my/fork/topic"));
     }
 
+    /// The sidebar groups remote branches by this field, and the first "/" in the name
+    /// would put `my/fork/topic` under a remote called `my`.
+    #[test]
+    fn list_refs_names_the_remote_of_each_remote_branch() {
+        let ctx = repo_with_remote_topic("my/fork");
+
+        let refs = ctx.list_refs().unwrap();
+
+        let topic = refs
+            .remote
+            .iter()
+            .find(|b| b.name == "my/fork/topic")
+            .expect("the remote branch is listed");
+        assert_eq!(topic.remote.as_deref(), Some("my/fork"));
+        assert!(refs.local.iter().all(|b| b.remote.is_none()));
+    }
+
     #[test]
     fn refuses_an_edit_the_remote_branch_would_overwrite_and_creates_nothing() {
         let mut ctx = repo_with_remote_topic("origin");

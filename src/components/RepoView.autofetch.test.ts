@@ -58,6 +58,7 @@ function refs(head: string, names: string[]): RefsResponse {
 			ahead: 0,
 			behind: 0,
 			last_commit_timestamp: 0,
+			remote: null,
 		})),
 		remote: [],
 		tags: [],
