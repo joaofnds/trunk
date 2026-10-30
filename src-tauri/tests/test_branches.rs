@@ -1671,7 +1671,7 @@ mod checking_out_a_remote_branch {
 
     /// `repo_where_feat_changes_a_and_b`, with `remote` holding branch `topic` at
     /// `feat`'s commit and no local `topic`.
-    fn repo_with_remote_topic(remote: &str) -> TestContext {
+    pub fn repo_with_remote_topic(remote: &str) -> TestContext {
         let ctx = repo_where_feat_changes_a_and_b();
         let repo = ctx.repo();
         repo.remote(remote, "file:///nowhere").unwrap();
@@ -1687,7 +1687,7 @@ mod checking_out_a_remote_branch {
         ctx
     }
 
-    fn tip(ctx: &TestContext, refname: &str) -> git2::Oid {
+    pub fn tip(ctx: &TestContext, refname: &str) -> git2::Oid {
         ctx.repo().revparse_single(refname).unwrap().id()
     }
 
@@ -1760,7 +1760,7 @@ mod checking_out_a_remote_branch {
 
     /// `repo_where_feat_changes_a_and_b`, with remote `remote` fetching through
     /// `fetch` and its tracking ref `tracking` at `feat`'s commit.
-    fn repo_with_remote_fetching(remote: &str, fetch: &str, tracking: &str) -> TestContext {
+    pub fn repo_with_remote_fetching(remote: &str, fetch: &str, tracking: &str) -> TestContext {
         let ctx = repo_where_feat_changes_a_and_b();
         let repo = ctx.repo();
         repo.remote_with_fetch(remote, "file:///nowhere", fetch)
@@ -1832,95 +1832,6 @@ mod checking_out_a_remote_branch {
         ctx.assert_head_at("topic");
         assert_eq!(merge_config(&ctx, "topic"), "refs/heads/topic");
         assert_eq!(upstream(&ctx, "topic").as_deref(), Some("short/topic"));
-    }
-
-    /// The sidebar groups remote branches by this field, and the first "/" in the name
-    /// would put `my/fork/topic` under a remote called `my`.
-    #[test]
-    fn list_refs_names_the_remote_of_each_remote_branch() {
-        let ctx = repo_with_remote_topic("my/fork");
-
-        let refs = ctx.list_refs().unwrap();
-
-        let topic = refs
-            .remote
-            .iter()
-            .find(|b| b.name == "my/fork/topic")
-            .expect("the remote branch is listed");
-        assert_eq!(topic.remote.as_deref(), Some("my/fork"));
-        assert!(refs.local.iter().all(|b| b.remote.is_none()));
-    }
-
-    /// libgit2 reads a fetch destination written as `remotes/...` as `refs/remotes/...`.
-    #[test]
-    fn list_refs_names_the_remote_of_a_fetch_destination_written_without_refs() {
-        let ctx = repo_with_remote_fetching(
-            "short",
-            "+refs/heads/*:remotes/short/*",
-            "refs/remotes/short/topic",
-        );
-
-        let refs = ctx.list_refs().unwrap();
-
-        let topic = refs
-            .remote
-            .iter()
-            .find(|b| b.name == "short/topic")
-            .unwrap();
-        assert_eq!(topic.remote.as_deref(), Some("short"));
-    }
-
-    #[test]
-    fn list_refs_names_no_remote_when_two_remotes_fetch_into_the_ref() {
-        let ctx = repo_with_remote_topic("origin");
-        ctx.repo()
-            .remote_with_fetch(
-                "mirror",
-                "file:///elsewhere",
-                "+refs/heads/*:refs/remotes/origin/*",
-            )
-            .unwrap();
-
-        let refs = ctx.list_refs().unwrap();
-
-        let topic = refs
-            .remote
-            .iter()
-            .find(|b| b.name == "origin/topic")
-            .unwrap();
-        assert_eq!(topic.remote, None);
-    }
-
-    #[test]
-    fn list_refs_names_the_remote_when_another_remote_only_pushes_into_the_ref() {
-        let ctx = repo_with_remote_topic("origin");
-        ctx.repo().remote("backup", "file:///elsewhere").unwrap();
-        ctx.repo()
-            .remote_add_push("backup", "+refs/remotes/origin/*:refs/remotes/origin/*")
-            .unwrap();
-
-        let refs = ctx.list_refs().unwrap();
-
-        let topic = refs
-            .remote
-            .iter()
-            .find(|b| b.name == "origin/topic")
-            .expect("the remote branch is listed");
-        assert_eq!(topic.remote.as_deref(), Some("origin"));
-    }
-
-    #[test]
-    fn list_refs_names_no_remote_for_a_ref_no_remote_fetches_into() {
-        let ctx = repo_with_remote_topic("origin");
-        let feat = tip(&ctx, "feat");
-        ctx.repo()
-            .reference("refs/remotes/gone/topic", feat, false, "fetch")
-            .unwrap();
-
-        let refs = ctx.list_refs().unwrap();
-
-        let topic = refs.remote.iter().find(|b| b.name == "gone/topic").unwrap();
-        assert_eq!(topic.remote, None);
     }
 
     #[test]
@@ -1996,5 +1907,104 @@ mod checking_out_a_remote_branch {
             ctx.assert_head_at("main");
             ctx.assert_file_content("a", "edit");
         }
+    }
+}
+
+mod listing_remote_branches {
+    use super::checking_out_a_remote_branch::{
+        repo_with_remote_fetching, repo_with_remote_topic, tip,
+    };
+
+    /// The sidebar groups remote branches by this field, and the first "/" in the name
+    /// would put `my/fork/topic` under a remote called `my`.
+    #[test]
+    fn names_the_remote_of_each_remote_branch() {
+        let ctx = repo_with_remote_topic("my/fork");
+
+        let refs = ctx.list_refs().unwrap();
+
+        let topic = refs
+            .remote
+            .iter()
+            .find(|b| b.name == "my/fork/topic")
+            .expect("the remote branch is listed");
+        assert_eq!(topic.remote.as_deref(), Some("my/fork"));
+        assert!(refs.local.iter().all(|b| b.remote.is_none()));
+    }
+
+    /// libgit2 reads a fetch destination written as `remotes/...` as `refs/remotes/...`.
+    #[test]
+    fn names_the_remote_of_a_fetch_destination_written_without_refs() {
+        let ctx = repo_with_remote_fetching(
+            "short",
+            "+refs/heads/*:remotes/short/*",
+            "refs/remotes/short/topic",
+        );
+
+        let refs = ctx.list_refs().unwrap();
+
+        let topic = refs
+            .remote
+            .iter()
+            .find(|b| b.name == "short/topic")
+            .expect("the remote branch is listed");
+        assert_eq!(topic.remote.as_deref(), Some("short"));
+    }
+
+    #[test]
+    fn names_no_remote_when_two_remotes_fetch_into_the_ref() {
+        let ctx = repo_with_remote_topic("origin");
+        ctx.repo()
+            .remote_with_fetch(
+                "mirror",
+                "file:///elsewhere",
+                "+refs/heads/*:refs/remotes/origin/*",
+            )
+            .unwrap();
+
+        let refs = ctx.list_refs().unwrap();
+
+        let topic = refs
+            .remote
+            .iter()
+            .find(|b| b.name == "origin/topic")
+            .expect("the remote branch is listed");
+        assert_eq!(topic.remote, None);
+    }
+
+    #[test]
+    fn names_the_remote_when_another_remote_only_pushes_into_the_ref() {
+        let ctx = repo_with_remote_topic("origin");
+        ctx.repo().remote("backup", "file:///elsewhere").unwrap();
+        ctx.repo()
+            .remote_add_push("backup", "+refs/remotes/origin/*:refs/remotes/origin/*")
+            .unwrap();
+
+        let refs = ctx.list_refs().unwrap();
+
+        let topic = refs
+            .remote
+            .iter()
+            .find(|b| b.name == "origin/topic")
+            .expect("the remote branch is listed");
+        assert_eq!(topic.remote.as_deref(), Some("origin"));
+    }
+
+    #[test]
+    fn names_no_remote_for_a_ref_no_remote_fetches_into() {
+        let ctx = repo_with_remote_topic("origin");
+        let feat = tip(&ctx, "feat");
+        ctx.repo()
+            .reference("refs/remotes/gone/topic", feat, false, "fetch")
+            .unwrap();
+
+        let refs = ctx.list_refs().unwrap();
+
+        let topic = refs
+            .remote
+            .iter()
+            .find(|b| b.name == "gone/topic")
+            .expect("the remote branch is listed");
+        assert_eq!(topic.remote, None);
     }
 }
