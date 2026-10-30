@@ -1810,6 +1810,24 @@ mod checking_out_a_remote_branch {
         assert_eq!(upstream(&ctx, "topic").as_deref(), Some("upstream/topic"));
     }
 
+    #[test]
+    fn tracks_the_remote_branch_of_a_fetch_destination_written_without_refs() {
+        let mut ctx = repo_with_remote_fetching(
+            "short",
+            "+refs/heads/*:remotes/short/*",
+            "refs/remotes/short/topic",
+        );
+
+        let name = ctx
+            .checkout_remote_branch("refs/remotes/short/topic")
+            .unwrap();
+
+        assert_eq!(name, "topic");
+        ctx.assert_head_at("topic");
+        assert_eq!(merge_config(&ctx, "topic"), "refs/heads/topic");
+        assert_eq!(upstream(&ctx, "topic").as_deref(), Some("short/topic"));
+    }
+
     /// The sidebar groups remote branches by this field, and the first "/" in the name
     /// would put `my/fork/topic` under a remote called `my`.
     #[test]

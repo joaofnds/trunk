@@ -708,20 +708,20 @@ impl Tracking {
     fn of(repo: &git2::Repository, remote_ref: &str) -> Result<Self, TrunkError> {
         let remote = repo.branch_remote_name(remote_ref)?.as_str()?.to_owned();
         let found = repo.find_remote(&remote)?;
-        let spec = found
+        let (spec, spelled) = found
             .refspecs()
-            .find(|spec| spec.direction() == git2::Direction::Fetch && spec.dst_matches(remote_ref))
+            .find_map(|spec| spelled_by(&spec, remote_ref).map(|spelled| (spec, spelled)))
             .ok_or_else(|| {
                 TrunkError::new(
                     "no_fetch_refspec",
                     format!("No fetch refspec of '{remote}' writes '{remote_ref}'"),
                 )
             })?;
-        let merge = spec.rtransform(remote_ref)?.as_str()?.to_owned();
+        let merge = spec.rtransform(spelled)?.as_str()?.to_owned();
         let name = spec
             .dst()?
             .split_once('*')
-            .and_then(|(prefix, _)| remote_ref.strip_prefix(prefix))
+            .and_then(|(prefix, _)| spelled.strip_prefix(prefix))
             .filter(|name| !name.is_empty())
             .ok_or_else(|| {
                 TrunkError::new(
