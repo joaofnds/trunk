@@ -525,6 +525,21 @@ out of the edited list does not get it through. GitKraken also refuses, as its h
 refused unless the edited list names each commit of the range exactly once and nothing
 else, so a commit that landed after the editor opened is never silently dropped.
 
+## Committing (TRUNK-401, 2026-10-30)
+
+**Hook** — a program in the repository's hooks directory that git runs at a fixed point of a
+command and that can refuse it. For a commit, these are pre-commit, prepare-commit-msg,
+commit-msg and post-commit, and an amend also runs post-rewrite. A repository's own checks
+live in its hooks: lint-staged, husky, and a commit-message format check. A refusal stops
+the commit, and its output is what the user reads to learn why.
+
+**Commit signing** — a signature git adds to a commit when `commit.gpgsign` is true, made
+with GPG, SSH or X.509 as `gpg.format` names and with the key `user.signingkey` names. A
+host that requires signed commits rejects a push that carries an unsigned one. Commit and
+amend in Trunk are to run the git binary, so that a commit made in Trunk runs the same hooks
+and carries the same signature as one made in the terminal (João, 2026-10-28, doc-211
+question 3). Until TRUNK-401 ships, they run neither.
+
 ## Stashing (TRUNK-231, 2026-09-14)
 
 **Staged changes** — what the index holds that HEAD does not. In Trunk this is the whole
