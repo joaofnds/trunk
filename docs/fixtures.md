@@ -68,7 +68,7 @@ table says what each case is for. `tests/catalogue.rs` fails when a case is miss
 | `04-graph-lanes` | 13 + 9 bare remotes | HEAD-lane placement: behind, ahead, diverged, detached, tag-only chains, two remotes. |
 | `05-graph-merges` | 14 | Merge, multi-branch, ordering and column-pressure shapes, including octopus and criss-cross. |
 | `06-stash-lanes` | 21 | Stash-vs-WIP lane placement across every flavour of dirtiness, plus orphan, detached, bare and backdated stashes. |
-| `07-remote-branch` | 1 + origin | The create-branch walk against a real origin with remote-only branches, and a worktree dirty the one way the backend counts. |
+| `07-remote-branch` | 1 + origin | The checkout and create-branch walk against a real origin with remote-only branches, over an uncommitted edit that rides along and then one that conflicts. |
 | `08-merge-conflict` | 1 | The merge editor's conflict header bars, which need several conflicts on screen at once to compare against each other. |
 | `09-kitchen-sink` | 1 | Every graph shape at once: 18 branches, 5 tags of both kinds, 3 stashes, an orphan root, a criss-cross merge, a dirty worktree. |
 | `10-nested-conflict` | 1 | A stopped merge across four directory levels, plus one file git calls resolved that still contains conflict markers. |

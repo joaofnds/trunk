@@ -1,6 +1,6 @@
-//! Case 07: the create-branch walk against a real origin carrying two remote-only
-//! branches, with a worktree dirty the one way the backend counts (a modified tracked
-//! file). Transcribed from cases/07-remote-branch/build.sh. The shell dated its commits in
+//! Case 07: the checkout and create-branch walk against a real origin carrying two
+//! remote-only branches, with an uncommitted edit to a tracked file none of the
+//! branches touch. Transcribed from cases/07-remote-branch/build.sh. The shell dated its commits in
 //! local time; the port pins them to UTC (doc-45 §1, decision 3).
 
 use std::path::Path;
@@ -17,7 +17,7 @@ const HOUR_SECS: i64 = 3_600;
 
 pub const CASE: Case = Case {
     name: "07-remote-branch",
-    summary: "Build the fixture repo for the create_branch -> dirty_workdir manual walk.",
+    summary: "Build the fixture repo for the manual walk of checking out and creating branches over an uncommitted edit.",
     repos: &["remote-branch/repo", "remote-branch/origin.git"],
     build,
 };
@@ -92,61 +92,68 @@ fn build(out: &Path) {
     std::fs::write(dest.join("WALKTHROUGH.md"), WALKTHROUGH).expect("write the walkthrough");
 }
 
-/// The walk's instructions, verbatim from the script's heredoc.
-const WALKTHROUGH: &str = r##"# create_branch -> dirty_workdir: manual walk
+/// The walk's instructions: every route that checks a branch out, over an uncommitted
+/// edit none of the branches touch, then over one they do.
+const WALKTHROUGH: &str = r##"# Checking out and creating branches over uncommitted changes: manual walk
 
-Open the repo at `repo/` in Trunk (the **dev** build — `just dev`; a computer-use
-click activates the installed app, not `target/debug/trunk`).
+Open the repo at `repo/` in Trunk. `just dev-app` builds a debug app you can drive
+and screenshot (docs/build-environment.md).
 
-**Before you start**, confirm the fixture is actually dirty:
+**Before you start**, confirm the fixture is dirty:
 
     git -C repo status --short      # expect exactly:  M README.md
 
-If that line is missing, stop — every gesture below will take the success path
-and the walk proves nothing.
+If that line is missing, stop. Every gesture below would take the clean path and
+the walk would prove nothing.
 
-Backend behaviour being exercised: `create_branch` creates the branch, THEN
-checks the working tree, and returns `dirty_workdir` with the branch already
-created and HEAD unmoved (`src-tauri/src/commands/branches.rs:386-397`). All
-five sites below receive that same outcome. They answer it four different ways.
+What is being exercised: creating or checking out a branch moves the working tree
+the way `git switch` does. An edit the target branch does not touch rides along
+onto it. An edit it would overwrite refuses the whole move, and nothing is
+written: no branch, no HEAD change, no file touched.
 
-Record what you see in the "Observed" column. Any difference from "Expected" is
-a regression introduced by the error-reporting sweep.
+`feature/alpha` and `feature/beta` change only `version.ts`, so the README edit
+rides along on every gesture. Do them in order, since each one moves HEAD.
 
-| # | Gesture | Expected today | Observed |
-|---|---------|----------------|----------|
-| 1 | Sidebar -> Remote -> click `feature/alpha` | **RED** error toast reading "Branch created but working tree has uncommitted changes — checkout skipped". Local `feature/alpha` IS created but does **not** appear in the sidebar. | |
-| 2 | Sidebar -> new-branch input -> `qa-sidebar` | **GREEN** toast "Branch created (checkout skipped — uncommitted changes)". `qa-sidebar` **appears** in the sidebar. | |
-| 3 | Toolbar branch button -> `qa-toolbar` | **GREEN** toast, identical copy. `qa-toolbar` does **not** appear until something else refreshes. | |
-| 4 | Graph -> right-click any commit -> Create Branch -> `qa-graph` | **GREEN** toast, identical copy. `qa-graph` does **not** appear until refresh. No modal. | |
-| 5 | Graph -> click the `origin/feature/beta` ref pill | **RED** error toast, same message as #1. Local `feature/beta` created, not shown. | |
+| # | Gesture | Expected | Observed |
+|---|---------|----------|----------|
+| 1 | Sidebar -> Remote -> double-click `feature/alpha` | Toast "Checked out feature/alpha". `feature/alpha` appears under Local tagged HEAD, tracking `origin/feature/alpha`. README.md is still listed as modified. | |
+| 2 | Sidebar -> new-branch input -> `qa-sidebar` | Toast "Checked out qa-sidebar", HEAD on it, README.md still modified. | |
+| 3 | Toolbar branch button -> `qa-toolbar` | Toast "Checked out qa-toolbar", HEAD on it, README.md still modified. | |
+| 4 | Graph -> right-click any commit -> Create Branch -> `qa-graph` | Toast "Checked out qa-graph", HEAD on it at that commit, README.md still modified. | |
+| 5 | Graph -> double-click the `origin/feature/beta` ref pill | Toast "Checked out feature/beta", HEAD on it, README.md still modified. | |
 
-Three of the five report success for an outcome the other two report as failure,
-and three of the five leave a branch the user cannot see. That asymmetry is the
-CURRENT behaviour and is what this walk pins — it is not what you are being
-asked to judge.
+Confirm with git:
 
-Confirm the branches really were created, despite what the UI said:
+    git -C repo branch -vv          # the five branches, HEAD on feature/beta,
+                                    # both feature branches tracking origin
+    git -C repo status --short      # still:  M README.md
 
-    git -C repo branch --list
+## The conflict path
 
-Expect all five: `feature/alpha`, `feature/beta`, `qa-graph`, `qa-sidebar`,
-`qa-toolbar` — plus `main`, which is still HEAD.
-
-## Control: the clean path
-
-Prove the fixture was the variable, not the app:
+Make an edit the other branches would overwrite:
 
     git -C repo checkout -- README.md
-    git -C repo status --short      # expect: no output
+    printf 'export const LOCAL = 1;\n' >> repo/version.ts
 
-Now repeat gesture 2 with a fresh name, e.g. `qa-clean`. Expect a **GREEN**
-toast reading "Checked out qa-clean", and HEAD moves to it. Different copy from
-the dirty path — that is how you know the dirty path was really taken above.
+Creating a branch at HEAD never moves the tree, so only the gestures that move it
+can conflict. HEAD is on `feature/beta`, whose `version.ts` differs from every
+other branch's. Each of these shows the error toast "Your uncommitted changes
+conflict with this branch. Commit or stash them first.":
+
+| # | Gesture | Also expected | Observed |
+|---|---------|---------------|----------|
+| 6 | Sidebar -> double-click `main` | The same message beside the `main` row. | |
+| 7 | Graph -> double-click the `origin/feature/alpha` ref pill | | |
+| 8 | Graph -> right-click "Add README and version" -> Create Branch -> `qa-refused` | `qa-refused` does not exist afterwards. | |
+
+After each one HEAD is still on `feature/beta` and `version.ts` still holds the
+edit:
+
+    git -C repo branch --list       # no qa-refused
+    git -C repo diff --stat         # version.ts only
 
 ## Reset
 
-Re-run the builder. Each gesture leaves a branch behind even when the checkout
-is skipped, and `create_branch` refuses an existing name, so a second pass over
-a used fixture reports "branch exists" instead of `dirty_workdir`.
+Re-run the builder (`just fixtures 07-remote-branch`). Creation refuses a name that
+already exists, so a second pass over a used fixture reports that instead.
 "##;
