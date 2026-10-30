@@ -11,7 +11,10 @@ import {
 } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
-import type { UndoEntry } from "../lib/undo-redo.svelte.js";
+import {
+	createUndoRedoState,
+	type UndoEntry,
+} from "../lib/undo-redo.svelte.js";
 import Toolbar from "./Toolbar.svelte";
 
 // All Tauri module mocks — declared locally (NOT via ../__tests__/helpers/tauri-mock)
@@ -348,11 +351,14 @@ describe("Toolbar", () => {
 			}
 			return cmd === "head_oid" ? "abc123" : false;
 		});
-		const undoRedo = makeUndoRedo();
-		undoRedo.state.redoStack = [
-			{ subject: "C2", body: null, headOid: "abc123", repoPath: "/test/repo" },
-		];
-		undoRedo.pop.mockReturnValue(undoRedo.state.redoStack[0]);
+		const entry = {
+			subject: "C2",
+			body: null,
+			headOid: "abc123",
+			repoPath: "/test/repo",
+		};
+		const undoRedo = createUndoRedoState();
+		undoRedo.push(entry);
 		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
@@ -375,6 +381,7 @@ describe("Toolbar", () => {
 				kind: "error",
 			}),
 		);
+		expect(undoRedo.state.redoStack).toEqual([entry]);
 	});
 
 	it("emits review-toggle on click", async () => {
