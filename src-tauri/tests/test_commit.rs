@@ -1,6 +1,88 @@
 mod common;
 
 use common::context::TestContext;
+use std::os::unix::fs::PermissionsExt;
+
+fn install_hook(ctx: &TestContext, name: &str, script: &str) {
+    let hook = ctx.repo_path().join(".git").join("hooks").join(name);
+    std::fs::write(&hook, format!("#!/bin/sh\n{script}\n")).unwrap();
+    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+fn stage_new_file(ctx: &TestContext, name: &str) {
+    std::fs::write(ctx.repo_path().join(name), name).unwrap();
+    let repo = ctx.repo();
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new(name)).unwrap();
+    index.write().unwrap();
+}
+
+fn head_oid(ctx: &TestContext) -> git2::Oid {
+    ctx.repo().head().unwrap().target().unwrap()
+}
+
+fn head_message(ctx: &TestContext) -> String {
+    let repo = ctx.repo();
+    let commit = repo.head().unwrap().peel_to_commit().unwrap();
+    commit.message().unwrap().to_owned()
+}
+
+fn head_author_name(ctx: &TestContext) -> String {
+    let repo = ctx.repo();
+    let commit = repo.head().unwrap().peel_to_commit().unwrap();
+    commit.author().name().unwrap().to_owned()
+}
+
+fn set_config(ctx: &TestContext, key: &str, value: &str) {
+    ctx.repo().config().unwrap().set_str(key, value).unwrap();
+}
+
+/// Configures the repository to sign with a fresh SSH key and to trust that
+/// key when verifying. The returned directory holds the key and must outlive
+/// the commits it signs.
+fn sign_with_a_fresh_ssh_key(ctx: &TestContext) -> tempfile::TempDir {
+    let keys = tempfile::tempdir().unwrap();
+    let key = keys.path().join("id_ed25519");
+    let status = std::process::Command::new("ssh-keygen")
+        .args(["-q", "-t", "ed25519", "-N", "", "-C", "test", "-f"])
+        .arg(&key)
+        .status()
+        .unwrap();
+    assert!(status.success(), "ssh-keygen failed");
+
+    let public_key = std::fs::read_to_string(key.with_extension("pub")).unwrap();
+    let allowed_signers = keys.path().join("allowed_signers");
+    std::fs::write(&allowed_signers, format!("test@example.com {public_key}")).unwrap();
+
+    set_config(ctx, "commit.gpgsign", "true");
+    set_config(ctx, "gpg.format", "ssh");
+    set_config(ctx, "user.signingkey", key.to_str().unwrap());
+    set_config(
+        ctx,
+        "gpg.ssh.allowedSignersFile",
+        allowed_signers.to_str().unwrap(),
+    );
+    keys
+}
+
+fn verify_head_signature(ctx: &TestContext) -> std::process::Output {
+    std::process::Command::new("git")
+        .args(["verify-commit", "HEAD"])
+        .current_dir(ctx.repo_path())
+        .output()
+        .unwrap()
+}
+
+fn assert_head_signature_verifies(ctx: &TestContext) {
+    let verify = verify_head_signature(ctx);
+    assert!(
+        verify.status.success(),
+        "git verify-commit HEAD failed: {}",
+        String::from_utf8_lossy(&verify.stderr)
+    );
+}
+
+const TRAILER_HOOK: &str = "printf '\\nHook-Ran: yes\\n' >> \"$1\"";
 
 // -- create_commit tests --
 
@@ -81,6 +163,73 @@ fn create_commit_uses_configured_signature() {
     assert_eq!(head_commit.author().name().unwrap(), "Jane Doe");
 }
 
+#[test]
+fn create_commit_is_refused_by_a_failing_pre_commit_hook() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    let before = head_oid(&ctx);
+    install_hook(&ctx, "pre-commit", "echo 'refused by pre-commit'\nexit 1");
+    stage_new_file(&ctx, "new_file.txt");
+
+    let err = ctx.create_commit("New commit", None).unwrap_err();
+
+    assert!(
+        err.message.contains("refused by pre-commit"),
+        "got: {err:?}"
+    );
+    assert_eq!(head_oid(&ctx), before);
+}
+
+#[test]
+fn create_commit_is_signed_as_the_repository_config_asks() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    let _keys = sign_with_a_fresh_ssh_key(&ctx);
+    stage_new_file(&ctx, "new_file.txt");
+
+    ctx.create_commit("Signed commit", None).unwrap();
+
+    assert_head_signature_verifies(&ctx);
+}
+
+#[test]
+fn create_commit_keeps_the_trailer_a_commit_msg_hook_adds() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    install_hook(&ctx, "commit-msg", TRAILER_HOOK);
+    stage_new_file(&ctx, "new_file.txt");
+
+    ctx.create_commit("New commit", None).unwrap();
+
+    assert!(
+        head_message(&ctx).contains("Hook-Ran: yes"),
+        "got: {:?}",
+        head_message(&ctx)
+    );
+}
+
+#[test]
+fn create_commit_during_a_revert_concludes_it() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .with_file("second.txt", "second")
+        .with_commit("Second commit")
+        .build();
+    ctx.revert_commit_begin(&head_oid(&ctx).to_string())
+        .unwrap();
+
+    ctx.create_commit("Revert \"Second commit\"", None).unwrap();
+
+    assert!(!ctx.repo_path().join(".git").join("REVERT_HEAD").exists());
+}
+
 // -- amend_commit tests --
 
 #[test]
@@ -126,6 +275,82 @@ fn amend_commit_includes_newly_staged_files() {
         tree.get_name("staged_file.txt").is_some(),
         "expected staged_file.txt in amended commit tree"
     );
+}
+
+#[test]
+fn amend_commit_keeps_the_original_author() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    let original_author = head_author_name(&ctx);
+    set_config(&ctx, "user.name", "Someone Else");
+
+    ctx.amend_commit("Amended subject", None).unwrap();
+
+    assert_eq!(head_author_name(&ctx), original_author);
+}
+
+#[test]
+fn amend_commit_is_refused_by_a_failing_pre_commit_hook() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    let before = head_oid(&ctx);
+    install_hook(&ctx, "pre-commit", "echo 'refused by pre-commit'\nexit 1");
+
+    let err = ctx.amend_commit("Amended subject", None).unwrap_err();
+
+    assert!(
+        err.message.contains("refused by pre-commit"),
+        "got: {err:?}"
+    );
+    assert_eq!(head_oid(&ctx), before);
+}
+
+#[test]
+fn amend_commit_is_signed_as_the_repository_config_asks() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    let _keys = sign_with_a_fresh_ssh_key(&ctx);
+
+    ctx.amend_commit("Amended subject", None).unwrap();
+
+    assert_head_signature_verifies(&ctx);
+}
+
+#[test]
+fn amend_commit_keeps_the_trailer_a_commit_msg_hook_adds() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    install_hook(&ctx, "commit-msg", TRAILER_HOOK);
+
+    ctx.amend_commit("Amended subject", None).unwrap();
+
+    assert!(
+        head_message(&ctx).contains("Hook-Ran: yes"),
+        "got: {:?}",
+        head_message(&ctx)
+    );
+}
+
+#[test]
+fn amend_commit_runs_the_post_rewrite_hook() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    install_hook(&ctx, "post-rewrite", "echo \"$1\" > .git/post-rewrite-ran");
+
+    ctx.amend_commit("Amended subject", None).unwrap();
+
+    let ran = std::fs::read_to_string(ctx.repo_path().join(".git").join("post-rewrite-ran"));
+    assert_eq!(ran.unwrap().trim(), "amend");
 }
 
 // -- get_user_name tests --

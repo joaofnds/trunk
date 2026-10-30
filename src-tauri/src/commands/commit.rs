@@ -1,6 +1,9 @@
+use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::HeadCommitMessage;
 use crate::watcher::RepoChanged;
+use std::path::Path;
+use std::process::Stdio;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
 
@@ -20,71 +23,70 @@ fn build_message(subject: &str, body: Option<&str>) -> String {
     }
 }
 
-/// Commit the index, clearing any cherry-pick or revert state left behind.
+/// Commit the index through `git commit`, so the repository's hooks run and
+/// the commit is signed as its config asks. git concludes a cherry-pick or
+/// revert in progress itself.
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, and the git error when the
-/// signature is unset, the index will not write, or the commit fails. An
-/// unborn HEAD is not an error: the commit becomes the first one.
+/// Returns `not_open` when `path` names no open repository, and `commit_error`
+/// carrying git's own output when `git` will not run or refuses the commit,
+/// a hook's refusal included.
 pub fn create_commit_inner(
     path: &str,
     subject: &str,
     body: Option<&str>,
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
-    let sig = repo.signature()?;
-    let mut index = repo.index()?;
-    let tree_oid = index.write_tree()?;
-    let tree = repo.find_tree(tree_oid)?;
     let message = build_message(subject, body);
-
-    let parents = match repo.head() {
-        Ok(h) => vec![h.peel_to_commit()?],
-        Err(e) if e.code() == git2::ErrorCode::UnbornBranch => vec![],
-        Err(e) => return Err(TrunkError::from(e)),
-    };
-    let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
-
-    repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &parent_refs)?;
-    // git2's commit is plumbing: unlike `git commit` it leaves CHERRY_PICK_HEAD
-    // and REVERT_HEAD in place. The normal commit form renders during both
-    // (StagingPanel's isOperation covers only merge and rebase), so without this
-    // the repository stays mid-operation forever with no in-app way out.
-    repo.cleanup_state()?;
-    Ok(())
+    run_git_commit(state_map.path_for(path)?, &["commit", "-m", &message])
 }
 
-/// Replace HEAD's commit with one carrying the current index and a new message.
+/// Replace HEAD's commit through `git commit --amend`, with the current index
+/// and a new message. The original author stays, as in the terminal.
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, and the git error when HEAD is
-/// unborn, the signature is unset, or the index will not write.
+/// Returns `not_open` when `path` names no open repository, and `commit_error`
+/// carrying git's own output when `git` will not run or refuses the amend,
+/// a hook's refusal included.
 pub fn amend_commit_inner(
     path: &str,
     subject: &str,
     body: Option<&str>,
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
-    let head_commit = repo.head()?.peel_to_commit()?;
-    let sig = repo.signature()?;
-    let mut index = repo.index()?;
-    let tree_oid = index.write_tree()?;
-    let tree = repo.find_tree(tree_oid)?;
     let message = build_message(subject, body);
+    run_git_commit(
+        state_map.path_for(path)?,
+        &["commit", "--amend", "-m", &message],
+    )
+}
 
-    head_commit.amend(
-        Some("HEAD"),
-        Some(&sig),
-        Some(&sig),
-        None,
-        Some(&message),
-        Some(&tree),
-    )?;
-    Ok(())
+fn run_git_commit(repo_dir: &Path, args: &[&str]) -> Result<(), TrunkError> {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(repo_dir)
+        .env("PATH", shell_env::system_path())
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| TrunkError::new("commit_error", e.to_string()))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    // "nothing to commit" is printed to stdout with an empty stderr.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let message = if stderr.trim().is_empty() {
+        String::from_utf8_lossy(&output.stdout)
+    } else {
+        stderr
+    };
+    Err(TrunkError::new(
+        "commit_error",
+        message.trim_end().to_owned(),
+    ))
 }
 
 /// HEAD's commit message, split into subject and body.
