@@ -273,6 +273,7 @@ fn reply_line(id: u64, reply: Reply) -> Value {
 
 fn seed(spec: RepoSpec) -> TestContext {
     let mut builder = TestContext::builder();
+    builder.packed();
     let mut worktree_steps = Vec::new();
 
     for step in spec.steps {

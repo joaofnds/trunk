@@ -1,5 +1,6 @@
 mod common;
 
+use common::builder::TestContextBuilder;
 use common::context::TestContext;
 
 #[test]
@@ -128,4 +129,142 @@ fn a_pinned_commit_leaves_day_spacing_untouched() {
         .build();
 
     assert_eq!(commit_times(&pinned)[1], commit_times(&spaced)[0]);
+}
+
+/// A history touching every step the app host's seed can ask for, plus a stash.
+fn every_seed_step(builder: &mut TestContextBuilder) -> &mut TestContextBuilder {
+    builder
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("feature.txt", "work")
+        .with_commit("Feature work")
+        .checkout("main")
+        .with_file("README.md", "hello again")
+        .with_commit("Main work")
+        .merge("feature")
+        .with_remote("origin")
+        .with_pushed("origin", "main")
+        .with_stash(Some("parked"))
+}
+
+fn loose_object_dirs(ctx: &TestContext) -> Vec<String> {
+    std::fs::read_dir(ctx.repo_path().join(".git/objects"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.len() == 2 && name.chars().all(|c| c.is_ascii_hexdigit()))
+        .collect()
+}
+
+fn pack_files(ctx: &TestContext) -> usize {
+    std::fs::read_dir(ctx.repo_path().join(".git/objects/pack"))
+        .unwrap()
+        .filter(|entry| entry.as_ref().unwrap().path().extension() == Some("pack".as_ref()))
+        .count()
+}
+
+/// Every ref's name and target, sorted.
+fn ref_targets(ctx: &TestContext) -> Vec<(String, git2::Oid)> {
+    let repo = ctx.repo();
+    let mut targets: Vec<(String, git2::Oid)> = repo
+        .references()
+        .unwrap()
+        .map(|reference| {
+            let reference = reference.unwrap();
+            (
+                reference.name().unwrap().to_string(),
+                reference.target().unwrap(),
+            )
+        })
+        .collect();
+    targets.sort();
+    targets
+}
+
+#[test]
+fn a_packed_build_writes_one_pack_and_no_loose_object() {
+    let ctx = every_seed_step(TestContext::builder().packed()).build();
+
+    assert_eq!(loose_object_dirs(&ctx), Vec::<String>::new());
+    assert_eq!(pack_files(&ctx), 1);
+}
+
+#[test]
+fn a_packed_build_reads_back_every_object_its_refs_reach() {
+    let ctx = every_seed_step(TestContext::builder().packed()).build();
+    let repo = ctx.repo();
+    let mut walk = repo.revwalk().unwrap();
+    walk.push_glob("*").unwrap();
+
+    let mut entries = 0;
+    for oid in walk {
+        let tree = repo.find_commit(oid.unwrap()).unwrap().tree().unwrap();
+        tree.walk(git2::TreeWalkMode::PreOrder, |_, entry| {
+            repo.find_object(entry.id(), None).unwrap();
+            entries += 1;
+            git2::TreeWalkResult::Ok
+        })
+        .unwrap();
+    }
+
+    assert!(entries > 0, "the walk reached no tree entry");
+}
+
+#[test]
+fn a_packed_build_leaves_every_blob_the_index_names() {
+    let ctx = every_seed_step(TestContext::builder().packed()).build();
+    let repo = ctx.repo();
+
+    let missing: Vec<String> = repo
+        .index()
+        .unwrap()
+        .iter()
+        .filter(|entry| repo.find_blob(entry.id).is_err())
+        .map(|entry| String::from_utf8_lossy(&entry.path).into_owned())
+        .collect();
+
+    assert_eq!(missing, Vec::<String>::new());
+}
+
+#[test]
+fn a_packed_build_produces_the_history_a_loose_build_does() {
+    let loose = every_seed_step(&mut TestContext::builder()).build();
+    let packed = every_seed_step(TestContext::builder().packed()).build();
+
+    assert_eq!(ref_targets(&packed), ref_targets(&loose));
+}
+
+#[test]
+fn a_packed_build_with_no_commits_succeeds() {
+    let ctx = TestContext::builder().packed().build();
+
+    assert!(ctx.repo().head().is_err(), "expected no HEAD");
+}
+
+#[test]
+#[should_panic(expected = "a packed build cannot hold a conflict")]
+fn a_packed_build_refuses_a_conflict() {
+    TestContext::builder()
+        .packed()
+        .with_file("file.txt", "original")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .with_conflict("feature")
+        .build();
+}
+
+#[test]
+fn checking_out_a_branch_removes_a_file_only_the_previous_branch_tracks() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .with_file("main-only.txt", "main")
+        .with_commit("Main work")
+        .checkout("feature")
+        .build();
+
+    assert!(!ctx.repo_path().join("main-only.txt").exists());
+    ctx.assert_status_clean();
 }

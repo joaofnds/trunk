@@ -3,6 +3,7 @@ use trunk_lib::state::OpenRepos;
 
 pub struct TestContextBuilder {
     steps: Vec<BuildStep>,
+    packed: bool,
 }
 
 /// One index edit waiting for the next commit, kept in the order the caller
@@ -80,7 +81,20 @@ fn pinned_signature(secs: i64) -> git2::Signature<'static> {
 
 impl TestContextBuilder {
     pub const fn new() -> Self {
-        Self { steps: Vec::new() }
+        Self {
+            steps: Vec::new(),
+            packed: false,
+        }
+    }
+
+    /// Keep the objects `build` writes in memory and write them to disk as one pack at
+    /// the end, instead of one loose file each. A deep history built loose is thousands
+    /// of small filesystem writes, which slow many times over while other processes
+    /// write to the disk (TRUNK-409). Only what a commit reaches is packed, so a
+    /// conflict step, whose merged index names blobs no commit holds, is refused.
+    pub const fn packed(&mut self) -> &mut Self {
+        self.packed = true;
+        self
     }
 
     pub fn with_file(&mut self, path: &str, content: &str) -> &mut Self {
@@ -218,7 +232,19 @@ impl TestContextBuilder {
 
     pub fn build(&self) -> TestContext {
         let dir = tempfile::tempdir().expect("failed to create tempdir");
+        assert!(
+            !(self.packed
+                && self
+                    .steps
+                    .iter()
+                    .any(|step| matches!(step, BuildStep::Conflict { .. }))),
+            "a packed build cannot hold a conflict: its index names blobs no commit reaches"
+        );
         let mut repo = git2::Repository::init(dir.path()).expect("failed to init repo");
+        let in_memory = self.packed.then(|| git2::Odb::new().unwrap());
+        let mempack = in_memory
+            .as_ref()
+            .map(|odb| keep_new_objects_in_memory(&repo, odb));
         // Every commit-producing step takes the next day off this clock. `repo.signature()`
         // reads the wall clock, which made two builds of one shape produce different OIDs and
         // left the graph's TOPOLOGICAL | TIME sort resolving by tie-break at machine speed.
@@ -269,14 +295,44 @@ impl TestContextBuilder {
                 }
             }
         }
+        repo.index().unwrap().write().unwrap();
 
-        drop(repo);
+        match mempack {
+            Some(mempack) => write_as_one_pack(repo, dir.path(), &mempack),
+            None => drop(repo),
+        }
 
         let path = dir.path().display().to_string();
         let state_map = OpenRepos::from_iter([(path.clone(), dir.path().to_path_buf())]);
 
         TestContext::from_parts(dir, path, state_map)
     }
+}
+
+/// Point the repository at an object database whose only backend is in memory.
+fn keep_new_objects_in_memory<'odb>(
+    repo: &git2::Repository,
+    odb: &'odb git2::Odb<'static>,
+) -> git2::Mempack<'odb> {
+    let mempack = odb.add_new_mempack_backend(3).unwrap();
+    repo.set_odb(odb).unwrap();
+    mempack
+}
+
+/// Write every object a commit reaches from memory to the repository's disk as one pack.
+fn write_as_one_pack(repo: git2::Repository, root: &std::path::Path, mempack: &git2::Mempack<'_>) {
+    use std::io::Write;
+
+    let mut pack = git2::Buf::new();
+    mempack.dump(&repo, &mut pack).unwrap();
+    drop(repo);
+
+    let on_disk = git2::Repository::open(root).unwrap();
+    let odb = on_disk.odb().unwrap();
+    let mut writer = odb.packwriter().unwrap();
+    writer.write_all(&pack).unwrap();
+    writer.commit().unwrap();
+    mempack.reset().unwrap();
 }
 
 /// Write a file into the working tree and queue it for the next commit.
@@ -330,7 +386,6 @@ fn commit(
             }
         }
     }
-    index.write().unwrap();
     pending.clear();
 
     commit_index_onto_head(repo, &mut index, &sig, message);

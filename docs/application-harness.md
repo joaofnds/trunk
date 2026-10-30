@@ -41,6 +41,14 @@ process and removes its tempdir.
 a fresh tempdir `HOME`, so every managed state and the resolved `app_data_dir` isolate without
 a reset step — and writing to the installed app's data directory is structurally impossible.
 
+`seedRepo` builds through `TestContext::builder` with `packed()`: the objects stay in memory
+while the steps run and land on disk as one pack, and the index is written once at the end.
+Built loose, the 441- and 450-commit histories of `rebuilt-graph-depth.test.ts` and
+`graph-paging.test.ts` took 9 to 12 s inside the full suite, because their thousands of small
+file writes slow many times over while other processes write to the disk, and a busy machine
+pushed them past the 20 s hook limit. Packed, the same seeds measured 2.5 to 4.1 s in five full
+runs (TRUNK-409, 2026-10-30).
+
 **The seam is the global, never a module.** `@tauri-apps/api` reaches the runtime only through
 `window.__TAURI_INTERNALS__`. Installing that before the root mounts means no `vi.mock`, no
 hoisting, and nothing in `tests/app/harness/`, `tests/app/drivers/` or `tests/app/fakes/`
@@ -389,6 +397,11 @@ round: dropping the Tailwind/PostCSS block from the test config changes nothing 
 about 3.2 s including its import; the next split would buy under half a second and was not
 taken. About 4.4 s of headroom remains. The measured rules distilled from all of this live
 in `docs/performance-patterns.md`.
+
+The deep-history seeds were the next term (TRUNK-409). On 2026-10-30, at load average 7 to 13,
+the full suite ran in 12 s of wall time on the committed code in three runs and 8 s with the
+packed seed in five (wall time around the vitest command), and graph-paging's one test fell from
+10.7 s to 4.2 to 5.0 s.
 
 ## Measuring the rendered DOM
 

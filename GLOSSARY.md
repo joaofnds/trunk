@@ -580,6 +580,15 @@ argument deserialization (see the `start_interactive_rebase` command in
 `src-tauri/src/commands/interactive_rebase.rs`). Neither
 existing suite exercises that layer.
 
+**Loose object** — a Git object stored as a file of its own under `.git/objects/`, named by
+its OID. Every commit, tree and blob a repository gains starts loose, so building a deep
+history writes thousands of small files.
+
+**Pack** — one file under `.git/objects/pack/` holding many objects together, with an index
+beside it. The application host seeds its repositories as one pack, because a deep history
+written loose slowed many times over while other processes wrote to the disk, and timed out
+the graph suites' setup inside `just check` (TRUNK-409).
+
 **Compare** — the A→B diff view between any two commits picked in the graph (TRUNK-1).
 Distinct from a single commit's diff (parent(0) vs commit) and from a review range (which
 requires ancestry). A compare has no ancestry requirement and is a plain two-tree diff.
