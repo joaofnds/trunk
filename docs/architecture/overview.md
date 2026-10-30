@@ -74,7 +74,7 @@
 | `commands/history.rs` | `get_commit_graph`, `refresh_commit_graph`, `search_commits` — reads from `CommitCache` | `src-tauri/src/commands/history.rs` |
 | `commands/staging.rs` | Full staging surface: status, stage/unstage/discard file/hunk/lines | `src-tauri/src/commands/staging.rs` |
 | `commands/diff.rs` | `diff_unstaged`, `diff_staged`, `diff_commit`, `diff_commit_file`, `list_commit_files`, `list_compare_files`, `diff_compare_file`, `compare_stat`, `get_commit_detail` — the compare pair diffs any two commit trees (Base → Target, no ancestry required; null Base = empty tree); highlighting parses a bounded window above each side's first displayed line, with no cache and no warming | `src-tauri/src/commands/diff.rs` |
-| `commands/branches.rs` | `list_refs`, `resolve_ref`, `checkout_branch`, `fast_forward_to`, `create_branch`, `delete_branch`, `rename_branch` | `src-tauri/src/commands/branches.rs` |
+| `commands/branches.rs` | `list_refs`, `resolve_ref`, `checkout_branch`, `fast_forward_to`, `create_branch`, `checkout_remote_branch`, `branch_hold`, `delete_branch`, `rename_branch` | `src-tauri/src/commands/branches.rs` |
 | `commands/remote.rs` | `git_fetch`, `git_fetch_background`, `git_pull`, `git_push`, `delete_remote_branch`, `cancel_remote_op` — foreground subprocess/progress; background git2 worker | `src-tauri/src/commands/remote.rs` |
 | `commands/commit.rs` | `create_commit`, `amend_commit`, `get_head_commit_message` | `src-tauri/src/commands/commit.rs` |
 | `commands/commit_actions.rs` | `checkout_commit`, `create_tag`, `delete_tag`, `cherry_pick`, `revert_commit`, `reset_to_commit`, `undo_commit`, `redo_commit`, `check_undo_available` | `src-tauri/src/commands/commit_actions.rs` |
@@ -366,7 +366,7 @@ store revision.
 **Tauri command surface (registered in `lib.rs`):**
 - `repo`: `open_repo`, `close_repo`, `force_close_repo`
 - `history`: `get_commit_graph`, `refresh_commit_graph`, `search_commits`
-- `branches`: `list_refs`, `resolve_ref`, `checkout_branch`, `fast_forward_to`, `create_branch`, `delete_branch`, `rename_branch`
+- `branches`: `list_refs`, `resolve_ref`, `checkout_branch`, `fast_forward_to`, `create_branch`, `checkout_remote_branch`, `branch_hold`, `delete_branch`, `rename_branch`
 - `staging`: `get_dirty_counts`, `get_status`, `stage_file`, `unstage_file`, `stage_files`, `unstage_files`, `stage_all`, `unstage_all`, `discard_file`, `discard_all`, `stage_hunk`, `unstage_hunk`, `discard_hunk`, `stage_lines`, `unstage_lines`, `discard_lines`
 - `commit`: `create_commit`, `amend_commit`, `get_head_commit_message`
 - `diff`: `diff_unstaged`, `diff_staged`, `diff_commit`, `list_commit_files`, `diff_commit_file`, `list_compare_files`, `diff_compare_file`, `compare_stat`, `get_commit_detail`
