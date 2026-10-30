@@ -6,7 +6,6 @@ import {
 	hidesNothing,
 	isRefHidden,
 	isStashHidden,
-	remoteOf,
 	setGroupHidden,
 	toggleRef,
 	toggleStash,
@@ -144,18 +143,6 @@ describe("stashes", () => {
 		const hidden = toggleStash(EVERYTHING_VISIBLE, "abc123");
 		expect(isStashHidden(hidden, "abc123")).toBe(true);
 		expect(isStashHidden(hidden, "def456")).toBe(false);
-	});
-});
-
-describe("remoteOf", () => {
-	// A remote name may contain slashes, so the branch cannot be split off the right.
-	it("takes the first segment after the prefix", () => {
-		expect(remoteOf("refs/remotes/origin/topic")).toBe("origin");
-		expect(remoteOf("refs/remotes/origin/feature/nested")).toBe("origin");
-	});
-
-	it("is null for anything that is not a remote branch", () => {
-		expect(remoteOf("refs/heads/main")).toBeNull();
 	});
 });
 

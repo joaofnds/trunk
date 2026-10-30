@@ -29,22 +29,6 @@ export const EVERYTHING_VISIBLE: RefVisibility = {
 };
 
 /**
- * The remote a `refs/remotes/<remote>/<branch>` name belongs to, or null.
- *
- * A remote name may itself contain slashes, so the branch cannot be split off from the
- * right. This takes the first segment, which is wrong for such a remote. The sidebar
- * groups by the remote `list_refs` names instead.
- */
-export function remoteOf(name: string): string | null {
-	const rest = name.startsWith("refs/remotes/")
-		? name.slice("refs/remotes/".length)
-		: null;
-	if (rest === null) return null;
-	const first = rest.split("/")[0];
-	return first === undefined || first === "" ? null : first;
-}
-
-/**
  * Whether this value hides nothing, matching the Rust side's `RefVisibility::is_empty`.
  *
  * Compares fields rather than identity: a value read back from prefs is a different object
