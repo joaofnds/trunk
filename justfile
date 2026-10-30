@@ -12,8 +12,10 @@ target := env("CARGO_TARGET_DIR", justfile_directory() / "src-tauri/target")
 
 # The Rust suite drives real `git` subprocesses. Without this the developer's
 # editor vars and global git config decide which path a test takes, and the
-# rebase editor-pin guards pass with the production fix reverted.
-scrubbed_env := "env -u GIT_EDITOR -u EDITOR -u VISUAL GIT_CONFIG_GLOBAL=/dev/null"
+# rebase editor-pin guards pass with the production fix reverted. A system
+# config that sets commit.gpgsign or core.hooksPath would do the same to the
+# commit tests.
+scrubbed_env := "env -u GIT_EDITOR -u EDITOR -u VISUAL GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1"
 
 # List available recipes
 default:
