@@ -137,8 +137,8 @@ fn create_branch_duplicate_fails() {
     );
     assert_eq!(
         result.unwrap_err().code,
-        "git_exists",
-        "expected git_exists code for duplicate branch"
+        "branch_exists",
+        "expected branch_exists code for duplicate branch"
     );
 }
 
@@ -421,8 +421,27 @@ mod creating_a_branch_over_uncommitted_changes {
             let (ctx, err) = refused("feat/x", None, false);
             ctx.assert_branch_not_exists("feat/x");
             ctx.assert_file_content("a", "base");
-            assert_eq!(err.code, "git_exists");
+            assert_eq!(err.code, "branch_exists");
             assert!(err.message.contains("'feat'"), "{}", err.message);
+        }
+
+        /// On a case-insensitive filesystem `Feat/x` needs the directory that the file
+        /// `feat` already takes, so the refusal names `feat` rather than a path.
+        #[test]
+        fn when_a_branch_differing_in_case_holds_the_name_as_a_directory() {
+            let mut ctx = repo_where_feat_changes_a_and_b();
+            ctx.repo()
+                .config()
+                .unwrap()
+                .set_bool("core.ignorecase", true)
+                .unwrap();
+            let feat = ctx.resolve_ref("feat").unwrap();
+
+            let err = ctx.create_branch("Feat/x", Some(&feat)).unwrap_err();
+
+            assert_eq!(err.code, "branch_exists");
+            assert!(err.message.contains("'feat'"), "{}", err.message);
+            ctx.assert_file_content("a", "base");
         }
 
         #[test]
@@ -430,20 +449,21 @@ mod creating_a_branch_over_uncommitted_changes {
             let (ctx, err) = refused("x", Some("x/y"), false);
             ctx.assert_branch_not_exists("x");
             ctx.assert_file_content("a", "base");
-            assert_eq!(err.code, "git_exists");
+            assert_eq!(err.code, "branch_exists");
             assert!(err.message.contains("'x/y'"), "{}", err.message);
         }
 
         #[test]
-        fn when_the_name_is_invalid_on_a_conflicting_tree() {
-            let (ctx, _) = refused("bad..name", None, true);
-            ctx.assert_file_content("a", "edit");
+        fn when_the_name_is_invalid() {
+            let (ctx, err) = refused("bad..name", None, false);
+            assert_eq!(err.code, "invalid_branch_name");
+            ctx.assert_file_content("a", "base");
         }
 
         #[test]
         fn when_the_name_is_taken_on_a_conflicting_tree() {
             let (ctx, err) = refused("feat", None, true);
-            assert_eq!(err.code, "git_exists");
+            assert_eq!(err.code, "branch_exists");
             ctx.assert_file_content("a", "edit");
         }
     }
@@ -1820,6 +1840,9 @@ mod checking_out_a_remote_branch {
         ctx.assert_branch_not_exists("topic");
         ctx.assert_head_at("main");
         ctx.assert_file_content("a", "edit");
+        let config = ctx.repo().config().unwrap();
+        assert!(config.get_string("branch.topic.remote").is_err());
+        assert!(config.get_string("branch.topic.merge").is_err());
     }
 
     #[test]
@@ -1828,7 +1851,7 @@ mod checking_out_a_remote_branch {
 
         let err = ctx.checkout_remote_branch("origin/topic").unwrap_err();
 
-        assert_eq!(err.code, "git_invalid_spec");
+        assert_eq!(err.code, "not_a_remote_branch");
         ctx.assert_branch_not_exists("topic");
         ctx.assert_head_at("main");
     }

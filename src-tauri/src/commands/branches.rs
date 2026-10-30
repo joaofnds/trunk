@@ -307,8 +307,7 @@ pub async fn resolve_ref(
 }
 
 /// A safe checkout refuses with `Conflict` only when uncommitted work would be
-/// overwritten, which is the `dirty_workdir` outcome the branch commands already
-/// raise by hand when they pre-check the working tree.
+/// overwritten, which the branch commands report as `dirty_workdir`.
 fn classify_checkout_error(e: git2::Error) -> TrunkError {
     if e.code() == git2::ErrorCode::Conflict {
         return TrunkError::new(
@@ -476,15 +475,15 @@ fn create_and_check_out(
     start: &str,
 ) -> Result<(), TrunkError> {
     if !git2::Branch::name_is_valid(name)? {
-        return Err(reference_error(
-            git2::ErrorCode::InvalidSpec,
-            &format!("'{name}' is not a valid branch name"),
+        return Err(TrunkError::new(
+            "invalid_branch_name",
+            format!("'{name}' is not a valid branch name"),
         ));
     }
     if let Some(existing) = branch_in_the_path_of(repo, name)? {
-        return Err(reference_error(
-            git2::ErrorCode::Exists,
-            &format!("A branch named '{existing}' already exists, so '{name}' cannot be created"),
+        return Err(TrunkError::new(
+            "branch_exists",
+            format!("A branch named '{existing}' already exists, so '{name}' cannot be created"),
         ));
     }
 
@@ -492,9 +491,9 @@ fn create_and_check_out(
     let mut transaction = repo.transaction()?;
     transaction.lock_ref(&refname)?;
     if repo.find_reference(&refname).is_ok() {
-        return Err(reference_error(
-            git2::ErrorCode::Exists,
-            &format!("A branch named '{name}' already exists"),
+        return Err(TrunkError::new(
+            "branch_exists",
+            format!("A branch named '{name}' already exists"),
         ));
     }
 
@@ -513,27 +512,35 @@ fn create_and_check_out(
 }
 
 /// The local branch whose ref path holds `name`'s as a directory or a parent file,
-/// `feat` for `feat/x` and `x/y` for `x`, which git refuses to have beside it.
+/// `feat` for `feat/x` and `x/y` for `x`, which git refuses to have beside it. Where
+/// `core.ignorecase` says the filesystem ignores case, `Feat/x` clashes with `feat` too.
 fn branch_in_the_path_of(
     repo: &git2::Repository,
     name: &str,
 ) -> Result<Option<String>, TrunkError> {
+    let ignore_case = repo.config()?.get_bool("core.ignorecase").unwrap_or(false);
+    let fold = |s: &str| {
+        if ignore_case {
+            s.to_lowercase()
+        } else {
+            s.to_owned()
+        }
+    };
+    let name_key = fold(name);
     for branch in repo.branches(Some(BranchType::Local))? {
         let (branch, _) = branch?;
         let Some(existing) = branch.name()? else {
             continue;
         };
-        if name.starts_with(&format!("{existing}/")) || existing.starts_with(&format!("{name}/")) {
+        let existing_key = fold(existing);
+        if name_key.starts_with(&format!("{existing_key}/"))
+            || existing_key.starts_with(&format!("{name_key}/"))
+        {
             return Ok(Some(existing.to_owned()));
         }
     }
 
     Ok(None)
-}
-
-/// A refusal raised before libgit2 would have raised it, under the code it uses.
-fn reference_error(code: git2::ErrorCode, message: &str) -> TrunkError {
-    git2::Error::new(code, git2::ErrorClass::Reference, message).into()
 }
 
 /// Inner implementation of `create_branch` — separated for testability.
@@ -545,7 +552,7 @@ fn reference_error(code: git2::ErrorCode, message: &str) -> TrunkError {
 ///
 /// Returns `not_open` when `path` names no open repository, `dirty_workdir` when the
 /// checkout would overwrite uncommitted changes, `git_error` when HEAD is unborn,
-/// `git_invalid_spec` when the name is invalid, `git_exists` when it is taken or a branch
+/// `invalid_branch_name` when the name is invalid, `branch_exists` when it is taken or a branch
 /// is in its path, and the git error when `from_oid` does not resolve. On every error no
 /// branch is created and the working tree is as it was.
 pub fn create_branch_inner(
@@ -639,9 +646,9 @@ impl Tracking {
             .refspecs()
             .find(|spec| spec.direction() == git2::Direction::Fetch && spec.dst_matches(remote_ref))
             .ok_or_else(|| {
-                reference_error(
-                    git2::ErrorCode::NotFound,
-                    &format!("No fetch refspec of '{remote}' writes '{remote_ref}'"),
+                TrunkError::new(
+                    "no_fetch_refspec",
+                    format!("No fetch refspec of '{remote}' writes '{remote_ref}'"),
                 )
             })?;
         let merge = spec.rtransform(remote_ref)?.as_str()?.to_owned();
@@ -651,9 +658,9 @@ impl Tracking {
             .and_then(|(prefix, _)| remote_ref.strip_prefix(prefix))
             .filter(|name| !name.is_empty())
             .ok_or_else(|| {
-                reference_error(
-                    git2::ErrorCode::InvalidSpec,
-                    &format!("'{remote_ref}' names no branch of '{remote}'"),
+                TrunkError::new(
+                    "not_a_remote_branch",
+                    format!("'{remote_ref}' names no branch of '{remote}'"),
                 )
             })?
             .to_owned();
@@ -674,10 +681,12 @@ impl Tracking {
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `git_invalid_spec` when
-/// `remote_ref` is not under `refs/remotes/`, `dirty_workdir` when the checkout would
-/// overwrite uncommitted changes, the errors `create_branch_inner` names for the local
-/// name, and the git error when no remote owns `remote_ref` or its upstream will not save.
+/// Returns `not_open` when `path` names no open repository, `not_a_remote_branch` when
+/// `remote_ref` is not under `refs/remotes/` or its remote's refspec names no branch in
+/// it, `no_fetch_refspec` when no fetch refspec of its remote writes it, `dirty_workdir`
+/// when the checkout would overwrite uncommitted changes, the errors
+/// `create_branch_inner` names for the local name, and the git error when no remote owns
+/// `remote_ref` or its upstream will not save.
 pub fn checkout_remote_branch_inner(
     path: &str,
     remote_ref: &str,
@@ -689,9 +698,9 @@ pub fn checkout_remote_branch_inner(
     let repo = git2::Repository::open(path_buf)?;
 
     if !remote_ref.starts_with("refs/remotes/") {
-        return Err(reference_error(
-            git2::ErrorCode::InvalidSpec,
-            &format!("'{remote_ref}' is not a remote branch"),
+        return Err(TrunkError::new(
+            "not_a_remote_branch",
+            format!("'{remote_ref}' is not a remote branch"),
         ));
     }
     let tracking = Tracking::of(&repo, remote_ref)?;
