@@ -27,16 +27,22 @@ fn list_refs_hides_remote_head() {
         .with_file("README.md", "hello")
         .with_commit("Initial commit")
         .build();
+    let repo = ctx.repo();
+    let head = repo.head().unwrap().target().unwrap();
+    repo.reference("refs/remotes/origin/main", head, false, "fetch")
+        .unwrap();
+    repo.reference_symbolic(
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/main",
+        false,
+        "clone",
+    )
+    .unwrap();
 
     let refs = ctx.list_refs().expect("list_refs failed");
 
-    for branch in &refs.remote {
-        assert!(
-            !branch.name.ends_with("/HEAD"),
-            "remote list should not contain entries ending with '/HEAD', found: {}",
-            branch.name
-        );
-    }
+    let names: Vec<&str> = refs.remote.iter().map(|b| b.name.as_str()).collect();
+    assert_eq!(names, ["origin/main"]);
 }
 
 #[test]
