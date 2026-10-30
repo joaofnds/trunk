@@ -613,6 +613,7 @@ fn remote_branches(repo: &git2::Repository) -> Result<Vec<BranchInfo>, TrunkErro
             if name.ends_with("/HEAD") {
                 return None;
             }
+
             let remote = branch
                 .get()
                 .name()
@@ -660,17 +661,36 @@ impl<'repo> Remotes<'repo> {
     /// remote does or more than one does, the cases `branch_remote_name` refuses.
     fn name_of(&self, remote_ref: &str) -> Option<String> {
         let mut writers = self.remotes.iter().filter(|remote| {
-            remote.refspecs().any(|spec| {
-                spec.direction() == git2::Direction::Fetch && spec.dst_matches(remote_ref)
-            })
+            remote
+                .refspecs()
+                .any(|spec| spelled_by(&spec, remote_ref).is_some())
         });
         let writer = writers.next()?;
 
         if writers.next().is_some() {
             return None;
         }
+
         writer.name().ok().flatten().map(str::to_owned)
     }
+}
+
+/// Remote-tracking ref `remote_ref` as the destination of fetch refspec `spec`
+/// spells it, when `spec` writes it. libgit2 reads a destination written as
+/// `remotes/...` as `refs/remotes/...`, and matching `remote_ref` against the
+/// destination as written would miss it.
+fn spelled_by<'r>(spec: &git2::Refspec<'_>, remote_ref: &'r str) -> Option<&'r str> {
+    if spec.direction() != git2::Direction::Fetch {
+        return None;
+    }
+
+    let (_, dst) = spec.str().ok()?.split_once(':')?;
+    let spelled = if dst.starts_with("remotes/") {
+        remote_ref.strip_prefix("refs/")?
+    } else {
+        remote_ref
+    };
+    spec.dst_matches(spelled).then_some(spelled)
 }
 
 /// What a remote-tracking ref stands for, read through the fetch refspec that wrote

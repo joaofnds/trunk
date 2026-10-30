@@ -1827,6 +1827,25 @@ mod checking_out_a_remote_branch {
         assert!(refs.local.iter().all(|b| b.remote.is_none()));
     }
 
+    /// libgit2 reads a fetch destination written as `remotes/...` as `refs/remotes/...`.
+    #[test]
+    fn list_refs_names_the_remote_of_a_fetch_destination_written_without_refs() {
+        let ctx = repo_with_remote_fetching(
+            "short",
+            "+refs/heads/*:remotes/short/*",
+            "refs/remotes/short/topic",
+        );
+
+        let refs = ctx.list_refs().unwrap();
+
+        let topic = refs
+            .remote
+            .iter()
+            .find(|b| b.name == "short/topic")
+            .unwrap();
+        assert_eq!(topic.remote.as_deref(), Some("short"));
+    }
+
     #[test]
     fn list_refs_names_no_remote_when_two_remotes_fetch_into_the_ref() {
         let ctx = repo_with_remote_topic("origin");
@@ -1846,6 +1865,24 @@ mod checking_out_a_remote_branch {
             .find(|b| b.name == "origin/topic")
             .unwrap();
         assert_eq!(topic.remote, None);
+    }
+
+    #[test]
+    fn list_refs_names_the_remote_when_another_remote_only_pushes_into_the_ref() {
+        let ctx = repo_with_remote_topic("origin");
+        ctx.repo().remote("backup", "file:///elsewhere").unwrap();
+        ctx.repo()
+            .remote_add_push("backup", "+refs/remotes/origin/*:refs/remotes/origin/*")
+            .unwrap();
+
+        let refs = ctx.list_refs().unwrap();
+
+        let topic = refs
+            .remote
+            .iter()
+            .find(|b| b.name == "origin/topic")
+            .expect("the remote branch is listed");
+        assert_eq!(topic.remote.as_deref(), Some("origin"));
     }
 
     #[test]
