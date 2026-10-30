@@ -445,6 +445,15 @@ process invokes the CLI.
 clipboard on demand for any review in any state. One rendering of the store, not the
 store itself.
 
+## Object storage
+
+**Loose object**: a Git object stored as a file of its own under `.git/objects/`, named by its
+OID. Git writes a new commit, tree or blob loose. Objects that arrive by fetch or clone usually
+come as a pack, and `git gc` gathers loose ones into one.
+
+**Pack**: one file under `.git/objects/pack/` holding many objects together, compressed against
+each other, with a `.idx` file beside it that locates each object.
+
 ## Worktrees (TRUNK-378, 2026-10-19; TRUNK-380, 2026-10-28)
 
 A worktree here is a checkout. Elsewhere in this file "worktree status" and
@@ -579,15 +588,6 @@ the commit-cache write, `app.emit("repo-changed", …)`, the `.to_json()` error 
 argument deserialization (see the `start_interactive_rebase` command in
 `src-tauri/src/commands/interactive_rebase.rs`). Neither
 existing suite exercises that layer.
-
-**Loose object** — a Git object stored as a file of its own under `.git/objects/`, named by
-its OID. Every commit, tree and blob a repository gains starts loose, so building a deep
-history writes thousands of small files.
-
-**Pack** — one file under `.git/objects/pack/` holding many objects together, with an index
-beside it. The application host seeds its repositories as one pack, because a deep history
-written loose slowed many times over while other processes wrote to the disk, and timed out
-the graph suites' setup inside `just check` (TRUNK-409).
 
 **Compare** — the A→B diff view between any two commits picked in the graph (TRUNK-1).
 Distinct from a single commit's diff (parent(0) vs commit) and from a review range (which

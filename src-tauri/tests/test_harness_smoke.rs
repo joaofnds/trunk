@@ -131,7 +131,7 @@ fn a_pinned_commit_leaves_day_spacing_untouched() {
     assert_eq!(commit_times(&pinned)[1], commit_times(&spaced)[0]);
 }
 
-/// A history touching every step the app host's seed can ask for, plus a stash.
+/// A history with a branch, a merge, a push and a stash.
 fn every_seed_step(builder: &mut TestContextBuilder) -> &mut TestContextBuilder {
     builder
         .with_file("README.md", "hello")
@@ -236,6 +236,17 @@ fn a_packed_build_produces_the_history_a_loose_build_does() {
 }
 
 #[test]
+fn a_packed_build_leaves_the_index_matching_its_last_commit() {
+    let ctx = TestContext::builder()
+        .packed()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+
+    ctx.assert_status_clean();
+}
+
+#[test]
 fn a_packed_build_with_no_commits_succeeds() {
     let ctx = TestContext::builder().packed().build();
 
@@ -247,9 +258,6 @@ fn a_packed_build_with_no_commits_succeeds() {
 fn a_packed_build_refuses_a_conflict() {
     TestContext::builder()
         .packed()
-        .with_file("file.txt", "original")
-        .with_commit("Initial commit")
-        .with_branch("feature")
         .with_conflict("feature")
         .build();
 }

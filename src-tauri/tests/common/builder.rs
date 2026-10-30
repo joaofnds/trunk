@@ -88,10 +88,7 @@ impl TestContextBuilder {
     }
 
     /// Keep the objects `build` writes in memory and write them to disk as one pack at
-    /// the end, instead of one loose file each. A deep history built loose is thousands
-    /// of small filesystem writes, which slow many times over while other processes
-    /// write to the disk (TRUNK-409). Only what a commit reaches is packed, so a
-    /// conflict step, whose merged index names blobs no commit holds, is refused.
+    /// the end, instead of one loose file each.
     pub const fn packed(&mut self) -> &mut Self {
         self.packed = true;
         self
@@ -231,20 +228,22 @@ impl TestContextBuilder {
     }
 
     pub fn build(&self) -> TestContext {
-        let dir = tempfile::tempdir().expect("failed to create tempdir");
+        let holds_conflict = self
+            .steps
+            .iter()
+            .any(|step| matches!(step, BuildStep::Conflict { .. }));
         assert!(
-            !(self.packed
-                && self
-                    .steps
-                    .iter()
-                    .any(|step| matches!(step, BuildStep::Conflict { .. }))),
+            !(self.packed && holds_conflict),
             "a packed build cannot hold a conflict: its index names blobs no commit reaches"
         );
+
+        let dir = tempfile::tempdir().expect("failed to create tempdir");
         let mut repo = git2::Repository::init(dir.path()).expect("failed to init repo");
-        let in_memory = self.packed.then(|| git2::Odb::new().unwrap());
-        let mempack = in_memory
+        let memory_odb = self.packed.then(|| git2::Odb::new().unwrap());
+        let mempack = memory_odb
             .as_ref()
             .map(|odb| keep_new_objects_in_memory(&repo, odb));
+
         // Every commit-producing step takes the next day off this clock. `repo.signature()`
         // reads the wall clock, which made two builds of one shape produce different OIDs and
         // left the graph's TOPOLOGICAL | TIME sort resolving by tie-break at machine speed.
@@ -295,6 +294,7 @@ impl TestContextBuilder {
                 }
             }
         }
+
         repo.index().unwrap().write().unwrap();
 
         match mempack {
@@ -332,7 +332,6 @@ fn write_as_one_pack(repo: git2::Repository, root: &std::path::Path, mempack: &g
     let mut writer = odb.packwriter().unwrap();
     writer.write_all(&pack).unwrap();
     writer.commit().unwrap();
-    mempack.reset().unwrap();
 }
 
 /// Write a file into the working tree and queue it for the next commit.

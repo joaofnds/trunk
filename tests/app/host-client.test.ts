@@ -1,4 +1,5 @@
 import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RefsResponse } from "../../src/lib/types.js";
 import {
@@ -29,6 +30,22 @@ describe("host client", () => {
 		const refs = await host.invoke<RefsResponse>("list_refs", { path });
 
 		expect(refs.local.map((branch) => branch.name)).toEqual(["main"]);
+	});
+
+	it("seeds a repository as one pack and no loose object", async () => {
+		host = await HostClient.spawn();
+
+		const path = await host.seedRepo(oneCommit);
+
+		const objects = join(path, ".git", "objects");
+		const looseDirs = readdirSync(objects).filter((name) =>
+			/^[0-9a-f]{2}$/.test(name),
+		);
+		const packs = readdirSync(join(objects, "pack")).filter((name) =>
+			name.endsWith(".pack"),
+		);
+		expect(looseDirs).toEqual([]);
+		expect(packs).toHaveLength(1);
 	});
 
 	it("writes preferences under its temporary home", async () => {
