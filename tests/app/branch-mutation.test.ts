@@ -148,6 +148,28 @@ describe("branch mutation", () => {
 		expect(readFileSync(join(app.repo.path, "c1.txt"), "utf8")).toBe("edited");
 	});
 
+	// TRUNK-277: the remote route reaches the registered command, not a stub of it.
+	it("checks out a remote branch double-clicked in the sidebar", async () => {
+		const app = await setup({
+			repo: {
+				steps: [
+					...TWO_COMMITS.steps,
+					{ step: "remote", name: "origin" },
+					{ step: "branch", name: "topic" },
+					{ step: "push", remote: "origin", branch: "topic" },
+					{ step: "checkout", name: "main" },
+				],
+			},
+		});
+		await app.repo.open();
+
+		await app.branches.checkoutRemote("topic");
+
+		await waitFor("the checkout of topic", () =>
+			app.branches.headBranch() === "topic" ? true : null,
+		);
+	});
+
 	describe("when a linked worktree holds the branch", () => {
 		it("removes the worktree and deletes the branch once the offer is accepted", async () => {
 			const app = await setup({ repo: heldByWorktree() });

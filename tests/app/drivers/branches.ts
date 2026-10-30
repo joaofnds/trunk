@@ -8,6 +8,7 @@ const CREATE_BUTTON = '[aria-label="Create new branch"]';
 const CREATE_INPUT = '[data-testid="branch-create-input"]';
 const ROW_VISIBILITY = '[data-testid="branch-row-visibility-btn"]';
 const SECTION_VISIBILITY = '[data-testid="branch-section-visibility-btn"]';
+const REMOTE_SECTION = '[data-testid="branch-section-remote"]';
 
 /** The branch sidebar, in the gestures it offers: a double-click checks a
  *  branch out, and a refusal shows under the row it was aimed at. */
@@ -51,6 +52,25 @@ export class BranchesDriver {
 		const target = row.querySelector(ROW_BUTTON);
 
 		target?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+	}
+
+	/** Opens the Remote section and double-clicks the remote branch `name`, as
+	 *  its remote lists it (`topic` for origin/topic). */
+	async checkoutRemote(name: string): Promise<void> {
+		const header = await waitFor("the Remote section header", () =>
+			document.querySelector<HTMLElement>(
+				`${REMOTE_SECTION} [data-testid="branch-section-header"]`,
+			),
+		);
+		header.click();
+		const row = await waitFor(`the remote ${name} row`, () =>
+			firstMatching(`${REMOTE_SECTION} ${BRANCH_ROW}`, (text) =>
+				text.startsWith(name),
+			),
+		);
+		row
+			.querySelector(ROW_BUTTON)
+			?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
 	}
 
 	/** The branch the sidebar tags HEAD, or null while none carries the tag —
