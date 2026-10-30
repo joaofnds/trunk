@@ -20,6 +20,11 @@ import {
 	rebaseBranch,
 	resolveForkPoint,
 } from "../lib/branch-op.js";
+import {
+	CHECKOUT_CONFLICT_MESSAGE,
+	checkedOutMessage,
+	isCheckoutConflict,
+} from "../lib/checkout.js";
 import { copySha, copyText } from "../lib/clipboard.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
 import {
@@ -799,13 +804,10 @@ function handleCreateBranch(commit: GraphCommit) {
 					name: values.name,
 					fromOid: commit.oid,
 				});
-				showToast(`Checked out ${values.name}`, "success");
+				showToast(checkedOutMessage(values.name), "success");
 			} catch (e) {
-				if (isTrunkError(e) && e.code === "dirty_workdir") {
-					showToast(
-						"Branch created (checkout skipped — uncommitted changes)",
-						"success",
-					);
+				if (isCheckoutConflict(e)) {
+					showToast(CHECKOUT_CONFLICT_MESSAGE, "error");
 				} else {
 					await reportErrorDialog(
 						e,
@@ -1348,15 +1350,16 @@ function refFromLabel(ref: RefLabel): RefInfo {
 	};
 }
 
-function checkoutLocalBranch(name: string) {
-	return safeInvoke<void>("checkout_branch", {
+async function checkoutLocalBranch(name: string): Promise<string> {
+	await safeInvoke<void>("checkout_branch", {
 		path: repoPath,
 		branchName: name,
 	});
+	return name;
 }
 
-function checkoutRemoteBranch(ref: RefInfo) {
-	return safeInvoke<void>("checkout_remote_branch", {
+function checkoutRemoteBranch(ref: RefInfo): Promise<string> {
+	return safeInvoke<string>("checkout_remote_branch", {
 		path: repoPath,
 		remoteRef: ref.name,
 	});
@@ -1371,10 +1374,14 @@ async function handleRefCheckout(e: MouseEvent, ref: RefInfo) {
 	e.stopPropagation();
 	if (ref.isHead) return;
 	try {
-		if (ref.refType === "RemoteBranch") await checkoutRemoteBranch(ref);
-		else await checkoutLocalBranch(ref.shortName);
+		const branch =
+			ref.refType === "RemoteBranch"
+				? await checkoutRemoteBranch(ref)
+				: await checkoutLocalBranch(ref.shortName);
+		showToast(checkedOutMessage(branch), "success");
 	} catch (e) {
-		reportErrorToast(e, "Checkout failed");
+		if (isCheckoutConflict(e)) showToast(CHECKOUT_CONFLICT_MESSAGE, "error");
+		else reportErrorToast(e, "Checkout failed");
 	}
 }
 

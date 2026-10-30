@@ -115,8 +115,8 @@ impl TestContext {
         )
     }
 
-    /// Check out remote-tracking ref `remote_ref` as a local branch (needs &mut self for `cache_map`)
-    pub fn checkout_remote_branch(&mut self, remote_ref: &str) -> Result<(), TrunkError> {
+    /// Check out remote-tracking ref `remote_ref` as a local branch, returning its name (needs &mut self for `cache_map`)
+    pub fn checkout_remote_branch(&mut self, remote_ref: &str) -> Result<String, TrunkError> {
         branches::checkout_remote_branch_inner(
             &self.path,
             remote_ref,

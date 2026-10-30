@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it } from "vitest";
+import { CHECKOUT_CONFLICT_MESSAGE } from "../lib/checkout.js";
 import BranchRow from "./BranchRow.svelte";
 import "../__tests__/helpers/tauri-mock";
 
@@ -40,7 +41,7 @@ describe("BranchRow", () => {
 
 	it("shows default error when isError=true but no errorText", () => {
 		render(BranchRow, { props: { name: "main", isError: true } });
-		expect(screen.getByText(/Cannot checkout/)).toBeInTheDocument();
+		expect(screen.getByText(CHECKOUT_CONFLICT_MESSAGE)).toBeInTheDocument();
 	});
 
 	it("shows ahead count", () => {

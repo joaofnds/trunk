@@ -631,7 +631,7 @@ pub fn checkout_remote_branch_inner(
     state_map: &OpenRepos,
     cache_map: &mut GraphCache,
     visibility: &trunk_git::graph_input::RefVisibility,
-) -> Result<(), TrunkError> {
+) -> Result<String, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
 
@@ -645,14 +645,15 @@ pub fn checkout_remote_branch_inner(
     let remote = remote.as_str()?;
     let name = remote_ref
         .strip_prefix(&format!("refs/remotes/{remote}/"))
-        .ok_or_else(|| TrunkError::new("git_error", "The remote branch has no name"))?;
+        .ok_or_else(|| TrunkError::new("git_error", "The remote branch has no name"))?
+        .to_owned();
 
     let local_ref = format!("refs/heads/{name}");
     if repo.find_reference(&local_ref).is_ok() {
         check_out_local(&repo, &local_ref)?;
     } else {
         let target = repo.find_reference(remote_ref)?.peel_to_commit()?;
-        create_and_check_out(&repo, name, &target, remote_ref)?;
+        create_and_check_out(&repo, &name, &target, remote_ref)?;
         let mut config = repo.config()?;
         config.set_str(&format!("branch.{name}.remote"), remote)?;
         config.set_str(&format!("branch.{name}.merge"), &local_ref)?;
@@ -663,7 +664,7 @@ pub fn checkout_remote_branch_inner(
     let read = crate::state::read_graph(&mut repo2)?;
     cache_map.insert_read(path.to_owned(), read, visibility.clone());
 
-    Ok(())
+    Ok(name)
 }
 
 /// # Errors
@@ -682,12 +683,12 @@ pub async fn checkout_remote_branch<R: Runtime>(
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let state_map = state.snapshot();
     let path_clone = path.clone();
     let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
 
-    rebuild
+    let name = rebuild
         .rebuild_merging(path.clone(), move |visibility, rebuilt| {
             checkout_remote_branch_inner(&path_clone, &remote_ref, &state_map, rebuilt, visibility)
         })
@@ -696,7 +697,7 @@ pub async fn checkout_remote_branch<R: Runtime>(
 
     let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
 
-    Ok(())
+    Ok(name)
 }
 
 /// # Errors

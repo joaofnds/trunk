@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { afterEach, describe, expect, it } from "vitest";
+import { CHECKOUT_CONFLICT_MESSAGE } from "../../src/lib/checkout.js";
 import type { RepoSpec } from "./harness/host-client.js";
 import { setup, teardown } from "./harness/index.js";
 import { waitFor } from "./harness/wait.js";
@@ -111,9 +112,7 @@ describe("the application", () => {
 
 		await expect(
 			waitFor("the checkout refusal", () => app.branches.refusal("other")),
-		).resolves.toBe(
-			"Cannot checkout — working tree has uncommitted changes. Commit or stash your changes first.",
-		);
+		).resolves.toBe(CHECKOUT_CONFLICT_MESSAGE);
 	});
 
 	it("shows a commit made in the app as the graph's newest row", async () => {

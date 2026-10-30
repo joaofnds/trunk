@@ -1723,9 +1723,11 @@ mod checking_out_a_remote_branch {
     fn names_the_local_branch_after_the_remote_prefix_when_the_remote_name_holds_a_slash() {
         let mut ctx = repo_with_remote_topic("my/fork");
 
-        ctx.checkout_remote_branch("refs/remotes/my/fork/topic")
+        let name = ctx
+            .checkout_remote_branch("refs/remotes/my/fork/topic")
             .unwrap();
 
+        assert_eq!(name, "topic");
         ctx.assert_head_at("topic");
         assert_eq!(upstream(&ctx, "topic").as_deref(), Some("my/fork/topic"));
     }

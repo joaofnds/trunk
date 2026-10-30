@@ -125,6 +125,29 @@ describe("branch mutation", () => {
 		);
 	});
 
+	// TRUNK-277: an edit the new branch's tree does not touch rides along, as git switch -c does.
+	it("creates a branch over an uncommitted edit and carries the edit onto it", async () => {
+		const app = await setup({ repo: TWO_COMMITS });
+		await app.repo.open();
+		writeFileSync(join(app.repo.path, "c1.txt"), "edited");
+		await app.events.externalChange(app.repo.path);
+		await app.elapse();
+
+		await app.branches.create("feature");
+
+		await waitFor("the checkout of feature", () =>
+			app.branches.headBranch() === "feature" ? true : null,
+		);
+		await app.staging.open();
+		await expect(
+			waitFor("the edit in the unstaged list", () => {
+				const files = app.staging.unstagedFiles();
+				return files.length > 0 ? files : null;
+			}),
+		).resolves.toEqual(["M c1.txt"]);
+		expect(readFileSync(join(app.repo.path, "c1.txt"), "utf8")).toBe("edited");
+	});
+
 	describe("when a linked worktree holds the branch", () => {
 		it("removes the worktree and deletes the branch once the offer is accepted", async () => {
 			const app = await setup({ repo: heldByWorktree() });

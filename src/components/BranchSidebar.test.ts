@@ -2,8 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
+import { CHECKOUT_CONFLICT_MESSAGE } from "../lib/checkout.js";
 import { SCHEDULER } from "../lib/scheduler.js";
-import { toasts } from "../lib/toast.svelte.js";
+import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import BranchSidebar from "./BranchSidebar.svelte";
 
 // All Tauri module mocks declared locally so vi.mock hoisting keeps a single
@@ -191,7 +192,7 @@ describe("BranchSidebar", () => {
 		if (!row) throw new Error("the feature row offers no control");
 		await fireEvent.dblClick(row);
 		await waitFor(() =>
-			expect(screen.getByText(/Cannot checkout/)).toBeInTheDocument(),
+			expect(screen.getByText(CHECKOUT_CONFLICT_MESSAGE)).toBeInTheDocument(),
 		);
 
 		// A refresh unrelated to the working tree (e.g. creating a tag) must not
@@ -201,7 +202,7 @@ describe("BranchSidebar", () => {
 			refreshSignal: 1,
 			workingTreeDirty: true,
 		});
-		expect(screen.getByText(/Cannot checkout/)).toBeInTheDocument();
+		expect(screen.getByText(CHECKOUT_CONFLICT_MESSAGE)).toBeInTheDocument();
 
 		dirty = false;
 		await rerender({
@@ -211,7 +212,9 @@ describe("BranchSidebar", () => {
 		});
 
 		await waitFor(() =>
-			expect(screen.queryByText(/Cannot checkout/)).not.toBeInTheDocument(),
+			expect(
+				screen.queryByText(CHECKOUT_CONFLICT_MESSAGE),
+			).not.toBeInTheDocument(),
 		);
 	});
 
@@ -1189,5 +1192,144 @@ describe("BranchSidebar stash creation", () => {
 			"bg-accent",
 			"h-control-sm",
 		);
+	});
+});
+
+// TRUNK-277: every route that checks a branch out says the same thing when uncommitted
+// changes block it, and names the branch it landed on when it did not.
+describe("BranchSidebar checking out or creating a branch", () => {
+	const mockInvoke = vi.mocked(invoke);
+	const conflict = JSON.stringify({
+		code: "dirty_workdir",
+		message: "Your local changes would be overwritten",
+	});
+	const branch = (name: string, is_head = false) => ({
+		name,
+		is_head,
+		upstream: null,
+		ahead: 0,
+		behind: 0,
+		last_commit_timestamp: 1700000000,
+	});
+
+	function answering(cmd: string, answer: () => Promise<unknown>) {
+		mockInvoke.mockReset();
+		mockInvoke.mockImplementation((called: string) => {
+			if (called === "list_refs")
+				return Promise.resolve(
+					mockListRefs({
+						local: [branch("main", true), branch("feature")],
+						remote: [branch("origin/topic")],
+					}),
+				);
+			if (called === cmd) return answer();
+			return Promise.resolve(undefined);
+		});
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+	}
+
+	async function doubleClickLocal(name: string) {
+		const label = await screen.findByText(name);
+		const row = label.closest("button");
+		if (!row) throw new Error(`the ${name} row offers no control`);
+		await fireEvent.dblClick(row);
+	}
+
+	async function doubleClickRemote() {
+		await fireEvent.click(await screen.findByText("Remote (1)"));
+		await screen.findByText("topic");
+		const row = screen
+			.getByTestId("branch-section-remote")
+			.querySelector('[data-testid="branch-row"] button');
+		if (!row) throw new Error("the remote row offers no control");
+		await fireEvent.dblClick(row);
+	}
+
+	async function createBranch(name: string) {
+		await fireEvent.click(await screen.findByLabelText("Create new branch"));
+		const input = screen.getByTestId("branch-create-input");
+		await fireEvent.input(input, { target: { value: name } });
+		await fireEvent.keyDown(input, { key: "Enter" });
+	}
+
+	function toasted() {
+		return toasts.items.map(({ message, kind }) => ({ message, kind }));
+	}
+
+	beforeEach(() => {
+		_resetToasts();
+	});
+
+	it("toasts the local branch it checked out", async () => {
+		answering("checkout_branch", () => Promise.resolve(undefined));
+		await doubleClickLocal("feature");
+		await waitFor(() =>
+			expect(toasted()).toContainEqual({
+				message: "Checked out feature",
+				kind: "success",
+			}),
+		);
+	});
+
+	it("toasts the local branch a remote checkout landed on", async () => {
+		answering("checkout_remote_branch", () => Promise.resolve("topic"));
+		await doubleClickRemote();
+		await waitFor(() =>
+			expect(toasted()).toContainEqual({
+				message: "Checked out topic",
+				kind: "success",
+			}),
+		);
+	});
+
+	it("toasts the branch it created", async () => {
+		answering("create_branch", () => Promise.resolve(undefined));
+		await createBranch("fresh");
+		await waitFor(() =>
+			expect(toasted()).toContainEqual({
+				message: "Checked out fresh",
+				kind: "success",
+			}),
+		);
+	});
+
+	describe("when uncommitted changes conflict", () => {
+		it("explains the refused local checkout beside the branch and in a toast", async () => {
+			answering("checkout_branch", () => Promise.reject(conflict));
+			await doubleClickLocal("feature");
+			await waitFor(() =>
+				expect(toasted()).toContainEqual({
+					message: CHECKOUT_CONFLICT_MESSAGE,
+					kind: "error",
+				}),
+			);
+			expect(screen.getByText(CHECKOUT_CONFLICT_MESSAGE)).toBeInTheDocument();
+		});
+
+		it("explains the refused remote checkout", async () => {
+			answering("checkout_remote_branch", () => Promise.reject(conflict));
+			await doubleClickRemote();
+			await waitFor(() =>
+				expect(toasted()).toContainEqual({
+					message: CHECKOUT_CONFLICT_MESSAGE,
+					kind: "error",
+				}),
+			);
+		});
+
+		it("explains the refused creation and keeps the name to retry", async () => {
+			answering("create_branch", () => Promise.reject(conflict));
+			await createBranch("fresh");
+			await waitFor(() =>
+				expect(toasted()).toContainEqual({
+					message: CHECKOUT_CONFLICT_MESSAGE,
+					kind: "error",
+				}),
+			);
+			expect(screen.getByTestId("branch-create-input")).toHaveValue("fresh");
+			expect(toasted().map((t) => t.message)).not.toContain(
+				expect.stringMatching(/Branch created/),
+			);
+		});
 	});
 });

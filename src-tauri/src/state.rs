@@ -1090,29 +1090,29 @@ impl<'a> GraphRebuild<'a> {
     /// # Panics
     ///
     /// Panics when the cache's lock is poisoned.
-    pub async fn rebuild_merging<F>(&self, path: String, walk: F) -> Result<(), TrunkError>
+    pub async fn rebuild_merging<F, T>(&self, path: String, walk: F) -> Result<T, TrunkError>
     where
-        F: FnOnce(&RefVisibility, &mut GraphCache) -> Result<(), TrunkError> + Send + 'static,
+        F: FnOnce(&RefVisibility, &mut GraphCache) -> Result<T, TrunkError> + Send + 'static,
+        T: Send + 'static,
     {
         let session = self.cache.capture_session(&path)?;
         let (_gate, ticket) = self.cache.begin_rebuild(&path, session).await?;
         let visibility = self.ref_visibility.get(&path);
 
-        let rebuilt = tauri::async_runtime::spawn_blocking(move || {
+        let (value, mut rebuilt) = tauri::async_runtime::spawn_blocking(move || {
             let mut rebuilt = GraphCache::default();
-            walk(&visibility, &mut rebuilt).map(|()| rebuilt)
+            walk(&visibility, &mut rebuilt).map(|value| (value, rebuilt))
         })
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
 
-        let mut rebuilt = rebuilt;
         if let Some(snapshot) = rebuilt.graphs.remove(&path) {
             let inputs = rebuilt.inputs.remove(&path);
             self.publish(path, ticket, snapshot, inputs).await?;
         } else {
             self.cache.invalidate(&path);
         }
-        Ok(())
+        Ok(value)
     }
 }
 
@@ -1996,7 +1996,7 @@ mod tests {
         let ref_visibility = RefVisibilityState::default();
         let rebuild = GraphRebuild::new(&cache, &ref_visibility);
 
-        let err = tauri::async_runtime::block_on(rebuild.rebuild_merging(
+        let err = tauri::async_runtime::block_on(rebuild.rebuild_merging::<_, ()>(
             "/repo/a".to_owned(),
             |_visibility, rebuilt| {
                 rebuilt.insert("/repo/a".to_owned(), graph(1));

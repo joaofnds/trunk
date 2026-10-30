@@ -8,9 +8,14 @@ import {
 	rebaseBranch,
 	resolveForkPoint,
 } from "../lib/branch-op.js";
+import {
+	CHECKOUT_CONFLICT_MESSAGE,
+	checkedOutMessage,
+	isCheckoutConflict,
+} from "../lib/checkout.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
-import { isTrunkError, safeInvoke } from "../lib/invoke.js";
+import { safeInvoke } from "../lib/invoke.js";
 import {
 	EVERYTHING_VISIBLE,
 	type GroupState,
@@ -315,16 +320,17 @@ async function handleCheckout(branchName: string) {
 		await safeInvoke<void>("checkout_branch", { path: repoPath, branchName });
 		await loadRefs(repoPath);
 		onrefreshed?.();
-		showToast(`Checked out ${branchName}`, "success");
+		showToast(checkedOutMessage(branchName), "success");
 	} catch (e) {
-		if (isTrunkError(e) && e.code === "dirty_workdir") {
+		if (isCheckoutConflict(e)) {
 			checkoutError = {
 				branch: branchName,
-				message:
-					"Cannot checkout — working tree has uncommitted changes. Commit or stash your changes first.",
+				message: CHECKOUT_CONFLICT_MESSAGE,
 			};
+			showToast(CHECKOUT_CONFLICT_MESSAGE, "error");
+		} else {
+			reportErrorToast(e, "Checkout failed");
 		}
-		showToast("Checkout failed", "error");
 	} finally {
 		checkingOutBranch = null;
 	}
@@ -334,14 +340,16 @@ async function handleCheckoutRemoteBranch(fullName: string) {
 	checkoutError = null;
 	checkingOutBranch = fullName;
 	try {
-		await safeInvoke<void>("checkout_remote_branch", {
+		const branch = await safeInvoke<string>("checkout_remote_branch", {
 			path: repoPath,
 			remoteRef: `refs/remotes/${fullName}`,
 		});
 		await loadRefs(repoPath);
 		onrefreshed?.();
+		showToast(checkedOutMessage(branch), "success");
 	} catch (e) {
-		reportErrorToast(e, "Checkout failed");
+		if (isCheckoutConflict(e)) showToast(CHECKOUT_CONFLICT_MESSAGE, "error");
+		else reportErrorToast(e, "Checkout failed");
 	} finally {
 		checkingOutBranch = null;
 	}
@@ -357,17 +365,11 @@ async function handleCreateBranch() {
 		newBranchName = "";
 		await loadRefs(repoPath);
 		onrefreshed?.();
-		showToast(`Checked out ${trimmed}`, "success");
+		showToast(checkedOutMessage(trimmed), "success");
 	} catch (e) {
-		if (isTrunkError(e) && e.code === "dirty_workdir") {
-			showToast(
-				"Branch created (checkout skipped — uncommitted changes)",
-				"success",
-			);
-			showCreateInput = false;
-			newBranchName = "";
-			await loadRefs(repoPath);
-			onrefreshed?.();
+		if (isCheckoutConflict(e)) {
+			// Nothing was written, so the name stays in the input for a retry.
+			showToast(CHECKOUT_CONFLICT_MESSAGE, "error");
 		} else {
 			createError = errorMessage(e, "Failed to create branch");
 		}

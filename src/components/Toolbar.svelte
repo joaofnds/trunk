@@ -8,9 +8,14 @@ import MessageSquare from "@lucide/svelte/icons/message-square";
 import Redo2 from "@lucide/svelte/icons/redo-2";
 import Undo2 from "@lucide/svelte/icons/undo-2";
 import { emit, listen } from "@tauri-apps/api/event";
+import {
+	CHECKOUT_CONFLICT_MESSAGE,
+	checkedOutMessage,
+	isCheckoutConflict,
+} from "../lib/checkout.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { reportErrorDialog, reportErrorToast } from "../lib/error-report.js";
-import { isTrunkError, safeInvoke } from "../lib/invoke.js";
+import { safeInvoke } from "../lib/invoke.js";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
@@ -236,13 +241,10 @@ async function handleBranchCreate(values: Record<string, string>) {
 	if (!name) return;
 	try {
 		await safeInvoke("create_branch", { path: repoPath, name });
-		showToast(`Checked out ${name}`, "success");
+		showToast(checkedOutMessage(name), "success");
 	} catch (e) {
-		if (isTrunkError(e) && e.code === "dirty_workdir") {
-			showToast(
-				"Branch created (checkout skipped — uncommitted changes)",
-				"success",
-			);
+		if (isCheckoutConflict(e)) {
+			showToast(CHECKOUT_CONFLICT_MESSAGE, "error");
 		} else {
 			showToast("Failed to create branch", "error");
 		}

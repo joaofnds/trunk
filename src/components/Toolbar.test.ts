@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
+import { CHECKOUT_CONFLICT_MESSAGE } from "../lib/checkout.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
 	createRemoteState,
@@ -718,6 +719,53 @@ describe("Toolbar stash", () => {
 		await waitFor(() =>
 			expect(mockToast).toHaveBeenCalledWith(
 				"Nothing to stash — stage changes first.",
+				"error",
+			),
+		);
+	});
+});
+
+describe("Toolbar branch creation", () => {
+	const mockInvoke = vi.mocked(safeInvoke);
+	const mockToast = vi.mocked(showToast);
+
+	async function createBranch(name: string, answer: Promise<unknown>) {
+		mockInvoke.mockImplementation((cmd: string) =>
+			cmd === "create_branch" ? answer : Promise.resolve(false),
+		);
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+			},
+		});
+		await fireEvent.click(screen.getByRole("button", { name: "Branch" }));
+		await fireEvent.input(screen.getByLabelText(/Branch name/), {
+			target: { value: name },
+		});
+		await fireEvent.click(screen.getByRole("button", { name: "OK" }));
+	}
+
+	it("toasts the checkout of the new branch", async () => {
+		await createBranch("feature", Promise.resolve(undefined));
+
+		await waitFor(() =>
+			expect(mockToast).toHaveBeenCalledWith("Checked out feature", "success"),
+		);
+	});
+
+	// TRUNK-277: a refused creation writes nothing, so a success toast would be a lie.
+	it("shows the conflict message when uncommitted changes conflict", async () => {
+		await createBranch(
+			"feature",
+			Promise.reject({ code: "dirty_workdir", message: "conflict" }),
+		);
+
+		await waitFor(() =>
+			expect(mockToast).toHaveBeenCalledWith(
+				CHECKOUT_CONFLICT_MESSAGE,
 				"error",
 			),
 		);

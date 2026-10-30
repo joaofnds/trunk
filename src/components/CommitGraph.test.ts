@@ -13,12 +13,14 @@ import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { noReviewCounts } from "../__tests__/helpers/review-props.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
+import { CHECKOUT_CONFLICT_MESSAGE } from "../lib/checkout.js";
 import { MESSAGE_FLOOR } from "../lib/column-widths.js";
 import { COLUMN_PADDING_X, LANE_WIDTH } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { THUMB_CLASS, trackScrollActivity } from "../lib/scrollbar-activity.js";
 import { resetCache } from "../lib/text-measure.js";
+import { showToast } from "../lib/toast.svelte.js";
 import type { GraphCommit, ReviewTally } from "../lib/types.js";
 import CommitGraph from "./CommitGraph.svelte";
 
@@ -3403,6 +3405,134 @@ describe("CommitGraph", () => {
 			await fireEvent.mouseLeave(row);
 
 			expect(screen.queryByText(/^main/)).not.toBeInTheDocument();
+		});
+	});
+
+	describe("checking out or creating a branch", () => {
+		const REMOTE = makeRef({
+			short_name: "origin/topic",
+			name: "refs/remotes/origin/topic",
+			ref_type: "RemoteBranch",
+		});
+		const LOCAL = makeRef({
+			short_name: "feature",
+			name: "refs/heads/feature",
+			ref_type: "LocalBranch",
+		});
+		const HEAD_COMMIT = makeCommit({
+			oid: "aaa111aaa111aaa1aaa111aaa111aaa1aaa111aa",
+			summary: "main tip",
+			is_head: true,
+			refs: [
+				makeRef({ short_name: "main", ref_type: "LocalBranch", is_head: true }),
+			],
+		});
+		const LOCAL_COMMIT = makeCommit({
+			oid: "ccc333ccc333ccc3ccc333ccc333ccc3ccc333cc",
+			summary: "local work",
+			refs: [LOCAL],
+		});
+		const REMOTE_COMMIT = makeCommit({
+			oid: "ddd444ddd444ddd4ddd444ddd444ddd4ddd444dd",
+			summary: "remote work",
+			refs: [REMOTE],
+		});
+		const CONFLICT = { code: "dirty_workdir", message: "would overwrite" };
+
+		async function mountAnswering(cmd: string, answer: () => Promise<unknown>) {
+			installReads({
+				commits: [HEAD_COMMIT, LOCAL_COMMIT, REMOTE_COMMIT],
+				override: (called) => (called === cmd ? answer() : undefined),
+			});
+			render(CommitGraph, {
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+			});
+			await screen.findAllByTestId("commit-row");
+			await flush();
+			vi.mocked(showToast).mockClear();
+		}
+
+		async function doubleClick(label: string) {
+			await fireEvent.dblClick(
+				await screen.findByRole("button", { name: label }),
+			);
+			await flush();
+		}
+
+		async function createBranchFromRow(name: string) {
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.contextMenu(rows[1]);
+			await flush();
+			await getMenuAction("Create Branch...")();
+			await flush();
+			await fireEvent.input(screen.getByLabelText(/Branch name/), {
+				target: { value: name },
+			});
+			await fireEvent.click(screen.getByRole("button", { name: "OK" }));
+			await flush();
+		}
+
+		it("toasts the local branch it checked out", async () => {
+			await mountAnswering("checkout_branch", () => Promise.resolve());
+
+			await doubleClick("feature");
+
+			expect(showToast).toHaveBeenCalledWith("Checked out feature", "success");
+		});
+
+		it("toasts the local branch a remote checkout landed on", async () => {
+			await mountAnswering("checkout_remote_branch", () =>
+				Promise.resolve("topic"),
+			);
+
+			await doubleClick("origin/topic");
+
+			expect(showToast).toHaveBeenCalledWith("Checked out topic", "success");
+		});
+
+		it("toasts the branch it created", async () => {
+			await mountAnswering("create_branch", () => Promise.resolve());
+
+			await createBranchFromRow("fresh");
+
+			expect(showToast).toHaveBeenCalledWith("Checked out fresh", "success");
+		});
+
+		describe("when uncommitted changes conflict", () => {
+			it("says so for a local checkout", async () => {
+				await mountAnswering("checkout_branch", () => Promise.reject(CONFLICT));
+
+				await doubleClick("feature");
+
+				expect(showToast).toHaveBeenCalledWith(
+					CHECKOUT_CONFLICT_MESSAGE,
+					"error",
+				);
+			});
+
+			it("says so for a remote checkout", async () => {
+				await mountAnswering("checkout_remote_branch", () =>
+					Promise.reject(CONFLICT),
+				);
+
+				await doubleClick("origin/topic");
+
+				expect(showToast).toHaveBeenCalledWith(
+					CHECKOUT_CONFLICT_MESSAGE,
+					"error",
+				);
+			});
+
+			it("says so for a branch it was asked to create", async () => {
+				await mountAnswering("create_branch", () => Promise.reject(CONFLICT));
+
+				await createBranchFromRow("fresh");
+
+				expect(showToast).toHaveBeenCalledWith(
+					CHECKOUT_CONFLICT_MESSAGE,
+					"error",
+				);
+			});
 		});
 	});
 });

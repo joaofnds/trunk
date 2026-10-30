@@ -2,6 +2,7 @@
 import ArrowDown from "@lucide/svelte/icons/arrow-down";
 import ArrowUp from "@lucide/svelte/icons/arrow-up";
 import Tag from "@lucide/svelte/icons/tag";
+import { CHECKOUT_CONFLICT_MESSAGE } from "../lib/checkout.js";
 import { visibilityVerb } from "../lib/ref-visibility.js";
 import Row, { type RowTone } from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
@@ -130,8 +131,7 @@ function openMenu(e: MouseEvent) {
 		<div
 			class="error-banner text-small leading-normal py-2 px-3 mt-0 mx-2 mb-1 rounded"
 		>
-			{errorText ??
-				"Cannot checkout — working tree has uncommitted changes. Commit or stash your changes first."}
+			{errorText ?? CHECKOUT_CONFLICT_MESSAGE}
 		</div>
 	{/if}
 </div>
