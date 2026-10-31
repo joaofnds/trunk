@@ -44,7 +44,7 @@ trunk review threads <review-id> [--state <state>] [--json] [--repo <path>]
 trunk review thread <thread-id> [--json] [--repo <path>]
 trunk review reply <thread-id> <text> | --stdin [--repo <path>]
 trunk review address <thread-id> [--commit <rev>] [--repo <path>]
-trunk review watch [--repo <path>]
+trunk review watch [--json] [--repo <path>]
 ```
 
 - **list**: the repository's reviews visible to the agent: id, state
