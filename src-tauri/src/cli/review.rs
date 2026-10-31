@@ -181,7 +181,8 @@ pub fn run(cmd: ReviewCmd, identifier: &str, out: &mut dyn Write) -> Result<(), 
 
 /// The agent guide, naming the binary that answers its commands.
 fn guide(out: &mut dyn Write) -> Result<(), TrunkError> {
-    let exe = std::env::current_exe().map_err(|e| TrunkError::new("io", e.to_string()))?;
+    let exe = trunk_review::doc::answering_binary()
+        .ok_or_else(|| TrunkError::new("io", "the running binary's path is unknown"))?;
 
     write!(out, "{}", trunk_review::guide::render(&exe))
         .map_err(|e| TrunkError::new("io", e.to_string()))

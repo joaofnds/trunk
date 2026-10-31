@@ -31,7 +31,7 @@ use trunk_git::error::TrunkError;
 pub struct RenderInput {
     pub review_id: String,
     pub title: String,
-    /// The binary answering the review verbs: `current_exe()` at
+    /// The binary answering the review verbs: [`answering_binary`] at
     /// generation time (§5.5), `Some` only for a review visible to the agent.
     /// The CLI cannot serve an unsent or archived one, so its doc omits the instructions
     /// (criterion 11). The path is the caller's fact, like the two below:
@@ -504,6 +504,23 @@ fn emit_verbatim_notice(out: &mut String) {
     let _ = writeln!(out);
 }
 
+/// The binary an agent runs the review verbs through, at a path that outlives
+/// this process.
+///
+/// An `AppImage` runs from a mount that vanishes when it exits,
+/// and its runtime names the stable outer file in `APPIMAGE`.
+#[must_use]
+pub fn answering_binary() -> Option<PathBuf> {
+    answering_binary_of(
+        std::env::var_os("APPIMAGE").map(PathBuf::from),
+        std::env::current_exe().ok(),
+    )
+}
+
+fn answering_binary_of(appimage: Option<PathBuf>, running: Option<PathBuf>) -> Option<PathBuf> {
+    appimage.filter(|path| path.is_file()).or(running)
+}
+
 /// `path` as one shell word: bare when every character is safe unquoted,
 /// otherwise single-quoted, so an agent can paste a printed command as is.
 #[must_use]
@@ -818,10 +835,10 @@ pub fn render_review_doc(
             review_id: review.id.clone(),
             title: review.title,
             // The CLI serves only the reviews visible to the agent, so only
-            // their docs teach it (criterion 11). `current_exe` at generation
+            // their docs teach it (criterion 11). The binary at generation
             // time is §5.5's ruling: the doc names the binary that will answer.
             cli_binary: if review.visible_to_agent {
-                std::env::current_exe().ok()
+                answering_binary()
             } else {
                 None
             },
@@ -1020,6 +1037,45 @@ mod tests {
     use super::*;
     use git2::{Oid, Repository, Signature};
     use tempfile::TempDir;
+
+    mod answering_binary {
+        use super::*;
+
+        #[test]
+        fn names_the_appimage_file_over_its_running_mount() {
+            let dir = TempDir::new().unwrap();
+            let appimage = dir.path().join("Trunk.AppImage");
+            std::fs::write(&appimage, b"").unwrap();
+            let mount = PathBuf::from("/tmp/.mount_TrunkXYZ/usr/bin/trunk");
+
+            let named = answering_binary_of(Some(appimage.clone()), Some(mount));
+
+            assert_eq!(named, Some(appimage));
+        }
+
+        #[test]
+        fn names_the_running_binary_when_appimage_names_no_file() {
+            let dir = TempDir::new().unwrap();
+            let running = PathBuf::from("/usr/bin/trunk");
+
+            let named = answering_binary_of(
+                Some(dir.path().join("gone.AppImage")),
+                Some(running.clone()),
+            );
+
+            assert_eq!(named, Some(running));
+        }
+
+        #[test]
+        fn names_the_running_binary_outside_an_appimage() {
+            let running = PathBuf::from("/Applications/Trunk.app/Contents/MacOS/trunk");
+
+            assert_eq!(
+                answering_binary_of(None, Some(running.clone())),
+                Some(running)
+            );
+        }
+    }
 
     // ── Test harness lifted from commands/review.rs:1135-2102 ─────────────
     // Real git2 + tempfile (classical TDD: no mocks). `_dir` field keeps the
