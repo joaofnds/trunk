@@ -73,6 +73,16 @@ mod tests {
     }
 
     #[test]
+    fn announces_the_listening_process() {
+        let dir = tempfile::TempDir::new().unwrap();
+
+        announce_listening(dir.path()).unwrap();
+
+        let announced = std::fs::read_to_string(dir.path().join(LISTENING)).unwrap();
+        assert_eq!(announced, std::process::id().to_string());
+    }
+
+    #[test]
     fn refuses_a_socket_a_live_instance_answers_on() {
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join(SOCKET);
