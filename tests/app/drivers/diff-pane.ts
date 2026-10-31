@@ -129,6 +129,10 @@ export class DiffPaneDriver {
 		);
 
 		if (button.matches(SHOW_SIDE_BY_SIDE)) button.click();
+
+		await waitFor("the layout toggle to offer Inline view", () =>
+			document.querySelector<HTMLButtonElement>(SHOW_INLINE),
+		);
 	}
 
 	/** Closes the center diff and returns to the graph/detail layout. */
