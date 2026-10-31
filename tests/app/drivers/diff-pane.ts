@@ -12,6 +12,8 @@ const DIFF_PATH = '[data-testid="diff-path"]';
 const LOAD_ERROR = '[data-testid="diff-retry"]';
 const RENDERED_VIEW = ".rendered-diff";
 const COMMENT_ROW = ".inline-comment-row";
+const SPLIT_COMMENT_ROW = ".split-comment-row";
+const FULL_FILE_COMMENT_ROW = ".comment-row";
 const HUNK_HEADER = ".hunk-toolbar";
 const DIFF_LINE = ".diff-line";
 const PROBES = ".comment-probe, .metrics-probe";
@@ -106,6 +108,16 @@ export class DiffPaneDriver {
 				if (row.matches(HUNK_HEADER)) return "hunk";
 				return "line";
 			});
+	}
+
+	/** Whether any diff view, hunk, side-by-side or full file, shows a comment
+	 *  row. The off-screen probes that measure rows are not shown. */
+	showsCommentRow(): boolean {
+		const rows = document.querySelectorAll<HTMLElement>(
+			`.hunk-view ${COMMENT_ROW}, .split-view ${SPLIT_COMMENT_ROW}, .full-file ${FULL_FILE_COMMENT_ROW}`,
+		);
+
+		return [...rows].some((row) => !row.closest(PROBES));
 	}
 
 	/** Switches the pane from inline to side-by-side, if it is not there already. */
