@@ -20,11 +20,13 @@ The agent then watches the repository's reviews, and how soon a comment reaches 
 depends on how its harness reads the watch's output. Each comment you send gets an answer:
 a reply for a question, or a change in the working tree followed by a reply and an
 `addressed` claim. If you reopen a claimed comment without replying, the agent asks
-what is still missing and does not claim it again until you answer. A comment you hold
+what is still missing and does not claim it again until you answer and it has made the
+change you ask for. A comment you hold
 stays invisible to the agent until you send it.
 The agent leaves its changes uncommitted for you to read as a diff, and only you can
 mark a comment done or dismissed.
 
-The guide spells every command with the absolute path of the binary that printed it,
-so the agent keeps using that binary and its store. [review-cli.md](review-cli.md) is
+The guide spells every command with the absolute path of the binary that printed it, or
+on Linux of the AppImage file it runs from, so the agent keeps using that binary and its
+store. [review-cli.md](review-cli.md) is
 the reference for the verbs the guide uses.

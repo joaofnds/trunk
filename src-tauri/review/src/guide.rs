@@ -9,8 +9,8 @@ use std::fmt::Write;
 use std::path::Path;
 
 /// The guide, with every command spelled through `cli_binary`, the binary that
-/// printed it, so the agent reaches that binary's store and never a different
-/// `trunk` on its `PATH`.
+/// printed it or the `AppImage` file holding it, so the agent reaches that
+/// binary's store and never a different `trunk` on its `PATH`.
 #[must_use]
 pub fn render(cli_binary: &Path) -> String {
     let exe = shell_word(cli_binary);
