@@ -143,18 +143,15 @@ impl ReplyText {
 /// Returns whatever opening the store, resolving the repository, or the command
 /// itself returns. Nothing is written on the error path.
 pub fn run(cmd: ReviewCmd, identifier: &str, out: &mut dyn Write) -> Result<(), TrunkError> {
-    // Before the store opens: printing text must never create or migrate one,
-    // and it needs no repository.
-    if cmd == ReviewCmd::Guide {
-        return guide(out);
-    }
-
-    let store = reviewdb::open(&reviewdb::data_dir_for(identifier))?;
+    // Only the verbs that read or write reviews open the store, because
+    // printing the guide must never create or migrate one and needs no
+    // repository.
+    let open = || reviewdb::open(&reviewdb::data_dir_for(identifier));
 
     match cmd {
         ReviewCmd::Guide => guide(out),
-        ReviewCmd::List { repo } => list(&store, discover_repo(repo)?, out),
-        ReviewCmd::Show { id, repo } => show(&store, discover_repo(repo)?, &id, out),
+        ReviewCmd::List { repo } => list(&open()?, discover_repo(repo)?, out),
+        ReviewCmd::Show { id, repo } => show(&open()?, discover_repo(repo)?, &id, out),
         ReviewCmd::Reply {
             id,
             text,
@@ -162,22 +159,22 @@ pub fn run(cmd: ReviewCmd, identifier: &str, out: &mut dyn Write) -> Result<(), 
             repo,
         } => {
             let text = ReplyText::from_parts(text, stdin)?;
-            reply(&store, discover_repo(repo)?, &id, text, out)
+            reply(&open()?, discover_repo(repo)?, &id, text, out)
         }
         ReviewCmd::Address { id, commit, repo } => {
-            address(&store, discover_repo(repo)?, &id, commit.as_deref(), out)
+            address(&open()?, discover_repo(repo)?, &id, commit.as_deref(), out)
         }
         ReviewCmd::Watch { repo, json } => {
-            crate::cli::watch::watch(&store, &discover_repo(repo)?, json, out)
+            crate::cli::watch::watch(&open()?, &discover_repo(repo)?, json, out)
         }
         ReviewCmd::Threads {
             review,
             state,
             json,
             repo,
-        } => threads(&store, discover_repo(repo)?, &review, state, json, out),
+        } => threads(&open()?, discover_repo(repo)?, &review, state, json, out),
         ReviewCmd::Thread { id, json, repo } => {
-            thread(&store, discover_repo(repo)?, &id, json, out)
+            thread(&open()?, discover_repo(repo)?, &id, json, out)
         }
     }
 }
