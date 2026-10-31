@@ -5,6 +5,8 @@ pub mod commands;
 mod drive;
 #[cfg(all(feature = "drive", not(target_os = "macos")))]
 compile_error!("the drive route reaches into AppKit and builds on macOS only");
+#[cfg(any(feature = "drive", all(test, unix)))]
+mod drive_socket;
 pub mod fetch_worker;
 pub mod launch;
 #[cfg(target_os = "macos")]
