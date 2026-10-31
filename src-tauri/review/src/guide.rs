@@ -87,7 +87,7 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "If the comment asks a question or you disagree with it, answer with `{exe} review reply <thread-id> --stdin`, passing the answer on standard input. If it asks for a change, make the change in the working tree, reply saying what you changed, and then, if `allowed_transitions` in its `--json` output includes `addressed`, claim the comment with `{exe} review address <thread-id>`. If you cannot act on it, reply saying what stopped you. If the reviewer reopened a comment you claimed and wrote nothing after your claim, they are not satisfied with your change but have not said why, and claiming it again would undo their reopen. Reply asking what is still missing, and do not claim it as addressed again until the reviewer answers and you have changed what they ask for. Ask the reviewer anything you need to know in a reply on the thread, because the reviewer works in Trunk and may never see your terminal."
+        "If the comment asks a question or you disagree with it, answer with `{exe} review reply <thread-id> --stdin`, passing the answer on standard input. If it asks for a change, make the change in the working tree, reply saying what you changed, and then, if `allowed_transitions` in its `--json` output includes `addressed`, claim the comment with `{exe} review address <thread-id>`. If you cannot act on it, reply saying what stopped you. If the thread is `open`, its last reply is yours, and its `last_action` is `human`, the reviewer acted after your reply without writing a new one: they reopened a comment you claimed, or edited the comment or a reply. If the text now asks for something your change does not do, do it. Otherwise they are not satisfied but have not said why, and claiming it again would undo their reopen, so reply asking what is still missing, and do not claim it as addressed again until the reviewer answers and you have changed what they ask for. Ask the reviewer anything you need to know in a reply on the thread, because the reviewer works in Trunk and may never see your terminal."
     );
     let _ = writeln!(out);
     let _ = writeln!(
@@ -239,8 +239,13 @@ mod tests {
 
     #[test]
     fn waits_for_the_reviewer_after_a_reopen_without_a_comment() {
+        let guide = guide();
         assert!(
-            guide().contains("do not claim it as addressed again until the reviewer answers"),
+            guide.contains("its last reply is yours, and its `last_action` is `human`"),
+            "thread --json holds no claim, so a restarted agent sees a reopen only through these fields"
+        );
+        assert!(
+            guide.contains("do not claim it as addressed again until the reviewer answers"),
             "a second claim with no change undoes the reviewer's reopen"
         );
     }
