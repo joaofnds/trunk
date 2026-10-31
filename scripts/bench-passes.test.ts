@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { outcomeOf, passFiles, reusedWorkspaceCrates } from "./bench-passes.js";
+import { outcomeOf, passFiles, workspaceBuildOf } from "./bench-passes.js";
 
 const BASE = "1ea527ec0000000000000000000000000000000a";
 
@@ -49,7 +49,7 @@ describe("outcomeOf", () => {
 });
 
 describe("passFiles", () => {
-	it("names each side's raw and normalized output in the pass directory", () => {
+	it("names each side's build, raw and normalized output in the pass directory", () => {
 		expect(passFiles("/passes", "base")).toEqual({
 			build: "/passes/base-build.jsonl",
 			raw: "/passes/base-output.txt",
@@ -73,32 +73,72 @@ function artifact(packageId: string, fresh: boolean): string {
 	});
 }
 
-describe("reusedWorkspaceCrates", () => {
-	it("reports none when every workspace crate was compiled in this pass", () => {
-		const messages = [
-			artifact(REGISTRY_CRATE, true),
+function cargoOutput(lines: string[]): string {
+	return `${lines.join("\n")}\n`;
+}
+
+describe("workspaceBuildOf", () => {
+	it("lists every workspace crate the pass compiled and none reused", () => {
+		const messages = cargoOutput([
 			artifact(GIT_CRATE, false),
 			artifact(REVIEW_CRATE, false),
 			artifact(APP_CRATE, false),
 			JSON.stringify({ reason: "build-finished", success: true }),
-		].join("\n");
+		]);
 
-		expect(reusedWorkspaceCrates(messages)).toEqual([]);
+		expect(workspaceBuildOf(messages)).toEqual({
+			compiled: [GIT_CRATE, REVIEW_CRATE, APP_CRATE],
+			reused: [],
+		});
+	});
+
+	it("leaves out registry dependencies an earlier build compiled", () => {
+		const messages = cargoOutput([
+			artifact(REGISTRY_CRATE, true),
+			artifact(APP_CRATE, false),
+		]);
+
+		expect(workspaceBuildOf(messages)).toEqual({
+			compiled: [APP_CRATE],
+			reused: [],
+		});
+	});
+
+	it("skips the blank and plain-text lines around cargo's messages", () => {
+		const messages = cargoOutput([
+			"",
+			"   Compiling trunk v0.59.0",
+			artifact(APP_CRATE, false),
+			"",
+		]);
+
+		expect(workspaceBuildOf(messages)).toEqual({
+			compiled: [APP_CRATE],
+			reused: [],
+		});
 	});
 
 	describe("when a workspace crate came from an earlier build", () => {
 		it("names each crate the pass reused, once", () => {
-			const messages = [
+			const messages = cargoOutput([
 				artifact(GIT_CRATE, true),
 				artifact(REVIEW_CRATE, true),
 				artifact(APP_CRATE, false),
 				artifact(GIT_CRATE, true),
-			].join("\n");
-
-			expect(reusedWorkspaceCrates(messages)).toEqual([
-				GIT_CRATE,
-				REVIEW_CRATE,
 			]);
+
+			expect(workspaceBuildOf(messages)).toEqual({
+				compiled: [APP_CRATE],
+				reused: [GIT_CRATE, REVIEW_CRATE],
+			});
+		});
+	});
+
+	describe("when a message line is not JSON", () => {
+		it("throws a syntax error", () => {
+			const messages = cargoOutput(['{"reason": "compiler-artifact",']);
+
+			expect(() => workspaceBuildOf(messages)).toThrow(SyntaxError);
 		});
 	});
 });

@@ -42,34 +42,58 @@ export function outcomeOf(passes: {
 
 const WORKSPACE_SOURCE = "path+";
 
+export type WorkspaceBuild = {
+	readonly compiled: readonly string[];
+	readonly reused: readonly string[];
+};
+
+type Artifact = {
+	readonly packageId: string;
+	readonly fresh: boolean;
+};
+
+function artifactOf(line: string): Artifact | undefined {
+	const message: unknown = JSON.parse(line);
+	if (
+		typeof message !== "object" ||
+		message === null ||
+		!("reason" in message) ||
+		message.reason !== "compiler-artifact" ||
+		!("package_id" in message) ||
+		typeof message.package_id !== "string" ||
+		!("fresh" in message) ||
+		typeof message.fresh !== "boolean"
+	) {
+		return undefined;
+	}
+
+	return { packageId: message.package_id, fresh: message.fresh };
+}
+
 /**
- * The workspace crates a pass took from an earlier build instead of compiling,
+ * The workspace crates a pass compiled, and the ones it took from an earlier build,
  * read from cargo's --message-format=json output. Both passes share one target
  * directory, and cargo names a workspace crate's artifacts by its path inside the
  * workspace, so a reused crate may hold the other side's code.
  */
-export function reusedWorkspaceCrates(messages: string): string[] {
+export function workspaceBuildOf(messages: string): WorkspaceBuild {
+	const compiled = new Set<string>();
 	const reused = new Set<string>();
 	for (const line of messages.split("\n")) {
 		if (!line.startsWith("{")) {
 			continue;
 		}
 
-		const message: unknown = JSON.parse(line);
+		const artifact = artifactOf(line);
 		if (
-			typeof message === "object" &&
-			message !== null &&
-			"reason" in message &&
-			message.reason === "compiler-artifact" &&
-			"fresh" in message &&
-			message.fresh === true &&
-			"package_id" in message &&
-			typeof message.package_id === "string" &&
-			message.package_id.startsWith(WORKSPACE_SOURCE)
+			artifact === undefined ||
+			!artifact.packageId.startsWith(WORKSPACE_SOURCE)
 		) {
-			reused.add(message.package_id);
+			continue;
 		}
+
+		(artifact.fresh ? reused : compiled).add(artifact.packageId);
 	}
 
-	return [...reused];
+	return { compiled: [...compiled], reused: [...reused] };
 }

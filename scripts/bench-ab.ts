@@ -11,11 +11,9 @@
  * side benches the bench targets its own Cargo.toml declares, with the toolchain its
  * own mise.toml pins, normalized by its own bench-gate.ts. Both raw and both
  * normalized outputs land in <pass-directory> for scripts/bench-compare.ts and the
- * artifact upload. Both sides share one target directory, where cargo names a
- * workspace crate's artifacts by its path inside the workspace, so each pass cleans
- * the workspace crates first and fails if cargo still reports reusing one. A failed
- * base pass warns and skips the comparison; a failed head
- * pass fails the run. The filter is criterion's, for a local trial run; it must keep
+ * artifact upload. Each pass cleans the workspace crates first and fails if cargo
+ * still reports reusing one, since both sides share one target directory. A failed
+ * base pass warns and skips the comparison; a failed head pass fails the run. The filter is criterion's, for a local trial run; it must keep
  * the calibrations. See docs/benchmark-gate.md.
  */
 
@@ -34,8 +32,9 @@ import { chooseBase } from "./bench-base.js";
 import {
 	outcomeOf,
 	passFiles,
-	reusedWorkspaceCrates,
 	type Side,
+	type WorkspaceBuild,
+	workspaceBuildOf,
 } from "./bench-passes.js";
 
 const [before, passDirectory, filter] = process.argv.slice(2);
@@ -47,6 +46,7 @@ if (!before || !passDirectory) {
 	process.exit(2);
 }
 
+const BENCH_TARGETS = ["--bench", "*"];
 const output = resolve(passDirectory);
 const repository = process.cwd();
 const targetDir = join(repository, "src-tauri", "target");
@@ -119,14 +119,31 @@ function exportTree(tree: {
 }
 
 function compiledItsOwnCrates(side: Side, buildMessages: string): boolean {
-	const reused = reusedWorkspaceCrates(readFileSync(buildMessages, "utf8"));
-	if (reused.length > 0) {
+	let build: WorkspaceBuild;
+	try {
+		build = workspaceBuildOf(readFileSync(buildMessages, "utf8"));
+	} catch (error) {
 		console.error(
-			`bench-ab: the ${side} pass reused workspace crates an earlier build compiled: ${reused.join(", ")}`,
+			`bench-ab: cannot read the ${side} pass's build messages: ${error}`,
 		);
+		return false;
 	}
 
-	return reused.length === 0;
+	if (build.compiled.length === 0) {
+		console.error(
+			`bench-ab: the ${side} pass's build messages name no workspace crate it compiled`,
+		);
+		return false;
+	}
+
+	if (build.reused.length > 0) {
+		console.error(
+			`bench-ab: the ${side} pass reused workspace crates an earlier build compiled: ${build.reused.join(", ")}`,
+		);
+		return false;
+	}
+
+	return true;
 }
 
 function benchPass(side: Side, checkout: string): boolean {
@@ -142,7 +159,7 @@ function benchPass(side: Side, checkout: string): boolean {
 	// Criterion errors comparing against one and drops that benchmark's bencher
 	// line, which bench-gate then reads as a missing benchmark.
 	rmSync(join(targetDir, "criterion"), { recursive: true, force: true });
-	const crates = join(checkout, "src-tauri");
+	const workspace = join(checkout, "src-tauri");
 	const passed =
 		run({ command: ["mise", "install"], cwd: checkout }) &&
 		run({
@@ -155,7 +172,7 @@ function benchPass(side: Side, checkout: string): boolean {
 				"--workspace",
 				"--release",
 			],
-			cwd: crates,
+			cwd: workspace,
 		}) &&
 		run({
 			command: [
@@ -164,13 +181,12 @@ function benchPass(side: Side, checkout: string): boolean {
 				"--",
 				"cargo",
 				"bench",
-				"--bench",
-				"*",
+				...BENCH_TARGETS,
 				"--no-run",
 				"--message-format",
 				"json-render-diagnostics",
 			],
-			cwd: crates,
+			cwd: workspace,
 			stdout: files.build,
 		}) &&
 		compiledItsOwnCrates(side, files.build) &&
@@ -181,12 +197,11 @@ function benchPass(side: Side, checkout: string): boolean {
 				"--",
 				"cargo",
 				"bench",
-				"--bench",
-				"*",
+				...BENCH_TARGETS,
 				"--",
 				...criterionArgs,
 			],
-			cwd: crates,
+			cwd: workspace,
 			stdout: files.raw,
 		}) &&
 		run({
