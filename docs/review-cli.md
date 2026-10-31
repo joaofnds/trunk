@@ -38,6 +38,7 @@ those help/version words are the CLI's own — any other argument (a bare
 ## Verbs
 
 ```
+trunk review guide
 trunk review list [--repo <path>]
 trunk review show <review-id> [--repo <path>]
 trunk review threads <review-id> [--state <state>] [--json] [--repo <path>]
@@ -47,6 +48,10 @@ trunk review address <thread-id> [--commit <rev>] [--repo <path>]
 trunk review watch [--json] [--repo <path>]
 ```
 
+- **guide**: the procedure a coding agent follows to watch the repository's
+  reviews and answer each comment, with every command spelled through this
+  binary's absolute path. It opens no store and needs no repository.
+  [agent-guide.md](agent-guide.md) is the setup page.
 - **list**: the repository's reviews visible to the agent: id, state
   (`open`/`stale`/`settled`, derived from the threads' stale markers as the app
   last computed them), title, and the number of threads it was sent. A

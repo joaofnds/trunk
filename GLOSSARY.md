@@ -445,6 +445,11 @@ process invokes the CLI.
 clipboard on demand for any review in any state. One rendering of the store, not the
 store itself.
 
+**Agent guide**: the procedure `trunk review guide` prints for a coding agent the user
+starts in a repository: watch the reviews, find comments already waiting, answer each
+comment that asks for an answer, and check the current code before trusting the stale
+marker. It shares its freshness and provenance rules with the review doc.
+
 ## Object storage
 
 **Loose object**: a Git object stored as a file of its own under `.git/objects/`, named by its
