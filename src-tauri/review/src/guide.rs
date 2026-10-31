@@ -28,7 +28,7 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "Start `{exe} review watch --json` as a long-running background process and read its output as it arrives. If your harness can stream a background process's output to you, use that. Otherwise redirect its output and its errors to a file outside the repository, such as one in your temporary directory, and read the file again whenever you wait for work, because a file inside the repository shows in the reviewer's diff. The first line is `# watching <path>`, which is not JSON and means the watch is ready. Every later line is one JSON event. If the watch exits, read its last lines for the reason, start it again, and catch up again as the next section says, because a comment sent while no watch ran arrives as no event."
+        "Start `{exe} review watch --json` as a long-running background process and read its output as it arrives. If your harness can stream a background process's output to you, use that. Otherwise redirect its output and its errors to a file outside the repository, such as one in your temporary directory, and read the file again whenever you wait for work, because a file inside the repository shows in the reviewer's diff. If you follow that file with `tail`, use plain `tail -f`, because on macOS `tail -n +<N> -f` piped into another command holds back the newest line until another arrives, and a lone comment would then wait for some unrelated change. The first line is `# watching <path>`, which is not JSON and means the watch is ready. Every later line is one JSON event. If the watch exits, read its last lines for the reason, start it again, and catch up again as the next section says, because a comment sent while no watch ran arrives as no event."
     );
     let _ = writeln!(out);
 
@@ -184,6 +184,14 @@ mod tests {
         assert!(
             guide().contains("to a file outside the repository"),
             "a log in the working tree shows in the reviewer's diff"
+        );
+    }
+
+    #[test]
+    fn follows_the_watch_log_without_holding_back_its_newest_line() {
+        assert!(
+            guide().contains("plain `tail -f`"),
+            "macOS `tail -n +N -f` into a pipe holds the newest line, so a lone comment waits for an unrelated write"
         );
     }
 
