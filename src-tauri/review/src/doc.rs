@@ -507,18 +507,37 @@ fn emit_verbatim_notice(out: &mut String) {
 /// The binary an agent runs the review verbs through, at a path that outlives
 /// this process.
 ///
-/// An `AppImage` runs from a mount that vanishes when it exits,
-/// and its runtime names the stable outer file in `APPIMAGE`.
-#[must_use]
-pub fn answering_binary() -> Option<PathBuf> {
-    answering_binary_of(
-        std::env::var_os("APPIMAGE").map(PathBuf::from),
-        std::env::current_exe().ok(),
-    )
+/// An `AppImage` runs from a mount that vanishes when it exits, and its
+/// runtime names the stable outer file in `APPIMAGE` and the mount in `APPDIR`.
+///
+/// # Errors
+///
+/// When the running binary's own path cannot be read.
+pub fn answering_binary() -> std::io::Result<PathBuf> {
+    let running = std::env::current_exe()?;
+    let image = AppImage {
+        file: std::env::var_os("APPIMAGE").map(PathBuf::from),
+        mount: std::env::var_os("APPDIR").map(PathBuf::from),
+    };
+
+    Ok(image.outer_file_of(&running).unwrap_or(running))
 }
 
-fn answering_binary_of(appimage: Option<PathBuf>, running: Option<PathBuf>) -> Option<PathBuf> {
-    appimage.filter(|path| path.is_file()).or(running)
+/// What the environment says about an `AppImage`. A child process inherits
+/// both variables, so they describe this process only when it runs inside
+/// that mount.
+struct AppImage {
+    file: Option<PathBuf>,
+    mount: Option<PathBuf>,
+}
+
+impl AppImage {
+    fn outer_file_of(self, running: &Path) -> Option<PathBuf> {
+        let (file, mount) = (self.file?, self.mount?);
+        let ours = mount.is_absolute() && running.starts_with(&mount);
+
+        (ours && file.is_absolute() && file.is_file()).then_some(file)
+    }
 }
 
 /// `path` as one shell word: bare when every character is safe unquoted,
@@ -838,7 +857,7 @@ pub fn render_review_doc(
             // their docs teach it (criterion 11). The binary at generation
             // time is §5.5's ruling: the doc names the binary that will answer.
             cli_binary: if review.visible_to_agent {
-                answering_binary()
+                answering_binary().ok()
             } else {
                 None
             },
@@ -1041,39 +1060,67 @@ mod tests {
     mod answering_binary {
         use super::*;
 
+        const MOUNT: &str = "/tmp/.mount_TrunkXYZ";
+        const RUNNING: &str = "/tmp/.mount_TrunkXYZ/usr/bin/trunk";
+
+        fn image_file(dir: &TempDir) -> PathBuf {
+            let file = dir.path().join("Trunk.AppImage");
+            std::fs::write(&file, b"").unwrap();
+            file
+        }
+
         #[test]
         fn names_the_appimage_file_over_its_running_mount() {
             let dir = TempDir::new().unwrap();
-            let appimage = dir.path().join("Trunk.AppImage");
-            std::fs::write(&appimage, b"").unwrap();
-            let mount = PathBuf::from("/tmp/.mount_TrunkXYZ/usr/bin/trunk");
+            let file = image_file(&dir);
+            let image = AppImage {
+                file: Some(file.clone()),
+                mount: Some(PathBuf::from(MOUNT)),
+            };
 
-            let named = answering_binary_of(Some(appimage.clone()), Some(mount));
-
-            assert_eq!(named, Some(appimage));
+            assert_eq!(image.outer_file_of(Path::new(RUNNING)), Some(file));
         }
 
         #[test]
-        fn names_the_running_binary_when_appimage_names_no_file() {
+        fn ignores_an_appimage_inherited_from_another_app() {
             let dir = TempDir::new().unwrap();
-            let running = PathBuf::from("/usr/bin/trunk");
+            let image = AppImage {
+                file: Some(image_file(&dir)),
+                mount: Some(PathBuf::from("/tmp/.mount_EditorABC")),
+            };
 
-            let named = answering_binary_of(
-                Some(dir.path().join("gone.AppImage")),
-                Some(running.clone()),
-            );
-
-            assert_eq!(named, Some(running));
+            assert_eq!(image.outer_file_of(Path::new("/usr/bin/trunk")), None);
         }
 
         #[test]
-        fn names_the_running_binary_outside_an_appimage() {
-            let running = PathBuf::from("/Applications/Trunk.app/Contents/MacOS/trunk");
+        fn ignores_an_appimage_that_names_no_file() {
+            let dir = TempDir::new().unwrap();
+            let image = AppImage {
+                file: Some(dir.path().join("gone.AppImage")),
+                mount: Some(PathBuf::from(MOUNT)),
+            };
 
-            assert_eq!(
-                answering_binary_of(None, Some(running.clone())),
-                Some(running)
-            );
+            assert_eq!(image.outer_file_of(Path::new(RUNNING)), None);
+        }
+
+        #[test]
+        fn ignores_a_relative_appimage() {
+            let image = AppImage {
+                file: Some(PathBuf::from("Cargo.toml")),
+                mount: Some(PathBuf::from(MOUNT)),
+            };
+
+            assert_eq!(image.outer_file_of(Path::new(RUNNING)), None);
+        }
+
+        #[test]
+        fn names_nothing_outside_an_appimage() {
+            let image = AppImage {
+                file: None,
+                mount: None,
+            };
+
+            assert_eq!(image.outer_file_of(Path::new("/usr/bin/trunk")), None);
         }
     }
 
