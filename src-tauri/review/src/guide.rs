@@ -28,7 +28,7 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "Start `{exe} review watch --json` as a long-running background process and read its output as it arrives. If your harness can stream a background process's output to you, use that. Otherwise redirect its output and its errors to a new file outside the repository, such as one `mktemp` creates, because a file inside the repository shows in the reviewer's diff and a fixed name can be another agent's log. Read that file from its first line, and again whenever you wait for work, so nothing written before you began following it is missed. Read every line unfiltered, whichever way you receive them, because a filter such as `grep -v` between the watch and you can hold back the newest line until another arrives, and a lone comment would then wait for some unrelated change. The first line is `# watching <path>`, which is not JSON and means the watch is ready. Every later line is one JSON event. If the watch exits, read its last lines for the reason, start it again, and catch up again as the next section says, because a comment sent while no watch ran arrives as no event. When you follow a file, check that the watch is still running by the process id you started, because `tail -f` keeps running after the watch dies. When you stop following this procedure, stop the watch you started, so it does not outlive your session."
+        "Start `{exe} review watch --json` as a background task your harness tracks, and read its output as it arrives. Never detach it with `&` inside a subshell, `nohup` or `setsid`, because your session can end without giving you a turn, and then the harness stops only the tasks it tracks. If your harness can stream a background process's output to you, use that. Otherwise redirect its output and its errors to a new file outside the repository, such as one `mktemp` creates, because a file inside the repository shows in the reviewer's diff and a fixed name can be another agent's log. Read that file from its first line, and again whenever you wait for work, so nothing written before you began following it is missed. Read every line unfiltered, whichever way you receive them, because a filter such as `grep -v` between the watch and you can hold back the newest line until another arrives, and a lone comment would then wait for some unrelated change. The first line is `# watching <path>`, which is not JSON and means the watch is ready. Every later line is one JSON event. If the watch exits, read its last lines for the reason, start it again, and catch up again as the next section says, because a comment sent while no watch ran arrives as no event. When you follow a file, check that the watch is still running by the process id you started, because `tail -f` keeps running after the watch dies. When you stop following this procedure, stop the watch you started, so it does not outlive your session."
     );
     let _ = writeln!(out);
 
@@ -75,7 +75,7 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "Read the thread with `{exe} review thread <thread-id> --json`. It holds the comment, where it points, the excerpt of the code it was written against, and the replies so far. If its `last_action` is `agent`, your answer or claim is still the latest thing on the thread and the reviewer has not acted since, so leave it. That is how a comment the catch-up already answered, or a replayed one, gets one answer and not two. Judge it from that field, never from the order of the replies or of the events."
+        "Read the thread with `{exe} review thread <thread-id> --json`. It holds the comment, where it points, the excerpt of the code it was written against, and the replies so far. If its `last_action` is `agent`, your answer or claim is still the latest thing on the thread and the reviewer has not acted since, so leave it. That is how a comment the catch-up already answered, or a replayed one, gets one answer and not two. Judge whether to leave it from that field, never from the order of the replies or of the events, because a reopen or an edit adds no reply."
     );
     let _ = writeln!(out);
     let _ = writeln!(
@@ -87,7 +87,7 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "If the comment asks a question or you disagree with it, answer with `{exe} review reply <thread-id> --stdin`, passing the answer on standard input. If it asks for a change, make the change in the working tree, reply saying what you changed, and then, if `allowed_transitions` in its `--json` output includes `addressed`, claim the comment with `{exe} review address <thread-id>`. If you cannot act on it, reply saying what stopped you. If the thread is `open`, its last reply is yours, and its `last_action` is `human`, the reviewer acted after your reply without writing a new one: they reopened a comment you claimed, or edited the comment or a reply. If the text now asks for something your change does not do, do it. Otherwise they are not satisfied but have not said why, and claiming it again would undo their reopen, so reply asking what is still missing, and do not claim it as addressed again until the reviewer answers and you have changed what they ask for. Ask the reviewer anything you need to know in a reply on the thread, because the reviewer works in Trunk and may never see your terminal."
+        "If the comment asks a question or you disagree with it, answer with `{exe} review reply <thread-id> --stdin`, passing the answer on standard input. If it asks for a change, make the change in the working tree, reply saying what you changed, and then, if `allowed_transitions` in its `--json` output includes `addressed`, claim the comment with `{exe} review address <thread-id>`. If you cannot act on it, reply saying what stopped you. If the thread is `open`, its last reply is yours, and its `last_action` is `human`, the reviewer acted after your reply without writing a new one, by reopening a comment you claimed or by editing the comment. Read the comment again. If it now asks for something you have not done or answered, do it or answer it. Otherwise the reviewer is not satisfied but has not said why, so reply asking what is still missing, and do not claim it as addressed again until the reviewer answers and you have changed what they ask for, because a claim with no change undoes their reopen. Ask the reviewer anything you need to know in a reply on the thread, because the reviewer works in Trunk and may never see your terminal."
     );
     let _ = writeln!(out);
     let _ = writeln!(
@@ -221,6 +221,19 @@ mod tests {
     }
 
     #[test]
+    fn keeps_the_watch_a_task_the_harness_stops() {
+        let guide = guide();
+        assert!(
+            guide.contains("as a background task your harness tracks"),
+            "a session can end with no turn for the agent, and the harness stops only what it tracks"
+        );
+        assert!(
+            guide.contains("Never detach it with `&` inside a subshell, `nohup` or `setsid`"),
+            "an observed agent detached the watch that way and it outlived `/exit`"
+        );
+    }
+
+    #[test]
     fn restarts_a_watch_that_exits_and_catches_up() {
         assert!(
             guide().contains("If the watch exits"),
@@ -241,11 +254,13 @@ mod tests {
     fn waits_for_the_reviewer_after_a_reopen_without_a_comment() {
         let guide = guide();
         assert!(
-            guide.contains("its last reply is yours, and its `last_action` is `human`"),
+            guide.contains(
+                "If the thread is `open`, its last reply is yours, and its `last_action` is `human`"
+            ),
             "thread --json holds no claim, so a restarted agent sees a reopen only through these fields"
         );
         assert!(
-            guide.contains("do not claim it as addressed again until the reviewer answers"),
+            guide.contains("do not claim it as addressed again until the reviewer answers and you have changed what they ask for"),
             "a second claim with no change undoes the reviewer's reopen"
         );
     }
