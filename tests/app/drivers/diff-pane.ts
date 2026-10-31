@@ -110,14 +110,17 @@ export class DiffPaneDriver {
 			});
 	}
 
-	/** Whether any diff view, hunk, side-by-side or full file, shows a comment
-	 *  row. The off-screen probes that measure rows are not shown. */
-	showsCommentRow(): boolean {
+	/** The text of each comment row any diff view shows, hunk, side-by-side or
+	 *  full file, topmost first. The off-screen probes that measure rows are
+	 *  not shown. */
+	commentRows(): string[] {
 		const rows = document.querySelectorAll<HTMLElement>(
 			`.hunk-view ${COMMENT_ROW}, .split-view ${SPLIT_COMMENT_ROW}, .full-file ${FULL_FILE_COMMENT_ROW}`,
 		);
 
-		return [...rows].some((row) => !row.closest(PROBES));
+		return [...rows]
+			.filter((row) => !row.closest(PROBES))
+			.map((row) => row.textContent ?? "");
 	}
 
 	/** Switches the pane from inline to side-by-side, if it is not there already. */
