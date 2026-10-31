@@ -19,7 +19,9 @@ prompt.
 The agent then watches the repository's reviews, and how soon a comment reaches it
 depends on how its harness reads the watch's output. Each comment you send gets an answer:
 a reply for a question, or a change in the working tree followed by a reply and an
-`addressed` claim. A comment you hold stays invisible to the agent until you send it.
+`addressed` claim. If you reopen a claimed comment without replying, the agent asks
+what is still missing and does not claim it again until you answer. A comment you hold
+stays invisible to the agent until you send it.
 The agent leaves its changes uncommitted for you to read as a diff, and only you can
 mark a comment done or dismissed.
 
