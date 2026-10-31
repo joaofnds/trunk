@@ -355,3 +355,40 @@ mod migrating_from_v11 {
         assert_eq!(review(&store, &published).pending_count, 0);
     }
 }
+
+#[test]
+fn a_held_reply_reaches_the_agent_after_the_replies_it_was_held_behind() {
+    let (_ctx, store, canonical) = setup();
+    let review = a_review(&store, &canonical);
+    let answered = comment(&store, &review, Delivery::Send);
+    comment(&store, &review, Delivery::Hold);
+    let at = |channel, now| {
+        store
+            .write(|tx| {
+                replies::add(
+                    tx,
+                    &canonical,
+                    &answered,
+                    "a reply",
+                    channel,
+                    Delivery::Send,
+                    now,
+                )
+            })
+            .unwrap()
+    };
+    let held = at(Channel::Human, 1_500);
+    let agents = at(Channel::Agent, 1_700);
+
+    send(&store, &canonical, &review);
+
+    assert_eq!(
+        reply_ids(&store, &answered, Channel::Agent),
+        vec![agents.clone(), held.clone()],
+        "the agent read its own reply first, so the reviewer's is the newest it has seen"
+    );
+    assert_eq!(
+        reply_ids(&store, &answered, Channel::Human),
+        vec![held, agents]
+    );
+}

@@ -175,7 +175,11 @@ pub fn mark_seen(conn: &Connection, repo_path: &Path, ids: &[String]) -> Result<
 ///
 /// Within each thread, replies are oldest first; ties within one second break on
 /// `rowid`, never `id`: ids are random, so a same-second pair would sort by a coin flip
-/// — permanently, since the order is deterministic once written.
+/// — permanently, since the order is deterministic once written. The reviewer reads
+/// them in the order written. The agent reads them by when each last changed for it,
+/// written, sent or edited, the clock `threads::last_action` counts by, so a held
+/// reply sent after the agent answered sits after that answer and an agent never takes
+/// its own reply for the newest.
 ///
 /// # Errors
 ///
@@ -190,13 +194,13 @@ pub fn list_for_threads(
     }
 
     let placeholders = vec!["?"; thread_ids.len()].join(",");
-    let visible = match reader {
-        Channel::Human => "",
-        Channel::Agent => "AND pending = 0",
+    let (visible, order) = match reader {
+        Channel::Human => ("", "created_at"),
+        Channel::Agent => ("AND pending = 0", "MAX(created_at, updated_at)"),
     };
     let sql = format!(
         "SELECT id, thread_id, body, channel, created_at, pending, seen FROM replies
-         WHERE thread_id IN ({placeholders}) {visible} ORDER BY created_at, rowid"
+         WHERE thread_id IN ({placeholders}) {visible} ORDER BY {order}, rowid"
     );
     let mut stmt = conn.prepare(&sql).map_err(sqlite_error)?;
     let mut rows = stmt
