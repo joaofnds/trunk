@@ -207,8 +207,7 @@ fn listen_to_page<R: Runtime>(app: &AppHandle<R>, page: &Arc<Page>) {
 }
 
 fn serve<R: Runtime>(app: AppHandle<R>, dir: &Path, page: Arc<Page>) -> Result<(), String> {
-    let listener =
-        UnixListener::bind(dir.join(SOCKET)).map_err(|e| format!("bind the drive socket: {e}"))?;
+    let listener = bind_socket(&dir.join(SOCKET))?;
     announce_listening(dir)?;
 
     std::thread::spawn(move || {
@@ -222,6 +221,26 @@ fn serve<R: Runtime>(app: AppHandle<R>, dir: &Path, page: Arc<Page>) -> Result<(
         }
     });
     Ok(())
+}
+
+/// Binds the instance's socket. A quit or crashed instance leaves its socket
+/// file behind, which would refuse a relaunch into the same directory, so a
+/// file nobody answers on is removed first. One a live instance answers on is
+/// refused, since two instances would share a directory.
+fn bind_socket(path: &Path) -> Result<UnixListener, String> {
+    if UnixStream::connect(path).is_ok() {
+        return Err(format!(
+            "another instance is listening on {}",
+            path.display()
+        ));
+    }
+
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("remove the leftover drive socket: {e}")),
+    }
+    UnixListener::bind(path).map_err(|e| format!("bind the drive socket: {e}"))
 }
 
 fn announce_listening(dir: &Path) -> Result<(), String> {
@@ -320,4 +339,29 @@ fn peer_uid(stream: &UnixStream) -> Option<u32> {
     // pointers are valid for the call.
     let status = unsafe { libc::getpeereid(stream.as_raw_fd(), &raw mut uid, &raw mut gid) };
     (status == 0).then_some(uid)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn binds_over_the_socket_a_quit_instance_left_behind() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join(SOCKET);
+        drop(UnixListener::bind(&path).unwrap());
+
+        let listener = bind_socket(&path);
+
+        assert!(listener.is_ok(), "got {:?}", listener.err());
+    }
+
+    #[test]
+    fn refuses_a_socket_a_live_instance_answers_on() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join(SOCKET);
+        let _live = UnixListener::bind(&path).unwrap();
+
+        assert!(bind_socket(&path).is_err());
+    }
 }
