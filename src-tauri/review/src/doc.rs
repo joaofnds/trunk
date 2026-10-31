@@ -438,6 +438,10 @@ fn emit_where_to_work(out: &mut String, session: &RenderInput) {
 /// cannot teach different rules.
 pub const FRESHNESS_RULE: &str = "A heading that ends `(stale)` means the reviewer's app found the code its comment points at gone when it last checked, and a heading without it means the app found that code still there. Both are the app's last computation, not a fresh look at the repository: an edit made while the app was closed, or in a repository whose restored tab nobody has opened since the app started, leaves the marker describing the code as it stood before. Read the code as it stands now before you act on any comment, and trust what you read over the marker.";
 
+/// When `watch` hears a marker change, for the only document parts that name
+/// `watch`: the CLI section and the agent guide.
+pub const WATCH_STALE_DELAY: &str = "A marker change from the app's narrower pass over other ref changes, after a fetch for instance, shows in `list`, `show` and `threads` at once, but `watch` reports it only after some later write to the review store.";
+
 /// The stale marker's freshness, outside the CLI section so a copied document
 /// of a review the agent cannot reach still carries it.
 fn emit_freshness_rule(out: &mut String) {
@@ -515,6 +519,8 @@ fn emit_cli_section(out: &mut String, session: &RenderInput) {
             out,
             "`threads` lists this review's comments one per line, and `thread` prints one comment's section — the same text you see below — with its replies and the state you may claim, for when you have a comment id and not this document. `reply` posts to a comment's thread, attributed as the agent; `address` claims an open comment as addressed once you have acted on it — it is the CLI's spelling of the trailer's `changed`/`answered`. `watch` blocks and prints a review id per change, one line each, for harnesses that wait on the reviewer (line format unstable). The trailer below remains the fallback when you cannot run the binary."
         );
+        let _ = writeln!(out);
+        let _ = writeln!(out, "{WATCH_STALE_DELAY}");
         let _ = writeln!(out);
     }
 }
@@ -934,7 +940,7 @@ pub fn render(session: &RenderInput) -> String {
         let _ = writeln!(out);
         let _ = writeln!(
             out,
-            "Each comment below is about a file's content as it stands in the working tree, not at any commit. The line numbers are where the code sat when the comment was written; a comment marked stale points at code no longer in the file, and its excerpt is the only record of it. A comment about the whole file is marked stale after any edit to the file and has no excerpt: read the file as it stands."
+            "Each comment below is about a file's content as it stands in the working tree, not at any commit. The line numbers are where the code sat when the comment was written; a comment marked stale pointed at code the file no longer held when the app last checked, and its excerpt is the only record of it, so read the file as it stands now. A comment about the whole file is marked stale after any edit to the file and has no excerpt: read the file as it stands."
         );
         let _ = writeln!(out);
         for r in &current_files {
@@ -1161,6 +1167,28 @@ mod tests {
             commit_oid: None,
             content_pin: None,
             excerpt: cached_excerpt.map(std::string::ToString::to_string),
+            channel: Channel::Human,
+            replies: vec![],
+        }
+    }
+
+    fn current_file_comment(id: &str, text: &str, stale: bool) -> DocThread {
+        DocThread {
+            whole_file: false,
+            id: id.to_string(),
+            text: text.to_string(),
+            state: ThreadState::Open,
+            stale,
+            anchor: None,
+            commit_oid: None,
+            content_pin: Some(ContentPin {
+                file_path: "src/untouched.ts".to_string(),
+                block: "const answer = 42;".to_string(),
+                ordinal: 0,
+                start_line: 4,
+                end_line: 4,
+            }),
+            excerpt: Some("const answer = 42;".to_string()),
             channel: Channel::Human,
             replies: vec![],
         }
@@ -2626,6 +2654,39 @@ mod tests {
         assert!(
             md.contains(FRESHNESS_RULE),
             "a doc with no CLI section is still read by an agent, so it must say how current the marker is; got: {md}"
+        );
+    }
+
+    #[test]
+    fn cli_section_says_watch_hears_a_ref_pass_marker_change_late() {
+        let (_dir, repo) = make_repo();
+        let b = commit_with_file(&repo, "B", &[], "f.rs", b"x\n");
+        let mut session = make_session(
+            &repo,
+            vec![b.to_string()],
+            vec![commit_level_comment("c1", "note", b)],
+        );
+        session.cli_binary = Some(PathBuf::from("/opt/trunk"));
+
+        let md = render(&session);
+
+        assert!(md.contains(WATCH_STALE_DELAY), "got: {md}");
+    }
+
+    #[test]
+    fn current_file_section_dates_its_stale_marker_to_the_apps_last_check() {
+        let (_dir, repo) = make_repo();
+        let session = make_session(
+            &repo,
+            vec![],
+            vec![current_file_comment("cf", "tidy this", false)],
+        );
+
+        let md = render(&session);
+
+        assert!(
+            md.contains("a comment marked stale pointed at code the file no longer held when the app last checked"),
+            "got: {md}"
         );
     }
 
