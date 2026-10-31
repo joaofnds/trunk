@@ -402,6 +402,32 @@ mod tests {
     }
 
     #[test]
+    fn every_command_the_guide_spells_parses() {
+        const BIN: &str = "/opt/trunk";
+        let guide = trunk_review::guide::render(std::path::Path::new(BIN));
+        let prefix = format!("`{BIN} review ");
+
+        let commands: Vec<&str> = guide
+            .match_indices(&prefix)
+            .map(|(at, _)| {
+                let rest = &guide[at + prefix.len()..];
+                &rest[..rest.find('`').expect("a closing backtick")]
+            })
+            .collect();
+
+        assert!(commands.len() >= 6, "found only {commands:?}");
+        for command in commands {
+            let args: Vec<&str> = command
+                .split(' ')
+                .map(|word| if word.starts_with('<') { "ID" } else { word })
+                .collect();
+            if let Err(e) = try_parse(&args) {
+                panic!("the guide spells `{command}`, which the CLI refuses: {e}");
+            }
+        }
+    }
+
+    #[test]
     fn guide_parses_with_no_arguments() {
         assert_eq!(parse(&["guide"]), ReviewCmd::Guide);
     }
