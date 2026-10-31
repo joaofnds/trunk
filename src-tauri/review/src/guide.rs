@@ -28,7 +28,7 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "Start `{exe} review watch --json` as a long-running background process and read its output as it arrives. If your harness can stream a background process's output to you, use that. Otherwise redirect its output and its errors to a file outside the repository, such as one in your temporary directory, and read the file again whenever you wait for work, because a file inside the repository shows in the reviewer's diff. If you follow that file with `tail`, use plain `tail -f`, because on macOS `tail -n +<N> -f` piped into another command holds back the newest line until another arrives, and a lone comment would then wait for some unrelated change. The first line is `# watching <path>`, which is not JSON and means the watch is ready. Every later line is one JSON event. If the watch exits, read its last lines for the reason, start it again, and catch up again as the next section says, because a comment sent while no watch ran arrives as no event."
+        "Start `{exe} review watch --json` as a long-running background process and read its output as it arrives. If your harness can stream a background process's output to you, use that. Otherwise redirect its output and its errors to a new file outside the repository, such as one `mktemp` creates, because a file inside the repository shows in the reviewer's diff and a fixed name can be another agent's log. Read that file from its first line, and again whenever you wait for work, so nothing written before you began following it is missed. Read every line unfiltered, whichever way you receive them, because a filter such as `grep -v` between the watch and you can hold back the newest line until another arrives, and a lone comment would then wait for some unrelated change. The first line is `# watching <path>`, which is not JSON and means the watch is ready. Every later line is one JSON event. If the watch exits, read its last lines for the reason, start it again, and catch up again as the next section says, because a comment sent while no watch ran arrives as no event."
     );
     let _ = writeln!(out);
 
@@ -87,12 +87,12 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "If the comment asks a question or you disagree with it, answer with `{exe} review reply <thread-id> --stdin`, passing the answer on standard input. If it asks for a change, make the change in the working tree, reply saying what you changed, and then, if `allowed_transitions` in its `--json` output includes `addressed`, claim the comment with `{exe} review address <thread-id>`. If you cannot act on it, reply saying what stopped you."
+        "If the comment asks a question or you disagree with it, answer with `{exe} review reply <thread-id> --stdin`, passing the answer on standard input. If it asks for a change, make the change in the working tree, reply saying what you changed, and then, if `allowed_transitions` in its `--json` output includes `addressed`, claim the comment with `{exe} review address <thread-id>`. If you cannot act on it, reply saying what stopped you. Ask the reviewer anything you need to know in a reply on the thread, because the reviewer works in Trunk and may never see your terminal."
     );
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "Leave your changes uncommitted. {UNCOMMITTED_DIFF} {GIT_WRITE_BAN} {COMMIT_OVERRIDE} {GIT_READ_RULE}"
+        "Leave your changes uncommitted. {UNCOMMITTED_DIFF} Delete any file your build or checks created that your change does not need, such as a bytecode cache, because it shows in that diff. {GIT_WRITE_BAN} {COMMIT_OVERRIDE} {GIT_READ_RULE}"
     );
 
     out
@@ -182,17 +182,29 @@ mod tests {
     #[test]
     fn keeps_the_watch_log_out_of_the_repository() {
         assert!(
-            guide().contains("to a file outside the repository"),
+            guide().contains("to a new file outside the repository"),
             "a log in the working tree shows in the reviewer's diff"
         );
     }
 
     #[test]
-    fn follows_the_watch_log_without_holding_back_its_newest_line() {
+    fn reads_the_watch_unfiltered_from_its_first_line() {
+        let guide = guide();
         assert!(
-            guide().contains("plain `tail -f`"),
-            "macOS `tail -n +N -f` into a pipe holds the newest line, so a lone comment waits for an unrelated write"
+            guide.contains("Read every line unfiltered"),
+            "Claude Code's `grep -v` holds the newest line, so a lone comment waits for an unrelated write"
         );
+        assert!(
+            guide.contains("from its first line"),
+            "an event written before the agent follows the file is otherwise lost"
+        );
+    }
+
+    #[test]
+    fn asks_the_reviewer_in_the_thread_and_cleans_build_output() {
+        let guide = guide();
+        assert!(guide.contains("in a reply on the thread"));
+        assert!(guide.contains("Delete any file your build or checks created"));
     }
 
     #[test]
