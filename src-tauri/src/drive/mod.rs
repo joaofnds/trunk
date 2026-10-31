@@ -207,7 +207,7 @@ fn listen_to_page<R: Runtime>(app: &AppHandle<R>, page: &Arc<Page>) {
 }
 
 fn serve<R: Runtime>(app: AppHandle<R>, dir: &Path, page: Arc<Page>) -> Result<(), String> {
-    let listener = bind_socket(&dir.join(SOCKET))?;
+    let listener = bind_socket(dir)?;
     announce_listening(dir)?;
 
     std::thread::spawn(move || {
@@ -223,11 +223,14 @@ fn serve<R: Runtime>(app: AppHandle<R>, dir: &Path, page: Arc<Page>) -> Result<(
     Ok(())
 }
 
-/// Binds the instance's socket. A quit or crashed instance leaves its socket
-/// file behind, which would refuse a relaunch into the same directory, so a
-/// file nobody answers on is removed first. One a live instance answers on is
-/// refused, since two instances would share a directory.
-fn bind_socket(path: &Path) -> Result<UnixListener, String> {
+/// Binds the instance's socket in `dir`. A quit or crashed instance leaves its
+/// socket file behind, which would refuse a relaunch into the same directory,
+/// so a file nobody answers on is removed first. It also leaves its `listening`
+/// announcement, which would tell a launcher the new instance is ready before
+/// it binds, so that goes too. One a live instance answers on is refused, since
+/// two instances would share a directory.
+fn bind_socket(dir: &Path) -> Result<UnixListener, String> {
+    let path = &dir.join(SOCKET);
     if UnixStream::connect(path).is_ok() {
         return Err(format!(
             "another instance is listening on {}",
@@ -239,6 +242,11 @@ fn bind_socket(path: &Path) -> Result<UnixListener, String> {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(format!("remove the leftover drive socket: {e}")),
+    }
+    match std::fs::remove_file(dir.join(LISTENING)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("withdraw the leftover announcement: {e}")),
     }
 
     UnixListener::bind(path).map_err(|e| format!("bind the drive socket: {e}"))
@@ -352,9 +360,20 @@ mod tests {
         let path = dir.path().join(SOCKET);
         drop(UnixListener::bind(&path).unwrap());
 
-        let listener = bind_socket(&path);
+        let listener = bind_socket(dir.path());
 
         assert!(listener.is_ok(), "got {:?}", listener.err());
+    }
+
+    #[test]
+    fn withdraws_the_announcement_a_quit_instance_left_behind() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join(LISTENING), "1").unwrap();
+
+        let listener = bind_socket(dir.path());
+
+        assert!(listener.is_ok(), "got {:?}", listener.err());
+        assert!(!dir.path().join(LISTENING).exists());
     }
 
     #[test]
@@ -363,6 +382,6 @@ mod tests {
         let path = dir.path().join(SOCKET);
         let _live = UnixListener::bind(&path).unwrap();
 
-        assert!(bind_socket(&path).is_err());
+        assert!(bind_socket(dir.path()).is_err());
     }
 }
