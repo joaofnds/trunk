@@ -28,7 +28,7 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "Start `{exe} review watch --json` as a long-running background process and read its output as it arrives. If your harness can stream a background process's output to you, use that. Otherwise redirect its output and its errors to a new file outside the repository, such as one `mktemp` creates, because a file inside the repository shows in the reviewer's diff and a fixed name can be another agent's log. Read that file from its first line, and again whenever you wait for work, so nothing written before you began following it is missed. Read every line unfiltered, whichever way you receive them, because a filter such as `grep -v` between the watch and you can hold back the newest line until another arrives, and a lone comment would then wait for some unrelated change. The first line is `# watching <path>`, which is not JSON and means the watch is ready. Every later line is one JSON event. If the watch exits, read its last lines for the reason, start it again, and catch up again as the next section says, because a comment sent while no watch ran arrives as no event."
+        "Start `{exe} review watch --json` as a long-running background process and read its output as it arrives. If your harness can stream a background process's output to you, use that. Otherwise redirect its output and its errors to a new file outside the repository, such as one `mktemp` creates, because a file inside the repository shows in the reviewer's diff and a fixed name can be another agent's log. Read that file from its first line, and again whenever you wait for work, so nothing written before you began following it is missed. Read every line unfiltered, whichever way you receive them, because a filter such as `grep -v` between the watch and you can hold back the newest line until another arrives, and a lone comment would then wait for some unrelated change. The first line is `# watching <path>`, which is not JSON and means the watch is ready. Every later line is one JSON event. If the watch exits, read its last lines for the reason, start it again, and catch up again as the next section says, because a comment sent while no watch ran arrives as no event. When you follow a file, check that the watch is still running by the process id you started, because `tail -f` keeps running after the watch dies. When you stop following this procedure, stop the watch you started, so it does not outlive your session."
     );
     let _ = writeln!(out);
 
@@ -205,6 +205,19 @@ mod tests {
         let guide = guide();
         assert!(guide.contains("in a reply on the thread"));
         assert!(guide.contains("Delete any file your build or checks created"));
+    }
+
+    #[test]
+    fn notices_a_dead_watch_and_stops_its_own_on_leaving() {
+        let guide = guide();
+        assert!(
+            guide.contains("by the process id you started"),
+            "a `tail -f` on the log never ends when the watch dies"
+        );
+        assert!(
+            guide.contains("stop the watch you started"),
+            "a detached watch otherwise runs on after the agent exits"
+        );
     }
 
     #[test]
