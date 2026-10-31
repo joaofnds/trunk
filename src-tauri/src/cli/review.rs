@@ -17,6 +17,8 @@ use trunk_review::types::{Channel, Delivery, ThreadState};
 
 #[derive(Subcommand, Debug, PartialEq, Eq)]
 pub enum ReviewCmd {
+    /// The procedure a coding agent follows to watch these reviews and answer them
+    Guide,
     /// Every review in this repository that you can read
     List {
         #[arg(long, value_name = "PATH")]
@@ -141,9 +143,16 @@ impl ReplyText {
 /// Returns whatever opening the store, resolving the repository, or the command
 /// itself returns. Nothing is written on the error path.
 pub fn run(cmd: ReviewCmd, identifier: &str, out: &mut dyn Write) -> Result<(), TrunkError> {
+    // Before the store opens: printing text must never create or migrate one,
+    // and it needs no repository.
+    if cmd == ReviewCmd::Guide {
+        return guide(out);
+    }
+
     let store = reviewdb::open(&reviewdb::data_dir_for(identifier))?;
 
     match cmd {
+        ReviewCmd::Guide => guide(out),
         ReviewCmd::List { repo } => list(&store, discover_repo(repo)?, out),
         ReviewCmd::Show { id, repo } => show(&store, discover_repo(repo)?, &id, out),
         ReviewCmd::Reply {
@@ -171,6 +180,14 @@ pub fn run(cmd: ReviewCmd, identifier: &str, out: &mut dyn Write) -> Result<(), 
             thread(&store, discover_repo(repo)?, &id, json, out)
         }
     }
+}
+
+/// The agent guide, naming the binary that answers its commands.
+fn guide(out: &mut dyn Write) -> Result<(), TrunkError> {
+    let exe = std::env::current_exe().map_err(|e| TrunkError::new("io", e.to_string()))?;
+
+    write!(out, "{}", trunk_review::guide::render(&exe))
+        .map_err(|e| TrunkError::new("io", e.to_string()))
 }
 
 /// Every review visible to the agent in the repository, one per line.
@@ -385,6 +402,11 @@ mod tests {
                 repo: Some(PathBuf::from("/tmp/r")),
             },
         );
+    }
+
+    #[test]
+    fn guide_parses_with_no_arguments() {
+        assert_eq!(parse(&["guide"]), ReviewCmd::Guide);
     }
 
     #[test]

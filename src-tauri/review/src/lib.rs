@@ -3,6 +3,7 @@
 //! app's syntax highlighting.
 
 pub mod doc;
+pub mod guide;
 pub mod range;
 pub mod resolution;
 pub mod reviewdb;

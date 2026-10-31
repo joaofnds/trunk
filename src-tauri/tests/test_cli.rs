@@ -118,6 +118,32 @@ fn data_dir_matches_the_app_handles() {
 }
 
 #[test]
+fn cli_guide_prints_the_procedure_outside_a_repository_and_opens_no_store() {
+    let outside = tempfile::TempDir::new().unwrap();
+    let data_dir = outside.path().join("store");
+
+    let out = trunk(outside.path(), &["review", "guide"], &data_dir);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains(&format!(
+            "{} review watch --json",
+            env!("CARGO_BIN_EXE_trunk")
+        )),
+        "the guide must name the binary that printed it; got {stdout:?}",
+    );
+    assert!(
+        !data_dir.exists(),
+        "printing text must never create or migrate a store",
+    );
+}
+
+#[test]
 fn cli_lists_only_published_reviews() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
