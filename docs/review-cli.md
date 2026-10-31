@@ -5,7 +5,8 @@ app binary itself, and it reads and writes the same store the GUI uses, fully
 offline. The running app reflects CLI writes within about a second, no restart.
 
 The review document teaches agents everything below automatically:
-its header names the absolute binary path and every verb. This page is the
+its header names the absolute binary path and every verb it replies with.
+`trunk review guide` prints the watch-and-reply procedure. This page is the
 human-facing reference.
 
 ## Invocation
@@ -218,7 +219,7 @@ normalization (`O`→`0`, `I`/`L`→`1`).
 Output is markdown on stdout. Errors go to stderr with a nonzero exit and no
 partial write: usage mistakes exit 2, help and `--version` exit 0, everything
 else exits 1. A mistyped verb is refused naming the closest real one when one
-is close enough to suggest. `--json` on a verb with no JSON form (`list`,
+is close enough to suggest. `--json` on a verb with no JSON form (`guide`, `list`,
 `show`, `reply`, `address`) is a usage error, not accepted and ignored. An
 illegal state claim fails naming the thread's current state and changes
 nothing. A held comment, a review with nothing sent, and anything inside an
