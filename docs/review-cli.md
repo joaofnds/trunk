@@ -52,7 +52,8 @@ trunk review watch [--json] [--repo <path>]
 
 - **guide**: the procedure a coding agent follows to watch the repository's
   reviews and answer each comment, with every command spelled through this
-  binary's absolute path. It opens no store and needs no repository.
+  binary's absolute path, or the AppImage file's when the binary runs from one. It
+  opens no store and needs no repository.
   [agent-guide.md](agent-guide.md) is the setup page.
 - **list**: the repository's reviews visible to the agent: id, state
   (`open`/`stale`/`settled`, derived from the threads' stale markers as the app
@@ -166,7 +167,8 @@ prints one object per line — `review`, `thread`, `state`, `stale`, `text`, and
 at most one of `anchor`, `commit_oid` and `content_pin`, and `whole_file` when
 the comment is about the whole file, as `watch` sends them on `thread_added`.
 `thread` prints a single object with those fields plus
-`channel`, `excerpt`, `replies` (each `reply`, `channel`, `text`), and
+`channel`, `excerpt`, `replies` (each `reply`, `channel`, `text`, in the order
+each last reached the agent: written, sent from a held batch, or edited), and
 `allowed_transitions`: the states the agent channel may move this thread to,
 taken from the same matrix the writes enforce, never restated. `last_action` is
 `agent` or `human`, the channel of the thread's latest action an agent can see:
