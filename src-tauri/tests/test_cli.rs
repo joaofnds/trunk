@@ -688,8 +688,10 @@ fn cli_show_prints_stale_markers() {
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("(stale)"),
-        "the full review print must mark a stale thread; got {stdout:?}",
+        stdout
+            .lines()
+            .any(|line| line.starts_with('#') && line.ends_with(" (stale)")),
+        "the full review print must mark a stale thread's heading; got {stdout:?}",
     );
 }
 

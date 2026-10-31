@@ -353,6 +353,7 @@ fn emit_header(out: &mut String, session: &RenderInput) {
 
     emit_task(out, session, count);
     emit_where_to_work(out, session);
+    emit_freshness_rule(out);
     emit_git_rules(out, session);
     emit_verbatim_notice(out);
     emit_cli_section(out, session);
@@ -429,6 +430,20 @@ fn emit_where_to_work(out: &mut String, session: &RenderInput) {
         out,
         "The line range and hash in each heading are the reviewer's coordinates in a past commit, on the side the heading names — `after` is the commit's own tree, `before` is its parent's: never edit by line number. Find the code by searching for a distinctive line from the excerpt, stripping the leading `+`, `-`, or space first in a `diff`-labelled excerpt, then act on the code as it stands now. If you cannot find it at all, report it as `skipped` and say what you searched for, rather than guessing. A heading that says `whole file` is about the file as a whole and carries no line range and no excerpt: read the file itself."
     );
+    let _ = writeln!(out);
+}
+
+/// What the stored stale marker can and cannot tell an agent, and the check it
+/// owes the current code. The agent guide prints this same constant, so the two
+/// cannot teach different rules.
+pub const FRESHNESS_RULE: &str = "A heading that ends `(stale)` means the reviewer's app found the code its comment points at gone when it last checked, and a heading without it means the app found that code still there. Both are the app's last computation, not a fresh look at the repository: an edit made while the app was closed, or in a repository whose restored tab nobody has opened since the app started, leaves the marker describing the code as it stood before. Read the code as it stands now before you act on any comment, and trust what you read over the marker.";
+
+/// The stale marker's freshness, outside the CLI section so a copied document
+/// of a review the agent cannot reach still carries it.
+fn emit_freshness_rule(out: &mut String) {
+    use std::fmt::Write;
+
+    let _ = writeln!(out, "{FRESHNESS_RULE}");
     let _ = writeln!(out);
 }
 
@@ -2603,6 +2618,18 @@ mod tests {
     }
 
     #[test]
+    fn header_says_the_stale_marker_is_the_apps_last_computation() {
+        let (_dir, repo) = make_repo();
+
+        let md = render_minimal(&repo);
+
+        assert!(
+            md.contains(FRESHNESS_RULE),
+            "a doc with no CLI section is still read by an agent, so it must say how current the marker is; got: {md}"
+        );
+    }
+
+    #[test]
     fn a_fresh_thread_carries_no_stale_marker() {
         let (_dir, repo) = make_repo();
         let base = empty_commit(&repo, "base", &[]);
@@ -2625,7 +2652,11 @@ mod tests {
 
         let md = render(&session);
 
-        assert!(!md.contains("(stale)"), "got: {md}");
+        assert!(
+            !md.lines()
+                .any(|line| line.starts_with('#') && line.ends_with(" (stale)")),
+            "got: {md}"
+        );
     }
 
     #[test]
