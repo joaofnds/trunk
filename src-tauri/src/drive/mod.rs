@@ -240,6 +240,7 @@ fn bind_socket(path: &Path) -> Result<UnixListener, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(format!("remove the leftover drive socket: {e}")),
     }
+
     UnixListener::bind(path).map_err(|e| format!("bind the drive socket: {e}"))
 }
 

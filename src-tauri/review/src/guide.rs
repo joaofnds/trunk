@@ -1,7 +1,11 @@
 //! The agent guide: the watch-and-reply procedure `trunk review guide` prints
 //! for a coding agent the user starts in a repository.
 
-use crate::doc::{FRESHNESS_RULE, PROVENANCE_RULE, WATCH_STALE_DELAY};
+use crate::doc::shell_word;
+use crate::doc::{
+    COMMIT_OVERRIDE, FRESHNESS_RULE, GIT_READ_RULE, GIT_WRITE_BAN, PROVENANCE_RULE,
+    WATCH_STALE_DELAY,
+};
 use std::fmt::Write;
 use std::path::Path;
 
@@ -10,7 +14,7 @@ use std::path::Path;
 /// `trunk` on its `PATH`.
 #[must_use]
 pub fn render(cli_binary: &Path) -> String {
-    let exe = cli_binary.display();
+    let exe = shell_word(cli_binary);
     let mut out = String::new();
 
     let _ = writeln!(out, "# Answering Trunk reviews");
@@ -33,7 +37,7 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "The watch reports only changes made after it started, so once it is ready, look for comments that were already waiting. Run `{exe} review list` to see the reviews you can read, and for each one run `{exe} review threads <review-id> --state open --json`. Answer each open thread by the steps under Answer one comment. Keep the ids of the threads you have answered, so an event about one of them does not make you answer it twice."
+        "The watch reports only changes made after it started, so once it is ready, look for comments that were already waiting. Run `{exe} review list` to see the reviews you can read, and for each one run `{exe} review threads <review-id> --state open --json`. Answer each open thread by the steps under Answer one comment, unless its last reply is already yours, which means an earlier session answered it and the reviewer has not replied since. Judge which reply is last from `{exe} review thread <thread-id> --json`, which lists replies in the order they were written. Keep the ids of the threads the sweep answered, so the `thread_added` event a comment sent during the sweep can also produce does not make you answer it twice."
     );
     let _ = writeln!(out);
 
@@ -57,7 +61,7 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "A `reply_added` with `channel` set to `agent` is your own reply coming back, and answering it starts a loop. When the reviewer brings back a review they put away, `review_added` arrives followed by its old comments and replies as `thread_added` and `reply_added`, so skip a thread whose last reply is already yours unless it was edited or reopened after that reply. Judge which reply is last from `{exe} review thread <thread-id> --json`, which lists replies in the order they were written, and never from the order events arrive. Every other event needs no answer."
+        "A `reply_added` with `channel` set to `agent` is your own reply coming back, and answering it starts a loop. When the reviewer brings back a review they put away, `review_added` arrives followed by its old comments and replies as `thread_added` and `reply_added`, so treat each replayed thread as the sweep does and skip it when its last reply is already yours. Judge that from `{exe} review thread <thread-id> --json`, never from the order events arrive. Every other event needs no answer."
     );
     let _ = writeln!(out);
 
@@ -77,12 +81,12 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "If the comment asks a question or you disagree with it, answer with `{exe} review reply <thread-id> --stdin`, passing the answer on standard input. If it asks for a change, make the change in the working tree, reply saying what you changed, and then claim the comment with `{exe} review address <thread-id>`. If you cannot act on it, reply saying what stopped you."
+        "If the comment asks a question or you disagree with it, answer with `{exe} review reply <thread-id> --stdin`, passing the answer on standard input. If it asks for a change, make the change in the working tree, reply saying what you changed, and then, if `allowed_transitions` in its `--json` output includes `addressed`, claim the comment with `{exe} review address <thread-id>`. If you cannot act on it, reply saying what stopped you."
     );
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "Leave your changes uncommitted, because the reviewer reads them as an uncommitted diff. Do not run any git command that writes to the repository or the working tree, such as commit, amend, rebase, reset, checkout, stash or add, because it can orphan the commits the comments are anchored to. Prefix each read-only git command with `--no-optional-locks`, as in `git --no-optional-locks log`, so it cannot write `.git/index` and make the reviewer's app reload."
+        "Leave your changes uncommitted, because the reviewer reads them as an uncommitted diff. {GIT_WRITE_BAN} {COMMIT_OVERRIDE} {GIT_READ_RULE}"
     );
 
     out
@@ -119,7 +123,7 @@ mod tests {
 
     #[test]
     fn says_the_readiness_line_is_not_json() {
-        assert!(guide().contains("`# watching <path>`"));
+        assert!(guide().contains("`# watching <path>`, which is not JSON"));
     }
 
     #[test]
@@ -161,8 +165,55 @@ mod tests {
     }
 
     #[test]
-    fn forbids_git_writes() {
-        assert!(guide().contains("Do not run any git command that writes"));
+    fn the_sweep_skips_a_thread_an_earlier_session_already_answered() {
+        assert!(
+            guide().contains("unless its last reply is already yours"),
+            "an answered question stays open, so a restarted agent would answer it again"
+        );
+    }
+
+    #[test]
+    fn a_human_follow_up_on_an_answered_thread_still_gets_an_answer() {
+        let guide = guide();
+
+        assert!(
+            !guide.contains("an event about one of them does not make you answer it twice"),
+            "that sentence tells the agent to skip the reviewer's follow-ups"
+        );
+        assert!(guide.contains("a comment sent during the sweep"));
+    }
+
+    #[test]
+    fn claims_addressed_only_where_the_thread_allows_it() {
+        assert!(
+            guide()
+                .contains("if `allowed_transitions` in its `--json` output includes `addressed`"),
+            "address on a done, dismissed or addressed thread fails with illegal_transition"
+        );
+    }
+
+    #[test]
+    fn carries_the_review_docs_git_rules() {
+        let guide = guide();
+
+        for rule in [GIT_WRITE_BAN, COMMIT_OVERRIDE, GIT_READ_RULE] {
+            assert!(guide.contains(rule), "missing {rule} in: {guide}");
+        }
+    }
+
+    #[test]
+    fn leaves_changes_uncommitted() {
+        assert!(guide().contains("Leave your changes uncommitted"));
+    }
+
+    #[test]
+    fn quotes_a_binary_path_holding_a_space() {
+        let guide = render(Path::new("/Users/a/My Tools/trunk"));
+
+        assert!(
+            guide.contains("'/Users/a/My Tools/trunk' review watch --json"),
+            "unquoted, the shell runs /Users/a/My; got: {guide}"
+        );
     }
 
     #[test]
