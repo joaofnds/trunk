@@ -1104,6 +1104,17 @@ mod tests {
         }
 
         #[test]
+        fn ignores_an_appimage_that_names_a_directory() {
+            let dir = TempDir::new().unwrap();
+            let image = AppImage {
+                file: Some(dir.path().to_path_buf()),
+                mount: Some(PathBuf::from(MOUNT)),
+            };
+
+            assert_eq!(image.outer_file_of(Path::new(RUNNING)), None);
+        }
+
+        #[test]
         fn ignores_a_relative_appimage() {
             let image = AppImage {
                 file: Some(PathBuf::from("Cargo.toml")),

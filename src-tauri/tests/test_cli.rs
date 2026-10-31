@@ -118,6 +118,33 @@ fn data_dir_matches_the_app_handles() {
 }
 
 #[test]
+fn cli_guide_names_the_appimage_file_the_binary_runs_from() {
+    let outside = tempfile::TempDir::new().unwrap();
+    let image = outside.path().join("Trunk.AppImage");
+    std::fs::write(&image, b"").unwrap();
+    let exe = Path::new(env!("CARGO_BIN_EXE_trunk"));
+
+    let child = Command::new(exe)
+        .args(["review", "guide"])
+        .current_dir(outside.path())
+        .env("TRUNK_DATA_DIR", outside.path().join("store"))
+        .env("APPIMAGE", &image)
+        .env("APPDIR", exe.parent().unwrap())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn the trunk binary");
+    let out = wait_or_kill(child, Duration::from_secs(10));
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains(&format!("{} review watch --json", image.display())),
+        "the mount the binary runs from vanishes when it exits; got {stdout:?}",
+    );
+}
+
+#[test]
 fn cli_guide_prints_the_procedure_outside_a_repository_and_opens_no_store() {
     let outside = tempfile::TempDir::new().unwrap();
     let data_dir = outside.path().join("store");
