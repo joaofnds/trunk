@@ -11,7 +11,10 @@
  * side benches the bench targets its own Cargo.toml declares, with the toolchain its
  * own mise.toml pins, normalized by its own bench-gate.ts. Both raw and both
  * normalized outputs land in <pass-directory> for scripts/bench-compare.ts and the
- * artifact upload. A failed base pass warns and skips the comparison; a failed head
+ * artifact upload. Both sides share one target directory, where cargo names a
+ * workspace crate's artifacts by its path inside the workspace, so each pass cleans
+ * the workspace crates first and fails if cargo still reports reusing one. A failed
+ * base pass warns and skips the comparison; a failed head
  * pass fails the run. The filter is criterion's, for a local trial run; it must keep
  * the calibrations. See docs/benchmark-gate.md.
  */
@@ -28,7 +31,12 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chooseBase } from "./bench-base.js";
-import { outcomeOf, passFiles, type Side } from "./bench-passes.js";
+import {
+	outcomeOf,
+	passFiles,
+	reusedWorkspaceCrates,
+	type Side,
+} from "./bench-passes.js";
 
 const [before, passDirectory, filter] = process.argv.slice(2);
 
@@ -110,6 +118,17 @@ function exportTree(tree: {
 	);
 }
 
+function compiledItsOwnCrates(side: Side, buildMessages: string): boolean {
+	const reused = reusedWorkspaceCrates(readFileSync(buildMessages, "utf8"));
+	if (reused.length > 0) {
+		console.error(
+			`bench-ab: the ${side} pass reused workspace crates an earlier build compiled: ${reused.join(", ")}`,
+		);
+	}
+
+	return reused.length === 0;
+}
+
 function benchPass(side: Side, checkout: string): boolean {
 	const files = passFiles(output, side);
 	const criterionArgs = [
@@ -123,8 +142,38 @@ function benchPass(side: Side, checkout: string): boolean {
 	// Criterion errors comparing against one and drops that benchmark's bencher
 	// line, which bench-gate then reads as a missing benchmark.
 	rmSync(join(targetDir, "criterion"), { recursive: true, force: true });
+	const crates = join(checkout, "src-tauri");
 	const passed =
 		run({ command: ["mise", "install"], cwd: checkout }) &&
+		run({
+			command: [
+				"mise",
+				"exec",
+				"--",
+				"cargo",
+				"clean",
+				"--workspace",
+				"--release",
+			],
+			cwd: crates,
+		}) &&
+		run({
+			command: [
+				"mise",
+				"exec",
+				"--",
+				"cargo",
+				"bench",
+				"--bench",
+				"*",
+				"--no-run",
+				"--message-format",
+				"json-render-diagnostics",
+			],
+			cwd: crates,
+			stdout: files.build,
+		}) &&
+		compiledItsOwnCrates(side, files.build) &&
 		run({
 			command: [
 				"mise",
@@ -137,7 +186,7 @@ function benchPass(side: Side, checkout: string): boolean {
 				"--",
 				...criterionArgs,
 			],
-			cwd: join(checkout, "src-tauri"),
+			cwd: crates,
 			stdout: files.raw,
 		}) &&
 		run({

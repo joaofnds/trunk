@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { outcomeOf, passFiles } from "./bench-passes.js";
+import { outcomeOf, passFiles, reusedWorkspaceCrates } from "./bench-passes.js";
 
 const BASE = "1ea527ec0000000000000000000000000000000a";
 
@@ -51,8 +51,54 @@ describe("outcomeOf", () => {
 describe("passFiles", () => {
 	it("names each side's raw and normalized output in the pass directory", () => {
 		expect(passFiles("/passes", "base")).toEqual({
+			build: "/passes/base-build.jsonl",
 			raw: "/passes/base-output.txt",
 			normalized: "/passes/base-normalized.txt",
+		});
+	});
+});
+
+const GIT_CRATE = "path+file:///work/trunk/src-tauri/git#trunk-git@0.1.0";
+const REVIEW_CRATE =
+	"path+file:///work/trunk/src-tauri/review#trunk-review@0.1.0";
+const APP_CRATE = "path+file:///work/trunk/src-tauri#trunk@0.59.0";
+const REGISTRY_CRATE =
+	"registry+https://github.com/rust-lang/crates.io-index#git2@0.21.0";
+
+function artifact(packageId: string, fresh: boolean): string {
+	return JSON.stringify({
+		reason: "compiler-artifact",
+		package_id: packageId,
+		fresh,
+	});
+}
+
+describe("reusedWorkspaceCrates", () => {
+	it("reports none when every workspace crate was compiled in this pass", () => {
+		const messages = [
+			artifact(REGISTRY_CRATE, true),
+			artifact(GIT_CRATE, false),
+			artifact(REVIEW_CRATE, false),
+			artifact(APP_CRATE, false),
+			JSON.stringify({ reason: "build-finished", success: true }),
+		].join("\n");
+
+		expect(reusedWorkspaceCrates(messages)).toEqual([]);
+	});
+
+	describe("when a workspace crate came from an earlier build", () => {
+		it("names each crate the pass reused, once", () => {
+			const messages = [
+				artifact(GIT_CRATE, true),
+				artifact(REVIEW_CRATE, true),
+				artifact(APP_CRATE, false),
+				artifact(GIT_CRATE, true),
+			].join("\n");
+
+			expect(reusedWorkspaceCrates(messages)).toEqual([
+				GIT_CRATE,
+				REVIEW_CRATE,
+			]);
 		});
 	});
 });

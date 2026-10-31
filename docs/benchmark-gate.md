@@ -76,9 +76,15 @@ is the signal that the number is not a duration.
    the pushed commit's checkout. Each side runs `mise install` and `cargo bench --bench '*'`
    from its own tree, so it benches the targets its own `Cargo.toml` declares and is meant
    to build with the toolchain its own `mise.toml` pins, which would measure a toolchain bump
-   as part of the push. Both sides use one cargo target directory, so a dependency that is
-   identical on both sides can be reused rather than rebuilt. Neither effect has been
-   observed in CI yet; TRUNK-47 records the first runs.
+   as part of the push. Both sides use one cargo target directory, so a registry
+   dependency that is identical on both sides is reused rather than rebuilt. The
+   workspace's own crates must never be reused. Cargo names their artifacts by their path
+   inside the workspace, so both trees map to the same files, and in run 41201874704 the
+   pushed side compiled `trunk` against the base's `trunk-git` and `trunk-review` and
+   failed. Each pass therefore runs `cargo clean --workspace --release`, builds with
+   `--no-run --message-format json-render-diagnostics`, and fails if cargo reports any
+   workspace crate as fresh. A toolchain bump inside a range has not been observed in CI
+   yet; TRUNK-47 records the runs.
 3. Each side is normalized by its own commit's `bench-gate.ts`. A push that adds or
    renames a calibration class emits different series names on the two sides, and the
    pushed commit's class table would reject the base's output.
@@ -104,7 +110,8 @@ change to the normalizer's arithmetic or to a benchmark's class, with the calibr
 names unchanged, keeps the same series names on both sides and is gated across two
 different computations. Bump the affected calibration's generation in that push instead.
 
-The passes write `base-output.txt`, `head-output.txt`, `base-normalized.txt` and
+The passes write cargo's build messages to `base-build.jsonl` and `head-build.jsonl`,
+and `base-output.txt`, `head-output.txt`, `base-normalized.txt` and
 `head-normalized.txt`, and every run uploads what was written as the `benchmark-passes`
 artifact. A pass that failed early leaves its files out. `bun run
 scripts/bench-compare.ts <directory>` reruns the comparison on a downloaded copy and names
