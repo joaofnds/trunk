@@ -400,6 +400,50 @@ pub fn set_state_at_commit(
     Ok(())
 }
 
+/// The channel of the thread's latest action an agent can see.
+///
+/// The actions are its comment, a sent reply, a state change, and the
+/// reviewer's edit or send of a held thread or reply. An edit or a send moves
+/// `updated_at` without a history row, so an `updated_at` that matches no
+/// state change is the reviewer's. On a tie the reviewer's action wins,
+/// because an extra answer costs less than a lost one.
+///
+/// # Errors
+///
+/// Returns `not_found` when `id` names no thread, and the `SQLite` error when
+/// the read fails.
+pub fn last_action(conn: &Connection, id: &str) -> Result<Channel, TrunkError> {
+    let channel: Option<String> = conn
+        .query_row(
+            "SELECT channel FROM (
+                 SELECT channel, created_at AS at FROM threads WHERE id = ?1
+                 UNION ALL
+                 SELECT 'human', updated_at FROM threads WHERE id = ?1
+                     AND updated_at NOT IN (SELECT created_at FROM thread_history WHERE thread_id = ?1)
+                 UNION ALL
+                 SELECT channel, created_at FROM thread_history WHERE thread_id = ?1
+                 UNION ALL
+                 SELECT channel, MAX(created_at, updated_at) FROM replies
+                     WHERE thread_id = ?1 AND pending = 0
+             )
+             ORDER BY at DESC, channel = 'human' DESC
+             LIMIT 1",
+            [id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+
+    let Some(channel) = channel else {
+        return Err(TrunkError::new(
+            "not_found",
+            format!("no thread with id {id}"),
+        ));
+    };
+
+    Channel::from_str(&channel)
+}
+
 /// Human-authored text is editable at any time, in any review, sent or held.
 ///
 /// Refusing an agent-authored edit with `not_editable`, distinct from `not_found`,

@@ -1733,6 +1733,46 @@ fn cli_thread_json_speaks_the_watch_field_vocabulary() {
     assert_eq!(chain["allowed_transitions"][0], "addressed");
 }
 
+#[test]
+fn cli_thread_json_names_whose_action_came_last() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let anchored = seed_anchored_thread(&ctx, &published);
+    let last_action = || {
+        let out = trunk_review_in(
+            ctx.repo_path(),
+            &["thread", &anchored, "--json"],
+            ctx.data_dir(),
+        );
+        let chain: serde_json::Value =
+            serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+        chain["last_action"].clone()
+    };
+    let answered = last_action();
+
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    reviewdb::open(ctx.data_dir())
+        .unwrap()
+        .write(|tx| {
+            threads::set_state(
+                tx,
+                &canonical,
+                &anchored,
+                ThreadState::Dismissed,
+                Channel::Human,
+                900,
+            )
+        })
+        .unwrap();
+    let after_the_reviewer_dismisses = last_action();
+
+    assert_eq!(answered, "agent");
+    assert_eq!(after_the_reviewer_dismisses, "human");
+}
+
 /// `watch` omits an absent `anchor` or `commit_oid` rather than sending null,
 /// so a reader tells a thread's shape by which key is present. The docs
 /// promise one reader parses both streams, which only holds if these verbs

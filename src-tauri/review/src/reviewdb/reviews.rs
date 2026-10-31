@@ -302,14 +302,14 @@ pub fn send_batch(
     belongs_to(conn, repo_path, id)?;
 
     conn.execute(
-        "UPDATE replies SET pending = 0
+        "UPDATE replies SET pending = 0, updated_at = ?2
          WHERE pending = 1 AND thread_id IN (SELECT id FROM threads WHERE review_id = ?1)",
-        [id],
+        rusqlite::params![id, now],
     )
     .map_err(sqlite_error)?;
     conn.execute(
-        "UPDATE threads SET pending = 0 WHERE pending = 1 AND review_id = ?1",
-        [id],
+        "UPDATE threads SET pending = 0, updated_at = ?2 WHERE pending = 1 AND review_id = ?1",
+        rusqlite::params![id, now],
     )
     .map_err(sqlite_error)?;
     conn.execute(

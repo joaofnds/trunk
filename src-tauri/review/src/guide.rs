@@ -1,10 +1,9 @@
 //! The agent guide: the watch-and-reply procedure `trunk review guide` prints
 //! for a coding agent the user starts in a repository.
 
-use crate::doc::shell_word;
 use crate::doc::{
     COMMIT_OVERRIDE, FRESHNESS_RULE, GIT_READ_RULE, GIT_WRITE_BAN, PROVENANCE_RULE,
-    WATCH_STALE_DELAY,
+    UNCOMMITTED_DIFF, WATCH_STALE_DELAY, shell_word,
 };
 use std::fmt::Write;
 use std::path::Path;
@@ -29,7 +28,7 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "Start `{exe} review watch --json` as a long-running background process and read its output as it arrives. If your harness can stream a background process's output to you, use that. Otherwise redirect the output to a file and read the file again whenever you wait for work. The first line is `# watching <path>`, which is not JSON and means the watch is ready. Every later line is one JSON event."
+        "Start `{exe} review watch --json` as a long-running background process and read its output as it arrives. If your harness can stream a background process's output to you, use that. Otherwise redirect its output and its errors to a file outside the repository, such as one in your temporary directory, and read the file again whenever you wait for work, because a file inside the repository shows in the reviewer's diff. The first line is `# watching <path>`, which is not JSON and means the watch is ready. Every later line is one JSON event. If the watch exits, read its last lines for the reason, start it again, and catch up again as the next section says, because a comment sent while no watch ran arrives as no event."
     );
     let _ = writeln!(out);
 
@@ -37,13 +36,16 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "The watch reports only changes made after it started, so once it is ready, look for comments that were already waiting. Run `{exe} review list` to see the reviews you can read, and for each one run `{exe} review threads <review-id> --state open --json`. Answer each open thread by the steps under Answer one comment, unless its last reply is already yours, which means an earlier session answered it and the reviewer has not replied since. Judge which reply is last from `{exe} review thread <thread-id> --json`, which lists replies in the order they were written. Keep the ids of the threads the sweep answered, so the `thread_added` event a comment sent during the sweep can also produce does not make you answer it twice."
+        "The watch reports only changes made after it started, so once it is ready, look for comments that were already waiting. Run `{exe} review list` to see the reviews you can read, and for each one run `{exe} review threads <review-id> --json`. Take each thread whose `state` is `open` or `addressed` through Answer one comment."
     );
     let _ = writeln!(out);
 
     let _ = writeln!(out, "## Events that ask for an answer");
     let _ = writeln!(out);
-    let _ = writeln!(out, "Answer a thread when one of these events names it:");
+    let _ = writeln!(
+        out,
+        "Take a thread through Answer one comment when one of these events names it:"
+    );
     let _ = writeln!(out);
     let _ = writeln!(out, "- `thread_added`, a new comment.");
     let _ = writeln!(
@@ -58,10 +60,14 @@ pub fn render(cli_binary: &Path) -> String {
         out,
         "- `reply_added` with `channel` set to `human`, the reviewer replied in the thread."
     );
+    let _ = writeln!(
+        out,
+        "- `reply_edited`, the reviewer changed a reply's text."
+    );
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "A `reply_added` with `channel` set to `agent` is your own reply coming back, and answering it starts a loop. When the reviewer brings back a review they put away, `review_added` arrives followed by its old comments and replies as `thread_added` and `reply_added`, so treat each replayed thread as the sweep does and skip it when its last reply is already yours. Judge that from `{exe} review thread <thread-id> --json`, never from the order events arrive. Every other event needs no answer."
+        "A `reply_added` with `channel` set to `agent` is your own reply coming back, and answering it starts a loop. When the reviewer brings back a review they put away, `review_added` arrives followed by its old comments and replies as `thread_added` and `reply_added`, and Answer one comment leaves each one you already answered. Every other event needs no answer."
     );
     let _ = writeln!(out);
 
@@ -69,7 +75,7 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "Read the thread with `{exe} review thread <thread-id> --json`. It holds the comment, where it points, the excerpt of the code it was written against, and the replies so far."
+        "Read the thread with `{exe} review thread <thread-id> --json`. It holds the comment, where it points, the excerpt of the code it was written against, and the replies so far. If its `last_action` is `agent`, your answer or claim is still the latest thing on the thread and the reviewer has not acted since, so leave it. That is how a comment the catch-up already answered, or a replayed one, gets one answer and not two. Judge it from that field, never from the order of the replies or of the events."
     );
     let _ = writeln!(out);
     let _ = writeln!(
@@ -86,7 +92,7 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "Leave your changes uncommitted, because the reviewer reads them as an uncommitted diff. {GIT_WRITE_BAN} {COMMIT_OVERRIDE} {GIT_READ_RULE}"
+        "Leave your changes uncommitted. {UNCOMMITTED_DIFF} {GIT_WRITE_BAN} {COMMIT_OVERRIDE} {GIT_READ_RULE}"
     );
 
     out
@@ -109,7 +115,7 @@ mod tests {
         for command in [
             "review watch --json",
             "review list",
-            "review threads <review-id> --state open --json",
+            "review threads <review-id> --json",
             "review thread <thread-id> --json",
             "review reply <thread-id> --stdin",
             "review address <thread-id>",
@@ -143,6 +149,7 @@ mod tests {
             "`thread_edited`",
             "`thread_state_changed` with `to` set to `open`",
             "`reply_added` with `channel` set to `human`",
+            "`reply_edited`",
         ] {
             assert!(guide.contains(event), "missing {event} in: {guide}");
         }
@@ -157,30 +164,35 @@ mod tests {
     }
 
     #[test]
-    fn reads_which_reply_is_last_from_the_thread_rather_than_event_order() {
+    fn leaves_a_thread_whose_last_action_is_the_agents() {
         assert!(
-            guide().contains("never from the order events arrive"),
-            "a replayed review's replies arrive out of the order they were written"
-        );
-    }
-
-    #[test]
-    fn the_sweep_skips_a_thread_an_earlier_session_already_answered() {
-        assert!(
-            guide().contains("unless its last reply is already yours"),
+            guide().contains("If its `last_action` is `agent`"),
             "an answered question stays open, so a restarted agent would answer it again"
         );
     }
 
     #[test]
-    fn a_human_follow_up_on_an_answered_thread_still_gets_an_answer() {
-        let guide = guide();
-
+    fn the_catch_up_reads_addressed_threads_too() {
         assert!(
-            !guide.contains("an event about one of them does not make you answer it twice"),
-            "that sentence tells the agent to skip the reviewer's follow-ups"
+            guide().contains("whose `state` is `open` or `addressed`"),
+            "a reviewer can reply on an addressed thread without reopening it"
         );
-        assert!(guide.contains("a comment sent during the sweep"));
+    }
+
+    #[test]
+    fn keeps_the_watch_log_out_of_the_repository() {
+        assert!(
+            guide().contains("to a file outside the repository"),
+            "a log in the working tree shows in the reviewer's diff"
+        );
+    }
+
+    #[test]
+    fn restarts_a_watch_that_exits_and_catches_up() {
+        assert!(
+            guide().contains("If the watch exits"),
+            "a newer Trunk migrating the store ends the watch, and nothing else re-arms it"
+        );
     }
 
     #[test]
@@ -196,14 +208,14 @@ mod tests {
     fn carries_the_review_docs_git_rules() {
         let guide = guide();
 
-        for rule in [GIT_WRITE_BAN, COMMIT_OVERRIDE, GIT_READ_RULE] {
+        for rule in [
+            GIT_WRITE_BAN,
+            COMMIT_OVERRIDE,
+            UNCOMMITTED_DIFF,
+            GIT_READ_RULE,
+        ] {
             assert!(guide.contains(rule), "missing {rule} in: {guide}");
         }
-    }
-
-    #[test]
-    fn leaves_changes_uncommitted() {
-        assert!(guide().contains("Leave your changes uncommitted"));
     }
 
     #[test]

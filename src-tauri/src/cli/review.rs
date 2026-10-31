@@ -359,7 +359,9 @@ fn thread(
     let replies = replies.get(&thread.id).cloned().unwrap_or_default();
 
     let rendered = if json {
-        crate::cli::render::render_thread_json(&thread, &replies)?
+        let last_action =
+            store.read(|conn| trunk_review::reviewdb::threads::last_action(conn, &thread.id))?;
+        crate::cli::render::render_thread_json(&thread, &replies, last_action)?
     } else {
         crate::cli::render::render_thread(store, &canonical, &thread, replies)?
     };

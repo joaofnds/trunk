@@ -181,6 +181,7 @@ struct ThreadChain<'a> {
     excerpt: Option<&'a str>,
     replies: Vec<ChainReply<'a>>,
     allowed_transitions: Vec<ThreadState>,
+    last_action: Channel,
 }
 
 #[derive(serde::Serialize)]
@@ -362,6 +363,7 @@ const fn claiming_verb(next: ThreadState) -> &'static str {
 pub(crate) fn render_thread_json(
     thread: &trunk_review::reviewdb::threads::Thread,
     replies: &[trunk_review::reviewdb::replies::Reply],
+    last_action: Channel,
 ) -> Result<String, TrunkError> {
     let chain = ThreadChain {
         thread: ThreadLine::of(&thread.review_id, thread),
@@ -376,6 +378,7 @@ pub(crate) fn render_thread_json(
             })
             .collect(),
         allowed_transitions: thread.state.allowed_transitions(Channel::Agent),
+        last_action,
     };
 
     let line = serde_json::to_string(&chain).map_err(|e| TrunkError::new("json", e.to_string()))?;

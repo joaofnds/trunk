@@ -5,7 +5,8 @@ app binary itself, and it reads and writes the same store the GUI uses, fully
 offline. The running app reflects CLI writes within about a second, no restart.
 
 The review document teaches agents everything below automatically:
-its header names the absolute binary path and every verb it replies with.
+its header names the absolute binary path and the verbs that read the review
+and reply to it.
 `trunk review guide` prints the watch-and-reply procedure. This page is the
 human-facing reference.
 
@@ -167,7 +168,12 @@ the comment is about the whole file, as `watch` sends them on `thread_added`.
 `thread` prints a single object with those fields plus
 `channel`, `excerpt`, `replies` (each `reply`, `channel`, `text`), and
 `allowed_transitions`: the states the agent channel may move this thread to,
-taken from the same matrix the writes enforce, never restated.
+taken from the same matrix the writes enforce, never restated. `last_action` is
+`agent` or `human`, the channel of the thread's latest action an agent can see:
+its comment, a sent reply, a state change, or the reviewer's edit or send of a
+held thread or reply. On a tie the reviewer's action wins. An agent that starts
+after the reviewer acted reads this field to tell whether the thread still
+waits on it.
 
 ### `watch --json` events
 

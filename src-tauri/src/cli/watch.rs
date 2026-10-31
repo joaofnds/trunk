@@ -459,3 +459,72 @@ fn diff_thread(
         }
     }
 }
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::WatchChange;
+    use std::path::Path;
+    use trunk_review::reviewdb::reviews::ReviewState;
+    use trunk_review::types::{Channel, ThreadState};
+
+    fn event_name(change: &WatchChange) -> String {
+        let line = serde_json::to_value(change).unwrap();
+        line["event"].as_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn the_agent_guide_names_every_event_it_tells_the_agent_to_answer_by_its_wire_name() {
+        let (review, thread, reply) = ("R".to_string(), "T".to_string(), "P".to_string());
+        let named = [
+            WatchChange::ReviewAdded {
+                review: review.clone(),
+                title: String::new(),
+                state: ReviewState::Open,
+            },
+            WatchChange::ThreadAdded {
+                review: review.clone(),
+                thread: thread.clone(),
+                state: ThreadState::Open,
+                text: String::new(),
+                anchor: None,
+                commit_oid: None,
+                content_pin: None,
+                whole_file: false,
+            },
+            WatchChange::ThreadEdited {
+                review: review.clone(),
+                thread: thread.clone(),
+                text: String::new(),
+            },
+            WatchChange::ThreadStateChanged {
+                review: review.clone(),
+                thread: thread.clone(),
+                from: ThreadState::Addressed,
+                to: ThreadState::Open,
+            },
+            WatchChange::ReplyAdded {
+                review: review.clone(),
+                thread: thread.clone(),
+                reply: reply.clone(),
+                channel: Channel::Human,
+                text: String::new(),
+            },
+            WatchChange::ReplyEdited {
+                review,
+                thread,
+                reply,
+                text: String::new(),
+            },
+        ];
+
+        let guide = trunk_review::guide::render(Path::new("/bin/trunk"));
+
+        for change in &named {
+            let event = event_name(change);
+            assert!(
+                guide.contains(&format!("`{event}`")),
+                "the guide does not name `{event}`, so an agent following it never answers that event"
+            );
+        }
+    }
+}
