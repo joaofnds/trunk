@@ -57,7 +57,7 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "A `reply_added` with `channel` set to `agent` is your own reply coming back, and answering it starts a loop. When the reviewer brings back a review they put away, `review_added` arrives followed by its old comments and replies as `thread_added` and `reply_added`, so skip a thread whose last reply is already yours unless it was edited or reopened after that reply. Every other event needs no answer."
+        "A `reply_added` with `channel` set to `agent` is your own reply coming back, and answering it starts a loop. When the reviewer brings back a review they put away, `review_added` arrives followed by its old comments and replies as `thread_added` and `reply_added`, so skip a thread whose last reply is already yours unless it was edited or reopened after that reply. Judge which reply is last from `{exe} review thread <thread-id> --json`, which lists replies in the order they were written, and never from the order events arrive. Every other event needs no answer."
     );
     let _ = writeln!(out);
 
@@ -149,6 +149,14 @@ mod tests {
         assert!(
             guide().contains("`reply_added` with `channel` set to `agent` is your own reply"),
             "answering its own reply loops the agent"
+        );
+    }
+
+    #[test]
+    fn reads_which_reply_is_last_from_the_thread_rather_than_event_order() {
+        assert!(
+            guide().contains("never from the order events arrive"),
+            "a replayed review's replies arrive out of the order they were written"
         );
     }
 
