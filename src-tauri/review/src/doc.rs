@@ -12,7 +12,9 @@
 //! [`render_review_doc`] is the exception: it reads a `reviewdb::Store` to
 //! build the `RenderInput` those two render, and can fail (`not_found`,
 //! `no_threads`, or whatever the store read returns) — still no `tauri::*`
-//! and no git2 repository access, just not pure.
+//! and no git2 repository access, just not pure. It names the answering binary
+//! through [`answering_binary`], which reads this process's path and
+//! environment, the CLI's `guide` verb's source for the same fact.
 //!
 //! `render`/`render_thread_section` and the CLI's `thread` verb print the same
 //! bytes the document carries rather than a second implementation that has to
@@ -1057,7 +1059,7 @@ mod tests {
     use git2::{Oid, Repository, Signature};
     use tempfile::TempDir;
 
-    mod answering_binary {
+    mod outer_file_of {
         use super::*;
 
         const MOUNT: &str = "/tmp/.mount_TrunkXYZ";
@@ -1115,7 +1117,22 @@ mod tests {
         }
 
         #[test]
+        fn ignores_an_appimage_with_an_empty_mount() {
+            let dir = TempDir::new().unwrap();
+            let image = AppImage {
+                file: Some(image_file(&dir)),
+                mount: Some(PathBuf::new()),
+            };
+
+            assert_eq!(image.outer_file_of(Path::new("/usr/bin/trunk")), None);
+        }
+
+        #[test]
         fn ignores_a_relative_appimage() {
+            assert!(
+                Path::new("Cargo.toml").is_file(),
+                "the relative name must exist, or the file check refuses it first"
+            );
             let image = AppImage {
                 file: Some(PathBuf::from("Cargo.toml")),
                 mount: Some(PathBuf::from(MOUNT)),

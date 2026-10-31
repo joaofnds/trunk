@@ -83,10 +83,17 @@ fn trunk_review_in(cwd: &Path, args: &[&str], data_dir: &Path) -> Output {
 /// Run `trunk …` with the given argv (no `review` prepended), `cwd` as the
 /// working directory and `data_dir` as the store location.
 fn trunk(cwd: &Path, args: &[&str], data_dir: &Path) -> Output {
+    trunk_with_env(cwd, args, data_dir, &[])
+}
+
+/// `trunk`, with `env` added to the child's environment and never to this
+/// process's, since env mutation races parallel tests here.
+fn trunk_with_env(cwd: &Path, args: &[&str], data_dir: &Path, env: &[(&str, &Path)]) -> Output {
     let child = Command::new(env!("CARGO_BIN_EXE_trunk"))
         .args(args)
         .current_dir(cwd)
         .env("TRUNK_DATA_DIR", data_dir)
+        .envs(env.iter().copied())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -117,30 +124,58 @@ fn data_dir_matches_the_app_handles() {
     );
 }
 
+/// An `AppImage` file beside a scratch dir, and the environment its runtime
+/// gives a binary running from the mount this test binary's directory stands
+/// in for.
+fn appimage(dir: &Path) -> (std::path::PathBuf, std::path::PathBuf) {
+    let image = dir.join("Trunk.AppImage");
+    std::fs::write(&image, b"").unwrap();
+    let mount = Path::new(env!("CARGO_BIN_EXE_trunk"))
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    (image, mount)
+}
+
 #[test]
 fn cli_guide_names_the_appimage_file_the_binary_runs_from() {
     let outside = tempfile::TempDir::new().unwrap();
-    let image = outside.path().join("Trunk.AppImage");
-    std::fs::write(&image, b"").unwrap();
-    let exe = Path::new(env!("CARGO_BIN_EXE_trunk"));
+    let (image, mount) = appimage(outside.path());
 
-    let child = Command::new(exe)
-        .args(["review", "guide"])
-        .current_dir(outside.path())
-        .env("TRUNK_DATA_DIR", outside.path().join("store"))
-        .env("APPIMAGE", &image)
-        .env("APPDIR", exe.parent().unwrap())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("failed to spawn the trunk binary");
-    let out = wait_or_kill(child, Duration::from_secs(10));
+    let out = trunk_with_env(
+        outside.path(),
+        &["review", "guide"],
+        &outside.path().join("store"),
+        &[("APPIMAGE", &image), ("APPDIR", &mount)],
+    );
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
         stdout.contains(&format!("{} review watch --json", image.display())),
         "the mount the binary runs from vanishes when it exits; got {stdout:?}",
+    );
+}
+
+#[test]
+fn cli_show_names_the_appimage_file_the_binary_runs_from() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let (image, mount) = appimage(ctx.data_dir());
+
+    let out = trunk_with_env(
+        ctx.repo_path(),
+        &["review", "show", &published],
+        ctx.data_dir(),
+        &[("APPIMAGE", &image), ("APPDIR", &mount)],
+    );
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains(&format!("{} review list", image.display())),
+        "the review doc's verbs must outlive the mount too; got {stdout:?}",
     );
 }
 
