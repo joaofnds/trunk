@@ -4,10 +4,6 @@ on:
   push:
     branches: [main]
 
-concurrency:
-  group: benchmarks-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 
@@ -15,8 +11,11 @@ jobs:
   benchmark:
     name: Criterion Benchmarks
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Install system dependencies
         run: |
@@ -40,42 +39,14 @@ jobs:
           workspaces: "src-tauri -> target"
           save-if: true
 
-      # rust-cache saves target/ after a main run, and the restored copy carries
-      # Criterion's baseline directories with their sample files pruned. Criterion
-      # then errors comparing against that half-baseline and drops the bencher
-      # result line, which bench-gate reads as a missing benchmark. History lives
-      # in benchmark-data.json, not here, so stale baselines are safe to drop.
-      - name: Drop stale Criterion baselines
-        run: rm -rf src-tauri/target/criterion
+      - name: Benchmark the base and the pushed commit
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: bun run scripts/bench-ab.ts "$BEFORE" "$RUNNER_TEMP/benchmark-passes"
 
-      - name: Run benchmarks
-        run: |
-          set -o pipefail
-          cd src-tauri
-          cargo bench --bench bench_graph --bench bench_commands --bench bench_ipc -- --output-format bencher | tee output.txt
-
-      - name: Normalize against the calibration benchmarks
-        run: bun run scripts/bench-gate.ts src-tauri/output.txt > src-tauri/normalized.txt
-
-      - name: Download previous benchmark data
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ./cache
-          key: ${{ runner.os }}-benchmark-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: ${{ runner.os }}-benchmark-
-
-      - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
-        with:
-          tool: 'cargo'
-          output-file-path: src-tauri/normalized.txt
-          external-data-json-path: ./cache/benchmark-data.json
-          alert-threshold: '130%'
-          fail-on-alert: true
-
-      - name: Upload raw benchmark output
+      - name: Upload both passes
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: criterion-bencher-output
-          path: src-tauri/output.txt
+          name: benchmark-passes
+          path: ${{ runner.temp }}/benchmark-passes

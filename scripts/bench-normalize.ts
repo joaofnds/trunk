@@ -51,7 +51,7 @@ const BENCH_LINE =
 
 const SCALE = 1_000_000;
 
-type Sample = {
+export type Sample = {
 	readonly name: string;
 	readonly value: number;
 	readonly unit: string;
@@ -62,7 +62,7 @@ function digits(text: string): number {
 	return Number(text.replaceAll(",", ""));
 }
 
-function parse(input: string): Sample[] {
+export function parse(input: string): Sample[] {
 	const samples: Sample[] = [];
 
 	for (const line of input.split("\n")) {
@@ -102,6 +102,14 @@ function isExcluded(name: string): boolean {
 	);
 }
 
+function seriesOf(calibration: Sample): string {
+	return calibration.name.slice("calibration/".length);
+}
+
+export function benchmarkOf(normalizedName: string): string {
+	return normalizedName.split("/").slice(2).join("/");
+}
+
 function scale(value: number, calibration: number): number {
 	return Math.round((value * SCALE) / calibration);
 }
@@ -138,6 +146,9 @@ export function normalize(input: string): string {
 				`${workload.calibrationPrefix}* appears more than once in the benchmark output`,
 			);
 		}
+		if (seriesOf(matches[0]).includes("/")) {
+			throw new NormalizeError(`${matches[0].name} holds a slash in its id`);
+		}
 		calibrations.set(workload.calibrationPrefix, matches[0]);
 	}
 
@@ -150,9 +161,7 @@ export function normalize(input: string): string {
 
 			const value = scale(sample.value, calibration.value);
 			const deviation = scale(sample.deviation, calibration.value);
-			const series = calibration.name.slice("calibration/".length);
-
-			return `test norm/${series}/${sample.name} ... bench: ${value} ${sample.unit} (+/- ${deviation})`;
+			return `test norm/${seriesOf(calibration)}/${sample.name} ... bench: ${value} ${sample.unit} (+/- ${deviation})`;
 		})
 		.join("\n");
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NormalizeError, normalize } from "./bench-normalize.js";
+import { benchmarkOf, NormalizeError, normalize } from "./bench-normalize.js";
 import recordedRun from "./fixtures/bench-33125031901.txt?raw";
 
 function bench(name: string, value: string, deviation = "1"): string {
@@ -199,6 +199,20 @@ describe("normalize", () => {
 		);
 	});
 
+	describe("when a calibration id holds a slash", () => {
+		it("throws NormalizeError, since the series could not be told from the benchmark", () => {
+			const input = CALIBRATIONS.replace(
+				"calibration/git2-v1",
+				"calibration/git2-v1/objects",
+			);
+
+			expectNormalizeError(
+				input,
+				"calibration/git2-v1/objects holds a slash in its id",
+			);
+		});
+	});
+
 	describe("when a benchmark belongs to no class", () => {
 		it("throws NormalizeError naming the benchmark", () => {
 			const input = `${CALIBRATIONS}\n${bench("brand_new_inner", "1,000")}`;
@@ -217,5 +231,16 @@ describe("normalize", () => {
 				"calibration/syntect-* is absent from the benchmark output",
 			);
 		});
+	});
+});
+
+describe("benchmarkOf", () => {
+	it("recovers the benchmark name from the series name normalize emits", () => {
+		const output = normalize(
+			`${CALIBRATIONS}\n${bench("snapshot/10k", "1,500,000")}`,
+		);
+		const name = output.split(" ")[1];
+
+		expect(benchmarkOf(name)).toBe("snapshot/10k");
 	});
 });
