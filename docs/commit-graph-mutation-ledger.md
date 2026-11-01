@@ -57,7 +57,10 @@ enumerated with `cargo mutants --list` and anchored by hand; rows past 64 are ap
 later changes introduce sites. Rows 11-14 and 65 carry the 2026-08-30 `--only` re-measure
 after TRUNK-43's `can_inline` narrowing — a sanctioned partial splice into the 2026-08-12
 run's stdout. Row 25 is dated 2026-09-02 and row 49 is dated 2026-09-03. Rows 7,
-46–48 and 55 carry the 2026-10-11 `--only` re-measure.
+46–48 and 55 carry the 2026-10-11 `--only` re-measure. Rows 59–64 carry the
+2026-11-01 re-measure after `c2af4fd9` moved bounded slicing into `page_oids` and
+row construction into `hydrate`; all five viable mutants were killed, with row 59
+still unviable. Placement rules and goldens did not change.
 
 **39 killed, 17 survive, 9 unviable.** Every one of the 17 survivors carries a construction
 proof below. No row is open.
@@ -127,12 +130,12 @@ honest.
 | 56 | graph_input.rs | commit_facts | `fn commit_facts(source: &GraphSource, oid: Oid) -> &CommitFacts {` → `fn commit_facts(source: &GraphSource, oid: Oid) -> &CommitFacts {⏎    if true {⏎        return Box::leak(Box::new(Default::default()));⏎    }` | UNVIABLE | 2026-08-12 |
 | 57 | graph_input.rs | parent_list | `fn parent_list(source: &GraphSource, oid: Oid) -> &[Oid] {` → `fn parent_list(source: &GraphSource, oid: Oid) -> &[Oid] {⏎    if true {⏎        return Vec::leak(Vec::new());⏎    }` | killed | 2026-08-12 |
 | 58 | graph_input.rs | parent_list | `fn parent_list(source: &GraphSource, oid: Oid) -> &[Oid] {` → `fn parent_list(source: &GraphSource, oid: Oid) -> &[Oid] {⏎    if true {⏎        return Vec::leak(vec![Default::default()]);⏎    }` | UNVIABLE | 2026-08-12 |
-| 59 | graph_input.rs | layout | `pub fn layout(source: &GraphSource, offset: usize, limit: usize) -> GraphResult {` → `pub fn layout(source: &GraphSource, offset: usize, limit: usize) -> GraphResult {⏎    if true {⏎        return Default::default();⏎    }` | UNVIABLE | 2026-08-12 |
-| 60 | graph_input.rs | layout | `    let end = (offset + limit).min(oids.len());` → `    let end = (offset - limit).min(oids.len());` | killed | 2026-08-12 |
-| 61 | graph_input.rs | layout | `    let end = (offset + limit).min(oids.len());` → `    let end = (offset * limit).min(oids.len());` | killed | 2026-08-12 |
-| 62 | graph_input.rs | layout/is_merge | `        let is_merge = !is_stash && parents.len() >= 2;` → `        let is_merge = !is_stash \|\| parents.len() >= 2;` | killed | 2026-08-12 |
-| 63 | graph_input.rs | layout/is_merge | `        let is_merge = !is_stash && parents.len() >= 2;` → `        let is_merge = is_stash && parents.len() >= 2;` | killed | 2026-08-12 |
-| 64 | graph_input.rs | layout/is_merge | `        let is_merge = !is_stash && parents.len() >= 2;` → `        let is_merge = !is_stash && parents.len() < 2;` | killed | 2026-08-12 |
+| 59 | graph_input.rs | layout | `pub fn layout(source: &GraphSource, offset: usize, limit: usize) -> GraphResult {` → `pub fn layout(source: &GraphSource, offset: usize, limit: usize) -> GraphResult {⏎    if true {⏎        return Default::default();⏎    }` | UNVIABLE | 2026-11-01 |
+| 60 | graph_input.rs | page_oids | `    &oids[offset.min(oids.len())..offset.saturating_add(limit).min(oids.len())]` → `    &oids[offset.min(oids.len())..offset.saturating_sub(limit).min(oids.len())]` | killed | 2026-11-01 |
+| 61 | graph_input.rs | page_oids | `    &oids[offset.min(oids.len())..offset.saturating_add(limit).min(oids.len())]` → `    &oids[offset.min(oids.len())..offset.saturating_mul(limit).min(oids.len())]` | killed | 2026-11-01 |
+| 62 | graph_input.rs | hydrate/is_merge | `        let is_merge = !is_stash && parents.len() >= 2;` → `        let is_merge = !is_stash \|\| parents.len() >= 2;` | killed | 2026-11-01 |
+| 63 | graph_input.rs | hydrate/is_merge | `        let is_merge = !is_stash && parents.len() >= 2;` → `        let is_merge = is_stash && parents.len() >= 2;` | killed | 2026-11-01 |
+| 64 | graph_input.rs | hydrate/is_merge | `        let is_merge = !is_stash && parents.len() >= 2;` → `        let is_merge = !is_stash && parents.len() < 2;` | killed | 2026-11-01 |
 | 65 | placement.rs | can_inline ext tip | `            let ext_tip = head_lane_ext.first().copied();` → `            let ext_tip = head_lane_ext.last().copied();` | killed | 2026-08-30 |
 
 ## Deleted anchors
