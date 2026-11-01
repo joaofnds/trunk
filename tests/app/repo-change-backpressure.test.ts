@@ -1,7 +1,7 @@
 import { tick } from "svelte";
 import { afterEach, describe, expect, it } from "vitest";
 import { setup, teardown } from "./harness/index.js";
-import { waitFor } from "./harness/wait.js";
+import { driveWaitsWith, waitFor } from "./harness/wait.js";
 
 const REPO = {
 	steps: [
@@ -20,6 +20,41 @@ describe("repository changes during a sustained event stream", () => {
 	): number {
 		return app.invokes().filter(({ cmd }) => cmd === command).length;
 	}
+
+	it("shows a completed commit without advancing the watcher deadline", async () => {
+		const app = await setup({
+			repo: {
+				steps: [
+					...REPO.steps,
+					{ step: "file", path: "a.txt", content: "changed\n" },
+				],
+			},
+		});
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.stageEverything();
+		await app.settled();
+		const before = calls(app, "refresh_commit_graph");
+		const cachedReads = calls(app, "get_commit_graph");
+		const started = app.scheduler.time;
+		driveWaitsWith(null);
+
+		try {
+			await app.staging.commit("Instant publication");
+			await waitFor("the completed commit and empty index", () =>
+				app.repo.commitRows()[0] === "Instant publication" &&
+				app.staging.stagedFiles().length === 0
+					? true
+					: null,
+			);
+
+			expect(app.scheduler.time).toBe(started);
+			expect(calls(app, "refresh_commit_graph")).toBe(before);
+			expect(calls(app, "get_commit_graph")).toBeGreaterThan(cachedReads);
+		} finally {
+			driveWaitsWith((elapsed) => app.advanceBy(elapsed));
+		}
+	});
 
 	it("refreshes at the first deadline while changes continue", async () => {
 		const app = await setup({ repo: REPO });

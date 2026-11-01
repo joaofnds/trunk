@@ -506,7 +506,7 @@ pub async fn merge_continue<R: Runtime>(
         })
         .await
         .map_err(|e| e.to_json())?;
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -535,7 +535,7 @@ pub async fn merge_abort<R: Runtime>(
         })
         .await
         .map_err(|e| e.to_json())?;
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -565,7 +565,7 @@ pub async fn rebase_continue<R: Runtime>(
         })
         .await
         .map_err(|e| e.to_json())?;
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -594,7 +594,7 @@ pub async fn rebase_skip<R: Runtime>(
         })
         .await
         .map_err(|e| e.to_json())?;
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -623,7 +623,7 @@ pub async fn rebase_abort<R: Runtime>(
         })
         .await
         .map_err(|e| e.to_json())?;
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -677,7 +677,7 @@ pub async fn merge_branch_begin<R: Runtime>(
         })
         .await
         .map_err(|e| e.to_json())?;
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(outcome.into_result(graph))
 }
 
@@ -707,7 +707,7 @@ pub async fn rebase_branch<R: Runtime>(
         })
         .await
         .map_err(|e| e.to_json())?;
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 

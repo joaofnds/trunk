@@ -217,7 +217,7 @@ fn clean_pull_returns_ok() {
     let summaries: Vec<String> = remote
         .cached_graph()
         .expect("pull refreshes the cached graph")
-        .layout
+        .layout()
         .commits
         .iter()
         .map(|c| c.summary.clone())
@@ -345,7 +345,7 @@ fn pull_reports_autostash_conflict() {
     let summaries: Vec<String> = remote
         .cached_graph()
         .expect("the graph is refreshed before the conflict is reported")
-        .layout
+        .layout()
         .commits
         .iter()
         .map(|c| c.summary.clone())

@@ -2,7 +2,10 @@
 import { listen } from "@tauri-apps/api/event";
 import { onDestroy, tick, untrack } from "svelte";
 import { buildTree, collectFilePaths } from "../lib/build-tree.js";
-import { createCoalescedTask } from "../lib/coalesced-task.js";
+import {
+	type CoalescedTask,
+	createCoalescedTask,
+} from "../lib/coalesced-task.js";
 import { buildCommentCounts } from "../lib/comment-counts.js";
 import {
 	commentsForView,
@@ -25,7 +28,10 @@ import { listsSameFiles, patchLoadedDiff } from "../lib/file-status.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { span } from "../lib/perf.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
-import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
+import {
+	requestRepoChange,
+	subscribeToRepoChanges,
+} from "../lib/repo-change-subscription.js";
 import { createReviewComments } from "../lib/review-comments.svelte.js";
 import {
 	createReviewEditorStore,
@@ -368,6 +374,7 @@ let graphRefreshSignal = $state(0);
 let consumedGraphRefreshSignal = $state(0);
 let worktreeRefreshSignal = $state(0);
 let sidebarRefreshSignal = $state(0);
+let refreshImmediately = $state(false);
 let cachedGraphRevision = $state<number | undefined>();
 let pendingRefsRevision = $state<number | undefined>();
 let dirtyCounts = $state<DirtyCounts>({
@@ -1813,6 +1820,8 @@ $effect(() => {
 		includeRefs: true,
 		invalidate(event) {
 			const changed = event.paths;
+			refreshImmediately = event.command_completed ?? false;
+			const notify = (task: CoalescedTask) => requestRepoChange(task, event);
 			if (event.refs_only && event.graph_revision !== undefined) {
 				pendingRefsRevision = newestGraphRevision(
 					pendingRefsRevision,
@@ -1828,11 +1837,11 @@ $effect(() => {
 				refreshSignal += 1;
 				worktreeRefreshSignal += 1;
 				sidebarRefreshSignal += 1;
-			} else repoNotification.invalidate();
-			dirtyCountsRefresh.invalidate();
+			} else notify(repoNotification);
+			notify(dirtyCountsRefresh);
 			if (!concernsOpenFiles(changed)) return;
 
-			displayedDiffNotification.invalidate();
+			notify(displayedDiffNotification);
 
 			const selected = selectedFile;
 			if (selected && selected.kind !== "conflicted") {
@@ -1843,12 +1852,12 @@ $effect(() => {
 					false,
 					false,
 				);
-				selectedDiffRefresh.invalidate();
+				notify(selectedDiffRefresh);
 			}
 			const currentFile = selectedCurrentFile;
 			if (currentFile !== null) {
 				prepareCurrentFileRead(currentFile, false);
-				currentFileRefresh.invalidate();
+				notify(currentFileRefresh);
 			}
 		},
 	});
@@ -2393,6 +2402,7 @@ function stepRightPane(delta: number) {
 					onstashselect={handleCommitSelect}
 					onrefnavigate={handleRefNavigate}
 					refreshSignal={sidebarRefreshSignal}
+					{refreshImmediately}
 					workingTreeDirty={wipCount > 0}
 					onopenrebaseeditor={handleOpenRebaseEditor}
 					onopenmessageeditor={handleOpenMessageEditor}
@@ -2610,6 +2620,7 @@ function stepRightPane(delta: number) {
 						}}
 						wipRefreshSignal={worktreeRefreshSignal}
 						{cachedGraphRevision}
+						{refreshImmediately}
 						{selectedCommitOid}
 						onopenrebaseeditor={handleOpenRebaseEditor}
 						onopenmessageeditor={handleOpenMessageEditor}

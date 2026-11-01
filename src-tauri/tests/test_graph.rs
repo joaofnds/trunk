@@ -666,7 +666,7 @@ fn assert_readings_agree(dirty_the_tree: impl Fn(&TestContext)) {
     let counts = get_dirty_counts_inner(ctx.path(), ctx.state_map()).unwrap();
     let mut repo = ctx.repo();
     let result = snapshot(&mut repo, &RefVisibility::default())
-        .map(|s| s.layout)
+        .map(|s| s.layout())
         .unwrap();
 
     let (stash_idx, _) = stash_and_parent(&result.commits);
@@ -723,7 +723,7 @@ fn snapshot_on_bare_repo_does_not_error() {
     let dir = tempfile::tempdir().unwrap();
     let mut repo = git2::Repository::init_bare(dir.path()).unwrap();
 
-    let result = snapshot(&mut repo, &RefVisibility::default()).map(|s| s.layout);
+    let result = snapshot(&mut repo, &RefVisibility::default()).map(|s| s.layout());
 
     assert!(result.is_ok(), "bare repo walk failed: {:?}", result.err());
 }
@@ -759,13 +759,13 @@ fn topic_layout_clean_then_dirty(
 
     let clean = read(
         &snapshot(&mut repo, &RefVisibility::default())
-            .map(|s| s.layout)
+            .map(|s| s.layout())
             .unwrap(),
     );
     std::fs::write(ctx.repo_path().join("f1.txt"), "dirty").unwrap();
     let dirty = read(
         &snapshot(&mut repo, &RefVisibility::default())
-            .map(|s| s.layout)
+            .map(|s| s.layout())
             .unwrap(),
     );
     (clean, dirty)
@@ -915,7 +915,7 @@ fn detached_head_marks_first_parent_chain() {
     let ctx = context_at(dir);
     let mut repo = ctx.repo();
     let result = snapshot(&mut repo, &RefVisibility::default())
-        .map(|s| s.layout)
+        .map(|s| s.layout())
         .unwrap();
     let commits = &result.commits;
 
@@ -1004,7 +1004,7 @@ fn tagged_stash_is_not_duplicated() {
     let stash_oid = repo.refname_to_id("refs/stash").unwrap();
 
     let result = snapshot(&mut repo, &RefVisibility::default())
-        .map(|s| s.layout)
+        .map(|s| s.layout())
         .unwrap();
     let commits = &result.commits;
 
@@ -1061,7 +1061,7 @@ fn two_backdated_stashes_on_one_parent() {
     let mut repo = ctx.repo();
 
     let result = snapshot(&mut repo, &RefVisibility::default())
-        .map(|s| s.layout)
+        .map(|s| s.layout())
         .unwrap();
     let commits = &result.commits;
 
@@ -1188,7 +1188,7 @@ fn unreadable_stash_commit_is_skipped() {
     delete_loose_object(ctx.repo_path(), stash_oid);
 
     let mut repo = ctx.repo();
-    let result = snapshot(&mut repo, &RefVisibility::default()).map(|s| s.layout);
+    let result = snapshot(&mut repo, &RefVisibility::default()).map(|s| s.layout());
 
     let commits = result
         .expect("an unreadable stash commit must not blank the graph")
@@ -1216,7 +1216,7 @@ fn unreadable_stash_index_commit_is_skipped() {
     delete_loose_object(ctx.repo_path(), index_oid);
 
     let mut repo = ctx.repo();
-    let result = snapshot(&mut repo, &RefVisibility::default()).map(|s| s.layout);
+    let result = snapshot(&mut repo, &RefVisibility::default()).map(|s| s.layout());
 
     let commits = result
         .expect("an unreadable stash index commit must not blank the graph")
@@ -1250,7 +1250,7 @@ fn row<'a>(
 fn walk(ctx: &TestContext) -> Vec<trunk_git::types::GraphCommit> {
     let mut repo = ctx.repo();
     snapshot(&mut repo, &RefVisibility::default())
-        .map(|s| s.layout)
+        .map(|s| s.layout())
         .unwrap()
         .commits
 }

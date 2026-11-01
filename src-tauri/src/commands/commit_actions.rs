@@ -357,7 +357,7 @@ pub async fn reset_to_commit<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -388,7 +388,7 @@ pub async fn checkout_commit<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -423,7 +423,7 @@ pub async fn create_tag<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -454,7 +454,7 @@ pub async fn delete_tag<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -485,7 +485,7 @@ pub async fn cherry_pick<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -520,7 +520,7 @@ pub async fn revert_commit_begin<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(RevertBeginResult { graph, message })
 }
 
@@ -551,7 +551,7 @@ pub async fn cherry_pick_continue<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -581,7 +581,7 @@ pub async fn cherry_pick_abort<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -612,7 +612,7 @@ pub async fn revert_continue<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -642,7 +642,7 @@ pub async fn revert_abort<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -805,7 +805,7 @@ pub async fn undo_commit<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(undo_result)
 }
 
@@ -851,7 +851,7 @@ pub async fn redo_commit<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 

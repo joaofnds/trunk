@@ -43,6 +43,65 @@ afterEach(() => {
 });
 
 describe("CommitGraph", () => {
+	it("runs a completed command catch-up without advancing the refresh timer", async () => {
+		host.seedGraph(graph(1));
+		render(GraphRefreshHarness, {
+			props: { refreshImmediately: true, commandTarget: "graph" },
+			context: new Map([[SCHEDULER, clock]]),
+		});
+		await screen.findByText("revision 1");
+		const first = host.holdNextReply("refresh_commit_graph");
+		const second = host.holdNextReply("refresh_commit_graph");
+
+		await fireEvent.click(screen.getByText("Complete command"));
+		await first.entered;
+		await fireEvent.click(screen.getByText("Complete command"));
+		expect(host.count("refresh_commit_graph")).toBe(1);
+		first.release(graph(2));
+		await second.entered;
+		second.release(graph(3));
+
+		await screen.findByText("revision 3");
+		expect(host.count("refresh_commit_graph")).toBe(2);
+		expect(screen.queryByText("revision 2")).toBeNull();
+	});
+
+	it.each(["get_wip_diff_stats", "list_stashes"])(
+		"runs a completed command's busy %s catch-up without a refresh timer",
+		async (command) => {
+			host.preferences.set("column_visibility", { diff: true });
+			host.seedGraph(graph(1));
+			const response =
+				command === "list_stashes"
+					? []
+					: {
+							files_changed: 1,
+							insertions: 1,
+							deletions: 0,
+						};
+			host.seedResponse(command, response);
+			render(GraphRefreshHarness, {
+				props: { refreshImmediately: true, commandTarget: "worktree" },
+				context: new Map([[SCHEDULER, clock]]),
+			});
+			await screen.findByText("revision 1");
+			await waitFor(() => expect(host.count(command)).toBeGreaterThan(0));
+			const before = host.count(command);
+			const first = host.holdNextReply(command);
+			const second = host.holdNextReply(command);
+
+			await fireEvent.click(screen.getByText("Complete command"));
+			await first.entered;
+			await fireEvent.click(screen.getByText("Complete command"));
+			expect(host.count(command)).toBe(before + 1);
+			first.release(response);
+			await second.entered;
+			second.release(response);
+
+			expect(host.count(command)).toBe(before + 2);
+		},
+	);
+
 	describe("visible graph statistics", () => {
 		it("defers stats for a hidden Diff column and loads them when shown", async () => {
 			host.preferences.set("column_visibility", { diff: false });

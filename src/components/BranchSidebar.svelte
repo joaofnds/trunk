@@ -1,7 +1,7 @@
 <script lang="ts">
 import Archive from "@lucide/svelte/icons/archive";
 import Search from "@lucide/svelte/icons/search";
-import { onDestroy } from "svelte";
+import { onDestroy, untrack } from "svelte";
 import { deleteBranch } from "../lib/branch-delete.js";
 import {
 	mergeBranch,
@@ -66,6 +66,7 @@ interface Props {
 	 *  never paints against the backend's unfiltered default. */
 	onvisibilityresolved?: () => void;
 	refreshSignal?: number;
+	refreshImmediately?: boolean;
 	workingTreeDirty?: boolean;
 	onopenrebaseeditor?: (baseOid: string, inclusive?: boolean) => void;
 	onopenmessageeditor?: (
@@ -84,6 +85,7 @@ let {
 	onrefnavigate,
 	onvisibilityresolved,
 	refreshSignal,
+	refreshImmediately = false,
 	workingTreeDirty,
 	onopenrebaseeditor,
 	onopenmessageeditor,
@@ -270,7 +272,10 @@ $effect(() => {
 $effect(() => {
 	if (refreshSignal !== undefined && refreshSignal > 0) {
 		refsPath = repoPath;
-		refsRefresh.request();
+		untrack(() => {
+			if (refreshImmediately) void refsRefresh.run();
+			else refsRefresh.request();
+		});
 	}
 });
 
@@ -501,13 +506,18 @@ function closeDialog() {
 }
 
 async function handleDeleteBranch(branchName: string) {
+	const path = repoPath;
 	try {
-		if (!(await deleteBranch(repoPath, branchName))) return;
-		await loadRefs(repoPath);
+		if (!(await deleteBranch(path, branchName))) return;
+		if (!sidebarActive || repoPath !== path) return;
+		await loadRefs(path);
+		if (!sidebarActive || repoPath !== path) return;
 		onrefreshed?.();
 		showToast(`Deleted branch ${branchName}`, "success");
 	} catch (e) {
-		reportErrorToast(e, "Failed to delete branch");
+		if (sidebarActive && repoPath === path) {
+			reportErrorToast(e, "Failed to delete branch");
+		}
 	}
 }
 

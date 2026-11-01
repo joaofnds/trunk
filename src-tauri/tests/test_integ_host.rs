@@ -145,6 +145,7 @@ fn an_unchanged_background_fetch_preserves_the_cached_capture() {
             paths: vec!["watcher-drain-marker".to_owned()],
             graph_revision: None,
             refs_only: false,
+            command_completed: false,
         }],
         "unchanged fetch bookkeeping must leave only the deliberate watcher marker"
     );

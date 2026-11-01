@@ -502,7 +502,7 @@ pub async fn stash_save<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -533,7 +533,7 @@ pub async fn stash_pop<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -564,7 +564,7 @@ pub async fn stash_apply<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -595,6 +595,6 @@ pub async fn stash_drop<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }

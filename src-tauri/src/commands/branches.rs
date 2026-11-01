@@ -365,7 +365,7 @@ pub async fn checkout_branch<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
 
     Ok(())
 }
@@ -435,7 +435,7 @@ pub async fn fast_forward_to<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
 
     Ok(())
 }
@@ -597,7 +597,7 @@ pub async fn create_branch<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
 
     Ok(())
 }
@@ -819,7 +819,7 @@ pub async fn checkout_remote_branch<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
 
     Ok(name)
 }
@@ -883,7 +883,7 @@ pub async fn delete_branch<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -923,6 +923,6 @@ pub async fn rename_branch<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }

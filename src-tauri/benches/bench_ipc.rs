@@ -128,12 +128,10 @@ fn bench_ipc_get_graph(c: &mut Criterion) {
                 &trunk_git::graph_input::RefVisibility::default(),
             )
             .unwrap()
-            .layout;
+            .page(0, 200);
             // Simulate the command boundary: slice to 200 commits + serialize
-            let len = result.commits.len();
-            let end = 200.min(len);
             let response = trunk_lib::commands::history::GraphResponse {
-                commits: result.commits[..end].to_vec(),
+                commits: result.commits,
                 max_columns: result.max_columns,
                 revision: 0,
             };
@@ -216,9 +214,9 @@ fn bench_startup_sequence(c: &mut Criterion) {
                         &trunk_git::graph_input::RefVisibility::default(),
                     )
                     .unwrap()
-                    .layout;
+                    .page(0, 200);
                     let _ = serde_json::to_string(&trunk_lib::commands::history::GraphResponse {
-                        commits: graph.commits[..200.min(graph.commits.len())].to_vec(),
+                        commits: graph.commits,
                         max_columns: graph.max_columns,
                         revision: 0,
                     })

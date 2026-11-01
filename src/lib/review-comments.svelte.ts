@@ -396,6 +396,13 @@ export function createReviewComments(
 	unlisteners.push(
 		subscribeToRepoChanges(repoPath, {
 			includeRefs: true,
+			async run() {
+				await stalenessRefresh.run();
+				if (cancelled) return;
+
+				fullRefreshPending = true;
+				await reviewRefresh.run();
+			},
 			invalidate(event) {
 				if (event.refs_only) {
 					refsPending = true;

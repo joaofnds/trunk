@@ -2,8 +2,6 @@ mod common;
 
 use common::context::TestContext;
 use trunk_git::graph_input::RefVisibility;
-use trunk_git::types::GraphResult;
-use trunk_lib::commands::history::GraphResponse;
 use trunk_lib::types::MatchType;
 
 /// Build a `TestContext` with a merge topology and populate its cache.
@@ -40,7 +38,7 @@ fn whitespace_query_returns_empty() {
 #[test]
 fn sha_prefix_match() {
     let ctx = build_search_ctx();
-    let commits = &ctx.cache_map.get(ctx.path()).unwrap().layout.commits;
+    let commits = &ctx.cache_map.get(ctx.path()).unwrap().layout().commits;
     let first_oid = &commits[0].oid;
     let prefix = &first_oid[..6];
 
@@ -52,7 +50,7 @@ fn sha_prefix_match() {
 #[test]
 fn sha_match_case_insensitive() {
     let ctx = build_search_ctx();
-    let commits = &ctx.cache_map.get(ctx.path()).unwrap().layout.commits;
+    let commits = &ctx.cache_map.get(ctx.path()).unwrap().layout().commits;
     let first_oid = &commits[0].oid;
     let prefix_upper = first_oid[..6].to_uppercase();
 
@@ -408,7 +406,7 @@ fn wip_diff_stats_counts_untracked_as_insertions() {
 #[test]
 fn results_in_graph_order() {
     let ctx = build_search_ctx();
-    let commits = &ctx.cache_map.get(ctx.path()).unwrap().layout.commits;
+    let commits = &ctx.cache_map.get(ctx.path()).unwrap().layout().commits;
     // "test" matches author_name "Test User" on all commits
     let results = ctx.search_commits("test").unwrap();
     assert!(results.len() >= 2, "expected at least 2 results");
@@ -447,57 +445,12 @@ fn a_visibility_change_re_lays_out_the_cached_graph_without_the_repository() {
     hidden.hidden_refs.insert("refs/heads/feature".to_owned());
     let toggled = cached.with_visibility(hidden.clone());
 
-    let summaries: Vec<&str> = toggled
-        .layout
+    let toggled_layout = toggled.layout();
+    let summaries: Vec<&str> = toggled_layout
         .commits
         .iter()
         .map(|c| c.summary.as_str())
         .collect();
     assert_eq!(summaries, ["Initial commit"]);
     assert_eq!(toggled.visibility(), &hidden);
-}
-
-/// A layout of `n` rows, built by repeating a real captured row. Only the slice
-/// length is under test, so the rows' content does not matter.
-fn layout_of(n: usize) -> GraphResult {
-    let mut ctx = TestContext::builder()
-        .with_file("README.md", "hello")
-        .with_commit("Initial commit")
-        .build();
-    ctx.populate_cache();
-    let row = ctx.cache_map.get(ctx.path()).unwrap().layout.commits[0].clone();
-
-    GraphResult {
-        commits: std::iter::repeat_n(row, n).collect(),
-        max_columns: 1,
-    }
-}
-
-/// TRUNK-133: a rebuild must be able to answer with the depth the caller had already
-/// paged in, or the frontend replaces its list with page one and loses every page the
-/// user had scrolled through.
-#[test]
-fn a_rebuild_returns_as_many_rows_as_the_caller_had_loaded() {
-    let restored = GraphResponse::head(&layout_of(450), 400, 9);
-
-    assert_eq!(restored.commits.len(), 400);
-    assert_eq!(restored.revision, 9);
-}
-
-/// A caller with nothing loaded asks for the default page, so a fresh open is unchanged.
-#[test]
-fn a_rebuild_with_no_loaded_depth_returns_one_page() {
-    let fresh = GraphResponse::head(&layout_of(450), 0, 9);
-
-    assert_eq!(fresh.commits.len(), 200);
-    assert_eq!(fresh.revision, 9);
-}
-
-/// A rebuild that shortened the history answers with what is left, never past the end.
-#[test]
-fn a_rebuild_shorter_than_the_loaded_depth_returns_what_remains() {
-    let shortened = GraphResponse::head(&layout_of(120), 400, 9);
-
-    assert_eq!(shortened.commits.len(), 120);
-    assert_eq!(shortened.revision, 9);
 }

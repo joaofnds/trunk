@@ -8,11 +8,27 @@ export interface RepoChanged {
 	paths: string[];
 	refs_only?: boolean;
 	graph_revision?: number;
+	command_completed?: boolean;
 }
 
 export interface RepoChangeSubscriber {
 	includeRefs?: boolean;
 	invalidate(event: RepoChanged): void;
+	run?(): Promise<void>;
+}
+
+/** Completed commands bypass the watcher deadline, including an already busy reader. */
+export function requestRepoChange(
+	subscriber: RepoChangeSubscriber,
+	event: RepoChanged,
+): void {
+	if (event.command_completed && subscriber.run) {
+		void subscriber
+			.run()
+			.catch((error: unknown) =>
+				console.error("Repository refresh failed", error),
+			);
+	} else subscriber.invalidate(event);
 }
 
 /**
@@ -31,7 +47,7 @@ export function subscribeToRepoChanges(
 		if (disposed || event.payload.repo !== repoPath) return;
 		if (event.payload.refs_only && !subscriber.includeRefs) return;
 
-		subscriber.invalidate(event.payload);
+		requestRepoChange(subscriber, event.payload);
 	}).then((registeredUnlisten) => {
 		if (disposed) registeredUnlisten();
 		else unlisten = registeredUnlisten;

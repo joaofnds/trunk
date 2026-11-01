@@ -187,7 +187,7 @@ pub async fn create_commit<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 
@@ -220,7 +220,7 @@ pub async fn amend_commit<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
 

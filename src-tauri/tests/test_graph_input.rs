@@ -598,7 +598,7 @@ fn a_snapshot_re_laid_out_under_a_visibility_equals_a_fresh_layout_under_it() {
 
     assert_eq!(toggled.visibility(), &hidden);
     assert_eq!(
-        layout_dump::render(&toggled.layout),
+        layout_dump::render(&toggled.layout()),
         layout_dump::render(&layout(&apply_visibility(&source, &hidden), 0, usize::MAX))
     );
 }
@@ -813,4 +813,68 @@ fn a_partial_wire_form_fills_in_the_visible_default() {
 
     assert!(parsed.hidden_refs.contains("refs/heads/topic"));
     assert!(parsed.hidden_stashes.is_empty());
+}
+
+#[test]
+fn a_cached_dirty_selection_matches_fresh_placement_and_changes_branch_colour() {
+    let mut source = source_using_every_captured_field();
+    source.placement.head_tip = Some(oid(4));
+    source.placement.tracked_upstream = Some(oid(3));
+    source.placement.worktree_dirty = false;
+    let clean = GraphSnapshot::new(source.clone(), RefVisibility::default());
+
+    let dirty = clean.with_worktree_dirty(true);
+    source.placement.worktree_dirty = true;
+    let expected = layout(&source, 0, usize::MAX);
+
+    assert_eq!(
+        layout_dump::render(&dirty.layout()),
+        layout_dump::render(&expected)
+    );
+    assert!(!dirty.same_capture_as(&clean));
+    let clean_branch = clean.page(2, 1).commits.remove(0);
+    let dirty_branch = dirty.page(2, 1).commits.remove(0);
+    assert_eq!((clean_branch.column, clean_branch.color_index), (0, 0));
+    assert_ne!(dirty_branch.column, 0);
+    assert_ne!(dirty_branch.color_index, 0);
+}
+
+#[test]
+fn a_cached_clean_selection_restores_the_original_placement() {
+    let mut source = source_using_every_captured_field();
+    source.placement.worktree_dirty = false;
+    let snapshot = GraphSnapshot::new(source, RefVisibility::default());
+
+    let restored = snapshot
+        .with_worktree_dirty(true)
+        .with_worktree_dirty(false);
+
+    assert!(snapshot.same_capture_as(&restored));
+    assert_eq!(
+        layout_dump::render(&restored.layout()),
+        layout_dump::render(&snapshot.layout())
+    );
+}
+
+#[test]
+fn a_cached_page_past_the_maximum_offset_is_empty() {
+    let snapshot = GraphSnapshot::new(tip_with_local_and_remote_main(), RefVisibility::default());
+
+    let page = snapshot.page(usize::MAX, 200);
+
+    assert!(page.commits.is_empty());
+}
+
+#[test]
+fn selected_review_members_keep_graph_order_and_omit_unrequested_rows() {
+    let snapshot = GraphSnapshot::new(tip_with_local_and_remote_main(), RefVisibility::default());
+
+    let selected = snapshot.select([oid(2), oid(1), oid(2), oid(99)].into_iter());
+
+    let summaries: Vec<_> = selected
+        .commits
+        .iter()
+        .map(|row| row.summary.as_str())
+        .collect();
+    assert_eq!(summaries, ["Tip", "Init"]);
 }

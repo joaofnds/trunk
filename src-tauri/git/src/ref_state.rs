@@ -8,6 +8,8 @@ pub struct RefState {
     fetch_refspecs: Vec<(String, Vec<String>)>,
     stashes: Vec<git2::Oid>,
     head: Option<(Vec<u8>, Vec<u8>)>,
+    shallow: Option<Vec<u8>>,
+    grafts: Option<Vec<u8>>,
 }
 
 impl RefState {
@@ -78,12 +80,23 @@ impl RefState {
             fetch_refspecs: fetch_refspecs.into_iter().collect(),
             stashes,
             head,
+            // Follow libgit2: shallow belongs to gitdir, grafts to the common info directory.
+            shallow: metadata_identity(&repo.path().join("shallow"))?,
+            grafts: metadata_identity(&repo.commondir().join("info/grafts"))?,
         })
     }
 
     #[must_use]
     pub fn changes_worktree_context(&self, previous: &Self) -> bool {
         self.head != previous.head || self.stashes != previous.stashes
+    }
+}
+
+fn metadata_identity(path: &std::path::Path) -> Result<Option<Vec<u8>>, TrunkError> {
+    match std::fs::read(path) {
+        Ok(contents) => Ok(Some(contents)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(TrunkError::new("graph_metadata", error.to_string())),
     }
 }
 

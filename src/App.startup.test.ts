@@ -80,6 +80,40 @@ describe("App startup", () => {
 		expect(app.paths("get_commit_graph")).toEqual(["/active"]);
 	});
 
+	it.each([false, true])(
+		"updates a completed command's prepared-tab badge without a timer (busy=%s)",
+		async (busy) => {
+			app = new StartupHarness(savedTabs, "active");
+			app.start();
+			await screen.findByText("restored history");
+			await app.settle();
+			await app.prepareNextRepository();
+			await app.prepareNextRepository();
+			const before = app.paths("get_dirty_counts").length;
+			const event = { repo: "/first", paths: ["file.txt"] };
+			const oldRead = busy ? app.host.holdNextReply("get_dirty_counts") : null;
+			if (oldRead) {
+				await app.host.emitRepoChanged(event);
+				app.clock.advanceBy(REPO_CHANGE_DELAY_MS);
+				await oldRead.entered;
+			}
+			app.host.seedResponse("get_dirty_counts", {
+				staged: 0,
+				unstaged: 1,
+				conflicted: 0,
+			});
+
+			await app.host.emitRepoChanged({ ...event, command_completed: true });
+			oldRead?.release({ staged: 0, unstaged: 0, conflicted: 0 });
+
+			await waitFor(() => expect(app.dirty("first")).toBe(true));
+			expect(app.paths("get_dirty_counts")).toHaveLength(
+				before + (busy ? 2 : 1),
+			);
+			expect(app.paths("get_commit_graph")).toEqual(["/active"]);
+		},
+	);
+
 	it("loads a saved draft on first activation and clears it only after editing", async () => {
 		app = new StartupHarness(savedTabs, "active");
 		const drafts = {

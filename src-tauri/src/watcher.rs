@@ -27,6 +27,8 @@ pub struct RepoChanged {
     pub graph_revision: Option<u64>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub refs_only: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub command_completed: bool,
 }
 
 impl RepoChanged {
@@ -38,6 +40,19 @@ impl RepoChanged {
             paths: Vec::new(),
             graph_revision: None,
             refs_only: false,
+            command_completed: false,
+        }
+    }
+
+    /// A finished command requests immediate reads and advertises only a checked graph.
+    #[must_use]
+    pub fn completed(repo: impl Into<String>, cache: &crate::state::CommitCache) -> Self {
+        let repo = repo.into();
+        let graph_revision = cache.checked_revision(&repo);
+        Self {
+            graph_revision,
+            command_completed: true,
+            ..Self::whole_repo(repo)
         }
     }
 
@@ -48,6 +63,7 @@ impl RepoChanged {
             paths: Vec::new(),
             graph_revision: Some(graph.revision),
             refs_only: !graph.worktree_context_changed,
+            command_completed: false,
         }
     }
 
@@ -87,6 +103,7 @@ impl RepoChanged {
             paths,
             graph_revision: None,
             refs_only: false,
+            command_completed: false,
         }
     }
 }

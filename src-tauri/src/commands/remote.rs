@@ -260,7 +260,7 @@ async fn refresh_graph<R: Runtime>(
         )
         .await?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path_owned));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path_owned, cache));
     Ok(())
 }
 

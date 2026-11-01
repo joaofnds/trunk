@@ -26,7 +26,10 @@ import {
 	isCheckoutConflict,
 } from "../lib/checkout.js";
 import { copySha, copyText } from "../lib/clipboard.js";
-import { createCoalescedTask } from "../lib/coalesced-task.js";
+import {
+	type CoalescedTask,
+	createCoalescedTask,
+} from "../lib/coalesced-task.js";
 import {
 	authorContentWidth,
 	columnFloors,
@@ -134,6 +137,7 @@ interface Props {
 	onrefreshconsumed?: (generation: number) => void;
 	wipRefreshSignal?: number;
 	cachedGraphRevision?: number;
+	refreshImmediately?: boolean;
 	selectedCommitOid?: string | null;
 	/** OIDs of the active compare's picked rows, highlighted like the selection. */
 	compareOids?: ReadonlySet<string>;
@@ -173,6 +177,7 @@ let {
 	onrefreshconsumed,
 	wipRefreshSignal,
 	cachedGraphRevision,
+	refreshImmediately = false,
 	selectedCommitOid,
 	compareOids = new Set<string>(),
 	onopenrebaseeditor,
@@ -1701,7 +1706,7 @@ async function readVisibleStats() {
 			if (!graphActive) return;
 
 			if (isTrunkError(error) && error.code === "graph_changed") {
-				cachedGraphRefresh.request();
+				requestRead(cachedGraphRefresh);
 				return;
 			}
 
@@ -1741,7 +1746,7 @@ async function readWipStats() {
 const wipStatsRefresh = createCoalescedTask(scheduler, readWipStats);
 
 function requestWipStats(): void {
-	wipStatsRefresh.request();
+	requestRead(wipStatsRefresh);
 }
 
 onDestroy(() => {
@@ -1870,6 +1875,14 @@ function replaceGraph(response: GraphResponse): void {
 	attemptedStats = new Set();
 }
 
+function requestRead(task: CoalescedTask) {
+	if (refreshImmediately) {
+		void task
+			.run()
+			.catch((error: unknown) => console.error("Graph refresh failed", error));
+	} else task.request();
+}
+
 async function readCachedGraph() {
 	const seq = ++refreshSeq;
 	try {
@@ -1899,7 +1912,7 @@ $effect(() => {
 		return;
 	const revision = cachedGraphRevision;
 	untrack(() => {
-		if (revision > graphRevision) cachedGraphRefresh.request();
+		if (revision > graphRevision) requestRead(cachedGraphRefresh);
 	});
 });
 
@@ -1907,7 +1920,7 @@ $effect(() => {
 	if (wipRefreshSignal !== undefined && wipRefreshSignal > 0) {
 		untrack(() => {
 			requestWipStats();
-			stashMapRefresh.request();
+			requestRead(stashMapRefresh);
 		});
 	}
 });
@@ -1980,7 +1993,7 @@ $effect(() => {
 			requestWipStats();
 		}
 		statsWereActive = active;
-		if (active) visibleStatsRefresh.request();
+		if (active) requestRead(visibleStatsRefresh);
 	});
 });
 
@@ -2003,7 +2016,7 @@ $effect(() => {
 	const generation = refreshSignal;
 	untrack(() => {
 		if (generation !== undefined && generation > consumedRefreshSignal)
-			graphRefresh.request();
+			requestRead(graphRefresh);
 	});
 });
 

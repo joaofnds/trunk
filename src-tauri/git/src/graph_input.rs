@@ -336,23 +336,26 @@ fn parent_list(source: &GraphSource, oid: Oid) -> &[Oid] {
 
 #[must_use]
 pub fn layout(source: &GraphSource, offset: usize, limit: usize) -> GraphResult {
+    let assigned = placement::assign_lanes(&source.placement);
+    hydrate(source, &assigned, page_oids(source, offset, limit))
+}
+
+fn page_oids(source: &GraphSource, offset: usize, limit: usize) -> &[Oid] {
     let oids = &source.placement.oids;
-    let start = offset.min(oids.len());
-    let end = (offset + limit).min(oids.len());
-    let page_oids = &oids[start..end];
+    &oids[offset.min(oids.len())..offset.saturating_add(limit).min(oids.len())]
+}
 
-    let mut assigned = placement::assign_lanes(&source.placement);
-
+fn hydrate(source: &GraphSource, assigned: &placement::Layout, page_oids: &[Oid]) -> GraphResult {
     let mut commits = Vec::with_capacity(page_oids.len());
     for &oid in page_oids {
         let facts = commit_facts(source, oid);
         let (column, edges, color_index, is_branch_tip, is_stash, claim) = assigned
             .placements
-            .remove(&oid)
+            .get(&oid)
             .map_or((0, vec![], 0, false, false, None), |p| {
                 (
                     p.column,
-                    p.edges,
+                    p.edges.clone(),
                     p.color_index,
                     p.is_branch_tip,
                     p.is_stash,
@@ -416,38 +419,52 @@ pub fn layout(source: &GraphSource, offset: usize, limit: usize) -> GraphResult 
     }
 }
 
-/// The graph as it was last built for one repository: the capture it came from, the
-/// visibility it was laid out under, and the layout itself.
+/// A captured history and its prepared clean/dirty lane placements.
 ///
-/// A visibility change re-lays out the same capture, so a sidebar toggle never reads the
-/// repository again (TRUNK-129). The capture and the layout travel together, and the only
-/// way to change the visibility is through `with_visibility`, so the cached layout can never
-/// describe a visibility other than the one recorded beside it (TRUNK-120).
+/// Row facts are hydrated only when a caller requests them; worktree changes select a plan
+/// without walking, laying out, or cloning the history again.
 #[derive(Debug, Clone)]
 pub struct GraphSnapshot {
     capture: Arc<GraphSource>,
+    visible: Arc<GraphSource>,
+    layouts: Arc<[placement::Layout; 2]>,
+    positions: Arc<HashMap<Oid, usize>>,
     visibility: RefVisibility,
-    pub layout: GraphResult,
+    worktree_dirty: bool,
 }
 
-/// Over the wire a snapshot is its layout: the capture never leaves the backend, and every
-/// graph IPC wraps the layout with its publication revision in `GraphResponse`.
+/// Explicit full-graph serialization, used by graph capture and fixture tools.
 impl Serialize for GraphSnapshot {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.layout.serialize(serializer)
+        self.layout().serialize(serializer)
     }
 }
 
 impl GraphSnapshot {
     #[must_use]
     pub fn new(capture: GraphSource, visibility: RefVisibility) -> Self {
-        Self::lay_out(Arc::new(capture), visibility)
+        let worktree_dirty = capture.placement.worktree_dirty;
+        Self::prepare(Arc::new(capture), visibility, worktree_dirty)
     }
 
-    /// The same capture, laid out under another visibility. No repository access.
+    /// The same history under another visibility, preserving its latest worktree state.
     #[must_use]
     pub fn with_visibility(&self, visibility: RefVisibility) -> Self {
-        Self::lay_out(Arc::clone(&self.capture), visibility)
+        Self::prepare(Arc::clone(&self.capture), visibility, self.worktree_dirty)
+    }
+
+    /// Select an already prepared layout; the immutable history remains shared.
+    #[must_use]
+    pub fn with_worktree_dirty(&self, worktree_dirty: bool) -> Self {
+        Self {
+            worktree_dirty,
+            ..self.clone()
+        }
+    }
+
+    #[must_use]
+    pub const fn worktree_dirty(&self) -> bool {
+        self.worktree_dirty
     }
 
     #[must_use]
@@ -455,26 +472,114 @@ impl GraphSnapshot {
         &self.visibility
     }
 
-    /// Whether `other` was laid out from the exact same capture as this snapshot, rather
-    /// than one a later rebuild produced. `with_visibility` clones the `Arc`, so two
-    /// snapshots from the same capture always point at the same allocation.
+    /// History identity and the worktree observation, used by publication fences.
     #[must_use]
     pub fn same_capture_as(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.capture, &other.capture)
+        Arc::ptr_eq(&self.capture, &other.capture) && self.worktree_dirty == other.worktree_dirty
     }
 
-    fn lay_out(capture: Arc<GraphSource>, visibility: RefVisibility) -> Self {
-        let layout = if visibility.is_empty() {
-            layout(&capture, 0, usize::MAX)
+    /// Visible history order, without hydrating rows or cloning commit text.
+    #[must_use]
+    pub fn oids(&self) -> &[Oid] {
+        &self.visible.placement.oids
+    }
+
+    /// Facts for history search; querying does not materialize graph rows.
+    pub fn commits(&self) -> impl Iterator<Item = (Oid, &CommitFacts, &[RefLabel])> {
+        self.oids().iter().map(|&oid| {
+            (
+                oid,
+                commit_facts(&self.visible, oid),
+                self.visible.refs.get(&oid).map_or(&[][..], Vec::as_slice),
+            )
+        })
+    }
+
+    #[must_use]
+    pub fn page(&self, offset: usize, limit: usize) -> GraphResult {
+        hydrate(
+            &self.visible,
+            &self.layouts[usize::from(self.worktree_dirty)],
+            page_oids(&self.visible, offset, limit),
+        )
+    }
+
+    /// Requested review members in graph order, without hydrating unrelated history.
+    #[must_use]
+    pub fn select(&self, oids: impl Iterator<Item = Oid>) -> GraphResult {
+        let mut positions: Vec<_> = oids
+            .filter_map(|oid| self.positions.get(&oid).copied())
+            .collect();
+
+        positions.sort_unstable();
+        positions.dedup();
+
+        let oids: Vec<_> = positions
+            .into_iter()
+            .map(|position| self.oids()[position])
+            .collect();
+
+        hydrate(
+            &self.visible,
+            &self.layouts[usize::from(self.worktree_dirty)],
+            &oids,
+        )
+    }
+
+    /// Materialize the full graph only for callers explicitly asking for every row.
+    #[must_use]
+    pub fn layout(&self) -> GraphResult {
+        self.page(0, usize::MAX)
+    }
+
+    fn prepare(capture: Arc<GraphSource>, visibility: RefVisibility, worktree_dirty: bool) -> Self {
+        let visible = if visibility.is_empty() {
+            Arc::clone(&capture)
         } else {
-            let source = apply_visibility(&capture, &visibility);
-            layout(&source, 0, usize::MAX)
+            Arc::new(apply_visibility(&capture, &visibility))
         };
+        let positions = Arc::new(
+            visible
+                .placement
+                .oids
+                .iter()
+                .enumerate()
+                .map(|(index, &oid)| (oid, index))
+                .collect(),
+        );
+
+        let mut input = visible.placement.clone();
+        input.worktree_dirty = false;
+        let clean = placement::assign_lanes(&input);
+        input.worktree_dirty = true;
+        let dirty = placement::assign_lanes(&input);
 
         Self {
             capture,
+            visible,
+            layouts: Arc::new([clean, dirty]),
+            positions,
             visibility,
-            layout,
+            worktree_dirty,
+        }
+    }
+}
+
+#[cfg(test)]
+mod snapshot_sharing_tests {
+    use super::*;
+
+    #[test]
+    fn worktree_observations_share_both_prepared_placement_plans() {
+        let clean = GraphSnapshot::new(GraphSource::default(), RefVisibility::default());
+        let dirty = clean.with_worktree_dirty(true);
+        let restored = dirty.with_worktree_dirty(false);
+
+        for observation in [&dirty, &restored] {
+            assert!(Arc::ptr_eq(&clean.capture, &observation.capture));
+            assert!(Arc::ptr_eq(&clean.visible, &observation.visible));
+            assert!(Arc::ptr_eq(&clean.layouts, &observation.layouts));
+            assert!(Arc::ptr_eq(&clean.positions, &observation.positions));
         }
     }
 }

@@ -135,6 +135,7 @@ pub struct GraphCache {
     generations: HashMap<String, u64>,
     revisions: HashMap<String, u64>,
     inputs: HashMap<String, crate::ref_state::RefState>,
+    captured_refs: HashMap<String, crate::ref_state::RefState>,
     input_epochs: HashMap<String, u64>,
     closed: HashSet<String>,
     sequence: u64,
@@ -145,6 +146,7 @@ pub struct GraphTicket {
     session: u64,
     generation: u64,
     input_epoch: u64,
+    require_fresh: bool,
 }
 
 pub struct ReconciledGraph {
@@ -236,6 +238,7 @@ impl GraphCache {
         self.generations.insert(path.clone(), self.sequence);
         self.revisions.insert(path.clone(), self.sequence);
         self.inputs.remove(&path);
+        self.captured_refs.remove(&path);
         self.graphs.insert(path, snapshot);
     }
 
@@ -258,6 +261,7 @@ impl GraphCache {
         self.generations.remove(path);
         self.revisions.remove(path);
         self.inputs.remove(path);
+        self.captured_refs.remove(path);
         self.input_epochs.remove(path);
         self.closed.insert(path.to_owned());
     }
@@ -288,6 +292,7 @@ impl GraphCache {
             session,
             generation: self.sequence,
             input_epoch: self.input_epochs.get(path).copied().unwrap_or_default(),
+            require_fresh: false,
         })
     }
 
@@ -307,8 +312,29 @@ impl GraphCache {
             });
         }
         let input_epoch = self.input_epochs.get(&path).copied().unwrap_or_default();
-        self.insert(path.clone(), snapshot.clone());
-        if let Some(inputs) = inputs.filter(|_| input_epoch == ticket.input_epoch) {
+        if ticket.require_fresh && input_epoch != ticket.input_epoch {
+            return Err(TrunkError::new(
+                "graph_changed",
+                "Repository changed while refreshing its graph",
+            ));
+        }
+        let unchanged = self.get(&path).is_some_and(|current| {
+            current.same_capture_as(&snapshot) && current.visibility() == snapshot.visibility()
+        });
+        let captured_refs = inputs.clone().or_else(|| {
+            self.get(&path)
+                .filter(|current| current.same_capture_as(&snapshot))
+                .and_then(|_| self.captured_refs.get(&path).cloned())
+        });
+        if !unchanged {
+            self.insert(path.clone(), snapshot.clone());
+        }
+        if let Some(refs) = captured_refs {
+            self.captured_refs.insert(path.clone(), refs);
+        }
+        if let Some(inputs) = inputs
+            && input_epoch == ticket.input_epoch
+        {
             self.inputs.insert(path, inputs);
         }
         Ok(snapshot)
@@ -322,6 +348,7 @@ impl GraphCache {
         }
         self.insert(path.clone(), GraphSnapshot::new(read.source, visibility));
         if let Some(inputs) = read.inputs {
+            self.captured_refs.insert(path.clone(), inputs.clone());
             self.inputs.insert(path, inputs);
         }
     }
@@ -335,6 +362,13 @@ impl GraphCache {
             return Err(TrunkError::new("not_open", "Repository session closed"));
         }
         self.inputs.remove(path);
+        if ticket.require_fresh {
+            return Err(TrunkError::new(
+                "graph_changed",
+                "Repository visibility changed while refreshing its graph",
+            ));
+        }
+
         self.get(path).cloned().ok_or_else(|| {
             TrunkError::new(
                 "graph_changed",
@@ -349,6 +383,8 @@ impl GraphCache {
 pub struct CommitCache(
     Mutex<GraphCache>,
     Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    #[cfg(feature = "test-util")]
+    Mutex<Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>>,
 );
 
 pub(crate) struct CachedGraphRead<T> {
@@ -360,7 +396,35 @@ pub(crate) struct CachedGraphRead<T> {
 impl CommitCache {
     #[must_use]
     pub fn new(cache: GraphCache) -> Self {
-        Self(Mutex::new(cache), Mutex::new(HashMap::new()))
+        Self(
+            Mutex::new(cache),
+            Mutex::new(HashMap::new()),
+            #[cfg(feature = "test-util")]
+            Mutex::new(None),
+        )
+    }
+
+    /// Hold the next worktree observation before publication, for deterministic race tests.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the observation lock is poisoned.
+    #[cfg(feature = "test-util")]
+    pub fn hold_next_refresh_observation(
+        &self,
+        observed: std::sync::mpsc::Sender<()>,
+        resume: std::sync::mpsc::Receiver<()>,
+    ) {
+        *self.2.lock().unwrap() = Some((observed, resume));
+    }
+
+    #[cfg(feature = "test-util")]
+    fn finish_refresh_observation(&self) {
+        let observation = self.2.lock().unwrap().take();
+        if let Some((observed, resume)) = observation {
+            observed.send(()).unwrap();
+            resume.recv().unwrap();
+        }
     }
 
     /// Start a new opening session, fencing any earlier close/reopen completion.
@@ -443,6 +507,15 @@ impl CommitCache {
             cache.input_epochs.insert(path.to_owned(), epoch);
             cache.inputs.remove(path);
         }
+    }
+
+    /// A publication still checked against the latest local watcher epoch.
+    pub(crate) fn checked_revision(&self, path: &str) -> Option<u64> {
+        let cache = self.0.lock().unwrap();
+        cache
+            .inputs
+            .contains_key(path)
+            .then(|| cache.revisions[path])
     }
 
     /// Reserve a publication directly for tests that exercise publication fencing.
@@ -833,6 +906,75 @@ impl<'a> GraphRebuild<'a> {
             .map(|(snapshot, ())| snapshot)
     }
 
+    /// Refresh worktree state against a checked history, recapturing only changed refs.
+    ///
+    /// # Errors
+    ///
+    /// Returns repository read errors, `not_open` after close/reopen, or
+    /// `graph_changed` when a concurrent write invalidates the observation.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a shared state lock is poisoned.
+    pub async fn refresh_worktree_in_session(
+        &self,
+        path: String,
+        location: PathBuf,
+        session: u64,
+    ) -> Result<GraphSnapshot, TrunkError> {
+        let (_gate, mut ticket) = self.cache.begin_rebuild(&path, session).await?;
+        ticket.require_fresh = true;
+
+        self.refresh_locked(path, location, ticket).await
+    }
+
+    async fn refresh_locked(
+        &self,
+        path: String,
+        location: PathBuf,
+        ticket: GraphTicket,
+    ) -> Result<GraphSnapshot, TrunkError> {
+        let previous = {
+            let cache = self.cache.0.lock().unwrap();
+            cache
+                .get(&path)
+                .cloned()
+                .zip(cache.captured_refs.get(&path).cloned())
+        };
+        let visibility = self.ref_visibility.get(&path);
+
+        let prepared = tauri::async_runtime::spawn_blocking(move || {
+            let mut repo = git2::Repository::open(location)?;
+            if let Some((snapshot, refs)) = previous {
+                let before = crate::ref_state::RefState::read(&repo)?;
+                if before == refs {
+                    let dirty = trunk_git::status::worktree_dirty(&repo);
+                    let after = crate::ref_state::RefState::read(&repo)?;
+                    if before == after {
+                        return Ok(Some((snapshot.with_worktree_dirty(dirty), Some(after))));
+                    }
+                }
+            }
+            let read = read_graph(&mut repo)?;
+            Ok::<_, TrunkError>(
+                (!read.changed).then(|| (GraphSnapshot::new(read.source, visibility), read.inputs)),
+            )
+        })
+        .await
+        .map_err(|error| TrunkError::new("spawn_error", error.to_string()))??;
+        let (snapshot, inputs) = prepared.ok_or_else(|| {
+            TrunkError::new(
+                "graph_changed",
+                "Repository changed while refreshing its graph",
+            )
+        })?;
+
+        #[cfg(feature = "test-util")]
+        self.cache.finish_refresh_observation();
+
+        self.publish(path, ticket, snapshot, inputs).await
+    }
+
     /// Refresh an open graph only when this read can replace its cached capture.
     /// A changed repository or visibility can cause publication to retain the old
     /// capture; the caller must retry rather than acknowledge that refresh.
@@ -968,6 +1110,7 @@ impl<'a> GraphRebuild<'a> {
             }
             cache.inputs.get(&path).cloned()
         };
+
         self.publish(path, ticket, snapshot, inputs).await
     }
 
@@ -1054,13 +1197,12 @@ impl<'a> GraphRebuild<'a> {
                 .inputs
                 .get(&path)
                 .is_none_or(|previous| inputs.changes_worktree_context(previous));
-            (cache.begin(&path)?, worktree_context_changed)
+            let mut ticket = cache.begin(&path)?;
+            drop(cache);
+            ticket.require_fresh = true;
+            (ticket, worktree_context_changed)
         };
-        self.rebuild_locked(path.clone(), ticket, move || {
-            let mut repo = git2::Repository::open(location)?;
-            read_graph(&mut repo).map(|read| (read, ()))
-        })
-        .await?;
+        self.refresh_locked(path.clone(), location, ticket).await?;
         let read = self
             .cache
             .read_versioned_with_session(&path, None, |_, revision| {
@@ -1108,6 +1250,7 @@ impl<'a> GraphRebuild<'a> {
 
         if let Some(snapshot) = rebuilt.graphs.remove(&path) {
             let inputs = rebuilt.inputs.remove(&path);
+
             self.publish(path, ticket, snapshot, inputs).await?;
         } else {
             self.cache.invalidate(&path);
@@ -1190,6 +1333,200 @@ mod tests {
                 .flatten()
                 .any(|label| label.name == "refs/heads/change-2")
         );
+    }
+
+    fn history_expands_after_boundary_removal(metadata: &str) {
+        let (directory, repo) = capture_repository();
+        let parent = repo.head().unwrap().peel_to_commit().unwrap();
+        let signature = git2::Signature::new(
+            "Fixture",
+            "fixture@example.invalid",
+            &git2::Time::new(2_000, 0),
+        )
+        .unwrap();
+        let tip = repo
+            .commit(
+                Some("HEAD"),
+                &signature,
+                &signature,
+                "tip",
+                &parent.tree().unwrap(),
+                &[&parent],
+            )
+            .unwrap();
+        let metadata_path = repo.path().join(metadata);
+        std::fs::create_dir_all(metadata_path.parent().unwrap()).unwrap();
+        std::fs::write(&metadata_path, format!("{tip}\n")).unwrap();
+        let path = directory.path().to_str().unwrap().to_owned();
+        let location = directory.path().to_owned();
+        let capture_location = location.clone();
+        let cache = CommitCache::new(GraphCache::default());
+        let visibility = RefVisibilityState::default();
+        tauri::async_runtime::block_on(GraphRebuild::new(&cache, &visibility).rebuild(
+            path.clone(),
+            move || {
+                let mut repo = git2::Repository::open(capture_location)?;
+                super::read_graph(&mut repo)
+            },
+        ))
+        .unwrap();
+        assert_eq!(cache.snapshot(&path).unwrap().oids().len(), 1);
+        std::fs::remove_file(metadata_path).unwrap();
+        cache.invalidate(&path);
+        let session = cache.session_id(&path).unwrap();
+
+        let refreshed = tauri::async_runtime::block_on(
+            GraphRebuild::new(&cache, &visibility)
+                .refresh_worktree_in_session(path, location, session),
+        )
+        .unwrap();
+
+        assert_eq!(
+            refreshed.oids().len(),
+            2,
+            "removing a boundary must expose the ancestor"
+        );
+    }
+
+    #[test]
+    fn removing_shallow_boundaries_refreshes_history_without_a_ref_move() {
+        history_expands_after_boundary_removal("shallow");
+    }
+
+    #[test]
+    fn removing_grafts_refreshes_history_without_a_ref_move() {
+        history_expands_after_boundary_removal("info/grafts");
+    }
+
+    #[test]
+    fn a_public_worktree_refresh_rejects_a_write_after_its_observation() {
+        let (directory, mut repo) = capture_repository();
+        let path = directory.path().to_str().unwrap().to_owned();
+        let cache = std::sync::Arc::new(CommitCache::new(GraphCache::default()));
+        let visibility = std::sync::Arc::new(RefVisibilityState::default());
+        tauri::async_runtime::block_on(
+            GraphRebuild::new(&cache, &visibility)
+                .rebuild(path.clone(), move || super::read_graph(&mut repo)),
+        )
+        .unwrap();
+        let revision = cache
+            .0
+            .lock()
+            .unwrap()
+            .revisions
+            .get(&path)
+            .copied()
+            .unwrap();
+        let session = cache.session_id(&path).unwrap();
+        let (observed_tx, observed_rx) = std::sync::mpsc::channel();
+        let (resume_tx, resume_rx) = std::sync::mpsc::channel();
+        cache.hold_next_refresh_observation(observed_tx, resume_rx);
+        let worker_cache = std::sync::Arc::clone(&cache);
+        let worker_visibility = std::sync::Arc::clone(&visibility);
+        let worker_path = path.clone();
+        let location = directory.path().to_owned();
+        let refresh =
+            std::thread::spawn(move || {
+                tauri::async_runtime::block_on(
+                    GraphRebuild::new(&worker_cache, &worker_visibility)
+                        .refresh_worktree_in_session(worker_path, location, session),
+                )
+            });
+        observed_rx.recv().unwrap();
+        std::fs::write(
+            directory.path().join("racing.txt"),
+            "saved after observation",
+        )
+        .unwrap();
+        cache.invalidate(&path);
+        resume_tx.send(()).unwrap();
+
+        assert_eq!(refresh.join().unwrap().unwrap_err().code, "graph_changed");
+        assert_eq!(
+            cache.0.lock().unwrap().revisions.get(&path).copied(),
+            Some(revision)
+        );
+        assert_eq!(cache.checked_revision(&path), None);
+    }
+
+    #[test]
+    fn a_checked_refresh_cannot_acknowledge_a_retained_capture() {
+        let mut cache = GraphCache::default();
+        cache.insert("/repo".into(), graph(1));
+        let mut ticket = cache.begin("/repo").unwrap();
+        ticket.require_fresh = true;
+
+        let retained = cache.retain_current("/repo", ticket);
+
+        assert_eq!(retained.unwrap_err().code, "graph_changed");
+    }
+
+    #[test]
+    fn a_refresh_raced_by_a_local_write_keeps_the_previous_graph() {
+        let cache = CommitCache::new(GraphCache::default());
+        let original = graph(1);
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .insert("/repo".into(), original.clone());
+        let mut ticket = cache.0.lock().unwrap().begin("/repo").unwrap();
+        ticket.require_fresh = true;
+        cache.invalidate("/repo");
+        let visibility = RefVisibilityState::default();
+
+        let result = tauri::async_runtime::block_on(
+            GraphRebuild::new(&cache, &visibility).publish("/repo".into(), ticket, graph(2), None),
+        );
+
+        assert_eq!(result.unwrap_err().code, "graph_changed");
+        assert!(cache.snapshot("/repo").unwrap().same_capture_as(&original));
+    }
+
+    #[test]
+    fn a_local_invalidation_withdraws_a_commands_checked_revision() {
+        let (_directory, mut repo) = capture_repository();
+        let cache = CommitCache::new(GraphCache::default());
+        let visibility = RefVisibilityState::default();
+        tauri::async_runtime::block_on(
+            GraphRebuild::new(&cache, &visibility)
+                .rebuild("/repo".into(), move || super::read_graph(&mut repo)),
+        )
+        .unwrap();
+        assert!(cache.checked_revision("/repo").is_some());
+
+        cache.invalidate("/repo");
+
+        assert_eq!(cache.checked_revision("/repo"), None);
+        assert!(cache.0.lock().unwrap().captured_refs.contains_key("/repo"));
+    }
+
+    #[test]
+    fn a_visibility_publication_keeps_history_identity_without_acknowledging_old_status() {
+        let (_directory, mut repo) = capture_repository();
+        let cache = CommitCache::new(GraphCache::default());
+        let visibility = RefVisibilityState::default();
+        let graph = tauri::async_runtime::block_on(
+            GraphRebuild::new(&cache, &visibility)
+                .rebuild("/repo".into(), move || super::read_graph(&mut repo)),
+        )
+        .unwrap();
+        cache.invalidate("/repo");
+        let mut changed_visibility = RefVisibility::default();
+        changed_visibility
+            .hidden_refs
+            .insert("refs/heads/absent".into());
+        let alternate = graph.with_visibility(changed_visibility);
+        let mut graphs = cache.0.lock().unwrap();
+        let ticket = graphs.begin("/repo").unwrap();
+
+        graphs
+            .publish("/repo".into(), ticket, alternate, None)
+            .unwrap();
+
+        assert!(graphs.captured_refs.contains_key("/repo"));
+        assert!(!graphs.inputs.contains_key("/repo"));
+        drop(graphs);
     }
 
     #[test]
@@ -1483,11 +1820,11 @@ mod tests {
         // the laid-out graph, or a broken `apply_visibility` would pass this test too
         // (review-code finding, TRUNK-125).
         assert_eq!(
-            snapshot.layout.commits.len(),
+            snapshot.layout().commits.len(),
             1,
             "hiding topic's only ref must drop its unreachable commit from the layout"
         );
-        assert_eq!(snapshot.layout.commits[0].oid, oid(1).to_string());
+        assert_eq!(snapshot.layout().commits[0].oid, oid(1).to_string());
     }
 
     #[derive(Clone, Copy, Debug)]
@@ -1577,11 +1914,11 @@ mod tests {
             tauri::async_runtime::block_on(queued).unwrap();
 
             assert_eq!(
-                published.layout.commits.len(),
+                published.layout().commits.len(),
                 2,
                 "the queued {mode:?} rebuild discarded the capture already in flight"
             );
-            assert!(cache.snapshot("/repo").unwrap().layout.commits.is_empty());
+            assert!(cache.snapshot("/repo").unwrap().layout().commits.is_empty());
         }
     }
 
@@ -1648,7 +1985,7 @@ mod tests {
         release.send(()).unwrap();
         pending.join().unwrap().unwrap();
 
-        assert_eq!(cache.snapshot("/repo").unwrap().layout.commits.len(), 2);
+        assert_eq!(cache.snapshot("/repo").unwrap().layout().commits.len(), 2);
     }
 
     #[test]
@@ -1680,8 +2017,8 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.1, "commit succeeded");
-        assert!(result.0.layout.commits.is_empty());
-        assert!(cache.snapshot("/repo").unwrap().layout.commits.is_empty());
+        assert!(result.0.layout().commits.is_empty());
+        assert!(cache.snapshot("/repo").unwrap().layout().commits.is_empty());
     }
 
     #[test]
@@ -1742,8 +2079,8 @@ mod tests {
         let published = pending.join().unwrap().unwrap();
 
         assert_eq!(published.visibility(), &hidden);
-        assert_eq!(published.layout.commits.len(), 1);
-        assert_eq!(published.layout.commits[0].oid, oid(1).to_string());
+        assert_eq!(published.layout().commits.len(), 1);
+        assert_eq!(published.layout().commits[0].oid, oid(1).to_string());
     }
 
     #[test]

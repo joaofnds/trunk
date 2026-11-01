@@ -24,7 +24,10 @@ import {
 	createRemoteState,
 	type RemoteState,
 } from "./lib/remote-state.svelte.js";
-import type { RepoChanged } from "./lib/repo-change-subscription.js";
+import {
+	type RepoChanged,
+	requestRepoChange,
+} from "./lib/repo-change-subscription.js";
 import { RepositoryTabs } from "./lib/repository-tabs.svelte.js";
 import { ALL_THREADS } from "./lib/review-filter.js";
 import { getScheduler } from "./lib/scheduler.js";
@@ -869,7 +872,7 @@ $effect(() => {
 		const tab = tabs.find((t) => t.repoPath === repoPath);
 		if (!tab) return;
 		if (isRepoViewMounted(tab)) return;
-		refreshFor(repoPath).invalidate();
+		requestRepoChange(refreshFor(repoPath), event.payload);
 	}).then((fn) => {
 		if (disposed) fn();
 		else unlisten = fn;

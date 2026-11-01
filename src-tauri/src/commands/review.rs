@@ -1626,7 +1626,12 @@ pub async fn list_session_commits<R: Runtime>(
             &picked,
             &threaded,
             &snapshot_oids,
-            &graph.layout,
+            &graph.select(
+                picked
+                    .iter()
+                    .chain(&threaded)
+                    .filter_map(|oid| git2::Oid::from_str(oid).ok()),
+            ),
             &repo,
         ))
     })

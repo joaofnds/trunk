@@ -178,6 +178,6 @@ pub async fn save_merge_result<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }

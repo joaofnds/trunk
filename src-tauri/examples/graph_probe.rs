@@ -28,5 +28,5 @@ fn main() {
     let mut repo = git2::Repository::open(&path).expect("open repository");
     let result = snapshot(&mut repo, &visibility).expect("snapshot");
 
-    print!("{}", layout_dump::render(&result.layout));
+    print!("{}", layout_dump::render(&result.layout()));
 }

@@ -130,12 +130,19 @@ describe("an interactive rebase", () => {
 		await app.repo.contextMenu("C2");
 		app.contextMenu.choose("Interactive Rebase...");
 
-		const refreshesBefore = app.refreshes();
+		const graphReads = () =>
+			app
+				.invokes()
+				.filter(
+					({ cmd }) =>
+						cmd === "get_commit_graph" || cmd === "refresh_commit_graph",
+				).length;
+		const readsBefore = graphReads();
 
 		await app.rebaseEditor.start();
 
 		await app.elapseUntil("the graph the rebase refetched", () =>
-			app.refreshes() > refreshesBefore && app.repo.commitRows().length === 4
+			graphReads() > readsBefore && app.repo.commitRows().length === 4
 				? true
 				: null,
 		);

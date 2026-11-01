@@ -802,10 +802,10 @@ fn graph_response_serializes_correctly() {
 
     // Build a GraphResponse from cache data (mirrors what get_commit_graph does)
     ctx.populate_cache();
-    let graph_result = ctx.cache_map.get(ctx.path()).unwrap();
+    let graph_result = ctx.cache_map.get(ctx.path()).unwrap().layout();
     let response = GraphResponse {
-        commits: graph_result.layout.commits.clone(),
-        max_columns: graph_result.layout.max_columns,
+        commits: graph_result.commits,
+        max_columns: graph_result.max_columns,
         revision: 42,
     };
 

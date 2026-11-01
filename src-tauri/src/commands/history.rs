@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use tauri::State;
 use trunk_git::error::TrunkError;
 use trunk_git::graph_input::GraphSnapshot;
-use trunk_git::types::{GraphCommit, GraphResult};
+use trunk_git::types::GraphCommit;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct GraphResponse {
@@ -18,33 +18,12 @@ pub struct GraphResponse {
 /// short response means the end of history.
 const PAGE: usize = 200;
 
-/// The rows of `layout` in `[start, end)`, clamped to what the layout holds.
-fn slice(layout: &GraphResult, start: usize, end: usize) -> &[GraphCommit] {
-    let len = layout.commits.len();
-
-    &layout.commits[start.min(len)..end.min(len)]
-}
-
 impl GraphResponse {
-    /// The `PAGE`-row page of `layout` starting at `offset`, empty past the end.
-    fn page(layout: &GraphResult, offset: usize, revision: u64) -> Self {
-        Self::rows(layout, offset, offset.saturating_add(PAGE), revision)
-    }
-
-    /// The first `loaded` rows of `layout`, or one page when the caller has none.
-    ///
-    /// A rebuild answers this way so the caller keeps the depth it had already paged
-    /// in. Returning page one alone would drop every later page it holds, and it has
-    /// no way to tell that loss from a history that genuinely shrank.
-    #[must_use]
-    pub fn head(layout: &GraphResult, loaded: usize, revision: u64) -> Self {
-        Self::rows(layout, 0, loaded.max(PAGE), revision)
-    }
-
-    fn rows(layout: &GraphResult, start: usize, end: usize, revision: u64) -> Self {
+    fn cached(graph: &GraphSnapshot, offset: usize, count: usize, revision: u64) -> Self {
+        let rows = graph.page(offset, count);
         Self {
-            commits: slice(layout, start, end).to_vec(),
-            max_columns: layout.max_columns,
+            commits: rows.commits,
+            max_columns: rows.max_columns,
             revision,
         }
     }
@@ -68,8 +47,8 @@ pub async fn get_commit_graph(
     cache
         .read_versioned(&path, revision, |graph, revision| {
             loaded.map_or_else(
-                || GraphResponse::page(&graph.layout, offset, revision),
-                |loaded| GraphResponse::head(&graph.layout, loaded, revision),
+                || GraphResponse::cached(graph, offset, PAGE, revision),
+                |depth| GraphResponse::cached(graph, 0, depth.max(PAGE), revision),
             )
         })
         .map_err(|e| e.to_json())
@@ -107,17 +86,13 @@ async fn refresh_graph_in_session(
     session: u64,
 ) -> Result<GraphResponse, TrunkError> {
     let rebuild = crate::state::GraphRebuild::new(cache, ref_visibility);
-    let path_clone = path.to_owned();
+    let location = state_map.path_for(path)?.to_owned();
     rebuild
-        .refresh_in_session(path.to_owned(), session, move || {
-            let path_buf = state_map.path_for(&path_clone)?;
-            let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-            crate::state::read_graph(&mut repo)
-        })
+        .refresh_worktree_in_session(path.to_owned(), location, session)
         .await?;
 
     cache.read_versioned(path, None, |graph, revision| {
-        GraphResponse::head(&graph.layout, loaded, revision)
+        GraphResponse::cached(graph, 0, loaded.max(PAGE), revision)
     })
 }
 
@@ -179,7 +154,7 @@ pub async fn set_ref_visibility(
         .map_err(|e| e.to_json())?;
     cache
         .read_versioned(&path, None, |graph, revision| {
-            GraphResponse::head(&graph.layout, loaded, revision)
+            GraphResponse::cached(graph, 0, loaded.max(PAGE), revision)
         })
         .map_err(|e| e.to_json())
 }
@@ -351,14 +326,13 @@ where
 {
     // Resolve the range's oids from the topology cache (lock dropped immediately).
     let page = cache.read_versioned_with_session(path, revision, |graph, _| {
-        slice(
-            &graph.layout,
-            offset,
-            offset.saturating_add(count.unwrap_or(PAGE).min(PAGE)),
-        )
-        .iter()
-        .map(|commit| commit.oid.clone())
-        .collect::<Vec<_>>()
+        graph
+            .oids()
+            .iter()
+            .skip(offset)
+            .take(count.unwrap_or(PAGE).min(PAGE))
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>()
     })?;
 
     // Partition into already-cached (return verbatim) and uncached (compute).
@@ -504,11 +478,12 @@ pub fn search_commits_inner(
         graph.ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {path}")))?;
 
     let mut results = Vec::new();
-    for commit in &graph_result.layout.commits {
+    for (oid, commit, refs) in graph_result.commits() {
+        let oid = oid.to_string();
         let mut match_types = Vec::new();
 
         // SHA prefix match
-        if commit.oid.to_lowercase().starts_with(&q) {
+        if oid.starts_with(&q) {
             match_types.push(MatchType::Sha);
         }
 
@@ -522,8 +497,7 @@ pub fn search_commits_inner(
         }
 
         // Ref match (short_name)
-        if commit
-            .refs
+        if refs
             .iter()
             .any(|r| r.short_name.to_lowercase().contains(&q))
         {
@@ -536,10 +510,7 @@ pub fn search_commits_inner(
         }
 
         if !match_types.is_empty() {
-            results.push(SearchResult {
-                oid: commit.oid.clone(),
-                match_types,
-            });
+            results.push(SearchResult { oid, match_types });
         }
     }
 
@@ -684,7 +655,7 @@ mod tests {
             let oids = cache
                 .snapshot("/repo")
                 .unwrap()
-                .layout
+                .layout()
                 .commits
                 .into_iter()
                 .map(|row| row.oid)
@@ -720,6 +691,102 @@ mod tests {
         fn stats_for(&self, rows: Range<usize>) -> HashMap<String, DiffStat> {
             self.oids[rows].iter().cloned().flat_map(stats).collect()
         }
+    }
+
+    #[test]
+    fn graph_commands_preserve_loaded_depth_and_page_the_tail() {
+        let fixture = StatsCommandFixture::with_rows(450);
+        let request = |offset, loaded| {
+            tauri::async_runtime::block_on(super::get_commit_graph(
+                "/repo".into(),
+                offset,
+                loaded,
+                None,
+                fixture.app.state(),
+            ))
+            .unwrap()
+        };
+
+        assert_eq!(request(0, Some(400)).commits.len(), 400);
+        assert_eq!(request(0, Some(0)).commits.len(), 200);
+        let tail = request(400, None);
+        assert_eq!(tail.commits.len(), 50);
+        assert_eq!(tail.commits[49].oid, fixture.oids[449]);
+        assert_eq!(request(0, Some(500)).commits.len(), 450);
+        let root = &fixture.oids[449];
+        let results = tauri::async_runtime::block_on(super::search_commits(
+            "/repo".into(),
+            root.clone(),
+            fixture.app.state(),
+        ))
+        .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(&results[0].oid, root);
+    }
+
+    #[test]
+    fn a_worktree_refresh_reuses_history_without_reading_its_objects() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut repo = git2::Repository::init(directory.path()).unwrap();
+        let tree_oid = repo.treebuilder(None).unwrap().write().unwrap();
+        let signature = git2::Signature::new(
+            "Fixture",
+            "fixture@example.invalid",
+            &git2::Time::new(1_000, 0),
+        )
+        .unwrap();
+        let root = {
+            let tree = repo.find_tree(tree_oid).unwrap();
+            let root = repo
+                .commit(Some("HEAD"), &signature, &signature, "root", &tree, &[])
+                .unwrap();
+            let parent = repo.find_commit(root).unwrap();
+            repo.commit(
+                Some("HEAD"),
+                &signature,
+                &signature,
+                "tip",
+                &tree,
+                &[&parent],
+            )
+            .unwrap();
+            root
+        };
+        let path = directory.path().to_str().unwrap().to_owned();
+        let cache = CommitCache::new(GraphCache::default());
+        let visibility = RefVisibilityState::default();
+        tauri::async_runtime::block_on(
+            GraphRebuild::new(&cache, &visibility)
+                .rebuild(path.clone(), move || crate::state::read_graph(&mut repo)),
+        )
+        .unwrap();
+        let mut locations = OpenRepos::default();
+        locations.register(path.clone(), directory.path().to_owned());
+        let session = cache.capture_session(&path).unwrap();
+        let root = root.to_string();
+        std::fs::remove_file(
+            directory
+                .path()
+                .join(".git/objects")
+                .join(&root[..2])
+                .join(&root[2..]),
+        )
+        .unwrap();
+        std::fs::write(directory.path().join("edited.txt"), "saved").unwrap();
+        cache.invalidate(&path);
+
+        let refreshed = tauri::async_runtime::block_on(super::refresh_graph_in_session(
+            &path,
+            200,
+            locations,
+            &cache,
+            &visibility,
+            session,
+        ));
+
+        let refreshed = refreshed.expect("a file save must not read unchanged commit objects");
+        assert_eq!(refreshed.commits.len(), 2);
+        assert_eq!(refreshed.commits[1].summary, "root");
     }
 
     #[test]
@@ -762,7 +829,7 @@ mod tests {
     fn a_maximum_offset_returns_no_graph_rows() {
         let cache = cache();
         let graph = cache.snapshot("/repo").unwrap();
-        let page = GraphResponse::page(&graph.layout, usize::MAX, 1);
+        let page = GraphResponse::cached(&graph, usize::MAX, super::PAGE, 1);
 
         assert!(page.commits.is_empty());
     }

@@ -2286,7 +2286,7 @@ describe("CommitGraph", () => {
 			};
 		}
 
-		it("admits one active refresh and one later catch-up", async () => {
+		it("admits one refresh and one catch-up", async () => {
 			const scheduler = new FakeScheduler();
 			const pending: ((page: unknown) => void)[] = [];
 			installReads({

@@ -19,7 +19,7 @@ git repo
   │
   ▼
 [Rust: graph.rs] snapshot()
-  │    = capture() |> optional apply_visibility() |> layout(), kept as a GraphSnapshot
+  │    = capture() |> optional apply_visibility() |> prepared clean/dirty lane placements
   │  capture() reads the repository into plain data; apply_visibility() drops the
   │  refs the user hid and every commit only they reached; placement.rs::assign_lanes()
   │  assigns columns, colors, edge types and dashed flags; graph_input.rs hydrates.
@@ -66,32 +66,43 @@ pub fn snapshot(repo: &mut git2::Repository, visibility: &RefVisibility)
     -> Result<GraphSnapshot, TrunkError>
 ```
 
-Returns a `GraphSnapshot`: the capture, the visibility it was laid out under, and
-`layout: GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`. `get_commit_graph`
-pages the layout 200 rows at a time. A rebuild — `refresh_commit_graph` or
-`set_ref_visibility` — instead answers with as many rows as the caller says it already
-holds, never fewer than one page, because the frontend replaces its whole list with what a
-rebuild returns and page one alone would drop every page the user had scrolled through. A
-visibility change re-lays out the same capture through `GraphSnapshot::with_visibility`
-without opening the repository.
+Returns a `GraphSnapshot`: shared captured history, its visible source, the current
+worktree state and prepared clean/dirty `placement::Layout` plans. `GraphSnapshot::page`
+hydrates only requested rows. `get_commit_graph` requests 200 rows at a time; a refresh or
+visibility toggle requests the caller's loaded depth, with a one-page minimum. Full
+hydration through `GraphSnapshot::layout` is explicit, used by fixture and capture tools.
+Search reads captured facts and visible refs directly. Commit statistics read bounded OID
+slices, and review membership hydrates only selected commits in graph order.
 
-When no refs or stashes are hidden, snapshot construction lays out the captured
-source directly. A nonempty visibility builds the filtered source before layout.
-Both paths retain the original capture for later visibility changes.
+When visibility is empty, the visible source shares the original capture. A nonempty
+visibility filters it before preparing both lane plans. `with_visibility` preserves the
+latest worktree observation and prepares new plans without opening the repository.
+`with_worktree_dirty` selects an existing plan without recapture, placement or text cloning.
+Dirty stash placement and the HEAD-lane extension still follow the same placement rules.
 
-Application producers call `state::read_graph`, which reads ref/HEAD/upstream/stash identity
+Application producers call `state::read_graph`, which checks ref/HEAD/upstream/stash identity
 before and after capture and retries up to three times. The stamp includes ordered remote
-fetch mappings: libgit2 resolves an upstream through the first matching fetch refspec.
-Capture makes one full staged/unstaged/conflict/untracked dirtiness observation at its end,
-inside that stamp fence; the application does not repeat the status scan. An unstable
-capture cannot replace the prior cached graph. `GraphRebuild` serializes publication per worktree,
-applies the latest visibility and fences results by opening session and generation. Ref
-reconciliation compares those stamps before walking history, so duplicate fetch/watcher
-reports retain the existing capture. The cached response always carries a revision; page and
-commit-stat requests naming an older revision fail with `graph_changed`. A refs-only
-notification reads the cached head at the view's loaded depth, preserving selection and
-avoiding another capture. The pipeline's ordering, placement and hydration remain the
-stages described below.
+fetch mappings: libgit2 resolves upstreams through the first matching fetch refspec.
+It also includes shallow-boundary and graft metadata, which can change reachable ancestors
+without moving any ref.
+Capture observes staged/unstaged/conflict/untracked dirtiness once at its end. An unstable
+capture cannot replace the prior graph. `GraphRebuild` serializes publication per worktree,
+applies the latest visibility and fences results by opening session and generation.
+
+Worktree refreshes compare current refs with the capture's retained ref stamp, observe
+dirtiness, then check refs again. Matching refs reuse history and select a prepared plan;
+changed refs take the checked capture path. Local watcher invalidation withdraws the fresh
+publication stamp but retains the history's ref identity. An input epoch changed during a
+refresh makes the result retryable rather than acknowledging stale worktree state.
+
+Responses carry a revision; stale graph pages and commit-stat requests fail with
+`graph_changed`. Completed commands emit `command_completed` and a graph revision only
+while that publication remains checked. Subscribers request status, counters and relevant
+diffs immediately; the graph reads the published revision at its loaded depth. Without a
+checked revision, it requests a checked refresh immediately. Watcher bursts retain their
+200 ms frontend coalescing deadline. Ref reconciliation shares the same reuse path, so a
+watcher notification following a command does not require another history walk when refs
+still match. The ordering, placement and hydration stages remain the ones below.
 
 ### Commit ordering
 
@@ -656,7 +667,7 @@ Key test cases to maintain (in `src-tauri/tests/test_graph.rs` unless a bullet n
 |---|---|
 | `src-tauri/git/src/graph.rs` | `capture()` — every git2 read the pipeline makes, into the algorithm's inputs |
 | `src-tauri/git/src/placement.rs` | `assign_lanes()` — the pure lane algorithm, all column/color/edge computation |
-| `src-tauri/git/src/graph_input.rs` | `GraphSource`, `RefVisibility`, `apply_visibility()`, `layout()`, the committed input format the golden suite reads, and `GraphSnapshot`, the capture kept beside its layout so a visibility change re-lays out without a walk |
+| `src-tauri/git/src/graph_input.rs` | `GraphSource`, `RefVisibility`, `apply_visibility()`, `layout()`, the committed input format the golden suite reads, and `GraphSnapshot`, shared history plus prepared clean/dirty lane placements and bounded hydration; visibility changes prepare plans without a walk |
 | `src-tauri/git/src/layout_dump.rs` | Renders a `GraphResult` as the deterministic text the committed layout text goldens (`goldens/graph/*.txt`) are pinned against; the JSON exports and the frontend render goldens have their own renderers |
 | `src-tauri/git/src/status.rs` | The one definition of worktree dirtiness, shared with the dirty counters |
 | `src-tauri/git/src/types.rs` | Rust types: `GraphCommit`, `GraphEdge`, `EdgeType` |

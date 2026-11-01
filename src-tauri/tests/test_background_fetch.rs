@@ -367,6 +367,7 @@ fn assert_changed_once(
             paths: Vec::new(),
             graph_revision: graph["revision"].as_u64(),
             refs_only: true,
+            command_completed: false,
         }]
     );
     assert!(
@@ -624,12 +625,14 @@ fn a_shared_ref_update_preserves_each_worktrees_head_dirtiness_and_visibility() 
             paths: Vec::new(),
             graph_revision: graph_a["revision"].as_u64(),
             refs_only: true,
+            command_completed: false,
         },
         RepoChanged {
             repo: linked.path.to_str().unwrap().to_owned(),
             paths: Vec::new(),
             graph_revision: graph_b["revision"].as_u64(),
             refs_only: true,
+            command_completed: false,
         },
     ];
     expected.sort_unstable_by(|a, b| a.repo.cmp(&b.repo));

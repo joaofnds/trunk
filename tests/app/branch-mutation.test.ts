@@ -241,6 +241,31 @@ describe("branch mutation", () => {
 			});
 		});
 
+		it("does not announce a deletion after its repository view closes", async () => {
+			const app = await setup({ repo: heldByWorktree() });
+			await app.repo.open();
+			await app.settled();
+			const readsBefore = app
+				.invokes()
+				.filter(({ cmd }) => cmd === "list_refs").length;
+			const release = app.holdCommand("list_refs");
+			app.dialog.confirms();
+			await app.branches.contextMenu("wt-branch");
+			app.contextMenu.choose("Delete");
+			await waitFor("the deletion's pending sidebar reload", () =>
+				app.invokes().filter(({ cmd }) => cmd === "list_refs").length >
+				readsBefore
+					? true
+					: null,
+			);
+
+			await app.repo.close();
+			release();
+			await app.settled();
+
+			expect(app.toasts()).toEqual([]);
+		});
+
 		describe("when the worktree lets go of the branch while the offer is open", () => {
 			it("asks again with the plain question, then deletes only the branch", async () => {
 				const app = await setup({ repo: heldByWorktree() });

@@ -82,7 +82,7 @@
 | `commands/operation_state.rs` | `get_operation_state`, `merge_continue/abort`, `rebase_continue/skip/abort`, `merge_branch`, `rebase_branch` | `src-tauri/src/commands/operation_state.rs` |
 | `commands/interactive_rebase.rs` | `get_rebase_todo`, `get_fork_point`, `start_interactive_rebase` | `src-tauri/src/commands/interactive_rebase.rs` |
 | `commands/merge_editor.rs` | `get_merge_sides`, `save_merge_result` | `src-tauri/src/commands/merge_editor.rs` |
-| `git/graph.rs` | `snapshot()` captures the repository, filters it when refs or stashes are hidden, then lays it out and keeps both in a `GraphSnapshot` — commit ordering and every git2 read the pipeline makes | `src-tauri/git/src/graph.rs` |
+| `git/graph.rs` | `snapshot()` captures the repository, filters hidden refs/stashes and prepares clean/dirty placements in a `GraphSnapshot` — commit ordering and every git2 read the pipeline makes | `src-tauri/git/src/graph.rs` |
 | `git/placement.rs` | `assign_lanes()` — the pure lane assignment algorithm, columns, colours and edges | `src-tauri/git/src/placement.rs` |
 | `git/graph_input.rs` | `layout()` — page slice and row hydration, and the committed capture format the golden suite reads | `src-tauri/git/src/graph_input.rs` |
 | `git/repository.rs` | `validate_and_open()`, `build_ref_map()` | `src-tauri/git/src/repository.rs` |
@@ -94,7 +94,7 @@
 | `git/types.rs` | The commit graph's DTOs (`GraphCommit`, `GraphEdge`, `RefLabel`), owned, with no git2 types | `src-tauri/git/src/types.rs` |
 | `types.rs` | The app's other IPC DTOs (`FileDiff`, `WorkingTreeStatus`, etc.), owned, with no git2 types | `src-tauri/src/types.rs` |
 | `state.rs` | `RepoState` (open paths), `CommitCache` (versioned worktree graphs), `RunningOp` (shared-repository reservations); `GraphRebuild` owns checked capture and publication under current visibility | `src-tauri/src/state.rs` |
-| `watcher.rs` | `start_watcher` / `stop_watcher` — `notify_debouncer_mini` emitting `"repo-changed"` events; `RepoChanged` carries changed paths, an optional graph revision and a refs-only marker; `WatcherState::disabled()` turns the watch off | `src-tauri/src/watcher.rs` |
+| `watcher.rs` | `start_watcher` / `stop_watcher` — `notify_debouncer_mini` emitting `"repo-changed"` events; `RepoChanged` carries changed paths, an optional checked graph revision, a refs-only marker and a completed-command marker; `WatcherState::disabled()` turns the watch off | `src-tauri/src/watcher.rs` |
 
 ## Pattern Overview
 
@@ -156,7 +156,7 @@
 **Managed State Layer:**
 - Purpose: Cross-command shared state, Tauri-managed singletons
 - Location: `src-tauri/src/state.rs`, `src-tauri/src/watcher.rs`
-- Contains: `RepoState` (path registry), `CommitCache` (one `GraphSnapshot` per repo: capture, visibility and layout), `RunningOp` (operation reservations and process identity for cancel), `WatcherState` (fs watchers)
+- Contains: `RepoState` (path registry), `CommitCache` (one `GraphSnapshot` per repo: capture, visibility and prepared clean/dirty lane placements), `RunningOp` (operation reservations and process identity for cancel), `WatcherState` (fs watchers)
 - Repository and graph entries use worktree paths. Remote reservations use operation identities and canonical common directories. `WatcherState::disabled()` makes `start_watcher` register nothing, which is how a test host runs `open_repo` unchanged with no filesystem watch
 - Used by: All command modules via `State<'_, T>` injection
 
@@ -331,12 +331,12 @@ store revision.
 - Contains: OID, summary, author, column assignment, color index, edges, ref labels, flags (is_head, is_merge, is_stash)
 
 **`CommitCache`:**
-- Purpose: One `GraphSnapshot` per repository: the capture the walk read, the ref visibility it was laid out under, and the full layout, served in 200-row pages
+- Purpose: One `GraphSnapshot` per repository: shared captured history, visibility and prepared clean/dirty lane placements; rows are hydrated in requested pages
 - Location: `src-tauri/src/state.rs`
 - Populated: commands that rebuild the graph go through `GraphRebuild`. Its capture closures return a checked `GraphRead` containing the capture and ref input stamp. The publisher applies the current `RefVisibility`, rechecking it before publication. `set_ref_visibility` usually re-lays out the cached capture without opening the repository, through `GraphRebuild::publish_relayout`; its uncached path uses the same checked capture producer.
-- Consumed: `get_commit_graph` slices one 200-row page from the cached layout via `CommitCache::read_versioned`; the rebuild commands slice from the top to the depth the caller reports, so a rebuild returns the pages the caller already had
+- Consumed: `get_commit_graph` hydrates one 200-row page from cached placements via `CommitCache::read_versioned`; the refresh commands hydrate from the top to the depth the caller reports, so a rebuild returns the pages the caller already had
 - Opening sessions, publication generations, visibility checks and per-worktree capture gates prevent an older result from replacing a newer graph. Responses carry a revision; graph-indexed reads reject stale revisions.
-- `CommitCache`'s fields are private to `state.rs`. Commands publish through `GraphRebuild` and use named read accessors. Branch helpers build a local `GraphCache` delta through `insert_read`; `rebuild_merging` publishes their worktree under its opening session, publication generation and latest visibility. Input invalidation clears the checked stamp without superseding a capture already in progress. A capture that observes concurrent input changes is retried; if it remains unstable, the publisher retains the cached graph and preserves the completed command's result. The next refresh can capture coherent inputs.
+- `CommitCache`'s fields are private to `state.rs`. Commands publish through `GraphRebuild` and use named read accessors. Branch helpers build a local `GraphCache` delta through `insert_read`; `rebuild_merging` publishes their worktree under its opening session, publication generation and latest visibility. Input invalidation clears the fresh publication stamp without superseding a capture already in progress, retaining the captured reference identity for checked worktree reuse. Worktree refresh checks refs around a dirtiness observation and selects a prepared layout; an epoch raced by a local write is retryable. A capture that observes concurrent input changes is retried; if it remains unstable, the publisher retains the cached graph and preserves the completed command's result. The next refresh can reuse matching history or capture changed refs. Completed commands request frontend reads immediately and reuse checked published revisions; watcher bursts retain their coalescing deadline.
 
 **`RepoState` (path registry):**
 - Purpose: Maps repo path strings to `PathBuf` — proof that a repo is "open"
