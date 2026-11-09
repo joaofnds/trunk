@@ -690,9 +690,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 	>
 {/snippet}
 
-{#snippet separator(
-	count: number,
-)}
+{#snippet separator(count: number)}
 	<div class="rendered-sep">
 		<span class="rendered-sep-label"
 			>{`${count} line${count === 1 ? "" : "s"} hidden`}</span
@@ -714,10 +712,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 	{/if}
 {/snippet}
 
-{#snippet columnStack(
-	rows: SplitRow[],
-	side: "left" | "right",
-)}
+{#snippet columnStack(rows: SplitRow[], side: "left" | "right")}
 	<!-- ONE hidden-scrollbar horizontal scroller per column per run (Source's
        .split-column, d1c299f): every row of the run stacks inside the same
        max-content wrapper, so short rows pan on the run's shared plane and

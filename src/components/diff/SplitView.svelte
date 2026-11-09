@@ -244,9 +244,7 @@ function originClass(origin: string): string {
 }
 </script>
 
-{#snippet threadCard(
-	c: Thread,
-)}
+{#snippet threadCard(c: Thread)}
 	<ThreadCard
 		variant="inline"
 		confirmDelete={false}
@@ -262,9 +260,7 @@ function originClass(origin: string): string {
      style choice: rowHeights' ceil(columns / available) is only a height when
      the break is unconditional, so it is declared here with the height it
      belongs to. -->
-{#snippet cellContent(
-	line: DiffLine,
-)}
+{#snippet cellContent(line: DiffLine)}
 	{@const trailStart = showInvisibles
 		? trailingWhitespaceStart(line.content)
 		: line.content.length}
@@ -325,10 +321,7 @@ function originClass(origin: string): string {
 	>
 {/snippet}
 
-{#snippet splitRow(
-	item: DiffRow,
-	_index: number,
-)}
+{#snippet splitRow(item: DiffRow, _index: number)}
 	{#if item.kind === "pair"}
 		{@const hunkKey = `${item.path}-${item.hunkIdx}`}
 		<!-- The row, not the cell, is what the pan is held against: it is pinned at

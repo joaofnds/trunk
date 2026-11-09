@@ -6,9 +6,7 @@ let { load }: { load: () => Promise<{ default: typeof Button }> } = $props();
 </script>
 
 <LazyView {load} label="editor">
-	{#snippet children(
-		View,
-	)}
+	{#snippet children(View)}
 		<View>Loaded editor</View>
 	{/snippet}
 </LazyView>

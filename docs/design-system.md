@@ -161,7 +161,7 @@ and run `biome lint --config-path <that dir> src`.
 `tokens-color.grit` is on, with Biome's own `style/noHexColors` beside it, so
 a hex literal fails even in a property the plugin does not list. `tokens-type.grit`
 is on. It reads `<style>` blocks and stylesheets, not a `style="..."` attribute in
-markup or a style string built in TypeScript, so Biome's `nursery/noInlineStyles`
+markup or a style string built in TypeScript, so Biome's `style/noInlineStyles`
 is on beside it, as an error, and refuses the attribute itself. A static value
 goes through a utility or a `<style>` rule, where the plugins read it, and a value
 computed at runtime goes through a `style:` directive, which the rule leaves alone

@@ -764,7 +764,7 @@ export function scrollToLine(
 	const keys = Object.keys(hunkElements);
 	if (keys.length === 0) return;
 	const index = target ? keys.indexOf(`${target.path}-${target.hunkIdx}`) : 0;
-	scrollToHunk(index >= 0 ? index : 0);
+	scrollToHunk(Math.max(index, 0));
 }
 
 function toggleFileCollapsed(path: string) {

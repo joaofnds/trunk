@@ -238,9 +238,7 @@ function lineBackground(origin: string, isSelected: boolean): string {
 }
 </script>
 
-{#snippet threadCard(
-	c: Thread,
-)}
+{#snippet threadCard(c: Thread)}
 	<ThreadCard
 		variant="inline"
 		confirmDelete={false}
@@ -252,9 +250,7 @@ function lineBackground(origin: string, isSelected: boolean): string {
 	/>
 {/snippet}
 
-{#snippet lineNumbers(
-	line: DiffLine,
-)}
+{#snippet lineNumbers(line: DiffLine)}
 	<span class="gutter-num" style:min-width={vd.gutterW}
 		>{line.old_lineno ?? ""}</span
 	><span class="gutter-num" style:min-width={vd.gutterW}
@@ -262,10 +258,7 @@ function lineBackground(origin: string, isSelected: boolean): string {
 	>
 {/snippet}
 
-{#snippet diffRow(
-	item: DiffRow,
-	_index: number,
-)}
+{#snippet diffRow(item: DiffRow, _index: number)}
 	{#if item.kind === "line"}
 		{@const line = item.line}
 		{@const isSelectable = line.new_lineno !== null}

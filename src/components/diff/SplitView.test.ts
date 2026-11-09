@@ -5,6 +5,7 @@ import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
 import { commentingLeaf } from "../../__tests__/helpers/review-props.js";
 import { aThread } from "../../__tests__/helpers/thread-fixture.js";
 import { describeThreadedCommentActions } from "../../__tests__/helpers/threaded-comment-actions.js";
+import { FIXED_ROW_HEIGHTS } from "../../lib/diff-rows.js";
 import { safeInvoke } from "../../lib/invoke.js";
 import type { DiffLine, FileDiff } from "../../lib/types.js";
 import SplitView from "./SplitView.svelte";
@@ -241,26 +242,26 @@ describe("SplitView panning", () => {
 
 		const row = container.querySelector(".split-row");
 
-		expect(row).toHaveStyle("position: sticky; left: 0; width: 100cqi");
+		expect(row).toHaveStyle(
+			`position: sticky; left: 0; width: ${window.innerWidth}px`,
+		);
 	});
 
 	it("clamps each half's translation against that side's own ceiling", () => {
 		const { container } = render(SplitView, { props: defaultProps() });
 
+		const row = container.querySelector(".split-row") as HTMLElement;
+		const half = window.innerWidth / 2;
+		row.style.setProperty("--pan-x", "200px");
+		row.style.setProperty("--max-l", `${half + 88}px`);
+		row.style.setProperty("--max-r", `${half + 488}px`);
+
 		const pans = Array.from(
-			container.querySelector(".split-row")?.querySelectorAll(".split-pan") ??
-				[],
-			// The formatter breaks the long calc across lines, which the engine
-			// reads the same as one line, so the line breaks are folded before comparing.
-			(el) => getComputedStyle(el).transform.replace(/\s*\n\s*/g, ""),
+			row.querySelectorAll(".split-pan"),
+			(el) => getComputedStyle(el).transform,
 		);
 
-		expect(pans[0]).toBe(
-			"translateX(calc(-1 * min(var(--pan-x, 0px), max(0px, var(--max-l) - 50cqi))))",
-		);
-		expect(pans[1]).toBe(
-			"translateX(calc(-1 * min(var(--pan-x, 0px), max(0px, var(--max-r) - 50cqi))))",
-		);
+		expect(pans).toEqual(["translateX(-88px)", "translateX(-200px)"]);
 	});
 
 	it("translates inside the clipping window rather than translating the window", () => {
@@ -380,7 +381,7 @@ describe("SplitView row shapes", () => {
 		const header = container.querySelector(".split-hunk-header") as Element;
 
 		expect(getComputedStyle(header).height).toBe(
-			"var(--diff-hunk-header-height)",
+			`${FIXED_ROW_HEIGHTS.hunkHeader}px`,
 		);
 		expect(
 			container.querySelector(".split-view")?.getAttribute("style"),
@@ -417,7 +418,7 @@ describe("SplitView row shapes", () => {
 
 		expect(commentIndex).toBeGreaterThan(0);
 		expect(rows[commentIndex - 1].classList.contains("split-row")).toBe(true);
-		expect(rows[commentIndex]).toHaveStyle("width: 100cqi");
+		expect(rows[commentIndex]).toHaveStyle(`width: ${window.innerWidth}px`);
 	});
 
 	it("renders a binary file's notice as one full-width row", () => {
@@ -438,7 +439,7 @@ describe("SplitView row shapes", () => {
 		const binary = container.querySelector(".binary-row");
 
 		expect(binary?.textContent).toContain("Binary file");
-		expect(binary).toHaveStyle("width: 100cqi");
+		expect(binary).toHaveStyle(`width: ${window.innerWidth}px`);
 		expect(container.querySelectorAll(".split-row").length).toBe(0);
 	});
 });

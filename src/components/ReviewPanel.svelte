@@ -1399,9 +1399,7 @@ $effect(() => {
 	{/if}
 </section>
 
-{#snippet card(
-	comment: Thread,
-)}
+{#snippet card(comment: Thread)}
 	<ThreadCard
 		thread={comment}
 		{repoPath}

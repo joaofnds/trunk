@@ -511,10 +511,7 @@ let lastVisibleColumn = $derived.by(() => {
 	oncontextmenu={openMenuIfOnHeader}
 />
 
-{#snippet edgeBefore(
-	column: keyof RebaseColumnWidths,
-	label: string,
-)}
+{#snippet edgeBefore(column: keyof RebaseColumnWidths, label: string)}
 	<Splitter
 		variant="column"
 		aria-label="Resize {label} column"

@@ -797,10 +797,7 @@ $effect(() => {
 });
 </script>
 
-{#snippet sectionTitle(
-	label: string,
-	count: number,
-)}
+{#snippet sectionTitle(label: string, count: number)}
 	<span class="flex-1 min-w-0 inline-flex items-center gap-2">
 		<span
 			class="min-w-0 truncate text-text-muted text-caption font-semibold tracking-widest uppercase"

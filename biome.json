@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.6.6/schema.json",
 	"files": {
 		"includes": [
 			"src/**",
@@ -35,6 +35,7 @@
 			"preset": "recommended",
 			"style": {
 				"noHexColors": "error",
+				"noInlineStyles": "error",
 				"noRestrictedImports": {
 					"level": "error",
 					"options": {
@@ -45,7 +46,6 @@
 				}
 			},
 			"nursery": {
-				"noInlineStyles": "error",
 				"noUndeclaredCustomProperties": "error"
 			}
 		}

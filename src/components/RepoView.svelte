@@ -2260,9 +2260,7 @@ function stepRightPane(delta: number) {
 						label="rebase editor"
 						oncancel={handleRebaseEditorClose}
 					>
-						{#snippet children(
-							RebaseEditor,
-						)}
+						{#snippet children(RebaseEditor)}
 							<RebaseEditor
 								{repoPath}
 								commits={rebaseEditorCommits}
@@ -2282,9 +2280,7 @@ function stepRightPane(delta: number) {
 						load={() => import("./DiffPanel.svelte")}
 						label="diff"
 					>
-						{#snippet children(
-							DiffPanel,
-						)}
+						{#snippet children(DiffPanel)}
 							<DiffPanel
 								fileDiffs={rebaseFocusedFileDiffs.filter(
 									(f) => f.path === rebaseDiffFile,
@@ -2349,9 +2345,7 @@ function stepRightPane(delta: number) {
 						label="commit details"
 						oncancel={handleRebaseDetailClose}
 					>
-						{#snippet children(
-							CommitDetail,
-						)}
+						{#snippet children(CommitDetail)}
 							<CommitDetail
 								commitDetail={focusedDetail}
 								stat={rebaseFocusedCommitStat}
@@ -2415,9 +2409,7 @@ function stepRightPane(delta: number) {
 					bind:this={reviewListPane}
 				>
 					<LazyView load={() => import("./ReviewList.svelte")} label="reviews">
-						{#snippet children(
-							ReviewList,
-						)}
+						{#snippet children(ReviewList)}
 							<ReviewList {repoPath} {reviewComments} />
 						{/snippet}
 					</LazyView>
@@ -2456,9 +2448,7 @@ function stepRightPane(delta: number) {
 							load={() => import("./ReviewPanel.svelte")}
 							label="review"
 						>
-							{#snippet children(
-								ReviewPanel,
-							)}
+							{#snippet children(ReviewPanel)}
 								<ReviewPanel
 									{repoPath}
 									session={reviewSession}
@@ -2490,9 +2480,7 @@ function stepRightPane(delta: number) {
 						load={() => import("./MergeEditor.svelte")}
 						label="merge editor"
 					>
-						{#snippet children(
-							MergeEditor,
-						)}
+						{#snippet children(MergeEditor)}
 							<MergeEditor
 								{repoPath}
 								filePath={conflictedFile.path}
@@ -2510,9 +2498,7 @@ function stepRightPane(delta: number) {
 						load={() => import("./DiffPanel.svelte")}
 						label="diff"
 					>
-						{#snippet children(
-							DiffPanel,
-						)}
+						{#snippet children(DiffPanel)}
 							<DiffPanel
 								bind:this={diffPanelRef}
 								fileDiffs={currentDiffFiles}
@@ -2655,9 +2641,7 @@ function stepRightPane(delta: number) {
 						label="comparison"
 						oncancel={clearCompare}
 					>
-						{#snippet children(
-							ComparePanel,
-						)}
+						{#snippet children(ComparePanel)}
 							<ComparePanel
 								base={compareBaseDetail}
 								target={comparisonTarget}
@@ -2679,9 +2663,7 @@ function stepRightPane(delta: number) {
 						label="commit details"
 						oncancel={clearCommit}
 					>
-						{#snippet children(
-							CommitDetail,
-						)}
+						{#snippet children(CommitDetail)}
 							<CommitDetail
 								commitDetail={selectedDetail}
 								stat={commitDetailStat}

@@ -103,5 +103,5 @@ export function migrateExpanded(
 export function findFocusIndex(rows: FlatRow[], path: string): number {
 	if (rows.length === 0) return 0;
 	const idx = rows.findIndex((r) => r.node.path === path);
-	return idx >= 0 ? idx : 0;
+	return Math.max(idx, 0);
 }

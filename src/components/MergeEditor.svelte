@@ -422,10 +422,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 }
 </script>
 
-{#snippet conflictHeader(
-	side: "ours" | "theirs",
-	row: FlatRow,
-)}
+{#snippet conflictHeader(side: "ours" | "theirs", row: FlatRow)}
 	<div class="w-full conflict-header shrink-0">
 		<Row
 			variant="divider"
@@ -442,10 +439,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 	</div>
 {/snippet}
 
-{#snippet conflictLine(
-	row: FlatRow,
-	bgColor: string,
-)}
+{#snippet conflictLine(row: FlatRow, bgColor: string)}
 	{@const taken = takenLines.has(row.key)}
 	<div
 		class="merge-line shrink-0"
@@ -484,9 +478,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 	</div>
 {/snippet}
 
-{#snippet contextLine(
-	row: FlatRow,
-)}
+{#snippet contextLine(row: FlatRow)}
 	<div class="flex shrink-0 bg-transparent" style:height="{LINE_HEIGHT}px">
 		<span class="line-no shrink-0 text-right pr-2 text-text-muted select-none"
 			>{row.lineNum}</span

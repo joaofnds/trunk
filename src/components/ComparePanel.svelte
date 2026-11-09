@@ -56,9 +56,7 @@ let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
 let filesChanged = $derived(fileDiffs.length);
 </script>
 
-{#snippet commitCard(
-	commit: CommitDetail,
-)}
+{#snippet commitCard(commit: CommitDetail)}
 	<div class="min-w-0">
 		<div
 			class="text-body font-semibold text-text overflow-hidden text-ellipsis whitespace-nowrap"

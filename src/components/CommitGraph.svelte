@@ -2831,10 +2831,7 @@ $effect(() => {
 					overlaySnippet={graphOverlay}
 					minContentWidth={tableMinWidth(columnWidths, columnVisibility)}
 				>
-					{#snippet renderItem(
-						commit,
-						index,
-					)}
+					{#snippet renderItem(commit, index)}
 						<CommitRow
 							{commit}
 							rowIndex={index}

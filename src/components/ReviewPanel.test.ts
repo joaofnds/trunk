@@ -2508,12 +2508,13 @@ describe("ReviewPanel branch sections", () => {
 				comments: [lineAnchoredComment("c1", COMMIT_A, "one")],
 				resolutions: [resolvable("c1")],
 			});
-			renderPanel();
+			const { container } = renderPanel();
+			container.style.setProperty("--bar-h", "32px");
 			await flush();
 
 			expect(fileBarOf("src/main.ts")).toHaveStyle({
 				position: "sticky",
-				top: "calc(2 * var(--bar-h))",
+				top: "64px",
 			});
 		});
 
@@ -2524,10 +2525,11 @@ describe("ReviewPanel branch sections", () => {
 				resolutions: [resolvable("c1")],
 			});
 			const { container } = renderPanel();
+			container.style.setProperty("--bar-h", "32px");
 			await flush();
 
 			expect(container.querySelector(".review-body")).toHaveStyle({
-				"scroll-padding-top": "calc(3 * var(--bar-h))",
+				"scroll-padding-top": "96px",
 			});
 		});
 	});

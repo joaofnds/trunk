@@ -90,9 +90,7 @@ function deletePrompt(review: Review): string {
 }
 </script>
 
-{#snippet reviewItem(
-	review: Review,
-)}
+{#snippet reviewItem(review: Review)}
 	{@const isActive = review.id === activeReviewId}
 	{@const isShown = review.id === shownReviewId}
 	<li

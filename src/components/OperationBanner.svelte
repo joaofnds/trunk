@@ -117,9 +117,7 @@ async function handleRevertAbort() {
 }
 </script>
 
-{#snippet branch(
-	name: string | null,
-)}
+{#snippet branch(name: string | null)}
 	{#if name === null}
 		<Chip variant="label">???</Chip>
 	{:else}
