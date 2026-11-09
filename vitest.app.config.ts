@@ -15,20 +15,6 @@ export default defineConfig({
 		postcss: {
 			plugins: [
 				tailwindcss({ base: new URL("./src", import.meta.url).pathname }),
-				// jsdom's cascade walks @import and @media blocks and no other grouping
-				// rule (lib/jsdom/living/css/helpers/computed-style.js, jsdom 30.0.1),
-				// so a utility left inside Tailwind's @layer never reaches
-				// getComputedStyle. Lifting the layers keeps source order, which in the
-				// app sheet is also layer order.
-				{
-					postcssPlugin: "lift-layers",
-					AtRule: {
-						layer(rule) {
-							if (rule.nodes) rule.replaceWith(rule.nodes);
-							else rule.remove();
-						},
-					},
-				},
 			],
 		},
 	},
