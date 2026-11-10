@@ -1024,20 +1024,31 @@ function shiftExtended(
 	from: number,
 	to: number,
 	hunkLines: DiffLine[],
-	forComment: boolean,
 ): Set<number> {
-	const extended = new Set(selectedLineIndices);
-	for (let i = Math.min(from, to); i <= Math.max(from, to); i++) {
-		if (i < hunkLines.length && selects(hunkLines[i], forComment)) {
-			extended.add(i);
-		}
-	}
-	return extended;
+	return new Set([
+		...selectedLineIndices,
+		...linesBetween(from, to, hunkLines, false),
+	]);
 }
 
-// A shift-press while composing on lines of this hunk stretches the comment's
-// range to the pressed line and keeps what was written, as the composer's hint
-// promises. Anything else is not an extension, and the caller goes on to treat
+function linesBetween(
+	from: number,
+	to: number,
+	hunkLines: DiffLine[],
+	forComment: boolean,
+): Set<number> {
+	const lines = new Set<number>();
+	for (let i = Math.min(from, to); i <= Math.max(from, to); i++) {
+		if (i < hunkLines.length && selects(hunkLines[i], forComment)) {
+			lines.add(i);
+		}
+	}
+	return lines;
+}
+
+// A shift-press while composing on lines of this hunk sets the comment's range
+// to run from the line it started on to the pressed one, so it grows or shrinks,
+// and keeps what was written, as the composer's hint promises. Anything else is not an extension, and the caller goes on to treat
 // the press as a new selection. Returns whether it extended.
 function extendComposerTo(
 	filePath: string,
@@ -1055,11 +1066,10 @@ function extendComposerTo(
 	)
 		return false;
 
-	const extended = shiftExtended(lastClickedIndex, lineIndex, hunkLines, true);
-	selectedLineIndices = extended;
-	lastClickedIndex = lineIndex;
+	const range = linesBetween(lastClickedIndex, lineIndex, hunkLines, true);
+	selectedLineIndices = range;
 	activeComposerSession.openDiff(
-		buildDiffAnchor("", fd, hunkIdx, extended),
+		buildDiffAnchor("", fd, hunkIdx, range),
 		activeReviewId,
 		activeComposerTarget,
 	);
@@ -1095,12 +1105,7 @@ async function handleLineClick(
 
 	if (e.shiftKey && lastClickedIndex !== null) {
 		e.preventDefault();
-		selectedLineIndices = shiftExtended(
-			lastClickedIndex,
-			lineIndex,
-			hunkLines,
-			false,
-		);
+		selectedLineIndices = shiftExtended(lastClickedIndex, lineIndex, hunkLines);
 	} else {
 		const newSet = new Set(selectedLineIndices);
 		if (newSet.has(lineIndex)) {
@@ -1198,12 +1203,7 @@ async function handleLineMouseDown(
 	if (composerOpen && !(await confirmComposerReplacement())) return;
 
 	if (e.shiftKey && hunkKey === selectedHunkKey && lastClickedIndex !== null) {
-		selectedLineIndices = shiftExtended(
-			lastClickedIndex,
-			lineIndex,
-			hunkLines,
-			false,
-		);
+		selectedLineIndices = shiftExtended(lastClickedIndex, lineIndex, hunkLines);
 		lastClickedIndex = lineIndex;
 		return;
 	}

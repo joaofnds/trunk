@@ -2932,6 +2932,41 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		expect(ask).not.toHaveBeenCalled();
 	});
 
+	async function shiftClickControl(control: HTMLElement) {
+		await fireEvent.mouseDown(control, { shiftKey: true });
+		await fireEvent.mouseUp(window);
+		await fireEvent.click(control, { shiftKey: true });
+	}
+
+	it("shrinks the comment's range on a shift-click of a line inside it, keeping the text", async () => {
+		renderPanel();
+		await flushPrefs();
+		await clickControl(commentControl(2));
+		await fireEvent.input(await screen.findByRole("textbox"), {
+			target: { value: "keep me" },
+		});
+		await shiftClickControl(commentControl(4));
+
+		await shiftClickControl(commentControl(3));
+
+		expect(await screen.findByText("Comments on lines 2-3")).toBeTruthy();
+		expect(
+			screen.getByRole("button", { name: /^Comment \(/ }),
+		).toHaveTextContent("(2)");
+		expect(screen.getByRole("textbox")).toHaveValue("keep me");
+	});
+
+	it("moves the comment's range to the other side of its first line on a shift-click past it", async () => {
+		renderPanel();
+		await flushPrefs();
+		await clickControl(commentControl(2));
+		await shiftClickControl(commentControl(4));
+
+		await shiftClickControl(commentControl(1));
+
+		expect(await screen.findByText("Comments on lines 1-2")).toBeTruthy();
+	});
+
 	function rowsOf(text: string): HTMLElement[] {
 		return screen
 			.getAllByText(text)
