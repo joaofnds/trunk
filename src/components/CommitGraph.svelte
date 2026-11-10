@@ -33,6 +33,7 @@ import {
 import {
 	authorContentWidth,
 	columnFloors,
+	columnPaddingX,
 	DEFAULT_WIDTHS,
 	dateContentWidth,
 	graphTargetWidth,
@@ -2261,16 +2262,18 @@ $effect(() => {
 					{#if col.sized}
 						{@const width = columnWidths[col.key]}
 						<div
-							class="relative flex-shrink-0 overflow-hidden whitespace-nowrap"
+							class="relative flex h-full flex-shrink-0 items-center whitespace-nowrap"
 							data-column={col.key}
-							style:padding="0 {COLUMN_PADDING_X}px"
+							style:padding="0 {columnPaddingX(col.key)}px"
 							title={col.label}
 						>
-							{#if showsHeaderLabel(width, headerMins[col.key])}
-								{col.label}
-							{:else}
-								<col.icon size={HEADER_ICON_WIDTH} aria-hidden="true" />
-							{/if}
+							<span class="flex min-w-0 overflow-hidden">
+								{#if showsHeaderLabel(width, headerMins[col.key])}
+									{col.label}
+								{:else}
+									<col.icon size={HEADER_ICON_WIDTH} aria-hidden="true" />
+								{/if}
+							</span>
 							<Splitter
 								variant={EDGES[col.edge].handle}
 								aria-label="Resize {col.label} column"
@@ -2286,7 +2289,7 @@ $effect(() => {
 						<div
 							class="relative flex-1 overflow-hidden whitespace-nowrap"
 							data-column={col.key}
-							style:padding="0 {COLUMN_PADDING_X}px"
+							style:padding="0 {columnPaddingX(col.key)}px"
 							style:min-width="{MESSAGE_FLOOR}px"
 							title={col.label}
 						>

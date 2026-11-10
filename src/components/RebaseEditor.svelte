@@ -3,7 +3,7 @@ import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
 import Sortable from "sortablejs";
 import { copySha } from "../lib/clipboard.js";
 import { exactDate } from "../lib/exact-date.js";
-import { COLUMN_PADDING_X } from "../lib/graph-constants.js";
+import { TEXT_COLUMN_PADDING_X } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { currentMinute } from "../lib/now.svelte.js";
 import { validateRebasePlan } from "../lib/rebase-validation.js";
@@ -160,7 +160,7 @@ function errorForIndex(idx: number): string | null {
 // --- Column resize ---
 
 const HEADER_FONT = "11px ui-sans-serif, system-ui, sans-serif";
-const HEADER_PAD = 4 * COLUMN_PADDING_X;
+const HEADER_PAD = 2 * TEXT_COLUMN_PADDING_X;
 const headerMinSha = measureTextWidth("SHA", HEADER_FONT) + HEADER_PAD;
 const headerMinAuthor = measureTextWidth("Author", HEADER_FONT) + HEADER_PAD;
 const headerMinDate = measureTextWidth("Date", HEADER_FONT) + HEADER_PAD;
@@ -548,15 +548,17 @@ function handleStartRebase() {
 
 	<!-- Column header -->
 	<div class="rebase-header" bind:this={headerEl}>
-		<div class="rebase-col-action" style:padding="0 {COLUMN_PADDING_X}px">
+		<div class="rebase-col-action" style:padding="0 {TEXT_COLUMN_PADDING_X}px">
 			Action
 		</div>
-		<div class="flex-1" style:padding="0 {COLUMN_PADDING_X}px"> Message </div>
+		<div class="flex-1" style:padding="0 {TEXT_COLUMN_PADDING_X}px">
+			Message
+		</div>
 		{#if columnVisibility.sha}
 			<div
-				class="flex-shrink-0 relative"
+				class="relative flex h-full flex-shrink-0 items-center"
 				style:width="{columnWidths.sha}px"
-				style:padding="0 {COLUMN_PADDING_X}px"
+				style:padding="0 {TEXT_COLUMN_PADDING_X}px"
 			>
 				SHA
 				{@render leadingEdge("sha", "SHA")}
@@ -564,9 +566,9 @@ function handleStartRebase() {
 		{/if}
 		{#if columnVisibility.author}
 			<div
-				class="flex-shrink-0 relative"
+				class="relative flex h-full flex-shrink-0 items-center"
 				style:width="{columnWidths.author}px"
-				style:padding="0 {COLUMN_PADDING_X}px"
+				style:padding="0 {TEXT_COLUMN_PADDING_X}px"
 			>
 				Author
 				{@render leadingEdge("author", "Author")}
@@ -574,9 +576,9 @@ function handleStartRebase() {
 		{/if}
 		{#if columnVisibility.date}
 			<div
-				class="flex-shrink-0 relative"
+				class="relative flex h-full flex-shrink-0 items-center"
 				style:width="{columnWidths.date}px"
-				style:padding="0 {COLUMN_PADDING_X}px"
+				style:padding="0 {TEXT_COLUMN_PADDING_X}px"
 			>
 				Date
 				{@render leadingEdge("date", "Date")}
@@ -626,7 +628,7 @@ function handleStartRebase() {
 						<!-- Action column -->
 						<div
 							class="rebase-cell-action"
-							style:padding="0 {COLUMN_PADDING_X}px"
+							style:padding="0 {TEXT_COLUMN_PADDING_X}px"
 						>
 							<span
 								class="rebase-action-dot"
@@ -652,7 +654,7 @@ function handleStartRebase() {
 						<!-- Message column -->
 						<div
 							class="rebase-cell rebase-cell-message flex-1"
-							style:padding="0 {COLUMN_PADDING_X}px"
+							style:padding="0 {TEXT_COLUMN_PADDING_X}px"
 						>
 							<span class:rebase-text-drop={item.action === "drop"}
 								>{item.newMessage ?? item.summary}</span
@@ -664,7 +666,7 @@ function handleStartRebase() {
 							<div
 								class="rebase-cell flex-shrink-0"
 								style:width="{columnWidths.sha}px"
-								style:padding="0 {COLUMN_PADDING_X}px"
+								style:padding="0 {TEXT_COLUMN_PADDING_X}px"
 							>
 								<LinkButton
 									mono
@@ -686,7 +688,7 @@ function handleStartRebase() {
 							<div
 								class="rebase-cell flex-shrink-0"
 								style:width="{columnWidths.author}px"
-								style:padding="0 {COLUMN_PADDING_X}px"
+								style:padding="0 {TEXT_COLUMN_PADDING_X}px"
 							>
 								<span class:rebase-text-drop={item.action === "drop"}
 									>{item.authorName}</span
@@ -699,7 +701,7 @@ function handleStartRebase() {
 							<div
 								class="rebase-cell flex-shrink-0 rebase-cell-date"
 								style:width="{columnWidths.date}px"
-								style:padding="0 {COLUMN_PADDING_X}px"
+								style:padding="0 {TEXT_COLUMN_PADDING_X}px"
 							>
 								<span
 									class:rebase-text-drop={item.action === "drop"}

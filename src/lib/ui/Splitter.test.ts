@@ -143,28 +143,30 @@ describe("Splitter", () => {
 		);
 	});
 
-	it("lies over the trailing edge of a column's header cell", () => {
+	it("straddles the trailing edge of a column's header cell, above the cell beside it", () => {
 		const { splitter } = renderSplitter("column");
 
 		expect(splitter).toHaveClass(
 			"splitter-column",
 			"absolute",
 			"inset-y-0",
-			"right-0",
-			"w-1",
+			"-right-1",
+			"w-2",
+			"z-1",
 			"cursor-col-resize",
 		);
 	});
 
-	it("lies over the leading edge of a column's header cell", () => {
+	it("straddles the leading edge of a column's header cell, above the cell beside it", () => {
 		const { splitter } = renderSplitter("column-leading");
 
 		expect(splitter).toHaveClass(
 			"splitter-column",
 			"absolute",
 			"inset-y-0",
-			"left-0",
-			"w-1",
+			"-left-1",
+			"w-2",
+			"z-1",
 			"cursor-col-resize",
 		);
 	});

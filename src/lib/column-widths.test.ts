@@ -4,6 +4,7 @@ import {
 	AUTHOR_AVATAR_WIDTH,
 	authorContentWidth,
 	columnFloors,
+	columnPaddingX,
 	DEFAULT_WIDTHS,
 	dateContentWidth,
 	FIT_CAPS,
@@ -21,6 +22,7 @@ import {
 	COLUMN_PADDING_X,
 	LANE_WIDTH,
 	PILL_FONT_BOLD,
+	TEXT_COLUMN_PADDING_X,
 } from "./graph-constants.js";
 import { buildRefPillData } from "./ref-pill-data.js";
 import { relativeLabel } from "./relative-time.js";
@@ -36,6 +38,7 @@ function measure(text: string): number {
 }
 
 const PADDING = 2 * COLUMN_PADDING_X;
+const TEXT_PADDING = 2 * TEXT_COLUMN_PADDING_X;
 
 // HEAD's pill renders bold, so a metric that ignores the font cannot tell
 // whether a width was measured in the font the pill is drawn in.
@@ -69,7 +72,7 @@ describe("authorContentWidth", () => {
 		];
 
 		expect(authorContentWidth(commits, measure)).toBe(
-			measure("Grace Hopper") + PADDING + AUTHOR_AVATAR_WIDTH,
+			measure("Grace Hopper") + TEXT_PADDING + AUTHOR_AVATAR_WIDTH,
 		);
 	});
 
@@ -82,7 +85,7 @@ describe("authorContentWidth", () => {
 		];
 
 		expect(authorContentWidth(commits, measure)).toBe(
-			measure("Ada") + PADDING + AUTHOR_AVATAR_WIDTH,
+			measure("Ada") + TEXT_PADDING + AUTHOR_AVATAR_WIDTH,
 		);
 	});
 
@@ -97,7 +100,7 @@ describe("authorContentWidth", () => {
 		];
 
 		expect(authorContentWidth(commits, measure)).toBe(
-			measure("Ada") + PADDING + AUTHOR_AVATAR_WIDTH,
+			measure("Ada") + TEXT_PADDING + AUTHOR_AVATAR_WIDTH,
 		);
 	});
 
@@ -113,12 +116,12 @@ describe("dateContentWidth", () => {
 	// column is sized for the widest label the clock can produce — not for
 	// whatever it happens to say right now.
 	it("fits the widest label the relative clock can produce", () => {
-		expect(dateContentWidth(measure)).toBe(measure("12mo ago") + PADDING);
+		expect(dateContentWidth(measure)).toBe(measure("12mo ago") + TEXT_PADDING);
 	});
 
 	it("is wider than the label showing at this moment", () => {
 		expect(dateContentWidth(measure)).toBeGreaterThan(
-			measure("just now") + PADDING,
+			measure("just now") + TEXT_PADDING,
 		);
 	});
 
@@ -136,19 +139,19 @@ describe("dateContentWidth", () => {
 
 		const widest = Math.max(...vocabulary.map((label) => measure(label)));
 
-		expect(dateContentWidth(measure)).toBe(widest + PADDING);
+		expect(dateContentWidth(measure)).toBe(widest + TEXT_PADDING);
 	});
 });
 
 describe("shaContentWidth", () => {
 	it("fits a seven-character abbreviated sha", () => {
-		expect(shaContentWidth(measure)).toBe(measure("0000000") + PADDING);
+		expect(shaContentWidth(measure)).toBe(measure("0000000") + TEXT_PADDING);
 	});
 
 	it("rounds a fractional measurement up so the last glyph is not clipped", () => {
 		const fractional = (text: string) => text.length * 6.5;
 
-		expect(shaContentWidth(fractional)).toBe(46 + PADDING);
+		expect(shaContentWidth(fractional)).toBe(46 + TEXT_PADDING);
 	});
 });
 
@@ -173,7 +176,7 @@ describe("graphTargetWidth", () => {
 describe("headerMinWidths", () => {
 	it("fits each header label plus its padding and breathing room", () => {
 		expect(headerMinWidths(measure).author).toBe(
-			measure("Author") + 4 * COLUMN_PADDING_X,
+			measure("Author") + TEXT_PADDING,
 		);
 	});
 
@@ -189,13 +192,31 @@ describe("headerMinWidths", () => {
 	});
 });
 
+describe("columnPaddingX", () => {
+	it.each(["message", "diff", "author", "date", "sha"] as const)(
+		"insets %s wide enough to hold its divider clear of the label",
+		(column) => {
+			expect(columnPaddingX(column)).toBe(TEXT_COLUMN_PADDING_X);
+		},
+	);
+
+	it.each(["ref", "graph"] as const)(
+		"insets %s as narrowly as the overlay draws against",
+		(column) => {
+			expect(columnPaddingX(column)).toBe(COLUMN_PADDING_X);
+		},
+	);
+});
+
 describe("columnFloors", () => {
 	it("lets the graph shrink to a single lane of commits", () => {
 		expect(columnFloors(measure).graph).toBe(LANE_WIDTH + PADDING);
 	});
 
 	it("lets Author shrink to its avatar alone", () => {
-		expect(columnFloors(measure).author).toBe(AUTHOR_AVATAR_WIDTH + PADDING);
+		expect(columnFloors(measure).author).toBe(
+			AUTHOR_AVATAR_WIDTH + TEXT_PADDING,
+		);
 	});
 
 	it("covers every resizable column", () => {

@@ -2023,12 +2023,12 @@ describe("CommitGraph", () => {
 		});
 
 		it.each([
-			{ column: "ref", side: "right-0" },
-			{ column: "graph", side: "right-0" },
-			{ column: "diff", side: "left-0" },
-			{ column: "author", side: "left-0" },
-			{ column: "date", side: "left-0" },
-			{ column: "sha", side: "left-0" },
+			{ column: "ref", side: "-right-1" },
+			{ column: "graph", side: "-right-1" },
+			{ column: "diff", side: "-left-1" },
+			{ column: "author", side: "-left-1" },
+			{ column: "date", side: "-left-1" },
+			{ column: "sha", side: "-left-1" },
 		])(
 			"gives $column a handle of its own at $side",
 			async ({ column, side }) => {
@@ -2043,7 +2043,7 @@ describe("CommitGraph", () => {
 			const { container } = mountHeader({ sha: false });
 			await flush();
 
-			expect(resizeHandle(container, "date")).toHaveClass("left-0");
+			expect(resizeHandle(container, "date")).toHaveClass("-left-1");
 		});
 
 		// Message takes what the sized columns leave, so a column left of it

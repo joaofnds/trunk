@@ -32,7 +32,12 @@ export const DEFAULT_GRAPH_SETTINGS: GraphDisplaySettings = {
 };
 
 // Column layout constants
+/** The inset of Branch/Tag and Graph, the columns the overlay draws its pills
+ *  and lanes against. */
 export const COLUMN_PADDING_X = 4;
+/** The inset of a column of text, wide enough that the divider centred
+ *  between two of them stands clear of both labels. */
+export const TEXT_COLUMN_PADDING_X = 2 * UNIT;
 
 // Ref pill constants
 export const PILL_HEIGHT = 5 * UNIT;

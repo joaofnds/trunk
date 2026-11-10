@@ -295,3 +295,11 @@ Splitter section shows the new column-leading handle, the one over a column's le
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-11-10
+
+Column handles draw a short tick centred in the gutter, full height only under the pointer (option B, chosen by the user)
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png

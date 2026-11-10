@@ -79,8 +79,8 @@ const DIRECTIONS: Record<Orientation, Partial<Record<string, number>>> = {
 
 const VARIANTS: Record<SplitterVariant, string> = {
 	pane: "splitter-pane w-1 shrink-0",
-	column: "splitter-column absolute inset-y-0 right-0 w-1",
-	"column-leading": "splitter-column absolute inset-y-0 left-0 w-1",
+	column: "splitter-column absolute inset-y-0 -right-1 z-1 w-2",
+	"column-leading": "splitter-column absolute inset-y-0 -left-1 z-1 w-2",
 	bar: "splitter-bar h-1 shrink-0",
 };
 
@@ -109,8 +109,9 @@ function stepOnArrow(event: KeyboardEvent) {
 <!--
 	The handle between two things that share a width or a height. Its caller
 	starts the drag from the press it passes through, and resizes by the step
-	an arrow key reports. The focus ring is drawn inside the strip, since a
-	header cell clips whatever leaves it.
+	an arrow key reports. The focus ring is drawn inside the strip. A column's
+	handle straddles the edge between two header cells, so the cell that holds
+	it must not clip what leaves it.
 -->
 {#if fixed}
 	<div class={VARIANTS[variant]} {...rest}></div>
@@ -141,33 +142,31 @@ function stepOnArrow(event: KeyboardEvent) {
 		transition: none;
 	}
 }
-/* A 1px line down the middle of a 4px handle sits on a half pixel. Drawn as
+/* A 1px line down the middle of a handle sits on a half pixel. Drawn as
    gradient stops at 1.5px, a 1x display paints it in broken segments; a
    background positioned at the centre is snapped to a whole pixel instead. */
 .splitter-pane,
 .splitter-column {
 	background-position: center;
-	background-size: 1px 100%;
 	background-repeat: no-repeat;
-}
-.splitter-pane {
 	background-image: linear-gradient(
 		var(--color-border-strong),
 		var(--color-border-strong)
 	);
 }
+.splitter-pane {
+	background-size: 1px 100%;
+}
+/* A column's divider is a short tick centred in the gutter between two
+   labels, the way a macOS list header draws it, and runs the header's full
+   height only under the pointer. */
 .splitter-column {
-	background-image: linear-gradient(var(--color-border), var(--color-border));
+	background-size: 1px calc(100% - 2 * var(--space-2));
 }
 .splitter-pane[role="slider"]:hover,
 .splitter-column[role="slider"]:hover {
-	background: linear-gradient(
-		to right,
-		transparent 1px,
-		var(--color-accent) 1px,
-		var(--color-accent) 3px,
-		transparent 3px
-	);
+	background-image: linear-gradient(var(--color-accent), var(--color-accent));
+	background-size: 2px 100%;
 }
 .splitter-bar {
 	background: linear-gradient(
