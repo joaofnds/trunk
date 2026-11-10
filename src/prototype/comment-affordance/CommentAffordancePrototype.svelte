@@ -16,6 +16,7 @@ import { lineBackground } from "../../lib/diff-utils.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import Button from "../../lib/ui/Button.svelte";
 import GutterGrip from "../../lib/ui/GutterGrip.svelte";
+import Keycap from "../../lib/ui/Keycap.svelte";
 import Tab from "../../lib/ui/Tab.svelte";
 import TabStrip from "../../lib/ui/TabStrip.svelte";
 import { type MockLine, mockLines } from "./mock.js";
@@ -158,6 +159,16 @@ const tracksPointer: Attachment<HTMLElement> = (node) => {
 	onmouseup={release}
 	onkeydown={(e) => {
 		if (e.key === "Escape" && composer === null) reset();
+		if (
+			e.key === "c" &&
+			variant === "selection" &&
+			composer === null &&
+			selected.size > 0 &&
+			!(e.target instanceof HTMLTextAreaElement)
+		) {
+			e.preventDefault();
+			openComposer();
+		}
 	}}
 />
 
@@ -213,10 +224,14 @@ const tracksPointer: Attachment<HTMLElement> = (node) => {
 					: line.origin === "Delete"
 						? "diff-line-delete"
 						: ""}"
+				class:in-selection={selected.has(i)}
+				class:selection-first={selected.has(i) && !selected.has(i - 1)}
+				class:selection-last={selected.has(i) && !selected.has(i + 1)}
+				class:holds-action={variant === "selection" && selectionEnd === i}
 				style:font-family={DIFF_ROW_FONT.fontFamily}
 				style:font-size={DIFF_ROW_FONT.fontSize}
 				style:line-height={DIFF_ROW_FONT.lineHeight}
-				style:background={lineBackground(line.origin, selected.has(i))}
+				style:background={lineBackground(line.origin, false)}
 				data-row={i}
 			>
 				<span class="marker-cell"
@@ -239,10 +254,14 @@ const tracksPointer: Attachment<HTMLElement> = (node) => {
 				><span class="flex-1 select-text cursor-text">{line.text}</span>
 				{#if variant === "selection" && selectionEnd === i}
 					<span class="selection-action"
-						><Button size="xs" variant="primary" onclick={openComposer}
-							><MessageSquarePlus size={12} aria-hidden="true" />
-							Comment on
-							{selected.size === 1 ? "line" : `${selected.size} lines`}</Button
+						><Button
+							size="sm"
+							variant="ghost"
+							aria-keyshortcuts="C"
+							onclick={openComposer}
+							><MessageSquarePlus size={13} aria-hidden="true" />Comment<Keycap
+								>C</Keycap
+							></Button
 						></span
 					>
 				{/if}
@@ -324,10 +343,53 @@ const tracksPointer: Attachment<HTMLElement> = (node) => {
 	color: var(--color-text-muted);
 	padding-right: var(--space-2);
 }
+/* The selection is one tint and one hairline around the block, both in the
+   accent, laid over the diff's own colors so an added or removed line still
+   reads as one. */
+.in-selection::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background: var(--color-accent-bg);
+	box-shadow:
+		inset 1px 0 0 var(--color-accent-border),
+		inset -1px 0 0 var(--color-accent-border);
+	pointer-events: none;
+}
+.selection-first::before {
+	box-shadow:
+		inset 1px 0 0 var(--color-accent-border),
+		inset -1px 0 0 var(--color-accent-border),
+		inset 0 1px 0 var(--color-accent-border);
+}
+.selection-last::before {
+	box-shadow:
+		inset 1px 0 0 var(--color-accent-border),
+		inset -1px 0 0 var(--color-accent-border),
+		inset 0 -1px 0 var(--color-accent-border);
+}
+.selection-first.selection-last::before {
+	box-shadow: inset 0 0 0 1px var(--color-accent-border);
+}
+/* The line that carries the action paints over the line under it, which the
+   action straddles. */
+.holds-action {
+	z-index: 1;
+}
+/* A quiet control on the selection's bottom edge, at its right, where it
+   covers the end of a line rather than its code. It appears at once: it shows
+   on every selection, and a fade there would only slow the hand down. */
 .selection-action {
+	position: absolute;
+	right: var(--space-4);
+	bottom: 0;
+	transform: translateY(50%);
 	display: inline-flex;
-	align-self: center;
-	padding: 0 var(--space-2);
+	border-radius: var(--radius);
+	background: var(--color-surface-raised);
+	border: 1px solid var(--color-border);
+	box-shadow: var(--shadow-md);
 	font-family: var(--font-sans);
 	user-select: none;
 }
