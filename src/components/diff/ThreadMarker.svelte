@@ -38,7 +38,8 @@ let { marker, width, oncomment, oncommentpress, commentLabel }: Props =
 				size="xs"
 				variant="primary"
 				aria-label={commentLabel}
-				title="{commentLabel}, or drag across lines to comment on them all"
+				title={commentLabel &&
+					`${commentLabel}, or drag across lines to comment on them all`}
 				tabindex={-1}
 				onclick={oncomment}
 				onmousedown={oncommentpress}
