@@ -575,7 +575,46 @@ describe("SplitView one-click comment", () => {
 		).toBeNull();
 	});
 
-	it("offers none on the removed side", () => {
+	it("offers to comment on a removed line from its marker cell", async () => {
+		const oncommentline = vi.fn();
+		render(SplitView, {
+			props: defaultProps({ oncommentline, diffKind: "commit" }),
+		});
+
+		await fireEvent.click(
+			screen.getByRole("button", {
+				name: "Comment on removed line 11",
+				hidden: true,
+			}),
+		);
+
+		expect(oncommentline).toHaveBeenCalledWith("src/main.ts", 0, 1);
+	});
+
+	it("selects a removed line from its line number", async () => {
+		const onlinemousedown = vi.fn();
+		render(SplitView, {
+			props: defaultProps({ onlinemousedown, diffKind: "commit" }),
+		});
+
+		await fireEvent.mouseDown(
+			screen
+				.getByText("removed one")
+				.closest(".split-cell")
+				?.querySelector("[data-gutter-grip]") as HTMLElement,
+		);
+
+		expect(onlinemousedown).toHaveBeenCalledWith(
+			"src/main.ts",
+			0,
+			1,
+			"Delete",
+			expect.any(Array),
+			expect.any(MouseEvent),
+		);
+	});
+
+	it("offers none on the removed side of unstaged changes", () => {
 		render(SplitView, { props: defaultProps({ oncommentline: vi.fn() }) });
 
 		expect(

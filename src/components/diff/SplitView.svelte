@@ -7,6 +7,7 @@ import {
 	type DiffComposer,
 	type DiffRow,
 	FIXED_ROW_HEIGHT_VARS,
+	type LineMarker,
 	rowIndexForLine,
 } from "../../lib/diff-rows.js";
 import {
@@ -330,6 +331,61 @@ function originClass(origin: string): string {
 	>
 {/snippet}
 
+<!-- A cell's marker and line number. A changed line's number is the grip a
+     press selects it from, and its marker cell offers the comment control,
+     except on a removed line of unstaged changes, which no comment can anchor
+     to. -->
+{#snippet cellGutter(
+	path: string,
+	hunkIdx: number,
+	line: DiffLine,
+	lineIdx: number,
+	marker: LineMarker | null,
+	lineno: number | null,
+	selectable: boolean,
+)}
+	{@const hunkLines = hunkLinesOf(path, hunkIdx)}
+	<ThreadMarker
+		{marker}
+		width={vd.markerW}
+		oncomment={commentable &&
+		selectable &&
+		!(diffKind === "unstaged" && line.origin === "Delete")
+			? () => oncommentline(path, hunkIdx, lineIdx)
+			: undefined}
+		oncommentpress={(e) => oncommentpress(path, hunkIdx, lineIdx, hunkLines, e)}
+		commentLabel={commentLabel(line)}
+	/>
+	{#if selectable}
+		<GutterGrip
+			aria-label={gripLabel(line)}
+			onmousedown={(e) =>
+				onlinemousedown(path, hunkIdx, lineIdx, line.origin, hunkLines, e)}
+			onkeydown={(e) => {
+				if (e.key === "Enter" || e.key === " ") {
+					e.preventDefault();
+					onlineclick(
+						path,
+						hunkIdx,
+						lineIdx,
+						line.origin,
+						hunkLines,
+						new MouseEvent("click", { shiftKey: e.shiftKey }),
+					);
+				}
+			}}
+		>
+			<span class="split-gutter" style:min-width={vd.gutterW}
+				>{lineno ?? ""}</span
+			>
+		</GutterGrip>
+	{:else}
+		<span class="split-gutter" style:min-width={vd.gutterW}
+			>{lineno ?? ""}</span
+		>
+	{/if}
+{/snippet}
+
 {#snippet splitRow(item: DiffRow, _index: number)}
 	{#if item.kind === "pair"}
 		{@const hunkKey = `${item.path}-${item.hunkIdx}`}
@@ -339,9 +395,9 @@ function originClass(origin: string): string {
 		<div class="split-row pan-pinned flex">
 			{#if item.row.left}
 				{@const line = item.row.left.line}
+				{@const lineIdx = item.row.left.lineIdx}
 				{@const isSelected =
-					selectedHunkKey === hunkKey &&
-					selectedLineIndices.has(item.row.left.lineIdx)}
+					selectedHunkKey === hunkKey && selectedLineIndices.has(lineIdx)}
 				<div
 					class="split-cell split-cell-left diff-line text-diff-text {originClass(
 						line.origin,
@@ -350,11 +406,19 @@ function originClass(origin: string): string {
 					style:font-size={DIFF_ROW_FONT.fontSize}
 					style:line-height={DIFF_ROW_FONT.lineHeight}
 					style:background={lineBackground(line.origin, isSelected)}
+					data-line-path={item.path}
+					data-hunk-index={item.hunkIdx}
+					data-line-index={lineIdx}
 				>
-					<ThreadMarker marker={item.markerLeft} width={vd.markerW} />
-					<span class="split-gutter" style:min-width={vd.gutterW}
-						>{line.old_lineno ?? ""}</span
-					>
+					{@render cellGutter(
+						item.path,
+						item.hunkIdx,
+						line,
+						lineIdx,
+						item.markerLeft,
+						line.old_lineno,
+						line.origin === "Delete",
+					)}
 					<div class="split-window overflow-clip">
 						<div
 							class="split-pan pan-left min-w-full"
@@ -372,7 +436,6 @@ function originClass(origin: string): string {
 			{#if item.row.right}
 				{@const line = item.row.right.line}
 				{@const lineIdx = item.row.right.lineIdx}
-				{@const isSelectable = line.origin === "Add"}
 				{@const isSelected =
 					selectedHunkKey === hunkKey && selectedLineIndices.has(lineIdx)}
 				<div
@@ -385,57 +448,15 @@ function originClass(origin: string): string {
 					data-hunk-index={item.hunkIdx}
 					data-line-index={lineIdx}
 				>
-					<ThreadMarker
-						marker={item.markerRight}
-						width={vd.markerW}
-						oncomment={commentable && isSelectable
-							? () => oncommentline(item.path, item.hunkIdx, lineIdx)
-							: undefined}
-						oncommentpress={(e) =>
-							oncommentpress(
-								item.path,
-								item.hunkIdx,
-								lineIdx,
-								hunkLinesOf(item.path, item.hunkIdx),
-								e,
-							)}
-						commentLabel={commentLabel(line)}
-					/>
-					{#if isSelectable}
-						<GutterGrip
-							aria-label={gripLabel(line)}
-							onmousedown={(e) =>
-								onlinemousedown(
-									item.path,
-									item.hunkIdx,
-									lineIdx,
-									line.origin,
-									hunkLinesOf(item.path, item.hunkIdx),
-									e,
-								)}
-							onkeydown={(e) => {
-								if (e.key === "Enter" || e.key === " ") {
-									e.preventDefault();
-									onlineclick(
-										item.path,
-										item.hunkIdx,
-										lineIdx,
-										line.origin,
-										hunkLinesOf(item.path, item.hunkIdx),
-										new MouseEvent("click", { shiftKey: e.shiftKey }),
-									);
-								}
-							}}
-						>
-							<span class="split-gutter" style:min-width={vd.gutterW}
-								>{line.new_lineno ?? ""}</span
-							>
-						</GutterGrip>
-					{:else}
-						<span class="split-gutter" style:min-width={vd.gutterW}
-							>{line.new_lineno ?? ""}</span
-						>
-					{/if}
+					{@render cellGutter(
+						item.path,
+						item.hunkIdx,
+						line,
+						lineIdx,
+						item.markerRight,
+						line.new_lineno,
+						line.origin === "Add",
+					)}
 					<div class="split-window overflow-clip">
 						<div
 							class="split-pan pan-right min-w-full"
