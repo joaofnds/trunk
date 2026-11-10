@@ -222,6 +222,10 @@ function words(value: Chunks, bindings: Scope): string[] {
 	];
 }
 
+/** The line of the source an element starts on, as a guard's message names it. */
+const lineOf = (source: string, element: AST.ElementLike) =>
+	source.slice(0, element.start).split("\n").length;
+
 const isStatic = (value: AST.StyleDirective["value"]): value is AST.Text[] =>
 	Array.isArray(value) && value.every((chunk) => chunk.type === "Text");
 
@@ -340,7 +344,7 @@ function rawControls(source: string): string[] {
 		.sort((a, b) => a.start - b.start);
 
 	return elements.flatMap((element) => {
-		const line = source.slice(0, element.start).split("\n").length;
+		const line = lineOf(source, element);
 
 		return controlMarks(element, bindings).map(
 			(mark) => `${mark} at line ${line}`,
@@ -378,10 +382,7 @@ function textareasOnLabelLeading(source: string): string[] {
 				!classes.some((w) => LEADING.test(w))
 			);
 		})
-		.map(
-			(element) =>
-				`<textarea> at line ${source.slice(0, element.start).split("\n").length}`,
-		);
+		.map((element) => `<textarea> at line ${lineOf(source, element)}`);
 }
 
 /** What makes WebKit paint an element through a layer of its own. Inside an
@@ -563,7 +564,7 @@ function layeredElements(
 	seen: Set<string>,
 ): string[] {
 	return elements.flatMap((element) => {
-		const line = at.source.slice(0, element.start).split("\n").length;
+		const line = lineOf(at.source, element);
 		const where = `<${element.name}> at ${relative(root, at.file)}:${line}`;
 		const marks = element.attributes
 			.flatMap((attribute) => layerMarks(attribute, at))
