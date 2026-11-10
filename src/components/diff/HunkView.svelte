@@ -12,6 +12,7 @@ import {
 import {
 	commentLabel,
 	gripLabel,
+	lineBackground,
 	splitInvisibles,
 	takesNewComment,
 	trailingWhitespaceStart,
@@ -89,6 +90,7 @@ interface Props {
 		filePath: string,
 		hunkIndex: number,
 		lineIndex: number,
+		e: MouseEvent,
 	) => void;
 	/** A press on that control, which a drag carries across lines. */
 	oncommentpress: (
@@ -230,18 +232,6 @@ function flash(hunkKey: string): void {
 		flashedHunkKey = null;
 	}, FLASH_MS);
 }
-
-function lineBackground(origin: string, isSelected: boolean = false): string {
-	if (origin === "Add")
-		return isSelected
-			? "var(--color-diff-add-bg-selected)"
-			: "var(--color-diff-add-bg)";
-	if (origin === "Delete")
-		return isSelected
-			? "var(--color-diff-delete-bg-selected)"
-			: "var(--color-diff-delete-bg)";
-	return "transparent";
-}
 </script>
 
 {#snippet threadCard(c: Thread)}
@@ -299,7 +289,7 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 				marker={item.marker}
 				width={vd.markerW}
 				oncomment={commentable && takesNewComment(diffKind, line)
-					? () => oncommentline(item.path, item.hunkIdx, item.lineIdx)
+					? (e) => oncommentline(item.path, item.hunkIdx, item.lineIdx, e)
 					: undefined}
 				oncommentpress={(e) =>
 					oncommentpress(item.path, item.hunkIdx, item.lineIdx, hunkLines, e)}

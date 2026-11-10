@@ -542,7 +542,12 @@ describe("SplitView one-click comment", () => {
 			screen.getByRole("button", { name: "Comment on line 11", hidden: true }),
 		);
 
-		expect(oncommentline).toHaveBeenCalledWith("src/main.ts", 0, 3);
+		expect(oncommentline).toHaveBeenCalledWith(
+			"src/main.ts",
+			0,
+			3,
+			expect.any(MouseEvent),
+		);
 	});
 
 	it("hands a press on a line's control to the drag that comments", async () => {
@@ -589,7 +594,12 @@ describe("SplitView one-click comment", () => {
 			}),
 		);
 
-		expect(oncommentline).toHaveBeenCalledWith("src/main.ts", 0, 1);
+		expect(oncommentline).toHaveBeenCalledWith(
+			"src/main.ts",
+			0,
+			1,
+			expect.any(MouseEvent),
+		);
 	});
 
 	it("selects a removed line from its line number", async () => {

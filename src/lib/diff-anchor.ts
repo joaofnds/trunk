@@ -32,7 +32,7 @@ export interface DiffAnchorResult {
  * Resolve the anchor side. File status wins over the selected origins:
  * Added -> New, Deleted -> Old, Renamed/Copied -> New (the new path).
  * For Modified/Untracked/Unknown, derive from origins: any Add -> New,
- * else any Delete -> Old, else a defensive New default.
+ * else any Delete -> Old, else New, where a range of unchanged lines anchors.
  */
 export function resolveSide(status: DiffStatus, selected: DiffLine[]): Side {
 	if (status === "Added") return "New";
@@ -67,12 +67,12 @@ function prefixLine(line: DiffLine): string {
 }
 
 /**
- * The set of line indices a user could select within a hunk: every non-context
- * line (origin !== 'Context'). This is the same `isSelectable` convention the
- * diff views use for click targets. Used to synthesize a full-hunk selection
- * when commenting on a whole hunk without first picking individual lines —
- * including Delete lines, so a pure-deletion hunk still resolves to the Old
- * side and trips the existing New-side scope guard.
+ * The set of line indices a hunk's grips select: every non-context line
+ * (origin !== 'Context'). A comment's own range can also take context lines.
+ * Used to synthesize a full-hunk selection when commenting on a whole hunk
+ * without first picking individual lines. It includes Delete lines, so a
+ * pure-deletion hunk still resolves to the Old side and trips the existing
+ * New-side scope guard.
  */
 export function hunkSelectableIndices(hunk: DiffHunk): Set<number> {
 	const indices = new Set<number>();

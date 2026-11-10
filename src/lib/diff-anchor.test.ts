@@ -88,6 +88,36 @@ describe("buildDiffAnchor", () => {
 		expect(anchor.end_line).toBe(17);
 	});
 
+	it("anchors a range of unchanged lines alone to the New side over new_lineno", () => {
+		const lines = [
+			contextLine(7, 9, "ctx-one"),
+			contextLine(8, 10, "ctx-two"),
+			addLine(11, "added"),
+		];
+		const f = file("Modified", "src/c.ts", lines);
+
+		const { anchor } = buildDiffAnchor(OID, f, 0, new Set([0, 1]));
+
+		expect(anchor.side).toBe("New");
+		expect(anchor.start_line).toBe(9);
+		expect(anchor.end_line).toBe(10);
+	});
+
+	it("anchors removed lines with the unchanged line after them to the Old side over old_lineno", () => {
+		const lines = [
+			deleteLine(16, "gone"),
+			contextLine(17, 15, "ctx"),
+			addLine(16, "added"),
+		];
+		const f = file("Modified", "src/d.ts", lines);
+
+		const { anchor } = buildDiffAnchor(OID, f, 0, new Set([0, 1]));
+
+		expect(anchor.side).toBe("Old");
+		expect(anchor.start_line).toBe(16);
+		expect(anchor.end_line).toBe(17);
+	});
+
 	it("resolves a mixed Add+Delete selection to New, drops Delete linenos from the range, keeps them in the excerpt", () => {
 		// Delete's old_lineno (99) sits OUTSIDE the Add range so a buggy impl that
 		// folded it in (e.g. new_lineno ?? old_lineno) would widen the range to 16..99.

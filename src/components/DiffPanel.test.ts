@@ -2888,13 +2888,13 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		expect(await screen.findByText("Comments on lines 2-3")).toBeTruthy();
 	});
 
-	it("opens a comment on a context line from its control", async () => {
+	it("opens a comment on a context line from its control, on its new side", async () => {
 		renderPanel();
 		await flushPrefs();
 
-		await clickControl(commentControl(1));
+		await clickControl(commentControl(4));
 
-		expect(await screen.findByText("Comment on line 1")).toBeTruthy();
+		expect(await screen.findByText("Comment on line 4")).toBeTruthy();
 	});
 
 	it("carries a drag from a line's control onto the context lines it crosses", async () => {
@@ -2908,6 +2908,46 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		await fireEvent.mouseUp(window);
 
 		expect(await screen.findByText("Comments on lines 2-4")).toBeTruthy();
+	});
+
+	it("extends the comment's range onto a context line on a shift-click of its control, keeping the text", async () => {
+		const { ask } = await import("@tauri-apps/plugin-dialog");
+		vi.mocked(ask).mockClear();
+		renderPanel();
+		await flushPrefs();
+		await clickControl(commentControl(2));
+		await fireEvent.input(await screen.findByRole("textbox"), {
+			target: { value: "keep me" },
+		});
+
+		await fireEvent.mouseDown(commentControl(4), { shiftKey: true });
+		await fireEvent.mouseUp(window);
+		await fireEvent.click(commentControl(4), { shiftKey: true });
+
+		expect(await screen.findByText("Comments on lines 2-4")).toBeTruthy();
+		expect(
+			screen.getByRole("button", { name: /^Comment \(/ }),
+		).toHaveTextContent("(3)");
+		expect(screen.getByRole("textbox")).toHaveValue("keep me");
+		expect(ask).not.toHaveBeenCalled();
+	});
+
+	function rowsOf(text: string): HTMLElement[] {
+		return screen
+			.getAllByText(text)
+			.map((el) => el.closest("[data-line-index]") as HTMLElement);
+	}
+
+	it("highlights a context line the comment's range takes", async () => {
+		renderPanel();
+		await flushPrefs();
+
+		await clickControl(commentControl(4));
+		await screen.findByText("Comment on line 4");
+
+		expect(rowsOf("export { x };")[0].style.background).toBe(
+			"var(--color-accent-bg)",
+		);
 	});
 
 	describe("in the split layout", () => {
@@ -2949,17 +2989,29 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 
 			expect(await screen.findByText("Comments on lines 2-4")).toBeTruthy();
 		});
+
+		it("highlights both sides of a context line the comment's range takes", async () => {
+			renderPanel();
+			await flushPrefs();
+
+			await clickControl(commentControl(4));
+			await screen.findByText("Comment on line 4");
+
+			expect(
+				rowsOf("export { x };").map((row) => row.style.background),
+			).toEqual(["var(--color-accent-bg)", "var(--color-accent-bg)"]);
+		});
 	});
 
 	describe("when the selection holds context lines", () => {
-		function renderUnstaged() {
+		function renderWorkingDiff(diffKind: "unstaged" | "staged") {
 			render(DiffPanel, {
 				props: {
 					...commentingDiff,
 					fileDiffs: [testDiff],
 					commitDetail: null,
 					onclose: vi.fn(),
-					diffKind: "unstaged",
+					diffKind,
 					repoPath: "/repo",
 				},
 			});
@@ -2975,7 +3027,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 			await screen.findByText("Comments on lines 2-4");
 		}
 
-		function sentLines(command: string): unknown {
+		function sentLines(command: string): number[] | undefined {
 			const call = vi
 				.mocked(safeInvoke)
 				.mock.calls.find((c) => c[0] === command);
@@ -2983,7 +3035,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		}
 
 		it("counts only the changed lines on its staging actions", async () => {
-			await renderUnstaged();
+			await renderWorkingDiff("unstaged");
 
 			await dragControlOntoContext();
 
@@ -2996,7 +3048,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		});
 
 		it("stages only the changed lines", async () => {
-			await renderUnstaged();
+			await renderWorkingDiff("unstaged");
 			await dragControlOntoContext();
 			vi.mocked(safeInvoke).mockClear();
 
@@ -3009,8 +3061,12 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 
 		it("discards only the changed lines", async () => {
 			const { ask } = await import("@tauri-apps/plugin-dialog");
+			vi.mocked(ask).mockClear();
 			vi.mocked(ask).mockResolvedValue(true);
-			await renderUnstaged();
+			onTestFinished(() => {
+				vi.mocked(ask).mockResolvedValue(false);
+			});
+			await renderWorkingDiff("unstaged");
 			await dragControlOntoContext();
 			vi.mocked(safeInvoke).mockClear();
 
@@ -3019,21 +3075,14 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 			);
 
 			await waitFor(() => expect(sentLines("discard_lines")).toEqual([2, 3]));
-			vi.mocked(ask).mockResolvedValue(false);
+			expect(ask).toHaveBeenCalledWith(
+				"Discard 2 selected lines? This cannot be undone.",
+				expect.anything(),
+			);
 		});
 
 		it("unstages only the changed lines", async () => {
-			render(DiffPanel, {
-				props: {
-					...commentingDiff,
-					fileDiffs: [testDiff],
-					commitDetail: null,
-					onclose: vi.fn(),
-					diffKind: "staged",
-					repoPath: "/repo",
-				},
-			});
-			await flushPrefs();
+			await renderWorkingDiff("staged");
 			await dragControlOntoContext();
 			vi.mocked(safeInvoke).mockClear();
 
@@ -3045,7 +3094,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		});
 
 		it("leaves out the removed lines a drag from a line's control crosses", async () => {
-			await renderUnstaged();
+			await renderWorkingDiff("unstaged");
 
 			await fireEvent.mouseDown(commentControl(1));
 			await fireEvent.mouseOver(screen.getByText("const x = 1;"), {
@@ -3060,15 +3109,26 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 			);
 		});
 
-		it("offers the hunk's staging actions while no changed line is selected", async () => {
-			await renderUnstaged();
+		it.each([
+			{ diffKind: "unstaged", action: "Stage Hunk", command: "stage_hunk" },
+			{ diffKind: "staged", action: "Unstage Hunk", command: "unstage_hunk" },
+		] as const)(
+			"acts on the whole hunk from $diffKind changes while no changed line is selected",
+			async ({ diffKind, action, command }) => {
+				await renderWorkingDiff(diffKind);
+				await clickControl(commentControl(1));
+				await screen.findByText("Comment on line 1");
+				vi.mocked(safeInvoke).mockClear();
 
-			await clickControl(commentControl(1));
-			await screen.findByText("Comment on line 1");
+				await fireEvent.click(screen.getByRole("button", { name: action }));
 
-			expect(screen.getByRole("button", { name: "Stage Hunk" })).toBeTruthy();
-			expect(screen.getByRole("button", { name: "Discard Hunk" })).toBeTruthy();
-		});
+				await waitFor(() =>
+					expect(vi.mocked(safeInvoke).mock.calls.map((c) => c[0])).toContain(
+						command,
+					),
+				);
+			},
+		);
 	});
 
 	it("starts a new range from a press on a selected line's control that drags away", async () => {
@@ -3164,7 +3224,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		expect(screen.getByRole("textbox")).toHaveValue("unsaved note");
 	});
 
-	it("opens no comment when the panel closes in the middle of a drag from a line's control", async () => {
+	it("opens no comment on the lines a drag from a line's control crossed when the panel closes mid-drag", async () => {
 		const composerSession = createReviewEditorStore().composer();
 		const view = render(DiffPanel, {
 			props: {
@@ -3182,7 +3242,6 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
 
 		view.unmount();
-		await fireEvent.mouseUp(window);
 		await flushPrefs();
 
 		expect(composerSession.captured).toBeNull();

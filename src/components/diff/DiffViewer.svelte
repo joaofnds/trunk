@@ -94,6 +94,7 @@ interface Props {
 		filePath: string,
 		hunkIndex: number,
 		lineIndex: number,
+		e: MouseEvent,
 	) => void;
 	oncommentpress: (
 		filePath: string,

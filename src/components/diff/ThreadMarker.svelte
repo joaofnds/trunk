@@ -13,7 +13,7 @@ interface Props {
 	marker: LineMarker | null;
 	width: string;
 	/** Opens a comment on this one line; the control shows under the pointer. */
-	oncomment?: () => void;
+	oncomment?: (e: MouseEvent) => void;
 	/** A press on the control, which a drag from it carries across lines. */
 	oncommentpress?: (e: MouseEvent) => void;
 	commentLabel?: string;

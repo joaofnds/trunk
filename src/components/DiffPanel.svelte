@@ -7,7 +7,7 @@ import {
 } from "../lib/diff-anchor.js";
 import type { DiffNav } from "../lib/diff-nav.js";
 import type { DiffComposer } from "../lib/diff-rows.js";
-import { takesNewComment } from "../lib/diff-utils.js";
+import { splitSide, takesNewComment } from "../lib/diff-utils.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import {
 	buildFullFileAnchor,
@@ -187,7 +187,7 @@ let dragHunkLines: DiffLine[] | null = null;
 let dragHunkKey: string | null = null;
 // In the split layout a drag stays on the side it started from, so a removed
 // line's drag never paints the added lines beside it.
-let dragSide: DiffOrigin | null = null;
+let dragSide: Side | null = null;
 let pressHeld = false;
 // A drag started from a line's comment control: once it has moved, its release
 // opens a comment on the lines it painted, and a release the user declines
@@ -519,9 +519,13 @@ async function handleCommentLine(
 	filePath: string,
 	hunkIndex: number,
 	lineIndex: number,
+	e: MouseEvent,
 ) {
 	const fd = fileDiffs.find((f) => f.path === filePath);
 	if (!fd) return;
+	const hunkLines = fd.hunks[hunkIndex]?.lines ?? [];
+	if (e.shiftKey && extendComposerTo(filePath, hunkIndex, lineIndex, hunkLines))
+		return;
 	if (inSelection(`${filePath}-${hunkIndex}`, lineIndex)) {
 		await handleCommentLines(filePath, hunkIndex);
 		return;
@@ -1015,16 +1019,16 @@ const composerFollowsSelection = $derived.by(() => {
 	);
 });
 
-// The selection with the lines from the last clicked one to this one added,
-// leaving context lines out as a press does.
+// The selection with the lines from the last clicked one to this one added.
 function shiftExtended(
 	from: number,
 	to: number,
 	hunkLines: DiffLine[],
+	forComment: boolean,
 ): Set<number> {
 	const extended = new Set(selectedLineIndices);
 	for (let i = Math.min(from, to); i <= Math.max(from, to); i++) {
-		if (i < hunkLines.length && hunkLines[i].origin !== "Context") {
+		if (i < hunkLines.length && selects(hunkLines[i], forComment)) {
 			extended.add(i);
 		}
 	}
@@ -1051,7 +1055,7 @@ function extendComposerTo(
 	)
 		return false;
 
-	const extended = shiftExtended(lastClickedIndex, lineIndex, hunkLines);
+	const extended = shiftExtended(lastClickedIndex, lineIndex, hunkLines, true);
 	selectedLineIndices = extended;
 	lastClickedIndex = lineIndex;
 	activeComposerSession.openDiff(
@@ -1091,7 +1095,12 @@ async function handleLineClick(
 
 	if (e.shiftKey && lastClickedIndex !== null) {
 		e.preventDefault();
-		selectedLineIndices = shiftExtended(lastClickedIndex, lineIndex, hunkLines);
+		selectedLineIndices = shiftExtended(
+			lastClickedIndex,
+			lineIndex,
+			hunkLines,
+			false,
+		);
 	} else {
 		const newSet = new Set(selectedLineIndices);
 		if (newSet.has(lineIndex)) {
@@ -1127,16 +1136,22 @@ function applyDragRange(currentIndex: number) {
 	selectedLineIndices = newSet;
 }
 
+// An unchanged line draws on both sides of the split layout, so a drag from
+// either side takes it.
 function paints(line: DiffLine): boolean {
-	if (commentDrag !== null && !takesNewComment(diffKind, line)) return false;
-	if (line.origin === "Context") return commentDrag !== null;
-	return dragSide === null || line.origin === dragSide;
+	if (!selects(line, commentDrag !== null)) return false;
+	return (
+		line.origin === "Context" ||
+		dragSide === null ||
+		splitSide(line) === dragSide
+	);
 }
 
-// A context line's comment control sits on the split layout's added side.
-function splitSideOf(line: DiffLine | undefined): DiffOrigin | null {
-	if (!line) return null;
-	return line.origin === "Context" ? "Add" : line.origin;
+// A comment takes any line it can anchor to, and staging only the changed ones.
+function selects(line: DiffLine, forComment: boolean): boolean {
+	return forComment
+		? takesNewComment(diffKind, line)
+		: line.origin !== "Context";
 }
 
 function beginDrag(
@@ -1151,7 +1166,8 @@ function beginDrag(
 	dragMode = mode;
 	dragAnchorIndex = lineIndex;
 	dragHunkLines = hunkLines;
-	dragSide = layoutMode === "split" ? splitSideOf(hunkLines[lineIndex]) : null;
+	const line = hunkLines[lineIndex];
+	dragSide = layoutMode === "split" && line ? splitSide(line) : null;
 	lastClickedIndex = lineIndex;
 }
 
@@ -1182,7 +1198,12 @@ async function handleLineMouseDown(
 	if (composerOpen && !(await confirmComposerReplacement())) return;
 
 	if (e.shiftKey && hunkKey === selectedHunkKey && lastClickedIndex !== null) {
-		selectedLineIndices = shiftExtended(lastClickedIndex, lineIndex, hunkLines);
+		selectedLineIndices = shiftExtended(
+			lastClickedIndex,
+			lineIndex,
+			hunkLines,
+			false,
+		);
 		lastClickedIndex = lineIndex;
 		return;
 	}
@@ -1219,6 +1240,9 @@ function handleCommentPress(
 ) {
 	if (e.button !== 0) return;
 	e.preventDefault();
+	// A shift-press is the start of a click that extends the comment, which a
+	// drag would reset to start from the pressed line.
+	if (e.shiftKey && composerFollowsSelection) return;
 	const hunkKey = `${filePath}-${hunkIdx}`;
 	const waitsForMove = composerOpen || inSelection(hunkKey, lineIndex);
 

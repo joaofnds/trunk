@@ -10,6 +10,7 @@ import {
 import {
 	commentLabel,
 	gripLabel,
+	lineBackground,
 	splitInvisibles,
 	trailingWhitespaceStart,
 } from "../../lib/diff-utils.js";
@@ -274,17 +275,6 @@ export function clearSelection() {
 	selectedPath = null;
 	anchorIndex = null;
 	focusIndex = null;
-}
-
-function lineBackground(origin: string, isSelected: boolean): string {
-	if (isSelected) {
-		if (origin === "Add") return "var(--color-diff-add-bg-selected)";
-		if (origin === "Delete") return "var(--color-diff-delete-bg-selected)";
-		return "var(--color-accent-bg)";
-	}
-	if (origin === "Add") return "var(--color-diff-add-bg)";
-	if (origin === "Delete") return "var(--color-diff-delete-bg)";
-	return "transparent";
 }
 </script>
 

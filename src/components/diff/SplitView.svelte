@@ -13,7 +13,9 @@ import {
 import {
 	commentLabel,
 	gripLabel,
+	lineBackground,
 	splitInvisibles,
+	splitSide,
 	takesNewComment,
 	trailingWhitespaceStart,
 } from "../../lib/diff-utils.js";
@@ -63,6 +65,7 @@ interface Props {
 		filePath: string,
 		hunkIndex: number,
 		lineIndex: number,
+		e: MouseEvent,
 	) => void;
 	/** A press on that control, which a drag carries across lines. */
 	oncommentpress: (
@@ -239,18 +242,6 @@ function flash(hunkKey: string): void {
 	}, FLASH_MS);
 }
 
-function lineBackground(origin: string, isSelected: boolean = false): string {
-	if (origin === "Add")
-		return isSelected
-			? "var(--color-diff-add-bg-selected)"
-			: "var(--color-diff-add-bg)";
-	if (origin === "Delete")
-		return isSelected
-			? "var(--color-diff-delete-bg-selected)"
-			: "var(--color-diff-delete-bg)";
-	return "transparent";
-}
-
 function originClass(origin: string): string {
 	if (origin === "Add") return "diff-line-add";
 	if (origin === "Delete") return "diff-line-delete";
@@ -336,9 +327,9 @@ function originClass(origin: string): string {
 {/snippet}
 
 <!-- A cell's marker and line number. A changed line's number is the grip a
-     press selects it from, and its marker cell offers the comment control,
-     except on a removed line of unstaged changes, which no comment can anchor
-     to. -->
+     press selects it from. The marker cell on the line's own side offers the
+     comment control, so an unchanged line offers it once, and a removed line of
+     unstaged changes, which no comment can anchor to, not at all. -->
 {#snippet cellGutter(
 	path: string,
 	hunkIdx: number,
@@ -354,8 +345,8 @@ function originClass(origin: string): string {
 		width={vd.markerW}
 		oncomment={commentable &&
 		takesNewComment(diffKind, line) &&
-		(line.origin !== "Context" || side === "New")
-			? () => oncommentline(path, hunkIdx, lineIdx)
+		side === splitSide(line)
+			? (e) => oncommentline(path, hunkIdx, lineIdx, e)
 			: undefined}
 		oncommentpress={(e) => oncommentpress(path, hunkIdx, lineIdx, hunkLines, e)}
 		commentLabel={commentLabel(line)}

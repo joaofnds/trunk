@@ -1,5 +1,5 @@
 import type { PanelDiffKind } from "./comment-matching.js";
-import type { DiffLine } from "./types.js";
+import type { DiffLine, DiffOrigin, Side } from "./types.js";
 
 /**
  * Represents a paired row for split (side-by-side) diff display.
@@ -164,11 +164,34 @@ export function takesNewComment(
 	return !(diffKind === "unstaged" && line.origin === "Delete");
 }
 
+/** The side of the split layout a line's grip and comment control sit on. An
+ *  unchanged line draws on both sides and takes them on the new one. */
+export function splitSide(line: DiffLine): Side {
+	return line.origin === "Delete" ? "Old" : "New";
+}
+
 /** The name of the control that opens a comment on one diff line. */
 export function commentLabel(line: DiffLine): string {
 	if (line.origin === "Delete")
 		return `Comment on removed line ${line.old_lineno}`;
 	return `Comment on line ${line.new_lineno}`;
+}
+
+/** A diff line's background. A selected unchanged line takes the accent, since
+ *  a comment's range can hold one. */
+export function lineBackground(
+	origin: DiffOrigin,
+	isSelected: boolean,
+): string {
+	if (origin === "Add")
+		return isSelected
+			? "var(--color-diff-add-bg-selected)"
+			: "var(--color-diff-add-bg)";
+	if (origin === "Delete")
+		return isSelected
+			? "var(--color-diff-delete-bg-selected)"
+			: "var(--color-diff-delete-bg)";
+	return isSelected ? "var(--color-accent-bg)" : "transparent";
 }
 
 export interface InvisibleSegment {
