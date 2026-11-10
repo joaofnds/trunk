@@ -124,9 +124,15 @@ const kindTakesComments = $derived(
 // Whether a line can take a new comment here, as the Comment action can.
 const commentable = $derived(takesComments && kindTakesComments);
 
-// The marker cell's control: comment on that one line, selecting it as a click
-// on its grip would.
+// The marker cell's control: on a line inside the selection it comments on the
+// selection, as GitHub's does; on any other line it comments on that one line,
+// selecting it as a click on its grip would.
 function commentOnLine(path: string, line: DiffLine, index: number) {
+	if (selectedPath === path && selectedIndices.has(index)) {
+		oncommentfullfile(path, selectedIndices);
+		return;
+	}
+
 	selectLine(path, line, index, false);
 	oncommentfullfile(path, new Set([index]));
 }

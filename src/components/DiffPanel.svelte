@@ -477,7 +477,9 @@ async function handleCommentLines(filePath: string, hunkIndex: number) {
 	await openDiffComposer(fd, hunkIndex, new Set(selectedLineIndices));
 }
 
-// One line's comment control: select that line and comment on it, in one click.
+// One line's comment control: on a line inside the selection it comments on the
+// selection, as GitHub's does; on any other line it selects that line and
+// comments on it, in one click.
 async function handleCommentLine(
 	filePath: string,
 	hunkIndex: number,
@@ -485,6 +487,13 @@ async function handleCommentLine(
 ) {
 	const fd = fileDiffs.find((f) => f.path === filePath);
 	if (!fd) return;
+	if (
+		selectedHunkKey === `${filePath}-${hunkIndex}` &&
+		selectedLineIndices.has(lineIndex)
+	) {
+		await handleCommentLines(filePath, hunkIndex);
+		return;
+	}
 	if (composerOpen && !(await confirmComposerReplacement())) return;
 
 	selectedHunkKey = `${filePath}-${hunkIndex}`;

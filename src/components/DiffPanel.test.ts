@@ -2841,6 +2841,29 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		expect(screen.getByText(/to extend/)).toBeTruthy();
 	});
 
+	it("comments on the whole selection from the control of a line inside it", async () => {
+		render(DiffPanel, {
+			props: {
+				...commentingDiff,
+				fileDiffs: [testDiff],
+				commitDetail: nonMergeCommit,
+				onclose: vi.fn(),
+				diffKind: "commit",
+				repoPath: "/repo",
+			},
+		});
+		await flushPrefs();
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
+		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
+		await fireEvent.mouseUp(window);
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Comment on line 3", hidden: true }),
+		);
+
+		expect(await screen.findByText("Comments on lines 2-3")).toBeTruthy();
+	});
+
 	it("does not paint after a release that arrived while the discard prompt was open", async () => {
 		const { ask } = await import("@tauri-apps/plugin-dialog");
 		const askMock = vi.mocked(ask);

@@ -906,6 +906,22 @@ describe("FullFileView one-click comment", () => {
 		expect(oncommentfullfile).toHaveBeenCalledWith("src/main.ts", new Set([1]));
 	});
 
+	it("comments on the whole selection from the control of a line inside it", async () => {
+		const oncommentfullfile = vi.fn();
+		render(FullFileView, { props: defaultProps({ oncommentfullfile }) });
+		await fireEvent.click(gutterGrip("added one"));
+		await fireEvent.click(gutterGrip("added three"), { shiftKey: true });
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Comment on line 13", hidden: true }),
+		);
+
+		expect(oncommentfullfile).toHaveBeenCalledWith(
+			"src/main.ts",
+			new Set([1, 2, 3, 4]),
+		);
+	});
+
 	it("offers none where the diff takes no comments", () => {
 		render(FullFileView, { props: defaultProps({ takesComments: false }) });
 
