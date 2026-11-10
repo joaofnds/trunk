@@ -1,6 +1,6 @@
 {
 	"name": "trunk",
-	"version": "0.60.7",
+	"version": "0.60.8",
 	"description": "",
 	"type": "module",
 	"scripts": {
