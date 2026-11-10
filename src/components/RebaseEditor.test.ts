@@ -260,6 +260,31 @@ describe("RebaseEditor", () => {
 		});
 	});
 
+	it.each([
+		{ hidden: "sha", shown: ["Author", "Date"] },
+		{ hidden: "author", shown: ["SHA", "Date"] },
+		{ hidden: "date", shown: ["SHA", "Author"] },
+	])(
+		"gives every shown column a handle of its own with $hidden hidden",
+		async ({ hidden, shown }) => {
+			mockInvoke.mockImplementation((command, args) =>
+				Promise.resolve(
+					command === "prefs_get" &&
+						(args as { key: string }).key === "rebase_column_visibility"
+						? { sha: true, author: true, date: true, [hidden]: false }
+						: undefined,
+				),
+			);
+
+			renderEditor();
+			await settled();
+
+			expect(
+				screen.getAllByRole("slider").map((h) => h.getAttribute("aria-label")),
+			).toEqual(shown.map((column) => `Resize ${column} column`));
+		},
+	);
+
 	it("follows a drag of the edge before a column", async () => {
 		const handle = await renderColumns();
 

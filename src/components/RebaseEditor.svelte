@@ -496,14 +496,6 @@ function handleStartRebase() {
 		})),
 	);
 }
-
-// Determine last visible resizable column for resize handle logic
-let lastVisibleColumn = $derived.by(() => {
-	if (columnVisibility.date) return "date";
-	if (columnVisibility.author) return "author";
-	if (columnVisibility.sha) return "sha";
-	return "message";
-});
 </script>
 
 <svelte:document
@@ -511,9 +503,9 @@ let lastVisibleColumn = $derived.by(() => {
 	oncontextmenu={openMenuIfOnHeader}
 />
 
-{#snippet edgeBefore(column: keyof RebaseColumnWidths, label: string)}
+{#snippet leadingEdge(column: keyof RebaseColumnWidths, label: string)}
 	<Splitter
-		variant="column"
+		variant="column-leading"
 		aria-label="Resize {label} column"
 		value={columnWidths[column]}
 		min={MIN_WIDTHS[column]}
@@ -559,12 +551,7 @@ let lastVisibleColumn = $derived.by(() => {
 		<div class="rebase-col-action" style:padding="0 {COLUMN_PADDING_X}px">
 			Action
 		</div>
-		<div class="flex-1 relative" style:padding="0 {COLUMN_PADDING_X}px">
-			Message
-			{#if "message" !== lastVisibleColumn}
-				{@render edgeBefore("sha", "SHA")}
-			{/if}
-		</div>
+		<div class="flex-1" style:padding="0 {COLUMN_PADDING_X}px"> Message </div>
 		{#if columnVisibility.sha}
 			<div
 				class="flex-shrink-0 relative"
@@ -572,9 +559,7 @@ let lastVisibleColumn = $derived.by(() => {
 				style:padding="0 {COLUMN_PADDING_X}px"
 			>
 				SHA
-				{#if "sha" !== lastVisibleColumn}
-					{@render edgeBefore("author", "Author")}
-				{/if}
+				{@render leadingEdge("sha", "SHA")}
 			</div>
 		{/if}
 		{#if columnVisibility.author}
@@ -584,9 +569,7 @@ let lastVisibleColumn = $derived.by(() => {
 				style:padding="0 {COLUMN_PADDING_X}px"
 			>
 				Author
-				{#if "author" !== lastVisibleColumn}
-					{@render edgeBefore("date", "Date")}
-				{/if}
+				{@render leadingEdge("author", "Author")}
 			</div>
 		{/if}
 		{#if columnVisibility.date}
@@ -596,6 +579,7 @@ let lastVisibleColumn = $derived.by(() => {
 				style:padding="0 {COLUMN_PADDING_X}px"
 			>
 				Date
+				{@render leadingEdge("date", "Date")}
 			</div>
 		{/if}
 	</div>
