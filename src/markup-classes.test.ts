@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { type AST, parse } from "svelte/compiler";
 import { __unstable__loadDesignSystem } from "tailwindcss";
 import { describe, expect, it } from "vitest";
@@ -194,11 +194,10 @@ function product(prefixes: string[], options: string[]): string[] {
 }
 
 type Chunks = AST.Attribute["value"];
-/** The words an attribute can render, a `class` or a `role`. A word holding
- *  OPAQUE has a part the parser cannot see past, and its static prefix is all
- *  that is known of it. */
-function words(value: Chunks, bindings: Scope): string[] {
-	if (value === true) return [];
+/** Every whole string an attribute can render. A string holding OPAQUE has a
+ *  part the parser cannot see past. */
+function texts(value: Chunks, bindings: Scope): string[] {
+	if (value === true) return [""];
 	let acc = [""];
 	for (const chunk of Array.isArray(value) ? value : [value]) {
 		const options =
@@ -207,10 +206,23 @@ function words(value: Chunks, bindings: Scope): string[] {
 				: (literals(chunk.expression, bindings) ?? [OPAQUE]);
 		acc = product(acc, options);
 	}
-	return [...new Set(acc.flatMap((s) => s.split(/\s+/)).filter(Boolean))];
+	return acc;
 }
 
-const isStatic = (value: AST.StyleDirective["value"]) =>
+/** The words an attribute can render, a `class` or a `role`. A word holding
+ *  OPAQUE has a part the parser cannot see past, and its static prefix is all
+ *  that is known of it. */
+function words(value: Chunks, bindings: Scope): string[] {
+	return [
+		...new Set(
+			texts(value, bindings)
+				.flatMap((s) => s.split(/\s+/))
+				.filter(Boolean),
+		),
+	];
+}
+
+const isStatic = (value: AST.StyleDirective["value"]): value is AST.Text[] =>
 	Array.isArray(value) && value.every((chunk) => chunk.type === "Text");
 
 function component(file: string) {
@@ -372,6 +384,221 @@ function textareasOnLabelLeading(source: string): string[] {
 		);
 }
 
+/** What makes WebKit paint an element through a layer of its own. Inside an
+ *  svg `foreignObject` at a page zoom other than 1, that layer lands at its
+ *  unzoomed size and place, off the element's box, and is never erased
+ *  (TRUNK-421). Each entry was seen doing it in WKWebView except `mask`,
+ *  `contain` other than `paint`, and `animation`, which are here for what they
+ *  set. An overflow clip, a shadow, a `z-index` alone, an alpha colour, and
+ *  opacity on the svg or on a `<g>` around the `foreignObject` paint in place.
+ *  CSS opacity on the `foreignObject` itself hides what it holds. */
+const LAYERING = new Set([
+	"opacity",
+	"transform",
+	"translate",
+	"scale",
+	"rotate",
+	"filter",
+	"backdrop-filter",
+	"will-change",
+	"isolation",
+	"mix-blend-mode",
+	"clip-path",
+	"mask",
+	"mask-image",
+	"contain",
+	"perspective",
+	"position",
+	"animation",
+]);
+/** The values that leave the layer off. */
+const INERT = new Set(["none", "auto", "normal", "static", "1", "100%"]);
+const DECLARATION = /(?<![\w-])([a-z][a-z-]*)\s*:\s*([^;{}]+)/gi;
+
+const layering = (property: string, value: string) =>
+	LAYERING.has(property.toLowerCase()) &&
+	!INERT.has(value.trim().toLowerCase());
+
+const layers = (css: string) =>
+	[...css.matchAll(DECLARATION)].some(([, property, value]) =>
+		layering(property, value),
+	);
+
+const RULE = /([^{}]*)\{([^{}]*)\}/g;
+const CLASS_NAME = /\.(-?[a-zA-Z_][\w-]*)/g;
+
+/** The classes a selector names in a rule that gives a layer. */
+function layeredClasses(css: string): Set<string> {
+	const names = new Set<string>();
+	for (const [, selector, body] of css.matchAll(RULE)) {
+		if (!layers(body)) continue;
+		for (const [, name] of selector.matchAll(CLASS_NAME)) names.add(name);
+	}
+	return names;
+}
+
+const globallyLayered = layeredClasses(
+	files(root, ".css").map(stripped).join("\n"),
+);
+
+type Read = (file: string) => string;
+const readSource: Read = (file) => readFileSync(file, "utf8");
+
+/** What a component file knows about what it draws: the `const` bindings its
+ *  class strings read, the classes its own `<style>` gives a layer, and the
+ *  components it imports from this source tree. */
+interface Drawing {
+	file: string;
+	source: string;
+	ast: AST.Root;
+	bindings: Scope;
+	layered: Set<string>;
+	imports: Map<string, string>;
+}
+
+function importedComponents(file: string, ast: AST.Root): Map<string, string> {
+	const imports = new Map<string, string>();
+	const statements = [ast.module, ast.instance].flatMap(
+		(script) => script?.content.body ?? [],
+	);
+	for (const statement of statements) {
+		if (statement.type !== "ImportDeclaration") continue;
+		const from = String(statement.source.value);
+		if (!from.endsWith(".svelte")) continue;
+		const path = from.startsWith("$lib/")
+			? join(root, "lib", from.slice("$lib/".length))
+			: from.startsWith(".")
+				? resolve(dirname(file), from)
+				: null;
+		if (!path) continue;
+		for (const specifier of statement.specifiers) {
+			if (specifier.type === "ImportDefaultSpecifier") {
+				imports.set(specifier.local.name, path);
+			}
+		}
+	}
+	return imports;
+}
+
+function drawing(file: string, read: Read): Drawing {
+	const source = read(file);
+	const ast = parse(source, { modern: true });
+	const styles = ast.css
+		? source.slice(ast.css.content.start, ast.css.content.end)
+		: "";
+	return {
+		file,
+		source,
+		ast,
+		bindings: scope(ast.module, ast.instance),
+		layered: layeredClasses(styles),
+		imports: importedComponents(file, ast),
+	};
+}
+
+const elementsIn = (fragment: AST.Fragment) =>
+	ELEMENTS.flatMap((type) => descendants(fragment, type))
+		.filter(isElement)
+		.sort((a, b) => a.start - b.start);
+
+/** What one attribute writes that can give its element a layer. A value the
+ *  parser cannot read counts, since it can be anything. */
+function layerMarks(
+	attribute: AST.ElementLike["attributes"][number],
+	at: Drawing,
+): string[] {
+	const layeredClass = (word: string) =>
+		at.layered.has(word) ||
+		globallyLayered.has(word) ||
+		layers(theme.candidatesToCss([word])[0] ?? "");
+
+	switch (attribute.type) {
+		case "ClassDirective":
+			return layeredClass(attribute.name) ? [`class:${attribute.name}`] : [];
+		case "StyleDirective": {
+			const value = isStatic(attribute.value)
+				? attribute.value.map((chunk) => chunk.data).join("")
+				: OPAQUE;
+			return layering(attribute.name, value) ? [`style:${attribute.name}`] : [];
+		}
+		case "TransitionDirective": {
+			const kind =
+				attribute.intro && attribute.outro
+					? "transition"
+					: attribute.intro
+						? "in"
+						: "out";
+			return [`${kind}:${attribute.name}`];
+		}
+		case "AnimateDirective":
+			return [`animate:${attribute.name}`];
+		case "Attribute":
+			break;
+		default:
+			return [];
+	}
+
+	const written = texts(attribute.value, at.bindings);
+	const unread = written.some((text) => text.includes(OPAQUE));
+	if (attribute.name === "class") {
+		if (unread) return [`class=${UNREAD}`];
+		return words(attribute.value, at.bindings).filter(layeredClass);
+	}
+	if (attribute.name === "style") {
+		if (unread) return [`style=${UNREAD}`];
+		return written.some(layers) ? ["style"] : [];
+	}
+	if (!LAYERING.has(attribute.name.toLowerCase())) return [];
+	return unread || written.some((text) => layering(attribute.name, text))
+		? [`${attribute.name}=`]
+		: [];
+}
+
+/** Every mark on the given elements, and in every component among them, read
+ *  whole, since all a component draws lands where it is placed. */
+function layeredElements(
+	elements: AST.ElementLike[],
+	at: Drawing,
+	read: Read,
+	seen: Set<string>,
+): string[] {
+	return elements.flatMap((element) => {
+		const line = at.source.slice(0, element.start).split("\n").length;
+		const where = `<${element.name}> at ${relative(root, at.file)}:${line}`;
+		const marks = element.attributes
+			.flatMap((attribute) => layerMarks(attribute, at))
+			.map((mark) => `${mark} on ${where}`);
+		if (element.type !== "Component") return marks;
+
+		const file = at.imports.get(element.name);
+		if (!file)
+			return [...marks, `${where}, a component this guard cannot read`];
+		if (seen.has(file)) return marks;
+		seen.add(file);
+		const inner = drawing(file, read);
+		return [
+			...marks,
+			...layeredElements(elementsIn(inner.ast.fragment), inner, read, seen),
+		];
+	});
+}
+
+/** Everything inside an svg `foreignObject`, the frame included, that WebKit
+ *  can paint in a layer of its own. */
+function layeredInForeignObjects(
+	file: string,
+	read: Read = readSource,
+): string[] {
+	const at = drawing(file, read);
+	const frames = elementsIn(at.ast.fragment).filter(
+		(element) => element.name === "foreignObject",
+	);
+	const seen = new Set([file]);
+	return frames.flatMap((frame) =>
+		layeredElements([frame, ...elementsIn(frame.fragment)], at, read, seen),
+	);
+}
+
 describe("markup classes", () => {
 	it("finds a textarea on a text step with no leading", () => {
 		expect(
@@ -490,6 +717,119 @@ describe("markup classes", () => {
 		"%s draws a control through a primitive from src/lib/ui, not a raw <button>, a role or a <svelte:element> (docs/design-system.md, Primitives)",
 		(file) => {
 			expect(rawControls(readFileSync(join(root, file), "utf8"))).toEqual([]);
+		},
+	);
+
+	describe("inside a foreignObject", () => {
+		const SCRATCH = join(root, "Scratch.svelte");
+		const LABEL = join(root, "lib/ui/Label.svelte");
+		const reading =
+			(sources: Record<string, string>): Read =>
+			(file) =>
+				sources[file] ?? readSource(file);
+		const inFrame = (markup: string, script = "", style = "") =>
+			layeredInForeignObjects(
+				SCRATCH,
+				reading({
+					[SCRATCH]: `<script>${script}</script><svg><foreignObject>${markup}</foreignObject></svg><style>${style}</style>`,
+				}),
+			);
+
+		it.each([
+			['<span class="opacity-50"></span>', "opacity-50 on <span>"],
+			['<span class="animate-pulse"></span>', "animate-pulse on <span>"],
+			["<span class:relative={on}></span>", "class:relative on <span>"],
+			['<span style:transform="scale(2)"></span>', "style:transform on <span>"],
+			["<span style:opacity={o}></span>", "style:opacity on <span>"],
+			['<span style="top: 50%; opacity: 50%"></span>', "style on <span>"],
+			['<span style="color: red; {extra}"></span>', "style={…} on <span>"],
+			["<span class={c}></span>", "class={…} on <span>"],
+			["<span transition:fade></span>", "transition:fade on <span>"],
+			["<span in:fly></span>", "in:fly on <span>"],
+			[
+				'<svelte:element this="span" class="relative" />',
+				"relative on <svelte:element>",
+			],
+			['<g opacity="0.5"></g>', "opacity= on <g>"],
+		])("finds %s", (markup, offence) => {
+			expect(inFrame(markup)).toEqual([`${offence} at Scratch.svelte:1`]);
+		});
+
+		it("finds a class the component's own stylesheet gives a layer", () => {
+			expect(
+				inFrame(
+					'<span class="dim"></span>',
+					"",
+					".dim:hover { opacity: 0.5; }",
+				),
+			).toEqual(["dim on <span> at Scratch.svelte:1"]);
+		});
+
+		it("finds a layer on the frame itself", () => {
+			expect(
+				layeredInForeignObjects(
+					SCRATCH,
+					reading({
+						[SCRATCH]:
+							'<svg><foreignObject class="opacity-50"></foreignObject></svg>',
+					}),
+				),
+			).toEqual(["opacity-50 on <foreignObject> at Scratch.svelte:1"]);
+		});
+
+		it("reads a component placed there whole", () => {
+			expect(
+				layeredInForeignObjects(
+					SCRATCH,
+					reading({
+						[SCRATCH]:
+							'<script>import Label from "./lib/ui/Label.svelte";</script><svg><foreignObject><Label /></foreignObject></svg>',
+						[LABEL]: '<div>\n<span class="relative"></span></div>',
+					}),
+				),
+			).toEqual(["relative on <span> at lib/ui/Label.svelte:2"]);
+		});
+
+		it("finds a component it cannot read", () => {
+			expect(
+				inFrame("<Icon />", 'import Icon from "@lucide/svelte/icons/tag";'),
+			).toEqual([
+				"<Icon> at Scratch.svelte:1, a component this guard cannot read",
+			]);
+		});
+
+		it.each([
+			'<span class="block overflow-hidden shadow-lg z-10"></span>',
+			'<span style="position: static; transform: none; opacity: 1"></span>',
+			'<span class="opacity-100 isolation-auto"></span>',
+			'<span style:color={c} style:transform="none"></span>',
+			'<script>import HitArea from "./lib/ui/HitArea.svelte";</script><svg><foreignObject><HitArea aria-label="a" shape="pill" /></foreignObject></svg>',
+		])("leaves %s, which paints in place", (markup) => {
+			const source = markup.startsWith("<script>")
+				? markup
+				: `<svg><foreignObject>${markup}</foreignObject></svg>`;
+			expect(
+				layeredInForeignObjects(SCRATCH, reading({ [SCRATCH]: source })),
+			).toEqual([]);
+		});
+
+		it("leaves a layer outside every foreignObject", () => {
+			expect(
+				layeredInForeignObjects(
+					SCRATCH,
+					reading({
+						[SCRATCH]:
+							'<svg class="opacity-50"><g opacity="0.5"><foreignObject><span></span></foreignObject></g></svg><span class="relative"></span>',
+					}),
+				),
+			).toEqual([]);
+		});
+	});
+
+	it.each(components)(
+		"%s draws nothing inside a foreignObject that WebKit paints in a layer of its own, which a page zoom moves off its box (TRUNK-421)",
+		(file) => {
+			expect(layeredInForeignObjects(join(root, file))).toEqual([]);
 		},
 	);
 });

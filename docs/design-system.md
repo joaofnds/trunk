@@ -212,6 +212,17 @@ too, since it can be either. A `role` handed to a component is that component's
 to draw and is not judged. A control drawn there in scoped CSS passes every other
 guard while it drifts from the primitives.
 
+The same test fails anything inside an svg `foreignObject`, the frame included,
+that WebKit paints through a layer of its own: an opacity, a transform, a filter,
+a `position` other than static, an animation, and the rest of the properties its
+`LAYERING` set lists, whether a utility, a class a stylesheet styles, a `style`,
+an attribute or a Svelte transition writes it. At a page zoom other than 1 WebKit
+paints that layer at its unzoomed size and place and never erases it, so a pill's
+label drifts off the pill and leaves copies behind. A component placed there is
+read whole, and a class, a style or a component the parser cannot read fails too.
+Fade such content through its colour, as the ghost pill's label does with
+`color-mix(… transparent)`, or put the opacity on a `<g>` around the frame.
+
 Biome's a11y rules read the same components, so a pointer or key handler on an
 element that is no control, a `<div>`, a `<span>` or an `<svg>`, fails `just
 quick`. Hand the press to a primitive, or to `HitArea` where the thing pressed is

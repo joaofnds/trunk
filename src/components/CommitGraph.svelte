@@ -1600,6 +1600,13 @@ $effect(() => {
 });
 
 const laneColor = (idx: number) => `var(--lane-${idx % 8})`;
+/** A ghost pill's text fades through its colour, not an opacity: WebKit paints
+ *  HTML that has a layer of its own inside a foreignObject without the page
+ *  zoom, off its pill (src/markup-classes.test.ts guards it). */
+const pillTextColor = (pill: OverlayRefPill) =>
+	pill.isGhost
+		? `color-mix(in oklch, ${laneColor(pill.colorIndex)} 50%, transparent)`
+		: laneColor(pill.colorIndex);
 
 // SVG-specific display settings — identical to displaySettings except rowHeight
 // uses the measured value so that overlay paths, dots, and pills don't drift
@@ -2685,9 +2692,8 @@ $effect(() => {
 									>
 										<span
 											class="block font-sans whitespace-nowrap overflow-hidden"
-											class:opacity-50={pill.isGhost}
 											style:line-height="{PILL_HEIGHT}px"
-											style:color={laneColor(pill.colorIndex)}
+											style:color={pillTextColor(pill)}
 											style:font-size="{PILL_FONT_SIZE}px"
 											style:font-weight={pill.isHead ? 700 : 500}
 											>{pill.truncatedLabel}</span
@@ -2717,8 +2723,7 @@ $effect(() => {
 										>
 											<span
 												class="block text-center whitespace-nowrap font-sans font-medium"
-												class:opacity-50={pill.isGhost}
-												style:color={laneColor(pill.colorIndex)}
+												style:color={pillTextColor(pill)}
 												style:font-size="{BADGE_FONT_SIZE}px"
 												style:line-height="{BADGE_HEIGHT}px"
 												>{badgeText}</span

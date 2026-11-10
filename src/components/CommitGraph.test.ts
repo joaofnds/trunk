@@ -3500,6 +3500,16 @@ describe("CommitGraph", () => {
 			expect(screen.getByText(/^main/)).toBeInTheDocument();
 		});
 
+		it("fade the lane's name through its colour, which paints in place at any zoom", async () => {
+			const row = await mountGraph();
+
+			await fireEvent.mouseEnter(row);
+
+			expect(screen.getByText(/^main/).style.color).toMatch(
+				/^color-mix\(in oklch, var\(--lane-\d\) 50%, transparent\)$/,
+			);
+		});
+
 		it("give the lane's name nothing to press", async () => {
 			const row = await mountGraph();
 

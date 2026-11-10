@@ -234,6 +234,13 @@ Alternatives not taken:
 - A graph pan other than the one captured, `09-column-saturation` at 56 px panned 20 px. A
   break that shows only at another offset, or in another repository, passes.
 - The diff pane (TRUNK-288).
+- A page zoom other than 1. Playwright cannot set a page's zoom the way the webview's own
+  zoom does, and CSS `zoom` on the root is no stand-in: WebKit then reports every box in
+  zoomed pixels, so the row height the graph measures grows with the zoom and the whole
+  overlay is laid out at the wrong scale, which the app never does (TRUNK-421). The drive
+  route (`docs/build-environment.md`) zooms the real webview with `key Meta+=`. The one zoom
+  defect found so far, HTML inside the graph's svg painted in a layer of its own, is guarded
+  in `src/markup-classes.test.ts` instead.
 
 Every capture holds all of its repository's rows. A repository whose commit list would scroll
 in the 1800 px window fails its capture and says to raise the window's height, rather than
