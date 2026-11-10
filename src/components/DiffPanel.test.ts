@@ -2796,7 +2796,9 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		});
 		await flushPrefs();
 		await fireEvent.click(fullFileGutterOf("const x = 2;"));
-		await fireEvent.click(screen.getByTestId("full-file-comment"));
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Comment on selected lines" }),
+		);
 		await fireEvent.input(await screen.findByRole("textbox"), {
 			target: { value: "keep me" },
 		});
@@ -2830,12 +2832,90 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		expect(screen.queryByText(/to extend/)).toBeNull();
 	});
 
-	it("opens a comment on one line from its marker cell's control", async () => {
+	function selectionComment(): HTMLElement {
+		return screen.getByRole("button", { name: "Comment on selected lines" });
+	}
+
+	function rowOf(text: string): HTMLElement {
+		return screen.getByText(text).closest("[data-line-index]") as HTMLElement;
+	}
+
+	async function selectLines(from: string, to: string) {
+		await fireEvent.mouseDown(gutterOf(from));
+		await fireEvent.mouseOver(screen.getByText(to), { buttons: 1 });
+		await fireEvent.mouseUp(window);
+	}
+
+	it("draws no comment control on a line", async () => {
+		renderPanel();
+		await flushPrefs();
+
+		expect(
+			screen.queryAllByRole("button", {
+				name: /^Comment on (removed )?line/,
+				hidden: true,
+			}),
+		).toEqual([]);
+	});
+
+	it("comments on the selection from the action on its last line", async () => {
+		renderPanel();
+		await flushPrefs();
+		await selectLines("const x = 2;", "const y = 3;");
+
+		await fireEvent.click(selectionComment());
+
+		expect(await screen.findByText("Comments on lines 2-3")).toBeTruthy();
+	});
+
+	it("puts the selection's action on its last line", async () => {
+		renderPanel();
+		await flushPrefs();
+
+		await selectLines("const x = 2;", "const y = 3;");
+
+		expect(rowOf("const y = 3;")).toContainElement(selectionComment());
+	});
+
+	it("draws no selection action without a selection", async () => {
+		renderPanel();
+		await flushPrefs();
+
+		expect(
+			screen.queryByRole("button", { name: "Comment on selected lines" }),
+		).toBeNull();
+	});
+
+	it("hides the selection action while the press that makes it is held", async () => {
+		renderPanel();
+		await flushPrefs();
+
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
+
+		expect(
+			screen.queryByRole("button", { name: "Comment on selected lines" }),
+		).toBeNull();
+	});
+
+	it("hides the selection action while the composer is open", async () => {
+		renderPanel();
+		await flushPrefs();
+		await selectLines("const x = 2;", "const y = 3;");
+
+		await fireEvent.click(selectionComment());
+		await screen.findByRole("textbox");
+
+		expect(
+			screen.queryByRole("button", { name: "Comment on selected lines" }),
+		).toBeNull();
+	});
+
+	it("draws no selection action on a merge commit", async () => {
 		render(DiffPanel, {
 			props: {
 				...commentingDiff,
 				fileDiffs: [testDiff],
-				commitDetail: nonMergeCommit,
+				commitDetail: mergeCommit,
 				onclose: vi.fn(),
 				diffKind: "commit",
 				repoPath: "/repo",
@@ -2843,146 +2923,97 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		});
 		await flushPrefs();
 
-		// The control shows under the pointer, which jsdom cannot hover.
-		await fireEvent.click(
-			screen.getByRole("button", { name: "Comment on line 2", hidden: true }),
-		);
+		await selectLines("const x = 2;", "const y = 3;");
 
-		expect(await screen.findByText("Comment on line 2")).toBeTruthy();
-		expect(screen.getByText(/to extend/)).toBeTruthy();
+		expect(
+			screen.queryByRole("button", { name: "Comment on selected lines" }),
+		).toBeNull();
 	});
 
-	function commentControl(line: number): HTMLElement {
-		return screen.getByRole("button", {
-			name: `Comment on line ${line}`,
-			hidden: true,
-		});
-	}
-
-	async function clickControl(control: HTMLElement) {
-		await fireEvent.mouseDown(control);
-		await fireEvent.mouseUp(window);
-		await fireEvent.click(control);
-	}
-
-	it("comments on the whole selection from the control of a line inside it", async () => {
+	it("opens a comment on the selection when C is pressed", async () => {
 		renderPanel();
 		await flushPrefs();
-		await fireEvent.mouseDown(gutterOf("const x = 2;"));
-		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
-		await fireEvent.mouseUp(window);
+		await selectLines("const x = 2;", "const y = 3;");
 
-		await clickControl(commentControl(3));
+		await fireEvent.keyDown(window, { key: "c" });
 
 		expect(await screen.findByText("Comments on lines 2-3")).toBeTruthy();
 	});
 
-	it("opens a comment on the lines a press on a line's control drags across", async () => {
+	it("opens no comment when C is pressed without a selection", async () => {
 		renderPanel();
 		await flushPrefs();
 
-		await fireEvent.mouseDown(commentControl(2));
-		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
-		await fireEvent.mouseUp(window);
+		await fireEvent.keyDown(window, { key: "c" });
+		await tick();
 
-		expect(await screen.findByText("Comments on lines 2-3")).toBeTruthy();
+		expect(screen.queryByRole("textbox")).toBeNull();
 	});
 
-	it("opens a comment on a context line from its control, on its new side", async () => {
+	it("selects a context line from its line number", async () => {
 		renderPanel();
 		await flushPrefs();
+		await fireEvent.mouseDown(gutterOf("export { x };"));
+		await fireEvent.mouseUp(window);
 
-		await clickControl(commentControl(4));
+		await fireEvent.click(selectionComment());
 
 		expect(await screen.findByText("Comment on line 4")).toBeTruthy();
 	});
 
-	it("carries a drag from a line's control onto the context lines it crosses", async () => {
+	it("carries a drag from a changed line onto the context lines it crosses", async () => {
 		renderPanel();
 		await flushPrefs();
+		await selectLines("const x = 2;", "export { x };");
 
-		await fireEvent.mouseDown(commentControl(2));
-		await fireEvent.mouseOver(screen.getByText("export { x };"), {
-			buttons: 1,
-		});
-		await fireEvent.mouseUp(window);
+		await fireEvent.click(selectionComment());
 
 		expect(await screen.findByText("Comments on lines 2-4")).toBeTruthy();
 	});
 
-	it("extends the comment's range onto a context line on a shift-click of its control, keeping the text", async () => {
+	it("marks a context line the selection takes", async () => {
+		renderPanel();
+		await flushPrefs();
+
+		await fireEvent.mouseDown(gutterOf("export { x };"));
+		await fireEvent.mouseUp(window);
+
+		expect(rowOf("export { x };")).toHaveClass("in-selection");
+	});
+
+	it("extends the comment's range onto a context line on a shift-press, keeping the text", async () => {
 		const { ask } = await import("@tauri-apps/plugin-dialog");
 		vi.mocked(ask).mockClear();
 		renderPanel();
 		await flushPrefs();
-		await clickControl(commentControl(2));
+		await selectLines("const x = 2;", "const x = 2;");
+		await fireEvent.click(selectionComment());
 		await fireEvent.input(await screen.findByRole("textbox"), {
 			target: { value: "keep me" },
 		});
 
-		await fireEvent.mouseDown(commentControl(4), { shiftKey: true });
+		await fireEvent.mouseDown(gutterOf("export { x };"), { shiftKey: true });
 		await fireEvent.mouseUp(window);
-		await fireEvent.click(commentControl(4), { shiftKey: true });
 
 		expect(await screen.findByText("Comments on lines 2-4")).toBeTruthy();
-		expect(
-			screen.getByRole("button", { name: /^Comment \(/ }),
-		).toHaveTextContent("(3)");
 		expect(screen.getByRole("textbox")).toHaveValue("keep me");
 		expect(ask).not.toHaveBeenCalled();
 	});
 
-	async function shiftClickControl(control: HTMLElement) {
-		await fireEvent.mouseDown(control, { shiftKey: true });
-		await fireEvent.mouseUp(window);
-		await fireEvent.click(control, { shiftKey: true });
-	}
-
-	it("shrinks the comment's range on a shift-click of a line inside it, keeping the text", async () => {
+	it("shrinks the comment's range on a shift-press of a line inside it, keeping the text", async () => {
 		renderPanel();
 		await flushPrefs();
-		await clickControl(commentControl(2));
+		await selectLines("const x = 2;", "export { x };");
+		await fireEvent.click(selectionComment());
 		await fireEvent.input(await screen.findByRole("textbox"), {
 			target: { value: "keep me" },
 		});
-		await shiftClickControl(commentControl(4));
 
-		await shiftClickControl(commentControl(3));
+		await fireEvent.mouseDown(gutterOf("const y = 3;"), { shiftKey: true });
+		await fireEvent.mouseUp(window);
 
 		expect(await screen.findByText("Comments on lines 2-3")).toBeTruthy();
-		expect(
-			screen.getByRole("button", { name: /^Comment \(/ }),
-		).toHaveTextContent("(2)");
 		expect(screen.getByRole("textbox")).toHaveValue("keep me");
-	});
-
-	it("moves the comment's range to the other side of its first line on a shift-click past it", async () => {
-		renderPanel();
-		await flushPrefs();
-		await clickControl(commentControl(2));
-		await shiftClickControl(commentControl(4));
-
-		await shiftClickControl(commentControl(1));
-
-		expect(await screen.findByText("Comments on lines 1-2")).toBeTruthy();
-	});
-
-	function rowsOf(text: string): HTMLElement[] {
-		return screen
-			.getAllByText(text)
-			.map((el) => el.closest("[data-line-index]") as HTMLElement);
-	}
-
-	it("highlights a context line the comment's range takes", async () => {
-		renderPanel();
-		await flushPrefs();
-
-		await clickControl(commentControl(4));
-		await screen.findByText("Comment on line 4");
-
-		expect(rowsOf("export { x };")[0].style.background).toBe(
-			"var(--color-accent-bg)",
-		);
 	});
 
 	describe("in the split layout", () => {
@@ -3000,49 +3031,71 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 			);
 		});
 
-		it("offers a context line's control on its new side only", async () => {
+		function cellsOf(text: string): HTMLElement[] {
+			return screen
+				.getAllByText(text)
+				.map((el) => el.closest("[data-line-index]") as HTMLElement);
+		}
+
+		it("selects a context line from either side's line number", async () => {
 			renderPanel();
 			await flushPrefs();
+			const [oldSide] = cellsOf("export { x };");
+
+			await fireEvent.mouseDown(
+				oldSide.querySelector("[data-gutter-grip]") as HTMLElement,
+			);
+			await fireEvent.mouseUp(window);
 
 			expect(
-				screen.getAllByRole("button", {
-					name: "Comment on line 4",
-					hidden: true,
-				}),
-			).toHaveLength(1);
+				cellsOf("export { x };").map((cell) =>
+					cell.classList.contains("in-selection"),
+				),
+			).toEqual([true, true]);
 		});
 
-		it("carries a drag from a context line's control onto the added lines", async () => {
+		it("puts the selection's action on its last line's row", async () => {
 			renderPanel();
 			await flushPrefs();
+			const [, newSide] = cellsOf("export { x };");
 
-			await fireEvent.mouseDown(commentControl(4));
+			await fireEvent.mouseDown(
+				newSide.querySelector("[data-gutter-grip]") as HTMLElement,
+			);
+			await fireEvent.mouseUp(window);
+
+			expect(newSide.closest(".split-row")).toContainElement(
+				selectionComment(),
+			);
+		});
+
+		it("carries a drag from a context line onto the added lines", async () => {
+			renderPanel();
+			await flushPrefs();
+			const [, newSide] = cellsOf("export { x };");
+			await fireEvent.mouseDown(
+				newSide.querySelector("[data-gutter-grip]") as HTMLElement,
+			);
 			await fireEvent.mouseOver(screen.getByText("const x = 2;"), {
 				buttons: 1,
 			});
 			await fireEvent.mouseUp(window);
 
+			await fireEvent.click(selectionComment());
+
 			expect(await screen.findByText("Comments on lines 2-4")).toBeTruthy();
-		});
-
-		it("highlights both sides of a context line the comment's range takes", async () => {
-			renderPanel();
-			await flushPrefs();
-
-			await clickControl(commentControl(4));
-			await screen.findByText("Comment on line 4");
-
-			expect(
-				rowsOf("export { x };").map((row) => row.style.background),
-			).toEqual(["var(--color-accent-bg)", "var(--color-accent-bg)"]);
 		});
 	});
 
 	describe("when the selection holds context lines", () => {
-		function renderWorkingDiff(diffKind: "unstaged" | "staged") {
+		function renderWorkingDiff(
+			diffKind: "unstaged" | "staged",
+			takesComments = true,
+		) {
 			render(DiffPanel, {
 				props: {
 					...commentingDiff,
+					takesComments,
 					fileDiffs: [testDiff],
 					commitDetail: null,
 					onclose: vi.fn(),
@@ -3053,15 +3106,6 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 			return flushPrefs();
 		}
 
-		async function dragControlOntoContext() {
-			await fireEvent.mouseDown(commentControl(2));
-			await fireEvent.mouseOver(screen.getByText("export { x };"), {
-				buttons: 1,
-			});
-			await fireEvent.mouseUp(window);
-			await screen.findByText("Comments on lines 2-4");
-		}
-
 		function sentLines(command: string): number[] | undefined {
 			const call = vi
 				.mocked(safeInvoke)
@@ -3069,10 +3113,20 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 			return (call?.[1] as { lineIndices?: number[] } | undefined)?.lineIndices;
 		}
 
+		it("draws no comment action when its changed lines are all removed ones on the working tree", async () => {
+			await renderWorkingDiff("unstaged");
+
+			await selectLines("import { foo } from 'bar';", "const x = 1;");
+
+			expect(
+				screen.queryByRole("button", { name: "Comment on selected lines" }),
+			).toBeNull();
+		});
+
 		it("counts only the changed lines on its staging actions", async () => {
 			await renderWorkingDiff("unstaged");
 
-			await dragControlOntoContext();
+			await selectLines("const x = 2;", "export { x };");
 
 			expect(
 				screen.getByRole("button", { name: "Stage Lines (2)" }),
@@ -3084,7 +3138,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 
 		it("stages only the changed lines", async () => {
 			await renderWorkingDiff("unstaged");
-			await dragControlOntoContext();
+			await selectLines("const x = 2;", "export { x };");
 			vi.mocked(safeInvoke).mockClear();
 
 			await fireEvent.click(
@@ -3102,7 +3156,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 				vi.mocked(ask).mockResolvedValue(false);
 			});
 			await renderWorkingDiff("unstaged");
-			await dragControlOntoContext();
+			await selectLines("const x = 2;", "export { x };");
 			vi.mocked(safeInvoke).mockClear();
 
 			await fireEvent.click(
@@ -3118,7 +3172,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 
 		it("unstages only the changed lines", async () => {
 			await renderWorkingDiff("staged");
-			await dragControlOntoContext();
+			await selectLines("const x = 2;", "export { x };");
 			vi.mocked(safeInvoke).mockClear();
 
 			await fireEvent.click(
@@ -3128,22 +3182,6 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 			await waitFor(() => expect(sentLines("unstage_lines")).toEqual([2, 3]));
 		});
 
-		it("leaves out the removed lines a drag from a line's control crosses", async () => {
-			await renderWorkingDiff("unstaged");
-
-			await fireEvent.mouseDown(commentControl(1));
-			await fireEvent.mouseOver(screen.getByText("const x = 1;"), {
-				buttons: 1,
-			});
-			await fireEvent.mouseUp(window);
-
-			await waitFor(() =>
-				expect(
-					screen.getByRole("button", { name: /^Comment \(/ }),
-				).toHaveTextContent("(1)"),
-			);
-		});
-
 		it.each([
 			{ diffKind: "unstaged", action: "Stage Hunk", command: "stage_hunk" },
 			{ diffKind: "staged", action: "Unstage Hunk", command: "unstage_hunk" },
@@ -3151,8 +3189,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 			"acts on the whole hunk from $diffKind changes while no changed line is selected",
 			async ({ diffKind, action, command }) => {
 				await renderWorkingDiff(diffKind);
-				await clickControl(commentControl(1));
-				await screen.findByText("Comment on line 1");
+				await selectLines("export { x };", "export { x };");
 				vi.mocked(safeInvoke).mockClear();
 
 				await fireEvent.click(screen.getByRole("button", { name: action }));
@@ -3164,147 +3201,14 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 				);
 			},
 		);
-	});
 
-	it("starts a new range from a press on a selected line's control that drags away", async () => {
-		renderPanel();
-		await flushPrefs();
-		await fireEvent.mouseDown(gutterOf("const y = 3;"));
-		await fireEvent.mouseUp(window);
+		it("draws no line number control on a context line where comments are not taken", async () => {
+			await renderWorkingDiff("unstaged", false);
 
-		await fireEvent.mouseDown(commentControl(3));
-		await fireEvent.mouseOver(screen.getByText("const x = 2;"), { buttons: 1 });
-		await fireEvent.mouseUp(window);
-
-		expect(await screen.findByText("Comments on lines 2-3")).toBeTruthy();
-	});
-
-	it("moves an open comment to the lines a press on a line's control drags across", async () => {
-		renderPanel();
-		await flushPrefs();
-		await clickControl(commentControl(2));
-		await screen.findByText("Comment on line 2");
-
-		await fireEvent.mouseDown(commentControl(3));
-		await fireEvent.mouseOver(screen.getByText("const x = 2;"), { buttons: 1 });
-		await fireEvent.mouseUp(window);
-
-		expect(await screen.findByText("Comments on lines 2-3")).toBeTruthy();
-	});
-
-	it("puts the selection back when a drag from a line's control would discard a draft the user keeps", async () => {
-		const { ask } = await import("@tauri-apps/plugin-dialog");
-		vi.mocked(ask).mockClear();
-		vi.mocked(ask).mockResolvedValue(false);
-		renderPanel();
-		await flushPrefs();
-		await clickControl(commentControl(2));
-		await fireEvent.input(await screen.findByRole("textbox"), {
-			target: { value: "unsaved note" },
-		});
-
-		await fireEvent.mouseDown(commentControl(3));
-		await fireEvent.mouseOver(screen.getByText("const x = 2;"), { buttons: 1 });
-		await fireEvent.mouseUp(window);
-		await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
-
-		await waitFor(() =>
 			expect(
-				screen.getByRole("button", { name: /^Comment \(/ }),
-			).toHaveTextContent("(1)"),
-		);
-		expect(screen.getByRole("textbox")).toHaveValue("unsaved note");
-	});
-
-	it("asks once before a click on a selected line's control replaces a draft", async () => {
-		const { ask } = await import("@tauri-apps/plugin-dialog");
-		vi.mocked(ask).mockClear();
-		vi.mocked(ask).mockResolvedValue(true);
-		renderPanel();
-		await flushPrefs();
-		await fireEvent.mouseDown(gutterOf("const x = 2;"));
-		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
-		await fireEvent.mouseUp(window);
-		await clickControl(commentControl(2));
-		await fireEvent.input(await screen.findByRole("textbox"), {
-			target: { value: "unsaved note" },
+				rowOf("export { x };").querySelector("[data-gutter-grip]"),
+			).toBeNull();
 		});
-
-		await clickControl(commentControl(3));
-
-		await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
-		expect(ask).toHaveBeenCalledTimes(1);
-	});
-
-	it("keeps the selection when a draft the user keeps outlives a still press on another line's control", async () => {
-		const { ask } = await import("@tauri-apps/plugin-dialog");
-		vi.mocked(ask).mockClear();
-		vi.mocked(ask).mockResolvedValue(false);
-		renderPanel();
-		await flushPrefs();
-		await fireEvent.mouseDown(gutterOf("const x = 2;"));
-		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
-		await fireEvent.mouseUp(window);
-		await clickControl(commentControl(2));
-		await fireEvent.input(await screen.findByRole("textbox"), {
-			target: { value: "unsaved note" },
-		});
-
-		await clickControl(commentControl(4));
-		await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
-
-		expect(
-			screen.getByRole("button", { name: /^Comment \(/ }),
-		).toHaveTextContent("(2)");
-		expect(screen.getByRole("textbox")).toHaveValue("unsaved note");
-	});
-
-	it("opens no comment on the lines a drag from a line's control crossed when the panel closes mid-drag", async () => {
-		const composerSession = createReviewEditorStore().composer();
-		const view = render(DiffPanel, {
-			props: {
-				...commentingDiff,
-				fileDiffs: [testDiff],
-				commitDetail: nonMergeCommit,
-				onclose: vi.fn(),
-				diffKind: "commit",
-				repoPath: "/repo",
-				composerSession,
-			},
-		});
-		await flushPrefs();
-		await fireEvent.mouseDown(commentControl(2));
-		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
-
-		view.unmount();
-		await flushPrefs();
-
-		expect(composerSession.captured).toBeNull();
-	});
-
-	it("leaves a grip drag that follows an unreleased press on a line's control without a comment", async () => {
-		renderPanel();
-		await flushPrefs();
-
-		await fireEvent.mouseDown(commentControl(2));
-		await fireEvent.mouseDown(gutterOf("const y = 3;"));
-		await fireEvent.mouseOver(screen.getByText("const x = 2;"), { buttons: 1 });
-		await fireEvent.mouseUp(window);
-		await tick();
-
-		expect(screen.queryByRole("textbox")).toBeNull();
-	});
-
-	it("ignores a secondary press on a line's control", async () => {
-		renderPanel();
-		await flushPrefs();
-
-		await fireEvent.mouseDown(commentControl(2), { button: 2 });
-		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
-		await fireEvent.mouseUp(window);
-		await tick();
-
-		expect(screen.queryByRole("button", { name: /^Comment \(/ })).toBeNull();
 	});
 
 	it("does not paint after a release that arrived while the discard prompt was open", async () => {

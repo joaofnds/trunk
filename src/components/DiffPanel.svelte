@@ -46,8 +46,8 @@ import type {
 	CommitDetail,
 	ContentMode,
 	DiffLine,
-	DiffOrigin,
 	DiffRequestOptions,
+	DiffStatus,
 	FileDiff,
 	LayoutMode,
 	RenderMode,
@@ -89,8 +89,6 @@ interface Props {
 	loadError?: string | null;
 	onretry?: () => void;
 	onloadfullfile?: (filePath: string) => Promise<FileDiff | null>;
-	/** Whether this diff can ever take a comment; takesComments says whether it does now. */
-	canTakeComments: boolean;
 	takesComments: boolean;
 	reviewFilter: ReviewFilter;
 	activeReviewId?: string | null;
@@ -125,7 +123,6 @@ let {
 	loadError = null,
 	onretry,
 	onloadfullfile,
-	canTakeComments,
 	takesComments,
 	reviewFilter,
 	activeReviewId = null,
@@ -188,16 +185,9 @@ let dragHunkKey: string | null = null;
 // In the split layout a drag stays on the side it started from, so a removed
 // line's drag never paints the added lines beside it.
 let dragSide: Side | null = null;
-let pressHeld = false;
-// A drag started from a line's comment control: once it has moved, its release
-// opens a comment on the lines it painted, and a release the user declines
-// puts back the selection the press found.
-let commentDrag: {
-	filePath: string;
-	hunkIdx: number;
-	moved: boolean;
-	before: { hunkKey: string | null; indices: Set<number> };
-} | null = null;
+// Reactive, so the selection's Comment action stays out of the way of the
+// press that is still making the selection.
+let pressHeld = $state(false);
 
 let collapsedFiles = $state<Set<string>>(new Set());
 
@@ -216,6 +206,9 @@ const commitOid = $derived(
 		: (commitDetail?.oid ?? ""),
 );
 const isMerge = $derived((commitDetail?.parent_oids.length ?? 0) > 1);
+// Whether a selected line can take a new comment here, as the hunk's Comment
+// action can.
+const linesTakeComments = $derived(takesComments && !isMerge);
 // The toolbar names the selected file's status and, for a rename, where it came
 // from. Both live on the diff itself, so the header reads them from the same
 // list the viewer renders.
@@ -416,6 +409,14 @@ const composerOnClose = $derived.by(() => {
 // NOTHING: the draft row has no review foreign key, so the composer's first-keystroke
 // autosave always has a home, and the review is created at submit — which is what
 // makes a cancelled composer strand nothing (260531-l02c's substance, kept by D6).
+// Working-tree (unstaged) scope guard (260531-k4j): New-side only this pass. It
+// uses the SAME resolveSide buildDiffAnchor uses, so guard and anchor agree on
+// the mixed Add+Delete → New edge case. Commit-mode + staged are NOT guarded
+// (staged anchors to the index snapshot whose parent is HEAD, so Old resolves too).
+function takesRangeComment(status: DiffStatus, lines: DiffLine[]): boolean {
+	return diffKind !== "unstaged" || resolveSide(status, lines) !== "Old";
+}
+
 async function openDiffComposer(
 	fd: FileDiff,
 	hunkIndex: number,
@@ -424,19 +425,15 @@ async function openDiffComposer(
 	if (isMerge) return false;
 	if (indices.size === 0) return false;
 
-	// Working-tree (unstaged) scope guard (260531-k4j): New-side only this pass. Use
-	// the SAME exported resolveSide buildDiffAnchor uses so guard and anchor agree on
-	// the mixed Add+Delete → New edge case. Commit-mode + staged are NOT guarded
-	// (staged anchors to the index snapshot whose parent is HEAD, so Old resolves too).
-	if (diffKind === "unstaged") {
-		const hunkLines = fd.hunks[hunkIndex]?.lines ?? [];
-		const selected = Array.from(indices)
-			.sort((a, b) => a - b)
-			.map((i) => hunkLines[i]);
-		if (resolveSide(fd.status, selected) === "Old") {
-			showToast("Commenting on removed lines isn't supported yet", "error");
-			return false;
-		}
+	const hunkLines = fd.hunks[hunkIndex]?.lines ?? [];
+	if (
+		!takesRangeComment(
+			fd.status,
+			Array.from(indices).map((i) => hunkLines[i]),
+		)
+	) {
+		showToast("Commenting on removed lines isn't supported yet", "error");
+		return false;
 	}
 	const session = activeComposerSession;
 	const target = activeComposerTarget;
@@ -502,40 +499,49 @@ async function handleCommentLines(
 	return openDiffComposer(fd, hunkIndex, new Set(selectedLineIndices));
 }
 
-function selectedHunkLines(): DiffLine[] {
+function selectedHunk(): {
+	path: string;
+	status: DiffStatus;
+	hunkIdx: number;
+	lines: DiffLine[];
+} | null {
 	for (const fd of fileDiffs) {
 		for (const [hunkIdx, hunk] of fd.hunks.entries()) {
-			if (`${fd.path}-${hunkIdx}` === selectedHunkKey) return hunk.lines;
+			if (`${fd.path}-${hunkIdx}` === selectedHunkKey)
+				return { path: fd.path, status: fd.status, hunkIdx, lines: hunk.lines };
 		}
 	}
-	return [];
+	return null;
 }
 
-function inSelection(hunkKey: string, lineIndex: number): boolean {
-	return selectedHunkKey === hunkKey && selectedLineIndices.has(lineIndex);
+function selectedHunkLines(): DiffLine[] {
+	return selectedHunk()?.lines ?? [];
 }
 
-async function handleCommentLine(
-	filePath: string,
-	hunkIndex: number,
-	lineIndex: number,
-	e: MouseEvent,
-) {
-	const fd = fileDiffs.find((f) => f.path === filePath);
-	if (!fd) return;
-	const hunkLines = fd.hunks[hunkIndex]?.lines ?? [];
-	if (e.shiftKey && extendComposerTo(filePath, hunkIndex, lineIndex, hunkLines))
-		return;
-	if (inSelection(`${filePath}-${hunkIndex}`, lineIndex)) {
-		await handleCommentLines(filePath, hunkIndex);
-		return;
-	}
-	if (composerOpen && !(await confirmComposerReplacement())) return;
+// Where the selection's Comment action sits: its last line, once the press
+// that made it is released, while no composer is open and the composer would
+// take the selected lines.
+const selectionComment = $derived.by(() => {
+	if (!linesTakeComments || composerOpen || pressHeld) return null;
 
-	selectedHunkKey = `${filePath}-${hunkIndex}`;
-	selectedLineIndices = new Set([lineIndex]);
-	lastClickedIndex = lineIndex;
-	await openDiffComposer(fd, hunkIndex, new Set([lineIndex]));
+	const hunk = selectedHunk();
+	if (!hunk) return null;
+	const indices = [...selectedLineIndices];
+	if (
+		indices.length === 0 ||
+		!takesRangeComment(
+			hunk.status,
+			indices.map((i) => hunk.lines[i]),
+		)
+	)
+		return null;
+
+	return { ...hunk, lineIndex: Math.max(...indices) };
+});
+
+function commentOnSelection() {
+	if (selectionComment)
+		void handleCommentLines(selectionComment.path, selectionComment.hunkIdx);
 }
 
 // Whole-hunk Comment affordance (260531-l02): comment a hunk without first
@@ -830,6 +836,12 @@ $effect(() => {
 			return;
 		}
 
+		if (chord === "c" && selectionComment) {
+			e.preventDefault();
+			commentOnSelection();
+			return;
+		}
+
 		if (chord === "]") {
 			e.preventDefault();
 			scrollToHunk(focusedHunkIndex + 1);
@@ -843,7 +855,6 @@ $effect(() => {
 	return () => {
 		window.removeEventListener("keydown", handleKeydown);
 		window.removeEventListener("mouseup", stopDrag);
-		commentDrag = null;
 		stopDrag();
 	};
 });
@@ -1039,7 +1050,9 @@ function linesBetween(
 ): Set<number> {
 	const lines = new Set<number>();
 	for (let i = Math.min(from, to); i <= Math.max(from, to); i++) {
-		if (i < hunkLines.length && selects(hunkLines[i], forComment)) {
+		const line = hunkLines[i];
+		if (!line) continue;
+		if (forComment ? takesNewComment(diffKind, line) : selects(line)) {
 			lines.add(i);
 		}
 	}
@@ -1080,11 +1093,10 @@ async function handleLineClick(
 	filePath: string,
 	hunkIdx: number,
 	lineIndex: number,
-	origin: DiffOrigin,
 	hunkLines: DiffLine[],
 	e: MouseEvent,
 ) {
-	if (origin === "Context") return;
+	if (!selects(hunkLines[lineIndex])) return;
 
 	if (e.shiftKey && extendComposerTo(filePath, hunkIdx, lineIndex, hunkLines))
 		return;
@@ -1119,8 +1131,7 @@ async function handleLineClick(
 }
 
 // Paint selectedLineIndices for the active drag: range [anchor..current] over the
-// snapshot taken at drag start, applying dragMode. Context lines select only
-// for a comment, since staging has nothing to do with them.
+// snapshot taken at drag start, applying dragMode.
 function applyDragRange(currentIndex: number) {
 	if (
 		dragAnchorIndex === null ||
@@ -1144,7 +1155,7 @@ function applyDragRange(currentIndex: number) {
 // An unchanged line draws on both sides of the split layout, so a drag from
 // either side takes it.
 function paints(line: DiffLine): boolean {
-	if (!selects(line, commentDrag !== null)) return false;
+	if (!selects(line)) return false;
 	return (
 		line.origin === "Context" ||
 		dragSide === null ||
@@ -1152,11 +1163,14 @@ function paints(line: DiffLine): boolean {
 	);
 }
 
-// A comment takes any line it can anchor to, and staging only the changed ones.
-function selects(line: DiffLine, forComment: boolean): boolean {
-	return forComment
-		? takesNewComment(diffKind, line)
-		: line.origin !== "Context";
+// A changed line selects for staging, and an unchanged one only where a
+// comment can be left on it, since staging has nothing to do with it.
+function selects(line: DiffLine | undefined): boolean {
+	if (!line) return false;
+	return (
+		line.origin !== "Context" ||
+		(linesTakeComments && takesNewComment(diffKind, line))
+	);
 }
 
 function beginDrag(
@@ -1183,16 +1197,14 @@ async function handleLineMouseDown(
 	filePath: string,
 	hunkIdx: number,
 	lineIndex: number,
-	origin: DiffOrigin,
 	hunkLines: DiffLine[],
 	e: MouseEvent,
 ) {
-	if (origin === "Context") return;
+	if (!selects(hunkLines[lineIndex])) return;
 	// Suppress native text selection for the whole gesture — a drag crosses
 	// Context lines and gutters that are otherwise user-selectable.
 	e.preventDefault();
 	pressHeld = true;
-	commentDrag = null;
 
 	const hunkKey = `${filePath}-${hunkIdx}`;
 	if (e.shiftKey && extendComposerTo(filePath, hunkIdx, lineIndex, hunkLines))
@@ -1226,52 +1238,14 @@ async function handleLineMouseDown(
 	applyDragRange(lineIndex);
 }
 
-// A press on a line's comment control starts a fresh selection that a drag
-// stretches. Until the pointer leaves the line, a press inside the selection or
-// with a composer open changes nothing, so its click comments on the selection
-// or asks before replacing the draft, and a release on the pressed line is
-// always that click's.
-function handleCommentPress(
-	filePath: string,
-	hunkIdx: number,
-	lineIndex: number,
-	hunkLines: DiffLine[],
-	e: MouseEvent,
-) {
-	if (e.button !== 0) return;
-	e.preventDefault();
-	// A shift-press is the start of a click that extends the comment, which a
-	// drag would reset to start from the pressed line.
-	if (e.shiftKey && composerFollowsSelection) return;
-	const hunkKey = `${filePath}-${hunkIdx}`;
-	const waitsForMove = composerOpen || inSelection(hunkKey, lineIndex);
-
-	pressHeld = true;
-	commentDrag = {
-		filePath,
-		hunkIdx,
-		moved: false,
-		before: { hunkKey: selectedHunkKey, indices: selectedLineIndices },
-	};
-	beginDrag(hunkKey, lineIndex, hunkLines, new Set(), "add");
-	document.addEventListener("mouseover", extendDrag);
-	if (!waitsForMove) applyDragRange(lineIndex);
-}
-
+// A drag's release leaves its first line as the anchor a shift-press measures
+// from, as a click does.
 function stopDrag() {
 	pressHeld = false;
 	document.removeEventListener("mouseover", extendDrag);
 
-	const drag = commentDrag;
-	commentDrag = null;
-	if (drag?.moved && selectedLineIndices.size > 1) void commentOnDrag(drag);
-}
-
-async function commentOnDrag(drag: NonNullable<typeof commentDrag>) {
-	if (await handleCommentLines(drag.filePath, drag.hunkIdx)) return;
-	if (!composerOpen) return;
-	selectedHunkKey = drag.before.hunkKey;
-	selectedLineIndices = drag.before.indices;
+	if (dragAnchorIndex !== null) lastClickedIndex = dragAnchorIndex;
+	dragAnchorIndex = null;
 }
 
 // The pointer moved onto another element during a drag: extend the painted range
@@ -1292,7 +1266,6 @@ function extendDrag(e: MouseEvent) {
 
 	applyDragRange(lineIndex);
 	lastClickedIndex = lineIndex;
-	if (commentDrag) commentDrag.moved = true;
 }
 
 async function handleStageLines(filePath: string, hunkIndex: number) {
@@ -1470,11 +1443,13 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			ondiscardlines={handleDiscardLines}
 			oncommentlines={handleCommentLines}
 			oncommenthunk={handleCommentHunk}
-			oncommentline={handleCommentLine}
-			oncommentpress={handleCommentPress}
+			selectionComment={selectionComment && {
+				hunkKey: `${selectionComment.path}-${selectionComment.hunkIdx}`,
+				lineIndex: selectionComment.lineIndex,
+			}}
+			oncommentselection={commentOnSelection}
 			{commitOid}
 			{repoPath}
-			{canTakeComments}
 			{takesComments}
 			{reviewFilter}
 			{viewComments}

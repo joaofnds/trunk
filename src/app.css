@@ -498,3 +498,41 @@ li.md-removed::before {
 .md-word-add::before {
 	content: "added ";
 }
+
+/* ── Selected diff lines ──
+   One accent tint over the line's own diff color, and one accent hairline
+   around each run of selected lines, so an added or removed line still reads
+   as one. Global because the unified, split and full-file views all paint it.
+   The overlay sits under the line's content inside the stacking context each
+   .diff-line opens. */
+.diff-line.in-selection::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background: var(--color-accent-bg);
+	box-shadow:
+		inset 1px 0 0 var(--color-accent-border),
+		inset -1px 0 0 var(--color-accent-border);
+	pointer-events: none;
+}
+.diff-line.selection-first::before {
+	box-shadow:
+		inset 1px 0 0 var(--color-accent-border),
+		inset -1px 0 0 var(--color-accent-border),
+		inset 0 1px 0 var(--color-accent-border);
+}
+.diff-line.selection-last::before {
+	box-shadow:
+		inset 1px 0 0 var(--color-accent-border),
+		inset -1px 0 0 var(--color-accent-border),
+		inset 0 -1px 0 var(--color-accent-border);
+}
+.diff-line.selection-first.selection-last::before {
+	box-shadow: inset 0 0 0 1px var(--color-accent-border);
+}
+/* The line holding the selection's Comment action paints over the row under
+   it, which the action straddles, a hunk header included. */
+.holds-action {
+	z-index: 2;
+}

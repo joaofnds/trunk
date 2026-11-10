@@ -8,7 +8,6 @@ import type {
 	CommitDetail,
 	ContentMode,
 	DiffLine,
-	DiffOrigin,
 	FileDiff,
 	LayoutMode,
 	RenderMode,
@@ -20,6 +19,7 @@ import ReviewEmpty from "../review/ReviewEmpty.svelte";
 import FullFileView from "./FullFileView.svelte";
 import HunkView from "./HunkView.svelte";
 import RenderedDiff from "./RenderedDiff.svelte";
+import type { SelectionCommentPlace } from "./SelectionComment.svelte";
 import SplitView from "./SplitView.svelte";
 
 interface Props {
@@ -59,7 +59,6 @@ interface Props {
 		filePath: string,
 		hunkIdx: number,
 		lineIndex: number,
-		origin: DiffOrigin,
 		hunkLines: DiffLine[],
 		e: MouseEvent,
 	) => void;
@@ -67,7 +66,6 @@ interface Props {
 		filePath: string,
 		hunkIdx: number,
 		lineIndex: number,
-		origin: DiffOrigin,
 		hunkLines: DiffLine[],
 		e: MouseEvent,
 	) => void;
@@ -81,7 +79,6 @@ interface Props {
 	oncommenthunk: (filePath: string, hunkIndex: number) => void;
 	commitOid: string;
 	repoPath: string;
-	canTakeComments: boolean;
 	takesComments: boolean;
 	reviewFilter: ReviewFilter;
 	viewComments?: Thread[];
@@ -90,19 +87,9 @@ interface Props {
 	composer?: DiffComposer | null;
 	oncommentfullfile: (filePath: string, selectedIndices: Set<number>) => void;
 	onextendcomment?: (filePath: string, selectedIndices: Set<number>) => void;
-	oncommentline: (
-		filePath: string,
-		hunkIndex: number,
-		lineIndex: number,
-		e: MouseEvent,
-	) => void;
-	oncommentpress: (
-		filePath: string,
-		hunkIndex: number,
-		lineIndex: number,
-		hunkLines: DiffLine[],
-		e: MouseEvent,
-	) => void;
+	/** Where the selection's Comment action sits, or null while it shows none. */
+	selectionComment: SelectionCommentPlace | null;
+	oncommentselection: () => void;
 	fullFileView?: import("./FullFileView.svelte").default | null;
 	/** Set by the mounted virtualized view, null when none is. */
 	diffNav?: DiffNav | null;
@@ -148,7 +135,6 @@ let {
 	oncommenthunk,
 	commitOid,
 	repoPath,
-	canTakeComments,
 	takesComments,
 	reviewFilter,
 	viewComments = [],
@@ -156,8 +142,8 @@ let {
 	composer = null,
 	oncommentfullfile,
 	onextendcomment,
-	oncommentline,
-	oncommentpress,
+	selectionComment,
+	oncommentselection,
 	fullFileView = $bindable(null),
 	diffNav = $bindable(null),
 	refreshToken = 0,
@@ -312,8 +298,8 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{ondiscardlines}
 			{oncommentlines}
 			{oncommenthunk}
-			{oncommentline}
-			{oncommentpress}
+			{selectionComment}
+			{oncommentselection}
 			{repoPath}
 			{takesComments}
 			{reviewFilter}
@@ -332,7 +318,6 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{isMerge}
 			{oncommentfullfile}
 			{onextendcomment}
-			{canTakeComments}
 			{takesComments}
 			{reviewFilter}
 			{viewComments}
@@ -366,8 +351,8 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{ondiscardlines}
 			{oncommentlines}
 			{oncommenthunk}
-			{oncommentline}
-			{oncommentpress}
+			{selectionComment}
+			{oncommentselection}
 			{repoPath}
 			{takesComments}
 			{reviewFilter}

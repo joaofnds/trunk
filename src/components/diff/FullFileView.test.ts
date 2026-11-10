@@ -117,6 +117,18 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
 	};
 }
 
+function commentAction(): HTMLElement {
+	return screen.getByRole("button", { name: "Comment on selected lines" });
+}
+
+function queryCommentAction(): HTMLElement | null {
+	return screen.queryByRole("button", { name: "Comment on selected lines" });
+}
+
+function selectedRows(): Element[] {
+	return [...document.querySelectorAll(".diff-line.in-selection")];
+}
+
 function gutterGrip(text: string): HTMLElement {
 	const grip = screen
 		.getByText(text)
@@ -145,7 +157,8 @@ describe("FullFileView", () => {
 		await fireEvent.click(gutterGrip("added one"));
 		await tick();
 
-		expect(screen.getByRole("button", { name: /comment \(1\)/i })).toBeTruthy();
+		expect(commentAction()).toBeTruthy();
+		expect(selectedRows()).toHaveLength(1);
 	});
 
 	it("offers the selected-line comment action while review threads are hidden", async () => {
@@ -156,29 +169,8 @@ describe("FullFileView", () => {
 		await fireEvent.click(gutterGrip("added one"));
 		await tick();
 
-		expect(screen.getByRole("button", { name: /comment \(1\)/i })).toBeTruthy();
-	});
-
-	it("keeps the Comment bar's row where the diff takes no comments, so the code stays put", async () => {
-		render(FullFileView, {
-			props: defaultProps({ takesComments: false }),
-		});
-
-		await fireEvent.click(gutterGrip("added one"));
-		await tick();
-
-		expect(screen.getByTestId("full-file-comment-bar")).toBeInTheDocument();
-	});
-
-	it("draws no Comment bar row on a diff that can never take a comment", async () => {
-		render(FullFileView, {
-			props: defaultProps({ canTakeComments: false, takesComments: false }),
-		});
-
-		await fireEvent.click(gutterGrip("added one"));
-		await tick();
-
-		expect(screen.queryByTestId("full-file-comment-bar")).toBeNull();
+		expect(commentAction()).toBeTruthy();
+		expect(selectedRows()).toHaveLength(1);
 	});
 
 	it("withholds the Comment action where the diff takes no comments", async () => {
@@ -189,7 +181,7 @@ describe("FullFileView", () => {
 		await fireEvent.click(gutterGrip("added one"));
 		await tick();
 
-		expect(screen.queryByRole("button", { name: /comment \(1\)/i })).toBeNull();
+		expect(queryCommentAction()).toBeNull();
 	});
 
 	it("offers no Comment affordance in a staged view, which is not on the allowlist", async () => {
@@ -212,7 +204,8 @@ describe("FullFileView", () => {
 		await fireEvent.click(gutterGrip("added one"));
 		await tick();
 
-		expect(screen.getByRole("button", { name: /comment \(1\)/i })).toBeTruthy();
+		expect(commentAction()).toBeTruthy();
+		expect(selectedRows()).toHaveLength(1);
 	});
 
 	it("V6: shift-click extends a contiguous span and bubbles the flat indices", async () => {
@@ -225,7 +218,7 @@ describe("FullFileView", () => {
 		await fireEvent.click(gutterGrip("added three"), { shiftKey: true });
 		await tick();
 
-		const affordance = screen.getByRole("button", { name: /^comment \(/i });
+		const affordance = commentAction();
 		await fireEvent.click(affordance);
 
 		expect(oncommentfullfile).toHaveBeenCalledTimes(1);
@@ -262,8 +255,8 @@ describe("FullFileView", () => {
 		await fireEvent.mouseOver(screen.getByText("added three"), {
 			buttons: 1,
 		});
-		await tick();
-		await fireEvent.click(screen.getByRole("button", { name: /^comment \(/i }));
+		await fireEvent.mouseUp(window);
+		await fireEvent.click(commentAction());
 
 		const indices = oncommentfullfile.mock.calls[0][1] as Set<number>;
 		expect(Array.from(indices).sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
@@ -277,7 +270,8 @@ describe("FullFileView", () => {
 		await fireEvent.mouseOver(screen.getByText("added three"), { buttons: 1 });
 		await tick();
 
-		expect(screen.getByRole("button", { name: /comment \(1\)/i })).toBeTruthy();
+		expect(commentAction()).toBeTruthy();
+		expect(selectedRows()).toHaveLength(1);
 	});
 
 	it("stops a drag at the last new-side row before a removed line", async () => {
@@ -285,9 +279,10 @@ describe("FullFileView", () => {
 
 		await fireEvent.mouseDown(gutterGrip("added one"));
 		await fireEvent.mouseOver(screen.getByText("removed one"), { buttons: 1 });
-		await tick();
+		await fireEvent.mouseUp(window);
 
-		expect(screen.getByRole("button", { name: /comment \(1\)/i })).toBeTruthy();
+		expect(commentAction()).toBeTruthy();
+		expect(selectedRows()).toHaveLength(1);
 	});
 
 	it("stops extending the span once the button is released", async () => {
@@ -301,7 +296,8 @@ describe("FullFileView", () => {
 		});
 		await tick();
 
-		expect(screen.getByRole("button", { name: /comment \(1\)/i })).toBeTruthy();
+		expect(commentAction()).toBeTruthy();
+		expect(selectedRows()).toHaveLength(1);
 	});
 
 	it("keeps the webview from starting its own text selection on a gutter press", async () => {
@@ -344,9 +340,7 @@ describe("FullFileView", () => {
 		await fireEvent.click(gutterGrip("added one"));
 		await tick();
 
-		const affordance = screen.getByRole("button", {
-			name: /^comment \(/i,
-		}) as HTMLButtonElement;
+		const affordance = commentAction() as HTMLButtonElement;
 		expect(affordance).toBeTruthy();
 		expect(affordance.disabled).toBe(false);
 	});
@@ -557,7 +551,7 @@ describe("FullFileView", () => {
 
 		await fireEvent.click(gutterGrip("line 2500"), { shiftKey: true });
 		await tick();
-		await fireEvent.click(screen.getByRole("button", { name: /^comment \(/i }));
+		await fireEvent.click(commentAction());
 
 		const indices = oncommentfullfile.mock.calls[0][1] as Set<number>;
 		expect(indices.size).toBe(2491);
@@ -607,8 +601,8 @@ describe("FullFileView", () => {
 		await fireEvent.mouseOver(screen.getByText("line 2500"), {
 			buttons: 1,
 		});
-		await tick();
-		await fireEvent.click(screen.getByRole("button", { name: /^comment \(/i }));
+		await fireEvent.mouseUp(window);
+		await fireEvent.click(commentAction());
 
 		const indices = oncommentfullfile.mock.calls[0][1] as Set<number>;
 		expect(indices.size).toBe(2491);
@@ -685,17 +679,15 @@ describe("FullFileView", () => {
 		expect(byName.get("diff.rowHeights")).toEqual({ rows: 5, wrap: "false" });
 	});
 
-	it("keeps the Comment affordance outside the scrolling list", async () => {
-		const { container } = render(FullFileView, { props: defaultProps() });
-
+	it("puts the Comment action on the selection's last line", async () => {
+		render(FullFileView, { props: defaultProps() });
 		await fireEvent.click(gutterGrip("added one"));
-		await tick();
 
-		const affordance = screen.getByRole("button", { name: /comment \(1\)/i });
-		const row = container.querySelector(".diff-line");
+		await fireEvent.click(gutterGrip("added three"), { shiftKey: true });
 
-		expect(row?.closest(".exact-virtual-viewport")).toBeTruthy();
-		expect(affordance.closest(".exact-virtual-viewport")).toBeNull();
+		expect(
+			screen.getByText("added three").closest(".diff-line"),
+		).toContainElement(commentAction());
 	});
 
 	it("mounts a bounded number of rows for a file far larger than the viewport", () => {
@@ -894,138 +886,61 @@ describe("FullFileView thread marker", () => {
 
 // The control shows only under the pointer, which jsdom cannot hover, so the
 // queries look past the display rule that hides it at rest.
-describe("FullFileView one-click comment", () => {
-	it("comments on the one line its marker cell's control sits on", async () => {
+describe("FullFileView selection comment", () => {
+	it("draws no comment control on a line", () => {
+		render(FullFileView, { props: defaultProps() });
+
+		expect(
+			screen.queryAllByRole("button", {
+				name: /^Comment on (removed )?line/,
+				hidden: true,
+			}),
+		).toEqual([]);
+	});
+
+	it("comments on the selection when C is pressed", async () => {
 		const oncommentfullfile = vi.fn();
 		render(FullFileView, { props: defaultProps({ oncommentfullfile }) });
+		await fireEvent.click(gutterGrip("added one"));
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: "Comment on line 11", hidden: true }),
-		);
+		await fireEvent.keyDown(window, { key: "c" });
 
 		expect(oncommentfullfile).toHaveBeenCalledWith("src/main.ts", new Set([1]));
 	});
 
-	function commentControl(line: number): HTMLElement {
-		return screen.getByRole("button", {
-			name: `Comment on line ${line}`,
-			hidden: true,
-		});
-	}
-
-	it("comments on the whole selection from the control of a line inside it", async () => {
+	it("comments on nothing when C is pressed without a selection", async () => {
 		const oncommentfullfile = vi.fn();
 		render(FullFileView, { props: defaultProps({ oncommentfullfile }) });
+
+		await fireEvent.keyDown(window, { key: "c" });
+
+		expect(oncommentfullfile).not.toHaveBeenCalled();
+	});
+
+	it("hides the action while the press that makes the selection is held", async () => {
+		render(FullFileView, { props: defaultProps() });
+
+		await fireEvent.mouseDown(gutterGrip("added one"));
+
+		expect(queryCommentAction()).toBeNull();
+	});
+
+	it("hides the action while a composer is open", async () => {
+		const card = createRawSnippet(() => ({
+			render: () => "<p>the composer card</p>",
+		}));
+		render(FullFileView, {
+			props: defaultProps({
+				composer: {
+					place: { path: "src/main.ts", side: "New", endLine: 11 },
+					card,
+				},
+			}),
+		});
+
 		await fireEvent.click(gutterGrip("added one"));
-		await fireEvent.click(gutterGrip("added three"), { shiftKey: true });
 
-		await fireEvent.mouseDown(commentControl(13));
-		await fireEvent.mouseUp(window);
-		await fireEvent.click(commentControl(13));
-
-		expect(oncommentfullfile.mock.calls).toEqual([
-			["src/main.ts", new Set([1, 2, 3, 4])],
-		]);
-	});
-
-	it("comments on the lines a press on a line's control drags across", async () => {
-		const oncommentfullfile = vi.fn();
-		render(FullFileView, { props: defaultProps({ oncommentfullfile }) });
-
-		await fireEvent.mouseDown(commentControl(11));
-		await fireEvent.mouseOver(screen.getByText("added three"), { buttons: 1 });
-		await fireEvent.mouseUp(window);
-
-		expect(oncommentfullfile.mock.calls).toEqual([
-			["src/main.ts", new Set([1, 2, 3, 4])],
-		]);
-	});
-
-	it("starts a new span from a press on a selected line's control that drags away", async () => {
-		const oncommentfullfile = vi.fn();
-		render(FullFileView, { props: defaultProps({ oncommentfullfile }) });
-		await fireEvent.click(gutterGrip("added three"));
-
-		await fireEvent.mouseDown(commentControl(13));
-		await fireEvent.mouseOver(screen.getByText("added one"), { buttons: 1 });
-		await fireEvent.mouseUp(window);
-
-		expect(oncommentfullfile.mock.calls).toEqual([
-			["src/main.ts", new Set([1, 2, 3, 4])],
-		]);
-	});
-
-	it("waits for the release across a hover that reports no held button", async () => {
-		const oncommentfullfile = vi.fn();
-		render(FullFileView, { props: defaultProps({ oncommentfullfile }) });
-
-		await fireEvent.mouseDown(commentControl(11));
-		await fireEvent.mouseOver(screen.getByText("added three"), { buttons: 1 });
-		await fireEvent.mouseOver(screen.getByText("added three"), { buttons: 0 });
-		expect(oncommentfullfile).not.toHaveBeenCalled();
-		await fireEvent.mouseUp(window);
-
-		expect(oncommentfullfile.mock.calls).toEqual([
-			["src/main.ts", new Set([1, 2, 3, 4])],
-		]);
-	});
-
-	it("opens no comment when the view goes away mid-drag", async () => {
-		const oncommentfullfile = vi.fn();
-		const view = render(FullFileView, {
-			props: defaultProps({ oncommentfullfile }),
-		});
-		await fireEvent.mouseDown(commentControl(11));
-		await fireEvent.mouseOver(screen.getByText("added three"), { buttons: 1 });
-
-		view.unmount();
-
-		expect(oncommentfullfile).not.toHaveBeenCalled();
-	});
-
-	it("ignores a secondary press on a line's control", async () => {
-		const oncommentfullfile = vi.fn();
-		render(FullFileView, { props: defaultProps({ oncommentfullfile }) });
-
-		await fireEvent.mouseDown(commentControl(11), { button: 2 });
-		await fireEvent.mouseOver(screen.getByText("added three"), { buttons: 1 });
-		await fireEvent.mouseUp(window);
-
-		expect(oncommentfullfile).not.toHaveBeenCalled();
-	});
-
-	it("keeps the webview from starting its own text selection on a press of the control", () => {
-		render(FullFileView, { props: defaultProps() });
-
-		const press = new MouseEvent("mousedown", {
-			bubbles: true,
-			cancelable: true,
-		});
-		commentControl(11).dispatchEvent(press);
-
-		expect(press.defaultPrevented).toBe(true);
-	});
-
-	it("offers none where the diff takes no comments", () => {
-		render(FullFileView, { props: defaultProps({ takesComments: false }) });
-
-		expect(
-			screen.queryByRole("button", {
-				name: "Comment on line 11",
-				hidden: true,
-			}),
-		).toBeNull();
-	});
-
-	it("offers none on a removed line", () => {
-		render(FullFileView, { props: defaultProps() });
-
-		expect(
-			screen.queryByRole("button", {
-				name: /^Comment on removed line/,
-				hidden: true,
-			}),
-		).toBeNull();
+		expect(queryCommentAction()).toBeNull();
 	});
 });
 

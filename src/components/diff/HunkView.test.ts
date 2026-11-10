@@ -103,9 +103,9 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
 		onunstagelines: vi.fn(),
 		ondiscardlines: vi.fn(),
 		oncommentlines: vi.fn(),
-		oncommentline: vi.fn(),
-		oncommentpress: vi.fn(),
 		oncommenthunk: vi.fn(),
+		selectionComment: null,
+		oncommentselection: vi.fn(),
 		repoPath: "/repo",
 		takesComments: true,
 		viewComments: [],
@@ -185,11 +185,10 @@ describe("HunkView", () => {
 			?.querySelector("[data-gutter-grip]") as HTMLElement;
 		await fireEvent.mouseDown(grip);
 
-		expect(onlinemousedown.mock.calls[0].slice(0, 4)).toEqual([
+		expect(onlinemousedown.mock.calls[0].slice(0, 3)).toEqual([
 			"src/long.ts",
 			0,
 			2500,
-			"Add",
 		]);
 	});
 
@@ -235,14 +234,24 @@ describe("HunkView", () => {
 });
 
 describe("HunkView gutter grip", () => {
-	it("offers none on a context line", () => {
-		render(HunkView, { props: defaultProps() });
+	it("offers none on a context line where comments are not taken", () => {
+		render(HunkView, { props: defaultProps({ takesComments: false }) });
 
 		const row = screen
 			.getByText("context before")
 			.closest(".diff-line") as HTMLElement;
 
 		expect(within(row).queryByRole("button")).toBeNull();
+	});
+
+	it("offers one on a context line where comments are taken", () => {
+		render(HunkView, { props: defaultProps() });
+
+		const row = screen
+			.getByText("context before")
+			.closest(".diff-line") as HTMLElement;
+
+		expect(row.querySelector("[data-gutter-grip]")).not.toBeNull();
 	});
 
 	it("names the line it selects", () => {
@@ -339,7 +348,6 @@ describe("HunkView thread marker", () => {
 		render(HunkView, {
 			props: defaultProps({
 				viewComments: [onAddedLine("t1")],
-				oncommentline: vi.fn(),
 				takesComments: false,
 				reviewFilter: "none",
 			}),
@@ -445,122 +453,91 @@ describe("HunkView composer", () => {
 	});
 });
 
-// The control shows only under the pointer, which jsdom cannot hover, so the
-// queries look past the display rule that hides it at rest.
-describe("HunkView one-click comment", () => {
-	it("offers to comment on a changed line from its marker cell", async () => {
-		const oncommentline = vi.fn();
-		render(HunkView, { props: defaultProps({ oncommentline }) });
+describe("HunkView selection comment", () => {
+	function rowOf(text: string): HTMLElement {
+		return screen.getByText(text).closest(".diff-line") as HTMLElement;
+	}
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: "Comment on line 11", hidden: true }),
-		);
+	function selecting(lineIndices: number[]) {
+		return {
+			selectedHunkKey: "src/main.ts-0",
+			selectedLineIndices: new Set(lineIndices),
+			selectedCount: lineIndices.length,
+		};
+	}
 
-		expect(oncommentline).toHaveBeenCalledWith(
-			"src/main.ts",
-			0,
-			1,
-			expect.any(MouseEvent),
-		);
-	});
-
-	it("hands a press on a line's control to the drag that comments", async () => {
-		const oncommentpress = vi.fn();
-		render(HunkView, { props: defaultProps({ oncommentpress }) });
-
-		await fireEvent.mouseDown(
-			screen.getByRole("button", { name: "Comment on line 11", hidden: true }),
-		);
-
-		expect(oncommentpress).toHaveBeenCalledWith(
-			"src/main.ts",
-			0,
-			1,
-			oneHunk.hunks[0].lines,
-			expect.any(MouseEvent),
-		);
-	});
-
-	it("offers no comment action where the diff takes no comments", () => {
+	it("draws the action on the line it is placed on", () => {
 		render(HunkView, {
-			props: defaultProps({ oncommentline: vi.fn(), takesComments: false }),
+			props: defaultProps({
+				...selecting([0, 1]),
+				selectionComment: { hunkKey: "src/main.ts-0", lineIndex: 1 },
+			}),
 		});
 
-		expect(screen.queryByRole("button", { name: "Comment" })).toBeNull();
-		expect(
-			screen.queryByRole("button", {
-				name: "Comment on line 11",
-				hidden: true,
+		expect(rowOf("added one")).toContainElement(
+			screen.getByRole("button", { name: "Comment on selected lines" }),
+		);
+	});
+
+	it("comments on the selection from the action", async () => {
+		const oncommentselection = vi.fn();
+		render(HunkView, {
+			props: defaultProps({
+				...selecting([1]),
+				selectionComment: { hunkKey: "src/main.ts-0", lineIndex: 1 },
+				oncommentselection,
 			}),
+		});
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Comment on selected lines" }),
+		);
+
+		expect(oncommentselection).toHaveBeenCalledTimes(1);
+	});
+
+	it("draws no action where none is placed", () => {
+		render(HunkView, { props: defaultProps(selecting([1])) });
+
+		expect(
+			screen.queryByRole("button", { name: "Comment on selected lines" }),
 		).toBeNull();
 	});
 
-	it("offers one on a context line", () => {
-		render(HunkView, { props: defaultProps({ oncommentline: vi.fn() }) });
+	it("draws no comment control on a line", () => {
+		render(HunkView, { props: defaultProps() });
 
 		expect(
-			screen.getByRole("button", {
-				name: "Comment on line 10",
+			screen.queryAllByRole("button", {
+				name: /^Comment on (removed )?line/,
 				hidden: true,
 			}),
-		).toBeInTheDocument();
+		).toEqual([]);
 	});
 
-	// The working tree has no old side to anchor to, so the panel refuses a
-	// comment there, and offering one would discard an open draft for nothing.
-	describe("on a removed line", () => {
-		const withRemoval = fileOf("src/main.ts", [
-			{
-				origin: "Delete",
-				content: "removed one",
-				old_lineno: 7,
-				new_lineno: null,
-				spans: [],
-			},
-		]);
+	it("outlines a run of selected lines at its first and last line", () => {
+		render(HunkView, { props: defaultProps(selecting([0, 1])) });
 
-		it("offers none in the working tree", () => {
-			render(HunkView, {
-				props: defaultProps({
-					oncommentline: vi.fn(),
-					fileDiffs: [withRemoval],
-					diffKind: "unstaged",
-				}),
-			});
-
-			expect(
-				screen.queryByRole("button", {
-					name: "Comment on removed line 7",
-					hidden: true,
-				}),
-			).toBeNull();
-		});
-
-		it("offers one in a commit", () => {
-			render(HunkView, {
-				props: defaultProps({
-					oncommentline: vi.fn(),
-					fileDiffs: [withRemoval],
-					diffKind: "commit",
-				}),
-			});
-
-			expect(
-				screen.getByRole("button", {
-					name: "Comment on removed line 7",
-					hidden: true,
-				}),
-			).toBeInTheDocument();
-		});
+		expect(rowOf("context before")).toHaveClass(
+			"in-selection",
+			"selection-first",
+		);
+		expect(rowOf("added one")).toHaveClass("in-selection", "selection-last");
 	});
 
-	it("offers it while review threads are hidden", () => {
-		render(HunkView, {
-			props: defaultProps({ oncommentline: vi.fn(), reviewFilter: "none" }),
-		});
+	it("selects a context line from its line number where the diff takes comments", () => {
+		render(HunkView, { props: defaultProps() });
 
 		expect(
-			screen.getByRole("button", { name: "Comment on line 11", hidden: true }),
-		).toBeInTheDocument();
+			rowOf("context before").querySelector("[data-gutter-grip]"),
+		).not.toBeNull();
+	});
+
+	it("draws no line number control on a context line where the diff takes no comments", () => {
+		render(HunkView, { props: defaultProps({ takesComments: false }) });
+
+		expect(
+			rowOf("context before").querySelector("[data-gutter-grip]"),
+		).toBeNull();
 	});
 });

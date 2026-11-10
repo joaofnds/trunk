@@ -115,8 +115,8 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
 		onunstagelines: vi.fn(),
 		ondiscardlines: vi.fn(),
 		oncommentlines: vi.fn(),
-		oncommentline: vi.fn(),
-		oncommentpress: vi.fn(),
+		selectionComment: null,
+		oncommentselection: vi.fn(),
 		oncommenthunk: vi.fn(),
 		repoPath: "/repo",
 		takesComments: true,
@@ -229,11 +229,10 @@ describe("SplitView", () => {
 			?.querySelector("[data-gutter-grip]") as HTMLElement;
 		await fireEvent.mouseDown(gutter);
 
-		expect(onlinemousedown.mock.calls[0].slice(0, 4)).toEqual([
+		expect(onlinemousedown.mock.calls[0].slice(0, 3)).toEqual([
 			"src/long.ts",
 			0,
 			2500,
-			"Add",
 		]);
 	});
 });
@@ -531,75 +530,72 @@ describe("SplitView thread marker", () => {
 	});
 });
 
-// The control shows only under the pointer, which jsdom cannot hover, so the
-// queries look past the display rule that hides it at rest.
-describe("SplitView one-click comment", () => {
-	it("offers to comment on an added line from its marker cell", async () => {
-		const oncommentline = vi.fn();
-		render(SplitView, { props: defaultProps({ oncommentline }) });
+describe("SplitView selection comment", () => {
+	function cellsOf(text: string): HTMLElement[] {
+		return screen
+			.getAllByText(text)
+			.map((el) => el.closest(".split-cell") as HTMLElement);
+	}
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: "Comment on line 11", hidden: true }),
-		);
-
-		expect(oncommentline).toHaveBeenCalledWith(
-			"src/main.ts",
-			0,
-			3,
-			expect.any(MouseEvent),
-		);
-	});
-
-	it("hands a press on a line's control to the drag that comments", async () => {
-		const oncommentpress = vi.fn();
-		render(SplitView, { props: defaultProps({ oncommentpress }) });
-
-		await fireEvent.mouseDown(
-			screen.getByRole("button", { name: "Comment on line 11", hidden: true }),
-		);
-
-		expect(oncommentpress).toHaveBeenCalledWith(
-			"src/main.ts",
-			0,
-			3,
-			lopsided.hunks[0].lines,
-			expect.any(MouseEvent),
-		);
-	});
-
-	it("offers no comment action where the diff takes no comments", () => {
+	it("draws the action on the row of the line it is placed on", () => {
 		render(SplitView, {
-			props: defaultProps({ oncommentline: vi.fn(), takesComments: false }),
+			props: defaultProps({
+				selectedHunkKey: "src/main.ts-0",
+				selectedLineIndices: new Set([3]),
+				selectedCount: 1,
+				selectionComment: { hunkKey: "src/main.ts-0", lineIndex: 3 },
+			}),
 		});
 
-		expect(screen.queryByRole("button", { name: "Comment" })).toBeNull();
+		expect(cellsOf("added one")[0].closest(".split-row")).toContainElement(
+			screen.getByRole("button", { name: "Comment on selected lines" }),
+		);
+	});
+
+	it("comments on the selection from the action", async () => {
+		const oncommentselection = vi.fn();
+		render(SplitView, {
+			props: defaultProps({
+				selectedHunkKey: "src/main.ts-0",
+				selectedLineIndices: new Set([3]),
+				selectedCount: 1,
+				selectionComment: { hunkKey: "src/main.ts-0", lineIndex: 3 },
+				oncommentselection,
+			}),
+		});
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Comment on selected lines" }),
+		);
+
+		expect(oncommentselection).toHaveBeenCalledTimes(1);
+	});
+
+	it("draws no comment control on a line", () => {
+		render(SplitView, { props: defaultProps({ diffKind: "commit" }) });
+
 		expect(
-			screen.queryByRole("button", {
-				name: "Comment on line 11",
+			screen.queryAllByRole("button", {
+				name: /^Comment on (removed )?line/,
 				hidden: true,
 			}),
-		).toBeNull();
+		).toEqual([]);
 	});
 
-	it("offers to comment on a removed line from its marker cell", async () => {
-		const oncommentline = vi.fn();
+	it("marks both sides of a selected context line", () => {
 		render(SplitView, {
-			props: defaultProps({ oncommentline, diffKind: "commit" }),
+			props: defaultProps({
+				selectedHunkKey: "src/main.ts-0",
+				selectedLineIndices: new Set([0]),
+				selectedCount: 1,
+			}),
 		});
 
-		await fireEvent.click(
-			screen.getByRole("button", {
-				name: "Comment on removed line 11",
-				hidden: true,
-			}),
-		);
-
-		expect(oncommentline).toHaveBeenCalledWith(
-			"src/main.ts",
-			0,
-			1,
-			expect.any(MouseEvent),
-		);
+		expect(
+			cellsOf("context before").map((cell) =>
+				cell.classList.contains("in-selection"),
+			),
+		).toEqual([true, true]);
 	});
 
 	it("selects a removed line from its line number", async () => {
@@ -619,21 +615,19 @@ describe("SplitView one-click comment", () => {
 			"src/main.ts",
 			0,
 			1,
-			"Delete",
 			expect.any(Array),
 			expect.any(MouseEvent),
 		);
 	});
 
-	it("offers none on the removed side of unstaged changes", () => {
-		render(SplitView, { props: defaultProps({ oncommentline: vi.fn() }) });
+	it("draws no line number control on a context line where the diff takes no comments", () => {
+		render(SplitView, { props: defaultProps({ takesComments: false }) });
 
 		expect(
-			screen.queryByRole("button", {
-				name: /^Comment on removed line/,
-				hidden: true,
-			}),
-		).toBeNull();
+			cellsOf("context before").map((cell) =>
+				cell.querySelector("[data-gutter-grip]"),
+			),
+		).toEqual([null, null]);
 	});
 });
 

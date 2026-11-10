@@ -11,11 +11,8 @@ export const commentingLeaf = {
 	reviewFilter: ALL_THREADS,
 };
 
-/** A diff panel that can take a comment, takes one now, and shows every thread. */
-export const commentingDiff = {
-	...commentingLeaf,
-	canTakeComments: true,
-};
+/** A diff panel that takes a comment now and shows every thread. */
+export const commentingDiff = commentingLeaf;
 
 /** A count surface with no thread counted on any commit or file. */
 export function noReviewCounts() {

@@ -8,12 +8,12 @@ import {
 	FIXED_ROW_HEIGHT_VARS,
 } from "../../lib/diff-rows.js";
 import {
-	commentLabel,
 	gripLabel,
 	lineBackground,
 	splitInvisibles,
 	trailingWhitespaceStart,
 } from "../../lib/diff-utils.js";
+import { focusInEditable, keyChord } from "../../lib/keyboard.js";
 import { measure } from "../../lib/perf.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
@@ -24,7 +24,6 @@ import type {
 	ReviewFilter,
 	Thread,
 } from "../../lib/types.js";
-import Button from "../../lib/ui/Button.svelte";
 import GutterGrip from "../../lib/ui/GutterGrip.svelte";
 import {
 	createVirtualizedDiff,
@@ -33,6 +32,7 @@ import {
 } from "../../lib/virtualized-diff.svelte.js";
 import ThreadCard from "../ThreadCard.svelte";
 import ExactVirtualList from "./ExactVirtualList.svelte";
+import SelectionComment from "./SelectionComment.svelte";
 import ThreadMarker from "./ThreadMarker.svelte";
 
 interface Props {
@@ -49,8 +49,6 @@ interface Props {
 	/** A shift-click stretched the selection to these lines, which the comment
 	 *  being written follows. */
 	onextendcomment?: (filePath: string, selectedIndices: Set<number>) => void;
-	/** Whether this diff can ever take a comment; takesComments says whether it does now. */
-	canTakeComments: boolean;
 	takesComments: boolean;
 	reviewFilter: ReviewFilter;
 	viewComments?: Thread[];
@@ -68,7 +66,6 @@ let {
 	isMerge,
 	oncommentfullfile,
 	onextendcomment,
-	canTakeComments,
 	takesComments,
 	reviewFilter,
 	viewComments = [],
@@ -87,9 +84,9 @@ let focusIndex = $state<number | null>(null);
 
 let list = $state<DiffListHandle | null>(null);
 
-// A drag started from a line's comment control: once it has moved, its release
-// opens a comment on the span.
-let commentDrag: { path: string; anchor: number; moved: boolean } | null = null;
+// Reactive, so the selection's Comment action stays out of the way of the
+// press that is still making the selection.
+let pressHeld = $state(false);
 
 // The contiguous span as flat indices into the active file's line list.
 const selectedIndices = $derived(computeSpan(anchorIndex, focusIndex));
@@ -133,31 +130,31 @@ function inSelection(path: string, index: number): boolean {
 	return selectedPath === path && selectedIndices.has(index);
 }
 
-function commentOnLine(path: string, line: DiffLine, index: number) {
-	if (inSelection(path, index)) {
-		oncommentfullfile(path, selectedIndices);
-		return;
-	}
-
-	selectLine(path, line, index, false);
-	oncommentfullfile(path, new Set([index]));
-}
-
-// The bar's row follows the selection, never takesComments, so a diff that
-// stops taking comments with a selection open keeps its code where it was. A
-// diff that can never take one, a compare, draws no row to keep.
-const commentBarShown = $derived(
-	canTakeComments &&
-		kindTakesComments &&
-		selectedPath !== null &&
-		selectedIndices.size > 0,
+// The line the selection's Comment action sits on, its last, once the press
+// that made it is released and while no composer is open.
+const actionIndex = $derived(
+	commentable && composer === null && !pressHeld && selectedIndices.size > 0
+		? Math.max(...selectedIndices)
+		: null,
 );
 
+function commentOnSelection() {
+	if (selectedPath !== null) oncommentfullfile(selectedPath, selectedIndices);
+}
+
 $effect(() => {
+	function handleKeydown(e: KeyboardEvent) {
+		if (focusInEditable(document.activeElement)) return;
+		if (keyChord(e) !== "c" || actionIndex === null) return;
+
+		e.preventDefault();
+		commentOnSelection();
+	}
+	window.addEventListener("keydown", handleKeydown);
 	window.addEventListener("mouseup", stopDrag);
 	return () => {
+		window.removeEventListener("keydown", handleKeydown);
 		window.removeEventListener("mouseup", stopDrag);
-		commentDrag = null;
 		stopDrag();
 	};
 });
@@ -201,43 +198,19 @@ function startDrag(path: string, line: DiffLine, index: number, e: MouseEvent) {
 	// crosses gutters and code spans that are otherwise user-selectable, and
 	// without this the browser paints its selection over ours.
 	e.preventDefault();
-	commentDrag = null;
+	pressHeld = true;
 
 	selectLine(path, line, index, e.shiftKey);
 	document.addEventListener("mouseover", extendDrag);
 }
 
-// A press on a line's comment control starts a span a drag stretches. Until the
-// pointer leaves the line, a press inside the selection changes nothing, so its
-// click comments on the selection, and a release on the pressed line is always
-// that click's.
-function startCommentDrag(
-	path: string,
-	line: DiffLine,
-	index: number,
-	e: MouseEvent,
-) {
-	if (e.button !== 0) return;
-	e.preventDefault();
-	if (!inSelection(path, index)) selectLine(path, line, index, false);
-	commentDrag = { path, anchor: index, moved: false };
-	document.addEventListener("mouseover", extendDrag);
-}
-
 function stopDrag() {
+	pressHeld = false;
 	document.removeEventListener("mouseover", extendDrag);
-
-	const drag = commentDrag;
-	commentDrag = null;
-	if (drag?.moved && selectedPath !== null && selectedIndices.size > 1) {
-		oncommentfullfile(selectedPath, selectedIndices);
-	}
 }
 
 // The pointer moved onto another element during a drag. A row it crosses with
-// no button held ends a grip drag: there is no gesture left to continue. A
-// comment drag waits for its release instead, because WebKit reports no button
-// on the hovers it synthesizes while the list scrolls under a held pointer.
+// no button held ends the drag: there is no gesture left to continue.
 function extendDrag(e: MouseEvent) {
 	if (!(e.target instanceof Element)) return;
 
@@ -245,7 +218,7 @@ function extendDrag(e: MouseEvent) {
 	if (!(row instanceof HTMLElement)) return;
 
 	if (e.buttons !== 1) {
-		if (!commentDrag) stopDrag();
+		stopDrag();
 		return;
 	}
 
@@ -253,17 +226,6 @@ function extendDrag(e: MouseEvent) {
 	// the last new-side row the pointer crossed rather than snapping to it.
 	const { linePath, newSide } = row.dataset;
 	const index = Number(row.dataset.flatIndex);
-	if (commentDrag) {
-		if (linePath !== commentDrag.path || newSide === undefined) return;
-		if (!commentDrag.moved && index === commentDrag.anchor) return;
-		if (!commentDrag.moved) {
-			selectedPath = commentDrag.path;
-			anchorIndex = commentDrag.anchor;
-			commentDrag.moved = true;
-		}
-		focusIndex = index;
-		return;
-	}
 	if (linePath !== selectedPath || newSide === undefined) return;
 
 	focusIndex = index;
@@ -302,8 +264,9 @@ export function clearSelection() {
 	{#if item.kind === "line"}
 		{@const line = item.line}
 		{@const isSelectable = line.new_lineno !== null}
-		{@const isSelected =
-			selectedPath === item.path && selectedIndices.has(item.flatIdx)}
+		{@const isSelected = inSelection(item.path, item.flatIdx)}
+		{@const holdsAction =
+			selectedPath === item.path && actionIndex === item.flatIdx}
 		{@const trailStart = showInvisibles
 			? trailingWhitespaceStart(line.content)
 			: line.content.length}
@@ -318,23 +281,21 @@ export function clearSelection() {
 			class:whitespace-pre={!vd.wrapActive}
 			class:break-all={vd.wrapActive}
 			class:break-normal={!vd.wrapActive}
+			class:in-selection={isSelected}
+			class:selection-first={isSelected &&
+				!inSelection(item.path, item.flatIdx - 1)}
+			class:selection-last={isSelected &&
+				!inSelection(item.path, item.flatIdx + 1)}
+			class:holds-action={holdsAction}
 			style:font-family={DIFF_ROW_FONT.fontFamily}
 			style:font-size={DIFF_ROW_FONT.fontSize}
 			style:line-height={DIFF_ROW_FONT.lineHeight}
-			style:background={lineBackground(line.origin, isSelected)}
+			style:background={lineBackground(line.origin)}
 			data-line-path={item.path}
 			data-flat-index={item.flatIdx}
 			data-new-side={isSelectable ? "" : undefined}
-			><ThreadMarker
-				marker={item.marker}
-				width={vd.markerW}
-				oncomment={commentable && isSelectable
-					? () => commentOnLine(item.path, line, item.flatIdx)
-					: undefined}
-				oncommentpress={(e) =>
-					startCommentDrag(item.path, line, item.flatIdx, e)}
-				commentLabel={commentLabel(line)}
-			/>{#if isSelectable}
+			><ThreadMarker marker={item.marker} width={vd.markerW} />
+			{#if isSelectable}
 				<GutterGrip
 					aria-label={gripLabel(line)}
 					onmousedown={(e) => startDrag(item.path, line, item.flatIdx, e)}
@@ -394,7 +355,9 @@ export function clearSelection() {
 						{line.content}
 					{/if}
 				{/if}</span
-			></div
+			>{#if holdsAction}
+				<SelectionComment oncomment={commentOnSelection} />
+			{/if}</div
 		>
 	{:else if item.kind === "comment"}
 		{#each item.threads as c (c.id)}
@@ -422,30 +385,6 @@ export function clearSelection() {
 		"--diff-composer-row-height"
 	]}
 >
-	{#if commentBarShown}
-		<!-- Full-file Comment affordance (L-05: no isMerge disable). Appears on
-         comment-capable commit, unstaged working-tree (260531-k4j), and
-         current-file views once a selection exists. Lives outside the list
-         because it follows the live selection, which the row model must not
-         take as an input. -->
-		<div
-			class="flex items-center justify-end h-bar px-2 flex-none"
-			data-testid="full-file-comment-bar"
-		>
-			{#if takesComments}
-				<Button
-					variant="accent"
-					size="sm"
-					data-testid="full-file-comment"
-					onclick={() =>
-						selectedPath && oncommentfullfile(selectedPath, selectedIndices)}
-				>
-					Comment ({selectedIndices.size})
-				</Button>
-			{/if}
-		</div>
-	{/if}
-
 	<div class="list-area" bind:this={vd.pane}>
 		{#if vd.ready}
 			<ExactVirtualList

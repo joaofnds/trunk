@@ -42,7 +42,7 @@ const COMMENT_ON_FILE = "Comment on a file…";
 const FINDER_INPUT = '[aria-label="Find a tracked file to comment on"]';
 const FINDER_ROW = '[aria-label="Tracked files"] [role="option"]';
 const SELECTABLE_LINE = "[data-gutter-grip]";
-const FULL_FILE_COMMENT = '[data-testid="full-file-comment"]';
+const FULL_FILE_COMMENT = '[aria-label="Comment on selected lines"]';
 const JUMP_TO_CODE = `[aria-label="Jump to code"], ${SCOPE_TAG}`;
 const DIFF_PATH = '[data-testid="diff-path"]';
 const REPLY_TEXT = 'textarea[aria-label="Reply"]';
@@ -179,6 +179,7 @@ export class ReviewDriver {
 		});
 
 		gutter.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+		gutter.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
 		gutter.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 	}
 
@@ -196,6 +197,7 @@ export class ReviewDriver {
 		);
 
 		gutter.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+		gutter.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
 		gutter.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 	}
 

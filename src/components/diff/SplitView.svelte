@@ -11,9 +11,9 @@ import {
 	rowIndexForLine,
 } from "../../lib/diff-rows.js";
 import {
-	commentLabel,
 	gripLabel,
 	lineBackground,
+	type PairedRow,
 	splitInvisibles,
 	splitSide,
 	takesNewComment,
@@ -26,7 +26,6 @@ import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type {
 	ContentMode,
 	DiffLine,
-	DiffOrigin,
 	FileDiff,
 	ReviewFilter,
 	Side,
@@ -42,6 +41,9 @@ import {
 import ThreadCard from "../ThreadCard.svelte";
 import ExactVirtualList from "./ExactVirtualList.svelte";
 import HunkActions from "./HunkActions.svelte";
+import SelectionComment, {
+	type SelectionCommentPlace,
+} from "./SelectionComment.svelte";
 import ThreadMarker from "./ThreadMarker.svelte";
 
 interface Props {
@@ -60,21 +62,9 @@ interface Props {
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	/** The open comment composer, drawn under the line its comment ends on. */
 	composer?: DiffComposer | null;
-	/** Opens a comment on one line, from the control its marker cell shows. */
-	oncommentline: (
-		filePath: string,
-		hunkIndex: number,
-		lineIndex: number,
-		e: MouseEvent,
-	) => void;
-	/** A press on that control, which a drag carries across lines. */
-	oncommentpress: (
-		filePath: string,
-		hunkIndex: number,
-		lineIndex: number,
-		hunkLines: DiffLine[],
-		e: MouseEvent,
-	) => void;
+	/** Where the selection's Comment action sits, or null while it shows none. */
+	selectionComment: SelectionCommentPlace | null;
+	oncommentselection: () => void;
 	isMerge: boolean;
 	collapsedFiles: Set<string>;
 	onfilecollapsetoggle: (path: string) => void;
@@ -82,7 +72,6 @@ interface Props {
 		filePath: string,
 		hunkIdx: number,
 		lineIndex: number,
-		origin: DiffOrigin,
 		hunkLines: DiffLine[],
 		e: MouseEvent,
 	) => void;
@@ -90,7 +79,6 @@ interface Props {
 		filePath: string,
 		hunkIdx: number,
 		lineIndex: number,
-		origin: DiffOrigin,
 		hunkLines: DiffLine[],
 		e: MouseEvent,
 	) => void;
@@ -138,12 +126,35 @@ let {
 	viewComments = [],
 	editorSessionForThread,
 	composer = null,
-	oncommentline,
-	oncommentpress,
+	selectionComment,
+	oncommentselection,
 }: Props = $props();
 
 // Whether a line can take a new comment here, as the hunk's Comment action can.
 const commentable = $derived(takesComments && !isMerge);
+
+function selectable(line: DiffLine): boolean {
+	return (
+		line.origin !== "Context" ||
+		(commentable && takesNewComment(diffKind, line))
+	);
+}
+
+function inSelection(hunkKey: string, lineIdx: number): boolean {
+	return selectedHunkKey === hunkKey && selectedLineIndices.has(lineIdx);
+}
+
+// The side of a pair row the selection's Comment action sits on, the side its
+// last line belongs to, or null when the row does not hold it.
+function actionSide(hunkKey: string, pair: PairedRow): Side | null {
+	if (selectionComment?.hunkKey !== hunkKey) return null;
+
+	for (const cell of [pair.left, pair.right]) {
+		if (cell?.lineIdx === selectionComment.lineIndex)
+			return splitSide(cell.line);
+	}
+	return null;
+}
 
 const FLASH_MS = 600;
 
@@ -326,10 +337,9 @@ function originClass(origin: string): string {
 	>
 {/snippet}
 
-<!-- A cell's marker and line number. A changed line's number is the grip a
-     press selects it from. The marker cell on the line's own side offers the
-     comment control, so an unchanged line offers it once, and a removed line of
-     unstaged changes, which no comment can anchor to, not at all. -->
+<!-- A cell's marker and line number. The number is the grip a press selects
+     the line from, on a changed line, and on an unchanged one where it can take
+     a comment. -->
 {#snippet cellGutter(
 	path: string,
 	hunkIdx: number,
@@ -337,25 +347,13 @@ function originClass(origin: string): string {
 	lineIdx: number,
 	marker: LineMarker | null,
 	lineno: number | null,
-	side: Side,
 )}
 	{@const hunkLines = hunkLinesOf(path, hunkIdx)}
-	<ThreadMarker
-		{marker}
-		width={vd.markerW}
-		oncomment={commentable &&
-		takesNewComment(diffKind, line) &&
-		side === splitSide(line)
-			? (e) => oncommentline(path, hunkIdx, lineIdx, e)
-			: undefined}
-		oncommentpress={(e) => oncommentpress(path, hunkIdx, lineIdx, hunkLines, e)}
-		commentLabel={commentLabel(line)}
-	/>
-	{#if line.origin !== "Context"}
+	<ThreadMarker {marker} width={vd.markerW} />
+	{#if selectable(line)}
 		<GutterGrip
 			aria-label={gripLabel(line)}
-			onmousedown={(e) =>
-				onlinemousedown(path, hunkIdx, lineIdx, line.origin, hunkLines, e)}
+			onmousedown={(e) => onlinemousedown(path, hunkIdx, lineIdx, hunkLines, e)}
 			onkeydown={(e) => {
 				if (e.key === "Enter" || e.key === " ") {
 					e.preventDefault();
@@ -363,7 +361,6 @@ function originClass(origin: string): string {
 						path,
 						hunkIdx,
 						lineIdx,
-						line.origin,
 						hunkLines,
 						new MouseEvent("click", { shiftKey: e.shiftKey }),
 					);
@@ -387,12 +384,12 @@ function originClass(origin: string): string {
 		<!-- The row, not the cell, is what the pan is held against: it is pinned at
          the viewport's left edge and spans one viewport, and the two halves
          translate inside it. -->
-		<div class="split-row pan-pinned flex">
+		{@const heldOn = actionSide(hunkKey, item.row)}
+		<div class="split-row pan-pinned flex" class:holds-action={heldOn !== null}>
 			{#if item.row.left}
 				{@const line = item.row.left.line}
 				{@const lineIdx = item.row.left.lineIdx}
-				{@const isSelected =
-					selectedHunkKey === hunkKey && selectedLineIndices.has(lineIdx)}
+				{@const isSelected = inSelection(hunkKey, lineIdx)}
 				<div
 					class="split-cell split-cell-left diff-line text-diff-text {originClass(
 						line.origin,
@@ -400,7 +397,12 @@ function originClass(origin: string): string {
 					style:font-family={DIFF_ROW_FONT.fontFamily}
 					style:font-size={DIFF_ROW_FONT.fontSize}
 					style:line-height={DIFF_ROW_FONT.lineHeight}
-					style:background={lineBackground(line.origin, isSelected)}
+					class:in-selection={isSelected}
+					class:selection-first={isSelected &&
+						!inSelection(hunkKey, lineIdx - 1)}
+					class:selection-last={isSelected &&
+						!inSelection(hunkKey, lineIdx + 1)}
+					style:background={lineBackground(line.origin)}
 					data-line-path={item.path}
 					data-hunk-index={item.hunkIdx}
 					data-line-index={lineIdx}
@@ -412,7 +414,6 @@ function originClass(origin: string): string {
 						lineIdx,
 						item.markerLeft,
 						line.old_lineno,
-						"Old",
 					)}
 					<div class="split-window overflow-clip">
 						<div
@@ -431,14 +432,18 @@ function originClass(origin: string): string {
 			{#if item.row.right}
 				{@const line = item.row.right.line}
 				{@const lineIdx = item.row.right.lineIdx}
-				{@const isSelected =
-					selectedHunkKey === hunkKey && selectedLineIndices.has(lineIdx)}
+				{@const isSelected = inSelection(hunkKey, lineIdx)}
 				<div
 					class="split-cell diff-line text-diff-text {originClass(line.origin)}"
 					style:font-family={DIFF_ROW_FONT.fontFamily}
 					style:font-size={DIFF_ROW_FONT.fontSize}
 					style:line-height={DIFF_ROW_FONT.lineHeight}
-					style:background={lineBackground(line.origin, isSelected)}
+					class:in-selection={isSelected}
+					class:selection-first={isSelected &&
+						!inSelection(hunkKey, lineIdx - 1)}
+					class:selection-last={isSelected &&
+						!inSelection(hunkKey, lineIdx + 1)}
+					style:background={lineBackground(line.origin)}
 					data-line-path={item.path}
 					data-hunk-index={item.hunkIdx}
 					data-line-index={lineIdx}
@@ -450,7 +455,6 @@ function originClass(origin: string): string {
 						lineIdx,
 						item.markerRight,
 						line.new_lineno,
-						"New",
 					)}
 					<div class="split-window overflow-clip">
 						<div
@@ -464,6 +468,13 @@ function originClass(origin: string): string {
 				</div>
 			{:else}
 				<div class="split-cell split-phantom"></div>
+			{/if}
+			{#if heldOn}
+				<!-- On the row rather than in its cell, since a cell clips what
+				     overflows it and the action straddles the line's bottom edge. -->
+				<span class="split-action" class:split-action-old={heldOn === "Old"}
+					><SelectionComment oncomment={oncommentselection} /></span
+				>
 			{/if}
 		</div>
 	{:else if item.kind === "hunk-header"}
@@ -612,6 +623,20 @@ function originClass(origin: string): string {
 
 /* The window the pan happens inside. The gutter is its sibling, not its child,
      so the line numbers stay put while the code moves. */
+/* Spans the half the action belongs to, as a flex row whose end the action's
+   track sits at. */
+.split-action {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	display: flex;
+	width: 50cqi;
+	height: 0;
+}
+.split-action-old {
+	right: 50%;
+	padding-right: var(--space-4);
+}
 .split-window {
 	flex: 1;
 	min-width: 0;

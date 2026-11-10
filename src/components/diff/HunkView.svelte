@@ -10,7 +10,6 @@ import {
 	rowIndexForLine,
 } from "../../lib/diff-rows.js";
 import {
-	commentLabel,
 	gripLabel,
 	lineBackground,
 	splitInvisibles,
@@ -23,7 +22,6 @@ import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type {
 	DiffLine,
-	DiffOrigin,
 	FileDiff,
 	ReviewFilter,
 	Thread,
@@ -38,6 +36,9 @@ import {
 import ThreadCard from "../ThreadCard.svelte";
 import ExactVirtualList from "./ExactVirtualList.svelte";
 import HunkActions from "./HunkActions.svelte";
+import SelectionComment, {
+	type SelectionCommentPlace,
+} from "./SelectionComment.svelte";
 import ThreadMarker from "./ThreadMarker.svelte";
 
 interface Props {
@@ -58,7 +59,6 @@ interface Props {
 		filePath: string,
 		hunkIdx: number,
 		lineIndex: number,
-		origin: DiffOrigin,
 		hunkLines: DiffLine[],
 		e: MouseEvent,
 	) => void;
@@ -66,7 +66,6 @@ interface Props {
 		filePath: string,
 		hunkIdx: number,
 		lineIndex: number,
-		origin: DiffOrigin,
 		hunkLines: DiffLine[],
 		e: MouseEvent,
 	) => void;
@@ -85,21 +84,9 @@ interface Props {
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	/** The open comment composer, drawn under the line its comment ends on. */
 	composer?: DiffComposer | null;
-	/** Opens a comment on one line, from the control its marker cell shows. */
-	oncommentline: (
-		filePath: string,
-		hunkIndex: number,
-		lineIndex: number,
-		e: MouseEvent,
-	) => void;
-	/** A press on that control, which a drag carries across lines. */
-	oncommentpress: (
-		filePath: string,
-		hunkIndex: number,
-		lineIndex: number,
-		hunkLines: DiffLine[],
-		e: MouseEvent,
-	) => void;
+	/** Where the selection's Comment action sits, or null while it shows none. */
+	selectionComment: SelectionCommentPlace | null;
+	oncommentselection: () => void;
 }
 
 let {
@@ -132,12 +119,16 @@ let {
 	viewComments = [],
 	editorSessionForThread,
 	composer = null,
-	oncommentline,
-	oncommentpress,
+	selectionComment,
+	oncommentselection,
 }: Props = $props();
 
 // Whether a line can take a new comment here, as the hunk's Comment action can.
 const commentable = $derived(takesComments && !isMerge);
+
+function inSelection(hunkKey: string, lineIdx: number): boolean {
+	return selectedHunkKey === hunkKey && selectedLineIndices.has(lineIdx);
+}
 
 const FLASH_MS = 600;
 
@@ -257,10 +248,14 @@ function flash(hunkKey: string): void {
 {#snippet diffRow(item: DiffRow, _index: number)}
 	{#if item.kind === "line"}
 		{@const line = item.line}
-		{@const isSelectable = line.origin !== "Context"}
+		{@const isSelectable =
+			line.origin !== "Context" ||
+			(commentable && takesNewComment(diffKind, line))}
 		{@const hunkKey = `${item.path}-${item.hunkIdx}`}
-		{@const isSelected =
-			selectedHunkKey === hunkKey && selectedLineIndices.has(item.lineIdx)}
+		{@const isSelected = inSelection(hunkKey, item.lineIdx)}
+		{@const holdsAction =
+			selectionComment?.hunkKey === hunkKey &&
+			selectionComment.lineIndex === item.lineIdx}
 		{@const trailStart = showInvisibles
 			? trailingWhitespaceStart(line.content)
 			: line.content.length}
@@ -278,23 +273,21 @@ function flash(hunkKey: string): void {
 			class:whitespace-pre={!vd.wrapActive}
 			class:break-all={vd.wrapActive}
 			class:break-normal={!vd.wrapActive}
+			class:in-selection={isSelected}
+			class:selection-first={isSelected &&
+				!inSelection(hunkKey, item.lineIdx - 1)}
+			class:selection-last={isSelected &&
+				!inSelection(hunkKey, item.lineIdx + 1)}
+			class:holds-action={holdsAction}
 			style:font-family={DIFF_ROW_FONT.fontFamily}
 			style:font-size={DIFF_ROW_FONT.fontSize}
 			style:line-height={DIFF_ROW_FONT.lineHeight}
-			style:background={lineBackground(line.origin, isSelected)}
+			style:background={lineBackground(line.origin)}
 			data-line-path={item.path}
 			data-hunk-index={item.hunkIdx}
 			data-line-index={item.lineIdx}
-			><ThreadMarker
-				marker={item.marker}
-				width={vd.markerW}
-				oncomment={commentable && takesNewComment(diffKind, line)
-					? (e) => oncommentline(item.path, item.hunkIdx, item.lineIdx, e)
-					: undefined}
-				oncommentpress={(e) =>
-					oncommentpress(item.path, item.hunkIdx, item.lineIdx, hunkLines, e)}
-				commentLabel={commentLabel(line)}
-			/>{#if isSelectable}
+			><ThreadMarker marker={item.marker} width={vd.markerW} />
+			{#if isSelectable}
 				<GutterGrip
 					aria-label={gripLabel(line)}
 					onmousedown={(e) =>
@@ -302,7 +295,6 @@ function flash(hunkKey: string): void {
 							item.path,
 							item.hunkIdx,
 							item.lineIdx,
-							line.origin,
 							hunkLines,
 							e,
 						)}
@@ -313,7 +305,6 @@ function flash(hunkKey: string): void {
 								item.path,
 								item.hunkIdx,
 								item.lineIdx,
-								line.origin,
 								hunkLines,
 								new MouseEvent("click", { shiftKey: e.shiftKey }),
 							);
@@ -374,7 +365,9 @@ function flash(hunkKey: string): void {
 						{line.content}
 					{/if}
 				{/if}</span
-			></div
+			>{#if holdsAction}
+				<SelectionComment oncomment={oncommentselection} />
+			{/if}</div
 		>
 	{:else if item.kind === "hunk-header"}
 		{@const hunkKey = `${item.path}-${item.hunkIdx}`}

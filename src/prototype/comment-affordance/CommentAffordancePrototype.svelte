@@ -231,7 +231,7 @@ const tracksPointer: Attachment<HTMLElement> = (node) => {
 				style:font-family={DIFF_ROW_FONT.fontFamily}
 				style:font-size={DIFF_ROW_FONT.fontSize}
 				style:line-height={DIFF_ROW_FONT.lineHeight}
-				style:background={lineBackground(line.origin, false)}
+				style:background={lineBackground(line.origin)}
 				data-row={i}
 			>
 				<span class="marker-cell"
