@@ -3141,6 +3141,53 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		expect(ask).toHaveBeenCalledTimes(1);
 	});
 
+	it("keeps the selection when a draft the user keeps outlives a still press on another line's control", async () => {
+		const { ask } = await import("@tauri-apps/plugin-dialog");
+		vi.mocked(ask).mockClear();
+		vi.mocked(ask).mockResolvedValue(false);
+		renderPanel();
+		await flushPrefs();
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
+		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
+		await fireEvent.mouseUp(window);
+		await clickControl(commentControl(2));
+		await fireEvent.input(await screen.findByRole("textbox"), {
+			target: { value: "unsaved note" },
+		});
+
+		await clickControl(commentControl(4));
+		await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+
+		expect(
+			screen.getByRole("button", { name: /^Comment \(/ }),
+		).toHaveTextContent("(2)");
+		expect(screen.getByRole("textbox")).toHaveValue("unsaved note");
+	});
+
+	it("opens no comment when the panel closes in the middle of a drag from a line's control", async () => {
+		const composerSession = createReviewEditorStore().composer();
+		const view = render(DiffPanel, {
+			props: {
+				...commentingDiff,
+				fileDiffs: [testDiff],
+				commitDetail: nonMergeCommit,
+				onclose: vi.fn(),
+				diffKind: "commit",
+				repoPath: "/repo",
+				composerSession,
+			},
+		});
+		await flushPrefs();
+		await fireEvent.mouseDown(commentControl(2));
+		await fireEvent.mouseOver(screen.getByText("const y = 3;"), { buttons: 1 });
+
+		view.unmount();
+		await fireEvent.mouseUp(window);
+		await flushPrefs();
+
+		expect(composerSession.captured).toBeNull();
+	});
+
 	it("leaves a grip drag that follows an unreleased press on a line's control without a comment", async () => {
 		renderPanel();
 		await flushPrefs();
