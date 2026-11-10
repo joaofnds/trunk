@@ -45,3 +45,18 @@ export function focusInEditable(active: Element | null): boolean {
 		active.getAttribute("contenteditable") === "true"
 	);
 }
+
+/** Whether the app runs on macOS, where Ctrl edits text and Cmd runs shortcuts. */
+export function onMac(): boolean {
+	return navigator.platform.startsWith("Mac");
+}
+
+/**
+ * Whether the shortcut modifier is held: Cmd on macOS, where Ctrl+A, E, B, F,
+ * K and the rest move and delete in a text field, and Ctrl or the system key
+ * elsewhere.
+ */
+export function shortcutModifier(e: KeyboardEvent): boolean {
+	if (onMac()) return e.metaKey;
+	return e.ctrlKey || e.metaKey;
+}

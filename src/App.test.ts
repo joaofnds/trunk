@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { fireEvent, render, waitFor } from "@testing-library/svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { makeCommit } from "./__tests__/helpers/factories";
 import App from "./App.svelte";
 
@@ -254,6 +254,32 @@ describe("App", () => {
 
 			expect(commitDetailsRequested()).toEqual(["oid-2"]);
 		});
+
+		it.each(["j", "k"])(
+			"leaves Ctrl+%s to a focused text field on macOS",
+			async (key) => {
+				const platform = vi
+					.spyOn(navigator, "platform", "get")
+					.mockReturnValue("MacIntel");
+				onTestFinished(() => platform.mockRestore());
+				const { container, findAllByTestId } = render(App);
+				await findAllByTestId("commit-row");
+				const field = document.createElement("textarea");
+				container.append(field);
+				field.focus();
+
+				const typed = field.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key,
+						ctrlKey: true,
+						bubbles: true,
+						cancelable: true,
+					}),
+				);
+
+				expect(typed).toBe(true);
+			},
+		);
 
 		it("collapses the left pane on Cmd+J and leaves a mid-history selection where it is", async () => {
 			const { container, findAllByTestId } = render(App);

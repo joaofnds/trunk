@@ -3,6 +3,7 @@ import { type Snippet, tick } from "svelte";
 import { reportErrorToast } from "../../lib/error-report.js";
 import { externalLinks } from "../../lib/external-links.js";
 import { safeInvoke } from "../../lib/invoke.js";
+import { shortcutModifier } from "../../lib/keyboard.js";
 import {
 	continueList,
 	type FieldState,
@@ -141,7 +142,7 @@ function shortcutEdit(
 function onkeydown(event: KeyboardEvent) {
 	if (event.isComposing) return;
 	const node = event.currentTarget as HTMLTextAreaElement;
-	const command = event.metaKey || event.ctrlKey;
+	const command = shortcutModifier(event);
 
 	if (event.key === "Escape") {
 		event.preventDefault();
@@ -150,7 +151,7 @@ function onkeydown(event: KeyboardEvent) {
 		return;
 	}
 
-	if (event.key === "Enter" && command) {
+	if (event.key === "Enter" && (command || event.ctrlKey)) {
 		event.preventDefault();
 		if (!submitDisabled) onsubmit();
 		return;

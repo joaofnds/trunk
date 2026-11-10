@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { safeInvoke } from "../../lib/invoke.js";
 import CommentEditor from "./CommentEditor.svelte";
 
@@ -103,6 +103,47 @@ describe("CommentEditor", () => {
 		await fireEvent.keyDown(field, { key, metaKey: true });
 
 		expect(field.value).toBe(`a ${mark}word${mark}`);
+	});
+
+	it("wraps the selection on Ctrl+B", async () => {
+		const { field } = renderEditor();
+		await type(field, "a [word]");
+
+		await fireEvent.keyDown(field, { key: "b", ctrlKey: true });
+
+		expect(field.value).toBe("a **word**");
+	});
+
+	describe("on macOS", () => {
+		beforeEach(() => {
+			vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+		});
+
+		afterEach(() => {
+			vi.restoreAllMocks();
+		});
+
+		it.each(["a", "b", "e", "i", "k"])(
+			"leaves Ctrl+%s to the field's own line editing",
+			async (key) => {
+				const { field } = renderEditor();
+				await type(field, "a [word]");
+
+				const typed = await fireEvent.keyDown(field, { key, ctrlKey: true });
+
+				expect(typed).toBe(true);
+				expect(field.value).toBe("a word");
+			},
+		);
+
+		it("wraps the selection on Cmd+E", async () => {
+			const { field } = renderEditor();
+			await type(field, "a [word]");
+
+			await fireEvent.keyDown(field, { key: "e", metaKey: true });
+
+			expect(field.value).toBe("a `word`");
+		});
 	});
 
 	it("links the selection on Cmd+K, without reaching the app's shortcuts", async () => {

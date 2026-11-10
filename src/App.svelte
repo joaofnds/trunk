@@ -18,7 +18,7 @@ import {
 	createCoalescedTask,
 } from "./lib/coalesced-task.js";
 import { safeInvoke } from "./lib/invoke.js";
-import { focusInEditable, keyChord } from "./lib/keyboard.js";
+import { focusInEditable, keyChord, onMac } from "./lib/keyboard.js";
 import { perfEnabled, record } from "./lib/perf.js";
 import {
 	createRemoteState,
@@ -727,6 +727,15 @@ function applyZoom(level: number) {
 	setZoomLevel(level);
 }
 
+// On macOS a Ctrl chord typed into a text field is the field's own line editing.
+function ctrlEditsText(chord: string): boolean {
+	return (
+		chord.startsWith("Ctrl+") &&
+		onMac() &&
+		focusInEditable(document.activeElement)
+	);
+}
+
 // Keyboard shortcuts
 $effect(() => {
 	function handleKeydown(e: KeyboardEvent) {
@@ -786,6 +795,7 @@ $effect(() => {
 				return;
 			case "Meta+j":
 			case "Ctrl+j":
+				if (ctrlEditsText(chord)) return;
 				e.preventDefault();
 				changeLeftPaneCollapsed(
 					reviewPanelOpen ? !reviewLeftPaneCollapsed : !leftPaneCollapsed,
@@ -793,6 +803,7 @@ $effect(() => {
 				return;
 			case "Meta+k":
 			case "Ctrl+k":
+				if (ctrlEditsText(chord)) return;
 				e.preventDefault();
 				changeRightPaneCollapsed(!rightPaneCollapsed);
 				return;
