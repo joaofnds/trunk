@@ -62,11 +62,15 @@ heights, the split view's pan offset, the inset a markdown container pads its
 prose with, hands it over as a custom property: a `style:--name` directive, or a
 rule in its own `<style>`. `src/properties.css` registers each one with
 `@property`, its syntax, whether it inherits and the value it holds where nothing
-set it, so the read side is typed and never falls through to an invalid value. A
-token has a value and belongs in `tokens.css`; a property here has none until a
-component supplies one. `src/properties.css.test.ts` fails a registration
+set it, so the read side never falls through to an unset value. A length is
+registered with syntax `"*"` rather than `"<length>"`, because WebKit applies the
+page zoom to a registered length twice, once where the property is computed and
+again where the `var()` is used, and every length handed over that way would grow
+with the square of the zoom. A token has a value and belongs in `tokens.css`; a
+property here has none until a component supplies one. `src/properties.css.test.ts` fails a registration
 nothing sets or nothing reads, one missing a descriptor, which a browser drops
-without a word, and a `style:--` directive with no registration behind it.
+without a word, a length typed as `<length>`, and a `style:--` directive with no
+registration behind it.
 
 ### Adding a token
 

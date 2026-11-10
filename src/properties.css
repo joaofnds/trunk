@@ -3,50 +3,53 @@
    a value and lives in tokens.css; a property here has none until a component
    supplies one. The registration types the hand-off, gives the reader a value
    where nothing set one, and is the declaration Biome's
-   noUndeclaredCustomProperties finds behind the var(). */
+   noUndeclaredCustomProperties finds behind the var().
+   A length is registered with syntax "*", never "<length>": WebKit applies the
+   page zoom to a registered length when it computes the property and again
+   where the var() is used, so at 150% a 62px column width draws 93px wide. */
 
 /* ── Diff rows: the fixed heights the views hand their rows (src/lib/diff-rows.ts) ── */
 @property --diff-file-header-height {
-	syntax: "<length>";
+	syntax: "*";
 	inherits: true;
 	initial-value: 0px;
 }
 @property --diff-hunk-header-height {
-	syntax: "<length>";
+	syntax: "*";
 	inherits: true;
 	initial-value: 0px;
 }
 @property --diff-binary-row-height {
-	syntax: "<length>";
+	syntax: "*";
 	inherits: true;
 	initial-value: 0px;
 }
 @property --diff-composer-row-height {
-	syntax: "<length>";
+	syntax: "*";
 	inherits: true;
 	initial-value: 0px;
 }
 
 /* ── Split view: horizontal pan and each half's widest line ── */
 @property --pan-x {
-	syntax: "<length>";
+	syntax: "*";
 	inherits: true;
 	initial-value: 0px;
 }
 @property --max-l {
-	syntax: "<length>";
+	syntax: "*";
 	inherits: true;
 	initial-value: 0px;
 }
 @property --max-r {
-	syntax: "<length>";
+	syntax: "*";
 	inherits: true;
 	initial-value: 0px;
 }
 
 /* ── Rendered markdown: the inset a container pads its prose with ── */
 @property --md-prose-inset {
-	syntax: "<length>";
+	syntax: "*";
 	inherits: true;
 	initial-value: 0px;
 }
@@ -60,32 +63,32 @@
 
 /* ── Commit list: the measured width of each sized column (src/lib/column-widths.ts) ── */
 @property --column-ref-width {
-	syntax: "<length>";
+	syntax: "*";
 	inherits: true;
 	initial-value: 0px;
 }
 @property --column-graph-width {
-	syntax: "<length>";
+	syntax: "*";
 	inherits: true;
 	initial-value: 0px;
 }
 @property --column-diff-width {
-	syntax: "<length>";
+	syntax: "*";
 	inherits: true;
 	initial-value: 0px;
 }
 @property --column-author-width {
-	syntax: "<length>";
+	syntax: "*";
 	inherits: true;
 	initial-value: 0px;
 }
 @property --column-date-width {
-	syntax: "<length>";
+	syntax: "*";
 	inherits: true;
 	initial-value: 0px;
 }
 @property --column-sha-width {
-	syntax: "<length>";
+	syntax: "*";
 	inherits: true;
 	initial-value: 0px;
 }

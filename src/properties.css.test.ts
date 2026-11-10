@@ -39,11 +39,18 @@ describe("properties.css", () => {
 	});
 
 	it.each(registered)(
-		"$name carries a typed syntax, inherits and an initial value, since a browser drops an incomplete registration without a word",
+		"$name carries a syntax, inherits and an initial value, since a browser drops an incomplete registration without a word",
 		({ body }) => {
-			expect(body).toMatch(/syntax: "<[a-z-]+>";/);
+			expect(body).toMatch(/syntax: "(?:\*|<[a-z-]+>)";/);
 			expect(body).toMatch(/inherits: (?:true|false);/);
 			expect(body).toMatch(/initial-value: [^;]+;/);
+		},
+	);
+
+	it.each(registered)(
+		"$name is not typed as a length, since WebKit applies the page zoom to a registered length twice",
+		({ body }) => {
+			expect(body).not.toMatch(/syntax: "<length/);
 		},
 	);
 
