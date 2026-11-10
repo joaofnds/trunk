@@ -86,6 +86,10 @@ let focusIndex = $state<number | null>(null);
 
 let list = $state<DiffListHandle | null>(null);
 
+// Set by a press on a line's comment control: the drag it starts opens a
+// comment on the span when it is released.
+let commentOnRelease = false;
+
 // The contiguous span as flat indices into the active file's line list.
 const selectedIndices = $derived(computeSpan(anchorIndex, focusIndex));
 
@@ -199,8 +203,32 @@ function startDrag(path: string, line: DiffLine, index: number, e: MouseEvent) {
 	document.addEventListener("mouseover", extendDrag);
 }
 
+// A press on a line's comment control. On a line inside the selection it leaves
+// the selection for the click to comment on. Elsewhere it starts a span a drag
+// stretches, and the release opens the comment on it; a release on the line it
+// started from is that line's own click.
+function startCommentDrag(
+	path: string,
+	line: DiffLine,
+	index: number,
+	e: MouseEvent,
+) {
+	e.preventDefault();
+	if (selectedPath === path && selectedIndices.has(index)) return;
+
+	selectLine(path, line, index, false);
+	commentOnRelease = true;
+	document.addEventListener("mouseover", extendDrag);
+}
+
 function stopDrag() {
 	document.removeEventListener("mouseover", extendDrag);
+
+	const comment = commentOnRelease;
+	commentOnRelease = false;
+	if (comment && selectedPath !== null && selectedIndices.size > 1) {
+		oncommentfullfile(selectedPath, selectedIndices);
+	}
 }
 
 // The pointer moved onto another element during a drag. A row it crosses with
@@ -297,6 +325,8 @@ function lineBackground(origin: string, isSelected: boolean): string {
 				oncomment={commentable && isSelectable
 					? () => commentOnLine(item.path, line, item.flatIdx)
 					: undefined}
+				oncommentpress={(e) =>
+					startCommentDrag(item.path, line, item.flatIdx, e)}
 				commentLabel={commentLabel(line)}
 			/>{#if isSelectable}
 				<GutterGrip

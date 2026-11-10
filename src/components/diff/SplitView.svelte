@@ -60,6 +60,14 @@ interface Props {
 		hunkIndex: number,
 		lineIndex: number,
 	) => void;
+	/** A press on that control, which a drag carries across lines. */
+	oncommentpress: (
+		filePath: string,
+		hunkIndex: number,
+		lineIndex: number,
+		hunkLines: DiffLine[],
+		e: MouseEvent,
+	) => void;
 	isMerge: boolean;
 	collapsedFiles: Set<string>;
 	onfilecollapsetoggle: (path: string) => void;
@@ -123,6 +131,7 @@ let {
 	editorSessionForThread,
 	composer = null,
 	oncommentline,
+	oncommentpress,
 }: Props = $props();
 
 // Whether a line can take a new comment here, as the hunk's Comment action can.
@@ -382,6 +391,14 @@ function originClass(origin: string): string {
 						oncomment={commentable && isSelectable
 							? () => oncommentline(item.path, item.hunkIdx, lineIdx)
 							: undefined}
+						oncommentpress={(e) =>
+							oncommentpress(
+								item.path,
+								item.hunkIdx,
+								lineIdx,
+								hunkLinesOf(item.path, item.hunkIdx),
+								e,
+							)}
 						commentLabel={commentLabel(line)}
 					/>
 					{#if isSelectable}

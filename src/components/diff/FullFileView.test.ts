@@ -922,6 +922,22 @@ describe("FullFileView one-click comment", () => {
 		);
 	});
 
+	it("comments on the lines a press on a line's control drags across", async () => {
+		const oncommentfullfile = vi.fn();
+		render(FullFileView, { props: defaultProps({ oncommentfullfile }) });
+
+		await fireEvent.mouseDown(
+			screen.getByRole("button", { name: "Comment on line 11", hidden: true }),
+		);
+		await fireEvent.mouseOver(screen.getByText("added three"), { buttons: 1 });
+		await fireEvent.mouseUp(window);
+
+		expect(oncommentfullfile).toHaveBeenCalledWith(
+			"src/main.ts",
+			new Set([1, 2, 3, 4]),
+		);
+	});
+
 	it("offers none where the diff takes no comments", () => {
 		render(FullFileView, { props: defaultProps({ takesComments: false }) });
 

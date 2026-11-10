@@ -103,6 +103,7 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
 		ondiscardlines: vi.fn(),
 		oncommentlines: vi.fn(),
 		oncommentline: vi.fn(),
+		oncommentpress: vi.fn(),
 		oncommenthunk: vi.fn(),
 		repoPath: "/repo",
 		takesComments: true,
@@ -455,6 +456,23 @@ describe("HunkView one-click comment", () => {
 		);
 
 		expect(oncommentline).toHaveBeenCalledWith("src/main.ts", 0, 1);
+	});
+
+	it("hands a press on a line's control to the drag that comments", async () => {
+		const oncommentpress = vi.fn();
+		render(HunkView, { props: defaultProps({ oncommentpress }) });
+
+		await fireEvent.mouseDown(
+			screen.getByRole("button", { name: "Comment on line 11", hidden: true }),
+		);
+
+		expect(oncommentpress).toHaveBeenCalledWith(
+			"src/main.ts",
+			0,
+			1,
+			expect.any(Array),
+			expect.any(MouseEvent),
+		);
 	});
 
 	it("offers no comment action where the diff takes no comments", () => {

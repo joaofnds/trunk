@@ -94,6 +94,13 @@ interface Props {
 		hunkIndex: number,
 		lineIndex: number,
 	) => void;
+	oncommentpress: (
+		filePath: string,
+		hunkIndex: number,
+		lineIndex: number,
+		hunkLines: DiffLine[],
+		e: MouseEvent,
+	) => void;
 	fullFileView?: import("./FullFileView.svelte").default | null;
 	/** Set by the mounted virtualized view, null when none is. */
 	diffNav?: DiffNav | null;
@@ -147,6 +154,7 @@ let {
 	oncommentfullfile,
 	onextendcomment,
 	oncommentline,
+	oncommentpress,
 	fullFileView = $bindable(null),
 	diffNav = $bindable(null),
 	refreshToken = 0,
@@ -301,6 +309,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{oncommentlines}
 			{oncommenthunk}
 			{oncommentline}
+			{oncommentpress}
 			{repoPath}
 			{takesComments}
 			{reviewFilter}
@@ -353,6 +362,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{oncommentlines}
 			{oncommenthunk}
 			{oncommentline}
+			{oncommentpress}
 			{repoPath}
 			{takesComments}
 			{reviewFilter}

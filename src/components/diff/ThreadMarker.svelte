@@ -14,10 +14,13 @@ interface Props {
 	width: string;
 	/** Opens a comment on this one line; the control shows under the pointer. */
 	oncomment?: () => void;
+	/** A press on the control, which a drag from it carries across lines. */
+	oncommentpress?: (e: MouseEvent) => void;
 	commentLabel?: string;
 }
 
-let { marker, width, oncomment, commentLabel }: Props = $props();
+let { marker, width, oncomment, oncommentpress, commentLabel }: Props =
+	$props();
 </script>
 
 <span class="thread-marker-cell" style:min-width={width}
@@ -35,9 +38,10 @@ let { marker, width, oncomment, commentLabel }: Props = $props();
 				size="xs"
 				variant="primary"
 				aria-label={commentLabel}
-				title={commentLabel}
+				title="{commentLabel}, or drag across lines to comment on them all"
 				tabindex={-1}
 				onclick={oncomment}
+				onmousedown={oncommentpress}
 				><Plus size={10} aria-hidden="true" /></Button
 			></span
 		>

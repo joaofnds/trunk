@@ -62,6 +62,7 @@ const baseProps = {
 	ondiscardlines: noop,
 	oncommentlines: noop,
 	oncommentline: noop,
+	oncommentpress: noop,
 	oncommenthunk: noop,
 	commitOid: "",
 	repoPath: "/repo",

@@ -88,6 +88,14 @@ interface Props {
 		hunkIndex: number,
 		lineIndex: number,
 	) => void;
+	/** A press on that control, which a drag carries across lines. */
+	oncommentpress: (
+		filePath: string,
+		hunkIndex: number,
+		lineIndex: number,
+		hunkLines: DiffLine[],
+		e: MouseEvent,
+	) => void;
 }
 
 let {
@@ -120,6 +128,7 @@ let {
 	editorSessionForThread,
 	composer = null,
 	oncommentline,
+	oncommentpress,
 }: Props = $props();
 
 // Whether a line can take a new comment here, as the hunk's Comment action can.
@@ -291,6 +300,8 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 				!(diffKind === "unstaged" && line.origin === "Delete")
 					? () => oncommentline(item.path, item.hunkIdx, item.lineIdx)
 					: undefined}
+				oncommentpress={(e) =>
+					oncommentpress(item.path, item.hunkIdx, item.lineIdx, hunkLines, e)}
 				commentLabel={commentLabel(line)}
 			/>{#if isSelectable}
 				<GutterGrip

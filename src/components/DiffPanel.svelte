@@ -177,6 +177,9 @@ let dragAnchorIndex: number | null = null;
 let dragBaseSet: Set<number> | null = null;
 let dragHunkLines: DiffLine[] | null = null;
 let pressHeld = false;
+// Set by a press on a line's comment control: the drag it starts opens a
+// comment on the lines it painted when it is released.
+let commentOnRelease: { filePath: string; hunkIdx: number } | null = null;
 
 let collapsedFiles = $state<Set<string>>(new Set());
 
@@ -1140,9 +1143,44 @@ async function handleLineMouseDown(
 	applyDragRange(lineIndex);
 }
 
+// A press on a line's comment control. On a line inside the selection it leaves
+// the selection for the click to comment on. Elsewhere it starts a fresh
+// selection that a drag stretches, and the release opens the comment on what
+// it covers; a release on the line it started from is that line's own click.
+// An open composer keeps the click's path, which asks before discarding it.
+function handleCommentPress(
+	filePath: string,
+	hunkIdx: number,
+	lineIndex: number,
+	hunkLines: DiffLine[],
+	e: MouseEvent,
+) {
+	e.preventDefault();
+	const hunkKey = `${filePath}-${hunkIdx}`;
+	if (selectedHunkKey === hunkKey && selectedLineIndices.has(lineIndex)) return;
+	if (composerOpen) return;
+
+	pressHeld = true;
+	selectedHunkKey = hunkKey;
+	dragBaseSet = new Set();
+	dragMode = "add";
+	dragAnchorIndex = lineIndex;
+	dragHunkLines = hunkLines;
+	lastClickedIndex = lineIndex;
+	commentOnRelease = { filePath, hunkIdx };
+	document.addEventListener("mouseover", extendDrag);
+	applyDragRange(lineIndex);
+}
+
 function stopDrag() {
 	pressHeld = false;
 	document.removeEventListener("mouseover", extendDrag);
+
+	const release = commentOnRelease;
+	commentOnRelease = null;
+	if (release && selectedLineIndices.size > 1) {
+		void handleCommentLines(release.filePath, release.hunkIdx);
+	}
 }
 
 // The pointer moved onto another element during a drag: extend the painted range
@@ -1340,6 +1378,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			oncommentlines={handleCommentLines}
 			oncommenthunk={handleCommentHunk}
 			oncommentline={handleCommentLine}
+			oncommentpress={handleCommentPress}
 			{commitOid}
 			{repoPath}
 			{canTakeComments}
