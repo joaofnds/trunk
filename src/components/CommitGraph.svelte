@@ -33,7 +33,6 @@ import {
 import {
 	authorContentWidth,
 	columnFloors,
-	columnPaddingX,
 	DEFAULT_WIDTHS,
 	dateContentWidth,
 	graphTargetWidth,
@@ -68,8 +67,8 @@ import {
 	PILL_FONT_SIZE,
 	PILL_GAP,
 	PILL_HEIGHT,
-	PILL_MARGIN_LEFT,
 	PILL_PADDING_X,
+	TABLE_INSET_X,
 } from "../lib/graph-constants.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
@@ -511,7 +510,7 @@ function panColumn(event: WheelEvent & { currentTarget: HTMLElement }) {
 
 	const rect = event.currentTarget.getBoundingClientRect();
 	const pointerX =
-		event.clientX - rect.left - COLUMN_PADDING_X + viewport.scrollLeft;
+		event.clientX - rect.left - TABLE_INSET_X + viewport.scrollLeft;
 	const column = columnPans.find((pan) => pan.holds(pointerX));
 	if (!column) return;
 
@@ -546,7 +545,7 @@ $effect(() => {
 	if (!list) return;
 
 	const observer = new ResizeObserver(([entry]) => {
-		rowWidth = entry.contentRect.width - 2 * COLUMN_PADDING_X;
+		rowWidth = entry.contentRect.width - 2 * TABLE_INSET_X;
 	});
 	observer.observe(list);
 
@@ -2249,7 +2248,7 @@ $effect(() => {
        the padding, as the list's rows do, so the two scroll the same distance. -->
 	<div
 		class="flex-shrink-0 h-bar bg-surface shadow-hairline text-caption font-semibold tracking-widest uppercase text-text-subtle"
-		style:padding="0 {COLUMN_PADDING_X}px"
+		style:padding="0 {TABLE_INSET_X}px"
 		bind:this={headerRef}
 	>
 		<div
@@ -2264,7 +2263,7 @@ $effect(() => {
 						<div
 							class="relative flex h-full flex-shrink-0 items-center whitespace-nowrap"
 							data-column={col.key}
-							style:padding="0 {columnPaddingX(col.key)}px"
+							style:padding="0 {COLUMN_PADDING_X}px"
 							title={col.label}
 						>
 							<span class="flex min-w-0 overflow-hidden">
@@ -2289,7 +2288,7 @@ $effect(() => {
 						<div
 							class="relative flex-1 overflow-hidden whitespace-nowrap"
 							data-column={col.key}
-							style:padding="0 {columnPaddingX(col.key)}px"
+							style:padding="0 {COLUMN_PADDING_X}px"
 							style:min-width="{MESSAGE_FLOOR}px"
 							title={col.label}
 						>
@@ -2304,7 +2303,7 @@ $effect(() => {
 	<!-- Content area (grows to fill remaining space) -->
 	<div
 		class="flex-1 overflow-hidden relative"
-		style:padding="0 {COLUMN_PADDING_X}px"
+		style:padding="0 {TABLE_INSET_X}px"
 		onwheel={panColumn}
 	>
 		{#if searchOpen}

@@ -8,7 +8,6 @@ import {
 	PILL_FONT_BOLD,
 	PILL_GAP,
 	PILL_HEIGHT,
-	PILL_MARGIN_LEFT,
 	PILL_PADDING_X,
 } from "./graph-constants.js";
 import { makePathContext } from "./overlay-paths.js";
@@ -85,7 +84,7 @@ export function rowPill(refs: RefLabel[]): {
 }
 
 /**
- * Everything on a ref row but the label's text: the margin, the column's padding,
+ * Everything on a ref row but the label's text: the column's inset each side,
  * the gap that mirrors the dot's inset, the pill's padding, its icon, and the
  * "+N" badge when `overflowCount` refs are folded into one. A column this much
  * wider than a label shows that label whole.
@@ -99,8 +98,7 @@ export function refRowChrome(
 		overflowCount > 0 ? PILL_GAP + overflowBadgeWidth(overflowCount) : 0;
 
 	return (
-		PILL_MARGIN_LEFT +
-		COLUMN_PADDING_X +
+		2 * COLUMN_PADDING_X +
 		dotInset +
 		PILL_PADDING_X * 2 +
 		ICON_WIDTH +
@@ -163,7 +161,7 @@ export function buildRefPillData(
 		const pillWidth = PILL_PADDING_X * 2 + ICON_WIDTH + labelWidth;
 
 		pills.push({
-			x: PILL_MARGIN_LEFT,
+			x: COLUMN_PADDING_X,
 			y: cy(node.y),
 			width: pillWidth,
 			textWidth,

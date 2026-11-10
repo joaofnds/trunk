@@ -5,11 +5,7 @@ import { parseSummary, prefixToneVar } from "../lib/commit-prefix.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
 import { diffBarFractions } from "../lib/diff-stat.js";
 import { exactDate } from "../lib/exact-date.js";
-import {
-	COLUMN_PADDING_X,
-	ROW_HEIGHT,
-	TEXT_COLUMN_PADDING_X,
-} from "../lib/graph-constants.js";
+import { COLUMN_PADDING_X, ROW_HEIGHT } from "../lib/graph-constants.js";
 import { currentMinute } from "../lib/now.svelte.js";
 import { relativeLabel } from "../lib/relative-time.js";
 import { STATUS_BADGES, WIP_BADGE_ORDER } from "../lib/status-badges.js";
@@ -193,7 +189,7 @@ const rowShadow = $derived(
 	<div
 		data-column="message"
 		class="flex-1 flex items-center gap-2 overflow-hidden"
-		style:padding="0 {TEXT_COLUMN_PADDING_X}px"
+		style:padding="0 {COLUMN_PADDING_X}px"
 		style:min-width="{MESSAGE_FLOOR}px"
 	>
 		{#if isWip}
@@ -254,7 +250,7 @@ const rowShadow = $derived(
 			data-testid="diff-stat"
 			data-column="diff"
 			class="flex-shrink-0 flex items-center overflow-hidden"
-			style:padding="0 {TEXT_COLUMN_PADDING_X}px"
+			style:padding="0 {COLUMN_PADDING_X}px"
 			use:tooltip={diffTitle}
 		>
 			{#if diffStat && (diffBar.addFrac > 0 || diffBar.delFrac > 0)}
@@ -317,7 +313,7 @@ const rowShadow = $derived(
 		<div
 			data-column="author"
 			class="flex-shrink-0 flex items-center text-callout text-text-muted"
-			style:padding="0 {TEXT_COLUMN_PADDING_X}px"
+			style:padding="0 {COLUMN_PADDING_X}px"
 		>
 			{#if !isWip && !isStash}
 				<span
@@ -338,7 +334,7 @@ const rowShadow = $derived(
 		<div
 			data-column="date"
 			class="flex-shrink-0 overflow-hidden whitespace-nowrap text-small text-text-muted"
-			style:padding="0 {TEXT_COLUMN_PADDING_X}px"
+			style:padding="0 {COLUMN_PADDING_X}px"
 		>
 			{#if !isWip && !isStash}
 				<span data-testid="commit-date" use:exactDate={commit.author_timestamp}
@@ -353,7 +349,7 @@ const rowShadow = $derived(
 		<div
 			data-column="sha"
 			class="flex-shrink-0 overflow-hidden whitespace-nowrap text-small"
-			style:padding="0 {TEXT_COLUMN_PADDING_X}px"
+			style:padding="0 {COLUMN_PADDING_X}px"
 		>
 			{#if !isWip && !isStash}
 				<LinkButton

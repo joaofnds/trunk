@@ -3,7 +3,6 @@ import {
 	DEFAULT_GRAPH_SETTINGS,
 	LANE_WIDTH,
 	PILL_FONT_BOLD,
-	TEXT_COLUMN_PADDING_X,
 } from "./graph-constants.js";
 import { refRowChrome, rowPill } from "./ref-pill-data.js";
 import { WIDEST_LABELS } from "./relative-time.js";
@@ -22,7 +21,7 @@ export interface ColumnWidths {
 
 export const DEFAULT_WIDTHS: ColumnWidths = {
 	ref: 120,
-	graph: 24,
+	graph: LANE_WIDTH + 2 * COLUMN_PADDING_X,
 	diff: 96,
 	author: 60,
 	date: 40,
@@ -51,19 +50,8 @@ const SHA_CONTENT_FONT = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
 export const AUTHOR_AVATAR_WIDTH = 18 + 8;
 
 const CELL_PAD = 2 * COLUMN_PADDING_X;
-const TEXT_CELL_PAD = 2 * TEXT_COLUMN_PADDING_X;
 /** Size of the icon a header falls back to when its word no longer fits. */
 export const HEADER_ICON_WIDTH = 12;
-/** A text column's own inset, which also holds its word clear of the divider;
- *  Branch/Tag and Graph, inset less, reserve the same room. */
-const HEADER_PAD = TEXT_CELL_PAD;
-
-/** The space each side of a column's content, in the header and in every row. */
-export function columnPaddingX(column: keyof ColumnWidths | "message"): number {
-	return column === "ref" || column === "graph"
-		? COLUMN_PADDING_X
-		: TEXT_COLUMN_PADDING_X;
-}
 
 const HEADER_LABELS: Record<keyof ColumnWidths, string> = {
 	ref: "Branch/Tag",
@@ -80,8 +68,7 @@ export function headerMinWidths(
 ): Record<keyof ColumnWidths, number> {
 	const mins = {} as Record<keyof ColumnWidths, number>;
 	for (const [column, label] of Object.entries(HEADER_LABELS)) {
-		mins[column as keyof ColumnWidths] =
-			measure(label, HEADER_FONT) + HEADER_PAD;
+		mins[column as keyof ColumnWidths] = measure(label, HEADER_FONT) + CELL_PAD;
 	}
 	return mins;
 }
@@ -103,10 +90,10 @@ export function columnFloors(measure: MeasureText): ColumnFloors {
 	return {
 		ref: refRowChrome(0) + Math.ceil(measure("main", PILL_FONT_BOLD)),
 		graph: LANE_WIDTH + CELL_PAD,
-		diff: HEADER_ICON_WIDTH + TEXT_CELL_PAD,
-		author: AUTHOR_AVATAR_WIDTH + TEXT_CELL_PAD,
-		date: HEADER_ICON_WIDTH + TEXT_CELL_PAD,
-		sha: HEADER_ICON_WIDTH + TEXT_CELL_PAD,
+		diff: HEADER_ICON_WIDTH + CELL_PAD,
+		author: AUTHOR_AVATAR_WIDTH + CELL_PAD,
+		date: HEADER_ICON_WIDTH + CELL_PAD,
+		sha: HEADER_ICON_WIDTH + CELL_PAD,
 	};
 }
 
@@ -157,7 +144,7 @@ export function authorContentWidth(
 		if (commit.oid === "__wip__" || commit.is_stash) continue;
 		const width =
 			measure(commit.author_name, AUTHOR_CONTENT_FONT) +
-			TEXT_CELL_PAD +
+			CELL_PAD +
 			AUTHOR_AVATAR_WIDTH;
 		if (width > widest) widest = width;
 	}
@@ -173,11 +160,11 @@ export function dateContentWidth(measure: MeasureText): number {
 	const widest = Math.max(
 		...WIDEST_LABELS.map((label) => measure(label, DATE_CONTENT_FONT)),
 	);
-	return widest + TEXT_CELL_PAD;
+	return widest + CELL_PAD;
 }
 
 export function shaContentWidth(measure: MeasureText): number {
-	return Math.ceil(measure("0000000", SHA_CONTENT_FONT)) + TEXT_CELL_PAD;
+	return Math.ceil(measure("0000000", SHA_CONTENT_FONT)) + CELL_PAD;
 }
 
 /** Width that shows every lane. */

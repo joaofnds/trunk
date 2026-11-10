@@ -32,12 +32,12 @@ export const DEFAULT_GRAPH_SETTINGS: GraphDisplaySettings = {
 };
 
 // Column layout constants
-/** The inset of Branch/Tag and Graph, the columns the overlay draws its pills
- *  and lanes against. */
-export const COLUMN_PADDING_X = 4;
-/** The inset of a column of text, wide enough that the divider centred
- *  between two of them stands clear of both labels. */
-export const TEXT_COLUMN_PADDING_X = 2 * UNIT;
+/** How far the header and the rows stand in from the pane's edges. */
+export const TABLE_INSET_X = UNIT;
+/** The space every column keeps each side of its content, in the header and in
+ *  every row, so a divider on the edge between two columns sits midway between
+ *  their labels and each label stands over what its column holds. */
+export const COLUMN_PADDING_X = 2 * UNIT;
 
 // Ref pill constants
 export const PILL_HEIGHT = 5 * UNIT;
@@ -47,7 +47,6 @@ export const PILL_FONT = "500 11px Inter, system-ui, -apple-system, sans-serif";
 export const PILL_FONT_BOLD =
 	"700 11px Inter, system-ui, -apple-system, sans-serif";
 export const PILL_GAP = 4;
-export const PILL_MARGIN_LEFT = 4;
 export const BADGE_HEIGHT = 4 * UNIT;
 export const BADGE_FONT_SIZE = 10;
 export const ICON_WIDTH = 10;

@@ -6,7 +6,6 @@ import {
 	ICON_WIDTH,
 	LANE_WIDTH,
 	PILL_HEIGHT,
-	PILL_MARGIN_LEFT,
 	PILL_PADDING_X,
 	ROW_HEIGHT,
 } from "./graph-constants.js";
@@ -139,7 +138,7 @@ describe("buildRefPillData", () => {
 		expect(result).toHaveLength(1);
 
 		const pill = result[0];
-		expect(pill.x).toBe(PILL_MARGIN_LEFT);
+		expect(pill.x).toBe(COLUMN_PADDING_X);
 		expect(pill.y).toBe(cy(0));
 		expect(pill.height).toBe(PILL_HEIGHT);
 		// "main" = 4 chars * 7 = 28px text, ceil(28) = 28 + PILL_PADDING_X*2 + ICON_WIDTH + ICON_GAP
@@ -228,11 +227,11 @@ describe("buildRefPillData", () => {
 	});
 
 	it("cuts a label too long for its pill in the middle, keeping the head and the tail", () => {
-		// refColumnWidth = 60 leaves 26px of label, "longbranchname" = 14 chars * 7 = 98px
+		// refColumnWidth = 68 leaves 26px of label, "longbranchname" = 14 chars * 7 = 98px
 		const ref = makeRef({ short_name: "longbranchname", is_head: true });
 		const nodes = [makeNode({ x: 0, y: 0 })];
 		const commits = [makeCommit({ refs: [ref] })];
-		const result = buildRefPillData(nodes, commits, 60, mockMeasure);
+		const result = buildRefPillData(nodes, commits, 68, mockMeasure);
 		expect(result[0].truncatedLabel).toBe("l…e");
 	});
 
@@ -295,11 +294,7 @@ describe("buildRefPillData at a column with no room for a label", () => {
 	// Room for the capsule and its icon, and not even for an ellipsis beside it.
 	const dotInset = LANE_WIDTH / 2 - DOT_RADIUS;
 	const iconOnlyColumn =
-		PILL_MARGIN_LEFT +
-		2 * PILL_PADDING_X +
-		ICON_WIDTH +
-		COLUMN_PADDING_X +
-		dotInset;
+		2 * COLUMN_PADDING_X + 2 * PILL_PADDING_X + ICON_WIDTH + dotInset;
 
 	it("draws the pill as its icon alone, capsule whole", () => {
 		const commits = [makeCommit({ refs: [makeRef({ short_name: "main" })] })];

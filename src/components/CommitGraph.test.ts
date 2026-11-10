@@ -15,7 +15,11 @@ import { noReviewCounts } from "../__tests__/helpers/review-props.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { CHECKOUT_CONFLICT_MESSAGE } from "../lib/checkout.js";
 import { MESSAGE_FLOOR } from "../lib/column-widths.js";
-import { COLUMN_PADDING_X, LANE_WIDTH } from "../lib/graph-constants.js";
+import {
+	COLUMN_PADDING_X,
+	LANE_WIDTH,
+	TABLE_INSET_X,
+} from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { THUMB_CLASS, trackScrollActivity } from "../lib/scrollbar-activity.js";
@@ -835,7 +839,7 @@ describe("CommitGraph", () => {
 		const event = new WheelEvent("wheel", {
 			bubbles: true,
 			cancelable: true,
-			clientX: COLUMN_PADDING_X + x,
+			clientX: TABLE_INSET_X + x,
 			...deltas,
 		});
 		listViewport(container).dispatchEvent(event);
@@ -1100,8 +1104,9 @@ describe("CommitGraph", () => {
 				expect(sidewaysThumb()).not.toBeNull();
 			});
 
-			// A 100px column over 40 lanes (640px of them, plus the padding) pans
-			// 548px, the most a thumb dragged past its track's end can take it.
+			// A 100px column shows its lanes inside its insets, so over 40 lanes it
+			// pans what they run past that, the most a thumb dragged past its
+			// track's end can take it.
 			it("pans the lanes to their end when the thumb is dragged past it", async () => {
 				const { container } = mountGraph(40, { graph: 100 });
 				await flush();
@@ -1111,11 +1116,14 @@ describe("CommitGraph", () => {
 				dragThumbPastItsEnd();
 				await tick();
 
-				expect(lanesOffset(container)).toBe(start - 548);
+				expect(lanesOffset(container)).toBe(
+					start - (40 * LANE_WIDTH - (100 - 2 * COLUMN_PADDING_X)),
+				);
 			});
 
 			// Branch/Tag 100px wide puts the Graph column 100px into the table,
 			// and the table scrolled 40px carries it to 60px from the list's edge.
+			// A pan to the lanes' end puts the thumb's far edge on the column's.
 			// jsdom lays nothing out, so the list is given a width to be seen in.
 			it("lays the thumb under the Graph column wherever the table has scrolled it", async () => {
 				const { container } = mountGraph(4, { ref: 100 });
@@ -1123,12 +1131,16 @@ describe("CommitGraph", () => {
 				const viewport = listViewport(container);
 				viewport.getBoundingClientRect = () =>
 					({ left: 0, right: 700, bottom: 400, width: 700 }) as DOMRect;
-				wheelAt(container, 105, { deltaX: 10 });
+				wheelAt(container, 105, { deltaX: 1000 });
 
 				viewport.scrollLeft = 40;
 				viewport.dispatchEvent(new Event("scroll"));
 
-				expect(sidewaysThumb()?.style.left).toBe("60px");
+				const thumb = sidewaysThumb();
+				expect(
+					Number.parseFloat(thumb?.style.left ?? "") +
+						Number.parseFloat(thumb?.style.width ?? ""),
+				).toBeCloseTo(60 + graphWidth);
 			});
 		});
 
@@ -1158,6 +1170,7 @@ describe("CommitGraph", () => {
 		// 50 narrow glyphs measure 300px in the stubbed font and 20 measure 120.
 		const LONG = "a".repeat(50);
 		const SHORT = "b".repeat(20);
+		const ONE_LANE = LANE_WIDTH + 2 * COLUMN_PADDING_X;
 		const ROW = 28;
 
 		// Branch/Tag is hidden, and Graph is too unless given a width, so Message
@@ -1333,11 +1346,11 @@ describe("CommitGraph", () => {
 		});
 
 		it("pans with the Graph column shown before it", async () => {
-			const { container } = mountMessages([LONG], { graph: 24 });
+			const { container } = mountMessages([LONG], { graph: ONE_LANE });
 			await flush();
 			layOut(container);
 
-			wheelAt(container, 24 + 10, { deltaX: 30 });
+			wheelAt(container, ONE_LANE + 10, { deltaX: 30 });
 			await tick();
 
 			expect(summaryShift(summaries(container)[0])).toBe(30);
@@ -1552,20 +1565,21 @@ describe("CommitGraph", () => {
 				expect(summaryShift(summaries(container)[0])).toBe(200);
 			});
 
-			// With Graph 24px wide before it, Message runs from 24 to 204, and a
-			// pan at its end puts the thumb's far edge on Message's.
+			// With Graph one lane wide before it, Message runs from that lane's
+			// far edge for its floor, and a pan at its end puts the thumb's far
+			// edge on Message's.
 			it("lays the thumb under the Message column", async () => {
-				const { container } = mountMessages([LONG], { graph: 24 });
+				const { container } = mountMessages([LONG], { graph: ONE_LANE });
 				await flush();
 				layOut(container);
 
-				wheelAt(container, 24 + 10, { deltaX: 1000 });
+				wheelAt(container, ONE_LANE + 10, { deltaX: 1000 });
 
 				const thumb = sidewaysThumb();
 				expect(
 					Number.parseFloat(thumb?.style.left ?? "") +
 						Number.parseFloat(thumb?.style.width ?? ""),
-				).toBeCloseTo(24 + MESSAGE_FLOOR);
+				).toBeCloseTo(ONE_LANE + MESSAGE_FLOOR);
 			});
 		});
 	});
@@ -1694,12 +1708,12 @@ describe("CommitGraph", () => {
 			}
 
 			it("fits the sized columns into what Message's floor leaves of the row", async () => {
-				observeListAt(408);
+				observeListAt(448);
 				const { container } = mountWithPrefs(new Map());
 				await flush();
 
 				expect(sizedTotal(container)).toBe(
-					408 - 2 * COLUMN_PADDING_X - MESSAGE_FLOOR,
+					448 - 2 * TABLE_INSET_X - MESSAGE_FLOOR,
 				);
 			});
 
@@ -1713,7 +1727,7 @@ describe("CommitGraph", () => {
 				await drag(resizeHandle(container, "ref"), 60);
 
 				expect(sizedTotal(container)).toBe(
-					608 - 2 * COLUMN_PADDING_X - MESSAGE_FLOOR,
+					608 - 2 * TABLE_INSET_X - MESSAGE_FLOOR,
 				);
 			});
 
@@ -1727,7 +1741,7 @@ describe("CommitGraph", () => {
 				await drag(resizeHandle(container, "diff"), -3000);
 
 				expect(sizedTotal(container)).toBe(
-					1608 - 2 * COLUMN_PADDING_X - MESSAGE_FLOOR,
+					1608 - 2 * TABLE_INSET_X - MESSAGE_FLOOR,
 				);
 			});
 
@@ -1742,7 +1756,7 @@ describe("CommitGraph", () => {
 
 				expect(resizeHandle(container, "diff")).toHaveAttribute(
 					"aria-valuemax",
-					`${1608 - 2 * COLUMN_PADDING_X - MESSAGE_FLOOR - others + diff}`,
+					`${1608 - 2 * TABLE_INSET_X - MESSAGE_FLOOR - others + diff}`,
 				);
 			});
 
@@ -1757,7 +1771,7 @@ describe("CommitGraph", () => {
 				});
 
 				expect(sizedTotal(container)).toBe(
-					1608 - 2 * COLUMN_PADDING_X - MESSAGE_FLOOR,
+					1608 - 2 * TABLE_INSET_X - MESSAGE_FLOOR,
 				);
 			});
 
@@ -1784,7 +1798,7 @@ describe("CommitGraph", () => {
 				await flush();
 				const fits = sizedTotal(wide.container);
 				wide.unmount();
-				const list = observeListAt(408);
+				const list = observeListAt(448);
 				const { container } = mountWithPrefs(new Map());
 				await flush();
 
@@ -2265,6 +2279,27 @@ describe("CommitGraph", () => {
 					}).toEqual({ header: "177px", row: "177px" });
 				},
 			);
+
+			it("inset every column by the same space, so each divider sits midway between two labels and each label stands over its column's content", async () => {
+				const { container } = mountHeader();
+				await flush();
+				const columns = [
+					"ref",
+					"graph",
+					"message",
+					"diff",
+					"author",
+					"date",
+					"sha",
+				] as const;
+
+				const insets = columns.flatMap((column) => [
+					headerCell(container, column).style.padding,
+					rowCell(container, column).style.padding,
+				]);
+
+				expect(new Set(insets)).toEqual(new Set([`0px ${COLUMN_PADDING_X}px`]));
+			});
 
 			// Past the list's width the row is laid out at this, and the surplus
 			// scrolls sideways.

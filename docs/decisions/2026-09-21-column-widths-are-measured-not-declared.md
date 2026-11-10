@@ -294,7 +294,7 @@ icon, and the Graph and Message pans' hit tests; Message's own width is read fro
 layout instead, because no state holds it.
 
 Two other inputs to alignment are still written on both sides. The header row and
-the list's content area each apply the `COLUMN_PADDING_X` gutter, and the header
+the list's content area each apply the `TABLE_INSET_X` gutter, and the header
 orders its cells from `columnLabels` while `CommitRow` fixes its order in markup.
 Changing either on one side moves every column.
 

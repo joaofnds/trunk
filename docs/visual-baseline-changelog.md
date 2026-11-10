@@ -303,3 +303,61 @@ Column handles draw a short tick centred in the gutter, full height only under t
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-11-10
+
+Every column of the commit list keeps one 8px inset in its header and rows, and ref pills start at that inset, so the lanes and pills move right to sit under their header labels (approved by the user)
+
+Changed baselines:
+
+    tests/visual/baselines/graph-lanes__01-behind-only.png
+    tests/visual/baselines/graph-lanes__02-local-ahead-no-remote.png
+    tests/visual/baselines/graph-lanes__03-detached-old.png
+    tests/visual/baselines/graph-lanes__04-tiebreak-upstream-vs-topic.png
+    tests/visual/baselines/graph-lanes__05-diverged.png
+    tests/visual/baselines/graph-lanes__06-tag-only-chain.png
+    tests/visual/baselines/graph-lanes__07-tag-on-unpulled.png
+    tests/visual/baselines/graph-lanes__08-stash-on-tip-behind.png
+    tests/visual/baselines/graph-lanes__09-branch-point-below-head.png
+    tests/visual/baselines/graph-lanes__10-two-remotes.png
+    tests/visual/baselines/graph-lanes__11-merge-in-head-chain.png
+    tests/visual/baselines/graph-lanes__12-author-vs-committer.png
+    tests/visual/baselines/graph-lanes__13-tall-linear.png
+    tests/visual/baselines/graph-merges__01-octopus-merge.png
+    tests/visual/baselines/graph-merges__02-criss-cross.png
+    tests/visual/baselines/graph-merges__03-merge-of-merges.png
+    tests/visual/baselines/graph-merges__04-three-topics.png
+    tests/visual/baselines/graph-merges__05-sequential-merges.png
+    tests/visual/baselines/graph-merges__06-merge-second-parent-newer.png
+    tests/visual/baselines/graph-merges__07-fork-sibling-older.png
+    tests/visual/baselines/graph-merges__08-fork-sibling-newer.png
+    tests/visual/baselines/graph-merges__09-column-saturation__graph-56px__panned-20px.png
+    tests/visual/baselines/graph-merges__09-column-saturation__graph-56px.png
+    tests/visual/baselines/graph-merges__09-column-saturation.png
+    tests/visual/baselines/graph-merges__10-merge-parent-left.png
+    tests/visual/baselines/graph-merges__11-fork-in-left.png
+    tests/visual/baselines/graph-merges__12-pagination-boundary.png
+    tests/visual/baselines/graph-merges__13-freed-column-left.png
+    tests/visual/baselines/graph-merges__14-spiral-right-before-left.png
+    tests/visual/baselines/kitchen-sink.png
+    tests/visual/baselines/stash-lanes__01-clean-inline.png
+    tests/visual/baselines/stash-lanes__02-dirty-tracked.png
+    tests/visual/baselines/stash-lanes__03-dirty-untracked.png
+    tests/visual/baselines/stash-lanes__04-dirty-staged.png
+    tests/visual/baselines/stash-lanes__05-dirty-conflicted.png
+    tests/visual/baselines/stash-lanes__06-ignored-stays-inline.png
+    tests/visual/baselines/stash-lanes__07-multi-stash-clean.png
+    tests/visual/baselines/stash-lanes__08-multi-stash-dirty.png
+    tests/visual/baselines/stash-lanes__09-topic-above-parent.png
+    tests/visual/baselines/stash-lanes__10-topic-below-parent.png
+    tests/visual/baselines/stash-lanes__11-stash-parent-mid-chain.png
+    tests/visual/baselines/stash-lanes__12-orphan-stash.png
+    tests/visual/baselines/stash-lanes__13-detached-head.png
+    tests/visual/baselines/stash-lanes__14-merge-tip.png
+    tests/visual/baselines/stash-lanes__15-backdated-stash.png
+    tests/visual/baselines/stash-lanes__16-bare-repo.git.png
+    tests/visual/baselines/stash-lanes__17-no-stash-dirty.png
+    tests/visual/baselines/stash-lanes__18-many-files.png
+    tests/visual/baselines/stash-lanes__19-two-backdated.png
+    tests/visual/baselines/stash-lanes__20-stash-on-stash.png
+    tests/visual/baselines/stash-lanes__21-tagged-stash.png

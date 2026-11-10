@@ -1,11 +1,11 @@
-<svg class="absolute top-0 left-0 pointer-events-none z-1 svelte-m4sbjr" height="4000" role="presentation" width="144">
+<svg class="absolute top-0 left-0 pointer-events-none z-1 svelte-m4sbjr" height="4000" role="presentation" width="160">
   <defs>
     <clipPath id="graph-clip-g28">
-      <rect height="4000" width="64" x="76" y="0">
+      <rect height="4000" width="64" x="88" y="0">
     <clipPath id="graph-dot-clip-g28">
-      <rect height="4000" width="76" x="70" y="0">
+      <rect height="4000" width="76" x="82" y="0">
   <g clip-path="url(#graph-clip-g28)">
-    <g class="overlay-paths" transform="translate(76, 0)">
+    <g class="overlay-paths" transform="translate(88, 0)">
       <path d="M 24 14 V 154" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-1)">
       <path d="M 40 42 V 210" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-2)">
       <path d="M 56 70 V 230 C 56 234.41827799864635 51.581722001353654 238 48 238 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-3)">
@@ -14,7 +14,7 @@
       <path d="M 24 182 V 202 C 24 206.41827799864635 28.41827799864635 210 32 210 H 40" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-4)">
       <path d="M 40 210 V 230 C 40 234.41827799864635 35.581722001353654 238 32 238 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-2)">
   <g clip-path="url(#graph-dot-clip-g28)">
-    <g class="overlay-dots" transform="translate(76, 0)">
+    <g class="overlay-dots" transform="translate(88, 0)">
       <circle cx="24" cy="14" fill="var(--lane-1)" r="6">
       <circle cx="40" cy="42" fill="var(--lane-2)" r="6">
       <circle cx="56" cy="70" fill="var(--lane-3)" r="6">
@@ -26,54 +26,54 @@
       <circle cx="8" cy="238" fill="var(--lane-0)" r="6">
   <g class="overlay-pills">
     <clipPath id="ref-clip-g28">
-      <rect height="4000" width="68" x="0" y="0">
-    <line class="svelte-m4sbjr non-head" opacity="1" stroke-width="1" stroke="var(--lane-1)" x1="64" x2="100" y1="14" y2="14">
+      <rect height="4000" width="72" x="0" y="0">
+    <line class="svelte-m4sbjr non-head" opacity="1" stroke-width="1" stroke="var(--lane-1)" x1="68" x2="112" y1="14" y2="14">
     <g clip-path="url(#ref-clip-g28)">
-      <rect fill-opacity="0.14" fill="var(--lane-1)" height="20" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-1)" width="60" x="4" y="4">
-      <g opacity="0.9" transform="translate(10, 9)">
+      <rect fill-opacity="0.14" fill="var(--lane-1)" height="20" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-1)" width="60" x="8" y="4">
+      <g opacity="0.9" transform="translate(14, 9)">
         <svg aria-hidden="true" class="lucide lucide-laptop lucide-icon" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
-      <foreignObject height="20" width="36" x="22" y="4">
+      <foreignObject height="20" width="36" x="26" y="4">
         <SPAN class="block font-sans whitespace-nowrap overflow-hidden" style="line-height: 20px; color: var(--lane-1); font-size: 11px; font-weight: 500;">
           "orphan"
-      <foreignObject height="20" width="60" x="4" y="4">
+      <foreignObject height="20" width="60" x="8" y="4">
         <BUTTON aria-label="orphan" class="flex items-center size-full text-start pointer-events-auto cursor-pointer rounded-full" tabindex="-1" type="button">
-    <line class="svelte-m4sbjr non-head" opacity="1" stroke-width="1" stroke="var(--lane-2)" x1="52" x2="116" y1="42" y2="42">
+    <line class="svelte-m4sbjr non-head" opacity="1" stroke-width="1" stroke="var(--lane-2)" x1="56" x2="128" y1="42" y2="42">
     <g clip-path="url(#ref-clip-g28)">
-      <rect fill-opacity="0.14" fill="var(--lane-2)" height="20" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-2)" width="48" x="4" y="32">
-      <g opacity="0.9" transform="translate(10, 37)">
+      <rect fill-opacity="0.14" fill="var(--lane-2)" height="20" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-2)" width="48" x="8" y="32">
+      <g opacity="0.9" transform="translate(14, 37)">
         <svg aria-hidden="true" class="lucide lucide-laptop lucide-icon" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
-      <foreignObject height="20" width="24" x="22" y="32">
+      <foreignObject height="20" width="24" x="26" y="32">
         <SPAN class="block font-sans whitespace-nowrap overflow-hidden" style="line-height: 20px; color: var(--lane-2); font-size: 11px; font-weight: 500;">
           "beta"
-      <foreignObject height="20" width="48" x="4" y="32">
+      <foreignObject height="20" width="48" x="8" y="32">
         <BUTTON aria-label="beta" class="flex items-center size-full text-start pointer-events-auto cursor-pointer rounded-full" tabindex="-1" type="button">
-    <line class="svelte-m4sbjr non-head" opacity="1" stroke-width="1" stroke="var(--lane-3)" x1="66" x2="132" y1="70" y2="70">
+    <line class="svelte-m4sbjr non-head" opacity="1" stroke-width="1" stroke="var(--lane-3)" x1="70" x2="144" y1="70" y2="70">
     <g clip-path="url(#ref-clip-g28)">
-      <rect fill-opacity="0.14" fill="var(--lane-3)" height="20" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-3)" width="62" x="4" y="60">
-      <g opacity="0.9" transform="translate(10, 65)">
+      <rect fill-opacity="0.14" fill="var(--lane-3)" height="20" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-3)" width="62" x="8" y="60">
+      <g opacity="0.9" transform="translate(14, 65)">
         <svg aria-hidden="true" class="lucide lucide-laptop lucide-icon" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
-      <foreignObject height="20" width="38" x="22" y="60">
+      <foreignObject height="20" width="38" x="26" y="60">
         <SPAN class="block font-sans whitespace-nowrap overflow-hidden" style="line-height: 20px; color: var(--lane-3); font-size: 11px; font-weight: 500;">
           "gamma"
-      <foreignObject height="20" width="62" x="4" y="60">
+      <foreignObject height="20" width="62" x="8" y="60">
         <BUTTON aria-label="gamma" class="flex items-center size-full text-start pointer-events-auto cursor-pointer rounded-full" tabindex="-1" type="button">
-    <line class="svelte-m4sbjr" opacity="1" stroke-width="2" stroke="var(--lane-0)" x1="56" x2="84" y1="98" y2="98">
+    <line class="svelte-m4sbjr" opacity="1" stroke-width="2" stroke="var(--lane-0)" x1="60" x2="96" y1="98" y2="98">
     <g clip-path="url(#ref-clip-g28)">
-      <rect fill-opacity="0.14" fill="var(--lane-0)" height="20" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-0)" width="52" x="4" y="88">
-      <g opacity="0.9" transform="translate(10, 93)">
+      <rect fill-opacity="0.14" fill="var(--lane-0)" height="20" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-0)" width="52" x="8" y="88">
+      <g opacity="0.9" transform="translate(14, 93)">
         <svg aria-hidden="true" class="lucide lucide-laptop lucide-icon" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
-      <foreignObject height="20" width="28" x="22" y="88">
+      <foreignObject height="20" width="28" x="26" y="88">
         <SPAN class="block font-sans whitespace-nowrap overflow-hidden" style="line-height: 20px; color: var(--lane-0); font-size: 11px; font-weight: 700;">
           "main"
-      <foreignObject height="20" width="52" x="4" y="88">
+      <foreignObject height="20" width="52" x="8" y="88">
         <BUTTON aria-label="main" class="flex items-center size-full text-start pointer-events-auto cursor-pointer rounded-full" tabindex="-1" type="button">
-    <line class="svelte-m4sbjr non-head" opacity="1" stroke-width="1" stroke="var(--lane-4)" x1="58" x2="100" y1="182" y2="182">
+    <line class="svelte-m4sbjr non-head" opacity="1" stroke-width="1" stroke="var(--lane-4)" x1="62" x2="112" y1="182" y2="182">
     <g clip-path="url(#ref-clip-g28)">
-      <rect fill-opacity="0.14" fill="var(--lane-4)" height="20" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-4)" width="54" x="4" y="172">
-      <g opacity="0.9" transform="translate(10, 177)">
+      <rect fill-opacity="0.14" fill="var(--lane-4)" height="20" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-4)" width="54" x="8" y="172">
+      <g opacity="0.9" transform="translate(14, 177)">
         <svg aria-hidden="true" class="lucide lucide-laptop lucide-icon" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
-      <foreignObject height="20" width="30" x="22" y="172">
+      <foreignObject height="20" width="30" x="26" y="172">
         <SPAN class="block font-sans whitespace-nowrap overflow-hidden" style="line-height: 20px; color: var(--lane-4); font-size: 11px; font-weight: 500;">
           "delta"
-      <foreignObject height="20" width="54" x="4" y="172">
+      <foreignObject height="20" width="54" x="8" y="172">
         <BUTTON aria-label="delta" class="flex items-center size-full text-start pointer-events-auto cursor-pointer rounded-full" tabindex="-1" type="button">
