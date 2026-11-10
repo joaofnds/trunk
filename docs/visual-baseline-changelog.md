@@ -287,3 +287,11 @@ review panel port: the Badge primitive for a short id or count, and the 24px bas
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-11-10
+
+Splitter section shows the new column-leading handle, the one over a column's leading edge
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png
