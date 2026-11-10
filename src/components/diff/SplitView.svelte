@@ -14,6 +14,7 @@ import {
 	commentLabel,
 	gripLabel,
 	splitInvisibles,
+	takesNewComment,
 	trailingWhitespaceStart,
 } from "../../lib/diff-utils.js";
 import { measure } from "../../lib/perf.js";
@@ -342,21 +343,18 @@ function originClass(origin: string): string {
 	lineIdx: number,
 	marker: LineMarker | null,
 	lineno: number | null,
-	selectable: boolean,
 )}
 	{@const hunkLines = hunkLinesOf(path, hunkIdx)}
 	<ThreadMarker
 		{marker}
 		width={vd.markerW}
-		oncomment={commentable &&
-		selectable &&
-		!(diffKind === "unstaged" && line.origin === "Delete")
+		oncomment={commentable && takesNewComment(diffKind, line)
 			? () => oncommentline(path, hunkIdx, lineIdx)
 			: undefined}
 		oncommentpress={(e) => oncommentpress(path, hunkIdx, lineIdx, hunkLines, e)}
 		commentLabel={commentLabel(line)}
 	/>
-	{#if selectable}
+	{#if line.origin !== "Context"}
 		<GutterGrip
 			aria-label={gripLabel(line)}
 			onmousedown={(e) =>
@@ -417,7 +415,6 @@ function originClass(origin: string): string {
 						lineIdx,
 						item.markerLeft,
 						line.old_lineno,
-						line.origin === "Delete",
 					)}
 					<div class="split-window overflow-clip">
 						<div
@@ -455,7 +452,6 @@ function originClass(origin: string): string {
 						lineIdx,
 						item.markerRight,
 						line.new_lineno,
-						line.origin === "Add",
 					)}
 					<div class="split-window overflow-clip">
 						<div

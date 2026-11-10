@@ -13,6 +13,7 @@ import {
 	commentLabel,
 	gripLabel,
 	splitInvisibles,
+	takesNewComment,
 	trailingWhitespaceStart,
 } from "../../lib/diff-utils.js";
 import { measure } from "../../lib/perf.js";
@@ -295,9 +296,7 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 			><ThreadMarker
 				marker={item.marker}
 				width={vd.markerW}
-				oncomment={commentable &&
-				isSelectable &&
-				!(diffKind === "unstaged" && line.origin === "Delete")
+				oncomment={commentable && takesNewComment(diffKind, line)
 					? () => oncommentline(item.path, item.hunkIdx, item.lineIdx)
 					: undefined}
 				oncommentpress={(e) =>

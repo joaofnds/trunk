@@ -1,3 +1,4 @@
+import type { PanelDiffKind } from "./comment-matching.js";
 import type { DiffLine } from "./types.js";
 
 /**
@@ -152,6 +153,16 @@ export function gripLabel(line: DiffLine): string {
 	if (line.origin === "Add") return `Select added line ${line.new_lineno}`;
 	if (line.origin === "Delete") return `Select removed line ${line.old_lineno}`;
 	return `Select line ${line.new_lineno}`;
+}
+
+/** Whether a diff line offers a new comment: any changed line, except a
+ *  removed line of unstaged changes, which no comment can anchor to. */
+export function takesNewComment(
+	diffKind: PanelDiffKind,
+	line: DiffLine,
+): boolean {
+	if (line.origin === "Context") return false;
+	return !(diffKind === "unstaged" && line.origin === "Delete");
 }
 
 /** The name of the control that opens a comment on one diff line. */

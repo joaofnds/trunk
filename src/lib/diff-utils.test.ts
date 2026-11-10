@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gripLabel, pairLines } from "./diff-utils.js";
+import { gripLabel, pairLines, takesNewComment } from "./diff-utils.js";
 import type { DiffLine } from "./types.js";
 
 function line(
@@ -139,4 +139,20 @@ describe("gripLabel", () => {
 	])("names $name", ({ given, label }) => {
 		expect(gripLabel(given)).toBe(label);
 	});
+});
+
+describe("takesNewComment", () => {
+	it.each([
+		{ kind: "commit", given: line("Add", "a", null, 12), takes: true },
+		{ kind: "commit", given: line("Delete", "a", 7, null), takes: true },
+		{ kind: "commit", given: line("Context", "a", 44, 45), takes: false },
+		{ kind: "unstaged", given: line("Add", "a", null, 12), takes: true },
+		{ kind: "unstaged", given: line("Delete", "a", 7, null), takes: false },
+		{ kind: "staged", given: line("Delete", "a", 7, null), takes: true },
+	] as const)(
+		"on a $given.origin line of a $kind diff is $takes",
+		({ kind, given, takes }) => {
+			expect(takesNewComment(kind, given)).toBe(takes);
+		},
+	);
 });

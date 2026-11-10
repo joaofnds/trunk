@@ -556,7 +556,7 @@ describe("SplitView one-click comment", () => {
 			"src/main.ts",
 			0,
 			3,
-			expect.any(Array),
+			lopsided.hunks[0].lines,
 			expect.any(MouseEvent),
 		);
 	});

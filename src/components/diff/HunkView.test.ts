@@ -470,7 +470,7 @@ describe("HunkView one-click comment", () => {
 			"src/main.ts",
 			0,
 			1,
-			expect.any(Array),
+			oneHunk.hunks[0].lines,
 			expect.any(MouseEvent),
 		);
 	});
