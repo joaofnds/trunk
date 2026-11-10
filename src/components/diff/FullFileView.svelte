@@ -86,9 +86,9 @@ let focusIndex = $state<number | null>(null);
 
 let list = $state<DiffListHandle | null>(null);
 
-// Set by a press on a line's comment control: the drag it starts opens a
-// comment on the span when it is released.
-let commentOnRelease = false;
+// A drag started from a line's comment control: once it has moved, its release
+// opens a comment on the span.
+let commentDrag: { path: string; anchor: number; moved: boolean } | null = null;
 
 // The contiguous span as flat indices into the active file's line list.
 const selectedIndices = $derived(computeSpan(anchorIndex, focusIndex));
@@ -128,11 +128,12 @@ const kindTakesComments = $derived(
 // Whether a line can take a new comment here, as the Comment action can.
 const commentable = $derived(takesComments && kindTakesComments);
 
-// The marker cell's control: on a line inside the selection it comments on the
-// selection, as GitHub's does; on any other line it comments on that one line,
-// selecting it as a click on its grip would.
+function inSelection(path: string, index: number): boolean {
+	return selectedPath === path && selectedIndices.has(index);
+}
+
 function commentOnLine(path: string, line: DiffLine, index: number) {
-	if (selectedPath === path && selectedIndices.has(index)) {
+	if (inSelection(path, index)) {
 		oncommentfullfile(path, selectedIndices);
 		return;
 	}
@@ -155,6 +156,7 @@ $effect(() => {
 	window.addEventListener("mouseup", stopDrag);
 	return () => {
 		window.removeEventListener("mouseup", stopDrag);
+		commentDrag = null;
 		stopDrag();
 	};
 });
@@ -198,41 +200,43 @@ function startDrag(path: string, line: DiffLine, index: number, e: MouseEvent) {
 	// crosses gutters and code spans that are otherwise user-selectable, and
 	// without this the browser paints its selection over ours.
 	e.preventDefault();
+	commentDrag = null;
 
 	selectLine(path, line, index, e.shiftKey);
 	document.addEventListener("mouseover", extendDrag);
 }
 
-// A press on a line's comment control. On a line inside the selection it leaves
-// the selection for the click to comment on. Elsewhere it starts a span a drag
-// stretches, and the release opens the comment on it; a release on the line it
-// started from is that line's own click.
+// A press on a line's comment control starts a span a drag stretches. Until the
+// pointer leaves the line, a press inside the selection changes nothing, so its
+// click comments on the selection, and a release on the pressed line is always
+// that click's.
 function startCommentDrag(
 	path: string,
 	line: DiffLine,
 	index: number,
 	e: MouseEvent,
 ) {
+	if (e.button !== 0) return;
 	e.preventDefault();
-	if (selectedPath === path && selectedIndices.has(index)) return;
-
-	selectLine(path, line, index, false);
-	commentOnRelease = true;
+	if (!inSelection(path, index)) selectLine(path, line, index, false);
+	commentDrag = { path, anchor: index, moved: false };
 	document.addEventListener("mouseover", extendDrag);
 }
 
 function stopDrag() {
 	document.removeEventListener("mouseover", extendDrag);
 
-	const comment = commentOnRelease;
-	commentOnRelease = false;
-	if (comment && selectedPath !== null && selectedIndices.size > 1) {
+	const drag = commentDrag;
+	commentDrag = null;
+	if (drag?.moved && selectedPath !== null && selectedIndices.size > 1) {
 		oncommentfullfile(selectedPath, selectedIndices);
 	}
 }
 
 // The pointer moved onto another element during a drag. A row it crosses with
-// no button held ends the drag: there is no gesture left to continue.
+// no button held ends a grip drag: there is no gesture left to continue. A
+// comment drag waits for its release instead, because WebKit reports no button
+// on the hovers it synthesizes while the list scrolls under a held pointer.
 function extendDrag(e: MouseEvent) {
 	if (!(e.target instanceof Element)) return;
 
@@ -240,16 +244,28 @@ function extendDrag(e: MouseEvent) {
 	if (!(row instanceof HTMLElement)) return;
 
 	if (e.buttons !== 1) {
-		stopDrag();
+		if (!commentDrag) stopDrag();
 		return;
 	}
 
 	// D-02 again: a Delete line is not a valid endpoint, so the span stops at
 	// the last new-side row the pointer crossed rather than snapping to it.
 	const { linePath, newSide } = row.dataset;
+	const index = Number(row.dataset.flatIndex);
+	if (commentDrag) {
+		if (linePath !== commentDrag.path || newSide === undefined) return;
+		if (!commentDrag.moved && index === commentDrag.anchor) return;
+		if (!commentDrag.moved) {
+			selectedPath = commentDrag.path;
+			anchorIndex = commentDrag.anchor;
+			commentDrag.moved = true;
+		}
+		focusIndex = index;
+		return;
+	}
 	if (linePath !== selectedPath || newSide === undefined) return;
 
-	focusIndex = Number(row.dataset.flatIndex);
+	focusIndex = index;
 }
 
 // Called by the DiffPanel host (via bind:this) on mode/layout toggle and Escape

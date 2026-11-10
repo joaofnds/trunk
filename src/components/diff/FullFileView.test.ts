@@ -906,36 +906,104 @@ describe("FullFileView one-click comment", () => {
 		expect(oncommentfullfile).toHaveBeenCalledWith("src/main.ts", new Set([1]));
 	});
 
+	function commentControl(line: number): HTMLElement {
+		return screen.getByRole("button", {
+			name: `Comment on line ${line}`,
+			hidden: true,
+		});
+	}
+
 	it("comments on the whole selection from the control of a line inside it", async () => {
 		const oncommentfullfile = vi.fn();
 		render(FullFileView, { props: defaultProps({ oncommentfullfile }) });
 		await fireEvent.click(gutterGrip("added one"));
 		await fireEvent.click(gutterGrip("added three"), { shiftKey: true });
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: "Comment on line 13", hidden: true }),
-		);
+		await fireEvent.mouseDown(commentControl(13));
+		await fireEvent.mouseUp(window);
+		await fireEvent.click(commentControl(13));
 
-		expect(oncommentfullfile).toHaveBeenCalledWith(
-			"src/main.ts",
-			new Set([1, 2, 3, 4]),
-		);
+		expect(oncommentfullfile.mock.calls).toEqual([
+			["src/main.ts", new Set([1, 2, 3, 4])],
+		]);
 	});
 
 	it("comments on the lines a press on a line's control drags across", async () => {
 		const oncommentfullfile = vi.fn();
 		render(FullFileView, { props: defaultProps({ oncommentfullfile }) });
 
-		await fireEvent.mouseDown(
-			screen.getByRole("button", { name: "Comment on line 11", hidden: true }),
-		);
+		await fireEvent.mouseDown(commentControl(11));
 		await fireEvent.mouseOver(screen.getByText("added three"), { buttons: 1 });
 		await fireEvent.mouseUp(window);
 
-		expect(oncommentfullfile).toHaveBeenCalledWith(
-			"src/main.ts",
-			new Set([1, 2, 3, 4]),
-		);
+		expect(oncommentfullfile.mock.calls).toEqual([
+			["src/main.ts", new Set([1, 2, 3, 4])],
+		]);
+	});
+
+	it("starts a new span from a press on a selected line's control that drags away", async () => {
+		const oncommentfullfile = vi.fn();
+		render(FullFileView, { props: defaultProps({ oncommentfullfile }) });
+		await fireEvent.click(gutterGrip("added three"));
+
+		await fireEvent.mouseDown(commentControl(13));
+		await fireEvent.mouseOver(screen.getByText("added one"), { buttons: 1 });
+		await fireEvent.mouseUp(window);
+
+		expect(oncommentfullfile.mock.calls).toEqual([
+			["src/main.ts", new Set([1, 2, 3, 4])],
+		]);
+	});
+
+	it("waits for the release across a hover that reports no held button", async () => {
+		const oncommentfullfile = vi.fn();
+		render(FullFileView, { props: defaultProps({ oncommentfullfile }) });
+
+		await fireEvent.mouseDown(commentControl(11));
+		await fireEvent.mouseOver(screen.getByText("added three"), { buttons: 1 });
+		await fireEvent.mouseOver(screen.getByText("added three"), { buttons: 0 });
+		expect(oncommentfullfile).not.toHaveBeenCalled();
+		await fireEvent.mouseUp(window);
+
+		expect(oncommentfullfile.mock.calls).toEqual([
+			["src/main.ts", new Set([1, 2, 3, 4])],
+		]);
+	});
+
+	it("opens no comment when the view goes away mid-drag", async () => {
+		const oncommentfullfile = vi.fn();
+		const view = render(FullFileView, {
+			props: defaultProps({ oncommentfullfile }),
+		});
+		await fireEvent.mouseDown(commentControl(11));
+		await fireEvent.mouseOver(screen.getByText("added three"), { buttons: 1 });
+
+		view.unmount();
+
+		expect(oncommentfullfile).not.toHaveBeenCalled();
+	});
+
+	it("ignores a secondary press on a line's control", async () => {
+		const oncommentfullfile = vi.fn();
+		render(FullFileView, { props: defaultProps({ oncommentfullfile }) });
+
+		await fireEvent.mouseDown(commentControl(11), { button: 2 });
+		await fireEvent.mouseOver(screen.getByText("added three"), { buttons: 1 });
+		await fireEvent.mouseUp(window);
+
+		expect(oncommentfullfile).not.toHaveBeenCalled();
+	});
+
+	it("keeps the webview from starting its own text selection on a press of the control", () => {
+		render(FullFileView, { props: defaultProps() });
+
+		const press = new MouseEvent("mousedown", {
+			bubbles: true,
+			cancelable: true,
+		});
+		commentControl(11).dispatchEvent(press);
+
+		expect(press.defaultPrevented).toBe(true);
 	});
 
 	it("offers none where the diff takes no comments", () => {
