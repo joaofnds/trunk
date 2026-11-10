@@ -151,7 +151,7 @@ function onkeydown(event: KeyboardEvent) {
 		return;
 	}
 
-	if (event.key === "Enter" && (command || event.ctrlKey)) {
+	if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
 		event.preventDefault();
 		if (!submitDisabled) onsubmit();
 		return;

@@ -727,10 +727,11 @@ function applyZoom(level: number) {
 	setZoomLevel(level);
 }
 
-// On macOS a Ctrl chord typed into a text field is the field's own line editing.
+// On macOS a Ctrl+letter chord typed into a text field is the field's own line
+// editing (Ctrl+A, Ctrl+E, Ctrl+K and the rest of Cocoa's key bindings).
 function ctrlEditsText(chord: string): boolean {
 	return (
-		chord.startsWith("Ctrl+") &&
+		/^Ctrl\+[a-z]$/.test(chord) &&
 		onMac() &&
 		focusInEditable(document.activeElement)
 	);
@@ -746,6 +747,7 @@ $effect(() => {
 			activateTabSlot(Number(tabSlot[1]));
 			return;
 		}
+		if (ctrlEditsText(chord)) return;
 
 		switch (chord) {
 			case "Meta+t":
@@ -795,7 +797,6 @@ $effect(() => {
 				return;
 			case "Meta+j":
 			case "Ctrl+j":
-				if (ctrlEditsText(chord)) return;
 				e.preventDefault();
 				changeLeftPaneCollapsed(
 					reviewPanelOpen ? !reviewLeftPaneCollapsed : !leftPaneCollapsed,
@@ -803,7 +804,6 @@ $effect(() => {
 				return;
 			case "Meta+k":
 			case "Ctrl+k":
-				if (ctrlEditsText(chord)) return;
 				e.preventDefault();
 				changeRightPaneCollapsed(!rightPaneCollapsed);
 				return;

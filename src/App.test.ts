@@ -281,6 +281,37 @@ describe("App", () => {
 			},
 		);
 
+		it.each([
+			["Cmd+K in a text field on macOS", "MacIntel", { metaKey: true }, true],
+			["Ctrl+K in a text field off macOS", "Win32", { ctrlKey: true }, true],
+			[
+				"Ctrl+K with no text field focused on macOS",
+				"MacIntel",
+				{ ctrlKey: true },
+				false,
+			],
+		])("collapses the right pane on %s", async (_, os, modifier, inField) => {
+			const platform = vi
+				.spyOn(navigator, "platform", "get")
+				.mockReturnValue(os);
+			onTestFinished(() => platform.mockRestore());
+			const { container, findAllByTestId } = render(App);
+			await findAllByTestId("commit-row");
+			const target = inField ? document.createElement("textarea") : window;
+			if (target instanceof HTMLTextAreaElement) {
+				container.append(target);
+				target.focus();
+			}
+
+			target.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "k", bubbles: true, ...modifier }),
+			);
+
+			await waitFor(() =>
+				expect(rightPaneOf(container).style.width).toBe("0px"),
+			);
+		});
+
 		it("collapses the left pane on Cmd+J and leaves a mid-history selection where it is", async () => {
 			const { container, findAllByTestId } = render(App);
 			const rows = await findAllByTestId("commit-row");

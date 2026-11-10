@@ -105,13 +105,23 @@ describe("CommentEditor", () => {
 		expect(field.value).toBe(`a ${mark}word${mark}`);
 	});
 
-	it("wraps the selection on Ctrl+B", async () => {
-		const { field } = renderEditor();
-		await type(field, "a [word]");
+	describe("off macOS", () => {
+		beforeEach(() => {
+			vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
+		});
 
-		await fireEvent.keyDown(field, { key: "b", ctrlKey: true });
+		afterEach(() => {
+			vi.restoreAllMocks();
+		});
 
-		expect(field.value).toBe("a **word**");
+		it("wraps the selection on Ctrl+B", async () => {
+			const { field } = renderEditor();
+			await type(field, "a [word]");
+
+			await fireEvent.keyDown(field, { key: "b", ctrlKey: true });
+
+			expect(field.value).toBe("a **word**");
+		});
 	});
 
 	describe("on macOS", () => {
@@ -121,6 +131,14 @@ describe("CommentEditor", () => {
 
 		afterEach(() => {
 			vi.restoreAllMocks();
+		});
+
+		it("submits on Ctrl+Enter", async () => {
+			const { calls, field } = renderEditor({ text: "looks good" });
+
+			await fireEvent.keyDown(field, { key: "Enter", ctrlKey: true });
+
+			expect(calls).toEqual(["submit"]);
 		});
 
 		it.each(["a", "b", "e", "i", "k"])(
