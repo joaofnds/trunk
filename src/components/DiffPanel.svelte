@@ -7,6 +7,7 @@ import {
 } from "../lib/diff-anchor.js";
 import type { DiffNav } from "../lib/diff-nav.js";
 import type { DiffComposer } from "../lib/diff-rows.js";
+import { takesNewComment } from "../lib/diff-utils.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import {
 	buildFullFileAnchor,
@@ -165,6 +166,13 @@ let selectedHunkKey = $state<string | null>(null);
 let selectedLineIndices = $state<Set<number>>(new Set());
 let lastClickedIndex = $state<number | null>(null);
 let selectedCount = $derived(selectedLineIndices.size);
+// A comment's selection can hold context lines, which staging leaves alone.
+const selectedChanges = $derived.by((): number[] => {
+	const lines = selectedHunkLines();
+	return Array.from(selectedLineIndices).filter(
+		(i) => lines[i] !== undefined && lines[i].origin !== "Context",
+	);
+});
 
 // Drag-to-select state. A drag paints selection across contiguous lines within a
 // single hunk: the start line's current state picks the mode (start unselected →
@@ -492,6 +500,15 @@ async function handleCommentLines(
 	const fd = fileDiffs.find((f) => f.path === filePath);
 	if (!fd) return false;
 	return openDiffComposer(fd, hunkIndex, new Set(selectedLineIndices));
+}
+
+function selectedHunkLines(): DiffLine[] {
+	for (const fd of fileDiffs) {
+		for (const [hunkIdx, hunk] of fd.hunks.entries()) {
+			if (`${fd.path}-${hunkIdx}` === selectedHunkKey) return hunk.lines;
+		}
+	}
+	return [];
 }
 
 function inSelection(hunkKey: string, lineIndex: number): boolean {
@@ -1088,7 +1105,8 @@ async function handleLineClick(
 }
 
 // Paint selectedLineIndices for the active drag: range [anchor..current] over the
-// snapshot taken at drag start, applying dragMode (Context lines never select).
+// snapshot taken at drag start, applying dragMode. Context lines select only
+// for a comment, since staging has nothing to do with them.
 function applyDragRange(currentIndex: number) {
 	if (
 		dragAnchorIndex === null ||
@@ -1101,13 +1119,24 @@ function applyDragRange(currentIndex: number) {
 	const newSet = new Set(dragBaseSet);
 	for (let i = start; i <= end; i++) {
 		const line = dragHunkLines[i];
-		if (!line || line.origin === "Context") continue;
-		if (dragSide !== null && line.origin !== dragSide) continue;
+		if (!line || !paints(line)) continue;
 		if (dragMode === "add") newSet.add(i);
 		else newSet.delete(i);
 	}
 	selectedHunkKey = dragHunkKey;
 	selectedLineIndices = newSet;
+}
+
+function paints(line: DiffLine): boolean {
+	if (commentDrag !== null && !takesNewComment(diffKind, line)) return false;
+	if (line.origin === "Context") return commentDrag !== null;
+	return dragSide === null || line.origin === dragSide;
+}
+
+// A context line's comment control sits on the split layout's added side.
+function splitSideOf(line: DiffLine | undefined): DiffOrigin | null {
+	if (!line) return null;
+	return line.origin === "Context" ? "Add" : line.origin;
 }
 
 function beginDrag(
@@ -1122,8 +1151,7 @@ function beginDrag(
 	dragMode = mode;
 	dragAnchorIndex = lineIndex;
 	dragHunkLines = hunkLines;
-	dragSide =
-		layoutMode === "split" ? (hunkLines[lineIndex]?.origin ?? null) : null;
+	dragSide = layoutMode === "split" ? splitSideOf(hunkLines[lineIndex]) : null;
 	lastClickedIndex = lineIndex;
 }
 
@@ -1251,7 +1279,7 @@ async function handleStageLines(filePath: string, hunkIndex: number) {
 			path: repoPath,
 			filePath,
 			hunkIndex,
-			lineIndices: Array.from(selectedLineIndices),
+			lineIndices: selectedChanges,
 			options: currentDiffOptions(),
 		});
 		await onhunkaction?.(filePath);
@@ -1271,7 +1299,7 @@ async function handleUnstageLines(filePath: string, hunkIndex: number) {
 			path: repoPath,
 			filePath,
 			hunkIndex,
-			lineIndices: Array.from(selectedLineIndices),
+			lineIndices: selectedChanges,
 			options: currentDiffOptions(),
 		});
 		await onhunkaction?.(filePath);
@@ -1285,7 +1313,7 @@ async function handleUnstageLines(filePath: string, hunkIndex: number) {
 
 async function handleDiscardLines(filePath: string, hunkIndex: number) {
 	if (hunkOperationInFlight) return;
-	const count = selectedCount;
+	const count = selectedChanges.length;
 	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
 		`Discard ${count} selected lines? This cannot be undone.`,
@@ -1302,7 +1330,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			path: repoPath,
 			filePath,
 			hunkIndex,
-			lineIndices: Array.from(selectedLineIndices),
+			lineIndices: selectedChanges,
 			options: currentDiffOptions(),
 		});
 		showToast(`Discarded ${count} lines`, "success");
@@ -1402,6 +1430,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			{selectedHunkKey}
 			{selectedLineIndices}
 			{selectedCount}
+			selectedChangeCount={selectedChanges.length}
 			{isMerge}
 			{collapsedFiles}
 			{hunkElements}

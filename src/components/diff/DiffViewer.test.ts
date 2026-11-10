@@ -48,6 +48,7 @@ const baseProps = {
 	selectedHunkKey: null,
 	selectedLineIndices: new Set<number>(),
 	selectedCount: 0,
+	selectedChangeCount: 0,
 	isMerge: false,
 	collapsedFiles: new Set<string>(),
 	hunkElements: {},

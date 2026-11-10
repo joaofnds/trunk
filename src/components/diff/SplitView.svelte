@@ -27,6 +27,7 @@ import type {
 	DiffOrigin,
 	FileDiff,
 	ReviewFilter,
+	Side,
 	Thread,
 } from "../../lib/types.js";
 import GutterGrip from "../../lib/ui/GutterGrip.svelte";
@@ -52,6 +53,7 @@ interface Props {
 	selectedHunkKey: string | null;
 	selectedLineIndices: Set<number>;
 	selectedCount: number;
+	selectedChangeCount: number;
 	reviewFilter: ReviewFilter;
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	/** The open comment composer, drawn under the line its comment ends on. */
@@ -113,6 +115,7 @@ let {
 	selectedHunkKey,
 	selectedLineIndices,
 	selectedCount,
+	selectedChangeCount,
 	isMerge,
 	collapsedFiles,
 	onfilecollapsetoggle,
@@ -343,12 +346,15 @@ function originClass(origin: string): string {
 	lineIdx: number,
 	marker: LineMarker | null,
 	lineno: number | null,
+	side: Side,
 )}
 	{@const hunkLines = hunkLinesOf(path, hunkIdx)}
 	<ThreadMarker
 		{marker}
 		width={vd.markerW}
-		oncomment={commentable && takesNewComment(diffKind, line)
+		oncomment={commentable &&
+		takesNewComment(diffKind, line) &&
+		(line.origin !== "Context" || side === "New")
 			? () => oncommentline(path, hunkIdx, lineIdx)
 			: undefined}
 		oncommentpress={(e) => oncommentpress(path, hunkIdx, lineIdx, hunkLines, e)}
@@ -415,6 +421,7 @@ function originClass(origin: string): string {
 						lineIdx,
 						item.markerLeft,
 						line.old_lineno,
+						"Old",
 					)}
 					<div class="split-window overflow-clip">
 						<div
@@ -452,6 +459,7 @@ function originClass(origin: string): string {
 						lineIdx,
 						item.markerRight,
 						line.new_lineno,
+						"New",
 					)}
 					<div class="split-window overflow-clip">
 						<div
@@ -482,6 +490,7 @@ function originClass(origin: string): string {
 				{diffKind}
 				{hasSelection}
 				{selectedCount}
+				{selectedChangeCount}
 				{takesComments}
 				{isMerge}
 				{hunkOperationInFlight}

@@ -50,6 +50,7 @@ interface Props {
 	selectedHunkKey: string | null;
 	selectedLineIndices: Set<number>;
 	selectedCount: number;
+	selectedChangeCount: number;
 	isMerge: boolean;
 	collapsedFiles: Set<string>;
 	hunkElements: Record<string, HTMLDivElement>;
@@ -129,6 +130,7 @@ let {
 	selectedHunkKey,
 	selectedLineIndices,
 	selectedCount,
+	selectedChangeCount,
 	isMerge,
 	collapsedFiles,
 	hunkElements,
@@ -295,6 +297,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{selectedHunkKey}
 			{selectedLineIndices}
 			{selectedCount}
+			{selectedChangeCount}
 			{isMerge}
 			{collapsedFiles}
 			{onfilecollapsetoggle}
@@ -348,6 +351,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{selectedHunkKey}
 			{selectedLineIndices}
 			{selectedCount}
+			{selectedChangeCount}
 			{isMerge}
 			{collapsedFiles}
 			{onfilecollapsetoggle}

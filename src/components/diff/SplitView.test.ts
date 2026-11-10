@@ -102,6 +102,7 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
 		selectedHunkKey: null,
 		selectedLineIndices: new Set<number>(),
 		selectedCount: 0,
+		selectedChangeCount: 0,
 		isMerge: false,
 		collapsedFiles: new Set<string>(),
 		onfilecollapsetoggle: vi.fn(),

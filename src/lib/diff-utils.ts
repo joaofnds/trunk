@@ -155,13 +155,12 @@ export function gripLabel(line: DiffLine): string {
 	return `Select line ${line.new_lineno}`;
 }
 
-/** Whether a diff line offers a new comment: any changed line, except a
- *  removed line of unstaged changes, which no comment can anchor to. */
+/** Whether a diff line offers a new comment: any line, except a removed line
+ *  of unstaged changes, which no comment can anchor to. */
 export function takesNewComment(
 	diffKind: PanelDiffKind,
 	line: DiffLine,
 ): boolean {
-	if (line.origin === "Context") return false;
 	return !(diffKind === "unstaged" && line.origin === "Delete");
 }
 

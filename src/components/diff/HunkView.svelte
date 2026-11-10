@@ -49,6 +49,7 @@ interface Props {
 	selectedHunkKey: string | null;
 	selectedLineIndices: Set<number>;
 	selectedCount: number;
+	selectedChangeCount: number;
 	isMerge: boolean;
 	collapsedFiles: Set<string>;
 	onfilecollapsetoggle: (path: string) => void;
@@ -109,6 +110,7 @@ let {
 	selectedHunkKey,
 	selectedLineIndices,
 	selectedCount,
+	selectedChangeCount,
 	isMerge,
 	collapsedFiles,
 	onfilecollapsetoggle,
@@ -399,6 +401,7 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 				{diffKind}
 				{hasSelection}
 				{selectedCount}
+				{selectedChangeCount}
 				{takesComments}
 				{isMerge}
 				{hunkOperationInFlight}

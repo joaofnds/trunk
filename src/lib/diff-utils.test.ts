@@ -145,7 +145,8 @@ describe("takesNewComment", () => {
 	it.each([
 		{ kind: "commit", given: line("Add", "a", null, 12), takes: true },
 		{ kind: "commit", given: line("Delete", "a", 7, null), takes: true },
-		{ kind: "commit", given: line("Context", "a", 44, 45), takes: false },
+		{ kind: "commit", given: line("Context", "a", 44, 45), takes: true },
+		{ kind: "unstaged", given: line("Context", "a", 44, 45), takes: true },
 		{ kind: "unstaged", given: line("Add", "a", null, 12), takes: true },
 		{ kind: "unstaged", given: line("Delete", "a", 7, null), takes: false },
 		{ kind: "staged", given: line("Delete", "a", 7, null), takes: true },

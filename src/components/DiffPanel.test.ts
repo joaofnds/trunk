@@ -2888,6 +2888,189 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		expect(await screen.findByText("Comments on lines 2-3")).toBeTruthy();
 	});
 
+	it("opens a comment on a context line from its control", async () => {
+		renderPanel();
+		await flushPrefs();
+
+		await clickControl(commentControl(1));
+
+		expect(await screen.findByText("Comment on line 1")).toBeTruthy();
+	});
+
+	it("carries a drag from a line's control onto the context lines it crosses", async () => {
+		renderPanel();
+		await flushPrefs();
+
+		await fireEvent.mouseDown(commentControl(2));
+		await fireEvent.mouseOver(screen.getByText("export { x };"), {
+			buttons: 1,
+		});
+		await fireEvent.mouseUp(window);
+
+		expect(await screen.findByText("Comments on lines 2-4")).toBeTruthy();
+	});
+
+	describe("in the split layout", () => {
+		beforeEach(async () => {
+			const store = await import("../lib/store.js");
+			vi.mocked(store.getDiffLayoutMode).mockImplementation(() =>
+				Promise.resolve("split"),
+			);
+		});
+
+		afterEach(async () => {
+			const store = await import("../lib/store.js");
+			vi.mocked(store.getDiffLayoutMode).mockImplementation(() =>
+				Promise.resolve("inline"),
+			);
+		});
+
+		it("offers a context line's control on its new side only", async () => {
+			renderPanel();
+			await flushPrefs();
+
+			expect(
+				screen.getAllByRole("button", {
+					name: "Comment on line 4",
+					hidden: true,
+				}),
+			).toHaveLength(1);
+		});
+
+		it("carries a drag from a context line's control onto the added lines", async () => {
+			renderPanel();
+			await flushPrefs();
+
+			await fireEvent.mouseDown(commentControl(4));
+			await fireEvent.mouseOver(screen.getByText("const x = 2;"), {
+				buttons: 1,
+			});
+			await fireEvent.mouseUp(window);
+
+			expect(await screen.findByText("Comments on lines 2-4")).toBeTruthy();
+		});
+	});
+
+	describe("when the selection holds context lines", () => {
+		function renderUnstaged() {
+			render(DiffPanel, {
+				props: {
+					...commentingDiff,
+					fileDiffs: [testDiff],
+					commitDetail: null,
+					onclose: vi.fn(),
+					diffKind: "unstaged",
+					repoPath: "/repo",
+				},
+			});
+			return flushPrefs();
+		}
+
+		async function dragControlOntoContext() {
+			await fireEvent.mouseDown(commentControl(2));
+			await fireEvent.mouseOver(screen.getByText("export { x };"), {
+				buttons: 1,
+			});
+			await fireEvent.mouseUp(window);
+			await screen.findByText("Comments on lines 2-4");
+		}
+
+		function sentLines(command: string): unknown {
+			const call = vi
+				.mocked(safeInvoke)
+				.mock.calls.find((c) => c[0] === command);
+			return (call?.[1] as { lineIndices?: number[] } | undefined)?.lineIndices;
+		}
+
+		it("counts only the changed lines on its staging actions", async () => {
+			await renderUnstaged();
+
+			await dragControlOntoContext();
+
+			expect(
+				screen.getByRole("button", { name: "Stage Lines (2)" }),
+			).toBeTruthy();
+			expect(
+				screen.getByRole("button", { name: "Discard Lines (2)" }),
+			).toBeTruthy();
+		});
+
+		it("stages only the changed lines", async () => {
+			await renderUnstaged();
+			await dragControlOntoContext();
+			vi.mocked(safeInvoke).mockClear();
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Stage Lines (2)" }),
+			);
+
+			await waitFor(() => expect(sentLines("stage_lines")).toEqual([2, 3]));
+		});
+
+		it("discards only the changed lines", async () => {
+			const { ask } = await import("@tauri-apps/plugin-dialog");
+			vi.mocked(ask).mockResolvedValue(true);
+			await renderUnstaged();
+			await dragControlOntoContext();
+			vi.mocked(safeInvoke).mockClear();
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Discard Lines (2)" }),
+			);
+
+			await waitFor(() => expect(sentLines("discard_lines")).toEqual([2, 3]));
+			vi.mocked(ask).mockResolvedValue(false);
+		});
+
+		it("unstages only the changed lines", async () => {
+			render(DiffPanel, {
+				props: {
+					...commentingDiff,
+					fileDiffs: [testDiff],
+					commitDetail: null,
+					onclose: vi.fn(),
+					diffKind: "staged",
+					repoPath: "/repo",
+				},
+			});
+			await flushPrefs();
+			await dragControlOntoContext();
+			vi.mocked(safeInvoke).mockClear();
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Unstage Lines (2)" }),
+			);
+
+			await waitFor(() => expect(sentLines("unstage_lines")).toEqual([2, 3]));
+		});
+
+		it("leaves out the removed lines a drag from a line's control crosses", async () => {
+			await renderUnstaged();
+
+			await fireEvent.mouseDown(commentControl(1));
+			await fireEvent.mouseOver(screen.getByText("const x = 1;"), {
+				buttons: 1,
+			});
+			await fireEvent.mouseUp(window);
+
+			await waitFor(() =>
+				expect(
+					screen.getByRole("button", { name: /^Comment \(/ }),
+				).toHaveTextContent("(1)"),
+			);
+		});
+
+		it("offers the hunk's staging actions while no changed line is selected", async () => {
+			await renderUnstaged();
+
+			await clickControl(commentControl(1));
+			await screen.findByText("Comment on line 1");
+
+			expect(screen.getByRole("button", { name: "Stage Hunk" })).toBeTruthy();
+			expect(screen.getByRole("button", { name: "Discard Hunk" })).toBeTruthy();
+		});
+	});
+
 	it("starts a new range from a press on a selected line's control that drags away", async () => {
 		renderPanel();
 		await flushPrefs();

@@ -13,6 +13,7 @@ interface Props {
 	diffKind: PanelDiffKind;
 	hasSelection: boolean;
 	selectedCount: number;
+	selectedChangeCount: number;
 	takesComments: boolean;
 	isMerge: boolean;
 	hunkOperationInFlight: boolean;
@@ -32,6 +33,7 @@ let {
 	diffKind,
 	hasSelection,
 	selectedCount,
+	selectedChangeCount,
 	takesComments,
 	isMerge,
 	hunkOperationInFlight,
@@ -44,6 +46,9 @@ let {
 	oncommentlines,
 	oncommenthunk,
 }: Props = $props();
+
+// Staging acts only on changed lines, and a comment's selection may hold none.
+const stagesLines = $derived(hasSelection && selectedChangeCount > 0);
 </script>
 
 {#if diffKind === "unstaged" || diffKind === "staged"}
@@ -65,20 +70,20 @@ let {
 			variant="danger"
 			disabled={hunkOperationInFlight}
 			onclick={() =>
-				hasSelection
+				stagesLines
 					? ondiscardlines(path, hunkIdx)
 					: ondiscardhunk(path, hunkIdx)}
 		>
-			{hasSelection ? `Discard Lines (${selectedCount})` : "Discard Hunk"}
+			{stagesLines ? `Discard Lines (${selectedChangeCount})` : "Discard Hunk"}
 		</Button>
 		<Button
 			size="sm"
 			variant="success"
 			disabled={hunkOperationInFlight}
 			onclick={() =>
-				hasSelection ? onstagelines(path, hunkIdx) : onstagehunk(path, hunkIdx)}
+				stagesLines ? onstagelines(path, hunkIdx) : onstagehunk(path, hunkIdx)}
 		>
-			{hasSelection ? `Stage Lines (${selectedCount})` : "Stage Hunk"}
+			{stagesLines ? `Stage Lines (${selectedChangeCount})` : "Stage Hunk"}
 		</Button>
 	{:else}
 		<Button
@@ -86,11 +91,11 @@ let {
 			variant="warning"
 			disabled={hunkOperationInFlight}
 			onclick={() =>
-				hasSelection
+				stagesLines
 					? onunstagelines(path, hunkIdx)
 					: onunstagehunk(path, hunkIdx)}
 		>
-			{hasSelection ? `Unstage Lines (${selectedCount})` : "Unstage Hunk"}
+			{stagesLines ? `Unstage Lines (${selectedChangeCount})` : "Unstage Hunk"}
 		</Button>
 	{/if}
 {:else if diffKind === "commit" && takesComments}
