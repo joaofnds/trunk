@@ -749,6 +749,20 @@ describe("store", () => {
 			});
 			expect((await getColumnVisibility()).diff).toBe(false);
 		});
+
+		it("shows Message whatever was stored, since no control can bring it back", async () => {
+			backingStore.set("column_visibility", {
+				ref: true,
+				graph: true,
+				message: false,
+				diff: true,
+				author: true,
+				date: true,
+				sha: true,
+			});
+
+			expect((await getColumnVisibility()).message).toBe(true);
+		});
 	});
 });
 

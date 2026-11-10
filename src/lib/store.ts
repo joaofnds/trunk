@@ -256,9 +256,12 @@ const DEFAULT_VISIBILITY: ColumnVisibility = {
 export async function getColumnVisibility(): Promise<ColumnVisibility> {
 	// Spread-merge so a key added after a user first persisted their visibility
 	// (e.g. `diff`) defaults to visible instead of arriving as undefined → falsy.
+	// Message is forced on: its menu item is disabled, so a stored `false` would
+	// hide the commit subjects with no control left to show them again.
 	return {
 		...DEFAULT_VISIBILITY,
 		...(await getPref<ColumnVisibility>(COLUMN_VISIBILITY_KEY)),
+		message: true,
 	};
 }
 
