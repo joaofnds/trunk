@@ -24,6 +24,8 @@ describe("Splitter", () => {
 		{ variant: "pane", key: "ArrowLeft", step: -8 },
 		{ variant: "column", key: "ArrowRight", step: 8 },
 		{ variant: "column", key: "ArrowLeft", step: -8 },
+		{ variant: "column-leading", key: "ArrowRight", step: 8 },
+		{ variant: "column-leading", key: "ArrowLeft", step: -8 },
 		{ variant: "bar", key: "ArrowDown", step: 8 },
 		{ variant: "bar", key: "ArrowUp", step: -8 },
 	] as const)(
@@ -119,6 +121,7 @@ describe("Splitter", () => {
 	it.each([
 		{ variant: "pane", orientation: "horizontal" },
 		{ variant: "column", orientation: "horizontal" },
+		{ variant: "column-leading", orientation: "horizontal" },
 		{ variant: "bar", orientation: "vertical" },
 	] as const)(
 		"moves along the $orientation axis as a $variant",
@@ -148,6 +151,19 @@ describe("Splitter", () => {
 			"absolute",
 			"inset-y-0",
 			"right-0",
+			"w-1",
+			"cursor-col-resize",
+		);
+	});
+
+	it("lies over the leading edge of a column's header cell", () => {
+		const { splitter } = renderSplitter("column-leading");
+
+		expect(splitter).toHaveClass(
+			"splitter-column",
+			"absolute",
+			"inset-y-0",
+			"left-0",
 			"w-1",
 			"cursor-col-resize",
 		);

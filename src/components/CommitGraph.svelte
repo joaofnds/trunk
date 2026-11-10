@@ -322,24 +322,6 @@ let columnVisibility = $state<ColumnVisibility>({
 	sha: true,
 });
 
-const ORDERED_COLUMNS = [
-	"ref",
-	"graph",
-	"message",
-	"diff",
-	"author",
-	"date",
-	"sha",
-] as const;
-type ColumnKey = (typeof ORDERED_COLUMNS)[number];
-
-const visibleColumns = $derived(
-	ORDERED_COLUMNS.filter((k) => columnVisibility[k]),
-);
-const lastVisibleColumn = $derived(
-	visibleColumns[visibleColumns.length - 1] as ColumnKey | undefined,
-);
-
 $effect(() => {
 	userWidthsRestored = loadUserWidths(repoPath, floors).then((stored) => {
 		const restored = SIZED_COLUMNS.filter(
@@ -684,8 +666,12 @@ async function loadStashMap() {
 
 const stashMapRefresh = createCoalescedTask(scheduler, loadStashMap);
 
-function resizeColumn(column: keyof ColumnWidths, requested: number) {
-	const width = Math.max(floors[column], requested);
+function resizeColumn(
+	column: keyof ColumnWidths,
+	requested: number,
+	ceiling = Number.POSITIVE_INFINITY,
+) {
+	const width = Math.max(floors[column], Math.min(ceiling, requested));
 	if (width === columnWidths[column]) return false;
 
 	if (!userSizedColumns.has(column))
@@ -696,14 +682,20 @@ function resizeColumn(column: keyof ColumnWidths, requested: number) {
 	return true;
 }
 
-function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
+function startColumnResize(
+	column: keyof ColumnWidths,
+	edge: ColumnEdge,
+	e: MouseEvent,
+) {
 	e.preventDefault();
 	const startX = e.clientX;
 	const startWidth = columnWidths[column];
+	const ceiling = columnCeiling(column, edge);
 	let moved = false;
 
 	function onMouseMove(ev: MouseEvent) {
-		if (resizeColumn(column, startWidth + ev.clientX - startX)) moved = true;
+		const growth = EDGES[edge].growth * (ev.clientX - startX);
+		if (resizeColumn(column, startWidth + growth, ceiling)) moved = true;
 	}
 
 	function onMouseUp() {
@@ -718,8 +710,31 @@ function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
 	window.addEventListener("mouseup", onMouseUp);
 }
 
-function stepColumn(column: keyof ColumnWidths, delta: number) {
-	if (resizeColumn(column, columnWidths[column] + delta)) storeUserWidths();
+function stepColumn(
+	column: keyof ColumnWidths,
+	edge: ColumnEdge,
+	delta: number,
+) {
+	const width = columnWidths[column] + EDGES[edge].growth * delta;
+	if (resizeColumn(column, width, columnCeiling(column, edge)))
+		storeUserWidths();
+}
+
+/**
+ * The widest a drag or a key may make a column. One held to the row's end
+ * widens at its leading edge into Message, and that edge stops where Message
+ * reaches its floor: past it the fits would yield instead, and the column would
+ * grow away from the pointer rather than under it. A column left of Message has
+ * no ceiling, and neither has any column while the list is unmeasured.
+ */
+function columnCeiling(
+	column: keyof ColumnWidths,
+	edge: ColumnEdge,
+): number | undefined {
+	if (edge === "trailing" || rowWidth <= 0) return undefined;
+
+	const messageRoom = rowWidth - tableMinWidth(columnWidths, columnVisibility);
+	return columnWidths[column] + Math.max(0, messageRoom);
 }
 
 function storeUserWidths() {
@@ -745,22 +760,53 @@ function refitColumn(column: keyof ColumnWidths) {
 }
 
 /**
- * Message takes the space the sized columns leave, so it has no entry in
- * ColumnWidths and no resize handle. The union keeps that difference in the
- * type rather than in a comparison against the key.
+ * Message takes the space the sized columns leave, so the columns left of it
+ * change width at their trailing edge and the ones right of it, held to the
+ * row's end, at their leading edge. Each column's handle sits on the edge that
+ * moves, and a drag or a key step along it widens the column by its distance
+ * times `growth`.
+ */
+const EDGES = {
+	trailing: { handle: "column", growth: 1 },
+	leading: { handle: "column-leading", growth: -1 },
+} as const;
+type ColumnEdge = keyof typeof EDGES;
+
+/**
+ * Message has no entry in ColumnWidths and no resize handle of its own. The
+ * union keeps that difference in the type rather than in a comparison against
+ * the key.
  */
 type ColumnHeader =
-	| { key: keyof ColumnWidths; label: string; icon: Component; sized: true }
+	| {
+			key: keyof ColumnWidths;
+			label: string;
+			icon: Component;
+			sized: true;
+			edge: ColumnEdge;
+	  }
 	| { key: "message"; label: string; icon: Component; sized: false };
 
 const columnLabels: ColumnHeader[] = [
-	{ key: "ref", label: "Branch/Tag", icon: GitBranch, sized: true },
-	{ key: "graph", label: "Graph", icon: Network, sized: true },
+	{
+		key: "ref",
+		label: "Branch/Tag",
+		icon: GitBranch,
+		sized: true,
+		edge: "trailing",
+	},
+	{
+		key: "graph",
+		label: "Graph",
+		icon: Network,
+		sized: true,
+		edge: "trailing",
+	},
 	{ key: "message", label: "Message", icon: MessageSquare, sized: false },
-	{ key: "diff", label: "Diff", icon: FileDiff, sized: true },
-	{ key: "author", label: "Author", icon: User, sized: true },
-	{ key: "date", label: "Date", icon: Clock, sized: true },
-	{ key: "sha", label: "SHA", icon: Hash, sized: true },
+	{ key: "diff", label: "Diff", icon: FileDiff, sized: true, edge: "leading" },
+	{ key: "author", label: "Author", icon: User, sized: true, edge: "leading" },
+	{ key: "date", label: "Date", icon: Clock, sized: true, edge: "leading" },
+	{ key: "sha", label: "SHA", icon: Hash, sized: true, edge: "leading" },
 ];
 
 // InputDialog state
@@ -2225,17 +2271,16 @@ $effect(() => {
 							{:else}
 								<col.icon size={HEADER_ICON_WIDTH} aria-hidden="true" />
 							{/if}
-							{#if col.key !== lastVisibleColumn}
-								<Splitter
-									variant="column"
-									aria-label="Resize {col.label} column"
-									value={width}
-									min={floors[col.key]}
-									onstep={(delta) => stepColumn(col.key, delta)}
-									onmousedown={(e) => startColumnResize(col.key, e)}
-									ondblclick={() => refitColumn(col.key)}
-								/>
-							{/if}
+							<Splitter
+								variant={EDGES[col.edge].handle}
+								aria-label="Resize {col.label} column"
+								value={width}
+								min={floors[col.key]}
+								max={columnCeiling(col.key, col.edge)}
+								onstep={(delta) => stepColumn(col.key, col.edge, delta)}
+								onmousedown={(e) => startColumnResize(col.key, col.edge, e)}
+								ondblclick={() => refitColumn(col.key)}
+							/>
 						</div>
 					{:else}
 						<div

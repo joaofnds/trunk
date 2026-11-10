@@ -1,5 +1,5 @@
 <script lang="ts" module>
-export type SplitterVariant = "pane" | "column" | "bar";
+export type SplitterVariant = "pane" | "column" | "column-leading" | "bar";
 </script>
 
 <script lang="ts">
@@ -20,10 +20,11 @@ interface Shared
 		| "aria-valuemax"
 		| "onkeydown"
 	> {
-	/** `pane` is the strip between two panes laid side by side and `column`
-	 *  the one over the trailing edge of a table's header cell, both moving
-	 *  left and right; `bar` is the strip across a panel, between two parts
-	 *  stacked in it, moving up and down. */
+	/** `pane` is the strip between two panes laid side by side, `column` the
+	 *  one over the trailing edge of a table's header cell and `column-leading`
+	 *  the one over its leading edge, all moving left and right; `bar` is the
+	 *  strip across a panel, between two parts stacked in it, moving up and
+	 *  down. */
 	variant: SplitterVariant;
 }
 
@@ -67,6 +68,7 @@ const STEP = 8;
 const ORIENTATIONS: Record<SplitterVariant, Orientation> = {
 	pane: "horizontal",
 	column: "horizontal",
+	"column-leading": "horizontal",
 	bar: "vertical",
 };
 
@@ -78,6 +80,7 @@ const DIRECTIONS: Record<Orientation, Partial<Record<string, number>>> = {
 const VARIANTS: Record<SplitterVariant, string> = {
 	pane: "splitter-pane w-1 shrink-0",
 	column: "splitter-column absolute inset-y-0 right-0 w-1",
+	"column-leading": "splitter-column absolute inset-y-0 left-0 w-1",
 	bar: "splitter-bar h-1 shrink-0",
 };
 

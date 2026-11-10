@@ -1666,7 +1666,7 @@ describe("CommitGraph", () => {
 			const { container } = mountWithPrefs(new Map());
 			await flush();
 			const fit = renderedWidth(headerCell(container, "author"));
-			await drag(resizeHandle(container, "author"), 60);
+			await drag(resizeHandle(container, "author"), -60);
 
 			await fireEvent.dblClick(resizeHandle(container, "author"));
 			await flush();
@@ -1710,10 +1710,54 @@ describe("CommitGraph", () => {
 				const { container } = mountWithPrefs(new Map());
 				await flush();
 
-				await drag(resizeHandle(container, "author"), 60);
+				await drag(resizeHandle(container, "ref"), 60);
 
 				expect(sizedTotal(container)).toBe(
 					608 - 2 * COLUMN_PADDING_X - MESSAGE_FLOOR,
+				);
+			});
+
+			// Message cannot shrink past its floor, so the leading edge of a
+			// column right of it stops there rather than leaving the pointer.
+			it("stops a right-hand column's drag where Message reaches its floor", async () => {
+				observeListAt(1608);
+				const { container } = mountWithPrefs(new Map());
+				await flush();
+
+				await drag(resizeHandle(container, "diff"), -3000);
+
+				expect(sizedTotal(container)).toBe(
+					1608 - 2 * COLUMN_PADDING_X - MESSAGE_FLOOR,
+				);
+			});
+
+			it("tells assistive tech the widest Message's floor leaves a right-hand column", async () => {
+				observeListAt(1608);
+				const { container } = mountWithPrefs(new Map());
+				await flush();
+				const others = sizedTotal(container);
+				const diff = Number.parseFloat(
+					renderedWidth(headerCell(container, "diff")),
+				);
+
+				expect(resizeHandle(container, "diff")).toHaveAttribute(
+					"aria-valuemax",
+					`${1608 - 2 * COLUMN_PADDING_X - MESSAGE_FLOOR - others + diff}`,
+				);
+			});
+
+			it("stops a key where Message reaches its floor", async () => {
+				observeListAt(1608);
+				const { container } = mountWithPrefs(new Map());
+				await flush();
+				await drag(resizeHandle(container, "diff"), -3000);
+
+				await fireEvent.keyDown(resizeHandle(container, "diff"), {
+					key: "ArrowLeft",
+				});
+
+				expect(sizedTotal(container)).toBe(
+					1608 - 2 * COLUMN_PADDING_X - MESSAGE_FLOOR,
 				);
 			});
 
@@ -1755,7 +1799,7 @@ describe("CommitGraph", () => {
 				const prefs = new Map<string, unknown>();
 				const first = mountWithPrefs(prefs);
 				await flush();
-				await drag(resizeHandle(first.container, "author"), 60);
+				await drag(resizeHandle(first.container, "author"), -60);
 				const dragged = renderedWidth(headerCell(first.container, "author"));
 				first.unmount();
 
@@ -1788,7 +1832,7 @@ describe("CommitGraph", () => {
 				const first = mountWithPrefs(prefs);
 				await flush();
 				const fit = renderedWidth(headerCell(first.container, "author"));
-				await drag(resizeHandle(first.container, "author"), 60);
+				await drag(resizeHandle(first.container, "author"), -60);
 				await fireEvent.dblClick(resizeHandle(first.container, "author"));
 				first.unmount();
 
@@ -1804,7 +1848,7 @@ describe("CommitGraph", () => {
 				await flush();
 				await drag(resizeHandle(first.container, "ref"), 60);
 				const dragged = renderedWidth(headerCell(first.container, "ref"));
-				await drag(resizeHandle(first.container, "author"), 60);
+				await drag(resizeHandle(first.container, "author"), -60);
 				await fireEvent.dblClick(resizeHandle(first.container, "author"));
 				await flush();
 				first.unmount();
@@ -1829,7 +1873,7 @@ describe("CommitGraph", () => {
 				});
 				const first = mountWithPrefs(prefs, { widthsRead });
 				await flush();
-				await drag(resizeHandle(first.container, "author"), 60);
+				await drag(resizeHandle(first.container, "author"), -60);
 				const dragged = renderedWidth(headerCell(first.container, "author"));
 				read();
 				await flush();
@@ -1856,7 +1900,7 @@ describe("CommitGraph", () => {
 				});
 				const { container } = mountWithPrefs(prefs, { widthsRead });
 				await flush();
-				await drag(resizeHandle(container, "author"), 60);
+				await drag(resizeHandle(container, "author"), -60);
 				const dragged = renderedWidth(headerCell(container, "author"));
 				read();
 				await flush();
@@ -1978,34 +2022,71 @@ describe("CommitGraph", () => {
 			});
 		});
 
-		// A handle sits on its own cell's right edge, so the column it moves must
-		// be the one the user grabbed the edge of — not its neighbour.
-		it("resizes the column whose edge the handle sits on", async () => {
-			const { container } = mountHeader();
-			await flush();
-			const author = headerCell(container, "author");
-			const before = Number.parseFloat(renderedWidth(author));
-
-			await drag(author.querySelector("[role=slider]") as Element, 60);
-
-			expect(renderedWidth(author)).toBe(`${before + 60}px`);
-		});
-
 		it.each([
-			{ key: "ArrowRight", step: 8 },
-			{ key: "ArrowLeft", step: -8 },
+			{ column: "ref", side: "right-0" },
+			{ column: "graph", side: "right-0" },
+			{ column: "diff", side: "left-0" },
+			{ column: "author", side: "left-0" },
+			{ column: "date", side: "left-0" },
+			{ column: "sha", side: "left-0" },
 		])(
-			"moves the column's edge a step the way $key points",
-			async ({ key, step }) => {
+			"gives $column a handle of its own at $side",
+			async ({ column, side }) => {
 				const { container } = mountHeader();
 				await flush();
-				const author = headerCell(container, "author");
-				const before = Number.parseFloat(renderedWidth(author));
-				await drag(resizeHandle(container, "author"), 60);
 
-				await fireEvent.keyDown(resizeHandle(container, "author"), { key });
+				expect(resizeHandle(container, column)).toHaveClass(side);
+			},
+		);
 
-				expect(renderedWidth(author)).toBe(`${before + 60 + step}px`);
+		it("gives the column left last by a hidden SHA a handle of its own", async () => {
+			const { container } = mountHeader({ sha: false });
+			await flush();
+
+			expect(resizeHandle(container, "date")).toHaveClass("left-0");
+		});
+
+		// Message takes what the sized columns leave, so a column left of it
+		// moves at its right edge and one right of it at its left edge. The
+		// handle sits on the edge that moves, and resizes its own column.
+		it.each([
+			{ column: "ref", towardEdge: 60 },
+			{ column: "graph", towardEdge: 60 },
+			{ column: "diff", towardEdge: -60 },
+			{ column: "author", towardEdge: -60 },
+			{ column: "date", towardEdge: -60 },
+			{ column: "sha", towardEdge: -60 },
+		])(
+			"widens $column by a drag away from its middle",
+			async ({ column, towardEdge }) => {
+				const { container } = mountHeader();
+				await flush();
+				const cell = headerCell(container, column);
+				const before = Number.parseFloat(renderedWidth(cell));
+
+				await drag(resizeHandle(container, column), towardEdge);
+
+				expect(renderedWidth(cell)).toBe(`${before + 60}px`);
+			},
+		);
+
+		it.each([
+			{ column: "graph", widen: 60, key: "ArrowRight", step: 8 },
+			{ column: "graph", widen: 60, key: "ArrowLeft", step: -8 },
+			{ column: "author", widen: -60, key: "ArrowRight", step: -8 },
+			{ column: "author", widen: -60, key: "ArrowLeft", step: 8 },
+		])(
+			"moves the edge of $column a step the way $key points",
+			async ({ column, widen, key, step }) => {
+				const { container } = mountHeader();
+				await flush();
+				const cell = headerCell(container, column);
+				const before = Number.parseFloat(renderedWidth(cell));
+				await drag(resizeHandle(container, column), widen);
+
+				await fireEvent.keyDown(resizeHandle(container, column), { key });
+
+				expect(renderedWidth(cell)).toBe(`${before + 60 + step}px`);
 			},
 		);
 
@@ -2033,7 +2114,7 @@ describe("CommitGraph", () => {
 			);
 
 			await fireEvent.keyDown(resizeHandle(container, "author"), {
-				key: "ArrowRight",
+				key: "ArrowLeft",
 			});
 			await flush();
 
@@ -2064,16 +2145,6 @@ describe("CommitGraph", () => {
 			expect(handle).not.toHaveAttribute("aria-valuemax");
 		});
 
-		it("widens the column when its edge is dragged right", async () => {
-			const { container } = mountHeader();
-			await flush();
-			const date = headerCell(container, "date");
-
-			await drag(date.querySelector("[role=slider]") as Element, 50);
-
-			expect(Number.parseInt(renderedWidth(date), 10)).toBeGreaterThan(40);
-		});
-
 		// With a neighbour hidden, the column must still be reachable: the handle
 		// belongs to the cell it is drawn on, not to whatever follows it.
 		describe("when the neighbouring column is hidden", () => {
@@ -2083,23 +2154,29 @@ describe("CommitGraph", () => {
 				const author = headerCell(container, "author");
 				const before = renderedWidth(author);
 
-				await drag(author.querySelector("[role=slider]") as Element, 40);
+				await drag(author.querySelector("[role=slider]") as Element, -40);
 
-				expect(renderedWidth(author)).not.toBe(before);
+				expect(renderedWidth(author)).toBe(
+					`${Number.parseFloat(before) + 40}px`,
+				);
 			});
 		});
 
 		// A user width has a floor and no ceiling: however wide the user asks for,
 		// the column follows.
-		it.each(["ref", "author", "graph"] as const)(
-			"lets a drag widen the %s column as far as the pointer goes",
-			async (column) => {
+		it.each([
+			{ column: "ref", towardEdge: 500 },
+			{ column: "author", towardEdge: -500 },
+			{ column: "graph", towardEdge: 500 },
+		])(
+			"lets a drag widen the $column column as far as the pointer goes",
+			async ({ column, towardEdge }) => {
 				const { container } = mountHeader();
 				await flush();
 				const cell = headerCell(container, column);
 				const before = Number.parseFloat(renderedWidth(cell));
 
-				await drag(cell.querySelector("[role=slider]") as Element, 500);
+				await drag(cell.querySelector("[role=slider]") as Element, towardEdge);
 
 				expect(renderedWidth(cell)).toBe(`${before + 500}px`);
 			},
@@ -2130,7 +2207,7 @@ describe("CommitGraph", () => {
 			await flush();
 			const author = headerCell(container, "author");
 
-			await drag(author.querySelector("[role=slider]") as Element, -500);
+			await drag(author.querySelector("[role=slider]") as Element, 500);
 
 			expect(author.textContent).not.toContain("Author");
 			expect(author.querySelector("svg")).not.toBeNull();
@@ -2141,7 +2218,7 @@ describe("CommitGraph", () => {
 			await flush();
 			const author = headerCell(container, "author");
 
-			await drag(author.querySelector("[role=slider]") as Element, -500);
+			await drag(author.querySelector("[role=slider]") as Element, 500);
 
 			expect(author.getAttribute("title")).toBe("Author");
 		});

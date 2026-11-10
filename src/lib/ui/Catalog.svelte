@@ -624,6 +624,15 @@ import ToastCard from "./ToastCard.svelte";
 					/>
 				</div>
 				<div class="flex-1"></div>
+				<div class="relative flex-1">
+					<Splitter
+						variant="column-leading"
+						aria-label="Resize trailing column"
+						value={PANE_WIDTH}
+						min={PANE_MIN}
+						onstep={stay}
+					/>
+				</div>
 			</div>
 			<div class="flex h-topbar flex-col bg-surface">
 				<div class="flex-1"></div>
