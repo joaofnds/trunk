@@ -73,6 +73,24 @@ describe("CommitNotes", () => {
 		expect(screen.getByText("Notes(2)")).toBeInTheDocument();
 	});
 
+	it.each(["done", "dismissed"] as const)(
+		"starts a %s note folded to its header",
+		(state) => {
+			renderNotes([
+				aThread({
+					id: "note-1",
+					state,
+					commit_oid: commitOid,
+					allowed_transitions: ["open"],
+				}),
+			]);
+
+			expect(
+				screen.getByRole("button", { name: "Expand thread" }),
+			).toHaveAttribute("aria-expanded", "false");
+		},
+	);
+
 	it("draws Add note as a small ghost control", () => {
 		renderNotes();
 
