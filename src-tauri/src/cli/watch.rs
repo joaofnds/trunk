@@ -184,6 +184,18 @@ mod watch_feed {
             thread: String,
             stale: bool,
         },
+        /// The thread's commit was rewritten and the thread moved to the copy,
+        /// at the lines its code now sits on when it has lines.
+        ThreadFollowed {
+            review: String,
+            thread: String,
+            from: String,
+            to: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            start_line: Option<u32>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            end_line: Option<u32>,
+        },
         ThreadDeleted {
             review: String,
             thread: String,
@@ -220,6 +232,7 @@ mod watch_feed {
                 | Self::ThreadEdited { review, .. }
                 | Self::ThreadStateChanged { review, .. }
                 | Self::ThreadStaleChanged { review, .. }
+                | Self::ThreadFollowed { review, .. }
                 | Self::ThreadDeleted { review, .. }
                 | Self::ReplyAdded { review, .. }
                 | Self::ReplyEdited { review, .. }
@@ -423,6 +436,18 @@ fn diff_thread(
             to: after.state,
         });
     }
+    if let (Some(from), Some(to)) = (located_on(before), located_on(after))
+        && from != to
+    {
+        changes.push(WatchChange::ThreadFollowed {
+            review: review.to_string(),
+            thread: thread_id.to_string(),
+            from: from.to_string(),
+            to: to.to_string(),
+            start_line: after.anchor.as_ref().map(|anchor| anchor.start_line),
+            end_line: after.anchor.as_ref().map(|anchor| anchor.end_line),
+        });
+    }
     if after.stale != before.stale {
         changes.push(WatchChange::ThreadStaleChanged {
             review: review.to_string(),
@@ -458,6 +483,16 @@ fn diff_thread(
             });
         }
     }
+}
+
+/// The commit a thread sits on: its anchor's, or a commit note's own.
+#[cfg(unix)]
+fn located_on(thread: &ThreadSnap) -> Option<&str> {
+    thread
+        .anchor
+        .as_ref()
+        .map(|anchor| anchor.commit_oid.as_str())
+        .or(thread.commit_oid.as_deref())
 }
 
 #[cfg(all(test, unix))]

@@ -2576,6 +2576,80 @@ fn watch_json_reports_a_retitle_before_the_thread_change_written_with_it() {
     );
 }
 
+#[test]
+fn watch_json_reports_a_thread_following_its_rewritten_commit() {
+    use trunk_review::types::{Anchor, Side, Source};
+
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\ntwo\nthree\n")
+        .with_commit("base")
+        .with_remote("origin")
+        .with_pushed("origin", "main")
+        .with_tracking("origin", "main")
+        .with_remote_commit(
+            "origin",
+            "main",
+            "a.txt",
+            "zero\none\ntwo\nthree\n",
+            "upstream adds zero",
+        )
+        .with_file("a.txt", "one\ntwo\nthree\nfour\n")
+        .with_commit("local adds four")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let written_on = ctx.repo().head().unwrap().target().unwrap().to_string();
+    let (_, published) = seed_reviews(&ctx);
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread = store
+        .write(|tx| {
+            threads::insert(
+                tx,
+                &published,
+                threads::NewThread {
+                    whole_file: false,
+                    text: "why four?".to_string(),
+                    anchor: Some(Anchor {
+                        commit_oid: written_on.clone(),
+                        file_path: "a.txt".to_string(),
+                        source: Source::Diff,
+                        side: Side::New,
+                        start_line: 4,
+                        end_line: 4,
+                    }),
+                    commit_oid: None,
+                    content_pin: None,
+                    cached_excerpt: None,
+                    delivery: Delivery::Send,
+                },
+                400,
+            )
+        })
+        .unwrap();
+    let watch = WatchChild::spawn_json(&ctx);
+    let pulled = Command::new("git")
+        .args(["pull", "--rebase", "--quiet"])
+        .current_dir(ctx.repo_path())
+        .status()
+        .unwrap();
+    assert!(pulled.success());
+    let mut repo = ctx.repo();
+    let replayed = repo.head().unwrap().target().unwrap().to_string();
+    let captured = trunk_git::graph::capture(&mut repo).unwrap();
+
+    reviewdb::follow::follow(&store, &canonical, &repo, &captured.commits, 500).unwrap();
+
+    let event = watch.next_event();
+    assert_eq!(event["event"], "thread_followed");
+    assert_eq!(event["review"], published.as_str());
+    assert_eq!(event["thread"], thread.as_str());
+    assert_eq!(event["from"], written_on.as_str());
+    assert_eq!(event["to"], replayed.as_str());
+    assert_eq!(
+        (event["start_line"].as_u64(), event["end_line"].as_u64()),
+        (Some(5), Some(5))
+    );
+}
+
 /// A collected anchor is the one staleness case that can never clear: the code
 /// is unrecoverable, so the marker must not flicker back off. Non-reversal is
 /// asserted as the recompute's own count rather than as a silence over some

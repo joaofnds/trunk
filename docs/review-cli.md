@@ -197,6 +197,7 @@ became `open`, `stale` or `settled` where it had been `composing`, `ready` or
 | `thread_edited` | `review`, `thread`, `text` |
 | `thread_state_changed` | `review`, `thread`, `from`, `to` |
 | `thread_stale_changed` | `review`, `thread`, `stale`, sent when the stored marker changes, and for a change from the app's narrower ref pass only once a later write rings `watch` ([How current the stale marker is](#how-current-the-stale-marker-is)) |
+| `thread_followed` | `review`, `thread`, `from`, `to`, and `start_line`, `end_line` for a thread on lines, sent when a rebase, amend or cherry-pick rewrote the thread's commit and the thread moved onto the copy. `from` and `to` are the old and new commit, the lines are where its code sits on the copy, and a `thread_stale_changed` follows when the rewrite changed those lines |
 | `reply_added` | `review`, `thread`, `reply`, `channel` (`human`/`agent`), `text` |
 | `reply_edited` | `review`, `thread`, `reply`, `text` |
 | `thread_deleted` | `review`, `thread`, sent when the user removes a thread with its replies |
