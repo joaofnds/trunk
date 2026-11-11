@@ -1246,3 +1246,117 @@ describe("the marker column", () => {
 		expect(model.markerChars).toBe(3);
 	});
 });
+
+describe("a thread on a line no hunk shows", () => {
+	const apart = file("src/main.ts", [
+		hunk("@@ -4,1 +4,4 @@", [
+			line("Context", "four", 4, 4),
+			line("Add", "five", null, 5),
+			line("Add", "six", null, 6),
+			line("Add", "seven", null, 7),
+		]),
+		hunk("@@ -9,1 +12,1 @@", [line("Context", "twelve", 9, 12)]),
+	]);
+	const hunkMode: BuildOptions = { ...fullMode, content: "hunk" };
+
+	function shape(options: BuildOptions, build = buildInlineRows) {
+		return build([apart], options).rows.map((row) =>
+			row.kind === "comment" ? row.threads.map((t) => t.id) : row.kind,
+		);
+	}
+
+	it("is drawn between the two hunks its line falls between", () => {
+		const rows = shape({ ...hunkMode, comments: [thread("t1", "New", 9, 9)] });
+
+		expect(rows).toEqual([
+			"hunk-header",
+			"line",
+			"line",
+			"line",
+			"line",
+			["t1"],
+			"hunk-header",
+			"line",
+		]);
+	});
+
+	it("is drawn above the first hunk when its line comes before it", () => {
+		const rows = shape({ ...hunkMode, comments: [thread("t1", "New", 2, 2)] });
+
+		expect(rows.slice(0, 2)).toEqual([["t1"], "hunk-header"]);
+	});
+
+	it("is drawn after the last hunk when its line comes after it", () => {
+		const rows = shape({
+			...hunkMode,
+			comments: [thread("t1", "New", 20, 20)],
+		});
+
+		expect(rows.slice(-2)).toEqual(["line", ["t1"]]);
+	});
+
+	it("is placed by the old file's numbers when it sits on the old side", () => {
+		const rows = shape({
+			...hunkMode,
+			comments: [thread("t1", "Old", 10, 10)],
+		});
+
+		expect(rows.slice(-2)).toEqual(["line", ["t1"]]);
+	});
+
+	it("is placed by its last line when its first line is shown", () => {
+		const rows = shape({ ...hunkMode, comments: [thread("t1", "New", 7, 9)] });
+
+		expect(rows.slice(4, 7)).toEqual(["line", ["t1"], "hunk-header"]);
+	});
+
+	it("is left out when the review filter hides it", () => {
+		const rows = shape({
+			...hunkMode,
+			reviewFilter: { states: ["open"], stale: true },
+			comments: [{ ...thread("t1", "New", 9, 9), state: "done" }],
+		});
+
+		expect(rows).not.toContainEqual(["t1"]);
+	});
+
+	it("keeps each hunk's navigation on its header row", () => {
+		const model = buildInlineRows([apart], {
+			...hunkMode,
+			comments: [thread("t1", "New", 9, 9)],
+		});
+
+		const targets = model.hunkNav.map((nav) => model.rows[nav.rowIndex].kind);
+
+		expect(targets).toEqual(["hunk-header", "hunk-header"]);
+	});
+
+	it("is drawn between the two hunks in the split view", () => {
+		const rows = shape(
+			{ ...hunkMode, comments: [thread("t1", "New", 9, 9)] },
+			buildSplitRows,
+		);
+
+		expect(rows.slice(-3)).toEqual([["t1"], "hunk-header", "pair"]);
+	});
+
+	describe("when a hunk shows its line", () => {
+		it("is drawn once, under that line", () => {
+			const rows = shape({
+				...hunkMode,
+				comments: [thread("t1", "New", 6, 6)],
+			});
+
+			expect(rows).toEqual([
+				"hunk-header",
+				"line",
+				"line",
+				"line",
+				["t1"],
+				"line",
+				"hunk-header",
+				"line",
+			]);
+		});
+	});
+});

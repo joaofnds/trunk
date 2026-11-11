@@ -13,7 +13,13 @@
  * thread carries no OID at all.
  */
 
-import type { ReviewSnapshots, Side, Thread } from "./types.js";
+import type {
+	DiffHunk,
+	DiffLine,
+	ReviewSnapshots,
+	Side,
+	Thread,
+} from "./types.js";
 
 export type DiffKind =
 	| "commit"
@@ -130,4 +136,50 @@ export function threadsStartingOn(
 	if (lineno === null || lineno === undefined) return [];
 
 	return viewComments.filter((c) => rangeOn(c, side)?.start === lineno);
+}
+
+/**
+ * The threads whose last line no line of `hunks` shows, sorted into the gaps
+ * between them: slot k holds those whose line comes before hunk k, and the slot
+ * past the last hunk holds the rest. A hunk with no line on a thread's side
+ * does not bound it.
+ */
+export function threadsBetweenHunks(
+	viewComments: Thread[],
+	hunks: DiffHunk[],
+): Thread[][] {
+	const gaps: Thread[][] = Array.from({ length: hunks.length + 1 }, () => []);
+
+	for (const thread of viewComments) {
+		const side = thread.anchor?.side ?? "New";
+		const end = rangeOn(thread, side)?.end;
+		if (end === undefined || hunksShow(hunks, side, end)) continue;
+
+		const next = hunks.findIndex((hunk) => {
+			const first = firstNumberOn(hunk, side);
+			return first !== null && first > end;
+		});
+		gaps[next === -1 ? hunks.length : next].push(thread);
+	}
+
+	return gaps;
+}
+
+function hunksShow(hunks: DiffHunk[], side: Side, lineno: number): boolean {
+	return hunks.some((hunk) =>
+		hunk.lines.some((line) => numberOn(line, side) === lineno),
+	);
+}
+
+function firstNumberOn(hunk: DiffHunk, side: Side): number | null {
+	for (const line of hunk.lines) {
+		const lineno = numberOn(line, side);
+		if (lineno !== null) return lineno;
+	}
+
+	return null;
+}
+
+function numberOn(line: DiffLine, side: Side): number | null {
+	return side === "Old" ? line.old_lineno : line.new_lineno;
 }
