@@ -140,15 +140,15 @@ export function threadsStartingOn(
 
 /**
  * The threads whose last line no line of `hunks` shows, sorted into the gaps
- * between them: slot k holds those whose line comes before hunk k, and the slot
- * past the last hunk holds the rest. A hunk with no line on a thread's side
- * does not bound it.
+ * between them in line order: slot k holds those whose line comes before hunk
+ * k, and the slot past the last hunk holds the rest. A hunk with no line on a
+ * thread's side does not bound it.
  */
 export function threadsBetweenHunks(
 	viewComments: Thread[],
 	hunks: DiffHunk[],
 ): Thread[][] {
-	const gaps: Thread[][] = Array.from({ length: hunks.length + 1 }, () => []);
+	const placed: { thread: Thread; end: number; gap: number }[] = [];
 
 	for (const thread of viewComments) {
 		const side = thread.anchor?.side ?? "New";
@@ -159,7 +159,13 @@ export function threadsBetweenHunks(
 			const first = firstNumberOn(hunk, side);
 			return first !== null && first > end;
 		});
-		gaps[next === -1 ? hunks.length : next].push(thread);
+
+		placed.push({ thread, end, gap: next === -1 ? hunks.length : next });
+	}
+
+	const gaps: Thread[][] = Array.from({ length: hunks.length + 1 }, () => []);
+	for (const { thread, gap } of placed.sort((a, b) => a.end - b.end)) {
+		gaps[gap].push(thread);
 	}
 
 	return gaps;

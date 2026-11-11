@@ -1296,12 +1296,50 @@ describe("a thread on a line no hunk shows", () => {
 	});
 
 	it("is placed by the old file's numbers when it sits on the old side", () => {
+		const betweenOnTheNewSideAfterOnTheOld = 10;
 		const rows = shape({
 			...hunkMode,
-			comments: [thread("t1", "Old", 10, 10)],
+			comments: [
+				thread(
+					"t1",
+					"Old",
+					betweenOnTheNewSideAfterOnTheOld,
+					betweenOnTheNewSideAfterOnTheOld,
+				),
+			],
 		});
 
 		expect(rows.slice(-2)).toEqual(["line", ["t1"]]);
+	});
+
+	it("is not bounded by a hunk with no line on its side", () => {
+		const addedOnly = file("src/main.ts", [
+			hunk("@@ -0,0 +1,2 @@", [
+				line("Add", "one", null, 1),
+				line("Add", "two", null, 2),
+			]),
+			hunk("@@ -10,1 +12,1 @@", [line("Context", "ten", 10, 12)]),
+		]);
+
+		const model = buildInlineRows([addedOnly], {
+			...hunkMode,
+			comments: [thread("t1", "Old", 3, 3)],
+		});
+
+		expect(
+			model.rows.map((row) =>
+				row.kind === "comment" ? row.threads.map((t) => t.id) : row.kind,
+			),
+		).toEqual(["hunk-header", "line", "line", ["t1"], "hunk-header", "line"]);
+	});
+
+	it("is drawn in line order with the other threads in its gap", () => {
+		const rows = shape({
+			...hunkMode,
+			comments: [thread("t11", "New", 11, 11), thread("t9", "New", 9, 9)],
+		});
+
+		expect(rows.slice(5, 7)).toEqual([["t9", "t11"], "hunk-header"]);
 	});
 
 	it("is placed by its last line when its first line is shown", () => {
@@ -1340,6 +1378,39 @@ describe("a thread on a line no hunk shows", () => {
 		expect(rows.slice(-3)).toEqual([["t1"], "hunk-header", "pair"]);
 	});
 
+	it("is drawn after the last hunk in the split view", () => {
+		const rows = shape(
+			{ ...hunkMode, comments: [thread("t1", "New", 20, 20)] },
+			buildSplitRows,
+		);
+
+		expect(rows.slice(-2)).toEqual(["pair", ["t1"]]);
+	});
+
+	it("is left out of the split view when the review filter hides it", () => {
+		const rows = shape(
+			{
+				...hunkMode,
+				reviewFilter: { states: ["open"], stale: true },
+				comments: [{ ...thread("t1", "New", 9, 9), state: "done" }],
+			},
+			buildSplitRows,
+		);
+
+		expect(rows).not.toContainEqual(["t1"]);
+	});
+
+	it("keeps each hunk's split navigation on its header row", () => {
+		const model = buildSplitRows([apart], {
+			...hunkMode,
+			comments: [thread("t1", "New", 9, 9)],
+		});
+
+		const targets = model.hunkNav.map((nav) => model.rows[nav.rowIndex].kind);
+
+		expect(targets).toEqual(["hunk-header", "hunk-header"]);
+	});
+
 	describe("when a hunk shows its line", () => {
 		it("is drawn once, under that line", () => {
 			const rows = shape({
@@ -1356,6 +1427,24 @@ describe("a thread on a line no hunk shows", () => {
 				"line",
 				"hunk-header",
 				"line",
+			]);
+		});
+
+		it("is drawn once, under that line, on the old side too", () => {
+			const rows = shape({
+				...hunkMode,
+				comments: [thread("t1", "Old", 9, 9)],
+			});
+
+			expect(rows).toEqual([
+				"hunk-header",
+				"line",
+				"line",
+				"line",
+				"line",
+				"hunk-header",
+				"line",
+				["t1"],
 			]);
 		});
 	});

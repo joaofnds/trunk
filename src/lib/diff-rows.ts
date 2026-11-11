@@ -19,7 +19,6 @@ import { filterThreads, mostUrgentTone } from "./review-filter.js";
 import { type RowMetrics, rowHeightFor } from "./row-metrics.js";
 import type {
 	ContentMode,
-	DiffHunk,
 	DiffLine,
 	FileDiff,
 	ReviewFilter,
@@ -176,11 +175,10 @@ export function buildInlineRows(
 		let flatIdx = 0;
 		const visibleComments = filterThreads(opts.comments, opts.reviewFilter);
 		const gaps = threadsBetweenHunks(visibleComments, fd.hunks);
-		let above = FIRST_LINE;
 		rows.push(...rowsAboveFile(fd, opts, visibleComments));
 
 		for (const [hunkIdx, hunk] of fd.hunks.entries()) {
-			rows.push(...gapRows(fd.path, gaps[hunkIdx], above));
+			rows.push(...gapRows(fd.path, gaps[hunkIdx]));
 			hunkNav.push({ path: fd.path, hunkIdx, rowIndex: rows.length });
 
 			if (opts.content === "hunk") {
@@ -245,11 +243,9 @@ export function buildInlineRows(
 
 				flatIdx++;
 			}
-
-			above = lastLineOf(hunkIdx, hunk, flatIdx, above);
 		}
 
-		rows.push(...gapRows(fd.path, gaps[fd.hunks.length], above));
+		rows.push(...gapRows(fd.path, gaps[fd.hunks.length]));
 	}
 
 	return {
@@ -292,11 +288,10 @@ export function buildSplitRows(
 		let flatBase = 0;
 		const visibleComments = filterThreads(opts.comments, opts.reviewFilter);
 		const gaps = threadsBetweenHunks(visibleComments, fd.hunks);
-		let above = FIRST_LINE;
 		rows.push(...rowsAboveFile(fd, opts, visibleComments));
 
 		for (const [hunkIdx, hunk] of fd.hunks.entries()) {
-			rows.push(...gapRows(fd.path, gaps[hunkIdx], above));
+			rows.push(...gapRows(fd.path, gaps[hunkIdx]));
 			hunkNav.push({ path: fd.path, hunkIdx, rowIndex: rows.length });
 
 			if (opts.content === "hunk") {
@@ -394,10 +389,9 @@ export function buildSplitRows(
 			}
 
 			flatBase += hunk.lines.length;
-			above = lastLineOf(hunkIdx, hunk, flatBase, above);
 		}
 
-		rows.push(...gapRows(fd.path, gaps[fd.hunks.length], above));
+		rows.push(...gapRows(fd.path, gaps[fd.hunks.length]));
 	}
 
 	return {
@@ -443,35 +437,14 @@ export function rowIndexForLine(
 	return -1;
 }
 
-/** Where a line sits: its hunk, its index in that hunk, its index in the file. */
-interface LinePlace {
-	hunkIdx: number;
-	lineIdx: number;
-	flatIdx: number;
-}
+/** A comment row that hangs under no line takes the first line's indices. */
+const FIRST_LINE = { hunkIdx: 0, lineIdx: 0, flatIdx: 0 } as const;
 
-const FIRST_LINE: LinePlace = { hunkIdx: 0, lineIdx: 0, flatIdx: 0 };
-
-/** The last line of a hunk whose lines end before `flatEnd`, or `previous` when
- *  the hunk has none. */
-function lastLineOf(
-	hunkIdx: number,
-	hunk: DiffHunk,
-	flatEnd: number,
-	previous: LinePlace,
-): LinePlace {
-	if (hunk.lines.length === 0) return previous;
-
-	return { hunkIdx, lineIdx: hunk.lines.length - 1, flatIdx: flatEnd - 1 };
-}
-
-/** The comment row for the threads in one gap between hunks. It hangs under no
- *  line of its own, so it takes the indices of the line above it, or the first
- *  line's above the first hunk, as a whole-file thread does. */
-function gapRows(path: string, threads: Thread[], above: LinePlace): DiffRow[] {
+/** The comment row for the threads in one gap between hunks. */
+function gapRows(path: string, threads: Thread[]): DiffRow[] {
 	if (threads.length === 0) return [];
 
-	return [{ kind: "comment", path, ...above, threads }];
+	return [{ kind: "comment", path, ...FIRST_LINE, threads }];
 }
 
 /** Two cells wide plus one for the gap: room for a count of up to 99. */
@@ -579,15 +552,7 @@ function rowsAboveFile(
 	const rows: DiffRow[] = [];
 	const threads = threadsOnWholeFile(visibleComments, fd.path);
 	if (threads.length > 0) {
-		// It hangs under no line, so it takes the first line's indices.
-		rows.push({
-			kind: "comment",
-			path: fd.path,
-			hunkIdx: 0,
-			lineIdx: 0,
-			flatIdx: 0,
-			threads,
-		});
+		rows.push({ kind: "comment", path: fd.path, ...FIRST_LINE, threads });
 	}
 	if (composerOpensAbove(opts.composer, fd)) {
 		rows.push({ kind: "composer", path: fd.path, hunkIdx: 0 });
