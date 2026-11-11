@@ -416,6 +416,8 @@ fn translate(
     Ok(((start, end), changed))
 }
 
+/// The file at `path` in `tree`, or none where the tree holds no file there,
+/// including a submodule, whose commit the repository need not hold.
 fn blob_at<'r>(
     repo: &'r Repository,
     tree: Option<&Tree<'r>>,
@@ -426,7 +428,10 @@ fn blob_at<'r>(
     };
 
     match tree.get_path(path) {
-        Ok(entry) => Ok(entry.to_object(repo)?.into_blob().ok()),
+        Ok(entry) if entry.kind() == Some(git2::ObjectType::Blob) => {
+            Ok(Some(repo.find_blob(entry.id())?))
+        }
+        Ok(_) => Ok(None),
         Err(absent) if absent.code() == git2::ErrorCode::NotFound => Ok(None),
         Err(unreadable) => Err(unreadable.into()),
     }

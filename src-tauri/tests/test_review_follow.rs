@@ -603,3 +603,30 @@ fn a_follow_that_fails_still_lets_the_recheck_clear_a_stale_marker() {
     assert_eq!(unmoved.anchor.unwrap().commit_oid, written_on);
     assert!(!unmoved.stale);
 }
+
+#[test]
+fn a_thread_whose_file_became_a_submodule_on_the_copy_follows_as_changed() {
+    let ctx = behind_upstream();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let written_on = git(&ctx, &["rev-parse", "HEAD"]);
+    let id = comment_on(&store, &ctx, &written_on, 4);
+    git(&ctx, &["rm", "--quiet", "--cached", "a.txt"]);
+    git(
+        &ctx,
+        &[
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            &format!("160000,{},a.txt", "1".repeat(40)),
+        ],
+    );
+    git(&ctx, &["commit", "--quiet", "--amend", "--no-edit"]);
+    let amended = git(&ctx, &["rev-parse", "HEAD"]);
+
+    let moved = follow(&store, &ctx);
+
+    let followed = thread(&store, &ctx, &id);
+    assert_eq!(moved, 1);
+    assert_eq!(followed.anchor.unwrap().commit_oid, amended);
+    assert!(followed.stale);
+}
