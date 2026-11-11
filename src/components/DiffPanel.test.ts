@@ -24,6 +24,7 @@ import type {
 	DiffLine,
 	FileDiff,
 	ReviewFilter,
+	Thread,
 } from "../lib/types.js";
 
 // Shared Tauri mock
@@ -3809,7 +3810,7 @@ describe("DiffPanel hunk navigation", () => {
 		],
 	};
 
-	function renderNav() {
+	function renderNav(viewComments: Thread[] = []) {
 		const result = render(DiffPanel, {
 			props: {
 				...commentingDiff,
@@ -3819,6 +3820,7 @@ describe("DiffPanel hunk navigation", () => {
 				diffKind: "unstaged",
 				repoPath: "/repo",
 				selectedPath: "src/main.ts",
+				viewComments,
 			},
 		});
 		return { ...result, ready: flushPrefs() };
@@ -3931,6 +3933,58 @@ describe("DiffPanel hunk navigation", () => {
 		await tick();
 
 		expect(viewportOf(container).scrollTop).toBe(64);
+	});
+
+	it("scrolls to a thread drawn between the hunks when no hunk covers its line", async () => {
+		const between = aThread({
+			id: "t-between",
+			anchor: {
+				commit_oid: "abc123",
+				file_path: "src/main.ts",
+				source: "Diff",
+				side: "New",
+				start_line: 5,
+				end_line: 5,
+			},
+		});
+		const { container, component, ready } = renderNav([between]);
+		await ready;
+
+		component.scrollToLine(5, 5, "New");
+		await tick();
+
+		expect(viewportOf(container).scrollTop).toBe(64);
+	});
+
+	it("scrolls the split list to a thread drawn between the hunks", async () => {
+		const storeMock = await import("../lib/store.js");
+		vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
+			Promise.resolve("split"),
+		);
+		try {
+			const between = aThread({
+				id: "t-between",
+				anchor: {
+					commit_oid: "abc123",
+					file_path: "src/main.ts",
+					source: "Diff",
+					side: "Old",
+					start_line: 5,
+					end_line: 5,
+				},
+			});
+			const { container, component, ready } = renderNav([between]);
+			await ready;
+
+			component.scrollToLine(5, 5, "Old");
+			await tick();
+
+			expect(viewportOf(container).scrollTop).toBe(64);
+		} finally {
+			vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
+				Promise.resolve("inline"),
+			);
+		}
 	});
 
 	it("falls back to the first hunk when no hunk covers the line", async () => {

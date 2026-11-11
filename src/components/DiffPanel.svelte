@@ -784,9 +784,9 @@ function lineIndexIn(lines: DiffLine[], startLine: number, side: Side): number {
 }
 
 // Jump-to-range (Phase 69 / D-07): scroll to and transiently highlight a
-// comment's anchored line. Best-effort — a line that is not rendered at all
-// falls back to the first hunk, so the file is at least brought into view
-// rather than leaving the user stranded.
+// comment's anchored line. A line no hunk shows lands on the comment row drawn
+// between the hunks for it, and a line drawn nowhere falls back to the first
+// hunk, so the file is at least brought into view.
 export function scrollToLine(
 	startLine: number,
 	_endLine: number,
@@ -799,7 +799,10 @@ export function scrollToLine(
 			? diffNav.ordinalOf(target.path, target.hunkIdx)
 			: -1;
 		if (!target || ordinal < 0) {
-			scrollToHunk(0);
+			const drawn = fileDiffs.some((fd) =>
+				diffNav?.scrollToThread(fd.path, side, startLine),
+			);
+			if (!drawn) scrollToHunk(0);
 			return;
 		}
 

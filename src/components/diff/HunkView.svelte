@@ -8,6 +8,7 @@ import {
 	type DiffRow,
 	FIXED_ROW_HEIGHT_VARS,
 	rowIndexForLine,
+	rowIndexForThread,
 } from "../../lib/diff-rows.js";
 import {
 	gripLabel,
@@ -24,6 +25,7 @@ import type {
 	DiffLine,
 	FileDiff,
 	ReviewFilter,
+	Side,
 	Thread,
 } from "../../lib/types.js";
 import GutterGrip from "../../lib/ui/GutterGrip.svelte";
@@ -214,6 +216,18 @@ export function scrollToLine(
 
 	list?.scrollToIndex(rowIndex);
 	flash(`${path}-${hunkIdx}`);
+}
+
+export function scrollToThread(
+	path: string,
+	side: Side,
+	startLine: number,
+): boolean {
+	const rowIndex = rowIndexForThread(model, path, side, startLine);
+	if (rowIndex < 0) return false;
+
+	list?.scrollToIndex(rowIndex);
+	return true;
 }
 
 function flash(hunkKey: string): void {

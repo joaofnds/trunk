@@ -9,6 +9,7 @@ import type { Snippet } from "svelte";
 import { BAR_HEIGHT, UNIT } from "./chrome-heights.js";
 import {
 	commentsForLine,
+	rangeOn,
 	threadsBetweenHunks,
 	threadsOnWholeFile,
 	threadsStartingOn,
@@ -435,6 +436,23 @@ export function rowIndexForLine(
 	}
 
 	return -1;
+}
+
+/** The comment row drawing a thread that starts on `startLine` of `side`, or -1
+ *  when no row draws one. A thread on a line no hunk shows has no line to scroll
+ *  to, so its comment row is the only place it is on screen. */
+export function rowIndexForThread(
+	model: DiffRowModel,
+	path: string,
+	side: Side,
+	startLine: number,
+): number {
+	return model.rows.findIndex(
+		(row) =>
+			row.kind === "comment" &&
+			row.path === path &&
+			row.threads.some((thread) => rangeOn(thread, side)?.start === startLine),
+	);
 }
 
 /** A comment row that hangs under no line takes the first line's indices. */

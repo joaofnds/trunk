@@ -1,3 +1,5 @@
+import type { Side } from "./types.js";
+
 /**
  * What a virtualized diff view publishes so the host can jump around it.
  *
@@ -16,4 +18,7 @@ export interface DiffNav {
 	scrollToHunk(ordinal: number): void;
 	/** Scrolls one line's own row into view, falling back to its hunk. */
 	scrollToLine(path: string, hunkIdx: number, lineIdx: number): void;
+	/** Scrolls to the comment row drawing a thread that starts on `startLine`,
+	 *  reporting false when no row draws one. */
+	scrollToThread(path: string, side: Side, startLine: number): boolean;
 }

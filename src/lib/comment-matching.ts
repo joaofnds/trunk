@@ -78,7 +78,7 @@ export function commentsForView(
  * the same number on both sides, so a side-blind range would return the thread
  * twice for one line and hand two rows the same key.
  */
-function rangeOn(
+export function rangeOn(
 	thread: Thread,
 	side: Side,
 ): { start: number; end: number } | null {
