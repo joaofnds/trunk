@@ -23,6 +23,7 @@ import {
 	createThreadEditorSession,
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
+import { isSettled } from "../lib/review-filter.js";
 import { reviewVisibility } from "../lib/review-visibility.svelte.js";
 import { ThreadFolds } from "../lib/thread-folds.svelte.js";
 import { CHANGE_TEXT } from "../lib/thread-timeline.js";
@@ -443,9 +444,7 @@ const TRANSITION_ORDER: ThreadState[] = [
 // A thread still waiting on the human offers only the two ways to settle it.
 // Reopen beside Mark done on an addressed thread read as a contradiction, so
 // rejecting the agent's claim is left to the panel's O key.
-const unsettled = $derived(
-	thread.state === "open" || thread.state === "addressed",
-);
+const unsettled = $derived(!isSettled(thread.state));
 
 const stateActions = $derived(
 	TRANSITION_ORDER.filter(
@@ -495,8 +494,7 @@ async function requestDeleteReply(replyId: string) {
 	aria-current={focused ? "true" : undefined}
 	class:comment-card-cursor={focused && cursorShown}
 	onpointerdown={onfocusrequest}
-	class:comment-card-resolved={thread.state === "done" ||
-		thread.state === "dismissed"}
+	class:comment-card-resolved={isSettled(thread.state)}
 	class:comment-card-dismissed={thread.state === "dismissed"}
 	class:comment-card-open={!collapsed}
 	{@attach collapsed ? undefined : visibility?.cards.watch(thread.id)}

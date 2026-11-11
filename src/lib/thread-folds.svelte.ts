@@ -1,4 +1,5 @@
 import { SvelteMap } from "svelte/reactivity";
+import { isSettled } from "./review-filter.js";
 import type { Thread, ThreadState } from "./types.js";
 
 interface Toggle {
@@ -20,7 +21,7 @@ export class ThreadFolds {
 		const toggle = this.#toggles.get(thread.id);
 		if (toggle !== undefined && holds(toggle, thread)) return toggle.collapsed;
 
-		return thread.state === "done" || thread.state === "dismissed";
+		return isSettled(thread.state);
 	}
 
 	toggle(thread: Thread) {

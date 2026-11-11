@@ -16,6 +16,13 @@ export const THREAD_STATES: readonly ThreadState[] = [
 
 export const ALL_THREADS: ThreadFilter = { states: THREAD_STATES, stale: true };
 
+/** The states in which a thread no longer waits on anyone. */
+const SETTLED_STATES: readonly ThreadState[] = ["done", "dismissed"];
+
+export function isSettled(state: ThreadState): boolean {
+	return SETTLED_STATES.includes(state);
+}
+
 export type ThreadPreset = "all" | "needs" | "settled";
 
 /** The review panel's one-press filters, each showing its states and the
@@ -34,7 +41,7 @@ export const THREAD_PRESETS: readonly {
 	{
 		id: "settled",
 		label: "Settled",
-		filter: { states: ["done", "dismissed"], stale: true },
+		filter: { states: SETTLED_STATES, stale: true },
 	},
 ];
 

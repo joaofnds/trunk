@@ -6,6 +6,7 @@ import {
 	combineReviewTone,
 	countBadgeThreads,
 	filterThreads,
+	isSettled,
 	presetOf,
 	THREAD_PRESETS,
 	tallyBadgeThreads,
@@ -78,6 +79,19 @@ describe("review filter projection", () => {
 		expect(badgeToneForThread(dismissed, preset("settled"))).toBe("dismissed");
 		expect(badgeToneForThread(open, preset("settled"))).toBeNull();
 	});
+});
+
+describe(isSettled, () => {
+	it.each(["done", "dismissed"] as const)("settles a %s thread", (state) => {
+		expect(isSettled(state)).toBe(true);
+	});
+
+	it.each(["open", "addressed"] as const)(
+		"leaves a %s thread unsettled",
+		(state) => {
+			expect(isSettled(state)).toBe(false);
+		},
+	);
 });
 
 describe("presetOf", () => {

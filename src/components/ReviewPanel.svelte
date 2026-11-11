@@ -42,6 +42,7 @@ import {
 import {
 	ALL_THREADS,
 	filterThreads,
+	isSettled,
 	presetOf,
 	THREAD_PRESETS,
 	threadMatchesFilter,
@@ -276,10 +277,7 @@ function fileKey(group: ReviewGroup, file: ReviewFile): string {
 }
 
 function allSettled(threads: Thread[]): boolean {
-	return (
-		threads.length > 0 &&
-		threads.every((t) => t.state === "done" || t.state === "dismissed")
-	);
+	return threads.length > 0 && threads.every((t) => isSettled(t.state));
 }
 
 function isFolded(key: string, threads: Thread[]): boolean {
