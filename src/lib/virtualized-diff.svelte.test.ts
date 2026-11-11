@@ -97,6 +97,30 @@ function anchoredThread(id = "t1"): Thread {
 	});
 }
 
+/** Stands in for the browser's resize reports on the probed comment cards, and
+ *  returns what delivers one to every observer watching a card. */
+function watchProbedCards(): () => void {
+	const watchers: (() => void)[] = [];
+	vi.stubGlobal(
+		"ResizeObserver",
+		class {
+			readonly #callback: () => void;
+			constructor(callback: () => void) {
+				this.#callback = callback;
+			}
+			observe(target: Element) {
+				if (target instanceof HTMLElement && target.dataset.probeThreadId)
+					watchers.push(this.#callback);
+			}
+			unobserve() {}
+			disconnect() {}
+		},
+	);
+	return () => {
+		for (const watcher of watchers) watcher();
+	};
+}
+
 interface HostProps {
 	layout: "inline" | "split";
 	fileDiffs: FileDiff[];
@@ -258,6 +282,49 @@ describe("createVirtualizedDiff", () => {
 		await tick();
 
 		expect(vd.probedHeights.get("t1")).toBe(120);
+	});
+
+	it("re-probes a comment card that changes its own height", async () => {
+		let folded = false;
+		const resizeProbedCards = watchProbedCards();
+		stubLayout({
+			replace: true,
+			width: 900,
+			height: 400,
+			measure: (el) =>
+				el instanceof HTMLElement && el.dataset.probeThreadId
+					? { height: folded ? 30 : 80 }
+					: undefined,
+		});
+		const { vd } = mount({ comments: [anchoredThread()] });
+
+		folded = true;
+		resizeProbedCards();
+		await tick();
+
+		expect(vd.probedHeights.get("t1")).toBe(30);
+	});
+
+	// Every row height derives from the probed ones, so a report of the size
+	// the card already had rebuilds nothing.
+	it("keeps its heights when a card reports the height it had", async () => {
+		const resizeProbedCards = watchProbedCards();
+		stubLayout({
+			replace: true,
+			width: 900,
+			height: 400,
+			measure: (el) =>
+				el instanceof HTMLElement && el.dataset.probeThreadId
+					? { height: 80 }
+					: undefined,
+		});
+		const { vd } = mount({ comments: [anchoredThread()] });
+		const before = vd.probedHeights;
+
+		resizeProbedCards();
+		await tick();
+
+		expect(vd.probedHeights).toBe(before);
 	});
 
 	it("expresses the content width in pixels, never ch", () => {

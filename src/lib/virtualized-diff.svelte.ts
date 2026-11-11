@@ -231,20 +231,24 @@ export function createVirtualizedDiff(
 		container.style.width = contentWidth;
 		container.style.minWidth = `${state.paneWidthPx}px`;
 
-		const measured = new Map<string, number>();
-		for (const row of container.querySelectorAll<HTMLElement>(
+		const rows = container.querySelectorAll<HTMLElement>(
 			"[data-probe-thread-id]",
-		)) {
-			const id = row.dataset.probeThreadId;
-			const height = row.offsetHeight;
-			// A zero here is an unmeasured row, not a row of no height. Recording it
-			// would be the substituted default invariant 8 forbids.
-			if (id && height > 0) measured.set(id, height);
-		}
+		);
+		const probe = () => {
+			const measured = probedHeights(rows);
+			if (!wanted.every((thread) => measured.has(thread.id))) return;
 
-		if (wanted.every((thread) => measured.has(thread.id))) {
-			state.probedHeights = measured;
-		}
+			const known = untrack(() => state.probedHeights);
+			if (!sameHeights(known, measured)) state.probedHeights = measured;
+		};
+		probe();
+
+		// A card changes its own height when it folds, so the copy measured here
+		// is watched for as long as it stands for its row.
+		const observer = new ResizeObserver(probe);
+		for (const row of rows) observer.observe(row);
+
+		return () => observer.disconnect();
 	});
 
 	// Keyed on where the composer sits rather than on the place object, which is
@@ -329,4 +333,28 @@ export function createVirtualizedDiff(
 			return maxRightPx;
 		},
 	};
+}
+
+function probedHeights(rows: Iterable<HTMLElement>): Map<string, number> {
+	const measured = new Map<string, number>();
+	for (const row of rows) {
+		const id = row.dataset.probeThreadId;
+		const height = row.offsetHeight;
+		// A zero here is an unmeasured row, not a row of no height. Recording it
+		// would be the substituted default invariant 8 forbids.
+		if (id && height > 0) measured.set(id, height);
+	}
+	return measured;
+}
+
+function sameHeights(
+	known: Map<string, number>,
+	measured: Map<string, number>,
+): boolean {
+	if (known.size !== measured.size) return false;
+
+	for (const [id, height] of measured) {
+		if (known.get(id) !== height) return false;
+	}
+	return true;
 }
