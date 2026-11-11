@@ -881,6 +881,28 @@ describe("ThreadCard", () => {
 		expect(screen.getByText("marked done")).toBeInTheDocument();
 	});
 
+	it("tells a follow onto the rewritten commit among the replies", () => {
+		const { container } = renderCard({
+			thread: {
+				...comment,
+				follows: [
+					{
+						from: "d6348df0b8d4f6a9c1e2b3d4f5a6b7c8d9e0f1a2",
+						to: "1c0540b0b8d4f6a9c1e2b3d4f5a6b7c8d9e0f1a2",
+						created_at: 200,
+					},
+				],
+			},
+		});
+
+		const items = [...container.querySelectorAll(".thread-replies > li")].map(
+			(li) => li.textContent?.replace(/\s+/g, " ").trim(),
+		);
+		expect(items).toContainEqual(
+			expect.stringMatching(/^Followed its commit from d6348df to 1c0540b · /),
+		);
+	});
+
 	it("collapses to the last three replies", () => {
 		const fiveReplies: Thread = {
 			...comment,

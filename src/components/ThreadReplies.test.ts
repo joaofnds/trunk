@@ -111,6 +111,29 @@ describe("ThreadReplies", () => {
 		expect(items[1].textContent).toContain("marked addressed");
 	});
 
+	it("puts a follow after a state change from the same second", () => {
+		const { container } = render(ThreadReplies, {
+			props: {
+				replies: [],
+				history: [aStateChange({ created_at: 100 })],
+				follows: [
+					{
+						from: "d6348df0b8d4f6a9c1e2b3d4f5a6b7c8d9e0f1a2",
+						to: "1c0540b0b8d4f6a9c1e2b3d4f5a6b7c8d9e0f1a2",
+						created_at: 100,
+					},
+				],
+				onreplyedit: () => true,
+				onreplydelete: () => {},
+				dismissed: false,
+			},
+		});
+
+		const items = container.querySelectorAll(".thread-replies > li");
+		expect(items[0].textContent).toContain("marked addressed");
+		expect(items[1].textContent).toContain("Followed its commit");
+	});
+
 	it("names a reopen by the person at the keyboard", () => {
 		render(ThreadReplies, {
 			props: {

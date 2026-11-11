@@ -2638,15 +2638,17 @@ fn watch_json_reports_a_thread_following_its_rewritten_commit() {
 
     reviewdb::follow::follow(&store, &canonical, &repo, &captured.commits, 500).unwrap();
 
-    let event = watch.next_event();
-    assert_eq!(event["event"], "thread_followed");
-    assert_eq!(event["review"], published.as_str());
-    assert_eq!(event["thread"], thread.as_str());
-    assert_eq!(event["from"], written_on.as_str());
-    assert_eq!(event["to"], replayed.as_str());
     assert_eq!(
-        (event["start_line"].as_u64(), event["end_line"].as_u64()),
-        (Some(5), Some(5))
+        watch.next_event(),
+        serde_json::json!({
+            "event": "thread_followed",
+            "review": published,
+            "thread": thread,
+            "from": written_on,
+            "to": replayed,
+            "start_line": 5,
+            "end_line": 5,
+        })
     );
 }
 

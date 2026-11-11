@@ -2368,6 +2368,36 @@ mod tests {
         assert_eq!(told.load(Ordering::SeqCst), 0);
     }
 
+    #[test]
+    fn a_worktree_change_over_the_same_history_tells_no_publication_observer() {
+        let (directory, _repo) = capture_repository();
+        let path = directory.path().to_str().unwrap().to_owned();
+        let location = directory.path().to_owned();
+        let capture_location = location.clone();
+        let cache = CommitCache::new(GraphCache::default());
+        let visibility = RefVisibilityState::default();
+        tauri::async_runtime::block_on(GraphRebuild::new(&cache, &visibility).rebuild(
+            path.clone(),
+            move || {
+                let mut repo = git2::Repository::open(capture_location)?;
+                super::read_graph(&mut repo)
+            },
+        ))
+        .unwrap();
+        let told = count_publications(&cache);
+        std::fs::write(directory.path().join("untracked.txt"), "new\n").unwrap();
+        let session = cache.session_id(&path).unwrap();
+
+        let refreshed = tauri::async_runtime::block_on(
+            GraphRebuild::new(&cache, &visibility)
+                .refresh_worktree_in_session(path, location, session),
+        )
+        .unwrap();
+
+        assert!(refreshed.worktree_dirty());
+        assert_eq!(told.load(Ordering::SeqCst), 0);
+    }
+
     fn graph(tag: usize) -> GraphSnapshot {
         let mut visibility = RefVisibility::default();
         visibility.hidden_refs.insert(format!("refs/tags/{tag}"));

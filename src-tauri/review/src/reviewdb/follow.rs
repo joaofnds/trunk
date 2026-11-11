@@ -760,7 +760,8 @@ pub fn list_for_threads(
 
 #[cfg(test)]
 mod tests {
-    use super::{End, Hunk, map_line, overlaps};
+    use super::{End, Hunk, Move, apply, map_line, overlaps};
+    use std::path::Path;
 
     const fn hunk(old_start: u32, old_lines: u32, new_start: u32, new_lines: u32) -> Hunk {
         Hunk {
@@ -868,5 +869,61 @@ mod tests {
                     .as_str()
             )
         );
+    }
+
+    #[test]
+    fn a_move_another_follow_already_wrote_is_neither_written_nor_recorded_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = crate::reviewdb::open(dir.path()).unwrap();
+        let written_on = "a".repeat(40);
+        let id = store
+            .write(|tx| {
+                let review = crate::reviewdb::reviews::ensure_active(tx, Path::new("/repo"), 0)?;
+                crate::reviewdb::threads::insert(
+                    tx,
+                    &review,
+                    crate::reviewdb::threads::NewThread {
+                        whole_file: false,
+                        text: "why four?".into(),
+                        anchor: Some(crate::types::Anchor {
+                            commit_oid: written_on.clone(),
+                            file_path: "a.txt".into(),
+                            source: crate::types::Source::Diff,
+                            side: crate::types::Side::New,
+                            start_line: 4,
+                            end_line: 4,
+                        }),
+                        commit_oid: None,
+                        content_pin: None,
+                        cached_excerpt: None,
+                        delivery: crate::types::Delivery::Send,
+                    },
+                    0,
+                )
+            })
+            .unwrap();
+        let decided = [Move {
+            id: id.clone(),
+            from_oid: written_on,
+            from: Some((4, 4)),
+            to_oid: "b".repeat(40),
+            to: Some((5, 5)),
+            code_changed: false,
+        }];
+
+        let first = store.write(|tx| apply(tx, &decided, 1)).unwrap();
+        let second = store.write(|tx| apply(tx, &decided, 2)).unwrap();
+
+        let recorded: i64 = store
+            .read(|conn| {
+                conn.query_row(
+                    "SELECT count(*) FROM thread_follows WHERE thread_id = ?1",
+                    [&id],
+                    |row| row.get(0),
+                )
+                .map_err(super::sqlite_error)
+            })
+            .unwrap();
+        assert_eq!((first, second, recorded), (1, 0, 1));
     }
 }

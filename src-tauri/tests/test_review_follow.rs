@@ -5,6 +5,7 @@
 mod common;
 
 use common::context::TestContext;
+use std::path::Path;
 use std::time::Duration;
 use trunk_lib::commands::review::{
     RenderedThread, SubmitThreadRequest, list_threads_inner, submit_thread_inner,
@@ -46,17 +47,28 @@ fn git(ctx: &TestContext, args: &[&str]) -> String {
 }
 
 fn comment_on(store: &Store, ctx: &TestContext, oid: &str, line: u32) -> String {
+    comment_with(store, ctx, oid, Side::New, (line, line), false)
+}
+
+fn comment_with(
+    store: &Store,
+    ctx: &TestContext,
+    oid: &str,
+    side: Side,
+    (start_line, end_line): (u32, u32),
+    whole_file: bool,
+) -> String {
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let request = SubmitThreadRequest {
-        whole_file: false,
+        whole_file,
         text: "why four?".to_string(),
         anchor: Some(Anchor {
             commit_oid: oid.to_string(),
             file_path: "a.txt".to_string(),
             source: Source::Diff,
-            side: Side::New,
-            start_line: line,
-            end_line: line,
+            side,
+            start_line,
+            end_line,
         }),
         commit_oid: None,
         content_pin: None,
@@ -116,15 +128,27 @@ fn amend_line_four(ctx: &TestContext, text: &str) {
     git(ctx, &["commit", "--quiet", "--amend", "--no-edit", "--all"]);
 }
 
-fn recheck(store: &Store, ctx: &TestContext) {
+/// The full pass a working-tree change runs.
+fn full_recheck(store: &Store, ctx: &TestContext) {
     let canonical = ctx.repo_path().canonicalize().unwrap();
 
     trunk_lib::commands::review::recompute_staleness(store, &canonical, ctx.path()).unwrap();
+}
+
+/// The narrower pass a ref change runs.
+fn ref_recheck(store: &Store, ctx: &TestContext) {
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
     trunk_lib::commands::review::recompute_ref_staleness(store, &canonical, ctx.path()).unwrap();
 }
 
+fn recheck(store: &Store, ctx: &TestContext) {
+    full_recheck(store, ctx);
+    ref_recheck(store, ctx);
+}
+
 #[test]
-fn a_thread_whose_own_line_changed_follows_and_stays_stale_through_every_recheck() {
+fn a_thread_whose_own_line_changed_follows_and_stays_stale_through_the_full_recheck() {
     let ctx = behind_upstream();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let written_on = git(&ctx, &["rev-parse", "HEAD"]);
@@ -133,11 +157,25 @@ fn a_thread_whose_own_line_changed_follows_and_stays_stale_through_every_recheck
     let amended = git(&ctx, &["rev-parse", "HEAD"]);
 
     follow(&store, &ctx);
-    recheck(&store, &ctx);
+    full_recheck(&store, &ctx);
 
     let followed = thread(&store, &ctx, &id);
     assert_eq!(followed.anchor.unwrap().commit_oid, amended);
     assert!(followed.stale);
+}
+
+#[test]
+fn a_thread_whose_own_line_changed_stays_stale_through_the_ref_recheck() {
+    let ctx = behind_upstream();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let written_on = git(&ctx, &["rev-parse", "HEAD"]);
+    let id = comment_on(&store, &ctx, &written_on, 4);
+    amend_line_four(&ctx, "FOUR");
+
+    follow(&store, &ctx);
+    ref_recheck(&store, &ctx);
+
+    assert!(thread(&store, &ctx, &id).stale);
 }
 
 #[test]
@@ -509,8 +547,8 @@ fn the_narrower_ref_recheck_announces_the_follow_it_makes() {
     review.refresh_ref_staleness().unwrap();
 
     announced
-        .recv_timeout(ANNOUNCE_TIMEOUT)
-        .expect("the ref recheck never announced its follow");
+        .try_recv()
+        .expect("the ref recheck returned before announcing its follow");
     assert_eq!(
         thread(&store, &ctx, &late).anchor.unwrap().commit_oid,
         git(&ctx, &["rev-parse", "HEAD"])
@@ -629,4 +667,155 @@ fn a_thread_whose_file_became_a_submodule_on_the_copy_follows_as_changed() {
     assert_eq!(moved, 1);
     assert_eq!(followed.anchor.unwrap().commit_oid, amended);
     assert!(followed.stale);
+}
+
+#[test]
+fn a_thread_is_judged_against_the_commit_it_was_written_on_through_every_later_follow() {
+    let ctx = behind_upstream();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let written_on = git(&ctx, &["rev-parse", "HEAD"]);
+    let id = comment_on(&store, &ctx, &written_on, 4);
+    amend_line_four(&ctx, "FOUR");
+    follow(&store, &ctx);
+    std::fs::write(ctx.repo_path().join("b.txt"), "b\n").unwrap();
+    git(&ctx, &["add", "b.txt"]);
+    git(&ctx, &["commit", "--quiet", "--amend", "--no-edit"]);
+    follow(&store, &ctx);
+    amend_line_four(&ctx, "four");
+
+    follow(&store, &ctx);
+
+    assert!(!thread(&store, &ctx, &id).stale);
+}
+
+#[test]
+fn a_commit_with_two_look_alike_copies_keeps_its_threads() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", BASE)
+        .with_commit("base")
+        .build();
+    std::fs::write(ctx.repo_path().join("a.txt"), LOCAL).unwrap();
+    git(
+        &ctx,
+        &["commit", "--quiet", "--all", "--message", "local adds four"],
+    );
+    let written_on = git(&ctx, &["rev-parse", "HEAD"]);
+    for (branch, file) in [("one", "b.txt"), ("two", "c.txt")] {
+        git(&ctx, &["checkout", "--quiet", "-b", branch, "HEAD~1"]);
+        std::fs::write(ctx.repo_path().join(file), "x\n").unwrap();
+        git(&ctx, &["add", file]);
+        git(&ctx, &["commit", "--quiet", "--message", branch]);
+        git(&ctx, &["cherry-pick", &written_on]);
+        git(&ctx, &["checkout", "--quiet", "main"]);
+    }
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let id = comment_on(&store, &ctx, &written_on, 4);
+    git(&ctx, &["reset", "--quiet", "--keep", "HEAD~1"]);
+
+    let moved = follow(&store, &ctx);
+
+    assert_eq!(moved, 0);
+    assert_eq!(
+        thread(&store, &ctx, &id).anchor.unwrap().commit_oid,
+        written_on
+    );
+}
+
+#[test]
+fn a_thread_in_an_archived_review_follows_its_commit() {
+    let ctx = behind_upstream();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let written_on = git(&ctx, &["rev-parse", "HEAD"]);
+    let id = comment_on(&store, &ctx, &written_on, 4);
+    let archived = review_of(&store, &ctx);
+    store
+        .write(|tx| reviewdb::reviews::archive(tx, &canonical, &archived, 1_500))
+        .unwrap();
+    git(&ctx, &["pull", "--rebase", "--quiet"]);
+
+    let moved = follow(&store, &ctx);
+
+    let followed = list_threads_inner(&store, &canonical, Some(&archived))
+        .unwrap()
+        .into_iter()
+        .find(|thread| thread.id == id)
+        .unwrap();
+    assert_eq!(moved, 1);
+    assert_eq!(
+        followed.anchor.unwrap().commit_oid,
+        git(&ctx, &["rev-parse", "HEAD"])
+    );
+}
+
+#[test]
+fn a_thread_on_the_before_side_is_judged_by_the_parent_the_rewrite_kept() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", BASE)
+        .with_commit("base")
+        .with_file("a.txt", "one\nTWO\nthree\n")
+        .with_commit("local shouts two")
+        .build();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let written_on = git(&ctx, &["rev-parse", "HEAD"]);
+    let id = comment_with(&store, &ctx, &written_on, Side::Old, (2, 2), false);
+    std::fs::write(ctx.repo_path().join("a.txt"), "one\n2\nthree\n").unwrap();
+    git(
+        &ctx,
+        &["commit", "--quiet", "--amend", "--no-edit", "--all"],
+    );
+
+    follow(&store, &ctx);
+
+    let followed = thread(&store, &ctx, &id);
+    assert_eq!(
+        followed.anchor.unwrap().commit_oid,
+        git(&ctx, &["rev-parse", "HEAD"])
+    );
+    assert!(!followed.stale);
+}
+
+#[test]
+fn a_whole_file_thread_goes_stale_when_a_pull_with_rebase_changed_its_file() {
+    let ctx = behind_upstream();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let written_on = git(&ctx, &["rev-parse", "HEAD"]);
+    let id = comment_with(&store, &ctx, &written_on, Side::New, (1, 4), true);
+    git(&ctx, &["pull", "--rebase", "--quiet"]);
+
+    follow(&store, &ctx);
+
+    let followed = thread(&store, &ctx, &id);
+    assert_eq!(
+        followed.anchor.unwrap().commit_oid,
+        git(&ctx, &["rev-parse", "HEAD"])
+    );
+    assert!(followed.stale);
+}
+
+#[test]
+fn a_rewrite_in_one_clone_leaves_another_clones_commit_set_alone() {
+    let ctx = same_second_pair();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let written_on = git(&ctx, &["rev-parse", "HEAD"]);
+    let [ours, theirs] = [canonical.as_path(), Path::new("/another/clone")].map(|repo| {
+        let review = store
+            .write(|tx| reviewdb::reviews::create(tx, repo, Some("a review"), 1_000))
+            .unwrap();
+        add_members(&store, &review, &[(&written_on, "local adds four")]);
+        review
+    });
+    git(
+        &ctx,
+        &["commit", "--quiet", "--amend", "-m", "local writes four"],
+    );
+
+    follow(&store, &ctx);
+
+    assert_ne!(members(&store, &ours)[0].0, written_on);
+    assert_eq!(
+        members(&store, &theirs),
+        [(written_on, "local adds four".to_string())]
+    );
 }
