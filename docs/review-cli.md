@@ -64,7 +64,7 @@ trunk review watch [--json] [--repo <path>]
   excerpts, replies. The app's Copy holds only the threads its filter shows. A thread whose
   heading ends `(stale)` was written against code the repository had moved past
   when the app last computed the marker.
-  Three shapes reach that state. A comment on uncommitted work is stale once the
+  Four shapes reach that state. A comment on uncommitted work is stale once the
   user has edited that work again. A comment on a tracked file's current content
   is stale once the lines it pinned occur nowhere in that file, which a rename or
   a deletion reaches the same way an edit does; it clears again on the app's
@@ -74,7 +74,9 @@ trunk review watch [--json] [--repo <path>]
   still describes text the file holds. And a comment whose anchor commit is no
   longer in the repository, collected by a `git gc` that reached it, is stale
   whatever kind of commit it was: the excerpt is the only surviving copy of that
-  code, so nothing can be compared against it. In every case the excerpt is what
+  code, so nothing can be compared against it. A comment the app moved onto the
+  rewritten copy of its commit is stale when the rewrite changed the lines it was
+  written on. In every case the excerpt is what
   the code looked like when the comment was written, so the comment is still
   answerable; what changed is that the repository no longer holds that code
   where the comment pointed. For the first two shapes that means the file reads
@@ -160,14 +162,26 @@ commit collected from the object store with no other change, as a `git gc` can
 do. The next full recompute for that repository catches each. A recompute that
 fails, for instance during a repack, leaves every marker as it stood.
 
-A rebase, amend or cherry-pick that replaces a commented commit moves its
-threads onto the rewritten copy, with their lines carried to where that code
-sits on the copy. The app makes the move when it next reads that repository's
-history, so a rewrite made while Trunk was closed, or in a repository with no
-open tab, moves nothing until then, and `list`, `show` and `threads` print the
-old commit. A thread whose own lines the rewrite changed is stale on
-the copy and stays stale until a later rewrite gives it back the code it was
-written on. `watch` reports each move as `thread_followed`.
+A rebase or amend that replaces a commented commit moves its threads onto the
+rewritten copy, with their lines carried to where that code sits on the copy.
+The copy is the one commit with the same author email, author time and
+subject, or, for a commit whose message alone was reworded, the one commit
+from the same author in the same second with the same changes. A rewrite that
+resets the author or the date, or that leaves more than one such commit, moves
+nothing. A cherry-pick leaves the original commit in the history, so its threads stay
+there until that commit leaves, as when its branch is deleted. A commit only
+a hidden branch reaches has not left. Commit-level notes move the same way,
+and so do the review's commit set and the commit a fix names.
+
+The app makes the move when it next reads that repository's history, so a
+rewrite made while Trunk was closed, or in a repository with no open tab,
+moves nothing until then. Until it does, `show` and `thread` name the old
+commit in their headings, and `--json` on `threads` and `thread` gives it as
+`commit_oid`. A thread whose own
+lines the rewrite changed is stale on the copy and stays stale until a later
+rewrite gives it back the code it was written on. `watch` reports each
+thread's move as `thread_followed` and has no event for a commit set or a fix
+commit that moved.
 
 ### `--json` on `threads` and `thread`
 
@@ -206,7 +220,7 @@ became `open`, `stale` or `settled` where it had been `composing`, `ready` or
 | `thread_edited` | `review`, `thread`, `text` |
 | `thread_state_changed` | `review`, `thread`, `from`, `to` |
 | `thread_stale_changed` | `review`, `thread`, `stale`, sent when the stored marker changes, and for a change from the app's narrower ref pass only once a later write rings `watch` ([How current the stale marker is](#how-current-the-stale-marker-is)) |
-| `thread_followed` | `review`, `thread`, `from`, `to`, and `start_line`, `end_line` for a thread on lines, sent when a rebase, amend or cherry-pick rewrote the thread's commit and the thread moved onto the copy. `from` and `to` are the old and new commit, the lines are where its code sits on the copy, and a `thread_stale_changed` follows when the rewrite changed those lines |
+| `thread_followed` | `review`, `thread`, `from`, `to`, and `start_line`, `end_line` for a thread on lines, sent when a rebase or amend rewrote the thread's commit and the thread moved onto the copy. `from` and `to` are the old and new commit, the lines are where its code sits on the copy, and a `thread_stale_changed` follows it when the move changed the thread's stale marker |
 | `reply_added` | `review`, `thread`, `reply`, `channel` (`human`/`agent`), `text` |
 | `reply_edited` | `review`, `thread`, `reply`, `text` |
 | `thread_deleted` | `review`, `thread`, sent when the user removes a thread with its replies |

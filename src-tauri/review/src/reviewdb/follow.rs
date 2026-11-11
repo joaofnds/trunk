@@ -1,6 +1,6 @@
 //! A thread follows its commit through a rewrite (TRUNK-430).
 //!
-//! A rebase, amend or cherry-pick replaces a commit with a rewritten copy and
+//! A rebase or amend replaces a commit with a rewritten copy and
 //! leaves the original off every ref, so the graph stops drawing it and a review
 //! on it disappears. Here a commit a thread names that has left the graph is
 //! matched to the one captured commit that replaced it, and the thread moves

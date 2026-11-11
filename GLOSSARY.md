@@ -386,10 +386,12 @@ e.g., a branch switch. Not a state; a thread can be `open` and
 stale at once.
 
 **Follow** — a thread moving from a commit that left the graph to the rewritten copy
-that replaced it (a rebase, an amend, a cherry-pick), its lines carried to where its
-code now sits. The copy is the one commit with the same author, author time and subject,
-or, for a reworded commit, the one same-second commit with the same changes. With no such
-copy the thread stays where it was. Recorded in the thread's timeline (TRUNK-430).
+that replaced it, as a rebase or an amend makes one, its lines carried to where its
+code now sits. The copy is the one commit with the same author email, author time and
+subject, or, for a reworded commit, the one commit from the same author in the same
+second with the same changes. With no such copy the thread stays where it was. A
+cherry-pick leaves its original in the graph, so a thread on it follows only once that
+original leaves. Recorded in the thread's timeline (TRUNK-430).
 
 **Left the graph** — said of a commit the graph capture no longer holds, before ref
 visibility is applied, so a commit only a hidden branch reaches has not left it. Not

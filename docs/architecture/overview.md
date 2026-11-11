@@ -298,7 +298,9 @@ reject a replacement that happened before notification delivery.
 Ref reconciliation waits for an automatic owner, whose transport has a deadline. It does
 not wait for a foreground owner: terminal ref changes still pass through the capture and
 publication fences while a foreground network command is held. Changed refs update graph
-and branch projections on activation of an inactive tab. Review refreshes check commit
+and branch projections on activation of an inactive tab. Both review refreshes first move threads off commits that left the published graph
+onto their rewritten copies, and a failure there leaves the refresh running. Review
+refreshes check commit
 anchor availability and resolve anchors only; they preserve current-file results and
 snapshot supersession markers. File/index/HEAD/config/stash events keep the full local
 staleness path. Local and ref observations have separate generation fences, so a partial
@@ -335,6 +337,7 @@ store revision.
 - Location: `src-tauri/src/state.rs`
 - Populated: commands that rebuild the graph go through `GraphRebuild`. Its capture closures return a checked `GraphRead` containing the capture and ref input stamp. The publisher applies the current `RefVisibility`, rechecking it before publication. `set_ref_visibility` usually re-lays out the cached capture without opening the repository, through `GraphRebuild::publish_relayout`; its uncached path uses the same checked capture producer.
 - Consumed: `get_commit_graph` hydrates one 200-row page from cached placements via `CommitCache::read_versioned`; the refresh commands hydrate from the top to the depth the caller reports, so a rebuild returns the pages the caller already had
+- Observed: each publication of a new capture, never a relayout or a visibility change over the same one, notifies the review follow (`follow_on_publication` in `src-tauri/src/commands/review.rs`), which moves threads off commits that left the published history onto their rewritten copies. A follow writes nothing once the cache holds a newer history than the one it decided on.
 - Opening sessions, publication generations, visibility checks and per-worktree capture gates prevent an older result from replacing a newer graph. Responses carry a revision; graph-indexed reads reject stale revisions.
 - `CommitCache`'s fields are private to `state.rs`. Commands publish through `GraphRebuild` and use named read accessors. Branch helpers build a local `GraphCache` delta through `insert_read`; `rebuild_merging` publishes their worktree under its opening session, publication generation and latest visibility. Input invalidation clears the fresh publication stamp without superseding a capture already in progress, retaining the captured reference identity for checked worktree reuse. Worktree refresh checks refs around a dirtiness observation and selects a prepared layout; an epoch raced by a local write is retryable. A capture that observes concurrent input changes is retried; if it remains unstable, the publisher retains the cached graph and preserves the completed command's result. The next refresh can reuse matching history or capture changed refs. Completed commands request frontend reads immediately and reuse checked published revisions; watcher bursts retain their coalescing deadline.
 

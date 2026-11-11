@@ -1,4 +1,4 @@
-//! A thread follows its commit when a rebase, amend or cherry-pick replaces that
+//! A thread follows its commit when a rebase or amend replaces that
 //! commit with a rewritten copy, so updating the local repository never takes a
 //! review off the graph (TRUNK-430).
 

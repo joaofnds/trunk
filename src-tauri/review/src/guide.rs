@@ -80,7 +80,7 @@ pub fn render(cli_binary: &Path) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "{FRESHNESS_RULE} In `--json` output the marker is the `stale` field, and the same holds for it. {WATCH_STALE_DELAY}"
+        "{FRESHNESS_RULE} In `--json` output the marker is the `stale` field, the same last computation as `(stale)`. {WATCH_STALE_DELAY}"
     );
     let _ = writeln!(out);
     let _ = writeln!(out, "{PROVENANCE_RULE}");
