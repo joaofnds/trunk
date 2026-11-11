@@ -3,7 +3,9 @@ import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import type { DiffNav } from "../../lib/diff-nav.js";
 import { type DiffComposer, diffHoldsComposer } from "../../lib/diff-rows.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
+import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
+import { filterThreads } from "../../lib/review-filter.js";
 import type {
 	CommitDetail,
 	ContentMode,
@@ -16,6 +18,7 @@ import type {
 } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
 import ReviewEmpty from "../review/ReviewEmpty.svelte";
+import ThreadCard from "../ThreadCard.svelte";
 import FullFileView from "./FullFileView.svelte";
 import HunkView from "./HunkView.svelte";
 import RenderedDiff from "./RenderedDiff.svelte";
@@ -193,9 +196,28 @@ const pane = $derived.by(() => {
 	if (loadError) return "error";
 	if ((loading || payloadStale) && !hasContent) return "loading";
 	if (selectedFileDiff && !isLoaded(selectedFileDiff)) return "no-changes";
+	// A thread can follow a commit through an amend that drops its file, and
+	// the jump to it then selects a file the commit's list does not hold.
+	if (diffKind === "commit" && selectedPath !== null && !selectedFileDiff)
+		return "no-changes";
 	if (layoutMode === "inline") return contentMode === "hunk" ? "hunk" : "full";
 	return "split";
 });
+
+// The selected file's threads, drawn under the no-changes note since no line
+// of a diff is there to hang them on.
+const threadsWithoutDiff = $derived(
+	pane === "no-changes"
+		? filterThreads(
+				viewComments.filter(
+					(thread) =>
+						thread.anchor?.file_path === selectedPath ||
+						thread.content_pin?.file_path === selectedPath,
+				),
+				reviewFilter,
+			)
+		: [],
+);
 
 // The composer sits under its line when a line view shows that line. Anywhere
 // else (the rendered Markdown, a load error, a line a refetch took away) it
@@ -269,9 +291,26 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			Loading diff…
 		</div>
 	{:else if pane === "no-changes"}
-		<ReviewEmpty title="No changes to show">
-			<p>This file has no diff here.</p>
-		</ReviewEmpty>
+		<div class="h-full flex flex-col">
+			<ReviewEmpty title="No changes to show">
+				<p>This file has no diff here.</p>
+			</ReviewEmpty>
+			{#if threadsWithoutDiff.length > 0}
+				<div class="min-h-0 flex flex-col gap-2 p-2 overflow-y-auto">
+					{#each threadsWithoutDiff as thread (thread.id)}
+						<ThreadCard
+							variant="inline"
+							confirmDelete={false}
+							{thread}
+							{repoPath}
+							onedit={(id, text) => editThread(repoPath, id, text)}
+							ondelete={(id) => deleteThread(repoPath, id)}
+							{editorSessionForThread}
+						/>
+					{/each}
+				</div>
+			{/if}
+		</div>
 	{:else if pane === "hunk"}
 		<HunkView
 			bind:this={diffNav}

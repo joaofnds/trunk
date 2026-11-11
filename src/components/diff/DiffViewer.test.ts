@@ -6,7 +6,8 @@ import {
 	stubLayout,
 } from "../../__tests__/helpers/layout-stub.js";
 import { commentingDiff } from "../../__tests__/helpers/review-props.js";
-import type { FileDiff } from "../../lib/types.js";
+import { aThread } from "../../__tests__/helpers/thread-fixture.js";
+import type { CommitDetail, FileDiff } from "../../lib/types.js";
 import DiffViewer from "./DiffViewer.svelte";
 
 // The rendered view fetches its rows through the shared IPC helper; keep the
@@ -279,6 +280,77 @@ describe("DiffViewer with a file that has no hunks", () => {
 		render(DiffViewer, {
 			props: { ...baseProps, loading: true, fileDiffs: [selectedReadme] },
 		});
+
+		expect(screen.queryByText("No changes to show")).toBeNull();
+	});
+});
+
+describe("DiffViewer on a file the selected commit does not change", () => {
+	beforeEach(() => stubLayout({ width: 900, height: 600 }));
+	afterEach(restoreLayout);
+
+	const commit: CommitDetail = {
+		oid: "6cca1d9",
+		short_oid: "6cca1d9",
+		summary: "touch two files",
+		body: null,
+		author_name: "A",
+		author_email: "a@example.com",
+		author_timestamp: 0,
+		committer_name: "A",
+		committer_email: "a@example.com",
+		committer_timestamp: 0,
+		parent_oids: [],
+	};
+	const onDroppedFile = aThread({
+		id: "t-dropped",
+		text: "a thread on a file the amend dropped",
+		anchor: {
+			commit_oid: "6cca1d9",
+			file_path: "g.txt",
+			source: "Diff",
+			side: "New",
+			start_line: 9,
+			end_line: 9,
+		},
+	});
+	const commitProps = {
+		...baseProps,
+		diffKind: "commit" as const,
+		commitDetail: commit,
+		fileDiffs: [],
+		selectedPath: "g.txt",
+	};
+
+	it("says the file has no diff and draws its threads under that", () => {
+		render(DiffViewer, {
+			props: { ...commitProps, viewComments: [onDroppedFile] },
+		});
+
+		expect(
+			screen.getByRole("region", { name: "No changes to show" }),
+		).toHaveTextContent("This file has no diff here.");
+		expect(
+			screen.getByText("a thread on a file the amend dropped"),
+		).toBeInTheDocument();
+	});
+
+	it("draws no thread the review filter hides", () => {
+		render(DiffViewer, {
+			props: {
+				...commitProps,
+				viewComments: [onDroppedFile],
+				reviewFilter: "none" as const,
+			},
+		});
+
+		expect(
+			screen.queryByText("a thread on a file the amend dropped"),
+		).toBeNull();
+	});
+
+	it("says nothing about changes while the commit's files are loading", () => {
+		render(DiffViewer, { props: { ...commitProps, loading: true } });
 
 		expect(screen.queryByText("No changes to show")).toBeNull();
 	});
