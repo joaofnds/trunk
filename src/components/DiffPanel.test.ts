@@ -3915,6 +3915,16 @@ describe("DiffPanel hunk navigation", () => {
 		expect(viewportOf(container).scrollTop).toBe(128);
 	});
 
+	it("scrolls to a line asked for before the diff settings have loaded", async () => {
+		const { container, component, ready } = renderNav();
+
+		component.scrollToLine(11, 11, "New");
+		await ready;
+		await tick();
+
+		expect(viewportOf(container).scrollTop).toBe(128);
+	});
+
 	it("resolves an old-side anchor against the old line numbers", async () => {
 		const { container, component, ready } = renderNav();
 		await ready;

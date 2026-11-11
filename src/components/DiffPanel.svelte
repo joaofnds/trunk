@@ -1,4 +1,5 @@
 <script lang="ts">
+import { tick } from "svelte";
 import type { PanelDiffKind } from "../lib/comment-matching.js";
 import {
 	buildDiffAnchor,
@@ -783,6 +784,18 @@ function lineIndexIn(lines: DiffLine[], startLine: number, side: Side): number {
 	);
 }
 
+// The viewer mounts only once the diff settings load, so a jump asked for
+// before then has nothing to scroll and waits here until it does.
+let pendingJump = $state<{ startLine: number; side: Side } | null>(null);
+
+$effect(() => {
+	const jump = pendingJump;
+	if (!jump || !prefsLoaded) return;
+
+	pendingJump = null;
+	tick().then(() => scrollToLine(jump.startLine, jump.startLine, jump.side));
+});
+
 // Jump-to-range (Phase 69 / D-07): scroll to and transiently highlight a
 // comment's anchored line. A line no hunk shows lands on the comment row drawn
 // between the hunks for it, and a line drawn nowhere falls back to the first
@@ -792,6 +805,11 @@ export function scrollToLine(
 	_endLine: number,
 	side: Side = "New",
 ) {
+	if (!prefsLoaded) {
+		pendingJump = { startLine, side };
+		return;
+	}
+
 	const target = hunkContaining(startLine, side);
 
 	if (diffNav) {
