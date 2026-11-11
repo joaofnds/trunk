@@ -291,12 +291,12 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			Loading diff…
 		</div>
 	{:else if pane === "no-changes"}
-		<div class="h-full flex flex-col">
+		<div class="h-full grid content-center-safe overflow-y-auto">
 			<ReviewEmpty title="No changes to show">
 				<p>This file has no diff here.</p>
 			</ReviewEmpty>
 			{#if threadsWithoutDiff.length > 0}
-				<div class="min-h-0 flex flex-col gap-2 p-2 overflow-y-auto">
+				<div class="flex flex-col gap-2 p-2">
 					{#each threadsWithoutDiff as thread (thread.id)}
 						<ThreadCard
 							variant="inline"
