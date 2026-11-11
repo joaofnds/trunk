@@ -10,7 +10,7 @@ use trunk_lib::commands::review::{
     RenderedThread, SubmitThreadRequest, list_threads_inner, submit_thread_inner,
 };
 use trunk_review::reviewdb::{self, Store};
-use trunk_review::types::{Anchor, Delivery, Side, Source};
+use trunk_review::types::{Anchor, Channel, Delivery, Side, Source, ThreadState};
 
 const BASE: &str = "one\ntwo\nthree\n";
 const UPSTREAM: &str = "zero\none\ntwo\nthree\n";
@@ -284,5 +284,142 @@ fn a_pull_with_rebase_in_a_terminal_moves_the_threads_of_an_open_repository_on_i
     assert_eq!(
         thread(&store, &ctx, &id).anchor.unwrap().commit_oid,
         replayed
+    );
+}
+
+fn review_of(store: &Store, ctx: &TestContext) -> String {
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
+    store
+        .read(|conn| reviewdb::reviews::active(conn, &canonical))
+        .unwrap()
+        .unwrap()
+}
+
+fn add_members(store: &Store, review: &str, members: &[(&str, &str)]) {
+    store
+        .write(|tx| {
+            for (oid, subject) in members {
+                reviewdb::commits::add(tx, review, oid, subject)?;
+            }
+            Ok(())
+        })
+        .unwrap();
+}
+
+fn members(store: &Store, review: &str) -> Vec<(String, String)> {
+    store
+        .read(|conn| reviewdb::commits::list(conn, review))
+        .unwrap()
+        .into_iter()
+        .map(|member| (member.oid, member.subject))
+        .collect()
+}
+
+#[test]
+fn a_commit_set_member_keeps_its_position_on_the_rewritten_copy_under_its_new_subject() {
+    let ctx = same_second_pair();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let base = git(&ctx, &["rev-parse", "HEAD~2"]);
+    let written_on = git(&ctx, &["rev-parse", "HEAD"]);
+    comment_on(&store, &ctx, &base, 1);
+    let review = review_of(&store, &ctx);
+    add_members(
+        &store,
+        &review,
+        &[(&written_on, "local adds four"), (&base, "base")],
+    );
+    git(
+        &ctx,
+        &["commit", "--quiet", "--amend", "-m", "local writes four"],
+    );
+    let reworded = git(&ctx, &["rev-parse", "HEAD"]);
+
+    follow(&store, &ctx);
+
+    assert_eq!(
+        members(&store, &review),
+        [
+            (reworded, "local writes four".to_string()),
+            (base, "base".to_string())
+        ]
+    );
+}
+
+#[test]
+fn a_commit_set_member_whose_copy_is_already_a_member_leaves_the_set() {
+    let ctx = behind_upstream();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let base = git(&ctx, &["rev-parse", "HEAD~1"]);
+    let written_on = git(&ctx, &["rev-parse", "HEAD"]);
+    comment_on(&store, &ctx, &base, 1);
+    let review = review_of(&store, &ctx);
+    git(&ctx, &["pull", "--rebase", "--quiet"]);
+    let replayed = git(&ctx, &["rev-parse", "HEAD"]);
+    add_members(
+        &store,
+        &review,
+        &[
+            (&written_on, "local adds four"),
+            (&replayed, "local adds four"),
+        ],
+    );
+
+    follow(&store, &ctx);
+
+    assert_eq!(
+        members(&store, &review),
+        [(replayed, "local adds four".to_string())]
+    );
+}
+
+#[test]
+fn a_fix_commit_names_the_rewritten_copy_of_the_commit_it_named() {
+    let ctx = behind_upstream();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let base = git(&ctx, &["rev-parse", "HEAD~1"]);
+    let fix = git(&ctx, &["rev-parse", "HEAD"]);
+    let id = comment_on(&store, &ctx, &base, 1);
+    store
+        .write(|tx| {
+            reviewdb::threads::set_state_at_commit(
+                tx,
+                &canonical,
+                &id,
+                ThreadState::Addressed,
+                Channel::Agent,
+                Some(&fix),
+                1_500,
+            )
+        })
+        .unwrap();
+    git(&ctx, &["pull", "--rebase", "--quiet"]);
+    let replayed = git(&ctx, &["rev-parse", "HEAD"]);
+
+    follow(&store, &ctx);
+
+    let claimed = thread(&store, &ctx, &id).history.pop().unwrap();
+    assert_eq!(claimed.commit, Some(replayed));
+}
+
+#[test]
+fn a_thread_on_a_review_snapshot_never_follows_a_look_alike_commit() {
+    let ctx = behind_upstream();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let snapshot = git(&ctx, &["rev-parse", "HEAD"]);
+    store
+        .write(|tx| reviewdb::minted::record(tx, &canonical, &snapshot))
+        .unwrap();
+    let id = comment_on(&store, &ctx, &snapshot, 4);
+    git(&ctx, &["pull", "--rebase", "--quiet"]);
+
+    let moved = follow(&store, &ctx);
+
+    assert_eq!(moved, 0);
+    assert_eq!(
+        thread(&store, &ctx, &id).anchor.unwrap().commit_oid,
+        snapshot
     );
 }

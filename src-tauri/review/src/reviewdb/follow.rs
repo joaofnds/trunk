@@ -17,14 +17,17 @@ use super::{Store, repo_key, sqlite_error};
 use crate::types::Side;
 use git2::{Commit, Oid, Repository, Tree};
 use rusqlite::Connection;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::BuildHasher;
 use std::path::Path;
 use trunk_git::error::TrunkError;
 use trunk_git::graph_input::CommitFacts;
 
-/// Move every thread of `repo_path` whose commit has left the graph onto the
-/// commit that replaced it, returning how many threads moved.
+/// Move every reference `repo_path`'s reviews make to a commit that has left the
+/// graph onto the commit that replaced it, returning how many moved.
+///
+/// A reference is a thread on the commit, a commit set holding it, or a fix
+/// claim naming it.
 ///
 /// `captured` is the full graph capture, before ref visibility, so hiding a
 /// branch never looks like a rewrite. A commit the repository no longer holds is
@@ -41,18 +44,17 @@ pub fn follow<S: BuildHasher>(
     captured: &HashMap<Oid, CommitFacts, S>,
     now: i64,
 ) -> Result<usize, TrunkError> {
-    let threads = store.read(|conn| anchored_threads(conn, repo_path))?;
+    let named = store.read(|conn| References::read(conn, repo_path))?;
+    let mut on_commit = by_commit(named.threads);
     let mut moves = Vec::new();
+    let mut rewrites = Vec::new();
 
-    for (left, on_it) in by_commit(threads, captured) {
+    for left in left_the_graph(&named.oids, &on_commit, captured) {
         let Some(commit) = readable(repo, left)? else {
             continue;
         };
 
-        if on_it
-            .iter()
-            .any(|thread| thread.provenance.names_a_snapshot(&commit))
-        {
+        if named.snapshots.provenance(left).names_a_snapshot(&commit) {
             continue;
         }
 
@@ -61,12 +63,92 @@ pub fn follow<S: BuildHasher>(
         };
 
         let replacement = repo.find_commit(replacement)?;
-        for thread in on_it {
+        for thread in on_commit.remove(&left).unwrap_or_default() {
             moves.push(carry(repo, &commit, &replacement, thread)?);
         }
+        rewrites.push(Rewrite {
+            from: left.to_string(),
+            to: replacement.id().to_string(),
+            subject: replacement
+                .summary()
+                .ok()
+                .flatten()
+                .unwrap_or("")
+                .to_owned(),
+        });
     }
 
-    store.write_if(|tx| apply(tx, &moves, now), |moved| *moved > 0)
+    store.write_if(
+        |tx| {
+            let threads = apply(tx, &moves, now)?;
+            let others = rewrite_references(tx, repo_path, &rewrites)?;
+
+            Ok(threads + others)
+        },
+        |moved| *moved > 0,
+    )
+}
+
+/// Everything a repository's reviews name a commit by, read in one transaction.
+struct References {
+    threads: Vec<AnchoredThread>,
+    /// The commit-set members and fix commits, which carry no lines.
+    oids: Vec<String>,
+    snapshots: Snapshots,
+}
+
+impl References {
+    fn read(conn: &Connection, repo_path: &Path) -> Result<Self, TrunkError> {
+        Ok(Self {
+            threads: anchored_threads(conn, repo_path)?,
+            oids: members_and_fixes(conn, repo_path)?,
+            snapshots: Snapshots::read(conn, repo_path)?,
+        })
+    }
+}
+
+/// The oids Trunk's records say may be review snapshots, which never follow.
+struct Snapshots {
+    minted: HashSet<String>,
+    legacy: HashSet<String>,
+}
+
+impl Snapshots {
+    fn read(conn: &Connection, repo_path: &Path) -> Result<Self, TrunkError> {
+        Ok(Self {
+            minted: oids(
+                conn,
+                "SELECT oid FROM minted_snapshots WHERE repo_path = ?1",
+                repo_path,
+            )?,
+            legacy: oids(
+                conn,
+                "SELECT oid FROM legacy_snapshot_candidates WHERE repo_path = ?1",
+                repo_path,
+            )?,
+        })
+    }
+
+    fn provenance(&self, oid: Oid) -> Provenance {
+        let oid = oid.to_string();
+        if self.minted.contains(&oid) {
+            return Provenance::Minted;
+        }
+
+        if self.legacy.contains(&oid) {
+            return Provenance::Legacy;
+        }
+
+        Provenance::Unrecorded
+    }
+}
+
+/// A commit that left the graph and the copy that replaced it, for the
+/// references that carry no lines.
+struct Rewrite {
+    from: String,
+    to: String,
+    subject: String,
 }
 
 /// A thread that names a commit, as the follow step needs it.
@@ -75,7 +157,6 @@ struct AnchoredThread {
     commit_oid: String,
     lines: Option<Lines>,
     code_changed: bool,
-    provenance: Provenance,
     written_on: Option<Original>,
 }
 
@@ -107,24 +188,29 @@ struct Move {
     code_changed: bool,
 }
 
-/// The threads on each commit the capture does not hold, oldest commit first so
-/// a run is deterministic.
-fn by_commit<S: BuildHasher>(
-    threads: Vec<AnchoredThread>,
-    captured: &HashMap<Oid, CommitFacts, S>,
-) -> BTreeMap<Oid, Vec<AnchoredThread>> {
+fn by_commit(threads: Vec<AnchoredThread>) -> BTreeMap<Oid, Vec<AnchoredThread>> {
     let mut grouped: BTreeMap<Oid, Vec<AnchoredThread>> = BTreeMap::new();
     for thread in threads {
-        let Ok(oid) = Oid::from_str(&thread.commit_oid) else {
-            continue;
-        };
-
-        if !captured.contains_key(&oid) {
+        if let Ok(oid) = Oid::from_str(&thread.commit_oid) {
             grouped.entry(oid).or_default().push(thread);
         }
     }
 
     grouped
+}
+
+/// Every named commit the capture does not hold, in oid order so a run is
+/// deterministic.
+fn left_the_graph<S: BuildHasher>(
+    oids: &[String],
+    on_commit: &BTreeMap<Oid, Vec<AnchoredThread>>,
+    captured: &HashMap<Oid, CommitFacts, S>,
+) -> BTreeSet<Oid> {
+    oids.iter()
+        .filter_map(|oid| Oid::from_str(oid).ok())
+        .chain(on_commit.keys().copied())
+        .filter(|oid| !captured.contains_key(oid))
+        .collect()
 }
 
 /// The commit, or `None` when the repository holds no commit for the oid.
@@ -423,10 +509,6 @@ fn anchored_threads(
         .prepare(
             "SELECT t.id, t.anchor_kind, t.commit_oid, t.file_path, t.side,
                     t.start_line, t.end_line, t.whole_file, t.code_changed,
-                    EXISTS(SELECT 1 FROM minted_snapshots
-                           WHERE repo_path = ?1 AND oid = t.commit_oid),
-                    EXISTS(SELECT 1 FROM legacy_snapshot_candidates
-                           WHERE repo_path = ?1 AND oid = t.commit_oid),
                     f.from_oid, f.from_start, f.from_end
              FROM threads t
              LEFT JOIN thread_follows f ON f.rowid =
@@ -458,17 +540,10 @@ fn anchored_threads(
                 }),
                 _ => None,
             };
-            let provenance = if row.get(9)? {
-                Provenance::Minted
-            } else if row.get(10)? {
-                Provenance::Legacy
-            } else {
-                Provenance::Unrecorded
-            };
-            let written_on = row.get::<_, Option<String>>(11)?.map(|oid| Original {
+            let written_on = row.get::<_, Option<String>>(9)?.map(|oid| Original {
                 oid,
-                start: row.get(12).ok().flatten(),
-                end: row.get(13).ok().flatten(),
+                start: row.get(10).ok().flatten(),
+                end: row.get(11).ok().flatten(),
             });
 
             Ok(AnchoredThread {
@@ -476,13 +551,82 @@ fn anchored_threads(
                 commit_oid: row.get(2)?,
                 lines,
                 code_changed: row.get(8)?,
-                provenance,
                 written_on,
             })
         })
         .map_err(sqlite_error)?;
 
     rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
+}
+
+/// The commits the repository's commit sets hold and its fix claims name.
+fn members_and_fixes(conn: &Connection, repo_path: &Path) -> Result<Vec<String>, TrunkError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT oid FROM review_commits
+             WHERE review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)
+             UNION
+             SELECT h.commit_oid FROM thread_history h JOIN threads t ON t.id = h.thread_id
+             WHERE t.review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)
+               AND h.commit_oid IS NOT NULL",
+        )
+        .map_err(sqlite_error)?;
+    let rows = stmt
+        .query_map([repo_key(repo_path)], |row| row.get(0))
+        .map_err(sqlite_error)?;
+
+    rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
+}
+
+fn oids(conn: &Connection, sql: &str, repo_path: &Path) -> Result<HashSet<String>, TrunkError> {
+    let mut stmt = conn.prepare(sql).map_err(sqlite_error)?;
+    let rows = stmt
+        .query_map([repo_key(repo_path)], |row| row.get(0))
+        .map_err(sqlite_error)?;
+
+    rows.collect::<Result<HashSet<_>, _>>()
+        .map_err(sqlite_error)
+}
+
+/// Point each commit set and fix claim at the copy. A set that already holds
+/// the copy drops the original rather than listing the commit twice.
+fn rewrite_references(
+    conn: &Connection,
+    repo_path: &Path,
+    rewrites: &[Rewrite],
+) -> Result<usize, TrunkError> {
+    let repo = repo_key(repo_path);
+    let mut changed = 0;
+    for rewrite in rewrites {
+        changed += conn
+            .execute(
+                "DELETE FROM review_commits
+                 WHERE oid = ?2
+                   AND review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)
+                   AND review_id IN (SELECT review_id FROM review_commits WHERE oid = ?3)",
+                rusqlite::params![repo, rewrite.from, rewrite.to],
+            )
+            .map_err(sqlite_error)?;
+        changed += conn
+            .execute(
+                "UPDATE review_commits SET oid = ?3, subject = ?4
+                 WHERE oid = ?2
+                   AND review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)",
+                rusqlite::params![repo, rewrite.from, rewrite.to, rewrite.subject],
+            )
+            .map_err(sqlite_error)?;
+        changed += conn
+            .execute(
+                "UPDATE thread_history SET commit_oid = ?3
+                 WHERE commit_oid = ?2
+                   AND thread_id IN (SELECT id FROM threads WHERE review_id IN
+                       (SELECT id FROM reviews WHERE repo_path = ?1))",
+                rusqlite::params![repo, rewrite.from, rewrite.to],
+            )
+            .map_err(sqlite_error)?;
+    }
+
+    Ok(changed)
 }
 
 /// Write each move whose thread still sits where it was read, and record it.
