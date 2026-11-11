@@ -12,8 +12,9 @@
 //! thread back onto its original commit, and the comparison then finds its code
 //! unchanged again.
 
+use super::commits::Rewrite;
 use super::minted::Provenance;
-use super::{Store, repo_key, sqlite_error};
+use super::{Store, commits, history, repo_key, sqlite_error};
 use crate::types::Side;
 use git2::{Commit, Oid, Repository, Tree};
 use rusqlite::Connection;
@@ -165,14 +166,6 @@ impl Snapshots {
     }
 }
 
-/// A commit that left the graph and the copy that replaced it, for the
-/// references that carry no lines.
-struct Rewrite {
-    from: String,
-    to: String,
-    subject: String,
-}
-
 /// A thread that names a commit, as the follow step needs it.
 struct AnchoredThread {
     id: String,
@@ -272,6 +265,10 @@ fn replacement<S: BuildHasher>(
         .collect();
     if !same_subject.is_empty() {
         return Ok(single(same_subject));
+    }
+
+    if same_second.is_empty() {
+        return Ok(None);
     }
 
     let wanted = patch_id(repo, left)?;
@@ -567,10 +564,12 @@ fn anchored_threads(
                 }),
                 _ => None,
             };
+            let written_start: Option<u32> = row.get(10)?;
+            let written_end: Option<u32> = row.get(11)?;
             let written_on = row.get::<_, Option<String>>(9)?.map(|oid| Original {
                 oid,
-                start: row.get(10).ok().flatten(),
-                end: row.get(11).ok().flatten(),
+                start: written_start,
+                end: written_end,
             });
 
             Ok(AnchoredThread {
@@ -588,21 +587,10 @@ fn anchored_threads(
 
 /// The commits the repository's commit sets hold and its fix claims name.
 fn members_and_fixes(conn: &Connection, repo_path: &Path) -> Result<Vec<String>, TrunkError> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT oid FROM review_commits
-             WHERE review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)
-             UNION
-             SELECT h.commit_oid FROM thread_history h JOIN threads t ON t.id = h.thread_id
-             WHERE t.review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)
-               AND h.commit_oid IS NOT NULL",
-        )
-        .map_err(sqlite_error)?;
-    let rows = stmt
-        .query_map([repo_key(repo_path)], |row| row.get(0))
-        .map_err(sqlite_error)?;
+    let mut oids = commits::in_repo(conn, repo_path)?;
+    oids.extend(history::fix_commits_in_repo(conn, repo_path)?);
 
-    rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
+    Ok(oids)
 }
 
 fn oids(conn: &Connection, sql: &str, repo_path: &Path) -> Result<HashSet<String>, TrunkError> {
@@ -615,42 +603,16 @@ fn oids(conn: &Connection, sql: &str, repo_path: &Path) -> Result<HashSet<String
         .map_err(sqlite_error)
 }
 
-/// Point each commit set and fix claim at the copy. A set that already holds
-/// the copy drops the original rather than listing the commit twice.
+/// Point each commit set and fix claim at the copy.
 fn rewrite_references(
     conn: &Connection,
     repo_path: &Path,
     rewrites: &[Rewrite],
 ) -> Result<usize, TrunkError> {
-    let repo = repo_key(repo_path);
     let mut changed = 0;
     for rewrite in rewrites {
-        changed += conn
-            .execute(
-                "DELETE FROM review_commits
-                 WHERE oid = ?2
-                   AND review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)
-                   AND review_id IN (SELECT review_id FROM review_commits WHERE oid = ?3)",
-                rusqlite::params![repo, rewrite.from, rewrite.to],
-            )
-            .map_err(sqlite_error)?;
-        changed += conn
-            .execute(
-                "UPDATE review_commits SET oid = ?3, subject = ?4
-                 WHERE oid = ?2
-                   AND review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)",
-                rusqlite::params![repo, rewrite.from, rewrite.to, rewrite.subject],
-            )
-            .map_err(sqlite_error)?;
-        changed += conn
-            .execute(
-                "UPDATE thread_history SET commit_oid = ?3
-                 WHERE commit_oid = ?2
-                   AND thread_id IN (SELECT id FROM threads WHERE review_id IN
-                       (SELECT id FROM reviews WHERE repo_path = ?1))",
-                rusqlite::params![repo, rewrite.from, rewrite.to],
-            )
-            .map_err(sqlite_error)?;
+        changed += commits::replace_in_repo(conn, repo_path, rewrite)?;
+        changed += history::replace_fix_commit(conn, repo_path, rewrite)?;
     }
 
     Ok(changed)

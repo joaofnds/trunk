@@ -8,9 +8,11 @@
 //! Each member row stores the commit's subject at add time: the doc renders
 //! from stored rows with no repository open (D13), and a snapshot commit that
 //! gc later collects keeps the label it was added under (ruling 2026-08-31).
+//! A member a rebase or amend rewrites takes its copy's oid and subject.
 
-use super::sqlite_error;
+use super::{repo_key, sqlite_error};
 use rusqlite::Connection;
+use std::path::Path;
 use trunk_git::error::TrunkError;
 
 /// One member of the set: the oid plus the subject it was added under.
@@ -137,4 +139,66 @@ fn next_position(conn: &Connection, review_id: &str) -> Result<i64, TrunkError> 
         |row| row.get(0),
     )
     .map_err(sqlite_error)
+}
+
+/// A commit a rebase or amend replaced, and the copy that replaced it.
+pub struct Rewrite {
+    pub from: String,
+    pub to: String,
+    pub subject: String,
+}
+
+/// Every commit the repository's commit sets hold, archived reviews included.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
+pub fn in_repo(conn: &Connection, repo_path: &Path) -> Result<Vec<String>, TrunkError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT DISTINCT oid FROM review_commits
+             WHERE review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)",
+        )
+        .map_err(sqlite_error)?;
+    let rows = stmt
+        .query_map([repo_key(repo_path)], |row| row.get(0))
+        .map_err(sqlite_error)?;
+
+    rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
+}
+
+/// Put the copy in the place of the commit it replaced in each of the
+/// repository's commit sets. Returns how many rows changed.
+///
+/// The member takes the copy's subject. A set that already holds the copy drops
+/// the original rather than listing the commit twice.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when a write fails.
+pub fn replace_in_repo(
+    conn: &Connection,
+    repo_path: &Path,
+    rewrite: &Rewrite,
+) -> Result<usize, TrunkError> {
+    let repo = repo_key(repo_path);
+    let dropped = conn
+        .execute(
+            "DELETE FROM review_commits
+             WHERE oid = ?2
+               AND review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)
+               AND review_id IN (SELECT review_id FROM review_commits WHERE oid = ?3)",
+            rusqlite::params![repo, rewrite.from, rewrite.to],
+        )
+        .map_err(sqlite_error)?;
+    let replaced = conn
+        .execute(
+            "UPDATE review_commits SET oid = ?3, subject = ?4
+             WHERE oid = ?2
+               AND review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)",
+            rusqlite::params![repo, rewrite.from, rewrite.to, rewrite.subject],
+        )
+        .map_err(sqlite_error)?;
+
+    Ok(dropped + replaced)
 }

@@ -9,11 +9,13 @@
 //! state it records, so a refused or rolled-back change leaves no row, and a
 //! thread's deletion cascades to its history.
 
-use super::sqlite_error;
+use super::commits::Rewrite;
+use super::{repo_key, sqlite_error};
 use crate::types::{Channel, ThreadState};
 use rusqlite::Connection;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::path::Path;
 use std::str::FromStr;
 use trunk_git::error::TrunkError;
 
@@ -87,4 +89,45 @@ pub fn list_for_threads(
     }
 
     Ok(by_thread)
+}
+
+/// Every commit a fix claim in the repository names, archived reviews included.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
+pub fn fix_commits_in_repo(conn: &Connection, repo_path: &Path) -> Result<Vec<String>, TrunkError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT DISTINCT h.commit_oid FROM thread_history h JOIN threads t ON t.id = h.thread_id
+             WHERE t.review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)
+               AND h.commit_oid IS NOT NULL",
+        )
+        .map_err(sqlite_error)?;
+    let rows = stmt
+        .query_map([repo_key(repo_path)], |row| row.get(0))
+        .map_err(sqlite_error)?;
+
+    rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
+}
+
+/// Point each fix claim in the repository that names the replaced commit at
+/// its copy. Returns how many claims changed.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the write fails.
+pub fn replace_fix_commit(
+    conn: &Connection,
+    repo_path: &Path,
+    rewrite: &Rewrite,
+) -> Result<usize, TrunkError> {
+    conn.execute(
+        "UPDATE thread_history SET commit_oid = ?3
+         WHERE commit_oid = ?2
+           AND thread_id IN (SELECT id FROM threads WHERE review_id IN
+               (SELECT id FROM reviews WHERE repo_path = ?1))",
+        rusqlite::params![repo_key(repo_path), rewrite.from, rewrite.to],
+    )
+    .map_err(sqlite_error)
 }
