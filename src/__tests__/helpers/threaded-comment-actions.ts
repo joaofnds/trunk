@@ -5,7 +5,7 @@ import { aThread } from "./thread-fixture.js";
 
 // Shared behavior for the three diff hosts (FullFileView, HunkView, SplitView):
 // each renders a threaded comment via a `viewComments` prop and delegates the
-// four reply/state-change actions to ThreadCard, which calls
+// four reply/state-change actions and the fold to ThreadCard, which calls
 // review-comment-actions.ts, which calls safeInvoke. Asserting on safeInvoke
 // (the real IPC boundary) instead of on review-comment-actions.ts's exports
 // matches the pattern already used for this same wiring in ReviewPanel.test.ts

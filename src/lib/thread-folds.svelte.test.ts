@@ -52,10 +52,21 @@ describe(ThreadFolds, () => {
 
 	it("opens a thread once it is reopened, though the reader had folded it", () => {
 		const folds = new ThreadFolds();
-		const open = aThread({ state: "open" });
+		const done = aThread({ state: "done" });
+		folds.toggle(done);
+		folds.toggle(done);
+
+		expect(folds.isCollapsed(moved(done, "open"))).toBe(false);
+	});
+
+	it("opens a thread whose state moves with no history to count, though the reader had folded it", () => {
+		const folds = new ThreadFolds();
+		const open = aThread({ state: "open", history: undefined });
 		folds.toggle(open);
 
-		expect(folds.isCollapsed(moved(open, "addressed"))).toBe(false);
+		const claimed: Thread = { ...open, state: "addressed" };
+
+		expect(folds.isCollapsed(claimed)).toBe(false);
 	});
 
 	it("keeps a toggle through an edit that moves no state", () => {

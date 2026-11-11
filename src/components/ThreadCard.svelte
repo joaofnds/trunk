@@ -72,8 +72,6 @@ interface Props {
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	// The panel marks a thread whose agent answer the user has not been shown.
 	unread?: boolean;
-	// Which threads are folded. The diff hands its inline card and that card's
-	// measured copy one instance, so the height it measured is the one drawn.
 	folds?: ThreadFolds;
 }
 

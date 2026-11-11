@@ -22,6 +22,7 @@ import {
 	measureRowMetrics,
 	type RowMetrics,
 } from "./row-metrics.js";
+import { ThreadFolds } from "./thread-folds.svelte.js";
 import type { Thread } from "./types.js";
 
 // Tailwind's preflight sets tab-size: 4 globally, so a tab advances four
@@ -60,6 +61,8 @@ export interface InlineVirtualizedDiff {
 	readonly metrics: RowMetrics | null;
 	readonly paneWidthPx: number;
 	readonly probedHeights: Map<string, number>;
+	/** Shared by each row's card and its copy in the comment probe, so the height measured is the height drawn. */
+	readonly folds: ThreadFolds;
 	readonly wrapActive: boolean;
 	readonly availableColumns: number;
 	readonly threadsToProbe: Thread[];
@@ -97,6 +100,7 @@ export function createVirtualizedDiff(
 		paneWidthPx: 0,
 		probedHeights: new Map<string, number>(),
 	});
+	const folds = new ThreadFolds();
 
 	const model = $derived(deps.model());
 
@@ -234,18 +238,18 @@ export function createVirtualizedDiff(
 		const rows = container.querySelectorAll<HTMLElement>(
 			"[data-probe-thread-id]",
 		);
-		const probe = () => {
-			const measured = probedHeights(rows);
+		const remeasure = () => {
+			const measured = heightsOf(rows);
 			if (!wanted.every((thread) => measured.has(thread.id))) return;
 
 			const known = untrack(() => state.probedHeights);
 			if (!sameHeights(known, measured)) state.probedHeights = measured;
 		};
-		probe();
+		remeasure();
 
 		// A card changes its own height when it folds, so the copy measured here
 		// is watched for as long as it stands for its row.
-		const observer = new ResizeObserver(probe);
+		const observer = new ResizeObserver(remeasure);
 		for (const row of rows) observer.observe(row);
 
 		return () => observer.disconnect();
@@ -275,6 +279,7 @@ export function createVirtualizedDiff(
 	});
 
 	return {
+		folds,
 		get pane() {
 			return state.pane;
 		},
@@ -335,7 +340,7 @@ export function createVirtualizedDiff(
 	};
 }
 
-function probedHeights(rows: Iterable<HTMLElement>): Map<string, number> {
+function heightsOf(rows: Iterable<HTMLElement>): Map<string, number> {
 	const measured = new Map<string, number>();
 	for (const row of rows) {
 		const id = row.dataset.probeThreadId;
@@ -344,6 +349,7 @@ function probedHeights(rows: Iterable<HTMLElement>): Map<string, number> {
 		// would be the substituted default invariant 8 forbids.
 		if (id && height > 0) measured.set(id, height);
 	}
+
 	return measured;
 }
 
@@ -356,5 +362,6 @@ function sameHeights(
 	for (const [id, height] of measured) {
 		if (known.get(id) !== height) return false;
 	}
+
 	return true;
 }

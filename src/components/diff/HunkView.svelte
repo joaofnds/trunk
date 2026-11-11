@@ -20,7 +20,6 @@ import { measure } from "../../lib/perf.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
-import { ThreadFolds } from "../../lib/thread-folds.svelte.js";
 import type {
 	DiffLine,
 	FileDiff,
@@ -162,10 +161,6 @@ const model = $derived(
 	}),
 );
 
-// The card in a row and its copy in the comment probe fold as one, so the
-// height the probe measures is the one the row draws.
-const folds = new ThreadFolds();
-
 const vd = createVirtualizedDiff({
 	layout: "inline",
 	model: () => model,
@@ -239,7 +234,7 @@ function flash(hunkKey: string): void {
 		onedit={(id, text) => editThread(repoPath, id, text)}
 		ondelete={(id) => deleteThread(repoPath, id)}
 		{editorSessionForThread}
-		{folds}
+		folds={vd.folds}
 	/>
 {/snippet}
 
