@@ -192,6 +192,12 @@ impl ReviewDriver<'_> {
         visibility.set(self.ctx.path().to_string(), hidden);
     }
 
+    /// Takes the repository out of the open set, the state `open_repo` is in
+    /// when it publishes a repository's first graph, before registering it.
+    pub fn unregister(&self) {
+        self.app.state::<RepoState>().forget(self.ctx.path());
+    }
+
     /// The graph the app has published for this repository now.
     pub fn published_graph(&self) -> trunk_git::graph_input::GraphSnapshot {
         self.app

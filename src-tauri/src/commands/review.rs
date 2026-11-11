@@ -98,14 +98,20 @@ async fn prepare<R: Runtime>(
     let raw = path.to_string();
     let canonical = blocking_store(move || canonical_of(&raw, &state_map)).await?;
 
-    // Opening does `create_dir_all`, four pragmas and the migration ladder, and
-    // can wait on another process's write lock — all of it off the async runtime,
-    // for the reason `blocking_store` documents.
+    Ok((canonical, open_store(store, app).await?))
+}
+
+/// The review store, opened off the async runtime: opening does
+/// `create_dir_all`, four pragmas and the migration ladder, and can wait on
+/// another process's write lock, for the reason `blocking_store` documents.
+async fn open_store<R: Runtime>(
+    store: &ReviewStoreState,
+    app: &AppHandle<R>,
+) -> Result<Arc<Store>, String> {
     let slot = store.0.clone_handle();
     let app_dir = super::store_data_dir(app)?;
-    let store = blocking_store(move || open_cached(&slot, &app_dir)).await?;
 
-    Ok((canonical, store))
+    blocking_store(move || open_cached(&slot, &app_dir)).await
 }
 
 /// Reclaim this repo's abandoned snapshot pins, once per process.
@@ -1079,14 +1085,21 @@ pub fn follow_on_publication<R: Runtime>(app: &AppHandle<R>) {
     app.state::<CommitCache>().observe_publications(observer);
 }
 
+/// Follow against `published`, resolving `path` on disk rather than through the
+/// open set: opening a repository publishes its first graph before registering
+/// it, and that first graph is the one that sees a rewrite made while Trunk was
+/// closed.
 async fn follow_published<R: Runtime>(
     app: &AppHandle<R>,
     path: String,
     published: trunk_git::graph_input::GraphSnapshot,
 ) -> Result<(), String> {
-    let state = app.state::<RepoState>();
-    let store = app.state::<ReviewStoreState>();
-    let (canonical, store) = prepare(&path, &state, &store, app).await?;
+    let raw = path.clone();
+    let canonical = blocking_store(move || {
+        std::fs::canonicalize(&raw).map_err(|e| TrunkError::new("io", e.to_string()))
+    })
+    .await?;
+    let store = open_store(&app.state::<ReviewStoreState>(), app).await?;
 
     let target = canonical.clone();
     let handle = app.clone();

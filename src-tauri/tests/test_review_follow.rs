@@ -251,6 +251,7 @@ fn opening_the_repository_after_a_pull_with_rebase_in_a_terminal_moves_its_threa
     git(&ctx, &["pull", "--rebase", "--quiet"]);
     let replayed = git(&ctx, &["rev-parse", "HEAD"]);
     let review = ctx.review();
+    review.unregister();
     let announced = review.reviews_changed_events();
 
     review.publish_graph();
