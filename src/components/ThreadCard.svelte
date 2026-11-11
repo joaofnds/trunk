@@ -667,7 +667,7 @@ async function requestDeleteReply(replyId: string) {
 	{/if}
 	{#if variant === "inline"}
 		{#if location !== null}
-			<span class="comment-card-range" title={locationTitle}
+			<span class="comment-card-range pointer-events-auto" title={locationTitle}
 				>{wholeFile
 					? "Whole file"
 					: location.start === location.end
@@ -676,7 +676,7 @@ async function requestDeleteReply(replyId: string) {
 			>
 		{/if}
 		<span
-			class="shrink-0 font-mono text-small text-text-subtle"
+			class="pointer-events-auto shrink-0 font-mono text-small text-text-subtle"
 			title="Review {thread.review_id}"
 			>{thread.review_id}</span
 		>

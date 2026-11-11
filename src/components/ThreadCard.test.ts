@@ -720,6 +720,19 @@ describe("ThreadCard", () => {
 			expect(review).not.toHaveClass("border");
 		});
 
+		// The fold bar lets a press through to its background unless an element
+		// opts back in, and the pointer that never reaches a title shows no tooltip.
+		it("lets the pointer reach the tooltips on its range and its review", () => {
+			const { container } = renderCard({ variant: "inline" });
+
+			expect(container.querySelector(".comment-card-range")).toHaveClass(
+				"pointer-events-auto",
+			);
+			expect(screen.getByTitle(`Review ${comment.review_id}`)).toHaveClass(
+				"pointer-events-auto",
+			);
+		});
+
 		it("collapses to its header", async () => {
 			renderCard({ variant: "inline" });
 
