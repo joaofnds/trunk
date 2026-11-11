@@ -8,7 +8,7 @@ import {
 } from "../lib/review-editors.svelte.js";
 import type { ReviewVisibility } from "../lib/review-visibility.svelte.js";
 import { threadTimeline } from "../lib/thread-timeline.js";
-import type { Reply, StateChange } from "../lib/types.js";
+import type { Reply, StateChange, ThreadFollow } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
@@ -16,11 +16,13 @@ import { isUnseenAgentReply } from "../lib/unread.js";
 import CommentEditor from "./review/CommentEditor.svelte";
 import MessageAvatar from "./review/MessageAvatar.svelte";
 import ThreadEvent from "./review/ThreadEvent.svelte";
+import ThreadFollowEvent from "./review/ThreadFollowEvent.svelte";
 import ThreadMessage from "./review/ThreadMessage.svelte";
 
 interface Props {
 	replies: readonly Reply[];
 	history?: readonly StateChange[];
+	follows?: readonly ThreadFollow[];
 	// Awaited before the editor clears its draft, so a caller that reports its
 	// own refusal (review-comment-actions.ts) keeps the typed text on screen
 	// until the write settles.
@@ -36,6 +38,7 @@ interface Props {
 let {
 	replies,
 	history = [],
+	follows = [],
 	onreplyedit,
 	onreplydelete,
 	dismissed,
@@ -53,7 +56,7 @@ const replyEditSaving = $derived(editor.replyEditSaving);
 // More than four entries collapse to the last three, with a control that
 // reveals the rest: hiding a single entry would save no room. Expand state
 // belongs to the list, never a parent map.
-const timeline = $derived(threadTimeline(replies, history));
+const timeline = $derived(threadTimeline(replies, history, follows));
 const hiddenCount = $derived(timeline.length > 4 ? timeline.length - 3 : 0);
 const collapsed = $derived(
 	hiddenCount > 0 && !repliesExpanded && editingReplyId === null,
@@ -140,6 +143,8 @@ async function saveReplyEdit() {
 			>
 				{#if entry.kind === "change"}
 					<ThreadEvent change={entry.change} />
+				{:else if entry.kind === "follow"}
+					<ThreadFollowEvent follow={entry.follow} />
 				{:else}
 					{@const reply = entry.reply}
 					<ThreadMessage

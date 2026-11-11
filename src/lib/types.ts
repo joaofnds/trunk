@@ -475,6 +475,9 @@ export interface Thread {
 	// Every state change the thread went through, oldest first. Present only
 	// from `list_threads`; the card shows no events without it.
 	history?: readonly StateChange[];
+	// Each move onto the rewritten copy of the thread's commit, oldest first.
+	// Present only from `list_threads`, like `history`.
+	follows?: readonly ThreadFollow[];
 	// Wall-clock seconds when the root comment was submitted.
 	created_at: number;
 }
@@ -502,6 +505,14 @@ export interface StateChange {
 	readonly state: ThreadState;
 	readonly channel: Channel;
 	readonly commit: string | null;
+	readonly created_at: number;
+}
+
+// One move of a thread onto the rewritten copy of its commit: the commit it
+// left, the copy, and when. Mirrors the Rust Followed.
+export interface ThreadFollow {
+	readonly from: string;
+	readonly to: string;
 	readonly created_at: number;
 }
 

@@ -628,6 +628,7 @@ async function requestDeleteReply(replyId: string) {
 		<ThreadReplies
 			replies={thread.replies}
 			history={thread.history}
+			follows={thread.follows}
 			editorSession={editor}
 			onreplyedit={(id, text) => editReply(repoPath, id, text)}
 			onreplydelete={requestDeleteReply}

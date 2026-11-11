@@ -67,6 +67,34 @@ describe("ThreadReplies", () => {
 		expect(items[2]).toContain("after");
 	});
 
+	it("tells a follow onto the rewritten commit between the replies it came between", () => {
+		const { container } = render(ThreadReplies, {
+			props: {
+				replies: [
+					aReply({ id: "r1", text_html: "before", created_at: 100 }),
+					aReply({ id: "r2", text_html: "after", created_at: 300 }),
+				],
+				follows: [
+					{
+						from: "d6348df0b8d4f6a9c1e2b3d4f5a6b7c8d9e0f1a2",
+						to: "1c0540b0b8d4f6a9c1e2b3d4f5a6b7c8d9e0f1a2",
+						created_at: 200,
+					},
+				],
+				onreplyedit: () => true,
+				onreplydelete: () => {},
+				dismissed: false,
+			},
+		});
+
+		const items = [...container.querySelectorAll(".thread-replies > li")].map(
+			(li) => li.textContent?.replace(/\s+/g, " ").trim(),
+		);
+		expect(items[0]).toContain("before");
+		expect(items[1]).toMatch(/^Followed its commit from d6348df to 1c0540b · /);
+		expect(items[2]).toContain("after");
+	});
+
 	it("puts a change after the reply written in the same second", () => {
 		const { container } = render(ThreadReplies, {
 			props: {

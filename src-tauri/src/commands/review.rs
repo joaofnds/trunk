@@ -378,6 +378,9 @@ pub struct RenderedThread {
     /// Each state change the thread went through, oldest first, which the
     /// card draws among the replies by time.
     pub history: Vec<trunk_review::reviewdb::history::StateChange>,
+    /// Each move onto the rewritten copy of the thread's commit, oldest first,
+    /// which the card draws among the replies by time like a state change.
+    pub follows: Vec<trunk_review::reviewdb::follow::Followed>,
     /// Wall-clock seconds when the root comment was submitted, which the card
     /// shows as an age beside the author, as each reply shows its own.
     pub created_at: i64,
@@ -426,6 +429,7 @@ impl RenderedThread {
         t: threads::Thread,
         replies: Vec<replies::Reply>,
         history: Vec<trunk_review::reviewdb::history::StateChange>,
+        follows: Vec<trunk_review::reviewdb::follow::Followed>,
         batch_held: bool,
     ) -> Self {
         let text_html = crate::commands::markdown::render_comment_text(&t.text);
@@ -452,6 +456,7 @@ impl RenderedThread {
             excerpt_spans,
             replies: replies.into_iter().map(RenderedReply::from_reply).collect(),
             history,
+            follows,
             created_at: t.created_at,
         }
     }
@@ -479,13 +484,15 @@ pub fn list_threads_inner(
             threads::list_with_replies(conn, &review_id, trunk_review::types::Channel::Human)?;
         let ids: Vec<String> = listed.iter().map(|(t, _)| t.id.clone()).collect();
         let mut histories = trunk_review::reviewdb::history::list_for_threads(conn, &ids)?;
+        let mut follows = trunk_review::reviewdb::follow::list_for_threads(conn, &ids)?;
         let batch_held = reviews::holds_batch(conn, &review_id)?;
 
         Ok(listed
             .into_iter()
             .map(|(t, replies)| {
                 let history = histories.remove(&t.id).unwrap_or_default();
-                RenderedThread::from_thread(t, replies, history, batch_held)
+                let followed = follows.remove(&t.id).unwrap_or_default();
+                RenderedThread::from_thread(t, replies, history, followed, batch_held)
             })
             .collect())
     })

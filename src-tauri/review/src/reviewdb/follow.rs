@@ -17,6 +17,7 @@ use super::{Store, repo_key, sqlite_error};
 use crate::types::Side;
 use git2::{Commit, Oid, Repository, Tree};
 use rusqlite::Connection;
+use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::BuildHasher;
 use std::path::Path;
@@ -678,6 +679,57 @@ fn apply(conn: &Connection, moves: &[Move], now: i64) -> Result<usize, TrunkErro
     }
 
     Ok(applied)
+}
+
+/// One follow as a thread's timeline shows it: the commit it left, the copy it
+/// moved to, and when.
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+pub struct Followed {
+    pub from: String,
+    pub to: String,
+    pub created_at: i64,
+}
+
+/// The follows of each thread named, oldest first. A thread that never
+/// followed has no entry.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the read fails.
+pub fn list_for_threads(
+    conn: &Connection,
+    thread_ids: &[String],
+) -> Result<HashMap<String, Vec<Followed>>, TrunkError> {
+    if thread_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let placeholders = vec!["?"; thread_ids.len()].join(",");
+    let sql = format!(
+        "SELECT thread_id, from_oid, to_oid, created_at FROM thread_follows
+         WHERE thread_id IN ({placeholders}) ORDER BY created_at, rowid"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(sqlite_error)?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(thread_ids), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                Followed {
+                    from: row.get(1)?,
+                    to: row.get(2)?,
+                    created_at: row.get(3)?,
+                },
+            ))
+        })
+        .map_err(sqlite_error)?;
+
+    let mut by_thread: HashMap<String, Vec<Followed>> = HashMap::new();
+    for row in rows {
+        let (thread_id, followed) = row.map_err(sqlite_error)?;
+        by_thread.entry(thread_id).or_default().push(followed);
+    }
+
+    Ok(by_thread)
 }
 
 #[cfg(test)]

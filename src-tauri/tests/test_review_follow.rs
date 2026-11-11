@@ -423,3 +423,24 @@ fn a_thread_on_a_review_snapshot_never_follows_a_look_alike_commit() {
         snapshot
     );
 }
+
+#[test]
+fn a_followed_thread_lists_its_follow_for_its_timeline() {
+    let ctx = behind_upstream();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let written_on = git(&ctx, &["rev-parse", "HEAD"]);
+    let id = comment_on(&store, &ctx, &written_on, 4);
+    git(&ctx, &["pull", "--rebase", "--quiet"]);
+    let replayed = git(&ctx, &["rev-parse", "HEAD"]);
+
+    follow(&store, &ctx);
+
+    assert_eq!(
+        thread(&store, &ctx, &id).follows,
+        vec![reviewdb::follow::Followed {
+            from: written_on,
+            to: replayed,
+            created_at: 2_000,
+        }]
+    );
+}
