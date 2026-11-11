@@ -251,14 +251,17 @@ describe("createVirtualizedDiff", () => {
 		// narrower pane is what re-runs the probe effect; the flipped height is
 		// how the re-probe becomes observable.
 		let reflowed = false;
-		const resizes: (() => void)[] = [];
+		const watched: { target: Element; callback: () => void }[] = [];
 		vi.stubGlobal(
 			"ResizeObserver",
 			class {
+				readonly #callback: () => void;
 				constructor(callback: () => void) {
-					resizes.push(callback);
+					this.#callback = callback;
 				}
-				observe() {}
+				observe(target: Element) {
+					watched.push({ target, callback: this.#callback });
+				}
 				unobserve() {}
 				disconnect() {}
 			},
@@ -278,7 +281,9 @@ describe("createVirtualizedDiff", () => {
 
 		setLayout(vd.pane as HTMLElement, { width: 450 });
 		reflowed = true;
-		for (const resize of resizes) resize();
+		for (const { target, callback } of watched) {
+			if (target === vd.pane) callback();
+		}
 		await tick();
 
 		expect(vd.probedHeights.get("t1")).toBe(120);
