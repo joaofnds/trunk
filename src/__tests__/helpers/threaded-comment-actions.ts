@@ -153,4 +153,21 @@ export function describeThreadedCommentActions(
 		expect(calledCommands()).toContain("delete_reply");
 		expect(callArgs("delete_reply")).toEqual({ path: "/repo", id: "r1" });
 	});
+
+	// The probe's copy is what sets the row's height, so it must fold with the
+	// card the reader folds, or the row keeps the open card's height.
+	it("folds the measured copy of a card the reader folds", async () => {
+		const { container } = render(Component, { props: commentedProps() });
+		const card = visibleCard(container);
+
+		await fireEvent.click(
+			within(card).getByRole("button", { name: "Collapse thread" }),
+		);
+
+		// The probe is hidden, so nothing in it has an accessible name to find.
+		const measuredToggle = container.querySelector(
+			'[data-probe-thread-id="t1"] button[aria-expanded]',
+		);
+		expect(measuredToggle).toHaveAttribute("aria-expanded", "false");
+	});
 }

@@ -15,6 +15,7 @@ import ThreadCard from "./ThreadCard.svelte";
 // Shared Tauri mock (provides @tauri-apps/plugin-dialog `ask`, defaulting to false).
 import "../__tests__/helpers/tauri-mock";
 import { REVIEWER } from "../lib/reviewer.svelte.js";
+import { ThreadFolds } from "../lib/thread-folds.svelte.js";
 
 // review-comment-actions.ts is owned code (a thin wrapper over safeInvoke), so
 // this asserts on safeInvoke, the real IPC boundary, matching the pattern used
@@ -697,16 +698,6 @@ describe("ThreadCard", () => {
 		});
 	});
 
-	// An inline card's height is measured once from a hidden copy, so a card
-	// that changed its own height would leave the diff's rows misplaced.
-	it("offers no collapse inside the diff", () => {
-		renderCard({ variant: "inline" });
-
-		expect(
-			screen.queryByRole("button", { name: "Collapse thread", hidden: true }),
-		).not.toBeInTheDocument();
-	});
-
 	describe("inside the diff", () => {
 		it("names its lines and its review, since the diff shows the file", () => {
 			renderCard({ variant: "inline" });
@@ -729,10 +720,20 @@ describe("ThreadCard", () => {
 			expect(review).not.toHaveClass("border");
 		});
 
-		// With no toggle to open it, a folded card would hide its replies and
-		// its Reopen for good.
+		it("collapses to its header", async () => {
+			renderCard({ variant: "inline" });
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Collapse thread" }),
+			);
+
+			expect(
+				screen.queryByRole("textbox", { name: "Reply" }),
+			).not.toBeInTheDocument();
+		});
+
 		it.each(["done", "dismissed"] as const)(
-			"keeps a %s thread open, since it has nothing to expand it",
+			"starts a %s thread collapsed",
 			(state) => {
 				renderCard({
 					variant: "inline",
@@ -740,10 +741,26 @@ describe("ThreadCard", () => {
 				});
 
 				expect(
-					screen.getByRole("button", { name: "Reopen" }),
-				).toBeInTheDocument();
+					screen.getByRole("button", { name: "Expand thread" }),
+				).toHaveAttribute("aria-expanded", "false");
 			},
 		);
+
+		// The diff draws each inline card twice, once hidden to measure its
+		// height, so the two copies fold as one.
+		it("folds with every card that shares its folds", async () => {
+			const folds = new ThreadFolds();
+			renderCard({ variant: "inline", folds });
+			renderCard({ variant: "inline", folds });
+
+			await fireEvent.click(
+				screen.getAllByRole("button", { name: "Collapse thread" })[0],
+			);
+
+			expect(
+				screen.getAllByRole("button", { name: "Expand thread" }),
+			).toHaveLength(2);
+		});
 
 		it("leaves out the excerpt, since the code sits right above it", () => {
 			renderCard({ variant: "inline" });

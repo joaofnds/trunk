@@ -24,6 +24,7 @@ import {
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
 import { reviewVisibility } from "../lib/review-visibility.svelte.js";
+import { ThreadFolds } from "../lib/thread-folds.svelte.js";
 import { CHANGE_TEXT } from "../lib/thread-timeline.js";
 import type {
 	Delivery,
@@ -71,6 +72,9 @@ interface Props {
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	// The panel marks a thread whose agent answer the user has not been shown.
 	unread?: boolean;
+	// Which threads are folded. The diff hands its inline card and that card's
+	// measured copy one instance, so the height it measured is the one drawn.
+	folds?: ThreadFolds;
 }
 
 let {
@@ -91,6 +95,7 @@ let {
 	editorSession,
 	editorSessionForThread,
 	unread = false,
+	folds = new ThreadFolds(),
 }: Props = $props();
 
 // Only the panel shows a thread's replies to the user, so only its cards are
@@ -102,17 +107,7 @@ const fallbackEditorSession = createThreadEditorSession();
 const editor = $derived(
 	editorSessionForThread?.(thread) ?? editorSession ?? fallbackEditorSession,
 );
-// A resolved thread folds to its header and an unresolved one opens, whenever
-// the state changes. A toggle holds only while the state it was made in does.
-// Only the panel folds: the diff has no toggle, since it measures each card
-// once from a hidden copy, so a folded card there could never open again.
-let toggle = $state<{ state: ThreadState; collapsed: boolean } | null>(null);
-const collapsed = $derived(
-	variant === "panel" &&
-		(toggle !== null && toggle.state === thread.state
-			? toggle.collapsed
-			: thread.state === "done" || thread.state === "dismissed"),
-);
+const collapsed = $derived(folds.isCollapsed(thread));
 const peek = $derived(
 	thread.text
 		.replace(/```[\s\S]*?```/g, "")
@@ -509,24 +504,14 @@ async function requestDeleteReply(replyId: string) {
 	{@attach collapsed ? undefined : visibility?.cards.watch(thread.id)}
 >
 	<header class="comment-card-header">
-		<!-- An inline card's height comes from a hidden copy measured once, so
-		     only the panel's card may change its own height. -->
-		{#if variant === "panel"}
-			<FoldBar
-				noun="thread"
-				inset="thread"
-				{collapsed}
-				ontoggle={() => {
-					toggle = { state: thread.state, collapsed: !collapsed };
-				}}
-			>
-				{@render headerContent()}
-			</FoldBar>
-		{:else}
-			<div class="flex min-w-0 flex-1 items-center gap-2 px-1">
-				{@render headerContent()}
-			</div>
-		{/if}
+		<FoldBar
+			noun="thread"
+			inset="thread"
+			{collapsed}
+			ontoggle={() => folds.toggle(thread)}
+		>
+			{@render headerContent()}
+		</FoldBar>
 	</header>
 
 	{#if !collapsed}
