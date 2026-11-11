@@ -444,3 +444,107 @@ fn a_followed_thread_lists_its_follow_for_its_timeline() {
         }]
     );
 }
+
+#[test]
+fn a_thread_whose_lines_are_untouched_follows_unmarked_when_other_files_of_its_commit_changed() {
+    let ctx = behind_upstream();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let written_on = git(&ctx, &["rev-parse", "HEAD"]);
+    let id = comment_on(&store, &ctx, &written_on, 4);
+    std::fs::write(ctx.repo_path().join("b.txt"), "another file\n").unwrap();
+    git(&ctx, &["add", "b.txt"]);
+    git(&ctx, &["commit", "--quiet", "--amend", "--no-edit"]);
+    let amended = git(&ctx, &["rev-parse", "HEAD"]);
+
+    follow(&store, &ctx);
+    recheck(&store, &ctx);
+
+    let followed = thread(&store, &ctx, &id);
+    assert_eq!(followed.anchor.unwrap().commit_oid, amended);
+    assert!(!followed.stale);
+}
+
+/// Comments on the local commit and pulls with rebase in a terminal, returning
+/// the commit that left the graph. The comment makes the next publication's
+/// follow announce itself, which is what a test waits on before it adds more.
+fn commented_then_pulled_with_rebase(ctx: &TestContext, store: &Store) -> String {
+    let written_on = git(ctx, &["rev-parse", "HEAD"]);
+    comment_on(store, ctx, &written_on, 4);
+    git(ctx, &["pull", "--rebase", "--quiet"]);
+
+    written_on
+}
+
+#[test]
+fn a_thread_written_on_a_commit_that_already_left_the_graph_follows_on_the_next_recheck() {
+    let ctx = behind_upstream();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let written_on = commented_then_pulled_with_rebase(&ctx, &store);
+    let review = ctx.review();
+    let announced = review.reviews_changed_events();
+    review.publish_graph();
+    announced.recv_timeout(ANNOUNCE_TIMEOUT).unwrap();
+    let late = comment_on(&store, &ctx, &written_on, 4);
+
+    review.refresh_staleness().unwrap();
+
+    assert_eq!(
+        thread(&store, &ctx, &late).anchor.unwrap().commit_oid,
+        git(&ctx, &["rev-parse", "HEAD"])
+    );
+}
+
+#[test]
+fn the_narrower_ref_recheck_announces_the_follow_it_makes() {
+    let ctx = behind_upstream();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let written_on = commented_then_pulled_with_rebase(&ctx, &store);
+    let review = ctx.review();
+    let announced = review.reviews_changed_events();
+    review.publish_graph();
+    announced.recv_timeout(ANNOUNCE_TIMEOUT).unwrap();
+    let late = comment_on(&store, &ctx, &written_on, 4);
+
+    review.refresh_ref_staleness().unwrap();
+
+    announced
+        .recv_timeout(ANNOUNCE_TIMEOUT)
+        .expect("the ref recheck never announced its follow");
+    assert_eq!(
+        thread(&store, &ctx, &late).anchor.unwrap().commit_oid,
+        git(&ctx, &["rev-parse", "HEAD"])
+    );
+}
+
+#[test]
+fn a_commit_only_a_hidden_branch_reaches_keeps_its_threads_beside_its_cherry_pick() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", BASE)
+        .with_commit("base")
+        .build();
+    git(&ctx, &["checkout", "--quiet", "-b", "side"]);
+    std::fs::write(ctx.repo_path().join("a.txt"), LOCAL).unwrap();
+    git(
+        &ctx,
+        &["commit", "--quiet", "--all", "--message", "local adds four"],
+    );
+    let on_side = git(&ctx, &["rev-parse", "HEAD"]);
+    git(&ctx, &["checkout", "--quiet", "main"]);
+    std::fs::write(ctx.repo_path().join("b.txt"), "b\n").unwrap();
+    git(&ctx, &["add", "b.txt"]);
+    git(&ctx, &["commit", "--quiet", "--message", "main moves on"]);
+    git(&ctx, &["cherry-pick", "side"]);
+    assert_ne!(git(&ctx, &["rev-parse", "HEAD"]), on_side);
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let id = comment_on(&store, &ctx, &on_side, 4);
+    let review = ctx.review();
+    review.hide_ref("refs/heads/side");
+    review.publish_graph();
+
+    review.refresh_staleness().unwrap();
+
+    assert_eq!(
+        thread(&store, &ctx, &id).anchor.unwrap().commit_oid,
+        on_side
+    );
+}

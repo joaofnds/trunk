@@ -5,6 +5,7 @@ use tauri::test::MockRuntime;
 use tauri::{Listener, Manager};
 use trunk_lib::commands::review::{
     RenderedThread, add_reply, add_thread, follow_on_publication, list_threads, mark_replies_seen,
+    refresh_thread_ref_staleness, refresh_thread_staleness,
 };
 use trunk_lib::state::{
     CommitCache, GraphCache, GraphRebuild, RefVisibilityState, RepoState, ReviewStoreState,
@@ -159,6 +160,38 @@ impl ReviewDriver<'_> {
                 }),
         )
         .unwrap();
+    }
+
+    /// The full staleness pass a working-tree change starts.
+    pub fn refresh_staleness(&self) -> Result<usize, String> {
+        tauri::async_runtime::block_on(refresh_thread_staleness(
+            self.ctx.path().to_string(),
+            self.app.state::<RepoState>(),
+            self.app.state::<ReviewStoreState>(),
+            self.app.state::<CommitCache>(),
+            self.app.handle().clone(),
+        ))
+    }
+
+    /// The narrower pass a refs-only change starts while the tab is on screen.
+    pub fn refresh_ref_staleness(&self) -> Result<usize, String> {
+        tauri::async_runtime::block_on(refresh_thread_ref_staleness(
+            self.ctx.path().to_string(),
+            self.app.state::<RepoState>(),
+            self.app.state::<ReviewStoreState>(),
+            self.app.state::<CommitCache>(),
+            self.app.handle().clone(),
+        ))
+    }
+
+    /// Hide `full_ref` in the graph, as the sidebar's eye does, before the next
+    /// publication.
+    pub fn hide_ref(&self, full_ref: &str) {
+        let visibility = self.app.state::<RefVisibilityState>();
+        let mut hidden = visibility.get(self.ctx.path());
+        hidden.hidden_refs.insert(full_ref.to_string());
+
+        visibility.set(self.ctx.path().to_string(), hidden);
     }
 
     /// Each later `reviews-changed`, for a test that blocks until work the app

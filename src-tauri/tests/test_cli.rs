@@ -2650,6 +2650,64 @@ fn watch_json_reports_a_thread_following_its_rewritten_commit() {
     );
 }
 
+#[test]
+fn watch_json_reports_a_follow_that_changed_the_threads_lines_before_its_stale_marker() {
+    use trunk_review::types::{Anchor, Side, Source};
+
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\ntwo\nthree\nfour\n")
+        .with_commit("local adds four")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let written_on = ctx.repo().head().unwrap().target().unwrap().to_string();
+    let (_, published) = seed_reviews(&ctx);
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread = store
+        .write(|tx| {
+            threads::insert(
+                tx,
+                &published,
+                threads::NewThread {
+                    whole_file: false,
+                    text: "why four?".to_string(),
+                    anchor: Some(Anchor {
+                        commit_oid: written_on.clone(),
+                        file_path: "a.txt".to_string(),
+                        source: Source::Diff,
+                        side: Side::New,
+                        start_line: 4,
+                        end_line: 4,
+                    }),
+                    commit_oid: None,
+                    content_pin: None,
+                    cached_excerpt: None,
+                    delivery: Delivery::Send,
+                },
+                400,
+            )
+        })
+        .unwrap();
+    let watch = WatchChild::spawn_json(&ctx);
+    std::fs::write(ctx.repo_path().join("a.txt"), "one\ntwo\nthree\nFOUR\n").unwrap();
+    let amended = Command::new("git")
+        .args(["commit", "--quiet", "--all", "--amend", "--no-edit"])
+        .current_dir(ctx.repo_path())
+        .status()
+        .unwrap();
+    assert!(amended.success());
+    let mut repo = ctx.repo();
+    let captured = trunk_git::graph::capture(&mut repo).unwrap();
+
+    reviewdb::follow::follow(&store, &canonical, &repo, &captured.commits, 500).unwrap();
+
+    let thread_events: Vec<String> = std::iter::repeat_with(|| watch.next_event())
+        .filter(|event| event["thread"] == thread.as_str())
+        .take(2)
+        .map(|event| event["event"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(thread_events, ["thread_followed", "thread_stale_changed"]);
+}
+
 /// A collected anchor is the one staleness case that can never clear: the code
 /// is unrecoverable, so the marker must not flicker back off. Non-reversal is
 /// asserted as the recompute's own count rather than as a silence over some
