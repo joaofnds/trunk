@@ -792,4 +792,55 @@ mod tests {
     fn a_hunk_touching_one_line_of_the_range_changes_its_code() {
         assert!(overlaps(&hunk(3, 1, 3, 1), 2, 3));
     }
+
+    #[test]
+    fn the_patch_id_is_the_one_git_patch_id_stable_prints() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        let signature = git2::Signature::new("T", "t@example.com", &git2::Time::new(1, 0)).unwrap();
+        let mut parent = None;
+        for content in ["one\ntwo\nthree\n", "zero\none\ntwo\nthree\nfour\n"] {
+            std::fs::write(dir.path().join("a.txt"), content).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("a.txt")).unwrap();
+            let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+            let parents: Vec<_> = parent.iter().collect();
+            let oid = repo
+                .commit(None, &signature, &signature, "c", &tree, &parents)
+                .unwrap();
+            parent = Some(repo.find_commit(oid).unwrap());
+        }
+        let commit = parent.unwrap();
+        let shown = std::process::Command::new("git")
+            .args([
+                "show",
+                "--no-color",
+                "--format=%H",
+                &commit.id().to_string(),
+            ])
+            .current_dir(dir.path())
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap();
+        let mut stable = std::process::Command::new("git")
+            .args(["patch-id", "--stable"])
+            .current_dir(dir.path())
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        std::io::Write::write_all(&mut stable.stdin.take().unwrap(), &shown.stdout).unwrap();
+        let printed = String::from_utf8(stable.wait_with_output().unwrap().stdout).unwrap();
+
+        assert_eq!(
+            printed.split_whitespace().next(),
+            Some(
+                super::patch_id(&repo, &commit)
+                    .unwrap()
+                    .to_string()
+                    .as_str()
+            )
+        );
+    }
 }
