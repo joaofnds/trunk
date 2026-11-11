@@ -160,6 +160,15 @@ commit collected from the object store with no other change, as a `git gc` can
 do. The next full recompute for that repository catches each. A recompute that
 fails, for instance during a repack, leaves every marker as it stood.
 
+A rebase, amend or cherry-pick that replaces a commented commit moves its
+threads onto the rewritten copy, with their lines carried to where that code
+sits on the copy. The app makes the move when it next reads that repository's
+history, so a rewrite made while Trunk was closed, or in a repository with no
+open tab, moves nothing until then, and `list`, `show` and `threads` print the
+old commit. A thread whose own lines the rewrite changed is stale on
+the copy and stays stale until a later rewrite gives it back the code it was
+written on. `watch` reports each move as `thread_followed`.
+
 ### `--json` on `threads` and `thread`
 
 Both reuse `watch`'s field names, so one reader parses every stream. `threads`

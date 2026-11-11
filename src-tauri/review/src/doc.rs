@@ -441,7 +441,7 @@ fn emit_where_to_work(out: &mut String, session: &RenderInput) {
 /// What the stored stale marker can and cannot tell an agent, and the check it
 /// owes the current code. The agent guide prints this same constant, so the two
 /// cannot teach different rules.
-pub(crate) const FRESHNESS_RULE: &str = "A heading that ends `(stale)` means the reviewer's app found the code its comment points at changed or gone when it last checked, and a heading without it means the app found that code as the comment saw it. Both are the app's last computation, not a fresh look at the repository. An edit made while the app was closed, or in a repository whose restored tab nobody has opened since the app started, leaves the marker describing the code as it stood before. Read the code as it stands now before you act on any comment, and trust what you read over the marker.";
+pub(crate) const FRESHNESS_RULE: &str = "A heading that ends `(stale)` means the reviewer's app found the code its comment points at changed or gone when it last checked, and a heading without it means the app found that code as the comment saw it. Both are the app's last computation, not a fresh look at the repository. An edit made while the app was closed, or in a repository whose restored tab nobody has opened since the app started, leaves the marker describing the code as it stood before. Read the code as it stands now before you act on any comment, and trust what you read over the marker. When a rebase, amend or cherry-pick replaces the commit a comment is on, the app moves the comment onto the rewritten copy the next time it reads the repository's history, so take a comment's commit and lines from your latest read of the review, never from an earlier one.";
 
 /// Whose words each part of a comment is. The agent guide prints this same
 /// constant.
@@ -2808,6 +2808,18 @@ mod tests {
         assert!(
             md.contains(FRESHNESS_RULE),
             "a doc with no CLI section is still read by an agent, so it must say how current the marker is; got: {md}"
+        );
+    }
+
+    #[test]
+    fn header_says_a_rewrite_moves_a_comment_onto_the_copy() {
+        let (_dir, repo) = make_repo();
+
+        let md = render_minimal(&repo);
+
+        assert!(
+            md.contains("rewritten copy"),
+            "an agent holding a commit from an earlier read acts on a commit the comment has left; got: {md}"
         );
     }
 
