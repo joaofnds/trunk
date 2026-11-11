@@ -548,3 +548,57 @@ fn a_commit_only_a_hidden_branch_reaches_keeps_its_threads_beside_its_cherry_pic
         on_side
     );
 }
+
+#[test]
+fn a_follow_decided_on_a_graph_older_than_the_published_one_moves_nothing() {
+    let ctx = behind_upstream();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let review = ctx.review();
+    review.publish_graph();
+    let before_the_pull = review.published_graph();
+    commented_then_pulled_with_rebase(&ctx, &store);
+    let announced = review.reviews_changed_events();
+    review.publish_graph();
+    announced.recv_timeout(ANNOUNCE_TIMEOUT).unwrap();
+
+    let moved = review.follow_against(&store, &before_the_pull);
+
+    assert_eq!(moved, 0);
+}
+
+/// Runs SQL on the store behind its back, which is how a test breaks the follow's
+/// own table to fail every follow while the stale recheck's tables stay intact.
+fn behind_the_stores_back(ctx: &TestContext, sql: &str) {
+    rusqlite::Connection::open(ctx.data_dir().join(reviewdb::DB_FILE))
+        .unwrap()
+        .execute_batch(sql)
+        .unwrap();
+}
+
+#[test]
+fn a_follow_that_fails_still_lets_the_recheck_clear_a_stale_marker() {
+    let ctx = behind_upstream();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let written_on = git(&ctx, &["rev-parse", "HEAD"]);
+    let id = comment_on(&store, &ctx, &written_on, 4);
+    behind_the_stores_back(
+        &ctx,
+        &format!(
+            "UPDATE threads SET stale = 1 WHERE id = '{id}';
+             ALTER TABLE thread_follows RENAME TO thread_follows_gone;"
+        ),
+    );
+    git(&ctx, &["pull", "--rebase", "--quiet"]);
+    let review = ctx.review();
+    review.publish_graph();
+
+    review.refresh_staleness().unwrap();
+
+    behind_the_stores_back(
+        &ctx,
+        "ALTER TABLE thread_follows_gone RENAME TO thread_follows;",
+    );
+    let unmoved = thread(&store, &ctx, &id);
+    assert_eq!(unmoved.anchor.unwrap().commit_oid, written_on);
+    assert!(!unmoved.stale);
+}

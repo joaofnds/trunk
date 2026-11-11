@@ -974,30 +974,57 @@ pub async fn refresh_thread_staleness<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    cache: State<'_, CommitCache>,
     app: AppHandle<R>,
 ) -> Result<usize, String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
-    let published = cache.snapshot(&path);
+    follow_then_recompute(path, &state, &store, &app, recompute_staleness, true).await
+}
+
+/// Follow rewritten commits against the graph published now, then run
+/// `recompute`, announcing a follow that moved anything, and the recompute's
+/// changes when `announce_changes` asks for it.
+///
+/// A follow failure is not the recheck's failure, since the stale markers do
+/// not depend on it, so it is reported to stderr and the recompute still runs.
+/// A follow that committed is announced even when the recompute then fails.
+async fn follow_then_recompute<R: Runtime>(
+    path: String,
+    state: &RepoState,
+    store: &ReviewStoreState,
+    app: &AppHandle<R>,
+    recompute: fn(&Store, &Path, &str) -> Result<usize, TrunkError>,
+    announce_changes: bool,
+) -> Result<usize, String> {
+    let (canonical, store) = prepare(&path, state, store, app).await?;
 
     let target = canonical.clone();
+    let handle = app.clone();
     let (followed, changed) = blocking_store(move || {
-        let followed = follow_rewritten_commits(&store, &target, &path, published.as_ref())?;
-        let changed = recompute_staleness(&store, &target, &path)?;
-        Ok((followed, changed))
+        let cache = handle.state::<CommitCache>();
+        let published = cache.snapshot(&path);
+        let followed = follow_rewritten_commits(&store, &target, &path, published.as_ref(), &cache)
+            .unwrap_or_else(|error| {
+                eprintln!("following rewritten commits failed: {}", error.message);
+                0
+            });
+        Ok((followed, recompute(&store, &target, &path)))
     })
     .await?;
-    if followed + changed > 0 {
-        emit_reviews_changed(&app, &canonical);
+    let marked = matches!(changed, Ok(count) if count > 0);
+    if followed > 0 || (announce_changes && marked) {
+        emit_reviews_changed(app, &canonical);
     }
 
-    Ok(changed)
+    changed.map_err(|error| error.to_json())
 }
 
 /// Move threads off the commits a rewrite replaced, onto their copies.
 ///
 /// The copies come from the history `published` captured. Nothing moves before
-/// a graph is published, since only a capture says which commits left it.
+/// a graph is published, since only a capture says which commits left it, and
+/// nothing moves once `cache` holds a newer history than `published`, checked
+/// inside the store write: a follow decided on an older capture would take a
+/// thread off a copy a newer follow moved it to, back onto the commit the
+/// rewrite replaced.
 ///
 /// # Errors
 ///
@@ -1008,18 +1035,24 @@ pub fn follow_rewritten_commits(
     canonical: &Path,
     repo_path: &str,
     published: Option<&trunk_git::graph_input::GraphSnapshot>,
+    cache: &CommitCache,
 ) -> Result<usize, TrunkError> {
     let Some(published) = published else {
         return Ok(0);
     };
 
     let repo = git2::Repository::open(repo_path)?;
-    trunk_review::reviewdb::follow::follow(
+    trunk_review::reviewdb::follow::follow_while(
         store,
         canonical,
         &repo,
         published.captured_commits(),
         trunk_review::reviewdb::now_secs(),
+        || {
+            cache
+                .snapshot(repo_path)
+                .is_some_and(|now| now.same_history_as(published))
+        },
     )
 }
 
@@ -1056,9 +1089,12 @@ async fn follow_published<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, app).await?;
 
     let target = canonical.clone();
-    let followed =
-        blocking_store(move || follow_rewritten_commits(&store, &target, &path, Some(&published)))
-            .await?;
+    let handle = app.clone();
+    let followed = blocking_store(move || {
+        let cache = handle.state::<CommitCache>();
+        follow_rewritten_commits(&store, &target, &path, Some(&published), &cache)
+    })
+    .await?;
     if followed > 0 {
         emit_reviews_changed(app, &canonical);
     }
@@ -1118,24 +1154,9 @@ pub async fn refresh_thread_ref_staleness<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    cache: State<'_, CommitCache>,
     app: AppHandle<R>,
 ) -> Result<usize, String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
-    let published = cache.snapshot(&path);
-
-    let target = canonical.clone();
-    let (followed, changed) = blocking_store(move || {
-        let followed = follow_rewritten_commits(&store, &target, &path, published.as_ref())?;
-        let changed = recompute_ref_staleness(&store, &target, &path)?;
-        Ok((followed, changed))
-    })
-    .await?;
-    if followed > 0 {
-        emit_reviews_changed(&app, &canonical);
-    }
-
-    Ok(changed)
+    follow_then_recompute(path, &state, &store, &app, recompute_ref_staleness, false).await
 }
 
 /// Resolve only commit anchors after a refs-only event; retain file-pin results.

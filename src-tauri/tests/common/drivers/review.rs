@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex};
 use tauri::test::MockRuntime;
 use tauri::{Listener, Manager};
 use trunk_lib::commands::review::{
-    RenderedThread, add_reply, add_thread, follow_on_publication, list_threads, mark_replies_seen,
-    refresh_thread_ref_staleness, refresh_thread_staleness,
+    RenderedThread, add_reply, add_thread, follow_on_publication, follow_rewritten_commits,
+    list_threads, mark_replies_seen, refresh_thread_ref_staleness, refresh_thread_staleness,
 };
 use trunk_lib::state::{
     CommitCache, GraphCache, GraphRebuild, RefVisibilityState, RepoState, ReviewStoreState,
@@ -168,7 +168,6 @@ impl ReviewDriver<'_> {
             self.ctx.path().to_string(),
             self.app.state::<RepoState>(),
             self.app.state::<ReviewStoreState>(),
-            self.app.state::<CommitCache>(),
             self.app.handle().clone(),
         ))
     }
@@ -179,7 +178,6 @@ impl ReviewDriver<'_> {
             self.ctx.path().to_string(),
             self.app.state::<RepoState>(),
             self.app.state::<ReviewStoreState>(),
-            self.app.state::<CommitCache>(),
             self.app.handle().clone(),
         ))
     }
@@ -192,6 +190,33 @@ impl ReviewDriver<'_> {
         hidden.hidden_refs.insert(full_ref.to_string());
 
         visibility.set(self.ctx.path().to_string(), hidden);
+    }
+
+    /// The graph the app has published for this repository now.
+    pub fn published_graph(&self) -> trunk_git::graph_input::GraphSnapshot {
+        self.app
+            .state::<CommitCache>()
+            .snapshot(self.ctx.path())
+            .unwrap()
+    }
+
+    /// A follow decided against `published`, the way a task started by an earlier
+    /// publication or recheck runs once a newer graph has been published.
+    pub fn follow_against(
+        &self,
+        store: &reviewdb::Store,
+        published: &trunk_git::graph_input::GraphSnapshot,
+    ) -> usize {
+        let canonical = self.ctx.repo_path().canonicalize().unwrap();
+
+        follow_rewritten_commits(
+            store,
+            &canonical,
+            self.ctx.path(),
+            Some(published),
+            &self.app.state::<CommitCache>(),
+        )
+        .unwrap()
     }
 
     /// Each later `reviews-changed`, for a test that blocks until work the app

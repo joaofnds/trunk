@@ -45,6 +45,24 @@ pub fn follow<S: BuildHasher>(
     captured: &HashMap<Oid, CommitFacts, S>,
     now: i64,
 ) -> Result<usize, TrunkError> {
+    follow_while(store, repo_path, repo, captured, now, || true)
+}
+
+/// [`follow`], writing only while `still_current` holds. It is asked inside the
+/// write transaction, so a caller whose capture a newer one replaced between
+/// the read and the write moves nothing.
+///
+/// # Errors
+///
+/// As [`follow`].
+pub fn follow_while<S: BuildHasher>(
+    store: &Store,
+    repo_path: &Path,
+    repo: &Repository,
+    captured: &HashMap<Oid, CommitFacts, S>,
+    now: i64,
+    still_current: impl FnOnce() -> bool,
+) -> Result<usize, TrunkError> {
     let named = store.read(|conn| References::read(conn, repo_path))?;
     let mut on_commit = by_commit(named.threads);
     let mut moves = Vec::new();
@@ -81,6 +99,9 @@ pub fn follow<S: BuildHasher>(
 
     store.write_if(
         |tx| {
+            if !still_current() {
+                return Ok(0);
+            }
             let threads = apply(tx, &moves, now)?;
             let others = rewrite_references(tx, repo_path, &rewrites)?;
 
