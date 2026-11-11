@@ -61,6 +61,14 @@ describe("ExactVirtualList", () => {
 		expect(rows).toHaveClass("min-w-full");
 	});
 
+	it("positions the rows without a transform, which would give them a layer of their own", () => {
+		const { container } = mountList(5000);
+
+		const rows = container.querySelector(".exact-virtual-rows");
+
+		expect(rows?.getAttribute("style")).not.toContain("transform");
+	});
+
 	it("suppresses horizontal overscroll chaining on the viewport", () => {
 		const { container } = mountList(5000);
 
@@ -95,7 +103,7 @@ describe("ExactVirtualList", () => {
 			container.querySelector(".exact-virtual-rows")?.getAttribute("style") ??
 			"";
 		expect(style).toContain("--pan-x: 420px");
-		expect(style).toContain("translateY(");
+		expect(style).toContain("top:");
 	});
 
 	it("offsets the mounted rows by the first one's top", async () => {
@@ -110,7 +118,7 @@ describe("ExactVirtualList", () => {
 		const firstRow = Math.floor(runwayTop / ROW_HEIGHT);
 		const rows = container.querySelector(".exact-virtual-rows");
 		expect(rows?.getAttribute("style")).toContain(
-			`translateY(${firstRow * ROW_HEIGHT}px)`,
+			`top: ${firstRow * ROW_HEIGHT}px`,
 		);
 	});
 });

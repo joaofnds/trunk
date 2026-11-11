@@ -102,10 +102,13 @@ function onscroll() {
 		style:height="{shown.totalHeight}px"
 		style:width={contentWidth}
 	>
+		<!-- Positioned by `top`, never a transform: a transformed box holding a
+		     sticky row gets a compositing layer of its own, and WebKit draws that
+		     layer empty for a frame now and then during a fast fling. -->
 		<div
-			class="exact-virtual-rows absolute top-0 left-0 w-full min-w-full"
+			class="exact-virtual-rows absolute left-0 w-full min-w-full"
 			style:--pan-x="{panLeft}px"
-			style:transform="translateY({shown.offsetTop}px)"
+			style:top="{shown.offsetTop}px"
 		>
 			{#each visible as item, offset (shown.start + offset)}
 				{@render renderItem(item, shown.start + offset)}
