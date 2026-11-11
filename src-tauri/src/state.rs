@@ -378,11 +378,16 @@ impl GraphCache {
     }
 }
 
+/// Told of each publication that installs a different captured history for a
+/// repository, with that repository's path and the published snapshot.
+pub type PublicationObserver = Arc<dyn Fn(&str, &GraphSnapshot) + Send + Sync>;
+
 // Caches the full commit graph per open repo path.
 // Populated on open_repo, cleared on close_repo, sliced by get_commit_graph.
 pub struct CommitCache(
     Mutex<GraphCache>,
     Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    Mutex<Option<PublicationObserver>>,
     #[cfg(feature = "test-util")]
     Mutex<Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>>,
 );
@@ -399,9 +404,29 @@ impl CommitCache {
         Self(
             Mutex::new(cache),
             Mutex::new(HashMap::new()),
+            Mutex::new(None),
             #[cfg(feature = "test-util")]
             Mutex::new(None),
         )
+    }
+
+    /// Tell `observer` of every later publication that replaces a repository's
+    /// captured history, which is the moment a rewritten commit leaves the graph
+    /// whichever route rebuilt it. A relayout, a visibility change or a worktree
+    /// observation over the same history is not one.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the observer lock is poisoned.
+    pub fn observe_publications(&self, observer: PublicationObserver) {
+        *self.2.lock().unwrap() = Some(observer);
+    }
+
+    fn announce_publication(&self, path: &str, snapshot: &GraphSnapshot) {
+        let observer = self.2.lock().unwrap().clone();
+        if let Some(observer) = observer {
+            observer(path, snapshot);
+        }
     }
 
     /// Hold the next worktree observation before publication, for deterministic race tests.
@@ -415,12 +440,12 @@ impl CommitCache {
         observed: std::sync::mpsc::Sender<()>,
         resume: std::sync::mpsc::Receiver<()>,
     ) {
-        *self.2.lock().unwrap() = Some((observed, resume));
+        *self.3.lock().unwrap() = Some((observed, resume));
     }
 
     #[cfg(feature = "test-util")]
     fn finish_refresh_observation(&self) {
-        let observation = self.2.lock().unwrap().take();
+        let observation = self.3.lock().unwrap().take();
         if let Some((observed, resume)) = observation {
             observed.send(()).unwrap();
             resume.recv().unwrap();
@@ -1133,12 +1158,24 @@ impl<'a> GraphRebuild<'a> {
             // Visibility cannot change between this comparison and publication.
             let visibility = self.ref_visibility.0.lock().unwrap();
             if visibility.get(&path).cloned().unwrap_or_default() == *snapshot.visibility() {
-                return self
-                    .cache
-                    .0
-                    .lock()
-                    .unwrap()
-                    .publish(path, ticket, snapshot, inputs);
+                let (published, replaced_history) = {
+                    let mut cache = self.cache.0.lock().unwrap();
+                    let before = cache.get(&path).cloned();
+                    let published = cache.publish(path.clone(), ticket, snapshot, inputs)?;
+                    let replaced_history = cache.get(&path).is_some_and(|current| {
+                        before
+                            .as_ref()
+                            .is_none_or(|before| !before.same_history_as(current))
+                    });
+                    drop(cache);
+                    (published, replaced_history)
+                };
+                drop(visibility);
+
+                if replaced_history {
+                    self.cache.announce_publication(&path, &published);
+                }
+                return Ok(published);
             }
         }
         self.cache.0.lock().unwrap().retain_current(&path, ticket)
@@ -2274,6 +2311,61 @@ mod tests {
             cached.get("/repo").unwrap().visibility(),
             relaid_out.visibility()
         );
+    }
+
+    fn count_publications(cache: &CommitCache) -> Arc<AtomicUsize> {
+        let told = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&told);
+        cache.observe_publications(Arc::new(move |_, _| {
+            counter.fetch_add(1, Ordering::SeqCst);
+        }));
+
+        told
+    }
+
+    fn rebuild(cache: &CommitCache, visibility: &RefVisibilityState) -> GraphSnapshot {
+        tauri::async_runtime::block_on(
+            GraphRebuild::new(cache, visibility)
+                .rebuild("/repo".to_owned(), || Ok(GraphSource::default())),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn every_rebuild_tells_the_publication_observer_of_its_new_history() {
+        let cache = CommitCache::new(GraphCache::default());
+        let visibility = RefVisibilityState::default();
+        let told = count_publications(&cache);
+
+        rebuild(&cache, &visibility);
+        rebuild(&cache, &visibility);
+
+        assert_eq!(told.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn a_visibility_toggle_over_the_same_history_tells_no_publication_observer() {
+        let cache = CommitCache::new(GraphCache::default());
+        let visibility = RefVisibilityState::default();
+        let read = rebuild(&cache, &visibility);
+        let told = count_publications(&cache);
+        let toggled = read.with_visibility(tagged_graph("toggled").visibility().clone());
+        visibility.set("/repo".to_owned(), toggled.visibility().clone());
+        let ticket = cache.begin_write("/repo").unwrap();
+
+        tauri::async_runtime::block_on(GraphRebuild::new(&cache, &visibility).publish_relayout(
+            "/repo".to_owned(),
+            &read,
+            toggled.clone(),
+            ticket,
+        ))
+        .unwrap();
+
+        assert_eq!(
+            cache.snapshot("/repo").unwrap().visibility(),
+            toggled.visibility()
+        );
+        assert_eq!(told.load(Ordering::SeqCst), 0);
     }
 
     fn graph(tag: usize) -> GraphSnapshot {

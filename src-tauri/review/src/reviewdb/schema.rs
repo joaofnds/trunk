@@ -8,7 +8,7 @@ use super::sqlite_error;
 use rusqlite::Connection;
 use trunk_git::error::TrunkError;
 
-pub const CURRENT_VERSION: i64 = 15;
+pub const CURRENT_VERSION: i64 = 16;
 
 const V1: &str = r"
 CREATE TABLE reviews (
@@ -329,6 +329,28 @@ ALTER TABLE replies ADD COLUMN seen INTEGER NOT NULL DEFAULT 0;
 UPDATE replies SET seen = 1;
 ";
 
+/// A thread following its commit through a rewrite (TRUNK-430). Each follow is a
+/// row naming the commit and lines it left and the ones it reached. The first
+/// row's `from` side is the commit the thread was written on, which every later
+/// follow compares against, so following back onto it clears `code_changed`.
+const V16: &str = r"
+CREATE TABLE thread_follows (
+    thread_id    TEXT    NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    from_oid     TEXT    NOT NULL,
+    to_oid       TEXT    NOT NULL,
+    from_start   INTEGER,
+    from_end     INTEGER,
+    to_start     INTEGER,
+    to_end       INTEGER,
+    code_changed INTEGER NOT NULL,
+    created_at   INTEGER NOT NULL
+);
+
+CREATE INDEX thread_follows_by_thread ON thread_follows(thread_id, created_at);
+
+ALTER TABLE threads ADD COLUMN code_changed INTEGER NOT NULL DEFAULT 0;
+";
+
 /// A dev store may carry `user_version = 8` from an unreleased commit that numbered
 /// an earlier cleanup 8, before this build's own v8 existed.
 ///
@@ -507,6 +529,10 @@ fn apply_pending(conn: &Connection) -> Result<(), TrunkError> {
     }
     if user_version(conn)? < 15 {
         conn.execute_batch(&format!("{V15} PRAGMA user_version = 15;"))
+            .map_err(sqlite_error)?;
+    }
+    if user_version(conn)? < 16 {
+        conn.execute_batch(&format!("{V16} PRAGMA user_version = 16;"))
             .map_err(sqlite_error)?;
     }
 

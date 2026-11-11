@@ -478,6 +478,20 @@ impl GraphSnapshot {
         Arc::ptr_eq(&self.capture, &other.capture) && self.worktree_dirty == other.worktree_dirty
     }
 
+    /// Whether both hold the same captured history, whatever their visibility or
+    /// worktree observation.
+    #[must_use]
+    pub fn same_history_as(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.capture, &other.capture)
+    }
+
+    /// Every captured commit's facts, hidden refs' commits included, for a reader
+    /// that must tell a rewritten commit from a hidden one.
+    #[must_use]
+    pub fn captured_commits(&self) -> &HashMap<Oid, CommitFacts> {
+        &self.capture.commits
+    }
+
     /// Visible history order, without hydrating rows or cloning commit text.
     #[must_use]
     pub fn oids(&self) -> &[Oid] {

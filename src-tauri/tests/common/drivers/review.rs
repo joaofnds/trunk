@@ -1,11 +1,15 @@
 use crate::common::context::TestContext;
+use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use tauri::test::MockRuntime;
 use tauri::{Listener, Manager};
 use trunk_lib::commands::review::{
-    RenderedThread, add_reply, add_thread, list_threads, mark_replies_seen,
+    RenderedThread, add_reply, add_thread, follow_on_publication, list_threads, mark_replies_seen,
 };
-use trunk_lib::state::{RepoState, ReviewStoreState, StoreSlot, SweptRepos};
+use trunk_lib::state::{
+    CommitCache, GraphCache, GraphRebuild, RefVisibilityState, RepoState, ReviewStoreState,
+    StoreSlot, SweptRepos,
+};
 use trunk_review::reviewdb;
 use trunk_review::types::{Anchor, Channel, Delivery};
 
@@ -48,6 +52,9 @@ impl TestContext {
         app.manage(RepoState(Mutex::new(self.state_map().clone())));
         app.manage(ReviewStoreState(StoreSlot::default()));
         app.manage(SweptRepos::default());
+        app.manage(CommitCache::new(GraphCache::default()));
+        app.manage(RefVisibilityState::default());
+        follow_on_publication(app.handle());
 
         let fired = Arc::new(Mutex::new(false));
         let fired_handle = Arc::clone(&fired);
@@ -136,6 +143,33 @@ impl ReviewDriver<'_> {
             self.app.state::<SweptRepos>(),
             self.app.handle().clone(),
         ))
+    }
+
+    /// Capture the repository's graph and publish it through the commit cache,
+    /// as opening the repository or the file watcher does.
+    pub fn publish_graph(&self) {
+        let cache = self.app.state::<CommitCache>();
+        let visibility = self.app.state::<RefVisibilityState>();
+        let location = self.ctx.repo_path().to_path_buf();
+
+        tauri::async_runtime::block_on(
+            GraphRebuild::new(&cache, &visibility)
+                .rebuild(self.ctx.path().to_string(), move || {
+                    trunk_lib::state::read_graph(&mut git2::Repository::open(location)?)
+                }),
+        )
+        .unwrap();
+    }
+
+    /// Each later `reviews-changed`, for a test that blocks until work the app
+    /// started on its own has announced itself.
+    pub fn reviews_changed_events(&self) -> Receiver<()> {
+        let (tx, rx) = mpsc::channel();
+        self.app.listen("reviews-changed", move |_| {
+            let _ = tx.send(());
+        });
+
+        rx
     }
 
     pub fn fired_reviews_changed(&self) -> bool {

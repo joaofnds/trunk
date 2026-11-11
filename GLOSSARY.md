@@ -371,7 +371,9 @@ The history is a record for display only; the thread's own state stays the truth
 longer occurs on the surface the thread targets (current-file → the pinned block is
 absent from the working-tree file; snapshot → superseded; any anchor oid → the
 object is no longer in the repository). A thread on a commit that is not a snapshot never
-goes stale while its commit exists, and the orphan classifier covers it; once the commit is collected the excerpt
+goes stale while its commit exists, and the orphan classifier covers it, except that a
+thread a follow carried onto a copy whose code at its lines differs from the code it was
+written on stays stale until a follow brings it back; once the commit is collected the excerpt
 is the only surviving copy of the code, and the thread reads stale like any other
 collected anchor. Only an object the repository reports absent counts as collected:
 a read that fails any other way decides nothing, and the recompute stops with every
@@ -382,6 +384,16 @@ when it starts showing a repository and on repo-changed events after that, persi
 only as a last-computed value for the CLI to print, and it can clear again after,
 e.g., a branch switch. Not a state; a thread can be `open` and
 stale at once.
+
+**Follow** — a thread moving from a commit that left the graph to the rewritten copy
+that replaced it (a rebase, an amend, a cherry-pick), its lines carried to where its
+code now sits. The copy is the one commit with the same author, author time and subject,
+or, for a reworded commit, the one same-second commit with the same changes. With no such
+copy the thread stays where it was. Recorded in the thread's timeline (TRUNK-430).
+
+**Left the graph** — said of a commit the graph capture no longer holds, before ref
+visibility is applied, so a commit only a hidden branch reaches has not left it. Not
+the Orphaned pill, which is about a thread's anchor failing to resolve.
 
 **Snapshot** — a dangling commit holding the working tree or the index as it stood
 when a comment was left on uncommitted work, so the comment has something to anchor

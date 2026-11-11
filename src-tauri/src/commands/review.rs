@@ -13,7 +13,7 @@ use reviews::Review;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Runtime, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use trunk_git::blob_reader::WorkingTreeFile;
 use trunk_git::error::TrunkError;
 use trunk_review::range::{compute_range_oids, review_commits, validate_range};
@@ -950,6 +950,10 @@ pub async fn list_threads<R: Runtime>(
 /// runs at most once per process, so a recompute built to its shape would
 /// freeze the flag at whatever it was when the app started.
 ///
+/// A thread may name a commit that left the graph without the graph changing,
+/// such as an unsent draft submitted on it, so the pass follows rewritten
+/// commits first, against the graph published now.
+///
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses, or
@@ -963,17 +967,96 @@ pub async fn refresh_thread_staleness<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
+    cache: State<'_, CommitCache>,
     app: AppHandle<R>,
 ) -> Result<usize, String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let published = cache.snapshot(&path);
 
     let target = canonical.clone();
-    let changed = blocking_store(move || recompute_staleness(&store, &target, &path)).await?;
-    if changed > 0 {
+    let (followed, changed) = blocking_store(move || {
+        let followed = follow_rewritten_commits(&store, &target, &path, published.as_ref())?;
+        let changed = recompute_staleness(&store, &target, &path)?;
+        Ok((followed, changed))
+    })
+    .await?;
+    if followed + changed > 0 {
         emit_reviews_changed(&app, &canonical);
     }
 
     Ok(changed)
+}
+
+/// Move threads off the commits a rewrite replaced, onto their copies.
+///
+/// The copies come from the history `published` captured. Nothing moves before
+/// a graph is published, since only a capture says which commits left it.
+///
+/// # Errors
+///
+/// Returns the git error when the repository will not open or a commit will
+/// not read, and the store error when the write fails.
+pub fn follow_rewritten_commits(
+    store: &Store,
+    canonical: &Path,
+    repo_path: &str,
+    published: Option<&trunk_git::graph_input::GraphSnapshot>,
+) -> Result<usize, TrunkError> {
+    let Some(published) = published else {
+        return Ok(0);
+    };
+
+    let repo = git2::Repository::open(repo_path)?;
+    trunk_review::reviewdb::follow::follow(
+        store,
+        canonical,
+        &repo,
+        published.captured_commits(),
+        trunk_review::reviewdb::now_secs(),
+    )
+}
+
+/// Run the follow step whenever a graph publication replaces a repository's
+/// history, so a rebase run in a terminal moves its threads as soon as Trunk
+/// sees the rewritten graph, with no later event needed.
+///
+/// # Panics
+///
+/// Panics when the commit cache's observer lock is poisoned.
+pub fn follow_on_publication<R: Runtime>(app: &AppHandle<R>) {
+    let handle = app.clone();
+    let observer: crate::state::PublicationObserver = Arc::new(move |path, published| {
+        let handle = handle.clone();
+        let path = path.to_owned();
+        let published = published.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(error) = follow_published(&handle, path, published).await {
+                eprintln!("following rewritten commits failed: {error}");
+            }
+        });
+    });
+
+    app.state::<CommitCache>().observe_publications(observer);
+}
+
+async fn follow_published<R: Runtime>(
+    app: &AppHandle<R>,
+    path: String,
+    published: trunk_git::graph_input::GraphSnapshot,
+) -> Result<(), String> {
+    let state = app.state::<RepoState>();
+    let store = app.state::<ReviewStoreState>();
+    let (canonical, store) = prepare(&path, &state, &store, app).await?;
+
+    let target = canonical.clone();
+    let followed =
+        blocking_store(move || follow_rewritten_commits(&store, &target, &path, Some(&published)))
+            .await?;
+    if followed > 0 {
+        emit_reviews_changed(app, &canonical);
+    }
+
+    Ok(())
 }
 
 /// Record that the review panel showed the user these agent replies.
@@ -1017,6 +1100,10 @@ pub async fn mark_replies_seen<R: Runtime>(
 
 /// Refresh real commit availability after a refs-only event. The requesting view
 /// reads the result directly, avoiding a broad review event and file resolution.
+///
+/// Rewritten commits are followed first, as in `refresh_thread_staleness`, and
+/// a follow is announced, since it moves threads the view has not asked about.
+///
 /// # Errors
 /// Returns a store, repository or blocking-task error as JSON.
 #[tauri::command]
@@ -1024,10 +1111,24 @@ pub async fn refresh_thread_ref_staleness<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
+    cache: State<'_, CommitCache>,
     app: AppHandle<R>,
 ) -> Result<usize, String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
-    blocking_store(move || recompute_ref_staleness(&store, &canonical, &path)).await
+    let published = cache.snapshot(&path);
+
+    let target = canonical.clone();
+    let (followed, changed) = blocking_store(move || {
+        let followed = follow_rewritten_commits(&store, &target, &path, published.as_ref())?;
+        let changed = recompute_ref_staleness(&store, &target, &path)?;
+        Ok((followed, changed))
+    })
+    .await?;
+    if followed > 0 {
+        emit_reviews_changed(&app, &canonical);
+    }
+
+    Ok(changed)
 }
 
 /// Resolve only commit anchors after a refs-only event; retain file-pin results.

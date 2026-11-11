@@ -1,9 +1,11 @@
 //! Whether a thread still describes the code it was written against.
 //!
-//! Three rules. A snapshot-anchored thread is stale once the repo has moved
+//! Four rules. A snapshot-anchored thread is stale once the repo has moved
 //! past the snapshot it names. A thread anchored to an oid the repository no
 //! longer holds is stale whatever that oid was, because the code it describes
-//! is unrecoverable and the excerpt is the only surviving copy. A current-file
+//! is unrecoverable and the excerpt is the only surviving copy. A thread that
+//! followed its commit through a rewrite which changed its own lines is stale
+//! while that holds (`follow`). A current-file
 //! thread is stale once its pinned block occurs nowhere in the file (for one
 //! about the whole file, once the file differs from it by a byte), and fresh
 //! again the moment the content returns — the spec's branch-switch example,
@@ -155,6 +157,7 @@ pub fn recompute_refs(
         let Some(is_stale) = stale_anchor(oid, row.provenance)? else {
             continue;
         };
+        let is_stale = is_stale || row.code_changed;
 
         if is_stale != row.was_stale {
             changes.push(StaleChange {
@@ -229,10 +232,11 @@ fn plan(
                         ObservationKind::Local
                     };
                     (
-                        matches!(
-                            state,
-                            SnapshotStanding::Superseded | SnapshotStanding::Collected
-                        ),
+                        row.code_changed
+                            || matches!(
+                                state,
+                                SnapshotStanding::Superseded | SnapshotStanding::Collected
+                            ),
                         observation,
                     )
                 }
@@ -291,6 +295,9 @@ struct StaleRow {
     pin: Option<PinRef>,
     was_stale: bool,
     resolved_start_line: Option<u32>,
+    /// A follow left the thread's own code different from the code it was
+    /// written on, so it is stale while its commit exists.
+    code_changed: bool,
 }
 
 /// A decision paired with the row state it was based on. The old state makes
@@ -478,7 +485,7 @@ fn rows(conn: &Connection, repo_path: &Path) -> Result<Vec<StaleRow>, TrunkError
                            WHERE repo_path = ?1 AND oid = threads.commit_oid),
                     EXISTS(SELECT 1 FROM legacy_snapshot_candidates
                            WHERE repo_path = ?1 AND oid = threads.commit_oid),
-                    whole_file
+                    whole_file, code_changed
              FROM threads
              WHERE review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)",
         )
@@ -510,6 +517,7 @@ fn rows(conn: &Connection, repo_path: &Path) -> Result<Vec<StaleRow>, TrunkError
                 }),
                 was_stale: row.get::<_, i64>(2)? != 0,
                 resolved_start_line: resolved.and_then(|r| u32::try_from(r).ok()),
+                code_changed: row.get(10)?,
             })
         })
         .map_err(sqlite_error)?;

@@ -429,6 +429,7 @@ fn setup_app<R: tauri::Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn s
     });
 
     start_review_poll(app);
+    commands::review::follow_on_publication(app.handle());
 
     // Re-inset on every live resize (flicker-free), and position once before
     // the first paint. The frontend reports the restored zoom on mount via
