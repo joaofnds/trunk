@@ -1,6 +1,6 @@
 <script lang="ts">
 import { listen } from "@tauri-apps/api/event";
-import { onDestroy, tick, untrack } from "svelte";
+import { onDestroy, type Snippet, tick, untrack } from "svelte";
 import { buildTree, collectFilePaths } from "../lib/build-tree.js";
 import {
 	type CoalescedTask,
@@ -113,6 +113,7 @@ interface DirtyCounts {
 }
 
 interface Props {
+	updateControl?: Snippet;
 	onready?: () => void;
 	onrecoveryready?: (error: string | null) => void;
 	ondirtychange?: (counts: { staged: number; unstaged: number }) => void;
@@ -168,6 +169,7 @@ interface Props {
 }
 
 let {
+	updateControl,
 	repoPath,
 	repoName,
 	remoteState,
@@ -2440,6 +2442,9 @@ function stepRightPane(delta: number) {
 
 <div class="flex-1 overflow-hidden flex flex-col">
 	<PushRecoveryPrompt {repoPath} {remoteState} {refreshSignal} />
+	{#if rebaseBase && updateControl && tabActive && !leftPaneCollapsed}
+		<div class="flex justify-end p-2 bg-surface">{@render updateControl()}</div>
+	{/if}
 	<main class="flex-1 overflow-hidden flex">
 		{#if rebaseBase}
 			{@const editorBase = rebaseBase}
@@ -2578,25 +2583,33 @@ function stepRightPane(delta: number) {
 				style:width="{leftPaneSize}px"
 				hidden={reviewMode}
 			>
-				<BranchSidebar
-					onrefschange={(refs) => {
-						headBranch = refs.local.find((branch) => branch.is_head)?.name;
-					}}
-					{repoPath}
-					onrefreshed={handleRefresh}
-					onvisibilitychanged={(graph) => commitGraphRef?.showGraph(graph)}
-					onvisibilityresolved={() => {
-						refVisibilityResolved = true;
-					}}
-					loadedRows={() => commitGraphRef?.loadedRows() ?? 0}
-					onstashselect={handleCommitSelect}
-					onrefnavigate={handleRefNavigate}
-					refreshSignal={sidebarRefreshSignal}
-					{refreshImmediately}
-					workingTreeDirty={wipCount > 0}
-					onopenrebaseeditor={handleOpenRebaseEditor}
-					onopenmessageeditor={handleOpenMessageEditor}
-				/>
+				<div class="flex-1 min-h-0 grid overflow-hidden">
+					<BranchSidebar
+						onrefschange={(refs) => {
+							headBranch = refs.local.find((branch) => branch.is_head)?.name;
+						}}
+						{repoPath}
+						onrefreshed={handleRefresh}
+						onvisibilitychanged={(graph) => commitGraphRef?.showGraph(graph)}
+						onvisibilityresolved={() => {
+							refVisibilityResolved = true;
+						}}
+						loadedRows={() => commitGraphRef?.loadedRows() ?? 0}
+						onstashselect={handleCommitSelect}
+						onrefnavigate={handleRefNavigate}
+						refreshSignal={sidebarRefreshSignal}
+						{refreshImmediately}
+						workingTreeDirty={wipCount > 0}
+						onopenrebaseeditor={handleOpenRebaseEditor}
+						onopenmessageeditor={handleOpenMessageEditor}
+					/>
+				</div>
+				{#if updateControl && tabActive && !leftPaneCollapsed && !reviewMode}
+					<div
+						class="flex shrink-0 justify-end p-2 border-t border-border bg-surface"
+						>{@render updateControl()}</div
+					>
+				{/if}
 			</div>
 			{#if reviewMode && !leftPaneCollapsed}
 				<div
@@ -2609,6 +2622,12 @@ function stepRightPane(delta: number) {
 							<ReviewList {repoPath} {reviewComments} />
 						{/snippet}
 					</LazyView>
+					{#if updateControl && tabActive}
+						<div
+							class="flex shrink-0 justify-end p-2 border-t border-border bg-surface"
+							>{@render updateControl()}</div
+						>
+					{/if}
 				</div>
 			{/if}
 			<Splitter

@@ -9,6 +9,7 @@ import RepoView from "./components/RepoView.svelte";
 import TabBar from "./components/TabBar.svelte";
 import Toast from "./components/Toast.svelte";
 import Toolbar from "./components/Toolbar.svelte";
+import UpdateControl from "./components/UpdateControl.svelte";
 import UpdateDialog from "./components/UpdateDialog.svelte";
 import WelcomeScreen from "./components/WelcomeScreen.svelte";
 import { AutofetchScheduler } from "./lib/autofetch.js";
@@ -70,6 +71,7 @@ import { createTabId } from "./lib/tab-types.js";
 import { showToast } from "./lib/toast.svelte.js";
 import type { ContentMode, ReviewTone, ThreadFilter } from "./lib/types.js";
 import Button from "./lib/ui/Button.svelte";
+import Dialog from "./lib/ui/Dialog.svelte";
 import {
 	createUndoRedoState,
 	type UndoRedoManager,
@@ -83,6 +85,9 @@ let updateStatus = $state<UpdateStatus | null>(null);
 let updateOpen = $state(false);
 let updateBusy = $state(false);
 let updateFrozen = $state(false);
+let confirmUpdateVersion = $state<string | null>(null);
+let downloadedNotice = $state<UpdateStatus | null>(null);
+let lastNotifiedVersion: string | null = null;
 let updateError = $state<string | null>(null);
 let updateRetry = $state<"status" | "readiness" | null>(null);
 let tabsRestored = $state(false);
@@ -93,7 +98,24 @@ const recoveredRepositories = new SvelteMap<
 >();
 function acceptUpdateStatus(status: UpdateStatus | null | undefined): void {
 	if (!status) return;
+
 	updateStatus = status;
+
+	if (
+		status.phase === "ready" &&
+		status.version &&
+		lastNotifiedVersion !== status.version
+	) {
+		lastNotifiedVersion = status.version;
+		downloadedNotice = status;
+	}
+
+	if (
+		confirmUpdateVersion &&
+		(status.phase !== "ready" || status.version !== confirmUpdateVersion)
+	)
+		confirmUpdateVersion = null;
+
 	if (status.phase === "recovery") {
 		updateOpen = true;
 	}
@@ -152,13 +174,16 @@ async function updateAction(
 	updateError = null;
 	try {
 		const status = await action();
+
 		if (status) acceptUpdateStatus(status);
+		if (!automatic && status?.message) updateOpen = true;
 	} catch (error) {
 		updateError = errorMessage(
 			error,
 			"The update could not complete. Try again.",
 		);
 		if (automatic) throw error;
+		updateOpen = true;
 	} finally {
 		updateBusy = false;
 	}
@@ -189,7 +214,14 @@ $effect(() => {
 	void listen<void>("updates-open", () => {
 		if (!disposed) {
 			updateOpen = true;
-			void updateAction(updates.status);
+			void updateAction(async () => {
+				const status = await updates.status();
+				return status.eligible &&
+					status.adopted &&
+					["idle", "available", "ready"].includes(status.phase)
+					? updates.check()
+					: status;
+			});
 		}
 	}).then(own);
 	void updates
@@ -1150,6 +1182,17 @@ $effect(() => {
 });
 </script>
 
+{#snippet updateControl()}
+	<UpdateControl
+		status={updateStatus}
+		busy={updateBusy || updateFrozen}
+		ondetails={() => (updateOpen = true)}
+		oncheck={() => void updateAction(updates.check)}
+		ondownload={(version) => void updateAction(() => updates.download(version))}
+		onrestart={(version) => (confirmUpdateVersion = version)}
+	/>
+{/snippet}
+
 <div class="flex flex-col h-screen bg-bg" inert={updateFrozen}>
 	<!-- LAYOUT-02: unified title bar + toolbar -->
 	<div
@@ -1177,15 +1220,10 @@ $effect(() => {
 			}}
 		/>
 		<div data-tauri-drag-region class="flex-1 h-full"></div>
-		{#if updateStatus &&
-			["available", "downloading", "ready"].includes(updateStatus.phase)}
-			<Button size="sm" variant="ghost" onclick={() => (updateOpen = true)}
-				>{updateStatus.phase === "ready"
-					? "Restart to update"
-					: updateStatus.phase === "downloading"
-						? "Downloading update…"
-						: "Update available"}</Button
-			>
+		{#if !activeTab?.repoPath ||
+			!isRepoViewMounted(activeTab) ||
+			(reviewPanelOpen ? reviewLeftPaneCollapsed : leftPaneCollapsed)}
+			{@render updateControl()}
 		{/if}
 		{#if activeTab?.repoPath && repositories.isReady(activeTab)}
 			{@const activeState = getTabState(activeTabId)}
@@ -1219,6 +1257,7 @@ $effect(() => {
 							{@const tabReviewActive =
 								reviewPanelOpen && tab.id === activeTabId}
 							<RepoView
+								{updateControl}
 								repoPath={tab.repoPath}
 								repoName={tab.repoName}
 								remoteState={tabState.remoteState}
@@ -1324,11 +1363,7 @@ $effect(() => {
 		onenable={() => void updateAction(() => updates.enable(true))}
 		oncheck={() => void updateAction(updates.check)}
 		ondownload={(version) => void updateAction(() => updates.download(version))}
-		onrestart={(version) =>
-			void updateAction(async () => {
-				await preparation.install(version);
-				return undefined;
-			})}
+		onrestart={(version) => (confirmUpdateVersion = version)}
 		oncancel={() =>
 			void updates
 				.cancel()
@@ -1339,4 +1374,63 @@ $effect(() => {
 					updateError = errorMessage(error, "Download cancellation failed.");
 				})}
 	/>
+{/if}
+
+{#if confirmUpdateVersion}
+	{@const version = confirmUpdateVersion}
+	<Dialog
+		title={`Restart and install ${version}?`}
+		oncancel={() => (confirmUpdateVersion = null)}
+	>
+		<p class="text-body leading-normal"
+			>Trunk will save your supported drafts and restart. Finish or cancel
+			active Git operations first.</p
+		>
+		<div class="flex justify-end gap-2 mt-4">
+			<Button onclick={() => (confirmUpdateVersion = null)}>Cancel</Button>
+			<Button
+				variant="primary"
+				onclick={() => {
+					const versionToInstall = version;
+
+					confirmUpdateVersion = null;
+					downloadedNotice = null;
+					updateOpen = true;
+					void updateAction(async () => {
+						await preparation.install(versionToInstall);
+						return undefined;
+					});
+				}}
+				>Restart and install {version}</Button
+			>
+		</div>
+	</Dialog>
+{/if}
+{#if downloadedNotice && !updateOpen && !confirmUpdateVersion}
+	<section
+		aria-label="Update downloaded"
+		class="fixed bottom-4 right-4 z-50 w-dialog-min max-w-full rounded border border-border bg-surface-raised text-text p-4 shadow-lg flex flex-col gap-2 text-body"
+	>
+		<p class="font-semibold">Update downloaded</p>
+		<p
+			>Restart Trunk from the update button to install
+			{downloadedNotice.version}.</p
+		>
+		<div class="flex justify-end gap-2">
+			<Button
+				size="sm"
+				onclick={() => {
+					downloadedNotice = null;
+					updateOpen = true;
+				}}
+				>Read more</Button
+			>
+			<Button
+				size="sm"
+				variant="ghost"
+				onclick={() => (downloadedNotice = null)}
+				>Dismiss</Button
+			>
+		</div>
+	</section>
 {/if}
