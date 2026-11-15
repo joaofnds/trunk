@@ -34,6 +34,9 @@ impl TestContext {
 impl RemoteDriver<'_> {
     pub fn pull(&self, strategy: Option<&str>) -> Result<(), TrunkError> {
         tauri::async_runtime::block_on(remote::git_pull_inner(
+            &trunk_lib::activity::ActivityState::default()
+                .acquire()
+                .unwrap(),
             self.ctx.path(),
             strategy,
             self.ctx.state_map(),
@@ -58,7 +61,11 @@ impl RemoteDriver<'_> {
         let visibility = trunk_lib::state::RefVisibilityState::default();
         let reached = tauri::async_runtime::spawn_blocking(reached);
         tauri::async_runtime::block_on(async {
+            let activity = trunk_lib::activity::ActivityState::default()
+                .acquire()
+                .unwrap();
             let pull = remote::git_pull_inner(
+                &activity,
                 self.ctx.path(),
                 strategy,
                 self.ctx.state_map(),
@@ -82,6 +89,9 @@ impl RemoteDriver<'_> {
 
     pub fn push(&self) -> Result<(), TrunkError> {
         tauri::async_runtime::block_on(remote::git_push_inner(
+            &trunk_lib::activity::ActivityState::default()
+                .acquire()
+                .unwrap(),
             self.ctx.path(),
             self.ctx.state_map(),
             &self.app.state::<CommitCache>(),
@@ -93,6 +103,9 @@ impl RemoteDriver<'_> {
 
     pub fn push_force(&self, remote: &str, branch: &str) -> Result<(), TrunkError> {
         tauri::async_runtime::block_on(remote::git_push_force_inner(
+            &trunk_lib::activity::ActivityState::default()
+                .acquire()
+                .unwrap(),
             self.ctx.path(),
             remote::ConfirmedPush { remote, branch },
             self.ctx.state_map(),

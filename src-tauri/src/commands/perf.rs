@@ -48,7 +48,7 @@ fn truncate_samples(path: &Path) -> std::io::Result<()> {
 ///
 /// Returns the filesystem error's text when the samples file will not append.
 #[tauri::command]
-pub fn perf_append(lines: Vec<String>) -> Result<(), String> {
+pub fn perf_append(_activity: crate::activity::Activity, lines: Vec<String>) -> Result<(), String> {
     if !cfg!(debug_assertions) {
         return Ok(());
     }
@@ -62,7 +62,7 @@ pub fn perf_append(lines: Vec<String>) -> Result<(), String> {
 ///
 /// Returns the filesystem error's text when the samples file will not truncate.
 #[tauri::command]
-pub fn perf_reset() -> Result<String, String> {
+pub fn perf_reset(_activity: crate::activity::Activity) -> Result<String, String> {
     if !cfg!(debug_assertions) {
         return Ok(String::new());
     }

@@ -262,6 +262,9 @@ fn route_changes<R: Runtime>(
     app: &AppHandle<R>,
     pending: &Arc<Mutex<HashMap<String, RefRefresh>>>,
 ) -> Option<tauri::async_runtime::JoinHandle<()>> {
+    let Ok(activity) = crate::activity::Activity::for_app(app) else {
+        return None;
+    };
     let mut relevant = Vec::new();
     let mut worktree = changed.is_empty();
     let ignore_context = OnceCell::new();
@@ -331,7 +334,7 @@ fn route_changes<R: Runtime>(
                 .insert(repo.clone(), RefRefresh::Running);
             let cache = app.state::<crate::state::CommitCache>();
             let visibility = app.state::<crate::state::RefVisibilityState>();
-            match crate::state::GraphRebuild::new(&cache, &visibility)
+            match crate::state::GraphRebuild::new(activity.clone(), &cache, &visibility)
                 .reconcile_refs(repo.clone(), location.clone())
                 .await
             {
@@ -692,6 +695,7 @@ mod tests {
     #[test]
     fn fetch_bookkeeping_never_emits_a_repository_change() {
         let app = tauri::test::mock_builder()
+            .manage(crate::activity::ActivityState::default())
             .manage(crate::state::CommitCache::new(
                 crate::state::GraphCache::default(),
             ))

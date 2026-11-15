@@ -44,6 +44,7 @@ import type {
 import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
+import { registerUpdateBlocker } from "../lib/updates-context.js";
 import BranchRow from "./BranchRow.svelte";
 import BranchSection from "./BranchSection.svelte";
 import InputDialog from "./InputDialog.svelte";
@@ -729,6 +730,11 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 	});
 	await menu.popup();
 }
+registerUpdateBlocker(() =>
+	showStashForm || showCreateInput || dialogConfig !== null
+		? "Finish or cancel the branch or stash form before restarting."
+		: null,
+);
 </script>
 
 <aside

@@ -50,6 +50,7 @@ impl TestContext {
         unsafe { std::env::set_var("TRUNK_DATA_DIR", self.data_dir()) };
 
         let app = tauri::test::mock_app();
+        app.manage(trunk_lib::activity::ActivityState::default());
         app.manage(RepoState(Mutex::new(self.state_map().clone())));
         app.manage(ReviewStoreState(StoreSlot::default()));
         app.manage(SweptRepos::default());
@@ -80,6 +81,10 @@ impl ReviewDriver<'_> {
         cached_excerpt: &str,
     ) -> Result<(), String> {
         tauri::async_runtime::block_on(add_thread(
+            self.app
+                .state::<trunk_lib::activity::ActivityState>()
+                .acquire()
+                .unwrap(),
             self.ctx.path().to_string(),
             text.to_string(),
             anchor,
@@ -94,6 +99,10 @@ impl ReviewDriver<'_> {
 
     pub fn add_reply(&self, thread_id: &str, text: &str) -> Result<(), String> {
         tauri::async_runtime::block_on(add_reply(
+            self.app
+                .state::<trunk_lib::activity::ActivityState>()
+                .acquire()
+                .unwrap(),
             self.ctx.path().to_string(),
             thread_id.to_string(),
             text.to_string(),
@@ -127,6 +136,10 @@ impl ReviewDriver<'_> {
 
     pub fn mark_replies_seen(&self, ids: &[String]) -> Result<usize, String> {
         tauri::async_runtime::block_on(mark_replies_seen(
+            self.app
+                .state::<trunk_lib::activity::ActivityState>()
+                .acquire()
+                .unwrap(),
             self.ctx.path().to_string(),
             ids.to_vec(),
             self.app.state::<RepoState>(),
@@ -137,6 +150,10 @@ impl ReviewDriver<'_> {
 
     pub fn list_threads(&self) -> Result<Vec<RenderedThread>, String> {
         tauri::async_runtime::block_on(list_threads(
+            self.app
+                .state::<trunk_lib::activity::ActivityState>()
+                .acquire()
+                .unwrap(),
             self.ctx.path().to_string(),
             None,
             self.app.state::<RepoState>(),
@@ -154,10 +171,16 @@ impl ReviewDriver<'_> {
         let location = self.ctx.repo_path().to_path_buf();
 
         tauri::async_runtime::block_on(
-            GraphRebuild::new(&cache, &visibility)
-                .rebuild(self.ctx.path().to_string(), move || {
-                    trunk_lib::state::read_graph(&mut git2::Repository::open(location)?)
-                }),
+            GraphRebuild::new(
+                trunk_lib::activity::ActivityState::default()
+                    .acquire()
+                    .unwrap(),
+                &cache,
+                &visibility,
+            )
+            .rebuild(self.ctx.path().to_string(), move || {
+                trunk_lib::state::read_graph(&mut git2::Repository::open(location)?)
+            }),
         )
         .unwrap();
     }
@@ -165,6 +188,10 @@ impl ReviewDriver<'_> {
     /// The full staleness pass a working-tree change starts.
     pub fn refresh_staleness(&self) -> Result<usize, String> {
         tauri::async_runtime::block_on(refresh_thread_staleness(
+            self.app
+                .state::<trunk_lib::activity::ActivityState>()
+                .acquire()
+                .unwrap(),
             self.ctx.path().to_string(),
             self.app.state::<RepoState>(),
             self.app.state::<ReviewStoreState>(),
@@ -175,6 +202,10 @@ impl ReviewDriver<'_> {
     /// The narrower pass a refs-only change starts while the tab is on screen.
     pub fn refresh_ref_staleness(&self) -> Result<usize, String> {
         tauri::async_runtime::block_on(refresh_thread_ref_staleness(
+            self.app
+                .state::<trunk_lib::activity::ActivityState>()
+                .acquire()
+                .unwrap(),
             self.ctx.path().to_string(),
             self.app.state::<RepoState>(),
             self.app.state::<ReviewStoreState>(),

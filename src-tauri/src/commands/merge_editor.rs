@@ -125,17 +125,17 @@ pub fn save_merge_result_inner(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_merge_sides(
+    activity: crate::activity::Activity,
     path: String,
     file_path: String,
     state: State<'_, RepoState>,
 ) -> Result<MergeSides, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || {
-        get_merge_sides_inner(&path, &file_path, &state_map)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || get_merge_sides_inner(&path, &file_path, &state_map))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 /// # Errors
@@ -148,6 +148,7 @@ pub async fn get_merge_sides(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn save_merge_result<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     file_path: String,
     content: String,
@@ -156,16 +157,17 @@ pub async fn save_merge_result<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     let state_map_clone = state_map.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        save_merge_result_inner(&path_clone, &file_path, &content, &state_map_clone)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    activity
+        .spawn_blocking(move || {
+            save_merge_result_inner(&path_clone, &file_path, &content, &state_map_clone)
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())?;
 
     // Repopulate cache and emit repo-changed (same pattern as merge_continue)
     let path_for_cache = path.clone();

@@ -867,14 +867,20 @@ impl RefVisibilityState {
 /// review-code probe found the prior `FnOnce(&RefVisibility) -> GraphSnapshot` shape let a
 /// closure receive the visibility and build the snapshot from a different one anyway).
 pub struct GraphRebuild<'a> {
+    activity: crate::activity::Activity,
     cache: &'a CommitCache,
     ref_visibility: &'a RefVisibilityState,
 }
 
 impl<'a> GraphRebuild<'a> {
     #[must_use]
-    pub const fn new(cache: &'a CommitCache, ref_visibility: &'a RefVisibilityState) -> Self {
+    pub const fn new(
+        activity: crate::activity::Activity,
+        cache: &'a CommitCache,
+        ref_visibility: &'a RefVisibilityState,
+    ) -> Self {
         Self {
+            activity,
             cache,
             ref_visibility,
         }
@@ -968,25 +974,28 @@ impl<'a> GraphRebuild<'a> {
         };
         let visibility = self.ref_visibility.get(&path);
 
-        let prepared = tauri::async_runtime::spawn_blocking(move || {
-            let mut repo = git2::Repository::open(location)?;
-            if let Some((snapshot, refs)) = previous {
-                let before = crate::ref_state::RefState::read(&repo)?;
-                if before == refs {
-                    let dirty = trunk_git::status::worktree_dirty(&repo);
-                    let after = crate::ref_state::RefState::read(&repo)?;
-                    if before == after {
-                        return Ok(Some((snapshot.with_worktree_dirty(dirty), Some(after))));
+        let prepared = self
+            .activity
+            .spawn_blocking(move || {
+                let mut repo = git2::Repository::open(location)?;
+                if let Some((snapshot, refs)) = previous {
+                    let before = crate::ref_state::RefState::read(&repo)?;
+                    if before == refs {
+                        let dirty = trunk_git::status::worktree_dirty(&repo);
+                        let after = crate::ref_state::RefState::read(&repo)?;
+                        if before == after {
+                            return Ok(Some((snapshot.with_worktree_dirty(dirty), Some(after))));
+                        }
                     }
                 }
-            }
-            let read = read_graph(&mut repo)?;
-            Ok::<_, TrunkError>(
-                (!read.changed).then(|| (GraphSnapshot::new(read.source, visibility), read.inputs)),
-            )
-        })
-        .await
-        .map_err(|error| TrunkError::new("spawn_error", error.to_string()))??;
+                let read = read_graph(&mut repo)?;
+                Ok::<_, TrunkError>(
+                    (!read.changed)
+                        .then(|| (GraphSnapshot::new(read.source, visibility), read.inputs)),
+                )
+            })
+            .await
+            .map_err(|error| TrunkError::new("spawn_error", error.to_string()))??;
         let (snapshot, inputs) = prepared.ok_or_else(|| {
             TrunkError::new(
                 "graph_changed",
@@ -1081,7 +1090,9 @@ impl<'a> GraphRebuild<'a> {
         S: Into<GraphRead> + Send + 'static,
         T: Send + 'static,
     {
-        let (read, extra) = tauri::async_runtime::spawn_blocking(walk)
+        let (read, extra) = self
+            .activity
+            .spawn_blocking(walk)
             .await
             .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
         let read: GraphRead = read.into();
@@ -1096,11 +1107,11 @@ impl<'a> GraphRebuild<'a> {
         }
         let inputs = read.inputs;
         let visibility = self.ref_visibility.get(&path);
-        let snapshot = tauri::async_runtime::spawn_blocking(move || {
-            GraphSnapshot::new(read.source, visibility)
-        })
-        .await
-        .map_err(|e| TrunkError::new("spawn_error", e.to_string()))?;
+        let snapshot = self
+            .activity
+            .spawn_blocking(move || GraphSnapshot::new(read.source, visibility))
+            .await
+            .map_err(|e| TrunkError::new("spawn_error", e.to_string()))?;
         let snapshot = self.publish(path, ticket, snapshot, inputs).await?;
         Ok((snapshot, extra))
     }
@@ -1149,11 +1160,11 @@ impl<'a> GraphRebuild<'a> {
         for _ in 0..3 {
             let visibility = self.ref_visibility.get(&path);
             if snapshot.visibility() != &visibility {
-                snapshot = tauri::async_runtime::spawn_blocking(move || {
-                    snapshot.with_visibility(visibility)
-                })
-                .await
-                .map_err(|e| TrunkError::new("spawn_error", e.to_string()))?;
+                snapshot = self
+                    .activity
+                    .spawn_blocking(move || snapshot.with_visibility(visibility))
+                    .await
+                    .map_err(|e| TrunkError::new("spawn_error", e.to_string()))?;
             }
             // Visibility cannot change between this comparison and publication.
             let visibility = self.ref_visibility.0.lock().unwrap();
@@ -1216,12 +1227,14 @@ impl<'a> GraphRebuild<'a> {
     ) -> Result<Option<ReconciledGraph>, TrunkError> {
         let _gate = self.cache.lock_rebuild(&path).await;
         let probe = location.clone();
-        let inputs = tauri::async_runtime::spawn_blocking(move || {
-            let repo = git2::Repository::open(probe)?;
-            crate::ref_state::RefState::read(&repo)
-        })
-        .await
-        .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
+        let inputs = self
+            .activity
+            .spawn_blocking(move || {
+                let repo = git2::Repository::open(probe)?;
+                crate::ref_state::RefState::read(&repo)
+            })
+            .await
+            .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
         let (ticket, worktree_context_changed) = {
             let mut cache = self.cache.0.lock().unwrap();
             if cache.sessions.get(&path) != Some(&session) {
@@ -1278,12 +1291,14 @@ impl<'a> GraphRebuild<'a> {
         let (_gate, ticket) = self.cache.begin_rebuild(&path, session).await?;
         let visibility = self.ref_visibility.get(&path);
 
-        let (value, mut rebuilt) = tauri::async_runtime::spawn_blocking(move || {
-            let mut rebuilt = GraphCache::default();
-            walk(&visibility, &mut rebuilt).map(|value| (value, rebuilt))
-        })
-        .await
-        .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
+        let (value, mut rebuilt) = self
+            .activity
+            .spawn_blocking(move || {
+                let mut rebuilt = GraphCache::default();
+                walk(&visibility, &mut rebuilt).map(|value| (value, rebuilt))
+            })
+            .await
+            .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
 
         if let Some(snapshot) = rebuilt.graphs.remove(&path) {
             let inputs = rebuilt.inputs.remove(&path);
@@ -1298,6 +1313,10 @@ impl<'a> GraphRebuild<'a> {
 
 #[cfg(test)]
 mod tests {
+    fn activity() -> crate::activity::Activity {
+        crate::activity::ActivityState::default().acquire().unwrap()
+    }
+
     use super::{CommitCache, GraphCache, GraphRebuild, OpenRepos, RefVisibilityState};
     use std::collections::{HashMap, HashSet};
     use std::future::Future;
@@ -1399,7 +1418,7 @@ mod tests {
         let capture_location = location.clone();
         let cache = CommitCache::new(GraphCache::default());
         let visibility = RefVisibilityState::default();
-        tauri::async_runtime::block_on(GraphRebuild::new(&cache, &visibility).rebuild(
+        tauri::async_runtime::block_on(GraphRebuild::new(activity(), &cache, &visibility).rebuild(
             path.clone(),
             move || {
                 let mut repo = git2::Repository::open(capture_location)?;
@@ -1413,7 +1432,7 @@ mod tests {
         let session = cache.session_id(&path).unwrap();
 
         let refreshed = tauri::async_runtime::block_on(
-            GraphRebuild::new(&cache, &visibility)
+            GraphRebuild::new(activity(), &cache, &visibility)
                 .refresh_worktree_in_session(path, location, session),
         )
         .unwrap();
@@ -1442,7 +1461,7 @@ mod tests {
         let cache = std::sync::Arc::new(CommitCache::new(GraphCache::default()));
         let visibility = std::sync::Arc::new(RefVisibilityState::default());
         tauri::async_runtime::block_on(
-            GraphRebuild::new(&cache, &visibility)
+            GraphRebuild::new(activity(), &cache, &visibility)
                 .rebuild(path.clone(), move || super::read_graph(&mut repo)),
         )
         .unwrap();
@@ -1462,13 +1481,12 @@ mod tests {
         let worker_visibility = std::sync::Arc::clone(&visibility);
         let worker_path = path.clone();
         let location = directory.path().to_owned();
-        let refresh =
-            std::thread::spawn(move || {
-                tauri::async_runtime::block_on(
-                    GraphRebuild::new(&worker_cache, &worker_visibility)
-                        .refresh_worktree_in_session(worker_path, location, session),
-                )
-            });
+        let refresh = std::thread::spawn(move || {
+            tauri::async_runtime::block_on(
+                GraphRebuild::new(activity(), &worker_cache, &worker_visibility)
+                    .refresh_worktree_in_session(worker_path, location, session),
+            )
+        });
         observed_rx.recv().unwrap();
         std::fs::write(
             directory.path().join("racing.txt"),
@@ -1513,7 +1531,12 @@ mod tests {
         let visibility = RefVisibilityState::default();
 
         let result = tauri::async_runtime::block_on(
-            GraphRebuild::new(&cache, &visibility).publish("/repo".into(), ticket, graph(2), None),
+            GraphRebuild::new(activity(), &cache, &visibility).publish(
+                "/repo".into(),
+                ticket,
+                graph(2),
+                None,
+            ),
         );
 
         assert_eq!(result.unwrap_err().code, "graph_changed");
@@ -1526,7 +1549,7 @@ mod tests {
         let cache = CommitCache::new(GraphCache::default());
         let visibility = RefVisibilityState::default();
         tauri::async_runtime::block_on(
-            GraphRebuild::new(&cache, &visibility)
+            GraphRebuild::new(activity(), &cache, &visibility)
                 .rebuild("/repo".into(), move || super::read_graph(&mut repo)),
         )
         .unwrap();
@@ -1544,7 +1567,7 @@ mod tests {
         let cache = CommitCache::new(GraphCache::default());
         let visibility = RefVisibilityState::default();
         let graph = tauri::async_runtime::block_on(
-            GraphRebuild::new(&cache, &visibility)
+            GraphRebuild::new(activity(), &cache, &visibility)
                 .rebuild("/repo".into(), move || super::read_graph(&mut repo)),
         )
         .unwrap();
@@ -1580,8 +1603,8 @@ mod tests {
         let attempts = Arc::new(AtomicUsize::new(0));
         let observed_attempts = Arc::clone(&attempts);
 
-        let outcome =
-            tauri::async_runtime::block_on(GraphRebuild::new(&cache, &visibility).rebuild_merging(
+        let outcome = tauri::async_runtime::block_on(
+            GraphRebuild::new(activity(), &cache, &visibility).rebuild_merging(
                 "/repo".to_owned(),
                 move |visibility, delta| {
                     let read = super::read_graph_with_capture(&mut repo, |repo| {
@@ -1598,7 +1621,8 @@ mod tests {
                     delta.insert_read("/repo".to_owned(), read, visibility.clone());
                     Ok(())
                 },
-            ));
+            ),
+        );
 
         assert!(outcome.is_ok());
         assert_eq!(attempts.load(Ordering::Relaxed), 3);
@@ -1621,7 +1645,7 @@ mod tests {
         let observed_attempts = Arc::clone(&attempts);
 
         let error = tauri::async_runtime::block_on(
-            GraphRebuild::new(&cache, &visibility).refresh_in_session(
+            GraphRebuild::new(activity(), &cache, &visibility).refresh_in_session(
                 "/repo".to_owned(),
                 session,
                 move || {
@@ -1660,7 +1684,7 @@ mod tests {
         let visibility = RefVisibilityState::default();
 
         let refreshed = tauri::async_runtime::block_on(
-            GraphRebuild::new(&cache, &visibility).refresh_in_session(
+            GraphRebuild::new(activity(), &cache, &visibility).refresh_in_session(
                 "/repo".to_owned(),
                 session,
                 move || super::read_graph_with_capture(&mut repo, trunk_git::graph::capture),
@@ -1844,7 +1868,7 @@ mod tests {
         let mut hidden = RefVisibility::default();
         hidden.hidden_refs.insert("refs/heads/topic".to_owned());
         ref_visibility.set("/repo".to_owned(), hidden.clone());
-        let rebuild = GraphRebuild::new(&cache, &ref_visibility);
+        let rebuild = GraphRebuild::new(activity(), &cache, &ref_visibility);
 
         tauri::async_runtime::block_on(
             rebuild.rebuild("/repo".to_owned(), || Ok(two_root_source_with_topic_tip())),
@@ -1878,7 +1902,7 @@ mod tests {
         ran: Arc<AtomicBool>,
     ) -> Pin<Box<dyn Future<Output = Result<(), TrunkError>> + 'a>> {
         Box::pin(async move {
-            let rebuild = GraphRebuild::new(cache, visibility);
+            let rebuild = GraphRebuild::new(activity(), cache, visibility);
             let walk = move || {
                 ran.store(true, Ordering::Release);
                 Ok(GraphSource::default())
@@ -1925,7 +1949,7 @@ mod tests {
             let pending = std::thread::spawn(move || {
                 let visibility = RefVisibilityState::default();
                 tauri::async_runtime::block_on(
-                    GraphRebuild::new(&pending_cache, &visibility).rebuild(
+                    GraphRebuild::new(activity(), &pending_cache, &visibility).rebuild(
                         "/repo".to_owned(),
                         move || {
                             started.send(()).unwrap();
@@ -2007,14 +2031,16 @@ mod tests {
         let (release, resume) = std::sync::mpsc::channel();
         let pending = std::thread::spawn(move || {
             let visibility = RefVisibilityState::default();
-            tauri::async_runtime::block_on(GraphRebuild::new(&pending_cache, &visibility).rebuild(
-                "/repo".to_owned(),
-                move || {
-                    started.send(()).unwrap();
-                    resume.recv().unwrap();
-                    Ok(two_root_source_with_topic_tip())
-                },
-            ))
+            tauri::async_runtime::block_on(
+                GraphRebuild::new(activity(), &pending_cache, &visibility).rebuild(
+                    "/repo".to_owned(),
+                    move || {
+                        started.send(()).unwrap();
+                        resume.recv().unwrap();
+                        Ok(two_root_source_with_topic_tip())
+                    },
+                ),
+            )
         });
         entered.recv().unwrap();
 
@@ -2041,7 +2067,7 @@ mod tests {
         .unwrap();
         let after = crate::ref_state::RefState::read(&repo).unwrap();
         let result = tauri::async_runtime::block_on(
-            GraphRebuild::new(&cache, &visibility).rebuild_carrying(
+            GraphRebuild::new(activity(), &cache, &visibility).rebuild_carrying(
                 "/repo".to_owned(),
                 move || {
                     Ok((
@@ -2097,7 +2123,7 @@ mod tests {
         let (release, resume) = std::sync::mpsc::channel();
         let pending = std::thread::spawn(move || {
             tauri::async_runtime::block_on(
-                GraphRebuild::new(&pending_cache, &pending_visibility).rebuild(
+                GraphRebuild::new(activity(), &pending_cache, &pending_visibility).rebuild(
                     "/repo".to_owned(),
                     move || {
                         let source = two_root_source_with_topic_tip();
@@ -2128,15 +2154,17 @@ mod tests {
         let (release, resume) = std::sync::mpsc::channel();
         let pending = std::thread::spawn(move || {
             let visibility = RefVisibilityState::default();
-            tauri::async_runtime::block_on(GraphRebuild::new(&pending_cache, &visibility).rebuild(
-                "/repo".to_owned(),
-                move || {
-                    let source = two_root_source_with_topic_tip();
-                    started.send(()).unwrap();
-                    resume.recv().unwrap();
-                    Ok(source)
-                },
-            ))
+            tauri::async_runtime::block_on(
+                GraphRebuild::new(activity(), &pending_cache, &visibility).rebuild(
+                    "/repo".to_owned(),
+                    move || {
+                        let source = two_root_source_with_topic_tip();
+                        started.send(()).unwrap();
+                        resume.recv().unwrap();
+                        Ok(source)
+                    },
+                ),
+            )
         });
         entered.recv().unwrap();
         let ticket = cache.begin_write("/repo").unwrap();
@@ -2175,7 +2203,7 @@ mod tests {
         let visibility = RefVisibilityState::default();
 
         let result = tauri::async_runtime::block_on(
-            GraphRebuild::new(&cache, &visibility).reconcile_refs_in_session(
+            GraphRebuild::new(activity(), &cache, &visibility).reconcile_refs_in_session(
                 "/repo".to_owned(),
                 repo.workdir().unwrap().to_path_buf(),
                 old_session,
@@ -2198,14 +2226,16 @@ mod tests {
         let (release, resume) = std::sync::mpsc::channel();
         let pending = std::thread::spawn(move || {
             let visibility = RefVisibilityState::default();
-            tauri::async_runtime::block_on(GraphRebuild::new(&pending_cache, &visibility).rebuild(
-                "/repo".to_owned(),
-                move || {
-                    started.send(()).unwrap();
-                    resume.recv().unwrap();
-                    Ok(GraphSource::default())
-                },
-            ))
+            tauri::async_runtime::block_on(
+                GraphRebuild::new(activity(), &pending_cache, &visibility).rebuild(
+                    "/repo".to_owned(),
+                    move || {
+                        started.send(()).unwrap();
+                        resume.recv().unwrap();
+                        Ok(GraphSource::default())
+                    },
+                ),
+            )
         });
         entered.recv().unwrap();
 
@@ -2268,12 +2298,14 @@ mod tests {
         let relaid_out = read.with_visibility(tagged_graph("toggled").visibility().clone());
         let visibility = RefVisibilityState::default();
         visibility.set("/repo".to_owned(), relaid_out.visibility().clone());
-        tauri::async_runtime::block_on(GraphRebuild::new(&cache, &visibility).publish_relayout(
-            "/repo".to_owned(),
-            &read,
-            relaid_out,
-            ticket,
-        ))
+        tauri::async_runtime::block_on(
+            GraphRebuild::new(activity(), &cache, &visibility).publish_relayout(
+                "/repo".to_owned(),
+                &read,
+                relaid_out,
+                ticket,
+            ),
+        )
         .unwrap();
 
         let cached = cache.0.lock().unwrap();
@@ -2298,12 +2330,14 @@ mod tests {
         let ticket = cache.begin_write("/repo").unwrap();
         let visibility = RefVisibilityState::default();
         visibility.set("/repo".to_owned(), relaid_out.visibility().clone());
-        tauri::async_runtime::block_on(GraphRebuild::new(&cache, &visibility).publish_relayout(
-            "/repo".to_owned(),
-            &read,
-            relaid_out.clone(),
-            ticket,
-        ))
+        tauri::async_runtime::block_on(
+            GraphRebuild::new(activity(), &cache, &visibility).publish_relayout(
+                "/repo".to_owned(),
+                &read,
+                relaid_out.clone(),
+                ticket,
+            ),
+        )
         .unwrap();
 
         let cached = cache.0.lock().unwrap();
@@ -2325,7 +2359,7 @@ mod tests {
 
     fn rebuild(cache: &CommitCache, visibility: &RefVisibilityState) -> GraphSnapshot {
         tauri::async_runtime::block_on(
-            GraphRebuild::new(cache, visibility)
+            GraphRebuild::new(activity(), cache, visibility)
                 .rebuild("/repo".to_owned(), || Ok(GraphSource::default())),
         )
         .unwrap()
@@ -2353,12 +2387,14 @@ mod tests {
         visibility.set("/repo".to_owned(), toggled.visibility().clone());
         let ticket = cache.begin_write("/repo").unwrap();
 
-        tauri::async_runtime::block_on(GraphRebuild::new(&cache, &visibility).publish_relayout(
-            "/repo".to_owned(),
-            &read,
-            toggled.clone(),
-            ticket,
-        ))
+        tauri::async_runtime::block_on(
+            GraphRebuild::new(activity(), &cache, &visibility).publish_relayout(
+                "/repo".to_owned(),
+                &read,
+                toggled.clone(),
+                ticket,
+            ),
+        )
         .unwrap();
 
         assert_eq!(
@@ -2376,7 +2412,7 @@ mod tests {
         let capture_location = location.clone();
         let cache = CommitCache::new(GraphCache::default());
         let visibility = RefVisibilityState::default();
-        tauri::async_runtime::block_on(GraphRebuild::new(&cache, &visibility).rebuild(
+        tauri::async_runtime::block_on(GraphRebuild::new(activity(), &cache, &visibility).rebuild(
             path.clone(),
             move || {
                 let mut repo = git2::Repository::open(capture_location)?;
@@ -2389,7 +2425,7 @@ mod tests {
         let session = cache.session_id(&path).unwrap();
 
         let refreshed = tauri::async_runtime::block_on(
-            GraphRebuild::new(&cache, &visibility)
+            GraphRebuild::new(activity(), &cache, &visibility)
                 .refresh_worktree_in_session(path, location, session),
         )
         .unwrap();
@@ -2415,7 +2451,7 @@ mod tests {
             .insert("/repo/b".to_owned(), graph(1));
         let ref_visibility = RefVisibilityState::default();
         ref_visibility.set("/repo/a".to_owned(), graph(1).visibility().clone());
-        let rebuild = GraphRebuild::new(&cache, &ref_visibility);
+        let rebuild = GraphRebuild::new(activity(), &cache, &ref_visibility);
         let concurrent_cache = Arc::clone(&cache);
 
         tauri::async_runtime::block_on(rebuild.rebuild_merging(
@@ -2453,7 +2489,7 @@ mod tests {
             .unwrap()
             .insert("/repo/b".to_owned(), graph(7));
         let ref_visibility = RefVisibilityState::default();
-        let rebuild = GraphRebuild::new(&cache, &ref_visibility);
+        let rebuild = GraphRebuild::new(activity(), &cache, &ref_visibility);
 
         let err = tauri::async_runtime::block_on(rebuild.rebuild_merging::<_, ()>(
             "/repo/a".to_owned(),

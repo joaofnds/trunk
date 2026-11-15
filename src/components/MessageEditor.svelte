@@ -1,6 +1,7 @@
 <script lang="ts">
 import Button from "../lib/ui/Button.svelte";
 import Dialog from "../lib/ui/Dialog.svelte";
+import { registerUpdateBlocker } from "../lib/updates-context.js";
 
 interface Props {
 	title: string;
@@ -52,6 +53,11 @@ function handleKeydown(e: KeyboardEvent) {
 function autofocus(node: HTMLElement) {
 	node.focus();
 }
+registerUpdateBlocker(() =>
+	isOpen
+		? "Finish or cancel the commit message editor before restarting."
+		: null,
+);
 </script>
 
 {#if isOpen}

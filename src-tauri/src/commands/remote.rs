@@ -71,20 +71,22 @@ struct RemoteCompletion<'a> {
 /// Emits `remote-progress` Tauri events per stderr line.
 /// On failure, classifies the error using `classify_git_error`.
 async fn run_git_remote<'a, R: Runtime>(
+    activity: &crate::activity::Activity,
     args: &[&str],
     cwd: &std::path::Path,
     app: &AppHandle<R>,
     repo_path: &str,
     running: &'a Mutex<RemoteOps>,
 ) -> Result<RemoteCompletion<'a>, TrunkError> {
-    let held = reserve_remote(cwd, app, repo_path, running).await?;
-    run_reserved(args, cwd, app, repo_path, &held.reservation).await?;
+    let held = reserve_remote(activity, cwd, app, repo_path, running).await?;
+    run_reserved(activity, args, cwd, app, repo_path, &held.reservation).await?;
     Ok(held)
 }
 
 /// Takes the repository's one foreground remote slot, so nothing else runs git
 /// against it until the returned reservation drops.
 async fn reserve_remote<'a, R: Runtime>(
+    activity: &crate::activity::Activity,
     cwd: &std::path::Path,
     app: &AppHandle<R>,
     repo_path: &str,
@@ -95,15 +97,16 @@ async fn reserve_remote<'a, R: Runtime>(
         .session_id(repo_path)
         .ok_or_else(|| TrunkError::new("not_open", "Repository session was closed"))?;
     let location = cwd.to_path_buf();
-    let common = tauri::async_runtime::spawn_blocking(move || {
-        let repo = git2::Repository::open(location)?;
-        repo.commondir()
-            .canonicalize()
-            .map(|path| path.to_string_lossy().to_string())
-            .map_err(|error| TrunkError::new("remote_error", error.to_string()))
-    })
-    .await
-    .map_err(|error| TrunkError::new("spawn_error", error.to_string()))??;
+    let common = activity
+        .spawn_blocking(move || {
+            let repo = git2::Repository::open(location)?;
+            repo.commondir()
+                .canonicalize()
+                .map(|path| path.to_string_lossy().to_string())
+                .map_err(|error| TrunkError::new("remote_error", error.to_string()))
+        })
+        .await
+        .map_err(|error| TrunkError::new("spawn_error", error.to_string()))??;
     let reservation = RemoteReservation::acquire_foreground_checked(
         running,
         RemoteTarget {
@@ -120,6 +123,7 @@ async fn reserve_remote<'a, R: Runtime>(
 }
 
 async fn run_reserved<R: Runtime>(
+    _activity: &crate::activity::Activity,
     args: &[&str],
     cwd: &std::path::Path,
     app: &AppHandle<R>,
@@ -194,16 +198,18 @@ async fn run_reserved<R: Runtime>(
 }
 
 async fn checked_manual_fetch<R: Runtime>(
+    activity: &crate::activity::Activity,
     app: &AppHandle<R>,
     path: &str,
     session: u64,
     location: PathBuf,
 ) {
-    let names = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<String>, TrunkError> {
-        let repo = git2::Repository::open(location)?;
-        trunk_git::fetch::applicable_remotes(&repo)
-    })
-    .await;
+    let names = activity
+        .spawn_blocking(move || -> Result<Vec<String>, TrunkError> {
+            let repo = git2::Repository::open(location)?;
+            trunk_git::fetch::applicable_remotes(&repo)
+        })
+        .await;
     if let Ok(Ok(names)) = names {
         let service = app.state::<crate::background_fetch::BackgroundFetch>();
         let cache = app.state::<CommitCache>();
@@ -214,21 +220,23 @@ async fn checked_manual_fetch<R: Runtime>(
 }
 
 async fn checked_manual_pull<R: Runtime>(
+    activity: &crate::activity::Activity,
     app: &AppHandle<R>,
     path: &str,
     session: u64,
     location: PathBuf,
 ) {
-    let remote = tauri::async_runtime::spawn_blocking(move || {
-        let repo = git2::Repository::open(location).ok()?;
-        let head = repo.head().ok()?;
-        let branch = head.shorthand().ok()?;
-        repo.config()
-            .ok()?
-            .get_string(&format!("branch.{branch}.remote"))
-            .ok()
-    })
-    .await;
+    let remote = activity
+        .spawn_blocking(move || {
+            let repo = git2::Repository::open(location).ok()?;
+            let head = repo.head().ok()?;
+            let branch = head.shorthand().ok()?;
+            repo.config()
+                .ok()?
+                .get_string(&format!("branch.{branch}.remote"))
+                .ok()
+        })
+        .await;
     if let Ok(Some(remote)) = remote
         && remote != "."
     {
@@ -239,6 +247,7 @@ async fn checked_manual_pull<R: Runtime>(
 
 /// Rebuild the commit graph and update the cache after a successful remote operation.
 async fn refresh_graph<R: Runtime>(
+    activity: &crate::activity::Activity,
     path: &str,
     path_buf: PathBuf,
     cache: &CommitCache,
@@ -247,7 +256,7 @@ async fn refresh_graph<R: Runtime>(
     session: u64,
 ) -> Result<(), TrunkError> {
     let path_owned = path.to_owned();
-    let rebuild = crate::state::GraphRebuild::new(cache, ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), cache, ref_visibility);
     rebuild
         .rebuild_in_session(
             path_owned.clone(),
@@ -274,6 +283,7 @@ async fn refresh_graph<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn git_fetch<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
@@ -288,6 +298,7 @@ pub async fn git_fetch<R: Runtime>(
         .to_path_buf();
 
     let completion = run_git_remote(
+        &activity,
         &["fetch", "--all", "--progress"],
         &path_buf,
         &app,
@@ -297,8 +308,9 @@ pub async fn git_fetch<R: Runtime>(
     .await
     .map_err(|e| e.to_json())?;
 
-    checked_manual_fetch(&app, &path, completion.session, path_buf.clone()).await;
+    checked_manual_fetch(&activity, &app, &path, completion.session, path_buf.clone()).await;
     refresh_graph(
+        &activity,
         &path,
         path_buf,
         &cache,
@@ -323,6 +335,7 @@ pub async fn git_fetch<R: Runtime>(
 /// Returns an error when the repository is closed or its fetch configuration cannot be read.
 #[tauri::command]
 pub async fn git_fetch_background<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     interval_ms: Option<u64>,
     state: State<'_, RepoState>,
@@ -336,6 +349,7 @@ pub async fn git_fetch_background<R: Runtime>(
         &path,
         interval_ms.unwrap_or(crate::background_fetch::DEFAULT_FETCH_INTERVAL_MS),
         crate::background_fetch::FetchContext {
+            activity: &activity,
             state: &state,
             cache: &cache,
             running: &running,
@@ -369,11 +383,13 @@ pub fn get_push_target_inner(path: &str, state_map: &OpenRepos) -> Result<PushTa
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_push_target(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<PushTarget, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || get_push_target_inner(&path, &state_map))
+    activity
+        .spawn_blocking(move || get_push_target_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e: TrunkError| e.to_json())
@@ -389,6 +405,7 @@ pub async fn get_push_target(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn git_pull<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     strategy: Option<String>,
     state: State<'_, RepoState>,
@@ -399,6 +416,7 @@ pub async fn git_pull<R: Runtime>(
 ) -> Result<crate::background_fetch::FetchReport, String> {
     let state_map = state.snapshot();
     git_pull_inner(
+        &activity,
         &path,
         strategy.as_deref(),
         &state_map,
@@ -429,6 +447,7 @@ pub async fn git_pull<R: Runtime>(
 /// kept one, and a pull git finished that still kept one returns `pull_kept_copy`, so
 /// the copy is always named.
 pub async fn git_pull_inner<R: Runtime>(
+    activity: &crate::activity::Activity,
     path: &str,
     strategy: Option<&str>,
     state_map: &OpenRepos,
@@ -446,12 +465,21 @@ pub async fn git_pull_inner<R: Runtime>(
         _ => vec!["pull", "--progress"],
     };
 
-    let completion = reserve_remote(&path_buf, app, path, running).await?;
-    let copy = save_pull_safety_copy(path_buf.clone()).await;
-    let ran = run_reserved(&args, &path_buf, app, path, &completion.reservation).await;
-    let kept = settle_pull_safety_copy(copy, path_buf.clone()).await;
+    let completion = reserve_remote(activity, &path_buf, app, path, running).await?;
+    let copy = save_pull_safety_copy(activity, path_buf.clone()).await;
+    let ran = run_reserved(
+        activity,
+        &args,
+        &path_buf,
+        app,
+        path,
+        &completion.reservation,
+    )
+    .await;
+    let kept = settle_pull_safety_copy(activity, copy, path_buf.clone()).await;
 
     let finished = finish_pull(
+        activity,
         ran,
         path,
         path_buf,
@@ -476,14 +504,18 @@ pub async fn git_pull_inner<R: Runtime>(
 
 /// A copy that cannot be saved leaves the pull to run unguarded, as git alone would run
 /// it, so the failure is logged rather than returned.
-async fn save_pull_safety_copy(location: PathBuf) -> Option<PullSafetyCopy> {
-    let saved = tauri::async_runtime::spawn_blocking(move || {
-        let mut repo = git2::Repository::open(location)?;
-        PullSafetyCopy::save(&mut repo)
-    })
-    .await
-    .map_err(|error| TrunkError::new("spawn_error", error.to_string()))
-    .flatten();
+async fn save_pull_safety_copy(
+    activity: &crate::activity::Activity,
+    location: PathBuf,
+) -> Option<PullSafetyCopy> {
+    let saved = activity
+        .spawn_blocking(move || {
+            let mut repo = git2::Repository::open(location)?;
+            PullSafetyCopy::save(&mut repo)
+        })
+        .await
+        .map_err(|error| TrunkError::new("spawn_error", error.to_string()))
+        .flatten();
 
     saved.unwrap_or_else(|error| {
         eprintln!("pull safety copy not saved: {}", error.message);
@@ -492,19 +524,25 @@ async fn save_pull_safety_copy(location: PathBuf) -> Option<PullSafetyCopy> {
 }
 
 /// A copy that cannot be settled stays in the stash list, and is reported as kept.
-async fn settle_pull_safety_copy(copy: Option<PullSafetyCopy>, location: PathBuf) -> bool {
+async fn settle_pull_safety_copy(
+    activity: &crate::activity::Activity,
+    copy: Option<PullSafetyCopy>,
+    location: PathBuf,
+) -> bool {
     let Some(copy) = copy else {
         return false;
     };
 
-    tauri::async_runtime::spawn_blocking(move || {
-        git2::Repository::open(location).map_or(true, |mut repo| copy.settle(&mut repo))
-    })
-    .await
-    .unwrap_or(true)
+    activity
+        .spawn_blocking(move || {
+            git2::Repository::open(location).map_or(true, |mut repo| copy.settle(&mut repo))
+        })
+        .await
+        .unwrap_or(true)
 }
 
 async fn finish_pull<R: Runtime>(
+    activity: &crate::activity::Activity,
     ran: Result<(), TrunkError>,
     path: &str,
     path_buf: PathBuf,
@@ -515,18 +553,28 @@ async fn finish_pull<R: Runtime>(
 ) -> Result<(), TrunkError> {
     ran?;
 
-    checked_manual_pull(app, path, session, path_buf.clone()).await;
+    checked_manual_pull(activity, app, path, session, path_buf.clone()).await;
     let probe_path = path_buf.clone();
-    let conflicted = tauri::async_runtime::spawn_blocking(move || {
-        let repo = git2::Repository::open(&probe_path).map_err(TrunkError::from)?;
-        trunk_git::repository::has_unmerged_paths(&repo)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
+    let conflicted = activity
+        .spawn_blocking(move || {
+            let repo = git2::Repository::open(&probe_path).map_err(TrunkError::from)?;
+            trunk_git::repository::has_unmerged_paths(&repo)
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
 
     // Refresh before reporting the conflict, or the UI never repaints and the files the
     // message points at stay invisible.
-    refresh_graph(path, path_buf, cache, ref_visibility, app, session).await?;
+    refresh_graph(
+        activity,
+        path,
+        path_buf,
+        cache,
+        ref_visibility,
+        app,
+        session,
+    )
+    .await?;
 
     if conflicted {
         return Err(TrunkError::new(
@@ -547,6 +595,7 @@ async fn finish_pull<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn git_push<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
@@ -555,9 +604,17 @@ pub async fn git_push<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
-    git_push_inner(&path, &state_map, &cache, &running.0, &ref_visibility, &app)
-        .await
-        .map_err(|e| e.to_json())
+    git_push_inner(
+        &activity,
+        &path,
+        &state_map,
+        &cache,
+        &running.0,
+        &ref_visibility,
+        &app,
+    )
+    .await
+    .map_err(|e| e.to_json())
 }
 
 /// Push HEAD to its target, then rebuild the graph.
@@ -569,6 +626,7 @@ pub async fn git_push<R: Runtime>(
 /// `auth_failure` when the remote refuses the credentials, and `remote_error`
 /// carrying git's own message otherwise.
 pub async fn git_push_inner<R: Runtime>(
+    activity: &crate::activity::Activity,
     path: &str,
     state_map: &OpenRepos,
     cache: &CommitCache,
@@ -578,9 +636,18 @@ pub async fn git_push_inner<R: Runtime>(
 ) -> Result<(), TrunkError> {
     let path_buf = state_map.path_for(path)?.to_path_buf();
 
-    let completion = run_git_remote(&["push", "--progress"], &path_buf, app, path, running).await?;
+    let completion = run_git_remote(
+        activity,
+        &["push", "--progress"],
+        &path_buf,
+        app,
+        path,
+        running,
+    )
+    .await?;
 
     refresh_graph(
+        activity,
         path,
         path_buf,
         cache,
@@ -665,6 +732,7 @@ pub struct ConfirmedPush<'a> {
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn git_push_force<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     remote: String,
     branch: String,
@@ -676,6 +744,7 @@ pub async fn git_push_force<R: Runtime>(
 ) -> Result<(), String> {
     let state_map = state.snapshot();
     git_push_force_inner(
+        &activity,
         &path,
         ConfirmedPush {
             remote: &remote,
@@ -700,6 +769,7 @@ pub async fn git_push_force<R: Runtime>(
 /// fetch, `push_declined` when the remote rejects it, `auth_failure` when the
 /// remote refuses the credentials, and `remote_error` otherwise.
 pub async fn git_push_force_inner<R: Runtime>(
+    activity: &crate::activity::Activity,
     path: &str,
     confirmed: ConfirmedPush<'_>,
     state_map: &OpenRepos,
@@ -712,7 +782,7 @@ pub async fn git_push_force_inner<R: Runtime>(
     let path_buf = state_map.path_for(path)?.to_path_buf();
 
     let target_path = path_buf.clone();
-    let target = tauri::async_runtime::spawn_blocking(move || {
+    let target = activity.spawn_blocking(move || {
         let repo = git2::Repository::open(&target_path).map_err(TrunkError::from)?;
         // Guarding here rather than in the caller: a frontend gate can be stale or
         // skipped, and this rewrites remote history.
@@ -754,9 +824,10 @@ pub async fn git_push_force_inner<R: Runtime>(
     args.push(confirmed_remote);
     args.push(&refspec);
 
-    let completion = run_git_remote(&args, &path_buf, app, path, running).await?;
+    let completion = run_git_remote(activity, &args, &path_buf, app, path, running).await?;
 
     refresh_graph(
+        activity,
         path,
         path_buf,
         cache,
@@ -777,6 +848,7 @@ pub async fn git_push_force_inner<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn delete_remote_branch<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     branch_name: String,
     state: State<'_, RepoState>,
@@ -803,6 +875,7 @@ pub async fn delete_remote_branch<R: Runtime>(
     let branch = &branch_name[slash + 1..];
 
     let completion = run_git_remote(
+        &activity,
         &["push", "--delete", "--progress", "--", remote, branch],
         &path_buf,
         &app,
@@ -813,6 +886,7 @@ pub async fn delete_remote_branch<R: Runtime>(
     .map_err(|e| e.to_json())?;
 
     refresh_graph(
+        &activity,
         &path,
         path_buf,
         &cache,
@@ -832,7 +906,11 @@ pub async fn delete_remote_branch<R: Runtime>(
 ///
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
-pub async fn cancel_remote_op(path: String, running: State<'_, RunningOp>) -> Result<(), String> {
+pub async fn cancel_remote_op(
+    _activity: crate::activity::Activity,
+    path: String,
+    running: State<'_, RunningOp>,
+) -> Result<(), String> {
     let process = running.0.lock().unwrap().cancel(&path);
     if let Some(process) = process {
         process.stop();

@@ -11,11 +11,15 @@ use trunk_git::repository;
 ///
 /// Returns `spawn_error` as JSON when the blocking task cannot be joined.
 #[tauri::command]
-pub async fn validate_recent_path(path: String) -> Result<bool, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let path_buf = std::path::PathBuf::from(&path);
-        repository::validate_and_open(&path_buf).is_ok()
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())
+pub async fn validate_recent_path(
+    activity: crate::activity::Activity,
+    path: String,
+) -> Result<bool, String> {
+    activity
+        .spawn_blocking(move || {
+            let path_buf = std::path::PathBuf::from(&path);
+            repository::validate_and_open(&path_buf).is_ok()
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())
 }

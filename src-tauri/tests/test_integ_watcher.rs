@@ -19,6 +19,7 @@ const EVENT_TIMEOUT: Duration = Duration::from_secs(2);
 
 fn watcher_app() -> tauri::App<tauri::test::MockRuntime> {
     let app = tauri::test::mock_app();
+    app.manage(trunk_lib::activity::ActivityState::default());
     app.manage(CommitCache::new(GraphCache::default()));
     app.manage(RunningOp(Mutex::new(RemoteOps::default())));
     app.manage(RefVisibilityState::default());
@@ -121,7 +122,14 @@ fn ignored_untracked_writes_emit_no_repository_change() {
     let path = dir.path().to_path_buf();
     let key = path.to_string_lossy().to_string();
     tauri::async_runtime::block_on(
-        GraphRebuild::new(&cache, &visibility).rebuild(key.clone(), move || {
+        GraphRebuild::new(
+            trunk_lib::activity::ActivityState::default()
+                .acquire()
+                .unwrap(),
+            &cache,
+            &visibility,
+        )
+        .rebuild(key.clone(), move || {
             trunk_lib::state::read_graph(&mut git2::Repository::open(path)?)
         }),
     )
@@ -137,7 +145,14 @@ fn ignored_untracked_writes_emit_no_repository_change() {
     assert!(events.try_iter().next().is_none());
     assert!(
         tauri::async_runtime::block_on(
-            GraphRebuild::new(&cache, &visibility).reconcile_refs(key, dir.path().to_path_buf())
+            GraphRebuild::new(
+                trunk_lib::activity::ActivityState::default()
+                    .acquire()
+                    .unwrap(),
+                &cache,
+                &visibility
+            )
+            .reconcile_refs(key, dir.path().to_path_buf())
         )
         .unwrap()
         .is_none()
@@ -167,7 +182,14 @@ fn unreadable_index_preserves_ignored_notifications_and_invalidates_the_capture(
     let path = context.repo_path().to_path_buf();
     let key = path.to_string_lossy().to_string();
     tauri::async_runtime::block_on(
-        GraphRebuild::new(&cache, &visibility).rebuild(key.clone(), move || {
+        GraphRebuild::new(
+            trunk_lib::activity::ActivityState::default()
+                .acquire()
+                .unwrap(),
+            &cache,
+            &visibility,
+        )
+        .rebuild(key.clone(), move || {
             trunk_lib::state::read_graph(&mut git2::Repository::open(path)?)
         }),
     )
@@ -194,8 +216,14 @@ fn unreadable_index_preserves_ignored_notifications_and_invalidates_the_capture(
     std::fs::write(index_path, index_bytes).unwrap();
     assert!(
         tauri::async_runtime::block_on(
-            GraphRebuild::new(&cache, &visibility)
-                .reconcile_refs(key, context.repo_path().to_path_buf())
+            GraphRebuild::new(
+                trunk_lib::activity::ActivityState::default()
+                    .acquire()
+                    .unwrap(),
+                &cache,
+                &visibility
+            )
+            .reconcile_refs(key, context.repo_path().to_path_buf())
         )
         .unwrap()
         .is_some()

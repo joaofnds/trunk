@@ -786,12 +786,14 @@ pub fn get_dirty_counts_inner(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn discard_file(
+    activity: crate::activity::Activity,
     path: String,
     file_path: String,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || discard_file_inner(&path, &file_path, &state_map))
+    activity
+        .spawn_blocking(move || discard_file_inner(&path, &file_path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -806,9 +808,14 @@ pub async fn discard_file(
 ///
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
-pub async fn discard_all(path: String, state: State<'_, RepoState>) -> Result<(), String> {
+pub async fn discard_all(
+    activity: crate::activity::Activity,
+    path: String,
+    state: State<'_, RepoState>,
+) -> Result<(), String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || discard_all_inner(&path, &state_map))
+    activity
+        .spawn_blocking(move || discard_all_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -824,11 +831,13 @@ pub async fn discard_all(path: String, state: State<'_, RepoState>) -> Result<()
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_dirty_counts(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<DirtyCounts, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || get_dirty_counts_inner(&path, &state_map))
+    activity
+        .spawn_blocking(move || get_dirty_counts_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e: TrunkError| e.to_json())
@@ -844,11 +853,13 @@ pub async fn get_dirty_counts(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_status(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<WorkingTreeStatus, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || get_status_inner(&path, &state_map))
+    activity
+        .spawn_blocking(move || get_status_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -864,12 +875,14 @@ pub async fn get_status(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn stage_file(
+    activity: crate::activity::Activity,
     path: String,
     file_path: String,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || stage_file_inner(&path, &file_path, &state_map))
+    activity
+        .spawn_blocking(move || stage_file_inner(&path, &file_path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -885,12 +898,14 @@ pub async fn stage_file(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn unstage_file(
+    activity: crate::activity::Activity,
     path: String,
     file_path: String,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || unstage_file_inner(&path, &file_path, &state_map))
+    activity
+        .spawn_blocking(move || unstage_file_inner(&path, &file_path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -906,12 +921,14 @@ pub async fn unstage_file(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn stage_files(
+    activity: crate::activity::Activity,
     path: String,
     file_paths: Vec<String>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || stage_files_inner(&path, &file_paths, &state_map))
+    activity
+        .spawn_blocking(move || stage_files_inner(&path, &file_paths, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -927,31 +944,14 @@ pub async fn stage_files(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn unstage_files(
+    activity: crate::activity::Activity,
     path: String,
     file_paths: Vec<String>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || {
-        unstage_files_inner(&path, &file_paths, &state_map)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
-}
-
-/// # Errors
-///
-/// Returns the inner error as JSON, which is what the frontend parses, or
-/// `spawn_error` when the blocking task cannot be joined.
-///
-/// # Panics
-///
-/// Panics when one of the shared state locks it takes is poisoned.
-#[tauri::command]
-pub async fn stage_all(path: String, state: State<'_, RepoState>) -> Result<(), String> {
-    let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || stage_all_inner(&path, &state_map))
+    activity
+        .spawn_blocking(move || unstage_files_inner(&path, &file_paths, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -966,9 +966,36 @@ pub async fn stage_all(path: String, state: State<'_, RepoState>) -> Result<(), 
 ///
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
-pub async fn unstage_all(path: String, state: State<'_, RepoState>) -> Result<(), String> {
+pub async fn stage_all(
+    activity: crate::activity::Activity,
+    path: String,
+    state: State<'_, RepoState>,
+) -> Result<(), String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || unstage_all_inner(&path, &state_map))
+    activity
+        .spawn_blocking(move || stage_all_inner(&path, &state_map))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
+}
+
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn unstage_all(
+    activity: crate::activity::Activity,
+    path: String,
+    state: State<'_, RepoState>,
+) -> Result<(), String> {
+    let state_map = state.snapshot();
+    activity
+        .spawn_blocking(move || unstage_all_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -984,6 +1011,7 @@ pub async fn unstage_all(path: String, state: State<'_, RepoState>) -> Result<()
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn stage_hunk(
+    activity: crate::activity::Activity,
     path: String,
     file_path: String,
     hunk_index: u32,
@@ -992,12 +1020,13 @@ pub async fn stage_hunk(
 ) -> Result<(), String> {
     let state_map = state.snapshot();
     let options = options.unwrap_or_default();
-    tauri::async_runtime::spawn_blocking(move || {
-        stage_hunk_inner(&path, &file_path, hunk_index, &state_map, &options)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || {
+            stage_hunk_inner(&path, &file_path, hunk_index, &state_map, &options)
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 /// # Errors
@@ -1010,6 +1039,7 @@ pub async fn stage_hunk(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn unstage_hunk(
+    activity: crate::activity::Activity,
     path: String,
     file_path: String,
     hunk_index: u32,
@@ -1018,12 +1048,13 @@ pub async fn unstage_hunk(
 ) -> Result<(), String> {
     let state_map = state.snapshot();
     let options = options.unwrap_or_default();
-    tauri::async_runtime::spawn_blocking(move || {
-        unstage_hunk_inner(&path, &file_path, hunk_index, &state_map, &options)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || {
+            unstage_hunk_inner(&path, &file_path, hunk_index, &state_map, &options)
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 /// # Errors
@@ -1036,6 +1067,7 @@ pub async fn unstage_hunk(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn discard_hunk(
+    activity: crate::activity::Activity,
     path: String,
     file_path: String,
     hunk_index: u32,
@@ -1044,12 +1076,13 @@ pub async fn discard_hunk(
 ) -> Result<(), String> {
     let state_map = state.snapshot();
     let options = options.unwrap_or_default();
-    tauri::async_runtime::spawn_blocking(move || {
-        discard_hunk_inner(&path, &file_path, hunk_index, &state_map, &options)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || {
+            discard_hunk_inner(&path, &file_path, hunk_index, &state_map, &options)
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 /// # Errors
@@ -1062,6 +1095,7 @@ pub async fn discard_hunk(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn stage_lines(
+    activity: crate::activity::Activity,
     path: String,
     file_path: String,
     hunk_index: u32,
@@ -1071,19 +1105,20 @@ pub async fn stage_lines(
 ) -> Result<(), String> {
     let state_map = state.snapshot();
     let options = options.unwrap_or_default();
-    tauri::async_runtime::spawn_blocking(move || {
-        stage_lines_inner(
-            &path,
-            &file_path,
-            hunk_index,
-            &line_indices,
-            &state_map,
-            &options,
-        )
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || {
+            stage_lines_inner(
+                &path,
+                &file_path,
+                hunk_index,
+                &line_indices,
+                &state_map,
+                &options,
+            )
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 /// # Errors
@@ -1096,6 +1131,7 @@ pub async fn stage_lines(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn unstage_lines(
+    activity: crate::activity::Activity,
     path: String,
     file_path: String,
     hunk_index: u32,
@@ -1105,19 +1141,20 @@ pub async fn unstage_lines(
 ) -> Result<(), String> {
     let state_map = state.snapshot();
     let options = options.unwrap_or_default();
-    tauri::async_runtime::spawn_blocking(move || {
-        unstage_lines_inner(
-            &path,
-            &file_path,
-            hunk_index,
-            &line_indices,
-            &state_map,
-            &options,
-        )
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || {
+            unstage_lines_inner(
+                &path,
+                &file_path,
+                hunk_index,
+                &line_indices,
+                &state_map,
+                &options,
+            )
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 /// # Errors
@@ -1130,6 +1167,7 @@ pub async fn unstage_lines(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn discard_lines(
+    activity: crate::activity::Activity,
     path: String,
     file_path: String,
     hunk_index: u32,
@@ -1139,19 +1177,20 @@ pub async fn discard_lines(
 ) -> Result<(), String> {
     let state_map = state.snapshot();
     let options = options.unwrap_or_default();
-    tauri::async_runtime::spawn_blocking(move || {
-        discard_lines_inner(
-            &path,
-            &file_path,
-            hunk_index,
-            &line_indices,
-            &state_map,
-            &options,
-        )
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || {
+            discard_lines_inner(
+                &path,
+                &file_path,
+                hunk_index,
+                &line_indices,
+                &state_map,
+                &options,
+            )
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 /// Build a partial unified diff patch from selected line indices.

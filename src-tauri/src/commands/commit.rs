@@ -148,11 +148,13 @@ pub fn get_user_name_inner(
 /// `spawn_error` when the blocking task cannot be joined.
 #[tauri::command]
 pub async fn get_user_name(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<Option<String>, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || get_user_name_inner(&path, &state_map))
+    activity
+        .spawn_blocking(move || get_user_name_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -168,6 +170,7 @@ pub async fn get_user_name(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn create_commit<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     subject: String,
     body: Option<String>,
@@ -176,7 +179,7 @@ pub async fn create_commit<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -201,6 +204,7 @@ pub async fn create_commit<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn amend_commit<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     subject: String,
     body: Option<String>,
@@ -209,7 +213,7 @@ pub async fn amend_commit<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -234,11 +238,13 @@ pub async fn amend_commit<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_head_commit_message(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<HeadCommitMessage, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || get_head_commit_message_inner(&path, &state_map))
+    activity
+        .spawn_blocking(move || get_head_commit_message_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())

@@ -16,6 +16,7 @@ import {
 	type ReviewComposerSession,
 } from "../../lib/review-editors.svelte.js";
 import type { Anchor, Delivery, FileDiff, Review } from "../../lib/types.js";
+import { registerUpdateBlocker } from "../../lib/updates-context.js";
 import ComposerFrame from "../review/ComposerFrame.svelte";
 
 interface Props {
@@ -285,6 +286,11 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	await discardDraft(path);
 	return session === activeSession && session.draft.revision === revision;
 }
+registerUpdateBlocker(() =>
+	!activeSession.restoreSettled || submitting
+		? "Wait for the comment draft to finish loading or saving."
+		: null,
+);
 </script>
 
 <ComposerFrame

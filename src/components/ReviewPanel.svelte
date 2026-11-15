@@ -1,4 +1,5 @@
 <script lang="ts">
+import { registerUpdateBlocker } from "../lib/updates-context.js";
 // Renders the shown review grouped by branch, then commit, then file, with a per-commit
 // "Add note" affordance (D-02), inline edit (D-10), delete-with-confirm (D-05),
 // and jump-to-anchor with read-only orphan rows (D-07 / D-08). The panel lives
@@ -837,6 +838,9 @@ $effect(() => {
 	if (failure === null) return;
 	reportReadFailure(failure);
 });
+registerUpdateBlocker(() =>
+	renaming !== null ? "Finish renaming the review before restarting." : null,
+);
 </script>
 
 <svelte:window onpointerdown={dismissEndPopover} onkeydown={threadKeys} />

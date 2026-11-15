@@ -23,6 +23,7 @@ import {
 import type { MergeSides } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
+import { registerUpdateBlocker } from "../lib/updates-context.js";
 
 interface Props {
 	repoPath: string;
@@ -420,6 +421,9 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 	if (lines.length === 0) return false;
 	return lines.every((_, j) => takenLines.has(`${side}-${regionIdx}-${j}`));
 }
+registerUpdateBlocker(
+	() => "Finish or close the merge editor before restarting.",
+);
 </script>
 
 {#snippet conflictHeader(side: "ours" | "theirs", row: FlatRow)}

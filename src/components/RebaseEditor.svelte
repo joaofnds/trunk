@@ -25,6 +25,7 @@ import Chip from "../lib/ui/Chip.svelte";
 import Dialog from "../lib/ui/Dialog.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Splitter from "../lib/ui/Splitter.svelte";
+import { registerUpdateBlocker } from "../lib/updates-context.js";
 import BranchChip from "./BranchChip.svelte";
 import CommitChip from "./CommitChip.svelte";
 
@@ -496,6 +497,9 @@ function handleStartRebase() {
 		})),
 	);
 }
+registerUpdateBlocker(
+	() => "Finish or cancel the rebase editor before restarting.",
+);
 </script>
 
 <svelte:document

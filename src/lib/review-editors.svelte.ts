@@ -121,7 +121,22 @@ export interface ReviewThreadSnapshot {
  * draft from one review cannot be submitted into another one after switching
  * the active review.
  */
+export interface ReviewUpdateComposer {
+	readonly target: ReviewComposerTarget;
+	readonly captured: ReviewComposerCapture;
+	readonly mode: ReviewComposerMode;
+	readonly reviewId: string | null;
+	readonly text: string;
+}
+
+export interface ReviewUpdateCapture {
+	readonly generation: string;
+	readonly blocker: string | null;
+	readonly composer: ReviewUpdateComposer | null;
+}
+
 export interface ReviewEditorStore {
+	captureUpdate(): ReviewUpdateCapture;
 	thread(
 		reviewId: string | null,
 		host: ReviewEditorHost,
@@ -348,6 +363,72 @@ export function createReviewEditorStore(): ReviewEditorStore {
 	}
 
 	return {
+		captureUpdate() {
+			const allDrafts = [...drafts.values()];
+			for (const { session } of threadSessions.values()) {
+				allDrafts.push(session.rootEdit, session.reply, session.replyEdit);
+			}
+			const composers = [...composerSessions.values()].filter(
+				(session) => session.draft.text.length > 0 || session.submitting,
+			);
+			const generation = JSON.stringify([
+				allDrafts.map((draft) => [draft.revision, draft.text]),
+				composers.map((session) => [
+					session.target,
+					session.draft.revision,
+					session.submitting,
+				]),
+			]);
+			const blocked = (blocker: string): ReviewUpdateCapture => ({
+				generation,
+				blocker,
+				composer: null,
+			});
+			if (allDrafts.some((draft) => draft.text.length > 0))
+				return blocked(
+					"Finish or cancel your review note, thread edit or reply before restarting.",
+				);
+			if (
+				[...threadSessions.values()].some(
+					({ session }) => session.replySaving || session.replyEditSaving,
+				) ||
+				[...noteSessions.values()].some((session) => session.saving)
+			)
+				return blocked("Wait for the review save to finish before restarting.");
+			if (composers.length > 1)
+				return blocked(
+					"Finish the multiple open comment drafts before restarting.",
+				);
+			const session = composers[0];
+			if (!session) return { generation, blocker: null, composer: null };
+			if (session.submitting)
+				return blocked("Wait for the comment submission to finish.");
+			if (
+				session.target?.context !== "normal" ||
+				!session.target.filePath ||
+				session.target.compareBaseOid ||
+				!session.captured ||
+				!session.mode
+			)
+				return blocked(
+					"Finish this comment draft before restarting; its view cannot be restored yet.",
+				);
+
+			return {
+				generation,
+				blocker: null,
+				composer: {
+					target: { ...session.target },
+					captured: {
+						...session.captured,
+						anchor: { ...session.captured.anchor },
+					},
+					mode: session.mode,
+					reviewId: session.originatingReviewId,
+					text: session.draft.text,
+				},
+			};
+		},
 		thread(reviewId, host, threadId) {
 			const key = JSON.stringify([reviewId, host, threadId]);
 			let entry = threadSessions.get(key);

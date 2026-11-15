@@ -394,6 +394,7 @@ fn message_bindings(todo_items: &[RebaseTodoAction]) -> Vec<(String, String)> {
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_rebase_todo(
+    activity: crate::activity::Activity,
     path: String,
     base_oid: String,
     inclusive: Option<bool>,
@@ -401,12 +402,11 @@ pub async fn get_rebase_todo(
 ) -> Result<RebaseTodo, String> {
     let state_map = state.snapshot();
     let incl = inclusive.unwrap_or(false);
-    tauri::async_runtime::spawn_blocking(move || {
-        get_rebase_todo_inner(&path, &base_oid, incl, &state_map)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e: TrunkError| e.to_json())
+    activity
+        .spawn_blocking(move || get_rebase_todo_inner(&path, &base_oid, incl, &state_map))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e: TrunkError| e.to_json())
 }
 
 /// # Errors
@@ -419,12 +419,14 @@ pub async fn get_rebase_todo(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_fork_point(
+    activity: crate::activity::Activity,
     path: String,
     branch: String,
     state: State<'_, RepoState>,
 ) -> Result<String, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || get_fork_point_inner(&path, &branch, &state_map))
+    activity
+        .spawn_blocking(move || get_fork_point_inner(&path, &branch, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e: TrunkError| e.to_json())
@@ -455,6 +457,7 @@ fn new_session_dir() -> Result<tempfile::TempDir, TrunkError> {
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn start_interactive_rebase<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     base_oid: Option<String>,
     todo_items: Vec<RebaseTodoAction>,
@@ -463,7 +466,7 @@ pub async fn start_interactive_rebase<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<RebaseStartResult, String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
 

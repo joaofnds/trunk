@@ -10,6 +10,7 @@ import { safeInvoke } from "./invoke.js";
 import { EVERYTHING_VISIBLE, type RefVisibility } from "./ref-visibility.js";
 import type { PersistedTab } from "./tab-types.js";
 import type { ContentMode, LayoutMode, RenderMode } from "./types.js";
+import { readReviewUpdateSnapshot } from "./updates-review.js";
 
 export type { PersistedTab } from "./tab-types.js";
 
@@ -20,12 +21,55 @@ export interface RecentRepo {
 
 // Prefs live in a Rust-side map backed by trunk-prefs.json; every set
 // rewrites the file atomically in one prefs_set call.
-async function getPref<T>(key: string): Promise<T | null> {
-	return await safeInvoke<T | null>("prefs_get", { key });
+async function getPref<T>(key: string, permit?: string): Promise<T | null> {
+	return await safeInvoke<T | null>("prefs_get", {
+		key,
+		...(permit === undefined ? {} : { __updatePermit: permit }),
+	});
 }
 
-async function setPref(key: string, value: unknown): Promise<void> {
-	await safeInvoke("prefs_set", { key, value });
+const pendingPreferences = new Set<Promise<void>>();
+const requestedPreferences = new Map<string, unknown>();
+let preferenceRevision = 0;
+
+async function setPref(
+	key: string,
+	value: unknown,
+	permit?: string,
+): Promise<void> {
+	requestedPreferences.set(key, value);
+	preferenceRevision += 1;
+	const write = safeInvoke<void>("prefs_set", {
+		key,
+		value,
+		...(permit === undefined ? {} : { __updatePermit: permit }),
+	});
+	pendingPreferences.add(write);
+	try {
+		await write;
+	} finally {
+		pendingPreferences.delete(write);
+	}
+}
+
+export function preferenceGeneration(): number {
+	return preferenceRevision;
+}
+
+export async function flushPreferencesForUpdate(
+	permit: string,
+	tabs: PersistedTab[],
+	activeTabId: string,
+): Promise<void> {
+	await columnLayoutQueue;
+	await Promise.allSettled([...pendingPreferences]);
+	const values = new Map(requestedPreferences);
+	values.delete(COMMIT_DRAFTS_KEY);
+	values.set(TABS_KEY, tabs);
+	values.set(ACTIVE_TAB_KEY, activeTabId);
+	for (const [key, value] of values) {
+		await safeInvoke("prefs_set", { key, value, __updatePermit: permit });
+	}
 }
 
 const RECENT_KEY = "recent_repos";
@@ -467,29 +511,66 @@ export interface CommitDraft {
 
 const COMMIT_DRAFTS_KEY = "commit_drafts";
 
-export async function getCommitDraft(
-	path: string,
-): Promise<CommitDraft | null> {
-	const drafts =
-		(await getPref<Record<string, CommitDraft>>(COMMIT_DRAFTS_KEY)) ?? {};
-	return drafts[path] ?? null;
+let commitDraftQueue: Promise<unknown> = Promise.resolve();
+
+function inCommitDraftOrder<T>(work: () => Promise<T>): Promise<T> {
+	const done = commitDraftQueue.then(work);
+	commitDraftQueue = done.catch(() => {});
+	return done;
 }
 
-export async function setCommitDraft(
+export function getCommitDraft(path: string): Promise<CommitDraft | null> {
+	return inCommitDraftOrder(async () => {
+		const drafts =
+			(await getPref<Record<string, CommitDraft>>(COMMIT_DRAFTS_KEY)) ?? {};
+		return drafts[path] ?? null;
+	});
+}
+
+function writeCommitDraft(
+	path: string,
+	draft: CommitDraft | null,
+	permit?: string,
+): Promise<void> {
+	return inCommitDraftOrder(async () => {
+		const drafts =
+			(await getPref<Record<string, CommitDraft>>(COMMIT_DRAFTS_KEY, permit)) ??
+			{};
+		if (draft === null && !(path in drafts)) return;
+		const next = { ...drafts };
+		if (draft === null) delete next[path];
+		else next[path] = { ...draft };
+		if (permit === undefined) await setPref(COMMIT_DRAFTS_KEY, next);
+		else
+			await safeInvoke("prefs_set", {
+				key: COMMIT_DRAFTS_KEY,
+				value: next,
+				__updatePermit: permit,
+			});
+	});
+}
+
+export function setCommitDraft(
 	path: string,
 	draft: CommitDraft,
 ): Promise<void> {
-	const drafts =
-		(await getPref<Record<string, CommitDraft>>(COMMIT_DRAFTS_KEY)) ?? {};
-	await setPref(COMMIT_DRAFTS_KEY, { ...drafts, [path]: draft });
+	return writeCommitDraft(path, draft);
 }
 
-export async function clearCommitDraft(path: string): Promise<void> {
-	const drafts =
-		(await getPref<Record<string, CommitDraft>>(COMMIT_DRAFTS_KEY)) ?? {};
-	if (!(path in drafts)) return;
-	const { [path]: _removed, ...rest } = drafts;
-	await setPref(COMMIT_DRAFTS_KEY, rest);
+export function clearCommitDraft(path: string): Promise<void> {
+	return writeCommitDraft(path, null);
+}
+
+export function flushCommitDraftForUpdate(
+	path: string,
+	draft: CommitDraft,
+	permit: string,
+): Promise<void> {
+	return writeCommitDraft(
+		path,
+		draft.subject === "" && draft.body === "" ? null : draft,
+		permit,
+	);
 }
 
 // Periodic background fetch interval. 0 disables. Default 1 min.
@@ -542,4 +623,46 @@ export async function setRefVisibility(
 	const all =
 		(await getPref<Record<string, RefVisibility>>(REF_VISIBILITY_KEY)) ?? {};
 	await setPref(REF_VISIBILITY_KEY, { ...all, [path]: visibility });
+}
+
+const reviewUpdateKey = (path: string) => `update_review_composer:${path}`;
+
+export async function getReviewUpdateSnapshot(
+	path: string,
+): Promise<import("./review-editors.svelte.js").ReviewUpdateComposer | null> {
+	return readReviewUpdateSnapshot(
+		await getPref<unknown>(reviewUpdateKey(path)),
+	);
+}
+
+export async function clearReviewUpdateSnapshot(
+	path: string,
+	permit?: string,
+): Promise<void> {
+	await safeInvoke("prefs_set", {
+		key: reviewUpdateKey(path),
+		value: null,
+		...(permit === undefined ? {} : { __updatePermit: permit }),
+	});
+}
+
+export async function flushReviewComposerForUpdate(
+	path: string,
+	composer: import("./review-editors.svelte.js").ReviewUpdateComposer | null,
+	permit: string,
+): Promise<void> {
+	if (composer) {
+		await safeInvoke("save_draft", {
+			path,
+			text: composer.text,
+			anchor: composer.captured.anchor,
+			wholeFile: composer.captured.wholeFile === true,
+			__updatePermit: permit,
+		});
+	}
+	await safeInvoke("prefs_set", {
+		key: reviewUpdateKey(path),
+		value: composer,
+		__updatePermit: permit,
+	});
 }

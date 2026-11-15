@@ -982,18 +982,18 @@ pub fn get_commit_detail_inner(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn diff_unstaged(
+    activity: crate::activity::Activity,
     path: String,
     file_path: String,
     options: DiffRequestOptions,
     state: State<'_, RepoState>,
 ) -> Result<Vec<FileDiff>, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || {
-        diff_unstaged_inner(&path, &file_path, &state_map, &options)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || diff_unstaged_inner(&path, &file_path, &state_map, &options))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 /// # Errors
@@ -1006,18 +1006,18 @@ pub async fn diff_unstaged(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn diff_staged(
+    activity: crate::activity::Activity,
     path: String,
     file_path: String,
     options: DiffRequestOptions,
     state: State<'_, RepoState>,
 ) -> Result<Vec<FileDiff>, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || {
-        diff_staged_inner(&path, &file_path, &state_map, &options)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || diff_staged_inner(&path, &file_path, &state_map, &options))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 /// # Errors
@@ -1030,12 +1030,14 @@ pub async fn diff_staged(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn list_commit_files(
+    activity: crate::activity::Activity,
     path: String,
     oid: String,
     state: State<'_, RepoState>,
 ) -> Result<Vec<FileDiff>, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || list_commit_files_inner(&path, &oid, &state_map))
+    activity
+        .spawn_blocking(move || list_commit_files_inner(&path, &oid, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -1051,6 +1053,7 @@ pub async fn list_commit_files(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn diff_commit_file(
+    activity: crate::activity::Activity,
     path: String,
     oid: String,
     file_path: String,
@@ -1058,12 +1061,13 @@ pub async fn diff_commit_file(
     state: State<'_, RepoState>,
 ) -> Result<Vec<FileDiff>, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || {
-        diff_commit_file_inner(&path, &oid, &file_path, &state_map, &options)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || {
+            diff_commit_file_inner(&path, &oid, &file_path, &state_map, &options)
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 /// # Errors
@@ -1076,18 +1080,20 @@ pub async fn diff_commit_file(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn list_compare_files(
+    activity: crate::activity::Activity,
     path: String,
     base_oid: Option<String>,
     target_oid: String,
     state: State<'_, RepoState>,
 ) -> Result<Vec<FileDiff>, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || {
-        list_compare_files_inner(&path, base_oid.as_deref(), &target_oid, &state_map)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || {
+            list_compare_files_inner(&path, base_oid.as_deref(), &target_oid, &state_map)
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 /// # Errors
@@ -1100,6 +1106,7 @@ pub async fn list_compare_files(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn diff_compare_file(
+    activity: crate::activity::Activity,
     path: String,
     base_oid: Option<String>,
     target_oid: String,
@@ -1108,19 +1115,20 @@ pub async fn diff_compare_file(
     state: State<'_, RepoState>,
 ) -> Result<Vec<FileDiff>, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || {
-        diff_compare_file_inner(
-            &path,
-            base_oid.as_deref(),
-            &target_oid,
-            &file_path,
-            &state_map,
-            &options,
-        )
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || {
+            diff_compare_file_inner(
+                &path,
+                base_oid.as_deref(),
+                &target_oid,
+                &file_path,
+                &state_map,
+                &options,
+            )
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 /// # Errors
@@ -1133,18 +1141,20 @@ pub async fn diff_compare_file(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn compare_stat(
+    activity: crate::activity::Activity,
     path: String,
     base_oid: Option<String>,
     target_oid: String,
     state: State<'_, RepoState>,
 ) -> Result<crate::types::DiffStat, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || {
-        compare_stat_inner(&path, base_oid.as_deref(), &target_oid, &state_map)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || {
+            compare_stat_inner(&path, base_oid.as_deref(), &target_oid, &state_map)
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 /// # Errors
@@ -1157,12 +1167,14 @@ pub async fn compare_stat(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_commit_detail(
+    activity: crate::activity::Activity,
     path: String,
     oid: String,
     state: State<'_, RepoState>,
 ) -> Result<CommitDetail, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || get_commit_detail_inner(&path, &oid, &state_map))
+    activity
+        .spawn_blocking(move || get_commit_detail_inner(&path, &oid, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -1180,17 +1192,19 @@ pub async fn get_commit_detail(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn list_tracked_files(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<Vec<TrackedFile>, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || {
-        let repo = state_map.open(&path)?;
-        tracked_files(&repo)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || {
+            let repo = state_map.open(&path)?;
+            tracked_files(&repo)
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 /// One tracked file's current working-tree content, for the full-file view.
@@ -1205,6 +1219,7 @@ pub async fn list_tracked_files(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn open_current_file(
+    activity: crate::activity::Activity,
     path: String,
     file_path: String,
     state: State<'_, RepoState>,
@@ -1213,15 +1228,16 @@ pub async fn open_current_file(
     let state_map = state.snapshot();
     let cache = cache.inner().clone();
 
-    tauri::async_runtime::spawn_blocking(move || {
-        let repo = state_map.open(&path)?;
-        cache
-            .current_file_diff(&repo, &file_path)
-            .map(|fd| vec![fd.as_ref().clone()])
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || {
+            let repo = state_map.open(&path)?;
+            cache
+                .current_file_diff(&repo, &file_path)
+                .map(|fd| vec![fd.as_ref().clone()])
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 const MAX_CURRENT_SOURCE_RETAINED_BYTES: usize = 2 * 1024 * 1024;

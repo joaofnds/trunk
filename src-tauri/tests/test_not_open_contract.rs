@@ -110,6 +110,9 @@ fn git_pull_reports_not_open_for_an_unregistered_repo() {
     let running = Mutex::new(RemoteOps::default());
 
     let err = tauri::async_runtime::block_on(git_pull_inner(
+        &trunk_lib::activity::ActivityState::default()
+            .acquire()
+            .unwrap(),
         UNREGISTERED,
         None,
         &OpenRepos::default(),
@@ -130,6 +133,9 @@ fn git_push_reports_not_open_for_an_unregistered_repo() {
     let running = Mutex::new(RemoteOps::default());
 
     let err = tauri::async_runtime::block_on(git_push_inner(
+        &trunk_lib::activity::ActivityState::default()
+            .acquire()
+            .unwrap(),
         UNREGISTERED,
         &OpenRepos::default(),
         &cache,
@@ -149,6 +155,9 @@ fn git_push_force_reports_not_open_for_an_unregistered_repo() {
     let running = Mutex::new(RemoteOps::default());
 
     let err = tauri::async_runtime::block_on(git_push_force_inner(
+        &trunk_lib::activity::ActivityState::default()
+            .acquire()
+            .unwrap(),
         UNREGISTERED,
         trunk_lib::commands::remote::ConfirmedPush {
             remote: "origin",
@@ -175,6 +184,9 @@ fn a_command_wrapper_carries_not_open_through_its_json() {
     app.manage(RefVisibilityState::default());
 
     let json = tauri::async_runtime::block_on(refresh_commit_graph(
+        trunk_lib::activity::ActivityState::default()
+            .acquire()
+            .unwrap(),
         UNREGISTERED.to_owned(),
         0,
         app.state(),

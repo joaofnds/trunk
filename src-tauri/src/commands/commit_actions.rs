@@ -339,6 +339,7 @@ pub fn reset_to_commit_inner(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn reset_to_commit<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     oid: String,
     mode: String,
@@ -347,7 +348,7 @@ pub async fn reset_to_commit<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -371,6 +372,7 @@ pub async fn reset_to_commit<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn checkout_commit<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     oid: String,
     state: State<'_, RepoState>,
@@ -378,7 +380,7 @@ pub async fn checkout_commit<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -404,6 +406,7 @@ pub async fn checkout_commit<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn create_tag<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     oid: String,
     tag_name: String,
@@ -413,7 +416,7 @@ pub async fn create_tag<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -437,6 +440,7 @@ pub async fn create_tag<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn delete_tag<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     tag_name: String,
     state: State<'_, RepoState>,
@@ -444,7 +448,7 @@ pub async fn delete_tag<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -468,6 +472,7 @@ pub async fn delete_tag<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn cherry_pick<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     oid: String,
     state: State<'_, RepoState>,
@@ -475,7 +480,7 @@ pub async fn cherry_pick<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -499,6 +504,7 @@ pub async fn cherry_pick<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn revert_commit_begin<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     oid: String,
     state: State<'_, RepoState>,
@@ -506,7 +512,7 @@ pub async fn revert_commit_begin<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<RevertBeginResult, String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
 
@@ -534,6 +540,7 @@ pub async fn revert_commit_begin<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn cherry_pick_continue<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     message: String,
     state: State<'_, RepoState>,
@@ -541,7 +548,7 @@ pub async fn cherry_pick_continue<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -565,13 +572,14 @@ pub async fn cherry_pick_continue<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn cherry_pick_abort<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -595,6 +603,7 @@ pub async fn cherry_pick_abort<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn revert_continue<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     message: String,
     state: State<'_, RepoState>,
@@ -602,7 +611,7 @@ pub async fn revert_continue<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -626,13 +635,14 @@ pub async fn revert_continue<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn revert_abort<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -785,13 +795,14 @@ pub fn head_oid_inner(path: &str, state_map: &OpenRepos) -> Result<Option<String
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn undo_commit<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<UndoResult, String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     let (_graph, undo_result) = rebuild
@@ -821,6 +832,7 @@ pub async fn undo_commit<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn redo_commit<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     subject: String,
     body: Option<String>,
@@ -831,7 +843,7 @@ pub async fn redo_commit<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -865,11 +877,13 @@ pub async fn redo_commit<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn check_undo_available(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<bool, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || check_undo_available_inner(&path, &state_map))
+    activity
+        .spawn_blocking(move || check_undo_available_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -884,9 +898,14 @@ pub async fn check_undo_available(
 ///
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
-pub async fn head_oid(path: String, state: State<'_, RepoState>) -> Result<Option<String>, String> {
+pub async fn head_oid(
+    activity: crate::activity::Activity,
+    path: String,
+    state: State<'_, RepoState>,
+) -> Result<Option<String>, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || head_oid_inner(&path, &state_map))
+    activity
+        .spawn_blocking(move || head_oid_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())

@@ -7,6 +7,8 @@ specs, plans, review reports — stays in the gitignored `.boris/` tree instead.
 
 | Doc | What it covers |
 |-----|----------------|
+| [architecture/updater.md](architecture/updater.md) | Update eligibility, signature trust, bounded downloads, restart admission, saved drafts, recovery, and native acceptance requirements. |
+| [updater-release.md](updater-release.md) | Per-target keys, signed artifact receipts, complete feed assembly, and the release publication gate. |
 | [../GLOSSARY.md](../GLOSSARY.md) | The project's domain terms in João's words: lanes and claims in the graph, the graph test corpus, dates, commit navigation, the review model, remote operations, the application harness, and time in the frontend. Read it first; add a term when you learn one. |
 | [design-system.md](design-system.md) | Where every visual value comes from: the token sheet and its groups, how to add a token and what each addition owes the tests and the contrast gate, and the three Biome plugins that state which forms a color, type or length value may take, how they are tested and when one is enabled. Read before writing a stylesheet or a `<style>` block. |
 | [architecture/commit-graph.md](architecture/commit-graph.md) | The graph pipeline end to end: `placement.rs` column and edge assignment, the `active-lanes.ts` overlay translation, SVG path building, and the invariants each layer owns. Read before changing lane assignment, edge emission, or node rendering; the binding rules are in `.claude/rules/commit-graph.md`. |

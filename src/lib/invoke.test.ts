@@ -10,6 +10,16 @@ vi.mock("@tauri-apps/api/core", () => ({
 const mockInvoke = vi.mocked(invoke);
 
 describe("safeInvoke", () => {
+	it("preserves a structured native admission error", async () => {
+		mockInvoke.mockRejectedValueOnce({
+			code: "update_busy",
+			message: "Trunk is busy or preparing an update",
+		});
+		await expect(safeInvoke("stage_all")).rejects.toEqual({
+			code: "update_busy",
+			message: "Trunk is busy or preparing an update",
+		});
+	});
 	it("returns resolved value on success", async () => {
 		mockInvoke.mockResolvedValueOnce({ data: 42 });
 		const result = await safeInvoke<{ data: number }>("test_cmd");

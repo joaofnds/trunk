@@ -26,12 +26,14 @@ import { resolveDiffTarget } from "../lib/diff-in-view.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { listsSameFiles, patchLoadedDiff } from "../lib/file-status.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { createOwnedTimer } from "../lib/owned-timer.js";
 import { span } from "../lib/perf.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import {
 	requestRepoChange,
 	subscribeToRepoChanges,
 } from "../lib/repo-change-subscription.js";
+import { getDraft } from "../lib/review-comment-actions.js";
 import { createReviewComments } from "../lib/review-comments.svelte.js";
 import {
 	createReviewEditorStore,
@@ -50,9 +52,13 @@ import { initials, provideReviewer } from "../lib/reviewer.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
 import {
 	clearCommitDraft,
+	clearReviewUpdateSnapshot,
+	flushCommitDraftForUpdate,
+	flushReviewComposerForUpdate,
 	getCommitDraft,
 	getDiffContextLines,
 	getDiffIgnoreWhitespace,
+	getReviewUpdateSnapshot,
 	getTreeViewEnabled,
 	setCommitDraft,
 	setLeftPaneWidth,
@@ -84,6 +90,9 @@ import type {
 } from "../lib/types.js";
 import Splitter from "../lib/ui/Splitter.svelte";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
+import { registerUpdateParticipant } from "../lib/updates-context.js";
+import { isUpdateFrozen } from "../lib/updates-lifecycle.js";
+import { restoreReviewUpdateComposer } from "../lib/updates-review.js";
 import BranchSidebar from "./BranchSidebar.svelte";
 import CommitGraph from "./CommitGraph.svelte";
 import FileFinder from "./FileFinder.svelte";
@@ -105,6 +114,7 @@ interface DirtyCounts {
 
 interface Props {
 	onready?: () => void;
+	onrecoveryready?: (error: string | null) => void;
 	ondirtychange?: (counts: { staged: number; unstaged: number }) => void;
 	repoPath: string;
 	repoName: string;
@@ -182,6 +192,7 @@ let {
 	onrightpanewidthchange,
 	onleavereview,
 	onready,
+	onrecoveryready,
 	ondirtychange,
 }: Props = $props();
 
@@ -295,6 +306,7 @@ $effect(() => {
 $effect(() => {
 	let unlisten: (() => void) | undefined;
 	listen<void>("review-show-panel", () => {
+		if (isUpdateFrozen()) return;
 		if (reviewSession.state.reviewActive) reviewSession.showPanel();
 	}).then((fn) => {
 		unlisten = fn;
@@ -1770,36 +1782,143 @@ $effect(() => {
 // mount. CommitForm seeds its fields from props at init, so the StagingPanel
 // render is gated on `draftLoaded` (below) — mounting before this resolves would
 // seed from "" and never pick up the draft.
-getCommitDraft(untrack(() => repoPath)).then((d) => {
-	if (d) {
-		wipSubject = d.subject;
-		wipBody = d.body;
-	}
-	draftLoaded = true;
-});
+let commitRecoveryError = $state<string | null>(null);
+const commitRecovery = getCommitDraft(untrack(() => repoPath))
+	.then((d) => {
+		if (d) {
+			wipSubject = d.subject;
+			wipBody = d.body;
+		}
+		draftLoaded = true;
+	})
+	.catch((error) => {
+		commitRecoveryError = errorMessage(
+			error,
+			"Could not restore the saved commit draft",
+		);
+		reportErrorToast(error, "Could not restore the saved commit draft");
+	});
 
-// Persist edits after rehydration. Clearing a draft writes immediately so a
-// hard kill cannot restore stale text; other edits use the existing debounce.
+const commitDraftTimer = createOwnedTimer();
 let initialDraftEffect = true;
 $effect(() => {
 	const subject = wipSubject;
 	const body = wipBody;
 	if (!draftLoaded) return;
-	// Rehydration has not edited the saved draft.
 	if (initialDraftEffect) {
 		initialDraftEffect = false;
 		return;
 	}
 
-	if (subject.trim() === "" && body.trim() === "") {
-		clearCommitDraft(repoPath);
+	commitDraftTimer.cancel();
+	if (subject === "" && body === "") {
+		void clearCommitDraft(repoPath).catch((error) =>
+			reportErrorToast(error, "Could not save commit draft"),
+		);
 		return;
 	}
-
-	const timer = setTimeout(() => {
-		setCommitDraft(repoPath, { subject, body });
+	commitDraftTimer.arm(() => {
+		void setCommitDraft(repoPath, { subject, body }).catch((error) =>
+			reportErrorToast(error, "Could not save commit draft"),
+		);
 	}, 400);
-	return () => clearTimeout(timer);
+	return () => commitDraftTimer.cancel();
+});
+
+let reviewRecoveryLoaded = $state(false);
+let reviewRecoveryError = $state<string | null>(null);
+const reviewRecovery = getReviewUpdateSnapshot(untrack(() => repoPath))
+	.then(async (saved) => {
+		if (!saved || !repoViewActive) return;
+		const persisted = await getDraft(repoPath);
+		const expected = saved.captured.anchor;
+		const actual = persisted?.anchor;
+		if (
+			!persisted ||
+			persisted.text !== saved.text ||
+			persisted.whole_file !== (saved.captured.wholeFile === true) ||
+			!actual ||
+			actual.commit_oid !== expected.commit_oid ||
+			actual.file_path !== expected.file_path ||
+			actual.source !== expected.source ||
+			actual.side !== expected.side ||
+			actual.start_line !== expected.start_line ||
+			actual.end_line !== expected.end_line
+		)
+			throw new Error(
+				"The saved update draft differs from the current draft. Both have been retained for recovery.",
+			);
+		await reviewComments.refresh();
+		if (reviewComments.activeReviewId !== saved.reviewId)
+			throw new Error(
+				"Switch back to the draft's original review and reopen this tab to recover it. The draft has been retained.",
+			);
+		const target = saved.target;
+		if (target.context !== "normal" || !target.filePath)
+			throw new Error("The saved comment view cannot be restored.");
+		if (target.kind === "commit" && target.commitOid) {
+			await selectCommitIdempotent(target.commitOid);
+			await selectCommitFileIdempotent(target.filePath);
+		} else if (target.kind === "staged" || target.kind === "unstaged") {
+			await handleFileSelect(target.filePath, target.kind);
+		} else {
+			await openCurrentFile(target.filePath);
+		}
+		if (!repoViewActive) return;
+		await restoreReviewUpdateComposer(reviewEditors, saved);
+		await tick();
+		if (
+			diffComposerSession !== reviewEditors.composer(target, saved.reviewId) ||
+			!showDiff ||
+			currentSourceError
+		)
+			throw new Error(
+				"The saved comment view could not open. The draft has been retained for recovery.",
+			);
+		await clearReviewUpdateSnapshot(repoPath);
+	})
+	.catch((error) => {
+		reviewRecoveryError = errorMessage(
+			error,
+			"Could not restore the saved comment draft",
+		);
+		reportErrorToast(error, "Could not restore the saved comment draft");
+	})
+	.finally(() => {
+		reviewRecoveryLoaded = true;
+	});
+
+void Promise.all([commitRecovery, reviewRecovery]).then(() => {
+	if (repoViewActive)
+		onrecoveryready?.(commitRecoveryError ?? reviewRecoveryError);
+});
+
+registerUpdateParticipant({
+	capture: () => {
+		const draft = { subject: wipSubject, body: wipBody };
+		const review = reviewEditors.captureUpdate();
+		const path = repoPath;
+		return {
+			generation: JSON.stringify([
+				path,
+				draft,
+				review.generation,
+				draftLoaded,
+				reviewRecoveryLoaded,
+			]),
+			blocker:
+				commitRecoveryError ??
+				(!draftLoaded || !reviewRecoveryLoaded
+					? "Wait for saved drafts to finish loading before restarting."
+					: (reviewRecoveryError ?? review.blocker)),
+			flush: async (permit) => {
+				commitDraftTimer.cancel();
+				await flushCommitDraftForUpdate(path, draft, permit);
+				await flushReviewComposerForUpdate(path, review.composer, permit);
+			},
+			discard: () => clearReviewUpdateSnapshot(path),
+		};
+	},
 });
 
 function newestGraphRevision(
@@ -1873,6 +1992,7 @@ $effect(() => {
 // Escape key handler for closing diffs
 $effect(() => {
 	function handleKeydown(e: KeyboardEvent) {
+		if (isUpdateFrozen()) return;
 		// Visited RepoViews stay mounted, so this window listener fires in
 		// hidden tabs too — only the active tab may act on Escape.
 		if (!tabActive) return;

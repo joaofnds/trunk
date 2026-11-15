@@ -24,15 +24,19 @@ jobs:
           - platform: 'macos-latest'
             args: '--target aarch64-apple-darwin'
             rust_target: 'aarch64-apple-darwin'
+            updater_targets: 'darwin-aarch64'
           - platform: 'macos-latest'
             args: '--target x86_64-apple-darwin'
             rust_target: 'x86_64-apple-darwin'
+            updater_targets: 'darwin-x86_64'
           - platform: 'ubuntu-22.04'
             args: ''
             rust_target: ''
+            updater_targets: 'linux-x86_64-appimage'
           - platform: 'windows-latest'
             args: ''
             rust_target: ''
+            updater_targets: 'windows-x86_64-nsis windows-x86_64-msi'
 
     runs-on: ${{ matrix.platform }}
 
@@ -126,6 +130,31 @@ jobs:
         env: *tauri-env
         with: *tauri-with
 
+      - name: Sign accepted updater artifacts
+        if: ${{ !contains(github.ref_name, '-') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPDATER_DARWIN_AARCH64_KEY: ${{ secrets.UPDATER_DARWIN_AARCH64_KEY }}
+          UPDATER_DARWIN_AARCH64_PASSWORD: ${{ secrets.UPDATER_DARWIN_AARCH64_PASSWORD }}
+          UPDATER_DARWIN_X86_64_KEY: ${{ secrets.UPDATER_DARWIN_X86_64_KEY }}
+          UPDATER_DARWIN_X86_64_PASSWORD: ${{ secrets.UPDATER_DARWIN_X86_64_PASSWORD }}
+          UPDATER_WINDOWS_X86_64_NSIS_KEY: ${{ secrets.UPDATER_WINDOWS_X86_64_NSIS_KEY }}
+          UPDATER_WINDOWS_X86_64_NSIS_PASSWORD: ${{ secrets.UPDATER_WINDOWS_X86_64_NSIS_PASSWORD }}
+          UPDATER_WINDOWS_X86_64_MSI_KEY: ${{ secrets.UPDATER_WINDOWS_X86_64_MSI_KEY }}
+          UPDATER_WINDOWS_X86_64_MSI_PASSWORD: ${{ secrets.UPDATER_WINDOWS_X86_64_MSI_PASSWORD }}
+          UPDATER_LINUX_X86_64_APPIMAGE_KEY: ${{ secrets.UPDATER_LINUX_X86_64_APPIMAGE_KEY }}
+          UPDATER_LINUX_X86_64_APPIMAGE_PASSWORD: ${{ secrets.UPDATER_LINUX_X86_64_APPIMAGE_PASSWORD }}
+        run: python3 scripts/updater-release.py prepare --upload ${{ matrix.updater_targets }}
+
+      - name: Retain verified updater artifacts
+        if: hashFiles('updater-output/release-input.json') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: updater-${{ matrix.platform }}-${{ matrix.rust_target || 'x64' }}
+          path: updater-output/
+          if-no-files-found: error
+
       - name: Create portable archive (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -193,8 +222,20 @@ jobs:
         if: steps.rust-cache.outputs.cache-hit != 'true'
         run: bunx tauri build ${{ matrix.args }} --no-bundle
 
-  publish:
+  finalize-updater:
     needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Activate the repository's pinned Rust toolchain
+        run: rustup show active-toolchain
+      - name: Verify complete updater feed and hosted bytes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/updater-release.py finalize
+
+  publish:
+    needs: [build, finalize-updater]
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -38,6 +38,7 @@ impl GraphResponse {
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_commit_graph(
+    _activity: crate::activity::Activity,
     path: String,
     offset: usize,
     loaded: Option<usize>,
@@ -64,6 +65,7 @@ pub async fn get_commit_graph(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn refresh_commit_graph(
+    activity: crate::activity::Activity,
     path: String,
     loaded: usize,
     state: State<'_, RepoState>,
@@ -72,12 +74,21 @@ pub async fn refresh_commit_graph(
 ) -> Result<GraphResponse, String> {
     let session = cache.capture_session(&path).map_err(|e| e.to_json())?;
     let state_map = state.snapshot();
-    refresh_graph_in_session(&path, loaded, state_map, &cache, &ref_visibility, session)
-        .await
-        .map_err(|e| e.to_json())
+    refresh_graph_in_session(
+        &activity,
+        &path,
+        loaded,
+        state_map,
+        &cache,
+        &ref_visibility,
+        session,
+    )
+    .await
+    .map_err(|e| e.to_json())
 }
 
 async fn refresh_graph_in_session(
+    activity: &crate::activity::Activity,
     path: &str,
     loaded: usize,
     state_map: OpenRepos,
@@ -85,7 +96,7 @@ async fn refresh_graph_in_session(
     ref_visibility: &crate::state::RefVisibilityState,
     session: u64,
 ) -> Result<GraphResponse, TrunkError> {
-    let rebuild = crate::state::GraphRebuild::new(cache, ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), cache, ref_visibility);
     let location = state_map.path_for(path)?.to_owned();
     rebuild
         .refresh_worktree_in_session(path.to_owned(), location, session)
@@ -112,6 +123,7 @@ async fn refresh_graph_in_session(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn set_ref_visibility(
+    activity: crate::activity::Activity,
     path: String,
     visibility: trunk_git::graph_input::RefVisibility,
     loaded: usize,
@@ -131,6 +143,7 @@ pub async fn set_ref_visibility(
     let Some(cached) = cache.snapshot(&path) else {
         drop(gate);
         return refresh_graph_in_session(
+            &activity,
             &path,
             loaded,
             state.snapshot(),
@@ -143,12 +156,12 @@ pub async fn set_ref_visibility(
     };
     let read = cached.clone();
 
-    let graph_result =
-        tauri::async_runtime::spawn_blocking(move || cached.with_visibility(visibility))
-            .await
-            .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?;
+    let graph_result = activity
+        .spawn_blocking(move || cached.with_visibility(visibility))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?;
 
-    crate::state::GraphRebuild::new(&cache, &ref_visibility)
+    crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility)
         .publish_relayout(path.clone(), &read, graph_result, ticket)
         .await
         .map_err(|e| e.to_json())?;
@@ -282,6 +295,7 @@ pub fn wip_diff_stats_inner(path: &str, state_map: &OpenRepos) -> Result<DiffSta
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_commit_stats(
+    activity: crate::activity::Activity,
     path: String,
     offset: usize,
     count: Option<usize>,
@@ -291,6 +305,7 @@ pub async fn get_commit_stats(
     commit_stats: State<'_, CommitStatsCache>,
 ) -> Result<HashMap<String, DiffStat>, String> {
     let compute_path = path.clone();
+    let computation_activity = activity.clone();
     cached_commit_stats(
         &path,
         offset,
@@ -300,11 +315,12 @@ pub async fn get_commit_stats(
         &commit_stats,
         |uncached| async move {
             let state_map = state.snapshot();
-            tauri::async_runtime::spawn_blocking(move || {
-                compute_commit_stats_batch(&compute_path, &uncached, &state_map)
-            })
-            .await
-            .map_err(|error| TrunkError::new("spawn_error", error.to_string()))
+            computation_activity
+                .spawn_blocking(move || {
+                    compute_commit_stats_batch(&compute_path, &uncached, &state_map)
+                })
+                .await
+                .map_err(|error| TrunkError::new("spawn_error", error.to_string()))
         },
     )
     .await
@@ -386,11 +402,13 @@ where
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_wip_diff_stats(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<DiffStat, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || wip_diff_stats_inner(&path, &state_map))
+    activity
+        .spawn_blocking(move || wip_diff_stats_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -412,6 +430,7 @@ pub async fn get_wip_diff_stats(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn commit_stat(
+    activity: crate::activity::Activity,
     path: String,
     oid: String,
     state: State<'_, RepoState>,
@@ -420,13 +439,13 @@ pub async fn commit_stat(
 ) -> Result<DiffStat, String> {
     let path_clone = path.clone();
     let oid_clone = oid.clone();
+    let computation_activity = activity.clone();
     cached_commit_stat(&path, &oid, &cache, &commit_stats, || async move {
         let state_map = state.snapshot();
-        tauri::async_runtime::spawn_blocking(move || {
-            commit_stat_inner(&path_clone, &oid_clone, &state_map)
-        })
-        .await
-        .map_err(|error| TrunkError::new("spawn_error", error.to_string()))?
+        computation_activity
+            .spawn_blocking(move || commit_stat_inner(&path_clone, &oid_clone, &state_map))
+            .await
+            .map_err(|error| TrunkError::new("spawn_error", error.to_string()))?
     })
     .await
     .map_err(|e| e.to_json())
@@ -526,6 +545,7 @@ pub fn search_commits_inner(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn search_commits(
+    _activity: crate::activity::Activity,
     path: String,
     query: String,
     cache: State<'_, CommitCache>,
@@ -536,6 +556,10 @@ pub async fn search_commits(
 
 #[cfg(test)]
 mod tests {
+    fn activity() -> crate::activity::Activity {
+        crate::activity::ActivityState::default().acquire().unwrap()
+    }
+
     use super::{GraphResponse, cached_commit_stat, cached_commit_stats};
     use crate::state::{
         CommitCache, CommitStatsCache, GraphCache, GraphRebuild, OpenRepos, RefVisibilityState,
@@ -677,6 +701,7 @@ mod tests {
 
         fn request(&self, offset: usize, count: Option<usize>) -> HashMap<String, DiffStat> {
             tauri::async_runtime::block_on(super::get_commit_stats(
+                activity(),
                 "/repo".into(),
                 offset,
                 count,
@@ -698,6 +723,7 @@ mod tests {
         let fixture = StatsCommandFixture::with_rows(450);
         let request = |offset, loaded| {
             tauri::async_runtime::block_on(super::get_commit_graph(
+                activity(),
                 "/repo".into(),
                 offset,
                 loaded,
@@ -715,6 +741,7 @@ mod tests {
         assert_eq!(request(0, Some(500)).commits.len(), 450);
         let root = &fixture.oids[449];
         let results = tauri::async_runtime::block_on(super::search_commits(
+            activity(),
             "/repo".into(),
             root.clone(),
             fixture.app.state(),
@@ -756,7 +783,7 @@ mod tests {
         let cache = CommitCache::new(GraphCache::default());
         let visibility = RefVisibilityState::default();
         tauri::async_runtime::block_on(
-            GraphRebuild::new(&cache, &visibility)
+            GraphRebuild::new(activity(), &cache, &visibility)
                 .rebuild(path.clone(), move || crate::state::read_graph(&mut repo)),
         )
         .unwrap();
@@ -776,6 +803,7 @@ mod tests {
         cache.invalidate(&path);
 
         let refreshed = tauri::async_runtime::block_on(super::refresh_graph_in_session(
+            &activity(),
             &path,
             200,
             locations,
@@ -864,7 +892,7 @@ mod tests {
                 let computations = &computations;
                 async move {
                     computations.fetch_add(1, Ordering::Relaxed);
-                    GraphRebuild::new(cache, visibility)
+                    GraphRebuild::new(activity(), cache, visibility)
                         .rebuild("/repo".into(), || Ok(source()))
                         .await?;
                     Ok(computed)
@@ -917,7 +945,7 @@ mod tests {
                     cache.forget("/repo");
                     stored.0.lock().unwrap().forget("/repo");
                     cache.open_session("/repo");
-                    GraphRebuild::new(cache, visibility)
+                    GraphRebuild::new(activity(), cache, visibility)
                         .rebuild("/repo".into(), || Ok(source()))
                         .await?;
                     Ok(computed)

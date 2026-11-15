@@ -443,67 +443,81 @@ fn now_ms() -> u64 {
     .unwrap_or(u64::MAX)
 }
 
-async fn fetch_head_prefix(path: PathBuf) -> Result<Vec<u8>, TrunkError> {
-    tauri::async_runtime::spawn_blocking(move || match std::fs::read(path) {
-        Ok(bytes) => Ok(bytes),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(_) => Err(TrunkError::new(
-            "fetch_head_error",
-            "Fetch metadata could not be read",
-        )),
-    })
-    .await
-    .map_err(|_| TrunkError::new("spawn_error", "Fetch metadata could not be read"))?
+async fn fetch_head_prefix(
+    activity: &crate::activity::Activity,
+    path: PathBuf,
+) -> Result<Vec<u8>, TrunkError> {
+    activity
+        .spawn_blocking(move || match std::fs::read(path) {
+            Ok(bytes) => Ok(bytes),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(_) => Err(TrunkError::new(
+                "fetch_head_error",
+                "Fetch metadata could not be read",
+            )),
+        })
+        .await
+        .map_err(|_| TrunkError::new("spawn_error", "Fetch metadata could not be read"))?
 }
 
 /// A killed worker cannot run its append cleanup. Repair only after joining it.
-async fn restore_fetch_head(path: PathBuf, prefix: Vec<u8>) -> Result<(), TrunkError> {
+async fn restore_fetch_head(
+    activity: &crate::activity::Activity,
+    path: PathBuf,
+    prefix: Vec<u8>,
+) -> Result<(), TrunkError> {
     if prefix.is_empty() {
         return Ok(());
     }
-    tauri::async_runtime::spawn_blocking(move || {
-        use std::io::Write;
-        let current = match std::fs::read(&path) {
-            Ok(bytes) => bytes,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-            Err(_) => {
-                return Err(TrunkError::new(
-                    "fetch_head_error",
-                    "Fetch metadata could not be restored",
-                ));
+    activity
+        .spawn_blocking(move || {
+            use std::io::Write;
+            let current = match std::fs::read(&path) {
+                Ok(bytes) => bytes,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+                Err(_) => {
+                    return Err(TrunkError::new(
+                        "fetch_head_error",
+                        "Fetch metadata could not be restored",
+                    ));
+                }
+            };
+            if current.starts_with(&prefix) {
+                return Ok(());
             }
-        };
-        if current.starts_with(&prefix) {
-            return Ok(());
-        }
-        let parent = path.parent().ok_or_else(|| {
-            TrunkError::new("fetch_head_error", "Fetch metadata has no directory")
-        })?;
-        let mut file = tempfile::NamedTempFile::new_in(parent).map_err(|_| {
-            TrunkError::new("fetch_head_error", "Fetch metadata could not be restored")
-        })?;
-        file.write_all(&prefix)
-            .and_then(|()| file.write_all(&current))
-            .map_err(|_| {
+            let parent = path.parent().ok_or_else(|| {
+                TrunkError::new("fetch_head_error", "Fetch metadata has no directory")
+            })?;
+            let mut file = tempfile::NamedTempFile::new_in(parent).map_err(|_| {
                 TrunkError::new("fetch_head_error", "Fetch metadata could not be restored")
             })?;
-        file.persist(&path).map_err(|_| {
-            TrunkError::new("fetch_head_error", "Fetch metadata could not be restored")
-        })?;
-        Ok(())
-    })
-    .await
-    .map_err(|_| TrunkError::new("spawn_error", "Fetch metadata could not be restored"))?
+            file.write_all(&prefix)
+                .and_then(|()| file.write_all(&current))
+                .map_err(|_| {
+                    TrunkError::new("fetch_head_error", "Fetch metadata could not be restored")
+                })?;
+            file.persist(&path).map_err(|_| {
+                TrunkError::new("fetch_head_error", "Fetch metadata could not be restored")
+            })?;
+            Ok(())
+        })
+        .await
+        .map_err(|_| TrunkError::new("spawn_error", "Fetch metadata could not be restored"))?
 }
 
-async fn ref_state(path: PathBuf) -> Result<RefState, TrunkError> {
-    tauri::async_runtime::spawn_blocking(move || RefState::read(&git2::Repository::open(path)?))
+async fn ref_state(
+    activity: &crate::activity::Activity,
+    path: PathBuf,
+) -> Result<RefState, TrunkError> {
+    activity
+        .spawn_blocking(move || RefState::read(&git2::Repository::open(path)?))
         .await
         .map_err(|_| TrunkError::new("spawn_error", "Ref state could not be read"))?
 }
 
 /// Shared application state used while checking remotes and publishing refs.
 pub struct FetchContext<'a, R: Runtime> {
+    pub activity: &'a crate::activity::Activity,
     pub state: &'a RepoState,
     pub cache: &'a CommitCache,
     pub running: &'a RunningOp,
@@ -526,6 +540,7 @@ pub async fn fetch<R: Runtime>(
     context: FetchContext<'_, R>,
 ) -> Result<FetchReport, TrunkError> {
     let FetchContext {
+        activity,
         state,
         cache,
         running,
@@ -547,7 +562,8 @@ pub async fn fetch<R: Runtime>(
         .collect::<HashMap<_, _>>();
     let location = open.path_for(path)?.to_path_buf();
     let probe = location.clone();
-    let info = tauri::async_runtime::spawn_blocking(move || trunk_git::fetch::preflight(&probe))
+    let info = activity
+        .spawn_blocking(move || trunk_git::fetch::preflight(&probe))
         .await
         .map_err(|_| TrunkError::new("spawn_error", "Fetch configuration could not be read"))??;
     if !info.clean {
@@ -589,7 +605,7 @@ pub async fn fetch<R: Runtime>(
             }
             drop(records);
         }
-        let before = match ref_state(location.clone()).await {
+        let before = match ref_state(activity, location.clone()).await {
             Ok(before) => before,
             Err(error) => {
                 report.graph_error = Some(error.code.clone());
@@ -618,7 +634,7 @@ pub async fn fetch<R: Runtime>(
             append_fetch_head: appended,
         };
         let prefix = if appended {
-            fetch_head_prefix(info.fetch_head.clone()).await
+            fetch_head_prefix(activity, info.fetch_head.clone()).await
         } else {
             Ok(Vec::new())
         };
@@ -634,16 +650,17 @@ pub async fn fetch<R: Runtime>(
                         receipt.result
                     }
                     Err(error) => {
-                        metadata_error = restore_fetch_head(info.fetch_head.clone(), prefix)
-                            .await
-                            .err();
+                        metadata_error =
+                            restore_fetch_head(activity, info.fetch_head.clone(), prefix)
+                                .await
+                                .err();
                         Err(error)
                     }
                 }
             }
             Err(error) => Err(error),
         };
-        let after = ref_state(location.clone()).await;
+        let after = ref_state(activity, location.clone()).await;
         let changed = after.as_ref().is_ok_and(|after| after != &before);
         let (outcome, failure) = match result {
             Ok(()) => (
@@ -699,21 +716,22 @@ pub async fn fetch<R: Runtime>(
         .map(|(key, _)| key.to_owned())
         .collect::<Vec<_>>();
     let common = info.common;
-    let affected = tauri::async_runtime::spawn_blocking(move || {
-        open.locations()
-            .map(|(key, location)| {
-                let resolved = (|| -> Result<Option<PathBuf>, TrunkError> {
-                    let repo = git2::Repository::open(location)?;
-                    let directory = repo.commondir().canonicalize().map_err(|_| {
-                        TrunkError::new("git_error", "Shared Git directory is unavailable")
-                    })?;
-                    Ok((directory.to_string_lossy() == common).then(|| location.to_path_buf()))
-                })();
-                (key.to_owned(), resolved)
-            })
-            .collect::<Vec<_>>()
-    })
-    .await;
+    let affected = activity
+        .spawn_blocking(move || {
+            open.locations()
+                .map(|(key, location)| {
+                    let resolved = (|| -> Result<Option<PathBuf>, TrunkError> {
+                        let repo = git2::Repository::open(location)?;
+                        let directory = repo.commondir().canonicalize().map_err(|_| {
+                            TrunkError::new("git_error", "Shared Git directory is unavailable")
+                        })?;
+                        Ok((directory.to_string_lossy() == common).then(|| location.to_path_buf()))
+                    })();
+                    (key.to_owned(), resolved)
+                })
+                .collect::<Vec<_>>()
+        })
+        .await;
     let Ok(affected) = affected else {
         report.graph_error = Some("spawn_error".to_owned());
         for key in open_keys {
@@ -725,7 +743,7 @@ pub async fn fetch<R: Runtime>(
         }
         return Ok(report);
     };
-    let rebuild = GraphRebuild::new(cache, visibility);
+    let rebuild = GraphRebuild::new(activity.clone(), cache, visibility);
     for (key, location) in affected {
         let Some(&opening_session) = opening_sessions.get(&key) else {
             continue;

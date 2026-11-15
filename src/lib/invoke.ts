@@ -1,5 +1,22 @@
 import { invoke } from "@tauri-apps/api/core";
 import { span } from "./perf.js";
+import { isUpdateFrozen } from "./updates-lifecycle.js";
+
+const pendingInvokes = new Set<Promise<unknown>>();
+const UPDATE_FLUSH_COMMANDS = new Set([
+	"prefs_get",
+	"prefs_set",
+	"save_draft",
+	"get_draft",
+	"delete_draft",
+]);
+
+export function requireIdleInvokesForUpdate(): void {
+	if (pendingInvokes.size > 0)
+		throw new Error(
+			"Trunk is busy. Finish or cancel the current operation, then try restarting again.",
+		);
+}
 
 // Tauri IPC errors arrive as raw strings, not Error objects.
 // catch(e) { e.message } returns undefined — this wrapper fixes that.
@@ -30,16 +47,37 @@ export async function safeInvoke<T>(
 	cmd: string,
 	args?: Record<string, unknown>,
 ): Promise<T> {
-	return await span(`invoke:${cmd}`, async () => {
+	if (
+		isUpdateFrozen() &&
+		!cmd.startsWith("updates_") &&
+		!(
+			UPDATE_FLUSH_COMMANDS.has(cmd) && typeof args?.__updatePermit === "string"
+		)
+	) {
+		throw {
+			code: "update_preparing",
+			message:
+				"Trunk is preparing to restart. Try again when preparation finishes.",
+		} satisfies TrunkError;
+	}
+
+	const pending = span(`invoke:${cmd}`, async () => {
 		try {
 			return await invoke<T>(cmd, args);
 		} catch (e: unknown) {
 			throw asTrunkError(e);
 		}
 	});
+	pendingInvokes.add(pending);
+	try {
+		return await pending;
+	} finally {
+		pendingInvokes.delete(pending);
+	}
 }
 
 function asTrunkError(e: unknown): TrunkError {
+	if (isTrunkError(e)) return e;
 	if (typeof e !== "string") {
 		return { code: "unknown_error", message: "An unexpected error occurred" };
 	}

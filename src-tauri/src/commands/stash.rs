@@ -465,11 +465,13 @@ pub fn stash_drop_inner(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn list_stashes(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<Vec<StashEntry>, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || list_stashes_inner(&path, &state_map))
+    activity
+        .spawn_blocking(move || list_stashes_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -485,6 +487,7 @@ pub async fn list_stashes(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn stash_save<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     message: String,
     state: State<'_, RepoState>,
@@ -492,7 +495,7 @@ pub async fn stash_save<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -516,6 +519,7 @@ pub async fn stash_save<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn stash_pop<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     oid: String,
     state: State<'_, RepoState>,
@@ -523,7 +527,7 @@ pub async fn stash_pop<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -547,6 +551,7 @@ pub async fn stash_pop<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn stash_apply<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     oid: String,
     state: State<'_, RepoState>,
@@ -554,7 +559,7 @@ pub async fn stash_apply<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -578,6 +583,7 @@ pub async fn stash_apply<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn stash_drop<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     oid: String,
     state: State<'_, RepoState>,
@@ -585,7 +591,7 @@ pub async fn stash_drop<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild

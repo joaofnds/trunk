@@ -1,3 +1,4 @@
+pub mod activity;
 pub mod background_fetch;
 pub mod cli;
 pub mod commands;
@@ -18,6 +19,7 @@ pub mod state;
 mod storage;
 pub mod syntax;
 pub mod types;
+mod updates;
 pub mod watcher;
 pub mod word_spans;
 
@@ -36,6 +38,7 @@ use watcher::WatcherState;
 /// size) stay centered in the zoom-scaled top bar.
 #[tauri::command]
 fn set_traffic_light_zoom<R: tauri::Runtime>(
+    _activity: activity::Activity,
     window: tauri::WebviewWindow<R>,
     zoom: f64,
     traffic_lights: tauri::State<'_, TrafficLights>,
@@ -142,7 +145,14 @@ fn run_gui() {
     // that prohibits activation, set before the launch, keeps the user's focus.
     #[cfg(feature = "drive")]
     app.set_activation_policy(tauri::ActivationPolicy::Prohibited);
-    app.run(|_, _| {});
+    app.run(|app, event| {
+        if let tauri::RunEvent::ExitRequested { code, api, .. } = event
+            && code != Some(tauri::RESTART_EXIT_CODE)
+            && !updates::allow_exit(app)
+        {
+            api.prevent_exit();
+        }
+    });
 }
 
 /// The shipped app hands a second launch to the running one.
@@ -236,6 +246,7 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
     let builder = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(navigation_guard());
     // A drive instance keeps no window state: a restored frame would put its
     // window in front of the user's, and parallel instances would share one file.
@@ -246,11 +257,32 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         // Live resize is handled flicker-free by the NSWindowDidResize observer
         // (see macos_traffic_lights); this covers the other title-bar relayouts:
         // appearance change and monitor-to-monitor scale changes.
-        .on_window_event(reposition_traffic_lights_on)
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event
+                && window.label() == "main"
+                && !updates::allow_exit(window.app_handle())
+            {
+                api.prevent_close();
+            }
+            reposition_traffic_lights_on(window, event);
+        })
         .setup(setup_app);
 
-    let builder = register_state(builder, watcher, traffic_lights).manage(worker);
+    let builder = register_state(builder, watcher, traffic_lights)
+        .manage(activity::ActivityState::default())
+        .manage(updates::UpdateState::default())
+        .manage(worker);
     builder.invoke_handler(tauri::generate_handler![
+        commands::updates::updates_status,
+        commands::updates::updates_enable,
+        commands::updates::updates_check,
+        commands::updates::updates_download,
+        commands::updates::updates_cancel,
+        commands::updates::updates_prepare,
+        commands::updates::updates_abort,
+        commands::updates::updates_install,
+        commands::updates::updates_ready,
+        commands::updates::updates_resume,
         set_traffic_light_zoom,
         commands::perf::perf_append,
         commands::perf::perf_reset,
@@ -418,9 +450,17 @@ fn serve_trunk_asset<R: tauri::Runtime>(
 
 /// Build the app menu, start the review-store poll, and place the traffic lights.
 fn setup_app<R: tauri::Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
+    updates::initialize(app.handle());
     app.set_menu(build_menu(app)?)?;
 
     app.on_menu_event(|app, event| {
+        if event.id().as_ref() == "updates-open" {
+            let _ = app.emit("updates-open", ());
+            return;
+        }
+        let Ok(_activity) = activity::Activity::for_app(app) else {
+            return;
+        };
         if event.id().as_ref() == "find" {
             let _ = app.emit("search-toggle", ());
         } else if event.id().as_ref() == "review-toggle" {
@@ -461,8 +501,10 @@ fn build_menu<R: tauri::Runtime>(
     let review_item =
         MenuItemBuilder::with_id("review-toggle", "Toggle Review Panel").build(app)?;
 
+    let updates_item = MenuItemBuilder::with_id("updates-open", "Check for Updates…").build(app)?;
     let app_menu = SubmenuBuilder::new(app, "Trunk")
         .about(None)
+        .item(&updates_item)
         .separator()
         .quit()
         .build()?;
@@ -501,10 +543,16 @@ fn build_menu<R: tauri::Runtime>(
 /// The payload-free emit means "refresh yours"; the app's own writes also land
 /// here and cause a benign self-refetch, the same shape as the per-repo emits.
 fn start_review_poll<R: tauri::Runtime>(app: &tauri::App<R>) {
+    let Ok(_activity) = activity::Activity::for_app(app.handle()) else {
+        return;
+    };
     match crate::commands::store_data_dir(app.handle()) {
         Ok(data_dir) => {
             let handle = app.handle().clone();
             app.manage(trunk_review::reviewdb::poll::spawn(&data_dir, move || {
+                let Ok(_activity) = activity::Activity::for_app(&handle) else {
+                    return;
+                };
                 let _ = handle.emit("reviews-changed", ());
             }));
         }

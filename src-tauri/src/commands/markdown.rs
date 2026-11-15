@@ -2717,18 +2717,18 @@ pub fn read_file_at_from_state(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn read_file_at(
+    activity: crate::activity::Activity,
     repo_path: String,
     file_path: String,
     rev: RevSpec,
     state: State<'_, RepoState>,
 ) -> Result<Vec<u8>, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || {
-        read_file_at_from_state(&repo_path, &file_path, &rev, &state_map)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())
+    activity
+        .spawn_blocking(move || read_file_at_from_state(&repo_path, &file_path, &rev, &state_map))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 /// Build the scheme-less-image → `trunk-asset://asset/?repo=&rev=&path=` rewrite
@@ -2793,6 +2793,7 @@ fn diff_cache_key(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn render_markdown_diff(
+    activity: crate::activity::Activity,
     repo_path: String,
     file_path: String,
     old_path: Option<String>,
@@ -2819,21 +2820,22 @@ pub async fn render_markdown_diff(
     }
 
     let state_map = state.snapshot();
-    let diff = tauri::async_runtime::spawn_blocking(move || {
-        render_markdown_diff_from_state(
-            &repo_path,
-            &file_path,
-            old_path.as_deref(),
-            &before_rev,
-            &after_rev,
-            ignore_whitespace,
-            context_lines,
-            &state_map,
-        )
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    let diff = activity
+        .spawn_blocking(move || {
+            render_markdown_diff_from_state(
+                &repo_path,
+                &file_path,
+                old_path.as_deref(),
+                &before_rev,
+                &after_rev,
+                ignore_whitespace,
+                context_lines,
+                &state_map,
+            )
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())?;
 
     if let Some(key) = cache_key {
         cache_put(&mut cache.0.lock().unwrap(), key, diff.clone());
@@ -3128,7 +3130,7 @@ pub fn render_comment_text(text: &str) -> String {
 /// A comment's text as its card will show it, for the editor's preview.
 #[tauri::command]
 #[must_use]
-pub fn render_comment_preview(text: &str) -> String {
+pub fn render_comment_preview(_activity: crate::activity::Activity, text: &str) -> String {
     render_comment_text(text)
 }
 

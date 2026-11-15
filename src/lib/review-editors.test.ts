@@ -377,3 +377,113 @@ describe("review composer session", () => {
 		expect(session.draft.text).toBe("");
 	});
 });
+
+describe("review update capture", () => {
+	it("blocks hidden unfinished replies", () => {
+		const editors = createReviewEditorStore();
+		editors.thread("review-a", "diff", "hidden-thread").reply.text =
+			"keep this";
+
+		expect(editors.captureUpdate().blocker).toContain("reply");
+	});
+
+	it("captures one normal composer with its generation and location", () => {
+		const editors = createReviewEditorStore();
+		const target = {
+			context: "normal",
+			kind: "commit",
+			commitOid: "abc",
+			compareBaseOid: null,
+			filePath: "a.ts",
+		} as const;
+		const session = editors.composer(target, "review-a");
+		const captured = {
+			anchor: {
+				commit_oid: "abc",
+				file_path: "a.ts",
+				source: "Diff",
+				side: "New",
+				start_line: 1,
+				end_line: 2,
+			} as const,
+			cachedExcerpt: "text",
+		};
+		session.openDiff(captured, "review-a", target);
+		session.draft.text = "keep this comment";
+
+		const snapshot = editors.captureUpdate();
+
+		expect(snapshot.blocker).toBeNull();
+		expect(snapshot.composer).toEqual({
+			target,
+			captured,
+			mode: "diff",
+			reviewId: "review-a",
+			text: "keep this comment",
+		});
+		session.draft.text = "changed";
+		expect(editors.captureUpdate().generation).not.toBe(snapshot.generation);
+	});
+
+	it("blocks multiple retained composers instead of overwriting one draft row", () => {
+		const editors = createReviewEditorStore();
+		editors.composer().draft.open("first");
+		editors.composer(undefined, "another-review").draft.open("second");
+
+		expect(editors.captureUpdate().blocker).toContain("multiple");
+	});
+});
+
+describe("review update recovery", () => {
+	it("restores the captured text into the same target after a new store is created", async () => {
+		const { readReviewUpdateSnapshot, restoreReviewUpdateComposer } =
+			await import("./updates-review.js");
+		const oldEditors = createReviewEditorStore();
+		const target = {
+			context: "normal",
+			kind: "commit",
+			commitOid: "abc",
+			compareBaseOid: null,
+			filePath: "a.ts",
+		} as const;
+		const oldSession = oldEditors.composer(target, "review-a");
+		oldSession.openDiff(
+			{
+				anchor: {
+					commit_oid: "abc",
+					file_path: "a.ts",
+					source: "Diff",
+					side: "New",
+					start_line: 1,
+					end_line: 2,
+				},
+				cachedExcerpt: "text",
+			},
+			"review-a",
+			target,
+		);
+		oldSession.draft.text = "unfinished comment";
+		const saved = readReviewUpdateSnapshot(
+			JSON.parse(JSON.stringify(oldEditors.captureUpdate().composer)),
+		);
+		expect(saved).not.toBeNull();
+		if (!saved) throw new Error("fixture snapshot missing");
+		const newEditors = createReviewEditorStore();
+
+		await restoreReviewUpdateComposer(newEditors, saved);
+
+		const restored = newEditors.composer(target, "review-a");
+		expect(restored.draft.text).toBe("unfinished comment");
+		expect(restored.captured).toEqual(oldSession.captured);
+		expect(restored.restoreSettled).toBe(true);
+		expect(newEditors.captureUpdate().composer).toEqual(saved);
+	});
+
+	it("rejects malformed recovery data instead of deleting it", async () => {
+		const { readReviewUpdateSnapshot } = await import("./updates-review.js");
+
+		expect(() => readReviewUpdateSnapshot({ text: "keep this" })).toThrow(
+			"retained for recovery",
+		);
+	});
+});

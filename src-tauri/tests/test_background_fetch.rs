@@ -98,8 +98,14 @@ impl Harness {
         let cache = self.app.state::<CommitCache>();
         let visibility = self.app.state::<RefVisibilityState>();
         tauri::async_runtime::block_on(
-            GraphRebuild::new(&cache, &visibility)
-                .reconcile_refs(path.to_str().unwrap().to_owned(), path.to_path_buf()),
+            GraphRebuild::new(
+                trunk_lib::activity::ActivityState::default()
+                    .acquire()
+                    .unwrap(),
+                &cache,
+                &visibility,
+            )
+            .reconcile_refs(path.to_str().unwrap().to_owned(), path.to_path_buf()),
         )
         .unwrap()
     }
@@ -1373,12 +1379,17 @@ mod cancellation {
             report
         });
         BlockedWorker::wait_for_request(&observations);
+        let activity = harness.app.state::<trunk_lib::activity::ActivityState>();
+        assert_eq!(activity.begin_prepare().unwrap_err().code, "update_busy");
 
         harness
             .invoke("cancel_remote_op", json!({"path": path}))
             .unwrap();
         let report = job.join().unwrap();
         BlockedWorker::wait_for_exit(&observations);
+
+        let token = activity.begin_prepare().unwrap();
+        activity.cancel_prepare(&token).unwrap();
 
         assert_eq!(report["outcome"], "cancelled");
         assert!(

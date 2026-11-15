@@ -1,4 +1,5 @@
 <script lang="ts">
+import { registerUpdateBlocker } from "../lib/updates-context.js";
 // The repo's reviews, one row each, in the left pane while review mode holds the
 // window. Pressing a row shows that review; the radio beside it makes it the
 // active one, where new comments land. Archived reviews fold under their own
@@ -88,6 +89,9 @@ function deletePrompt(review: Review): string {
 	const agent = review.visible_to_agent ? " The agent loses access to it." : "";
 	return `${threads}?${agent} This can’t be undone.`;
 }
+registerUpdateBlocker(() =>
+	renamingId !== null ? "Finish renaming the review before restarting." : null,
+);
 </script>
 
 {#snippet reviewItem(review: Review)}

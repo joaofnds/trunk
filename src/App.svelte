@@ -2,13 +2,14 @@
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { tick, untrack } from "svelte";
+import { onDestroy, tick, untrack } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
 import RecentReposPicker from "./components/RecentReposPicker.svelte";
 import RepoView from "./components/RepoView.svelte";
 import TabBar from "./components/TabBar.svelte";
 import Toast from "./components/Toast.svelte";
 import Toolbar from "./components/Toolbar.svelte";
+import UpdateDialog from "./components/UpdateDialog.svelte";
 import WelcomeScreen from "./components/WelcomeScreen.svelte";
 import { AutofetchScheduler } from "./lib/autofetch.js";
 import type { FetchReport } from "./lib/autofetch-status.js";
@@ -17,8 +18,10 @@ import {
 	type CoalescedTask,
 	createCoalescedTask,
 } from "./lib/coalesced-task.js";
-import { safeInvoke } from "./lib/invoke.js";
+import { errorMessage } from "./lib/error-report.js";
+import { requireIdleInvokesForUpdate, safeInvoke } from "./lib/invoke.js";
 import { focusInEditable, keyChord, onMac } from "./lib/keyboard.js";
+import { createOwnedTimer } from "./lib/owned-timer.js";
 import { perfEnabled, record } from "./lib/perf.js";
 import {
 	createRemoteState,
@@ -34,6 +37,7 @@ import { getScheduler } from "./lib/scheduler.js";
 import {
 	addRecentRepo,
 	copyLegacyUserWidthsOnce,
+	flushPreferencesForUpdate,
 	getActiveTabId,
 	getDiffContentMode,
 	getFetchIntervalMs,
@@ -46,6 +50,7 @@ import {
 	getRightPaneCollapsed,
 	getRightPaneWidth,
 	getZoomLevel,
+	preferenceGeneration,
 	removeRecentRepo,
 	setActiveTabId,
 	setDiffContentMode,
@@ -64,10 +69,212 @@ import type { TabInfo } from "./lib/tab-types.js";
 import { createTabId } from "./lib/tab-types.js";
 import { showToast } from "./lib/toast.svelte.js";
 import type { ContentMode, ReviewTone, ThreadFilter } from "./lib/types.js";
+import Button from "./lib/ui/Button.svelte";
 import {
 	createUndoRedoState,
 	type UndoRedoManager,
 } from "./lib/undo-redo.svelte.js";
+import { type UpdateStatus, updates } from "./lib/updates.js";
+import { provideUpdatePreparation } from "./lib/updates-context.js";
+import { setUpdateFrozen, UpdatePreparation } from "./lib/updates-lifecycle.js";
+import { UpdateCheckScheduler } from "./lib/updates-scheduler.js";
+
+let updateStatus = $state<UpdateStatus | null>(null);
+let updateOpen = $state(false);
+let updateBusy = $state(false);
+let updateFrozen = $state(false);
+let updateError = $state<string | null>(null);
+let updateRetry = $state<"status" | "readiness" | null>(null);
+let tabsRestored = $state(false);
+let updateReadinessSent = false;
+const recoveredRepositories = new SvelteMap<
+	string,
+	{ path: string; error: string | null }
+>();
+function acceptUpdateStatus(status: UpdateStatus | null | undefined): void {
+	if (!status) return;
+	updateStatus = status;
+	if (status.phase === "recovery") {
+		updateOpen = true;
+	}
+}
+
+const updateClock = getScheduler();
+const updateChecks = new UpdateCheckScheduler(
+	createOwnedTimer(),
+	() => updateClock.currentTimeMs(),
+	Math.random,
+	() => updateAction(updates.check, true),
+);
+onDestroy(() => updateChecks.update(false, false));
+const automaticUpdates = $derived(
+	Boolean(updateStatus?.eligible && updateStatus.adopted),
+);
+const preparation = new UpdatePreparation({
+	prepare: updates.prepare,
+	install: updates.install,
+	abort: async (token) => {
+		try {
+			updateStatus = await updates.abort(token);
+		} catch (error) {
+			const status = await updates.status();
+			updateStatus = status;
+			if (!["ready", "idle", "manual", "available"].includes(status.phase))
+				throw error;
+		}
+	},
+	freeze: (frozen) => {
+		updateFrozen = frozen;
+		setUpdateFrozen(frozen);
+		updateChecks.update(automaticUpdates, frozen || updateBusy);
+		if (!frozen)
+			void updates.resume().catch(() => {
+				updateError =
+					"Could not refresh repositories after preparing the update. Refresh before continuing.";
+			});
+	},
+	settle: async () => {
+		await tick();
+		requireIdleInvokesForUpdate();
+		await tick();
+	},
+});
+provideUpdatePreparation(preparation);
+onDestroy(() => setUpdateFrozen(false));
+
+async function updateAction(
+	action: () => Promise<UpdateStatus | undefined>,
+	automatic = false,
+): Promise<void> {
+	if (updateBusy) return;
+	if (!automatic) updateChecks.reset();
+	updateBusy = true;
+	updateError = null;
+	try {
+		const status = await action();
+		if (status) acceptUpdateStatus(status);
+	} catch (error) {
+		updateError = errorMessage(
+			error,
+			"The update could not complete. Try again.",
+		);
+		if (automatic) throw error;
+	} finally {
+		updateBusy = false;
+	}
+}
+
+async function retryStartupUpdate(): Promise<void> {
+	const retry = updateRetry;
+	if (!retry) return;
+
+	await updateAction(async () => {
+		const status =
+			retry === "readiness" ? await updates.ready() : await updates.status();
+		updateRetry = null;
+		return status;
+	});
+}
+
+$effect(() => {
+	let disposed = false;
+	const removals: (() => void)[] = [];
+	const own = (remove: () => void) => {
+		if (disposed) remove();
+		else removals.push(remove);
+	};
+	void listen<UpdateStatus>("updates-changed", ({ payload }) => {
+		if (!disposed) acceptUpdateStatus(payload);
+	}).then(own);
+	void listen<void>("updates-open", () => {
+		if (!disposed) {
+			updateOpen = true;
+			void updateAction(updates.status);
+		}
+	}).then(own);
+	void updates
+		.status()
+		.then((status) => {
+			if (!disposed) acceptUpdateStatus(status);
+		})
+		.catch((error) => {
+			if (disposed) return;
+			updateError = errorMessage(error, "Could not read update status.");
+			updateRetry = "status";
+			updateOpen = true;
+		});
+	return () => {
+		disposed = true;
+		for (const remove of removals) remove();
+	};
+});
+
+$effect(() => {
+	updateChecks.update(
+		automaticUpdates,
+		updateFrozen ||
+			updateBusy ||
+			["downloading", "ready", "preparing", "installing", "recovery"].includes(
+				updateStatus?.phase ?? "",
+			),
+	);
+});
+
+$effect(() => {
+	if (
+		updateReadinessSent ||
+		!updateStatus ||
+		!tabsRestored ||
+		!diffContentModeLoaded
+	)
+		return;
+	for (const tab of tabs) {
+		if (!tab.repoPath) continue;
+		const recovery = recoveredRepositories.get(tab.id);
+		if (recovery?.path === tab.repoPath && recovery.error) return;
+		if (
+			(tab.id === activeTabId || isRepoViewMounted(tab)) &&
+			recovery?.path !== tab.repoPath
+		)
+			return;
+	}
+	updateReadinessSent = true;
+	untrack(() => {
+		void updates
+			.ready()
+			.then((status) => {
+				if (status) acceptUpdateStatus(status);
+			})
+			.catch((error) => {
+				updateError = errorMessage(
+					error,
+					"Could not verify startup after the update.",
+				);
+				updateRetry = "readiness";
+				updateOpen = true;
+			});
+	});
+});
+
+$effect(() => {
+	function preventFrozenInput(event: Event) {
+		if (
+			!updateFrozen ||
+			(event.target instanceof Element &&
+				event.target.closest("[data-update-dialog]"))
+		)
+			return;
+		event.preventDefault();
+		event.stopImmediatePropagation();
+	}
+	const events = ["keydown", "beforeinput", "input", "click", "pointerdown"];
+	for (const event of events)
+		window.addEventListener(event, preventFrozenInput, true);
+	return () => {
+		for (const event of events)
+			window.removeEventListener(event, preventFrozenInput, true);
+	};
+});
 
 // Global layout state (D-01, D-02, D-03)
 let zoomLevel = $state(1);
@@ -188,6 +395,7 @@ $effect(() => {
 });
 
 async function runAutofetch(path: string, intervalMs: number): Promise<void> {
+	if (updateFrozen) return;
 	const tab = tabs.find((tab) => tab.repoPath === path);
 	const target = tab ? tabStates.get(tab.id)?.remoteState : undefined;
 	let report: FetchReport;
@@ -243,7 +451,7 @@ $effect(() => {
 	const manualBusy = [...tabStates.values()].some(
 		(state) => state.remoteState.isRunning,
 	);
-	const focused = windowFocused;
+	const focused = windowFocused && !updateFrozen;
 	untrack(() => autofetch.update({ paths, activePath, focused, manualBusy }));
 });
 
@@ -315,6 +523,7 @@ let activeTab = $derived(tabs.find((t) => t.id === activeTabId));
 
 // Tab CRUD functions
 function addNewTab() {
+	if (updateFrozen) return;
 	const existing = tabs.find((t) => t.repoPath === null);
 	if (existing) {
 		activeTabId = existing.id;
@@ -334,6 +543,7 @@ function addNewTab() {
 }
 
 function closeOtherTabs(keepTabId: string) {
+	if (updateFrozen) return;
 	const toClose = tabs.filter((t) => t.id !== keepTabId);
 	tabs = tabs.filter((t) => t.id === keepTabId);
 	for (const t of toClose) {
@@ -347,6 +557,7 @@ function closeOtherTabs(keepTabId: string) {
 }
 
 function closeAllTabs() {
+	if (updateFrozen) return;
 	const toClose = tabs;
 	tabs = [];
 	for (const t of toClose) {
@@ -463,6 +674,7 @@ async function handlePickerPick(path: string, name: string) {
 }
 
 function closeTab(tabId: string) {
+	if (updateFrozen) return;
 	const idx = tabs.findIndex((t) => t.id === tabId);
 	if (idx === -1) return;
 	const tab = tabs[idx];
@@ -491,6 +703,7 @@ function closeTab(tabId: string) {
 }
 
 function forceCloseTab(tabId: string) {
+	if (updateFrozen) return;
 	const tab = tabs.find((t) => t.id === tabId);
 	if (!tab) return;
 	const repoPath = tab.repoPath;
@@ -529,6 +742,24 @@ function persistTabs() {
 	);
 }
 
+preparation.register({
+	capture: () => {
+		const savedTabs = tabs.map(({ id, repoPath, repoName }) => ({
+			id,
+			repoPath,
+			repoName,
+		}));
+		const active = activeTabId;
+		return {
+			generation: JSON.stringify([savedTabs, active, preferenceGeneration()]),
+			blocker: tabsRestored
+				? null
+				: "Wait for your tabs to finish opening before restarting.",
+			flush: (permit) => flushPreferencesForUpdate(permit, savedTabs, active),
+		};
+	},
+});
+
 // Restore on mount
 $effect(() => {
 	void copyLegacyUserWidthsOnce();
@@ -554,6 +785,7 @@ $effect(() => {
 		if (disposed) return;
 		if (restored.length === 0) {
 			addNewTab();
+			tabsRestored = true;
 			return;
 		}
 
@@ -571,6 +803,7 @@ $effect(() => {
 		initialActiveId =
 			restoredTabs.find((t) => t.id === savedActive)?.id ?? restoredTabs[0].id;
 		activeTabId = initialActiveId;
+		tabsRestored = true;
 	})();
 	return () => {
 		disposed = true;
@@ -740,6 +973,7 @@ function ctrlEditsText(chord: string): boolean {
 // Keyboard shortcuts
 $effect(() => {
 	function handleKeydown(e: KeyboardEvent) {
+		if (updateFrozen) return;
 		const chord = keyChord(e);
 		const tabSlot = TAB_SLOT_CHORD.exec(chord);
 		if (tabSlot) {
@@ -905,6 +1139,7 @@ $effect(() => {
 $effect(() => {
 	let unlisten: (() => void) | undefined;
 	listen<void>("review-toggle", () => {
+		if (updateFrozen) return;
 		reviewPanelOpen = !reviewPanelOpen;
 	}).then((fn) => {
 		unlisten = fn;
@@ -915,7 +1150,7 @@ $effect(() => {
 });
 </script>
 
-<div class="flex flex-col h-screen bg-bg">
+<div class="flex flex-col h-screen bg-bg" inert={updateFrozen}>
 	<!-- LAYOUT-02: unified title bar + toolbar -->
 	<div
 		data-tauri-drag-region
@@ -942,6 +1177,16 @@ $effect(() => {
 			}}
 		/>
 		<div data-tauri-drag-region class="flex-1 h-full"></div>
+		{#if updateStatus &&
+			["available", "downloading", "ready"].includes(updateStatus.phase)}
+			<Button size="sm" variant="ghost" onclick={() => (updateOpen = true)}
+				>{updateStatus.phase === "ready"
+					? "Restart to update"
+					: updateStatus.phase === "downloading"
+						? "Downloading update…"
+						: "Update available"}</Button
+			>
+		{/if}
 		{#if activeTab?.repoPath && repositories.isReady(activeTab)}
 			{@const activeState = getTabState(activeTabId)}
 			<Toolbar
@@ -1014,6 +1259,17 @@ $effect(() => {
 								onready={() => {
 									if (tab.repoPath) repositories.viewReady(tab);
 								}}
+								onrecoveryready={(error) => {
+									if (tab.repoPath)
+										recoveredRepositories.set(tab.id, {
+											path: tab.repoPath,
+											error,
+										});
+									if (error) {
+										updateError = error;
+										updateOpen = true;
+									}
+								}}
 								ondirtychange={(counts) => {
 									updateDirtyBadge(tab, counts);
 								}}
@@ -1048,3 +1304,39 @@ $effect(() => {
 
 	<Toast />
 </div>
+
+{#if updateOpen && (updateStatus || updateRetry)}
+	<UpdateDialog
+		status={updateStatus}
+		busy={updateBusy}
+		frozen={updateFrozen || updateStatus?.phase === "recovery"}
+		error={updateError}
+		retry={updateRetry
+			? {
+					label:
+						updateRetry === "readiness"
+							? "Retry startup verification"
+							: "Retry update status",
+					run: () => void retryStartupUpdate(),
+				}
+			: undefined}
+		onclose={() => (updateOpen = false)}
+		onenable={() => void updateAction(() => updates.enable(true))}
+		oncheck={() => void updateAction(updates.check)}
+		ondownload={(version) => void updateAction(() => updates.download(version))}
+		onrestart={(version) =>
+			void updateAction(async () => {
+				await preparation.install(version);
+				return undefined;
+			})}
+		oncancel={() =>
+			void updates
+				.cancel()
+				.then((status) => {
+					updateStatus = status;
+				})
+				.catch((error) => {
+					updateError = errorMessage(error, "Download cancellation failed.");
+				})}
+	/>
+{/if}

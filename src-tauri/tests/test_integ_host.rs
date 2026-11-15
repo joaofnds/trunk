@@ -338,3 +338,106 @@ fn compare_commands_answer_over_ipc() {
     assert!(contents.contains(&("Delete", "two\n")), "{contents:?}");
     assert!(contents.contains(&("Add", "one\n")), "{contents:?}");
 }
+
+#[test]
+fn update_preparation_rejects_ordinary_ipc_even_with_a_flush_permit() {
+    let (app, webview) = boot(WatcherState::disabled());
+    let token = app
+        .state::<trunk_lib::activity::ActivityState>()
+        .begin_prepare()
+        .unwrap();
+
+    let response = invoke(
+        &webview,
+        "render_comment_preview",
+        json!({ "text": "hello", "__updatePermit": token }),
+    );
+
+    assert_eq!(response.unwrap_err()["code"], "update_busy");
+}
+
+#[test]
+fn update_preparation_admits_only_the_matching_flush_permit_through_ipc() {
+    let (app, webview) = boot(WatcherState::disabled());
+    let state = app.state::<trunk_lib::activity::ActivityState>();
+    let token = state.begin_prepare().unwrap();
+
+    let blocked = invoke(
+        &webview,
+        "get_draft",
+        json!({ "path": "/closed", "__updatePermit": "stale" }),
+    );
+    let admitted = invoke(
+        &webview,
+        "get_draft",
+        json!({ "path": "/closed", "__updatePermit": token }),
+    );
+
+    assert_eq!(blocked.unwrap_err()["code"], "update_busy");
+    let command_error: Value =
+        serde_json::from_str(admitted.unwrap_err().as_str().unwrap()).unwrap();
+    assert_eq!(command_error["code"], "not_open");
+    assert!(state.cancel_prepare(&token).is_ok());
+}
+
+#[cfg(not(feature = "drive"))]
+#[test]
+fn the_webview_cannot_bypass_preparation_through_window_state_persistence() {
+    let (_app, webview) = boot(WatcherState::disabled());
+
+    let response = invoke(
+        &webview,
+        "plugin:window-state|save_window_state",
+        json!({ "flags": "invalid flags prevent a write if authorization regresses" }),
+    );
+
+    assert!(
+        response
+            .unwrap_err()
+            .as_str()
+            .unwrap()
+            .contains("not allowed")
+    );
+}
+
+#[test]
+fn reopening_after_preparation_invalidates_graphs_and_refreshes_reviews() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    let (app, webview) = boot(WatcherState::disabled());
+    invoke(&webview, "open_repo", json!({ "path": ctx.path() })).unwrap();
+    let activity = app.state::<trunk_lib::activity::ActivityState>();
+    let token = activity.begin_prepare().unwrap();
+    let cache = app.state::<CommitCache>();
+    assert!(
+        trunk_lib::watcher::RepoChanged::completed(ctx.path(), &cache)
+            .graph_revision
+            .is_some()
+    );
+    let (repo_events, repositories) = std::sync::mpsc::channel();
+    app.listen_any("repo-changed", move |event| {
+        repo_events
+            .send(serde_json::from_str::<trunk_lib::watcher::RepoChanged>(event.payload()).unwrap())
+            .unwrap();
+    });
+    let (review_events, reviews) = std::sync::mpsc::channel();
+    app.listen_any("reviews-changed", move |_| {
+        review_events.send(()).unwrap();
+    });
+
+    assert!(trunk_lib::activity::resume_after_update(app.handle()).is_err());
+    activity.cancel_prepare(&token).unwrap();
+    trunk_lib::activity::resume_after_update(app.handle()).unwrap();
+
+    assert_eq!(
+        trunk_lib::watcher::RepoChanged::completed(ctx.path(), &cache).graph_revision,
+        None
+    );
+    assert_eq!(
+        repositories.try_recv().unwrap(),
+        trunk_lib::watcher::RepoChanged::whole_repo(ctx.path())
+    );
+    assert_eq!(reviews.try_recv(), Ok(()));
+}

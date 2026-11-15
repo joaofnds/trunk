@@ -17,6 +17,7 @@ use trunk_git::repository;
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn open_repo<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
@@ -28,7 +29,7 @@ pub async fn open_repo<R: Runtime>(
     // every ref. The frontend loads the stored set from prefs, pushes it, and refreshes.
     cache.open_session(&path);
     let opening_session = cache.session_id(&path);
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let path_clone = path.clone();
     rebuild
         .rebuild(
@@ -70,6 +71,7 @@ pub async fn open_repo<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn close_repo(
+    _activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
@@ -105,6 +107,7 @@ pub async fn close_repo(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn force_close_repo(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
@@ -115,6 +118,7 @@ pub async fn force_close_repo(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
 ) -> Result<(), String> {
     close_repo(
+        activity,
         path,
         state,
         cache,

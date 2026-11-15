@@ -52,6 +52,12 @@ tauri-plugin-window-state = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "=2.14.1"
+trunk-update-release = { path = "update-release" }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "stream", "system-proxy"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+sha2 = "0.10"
+semver = "1"
 comrak = "0.59"
 clap = { version = "4", features = ["derive"] }
 ammonia = "4"
@@ -59,7 +65,7 @@ ammonia = "4"
 # diffable key/value table. Pinned to the version syntect resolves so nothing new
 # is pulled in.
 yaml-rust = "0.4"
-tokio = { version = "1", features = ["process", "io-util", "sync", "time", "macros"] }
+tokio = { version = "1", features = ["process", "io-util", "sync", "time", "macros", "net"] }
 libc = { workspace = true }
 similar = { version = "3.1", features = ["unicode", "inline"] }
 syntect = { version = "5", default-features = false, features = ["default-onig"] }
@@ -102,6 +108,8 @@ objc2-web-kit = { version = "0.3", optional = true, default-features = false, fe
 ] }
 
 [dev-dependencies]
+proc-macro2 = "1"
+syn = { version = "2", features = ["full", "visit"] }
 # Enable app test affordances for test, example and bench targets, never shipped builds.
 trunk = { path = ".", features = ["test-util"] }
 tokio = { version = "1", features = ["test-util", "rt", "macros"] }
@@ -129,7 +137,7 @@ harness = false
 workspace = true
 
 [workspace]
-members = ["fixtures", "git", "review"]
+members = ["fixtures", "git", "review", "update-release"]
 
 [workspace.dependencies]
 git2 = { version = "0.21", features = ["vendored-libgit2", "vendored-openssl", "https", "ssh"] }

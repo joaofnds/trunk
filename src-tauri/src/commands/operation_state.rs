@@ -470,11 +470,13 @@ pub fn rebase_branch_inner(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_operation_state(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<OperationInfo, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || get_operation_state_inner(&path, &state_map))
+    activity
+        .spawn_blocking(move || get_operation_state_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e: TrunkError| e.to_json())
@@ -490,6 +492,7 @@ pub async fn get_operation_state(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn merge_continue<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     message: Option<String>,
     state: State<'_, RepoState>,
@@ -497,7 +500,7 @@ pub async fn merge_continue<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -520,13 +523,14 @@ pub async fn merge_continue<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn merge_abort<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -549,6 +553,7 @@ pub async fn merge_abort<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn rebase_continue<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     message: Option<String>,
     state: State<'_, RepoState>,
@@ -556,7 +561,7 @@ pub async fn rebase_continue<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -579,13 +584,14 @@ pub async fn rebase_continue<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn rebase_skip<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -608,13 +614,14 @@ pub async fn rebase_skip<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn rebase_abort<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
@@ -637,11 +644,13 @@ pub async fn rebase_abort<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_merge_message(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<Option<String>, String> {
     let state_map = state.snapshot();
-    tauri::async_runtime::spawn_blocking(move || get_merge_message_inner(&path, &state_map))
+    activity
+        .spawn_blocking(move || get_merge_message_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e: TrunkError| e.to_json())
@@ -657,6 +666,7 @@ pub async fn get_merge_message(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn merge_branch_begin<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     branch: String,
     state: State<'_, RepoState>,
@@ -664,7 +674,7 @@ pub async fn merge_branch_begin<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<MergeBeginResult, String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     // The begin mutated the repo before the editor opens (ff commit, staged
@@ -691,6 +701,7 @@ pub async fn merge_branch_begin<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn rebase_branch<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     onto_branch: String,
     state: State<'_, RepoState>,
@@ -698,7 +709,7 @@ pub async fn rebase_branch<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
+    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild

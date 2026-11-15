@@ -137,15 +137,17 @@ fn join_error(e: tauri::Error) -> String {
 /// joined.
 #[tauri::command]
 pub async fn prefs_get<R: Runtime>(
+    activity: crate::activity::Activity,
     key: String,
     app: AppHandle<R>,
 ) -> Result<Option<Value>, String> {
     let data_dir = resolve_data_dir(&app)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        prefs_get_inner(&data_dir, &app.state::<PrefsState>(), &key).map_err(|e| e.to_json())
-    })
-    .await
-    .map_err(join_error)?
+    activity
+        .spawn_blocking(move || {
+            prefs_get_inner(&data_dir, &app.state::<PrefsState>(), &key).map_err(|e| e.to_json())
+        })
+        .await
+        .map_err(join_error)?
 }
 
 /// # Errors
@@ -154,16 +156,19 @@ pub async fn prefs_get<R: Runtime>(
 /// joined.
 #[tauri::command]
 pub async fn prefs_set<R: Runtime>(
+    activity: crate::activity::Activity,
     key: String,
     value: Value,
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let data_dir = resolve_data_dir(&app)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        prefs_set_inner(&data_dir, &app.state::<PrefsState>(), key, value).map_err(|e| e.to_json())
-    })
-    .await
-    .map_err(join_error)?
+    activity
+        .spawn_blocking(move || {
+            prefs_set_inner(&data_dir, &app.state::<PrefsState>(), key, value)
+                .map_err(|e| e.to_json())
+        })
+        .await
+        .map_err(join_error)?
 }
 
 #[cfg(test)]

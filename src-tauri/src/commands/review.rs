@@ -66,9 +66,11 @@ fn emit_reviews_changed<R: Runtime>(app: &AppHandle<R>, canonical: &Path) {
 /// `busy_timeout`, which would otherwise pin a tokio worker for five seconds —
 /// the same reason the git2 paths already use `spawn_blocking`.
 async fn blocking_store<T: Send + 'static>(
+    activity: &crate::activity::Activity,
     f: impl FnOnce() -> Result<T, TrunkError> + Send + 'static,
 ) -> Result<T, String> {
-    tauri::async_runtime::spawn_blocking(f)
+    activity
+        .spawn_blocking(f)
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -78,17 +80,19 @@ async fn blocking_store<T: Send + 'static>(
 /// Every review command that mutates the store ends this way, so a command
 /// cannot mutate and forget the emit.
 async fn write_and_notify<R: Runtime, T: Send + 'static>(
+    activity: &crate::activity::Activity,
     app: &AppHandle<R>,
     canonical: &Path,
     f: impl FnOnce() -> Result<T, TrunkError> + Send + 'static,
 ) -> Result<T, String> {
-    let v = blocking_store(f).await?;
+    let v = blocking_store(activity, f).await?;
     emit_reviews_changed(app, canonical);
     Ok(v)
 }
 
 /// Resolve `path` and open the store. Every command below starts this way.
 async fn prepare<R: Runtime>(
+    activity: &crate::activity::Activity,
     path: &str,
     state: &RepoState,
     store: &ReviewStoreState,
@@ -96,22 +100,23 @@ async fn prepare<R: Runtime>(
 ) -> Result<(PathBuf, Arc<Store>), String> {
     let state_map = state.snapshot();
     let raw = path.to_string();
-    let canonical = blocking_store(move || canonical_of(&raw, &state_map)).await?;
+    let canonical = blocking_store(activity, move || canonical_of(&raw, &state_map)).await?;
 
-    Ok((canonical, open_store(store, app).await?))
+    Ok((canonical, open_store(activity, store, app).await?))
 }
 
 /// The review store, opened off the async runtime: opening does
 /// `create_dir_all`, four pragmas and the migration ladder, and can wait on
 /// another process's write lock, for the reason `blocking_store` documents.
 async fn open_store<R: Runtime>(
+    activity: &crate::activity::Activity,
     store: &ReviewStoreState,
     app: &AppHandle<R>,
 ) -> Result<Arc<Store>, String> {
     let slot = store.0.clone_handle();
     let app_dir = super::store_data_dir(app)?;
 
-    blocking_store(move || open_cached(&slot, &app_dir)).await
+    blocking_store(activity, move || open_cached(&slot, &app_dir)).await
 }
 
 /// Reclaim this repo's abandoned snapshot pins, once per process.
@@ -514,6 +519,7 @@ pub fn list_threads_inner(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn add_thread<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     text: String,
     anchor: trunk_review::types::Anchor,
@@ -524,7 +530,7 @@ pub async fn add_thread<R: Runtime>(
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let req = SubmitThreadRequest {
         text,
@@ -538,7 +544,7 @@ pub async fn add_thread<R: Runtime>(
     };
     let target = canonical.clone();
     let now = trunk_review::reviewdb::now_secs();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         let repo = git2::Repository::open(&path).ok();
         submit_thread_into(&store, &target, repo.as_ref(), req, now)
     })
@@ -619,6 +625,7 @@ pub fn submit_current_file_thread_inner(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn add_current_file_thread<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     file_path: String,
     start_line: u32,
@@ -630,11 +637,11 @@ pub async fn add_current_file_thread<R: Runtime>(
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
     let now = trunk_review::reviewdb::now_secs();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         submit_current_file_thread_inner(
             &store, &target, &path, &file_path, start_line, end_line, &text, delivery, whole_file,
             now,
@@ -656,6 +663,7 @@ pub async fn add_current_file_thread<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn add_commit_thread<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     commit_oid: String,
     text: String,
@@ -664,7 +672,7 @@ pub async fn add_commit_thread<R: Runtime>(
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let req = SubmitThreadRequest {
         text,
@@ -678,7 +686,7 @@ pub async fn add_commit_thread<R: Runtime>(
     };
     let target = canonical.clone();
     let now = trunk_review::reviewdb::now_secs();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         let repo = git2::Repository::open(&path).ok();
         submit_thread_into(&store, &target, repo.as_ref(), req, now)
     })
@@ -697,6 +705,7 @@ pub async fn add_commit_thread<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn edit_thread<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     id: String,
     text: String,
@@ -704,10 +713,10 @@ pub async fn edit_thread<R: Runtime>(
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         let now = trunk_review::reviewdb::now_secs();
         store.write(|tx| threads::edit(tx, &target, &id, &text, now))
     })
@@ -726,16 +735,17 @@ pub async fn edit_thread<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn delete_thread<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     id: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         store.write(|tx| threads::delete(tx, &target, &id))
     })
     .await?;
@@ -782,6 +792,7 @@ pub fn add_reply_inner(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn add_reply<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     thread_id: String,
     text: String,
@@ -790,10 +801,10 @@ pub async fn add_reply<R: Runtime>(
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         let now = trunk_review::reviewdb::now_secs();
         add_reply_inner(&store, &target, &thread_id, &text, delivery, now)
     })
@@ -820,6 +831,7 @@ pub async fn add_reply<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn edit_reply<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     id: String,
     text: String,
@@ -827,10 +839,10 @@ pub async fn edit_reply<R: Runtime>(
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         let now = trunk_review::reviewdb::now_secs();
         store.write(|tx| replies::edit(tx, &target, &id, &text, now))
     })
@@ -852,16 +864,17 @@ pub async fn edit_reply<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn delete_reply<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     id: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         store.write(|tx| replies::delete(tx, &target, &id))
     })
     .await?;
@@ -906,6 +919,7 @@ pub fn set_thread_state_inner(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn set_thread_state<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     id: String,
     next: trunk_review::types::ThreadState,
@@ -913,10 +927,10 @@ pub async fn set_thread_state<R: Runtime>(
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         let now = trunk_review::reviewdb::now_secs();
         set_thread_state_inner(&store, &target, &id, next, now)
     })
@@ -935,6 +949,7 @@ pub async fn set_thread_state<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn list_threads<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     review_id: Option<String>,
     state: State<'_, RepoState>,
@@ -942,11 +957,11 @@ pub async fn list_threads<R: Runtime>(
     swept: State<'_, crate::state::SweptRepos>,
     app: AppHandle<R>,
 ) -> Result<Vec<RenderedThread>, String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let swept_repos = swept.inner().clone_handle();
     let target = canonical.clone();
-    blocking_store(move || {
+    blocking_store(&activity, move || {
         sweep_once(&store, &target, &path, &swept_repos);
         list_threads_inner(&store, &target, review_id.as_deref())
     })
@@ -977,12 +992,22 @@ pub async fn list_threads<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn refresh_thread_staleness<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<usize, String> {
-    follow_then_recompute(path, &state, &store, &app, recompute_staleness, true).await
+    follow_then_recompute(
+        &activity,
+        path,
+        &state,
+        &store,
+        &app,
+        recompute_staleness,
+        true,
+    )
+    .await
 }
 
 /// Follow rewritten commits against the graph published now, then run
@@ -993,6 +1018,7 @@ pub async fn refresh_thread_staleness<R: Runtime>(
 /// not depend on it, so it is reported to stderr and the recompute still runs.
 /// A follow that committed is announced even when the recompute then fails.
 async fn follow_then_recompute<R: Runtime>(
+    activity: &crate::activity::Activity,
     path: String,
     state: &RepoState,
     store: &ReviewStoreState,
@@ -1000,11 +1026,11 @@ async fn follow_then_recompute<R: Runtime>(
     recompute: fn(&Store, &Path, &str) -> Result<usize, TrunkError>,
     announce_changes: bool,
 ) -> Result<usize, String> {
-    let (canonical, store) = prepare(&path, state, store, app).await?;
+    let (canonical, store) = prepare(activity, &path, state, store, app).await?;
 
     let target = canonical.clone();
     let handle = app.clone();
-    let (followed, changed) = blocking_store(move || {
+    let (followed, changed) = blocking_store(activity, move || {
         let cache = handle.state::<CommitCache>();
         let published = cache.snapshot(&path);
         let followed = follow_rewritten_commits(&store, &target, &path, published.as_ref(), &cache)
@@ -1075,8 +1101,11 @@ pub fn follow_on_publication<R: Runtime>(app: &AppHandle<R>) {
         let handle = handle.clone();
         let path = path.to_owned();
         let published = published.clone();
+        let Ok(activity) = crate::activity::Activity::for_app(&handle) else {
+            return;
+        };
         tauri::async_runtime::spawn(async move {
-            if let Err(error) = follow_published(&handle, path, published).await {
+            if let Err(error) = follow_published(&activity, &handle, path, published).await {
                 eprintln!("following rewritten commits failed: {error}");
             }
         });
@@ -1090,20 +1119,21 @@ pub fn follow_on_publication<R: Runtime>(app: &AppHandle<R>) {
 /// it, and that first graph is the one that sees a rewrite made while Trunk was
 /// closed.
 async fn follow_published<R: Runtime>(
+    activity: &crate::activity::Activity,
     app: &AppHandle<R>,
     path: String,
     published: trunk_git::graph_input::GraphSnapshot,
 ) -> Result<(), String> {
     let raw = path.clone();
-    let canonical = blocking_store(move || {
+    let canonical = blocking_store(activity, move || {
         std::fs::canonicalize(&raw).map_err(|e| TrunkError::new("io", e.to_string()))
     })
     .await?;
-    let store = open_store(&app.state::<ReviewStoreState>(), app).await?;
+    let store = open_store(activity, &app.state::<ReviewStoreState>(), app).await?;
 
     let target = canonical.clone();
     let handle = app.clone();
-    let followed = blocking_store(move || {
+    let followed = blocking_store(activity, move || {
         let cache = handle.state::<CommitCache>();
         follow_rewritten_commits(&store, &target, &path, Some(&published), &cache)
     })
@@ -1131,16 +1161,17 @@ async fn follow_published<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn mark_replies_seen<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     ids: Vec<String>,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<usize, String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    let changed = blocking_store(move || {
+    let changed = blocking_store(&activity, move || {
         store.write_if(
             |tx| replies::mark_seen(tx, &target, &ids),
             |changed| *changed > 0,
@@ -1164,12 +1195,22 @@ pub async fn mark_replies_seen<R: Runtime>(
 /// Returns a store, repository or blocking-task error as JSON.
 #[tauri::command]
 pub async fn refresh_thread_ref_staleness<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<usize, String> {
-    follow_then_recompute(path, &state, &store, &app, recompute_ref_staleness, false).await
+    follow_then_recompute(
+        &activity,
+        path,
+        &state,
+        &store,
+        &app,
+        recompute_ref_staleness,
+        false,
+    )
+    .await
 }
 
 /// Resolve only commit anchors after a refs-only event; retain file-pin results.
@@ -1177,14 +1218,15 @@ pub async fn refresh_thread_ref_staleness<R: Runtime>(
 /// Returns a store, repository or blocking-task error as JSON.
 #[tauri::command]
 pub async fn resolve_thread_refs<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     review_id: Option<String>,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<Vec<CommentResolution>, String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
-    blocking_store(move || {
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
+    blocking_store(&activity, move || {
         resolve_thread_refs_inner(&store, &canonical, &path, review_id.as_deref())
     })
     .await
@@ -1202,14 +1244,18 @@ pub async fn resolve_thread_refs<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn list_reviews<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<Vec<Review>, String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
-    blocking_store(move || store.read(|conn| reviews::list(conn, &canonical))).await
+    blocking_store(&activity, move || {
+        store.read(|conn| reviews::list(conn, &canonical))
+    })
+    .await
 }
 
 /// # Errors
@@ -1222,16 +1268,17 @@ pub async fn list_reviews<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn create_review<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     title: Option<String>,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<String, String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    let id = write_and_notify(&app, &canonical, move || {
+    let id = write_and_notify(&activity, &app, &canonical, move || {
         let now = trunk_review::reviewdb::now_secs();
         store.write(|tx| {
             let id = reviews::create(tx, &target, title.as_deref(), now)?;
@@ -1254,14 +1301,18 @@ pub async fn create_review<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_active_review<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<Option<String>, String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
-    blocking_store(move || store.read(|conn| reviews::active(conn, &canonical))).await
+    blocking_store(&activity, move || {
+        store.read(|conn| reviews::active(conn, &canonical))
+    })
+    .await
 }
 
 /// # Errors
@@ -1274,16 +1325,17 @@ pub async fn get_active_review<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn set_active_review<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     review_id: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         set_active_review_inner(&store, &target, &review_id)
     })
     .await?;
@@ -1317,6 +1369,7 @@ pub fn set_active_review_inner(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn rename_review<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     review_id: String,
     title: String,
@@ -1324,10 +1377,10 @@ pub async fn rename_review<R: Runtime>(
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         let now = trunk_review::reviewdb::now_secs();
         store.write(|tx| reviews::rename(tx, &target, &review_id, &title, now))
     })
@@ -1354,16 +1407,17 @@ pub async fn rename_review<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn archive_review<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     review_id: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         let now = trunk_review::reviewdb::now_secs();
         store.write(|tx| reviews::archive(tx, &target, &review_id, now))
     })
@@ -1382,16 +1436,17 @@ pub async fn archive_review<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn unarchive_review<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     review_id: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         let now = trunk_review::reviewdb::now_secs();
         store.write(|tx| reviews::unarchive(tx, &target, &review_id, now))
     })
@@ -1410,16 +1465,17 @@ pub async fn unarchive_review<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn send_review<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     review_id: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         let now = trunk_review::reviewdb::now_secs();
         store.write(|tx| reviews::send_batch(tx, &target, &review_id, now))
     })
@@ -1438,17 +1494,18 @@ pub async fn send_review<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn delete_review<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     review_id: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
     let repo_path = path.clone();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         store.write(|tx| reviews::delete(tx, &target, &review_id))?;
         // Deleting a review is when a batch of pins becomes garbage: the
         // threads that anchored them go with it. The deletion has already
@@ -1511,6 +1568,7 @@ pub fn get_draft_inner(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn save_draft<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     text: String,
     anchor: Option<trunk_review::types::Anchor>,
@@ -1519,9 +1577,9 @@ pub async fn save_draft<R: Runtime>(
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
-    blocking_store(move || {
+    blocking_store(&activity, move || {
         let now = trunk_review::reviewdb::now_secs();
         save_draft_inner(&store, &canonical, &text, anchor.as_ref(), whole_file, now)
     })
@@ -1538,14 +1596,18 @@ pub async fn save_draft<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn delete_draft<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
-    blocking_store(move || store.write(|tx| drafts::delete(tx, &canonical))).await
+    blocking_store(&activity, move || {
+        store.write(|tx| drafts::delete(tx, &canonical))
+    })
+    .await
 }
 
 /// # Errors
@@ -1558,14 +1620,15 @@ pub async fn delete_draft<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_draft<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<Option<drafts::Draft>, String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
-    blocking_store(move || get_draft_inner(&store, &canonical)).await
+    blocking_store(&activity, move || get_draft_inner(&store, &canonical)).await
 }
 
 // ── The active review's commit set ───────────────────────────────────────────
@@ -1580,6 +1643,7 @@ pub async fn get_draft<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn seed_review_range<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     base_oid: String,
     tip_oid: String,
@@ -1587,10 +1651,10 @@ pub async fn seed_review_range<R: Runtime>(
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         let repo = git2::Repository::open(&path).map_err(TrunkError::from)?;
         let base = git2::Oid::from_str(&base_oid).map_err(TrunkError::from)?;
         let tip = git2::Oid::from_str(&tip_oid).map_err(TrunkError::from)?;
@@ -1630,16 +1694,17 @@ pub async fn seed_review_range<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn add_review_commit<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     oid: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         let repo = git2::Repository::open(&path).map_err(TrunkError::from)?;
         let now = trunk_review::reviewdb::now_secs();
         store.write(|tx| {
@@ -1688,16 +1753,17 @@ fn commit_summary(repo: &git2::Repository, oid: &str) -> String {
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn remove_review_commit<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     oid: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    write_and_notify(&app, &canonical, move || {
+    write_and_notify(&activity, &app, &canonical, move || {
         store.write(|tx| {
             let Some(review_id) = reviews::active(tx, &target)? else {
                 return Ok(());
@@ -1726,6 +1792,7 @@ pub async fn remove_review_commit<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn list_session_commits<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     review_id: Option<String>,
     state: State<'_, RepoState>,
@@ -1733,13 +1800,13 @@ pub async fn list_session_commits<R: Runtime>(
     cache: State<'_, CommitCache>,
     app: AppHandle<R>,
 ) -> Result<Vec<SessionCommit>, String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let graph = cache
         .snapshot(&path)
         .ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?;
 
-    blocking_store(move || {
+    blocking_store(&activity, move || {
         let (picked, threaded, snapshot_oids) = store.read(|conn| {
             let (picked, threaded) =
                 match reviews::requested_or_active(conn, &canonical, review_id.as_deref())? {
@@ -2081,6 +2148,7 @@ pub fn read_snapshots_inner(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn ensure_review_snapshot<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     kind: String,
     state: State<'_, RepoState>,
@@ -2098,10 +2166,10 @@ pub async fn ensure_review_snapshot<R: Runtime>(
         }
     };
 
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    let oid = write_and_notify(&app, &canonical, move || {
+    let oid = write_and_notify(&activity, &app, &canonical, move || {
         let now = trunk_review::reviewdb::now_secs();
         ensure_review_snapshot_inner(&store, &target, &path, snapshot_kind, now)
     })
@@ -2120,14 +2188,15 @@ pub async fn ensure_review_snapshot<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_review_snapshots<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<snapshots::RepoSnapshots, String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
-    blocking_store(move || read_snapshots_inner(&store, &canonical)).await
+    blocking_store(&activity, move || read_snapshots_inner(&store, &canonical)).await
 }
 
 // ── Resolution and the review doc ────────────────────────────────────────────
@@ -2163,15 +2232,16 @@ fn as_comments(threads: Vec<threads::Thread>) -> Vec<trunk_review::types::Commen
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn resolve_threads<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     review_id: Option<String>,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<Vec<CommentResolution>, String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
-    blocking_store(move || {
+    blocking_store(&activity, move || {
         let threads = store.read(|conn| {
             let Some(review_id) =
                 reviews::requested_or_active(conn, &canonical, review_id.as_deref())?
@@ -2230,6 +2300,7 @@ pub fn generate_review_doc_inner(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn generate_review_doc<R: Runtime>(
+    activity: crate::activity::Activity,
     path: String,
     review_id: String,
     thread_ids: Vec<String>,
@@ -2237,9 +2308,9 @@ pub async fn generate_review_doc<R: Runtime>(
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<String, String> {
-    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+    let (canonical, store) = prepare(&activity, &path, &state, &store, &app).await?;
 
-    blocking_store(move || {
+    blocking_store(&activity, move || {
         generate_review_doc_inner(&store, &canonical, &path, &review_id, &thread_ids)
     })
     .await
@@ -2259,6 +2330,7 @@ pub async fn generate_review_doc<R: Runtime>(
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn canonical_repo_path(
+    _activity: crate::activity::Activity,
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<String, String> {

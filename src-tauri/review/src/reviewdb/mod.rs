@@ -112,6 +112,43 @@ pub fn open(data_dir: &Path) -> Result<Store, TrunkError> {
     }
 }
 
+/// Verify an existing store in one read-only snapshot without migrating or quarantining it.
+///
+/// # Errors
+/// Returns `store_newer` for an unsupported schema, or the SQLite error when
+/// the existing database or its revision record cannot be read.
+pub fn verify_readable(data_dir: &Path) -> Result<(), TrunkError> {
+    let mut conn = Connection::open_with_flags(
+        data_dir.join(DB_FILE),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(sqlite_error)?;
+    conn.busy_timeout(std::time::Duration::from_millis(u64::from(BUSY_TIMEOUT_MS)))
+        .map_err(sqlite_error)?;
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Deferred)
+        .map_err(sqlite_error)?;
+    schema::version_guard(&tx)?;
+    if schema::user_version(&tx)? == 0 {
+        let empty: bool = tx
+            .query_row(
+                "SELECT NOT EXISTS (SELECT 1 FROM sqlite_schema WHERE name NOT GLOB 'sqlite_*')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(sqlite_error)?;
+        if !empty {
+            return Err(TrunkError::new(
+                "store_incomplete",
+                "Review store has an incomplete schema",
+            ));
+        }
+    } else {
+        revision(&tx)?;
+    }
+    tx.commit().map_err(sqlite_error)
+}
+
 fn open_at(path: &Path, data_dir: &Path) -> Result<Store, TrunkError> {
     let conn = Connection::open(path).map_err(sqlite_error)?;
     conn.busy_timeout(std::time::Duration::from_millis(u64::from(BUSY_TIMEOUT_MS)))
@@ -400,6 +437,115 @@ mod tests {
                 Ok(())
             })
             .unwrap();
+    }
+
+    #[test]
+    fn readiness_accepts_an_existing_empty_database_without_initializing_it() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(DB_FILE);
+        drop(Connection::open(&path).unwrap());
+        let before = std::fs::read(&path).unwrap();
+
+        verify_readable(dir.path()).unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn readiness_refuses_an_unversioned_partial_schema() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(DB_FILE);
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE store_meta (revision INTEGER); INSERT INTO store_meta VALUES (0);",
+        )
+        .unwrap();
+        drop(conn);
+        let before = std::fs::read(&path).unwrap();
+
+        let error = verify_readable(dir.path()).unwrap_err();
+
+        assert_eq!(error.code, "store_incomplete");
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn readiness_reads_a_live_store_without_changing_its_data() {
+        let dir = TempDir::new().unwrap();
+        let store = open(dir.path()).unwrap();
+        insert_review(&store, "READINESS");
+        let before = store.read(revision).unwrap();
+
+        verify_readable(dir.path()).unwrap();
+
+        assert_eq!(store.read(revision).unwrap(), before);
+        assert_eq!(count_reviews(&store), 1);
+    }
+
+    #[test]
+    fn readiness_preserves_the_existing_database_bytes() {
+        let dir = TempDir::new().unwrap();
+        let store = open(dir.path()).unwrap();
+        insert_review(&store, "READINESS");
+        drop(store);
+        let path = dir.path().join(DB_FILE);
+        let before = std::fs::read(&path).unwrap();
+
+        verify_readable(dir.path()).unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn readiness_refuses_corruption_without_quarantining_it() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(DB_FILE);
+        let bytes = b"corrupt review data";
+        std::fs::write(&path, bytes).unwrap();
+
+        let error = verify_readable(dir.path()).unwrap_err();
+
+        assert_eq!(error.code, CORRUPT);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn readiness_refuses_a_newer_store_without_mutating_it() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(DB_FILE);
+        let conn = Connection::open(&path).unwrap();
+        conn.pragma_update(None, "user_version", schema::CURRENT_VERSION + 1)
+            .unwrap();
+        drop(conn);
+        let before = std::fs::read(&path).unwrap();
+
+        let error = verify_readable(dir.path()).unwrap_err();
+
+        assert_eq!(error.code, "store_newer");
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn readiness_does_not_create_a_missing_store_or_directory() {
+        let dir = TempDir::new().unwrap();
+        let missing = dir.path().join("missing");
+
+        assert!(verify_readable(&missing).is_err());
+        assert!(!missing.exists());
+    }
+
+    #[test]
+    fn readiness_does_not_migrate_an_old_store() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(DB_FILE);
+        let conn = Connection::open(&path).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+        drop(conn);
+        let before = std::fs::read(&path).unwrap();
+
+        assert!(verify_readable(dir.path()).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
     }
 
     #[test]

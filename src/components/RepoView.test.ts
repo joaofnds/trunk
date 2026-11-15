@@ -244,6 +244,10 @@ describe("RepoView", () => {
 			switch (cmd) {
 				case "get_commit_graph":
 					return Promise.resolve({ commits: [], max_columns: 0, revision: 1 });
+				case "get_commit_stats":
+					return Promise.resolve({});
+				case "get_commit_detail":
+					return Promise.reject("commit not found");
 				case "list_refs":
 					return Promise.resolve({
 						local: [],

@@ -1,4 +1,6 @@
 <script lang="ts">
+import { registerUpdateBlocker } from "../lib/updates-context.js";
+
 interface Field {
 	key: string;
 	label: string;
@@ -69,6 +71,9 @@ function handleKeydown(e: KeyboardEvent) {
 function autofocus(node: HTMLElement) {
 	node.focus();
 }
+registerUpdateBlocker(
+	() => `Finish or cancel ${title.toLowerCase()} before restarting.`,
+);
 </script>
 
 <Dialog {title} {oncancel}>

@@ -3,6 +3,9 @@
   "productName": "Trunk",
   "version": "0.61.0",
   "identifier": "com.joaofnds.trunk",
+  "plugins": {
+    "updater": { "pubkey": "", "requireSignedVersion": true }
+  },
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",

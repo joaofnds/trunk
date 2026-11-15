@@ -30,6 +30,7 @@ import Badge from "../lib/ui/Badge.svelte";
 import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
 import Splitter from "../lib/ui/Splitter.svelte";
+import { registerUpdateBlocker } from "../lib/updates-context.js";
 import BranchChip from "./BranchChip.svelte";
 import CommitChip from "./CommitChip.svelte";
 import CommitForm from "./CommitForm.svelte";
@@ -178,6 +179,7 @@ let rebaseProgressTotal = $derived(
 let rebaseMsgSummary = $state("");
 let rebaseMsgBody = $state("");
 let lastRebaseMessage = $state("");
+let savedRebaseFields = $state({ summary: "", body: "" });
 
 // Sync editable message when operation info changes (new rebase step)
 $effect(() => {
@@ -190,8 +192,12 @@ $effect(() => {
 			.join("\n")
 			.trim();
 		const lines = clean.split("\n");
-		rebaseMsgSummary = lines[0] ?? "";
-		rebaseMsgBody = lines.slice(1).join("\n").replace(/^\n/, "");
+		savedRebaseFields = {
+			summary: lines[0] ?? "",
+			body: lines.slice(1).join("\n").replace(/^\n/, ""),
+		};
+		rebaseMsgSummary = savedRebaseFields.summary;
+		rebaseMsgBody = savedRebaseFields.body;
 	}
 });
 let totalCount = $derived(
@@ -794,6 +800,14 @@ $effect(() => {
 // Auto-refresh on repo-changed event
 $effect(() => {
 	return subscribeToRepoChanges(repoPath, statusRefresh);
+});
+registerUpdateBlocker(() => {
+	if (!isRebase) return null;
+
+	return rebaseMsgSummary !== savedRebaseFields.summary ||
+		rebaseMsgBody !== savedRebaseFields.body
+		? "Save or discard the paused rebase message before restarting."
+		: null;
 });
 </script>
 
