@@ -1,10 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Trunk",
-  "version": "0.61.0",
+  "version": "0.62.0",
   "identifier": "com.joaofnds.trunk",
   "plugins": {
-    "updater": { "pubkey": "", "requireSignedVersion": true }
+    "updater": {
+      "pubkey": "",
+      "requireSignedVersion": true
+    }
   },
   "build": {
     "beforeDevCommand": "bun run dev",
