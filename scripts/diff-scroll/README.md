@@ -5,10 +5,19 @@ in a real Trunk drive build. It preserves the screen recording, input events and
 DOM geometry needed to investigate blank diffs. It is an investigation tool;
 a passing run does not establish that scrolling is fixed.
 
-The default `--profile slow` peaks at 3,750 input pixels per second. The optional
-`--profile fast` preserves the earlier aggressive trace at 30,000 input pixels
-per second. Both profiles use 216 events. The manifest and input artifact record
+The default `--profile slow` requests a peak of 3,750 input pixels per second.
+The optional `--profile fast` requests 30,000 input pixels per second. Both profiles use 216 events. The manifest and input artifact record
 which trace ran; compare runs with the same profile and initial position.
+
+A strict one-shot timer delivers each event against a shared origin, with zero
+requested leeway. Scheduling is still best effort. `native-input.json` records
+`plannedStartMachTicksLowerBound`, `plannedStartMachTicksUpperBound`, and each
+actual delivery timestamp. The two bounds bracket the scheduling-origin clock
+read; compare that interval plus each `input.json` offset with actual delivery
+before interpreting the requested cadence as delivered cadence.
+Independent `dispatch_after` timers coalesced later events into bursts in a native
+measurement, with over 200ms of scheduling delay. The strict timer avoids that
+proportional timer leeway without polling.
 
 Build the artifact you want to measure, then name it explicitly:
 

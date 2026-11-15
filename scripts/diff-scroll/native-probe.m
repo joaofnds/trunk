@@ -138,18 +138,32 @@ static void execute(NSDictionary *request, void (^done)(NSDictionary *)) {
             lastTime = time;
         }
         NSMutableArray *results = [NSMutableArray array];
-        for (NSUInteger i = 0; i < events.count; i++) {
-            NSDictionary *event = events[i];
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, [event[@"atMs"] doubleValue] * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-                [results addObject:sendWheel(view, event)];
-                if (i + 1 == events.count) {
-                    mach_timebase_info_data_t timebase;
-                    mach_timebase_info(&timebase);
-                    done(@{@"sent": @(results.count), @"first": results.firstObject, @"last": results.lastObject,
-                        @"events": results, @"timebaseNumer": @(timebase.numer), @"timebaseDenom": @(timebase.denom)});
-                }
-            });
-        }
+        __block NSUInteger index = 0;
+        __block dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, DISPATCH_TIMER_STRICT, dispatch_get_main_queue());
+        uint64_t startLowerBound = mach_absolute_time();
+        dispatch_time_t start = dispatch_time(DISPATCH_TIME_NOW, 0);
+        uint64_t startUpperBound = mach_absolute_time();
+
+        dispatch_source_set_event_handler(timer, ^{
+            [results addObject:sendWheel(view, events[index])];
+            index++;
+            if (index == events.count) {
+                dispatch_source_cancel(timer);
+                timer = nil;
+
+                mach_timebase_info_data_t timebase;
+                mach_timebase_info(&timebase);
+
+                done(@{@"sent": @(results.count), @"first": results.firstObject, @"last": results.lastObject,
+                    @"plannedStartMachTicksLowerBound": [NSString stringWithFormat:@"%llu", startLowerBound],
+                    @"plannedStartMachTicksUpperBound": [NSString stringWithFormat:@"%llu", startUpperBound],
+                    @"events": results, @"timebaseNumer": @(timebase.numer), @"timebaseDenom": @(timebase.denom)});
+            } else {
+                dispatch_source_set_timer(timer, dispatch_time(start, [events[index][@"atMs"] doubleValue] * NSEC_PER_MSEC), DISPATCH_TIME_FOREVER, 0);
+            }
+        });
+        dispatch_source_set_timer(timer, dispatch_time(start, [events[0][@"atMs"] doubleValue] * NSEC_PER_MSEC), DISPATCH_TIME_FOREVER, 0);
+        dispatch_resume(timer);
         return;
     }
     done(@{@"error": @"unknown operation"});
