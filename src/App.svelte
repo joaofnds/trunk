@@ -10,7 +10,7 @@ import TabBar from "./components/TabBar.svelte";
 import Toast from "./components/Toast.svelte";
 import Toolbar from "./components/Toolbar.svelte";
 import UpdateControl from "./components/UpdateControl.svelte";
-import UpdateDialog from "./components/UpdateDialog.svelte";
+import UpdatePanel from "./components/UpdatePanel.svelte";
 import WelcomeScreen from "./components/WelcomeScreen.svelte";
 import { AutofetchScheduler } from "./lib/autofetch.js";
 import type { FetchReport } from "./lib/autofetch-status.js";
@@ -70,8 +70,6 @@ import type { TabInfo } from "./lib/tab-types.js";
 import { createTabId } from "./lib/tab-types.js";
 import { showToast } from "./lib/toast.svelte.js";
 import type { ContentMode, ReviewTone, ThreadFilter } from "./lib/types.js";
-import Button from "./lib/ui/Button.svelte";
-import Dialog from "./lib/ui/Dialog.svelte";
 import {
 	createUndoRedoState,
 	type UndoRedoManager,
@@ -86,8 +84,6 @@ let updateOpen = $state(false);
 let updateBusy = $state(false);
 let updateFrozen = $state(false);
 let confirmUpdateVersion = $state<string | null>(null);
-let downloadedNotice = $state<UpdateStatus | null>(null);
-let lastNotifiedVersion: string | null = null;
 let updateError = $state<string | null>(null);
 let updateRetry = $state<"status" | "readiness" | null>(null);
 let tabsRestored = $state(false);
@@ -100,15 +96,6 @@ function acceptUpdateStatus(status: UpdateStatus | null | undefined): void {
 	if (!status) return;
 
 	updateStatus = status;
-
-	if (
-		status.phase === "ready" &&
-		status.version &&
-		lastNotifiedVersion !== status.version
-	) {
-		lastNotifiedVersion = status.version;
-		downloadedNotice = status;
-	}
 
 	if (
 		confirmUpdateVersion &&
@@ -293,7 +280,7 @@ $effect(() => {
 		if (
 			!updateFrozen ||
 			(event.target instanceof Element &&
-				event.target.closest("[data-update-dialog]"))
+				event.target.closest("[data-update-panel]"))
 		)
 			return;
 		event.preventDefault();
@@ -1225,18 +1212,81 @@ $effect(() => {
 				onreviewthreadshiddenchange={handleReviewThreadsHiddenChange}
 			/>
 		{/if}
-		{#if updateStatus &&
-			["available", "downloading", "ready"].includes(updateStatus.phase)}
+		{#if updateOpen ||
+			updateFrozen ||
+			(updateStatus &&
+				["available", "downloading", "ready", "recovery"].includes(
+					updateStatus.phase,
+				))}
 			<div class="flex shrink-0 items-center border-l border-border pl-2 pr-3">
 				<UpdateControl
 					status={updateStatus}
-					busy={updateBusy || updateFrozen}
-					ondetails={() => (updateOpen = true)}
+					busy={updateBusy}
+					frozen={updateFrozen}
+					bind:open={updateOpen}
+					onclose={() => (confirmUpdateVersion = null)}
 					oncheck={() => void updateAction(updates.check)}
 					ondownload={(version) =>
 						void updateAction(() => updates.download(version))}
-					onrestart={(version) => (confirmUpdateVersion = version)}
-				/>
+					onrestart={(version) => {
+						confirmUpdateVersion = version;
+						updateOpen = true;
+					}}
+				>
+					{#snippet children(closePanel)}
+						<UpdatePanel
+							status={updateStatus}
+							busy={updateBusy}
+							frozen={updateFrozen}
+							error={updateError}
+							confirmVersion={confirmUpdateVersion}
+							retry={updateRetry
+								? {
+										label:
+											updateRetry === "readiness"
+												? "Retry startup verification"
+												: "Retry update status",
+										run: () => void retryStartupUpdate(),
+									}
+								: undefined}
+							onclose={closePanel}
+							onenable={() => void updateAction(() => updates.enable(true))}
+							oncheck={() => void updateAction(updates.check)}
+							ondownload={(version) =>
+								void updateAction(() => updates.download(version))}
+							onrestart={(version) => {
+								confirmUpdateVersion = version;
+								updateOpen = true;
+							}}
+							onconfirmcancel={() => (confirmUpdateVersion = null)}
+							onconfirm={(version) => {
+								if (
+									version !== confirmUpdateVersion ||
+									updateStatus?.phase !== "ready" ||
+									updateStatus.version !== version
+								)
+									return;
+
+								confirmUpdateVersion = null;
+								updateOpen = true;
+								void updateAction(async () => {
+									await preparation.install(version);
+									return undefined;
+								});
+							}}
+							oncancel={() =>
+								void updates
+									.cancel()
+									.then(acceptUpdateStatus)
+									.catch((error) => {
+										updateError = errorMessage(
+											error,
+											"Download cancellation failed.",
+										);
+									})}
+						/>
+					{/snippet}
+				</UpdateControl>
 			</div>
 		{/if}
 	</header>
@@ -1340,94 +1390,3 @@ $effect(() => {
 
 	<Toast />
 </div>
-
-{#if updateOpen && (updateStatus || updateRetry)}
-	<UpdateDialog
-		status={updateStatus}
-		busy={updateBusy}
-		frozen={updateFrozen || updateStatus?.phase === "recovery"}
-		error={updateError}
-		retry={updateRetry
-			? {
-					label:
-						updateRetry === "readiness"
-							? "Retry startup verification"
-							: "Retry update status",
-					run: () => void retryStartupUpdate(),
-				}
-			: undefined}
-		onclose={() => (updateOpen = false)}
-		onenable={() => void updateAction(() => updates.enable(true))}
-		oncheck={() => void updateAction(updates.check)}
-		ondownload={(version) => void updateAction(() => updates.download(version))}
-		onrestart={(version) => (confirmUpdateVersion = version)}
-		oncancel={() =>
-			void updates
-				.cancel()
-				.then((status) => {
-					updateStatus = status;
-				})
-				.catch((error) => {
-					updateError = errorMessage(error, "Download cancellation failed.");
-				})}
-	/>
-{/if}
-
-{#if confirmUpdateVersion}
-	{@const version = confirmUpdateVersion}
-	<Dialog
-		title={`Restart and install ${version}?`}
-		oncancel={() => (confirmUpdateVersion = null)}
-	>
-		<p class="text-body leading-normal"
-			>Trunk will save your supported drafts and restart. Finish or cancel
-			active Git operations first.</p
-		>
-		<div class="flex justify-end gap-2 mt-4">
-			<Button onclick={() => (confirmUpdateVersion = null)}>Cancel</Button>
-			<Button
-				variant="primary"
-				onclick={() => {
-					const versionToInstall = version;
-
-					confirmUpdateVersion = null;
-					downloadedNotice = null;
-					updateOpen = true;
-					void updateAction(async () => {
-						await preparation.install(versionToInstall);
-						return undefined;
-					});
-				}}
-				>Restart and install {version}</Button
-			>
-		</div>
-	</Dialog>
-{/if}
-{#if downloadedNotice && !updateOpen && !confirmUpdateVersion}
-	<section
-		aria-label="Update downloaded"
-		class="fixed bottom-4 right-4 z-50 w-dialog-min max-w-full rounded border border-border bg-surface-raised text-text p-4 shadow-lg flex flex-col gap-2 text-body"
-	>
-		<p class="font-semibold">Update downloaded</p>
-		<p
-			>Restart Trunk from the update button to install
-			{downloadedNotice.version}.</p
-		>
-		<div class="flex justify-end gap-2">
-			<Button
-				size="sm"
-				onclick={() => {
-					downloadedNotice = null;
-					updateOpen = true;
-				}}
-				>Read more</Button
-			>
-			<Button
-				size="sm"
-				variant="ghost"
-				onclick={() => (downloadedNotice = null)}
-				>Dismiss</Button
-			>
-		</div>
-	</section>
-{/if}

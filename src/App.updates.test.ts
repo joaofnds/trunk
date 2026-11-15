@@ -141,7 +141,7 @@ describe("App update readiness", () => {
 		});
 
 		app.start();
-		await screen.findByRole("dialog");
+		await screen.findByRole("region", { name: "Trunk updates" });
 		await app.settle();
 
 		expect(app.host.count("updates_ready")).toBe(0);
@@ -220,8 +220,8 @@ describe("App update controls", () => {
 			await screen.findByRole("button", { name: "Restart to update to 2.0.0" }),
 		).toBeEnabled();
 		expect(
-			screen.getByRole("region", { name: "Update downloaded" }),
-		).toBeVisible();
+			screen.queryByRole("region", { name: "Update downloaded" }),
+		).toBeNull();
 		expect(
 			app.host.requests.filter(({ cmd }) => cmd === "updates_download"),
 		).toEqual([{ cmd: "updates_download", args: { version: "2.0.0" } }]);
@@ -251,9 +251,9 @@ describe("App update controls", () => {
 		);
 		await app.settle();
 
-		expect(screen.getByRole("dialog", { name: "Trunk updates" })).toBeVisible();
+		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
 		expect(
-			within(screen.getByRole("dialog", { name: "Trunk updates" })).getByRole(
+			within(screen.getByRole("region", { name: "Trunk updates" })).getByRole(
 				"status",
 			),
 		).toHaveTextContent("The update signature or signed version is invalid");
@@ -283,7 +283,7 @@ describe("App update controls", () => {
 		await app.settle();
 
 		expect(app.host.count("updates_check")).toBe(1);
-		expect(screen.queryByRole("dialog", { name: "Trunk updates" })).toBeNull();
+		expect(screen.queryByRole("region", { name: "Trunk updates" })).toBeNull();
 	});
 	it("prepares and installs the confirmed version with its preparation token", async () => {
 		startup();
@@ -333,6 +333,8 @@ describe("App update controls", () => {
 		expect(
 			screen.getByRole("link", { name: "Download a release" }),
 		).toBeVisible();
+		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
+		expect(screen.queryByRole("dialog")).toBeNull();
 	});
 	it("keeps an available update in the title bar when the sidebar is collapsed", async () => {
 		startup();
@@ -382,9 +384,7 @@ describe("App update controls", () => {
 		await fireEvent.focus(
 			screen.getByRole("button", { name: "Download update 2.0.0" }),
 		);
-		expect(
-			screen.getByRole("region", { name: "Trunk 2.0.0 release notes" }),
-		).toBeVisible();
+		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
 
 		await app.activate("other");
 		await app.settle();
@@ -393,7 +393,7 @@ describe("App update controls", () => {
 			screen.getAllByRole("button", { name: "Download update 2.0.0" }),
 		).toHaveLength(1);
 	});
-	it("dismisses update notes before Escape closes the current diff", async () => {
+	it("dismisses the update panel before Escape closes the current diff", async () => {
 		startup();
 		const available: UpdateStatus = {
 			...manual,
@@ -430,15 +430,13 @@ describe("App update controls", () => {
 
 		await fireEvent.keyDown(trigger, { key: "Escape" });
 
-		expect(
-			screen.queryByRole("region", { name: "Trunk 2.0.0 release notes" }),
-		).toBeNull();
+		expect(screen.queryByRole("region", { name: "Trunk updates" })).toBeNull();
 		expect(screen.getByRole("button", { name: "Close diff" })).toBeVisible();
 
 		await fireEvent.keyDown(trigger, { key: "Escape" });
 		expect(screen.queryByRole("button", { name: "Close diff" })).toBeNull();
 	});
-	it("keeps app update notes attached when the sidebar switches to reviews", async () => {
+	it("keeps the update panel attached when the sidebar switches to reviews", async () => {
 		startup();
 		const available: UpdateStatus = {
 			...manual,
@@ -456,15 +454,11 @@ describe("App update controls", () => {
 		await fireEvent.mouseEnter(
 			screen.getByRole("button", { name: "Download update 2.0.0" }),
 		);
-		expect(
-			screen.getByRole("region", { name: "Trunk 2.0.0 release notes" }),
-		).toBeVisible();
+		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
 
 		await app.enterReview();
 
-		expect(
-			screen.getByRole("region", { name: "Trunk 2.0.0 release notes" }),
-		).toBeVisible();
+		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
 		expect(
 			screen.getAllByRole("button", {
 				name: "Download update 2.0.0",
@@ -491,11 +485,14 @@ describe("App update controls", () => {
 			screen.getByRole("button", { name: "Restart to update to 2.0.0" }),
 		);
 		expect(
-			screen.getByRole("dialog", { name: "Restart and install 2.0.0?" }),
+			screen.getByRole("heading", { name: "Restart and install 2.0.0?" }),
 		).toBeVisible();
 		await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
 		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(
+			screen.queryByRole("heading", { name: "Restart and install 2.0.0?" }),
+		).toBeNull();
 		expect(app.host.count("updates_prepare")).toBe(0);
 		expect(app.host.count("updates_install")).toBe(0);
 	});
@@ -522,11 +519,14 @@ describe("App update controls", () => {
 
 		expect(screen.queryByRole("dialog")).toBeNull();
 		expect(
+			screen.queryByRole("heading", { name: "Restart and install 2.0.0?" }),
+		).toBeNull();
+		expect(
 			screen.getByRole("button", { name: "Restart to update to 3.0.0" }),
 		).toBeEnabled();
 		expect(app.host.count("updates_prepare")).toBe(0);
 	});
-	it("does not repeat a dismissed download notice for repeated snapshots", async () => {
+	it("keeps downloaded snapshots quiet and exposes restart guidance on hover without notes", async () => {
 		startup().start();
 		await app.settle();
 		const ready: UpdateStatus = {
@@ -536,19 +536,32 @@ describe("App update controls", () => {
 			eligible: true,
 			adopted: true,
 		};
+
 		await app.host.emit("updates-changed", ready);
 		await app.settle();
-		expect(
-			screen.getByRole("region", { name: "Update downloaded" }),
-		).toBeVisible();
-		await fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
-
 		await app.host.emit("updates-changed", ready);
 		await app.settle();
 
 		expect(
 			screen.queryByRole("region", { name: "Update downloaded" }),
 		).toBeNull();
+		expect(screen.queryByRole("region", { name: "Trunk updates" })).toBeNull();
+		expect(screen.queryByRole("dialog")).toBeNull();
+
+		await fireEvent.mouseEnter(
+			screen.getByRole("button", { name: "Restart to update to 2.0.0" }),
+		);
+
+		const panel = screen.getByRole("region", { name: "Trunk updates" });
+		expect(panel).toHaveTextContent("Restart Trunk");
+		expect(panel).toHaveTextContent("2.0.0");
+		expect(
+			within(panel).getByRole("link", { name: "Update details" }),
+		).toHaveAttribute(
+			"href",
+			"https://github.com/joaofnds/trunk/releases/tag/v2.0.0",
+		);
+		expect(app.host.count("updates_prepare")).toBe(0);
 	});
 	it.each(["ready", "available"] as const)(
 		"checks from the native menu in %s state",
@@ -593,7 +606,7 @@ describe("App update controls", () => {
 
 			expect(app.host.count("updates_check")).toBe(0);
 			expect(
-				screen.getByRole("dialog", { name: "Trunk updates" }),
+				screen.getByRole("region", { name: "Trunk updates" }),
 			).toBeVisible();
 		},
 	);

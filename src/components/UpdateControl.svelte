@@ -2,23 +2,36 @@
 import Download from "@lucide/svelte/icons/download";
 import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 import RotateCw from "@lucide/svelte/icons/rotate-cw";
-import { tick } from "svelte";
+import { type Snippet, tick } from "svelte";
 import Button from "../lib/ui/Button.svelte";
 import type { UpdateStatus } from "../lib/updates.js";
 
 interface Props {
 	status: UpdateStatus | null;
 	busy: boolean;
+	frozen: boolean;
+	open: boolean;
+	children: Snippet<[() => void]>;
+	onclose(): void;
 	oncheck(): void;
-	ondetails(): void;
 	ondownload(version: string): void;
 	onrestart(version: string): void;
 }
-let { status, busy, oncheck, ondetails, ondownload, onrestart }: Props =
-	$props();
+let {
+	status,
+	busy,
+	frozen,
+	open = $bindable(),
+	children,
+	onclose,
+	oncheck,
+	ondownload,
+	onrestart,
+}: Props = $props();
 let trigger: HTMLDivElement;
 let popup: HTMLDivElement | undefined;
-let notesOpen = $state(false);
+let hovered = $state(false);
+const visible = $derived(open || hovered);
 let suppressFocusOpen = false;
 const eligible = $derived(status?.eligible && status.adopted);
 const checking = $derived(status?.phase === "checking");
@@ -41,35 +54,53 @@ const label = $derived(
 					? `Download update ${status?.version}`
 					: "Check for updates",
 );
-const showNotes = $derived(
-	Boolean(eligible && status?.notes && (available || ready || downloading)),
-);
-
 function activate() {
-	notesOpen = false;
 	if (busy && !downloading) return;
 
+	hovered = false;
 	if (available && status?.version) ondownload(status.version);
 	else if (ready && status?.version) onrestart(status.version);
 	else if (eligible && status?.phase === "idle") oncheck();
-	else ondetails();
+	else open = true;
+}
+function close() {
+	if (frozen) return;
+
+	if (popup?.contains(document.activeElement)) focusTrigger();
+	hovered = false;
+	open = false;
+	onclose();
 }
 function leave(event: MouseEvent | FocusEvent) {
+	if (event.type === "mouseleave" && hasFocus()) return;
+
 	const next = event.relatedTarget;
 	if (next instanceof Node && (trigger.contains(next) || popup?.contains(next)))
 		return;
 
-	notesOpen = false;
+	hovered = false;
 }
 function outside(event: MouseEvent | FocusEvent) {
+	if (event.type === "pointermove" && hasFocus()) return;
+
 	const target = event.target;
 	if (
-		target instanceof Node &&
-		!trigger.contains(target) &&
-		!popup?.contains(target)
+		!(target instanceof Node) ||
+		trigger.contains(target) ||
+		popup?.contains(target)
 	)
-		notesOpen = false;
+		return;
+
+	if (event.type === "pointerdown") close();
+	else hovered = false;
 }
+function hasFocus(): boolean {
+	return (
+		trigger.contains(document.activeElement) ||
+		Boolean(popup?.contains(document.activeElement))
+	);
+}
+
 function place(node: HTMLDivElement) {
 	popup = node;
 	document.body.appendChild(node);
@@ -98,7 +129,7 @@ function focusTrigger() {
 	suppressFocusOpen = false;
 }
 async function key(event: KeyboardEvent) {
-	if (!notesOpen || !showNotes) return;
+	if (!visible || frozen) return;
 
 	const target = event.target;
 	const fromTrigger = target instanceof Node && trigger.contains(target);
@@ -107,19 +138,33 @@ async function key(event: KeyboardEvent) {
 	if (event.key === "Escape") {
 		event.preventDefault();
 		event.stopImmediatePropagation();
-		notesOpen = false;
-		if (popup?.contains(document.activeElement)) focusTrigger();
+		close();
 	} else if (event.key === "Tab" && !event.shiftKey && fromTrigger) {
 		event.preventDefault();
 		await tick();
-		popup?.querySelector("button")?.focus();
-	} else if (event.key === "Tab" && event.shiftKey && fromPopup) {
+		popup
+			?.querySelector<HTMLElement>("button:not(:disabled), a[href]")
+			?.focus();
+	} else if (
+		event.key === "Tab" &&
+		event.shiftKey &&
+		fromPopup &&
+		target === popup?.querySelector("button:not(:disabled), a[href]")
+	) {
 		event.preventDefault();
 		focusTrigger();
-	} else if (event.key === "Tab" && fromPopup) {
-		// Resume the app's normal tab order after the portaled notes.
+	} else if (
+		event.key === "Tab" &&
+		!event.shiftKey &&
+		fromPopup &&
+		target ===
+			Array.from(
+				popup?.querySelectorAll("button:not(:disabled), a[href]") ?? [],
+			).at(-1)
+	) {
+		// Resume the app's tab order after the portaled panel.
 		focusTrigger();
-		notesOpen = false;
+		close();
 	}
 }
 $effect(() => {
@@ -130,19 +175,20 @@ $effect(() => {
 
 <svelte:window
 	onpointermove={outside}
+	onpointerdown={outside}
 	onfocusin={outside}
-	onresize={() => (notesOpen = false)}
+	onresize={close}
 />
 <div bind:this={trigger} class="flex items-center">
 	<Button
 		icon
 		aria-label={label}
-		tooltip={showNotes ? undefined : (status?.message ?? label)}
-		disabled={checking || (busy && !downloading)}
+		aria-expanded={visible}
+		disabled={frozen}
 		onclick={activate}
-		onmouseenter={() => (notesOpen = showNotes)}
+		onmouseenter={() => (hovered = true)}
 		onfocus={() => {
-			if (!suppressFocusOpen) notesOpen = showNotes;
+			if (!suppressFocusOpen) hovered = true;
 		}}
 		onblur={leave}
 		onmouseleave={leave}
@@ -184,27 +230,9 @@ $effect(() => {
 		</span>
 	</Button>
 </div>
-{#if notesOpen && showNotes && status}
-	<div use:place class="fixed z-50 w-dialog-min max-w-full flex flex-col">
-		<section
-			aria-label={`Trunk ${status.version} release notes`}
-			class="min-h-0 overflow-hidden rounded border border-border p-4 text-text shadow-lg flex flex-col gap-3 bg-surface text-body"
-		>
-			<h3 class="text-callout font-semibold">Trunk {status.version}</h3>
-			<p class="text-text-muted">{label}</p>
-			<p
-				class="min-h-0 whitespace-pre-wrap break-words max-h-dialog-lg-max overflow-auto"
-				>{status.notes}</p
-			>
-			<Button
-				size="sm"
-				onclick={() => {
-					notesOpen = false;
-					ondetails();
-				}}
-				>Update details</Button
-			>
-		</section>
+{#if visible}
+	<div use:place class="fixed z-1000 w-dialog-min max-w-full overflow-auto">
+		{@render children(close)}
 	</div>
 {/if}
 <style>

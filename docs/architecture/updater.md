@@ -19,7 +19,7 @@ translocated applications, and recognized package-manager paths are ineligible.
 An eligible installation still requires explicit adoption. Adoption records the
 canonical installation path; moving the application requires adopting it again.
 The path checks cannot identify every externally managed installation. The
-adoption dialog asks the user to establish that this is a direct installation.
+adoption prompt asks the user to establish that this is a direct installation.
 
 Adopted installations check after 15 seconds and every four hours while running.
 A failed check gets at most three exponential retries with jitter. Checks pause
@@ -30,16 +30,20 @@ when an update is available, downloading, or ready to restart. Idle and automati
 checks add no window controls. The icon stays in the same app-level location
 across repositories, reviews, and interactive rebase, without adding a row or
 reducing content height. Its action follows the update state: download, open
-progress and cancellation details, or request a restart. Hovering or focusing the
-icon exposes available release notes; Tab enters their details action and Escape
-closes them. A completed download produces one notice per version, with a Read
-more action.
+progress and cancellation controls, or request a restart. Hovering or focusing the
+icon opens a compact anchored panel with the current state and its actions, even
+when release notes are absent. Update details opens the matching GitHub release
+in the default browser; release notes are not rendered inside Trunk. Tab enters
+the panel and Escape closes it. A completed download changes the button to its
+restart state without opening a panel or showing a notification.
 
 Check for Updates in the native menu starts a check immediately for adopted,
 eligible installations in idle, available, or ready state. Other states open their
-details, including manual installation, adoption, download cancellation, and
-recovery. Restart requires confirmation naming the exact downloaded version
-before draft preparation begins. A changed version invalidates that confirmation.
+anchored panel, including manual installation, adoption, download cancellation,
+and recovery. An explicit menu request or an update error can reveal the control
+outside its usual actionable states. Restart requires confirmation inside that
+panel, naming the exact downloaded version before draft preparation begins. A
+changed version invalidates that confirmation. Updates use no modal dialog.
 A downloaded update stays in memory until quit; checking again, including a failed
 check, preserves it. There is no automatic installation or downgrade.
 

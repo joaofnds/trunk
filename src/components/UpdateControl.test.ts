@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
+import { createRawSnippet } from "svelte";
 import { describe, expect, it } from "vitest";
 import type { UpdateStatus } from "../lib/updates.js";
 import UpdateControl from "./UpdateControl.svelte";
@@ -14,13 +15,26 @@ const idle: UpdateStatus = {
 	eligible: true,
 	adopted: true,
 };
+const panel = createRawSnippet<[() => void]>((close) => ({
+	render: () =>
+		'<section aria-label="Trunk updates"><a href="https://github.com/joaofnds/trunk/releases">Update details</a><button>Close</button></section>',
+	setup: (element) => {
+		const button = element.querySelector("button");
+		const closePanel = () => close()();
+		button?.addEventListener("click", closePanel);
+		return () => button?.removeEventListener("click", closePanel);
+	},
+}));
 function mount(status = idle) {
 	const actions: string[] = [];
 	const view = render(UpdateControl, {
 		status,
 		busy: false,
+		frozen: false,
+		open: false,
+		children: panel,
+		onclose: () => {},
 		oncheck: () => actions.push("check"),
-		ondetails: () => actions.push("details"),
 		ondownload: (version) => actions.push(`download:${version}`),
 		onrestart: (version) => actions.push(`confirm:${version}`),
 	});
@@ -49,77 +63,103 @@ describe("update control", () => {
 			expect(actions).toEqual([action]);
 		},
 	);
-	it("makes release notes available from keyboard focus without starting a download", async () => {
+	it("opens the panel on keyboard focus without starting a download", async () => {
 		const { actions } = mount({
 			...idle,
 			phase: "available",
 			version: "2.0.0",
-			notes: "<script>release notes</script>",
 		});
 
 		await fireEvent.focus(
 			screen.getByRole("button", { name: "Download update 2.0.0" }),
 		);
 
-		expect(
-			screen.getByRole("region", { name: "Trunk 2.0.0 release notes" }),
-		).toHaveTextContent("<script>release notes</script>");
-		expect(document.querySelector("script")).toBeNull();
+		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
 		expect(actions).toEqual([]);
 	});
-	it("routes Tab into release notes and Escape back without reopening them", async () => {
-		mount({ ...idle, phase: "available", version: "2.0.0", notes: "Changes" });
+	it("routes Tab into the panel and Escape back without reopening it", async () => {
+		mount({ ...idle, phase: "available", version: "2.0.0" });
 		const trigger = screen.getByRole("button", {
 			name: "Download update 2.0.0",
 		});
 		trigger.focus();
 		await fireEvent.keyDown(trigger, { key: "Tab" });
-		expect(
-			screen.getByRole("button", { name: "Update details" }),
-		).toHaveFocus();
+		expect(screen.getByRole("link", { name: "Update details" })).toHaveFocus();
 
 		await fireEvent.keyDown(
-			screen.getByRole("button", { name: "Update details" }),
+			screen.getByRole("link", { name: "Update details" }),
 			{ key: "Escape" },
 		);
 
 		expect(trigger).toHaveFocus();
-		expect(
-			screen.queryByRole("region", { name: "Trunk 2.0.0 release notes" }),
-		).toBeNull();
+		expect(screen.queryByRole("region", { name: "Trunk updates" })).toBeNull();
 	});
-	it("leaves Escape available after a status change removes release notes", async () => {
-		const view = mount({
-			...idle,
-			phase: "available",
-			version: "2.0.0",
-			notes: "Changes",
-		});
-		const trigger = screen.getByRole("button", {
-			name: "Download update 2.0.0",
-		});
-		await fireEvent.focus(trigger);
-		await view.rerender({ status: idle });
+	it("leaves Tab between panel actions to the browser", async () => {
+		mount({ ...idle, phase: "available", version: "2.0.0" });
+		await fireEvent.focus(
+			screen.getByRole("button", { name: "Download update 2.0.0" }),
+		);
+		const details = screen.getByRole("link", { name: "Update details" });
+		details.focus();
 
-		const unhandled = await fireEvent.keyDown(trigger, { key: "Escape" });
+		const unhandled = await fireEvent.keyDown(details, { key: "Tab" });
 
 		expect(unhandled).toBe(true);
+		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
 	});
-	it("reveals notes on hover without moving keyboard focus", async () => {
-		mount({ ...idle, phase: "available", version: "2.0.0", notes: "Changes" });
+	it("returns focus to the update button when the panel closes", async () => {
+		mount();
+		const trigger = screen.getByRole("button", { name: "Check for updates" });
+		trigger.focus();
+		await fireEvent.keyDown(trigger, { key: "Tab" });
+		const close = screen.getByRole("button", { name: "Close" });
+		close.focus();
+
+		await fireEvent.click(close);
+
+		expect(trigger).toHaveFocus();
+		expect(screen.queryByRole("region", { name: "Trunk updates" })).toBeNull();
+	});
+	it("reveals ready guidance on hover even without release notes", async () => {
+		mount({ ...idle, phase: "ready", version: "2.0.0", notes: null });
 		const focused = document.activeElement;
 
 		await fireEvent.mouseEnter(
-			screen.getByRole("button", { name: "Download update 2.0.0" }),
+			screen.getByRole("button", { name: "Restart to update to 2.0.0" }),
 		);
 
-		expect(
-			screen.getByRole("region", { name: "Trunk 2.0.0 release notes" }),
-		).toBeVisible();
+		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
 		expect(document.activeElement).toBe(focused);
 	});
-	it("opens cancellation details while displaying download progress", async () => {
-		const { actions, rerender } = mount({
+	it("keeps an explicitly opened panel visible while the pointer is elsewhere", async () => {
+		const view = mount();
+		await view.rerender({ open: true });
+
+		await fireEvent.pointerMove(document.body);
+
+		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
+	});
+	it("keeps keyboard-focused actions visible when the pointer leaves", async () => {
+		mount();
+		const trigger = screen.getByRole("button", { name: "Check for updates" });
+		trigger.focus();
+		await fireEvent.keyDown(trigger, { key: "Tab" });
+
+		await fireEvent.pointerMove(document.body);
+
+		expect(screen.getByRole("link", { name: "Update details" })).toHaveFocus();
+	});
+	it("keeps the focused trigger's panel visible after mouse leave", async () => {
+		mount();
+		const trigger = screen.getByRole("button", { name: "Check for updates" });
+		trigger.focus();
+
+		await fireEvent.mouseLeave(trigger, { relatedTarget: document.body });
+
+		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
+	});
+	it("opens cancellation controls during download", async () => {
+		const { rerender, actions } = mount({
 			...idle,
 			phase: "downloading",
 			downloaded: 40,
@@ -127,29 +167,22 @@ describe("update control", () => {
 		});
 		await rerender({ busy: true });
 
-		expect(
-			screen.getByRole("button", { name: "Downloading update: 40%" }),
-		).toBeEnabled();
 		await fireEvent.click(
 			screen.getByRole("button", { name: "Downloading update: 40%" }),
 		);
 
-		expect(actions).toEqual(["details"]);
+		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
+		expect(actions).toEqual([]);
 	});
-	it("keeps unsupported installations on the manual route", async () => {
-		const { actions } = mount({ ...idle, phase: "manual", eligible: false });
+	it("keeps the preparation panel visible on Escape", async () => {
+		const view = mount({ ...idle, phase: "ready", version: "2.0.0" });
+		await view.rerender({ open: true, frozen: true });
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: "Check for updates" }),
-		);
+		await fireEvent.keyDown(window, { key: "Escape" });
 
-		expect(actions).toEqual(["details"]);
-	});
-	it("prevents a duplicate check while checking", () => {
-		mount({ ...idle, phase: "checking" });
-
+		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
 		expect(
-			screen.getByRole("button", { name: "Checking for updates…" }),
+			screen.getByRole("button", { name: "Restart to update to 2.0.0" }),
 		).toBeDisabled();
 	});
 });
