@@ -41,6 +41,7 @@ interface Props {
 	treeViewEnabled?: boolean;
 	ontreeviewtoggle?: () => void;
 	nav?: CommitNav | null;
+	navigationNav?: CommitNav | null;
 	onnavigate?: (oid: string) => void;
 	/** False while the review panel holds the center, whose J and K move between threads. */
 	pagerKeys?: boolean;
@@ -71,6 +72,7 @@ let {
 	treeViewEnabled = false,
 	ontreeviewtoggle,
 	nav = null,
+	navigationNav = nav,
 	onnavigate,
 	pagerKeys = true,
 	reviewComments,
@@ -117,12 +119,13 @@ async function showFileContextMenu(e: MouseEvent, file: FileStatus) {
 // flows without focusing the graph. Vim-style: j = down = older, k = up = newer.
 // Arrow keys are left to CommitGraph's own (container-scoped) handler.
 function handlePaneKeydown(e: KeyboardEvent) {
-	if (!nav || !pagerKeys) return;
+	if (!navigationNav || !pagerKeys) return;
 	const chord = keyChord(e);
 	if (chord !== "j" && chord !== "k") return;
 	if (focusInEditable(document.activeElement)) return;
 
-	const target = chord === "j" ? nav.olderOid : nav.newerOid;
+	const target =
+		chord === "j" ? navigationNav.olderOid : navigationNav.newerOid;
 	if (target === null) return;
 
 	e.preventDefault();
@@ -166,8 +169,9 @@ let commitNotes = $derived(
 					variant="ghost"
 					aria-label="Go to newer commit"
 					title="Newer commit"
-					disabled={nav.newerOid === null}
-					onclick={() => nav?.newerOid && onnavigate?.(nav.newerOid)}
+					disabled={!navigationNav?.newerOid}
+					onclick={() =>
+						navigationNav?.newerOid && onnavigate?.(navigationNav.newerOid)}
 					><ChevronUp size={13} /></Button
 				>
 				<span class="pager-pos"
@@ -179,8 +183,9 @@ let commitNotes = $derived(
 					variant="ghost"
 					aria-label="Go to older commit"
 					title="Older commit"
-					disabled={nav.olderOid === null}
-					onclick={() => nav?.olderOid && onnavigate?.(nav.olderOid)}
+					disabled={!navigationNav?.olderOid}
+					onclick={() =>
+						navigationNav?.olderOid && onnavigate?.(navigationNav.olderOid)}
 					><ChevronDown size={13} /></Button
 				>
 			</span>

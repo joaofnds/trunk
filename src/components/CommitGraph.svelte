@@ -122,6 +122,8 @@ interface Props {
 	onready?: () => void;
 	repoPath: string;
 	oncommitselect?: (oid: string, mods?: SelectModifiers) => void;
+	oncomparecommits?: (baseOid: string, targetOid: string) => void;
+	oncommitnavigate?: (oid: string) => void;
 	// Reports the WIP-inclusive display list + pagination state whenever they
 	// change, so the parent can compute commit nav (pager + child chips) itself
 	// via computeCommitNav — independent of whether this component is mounted
@@ -139,6 +141,7 @@ interface Props {
 	cachedGraphRevision?: number;
 	refreshImmediately?: boolean;
 	selectedCommitOid?: string | null;
+	navigationCommitOid?: string | null;
 	/** OIDs of the active compare's picked rows, highlighted like the selection. */
 	compareOids?: ReadonlySet<string>;
 	onopenrebaseeditor?: (baseOid: string, inclusive?: boolean) => void;
@@ -167,6 +170,8 @@ let {
 	repoPath,
 	onready,
 	oncommitselect,
+	oncomparecommits,
+	oncommitnavigate,
 	oncommitschange,
 	wipCount = 0,
 	wipMessage = "WIP",
@@ -179,6 +184,7 @@ let {
 	cachedGraphRevision,
 	refreshImmediately = false,
 	selectedCommitOid,
+	navigationCommitOid = selectedCommitOid,
 	compareOids = new Set<string>(),
 	onopenrebaseeditor,
 	onopenmessageeditor,
@@ -257,6 +263,7 @@ let hasMore = $state(true);
 let loading = $state(false);
 let error = $state<string | null>(null);
 let offset = $state(0);
+let scrollSequence = 0;
 let listRef = $state<{
 	scroll: (opts: {
 		index: number;
@@ -627,6 +634,7 @@ let searchQuery = $state("");
 let searchResults = $state<SearchResult[]>([]);
 let searchCurrentIndex = $state(0);
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let searchGeneration = 0;
 
 // Derived: Set of matching OIDs for O(1) lookup in CommitRow
 const searchMatchOids = $derived(new Set(searchResults.map((r) => r.oid)));
@@ -1064,11 +1072,13 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 		| Awaited<ReturnType<typeof PredefinedMenuItem.new>>
 	)[] = [];
 	if (selectedCommitOid && selectedCommitOid !== commit.oid) {
+		const baseOid = selectedCommitOid;
 		compareItems.push(
 			await MenuItem.new({
 				text: "Compare with selected commit",
 				action: () => {
-					oncommitselect?.(commit.oid, { compare: true });
+					scrollSequence += 1;
+					oncomparecommits?.(baseOid, commit.oid);
 				},
 			}),
 			await PredefinedMenuItem.new({ item: "Separator" }),
@@ -1859,7 +1869,14 @@ async function loadMore(): Promise<PageResult> {
 /** Scroll the graph to center the row for the given OID.
  * Loads additional history batches if the commit is not yet loaded.
  * Called from App.svelte via bind:this (GRAPH-03). */
-export async function scrollToOid(oid: string): Promise<void> {
+export async function scrollToOid(
+	oid: string,
+	isStillRequested: () => boolean = () => true,
+): Promise<void> {
+	const sequence = ++scrollSequence;
+	const isCurrent = () => sequence === scrollSequence && isStillRequested();
+	if (!isCurrent()) return;
+
 	let idx = displayItems.findIndex((c) => c.oid === oid);
 
 	// Load more batches until found or all commits exhausted. A page that did
@@ -1869,11 +1886,15 @@ export async function scrollToOid(oid: string): Promise<void> {
 	let stalled = 0;
 	while (idx < 0 && hasMore && !loading && stalled < PAGE_ATTEMPT_BUDGET) {
 		stalled = (await loadMore()) === "appended" ? 0 : stalled + 1;
+		if (!isCurrent()) return;
+
 		await tick();
+		if (!isCurrent()) return;
+
 		idx = displayItems.findIndex((c) => c.oid === oid);
 	}
 
-	if (idx < 0 || !listRef) return;
+	if (!isCurrent() || idx < 0 || !listRef) return;
 
 	// Center the row in the viewport by computing the scroll offset manually.
 	// VirtualList doesn't support 'center' alignment, so we calculate:
@@ -2122,33 +2143,84 @@ $effect(() => {
 
 	return () => {
 		unlisten?.();
-		if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
 	};
 });
 
+$effect(() => {
+	const path = repoPath;
+	void tabActive;
+
+	return () => {
+		invalidateSearchRequest();
+		if (path !== repoPath) {
+			searchResults = [];
+			searchCurrentIndex = 0;
+		}
+	};
+});
+
+function invalidateSearchRequest() {
+	searchGeneration += 1;
+	if (searchDebounceTimer !== null) {
+		clearTimeout(searchDebounceTimer);
+		searchDebounceTimer = null;
+	}
+}
+
+function isCurrentSearch(generation: number, path: string): boolean {
+	return (
+		graphActive &&
+		tabActive &&
+		searchOpen &&
+		path === repoPath &&
+		generation === searchGeneration
+	);
+}
+
+function selectSearchResult(oid: string) {
+	const generation = searchGeneration;
+	const path = repoPath;
+
+	void scrollToOid(
+		oid,
+		() =>
+			isCurrentSearch(generation, path) &&
+			searchResults[searchCurrentIndex]?.oid === oid,
+	);
+	(oncommitnavigate ?? oncommitselect)?.(oid);
+}
+
 function handleSearchQueryChange(query: string) {
 	searchQuery = query;
-	if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+	invalidateSearchRequest();
+	const generation = searchGeneration;
+	const path = repoPath;
+	const isCurrent = () => isCurrentSearch(generation, path);
+	searchResults = [];
+	searchCurrentIndex = 0;
 
-	if (!query.trim()) {
-		searchResults = [];
-		searchCurrentIndex = 0;
-		return;
-	}
+	if (!query.trim()) return;
 
 	searchDebounceTimer = setTimeout(async () => {
+		searchDebounceTimer = null;
+		if (!isCurrent()) return;
+
 		try {
 			const results = await safeInvoke<SearchResult[]>("search_commits", {
-				path: repoPath,
+				path,
 				query: query.trim(),
 			});
+			if (!isCurrent()) return;
+
 			searchResults = results;
 			searchCurrentIndex = 0;
 			if (results.length > 0) {
-				scrollToOid(results[0].oid);
-				oncommitselect?.(results[0].oid);
+				selectSearchResult(results[0].oid);
 			}
-		} catch {
+		} catch (error) {
+			if (!isCurrent()) return;
+
+			reportErrorToast(error, "Could not search commits");
 			searchResults = [];
 			searchCurrentIndex = 0;
 		}
@@ -2157,30 +2229,33 @@ function handleSearchQueryChange(query: string) {
 
 function handleSearchNext() {
 	if (searchResults.length === 0) return;
+
 	searchCurrentIndex = (searchCurrentIndex + 1) % searchResults.length;
 	const oid = searchResults[searchCurrentIndex].oid;
-	scrollToOid(oid);
-	oncommitselect?.(oid);
+	selectSearchResult(oid);
 }
 
 function handleSearchPrev() {
 	if (searchResults.length === 0) return;
+
 	searchCurrentIndex =
 		(searchCurrentIndex - 1 + searchResults.length) % searchResults.length;
 	const oid = searchResults[searchCurrentIndex].oid;
-	scrollToOid(oid);
-	oncommitselect?.(oid);
+	selectSearchResult(oid);
 }
 
 function handleSearchClose() {
+	invalidateSearchRequest();
 	searchOpen = false;
 	searchQuery = "";
 	searchResults = [];
 	searchCurrentIndex = 0;
-	if (searchDebounceTimer) {
-		clearTimeout(searchDebounceTimer);
-		searchDebounceTimer = null;
-	}
+}
+
+function handleRowSelect(oid: string, mods?: SelectModifiers) {
+	scrollSequence += 1;
+	if (oid === "__wip__") onWipClick?.();
+	else oncommitselect?.(oid, mods);
 }
 
 // Keyboard arrow navigation for commit selection
@@ -2194,7 +2269,7 @@ function handleKeydown(e: KeyboardEvent) {
 	const items = displayItems;
 	if (items.length === 0) return;
 
-	const currentIdx = items.findIndex((c) => c.oid === selectedCommitOid);
+	const currentIdx = items.findIndex((c) => c.oid === navigationCommitOid);
 
 	let nextIdx: number;
 	if (chord === "ArrowDown") {
@@ -2207,13 +2282,16 @@ function handleKeydown(e: KeyboardEvent) {
 	}
 
 	const commit = items[nextIdx];
+	const sequence = ++scrollSequence;
 	if (commit.oid === "__wip__") {
 		onWipClick?.();
 	} else {
-		oncommitselect?.(commit.oid);
+		(oncommitnavigate ?? oncommitselect)?.(commit.oid);
 	}
 
 	tick().then(() => {
+		if (sequence !== scrollSequence) return;
+
 		const row = containerRef?.querySelector(
 			`[data-original-index="${nextIdx}"]`,
 		);
@@ -2887,9 +2965,7 @@ $effect(() => {
 						<CommitRow
 							{commit}
 							rowIndex={index}
-							onselect={commit.oid === "__wip__"
-								? () => onWipClick?.()
-								: oncommitselect}
+							onselect={handleRowSelect}
 							oncontextmenu={handleRowContextMenu}
 							onenter={() => (hoveredRow = index)}
 							onleave={() => (hoveredRow = null)}

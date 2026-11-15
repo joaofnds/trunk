@@ -31,6 +31,11 @@
 @end
 static CGVirtualDisplay *probeDisplay;
 
+@interface WKWebView (ProcessProbe)
+- (pid_t)_webProcessIdentifier;
+- (pid_t)_gpuProcessIdentifier;
+@end
+
 @interface NSEvent (ProbeRelative)
 - (NSEvent *)_eventRelativeToWindow:(NSWindow *)window;
 @end
@@ -83,6 +88,13 @@ static void execute(NSDictionary *request, void (^done)(NSDictionary *)) {
     WKWebView *view = webView();
     if (!view) { done(@{@"error": @"no WKWebView"}); return; }
     NSString *op = request[@"op"];
+    if ([op isEqual:@"processes"]) {
+        if (![view respondsToSelector:@selector(_webProcessIdentifier)] || ![view respondsToSelector:@selector(_gpuProcessIdentifier)]) {
+            done(@{@"error": @"process identifiers unavailable"}); return;
+        }
+        done(@{@"host": @(getpid()), @"web": @([view _webProcessIdentifier]), @"gpu": @([view _gpuProcessIdentifier])});
+        return;
+    }
     if (([op isEqual:@"wheel"] || [op isEqual:@"sequence"]) &&
         ![NSEvent instancesRespondToSelector:@selector(_eventRelativeToWindow:)]) {
         done(@{@"error": @"window-relative NSEvent API unavailable"});

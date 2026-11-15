@@ -371,10 +371,15 @@ function handleReviewJump(comment: Thread) {
 // review mode before selecting the commit. The idempotent variant keeps a
 // re-click on the selected commit's header from toggling it off.
 async function handleReviewJumpToCommit(oid: string) {
+	navigationIntent += 1;
+	commitSelectGeneration += 1;
+	const isCurrent = snapshotNavigationIntent();
+	requestedCommitOid = oid;
 	onleavereview();
 	await tick();
-	await selectCommitIdempotent(oid);
-	await commitGraphRef?.scrollToOid(oid);
+	if (!isCurrent()) return;
+
+	await navigateToCommit(oid);
 }
 
 // Per-repo state
@@ -532,6 +537,7 @@ function prepareCurrentFileRead(path: string, reportError: boolean): void {
 }
 
 async function openCurrentFile(filePath: string) {
+	cancelPendingCommitSelection();
 	finderOpen = false;
 	currentFileGeneration += 1;
 	currentFileDiffs = [];
@@ -555,6 +561,7 @@ function closeCurrentFile() {
 
 // Commit selection (from CommitGraph)
 let selectedCommitOid = $state<string | null>(null);
+let requestedCommitOid = $state<string | null>(null);
 let commitDetail = $state<CommitDetailType | null>(null);
 let commitDetailStat = $state<DiffStat | null>(null);
 // Replace this array wholesale: $state.raw ignores an in-place mutation, so a
@@ -577,6 +584,7 @@ let commitDiffMode = $state<ContentMode | null>(null);
 // response can't clobber a newer one, and a failed switch's catch arm can tell
 // it's still the latest before clearing state.
 let commitSelectGeneration = 0;
+let navigationIntent = 0;
 
 // Compare selection (TRUNK-1): the Base → Target pair picked in the graph.
 // Detail/file state loads per pair; a stale response is dropped by generation.
@@ -606,6 +614,11 @@ let graphHasMore = $state(false);
 let commitNav = $derived(
 	computeCommitNav(graphDisplayItems, selectedCommitOid ?? null, graphHasMore),
 );
+let requestedCommitNav = $derived(
+	requestedCommitOid === selectedCommitOid
+		? commitNav
+		: computeCommitNav(graphDisplayItems, requestedCommitOid, graphHasMore),
+);
 
 // Diff-in-view navigation (spec 2026-08-18): non-null = mode active. Remembers
 // the path last opened (click or auto-open) so a commit switch can reopen it.
@@ -617,7 +630,7 @@ let commitEmpty = $state(false);
 
 // CommitGraph component ref -- used to call scrollToOid for ref navigation (GRAPH-03)
 let commitGraphRef = $state<{
-	scrollToOid: (oid: string) => Promise<void>;
+	scrollToOid: (oid: string, isStillRequested?: () => boolean) => Promise<void>;
 	showGraph: (graph: GraphResponse) => void;
 	loadedRows: () => number;
 } | null>(null);
@@ -1013,8 +1026,25 @@ function clearCommitFileDiff() {
 	commitEmpty = false;
 }
 
+function snapshotNavigationIntent(): () => boolean {
+	const intent = navigationIntent;
+	const path = repoPath;
+
+	return () =>
+		repoViewActive && path === repoPath && intent === navigationIntent;
+}
+
+function cancelPendingCommitSelection() {
+	navigationIntent += 1;
+	commitSelectGeneration += 1;
+	requestedCommitOid = selectedCommitOid;
+}
+
 function clearCommit() {
+	navigationIntent += 1;
+	commitSelectGeneration += 1;
 	commitDiffLoadSeq += 1;
+	requestedCommitOid = null;
 	selectedCommitOid = null;
 	commitDetail = null;
 	commitDetailStat = null;
@@ -1222,6 +1252,7 @@ function handleWipClick() {
 }
 
 function handleDiffClose() {
+	cancelPendingCommitSelection();
 	if (selectedCurrentFile) closeCurrentFile();
 	else if (selectedCompareFile) selectedCompareFile = null;
 	else if (selectedFile) clearStagingDiff();
@@ -1263,14 +1294,17 @@ async function handleFileSelect(
 	path: string,
 	kind: "unstaged" | "staged" | "conflicted",
 ) {
+	cancelPendingCommitSelection();
 	if (selectedFile?.path === path && selectedFile?.kind === kind) {
 		clearStagingDiff();
 		return;
 	}
+
 	selectedFile = { path, kind };
 	// Close the review panel (swap to diff) so the clicked file is visible (260531-l02d).
 	if (reviewSession.state.reviewActive) reviewSession.showDiff();
 	if (!repoPath) return;
+
 	if (kind === "conflicted") {
 		// MergeEditor loads its own data via get_merge_sides
 		selectGeneration += 1;
@@ -1281,6 +1315,7 @@ async function handleFileSelect(
 		stagingDiffMode = null;
 		return;
 	}
+
 	await loadSelectedFileDiff(path, kind, undefined, true);
 }
 
@@ -1289,48 +1324,66 @@ async function handleFileSelect(
 // seam the review-panel jump binds to: the jump gesture must never
 // clear the very target it's about to scroll to.
 async function selectCommitIdempotent(oid: string) {
+	navigationIntent += 1;
 	// A jump or navigation lands on a single commit's diff, so any open compare
 	// dissolves — otherwise the compare pane keeps rendering over the target.
-	// Safe under applySelection: every transition that changes the anchor also
-	// returns a null compare, so the applyCompare that follows never re-fetches.
+	// applySelection starts this read before publishing its comparison, so the
+	// reset happens in the same turn as the gesture that requested it.
 	if (compare !== null) clearCompare();
-	if (selectedCommitOid === oid && commitDetail !== null) return;
-	// Switching to commit view -- close any open staging diff
-	clearStagingDiff();
-	selectedCommitFile = null;
-	commitEmpty = false;
+	const gen = ++commitSelectGeneration;
+	requestedCommitOid = oid;
+	if (selectedCommitOid === oid && commitDetail?.oid === oid) return;
 
 	// Auto-open right pane if collapsed (LAYOUT-01). Review mode has none to open.
 	if (rightPaneCollapsed && !reviewMode) {
 		onrightpanecollapsedchange(false);
 	}
 
-	selectedCommitOid = oid;
-	const gen = ++commitSelectGeneration;
 	// Selecting a commit/ref while the review panel is open swaps the center pane to
 	// the diff so the user sees what they clicked (260531-l02d). showDiff is also what
 	// the jump gesture does, so this is consistent (and harmless when review is off).
 	if (reviewSession.state.reviewActive) reviewSession.showDiff();
 	if (!repoPath) return;
+
+	const path = repoPath;
+	// Statistics supplement usable details and files; failure only omits totals.
+	const statistics = safeInvoke<DiffStat>("commit_stat", {
+		path,
+		oid,
+	}).catch(() => null);
 	try {
-		const [files, detail, stat] = await Promise.all([
+		const [files, detail] = await Promise.all([
 			safeInvoke<FileDiff[]>("list_commit_files", {
-				path: repoPath,
+				path,
 				oid,
 			}),
 			safeInvoke<CommitDetailType>("get_commit_detail", {
-				path: repoPath,
+				path,
 				oid,
 			}),
-			safeInvoke<DiffStat>("commit_stat", {
-				path: repoPath,
-				oid,
-			}).catch(() => null),
 		]);
-		if (gen !== commitSelectGeneration) return;
+		if (!repoViewActive || path !== repoPath || gen !== commitSelectGeneration)
+			return;
+
+		clearStagingDiff();
+		selectedCommitFile = null;
+		commitEmpty = false;
+		selectedCommitOid = oid;
+		commitDetailStat = null;
 		commitFileDiffs = files;
 		commitDetail = detail;
-		commitDetailStat = stat;
+		void statistics.then((stat) => {
+			if (
+				stat === null ||
+				!repoViewActive ||
+				path !== repoPath ||
+				selectedCommitOid !== oid ||
+				commitDetail?.oid !== oid
+			)
+				return;
+
+			commitDetailStat = stat;
+		});
 
 		// Diff-in-view navigation: reconcile the remembered path against the new
 		// commit's file list. Lives inline here, never in an $effect — an effect
@@ -1347,13 +1400,12 @@ async function selectCommitIdempotent(oid: string) {
 				commitEmpty = true;
 			}
 		}
-	} catch {
-		if (gen !== commitSelectGeneration) return;
-		commitFileDiffs = [];
-		commitDetail = null;
-		commitDetailStat = null;
-		commitEmpty = false;
-		diffInViewPath = null;
+	} catch (error) {
+		if (!repoViewActive || path !== repoPath || gen !== commitSelectGeneration)
+			return;
+
+		reportErrorToast(error, "Could not load commit details");
+		clearCommit();
 	}
 }
 
@@ -1371,7 +1423,13 @@ function clearCompare() {
 	compareGeneration++;
 }
 
+function handleCompareClose() {
+	navigationIntent += 1;
+	clearCompare();
+}
+
 async function applyCompare(pair: ComparePair | null) {
+	navigationIntent += 1;
 	if (pair === null) {
 		if (compare !== null) clearCompare();
 		return;
@@ -1419,12 +1477,20 @@ async function applyCompare(pair: ComparePair | null) {
 }
 
 async function applySelection(next: SelectionState) {
+	let selection: Promise<void> | undefined;
 	if (next.selectedOid === null) {
-		if (selectedCommitOid !== null) clearCommit();
-	} else if (next.selectedOid !== selectedCommitOid) {
-		await selectCommitIdempotent(next.selectedOid);
+		if (requestedCommitOid !== null) clearCommit();
+	} else if (next.selectedOid !== requestedCommitOid) {
+		selection = selectCommitIdempotent(next.selectedOid);
 	}
-	await applyCompare(next.compare);
+	await Promise.all([selection, applyCompare(next.compare)]);
+}
+
+async function handleCompareCommits(baseOid: string, targetOid: string) {
+	await applySelection({
+		selectedOid: baseOid,
+		compare: { baseOid, targetOid, picked: [baseOid, targetOid] },
+	});
 }
 
 function firstParentOfLoaded(oid: string): string | null {
@@ -1433,7 +1499,7 @@ function firstParentOfLoaded(oid: string): string | null {
 
 async function handleCompareSwap() {
 	await applyCompare(
-		swapCompare({ selectedOid: selectedCommitOid, compare }).compare,
+		swapCompare({ selectedOid: requestedCommitOid, compare }).compare,
 	);
 }
 
@@ -1479,6 +1545,7 @@ async function reloadCompareFile(
 
 // Compare file clicks toggle like commit-detail file clicks.
 async function handleCompareFileSelect(path: string) {
+	navigationIntent += 1;
 	if (selectedCompareFile === path) {
 		compareDiffLoadSeq += 1;
 		selectedCompareFile = null;
@@ -1496,11 +1563,12 @@ async function handleCompareFileSelect(path: string) {
 // through the compare state machine. The rune uses `selectCommitIdempotent`
 // directly.
 async function handleCommitSelect(oid: string, mods?: SelectModifiers) {
-	const current: SelectionState = { selectedOid: selectedCommitOid, compare };
+	const current: SelectionState = { selectedOid: requestedCommitOid, compare };
 	if (mods?.compare) {
 		await applySelection(cmdClick(current, oid));
 		return;
 	}
+
 	if (mods?.range) {
 		const order = graphDisplayItems
 			.filter((c) => c.oid !== "__wip__")
@@ -1508,14 +1576,17 @@ async function handleCommitSelect(oid: string, mods?: SelectModifiers) {
 		await applySelection(shiftClick(current, oid, order, firstParentOfLoaded));
 		return;
 	}
+
 	if (compare !== null) {
 		await applySelection(plainClick(current, oid));
 		return;
 	}
-	if (selectedCommitOid === oid) {
+
+	if (requestedCommitOid === oid) {
 		clearCommit();
 		return;
 	}
+
 	await selectCommitIdempotent(oid);
 }
 
@@ -1523,14 +1594,23 @@ async function handleCommitSelect(oid: string, mods?: SelectModifiers) {
  * (idempotent — never toggles) and center the graph on it. Mirrors the tail of
  * handleRefNavigate without the toggle hazard of handleCommitSelect. */
 async function navigateToCommit(oid: string) {
-	await selectCommitIdempotent(oid);
-	await commitGraphRef?.scrollToOid(oid);
+	const selection = selectCommitIdempotent(oid);
+	const isCurrent = snapshotNavigationIntent();
+
+	await selection;
+	if (!isCurrent() || requestedCommitOid !== oid || selectedCommitOid !== oid)
+		return;
+
+	await commitGraphRef?.scrollToOid(oid, isCurrent);
 }
 
 /** Resolve a ref name or OID to a commit OID, select it, and scroll the graph to it (GRAPH-03). */
 async function handleRefNavigate(refNameOrOid: string) {
 	if (!repoPath) return;
 
+	cancelPendingCommitSelection();
+	const isCurrent = snapshotNavigationIntent();
+	const path = repoPath;
 	let oid: string;
 
 	// If it looks like a full git OID (40 hex chars), use directly (stash case)
@@ -1540,7 +1620,7 @@ async function handleRefNavigate(refNameOrOid: string) {
 		// Resolve ref name to OID via backend
 		try {
 			oid = await safeInvoke<string>("resolve_ref", {
-				path: repoPath,
+				path,
 				refName: refNameOrOid,
 			});
 		} catch {
@@ -1548,11 +1628,9 @@ async function handleRefNavigate(refNameOrOid: string) {
 		}
 	}
 
-	// Select commit (loads detail into right pane, also auto-opens pane via handleCommitSelect)
-	await handleCommitSelect(oid);
+	if (!isCurrent()) return;
 
-	// Scroll graph to the commit row
-	await commitGraphRef?.scrollToOid(oid);
+	await navigateToCommit(oid);
 }
 
 function countDiffLines(fileDiffs: FileDiff[]): number {
@@ -1666,10 +1744,12 @@ async function selectCommitFileIdempotent(path: string) {
 // Toggle wrapper for CommitDetail file clicks: re-clicking the selected file
 // clears it. The rune uses `selectCommitFileIdempotent` directly.
 async function handleCommitFileSelect(path: string) {
+	cancelPendingCommitSelection();
 	if (selectedCommitFile === path) {
 		clearCommitFileDiff();
 		return;
 	}
+
 	await selectCommitFileIdempotent(path);
 }
 
@@ -2002,7 +2082,7 @@ $effect(() => {
 			handleDiffClose();
 		} else if (compare !== null) {
 			e.preventDefault();
-			clearCompare();
+			handleCompareClose();
 		}
 	}
 	window.addEventListener("keydown", handleKeydown);
@@ -2701,6 +2781,8 @@ function stepRightPane(delta: number) {
 						bind:this={commitGraphRef}
 						{repoPath}
 						oncommitselect={handleCommitSelect}
+						oncomparecommits={handleCompareCommits}
+						oncommitnavigate={selectCommitIdempotent}
 						oncommitschange={(items, hasMore) => {
 							graphDisplayItems = items;
 							graphHasMore = hasMore;
@@ -2721,6 +2803,7 @@ function stepRightPane(delta: number) {
 						{cachedGraphRevision}
 						{refreshImmediately}
 						{selectedCommitOid}
+						navigationCommitOid={requestedCommitOid}
 						onopenrebaseeditor={handleOpenRebaseEditor}
 						onopenmessageeditor={handleOpenMessageEditor}
 						{tabActive}
@@ -2752,7 +2835,7 @@ function stepRightPane(delta: number) {
 					<LazyView
 						load={() => import("./ComparePanel.svelte")}
 						label="comparison"
-						oncancel={clearCompare}
+						oncancel={handleCompareClose}
 					>
 						{#snippet children(ComparePanel)}
 							<ComparePanel
@@ -2763,7 +2846,7 @@ function stepRightPane(delta: number) {
 								selectedFile={selectedCompareFile}
 								onfileselect={handleCompareFileSelect}
 								onswap={handleCompareSwap}
-								onclose={clearCompare}
+								onclose={handleCompareClose}
 								{treeViewEnabled}
 								ontreeviewtoggle={handleTreeViewToggle}
 							/>
@@ -2795,6 +2878,7 @@ function stepRightPane(delta: number) {
 								{treeViewEnabled}
 								ontreeviewtoggle={handleTreeViewToggle}
 								nav={commitNav}
+								navigationNav={requestedCommitNav}
 								pagerKeys={!reviewMode}
 								onnavigate={navigateToCommit}
 							/>

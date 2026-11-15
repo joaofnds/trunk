@@ -1,0 +1,926 @@
+import { setImmediate } from "node:timers/promises";
+import {
+	cleanup,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/svelte";
+import { tick } from "svelte";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
+import {
+	installDomPolyfills,
+	restoreDomPolyfills,
+} from "../../tests/app/harness/dom.js";
+import { makeCommit } from "../__tests__/helpers/factories.js";
+import { RepositoryReadHost } from "../__tests__/helpers/repository-read-host.js";
+import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
+import { createRemoteState } from "../lib/remote-state.svelte.js";
+import { SCHEDULER } from "../lib/scheduler.js";
+import { _resetToasts, toasts } from "../lib/toast.svelte.js";
+import type { CommitDetail, FileDiff } from "../lib/types.js";
+import { createUndoRedoState } from "../lib/undo-redo.svelte.js";
+import RepoView from "./RepoView.svelte";
+
+let host: RepositoryReadHost;
+
+beforeEach(() => {
+	_resetToasts();
+	host = new RepositoryReadHost();
+	host.install();
+	installDomPolyfills({ viewportHeight: 200 });
+});
+
+afterEach(() => {
+	vi.useRealTimers();
+	_resetToasts();
+	cleanup();
+	host.dispose();
+	restoreDomPolyfills();
+});
+
+describe("RepoView commit selection", () => {
+	it("keeps a newer comparison after an older ref lookup resolves", async () => {
+		seedBranch();
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+		const ref = host.holdNextReply("resolve_ref");
+		await fireEvent.click(await screen.findByText("topic"));
+		await ref.entered;
+		await compareCommit("first", "third");
+
+		seedCommit("second");
+		ref.release("second");
+		await drainReplies();
+
+		expect(screen.getByTestId("compare-header")).toHaveTextContent(
+			"first change",
+		);
+		expect(screen.getByTestId("compare-header")).toHaveTextContent(
+			"third change",
+		);
+	});
+
+	it("keeps a newer comparison-file selection after an older ref lookup resolves", async () => {
+		seedBranch();
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+		await compareCommit("first", "third", [fileDiff("comparison")]);
+		const ref = host.holdNextReply("resolve_ref");
+		await fireEvent.click(await screen.findByText("topic"));
+		await ref.entered;
+		host.seedResponse("diff_compare_file", [fileDiff("comparison")]);
+		await fireEvent.click(screen.getByText("comparison.txt"));
+		await screen.findByText("comparison file content");
+
+		seedCommit("second");
+		ref.release("second");
+		await drainReplies();
+
+		expect(screen.getByText("comparison file content")).toBeVisible();
+		expect(screen.getByTestId("compare-header")).toHaveTextContent(
+			"third change",
+		);
+	});
+
+	it("keeps a comparison swap after an older ref lookup resolves", async () => {
+		seedBranch();
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+		await compareCommit("first", "third");
+		const ref = host.holdNextReply("resolve_ref");
+		await fireEvent.click(await screen.findByText("topic"));
+		await ref.entered;
+		const base = host.holdNextReply("get_commit_detail");
+		const target = host.holdNextReply("get_commit_detail");
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Swap comparison direction" }),
+		);
+		await base.entered;
+		await target.entered;
+		base.release(detailFor("third"));
+		target.release(detailFor("first"));
+		await drainReplies();
+
+		seedCommit("second");
+		ref.release("second");
+		await drainReplies();
+
+		expect(screen.getByTestId("compare-header")).toHaveTextContent(
+			"third change",
+		);
+		expect(
+			host.requests.filter(({ cmd }) => cmd === "list_compare_files").at(-1)
+				?.args,
+		).toMatchObject({ baseOid: "third", targetOid: "first" });
+	});
+
+	it("keeps a comparison closed after an older ref lookup resolves", async () => {
+		seedBranch();
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+		await compareCommit("first", "third");
+		const ref = host.holdNextReply("resolve_ref");
+		await fireEvent.click(await screen.findByText("topic"));
+		await ref.entered;
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Close comparison" }),
+		);
+		await screen.findByText("first.txt");
+
+		seedCommit("second");
+		ref.release("second");
+		await drainReplies();
+
+		expect(screen.queryByTestId("compare-header")).toBeNull();
+		expect(screen.getByTestId("commit-detail")).toHaveTextContent(
+			"first change",
+		);
+	});
+
+	it("finishes pending anchor metadata while a comparison owns navigation", async () => {
+		await openRepository();
+		const anchor = host.holdNextReply("get_commit_detail");
+		await selectCommit("first");
+		await anchor.entered;
+		await compareCommit("first", "third");
+
+		anchor.release(detailFor("first"));
+		await drainReplies();
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Close comparison" }),
+		);
+
+		expect(await screen.findByText("first.txt")).toBeVisible();
+		expect(screen.getByTestId("commit-detail")).toHaveTextContent(
+			"first change",
+		);
+	});
+
+	it("keeps a newer row selection after an older ref lookup resolves", async () => {
+		seedBranch();
+		await openRepository();
+		const ref = host.holdNextReply("resolve_ref");
+		await fireEvent.click(await screen.findByText("topic"));
+		await ref.entered;
+		await selectCommit("second");
+		await screen.findByText("second.txt");
+
+		seedCommit("first");
+		ref.release("first");
+		await drainReplies();
+
+		expect(commitRow("second")).toHaveAttribute("aria-selected", "true");
+		expect(screen.getByTestId("commit-detail")).toHaveTextContent(
+			"second change",
+		);
+	});
+
+	it("does not scroll an obsolete ref selection after its metadata finishes", async () => {
+		seedBranch();
+		const view = await openRepository();
+		const scrolls = recordGraphScrolls(view.container);
+		const detail = host.holdNextReply("get_commit_detail");
+		seedCommit("first");
+		await fireEvent.click(await screen.findByText("topic"));
+		await detail.entered;
+		await selectCommit("second");
+		await screen.findByText("second.txt");
+
+		detail.release(detailFor("first"));
+		await drainReplies();
+
+		expect(scrolls).toEqual([]);
+		expect(commitRow("second")).toHaveAttribute("aria-selected", "true");
+	});
+
+	it("keeps the selected commit when its ref is clicked again", async () => {
+		seedBranch();
+		await openRepository();
+		seedCommit("first");
+		await fireEvent.click(await screen.findByText("topic"));
+		await screen.findByText("first.txt");
+
+		await fireEvent.click(screen.getByText("topic"));
+		await drainReplies();
+
+		expect(screen.getByTestId("commit-detail")).toHaveTextContent(
+			"first change",
+		);
+		expect(commitRow("first")).toHaveAttribute("aria-selected", "true");
+	});
+
+	it("does not scroll an obsolete review jump after its metadata finishes", async () => {
+		host.seedResponse("list_session_commits", [
+			aSessionCommit({
+				oid: "first",
+				short_oid: "first",
+				summary: "first change",
+			}),
+		]);
+		const view = await openRepository();
+		await view.rerender({
+			reviewActive: true,
+			onleavereview: () => void view.rerender({ reviewActive: false }),
+		});
+		const detail = host.holdNextReply("get_commit_detail");
+		seedCommit("first");
+		await fireEvent.click(await screen.findByLabelText("Jump to commit first"));
+		await detail.entered;
+		await screen.findAllByTestId("commit-row");
+		const scrolls = recordGraphScrolls(view.container);
+		await selectCommit("second");
+		await screen.findByText("second.txt");
+
+		detail.release(detailFor("first"));
+		await drainReplies();
+
+		expect(scrolls).toEqual([]);
+		expect(commitRow("second")).toHaveAttribute("aria-selected", "true");
+	});
+
+	it.each(["Next match", "Enter"])(
+		"keeps the sole search result selected after $0",
+		async (gesture) => {
+			await openRepository();
+			seedCommit("first");
+			host.seedResponse("search_commits", [{ oid: "first" }]);
+			await host.emit("search-toggle", null);
+			const search = await screen.findByPlaceholderText("Search commits…");
+			vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+			await fireEvent.input(search, { target: { value: "first" } });
+			await vi.advanceTimersByTimeAsync(200);
+			vi.useRealTimers();
+			await screen.findByText("first.txt");
+
+			if (gesture === "Enter")
+				await fireEvent.keyDown(search, { key: "Enter" });
+			else
+				await fireEvent.click(
+					screen.getByRole("button", { name: "Next match" }),
+				);
+			await drainReplies();
+
+			expect(screen.getByTestId("commit-detail")).toHaveTextContent(
+				"first change",
+			);
+			expect(commitRow("first")).toHaveAttribute("aria-selected", "true");
+		},
+	);
+
+	it("shows usable files and details before optional statistics finish", async () => {
+		const statistics = host.holdNextReply("commit_stat");
+		await openRepository();
+
+		await selectCommit("first");
+		await statistics.entered;
+
+		expect(await screen.findByText("first.txt")).toBeVisible();
+		expect(screen.getByTestId("commit-detail")).toHaveTextContent(
+			"first change",
+		);
+		expect(
+			within(screen.getByTestId("commit-detail")).queryByText("+17"),
+		).toBeNull();
+	});
+
+	it("opens the selected commit's file while its statistics are pending", async () => {
+		host.holdNextReply("commit_stat");
+		await openRepository();
+		await selectCommit("first");
+
+		await fireEvent.click(await screen.findByText("first.txt"));
+
+		expect(await screen.findByText("first file content")).toBeVisible();
+	});
+
+	it("adds statistics to the already usable selected commit", async () => {
+		const statistics = host.holdNextReply("commit_stat");
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+
+		statistics.release({ files_changed: 1, insertions: 17, deletions: 2 });
+
+		expect(
+			await within(screen.getByTestId("commit-detail")).findByText("+17"),
+		).toBeVisible();
+	});
+
+	it("keeps the previous selection coherent until the next metadata arrives", async () => {
+		await openRepository();
+		await selectCommit("first");
+		await within(await screen.findByTestId("commit-detail")).findByText("+17");
+		const files = host.holdNextReply("list_commit_files");
+
+		await selectCommit("second");
+		await files.entered;
+		await drainReplies();
+
+		expect(screen.getByTestId("commit-detail")).toHaveTextContent(
+			"first change",
+		);
+		expect(commitRow("first")).toHaveAttribute("aria-selected", "true");
+		expect(commitRow("second")).toHaveAttribute("aria-selected", "false");
+	});
+
+	it("keeps a newer working-file selection when pending commit metadata arrives", async () => {
+		host.seedResponse("get_status", {
+			unstaged: [{ path: "working.txt", status: "Modified", is_binary: false }],
+			staged: [],
+			conflicted: [],
+		});
+		host.seedResponse("diff_unstaged", [fileDiff("working")]);
+		await openRepository();
+		await screen.findByText("working.txt");
+		const detail = host.holdNextReply("get_commit_detail");
+		await selectCommit("first");
+		await detail.entered;
+
+		await fireEvent.click(screen.getByText("working.txt"));
+		await screen.findByText("working file content");
+		detail.release(detailFor("first"));
+		await drainReplies();
+
+		expect(screen.getByText("working file content")).toBeVisible();
+		expect(screen.queryByTestId("commit-detail")).toBeNull();
+	});
+
+	it("keeps a newly opened displayed-commit file when pending metadata arrives", async () => {
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+		const detail = host.holdNextReply("get_commit_detail");
+		await selectCommit("second");
+		await detail.entered;
+		host.seedResponse("diff_commit_file", [fileDiff("first")]);
+
+		await fireEvent.click(screen.getByText("first.txt"));
+		await screen.findByText("first file content");
+		detail.release(detailFor("second"));
+		await drainReplies();
+
+		expect(screen.getByText("first file content")).toBeVisible();
+		expect(screen.getByTestId("commit-detail")).toHaveTextContent(
+			"first change",
+		);
+	});
+
+	it("keeps a current-source file selected after pending commit metadata arrives", async () => {
+		host.seedResponse("list_tracked_files", [
+			{ path: "current.txt", changed: false },
+		]);
+		host.seedResponse("open_current_file", [fileDiff("current")]);
+		const view = await openRepository();
+		const detail = host.holdNextReply("get_commit_detail");
+		await selectCommit("first");
+		await detail.entered;
+		await view.rerender({ reviewActive: true });
+		await fireEvent.click(await screen.findByText(/Comment on a file/));
+
+		await fireEvent.click(
+			await screen.findByRole("option", { name: "current.txt" }),
+		);
+		await screen.findByText("current file content");
+		detail.release(detailFor("first"));
+		await drainReplies();
+		await view.rerender({ reviewActive: false });
+		await screen.findByRole("button", { name: "Commit" });
+
+		expect(screen.getByText("current file content")).toBeVisible();
+		expect(screen.queryByTestId("commit-detail")).toBeNull();
+	});
+
+	it("compares against the displayed selection from its context menu", async () => {
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+		const pending = host.holdNextReply("get_commit_detail");
+		await selectCommit("second");
+		await pending.entered;
+		seedComparison();
+		const base = host.holdNextReply("get_commit_detail");
+		const target = host.holdNextReply("get_commit_detail");
+		await fireEvent.contextMenu(commitRow("second"));
+		await waitFor(() =>
+			expect(host.contextMenu.items()).toContainEqual({
+				label: "Compare with selected commit",
+				enabled: true,
+			}),
+		);
+
+		host.contextMenu.choose("Compare with selected commit");
+		await drainReplies();
+
+		expect(
+			host.requests.filter(({ cmd }) => cmd === "list_compare_files").at(-1)
+				?.args,
+		).toMatchObject({ baseOid: "first", targetOid: "second" });
+		base.release(detailFor("first"));
+		target.release(detailFor("second"));
+		await screen.findByTestId("compare-header");
+		pending.release(detailFor("second"));
+		await drainReplies();
+		expect(screen.getByTestId("compare-header")).toHaveTextContent(
+			"first change",
+		);
+		expect(screen.getByTestId("compare-header")).toHaveTextContent(
+			"second change",
+		);
+	});
+
+	it("keeps a newer comparison when an earlier plain selection finishes", async () => {
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+		await compareCommit("first", "second");
+		const pending = host.holdNextReply("get_commit_detail");
+		await selectCommit("third");
+		await pending.entered;
+		await compareCommit("third", "fourth");
+
+		pending.release(detailFor("third"));
+		await drainReplies();
+
+		expect(screen.getByTestId("compare-header")).toHaveTextContent(
+			"third change",
+		);
+		expect(screen.getByTestId("compare-header")).toHaveTextContent(
+			"fourth change",
+		);
+	});
+
+	it.each([
+		{ key: "ArrowDown", start: "first", end: "third" },
+		{ key: "j", start: "first", end: "third" },
+		{ key: "ArrowUp", start: "third", end: "first" },
+		{ key: "k", start: "third", end: "first" },
+	])(
+		"advances twice with $key while metadata is pending",
+		async ({ key, start, end }) => {
+			await openRepository();
+			await selectCommit(start);
+			await screen.findByText(`${start}.txt`);
+			const second = host.holdNextReply("get_commit_detail");
+			const last = host.holdNextReply("get_commit_detail");
+			seedCommit("second");
+			await pressNavigationKey(key);
+			await second.entered;
+
+			seedCommit(end);
+			await pressNavigationKey(key);
+			const requested = await last.entered;
+
+			expect(requested).toMatchObject({ oid: end });
+			last.release(detailFor(end));
+			await screen.findByText(`${end}.txt`);
+			second.release(detailFor("second"));
+			await drainReplies();
+			expect(screen.getByTestId("commit-detail")).toHaveTextContent(
+				`${end} change`,
+			);
+			expect(commitRow(end)).toHaveAttribute("aria-selected", "true");
+		},
+	);
+
+	it("cancels an unfinished step when navigation returns to the displayed commit", async () => {
+		await openRepository();
+		await selectCommit("first");
+		await within(await screen.findByTestId("commit-detail")).findByText("+17");
+		const detail = host.holdNextReply("get_commit_detail");
+		const statistics = host.holdNextReply("commit_stat");
+		seedCommit("second");
+		await pressNavigationKey("j");
+		await detail.entered;
+
+		await pressNavigationKey("k");
+		detail.release(detailFor("second"));
+		statistics.release({ files_changed: 1, insertions: 23, deletions: 2 });
+		await drainReplies();
+
+		expect(screen.getByTestId("commit-detail")).toHaveTextContent(
+			"first change",
+		);
+		expect(commitRow("first")).toHaveAttribute("aria-selected", "true");
+		expect(
+			within(screen.getByTestId("commit-detail")).getByText("+17"),
+		).toBeVisible();
+	});
+
+	it("finishes the displayed commit's statistics after a pending step is cancelled", async () => {
+		const statistics = host.holdNextReply("commit_stat");
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+		const detail = host.holdNextReply("get_commit_detail");
+		seedCommit("second");
+		await pressNavigationKey("j");
+		await detail.entered;
+		await pressNavigationKey("k");
+
+		statistics.release({ files_changed: 1, insertions: 17, deletions: 2 });
+		await drainReplies();
+
+		expect(
+			within(screen.getByTestId("commit-detail")).getByText("+17"),
+		).toBeVisible();
+	});
+
+	it("keeps details closed after an unfinished selection completes", async () => {
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+		const detail = host.holdNextReply("get_commit_detail");
+		await selectCommit("second");
+		await detail.entered;
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Close commit detail" }),
+		);
+		detail.release(detailFor("second"));
+		await drainReplies();
+
+		expect(screen.queryByTestId("commit-detail")).toBeNull();
+		expect(commitRow("first")).toHaveAttribute("aria-selected", "false");
+		expect(commitRow("second")).toHaveAttribute("aria-selected", "false");
+	});
+
+	it("deselects a pending target when that row is clicked again", async () => {
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+		const detail = host.holdNextReply("get_commit_detail");
+		await selectCommit("second");
+		await detail.entered;
+
+		await clickCommit("second");
+		detail.release(detailFor("second"));
+		await drainReplies();
+
+		expect(screen.queryByTestId("commit-detail")).toBeNull();
+		expect(commitRow("second")).toHaveAttribute("aria-selected", "false");
+	});
+
+	it("advances through commit diffs with j while metadata is pending", async () => {
+		await openRepository();
+		await selectCommit("first");
+		await fireEvent.click(await screen.findByText("first.txt"));
+		await screen.findByText("first file content");
+		const second = host.holdNextReply("get_commit_detail");
+		const third = host.holdNextReply("get_commit_detail");
+		seedCommit("second");
+		await fireEvent.keyDown(window, { key: "j" });
+		await second.entered;
+
+		seedCommit("third");
+		await fireEvent.keyDown(window, { key: "j" });
+		expect(await third.entered).toMatchObject({ oid: "third" });
+		third.release(detailFor("third"));
+		await screen.findByText("third file content");
+		second.release(detailFor("second"));
+		await drainReplies();
+
+		expect(screen.getByText("third file content")).toBeVisible();
+		expect(screen.queryByText("second file content")).toBeNull();
+	});
+
+	it("keeps the newest selection when an earlier statistic arrives last", async () => {
+		const earlierStatistics = host.holdNextReply("commit_stat");
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+		await selectCommit("second");
+		await within(await screen.findByTestId("commit-detail")).findByText("+23");
+
+		earlierStatistics.release({
+			files_changed: 1,
+			insertions: 17,
+			deletions: 2,
+		});
+		await drainReplies();
+
+		const detail = screen.getByTestId("commit-detail");
+		expect(detail).toHaveTextContent("second change");
+		expect(within(detail).getByText("+23")).toBeVisible();
+		expect(within(detail).queryByText("+17")).toBeNull();
+	});
+
+	it("keeps a deselected commit closed when its statistics arrive", async () => {
+		const statistics = host.holdNextReply("commit_stat");
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+
+		await clickCommit("first");
+		statistics.release({ files_changed: 1, insertions: 17, deletions: 2 });
+		await drainReplies();
+
+		expect(screen.queryByTestId("commit-detail")).toBeNull();
+		expect(screen.queryByText("first.txt")).toBeNull();
+	});
+
+	it("uses immutable statistics when their commit is selected again", async () => {
+		const earlier = host.holdNextReply("commit_stat");
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+		await clickCommit("first");
+		host.holdNextReply("commit_stat");
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+
+		earlier.release({ files_changed: 1, insertions: 17, deletions: 2 });
+		await drainReplies();
+
+		expect(
+			within(screen.getByTestId("commit-detail")).getByText("+17"),
+		).toBeVisible();
+	});
+
+	it("keeps valid statistics when an earlier read for the same commit fails", async () => {
+		const earlier = host.holdNextReply("commit_stat");
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+		await clickCommit("first");
+		await selectCommit("first");
+		await within(await screen.findByTestId("commit-detail")).findByText("+17");
+
+		earlier.reject({ code: "git_error", message: "statistics unavailable" });
+		await drainReplies();
+
+		expect(
+			within(screen.getByTestId("commit-detail")).getByText("+17"),
+		).toBeVisible();
+	});
+
+	describe("when a read fails", () => {
+		it.each(["get_commit_detail", "list_commit_files"])(
+			"reports a current $0 failure",
+			async (command) => {
+				await openRepository();
+				const read = host.holdNextReply(command);
+				await selectCommit("first");
+				await read.entered;
+
+				read.reject({ code: "git_error", message: "commit data unavailable" });
+				await drainReplies();
+
+				expect(toasts.items).toContainEqual(
+					expect.objectContaining({
+						kind: "error",
+						message: "commit data unavailable",
+					}),
+				);
+				expect(screen.queryByTestId("commit-detail")).toBeNull();
+			},
+		);
+
+		it("ignores an obsolete metadata failure after a newer commit is usable", async () => {
+			await openRepository();
+			const read = host.holdNextReply("get_commit_detail");
+			await selectCommit("first");
+			await read.entered;
+			await selectCommit("second");
+			await screen.findByText("second.txt");
+
+			read.reject({
+				code: "git_error",
+				message: "old commit data unavailable",
+			});
+			await drainReplies();
+
+			expect(toasts.items).toEqual([]);
+			expect(screen.getByTestId("commit-detail")).toHaveTextContent(
+				"second change",
+			);
+		});
+
+		it("retains usable files and details after statistics fail", async () => {
+			const statistics = host.holdNextReply("commit_stat");
+			await openRepository();
+			await selectCommit("first");
+			await screen.findByText("first.txt");
+
+			statistics.reject({
+				code: "git_error",
+				message: "statistics unavailable",
+			});
+			await drainReplies();
+
+			expect(screen.getByText("first.txt")).toBeVisible();
+			expect(screen.getByTestId("commit-detail")).toHaveTextContent(
+				"first change",
+			);
+			expect(toasts.items).toEqual([]);
+		});
+
+		it("does not resurrect failed details when statistics arrive later", async () => {
+			const files = host.holdNextReply("list_commit_files");
+			const statistics = host.holdNextReply("commit_stat");
+			await openRepository();
+			await selectCommit("first");
+			await files.entered;
+			await statistics.entered;
+
+			files.reject({ code: "git_error", message: "file list unavailable" });
+			await drainReplies();
+			statistics.release({ files_changed: 1, insertions: 17, deletions: 2 });
+			await drainReplies();
+
+			expect(screen.queryByTestId("commit-detail")).toBeNull();
+			expect(screen.queryByText("first.txt")).toBeNull();
+		});
+	});
+});
+
+async function openRepository() {
+	host.seedGraph({
+		commits: [
+			makeCommit({ oid: "first", summary: "first change" }),
+			makeCommit({ oid: "second", summary: "second change" }),
+			makeCommit({ oid: "third", summary: "third change" }),
+			makeCommit({ oid: "fourth", summary: "fourth change" }),
+		],
+		max_columns: 1,
+		revision: 1,
+	});
+	const view = render(RepoView, {
+		props: {
+			repoPath: "/repo",
+			repoName: "repo",
+			remoteState: createRemoteState(),
+			undoRedo: createUndoRedoState(),
+			leftPaneWidth: 200,
+			leftPaneCollapsed: false,
+			rightPaneWidth: 300,
+			rightPaneCollapsed: false,
+			tabActive: true,
+			windowFocused: false,
+			reviewActive: false,
+			contentMode: "hunk",
+			oncontentmodechange: () => {},
+			onreviewpanelshowingchange: () => {},
+			onleftpanecollapsedchange: () => {},
+			onrightpanecollapsedchange: () => {},
+			onleftpanewidthchange: () => {},
+			onrightpanewidthchange: () => {},
+			onleavereview: () => {},
+		},
+		context: new Map([[SCHEDULER, new FakeScheduler()]]),
+	});
+
+	await screen.findAllByTestId("commit-row");
+	return view;
+}
+
+function seedBranch(): void {
+	host.seedResponse("list_refs", {
+		local: [
+			{
+				name: "topic",
+				is_head: false,
+				upstream: null,
+				ahead: 0,
+				behind: 0,
+				last_commit_timestamp: 0,
+				remote: null,
+			},
+		],
+		remote: [],
+		tags: [],
+		stashes: [],
+	});
+	host.seedResponse("resolve_ref", "first");
+}
+
+function recordGraphScrolls(container: HTMLElement): number[] {
+	const viewport = container.querySelector<HTMLElement>(
+		".virtual-list-viewport",
+	);
+	if (!viewport) throw new Error("commit graph viewport is not shown");
+
+	const scrolls: number[] = [];
+	viewport.scrollTo = (options?: ScrollToOptions | number) => {
+		if (typeof options !== "number") scrolls.push(options?.top ?? 0);
+	};
+
+	return scrolls;
+}
+
+function detailFor(oid: string): CommitDetail {
+	return {
+		...makeCommit({ oid, summary: `${oid} change` }),
+		committer_name: "Test",
+		committer_email: "test@example.invalid",
+		committer_timestamp: 0,
+	};
+}
+
+async function selectCommit(oid: string): Promise<void> {
+	seedCommit(oid);
+	await clickCommit(oid);
+}
+
+function seedCommit(oid: string): void {
+	const file: FileDiff = {
+		path: `${oid}.txt`,
+		old_path: null,
+		status: "Modified",
+		is_binary: false,
+		hunks: [],
+	};
+	host.seedResponse("get_commit_detail", detailFor(oid));
+	host.seedResponse("list_commit_files", [file]);
+	host.seedResponse("diff_commit_file", [fileDiff(oid)]);
+	host.seedResponse("commit_stat", {
+		files_changed: 1,
+		insertions: oid === "first" ? 17 : 23,
+		deletions: 2,
+	});
+}
+
+function fileDiff(oid: string): FileDiff {
+	return {
+		path: `${oid}.txt`,
+		old_path: null,
+		status: "Modified",
+		is_binary: false,
+		hunks: [
+			{
+				header: "@@ -0,0 +1,1 @@",
+				old_start: 0,
+				old_lines: 0,
+				new_start: 1,
+				new_lines: 1,
+				lines: [
+					{
+						origin: "Add",
+						content: `${oid} file content`,
+						old_lineno: null,
+						new_lineno: 1,
+						spans: [],
+					},
+				],
+			},
+		],
+	};
+}
+
+function seedComparison(files: FileDiff[] = []): void {
+	host.seedResponse("list_compare_files", files);
+	host.seedResponse("compare_stat", {
+		files_changed: 0,
+		insertions: 0,
+		deletions: 0,
+	});
+}
+
+async function compareCommit(
+	baseOid: string,
+	targetOid: string,
+	files: FileDiff[] = [],
+): Promise<void> {
+	seedComparison(files);
+	const base = host.holdNextReply("get_commit_detail");
+	const target = host.holdNextReply("get_commit_detail");
+	await fireEvent.click(commitRow(targetOid), { metaKey: true });
+	await base.entered;
+	await target.entered;
+	base.release(detailFor(baseOid));
+	target.release(detailFor(targetOid));
+	await within(await screen.findByTestId("compare-header")).findByText(
+		`${targetOid} change`,
+	);
+}
+
+async function clickCommit(oid: string): Promise<void> {
+	await fireEvent.click(commitRow(oid));
+}
+
+function commitRow(oid: string): HTMLElement {
+	const row = screen
+		.getAllByTestId("commit-row")
+		.find((candidate) => candidate.textContent?.includes(`${oid} change`));
+	if (!row) throw new Error(`commit row ${oid} is not shown`);
+
+	return row;
+}
+
+async function pressNavigationKey(key: string): Promise<void> {
+	const graph = commitRow("first").closest('[role="listbox"]');
+	if (!graph) throw new Error("commit graph is not shown");
+
+	await fireEvent.keyDown(graph, { key });
+}
+
+async function drainReplies(): Promise<void> {
+	await setImmediate();
+	await tick();
+}

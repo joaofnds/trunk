@@ -1,3 +1,4 @@
+import { setImmediate } from "node:timers/promises";
 import {
 	cleanup,
 	fireEvent,
@@ -19,6 +20,7 @@ import { noReviewCounts } from "../__tests__/helpers/review-props.js";
 import { ROW_HEIGHT } from "../lib/chrome-heights.js";
 import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
+import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import { createUndoRedoState } from "../lib/undo-redo.svelte.js";
 import CommitGraph from "./CommitGraph.svelte";
 import RepoView from "./RepoView.svelte";
@@ -28,6 +30,7 @@ let clock: FakeScheduler;
 const originalConsoleError = console.error;
 
 beforeEach(() => {
+	_resetToasts();
 	host = new RepositoryReadHost();
 	host.install();
 	clock = new FakeScheduler();
@@ -35,6 +38,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	_resetToasts();
 	cleanup();
 	host.dispose();
 	restoreDomPolyfills();
@@ -43,6 +47,329 @@ afterEach(() => {
 });
 
 describe("CommitGraph", () => {
+	describe("search responses", () => {
+		it.each([
+			"new query",
+			"next match",
+			"close",
+			"manual click",
+			"arrow navigation",
+		] as const)(
+			"does not resume an obsolete paged scroll after $0",
+			async (gesture) => {
+				const commits = [
+					makeCommit({ oid: "earlier", summary: "earlier change" }),
+					makeCommit({ oid: "latest", summary: "latest change" }),
+					...history(198),
+				];
+				const { view, selections } = await openSearch(commits);
+				const scrolls: number[] = [];
+				graphViewport(view.container).scrollTo = (
+					options?: ScrollToOptions | number,
+				) => {
+					if (typeof options !== "number") scrolls.push(options?.top ?? 0);
+				};
+				const page = host.holdNextReply("get_commit_graph");
+				host.seedResponse("search_commits", [
+					{ oid: "unloaded" },
+					{ oid: "latest" },
+				]);
+				await searchFor("earlier");
+				await page.entered;
+				expect(selections).toEqual(["unloaded"]);
+
+				if (gesture === "new query") {
+					host.seedResponse("search_commits", [{ oid: "latest" }]);
+					await searchFor("latest");
+				} else if (gesture === "next match") {
+					await fireEvent.click(
+						screen.getByRole("button", { name: "Next match" }),
+					);
+				} else if (gesture === "manual click") {
+					await fireEvent.click(screen.getByText("latest change"));
+				} else if (gesture === "arrow navigation") {
+					const graph = screen.getByRole("listbox");
+					graph.focus();
+					await fireEvent.keyDown(graph, { key: "ArrowDown" });
+				} else {
+					await fireEvent.click(
+						screen.getByRole("button", { name: "Close search" }),
+					);
+				}
+				await drainSearchReplies();
+				const expectedScrolls =
+					gesture === "new query" || gesture === "next match" ? [0] : [];
+				expect(scrolls).toEqual(expectedScrolls);
+				if (gesture !== "close")
+					expect(selections.at(-1)).toBe(
+						gesture === "arrow navigation" ? "earlier" : "latest",
+					);
+				page.release({
+					commits: [
+						makeCommit({ oid: "unloaded", summary: "unloaded change" }),
+					],
+					max_columns: 1,
+					revision: 1,
+				});
+				await drainSearchReplies();
+
+				expect(scrolls).toEqual(expectedScrolls);
+				expect(view.component.loadedRows()).toBe(201);
+			},
+		);
+
+		it("reports a current search failure", async () => {
+			await openSearch();
+			const read = host.holdNextReply("search_commits");
+			await searchFor("earlier");
+			await read.entered;
+
+			read.reject({ code: "git_error", message: "search unavailable" });
+			await drainSearchReplies();
+
+			expect(toasts.items).toContainEqual(
+				expect.objectContaining({
+					kind: "error",
+					message: "search unavailable",
+				}),
+			);
+			expect(screen.getByRole("button", { name: "Next match" })).toBeDisabled();
+		});
+
+		it.each(["search result", "ordinary navigation"] as const)(
+			"finishes a current paged scroll for $0",
+			async (navigation) => {
+				const { view } = await openSearch([
+					makeCommit({ oid: "earlier", summary: "earlier change" }),
+					...history(199),
+				]);
+				const scrolls: number[] = [];
+				graphViewport(view.container).scrollTo = (
+					options?: ScrollToOptions | number,
+				) => {
+					if (typeof options !== "number") scrolls.push(options?.top ?? 0);
+				};
+				const page = host.holdNextReply("get_commit_graph");
+				if (navigation === "search result") {
+					host.seedResponse("search_commits", [{ oid: "unloaded" }]);
+					await searchFor("earlier");
+				} else {
+					void view.component.scrollToOid("unloaded");
+					await fireEvent.click(
+						screen.getByRole("button", { name: "Close search" }),
+					);
+				}
+				await page.entered;
+
+				page.release({
+					commits: [
+						makeCommit({ oid: "unloaded", summary: "unloaded change" }),
+					],
+					max_columns: 1,
+					revision: 1,
+				});
+				await drainSearchReplies();
+
+				expect(scrolls).toEqual([200 * ROW_HEIGHT - 100 + ROW_HEIGHT / 2]);
+			},
+		);
+
+		it("keeps the latest query's results when an earlier reply arrives last", async () => {
+			const { selections } = await openSearch();
+			const earlier = host.holdNextReply("search_commits");
+			const latest = host.holdNextReply("search_commits");
+			await searchFor("earlier");
+			await earlier.entered;
+			await searchFor("latest");
+			await latest.entered;
+			latest.release([{ oid: "latest" }]);
+			await drainSearchReplies();
+
+			earlier.release([{ oid: "earlier" }]);
+			await drainSearchReplies();
+
+			expect(selections).toEqual(["latest"]);
+			expect(screen.getByText("1 of 1")).toBeVisible();
+		});
+
+		it("drops a reply when the query changes before its next debounce", async () => {
+			const { selections } = await openSearch();
+			const earlier = host.holdNextReply("search_commits");
+			await searchFor("earlier");
+			await earlier.entered;
+
+			await fireEvent.input(screen.getByPlaceholderText("Search commits…"), {
+				target: { value: "latest" },
+			});
+			earlier.release([{ oid: "earlier" }]);
+			await drainSearchReplies();
+
+			expect(selections).toEqual([]);
+			expect(screen.getByRole("button", { name: "Next match" })).toBeDisabled();
+		});
+
+		it("drops a reply after the query is cleared", async () => {
+			const { selections } = await openSearch();
+			const earlier = host.holdNextReply("search_commits");
+			await searchFor("earlier");
+			await earlier.entered;
+
+			await searchFor("");
+			earlier.release([{ oid: "earlier" }]);
+			await drainSearchReplies();
+
+			expect(selections).toEqual([]);
+			expect(screen.getByRole("button", { name: "Next match" })).toBeDisabled();
+		});
+
+		it("drops a reply after search closes", async () => {
+			const { selections } = await openSearch();
+			const earlier = host.holdNextReply("search_commits");
+			await searchFor("earlier");
+			await earlier.entered;
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Close search" }),
+			);
+			earlier.release([{ oid: "earlier" }]);
+			await drainSearchReplies();
+
+			expect(selections).toEqual([]);
+		});
+
+		it("drops a reply across deactivation and reactivation", async () => {
+			const { view, selections } = await openSearch();
+			const earlier = host.holdNextReply("search_commits");
+			await searchFor("earlier");
+			await earlier.entered;
+
+			await view.rerender({ tabActive: false });
+			await view.rerender({ tabActive: true });
+			earlier.release([{ oid: "earlier" }]);
+			await drainSearchReplies();
+
+			expect(selections).toEqual([]);
+		});
+
+		it("drops a reply across repository changes", async () => {
+			const { view, selections } = await openSearch();
+			const earlier = host.holdNextReply("search_commits");
+			await searchFor("earlier");
+			await earlier.entered;
+
+			await view.rerender({ repoPath: "/other" });
+			await view.rerender({ repoPath: "/repo" });
+			earlier.release([{ oid: "earlier" }]);
+			await drainSearchReplies();
+
+			expect(selections).toEqual([]);
+		});
+
+		it("drops a reply after the graph unmounts", async () => {
+			const { view, selections } = await openSearch();
+			const earlier = host.holdNextReply("search_commits");
+			await searchFor("earlier");
+			await earlier.entered;
+
+			view.unmount();
+			earlier.release([{ oid: "earlier" }]);
+			await drainSearchReplies();
+
+			expect(selections).toEqual([]);
+		});
+
+		it("keeps newer results when an earlier request fails", async () => {
+			const { selections } = await openSearch();
+			const earlier = host.holdNextReply("search_commits");
+			const latest = host.holdNextReply("search_commits");
+			await searchFor("earlier");
+			await earlier.entered;
+			await searchFor("latest");
+			await latest.entered;
+			latest.release([{ oid: "latest" }, { oid: "earlier" }]);
+			await drainSearchReplies();
+
+			earlier.reject({ code: "git_error", message: "search unavailable" });
+			await drainSearchReplies();
+
+			expect(selections).toEqual(["latest"]);
+			expect(screen.getByText("1 of 2")).toBeVisible();
+			expect(toasts.items).toEqual([]);
+		});
+
+		it("preserves completed results across tab activation without another search", async () => {
+			const { view, selections } = await openSearch();
+			host.seedResponse("search_commits", [
+				{ oid: "latest" },
+				{ oid: "earlier" },
+			]);
+			await searchFor("change");
+			await drainSearchReplies();
+
+			await view.rerender({ tabActive: false });
+			await view.rerender({ tabActive: true });
+			await vi.advanceTimersByTimeAsync(200);
+			await fireEvent.click(screen.getByRole("button", { name: "Next match" }));
+
+			expect(host.count("search_commits")).toBe(1);
+			expect(selections).toEqual(["latest", "earlier"]);
+			expect(screen.getByText("2 of 2")).toBeVisible();
+		});
+
+		it("cancels a search debounce when the tab becomes inactive", async () => {
+			const { view } = await openSearch();
+			await fireEvent.input(screen.getByPlaceholderText("Search commits…"), {
+				target: { value: "earlier" },
+			});
+
+			await view.rerender({ tabActive: false });
+			await vi.advanceTimersByTimeAsync(200);
+
+			expect(host.count("search_commits")).toBe(0);
+		});
+
+		async function openSearch(
+			commits = [
+				makeCommit({ oid: "earlier", summary: "earlier change" }),
+				makeCommit({ oid: "latest", summary: "latest change" }),
+			],
+		) {
+			const selections: string[] = [];
+			host.seedGraph({
+				commits,
+				max_columns: 1,
+				revision: 1,
+			});
+			const view = render(CommitGraph, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					tabActive: true,
+					oncommitselect: (oid) => selections.push(oid),
+				},
+				context: new Map([[SCHEDULER, clock]]),
+			});
+			await screen.findByText("earlier change");
+			await host.emit("search-toggle", null);
+			await screen.findByPlaceholderText("Search commits…");
+			vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+			return { view, selections };
+		}
+
+		async function searchFor(query: string): Promise<void> {
+			await fireEvent.input(screen.getByPlaceholderText("Search commits…"), {
+				target: { value: query },
+			});
+			await vi.advanceTimersByTimeAsync(200);
+		}
+
+		async function drainSearchReplies(): Promise<void> {
+			await setImmediate();
+			await tick();
+		}
+	});
+
 	it("runs a completed command catch-up without advancing the refresh timer", async () => {
 		host.seedGraph(graph(1));
 		render(GraphRefreshHarness, {
