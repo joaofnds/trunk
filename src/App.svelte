@@ -1182,20 +1182,9 @@ $effect(() => {
 });
 </script>
 
-{#snippet updateControl()}
-	<UpdateControl
-		status={updateStatus}
-		busy={updateBusy || updateFrozen}
-		ondetails={() => (updateOpen = true)}
-		oncheck={() => void updateAction(updates.check)}
-		ondownload={(version) => void updateAction(() => updates.download(version))}
-		onrestart={(version) => (confirmUpdateVersion = version)}
-	/>
-{/snippet}
-
 <div class="flex flex-col h-screen bg-bg" inert={updateFrozen}>
 	<!-- LAYOUT-02: unified title bar + toolbar -->
-	<div
+	<header
 		data-tauri-drag-region
 		class="flex items-center flex-shrink-0 h-topbar bg-surface shadow-hairline"
 		style:padding-left="{isFullscreen ? 0 : 78 / zoomLevel}px"
@@ -1220,11 +1209,6 @@ $effect(() => {
 			}}
 		/>
 		<div data-tauri-drag-region class="flex-1 h-full"></div>
-		{#if !activeTab?.repoPath ||
-			!isRepoViewMounted(activeTab) ||
-			(reviewPanelOpen ? reviewLeftPaneCollapsed : leftPaneCollapsed)}
-			{@render updateControl()}
-		{/if}
 		{#if activeTab?.repoPath && repositories.isReady(activeTab)}
 			{@const activeState = getTabState(activeTabId)}
 			<Toolbar
@@ -1241,7 +1225,21 @@ $effect(() => {
 				onreviewthreadshiddenchange={handleReviewThreadsHiddenChange}
 			/>
 		{/if}
-	</div>
+		{#if updateStatus &&
+			["available", "downloading", "ready"].includes(updateStatus.phase)}
+			<div class="flex shrink-0 items-center border-l border-border pl-2 pr-3">
+				<UpdateControl
+					status={updateStatus}
+					busy={updateBusy || updateFrozen}
+					ondetails={() => (updateOpen = true)}
+					oncheck={() => void updateAction(updates.check)}
+					ondownload={(version) =>
+						void updateAction(() => updates.download(version))}
+					onrestart={(version) => (confirmUpdateVersion = version)}
+				/>
+			</div>
+		{/if}
+	</header>
 
 	<div class="flex-1 overflow-hidden relative">
 		{#each tabs as tab (tab.id)}
@@ -1257,7 +1255,6 @@ $effect(() => {
 							{@const tabReviewActive =
 								reviewPanelOpen && tab.id === activeTabId}
 							<RepoView
-								{updateControl}
 								repoPath={tab.repoPath}
 								repoName={tab.repoName}
 								remoteState={tabState.remoteState}

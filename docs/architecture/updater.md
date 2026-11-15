@@ -25,13 +25,15 @@ Adopted installations check after 15 seconds and every four hours while running.
 A failed check gets at most three exponential retries with jitter. Checks pause
 while downloading, while a downloaded update waits for installation, during
 preparation, and during recovery. Resuming preserves the remaining check delay.
-The sidebar footer keeps an update icon visible. When the sidebar is collapsed,
-the icon moves to the top bar. The control remains reachable above the interactive
-rebase editor. Its action follows the update state: check, download, or request a
-restart. Checking animates unless reduced motion is enabled, and a
-download shows progress. Hovering or focusing the icon exposes available release
-notes; Tab enters their details action and Escape closes them. A completed
-download produces one notice per version, with a Read more action.
+The existing title bar shows an update icon after the repository controls only
+when an update is available, downloading, or ready to restart. Idle and automatic
+checks add no window controls. The icon stays in the same app-level location
+across repositories, reviews, and interactive rebase, without adding a row or
+reducing content height. Its action follows the update state: download, open
+progress and cancellation details, or request a restart. Hovering or focusing the
+icon exposes available release notes; Tab enters their details action and Escape
+closes them. A completed download produces one notice per version, with a Read
+more action.
 
 Check for Updates in the native menu starts a check immediately for adopted,
 eligible installations in idle, available, or ready state. Other states open their
@@ -42,8 +44,8 @@ A downloaded update stays in memory until quit; checking again, including a fail
 check, preserves it. There is no automatic installation or downgrade.
 
 This interaction follows T3 Code's sidebar updater at commit
-`c2e54e3ac9c8c0d5ceaf7df5acd4f4374fa19b6f`, adapted to Trunk's existing icon button,
-sidebar layout, and installation safeguards.
+`c2e54e3ac9c8c0d5ceaf7df5acd4f4374fa19b6f`, adapted to Trunk's existing title bar,
+icon button, and installation safeguards.
 
 ## Trust and bounded downloads
 

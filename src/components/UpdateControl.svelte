@@ -1,5 +1,4 @@
 <script lang="ts">
-import Check from "@lucide/svelte/icons/check";
 import Download from "@lucide/svelte/icons/download";
 import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 import RotateCw from "@lucide/svelte/icons/rotate-cw";
@@ -78,9 +77,13 @@ function place(node: HTMLDivElement) {
 	const rect = trigger.getBoundingClientRect();
 
 	node.style.left = `${Math.max(0, Math.min(rect.left, window.innerWidth - node.offsetWidth))}px`;
-	if (rect.top > window.innerHeight / 2)
+	if (rect.top > window.innerHeight / 2) {
 		node.style.bottom = `${window.innerHeight - rect.top}px`;
-	else node.style.top = `${rect.bottom}px`;
+		node.style.maxHeight = `${rect.top}px`;
+	} else {
+		node.style.top = `${rect.bottom}px`;
+		node.style.maxHeight = `${window.innerHeight - rect.bottom}px`;
+	}
 
 	return {
 		destroy() {
@@ -133,7 +136,6 @@ $effect(() => {
 <div bind:this={trigger} class="flex items-center">
 	<Button
 		icon
-		variant={available || ready ? "accent" : "ghost"}
 		aria-label={label}
 		tooltip={showNotes ? undefined : (status?.message ?? label)}
 		disabled={checking || (busy && !downloading)}
@@ -145,18 +147,12 @@ $effect(() => {
 		onblur={leave}
 		onmouseleave={leave}
 	>
-		{#if downloading}
-			<span class="grid size-6"
-				><span class="col-start-1 row-start-1 place-self-center"
-					><Download size={12} /></span
-				>
-				<svg
-					class="col-start-1 row-start-1 place-self-center"
-					width="24"
-					height="24"
-					viewBox="0 0 24 24"
-					aria-hidden="true"
-				>
+		<span
+			class="flex items-center"
+			class:text-accent={available || ready || downloading}
+		>
+			{#if downloading}
+				<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
 					<circle
 						cx="12"
 						cy="12"
@@ -177,40 +173,27 @@ $effect(() => {
 						stroke-dasharray={`${percent ?? 25} 100`}
 						transform="rotate(-90 12 12)"
 					/>
-				</svg></span
-			>
-		{:else if available}
-			<span class="grid size-6"
-				><span class="col-start-1 row-start-1 place-self-center"
-					><Download size={18} /></span
-				><span
-					class="col-start-1 row-start-1 self-start justify-self-end h-1 w-1 rounded-full bg-accent"
-				></span></span
-			>
-		{:else if ready}
-			<span class="grid size-6"
-				><span class="col-start-1 row-start-1 place-self-center"
-					><RotateCw size={18} /></span
-				><span
-					class="col-start-1 row-start-1 self-start justify-self-end bg-surface rounded-full"
-					><Check size={10} /></span
-				></span
-			>
-		{:else}
-			<span class:checking><RefreshCw size={18} /></span>
-		{/if}
+				</svg>
+			{:else if available}
+				<Download size={14} />
+			{:else if ready}
+				<RotateCw size={14} />
+			{:else}
+				<span class:checking><RefreshCw size={14} /></span>
+			{/if}
+		</span>
 	</Button>
 </div>
 {#if notesOpen && showNotes && status}
-	<div use:place class="fixed z-50 w-dialog-min max-w-full">
+	<div use:place class="fixed z-50 w-dialog-min max-w-full flex flex-col">
 		<section
 			aria-label={`Trunk ${status.version} release notes`}
-			class="rounded border border-border p-4 text-text shadow-lg flex flex-col gap-3 bg-surface text-body"
+			class="min-h-0 overflow-hidden rounded border border-border p-4 text-text shadow-lg flex flex-col gap-3 bg-surface text-body"
 		>
 			<h3 class="text-callout font-semibold">Trunk {status.version}</h3>
 			<p class="text-text-muted">{label}</p>
 			<p
-				class="whitespace-pre-wrap break-words max-h-dialog-lg-max overflow-auto"
+				class="min-h-0 whitespace-pre-wrap break-words max-h-dialog-lg-max overflow-auto"
 				>{status.notes}</p
 			>
 			<Button

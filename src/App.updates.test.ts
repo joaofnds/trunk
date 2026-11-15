@@ -152,34 +152,49 @@ describe("App update readiness", () => {
 });
 
 describe("App update controls", () => {
-	it("checks from the idle icon and displays the available version", async () => {
-		startup();
-		const idle: UpdateStatus = {
+	it.each(["manual", "idle", "checking"] as const)(
+		"keeps window chrome quiet in %s state",
+		async (phase) => {
+			startup();
+			const status: UpdateStatus = { ...manual, phase };
+			app.host.seedResponse("updates_status", status);
+			app.host.seedResponse("updates_ready", status);
+			app.start();
+			await screen.findByText("restored history");
+			await app.settle();
+
+			expect(
+				screen.queryByRole("button", { name: /Check.*updates/ }),
+			).toBeNull();
+		},
+	);
+	it("keeps an available update actionable without an open repository", async () => {
+		app = new StartupHarness([], "missing");
+		const available: UpdateStatus = {
 			...manual,
-			phase: "idle",
+			phase: "available",
+			version: "2.0.0",
 			eligible: true,
 			adopted: true,
 		};
-		const available: UpdateStatus = {
-			...idle,
-			phase: "available",
-			version: "2.0.0",
-		};
-		app.host.seedResponse("updates_status", idle);
-		app.host.seedResponse("updates_ready", idle);
-		app.host.seedResponse("updates_check", available);
+		app.host.seedResponse("updates_status", available);
+		app.host.seedResponse("updates_ready", available);
+		app.host.seedResponse("updates_download", {
+			...available,
+			phase: "ready",
+		});
 		app.start();
-		await screen.findByText("restored history");
-		await app.settle();
+		const download = await screen.findByRole("button", {
+			name: "Download update 2.0.0",
+		});
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: "Check for updates" }),
-		);
+		await fireEvent.click(download);
 
 		expect(
-			await screen.findByRole("button", { name: "Download update 2.0.0" }),
+			await screen.findByRole("button", {
+				name: "Restart to update to 2.0.0",
+			}),
 		).toBeEnabled();
-		expect(app.host.count("updates_check")).toBe(1);
 	});
 	it("downloads the icon's available version and displays the restart action", async () => {
 		startup();
@@ -307,21 +322,30 @@ describe("App update controls", () => {
 		expect(app.host.count("updates_install")).toBe(1);
 		expect(screen.queryByRole("alert")).toBeNull();
 	});
-	it("keeps a manual update control available in the sidebar", async () => {
+	it("keeps manual updates reachable from the native menu", async () => {
 		startup().start();
 		await screen.findByText("restored history");
 		await app.settle();
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: "Check for updates" }),
-		);
+		await app.host.emit("updates-open", null);
+		await app.settle();
 
 		expect(
-			await screen.findByRole("link", { name: "Download a release" }),
+			screen.getByRole("link", { name: "Download a release" }),
 		).toBeVisible();
 	});
-	it("keeps the control reachable when the sidebar is collapsed", async () => {
-		startup().start();
+	it("keeps an available update in the title bar when the sidebar is collapsed", async () => {
+		startup();
+		const available: UpdateStatus = {
+			...manual,
+			phase: "available",
+			version: "2.0.0",
+			eligible: true,
+			adopted: true,
+		};
+		app.host.seedResponse("updates_status", available);
+		app.host.seedResponse("updates_ready", available);
+		app.start();
 		await screen.findByText("restored history");
 		await app.settle();
 
@@ -329,16 +353,12 @@ describe("App update controls", () => {
 		await app.settle();
 
 		expect(
-			screen.getAllByRole("button", { name: "Check for updates" }),
-		).toHaveLength(1);
-		await fireEvent.click(
-			screen.getByRole("button", { name: "Check for updates" }),
-		);
-		expect(
-			await screen.findByRole("link", { name: "Download a release" }),
+			within(screen.getByRole("banner")).getByRole("button", {
+				name: "Download update 2.0.0",
+			}),
 		).toBeVisible();
 	});
-	it("removes open notes when switching away from their repository", async () => {
+	it("keeps one app update control when switching repositories", async () => {
 		app = new StartupHarness(
 			[
 				{ id: "active", repoPath: "/active", repoName: "active" },
@@ -369,9 +389,6 @@ describe("App update controls", () => {
 		await app.activate("other");
 		await app.settle();
 
-		expect(
-			screen.queryByRole("region", { name: "Trunk 2.0.0 release notes" }),
-		).toBeNull();
 		expect(
 			screen.getAllByRole("button", { name: "Download update 2.0.0" }),
 		).toHaveLength(1);
@@ -421,7 +438,7 @@ describe("App update controls", () => {
 		await fireEvent.keyDown(trigger, { key: "Escape" });
 		expect(screen.queryByRole("button", { name: "Close diff" })).toBeNull();
 	});
-	it("removes hovered notes when the sidebar switches to reviews", async () => {
+	it("keeps app update notes attached when the sidebar switches to reviews", async () => {
 		startup();
 		const available: UpdateStatus = {
 			...manual,
@@ -446,8 +463,8 @@ describe("App update controls", () => {
 		await app.enterReview();
 
 		expect(
-			screen.queryByRole("region", { name: "Trunk 2.0.0 release notes" }),
-		).toBeNull();
+			screen.getByRole("region", { name: "Trunk 2.0.0 release notes" }),
+		).toBeVisible();
 		expect(
 			screen.getAllByRole("button", {
 				name: "Download update 2.0.0",
