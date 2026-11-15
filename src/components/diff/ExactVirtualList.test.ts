@@ -9,17 +9,21 @@ const VIEWPORT_HEIGHT = 200;
 
 afterEach(restoreLayout);
 
-const renderItem = createRawSnippet<[unknown, number]>(() => ({
-	render: () => `<div class="row"></div>`,
+const renderItem = createRawSnippet<[unknown, number]>((_, index) => ({
+	render: () => `<div class="row" data-index="${index()}"></div>`,
 }));
 
 function mountList(count: number, rowHeight: number = ROW_HEIGHT) {
+	return mountHeights(Array.from({ length: count }, () => rowHeight));
+}
+
+function mountHeights(heights: number[]) {
 	stubLayout({ width: 800, height: VIEWPORT_HEIGHT });
 
 	return render(ExactVirtualList, {
 		props: {
-			items: Array.from({ length: count }, (_, index) => index),
-			heights: Array.from({ length: count }, () => rowHeight),
+			items: heights.map((_, index) => index),
+			heights,
 			contentWidth: "1000px",
 			renderItem,
 		},
@@ -28,6 +32,16 @@ function mountList(count: number, rowHeight: number = ROW_HEIGHT) {
 
 function viewportOf(container: Element): HTMLElement {
 	return container.querySelector(".exact-virtual-viewport") as HTMLElement;
+}
+
+function rowIndices(container: Element): number[] {
+	return Array.from(container.querySelectorAll<HTMLElement>(".row"), (row) =>
+		Number(row.dataset.index),
+	);
+}
+
+function rowsTop(container: Element): string | undefined {
+	return container.querySelector<HTMLElement>(".exact-virtual-rows")?.style.top;
 }
 
 describe("ExactVirtualList", () => {
@@ -43,13 +57,20 @@ describe("ExactVirtualList", () => {
 		expect(container.querySelectorAll(".row").length).toBeLessThan(200);
 	});
 
-	it("sizes the content to the total height of every row", () => {
+	it("preserves the full scroll extent around a viewport-height row surface", () => {
 		const { container } = mountList(5000);
 
-		const content = container.querySelector(".exact-virtual-content");
+		const content = container.querySelector<HTMLElement>(
+			".exact-virtual-content",
+		);
+		const surface = content?.querySelector<HTMLElement>(
+			".exact-virtual-surface",
+		);
 
-		expect(content?.getAttribute("style")).toContain(
-			`height: ${5000 * ROW_HEIGHT}px`,
+		expect(content?.style.height).toBe(`${5000 * ROW_HEIGHT}px`);
+		expect(surface?.style.height).toBe(`${VIEWPORT_HEIGHT}px`);
+		expect(surface).toContainElement(
+			container.querySelector(".exact-virtual-rows"),
 		);
 	});
 
@@ -59,14 +80,6 @@ describe("ExactVirtualList", () => {
 		const rows = container.querySelector(".exact-virtual-rows");
 
 		expect(rows).toHaveClass("min-w-full");
-	});
-
-	it("positions the rows without a transform, which would give them a layer of their own", () => {
-		const { container } = mountList(5000);
-
-		const rows = container.querySelector(".exact-virtual-rows");
-
-		expect(rows?.getAttribute("style")).not.toContain("transform");
 	});
 
 	it("suppresses horizontal overscroll chaining on the viewport", () => {
@@ -106,20 +119,103 @@ describe("ExactVirtualList", () => {
 		expect(style).toContain("top:");
 	});
 
-	it("offsets the mounted rows by the first one's top", async () => {
-		const { container } = mountList(5000);
-		const viewport = viewportOf(container);
+	it.each([
+		{
+			position: "middle",
+			scrollTop: 450,
+			indices: [3, 4, 5, 6, 7, 8, 9],
+			top: -300,
+		},
+		{ position: "end", scrollTop: 800, indices: [7, 8, 9, 10], top: -220 },
+	])(
+		"positions variable-height rows within the viewport at the $position",
+		async ({ scrollTop, indices, top }) => {
+			const { container } = mountHeights([
+				40, 80, 30, 150, 60, 140, 80, 120, 50, 150, 100,
+			]);
+			const viewport = viewportOf(container);
 
-		viewport.scrollTop = 100 * ROW_HEIGHT;
-		viewport.dispatchEvent(new Event("scroll"));
-		await tick();
+			viewport.scrollTop = scrollTop;
+			viewport.dispatchEvent(new Event("scroll"));
+			await tick();
 
-		const runwayTop = 100 * ROW_HEIGHT - VIEWPORT_HEIGHT;
-		const firstRow = Math.floor(runwayTop / ROW_HEIGHT);
-		const rows = container.querySelector(".exact-virtual-rows");
-		expect(rows?.getAttribute("style")).toContain(
-			`top: ${firstRow * ROW_HEIGHT}px`,
+			expect(rowIndices(container)).toEqual(indices);
+			expect(rowsTop(container)).toBe(`${top}px`);
+		},
+	);
+
+	describe("when the viewport overscrolls", () => {
+		it.each([
+			{ edge: "start", scrollTop: -90, indices: [0, 1, 2, 3, 4, 5], top: 0 },
+			{ edge: "end", scrollTop: 920, indices: [7, 8, 9, 10], top: -220 },
+		])(
+			"leaves native bounce at the $edge out of the rendered window",
+			async ({ scrollTop, indices, top }) => {
+				const { container } = mountHeights([
+					40, 80, 30, 150, 60, 140, 80, 120, 50, 150, 100,
+				]);
+				const viewport = viewportOf(container);
+
+				viewport.scrollTop = scrollTop;
+				viewport.dispatchEvent(new Event("scroll"));
+				await tick();
+
+				expect(viewport.scrollTop).toBe(scrollTop);
+				expect(rowIndices(container)).toEqual(indices);
+				expect(rowsTop(container)).toBe(`${top}px`);
+			},
 		);
+	});
+
+	describe("when the content is shorter than the viewport", () => {
+		it.each([
+			{
+				content: "short",
+				heights: [40, 80, 30],
+				height: 150,
+				indices: [0, 1, 2],
+			},
+			{ content: "empty", heights: [], height: 0, indices: [] },
+		])(
+			"keeps the $content surface within its scroll extent",
+			async ({ heights, height, indices }) => {
+				const { container } = mountHeights(heights);
+				const viewport = viewportOf(container);
+
+				viewport.scrollTop = 50;
+				viewport.dispatchEvent(new Event("scroll"));
+				await tick();
+
+				expect(
+					container.querySelector<HTMLElement>(".exact-virtual-content")?.style
+						.height,
+				).toBe(`${height}px`);
+				expect(
+					container.querySelector<HTMLElement>(".exact-virtual-surface")?.style
+						.height,
+				).toBe(`${height}px`);
+				expect(rowIndices(container)).toEqual(indices);
+				expect(rowsTop(container)).toBe("0px");
+			},
+		);
+	});
+
+	describe("when the content shrinks while scrolled", () => {
+		it("fills the new final viewport before the browser reports its clamped scroll offset", async () => {
+			const { container, rerender } = mountList(5000);
+			const viewport = viewportOf(container);
+			viewport.scrollTop = 800;
+			viewport.dispatchEvent(new Event("scroll"));
+			await tick();
+
+			await rerender({
+				items: [0, 1, 2, 3],
+				heights: [40, 80, 30, 150],
+			});
+
+			expect(rowIndices(container)).toEqual([0, 1, 2, 3]);
+			expect(rowsTop(container)).toBe("-100px");
+		});
 	});
 });
 

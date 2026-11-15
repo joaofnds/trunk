@@ -32,7 +32,15 @@ let viewportHeight = $state(0);
 
 const offsets = $derived(buildOffsets(heights));
 const runway = $derived(overscanPx ?? viewportHeight);
-const shown = $derived(windowFor(offsets, scrollTop, viewportHeight, runway));
+const renderedScrollTop = $derived(
+	Math.max(
+		0,
+		Math.min(scrollTop, Math.max(0, offsets[items.length] - viewportHeight)),
+	),
+);
+const shown = $derived(
+	windowFor(offsets, renderedScrollTop, viewportHeight, runway),
+);
 const visible = $derived(items.slice(shown.start, shown.end));
 
 onMount(() => {
@@ -102,17 +110,19 @@ function onscroll() {
 		style:height="{shown.totalHeight}px"
 		style:width={contentWidth}
 	>
-		<!-- Positioned by `top`, never a transform: a transformed box holding a
-		     sticky row gets a compositing layer of its own, and WebKit draws that
-		     layer empty for a frame now and then during a fast fling. -->
 		<div
-			class="exact-virtual-rows absolute left-0 w-full min-w-full"
-			style:--pan-x="{panLeft}px"
-			style:top="{shown.offsetTop}px"
+			class="exact-virtual-surface sticky top-0 w-full min-w-full overflow-clip"
+			style:height="{Math.min(viewportHeight, shown.totalHeight)}px"
 		>
-			{#each visible as item, offset (shown.start + offset)}
-				{@render renderItem(item, shown.start + offset)}
-			{/each}
+			<div
+				class="exact-virtual-rows absolute left-0 w-full min-w-full"
+				style:--pan-x="{panLeft}px"
+				style:top="{shown.offsetTop - renderedScrollTop}px"
+			>
+				{#each visible as item, offset (shown.start + offset)}
+					{@render renderItem(item, shown.start + offset)}
+				{/each}
+			</div>
 		</div>
 	</div>
 </div>
