@@ -113,6 +113,28 @@ fn get_merge_sides_refuses_a_binary_conflict() {
     assert_eq!(err.code, "binary_conflict");
 }
 
+/// A side that deleted the file has no blob. Read as empty text, taking that side
+/// saved an empty file and staged it, so the merge kept a file the side removed.
+#[test]
+fn get_merge_sides_refuses_a_conflict_where_one_side_deleted_the_file() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_removed_file("file.txt")
+        .with_commit("Delete the file")
+        .checkout("main")
+        .with_file("file.txt", "main content")
+        .with_commit("Main commit")
+        .with_conflict("feature")
+        .build();
+
+    let err = ctx.get_merge_sides("file.txt").unwrap_err();
+
+    assert_eq!(err.code, "delete_conflict");
+}
+
 /// The editor stays on screen after the operation it belongs to ends, and its
 /// Save button stays live. Writing then would put the merged text over the file
 /// the abort just restored and stage it, destroying content that was never

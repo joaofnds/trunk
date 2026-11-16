@@ -43,8 +43,9 @@ fn conflict_entry(
 /// # Errors
 ///
 /// Returns `not_open` when `path` names no open repository, `not_conflicted`
-/// when the index holds no conflict for `file_path`, `binary_conflict` when a
-/// side is not valid UTF-8, and the git error when a blob will not read.
+/// when the index holds no conflict for `file_path`, `delete_conflict` when one
+/// side deleted the file, `binary_conflict` when a side is not valid UTF-8, and
+/// the git error when a blob will not read.
 pub fn get_merge_sides_inner(
     path: &str,
     file_path: &str,
@@ -52,6 +53,17 @@ pub fn get_merge_sides_inner(
 ) -> Result<MergeSides, TrunkError> {
     let repo = state_map.open(path)?;
     let conflict = conflict_entry(&repo, file_path)?;
+
+    // A deleted side has no text to take. Reading it as empty would let the save
+    // path stage an empty file where that side meant no file at all.
+    if conflict.our.is_none() || conflict.their.is_none() {
+        return Err(TrunkError::new(
+            "delete_conflict",
+            format!(
+                "{file_path} was deleted on one side. Stage it to keep it, or delete it to accept the deletion."
+            ),
+        ));
+    }
 
     // `from_utf8_lossy` would replace every invalid byte with U+FFFD and the save
     // path writes that text back over the file, with both original sides already
