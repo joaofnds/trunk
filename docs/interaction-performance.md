@@ -356,12 +356,11 @@ Tauri's invoke property could not be replaced, and a substring could match a par
 OID. They support no performance claim. The replacement harness checks the exact
 SHA control and uses the application's existing performance sink.
 
-Virtualizing the commit file list remains an unresolved structural hypothesis.
-Source inspection confirms all flattened rows mount. Existing virtual lists own
-their viewport, while CommitDetail scrolls metadata and files together. A safe
-experiment needs normal-flow windowing in that existing viewport, logical keyboard
-navigation and retained directory focus. A new cache or a viewport restructuring
-has not been justified by these results.
+[E06](#e06-large-changed-file-lists-retain-the-full-dom) tested windowing within
+CommitDetail's existing shared metadata/file viewport. Its three prototypes were
+rejected for painting, response or resource costs, so the full-DOM list is retained.
+Reopening requires a new causal hypothesis or representative workload; these results
+do not justify a new cache or viewport restructuring.
 
 ### E03: broader interaction screening
 
@@ -815,6 +814,105 @@ screening. Existing one-crop results have not been silently reclassified as the
 stronger analysis. The [runner instructions](../scripts/diff-scroll/README.md)
 describe the idle-coverage rule, separate geometry checks and reanalysis route.
 
+### E06: large changed-file lists, retain the full DOM
+
+The large-list investigation is closed with the current full-DOM list retained.
+Three ignored prototypes were rejected; none changes the application's production
+source. The decision weighs the measured benefit against painting, response and
+resource costs. It does not establish that future list optimization is impossible.
+Reopen it for a new causal hypothesis or a workload that changes that tradeoff.
+
+The fixture has 1,000 changed TypeScript files of 200 lines each, with graph
+statistics disabled. Four fresh baseline launches reached DOM usability in
+84/86/84/85 ms. A separate four-pair diagnostic measured unused directory-tree
+construction at 1–2 ms and migration at 0 ms at page-clock precision. Skipping that
+work left the first-action scheduling gap: usable medians were 85 versus 83.5 ms.
+Tree preparation therefore does not explain the main observed delay.
+
+V1 windowed the existing external viewport using flow spacers. Four alternating
+AB/BA pairs used the same visible-row identity/geometry predicate on both builds,
+including the full list extent. This endpoint differs from the earlier all-row
+predicate; the cohorts are not pooled. First usable times were 83/83/84/84 ms for
+baseline and 18/18/18/19 ms for V1, medians 83.5 and 18 ms. Both gave DOM feedback
+in 3 ms. First-action summed CPU medians fell from 325.670 to 169.580 ms over a
+longer read-completion-plus-two-rAF window. Oracle checks took 42–43 versus 0–1 ms,
+including forced layout; subtracting that cost would not isolate application time.
+Two pairs at each smaller size recorded 12/13 versus 14/14 ms at 10 files and
+21/21 versus 18/18 ms at 100 files. Small-file warm-return medians also rose
+slightly; the committed record retains each action rather than claiming uniform gain.
+
+V1 failed the painting requirement. With a planned 100 ms WebContent suspension,
+one encoded sample showed the entire 698 px list viewport blank at +87.462 ms
+from first input, after resume at +79.904 ms. Adjacent populated samples were at
++77.972 and +96.010 ms. That establishes a blank sample with a zero-duration lower
+bound, not its physical display duration or ordinary failure frequency. Independent
+saved-frame review confirmed the counterexample. The four normal/paused captures
+had maximum encoded gaps of 76.489/75.296/66.821/98.234 ms; incomplete coverage and
+partial visual review cannot establish uninterrupted painting.
+
+V2 adapted the existing stationary virtual-row surface while keeping overscan.
+Its controlled-pause capture retained starting rows through the +81.993 ms sample;
+the first inspected changed sample was +90.391 ms. Baseline already showed movement
+at +4.489 ms. This is one controlled suspension comparison, not normal input
+latency. Eight of 261 V2 frames were independently inspected. The largest capture
+gap, 615.650 ms, occurred after input ended; it does not establish a display stall.
+
+Ordinary V2 scrolling used four AB/BA capture pairs and four separate resource
+pairs. Each launch delivered 404 native events across four alternating gestures;
+capture requested five seconds at 120 Hz on a virtual display. Every paired trial
+passed recorded collection, input, geometry, admission and cleanup validation.
+At **filenames-inset, threshold 3**, launch pixel-change medians were
+8.893 [8.813,9.014] ms for baseline and 8.933 [8.915,9.074] ms for V2, expressed as
+group median [range of launch medians]. These overlapping ranges do not establish
+a cadence benefit. Crop and threshold affect unchanged-span results:
+
+| Crop and threshold | Baseline longest unchanged span range, ms | V2 range, ms |
+| --- | --- | --- |
+| Either crop, threshold 1; filenames-inset, threshold 3 | 0–10.459 | 9.141–9.698 |
+| Status-and-filenames, threshold 3 | 0–52.579 | 9.141–58.418 |
+| Either crop, threshold 5 | 0–59.625 | 9.178–61.288 |
+
+These are observed sample spans, including capture gaps, not continuous display
+stalls. The separate V2 pilot retained unchanged pixels for 188.231 ms at both
+crops and all three thresholds. Its cause remains unresolved. It is retained
+outside paired statistics; its nonrecurrence in four pairs does not dismiss it.
+
+Across approximately four-second resource windows, baseline summed CPU was
+1,280.907–1,385.571 ms and V2 was 1,751.811–1,783.240 ms. Each paired increase was
+377.326–482.978 ms (27.23–37.71%). GPU-process CPU rose from 56.900–60.078 to
+477.422–485.168 ms; this measures CPU, not hardware GPU activity. Summed endpoint
+physical-footprint medians rose from 207,055,884 to 252,324,888 bytes while resident
+size medians fell from 341,377,024 to 282,681,344 bytes. Neither metric is a peak;
+sums may double-count shared pages. These costs and the suspension response
+tradeoff rule out adopting V2 on the current evidence.
+
+V3 tested whether the full-height moving plane caused that resource cost. Two
+AB/BA pairs compared V2 with V3, separately from the full-DOM cohort. Native geometry
+confirmed a reduction from 28,000 to 2,100 px with 75 mounted rows. GPU-process CPU
+remained 465.146–485.860 ms for V3 versus 466.738–484.847 ms for V2. Paired total
+CPU changes were −81.845 and +20.239 ms; endpoint footprint changed by −1,228,896
+and −507,880 bytes from V2 values of 253,725,672 and 253,660,064 bytes. The small
+sample leaves total-CPU direction unresolved and does not support plane height as
+the main cause. V3 is rejected too. Distant retained focus can still enlarge its
+plane. V2/V3 selection speed and full native correctness acceptance were not
+measured, so neither inherits V1's selection gain.
+
+The accepted change from E06 is measurement correctness commit `56b15954`:
+convert to grayscale before FFmpeg cropping to preserve odd dimensions and origins.
+Original failed pilot analysis remains preserved; corrected reanalysis is labeled
+as derived evidence. The fix's recorded `just check` gate passed 1,980 Rust tests (one skipped),
+4,533 frontend, 202 application and 53 visual tests. A separate Python harness
+suite passed 144 tests. Those checks and its independent code review do not
+constitute prototype acceptance.
+The [committed E06 record](performance-data/large-file-list-2026-11-16.json) retains
+individual samples, both crops and all thresholds, pilot outcomes, source/binary/
+protocol/input hashes, reviews and local reproduction commands. A fresh clone has
+those summaries and identities, not the ignored recordings, prototypes or adapters.
+The maintained [interaction runner](../scripts/interaction-performance/run.py) and
+[scroll tooling](../scripts/diff-scroll/README.md) remain available; exact prototype
+reproduction requires the retained local artifacts. Physical trackpad timing,
+normal-app presentation, background contention and long-session costs remain open.
+
 ### Selection presentation and background limits
 
 Three five-second ScreenCaptureKit attempts used a requested 60 Hz virtual display.
@@ -844,8 +942,8 @@ Frequency remains an assumption; no usage telemetry was collected.
 | --- | --- | --- |
 | 1 | Broaden I19 scrolling evidence while preserving the accepted behavior | The user made scrolling the priority. E05 changes captured diff-content cadence from 17.820 to 8.903 ms and accepts added process CPU in diff and graph scrolling. Painting checks pass at requested 60 and 120 Hz, including a replacement 90,000-line run with workload admission. Four admitted graph pairs have overlapping medians and capture gaps in both builds. Earlier competing-test confirmations remain excluded. Preserve the stationary row layout and configuration fallback. Physical trackpad timing, long-session cost and older-OS behavior remain open. High presentation risk. |
 | 2 | Preserve the reviewed selection and navigation contracts | Browsing is assumed frequent. E01 removes 116.5 ms in the width series and 129 ms in the delivered-source confirmation at 1,000 files. Warm ranges overlap; CPU, memory and highlight costs remain explicit. Correctness risk requires held-response tests. |
-| 3 | Broaden file-open workloads before changing implementation | Delivered-source opens took 38/27 ms versus 5.5 ms reuse. File switching is assumed frequent, but this TypeScript fixture does not represent larger files or other parsers. Measure those cases; preserve existing reuse. Medium correctness/render risk. |
-| 4 | Test large-list rendering independently | E01 still incurs about 90 ms first-action scheduling gap at 1,000 rows. Test fixed-row windowing only with external viewport, focus and keyboard contracts preserved. Medium/high interaction risk. |
+| 3 | Next measurement: larger-file open workloads | Delivered-source opens took 38/27 ms versus 5.5 ms reuse. File switching is assumed frequent, but this TypeScript fixture does not represent larger files or other parsers. Measure those cases next; preserve existing reuse. Medium correctness/render risk. |
+| Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
 | 5 | Expand mutation/convergence scale and background contention | Small-fixture mutations are mostly single-digit to tens of milliseconds. Larger indexes, saves and local fetch can change that ranking. High Git correctness risk; use disposable repositories and exact content oracles. |
 | 6 | Deep history, review/conflict/operation flows | Mapped but not performance-benchmarked here. History depth, conflict count and review size differ from file-count scale; do not extrapolate E01. |
 
