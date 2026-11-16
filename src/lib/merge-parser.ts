@@ -9,7 +9,7 @@
  */
 
 export interface ConflictRegion {
-	type: "context" | "conflict";
+	type: "context" | "resolved" | "conflict";
 	baseLines: string[];
 	oursLines: string[];
 	theirsLines: string[];
@@ -86,11 +86,44 @@ function findSyncPoint(
 	return null;
 }
 
+function sameLines(a: string[], b: string[]): boolean {
+	return a.length === b.length && a.every((line, i) => line === b[i]);
+}
+
+/**
+ * Classify lines where the three versions diverge. Only a change both sides made
+ * differently is a conflict. A change one side made, or both made alike, merges
+ * cleanly, as git merges it.
+ */
+function divergentRegion(
+	baseLines: string[],
+	oursLines: string[],
+	theirsLines: string[],
+): ConflictRegion {
+	const clean =
+		sameLines(oursLines, baseLines) ||
+		sameLines(theirsLines, baseLines) ||
+		sameLines(oursLines, theirsLines);
+	return {
+		type: clean ? "resolved" : "conflict",
+		baseLines,
+		oursLines,
+		theirsLines,
+	};
+}
+
+/** The lines a resolved region merges to: whichever side changed the base. */
+function resolvedLines(region: ConflictRegion): string[] {
+	if (sameLines(region.oursLines, region.baseLines)) return region.theirsLines;
+	return region.oursLines;
+}
+
 /**
  * Parse three-way text (base, ours, theirs) into an array of
- * ConflictRegion objects. Each region is either:
+ * ConflictRegion objects. Each region is one of:
  * - context: lines identical across all three versions
- * - conflict: lines that differ between ours and theirs (relative to base)
+ * - resolved: lines one side changed, or both changed alike
+ * - conflict: lines both sides changed differently
  *
  * The parser walks through lines using three pointers and groups
  * consecutive matching lines as context and differing lines as conflict.
@@ -172,24 +205,25 @@ export function parseConflictRegions(
 			);
 
 			if (sync) {
-				// Everything between current position and sync point is conflict
-				regions.push({
-					type: "conflict",
-					baseLines: baseLines.slice(bi, sync.bi),
-					oursLines: oursLines.slice(oi, sync.oi),
-					theirsLines: theirsLines.slice(ti, sync.ti),
-				});
+				regions.push(
+					divergentRegion(
+						baseLines.slice(bi, sync.bi),
+						oursLines.slice(oi, sync.oi),
+						theirsLines.slice(ti, sync.ti),
+					),
+				);
 				bi = sync.bi;
 				oi = sync.oi;
 				ti = sync.ti;
 			} else {
-				// No sync point found -- rest of all three is one conflict
-				regions.push({
-					type: "conflict",
-					baseLines: baseLines.slice(bi),
-					oursLines: oursLines.slice(oi),
-					theirsLines: theirsLines.slice(ti),
-				});
+				// No sync point found -- the rest of all three diverges as one region
+				regions.push(
+					divergentRegion(
+						baseLines.slice(bi),
+						oursLines.slice(oi),
+						theirsLines.slice(ti),
+					),
+				);
 				break;
 			}
 		}
@@ -202,6 +236,7 @@ export function parseConflictRegions(
  * Compute the merged output text from regions and selection state.
  *
  * For context regions, all lines are included.
+ * For resolved regions, the changed side's lines are included.
  * For conflict regions, lines are included if their key is in takenLines.
  * Ours lines come before theirs lines within each conflict region.
  */
@@ -216,6 +251,8 @@ export function computeOutput(
 		if (region.type === "context") {
 			// For context, include all lines (oursLines === theirsLines === baseLines)
 			lines.push(...region.oursLines);
+		} else if (region.type === "resolved") {
+			lines.push(...resolvedLines(region));
 		} else {
 			// For conflict, include taken ours lines first, then taken theirs lines
 			region.oursLines.forEach((line, j) => {

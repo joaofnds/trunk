@@ -157,6 +157,42 @@ describe("MergeEditor", () => {
 		}
 	});
 
+	describe("when the incoming side also changed a line the current side kept", () => {
+		beforeEach(() => {
+			mockInvoke.mockImplementation((cmd: string) => {
+				if (cmd !== "get_merge_sides") return Promise.resolve(undefined);
+				return Promise.resolve({
+					base: "a\nb\nc\nd\ne\n",
+					ours: "a\nb\nc\nd\nours e\n",
+					theirs: "a\ntheirs b\nc\nd\ntheirs e\n",
+				});
+			});
+		});
+
+		it("merges that change into the output and leaves one conflict to resolve", async () => {
+			render(MergeEditor, {
+				props: {
+					repoPath: "/test/repo",
+					filePath: "src/main.ts",
+					onclose: () => {},
+					onresolved: () => {},
+				},
+			});
+
+			const result = (await screen.findByRole(
+				"textbox",
+			)) as HTMLTextAreaElement;
+
+			expect(result.value).toBe("a\ntheirs b\nc\nd\nours e\n");
+			expect(
+				screen.getAllByRole("button", { name: "Conflict 1" }),
+			).toHaveLength(2);
+			expect(screen.queryAllByRole("button", { name: "Conflict 2" })).toEqual(
+				[],
+			);
+		});
+	});
+
 	describe("when a conflict spans several lines", () => {
 		const props = {
 			repoPath: "/test/repo",

@@ -75,6 +75,24 @@ describe("parseConflictRegions", () => {
 		expect(regions[0].oursLines).toEqual(["A", "B"]);
 	});
 
+	it.each([
+		["the incoming side alone", "A\nB\nC", "A\nY\nC"],
+		["the current side alone", "A\nX\nC", "A\nB\nC"],
+		["both sides identically", "A\nX\nC", "A\nX\nC"],
+	])(
+		"counts a change made by %s as resolved rather than as a conflict",
+		(_, ours, theirs) => {
+			const regions = parseConflictRegions("A\nB\nC", ours, theirs);
+
+			expect(regions.map((r) => r.type)).toEqual([
+				"context",
+				"resolved",
+				"context",
+			]);
+			expect(getConflictIndices(regions)).toEqual([]);
+		},
+	);
+
 	it("handles input with only whitespace lines", () => {
 		const regions = parseConflictRegions(" ", " ", " ");
 		expect(regions).toHaveLength(1);
@@ -122,6 +140,38 @@ describe("computeOutput", () => {
 
 		const output = computeOutput(regions, takenLines);
 		expect(output).toBe("A\nX\nC");
+	});
+
+	it("keeps the incoming side's own change when every conflict takes the current side", () => {
+		const regions = parseConflictRegions(
+			"a\nb\nc\nd\ne",
+			"a\nb\nc\nd\nE-ours",
+			"a\nB-theirs\nc\nd\nE-theirs",
+		);
+
+		const output = computeOutput(regions, takeAllCurrent(regions));
+
+		expect(output).toBe("a\nB-theirs\nc\nd\nE-ours");
+	});
+
+	it("keeps the current side's own change when every conflict takes the incoming side", () => {
+		const regions = parseConflictRegions(
+			"a\nb\nc\nd\ne",
+			"a\nB-ours\nc\nd\nE-ours",
+			"a\nb\nc\nd\nE-theirs",
+		);
+
+		const output = computeOutput(regions, takeAllIncoming(regions));
+
+		expect(output).toBe("a\nB-ours\nc\nd\nE-theirs");
+	});
+
+	it("keeps a deletion only one side made", () => {
+		const regions = parseConflictRegions("a\nb\nc", "a\nb\nc", "a\nc");
+
+		const output = computeOutput(regions, takeAllCurrent(regions));
+
+		expect(output).toBe("a\nc");
 	});
 
 	it("includes both ours and theirs lines with ours first", () => {

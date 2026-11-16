@@ -82,7 +82,7 @@ function flattenAligned(regions: ConflictRegion[]): {
 
 	for (let i = 0; i < regions.length; i++) {
 		const region = regions[i];
-		if (region.type === "context") {
+		if (region.type !== "conflict") {
 			for (let j = 0; j < region.oursLines.length; j++) {
 				ours.push({
 					type: "context",
@@ -107,6 +107,7 @@ function flattenAligned(regions: ConflictRegion[]): {
 					height: LINE_HEIGHT,
 				});
 			}
+			padShorterSide(region, i, ours, theirs);
 			oursLineNum += region.oursLines.length;
 			theirsLineNum += region.theirsLines.length;
 		} else {
@@ -157,36 +158,36 @@ function flattenAligned(regions: ConflictRegion[]): {
 					height: LINE_HEIGHT,
 				});
 			}
-			// Pad the shorter side so next region starts at the same offset
-			const diff = region.oursLines.length - region.theirsLines.length;
-			if (diff > 0) {
-				theirs.push({
-					type: "padding",
-					regionIdx: i,
-					lineIdx: -2,
-					text: "",
-					key: "",
-					lineNum: 0,
-					conflictNum: 0,
-					height: diff * LINE_HEIGHT,
-				});
-			} else if (diff < 0) {
-				ours.push({
-					type: "padding",
-					regionIdx: i,
-					lineIdx: -2,
-					text: "",
-					key: "",
-					lineNum: 0,
-					conflictNum: 0,
-					height: -diff * LINE_HEIGHT,
-				});
-			}
+			padShorterSide(region, i, ours, theirs);
 			oursLineNum += region.oursLines.length;
 			theirsLineNum += region.theirsLines.length;
 		}
 	}
 	return { ours, theirs };
+}
+
+/** Pad the shorter side so the next region starts at the same offset in both panes. */
+function padShorterSide(
+	region: ConflictRegion,
+	regionIdx: number,
+	ours: FlatRow[],
+	theirs: FlatRow[],
+) {
+	const diff = region.oursLines.length - region.theirsLines.length;
+	if (diff === 0) return;
+
+	const filler: FlatRow = {
+		type: "padding",
+		regionIdx,
+		lineIdx: -2,
+		text: "",
+		key: "",
+		lineNum: 0,
+		conflictNum: 0,
+		height: Math.abs(diff) * LINE_HEIGHT,
+	};
+	if (diff > 0) theirs.push(filler);
+	else ours.push(filler);
 }
 
 function computeOffsets(rows: FlatRow[]): number[] {
