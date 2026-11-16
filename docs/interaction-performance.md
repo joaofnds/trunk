@@ -429,8 +429,9 @@ product-change speedup. In the release pilot the command spans were 29/15 ms ver
 44/26 ms total opens. Hunk/line timings in these two earlier matrices end at command
 completion and status-list readiness, followed by exact Git verification. They do
 not explicitly await remaining-diff controls. The structural evidence favors retaining current diff reuse;
-new caching or prefetch is not justified by this fixture. Wider language/file-size
-coverage remains the next discriminating measurement.
+new caching or prefetch is not justified by this fixture. E07 covers a wider file
+size with highlighting skipped. Highlighted opens remain the next discriminating
+measurement.
 
 Resource windows include application correctness reads after DOM usability;
 independent Git reads follow those snapshots. Median summed process CPU is 94.3 ms
@@ -913,6 +914,88 @@ The maintained [interaction runner](../scripts/interaction-performance/run.py) a
 reproduction requires the retained local artifacts. Physical trackpad timing,
 normal-app presentation, background contention and long-session costs remain open.
 
+### E07: large-file opening, no optimization and one correctness fix
+
+At 6,000 lines with syntax highlighting skipped, opening a file is not a measured
+bottleneck, so no optimization was attempted. The fixture was built past the
+highlighting cap, so the path where highlighting runs, and its likely cost, is not
+covered here. The pilots did expose a correctness defect, fixed in commit
+`4586dd1c`. Commit, comparison and rebase views each stored one content mode, set
+by whichever file loaded last. In full-file mode, after file B loaded in full,
+returning to file A showed A's retained hunk payload under the full-file controls
+until A's read landed. The stale-payload guard compared the view's mode rather than
+the payload's. Each view's mode is now derived from the payload it shows, so that
+payload is hidden behind "Loading diff…" until the read lands. Held-reply tests in
+the commit, comparison and rebase suites pin the fix and failed against the earlier
+code. Its gate, `mise exec -- env CARGO_BUILD_JOBS=2 NEXTEST_TEST_THREADS=2 just
+check`, passed 1,980 Rust tests (one skipped), 4,539 frontend, 202 application and
+53 visual tests. The fixed build has not been timed natively.
+
+The fixture commit changes two files of 6,000 lines and 170,728 bytes each,
+`recognized.ts` and `unsupported.txt`. Each edit is at line 1 and line 5,500, so
+both content modes span past the 5,000-line parse window. A window longer than
+that skips highlighting entirely (`MAX_SYNTAX_PARSE_LINES` in
+`src-tauri/src/commands/diff.rs`). This is a payload size baseline, and it cannot
+attribute a TypeScript versus plain-text difference to parsing. In hunk mode the
+frontend receives a 13-line payload, and in full-file mode 6,002 lines.
+
+Two fixed-order launches of E05's frozen native drive build each timed six actions.
+The build predates `4586dd1c`. Each launch makes three opens in one mode, switches
+mode, then makes two opens in the other mode. Pilot 1 starts in hunk mode with
+`recognized.ts` and pilot 2 in full-file mode with `unsupported.txt`. The third
+action in each mode returns to a file already loaded. Two launches in a fixed order
+are a pilot, not a comparative cohort, and the runs did not start from a cold cache.
+Actions are `HTMLElement.click()` events checked against a hit test, so native input
+dispatch is outside the timing. Layout was inline, with word wrap, visible
+whitespace, graph statistics and review threads all off.
+
+The endpoint is the moment visible, hit-tested rows match the requested path, mode,
+exact fixture text and gutter line numbers, together with the matching completed
+read, then two rAF callbacks. A return to a loaded file must complete no new read
+by its endpoint.
+
+| Action | Pilot 1 endpoint, ms | Pilot 2 endpoint, ms |
+| --- | --- | --- |
+| First file, first open in the starting mode | 21 | 28 |
+| Second file, first open | 26 | 21 |
+| First file again, retained payload | 12 | 11 |
+| Mode switch, first file reloads | 21 | 19 |
+| Second file in the new mode | 27 | 25 |
+| First file again in the new mode, retained payload | 14 | 9 |
+
+The four full-file reads of 6,002 lines ended at 21 to 28 ms. Across all eight
+actions that read from the backend, `invoke:diff_commit_file` took 2 to 13 ms and
+`diff.buildRows` 3 ms or less. Usable content appeared 6 to 23 ms after input.
+Summed host, WebContent and GPU-process CPU over each action window was 22.6 to
+89.4 ms, and 8.3 to 15.5 ms for the four retained returns. Those windows run from
+before the drive request to after its response, so they include harness transport
+and predicate polling. In both pilots the fifth action, which opens the second file
+in the new mode, first built rows for that file's retained payload of the other
+mode, which is the defect above. Its timings and CPU include that wasted build.
+
+Highlighted opens are the next candidate. A full-file view of a file under 5,000
+lines highlights every line on both sides. The cap's source comment records
+release-mode probe rates of about 85 ms per side at the cap on a quiet machine and
+360 ms loaded, which would exceed every E07 endpoint. That figure is a probe
+measurement of the highlighter alone, not an open measured through the app. Wrapped
+rows, review threads and other grammars are also unmeasured.
+
+Five earlier attempts are excluded and kept. `pilot-01` queried the graph before
+the repository opened. `pilot-01b` was refused at process admission because a
+competing `cargo`/`rustc` build was running, so no app launched. `pilot-01c` failed
+on a quoting error in a setup script. `pilot-01e` set up the display before the web
+view had a window. `pilot-01d` completed, but its usable-content check did not test
+the content mode, and it accepted the retained payload of the other mode that
+revealed the defect. The check now decides mode by line continuity, since the two
+payloads share their top rows. Every launched attempt recorded complete cleanup.
+
+The [committed E07 record](performance-data/large-file-open-2026-11-16.json) holds
+each action's endpoints, spans and CPU, the fixture blob identities, executable and
+harness hashes, the exclusion reasons and the local reproduction commands. Raw
+results and the harness stay in the gitignored `.boris/large-file-open-20261116/`,
+so exact reproduction needs those local artifacts. A fresh clone has the summaries
+and identities only.
+
 ### Selection presentation and background limits
 
 Three five-second ScreenCaptureKit attempts used a requested 60 Hz virtual display.
@@ -942,7 +1025,7 @@ Frequency remains an assumption; no usage telemetry was collected.
 | --- | --- | --- |
 | 1 | Broaden I19 scrolling evidence while preserving the accepted behavior | The user made scrolling the priority. E05 changes captured diff-content cadence from 17.820 to 8.903 ms and accepts added process CPU in diff and graph scrolling. Painting checks pass at requested 60 and 120 Hz, including a replacement 90,000-line run with workload admission. Four admitted graph pairs have overlapping medians and capture gaps in both builds. Earlier competing-test confirmations remain excluded. Preserve the stationary row layout and configuration fallback. Physical trackpad timing, long-session cost and older-OS behavior remain open. High presentation risk. |
 | 2 | Preserve the reviewed selection and navigation contracts | Browsing is assumed frequent. E01 removes 116.5 ms in the width series and 129 ms in the delivered-source confirmation at 1,000 files. Warm ranges overlap; CPU, memory and highlight costs remain explicit. Correctness risk requires held-response tests. |
-| 3 | Next measurement: larger-file open workloads | Delivered-source opens took 38/27 ms versus 5.5 ms reuse. File switching is assumed frequent, but this TypeScript fixture does not represent larger files or other parsers. Measure those cases next; preserve existing reuse. Medium correctness/render risk. |
+| 3 | Next measurement: highlighted full-file opens under the 5,000-line cap | E07 opened 6,000-line files in 19 to 28 ms and returned to loaded ones in 9 to 14 ms, but its fixture skips highlighting. A full-file view under the cap highlights both sides, which the cap's probe estimates at about 85 ms per side at 5,000 lines on a quiet machine. Measure that through the app before optimizing. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium correctness/render risk. |
 | Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
 | 5 | Expand mutation/convergence scale and background contention | Small-fixture mutations are mostly single-digit to tens of milliseconds. Larger indexes, saves and local fetch can change that ranking. High Git correctness risk; use disposable repositories and exact content oracles. |
 | 6 | Deep history, review/conflict/operation flows | Mapped but not performance-benchmarked here. History depth, conflict count and review size differ from file-count scale; do not extrapolate E01. |

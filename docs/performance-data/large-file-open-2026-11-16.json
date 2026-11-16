@@ -1,0 +1,527 @@
+{
+  "schema": 1,
+  "experiment": "E07 large-file opening baseline",
+  "date": "2026-11-16",
+  "decision": "no optimization at 6,000 lines with highlighting skipped; one product correctness defect found and fixed (commit 4586dd1c); highlighted full-file opens under the 5,000-line cap are the next measurement",
+  "scope": "two fixed-order pilots, six timed actions each; not a comparative cohort, not cold-cache, no syntax-parser attribution because both modes exceed the 5,000-line parse-window cap",
+  "comparativeVerdict": null,
+  "globalSettlement": "unknown",
+  "endpoints": {
+    "feedback": "requested path and mode control observed in the DOM after delivered input",
+    "usable": "hit-tested visible rows match path, mode, exact fixture text and gutter pairs",
+    "endpoint": "usable plus matching read completion (when a read is required), then two requestAnimationFrame callbacks"
+  },
+  "fixture": {
+    "commits": [
+      "3618eaf08a535c8ca942db9d2320354378f5d96b",
+      "e17f6c24e7bb619c76b5a046fa3ef512ac67ff2b"
+    ],
+    "target": {
+      "oid": "e17f6c24e7bb619c76b5a046fa3ef512ac67ff2b",
+      "summary": "large file revision 1"
+    },
+    "paths": [
+      "recognized.ts",
+      "unsupported.txt"
+    ],
+    "revisions": [
+      {
+        "revision": 0,
+        "files": {
+          "recognized.ts": {
+            "blob": "8f0b8fd5f9663850b29c3b0783570ac2c8889fbc",
+            "bytes": 170728,
+            "sha256": "5eb197a4b335fca2a0eab2c4e799b02380318ac8fc50acfc1a421ac966906114",
+            "lines": 6000,
+            "sentinel": "export function calculate0000(input: number): number { // file A revision 0",
+            "editedLineContent": "  return adjusted + 1; // line 5500"
+          },
+          "unsupported.txt": {
+            "blob": "deb5247fcf86d1388ebe4d68678d106c5d5067c9",
+            "bytes": 170728,
+            "sha256": "4c3f8deea507f9f58633c03e73fa29e4c627d66d55996b00d62c0ff76d7b5ec2",
+            "lines": 6000,
+            "sentinel": "export function calculate0000(input: number): number { // file B revision 0",
+            "editedLineContent": "  return adjusted + 1; // line 5500"
+          }
+        }
+      },
+      {
+        "revision": 1,
+        "files": {
+          "recognized.ts": {
+            "blob": "b0ee23ad1ebd1d52885678364d5dcbc28d0b8b0b",
+            "bytes": 170728,
+            "sha256": "e6dbd3494130802f05154d113bd7fd682f049c180ea6b1070f3f84e121cf0aa9",
+            "lines": 6000,
+            "sentinel": "export function calculate0000(input: number): number { // file A revision 1",
+            "editedLineContent": "  return adjusted + 2; // line 5500"
+          },
+          "unsupported.txt": {
+            "blob": "32a75c356a644a9f2688788347fdfcf4bf01d147",
+            "bytes": 170728,
+            "sha256": "74541a6f5de7dce01d1df4e09789098f315b02bd5dc2a1043fa67da451e7fdc0",
+            "lines": 6000,
+            "sentinel": "export function calculate0000(input: number): number { // file B revision 1",
+            "editedLineContent": "  return adjusted + 2; // line 5500"
+          }
+        }
+      }
+    ],
+    "workload": "sentinel-plus-late-edit; syntax parse window exceeds cap in both modes"
+  },
+  "executables": {
+    "binary": {
+      "sha256": "4b6e80b42987a9486648541a095bc43f129f0cb2e1a85a837f1901e105b167a0"
+    },
+    "native_probe": {
+      "sha256": "41ffa04cf34405b29a2329d7cb8d24d162a6053ad4e82a9ad7a2f1c9f942e55a"
+    }
+  },
+  "binaryNote": "E05 frozen native-final drive build (SHA above), which predates commit 4586dd1c",
+  "pilots": [
+    {
+      "directory": "pilot-01f",
+      "pilot": 1,
+      "disposition": "valid_recorded_pilot",
+      "artifactManifestSha256": "aced427ca6ea660ef12ed3f3004ee18733d15941af468ee5a0b63a92ecdfe8bf",
+      "harnessManifestSha256": "88a860c0987b4834acefb16056ea266e492316f92b13ee867d8c8d6017ab607e",
+      "actions": [
+        {
+          "action": "action-01",
+          "label": "first path open",
+          "path": "recognized.ts",
+          "mode": "hunk",
+          "read": "required",
+          "feedbackMs": 10,
+          "usableMs": 17,
+          "readCompletionObservedMs": 11,
+          "endpointMs": 21,
+          "invokeDiffCommitFileMs": [
+            10
+          ],
+          "openCommitFileMs": [
+            11
+          ],
+          "buildRowsMs": [
+            1,
+            0
+          ],
+          "rowHeightsMs": [
+            0,
+            0
+          ],
+          "summedCpuMs": 53.683,
+          "cpuMsByProcess": {
+            "web": 28.377,
+            "host": 17.845,
+            "gpu": 7.462
+          }
+        },
+        {
+          "action": "action-02",
+          "label": "second path first open",
+          "path": "unsupported.txt",
+          "mode": "hunk",
+          "read": "required",
+          "feedbackMs": 2,
+          "usableMs": 6,
+          "readCompletionObservedMs": 10,
+          "endpointMs": 26,
+          "invokeDiffCommitFileMs": [
+            2
+          ],
+          "openCommitFileMs": [
+            5
+          ],
+          "buildRowsMs": [
+            0,
+            0
+          ],
+          "rowHeightsMs": [
+            0,
+            0
+          ],
+          "summedCpuMs": 23.996,
+          "cpuMsByProcess": {
+            "web": 14.669,
+            "host": 5.608,
+            "gpu": 3.72
+          }
+        },
+        {
+          "action": "action-03",
+          "label": "A/B/A revisit",
+          "path": "recognized.ts",
+          "mode": "hunk",
+          "read": "retained-candidate",
+          "feedbackMs": 1,
+          "usableMs": 2,
+          "readCompletionObservedMs": null,
+          "endpointMs": 12,
+          "invokeDiffCommitFileMs": null,
+          "openCommitFileMs": null,
+          "buildRowsMs": [
+            0,
+            0
+          ],
+          "rowHeightsMs": [
+            0,
+            0
+          ],
+          "summedCpuMs": 8.332,
+          "cpuMsByProcess": {
+            "web": 5.21,
+            "host": 1.861,
+            "gpu": 1.261
+          }
+        },
+        {
+          "action": "action-04",
+          "label": "toolbar mode reload",
+          "path": "recognized.ts",
+          "mode": "full",
+          "read": "required",
+          "feedbackMs": 2,
+          "usableMs": 17,
+          "readCompletionObservedMs": 17,
+          "endpointMs": 21,
+          "invokeDiffCommitFileMs": [
+            5
+          ],
+          "openCommitFileMs": null,
+          "buildRowsMs": [
+            2
+          ],
+          "rowHeightsMs": [
+            0
+          ],
+          "summedCpuMs": 61.089,
+          "cpuMsByProcess": {
+            "web": 49.927,
+            "host": 8.096,
+            "gpu": 3.065
+          }
+        },
+        {
+          "action": "action-05",
+          "label": "second path first open in new mode",
+          "path": "unsupported.txt",
+          "mode": "full",
+          "read": "required",
+          "feedbackMs": 4,
+          "usableMs": 14,
+          "readCompletionObservedMs": 14,
+          "endpointMs": 27,
+          "invokeDiffCommitFileMs": [
+            6
+          ],
+          "openCommitFileMs": [
+            14
+          ],
+          "buildRowsMs": [
+            0,
+            2
+          ],
+          "rowHeightsMs": [
+            0,
+            0
+          ],
+          "summedCpuMs": 43.794,
+          "cpuMsByProcess": {
+            "web": 33.668,
+            "host": 6.459,
+            "gpu": 3.667
+          }
+        },
+        {
+          "action": "action-06",
+          "label": "new-mode A/B/A revisit",
+          "path": "recognized.ts",
+          "mode": "full",
+          "read": "retained-candidate",
+          "feedbackMs": 3,
+          "usableMs": 4,
+          "readCompletionObservedMs": null,
+          "endpointMs": 14,
+          "invokeDiffCommitFileMs": null,
+          "openCommitFileMs": null,
+          "buildRowsMs": [
+            2
+          ],
+          "rowHeightsMs": [
+            0
+          ],
+          "summedCpuMs": 15.471,
+          "cpuMsByProcess": {
+            "web": 12.024,
+            "host": 2.281,
+            "gpu": 1.166
+          }
+        }
+      ]
+    },
+    {
+      "directory": "pilot-02",
+      "pilot": 2,
+      "disposition": "valid_recorded_pilot",
+      "artifactManifestSha256": "61949de367d06aa41c39f6ff0c64b0305b1f381125c4163ddaa86f3626e58e02",
+      "harnessManifestSha256": "88a860c0987b4834acefb16056ea266e492316f92b13ee867d8c8d6017ab607e",
+      "actions": [
+        {
+          "action": "action-01",
+          "label": "first path open",
+          "path": "unsupported.txt",
+          "mode": "full",
+          "read": "required",
+          "feedbackMs": 10,
+          "usableMs": 23,
+          "readCompletionObservedMs": 23,
+          "endpointMs": 28,
+          "invokeDiffCommitFileMs": [
+            12
+          ],
+          "openCommitFileMs": [
+            12
+          ],
+          "buildRowsMs": [
+            3
+          ],
+          "rowHeightsMs": [
+            0
+          ],
+          "summedCpuMs": 89.379,
+          "cpuMsByProcess": {
+            "web": 65.337,
+            "host": 16.839,
+            "gpu": 7.202
+          }
+        },
+        {
+          "action": "action-02",
+          "label": "second path first open",
+          "path": "recognized.ts",
+          "mode": "full",
+          "read": "required",
+          "feedbackMs": 2,
+          "usableMs": 14,
+          "readCompletionObservedMs": 14,
+          "endpointMs": 21,
+          "invokeDiffCommitFileMs": [
+            5
+          ],
+          "openCommitFileMs": [
+            14
+          ],
+          "buildRowsMs": [
+            1
+          ],
+          "rowHeightsMs": [
+            0
+          ],
+          "summedCpuMs": 51.179,
+          "cpuMsByProcess": {
+            "web": 40.619,
+            "host": 7.338,
+            "gpu": 3.222
+          }
+        },
+        {
+          "action": "action-03",
+          "label": "A/B/A revisit",
+          "path": "unsupported.txt",
+          "mode": "full",
+          "read": "retained-candidate",
+          "feedbackMs": 3,
+          "usableMs": 3,
+          "readCompletionObservedMs": null,
+          "endpointMs": 11,
+          "invokeDiffCommitFileMs": null,
+          "openCommitFileMs": null,
+          "buildRowsMs": [
+            1
+          ],
+          "rowHeightsMs": [
+            1
+          ],
+          "summedCpuMs": 12.528,
+          "cpuMsByProcess": {
+            "web": 9.072,
+            "host": 2.328,
+            "gpu": 1.128
+          }
+        },
+        {
+          "action": "action-04",
+          "label": "toolbar mode reload",
+          "path": "unsupported.txt",
+          "mode": "hunk",
+          "read": "required",
+          "feedbackMs": 3,
+          "usableMs": 9,
+          "readCompletionObservedMs": 9,
+          "endpointMs": 19,
+          "invokeDiffCommitFileMs": [
+            3
+          ],
+          "openCommitFileMs": null,
+          "buildRowsMs": [
+            0,
+            0
+          ],
+          "rowHeightsMs": [
+            0,
+            0
+          ],
+          "summedCpuMs": 22.564,
+          "cpuMsByProcess": {
+            "web": 12.853,
+            "host": 5.82,
+            "gpu": 3.892
+          }
+        },
+        {
+          "action": "action-05",
+          "label": "second path first open in new mode",
+          "path": "recognized.ts",
+          "mode": "hunk",
+          "read": "required",
+          "feedbackMs": 10,
+          "usableMs": 16,
+          "readCompletionObservedMs": 17,
+          "endpointMs": 25,
+          "invokeDiffCommitFileMs": [
+            13
+          ],
+          "openCommitFileMs": [
+            17
+          ],
+          "buildRowsMs": [
+            1,
+            2,
+            0,
+            0
+          ],
+          "rowHeightsMs": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "summedCpuMs": 46.079,
+          "cpuMsByProcess": {
+            "web": 35.225,
+            "host": 6.966,
+            "gpu": 3.887
+          }
+        },
+        {
+          "action": "action-06",
+          "label": "new-mode A/B/A revisit",
+          "path": "unsupported.txt",
+          "mode": "hunk",
+          "read": "retained-candidate",
+          "feedbackMs": 1,
+          "usableMs": 2,
+          "readCompletionObservedMs": null,
+          "endpointMs": 9,
+          "invokeDiffCommitFileMs": null,
+          "openCommitFileMs": null,
+          "buildRowsMs": [
+            0,
+            0
+          ],
+          "rowHeightsMs": [
+            0,
+            0
+          ],
+          "summedCpuMs": 9.081,
+          "cpuMsByProcess": {
+            "web": 5.163,
+            "host": 2.592,
+            "gpu": 1.326
+          }
+        }
+      ]
+    }
+  ],
+  "excludedAttempts": [
+    {
+      "directory": "pilot-01",
+      "disposition": "excluded_failed_collection",
+      "reason": "setup queried the graph before the repository opened (not_open); setup now waits for the rendered target summary",
+      "cleanupComplete": true,
+      "appLaunched": true
+    },
+    {
+      "directory": "pilot-01b",
+      "disposition": "excluded_failed_collection",
+      "reason": "process admission rejected competing cargo/rustc at entry; no app launched",
+      "cleanupComplete": null,
+      "appLaunched": false
+    },
+    {
+      "directory": "pilot-01c",
+      "disposition": "excluded_failed_collection",
+      "reason": "setup script quoting produced a JavaScript SyntaxError; selectors are now JSON-encoded",
+      "cleanupComplete": true,
+      "appLaunched": true
+    },
+    {
+      "directory": "pilot-01d",
+      "disposition": "excluded_invalid_or_incomplete",
+      "reason": "complete, but its usable endpoints were accepted by an oracle that did not check content mode; the app showed a retained hunk payload under full-file controls, which exposed the product defect fixed in 4586dd1c; the oracle and summarizer now decide mode by line continuity",
+      "cleanupComplete": true,
+      "appLaunched": true
+    },
+    {
+      "directory": "pilot-01e",
+      "disposition": "excluded_failed_collection",
+      "reason": "display setup ran before the web view joined a window (no WKWebView); setup now waits for the rendered graph first",
+      "cleanupComplete": true,
+      "appLaunched": true
+    }
+  ],
+  "localEvidence": ".boris/large-file-open-20261116 (gitignored): raw results, harness copies, admission and cleanup records",
+  "summarizerSha256": "4ee5695879bd27f4a561d800254f56bec390b772d07fee9ecc6556c0487bcc22",
+  "oracleSha256": "73aa44d750e37010623b0ab8f8ba56366130c3997c24e5ff280acfd079103615",
+  "conditions": {
+    "layout": "inline",
+    "wordWrap": false,
+    "visibleWhitespace": false,
+    "graphStatistics": false,
+    "reviewThreads": false,
+    "input": "HTMLElement.click() checked against a hit test; native input dispatch is outside the timing",
+    "payloadLines": {
+      "hunk": 13,
+      "full": 6002
+    },
+    "cpuWindow": "from before the drive request to after its response; includes harness transport and predicate polling"
+  },
+  "knownContamination": "the measured build predates 4586dd1c; in both pilots action-05 first built rows for the retained payload of the other mode (diff.buildRows lines 13 then 6002 in pilot-01f, 6002 then 13 in pilot-02), so its timing and CPU include that build",
+  "fixGate": {
+    "commit": "4586dd1c",
+    "command": "mise exec -- env CARGO_BUILD_JOBS=2 NEXTEST_TEST_THREADS=2 just check",
+    "rust": {
+      "passed": 1980,
+      "skipped": 1
+    },
+    "frontend": 4539,
+    "application": 202,
+    "visual": 53,
+    "nativeTimingOfFixedBuild": null
+  },
+  "reproduction": {
+    "note": "requires the gitignored local harness; existing output directories are refused",
+    "pilotCommands": [
+      "mise exec -- python3 -B .boris/large-file-open-20261116/pilot.py --pilot 1 --output .boris/large-file-open-20261116/<fresh-name>",
+      "mise exec -- python3 -B .boris/large-file-open-20261116/pilot.py --pilot 2 --output .boris/large-file-open-20261116/<fresh-name>"
+    ],
+    "summary": "mise exec -- python3 -B .boris/large-file-open-20261116/analysis/summarize.py <pilot-1-output> <pilot-2-output> > <summary.json>"
+  },
+  "localEvidenceHashes": {
+    "analysis/pilots-01f-02-summary.json": "7213983312a6952fa624cd5f3e41a32b026972e5d53033a7fc37e5ff16ca81ba",
+    "analysis/excluded-attempts.json": "0e410f6287d1e16688c2325933bad8d64dae23e03d9f0ea327e1bc7a7222b1f1"
+  },
+  "evidenceReviewStatus": "one independent read-only document review recomputed every number from the summaries and raw action files and found none wrong; its coverage and disclosure findings are folded into this record and E07"
+}
