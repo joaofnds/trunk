@@ -132,7 +132,7 @@ def validate_crops(crops, box):
 
 
 def decode_pixels(movie, crop):
-    expression = f"crop={crop['width']}:{crop['height']}:{crop['x']}:{crop['y']},format=gray"
+    expression = f"format=gray,crop={crop['width']}:{crop['height']}:{crop['x']}:{crop['y']}"
     result = subprocess.run(['ffmpeg', '-v', 'error', '-threads', '1', '-filter_threads', '1', '-i', str(movie),
                              '-vf', expression, '-fps_mode', 'passthrough', '-f', 'rawvideo', '-'],
                             check=True, capture_output=True, timeout=45)
