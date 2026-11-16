@@ -2,6 +2,7 @@
 import { untrack } from "svelte";
 import { reportErrorDialog, reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { keyChord } from "../lib/keyboard.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { HeadCommitMessage } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
@@ -120,6 +121,7 @@ async function handleModeSwitch(newMode: "commit" | "amend" | "stash") {
 }
 
 async function handleSubmit() {
+	if (committing) return;
 	subjectError = "";
 	stagedError = "";
 
@@ -183,6 +185,12 @@ async function handleSubmit() {
 		committing = false;
 	}
 }
+
+function submitOnModEnter(e: KeyboardEvent) {
+	if (keyChord(e) !== "Meta+Enter") return;
+	e.preventDefault();
+	void handleSubmit();
+}
 </script>
 
 <div class="flex flex-col shrink-0">
@@ -209,6 +217,7 @@ async function handleSubmit() {
 				data-testid="commit-form-subject"
 				type="text"
 				bind:value={getSubject, setSubject}
+				onkeydown={submitOnModEnter}
 				placeholder={mode === "stash"
 					? "Stash name (optional)"
 					: "Summary (required)"}
@@ -233,6 +242,7 @@ async function handleSubmit() {
 		<!-- Body field -->
 		<textarea
 			bind:value={getBody, setBody}
+			onkeydown={submitOnModEnter}
 			rows={3}
 			placeholder="Description (optional)"
 			class="w-full box-border border border-border bg-bg text-text rounded py-2 px-3 text-callout leading-normal resize-y"

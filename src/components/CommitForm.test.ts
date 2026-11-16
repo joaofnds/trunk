@@ -644,4 +644,72 @@ describe("CommitForm", () => {
 			);
 		});
 	});
+
+	describe("when Cmd+Enter is pressed in the message", () => {
+		function commits(): unknown[] {
+			return vi
+				.mocked(safeInvoke)
+				.mock.calls.filter(([cmd]) => cmd === "create_commit");
+		}
+
+		beforeEach(() => {
+			vi.mocked(safeInvoke).mockReset();
+			vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+				cmd === "create_commit"
+					? new Promise(() => {})
+					: Promise.resolve(undefined),
+			);
+		});
+
+		it.each([
+			["summary", () => screen.getByTestId("commit-form-subject")],
+			[
+				"description",
+				() => screen.getByPlaceholderText("Description (optional)"),
+			],
+		])("commits from the %s field", async (_field, field) => {
+			render(CommitForm, { props: defaultProps });
+			await fireEvent.input(screen.getByTestId("commit-form-subject"), {
+				target: { value: "ship it" },
+			});
+
+			await fireEvent.keyDown(field(), {
+				key: "Enter",
+				metaKey: true,
+			});
+
+			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("create_commit", {
+				path: "/repo",
+				subject: "ship it",
+				body: null,
+			});
+		});
+
+		it("commits once when pressed again while the commit runs", async () => {
+			render(CommitForm, { props: defaultProps });
+			const subject = screen.getByTestId("commit-form-subject");
+			await fireEvent.input(subject, { target: { value: "ship it" } });
+
+			await fireEvent.keyDown(subject, { key: "Enter", metaKey: true });
+			await fireEvent.keyDown(subject, { key: "Enter", metaKey: true });
+
+			expect(commits()).toHaveLength(1);
+		});
+
+		it("leaves a plain Enter in the description as a new line", async () => {
+			render(CommitForm, { props: defaultProps });
+			await fireEvent.input(screen.getByTestId("commit-form-subject"), {
+				target: { value: "ship it" },
+			});
+
+			await fireEvent.keyDown(
+				screen.getByPlaceholderText("Description (optional)"),
+				{
+					key: "Enter",
+				},
+			);
+
+			expect(commits()).toHaveLength(0);
+		});
+	});
 });
