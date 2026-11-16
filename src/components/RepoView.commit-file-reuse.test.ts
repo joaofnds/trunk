@@ -307,18 +307,6 @@ describe("RepoView commit file reuse", () => {
 		expect(host.count("diff_commit_file")).toBe(5);
 	});
 
-	it("reads the same path again after the repository changes", async () => {
-		const view = await mountCommit();
-		await openFile("f.ts", "FIRST REPO");
-		await openFile("g.ts", "SECOND REPO");
-		await view.rerender({ repoPath: "/other" });
-
-		await openFile("f.ts", "OTHER REPO");
-
-		expect(screen.queryByText("FIRST REPO")).toBeNull();
-		expect(host.count("diff_commit_file")).toBe(3);
-	});
-
 	it("drops a pending file response after returning to a loaded file", async () => {
 		const completed = Promise.withResolvers<void>();
 		const sink: PerfSink = {

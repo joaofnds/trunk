@@ -3249,21 +3249,27 @@ describe("RepoView", () => {
 			expect(screen.getByText(focusedFile.path)).toBeTruthy();
 		});
 
-		it("shows the newly focused commit's diff of a file picked while its files load", async () => {
+		// Focuses the clicked commit, then HEAD with HEAD's files held, and opens
+		// `path` from the clicked commit's list still on screen.
+		async function pickAFileWhileHeadsFilesLoad(path: string) {
 			stubRebaseTodo(PARENT_OID);
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
-			const path = "src/shared.ts";
-			let headLists = 0;
+			let holdHeadFiles = false;
+			const headFilesAsked = Promise.withResolvers<void>();
 			const headFiles = Promise.withResolvers<FileDiff[]>();
 			mockInvoke.mockImplementation((cmd, args) => {
 				const a = args as Record<string, unknown> | undefined;
 				if (cmd === "get_commit_detail" && typeof a?.oid === "string") {
 					return Promise.resolve(makeRebaseDetail(a.oid, `summary ${a.oid}`));
 				}
-				if (cmd === "list_commit_files" && a?.oid === HEAD_OID) {
-					headLists += 1;
-					if (headLists > 1) return headFiles.promise;
+				if (
+					cmd === "list_commit_files" &&
+					a?.oid === HEAD_OID &&
+					holdHeadFiles
+				) {
+					headFilesAsked.resolve();
+					return headFiles.promise;
 				}
 				if (cmd === "list_commit_files") {
 					return Promise.resolve([makeRebaseFile(path)]);
@@ -3278,10 +3284,19 @@ describe("RepoView", () => {
 			await openTheEditorOnTheClickedCommit();
 			await fireEvent.click(rebaseRow(1));
 			await screen.findByText(`summary ${CLICKED_OID}`);
+			holdHeadFiles = true;
 			await fireEvent.click(rebaseRow(0));
-			await vi.waitFor(() => expect(headLists).toBe(2));
-
+			await headFilesAsked.promise;
 			await fireEvent.click(await screen.findByText(path));
+			await screen.findByRole("button", { name: "Close diff" });
+
+			return headFiles;
+		}
+
+		it("shows the newly focused commit's diff of a file picked while its files load", async () => {
+			const path = "src/shared.ts";
+			const headFiles = await pickAFileWhileHeadsFilesLoad(path);
+
 			headFiles.resolve([makeRebaseFile(path)]);
 
 			expect(await screen.findByText(`DIFF AT ${HEAD_OID}`)).toBeTruthy();
@@ -3289,44 +3304,24 @@ describe("RepoView", () => {
 		});
 
 		it("closes the diff of a file picked while its files load when the newly focused commit lacks it", async () => {
-			stubRebaseTodo(PARENT_OID);
-			const base = mockInvoke.getMockImplementation();
-			if (!base) throw new Error("base invoke implementation missing");
-			const path = "src/shared.ts";
-			let headLists = 0;
-			const headFiles = Promise.withResolvers<FileDiff[]>();
-			mockInvoke.mockImplementation((cmd, args) => {
-				const a = args as Record<string, unknown> | undefined;
-				if (cmd === "get_commit_detail" && typeof a?.oid === "string") {
-					return Promise.resolve(makeRebaseDetail(a.oid, `summary ${a.oid}`));
-				}
-				if (cmd === "list_commit_files" && a?.oid === HEAD_OID) {
-					headLists += 1;
-					if (headLists > 1) return headFiles.promise;
-				}
-				if (cmd === "list_commit_files") {
-					return Promise.resolve([makeRebaseFile(path)]);
-				}
-				if (cmd === "diff_commit_file") {
-					return Promise.resolve([
-						makeRebaseFileWithContent(path, `DIFF AT ${String(a?.oid)}`),
-					]);
-				}
-				return base(cmd, args);
-			});
-			await openTheEditorOnTheClickedCommit();
-			await fireEvent.click(rebaseRow(1));
-			await screen.findByText(`summary ${CLICKED_OID}`);
-			await fireEvent.click(rebaseRow(0));
-			await vi.waitFor(() => expect(headLists).toBe(2));
+			const headFiles = await pickAFileWhileHeadsFilesLoad("src/shared.ts");
 
-			await fireEvent.click(await screen.findByText(path));
 			headFiles.resolve([makeRebaseFile("src/head-only.ts")]);
 
 			expect(await screen.findByText("src/head-only.ts")).toBeTruthy();
-			await flush();
-			expect(screen.queryByText("Opening diff…")).toBeNull();
-			expect(screen.queryByRole("button", { name: "Close diff" })).toBeNull();
+			await waitFor(() =>
+				expect(screen.queryByRole("button", { name: "Close diff" })).toBeNull(),
+			);
+		});
+
+		it("closes the diff of a file picked while the newly focused commit fails to load", async () => {
+			const headFiles = await pickAFileWhileHeadsFilesLoad("src/shared.ts");
+
+			headFiles.reject(new Error("list failed"));
+
+			await waitFor(() =>
+				expect(screen.queryByRole("button", { name: "Close diff" })).toBeNull(),
+			);
 		});
 
 		it("keeps the newest rebase diff options when older reloads finish last", async () => {
@@ -4214,6 +4209,55 @@ describe("RepoView", () => {
 			expect(await screen.findByText("DIFF OF g.ts")).toBeTruthy();
 			await flush();
 			expect(screen.queryByText("DIFF OF f.ts")).toBeFalsy();
+		});
+
+		it("closes a file picked while a new pair loads when that pair lacks it", async () => {
+			render(RepoView, {
+				props: {
+					...baseProps(createMockRemoteState()),
+					contentMode: "hunk" as const,
+					oncontentmodechange: vi.fn(),
+				},
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[2]);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const newPairFiles = Promise.withResolvers<FileDiff[]>();
+			let lists = 0;
+			mockInvoke.mockImplementation((cmd, args) => {
+				const pair = args as { filePath: string };
+				if (cmd === "list_compare_files") {
+					lists += 1;
+					if (lists === 1)
+						return Promise.resolve([
+							makeFileDiff("f.ts"),
+							makeFileDiff("g.ts"),
+						]);
+					return newPairFiles.promise;
+				}
+				if (cmd === "diff_compare_file") {
+					if (lists > 1 && pair.filePath === "g.ts") return Promise.resolve([]);
+					return Promise.resolve([
+						makeFileDiffWithContent(pair.filePath, `DIFF OF ${pair.filePath}`),
+					]);
+				}
+				return base(cmd, args);
+			});
+			await fireEvent.click(rows[0], { metaKey: true });
+			await screen.findByText("g.ts");
+			await fireEvent.click(rows[1], { metaKey: true });
+			await vi.waitFor(() => expect(lists).toBe(2));
+
+			await fireEvent.click(screen.getByText("g.ts"));
+			await screen.findByRole("button", { name: "Close diff" });
+
+			newPairFiles.resolve([makeFileDiff("f.ts")]);
+
+			await waitFor(() =>
+				expect(screen.queryByRole("button", { name: "Close diff" })).toBeNull(),
+			);
+			expect(screen.queryByText("g.ts")).toBeNull();
 		});
 
 		it("escape clears the compare", async () => {

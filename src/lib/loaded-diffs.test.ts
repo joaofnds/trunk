@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	type LoadedDiff,
 	loadedDiffFor,
+	loadedModeFor,
 	noLoadedDiffs,
 	shownDiff,
 	withLoadedDiff,
@@ -18,7 +19,7 @@ function listed(path: string): FileDiff {
 	};
 }
 
-function loadedFor(path: string): LoadedDiff {
+function loadedFor(path: string, showFullFile = false): LoadedDiff {
 	return {
 		diff: {
 			...listed(path),
@@ -33,71 +34,123 @@ function loadedFor(path: string): LoadedDiff {
 				},
 			],
 		},
-		mode: "hunk",
-		options: { contextLines: 3, ignoreWhitespace: false, showFullFile: false },
+		options: { contextLines: 3, ignoreWhitespace: false, showFullFile },
 	};
 }
 
 describe("loadedDiffFor", () => {
-	it("finds the diff loaded for a path of the same source", () => {
+	it("finds the diff loaded at the same source and path", () => {
 		const diff = loadedFor("a.ts");
 
-		const loaded = withLoadedDiff(noLoadedDiffs<string>(), "c1", "a.ts", diff);
-
-		expect(loadedDiffFor(loaded, "c1", "a.ts")).toBe(diff);
-	});
-
-	it("keeps the diffs of other paths loaded for the same source", () => {
-		const first = loadedFor("a.ts");
-
 		const loaded = withLoadedDiff(
-			withLoadedDiff(noLoadedDiffs<string>(), "c1", "a.ts", first),
-			"c1",
-			"b.ts",
-			loadedFor("b.ts"),
+			noLoadedDiffs<string>(),
+			{ source: "c1", path: "a.ts" },
+			diff,
 		);
 
-		expect(loadedDiffFor(loaded, "c1", "a.ts")).toBe(first);
+		expect(loadedDiffFor(loaded, { source: "c1", path: "a.ts" })).toBe(diff);
 	});
 
 	it("finds nothing for another source", () => {
 		const loaded = withLoadedDiff(
 			noLoadedDiffs<string>(),
-			"c1",
-			"a.ts",
+			{ source: "c1", path: "a.ts" },
 			loadedFor("a.ts"),
 		);
 
-		expect(loadedDiffFor(loaded, "c2", "a.ts")).toBeUndefined();
+		expect(
+			loadedDiffFor(loaded, { source: "c2", path: "a.ts" }),
+		).toBeUndefined();
+	});
+});
+
+describe("withLoadedDiff", () => {
+	it("keeps the diffs of other paths loaded for the same source", () => {
+		const first = loadedFor("a.ts");
+
+		const loaded = withLoadedDiff(
+			withLoadedDiff(
+				noLoadedDiffs<string>(),
+				{ source: "c1", path: "a.ts" },
+				first,
+			),
+			{ source: "c1", path: "b.ts" },
+			loadedFor("b.ts"),
+		);
+
+		expect(loadedDiffFor(loaded, { source: "c1", path: "a.ts" })).toBe(first);
 	});
 
 	it("forgets the previous source's diffs when one loads for another", () => {
 		const loaded = withLoadedDiff(
-			withLoadedDiff(noLoadedDiffs<string>(), "c1", "a.ts", loadedFor("a.ts")),
-			"c2",
-			"b.ts",
+			withLoadedDiff(
+				noLoadedDiffs<string>(),
+				{ source: "c1", path: "a.ts" },
+				loadedFor("a.ts"),
+			),
+			{ source: "c2", path: "b.ts" },
 			loadedFor("b.ts"),
 		);
 
-		expect(loadedDiffFor(loaded, "c1", "a.ts")).toBeUndefined();
+		expect(
+			loadedDiffFor(loaded, { source: "c1", path: "a.ts" }),
+		).toBeUndefined();
+	});
+});
+
+describe("loadedModeFor", () => {
+	it("names the mode the loaded diff was read in", () => {
+		const loaded = withLoadedDiff(
+			noLoadedDiffs<string>(),
+			{ source: "c1", path: "a.ts" },
+			loadedFor("a.ts", true),
+		);
+
+		expect(loadedModeFor(loaded, { source: "c1", path: "a.ts" })).toBe("full");
+	});
+
+	it("is null while nothing is loaded at the slot", () => {
+		expect(
+			loadedModeFor(noLoadedDiffs<string>(), { source: "c1", path: "a.ts" }),
+		).toBeNull();
 	});
 });
 
 describe("shownDiff", () => {
 	it("shows the loaded diff over the list's entry for that path", () => {
 		const diff = loadedFor("a.ts");
-		const loaded = withLoadedDiff(noLoadedDiffs<string>(), "c1", "a.ts", diff);
+		const loaded = withLoadedDiff(
+			noLoadedDiffs<string>(),
+			{ source: "c1", path: "a.ts" },
+			diff,
+		);
 
-		expect(shownDiff([listed("a.ts")], loaded, "c1", "a.ts")).toEqual([
-			diff.diff,
-		]);
+		expect(
+			shownDiff([listed("a.ts")], loaded, { source: "c1", path: "a.ts" }),
+		).toEqual([diff.diff]);
 	});
 
 	it("shows the list's entry while nothing is loaded for the path", () => {
 		const entry = listed("a.ts");
 
 		expect(
-			shownDiff([entry, listed("b.ts")], noLoadedDiffs(), "c1", "a.ts"),
+			shownDiff([entry, listed("b.ts")], noLoadedDiffs(), {
+				source: "c1",
+				path: "a.ts",
+			}),
 		).toEqual([entry]);
+	});
+
+	it("shows the list's entry rather than a diff loaded for another source", () => {
+		const entry = listed("a.ts");
+		const loaded = withLoadedDiff(
+			noLoadedDiffs<string>(),
+			{ source: "c1", path: "a.ts" },
+			loadedFor("a.ts"),
+		);
+
+		expect(shownDiff([entry], loaded, { source: "c2", path: "a.ts" })).toEqual([
+			entry,
+		]);
 	});
 });
