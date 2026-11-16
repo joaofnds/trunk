@@ -1,0 +1,267 @@
+{
+  "schema": 1,
+  "experiment": "E08 highlighted large-file opening baseline",
+  "date": "2026-11-16",
+  "decision": "highlighted reads of a 4,800-line TypeScript file cost about 223 ms in the diff command in both content modes against 2 to 6 ms for plain text; syntax parsing now uses one window per cluster of needed lines; the fixed build is not yet timed natively",
+  "scope": "one fixed-order pilot of six timed actions; not a comparative cohort, not cold-cache; the second pilot was refused at process admission",
+  "comparativeVerdict": null,
+  "globalSettlement": "unknown",
+  "endpoints": "as E07 (docs/performance-data/large-file-open-2026-11-16.json)",
+  "fixture": {
+    "commits": [
+      "cb4b7b4927d1080e8656c0ac87f01e355b86e40f",
+      "dc39ed4c0fbcfb830084a05d6eb0dca39cb8456b"
+    ],
+    "paths": [
+      "recognized.ts",
+      "unsupported.txt"
+    ],
+    "revisions": [
+      {
+        "revision": 0,
+        "files": {
+          "recognized.ts": {
+            "blob": "c79405472b53e8fba3fafbbd2f21f66abe3edc53",
+            "bytes": 136528,
+            "sha256": "3e332f9a8bf8873c67a6402a976c5e0cb729970df857df6a1c2131f816c31574",
+            "lines": 4800,
+            "sentinel": "export function calculate0000(input: number): number { // file A revision 0",
+            "editedLineContent": "  return adjusted + 1; // line 4300"
+          },
+          "unsupported.txt": {
+            "blob": "2d8ccf63b71800611f251aea46e752d4f1e16846",
+            "bytes": 136528,
+            "sha256": "7445493b70d132c1d0450cae49d784d49cec4b5962669a957a7aab57761b5bcd",
+            "lines": 4800,
+            "sentinel": "export function calculate0000(input: number): number { // file B revision 0",
+            "editedLineContent": "  return adjusted + 1; // line 4300"
+          }
+        }
+      },
+      {
+        "revision": 1,
+        "files": {
+          "recognized.ts": {
+            "blob": "dc03e89eaa7493c40fc5bfb87010575048d591c2",
+            "bytes": 136528,
+            "sha256": "3a3ff8e03d88f6a4109088cffda8c6ebe664ce1357a4df6055cd5ad133aff42d",
+            "lines": 4800,
+            "sentinel": "export function calculate0000(input: number): number { // file A revision 1",
+            "editedLineContent": "  return adjusted + 2; // line 4300"
+          },
+          "unsupported.txt": {
+            "blob": "934bede8cc18df4debcb47c6372aa6ca2b4fe11c",
+            "bytes": 136528,
+            "sha256": "4dac8db09020ffdf955283b4061b483237d521312f299875726a57ab622773c5",
+            "lines": 4800,
+            "sentinel": "export function calculate0000(input: number): number { // file B revision 1",
+            "editedLineContent": "  return adjusted + 2; // line 4300"
+          }
+        }
+      }
+    ],
+    "editedLines": [
+      1,
+      4300
+    ]
+  },
+  "workloadCheck": "summarizer requires syntax spans on every recognized.ts visible-row sample and none on unsupported.txt; pilot-01 passed",
+  "executables": {
+    "binary": {
+      "sha256": "4b6e80b42987a9486648541a095bc43f129f0cb2e1a85a837f1901e105b167a0"
+    },
+    "native_probe": {
+      "sha256": "41ffa04cf34405b29a2329d7cb8d24d162a6053ad4e82a9ad7a2f1c9f942e55a"
+    }
+  },
+  "binaryNote": "E05 frozen native-final drive build, the same binary as E07; it predates commit 4586dd1c and per-cluster parse windows",
+  "pilot": {
+    "pilot": 1,
+    "order": "recognized.ts hunk, unsupported.txt hunk, recognized.ts retained, mode switch to full on recognized.ts, unsupported.txt full, recognized.ts retained",
+    "actions": [
+      {
+        "action": "action-01",
+        "path": "recognized.ts",
+        "mode": "hunk",
+        "read": "required",
+        "label": "first path open",
+        "feedbackMs": 10,
+        "usableMs": 231,
+        "endpointMs": 244,
+        "invokeDiffCommitFileMs": [
+          223
+        ],
+        "diffBuildRowsMs": [
+          1,
+          0
+        ],
+        "cpuMs": {
+          "web": 45.2,
+          "host": 240.4,
+          "gpu": 10.2
+        }
+      },
+      {
+        "action": "action-02",
+        "path": "unsupported.txt",
+        "mode": "hunk",
+        "read": "required",
+        "label": "second path first open",
+        "feedbackMs": 1,
+        "usableMs": 5,
+        "endpointMs": 24,
+        "invokeDiffCommitFileMs": [
+          2
+        ],
+        "diffBuildRowsMs": [
+          0,
+          0
+        ],
+        "cpuMs": {
+          "web": 10.2,
+          "host": 3.8,
+          "gpu": 1.8
+        }
+      },
+      {
+        "action": "action-03",
+        "path": "recognized.ts",
+        "mode": "hunk",
+        "read": "retained-candidate",
+        "label": "A/B/A revisit",
+        "feedbackMs": 3,
+        "usableMs": 3,
+        "endpointMs": 13,
+        "invokeDiffCommitFileMs": null,
+        "diffBuildRowsMs": [
+          0,
+          0
+        ],
+        "cpuMs": {
+          "web": 8.6,
+          "host": 1.8,
+          "gpu": 1.5
+        }
+      },
+      {
+        "action": "action-04",
+        "path": "recognized.ts",
+        "mode": "full",
+        "read": "required",
+        "label": "toolbar mode reload",
+        "feedbackMs": 2,
+        "usableMs": 240,
+        "endpointMs": 244,
+        "invokeDiffCommitFileMs": [
+          224
+        ],
+        "diffBuildRowsMs": [
+          2
+        ],
+        "cpuMs": {
+          "web": 68.5,
+          "host": 227.7,
+          "gpu": 4.8
+        }
+      },
+      {
+        "action": "action-05",
+        "path": "unsupported.txt",
+        "mode": "full",
+        "read": "required",
+        "label": "second path first open in new mode",
+        "feedbackMs": 4,
+        "usableMs": 12,
+        "endpointMs": 26,
+        "invokeDiffCommitFileMs": [
+          6
+        ],
+        "diffBuildRowsMs": [
+          0,
+          1
+        ],
+        "cpuMs": {
+          "web": 28.3,
+          "host": 5.2,
+          "gpu": 3.8
+        }
+      },
+      {
+        "action": "action-06",
+        "path": "recognized.ts",
+        "mode": "full",
+        "read": "retained-candidate",
+        "label": "new-mode A/B/A revisit",
+        "feedbackMs": 6,
+        "usableMs": 7,
+        "endpointMs": 14,
+        "invokeDiffCommitFileMs": null,
+        "diffBuildRowsMs": [
+          1
+        ],
+        "cpuMs": {
+          "web": 15.8,
+          "host": 1.9,
+          "gpu": 1.7
+        }
+      }
+    ]
+  },
+  "excludedAttempts": [
+    {
+      "pilot": 2,
+      "directory": "pilot-02",
+      "reason": "refused at entry process admission: competing build/test work (just and cargo from another session); no app launched; not retried"
+    }
+  ],
+  "parsedLines": {
+    "note": "derived from the needed-line sets the diff produces and the window rules in src-tauri/src/commands/diff.rs, not measured",
+    "hunk": {
+      "singleWindow": {
+        "old": 4300,
+        "new": 4303
+      },
+      "perClusterWindows": {
+        "old": 252,
+        "new": 261
+      }
+    },
+    "full": {
+      "singleWindow": {
+        "old": 4300,
+        "new": 4800
+      },
+      "perClusterWindows": {
+        "old": 252,
+        "new": 4800
+      }
+    }
+  },
+  "conditions": {
+    "layout": "inline",
+    "wordWrap": false,
+    "visibleWhitespace": false,
+    "graphStatistics": false,
+    "reviewThreads": false,
+    "payloadLines": {
+      "hunk": 13,
+      "full": 4802
+    },
+    "cpuWindow": "from before the drive request to after its response; includes harness transport and predicate polling"
+  },
+  "knownContamination": "the measured build predates 4586dd1c; action-05 first built rows for the retained hunk payload of recognized.ts's sibling (diff.buildRows lines 13 then 4802), so its timing and CPU include that build",
+  "localEvidence": ".boris/highlighted-open-20261116 (gitignored): raw results, harness copies, admission and cleanup records",
+  "summarizerSha256": "2125289e7f1325a070c90a6e2caddb4958d621156fc50d3032cac51cbb16f530",
+  "oracleSha256": "0b83cd3e6b8fddb28e2b89dd27cf1f56eb1f3504f9598ec776d9e8320f2f43df",
+  "localEvidenceHashes": {
+    "analysis/summary.json": "f6a25bcb51881d01ecdb8a4c0192fd56907b751a557704d35a564d445fbf49bb"
+  },
+  "reproduction": {
+    "note": "requires the gitignored local harness; existing output directories are refused",
+    "pilotCommands": [
+      "mise exec -- python3 -B .boris/highlighted-open-20261116/pilot.py --pilot 1 --output .boris/highlighted-open-20261116/<fresh-name>",
+      "mise exec -- python3 -B .boris/highlighted-open-20261116/pilot.py --pilot 2 --output .boris/highlighted-open-20261116/<fresh-name>"
+    ],
+    "summary": "mise exec -- python3 -B .boris/highlighted-open-20261116/analysis/summarize.py <pilot-1-output> [<pilot-2-output>] > <summary.json>"
+  }
+}

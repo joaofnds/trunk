@@ -473,9 +473,9 @@ fn walk_diff(
 ///
 /// `None` means that side's content could not be resolved (missing blob, unreadable
 /// file, bare repo, or binary) — that side contributes no syntax tokens, but word-diff
-/// emphasis is unaffected. A side whose window runs past `MAX_SYNTAX_PARSE_LINES`
-/// resolves its content and then yields no tokens, which is the same outcome by a
-/// different route.
+/// emphasis is unaffected. A side whose parse windows together exceed
+/// `MAX_SYNTAX_PARSE_LINES` resolves its content and then yields no tokens,
+/// which is the same outcome by a different route.
 #[derive(Debug, Default, Clone)]
 pub struct SideContent {
     pub old: Option<Vec<u8>>,
@@ -489,19 +489,19 @@ impl SideContent {
     }
 }
 
-/// A side whose window would run longer than this skips syntax highlighting
-/// entirely (word-diff emphasis still applies). The bound is on lines parsed,
-/// not on how deep the deepest one sits: a narrow hunk anywhere in a file costs
-/// its span plus the lookback, while an added file or a full-file view needs
-/// every line and its window is the whole file. Release-mode probe measurements
-/// (`/tmp/hl-probe`, bin `perf`, a 2 399-line Rust file): 32–44 ms on a quiet
+/// A side whose windows together would parse more lines than this skips syntax
+/// highlighting entirely (word-diff emphasis still applies). The bound is on
+/// lines parsed, not on how deep the deepest one sits: a narrow hunk anywhere in
+/// a file costs its span plus the lookback, while an added file or a full-file
+/// view needs every line and its window is the whole file. Release-mode probe
+/// measurements (`/tmp/hl-probe`, bin `perf`, a 2 399-line Rust file): 32–44 ms on a quiet
 /// machine across six runs in two sessions (~60–75k lines/s), 173–196 ms on a
 /// loaded machine during one gate-review run (~14k lines/s). At this cap:
 /// ~85 ms/side quiet, ~360 ms/side loaded, per render, off the UI thread.
 const MAX_SYNTAX_PARSE_LINES: u32 = 5_000;
 
 /// One line of a side's real file content, with the syntax tokens computed for
-/// it by a highlighter fed every preceding line of that same side.
+/// it by a highlighter fed every preceding line of its parse window.
 struct SideLine<'a> {
     content: &'a str,
     tokens: Vec<SyntaxToken>,
@@ -546,52 +546,72 @@ fn collect_linenos(
         .collect()
 }
 
-/// How many lines above a side's first needed line the highlighter starts from.
+/// How many lines above each needed line its parse window starts.
 /// Parser state at a line is set by the nearest enclosing construct, not by
 /// line 1, so a bounded window reproduces a full parse: measured against this
 /// repo's own TypeScript and Rust, 0.059% of lines differ at this size.
 const SYNTAX_LOOKBACK_LINES: u32 = 250;
 
-/// Parse a bounded window of `text` through one highlighter, in order, so the
+/// The line ranges a side parses: each needed line opens a window
+/// `SYNTAX_LOOKBACK_LINES` above itself, and windows that touch or overlap merge
+/// into one, so the lines between distant hunks are never parsed.
+fn parse_windows(needed: &std::collections::BTreeSet<u32>) -> Vec<(u32, u32)> {
+    let mut windows: Vec<(u32, u32)> = Vec::new();
+
+    for &line in needed {
+        let start = line.saturating_sub(SYNTAX_LOOKBACK_LINES).max(1);
+        match windows.last_mut() {
+            Some((_, end)) if start <= end.saturating_add(1) => *end = line,
+            _ => windows.push((start, line)),
+        }
+    }
+
+    windows
+}
+
+/// Parse each window of `text` through its own highlighter, in order, so the
 /// parser state at each needed line reflects the real content of the lines
-/// above it. Lines in the window that nothing displays are parsed for their
-/// state and dropped; lines outside it are never parsed at all.
+/// above it in that window. Lines in a window that nothing displays are parsed
+/// for their state and dropped; lines outside every window are never parsed.
 fn build_side_lines<'a>(
     text: &'a str,
     ext: &str,
     needed: &std::collections::BTreeSet<u32>,
 ) -> HashMap<u32, SideLine<'a>> {
     let mut result = HashMap::new();
-    let (Some(&min_line), Some(&max_line)) = (needed.first(), needed.last()) else {
-        return result;
-    };
-
-    let start = min_line.saturating_sub(SYNTAX_LOOKBACK_LINES).max(1);
-    if max_line - start + 1 > MAX_SYNTAX_PARSE_LINES {
+    let windows = parse_windows(needed);
+    let parsed: u64 = windows
+        .iter()
+        .map(|&(start, end)| u64::from(end - start) + 1)
+        .sum();
+    if parsed > u64::from(MAX_SYNTAX_PARSE_LINES) {
         return result;
     }
-    let Some(mut highlighter) = syntax::create_highlighter(ext) else {
-        return result;
-    };
 
-    for (idx, raw_line) in text.split('\n').enumerate() {
-        let lineno = u32::try_from(idx + 1).unwrap_or(u32::MAX);
-        if lineno < start {
-            continue;
-        }
-        if lineno > max_line {
-            break;
-        }
+    let mut lines = (1u32..).zip(text.split('\n'));
+    for (start, end) in windows {
+        let Some(mut highlighter) = syntax::create_highlighter(ext) else {
+            return result;
+        };
 
-        let tokens = syntax::highlight_line_with(&mut highlighter, raw_line);
-        if needed.contains(&lineno) {
-            result.insert(
-                lineno,
-                SideLine {
-                    content: raw_line,
-                    tokens,
-                },
-            );
+        for (lineno, raw_line) in lines.by_ref() {
+            if lineno < start {
+                continue;
+            }
+
+            let tokens = syntax::highlight_line_with(&mut highlighter, raw_line);
+            if needed.contains(&lineno) {
+                result.insert(
+                    lineno,
+                    SideLine {
+                        content: raw_line,
+                        tokens,
+                    },
+                );
+            }
+            if lineno == end {
+                break;
+            }
         }
     }
 
@@ -2526,8 +2546,8 @@ mod enrich_tests {
         );
     }
 
-    // Each side's window is anchored on that side's own first needed line. A
-    // window computed from the other side's minimum would start below the line
+    // Each side's windows are anchored on that side's own needed lines. A
+    // window computed from the other side's lines would start below the line
     // this side needs, and the alignment guard would drop its spans in silence.
     #[test]
     fn each_side_takes_its_window_from_its_own_needed_lines() {
@@ -2616,6 +2636,194 @@ mod enrich_tests {
             syntax_classes(deepest).is_empty(),
             "a side spanning more than the cap must carry no syntax spans, got {:?}",
             deepest.spans
+        );
+    }
+
+    // Two narrow hunks at opposite ends of a long file each parse their own
+    // window, so the gap between them costs nothing and stays under the cap.
+    #[test]
+    fn narrow_changes_at_both_ends_of_a_file_past_the_cap_are_both_highlighted() {
+        let mut file_diffs = vec![rust_file_diff(vec![
+            one_line_hunk(DiffOrigin::Add, 3, LET_LINE),
+            one_line_hunk(DiffOrigin::Add, 6_000, LET_LINE),
+        ])];
+        let sides = vec![SideContent {
+            old: None,
+            new: Some(rust_side(6_200, &[])),
+        }];
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let top = &file_diffs[0].hunks[0].lines[0];
+        let bottom = &file_diffs[0].hunks[1].lines[0];
+        assert!(
+            syntax_classes(top).contains(&"syn-keyword"),
+            "the top change must be highlighted, got {:?}",
+            top.spans
+        );
+        assert!(
+            syntax_classes(bottom).contains(&"syn-keyword"),
+            "the bottom change must be highlighted, got {:?}",
+            bottom.spans
+        );
+    }
+
+    // A far hunk starts its own parse at its lookback, so a construct the first
+    // hunk's window opened and never closed does not reach it.
+    #[test]
+    fn a_construct_left_open_near_the_top_does_not_reach_a_far_hunk() {
+        let mut file_diffs = vec![rust_file_diff(vec![
+            one_line_hunk(DiffOrigin::Add, 3, LET_LINE),
+            one_line_hunk(DiffOrigin::Add, 4_000, LET_LINE),
+        ])];
+        let sides = vec![SideContent {
+            old: None,
+            new: Some(rust_side(4_200, &[(1, "/* an unterminated block comment")])),
+        }];
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let far = &file_diffs[0].hunks[1].lines[0];
+        assert!(
+            !syntax_classes(far).contains(&"syn-comment"),
+            "a construct opened above the far hunk's window must not reach it, got {:?}",
+            far.spans
+        );
+        assert!(
+            syntax_classes(far).contains(&"syn-keyword"),
+            "the far hunk must still be highlighted, got {:?}",
+            far.spans
+        );
+    }
+
+    // A needed line whose window starts on the line after the previous window
+    // ends is parsed in that same window, so a construct opened above the first
+    // hunk still colours the second.
+    #[test]
+    fn a_construct_reaches_a_hunk_whose_window_touches_the_one_above() {
+        let first = 100;
+        let second = first + SYNTAX_LOOKBACK_LINES + 1;
+        let mut file_diffs = vec![rust_file_diff(vec![
+            one_line_hunk(DiffOrigin::Add, first, LET_LINE),
+            one_line_hunk(DiffOrigin::Add, second, LET_LINE),
+        ])];
+        let sides = vec![SideContent {
+            old: None,
+            new: Some(rust_side(
+                second + 10,
+                &[(30, "/* an unterminated block comment")],
+            )),
+        }];
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let line = &file_diffs[0].hunks[1].lines[0];
+        assert!(
+            syntax_classes(line).contains(&"syn-comment"),
+            "a touching window must continue the parse above it, got {:?}",
+            line.spans
+        );
+    }
+
+    // One line further down, the second window starts past a gap line and
+    // parses from scratch, so the construct above does not reach it.
+    #[test]
+    fn a_construct_stops_at_a_gap_between_windows() {
+        let first = 100;
+        let second = first + SYNTAX_LOOKBACK_LINES + 2;
+        let mut file_diffs = vec![rust_file_diff(vec![
+            one_line_hunk(DiffOrigin::Add, first, LET_LINE),
+            one_line_hunk(DiffOrigin::Add, second, LET_LINE),
+        ])];
+        let sides = vec![SideContent {
+            old: None,
+            new: Some(rust_side(
+                second + 10,
+                &[(30, "/* an unterminated block comment")],
+            )),
+        }];
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let line = &file_diffs[0].hunks[1].lines[0];
+        assert!(
+            syntax_classes(line).contains(&"syn-keyword"),
+            "a window past a gap must start its own parse, got {:?}",
+            line.spans
+        );
+    }
+
+    // Consecutive needed lines merge into one window, so the cap counts each
+    // line they parse once rather than once per window that covers it.
+    #[test]
+    fn a_thousand_consecutive_needed_lines_are_highlighted() {
+        let hunks = (1..=1_000)
+            .map(|lineno| one_line_hunk(DiffOrigin::Add, lineno, LET_LINE))
+            .collect();
+        let mut file_diffs = vec![rust_file_diff(hunks)];
+        let sides = vec![SideContent {
+            old: None,
+            new: Some(rust_side(1_000, &[])),
+        }];
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let last = &file_diffs[0].hunks[999].lines[0];
+        assert!(
+            syntax_classes(last).contains(&"syn-keyword"),
+            "a 1,000-line run is under the cap and must be highlighted, got {:?}",
+            last.spans
+        );
+    }
+
+    // The cap is inclusive: a side parsing exactly its limit is highlighted,
+    // and one line more is refused.
+    #[test]
+    fn a_side_parsing_exactly_the_cap_is_highlighted_and_one_more_line_is_not() {
+        let highlighted_at = |count: u32| {
+            let hunks = (1..=count)
+                .map(|lineno| one_line_hunk(DiffOrigin::Add, lineno, LET_LINE))
+                .collect();
+            let mut file_diffs = vec![rust_file_diff(hunks)];
+            let sides = vec![SideContent {
+                old: None,
+                new: Some(rust_side(count, &[])),
+            }];
+
+            enrich_file_diffs(&mut file_diffs, &sides);
+
+            !syntax_classes(&file_diffs[0].hunks[0].lines[0]).is_empty()
+        };
+
+        assert_eq!(
+            (
+                highlighted_at(MAX_SYNTAX_PARSE_LINES),
+                highlighted_at(MAX_SYNTAX_PARSE_LINES + 1)
+            ),
+            (true, false)
+        );
+    }
+
+    // The cap bounds the lines a side parses across all its windows, so many
+    // narrow hunks spread through a huge file are refused together.
+    #[test]
+    fn windows_that_together_exceed_the_parse_cap_skip_syntax() {
+        let hunks = (1..=25)
+            .map(|index| one_line_hunk(DiffOrigin::Add, index * 1_000, LET_LINE))
+            .collect();
+        let mut file_diffs = vec![rust_file_diff(hunks)];
+        let sides = vec![SideContent {
+            old: None,
+            new: Some(rust_side(25_000, &[])),
+        }];
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let first = &file_diffs[0].hunks[0].lines[0];
+        assert!(
+            syntax_classes(first).is_empty(),
+            "sides whose windows together exceed the cap must carry no syntax spans, got {:?}",
+            first.spans
         );
     }
 }

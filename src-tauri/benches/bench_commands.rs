@@ -417,9 +417,9 @@ fn bench_draft_write(c: &mut Criterion) {
 }
 
 /// Blocks of uniform TypeScript, sized so the file lands near 3,000 lines --
-/// comfortably under `MAX_SYNTAX_PARSE_LINES` even when a fixture's needed
-/// lines span the whole file, so every case measures highlighting rather than
-/// the cap that skips it.
+/// comfortably under `MAX_SYNTAX_PARSE_LINES` even for a side that parses
+/// the whole file, so every case measures highlighting rather than the cap
+/// that skips it.
 const LARGE_FILE_BLOCKS: usize = 375;
 const EARLY_CHANGED_BLOCK: usize = 1;
 const LATE_CHANGED_BLOCK: usize = LARGE_FILE_BLOCKS - 2;
@@ -501,9 +501,11 @@ fn make_repo_with_committed_large_file() -> BenchRepo {
     }
 }
 
-/// A repo whose only unstaged change is one line of a ~3,000-line file. Each
-/// side's highlighter walks every line from 1 up to that one, so how deep the
-/// change sits is what the fixture varies -- the diff itself stays the same size.
+/// A repo whose only unstaged change is one line of a ~3,000-line file, so how
+/// deep the change sits is what the fixture varies -- the diff itself stays the
+/// same size. Each side parses a bounded window above the change, so depth
+/// costs up to the lookback and stops growing past it, which `early_change`
+/// against `late_change` measures.
 fn make_repo_with_large_file_change(changed_block: usize) -> BenchRepo {
     let bench_repo = make_repo_with_committed_large_file();
 
@@ -522,8 +524,8 @@ static REPO_EDIT_SAVE: OnceLock<BenchRepo> = OnceLock::new();
 static REPO_EDIT_SAVE_WIDE: OnceLock<BenchRepo> = OnceLock::new();
 
 /// The full pipeline over a one-line change in a large file. Pairs an early
-/// change against a late one: the gap between them is what the per-side design
-/// charges for the distance from the top of the file.
+/// change against a late one: an early change gets a lookback cut short by the
+/// top of the file, and a late one the whole lookback.
 fn bench_diff_large_file(c: &mut Criterion) {
     let early =
         REPO_LARGE_EARLY.get_or_init(|| make_repo_with_large_file_change(EARLY_CHANGED_BLOCK));
@@ -551,7 +553,7 @@ fn bench_diff_large_file(c: &mut Criterion) {
 
     // The user's edit-save loop: the working-tree side rewritten every
     // iteration, which is what a save produces. `edit_save_wide_span` changes
-    // both ends of the file, so the needed lines span it top to bottom.
+    // both ends of the file, so its needed lines sit far apart at the two ends.
     let edit_save = REPO_EDIT_SAVE.get_or_init(make_repo_with_committed_large_file);
     let edit_save_wide = REPO_EDIT_SAVE_WIDE.get_or_init(make_repo_with_committed_large_file);
 
