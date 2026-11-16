@@ -24,6 +24,7 @@ import {
 	CHECKOUT_CONFLICT_MESSAGE,
 	checkedOutMessage,
 	isCheckoutConflict,
+	reportCheckoutFailure,
 } from "../lib/checkout.js";
 import { copySha, copyText } from "../lib/clipboard.js";
 import {
@@ -1444,8 +1445,7 @@ async function handleRefCheckout(e: MouseEvent, ref: RefInfo) {
 				: await checkoutLocalBranch(ref.shortName);
 		showToast(checkedOutMessage(branch), "success");
 	} catch (e) {
-		if (isCheckoutConflict(e)) showToast(CHECKOUT_CONFLICT_MESSAGE, "error");
-		else reportErrorToast(e, "Checkout failed");
+		reportCheckoutFailure(e);
 	}
 }
 

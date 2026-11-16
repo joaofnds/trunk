@@ -12,6 +12,7 @@ import {
 	CHECKOUT_CONFLICT_MESSAGE,
 	checkedOutMessage,
 	isCheckoutConflict,
+	reportCheckoutFailure,
 } from "../lib/checkout.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
@@ -343,10 +344,8 @@ async function handleCheckout(branchName: string) {
 				branch: branchName,
 				message: CHECKOUT_CONFLICT_MESSAGE,
 			};
-			showToast(CHECKOUT_CONFLICT_MESSAGE, "error");
-		} else {
-			reportErrorToast(e, "Checkout failed");
 		}
+		reportCheckoutFailure(e);
 	} finally {
 		checkingOutBranch = null;
 	}
@@ -364,8 +363,7 @@ async function handleCheckoutRemoteBranch(fullName: string) {
 		onrefreshed?.();
 		showToast(checkedOutMessage(branch), "success");
 	} catch (e) {
-		if (isCheckoutConflict(e)) showToast(CHECKOUT_CONFLICT_MESSAGE, "error");
-		else reportErrorToast(e, "Checkout failed");
+		reportCheckoutFailure(e);
 	} finally {
 		checkingOutBranch = null;
 	}
