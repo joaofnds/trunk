@@ -751,6 +751,35 @@ describe("Toolbar stash", () => {
 		expect(pops).toBe(1);
 	});
 
+	it("pops again once the first pop settles", async () => {
+		let pops = 0;
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "list_stashes") return Promise.resolve([{ oid: "stash-0" }]);
+			if (cmd === "stash_pop") {
+				pops += 1;
+				return Promise.resolve(null);
+			}
+			return Promise.resolve(false);
+		});
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+			},
+		});
+		const pop = screen.getByRole("button", { name: "Pop" });
+		await fireEvent.click(pop);
+		await waitFor(() =>
+			expect(mockToast).toHaveBeenCalledWith("Stash applied", "success"),
+		);
+
+		await fireEvent.click(pop);
+
+		await waitFor(() => expect(pops).toBe(2));
+	});
+
 	it("shows why the stash would not apply", async () => {
 		mockInvoke.mockImplementation((cmd: string) => {
 			if (cmd === "list_stashes") return Promise.resolve([{ oid: "stash-0" }]);
@@ -785,17 +814,21 @@ describe("Toolbar undo", () => {
 	const mockInvoke = vi.mocked(safeInvoke);
 	const mockToast = vi.mocked(showToast);
 
+	let view: ReturnType<typeof render<typeof Toolbar>>;
+	let undoRedo: ReturnType<typeof makeUndoRedo>;
+
 	function renderUndoable(undoCommit: () => Promise<unknown>) {
 		mockInvoke.mockImplementation((cmd: string) => {
 			if (cmd === "check_undo_available") return Promise.resolve(true);
 			if (cmd === "undo_commit") return undoCommit();
 			return Promise.resolve(null);
 		});
-		render(Toolbar, {
+		undoRedo = makeUndoRedo();
+		view = render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
+				undoRedo,
 				reviewActive: false,
 			},
 		});
@@ -814,6 +847,52 @@ describe("Toolbar undo", () => {
 		await fireEvent.click(undo);
 
 		expect(undos).toBe(1);
+	});
+
+	it("undoes again once the first undo settles", async () => {
+		let undos = 0;
+		const undo = renderUndoable(() => {
+			undos += 1;
+			return Promise.reject({ code: "git_error", message: "not yet" });
+		});
+		await waitFor(() => expect(undo).toBeEnabled());
+		await fireEvent.click(undo);
+		await waitFor(() =>
+			expect(mockToast).toHaveBeenCalledWith("not yet", "error"),
+		);
+
+		await fireEvent.click(undo);
+
+		await waitFor(() => expect(undos).toBe(2));
+	});
+
+	it("keeps Undo live in another repository while one undoes", async () => {
+		const undo = renderUndoable(() => deferred<never>().promise);
+		await waitFor(() => expect(undo).toBeEnabled());
+		await fireEvent.click(undo);
+
+		await view.rerender({ repoPath: "/other/repo" });
+
+		await waitFor(() => expect(undo).toBeEnabled());
+	});
+
+	it("records an undo under the repository it ran in", async () => {
+		const reply = deferred<unknown>();
+		const undo = renderUndoable(() => reply.promise);
+		await waitFor(() => expect(undo).toBeEnabled());
+		await fireEvent.click(undo);
+		await view.rerender({ repoPath: "/other/repo" });
+
+		reply.resolve({ subject: "undone", body: null, head_oid: "parent" });
+
+		await waitFor(() =>
+			expect(undoRedo.push).toHaveBeenCalledWith({
+				subject: "undone",
+				body: null,
+				headOid: "parent",
+				repoPath: "/test/repo",
+			}),
+		);
 	});
 
 	it("tells the user why the undo failed", async () => {

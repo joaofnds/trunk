@@ -8,6 +8,7 @@ import MessageSquare from "@lucide/svelte/icons/message-square";
 import Redo2 from "@lucide/svelte/icons/redo-2";
 import Undo2 from "@lucide/svelte/icons/undo-2";
 import { emit, listen } from "@tauri-apps/api/event";
+import { SvelteSet } from "svelte/reactivity";
 import {
 	CHECKOUT_CONFLICT_MESSAGE,
 	checkedOutMessage,
@@ -109,9 +110,10 @@ let canUndo = $state(false);
 // message onto unrelated history.
 let headOid = $state<string | null>(null);
 // A second press while the first undo runs would undo a second commit, and a
-// second Pop would pop the next stash, neither of which the user asked for.
-let undoing = $state(false);
-let popping = $state(false);
+// second Pop would pop the next stash, neither of which the user asked for. Each
+// repository is held on its own, since the toolbar follows the active tab.
+const undoingIn = new SvelteSet<string>();
+const poppingIn = new SvelteSet<string>();
 
 let pendingRedo = $derived(
 	undoRedo.state.redoStack[undoRedo.state.redoStack.length - 1] ?? null,
@@ -159,27 +161,27 @@ $effect(() => {
 });
 
 async function handleUndo() {
-	if (undoing) return;
-	undoing = true;
+	const path = repoPath;
+	if (undoingIn.has(path)) return;
+
+	undoingIn.add(path);
 	try {
 		const result = await safeInvoke<{
 			subject: string;
 			body: string | null;
 			head_oid: string;
-		}>("undo_commit", {
-			path: repoPath,
-		});
+		}>("undo_commit", { path });
 		undoRedo.push({
 			subject: result.subject,
 			body: result.body,
 			headOid: result.head_oid,
-			repoPath,
+			repoPath: path,
 		});
-		headOid = result.head_oid;
+		if (path === repoPath) headOid = result.head_oid;
 	} catch (e) {
 		reportErrorToast(e, "Undo failed");
 	} finally {
-		undoing = false;
+		undoingIn.delete(path);
 	}
 }
 
@@ -222,23 +224,23 @@ async function handleStash() {
 }
 
 async function handlePop() {
-	if (popping) return;
-	popping = true;
+	const path = repoPath;
+	if (poppingIn.has(path)) return;
+
+	poppingIn.add(path);
 	try {
-		const stashes = await safeInvoke<StashEntry[]>("list_stashes", {
-			path: repoPath,
-		});
+		const stashes = await safeInvoke<StashEntry[]>("list_stashes", { path });
 		const latest = stashes[0];
 		if (!latest) {
 			showToast("No stash to apply", "error");
 			return;
 		}
-		await safeInvoke("stash_pop", { path: repoPath, oid: latest.oid });
+		await safeInvoke("stash_pop", { path, oid: latest.oid });
 		showToast("Stash applied", "success");
 	} catch (e) {
 		reportErrorToast(e, "Failed to apply stash");
 	} finally {
-		popping = false;
+		poppingIn.delete(path);
 	}
 }
 
@@ -327,7 +329,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 	<div class="toolbar-group">
 		<Button
 			icon
-			disabled={!canUndo || undoing}
+			disabled={!canUndo || undoingIn.has(repoPath)}
 			onclick={handleUndo}
 			aria-label="Undo"
 			tooltip="Undo"
@@ -376,7 +378,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 		</Button>
 		<Button
 			icon
-			disabled={popping}
+			disabled={poppingIn.has(repoPath)}
 			onclick={handlePop}
 			aria-label="Pop"
 			tooltip="Pop"
