@@ -632,6 +632,7 @@ let stashOids = $state<Set<string>>(new Set());
 let searchOpen = $state(false);
 let searchQuery = $state("");
 let searchResults = $state<SearchResult[]>([]);
+let searchPending = $state(false);
 let searchCurrentIndex = $state(0);
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let searchGeneration = 0;
@@ -2199,6 +2200,7 @@ function handleSearchQueryChange(query: string) {
 	const isCurrent = () => isCurrentSearch(generation, path);
 	searchResults = [];
 	searchCurrentIndex = 0;
+	searchPending = query.trim() !== "";
 
 	if (!query.trim()) return;
 
@@ -2213,6 +2215,7 @@ function handleSearchQueryChange(query: string) {
 			});
 			if (!isCurrent()) return;
 
+			searchPending = false;
 			searchResults = results;
 			searchCurrentIndex = 0;
 			if (results.length > 0) {
@@ -2222,6 +2225,7 @@ function handleSearchQueryChange(query: string) {
 			if (!isCurrent()) return;
 
 			reportErrorToast(error, "Could not search commits");
+			searchPending = false;
 			searchResults = [];
 			searchCurrentIndex = 0;
 		}
@@ -2249,6 +2253,7 @@ function handleSearchClose() {
 	invalidateSearchRequest();
 	searchOpen = false;
 	searchQuery = "";
+	searchPending = false;
 	searchResults = [];
 	searchCurrentIndex = 0;
 	containerRef?.focus();
@@ -2404,6 +2409,7 @@ $effect(() => {
 				query={searchQuery}
 				currentIndex={searchCurrentIndex}
 				totalMatches={searchResults.length}
+				searching={searchPending}
 				onquerychange={handleSearchQueryChange}
 				onnext={handleSearchNext}
 				onprev={handleSearchPrev}

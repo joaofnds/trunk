@@ -8,6 +8,7 @@ describe("SearchBar", () => {
 		query: "",
 		currentIndex: 0,
 		totalMatches: 0,
+		searching: false,
 		onquerychange: vi.fn(),
 		onnext: vi.fn(),
 		onprev: vi.fn(),
@@ -36,6 +37,14 @@ describe("SearchBar", () => {
 			props: { ...defaultProps, query: "xyz", totalMatches: 0 },
 		});
 		expect(screen.getByText("0 matches")).toBeInTheDocument();
+	});
+
+	it("shows no count while the query's answer is pending", () => {
+		render(SearchBar, {
+			props: { ...defaultProps, query: "xyz", searching: true },
+		});
+
+		expect(screen.queryByText("0 matches")).toBeNull();
 	});
 
 	it("hides match count when query empty", () => {

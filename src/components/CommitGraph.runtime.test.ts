@@ -118,6 +118,16 @@ describe("CommitGraph", () => {
 			},
 		);
 
+		it("shows no match count until the search answers", async () => {
+			await openSearch();
+			const read = host.holdNextReply("search_commits");
+
+			await searchFor("earlier");
+			await read.entered;
+
+			expect(screen.queryByText("0 matches")).toBeNull();
+		});
+
 		it("reports a current search failure", async () => {
 			await openSearch();
 			const read = host.holdNextReply("search_commits");

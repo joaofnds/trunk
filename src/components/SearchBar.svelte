@@ -9,6 +9,8 @@ interface Props {
 	query: string;
 	currentIndex: number;
 	totalMatches: number;
+	/** The query has changed and its answer is not in yet, so no count is known. */
+	searching: boolean;
 	onquerychange: (query: string) => void;
 	onnext: () => void;
 	onprev: () => void;
@@ -19,6 +21,7 @@ let {
 	query,
 	currentIndex,
 	totalMatches,
+	searching,
 	onquerychange,
 	onnext,
 	onprev,
@@ -68,7 +71,7 @@ function autofocus(node: HTMLElement) {
 		use:autofocus
 	>
 
-	{#if query.length > 0}
+	{#if query.length > 0 && !searching}
 		<span class="shrink-0 text-small text-text-muted whitespace-nowrap">
 			{#if totalMatches > 0}
 				{`${currentIndex + 1} of ${totalMatches}`}
