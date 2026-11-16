@@ -2,7 +2,7 @@ use crate::commands::diff::{staging_staged_diff, staging_workdir_diff};
 use crate::state::{OpenRepos, RepoState};
 use crate::types::{DiffRequestOptions, FileStatus, FileStatusType, WorkingTreeStatus};
 use git2::{Status, StatusOptions};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use tauri::State;
 use trunk_git::error::TrunkError;
@@ -358,48 +358,99 @@ pub fn discard_file_inner(
     file_path: &str,
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
+    discard_files_inner(path, &[file_path.to_string()], state_map)
+}
 
+/// Throw away the named paths' working-tree changes, keeping what is staged.
+///
+/// Untracked paths are deleted. Tracked ones are restored in one checkout, so
+/// the index is written once. A path with no working-tree change fails the
+/// call before anything is written. An untracked file that will not delete
+/// fails it after the checkout, leaving the tracked paths discarded.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `file_not_found`
+/// when a path has no working-tree change, `bare_repo` for a repository with
+/// no working tree, `io_error` when an untracked file will not delete, and the
+/// git error when the checkout fails.
+pub fn discard_files_inner(
+    path: &str,
+    file_paths: &[String],
+    state_map: &OpenRepos,
+) -> Result<(), TrunkError> {
+    if file_paths.is_empty() {
+        return Ok(());
+    }
+
+    let repo = state_map.open(path)?;
     let mut opts = StatusOptions::new();
-    opts.pathspec(file_path)
-        .disable_pathspec_match(true)
+    for file_path in file_paths {
+        opts.pathspec(file_path);
+    }
+    opts.disable_pathspec_match(true)
         .include_untracked(true)
         .include_ignored(false)
         .recurse_untracked_dirs(true);
-
     let statuses = repo.statuses(Some(&mut opts))?;
+    let status_by_path: HashMap<String, Status> = statuses
+        .iter()
+        .filter_map(|entry| Some((entry.path().ok()?.to_string(), entry.status())))
+        .collect();
 
-    let not_in_working_tree = || {
-        TrunkError::new(
-            "file_not_found",
-            format!("File not in working tree changes: {file_path}"),
-        )
-    };
-
-    let status = statuses.get(0).ok_or_else(not_in_working_tree)?.status();
-
-    if status.contains(Status::WT_NEW) {
-        // Untracked file — delete from disk
-        let full_path = repo
-            .workdir()
-            .ok_or_else(|| TrunkError::new("bare_repo", "Cannot discard in a bare repository"))?
-            .join(file_path);
-        std::fs::remove_file(&full_path).map_err(|e| {
-            TrunkError::new("io_error", format!("Failed to delete {file_path}: {e}"))
-        })?;
-    } else if status.intersects(TRACKED_WORKTREE_CHANGE) {
-        // From the index, not HEAD: a HEAD checkout resets the index entry too
-        // and throws away the part of the file the user staged.
-        let mut checkout = git2::build::CheckoutBuilder::new();
-        checkout
-            .path(file_path)
-            .disable_pathspec_match(true)
-            .force();
-        repo.checkout_index(None, Some(&mut checkout))?;
-    } else {
-        return Err(not_in_working_tree());
+    let mut untracked = Vec::new();
+    let mut tracked = Vec::new();
+    for file_path in file_paths {
+        let status = status_by_path
+            .get(file_path)
+            .copied()
+            .unwrap_or(Status::CURRENT);
+        if status.contains(Status::WT_NEW) {
+            untracked.push(file_path);
+        } else if status.intersects(TRACKED_WORKTREE_CHANGE) {
+            tracked.push(file_path);
+        } else {
+            return Err(TrunkError::new(
+                "file_not_found",
+                format!("File not in working tree changes: {file_path}"),
+            ));
+        }
     }
 
+    restore_from_index(&repo, &tracked)?;
+
+    if !untracked.is_empty() {
+        let workdir = repo
+            .workdir()
+            .ok_or_else(|| TrunkError::new("bare_repo", "Cannot discard in a bare repository"))?;
+        for file_path in untracked {
+            std::fs::remove_file(workdir.join(file_path)).map_err(|e| {
+                TrunkError::new("io_error", format!("Failed to delete {file_path}: {e}"))
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Restore the named tracked paths in the working tree from the index.
+///
+/// From the index, not HEAD: a HEAD checkout resets the index entry too and
+/// throws away the part of the file the user staged. An empty list restores
+/// nothing, where a checkout with no pathspec would restore every path.
+fn restore_from_index<S: AsRef<str>>(
+    repo: &git2::Repository,
+    paths: &[S],
+) -> Result<(), TrunkError> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let mut checkout = git2::build::CheckoutBuilder::new();
+    checkout.force().disable_pathspec_match(true);
+    for path in paths {
+        checkout.path(path.as_ref());
+    }
+    repo.checkout_index(None, Some(&mut checkout))?;
     Ok(())
 }
 
@@ -439,16 +490,7 @@ pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkE
         .filter_map(|entry| entry.path().ok().map(str::to_string))
         .collect();
 
-    // An empty pathspec would check out every path.
-    if !changed_paths.is_empty() {
-        // From the index, not HEAD, so staged changes survive (see discard_file_inner).
-        let mut checkout = git2::build::CheckoutBuilder::new();
-        checkout.force().disable_pathspec_match(true);
-        for changed in &changed_paths {
-            checkout.path(changed);
-        }
-        repo.checkout_index(None, Some(&mut checkout))?;
-    }
+    restore_from_index(&repo, &changed_paths)?;
 
     // Delete untracked files
     for file_path in &untracked_paths {
@@ -794,6 +836,29 @@ pub async fn discard_file(
     let state_map = state.snapshot();
     activity
         .spawn_blocking(move || discard_file_inner(&path, &file_path, &state_map))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
+}
+
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn discard_files(
+    activity: crate::activity::Activity,
+    path: String,
+    file_paths: Vec<String>,
+    state: State<'_, RepoState>,
+) -> Result<(), String> {
+    let state_map = state.snapshot();
+    activity
+        .spawn_blocking(move || discard_files_inner(&path, &file_paths, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())

@@ -1,5 +1,6 @@
 import { MenuItem } from "@tauri-apps/api/menu";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { ask } from "@tauri-apps/plugin-dialog";
 import {
 	fireEvent,
 	render,
@@ -94,6 +95,32 @@ function stagingRowFor(element: Element): HTMLElement {
 	const row = element.closest<HTMLElement>('[data-testid="staging-file"]');
 	if (!row) throw new Error("expected content inside a staging file row");
 	return row;
+}
+
+async function callsOnceRefreshed(commandPrefix: string) {
+	const matching = (command: string) => command.startsWith(commandPrefix);
+	await waitFor(() => {
+		const commands = mockInvoke.mock.calls.map(([command]) => command);
+		const first = commands.findIndex(matching);
+		expect(first).toBeGreaterThanOrEqual(0);
+		expect(commands.slice(first)).toContain("get_status");
+	});
+	return mockInvoke.mock.calls.filter(([command]) => matching(command));
+}
+
+async function chooseFolderMenuItem(folder: RegExp, text: RegExp) {
+	const row = await screen.findByRole("treeitem", { name: folder });
+	vi.mocked(MenuItem.new).mockClear();
+	await fireEvent.contextMenu(row);
+	const item = await waitFor(() => {
+		const found = vi
+			.mocked(MenuItem.new)
+			.mock.calls.map(([options]) => options)
+			.find((options) => text.test(options.text));
+		expect(found?.action).toBeDefined();
+		return found;
+	});
+	item?.action?.(item.text);
 }
 
 describe("StagingPanel", () => {
@@ -503,34 +530,12 @@ describe("StagingPanel merge-continue", () => {
 			{ path: "docs/c.md", status: "Conflicted", is_binary: false },
 		];
 
-		async function chooseDirectoryMenuItem(directory: RegExp, text: RegExp) {
-			vi.mocked(MenuItem.new).mockClear();
+		async function chooseConflictedFolderMenuItem(
+			folder: RegExp,
+			text: RegExp,
+		) {
 			await screen.findByLabelText("Mark all as resolved");
-			const row = screen.getByRole("treeitem", { name: directory });
-			await fireEvent.contextMenu(row);
-			const item = await waitFor(() => {
-				const found = vi
-					.mocked(MenuItem.new)
-					.mock.calls.map(([options]) => options)
-					.find((options) => text.test(options.text));
-				expect(found?.action).toBeDefined();
-				return found;
-			});
-			item?.action?.(item.text);
-		}
-
-		async function indexWritesOnceRefreshed() {
-			await waitFor(() => {
-				const commands = mockInvoke.mock.calls.map(([command]) => command);
-				const firstWrite = commands.findIndex((command) =>
-					command.startsWith("stage_file"),
-				);
-				expect(firstWrite).toBeGreaterThanOrEqual(0);
-				expect(commands.slice(firstWrite)).toContain("get_status");
-			});
-			return mockInvoke.mock.calls.filter(([command]) =>
-				command.startsWith("stage_file"),
-			);
+			await chooseFolderMenuItem(folder, text);
 		}
 
 		beforeEach(() => {
@@ -546,7 +551,7 @@ describe("StagingPanel merge-continue", () => {
 				await screen.findByLabelText("Mark all as resolved"),
 			);
 
-			expect(await indexWritesOnceRefreshed()).toEqual([
+			expect(await callsOnceRefreshed("stage_file")).toEqual([
 				[
 					"stage_files",
 					{ path: "/repo", filePaths: ["src/a.ts", "src/b.ts", "docs/c.md"] },
@@ -563,9 +568,9 @@ describe("StagingPanel merge-continue", () => {
 				},
 			});
 
-			await chooseDirectoryMenuItem(/^src \(2\)/, /^Resolve All/);
+			await chooseConflictedFolderMenuItem(/^src \(2\)/, /^Resolve All/);
 
-			expect(await indexWritesOnceRefreshed()).toEqual([
+			expect(await callsOnceRefreshed("stage_file")).toEqual([
 				["stage_files", { path: "/repo", filePaths: ["src/a.ts", "src/b.ts"] }],
 			]);
 		});
@@ -587,7 +592,7 @@ describe("StagingPanel merge-continue", () => {
 				within(rowWithActions).getByRole("button", { name: "Stage directory" }),
 			);
 
-			expect(await indexWritesOnceRefreshed()).toEqual([
+			expect(await callsOnceRefreshed("stage_file")).toEqual([
 				["stage_files", { path: "/repo", filePaths: ["src/a.ts", "src/b.ts"] }],
 			]);
 		});
@@ -641,7 +646,7 @@ describe("StagingPanel merge-continue", () => {
 					},
 				});
 
-				await chooseDirectoryMenuItem(/^src \(2\)/, /^Resolve All/);
+				await chooseConflictedFolderMenuItem(/^src \(2\)/, /^Resolve All/);
 
 				await waitFor(() => {
 					expect(toasts.items).toEqual([
@@ -664,7 +669,7 @@ describe("StagingPanel merge-continue", () => {
 					},
 				});
 
-				await chooseDirectoryMenuItem(/^src \(2\)/, /^Unresolve All/);
+				await chooseConflictedFolderMenuItem(/^src \(2\)/, /^Unresolve All/);
 
 				await waitFor(() => {
 					expect(toasts.items).toEqual([
@@ -677,6 +682,77 @@ describe("StagingPanel merge-continue", () => {
 				});
 			});
 		});
+	});
+});
+
+describe("StagingPanel discarding a folder", () => {
+	beforeEach(() => {
+		mockInvoke.mockReset();
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "get_status")
+				return Promise.resolve({
+					unstaged: [
+						{ path: "src/a.ts", status: "Modified", is_binary: false },
+						{ path: "src/b.ts", status: "New", is_binary: false },
+						{ path: "docs/c.md", status: "Modified", is_binary: false },
+					],
+					staged: [],
+					conflicted: [],
+				});
+			if (cmd === "get_operation_state")
+				return Promise.resolve({
+					op_type: "None",
+					source_branch: null,
+					target_branch: null,
+					onto_oid: null,
+					progress: null,
+					rebase_message: null,
+				});
+			return Promise.resolve(undefined);
+		});
+		vi.mocked(ask).mockResolvedValueOnce(true);
+	});
+
+	it("discards the folder's changes in one index update", async () => {
+		render(StagingPanel, {
+			props: {
+				...noReviewCounts(),
+				repoPath: "/repo",
+				treeViewEnabled: true,
+			},
+		});
+
+		await chooseFolderMenuItem(/^src \(2\)/, /^Discard All/);
+
+		expect(await callsOnceRefreshed("discard_file")).toEqual([
+			["discard_files", { path: "/repo", filePaths: ["src/a.ts", "src/b.ts"] }],
+		]);
+	});
+
+	it("reports a failed discard and shows what it left behind", async () => {
+		_resetToasts();
+		const answer = mockInvoke.getMockImplementation();
+		if (answer === undefined) throw new Error("status is not mocked");
+		mockInvoke.mockImplementation(
+			(command: string, args?: Record<string, unknown>) =>
+				command === "discard_files"
+					? Promise.reject({ code: "io_error", message: "permission denied" })
+					: answer(command, args),
+		);
+		render(StagingPanel, {
+			props: {
+				...noReviewCounts(),
+				repoPath: "/repo",
+				treeViewEnabled: true,
+			},
+		});
+
+		await chooseFolderMenuItem(/^src \(2\)/, /^Discard All/);
+
+		await callsOnceRefreshed("discard_file");
+		expect(toasts.items).toEqual([
+			{ id: expect.any(Number), message: "permission denied", kind: "error" },
+		]);
 	});
 });
 

@@ -333,6 +333,7 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         commands::staging::stage_all,
         commands::staging::unstage_all,
         commands::staging::discard_file,
+        commands::staging::discard_files,
         commands::staging::discard_all,
         commands::staging::stage_hunk,
         commands::staging::unstage_hunk,

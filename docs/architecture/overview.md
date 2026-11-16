@@ -370,7 +370,7 @@ store revision.
 - `repo`: `open_repo`, `close_repo`, `force_close_repo`
 - `history`: `get_commit_graph`, `refresh_commit_graph`, `search_commits`
 - `branches`: `list_refs`, `resolve_ref`, `checkout_branch`, `fast_forward_to`, `create_branch`, `checkout_remote_branch`, `branch_hold`, `delete_branch`, `rename_branch`
-- `staging`: `get_dirty_counts`, `get_status`, `stage_file`, `unstage_file`, `stage_files`, `unstage_files`, `stage_all`, `unstage_all`, `discard_file`, `discard_all`, `stage_hunk`, `unstage_hunk`, `discard_hunk`, `stage_lines`, `unstage_lines`, `discard_lines`
+- `staging`: `get_dirty_counts`, `get_status`, `stage_file`, `unstage_file`, `stage_files`, `unstage_files`, `stage_all`, `unstage_all`, `discard_file`, `discard_files`, `discard_all`, `stage_hunk`, `unstage_hunk`, `discard_hunk`, `stage_lines`, `unstage_lines`, `discard_lines`
 - `commit`: `create_commit`, `amend_commit`, `get_head_commit_message`
 - `diff`: `diff_unstaged`, `diff_staged`, `diff_commit`, `list_commit_files`, `diff_commit_file`, `list_compare_files`, `diff_compare_file`, `compare_stat`, `get_commit_detail`
 - `stash`: `list_stashes`, `stash_save`, `stash_pop`, `stash_apply`, `stash_drop`

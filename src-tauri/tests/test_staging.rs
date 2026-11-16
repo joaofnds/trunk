@@ -320,6 +320,77 @@ fn discard_file_deletes_untracked_file_in_subdirectory() {
 }
 
 #[test]
+fn discard_files_throws_away_every_named_change_and_nothing_else() {
+    let ctx = TestContext::builder()
+        .with_file("dir/edited.txt", "committed\n")
+        .with_file("dir/staged.txt", "committed\n")
+        .with_file("dir/deleted.txt", "committed\n")
+        .with_file("outside.txt", "committed\n")
+        .with_commit("Initial commit")
+        .build();
+    std::fs::remove_file(ctx.repo_path().join("dir/deleted.txt")).unwrap();
+    std::fs::write(ctx.repo_path().join("dir/edited.txt"), "edited\n").unwrap();
+    std::fs::write(ctx.repo_path().join("dir/staged.txt"), "staged\n").unwrap();
+    ctx.stage_file("dir/staged.txt").unwrap();
+    std::fs::write(ctx.repo_path().join("dir/staged.txt"), "staged\nunstaged\n").unwrap();
+    std::fs::write(ctx.repo_path().join("dir/new.txt"), "untracked\n").unwrap();
+    std::fs::write(ctx.repo_path().join("outside.txt"), "edited\n").unwrap();
+
+    ctx.discard_files(&[
+        "dir/edited.txt",
+        "dir/staged.txt",
+        "dir/deleted.txt",
+        "dir/new.txt",
+    ])
+    .expect("discard_files failed");
+
+    let read = |path: &str| std::fs::read_to_string(ctx.repo_path().join(path)).unwrap();
+    assert_eq!(read("dir/edited.txt"), "committed\n");
+    assert_eq!(read("dir/staged.txt"), "staged\n");
+    assert_eq!(ctx.staged_content("dir/staged.txt"), "staged\n");
+    assert_eq!(read("dir/deleted.txt"), "committed\n");
+    assert!(!ctx.repo_path().join("dir/new.txt").exists());
+    assert_eq!(read("outside.txt"), "edited\n");
+}
+
+#[test]
+fn discard_files_naming_only_untracked_files_restores_no_tracked_file() {
+    let ctx = TestContext::builder()
+        .with_file("edited.txt", "committed\n")
+        .with_commit("Initial commit")
+        .build();
+    std::fs::write(ctx.repo_path().join("edited.txt"), "edited\n").unwrap();
+    std::fs::write(ctx.repo_path().join("new.txt"), "untracked\n").unwrap();
+
+    ctx.discard_files(&["new.txt"])
+        .expect("discard_files failed");
+
+    let edited = std::fs::read_to_string(ctx.repo_path().join("edited.txt")).unwrap();
+    assert_eq!(edited, "edited\n");
+    assert!(!ctx.repo_path().join("new.txt").exists());
+}
+
+#[test]
+fn discard_files_touches_nothing_when_a_named_path_has_no_change() {
+    let ctx = TestContext::builder()
+        .with_file("edited.txt", "committed\n")
+        .with_file("clean.txt", "committed\n")
+        .with_commit("Initial commit")
+        .build();
+    std::fs::write(ctx.repo_path().join("edited.txt"), "edited\n").unwrap();
+    std::fs::write(ctx.repo_path().join("new.txt"), "untracked\n").unwrap();
+
+    let err = ctx
+        .discard_files(&["edited.txt", "new.txt", "clean.txt"])
+        .expect_err("a path with nothing to discard refuses the call");
+
+    assert_eq!(err.code, "file_not_found");
+    let edited = std::fs::read_to_string(ctx.repo_path().join("edited.txt")).unwrap();
+    assert_eq!(edited, "edited\n");
+    assert!(ctx.repo_path().join("new.txt").exists());
+}
+
+#[test]
 fn discard_all_deletes_nested_untracked_file() {
     let ctx = TestContext::builder()
         .with_file("README.md", "hello")

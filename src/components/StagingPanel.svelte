@@ -239,6 +239,12 @@ export async function loadStatus() {
 	await statusRefresh.run();
 }
 
+async function refreshStatusOrReport() {
+	await loadStatus().catch((error) =>
+		reportErrorToast(error, "Failed to refresh status"),
+	);
+}
+
 async function stageFile(filePath: string) {
 	loadingFiles = new Set([...loadingFiles, filePath]);
 	await safeInvoke("stage_file", { path: repoPath, filePath });
@@ -340,16 +346,15 @@ async function handleDiscardDirectory(dirPath: string) {
 	if (!confirmed) return;
 
 	try {
-		await Promise.all(
-			files.map((f) =>
-				safeInvoke("discard_file", { path: repoPath, filePath: f.path }),
-			),
-		);
-		await loadStatus();
+		await safeInvoke("discard_files", {
+			path: repoPath,
+			filePaths: files.map((f) => f.path),
+		});
 		showToast(`Discarded ${files.length} files in ${dirPath}/`, "success");
 	} catch (e) {
 		reportErrorToast(e, "Discard failed");
 	}
+	await refreshStatusOrReport();
 }
 
 async function showUnstagedContextMenu(
@@ -807,9 +812,7 @@ function startBottomResize(e: MouseEvent) {
 // Initial load on mount
 $effect(() => {
 	if (repoPath) {
-		void loadStatus().catch((error) =>
-			reportErrorToast(error, "Failed to refresh status"),
-		);
+		void refreshStatusOrReport();
 	}
 });
 

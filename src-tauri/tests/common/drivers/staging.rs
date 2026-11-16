@@ -20,6 +20,14 @@ impl TestContext {
         staging::discard_file_inner(self.path(), file_path, self.state_map())
     }
 
+    pub fn discard_files(&self, file_paths: &[&str]) -> Result<(), TrunkError> {
+        let paths: Vec<String> = file_paths
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect();
+        staging::discard_files_inner(self.path(), &paths, self.state_map())
+    }
+
     pub fn discard_all(&self) -> Result<(), TrunkError> {
         staging::discard_all_inner(self.path(), self.state_map())
     }
