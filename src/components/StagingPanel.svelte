@@ -245,26 +245,36 @@ async function refreshStatusOrReport() {
 	);
 }
 
+function stopLoading(paths: readonly string[]) {
+	const next = new Set(loadingFiles);
+	for (const p of paths) next.delete(p);
+	loadingFiles = next;
+}
+
 async function stageFile(filePath: string) {
 	loadingFiles = new Set([...loadingFiles, filePath]);
-	await safeInvoke("stage_file", { path: repoPath, filePath });
-	onfileadvance?.(filePath, "unstaged");
-	optimisticMove(filePath, "unstaged", "stage");
-	await loadStatus();
-	const next = new Set(loadingFiles);
-	next.delete(filePath);
-	loadingFiles = next;
+	try {
+		await safeInvoke("stage_file", { path: repoPath, filePath });
+		onfileadvance?.(filePath, "unstaged");
+		optimisticMove(filePath, "unstaged", "stage");
+	} catch (e) {
+		reportErrorToast(e, "Stage failed");
+	}
+	await refreshStatusOrReport();
+	stopLoading([filePath]);
 }
 
 async function unstageFile(filePath: string) {
 	loadingFiles = new Set([...loadingFiles, filePath]);
-	await safeInvoke("unstage_file", { path: repoPath, filePath });
-	onfileadvance?.(filePath, "staged");
-	optimisticMove(filePath, "staged", "unstage");
-	await loadStatus();
-	const next = new Set(loadingFiles);
-	next.delete(filePath);
-	loadingFiles = next;
+	try {
+		await safeInvoke("unstage_file", { path: repoPath, filePath });
+		onfileadvance?.(filePath, "staged");
+		optimisticMove(filePath, "staged", "unstage");
+	} catch (e) {
+		reportErrorToast(e, "Unstage failed");
+	}
+	await refreshStatusOrReport();
+	stopLoading([filePath]);
 }
 
 async function stageDirectory(dirPath: string) {
@@ -275,11 +285,16 @@ async function stageDirectory(dirPath: string) {
 	if (pathsToStage.length === 0) return;
 
 	loadingFiles = new Set([...loadingFiles, ...pathsToStage]);
-	await safeInvoke("stage_files", { path: repoPath, filePaths: pathsToStage });
-	await loadStatus();
-	const next = new Set(loadingFiles);
-	for (const p of pathsToStage) next.delete(p);
-	loadingFiles = next;
+	try {
+		await safeInvoke("stage_files", {
+			path: repoPath,
+			filePaths: pathsToStage,
+		});
+	} catch (e) {
+		reportErrorToast(e, "Stage failed");
+	}
+	await refreshStatusOrReport();
+	stopLoading(pathsToStage);
 }
 
 async function unstageDirectory(dirPath: string) {
@@ -290,24 +305,34 @@ async function unstageDirectory(dirPath: string) {
 	if (pathsToUnstage.length === 0) return;
 
 	loadingFiles = new Set([...loadingFiles, ...pathsToUnstage]);
-	await safeInvoke("unstage_files", {
-		path: repoPath,
-		filePaths: pathsToUnstage,
-	});
-	await loadStatus();
-	const next = new Set(loadingFiles);
-	for (const p of pathsToUnstage) next.delete(p);
-	loadingFiles = next;
+	try {
+		await safeInvoke("unstage_files", {
+			path: repoPath,
+			filePaths: pathsToUnstage,
+		});
+	} catch (e) {
+		reportErrorToast(e, "Unstage failed");
+	}
+	await refreshStatusOrReport();
+	stopLoading(pathsToUnstage);
 }
 
 async function stageAll() {
-	await safeInvoke("stage_all", { path: repoPath });
-	await loadStatus();
+	try {
+		await safeInvoke("stage_all", { path: repoPath });
+	} catch (e) {
+		reportErrorToast(e, "Stage all failed");
+	}
+	await refreshStatusOrReport();
 }
 
 async function unstageAll() {
-	await safeInvoke("unstage_all", { path: repoPath });
-	await loadStatus();
+	try {
+		await safeInvoke("unstage_all", { path: repoPath });
+	} catch (e) {
+		reportErrorToast(e, "Unstage all failed");
+	}
+	await refreshStatusOrReport();
 }
 
 async function handleDiscardFile(filePath: string, fileStatus: FileStatusType) {
@@ -583,7 +608,7 @@ async function resolveDirectory(dirPath: string) {
 	} catch (e) {
 		reportErrorToast(e, "Resolution failed");
 	}
-	await loadStatus();
+	await refreshStatusOrReport();
 }
 
 async function unresolveDirectory(dirPath: string) {
@@ -599,7 +624,7 @@ async function unresolveDirectory(dirPath: string) {
 	} catch (e) {
 		reportErrorToast(e, "Unresolve failed");
 	}
-	await loadStatus();
+	await refreshStatusOrReport();
 }
 
 async function showConflictedDirContextMenu(_e: MouseEvent, dirPath: string) {
@@ -672,7 +697,7 @@ async function markAllResolved() {
 	} catch (e) {
 		reportErrorToast(e, "Resolution failed");
 	}
-	await loadStatus();
+	await refreshStatusOrReport();
 }
 
 let mergeLoading = $state(false);

@@ -418,6 +418,42 @@ describe("StagingPanel", () => {
 		await fireEvent.mouseEnter(stagingRowFor(screen.getByText("README.md")));
 		expect(await screen.findByLabelText("Unstage file")).toBeInTheDocument();
 	});
+
+	it("reports a failed stage and gives the file its stage action back", async () => {
+		_resetToasts();
+		const answer = mockInvoke.getMockImplementation();
+		if (answer === undefined) throw new Error("status is not mocked");
+		mockInvoke.mockImplementation(
+			(command: string, args?: Record<string, unknown>) =>
+				command === "stage_file"
+					? Promise.reject({
+							code: "git_locked",
+							message: "the index is locked",
+						})
+					: answer(command, args),
+		);
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/repo" },
+		});
+		await fireEvent.mouseEnter(
+			stagingRowFor(await screen.findByText("README.md")),
+		);
+
+		await fireEvent.click(screen.getByLabelText("Stage file"));
+
+		await waitFor(() => {
+			expect(toasts.items).toEqual([
+				{
+					id: expect.any(Number),
+					message: "the index is locked",
+					kind: "error",
+				},
+			]);
+		});
+		await callsOnceRefreshed("stage_file");
+		await fireEvent.mouseEnter(stagingRowFor(screen.getByText("README.md")));
+		expect(screen.getByLabelText("Stage file")).toBeInTheDocument();
+	});
 });
 
 describe("StagingPanel merge-continue", () => {
@@ -634,6 +670,7 @@ describe("StagingPanel merge-continue", () => {
 						},
 					]);
 				});
+				await callsOnceRefreshed("stage_files");
 			});
 
 			it("reports a failed folder resolve to the user", async () => {
@@ -657,6 +694,7 @@ describe("StagingPanel merge-continue", () => {
 						},
 					]);
 				});
+				await callsOnceRefreshed("stage_files");
 			});
 
 			it("reports a failed folder unresolve to the user", async () => {
@@ -670,6 +708,27 @@ describe("StagingPanel merge-continue", () => {
 				});
 
 				await chooseConflictedFolderMenuItem(/^src \(2\)/, /^Unresolve All/);
+
+				await waitFor(() => {
+					expect(toasts.items).toEqual([
+						{
+							id: expect.any(Number),
+							message: "the index is locked",
+							kind: "error",
+						},
+					]);
+				});
+				await callsOnceRefreshed("unstage_file");
+			});
+
+			it("reports a failed refresh after the resolve", async () => {
+				render(StagingPanel, {
+					props: { ...noReviewCounts(), repoPath: "/repo" },
+				});
+				const markAll = await screen.findByLabelText("Mark all as resolved");
+				failCommand("get_status");
+
+				await fireEvent.click(markAll);
 
 				await waitFor(() => {
 					expect(toasts.items).toEqual([
