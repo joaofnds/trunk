@@ -14,6 +14,7 @@ import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comme
 import { noReviewCounts } from "../__tests__/helpers/review-props.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
+import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import type { ReviewTally } from "../lib/types.js";
 import StagingPanel from "./StagingPanel.svelte";
 
@@ -589,6 +590,92 @@ describe("StagingPanel merge-continue", () => {
 			expect(await indexWritesOnceRefreshed()).toEqual([
 				["stage_files", { path: "/repo", filePaths: ["src/a.ts", "src/b.ts"] }],
 			]);
+		});
+
+		describe("when the index write fails", () => {
+			const lockedIndex = { code: "git_error", message: "the index is locked" };
+
+			function failCommand(failing: string) {
+				const answer = mockInvoke.getMockImplementation();
+				if (answer === undefined) throw new Error("merge state is not mocked");
+				mockInvoke.mockImplementation(
+					(command: string, args?: Record<string, unknown>) =>
+						command === failing
+							? Promise.reject(lockedIndex)
+							: answer(command, args),
+				);
+			}
+
+			beforeEach(() => {
+				_resetToasts();
+			});
+
+			it("reports a failed mark-all to the user", async () => {
+				failCommand("stage_files");
+				render(StagingPanel, {
+					props: { ...noReviewCounts(), repoPath: "/repo" },
+				});
+
+				await fireEvent.click(
+					await screen.findByLabelText("Mark all as resolved"),
+				);
+
+				await waitFor(() => {
+					expect(toasts.items).toEqual([
+						{
+							id: expect.any(Number),
+							message: "the index is locked",
+							kind: "error",
+						},
+					]);
+				});
+			});
+
+			it("reports a failed folder resolve to the user", async () => {
+				failCommand("stage_files");
+				render(StagingPanel, {
+					props: {
+						...noReviewCounts(),
+						repoPath: "/repo",
+						treeViewEnabled: true,
+					},
+				});
+
+				await chooseDirectoryMenuItem(/^src \(2\)/, /^Resolve All/);
+
+				await waitFor(() => {
+					expect(toasts.items).toEqual([
+						{
+							id: expect.any(Number),
+							message: "the index is locked",
+							kind: "error",
+						},
+					]);
+				});
+			});
+
+			it("reports a failed folder unresolve to the user", async () => {
+				failCommand("unstage_file");
+				render(StagingPanel, {
+					props: {
+						...noReviewCounts(),
+						repoPath: "/repo",
+						treeViewEnabled: true,
+					},
+				});
+
+				await chooseDirectoryMenuItem(/^src \(2\)/, /^Unresolve All/);
+
+				await waitFor(() => {
+					expect(toasts.items).toEqual([
+						{
+							id: expect.any(Number),
+							message: "the index is locked",
+							kind: "error",
+						},
+					]);
+				});
+			});
 		});
 	});
 });

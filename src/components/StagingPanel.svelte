@@ -570,10 +570,14 @@ async function resolveDirectory(dirPath: string) {
 	);
 	if (files.length === 0) return;
 
-	await safeInvoke("stage_files", {
-		path: repoPath,
-		filePaths: files.map((f) => f.path),
-	});
+	try {
+		await safeInvoke("stage_files", {
+			path: repoPath,
+			filePaths: files.map((f) => f.path),
+		});
+	} catch (e) {
+		reportErrorToast(e, "Resolution failed");
+	}
 	await loadStatus();
 }
 
@@ -582,8 +586,13 @@ async function unresolveDirectory(dirPath: string) {
 		(f) => f.path.startsWith(`${dirPath}/`) || f.path === dirPath,
 	);
 	if (files.length === 0) return;
-	for (const f of files) {
-		await safeInvoke("unstage_file", { path: repoPath, filePath: f.path });
+
+	try {
+		for (const f of files) {
+			await safeInvoke("unstage_file", { path: repoPath, filePath: f.path });
+		}
+	} catch (e) {
+		reportErrorToast(e, "Unresolve failed");
 	}
 	await loadStatus();
 }
@@ -650,10 +659,14 @@ async function handleDiscardAll() {
 
 // ---------- Merge-mode actions ----------
 async function markAllResolved() {
-	await safeInvoke("stage_files", {
-		path: repoPath,
-		filePaths: (status?.conflicted ?? []).map((f) => f.path),
-	});
+	try {
+		await safeInvoke("stage_files", {
+			path: repoPath,
+			filePaths: (status?.conflicted ?? []).map((f) => f.path),
+		});
+	} catch (e) {
+		reportErrorToast(e, "Resolution failed");
+	}
 	await loadStatus();
 }
 
