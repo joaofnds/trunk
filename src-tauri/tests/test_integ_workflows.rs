@@ -200,15 +200,14 @@ fn workflow_undo_redo_commit() {
     // Undo the last commit
     let undo_result = ctx.undo_commit().unwrap();
     ctx.assert_head_message("First");
-    assert_eq!(undo_result.subject, "Second");
+    assert_eq!(undo_result.undone_oid, undone.to_string());
 
     // The user stages something else before changing their mind.
     std::fs::write(ctx.repo_path().join("NOTES.md"), "later").unwrap();
     ctx.stage_file("NOTES.md").unwrap();
 
     // Redo the undone commit
-    ctx.redo_commit(&undo_result.undone_oid, &undo_result.head_oid)
-        .unwrap();
+    ctx.redo_commit(&undo_result).unwrap();
 
     assert_eq!(
         ctx.repo().head().unwrap().target().unwrap(),

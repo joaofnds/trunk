@@ -166,11 +166,15 @@ fn undo_commit_captures_message() {
         result.err()
     );
     let undo = result.unwrap();
-    assert_eq!(undo.subject, "Undo test subject");
-    assert_eq!(undo.body, Some("Undo test body".to_owned()));
 
     // Verify HEAD moved back to initial commit
     ctx.assert_head_message("Initial commit");
+    let repo = ctx.repo();
+    let head = repo.head().unwrap().target().unwrap();
+    assert_eq!(undo.head_oid, head.to_string());
+    let undone = repo.find_commit(undo.undone_oid.parse().unwrap()).unwrap();
+    assert_eq!(undone.summary().ok().flatten(), Some("Undo test subject"));
+    assert_eq!(undone.parent_id(0).unwrap(), head);
 }
 
 #[test]

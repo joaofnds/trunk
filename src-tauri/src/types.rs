@@ -222,8 +222,6 @@ pub struct HeadCommitMessage {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct UndoResult {
-    pub subject: String,
-    pub body: Option<String>,
     /// Where the undo left HEAD. A redo restores the undone commit onto this
     /// position and nowhere else: replayed after a checkout, a reset or a new
     /// commit it would move the branch off that history, so the caller carries

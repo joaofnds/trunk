@@ -113,19 +113,20 @@ impl TestContext {
         ))
     }
 
-    /// Undo the last commit (soft reset HEAD~1), returning the undone commit message
+    /// Undo the last commit (soft reset HEAD~1), returning the commit it took back
     pub fn undo_commit(&self) -> Result<UndoResult, TrunkError> {
         commit_actions::undo_commit_inner(self.path(), self.state_map())
     }
 
-    /// Restore the commit an undo took back, refusing unless HEAD is still at
-    /// `expected_head_oid`
-    pub fn redo_commit(&self, undone_oid: &str, expected_head_oid: &str) -> Result<(), TrunkError> {
+    /// Redo what `undo` took back, in this repository
+    pub fn redo_commit(&self, undo: &UndoResult) -> Result<(), TrunkError> {
         commit_actions::redo_commit_inner(
             self.path(),
-            undone_oid,
-            expected_head_oid,
-            self.path(),
+            &commit_actions::RedoRequest {
+                undone_oid: &undo.undone_oid,
+                expected_head_oid: &undo.head_oid,
+                expected_path: self.path(),
+            },
             self.state_map(),
         )
     }

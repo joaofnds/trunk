@@ -45,7 +45,22 @@ would allow, and refusing it would mean the backend keeping its own record of
 undos, which the 2026-09-02 record already ruled out of scope.
 
 If the undone commit is gone by the time of the redo, pruned after its reflog
-entry expired, `find_commit` fails and the redo is refused with `redo_stale`.
+entry expired, the redo is refused with `redo_missing`, and so is an oid that
+names no commit. The toolbar drops an entry refused that way, because no later
+click can succeed and HEAD has not moved, so nothing else would withdraw Redo.
+Any other failure puts the entry back.
+
+## What this leaves open
+
+The checks read HEAD through git2, and the reset runs afterwards as a separate
+git process with no compare-and-swap on the old value. Redo inside the app runs
+under the same per-repository gate as commit and amend, so no in-app write lands
+in between. A commit made from a terminal in those few milliseconds would be
+moved off the branch, reachable from the reflog, with its changes left staged.
+The recommit had the same window but would have stacked on top of that commit
+instead. `git update-ref` with an expected old value would close it, at the cost
+of the ORIG_HEAD that the reset writes. The window was judged too narrow to pay
+that cost.
 
 ## Rejected
 

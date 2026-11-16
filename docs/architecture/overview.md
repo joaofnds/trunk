@@ -69,7 +69,7 @@
 | `store.ts` | All persistent preferences via `@tauri-apps/plugin-store` (`trunk-prefs.json`) | `src/lib/store.ts` |
 | `toast.svelte.ts` | Global toast notification state using module-level `$state` | `src/lib/toast.svelte.ts` |
 | `remote-state.svelte.ts` | Per-tab remote operation state (`isRunning`, `progressLine`, `error`) | `src/lib/remote-state.svelte.ts` |
-| `undo-redo.svelte.ts` | Per-tab redo stack (client-side, mirrors backend undo log) | `src/lib/undo-redo.svelte.ts` |
+| `undo-redo.svelte.ts` | Per-tab redo stack, client-side only: each entry names the commit an undo took back and where HEAD was left, and the backend keeps no record of undos | `src/lib/undo-redo.svelte.ts` |
 | `commands/repo.rs` | `open_repo`, `close_repo`, `force_close_repo` — loads cache, starts watcher | `src-tauri/src/commands/repo.rs` |
 | `commands/history.rs` | `get_commit_graph`, `refresh_commit_graph`, `search_commits` — reads from `CommitCache` | `src-tauri/src/commands/history.rs` |
 | `commands/staging.rs` | Full staging surface: status, stage/unstage/discard file/hunk/lines | `src-tauri/src/commands/staging.rs` |

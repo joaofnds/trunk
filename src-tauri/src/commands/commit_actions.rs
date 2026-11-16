@@ -313,17 +313,7 @@ pub fn reset_to_commit_inner(
         ));
     }
 
-    let output = std::process::Command::new("git")
-        .args(["reset", &format!("--{mode}"), oid])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
-        .output()
-        .map_err(|e| TrunkError::new("reset_error", e.to_string()))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(TrunkError::new("reset_error", stderr.to_string()));
-    }
+    run_git_reset(path_buf, &[&format!("--{mode}"), oid], "reset_error")?;
 
     let mut repo = git2::Repository::open(path_buf)?;
     crate::state::read_graph(&mut repo)
@@ -656,7 +646,8 @@ pub async fn revert_abort<R: Runtime>(
     Ok(())
 }
 
-/// Soft-reset HEAD by one commit, returning the message so it can be redone.
+/// Soft-reset HEAD by one commit, returning the commit it took back and where HEAD landed, so
+/// a redo can restore that commit onto that position.
 ///
 /// # Errors
 ///
@@ -681,8 +672,6 @@ pub fn undo_commit_inner(path: &str, state_map: &OpenRepos) -> Result<UndoResult
         ));
     }
 
-    let subject = head.summary().ok().flatten().unwrap_or("").to_owned();
-    let body = head.body().ok().flatten().map(str::to_owned);
     let undone_oid = head.id().to_string();
     // The parent is where the soft reset below lands HEAD, and the only position
     // a redo of this commit belongs on.
@@ -690,24 +679,39 @@ pub fn undo_commit_inner(path: &str, state_map: &OpenRepos) -> Result<UndoResult
     drop(head);
     drop(repo);
 
-    let output = std::process::Command::new("git")
-        .args(["reset", "--soft", "HEAD~1"])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
-        .output()
-        .map_err(|e| TrunkError::new("undo_error", e.to_string()))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(TrunkError::new("undo_error", stderr.to_string()));
-    }
+    run_git_reset(path_buf, &["--soft", "HEAD~1"], "undo_error")?;
 
     Ok(UndoResult {
-        subject,
-        body,
         head_oid,
         undone_oid,
     })
+}
+
+/// A redo as its caller names it. The three are all strings, so they travel as
+/// named fields: passed positionally, a swapped pair would still compile.
+pub struct RedoRequest<'a> {
+    /// The commit the undo took back.
+    pub undone_oid: &'a str,
+    /// Where the undo left HEAD.
+    pub expected_head_oid: &'a str,
+    /// The repository the undo ran in.
+    pub expected_path: &'a str,
+}
+
+/// Run `git reset` with `args` in `dir`, reporting a failure under `code` with git's own words.
+fn run_git_reset(dir: &std::path::Path, args: &[&str], code: &str) -> Result<(), TrunkError> {
+    let output = std::process::Command::new("git")
+        .arg("reset")
+        .args(args)
+        .current_dir(dir)
+        .env("PATH", shell_env::system_path())
+        .output()
+        .map_err(|e| TrunkError::new(code, e.to_string()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(TrunkError::new(code, stderr.to_string()));
+    }
+    Ok(())
 }
 
 /// Restore the commit an undo took back, refusing if HEAD or the repository has moved.
@@ -715,72 +719,69 @@ pub fn undo_commit_inner(path: &str, state_map: &OpenRepos) -> Result<UndoResult
 /// # Errors
 ///
 /// Returns `not_open` when `path` names no open repository, `redo_stale` when the redo names a
-/// different repository, HEAD has moved since the undo, or `undone_oid` is not a commit whose
-/// one parent is HEAD, and `redo_error` when the reset fails.
+/// different repository, HEAD has moved since the undo, or the named commit's one parent is not
+/// HEAD, `redo_missing` when the named commit is not in the repository, `redo_error` when the
+/// reset fails, and the git error when the commit will not read.
 pub fn redo_commit_inner(
     path: &str,
-    undone_oid: &str,
-    expected_head_oid: &str,
-    expected_path: &str,
+    request: &RedoRequest,
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
     // Two clones of one repository share every oid, so the position alone cannot
     // tell them apart. `path` names which repository this redo is allowed to
     // write to; a caller asking to redo on a different one is refused here too.
-    if path != expected_path {
+    if path != request.expected_path {
         return Err(TrunkError::new(
             "redo_stale",
             "This redo belongs to a different repository",
         ));
     }
     let repo = state_map.open(path)?;
-    let current = repo
-        .head()
-        .and_then(|h| h.peel_to_commit())
-        .map(|c| c.id().to_string())
-        .unwrap_or_default();
-    if current != expected_head_oid {
+    let current = repo.head().and_then(|h| h.peel_to_commit()).map(|c| c.id());
+    let Some(current) = current
+        .ok()
+        .filter(|oid| oid.to_string() == request.expected_head_oid)
+    else {
         return Err(TrunkError::new(
             "redo_stale",
             "HEAD has moved since the undo; refusing to redo onto unrelated history",
         ));
+    };
+    let missing = || {
+        TrunkError::new(
+            "redo_missing",
+            "The commit this redo restores is no longer in the repository",
+        )
+    };
+    let Ok(undone_oid) = git2::Oid::from_str(request.undone_oid) else {
+        return Err(missing());
+    };
+    let undone = match repo.find_commit(undone_oid) {
+        Ok(commit) => commit,
+        Err(e) if e.code() == git2::ErrorCode::NotFound => return Err(missing()),
+        Err(e) => return Err(e.into()),
+    };
+    // An undo from here took back a commit whose one parent is HEAD. Restoring
+    // any other commit would move the branch to history the user never made on it.
+    if !undone.parent_ids().eq([current]) {
+        return Err(TrunkError::new(
+            "redo_stale",
+            "This redo names no commit made on top of HEAD",
+        ));
     }
-    // Only a commit whose one parent is HEAD can be the one an undo took back
-    // from here, and restoring anything else would move the branch to history
-    // the user never made on it.
-    let undone = git2::Oid::from_str(undone_oid)
-        .ok()
-        .and_then(|oid| repo.find_commit(oid).ok())
-        .filter(|commit| {
-            commit.parent_count() == 1
-                && commit
-                    .parent_id(0)
-                    .is_ok_and(|parent| parent.to_string() == current)
-        })
-        .map(|commit| commit.id().to_string())
-        .ok_or_else(|| {
-            TrunkError::new(
-                "redo_stale",
-                "This redo names no commit made on top of HEAD",
-            )
-        })?;
+    let undone_hex = undone.id().to_string();
+    drop(undone);
     drop(repo);
 
     // The inverse of the undo's soft reset: HEAD returns to the same commit, and
     // the index and files stay as the user left them, so anything staged since
-    // the undo is still staged, on top of it.
-    let output = std::process::Command::new("git")
-        .args(["reset", "--soft", &undone])
-        .current_dir(state_map.path_for(path)?)
-        .env("PATH", shell_env::system_path())
-        .output()
-        .map_err(|e| TrunkError::new("redo_error", e.to_string()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(TrunkError::new("redo_error", stderr.to_string()));
-    }
-
-    Ok(())
+    // the undo is still staged, on top of it. The `--` keeps a file that happens
+    // to be named like the oid from being read as a path.
+    run_git_reset(
+        state_map.path_for(path)?,
+        &["--soft", &undone_hex, "--"],
+        "redo_error",
+    )
 }
 
 /// Whether HEAD is a commit with exactly one parent, so it can be undone.
@@ -884,9 +885,11 @@ pub async fn redo_commit<R: Runtime>(
         .rebuild(path.clone(), move || {
             redo_commit_inner(
                 &path_clone,
-                &undone_oid,
-                &expected_head_oid,
-                &expected_repo_path,
+                &RedoRequest {
+                    undone_oid: &undone_oid,
+                    expected_head_oid: &expected_head_oid,
+                    expected_path: &expected_repo_path,
+                },
                 &state_map,
             )?;
             let path_buf = state_map.path_for(&path_clone)?;
@@ -948,7 +951,7 @@ pub async fn head_oid(
 mod tests {
     use super::*;
     use git2::{Repository, Signature};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
     // Temp-repo harness (mirrors operation_state.rs tests / review/src/doc.rs).
@@ -1170,25 +1173,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn redo_refuses_when_head_has_moved_off_the_position_it_names() {
-        let (dir, repo) = make_repo();
-        let base = commit_file(&repo, "base", &[], "f.txt", b"base\n");
-        let moved = commit_file(&repo, "moved on", &[base], "f.txt", b"moved\n");
-        let map = state_map_for(&dir);
-
-        let path = path_str(&dir);
-        let err = redo_commit_inner(&path, &moved.to_string(), &base.to_string(), &path, &map)
-            .expect_err("HEAD is not at `base`, so redo must refuse");
-        assert_eq!(err.code, "redo_stale");
-
-        assert_eq!(
-            head_body(&repo).trim(),
-            "moved on",
-            "a refused redo must not write a commit"
-        );
-    }
-
     /// `base` with a child the soft reset an undo makes has just taken back.
     fn undone_child_repo() -> (TempDir, Repository, git2::Oid, git2::Oid) {
         let (dir, repo) = make_repo();
@@ -1201,74 +1185,169 @@ mod tests {
         (dir, repo, base, undone)
     }
 
+    /// Redo `undone` in `dir` as if the undo left HEAD at `expected_head`.
+    fn redo(
+        dir: &TempDir,
+        undone: &str,
+        expected_head: &str,
+        map: &OpenRepos,
+    ) -> Result<(), TrunkError> {
+        let path = path_str(dir);
+        redo_commit_inner(
+            &path,
+            &RedoRequest {
+                undone_oid: undone,
+                expected_head_oid: expected_head,
+                expected_path: &path,
+            },
+            map,
+        )
+    }
+
+    /// A commit on `parents` that the branch never pointed at.
+    fn loose_commit(repo: &Repository, message: &str, parents: &[git2::Oid]) -> git2::Oid {
+        let tree = repo.find_commit(parents[0]).unwrap().tree().unwrap();
+        let parents: Vec<_> = parents
+            .iter()
+            .map(|oid| repo.find_commit(*oid).unwrap())
+            .collect();
+        let parents: Vec<_> = parents.iter().collect();
+        let s = sig();
+        repo.commit(None, &s, &s, message, &tree, &parents).unwrap()
+    }
+
     #[test]
     fn redo_restores_the_undone_commit_when_head_is_still_at_the_position_it_names() {
         let (dir, repo, base, undone) = undone_child_repo();
         let map = state_map_for(&dir);
 
-        let path = path_str(&dir);
-        redo_commit_inner(&path, &undone.to_string(), &base.to_string(), &path, &map)
+        redo(&dir, &undone.to_string(), &base.to_string(), &map)
             .expect("HEAD is at `base`, so redo must succeed");
 
         assert_eq!(repo.head().unwrap().target(), Some(undone));
     }
 
+    #[test]
+    fn redo_keeps_what_was_staged_and_written_since_the_undo() {
+        let (dir, repo, base, undone) = undone_child_repo();
+        std::fs::write(dir.path().join("later.txt"), b"staged\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("later.txt")).unwrap();
+        index.write().unwrap();
+        std::fs::write(dir.path().join("f.txt"), b"edited\n").unwrap();
+        let map = state_map_for(&dir);
+
+        redo(&dir, &undone.to_string(), &base.to_string(), &map).unwrap();
+
+        let index = repo.index().unwrap();
+        assert!(index.get_path(Path::new("later.txt"), 0).is_some());
+        assert_eq!(
+            std::fs::read(dir.path().join("f.txt")).unwrap(),
+            b"edited\n"
+        );
+    }
+
+    /// The git binary does the reset so the user's own git finds what a reset of
+    /// theirs would leave: `ORIG_HEAD` naming where the branch was.
+    #[test]
+    fn redo_leaves_orig_head_where_the_branch_was() {
+        let (dir, _repo, base, undone) = undone_child_repo();
+        let map = state_map_for(&dir);
+
+        redo(&dir, &undone.to_string(), &base.to_string(), &map).unwrap();
+
+        let orig_head = std::fs::read_to_string(dir.path().join(".git/ORIG_HEAD")).unwrap();
+        assert_eq!(orig_head.trim(), base.to_string());
+    }
+
+    #[test]
+    fn redo_refuses_when_head_has_moved_off_the_position_it_names() {
+        let (dir, repo, base, undone) = undone_child_repo();
+        let elsewhere = loose_commit(&repo, "elsewhere", &[base]);
+        let map = state_map_for(&dir);
+
+        let err = redo(&dir, &undone.to_string(), &elsewhere.to_string(), &map)
+            .expect_err("HEAD is not where the undo left it");
+
+        assert_eq!(err.code, "redo_stale");
+        assert_eq!(repo.head().unwrap().target(), Some(base));
+    }
+
     /// The backend cannot know what this app undid, but it can refuse to move the
     /// branch anywhere an undo from here could not have come from.
     #[test]
-    fn redo_refuses_a_commit_that_is_not_a_child_of_head() {
-        let (dir, repo, base, _undone) = undone_child_repo();
-        let elsewhere = {
-            let tree = repo.find_commit(base).unwrap().tree().unwrap();
-            let s = sig();
-            repo.commit(None, &s, &s, "unrelated root", &tree, &[])
-                .unwrap()
-        };
+    fn redo_refuses_a_commit_whose_parent_is_not_head() {
+        let (dir, repo, base, undone) = undone_child_repo();
+        let grandchild = loose_commit(&repo, "grandchild", &[undone]);
         let map = state_map_for(&dir);
 
-        let path = path_str(&dir);
-        let err = redo_commit_inner(
-            &path,
-            &elsewhere.to_string(),
-            &base.to_string(),
-            &path,
-            &map,
-        )
-        .expect_err("a root commit is no child of HEAD");
+        let err = redo(&dir, &grandchild.to_string(), &base.to_string(), &map)
+            .expect_err("the grandchild's parent is not HEAD");
 
         assert_eq!(err.code, "redo_stale");
         assert_eq!(repo.head().unwrap().target(), Some(base));
     }
 
     #[test]
-    fn redo_refuses_a_matching_oid_in_a_different_repository() {
-        // Two clones of the same history share every oid, so the position check
-        // alone cannot tell them apart. Undoing in one and redoing against the
-        // other's path must still refuse.
-        let (dir_a, repo_a) = make_repo();
-        let base_a = commit_file(&repo_a, "base", &[], "f.txt", b"base\n");
+    fn redo_refuses_a_merge_whose_first_parent_is_head() {
+        let (dir, repo, base, undone) = undone_child_repo();
+        let merge = loose_commit(&repo, "merge", &[base, undone]);
+        let map = state_map_for(&dir);
 
-        let (dir_b, repo_b) = make_repo();
-        let base_b = commit_file(&repo_b, "base", &[], "f.txt", b"base\n");
-        assert_eq!(base_a, base_b, "both repos must share the same commit oid");
+        let err = redo(&dir, &merge.to_string(), &base.to_string(), &map)
+            .expect_err("undo never takes back a merge");
 
+        assert_eq!(err.code, "redo_stale");
+        assert_eq!(repo.head().unwrap().target(), Some(base));
+    }
+
+    #[test]
+    fn redo_reports_a_commit_the_repository_no_longer_has() {
+        let (dir, repo, base, _undone) = undone_child_repo();
+        let map = state_map_for(&dir);
+
+        let gone = "0123456789abcdef0123456789abcdef01234567";
+        let err = redo(&dir, gone, &base.to_string(), &map).expect_err("no such commit");
+
+        assert_eq!(err.code, "redo_missing");
+        assert_eq!(repo.head().unwrap().target(), Some(base));
+    }
+
+    #[test]
+    fn redo_reports_an_oid_that_names_no_commit() {
+        let (dir, repo, base, _undone) = undone_child_repo();
+        let blob = repo.blob(b"not a commit\n").unwrap();
+        let map = state_map_for(&dir);
+
+        let err = redo(&dir, &blob.to_string(), &base.to_string(), &map)
+            .expect_err("a blob is not a commit");
+
+        assert_eq!(err.code, "redo_missing");
+        assert_eq!(repo.head().unwrap().target(), Some(base));
+    }
+
+    #[test]
+    fn redo_refuses_a_genuine_redo_in_a_different_repository() {
+        // Two clones of the same history share every oid, so the undone commit is
+        // a child of HEAD in both, and only the repository check tells them apart.
+        let (dir_a, _repo_a, base_a, undone_a) = undone_child_repo();
+        let (dir_b, repo_b, base_b, undone_b) = undone_child_repo();
+        assert_eq!((base_a, undone_a), (base_b, undone_b));
         let mut map = state_map_for(&dir_a);
         map.register(path_str(&dir_b), dir_b.path().to_path_buf());
 
         let err = redo_commit_inner(
             &path_str(&dir_b),
-            &base_a.to_string(),
-            &base_a.to_string(),
-            &path_str(&dir_a),
+            &RedoRequest {
+                undone_oid: &undone_a.to_string(),
+                expected_head_oid: &base_a.to_string(),
+                expected_path: &path_str(&dir_a),
+            },
             &map,
         )
         .expect_err("the redo belongs to dir_a, not dir_b");
-        assert_eq!(err.code, "redo_stale");
 
-        assert_eq!(
-            head_body(&repo_b).trim(),
-            "base",
-            "a refused redo must not write a commit"
-        );
+        assert_eq!(err.code, "redo_stale");
+        assert_eq!(repo_b.head().unwrap().target(), Some(base_b));
     }
 }

@@ -270,8 +270,8 @@ describe("Toolbar", () => {
 	});
 
 	// A tab can be pointed at another repository without remounting, and two
-	// clones share every oid. Position alone would call that a match and commit
-	// the outgoing repository's message into the incoming one.
+	// clones share every oid. Position alone would call that a match and move the
+	// incoming repository's branch onto the outgoing one's undone commit.
 	it("withholds Redo in a different repository sitting at the same commit", async () => {
 		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) =>
 			cmd === "head_oid" ? "abc123" : false,
@@ -341,22 +341,20 @@ describe("Toolbar", () => {
 		);
 	});
 
-	it("shows git's whole output in a dialog when the redo is refused", async () => {
-		const gitOutput = "fatal: Could not reset index file to revision 'c2'.";
+	/** Render a Toolbar holding one redo entry whose `redo_commit` fails with
+	 *  `error`, click Redo, and hand back the store. */
+	async function redoFailingWith(error: { code: string; message: string }) {
 		vi.mocked(message).mockClear();
 		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) => {
-			if (cmd === "redo_commit") {
-				throw { code: "redo_error", message: gitOutput };
-			}
+			if (cmd === "redo_commit") throw error;
 			return cmd === "head_oid" ? "abc123" : false;
 		});
-		const entry = {
+		const undoRedo = createUndoRedoState();
+		undoRedo.push({
 			undoneOid: "c2",
 			headOid: "abc123",
 			repoPath: "/test/repo",
-		};
-		const undoRedo = createUndoRedoState();
-		undoRedo.push(entry);
+		});
 		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
@@ -370,16 +368,37 @@ describe("Toolbar", () => {
 			expect(btn).toBeEnabled();
 			return btn;
 		});
-
 		await fireEvent.click(redoBtn);
-
 		await waitFor(() =>
-			expect(message).toHaveBeenCalledWith(gitOutput, {
+			expect(message).toHaveBeenCalledWith(error.message, {
 				title: "Redo Error",
 				kind: "error",
 			}),
 		);
-		expect(undoRedo.state.redoStack).toEqual([entry]);
+		return undoRedo;
+	}
+
+	it("shows git's whole output and keeps the redo when git fails it", async () => {
+		const undoRedo = await redoFailingWith({
+			code: "redo_error",
+			message:
+				"fatal: Unable to create '/test/repo/.git/index.lock': File exists.",
+		});
+
+		expect(undoRedo.state.redoStack).toEqual([
+			{ undoneOid: "c2", headOid: "abc123", repoPath: "/test/repo" },
+		]);
+		expect(screen.getByRole("button", { name: "Redo" })).toBeEnabled();
+	});
+
+	it("withdraws a redo whose commit the repository no longer has", async () => {
+		const undoRedo = await redoFailingWith({
+			code: "redo_missing",
+			message: "The commit this redo restores is no longer in the repository",
+		});
+
+		expect(undoRedo.state.redoStack).toEqual([]);
+		expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();
 	});
 
 	it("emits review-toggle on click", async () => {
@@ -881,8 +900,6 @@ describe("Toolbar undo", () => {
 		await view.rerender({ repoPath: "/other/repo" });
 
 		reply.resolve({
-			subject: "undone",
-			body: null,
 			head_oid: "parent",
 			undone_oid: "undone",
 		});

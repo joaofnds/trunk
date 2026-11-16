@@ -3,8 +3,8 @@ export interface UndoEntry {
 	 *  commit, so its oid, date and tree return as they were. */
 	undoneOid: string;
 	/** Where the undo left HEAD. The undone commit is a child of this position
-	 *  and nowhere else, so a redo offered after HEAD moved would throw away
-	 *  whatever was committed or checked out since. */
+	 *  and nowhere else, so the backend refuses a redo once HEAD has moved, and
+	 *  the toolbar does not offer one. */
 	headOid: string;
 	/** The repository the undo happened in. A tab can be pointed at another
 	 *  repository without remounting, and two clones share every oid, so the

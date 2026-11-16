@@ -616,17 +616,20 @@ fn undo_result_serializes_correctly() {
     let result = ctx.undo_commit().unwrap();
     let json = serde_json::to_value(&result).expect("UndoResult serialization failed");
 
-    assert!(json.is_object(), "UndoResult should be an object");
-    assert!(json["subject"].is_string(), "subject should be a string");
-    // body is Option<String>
-    let body = &json["body"];
-    assert!(
-        body.is_null() || body.is_string(),
-        "body should be null or string"
+    // The frontend reads these two keys by name and hands them back to redo.
+    assert_eq!(
+        json,
+        serde_json::json!({
+            "head_oid": result.head_oid,
+            "undone_oid": result.undone_oid,
+        })
     );
-
-    // Verify actual value
-    assert_eq!(json["subject"].as_str().unwrap(), "Second commit");
+    assert_eq!(
+        result.undone_oid.len(),
+        40,
+        "a full oid: {}",
+        result.undone_oid
+    );
 }
 
 // ── Vec<SearchResult> ───────────────────────────────────────────────────────

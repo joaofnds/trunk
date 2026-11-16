@@ -176,7 +176,10 @@ describe("App", () => {
 			case "check_undo_available":
 				return Promise.resolve(true);
 			case "undo_commit":
-				return Promise.resolve({ subject: "repo A subject", body: null });
+				return Promise.resolve({
+					head_oid: "a-parent",
+					undone_oid: "a-head",
+				});
 			case "list_stashes":
 				return Promise.resolve([]);
 			default:
