@@ -2263,7 +2263,7 @@ function handleRebaseEditorClose() {
 }
 
 function handleRebaseDiffClose() {
-	rebaseDiffFile = null;
+	closeRebaseDiff();
 }
 
 function handleRebaseDetailClose() {

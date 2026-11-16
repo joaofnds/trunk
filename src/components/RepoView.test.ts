@@ -3324,6 +3324,41 @@ describe("RepoView", () => {
 			);
 		});
 
+		it("opens a rebase file again with one click after its diff is closed", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const path = "src/rebase.ts";
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "get_commit_detail" && typeof a?.oid === "string") {
+					return Promise.resolve(makeRebaseDetail(a.oid, "focused commit"));
+				}
+				if (cmd === "list_commit_files") {
+					return Promise.resolve([makeRebaseFile(path)]);
+				}
+				if (cmd === "diff_commit_file") {
+					return Promise.resolve([
+						makeRebaseFileWithContent(path, "REBASE DIFF"),
+					]);
+				}
+				return base(cmd, args);
+			});
+			await openTheEditorOnTheClickedCommit();
+			await fireEvent.click(rebaseRow(1));
+			await fireEvent.click(await screen.findByText(path));
+			await fireEvent.click(
+				await screen.findByRole("button", { name: "Close diff" }),
+			);
+			await waitFor(() =>
+				expect(screen.queryByRole("button", { name: "Close diff" })).toBeNull(),
+			);
+
+			await fireEvent.click(screen.getByText(path));
+
+			expect(await screen.findByText("REBASE DIFF")).toBeTruthy();
+		});
+
 		it("keeps the newest rebase diff options when older reloads finish last", async () => {
 			stubRebaseTodo(PARENT_OID);
 			const base = mockInvoke.getMockImplementation();
