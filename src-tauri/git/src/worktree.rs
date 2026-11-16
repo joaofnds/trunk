@@ -216,8 +216,9 @@ pub fn assess(
     }
 }
 
-/// The worktree, other than `repo`'s own, that has `branch` checked out or under a
-/// rebase, since git will not check one branch out in two worktrees.
+/// The worktree, other than `repo`'s own, that has `branch` checked out, under a
+/// rebase or under a bisect, since git will not check out a branch another worktree
+/// uses in any of those ways.
 ///
 /// # Errors
 ///
@@ -225,23 +226,36 @@ pub fn assess(
 pub fn held_elsewhere(repo: &Repository, branch: &str) -> Result<Option<PathBuf>, TrunkError> {
     let target = format!("refs/heads/{branch}");
     let own = repo.path().canonicalize().ok();
-    let elsewhere = |git_dir: &Path| git_dir.canonicalize().ok() != own;
+    let uses_target = |git_dir: &Path| {
+        git_dir.canonicalize().ok() != own
+            && branches_used(git_dir)
+                .iter()
+                .any(|(_, name)| name.as_slice() == target.as_bytes())
+    };
 
     let common = repo.commondir();
-    let main_holds = branches_used(common)
-        .iter()
-        .any(|(how, name)| *how != BranchUse::Bisecting && name.as_slice() == target.as_bytes());
-    if main_holds && elsewhere(common) {
+    if uses_target(common) {
         let main = Repository::open(common)?;
         if let Some(root) = main.workdir() {
             return Ok(Some(root.to_path_buf()));
         }
     }
 
-    Ok(linked_holders(repo, &target)?
-        .into_iter()
-        .find(|holder| elsewhere(&holder.admin))
-        .map(|holder| holder.root))
+    for name in repo
+        .worktrees()?
+        .iter()
+        .filter_map(|name| name.ok().flatten())
+    {
+        let admin = common.join("worktrees").join(name);
+        if uses_target(&admin) {
+            let root = recorded_gitfile(&admin)
+                .and_then(|gitfile| gitfile.parent().map(resolve_what_exists))
+                .unwrap_or(admin);
+            return Ok(Some(root));
+        }
+    }
+
+    Ok(None)
 }
 
 /// Check that no linked worktree took `branch` after the user was asked to delete it

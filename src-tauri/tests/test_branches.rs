@@ -119,6 +119,22 @@ fn checkout_of_a_branch_a_linked_worktree_holds_leaves_this_worktree_untouched()
 }
 
 #[test]
+fn checkout_of_a_branch_a_linked_worktree_is_bisecting_leaves_this_worktree_untouched() {
+    let mut ctx = repo_where_feat_changes_a_and_b();
+    ctx.add_linked_worktree("wt", "feat");
+    let admin = ctx.repo().path().join("worktrees").join("wt");
+    let feat = ctx.repo().revparse_single("feat").unwrap().id();
+    std::fs::write(admin.join("HEAD"), format!("{feat}\n")).unwrap();
+    std::fs::write(admin.join("BISECT_START"), "feat\n").unwrap();
+
+    let error = ctx.checkout_branch("feat").unwrap_err();
+
+    assert_eq!(error.code, "branch_in_worktree");
+    ctx.assert_head_at("main");
+    ctx.assert_file_content("a", "base");
+}
+
+#[test]
 fn checkout_clean_workdir_succeeds() {
     let mut ctx = TestContext::builder()
         .with_file("README.md", "hello")
@@ -1910,6 +1926,20 @@ mod checking_out_a_remote_branch {
             ctx.assert_head_at("topic");
             assert_eq!(tip(&ctx, "topic"), main);
             assert_eq!(local_branches(&ctx), before);
+        }
+
+        #[test]
+        fn refuses_a_local_branch_a_linked_worktree_holds_before_touching_files() {
+            let mut ctx = repo_with_local_topic_at("feat");
+            ctx.add_linked_worktree("wt", "topic");
+
+            let err = ctx
+                .checkout_remote_branch("refs/remotes/origin/topic")
+                .unwrap_err();
+
+            assert_eq!(err.code, "branch_in_worktree");
+            ctx.assert_head_at("main");
+            ctx.assert_file_content("a", "base");
         }
 
         #[test]

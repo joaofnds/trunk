@@ -308,10 +308,23 @@ fn checkout_safely(repo: &git2::Repository, target: &git2::Object<'_>) -> Result
         .map_err(classify_checkout_error)
 }
 
-fn check_out_local(repo: &git2::Repository, branch_ref: &str) -> Result<(), TrunkError> {
-    let (object, _reference) = repo.revparse_ext(branch_ref)?;
+fn check_out_local(repo: &git2::Repository, branch_name: &str) -> Result<(), TrunkError> {
+    // libgit2 writes the branch's files before set_head refuses a branch another
+    // worktree holds, which would leave this one showing the difference as edits.
+    if let Some(holder) = trunk_git::worktree::held_elsewhere(repo, branch_name)? {
+        return Err(TrunkError::new(
+            "branch_in_worktree",
+            format!(
+                "{branch_name} is checked out in the worktree at {}, so this one was left as it was",
+                holder.display()
+            ),
+        ));
+    }
+
+    let branch_ref = format!("refs/heads/{branch_name}");
+    let (object, _reference) = repo.revparse_ext(&branch_ref)?;
     checkout_safely(repo, &object)?;
-    repo.set_head(branch_ref)?;
+    repo.set_head(&branch_ref)?;
 
     Ok(())
 }
@@ -334,18 +347,7 @@ pub fn checkout_branch_inner(
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
 
-    // libgit2 writes the branch's files before set_head refuses a branch another
-    // worktree holds, which would leave this one showing the difference as edits.
-    if let Some(holder) = trunk_git::worktree::held_elsewhere(&repo, branch_name)? {
-        return Err(TrunkError::new(
-            "branch_in_worktree",
-            format!(
-                "{branch_name} is checked out in the worktree at {}, so this one was left as it was",
-                holder.display()
-            ),
-        ));
-    }
-    check_out_local(&repo, &format!("refs/heads/{branch_name}"))?;
+    check_out_local(&repo, branch_name)?;
     drop(repo);
 
     // Rebuild graph cache after checkout
@@ -771,8 +773,9 @@ impl Tracking {
 ///
 /// Returns `not_open` when `path` names no open repository, `not_a_remote_branch` when
 /// `remote_ref` is not under `refs/remotes/` or its remote's refspec names no branch in
-/// it, `no_fetch_refspec` when no fetch refspec of its remote writes it, `dirty_workdir`
-/// when the checkout would overwrite uncommitted changes, the errors
+/// it, `no_fetch_refspec` when no fetch refspec of its remote writes it,
+/// `branch_in_worktree` when another worktree has the existing local branch checked out,
+/// `dirty_workdir` when the checkout would overwrite uncommitted changes, the errors
 /// `create_branch_inner` names for the local name, and the git error when no remote owns
 /// `remote_ref` or its upstream will not save.
 pub fn checkout_remote_branch_inner(
@@ -794,9 +797,8 @@ pub fn checkout_remote_branch_inner(
     let tracking = Tracking::of(&repo, remote_ref)?;
     let name = tracking.name;
 
-    let local_ref = format!("refs/heads/{name}");
-    if repo.find_reference(&local_ref).is_ok() {
-        check_out_local(&repo, &local_ref)?;
+    if repo.find_reference(&format!("refs/heads/{name}")).is_ok() {
+        check_out_local(&repo, &name)?;
     } else {
         let target = repo.find_reference(remote_ref)?.peel_to_commit()?;
         create_and_check_out(&repo, &name, &target, remote_ref)?;
