@@ -2,7 +2,7 @@
 import { untrack } from "svelte";
 import { reportErrorDialog, reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
-import { keyChord } from "../lib/keyboard.js";
+import { shortcutModifier } from "../lib/keyboard.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { HeadCommitMessage } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
@@ -122,6 +122,7 @@ async function handleModeSwitch(newMode: "commit" | "amend" | "stash") {
 
 async function handleSubmit() {
 	if (committing) return;
+
 	subjectError = "";
 	stagedError = "";
 
@@ -187,7 +188,8 @@ async function handleSubmit() {
 }
 
 function submitOnModEnter(e: KeyboardEvent) {
-	if (keyChord(e) !== "Meta+Enter") return;
+	if (e.key !== "Enter" || !shortcutModifier(e) || e.isComposing) return;
+
 	e.preventDefault();
 	void handleSubmit();
 }

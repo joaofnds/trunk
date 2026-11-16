@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../__tests__/helpers/tauri-mock";
 import { safeInvoke } from "../lib/invoke.js";
 import CommitForm from "./CommitForm.svelte";
@@ -661,6 +661,10 @@ describe("CommitForm", () => {
 			);
 		});
 
+		afterEach(() => {
+			vi.restoreAllMocks();
+		});
+
 		it.each([
 			["summary", () => screen.getByTestId("commit-form-subject")],
 			[
@@ -685,6 +689,17 @@ describe("CommitForm", () => {
 			});
 		});
 
+		it("commits on Ctrl+Enter off macOS", async () => {
+			vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
+			render(CommitForm, { props: defaultProps });
+			const subject = screen.getByTestId("commit-form-subject");
+			await fireEvent.input(subject, { target: { value: "ship it" } });
+
+			await fireEvent.keyDown(subject, { key: "Enter", ctrlKey: true });
+
+			expect(commits()).toHaveLength(1);
+		});
+
 		it("commits once when pressed again while the commit runs", async () => {
 			render(CommitForm, { props: defaultProps });
 			const subject = screen.getByTestId("commit-form-subject");
@@ -702,13 +717,12 @@ describe("CommitForm", () => {
 				target: { value: "ship it" },
 			});
 
-			await fireEvent.keyDown(
+			const typed = await fireEvent.keyDown(
 				screen.getByPlaceholderText("Description (optional)"),
-				{
-					key: "Enter",
-				},
+				{ key: "Enter" },
 			);
 
+			expect(typed).toBe(true);
 			expect(commits()).toHaveLength(0);
 		});
 	});
