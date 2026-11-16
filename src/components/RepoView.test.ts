@@ -1733,7 +1733,51 @@ describe("RepoView", () => {
 				expect(
 					screen.queryByRole("button", { name: "Stage File" }),
 				).toBeFalsy();
+				expect(screen.queryByText("STAGED CONTENT")).toBeFalsy();
 			});
+		});
+
+		it("keeps the last unstaged file open in the staged list when it is staged", async () => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const readme = {
+				path: "README.md",
+				status: "Modified",
+				is_binary: false,
+			};
+			let staged = false;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd === "stage_file") {
+					staged = true;
+					return Promise.resolve(undefined);
+				}
+				if (cmd === "get_status")
+					return Promise.resolve({
+						unstaged: staged ? [] : [readme],
+						staged: staged ? [readme] : [],
+						conflicted: [],
+					});
+				if (cmd === "diff_unstaged")
+					return Promise.resolve([stagingDiff("UNSTAGED CONTENT")]);
+				if (cmd === "diff_staged")
+					return Promise.resolve([stagingDiff("STAGED CONTENT")]);
+				return base(cmd, args);
+			});
+			render(RepoView, { props: baseProps(createMockRemoteState()) });
+			const row = await screen.findByText("README.md");
+			await fireEvent.click(row);
+			expect(await screen.findByText("UNSTAGED CONTENT")).toBeTruthy();
+			const rowWithActions = row.closest(
+				'[data-testid="staging-file"]',
+			)?.parentElement;
+			if (!rowWithActions) throw new Error("file row is detached");
+
+			await fireEvent.click(
+				within(rowWithActions).getByRole("button", { name: "Stage file" }),
+			);
+
+			expect(await screen.findByText("STAGED CONTENT")).toBeTruthy();
+			expect(screen.queryByText("UNSTAGED CONTENT")).toBeFalsy();
 		});
 
 		describe("when Escape lands on a line selection", () => {

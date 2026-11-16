@@ -276,10 +276,7 @@ function stopLoading(paths: readonly string[]) {
 	loadingFiles = next;
 }
 
-async function stageFile(
-	filePath: string,
-	from: "unstaged" | "conflicted" = "unstaged",
-) {
+async function stageFile(filePath: string, from: "unstaged" | "conflicted") {
 	loadingFiles = new Set([...loadingFiles, filePath]);
 	try {
 		await safeInvoke("stage_file", { path: repoPath, filePath });
@@ -432,7 +429,7 @@ async function showUnstagedContextMenu(
 			await MenuItem.new({
 				text: "Stage File",
 				action: () => {
-					stageFile(filePath);
+					stageFile(filePath, "unstaged");
 				},
 			}),
 			await MenuItem.new({
@@ -988,7 +985,7 @@ registerUpdateBlocker(() => {
 		/>
 	{/if}
 
-	<!-- File sections flex container (50/50 split when both expanded) -->
+	<!-- File sections: the expanded ones share the height evenly -->
 	<div class="flex-1 flex flex-col overflow-hidden min-h-0">
 		<!-- Conflicted Files section (rebase: always shown; otherwise only when conflicts exist) -->
 		{#if isRebase || (status?.conflicted.length ?? 0) > 0}
@@ -1018,12 +1015,7 @@ registerUpdateBlocker(() => {
 					)}
 					{#snippet actions()}
 						{#if (status?.conflicted.length ?? 0) > 0}
-							<Button
-								size="sm"
-								variant="success"
-								onclick={markAllResolved}
-								aria-label="Mark all as resolved"
-							>
+							<Button size="sm" variant="success" onclick={markAllResolved}>
 								Mark All Resolved
 							</Button>
 						{/if}
@@ -1050,7 +1042,7 @@ registerUpdateBlocker(() => {
 			</div>
 		{/if}
 
-		<!-- Unstaged Files section (hidden during rebase, where only conflicted and resolved files show) -->
+		<!-- Unstaged Files section (hidden during a rebase, and beside conflicts when it would be empty) -->
 		{#if showUnstaged}
 			<div
 				data-testid="staging-unstaged-section"
@@ -1099,7 +1091,7 @@ registerUpdateBlocker(() => {
 						treeMode={treeViewEnabled}
 						actionLabel="+"
 						{loadingFiles}
-						onfileaction={(path) => stageFile(path)}
+						onfileaction={(path) => stageFile(path, "unstaged")}
 						onfileclick={(path) => onfileselect?.(path, "unstaged")}
 						onfilecontextmenu={(e, path, file) =>
 							showUnstagedContextMenu(e, path, file.status)}

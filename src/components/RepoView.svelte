@@ -1019,18 +1019,23 @@ function keepSelectionListed(s: WorkingTreeStatus) {
 		s[kind].some((file) => file.path === selected.path);
 	if (listed(selected.kind)) return;
 
+	if (selected.kind === "conflicted") {
+		clearStagingDiff();
+		return;
+	}
+
 	const other = selected.kind === "unstaged" ? "staged" : "unstaged";
-	if (selected.kind === "conflicted" || !listed(other)) {
+	if (!listed(other)) {
 		clearStagingDiff();
 		return;
 	}
 
 	selectedFile = { path: selected.path, kind: other };
-	void loadSelectedFileDiff(selected.path, other, undefined, false);
+	void refetchFileDiff(selected.path, other);
 }
 
-// Every status refresh passes through here, including the one that follows an
-// abort, a skip, or a Continue that finished.
+// Every status refresh passes through here, the ones that follow an abort, a
+// skip or a Continue included, so the open file is checked against each.
 function handleStatusChange(s: WorkingTreeStatus) {
 	// Mount already reads the counters once. Only subsequent list changes need
 	// another walk; the first staging status is an independent initial read.
@@ -1308,9 +1313,12 @@ function advanceToNextFile(
 	const idx = orderedPaths.indexOf(currentPath);
 	const nextPath =
 		idx >= 0 ? (orderedPaths[idx + 1] ?? orderedPaths[idx - 1]) : undefined;
+	// The last file of the unstaged or staged list stays open, and the status
+	// that follows the action carries it into the other list, or closes it when
+	// it left both. A resolved conflict has no other list to go to.
 	if (nextPath) {
 		handleFileSelect(nextPath, section);
-	} else {
+	} else if (section === "conflicted") {
 		clearStagingDiff();
 	}
 }

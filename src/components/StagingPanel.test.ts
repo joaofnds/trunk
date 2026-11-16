@@ -562,6 +562,55 @@ describe("StagingPanel merge-continue", () => {
 		expect(await screen.findByText("Abort Merge")).toBeInTheDocument();
 	});
 
+	it("hides an empty unstaged list beside a merge's conflicts", async () => {
+		mockMergeState([
+			{ path: "src/a.ts", status: "Conflicted", is_binary: false },
+		]);
+
+		render(StagingPanel, { props: { ...noReviewCounts(), repoPath: "/repo" } });
+
+		await screen.findByRole("button", { name: "Mark All Resolved" });
+		expect(screen.queryByTestId("staging-unstaged-section")).toBeNull();
+	});
+
+	it("moves a staged conflict into the staged list before the status answers", async () => {
+		mockMergeState([
+			{ path: "src/a.ts", status: "Conflicted", is_binary: false },
+		]);
+		const answer = mockInvoke.getMockImplementation();
+		if (answer === undefined) throw new Error("merge state is not mocked");
+		const held = deferred<unknown>();
+		let refreshes = 0;
+		mockInvoke.mockImplementation(
+			(command: string, args?: Record<string, unknown>) => {
+				if (command === "get_status" && refreshes++ > 0) return held.promise;
+				return answer(command, args);
+			},
+		);
+		const onstatuschange = vi.fn();
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/repo", onstatuschange },
+		});
+		const row = stagingRowFor(await screen.findByText("src/a.ts"));
+		const rowWithActions = row.parentElement;
+		if (rowWithActions === null) throw new Error("file row is detached");
+
+		await fireEvent.click(
+			within(rowWithActions).getByRole("button", { name: "Stage file" }),
+		);
+
+		await waitFor(() =>
+			expect(onstatuschange).toHaveBeenLastCalledWith(
+				expect.objectContaining({
+					conflicted: [],
+					staged: expect.arrayContaining([
+						expect.objectContaining({ path: "src/a.ts" }),
+					]),
+				}),
+			),
+		);
+	});
+
 	describe("when the merge leaves the user's own edits beside its conflicts", () => {
 		const conflict = {
 			path: "src/a.ts",
@@ -579,7 +628,7 @@ describe("StagingPanel merge-continue", () => {
 				props: { ...noReviewCounts(), repoPath: "/repo" },
 			});
 
-			await screen.findByLabelText("Mark all as resolved");
+			await screen.findByRole("button", { name: "Mark All Resolved" });
 
 			expect(screen.getByText("src/a.ts")).toBeInTheDocument();
 			expect(
@@ -601,7 +650,7 @@ describe("StagingPanel merge-continue", () => {
 				},
 			});
 
-			await screen.findByLabelText("Mark all as resolved");
+			await screen.findByRole("button", { name: "Mark All Resolved" });
 			const row = stagingRowFor(screen.getByText("src/a.ts"));
 			const rowWithActions = row.parentElement;
 			if (rowWithActions === null) throw new Error("file row is detached");
@@ -679,7 +728,7 @@ describe("StagingPanel merge-continue", () => {
 			folder: RegExp,
 			text: RegExp,
 		) {
-			await screen.findByLabelText("Mark all as resolved");
+			await screen.findByRole("button", { name: "Mark All Resolved" });
 			await chooseFolderMenuItem(folder, text);
 		}
 
@@ -693,7 +742,7 @@ describe("StagingPanel merge-continue", () => {
 			});
 
 			await fireEvent.click(
-				await screen.findByLabelText("Mark all as resolved"),
+				await screen.findByRole("button", { name: "Mark All Resolved" }),
 			);
 
 			expect(await callsOnceRefreshed("stage_file")).toEqual([
@@ -728,7 +777,7 @@ describe("StagingPanel merge-continue", () => {
 					treeViewEnabled: true,
 				},
 			});
-			await screen.findByLabelText("Mark all as resolved");
+			await screen.findByRole("button", { name: "Mark All Resolved" });
 			const row = screen.getByRole("treeitem", { name: /^src \(2\)/ });
 			const rowWithActions = row.parentElement;
 			if (rowWithActions === null) throw new Error("folder row is detached");
@@ -767,7 +816,7 @@ describe("StagingPanel merge-continue", () => {
 				});
 
 				await fireEvent.click(
-					await screen.findByLabelText("Mark all as resolved"),
+					await screen.findByRole("button", { name: "Mark All Resolved" }),
 				);
 
 				await waitFor(() => {
@@ -834,7 +883,9 @@ describe("StagingPanel merge-continue", () => {
 				render(StagingPanel, {
 					props: { ...noReviewCounts(), repoPath: "/repo" },
 				});
-				const markAll = await screen.findByLabelText("Mark all as resolved");
+				const markAll = await screen.findByRole("button", {
+					name: "Mark All Resolved",
+				});
 				failCommand("get_status");
 
 				await fireEvent.click(markAll);
