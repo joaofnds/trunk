@@ -42,6 +42,16 @@ function mount(
 }
 
 describe("update panel", () => {
+	it("announces an error once when the status carries the same message", async () => {
+		const message = "Update service returned an unsuccessful response";
+		const view = mount({ ...ready, phase: "manual", message });
+
+		await view.rerender({ error: message });
+
+		expect(screen.getAllByText(message)).toHaveLength(1);
+		expect(screen.getByRole("alert")).toHaveTextContent(message);
+	});
+
 	it("requires an explicit restart for the displayed prepared version", async () => {
 		const { calls } = mount();
 
@@ -126,7 +136,13 @@ describe("update panel", () => {
 	});
 
 	it("keeps managed or disabled installations on the manual route", () => {
-		mount({ ...ready, phase: "manual", eligible: false, adopted: false });
+		mount({
+			...ready,
+			phase: "manual",
+			version: null,
+			eligible: false,
+			adopted: false,
+		});
 
 		expect(
 			screen.getByRole("link", { name: "Download a release" }),

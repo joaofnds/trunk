@@ -37,7 +37,7 @@ const eligible = $derived(status?.eligible && status.adopted);
 const checking = $derived(status?.phase === "checking");
 const downloading = $derived(status?.phase === "downloading");
 const ready = $derived(eligible && status?.phase === "ready");
-const available = $derived(eligible && status?.phase === "available");
+const available = $derived(status?.phase === "available");
 const percent = $derived(
 	status?.total
 		? Math.min(100, Math.round((status.downloaded / status.total) * 100))
@@ -60,7 +60,7 @@ function activate() {
 	hovered = false;
 	if (available && status?.version) ondownload(status.version);
 	else if (ready && status?.version) onrestart(status.version);
-	else if (eligible && status?.phase === "idle") oncheck();
+	else if (status && ["idle", "manual"].includes(status.phase)) oncheck();
 	else open = true;
 }
 function close() {

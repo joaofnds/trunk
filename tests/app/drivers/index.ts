@@ -1,4 +1,5 @@
 import { tick } from "svelte";
+import type { UpdateStatus } from "../../../src/lib/updates.js";
 import type { FakeClipboard } from "../fakes/clipboard.js";
 import type { FakeDialog } from "../fakes/dialog.js";
 import type { FakeMenu } from "../fakes/menu.js";
@@ -126,6 +127,10 @@ export class AppDriver {
 		return this.internals.invokes;
 	}
 
+	updateStatus(): Promise<UpdateStatus> {
+		return this.host.invoke("updates_status");
+	}
+
 	/** Writes a pref directly to the host, the way the application's own
 	 *  `prefs_set` would, so a test can arrange stored state (e.g. a persisted
 	 *  hidden-ref set) before the gesture that reads it back. */
@@ -161,10 +166,10 @@ export class AppDriver {
 	 */
 	async elapse(): Promise<void> {
 		await waitFor("a timer to be armed", () =>
-			this.scheduler.pending > 0 ? true : null,
+			this.scheduler.pendingForeground > 0 ? true : null,
 		);
 
-		this.scheduler.flush();
+		this.scheduler.flushForeground();
 	}
 
 	/** Advances only timers whose virtual deadline falls in this interval. */
@@ -182,7 +187,7 @@ export class AppDriver {
 		return waitFor(description, () => {
 			const value = condition();
 			if (value !== null) return value;
-			this.scheduler.flush();
+			this.scheduler.flushForeground();
 
 			return null;
 		});
@@ -231,6 +236,8 @@ export class AppDriver {
 
 	/** Nothing armed and nothing in flight, as of this instant. */
 	private quiet(): boolean {
-		return this.scheduler.pending === 0 && this.host.pendingInvokes === 0;
+		return (
+			this.scheduler.pendingForeground === 0 && this.host.pendingInvokes === 0
+		);
 	}
 }

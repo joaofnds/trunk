@@ -22,6 +22,7 @@ mod storage;
 pub mod syntax;
 pub mod types;
 mod updates;
+pub use updates::ReleaseSource;
 pub mod watcher;
 pub mod word_spans;
 
@@ -136,6 +137,7 @@ fn run_gui() {
         gui_builder(),
         WatcherState::default(),
         TrafficLights::default(),
+        updates::ReleaseSource::default(),
     )
     .plugin(tauri_plugin_clipboard_manager::init());
     let context = context();
@@ -219,8 +221,8 @@ const fn reposition_traffic_lights_on<R: tauri::Runtime>(
 /// stays out because its `setup` calls `arboard::Clipboard::new()` from inside
 /// `Builder::build()`, which costs 9-17 s per process outside a bundled app.
 ///
-/// The two managed states it takes as parameters are the ones a test host
-/// overrides — `Builder::manage` panics on a duplicate type, so they cannot be
+/// The managed states it takes as parameters are the ones a test host
+/// overrides. `Builder::manage` panics on a duplicate type, so they cannot be
 /// added afterwards.
 ///
 /// # Panics
@@ -231,12 +233,14 @@ pub fn configure<R: tauri::Runtime>(
     builder: tauri::Builder<R>,
     watcher: WatcherState,
     traffic_lights: TrafficLights,
+    releases: updates::ReleaseSource,
 ) -> tauri::Builder<R> {
     configure_with_fetch_worker(
         builder,
         watcher,
         traffic_lights,
         background_fetch::BackgroundFetch::default(),
+        releases,
     )
 }
 
@@ -249,6 +253,7 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
     watcher: WatcherState,
     traffic_lights: TrafficLights,
     worker: background_fetch::BackgroundFetch,
+    releases: updates::ReleaseSource,
 ) -> tauri::Builder<R> {
     let builder = builder
         .plugin(tauri_plugin_dialog::init())
@@ -278,6 +283,7 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
     let builder = register_state(builder, watcher, traffic_lights)
         .manage(activity::ActivityState::default())
         .manage(updates::UpdateState::default())
+        .manage(releases)
         .manage(worker);
     builder.invoke_handler(tauri::generate_handler![
         commands::updates::updates_status,

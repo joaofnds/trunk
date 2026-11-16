@@ -33,6 +33,7 @@ export class RepositoryReadHost implements HostChannel {
 	private nextListener = 1;
 	private readonly transport = new TauriInternals(this);
 	readonly contextMenu = new FakeMenu(this.transport);
+	readonly opener = new FakeOpener();
 
 	install(): void {
 		this.transport.route([
@@ -42,7 +43,7 @@ export class RepositoryReadHost implements HostChannel {
 			this.contextMenu,
 			new FakeDialog(),
 			new FakeClipboard(),
-			new FakeOpener(),
+			this.opener,
 		]);
 		this.transport.install();
 	}
@@ -58,6 +59,7 @@ export class RepositoryReadHost implements HostChannel {
 		this.barriers.clear();
 		this.registrations.clear();
 		this.requests.length = 0;
+		this.opener.reset();
 	}
 
 	holdCommand(command: string): () => void {

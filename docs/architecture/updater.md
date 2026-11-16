@@ -5,42 +5,50 @@ and lifecycle coordinator. GitHub Releases hosts the metadata and packages. The
 release contract and target activation requirements are in
 [updater-release.md](../updater-release.md).
 
-The initial target registry is empty. Check for Updates therefore explains the
-manual update route, and the application makes no background update requests.
-Enabling a target requires native acceptance evidence and a distinct public key.
-Publishing installers, configuring signing credentials, and accepting a platform
-remain separate release operations.
+Release discovery works independently of installation eligibility. Copies without
+an adopted updater target check GitHub's latest public release and link to that
+release for manual installation. This needs neither an updater key nor Apple
+signing credentials. The initial target registry is empty, so this is the current
+distribution path. Enabling in-app installation still requires native acceptance
+evidence and a distinct public key for the target.
 
 ## Eligibility and consent
 
 The client chooses its lane from the running executable's architecture and local
 bundle marker. Debug and drive builds, unknown package types, mounted or
-translocated applications, and recognized package-manager paths are ineligible.
+translocated applications, and recognized package-manager paths are ineligible
+for in-app installation. They can still check for public releases.
 An eligible installation still requires explicit adoption. Adoption records the
 canonical installation path; moving the application requires adopting it again.
 The path checks cannot identify every externally managed installation. The
 adoption prompt asks the user to establish that this is a direct installation.
 
-Adopted installations check after 15 seconds and every four hours while running.
+Release checks run after 15 seconds and every four hours while running.
 A failed check gets at most three exponential retries with jitter. Checks pause
 while downloading, while a downloaded update waits for installation, during
 preparation, and during recovery. Resuming preserves the remaining check delay.
+Background failures do not open the panel or show a notification; explicit checks
+show errors in the panel.
+
 The existing title bar shows an update icon after the repository controls only
 when an update is available, downloading, or ready to restart. Idle and automatic
 checks add no window controls. The icon stays in the same app-level location
 across repositories, reviews, and interactive rebase, without adding a row or
-reducing content height. Its action follows the update state: download, open
-progress and cancellation controls, or request a restart. Hovering or focusing the
+reducing content height. For manual updates, clicking the icon opens the matching
+GitHub release in the default browser. Package-managed copies keep using their
+original installation method. For adopted updater targets, the icon downloads
+the signed package, opens progress and cancellation controls, or requests a
+restart. Hovering or focusing the
 icon opens a compact anchored panel with the current state and its actions, even
 when release notes are absent. Update details opens the matching GitHub release
 in the default browser; release notes are not rendered inside Trunk. Tab enters
 the panel and Escape closes it. A completed download changes the button to its
 restart state without opening a panel or showing a notification.
 
-Check for Updates in the native menu starts a check immediately for adopted,
-eligible installations in idle, available, or ready state. Other states open their
-anchored panel, including manual installation, adoption, download cancellation,
-and recovery. An explicit menu request or an update error can reveal the control
+Check for Updates in the native menu starts a check immediately in manual, idle,
+available, or ready state, including copies without updater adoption. Other
+states open their anchored panel, including download cancellation and recovery.
+An explicit menu request or an explicit check error can reveal the control
 outside its usual actionable states. Restart requires confirmation inside that
 panel, naming the exact downloaded version before draft preparation begins. A
 changed version invalidates that confirmation. Updates use no modal dialog.
@@ -52,6 +60,12 @@ This interaction follows T3 Code's sidebar updater at commit
 icon button, and installation safeguards.
 
 ## Trust and bounded downloads
+
+Manual release discovery requests the fixed GitHub API endpoint for this
+repository's latest release. It accepts only a newer canonical stable version
+tag, constructs the release-page link from that version, and never creates an
+installable candidate from this response. The installer feed's trust rules remain
+separate from release notices.
 
 The installed registry supplies the lane's key and compatibility baseline. A
 manifest cannot choose a verification key or change that baseline. The client

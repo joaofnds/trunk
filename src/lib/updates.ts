@@ -21,6 +21,12 @@ export interface UpdateStatus {
 	readonly adopted: boolean;
 }
 
+export function releaseUrl(version: string | null): string {
+	return version
+		? `https://github.com/joaofnds/trunk/releases/tag/v${encodeURIComponent(version)}`
+		: "https://github.com/joaofnds/trunk/releases/latest";
+}
+
 export const updates = {
 	status: () => safeInvoke<UpdateStatus>("updates_status"),
 	ready: () => safeInvoke<UpdateStatus>("updates_ready"),

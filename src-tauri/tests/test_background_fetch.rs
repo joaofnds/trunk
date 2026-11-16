@@ -39,6 +39,7 @@ impl Harness {
             watcher,
             TrafficLights::disabled(),
             BackgroundFetch::new(worker),
+            trunk_lib::ReleaseSource::default(),
         )
         .build(trunk_lib::context())
         .unwrap();

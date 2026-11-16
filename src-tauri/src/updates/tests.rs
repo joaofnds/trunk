@@ -2,7 +2,7 @@ use super::*;
 use serde_json::json;
 
 #[test]
-fn unaccepted_targets_cannot_start_network_or_adopt() {
+fn unaccepted_targets_cannot_start_signed_update_actions() {
     let mut coordinator = Coordinator::default();
     assert!(coordinator.begin(Phase::Checking).is_err());
     assert!(!coordinator.status.eligible);
@@ -422,4 +422,185 @@ fn malformed_updater_state_preserves_the_record_and_leaves_ordinary_work_usable(
         std::fs::read(fixture.path("trunk-updater.json")).unwrap(),
         b"{broken"
     );
+}
+
+#[test]
+fn release_checks_find_newer_versions_without_an_enabled_installation() {
+    let fixture = PersistenceFixture::new();
+    initialize(fixture.app.handle());
+
+    let result = tauri::async_runtime::block_on(check_with_sources(
+        fixture.app.handle().clone(),
+        |_| async {
+            Ok(br#"{"tag_name":"v999.0.0","draft":false,"prerelease":false,"body":null}"#.to_vec())
+        },
+        |_, _, _| async { Err("Unsigned discovery must not request an installer feed".into()) },
+    ))
+    .unwrap();
+
+    assert_eq!(result.phase, Phase::Available);
+    assert_eq!(result.version.as_deref(), Some("999.0.0"));
+    assert!(!result.eligible);
+    assert!(!result.adopted);
+    assert!(
+        tauri::async_runtime::block_on(download(fixture.app.handle().clone(), "999.0.0")).is_err()
+    );
+    assert!(prepare(fixture.app.handle(), "999.0.0").is_err());
+}
+
+#[test]
+fn adopted_installations_keep_using_signed_discovery() {
+    let app = prepared_app();
+
+    let result = tauri::async_runtime::block_on(check_with_sources(
+        app.handle().clone(),
+        |_| async { Err("Adopted installations must not request unsigned discovery".into()) },
+        |_, _, _| async { Ok(None) },
+    ))
+    .unwrap();
+
+    assert_eq!(result.phase, Phase::Ready);
+    assert_eq!(result.version.as_deref(), Some("2.0.0"));
+}
+
+#[test]
+fn release_check_failure_preserves_a_previous_notice_and_allows_retry() {
+    let fixture = PersistenceFixture::new();
+    tauri::async_runtime::block_on(check_release_with_fetch(
+        fixture.app.handle().clone(),
+        |_| async { Ok(br#"{"tag_name":"v999.0.0","draft":false,"prerelease":false}"#.to_vec()) },
+    ))
+    .unwrap();
+
+    let result = tauri::async_runtime::block_on(check_release_with_fetch(
+        fixture.app.handle().clone(),
+        |_| async { Err("offline".into()) },
+    ));
+
+    assert_eq!(result.err().as_deref(), Some("offline"));
+    let snapshot = status(fixture.app.handle());
+    assert_eq!(snapshot.phase, Phase::Available);
+    assert_eq!(snapshot.version.as_deref(), Some("999.0.0"));
+    assert_eq!(snapshot.message.as_deref(), Some("offline"));
+    assert!(
+        tauri::async_runtime::block_on(check_release_with_fetch(
+            fixture.app.handle().clone(),
+            |_| async {
+                Ok(br#"{"tag_name":"v999.0.0","draft":false,"prerelease":false}"#.to_vec())
+            },
+        ))
+        .is_ok()
+    );
+}
+
+#[test]
+fn current_release_clears_a_previous_notice() {
+    let fixture = PersistenceFixture::new();
+    tauri::async_runtime::block_on(check_release_with_fetch(
+        fixture.app.handle().clone(),
+        |_| async { Ok(br#"{"tag_name":"v999.0.0","draft":false,"prerelease":false}"#.to_vec()) },
+    ))
+    .unwrap();
+    let current = status(fixture.app.handle()).current_version;
+
+    let snapshot = tauri::async_runtime::block_on(check_release_with_fetch(
+        fixture.app.handle().clone(),
+        |_| async move {
+            Ok(serde_json::to_vec(
+                &json!({"tag_name":format!("v{current}"),"draft":false,"prerelease":false}),
+            )
+            .unwrap())
+        },
+    ))
+    .unwrap();
+
+    assert_eq!(snapshot.phase, Phase::Manual);
+    assert!(snapshot.version.is_none());
+    assert_eq!(snapshot.message.as_deref(), Some("Trunk is up to date"));
+}
+
+#[test]
+fn release_checks_cannot_replace_recovery_state() {
+    let fixture = PersistenceFixture::with_intent();
+    initialize(fixture.app.handle());
+
+    let result = tauri::async_runtime::block_on(check_release_with_fetch(
+        fixture.app.handle().clone(),
+        |_| async { panic!("recovery must not start a request") },
+    ));
+
+    assert!(result.is_err());
+    assert_eq!(status(fixture.app.handle()).phase, Phase::Recovery);
+}
+
+#[tokio::test]
+async fn release_checks_hold_request_ownership_until_completion() {
+    let fixture = PersistenceFixture::new();
+    let (started, observed) = tokio::sync::oneshot::channel();
+    let (complete, response) = tokio::sync::oneshot::channel();
+    let first = tokio::spawn(check_release_with_fetch(
+        fixture.app.handle().clone(),
+        |_| async {
+            started.send(()).unwrap();
+            response.await.unwrap()
+        },
+    ));
+    observed.await.unwrap();
+
+    let second = check_release_with_fetch(fixture.app.handle().clone(), |_| async {
+        panic!("a second request must not start")
+    })
+    .await;
+
+    assert!(second.is_err());
+    assert_eq!(status(fixture.app.handle()).phase, Phase::Checking);
+    complete
+        .send(Ok(
+            br#"{"tag_name":"v999.0.0","draft":false,"prerelease":false}"#.to_vec(),
+        ))
+        .unwrap();
+    assert_eq!(first.await.unwrap().unwrap().phase, Phase::Available);
+}
+
+#[test]
+fn adopting_an_installation_clears_the_unsigned_release_notice() {
+    let fixture = PersistenceFixture::new();
+    {
+        let state = fixture.app.state::<UpdateState>();
+        let mut coordinator = state.0.lock().unwrap();
+        coordinator.status.eligible = true;
+        coordinator.installation = Some((
+            "darwin-aarch64".into(),
+            "/Applications/Trunk.app/Contents/MacOS/trunk".into(),
+        ));
+        coordinator.settle(None);
+    }
+    tauri::async_runtime::block_on(check_release_with_fetch(
+        fixture.app.handle().clone(),
+        |_| async { Ok(br#"{"tag_name":"v999.0.0","draft":false,"prerelease":false}"#.to_vec()) },
+    ))
+    .unwrap();
+
+    let snapshot = enable(fixture.app.handle(), true).unwrap();
+
+    assert!(snapshot.adopted);
+    assert_eq!(snapshot.phase, Phase::Idle);
+    assert!(snapshot.version.is_none());
+    assert!(
+        tauri::async_runtime::block_on(download(fixture.app.handle().clone(), "999.0.0")).is_err()
+    );
+}
+
+#[test]
+fn unsigned_discovery_cannot_replace_an_adopted_installations_candidate() {
+    let app = prepared_app();
+
+    let result =
+        tauri::async_runtime::block_on(check_release_with_fetch(app.handle().clone(), |_| async {
+            panic!("adopted installation must use signed discovery")
+        }));
+
+    assert!(result.is_err());
+    assert_eq!(status(app.handle()).phase, Phase::Ready);
+    assert_eq!(status(app.handle()).version.as_deref(), Some("2.0.0"));
 }

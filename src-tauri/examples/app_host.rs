@@ -201,6 +201,9 @@ fn boot() -> (App<MockRuntime>, WebviewWindow<MockRuntime>) {
         mock_builder(),
         WatcherState::disabled(),
         TrafficLights::disabled(),
+        trunk_lib::ReleaseSource::new(|| async {
+            Ok(br#"{"tag_name":"v0.0.0","draft":false,"prerelease":false,"body":null}"#.to_vec())
+        }),
     )
     .build(trunk_lib::context())
     .expect("build the app on MockRuntime");

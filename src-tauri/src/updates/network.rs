@@ -51,6 +51,34 @@ pub(super) async fn fetch(
     .await
 }
 
+const GITHUB_RELEASE: &str = "https://api.github.com/repos/joaofnds/trunk/releases/latest";
+
+pub(super) async fn latest_release(
+    source: &super::ReleaseSource,
+    cancel: Cancellation,
+) -> Result<Vec<u8>, String> {
+    bounded((source.0)(), cancel, Duration::from_secs(30)).await
+}
+
+pub(super) async fn github_latest() -> Result<Vec<u8>, String> {
+    github_release(&ReleaseNetwork).await
+}
+
+async fn github_release(network: &impl Network) -> Result<Vec<u8>, String> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let url = Url::parse(GITHUB_RELEASE).expect("static GitHub API URL");
+    let addresses = resolve_public(network, "api.github.com").await?;
+
+    let response = network.get(&url, &addresses).await?;
+
+    read_body(
+        response,
+        trunk_update_release::MAX_MANIFEST_BYTES,
+        &|_, _| {},
+    )
+    .await
+}
+
 async fn bounded<T: Send>(
     operation: impl Future<Output = Result<T, String>> + Send,
     cancel: Cancellation,
@@ -81,15 +109,7 @@ async fn download(
         let host = url
             .host_str()
             .ok_or_else(|| "Invalid update host".to_string())?;
-        let addresses = network.resolve(host).await?;
-        if addresses.is_empty()
-            || addresses.len() > 32
-            || addresses
-                .iter()
-                .any(|address| !public_address(address.ip()))
-        {
-            return Err("Update service resolved to a non-public address".into());
-        }
+        let addresses = resolve_public(network, host).await?;
 
         let response = network.get(&url, &addresses).await?;
         if response.status().is_redirection() {
@@ -112,6 +132,20 @@ async fn download(
     }
 
     Err("Update service redirected too many times".into())
+}
+
+async fn resolve_public(network: &impl Network, host: &str) -> Result<Vec<SocketAddr>, String> {
+    let addresses = network.resolve(host).await?;
+    if addresses.is_empty()
+        || addresses.len() > 32
+        || addresses
+            .iter()
+            .any(|address| !public_address(address.ip()))
+    {
+        return Err("Update service resolved to a non-public address".into());
+    }
+
+    Ok(addresses)
 }
 
 fn validate_url(value: &str) -> Result<Url, String> {
@@ -173,6 +207,7 @@ impl Network for ReleaseNetwork {
         client
             .get(url.clone())
             .header("Accept-Encoding", "identity")
+            .header("User-Agent", concat!("Trunk/", env!("CARGO_PKG_VERSION")))
             .send()
             .await
             .map_err(|_| "Could not connect to the update service".to_string())
@@ -354,6 +389,61 @@ mod tests {
                 .await
                 .map_err(|_| "Fixture connection failed".into())
         }
+    }
+
+    #[tokio::test]
+    async fn release_metadata_uses_the_fixed_public_api() {
+        let fixture = HttpFixture::serve(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}").await;
+        let mut network = FakeNetwork::default();
+        network.resolve_host("api.github.com", "140.82.116.3:443");
+        network.serve_url(
+            "https://api.github.com/repos/joaofnds/trunk/releases/latest",
+            &fixture,
+        );
+
+        let result = github_release(&network).await;
+
+        assert_eq!(result, Ok(b"{}".to_vec()));
+        assert_eq!(
+            network.connections.lock().unwrap()[0].0,
+            "https://api.github.com/repos/joaofnds/trunk/releases/latest"
+        );
+        assert!(validate_url(GITHUB_RELEASE).is_err());
+        fixture.close().await;
+    }
+
+    #[tokio::test]
+    async fn release_metadata_rejects_private_dns_answers() {
+        let mut network = FakeNetwork::default();
+        network.resolve_host("api.github.com", "127.0.0.1:443");
+
+        let result = github_release(&network).await;
+
+        assert_eq!(
+            result,
+            Err("Update service resolved to a non-public address".into())
+        );
+        assert!(network.connections.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn release_metadata_does_not_follow_redirects() {
+        let fixture = HttpFixture::serve(
+            b"HTTP/1.1 302 Found\r\nLocation: https://example.com/\r\nContent-Length: 0\r\n\r\n",
+        )
+        .await;
+        let mut network = FakeNetwork::default();
+        network.resolve_host("api.github.com", "140.82.116.3:443");
+        network.serve_url(GITHUB_RELEASE, &fixture);
+
+        let result = github_release(&network).await;
+
+        assert_eq!(
+            result,
+            Err("Update service returned an unsuccessful response".into())
+        );
+        assert_eq!(network.connections.lock().unwrap().len(), 1);
+        fixture.close().await;
     }
 
     const FEED: &str = "https://github.com/joaofnds/trunk/releases/latest/download/latest.json";

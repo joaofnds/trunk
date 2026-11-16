@@ -2,6 +2,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { onDestroy, tick, untrack } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
 import RecentReposPicker from "./components/RecentReposPicker.svelte";
@@ -74,7 +75,7 @@ import {
 	createUndoRedoState,
 	type UndoRedoManager,
 } from "./lib/undo-redo.svelte.js";
-import { type UpdateStatus, updates } from "./lib/updates.js";
+import { releaseUrl, type UpdateStatus, updates } from "./lib/updates.js";
 import { provideUpdatePreparation } from "./lib/updates-context.js";
 import { setUpdateFrozen, UpdatePreparation } from "./lib/updates-lifecycle.js";
 import { UpdateCheckScheduler } from "./lib/updates-scheduler.js";
@@ -110,15 +111,13 @@ function acceptUpdateStatus(status: UpdateStatus | null | undefined): void {
 
 const updateClock = getScheduler();
 const updateChecks = new UpdateCheckScheduler(
-	createOwnedTimer(),
+	createOwnedTimer({ background: true }),
 	() => updateClock.currentTimeMs(),
 	Math.random,
 	() => updateAction(updates.check, true),
 );
 onDestroy(() => updateChecks.update(false, false));
-const automaticUpdates = $derived(
-	Boolean(updateStatus?.eligible && updateStatus.adopted),
-);
+const releaseChecksEnabled = $derived(updateStatus !== null);
 const preparation = new UpdatePreparation({
 	prepare: updates.prepare,
 	install: updates.install,
@@ -135,7 +134,7 @@ const preparation = new UpdatePreparation({
 	freeze: (frozen) => {
 		updateFrozen = frozen;
 		setUpdateFrozen(frozen);
-		updateChecks.update(automaticUpdates, frozen || updateBusy);
+		updateChecks.update(releaseChecksEnabled, frozen || updateBusy);
 		if (!frozen)
 			void updates.resume().catch(() => {
 				updateError =
@@ -188,6 +187,17 @@ async function retryStartupUpdate(): Promise<void> {
 	});
 }
 
+function downloadUpdate(version: string): void {
+	void updateAction(async () => {
+		if (updateStatus?.eligible && updateStatus.adopted)
+			return updates.download(version);
+
+		await openUrl(releaseUrl(version));
+
+		return undefined;
+	});
+}
+
 $effect(() => {
 	let disposed = false;
 	const removals: (() => void)[] = [];
@@ -203,9 +213,7 @@ $effect(() => {
 			updateOpen = true;
 			void updateAction(async () => {
 				const status = await updates.status();
-				return status.eligible &&
-					status.adopted &&
-					["idle", "available", "ready"].includes(status.phase)
+				return ["manual", "idle", "available", "ready"].includes(status.phase)
 					? updates.check()
 					: status;
 			});
@@ -230,7 +238,7 @@ $effect(() => {
 
 $effect(() => {
 	updateChecks.update(
-		automaticUpdates,
+		releaseChecksEnabled,
 		updateFrozen ||
 			updateBusy ||
 			["downloading", "ready", "preparing", "installing", "recovery"].includes(
@@ -1226,8 +1234,7 @@ $effect(() => {
 					bind:open={updateOpen}
 					onclose={() => (confirmUpdateVersion = null)}
 					oncheck={() => void updateAction(updates.check)}
-					ondownload={(version) =>
-						void updateAction(() => updates.download(version))}
+					ondownload={downloadUpdate}
 					onrestart={(version) => {
 						confirmUpdateVersion = version;
 						updateOpen = true;
@@ -1252,8 +1259,7 @@ $effect(() => {
 							onclose={closePanel}
 							onenable={() => void updateAction(() => updates.enable(true))}
 							oncheck={() => void updateAction(updates.check)}
-							ondownload={(version) =>
-								void updateAction(() => updates.download(version))}
+							ondownload={downloadUpdate}
 							onrestart={(version) => {
 								confirmUpdateVersion = version;
 								updateOpen = true;

@@ -5,9 +5,17 @@ import { getContext } from "svelte";
  *  option and advances the component's debounces deliberately, rather than
  *  waiting out a window longer than they are. */
 export interface Scheduler {
-	setTimeout(callback: () => void, delayMs: number): number;
+	setTimeout(
+		callback: () => void,
+		delayMs: number,
+		options?: TimerOptions,
+	): number;
 	clearTimeout(handle: number): void;
 	currentTimeMs(): number;
+}
+
+export interface TimerOptions {
+	readonly background?: boolean;
 }
 
 export const SCHEDULER = Symbol("scheduler");

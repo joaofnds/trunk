@@ -6,6 +6,11 @@ and portable archives. Stable releases gain a feed only after individual lanes h
 packaged acceptance evidence and a distinct updater verification key. Prereleases
 remain outside this feed.
 
+This gate controls in-app package installation only. Release notifications use
+GitHub's public latest-release API when an installation has no adopted updater
+target. They work with the empty registry and link to ordinary release downloads;
+they require no signing credentials or updater manifest.
+
 ## Target registry
 
 The registry is the client's trusted lane-to-key mapping. Its only top-level field

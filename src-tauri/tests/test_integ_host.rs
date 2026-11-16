@@ -50,6 +50,13 @@ impl Drop for CloseRepoOnDrop<'_> {
 /// builds what `run()` builds, minus the runtime and the two plugins `configure`
 /// leaves to `run()`.
 fn boot(watcher: WatcherState) -> (App<MockRuntime>, WebviewWindow<MockRuntime>) {
+    boot_with_releases(watcher, trunk_lib::ReleaseSource::default())
+}
+
+fn boot_with_releases(
+    watcher: WatcherState,
+    releases: trunk_lib::ReleaseSource,
+) -> (App<MockRuntime>, WebviewWindow<MockRuntime>) {
     let app = trunk_lib::configure_with_fetch_worker(
         mock_builder(),
         watcher,
@@ -57,6 +64,7 @@ fn boot(watcher: WatcherState) -> (App<MockRuntime>, WebviewWindow<MockRuntime>)
         trunk_lib::background_fetch::BackgroundFetch::new(std::path::PathBuf::from(env!(
             "CARGO_BIN_EXE_trunk"
         ))),
+        releases,
     )
     .build(trunk_lib::context())
     .expect("build the app on MockRuntime");
@@ -65,6 +73,28 @@ fn boot(watcher: WatcherState) -> (App<MockRuntime>, WebviewWindow<MockRuntime>)
         .expect("create the main webview");
 
     (app, webview)
+}
+
+#[test]
+fn a_manual_installation_checks_the_injected_release_through_real_ipc() {
+    let releases = trunk_lib::ReleaseSource::new(|| async {
+        Ok(
+            br#"{"tag_name":"v999.0.0","draft":false,"prerelease":false,"body":"A new release"}"#
+                .to_vec(),
+        )
+    });
+    let (_app, webview) = boot_with_releases(WatcherState::disabled(), releases);
+
+    let checked = invoke(&webview, "updates_check", json!({})).unwrap();
+
+    assert_eq!(checked["phase"], "available");
+    assert_eq!(checked["version"], "999.0.0");
+    assert_eq!(checked["notes"], "A new release");
+    assert_eq!(checked["eligible"], false);
+    assert_eq!(
+        invoke(&webview, "updates_status", json!({})).unwrap(),
+        checked
+    );
 }
 
 #[test]

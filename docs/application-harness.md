@@ -41,6 +41,12 @@ process and removes its tempdir.
 a fresh tempdir `HOME`, so every managed state and the resolved `app_data_dir` isolate without
 a reset step — and writing to the installed app's data directory is structurally impossible.
 
+The host injects a `ReleaseSource` returning a stable `v0.0.0` GitHub response,
+so release checks report no newer version without contacting GitHub. The real
+`updates_check` command still performs admission, parsing, state transitions and
+event delivery, with cancellation and a deadline around the injected source.
+The GUI composition uses the real GitHub source.
+
 `seedRepo` builds through `TestContext::builder` with `packed()`: the objects stay in memory
 while the steps run and land in the seeded repository as one pack. The bare remote a `remote`
 step creates is a repository of its own and outside that pack. Only what a commit reaches is
@@ -284,21 +290,23 @@ Repository-change consumers use a fixed-deadline coalescer backed by the frozen
 holds one pending catch-up and schedules that catch-up 200 ms after completion, unless an
 explicit run is waiting on it, which starts as soon as the command completes. Consumers
 remain independent, so a held status read does not hold graph refresh. Every other owned
-timer (`GLOSSARY.md`) lands in the same scheduler, and `flush` fires the currently armed
-generation. No wall-clock window outlasts it, so a test advances it deliberately:
+timer (`GLOSSARY.md`) lands in the same scheduler. Release polling is marked as
+background work: future polls do not keep an interaction unsettled. The driver
+advances through foreground deadlines, firing any background deadline reached
+along the way. No wall-clock window outlasts it, so a test advances it deliberately:
 
-- `app.elapse()` waits for a timer to be armed and fires it. Use it after a gesture that
+- `app.elapse()` waits for foreground work to be armed and fires it. Use it after a gesture that
   produces one `repo-changed` emit.
 - `app.advanceBy(ms)` advances virtual time and fires only deadlines reached in that span.
   Use it to distinguish a fixed first deadline from a trailing debounce.
-- `app.elapseUntil(description, condition)` waits for `condition`, firing timers as they arm.
-  Use it when one user action produces several emits — a revert, an undo, a redo — so the
+- `app.elapseUntil(description, condition)` waits for `condition`, advancing through foreground deadlines.
+  Use it when one user action produces several emits, such as a revert, an undo or a redo, so the
   test asserts on the state it wants rather than counting emits it does not control.
 - `app.settled()` runs every refresh out. Use it before a gesture a re-render would disturb:
   a refresh landing mid-selection discards the selection.
 
-A negative assertion — "nothing else refetched" — reads `app.scheduler.pending` directly:
-nothing armed means nothing was scheduled to happen. It counts every owned timer, so after
+A negative assertion that no foreground work was scheduled reads
+`app.scheduler.pendingForeground`; `pending` counts background timers too. After
 a Copy click, a first End review or Delete click, or a keystroke in the composer, a pending
 timer is that affordance's and not a refetch.
 

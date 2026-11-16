@@ -586,15 +586,15 @@ describe("App update controls", () => {
 			expect(app.host.count("updates_check")).toBe(1);
 		},
 	);
-	it.each(["manual", "downloading", "recovery"] as const)(
+	it.each(["downloading", "recovery"] as const)(
 		"keeps the native menu on details in %s state",
 		async (phase) => {
 			startup();
 			const status = {
 				...manual,
 				phase,
-				eligible: phase !== "manual",
-				adopted: phase !== "manual",
+				eligible: true,
+				adopted: true,
 			};
 			app.host.seedResponse("updates_status", status);
 			app.host.seedResponse("updates_ready", status);

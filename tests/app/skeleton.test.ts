@@ -142,8 +142,8 @@ describe("the application", () => {
 
 		await app.events.externalChange("/somewhere/else");
 
-		expect(app.scheduler.pending).toBe(0);
-		app.scheduler.flush();
+		expect(app.scheduler.pendingForeground).toBe(0);
+		app.scheduler.flushForeground();
 		expect(app.refreshes()).toBe(before);
 	});
 

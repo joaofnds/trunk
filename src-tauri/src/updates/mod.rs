@@ -1,9 +1,12 @@
 mod install;
 mod network;
 mod persistence;
+mod releases;
 #[cfg(test)]
 mod tests;
 
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
@@ -53,7 +56,7 @@ impl Default for UpdateStatus {
             current_version: env!("CARGO_PKG_VERSION").into(),
             version: None,
             notes: None,
-            message: Some(MANUAL.into()),
+            message: None,
             downloaded: 0,
             total: None,
             eligible: false,
@@ -75,6 +78,7 @@ struct Coordinator {
     installation: Option<(String, String)>,
     record: Record,
     candidate: Option<Candidate>,
+    release: Option<releases::Release>,
     bytes: Option<Arc<Vec<u8>>>,
     cancellation: Option<Cancellation>,
     preparation: Option<String>,
@@ -87,7 +91,7 @@ impl Coordinator {
             Phase::Recovery
         } else if self.bytes.is_some() {
             Phase::Ready
-        } else if self.candidate.is_some() {
+        } else if self.candidate.is_some() || self.release.is_some() {
             Phase::Available
         } else if self.status.eligible {
             Phase::Idle
@@ -99,7 +103,7 @@ impl Coordinator {
     fn available(&self) -> Result<(), String> {
         if matches!(
             self.status.phase,
-            Phase::Idle | Phase::Available | Phase::Ready
+            Phase::Manual | Phase::Idle | Phase::Available | Phase::Ready
         ) {
             Ok(())
         } else {
@@ -137,6 +141,27 @@ impl Coordinator {
 
 #[derive(Default)]
 pub struct UpdateState(Mutex<Coordinator>);
+
+type ReleaseFuture = Pin<Box<dyn Future<Output = Result<Vec<u8>, String>> + Send>>;
+
+#[derive(Clone)]
+pub struct ReleaseSource(Arc<dyn Fn() -> ReleaseFuture + Send + Sync>);
+
+impl ReleaseSource {
+    pub fn new<F, Fut>(fetch: F) -> Self
+    where
+        F: Fn() -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Vec<u8>, String>> + Send + 'static,
+    {
+        Self(Arc::new(move || Box::pin(fetch())))
+    }
+}
+
+impl Default for ReleaseSource {
+    fn default() -> Self {
+        Self::new(network::github_latest)
+    }
+}
 
 pub fn initialize<R: Runtime>(app: &AppHandle<R>) {
     let state = app.state::<UpdateState>();
@@ -214,8 +239,9 @@ pub fn enable<R: Runtime>(app: &AppHandle<R>, enabled: bool) -> Result<UpdateSta
         return Err(error);
     }
     coordinator.status.adopted = enabled;
-    if !enabled {
+    if !enabled || coordinator.release.is_some() {
         coordinator.candidate = None;
+        coordinator.release = None;
         coordinator.bytes = None;
         coordinator.status.version = None;
         coordinator.status.notes = None;
@@ -296,10 +322,91 @@ fn configured_updater<R: Runtime>(
 }
 
 pub async fn check<R: Runtime>(app: AppHandle<R>) -> Result<UpdateStatus, String> {
-    check_with_discovery(app, |app, target, cancel| async move {
-        discover(&app, &target, cancel).await
-    })
+    let source = app.state::<ReleaseSource>().inner().clone();
+
+    check_with_sources(
+        app,
+        |cancel| async move { network::latest_release(&source, cancel).await },
+        |app, target, cancel| async move { discover(&app, &target, cancel).await },
+    )
     .await
+}
+
+async fn check_with_sources<R, ReleaseFuture, CandidateFuture>(
+    app: AppHandle<R>,
+    fetch: impl FnOnce(Cancellation) -> ReleaseFuture,
+    discovery: impl FnOnce(AppHandle<R>, String, Cancellation) -> CandidateFuture,
+) -> Result<UpdateStatus, String>
+where
+    R: Runtime,
+    ReleaseFuture: std::future::Future<Output = Result<Vec<u8>, String>>,
+    CandidateFuture: std::future::Future<Output = Result<Option<Candidate>, String>>,
+{
+    let automatic = {
+        let state = app.state::<UpdateState>();
+        let coordinator = state.0.lock().unwrap();
+
+        coordinator.status.eligible && coordinator.status.adopted
+    };
+
+    if !automatic {
+        return check_release_with_fetch(app, fetch).await;
+    }
+
+    check_with_discovery(app, discovery).await
+}
+
+async fn check_release_with_fetch<R, F, Fut>(
+    app: AppHandle<R>,
+    fetch: F,
+) -> Result<UpdateStatus, String>
+where
+    R: Runtime,
+    F: FnOnce(Cancellation) -> Fut,
+    Fut: std::future::Future<Output = Result<Vec<u8>, String>>,
+{
+    let (cancel, current) = {
+        let state = app.state::<UpdateState>();
+        let mut coordinator = state.0.lock().unwrap();
+        coordinator.available()?;
+        if coordinator.status.eligible && coordinator.status.adopted {
+            return Err("Update settings changed. Check for updates again.".into());
+        }
+
+        let cancel = Cancellation::default();
+        coordinator.cancellation = Some(cancel.clone());
+        coordinator.status.phase = Phase::Checking;
+        coordinator.status.message = None;
+        coordinator.emit(&app);
+
+        (cancel, coordinator.status.current_version.clone())
+    };
+    let result = fetch(cancel)
+        .await
+        .and_then(|bytes| releases::newer(&bytes, &current));
+    let failure = result.as_ref().err().cloned();
+    let state = app.state::<UpdateState>();
+    let mut coordinator = state.0.lock().unwrap();
+    let message = match result {
+        Ok(release) => {
+            coordinator.status.version = release.as_ref().map(|release| release.version.clone());
+            coordinator.status.notes = release.as_ref().and_then(|release| release.notes.clone());
+            coordinator.status.downloaded = 0;
+            coordinator.status.total = None;
+            coordinator.release = release;
+
+            coordinator
+                .release
+                .is_none()
+                .then(|| "Trunk is up to date".into())
+        }
+        Err(error) => Some(error),
+    };
+    coordinator.settle(message);
+    let snapshot = coordinator.emit(&app);
+    drop(coordinator);
+
+    failure.map_or(Ok(snapshot), Err)
 }
 
 async fn check_with_discovery<R, F, Fut>(
@@ -335,10 +442,12 @@ where
             coordinator.status.downloaded = 0;
             coordinator.status.total = Some(candidate.size);
             coordinator.candidate = Some(candidate);
+            coordinator.release = None;
             None
         }
         Ok(None) if coordinator.bytes.is_none() => {
             coordinator.candidate = None;
+            coordinator.release = None;
             coordinator.status.version = None;
             coordinator.status.notes = None;
             coordinator.status.downloaded = 0;

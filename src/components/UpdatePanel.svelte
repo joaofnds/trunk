@@ -1,6 +1,6 @@
 <script lang="ts">
 import Button from "../lib/ui/Button.svelte";
-import type { UpdateStatus } from "../lib/updates.js";
+import { releaseUrl, type UpdateStatus } from "../lib/updates.js";
 
 interface Props {
 	status: UpdateStatus | null;
@@ -36,18 +36,12 @@ let {
 	oncancel,
 }: Props = $props();
 const downloading = $derived(status?.phase === "downloading");
-const manual = $derived(
-	!status?.eligible || status.phase === "manual" || status.phase === "recovery",
-);
+const manual = $derived(!status?.eligible || !status.adopted);
+const recovery = $derived(status?.phase === "recovery");
 const percent = $derived(
 	status?.total
 		? Math.min(100, Math.round((status.downloaded / status.total) * 100))
 		: null,
-);
-const releaseUrl = $derived(
-	!manual && status?.version
-		? `https://github.com/joaofnds/trunk/releases/tag/v${encodeURIComponent(status.version)}`
-		: "https://github.com/joaofnds/trunk/releases/latest",
 );
 let panel: HTMLElement;
 $effect(() => {
@@ -71,10 +65,10 @@ $effect(() => {
 	{#if retry}
 		<Button disabled={busy || frozen} onclick={retry.run}>{retry.label}</Button>
 	{/if}
-	{#if status?.message}
+	{#if status?.message && status.message !== error}
 		<p role="status" class="break-words">{status.message}</p>
 	{/if}
-	{#if status && manual}
+	{#if recovery}
 		<p class="text-text-muted"
 			>Use your original installation method to update Trunk. Keep your
 			application data when reinstalling.</p
@@ -103,15 +97,36 @@ $effect(() => {
 		</div>
 	{:else if !status}
 		<p class="text-text-muted">Update status unavailable</p>
-	{:else if !status.adopted}
+	{:else if status.phase === "checking"}
+		<p role="status">Checking for updates…</p>
+	{:else if manual}
+		{#if status.phase === "available" && status.version}
+			<p class="text-text-muted">Version {status.version} is available.</p>
+			<Button
+				size="sm"
+				disabled={busy}
+				onclick={() => status?.version && ondownload(status.version)}
+				>Download update</Button
+			>
+		{:else}
+			<p class="text-text-muted">Installed version {status.current_version}</p>
+		{/if}
 		<p class="text-text-muted"
-			>Enable updates only if you installed this copy directly. Copies managed
-			by Homebrew, your organization, or another package manager must keep using
-			that installation method.</p
+			>Install the release from GitHub, or use Homebrew or the package manager
+			that installed this copy.</p
 		>
-		<Button size="sm" disabled={busy} onclick={onenable}
-			>Enable updates for this copy</Button
+		<Button size="sm" disabled={busy} onclick={oncheck}
+			>Check for updates</Button
 		>
+		{#if status.eligible}
+			<p class="text-text-muted"
+				>Enable in-app installation only for a copy installed directly, outside
+				Homebrew, your organization, or another package manager.</p
+			>
+			<Button size="sm" disabled={busy} onclick={onenable}
+				>Enable updates for this copy</Button
+			>
+		{/if}
 	{:else if downloading}
 		<p role="status">Downloading{percent === null ? "…" : `: ${percent}%`}</p>
 		<progress
@@ -137,18 +152,20 @@ $effect(() => {
 			onclick={() => status?.version && ondownload(status.version)}
 			>Download {status.version}</Button
 		>
-	{:else if status.phase === "checking"}
-		<p role="status">Checking for updates…</p>
 	{:else}
 		<p class="text-text-muted">Installed version {status.current_version}</p>
 		<Button size="sm" disabled={busy} onclick={oncheck}
 			>Check for updates</Button
 		>
 	{/if}
-	{#if !frozen || manual}
+	{#if !frozen || recovery}
 		<div class="flex items-center justify-between gap-3">
-			<a class="text-accent underline" href={releaseUrl}
-				>{manual ? "Download a release" : "Update details"}</a
+			<a
+				class="text-accent underline"
+				href={releaseUrl(recovery ? null : (status?.version ?? null))}
+				>{(manual && !status?.version) || recovery
+					? "Download a release"
+					: "Update details"}</a
 			>
 			{#if !frozen}
 				<Button size="sm" variant="ghost" onclick={onclose}>Close</Button>

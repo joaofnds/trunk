@@ -1,10 +1,11 @@
-import type { Scheduler } from "../../../src/lib/scheduler.js";
+import type { Scheduler, TimerOptions } from "../../../src/lib/scheduler.js";
 
 /** A timer the application armed and this scheduler has not fired. */
 interface Armed {
 	handle: number;
 	at: number;
 	callback: () => void;
+	background: boolean;
 }
 
 /**
@@ -30,9 +31,22 @@ export class FakeScheduler implements Scheduler {
 		return this.armed.length;
 	}
 
-	setTimeout(callback: () => void, delayMs: number): number {
+	get pendingForeground(): number {
+		return this.armed.filter((timer) => !timer.background).length;
+	}
+
+	setTimeout(
+		callback: () => void,
+		delayMs: number,
+		options?: TimerOptions,
+	): number {
 		const handle = this.nextHandle++;
-		this.armed.push({ handle, at: this.currentTime + delayMs, callback });
+		this.armed.push({
+			handle,
+			at: this.currentTime + delayMs,
+			callback,
+			background: options?.background ?? false,
+		});
 
 		return handle;
 	}
@@ -51,6 +65,14 @@ export class FakeScheduler implements Scheduler {
 			this.currentTime = Math.max(this.currentTime, timer.at);
 			timer.callback();
 		}
+	}
+
+	flushForeground(): void {
+		const deadlines = this.armed
+			.filter((timer) => !timer.background)
+			.map((timer) => timer.at);
+		const horizon = Math.max(this.currentTime, ...deadlines);
+		this.advanceBy(horizon - this.currentTime);
 	}
 
 	/** Advances virtual time and fires each timer whose deadline is reached. */
