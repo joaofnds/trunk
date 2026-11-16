@@ -4048,6 +4048,48 @@ describe("RepoView", () => {
 			expect(await screen.findByText(`${to} TO ${from}`)).toBeTruthy();
 		});
 
+		it("reopens a renamed file under its name in the swapped direction", async () => {
+			render(RepoView, {
+				props: {
+					...baseProps(createMockRemoteState()),
+					contentMode: "hunk" as const,
+					oncontentmodechange: vi.fn(),
+				},
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[2]);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const forward = { baseOid: "" };
+			mockInvoke.mockImplementation((cmd, args) => {
+				const pair = args as { baseOid: string; filePath: string };
+				if (cmd === "list_compare_files") {
+					forward.baseOid ||= pair.baseOid;
+					const renamed =
+						pair.baseOid === forward.baseOid
+							? { path: "new.ts", old_path: "old.ts" }
+							: { path: "old.ts", old_path: "new.ts" };
+					return Promise.resolve([
+						{ ...makeFileDiff(renamed.path), ...renamed, status: "Renamed" },
+					]);
+				}
+				if (cmd === "diff_compare_file")
+					return Promise.resolve([
+						makeFileDiffWithContent(pair.filePath, `DIFF OF ${pair.filePath}`),
+					]);
+				return base(cmd, args);
+			});
+			await fireEvent.click(rows[0], { metaKey: true });
+			await fireEvent.click(await screen.findByText("new.ts"));
+			expect(await screen.findByText("DIFF OF new.ts")).toBeTruthy();
+
+			await fireEvent.click(
+				await screen.findByLabelText("Swap comparison direction"),
+			);
+
+			expect(await screen.findByText("DIFF OF old.ts")).toBeTruthy();
+		});
+
 		it("escape clears the compare", async () => {
 			const rows = await renderAndGetRows();
 			await fireEvent.click(rows[2]);

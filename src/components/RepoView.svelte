@@ -1468,11 +1468,12 @@ function handleCompareClose() {
 	clearCompare();
 }
 
-async function applyCompare(pair: ComparePair | null) {
+// Resolves true when the pair's files loaded and the pair is still the one shown.
+async function applyCompare(pair: ComparePair | null): Promise<boolean> {
 	navigationIntent += 1;
 	if (pair === null) {
 		if (compare !== null) clearCompare();
-		return;
+		return false;
 	}
 	compare = pair;
 	selectedCompareFile = null;
@@ -1480,7 +1481,7 @@ async function applyCompare(pair: ComparePair | null) {
 	if (rightPaneCollapsed) {
 		onrightpanecollapsedchange(false);
 	}
-	if (!repoPath) return;
+	if (!repoPath) return false;
 	try {
 		const [files, stat, baseDetail, targetDetail] = await Promise.all([
 			safeInvoke<FileDiff[]>("list_compare_files", {
@@ -1504,15 +1505,19 @@ async function applyCompare(pair: ComparePair | null) {
 				oid: pair.targetOid,
 			}),
 		]);
-		if (gen !== compareGeneration) return;
+		if (gen !== compareGeneration) return false;
+
 		compareFileDiffs = files;
 		compareStat = stat;
 		compareBaseDetail = baseDetail;
 		compareTargetDetail = targetDetail;
+		return true;
 	} catch (e) {
-		if (gen !== compareGeneration) return;
+		if (gen !== compareGeneration) return false;
+
 		reportErrorToast(e, "Failed to load comparison");
 		clearCompare();
+		return false;
 	}
 }
 
@@ -1541,13 +1546,10 @@ function firstParentOfLoaded(oid: string): string | null {
 // lists under its new name in one direction and its old name in the other.
 async function handleCompareSwap() {
 	const openFile = selectedCompareFile;
-	const swapped = applyCompare(
+	const swapped = await applyCompare(
 		swapCompare({ selectedOid: requestedCommitOid, compare }).compare,
 	);
-	const generation = compareGeneration;
-	await swapped;
-	if (openFile === null || generation !== compareGeneration) return;
-	if (selectedCompareFile !== null) return;
+	if (!swapped || openFile === null || selectedCompareFile !== null) return;
 
 	const reopened = compareFileDiffs.find(
 		(file) => file.path === openFile || file.old_path === openFile,
