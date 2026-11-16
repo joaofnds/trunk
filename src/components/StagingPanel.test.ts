@@ -568,6 +568,28 @@ describe("StagingPanel merge-continue", () => {
 				["stage_files", { path: "/repo", filePaths: ["src/a.ts", "src/b.ts"] }],
 			]);
 		});
+
+		it("resolves a conflicted directory from its stage action in one index update", async () => {
+			render(StagingPanel, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					treeViewEnabled: true,
+				},
+			});
+			await screen.findByLabelText("Mark all as resolved");
+			const row = screen.getByRole("treeitem", { name: /^src \(2\)/ });
+			const rowWithActions = row.parentElement;
+			if (rowWithActions === null) throw new Error("folder row is detached");
+
+			await fireEvent.click(
+				within(rowWithActions).getByRole("button", { name: "Stage directory" }),
+			);
+
+			expect(await indexWritesOnceRefreshed()).toEqual([
+				["stage_files", { path: "/repo", filePaths: ["src/a.ts", "src/b.ts"] }],
+			]);
+		});
 	});
 });
 

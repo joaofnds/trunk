@@ -1060,7 +1060,7 @@ registerUpdateBlocker(() => {
 							onfileclick={(path) => onfileselect?.(path, "conflicted")}
 							onfilecontextmenu={(e, path) =>
 								showConflictedContextMenu(e, path)}
-							ondirectoryaction={(dirPath) => stageDirectory(dirPath)}
+							ondirectoryaction={(dirPath) => resolveDirectory(dirPath)}
 							ondirectorycontextmenu={(e, dirPath) =>
 								showConflictedDirContextMenu(e, dirPath)}
 							selectedPath={selectedKind === "conflicted" ? selectedPath : null}
