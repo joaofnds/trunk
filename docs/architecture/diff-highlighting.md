@@ -104,9 +104,10 @@ unchanged pipeline.
 
 `late_change` and `edit_save_loop` agree, because a narrow hunk below line 251 costs the same
 wherever it sits. The after column predates per-cluster windows. `edit_save_wide_span` changes the two ends
-of the file, which one window covered top to bottom and two windows now cover separately, so
-its 126.89 ms no longer describes the shipped path. It has not been re-measured, because no
-quiet window was available on 2026-11-16.
+of the file, which one window covered top to bottom and two windows now cover separately. Re-run
+on 2026-11-16 with per-cluster windows, it took 11.445 ms, beside 10.811 ms for `edit_save_loop`
+in the same run, so hunks at both ends now cost about what one late hunk does. That run's load
+was not recorded, though the machine had no build or test running when it started.
 
 Repeat views of one diff got slower too: 816.63 µs from the cache before, about 11.5 ms now.
 Below perception, and the reason the cache was not worth its 197 lines plus the warming

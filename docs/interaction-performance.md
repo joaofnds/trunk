@@ -1008,7 +1008,8 @@ needed line down to the last one. With edits at line 1 and line 4,300 of a
 4,800-line file, hunk mode parsed about 8,600 lines across both sides to display 13.
 Each side now parses one window per cluster of needed lines, and
 [the highlighting cost model](architecture/diff-highlighting.md) describes the rule.
-The fixed build has not been timed natively.
+A native A/B of the fixed build cut the highlighted read to 18 to 31 ms in hunk mode
+and 138 to 163 ms in full mode, against 216 to 252 ms for a control build.
 
 The fixture is E07's with 4,800 lines and 136,528 bytes per path, and edits at line
 1 and line 4,300. Both content modes fit under the 5,000-line cap, so
@@ -1039,8 +1040,8 @@ mode, and 252 old and 4,800 new in full mode. Highlighting runs parsing, theme
 matching and token building on every parsed line, so its cost scales with lines
 parsed. Scaling the measured reads by those counts predicts 13 to 15 ms in hunk mode
 and 124 to 127 ms in full mode, the lower figure scaling the whole read and the
-higher one only the part above the plain-text read. That is a prediction, not a
-measurement. Action 4 read as long as action 1 after the syntax set had loaded for
+higher one only the part above the plain-text read. The A/B below measured both.
+Action 4 read as long as action 1 after the syntax set had loaded for
 action 1, so its first load is not a material part of the 223 ms. Full-file view of a highlighted file
 near the cap stays the largest open cost, because it needs every new-side line.
 Action 5 first built rows for the retained payload of the other mode, the E07
@@ -1052,6 +1053,35 @@ processes were running. No app launched, and it was not retried. The
 action's endpoints, reads and CPU, the fixture identities, the executable and harness
 hashes and the derived line counts. Raw results and the harness stay in the
 gitignored `.boris/highlighted-open-20261116/`.
+
+The A/B used two binaries built in one tree with the same features, configuration,
+profile and frontend. The control kept the original `diff.rs`, and the fixed build took
+`3b1ad8d4`'s, so they differ in the parse windows alone. The control is a rebuild, not
+the baseline binary above. Each harness is the baseline's with its executable swapped.
+The launches ran serially, with process admission passing at entry and exit of each, in
+the order control 1, fixed 1, fixed 2, control 2, so each build ran both action orders
+once. The hypothesis, set before launch, was the prediction above. It would have been
+refuted by a hunk read above 50 ms or a full read not below 180 ms.
+
+| Build, pilot | Hunk read, ms | Hunk endpoint, ms | Full read, ms | Full endpoint, ms |
+| --- | --- | --- | --- | --- |
+| Control 1, hunk first | 233 | 253 | 252 | 274 |
+| Fixed 1, hunk first | 31 | 58 | 138 | 159 |
+| Fixed 2, full first | 18 | 41 | 163 | 182 |
+| Control 2, full first | 216 | 234 | 243 | 265 |
+
+The reads are `invoke:diff_commit_file` for `recognized.ts`. Host CPU tracked them
+within 17 ms in every action. The hypothesis was not refuted. The ranges of the two
+builds are far apart in both modes, and `unsupported.txt` read in 1 to 11 ms in every
+pilot. Both modes came in above the point predictions, and in each fixed pilot the
+mode opened first came in further above its prediction than the mode opened second.
+That pattern fits a one-time cost on the first highlighted read in the process. It
+is an inference from two pilots and has not been isolated. Four pilots are a
+paired A/B, not a cohort, so the record carries no inferential verdict. A highlighted
+full-file open of a file near the cap still costs about 140 to 160 ms, because it
+parses every new-side line. The record's `confirmation` section holds each pilot, and the raw
+results stay in the gitignored `.boris/highlighted-open-control-20261116/` and
+`.boris/highlighted-open-after-20261116/`.
 
 ### Selection presentation and background limits
 
@@ -1082,7 +1112,7 @@ Frequency remains an assumption; no usage telemetry was collected.
 | --- | --- | --- |
 | 1 | Broaden I19 scrolling evidence while preserving the accepted behavior | The user made scrolling the priority. E05 changes captured diff-content cadence from 17.820 to 8.903 ms and accepts added process CPU in diff and graph scrolling. Painting checks pass at requested 60 and 120 Hz, including a replacement 90,000-line run with workload admission. Four admitted graph pairs have overlapping medians and capture gaps in both builds. Earlier competing-test confirmations remain excluded. Preserve the stationary row layout and configuration fallback. Physical trackpad timing, long-session cost and older-OS behavior remain open. High presentation risk. |
 | 2 | Preserve the reviewed selection and navigation contracts | Browsing is assumed frequent. E01 removes 116.5 ms in the width series and 129 ms in the delivered-source confirmation at 1,000 files. Warm ranges overlap; CPU, memory and highlight costs remain explicit. Correctness risk requires held-response tests. |
-| 3 | Time per-cluster parse windows natively, then weigh highlighted full-file opens | E08 measured 223 ms reads for a highlighted 4,800-line TypeScript file in both modes, against 2 to 6 ms as plain text, and per-cluster windows shipped. The line counts predict about 13 to 15 ms in hunk mode and 124 to 127 ms in full mode, which still parses every new-side line. Time the fixed build with E08's harness on a quiet machine before any full-file optimization. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
+| 3 | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. Settle how often users open large highlighted files in full mode first. The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
 | Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
 | 5 | Expand mutation/convergence scale and background contention | Small-fixture mutations are mostly single-digit to tens of milliseconds. Larger indexes, saves and local fetch can change that ranking. High Git correctness risk; use disposable repositories and exact content oracles. |
 | 6 | Deep history, review/conflict/operation flows | Mapped but not performance-benchmarked here. History depth, conflict count and review size differ from file-count scale; do not extrapolate E01. |

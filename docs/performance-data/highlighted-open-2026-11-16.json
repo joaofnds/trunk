@@ -2,7 +2,7 @@
   "schema": 1,
   "experiment": "E08 highlighted large-file opening baseline",
   "date": "2026-11-16",
-  "decision": "highlighted reads of a 4,800-line TypeScript file cost about 223 ms in the diff command in both content modes against 2 to 6 ms for plain text; syntax parsing now uses one window per cluster of needed lines; the fixed build is not yet timed natively",
+  "decision": "highlighted reads of a 4,800-line TypeScript file cost about 223 ms in the diff command in both content modes against 2 to 6 ms for plain text; syntax parsing now uses one window per cluster of needed lines; a native A/B of two pilots per build measured highlighted reads of 18 to 31 ms in hunk mode and 138 to 163 ms in full mode, against 216 to 252 ms for the control",
   "scope": "one fixed-order pilot of six timed actions; not a comparative cohort, not cold-cache; the second pilot was refused at process admission",
   "comparativeVerdict": null,
   "globalSettlement": "unknown",
@@ -263,5 +263,149 @@
       "mise exec -- python3 -B .boris/highlighted-open-20261116/pilot.py --pilot 2 --output .boris/highlighted-open-20261116/<fresh-name>"
     ],
     "summary": "mise exec -- python3 -B .boris/highlighted-open-20261116/analysis/summarize.py <pilot-1-output> [<pilot-2-output>] > <summary.json>"
+  },
+  "confirmation": {
+    "scope": "two pilots per build in the order control 1, after 1, after 2, control 2; each build ran both action orders once; four valid pilots, a paired A/B, not a cohort with an inferential verdict",
+    "hypothesis": "set before launch: recognized.ts reads drop from about 223 ms to 13 to 15 ms in hunk mode and from 224 ms to 124 to 127 ms in full mode; refuted if the hunk read stays above 50 ms or the full read does not fall below 180 ms",
+    "outcome": "not refuted; both modes landed above the point predictions, and in each after pilot the mode read first was the slower relative to its prediction",
+    "builds": {
+      "control": {
+        "sha256": "c82333df7cc2e4f89e7bc90b3d821581f1fcfc5ca5c685de7c6923dfe97247f1",
+        "source": "scroll-smoothness native-final source, original diff.rs"
+      },
+      "after": {
+        "sha256": "eaf607db1451a8c442478382854a9bae4943b11311612c0a29a5ff3e1bff0750",
+        "source": "the same tree with diff.rs from 3b1ad8d4"
+      },
+      "buildNote": "both built in one tree with drive,tauri/custom-protocol, tauri.drive.conf.json, the release profile and the existing dist-drive frontend, so they differ in the parse windows alone; the control is a rebuild rather than the E08 baseline binary"
+    },
+    "unsupportedReadsMs": "1 to 11 in every pilot of both builds",
+    "arms": {
+      "control": [
+        {
+          "pilot": 1,
+          "disposition": "valid_recorded_pilot",
+          "recognizedReads": [
+            {
+              "action": "action-01",
+              "mode": "hunk",
+              "label": "first path open",
+              "usableMs": 240,
+              "endpointMs": 253,
+              "invokeDiffCommitFileMs": [
+                233
+              ],
+              "hostCpuMs": 249.4
+            },
+            {
+              "action": "action-04",
+              "mode": "full",
+              "label": "toolbar mode reload",
+              "usableMs": 267,
+              "endpointMs": 274,
+              "invokeDiffCommitFileMs": [
+                252
+              ],
+              "hostCpuMs": 254.8
+            }
+          ]
+        },
+        {
+          "pilot": 2,
+          "disposition": "valid_recorded_pilot",
+          "recognizedReads": [
+            {
+              "action": "action-02",
+              "mode": "full",
+              "label": "second path first open",
+              "usableMs": 254,
+              "endpointMs": 265,
+              "invokeDiffCommitFileMs": [
+                243
+              ],
+              "hostCpuMs": 247.3
+            },
+            {
+              "action": "action-05",
+              "mode": "hunk",
+              "label": "second path first open in new mode",
+              "usableMs": 219,
+              "endpointMs": 234,
+              "invokeDiffCommitFileMs": [
+                216
+              ],
+              "hostCpuMs": 221.5
+            }
+          ]
+        }
+      ],
+      "after": [
+        {
+          "pilot": 1,
+          "disposition": "valid_recorded_pilot",
+          "recognizedReads": [
+            {
+              "action": "action-01",
+              "mode": "hunk",
+              "label": "first path open",
+              "usableMs": 38,
+              "endpointMs": 58,
+              "invokeDiffCommitFileMs": [
+                31
+              ],
+              "hostCpuMs": 44.9
+            },
+            {
+              "action": "action-04",
+              "mode": "full",
+              "label": "toolbar mode reload",
+              "usableMs": 153,
+              "endpointMs": 159,
+              "invokeDiffCommitFileMs": [
+                138
+              ],
+              "hostCpuMs": 139.7
+            }
+          ]
+        },
+        {
+          "pilot": 2,
+          "disposition": "valid_recorded_pilot",
+          "recognizedReads": [
+            {
+              "action": "action-02",
+              "mode": "full",
+              "label": "second path first open",
+              "usableMs": 175,
+              "endpointMs": 182,
+              "invokeDiffCommitFileMs": [
+                163
+              ],
+              "hostCpuMs": 163.5
+            },
+            {
+              "action": "action-05",
+              "mode": "hunk",
+              "label": "second path first open in new mode",
+              "usableMs": 21,
+              "endpointMs": 41,
+              "invokeDiffCommitFileMs": [
+                18
+              ],
+              "hostCpuMs": 21.5
+            }
+          ]
+        }
+      ]
+    },
+    "localEvidence": {
+      "control": ".boris/highlighted-open-control-20261116/",
+      "after": ".boris/highlighted-open-after-20261116/"
+    },
+    "localEvidenceHashes": {
+      "control/analysis/summary.json": "8e04372161ad645488741a434123c8e8afaefdc392aaf271c44724977a627782",
+      "after/analysis/summary.json": "e1e1d78d16154dd74f57106ea1dea2e2580bcce2f56f59196b6f5edc24fa4425"
+    },
+    "summarizerNote": "each harness's summarizer differs from the baseline's only in its expected binary sha256"
   }
 }
