@@ -106,7 +106,8 @@ banner and deliberately not pressed; it is the same join as Continue with nothin
 
 The commit-actions workflow, in `tests/app/commit-actions.test.ts`: a revert whose message
 rides the host-owned MessageEditor, the undo that removes it, and the redo that restores it
-with the message it had — the message survives through the Redo stack, not the commit form.
+with the message it had. The Redo stack holds the undone commit itself, so the message never
+has to survive in the commit form.
 
 The diff surfaces, in `tests/app/diff-surfaces.test.ts`: an unstaged edit read from the
 panel, then a second file staged and its staged side read back. The two files carry different

@@ -3,8 +3,8 @@ import { createUndoRedoState, type UndoEntry } from "./undo-redo.svelte.js";
 
 /** These tests are about stack behaviour, so the position and repository an
  *  entry belongs to only have to be present and distinct, not meaningful. */
-function entry(subject: string, body: string | null = null): UndoEntry {
-	return { subject, body, headOid: `oid-${subject}`, repoPath: "/repo" };
+function entry(name: string): UndoEntry {
+	return { undoneOid: name, headOid: `parent-of-${name}`, repoPath: "/repo" };
 }
 
 describe("createUndoRedoState", () => {
@@ -22,9 +22,9 @@ describe("createUndoRedoState", () => {
 	it("pop returns last pushed entry (LIFO)", () => {
 		const mgr = createUndoRedoState();
 		mgr.push(entry("first"));
-		mgr.push(entry("second", "desc"));
+		mgr.push(entry("second"));
 		const popped = mgr.pop();
-		expect(popped).toEqual(entry("second", "desc"));
+		expect(popped).toEqual(entry("second"));
 	});
 
 	it("pop returns undefined on empty stack", () => {

@@ -195,19 +195,33 @@ fn workflow_undo_redo_commit() {
         "undo should be available with 2 commits"
     );
 
+    let undone = ctx.repo().head().unwrap().target().unwrap();
+
     // Undo the last commit
     let undo_result = ctx.undo_commit().unwrap();
     ctx.assert_head_message("First");
     assert_eq!(undo_result.subject, "Second");
 
+    // The user stages something else before changing their mind.
+    std::fs::write(ctx.repo_path().join("NOTES.md"), "later").unwrap();
+    ctx.stage_file("NOTES.md").unwrap();
+
     // Redo the undone commit
-    ctx.redo_commit(
-        &undo_result.subject,
-        undo_result.body.as_deref(),
-        &undo_result.head_oid,
-    )
-    .unwrap();
-    ctx.assert_head_message("Second");
+    ctx.redo_commit(&undo_result.undone_oid, &undo_result.head_oid)
+        .unwrap();
+
+    assert_eq!(
+        ctx.repo().head().unwrap().target().unwrap(),
+        undone,
+        "redo must bring back the commit undo took, not a new one"
+    );
+    let staged = ctx.repo().index().unwrap();
+    assert!(
+        staged
+            .get_path(std::path::Path::new("NOTES.md"), 0)
+            .is_some(),
+        "what the user staged after the undo stays staged"
+    );
 }
 
 #[test]

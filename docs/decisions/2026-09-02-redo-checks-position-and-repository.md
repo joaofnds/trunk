@@ -1,6 +1,9 @@
 # Redo refuses unless HEAD and the repository match where the undo left them
 
-Status: accepted, 2026-09-02. Closes TRUNK-122.
+Status: accepted, 2026-09-02. Closes TRUNK-122. Superseded in part by
+[2026-11-16-redo-restores-the-undone-commit.md](2026-11-16-redo-restores-the-undone-commit.md):
+redo now restores the undone commit instead of committing its message again,
+and the checks below still run before it.
 
 ## What redo used to do
 

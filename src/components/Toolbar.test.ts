@@ -229,7 +229,7 @@ describe("Toolbar", () => {
 		);
 		const undoRedo = makeUndoRedo();
 		undoRedo.state.redoStack = [
-			{ subject: "C2", body: null, headOid: "abc123", repoPath: "/test/repo" },
+			{ undoneOid: "c2", headOid: "abc123", repoPath: "/test/repo" },
 		];
 
 		render(Toolbar, {
@@ -252,7 +252,7 @@ describe("Toolbar", () => {
 		);
 		const undoRedo = makeUndoRedo();
 		undoRedo.state.redoStack = [
-			{ subject: "C2", body: null, headOid: "abc123", repoPath: "/test/repo" },
+			{ undoneOid: "c2", headOid: "abc123", repoPath: "/test/repo" },
 		];
 
 		render(Toolbar, {
@@ -278,7 +278,7 @@ describe("Toolbar", () => {
 		);
 		const undoRedo = makeUndoRedo();
 		undoRedo.state.redoStack = [
-			{ subject: "C2", body: null, headOid: "abc123", repoPath: "/a/clone" },
+			{ undoneOid: "c2", headOid: "abc123", repoPath: "/a/clone" },
 		];
 
 		render(Toolbar, {
@@ -308,8 +308,7 @@ describe("Toolbar", () => {
 		const undoRedo = makeUndoRedo();
 		undoRedo.state.redoStack = [
 			{
-				subject: "C2",
-				body: "desc",
+				undoneOid: "c2",
 				headOid: "abc123",
 				repoPath: "/test/repo",
 			},
@@ -335,8 +334,7 @@ describe("Toolbar", () => {
 		await waitFor(() =>
 			expect(safeInvoke).toHaveBeenCalledWith("redo_commit", {
 				path: "/test/repo",
-				subject: "C2",
-				body: "desc",
+				undoneOid: "c2",
 				expectedHeadOid: "abc123",
 				expectedRepoPath: "/test/repo",
 			}),
@@ -344,17 +342,16 @@ describe("Toolbar", () => {
 	});
 
 	it("shows git's whole output in a dialog when the redo is refused", async () => {
-		const hookOutput = "lint-staged failed:\n  src/a.ts: missing semicolon";
+		const gitOutput = "fatal: Could not reset index file to revision 'c2'.";
 		vi.mocked(message).mockClear();
 		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) => {
 			if (cmd === "redo_commit") {
-				throw { code: "commit_error", message: hookOutput };
+				throw { code: "redo_error", message: gitOutput };
 			}
 			return cmd === "head_oid" ? "abc123" : false;
 		});
 		const entry = {
-			subject: "C2",
-			body: null,
+			undoneOid: "c2",
 			headOid: "abc123",
 			repoPath: "/test/repo",
 		};
@@ -377,7 +374,7 @@ describe("Toolbar", () => {
 		await fireEvent.click(redoBtn);
 
 		await waitFor(() =>
-			expect(message).toHaveBeenCalledWith(hookOutput, {
+			expect(message).toHaveBeenCalledWith(gitOutput, {
 				title: "Redo Error",
 				kind: "error",
 			}),
@@ -883,12 +880,16 @@ describe("Toolbar undo", () => {
 		await fireEvent.click(undo);
 		await view.rerender({ repoPath: "/other/repo" });
 
-		reply.resolve({ subject: "undone", body: null, head_oid: "parent" });
+		reply.resolve({
+			subject: "undone",
+			body: null,
+			head_oid: "parent",
+			undone_oid: "undone",
+		});
 
 		await waitFor(() =>
 			expect(undoRedo.push).toHaveBeenCalledWith({
-				subject: "undone",
-				body: null,
+				undoneOid: "undone",
 				headOid: "parent",
 				repoPath: "/test/repo",
 			}),

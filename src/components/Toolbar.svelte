@@ -106,8 +106,8 @@ let branchDialogOpen = $state(false);
 // Undo/redo state
 let canUndo = $state(false);
 // Where HEAD is, refreshed on the same beat as canUndo. A pending redo names the
-// position it belongs on, and offering it anywhere else would commit the undone
-// message onto unrelated history.
+// position it belongs on, and offering it anywhere else would move the branch
+// off history the user made since.
 let headOid = $state<string | null>(null);
 // A second press while the first undo runs would undo a second commit, and a
 // second Pop would pop the next stash, neither of which the user asked for. Each
@@ -167,13 +167,11 @@ async function handleUndo() {
 	undoingIn.add(path);
 	try {
 		const result = await safeInvoke<{
-			subject: string;
-			body: string | null;
 			head_oid: string;
+			undone_oid: string;
 		}>("undo_commit", { path });
 		undoRedo.push({
-			subject: result.subject,
-			body: result.body,
+			undoneOid: result.undone_oid,
 			headOid: result.head_oid,
 			repoPath: path,
 		});
@@ -194,8 +192,7 @@ async function handleRedo() {
 	try {
 		await safeInvoke("redo_commit", {
 			path: repoPath,
-			subject: entry.subject,
-			body: entry.body,
+			undoneOid: entry.undoneOid,
 			expectedHeadOid: entry.headOid,
 			expectedRepoPath: entry.repoPath,
 		});

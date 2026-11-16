@@ -1,9 +1,10 @@
 export interface UndoEntry {
-	subject: string;
-	body: string | null;
-	/** Where the undo left HEAD. The commit this entry restores belongs on this
-	 *  position and nowhere else, so a redo offered after HEAD moved would put
-	 *  the message onto history that has nothing to do with it. */
+	/** The commit the undo took back. Redo moves the branch back to this exact
+	 *  commit, so its oid, date and tree return as they were. */
+	undoneOid: string;
+	/** Where the undo left HEAD. The undone commit is a child of this position
+	 *  and nowhere else, so a redo offered after HEAD moved would throw away
+	 *  whatever was committed or checked out since. */
 	headOid: string;
 	/** The repository the undo happened in. A tab can be pointed at another
 	 *  repository without remounting, and two clones share every oid, so the

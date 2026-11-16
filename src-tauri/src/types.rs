@@ -225,10 +225,13 @@ pub struct UndoResult {
     pub subject: String,
     pub body: Option<String>,
     /// Where the undo left HEAD. A redo restores the undone commit onto this
-    /// position and nowhere else: replayed after a checkout or a reset it would
-    /// commit the old message against unrelated history, so the caller carries
+    /// position and nowhere else: replayed after a checkout, a reset or a new
+    /// commit it would move the branch off that history, so the caller carries
     /// this to tell the two apart.
     pub head_oid: String,
+    /// The commit the undo took back. Redo moves the branch back to it, so the
+    /// same commit returns rather than a new one built from today's index.
+    pub undone_oid: String,
 }
 
 #[derive(Debug, Serialize, Clone)]
