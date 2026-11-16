@@ -723,6 +723,111 @@ describe("Toolbar stash", () => {
 			),
 		);
 	});
+
+	it("pops one stash when Pop is pressed twice", async () => {
+		let pops = 0;
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "list_stashes") return Promise.resolve([{ oid: "stash-0" }]);
+			if (cmd === "stash_pop") {
+				pops += 1;
+				return deferred<never>().promise;
+			}
+			return Promise.resolve(false);
+		});
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+			},
+		});
+		const pop = screen.getByRole("button", { name: "Pop" });
+
+		await fireEvent.click(pop);
+		await waitFor(() => expect(pops).toBe(1));
+		await fireEvent.click(pop);
+
+		expect(pops).toBe(1);
+	});
+
+	it("shows why the stash would not apply", async () => {
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "list_stashes") return Promise.resolve([{ oid: "stash-0" }]);
+			if (cmd === "stash_pop")
+				return Promise.reject({
+					code: "conflict_state",
+					message: "The stash conflicts with your changes.",
+				});
+			return Promise.resolve(false);
+		});
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+			},
+		});
+
+		await fireEvent.click(screen.getByRole("button", { name: "Pop" }));
+
+		await waitFor(() =>
+			expect(mockToast).toHaveBeenCalledWith(
+				"The stash conflicts with your changes.",
+				"error",
+			),
+		);
+	});
+});
+
+describe("Toolbar undo", () => {
+	const mockInvoke = vi.mocked(safeInvoke);
+	const mockToast = vi.mocked(showToast);
+
+	function renderUndoable(undoCommit: () => Promise<unknown>) {
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "check_undo_available") return Promise.resolve(true);
+			if (cmd === "undo_commit") return undoCommit();
+			return Promise.resolve(null);
+		});
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+			},
+		});
+		return screen.getByRole("button", { name: "Undo" });
+	}
+
+	it("undoes one commit when Undo is pressed twice", async () => {
+		let undos = 0;
+		const undo = renderUndoable(() => {
+			undos += 1;
+			return deferred<never>().promise;
+		});
+		await waitFor(() => expect(undo).toBeEnabled());
+
+		await fireEvent.click(undo);
+		await fireEvent.click(undo);
+
+		expect(undos).toBe(1);
+	});
+
+	it("tells the user why the undo failed", async () => {
+		const undo = renderUndoable(() =>
+			Promise.reject({ code: "git_error", message: "HEAD has no parent" }),
+		);
+		await waitFor(() => expect(undo).toBeEnabled());
+
+		await fireEvent.click(undo);
+
+		await waitFor(() =>
+			expect(mockToast).toHaveBeenCalledWith("HEAD has no parent", "error"),
+		);
+	});
 });
 
 describe("Toolbar branch creation", () => {

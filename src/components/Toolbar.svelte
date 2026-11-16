@@ -108,6 +108,10 @@ let canUndo = $state(false);
 // position it belongs on, and offering it anywhere else would commit the undone
 // message onto unrelated history.
 let headOid = $state<string | null>(null);
+// A second press while the first undo runs would undo a second commit, and a
+// second Pop would pop the next stash, neither of which the user asked for.
+let undoing = $state(false);
+let popping = $state(false);
 
 let pendingRedo = $derived(
 	undoRedo.state.redoStack[undoRedo.state.redoStack.length - 1] ?? null,
@@ -155,6 +159,8 @@ $effect(() => {
 });
 
 async function handleUndo() {
+	if (undoing) return;
+	undoing = true;
 	try {
 		const result = await safeInvoke<{
 			subject: string;
@@ -171,7 +177,9 @@ async function handleUndo() {
 		});
 		headOid = result.head_oid;
 	} catch (e) {
-		console.error("undo failed:", e);
+		reportErrorToast(e, "Undo failed");
+	} finally {
+		undoing = false;
 	}
 }
 
@@ -214,6 +222,8 @@ async function handleStash() {
 }
 
 async function handlePop() {
+	if (popping) return;
+	popping = true;
 	try {
 		const stashes = await safeInvoke<StashEntry[]>("list_stashes", {
 			path: repoPath,
@@ -226,8 +236,9 @@ async function handlePop() {
 		await safeInvoke("stash_pop", { path: repoPath, oid: latest.oid });
 		showToast("Stash applied", "success");
 	} catch (e) {
-		console.error("stash_pop failed:", e);
-		showToast("Failed to apply stash", "error");
+		reportErrorToast(e, "Failed to apply stash");
+	} finally {
+		popping = false;
 	}
 }
 
@@ -316,7 +327,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 	<div class="toolbar-group">
 		<Button
 			icon
-			disabled={!canUndo}
+			disabled={!canUndo || undoing}
 			onclick={handleUndo}
 			aria-label="Undo"
 			tooltip="Undo"
@@ -363,7 +374,13 @@ async function handleBranchCreate(values: Record<string, string>) {
 		<Button icon onclick={handleStash} aria-label="Stash" tooltip="Stash">
 			<Archive size={14} />
 		</Button>
-		<Button icon onclick={handlePop} aria-label="Pop" tooltip="Pop">
+		<Button
+			icon
+			disabled={popping}
+			onclick={handlePop}
+			aria-label="Pop"
+			tooltip="Pop"
+		>
 			<ArchiveRestore size={14} />
 		</Button>
 	</div>
