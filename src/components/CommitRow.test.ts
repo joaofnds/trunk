@@ -179,11 +179,11 @@ describe("CommitRow", () => {
 			return { row: screen.getByTestId("commit-row"), pointer };
 		}
 
-		it("is an option and a tab stop", () => {
+		it("is an option that leaves the tab stop to its list", () => {
 			const { row } = renderRow();
 
 			expect(row).toHaveAttribute("role", "option");
-			expect(row).toHaveAttribute("tabindex", "0");
+			expect(row).toHaveAttribute("tabindex", "-1");
 		});
 
 		it.each([

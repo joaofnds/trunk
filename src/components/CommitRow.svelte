@@ -28,6 +28,7 @@ interface Props {
 	oncontextmenu?: (e: MouseEvent, commit: GraphCommit) => void;
 	onenter?: () => void;
 	onleave?: () => void;
+	onfocus?: () => void;
 	columnVisibility: ColumnVisibility;
 	selected?: boolean;
 	/** Row height in px. Defaults to ROW_HEIGHT constant.
@@ -63,6 +64,7 @@ let {
 	oncontextmenu,
 	onenter,
 	onleave,
+	onfocus,
 	columnVisibility,
 	selected = false,
 	rowHeight = ROW_HEIGHT,
@@ -138,7 +140,7 @@ const rowShadow = $derived(
 	data-testid="commit-row"
 	role="option"
 	aria-selected={selected}
-	tabindex="0"
+	tabindex="-1"
 	class="relative flex items-center cursor-pointer text-body text-text"
 	class:hover:bg-hover={!selected && !isCurrentMatch && !isSearchMatch}
 	class:bg-search-current={isCurrentMatch}
@@ -166,6 +168,7 @@ const rowShadow = $derived(
 	}}
 	onmouseenter={() => onenter?.()}
 	onmouseleave={() => onleave?.()}
+	onfocus={() => onfocus?.()}
 >
 	<!-- Column 1: Branch/Tag refs spacer (SVG overlay handles rendering) -->
 	{#if columnVisibility.ref}

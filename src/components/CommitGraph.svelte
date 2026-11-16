@@ -1709,8 +1709,9 @@ function overlayMouseLeave() {
 	hoveredPill = null;
 }
 
-// A press on a pill or on a ref of the hover list would leave focus there,
-// where no key does anything, so the list takes it.
+// A press on a row, a pill or a ref of the hover list would leave focus there.
+// A row unmounts once it scrolls out of the rendered window, taking focus and the
+// arrow keys with it, and a pill takes no key, so the list takes it.
 function keepFocusOnList() {
 	containerRef?.focus();
 }
@@ -2250,6 +2251,7 @@ function handleSearchClose() {
 	searchQuery = "";
 	searchResults = [];
 	searchCurrentIndex = 0;
+	containerRef?.focus();
 }
 
 function handleRowSelect(oid: string, mods?: SelectModifiers) {
@@ -2969,6 +2971,7 @@ $effect(() => {
 							oncontextmenu={handleRowContextMenu}
 							onenter={() => (hoveredRow = index)}
 							onleave={() => (hoveredRow = null)}
+							onfocus={keepFocusOnList}
 							{columnVisibility}
 							selected={(commit.oid === selectedCommitOid ||
 								compareOids.has(commit.oid)) &&

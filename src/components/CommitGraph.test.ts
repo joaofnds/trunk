@@ -448,6 +448,39 @@ describe("CommitGraph", () => {
 
 			expect(oncommitselect).not.toHaveBeenCalled();
 		});
+
+		it("hands focus back to the list when search closes", async () => {
+			render(CommitGraph, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					tabActive: true,
+				},
+			});
+			await screen.findByText("first commit");
+			fireSearchToggle();
+			const input = await screen.findByRole("textbox");
+			input.focus();
+
+			await fireEvent.keyDown(input, { key: "Escape" });
+
+			expect(screen.getByRole("listbox")).toHaveFocus();
+		});
+
+		it("keeps focus on the list when a row is clicked", async () => {
+			render(CommitGraph, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					tabActive: true,
+				},
+			});
+			const [row] = await screen.findAllByRole("option");
+
+			row.focus();
+
+			expect(screen.getByRole("listbox")).toHaveFocus();
+		});
 	});
 
 	it("calls list_stashes on mount", async () => {
