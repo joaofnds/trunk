@@ -2878,6 +2878,30 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		expect(rowOf("const y = 3;")).toContainElement(selectionComment());
 	});
 
+	it("clears the selection on Escape and says the key is handled", async () => {
+		renderPanel();
+		await flushPrefs();
+		await selectLines("const x = 2;", "const y = 3;");
+
+		const handled = !(await fireEvent.keyDown(window, { key: "Escape" }));
+
+		expect(handled).toBe(true);
+		expect(
+			screen.queryByRole("button", { name: "Comment on selected lines" }),
+		).toBeNull();
+	});
+
+	it("leaves the selection alone on Escape while its tab is hidden", async () => {
+		renderPanel({ keysActive: false });
+		await flushPrefs();
+		await selectLines("const x = 2;", "const y = 3;");
+
+		const handled = !(await fireEvent.keyDown(window, { key: "Escape" }));
+
+		expect(handled).toBe(false);
+		expect(selectionComment()).toBeTruthy();
+	});
+
 	it("draws no selection action without a selection", async () => {
 		renderPanel();
 		await flushPrefs();
@@ -3282,7 +3306,9 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		return vi.mocked(safeInvoke).mock.calls.map((c) => c[0] as string);
 	}
 
-	function renderPanel(overrides: { reviewFilter?: ReviewFilter } = {}) {
+	function renderPanel(
+		overrides: { reviewFilter?: ReviewFilter; keysActive?: boolean } = {},
+	) {
 		render(DiffPanel, {
 			props: {
 				...commentingDiff,

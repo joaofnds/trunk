@@ -1736,6 +1736,62 @@ describe("RepoView", () => {
 			});
 		});
 
+		describe("when Escape lands on a line selection", () => {
+			async function openReadmeWithALineSelected() {
+				const base = mockInvoke.getMockImplementation();
+				if (!base) throw new Error("base invoke implementation missing");
+				mockInvoke.mockImplementation((cmd, args) => {
+					if (cmd === "get_status")
+						return Promise.resolve({
+							unstaged: [
+								{ path: "README.md", status: "Modified", is_binary: false },
+							],
+							staged: [],
+							conflicted: [],
+						});
+					if (cmd === "diff_unstaged")
+						return Promise.resolve([stagingDiff("UNSTAGED CONTENT")]);
+					return base(cmd, args);
+				});
+				render(RepoView, { props: baseProps(createMockRemoteState()) });
+				await fireEvent.click(await screen.findByText("README.md"));
+				const line = await screen.findByText("UNSTAGED CONTENT");
+				const grip = line
+					.closest(".diff-line")
+					?.querySelector("[data-gutter-grip]");
+				if (!grip) throw new Error("no gutter grip on the changed line");
+				await fireEvent.mouseDown(grip);
+				await fireEvent.mouseUp(window);
+				expect(
+					screen.getByRole("button", { name: /^Stage Lines/ }),
+				).toBeTruthy();
+			}
+
+			it("clears the selection and keeps the diff open", async () => {
+				await openReadmeWithALineSelected();
+
+				await fireEvent.keyDown(window, { key: "Escape" });
+
+				await vi.waitFor(() =>
+					expect(
+						screen.queryByRole("button", { name: /^Stage Lines/ }),
+					).toBeNull(),
+				);
+				expect(screen.queryByText("UNSTAGED CONTENT")).toBeTruthy();
+			});
+
+			it("closes the diff on the next Escape", async () => {
+				await openReadmeWithALineSelected();
+				await fireEvent.keyDown(window, { key: "Escape" });
+
+				await fireEvent.keyDown(window, { key: "Escape" });
+
+				await vi.waitFor(() =>
+					expect(screen.queryByText("UNSTAGED CONTENT")).toBeNull(),
+				);
+			});
+		});
+
 		it("drops a Comment File read superseded by a same-file reload", async () => {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");

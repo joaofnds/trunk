@@ -103,6 +103,9 @@ interface Props {
 	composerTarget?: ReviewComposerTarget;
 	refreshToken?: number;
 	emptyCommit?: boolean;
+	/** Whether this panel's tab is on screen. Visited tabs stay mounted, so a
+	 *  hidden panel's window keys would act on a diff the user cannot see. */
+	keysActive?: boolean;
 }
 
 let {
@@ -134,6 +137,7 @@ let {
 	composerContext = "normal",
 	composerTarget,
 	refreshToken = 0,
+	keysActive = true,
 	emptyCommit = false,
 }: Props = $props();
 
@@ -847,16 +851,23 @@ function toggleFileCollapsed(path: string) {
 }
 
 $effect(() => {
+	// Escape with lines selected clears them and leaves the diff open. It runs in
+	// the capture phase so it lands before the view's own Escape, which closes
+	// the diff unless the event arrives already handled.
+	function clearSelectionOnEscape(e: KeyboardEvent) {
+		if (!keysActive || selectedCount === 0) return;
+		if (keyChord(e) !== "Escape") return;
+		if (focusInEditable(document.activeElement)) return;
+
+		e.preventDefault();
+		clearSelection();
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
+		if (!keysActive) return;
 		if (focusInEditable(document.activeElement)) return;
 
 		const chord = keyChord(e);
-		if (chord === "Escape" && selectedCount > 0) {
-			e.preventDefault();
-			clearSelection();
-			return;
-		}
-
 		if (chord === "c" && selectionComment) {
 			e.preventDefault();
 			commentOnSelection();
@@ -871,9 +882,13 @@ $effect(() => {
 			scrollToHunk(focusedHunkIndex - 1);
 		}
 	}
+	window.addEventListener("keydown", clearSelectionOnEscape, { capture: true });
 	window.addEventListener("keydown", handleKeydown);
 	window.addEventListener("mouseup", stopDrag);
 	return () => {
+		window.removeEventListener("keydown", clearSelectionOnEscape, {
+			capture: true,
+		});
 		window.removeEventListener("keydown", handleKeydown);
 		window.removeEventListener("mouseup", stopDrag);
 		stopDrag();

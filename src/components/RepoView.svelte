@@ -2107,6 +2107,8 @@ $effect(() => {
 		// hidden tabs too — only the active tab may act on Escape.
 		if (!tabActive) return;
 		if (e.key !== "Escape" || showRebaseEditor) return;
+		// The diff's own Escape, which clears a line selection, has already run.
+		if (e.defaultPrevented) return;
 		if (showDiff || showMergeEditor) {
 			e.preventDefault();
 			handleDiffClose();
@@ -2506,6 +2508,7 @@ function stepRightPane(delta: number) {
 					>
 						{#snippet children(DiffPanel)}
 							<DiffPanel
+								keysActive={tabActive}
 								fileDiffs={rebaseFocusedFileDiffs.filter(
 									(f) => f.path === rebaseDiffFile,
 								)}
@@ -2724,6 +2727,7 @@ function stepRightPane(delta: number) {
 						{#snippet children(DiffPanel)}
 							<DiffPanel
 								bind:this={diffPanelRef}
+								keysActive={tabActive}
 								fileDiffs={currentDiffFiles}
 								commitDetail={selectedCompareFile
 									? compareTargetDetail
