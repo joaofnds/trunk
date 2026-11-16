@@ -1502,6 +1502,14 @@ describe("RepoView", () => {
 	});
 
 	describe("staging diff content mode", () => {
+		// A later mock keeps the file listed, as the real status would while it
+		// still has changes, so a status refresh does not close the open diff.
+		function currentInvoke() {
+			const impl = mockInvoke.getMockImplementation();
+			if (!impl) throw new Error("invoke implementation missing");
+			return impl;
+		}
+
 		function stagingDiff(content: string, path = "README.md"): FileDiff {
 			return {
 				path,
@@ -1557,8 +1565,9 @@ describe("RepoView", () => {
 			expect(await screen.findByText("INITIAL STAGING")).toBeTruthy();
 			let resolveFull!: (files: FileDiff[]) => void;
 			let resolveHunk!: (files: FileDiff[]) => void;
+			const opened = currentInvoke();
 			mockInvoke.mockImplementation((cmd, args) => {
-				if (cmd !== "diff_unstaged") return base(cmd, args);
+				if (cmd !== "diff_unstaged") return opened(cmd, args);
 				const options = (args as { options: { showFullFile: boolean } })
 					.options;
 				return new Promise<FileDiff[]>((resolve) => {
@@ -1663,6 +1672,70 @@ describe("RepoView", () => {
 			expect(diffCalls()).toBeGreaterThan(before);
 		});
 
+		describe("when Stage All moves the open file", () => {
+			function mockStageAll(stagedElsewhere: boolean) {
+				const base = mockInvoke.getMockImplementation();
+				if (!base) throw new Error("base invoke implementation missing");
+				const readme = {
+					path: "README.md",
+					status: "Modified",
+					is_binary: false,
+				};
+				let staged = false;
+				mockInvoke.mockImplementation((cmd, args) => {
+					if (cmd === "stage_all") {
+						staged = true;
+						return Promise.resolve(undefined);
+					}
+					if (cmd === "get_status") {
+						const inStaged = staged && stagedElsewhere;
+						return Promise.resolve({
+							unstaged: staged ? [] : [readme],
+							staged: inStaged ? [readme] : [],
+							conflicted: [],
+						});
+					}
+					if (cmd === "diff_unstaged")
+						return Promise.resolve([stagingDiff("UNSTAGED CONTENT")]);
+					if (cmd === "diff_staged")
+						return Promise.resolve([stagingDiff("STAGED CONTENT")]);
+					return base(cmd, args);
+				});
+			}
+
+			async function openReadmeThenStageAll() {
+				render(RepoView, { props: baseProps(createMockRemoteState()) });
+				await fireEvent.click(await screen.findByText("README.md"));
+				expect(await screen.findByText("UNSTAGED CONTENT")).toBeTruthy();
+
+				await fireEvent.click(
+					screen.getByRole("button", { name: "Stage all changes" }),
+				);
+			}
+
+			it("shows the file's staged diff", async () => {
+				mockStageAll(true);
+
+				await openReadmeThenStageAll();
+
+				expect(await screen.findByText("STAGED CONTENT")).toBeTruthy();
+				expect(screen.queryByText("UNSTAGED CONTENT")).toBeFalsy();
+			});
+
+			it("closes the diff when the file left both lists", async () => {
+				mockStageAll(false);
+
+				await openReadmeThenStageAll();
+
+				await vi.waitFor(() =>
+					expect(screen.queryByText("UNSTAGED CONTENT")).toBeFalsy(),
+				);
+				expect(
+					screen.queryByRole("button", { name: "Stage File" }),
+				).toBeFalsy();
+			});
+		});
+
 		it("drops a Comment File read superseded by a same-file reload", async () => {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
@@ -1692,8 +1765,9 @@ describe("RepoView", () => {
 
 			let resolveComment!: (files: FileDiff[]) => void;
 			let fullReads = 0;
+			const opened = currentInvoke();
 			mockInvoke.mockImplementation((cmd, args) => {
-				if (cmd !== "diff_unstaged") return base(cmd, args);
+				if (cmd !== "diff_unstaged") return opened(cmd, args);
 				const options = (args as { options: { showFullFile: boolean } })
 					.options;
 				if (!options.showFullFile)
@@ -1746,8 +1820,9 @@ describe("RepoView", () => {
 
 			let rejectComment!: (reason?: unknown) => void;
 			let fullReads = 0;
+			const opened = currentInvoke();
 			mockInvoke.mockImplementation((cmd, args) => {
-				if (cmd !== "diff_unstaged") return base(cmd, args);
+				if (cmd !== "diff_unstaged") return opened(cmd, args);
 				const options = (args as { options: { showFullFile: boolean } })
 					.options;
 				if (!options.showFullFile)
@@ -1803,8 +1878,9 @@ describe("RepoView", () => {
 			expect(await screen.findByText("INITIAL STAGING")).toBeTruthy();
 			let rejectFull!: (reason?: unknown) => void;
 			let resolveHunk!: (files: FileDiff[]) => void;
+			const opened = currentInvoke();
 			mockInvoke.mockImplementation((cmd, args) => {
-				if (cmd !== "diff_unstaged") return base(cmd, args);
+				if (cmd !== "diff_unstaged") return opened(cmd, args);
 				const options = (args as { options: { showFullFile: boolean } })
 					.options;
 				return new Promise<FileDiff[]>((resolve, reject) => {
@@ -1849,10 +1925,11 @@ describe("RepoView", () => {
 			const view = render(RepoView, { props });
 			await fireEvent.click(await screen.findByText("README.md"));
 			expect(await screen.findByText("OLD STAGING")).toBeTruthy();
+			const opened = currentInvoke();
 			mockInvoke.mockImplementation((cmd, args) =>
 				cmd === "diff_unstaged"
 					? Promise.reject(new Error("staging full failed"))
-					: base(cmd, args),
+					: opened(cmd, args),
 			);
 
 			await view.rerender({ ...props, contentMode: "full" });

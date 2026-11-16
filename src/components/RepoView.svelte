@@ -1006,10 +1006,31 @@ function clearStagingDiff() {
 	stagingDiffMode = null;
 }
 
+// A bulk action, a commit or a terminal can move the open file out of the list it
+// was opened from. A conflicted selection describes a conflict, so once the file
+// is no longer conflicted there is nothing left for the merge editor to show,
+// whatever ended the operation. An unstaged or staged file follows itself into
+// the other list, and closes when it left both.
+function keepSelectionListed(s: WorkingTreeStatus) {
+	const selected = selectedFile;
+	if (selected === null) return;
+
+	const listed = (kind: keyof WorkingTreeStatus) =>
+		s[kind].some((file) => file.path === selected.path);
+	if (listed(selected.kind)) return;
+
+	const other = selected.kind === "unstaged" ? "staged" : "unstaged";
+	if (selected.kind === "conflicted" || !listed(other)) {
+		clearStagingDiff();
+		return;
+	}
+
+	selectedFile = { path: selected.path, kind: other };
+	void loadSelectedFileDiff(selected.path, other, undefined, false);
+}
+
 // Every status refresh passes through here, including the one that follows an
-// abort, a skip, or a Continue that finished. A conflicted selection describes a
-// conflict, so when the status no longer lists that file as conflicted there is
-// nothing left for the merge editor to show, whatever ended the operation.
+// abort, a skip, or a Continue that finished.
 function handleStatusChange(s: WorkingTreeStatus) {
 	// Mount already reads the counters once. Only subsequent list changes need
 	// another walk; the first staging status is an independent initial read.
@@ -1020,12 +1041,7 @@ function handleStatusChange(s: WorkingTreeStatus) {
 	// working-tree row keeps its old counts until the file watcher fires.
 	if (filesMoved) void dirtyCountsRefresh.run();
 
-	if (
-		selectedFile?.kind === "conflicted" &&
-		!s.conflicted.some((file) => file.path === selectedFile?.path)
-	) {
-		clearStagingDiff();
-	}
+	keepSelectionListed(s);
 }
 
 function clearCommitFileDiff() {
