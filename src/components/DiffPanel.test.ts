@@ -3836,7 +3836,7 @@ describe("DiffPanel hunk navigation", () => {
 		],
 	};
 
-	function renderNav(viewComments: Thread[] = []) {
+	function renderNav(viewComments: Thread[] = [], keysActive = true) {
 		const result = render(DiffPanel, {
 			props: {
 				...commentingDiff,
@@ -3847,6 +3847,7 @@ describe("DiffPanel hunk navigation", () => {
 				repoPath: "/repo",
 				selectedPath: "src/main.ts",
 				viewComments,
+				keysActive,
 			},
 		});
 		return { ...result, ready: flushPrefs() };
@@ -3902,6 +3903,16 @@ describe("DiffPanel hunk navigation", () => {
 		await ready;
 
 		await fireEvent.keyDown(window, init);
+		await tick();
+
+		expect(viewportOf(container).scrollTop).toBe(0);
+	});
+
+	it("stays put on ] while its tab is hidden", async () => {
+		const { container, ready } = renderNav([], false);
+		await ready;
+
+		await fireEvent.keyDown(window, { key: "]" });
 		await tick();
 
 		expect(viewportOf(container).scrollTop).toBe(0);
