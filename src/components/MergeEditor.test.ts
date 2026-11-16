@@ -269,4 +269,97 @@ describe("MergeEditor", () => {
 			expect(result.value).toContain("theirs one\ntheirs two\ntheirs three");
 		});
 	});
+
+	describe("when the conflict cannot be loaded", () => {
+		function props(onclose = vi.fn()) {
+			return {
+				repoPath: "/test/repo",
+				filePath: "logo.png",
+				onclose,
+				onresolved: vi.fn(),
+			};
+		}
+
+		function failLoad(code: string, message: string) {
+			mockInvoke.mockImplementation((cmd: string) =>
+				cmd === "get_merge_sides"
+					? Promise.reject({ code, message })
+					: Promise.resolve(undefined),
+			);
+		}
+
+		it("shows why a binary conflict will not open here", async () => {
+			const onclose = vi.fn();
+			failLoad(
+				"binary_conflict",
+				"logo.png is binary, resolve it outside the merge editor.",
+			);
+
+			render(MergeEditor, { props: props(onclose) });
+
+			expect(
+				await screen.findByText(
+					"logo.png is binary, resolve it outside the merge editor.",
+				),
+			).toBeInTheDocument();
+			expect(onclose).not.toHaveBeenCalled();
+		});
+
+		it("closes when the file is no longer conflicted", async () => {
+			const onclose = vi.fn();
+			failLoad("not_conflicted", "logo.png has no conflict");
+
+			render(MergeEditor, { props: props(onclose) });
+
+			await waitFor(() => expect(onclose).toHaveBeenCalled());
+		});
+
+		it("starts a retried load from the current side, as the first load does", async () => {
+			failLoad("git_error", "index locked");
+			render(MergeEditor, {
+				props: { ...props(), filePath: "src/main.ts" },
+			});
+			const retry = await screen.findByRole("button", { name: "Retry" });
+			mockInvoke.mockImplementation((cmd: string) =>
+				cmd === "get_merge_sides"
+					? Promise.resolve(MERGE_SIDES)
+					: Promise.resolve(undefined),
+			);
+
+			await fireEvent.click(retry);
+
+			const result = (await screen.findByRole(
+				"textbox",
+			)) as HTMLTextAreaElement;
+			expect(result.value).toBe(MERGE_SIDES.ours);
+		});
+	});
+
+	describe("when the file changes before its sides arrive", () => {
+		it("shows the newer file's sides", async () => {
+			const replies = new Map<string, (sides: typeof MERGE_SIDES) => void>();
+			mockInvoke.mockImplementation((cmd: string, args) => {
+				if (cmd !== "get_merge_sides") return Promise.resolve(undefined);
+				const { filePath } = args as { filePath: string };
+				return new Promise((resolve) => replies.set(filePath, resolve));
+			});
+			const view = render(MergeEditor, {
+				props: {
+					repoPath: "/test/repo",
+					filePath: "old.ts",
+					onclose: vi.fn(),
+					onresolved: vi.fn(),
+				},
+			});
+			await view.rerender({ filePath: "new.ts" });
+
+			replies.get("new.ts")?.({ ...MERGE_SIDES, ours: "line 1\nnew file\n" });
+			replies.get("old.ts")?.({ ...MERGE_SIDES, ours: "line 1\nold file\n" });
+
+			const result = (await screen.findByRole(
+				"textbox",
+			)) as HTMLTextAreaElement;
+			await waitFor(() => expect(result.value).toBe("line 1\nnew file\n"));
+		});
+	});
 });

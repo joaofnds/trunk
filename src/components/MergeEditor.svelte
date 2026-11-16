@@ -9,7 +9,7 @@ import X from "@lucide/svelte/icons/x";
 import { tick } from "svelte";
 import { BAR_HEIGHT } from "../lib/chrome-heights.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
-import { safeInvoke } from "../lib/invoke.js";
+import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import {
 	type ConflictRegion,
 	computeOutput,
@@ -255,16 +255,20 @@ let theirsVisible = $derived(
 
 // ---------- Data loading ----------
 $effect(() => {
-	// Re-run when filePath changes
-	const currentPath = filePath;
+	loadSides(filePath);
+});
+
+// A reply for a file the editor has since moved off is dropped. A file that is
+// no longer conflicted (a reset, or a resolve from elsewhere) closes the editor;
+// any other failure, a binary side among them, stays on screen with its reason.
+function loadSides(path: string) {
 	loading = true;
 	error = null;
 
-	safeInvoke<MergeSides>("get_merge_sides", {
-		path: repoPath,
-		filePath: currentPath,
-	})
+	safeInvoke<MergeSides>("get_merge_sides", { path: repoPath, filePath: path })
 		.then((result) => {
+			if (path !== filePath) return;
+
 			regions = parseConflictRegions(result.base, result.ours, result.theirs);
 			takenLines = takeAllCurrent(regions);
 			manualEdit = false;
@@ -274,11 +278,17 @@ $effect(() => {
 			loading = false;
 			tick().then(() => scrollToConflict(0));
 		})
-		.catch(() => {
-			// Merge state no longer available (e.g. git reset) — close the editor
-			onclose();
+		.catch((e) => {
+			if (path !== filePath) return;
+
+			if (isTrunkError(e) && e.code === "not_conflicted") {
+				onclose();
+				return;
+			}
+			error = errorMessage(e, "Could not load this conflict");
+			loading = false;
 		});
-});
+}
 
 // ---------- Synchronized scroll ----------
 let scrolling = false;
@@ -509,34 +519,7 @@ registerUpdateBlocker(
 			class="flex-1 flex flex-col items-center justify-center gap-2 text-text-muted text-body"
 		>
 			<span class="text-diff-delete">{error}</span>
-			<Button
-				size="sm"
-				onclick={() => {
-					loading = true;
-					error = null;
-					safeInvoke<MergeSides>("get_merge_sides", {
-						path: repoPath,
-						filePath,
-					})
-						.then((result) => {
-							regions = parseConflictRegions(
-								result.base,
-								result.ours,
-								result.theirs,
-							);
-							takenLines = new Set();
-							manualEdit = false;
-							manualText = "";
-							focusedConflictIdx = 0;
-							loading = false;
-						})
-						.catch((e) => {
-							error = errorMessage(e, "Failed to load");
-							loading = false;
-						});
-				}}
-				>Retry</Button
-			>
+			<Button size="sm" onclick={() => loadSides(filePath)}>Retry</Button>
 		</div>
 	{:else}
 		<!-- Top row: Current + Incoming side by side (50% height) -->
