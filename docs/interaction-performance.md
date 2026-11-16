@@ -1083,6 +1083,77 @@ parses every new-side line. The record's `confirmation` section holds each pilot
 results stay in the gitignored `.boris/highlighted-open-control-20261116/` and
 `.boris/highlighted-open-after-20261116/`.
 
+### E09: bulk conflict resolution and folder discard, one index write per action
+
+Flow I15. Mark All Resolved and a conflicted folder's Resolve All staged one file per
+command, and each command opened the repository, read the whole index and wrote it
+back. On a large index the per-file cost multiplies by the number of conflicts. Both
+actions now send one `stage_files` command, which reads the index once, stages every
+path and writes once. A failure writes nothing, where the loop could leave some files
+staged. The hypothesis was that the cost falls from one full index read and write per
+path to one in total, so the batch would take a small fraction of the serial time at
+200 paths. A batch within a factor of two of the serial loop would have refuted it.
+
+The fixture is a disposable repository with 20,200 tracked files: 200 directories of
+100 small files each, plus 200 files under `conflict/` changed on two branches so that
+a merge leaves all 200 conflicted. While conflicted the index holds 20,600 entries and
+1.65 MB. The saved conflicted index was copied back before every iteration. A
+temporary criterion group in the bench target timed the backend functions directly,
+built from bb285041 with only that group added, release profile, 10 samples per case,
+on the M5 Pro. Each size ran serial then batch, not alternated, and load during the run
+was not recorded. No fixture hash was kept.
+
+| Paths | Serial `stage_file_inner` | One `stage_files_inner` |
+|---|---|---|
+| 20 | 167 to 174 ms, estimate 170 ms | 10 to 14 ms, estimate 12 ms |
+| 200 | 1.72 to 3.58 s, estimate 2.63 s | 44 to 55 ms, estimate 50 ms |
+
+The ranges are criterion's confidence intervals for the mean, not minimum to maximum.
+The serial 200-path interval is wide, so its estimate is loose, and the batch interval
+sits far below it either way. The measurement leaves out IPC, the status refresh after
+the write and the watcher refreshes the old loop's 200 index writes could trigger, so
+the user-visible gain is unmeasured. Index and status results are pinned by
+`stage_files_resolves_every_conflicted_path_it_names` in `src-tauri/tests/test_staging.rs`.
+The probe was not committed; the recipe above rebuilds the fixture.
+
+A folder's Discard All had the same shape and a correctness defect on top of it. It
+sent one `discard_file` per file in parallel, and each one wrote the index through its
+checkout, so the calls raced for `index.lock`. A probe of 40 concurrent single-file
+discards behind a barrier on a scratch repository failed 35, 34 and 34 of them in three
+runs, every failure `git_locked`, and in each run left no file edited, because the
+checkout writes the working tree before the index. The user saw "Discard failed" for a
+discard that had happened, and the panel skipped its refresh. The action now sends one
+`discard_files` command. It checks that every path has a working-tree change before
+writing anything, restores the tracked paths in one checkout from the index and then
+deletes the untracked ones. A deletion that fails after the checkout still leaves the
+tracked paths discarded, as the per-file calls did, and the panel refreshes after a
+failure as well as a success, so the list shows what is left.
+
+The same fixture after `git merge --abort`, with the 200 `conflict/` files rewritten so
+each has an unstaged change and the saved index restored before every iteration, gave:
+
+| Paths | Serial `discard_file_inner` | One `discard_files_inner` |
+|---|---|---|
+| 20 | 168 to 175 ms, estimate 170 ms | 10.7 to 11.1 ms, estimate 10.8 ms |
+| 200 | 1.75 to 1.98 s, estimate 1.85 s | 31 to 36 ms, estimate 33 ms |
+
+This run was built from the change in `82168acd` with the temporary group added, so the
+serial arm called the single-path function after it began delegating to the batch with
+one path. It performs the same status read and checkout as before. Load average from
+other work on the machine was 5.57 at the start and 4.09 at the end. The serial loop is
+the sequential cost. The shipped code ran the calls in parallel, which is how they
+collided, so its wall-clock time was not measured. Behavior is pinned by the
+`discard_files_*` tests in `src-tauri/tests/test_staging.rs` and the folder discard
+tests in `src/components/StagingPanel.test.ts`.
+
+Two limits remain. The folder's Unresolve All still unstages one file at a time, and it
+acts on the folder's staged files rather than its conflicts, so batching it would keep
+wrong behavior until what it should do is settled. Index writes are not serialized per
+repository: two overlapping `stage_files` calls with the same 40 paths returned one
+`git_locked` in each of five probe runs, while all 40 files ended staged. Folder rows
+show no busy state, so a double click can reach that collision and report a failure for
+work that succeeded.
+
 ### Selection presentation and background limits
 
 Three five-second ScreenCaptureKit attempts used a requested 60 Hz virtual display.
@@ -1114,8 +1185,8 @@ Frequency remains an assumption; no usage telemetry was collected.
 | 2 | Preserve the reviewed selection and navigation contracts | Browsing is assumed frequent. E01 removes 116.5 ms in the width series and 129 ms in the delivered-source confirmation at 1,000 files. Warm ranges overlap; CPU, memory and highlight costs remain explicit. Correctness risk requires held-response tests. |
 | 3 | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. Settle how often users open large highlighted files in full mode first. The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
 | Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
-| 5 | Expand mutation/convergence scale and background contention | Small-fixture mutations are mostly single-digit to tens of milliseconds. Larger indexes, saves and local fetch can change that ranking. High Git correctness risk; use disposable repositories and exact content oracles. |
-| 6 | Deep history, review/conflict/operation flows | Mapped but not performance-benchmarked here. History depth, conflict count and review size differ from file-count scale; do not extrapolate E01. |
+| 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Unresolve All still loops and acts on the wrong set. Index writes are not serialized per repository, so two overlapping actions can report a lock failure for work that happened. Saves, local fetch and watcher refreshes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
+| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. History depth, review size and conflict-region count remain unbenchmarked; do not extrapolate E01. |
 
 The evidence supports retaining current warm diff reuse, mounted-tab reuse,
 coalesced refresh, and the search debounce. It does not support another cache or
