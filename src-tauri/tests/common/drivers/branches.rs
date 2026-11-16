@@ -49,6 +49,22 @@ impl TestContext {
             .register(location.display().to_string(), location.to_path_buf());
     }
 
+    /// Check out a local branch from the worktree at `location`, opened in its own tab
+    pub fn checkout_branch_in(
+        &mut self,
+        location: &std::path::Path,
+        name: &str,
+    ) -> Result<(), TrunkError> {
+        self.open_in_tab(location);
+        branches::checkout_branch_inner(
+            &location.display().to_string(),
+            name,
+            &self.state_map,
+            &mut self.cache_map,
+            &trunk_git::graph_input::RefVisibility::default(),
+        )
+    }
+
     /// Delete a local branch, removing the linked worktree the user agreed to remove
     pub fn delete_branch_removing(
         &mut self,

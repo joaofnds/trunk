@@ -135,6 +135,34 @@ fn checkout_of_a_branch_a_linked_worktree_is_bisecting_leaves_this_worktree_unto
 }
 
 #[test]
+fn checkout_in_a_linked_worktree_of_the_main_worktrees_branch_leaves_it_untouched() {
+    let mut ctx = repo_where_feat_changes_a_and_b();
+    let linked = ctx.add_linked_worktree("wt", "feat");
+
+    let error = ctx.checkout_branch_in(&linked, "main").unwrap_err();
+
+    assert_eq!(error.code, "branch_in_worktree");
+    let wt = git2::Repository::open(&linked).unwrap();
+    assert_eq!(wt.head().unwrap().shorthand().ok(), Some("feat"));
+    assert_eq!(std::fs::read_to_string(linked.join("a")).unwrap(), "feat");
+}
+
+/// The guard skips the worktree asking, so a worktree re-checking out the branch
+/// it already holds is not refused as if someone else held it.
+#[test]
+fn a_worktree_may_check_out_the_branch_it_holds() {
+    let mut ctx = repo_where_feat_changes_a_and_b();
+    let linked = ctx.add_linked_worktree("wt", "feat");
+
+    ctx.checkout_branch("main").unwrap();
+    ctx.checkout_branch_in(&linked, "feat").unwrap();
+
+    ctx.assert_head_at("main");
+    let wt = git2::Repository::open(&linked).unwrap();
+    assert_eq!(wt.head().unwrap().shorthand().ok(), Some("feat"));
+}
+
+#[test]
 fn checkout_clean_workdir_succeeds() {
     let mut ctx = TestContext::builder()
         .with_file("README.md", "hello")
