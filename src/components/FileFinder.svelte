@@ -32,6 +32,7 @@ let {
 let query = $state("");
 let selectedIndex = $state(0);
 let dialogEl: HTMLDialogElement | undefined = $state();
+let listEl: HTMLDivElement | undefined = $state();
 
 $effect(() => {
 	if (dialogEl && !dialogEl.open) dialogEl.showModal();
@@ -53,15 +54,20 @@ function handleKeydown(e: KeyboardEvent) {
 		onclose();
 	} else if (e.key === "ArrowDown") {
 		e.preventDefault();
-		selectedIndex = Math.min(selectedIndex + 1, matches.length - 1);
+		moveSelection(Math.min(selectedIndex + 1, matches.length - 1));
 	} else if (e.key === "ArrowUp") {
 		e.preventDefault();
-		selectedIndex = Math.max(selectedIndex - 1, 0);
+		moveSelection(Math.max(selectedIndex - 1, 0));
 	} else if (e.key === "Enter") {
 		e.preventDefault();
 		const chosen = matches[selectedIndex];
 		if (chosen) onselect(chosen.path);
 	}
+}
+
+function moveSelection(index: number) {
+	selectedIndex = index;
+	listEl?.children[index]?.scrollIntoView({ block: "nearest" });
 }
 
 function autofocus(node: HTMLElement) {
@@ -109,6 +115,7 @@ function rowLabel(file: TrackedFile): string {
 		>
 
 		<div
+			bind:this={listEl}
 			id="file-finder-list"
 			role="listbox"
 			aria-label="Tracked files"

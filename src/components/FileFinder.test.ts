@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReviewTally, TrackedFile } from "../lib/types.js";
 import FileFinder from "./FileFinder.svelte";
 
@@ -23,6 +23,21 @@ function open(
 	});
 	return { ...result, onselect, onclose };
 }
+
+// jsdom lays nothing out and has no scrollIntoView, so the stub records which
+// row the finder asked to bring into view.
+let scrolledIntoView: Element[] = [];
+
+beforeEach(() => {
+	scrolledIntoView = [];
+	Element.prototype.scrollIntoView = function (this: Element) {
+		scrolledIntoView.push(this);
+	};
+});
+
+afterEach(() => {
+	Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+});
 
 function rowPaths(): string[] {
 	return screen
@@ -119,6 +134,21 @@ describe("FileFinder", () => {
 			"src/alpha.ts",
 		);
 	});
+
+	it.each([
+		["down", ["ArrowDown"], "src/alpha.ts"],
+		["up", ["ArrowDown", "ArrowUp"], "src/beta.ts"],
+	])(
+		"brings the row the arrow moves %s to into view",
+		async (_way, keys, path) => {
+			open();
+			const input = screen.getByRole("combobox");
+
+			for (const key of keys) await fireEvent.keyDown(input, { key });
+
+			expect(scrolledIntoView.at(-1)).toHaveTextContent(path);
+		},
+	);
 
 	it("moves the selection up with the arrow key", async () => {
 		open();
