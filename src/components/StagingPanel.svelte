@@ -15,6 +15,12 @@ import { resolveViewOid } from "../lib/comment-matching.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { pathMenuEntriesOf } from "../lib/file-menu.js";
 import { safeInvoke } from "../lib/invoke.js";
+import {
+	computeOutput,
+	parseConflictRegions,
+	takeAllCurrent,
+	takeAllIncoming,
+} from "../lib/merge-parser.js";
 import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
@@ -555,7 +561,13 @@ async function resolveConflictedFile(
 			path: repoPath,
 			filePath,
 		});
-		const content = side === "ours" ? sides.ours : sides.theirs;
+		// The same result the editor's Take All buttons give: the conflicting
+		// lines come from the chosen side, and what only the other side changed
+		// is kept, since the menu item and the button carry the same name.
+		const regions = parseConflictRegions(sides.base, sides.ours, sides.theirs);
+		const taken =
+			side === "ours" ? takeAllCurrent(regions) : takeAllIncoming(regions);
+		const content = computeOutput(regions, taken);
 		await safeInvoke("save_merge_result", {
 			path: repoPath,
 			filePath,

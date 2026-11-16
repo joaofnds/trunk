@@ -38,6 +38,27 @@ fn conflict_entry(
         .map_err(|e| TrunkError::new("conflict_error", e.to_string()))
 }
 
+/// The two sides of a conflict where both still hold the file. A deleted side
+/// has no text to take, and reading it as empty would let the save path stage an
+/// empty file where that side meant no file at all.
+fn sides_with_text<'a>(
+    conflict: &'a git2::IndexConflict,
+    file_path: &str,
+) -> Result<(&'a git2::IndexEntry, &'a git2::IndexEntry), TrunkError> {
+    let (Some(our), Some(their)) = (&conflict.our, &conflict.their) else {
+        let message = if conflict.our.is_none() && conflict.their.is_none() {
+            format!("{file_path} was deleted on both sides. Delete it to accept the deletion.")
+        } else {
+            format!(
+                "{file_path} was deleted on one side. Stage it to keep it, or delete it to accept the deletion."
+            )
+        };
+        return Err(TrunkError::new("delete_conflict", message));
+    };
+
+    Ok((our, their))
+}
+
 /// The three sides of a conflicted file, read from the index.
 ///
 /// # Errors
@@ -53,38 +74,30 @@ pub fn get_merge_sides_inner(
 ) -> Result<MergeSides, TrunkError> {
     let repo = state_map.open(path)?;
     let conflict = conflict_entry(&repo, file_path)?;
-
-    // A deleted side has no text to take. Reading it as empty would let the save
-    // path stage an empty file where that side meant no file at all.
-    if conflict.our.is_none() || conflict.their.is_none() {
-        return Err(TrunkError::new(
-            "delete_conflict",
-            format!(
-                "{file_path} was deleted on one side. Stage it to keep it, or delete it to accept the deletion."
-            ),
-        ));
-    }
+    let (our, their) = sides_with_text(&conflict, file_path)?;
 
     // `from_utf8_lossy` would replace every invalid byte with U+FFFD and the save
     // path writes that text back over the file, with both original sides already
     // dropped from the index. Refusing here is what keeps the sides recoverable.
-    let read_blob = |entry: &Option<git2::IndexEntry>| -> Result<String, TrunkError> {
-        let Some(e) = entry else {
-            return Ok(String::new());
-        };
-        let blob = repo.find_blob(e.id)?;
+    let read_blob = |entry: &git2::IndexEntry| -> Result<String, TrunkError> {
+        let blob = repo.find_blob(entry.id)?;
         String::from_utf8(blob.content().to_vec()).map_err(|_| {
             TrunkError::new(
                 "binary_conflict",
-                format!("{file_path} is binary — resolve it outside the merge editor."),
+                format!("{file_path} is binary, so resolve it outside the merge editor."),
             )
         })
     };
 
     Ok(MergeSides {
-        base: read_blob(&conflict.ancestor)?,
-        ours: read_blob(&conflict.our)?,
-        theirs: read_blob(&conflict.their)?,
+        base: conflict
+            .ancestor
+            .as_ref()
+            .map(read_blob)
+            .transpose()?
+            .unwrap_or_default(),
+        ours: read_blob(our)?,
+        theirs: read_blob(their)?,
     })
 }
 
@@ -94,8 +107,8 @@ pub fn get_merge_sides_inner(
 ///
 /// Returns `not_open` when `path` names no open repository, `no_workdir` for a
 /// bare repository, `not_conflicted` when the index holds no conflict for
-/// `file_path`, `write_error` when the file will not write, and the git error
-/// when the index will not stage.
+/// `file_path`, `delete_conflict` when a side deleted it, `write_error` when the
+/// file will not write, and the git error when the index will not stage.
 pub fn save_merge_result_inner(
     path: &str,
     file_path: &str,
@@ -109,8 +122,9 @@ pub fn save_merge_result_inner(
 
     // Refuse before touching the file. An editor left open after its operation
     // ended would otherwise overwrite the restored content and stage it, and
-    // nothing committed it, so the repository could not give it back.
-    conflict_entry(&repo, file_path)?;
+    // nothing committed it, so the repository could not give it back. A side that
+    // deleted the file is refused for the reason the read path gives.
+    sides_with_text(&conflict_entry(&repo, file_path)?, file_path)?;
 
     // Write merged content to disk
     let full_path = repo_path.join(file_path);

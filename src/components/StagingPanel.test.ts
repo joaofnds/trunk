@@ -616,6 +616,58 @@ describe("StagingPanel merge-continue", () => {
 		});
 	});
 
+	describe("when taking a whole side from a conflicted file's menu", () => {
+		const sides = {
+			base: "a\nb\nc\nd\ne\nf\n",
+			ours: "a\nB-ours\nc\nd-ours\ne\nf\n",
+			theirs: "a\nB-theirs\nc\nd\ne\nf-theirs\n",
+		};
+
+		it.each([
+			["Take All Current", "a\nB-ours\nc\nd-ours\ne\nf-theirs\n"],
+			["Take All Incoming", "a\nB-theirs\nc\nd-ours\ne\nf-theirs\n"],
+		])(
+			"%s keeps what only the other side changed, as the editor does",
+			async (text, merged) => {
+				mockMergeState([
+					{ path: "src/a.ts", status: "Conflicted", is_binary: false },
+				]);
+				const answer = mockInvoke.getMockImplementation();
+				if (answer === undefined) throw new Error("merge state is not mocked");
+				mockInvoke.mockImplementation(
+					(command: string, args?: Record<string, unknown>) =>
+						command === "get_merge_sides"
+							? Promise.resolve(sides)
+							: answer(command, args),
+				);
+				render(StagingPanel, {
+					props: { ...noReviewCounts(), repoPath: "/repo" },
+				});
+				const row = stagingRowFor(await screen.findByText("src/a.ts"));
+				vi.mocked(MenuItem.new).mockClear();
+
+				await fireEvent.contextMenu(row);
+				const item = await waitFor(() => {
+					const found = vi
+						.mocked(MenuItem.new)
+						.mock.calls.map(([options]) => options)
+						.find((options) => options.text === text);
+					expect(found?.action).toBeDefined();
+					return found;
+				});
+				item?.action?.(text);
+
+				await waitFor(() =>
+					expect(mockInvoke).toHaveBeenCalledWith("save_merge_result", {
+						path: "/repo",
+						filePath: "src/a.ts",
+						content: merged,
+					}),
+				);
+			},
+		);
+	});
+
 	describe("when resolving conflicted files in bulk", () => {
 		const conflicted = [
 			{ path: "src/a.ts", status: "Conflicted", is_binary: false },

@@ -305,6 +305,24 @@ describe("MergeEditor", () => {
 			expect(onclose).not.toHaveBeenCalled();
 		});
 
+		it.each([
+			[
+				"binary_conflict",
+				"logo.png is binary, so resolve it outside the merge editor.",
+			],
+			["delete_conflict", "logo.png was deleted on one side."],
+		])(
+			"offers no Retry for a %s, which a reload returns again",
+			async (code, message) => {
+				failLoad(code, message);
+
+				render(MergeEditor, { props: props() });
+
+				expect(await screen.findByText(message)).toBeInTheDocument();
+				expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+			},
+		);
+
 		it("closes when the file is no longer conflicted", async () => {
 			const onclose = vi.fn();
 			failLoad("not_conflicted", "logo.png has no conflict");
@@ -336,6 +354,31 @@ describe("MergeEditor", () => {
 	});
 
 	describe("when the file changes before its sides arrive", () => {
+		it("ignores the earlier file's refusal", async () => {
+			const refusals = new Map<string, (error: unknown) => void>();
+			mockInvoke.mockImplementation((cmd: string, args) => {
+				if (cmd !== "get_merge_sides") return Promise.resolve(undefined);
+				const { filePath } = args as { filePath: string };
+				return new Promise((_, reject) => refusals.set(filePath, reject));
+			});
+			const onclose = vi.fn();
+			const view = render(MergeEditor, {
+				props: {
+					repoPath: "/test/repo",
+					filePath: "old.ts",
+					onclose,
+					onresolved: vi.fn(),
+				},
+			});
+			await view.rerender({ filePath: "new.ts" });
+
+			refusals.get("old.ts")?.({ code: "not_conflicted", message: "resolved" });
+			refusals.get("new.ts")?.({ code: "git_error", message: "index locked" });
+
+			expect(await screen.findByText("index locked")).toBeInTheDocument();
+			expect(onclose).not.toHaveBeenCalled();
+		});
+
 		it("shows the newer file's sides", async () => {
 			const replies = new Map<string, (sides: typeof MERGE_SIDES) => void>();
 			mockInvoke.mockImplementation((cmd: string, args) => {

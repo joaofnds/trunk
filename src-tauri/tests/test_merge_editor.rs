@@ -135,6 +135,59 @@ fn get_merge_sides_refuses_a_conflict_where_one_side_deleted_the_file() {
     assert_eq!(err.code, "delete_conflict");
 }
 
+#[test]
+fn get_merge_sides_refuses_a_conflict_where_the_current_side_deleted_the_file() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "feature content")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_removed_file("file.txt")
+        .with_commit("Delete the file")
+        .with_conflict("feature")
+        .build();
+
+    let err = ctx.get_merge_sides("file.txt").unwrap_err();
+
+    assert_eq!(err.code, "delete_conflict");
+}
+
+/// The save path is reachable without the read path, from an editor opened on
+/// an earlier conflict of the same file. Saving text there would stage a file
+/// the deleting side removed, and the conflict that recorded the choice is gone.
+#[test]
+fn save_merge_result_refuses_a_conflict_where_one_side_deleted_the_file() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_removed_file("file.txt")
+        .with_commit("Delete the file")
+        .checkout("main")
+        .with_file("file.txt", "main content")
+        .with_commit("Main commit")
+        .with_conflict("feature")
+        .build();
+
+    let err = ctx.save_merge_result("file.txt", "").unwrap_err();
+
+    assert_eq!(err.code, "delete_conflict");
+    let kept = std::fs::read_to_string(ctx.repo_path().join("file.txt")).unwrap();
+    assert_eq!(
+        kept, "main content",
+        "a refused save must not write the file"
+    );
+    assert_eq!(
+        ctx.get_merge_sides("file.txt").unwrap_err().code,
+        "delete_conflict",
+        "a refused save must leave the conflict in the index"
+    );
+}
+
 /// The editor stays on screen after the operation it belongs to ends, and its
 /// Save button stays live. Writing then would put the merged text over the file
 /// the abort just restored and stage it, destroying content that was never

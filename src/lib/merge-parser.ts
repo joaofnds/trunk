@@ -125,8 +125,10 @@ function resolvedLines(region: ConflictRegion): string[] {
  * - resolved: lines one side changed, or both changed alike
  * - conflict: lines both sides changed differently
  *
- * The parser walks through lines using three pointers and groups
- * consecutive matching lines as context and differing lines as conflict.
+ * The parser walks the three texts with one pointer each. Lines all three
+ * share are context, and each stretch up to the next point where they agree
+ * again is resolved when one side changed it, or both alike, and a conflict
+ * otherwise.
  */
 export function parseConflictRegions(
 	base: string,

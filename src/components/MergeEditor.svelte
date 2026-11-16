@@ -50,6 +50,9 @@ let manualEdit = $state(false);
 let manualText = $state("");
 let loading = $state(true);
 let error = $state<string | null>(null);
+// A binary or deleted side is a fact about the file, so loading it again gets the
+// same refusal, and a Retry button there would only promise otherwise.
+let retryable = $state(true);
 let focusedConflictIdx = $state(0);
 let saving = $state(false);
 
@@ -285,7 +288,12 @@ function loadSides(path: string) {
 				onclose();
 				return;
 			}
+
 			error = errorMessage(e, "Could not load this conflict");
+			retryable = !(
+				isTrunkError(e) &&
+				(e.code === "binary_conflict" || e.code === "delete_conflict")
+			);
 			loading = false;
 		});
 }
@@ -519,7 +527,9 @@ registerUpdateBlocker(
 			class="flex-1 flex flex-col items-center justify-center gap-2 text-text-muted text-body"
 		>
 			<span class="text-diff-delete">{error}</span>
-			<Button size="sm" onclick={() => loadSides(filePath)}>Retry</Button>
+			{#if retryable}
+				<Button size="sm" onclick={() => loadSides(filePath)}>Retry</Button>
+			{/if}
 		</div>
 	{:else}
 		<!-- Top row: Current + Incoming side by side (50% height) -->
