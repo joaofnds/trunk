@@ -1033,6 +1033,40 @@ fn stage_files_empty_vec_is_noop() {
 }
 
 #[test]
+fn stage_files_resolves_every_conflicted_path_it_names() {
+    let ctx = TestContext::builder()
+        .with_file("edited.txt", "original")
+        .with_file("removed.txt", "original")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("edited.txt", "feature change")
+        .with_file("removed.txt", "feature change")
+        .with_commit("Feature change")
+        .checkout("main")
+        .with_file("edited.txt", "main change")
+        .with_file("removed.txt", "main change")
+        .with_commit("Main change")
+        .with_conflict("feature")
+        .build();
+    std::fs::write(ctx.repo_path().join("edited.txt"), "resolved").unwrap();
+    std::fs::remove_file(ctx.repo_path().join("removed.txt")).unwrap();
+
+    ctx.stage_files(&["edited.txt", "removed.txt"])
+        .expect("stage_files failed");
+
+    let status = ctx.get_status().expect("get_status failed");
+    let staged: Vec<_> = status
+        .staged
+        .iter()
+        .map(|file| format!("{} {:?}", file.path, file.status))
+        .collect();
+    assert!(status.conflicted.is_empty(), "{:?}", status.conflicted);
+    assert_eq!(staged, ["edited.txt Modified", "removed.txt Deleted"]);
+    assert_eq!(ctx.staged_content("edited.txt"), "resolved");
+}
+
+#[test]
 fn unstage_files_unstages_multiple_files() {
     let ctx = TestContext::builder()
         .with_file("dir/a.txt", "a")

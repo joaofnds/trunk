@@ -569,9 +569,11 @@ async function resolveDirectory(dirPath: string) {
 		(f) => f.path.startsWith(`${dirPath}/`) || f.path === dirPath,
 	);
 	if (files.length === 0) return;
-	for (const f of files) {
-		await safeInvoke("stage_file", { path: repoPath, filePath: f.path });
-	}
+
+	await safeInvoke("stage_files", {
+		path: repoPath,
+		filePaths: files.map((f) => f.path),
+	});
 	await loadStatus();
 }
 
@@ -648,9 +650,10 @@ async function handleDiscardAll() {
 
 // ---------- Merge-mode actions ----------
 async function markAllResolved() {
-	for (const f of status?.conflicted ?? []) {
-		await safeInvoke("stage_file", { path: repoPath, filePath: f.path });
-	}
+	await safeInvoke("stage_files", {
+		path: repoPath,
+		filePaths: (status?.conflicted ?? []).map((f) => f.path),
+	});
 	await loadStatus();
 }
 

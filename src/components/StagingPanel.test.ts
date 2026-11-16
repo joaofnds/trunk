@@ -1,3 +1,4 @@
+import { MenuItem } from "@tauri-apps/api/menu";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
 	fireEvent,
@@ -492,6 +493,81 @@ describe("StagingPanel merge-continue", () => {
 			},
 		});
 		expect(await screen.findByText("Abort Merge")).toBeInTheDocument();
+	});
+
+	describe("when resolving conflicted files in bulk", () => {
+		const conflicted = [
+			{ path: "src/a.ts", status: "Conflicted", is_binary: false },
+			{ path: "src/b.ts", status: "Conflicted", is_binary: false },
+			{ path: "docs/c.md", status: "Conflicted", is_binary: false },
+		];
+
+		async function chooseDirectoryMenuItem(directory: RegExp, text: RegExp) {
+			vi.mocked(MenuItem.new).mockClear();
+			await screen.findByLabelText("Mark all as resolved");
+			const row = screen.getByRole("treeitem", { name: directory });
+			await fireEvent.contextMenu(row);
+			const item = await waitFor(() => {
+				const found = vi
+					.mocked(MenuItem.new)
+					.mock.calls.map(([options]) => options)
+					.find((options) => text.test(options.text));
+				expect(found?.action).toBeDefined();
+				return found;
+			});
+			item?.action?.(item.text);
+		}
+
+		async function indexWritesOnceRefreshed() {
+			await waitFor(() => {
+				const commands = mockInvoke.mock.calls.map(([command]) => command);
+				const firstWrite = commands.findIndex((command) =>
+					command.startsWith("stage_file"),
+				);
+				expect(firstWrite).toBeGreaterThanOrEqual(0);
+				expect(commands.slice(firstWrite)).toContain("get_status");
+			});
+			return mockInvoke.mock.calls.filter(([command]) =>
+				command.startsWith("stage_file"),
+			);
+		}
+
+		beforeEach(() => {
+			mockMergeState(conflicted);
+		});
+
+		it("marks every conflicted file resolved in one index update", async () => {
+			render(StagingPanel, {
+				props: { ...noReviewCounts(), repoPath: "/repo" },
+			});
+
+			await fireEvent.click(
+				await screen.findByLabelText("Mark all as resolved"),
+			);
+
+			expect(await indexWritesOnceRefreshed()).toEqual([
+				[
+					"stage_files",
+					{ path: "/repo", filePaths: ["src/a.ts", "src/b.ts", "docs/c.md"] },
+				],
+			]);
+		});
+
+		it("resolves a conflicted directory in one index update", async () => {
+			render(StagingPanel, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					treeViewEnabled: true,
+				},
+			});
+
+			await chooseDirectoryMenuItem(/^src \(2\)/, /^Resolve All/);
+
+			expect(await indexWritesOnceRefreshed()).toEqual([
+				["stage_files", { path: "/repo", filePaths: ["src/a.ts", "src/b.ts"] }],
+			]);
+		});
 	});
 });
 
