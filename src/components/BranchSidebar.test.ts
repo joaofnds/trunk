@@ -1362,15 +1362,14 @@ describe("BranchSidebar checking out or creating a branch", () => {
 		);
 	});
 
-	it("keeps its plain toast for a local checkout that fails without a conflict", async () => {
+	it("says why a local checkout failed without a conflict", async () => {
+		const held = "feature is checked out in the worktree at /wt/feature";
 		answering("checkout_branch", () =>
-			Promise.reject({ code: "git_not_found", message: "reference not found" }),
+			Promise.reject({ code: "branch_in_worktree", message: held }),
 		);
 		await doubleClickLocal("feature");
 		await waitFor(() =>
-			expect(toasted()).toEqual([
-				{ message: "Checkout failed", kind: "error" },
-			]),
+			expect(toasted()).toEqual([{ message: held, kind: "error" }]),
 		);
 	});
 

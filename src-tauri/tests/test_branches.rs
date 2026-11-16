@@ -101,6 +101,24 @@ fn checkout_carries_an_unrelated_edit_onto_the_branch() {
 }
 
 #[test]
+fn checkout_of_a_branch_a_linked_worktree_holds_leaves_this_worktree_untouched() {
+    let mut ctx = repo_where_feat_changes_a_and_b();
+    let holder = ctx.add_linked_worktree("wt", "feat");
+
+    let error = ctx.checkout_branch("feat").unwrap_err();
+
+    assert_eq!(error.code, "branch_in_worktree");
+    assert!(
+        error.message.contains(&holder.display().to_string()),
+        "the refusal names where the branch is checked out: {}",
+        error.message
+    );
+    ctx.assert_head_at("main");
+    ctx.assert_file_content("a", "base");
+    ctx.assert_file_content("b", "base");
+}
+
+#[test]
 fn checkout_clean_workdir_succeeds() {
     let mut ctx = TestContext::builder()
         .with_file("README.md", "hello")

@@ -320,9 +320,10 @@ fn check_out_local(repo: &git2::Repository, branch_ref: &str) -> Result<(), Trun
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `dirty_workdir` when the
-/// checkout would overwrite uncommitted changes, and the git error when the
-/// branch is missing or HEAD will not move.
+/// Returns `not_open` when `path` names no open repository, `branch_in_worktree` when
+/// another worktree has the branch checked out, `dirty_workdir` when the checkout
+/// would overwrite uncommitted changes, and the git error when the branch is missing
+/// or HEAD will not move.
 pub fn checkout_branch_inner(
     path: &str,
     branch_name: &str,
@@ -333,6 +334,17 @@ pub fn checkout_branch_inner(
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
 
+    // libgit2 writes the branch's files before set_head refuses a branch another
+    // worktree holds, which would leave this one showing the difference as edits.
+    if let Some(holder) = trunk_git::worktree::held_elsewhere(&repo, branch_name)? {
+        return Err(TrunkError::new(
+            "branch_in_worktree",
+            format!(
+                "{branch_name} is checked out in the worktree at {}, so this one was left as it was",
+                holder.display()
+            ),
+        ));
+    }
     check_out_local(&repo, &format!("refs/heads/{branch_name}"))?;
     drop(repo);
 

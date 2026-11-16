@@ -216,6 +216,34 @@ pub fn assess(
     }
 }
 
+/// The worktree, other than `repo`'s own, that has `branch` checked out or under a
+/// rebase, since git will not check one branch out in two worktrees.
+///
+/// # Errors
+///
+/// Returns the git error when the repository's worktrees will not list.
+pub fn held_elsewhere(repo: &Repository, branch: &str) -> Result<Option<PathBuf>, TrunkError> {
+    let target = format!("refs/heads/{branch}");
+    let own = repo.path().canonicalize().ok();
+    let elsewhere = |git_dir: &Path| git_dir.canonicalize().ok() != own;
+
+    let common = repo.commondir();
+    let main_holds = branches_used(common)
+        .iter()
+        .any(|(how, name)| *how != BranchUse::Bisecting && name.as_slice() == target.as_bytes());
+    if main_holds && elsewhere(common) {
+        let main = Repository::open(common)?;
+        if let Some(root) = main.workdir() {
+            return Ok(Some(root.to_path_buf()));
+        }
+    }
+
+    Ok(linked_holders(repo, &target)?
+        .into_iter()
+        .find(|holder| elsewhere(&holder.admin))
+        .map(|holder| holder.root))
+}
+
 /// Check that no linked worktree took `branch` after the user was asked to delete it
 /// with none to remove.
 ///
