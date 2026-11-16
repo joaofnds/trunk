@@ -1511,6 +1511,11 @@ async function applyCompare(pair: ComparePair | null): Promise<boolean> {
 		compareStat = stat;
 		compareBaseDetail = baseDetail;
 		compareTargetDetail = targetDetail;
+		// A file picked while the list loaded had its diff patched into the list
+		// this one replaced, so it loads again.
+		if (selectedCompareFile !== null) {
+			void reloadCompareFile(selectedCompareFile, buildDiffOptions());
+		}
 		return true;
 	} catch (e) {
 		if (gen !== compareGeneration) return false;

@@ -4090,6 +4090,52 @@ describe("RepoView", () => {
 			expect(await screen.findByText("DIFF OF old.ts")).toBeTruthy();
 		});
 
+		it("keeps a file picked while the swap loads", async () => {
+			render(RepoView, {
+				props: {
+					...baseProps(createMockRemoteState()),
+					contentMode: "hunk" as const,
+					oncontentmodechange: vi.fn(),
+				},
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[2]);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			let release!: () => void;
+			let lists = 0;
+			mockInvoke.mockImplementation((cmd, args) => {
+				const pair = args as { filePath: string };
+				if (cmd === "list_compare_files") {
+					lists += 1;
+					const files = [makeFileDiff("f.ts"), makeFileDiff("g.ts")];
+					if (lists === 1) return Promise.resolve(files);
+					return new Promise<FileDiff[]>((resolve) => {
+						release = () => resolve(files);
+					});
+				}
+				if (cmd === "diff_compare_file")
+					return Promise.resolve([
+						makeFileDiffWithContent(pair.filePath, `DIFF OF ${pair.filePath}`),
+					]);
+				return base(cmd, args);
+			});
+			await fireEvent.click(rows[0], { metaKey: true });
+			await fireEvent.click(await screen.findByText("f.ts"));
+			expect(await screen.findByText("DIFF OF f.ts")).toBeTruthy();
+			await fireEvent.click(
+				await screen.findByLabelText("Swap comparison direction"),
+			);
+			await vi.waitFor(() => expect(lists).toBe(2));
+
+			await fireEvent.click(await screen.findByText("g.ts"));
+			release();
+
+			expect(await screen.findByText("DIFF OF g.ts")).toBeTruthy();
+			await flush();
+			expect(screen.queryByText("DIFF OF f.ts")).toBeFalsy();
+		});
+
 		it("escape clears the compare", async () => {
 			const rows = await renderAndGetRows();
 			await fireEvent.click(rows[2]);
