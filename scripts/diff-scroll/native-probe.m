@@ -31,6 +31,15 @@
 @end
 static CGVirtualDisplay *probeDisplay;
 
+@interface WKPreferences (ContractProbe)
++ (NSArray *)_features;
+- (BOOL)_isEnabledForFeature:(id)feature;
+@end
+
+@interface NSObject (ContractFeatureKey)
+- (NSString *)key;
+@end
+
 @interface WKWebView (ProcessProbe)
 - (pid_t)_webProcessIdentifier;
 - (pid_t)_gpuProcessIdentifier;
@@ -88,6 +97,33 @@ static void execute(NSDictionary *request, void (^done)(NSDictionary *)) {
     WKWebView *view = webView();
     if (!view) { done(@{@"error": @"no WKWebView"}); return; }
     NSString *op = request[@"op"];
+    if ([op isEqual:@"configuration-contract"]) {
+        WKWebViewConfiguration *configuration = view.configuration;
+        WKWebsiteDataStore *store = configuration.websiteDataStore;
+        WKPreferences *preferences = configuration.preferences;
+        BOOL hasIdentifier = [store respondsToSelector:@selector(identifier)];
+        id identifier = hasIdentifier ? (store.identifier.UUIDString ?: NSNull.null) : NSNull.null;
+        id near60 = NSNull.null;
+        BOOL featureAvailable = NO;
+        BOOL featuresAvailable = [WKPreferences respondsToSelector:@selector(_features)];
+        BOOL readerAvailable = [preferences respondsToSelector:@selector(_isEnabledForFeature:)];
+        if (featuresAvailable && readerAvailable) {
+            for (id feature in [WKPreferences _features]) {
+                if ([feature respondsToSelector:@selector(key)] &&
+                    [[feature key] isEqual:@"PreferPageRenderingUpdatesNear60FPSEnabled"]) {
+                    featureAvailable = YES;
+                    near60 = @([preferences _isEnabledForFeature:feature]);
+                    break;
+                }
+            }
+        }
+        done(@{@"persistent": @(store.persistent),
+               @"identifierSupported": @(hasIdentifier),
+               @"identifier": identifier,
+               @"featureAvailable": @(featureAvailable),
+               @"preferNear60": near60});
+        return;
+    }
     if ([op isEqual:@"processes"]) {
         if (![view respondsToSelector:@selector(_webProcessIdentifier)] || ![view respondsToSelector:@selector(_gpuProcessIdentifier)]) {
             done(@{@"error": @"process identifiers unavailable"}); return;
@@ -104,10 +140,20 @@ static void execute(NSDictionary *request, void (^done)(NSDictionary *)) {
         done(@{@"pid": @(getpid()), @"window": @(view.window.windowNumber),
             @"width": @(view.bounds.size.width), @"height": @(view.bounds.size.height),
             @"visible": @(view.window.visible), @"occlusion": @(view.window.occlusionState),
+            @"displayID": @([view.window.screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue]),
+            @"maximumFramesPerSecond": @(view.window.screen.maximumFramesPerSecond),
             @"screen": @(view.window.screen.frame.origin.x), @"frame": NSStringFromRect(view.window.frame)});
         return;
     }
     if ([op isEqual:@"virtual-display"]) {
+        id requested = request[@"refreshRate"];
+        if (requested && ![requested isKindOfClass:NSNumber.class]) {
+            done(@{@"error": @"refreshRate must be 60 or 120"}); return;
+        }
+        double refreshRate = requested ? [requested doubleValue] : 60;
+        if (refreshRate != 60 && refreshRate != 120) {
+            done(@{@"error": @"refreshRate must be 60 or 120"}); return;
+        }
         CGVirtualDisplayDescriptor *descriptor = [NSClassFromString(@"CGVirtualDisplayDescriptor") new];
         if (!descriptor) { done(@{@"error":@"CGVirtualDisplayDescriptor unavailable"}); return; }
         descriptor.queue = dispatch_get_main_queue();
@@ -121,10 +167,38 @@ static void execute(NSDictionary *request, void (^done)(NSDictionary *)) {
         probeDisplay = [[NSClassFromString(@"CGVirtualDisplay") alloc] initWithDescriptor:descriptor];
         CGVirtualDisplaySettings *settings = [NSClassFromString(@"CGVirtualDisplaySettings") new];
         settings.hiDPI = 0;
-        settings.modes = @[[[NSClassFromString(@"CGVirtualDisplayMode") alloc] initWithWidth:1280 height:800 refreshRate:60]];
+        settings.modes = @[[[NSClassFromString(@"CGVirtualDisplayMode") alloc] initWithWidth:1280 height:800 refreshRate:refreshRate]];
         BOOL applied = [probeDisplay applySettings:settings];
         if (!applied) { done(@{@"error": @"virtual display creation failed"}); return; }
-        done(@{@"displayID":@(probeDisplay.displayID),@"applied":@(applied)});
+        CGDisplayModeRef mode = CGDisplayCopyDisplayMode(probeDisplay.displayID);
+        double actualRefreshRate = mode ? CGDisplayModeGetRefreshRate(mode) : 0;
+        if (mode) CGDisplayModeRelease(mode);
+        done(@{@"displayID":@(probeDisplay.displayID), @"applied":@(applied),
+            @"requestedRefreshRate":@(refreshRate), @"actualRefreshRate":@(actualRefreshRate)});
+        return;
+    }
+    if ([op isEqual:@"place-on-main-display"]) {
+        CGDirectDisplayID displayID = CGMainDisplayID();
+        NSScreen *main = nil;
+        for (NSScreen *screen in NSScreen.screens) {
+            if ([screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue] == displayID) {
+                main = screen;
+                break;
+            }
+        }
+        if (!main || (probeDisplay && displayID == probeDisplay.displayID)) {
+            done(@{@"error": @"main display unavailable"}); return;
+        }
+        NSRect available = main.visibleFrame;
+        CGFloat width = MIN(1280, available.size.width);
+        CGFloat height = MIN(800, available.size.height);
+        NSRect frame = NSMakeRect(available.origin.x + MIN(40, available.size.width - width),
+                                 available.origin.y + MIN(40, available.size.height - height), width, height);
+        [view.window setFrame:frame display:YES];
+        [view.window makeKeyAndOrderFront:nil];
+        [NSApp activateIgnoringOtherApps:YES];
+        done(@{@"frame": NSStringFromRect(view.window.frame), @"mainDisplay": @YES, @"builtIn": @(CGDisplayIsBuiltin(displayID)),
+            @"displayID": @(displayID), @"maximumFramesPerSecond": @(main.maximumFramesPerSecond)});
         return;
     }
     if ([op isEqual:@"place-on-virtual-display"]) {

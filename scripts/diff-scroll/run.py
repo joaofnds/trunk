@@ -14,6 +14,7 @@ from pathlib import Path
 
 from analysis import Inconclusive, analyze
 from fixture import create_fixture
+from process_admission import inventory_snapshot, measurement_window
 
 SOURCE = Path(__file__).resolve().parent
 
@@ -66,6 +67,12 @@ def wait_ready(directory, process):
             raise Inconclusive("app did not announce its sockets within 25 seconds")
 
         time.sleep(0.05)
+
+
+def configure_display(directory, output, manifest, *, send=request):
+    manifest["native_display"] = send(directory, {"op": "virtual-display",
+                                                "refreshRate": manifest["requested_refresh_rate"]}, native=True)
+    save(output / "manifest.json", manifest)
 
 
 def place_window(directory):
@@ -155,24 +162,43 @@ def capture(directory, output, info, events):
                     recorder.wait(timeout=5)
 
 
-def run(args):
+def capture_with_admission(directory, output, info, events, *, capture_operation=None, snapshot=inventory_snapshot):
+    with measurement_window(output, snapshot=snapshot):
+        return (capture if capture_operation is None else capture_operation)(directory, output, info, events)
+
+
+class NativeDriver:
+    request = staticmethod(request)
+    evaluate = staticmethod(evaluate)
+    until = staticmethod(until)
+    wait_ready = staticmethod(wait_ready)
+    place_window = staticmethod(place_window)
+    visible_window = staticmethod(visible_window)
+
+    def capture(self, directory, output, info, events):
+        return capture(directory, output, info, events)
+
+
+def run(args, *, host=subprocess, driver=None, snapshot=inventory_snapshot):
+    driver = NativeDriver() if driver is None else driver
     output = Path(args.output).resolve()
     binary = Path(args.binary).resolve()
     with binary.open("rb") as executable:
         binary_hash = hashlib.file_digest(executable, "sha256").hexdigest()
 
-    manifest = {"source_revision_supplied": args.source_revision,
+    manifest = {"source_revision_supplied": args.source_revision, "process_admission_required": True,
                 "binary": str(binary), "binary_sha256": binary_hash,
                 "lines": args.lines, "flings": 8, "capture_seconds": 5,
                 "start_scroll": args.start_scroll,
                 "profile": args.profile,
-                "platform": subprocess.check_output(["sw_vers"], text=True, timeout=5).strip()}
+                "requested_refresh_rate": args.refresh_rate,
+                "platform": host.check_output(["sw_vers"], text=True, timeout=5).strip()}
     save(output / "manifest.json", manifest)
     with (output / "compile.log").open("w") as log:
-        subprocess.run(["clang", "-dynamiclib", "-fobjc-arc", "-framework", "AppKit", "-framework", "WebKit",
+        host.run(["clang", "-dynamiclib", "-fobjc-arc", "-framework", "AppKit", "-framework", "WebKit",
                         "-framework", "CoreGraphics", str(SOURCE / "native-probe.m"), "-o", str(output / "native-probe.dylib")],
                        check=True, stdout=log, stderr=log, timeout=60)
-        subprocess.run(["swiftc", "-parse-as-library", "-O", str(SOURCE / "native-capture.swift"),
+        host.run(["swiftc", "-parse-as-library", "-O", str(SOURCE / "native-capture.swift"),
                         "-o", str(output / "native-capture")], check=True, stdout=log, stderr=log, timeout=60)
 
     with tempfile.TemporaryDirectory(prefix="trunk-scroll-", dir="/tmp") as temporary:
@@ -186,40 +212,40 @@ def run(args):
         environment = {**os.environ, "TRUNK_DRIVE_DIR": str(directory), "TRUNK_DATA_DIR": str(data),
                        "DYLD_INSERT_LIBRARIES": str(output / "native-probe.dylib")}
         with (output / "app.log").open("w") as log:
-            app = subprocess.Popen([str(binary)], env=environment, stdout=log, stderr=log)
+            app = host.Popen([str(binary)], env=environment, stdout=log, stderr=log)
             try:
-                wait_ready(directory, app)
-                until(directory, '[...document.querySelectorAll("[data-testid=commit-row-summary]")].some(x=>x.textContent.trim()==="native scroll fixture")')
-                request(directory, {"op": "virtual-display"}, native=True)
-                place_window(directory)
-                info = visible_window(directory)
+                driver.wait_ready(directory, app)
+                driver.until(directory, '[...document.querySelectorAll("[data-testid=commit-row-summary]")].some(x=>x.textContent.trim()==="native scroll fixture")')
+                configure_display(directory, output, manifest, send=driver.request)
+                driver.place_window(directory)
+                info = driver.visible_window(directory)
                 manifest["native_window"] = info
                 save(output / "manifest.json", manifest)
-                evaluate(directory, '([...document.querySelectorAll("[data-testid=commit-row-summary]")].find(x=>x.textContent.trim()==="native scroll fixture").click(),true)')
-                until(directory, '(()=>{const file=[...document.querySelectorAll("[data-testid=commit-detail] *")].find(x=>x.childElementCount===0&&x.textContent.trim()==="scroll.ts");if(!file)return false;file.click();return true})()')
-                until(directory, 'document.querySelector(".exact-virtual-rows .diff-line-add")')
-                evaluate(directory, f"window.diffScrollStart={args.start_scroll}")
+                driver.evaluate(directory, '([...document.querySelectorAll("[data-testid=commit-row-summary]")].find(x=>x.textContent.trim()==="native scroll fixture").click(),true)')
+                driver.until(directory, '(()=>{const file=[...document.querySelectorAll("[data-testid=commit-detail] *")].find(x=>x.childElementCount===0&&x.textContent.trim()==="scroll.ts");if(!file)return false;file.click();return true})()')
+                driver.until(directory, 'document.querySelector(".exact-virtual-rows .diff-line-add")')
+                driver.evaluate(directory, f"window.diffScrollStart={args.start_scroll}")
                 observation = (SOURCE / "observe.js").read_text().rstrip().removesuffix(";")
-                box = evaluate(directory, observation)
+                box = driver.evaluate(directory, observation)
                 save(output / "viewport.json", box)
                 events = trace(box, args.profile)
-                native = request(directory, {"op": "wheel", **events[0], "dy": -1}, native=True)
-                observed = until(directory, 'window.diffScrollWheel.length>0&&window.diffScrollWheel[0]')
+                native = driver.request(directory, {"op": "wheel", **events[0], "dy": -1}, native=True)
+                observed = driver.until(directory, 'window.diffScrollWheel.length>0&&window.diffScrollWheel[0]')
                 validate_wheel(observed, native, events[0], info["window"])
                 save(output / "wheel-calibration.json", {"native": native, "observed": observed, "window": info["window"]})
-                request(directory, {"op": "wheel", **events[0], "dy": 0, "phase": 4}, native=True)
-                box = evaluate(directory, observation)
+                driver.request(directory, {"op": "wheel", **events[0], "dy": 0, "phase": 4}, native=True)
+                box = driver.evaluate(directory, observation)
                 save(output / "viewport.json", box)
                 save(output / "input.json", events)
-                capture(directory, output, info, events)
-                samples = evaluate(directory, '(window.diffScrollStop(),window.diffScrollSamples)')
+                capture_with_admission(directory, output, info, events, capture_operation=driver.capture, snapshot=snapshot)
+                samples = driver.evaluate(directory, '(window.diffScrollStop(),window.diffScrollSamples)')
                 save(output / "geometry.json", samples)
                 result = analyze(output)
                 save(output / "result.json", result)
                 return result
             finally:
                 try:
-                    request(directory, {"op": "quit"})
+                    driver.request(directory, {"op": "quit"})
                     app.wait(timeout=5)
                 except (OSError, ValueError, Inconclusive, subprocess.TimeoutExpired):
                     app.terminate()
@@ -230,7 +256,7 @@ def run(args):
                         app.wait(timeout=5)
 
 
-def main():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Replay a bounded native diff-scroll trace and preserve pixel/DOM evidence.")
     parser.add_argument("--binary", required=True, help="existing drive build, never the installed user app")
     parser.add_argument("--source-revision", required=True, help="source revision used to build that binary; recorded as supplied")
@@ -238,7 +264,13 @@ def main():
     parser.add_argument("--lines", type=int, choices=[146, 1500, 90000], default=146)
     parser.add_argument("--start-scroll", type=int, default=0, help="initial scroll position in CSS pixels, within fixture bounds")
     parser.add_argument("--profile", choices=["slow", "fast"], default="slow", help="peak input 3750px/s or 30000px/s")
-    args = parser.parse_args()
+    parser.add_argument("--refresh-rate", type=int, choices=[60, 120], default=60,
+                        help="requested virtual display refresh rate; the native mode is recorded separately")
+    return parser.parse_args(argv)
+
+
+def main():
+    args = parse_args()
     output = Path(args.output).resolve()
     owns_output = False
     try:
@@ -252,7 +284,7 @@ def main():
                           if key not in {"presentation_seconds", "blank_evidence"}}, indent=2))
         return 1 if result["verdict"] == "fail" else 0
     except (Inconclusive, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
-        result = {"verdict": "inconclusive", "reason": str(error)}
+        result = {"verdict": "inconclusive", "reason": str(error), "error_notes": getattr(error, '__notes__', [])}
         if owns_output:
             save(output / "result.json", result)
         print(json.dumps(result, indent=2), file=sys.stderr)

@@ -1,13 +1,70 @@
 import { render } from "@testing-library/svelte";
 import { createRawSnippet, tick } from "svelte";
-import { afterEach, describe, expect, it } from "vitest";
-import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+	restoreLayout,
+	setLayout,
+	stubLayout,
+} from "../../__tests__/helpers/layout-stub";
 import ExactVirtualList from "./ExactVirtualList.svelte";
 
 const ROW_HEIGHT = 18;
 const VIEWPORT_HEIGHT = 200;
 
-afterEach(restoreLayout);
+afterEach(() => {
+	restoreLayout();
+	FakeResizeObserver.reset();
+	vi.unstubAllGlobals();
+});
+
+class FakeResizeObserver implements ResizeObserver {
+	static readonly #live = new Set<FakeResizeObserver>();
+	readonly #observed = new Set<Element>();
+	readonly #callback: ResizeObserverCallback;
+
+	constructor(callback: ResizeObserverCallback) {
+		this.#callback = callback;
+	}
+
+	observe(target: Element): void {
+		this.#observed.add(target);
+		FakeResizeObserver.#live.add(this);
+	}
+
+	unobserve(target: Element): void {
+		this.#observed.delete(target);
+	}
+
+	disconnect(): void {
+		this.#observed.clear();
+		FakeResizeObserver.#live.delete(this);
+	}
+
+	static resize(target: Element): void {
+		const contentRect = target.getBoundingClientRect();
+		const box = {
+			blockSize: contentRect.height,
+			inlineSize: contentRect.width,
+		};
+		const entry: ResizeObserverEntry = {
+			target,
+			contentRect,
+			borderBoxSize: [box],
+			contentBoxSize: [box],
+			devicePixelContentBoxSize: [box],
+		};
+
+		for (const observer of FakeResizeObserver.#live) {
+			if (!observer.#observed.has(target)) continue;
+
+			observer.#callback([entry], observer);
+		}
+	}
+
+	static reset(): void {
+		for (const observer of FakeResizeObserver.#live) observer.disconnect();
+	}
+}
 
 const renderItem = createRawSnippet<[unknown, number]>((_, index) => ({
 	render: () => `<div class="row" data-index="${index()}"></div>`,
@@ -143,6 +200,48 @@ describe("ExactVirtualList", () => {
 			expect(rowsTop(container)).toBe(`${top}px`);
 		},
 	);
+
+	describe("when the viewport resizes while scrolled", () => {
+		it.each([
+			{
+				direction: "grows",
+				height: 400,
+				firstIndex: 22,
+				count: 67,
+				top: -404,
+			},
+			{
+				direction: "shrinks",
+				height: 100,
+				firstIndex: 38,
+				count: 18,
+				top: -116,
+			},
+		])(
+			"updates the row window and surface height as it $direction",
+			async ({ height, firstIndex, count, top }) => {
+				vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+				const { container } = mountList(5000);
+				const viewport = viewportOf(container);
+				viewport.scrollTop = 800;
+				viewport.dispatchEvent(new Event("scroll"));
+				await tick();
+
+				setLayout(viewport, { height });
+				FakeResizeObserver.resize(viewport);
+				await tick();
+
+				expect(rowIndices(container)).toEqual(
+					Array.from({ length: count }, (_, index) => firstIndex + index),
+				);
+				expect(rowsTop(container)).toBe(`${top}px`);
+				expect(
+					container.querySelector<HTMLElement>(".exact-virtual-surface")?.style
+						.height,
+				).toBe(`${height}px`);
+			},
+		);
+	});
 
 	describe("when the viewport overscrolls", () => {
 		it.each([

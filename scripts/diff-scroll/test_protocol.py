@@ -1,7 +1,109 @@
+from contextlib import redirect_stderr
+import io
+import json
+from pathlib import Path
+import tempfile
 import unittest
 
 from analysis import Inconclusive, validate_motion
-from run import parse_reply, trace, validate_wheel
+from native_runner_test_support import HostFake, NativeDriverFake, trial_arguments
+from run import capture_with_admission, configure_display, parse_args, parse_reply, run, trace, validate_wheel
+from test_process_admission import BUSY, CLEAN, InventoryFake
+
+
+class PaintOptions(unittest.TestCase):
+    def test_defaults_to_the_existing_sixty_hertz_display(self):
+        args = parse_args(["--binary", "drive-app", "--source-revision", "supplied", "--output", "new-output"])
+
+        self.assertEqual(args.refresh_rate, 60)
+
+    def test_accepts_an_explicit_one_hundred_twenty_hertz_display(self):
+        args = parse_args(["--binary", "drive-app", "--source-revision", "supplied", "--output", "new-output",
+                           "--refresh-rate", "120"])
+
+        self.assertEqual(args.refresh_rate, 120)
+
+    def test_refuses_an_unsupported_refresh_rate(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
+            parse_args(["--binary", "drive-app", "--source-revision", "supplied", "--output", "new-output",
+                        "--refresh-rate", "90"])
+
+        self.assertEqual(caught.exception.code, 2)
+
+
+class NativeDisplayFake:
+    def __init__(self, response):
+        self.response = response
+        self.requests = []
+
+    def request(self, directory, body, native=False):
+        self.requests.append((directory, body, native))
+        return self.response
+
+
+class DisplayProvenance(unittest.TestCase):
+    def test_records_the_requested_rate_and_unmodified_native_display_response(self):
+        native_response = {"displayID": 123, "requestedRefreshRate": 120, "actualRefreshRate": 60}
+        display = NativeDisplayFake(native_response)
+        manifest = {"requested_refresh_rate": 120, "source_revision_supplied": "supplied"}
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+
+            configure_display(output, output, manifest, send=display.request)
+            recorded = json.loads((output / "manifest.json").read_text())
+
+        self.assertEqual(recorded, {"requested_refresh_rate": 120, "source_revision_supplied": "supplied",
+                                    "native_display": native_response})
+        self.assertEqual(display.requests, [(output, {"op": "virtual-display", "refreshRate": 120}, True)])
+
+
+class CaptureFake:
+    def __init__(self):
+        self.calls = 0
+
+    def __call__(self, directory, output, info, events):
+        self.calls += 1
+        (output / 'capture.mov').write_bytes(b'completed movie')
+
+
+class CaptureAdmission(unittest.TestCase):
+    def test_paint_entry_rejects_busy_inventory_before_starting_the_recorder(self):
+        host, driver = HostFake(), NativeDriverFake()
+        with tempfile.TemporaryDirectory() as temporary:
+            args = trial_arguments(Path(temporary))
+
+            with self.assertRaises(Inconclusive):
+                run(args, host=host, driver=driver, snapshot=InventoryFake(BUSY))
+
+            self.assertEqual(driver.recorder_starts, 0)
+            evidence = json.loads((args.output / 'process-admission.json').read_text())
+            self.assertTrue(json.loads((args.output / 'manifest.json').read_text())['process_admission_required'])
+            self.assertEqual(evidence['entry']['verdict'], 'rejected')
+            self.assertEqual(host.app.returncode, 0)
+
+    def test_refuses_capture_before_start_when_competing_work_is_present(self):
+        capture = CaptureFake()
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            with self.assertRaises(Inconclusive):
+                capture_with_admission(output, output, {}, [], capture_operation=capture, snapshot=InventoryFake(BUSY))
+            evidence = json.loads((output / 'process-admission.json').read_text())
+
+        self.assertEqual(capture.calls, 0)
+        self.assertEqual(evidence['entry']['verdict'], 'rejected')
+
+    def test_refuses_capture_after_completion_and_retains_its_movie(self):
+        capture = CaptureFake()
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            with self.assertRaises(Inconclusive):
+                capture_with_admission(output, output, {}, [], capture_operation=capture, snapshot=InventoryFake(CLEAN, BUSY))
+            evidence = json.loads((output / 'process-admission.json').read_text())
+            movie = (output / 'capture.mov').read_bytes()
+
+        self.assertEqual(capture.calls, 1)
+        self.assertEqual(movie, b'completed movie')
+        self.assertEqual(evidence['exit']['verdict'], 'rejected')
 
 
 class DriveProtocol(unittest.TestCase):

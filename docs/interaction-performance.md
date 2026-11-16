@@ -1,7 +1,8 @@
 # Interaction performance
 
 This is the interaction inventory and evidence record for Trunk's performance work.
-The inventory describes source inspected on 2026-11-15. The initial order records the hypotheses used to choose measurements; the measured
+The inventory describes source inspected on 2026-11-15, with the scrolling flow
+added on 2026-11-16. The initial order records the hypotheses used to choose measurements; the measured
 priority list below supersedes that order where evidence exists. Frequency estimates are assumptions
 about a Git GUI workflow; this investigation has not collected usage telemetry.
 Fresh measurements belong under **Measured experiments**, with the artifact and
@@ -50,6 +51,7 @@ entrypoints; command and helper names narrow the path without fragile line numbe
 | I16 | Checkout, ref visibility, stash apply/pop, merge/rebase/cherry-pick/revert/reset: [BranchSidebar](../src/components/BranchSidebar.svelte), [CommitGraph](../src/components/CommitGraph.svelte), [Toolbar](../src/components/Toolbar.svelte) | Action/visibility feedback; intended repository state or actionable conflict; graph/sidebar/status complete | Hidden refs, large history, stopped operations and continue/skip/abort, disposable local remotes |
 | I17 | Review selection, comment jumps, filtering, and read state: [ReviewPanel](../src/components/ReviewPanel.svelte), [RepoView](../src/components/RepoView.svelte) review jump handlers | Selected review/thread/filter; matching file/range or filtered threads; anchor resolution and read-state writes complete | Many threads, obsolete anchors, jump to another commit/file, keyboard thread navigation |
 | I18 | Refresh after local changes or mutations, and background competition: [RepoView](../src/components/RepoView.svelte) repo subscription, [repo-change-subscription](../src/lib/repo-change-subscription.ts), [autofetch](../src/lib/autofetch.ts) | Foreground input remains acknowledged; affected views converge to correct state; causal readers drain | File-specific/unscoped/refs-only changes, command-completed event, repeated saves, active/inactive tabs, local fetch |
+| I19 | Graph and diff scrolling: [CommitGraph](../src/components/CommitGraph.svelte), [ExactVirtualList](../src/components/diff/ExactVirtualList.svelte) | Captured content moves after delivered wheel input; intended rows remain painted through the gesture and final position is correct; virtual range catches up without replacing current content | Steady movement, reversal, fast fling, physical/virtual displays, renderer unavailable, split/wrapped rows, hunk jumps and resize |
 
 ## Initial investigation order
 
@@ -493,7 +495,327 @@ no search-speed improvement is claimed. Once a valid search result has initiated
 navigation, that accepted commit navigation follows the normal selection contract.
 Typing another query does not by itself deselect that commit.
 
-### Presentation and background limits
+### E05: diff scroll cadence, native startup configuration and rejected CSS
+
+Retain the macOS change that configures WebView rendering before initialization.
+Four alternating pairs changed median captured diff-content intervals from
+17.820 to 8.903 ms, at an additional 153.9–355.3 ms of process CPU per roughly
+four-second paired resource window. Native painting and geometry checks below
+preserve the existing stationary row layout. The private feature API falls back
+to WebKit's default when unavailable; an actual older OS remains untested.
+The window-wide preference also adds 212.0–254.1 ms of process CPU in the two
+graph-scrolling pairs. An initial graph capture gap remains unexplained. A later
+four-pair cohort overlapped another checkout's tests and is excluded. Four replacement
+pairs passed workload admission; their median ranges overlap, and capture gaps
+occur in both builds. They do not establish a graph smoothness change.
+
+The user reported that diff scrolling looked less smooth than graph scrolling and
+made I19 the next priority. The baseline was an optimized drive build from
+`376835f4`. The steady trace uses a disposable repository with 400 history commits
+and a 1,500-line added TypeScript file. Four alternating gestures each deliver 100
+nonzero wheel events, 12 px every 8 ms, followed by an end event. Each gesture must
+complete its 1,200 px excursion or return. This is injected native wheel input;
+physical trackpad input remains unmeasured.
+
+The admission check requires all 404 native events with the intended target,
+delta and phase, exactly 400 matching browser receipts, native delivery within
+-0.1 to 3 ms of the scheduled time, and the complete excursion/return within 1 px.
+Delay uses both recorded Mach-time start bounds, including
+`plannedStartMachTicksLowerBound`. Capture status and temporal coverage must also
+pass. A requested 120 Hz virtual mode reported a refresh rate of zero, meaning
+unspecified; the request alone does not establish its physical refresh rate.
+
+The initial pixel analysis uses one text crop per view, a mean absolute grayscale
+difference above 3, and the 100–700 ms portion of each gesture. These are observed
+changes between captured frames, not physical display FPS or counts of dropped
+frames. Within-run intervals are dependent observations, not independent launches.
+
+| Baseline view | Admitted launches | Captured frames | Observed pixel-change interval, median [min,max], ms | Median rAF gap, ms |
+| --- | --- | --- | --- | --- |
+| Graph | 1 of 2 | 441 | 8.949 [7.624,19.156] | 17 |
+| Diff | 1 of 2 | 469 | 17.623 [8.230,37.299] | 17 |
+
+The excluded graph run lost 38 browser receipts and had 87.411 ms maximum native
+delay. The excluded diff run had 9.568 ms maximum delay and a suspended capture
+status. The admitted runs support a cadence difference in this fixture. Their
+small count and single-crop analysis do not establish its frequency across normal
+use. The identical rAF medians also show why rAF alone cannot compare the visible
+motion of these two paths.
+
+#### CSS scroll timelines: cadence improved, painting failed
+
+WebKit documents compositor-thread updates for eligible scroll-driven animations
+in [Safari 26.4](https://webkit.org/blog/17862/webkit-features-for-safari-26-4/).
+That mechanism motivated replacing the diff's JavaScript-published pixel offset
+with a CSS scroll timeline while retaining its mounted row window. Two admitted
+steady captures of the finite-layer prototype recorded median pixel-change
+intervals of 8.966 and 8.901 ms. Both still had 17 ms median rAF gaps.
+
+The painting checks rejected this approach and its subsequent variants:
+
+| Variant or diagnostic | Captured result and disposition |
+| --- | --- |
+| Moving finite layer | Fast-fling captures failed in all three attempts: 1/516, 1/488 and 1/528 frames had dark gaps of at least 64 px. Largest gaps were 157, 168 and 336 px. Rejected. |
+| Fixed-origin, full-height layer | Normal fast flings passed in three captures; one was inconclusive because of capture status. A planned 100 ms WebContent suspension then exposed 13/545 blank frames, including a 698 px whole-pane gap, versus 0/550 for baseline. Rejected. |
+| Limit animation to the mounted range | Suspension still exposed 4/518 blank frames, versus 0/482 for baseline. Rejected. |
+| Remove the clipping ancestor | Suspension still exposed 2/498 blank frames. Rejected. |
+| Attempt local window coordinates | The recording contains 6/496 blank frames, but the injected stylesheet's effect was never verified. This does not establish a tested local-coordinate alternative. |
+| Freeze range publication during the gesture | The diagnostic contains 7/492 blank frames. It does not establish what would happen with a verified local-coordinate implementation. |
+
+These suspension trials stop the entire WebContent process and verify its stopped
+state. They test a failure boundary, not the occurrence rate or cost of ordinary
+main-thread contention. DOM coverage markers stop updating with that process and
+cannot prove that the compositor painted rows. A reported coverage of 1 therefore
+does not overrule captured blank pixels. The compiled CSS candidates are rejected;
+their cadence observations are not an accepted product optimization.
+
+The local-coordinate intervention used an injected `<style>` element. A later
+geometry negative control using the same mechanism showed `sheet=false` and an
+unchanged computed offset, so insertion alone was not proof that CSS reached the
+rendered element. Its initial pass is an invalid mutation experiment. A new
+negative control sets the row offset directly with `style.setProperty`, verifies
+that intervention, and fails at scroll position 450: expected row top -350 px,
+observed 100 px. The raw local-coordinate and frozen-publication records remain,
+but they cannot reject a local-coordinate design. The compiled finite, full-height
+and bounded candidates, and the direct overflow change, retain their separate
+painting evidence. Future interventions need computed-property or behavior
+readback before their outcomes can settle a hypothesis.
+
+The later four-pair fixed-layer capture batch has **zero complete admitted pairs**.
+Pair 1's candidate exceeded the 3 ms delivery limit at 3.314 ms; pair 3's baseline
+reached 3.122 ms. Baselines in pairs 2 and 4 lost receipts and reached 137.785 and
+49.836 ms. Their apparently faster candidate captures cannot support a paired
+performance claim. The separate resource batch has only two input-valid pairs,
+and lacks a contemporaneous CPU conversion calibration and bracketed snapshots.
+Its raw counters are exploratory evidence, not an accepted CPU or memory tradeoff.
+
+#### Native rendering preference diagnostic
+
+On the main display, which reports a maximum of 120 frames per second, one
+baseline capture recorded a 17.844 ms median pixel-change interval. Changing the
+private `PreferPageRenderingUpdatesNear60FPSEnabled` preference after WebView
+creation recorded 17.805 ms; rAF medians stayed at 17 ms. The same after-creation
+experiment on the virtual display recorded 17.932 ms. This change timing did not
+remove the cadence limit in these trials.
+
+A separate test-only native probe set the preference before WebView initialization.
+Its main-display capture passed input and capture admission and recorded
+8.897 ms median pixel changes, with 8 ms median rAF gaps. This is one diagnostic
+launch using native method interception, not a shipped implementation or a measured
+resource tradeoff. It supports testing configuration before initialization. The
+preference and its feature-control API are private, so the experiment alone does
+not establish a supported production integration.
+
+Those probes placed the window on `CGMainDisplayID()`. Their `physical` label does
+not prove that the main display was hardware; the reported maximum refresh rate
+does not establish actual presentations either. The preserved artifacts retain
+the original labels, with this provenance limit.
+
+An initial application candidate sets the preference through a WebView
+configuration before creating the main window. Its first capture was inconclusive
+because one short idle window contained no pair of complete frames entirely
+within its bounds. An explicit reanalysis
+requires motion comparisons in all four gestures and idle comparisons across the
+trace, reporting the per-gesture idle counts as `[0,10,10,1]`. Both text crops then
+recorded 8.884 ms median pixel changes at threshold 3, with 253 intervals each
+and a 7.516–19.198 ms range. Input and capture checks passed. The original verdict
+and the reanalysis are retained separately. This single pilot supplies no accepted
+before/after or resource claim; the planned four alternating pairs per observation
+mode form the separate comparison below.
+
+The frozen comparison candidate and baseline both passed the native geometry
+probe's 32 mode/position combinations, selection and deselection, and wrapped
+sidebar-resize anchoring. Both kept line index 332 as the first visible row while
+the viewport narrowed from 812 to 804 px; their scroll positions adjusted from
+12,000 to 11,980 px with 36 px rows. These are DOM geometry and synthetic pointer
+checks, not painted-frame evidence. Native readback showed the baseline's near-60
+preference enabled and the candidate's disabled. Both retained a nonpersistent
+drive data store with a null identifier. An unavailable feature on an older
+operating system remains a separate compatibility condition.
+
+Store checks used a separate temporary build with a configuration-only overlay
+and byte-identical native helper. A named persistent store returned its requested
+identifier; incognito with that same requested identifier returned a nonpersistent
+store and null identifier. These were not alternate configurations of the measured
+final binary. A separate native probe made the feature-list query return nil in
+the final binary: startup and the geometry probe completed, and the default near-60
+preference remained enabled. This exercises a missing feature list on the current
+OS; it does not establish behavior on an older OS or a missing selector there.
+
+#### Native startup comparison
+
+Four alternating baseline/candidate pairs completed each observation mode: eight
+capture launches and eight separate resource launches. All 16 passed strict input
+admission; all captures passed status and temporal coverage, and all resource
+trials passed CPU calibration and process-identity checks. They used identical
+frozen harness hashes and a requested 120 Hz virtual mode, whose reported refresh
+rate remained unspecified. The production change configures the preference before
+WebView creation; the measurement probe only reads it back.
+
+The machine was an Apple M5 Pro with 48 GB memory and 18 cores, running macOS
+27.2.1 (26B131). Fresh `system_profiler` output identifies display ID 1 as the
+built-in 3456 × 2234 panel, with logical resolution 1728 × 1117 at 120.00 Hz.
+That hardware record supplements the per-run display metadata; it does not
+establish each frame's physical presentation.
+
+Each cell summarizes four independent launches as median [minimum, maximum]. The
+cadence row summarizes each launch's median at gray threshold 3, not all captured
+intervals pooled together.
+
+| Observation | Baseline | Native candidate |
+| --- | --- | --- |
+| Captured pixel-change interval, ms | 17.820 [17.781,17.923] | 8.903 [8.880,8.945] |
+| Summed host/WebContent/GPU-process CPU, ms | 1,421.4 [1,410.1,1,425.6] | 1,638.2 [1,579.4,1,774.6] |
+| Summed end-of-window footprint, MiB | 257.6 [254.5,258.7] | 260.1 [254.3,267.1] |
+
+Both text crops produced the same cadence medians at thresholds 3 and 5;
+threshold 1 preserved the separation. Resource intervals were 4.011–4.013 seconds,
+including the 200 ms tail. The candidate spent 153.9–355.3 ms more process CPU in
+each paired interval. The observed benefit is more frequent captured content
+updates, with added CPU cost. GPU-process CPU is not hardware GPU utilization.
+The overlapping memory endpoints do not establish memory neutrality or a leak.
+All recorded physical read/write byte deltas were zero; cached I/O is not excluded.
+
+Individual content-change intervals still ranged from 7.989 to 45.512 ms in
+baseline and 7.393 to 29.628 ms in candidate. Motion-window capture gaps reached
+19.172 and 18.525 ms, respectively, so the recordings cannot establish unseen
+presentations. These runs omitted a continuous rAF observer. They establish this
+bounded captured-cadence/CPU tradeoff, not physical input latency, a tail-latency
+estimate, or a blank-painting verdict.
+
+The preference applies to the main WebView, so its cost extends beyond the diff.
+Two additional AB/BA graph-scrolling resource pairs passed the same admission
+checks over 4.010–4.014 second windows:
+
+| Graph pair | Baseline process CPU, ms | Native candidate, ms | Added CPU, ms |
+| --- | --- | --- | --- |
+| 1 | 1,992.974 | 2,247.080 | 254.106 |
+| 2 | 1,999.827 | 2,211.832 | 212.005 |
+
+Summed footprint endpoints were 256.0 and 262.7 MiB for baseline, versus 263.2
+and 266.1 MiB for candidate. Physical I/O byte deltas were zero in both pairs.
+These small samples retain the endpoint and cached-I/O limits described above.
+
+One separate graph capture pair recorded median content-change intervals of
+9.094 and 8.985 ms, respectively, in both crops and at all three thresholds. That
+single pair does not establish a graph-cadence improvement. The candidate recording
+also has a 57.093 ms motion-window capture gap, compared with 11.731 ms for
+baseline, leaving motion unobserved during that interval. It cannot identify
+application frame loss.
+
+Four separately declared alternating graph capture pairs passed input and capture
+checks, but all eight process inventories show another checkout's active Rust
+tests. They are excluded from clean-run confirmation. Their retained, confounded
+per-launch median intervals were 9.036
+[9.011,9.041] ms for baseline and 8.923 [8.825,9.012] ms for candidate, with both
+crops agreeing at threshold 3. Motion-capture gaps were at most 14.260 and
+11.174 ms, respectively. Within-gesture browser wheel-receipt gaps were at most
+16 and 14 ms. The original 57.093 ms capture gap did not recur in these recordings,
+but this cohort cannot resolve its behavior under the intended quiet conditions.
+Its cause remains unresolved, and the original pair is retained separately.
+Neither the small median difference nor the excluded cohort establishes a
+graph-cadence improvement or normal-use tail behavior. The retained change accepts the observed graph CPU
+cost as well as the diff cost; other interactions and long-session costs remain
+open.
+
+Four replacement AB/BA graph pairs passed the entry/exit workload checks and the
+input/capture contract. Their group medians [range of launch medians] were
+9.010 [8.940,9.105] ms for baseline and 9.053 [9.010,9.129] ms for candidate,
+with both crops agreeing at threshold 3. Motion-capture gaps reached 59.076 and
+65.461 ms, respectively; within-gesture browser wheel gaps reached 15 and 14 ms,
+and maximum native delivery delays were 1.215 and 1.710 ms. These overlapping
+ranges do not establish a graph improvement or regression. The capture gaps leave
+presentation unobserved and cannot count application frame losses or resolve
+normal-use tails. The original gap remains unattributed. The predeclared cohort
+was retained whole, without further runs selected to remove those gaps.
+
+Two separate display-control pairs also passed admission. Each cell below is one
+launch's median; these samples are not pooled with the four-pair batch.
+
+| Display control | Baseline pixel-change interval, ms | Native candidate, ms |
+| --- | --- | --- |
+| Main display, verified built-in, reported maximum 120 FPS | 17.795 | 8.954 |
+| Virtual display, requested 60 Hz, actual rate unspecified | 17.963 | 17.913 |
+
+Both crops agree at threshold 3. The main-display manifests record display ID 1
+and `CGDisplayIsBuiltin=1`; that establishes the built-in display as the capture
+target. It does not turn injected wheel input into trackpad input or recorded
+pixel intervals into physical display FPS. The 60 Hz request is a control
+condition, not independent verification of the virtual display's actual rate.
+
+#### Painting boundary and retained implementation
+
+The measured native binary passed separate blank-paint checks at requested 60 and
+120 Hz virtual modes. The initial 60 Hz runs recorded a window maximum of 60 FPS;
+they did not establish painting behavior in the faster condition. The new 120 Hz
+runs record the request and a window maximum of 120 FPS, with the actual display
+mode rate still unspecified. Each cell below is one launch, reported as qualifying
+blank frames / captured frames. The oracle checks whole-pane blanks and dark
+vertical gaps of at least 64 px in the synthetic added-file fixture.
+
+| Condition | 60 Hz request, baseline | 60 Hz request, native | 120 Hz request, baseline | 120 Hz request, native |
+| --- | --- | --- | --- | --- |
+| Fast fling, 1,500 lines, start at 12,000 px | 0/556 | 0/550 | 0/556 | 0/556 |
+| Same fling with planned 100 ms WebContent suspension | 0/551 | 0/551 | 0/554 | 0/556 |
+| Fast fling, 90,000 lines, start at 12,000 px | Not run | 0/550 | Not run | 0/556 |
+
+All ten traces delivered their 216 native events and observed at most 118 mounted
+rows. Maximum scheduling delays were 0.194–0.672 ms in the 60 Hz batch and
+0.145–0.543 ms in the 120 Hz 1,500-line cases. The 120 Hz 90,000-line run had a
+3.228 ms maximum delay; its pixel-oracle pass is retained, without a cadence
+comparison claim. A separately declared 90,000-line confirmation at the 120 Hz
+request recorded 0/556 blank frames and 0.141 ms maximum native delay, but its
+artifact-creation interval overlaps the other checkout's active test run. It is
+excluded from clean painting confirmation and does not replace the late-input
+trial. The four 1,500-line requested-120-Hz checks completed before that test run.
+A replacement 90,000-line trial passed entry/exit workload admission and recorded
+0/550 qualifying blank frames. All 216 events matched the intended window, delta,
+phase, momentum and position, with 0.223 ms maximum native delay. The requested
+rate and window maximum were 120 Hz/FPS; the actual mode rate remained unspecified.
+Its 8 ms median rAF interval is not a physical FPS measurement. The committed
+record preserves the frozen harness hashes and raw-artifact hashes for this trial.
+The 216-event painting protocol is separate from the 404-event cadence admission
+contract.
+
+At the 60 Hz request, suspension brackets were 103.350–103.407 ms for baseline and
+109.640–109.765 ms for candidate. At 120 Hz they were 110.048–110.103 and
+107.391–107.447 ms, respectively. The first input arrived inside each verified
+stopped interval, and both processes resumed. A further candidate confirmation
+after the harness cleanup fix passed at the 60 Hz request with 0/550 blank frames.
+A SIGTERM smoke check separately observed cancellation while WebContent was
+stopped, a resumed process, finalized recording metadata, exit 143 and all three
+owned app processes gone. It is cleanup evidence, not a completed painting trial.
+
+A pass establishes the pixel oracle's bounded observation. It does not
+exclude smaller gaps, unseen frames, other content shapes or normal-user failure
+rates. The 90,000-line run covers that mid-file position, not a traversal of the
+entire file.
+
+The retained implementation leaves the JavaScript offset and stationary virtual
+row surface intact. It changes the main WebView's creation-time preference through
+[the macOS configuration helper](../src-tauri/src/macos_webview.rs). The measured
+benefit is more frequent captured diff-content updates, with added process CPU
+in both diff and graph scrolling. Longer sessions, ordinary
+trackpad gestures, other operating systems and hardware, and energy consumption
+remain unmeasured.
+
+The [committed scroll record](performance-data/scroll-cadence-2026-11-16.json)
+retains artifact hashes, admitted and excluded run summaries, individual interval
+samples, capture coverage, and prototype dispositions. Movies and full raw traces
+remain local under `.boris/scroll-smoothness-20261116`; a fresh clone has their
+hashes and the summarized evidence, not those recordings. The final source patch
+is `native-final-production.patch`, tied to `source-native-final/source-manifest.json`
+by `native-patch-provenance.json`. The older `native-production.patch` describes
+the pilot before the reviewed startup fixes and cannot reconstruct the final
+binary. The committed record preserves both identities. The maintained
+[cadence runner and analyzer](../scripts/diff-scroll/README.md) provide multiple
+crops, threshold sensitivity, strict delivery and calibrated resource capture.
+The native comparison omits the continuous rAF observer used in the initial
+screening. Existing one-crop results have not been silently reclassified as the
+stronger analysis. The [runner instructions](../scripts/diff-scroll/README.md)
+describe the idle-coverage rule, separate geometry checks and reanalysis route.
+
+### Selection presentation and background limits
 
 Three five-second ScreenCaptureKit attempts used a requested 60 Hz virtual display.
 Two failed strict capture validation with a suspended/unknown frame status.
@@ -503,9 +825,10 @@ without recapturing, but there is no validated candidate recording to pair with 
 Movies, decoded images, input receipts, identities and validation records remain
 in `capture-atomic-*`. None yet establishes first-presented-frame bounds or absence
 of visible discontinuities. Final snapshots and DOM/layout checks establish
-content identity, not physical presentation timing. Physical input delivery,
-high-refresh behavior and timing in the normal app without drive instrumentation
-remain unmeasured.
+content identity, not physical presentation timing. Physical input delivery and
+timing in the normal app without drive instrumentation remain unmeasured. E05
+separately investigates captured scrolling on the main display; it does not
+supply selection-presentation evidence.
 
 Background graph statistics were observed competing with selection in the earlier
 screening series; disabling their column makes the controlled experiment explicit.
@@ -519,11 +842,12 @@ Frequency remains an assumption; no usage telemetry was collected.
 
 | Priority | Next decision | Impact/frequency, evidence and risk |
 | --- | --- | --- |
-| 1 | Preserve the reviewed selection and navigation contracts | Browsing is assumed frequent. E01 removes 116.5 ms in the width series and 129 ms in the delivered-source confirmation at 1,000 files. Warm ranges overlap; CPU, memory and highlight costs remain explicit. Correctness risk requires held-response tests. |
-| 2 | Broaden file-open workloads before changing implementation | Delivered-source opens took 38/27 ms versus 5.5 ms reuse. File switching is assumed frequent, but this TypeScript fixture does not represent larger files or other parsers. Measure those cases; preserve existing reuse. Medium correctness/render risk. |
-| 3 | Test large-list rendering independently | E01 still incurs about 90 ms first-action scheduling gap at 1,000 rows. Test fixed-row windowing only with external viewport, focus and keyboard contracts preserved. Medium/high interaction risk. |
-| 4 | Expand mutation/convergence scale and background contention | Small-fixture mutations are mostly single-digit to tens of milliseconds. Larger indexes, saves and local fetch can change that ranking. High Git correctness risk; use disposable repositories and exact content oracles. |
-| 5 | Deep history, review/conflict/operation flows | Mapped but not performance-benchmarked here. History depth, conflict count and review size differ from file-count scale; do not extrapolate E01. |
+| 1 | Broaden I19 scrolling evidence while preserving the accepted behavior | The user made scrolling the priority. E05 changes captured diff-content cadence from 17.820 to 8.903 ms and accepts added process CPU in diff and graph scrolling. Painting checks pass at requested 60 and 120 Hz, including a replacement 90,000-line run with workload admission. Four admitted graph pairs have overlapping medians and capture gaps in both builds. Earlier competing-test confirmations remain excluded. Preserve the stationary row layout and configuration fallback. Physical trackpad timing, long-session cost and older-OS behavior remain open. High presentation risk. |
+| 2 | Preserve the reviewed selection and navigation contracts | Browsing is assumed frequent. E01 removes 116.5 ms in the width series and 129 ms in the delivered-source confirmation at 1,000 files. Warm ranges overlap; CPU, memory and highlight costs remain explicit. Correctness risk requires held-response tests. |
+| 3 | Broaden file-open workloads before changing implementation | Delivered-source opens took 38/27 ms versus 5.5 ms reuse. File switching is assumed frequent, but this TypeScript fixture does not represent larger files or other parsers. Measure those cases; preserve existing reuse. Medium correctness/render risk. |
+| 4 | Test large-list rendering independently | E01 still incurs about 90 ms first-action scheduling gap at 1,000 rows. Test fixed-row windowing only with external viewport, focus and keyboard contracts preserved. Medium/high interaction risk. |
+| 5 | Expand mutation/convergence scale and background contention | Small-fixture mutations are mostly single-digit to tens of milliseconds. Larger indexes, saves and local fetch can change that ranking. High Git correctness risk; use disposable repositories and exact content oracles. |
+| 6 | Deep history, review/conflict/operation flows | Mapped but not performance-benchmarked here. History depth, conflict count and review size differ from file-count scale; do not extrapolate E01. |
 
 The evidence supports retaining current warm diff reuse, mounted-tab reuse,
 coalesced refresh, and the search debounce. It does not support another cache or
@@ -547,13 +871,66 @@ swap and close. The guard now invalidates navigation while allowing useful pendi
 anchor metadata to finish. Repeated ref navigation is idempotent. The added tests
 failed before the fix and pass afterward; the RepoView suites pass 152 tests.
 
-Full `mise exec -- just check` passed 1,952 Rust tests (one skipped),
+The E01–E04 delivery gate, `mise exec -- just check`, passed 1,952 Rust tests (one skipped),
 4,474 frontend tests, 197 application tests and 53 visual tests, plus static,
 parity and contrast checks. Local logs and all review findings/dispositions are in
 [REVIEW.md](../.boris/interaction-performance-20261115/REVIEW.md) and
 `check-delivery-v3.log`. These local artifacts are gitignored; the maintained behavior,
 measurements, limitations and reproduction routes are in this document and the
 committed sample record. No benchmark threshold was added to CI from four samples.
+
+E05 received separate native-code, harness and evidence reviews. Findings changed
+startup-window ordering, native store/fallback coverage, the resize oracle, input
+admission tests, display labeling and interrupted-run cleanup. The evidence review
+also required painting checks in the faster rendering condition; the requested-120-Hz
+checks and the earlier requested-60-Hz checks remain distinct. Its follow-up found
+no remaining evidence findings within its examined claims. A subsequent process-inventory
+audit found the competing-test overlap described above and reopened confirmation.
+An independent review of the replacement cohort verified the exported calculations,
+artifact hashes, workload records and exclusions. Its only finding was a stale
+continuation sentence, corrected to point to the replacement painting trial. It
+did not independently decode or classify pixels; that classification remains the
+saved analyzer's observation. The raw review and disposition are local at
+[quiet-evidence-review.md](../.boris/scroll-smoothness-20261116/quiet-evidence-review.md).
+Raw review dispositions are local at
+[native-review-dispositions.md](../.boris/scroll-smoothness-20261116/native-review-dispositions.md).
+
+Five native unit tests cover startup configuration/order and absent-selector
+fallback. Two viewport-resize tests preserve the renderer's row-window behavior;
+removing resize observation makes them fail. The native geometry, store and
+painting probes exercise behavior beyond those unit-test boundaries. The Python
+harness suite passes 141 tests, including rejected input/capture traces, resource
+identity, interruption cleanup, display-option propagation and competing-process
+admission. A live admission probe rejected the observed foreign Rust test processes
+before entering its measurement body. Entry/exit guards preserve executable
+inventories and normalized workload reasons, without saving process arguments.
+They cannot establish absence of work between those snapshots or recognize every
+possible benchmark/OCR process; external coordination still applies.
+Independent review exposed interpreter-option parsing, unavailable-argument
+markers, secondary evidence-write failures and three tests that did not protect
+the production integration. The fixes have direct regressions; removing either
+capture guard or the frozen-module binding makes the new caller tests fail.
+Reanalysis also rejects failed or missing required admission evidence, while
+marking legacy absence as unobserved. These controls prevent reuse of the
+excluded cohort as clean confirmation; they do not make that cohort valid.
+
+An initial E05 full gate passed 1,957 Rust tests (one skipped), 4,526 frontend,
+197 application and 53 visual tests, plus static, parity and contrast checks.
+A later gate timed out in three Git-heavy Rust tests; a serial retry reproduced
+the fixture-isolation timeout. Process samples showed file/object writes progressing,
+and small create/delete probes were slow in both the system temporary directory
+and checkout. Another checkout was running tests, but its causal contribution is
+unconfirmed. After that check ended, the same 20-operation file probes fell from
+17.277 to 0.082 ms median in system temp and from 15.665 to 0.068 ms in the
+checkout. This temporal association supports contention, without isolating its
+source. After the competing checks ended, the final full gate passed all 1,957
+Rust tests (one skipped), 4,526 frontend, 197 application and 53 visual tests,
+plus static, parity and contrast checks. It used
+`mise exec -- env CARGO_BUILD_JOBS=2 NEXTEST_TEST_THREADS=2 just check`; only
+concurrency was bounded, with the assertions and timeouts unchanged. The local
+`check-final-bounded.log` records that pass; `check-final.log`,
+`check-final-v2.log` and `gate-targeted-timeouts.log` retain the earlier outcomes.
+These checks ran separately from the native measurement windows.
 
 ## Reproduction
 

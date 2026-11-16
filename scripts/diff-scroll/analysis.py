@@ -1,3 +1,4 @@
+import hashlib
 import json
 import math
 import subprocess
@@ -180,8 +181,31 @@ def validate_temporal_coverage(capture, delivery):
         raise Inconclusive("captured frames do not bracket the whole native input delivery interval")
 
 
+def validate_workload_admission(directory, manifest):
+    path = directory / 'process-admission.json'
+    if not path.exists():
+        if manifest.get('process_admission_required'):
+            raise Inconclusive('required process admission evidence is missing')
+
+        return {'verdict': 'unobserved', 'limitation': 'Legacy recording has no endpoint workload-admission record.'}
+
+    raw = path.read_bytes()
+    record = json.loads(raw)
+    if not isinstance(record, dict):
+        raise Inconclusive('process admission evidence is not an object')
+
+    for phase in ['entry', 'exit']:
+        endpoint = record.get(phase)
+        if not isinstance(endpoint, dict) or endpoint.get('verdict') != 'admitted':
+            raise Inconclusive(f'process admission at {phase} is missing or rejected')
+
+    return {'verdict': 'admitted', 'sha256': hashlib.sha256(raw).hexdigest(),
+            'limitation': 'Endpoint inventories do not prove continuous absence of competing work.'}
+
+
 def analyze(directory):
     directory = Path(directory)
+    workload = validate_workload_admission(directory, json.loads((directory / 'manifest.json').read_text()))
     movie = directory / "capture.mov"
     samples = json.loads((directory / "geometry.json").read_text())
     if not samples:
@@ -226,5 +250,6 @@ def analyze(directory):
     validate_motion(captured_geometry(frames, geometry).values(), min(height, first_fling_travel / 2))
     result = assess(frames, geometry)
     result["viewport"] = box
+    result['workload_admission'] = workload
 
     return result

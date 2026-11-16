@@ -24,7 +24,10 @@ test-util = []
 # The drive route an agent's commands reach the running app through
 # (src/drive/, and src/drive_socket.rs for its socket file). Only `just drive-build` turns it on, on macOS; it never ships.
 drive = [
-  "dep:objc2-web-kit",
+  "objc2-web-kit/block2",
+  "objc2-web-kit/objc2-app-kit",
+  "objc2-web-kit/WKWebView",
+  "objc2-web-kit/WKSnapshotConfiguration",
   "objc2-app-kit/NSApplication",
   "objc2-app-kit/NSBitmapImageRep",
   "objc2-app-kit/NSImage",
@@ -93,18 +96,19 @@ objc2-app-kit = { version = "0.3", features = [
   "NSWindow",
 ] }
 objc2-foundation = { version = "0.3", features = [
+  "NSArray",
   "NSNotification",
   "NSOperation",
   "NSString",
+  "NSUUID",
   "block2",
 ] }
 block2 = "0.6"
-objc2-web-kit = { version = "0.3", optional = true, default-features = false, features = [
+objc2-web-kit = { version = "0.3", default-features = false, features = [
   "std",
-  "block2",
-  "objc2-app-kit",
-  "WKWebView",
-  "WKSnapshotConfiguration",
+  "WKPreferences",
+  "WKWebViewConfiguration",
+  "WKWebsiteDataStore",
 ] }
 
 [dev-dependencies]

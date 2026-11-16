@@ -12,6 +12,8 @@ pub mod fetch_worker;
 pub mod launch;
 #[cfg(target_os = "macos")]
 mod macos_traffic_lights;
+#[cfg(target_os = "macos")]
+mod macos_webview;
 pub use trunk_git::ref_state;
 pub mod remote_ops;
 pub mod shell_env;
@@ -130,15 +132,20 @@ pub fn run() {
 ///
 /// Panics when the Tauri runtime cannot start.
 fn run_gui() {
-    #[allow(unused_mut)]
-    let mut app = configure(
+    let builder = configure(
         gui_builder(),
         WatcherState::default(),
         TrafficLights::default(),
     )
-    .plugin(tauri_plugin_clipboard_manager::init())
-    .build(context())
-    .expect("error while building tauri application");
+    .plugin(tauri_plugin_clipboard_manager::init());
+    let context = context();
+    #[cfg(target_os = "macos")]
+    let (builder, context) = macos_webview::configure_main_window(builder, context);
+
+    #[allow(unused_mut)]
+    let mut app = builder
+        .build(context)
+        .expect("error while building tauri application");
 
     // tao asks to activate the app once it has launched, and macOS grants that
     // whenever the process that started the drive instance is frontmost. A policy

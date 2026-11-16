@@ -3,7 +3,13 @@ import zlib
 from pathlib import Path
 
 
-def create_fixture(path, lines):
+def create_fixture(path, lines, *, history=1):
+    if type(lines) is not int or not 1 <= lines <= 90000:
+        raise ValueError("lines must be an integer in 1..90000")
+
+    if type(history) is not int or not 1 <= history <= 400:
+        raise ValueError("history must be an integer in 1..400")
+
     path = Path(path)
     objects = path / ".git" / "objects"
     objects.mkdir(parents=True)
@@ -28,7 +34,11 @@ def create_fixture(path, lines):
 
         return write_object("commit", content.encode())
 
-    base = commit(write_object("tree", b""), None, "empty fixture")
+    base = None
+    empty_tree = write_object("tree", b"")
+    for index in range(history):
+        summary = "empty fixture" if history == 1 else f"history row {index:04d}"
+        base = commit(empty_tree, base, summary)
     content = "".join(f'export const row{index:06d} = "native diff scrolling fixture {index:06d}";\n'
                       for index in range(lines)).encode()
     (path / "scroll.ts").write_bytes(content)

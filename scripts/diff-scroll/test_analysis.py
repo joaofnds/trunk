@@ -1,9 +1,21 @@
+import json
+from pathlib import Path
+import tempfile
 import unittest
 
-from analysis import Inconclusive, InvalidPresentationTimes, assess, decode_marker, validate_capture
+from analysis import Inconclusive, InvalidPresentationTimes, analyze, assess, decode_marker, validate_capture
 
 
 class CaptureAnalysis(unittest.TestCase):
+    def test_refuses_rejected_workload_admission_before_decoding_pixels(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / 'manifest.json').write_text(json.dumps({'process_admission_required': True}))
+            (directory / 'process-admission.json').write_text(json.dumps({'entry': {'verdict': 'rejected'}}))
+
+            with self.assertRaises(Inconclusive):
+                analyze(directory)
+
     def test_decodes_a_visible_frame_marker(self):
         self.assertEqual(decode_marker([255, 0, 255] + [0] * 13), 5)
 

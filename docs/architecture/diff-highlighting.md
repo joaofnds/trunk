@@ -140,8 +140,12 @@ backtracks on lines mixing bold and inline code, up to about 250 ms for a single
 language token. The extension list is syntect's own, deliberately not the frontend's
 rendered-view set.
 
-**Word-level spans skip large blocks.** `compute_word_spans_for_hunk` gives up on blocks over
-40 paired lines.
+**Word-level spans bound each replacement run and share a file deadline.**
+[`word_spans.rs`](../../src-tauri/src/word_spans.rs) skips refinement when a delete/add
+run exceeds 100,000 combined text bytes, any line exceeds 500 bytes, or the file's
+500 ms refinement deadline has elapsed. The deadline is shared across hunks and
+passed into line and inline diffing. Unrefined runs retain plain add/delete coloring;
+the guard is not a paired-line count.
 
 ## Rejected: skipping the theme layer for undisplayed prefix lines
 
