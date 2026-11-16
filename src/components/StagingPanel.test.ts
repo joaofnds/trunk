@@ -1,4 +1,4 @@
-import { MenuItem } from "@tauri-apps/api/menu";
+import { Menu, MenuItem } from "@tauri-apps/api/menu";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
@@ -771,7 +771,8 @@ describe("StagingPanel merge-continue", () => {
 
 		// Every file under a conflicted folder is still unresolved, so the menu has
 		// nothing to unresolve. An item that did unstaged the folder's cleanly merged
-		// files, dropping the incoming side from the merge.
+		// files, dropping the incoming side from the merge. mockMergeState stages
+		// src/main.ts beside the folder's two conflicts.
 		it("offers a conflicted folder nothing that touches its staged files", async () => {
 			render(StagingPanel, {
 				props: {
@@ -783,17 +784,20 @@ describe("StagingPanel merge-continue", () => {
 			await screen.findByRole("button", { name: "Mark All Resolved" });
 			const row = screen.getByRole("treeitem", { name: /^src \(2\)/ });
 			vi.mocked(MenuItem.new).mockClear();
-			const items = () =>
-				vi.mocked(MenuItem.new).mock.calls.map(([options]) => options.text);
-
+			vi.mocked(Menu.new).mockClear();
 			await fireEvent.contextMenu(row);
+			await waitFor(() => expect(Menu.new).toHaveBeenCalled());
+			mockInvoke.mockClear();
 
-			await waitFor(() => expect(items()).toContain("Resolve All (2)"));
-			expect(items()).toEqual([
-				"Copy Relative Path",
-				"Copy Absolute Path",
-				"Resolve All (2)",
-			]);
+			for (const [options] of vi.mocked(MenuItem.new).mock.calls) {
+				options.action?.(options.text);
+			}
+
+			await callsOnceRefreshed("stage_file");
+			const touchingStaged = mockInvoke.mock.calls.filter(([, args]) =>
+				JSON.stringify(args ?? {}).includes("src/main.ts"),
+			);
+			expect(touchingStaged).toEqual([]);
 		});
 
 		it("resolves a conflicted directory from its stage action in one index update", async () => {
