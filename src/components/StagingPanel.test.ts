@@ -457,12 +457,15 @@ describe("StagingPanel", () => {
 });
 
 describe("StagingPanel merge-continue", () => {
-	function mockMergeState(conflicted: unknown[] = []) {
+	function mockMergeState(
+		conflicted: unknown[] = [],
+		unstaged: unknown[] = [],
+	) {
 		mockInvoke.mockReset();
 		mockInvoke.mockImplementation((cmd: string) => {
 			if (cmd === "get_status")
 				return Promise.resolve({
-					unstaged: [],
+					unstaged,
 					staged: [{ path: "src/main.ts", status: "New", is_binary: false }],
 					conflicted,
 				});
@@ -557,6 +560,60 @@ describe("StagingPanel merge-continue", () => {
 			},
 		});
 		expect(await screen.findByText("Abort Merge")).toBeInTheDocument();
+	});
+
+	describe("when the merge leaves the user's own edits beside its conflicts", () => {
+		const conflict = {
+			path: "src/a.ts",
+			status: "Conflicted",
+			is_binary: false,
+		};
+		const ownEdit = { path: "notes.md", status: "Modified", is_binary: false };
+
+		beforeEach(() => {
+			mockMergeState([conflict], [ownEdit]);
+		});
+
+		it("lists the conflicts and the unstaged edits", async () => {
+			render(StagingPanel, {
+				props: { ...noReviewCounts(), repoPath: "/repo" },
+			});
+
+			await screen.findByLabelText("Mark all as resolved");
+
+			expect(screen.getByText("src/a.ts")).toBeInTheDocument();
+			expect(
+				within(screen.getByTestId("staging-unstaged-section")).getByText(
+					"notes.md",
+				),
+			).toBeInTheDocument();
+		});
+
+		it("moves on from the open conflict once it is marked resolved", async () => {
+			const onfileadvance = vi.fn();
+			render(StagingPanel, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					onfileadvance,
+					selectedPath: "src/a.ts",
+					selectedKind: "conflicted",
+				},
+			});
+
+			await screen.findByLabelText("Mark all as resolved");
+			const row = stagingRowFor(screen.getByText("src/a.ts"));
+			const rowWithActions = row.parentElement;
+			if (rowWithActions === null) throw new Error("file row is detached");
+
+			await fireEvent.click(
+				within(rowWithActions).getByRole("button", { name: "Stage file" }),
+			);
+
+			await waitFor(() =>
+				expect(onfileadvance).toHaveBeenCalledWith("src/a.ts", "conflicted"),
+			);
+		});
 	});
 
 	describe("when resolving conflicted files in bulk", () => {

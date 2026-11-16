@@ -172,6 +172,15 @@ let collapseAllSignal = $state(0);
 let isMerge = $derived(operationInfo?.op_type === "Merge");
 let isRebase = $derived(operationInfo?.op_type === "Rebase");
 let isOperation = $derived(isMerge || isRebase);
+// The user's own edits stay listed beside a merge's conflicts so they can be
+// staged or discarded. An empty list under the conflicts is only noise.
+let showUnstaged = $derived(
+	!isRebase &&
+		!(
+			(status?.conflicted.length ?? 0) > 0 &&
+			(status?.unstaged.length ?? 0) === 0
+		),
+);
 
 let rebaseProgressNum = $derived(operationInfo?.progress?.split("/")[0] ?? "?");
 let rebaseProgressTotal = $derived(
@@ -261,12 +270,15 @@ function stopLoading(paths: readonly string[]) {
 	loadingFiles = next;
 }
 
-async function stageFile(filePath: string) {
+async function stageFile(
+	filePath: string,
+	from: "unstaged" | "conflicted" = "unstaged",
+) {
 	loadingFiles = new Set([...loadingFiles, filePath]);
 	try {
 		await safeInvoke("stage_file", { path: repoPath, filePath });
-		onfileadvance?.(filePath, "unstaged");
-		optimisticMove(filePath, "unstaged", "stage");
+		onfileadvance?.(filePath, from);
+		optimisticMove(filePath, from, "stage");
 	} catch (e) {
 		reportErrorToast(e, "Stage failed");
 	}
@@ -966,8 +978,8 @@ registerUpdateBlocker(() => {
 
 	<!-- File sections flex container (50/50 split when both expanded) -->
 	<div class="flex-1 flex flex-col overflow-hidden min-h-0">
-		<!-- Conflicted Files section (rebase: always shown; non-rebase: only when conflicts exist) -->
-		{#if !isMerge && (isRebase || (status?.conflicted.length ?? 0) > 0)}
+		<!-- Conflicted Files section (rebase: always shown; otherwise only when conflicts exist) -->
+		{#if isRebase || (status?.conflicted.length ?? 0) > 0}
 			<div
 				class="flex flex-col overflow-hidden min-h-0"
 				class:flex-1={conflicted_expanded && staged_expanded}
@@ -993,9 +1005,16 @@ registerUpdateBlocker(() => {
 						status?.conflicted.length ?? 0,
 					)}
 					{#snippet actions()}
-						<Button size="sm" variant="warning" onclick={markAllResolved}
-							>Mark All Resolved</Button
-						>
+						{#if (status?.conflicted.length ?? 0) > 0}
+							<Button
+								size="sm"
+								variant="success"
+								onclick={markAllResolved}
+								aria-label="Mark all as resolved"
+							>
+								Mark All Resolved
+							</Button>
+						{/if}
 					{/snippet}
 				</Row>
 
@@ -1003,10 +1022,12 @@ registerUpdateBlocker(() => {
 					<TreeFileList
 						files={status?.conflicted ?? []}
 						treeMode={treeViewEnabled}
-						actionLabel=""
-						onfileaction={() => {}}
+						actionLabel="+"
+						{loadingFiles}
+						onfileaction={(path) => stageFile(path, "conflicted")}
 						onfileclick={(path) => onfileselect?.(path, "conflicted")}
 						onfilecontextmenu={(e, path) => showConflictedContextMenu(e, path)}
+						ondirectoryaction={(dirPath) => resolveDirectory(dirPath)}
 						ondirectorycontextmenu={(e, dirPath) =>
 							showConflictedDirContextMenu(e, dirPath)}
 						selectedPath={selectedKind === "conflicted" ? selectedPath : null}
@@ -1017,8 +1038,8 @@ registerUpdateBlocker(() => {
 			</div>
 		{/if}
 
-		<!-- Unstaged Files section (hidden during rebase — only conflicted + resolved shown) -->
-		{#if !isRebase}
+		<!-- Unstaged Files section (hidden during rebase, where only conflicted and resolved files show) -->
+		{#if showUnstaged}
 			<div
 				data-testid="staging-unstaged-section"
 				class="flex flex-col overflow-hidden min-h-0"
@@ -1037,33 +1058,9 @@ registerUpdateBlocker(() => {
 							<ChevronRight size={12} />
 						{/if}
 					</span>
-					{#if isMerge}
-						<span class="text-badge-warning inline-flex items-center mr-1">
-							<AlertTriangle size={12} />
-						</span>
-						{@render sectionTitle(
-							"Conflicted Files",
-							status?.conflicted.length ?? 0,
-						)}
-					{:else}
-						{@render sectionTitle(
-							"Unstaged Files",
-							status?.unstaged.length ?? 0,
-						)}
-					{/if}
+					{@render sectionTitle("Unstaged Files", status?.unstaged.length ?? 0)}
 					{#snippet actions()}
-						{#if isMerge}
-							{#if (status?.conflicted.length ?? 0) > 0}
-								<Button
-									size="sm"
-									variant="success"
-									onclick={markAllResolved}
-									aria-label="Mark all as resolved"
-								>
-									Mark All as Resolved
-								</Button>
-							{/if}
-						{:else if (status?.unstaged.length ?? 0) > 0}
+						{#if (status?.unstaged.length ?? 0) > 0}
 							<Button
 								size="sm"
 								variant="danger"
@@ -1085,43 +1082,24 @@ registerUpdateBlocker(() => {
 				</Row>
 
 				{#if unstaged_expanded}
-					{#if isMerge}
-						<TreeFileList
-							files={status?.conflicted ?? []}
-							treeMode={treeViewEnabled}
-							actionLabel="+"
-							{loadingFiles}
-							onfileaction={(path) => stageFile(path)}
-							onfileclick={(path) => onfileselect?.(path, "conflicted")}
-							onfilecontextmenu={(e, path) =>
-								showConflictedContextMenu(e, path)}
-							ondirectoryaction={(dirPath) => resolveDirectory(dirPath)}
-							ondirectorycontextmenu={(e, dirPath) =>
-								showConflictedDirContextMenu(e, dirPath)}
-							selectedPath={selectedKind === "conflicted" ? selectedPath : null}
-							{expandAllSignal}
-							{collapseAllSignal}
-						/>
-					{:else}
-						<TreeFileList
-							files={status?.unstaged ?? []}
-							treeMode={treeViewEnabled}
-							actionLabel="+"
-							{loadingFiles}
-							onfileaction={(path) => stageFile(path)}
-							onfileclick={(path) => onfileselect?.(path, "unstaged")}
-							onfilecontextmenu={(e, path, file) =>
-								showUnstagedContextMenu(e, path, file.status)}
-							ondirectoryaction={(dirPath) => stageDirectory(dirPath)}
-							ondirectorycontextmenu={(e, dirPath) =>
-								showUnstagedDirContextMenu(e, dirPath)}
-							selectedPath={selectedKind === "unstaged" ? selectedPath : null}
-							commentCounts={unstagedCommentCounts}
-							commentTallies={unstagedCommentTallies}
-							{expandAllSignal}
-							{collapseAllSignal}
-						/>
-					{/if}
+					<TreeFileList
+						files={status?.unstaged ?? []}
+						treeMode={treeViewEnabled}
+						actionLabel="+"
+						{loadingFiles}
+						onfileaction={(path) => stageFile(path)}
+						onfileclick={(path) => onfileselect?.(path, "unstaged")}
+						onfilecontextmenu={(e, path, file) =>
+							showUnstagedContextMenu(e, path, file.status)}
+						ondirectoryaction={(dirPath) => stageDirectory(dirPath)}
+						ondirectorycontextmenu={(e, dirPath) =>
+							showUnstagedDirContextMenu(e, dirPath)}
+						selectedPath={selectedKind === "unstaged" ? selectedPath : null}
+						commentCounts={unstagedCommentCounts}
+						commentTallies={unstagedCommentTallies}
+						{expandAllSignal}
+						{collapseAllSignal}
+					/>
 				{/if}
 			</div>
 		{/if}
