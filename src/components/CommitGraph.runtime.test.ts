@@ -144,6 +144,7 @@ describe("CommitGraph", () => {
 				}),
 			);
 			expect(screen.getByRole("button", { name: "Next match" })).toBeDisabled();
+			expect(screen.queryByText("0 matches")).toBeNull();
 		});
 
 		it.each(["search result", "ordinary navigation"] as const)(
@@ -259,6 +260,21 @@ describe("CommitGraph", () => {
 			await drainSearchReplies();
 
 			expect(selections).toEqual([]);
+		});
+
+		it("runs a search the tab left unanswered when the tab returns", async () => {
+			const { view, selections } = await openSearch();
+			host.holdNextReply("search_commits");
+			await searchFor("earlier");
+			await view.rerender({ tabActive: false });
+			host.seedResponse("search_commits", [{ oid: "earlier" }]);
+
+			await view.rerender({ tabActive: true });
+			await vi.advanceTimersByTimeAsync(200);
+			await drainSearchReplies();
+
+			expect(selections).toEqual(["earlier"]);
+			expect(screen.getByText("1 of 1")).toBeVisible();
 		});
 
 		it("drops a reply across repository changes", async () => {

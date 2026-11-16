@@ -632,7 +632,9 @@ let stashOids = $state<Set<string>>(new Set());
 let searchOpen = $state(false);
 let searchQuery = $state("");
 let searchResults = $state<SearchResult[]>([]);
-let searchPending = $state(false);
+// The current query's results are in. A query still waiting, or one whose search
+// failed, shows no match count, since none is known.
+let searchAnswered = $state(false);
 let searchCurrentIndex = $state(0);
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let searchGeneration = 0;
@@ -2150,16 +2152,24 @@ $effect(() => {
 
 $effect(() => {
 	const path = repoPath;
-	void tabActive;
+	if (tabActive) untrack(resumeUnansweredSearch);
 
 	return () => {
 		invalidateSearchRequest();
 		if (path !== repoPath) {
 			searchResults = [];
 			searchCurrentIndex = 0;
+			searchAnswered = false;
 		}
 	};
 });
+
+// Leaving the tab or the repository drops the search in flight, and the query it
+// was answering is still in the bar when the user comes back.
+function resumeUnansweredSearch() {
+	if (searchOpen && !searchAnswered && searchQuery.trim())
+		handleSearchQueryChange(searchQuery);
+}
 
 function invalidateSearchRequest() {
 	searchGeneration += 1;
@@ -2200,9 +2210,10 @@ function handleSearchQueryChange(query: string) {
 	const isCurrent = () => isCurrentSearch(generation, path);
 	searchResults = [];
 	searchCurrentIndex = 0;
-	searchPending = query.trim() !== "";
+	searchAnswered = false;
+	const trimmed = query.trim();
 
-	if (!query.trim()) return;
+	if (!trimmed) return;
 
 	searchDebounceTimer = setTimeout(async () => {
 		searchDebounceTimer = null;
@@ -2211,11 +2222,11 @@ function handleSearchQueryChange(query: string) {
 		try {
 			const results = await safeInvoke<SearchResult[]>("search_commits", {
 				path,
-				query: query.trim(),
+				query: trimmed,
 			});
 			if (!isCurrent()) return;
 
-			searchPending = false;
+			searchAnswered = true;
 			searchResults = results;
 			searchCurrentIndex = 0;
 			if (results.length > 0) {
@@ -2225,7 +2236,6 @@ function handleSearchQueryChange(query: string) {
 			if (!isCurrent()) return;
 
 			reportErrorToast(error, "Could not search commits");
-			searchPending = false;
 			searchResults = [];
 			searchCurrentIndex = 0;
 		}
@@ -2253,7 +2263,7 @@ function handleSearchClose() {
 	invalidateSearchRequest();
 	searchOpen = false;
 	searchQuery = "";
-	searchPending = false;
+	searchAnswered = false;
 	searchResults = [];
 	searchCurrentIndex = 0;
 	containerRef?.focus();
@@ -2302,13 +2312,15 @@ function handleKeydown(e: KeyboardEvent) {
 		const row = containerRef?.querySelector(
 			`[data-original-index="${nextIdx}"]`,
 		);
-		if (row) row.scrollIntoView({ block: "nearest" });
-		else
+		if (row) {
+			row.scrollIntoView({ block: "nearest" });
+		} else {
 			void listRef?.scroll({
 				index: nextIdx,
 				smoothScroll: false,
 				align: "nearest",
 			});
+		}
 	});
 }
 
@@ -2409,7 +2421,7 @@ $effect(() => {
 				query={searchQuery}
 				currentIndex={searchCurrentIndex}
 				totalMatches={searchResults.length}
-				searching={searchPending}
+				searching={!searchAnswered}
 				onquerychange={handleSearchQueryChange}
 				onnext={handleSearchNext}
 				onprev={handleSearchPrev}
