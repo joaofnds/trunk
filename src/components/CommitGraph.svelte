@@ -2297,7 +2297,13 @@ function handleKeydown(e: KeyboardEvent) {
 		const row = containerRef?.querySelector(
 			`[data-original-index="${nextIdx}"]`,
 		);
-		row?.scrollIntoView({ block: "nearest" });
+		if (row) row.scrollIntoView({ block: "nearest" });
+		else
+			void listRef?.scroll({
+				index: nextIdx,
+				smoothScroll: false,
+				align: "nearest",
+			});
 	});
 }
 

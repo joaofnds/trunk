@@ -774,6 +774,44 @@ describe("CommitGraph", () => {
 		);
 	}
 
+	describe("arrow navigation", () => {
+		it("brings the next commit back into view after the list was scrolled away", async () => {
+			vi.useFakeTimers({
+				toFake: ["requestAnimationFrame", "cancelAnimationFrame"],
+			});
+			host.seedGraph({ commits: history(150), max_columns: 1, revision: 1 });
+			const view = render(CommitGraph, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					tabActive: true,
+					selectedCommitOid: "oid-0",
+				},
+				context: new Map([[SCHEDULER, clock]]),
+			});
+			await screen.findByText("commit 0");
+			vi.advanceTimersToNextFrame();
+			await tick();
+			const viewport = graphViewport(view.container);
+			await fireEvent.scroll(viewport, {
+				target: { scrollTop: 70 * ROW_HEIGHT },
+			});
+			vi.advanceTimersToNextFrame();
+			await tick();
+			const scrolls: number[] = [];
+			viewport.scrollTo = (options?: ScrollToOptions | number) => {
+				if (typeof options !== "number") scrolls.push(options?.top ?? 0);
+			};
+
+			await fireEvent.keyDown(screen.getByRole("listbox"), {
+				key: "ArrowDown",
+			});
+			await tick();
+
+			expect(scrolls).toEqual([ROW_HEIGHT]);
+		});
+	});
+
 	describe("graph refresh consumption", () => {
 		it("does not replay a consumed notification when the graph remounts", async () => {
 			host.seedGraph(graph(1));
