@@ -240,6 +240,35 @@ describe("RepoView commit file reuse", () => {
 		expect(host.count("diff_commit_file")).toBe(4);
 	});
 
+	it("hides a retained hunk payload while that file's full content loads", async () => {
+		const view = await mountCommit();
+		await openFile("g.ts", "SECOND HUNK");
+		await openFile("f.ts", "FIRST HUNK");
+		host.seedResponse("diff_commit_file", [file("f.ts", "FIRST FULL")]);
+		await view.rerender({ contentMode: "full" });
+		await screen.findByText("FIRST FULL");
+		const pending = host.holdNextReply("diff_commit_file");
+
+		await selectFile("g.ts");
+		await pending.entered;
+
+		expect(screen.queryByText("SECOND HUNK")).toBeNull();
+		expect(screen.getByText("Loading diff…")).toBeTruthy();
+	});
+
+	it("keeps a full-file payload on screen while it reloads in the same mode", async () => {
+		const view = await mountCommit();
+		await view.rerender({ contentMode: "full" });
+		await openFile("f.ts", "FIRST FULL");
+		const pending = host.holdNextReply("diff_commit_file");
+
+		await fireEvent.click(screen.getByTitle("Ignore whitespace changes"));
+		await pending.entered;
+
+		expect(screen.getByText("FIRST FULL")).toBeTruthy();
+		expect(screen.queryByText("Loading diff…")).toBeNull();
+	});
+
 	it("loads a retained file again after whitespace options change", async () => {
 		await mountCommit();
 		await openFile("f.ts", "FIRST ORIGINAL");

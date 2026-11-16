@@ -579,7 +579,13 @@ let selectedCommitFile = $state<string | null>(null);
 let commitDiffLoadSeq = 0;
 let commitDiffLoading = $state(false);
 let commitDiffError = $state<string | null>(null);
-let commitDiffMode = $state<ContentMode | null>(null);
+// The content mode each loaded file payload answers. A view's mode is read from
+// the payload it shows for the selected path, never stored beside it, so a
+// payload of the other mode is stale while its file reloads.
+const payloadModes = new WeakMap<FileDiff, ContentMode>();
+let commitDiffMode = $derived(
+	selectedCommitFile ? payloadMode(commitFileDiffs, selectedCommitFile) : null,
+);
 // Bumped on every selectCommitIdempotent call so an out-of-order commit-switch
 // response can't clobber a newer one, and a failed switch's catch arm can tell
 // it's still the latest before clearing state.
@@ -600,7 +606,11 @@ let compareGeneration = 0;
 let compareDiffLoadSeq = 0;
 let compareDiffLoading = $state(false);
 let compareDiffError = $state<string | null>(null);
-let compareDiffMode = $state<ContentMode | null>(null);
+let compareDiffMode = $derived(
+	selectedCompareFile
+		? payloadMode(compareFileDiffs, selectedCompareFile)
+		: null,
+);
 let compareOids = $derived<ReadonlySet<string>>(
 	new Set(compare ? compare.picked : []),
 );
@@ -658,7 +668,9 @@ let rebaseFocusLoadSeq = 0;
 let rebaseDiffLoadSeq = 0;
 let rebaseDiffLoading = $state(false);
 let rebaseDiffError = $state<string | null>(null);
-let rebaseDiffMode = $state<ContentMode | null>(null);
+let rebaseDiffMode = $derived(
+	rebaseDiffFile ? payloadMode(rebaseFocusedFileDiffs, rebaseDiffFile) : null,
+);
 
 const wipCount = $derived(
 	dirtyCounts.staged + dirtyCounts.unstaged + dirtyCounts.conflicted,
@@ -1021,7 +1033,6 @@ function clearCommitFileDiff() {
 	selectedCommitFile = null;
 	commitDiffLoading = false;
 	commitDiffError = null;
-	commitDiffMode = null;
 	diffInViewPath = null;
 	commitEmpty = false;
 }
@@ -1054,7 +1065,6 @@ function clearCommit() {
 	commitEmpty = false;
 	commitDiffLoading = false;
 	commitDiffError = null;
-	commitDiffMode = null;
 }
 
 // Request-local options are cached here; global content mode is owned by App
@@ -1106,6 +1116,13 @@ function concernsOpenFiles(changed: readonly string[]): boolean {
 
 function modeFor(options: DiffRequestOptions): ContentMode {
 	return options.showFullFile ? "full" : "hunk";
+}
+
+function payloadMode(files: FileDiff[], path: string): ContentMode | null {
+	const payload = files.find((file) => file.path === path);
+	if (!payload) return null;
+
+	return payloadModes.get(payload) ?? null;
 }
 
 function requestStagingFileDiff(
@@ -1419,7 +1436,6 @@ function clearCompare() {
 	selectedCompareFile = null;
 	compareDiffLoading = false;
 	compareDiffError = null;
-	compareDiffMode = null;
 	compareGeneration++;
 }
 
@@ -1534,7 +1550,7 @@ async function reloadCompareFile(
 		);
 		if (!requestIsCurrent()) return;
 		compareFileDiffs = patchLoadedDiff(compareFileDiffs, filePath, fileDiffs);
-		compareDiffMode = requestMode;
+		if (fileDiffs[0]) payloadModes.set(fileDiffs[0], requestMode);
 		compareDiffLoading = false;
 	} catch (error) {
 		if (!requestIsCurrent()) return;
@@ -1551,7 +1567,6 @@ async function handleCompareFileSelect(path: string) {
 		selectedCompareFile = null;
 		compareDiffLoading = false;
 		compareDiffError = null;
-		compareDiffMode = null;
 		return;
 	}
 	selectedCompareFile = path;
@@ -1676,13 +1691,13 @@ async function reloadCommitFile(
 
 			commitFileDiffs = patchLoadedDiff(commitFileDiffs, path, fileDiffs);
 			if (fileDiffs[0]) {
+				payloadModes.set(fileDiffs[0], requestMode);
 				loadedCommitFiles.set(fileDiffs[0], {
 					repo: fireRepo,
 					oid: fireOid,
 					options: { ...options },
 				});
 			}
-			commitDiffMode = requestMode;
 			commitDiffLoading = false;
 		};
 
@@ -1733,7 +1748,6 @@ async function selectCommitFileIdempotent(path: string) {
 		commitDiffLoadSeq += 1;
 		commitDiffLoading = false;
 		commitDiffError = null;
-		commitDiffMode = modeFor(options);
 
 		return;
 	}
@@ -2174,7 +2188,6 @@ function handleRebaseEditorClose() {
 	rebaseDiffFile = null;
 	rebaseDiffLoading = false;
 	rebaseDiffError = null;
-	rebaseDiffMode = null;
 }
 
 function handleRebaseDiffClose() {
@@ -2195,7 +2208,6 @@ async function handleRebaseFocusChange(oid: string) {
 	rebaseDiffLoadSeq++;
 	rebaseDiffLoading = false;
 	rebaseDiffError = null;
-	rebaseDiffMode = null;
 	try {
 		const [detail, files, stat] = await Promise.all([
 			safeInvoke<CommitDetailType>("get_commit_detail", {
@@ -2250,7 +2262,7 @@ async function reloadRebaseFile(path: string, options: DiffRequestOptions) {
 			path,
 			fileDiffs,
 		);
-		rebaseDiffMode = requestMode;
+		if (fileDiffs[0]) payloadModes.set(fileDiffs[0], requestMode);
 		rebaseDiffLoading = false;
 	} catch (e) {
 		if (!requestIsCurrent()) return;
@@ -2290,7 +2302,6 @@ async function handleRebaseFileSelect(path: string) {
 		rebaseDiffFile = null;
 		rebaseDiffLoading = false;
 		rebaseDiffError = null;
-		rebaseDiffMode = null;
 		return;
 	}
 

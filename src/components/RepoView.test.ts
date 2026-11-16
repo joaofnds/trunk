@@ -40,6 +40,7 @@ import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import type {
 	CommitDetail as CommitDetailType,
 	ContentMode,
+	DiffRequestOptions,
 	FileDiff,
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
@@ -3184,6 +3185,97 @@ describe("RepoView", () => {
 
 			expect(await screen.findByText("Could not load diff")).toBeTruthy();
 			expect(screen.queryByText("OLD REBASE")).toBeFalsy();
+		});
+
+		it("hides a retained rebase hunk payload while that file's full content loads", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const first = "src/first.ts";
+			const second = "src/second.ts";
+			const firstFullRequested = Promise.withResolvers<void>();
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "get_commit_detail" && typeof a?.oid === "string") {
+					return Promise.resolve(makeRebaseDetail(a.oid, "focused commit"));
+				}
+				if (cmd === "list_commit_files" && typeof a?.oid === "string") {
+					return Promise.resolve([
+						makeRebaseFile(first),
+						makeRebaseFile(second),
+					]);
+				}
+				if (cmd === "diff_commit_file") {
+					const request = args as {
+						filePath: string;
+						options: DiffRequestOptions;
+					};
+					const path = request.filePath;
+					const full = request.options.showFullFile;
+					if (path === first && full) {
+						firstFullRequested.resolve();
+						return new Promise<FileDiff[]>(() => {});
+					}
+					return Promise.resolve([
+						makeRebaseFileWithContent(
+							path,
+							`${path} ${full ? "FULL" : "HUNK"}`,
+						),
+					]);
+				}
+				return base(cmd, args);
+			});
+			await openTheEditorOnTheClickedCommit();
+			await fireEvent.click(rebaseRow(1));
+			await fireEvent.click(await screen.findByText(first));
+			expect(await screen.findByText(`${first} HUNK`)).toBeTruthy();
+			await fireEvent.click(screen.getByText(second));
+			expect(await screen.findByText(`${second} HUNK`)).toBeTruthy();
+			await fireEvent.click(screen.getByTitle("Show full file"));
+			expect(await screen.findByText(`${second} FULL`)).toBeTruthy();
+
+			await fireEvent.click(screen.getByText(first));
+			await firstFullRequested.promise;
+
+			expect(screen.queryByText(`${first} HUNK`)).toBeFalsy();
+			expect(screen.getByText("Loading diff…")).toBeTruthy();
+		});
+
+		it("keeps a rebase file on screen while it reloads in the same mode", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const path = "src/rebase.ts";
+			const filteredRequested = Promise.withResolvers<void>();
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "get_commit_detail" && typeof a?.oid === "string") {
+					return Promise.resolve(makeRebaseDetail(a.oid, "focused commit"));
+				}
+				if (cmd === "list_commit_files" && typeof a?.oid === "string") {
+					return Promise.resolve([makeRebaseFile(path)]);
+				}
+				if (cmd === "diff_commit_file") {
+					const request = args as { options: DiffRequestOptions };
+					if (request.options.ignoreWhitespace) {
+						filteredRequested.resolve();
+						return new Promise<FileDiff[]>(() => {});
+					}
+					return Promise.resolve([
+						makeRebaseFileWithContent(path, "ORIGINAL REBASE"),
+					]);
+				}
+				return base(cmd, args);
+			});
+			await openTheEditorOnTheClickedCommit();
+			await fireEvent.click(rebaseRow(1));
+			await fireEvent.click(await screen.findByText(path));
+			expect(await screen.findByText("ORIGINAL REBASE")).toBeTruthy();
+
+			await fireEvent.click(screen.getByTitle("Ignore whitespace changes"));
+			await filteredRequested.promise;
+
+			expect(screen.getByText("ORIGINAL REBASE")).toBeVisible();
 		});
 
 		it("does not apply a rebase diff response after its file closes", async () => {

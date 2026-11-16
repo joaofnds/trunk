@@ -87,6 +87,41 @@ describe("RepoView commit selection", () => {
 		);
 	});
 
+	describe("comparison file content mode", () => {
+		it("hides a retained comparison hunk payload while that file's full content loads", async () => {
+			const view = await openRepository();
+			await selectCommit("first");
+			await screen.findByText("first.txt");
+			await compareCommit("first", "third", [hunkless("one"), hunkless("two")]);
+			await openComparisonFile("one", "one hunk");
+			await openComparisonFile("two", "two hunk");
+			host.seedResponse("diff_compare_file", [loadedFile("two", "two full")]);
+			await view.rerender({ contentMode: "full" });
+			await screen.findByText("two full");
+			const pending = host.holdNextReply("diff_compare_file");
+
+			await fireEvent.click(screen.getByText("one.txt"));
+			await pending.entered;
+
+			expect(screen.queryByText("one hunk")).toBeNull();
+			expect(screen.getByText("Loading diff…")).toBeTruthy();
+		});
+
+		it("keeps a comparison file on screen while it reloads in the same mode", async () => {
+			await openRepository();
+			await selectCommit("first");
+			await screen.findByText("first.txt");
+			await compareCommit("first", "third", [hunkless("one")]);
+			await openComparisonFile("one", "one original");
+			const pending = host.holdNextReply("diff_compare_file");
+
+			await fireEvent.click(screen.getByTitle("Ignore whitespace changes"));
+			await pending.entered;
+
+			expect(screen.getByText("one original")).toBeVisible();
+		});
+	});
+
 	it("keeps a comparison swap after an older ref lookup resolves", async () => {
 		seedBranch();
 		await openRepository();
@@ -880,6 +915,26 @@ function seedComparison(files: FileDiff[] = []): void {
 		insertions: 0,
 		deletions: 0,
 	});
+}
+
+function hunkless(name: string): FileDiff {
+	return { ...fileDiff(name), hunks: [] };
+}
+
+function loadedFile(name: string, content: string): FileDiff {
+	const file = fileDiff(name);
+	file.hunks[0].lines[0].content = content;
+
+	return file;
+}
+
+async function openComparisonFile(
+	name: string,
+	content: string,
+): Promise<void> {
+	host.seedResponse("diff_compare_file", [loadedFile(name, content)]);
+	await fireEvent.click(screen.getByText(`${name}.txt`));
+	await screen.findByText(content);
 }
 
 async function compareCommit(
