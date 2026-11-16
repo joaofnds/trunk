@@ -1529,10 +1529,22 @@ function firstParentOfLoaded(oid: string): string | null {
 	return graphDisplayItems.find((c) => c.oid === oid)?.parent_oids[0] ?? null;
 }
 
+// The open file stays open across a swap, now diffed the other way. A rename
+// lists under its new name in one direction and its old name in the other.
 async function handleCompareSwap() {
-	await applyCompare(
+	const openFile = selectedCompareFile;
+	const swapped = applyCompare(
 		swapCompare({ selectedOid: requestedCommitOid, compare }).compare,
 	);
+	const generation = compareGeneration;
+	await swapped;
+	if (openFile === null || generation !== compareGeneration) return;
+	if (selectedCompareFile !== null) return;
+
+	const reopened = compareFileDiffs.find(
+		(file) => file.path === openFile || file.old_path === openFile,
+	);
+	if (reopened) await handleCompareFileSelect(reopened.path);
 }
 
 // Fetch one file's Base → Target diff and patch the lightweight list entry

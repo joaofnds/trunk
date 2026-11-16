@@ -3970,6 +3970,40 @@ describe("RepoView", () => {
 			);
 		});
 
+		it("keeps the open file open when the pair swaps", async () => {
+			render(RepoView, {
+				props: {
+					...baseProps(createMockRemoteState()),
+					contentMode: "hunk" as const,
+					oncontentmodechange: vi.fn(),
+				},
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[2]);
+			await fireEvent.click(rows[0], { metaKey: true });
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd !== "diff_compare_file") return base(cmd, args);
+				const pair = args as { baseOid: string; targetOid: string };
+				return Promise.resolve([
+					makeFileDiffWithContent(
+						"f.ts",
+						`${pair.baseOid} TO ${pair.targetOid}`,
+					),
+				]);
+			});
+			await fireEvent.click(await screen.findByText("f.ts"));
+			const opened = (await screen.findByText(/ TO /)).textContent ?? "";
+			const [from, to] = opened.split(" TO ");
+
+			await fireEvent.click(
+				await screen.findByLabelText("Swap comparison direction"),
+			);
+
+			expect(await screen.findByText(`${to} TO ${from}`)).toBeTruthy();
+		});
+
 		it("escape clears the compare", async () => {
 			const rows = await renderAndGetRows();
 			await fireEvent.click(rows[2]);
