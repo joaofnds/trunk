@@ -630,20 +630,6 @@ async function resolveDirectory(dirPath: string) {
 	await refreshStatusOrReport();
 }
 
-async function unresolveDirectory(dirPath: string) {
-	const files = filesUnder(status?.staged, dirPath);
-	if (files.length === 0) return;
-
-	try {
-		for (const f of files) {
-			await safeInvoke("unstage_file", { path: repoPath, filePath: f.path });
-		}
-	} catch (e) {
-		reportErrorToast(e, "Unresolve failed");
-	}
-	await refreshStatusOrReport();
-}
-
 async function showConflictedDirContextMenu(_e: MouseEvent, dirPath: string) {
 	const { Menu, MenuItem, PredefinedMenuItem } = await import(
 		"@tauri-apps/api/menu"
@@ -671,12 +657,6 @@ async function showConflictedDirContextMenu(_e: MouseEvent, dirPath: string) {
 				text: `Resolve All (${files.length})`,
 				action: () => {
 					resolveDirectory(dirPath);
-				},
-			}),
-			await MenuItem.new({
-				text: `Unresolve All (${files.length})`,
-				action: () => {
-					unresolveDirectory(dirPath);
 				},
 			}),
 		],

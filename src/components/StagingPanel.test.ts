@@ -769,6 +769,33 @@ describe("StagingPanel merge-continue", () => {
 			]);
 		});
 
+		// Every file under a conflicted folder is still unresolved, so the menu has
+		// nothing to unresolve. An item that did unstaged the folder's cleanly merged
+		// files, dropping the incoming side from the merge.
+		it("offers a conflicted folder nothing that touches its staged files", async () => {
+			render(StagingPanel, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					treeViewEnabled: true,
+				},
+			});
+			await screen.findByRole("button", { name: "Mark All Resolved" });
+			const row = screen.getByRole("treeitem", { name: /^src \(2\)/ });
+			vi.mocked(MenuItem.new).mockClear();
+			const items = () =>
+				vi.mocked(MenuItem.new).mock.calls.map(([options]) => options.text);
+
+			await fireEvent.contextMenu(row);
+
+			await waitFor(() => expect(items()).toContain("Resolve All (2)"));
+			expect(items()).toEqual([
+				"Copy Relative Path",
+				"Copy Absolute Path",
+				"Resolve All (2)",
+			]);
+		});
+
 		it("resolves a conflicted directory from its stage action in one index update", async () => {
 			render(StagingPanel, {
 				props: {
@@ -853,30 +880,6 @@ describe("StagingPanel merge-continue", () => {
 					]);
 				});
 				await callsOnceRefreshed("stage_files");
-			});
-
-			it("reports a failed folder unresolve to the user", async () => {
-				failCommand("unstage_file");
-				render(StagingPanel, {
-					props: {
-						...noReviewCounts(),
-						repoPath: "/repo",
-						treeViewEnabled: true,
-					},
-				});
-
-				await chooseConflictedFolderMenuItem(/^src \(2\)/, /^Unresolve All/);
-
-				await waitFor(() => {
-					expect(toasts.items).toEqual([
-						{
-							id: expect.any(Number),
-							message: "the index is locked",
-							kind: "error",
-						},
-					]);
-				});
-				await callsOnceRefreshed("unstage_file");
 			});
 
 			it("reports a failed refresh after the resolve", async () => {
