@@ -20,6 +20,7 @@ import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
+	FileStatus,
 	FileStatusType,
 	MergeSides,
 	OperationInfo,
@@ -245,6 +246,15 @@ async function refreshStatusOrReport() {
 	);
 }
 
+function filesUnder(
+	files: readonly FileStatus[] | undefined,
+	dirPath: string,
+): FileStatus[] {
+	return (files ?? []).filter(
+		(f) => f.path.startsWith(`${dirPath}/`) || f.path === dirPath,
+	);
+}
+
 function stopLoading(paths: readonly string[]) {
 	const next = new Set(loadingFiles);
 	for (const p of paths) next.delete(p);
@@ -278,9 +288,7 @@ async function unstageFile(filePath: string) {
 }
 
 async function stageDirectory(dirPath: string) {
-	const directMatches = (status?.unstaged ?? []).filter(
-		(f) => f.path.startsWith(`${dirPath}/`) || f.path === dirPath,
-	);
+	const directMatches = filesUnder(status?.unstaged, dirPath);
 	const pathsToStage = directMatches.map((f) => f.path);
 	if (pathsToStage.length === 0) return;
 
@@ -298,9 +306,7 @@ async function stageDirectory(dirPath: string) {
 }
 
 async function unstageDirectory(dirPath: string) {
-	const directMatches = (status?.staged ?? []).filter(
-		(f) => f.path.startsWith(`${dirPath}/`) || f.path === dirPath,
-	);
+	const directMatches = filesUnder(status?.staged, dirPath);
 	const pathsToUnstage = directMatches.map((f) => f.path);
 	if (pathsToUnstage.length === 0) return;
 
@@ -358,9 +364,7 @@ async function handleDiscardFile(filePath: string, fileStatus: FileStatusType) {
 }
 
 async function handleDiscardDirectory(dirPath: string) {
-	const files = (status?.unstaged ?? []).filter(
-		(f) => f.path.startsWith(`${dirPath}/`) || f.path === dirPath,
-	);
+	const files = filesUnder(status?.unstaged, dirPath);
 	if (files.length === 0) return;
 
 	const { ask } = await import("@tauri-apps/plugin-dialog");
@@ -429,9 +433,7 @@ async function showUnstagedDirContextMenu(_e: MouseEvent, dirPath: string) {
 		"@tauri-apps/api/menu"
 	);
 	const absPath = `${repoPath}/${dirPath}`;
-	const files = (status?.unstaged ?? []).filter(
-		(f) => f.path.startsWith(`${dirPath}/`) || f.path === dirPath,
-	);
+	const files = filesUnder(status?.unstaged, dirPath);
 	if (files.length === 0) return;
 
 	const menu = await Menu.new({
@@ -503,9 +505,7 @@ async function showStagedDirContextMenu(_e: MouseEvent, dirPath: string) {
 		"@tauri-apps/api/menu"
 	);
 	const absPath = `${repoPath}/${dirPath}`;
-	const files = (status?.staged ?? []).filter(
-		(f) => f.path.startsWith(`${dirPath}/`) || f.path === dirPath,
-	);
+	const files = filesUnder(status?.staged, dirPath);
 	if (files.length === 0) return;
 
 	const menu = await Menu.new({
@@ -595,9 +595,7 @@ async function showConflictedContextMenu(_e: MouseEvent, filePath: string) {
 }
 
 async function resolveDirectory(dirPath: string) {
-	const files = (status?.conflicted ?? []).filter(
-		(f) => f.path.startsWith(`${dirPath}/`) || f.path === dirPath,
-	);
+	const files = filesUnder(status?.conflicted, dirPath);
 	if (files.length === 0) return;
 
 	try {
@@ -612,9 +610,7 @@ async function resolveDirectory(dirPath: string) {
 }
 
 async function unresolveDirectory(dirPath: string) {
-	const files = (status?.staged ?? []).filter(
-		(f) => f.path.startsWith(`${dirPath}/`) || f.path === dirPath,
-	);
+	const files = filesUnder(status?.staged, dirPath);
 	if (files.length === 0) return;
 
 	try {
@@ -632,9 +628,7 @@ async function showConflictedDirContextMenu(_e: MouseEvent, dirPath: string) {
 		"@tauri-apps/api/menu"
 	);
 	const absPath = `${repoPath}/${dirPath}`;
-	const files = (status?.conflicted ?? []).filter(
-		(f) => f.path.startsWith(`${dirPath}/`) || f.path === dirPath,
-	);
+	const files = filesUnder(status?.conflicted, dirPath);
 	if (files.length === 0) return;
 
 	const menu = await Menu.new({
