@@ -3249,6 +3249,86 @@ describe("RepoView", () => {
 			expect(screen.getByText(focusedFile.path)).toBeTruthy();
 		});
 
+		it("shows the newly focused commit's diff of a file picked while its files load", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const path = "src/shared.ts";
+			let headLists = 0;
+			const headFiles = Promise.withResolvers<FileDiff[]>();
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "get_commit_detail" && typeof a?.oid === "string") {
+					return Promise.resolve(makeRebaseDetail(a.oid, `summary ${a.oid}`));
+				}
+				if (cmd === "list_commit_files" && a?.oid === HEAD_OID) {
+					headLists += 1;
+					if (headLists > 1) return headFiles.promise;
+				}
+				if (cmd === "list_commit_files") {
+					return Promise.resolve([makeRebaseFile(path)]);
+				}
+				if (cmd === "diff_commit_file") {
+					return Promise.resolve([
+						makeRebaseFileWithContent(path, `DIFF AT ${String(a?.oid)}`),
+					]);
+				}
+				return base(cmd, args);
+			});
+			await openTheEditorOnTheClickedCommit();
+			await fireEvent.click(rebaseRow(1));
+			await screen.findByText(`summary ${CLICKED_OID}`);
+			await fireEvent.click(rebaseRow(0));
+			await vi.waitFor(() => expect(headLists).toBe(2));
+
+			await fireEvent.click(await screen.findByText(path));
+			headFiles.resolve([makeRebaseFile(path)]);
+
+			expect(await screen.findByText(`DIFF AT ${HEAD_OID}`)).toBeTruthy();
+			expect(screen.queryByText(`DIFF AT ${CLICKED_OID}`)).toBeFalsy();
+		});
+
+		it("closes the diff of a file picked while its files load when the newly focused commit lacks it", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const path = "src/shared.ts";
+			let headLists = 0;
+			const headFiles = Promise.withResolvers<FileDiff[]>();
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "get_commit_detail" && typeof a?.oid === "string") {
+					return Promise.resolve(makeRebaseDetail(a.oid, `summary ${a.oid}`));
+				}
+				if (cmd === "list_commit_files" && a?.oid === HEAD_OID) {
+					headLists += 1;
+					if (headLists > 1) return headFiles.promise;
+				}
+				if (cmd === "list_commit_files") {
+					return Promise.resolve([makeRebaseFile(path)]);
+				}
+				if (cmd === "diff_commit_file") {
+					return Promise.resolve([
+						makeRebaseFileWithContent(path, `DIFF AT ${String(a?.oid)}`),
+					]);
+				}
+				return base(cmd, args);
+			});
+			await openTheEditorOnTheClickedCommit();
+			await fireEvent.click(rebaseRow(1));
+			await screen.findByText(`summary ${CLICKED_OID}`);
+			await fireEvent.click(rebaseRow(0));
+			await vi.waitFor(() => expect(headLists).toBe(2));
+
+			await fireEvent.click(await screen.findByText(path));
+			headFiles.resolve([makeRebaseFile("src/head-only.ts")]);
+
+			expect(await screen.findByText("src/head-only.ts")).toBeTruthy();
+			await flush();
+			expect(screen.queryByText("Opening diff…")).toBeNull();
+			expect(screen.queryByRole("button", { name: "Close diff" })).toBeNull();
+		});
+
 		it("keeps the newest rebase diff options when older reloads finish last", async () => {
 			stubRebaseTodo(PARENT_OID);
 			const base = mockInvoke.getMockImplementation();

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
 	fileStatusOf,
 	listsSameFiles,
-	patchLoadedDiff,
 	toFileStatusList,
 } from "./file-status.js";
 import type { FileDiff, FileStatus, WorkingTreeStatus } from "./types.js";
@@ -41,32 +40,6 @@ describe("toFileStatusList", () => {
 
 	it("leaves old_path null for a file that was not renamed", () => {
 		expect(toFileStatusList([fd("a.ts")])[0].old_path).toBeNull();
-	});
-});
-
-describe("patchLoadedDiff", () => {
-	it("replaces only the loaded entry", () => {
-		const loaded: FileDiff = {
-			...fd("a.ts"),
-			hunks: [
-				{
-					header: "@@",
-					old_start: 1,
-					old_lines: 1,
-					new_start: 1,
-					new_lines: 1,
-					lines: [],
-				},
-			],
-		};
-		const out = patchLoadedDiff([fd("a.ts"), fd("b.ts")], "a.ts", [loaded]);
-		expect(out[0]).toBe(loaded);
-		expect(out[1].path).toBe("b.ts");
-	});
-
-	it("keeps the entry when the load came back empty", () => {
-		const list = [fd("a.ts")];
-		expect(patchLoadedDiff(list, "a.ts", [])).toEqual(list);
 	});
 });
 

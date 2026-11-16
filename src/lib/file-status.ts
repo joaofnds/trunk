@@ -47,17 +47,3 @@ function listingOf(status: WorkingTreeStatus): string {
 		sections.map((files) => files.map((file) => [file.path, file.status])),
 	);
 }
-
-/**
- * Replace a file list's lightweight (hunkless) entry with the diff loaded for
- * it, leaving every other entry alone. An empty load keeps the entry.
- */
-export function patchLoadedDiff(
-	list: FileDiff[],
-	path: string,
-	loaded: FileDiff[],
-): FileDiff[] {
-	return list.map((fd) =>
-		fd.path === path && loaded.length > 0 ? loaded[0] : fd,
-	);
-}
