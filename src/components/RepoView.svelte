@@ -25,6 +25,7 @@ import {
 import { resolveDiffTarget } from "../lib/diff-in-view.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { listsSameFiles } from "../lib/file-status.js";
+import { inertWhile } from "../lib/inert-while.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
 	loadedDiffFor,
@@ -733,39 +734,6 @@ let showMergeEditor = $derived(selectedFile?.kind === "conflicted");
 // tab stays mounted under the active one, so closing a diff returns to the rows
 // and scroll position the user left rather than to the top of a fresh first page.
 const graphCovered = $derived(reviewPanelShown || showDiff || showRebaseEditor);
-let graphLayer = $state<HTMLDivElement | null>(null);
-let leftPane = $state<HTMLDivElement | null>(null);
-let rightPane = $state<HTMLDivElement | null>(null);
-let rebaseRightPane = $state<HTMLDivElement | null>(null);
-let browseLayout = $state<HTMLDivElement | null>(null);
-let repoRoot = $state<HTMLDivElement | null>(null);
-// What is hidden lets go of focus, so the keys reach what the user can see rather
-// than a list or a field nobody can. Not every engine blurs an element that turns
-// inert.
-function releaseFocusWithin(region: HTMLElement | null) {
-	const focused = document.activeElement;
-	if (focused instanceof HTMLElement && region?.contains(focused))
-		focused.blur();
-}
-$effect(() => {
-	if (graphCovered) releaseFocusWithin(graphLayer);
-});
-$effect(() => {
-	if (leftPaneCollapsed) releaseFocusWithin(leftPane);
-});
-$effect(() => {
-	if (!rightPaneCollapsed) return;
-	releaseFocusWithin(rightPane);
-	releaseFocusWithin(rebaseRightPane);
-});
-$effect(() => {
-	if (showRebaseEditor) releaseFocusWithin(browseLayout);
-});
-// A tab in the background lets go of the focus, so the one shown can take it and
-// the arrow keys reach the commits on screen.
-$effect(() => {
-	if (!tabActive) releaseFocusWithin(repoRoot);
-});
 
 // The diffs to display: filtered commit file diff, staging diff, or the whole
 // of a tracked file opened through the finder. A current-file view is last
@@ -2605,8 +2573,7 @@ function stepRightPane(delta: number) {
 
 <div
 	class="flex-1 overflow-hidden flex flex-col"
-	bind:this={repoRoot}
-	inert={!tabActive}
+	{@attach inertWhile(!tabActive)}
 >
 	<PushRecoveryPrompt {repoPath} {remoteState} {refreshSignal} />
 	<main class="flex-1 overflow-hidden flex relative">
@@ -2614,9 +2581,8 @@ function stepRightPane(delta: number) {
 		     returns to the rows, scroll position and selection the user left. -->
 		<div
 			class="flex flex-1 overflow-hidden"
-			bind:this={browseLayout}
 			class:invisible={showRebaseEditor}
-			inert={showRebaseEditor}
+			{@attach inertWhile(showRebaseEditor)}
 		>
 			<!-- Review mode puts the reviews where the branches were. The sidebar stays
 			     mounted under it, since the graph's first page waits on its read. -->
@@ -2624,8 +2590,7 @@ function stepRightPane(delta: number) {
 				class="shrink-0 overflow-hidden grid"
 				style:width="{leftPaneSize}px"
 				hidden={reviewMode}
-				bind:this={leftPane}
-				inert={leftPaneCollapsed}
+				{@attach inertWhile(leftPaneCollapsed)}
 			>
 				<BranchSidebar
 					onrefschange={(refs) => {
@@ -2830,9 +2795,8 @@ function stepRightPane(delta: number) {
 				{/if}
 				<div
 					class="absolute inset-0"
-					bind:this={graphLayer}
 					class:invisible={graphCovered}
-					inert={graphCovered}
+					{@attach inertWhile(graphCovered)}
 				>
 					<CommitGraph
 						{onready}
@@ -2887,8 +2851,7 @@ function stepRightPane(delta: number) {
 				class="shrink-0 overflow-hidden flex flex-col"
 				style:width="{rightPaneSize}px"
 				hidden={reviewMode}
-				bind:this={rightPane}
-				inert={rightPaneCollapsed}
+				{@attach inertWhile(rightPaneCollapsed)}
 			>
 				{#if compare && compareTargetDetail}
 					{@const comparisonTarget = compareTargetDetail}
@@ -3067,8 +3030,7 @@ function stepRightPane(delta: number) {
 				<div
 					class="shrink-0 overflow-hidden flex flex-col"
 					style:width="{rightPaneSize}px"
-					bind:this={rebaseRightPane}
-					inert={rightPaneCollapsed}
+					{@attach inertWhile(rightPaneCollapsed)}
 				>
 					{#if rebaseFocusedCommitDetail}
 						{@const focusedDetail = rebaseFocusedCommitDetail}
