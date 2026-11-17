@@ -1220,13 +1220,23 @@ on the page, checked every frame:
 | I15 open the merge editor, n=1 | merge-conflict, 3 conflicts: navigation and Take All shown | 21 |
 | I15 take a side, n=3 | same: that side reports pressed | 2 to 3 |
 | I15 Save and Mark Resolved, n=1 | same: file listed resolved and none conflicted | 12, index stage 0 checked in git |
+| I16 merge from the graph menu, n=1 | a five-commit scratch repository, main and a feature branch: merge message dialog shown | 171, of which `merge_branch_begin` 166 |
+| I16 save that merge message, n=1 | same: graph shows the merge commit | 37 |
+| I16 cherry-pick from the commit menu, n=1 | same, a third branch's commit onto main: graph shows the new commit | 20 |
+| I16 revert from the commit menu, n=1 | same: revert message dialog shown, then after Save the graph shows the revert | 24, then 37 |
+| I16 stash a staged change, n=1 | same: stash row in the graph and a clean worktree | 14 |
+| I16 stash with only unstaged changes, n=1 | same: the refusal message shown | 11 |
+| I16 pop from the toolbar, n=1 | same: stash row gone and the change listed unstaged | 18 |
+| I16 rebase main onto the feature branch, n=1 | same: graph shows main rebuilt on the feature tip | 39 |
+| I16 soft reset from the commit menu, n=1 | same: header names the target commit and its changes listed staged | 33 after the confirm dialog closed, HEAD and index checked in git |
 
 After every mutation here the last command ended 527 to 855 ms after the event,
 which is the watcher refresh described above. Compare and diff options start no
 refresh. These are one-launch readings on small fixtures in a debug Rust build, so
-they show that nothing in these flows waits on the user, not how they scale. Merge,
-rebase, cherry-pick, revert, reset and stash under I16 were walked for their result
-but not timed, and I18 refresh has only the walk's reading above. The merge editor run
+they show that nothing in these flows waits on the user, not how they scale. The I16
+history operations wait on no refresh either: the page is usable within 40 ms of the
+git command's end, except the merge begin, whose 166 ms is the command preparing the
+merge. I18 refresh has only the walk's reading above. The merge editor run
 also showed that taking the incoming side of a conflict whose current side is already
 taken keeps both, which is recorded on TRUNK-451.
 
@@ -1365,7 +1375,7 @@ Frequency remains an assumption; no usage telemetry was collected.
 | 3 | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. Settle how often users open large highlighted files in full mode first. The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
 | Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
 | 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Index writes are not serialized per repository, so two overlapping actions can report a lock failure for work that happened. Saves, local fetch and watcher refreshes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
-| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. History depth, review size and conflict-region count remain unbenchmarked; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh; the same timer put checkout, compare, hunk navigation, diff options and merge-editor actions under 100 ms on small fixtures, while merge, rebase, cherry-pick, revert, reset and stash remain untimed. |
+| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. History depth, review size and conflict-region count remain unbenchmarked; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. |
 
 The evidence supports retaining current warm diff reuse, mounted-tab reuse,
 coalesced refresh, and the search debounce. It does not support another cache or
