@@ -409,6 +409,23 @@ describe("DiffPanel", () => {
 		expect(screen.getByText("Discard Hunk")).toBeInTheDocument();
 	});
 
+	it("names no change for a file opened whole, which shows no change", async () => {
+		render(DiffPanel, {
+			props: {
+				...commentingDiff,
+				fileDiffs: [{ ...testDiff, status: "Unknown" }],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "current_file",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+			},
+		});
+		await flushPrefs();
+
+		expect(screen.queryByTestId("diff-status-badge")).toBeNull();
+	});
+
 	it("shows a Comment File button for unstaged diffs", async () => {
 		render(DiffPanel, {
 			props: {

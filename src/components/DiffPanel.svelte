@@ -222,6 +222,11 @@ const selectedFile = $derived(
 		? undefined
 		: fileDiffs.find((fd) => fd.path === selectedPath),
 );
+// A file opened whole shows its content rather than a change, so it names no
+// status.
+const selectedStatus = $derived(
+	diffKind === "current_file" ? null : (selectedFile?.status ?? null),
+);
 const localComposerSession = createReviewComposerSession();
 const activeComposerSession = $derived(composerSession ?? localComposerSession);
 const defaultComposerTarget = $derived.by((): ReviewComposerTarget => {
@@ -1421,7 +1426,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		onlayoutmodechange={handleLayoutModeChange}
 		onrendermodechange={handleRenderModeChange}
 		{selectedPath}
-		selectedStatus={selectedFile?.status ?? null}
+		{selectedStatus}
 		selectedOldPath={selectedFile?.old_path ?? null}
 		{diffKind}
 		{hunkOperationInFlight}
