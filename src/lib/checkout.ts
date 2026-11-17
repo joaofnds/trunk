@@ -3,7 +3,7 @@ import { isTrunkError } from "./invoke.js";
 import { showToast } from "./toast.svelte.js";
 
 export const CHECKOUT_CONFLICT_MESSAGE =
-	"Your uncommitted changes conflict with this branch. Commit or stash them first.";
+	"Your uncommitted changes conflict with this branch. Commit them, or stage and stash them, first.";
 
 export function checkedOutMessage(branch: string): string {
 	return `Checked out ${branch}`;

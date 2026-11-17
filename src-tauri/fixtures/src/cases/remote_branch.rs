@@ -144,7 +144,7 @@ Make an edit the other branches would overwrite:
 Creating a branch at HEAD never moves the tree, so only the gestures that move it
 can conflict. HEAD is on `feature/beta`, whose `version.ts` differs from that of
 every commit named below. Each of these shows the error toast "Your uncommitted
-changes conflict with this branch. Commit or stash them first.":
+changes conflict with this branch. Commit them, or stage and stash them, first.":
 
 | # | Gesture | Also expected | Observed |
 |---|---------|---------------|----------|
