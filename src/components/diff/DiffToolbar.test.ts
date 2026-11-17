@@ -108,6 +108,20 @@ describe("DiffToolbar Source|Rendered toggle", () => {
 		});
 		expect(screen.getByTitle("Show source")).toBeInTheDocument();
 	});
+
+	it("reports no pressed state beside the action it names", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "docs/guide.markdown",
+				renderMode: "rendered",
+			},
+		});
+
+		expect(screen.getByTitle("Show source")).not.toHaveAttribute(
+			"aria-pressed",
+		);
+	});
 });
 
 describe("DiffToolbar content-mode toggle", () => {

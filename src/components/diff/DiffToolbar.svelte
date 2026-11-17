@@ -177,7 +177,6 @@ const renderedActive = $derived(
 			icon
 			size="sm"
 			variant="ghost"
-			aria-pressed={renderMode === "rendered"}
 			title={renderMode === "source" ? "Show rendered markdown" : "Show source"}
 			onclick={() =>
 				onrendermodechange(renderMode === "source" ? "rendered" : "source")}
