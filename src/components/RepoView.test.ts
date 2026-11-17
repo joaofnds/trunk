@@ -568,8 +568,16 @@ describe("RepoView", () => {
 	);
 
 	it.each([
-		{ pane: "sidebar", to: 849, collapsed: "left collapsed true" },
-		{ pane: "detail pane", to: 1251, collapsed: "right collapsed true" },
+		{
+			pane: "sidebar",
+			to: 849,
+			collapsed: ["left collapsed true", "left width 200"],
+		},
+		{
+			pane: "detail pane",
+			to: 1251,
+			collapsed: ["right collapsed true", "right width 300"],
+		},
 	])(
 		"collapses the $pane when a drag leaves it narrower than 50 pixels",
 		async ({ pane, to, collapsed }) => {
@@ -584,9 +592,43 @@ describe("RepoView", () => {
 				to,
 			);
 
-			expect(changes).toEqual([collapsed]);
+			expect(changes).toEqual(collapsed);
 		},
 	);
+
+	it.each([
+		{ pane: "sidebar", through: [852, 800], kept: "left width 200" },
+		{ pane: "detail pane", through: [1248, 1300], kept: "right width 300" },
+	])(
+		"keeps the width the $pane had when a drag closes it, to reopen at",
+		async ({ pane, through, kept }) => {
+			const changes = renderWithPanes({
+				leftPaneWidth: 200,
+				rightPaneWidth: 300,
+			});
+			const handle = screen.getByRole("slider", { name: `Resize ${pane}` });
+
+			await fireEvent.mouseDown(handle, { clientX: 1000 });
+			for (const clientX of through)
+				await fireEvent.mouseMove(window, { clientX });
+			await fireEvent.mouseUp(window);
+
+			expect(changes.at(-1)).toBe(kept);
+		},
+	);
+
+	it("lets go of the focus in the sidebar when it collapses", async () => {
+		renderWithPanes({ leftPaneWidth: 56 });
+		const filter = await screen.findByPlaceholderText("Filter branches…");
+		filter.focus();
+
+		await fireEvent.keyDown(
+			screen.getByRole("slider", { name: "Resize sidebar" }),
+			{ key: "ArrowLeft" },
+		);
+
+		expect(document.activeElement).not.toBe(filter);
+	});
 
 	it("reopens a collapsed detail pane when a drag takes it to 50 pixels", async () => {
 		const changes = renderWithPanes({

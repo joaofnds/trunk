@@ -734,14 +734,24 @@ let showMergeEditor = $derived(selectedFile?.kind === "conflicted");
 // and scroll position the user left rather than to the top of a fresh first page.
 const graphCovered = $derived(reviewPanelShown || showDiff);
 let graphLayer = $state<HTMLDivElement | null>(null);
-// A covered graph lets go of focus as an unmounted one did, so the keys reach the
-// pane on top rather than a list nobody can see. Not every engine blurs an
-// element that turns inert.
-$effect(() => {
-	if (!graphCovered) return;
+let leftPane = $state<HTMLDivElement | null>(null);
+let rightPane = $state<HTMLDivElement | null>(null);
+// What is hidden lets go of focus, so the keys reach what the user can see rather
+// than a list or a field nobody can. Not every engine blurs an element that turns
+// inert.
+function releaseFocusWithin(region: HTMLElement | null) {
 	const focused = document.activeElement;
-	if (focused instanceof HTMLElement && graphLayer?.contains(focused))
+	if (focused instanceof HTMLElement && region?.contains(focused))
 		focused.blur();
+}
+$effect(() => {
+	if (graphCovered) releaseFocusWithin(graphLayer);
+});
+$effect(() => {
+	if (leftPaneCollapsed) releaseFocusWithin(leftPane);
+});
+$effect(() => {
+	if (rightPaneCollapsed) releaseFocusWithin(rightPane);
 });
 
 // The diffs to display: filtered commit file diff, staging diff, or the whole
@@ -2492,6 +2502,7 @@ function startLeftResize(e: MouseEvent) {
 	}
 
 	function onMouseUp() {
+		if (leftPaneCollapsed && startWidth > 0) onleftpanewidthchange(startWidth);
 		storeLeftPane();
 		window.removeEventListener("mousemove", onMouseMove);
 		window.removeEventListener("mouseup", onMouseUp);
@@ -2529,6 +2540,8 @@ function startRightResize(e: MouseEvent) {
 	}
 
 	function onMouseUp() {
+		if (rightPaneCollapsed && startWidth > 0)
+			onrightpanewidthchange(startWidth);
 		storeRightPane();
 		window.removeEventListener("mousemove", onMouseMove);
 		window.removeEventListener("mouseup", onMouseUp);
@@ -2643,6 +2656,8 @@ function stepRightPane(delta: number) {
 			<div
 				class="shrink-0 overflow-hidden flex flex-col"
 				style:width="{rightPaneSize}px"
+				bind:this={rightPane}
+				inert={rightPaneCollapsed}
 			>
 				{#if rebaseFocusedCommitDetail}
 					{@const focusedDetail = rebaseFocusedCommitDetail}
@@ -2687,6 +2702,8 @@ function stepRightPane(delta: number) {
 				class="shrink-0 overflow-hidden grid"
 				style:width="{leftPaneSize}px"
 				hidden={reviewMode}
+				bind:this={leftPane}
+				inert={leftPaneCollapsed}
 			>
 				<BranchSidebar
 					onrefschange={(refs) => {
@@ -2946,6 +2963,8 @@ function stepRightPane(delta: number) {
 				class="shrink-0 overflow-hidden flex flex-col"
 				style:width="{rightPaneSize}px"
 				hidden={reviewMode}
+				bind:this={rightPane}
+				inert={rightPaneCollapsed}
 			>
 				{#if compare && compareTargetDetail}
 					{@const comparisonTarget = compareTargetDetail}
