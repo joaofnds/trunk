@@ -3,6 +3,7 @@ import { onMount } from "svelte";
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import {
 	buildSplitRows,
+	changeRunEnd,
 	countLines,
 	type DiffComposer,
 	type DiffRow,
@@ -24,6 +25,7 @@ import {
 import { measure } from "../../lib/perf.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
+import { FLASH_MS, RowFlash } from "../../lib/row-flash.svelte.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type {
 	ContentMode,
@@ -161,8 +163,6 @@ function actionSide(hunkKey: string, pair: PairedRow): Side | null {
 	return null;
 }
 
-const FLASH_MS = 600;
-
 let list = $state<
 	(DiffListHandle & { scrollToIndex: (index: number) => void }) | null
 >(null);
@@ -172,6 +172,8 @@ let list = $state<
 // another row's node as the reader scrolls away.
 let flashedHunkKey = $state<string | null>(null);
 let flashTimer: ReturnType<typeof setTimeout> | null = null;
+// A run of changed lines has no header, so its rows flash instead.
+const runFlash = new RowFlash();
 
 const model = $derived(
 	measure("diff.buildRows", (observation) => {
@@ -199,6 +201,7 @@ const vd = createVirtualizedDiff({
 	composer: () => composer?.place,
 	list: () => list,
 	startAt: () => startAt,
+	content: () => contentMode,
 });
 
 // The factory's own onMount handles the observer; this one only stops a flash
@@ -206,6 +209,7 @@ const vd = createVirtualizedDiff({
 onMount(() => {
 	return () => {
 		if (flashTimer) clearTimeout(flashTimer);
+		runFlash.stop();
 	};
 });
 
@@ -236,13 +240,24 @@ export function scrollToHunk(ordinal: number): void {
 	if (!nav) return;
 
 	list?.scrollToIndex(nav.rowIndex);
-	vd.noteHunkJump(ordinal);
 	flash(`${nav.path}-${nav.hunkIdx}`);
 }
 
-export function stepHunk(direction: 1 | -1): number {
-	const ordinal = vd.adjacentHunk(direction);
-	if (ordinal >= 0) scrollToHunk(ordinal);
+// Showing hunks, the steps are the hunks in the order `scrollToHunk` counts
+// them. Showing the file whole, they are its runs of changed lines, and the
+// run flashes since it has no header of its own to flash.
+export function step(direction: 1 | -1): number {
+	const ordinal = vd.adjacentStep(direction);
+	if (ordinal < 0) return -1;
+
+	if (contentMode === "hunk") {
+		scrollToHunk(ordinal);
+	} else {
+		const start = vd.steps[ordinal];
+		list?.scrollToIndex(start);
+		runFlash.show(start, changeRunEnd(model, start));
+	}
+	vd.noteStepJump(ordinal);
 	return ordinal;
 }
 
@@ -409,14 +424,18 @@ function originClass(origin: string): string {
 	{/if}
 {/snippet}
 
-{#snippet splitRow(item: DiffRow, _index: number)}
+{#snippet splitRow(item: DiffRow, index: number)}
 	{#if item.kind === "pair"}
 		{@const hunkKey = `${item.path}-${item.hunkIdx}`}
 		<!-- The row, not the cell, is what the pan is held against: it is pinned at
          the viewport's left edge and spans one viewport, and the two halves
          translate inside it. -->
 		{@const heldOn = actionSide(hunkKey, item.row)}
-		<div class="split-row pan-pinned flex" class:holds-action={heldOn !== null}>
+		<div
+			class="split-row pan-pinned flex"
+			class:holds-action={heldOn !== null}
+			class:run-flash={runFlash.lit(index)}
+		>
 			{#if item.row.left}
 				{@const line = item.row.left.line}
 				{@const lineIdx = item.row.left.lineIdx}
@@ -749,6 +768,19 @@ function originClass(origin: string): string {
 
 .hunk-highlight {
 	animation: hunk-flash 0.6s ease-out;
+}
+/* Over each half, since the halves paint their own backgrounds above the row's. */
+.run-flash > * {
+	animation: run-flash 0.6s ease-out;
+}
+/* An inset spread fills a box whose shorter side is under twice it, and a row is one line. */
+@keyframes run-flash {
+	0% {
+		box-shadow: inset 0 0 0 64px var(--color-hunk-flash);
+	}
+	100% {
+		box-shadow: inset 0 0 0 64px transparent;
+	}
 }
 @keyframes hunk-flash {
 	0% {

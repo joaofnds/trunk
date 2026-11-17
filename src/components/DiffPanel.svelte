@@ -159,8 +159,9 @@ let prefsLoaded = $state(false);
 
 let focusedHunkIndex = $state(0);
 // Two navigation paths, because only some views are virtualized. A virtualized
-// view publishes a handle and owns the scroll; RenderedDiff and SplitView still
-// bind one element per hunk, and navigation goes through those.
+// view publishes a handle and owns the scroll; RenderedDiff still binds one
+// element per hunk, and navigation goes through those. The whole-file inline
+// view publishes the same handle under the binding its selection uses, below.
 let diffNav = $state<DiffNav | null>(null);
 let hunkElements = $state<Record<string, HTMLDivElement>>({});
 
@@ -283,6 +284,8 @@ let composer = $state<CommentComposer | null>(null);
 // then reuses CommentComposer with that injected result. Merge commits ARE valid
 // here (L-05) — no isMerge guard, unlike the diff path.
 let fullFileView = $state<FullFileView | null>(null);
+// Navigation's handle, from whichever virtualized view is mounted.
+const nav = $derived<DiffNav | null>(diffNav ?? fullFileView);
 const fullFileComposerOpen = $derived(
 	activeComposerSession.mode === "full-file" && composerTargetMatches,
 );
@@ -747,9 +750,8 @@ function clearSelection() {
 // A virtualized view steps from what the reader has on screen. The rendered
 // view has no rows to read a position from, so it steps from the last hunk.
 function stepHunk(direction: 1 | -1) {
-	if (diffNav) {
-		const ordinal = diffNav.stepHunk(direction);
-		if (ordinal >= 0) focusedHunkIndex = ordinal;
+	if (nav) {
+		nav.step(direction);
 		return;
 	}
 
@@ -757,10 +759,10 @@ function stepHunk(direction: 1 | -1) {
 }
 
 function scrollToHunk(index: number) {
-	if (diffNav) {
-		if (index < 0 || index >= diffNav.hunkCount()) return;
+	if (nav) {
+		if (index < 0 || index >= nav.hunkCount()) return;
 		focusedHunkIndex = index;
-		diffNav.scrollToHunk(index);
+		nav.scrollToHunk(index);
 		return;
 	}
 
@@ -833,20 +835,18 @@ export function scrollToLine(
 
 	const target = hunkContaining(startLine, side);
 
-	if (diffNav) {
-		const ordinal = target
-			? diffNav.ordinalOf(target.path, target.hunkIdx)
-			: -1;
+	if (nav) {
+		const ordinal = target ? nav.ordinalOf(target.path, target.hunkIdx) : -1;
 		if (!target || ordinal < 0) {
 			const drawn = fileDiffs.some((fd) =>
-				diffNav?.scrollToThread(fd.path, side, startLine),
+				nav?.scrollToThread(fd.path, side, startLine),
 			);
 			if (!drawn) scrollToHunk(0);
 			return;
 		}
 
 		focusedHunkIndex = ordinal;
-		diffNav.scrollToLine(
+		nav.scrollToLine(
 			target.path,
 			target.hunkIdx,
 			lineIndexIn(target.lines, startLine, side),

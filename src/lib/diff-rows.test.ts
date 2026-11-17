@@ -4,12 +4,14 @@ import {
 	type BuildOptions,
 	buildInlineRows,
 	buildSplitRows,
+	changeRunEnd,
 	diffHoldsComposer,
 	FIXED_ROW_HEIGHTS,
 	readingLineAt,
 	rowHeights,
 	rowIndexForLine,
 	rowIndexForReadingLine,
+	stepRows,
 } from "./diff-rows.js";
 import { displayColumns } from "./display-columns.js";
 import { ALL_THREADS } from "./review-filter.js";
@@ -679,6 +681,47 @@ describe("readingLineAt", () => {
 			oldLine: 2,
 			newLine: 2,
 		});
+	});
+});
+
+// A whole file with two runs of changes: lines 2-3 and line 6.
+const twoRuns = file("src/main.ts", [
+	hunk("@@ -1,6 +1,6 @@", [
+		line("Context", "one", 1, 1),
+		line("Delete", "two", 2, null),
+		line("Add", "two!", null, 2),
+		line("Context", "three", 3, 3),
+		line("Context", "four", 4, 4),
+		line("Add", "five", null, 5),
+	]),
+]);
+
+describe("stepRows", () => {
+	it("steps between hunks when the rows show hunks", () => {
+		const model = buildInlineRows([twoHunks], { ...fullMode, content: "hunk" });
+
+		expect(stepRows(model, "hunk")).toEqual([0, 3]);
+	});
+
+	it("steps between runs of changed lines when the rows show the file whole", () => {
+		const model = buildInlineRows([twoRuns], fullMode);
+
+		expect(stepRows(model, "full")).toEqual([1, 5]);
+	});
+
+	it("counts a side-by-side row with a change on either side as changed", () => {
+		const model = buildSplitRows([twoRuns], fullMode);
+
+		expect(stepRows(model, "full")).toEqual([1, 4]);
+	});
+});
+
+describe("changeRunEnd", () => {
+	it("ends the run at the first unchanged row", () => {
+		const model = buildInlineRows([twoRuns], fullMode);
+
+		expect(changeRunEnd(model, 1)).toBe(3);
+		expect(changeRunEnd(model, 5)).toBe(6);
 	});
 });
 

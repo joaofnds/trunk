@@ -22,9 +22,11 @@ export interface DiffNav {
 	/** Scrolls to the comment row drawing a thread that starts on `startLine`,
 	 *  reporting false when no row draws one. */
 	scrollToThread(path: string, side: Side, startLine: number): boolean;
-	/** Scrolls to the hunk after (1) or before (-1) the one the reader is at,
-	 *  reporting its place in the sequence, or -1 when there is none. */
-	stepHunk(direction: 1 | -1): number;
+	/** Scrolls to the next (1) or previous (-1) step from where the reader is:
+	 *  a hunk while the view shows hunks, a run of changed lines while it shows
+	 *  the file whole. Reports the step's place in that sequence, or -1 when
+	 *  there is none that way. */
+	step(direction: 1 | -1): number;
 	/** The line at the top of the view, where a view replacing it opens. */
 	readingLine(): ReadingLine | null;
 }

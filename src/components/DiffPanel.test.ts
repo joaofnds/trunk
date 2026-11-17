@@ -3989,6 +3989,60 @@ describe("DiffPanel hunk navigation", () => {
 		expect(viewport.scrollTop).toBe(64);
 	});
 
+	// A file shown whole arrives as one hunk, so the steps are its runs of
+	// changed lines: here delta and epsilon, the fourth and fifth rows.
+	describe("with the whole file shown", () => {
+		async function renderWhole(layout: "inline" | "split") {
+			const storeMock = await import("../lib/store.js");
+			vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
+				Promise.resolve(layout),
+			);
+			const result = render(DiffPanel, {
+				props: {
+					...commentingDiff,
+					fileDiffs: [navDiff],
+					commitDetail: null,
+					onclose: vi.fn(),
+					diffKind: "unstaged",
+					contentMode: "full",
+					repoPath: "/repo",
+					selectedPath: "src/main.ts",
+					keysActive: true,
+				},
+			});
+			await flushPrefs();
+			return result;
+		}
+
+		afterEach(async () => {
+			const storeMock = await import("../lib/store.js");
+			vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
+				Promise.resolve("inline"),
+			);
+		});
+
+		it.each(["inline", "split"] as const)(
+			"scrolls the %s view to the next run of changed lines on ]",
+			async (layout) => {
+				const { container } = await renderWhole(layout);
+
+				await fireEvent.keyDown(window, { key: "]" });
+				await tick();
+
+				expect(viewportOf(container).scrollTop).toBe(3 * 18);
+			},
+		);
+
+		it("scrolls the inline view to the anchored line's own row", async () => {
+			const { container, component } = await renderWhole("inline");
+
+			component.scrollToLine(11, 11, "New");
+			await tick();
+
+			expect(viewportOf(container).scrollTop).toBe(4 * 18);
+		});
+	});
+
 	it("scrolls to the anchored new-side line's own row, not to its hunk header", async () => {
 		const { container, component, ready } = renderNav();
 		await ready;

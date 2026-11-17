@@ -1,12 +1,16 @@
 <script lang="ts">
+import { onMount } from "svelte";
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import {
 	buildInlineRows,
+	changeRunEnd,
 	countLines,
 	type DiffComposer,
 	type DiffRow,
 	FIXED_ROW_HEIGHT_VARS,
 	type ReadingLine,
+	rowIndexForLine,
+	rowIndexForThread,
 } from "../../lib/diff-rows.js";
 import {
 	gripLabel,
@@ -18,11 +22,13 @@ import { focusInEditable, keyChord } from "../../lib/keyboard.js";
 import { measure } from "../../lib/perf.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
+import { RowFlash } from "../../lib/row-flash.svelte.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type {
 	DiffLine,
 	FileDiff,
 	ReviewFilter,
+	Side,
 	Thread,
 } from "../../lib/types.js";
 import GutterGrip from "../../lib/ui/GutterGrip.svelte";
@@ -86,7 +92,9 @@ let selectedPath = $state<string | null>(null);
 let anchorIndex = $state<number | null>(null);
 let focusIndex = $state<number | null>(null);
 
-let list = $state<DiffListHandle | null>(null);
+let list = $state<
+	(DiffListHandle & { scrollToIndex: (index: number) => void }) | null
+>(null);
 
 // Reactive, so the selection's Comment action stays out of the way of the
 // press that is still making the selection.
@@ -123,6 +131,7 @@ const vd = createVirtualizedDiff({
 	composer: () => composer?.place,
 	list: () => list,
 	startAt: () => startAt,
+	content: () => "full",
 	numberColumns: () => (showsWholeFile ? 1 : 2),
 });
 
@@ -246,6 +255,64 @@ export function readingLine(): ReadingLine | null {
 	return vd.readingLine();
 }
 
+// The DiffNav handle. A file shown whole has no hunk headers, so a hunk is
+// reached at its first line and a step lands on a run of changed lines, which
+// flashes in place of the header it does not have.
+const runFlash = new RowFlash();
+onMount(() => () => runFlash.stop());
+
+export function hunkCount(): number {
+	return model.hunkNav.length;
+}
+
+export function ordinalOf(path: string, hunkIdx: number): number {
+	return model.hunkNav.findIndex(
+		(entry) => entry.path === path && entry.hunkIdx === hunkIdx,
+	);
+}
+
+export function scrollToHunk(ordinal: number): void {
+	const nav = model.hunkNav[ordinal];
+	if (nav) list?.scrollToIndex(nav.rowIndex);
+}
+
+export function scrollToLine(
+	path: string,
+	hunkIdx: number,
+	lineIdx: number,
+): void {
+	const rowIndex = rowIndexForLine(model, path, hunkIdx, lineIdx);
+	if (rowIndex < 0) {
+		scrollToHunk(ordinalOf(path, hunkIdx));
+		return;
+	}
+
+	list?.scrollToIndex(rowIndex);
+}
+
+export function scrollToThread(
+	path: string,
+	side: Side,
+	startLine: number,
+): boolean {
+	const rowIndex = rowIndexForThread(model, path, side, startLine);
+	if (rowIndex < 0) return false;
+
+	list?.scrollToIndex(rowIndex);
+	return true;
+}
+
+export function step(direction: 1 | -1): number {
+	const ordinal = vd.adjacentStep(direction);
+	if (ordinal < 0) return -1;
+
+	const start = vd.steps[ordinal];
+	list?.scrollToIndex(start);
+	runFlash.show(start, changeRunEnd(model, start));
+	vd.noteStepJump(ordinal);
+	return ordinal;
+}
+
 // Called by the DiffPanel host (via bind:this) on mode/layout toggle and Escape
 // so the selection never goes stale.
 export function clearSelection() {
@@ -278,7 +345,7 @@ export function clearSelection() {
 	>
 {/snippet}
 
-{#snippet diffRow(item: DiffRow, _index: number)}
+{#snippet diffRow(item: DiffRow, index: number)}
 	{#if item.kind === "line"}
 		{@const line = item.line}
 		{@const isSelectable = line.new_lineno !== null}
@@ -305,6 +372,7 @@ export function clearSelection() {
 			class:selection-last={isSelected &&
 				!inSelection(item.path, item.flatIdx + 1)}
 			class:holds-action={holdsAction}
+			class:run-flash={runFlash.lit(index)}
 			style:font-family={DIFF_ROW_FONT.fontFamily}
 			style:font-size={DIFF_ROW_FONT.fontSize}
 			style:line-height={DIFF_ROW_FONT.lineHeight}
@@ -438,6 +506,19 @@ export function clearSelection() {
 </div>
 
 <style>
+/* Over the row's own background, which an inline style sets per line. */
+.run-flash {
+	animation: run-flash 0.6s ease-out;
+}
+/* An inset spread fills a box whose shorter side is under twice it, and a row is one line. */
+@keyframes run-flash {
+	0% {
+		box-shadow: inset 0 0 0 64px var(--color-hunk-flash);
+	}
+	100% {
+		box-shadow: inset 0 0 0 64px transparent;
+	}
+}
 .full-file {
 	position: absolute;
 	inset: 0;

@@ -19,6 +19,7 @@ import {
 	readingLineAt,
 	rowHeights,
 	rowIndexForReadingLine,
+	stepRows,
 } from "./diff-rows.js";
 import { measure } from "./perf.js";
 import {
@@ -27,7 +28,7 @@ import {
 	type RowMetrics,
 } from "./row-metrics.js";
 import { ThreadFolds } from "./thread-folds.svelte.js";
-import type { Thread } from "./types.js";
+import type { ContentMode, Thread } from "./types.js";
 
 // Tailwind's preflight sets tab-size: 4 globally, so a tab advances four
 // columns — unless invisibles are on, where .invisible-char collapses it to one.
@@ -65,6 +66,9 @@ export interface VirtualizedDiffDeps {
 	/** The line the reader was at in the view this one replaced, which the list
 	 *  opens at instead of the top. Applied once per value. */
 	startAt?: () => ReadingLine | null;
+	/** Whether the rows show hunks or the file whole, which decides what `]`
+	 *  and `[` step between. Hunks when omitted. */
+	content?: () => ContentMode;
 }
 
 export interface InlineVirtualizedDiff {
@@ -86,11 +90,13 @@ export interface InlineVirtualizedDiff {
 	readonly markerW: string;
 	/** The first line at the top of the list, the place a replacing view opens at. */
 	readingLine(): ReadingLine | null;
-	/** The hunk `]` (1) or `[` (-1) goes to from where the reader is, or -1. */
-	adjacentHunk(direction: 1 | -1): number;
-	/** Records that a jump just brought a hunk to the top, which the next step
+	/** The rows `]` and `[` step between, as `stepRows` gives them. */
+	readonly steps: number[];
+	/** The step `]` (1) or `[` (-1) goes to from where the reader is, or -1. */
+	adjacentStep(direction: 1 | -1): number;
+	/** Records that a step just brought its row to the top, which the next step
 	 *  goes on from while the reader leaves the view where it is. */
-	noteHunkJump(ordinal: number): void;
+	noteStepJump(ordinal: number): void;
 }
 
 export interface SplitVirtualizedDiff extends InlineVirtualizedDiff {
@@ -330,8 +336,12 @@ export function createVirtualizedDiff(
 		drawnLine = readingLineAt(model, list.topIndex());
 	});
 
-	// Tied to the rows it was taken over: a refetch rebuilds them, and the hunk
-	// at an ordinal of the old rows is not the hunk at that ordinal now.
+	// Derived rather than built with the rows, and so computed only when a step
+	// reads it.
+	const steps = $derived(stepRows(model, deps.content?.() ?? "hunk"));
+
+	// Tied to the rows it was taken over: a refetch rebuilds them, and the step
+	// at an ordinal of the old rows is not the step at that ordinal now.
 	let lastJump: (StopJump & { model: DiffRowModel }) | null = null;
 
 	return {
@@ -339,18 +349,21 @@ export function createVirtualizedDiff(
 		readingLine() {
 			return drawnLine;
 		},
-		adjacentHunk(direction) {
+		get steps() {
+			return steps;
+		},
+		adjacentStep(direction) {
 			const list = deps.list();
 			if (!list) return -1;
 
 			return adjacentStop(
-				model.hunkNav.map((entry) => entry.rowIndex),
+				steps,
 				list.topIndex(),
 				direction,
 				lastJump?.model === model ? lastJump : null,
 			);
 		},
-		noteHunkJump(ordinal) {
+		noteStepJump(ordinal) {
 			const list = deps.list();
 			lastJump = list ? { ordinal, top: list.topIndex(), model } : null;
 		},

@@ -21,6 +21,7 @@ import {
 import { measure } from "../../lib/perf.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
+import { FLASH_MS } from "../../lib/row-flash.svelte.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type {
 	DiffLine,
@@ -136,8 +137,6 @@ function inSelection(hunkKey: string, lineIdx: number): boolean {
 	return selectedHunkKey === hunkKey && selectedLineIndices.has(lineIdx);
 }
 
-const FLASH_MS = 600;
-
 let list = $state<
 	(DiffListHandle & { scrollToIndex: (index: number) => void }) | null
 >(null);
@@ -207,13 +206,16 @@ export function scrollToHunk(ordinal: number): void {
 	if (!nav) return;
 
 	list?.scrollToIndex(nav.rowIndex);
-	vd.noteHunkJump(ordinal);
 	flash(`${nav.path}-${nav.hunkIdx}`);
 }
 
-export function stepHunk(direction: 1 | -1): number {
-	const ordinal = vd.adjacentHunk(direction);
-	if (ordinal >= 0) scrollToHunk(ordinal);
+// The steps here are the hunks, in the order `scrollToHunk` counts them.
+export function step(direction: 1 | -1): number {
+	const ordinal = vd.adjacentStep(direction);
+	if (ordinal < 0) return -1;
+
+	scrollToHunk(ordinal);
+	vd.noteStepJump(ordinal);
 	return ordinal;
 }
 

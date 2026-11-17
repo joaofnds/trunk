@@ -404,6 +404,48 @@ export function buildSplitRows(
 	};
 }
 
+function isChangeRow(row: DiffRow | undefined): boolean {
+	if (row?.kind === "line") return isChange(row.line);
+	if (row?.kind !== "pair") return false;
+
+	const { left, right } = row.row;
+	return (
+		(left !== null && isChange(left.line)) ||
+		(right !== null && isChange(right.line))
+	);
+}
+
+function isChange(line: DiffLine): boolean {
+	return line.origin === "Add" || line.origin === "Delete";
+}
+
+/**
+ * The rows `]` and `[` step between, in order: each hunk's first row when the
+ * rows show hunks, and the first row of each run of changed lines when they
+ * show the file whole. A file shown whole arrives as one hunk, so stepping
+ * between hunks there would have nowhere to go. Computed when a step asks for
+ * it rather than while the rows are built, so a stage or an unstage, which
+ * rebuilds them, pays nothing for it.
+ */
+export function stepRows(model: DiffRowModel, content: ContentMode): number[] {
+	if (content === "hunk") return model.hunkNav.map((entry) => entry.rowIndex);
+
+	const starts: number[] = [];
+	for (const [index, row] of model.rows.entries()) {
+		if (isChangeRow(row) && !isChangeRow(model.rows[index - 1])) {
+			starts.push(index);
+		}
+	}
+	return starts;
+}
+
+/** Where the run of changed lines starting at `start` ends, exclusive. */
+export function changeRunEnd(model: DiffRowModel, start: number): number {
+	let end = start;
+	while (isChangeRow(model.rows[end])) end++;
+	return end;
+}
+
 /** The row rendering one line of one hunk, or -1 when the model carries no such
  *  row — a collapsed file has none. The scan starts at the hunk and stops at the
  *  line, so it costs the hunk's length rather than the file's: a per-line lookup
