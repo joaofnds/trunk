@@ -401,8 +401,9 @@ fn git_reads_as_another_name(short: &str) -> bool {
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, and `merge_error` carrying git's
-/// own message when `git` will not run or the merge fails.
+/// Returns `not_open` when `path` names no open repository, a `git_*` code when libgit2 cannot
+/// open the repository or read its graph, and `merge_error` carrying git's own message when
+/// `git` will not run or the merge fails.
 pub fn merge_branch_begin_inner(
     path: &str,
     branch: &str,

@@ -167,7 +167,7 @@ describe("FileRow", () => {
 				role: "option",
 				actionLabel: "+",
 				onaction: () => {},
-				focused: true,
+				selected: true,
 			},
 		});
 

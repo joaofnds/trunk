@@ -19,7 +19,7 @@ interface Props {
 	node: DirectoryNode;
 	depth: number;
 	expanded: boolean;
-	focused: boolean;
+	selected: boolean;
 	ontoggle: () => void;
 	actionLabel?: string;
 	onaction?: () => void;
@@ -32,7 +32,7 @@ let {
 	node,
 	depth,
 	expanded,
-	focused,
+	selected,
 	ontoggle,
 	actionLabel = "",
 	onaction,
@@ -86,7 +86,7 @@ function openMenu(e: MouseEvent) {
 <Row
 	variant="parent"
 	role="treeitem"
-	selected={focused}
+	{selected}
 	indent={treeIndent(depth)}
 	tabindex={-1}
 	aria-expanded={expanded}

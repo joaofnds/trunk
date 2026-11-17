@@ -1289,12 +1289,12 @@ fn build_partial_patch_text(
     };
 
     let header = patch_header(file_path, patch, reverse);
+    let new_start = body.lone_new_start(old_start);
     let HunkBody {
         lines,
         old_count,
         new_count,
     } = body;
-    let new_start = lone_hunk_new_start(old_start, old_count, new_count);
     let lines_joined = lines.join("");
 
     Ok(format!(
@@ -1302,32 +1302,34 @@ fn build_partial_patch_text(
     ))
 }
 
-/// Where a patch's only hunk starts on its new side.
-///
-/// libgit2 places each hunk at its new-side start in the file as patched so far
-/// and does not search for it (probed, git2 0.21). The hunk's own new start counts
-/// every line the file's other hunks add or remove above it, which this one-hunk
-/// patch does not carry, so it is derived from the old side instead: the same
-/// lines precede the hunk on both sides. A side with no lines names the line
-/// before the hunk rather than its first, as git writes it.
-const fn lone_hunk_new_start(old_start: u32, old_count: u32, new_count: u32) -> u32 {
-    let preceding = if old_count == 0 {
-        old_start
-    } else {
-        old_start.saturating_sub(1)
-    };
-    if new_count == 0 {
-        preceding
-    } else {
-        preceding + 1
-    }
-}
-
 /// One hunk's rewritten lines, with the line counts its header must declare.
 struct HunkBody {
     lines: Vec<String>,
     old_count: u32,
     new_count: u32,
+}
+
+impl HunkBody {
+    /// Where this hunk starts on its new side when it is a patch's only hunk.
+    ///
+    /// libgit2 places each hunk at its new-side start in the file as patched so far
+    /// and does not search for it (probed, git2 0.21). The hunk's own new start
+    /// counts every line the file's other hunks add or remove above it, which a
+    /// one-hunk patch does not carry, so it is derived from the old side instead:
+    /// the same lines precede the hunk on both sides. A side with no lines names the
+    /// line before the hunk rather than its first, as git writes it.
+    const fn lone_new_start(&self, old_start: u32) -> u32 {
+        let preceding = if self.old_count == 0 {
+            old_start
+        } else {
+            old_start.saturating_sub(1)
+        };
+        if self.new_count == 0 {
+            preceding
+        } else {
+            preceding + 1
+        }
+    }
 }
 
 /// Whether libgit2 gave this origin to a no-newline-at-end-of-file marker.
@@ -1356,10 +1358,8 @@ fn rewrite_hunk_lines(
     let origins = (0..num_lines)
         .map(|line_idx| patch.line_in_hunk(hunk_idx, line_idx).map(|l| l.origin()))
         .collect::<Result<Vec<char>, _>>()?;
-    // Whether a line after `line_idx` is staged as an addition.
     let stages_an_addition_after = |line_idx: usize| {
-        (line_idx + 1..num_lines)
-            .any(|later| !reverse && origins[later] == '+' && is_selected(later))
+        (line_idx + 1..num_lines).any(|later| origins[later] == '+' && is_selected(later))
     };
 
     let mut body = HunkBody {

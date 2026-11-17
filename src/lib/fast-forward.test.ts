@@ -17,19 +17,27 @@ const commits = [
 
 describe("canFastForward", () => {
 	it("allows a commit that descends from HEAD", () => {
-		expect(canFastForward(commits, "main", "feature-tip")).toBe(true);
+		expect(
+			canFastForward(commits, { head: "main", target: "feature-tip" }),
+		).toBe(true);
 	});
 
 	it("refuses a commit on a branch that forked below HEAD", () => {
-		expect(canFastForward(commits, "main", "side")).toBe(false);
+		expect(canFastForward(commits, { head: "main", target: "side" })).toBe(
+			false,
+		);
 	});
 
 	it("refuses an ancestor of HEAD, which would move nothing", () => {
-		expect(canFastForward(commits, "main", "base")).toBe(false);
+		expect(canFastForward(commits, { head: "main", target: "base" })).toBe(
+			false,
+		);
 	});
 
 	it("refuses HEAD itself", () => {
-		expect(canFastForward(commits, "main", "main")).toBe(false);
+		expect(canFastForward(commits, { head: "main", target: "main" })).toBe(
+			false,
+		);
 	});
 
 	it("follows a merge's second parent down to HEAD", () => {
@@ -37,12 +45,17 @@ describe("canFastForward", () => {
 			makeCommit({ oid: "merge", parent_oids: ["side", "main"] }),
 			...commits.slice(2),
 		];
-		expect(canFastForward(merged, "main", "merge")).toBe(true);
+		expect(canFastForward(merged, { head: "main", target: "merge" })).toBe(
+			true,
+		);
 	});
 
 	it("refuses when HEAD is not among the loaded rows", () => {
-		expect(canFastForward(commits.slice(0, 2), "main", "feature-tip")).toBe(
-			false,
-		);
+		expect(
+			canFastForward(commits.slice(0, 2), {
+				head: "main",
+				target: "feature-tip",
+			}),
+		).toBe(false);
 	});
 });

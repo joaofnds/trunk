@@ -27,7 +27,7 @@ describe("DirectoryRow", () => {
 				node: makeNode("src"),
 				depth: 3,
 				expanded: false,
-				focused: false,
+				selected: false,
 				ontoggle: () => {},
 			},
 		});
@@ -42,7 +42,7 @@ describe("DirectoryRow", () => {
 				node: makeNode("src"),
 				depth: 0,
 				expanded: false,
-				focused: false,
+				selected: false,
 				ontoggle: vi.fn(),
 			},
 		});
@@ -55,7 +55,7 @@ describe("DirectoryRow", () => {
 				node: makeNode("src", 3),
 				depth: 0,
 				expanded: false,
-				focused: false,
+				selected: false,
 				ontoggle: vi.fn(),
 			},
 		});
@@ -68,7 +68,7 @@ describe("DirectoryRow", () => {
 				node: makeNode("src"),
 				depth: 0,
 				expanded: true,
-				focused: false,
+				selected: false,
 				ontoggle: vi.fn(),
 			},
 		});
@@ -83,7 +83,7 @@ describe("DirectoryRow", () => {
 				node: makeNode("src"),
 				depth: 0,
 				expanded: false,
-				focused: false,
+				selected: false,
 				ontoggle: vi.fn(),
 			},
 		});
@@ -98,7 +98,7 @@ describe("DirectoryRow", () => {
 				node: makeNode("src"),
 				depth: 0,
 				expanded: false,
-				focused: false,
+				selected: false,
 				ontoggle,
 			},
 		});
@@ -112,7 +112,7 @@ describe("DirectoryRow", () => {
 				node: makeNode("src"),
 				depth: 1,
 				expanded: false,
-				focused: true,
+				selected: true,
 				ontoggle: () => {},
 			},
 		});
@@ -130,7 +130,7 @@ describe("DirectoryRow", () => {
 				node: makeNode("src"),
 				depth: 0,
 				expanded: false,
-				focused: false,
+				selected: false,
 				ontoggle: () => seen.push("toggle"),
 				actionLabel: "+",
 				onaction: () => seen.push("action"),
@@ -151,7 +151,7 @@ describe("DirectoryRow", () => {
 				node: makeNode("src"),
 				depth: 0,
 				expanded: false,
-				focused: false,
+				selected: false,
 				ontoggle: () => {},
 				actionLabel: "+",
 				onaction: () => {},
@@ -174,7 +174,7 @@ describe("DirectoryRow", () => {
 				node: makeNode("src"),
 				depth: 0,
 				expanded: false,
-				focused: false,
+				selected: false,
 				ontoggle: () => {},
 			},
 		});
@@ -191,7 +191,7 @@ describe("DirectoryRow", () => {
 				node: makeNode("src"),
 				depth: 0,
 				expanded: false,
-				focused: false,
+				selected: false,
 				ontoggle: () => {},
 				...action,
 			},

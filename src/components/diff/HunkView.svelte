@@ -173,6 +173,8 @@ const vd = createVirtualizedDiff({
 	composer: () => composer?.place,
 	list: () => list,
 	startAt: () => startAt,
+	content: () => "hunk",
+	numberColumns: () => 2,
 });
 
 // The factory's own onMount handles the observer; this one only stops a flash

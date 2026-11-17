@@ -1,8 +1,12 @@
 /** The scroll offset that centres row `index` in a viewport `viewportHeight` tall. */
+export interface RowGeometry {
+	rowHeight: number;
+	viewportHeight: number;
+}
+
 export function centredRowTop(
 	index: number,
-	rowHeight: number,
-	viewportHeight: number,
+	{ rowHeight, viewportHeight }: RowGeometry,
 ): number {
 	return Math.max(0, index * rowHeight - viewportHeight / 2 + rowHeight / 2);
 }
@@ -14,9 +18,8 @@ export function centredRowTop(
  */
 export function openingScrollTop(
 	headIndex: number,
-	rowHeight: number,
-	viewportHeight: number,
+	geometry: RowGeometry,
 ): number {
-	if ((headIndex + 1) * rowHeight <= viewportHeight) return 0;
-	return centredRowTop(headIndex, rowHeight, viewportHeight);
+	if ((headIndex + 1) * geometry.rowHeight <= geometry.viewportHeight) return 0;
+	return centredRowTop(headIndex, geometry);
 }

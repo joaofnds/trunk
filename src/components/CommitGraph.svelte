@@ -1036,7 +1036,10 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 		fastForwardItems.push(
 			await MenuItem.new({
 				text: `Fast-forward ${headBranchName} to here`,
-				enabled: canFastForward(commits, headCommit.oid, commit.oid),
+				enabled: canFastForward(commits, {
+					head: headCommit.oid,
+					target: commit.oid,
+				}),
 				action: async () => {
 					try {
 						await safeInvoke("fast_forward_to", {
@@ -1907,7 +1910,10 @@ export async function scrollToOid(
 	const viewport = listViewport();
 	if (viewport) {
 		viewport.scrollTo({
-			top: centredRowTop(idx, svgRowHeight, viewport.clientHeight),
+			top: centredRowTop(idx, {
+				rowHeight: svgRowHeight,
+				viewportHeight: viewport.clientHeight,
+			}),
 			behavior: "smooth",
 		});
 	} else {
@@ -2112,7 +2118,10 @@ $effect(() => {
 			const viewport = listViewport();
 			if (viewport) {
 				viewport.scrollTo({
-					top: openingScrollTop(headIdx, svgRowHeight, viewport.clientHeight),
+					top: openingScrollTop(headIdx, {
+						rowHeight: svgRowHeight,
+						viewportHeight: viewport.clientHeight,
+					}),
 				});
 			} else {
 				void listRef?.scroll({

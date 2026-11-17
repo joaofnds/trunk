@@ -22,7 +22,7 @@ interface Props {
 	oncontextmenu?: (e: MouseEvent) => void;
 	depth?: number;
 	displayName?: string;
-	focused?: boolean;
+	selected?: boolean;
 	commentCount?: number;
 	commentTally?: ReviewTally | null;
 }
@@ -38,7 +38,7 @@ let {
 	oncontextmenu,
 	depth = 0,
 	displayName,
-	focused = false,
+	selected = false,
 	commentCount = 0,
 	commentTally = null,
 }: Props = $props();
@@ -93,7 +93,7 @@ function openMenu(e: MouseEvent) {
 	data-testid="staging-file"
 	variant="item"
 	{role}
-	selected={focused}
+	{selected}
 	tone={isLoading ? "muted" : "plain"}
 	indent={treeIndent(depth)}
 	tabindex={-1}

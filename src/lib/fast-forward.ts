@@ -6,8 +6,7 @@ import type { GraphCommit } from "./types.js";
  *  `head` sits between their two rows, and the walk never reads past `head`'s. */
 export function canFastForward(
 	commits: readonly GraphCommit[],
-	head: string,
-	target: string,
+	{ head, target }: { head: string; target: string },
 ): boolean {
 	const rowOf = new Map(commits.map((commit, row) => [commit.oid, row]));
 	const headRow = rowOf.get(head);

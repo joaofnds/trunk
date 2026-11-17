@@ -56,7 +56,8 @@ const deps = {
 	wordWrap: () => wordWrap,
 	composer: () => undefined,
 	list: () => list,
-	numberColumns: () => numberColumns,
+	startAt: () => null,
+	content: () => buildOptions.content,
 };
 
 // The factory is created once, from the initial layout: a view states its
@@ -65,7 +66,11 @@ const deps = {
 const vd =
 	layout === "split"
 		? createVirtualizedDiff({ layout: "split", ...deps })
-		: createVirtualizedDiff({ layout: "inline", ...deps });
+		: createVirtualizedDiff({
+				layout: "inline",
+				...deps,
+				numberColumns: () => numberColumns,
+			});
 
 // svelte-ignore state_referenced_locally
 onready(vd);

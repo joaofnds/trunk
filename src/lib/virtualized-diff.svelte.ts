@@ -59,16 +59,24 @@ export interface VirtualizedDiffDeps {
 	wordWrap: () => boolean;
 	composer: () => ComposerPlace | undefined;
 	list: () => DiffListHandle | null;
-	/** The line-number columns an inline row draws: two for a change, the old
-	 *  number and the new, and one for a file shown whole, whose numbers agree.
-	 *  Two when omitted. A split side draws one whatever this says. */
-	numberColumns?: () => 1 | 2;
 	/** The line the reader was at in the view this one replaced, which the list
 	 *  opens at instead of the top. Applied once per value. */
-	startAt?: () => ReadingLine | null;
+	startAt: () => ReadingLine | null;
 	/** Whether the rows show hunks or the file whole, which decides what `]`
-	 *  and `[` step between. Hunks when omitted. */
-	content?: () => ContentMode;
+	 *  and `[` step between. */
+	content: () => ContentMode;
+}
+
+export interface InlineVirtualizedDiffDeps extends VirtualizedDiffDeps {
+	layout: "inline";
+	/** The line-number columns a row draws: two for a change, the old number and
+	 *  the new, and one for a file shown whole, whose numbers agree. */
+	numberColumns: () => 1 | 2;
+}
+
+/** A split side draws one line-number column. */
+export interface SplitVirtualizedDiffDeps extends VirtualizedDiffDeps {
+	layout: "split";
 }
 
 export interface InlineVirtualizedDiff {
@@ -108,13 +116,13 @@ export interface SplitVirtualizedDiff extends InlineVirtualizedDiff {
 // that compiles under inline would be a silently wrong number, so the overload
 // makes reading one a type error instead.
 export function createVirtualizedDiff(
-	deps: VirtualizedDiffDeps & { layout: "inline" },
+	deps: InlineVirtualizedDiffDeps,
 ): InlineVirtualizedDiff;
 export function createVirtualizedDiff(
-	deps: VirtualizedDiffDeps & { layout: "split" },
+	deps: SplitVirtualizedDiffDeps,
 ): SplitVirtualizedDiff;
 export function createVirtualizedDiff(
-	deps: VirtualizedDiffDeps & { layout: "inline" | "split" },
+	deps: InlineVirtualizedDiffDeps | SplitVirtualizedDiffDeps,
 ): SplitVirtualizedDiff {
 	const split = deps.layout === "split";
 
@@ -139,7 +147,9 @@ export function createVirtualizedDiff(
 	// Inline wraps into the full pane less two gutters; a split side has half
 	// the pane and one gutter — what a single side actually has to wrap into.
 	// Each layout's marker column sits beside its gutters, once per side.
-	const numberColumns = $derived(deps.numberColumns?.() ?? 2);
+	const numberColumns = $derived(
+		deps.layout === "inline" ? deps.numberColumns() : 1,
+	);
 	const inlineGutterChars = $derived(
 		numberColumns * model.gutterChars + model.markerChars,
 	);
@@ -315,7 +325,7 @@ export function createVirtualizedDiff(
 	// where the reader was rather than wherever it was scrolled since.
 	let appliedStart: ReadingLine | null = null;
 	$effect(() => {
-		const start = deps.startAt?.() ?? null;
+		const start = deps.startAt();
 		const list = deps.list();
 		if (!start || start === appliedStart || !list || !ready) return;
 
@@ -338,7 +348,7 @@ export function createVirtualizedDiff(
 
 	// Derived rather than built with the rows, and so computed only when a step
 	// reads it.
-	const steps = $derived(stepRows(model, deps.content?.() ?? "hunk"));
+	const steps = $derived(stepRows(model, deps.content()));
 
 	// Tied to the rows it was taken over: a refetch rebuilds them, and the step
 	// at an ordinal of the old rows is not the step at that ordinal now.

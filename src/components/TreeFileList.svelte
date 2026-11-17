@@ -259,7 +259,7 @@ function handleKeydown(e: KeyboardEvent) {
 				node={row.node}
 				depth={row.depth}
 				expanded={row.expanded}
-				focused={isMarked(i, row)}
+				selected={isMarked(i, row)}
 				ontoggle={() => {
 					focusRow(i, row.node.path);
 					toggleExpanded(row.node.path);
@@ -291,7 +291,7 @@ function handleKeydown(e: KeyboardEvent) {
 					: undefined}
 				depth={treeMode ? row.depth : 0}
 				displayName={treeMode ? row.node.name : undefined}
-				focused={isMarked(i, row)}
+				selected={isMarked(i, row)}
 				commentCount={commentCounts?.get(row.node.file.path) ?? 0}
 				commentTally={commentTallies?.get(row.node.file.path) ?? null}
 			/>
