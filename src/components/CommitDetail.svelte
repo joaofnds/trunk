@@ -154,9 +154,9 @@ let commitNotes = $derived(
 	<!-- Toolbar -->
 	<div class="h-bar shadow-hairline py-0 px-2 flex items-center gap-2 shrink-0">
 		<span
-			class="text-small text-text-muted font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
+			class="text-small text-text-muted font-mono flex-1 min-w-0 flex items-center gap-1"
 		>
-			commit:
+			<span class="min-w-0 truncate">commit:</span>
 			<Badge title="Copy SHA" onclick={() => copySha(commitDetail.oid)}
 				>{commitDetail.short_oid}</Badge
 			>

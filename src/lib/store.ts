@@ -104,6 +104,8 @@ export async function setZoomLevel(level: number): Promise<void> {
 const LEFT_PANE_KEY = "left_pane_width";
 const RIGHT_PANE_KEY = "right_pane_width";
 
+export const DEFAULT_RIGHT_PANE_WIDTH = 280;
+
 export async function getLeftPaneWidth(): Promise<number> {
 	return (await getPref<number>(LEFT_PANE_KEY)) ?? 220;
 }
@@ -113,7 +115,7 @@ export async function setLeftPaneWidth(width: number): Promise<void> {
 }
 
 export async function getRightPaneWidth(): Promise<number> {
-	return (await getPref<number>(RIGHT_PANE_KEY)) ?? 240;
+	return (await getPref<number>(RIGHT_PANE_KEY)) ?? DEFAULT_RIGHT_PANE_WIDTH;
 }
 
 export async function setRightPaneWidth(width: number): Promise<void> {

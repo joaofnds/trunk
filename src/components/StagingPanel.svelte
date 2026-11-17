@@ -6,6 +6,7 @@ import ChevronsDownUp from "@lucide/svelte/icons/chevrons-down-up";
 import ChevronsUpDown from "@lucide/svelte/icons/chevrons-up-down";
 import FolderTree from "@lucide/svelte/icons/folder-tree";
 import List from "@lucide/svelte/icons/list";
+import Trash2 from "@lucide/svelte/icons/trash-2";
 import { onDestroy } from "svelte";
 import { buildTree, collectFilePaths } from "../lib/build-tree.js";
 import { copyText } from "../lib/clipboard.js";
@@ -1046,12 +1047,14 @@ registerUpdateBlocker(() => {
 					{#snippet actions()}
 						{#if (status?.unstaged.length ?? 0) > 0}
 							<Button
+								icon
 								size="sm"
 								variant="danger"
 								onclick={handleDiscardAll}
 								aria-label="Discard all changes"
+								tooltip="Discard All"
 							>
-								Discard All
+								<Trash2 size={13} aria-hidden="true" />
 							</Button>
 							<Button
 								size="sm"

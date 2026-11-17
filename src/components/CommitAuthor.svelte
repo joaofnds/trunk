@@ -50,8 +50,8 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 		<div class="names">
 			<span class="name">{authorName}</span>
 			<span class="email">{authorEmail}</span>
+			<span class="date">{authorDate}</span>
 		</div>
-		<span class="date">{authorDate}</span>
 	</div>
 	{#if parentOids.length > 0 || childOids.length > 0}
 		<div class="topo">
@@ -109,25 +109,22 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 	gap: var(--space-3);
 }
 .names {
+	flex: 1;
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
+}
+.names > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 .name {
 	color: var(--color-text-strong);
 	font-weight: var(--weight-semibold);
 }
-.email {
-	color: var(--color-text-subtle);
-	font-family: var(--font-mono);
-	font-size: var(--text-small);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
+.email,
 .date {
-	margin-left: auto;
-	flex-shrink: 0;
 	color: var(--color-text-subtle);
 	font-family: var(--font-mono);
 	font-size: var(--text-small);
