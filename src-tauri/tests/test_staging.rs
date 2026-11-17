@@ -1599,6 +1599,25 @@ fn unstaging_selected_lines_of_a_staged_rename_applies_without_a_patch_error() {
     );
 }
 
+/// Unstaging part of a rename's edit reverses the rename that carries it, as a hunk
+/// does. A patch that names both paths without calling itself a rename stages the
+/// old file again beside the new one, which the next commit would then carry.
+#[test]
+fn unstaging_selected_lines_of_a_staged_rename_leaves_one_file_staged() {
+    let ctx = staged_rename_with_one_edit();
+    let view = ctx.diff_staged("math-util.ts").unwrap();
+    let added = view[0].hunks[0]
+        .lines
+        .iter()
+        .position(|line| matches!(line.origin, DiffOrigin::Add))
+        .expect("the hunk holds the added line");
+
+    ctx.unstage_lines("math-util.ts", 0, &[u32::try_from(added).unwrap()])
+        .unwrap();
+
+    assert_eq!(staged_paths(&ctx), vec!["util.ts".to_string()]);
+}
+
 /// The staged file list is a separate libgit2 call from the staged diff
 /// (`repo.statuses()` vs. `diff_tree_to_index`), with its own rename option.
 /// Without it, `head_to_index()` never pairs the two sides, so the row this

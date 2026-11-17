@@ -1466,7 +1466,9 @@ impl ChangeRun {
 ///
 /// Each side names its own path. They differ for a rename, and a header that repeats
 /// one of them is rejected outright ("mismatched new path names"). Reversing the patch
-/// swaps which side is which.
+/// swaps which side is which. A rename also says so, because libgit2 only takes the
+/// old path out of the index for a patch it parsed as one, and otherwise leaves both
+/// files staged, so the old one would come back with the next commit.
 fn patch_header(file_path: &str, patch: &git2::Patch<'_>, reverse: bool) -> String {
     let delta = patch.delta();
     let delta_status = delta.status();
@@ -1483,6 +1485,14 @@ fn patch_header(file_path: &str, patch: &git2::Patch<'_>, reverse: bool) -> Stri
         (path_of(delta.old_file()), path_of(delta.new_file()))
     };
 
+    let git_line = format!("diff --git a/{old_path} b/{new_path}\n");
+
+    if delta_status == git2::Delta::Renamed {
+        return format!(
+            "{git_line}similarity index {RENAME_SIMILARITY}%\nrename from {old_path}\nrename to {new_path}\n"
+        );
+    }
+
     let old_header = if (!reverse && delta_status == git2::Delta::Added)
         || (reverse && delta_status == git2::Delta::Deleted)
     {
@@ -1498,8 +1508,13 @@ fn patch_header(file_path: &str, patch: &git2::Patch<'_>, reverse: bool) -> Stri
         format!("+++ b/{new_path}")
     };
 
-    format!("diff --git a/{old_path} b/{new_path}\n{old_header}\n{new_header}\n")
+    format!("{git_line}{old_header}\n{new_header}\n")
 }
+
+/// The similarity a rename's patch declares. libgit2 parses a rename only after a
+/// similarity line, and then no `---`/`+++` lines, while its apply never reads the
+/// figure (`patch_parse.c` and `apply.c`, libgit2 1.9.7), so any percentage does.
+const RENAME_SIMILARITY: u8 = 100;
 
 /// Stage selected lines within one hunk of a file's unstaged diff.
 ///
