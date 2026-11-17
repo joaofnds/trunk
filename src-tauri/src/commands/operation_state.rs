@@ -366,6 +366,29 @@ pub fn get_merge_message_inner(
     Ok(std::fs::read_to_string(repo.path().join("MERGE_MSG")).ok())
 }
 
+/// The name a user would type for the reference `branch` names: its short form,
+/// when that resolves back to the same reference. Git writes the name it is given
+/// into the merge message and the in-progress banner reads it back, so a full
+/// `refs/heads/feature` would read "Merge branch 'refs/heads/feature'". A short
+/// name another reference shadows, as a tag of the same name does, stays full,
+/// because git would merge the tag.
+fn typed_name(repo: &git2::Repository, branch: &str) -> String {
+    let Ok(reference) = repo.find_reference(branch) else {
+        return branch.to_owned();
+    };
+    let Ok(short) = reference.shorthand() else {
+        return branch.to_owned();
+    };
+    let resolves_back = repo
+        .resolve_reference_from_short_name(short)
+        .is_ok_and(|found| found.name_bytes() == reference.name_bytes());
+    if resolves_back {
+        short.to_owned()
+    } else {
+        branch.to_owned()
+    }
+}
+
 /// Start a merge without committing, so the message can be edited first.
 ///
 /// # Errors
@@ -378,6 +401,8 @@ pub fn merge_branch_begin_inner(
     state_map: &OpenRepos,
 ) -> Result<(crate::state::GraphRead, MergeBeginOutcome), TrunkError> {
     let path_buf = state_map.path_for(path)?;
+    let typed = typed_name(&git2::Repository::open(path_buf)?, branch);
+    let branch = typed.as_str();
 
     // 1. Probe fast-forward (RESEARCH OQ-1). `--ff-only` succeeds silently on an
     //    ff-able or already-up-to-date merge (no MERGE_HEAD, no merge commit) and
@@ -950,6 +975,35 @@ mod tests {
             merge_head_path(&dir).exists(),
             "non-ff merge must set MERGE_HEAD"
         );
+    }
+
+    #[test]
+    fn merging_a_full_branch_ref_names_the_branch_as_a_user_types_it() {
+        let (dir, _repo) = clean_divergent_repo();
+        let map = state_map_for(&dir);
+
+        merge_branch_begin_inner(&path_str(&dir), "refs/heads/feature", &map).unwrap();
+
+        assert!(
+            read_merge_msg(&dir).starts_with("Merge branch 'feature'"),
+            "got: {:?}",
+            read_merge_msg(&dir)
+        );
+    }
+
+    #[test]
+    fn merging_a_branch_a_tag_of_its_name_shadows_merges_the_branch() {
+        let (dir, repo) = clean_divergent_repo();
+        let feature_tip = repo.refname_to_id("refs/heads/feature").unwrap();
+        let main_tip = repo.head().unwrap().target().unwrap();
+        repo.reference("refs/tags/feature", main_tip, false, "shadow")
+            .unwrap();
+        let map = state_map_for(&dir);
+
+        merge_branch_begin_inner(&path_str(&dir), "refs/heads/feature", &map).unwrap();
+
+        let merge_head = std::fs::read_to_string(merge_head_path(&dir)).unwrap();
+        assert_eq!(merge_head.trim(), feature_tip.to_string());
     }
 
     #[test]
