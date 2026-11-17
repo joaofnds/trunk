@@ -6,6 +6,7 @@ import {
 	type DiffComposer,
 	type DiffRow,
 	FIXED_ROW_HEIGHT_VARS,
+	type ReadingLine,
 } from "../../lib/diff-rows.js";
 import {
 	gripLabel,
@@ -55,6 +56,8 @@ interface Props {
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	/** The open comment composer, drawn under the line its comment ends on. */
 	composer?: DiffComposer | null;
+	/** The line the view this one replaced was at, which this one opens at. */
+	startAt?: ReadingLine | null;
 }
 
 let {
@@ -71,6 +74,7 @@ let {
 	viewComments = [],
 	editorSessionForThread,
 	composer = null,
+	startAt = null,
 }: Props = $props();
 
 // Net-new contiguous selection state (D-01): a click sets a single-line anchor;
@@ -118,6 +122,7 @@ const vd = createVirtualizedDiff({
 	wordWrap: () => wordWrap,
 	composer: () => composer?.place,
 	list: () => list,
+	startAt: () => startAt,
 	numberColumns: () => (showsWholeFile ? 1 : 2),
 });
 
@@ -234,6 +239,11 @@ function extendDrag(e: MouseEvent) {
 	if (linePath !== selectedPath || newSide === undefined) return;
 
 	focusIndex = index;
+}
+
+/** The line at the top of the view, where a view replacing it opens. */
+export function readingLine(): ReadingLine | null {
+	return vd.readingLine();
 }
 
 // Called by the DiffPanel host (via bind:this) on mode/layout toggle and Escape

@@ -6,8 +6,10 @@ import {
 	buildSplitRows,
 	diffHoldsComposer,
 	FIXED_ROW_HEIGHTS,
+	readingLineAt,
 	rowHeights,
 	rowIndexForLine,
+	rowIndexForReadingLine,
 } from "./diff-rows.js";
 import { displayColumns } from "./display-columns.js";
 import { ALL_THREADS } from "./review-filter.js";
@@ -655,6 +657,88 @@ describe("rowIndexForLine", () => {
 
 		const row = model.rows[index];
 		expect(row.kind === "pair" && row.row.right?.lineIdx).toBe(3);
+	});
+});
+
+describe("readingLineAt", () => {
+	it("names the first line at or after a row by its file and numbers", () => {
+		const model = buildInlineRows([twoHunks], { ...fullMode, content: "hunk" });
+
+		expect(readingLineAt(model, 0)).toEqual({
+			path: "src/main.ts",
+			oldLine: 1,
+			newLine: 1,
+		});
+	});
+
+	it("reads a pair row's old number from its left side and its new from its right", () => {
+		const model = buildSplitRows([pairable], { ...fullMode, content: "hunk" });
+
+		expect(readingLineAt(model, 2)).toEqual({
+			path: "src/main.ts",
+			oldLine: 2,
+			newLine: 2,
+		});
+	});
+});
+
+describe("rowIndexForReadingLine", () => {
+	it("finds the line in another layout's rows", () => {
+		const inline = buildInlineRows([pairable], {
+			...fullMode,
+			content: "hunk",
+		});
+		const split = buildSplitRows([pairable], { ...fullMode, content: "hunk" });
+		const reading = readingLineAt(
+			inline,
+			inline.rows.findIndex(
+				(row) => row.kind === "line" && row.line.content === "new a",
+			),
+		);
+		if (!reading) throw new Error("the inline rows hold no line");
+
+		const index = rowIndexForReadingLine(split, reading);
+
+		const row = split.rows[index];
+		expect(row.kind === "pair" && row.row.right?.line.content).toBe("new a");
+	});
+
+	it("falls forward to the next line the rows show", () => {
+		const model = buildInlineRows([twoHunks], { ...fullMode, content: "hunk" });
+
+		const index = rowIndexForReadingLine(model, {
+			path: "src/main.ts",
+			oldLine: 5,
+			newLine: 5,
+		});
+
+		const row = model.rows[index];
+		expect(row.kind === "line" && row.line.content).toBe("third");
+	});
+
+	it("finds a removed line by its old number", () => {
+		const model = buildInlineRows([pairable], { ...fullMode, content: "hunk" });
+
+		const index = rowIndexForReadingLine(model, {
+			path: "src/main.ts",
+			oldLine: 3,
+			newLine: null,
+		});
+
+		const row = model.rows[index];
+		expect(row.kind === "line" && row.line.content).toBe("old b");
+	});
+
+	it("reports no row for a file the rows do not hold", () => {
+		const model = buildInlineRows([twoHunks], { ...fullMode, content: "hunk" });
+
+		expect(
+			rowIndexForReadingLine(model, {
+				path: "src/other.ts",
+				oldLine: 1,
+				newLine: 1,
+			}),
+		).toBe(-1);
 	});
 });
 

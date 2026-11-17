@@ -1,3 +1,4 @@
+import type { ReadingLine } from "./diff-rows.js";
 import type { Side } from "./types.js";
 
 /**
@@ -21,4 +22,6 @@ export interface DiffNav {
 	/** Scrolls to the comment row drawing a thread that starts on `startLine`,
 	 *  reporting false when no row draws one. */
 	scrollToThread(path: string, side: Side, startLine: number): boolean;
+	/** The line at the top of the view, where a view replacing it opens. */
+	readingLine(): ReadingLine | null;
 }

@@ -8,6 +8,7 @@ import {
 	type DiffRow,
 	FIXED_ROW_HEIGHT_VARS,
 	type LineMarker,
+	type ReadingLine,
 	rowIndexForLine,
 	rowIndexForThread,
 } from "../../lib/diff-rows.js";
@@ -63,6 +64,8 @@ interface Props {
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	/** The open comment composer, drawn under the line its comment ends on. */
 	composer?: DiffComposer | null;
+	/** The line the view this one replaced was at, which this one opens at. */
+	startAt?: ReadingLine | null;
 	/** Where the selection's Comment action sits, or null while it shows none. */
 	selectionComment: SelectionCommentPlace | null;
 	oncommentselection: () => void;
@@ -127,6 +130,7 @@ let {
 	viewComments = [],
 	editorSessionForThread,
 	composer = null,
+	startAt = null,
 	selectionComment,
 	oncommentselection,
 }: Props = $props();
@@ -194,6 +198,7 @@ const vd = createVirtualizedDiff({
 	wordWrap: () => wordWrap,
 	composer: () => composer?.place,
 	list: () => list,
+	startAt: () => startAt,
 });
 
 // The factory's own onMount handles the observer; this one only stops a flash
@@ -206,6 +211,11 @@ onMount(() => {
 
 function hunkLinesOf(path: string, hunkIdx: number): DiffLine[] {
 	return fileDiffs.find((fd) => fd.path === path)?.hunks[hunkIdx]?.lines ?? [];
+}
+
+/** The line at the top of the view, where a view replacing it opens. */
+export function readingLine(): ReadingLine | null {
+	return vd.readingLine();
 }
 
 /** How many hunks `[` and `]` step through. */

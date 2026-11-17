@@ -7,6 +7,7 @@ import {
 } from "../../__tests__/helpers/layout-stub.js";
 import { commentingDiff } from "../../__tests__/helpers/review-props.js";
 import { aThread } from "../../__tests__/helpers/thread-fixture.js";
+import { FIXED_ROW_HEIGHTS } from "../../lib/diff-rows.js";
 import type { CommitDetail, FileDiff } from "../../lib/types.js";
 import DiffViewer from "./DiffViewer.svelte";
 
@@ -414,4 +415,120 @@ describe("DiffViewer's comment composer", () => {
 			screen.getByText("the composer card"),
 		);
 	});
+});
+
+// A reader who switches layout or content mode is reading a line, and the view
+// that replaces the old one starts at that line rather than at the top. The
+// line number carries the place, because the two content modes fetch different
+// hunks and so put the same line at a different row.
+describe("DiffViewer when the reader switches view", () => {
+	beforeEach(() => stubLayout({ width: 900, height: 600 }));
+	afterEach(restoreLayout);
+
+	const contextLines = (from: number, to: number) =>
+		Array.from({ length: to - from + 1 }, (_, i) => ({
+			origin: "Context" as const,
+			content: `line ${from + i}`,
+			old_lineno: from + i,
+			new_lineno: from + i,
+			spans: [],
+		}));
+	const hunkOf = (from: number, to: number) => ({
+		header: `@@ -${from},${to - from + 1} +${from},${to - from + 1} @@`,
+		old_start: from,
+		old_lines: to - from + 1,
+		new_start: from,
+		new_lines: to - from + 1,
+		lines: contextLines(from, to),
+	});
+	const bigFile = (hunks: ReturnType<typeof hunkOf>[]): FileDiff => ({
+		path: "big.txt",
+		old_path: null,
+		status: "Modified",
+		is_binary: false,
+		hunks,
+	});
+	// Forty five-line hunks, a hundred lines apart, so the hunk headers above
+	// the reading line are enough rows to move it out of view if they are lost.
+	const hunks = bigFile(
+		Array.from({ length: 40 }, (_, i) => hunkOf(i * 100 + 1, i * 100 + 5)),
+	);
+	const wholeFile = bigFile([hunkOf(1, 4000)]);
+	const props = {
+		...baseProps,
+		selectedPath: "big.txt",
+		fileDiffs: [hunks],
+	};
+
+	async function scrollToLine(container: Element, line: string) {
+		const viewport = container.querySelector(
+			".exact-virtual-viewport",
+		) as HTMLElement;
+		// Thirty hunks of a header and five 18px lines above the thirty-first,
+		// whose own header and first two lines come next.
+		viewport.scrollTop = 31 * FIXED_ROW_HEIGHTS.hunkHeader + (30 * 5 + 2) * 18;
+		viewport.dispatchEvent(new Event("scroll"));
+		expect(await screen.findAllByText(line)).not.toHaveLength(0);
+	}
+
+	it("keeps the line at the top when the layout changes", async () => {
+		const { container, rerender } = render(DiffViewer, { props });
+		await scrollToLine(container, "line 3003");
+
+		await rerender({ ...props, layoutMode: "split" });
+
+		expect(await screen.findAllByText("line 3003")).not.toHaveLength(0);
+		expect(screen.queryAllByText("line 1")).toHaveLength(0);
+	});
+
+	it("opens the same file in another commit at its top", async () => {
+		const inCommit = { ...props, diffKind: "commit" as const };
+		const { container, rerender } = render(DiffViewer, {
+			props: { ...inCommit, commitOid: "aaaa" },
+		});
+		await scrollToLine(container, "line 3003");
+
+		await rerender({ ...inCommit, commitOid: "bbbb", payloadStale: true });
+		await rerender({
+			...inCommit,
+			commitOid: "bbbb",
+			payloadStale: false,
+			layoutMode: "split",
+		});
+
+		expect(await screen.findAllByText("line 1")).not.toHaveLength(0);
+		expect(screen.queryAllByText("line 3003")).toHaveLength(0);
+	});
+
+	// The side-by-side view takes the content mode itself, so it sees the new
+	// mode one render before the stale payload unmounts it.
+	it.each([
+		["inline", "inline" as const],
+		["side-by-side", "split" as const],
+	])(
+		"keeps the line at the top when the %s hunks give way to the whole file",
+		async (_, layoutMode) => {
+			const { container, rerender } = render(DiffViewer, {
+				props: { ...props, layoutMode },
+			});
+			await scrollToLine(container, "line 3003");
+
+			await rerender({
+				...props,
+				layoutMode,
+				contentMode: "full",
+				payloadStale: true,
+			});
+			await rerender({
+				...props,
+				layoutMode,
+				contentMode: "full",
+				payloadStale: false,
+				fileDiffs: [wholeFile],
+			});
+
+			expect(await screen.findAllByText("line 3003")).not.toHaveLength(0);
+			expect(screen.queryAllByText("line 1")).toHaveLength(0);
+		},
+	);
 });

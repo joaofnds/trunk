@@ -438,6 +438,70 @@ export function rowIndexForLine(
 	return -1;
 }
 
+/** Where a reader is in a diff, in terms every layout and content mode shares:
+ *  the file, and the old and new numbers of the line at the top. Row, hunk and
+ *  line indices do not carry over, since hunks and full file number them apart. */
+export interface ReadingLine {
+	readonly path: string;
+	readonly oldLine: number | null;
+	readonly newLine: number | null;
+}
+
+function lineNumbersOf(row: DiffRow): ReadingLine | null {
+	if (row.kind === "line") {
+		return {
+			path: row.path,
+			oldLine: row.line.old_lineno,
+			newLine: row.line.new_lineno,
+		};
+	}
+	if (row.kind === "pair") {
+		return {
+			path: row.path,
+			oldLine: row.row.left?.line.old_lineno ?? null,
+			newLine: row.row.right?.line.new_lineno ?? null,
+		};
+	}
+
+	return null;
+}
+
+/** The first line at or after `index`, or null when no line follows it. */
+export function readingLineAt(
+	model: DiffRowModel,
+	index: number,
+): ReadingLine | null {
+	for (let at = Math.max(0, index); at < model.rows.length; at++) {
+		const numbers = lineNumbersOf(model.rows[at]);
+		if (numbers) return numbers;
+	}
+
+	return null;
+}
+
+/** The row showing `reading`'s line, or the next line the rows show when they
+ *  leave it out, or -1 when they hold no line of its file at or after it. A
+ *  line with a new number is matched on that side, and a removed line, which
+ *  has none, on the old side. */
+export function rowIndexForReadingLine(
+	model: DiffRowModel,
+	reading: ReadingLine,
+): number {
+	return model.rows.findIndex((row) => {
+		const numbers = lineNumbersOf(row);
+		if (!numbers || numbers.path !== reading.path) return false;
+
+		if (reading.newLine !== null) {
+			return numbers.newLine !== null && numbers.newLine >= reading.newLine;
+		}
+		return (
+			reading.oldLine !== null &&
+			numbers.oldLine !== null &&
+			numbers.oldLine >= reading.oldLine
+		);
+	});
+}
+
 /** The comment row drawing a thread that starts on `startLine` of `side`, or -1
  *  when no row draws one. A thread on a line no hunk shows has no line to scroll
  *  to, so its comment row is the only place it is on screen. */

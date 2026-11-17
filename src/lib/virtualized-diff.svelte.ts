@@ -14,7 +14,10 @@ import { onMount, tick, untrack } from "svelte";
 import {
 	type ComposerPlace,
 	type DiffRowModel,
+	type ReadingLine,
+	readingLineAt,
 	rowHeights,
+	rowIndexForReadingLine,
 } from "./diff-rows.js";
 import { measure } from "./perf.js";
 import {
@@ -58,6 +61,9 @@ export interface VirtualizedDiffDeps {
 	 *  number and the new, and one for a file shown whole, whose numbers agree.
 	 *  Two when omitted. A split side draws one whatever this says. */
 	numberColumns?: () => 1 | 2;
+	/** The line the reader was at in the view this one replaced, which the list
+	 *  opens at instead of the top. Applied once per value. */
+	startAt?: () => ReadingLine | null;
 }
 
 export interface InlineVirtualizedDiff {
@@ -77,6 +83,8 @@ export interface InlineVirtualizedDiff {
 	readonly contentWidth: string;
 	readonly gutterW: string;
 	readonly markerW: string;
+	/** The first line at the top of the list, the place a replacing view opens at. */
+	readingLine(): ReadingLine | null;
 }
 
 export interface SplitVirtualizedDiff extends InlineVirtualizedDiff {
@@ -290,8 +298,37 @@ export function createVirtualizedDiff(
 		if (index >= 0) list.revealIndex(index);
 	});
 
+	// Keyed on the value's identity: the host hands over a new one each time a
+	// view replaces another, and a list that reaches readiness late still opens
+	// where the reader was rather than wherever it was scrolled since.
+	let appliedStart: ReadingLine | null = null;
+	$effect(() => {
+		const start = deps.startAt?.() ?? null;
+		const list = deps.list();
+		if (!start || start === appliedStart || !list || !ready) return;
+
+		appliedStart = start;
+		const index = untrack(() => rowIndexForReadingLine(model, start));
+		if (index >= 0) list.anchorTo(index);
+	});
+
+	// The reading line as of the last frame drawn, kept rather than computed on
+	// request: a host asks while replacing this view, by when the inputs may
+	// already be the next view's, and the split view rebuilds its rows for a new
+	// content mode over the old one's payload, which puts another line at the top.
+	let drawnLine: ReadingLine | null = null;
+	$effect(() => {
+		const list = deps.list();
+		if (!list || !ready) return;
+
+		drawnLine = readingLineAt(model, list.topIndex());
+	});
+
 	return {
 		folds,
+		readingLine() {
+			return drawnLine;
+		},
 		get pane() {
 			return state.pane;
 		},

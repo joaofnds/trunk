@@ -1,7 +1,12 @@
 <script lang="ts">
+import { untrack } from "svelte";
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import type { DiffNav } from "../../lib/diff-nav.js";
-import { type DiffComposer, diffHoldsComposer } from "../../lib/diff-rows.js";
+import {
+	type DiffComposer,
+	diffHoldsComposer,
+	type ReadingLine,
+} from "../../lib/diff-rows.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
@@ -204,6 +209,36 @@ const pane = $derived.by(() => {
 	return "split";
 });
 
+// The line the reader was at when a line view gave way to another, by layout,
+// content mode or a refetch between them, so the next one opens there rather
+// than at the top. Captured before the outgoing view unmounts, which is what
+// the pre effect is for, and handed over only once the new view's content
+// answers what was asked, since a stale payload holds the old mode's rows.
+// Another file or commit starts at its top. Both are compared by value, since
+// a prop can notify without changing.
+let keptLine = $state<ReadingLine | null>(null);
+let shownView: string | null = null;
+let shownSubject: string | null = null;
+$effect.pre(() => {
+	const subject = `${commitOid}:${selectedPath}`;
+	const view =
+		pane === "hunk" || pane === "full" || pane === "split"
+			? `${pane}:${contentMode}`
+			: null;
+	untrack(() => {
+		if (subject !== shownSubject) {
+			keptLine = null;
+		} else if (view !== shownView && shownView !== null) {
+			const outgoing = shownView.startsWith("full:") ? fullFileView : diffNav;
+			keptLine = outgoing?.readingLine() ?? keptLine;
+		}
+		shownSubject = subject;
+		shownView = view;
+	});
+});
+
+const startAt = $derived(loading || payloadStale ? null : keptLine);
+
 // The selected file's threads, drawn under the no-changes note since no line
 // of a diff is there to hang them on.
 const threadsWithoutDiff = $derived(
@@ -314,6 +349,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 	{:else if pane === "hunk"}
 		<HunkView
 			bind:this={diffNav}
+			{startAt}
 			{fileDiffs}
 			{selectedPath}
 			{diffKind}
@@ -349,6 +385,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 	{:else if pane === "full"}
 		<FullFileView
 			bind:this={fullFileView}
+			{startAt}
 			{fileDiffs}
 			{showInvisibles}
 			{wordWrap}
@@ -366,6 +403,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 	{:else}
 		<SplitView
 			bind:this={diffNav}
+			{startAt}
 			{contentMode}
 			{fileDiffs}
 			{selectedPath}
