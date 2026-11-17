@@ -31,6 +31,12 @@ export function rankFiles(files: TrackedFile[], query: string): TrackedFile[] {
 	scored.sort((a, b) => {
 		if (a.file.changed !== b.file.changed) return a.file.changed ? -1 : 1;
 		if (a.score !== b.score) return (b.score ?? 0) - (a.score ?? 0);
+		// Of two equal matches the shorter path is the tighter fit, and the
+		// alphabet alone would rank f142.txt above f42.txt for "42". With no
+		// query nothing is matched, so the list stays alphabetical.
+		if (needle !== "" && a.file.path.length !== b.file.path.length) {
+			return a.file.path.length - b.file.path.length;
+		}
 		return a.file.path.localeCompare(b.file.path);
 	});
 
