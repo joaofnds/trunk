@@ -773,6 +773,14 @@ function originClass(origin: string): string {
 .run-flash > * {
 	animation: run-flash 0.6s ease-out;
 }
+/* Under reduced motion the flash holds its colour and clears at once, so the
+   place a jump landed is still marked. */
+@media (prefers-reduced-motion: reduce) {
+	.hunk-highlight,
+	.run-flash > * {
+		animation-timing-function: step-end;
+	}
+}
 /* An inset spread fills a box whose shorter side is under twice it, and a row is one line. */
 @keyframes run-flash {
 	0% {

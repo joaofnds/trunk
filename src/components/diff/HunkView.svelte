@@ -579,6 +579,13 @@ function flash(hunkKey: string): void {
 .hunk-highlight {
 	animation: hunk-flash 0.6s ease-out;
 }
+/* Under reduced motion the flash holds its colour and clears at once, so the
+   place a jump landed is still marked. */
+@media (prefers-reduced-motion: reduce) {
+	.hunk-highlight {
+		animation-timing-function: step-end;
+	}
+}
 @keyframes hunk-flash {
 	0% {
 		background-color: var(--color-hunk-flash);
