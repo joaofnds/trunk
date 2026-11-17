@@ -144,6 +144,25 @@ describe("HunkView", () => {
 		);
 	});
 
+	// Staging takes the hunk out of the list, so the next hunk's button moves under
+	// the pointer before a double click's second click arrives.
+	it.each([
+		["unstaged", "Stage Hunk", "onstagehunk"],
+		["staged", "Unstage Hunk", "onunstagehunk"],
+	] as const)(
+		"acts once on a double click of %s's %s",
+		async (diffKind, name, handler) => {
+			const props = defaultProps({ diffKind });
+			render(HunkView, { props });
+			const button = screen.getByRole("button", { name });
+
+			await fireEvent.click(button, { detail: 1 });
+			await fireEvent.click(button, { detail: 2 });
+
+			expect(props[handler]).toHaveBeenCalledTimes(1);
+		},
+	);
+
 	it("offers whole-hunk and selected-line comment actions while review threads are hidden", async () => {
 		const hidden = { reviewFilter: "none" as const };
 		const view = render(HunkView, { props: defaultProps(hidden) });

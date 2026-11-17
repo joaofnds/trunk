@@ -49,6 +49,13 @@ let {
 
 // Staging acts only on changed lines, and a comment's selection may hold none.
 const stagesLines = $derived(hasSelection && selectedChangeCount > 0);
+
+// Staging takes the hunk out of the list, so the next hunk moves up under the
+// pointer before a double click's second click arrives. Only a click of its own
+// acts, and a key press, whose detail is 0, always does.
+function singleClick(e: MouseEvent, act: () => void) {
+	if (e.detail <= 1) act();
+}
 </script>
 
 {#if diffKind === "unstaged" || diffKind === "staged"}
@@ -80,8 +87,12 @@ const stagesLines = $derived(hasSelection && selectedChangeCount > 0);
 			size="sm"
 			variant="success"
 			disabled={hunkOperationInFlight}
-			onclick={() =>
-				stagesLines ? onstagelines(path, hunkIdx) : onstagehunk(path, hunkIdx)}
+			onclick={(e: MouseEvent) =>
+				singleClick(e, () =>
+					stagesLines
+						? onstagelines(path, hunkIdx)
+						: onstagehunk(path, hunkIdx),
+				)}
 		>
 			{stagesLines ? `Stage Lines (${selectedChangeCount})` : "Stage Hunk"}
 		</Button>
@@ -90,10 +101,12 @@ const stagesLines = $derived(hasSelection && selectedChangeCount > 0);
 			size="sm"
 			variant="warning"
 			disabled={hunkOperationInFlight}
-			onclick={() =>
-				stagesLines
-					? onunstagelines(path, hunkIdx)
-					: onunstagehunk(path, hunkIdx)}
+			onclick={(e: MouseEvent) =>
+				singleClick(e, () =>
+					stagesLines
+						? onunstagelines(path, hunkIdx)
+						: onunstagehunk(path, hunkIdx),
+				)}
 		>
 			{stagesLines ? `Unstage Lines (${selectedChangeCount})` : "Unstage Hunk"}
 		</Button>
