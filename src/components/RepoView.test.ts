@@ -1647,6 +1647,33 @@ describe("RepoView", () => {
 			};
 		}
 
+		it("keeps a file's diff open when its row is clicked again", async () => {
+			const base = currentInvoke();
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd === "get_status") {
+					return Promise.resolve({
+						unstaged: [
+							{ path: "README.md", status: "Modified", is_binary: false },
+						],
+						staged: [],
+						conflicted: [],
+					});
+				}
+				if (cmd === "diff_unstaged") {
+					return Promise.resolve([stagingDiff("OPEN DIFF")]);
+				}
+				return base(cmd, args);
+			});
+			render(RepoView, { props: baseProps(createMockRemoteState()) });
+			await fireEvent.click(await screen.findByText("README.md"));
+			expect(await screen.findByText("OPEN DIFF")).toBeTruthy();
+
+			await fireEvent.click(screen.getByRole("option", { name: /README\.md/ }));
+			await tick();
+
+			expect(screen.getByText("OPEN DIFF")).toBeTruthy();
+		});
+
 		it("keeps the newest staging mode when superseded requests settle later", async () => {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
@@ -2330,6 +2357,22 @@ describe("RepoView", () => {
 		function diffCommitFileCalls() {
 			return mockInvoke.mock.calls.filter((c) => c[0] === "diff_commit_file");
 		}
+
+		it("keeps a commit file's diff open when its row is clicked again", async () => {
+			commits = [makeCommit({ oid: "oid-2", summary: "second commit" })];
+			filesByOid = { "oid-2": [makeFileDiff("f.ts")] };
+			detailByOid = { "oid-2": makeDetail("oid-2") };
+			diffFor = (path) => makeFileDiffWithContent(path, "OPEN DIFF");
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await fireEvent.click(await screen.findByText("f.ts"));
+			expect(await screen.findByText("OPEN DIFF")).toBeTruthy();
+
+			await fireEvent.click(screen.getByRole("option", { name: /f\.ts/ }));
+			await flush();
+
+			expect(screen.getByText("OPEN DIFF")).toBeTruthy();
+		});
 
 		it("reports opening a commit file diff as a named observation", async () => {
 			const observed: {

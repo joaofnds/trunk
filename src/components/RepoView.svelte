@@ -356,8 +356,8 @@ $effect(() => {
 
 // Bind the panel's jump affordance to the rune, wiring the existing RepoView
 // machinery as the rune's navigation seams. The rune uses the IDEMPOTENT
-// variants — handleCommitSelect/handleCommitFileSelect are toggles for graph
-// and CommitDetail clicks (clicking the selected row clears it). The jump
+// variants, because handleCommitSelect is a toggle for graph clicks (clicking
+// the selected row clears it). The jump
 // gesture must never clear the very target it's about to scroll to, otherwise
 // the panel→diff swap lands on a blank diff with no selection.
 function handleReviewJump(comment: Thread) {
@@ -1360,10 +1360,7 @@ async function handleFileSelect(
 	kind: "unstaged" | "staged" | "conflicted",
 ) {
 	cancelPendingCommitSelection();
-	if (selectedFile?.path === path && selectedFile?.kind === kind) {
-		clearStagingDiff();
-		return;
-	}
+	if (selectedFile?.path === path && selectedFile?.kind === kind) return;
 
 	selectedFile = { path, kind };
 	// Close the review panel (swap to diff) so the clicked file is visible (260531-l02d).
@@ -1836,11 +1833,6 @@ async function selectCommitFileIdempotent(path: string) {
 // clears it. The rune uses `selectCommitFileIdempotent` directly.
 async function handleCommitFileSelect(path: string) {
 	cancelPendingCommitSelection();
-	if (selectedCommitFile === path) {
-		clearCommitFileDiff();
-		return;
-	}
-
 	await selectCommitFileIdempotent(path);
 }
 
