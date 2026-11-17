@@ -236,6 +236,7 @@ describe("TreeFileList", () => {
 			render(TreeFileList, { props: { ...props, selectedPath: "b.ts" } });
 			const list = screen.getByRole("listbox");
 			list.focus();
+			await fireEvent.keyDown(list, { key: "ArrowDown" });
 
 			list.blur();
 			await tick();

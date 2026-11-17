@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
+import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub.js";
 import { noReviewCounts } from "../__tests__/helpers/review-props.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { CHECKOUT_CONFLICT_MESSAGE } from "../lib/checkout.js";
@@ -3387,6 +3388,58 @@ describe("CommitGraph", () => {
 
 			expect(referenced).not.toHaveLength(0);
 			for (const ref of referenced) expect(declared).toContain(ref);
+		});
+	});
+
+	// The unit tests of openingScrollTop pin the arithmetic. This pins that the
+	// graph opens through it, with HEAD far enough down that centring it would
+	// scroll the WIP row off the top.
+	describe("where the graph opens", () => {
+		const tops: number[] = [];
+		const originalScrollTo = Element.prototype.scrollTo;
+
+		beforeEach(() => {
+			stubLayout({ width: 900, height: 600 });
+			tops.length = 0;
+			Element.prototype.scrollTo = function scrollTo(
+				options?: ScrollToOptions | number,
+			) {
+				if (typeof options === "object" && options.top !== undefined)
+					tops.push(options.top);
+			};
+		});
+
+		afterEach(() => {
+			Element.prototype.scrollTo = originalScrollTo;
+			restoreLayout();
+		});
+
+		it("stays at the top while HEAD's row is on the first screen", async () => {
+			const tips = Array.from({ length: 12 }, (_, i) =>
+				makeCommit({
+					oid: `${i}`.padStart(40, "c"),
+					summary: `tip ${i}`,
+				}),
+			);
+			const head = makeCommit({
+				oid: "d".repeat(40),
+				summary: "head",
+				is_head: true,
+				in_head_chain: true,
+			});
+			installReads({ commits: [...tips, head] });
+
+			render(CommitGraph, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					tabActive: true,
+					wipCount: 1,
+				},
+			});
+
+			await waitFor(() => expect(tops).not.toHaveLength(0));
+			expect(tops).toEqual([0]);
 		});
 	});
 

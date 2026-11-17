@@ -101,6 +101,12 @@ describe("rankFiles", () => {
 		expect(paths(rankFiles(files, ""))).toEqual(["a.ts", "b.ts"]);
 	});
 
+	it("keeps an empty query's list in path order, whatever the lengths", () => {
+		const files = [tracked("bb.ts"), tracked("a/z.ts")];
+
+		expect(paths(rankFiles(files, ""))).toEqual(["a/z.ts", "bb.ts"]);
+	});
+
 	it("ranks the shorter of two equal matches first, as the tighter fit", () => {
 		const files = [tracked("f142.txt"), tracked("f42.txt")];
 

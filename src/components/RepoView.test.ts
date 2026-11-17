@@ -655,6 +655,21 @@ describe("RepoView", () => {
 		expect(changes.at(-1)).toBe("right width 300");
 	});
 
+	it("lets go of the focus in the detail pane when it collapses", async () => {
+		renderWithPanes({ rightPaneWidth: 56 });
+		const [field] = await screen.findAllByPlaceholderText(
+			"Description (optional)",
+		);
+		field.focus();
+
+		await fireEvent.keyDown(
+			screen.getByRole("slider", { name: "Resize detail pane" }),
+			{ key: "ArrowRight" },
+		);
+
+		expect(document.activeElement).not.toBe(field);
+	});
+
 	it("lets go of the focus in the sidebar when it collapses", async () => {
 		renderWithPanes({ leftPaneWidth: 56 });
 		const filter = await screen.findByPlaceholderText("Filter branches…");
@@ -3091,6 +3106,15 @@ describe("RepoView", () => {
 			return view;
 		}
 
+		// Under jsdom the inert region carries the property and no attribute a
+		// selector could find, so this reads the property.
+		function insideInert(el: HTMLElement): boolean {
+			for (let node: HTMLElement | null = el; node; node = node.parentElement)
+				if ((node as HTMLElement & { inert?: boolean }).inert) return true;
+
+			return false;
+		}
+
 		function rebaseRow(index: number): HTMLElement {
 			const row = screen
 				.getByRole("listbox", { name: "Commits to rebase" })
@@ -3192,6 +3216,15 @@ describe("RepoView", () => {
 
 			const [head] = await screen.findAllByTestId("commit-row");
 			expect(head).toHaveAttribute("aria-selected", "true");
+		});
+
+		it("takes the graph out of focus and pointer reach under the editor", async () => {
+			stubRebaseTodo(PARENT_OID);
+
+			await openTheEditorOnTheClickedCommit();
+
+			const [head] = screen.getAllByTestId("commit-row");
+			expect(insideInert(head)).toBe(true);
 		});
 
 		it.each(["pending", "failed"] as const)(

@@ -1149,11 +1149,11 @@ describe("StagingPanel rebase form", () => {
 });
 
 describe("StagingPanel with no rebase form", () => {
-	function mockOperation(opType: string | null) {
+	function mockOperation(opType: string | null, conflicted: unknown[] = []) {
 		mockInvoke.mockReset();
 		mockInvoke.mockImplementation((cmd: string) => {
 			if (cmd === "get_status")
-				return Promise.resolve({ unstaged: [], staged: [], conflicted: [] });
+				return Promise.resolve({ unstaged: [], staged: [], conflicted });
 			if (cmd === "get_operation_state" && opType)
 				return Promise.resolve({
 					op_type: opType,
@@ -1166,6 +1166,23 @@ describe("StagingPanel with no rebase form", () => {
 			return Promise.resolve(undefined);
 		});
 	}
+
+	it.each(["CherryPick", "Revert"])(
+		"keeps Continue off while a stopped %s still has a conflicted file",
+		async (opType) => {
+			mockOperation(opType, [
+				{ path: "src/a.ts", status: "Conflicted", is_binary: false },
+			]);
+
+			render(StagingPanel, {
+				props: { ...noReviewCounts(), repoPath: "/repo" },
+			});
+
+			expect(
+				await screen.findByRole("button", { name: "Continue" }),
+			).toBeDisabled();
+		},
+	);
 
 	it.each([
 		{ state: "nothing is in progress", opType: null, shown: "Staged Files" },
