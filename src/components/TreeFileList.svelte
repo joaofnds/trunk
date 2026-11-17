@@ -52,6 +52,20 @@ let expanded = $state<Set<string>>(new Set());
 let focusIndex = $state(0);
 let lastFocusedPath = $state<string | null>(null);
 let list = $state<HTMLElement>();
+let listFocused = $state(false);
+
+// The cursor is drawn only while the list holds the focus, where the arrow
+// keys move it. Otherwise the open file is drawn as selected, and no row is
+// while no file is open, so a list the user never touched shows no selection.
+function isMarked(index: number, row: FlatRow): boolean {
+	if (listFocused) return index === focusIndex;
+	return row.type === "file" && row.node.file.path === selectedPath;
+}
+
+function trackFocusLeaving(e: FocusEvent) {
+	const next = e.relatedTarget;
+	listFocused = next instanceof Node && list?.contains(next) === true;
+}
 
 // Track previous tree mode to detect actual changes (not initial render)
 let prevTreeMode: boolean | undefined;
@@ -245,7 +259,7 @@ function handleKeydown(e: KeyboardEvent) {
 				node={row.node}
 				depth={row.depth}
 				expanded={row.expanded}
-				focused={i === focusIndex}
+				focused={isMarked(i, row)}
 				ontoggle={() => {
 					focusRow(i, row.node.path);
 					toggleExpanded(row.node.path);
@@ -277,7 +291,7 @@ function handleKeydown(e: KeyboardEvent) {
 					: undefined}
 				depth={treeMode ? row.depth : 0}
 				displayName={treeMode ? row.node.name : undefined}
-				focused={i === focusIndex}
+				focused={isMarked(i, row)}
 				commentCount={commentCounts?.get(row.node.file.path) ?? 0}
 				commentTally={commentTallies?.get(row.node.file.path) ?? null}
 			/>
@@ -296,6 +310,8 @@ function handleKeydown(e: KeyboardEvent) {
 		role="tree"
 		tabindex="0"
 		onkeydown={handleKeydown}
+		onfocusin={() => (listFocused = true)}
+		onfocusout={trackFocusLeaving}
 		class={LIST}
 	>
 		{@render rows()}
@@ -306,6 +322,8 @@ function handleKeydown(e: KeyboardEvent) {
 		role="listbox"
 		tabindex="0"
 		onkeydown={handleKeydown}
+		onfocusin={() => (listFocused = true)}
+		onfocusout={trackFocusLeaving}
 		class={LIST}
 	>
 		{@render rows()}

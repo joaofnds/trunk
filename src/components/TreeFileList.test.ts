@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/svelte";
+import { tick } from "svelte";
 import { describe, expect, it, vi } from "vitest";
 import { makeFile } from "../__tests__/helpers/factories";
 import type { ReviewTally } from "../lib/types.js";
@@ -113,7 +114,9 @@ describe("TreeFileList", () => {
 				onfileaction: () => {},
 			},
 		});
-		await fireEvent.keyDown(screen.getByRole("listbox"), { key: "ArrowDown" });
+		const list = screen.getByRole("listbox");
+		list.focus();
+		await fireEvent.keyDown(list, { key: "ArrowDown" });
 		expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
 			"b.ts",
 		);
@@ -137,8 +140,10 @@ describe("TreeFileList", () => {
 			},
 		});
 
+		const list = screen.getByRole("listbox");
+		list.focus();
 		await fireEvent.click(screen.getByText("c.ts"));
-		await fireEvent.keyDown(screen.getByRole("listbox"), { key: "ArrowUp" });
+		await fireEvent.keyDown(list, { key: "ArrowUp" });
 
 		expect(opened).toEqual(["c.ts", "b.ts"]);
 		expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
@@ -209,6 +214,36 @@ describe("TreeFileList", () => {
 			actionLabel: "Stage",
 			onfileaction: () => {},
 		};
+
+		it("marks no file while none is open and the list is not focused", () => {
+			render(TreeFileList, { props: { ...props, selectedPath: null } });
+
+			expect(screen.queryByRole("option", { selected: true })).toBeNull();
+		});
+
+		it("marks its cursor while the list holds the focus", async () => {
+			render(TreeFileList, { props: { ...props, selectedPath: null } });
+
+			screen.getByRole("listbox").focus();
+			await tick();
+
+			expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
+				"a.ts",
+			);
+		});
+
+		it("keeps the open file marked once the list lets go of the focus", async () => {
+			render(TreeFileList, { props: { ...props, selectedPath: "b.ts" } });
+			const list = screen.getByRole("listbox");
+			list.focus();
+
+			list.blur();
+			await tick();
+
+			expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
+				"b.ts",
+			);
+		});
 
 		it("moves the cursor to it from a row still shown", async () => {
 			const { rerender } = render(TreeFileList, {
