@@ -84,7 +84,8 @@ async fn run_git_remote<'a, R: Runtime>(
 }
 
 /// Takes the repository's one foreground remote slot, so nothing else runs git
-/// against it until the returned reservation drops.
+/// against it until the returned reservation drops. A background fetch holding
+/// the repository is waited for, never failed on.
 async fn reserve_remote<'a, R: Runtime>(
     activity: &crate::activity::Activity,
     cwd: &std::path::Path,
@@ -107,14 +108,15 @@ async fn reserve_remote<'a, R: Runtime>(
         })
         .await
         .map_err(|error| TrunkError::new("spawn_error", error.to_string()))??;
-    let reservation = RemoteReservation::acquire_foreground_checked(
+    let reservation = RemoteReservation::acquire_foreground_when_free(
         running,
         RemoteTarget {
             path: repo_path,
             common: &common,
         },
         || app.state::<CommitCache>().session_id(repo_path) == Some(expected_session),
-    )?;
+    )
+    .await?;
 
     Ok(RemoteCompletion {
         reservation,

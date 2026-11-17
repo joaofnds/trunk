@@ -687,8 +687,9 @@ even before its notification reaches the frontend.
 **Remote operation registry** — identity-based reservations for fetch, pull and push,
 acquired before spawning a process and held through its exit and graph reconciliation.
 Canonical Git common directories serialize aliases and linked worktrees. Background jobs
-also require the application-wide permit. Cancellation keeps the reservation until the
-executing owner joins its process and releases it.
+also require the application-wide permit. A user's fetch, pull or push waits for a background
+fetch on its repository rather than failing on it. Cancellation keeps the reservation until
+the executing owner joins its process and releases it.
 
 **Stats cache** — the diff stat computed for each commit, per repository, filling the
 graph's Diff column. A commit's diff never changes, so an entry is never invalidated,

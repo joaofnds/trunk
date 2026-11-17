@@ -218,13 +218,15 @@ fn terminal_ref_changes_publish_while_a_foreground_owner_is_held() {
         .to_string_lossy()
         .into_owned();
     let running = harness.app.state::<trunk_lib::state::RunningOp>();
-    let owner = trunk_lib::remote_ops::RemoteReservation::acquire_foreground_checked(
-        &running.0,
-        trunk_lib::remote_ops::RemoteTarget {
-            path: &path,
-            common: &common,
-        },
-        || true,
+    let owner = tauri::async_runtime::block_on(
+        trunk_lib::remote_ops::RemoteReservation::acquire_foreground_when_free(
+            &running.0,
+            trunk_lib::remote_ops::RemoteTarget {
+                path: &path,
+                common: &common,
+            },
+            || true,
+        ),
     )
     .unwrap();
     let prior = harness.graph(fixture.clone.path())["revision"]
@@ -1279,6 +1281,15 @@ mod cancellation {
             worker
         }
 
+        /// Let the blocked remote's fetch end, as a remote that answers at last.
+        fn release(&self) {
+            let mut blocked = std::fs::OpenOptions::new()
+                .write(true)
+                .open(self.directory.path().join("blocked"))
+                .unwrap();
+            blocked.write_all(b"go\n").unwrap();
+        }
+
         fn wait_for_request(events: &Receiver<FetchEvent>) {
             match events.recv().unwrap() {
                 FetchEvent::WorkerBlocked => {}
@@ -1565,7 +1576,6 @@ mod cancellation {
 
         let busy = harness.fetch(fixture.clone.path());
         let other_busy = harness.fetch(other.clone.path());
-        let manual_busy = harness.invoke("git_fetch", json!({ "path": path }));
         harness
             .invoke("cancel_remote_op", json!({ "path": path }))
             .unwrap();
@@ -1576,7 +1586,6 @@ mod cancellation {
 
         assert_eq!(busy["outcome"], "skipped_busy");
         assert_eq!(other_busy["outcome"], "skipped_busy");
-        assert_eq!(error_code(manual_busy.unwrap_err()), "op_in_progress");
         assert_eq!(cancelled["outcome"], "cancelled");
         assert_eq!(cancelled["remotes"][0]["outcome"], "cancelled");
         assert!(
@@ -1594,6 +1603,101 @@ mod cancellation {
         );
         assert_eq!(next["remotes"][0]["outcome"], "unchanged");
         assert!(next["remotes"][0]["last_success_ms"].is_u64());
+    }
+
+    /// A background fetch held on its blocked remote, and a user fetch of the same
+    /// repository started behind it.
+    struct UserFetchBehindBackground {
+        _fixture: RemoteFixture,
+        harness: Harness,
+        worker: BlockedWorker,
+        observations: Receiver<FetchEvent>,
+        path: String,
+        background: JoinHandle<Value>,
+        user: JoinHandle<Result<Value, Value>>,
+    }
+
+    impl UserFetchBehindBackground {
+        fn start() -> Self {
+            let fixture = RemoteFixture::new();
+            fixture
+                .clone()
+                .remote("blocked", fixture.remote.path().to_str().unwrap())
+                .unwrap();
+            let (events, observations) = mpsc::channel();
+            let worker = BlockedWorker::setup(events);
+            let mut harness =
+                Harness::with_worker(WatcherState::disabled(), worker.executable.clone());
+            harness.open(fixture.clone.path());
+            let path = fixture.clone.path().to_str().unwrap().to_owned();
+            let webview = harness.webview.clone();
+            let background_path = path.clone();
+            let background = thread::spawn(move || {
+                invoke(
+                    &webview,
+                    "git_fetch_background",
+                    json!({ "path": background_path }),
+                )
+                .unwrap()
+            });
+            BlockedWorker::wait_for_request(&observations);
+            let webview = harness.webview.clone();
+            let user_path = path.clone();
+            let user =
+                thread::spawn(move || invoke(&webview, "git_fetch", json!({ "path": user_path })));
+            let running = harness.app.state::<RunningOp>();
+            tauri::async_runtime::block_on(trunk_lib::remote_ops::RemoteOps::until_waiting(
+                &running.0, &path,
+            ));
+
+            Self {
+                _fixture: fixture,
+                harness,
+                worker,
+                observations,
+                path,
+                background,
+                user,
+            }
+        }
+    }
+
+    #[test]
+    fn a_user_fetch_started_during_a_background_fetch_runs_once_it_ends() {
+        let started = UserFetchBehindBackground::start();
+
+        started.worker.release();
+        let user = started.user.join().unwrap();
+        started.background.join().unwrap();
+        BlockedWorker::wait_for_exit(&started.observations);
+
+        assert!(user.is_ok(), "{user:?}");
+    }
+
+    #[test]
+    fn cancelling_a_user_fetch_that_waits_leaves_the_background_fetch_running() {
+        let started = UserFetchBehindBackground::start();
+
+        started
+            .harness
+            .invoke("cancel_remote_op", json!({ "path": started.path }))
+            .unwrap();
+        let user = started.user.join().unwrap();
+
+        assert_eq!(error_code(user.unwrap_err()), "cancelled");
+        assert!(
+            started
+                .harness
+                .app
+                .state::<RunningOp>()
+                .0
+                .lock()
+                .unwrap()
+                .busy(&started.path)
+        );
+        started.worker.release();
+        started.background.join().unwrap();
+        BlockedWorker::wait_for_exit(&started.observations);
     }
 
     #[test]

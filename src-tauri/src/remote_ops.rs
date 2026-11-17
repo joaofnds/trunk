@@ -119,10 +119,19 @@ pub struct RemoteTarget<'a> {
     pub common: &'a str,
 }
 
+/// A user operation waiting for a background fetch on its repository to end.
+#[derive(Debug)]
+struct Waiter {
+    path: String,
+    common: String,
+    cancelled: bool,
+}
+
 /// Atomic reservations, held through process exit and graph reconciliation.
 #[derive(Debug, Default)]
 pub struct RemoteOps {
     operations: HashMap<u64, Operation>,
+    waiters: HashMap<u64, Waiter>,
     ref_reconciliations: HashMap<String, usize>,
     sequence: u64,
     changed: Arc<Notify>,
@@ -141,7 +150,14 @@ impl RemoteOps {
     /// Returns `op_in_progress` for a shared-repository conflict, or for any operation
     /// while a new background job is trying to acquire the application-wide permit.
     pub fn reserve_background(&mut self, target: RemoteTarget<'_>) -> Result<u64, TrunkError> {
-        if !self.operations.is_empty() || self.ref_reconciliations.contains_key(target.common) {
+        let user_waits = self
+            .waiters
+            .values()
+            .any(|waiter| waiter.common == target.common);
+        if !self.operations.is_empty()
+            || user_waits
+            || self.ref_reconciliations.contains_key(target.common)
+        {
             return Err(operation_in_progress());
         }
 
@@ -150,8 +166,27 @@ impl RemoteOps {
 
     /// # Errors
     /// Returns `op_in_progress` for a shared-repository conflict.
+    #[cfg(any(test, feature = "test-util"))]
     pub fn reserve_foreground(&mut self, target: RemoteTarget<'_>) -> Result<u64, TrunkError> {
         self.reserve(target, OperationKind::Foreground)
+    }
+
+    /// The kind of operation holding `target`, a user's one first.
+    fn holder(&self, target: RemoteTarget<'_>) -> Option<OperationKind> {
+        let mut holder = None;
+        for operation in self.operations.values() {
+            let holds = [target.path, target.common]
+                .iter()
+                .any(|place| operation.path == *place || operation.common == *place);
+            if !holds {
+                continue;
+            }
+            if operation.kind == OperationKind::Foreground {
+                return Some(OperationKind::Foreground);
+            }
+            holder = Some(OperationKind::Background);
+        }
+        holder
     }
 
     fn reserve(
@@ -159,11 +194,8 @@ impl RemoteOps {
         target: RemoteTarget<'_>,
         kind: OperationKind,
     ) -> Result<u64, TrunkError> {
-        if self.busy(target.path) || self.busy(target.common) {
-            return Err(TrunkError::new(
-                "op_in_progress",
-                "A remote operation is already running",
-            ));
+        if self.holder(target).is_some() {
+            return Err(operation_in_progress());
         }
         self.sequence += 1;
         self.operations.insert(
@@ -180,7 +212,21 @@ impl RemoteOps {
     }
 
     /// Request cancellation; the executing owner releases its reservation after exit.
+    /// A user operation still waiting for a background fetch is the one cancelled,
+    /// and the fetch it waits for runs on.
     pub fn cancel(&mut self, path: &str) -> Option<RemoteProcess> {
+        let mut waiter_cancelled = false;
+        for waiter in self.waiters.values_mut() {
+            if waiter.path == path {
+                waiter.cancelled = true;
+                waiter_cancelled = true;
+            }
+        }
+        if waiter_cancelled {
+            self.changed.notify_waiters();
+            return None;
+        }
+
         let operation = self
             .operations
             .values_mut()
@@ -193,6 +239,97 @@ impl RemoteOps {
         if self.operations.remove(&id).is_some() {
             self.changed.notify_waiters();
         }
+    }
+
+    fn wait(&mut self, target: RemoteTarget<'_>) -> u64 {
+        self.sequence += 1;
+        self.waiters.insert(
+            self.sequence,
+            Waiter {
+                path: target.path.to_owned(),
+                common: target.common.to_owned(),
+                cancelled: false,
+            },
+        );
+        self.changed.notify_waiters();
+        self.sequence
+    }
+
+    /// One attempt to admit a user operation, `queued` naming its place in line
+    /// once it has one.
+    fn admit_foreground(
+        &mut self,
+        target: RemoteTarget<'_>,
+        queued: Option<u64>,
+        valid: impl Fn() -> bool,
+    ) -> Result<Admission, TrunkError> {
+        if !valid() {
+            return Err(TrunkError::new("not_open", "Repository session was closed"));
+        }
+        if queued.is_some_and(|id| self.waiters[&id].cancelled) {
+            return Err(TrunkError::new("cancelled", "Remote operation cancelled"));
+        }
+
+        match self.holder(target) {
+            None => self
+                .reserve(target, OperationKind::Foreground)
+                .map(Admission::Reserved),
+            Some(OperationKind::Foreground) => Err(operation_in_progress()),
+            Some(OperationKind::Background) if queued.is_none() => {
+                Ok(Admission::Queued(self.wait(target)))
+            }
+            Some(OperationKind::Background) => Ok(Admission::StillQueued),
+        }
+    }
+
+    fn stop_waiting(&mut self, id: u64) {
+        if self.waiters.remove(&id).is_some() {
+            self.changed.notify_waiters();
+        }
+    }
+
+    /// Whether a user operation on `path` waits for a background fetch to end.
+    #[cfg(any(test, feature = "test-util"))]
+    #[must_use]
+    pub fn waiting(&self, path: &str) -> bool {
+        self.waiters.values().any(|waiter| waiter.path == path)
+    }
+
+    /// Resolve once a user operation on `path` waits for a background fetch.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the registry lock is poisoned.
+    #[cfg(any(test, feature = "test-util"))]
+    pub async fn until_waiting(running: &Mutex<Self>, path: &str) {
+        let changed = Arc::clone(&running.lock().unwrap().changed);
+        loop {
+            let mut notified = std::pin::pin!(changed.notified());
+            notified.as_mut().enable();
+            if running.lock().unwrap().waiting(path) {
+                return;
+            }
+            notified.await;
+        }
+    }
+}
+
+/// What one attempt to admit a user operation decided.
+enum Admission {
+    Reserved(u64),
+    Queued(u64),
+    StillQueued,
+}
+
+/// A user operation's place in line behind a background fetch, given up on drop.
+struct WaitingForeground<'a> {
+    running: &'a Mutex<RemoteOps>,
+    id: u64,
+}
+
+impl Drop for WaitingForeground<'_> {
+    fn drop(&mut self) {
+        self.running.lock().unwrap().stop_waiting(self.id);
     }
 }
 
@@ -238,18 +375,46 @@ impl<'a> RemoteReservation<'a> {
         })
     }
 
+    /// Take the user's slot, waiting while a background fetch holds the repository,
+    /// since the user asked for this operation and the fetch is only housekeeping.
+    /// The fetch is never stopped for it: killing its worker during the ref update
+    /// leaves lock files behind, and marking it cancelled makes a fetch that
+    /// updated the refs restore the `FETCH_HEAD` from before it.
+    ///
     /// # Errors
-    /// Returns `not_open` for a closed session or `op_in_progress` for a conflicting job.
+    ///
+    /// Returns `not_open` for a closed session, `cancelled` when the user cancels
+    /// while waiting, or `op_in_progress` while another user operation runs.
+    ///
     /// # Panics
+    ///
     /// Panics when the registry lock is poisoned.
-    pub fn acquire_foreground_checked(
+    pub async fn acquire_foreground_when_free(
         running: &'a Mutex<RemoteOps>,
         target: RemoteTarget<'_>,
-        valid: impl FnOnce() -> bool,
+        valid: impl Fn() -> bool,
     ) -> Result<Self, TrunkError> {
-        Self::acquire_checked(running, valid, |registry| {
-            registry.reserve_foreground(target)
-        })
+        let changed = Arc::clone(&running.lock().unwrap().changed);
+        let mut place: Option<WaitingForeground<'a>> = None;
+        loop {
+            let mut notified = std::pin::pin!(changed.notified());
+            notified.as_mut().enable();
+            let queued = place.as_ref().map(|waiting| waiting.id);
+            let admission = running
+                .lock()
+                .unwrap()
+                .admit_foreground(target, queued, &valid)?;
+
+            match admission {
+                Admission::Reserved(id) => {
+                    drop(place);
+                    return Ok(Self { running, id });
+                }
+                Admission::Queued(id) => place = Some(WaitingForeground { running, id }),
+                Admission::StillQueued => {}
+            }
+            notified.await;
+        }
     }
 
     fn acquire_checked(
@@ -385,6 +550,108 @@ fn operation_in_progress() -> TrunkError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const REPO: RemoteTarget<'static> = RemoteTarget {
+        path: "/repo",
+        common: "/shared.git",
+    };
+
+    /// Drive `user` until it waits behind the background fetch, and say whether it did.
+    async fn waits_behind_background<F: std::future::Future + Unpin>(
+        running: &Mutex<RemoteOps>,
+        user: &mut F,
+    ) -> bool {
+        tokio::select! {
+            biased;
+            _ = user => false,
+            () = RemoteOps::until_waiting(running, REPO.path) => true,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_user_operation_waits_for_a_background_fetch_and_then_runs() {
+        let running = Mutex::new(RemoteOps::default());
+        let background = running.lock().unwrap().reserve_background(REPO).unwrap();
+        let mut user = std::pin::pin!(RemoteReservation::acquire_foreground_when_free(
+            &running,
+            REPO,
+            || true,
+        ));
+        assert!(waits_behind_background(&running, &mut user).await);
+
+        running.lock().unwrap().complete(background);
+        let reservation = user.await;
+
+        assert!(reservation.is_ok());
+        assert!(running.lock().unwrap().busy(REPO.path));
+    }
+
+    #[tokio::test]
+    async fn no_background_fetch_starts_while_a_user_operation_waits() {
+        let running = Mutex::new(RemoteOps::default());
+        let background = running.lock().unwrap().reserve_background(REPO).unwrap();
+        let mut user = std::pin::pin!(RemoteReservation::acquire_foreground_when_free(
+            &running,
+            REPO,
+            || true,
+        ));
+        assert!(waits_behind_background(&running, &mut user).await);
+        running.lock().unwrap().complete(background);
+
+        let next = running.lock().unwrap().reserve_background(REPO);
+
+        assert_eq!(next.unwrap_err().code, "op_in_progress");
+        assert!(user.await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_user_operation_is_refused_while_another_user_operation_runs() {
+        let running = Mutex::new(RemoteOps::default());
+        let first = RemoteReservation::acquire_foreground_when_free(&running, REPO, || true)
+            .await
+            .unwrap();
+
+        let second = RemoteReservation::acquire_foreground_when_free(&running, REPO, || true).await;
+
+        assert_eq!(second.err().unwrap().code, "op_in_progress");
+        drop(first);
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_waiting_user_operation_leaves_the_background_fetch_running() {
+        let running = Mutex::new(RemoteOps::default());
+        let background = running.lock().unwrap().reserve_background(REPO).unwrap();
+        let mut user = std::pin::pin!(RemoteReservation::acquire_foreground_when_free(
+            &running,
+            REPO,
+            || true,
+        ));
+        assert!(waits_behind_background(&running, &mut user).await);
+
+        let stopped = running.lock().unwrap().cancel(REPO.path);
+        let reservation = user.await;
+
+        assert!(stopped.is_none());
+        assert_eq!(reservation.err().unwrap().code, "cancelled");
+        assert!(!running.lock().unwrap().operations[&background].cancelled);
+    }
+
+    #[tokio::test]
+    async fn a_user_operation_given_up_while_waiting_leaves_its_place() {
+        let running = Mutex::new(RemoteOps::default());
+        let background = running.lock().unwrap().reserve_background(REPO).unwrap();
+        let mut user = Box::pin(RemoteReservation::acquire_foreground_when_free(
+            &running,
+            REPO,
+            || true,
+        ));
+        assert!(waits_behind_background(&running, &mut user).await);
+
+        drop(user);
+        running.lock().unwrap().complete(background);
+
+        assert!(running.lock().unwrap().reserve_background(REPO).is_ok());
+    }
 
     #[tokio::test]
     async fn ref_reconciliation_excludes_a_new_background_owner() {
