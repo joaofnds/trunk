@@ -2295,7 +2295,13 @@ function handleKeydown(e: KeyboardEvent) {
 	const items = displayItems;
 	if (items.length === 0) return;
 
-	const currentIdx = items.findIndex((c) => c.oid === navigationCommitOid);
+	// With no commit selected the staging panel shows the uncommitted changes, so
+	// their row, which leads the list, is where the keys start from.
+	const wipLeads = items[0]?.oid === "__wip__";
+	const currentIdx =
+		!navigationCommitOid && wipLeads
+			? 0
+			: items.findIndex((c) => c.oid === navigationCommitOid);
 
 	let nextIdx: number;
 	if (chord === "ArrowDown") {

@@ -429,6 +429,31 @@ describe("CommitGraph", () => {
 			expect(oncommitselect).toHaveBeenCalledTimes(1);
 		});
 
+		// With no commit selected the staging panel shows the uncommitted changes,
+		// so their row is where the arrow keys start from.
+		it("moves from the uncommitted changes to the first commit on ArrowDown", async () => {
+			const oncommitselect = vi.fn();
+			const onWipClick = vi.fn();
+			render(CommitGraph, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					tabActive: true,
+					wipCount: 1,
+					oncommitselect,
+					onWipClick,
+				},
+			});
+			await screen.findByText("first commit");
+
+			await fireEvent.keyDown(screen.getByRole("listbox"), {
+				key: "ArrowDown",
+			});
+
+			expect(oncommitselect).toHaveBeenCalledWith(TEST_COMMITS[0].oid);
+			expect(onWipClick).not.toHaveBeenCalled();
+		});
+
 		it.each([
 			{ name: "Cmd+ArrowDown", key: "ArrowDown", metaKey: true },
 			{ name: "Shift+ArrowDown", key: "ArrowDown", shiftKey: true },
