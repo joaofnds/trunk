@@ -1533,3 +1533,58 @@ fn compare_stats_count_a_rename_as_its_edit_only() {
     assert_eq!(stat.insertions, 1);
     assert_eq!(stat.deletions, 1);
 }
+
+// -- binary files --
+
+/// A commit whose second commit changes `logo.png`, a file of raw bytes.
+fn binary_change() -> (TestContext, String) {
+    let ctx = TestContext::builder()
+        .with_binary_file("logo.png", &[0x89, b'P', b'N', b'G', 0x00, 0x01])
+        .with_commit("Add the logo")
+        .with_binary_file("logo.png", &[0x89, b'P', b'N', b'G', 0x00, 0x02])
+        .with_commit("Change the logo")
+        .build();
+    let head = ctx.repo().head().unwrap().target().unwrap().to_string();
+    (ctx, head)
+}
+
+#[test]
+fn a_commit_file_of_raw_bytes_is_flagged_binary() {
+    let (ctx, head) = binary_change();
+
+    let diffs = ctx.diff_commit_file(&head, "logo.png").unwrap();
+
+    assert_eq!(diffs.len(), 1);
+    assert!(diffs[0].is_binary);
+}
+
+#[test]
+fn a_staged_file_of_raw_bytes_is_flagged_binary() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello\n")
+        .with_commit("Initial commit")
+        .build();
+    std::fs::write(ctx.repo_path().join("logo.png"), [0x89, b'P', 0x00, 0x01]).unwrap();
+    {
+        let repo = ctx.repo();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("logo.png")).unwrap();
+        index.write().unwrap();
+    }
+
+    let diffs = ctx.diff_staged("logo.png").unwrap();
+
+    assert_eq!(diffs.len(), 1);
+    assert!(diffs[0].is_binary);
+}
+
+#[test]
+fn an_unstaged_file_of_raw_bytes_is_flagged_binary() {
+    let (ctx, _) = binary_change();
+    std::fs::write(ctx.repo_path().join("logo.png"), [0x89, b'P', 0x00, 0x03]).unwrap();
+
+    let diffs = ctx.diff_unstaged("logo.png").unwrap();
+
+    assert_eq!(diffs.len(), 1);
+    assert!(diffs[0].is_binary);
+}

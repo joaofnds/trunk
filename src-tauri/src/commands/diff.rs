@@ -335,6 +335,10 @@ fn diff_one_file(
         ))];
 
     if let Some(patch) = git2::Patch::from_diff(diff, delta_index)? {
+        // A delta read from the diff's list carries no binary flag yet: libgit2
+        // sets it once the patch has loaded the content, which only now happened.
+        let delta = patch.delta();
+        file_diff.is_binary = delta.old_file().is_binary() || delta.new_file().is_binary();
         file_diff.hunks = hunks_of(&patch)?;
     }
 
