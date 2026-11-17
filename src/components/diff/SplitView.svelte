@@ -236,7 +236,14 @@ export function scrollToHunk(ordinal: number): void {
 	if (!nav) return;
 
 	list?.scrollToIndex(nav.rowIndex);
+	vd.noteHunkJump(ordinal);
 	flash(`${nav.path}-${nav.hunkIdx}`);
+}
+
+export function stepHunk(direction: 1 | -1): number {
+	const ordinal = vd.adjacentHunk(direction);
+	if (ordinal >= 0) scrollToHunk(ordinal);
+	return ordinal;
 }
 
 /** Scrolls to the pair row carrying one line, on either side. A line the model

@@ -22,6 +22,42 @@ export interface DiffNav {
 	/** Scrolls to the comment row drawing a thread that starts on `startLine`,
 	 *  reporting false when no row draws one. */
 	scrollToThread(path: string, side: Side, startLine: number): boolean;
+	/** Scrolls to the hunk after (1) or before (-1) the one the reader is at,
+	 *  reporting its place in the sequence, or -1 when there is none. */
+	stepHunk(direction: 1 | -1): number;
 	/** The line at the top of the view, where a view replacing it opens. */
 	readingLine(): ReadingLine | null;
+}
+
+/** Where the last jump left the view: the stop it went to, and the row that
+ *  put at the top. */
+export interface StopJump {
+	readonly ordinal: number;
+	readonly top: number;
+}
+
+/**
+ * The stop `]` (1) or `[` (-1) goes to, among rows in ascending order, or -1
+ * when there is none that way.
+ *
+ * It steps on from the last jump while the top is still the row that jump left
+ * there, since near the end the list cannot scroll a stop up to the top and the
+ * top alone would pick the same stop again. Once the reader has scrolled, it
+ * steps from the row at the top, so the next stop is the next one below what
+ * is on screen and never one back where an old jump left off.
+ */
+export function adjacentStop(
+	stops: readonly number[],
+	top: number,
+	direction: 1 | -1,
+	last: StopJump | null,
+): number {
+	if (last !== null && last.top === top) {
+		const next = last.ordinal + direction;
+		return next >= 0 && next < stops.length ? next : -1;
+	}
+
+	return direction === 1
+		? stops.findIndex((row) => row > top)
+		: stops.findLastIndex((row) => row < top);
 }

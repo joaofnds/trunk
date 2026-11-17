@@ -11,6 +11,7 @@
  * comment probe into the settable refs.
  */
 import { onMount, tick, untrack } from "svelte";
+import { adjacentStop, type StopJump } from "./diff-nav.js";
 import {
 	type ComposerPlace,
 	type DiffRowModel,
@@ -85,6 +86,11 @@ export interface InlineVirtualizedDiff {
 	readonly markerW: string;
 	/** The first line at the top of the list, the place a replacing view opens at. */
 	readingLine(): ReadingLine | null;
+	/** The hunk `]` (1) or `[` (-1) goes to from where the reader is, or -1. */
+	adjacentHunk(direction: 1 | -1): number;
+	/** Records that a jump just brought a hunk to the top, which the next step
+	 *  goes on from while the reader leaves the view where it is. */
+	noteHunkJump(ordinal: number): void;
 }
 
 export interface SplitVirtualizedDiff extends InlineVirtualizedDiff {
@@ -324,10 +330,29 @@ export function createVirtualizedDiff(
 		drawnLine = readingLineAt(model, list.topIndex());
 	});
 
+	// Tied to the rows it was taken over: a refetch rebuilds them, and the hunk
+	// at an ordinal of the old rows is not the hunk at that ordinal now.
+	let lastJump: (StopJump & { model: DiffRowModel }) | null = null;
+
 	return {
 		folds,
 		readingLine() {
 			return drawnLine;
+		},
+		adjacentHunk(direction) {
+			const list = deps.list();
+			if (!list) return -1;
+
+			return adjacentStop(
+				model.hunkNav.map((entry) => entry.rowIndex),
+				list.topIndex(),
+				direction,
+				lastJump?.model === model ? lastJump : null,
+			);
+		},
+		noteHunkJump(ordinal) {
+			const list = deps.list();
+			lastJump = list ? { ordinal, top: list.topIndex(), model } : null;
 		},
 		get pane() {
 			return state.pane;

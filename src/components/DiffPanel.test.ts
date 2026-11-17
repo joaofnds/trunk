@@ -3959,6 +3959,36 @@ describe("DiffPanel hunk navigation", () => {
 		expect(viewportOf(container).scrollTop).toBe(64);
 	});
 
+	// The reader's own scrolling moves where the next and previous hunks are,
+	// so a step goes from what is on screen, not from the last hunk stepped to.
+	it("scrolls back to the hunk above on [ after the reader scrolled past it", async () => {
+		const { container, ready } = renderNav();
+		await ready;
+		const viewport = viewportOf(container);
+
+		viewport.scrollTop = 100;
+		await fireEvent.scroll(viewport);
+		await fireEvent.keyDown(window, { key: "[" });
+		await tick();
+
+		expect(viewport.scrollTop).toBe(64);
+	});
+
+	it("scrolls to the hunk below on ] after the reader scrolled back above it", async () => {
+		const { container, ready } = renderNav();
+		await ready;
+		const viewport = viewportOf(container);
+
+		await fireEvent.keyDown(window, { key: "]" });
+		await tick();
+		viewport.scrollTop = 0;
+		await fireEvent.scroll(viewport);
+		await fireEvent.keyDown(window, { key: "]" });
+		await tick();
+
+		expect(viewport.scrollTop).toBe(64);
+	});
+
 	it("scrolls to the anchored new-side line's own row, not to its hunk header", async () => {
 		const { container, component, ready } = renderNav();
 		await ready;

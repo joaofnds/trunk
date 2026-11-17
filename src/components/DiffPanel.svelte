@@ -744,6 +744,18 @@ function clearSelection() {
 	fullFileView?.clearSelection();
 }
 
+// A virtualized view steps from what the reader has on screen. The rendered
+// view has no rows to read a position from, so it steps from the last hunk.
+function stepHunk(direction: 1 | -1) {
+	if (diffNav) {
+		const ordinal = diffNav.stepHunk(direction);
+		if (ordinal >= 0) focusedHunkIndex = ordinal;
+		return;
+	}
+
+	scrollToHunk(focusedHunkIndex + direction);
+}
+
 function scrollToHunk(index: number) {
 	if (diffNav) {
 		if (index < 0 || index >= diffNav.hunkCount()) return;
@@ -881,10 +893,10 @@ $effect(() => {
 
 		if (chord === "]") {
 			e.preventDefault();
-			scrollToHunk(focusedHunkIndex + 1);
+			stepHunk(1);
 		} else if (chord === "[") {
 			e.preventDefault();
-			scrollToHunk(focusedHunkIndex - 1);
+			stepHunk(-1);
 		}
 	}
 	window.addEventListener("keydown", clearSelectionOnEscape, { capture: true });
