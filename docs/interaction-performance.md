@@ -1214,7 +1214,15 @@ or added those tests. Each was seen to fail with its subject broken, except the
 rebase cancel test, which was checked by reading. After the last fix, a session that wrote none of them drove a drive build of
 `2ba1be06` through every row and the `c` key fix, and saw each behave as fixed. It
 did not observe the reduced-motion hold, and it could not reach a drag that reopens a
-collapsed pane, because a collapsed pane's splitter is hidden.
+collapsed pane, because a collapsed pane's splitter is hidden. The same session met
+defects the walk had not. A cherry-pick of a change HEAD already has was left in
+progress with a Continue that saved nothing, fixed in `53911414`, and the cherry-pick
+banner's label was cut off at 1280 px, fixed in `ec642575`. A drive build of
+`ec642575` showed both fixed: the pick ended with a dialog saying HEAD already had
+the change, and the label fit beside Continue and Abort at 1280 px. Three wait on a product
+question: ending a review reopens the last diff shown in it at its top (TRUNK-453), a
+click on the file the staging panel has just moved to closes its diff (TRUNK-454),
+and the uncommitted-changes row never shows as selected (TRUNK-455).
 
 | Flow | What the user met | Fix |
 | --- | --- | --- |
