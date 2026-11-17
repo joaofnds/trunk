@@ -5,7 +5,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
-use crate::remote_ops::{RemoteProcess, RemoteReservation, RemoteTarget};
+use crate::remote_ops::{self, RemoteProcess, RemoteReservation, RemoteTarget};
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RemoteOps, RepoState, RunningOp};
 use crate::watcher::RepoChanged;
@@ -96,7 +96,7 @@ async fn reserve_remote<'a, R: Runtime>(
     let expected_session = app
         .state::<CommitCache>()
         .session_id(repo_path)
-        .ok_or_else(|| TrunkError::new("not_open", "Repository session was closed"))?;
+        .ok_or_else(remote_ops::session_closed)?;
     let location = cwd.to_path_buf();
     let common = activity
         .spawn_blocking(move || {
@@ -188,7 +188,7 @@ async fn run_reserved<R: Runtime>(
     reservation.exited();
     let status = status.map_err(|e| TrunkError::new("remote_error", e.to_string()))?;
     if reservation.cancelled() {
-        return Err(TrunkError::new("cancelled", "Remote operation cancelled"));
+        return Err(remote_ops::operation_cancelled());
     }
 
     if !status.success() {

@@ -264,10 +264,10 @@ impl RemoteOps {
         valid: impl Fn() -> bool,
     ) -> Result<Admission, TrunkError> {
         if !valid() {
-            return Err(TrunkError::new("not_open", "Repository session was closed"));
+            return Err(session_closed());
         }
         if queued.is_some_and(|id| self.waiters[&id].cancelled) {
-            return Err(TrunkError::new("cancelled", "Remote operation cancelled"));
+            return Err(operation_cancelled());
         }
 
         match self.holder(target) {
@@ -370,9 +370,14 @@ impl<'a> RemoteReservation<'a> {
         target: RemoteTarget<'_>,
         valid: impl FnOnce() -> bool,
     ) -> Result<Self, TrunkError> {
-        Self::acquire_checked(running, valid, |registry| {
-            registry.reserve_background(target)
-        })
+        let mut registry = running.lock().unwrap();
+        if !valid() {
+            return Err(session_closed());
+        }
+
+        let id = registry.reserve_background(target)?;
+        drop(registry);
+        Ok(Self { running, id })
     }
 
     /// Take the user's slot, waiting while a background fetch holds the repository,
@@ -415,21 +420,6 @@ impl<'a> RemoteReservation<'a> {
             }
             notified.await;
         }
-    }
-
-    fn acquire_checked(
-        running: &'a Mutex<RemoteOps>,
-        valid: impl FnOnce() -> bool,
-        reserve: impl FnOnce(&mut RemoteOps) -> Result<u64, TrunkError>,
-    ) -> Result<Self, TrunkError> {
-        let mut registry = running.lock().unwrap();
-        if !valid() {
-            return Err(TrunkError::new("not_open", "Repository session was closed"));
-        }
-
-        let id = reserve(&mut registry)?;
-        drop(registry);
-        Ok(Self { running, id })
     }
 
     /// Attach the child only while the reservation still exists. Cancellation before
@@ -545,6 +535,14 @@ pub async fn wait_background_idle<'a>(
 
 fn operation_in_progress() -> TrunkError {
     TrunkError::new("op_in_progress", "A remote operation is already running")
+}
+
+pub(crate) fn session_closed() -> TrunkError {
+    TrunkError::new("not_open", "Repository session was closed")
+}
+
+pub(crate) fn operation_cancelled() -> TrunkError {
+    TrunkError::new("cancelled", "Remote operation cancelled")
 }
 
 #[cfg(test)]
