@@ -371,7 +371,9 @@ pub fn get_merge_message_inner(
 /// into the merge message and the in-progress banner reads it back, so a full
 /// `refs/heads/feature` would read "Merge branch 'refs/heads/feature'". A short
 /// name another reference shadows, as a tag of the same name does, stays full,
-/// because git would merge the tag.
+/// because git would merge the tag. So does a short name git reads as something
+/// other than a branch: a whole object id names that commit, and `-` names the
+/// branch checked out before this one.
 fn typed_name(repo: &git2::Repository, branch: &str) -> String {
     let Ok(reference) = repo.find_reference(branch) else {
         return branch.to_owned();
@@ -382,11 +384,17 @@ fn typed_name(repo: &git2::Repository, branch: &str) -> String {
     let resolves_back = repo
         .resolve_reference_from_short_name(short)
         .is_ok_and(|found| found.name_bytes() == reference.name_bytes());
-    if resolves_back {
+    if resolves_back && !git_reads_as_another_name(short) {
         short.to_owned()
     } else {
         branch.to_owned()
     }
+}
+
+fn git_reads_as_another_name(short: &str) -> bool {
+    let object_id =
+        matches!(short.len(), 40 | 64) && short.bytes().all(|byte| byte.is_ascii_hexdigit());
+    object_id || short == "-"
 }
 
 /// Start a merge without committing, so the message can be edited first.
@@ -1004,6 +1012,49 @@ mod tests {
 
         let merge_head = std::fs::read_to_string(merge_head_path(&dir)).unwrap();
         assert_eq!(merge_head.trim(), feature_tip.to_string());
+    }
+
+    #[test]
+    fn merging_a_branch_named_like_a_commit_id_merges_the_branch() {
+        let (dir, repo) = clean_divergent_repo();
+        let feature_tip = repo.refname_to_id("refs/heads/feature").unwrap();
+        let base = repo
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .parent_id(0)
+            .unwrap();
+        let hex_branch = format!("refs/heads/{base}");
+        repo.reference(&hex_branch, feature_tip, false, "hex name")
+            .unwrap();
+        let map = state_map_for(&dir);
+
+        merge_branch_begin_inner(&path_str(&dir), &hex_branch, &map).unwrap();
+
+        let merge_head = std::fs::read_to_string(merge_head_path(&dir)).ok();
+        assert_eq!(
+            merge_head.as_deref().map(str::trim),
+            Some(feature_tip.to_string().as_str())
+        );
+    }
+
+    #[test]
+    fn merging_a_branch_named_dash_merges_the_branch() {
+        let (dir, repo) = clean_divergent_repo();
+        let feature_tip = repo.refname_to_id("refs/heads/feature").unwrap();
+        repo.reference("refs/heads/-", feature_tip, false, "dash name")
+            .unwrap();
+        let map = state_map_for(&dir);
+
+        let begun = merge_branch_begin_inner(&path_str(&dir), "refs/heads/-", &map);
+
+        let merge_head = std::fs::read_to_string(merge_head_path(&dir)).ok();
+        assert!(begun.is_ok(), "got: {:?}", begun.err());
+        assert_eq!(
+            merge_head.as_deref().map(str::trim),
+            Some(feature_tip.to_string().as_str())
+        );
     }
 
     #[test]
