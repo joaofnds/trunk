@@ -420,9 +420,18 @@ fn stash_paths(
         .collect())
 }
 
-fn stash_apply_error(e: git2::Error, conflict_message: &str) -> TrunkError {
-    if e.message().contains("conflict") || e.message().contains("merge") {
-        TrunkError::new("conflict_state", conflict_message)
+/// libgit2 applies a stash that conflicts and leaves the conflicts in the index; an
+/// apply that fails with a checkout conflict wrote nothing, because a change in the
+/// worktree stood where the stash would write.
+fn stash_apply_error(e: git2::Error, blocked: &[String]) -> TrunkError {
+    if e.code() == git2::ErrorCode::Conflict {
+        TrunkError::new(
+            "stash_overwrites_changes",
+            format!(
+                "Applying this stash would overwrite your changes to {}. Commit, stash or discard them, then try again.",
+                blocked.join(", ")
+            ),
+        )
     } else {
         TrunkError::from(e)
     }
@@ -439,12 +448,23 @@ fn apply_keeping_staged(
     repo: &mut git2::Repository,
     oid: &str,
     index: usize,
-    conflict_message: &str,
 ) -> Result<(), TrunkError> {
     let mut repo_index = repo.index().map_err(TrunkError::from)?;
     let staged = unstage_in_memory(repo, &mut repo_index, oid)?;
-    repo.stash_apply(index, None)
-        .map_err(|e| stash_apply_error(e, conflict_message))?;
+    let mut blocked = Vec::new();
+    let applied = {
+        let mut checkout = git2::build::CheckoutBuilder::new();
+        checkout
+            .notify_on(git2::CheckoutNotificationType::CONFLICT)
+            .notify(|_, path, _, _, _| {
+                blocked.extend(path.map(|path| path.display().to_string()));
+                true
+            });
+        let mut options = git2::StashApplyOptions::new();
+        options.checkout_options(checkout);
+        repo.stash_apply(index, Some(&mut options))
+    };
+    applied.map_err(|e| stash_apply_error(e, &blocked))?;
 
     for change in staged {
         match change.entry {
@@ -518,7 +538,7 @@ pub fn stash_pop_inner(
     // Apply and drop separately rather than `stash_pop`: git2's pop drops the entry even
     // when it applied with conflicts, leaving the user's stashed work nowhere once they
     // clear the conflict markers. Real `git stash pop` keeps it, and so does this.
-    apply_keeping_staged(&mut repo, oid, index, POP_CONFLICT_MESSAGE)?;
+    apply_keeping_staged(&mut repo, oid, index)?;
     if trunk_git::repository::has_unmerged_paths(&repo)? {
         return Err(TrunkError::new("conflict_state", POP_CONFLICT_MESSAGE));
     }
@@ -540,7 +560,7 @@ pub fn stash_apply_inner(
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let mut repo = state_map.open(path)?;
     let index = stash_index_of(&mut repo, oid)?;
-    apply_keeping_staged(&mut repo, oid, index, APPLY_CONFLICT_MESSAGE)?;
+    apply_keeping_staged(&mut repo, oid, index)?;
     if trunk_git::repository::has_unmerged_paths(&repo)? {
         return Err(TrunkError::new("conflict_state", APPLY_CONFLICT_MESSAGE));
     }

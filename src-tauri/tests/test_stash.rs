@@ -859,3 +859,52 @@ mod when_a_conflict_is_in_progress {
         assert!(ctx.repo().index().unwrap().has_conflicts());
     }
 }
+
+mod when_an_unstaged_edit_is_in_the_way {
+    use super::*;
+
+    /// Stash an edit to `file.txt`, then edit it again without staging.
+    fn ctx_with_an_edit_over_the_stashed_file() -> TestContext {
+        let ctx = TestContext::builder()
+            .with_file("file.txt", "base")
+            .with_commit("Initial commit")
+            .build();
+        std::fs::write(ctx.repo_path().join("file.txt"), "stashed").unwrap();
+        ctx.stage_file("file.txt").unwrap();
+        ctx.stash_save("wip").unwrap();
+        std::fs::write(ctx.repo_path().join("file.txt"), "unstaged edit").unwrap();
+        ctx
+    }
+
+    #[test]
+    fn apply_refuses_naming_the_file() {
+        let ctx = ctx_with_an_edit_over_the_stashed_file();
+
+        let err = ctx.stash_apply(&ctx.top_stash_oid()).unwrap_err();
+
+        assert_eq!(err.code, "stash_overwrites_changes");
+        assert!(err.message.contains("file.txt"), "{}", err.message);
+    }
+
+    #[test]
+    fn apply_keeps_the_edit() {
+        let ctx = ctx_with_an_edit_over_the_stashed_file();
+
+        ctx.stash_apply(&ctx.top_stash_oid()).unwrap_err();
+
+        assert_eq!(
+            std::fs::read_to_string(ctx.repo_path().join("file.txt")).unwrap(),
+            "unstaged edit"
+        );
+    }
+
+    #[test]
+    fn pop_refuses_and_keeps_the_stash() {
+        let ctx = ctx_with_an_edit_over_the_stashed_file();
+
+        let err = ctx.stash_pop(&ctx.top_stash_oid()).unwrap_err();
+
+        assert_eq!(err.code, "stash_overwrites_changes");
+        assert_eq!(ctx.list_stashes().unwrap().len(), 1);
+    }
+}
