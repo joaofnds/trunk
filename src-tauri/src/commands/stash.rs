@@ -380,6 +380,127 @@ pub fn stash_save_inner(
     crate::state::read_graph(&mut repo)
 }
 
+/// One path the index stages over HEAD, with the entry to stage it again; `None` stages
+/// a deletion.
+struct StagedChange {
+    path: std::path::PathBuf,
+    entry: Option<git2::IndexEntry>,
+}
+
+fn staged_changes(
+    repo: &git2::Repository,
+    index: &git2::Index,
+    head_tree: &git2::Tree,
+) -> Result<Vec<StagedChange>, git2::Error> {
+    let diff = repo.diff_tree_to_index(Some(head_tree), Some(index), None)?;
+    Ok(diff
+        .deltas()
+        .filter_map(|delta| delta.new_file().path().map(Path::to_path_buf))
+        .map(|path| {
+            let entry = index.get_path(&path, 0);
+            StagedChange { path, entry }
+        })
+        .collect())
+}
+
+/// Every path the stash would write: its worktree changes and its untracked files.
+fn stash_paths(
+    repo: &git2::Repository,
+    stash: &git2::Commit,
+) -> Result<std::collections::HashSet<std::path::PathBuf>, git2::Error> {
+    let base = stash.parent(0)?.tree()?;
+    let mut diffs = vec![repo.diff_tree_to_tree(Some(&base), Some(&stash.tree()?), None)?];
+    if let Ok(untracked) = stash.parent(2) {
+        diffs.push(repo.diff_tree_to_tree(None, Some(&untracked.tree()?), None)?);
+    }
+    Ok(diffs
+        .iter()
+        .flat_map(git2::Diff::deltas)
+        .filter_map(|delta| delta.new_file().path().map(Path::to_path_buf))
+        .collect())
+}
+
+fn stash_apply_error(e: git2::Error, conflict_message: &str) -> TrunkError {
+    if e.message().contains("conflict") || e.message().contains("merge") {
+        TrunkError::new("conflict_state", conflict_message)
+    } else {
+        TrunkError::from(e)
+    }
+}
+
+/// Apply a stash over whatever is staged and leave it staged, as `git stash apply` does.
+///
+/// libgit2 refuses any index that differs from HEAD, so the apply runs against HEAD's
+/// entries in memory, and the staged entries go back once it has written the index.
+/// The index on disk keeps the staged set until that write. A stash that writes a staged
+/// path is refused before anything changes, since git would merge the two and putting
+/// the staged entry back over that path would hide the stash's change.
+fn apply_keeping_staged(
+    repo: &mut git2::Repository,
+    oid: &str,
+    index: usize,
+    conflict_message: &str,
+) -> Result<(), TrunkError> {
+    let mut repo_index = repo.index().map_err(TrunkError::from)?;
+    let staged = unstage_in_memory(repo, &mut repo_index, oid)?;
+    repo.stash_apply(index, None)
+        .map_err(|e| stash_apply_error(e, conflict_message))?;
+
+    for change in staged {
+        match change.entry {
+            Some(entry) => repo_index.add(&entry),
+            None => repo_index.remove_path(&change.path),
+        }
+        .map_err(TrunkError::from)?;
+    }
+    repo_index.write().map_err(TrunkError::from)
+}
+
+/// Point the in-memory index at HEAD's entries and return what it staged over them,
+/// leaving the index file alone.
+fn unstage_in_memory(
+    repo: &git2::Repository,
+    repo_index: &mut git2::Index,
+    oid: &str,
+) -> Result<Vec<StagedChange>, TrunkError> {
+    let head_tree = repo
+        .head()
+        .and_then(|head| head.peel_to_tree())
+        .map_err(TrunkError::from)?;
+    if repo_index.has_conflicts() {
+        return Err(TrunkError::new(
+            "unresolved_conflicts",
+            "Resolve the conflicts in progress before applying a stash.",
+        ));
+    }
+    let staged = staged_changes(repo, repo_index, &head_tree).map_err(TrunkError::from)?;
+    if staged.is_empty() {
+        return Ok(staged);
+    }
+
+    let written = git2::Oid::from_str(oid)
+        .and_then(|oid| repo.find_commit(oid))
+        .and_then(|stash| stash_paths(repo, &stash))
+        .map_err(TrunkError::from)?;
+    let overlap: Vec<String> = staged
+        .iter()
+        .filter(|change| written.contains(&change.path))
+        .map(|change| change.path.display().to_string())
+        .collect();
+    if !overlap.is_empty() {
+        return Err(TrunkError::new(
+            "stash_overlaps_staged",
+            format!(
+                "This stash changes files you have staged: {}. Commit or unstage them, then try again.",
+                overlap.join(", ")
+            ),
+        ));
+    }
+
+    repo_index.read_tree(&head_tree).map_err(TrunkError::from)?;
+    Ok(staged)
+}
+
 /// Apply a stash and drop it, keeping it when the apply conflicts.
 ///
 /// # Errors
@@ -397,13 +518,7 @@ pub fn stash_pop_inner(
     // Apply and drop separately rather than `stash_pop`: git2's pop drops the entry even
     // when it applied with conflicts, leaving the user's stashed work nowhere once they
     // clear the conflict markers. Real `git stash pop` keeps it, and so does this.
-    repo.stash_apply(index, None).map_err(|e| {
-        if e.message().contains("conflict") || e.message().contains("merge") {
-            TrunkError::new("conflict_state", POP_CONFLICT_MESSAGE)
-        } else {
-            TrunkError::from(e)
-        }
-    })?;
+    apply_keeping_staged(&mut repo, oid, index, POP_CONFLICT_MESSAGE)?;
     if trunk_git::repository::has_unmerged_paths(&repo)? {
         return Err(TrunkError::new("conflict_state", POP_CONFLICT_MESSAGE));
     }
@@ -425,13 +540,7 @@ pub fn stash_apply_inner(
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let mut repo = state_map.open(path)?;
     let index = stash_index_of(&mut repo, oid)?;
-    repo.stash_apply(index, None).map_err(|e| {
-        if e.message().contains("conflict") || e.message().contains("merge") {
-            TrunkError::new("conflict_state", APPLY_CONFLICT_MESSAGE)
-        } else {
-            TrunkError::from(e)
-        }
-    })?;
+    apply_keeping_staged(&mut repo, oid, index, APPLY_CONFLICT_MESSAGE)?;
     if trunk_git::repository::has_unmerged_paths(&repo)? {
         return Err(TrunkError::new("conflict_state", APPLY_CONFLICT_MESSAGE));
     }

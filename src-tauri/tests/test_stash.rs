@@ -632,3 +632,230 @@ mod stash_identity {
         assert_eq!(err.code, "stash_not_found");
     }
 }
+
+// -- restoring over a staged index --
+// `git stash apply` merges into whatever is staged and leaves it staged, so a
+// partly staged change never has to be unstaged to bring a stash back.
+
+/// Stash an edit to `file.txt`, then stage a new `other.txt`.
+fn ctx_with_a_stash_and_another_file_staged() -> TestContext {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "base")
+        .with_commit("Initial commit")
+        .build();
+
+    std::fs::write(ctx.repo_path().join("file.txt"), "stashed").unwrap();
+    ctx.stage_file("file.txt").unwrap();
+    ctx.stash_save("wip").unwrap();
+    std::fs::write(ctx.repo_path().join("other.txt"), "staged").unwrap();
+    ctx.stage_file("other.txt").unwrap();
+    ctx
+}
+
+fn staged_paths(ctx: &TestContext) -> Vec<String> {
+    let repo = ctx.repo();
+    let head = repo.head().unwrap().peel_to_tree().unwrap();
+    let diff = repo.diff_tree_to_index(Some(&head), None, None).unwrap();
+    diff.deltas()
+        .filter_map(|d| d.new_file().path().map(|p| p.display().to_string()))
+        .collect()
+}
+
+#[test]
+fn stash_apply_over_a_staged_file_restores_the_stash() {
+    let ctx = ctx_with_a_stash_and_another_file_staged();
+
+    ctx.stash_apply(&ctx.top_stash_oid()).unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(ctx.repo_path().join("file.txt")).unwrap(),
+        "stashed"
+    );
+}
+
+#[test]
+fn stash_apply_over_a_staged_file_keeps_it_staged() {
+    let ctx = ctx_with_a_stash_and_another_file_staged();
+
+    ctx.stash_apply(&ctx.top_stash_oid()).unwrap();
+
+    assert_eq!(staged_paths(&ctx), vec!["other.txt"]);
+}
+
+#[test]
+fn stash_pop_over_a_staged_file_restores_and_drops_the_stash() {
+    let ctx = ctx_with_a_stash_and_another_file_staged();
+
+    ctx.stash_pop(&ctx.top_stash_oid()).unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(ctx.repo_path().join("file.txt")).unwrap(),
+        "stashed"
+    );
+    assert_eq!(ctx.list_stashes().unwrap().len(), 0);
+}
+
+#[test]
+fn stash_pop_over_a_staged_file_keeps_it_staged() {
+    let ctx = ctx_with_a_stash_and_another_file_staged();
+
+    ctx.stash_pop(&ctx.top_stash_oid()).unwrap();
+
+    assert_eq!(staged_paths(&ctx), vec!["other.txt"]);
+}
+
+fn staged_content(ctx: &TestContext, path: &str) -> String {
+    let repo = ctx.repo();
+    let entry = repo
+        .index()
+        .unwrap()
+        .get_path(std::path::Path::new(path), 0)
+        .unwrap();
+    String::from_utf8(repo.find_blob(entry.id).unwrap().content().to_vec()).unwrap()
+}
+
+#[test]
+fn stash_apply_over_a_partly_staged_file_keeps_its_staged_content() {
+    let ctx = ctx_with_a_stash_and_another_file_staged();
+    std::fs::write(ctx.repo_path().join("other.txt"), "edited after staging").unwrap();
+
+    ctx.stash_apply(&ctx.top_stash_oid()).unwrap();
+
+    assert_eq!(staged_content(&ctx, "other.txt"), "staged");
+    assert_eq!(
+        std::fs::read_to_string(ctx.repo_path().join("other.txt")).unwrap(),
+        "edited after staging"
+    );
+}
+
+#[test]
+fn stash_apply_over_a_staged_deletion_keeps_it_staged() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "base")
+        .with_file("gone.txt", "doomed")
+        .with_commit("Initial commit")
+        .build();
+    std::fs::write(ctx.repo_path().join("file.txt"), "stashed").unwrap();
+    ctx.stage_file("file.txt").unwrap();
+    ctx.stash_save("wip").unwrap();
+    std::fs::remove_file(ctx.repo_path().join("gone.txt")).unwrap();
+    ctx.stage_file("gone.txt").unwrap();
+
+    ctx.stash_apply(&ctx.top_stash_oid()).unwrap();
+
+    assert_eq!(staged_paths(&ctx), vec!["gone.txt"]);
+}
+
+mod when_the_stash_changes_a_staged_file {
+    use super::*;
+
+    fn ctx_with_the_stashed_file_staged() -> TestContext {
+        let ctx = ctx_with_a_stash_and_another_file_staged();
+        std::fs::write(ctx.repo_path().join("file.txt"), "staged since").unwrap();
+        ctx.stage_file("file.txt").unwrap();
+        ctx
+    }
+
+    #[test]
+    fn apply_refuses_naming_the_file() {
+        let ctx = ctx_with_the_stashed_file_staged();
+
+        let err = ctx.stash_apply(&ctx.top_stash_oid()).unwrap_err();
+
+        assert_eq!(err.code, "stash_overlaps_staged");
+        assert!(err.message.contains("file.txt"), "{}", err.message);
+    }
+
+    #[test]
+    fn apply_leaves_the_staged_changes_staged() {
+        let ctx = ctx_with_the_stashed_file_staged();
+
+        ctx.stash_apply(&ctx.top_stash_oid()).unwrap_err();
+
+        assert_eq!(staged_paths(&ctx), vec!["file.txt", "other.txt"]);
+        assert_eq!(staged_content(&ctx, "file.txt"), "staged since");
+    }
+
+    /// A stash made with `git stash -u` carries untracked files the app never stashes.
+    #[test]
+    fn apply_refuses_a_staged_file_the_stash_holds_untracked() {
+        let ctx = TestContext::builder()
+            .with_file("file.txt", "base")
+            .with_commit("Initial commit")
+            .build();
+        std::fs::write(ctx.repo_path().join("new.txt"), "stashed untracked").unwrap();
+        let signature = git2::Signature::now("Test User", "test@example.com").unwrap();
+        ctx.repo()
+            .stash_save(&signature, "wip", Some(git2::StashFlags::INCLUDE_UNTRACKED))
+            .unwrap();
+        std::fs::write(ctx.repo_path().join("new.txt"), "staged since").unwrap();
+        ctx.stage_file("new.txt").unwrap();
+
+        let err = ctx.stash_apply(&ctx.top_stash_oid()).unwrap_err();
+
+        assert_eq!(err.code, "stash_overlaps_staged");
+    }
+
+    #[test]
+    fn pop_keeps_the_stash() {
+        let ctx = ctx_with_the_stashed_file_staged();
+
+        ctx.stash_pop(&ctx.top_stash_oid()).unwrap_err();
+
+        assert_eq!(ctx.list_stashes().unwrap().len(), 1);
+    }
+}
+
+mod when_the_apply_fails_over_a_staged_file {
+    use super::*;
+
+    /// An unstaged edit to the file the stash changes makes libgit2's checkout refuse.
+    fn ctx_with_an_unstaged_edit_in_the_way() -> TestContext {
+        let ctx = ctx_with_a_stash_and_another_file_staged();
+        std::fs::write(ctx.repo_path().join("file.txt"), "unstaged edit").unwrap();
+        ctx
+    }
+
+    #[test]
+    fn apply_leaves_the_staged_changes_staged() {
+        let ctx = ctx_with_an_unstaged_edit_in_the_way();
+
+        ctx.stash_apply(&ctx.top_stash_oid()).unwrap_err();
+
+        assert_eq!(staged_paths(&ctx), vec!["other.txt"]);
+    }
+}
+
+mod when_a_conflict_is_in_progress {
+    use super::*;
+
+    /// Stash an edit to `other.txt`, then leave `file.txt` conflicted by restoring a
+    /// second stash over a commit that changed it.
+    fn ctx_with_a_stash_and_a_conflict() -> TestContext {
+        let ctx = ctx_with_a_conflicting_stash();
+        std::fs::write(ctx.repo_path().join("other.txt"), "stashed").unwrap();
+        ctx.stage_file("other.txt").unwrap();
+        ctx.stash_save("other").unwrap();
+        let conflicting = ctx.list_stashes().unwrap()[1].oid.clone();
+        ctx.stash_apply(&conflicting).unwrap_err();
+        ctx
+    }
+
+    #[test]
+    fn apply_refuses() {
+        let ctx = ctx_with_a_stash_and_a_conflict();
+
+        let err = ctx.stash_apply(&ctx.top_stash_oid()).unwrap_err();
+
+        assert_eq!(err.code, "unresolved_conflicts");
+    }
+
+    #[test]
+    fn apply_leaves_the_conflict_in_place() {
+        let ctx = ctx_with_a_stash_and_a_conflict();
+
+        ctx.stash_apply(&ctx.top_stash_oid()).unwrap_err();
+
+        assert!(ctx.repo().index().unwrap().has_conflicts());
+    }
+}
