@@ -273,6 +273,39 @@ describe("StagingPanel", () => {
 		},
 	);
 
+	it.each([
+		["Stage all changes", "stage_all", "README.md", "Stage file"],
+		["Unstage all", "unstage_all", "src/main.ts", "Unstage file"],
+	])(
+		"holds the files %s moves busy until it finishes",
+		async (button, command, path, rowAction) => {
+			const finished = deferred<undefined>();
+			const answer = mockInvoke.getMockImplementation();
+			if (!answer) throw new Error("the panel's reads have no stub");
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === command ? finished.promise : answer(cmd, args),
+			);
+			// A busy row draws no button of its own, so a click on it cannot
+			// race the operation that moves it.
+			const actionOf = () =>
+				within(
+					stagingRowFor(screen.getByText(path)).parentElement ?? document.body,
+				).queryByRole("button", { name: rowAction });
+			render(StagingPanel, {
+				props: { ...noReviewCounts(), repoPath: "/test/repo" },
+			});
+
+			await fireEvent.click(
+				await screen.findByRole("button", { name: button }),
+			);
+			const whileRunning = actionOf();
+			finished.resolve(undefined);
+
+			expect(whileRunning).toBeNull();
+			await waitFor(() => expect(actionOf()).not.toBeNull());
+		},
+	);
+
 	it("renders current branch name when provided", async () => {
 		render(StagingPanel, {
 			props: {

@@ -339,22 +339,30 @@ async function unstageDirectory(dirPath: string) {
 	stopLoading(pathsToUnstage);
 }
 
+// The files a whole-list move takes are busy until the status is read back, as
+// a file or a folder staged on its own is, so the click shows it was taken.
 async function stageAll() {
+	const paths = (status?.unstaged ?? []).map((f) => f.path);
+	loadingFiles = new Set([...loadingFiles, ...paths]);
 	try {
 		await safeInvoke("stage_all", { path: repoPath });
 	} catch (e) {
 		reportErrorToast(e, "Stage all failed");
 	}
 	await refreshStatusOrReport();
+	stopLoading(paths);
 }
 
 async function unstageAll() {
+	const paths = (status?.staged ?? []).map((f) => f.path);
+	loadingFiles = new Set([...loadingFiles, ...paths]);
 	try {
 		await safeInvoke("unstage_all", { path: repoPath });
 	} catch (e) {
 		reportErrorToast(e, "Unstage all failed");
 	}
 	await refreshStatusOrReport();
+	stopLoading(paths);
 }
 
 async function handleDiscardFile(filePath: string, fileStatus: FileStatusType) {
