@@ -3031,9 +3031,10 @@ $effect(() => {
 							onleave={() => (hoveredRow = null)}
 							onfocus={keepFocusOnList}
 							{columnVisibility}
-							selected={(commit.oid === selectedCommitOid ||
-								compareOids.has(commit.oid)) &&
-								commit.oid !== "__wip__"}
+							selected={commit.oid === "__wip__"
+								? !selectedCommitOid && compareOids.size === 0
+								: commit.oid === selectedCommitOid ||
+									compareOids.has(commit.oid)}
 							rowHeight={displaySettings.rowHeight}
 							isSearchMatch={searchMatchOids.has(commit.oid)}
 							isCurrentMatch={commit.oid === searchCurrentOid}

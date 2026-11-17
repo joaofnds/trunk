@@ -3770,6 +3770,47 @@ describe("CommitGraph", () => {
 		});
 	});
 
+	describe("the uncommitted-changes row", () => {
+		async function mountWithWip(
+			props: { selectedCommitOid?: string; compareOids?: Set<string> } = {},
+		) {
+			render(CommitGraph, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					tabActive: true,
+					wipCount: 1,
+					...props,
+				},
+			});
+			await screen.findByText("first commit");
+
+			return screen.getByText("WIP").closest('[data-testid="commit-row"]');
+		}
+
+		it("shows as selected while no commit is", async () => {
+			const row = await mountWithWip();
+
+			expect(row).toHaveAttribute("aria-selected", "true");
+		});
+
+		it("shows as unselected while a commit is", async () => {
+			const row = await mountWithWip({
+				selectedCommitOid: TEST_COMMITS[0].oid,
+			});
+
+			expect(row).toHaveAttribute("aria-selected", "false");
+		});
+
+		it("shows as unselected while two commits are compared", async () => {
+			const row = await mountWithWip({
+				compareOids: new Set([TEST_COMMITS[0].oid, TEST_COMMITS[1].oid]),
+			});
+
+			expect(row).toHaveAttribute("aria-selected", "false");
+		});
+	});
+
 	describe("the commits", () => {
 		const LANE = makeRef({ short_name: "main", ref_type: "LocalBranch" });
 		const ON_A_NAMED_LANE = [
