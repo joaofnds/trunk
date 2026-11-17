@@ -729,6 +729,20 @@ const reviewPanelShown = $derived(
 	reviewMode && !(reviewSession.state.rightPaneMode === "diff" && showDiff),
 );
 let showMergeEditor = $derived(selectedFile?.kind === "conflicted");
+// The graph stays mounted under whatever covers the center pane, as a background
+// tab stays mounted under the active one, so closing a diff returns to the rows
+// and scroll position the user left rather than to the top of a fresh first page.
+const graphCovered = $derived(reviewPanelShown || showDiff);
+let graphLayer = $state<HTMLDivElement | null>(null);
+// A covered graph lets go of focus as an unmounted one did, so the keys reach the
+// pane on top rather than a list nobody can see. Not every engine blurs an
+// element that turns inert.
+$effect(() => {
+	if (!graphCovered) return;
+	const focused = document.activeElement;
+	if (focused instanceof HTMLElement && graphLayer?.contains(focused))
+		focused.blur();
+});
 
 // The diffs to display: filtered commit file diff, staging diff, or the whole
 // of a tracked file opened through the finder. A current-file view is last
@@ -2717,7 +2731,7 @@ function stepRightPane(delta: number) {
 				onstep={stepLeftPane}
 				onmousedown={startLeftResize}
 			/>
-			<div class="flex-1 overflow-hidden">
+			<div class="flex-1 overflow-hidden relative">
 				{#if reviewMode}
 					<!-- Review panel claims the center pane (UI-SPEC:133). When the user selects a
              commit/file/ref (or jumps from a comment), rightPaneMode flips to 'diff' and
@@ -2872,7 +2886,13 @@ function stepRightPane(delta: number) {
 							/>
 						{/snippet}
 					</LazyView>
-				{:else}
+				{/if}
+				<div
+					class="absolute inset-0"
+					bind:this={graphLayer}
+					class:invisible={graphCovered}
+					inert={graphCovered}
+				>
 					<CommitGraph
 						{onready}
 						bind:this={commitGraphRef}
@@ -2903,14 +2923,14 @@ function stepRightPane(delta: number) {
 						navigationCommitOid={requestedCommitOid}
 						onopenrebaseeditor={handleOpenRebaseEditor}
 						onopenmessageeditor={handleOpenMessageEditor}
-						{tabActive}
+						tabActive={tabActive && !graphCovered}
 						commentCounts={presentation.byCommit}
 						commentTallies={presentation.tallyByCommit}
 						{reviewComments}
 						{compareOids}
 						visibilityResolved={refVisibilityResolved}
 					/>
-				{/if}
+				</div>
 			</div>
 			<Splitter
 				variant="pane"

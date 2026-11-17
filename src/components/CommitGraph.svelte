@@ -539,7 +539,7 @@ const floors = columnFloors(measureTextWidth);
 // The columns whose width the user set, which no fit may change. Reassigned
 // rather than mutated, so the fits re-run when a column joins or leaves it.
 let userSizedColumns = $state<ReadonlySet<keyof ColumnWidths>>(new Set());
-// The graph remounts when a diff closes, so a drag or a double-click can come
+// The graph remounts when the rebase editor closes, so a drag or a double-click can come
 // before the stored widths are read. Saves wait for the restore so they carry
 // what it brings back, and the restore leaves the columns sized since alone.
 let userWidthsRestored: Promise<void> = Promise.resolve();
@@ -2324,13 +2324,16 @@ function handleKeydown(e: KeyboardEvent) {
 	});
 }
 
-// Auto-focus the container on mount so keyboard nav works immediately
+// Auto-focus the container on mount so keyboard nav works immediately, and again
+// when the list comes back from under a diff or another tab. A list another pane
+// covers takes no focus, which that pane's keys would otherwise lose.
 $effect(() => {
-	if (containerRef) {
+	if (containerRef && tabActive) {
 		tick().then(() => {
 			if (
-				document.activeElement === document.body ||
-				document.activeElement === null
+				tabActive &&
+				(document.activeElement === document.body ||
+					document.activeElement === null)
 			) {
 				containerRef?.focus();
 			}

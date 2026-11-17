@@ -224,7 +224,7 @@ on returning.
 A column becomes a user width only when a drag moves it. A click on a divider sizes
 nothing. Saves and loads run one at a time in the order made, because the pref
 writes are not ordered against each other on the Rust side: a drag's save could
-otherwise land after a double-click's, and a graph remounting when a diff closes
+otherwise land after a double-click's, and a graph remounting when the rebase editor closes
 could read the widths from before the drag that just ended. That remount can also
 take a drag or a double-click before its restore has read anything, so a save waits
 for the restore and carries the widths it brought back, and the restore leaves a

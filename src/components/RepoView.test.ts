@@ -109,6 +109,14 @@ vi.mock("@tauri-apps/api/event", () => ({
 	),
 }));
 
+/** The graph stays mounted, unseen, under a pane that covers it. */
+function graphIsCovered(): boolean {
+	const rows = screen.queryAllByTestId("commit-row");
+	return (
+		rows.length > 0 && rows.every((row) => row.closest(".invisible") !== null)
+	);
+}
+
 function fireRepoChanged(
 	repo: string,
 	paths: string[],
@@ -2516,7 +2524,7 @@ describe("RepoView", () => {
 			await flush();
 
 			expect(await screen.findByText(/empty commit/i)).toBeTruthy();
-			expect(screen.queryAllByTestId("commit-row")).toHaveLength(0);
+			expect(graphIsCovered()).toBe(true);
 		});
 
 		it("resumes the remembered file after an empty commit", async () => {
@@ -2554,6 +2562,33 @@ describe("RepoView", () => {
 				oid: "oid-1",
 				filePath: "f.ts",
 			});
+		});
+
+		it("returns to the graph rows it left, unread, when the diff closes", async () => {
+			commits = [
+				makeCommit({ oid: "oid-2", summary: "second commit" }),
+				makeCommit({ oid: "oid-1", summary: "first commit" }),
+			];
+			filesByOid = { "oid-2": [makeFileDiff("f.ts")] };
+			detailByOid = { "oid-2": makeDetail("oid-2", ["oid-1"]) };
+
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await flush();
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await flush();
+			const graphReads = () =>
+				mockInvoke.mock.calls.filter((c) => c[0] === "get_commit_graph").length;
+			const readsWithDiffOpen = graphReads();
+			expect(graphIsCovered()).toBe(true);
+			const graph = rows[0].closest(".invisible");
+			expect(graph?.contains(document.activeElement)).toBe(false);
+
+			await fireEvent.click(await screen.findByLabelText("Close diff"));
+			await flush();
+
+			expect((await screen.findAllByTestId("commit-row"))[0]).toBe(rows[0]);
+			expect(graphReads()).toBe(readsWithDiffOpen);
 		});
 
 		it("does not auto-open after the diff is closed", async () => {
@@ -4415,13 +4450,13 @@ describe("RepoView", () => {
 			await flush();
 			await fireEvent.click(await screen.findByText("f.ts"));
 			await flush();
-			// The file diff replaces the graph in the center pane.
-			expect(screen.queryAllByTestId("commit-row")).toHaveLength(0);
+			// The file diff covers the graph in the center pane.
+			expect(graphIsCovered()).toBe(true);
 
 			await fireEvent.keyDown(window, { key: "Escape" });
 			await flush();
 
-			expect(screen.queryAllByTestId("commit-row")).toHaveLength(0);
+			expect(graphIsCovered()).toBe(true);
 			expect(await screen.findByTestId("compare-header")).toBeTruthy();
 		});
 

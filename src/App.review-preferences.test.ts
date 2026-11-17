@@ -681,7 +681,7 @@ describe("App diff content mode", () => {
 		await fireEvent.click(await screen.findByText("a.ts"));
 		await screen.findByText(`FULL ${REPO_A}`);
 		await activateTab("tab-b");
-		await fireEvent.click(await screen.findByTestId("commit-row"));
+		await fireEvent.click(await shownCommitRow());
 		await fireEvent.click(await screen.findByText("b.ts"));
 		await screen.findByText(`FULL ${REPO_B}`);
 
@@ -720,7 +720,7 @@ describe("App diff content mode", () => {
 		await fireEvent.click(await screen.findByText("a.ts"));
 		await screen.findByText(`HUNK ${REPO_A}`);
 		await activateTab("tab-b");
-		await fireEvent.click(await screen.findByTestId("commit-row"));
+		await fireEvent.click(await shownCommitRow());
 		await fireEvent.click(await screen.findByText("b.ts"));
 		await screen.findByText(`HUNK ${REPO_B}`);
 
@@ -907,6 +907,18 @@ async function preset(label: string): Promise<HTMLElement> {
 		selector: "section",
 	});
 	return within(panel).findByRole("button", { name: new RegExp(`^${label}`) });
+}
+
+// A graph stays mounted under a diff and under an inactive tab, so the row to
+// click is the one in the graph on screen.
+async function shownCommitRow(): Promise<HTMLElement> {
+	return waitFor(() => {
+		const row = screen
+			.getAllByTestId("commit-row")
+			.find((candidate) => candidate.closest(".invisible") === null);
+		if (!row) throw new Error("no commit row is on screen");
+		return row;
+	});
 }
 
 async function activateTab(tabId: string): Promise<void> {
