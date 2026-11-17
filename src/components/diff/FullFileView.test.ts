@@ -112,6 +112,7 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
 		repoPath: "/repo",
 		diffKind: "commit" as const,
 		isMerge: false,
+		keysActive: true,
 		oncommentfullfile: vi.fn(),
 		...overrides,
 	};
@@ -942,6 +943,18 @@ describe("FullFileView selection comment", () => {
 		await fireEvent.keyDown(window, { key: "c" });
 
 		expect(oncommentfullfile).toHaveBeenCalledWith("src/main.ts", new Set([1]));
+	});
+
+	it("comments on nothing when C is pressed while its view is hidden", async () => {
+		const oncommentfullfile = vi.fn();
+		render(FullFileView, {
+			props: defaultProps({ oncommentfullfile, keysActive: false }),
+		});
+		await fireEvent.click(gutterGrip("added one"));
+
+		await fireEvent.keyDown(window, { key: "c" });
+
+		expect(oncommentfullfile).not.toHaveBeenCalled();
 	});
 
 	it("comments on nothing when C is pressed without a selection", async () => {

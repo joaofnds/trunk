@@ -1459,6 +1459,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 	/>
 	{#if prefsLoaded}
 		<DiffViewer
+			{keysActive}
 			contentMode={effectiveContentMode}
 			{contextLines}
 			{layoutMode}

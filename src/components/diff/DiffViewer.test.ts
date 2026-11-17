@@ -52,6 +52,7 @@ const baseProps = {
 	selectedCount: 0,
 	selectedChangeCount: 0,
 	isMerge: false,
+	keysActive: true,
 	collapsedFiles: new Set<string>(),
 	hunkElements: {},
 	onfilecollapsetoggle: noop,

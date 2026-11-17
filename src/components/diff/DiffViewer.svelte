@@ -60,6 +60,8 @@ interface Props {
 	selectedCount: number;
 	selectedChangeCount: number;
 	isMerge: boolean;
+	/** Whether the mounted view's window keys act, as for the panel holding it. */
+	keysActive: boolean;
 	collapsedFiles: Set<string>;
 	hunkElements: Record<string, HTMLDivElement>;
 	onfilecollapsetoggle: (path: string) => void;
@@ -128,6 +130,7 @@ let {
 	selectedCount,
 	selectedChangeCount,
 	isMerge,
+	keysActive,
 	collapsedFiles,
 	hunkElements,
 	onfilecollapsetoggle,
@@ -385,6 +388,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 	{:else if pane === "full"}
 		<FullFileView
 			bind:this={fullFileView}
+			{keysActive}
 			{startAt}
 			{fileDiffs}
 			{showInvisibles}

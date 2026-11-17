@@ -49,6 +49,9 @@ interface Props {
 	repoPath: string;
 	diffKind: PanelDiffKind;
 	isMerge: boolean;
+	/** Whether this view's keys act: false while its tab is behind another or
+	 *  the rebase editor covers it, since its listener is on the window. */
+	keysActive: boolean;
 	// Bubbles the chosen file path + the flat selected indices (into the file's
 	// hunks.flatMap(h => h.lines)) up to the DiffPanel host when the user clicks
 	// the Comment affordance.
@@ -73,6 +76,7 @@ let {
 	repoPath = "",
 	diffKind,
 	isMerge,
+	keysActive,
 	oncommentfullfile,
 	onextendcomment,
 	takesComments,
@@ -163,7 +167,7 @@ function commentOnSelection() {
 
 $effect(() => {
 	function handleKeydown(e: KeyboardEvent) {
-		if (focusInEditable(document.activeElement)) return;
+		if (!keysActive || focusInEditable(document.activeElement)) return;
 		if (keyChord(e) !== "c" || actionIndex === null) return;
 
 		e.preventDefault();
