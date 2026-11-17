@@ -165,9 +165,22 @@ let focusedHunkIndex = $state(0);
 let diffNav = $state<DiffNav | null>(null);
 let hunkElements = $state<Record<string, HTMLDivElement>>({});
 
-let selectedHunkKey = $state<string | null>(null);
-let selectedLineIndices = $state<Set<number>>(new Set());
-let lastClickedIndex = $state<number | null>(null);
+// A selection names lines by their index in the diff it was made on, so each part
+// of it starts over the moment the diff reloads. An effect clearing it would run
+// only after everything derived from it had read the old indices against the new
+// diff, past the end of a hunk that shrank.
+let selectedHunkKey = $derived.by((): string | null => {
+	fileDiffs;
+	return null;
+});
+let selectedLineIndices = $derived.by((): Set<number> => {
+	fileDiffs;
+	return new Set();
+});
+let lastClickedIndex = $derived.by((): number | null => {
+	fileDiffs;
+	return null;
+});
 let selectedCount = $derived(selectedLineIndices.size);
 // A comment's selection can hold context lines, which staging leaves alone.
 const selectedChanges = $derived.by((): number[] => {
@@ -916,7 +929,7 @@ $effect(() => {
 	fileDiffs;
 	focusedHunkIndex = 0;
 	hunkElements = {};
-	clearSelection();
+	fullFileView?.clearSelection();
 	collapsedFiles = new Set();
 });
 

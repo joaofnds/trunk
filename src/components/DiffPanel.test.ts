@@ -2604,6 +2604,33 @@ describe("DiffPanel drag-to-select", () => {
 		expect(gutterOf("const x = 2;")).toHaveClass("select-none");
 		expect(screen.getByText("const x = 2;")).toHaveClass("select-text");
 	});
+
+	it("drops the selection when the diff it was made on reloads with a shorter hunk", async () => {
+		const props = {
+			...commentingDiff,
+			fileDiffs: [testDiff],
+			commitDetail: null,
+			onclose: vi.fn(),
+			diffKind: "unstaged" as const,
+			repoPath: "/repo",
+		};
+		const view = render(DiffPanel, { props });
+		await flushPrefs();
+		await fireEvent.mouseDown(gutterOf("const y = 3;"));
+		await fireEvent.mouseUp(window);
+		const shorter: FileDiff = {
+			...testDiff,
+			hunks: [
+				{ ...testDiff.hunks[0], lines: testDiff.hunks[0].lines.slice(1, 3) },
+			],
+		};
+
+		await view.rerender({ ...props, fileDiffs: [shorter] });
+		await flushPrefs();
+
+		expect(screen.getByText("const x = 2;")).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: /^Stage Lines/ })).toBeNull();
+	});
 });
 
 describe("DiffPanel comment affordance (commit diffs)", () => {
