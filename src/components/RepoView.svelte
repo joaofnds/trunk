@@ -377,8 +377,7 @@ function handleReviewJump(comment: Thread) {
 }
 
 // The graph is not on screen in review mode, so a commit-header click leaves
-// review mode before selecting the commit. The idempotent variant keeps a
-// re-click on the selected commit's header from toggling it off.
+// review mode before selecting the commit.
 async function handleReviewJumpToCommit(oid: string) {
 	navigationIntent += 1;
 	commitSelectGeneration += 1;

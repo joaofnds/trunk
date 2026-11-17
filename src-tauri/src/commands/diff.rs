@@ -24,8 +24,8 @@ pub(crate) fn is_head_unborn(repo: &git2::Repository) -> bool {
 
 /// Every diff Trunk computes starts here. The indent heuristic matches git
 /// CLI's default hunk boundaries; staging builds from the same base, and
-/// receives the same `DiffRequestOptions` the view was rendered with, so a
-/// hunk index means the same hunk on both sides (TRUNK-73).
+/// receives the same `DiffRequestOptions` the view was rendered with, so it
+/// finds the hunk the view showed (TRUNK-73).
 pub(crate) fn new_diff_options() -> git2::DiffOptions {
     let mut opts = git2::DiffOptions::new();
     opts.indent_heuristic(true);
@@ -35,7 +35,7 @@ pub(crate) fn new_diff_options() -> git2::DiffOptions {
 /// Diff options for one file's workdir diff, untracked content included.
 /// Display (`diff_unstaged_inner`) and staging both build from here, and both
 /// layer the request's options on top; the two must see the same deltas *and*
-/// the same hunk boundaries for staging's hunk indices to match the view.
+/// the same hunk boundaries for staging to find the hunk the view showed.
 pub(crate) fn workdir_diff_opts(file_path: &str) -> git2::DiffOptions {
     let mut opts = new_diff_options();
     opts.pathspec(file_path);
