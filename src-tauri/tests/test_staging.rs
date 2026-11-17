@@ -618,6 +618,21 @@ fn stage_hunk_refuses_a_file_left_clean_since_its_diff_was_shown() {
     assert_eq!(err.code, "stale_hunk");
 }
 
+#[test]
+fn stage_hunk_refuses_a_file_turned_binary_since_its_diff_was_shown() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello\n")
+        .with_commit("Initial commit")
+        .build();
+    std::fs::write(ctx.repo_path().join("README.md"), "changed\n").unwrap();
+    let shown = ctx.shown_unstaged_hunk("README.md", 0);
+    std::fs::write(ctx.repo_path().join("README.md"), b"changed\0binary\n").unwrap();
+
+    let err = ctx.stage_shown_hunk("README.md", &shown).unwrap_err();
+
+    assert_eq!(err.code, "stale_hunk");
+}
+
 // -- unstage_hunk tests --
 
 #[test]

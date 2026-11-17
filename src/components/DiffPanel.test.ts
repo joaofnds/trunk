@@ -2618,6 +2618,9 @@ describe("DiffPanel drag-to-select", () => {
 		await flushPrefs();
 		await fireEvent.mouseDown(gutterOf("const y = 3;"));
 		await fireEvent.mouseUp(window);
+		expect(
+			screen.getByRole("button", { name: /^Stage Lines/ }),
+		).toBeInTheDocument();
 		const shorter: FileDiff = {
 			...testDiff,
 			hunks: [
@@ -3868,15 +3871,15 @@ describe("DiffPanel hunk actions on a changed file", () => {
 		is_binary: false,
 		hunks: [rewrite],
 	};
-	// An editor wrote line 1 while the confirmation was open, so the hunk the
-	// user saw is now the second one.
+	// An editor inserted a line at the top while the confirmation was open, so
+	// the hunk the user saw is now the second one, a line further down.
 	const reloadedDiff: FileDiff = {
 		...shownDiff,
 		hunks: [
 			{
-				header: "@@ -1,1 +1,1 @@",
-				old_start: 1,
-				old_lines: 1,
+				header: "@@ -0,0 +1,1 @@",
+				old_start: 0,
+				old_lines: 0,
 				new_start: 1,
 				new_lines: 1,
 				lines: [
@@ -3889,7 +3892,12 @@ describe("DiffPanel hunk actions on a changed file", () => {
 					},
 				],
 			},
-			rewrite,
+			{
+				...rewrite,
+				header: "@@ -20,1 +21,1 @@",
+				new_start: 21,
+				lines: [rewrite.lines[0], { ...rewrite.lines[1], new_lineno: 21 }],
+			},
 		],
 	};
 	const shownHunk = {
@@ -3906,13 +3914,19 @@ describe("DiffPanel hunk actions on a changed file", () => {
 			.mock.calls.find(([cmd]) => cmd === command)?.[1];
 	}
 
-	async function renderShown(onhunkaction = vi.fn(() => Promise.resolve())) {
+	async function renderShown({
+		diffKind = "unstaged",
+		onhunkaction = async () => {},
+	}: {
+		diffKind?: "unstaged" | "staged";
+		onhunkaction?: (filePath: string) => Promise<void>;
+	} = {}) {
 		const props = {
 			...commentingDiff,
 			fileDiffs: [shownDiff],
 			commitDetail: null,
 			onclose: vi.fn(),
-			diffKind: "unstaged" as const,
+			diffKind,
 			repoPath: "/test/repo",
 			selectedPath: "src/main.ts",
 			onhunkaction,
@@ -3924,14 +3938,18 @@ describe("DiffPanel hunk actions on a changed file", () => {
 
 	async function pendingConfirmation() {
 		const { ask } = await import("@tauri-apps/plugin-dialog");
+		let opened: () => void = () => {};
+		const entered = new Promise<void>((resolve) => {
+			opened = resolve;
+		});
 		let confirm: (yes: boolean) => void = () => {};
-		vi.mocked(ask).mockImplementationOnce(
-			() =>
-				new Promise<boolean>((resolve) => {
-					confirm = resolve;
-				}),
-		);
-		return { ask, confirm: (yes: boolean) => confirm(yes) };
+		vi.mocked(ask).mockImplementationOnce(() => {
+			opened();
+			return new Promise<boolean>((resolve) => {
+				confirm = resolve;
+			});
+		});
+		return { entered, confirm: (yes: boolean) => confirm(yes) };
 	}
 
 	it("discards the hunk it showed when the diff reloads during the confirmation", async () => {
@@ -3939,7 +3957,7 @@ describe("DiffPanel hunk actions on a changed file", () => {
 		const { view, props } = await renderShown();
 
 		await fireEvent.click(screen.getByText("Discard Hunk"));
-		await waitFor(() => expect(pending.ask).toHaveBeenCalled());
+		await pending.entered;
 		await view.rerender({ ...props, fileDiffs: [reloadedDiff] });
 		pending.confirm(true);
 
@@ -3957,7 +3975,7 @@ describe("DiffPanel hunk actions on a changed file", () => {
 		await fireEvent.click(
 			screen.getByRole("button", { name: "Discard Lines (1)" }),
 		);
-		await waitFor(() => expect(pending.ask).toHaveBeenCalled());
+		await pending.entered;
 		await view.rerender({ ...props, fileDiffs: [reloadedDiff] });
 		pending.confirm(true);
 
@@ -3969,25 +3987,91 @@ describe("DiffPanel hunk actions on a changed file", () => {
 		);
 	});
 
-	it("reloads the diff and says nothing was done when the file no longer has the hunk", async () => {
-		const { showToast } = await import("../lib/toast.svelte.js");
-		vi.mocked(showToast).mockClear();
-		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
-			cmd === "stage_hunk"
-				? Promise.reject({ code: "stale_hunk", message: "stale" })
-				: Promise.resolve(undefined),
-		);
-		const onhunkaction = vi.fn(() => Promise.resolve());
-		await renderShown(onhunkaction);
+	describe("when the file changed since its diff was shown", () => {
+		const staleToast =
+			"src/main.ts changed since its diff was shown, so nothing was done. The diff now shows the file as it is.";
 
-		await fireEvent.click(screen.getByText("Stage Hunk"));
+		beforeEach(async () => {
+			const { ask } = await import("@tauri-apps/plugin-dialog");
+			vi.mocked(ask).mockResolvedValue(true);
+			const { showToast } = await import("../lib/toast.svelte.js");
+			vi.mocked(showToast).mockClear();
+		});
 
-		await waitFor(() =>
-			expect(onhunkaction).toHaveBeenCalledWith("src/main.ts"),
+		afterEach(async () => {
+			const { ask } = await import("@tauri-apps/plugin-dialog");
+			vi.mocked(ask).mockResolvedValue(false);
+		});
+
+		function refuseAsStale(command: string) {
+			vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+				cmd === command
+					? Promise.reject({ code: "stale_hunk", message: "stale" })
+					: Promise.resolve(undefined),
+			);
+		}
+
+		function awaitReload() {
+			let reloaded: (filePath: string) => void = () => {};
+			const reload = new Promise<string>((resolve) => {
+				reloaded = resolve;
+			});
+			return {
+				reload,
+				onhunkaction: async (filePath: string) => reloaded(filePath),
+			};
+		}
+
+		it.each([
+			{ action: "Stage Hunk", command: "stage_hunk", diffKind: "unstaged" },
+			{ action: "Unstage Hunk", command: "unstage_hunk", diffKind: "staged" },
+			{ action: "Discard Hunk", command: "discard_hunk", diffKind: "unstaged" },
+		] as const)(
+			"reloads the diff and says nothing was done after $action",
+			async ({ action, command, diffKind }) => {
+				const { showToast } = await import("../lib/toast.svelte.js");
+				refuseAsStale(command);
+				const reloads = awaitReload();
+				await renderShown({ diffKind, onhunkaction: reloads.onhunkaction });
+
+				await fireEvent.click(screen.getByText(action));
+
+				expect(await reloads.reload).toBe("src/main.ts");
+				expect(vi.mocked(showToast)).toHaveBeenCalledWith(staleToast, "error");
+			},
 		);
-		expect(vi.mocked(showToast)).toHaveBeenCalledWith(
-			"src/main.ts changed since its diff was shown, so nothing was done. The diff now shows the file as it is.",
-			"error",
+
+		it.each([
+			{
+				action: "Stage Lines (1)",
+				command: "stage_lines",
+				diffKind: "unstaged",
+			},
+			{
+				action: "Unstage Lines (1)",
+				command: "unstage_lines",
+				diffKind: "staged",
+			},
+			{
+				action: "Discard Lines (1)",
+				command: "discard_lines",
+				diffKind: "unstaged",
+			},
+		] as const)(
+			"reloads the diff and says nothing was done after $action",
+			async ({ action, command, diffKind }) => {
+				const { showToast } = await import("../lib/toast.svelte.js");
+				refuseAsStale(command);
+				const reloads = awaitReload();
+				await renderShown({ diffKind, onhunkaction: reloads.onhunkaction });
+				await fireEvent.mouseDown(gutterOf("new twenty"));
+				await fireEvent.mouseUp(window);
+
+				await fireEvent.click(screen.getByRole("button", { name: action }));
+
+				expect(await reloads.reload).toBe("src/main.ts");
+				expect(vi.mocked(showToast)).toHaveBeenCalledWith(staleToast, "error");
+			},
 		);
 	});
 });

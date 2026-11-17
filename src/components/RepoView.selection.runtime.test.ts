@@ -621,6 +621,24 @@ describe("RepoView commit selection", () => {
 		expect(commitRow("second")).toHaveAttribute("aria-selected", "true");
 	});
 
+	it("returns to the uncommitted changes when their row is clicked", async () => {
+		host.seedResponse("get_dirty_counts", {
+			staged: 1,
+			unstaged: 0,
+			conflicted: 0,
+		});
+		await openRepository();
+		const uncommittedChanges = await screen.findByText("// WIP");
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+
+		await fireEvent.click(uncommittedChanges);
+		await drainReplies();
+
+		expect(screen.queryByTestId("commit-detail")).toBeNull();
+		expect(commitRow("first")).toHaveAttribute("aria-selected", "false");
+	});
+
 	describe("on Escape", () => {
 		it("deselects the selected commit", async () => {
 			await openRepository();
