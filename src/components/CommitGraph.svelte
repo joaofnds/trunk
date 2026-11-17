@@ -911,11 +911,10 @@ async function handleCherryPick(commit: GraphCommit) {
 	try {
 		await safeInvoke("cherry_pick", { path: repoPath, oid: commit.oid });
 	} catch (e) {
-		await reportErrorDialog(
-			e,
-			"Cherry-pick Error",
-			"Cherry-pick failed. You may need to resolve conflicts manually.",
-		);
+		// A conflict stops the pick in progress, as a conflicted merge stops: the
+		// banner and the conflicted files carry it from there, so it is no error.
+		if (isTrunkError(e) && e.code === "conflict_state") return;
+		await reportErrorDialog(e, "Cherry-pick Error", "Cherry-pick failed.");
 	}
 }
 

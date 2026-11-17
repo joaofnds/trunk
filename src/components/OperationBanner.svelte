@@ -12,6 +12,8 @@ import BranchChip from "./BranchChip.svelte";
 interface Props {
 	info: OperationInfo;
 	repoPath: string;
+	/** Whether every conflicted file is resolved, which Continue waits for. */
+	resolved: boolean;
 	onaction?: () => void;
 	// Threaded RepoView -> StagingPanel -> OperationBanner so the Revert
 	// Continue button can reach the single host-owned MessageEditor (OQ-2).
@@ -21,7 +23,8 @@ interface Props {
 	) => Promise<string | null>;
 }
 
-let { info, repoPath, onaction, onopenmessageeditor }: Props = $props();
+let { info, repoPath, resolved, onaction, onopenmessageeditor }: Props =
+	$props();
 let loading = $state(false);
 
 let isMerge = $derived(info.op_type === "Merge");
@@ -164,7 +167,7 @@ async function handleRevertAbort() {
 				size="sm"
 				variant="success"
 				onclick={handleCherryPickContinue}
-				disabled={loading}
+				disabled={loading || !resolved}
 				>Continue</Button
 			>
 			<Button
@@ -182,7 +185,7 @@ async function handleRevertAbort() {
 				size="sm"
 				variant="success"
 				onclick={handleRevertContinue}
-				disabled={loading}
+				disabled={loading || !resolved}
 				>Continue</Button
 			>
 			<Button

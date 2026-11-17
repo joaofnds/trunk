@@ -40,6 +40,7 @@ describe("OperationBanner", () => {
 			props: {
 				info: makeInfo({ op_type: "Merge" }),
 				repoPath: "/repo",
+				resolved: true,
 			},
 		});
 		expect(screen.getByText("Merging")).toBeInTheDocument();
@@ -54,6 +55,7 @@ describe("OperationBanner", () => {
 					target_branch: "main",
 				}),
 				repoPath: "/repo",
+				resolved: true,
 			},
 		});
 		expect(screen.getByText("feature")).toBeInTheDocument();
@@ -65,7 +67,11 @@ describe("OperationBanner", () => {
 		async (name) => {
 			vi.mocked(writeText).mockClear();
 			render(OperationBanner, {
-				props: { info: makeInfo({ op_type: "Merge" }), repoPath: "/repo" },
+				props: {
+					info: makeInfo({ op_type: "Merge" }),
+					repoPath: "/repo",
+					resolved: true,
+				},
 			});
 
 			await fireEvent.click(screen.getByRole("button", { name }));
@@ -80,6 +86,7 @@ describe("OperationBanner", () => {
 				props: {
 					info: makeInfo({ op_type: "Merge", source_branch: null }),
 					repoPath: "/repo",
+					resolved: true,
 				},
 			});
 
@@ -93,6 +100,7 @@ describe("OperationBanner", () => {
 			props: {
 				info: makeInfo({ op_type: "Merge" }),
 				repoPath: "/repo",
+				resolved: true,
 			},
 		});
 		expect(screen.getByText("into")).toBeInTheDocument();
@@ -104,6 +112,7 @@ describe("OperationBanner", () => {
 			props: {
 				info: makeInfo({ op_type: "Merge" }),
 				repoPath: "/repo",
+				resolved: true,
 			},
 		});
 		expect(screen.queryByText("Continue")).toBeNull();
@@ -116,6 +125,7 @@ describe("OperationBanner", () => {
 			props: {
 				info: makeInfo({ op_type: "CherryPick" }),
 				repoPath: "/repo",
+				resolved: true,
 			},
 		});
 		expect(screen.getByText("Cherry-pick in progress")).toBeInTheDocument();
@@ -142,11 +152,28 @@ describe("OperationBanner revert recovery", () => {
 			props: {
 				info: makeInfo({ op_type: "Revert" }),
 				repoPath: "/repo",
+				resolved: true,
 			},
 		});
 		expect(screen.getByText("Continue")).toBeInTheDocument();
 		expect(screen.getByText("Abort")).toBeInTheDocument();
 	});
+
+	it.each(["CherryPick", "Revert"] as const)(
+		"holds %s's Continue while a conflicted file remains",
+		(op_type) => {
+			render(OperationBanner, {
+				props: {
+					info: makeInfo({ op_type }),
+					repoPath: "/repo",
+					resolved: false,
+				},
+			});
+
+			expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+			expect(screen.getByRole("button", { name: "Abort" })).toBeEnabled();
+		},
+	);
 
 	it("calls revert_abort and onaction when Abort is confirmed", async () => {
 		const onaction = vi.fn();
@@ -154,6 +181,7 @@ describe("OperationBanner revert recovery", () => {
 			props: {
 				info: makeInfo({ op_type: "Revert" }),
 				repoPath: "/repo",
+				resolved: true,
 				onaction,
 			},
 		});
@@ -174,6 +202,7 @@ describe("OperationBanner revert recovery", () => {
 			props: {
 				info: makeInfo({ op_type: "Revert" }),
 				repoPath: "/repo",
+				resolved: true,
 				onopenmessageeditor,
 			},
 		});
@@ -201,6 +230,7 @@ describe("OperationBanner revert recovery", () => {
 			props: {
 				info: makeInfo({ op_type: "Revert" }),
 				repoPath: "/repo",
+				resolved: true,
 				onopenmessageeditor,
 			},
 		});
@@ -220,6 +250,7 @@ describe("OperationBanner revert recovery", () => {
 			props: {
 				info: makeInfo({ op_type: "Merge" }),
 				repoPath: "/repo",
+				resolved: true,
 				onopenmessageeditor,
 			},
 		});
@@ -250,6 +281,7 @@ describe("OperationBanner cherry-pick recovery", () => {
 			props: {
 				info: makeInfo({ op_type: "CherryPick" }),
 				repoPath: "/repo",
+				resolved: true,
 			},
 		});
 		expect(screen.getByText("Continue")).toBeInTheDocument();
@@ -262,6 +294,7 @@ describe("OperationBanner cherry-pick recovery", () => {
 			props: {
 				info: makeInfo({ op_type: "CherryPick" }),
 				repoPath: "/repo",
+				resolved: true,
 				onaction,
 			},
 		});
@@ -282,6 +315,7 @@ describe("OperationBanner cherry-pick recovery", () => {
 			props: {
 				info: makeInfo({ op_type: "CherryPick" }),
 				repoPath: "/repo",
+				resolved: true,
 				onopenmessageeditor,
 			},
 		});
@@ -306,6 +340,7 @@ describe("OperationBanner cherry-pick recovery", () => {
 			props: {
 				info: makeInfo({ op_type: "CherryPick" }),
 				repoPath: "/repo",
+				resolved: true,
 				onopenmessageeditor,
 			},
 		});

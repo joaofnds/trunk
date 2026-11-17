@@ -959,6 +959,7 @@ registerUpdateBlocker(() => {
 		<OperationBanner
 			info={operationInfo}
 			{repoPath}
+			resolved={allResolved}
 			{onopenmessageeditor}
 			onaction={() => {
 				loadStatus();

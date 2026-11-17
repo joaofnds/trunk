@@ -1,4 +1,5 @@
 import { CheckMenuItem, MenuItem } from "@tauri-apps/api/menu";
+import { message } from "@tauri-apps/plugin-dialog";
 import {
 	fireEvent,
 	render,
@@ -590,6 +591,53 @@ describe("CommitGraph", () => {
 			await openTheMenuOnRow(MERGE_FIXTURE, 1);
 
 			expect(menuItemOptions("Fast-forward main to here").enabled).toBe(false);
+		});
+
+		it("leaves a cherry-pick that stops on conflicts to the banner, with no error", async () => {
+			installReads({
+				commits: MERGE_FIXTURE,
+				override: (cmd) =>
+					cmd === "cherry_pick"
+						? Promise.reject({
+								code: "conflict_state",
+								message: "hint: after resolving the conflicts, mark them",
+							})
+						: undefined,
+			});
+			render(CommitGraph, {
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+			});
+			await openContextMenu(1);
+
+			await getMenuAction("Cherry-pick")();
+			await flush();
+
+			expect(vi.mocked(message)).not.toHaveBeenCalled();
+		});
+
+		it("reports a cherry-pick that fails for another reason", async () => {
+			installReads({
+				commits: MERGE_FIXTURE,
+				override: (cmd) =>
+					cmd === "cherry_pick"
+						? Promise.reject({
+								code: "cherry_pick_error",
+								message: "bad object",
+							})
+						: undefined,
+			});
+			render(CommitGraph, {
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+			});
+			await openContextMenu(1);
+
+			await getMenuAction("Cherry-pick")();
+			await flush();
+
+			expect(vi.mocked(message)).toHaveBeenCalledWith(
+				"bad object",
+				expect.objectContaining({ title: "Cherry-pick Error" }),
+			);
 		});
 
 		it("revert: begin -> editor -> revert_continue with edited message", async () => {
