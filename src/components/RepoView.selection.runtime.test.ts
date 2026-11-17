@@ -251,6 +251,23 @@ describe("RepoView commit selection", () => {
 		expect(commitRow("first")).toHaveAttribute("aria-selected", "true");
 	});
 
+	it("shows the open diff over the review panel when the selected commit's ref is clicked", async () => {
+		seedBranch();
+		const view = await openRepository();
+		seedCommit("first");
+		await fireEvent.click(await screen.findByText("topic"));
+		await fireEvent.click(await screen.findByText("first.txt"));
+		await screen.findByText("first file content");
+		await view.rerender({ reviewActive: true });
+		const reviewPanelPrompt = await screen.findByText(/Comment on a file/);
+
+		await fireEvent.click(screen.getByText("topic"));
+		await drainReplies();
+
+		expect(reviewPanelPrompt).not.toBeVisible();
+		expect(screen.getByText("first file content")).toBeVisible();
+	});
+
 	it("does not scroll an obsolete review jump after its metadata finishes", async () => {
 		host.seedResponse("list_session_commits", [
 			aSessionCommit({
@@ -601,6 +618,29 @@ describe("RepoView commit selection", () => {
 		expect(screen.getByTestId("commit-detail")).toHaveTextContent(
 			"second change",
 		);
+		expect(commitRow("second")).toHaveAttribute("aria-selected", "true");
+	});
+
+	it("scrolls to a parent whose link is clicked again while it loads", async () => {
+		const view = await openRepository();
+		seedCommit("first");
+		host.seedResponse("get_commit_detail", {
+			...detailFor("first"),
+			parent_oids: ["second"],
+		});
+		await clickCommit("first");
+		const parentLink = await screen.findByTitle(/^Go to parent second/);
+		const scrolls = recordGraphScrolls(view.container);
+		const detail = host.holdNextReply("get_commit_detail");
+		seedCommit("second");
+		await fireEvent.click(parentLink);
+		await detail.entered;
+
+		await fireEvent.click(parentLink);
+		detail.release(detailFor("second"));
+		await drainReplies();
+
+		expect(scrolls).not.toEqual([]);
 		expect(commitRow("second")).toHaveAttribute("aria-selected", "true");
 	});
 

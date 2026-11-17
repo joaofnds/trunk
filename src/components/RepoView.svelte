@@ -594,8 +594,13 @@ let commitDiffMode = $derived(
 // response can't clobber a newer one, and a failed switch's catch arm can tell
 // it's still the latest before clearing state.
 let commitSelectGeneration = 0;
-// The commit whose detail is being read, and the generation that read belongs to.
-let commitRead: { oid: string; generation: number } | null = null;
+// The commit whose detail is being read, the generation that read belongs to,
+// and the read itself, which a repeated request for that commit waits on.
+let commitRead: {
+	oid: string;
+	generation: number;
+	landed: Promise<void>;
+} | null = null;
 let navigationIntent = 0;
 
 // Compare selection (TRUNK-1): the Base → Target pair picked in the graph.
@@ -1400,25 +1405,39 @@ async function selectCommitIdempotent(oid: string) {
 		onrightpanecollapsedchange(false);
 	}
 
-	// A new generation would discard the read already under way and start it over.
-	if (
-		commitRead?.oid === oid &&
-		commitRead.generation === commitSelectGeneration
-	)
-		return;
-
-	const gen = ++commitSelectGeneration;
-	requestedCommitOid = oid;
-	if (selectedCommitOid === oid && commitDetail?.oid === oid) return;
-
 	// Selecting a commit/ref while the review panel is open swaps the center pane to
 	// the diff so the user sees what they clicked (260531-l02d). showDiff is also what
 	// the jump gesture does, so this is consistent (and harmless when review is off).
 	if (reviewSession.state.reviewActive) reviewSession.showDiff();
+
+	// A new generation would discard the read already under way and start it over.
+	if (
+		commitRead?.oid === oid &&
+		commitRead.generation === commitSelectGeneration
+	) {
+		await commitRead.landed;
+		return;
+	}
+
+	const gen = ++commitSelectGeneration;
+	requestedCommitOid = oid;
+	if (selectedCommitOid === oid && commitDetail?.oid === oid) return;
 	if (!repoPath) return;
 
-	const path = repoPath;
-	commitRead = { oid, generation: gen };
+	const landed = readCommit({ path: repoPath, oid, gen });
+	commitRead = { oid, generation: gen, landed };
+	await landed;
+}
+
+async function readCommit({
+	path,
+	oid,
+	gen,
+}: {
+	path: string;
+	oid: string;
+	gen: number;
+}) {
 	// Statistics supplement usable details and files; failure only omits totals.
 	const statistics = safeInvoke<DiffStat>("commit_stat", {
 		path,
