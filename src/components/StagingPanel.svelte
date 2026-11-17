@@ -277,9 +277,39 @@ function stopLoading(paths: readonly string[]) {
 	loadingFiles = next;
 }
 
+const MARKER_NAMES_SHOWN = 5;
+
+/** Whether to mark these conflicted files resolved, asking first when any of
+ *  them still holds conflict markers, which staging would commit as content. */
+async function confirmResolved(filePaths: string[]): Promise<boolean> {
+	const marked = await safeInvoke<string[]>("conflict_marker_files", {
+		path: repoPath,
+		filePaths,
+	});
+	if (marked.length === 0) return true;
+
+	const shown = marked.slice(0, MARKER_NAMES_SHOWN).join("\n");
+	const rest = marked.length - MARKER_NAMES_SHOWN;
+	const names = rest > 0 ? `${shown}\nand ${rest} more` : shown;
+	const one = marked.length === 1;
+	const { ask } = await import("@tauri-apps/plugin-dialog");
+	return ask(
+		`${one ? "This file still holds" : "These files still hold"} conflict markers:\n\n${names}\n\nMark ${one ? "it" : "them"} resolved anyway? The markers will be committed as content.`,
+		{
+			title: "Conflict Markers Remain",
+			kind: "warning",
+			okLabel: "Mark Resolved",
+		},
+	);
+}
+
 async function stageFile(filePath: string, from: "unstaged" | "conflicted") {
 	loadingFiles = new Set([...loadingFiles, filePath]);
 	try {
+		if (from === "conflicted" && !(await confirmResolved([filePath]))) {
+			stopLoading([filePath]);
+			return;
+		}
 		await safeInvoke("stage_file", { path: repoPath, filePath });
 		onfileadvance?.(filePath, from);
 		optimisticMove(filePath, from, "stage");
@@ -629,10 +659,9 @@ async function resolveDirectory(dirPath: string) {
 	if (files.length === 0) return;
 
 	try {
-		await safeInvoke("stage_files", {
-			path: repoPath,
-			filePaths: files.map((f) => f.path),
-		});
+		const filePaths = files.map((f) => f.path);
+		if (!(await confirmResolved(filePaths))) return;
+		await safeInvoke("stage_files", { path: repoPath, filePaths });
 	} catch (e) {
 		reportErrorToast(e, "Resolution failed");
 	}
@@ -694,10 +723,9 @@ async function handleDiscardAll() {
 // ---------- Merge-mode actions ----------
 async function markAllResolved() {
 	try {
-		await safeInvoke("stage_files", {
-			path: repoPath,
-			filePaths: (status?.conflicted ?? []).map((f) => f.path),
-		});
+		const filePaths = (status?.conflicted ?? []).map((f) => f.path);
+		if (!(await confirmResolved(filePaths))) return;
+		await safeInvoke("stage_files", { path: repoPath, filePaths });
 	} catch (e) {
 		reportErrorToast(e, "Resolution failed");
 	}

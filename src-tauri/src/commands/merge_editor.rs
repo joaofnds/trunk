@@ -139,6 +139,53 @@ pub fn save_merge_result_inner(
     Ok(())
 }
 
+/// Whether `content` holds a conflict git wrote and nobody resolved: an
+/// opening, a separating and a closing marker, each at the start of a line.
+fn holds_conflict_markers(content: &[u8]) -> bool {
+    let mut opening = false;
+    let mut separator = false;
+    let mut closing = false;
+    for line in content.split(|&b| b == b'\n') {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        opening |= line == b"<<<<<<<" || line.starts_with(b"<<<<<<< ");
+        separator |= line == b"=======";
+        closing |= line == b">>>>>>>" || line.starts_with(b">>>>>>> ");
+    }
+    opening && separator && closing
+}
+
+/// The files among `file_paths` whose working copy still holds conflict
+/// markers, so marking them resolved would stage the markers as content. A file
+/// missing from the working tree holds none.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `no_workdir` for a
+/// bare repository, and `read_error` when a file exists but will not read.
+pub fn conflict_marker_files_inner(
+    path: &str,
+    file_paths: &[String],
+    state_map: &OpenRepos,
+) -> Result<Vec<String>, TrunkError> {
+    let repo = state_map.open(path)?;
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| TrunkError::new("no_workdir", "Bare repository"))?;
+
+    let mut found = Vec::new();
+    for file_path in file_paths {
+        let content = match std::fs::read(workdir.join(file_path)) {
+            Ok(content) => content,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(TrunkError::new("read_error", e.to_string())),
+        };
+        if holds_conflict_markers(&content) {
+            found.push(file_path.clone());
+        }
+    }
+    Ok(found)
+}
+
 // --- Tauri command wrappers ---
 
 /// # Errors
@@ -208,4 +255,27 @@ pub async fn save_merge_result<R: Runtime>(
 
     let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
+}
+
+/// # Errors
+///
+/// Returns the inner error as JSON, and `spawn_error` when the blocking task
+/// cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn conflict_marker_files(
+    activity: crate::activity::Activity,
+    path: String,
+    file_paths: Vec<String>,
+    state: State<'_, RepoState>,
+) -> Result<Vec<String>, String> {
+    let state_map = state.snapshot();
+    activity
+        .spawn_blocking(move || conflict_marker_files_inner(&path, &file_paths, &state_map))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }

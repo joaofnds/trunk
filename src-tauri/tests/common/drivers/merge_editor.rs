@@ -11,4 +11,9 @@ impl TestContext {
     pub fn save_merge_result(&self, file: &str, content: &str) -> Result<(), TrunkError> {
         merge_editor::save_merge_result_inner(self.path(), file, content, self.state_map())
     }
+
+    pub fn conflict_marker_files(&self, files: &[&str]) -> Result<Vec<String>, TrunkError> {
+        let files: Vec<String> = files.iter().map(|f| (*f).to_string()).collect();
+        merge_editor::conflict_marker_files_inner(self.path(), &files, self.state_map())
+    }
 }

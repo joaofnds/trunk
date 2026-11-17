@@ -493,9 +493,11 @@ describe("StagingPanel merge-continue", () => {
 	function mockMergeState(
 		conflicted: unknown[] = [],
 		unstaged: unknown[] = [],
+		withMarkers: string[] = [],
 	) {
 		mockInvoke.mockReset();
 		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "conflict_marker_files") return Promise.resolve(withMarkers);
 			if (cmd === "get_status")
 				return Promise.resolve({
 					unstaged,
@@ -642,6 +644,104 @@ describe("StagingPanel merge-continue", () => {
 				}),
 			),
 		);
+	});
+
+	describe("when a conflicted file still holds conflict markers", () => {
+		const conflict = {
+			path: "src/a.ts",
+			status: "Conflicted",
+			is_binary: false,
+		};
+
+		beforeEach(() => {
+			mockMergeState([conflict], [], ["src/a.ts"]);
+			vi.mocked(ask).mockReset().mockResolvedValue(false);
+		});
+
+		function stageCalls() {
+			return mockInvoke.mock.calls.filter(([command]) =>
+				command.startsWith("stage_file"),
+			);
+		}
+
+		it("asks before Mark All Resolved stages it, naming the file", async () => {
+			render(StagingPanel, {
+				props: { ...noReviewCounts(), repoPath: "/repo" },
+			});
+
+			await fireEvent.click(
+				await screen.findByRole("button", { name: "Mark All Resolved" }),
+			);
+
+			await waitFor(() =>
+				expect(ask).toHaveBeenCalledWith(
+					expect.stringContaining("src/a.ts"),
+					expect.objectContaining({ okLabel: "Mark Resolved" }),
+				),
+			);
+			expect(stageCalls()).toEqual([]);
+		});
+
+		it("stages it once the user confirms", async () => {
+			vi.mocked(ask).mockResolvedValueOnce(true);
+			render(StagingPanel, {
+				props: { ...noReviewCounts(), repoPath: "/repo" },
+			});
+
+			await fireEvent.click(
+				await screen.findByRole("button", { name: "Mark All Resolved" }),
+			);
+
+			expect(await callsOnceRefreshed("stage_files")).toEqual([
+				["stage_files", { path: "/repo", filePaths: ["src/a.ts"] }],
+			]);
+		});
+
+		it("asks before the file's own action marks it resolved", async () => {
+			render(StagingPanel, {
+				props: { ...noReviewCounts(), repoPath: "/repo" },
+			});
+			const row = stagingRowFor(await screen.findByText("src/a.ts"));
+			const rowWithActions = row.parentElement;
+			if (rowWithActions === null) throw new Error("file row is detached");
+
+			await fireEvent.click(
+				within(rowWithActions).getByRole("button", { name: "Stage file" }),
+			);
+
+			await waitFor(() => expect(ask).toHaveBeenCalled());
+			expect(stageCalls()).toEqual([]);
+		});
+
+		it("asks before a folder's Resolve All stages it", async () => {
+			mockMergeState([{ ...conflict, path: "lib/a.ts" }], [], ["lib/a.ts"]);
+			render(StagingPanel, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					treeViewEnabled: true,
+				},
+			});
+
+			await chooseFolderMenuItem(/^lib \(1\)/, /^Resolve All/);
+
+			await waitFor(() => expect(ask).toHaveBeenCalled());
+			expect(stageCalls()).toEqual([]);
+		});
+
+		it("marks a file without markers resolved without asking", async () => {
+			mockMergeState([conflict]);
+			render(StagingPanel, {
+				props: { ...noReviewCounts(), repoPath: "/repo" },
+			});
+
+			await fireEvent.click(
+				await screen.findByRole("button", { name: "Mark All Resolved" }),
+			);
+
+			await callsOnceRefreshed("stage_files");
+			expect(ask).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("when the merge leaves the user's own edits beside its conflicts", () => {

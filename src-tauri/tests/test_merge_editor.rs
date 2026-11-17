@@ -220,3 +220,62 @@ fn save_merge_result_refuses_once_the_conflict_is_gone() {
         "the abort's restored content must survive a stale save"
     );
 }
+
+fn conflicted_file() -> TestContext {
+    TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_file("other.txt", "untouched")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "feature content")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_file("file.txt", "main content")
+        .with_commit("Main commit")
+        .with_conflict("feature")
+        .build()
+}
+
+#[test]
+fn conflict_marker_files_lists_a_file_that_still_holds_the_merge_markers() {
+    let ctx = conflicted_file();
+
+    let found = ctx
+        .conflict_marker_files(&["file.txt", "other.txt"])
+        .unwrap();
+
+    assert_eq!(found, vec!["file.txt".to_string()]);
+}
+
+#[test]
+fn conflict_marker_files_omits_a_file_whose_markers_were_edited_out() {
+    let ctx = conflicted_file();
+    std::fs::write(ctx.repo_path().join("file.txt"), "main content\n").unwrap();
+
+    let found = ctx.conflict_marker_files(&["file.txt"]).unwrap();
+
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn conflict_marker_files_omits_a_file_that_was_deleted() {
+    let ctx = conflicted_file();
+    std::fs::remove_file(ctx.repo_path().join("file.txt")).unwrap();
+
+    let found = ctx.conflict_marker_files(&["file.txt"]).unwrap();
+
+    assert_eq!(found, Vec::<String>::new());
+}
+
+/// A Markdown heading underlined with `=======` is not a conflict, so only a
+/// file holding the opening and closing markers too is listed.
+#[test]
+fn conflict_marker_files_omits_a_file_with_only_a_separator_line() {
+    let ctx = conflicted_file();
+    std::fs::write(ctx.repo_path().join("file.txt"), "Title\n=======\n").unwrap();
+
+    let found = ctx.conflict_marker_files(&["file.txt"]).unwrap();
+
+    assert_eq!(found, Vec::<String>::new());
+}
