@@ -1647,14 +1647,10 @@ function closeCompareFile() {
 	compareDiffError = null;
 }
 
-// A second click on the open compare file closes it, unlike the staging and
-// commit file lists, which keep a diff open on that click.
 async function handleCompareFileSelect(path: string) {
 	navigationIntent += 1;
-	if (selectedCompareFile === path) {
-		closeCompareFile();
-		return;
-	}
+	if (selectedCompareFile === path) return;
+
 	selectedCompareFile = path;
 	await reloadCompareFile(path, buildDiffOptions());
 }
@@ -2388,10 +2384,7 @@ function closeRebaseDiff() {
 }
 
 async function handleRebaseFileSelect(path: string) {
-	if (rebaseFocusedFileSelected === path) {
-		closeRebaseDiff();
-		return;
-	}
+	if (rebaseFocusedFileSelected === path) return;
 
 	rebaseFocusedFileSelected = path;
 	rebaseDiffFile = path;

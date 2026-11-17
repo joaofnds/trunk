@@ -3739,11 +3739,10 @@ describe("RepoView", () => {
 			);
 		});
 
-		it("opens a rebase file again with one click after its diff is closed", async () => {
+		async function openARebaseFileDiff(path: string) {
 			stubRebaseTodo(PARENT_OID);
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
-			const path = "src/rebase.ts";
 			mockInvoke.mockImplementation((cmd, args) => {
 				const a = args as Record<string, unknown> | undefined;
 				if (cmd === "get_commit_detail" && typeof a?.oid === "string") {
@@ -3762,6 +3761,35 @@ describe("RepoView", () => {
 			await openTheEditorOnTheClickedCommit();
 			await fireEvent.click(rebaseRow(1));
 			await fireEvent.click(await screen.findByText(path));
+			await screen.findByText("REBASE DIFF");
+		}
+
+		it("keeps a rebase file's diff open when its row is clicked again", async () => {
+			const path = "src/rebase.ts";
+			await openARebaseFileDiff(path);
+
+			await fireEvent.click(screen.getByRole("option", { name: /rebase\.ts/ }));
+			await flush();
+
+			expect(screen.getByText("REBASE DIFF")).toBeTruthy();
+		});
+
+		it("reads a rebase file once when its row is clicked again", async () => {
+			const path = "src/rebase.ts";
+			await openARebaseFileDiff(path);
+
+			await fireEvent.click(screen.getByRole("option", { name: /rebase\.ts/ }));
+			await flush();
+
+			const reads = mockInvoke.mock.calls.filter(
+				(c) => c[0] === "diff_commit_file",
+			);
+			expect(reads).toHaveLength(1);
+		});
+
+		it("opens a rebase file again with one click after its diff is closed", async () => {
+			const path = "src/rebase.ts";
+			await openARebaseFileDiff(path);
 			await fireEvent.click(
 				await screen.findByRole("button", { name: "Close diff" }),
 			);
@@ -4007,7 +4035,7 @@ describe("RepoView", () => {
 			await fireEvent.click(await screen.findByText(path));
 			await vi.waitFor(() => expect(resolveDiff).toBeTypeOf("function"));
 			await screen.findByText("Loading diff…");
-			await fireEvent.click(screen.getByTestId("staging-file"));
+			await fireEvent.click(screen.getByRole("button", { name: "Close diff" }));
 			resolveDiff([makeRebaseFileWithContent(path, "CLOSED REBASE")]);
 			await flush();
 
@@ -4343,6 +4371,39 @@ describe("RepoView", () => {
 				targetOid: "oid-3",
 				filePath: "f.ts",
 			});
+		});
+
+		it("keeps a compare file's diff open when its row is clicked again", async () => {
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[2]);
+			await flush();
+			await fireEvent.click(rows[0], { metaKey: true });
+			await flush();
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await screen.findByRole("button", { name: "Close diff" });
+
+			await fireEvent.click(screen.getByRole("option", { name: /f\.ts/ }));
+			await flush();
+
+			expect(screen.getByRole("button", { name: "Close diff" })).toBeTruthy();
+		});
+
+		it("reads a compare file once when its row is clicked again", async () => {
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[2]);
+			await flush();
+			await fireEvent.click(rows[0], { metaKey: true });
+			await flush();
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await screen.findByRole("button", { name: "Close diff" });
+
+			await fireEvent.click(screen.getByRole("option", { name: /f\.ts/ }));
+			await flush();
+
+			const reads = mockInvoke.mock.calls.filter(
+				(c) => c[0] === "diff_compare_file",
+			);
+			expect(reads).toHaveLength(1);
 		});
 
 		it("keeps the newest compare mode when reloads finish in reverse order", async () => {
