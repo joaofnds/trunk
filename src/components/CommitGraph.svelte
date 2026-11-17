@@ -11,7 +11,7 @@ import Network from "@lucide/svelte/icons/network";
 import Tag from "@lucide/svelte/icons/tag";
 import User from "@lucide/svelte/icons/user";
 import { listen } from "@tauri-apps/api/event";
-import { ask } from "@tauri-apps/plugin-dialog";
+import { ask, message } from "@tauri-apps/plugin-dialog";
 import { type Component, onDestroy, tick, untrack } from "svelte";
 import { buildGraphData } from "../lib/active-lanes.js";
 import { deleteBranch } from "../lib/branch-delete.js";
@@ -914,6 +914,13 @@ async function handleCherryPick(commit: GraphCommit) {
 		// A conflict stops the pick in progress, as a conflicted merge stops: the
 		// banner and the conflicted files carry it from there, so it is no error.
 		if (isTrunkError(e) && e.code === "conflict_state") return;
+		if (isTrunkError(e) && e.code === "cherry_pick_empty") {
+			await message(
+				`HEAD already has the changes in ${commit.short_oid} "${commit.summary}", so there was nothing to cherry-pick.`,
+				{ title: "Nothing to Cherry-pick", kind: "info" },
+			);
+			return;
+		}
 		await reportErrorDialog(e, "Cherry-pick Error", "Cherry-pick failed.");
 	}
 }

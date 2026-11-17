@@ -668,6 +668,32 @@ describe("CommitGraph", () => {
 			);
 		});
 
+		it("says why nothing was picked when HEAD already has the commit's changes", async () => {
+			installReads({
+				commits: MERGE_FIXTURE,
+				override: (cmd) =>
+					cmd === "cherry_pick"
+						? Promise.reject({
+								code: "cherry_pick_empty",
+								message: "The previous cherry-pick is now empty",
+							})
+						: undefined,
+			});
+			render(CommitGraph, {
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+			});
+			await openContextMenu(1);
+
+			await getMenuAction("Cherry-pick")();
+			await flush();
+
+			const picked = MERGE_FIXTURE[1];
+			expect(vi.mocked(message)).toHaveBeenCalledWith(
+				`HEAD already has the changes in ${picked.short_oid} "${picked.summary}", so there was nothing to cherry-pick.`,
+				{ title: "Nothing to Cherry-pick", kind: "info" },
+			);
+		});
+
 		it("revert: begin -> editor -> revert_continue with edited message", async () => {
 			const onopenmessageeditor = vi.fn().mockResolvedValue("edited revert");
 			installReads({

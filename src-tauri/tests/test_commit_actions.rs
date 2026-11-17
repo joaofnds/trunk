@@ -149,7 +149,7 @@ fn cherry_pick_applies_commit() {
 }
 
 #[test]
-fn cherry_pick_of_a_change_head_already_has_reports_git_and_no_conflict() {
+fn cherry_pick_of_a_change_head_already_has_ends_the_pick_and_says_so() {
     let ctx = TestContext::builder()
         .with_file("f.txt", "a\n")
         .with_commit("Initial commit")
@@ -162,15 +162,13 @@ fn cherry_pick_of_a_change_head_already_has_reports_git_and_no_conflict() {
         .with_commit("Same change on main")
         .build();
     let side_oid = ctx.resolve_ref("side").unwrap();
+    let head_before = ctx.resolve_ref("HEAD").unwrap();
 
     let err = ctx.cherry_pick(&side_oid).unwrap_err();
 
-    assert_eq!(err.code, "cherry_pick_error");
-    assert!(
-        err.message.contains("empty"),
-        "git's reason: {}",
-        err.message
-    );
+    assert_eq!(err.code, "cherry_pick_empty");
+    assert_eq!(ctx.repo().state(), git2::RepositoryState::Clean);
+    assert_eq!(ctx.resolve_ref("HEAD").unwrap(), head_before);
 }
 
 // --- undo_commit tests ---

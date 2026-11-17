@@ -115,13 +115,46 @@ fn stopped_error(path: &std::path::Path, stderr: &[u8], other: &str) -> TrunkErr
     TrunkError::new(code, String::from_utf8_lossy(stderr).to_string())
 }
 
+/// Whether git stopped the pick because HEAD already has its changes: the pick
+/// is still in progress, nothing conflicts, and the index holds HEAD's own tree.
+fn pick_is_empty(path: &std::path::Path) -> Result<bool, TrunkError> {
+    let repo = git2::Repository::open(path)?;
+    if repo.state() != git2::RepositoryState::CherryPick {
+        return Ok(false);
+    }
+
+    let index = repo.index()?;
+    if index.has_conflicts() {
+        return Ok(false);
+    }
+
+    let head_tree = repo.head()?.peel_to_tree()?;
+    let staged = repo.diff_tree_to_index(Some(&head_tree), Some(&index), None)?;
+    Ok(staged.deltas().len() == 0)
+}
+
+fn cherry_pick_skip(path: &std::path::Path) -> Result<(), TrunkError> {
+    let output = std::process::Command::new("git")
+        .args(["cherry-pick", "--skip"])
+        .current_dir(path)
+        .env("PATH", shell_env::system_path())
+        .output()
+        .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
+    }
+    Ok(())
+}
+
 /// Cherry-pick a commit onto HEAD.
 ///
 /// # Errors
 ///
 /// Returns `not_open` when `path` names no open repository, `conflict_state` when the pick
-/// conflicts, and `cherry_pick_error` carrying git's own message when `git`
-/// will not run or the pick fails for any other reason.
+/// conflicts, `cherry_pick_empty` when HEAD already has the commit's changes (the pick is
+/// then ended, since there is nothing left to commit), and `cherry_pick_error` carrying
+/// git's own message when `git` will not run or the pick fails for any other reason.
 pub fn cherry_pick_inner(
     path: &str,
     oid: &str,
@@ -137,6 +170,11 @@ pub fn cherry_pick_inner(
         .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
 
     if !output.status.success() {
+        if pick_is_empty(path_buf)? {
+            cherry_pick_skip(path_buf)?;
+            let reason = String::from_utf8_lossy(&output.stderr).to_string();
+            return Err(TrunkError::new("cherry_pick_empty", reason));
+        }
         return Err(stopped_error(path_buf, &output.stderr, "cherry_pick_error"));
     }
 
