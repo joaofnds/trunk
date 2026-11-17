@@ -987,9 +987,6 @@ registerUpdateBlocker(() => {
 							<ChevronRight size={12} />
 						{/if}
 					</span>
-					<span class="text-badge-warning inline-flex items-center mr-1">
-						<AlertTriangle size={12} />
-					</span>
 					{@render sectionTitle(
 						"Conflicted Files",
 						status?.conflicted.length ?? 0,
@@ -1054,7 +1051,7 @@ registerUpdateBlocker(() => {
 								aria-label="Discard all changes"
 								tooltip="Discard All"
 							>
-								<Trash2 size={13} aria-hidden="true" />
+								<Trash2 size={14} aria-hidden="true" />
 							</Button>
 							<Button
 								size="sm"
