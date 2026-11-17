@@ -409,7 +409,9 @@ describe("RepoView", () => {
 			},
 		});
 		// When collapsed, the left pane div should have width: 0
-		const leftPane = container.querySelector('main > div[style*="width"]');
+		const leftPane = container.querySelector(
+			'main > div > div[style*="width"]',
+		);
 		expect(leftPane).toBeTruthy();
 		expect((leftPane as HTMLElement).style.width).toBe("0px");
 	});
@@ -3062,6 +3064,42 @@ describe("RepoView", () => {
 			return row;
 		}
 
+		it("returns to the commit it left selected, unread, when the editor is cancelled", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((command, args) => {
+				if (command === "get_commit_detail")
+					return Promise.resolve(makeRebaseDetail(HEAD_OID, "head commit"));
+				if (command === "list_commit_files") return Promise.resolve([]);
+				return base(command, args);
+			});
+			render(RepoView, { props: baseProps(createMockRemoteState()) });
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[0]);
+			await flush();
+			await fireEvent.contextMenu(rows[1]);
+			await waitFor(() => {
+				expect(menuActions.has("Interactive Rebase...")).toBe(true);
+			});
+			await getMenuAction("Interactive Rebase...")();
+			await screen.findByRole("listbox", { name: "Commits to rebase" });
+			const graphReads = () =>
+				mockInvoke.mock.calls.filter(([cmd]) => cmd === "get_commit_graph")
+					.length;
+			const readsWithEditorOpen = graphReads();
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Cancel Rebase" }),
+			);
+			await flush();
+
+			const [head] = await screen.findAllByTestId("commit-row");
+			expect(head).toBe(rows[0]);
+			expect(head).toHaveAttribute("aria-selected", "true");
+			expect(graphReads()).toBe(readsWithEditorOpen);
+		});
+
 		it.each(["pending", "failed"] as const)(
 			"can cancel a %s rebase editor load without starting the rebase",
 			async (state) => {
@@ -3072,10 +3110,9 @@ describe("RepoView", () => {
 				await loader[state]();
 
 				await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+				await flush();
 
-				expect(
-					(await screen.findAllByTestId("commit-row")).length,
-				).toBeGreaterThan(0);
+				expect(graphIsCovered()).toBe(false);
 				loader.expectCancelled();
 				expect(
 					mockInvoke.mock.calls.some(
@@ -3189,7 +3226,9 @@ describe("RepoView", () => {
 			await openTheEditorOnTheClickedCommit();
 
 			expect(
-				await screen.findByRole("button", { name: "release" }),
+				await within(
+					screen.getByRole("region", { name: "Interactive rebase" }),
+				).findByRole("button", { name: "release" }),
 			).toBeTruthy();
 		});
 

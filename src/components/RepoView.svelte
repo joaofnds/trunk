@@ -732,10 +732,13 @@ let showMergeEditor = $derived(selectedFile?.kind === "conflicted");
 // The graph stays mounted under whatever covers the center pane, as a background
 // tab stays mounted under the active one, so closing a diff returns to the rows
 // and scroll position the user left rather than to the top of a fresh first page.
-const graphCovered = $derived(reviewPanelShown || showDiff);
+const rebasing = $derived(rebaseBase !== null);
+const graphCovered = $derived(reviewPanelShown || showDiff || rebasing);
 let graphLayer = $state<HTMLDivElement | null>(null);
 let leftPane = $state<HTMLDivElement | null>(null);
 let rightPane = $state<HTMLDivElement | null>(null);
+let rebaseRightPane = $state<HTMLDivElement | null>(null);
+let browseLayout = $state<HTMLDivElement | null>(null);
 // What is hidden lets go of focus, so the keys reach what the user can see rather
 // than a list or a field nobody can. Not every engine blurs an element that turns
 // inert.
@@ -751,7 +754,12 @@ $effect(() => {
 	if (leftPaneCollapsed) releaseFocusWithin(leftPane);
 });
 $effect(() => {
-	if (rightPaneCollapsed) releaseFocusWithin(rightPane);
+	if (!rightPaneCollapsed) return;
+	releaseFocusWithin(rightPane);
+	releaseFocusWithin(rebaseRightPane);
+});
+$effect(() => {
+	if (rebasing) releaseFocusWithin(browseLayout);
 });
 
 // The diffs to display: filtered commit file diff, staging diff, or the whole
@@ -2259,9 +2267,6 @@ async function handleOpenRebaseEditor(baseOid: string, inclusive = false) {
 		rebaseBaseOid = todo.base_oid;
 		rebaseBranchName = headBranch ?? "HEAD";
 		const base = await resolveBase(todo.base_oid);
-		// Clear any open diffs/selections before showing editor
-		clearStagingDiff();
-		clearCommit();
 		rebaseFocusedCommitDetail = null;
 		rebaseFocusedCommitStat = null;
 		rebaseFocusedFileDiffs = [];
@@ -2465,6 +2470,9 @@ async function handleRebaseStart(
 	if (!repoPath) return;
 	const baseOid = rebaseBaseOid;
 	handleRebaseEditorClose();
+	// The rebase rewrites the commits a selection or an open diff names.
+	clearStagingDiff();
+	clearCommit();
 	try {
 		const result = await safeInvoke<{ kind: "completed" | "stopped" }>(
 			"start_interactive_rebase",
@@ -2564,138 +2572,15 @@ function stepRightPane(delta: number) {
 
 <div class="flex-1 overflow-hidden flex flex-col">
 	<PushRecoveryPrompt {repoPath} {remoteState} {refreshSignal} />
-	<main class="flex-1 overflow-hidden flex">
-		{#if rebaseBase}
-			{@const editorBase = rebaseBase}
-			<!-- Full-window takeover for interactive rebase -->
-			<div class="flex-1 overflow-hidden">
-				<div
-					class="h-full flex-col"
-					class:flex={!rebaseDiffFile}
-					class:hidden={rebaseDiffFile}
-				>
-					<LazyView
-						{onready}
-						active={!rebaseDiffFile}
-						load={() => import("./RebaseEditor.svelte")}
-						label="rebase editor"
-						oncancel={handleRebaseEditorClose}
-					>
-						{#snippet children(RebaseEditor)}
-							<RebaseEditor
-								{repoPath}
-								commits={rebaseEditorCommits}
-								branchName={rebaseBranchName}
-								base={editorBase}
-								onclose={handleRebaseEditorClose}
-								onstart={handleRebaseStart}
-								onfocuschange={handleRebaseFocusChange}
-							/>
-						{/snippet}
-					</LazyView>
-				</div>
-				{#if rebaseDiffFile}
-					<LazyView
-						{onready}
-						oncancel={handleRebaseDiffClose}
-						load={() => import("./DiffPanel.svelte")}
-						label="diff"
-					>
-						{#snippet children(DiffPanel)}
-							<DiffPanel
-								keysActive={tabActive}
-								fileDiffs={rebaseShownDiff}
-								commitDetail={rebaseFocusedCommitDetail}
-								selectedPath={rebaseDiffFile}
-								diffKind="commit"
-								{repoPath}
-								takesComments={diffTakesComments({
-									compare: false,
-									reviewMode: false,
-									threadsHidden: reviewThreadsHidden,
-								})}
-								{reviewFilter}
-								viewComments={rebaseViewComments}
-								activeReviewId={reviewComments.activeReviewId}
-								activeReview={reviewComments.activeReview}
-								editorSessionForThread={editorSessionForDiffThread}
-								composerSession={diffComposerSession}
-								composerTarget={diffComposerTarget}
-								{contentMode}
-								{oncontentmodechange}
-								loading={rebaseDiffLoading}
-								payloadStale={rebaseDiffFile !== null &&
-									!rebaseDiffError &&
-									rebaseDiffMode !== contentMode}
-								loadError={rebaseDiffError}
-								onloadfullfile={loadRebaseFullFileForComment}
-								onretry={() => {
-									if (rebaseDiffFile)
-										void reloadRebaseFile(rebaseDiffFile, buildDiffOptions());
-								}}
-								ondiffoptionschange={async (options) => {
-									rememberLocalDiffOptions(options);
-									if (rebaseDiffFile)
-										await reloadRebaseFile(rebaseDiffFile, options);
-								}}
-								onclose={handleRebaseDiffClose}
-							/>
-						{/snippet}
-					</LazyView>
-				{/if}
-			</div>
-			<Splitter
-				variant="pane"
-				aria-label="Resize detail pane"
-				value={rightPaneSize}
-				min={0}
-				max={RIGHT_PANE_MAX}
-				onstep={stepRightPane}
-				onmousedown={startRightResize}
-			/>
-			<div
-				class="shrink-0 overflow-hidden flex flex-col"
-				style:width="{rightPaneSize}px"
-				bind:this={rightPane}
-				inert={rightPaneCollapsed}
-			>
-				{#if rebaseFocusedCommitDetail}
-					{@const focusedDetail = rebaseFocusedCommitDetail}
-					<LazyView
-						load={() => import("./CommitDetail.svelte")}
-						label="commit details"
-						oncancel={handleRebaseDetailClose}
-					>
-						{#snippet children(CommitDetail)}
-							<CommitDetail
-								commitDetail={focusedDetail}
-								stat={rebaseFocusedCommitStat}
-								fileDiffs={rebaseFocusedFileDiffs}
-								selectedFile={rebaseFocusedFileSelected}
-								onfileselect={handleRebaseFileSelect}
-								onclose={handleRebaseDetailClose}
-								{repoPath}
-								{reviewComments}
-								{reviewFilter}
-								commentCounts={presentation.byFile}
-								commentTallies={presentation.tallyByFile}
-								activeReviewId={reviewComments.activeReviewId}
-								editorSessionForThread={editorSessionForCommitNoteThread}
-								{editorDraftFor}
-								{treeViewEnabled}
-								ontreeviewtoggle={handleTreeViewToggle}
-							/>
-						{/snippet}
-					</LazyView>
-				{:else}
-					<div
-						class="flex items-center justify-center h-full text-text-muted text-body"
-					>
-						Select a commit to view details
-					</div>
-				{/if}
-			</div>
-		{:else}
+	<main class="flex-1 overflow-hidden flex relative">
+		<!-- The graph and the panes stay mounted under the rebase editor, so leaving it
+		     returns to the rows, scroll position and selection the user left. -->
+		<div
+			class="flex flex-1 overflow-hidden"
+			bind:this={browseLayout}
+			class:invisible={rebasing}
+			inert={rebasing}
+		>
 			<!-- Review mode puts the reviews where the branches were. The sidebar stays
 			     mounted under it, since the graph's first page waits on its read. -->
 			<div
@@ -3048,6 +2933,141 @@ function stepRightPane(delta: number) {
 					/>
 				{/if}
 			</div>
+		</div>
+		{#if rebaseBase}
+			{@const editorBase = rebaseBase}
+			<section
+				aria-label="Interactive rebase"
+				class="absolute inset-0 flex overflow-hidden"
+			>
+				<div class="flex-1 overflow-hidden">
+					<div
+						class="h-full flex-col"
+						class:flex={!rebaseDiffFile}
+						class:hidden={rebaseDiffFile}
+					>
+						<LazyView
+							{onready}
+							active={!rebaseDiffFile}
+							load={() => import("./RebaseEditor.svelte")}
+							label="rebase editor"
+							oncancel={handleRebaseEditorClose}
+						>
+							{#snippet children(RebaseEditor)}
+								<RebaseEditor
+									{repoPath}
+									commits={rebaseEditorCommits}
+									branchName={rebaseBranchName}
+									base={editorBase}
+									onclose={handleRebaseEditorClose}
+									onstart={handleRebaseStart}
+									onfocuschange={handleRebaseFocusChange}
+								/>
+							{/snippet}
+						</LazyView>
+					</div>
+					{#if rebaseDiffFile}
+						<LazyView
+							{onready}
+							oncancel={handleRebaseDiffClose}
+							load={() => import("./DiffPanel.svelte")}
+							label="diff"
+						>
+							{#snippet children(DiffPanel)}
+								<DiffPanel
+									keysActive={tabActive}
+									fileDiffs={rebaseShownDiff}
+									commitDetail={rebaseFocusedCommitDetail}
+									selectedPath={rebaseDiffFile}
+									diffKind="commit"
+									{repoPath}
+									takesComments={diffTakesComments({
+										compare: false,
+										reviewMode: false,
+										threadsHidden: reviewThreadsHidden,
+									})}
+									{reviewFilter}
+									viewComments={rebaseViewComments}
+									activeReviewId={reviewComments.activeReviewId}
+									activeReview={reviewComments.activeReview}
+									editorSessionForThread={editorSessionForDiffThread}
+									composerSession={diffComposerSession}
+									composerTarget={diffComposerTarget}
+									{contentMode}
+									{oncontentmodechange}
+									loading={rebaseDiffLoading}
+									payloadStale={rebaseDiffFile !== null &&
+										!rebaseDiffError &&
+										rebaseDiffMode !== contentMode}
+									loadError={rebaseDiffError}
+									onloadfullfile={loadRebaseFullFileForComment}
+									onretry={() => {
+										if (rebaseDiffFile)
+											void reloadRebaseFile(rebaseDiffFile, buildDiffOptions());
+									}}
+									ondiffoptionschange={async (options) => {
+										rememberLocalDiffOptions(options);
+										if (rebaseDiffFile)
+											await reloadRebaseFile(rebaseDiffFile, options);
+									}}
+									onclose={handleRebaseDiffClose}
+								/>
+							{/snippet}
+						</LazyView>
+					{/if}
+				</div>
+				<Splitter
+					variant="pane"
+					aria-label="Resize detail pane"
+					value={rightPaneSize}
+					min={0}
+					max={RIGHT_PANE_MAX}
+					onstep={stepRightPane}
+					onmousedown={startRightResize}
+				/>
+				<div
+					class="shrink-0 overflow-hidden flex flex-col"
+					style:width="{rightPaneSize}px"
+					bind:this={rebaseRightPane}
+					inert={rightPaneCollapsed}
+				>
+					{#if rebaseFocusedCommitDetail}
+						{@const focusedDetail = rebaseFocusedCommitDetail}
+						<LazyView
+							load={() => import("./CommitDetail.svelte")}
+							label="commit details"
+							oncancel={handleRebaseDetailClose}
+						>
+							{#snippet children(CommitDetail)}
+								<CommitDetail
+									commitDetail={focusedDetail}
+									stat={rebaseFocusedCommitStat}
+									fileDiffs={rebaseFocusedFileDiffs}
+									selectedFile={rebaseFocusedFileSelected}
+									onfileselect={handleRebaseFileSelect}
+									onclose={handleRebaseDetailClose}
+									{repoPath}
+									{reviewComments}
+									{reviewFilter}
+									commentCounts={presentation.byFile}
+									commentTallies={presentation.tallyByFile}
+									activeReviewId={reviewComments.activeReviewId}
+									editorSessionForThread={editorSessionForCommitNoteThread}
+									{editorDraftFor}
+									{treeViewEnabled}
+									ontreeviewtoggle={handleTreeViewToggle}
+								/>
+							{/snippet}
+						</LazyView>
+					{:else}
+						<div
+							class="flex items-center justify-center h-full text-text-muted text-body"
+						>
+							Select a commit to view details
+						</div>
+					{/if}
+				</div>
+			</section>
 		{/if}
 	</main>
 </div>

@@ -218,7 +218,7 @@ describe("App", () => {
 
 		function rightPaneOf(container: HTMLElement): HTMLElement {
 			const panes = container.querySelectorAll<HTMLElement>(
-				'main > div[style*="width"]',
+				'main > div > div[style*="width"]',
 			);
 			return panes[panes.length - 1];
 		}
@@ -326,8 +326,9 @@ describe("App", () => {
 			);
 			await waitFor(() =>
 				expect(
-					container.querySelector<HTMLElement>('main > div[style*="width"]')
-						?.style.width,
+					container.querySelector<HTMLElement>(
+						'main > div > div[style*="width"]',
+					)?.style.width,
 				).toBe("0px"),
 			);
 

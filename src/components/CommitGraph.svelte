@@ -541,7 +541,7 @@ const floors = columnFloors(measureTextWidth);
 // The columns whose width the user set, which no fit may change. Reassigned
 // rather than mutated, so the fits re-run when a column joins or leaves it.
 let userSizedColumns = $state<ReadonlySet<keyof ColumnWidths>>(new Set());
-// The graph remounts when the rebase editor closes, so a drag or a double-click can come
+// The graph mounts with its repository tab, so a drag or a double-click can come
 // before the stored widths are read. Saves wait for the restore so they carry
 // what it brings back, and the restore leaves the columns sized since alone.
 let userWidthsRestored: Promise<void> = Promise.resolve();
