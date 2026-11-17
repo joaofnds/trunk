@@ -615,10 +615,26 @@ fn stage_hunk_refuses_a_file_left_clean_since_its_diff_was_shown() {
 
     let err = ctx.stage_shown_hunk("README.md", &shown).unwrap_err();
 
-    assert_eq!(err.code, "file_not_found");
+    assert_eq!(err.code, "stale_hunk");
 }
 
 // -- unstage_hunk tests --
+
+#[test]
+fn unstage_hunk_refuses_a_file_left_unstaged_since_its_diff_was_shown() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello\n")
+        .with_commit("Initial commit")
+        .build();
+    std::fs::write(ctx.repo_path().join("README.md"), "changed\n").unwrap();
+    ctx.stage_file("README.md").unwrap();
+    let shown = ctx.shown_staged_hunk("README.md", 0);
+    ctx.unstage_file("README.md").unwrap();
+
+    let err = ctx.unstage_shown_hunk("README.md", &shown).unwrap_err();
+
+    assert_eq!(err.code, "stale_hunk");
+}
 
 #[test]
 fn unstage_hunk_unstages_single_hunk() {
@@ -692,7 +708,7 @@ fn discard_hunk_refuses_a_file_left_clean_since_its_diff_was_shown() {
 
     let err = ctx.discard_shown_hunk("README.md", &shown).unwrap_err();
 
-    assert_eq!(err.code, "file_not_found");
+    assert_eq!(err.code, "stale_hunk");
 }
 
 // -- Line-level staging fixture helper --

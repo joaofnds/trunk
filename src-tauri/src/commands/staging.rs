@@ -1424,6 +1424,9 @@ fn header_path(prefix: &[u8], path: &[u8]) -> Vec<u8> {
 const RENAME_SIMILARITY: u8 = 100;
 
 /// The file's unstaged diff, index to working tree, as the view built it.
+///
+/// A file with no unstaged change, or a binary one, no longer holds the hunk the view
+/// showed, so the action is refused as stale.
 fn unstaged_patch<'r>(
     repo: &'r git2::Repository,
     file_path: &str,
@@ -1432,32 +1435,23 @@ fn unstaged_patch<'r>(
     let diff = unstaged_view_diff(repo, file_path, options)?;
 
     if diff.deltas().len() == 0 {
-        return Err(TrunkError::new(
-            "file_not_found",
-            format!("No unstaged changes for: {file_path}"),
-        ));
+        return Err(stale_hunk(file_path));
     }
 
-    git2::Patch::from_diff(&diff, 0)?
-        .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))
+    git2::Patch::from_diff(&diff, 0)?.ok_or_else(|| stale_hunk(file_path))
 }
 
-/// The file's staged diff, HEAD to index, as the view built it.
+/// The file's staged diff, HEAD to index, as the view built it, refused as stale
+/// when the file has no staged change or a binary one.
 fn staged_patch<'r>(
     repo: &'r git2::Repository,
     file_path: &str,
     options: &DiffRequestOptions,
 ) -> Result<git2::Patch<'r>, TrunkError> {
     let diff = staged_view_diff(repo, options)?;
-    let delta_index = delta_index_of(&diff, file_path).ok_or_else(|| {
-        TrunkError::new(
-            "file_not_found",
-            format!("No staged changes for: {file_path}"),
-        )
-    })?;
+    let delta_index = delta_index_of(&diff, file_path).ok_or_else(|| stale_hunk(file_path))?;
 
-    git2::Patch::from_diff(&diff, delta_index)?
-        .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))
+    git2::Patch::from_diff(&diff, delta_index)?.ok_or_else(|| stale_hunk(file_path))
 }
 
 /// Where the hunk the view showed sits in the file's diff as it is now.
@@ -1469,12 +1463,15 @@ fn shown_hunk_index(
     hunks_of(patch)?
         .iter()
         .position(|hunk| shown.matches(hunk))
-        .ok_or_else(|| {
-            TrunkError::new(
-                "stale_hunk",
-                format!("{file_path} changed since its diff was shown"),
-            )
-        })
+        .ok_or_else(|| stale_hunk(file_path))
+}
+
+/// The refusal of an action on a hunk the file no longer holds.
+fn stale_hunk(file_path: &str) -> TrunkError {
+    TrunkError::new(
+        "stale_hunk",
+        format!("{file_path} changed since its diff was shown"),
+    )
 }
 
 /// Apply a partial patch built by `build_partial_patch_text`.
@@ -1494,10 +1491,9 @@ fn apply_patch_text(
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
-/// no unstaged change or is binary, `stale_hunk` when the file no longer has the hunk the
-/// view showed, `patch_parse_failed` when the rebuilt patch will not parse, and
-/// `line_apply_failed` when it will not apply.
+/// Returns `not_open` when `path` names no open repository, `stale_hunk` when the file no
+/// longer has the hunk the view showed, `patch_parse_failed` when the rebuilt patch will not
+/// parse, and `line_apply_failed` when it will not apply.
 pub fn stage_lines_inner(
     path: &str,
     file_path: &str,
@@ -1520,10 +1516,9 @@ pub fn stage_lines_inner(
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
-/// no staged change, `stale_hunk` when the file no longer has the hunk the view showed,
-/// `patch_parse_failed` when the rebuilt patch will not parse, and `line_apply_failed` when
-/// it will not apply.
+/// Returns `not_open` when `path` names no open repository, `stale_hunk` when the file no
+/// longer has the hunk the view showed, `patch_parse_failed` when the rebuilt patch will not
+/// parse, and `line_apply_failed` when it will not apply.
 pub fn unstage_lines_inner(
     path: &str,
     file_path: &str,
@@ -1545,10 +1540,9 @@ pub fn unstage_lines_inner(
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
-/// no unstaged change or is binary, `stale_hunk` when the file no longer has the hunk the
-/// view showed, `patch_parse_failed` when the rebuilt patch will not parse, and
-/// `line_apply_failed` when it will not apply.
+/// Returns `not_open` when `path` names no open repository, `stale_hunk` when the file no
+/// longer has the hunk the view showed, `patch_parse_failed` when the rebuilt patch will not
+/// parse, and `line_apply_failed` when it will not apply.
 pub fn discard_lines_inner(
     path: &str,
     file_path: &str,
