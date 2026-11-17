@@ -1188,9 +1188,21 @@ edit made outside the app took about 530 ms, of which about 500 ms is deliberate
 watcher's 300 ms debounce (`src-tauri/src/watcher.rs`) and the 200 ms
 `REPO_CHANGE_DELAY_MS` the refresh coalesces over (`src/lib/coalesced-task.ts`).
 The walkers did not separate first feedback from the usable result, so these numbers
-support no speed claim. E01, E03, E07 and E08 hold the timed evidence. Commit
-settlement is the one reading that may miss the speed goal, and it needs E03's method
-against a recorded predicate before anything is decided on it. No app-level timing
+support no speed claim. E01, E03, E07 and E08 hold the timed evidence. A later trace
+split the commit reading. In one launch of the drive build on a five-commit scratch
+repository, with hooks and signing off, the page timed each Commit click to the new
+row in the graph and the cleared summary, and logged every command through the page's
+IPC transport. The first commit was usable at 163 ms and the next five at 29 to
+37 ms, with `create_commit` ending at 21 to 30 ms and the refresh it starts ending
+within 10 ms after. The last command ended at 527 to 535 ms every time: the watcher's
+refresh, which starts after the 500 ms of deliberate delay above and repeats reads the
+commit's own refresh already made. The walk's 650 to 1,400 ms most likely ran to the
+end of that refresh and added the drive client's own overhead, which is inference,
+since the walk recorded no predicate. The commit the user sees is fast. A Commit
+click inside that delay after a `git add` made outside the app ran no `create_commit`,
+because the panel had not yet seen the new index, and by the form's code it shows "No
+files staged" until it does. No
+action follows: a person types a summary for longer than the delay. No app-level timing
 exists yet for I10 compare, I11 hunk navigation, I15 conflict resolution or I16
 checkout and history operations, and I18 refresh has only the walk's reading above.
 
@@ -1329,7 +1341,7 @@ Frequency remains an assumption; no usage telemetry was collected.
 | 3 | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. Settle how often users open large highlighted files in full mode first. The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
 | Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
 | 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Index writes are not serialized per repository, so two overlapping actions can report a lock failure for work that happened. Saves, local fetch and watcher refreshes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
-| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. History depth, review size and conflict-region count remain unbenchmarked; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, commit settlement at 650 to 1,400 ms there needs E03's method before it is ranked, and I10, I11 hunk navigation, I15 and I16 still have no app-level timing. |
+| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. History depth, review size and conflict-region count remain unbenchmarked; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh, and I10, I11 hunk navigation, I15 and I16 still have no app-level timing. |
 
 The evidence supports retaining current warm diff reuse, mounted-tab reuse,
 coalesced refresh, and the search debounce. It does not support another cache or
