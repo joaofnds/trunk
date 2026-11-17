@@ -2491,14 +2491,23 @@ async function handleRebaseStart(
 	}
 }
 
-function resizeLeftPane(width: number) {
+// A pane collapses on the way to narrower than NARROWEST_PANE, so the width it
+// last had is one it only passed through. It reopens at the width it had when
+// the narrowing began: where the drag took hold, or before the first of a run
+// of narrowing steps, which any widening ends.
+let leftStepsFrom: number | null = null;
+let rightStepsFrom: number | null = null;
+
+/** Reports whether the width collapsed the pane. */
+function resizeLeftPane(width: number): boolean {
 	if (width < NARROWEST_PANE) {
 		onleftpanecollapsedchange(true);
-		return;
+		return true;
 	}
 
 	onleftpanecollapsedchange(false);
 	onleftpanewidthchange(Math.min(LEFT_PANE_MAX, width));
+	return false;
 }
 
 function storeLeftPane() {
@@ -2509,13 +2518,16 @@ function startLeftResize(e: MouseEvent) {
 	e.preventDefault();
 	const startX = e.clientX;
 	const startWidth = leftPaneSize;
+	const reopenWidth = leftPaneWidth;
+	let collapsed = false;
+	leftStepsFrom = null;
 
 	function onMouseMove(ev: MouseEvent) {
-		resizeLeftPane(Math.max(0, startWidth + ev.clientX - startX));
+		collapsed = resizeLeftPane(Math.max(0, startWidth + ev.clientX - startX));
 	}
 
 	function onMouseUp() {
-		if (leftPaneCollapsed && startWidth > 0) onleftpanewidthchange(startWidth);
+		if (collapsed) onleftpanewidthchange(reopenWidth);
 		storeLeftPane();
 		window.removeEventListener("mousemove", onMouseMove);
 		window.removeEventListener("mouseup", onMouseUp);
@@ -2526,17 +2538,24 @@ function startLeftResize(e: MouseEvent) {
 }
 
 function stepLeftPane(delta: number) {
-	resizeLeftPane(Math.max(0, leftPaneSize + delta));
+	const from = leftStepsFrom ?? leftPaneWidth;
+	leftStepsFrom = delta < 0 ? from : null;
+	if (!resizeLeftPane(Math.max(0, leftPaneSize + delta))) return;
+
+	leftStepsFrom = null;
+	if (from !== leftPaneWidth) onleftpanewidthchange(from);
 }
 
-function resizeRightPane(width: number) {
+/** Reports whether the width collapsed the pane. */
+function resizeRightPane(width: number): boolean {
 	if (width < NARROWEST_PANE) {
 		onrightpanecollapsedchange(true);
-		return;
+		return true;
 	}
 
 	onrightpanecollapsedchange(false);
 	onrightpanewidthchange(Math.min(RIGHT_PANE_MAX, width));
+	return false;
 }
 
 function storeRightPane() {
@@ -2547,14 +2566,18 @@ function startRightResize(e: MouseEvent) {
 	e.preventDefault();
 	const startX = e.clientX;
 	const startWidth = rightPaneSize;
+	const reopenWidth = rightPaneWidth;
+	let collapsed = false;
+	rightStepsFrom = null;
 
 	function onMouseMove(ev: MouseEvent) {
-		resizeRightPane(Math.max(0, startWidth - (ev.clientX - startX)));
+		collapsed = resizeRightPane(
+			Math.max(0, startWidth - (ev.clientX - startX)),
+		);
 	}
 
 	function onMouseUp() {
-		if (rightPaneCollapsed && startWidth > 0)
-			onrightpanewidthchange(startWidth);
+		if (collapsed) onrightpanewidthchange(reopenWidth);
 		storeRightPane();
 		window.removeEventListener("mousemove", onMouseMove);
 		window.removeEventListener("mouseup", onMouseUp);
@@ -2567,7 +2590,12 @@ function startRightResize(e: MouseEvent) {
 function stepRightPane(delta: number) {
 	const width = rightPaneSize - delta;
 	if (!rightPaneCollapsed) {
-		resizeRightPane(Math.max(0, width));
+		const from = rightStepsFrom ?? rightPaneWidth;
+		rightStepsFrom = delta > 0 ? from : null;
+		if (!resizeRightPane(Math.max(0, width))) return;
+
+		rightStepsFrom = null;
+		if (from !== rightPaneWidth) onrightpanewidthchange(from);
 		return;
 	}
 

@@ -619,6 +619,42 @@ describe("RepoView", () => {
 		},
 	);
 
+	it.each([
+		{ pane: "sidebar", key: "ArrowLeft", kept: "left width 64" },
+		{ pane: "detail pane", key: "ArrowRight", kept: "right width 64" },
+	])(
+		"keeps the width the $pane had when steps close it, to reopen at",
+		async ({ pane, key, kept }) => {
+			const changes = renderWithPanes({
+				leftPaneWidth: 64,
+				rightPaneWidth: 64,
+			});
+			const handle = screen.getByRole("slider", { name: `Resize ${pane}` });
+
+			await fireEvent.keyDown(handle, { key });
+			await fireEvent.keyDown(handle, { key });
+
+			expect(changes.at(-1)).toBe(kept);
+		},
+	);
+
+	// Only the divider beside the rebase editor shows while its pane is
+	// collapsed, and both dividers run this same drag.
+	it("reopens the detail pane at its width after a drag opens it and closes it again", async () => {
+		const changes = renderWithPanes({
+			rightPaneWidth: 300,
+			rightPaneCollapsed: true,
+		});
+		const handle = screen.getByLabelText("Resize detail pane");
+
+		await fireEvent.mouseDown(handle, { clientX: 1000 });
+		await fireEvent.mouseMove(window, { clientX: 900 });
+		await fireEvent.mouseMove(window, { clientX: 1000 });
+		await fireEvent.mouseUp(window);
+
+		expect(changes.at(-1)).toBe("right width 300");
+	});
+
 	it("lets go of the focus in the sidebar when it collapses", async () => {
 		renderWithPanes({ leftPaneWidth: 56 });
 		const filter = await screen.findByPlaceholderText("Filter branches…");
