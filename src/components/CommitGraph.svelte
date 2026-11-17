@@ -201,6 +201,11 @@ let {
 	visibilityResolved: refVisibilityResolved = true,
 }: Props = $props();
 const scheduler = getScheduler();
+// The staging panel shows the uncommitted changes while no commit is selected
+// and nothing is compared, and their row reads as selected then.
+const uncommittedChangesShown = $derived(
+	!selectedCommitOid && compareOids.size === 0,
+);
 
 /**
  * Every open repository keeps its CommitGraph mounted, hidden by visibility
@@ -3032,7 +3037,7 @@ $effect(() => {
 							onfocus={keepFocusOnList}
 							{columnVisibility}
 							selected={commit.oid === "__wip__"
-								? !selectedCommitOid && compareOids.size === 0
+								? uncommittedChangesShown
 								: commit.oid === selectedCommitOid ||
 									compareOids.has(commit.oid)}
 							rowHeight={displaySettings.rowHeight}

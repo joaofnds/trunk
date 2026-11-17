@@ -357,9 +357,9 @@ $effect(() => {
 // Bind the panel's jump affordance to the rune, wiring the existing RepoView
 // machinery as the rune's navigation seams. The rune uses the IDEMPOTENT
 // variants, because handleCommitSelect is a toggle for graph clicks (clicking
-// the selected row clears it). The jump
-// gesture must never clear the very target it's about to scroll to, otherwise
-// the panel→diff swap lands on a blank diff with no selection.
+// the selected row clears it). The jump gesture must never clear the very
+// target it's about to scroll to, otherwise the panel→diff swap lands on a
+// blank diff with no selection.
 function handleReviewJump(comment: Thread) {
 	reviewSession.jumpTo(comment, {
 		selectCommit: selectCommitIdempotent,
@@ -1360,11 +1360,12 @@ async function handleFileSelect(
 	kind: "unstaged" | "staged" | "conflicted",
 ) {
 	cancelPendingCommitSelection();
+	// Close the review panel (swap to diff) so the clicked file is visible
+	// (260531-l02d), the open one included, which stays mounted under the panel.
+	if (reviewSession.state.reviewActive) reviewSession.showDiff();
 	if (selectedFile?.path === path && selectedFile?.kind === kind) return;
 
 	selectedFile = { path, kind };
-	// Close the review panel (swap to diff) so the clicked file is visible (260531-l02d).
-	if (reviewSession.state.reviewActive) reviewSession.showDiff();
 	if (!repoPath) return;
 
 	if (kind === "conflicted") {
@@ -1636,7 +1637,8 @@ function closeCompareFile() {
 	compareDiffError = null;
 }
 
-// Compare file clicks toggle like commit-detail file clicks.
+// A second click on the open compare file closes it, unlike the staging and
+// commit file lists, which keep a diff open on that click.
 async function handleCompareFileSelect(path: string) {
 	navigationIntent += 1;
 	if (selectedCompareFile === path) {
@@ -1829,8 +1831,8 @@ async function selectCommitFileIdempotent(path: string) {
 	await reloadCommitFile(path, options, true);
 }
 
-// Toggle wrapper for CommitDetail file clicks: re-clicking the selected file
-// clears it. The rune uses `selectCommitFileIdempotent` directly.
+// CommitDetail file clicks. A click on the open file keeps it open. The rune
+// uses `selectCommitFileIdempotent` directly.
 async function handleCommitFileSelect(path: string) {
 	cancelPendingCommitSelection();
 	await selectCommitFileIdempotent(path);
@@ -2162,6 +2164,9 @@ $effect(() => {
 		if (e.key !== "Escape" || showRebaseEditor) return;
 		// The diff's own Escape, which clears a line selection, has already run.
 		if (e.defaultPrevented) return;
+		// The diff or merge editor under the review panel is the one ending the
+		// review returns to, so an Escape on the panel leaves it.
+		if (reviewPanelShown) return;
 		if (showDiff || showMergeEditor) {
 			e.preventDefault();
 			handleDiffClose();
@@ -2677,8 +2682,15 @@ function stepRightPane(delta: number) {
 				{/if}
 				{#if showMergeEditor && selectedFile}
 					{@const conflictedFile = selectedFile}
-					{#if !reviewPanelShown}
+					<!-- Kept mounted under the review panel like the diff below, so the
+             sides taken and the text typed survive the review. -->
+					<div
+						class="absolute inset-0"
+						class:invisible={reviewPanelShown}
+						{@attach inertWhile(reviewPanelShown)}
+					>
 						<LazyView
+							active={!reviewPanelShown}
 							{onready}
 							load={() => import("./MergeEditor.svelte")}
 							label="merge editor"
@@ -2692,7 +2704,7 @@ function stepRightPane(delta: number) {
 								/>
 							{/snippet}
 						</LazyView>
-					{/if}
+					</div>
 				{:else if showDiff}
 					<!-- Single DiffPanel mount, shared by normal and review mode. In review mode
              rightPaneMode==='diff' routes here (260531-l02e); bind:this exposes the

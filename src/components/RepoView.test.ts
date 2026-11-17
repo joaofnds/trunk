@@ -1674,48 +1674,142 @@ describe("RepoView", () => {
 			expect(screen.getByText("OPEN DIFF")).toBeTruthy();
 		});
 
-		it("returns to the diff where it was left when a review ends", async () => {
-			const base = currentInvoke();
-			mockInvoke.mockImplementation((cmd, args) => {
-				if (cmd === "get_status") {
-					return Promise.resolve({
-						unstaged: [
-							{ path: "README.md", status: "Modified", is_binary: false },
-						],
-						staged: [],
-						conflicted: [],
-					});
-				}
-				if (cmd === "diff_unstaged") {
-					return Promise.resolve([stagingDiff("LEFT DIFF")]);
-				}
-				return base(cmd, args);
-			});
-			const props = {
-				...baseProps(createMockRemoteState()),
-				reviewActive: true,
+		describe("a review ended from its panel", () => {
+			const README_STATUS = {
+				unstaged: [{ path: "README.md", status: "Modified", is_binary: false }],
+				staged: [],
+				conflicted: [],
 			};
-			const view = render(RepoView, { props });
-			await fireEvent.click(await screen.findByText("README.md"));
-			expect(await screen.findByText("LEFT DIFF")).toBeTruthy();
-			const scroller = document.querySelector<HTMLElement>(
-				".exact-virtual-viewport",
-			);
-			if (!scroller) throw new Error("diff scroller missing");
-			scroller.scrollTop = 120;
-			await fireEvent.scroll(scroller);
+			const CONFLICTED_STATUS = {
+				unstaged: [],
+				staged: [],
+				conflicted: [
+					{ path: "README.md", status: "Conflicted", is_binary: false },
+				],
+			};
 
-			fireReviewShowPanel();
-			await tick();
-			await view.rerender({ ...props, reviewActive: false });
-			await vi.dynamicImportSettled();
-			await tick();
+			function twoHunkDiff(): FileDiff {
+				const first = stagingDiff("FIRST HUNK").hunks[0];
+				const second = {
+					...stagingDiff("SECOND HUNK").hunks[0],
+					header: "@@ -40,0 +40,1 @@",
+					old_start: 40,
+					new_start: 40,
+				};
+				second.lines = [{ ...second.lines[0], new_lineno: 40 }];
+				return { ...stagingDiff("FIRST HUNK"), hunks: [first, second] };
+			}
 
-			const shown = document.querySelector<HTMLElement>(
-				".exact-virtual-viewport",
-			);
-			expect(shown).toBe(scroller);
-			expect(shown?.scrollTop).toBe(120);
+			function stubRepository(
+				status: typeof README_STATUS | typeof CONFLICTED_STATUS,
+				diff: FileDiff = stagingDiff("LEFT DIFF"),
+			) {
+				const base = currentInvoke();
+				mockInvoke.mockImplementation((cmd, args) => {
+					if (cmd === "get_status") return Promise.resolve(status);
+					if (cmd === "diff_unstaged") return Promise.resolve([diff]);
+					if (cmd === "get_merge_sides")
+						return Promise.resolve({
+							base: "line 1\ncommon line\n",
+							ours: "line 1\nour change\n",
+							theirs: "line 1\ntheir change\n",
+						});
+					return base(cmd, args);
+				});
+			}
+
+			async function openReadmeInReview() {
+				const props = {
+					...baseProps(createMockRemoteState()),
+					reviewActive: true,
+				};
+				const view = render(RepoView, { props });
+				await fireEvent.click(await screen.findByText("README.md"));
+				await vi.dynamicImportSettled();
+				await tick();
+				return {
+					showPanel: async () => {
+						fireReviewShowPanel();
+						await tick();
+					},
+					endReview: async () => {
+						await view.rerender({ ...props, reviewActive: false });
+						await vi.dynamicImportSettled();
+						await tick();
+					},
+				};
+			}
+
+			function diffScroller(): HTMLElement {
+				const scroller = document.querySelector<HTMLElement>(
+					".exact-virtual-viewport",
+				);
+				if (!scroller) throw new Error("diff scroller missing");
+				return scroller;
+			}
+
+			it("returns to the diff where it was left", async () => {
+				stubRepository(README_STATUS);
+				const review = await openReadmeInReview();
+				expect(await screen.findByText("LEFT DIFF")).toBeTruthy();
+				const scroller = diffScroller();
+				scroller.scrollTop = 120;
+				await fireEvent.scroll(scroller);
+
+				await review.showPanel();
+				expect(scroller.closest(".invisible")).not.toBeNull();
+				await review.endReview();
+
+				expect(diffScroller()).toBe(scroller);
+				expect(scroller.scrollTop).toBe(120);
+				expect(scroller.closest(".invisible")).toBeNull();
+			});
+
+			it("keeps that diff through an Escape on the panel", async () => {
+				stubRepository(README_STATUS);
+				const review = await openReadmeInReview();
+				const scroller = diffScroller();
+				await review.showPanel();
+
+				await fireEvent.keyDown(window, { key: "Escape" });
+				await review.endReview();
+
+				expect(diffScroller()).toBe(scroller);
+				expect(screen.getByText("LEFT DIFF")).toBeTruthy();
+			});
+
+			it("leaves the diff's keys to the panel while the panel shows", async () => {
+				stubRepository(README_STATUS, twoHunkDiff());
+				const review = await openReadmeInReview();
+				const scroller = diffScroller();
+				await review.showPanel();
+
+				await fireEvent.keyDown(window, { key: "]" });
+				await tick();
+				expect(scroller.scrollTop).toBe(0);
+
+				await review.endReview();
+				await fireEvent.keyDown(window, { key: "]" });
+				await tick();
+				expect(scroller.scrollTop).toBeGreaterThan(0);
+			});
+
+			// A rerender replaces every prop, which reloads the editor's sides, so
+			// the sides it keeps through the review are observed in the app; this
+			// pins that it stays mounted, hidden, while the panel shows.
+			it("keeps the merge editor mounted under the panel", async () => {
+				stubRepository(CONFLICTED_STATUS);
+				const review = await openReadmeInReview();
+				expect(await screen.findAllByText("our change")).not.toHaveLength(0);
+				const editor = await screen.findByRole("button", {
+					name: "Close merge editor",
+				});
+
+				await review.showPanel();
+
+				expect(editor.isConnected).toBe(true);
+				expect(editor.closest(".invisible")).not.toBeNull();
+			});
 		});
 
 		it("keeps the newest staging mode when superseded requests settle later", async () => {
