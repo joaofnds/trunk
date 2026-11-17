@@ -103,6 +103,18 @@ pub fn delete_tag_inner(
     crate::state::read_graph(&mut repo2)
 }
 
+/// The error for a pick or revert git refused, named by what it left behind:
+/// `conflict_state` when the index holds conflicted paths, and `other` with
+/// git's own message otherwise. git's text is no guide, since the message for
+/// a pick HEAD already has says "possibly due to conflict resolution".
+fn stopped_error(path: &std::path::Path, stderr: &[u8], other: &str) -> TrunkError {
+    let conflicted = git2::Repository::open(path)
+        .and_then(|repo| repo.index())
+        .is_ok_and(|index| index.has_conflicts());
+    let code = if conflicted { "conflict_state" } else { other };
+    TrunkError::new(code, String::from_utf8_lossy(stderr).to_string())
+}
+
 /// Cherry-pick a commit onto HEAD.
 ///
 /// # Errors
@@ -125,13 +137,7 @@ pub fn cherry_pick_inner(
         .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let code = if stderr.to_lowercase().contains("conflict") {
-            "conflict_state"
-        } else {
-            "cherry_pick_error"
-        };
-        return Err(TrunkError::new(code, stderr.to_string()));
+        return Err(stopped_error(path_buf, &output.stderr, "cherry_pick_error"));
     }
 
     let mut repo = git2::Repository::open(path_buf)?;
@@ -218,13 +224,7 @@ pub fn revert_commit_begin_inner(
         .map_err(|e| TrunkError::new("revert_error", e.to_string()))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let code = if stderr.to_lowercase().contains("conflict") {
-            "conflict_state"
-        } else {
-            "revert_error"
-        };
-        return Err(TrunkError::new(code, stderr.to_string()));
+        return Err(stopped_error(path_buf, &output.stderr, "revert_error"));
     }
 
     let mut repo = git2::Repository::open(path_buf)?;
