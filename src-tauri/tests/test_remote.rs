@@ -228,8 +228,14 @@ fn clean_pull_returns_ok() {
     );
 }
 
-/// One commit adding `count` files, so the merge diffstat `git pull` writes to
-/// stdout runs `count` lines long.
+/// A file name long enough that `git pull` writes about 200 bytes to stdout for
+/// the file, in its diffstat line and its `create mode` line together.
+fn bulk_file(i: usize) -> String {
+    format!("bulk-{i:05}-{}.txt", "x".repeat(90))
+}
+
+/// One commit adding `count` files, so the merge output `git pull` writes to
+/// stdout runs about 200 bytes per file.
 fn commit_many_on_remote(bare: &Path, branch: &str, count: usize, message: &str) {
     let repo = git2::Repository::open(bare).unwrap();
     let tip = repo
@@ -241,11 +247,7 @@ fn commit_many_on_remote(bare: &Path, branch: &str, count: usize, message: &str)
     for i in 0..count {
         let blob = repo.blob(format!("line {i}\n").as_bytes()).unwrap();
         builder
-            .insert(
-                format!("bulk-{i:05}.txt"),
-                blob,
-                git2::FileMode::Blob.into(),
-            )
+            .insert(bulk_file(i), blob, git2::FileMode::Blob.into())
             .unwrap();
     }
     let tree = repo.find_tree(builder.write().unwrap()).unwrap();
@@ -272,11 +274,11 @@ fn pull_completes_when_the_diffstat_outgrows_the_stdout_pipe_buffer() {
     track_upstream(&ctx, "origin", "main");
     let remote = ctx.remote();
     remote.push().unwrap();
-    commit_many_on_remote(&bare_remote(&ctx, "origin"), "main", 4000, "Bulk import");
+    commit_many_on_remote(&bare_remote(&ctx, "origin"), "main", 1000, "Bulk import");
 
     remote.pull(None).unwrap();
 
-    assert!(ctx.repo_path().join("bulk-03999.txt").exists());
+    assert!(ctx.repo_path().join(bulk_file(999)).exists());
 }
 
 #[test]
