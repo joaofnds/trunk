@@ -9,9 +9,7 @@ const TONE: Record<ToastKind, ToastTone> = {
 };
 </script>
 
-<div
-	class="fixed bottom-4 right-4 flex flex-col gap-2 z-50 pointer-events-none"
->
+<div class="fixed bottom-4 left-4 flex flex-col gap-2 z-50 pointer-events-none">
 	{#each toasts.items as toast (toast.id)}
 		<div
 			role="status"
