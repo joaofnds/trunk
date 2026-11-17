@@ -1,5 +1,5 @@
 import { CheckMenuItem, MenuItem } from "@tauri-apps/api/menu";
-import { message } from "@tauri-apps/plugin-dialog";
+import { ask, message } from "@tauri-apps/plugin-dialog";
 import {
 	fireEvent,
 	render,
@@ -200,6 +200,8 @@ function installReads(
 				return Promise.resolve({ commits, max_columns: 1, revision: 2 });
 			case "list_stashes":
 				return Promise.resolve([]);
+			case "get_commit_stats":
+				return Promise.resolve({});
 			default:
 				return Promise.resolve(undefined);
 		}
@@ -3363,6 +3365,40 @@ describe("CommitGraph", () => {
 
 			expect(referenced).not.toHaveLength(0);
 			for (const ref of referenced) expect(declared).toContain(ref);
+		});
+	});
+
+	describe("reset from a commit's menu", () => {
+		const HEAD_COMMIT = makeCommit({
+			oid: "aaa111aaa111aaa1aaa111aaa111aaa1aaa111aa",
+			summary: "main tip",
+			is_head: true,
+			refs: [
+				makeRef({ short_name: "main", ref_type: "LocalBranch", is_head: true }),
+			],
+		});
+		const TARGET = makeCommit({
+			oid: "bbb222bbb222bbb2bbb222bbb222bbb2bbb222bb",
+			short_oid: "bbb222b",
+			summary: "older work",
+		});
+
+		it("names the branch it moves and the commit it moves it to", async () => {
+			installReads({ commits: [HEAD_COMMIT, TARGET] });
+			render(CommitGraph, {
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.contextMenu(rows[1]);
+			await flush();
+
+			await getMenuAction("Hard")();
+			await flush();
+
+			expect(vi.mocked(ask)).toHaveBeenCalledWith(
+				expect.stringMatching(/^Reset main to bbb222b "older work"\?/),
+				expect.anything(),
+			);
 		});
 	});
 

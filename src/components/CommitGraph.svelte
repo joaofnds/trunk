@@ -948,12 +948,17 @@ async function handleReset(
 	mode: "soft" | "mixed" | "hard",
 ) {
 	const labels: Record<string, string> = {
-		soft: "Soft reset keeps all changes staged.",
-		mixed: "Mixed reset keeps changes but unstages them.",
-		hard: "Hard reset discards ALL changes. This cannot be undone!",
+		soft: "Soft reset keeps every change, staged.",
+		mixed: "Mixed reset keeps every change, unstaged.",
+		hard: "Hard reset discards your uncommitted changes and the changes of every commit after this one. This cannot be undone.",
 	};
+	// The dialog names what moves and where, so a reset picked from the wrong row
+	// reads wrong before it runs.
+	const branch = commits
+		.find((c) => c.is_head)
+		?.refs.find((r) => r.ref_type === "LocalBranch" && r.is_head)?.short_name;
 	const confirmed = await ask(
-		`Reset current branch to this commit?\n\n${labels[mode]}`,
+		`Reset ${branch ?? "HEAD"} to ${commit.short_oid} "${commit.summary}"?\n\n${labels[mode]}`,
 		{
 			title: `Reset (${mode})`,
 			kind: mode === "hard" ? "warning" : "info",
