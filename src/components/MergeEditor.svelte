@@ -14,8 +14,10 @@ import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import {
 	type ConflictRegion,
 	computeOutput,
+	countUnresolved,
 	getConflictIndices,
 	parseConflictRegions,
+	sideKeys,
 	takeAllCurrent,
 	takeAllIncoming,
 	toggleHunk,
@@ -245,6 +247,9 @@ let outputText = $derived.by(() => {
 let hasPrev = $derived(focusedConflictIdx > 0);
 let hasNext = $derived(focusedConflictIdx < conflictIndices.length - 1);
 let hasConflicts = $derived(conflictIndices.length > 0);
+let unresolved = $derived(
+	manualEdit ? 0 : countUnresolved(regions, takenLines),
+);
 
 // Virtualization derived state
 let aligned = $derived(flattenAligned(regions));
@@ -278,7 +283,7 @@ function loadSides(path: string) {
 			if (path !== filePath) return;
 
 			regions = parseConflictRegions(result.base, result.ours, result.theirs);
-			takenLines = takeAllCurrent(regions);
+			takenLines = new Set();
 			manualEdit = false;
 			manualText = "";
 			focusedConflictIdx = 0;
@@ -379,7 +384,7 @@ function handleOutputEdit(e: Event) {
 }
 
 function handleReset() {
-	takenLines = takeAllCurrent(regions);
+	takenLines = new Set();
 	manualEdit = false;
 	manualText = "";
 }
@@ -443,14 +448,11 @@ function sideTaken(
 	side: "ours" | "theirs",
 	regionIdx: number,
 ): boolean | "mixed" {
-	const region = regions[regionIdx];
-	if (region?.type !== "conflict") return false;
-	const lines = side === "ours" ? region.oursLines : region.theirsLines;
-	const taken = lines.filter((_, j) =>
-		takenLines.has(`${side}-${regionIdx}-${j}`),
-	).length;
+	if (regions[regionIdx]?.type !== "conflict") return false;
+	const keys = sideKeys(side, regionIdx, regions);
+	const taken = keys.filter((key) => takenLines.has(key)).length;
 	if (taken === 0) return false;
-	return taken === lines.length ? true : "mixed";
+	return taken === keys.length ? true : "mixed";
 }
 registerUpdateBlocker(
 	() => "Finish or close the merge editor before restarting.",
@@ -657,6 +659,12 @@ registerUpdateBlocker(
 					<span class="text-callout text-text">Output</span>
 					{#if manualEdit}
 						<span class="text-caption text-text-muted">(manual edit)</span>
+					{:else if unresolved > 0}
+						<span class="text-caption text-text-muted"
+							>{unresolved}
+							{unresolved === 1 ? "conflict" : "conflicts"}
+							unresolved</span
+						>
 					{/if}
 					<Button
 						icon
@@ -664,7 +672,7 @@ registerUpdateBlocker(
 						variant="ghost"
 						onclick={handleReset}
 						aria-label="Reset merge selections"
-						title="Reset to {SIDE_LABEL.ours}"
+						title="Clear every conflict's selection"
 						><RotateCcw size={14} /></Button
 					>
 				</div>
@@ -702,7 +710,7 @@ registerUpdateBlocker(
 						size="sm"
 						variant="success"
 						onclick={handleSaveAndResolve}
-						disabled={saving}
+						disabled={saving || unresolved > 0}
 						>Save and Mark Resolved</Button
 					>
 					<Button

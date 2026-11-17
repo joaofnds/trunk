@@ -274,35 +274,54 @@ export function computeOutput(
 }
 
 /**
- * Select all ours lines from all conflict regions.
- * Returns a new Set with keys like "ours-{regionIdx}-{lineIdx}".
+ * The selection keys of one side of a conflict: one per line, or a single
+ * "{side}-{regionIdx}-none" key for a side that deleted the lines, so taking
+ * the deletion is a choice the selection records.
  */
-export function takeAllCurrent(regions: ConflictRegion[]): Set<string> {
+export function sideKeys(
+	side: "ours" | "theirs",
+	regionIdx: number,
+	regions: ConflictRegion[],
+): string[] {
+	const region = regions[regionIdx];
+	const lines = side === "ours" ? region.oursLines : region.theirsLines;
+	if (lines.length === 0) return [`${side}-${regionIdx}-none`];
+	return lines.map((_, j) => `${side}-${regionIdx}-${j}`);
+}
+
+function takeAll(
+	side: "ours" | "theirs",
+	regions: ConflictRegion[],
+): Set<string> {
 	const keys = new Set<string>();
-	for (let i = 0; i < regions.length; i++) {
-		if (regions[i].type === "conflict") {
-			for (let j = 0; j < regions[i].oursLines.length; j++) {
-				keys.add(`ours-${i}-${j}`);
-			}
-		}
+	for (const i of getConflictIndices(regions)) {
+		for (const key of sideKeys(side, i, regions)) keys.add(key);
 	}
 	return keys;
 }
 
-/**
- * Select all theirs lines from all conflict regions.
- * Returns a new Set with keys like "theirs-{regionIdx}-{lineIdx}".
- */
+/** Take the ours side of every conflict region. */
+export function takeAllCurrent(regions: ConflictRegion[]): Set<string> {
+	return takeAll("ours", regions);
+}
+
+/** Take the theirs side of every conflict region. */
 export function takeAllIncoming(regions: ConflictRegion[]): Set<string> {
-	const keys = new Set<string>();
-	for (let i = 0; i < regions.length; i++) {
-		if (regions[i].type === "conflict") {
-			for (let j = 0; j < regions[i].theirsLines.length; j++) {
-				keys.add(`theirs-${i}-${j}`);
-			}
-		}
-	}
-	return keys;
+	return takeAll("theirs", regions);
+}
+
+/** How many conflicts have nothing taken from either side. */
+export function countUnresolved(
+	regions: ConflictRegion[],
+	takenLines: Set<string>,
+): number {
+	return getConflictIndices(regions).filter(
+		(i) =>
+			![
+				...sideKeys("ours", i, regions),
+				...sideKeys("theirs", i, regions),
+			].some((key) => takenLines.has(key)),
+	).length;
 }
 
 /**
@@ -318,9 +337,7 @@ export function toggleHunk(
 	regions: ConflictRegion[],
 	takenLines: Set<string>,
 ): Set<string> {
-	const region = regions[regionIdx];
-	const lines = side === "ours" ? region.oursLines : region.theirsLines;
-	const keys = lines.map((_, j) => `${side}-${regionIdx}-${j}`);
+	const keys = sideKeys(side, regionIdx, regions);
 
 	const allTaken = keys.every((k) => takenLines.has(k));
 	const result = new Set(takenLines);

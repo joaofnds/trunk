@@ -183,7 +183,7 @@ describe("MergeEditor", () => {
 				"textbox",
 			)) as HTMLTextAreaElement;
 
-			expect(result.value).toBe("a\ntheirs b\nc\nd\nours e\n");
+			expect(result.value).toBe("a\ntheirs b\nc\nd\n");
 			expect(
 				screen.getAllByRole("button", { name: /^Take conflict 1 from/ }),
 			).toHaveLength(2);
@@ -269,19 +269,82 @@ describe("MergeEditor", () => {
 			expect(result.value).toContain("theirs one\ntheirs two\ntheirs three");
 		});
 
-		it("tells each side's conflict header apart and says which side is taken", async () => {
+		function header(side: "Current (Ours)" | "Incoming (Theirs)") {
+			return screen.getByRole("button", {
+				name: `Take conflict 1 from ${side}`,
+			});
+		}
+
+		function save(): HTMLElement {
+			return screen.getByRole("button", { name: "Save and Mark Resolved" });
+		}
+
+		it("opens with neither side of a conflict taken", async () => {
+			render(MergeEditor, { props });
+			const result = await output();
+
+			expect(header("Current (Ours)")).toHaveAttribute("aria-pressed", "false");
+			expect(header("Incoming (Theirs)")).toHaveAttribute(
+				"aria-pressed",
+				"false",
+			);
+			expect(result.value).toBe("first\nlast\n");
+		});
+
+		it("takes only the incoming side when its header is clicked first", async () => {
+			render(MergeEditor, { props });
+			const result = await output();
+
+			await fireEvent.click(header("Incoming (Theirs)"));
+
+			expect(result.value).toBe(
+				"first\ntheirs one\ntheirs two\ntheirs three\nlast\n",
+			);
+		});
+
+		it("refuses to save while a conflict has no side taken", async () => {
 			render(MergeEditor, { props });
 			await output();
 
-			const current = screen.getByRole("button", {
-				name: "Take conflict 1 from Current (Ours)",
-			});
-			const incoming = screen.getByRole("button", {
-				name: "Take conflict 1 from Incoming (Theirs)",
-			});
+			expect(save()).toBeDisabled();
+			expect(screen.getByText("1 conflict unresolved")).toBeInTheDocument();
+		});
 
-			expect(current).toHaveAttribute("aria-pressed", "true");
-			expect(incoming).toHaveAttribute("aria-pressed", "false");
+		it("saves once every conflict has a side taken", async () => {
+			render(MergeEditor, { props });
+			await output();
+
+			await fireEvent.click(header("Current (Ours)"));
+			await fireEvent.click(save());
+
+			expect(mockInvoke).toHaveBeenCalledWith("save_merge_result", {
+				path: "/test/repo",
+				filePath: "src/main.ts",
+				content: "first\nours one\nours two\nours three\nlast\n",
+			});
+			expect(screen.queryByText(/unresolved$/)).toBeNull();
+		});
+
+		it("saves an edited output whatever is taken", async () => {
+			render(MergeEditor, { props });
+			const result = await output();
+
+			await fireEvent.input(result, { target: { value: "first\nmine\n" } });
+
+			expect(save()).toBeEnabled();
+		});
+
+		it("returns every conflict to unresolved on reset", async () => {
+			render(MergeEditor, { props });
+			const result = await output();
+			await fireEvent.click(header("Incoming (Theirs)"));
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Reset merge selections" }),
+			);
+
+			expect(result.value).toBe("first\nlast\n");
+			expect(save()).toBeDisabled();
 		});
 
 		it("presses a side's conflict header once that side is taken", async () => {
@@ -382,7 +445,7 @@ describe("MergeEditor", () => {
 			await waitFor(() => expect(onclose).toHaveBeenCalled());
 		});
 
-		it("starts a retried load from the current side, as the first load does", async () => {
+		it("starts a retried load unresolved, as the first load does", async () => {
 			failLoad("git_error", "index locked");
 			render(MergeEditor, {
 				props: { ...props(), filePath: "src/main.ts" },
@@ -399,7 +462,54 @@ describe("MergeEditor", () => {
 			const result = (await screen.findByRole(
 				"textbox",
 			)) as HTMLTextAreaElement;
-			expect(result.value).toBe(MERGE_SIDES.ours);
+			expect(result.value).toBe("line 1\n");
+		});
+	});
+
+	describe("when one side deleted the conflicting lines", () => {
+		const props = {
+			repoPath: "/test/repo",
+			filePath: "src/main.ts",
+			onclose: () => {},
+			onresolved: () => {},
+		};
+
+		beforeEach(() => {
+			mockInvoke.mockImplementation((cmd: string) => {
+				if (cmd !== "get_merge_sides") return Promise.resolve(undefined);
+				return Promise.resolve({ base: "a\nb", ours: "a", theirs: "a\nB" });
+			});
+		});
+
+		it("resolves the conflict to the deletion when that side is taken", async () => {
+			render(MergeEditor, { props });
+			const result = (await screen.findByRole(
+				"textbox",
+			)) as HTMLTextAreaElement;
+			const current = screen.getByRole("button", {
+				name: "Take conflict 1 from Current (Ours)",
+			});
+
+			await fireEvent.click(current);
+
+			expect(current).toHaveAttribute("aria-pressed", "true");
+			expect(result.value).toBe("a");
+			expect(
+				screen.getByRole("button", { name: "Save and Mark Resolved" }),
+			).toBeEnabled();
+		});
+
+		it("resolves the conflict to the deletion when all of that side is taken", async () => {
+			render(MergeEditor, { props });
+			await screen.findByRole("textbox");
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Take All Current" }),
+			);
+
+			expect(
+				screen.getByRole("button", { name: "Save and Mark Resolved" }),
+			).toBeEnabled();
 		});
 	});
 
@@ -449,10 +559,10 @@ describe("MergeEditor", () => {
 			replies.get("new.ts")?.({ ...MERGE_SIDES, ours: "line 1\nnew file\n" });
 			replies.get("old.ts")?.({ ...MERGE_SIDES, ours: "line 1\nold file\n" });
 
-			const result = (await screen.findByRole(
-				"textbox",
-			)) as HTMLTextAreaElement;
-			await waitFor(() => expect(result.value).toBe("line 1\nnew file\n"));
+			expect(
+				await screen.findByRole("button", { name: /new file/ }),
+			).toBeInTheDocument();
+			expect(screen.queryByRole("button", { name: /old file/ })).toBeNull();
 		});
 	});
 });
