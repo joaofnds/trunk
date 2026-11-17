@@ -117,6 +117,13 @@ function graphIsCovered(): boolean {
 	);
 }
 
+function graphIsShown(): boolean {
+	const rows = screen.queryAllByTestId("commit-row");
+	return (
+		rows.length > 0 && rows.every((row) => row.closest(".invisible") === null)
+	);
+}
+
 function fireRepoChanged(
 	repo: string,
 	paths: string[],
@@ -3239,7 +3246,7 @@ describe("RepoView", () => {
 				await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 				await flush();
 
-				expect(graphIsCovered()).toBe(false);
+				expect(graphIsShown()).toBe(true);
 				loader.expectCancelled();
 				expect(
 					mockInvoke.mock.calls.some(

@@ -4007,6 +4007,43 @@ describe("DiffPanel hunk navigation", () => {
 		expect(viewport.scrollTop).toBe(64);
 	});
 
+	// A refetch moves the hunks under a scroll position the reader left alone,
+	// so the step goes from the rows now on screen. Two more lines in the first
+	// hunk put the second hunk's header at 100.
+	it("scrolls to the hunk below on ] after a refetch moved the hunks", async () => {
+		const { container, ready, rerender } = renderNav();
+		await ready;
+		const [first, second] = navDiff.hunks;
+		const context = (content: string, lineno: number) => ({
+			origin: "Context" as const,
+			content,
+			old_lineno: lineno,
+			new_lineno: lineno,
+			spans: [],
+		});
+		const refetched: FileDiff = {
+			...navDiff,
+			hunks: [
+				{
+					...first,
+					header: "@@ -1,4 +1,4 @@",
+					old_lines: 4,
+					new_lines: 4,
+					lines: [...first.lines, context("beta 2", 3), context("beta 3", 4)],
+				},
+				second,
+			],
+		};
+
+		await fireEvent.keyDown(window, { key: "]" });
+		await tick();
+		await rerender({ fileDiffs: [refetched] });
+		await fireEvent.keyDown(window, { key: "]" });
+		await tick();
+
+		expect(viewportOf(container).scrollTop).toBe(100);
+	});
+
 	// A file shown whole arrives as one hunk, so the steps are its runs of
 	// changed lines: here delta and epsilon, the fourth and fifth rows.
 	describe("with the whole file shown", () => {

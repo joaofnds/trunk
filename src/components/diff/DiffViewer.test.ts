@@ -461,13 +461,16 @@ describe("DiffViewer when the reader switches view", () => {
 		fileDiffs: [hunks],
 	};
 
+	// Thirty hunks of a header and five 18px lines above the thirty-first,
+	// whose own header and first two lines come next.
+	const line3003InHunks = 31 * FIXED_ROW_HEIGHTS.hunkHeader + (30 * 5 + 2) * 18;
+
+	const viewportOf = (container: Element) =>
+		container.querySelector(".exact-virtual-viewport") as HTMLElement;
+
 	async function scrollToLine(container: Element, line: string) {
-		const viewport = container.querySelector(
-			".exact-virtual-viewport",
-		) as HTMLElement;
-		// Thirty hunks of a header and five 18px lines above the thirty-first,
-		// whose own header and first two lines come next.
-		viewport.scrollTop = 31 * FIXED_ROW_HEIGHTS.hunkHeader + (30 * 5 + 2) * 18;
+		const viewport = viewportOf(container);
+		viewport.scrollTop = line3003InHunks;
 		viewport.dispatchEvent(new Event("scroll"));
 		expect(await screen.findAllByText(line)).not.toHaveLength(0);
 	}
@@ -479,7 +482,7 @@ describe("DiffViewer when the reader switches view", () => {
 		await rerender({ ...props, layoutMode: "split" });
 
 		expect(await screen.findAllByText("line 3003")).not.toHaveLength(0);
-		expect(screen.queryAllByText("line 1")).toHaveLength(0);
+		expect(viewportOf(container).scrollTop).toBe(line3003InHunks);
 	});
 
 	it("opens the same file in another commit at its top", async () => {
@@ -529,7 +532,8 @@ describe("DiffViewer when the reader switches view", () => {
 			});
 
 			expect(await screen.findAllByText("line 3003")).not.toHaveLength(0);
-			expect(screen.queryAllByText("line 1")).toHaveLength(0);
+			// The whole file has no hunk headers, so 3002 lines sit above.
+			expect(viewportOf(container).scrollTop).toBe(3002 * 18);
 		},
 	);
 });
