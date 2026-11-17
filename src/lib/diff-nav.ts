@@ -15,18 +15,18 @@ export interface DiffNav {
 	hunkCount(): number;
 	/** A hunk's place in that sequence, or -1 when it is not rendered. */
 	ordinalOf(path: string, hunkIdx: number): number;
-	/** Scrolls the hunk into view and flashes it. */
+	/** Scrolls the hunk into view, flashing its header where the view draws
+	 *  one. */
 	scrollToHunk(ordinal: number): void;
 	/** Scrolls one line's own row into view, falling back to its hunk. */
 	scrollToLine(path: string, hunkIdx: number, lineIdx: number): void;
 	/** Scrolls to the comment row drawing a thread that starts on `startLine`,
 	 *  reporting false when no row draws one. */
 	scrollToThread(path: string, side: Side, startLine: number): boolean;
-	/** Scrolls to the next (1) or previous (-1) step from where the reader is:
-	 *  a hunk while the view shows hunks, a run of changed lines while it shows
-	 *  the file whole. Reports the step's place in that sequence, or -1 when
-	 *  there is none that way. */
-	step(direction: 1 | -1): number;
+	/** Scrolls to the next (1) or previous (-1) step from where the reader is,
+	 *  and flashes it: a hunk while the view shows hunks, a run of changed lines
+	 *  while it shows the file whole. Stays put when there is none that way. */
+	step(direction: 1 | -1): void;
 	/** The line at the top of the view, where a view replacing it opens. */
 	readingLine(): ReadingLine | null;
 }

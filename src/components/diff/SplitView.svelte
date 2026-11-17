@@ -1,5 +1,4 @@
 <script lang="ts">
-import { onMount } from "svelte";
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import {
 	buildSplitRows,
@@ -25,7 +24,7 @@ import {
 import { measure } from "../../lib/perf.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
-import { FLASH_MS, RowFlash } from "../../lib/row-flash.svelte.js";
+import { FLASH_DURATION } from "../../lib/row-flash.svelte.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type {
 	ContentMode,
@@ -163,17 +162,7 @@ function actionSide(hunkKey: string, pair: PairedRow): Side | null {
 	return null;
 }
 
-let list = $state<
-	(DiffListHandle & { scrollToIndex: (index: number) => void }) | null
->(null);
-
-// The flashed hunk's identity, not a class on an element: the element a jump
-// targets may not be mounted when the jump happens, and will be replaced by
-// another row's node as the reader scrolls away.
-let flashedHunkKey = $state<string | null>(null);
-let flashTimer: ReturnType<typeof setTimeout> | null = null;
-// A run of changed lines has no header, so its rows flash instead.
-const runFlash = new RowFlash();
+let list = $state<DiffListHandle | null>(null);
 
 const model = $derived(
 	measure("diff.buildRows", (observation) => {
@@ -204,99 +193,17 @@ const vd = createVirtualizedDiff({
 	content: () => contentMode,
 });
 
-// The factory's own onMount handles the observer; this one only stops a flash
-// timer still running at unmount.
-onMount(() => {
-	return () => {
-		if (flashTimer) clearTimeout(flashTimer);
-		runFlash.stop();
-	};
-});
-
 function hunkLinesOf(path: string, hunkIdx: number): DiffLine[] {
 	return fileDiffs.find((fd) => fd.path === path)?.hunks[hunkIdx]?.lines ?? [];
 }
 
-/** The line at the top of the view, where a view replacing it opens. */
-export function readingLine(): ReadingLine | null {
-	return vd.readingLine();
-}
-
-/** How many hunks `[` and `]` step through. */
-export function hunkCount(): number {
-	return model.hunkNav.length;
-}
-
-/** Where a hunk sits in that sequence, or -1 when it is not rendered at all —
- *  a collapsed file's hunks are absent. */
-export function ordinalOf(path: string, hunkIdx: number): number {
-	return model.hunkNav.findIndex(
-		(entry) => entry.path === path && entry.hunkIdx === hunkIdx,
-	);
-}
-
-export function scrollToHunk(ordinal: number): void {
-	const nav = model.hunkNav[ordinal];
-	if (!nav) return;
-
-	list?.scrollToIndex(nav.rowIndex);
-	flash(`${nav.path}-${nav.hunkIdx}`);
-}
-
-// Showing hunks, the steps are the hunks in the order `scrollToHunk` counts
-// them. Showing the file whole, they are its runs of changed lines, and the
-// run flashes since it has no header of its own to flash.
-export function step(direction: 1 | -1): number {
-	const ordinal = vd.adjacentStep(direction);
-	if (ordinal < 0) return -1;
-
-	if (contentMode === "hunk") {
-		scrollToHunk(ordinal);
-	} else {
-		const start = vd.steps[ordinal];
-		list?.scrollToIndex(start);
-		runFlash.show(start, changeRunEnd(model, start));
-	}
-	vd.noteStepJump(ordinal);
-	return ordinal;
-}
-
-/** Scrolls to the pair row carrying one line, on either side. A line the model
- *  does not carry — a collapsed file — falls back to the hunk. */
-export function scrollToLine(
-	path: string,
-	hunkIdx: number,
-	lineIdx: number,
-): void {
-	const rowIndex = rowIndexForLine(model, path, hunkIdx, lineIdx);
-	if (rowIndex < 0) {
-		scrollToHunk(ordinalOf(path, hunkIdx));
-		return;
-	}
-
-	list?.scrollToIndex(rowIndex);
-	flash(`${path}-${hunkIdx}`);
-}
-
-export function scrollToThread(
-	path: string,
-	side: Side,
-	startLine: number,
-): boolean {
-	const rowIndex = rowIndexForThread(model, path, side, startLine);
-	if (rowIndex < 0) return false;
-
-	list?.scrollToIndex(rowIndex);
-	return true;
-}
-
-function flash(hunkKey: string): void {
-	if (flashTimer) clearTimeout(flashTimer);
-	flashedHunkKey = hunkKey;
-	flashTimer = setTimeout(() => {
-		flashedHunkKey = null;
-	}, FLASH_MS);
-}
+export const readingLine = vd.readingLine;
+export const hunkCount = vd.hunkCount;
+export const ordinalOf = vd.ordinalOf;
+export const scrollToHunk = vd.scrollToHunk;
+export const scrollToLine = vd.scrollToLine;
+export const scrollToThread = vd.scrollToThread;
+export const step = vd.step;
 
 function originClass(origin: string): string {
 	if (origin === "Add") return "diff-line-add";
@@ -434,7 +341,7 @@ function originClass(origin: string): string {
 		<div
 			class="split-row pan-pinned flex"
 			class:holds-action={heldOn !== null}
-			class:run-flash={runFlash.lit(index)}
+			class:run-flash={vd.flashLit(index)}
 		>
 			{#if item.row.left}
 				{@const line = item.row.left.line}
@@ -531,9 +438,8 @@ function originClass(origin: string): string {
 		{@const hunkKey = `${item.path}-${item.hunkIdx}`}
 		{@const hasSelection = selectedHunkKey === hunkKey && selectedCount > 0}
 		<div
-			class="split-hunk-header pan-pinned box-border{flashedHunkKey === hunkKey
-				? " hunk-highlight"
-				: ""}"
+			class="split-hunk-header pan-pinned box-border"
+			class:hunk-highlight={vd.flashLit(index)}
 		>
 			<span class="split-hunk-header-text">{item.header}</span>
 			<HunkActions
@@ -580,6 +486,7 @@ function originClass(origin: string): string {
 
 <div
 	class="split-view"
+	style:--diff-flash-duration={FLASH_DURATION}
 	style:--diff-file-header-height={FIXED_ROW_HEIGHT_VARS[
 		"--diff-file-header-height"
 	]}
@@ -767,11 +674,11 @@ function originClass(origin: string): string {
 }
 
 .hunk-highlight {
-	animation: hunk-flash 0.6s ease-out;
+	animation: hunk-flash var(--diff-flash-duration) ease-out;
 }
 /* Over each half, since the halves paint their own backgrounds above the row's. */
 .run-flash > * {
-	animation: run-flash 0.6s ease-out;
+	animation: run-flash var(--diff-flash-duration) ease-out;
 }
 /* Under reduced motion the flash holds its colour and clears at once, so the
    place a jump landed is still marked. */

@@ -8,6 +8,13 @@
    page zoom to a registered length when it computes the property and again
    where the var() is used, so at 150% a 62px column width draws 93px wide. */
 
+/* ── Diff views: how long a jump's flash shows (src/lib/row-flash.svelte.ts) ── */
+@property --diff-flash-duration {
+	syntax: "<time>";
+	inherits: true;
+	initial-value: 0s;
+}
+
 /* ── Diff rows: the fixed heights the views hand their rows (src/lib/diff-rows.ts) ── */
 @property --diff-file-header-height {
 	syntax: "*";

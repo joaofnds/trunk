@@ -11,24 +11,29 @@
  * comment probe into the settable refs.
  */
 import { onMount, tick, untrack } from "svelte";
-import { adjacentStop, type StopJump } from "./diff-nav.js";
+import { adjacentStop, type DiffNav, type StopJump } from "./diff-nav.js";
 import {
 	type ComposerPlace,
+	changeRunEnd,
 	type DiffRowModel,
 	type ReadingLine,
 	readingLineAt,
 	rowHeights,
+	rowIndexForLine,
 	rowIndexForReadingLine,
+	rowIndexForThread,
 	stepRows,
 } from "./diff-rows.js";
 import { measure } from "./perf.js";
+import { RowFlash } from "./row-flash.svelte.js";
 import {
 	availableCharsFor,
 	measureRowMetrics,
 	type RowMetrics,
 } from "./row-metrics.js";
+import { getScheduler } from "./scheduler.js";
 import { ThreadFolds } from "./thread-folds.svelte.js";
-import type { ContentMode, Thread } from "./types.js";
+import type { ContentMode, Side, Thread } from "./types.js";
 
 // Tailwind's preflight sets tab-size: 4 globally, so a tab advances four
 // columns — unless invisibles are on, where .invisible-char collapses it to one.
@@ -52,6 +57,7 @@ export interface DiffListHandle {
 	topIndex(): number;
 	anchorTo(index: number): void;
 	revealIndex(index: number): void;
+	scrollToIndex(index: number): void;
 }
 
 export interface VirtualizedDiffDeps {
@@ -79,7 +85,7 @@ export interface SplitVirtualizedDiffDeps extends VirtualizedDiffDeps {
 	layout: "split";
 }
 
-export interface InlineVirtualizedDiff {
+export interface InlineVirtualizedDiff extends DiffNav {
 	pane: HTMLDivElement | null;
 	metricsProbe: HTMLDivElement | null;
 	commentProbe: HTMLDivElement | null;
@@ -96,15 +102,8 @@ export interface InlineVirtualizedDiff {
 	readonly contentWidth: string;
 	readonly gutterW: string;
 	readonly markerW: string;
-	/** The first line at the top of the list, the place a replacing view opens at. */
-	readingLine(): ReadingLine | null;
-	/** The rows `]` and `[` step between, as `stepRows` gives them. */
-	readonly steps: number[];
-	/** The step `]` (1) or `[` (-1) goes to from where the reader is, or -1. */
-	adjacentStep(direction: 1 | -1): number;
-	/** Records that a step just brought its row to the top, which the next step
-	 *  goes on from while the reader leaves the view where it is. */
-	noteStepJump(ordinal: number): void;
+	/** Whether row `index` is lit by the flash of the last jump. */
+	flashLit(index: number): boolean;
 }
 
 export interface SplitVirtualizedDiff extends InlineVirtualizedDiff {
@@ -354,28 +353,81 @@ export function createVirtualizedDiff(
 	// at an ordinal of the old rows is not the step at that ordinal now.
 	let lastJump: (StopJump & { model: DiffRowModel }) | null = null;
 
+	// A jump lights a hunk's header while the rows show hunks. A file shown
+	// whole has no headers, so a step there lights the run of changed lines it
+	// lands on instead.
+	const flash = new RowFlash(getScheduler());
+	onMount(() => () => flash.stop());
+
+	function flashHeader(ordinal: number): void {
+		const nav = model.hunkNav[ordinal];
+		if (nav && deps.content() === "hunk") {
+			flash.show(nav.rowIndex, nav.rowIndex + 1);
+		}
+	}
+
+	function ordinalOf(path: string, hunkIdx: number): number {
+		return model.hunkNav.findIndex(
+			(entry) => entry.path === path && entry.hunkIdx === hunkIdx,
+		);
+	}
+
+	function scrollToHunk(ordinal: number): void {
+		const nav = model.hunkNav[ordinal];
+		if (!nav) return;
+
+		deps.list()?.scrollToIndex(nav.rowIndex);
+		flashHeader(ordinal);
+	}
+
 	return {
 		folds,
 		readingLine() {
 			return drawnLine;
 		},
-		get steps() {
-			return steps;
+		hunkCount() {
+			return model.hunkNav.length;
 		},
-		adjacentStep(direction) {
-			const list = deps.list();
-			if (!list) return -1;
+		ordinalOf,
+		scrollToHunk,
+		scrollToLine(path, hunkIdx, lineIdx) {
+			const rowIndex = rowIndexForLine(model, path, hunkIdx, lineIdx);
+			if (rowIndex < 0) {
+				scrollToHunk(ordinalOf(path, hunkIdx));
+				return;
+			}
 
-			return adjacentStop(
+			deps.list()?.scrollToIndex(rowIndex);
+			flashHeader(ordinalOf(path, hunkIdx));
+		},
+		scrollToThread(path: string, side: Side, startLine: number) {
+			const rowIndex = rowIndexForThread(model, path, side, startLine);
+			if (rowIndex < 0) return false;
+
+			deps.list()?.scrollToIndex(rowIndex);
+			return true;
+		},
+		step(direction) {
+			const list = deps.list();
+			if (!list) return;
+			const ordinal = adjacentStop(
 				steps,
 				list.topIndex(),
 				direction,
 				lastJump?.model === model ? lastJump : null,
 			);
+			if (ordinal < 0) return;
+
+			const start = steps[ordinal];
+			list.scrollToIndex(start);
+			flash.show(
+				start,
+				deps.content() === "hunk" ? start + 1 : changeRunEnd(model, start),
+			);
+			lastJump = { ordinal, top: list.topIndex(), model };
 		},
-		noteStepJump(ordinal) {
-			const list = deps.list();
-			lastJump = list ? { ordinal, top: list.topIndex(), model } : null;
+		flashLit(index) {
+			return flash.lit(index);
 		},
 		get pane() {
 			return state.pane;

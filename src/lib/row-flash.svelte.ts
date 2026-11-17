@@ -1,5 +1,9 @@
-/** How long a flash shows, the length of the views' flash animations. */
+import type { Scheduler } from "./scheduler.js";
+
+/** How long a flash shows. The views hand it to their flash animations as
+ *  `--diff-flash-duration`, so the class and the animation end together. */
 export const FLASH_MS = 600;
+export const FLASH_DURATION = `${FLASH_MS}ms`;
 
 /**
  * The run of rows a jump just brought into view, lit for one flash so the
@@ -11,13 +15,18 @@ export const FLASH_MS = 600;
  */
 export class RowFlash {
 	#run = $state<{ from: number; to: number } | null>(null);
-	#timer: ReturnType<typeof setTimeout> | null = null;
+	#timer: number | null = null;
+	readonly #scheduler: Scheduler;
+
+	constructor(scheduler: Scheduler) {
+		this.#scheduler = scheduler;
+	}
 
 	/** Lights rows `from` up to, not including, `to`. */
 	show(from: number, to: number): void {
 		this.stop();
 		this.#run = { from, to };
-		this.#timer = setTimeout(() => {
+		this.#timer = this.#scheduler.setTimeout(() => {
 			this.#run = null;
 			this.#timer = null;
 		}, FLASH_MS);
@@ -30,7 +39,7 @@ export class RowFlash {
 
 	/** Cancels a flash still showing, for a view that unmounts. */
 	stop(): void {
-		if (this.#timer) clearTimeout(this.#timer);
+		if (this.#timer !== null) this.#scheduler.clearTimeout(this.#timer);
 		this.#timer = null;
 		this.#run = null;
 	}

@@ -4088,6 +4088,31 @@ describe("DiffPanel hunk navigation", () => {
 			},
 		);
 
+		it.each(["inline", "split"] as const)(
+			"flashes the %s view's run of changed lines on ] and clears it when the flash ends",
+			async (layout) => {
+				const { container } = await renderWhole(layout);
+				vi.useFakeTimers();
+				try {
+					await fireEvent.keyDown(window, { key: "]" });
+					await tick();
+
+					const lit = [...container.querySelectorAll(".run-flash")].map(
+						(row) => row.textContent ?? "",
+					);
+					expect(lit.join(" ")).toMatch(/delta[\s\S]*epsilon/);
+					expect(lit.join(" ")).not.toContain("gamma");
+
+					vi.advanceTimersByTime(600);
+					await tick();
+
+					expect(container.querySelectorAll(".run-flash")).toHaveLength(0);
+				} finally {
+					vi.useRealTimers();
+				}
+			},
+		);
+
 		it("scrolls the inline view to the anchored line's own row", async () => {
 			const { container, component } = await renderWhole("inline");
 

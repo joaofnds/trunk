@@ -418,12 +418,14 @@ describe("createVirtualizedDiff", () => {
 			topIndex: () => 7,
 			anchorTo: vi.fn(),
 			revealIndex: vi.fn(),
+			scrollToIndex: vi.fn(),
 		};
 		mount({ wordWrap: true, list: wrapped });
 		const unwrapped = {
 			topIndex: () => 7,
 			anchorTo: vi.fn(),
 			revealIndex: vi.fn(),
+			scrollToIndex: vi.fn(),
 		};
 		mount({ wordWrap: false, list: unwrapped });
 

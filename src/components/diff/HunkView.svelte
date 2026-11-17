@@ -1,5 +1,4 @@
 <script lang="ts">
-import { onMount } from "svelte";
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import {
 	buildInlineRows,
@@ -21,7 +20,7 @@ import {
 import { measure } from "../../lib/perf.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
-import { FLASH_MS } from "../../lib/row-flash.svelte.js";
+import { FLASH_DURATION } from "../../lib/row-flash.svelte.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type {
 	DiffLine,
@@ -137,15 +136,7 @@ function inSelection(hunkKey: string, lineIdx: number): boolean {
 	return selectedHunkKey === hunkKey && selectedLineIndices.has(lineIdx);
 }
 
-let list = $state<
-	(DiffListHandle & { scrollToIndex: (index: number) => void }) | null
->(null);
-
-// The flashed hunk's identity, not a class on an element: the element a jump
-// targets may not be mounted when the jump happens, and will be replaced by
-// another row's node as the reader scrolls away.
-let flashedHunkKey = $state<string | null>(null);
-let flashTimer: ReturnType<typeof setTimeout> | null = null;
+let list = $state<DiffListHandle | null>(null);
 
 const model = $derived(
 	measure("diff.buildRows", (observation) => {
@@ -177,87 +168,13 @@ const vd = createVirtualizedDiff({
 	numberColumns: () => 2,
 });
 
-// The factory's own onMount handles the observer; this one only stops a flash
-// timer still running at unmount.
-onMount(() => {
-	return () => {
-		if (flashTimer) clearTimeout(flashTimer);
-	};
-});
-
-/** The line at the top of the view, where a view replacing it opens. */
-export function readingLine(): ReadingLine | null {
-	return vd.readingLine();
-}
-
-/** How many hunks `[` and `]` step through. */
-export function hunkCount(): number {
-	return model.hunkNav.length;
-}
-
-/** Where a hunk sits in that sequence, or -1 when it is not rendered at all —
- *  a collapsed file's hunks are absent. */
-export function ordinalOf(path: string, hunkIdx: number): number {
-	return model.hunkNav.findIndex(
-		(entry) => entry.path === path && entry.hunkIdx === hunkIdx,
-	);
-}
-
-export function scrollToHunk(ordinal: number): void {
-	const nav = model.hunkNav[ordinal];
-	if (!nav) return;
-
-	list?.scrollToIndex(nav.rowIndex);
-	flash(`${nav.path}-${nav.hunkIdx}`);
-}
-
-// The steps here are the hunks, in the order `scrollToHunk` counts them.
-export function step(direction: 1 | -1): number {
-	const ordinal = vd.adjacentStep(direction);
-	if (ordinal < 0) return -1;
-
-	scrollToHunk(ordinal);
-	vd.noteStepJump(ordinal);
-	return ordinal;
-}
-
-/** Scrolls to one line's own row. A line the model does not carry — an Old-side
- *  number with no new-side row, or a collapsed file — falls back to the hunk,
- *  which is where the element-based path landed for every jump. */
-export function scrollToLine(
-	path: string,
-	hunkIdx: number,
-	lineIdx: number,
-): void {
-	const rowIndex = rowIndexForLine(model, path, hunkIdx, lineIdx);
-	if (rowIndex < 0) {
-		scrollToHunk(ordinalOf(path, hunkIdx));
-		return;
-	}
-
-	list?.scrollToIndex(rowIndex);
-	flash(`${path}-${hunkIdx}`);
-}
-
-export function scrollToThread(
-	path: string,
-	side: Side,
-	startLine: number,
-): boolean {
-	const rowIndex = rowIndexForThread(model, path, side, startLine);
-	if (rowIndex < 0) return false;
-
-	list?.scrollToIndex(rowIndex);
-	return true;
-}
-
-function flash(hunkKey: string): void {
-	if (flashTimer) clearTimeout(flashTimer);
-	flashedHunkKey = hunkKey;
-	flashTimer = setTimeout(() => {
-		flashedHunkKey = null;
-	}, FLASH_MS);
-}
+export const readingLine = vd.readingLine;
+export const hunkCount = vd.hunkCount;
+export const ordinalOf = vd.ordinalOf;
+export const scrollToHunk = vd.scrollToHunk;
+export const scrollToLine = vd.scrollToLine;
+export const scrollToThread = vd.scrollToThread;
+export const step = vd.step;
 </script>
 
 {#snippet threadCard(c: Thread)}
@@ -281,7 +198,7 @@ function flash(hunkKey: string): void {
 	>
 {/snippet}
 
-{#snippet diffRow(item: DiffRow, _index: number)}
+{#snippet diffRow(item: DiffRow, index: number)}
 	{#if item.kind === "line"}
 		{@const line = item.line}
 		{@const isSelectable =
@@ -412,9 +329,8 @@ function flash(hunkKey: string): void {
 		{@const hunkKey = `${item.path}-${item.hunkIdx}`}
 		{@const hasSelection = selectedHunkKey === hunkKey && selectedCount > 0}
 		<div
-			class="hunk-toolbar pan-pinned{flashedHunkKey === hunkKey
-				? " hunk-highlight"
-				: ""}"
+			class="hunk-toolbar pan-pinned"
+			class:hunk-highlight={vd.flashLit(index)}
 		>
 			<span class="hunk-header-text">{item.header}</span>
 			<HunkActions
@@ -459,6 +375,7 @@ function flash(hunkKey: string): void {
 
 <div
 	class="hunk-view"
+	style:--diff-flash-duration={FLASH_DURATION}
 	style:--diff-file-header-height={FIXED_ROW_HEIGHT_VARS[
 		"--diff-file-header-height"
 	]}
@@ -579,7 +496,7 @@ function flash(hunkKey: string): void {
 }
 
 .hunk-highlight {
-	animation: hunk-flash 0.6s ease-out;
+	animation: hunk-flash var(--diff-flash-duration) ease-out;
 }
 /* Under reduced motion the flash holds its colour and clears at once, so the
    place a jump landed is still marked. */
