@@ -27,6 +27,7 @@ import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { listsSameFiles } from "../lib/file-status.js";
 import { inertWhile } from "../lib/inert-while.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { focusInEditable } from "../lib/keyboard.js";
 import {
 	loadedDiffFor,
 	loadedModeFor,
@@ -2179,18 +2180,31 @@ $effect(() => {
 		// Visited RepoViews stay mounted, so this window listener fires in
 		// hidden tabs too — only the active tab may act on Escape.
 		if (!tabActive) return;
-		if (e.key !== "Escape" || showRebaseEditor) return;
+		if (e.key !== "Escape") return;
 		// The diff's own Escape, which clears a line selection, has already run.
 		if (e.defaultPrevented) return;
+		// An Escape typed into a field, the merge output included, is the field's.
+		if (focusInEditable(document.activeElement)) return;
 		// The diff or merge editor under the review panel is the one ending the
 		// review returns to, so an Escape on the panel leaves it.
 		if (reviewPanelShown) return;
-		if (showDiff || showMergeEditor) {
+
+		// The plan the rebase editor holds is lost when it closes, so Escape only
+		// closes the diff open over it.
+		if (showRebaseEditor) {
+			if (rebaseDiffFile !== null) {
+				e.preventDefault();
+				closeRebaseDiff();
+			}
+		} else if (showDiff || showMergeEditor) {
 			e.preventDefault();
 			handleDiffClose();
 		} else if (compare !== null) {
 			e.preventDefault();
 			handleCompareClose();
+		} else if (requestedCommitOid !== null) {
+			e.preventDefault();
+			clearCommit();
 		}
 	}
 	window.addEventListener("keydown", handleKeydown);

@@ -726,6 +726,7 @@ registerUpdateBlocker(
 
 			<!-- Editable output textarea -->
 			<textarea
+				aria-label="Merge output"
 				bind:this={panelRefs[2]}
 				value={outputText}
 				oninput={handleOutputEdit}

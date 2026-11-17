@@ -3802,6 +3802,30 @@ describe("RepoView", () => {
 			expect(await screen.findByText("REBASE DIFF")).toBeTruthy();
 		});
 
+		it("closes a rebase file's diff on Escape and keeps the plan", async () => {
+			await openARebaseFileDiff("src/rebase.ts");
+
+			await fireEvent.keyDown(window, { key: "Escape" });
+			await flush();
+
+			expect(screen.queryByText("REBASE DIFF")).toBeNull();
+			expect(
+				screen.getByRole("listbox", { name: "Commits to rebase" }),
+			).toBeTruthy();
+		});
+
+		it("keeps the plan through an Escape with no rebase diff open", async () => {
+			stubRebaseTodo(PARENT_OID);
+			await openTheEditorOnTheClickedCommit();
+
+			await fireEvent.keyDown(window, { key: "Escape" });
+			await flush();
+
+			expect(
+				screen.getByRole("listbox", { name: "Commits to rebase" }),
+			).toBeTruthy();
+		});
+
 		it("keeps the newest rebase diff options when older reloads finish last", async () => {
 			stubRebaseTodo(PARENT_OID);
 			const base = mockInvoke.getMockImplementation();

@@ -621,6 +621,80 @@ describe("RepoView commit selection", () => {
 		expect(commitRow("second")).toHaveAttribute("aria-selected", "true");
 	});
 
+	describe("on Escape", () => {
+		it("deselects the selected commit", async () => {
+			await openRepository();
+			await selectCommit("first");
+			await screen.findByText("first.txt");
+
+			await fireEvent.keyDown(window, { key: "Escape" });
+			await drainReplies();
+
+			expect(screen.queryByTestId("commit-detail")).toBeNull();
+			expect(commitRow("first")).toHaveAttribute("aria-selected", "false");
+		});
+
+		it("closes the commit's open file and keeps the commit selected", async () => {
+			await openRepository();
+			await selectCommit("first");
+			await fireEvent.click(await screen.findByText("first.txt"));
+			await screen.findByText("first file content");
+
+			await fireEvent.keyDown(window, { key: "Escape" });
+			await drainReplies();
+
+			expect(screen.queryByText("first file content")).toBeNull();
+			expect(commitRow("first")).toHaveAttribute("aria-selected", "true");
+		});
+
+		it("leaves the selected commit to a text field that has focus", async () => {
+			seedBranch();
+			await openRepository();
+			await selectCommit("first");
+			await screen.findByText("first.txt");
+			await fireEvent.click(
+				await screen.findByRole("button", { name: "Create new branch" }),
+			);
+			const branchName = await screen.findByPlaceholderText("New branch name");
+			branchName.focus();
+
+			await fireEvent.keyDown(branchName, { key: "Escape" });
+			await drainReplies();
+
+			expect(commitRow("first")).toHaveAttribute("aria-selected", "true");
+		});
+
+		it("keeps a conflict resolution being typed in the merge editor", async () => {
+			host.seedResponse("get_status", {
+				unstaged: [],
+				staged: [],
+				conflicted: [
+					{ path: "README.md", status: "Conflicted", is_binary: false },
+				],
+			});
+			host.seedResponse("get_merge_sides", {
+				base: "line 1\ncommon line\n",
+				ours: "line 1\nour change\n",
+				theirs: "line 1\ntheir change\n",
+			});
+			await openRepository();
+			await fireEvent.click(await screen.findByText("README.md"));
+			await vi.dynamicImportSettled();
+			const output = await screen.findByRole("textbox", {
+				name: "Merge output",
+			});
+			output.focus();
+			await fireEvent.input(output, { target: { value: "resolved\n" } });
+
+			await fireEvent.keyDown(output, { key: "Escape" });
+			await drainReplies();
+
+			expect(screen.getByRole("textbox", { name: "Merge output" })).toHaveValue(
+				"resolved\n",
+			);
+		});
+	});
+
 	it("scrolls to a parent whose link is clicked again while it loads", async () => {
 		const view = await openRepository();
 		seedCommit("first");
