@@ -254,6 +254,12 @@ where a current-file comment is written. It shows the file's content and never i
 even for a file with pending changes, so there are no hunks to choose between: it is always
 full-file (TRUNK-154.3) and offers no content-mode toggle (TRUNK-201).
 
+**Hunk**: one run of changed lines in a file's diff, with the unchanged lines around it for
+context. A hunk action (staging, unstaging or discarding a hunk or some of its lines) acts on
+the hunk as the view showed it, named by its old-side start and its lines. When the file has
+changed since and no longer holds that hunk, the action changes nothing and the diff reloads
+to show the file as it is (TRUNK-458).
+
 **Old path** — where a renamed file came from, carried on every file diff as `old_path`
 and null for every other status (TRUNK-82). Rename pairing runs over the whole tree
 before a single file is picked out, so a rename arrives already paired from commit,

@@ -139,6 +139,25 @@ fn make_repo_for_stage_hunk() -> (tempfile::TempDir, String, OpenRepos) {
     (dir, path, state_map)
 }
 
+/// The hunk the view shows for `make_repo_for_stage_hunk`'s one-line rewrite.
+fn readme_rewrite_hunk() -> trunk_lib::types::ShownHunk {
+    use trunk_lib::types::{DiffOrigin, ShownHunk, ShownLine};
+
+    ShownHunk {
+        old_start: 1,
+        lines: vec![
+            ShownLine {
+                origin: DiffOrigin::Delete,
+                content: "initial content\n".to_string(),
+            },
+            ShownLine {
+                origin: DiffOrigin::Add,
+                content: "modified content\n".to_string(),
+            },
+        ],
+    }
+}
+
 // OnceLock fixtures for read-only benchmarks
 static REPO_BRANCHES: OnceLock<BenchRepo> = OnceLock::new();
 static REPO_UNSTAGED: OnceLock<BenchRepo> = OnceLock::new();
@@ -194,7 +213,7 @@ fn bench_stage_hunk(c: &mut Criterion) {
                 trunk_lib::commands::staging::stage_hunk_inner(
                     path,
                     "README.md",
-                    0,
+                    &readme_rewrite_hunk(),
                     state_map,
                     &trunk_lib::types::DiffRequestOptions::default(),
                 )

@@ -2,8 +2,8 @@
 // The actions on a hunk's header. They render as siblings with no wrapper, so
 // the header's flex row lays them out.
 // Only an in-flight operation disables a staging button. Staging rebuilds the
-// diff with the view options the hunk was rendered under, so a hunk index names
-// the same hunk on both sides, even with whitespace ignored (TRUNK-73).
+// diff with the view options the hunk was rendered under, so it finds the hunk
+// the view showed, even with whitespace ignored (TRUNK-73).
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import Button from "../../lib/ui/Button.svelte";
 

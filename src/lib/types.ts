@@ -238,6 +238,16 @@ export interface DiffHunk {
 	lines: DiffLine[];
 }
 
+/**
+ * A hunk as the view showed it, which a hunk or line action names. The backend
+ * looks for it in the file's diff as it is now and refuses with `stale_hunk`
+ * when the file no longer has it.
+ */
+export interface ShownHunk {
+	old_start: number;
+	lines: Pick<DiffLine, "origin" | "content">[];
+}
+
 export type DiffStatus =
 	| "Added"
 	| "Deleted"

@@ -1,6 +1,6 @@
-use crate::commands::diff::{staging_staged_diff, staging_workdir_diff};
+use crate::commands::diff::{hunks_of, staged_view_diff, unstaged_view_diff};
 use crate::state::{OpenRepos, RepoState};
-use crate::types::{DiffRequestOptions, FileStatus, FileStatusType, WorkingTreeStatus};
+use crate::types::{DiffRequestOptions, FileStatus, FileStatusType, ShownHunk, WorkingTreeStatus};
 use git2::{Status, StatusOptions};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -518,60 +518,70 @@ pub fn stage_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkErr
     Ok(())
 }
 
-/// Stage one hunk of a file's unstaged diff, addressed by its index.
+/// Stage the hunk the view showed from a file's unstaged diff.
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
-/// no unstaged change or is binary, `stale_hunk_index` when `hunk_index` is
-/// past the end, and `hunk_apply_failed` when the hunk will not apply.
+/// As `stage_lines_inner`, for every changed line of the hunk.
 pub fn stage_hunk_inner(
     path: &str,
     file_path: &str,
-    hunk_index: u32,
+    shown: &ShownHunk,
     state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
+    stage_lines_inner(
+        path,
+        file_path,
+        shown,
+        &shown.changed_lines(),
+        state_map,
+        options,
+    )
+}
 
-    let diff = staging_workdir_diff(&repo, file_path, options, false)?;
+/// Unstage the hunk the view showed from a file's staged diff.
+///
+/// # Errors
+///
+/// As `unstage_lines_inner`, for every changed line of the hunk.
+pub fn unstage_hunk_inner(
+    path: &str,
+    file_path: &str,
+    shown: &ShownHunk,
+    state_map: &OpenRepos,
+    options: &DiffRequestOptions,
+) -> Result<(), TrunkError> {
+    unstage_lines_inner(
+        path,
+        file_path,
+        shown,
+        &shown.changed_lines(),
+        state_map,
+        options,
+    )
+}
 
-    // Validate: at least one delta expected
-    if diff.deltas().len() == 0 {
-        return Err(TrunkError::new(
-            "file_not_found",
-            format!("No unstaged changes for: {file_path}"),
-        ));
-    }
-
-    // Count hunks via Patch to validate hunk_index
-    let hunks = git2::Patch::from_diff(&diff, 0)?
-        .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))?;
-    let num_hunks = hunks.num_hunks();
-    if (hunk_index as usize) >= num_hunks {
-        return Err(TrunkError::new(
-            "stale_hunk_index",
-            format!("Hunk index {hunk_index} out of range (file has {num_hunks} hunks)"),
-        ));
-    }
-    drop(hunks); // Release borrow on diff
-
-    seed_index_for_untracked(&repo, file_path)?;
-
-    // Apply only the target hunk to the index
-    let target = hunk_index as usize;
-    let mut current: usize = 0;
-    let mut apply_opts = git2::ApplyOptions::new();
-    apply_opts.hunk_callback(move |_hunk| {
-        let apply = current == target;
-        current += 1;
-        apply
-    });
-
-    repo.apply(&diff, git2::ApplyLocation::Index, Some(&mut apply_opts))
-        .map_err(|e| TrunkError::new("hunk_apply_failed", e.message().to_owned()))?;
-
-    Ok(())
+/// Throw away the hunk the view showed from a file's unstaged diff.
+///
+/// # Errors
+///
+/// As `discard_lines_inner`, for every changed line of the hunk.
+pub fn discard_hunk_inner(
+    path: &str,
+    file_path: &str,
+    shown: &ShownHunk,
+    state_map: &OpenRepos,
+    options: &DiffRequestOptions,
+) -> Result<(), TrunkError> {
+    discard_lines_inner(
+        path,
+        file_path,
+        shown,
+        &shown.changed_lines(),
+        state_map,
+        options,
+    )
 }
 
 /// Locate the delta the user's file belongs to in a whole-repository diff.
@@ -587,131 +597,6 @@ fn delta_index_of(diff: &git2::Diff, file_path: &str) -> Option<usize> {
     diff.deltas().position(|delta| {
         delta.new_file().path() == Some(wanted) || delta.old_file().path() == Some(wanted)
     })
-}
-
-/// Restrict an apply to one delta of a whole-repository diff.
-///
-/// `repo.apply` writes every delta it is handed. These diffs are no longer
-/// narrowed by a pathspec — that would break rename pairing — so without this
-/// gate a hunk gesture on one file would also apply every other staged file's
-/// changes.
-fn only_delta(apply_opts: &mut git2::ApplyOptions, delta_index: usize) {
-    let mut seen: usize = 0;
-
-    apply_opts.delta_callback(move |_delta| {
-        let apply = seen == delta_index;
-        seen += 1;
-        apply
-    });
-}
-
-/// Unstage one hunk of a file's staged diff, addressed by its index.
-///
-/// # Errors
-///
-/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
-/// no staged change, `stale_hunk_index` when `hunk_index` is past the end, and
-/// `hunk_apply_failed` when the hunk will not apply.
-pub fn unstage_hunk_inner(
-    path: &str,
-    file_path: &str,
-    hunk_index: u32,
-    state_map: &OpenRepos,
-    options: &DiffRequestOptions,
-) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
-
-    // Reversed (index -> HEAD), so applying it to the index undoes the staged
-    // change.
-    let diff = staging_staged_diff(&repo, options, true)?;
-
-    let delta_index = delta_index_of(&diff, file_path).ok_or_else(|| {
-        TrunkError::new(
-            "file_not_found",
-            format!("No staged changes for: {file_path}"),
-        )
-    })?;
-
-    let hunks = git2::Patch::from_diff(&diff, delta_index)?
-        .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))?;
-    let num_hunks = hunks.num_hunks();
-    if (hunk_index as usize) >= num_hunks {
-        return Err(TrunkError::new(
-            "stale_hunk_index",
-            format!("Hunk index {hunk_index} out of range (file has {num_hunks} hunks)"),
-        ));
-    }
-    drop(hunks);
-
-    // Apply reversed hunk to index
-    let target = hunk_index as usize;
-    let mut current: usize = 0;
-    let mut apply_opts = git2::ApplyOptions::new();
-    apply_opts.hunk_callback(move |_hunk| {
-        let apply = current == target;
-        current += 1;
-        apply
-    });
-    only_delta(&mut apply_opts, delta_index);
-
-    repo.apply(&diff, git2::ApplyLocation::Index, Some(&mut apply_opts))
-        .map_err(|e| TrunkError::new("hunk_apply_failed", e.message().to_owned()))?;
-
-    Ok(())
-}
-
-/// Throw away one hunk of a file's unstaged diff, addressed by its index.
-///
-/// # Errors
-///
-/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
-/// no unstaged change or is binary, `stale_hunk_index` when `hunk_index` is
-/// past the end, and `hunk_apply_failed` when the hunk will not apply.
-pub fn discard_hunk_inner(
-    path: &str,
-    file_path: &str,
-    hunk_index: u32,
-    state_map: &OpenRepos,
-    options: &DiffRequestOptions,
-) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
-
-    // Reversed (workdir -> index) so applying to the workdir undoes the change.
-    let diff = staging_workdir_diff(&repo, file_path, options, true)?;
-
-    if diff.deltas().len() == 0 {
-        return Err(TrunkError::new(
-            "file_not_found",
-            format!("No unstaged changes for: {file_path}"),
-        ));
-    }
-
-    // Validate hunk_index
-    let hunks = git2::Patch::from_diff(&diff, 0)?
-        .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))?;
-    let num_hunks = hunks.num_hunks();
-    if (hunk_index as usize) >= num_hunks {
-        return Err(TrunkError::new(
-            "stale_hunk_index",
-            format!("Hunk index {hunk_index} out of range (file has {num_hunks} hunks)"),
-        ));
-    }
-    drop(hunks);
-
-    // Apply reversed hunk to workdir
-    let target = hunk_index as usize;
-    let mut current: usize = 0;
-    let mut apply_opts = git2::ApplyOptions::new();
-    apply_opts.hunk_callback(move |_hunk| {
-        let apply = current == target;
-        current += 1;
-        apply
-    });
-
-    repo.apply(&diff, git2::ApplyLocation::WorkDir, Some(&mut apply_opts))
-        .map_err(|e| TrunkError::new("hunk_apply_failed", e.message().to_owned()))?;
-
-    Ok(())
 }
 
 /// Restore the whole index to HEAD.
@@ -1079,16 +964,14 @@ pub async fn stage_hunk(
     activity: crate::activity::Activity,
     path: String,
     file_path: String,
-    hunk_index: u32,
+    hunk: ShownHunk,
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
     let options = options.unwrap_or_default();
     activity
-        .spawn_blocking(move || {
-            stage_hunk_inner(&path, &file_path, hunk_index, &state_map, &options)
-        })
+        .spawn_blocking(move || stage_hunk_inner(&path, &file_path, &hunk, &state_map, &options))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -1107,16 +990,14 @@ pub async fn unstage_hunk(
     activity: crate::activity::Activity,
     path: String,
     file_path: String,
-    hunk_index: u32,
+    hunk: ShownHunk,
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
     let options = options.unwrap_or_default();
     activity
-        .spawn_blocking(move || {
-            unstage_hunk_inner(&path, &file_path, hunk_index, &state_map, &options)
-        })
+        .spawn_blocking(move || unstage_hunk_inner(&path, &file_path, &hunk, &state_map, &options))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -1135,16 +1016,14 @@ pub async fn discard_hunk(
     activity: crate::activity::Activity,
     path: String,
     file_path: String,
-    hunk_index: u32,
+    hunk: ShownHunk,
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
     let options = options.unwrap_or_default();
     activity
-        .spawn_blocking(move || {
-            discard_hunk_inner(&path, &file_path, hunk_index, &state_map, &options)
-        })
+        .spawn_blocking(move || discard_hunk_inner(&path, &file_path, &hunk, &state_map, &options))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -1163,7 +1042,7 @@ pub async fn stage_lines(
     activity: crate::activity::Activity,
     path: String,
     file_path: String,
-    hunk_index: u32,
+    hunk: ShownHunk,
     line_indices: Vec<u32>,
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
@@ -1175,7 +1054,7 @@ pub async fn stage_lines(
             stage_lines_inner(
                 &path,
                 &file_path,
-                hunk_index,
+                &hunk,
                 &line_indices,
                 &state_map,
                 &options,
@@ -1199,7 +1078,7 @@ pub async fn unstage_lines(
     activity: crate::activity::Activity,
     path: String,
     file_path: String,
-    hunk_index: u32,
+    hunk: ShownHunk,
     line_indices: Vec<u32>,
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
@@ -1211,7 +1090,7 @@ pub async fn unstage_lines(
             unstage_lines_inner(
                 &path,
                 &file_path,
-                hunk_index,
+                &hunk,
                 &line_indices,
                 &state_map,
                 &options,
@@ -1235,7 +1114,7 @@ pub async fn discard_lines(
     activity: crate::activity::Activity,
     path: String,
     file_path: String,
-    hunk_index: u32,
+    hunk: ShownHunk,
     line_indices: Vec<u32>,
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
@@ -1247,7 +1126,7 @@ pub async fn discard_lines(
             discard_lines_inner(
                 &path,
                 &file_path,
-                hunk_index,
+                &hunk,
                 &line_indices,
                 &state_map,
                 &options,
@@ -1516,25 +1395,13 @@ fn patch_header(file_path: &str, patch: &git2::Patch<'_>, reverse: bool) -> Stri
 /// figure (`patch_parse.c` and `apply.c`, libgit2 1.9.7), so any percentage does.
 const RENAME_SIMILARITY: u8 = 100;
 
-/// Stage selected lines within one hunk of a file's unstaged diff.
-///
-/// # Errors
-///
-/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
-/// no unstaged change or is binary, `stale_hunk_index` when `hunk_index` is
-/// past the end, `patch_parse_failed` when the rebuilt patch will not parse,
-/// and `line_apply_failed` when it will not apply.
-pub fn stage_lines_inner(
-    path: &str,
+/// The file's unstaged diff, index to working tree, as the view built it.
+fn unstaged_patch<'r>(
+    repo: &'r git2::Repository,
     file_path: &str,
-    hunk_index: u32,
-    line_indices: &[u32],
-    state_map: &OpenRepos,
     options: &DiffRequestOptions,
-) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
-
-    let diff = staging_workdir_diff(&repo, file_path, options, false)?;
+) -> Result<git2::Patch<'r>, TrunkError> {
+    let diff = unstaged_view_diff(repo, file_path, options)?;
 
     if diff.deltas().len() == 0 {
         return Err(TrunkError::new(
@@ -1543,58 +1410,17 @@ pub fn stage_lines_inner(
         ));
     }
 
-    let hunks = git2::Patch::from_diff(&diff, 0)?
-        .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))?;
-
-    if (hunk_index as usize) >= hunks.num_hunks() {
-        return Err(TrunkError::new(
-            "stale_hunk_index",
-            format!(
-                "Hunk index {} out of range (file has {} hunks)",
-                hunk_index,
-                hunks.num_hunks()
-            ),
-        ));
-    }
-
-    let patch_text =
-        build_partial_patch_text(file_path, &hunks, hunk_index as usize, line_indices, false)?;
-    drop(hunks);
-    drop(diff);
-
-    seed_index_for_untracked(&repo, file_path)?;
-
-    let partial_diff = git2::Diff::from_buffer(patch_text.as_bytes())
-        .map_err(|e| TrunkError::new("patch_parse_failed", e.message().to_owned()))?;
-
-    repo.apply(&partial_diff, git2::ApplyLocation::Index, None)
-        .map_err(|e| TrunkError::new("line_apply_failed", e.message().to_owned()))?;
-
-    Ok(())
+    git2::Patch::from_diff(&diff, 0)?
+        .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))
 }
 
-/// Unstage selected lines within one hunk of a file's staged diff.
-///
-/// # Errors
-///
-/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
-/// no staged change, `stale_hunk_index` when `hunk_index` is past the end,
-/// `patch_parse_failed` when the rebuilt patch will not parse, and
-/// `line_apply_failed` when it will not apply.
-pub fn unstage_lines_inner(
-    path: &str,
+/// The file's staged diff, HEAD to index, as the view built it.
+fn staged_patch<'r>(
+    repo: &'r git2::Repository,
     file_path: &str,
-    hunk_index: u32,
-    line_indices: &[u32],
-    state_map: &OpenRepos,
     options: &DiffRequestOptions,
-) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
-
-    // Forward, so line indices match the user's view; the partial patch built
-    // from it is reversed instead, to undo the selected lines.
-    let diff = staging_staged_diff(&repo, options, false)?;
-
+) -> Result<git2::Patch<'r>, TrunkError> {
+    let diff = staged_view_diff(repo, options)?;
     let delta_index = delta_index_of(&diff, file_path).ok_or_else(|| {
         TrunkError::new(
             "file_not_found",
@@ -1602,89 +1428,113 @@ pub fn unstage_lines_inner(
         )
     })?;
 
-    let hunks = git2::Patch::from_diff(&diff, delta_index)?
-        .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))?;
+    git2::Patch::from_diff(&diff, delta_index)?
+        .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))
+}
 
-    if (hunk_index as usize) >= hunks.num_hunks() {
-        return Err(TrunkError::new(
-            "stale_hunk_index",
-            format!(
-                "Hunk index {} out of range (file has {} hunks)",
-                hunk_index,
-                hunks.num_hunks()
-            ),
-        ));
-    }
+/// Where the hunk the view showed sits in the file's diff as it is now.
+fn shown_hunk_index(
+    patch: &git2::Patch<'_>,
+    file_path: &str,
+    shown: &ShownHunk,
+) -> Result<usize, TrunkError> {
+    hunks_of(patch)?
+        .iter()
+        .position(|hunk| shown.matches(hunk))
+        .ok_or_else(|| {
+            TrunkError::new(
+                "stale_hunk",
+                format!("{file_path} changed since its diff was shown"),
+            )
+        })
+}
 
-    // Build a reversed partial patch: undoes selected lines in the index
-    let patch_text =
-        build_partial_patch_text(file_path, &hunks, hunk_index as usize, line_indices, true)?;
-    drop(hunks);
-    drop(diff);
-
+/// Apply a partial patch built by `build_partial_patch_text`.
+fn apply_patch_text(
+    repo: &git2::Repository,
+    patch_text: &str,
+    location: git2::ApplyLocation,
+) -> Result<(), TrunkError> {
     let partial_diff = git2::Diff::from_buffer(patch_text.as_bytes())
         .map_err(|e| TrunkError::new("patch_parse_failed", e.message().to_owned()))?;
 
-    repo.apply(&partial_diff, git2::ApplyLocation::Index, None)
-        .map_err(|e| TrunkError::new("line_apply_failed", e.message().to_owned()))?;
-
-    Ok(())
+    repo.apply(&partial_diff, location, None)
+        .map_err(|e| TrunkError::new("line_apply_failed", e.message().to_owned()))
 }
 
-/// Throw away selected lines within one hunk of a file's unstaged diff.
+/// Stage selected lines of the hunk the view showed from a file's unstaged diff.
 ///
 /// # Errors
 ///
 /// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
-/// no unstaged change or is binary, `stale_hunk_index` when `hunk_index` is
-/// past the end, `patch_parse_failed` when the rebuilt patch will not parse,
-/// and `line_apply_failed` when it will not apply.
-pub fn discard_lines_inner(
+/// no unstaged change or is binary, `stale_hunk` when the file no longer has the hunk the
+/// view showed, `patch_parse_failed` when the rebuilt patch will not parse, and
+/// `line_apply_failed` when it will not apply.
+pub fn stage_lines_inner(
     path: &str,
     file_path: &str,
-    hunk_index: u32,
+    shown: &ShownHunk,
     line_indices: &[u32],
     state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
     let repo = state_map.open(path)?;
-
-    // Forward, so line indices match the user's view; the partial patch built
-    // from it is reversed instead, to undo the selected lines.
-    let diff = staging_workdir_diff(&repo, file_path, options, false)?;
-
-    if diff.deltas().len() == 0 {
-        return Err(TrunkError::new(
-            "file_not_found",
-            format!("No unstaged changes for: {file_path}"),
-        ));
-    }
-
-    let hunks = git2::Patch::from_diff(&diff, 0)?
-        .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))?;
-
-    if (hunk_index as usize) >= hunks.num_hunks() {
-        return Err(TrunkError::new(
-            "stale_hunk_index",
-            format!(
-                "Hunk index {} out of range (file has {} hunks)",
-                hunk_index,
-                hunks.num_hunks()
-            ),
-        ));
-    }
-
-    // Build a reversed partial patch: undoes selected lines in the working directory
+    let current = unstaged_patch(&repo, file_path, options)?;
+    let hunk_index = shown_hunk_index(&current, file_path, shown)?;
     let patch_text =
-        build_partial_patch_text(file_path, &hunks, hunk_index as usize, line_indices, true)?;
-    drop(hunks);
-    drop(diff);
+        build_partial_patch_text(file_path, &current, hunk_index, line_indices, false)?;
+    drop(current);
 
-    let partial_diff = git2::Diff::from_buffer(patch_text.as_bytes())
-        .map_err(|e| TrunkError::new("patch_parse_failed", e.message().to_owned()))?;
+    seed_index_for_untracked(&repo, file_path)?;
+    apply_patch_text(&repo, &patch_text, git2::ApplyLocation::Index)
+}
 
-    repo.apply(&partial_diff, git2::ApplyLocation::WorkDir, None)
-        .map_err(|e| TrunkError::new("line_apply_failed", e.message().to_owned()))?;
+/// Unstage selected lines of the hunk the view showed from a file's staged diff.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
+/// no staged change, `stale_hunk` when the file no longer has the hunk the view showed,
+/// `patch_parse_failed` when the rebuilt patch will not parse, and `line_apply_failed` when
+/// it will not apply.
+pub fn unstage_lines_inner(
+    path: &str,
+    file_path: &str,
+    shown: &ShownHunk,
+    line_indices: &[u32],
+    state_map: &OpenRepos,
+    options: &DiffRequestOptions,
+) -> Result<(), TrunkError> {
+    let repo = state_map.open(path)?;
+    let current = staged_patch(&repo, file_path, options)?;
+    let hunk_index = shown_hunk_index(&current, file_path, shown)?;
+    let patch_text = build_partial_patch_text(file_path, &current, hunk_index, line_indices, true)?;
+    drop(current);
 
-    Ok(())
+    apply_patch_text(&repo, &patch_text, git2::ApplyLocation::Index)
+}
+
+/// Throw away selected lines of the hunk the view showed from a file's unstaged diff.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
+/// no unstaged change or is binary, `stale_hunk` when the file no longer has the hunk the
+/// view showed, `patch_parse_failed` when the rebuilt patch will not parse, and
+/// `line_apply_failed` when it will not apply.
+pub fn discard_lines_inner(
+    path: &str,
+    file_path: &str,
+    shown: &ShownHunk,
+    line_indices: &[u32],
+    state_map: &OpenRepos,
+    options: &DiffRequestOptions,
+) -> Result<(), TrunkError> {
+    let repo = state_map.open(path)?;
+    let current = unstaged_patch(&repo, file_path, options)?;
+    let hunk_index = shown_hunk_index(&current, file_path, shown)?;
+    let patch_text = build_partial_patch_text(file_path, &current, hunk_index, line_indices, true)?;
+    drop(current);
+
+    apply_patch_text(&repo, &patch_text, git2::ApplyLocation::WorkDir)
 }

@@ -3677,9 +3677,8 @@ describe("Discard File button", () => {
 
 	// The action buttons' only `disabled` binding is `hunkOperationInFlight`
 	// (HunkActions.svelte). Clearing it in the `finally` reopens them while the
-	// refetch is still in flight, so the second click carries a hunk index from
-	// the stale render and the backend applies it positionally against an
-	// already-updated worktree.
+	// refetch is still in flight, so the second click acts from the stale render
+	// against an already-updated worktree.
 	describe("hunk operation in-flight guard", () => {
 		const twoHunkDiff: FileDiff = {
 			path: "src/main.ts",
@@ -3768,7 +3767,7 @@ describe("Discard File button", () => {
 		});
 
 		// Discard and Unstage share the guard with Stage, and each sends the
-		// index of the hunk whose button was clicked.
+		// hunk whose button was clicked.
 		it.each([
 			{ diffKind: "unstaged", label: "Discard Hunk", cmd: "discard_hunk" },
 			{ diffKind: "staged", label: "Unstage Hunk", cmd: "unstage_hunk" },
@@ -3811,7 +3810,10 @@ describe("Discard File button", () => {
 						expect.objectContaining({
 							path: "/test/repo",
 							filePath: "src/main.ts",
-							hunkIndex: 1,
+							hunk: {
+								old_start: 20,
+								lines: [{ origin: "Add", content: "second hunk" }],
+							},
 						}),
 					],
 				]);
@@ -3824,6 +3826,168 @@ describe("Discard File button", () => {
 				releaseRefetch();
 				await flushPrefs();
 			},
+		);
+	});
+});
+
+// ---- Hunk actions on a file that changed after its diff was shown ----
+
+describe("DiffPanel hunk actions on a changed file", () => {
+	afterEach(() => {
+		vi.mocked(safeInvoke).mockReset();
+		vi.mocked(safeInvoke).mockImplementation(() => Promise.resolve(undefined));
+	});
+
+	const rewrite = {
+		header: "@@ -20,1 +20,1 @@",
+		old_start: 20,
+		old_lines: 1,
+		new_start: 20,
+		new_lines: 1,
+		lines: [
+			{
+				origin: "Delete" as const,
+				content: "old twenty",
+				old_lineno: 20,
+				new_lineno: null,
+				spans: [],
+			},
+			{
+				origin: "Add" as const,
+				content: "new twenty",
+				old_lineno: null,
+				new_lineno: 20,
+				spans: [],
+			},
+		],
+	};
+	const shownDiff: FileDiff = {
+		path: "src/main.ts",
+		old_path: null,
+		status: "Modified",
+		is_binary: false,
+		hunks: [rewrite],
+	};
+	// An editor wrote line 1 while the confirmation was open, so the hunk the
+	// user saw is now the second one.
+	const reloadedDiff: FileDiff = {
+		...shownDiff,
+		hunks: [
+			{
+				header: "@@ -1,1 +1,1 @@",
+				old_start: 1,
+				old_lines: 1,
+				new_start: 1,
+				new_lines: 1,
+				lines: [
+					{
+						origin: "Add",
+						content: "new one",
+						old_lineno: null,
+						new_lineno: 1,
+						spans: [],
+					},
+				],
+			},
+			rewrite,
+		],
+	};
+	const shownHunk = {
+		old_start: 20,
+		lines: [
+			{ origin: "Delete", content: "old twenty" },
+			{ origin: "Add", content: "new twenty" },
+		],
+	};
+
+	function sent(command: string) {
+		return vi
+			.mocked(safeInvoke)
+			.mock.calls.find(([cmd]) => cmd === command)?.[1];
+	}
+
+	async function renderShown(onhunkaction = vi.fn(() => Promise.resolve())) {
+		const props = {
+			...commentingDiff,
+			fileDiffs: [shownDiff],
+			commitDetail: null,
+			onclose: vi.fn(),
+			diffKind: "unstaged" as const,
+			repoPath: "/test/repo",
+			selectedPath: "src/main.ts",
+			onhunkaction,
+		};
+		const view = render(DiffPanel, { props });
+		await flushPrefs();
+		return { view, props };
+	}
+
+	async function pendingConfirmation() {
+		const { ask } = await import("@tauri-apps/plugin-dialog");
+		let confirm: (yes: boolean) => void = () => {};
+		vi.mocked(ask).mockImplementationOnce(
+			() =>
+				new Promise<boolean>((resolve) => {
+					confirm = resolve;
+				}),
+		);
+		return { ask, confirm: (yes: boolean) => confirm(yes) };
+	}
+
+	it("discards the hunk it showed when the diff reloads during the confirmation", async () => {
+		const pending = await pendingConfirmation();
+		const { view, props } = await renderShown();
+
+		await fireEvent.click(screen.getByText("Discard Hunk"));
+		await waitFor(() => expect(pending.ask).toHaveBeenCalled());
+		await view.rerender({ ...props, fileDiffs: [reloadedDiff] });
+		pending.confirm(true);
+
+		await waitFor(() =>
+			expect(sent("discard_hunk")).toMatchObject({ hunk: shownHunk }),
+		);
+	});
+
+	it("discards the lines it counted when the diff reloads during the confirmation", async () => {
+		const pending = await pendingConfirmation();
+		const { view, props } = await renderShown();
+		await fireEvent.mouseDown(gutterOf("new twenty"));
+		await fireEvent.mouseUp(window);
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Discard Lines (1)" }),
+		);
+		await waitFor(() => expect(pending.ask).toHaveBeenCalled());
+		await view.rerender({ ...props, fileDiffs: [reloadedDiff] });
+		pending.confirm(true);
+
+		await waitFor(() =>
+			expect(sent("discard_lines")).toMatchObject({
+				hunk: shownHunk,
+				lineIndices: [1],
+			}),
+		);
+	});
+
+	it("reloads the diff and says nothing was done when the file no longer has the hunk", async () => {
+		const { showToast } = await import("../lib/toast.svelte.js");
+		vi.mocked(showToast).mockClear();
+		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+			cmd === "stage_hunk"
+				? Promise.reject({ code: "stale_hunk", message: "stale" })
+				: Promise.resolve(undefined),
+		);
+		const onhunkaction = vi.fn(() => Promise.resolve());
+		await renderShown(onhunkaction);
+
+		await fireEvent.click(screen.getByText("Stage Hunk"));
+
+		await waitFor(() =>
+			expect(onhunkaction).toHaveBeenCalledWith("src/main.ts"),
+		);
+		expect(vi.mocked(showToast)).toHaveBeenCalledWith(
+			"src/main.ts changed since its diff was shown, so nothing was done. The diff now shows the file as it is.",
+			"error",
 		);
 	});
 });

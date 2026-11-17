@@ -14,7 +14,7 @@ import {
 	buildFullFileAnchor,
 	fileSelectableIndices,
 } from "../lib/full-file-anchor.js";
-import { safeInvoke } from "../lib/invoke.js";
+import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import {
 	askToDiscardComment,
@@ -54,6 +54,7 @@ import type {
 	RenderMode,
 	Review,
 	ReviewFilter,
+	ShownHunk,
 	Side,
 	Thread,
 } from "../lib/types.js";
@@ -998,14 +999,45 @@ async function handleDiscardFile() {
 	}
 }
 
+// What a hunk or line action names: the hunk as this render shows it, taken at the
+// click, because the diff can reload before the action runs.
+function shownHunk(filePath: string, hunkIndex: number): ShownHunk {
+	const hunk = fileDiffs.find((fd) => fd.path === filePath)?.hunks[hunkIndex];
+	if (!hunk) throw new Error(`${filePath} shows no hunk ${hunkIndex}`);
+
+	return {
+		old_start: hunk.old_start,
+		lines: hunk.lines.map(({ origin, content }) => ({ origin, content })),
+	};
+}
+
+// The backend refuses a hunk the file no longer has, so nothing changed, and the
+// diff reloads to show the file as it is now.
+async function reportHunkActionError(
+	e: unknown,
+	filePath: string,
+	fallback: string,
+) {
+	if (isTrunkError(e) && e.code === "stale_hunk") {
+		showToast(
+			`${filePath} changed since its diff was shown, so nothing was done. The diff now shows the file as it is.`,
+			"error",
+		);
+		await onhunkaction?.(filePath);
+		return;
+	}
+	reportErrorToast(e, fallback);
+}
+
 async function handleStageHunk(filePath: string, hunkIndex: number) {
 	if (hunkOperationInFlight) return;
+	const hunk = shownHunk(filePath, hunkIndex);
 	hunkOperationInFlight = true;
 	try {
 		await safeInvoke("stage_hunk", {
 			path: repoPath,
 			filePath,
-			hunkIndex,
+			hunk,
 			options: currentDiffOptions(),
 		});
 		if (isLastHunk(filePath)) {
@@ -1014,7 +1046,7 @@ async function handleStageHunk(filePath: string, hunkIndex: number) {
 			await onhunkaction?.(filePath);
 		}
 	} catch (e) {
-		reportErrorToast(e, "Stage hunk failed");
+		await reportHunkActionError(e, filePath, "Stage hunk failed");
 	} finally {
 		hunkOperationInFlight = false;
 	}
@@ -1022,12 +1054,13 @@ async function handleStageHunk(filePath: string, hunkIndex: number) {
 
 async function handleUnstageHunk(filePath: string, hunkIndex: number) {
 	if (hunkOperationInFlight) return;
+	const hunk = shownHunk(filePath, hunkIndex);
 	hunkOperationInFlight = true;
 	try {
 		await safeInvoke("unstage_hunk", {
 			path: repoPath,
 			filePath,
-			hunkIndex,
+			hunk,
 			options: currentDiffOptions(),
 		});
 		if (isLastHunk(filePath)) {
@@ -1036,7 +1069,7 @@ async function handleUnstageHunk(filePath: string, hunkIndex: number) {
 			await onhunkaction?.(filePath);
 		}
 	} catch (e) {
-		reportErrorToast(e, "Unstage hunk failed");
+		await reportHunkActionError(e, filePath, "Unstage hunk failed");
 	} finally {
 		hunkOperationInFlight = false;
 	}
@@ -1044,6 +1077,7 @@ async function handleUnstageHunk(filePath: string, hunkIndex: number) {
 
 async function handleDiscardHunk(filePath: string, hunkIndex: number) {
 	if (hunkOperationInFlight) return;
+	const hunk = shownHunk(filePath, hunkIndex);
 	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask("Discard this hunk? This cannot be undone.", {
 		title: "Discard Hunk",
@@ -1056,7 +1090,7 @@ async function handleDiscardHunk(filePath: string, hunkIndex: number) {
 		await safeInvoke("discard_hunk", {
 			path: repoPath,
 			filePath,
-			hunkIndex,
+			hunk,
 			options: currentDiffOptions(),
 		});
 		showToast("Discarded hunk", "success");
@@ -1066,7 +1100,7 @@ async function handleDiscardHunk(filePath: string, hunkIndex: number) {
 			await onhunkaction?.(filePath);
 		}
 	} catch (e) {
-		reportErrorToast(e, "Discard hunk failed");
+		await reportHunkActionError(e, filePath, "Discard hunk failed");
 	} finally {
 		hunkOperationInFlight = false;
 	}
@@ -1336,18 +1370,20 @@ function extendDrag(e: MouseEvent) {
 
 async function handleStageLines(filePath: string, hunkIndex: number) {
 	if (hunkOperationInFlight) return;
+	const hunk = shownHunk(filePath, hunkIndex);
+	const lineIndices = selectedChanges;
 	hunkOperationInFlight = true;
 	try {
 		await safeInvoke("stage_lines", {
 			path: repoPath,
 			filePath,
-			hunkIndex,
-			lineIndices: selectedChanges,
+			hunk,
+			lineIndices,
 			options: currentDiffOptions(),
 		});
 		await onhunkaction?.(filePath);
 	} catch (e) {
-		reportErrorToast(e, "Stage lines failed");
+		await reportHunkActionError(e, filePath, "Stage lines failed");
 	} finally {
 		hunkOperationInFlight = false;
 		clearSelection();
@@ -1356,18 +1392,20 @@ async function handleStageLines(filePath: string, hunkIndex: number) {
 
 async function handleUnstageLines(filePath: string, hunkIndex: number) {
 	if (hunkOperationInFlight) return;
+	const hunk = shownHunk(filePath, hunkIndex);
+	const lineIndices = selectedChanges;
 	hunkOperationInFlight = true;
 	try {
 		await safeInvoke("unstage_lines", {
 			path: repoPath,
 			filePath,
-			hunkIndex,
-			lineIndices: selectedChanges,
+			hunk,
+			lineIndices,
 			options: currentDiffOptions(),
 		});
 		await onhunkaction?.(filePath);
 	} catch (e) {
-		reportErrorToast(e, "Unstage lines failed");
+		await reportHunkActionError(e, filePath, "Unstage lines failed");
 	} finally {
 		hunkOperationInFlight = false;
 		clearSelection();
@@ -1376,7 +1414,9 @@ async function handleUnstageLines(filePath: string, hunkIndex: number) {
 
 async function handleDiscardLines(filePath: string, hunkIndex: number) {
 	if (hunkOperationInFlight) return;
-	const count = selectedChanges.length;
+	const hunk = shownHunk(filePath, hunkIndex);
+	const lineIndices = selectedChanges;
+	const count = lineIndices.length;
 	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
 		`Discard ${count} selected ${count === 1 ? "line" : "lines"}? This cannot be undone.`,
@@ -1392,14 +1432,14 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		await safeInvoke("discard_lines", {
 			path: repoPath,
 			filePath,
-			hunkIndex,
-			lineIndices: selectedChanges,
+			hunk,
+			lineIndices,
 			options: currentDiffOptions(),
 		});
 		showToast(`Discarded ${count} lines`, "success");
 		await onhunkaction?.(filePath);
 	} catch (e) {
-		reportErrorToast(e, "Discard lines failed");
+		await reportHunkActionError(e, filePath, "Discard lines failed");
 	} finally {
 		hunkOperationInFlight = false;
 		clearSelection();

@@ -590,40 +590,31 @@ fn stage_hunk_works_on_untracked_file() {
 }
 
 #[test]
-fn stage_hunk_stale_index_returns_error() {
-    let ctx = TestContext::builder()
-        .with_file("README.md", "hello")
-        .with_commit("Initial commit")
-        .build();
+fn stage_hunk_refuses_a_shown_hunk_the_file_no_longer_has() {
+    let (ctx, mut edited) = two_rewrites();
+    let shown = ctx.shown_unstaged_hunk("two.txt", 1);
+    edited[24] = "line 25 rewritten again".to_string();
+    std::fs::write(ctx.repo_path().join("two.txt"), joined(&edited)).unwrap();
 
-    create_multi_hunk_file(&ctx);
+    let err = ctx.stage_shown_hunk("two.txt", &shown).unwrap_err();
 
-    let result = ctx.stage_hunk("multi.txt", 5);
-    assert!(result.is_err(), "expected Err for out-of-range hunk index");
-    let err = result.unwrap_err();
-    assert_eq!(
-        err.code, "stale_hunk_index",
-        "expected stale_hunk_index error code"
-    );
+    assert_eq!(err.code, "stale_hunk");
+    assert!(ctx.get_status().unwrap().staged.is_empty());
 }
 
 #[test]
-fn stage_hunk_clean_file_returns_error() {
+fn stage_hunk_refuses_a_file_left_clean_since_its_diff_was_shown() {
     let ctx = TestContext::builder()
-        .with_file("README.md", "hello")
+        .with_file("README.md", "hello\n")
         .with_commit("Initial commit")
         .build();
+    std::fs::write(ctx.repo_path().join("README.md"), "changed\n").unwrap();
+    let shown = ctx.shown_unstaged_hunk("README.md", 0);
+    std::fs::write(ctx.repo_path().join("README.md"), "hello\n").unwrap();
 
-    let result = ctx.stage_hunk("README.md", 0);
-    assert!(
-        result.is_err(),
-        "expected Err for file with no unstaged changes"
-    );
-    let err = result.unwrap_err();
-    assert_eq!(
-        err.code, "file_not_found",
-        "expected file_not_found error code"
-    );
+    let err = ctx.stage_shown_hunk("README.md", &shown).unwrap_err();
+
+    assert_eq!(err.code, "file_not_found");
 }
 
 // -- unstage_hunk tests --
@@ -689,22 +680,18 @@ fn discard_hunk_discards_single_hunk() {
 }
 
 #[test]
-fn discard_hunk_clean_file_returns_error() {
+fn discard_hunk_refuses_a_file_left_clean_since_its_diff_was_shown() {
     let ctx = TestContext::builder()
-        .with_file("README.md", "hello")
+        .with_file("README.md", "hello\n")
         .with_commit("Initial commit")
         .build();
+    std::fs::write(ctx.repo_path().join("README.md"), "changed\n").unwrap();
+    let shown = ctx.shown_unstaged_hunk("README.md", 0);
+    std::fs::write(ctx.repo_path().join("README.md"), "hello\n").unwrap();
 
-    let result = ctx.discard_hunk("README.md", 0);
-    assert!(
-        result.is_err(),
-        "expected Err for file with no unstaged changes"
-    );
-    let err = result.unwrap_err();
-    assert_eq!(
-        err.code, "file_not_found",
-        "expected file_not_found error code"
-    );
+    let err = ctx.discard_shown_hunk("README.md", &shown).unwrap_err();
+
+    assert_eq!(err.code, "file_not_found");
 }
 
 // -- Line-level staging fixture helper --
@@ -901,21 +888,19 @@ fn stage_lines_mixed_add_and_delete_selection() {
 }
 
 #[test]
-fn stage_lines_stale_hunk_index_returns_error() {
-    let ctx = TestContext::builder()
-        .with_file("README.md", "hello")
-        .with_commit("Initial commit")
-        .build();
+fn stage_lines_refuses_a_shown_hunk_the_file_no_longer_has() {
+    let (ctx, mut edited) = two_rewrites();
+    let shown = ctx.shown_unstaged_hunk("two.txt", 1);
+    let lines = shown.changed_lines();
+    edited[24] = "line 25 rewritten again".to_string();
+    std::fs::write(ctx.repo_path().join("two.txt"), joined(&edited)).unwrap();
 
-    create_add_delete_hunk_file(&ctx);
+    let err = ctx
+        .stage_shown_lines("two.txt", &shown, &lines)
+        .unwrap_err();
 
-    let result = ctx.stage_lines("multi.txt", 99, &[0]);
-    assert!(result.is_err(), "expected Err for out-of-range hunk index");
-    let err = result.unwrap_err();
-    assert_eq!(
-        err.code, "stale_hunk_index",
-        "expected stale_hunk_index error code"
-    );
+    assert_eq!(err.code, "stale_hunk");
+    assert!(ctx.get_status().unwrap().staged.is_empty());
 }
 
 #[test]
@@ -1344,7 +1329,7 @@ fn dirty_counts_conflicted_path_goes_to_conflicted_bucket() {
 /// Every hunk and discard path then acts on whichever of them the diff lists first.
 mod pathspec_is_literal {
     use super::*;
-    use trunk_lib::commands::staging::{discard_file_inner, discard_hunk_inner};
+    use trunk_lib::commands::staging::discard_file_inner;
 
     const GLOB_NAME: &str = "foo[1].txt";
     const COLLIDING_NAME: &str = "foo1.txt";
@@ -1373,14 +1358,7 @@ mod pathspec_is_literal {
     fn discard_hunk_leaves_a_glob_matched_sibling_alone() {
         let ctx = context_with_colliding_names();
 
-        discard_hunk_inner(
-            ctx.path(),
-            GLOB_NAME,
-            0,
-            ctx.state_map(),
-            &DiffRequestOptions::default(),
-        )
-        .unwrap();
+        ctx.discard_hunk(GLOB_NAME, 0).unwrap();
 
         assert_eq!(
             read(&ctx, COLLIDING_NAME),
@@ -1605,14 +1583,14 @@ fn unstaging_selected_lines_of_a_staged_rename_applies_without_a_patch_error() {
 #[test]
 fn unstaging_selected_lines_of_a_staged_rename_leaves_one_file_staged() {
     let ctx = staged_rename_with_one_edit();
-    let view = ctx.diff_staged("math-util.ts").unwrap();
-    let added = view[0].hunks[0]
+    let shown = ctx.shown_staged_hunk("math-util.ts", 0);
+    let added = shown
         .lines
         .iter()
         .position(|line| matches!(line.origin, DiffOrigin::Add))
         .expect("the hunk holds the added line");
 
-    ctx.unstage_lines("math-util.ts", 0, &[u32::try_from(added).unwrap()])
+    ctx.unstage_shown_lines("math-util.ts", &shown, &[u32::try_from(added).unwrap()])
         .unwrap();
 
     assert_eq!(staged_paths(&ctx), vec!["util.ts".to_string()]);
@@ -2209,4 +2187,82 @@ fn stage_lines_keeps_every_selected_addition_after_a_changed_unterminated_last_l
         ctx.staged_content("tail.txt"),
         "if (a) {\n\tb();\n}\n} else {\n\tc();\n}\n"
     );
+}
+
+/// Commits thirty lines and rewrites lines 10 and 25, so the file shows two hunks
+/// and the second one is the rewrite of line 25.
+fn two_rewrites() -> (TestContext, Vec<String>) {
+    let original = numbered_lines();
+    let ctx = TestContext::builder()
+        .with_file("two.txt", &joined(&original))
+        .with_commit("Initial commit")
+        .build();
+    let mut edited = original;
+    edited[9] = "line 10 rewritten".to_string();
+    edited[24] = "line 25 rewritten".to_string();
+    std::fs::write(ctx.repo_path().join("two.txt"), joined(&edited)).unwrap();
+    (ctx, edited)
+}
+
+#[test]
+fn discard_hunk_discards_the_shown_hunk_after_an_edit_above_it() {
+    let (ctx, mut edited) = two_rewrites();
+    let shown = ctx.shown_unstaged_hunk("two.txt", 1);
+    edited[0] = "line 1 rewritten".to_string();
+    std::fs::write(ctx.repo_path().join("two.txt"), joined(&edited)).unwrap();
+
+    ctx.discard_shown_hunk("two.txt", &shown).unwrap();
+
+    let mut expected = edited.clone();
+    expected[24] = "line 25".to_string();
+    assert_eq!(
+        std::fs::read_to_string(ctx.repo_path().join("two.txt")).unwrap(),
+        joined(&expected)
+    );
+}
+
+#[test]
+fn discard_hunk_refuses_a_shown_hunk_whose_lines_changed() {
+    let (ctx, mut edited) = two_rewrites();
+    let shown = ctx.shown_unstaged_hunk("two.txt", 1);
+    edited[24] = "line 25 rewritten again".to_string();
+    std::fs::write(ctx.repo_path().join("two.txt"), joined(&edited)).unwrap();
+
+    let err = ctx.discard_shown_hunk("two.txt", &shown).unwrap_err();
+
+    assert_eq!(err.code, "stale_hunk");
+    assert_eq!(
+        std::fs::read_to_string(ctx.repo_path().join("two.txt")).unwrap(),
+        joined(&edited)
+    );
+}
+
+#[test]
+fn stage_hunk_stages_the_shown_hunk_after_an_insertion_above_it() {
+    let (ctx, mut edited) = two_rewrites();
+    let shown = ctx.shown_unstaged_hunk("two.txt", 1);
+    edited.insert(0, "inserted".to_string());
+    std::fs::write(ctx.repo_path().join("two.txt"), joined(&edited)).unwrap();
+
+    ctx.stage_shown_hunk("two.txt", &shown).unwrap();
+
+    let mut expected = numbered_lines();
+    expected[24] = "line 25 rewritten".to_string();
+    assert_eq!(ctx.staged_content("two.txt"), joined(&expected));
+}
+
+#[test]
+fn unstage_hunk_unstages_the_shown_hunk_after_the_index_changed_above_it() {
+    let (ctx, mut edited) = two_rewrites();
+    ctx.stage_file("two.txt").unwrap();
+    let shown = ctx.shown_staged_hunk("two.txt", 1);
+    edited[0] = "line 1 rewritten".to_string();
+    std::fs::write(ctx.repo_path().join("two.txt"), joined(&edited)).unwrap();
+    ctx.stage_file("two.txt").unwrap();
+
+    ctx.unstage_shown_hunk("two.txt", &shown).unwrap();
+
+    let mut expected = edited.clone();
+    expected[24] = "line 25".to_string();
+    assert_eq!(ctx.staged_content("two.txt"), joined(&expected));
 }

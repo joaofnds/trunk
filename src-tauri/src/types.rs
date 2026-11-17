@@ -189,6 +189,51 @@ pub struct DiffHunk {
     pub lines: Vec<DiffLine>,
 }
 
+/// A hunk as the view showed it, which is what a hunk or line action names.
+///
+/// The file can change between the view and the action, since a discard waits on
+/// its confirmation and an editor can write at any moment, so the action looks for
+/// this hunk in the file's diff as it is now instead of trusting a position in it.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ShownHunk {
+    pub old_start: u32,
+    pub lines: Vec<ShownLine>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ShownLine {
+    pub origin: DiffOrigin,
+    pub content: String,
+}
+
+impl ShownHunk {
+    /// Whether `hunk` is the one the view showed: the same lines, starting on the
+    /// same line of the old side.
+    ///
+    /// The old side is the one an edit elsewhere leaves in place, since the working
+    /// tree changes under an unstaged diff and the index under a staged one.
+    #[must_use]
+    pub fn matches(&self, hunk: &DiffHunk) -> bool {
+        hunk.old_start == self.old_start
+            && hunk.lines.len() == self.lines.len()
+            && hunk
+                .lines
+                .iter()
+                .zip(&self.lines)
+                .all(|(line, shown)| line.origin == shown.origin && line.content == shown.content)
+    }
+
+    /// The index of every added or deleted line, which is the whole hunk to act on.
+    #[must_use]
+    pub fn changed_lines(&self) -> Vec<u32> {
+        (0..)
+            .zip(&self.lines)
+            .filter(|(_, line)| matches!(line.origin, DiffOrigin::Add | DiffOrigin::Delete))
+            .map(|(index, _)| index)
+            .collect()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum DiffStatus {
     Added,

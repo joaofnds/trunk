@@ -1,7 +1,7 @@
 use crate::common::context::TestContext;
 use trunk_git::error::TrunkError;
 use trunk_lib::commands::staging;
-use trunk_lib::types::{DiffRequestOptions, WorkingTreeStatus};
+use trunk_lib::types::{DiffRequestOptions, FileDiff, ShownHunk, ShownLine, WorkingTreeStatus};
 
 impl TestContext {
     pub fn get_status(&self) -> Result<WorkingTreeStatus, TrunkError> {
@@ -36,6 +36,40 @@ impl TestContext {
         staging::stage_all_inner(self.path(), self.state_map())
     }
 
+    /// The hunk at `hunk_index` of the file's unstaged diff, as the view shows it now.
+    pub fn shown_unstaged_hunk(&self, file_path: &str, hunk_index: u32) -> ShownHunk {
+        self.shown_unstaged_hunk_with_options(file_path, hunk_index, &DiffRequestOptions::default())
+    }
+
+    pub fn shown_unstaged_hunk_with_options(
+        &self,
+        file_path: &str,
+        hunk_index: u32,
+        options: &DiffRequestOptions,
+    ) -> ShownHunk {
+        let diff = self
+            .diff_unstaged_with_options(file_path, options)
+            .expect("diff_unstaged failed");
+        shown(&diff, hunk_index)
+    }
+
+    /// The hunk at `hunk_index` of the file's staged diff, as the view shows it now.
+    pub fn shown_staged_hunk(&self, file_path: &str, hunk_index: u32) -> ShownHunk {
+        self.shown_staged_hunk_with_options(file_path, hunk_index, &DiffRequestOptions::default())
+    }
+
+    pub fn shown_staged_hunk_with_options(
+        &self,
+        file_path: &str,
+        hunk_index: u32,
+        options: &DiffRequestOptions,
+    ) -> ShownHunk {
+        let diff = self
+            .diff_staged_with_options(file_path, options)
+            .expect("diff_staged failed");
+        shown(&diff, hunk_index)
+    }
+
     pub fn stage_hunk(&self, file_path: &str, hunk_index: u32) -> Result<(), TrunkError> {
         self.stage_hunk_with_options(file_path, hunk_index, &DiffRequestOptions::default())
     }
@@ -46,12 +80,17 @@ impl TestContext {
         hunk_index: u32,
         options: &DiffRequestOptions,
     ) -> Result<(), TrunkError> {
+        let shown = self.shown_unstaged_hunk_with_options(file_path, hunk_index, options);
+        staging::stage_hunk_inner(self.path(), file_path, &shown, self.state_map(), options)
+    }
+
+    pub fn stage_shown_hunk(&self, file_path: &str, shown: &ShownHunk) -> Result<(), TrunkError> {
         staging::stage_hunk_inner(
             self.path(),
             file_path,
-            hunk_index,
+            shown,
             self.state_map(),
-            options,
+            &DiffRequestOptions::default(),
         )
     }
 
@@ -65,12 +104,17 @@ impl TestContext {
         hunk_index: u32,
         options: &DiffRequestOptions,
     ) -> Result<(), TrunkError> {
+        let shown = self.shown_staged_hunk_with_options(file_path, hunk_index, options);
+        staging::unstage_hunk_inner(self.path(), file_path, &shown, self.state_map(), options)
+    }
+
+    pub fn unstage_shown_hunk(&self, file_path: &str, shown: &ShownHunk) -> Result<(), TrunkError> {
         staging::unstage_hunk_inner(
             self.path(),
             file_path,
-            hunk_index,
+            shown,
             self.state_map(),
-            options,
+            &DiffRequestOptions::default(),
         )
     }
 
@@ -84,12 +128,17 @@ impl TestContext {
         hunk_index: u32,
         options: &DiffRequestOptions,
     ) -> Result<(), TrunkError> {
+        let shown = self.shown_unstaged_hunk_with_options(file_path, hunk_index, options);
+        staging::discard_hunk_inner(self.path(), file_path, &shown, self.state_map(), options)
+    }
+
+    pub fn discard_shown_hunk(&self, file_path: &str, shown: &ShownHunk) -> Result<(), TrunkError> {
         staging::discard_hunk_inner(
             self.path(),
             file_path,
-            hunk_index,
+            shown,
             self.state_map(),
-            options,
+            &DiffRequestOptions::default(),
         )
     }
 
@@ -118,13 +167,30 @@ impl TestContext {
         line_indices: &[u32],
         options: &DiffRequestOptions,
     ) -> Result<(), TrunkError> {
+        let shown = self.shown_unstaged_hunk_with_options(file_path, hunk_index, options);
         staging::stage_lines_inner(
             self.path(),
             file_path,
-            hunk_index,
+            &shown,
             line_indices,
             self.state_map(),
             options,
+        )
+    }
+
+    pub fn stage_shown_lines(
+        &self,
+        file_path: &str,
+        shown: &ShownHunk,
+        line_indices: &[u32],
+    ) -> Result<(), TrunkError> {
+        staging::stage_lines_inner(
+            self.path(),
+            file_path,
+            shown,
+            line_indices,
+            self.state_map(),
+            &DiffRequestOptions::default(),
         )
     }
 
@@ -149,13 +215,30 @@ impl TestContext {
         line_indices: &[u32],
         options: &DiffRequestOptions,
     ) -> Result<(), TrunkError> {
+        let shown = self.shown_staged_hunk_with_options(file_path, hunk_index, options);
         staging::unstage_lines_inner(
             self.path(),
             file_path,
-            hunk_index,
+            &shown,
             line_indices,
             self.state_map(),
             options,
+        )
+    }
+
+    pub fn unstage_shown_lines(
+        &self,
+        file_path: &str,
+        shown: &ShownHunk,
+        line_indices: &[u32],
+    ) -> Result<(), TrunkError> {
+        staging::unstage_lines_inner(
+            self.path(),
+            file_path,
+            shown,
+            line_indices,
+            self.state_map(),
+            &DiffRequestOptions::default(),
         )
     }
 
@@ -180,10 +263,11 @@ impl TestContext {
         line_indices: &[u32],
         options: &DiffRequestOptions,
     ) -> Result<(), TrunkError> {
+        let shown = self.shown_unstaged_hunk_with_options(file_path, hunk_index, options);
         staging::discard_lines_inner(
             self.path(),
             file_path,
-            hunk_index,
+            &shown,
             line_indices,
             self.state_map(),
             options,
@@ -216,5 +300,22 @@ impl TestContext {
         let blob = repo.find_blob(entry.id).expect("failed to read blob");
 
         String::from_utf8_lossy(blob.content()).into_owned()
+    }
+}
+
+/// What the view sends for the hunk at `hunk_index` of a one-file diff.
+fn shown(diff: &[FileDiff], hunk_index: u32) -> ShownHunk {
+    let hunk = &diff[0].hunks[hunk_index as usize];
+
+    ShownHunk {
+        old_start: hunk.old_start,
+        lines: hunk
+            .lines
+            .iter()
+            .map(|line| ShownLine {
+                origin: line.origin.clone(),
+                content: line.content.clone(),
+            })
+            .collect(),
     }
 }

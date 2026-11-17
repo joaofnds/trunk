@@ -103,10 +103,11 @@ pub(crate) fn staged_diff<'r>(
 ///
 /// Both `context_lines` and `ignore_whitespace` move hunk *boundaries*, not
 /// just their line spans: ignoring whitespace drops whitespace-only hunks
-/// entirely, and a wide context merges neighbouring hunks into one. A hunk
-/// index is therefore only meaningful against a diff built with the same
-/// options, which is why every staging path takes the view's options and
-/// comes through here rather than diffing with the defaults (TRUNK-73).
+/// entirely, and a wide context merges neighbouring hunks into one. A staging
+/// gesture finds the hunk the user saw by its lines, so it only finds it in a
+/// diff built with the same options, which is why every staging path takes the
+/// view's options and comes through here rather than diffing with the defaults
+/// (TRUNK-73).
 pub(crate) fn apply_request_options(opts: &mut git2::DiffOptions, req: &DiffRequestOptions) {
     let context = if req.show_full_file {
         100_000 // practical cap for full-file view
@@ -117,43 +118,31 @@ pub(crate) fn apply_request_options(opts: &mut git2::DiffOptions, req: &DiffRequ
     opts.ignore_whitespace(req.ignore_whitespace);
 }
 
-/// The unstaged diff a staging gesture acts on: index → workdir, for one file,
-/// built with the same view options the hunk the user clicked was rendered
-/// under. `reverse` flips it, which is how a discard undoes a change by
-/// applying to the workdir.
-///
-/// Staging addresses a hunk by its index, and that index only means the same
-/// hunk on both sides when both diffs are built the same way — which is why
-/// this exists rather than each caller assembling the options itself
-/// (TRUNK-73).
-pub(crate) fn staging_workdir_diff<'r>(
+/// One file's unstaged diff, index → workdir, under the view's options: the diff
+/// the view shows and the one a staging gesture looks for the shown hunk in.
+pub(crate) fn unstaged_view_diff<'r>(
     repo: &'r git2::Repository,
     file_path: &str,
     options: &DiffRequestOptions,
-    reverse: bool,
 ) -> Result<git2::Diff<'r>, TrunkError> {
     let mut opts = workdir_diff_opts(file_path);
     apply_request_options(&mut opts, options);
-    opts.reverse(reverse);
     Ok(repo.diff_index_to_workdir(None, Some(&mut opts))?)
 }
 
-/// The staged diff a staging gesture acts on: HEAD → index, whole and
-/// rename-detected exactly as `diff_staged_inner` builds the view, carrying the
-/// view's options for the same reason `staging_workdir_diff` does.
+/// The staged diff, HEAD → index, under the view's options: the diff the view
+/// shows and the one a staging gesture looks for the shown hunk in.
 ///
 /// It is deliberately not narrowed by a pathspec: that would strip a rename's
 /// old side before `find_similar` could pair it, leaving a caller acting on a
 /// whole-file add where the user saw a one-line edit. Callers pick their delta
 /// out of the whole diff instead.
-pub(crate) fn staging_staged_diff<'r>(
+pub(crate) fn staged_view_diff<'r>(
     repo: &'r git2::Repository,
     options: &DiffRequestOptions,
-    reverse: bool,
 ) -> Result<git2::Diff<'r>, TrunkError> {
     let mut opts = new_diff_options();
     apply_request_options(&mut opts, options);
-    opts.reverse(reverse);
     staged_diff(repo, &mut opts)
 }
 
@@ -351,7 +340,7 @@ fn diff_one_file(
 
 /// Every hunk of one patch, with its lines. Mirrors what `walk_diff`'s hunk and
 /// line callbacks build, so a file read through either route looks the same.
-fn hunks_of(patch: &git2::Patch<'_>) -> Result<Vec<DiffHunk>, TrunkError> {
+pub(crate) fn hunks_of(patch: &git2::Patch<'_>) -> Result<Vec<DiffHunk>, TrunkError> {
     let mut hunks = Vec::with_capacity(patch.num_hunks());
 
     for hunk_index in 0..patch.num_hunks() {
@@ -381,7 +370,8 @@ fn hunks_of(patch: &git2::Patch<'_>) -> Result<Vec<DiffHunk>, TrunkError> {
 /// which would paint real-code spans onto them; null both linenos for any origin
 /// the frontend doesn't treat as a real diff line, so `pick_side_line` naturally
 /// skips them. They keep their seat in the hunk because staging addresses lines
-/// by their index in this vector, which is libgit2's own patch line index.
+/// by their index in this vector, which is libgit2's own patch line index, and
+/// finds the hunk the user saw by comparing these lines.
 fn diff_line_of(line: &git2::DiffLine<'_>) -> DiffLine {
     let raw_origin = line.origin();
     let origin = match raw_origin {
@@ -764,9 +754,7 @@ pub fn diff_unstaged_inner(
     options: &DiffRequestOptions,
 ) -> Result<Vec<FileDiff>, TrunkError> {
     let repo = state_map.open(path)?;
-    let mut opts = workdir_diff_opts(file_path);
-    apply_request_options(&mut opts, options);
-    let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
+    let diff = unstaged_view_diff(&repo, file_path, options)?;
     walk_diff(&diff, &repo, NewSideSource::Workdir)
 }
 
@@ -783,9 +771,7 @@ pub fn diff_staged_inner(
     options: &DiffRequestOptions,
 ) -> Result<Vec<FileDiff>, TrunkError> {
     let repo = state_map.open(path)?;
-    let mut opts = new_diff_options();
-    apply_request_options(&mut opts, options);
-    let diff = staged_diff(&repo, &mut opts)?;
+    let diff = staged_view_diff(&repo, options)?;
     diff_one_file(&diff, &repo, NewSideSource::Odb, file_path)
 }
 
