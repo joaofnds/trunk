@@ -49,6 +49,8 @@
 	--welcome-col: calc(112 * var(--u)); /* the welcome screen's centred column */
 	--dialog-min: calc(85 * var(--u)); /* a dialog box is at least this wide… */
 	--dialog-max: calc(120 * var(--u)); /* …and wraps its content past this */
+	/* a toast wraps past this, clear of the right pane */
+	--toast-max: calc(100 * var(--u));
 	/* the same pair for a message editor */
 	--dialog-lg-min: calc(105 * var(--u));
 	--dialog-lg-max: calc(160 * var(--u));

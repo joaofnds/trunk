@@ -26,6 +26,7 @@
 
 	/* ── Named lengths ── */
 	--container-welcome: var(--welcome-col);
+	--container-toast: var(--toast-max);
 	--spacing-dialog-min: var(--dialog-min);
 	--spacing-dialog-max: var(--dialog-max);
 	--spacing-dialog-lg-min: var(--dialog-lg-min);
