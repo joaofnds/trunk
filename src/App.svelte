@@ -39,6 +39,7 @@ import { getScheduler } from "./lib/scheduler.js";
 import {
 	addRecentRepo,
 	copyLegacyUserWidthsOnce,
+	DEFAULT_LEFT_PANE_WIDTH,
 	DEFAULT_RIGHT_PANE_WIDTH,
 	flushPreferencesForUpdate,
 	getActiveTabId,
@@ -306,7 +307,7 @@ $effect(() => {
 
 // Global layout state (D-01, D-02, D-03)
 let zoomLevel = $state(1);
-let leftPaneWidth = $state(220);
+let leftPaneWidth = $state(DEFAULT_LEFT_PANE_WIDTH);
 let leftPaneCollapsed = $state(false);
 let rightPaneWidth = $state(DEFAULT_RIGHT_PANE_WIDTH);
 let rightPaneCollapsed = $state(false);
