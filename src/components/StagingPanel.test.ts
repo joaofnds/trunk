@@ -1065,8 +1065,8 @@ describe("StagingPanel rebase form", () => {
 
 		await press(handle, "ArrowUp", 1);
 
-		expect(form.style.height).toBe("188px");
-		expect(handle).toHaveAttribute("aria-valuenow", "188");
+		expect(form.style.height).toBe("228px");
+		expect(handle).toHaveAttribute("aria-valuenow", "228");
 	});
 
 	it("shrinks by a step when the handle takes ArrowDown", async () => {
@@ -1074,12 +1074,12 @@ describe("StagingPanel rebase form", () => {
 
 		await press(handle, "ArrowDown", 1);
 
-		expect(form.style.height).toBe("172px");
+		expect(form.style.height).toBe("212px");
 	});
 
 	it.each([
 		{ key: "ArrowUp", limit: "tallest", height: "500px" },
-		{ key: "ArrowDown", limit: "shortest", height: "100px" },
+		{ key: "ArrowDown", limit: "shortest", height: "168px" },
 	])(
 		"stops at the $limit height a drag stops it at",
 		async ({ key, height }) => {
@@ -1098,12 +1098,12 @@ describe("StagingPanel rebase form", () => {
 		await fireEvent.mouseMove(window, { clientY: 360 });
 		await fireEvent.mouseUp(window);
 
-		expect(form.style.height).toBe("220px");
+		expect(form.style.height).toBe("260px");
 	});
 
 	it.each([
 		{ limit: "tallest", to: 0, height: "500px" },
-		{ limit: "shortest", to: 800, height: "100px" },
+		{ limit: "shortest", to: 800, height: "168px" },
 	])("stops a drag at the $limit height", async ({ to, height }) => {
 		const { form, handle } = await renderRebaseForm();
 

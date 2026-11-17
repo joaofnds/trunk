@@ -804,9 +804,9 @@ async function skipRebase() {
 }
 
 // --- Bottom form resize ---
-const BOTTOM_MIN = 100;
+const BOTTOM_MIN = 168;
 const BOTTOM_MAX = 500;
-let bottomHeight = $state(180);
+let bottomHeight = $state(220);
 
 function resizeBottom(height: number) {
 	bottomHeight = Math.max(BOTTOM_MIN, Math.min(BOTTOM_MAX, height));
@@ -1183,18 +1183,18 @@ registerUpdateBlocker(() => {
 				placeholder="Description (optional)"
 				class="w-full flex-1 min-h-0 box-border border border-border bg-surface text-text rounded py-1 px-2 text-callout leading-normal resize-none"
 			></textarea>
-			<div class="grid grid-cols-6 gap-2">
-				<div class="col-span-3 grid">
-					<Button
-						size="lg"
-						variant="success"
-						onclick={continueRebase}
-						disabled={rebaseLoading || !allResolved}
-					>
-						Continue Rebase
-					</Button>
-				</div>
-				<div class="col-span-1 grid">
+			<div class="grid">
+				<Button
+					size="lg"
+					variant="success"
+					onclick={continueRebase}
+					disabled={rebaseLoading || !allResolved}
+				>
+					Continue Rebase
+				</Button>
+			</div>
+			<div class="grid grid-cols-2 gap-2">
+				<div class="grid">
 					<Button
 						size="lg"
 						variant="warning"
@@ -1204,7 +1204,7 @@ registerUpdateBlocker(() => {
 						Skip
 					</Button>
 				</div>
-				<div class="col-span-2 grid">
+				<div class="grid">
 					<Button
 						size="lg"
 						variant="danger"
@@ -1220,8 +1220,8 @@ registerUpdateBlocker(() => {
 		<Splitter variant="bar" fixed />
 		<!-- Merge-continue actions. The commit message is edited in the host-owned
          MessageEditor modal (runMergeContinue), not an inline form. -->
-		<div class="grid shrink-0 grid-cols-5 gap-2 p-2">
-			<div class="col-span-3 grid">
+		<div class="flex shrink-0 gap-2 p-2">
+			<div class="grid flex-1">
 				<Button
 					size="lg"
 					variant="success"
@@ -1231,16 +1231,14 @@ registerUpdateBlocker(() => {
 					{mergeLoading ? "Committing..." : "Commit merge"}
 				</Button>
 			</div>
-			<div class="col-span-2 grid">
-				<Button
-					size="lg"
-					variant="danger"
-					onclick={abortMerge}
-					disabled={mergeLoading}
-				>
-					Abort Merge
-				</Button>
-			</div>
+			<Button
+				size="lg"
+				variant="danger"
+				onclick={abortMerge}
+				disabled={mergeLoading}
+			>
+				Abort Merge
+			</Button>
 		</div>
 	{:else}
 		<Splitter variant="bar" fixed />
