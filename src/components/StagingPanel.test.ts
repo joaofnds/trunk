@@ -676,7 +676,10 @@ describe("StagingPanel merge-continue", () => {
 			await waitFor(() =>
 				expect(ask).toHaveBeenCalledWith(
 					expect.stringContaining("src/a.ts"),
-					expect.objectContaining({ okLabel: "Mark Resolved" }),
+					expect.objectContaining({
+						okLabel: "Mark Resolved",
+						cancelLabel: "Cancel",
+					}),
 				),
 			);
 			expect(stageCalls()).toEqual([]);

@@ -299,6 +299,7 @@ async function confirmResolved(filePaths: string[]): Promise<boolean> {
 			title: "Conflict Markers Remain",
 			kind: "warning",
 			okLabel: "Mark Resolved",
+			cancelLabel: "Cancel",
 		},
 	);
 }
