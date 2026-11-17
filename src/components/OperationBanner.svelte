@@ -32,8 +32,8 @@ let isRevert = $derived(info.op_type === "Revert");
 let isCherryPick = $derived(info.op_type === "CherryPick");
 
 let label = $derived.by(() => {
-	if (info.op_type === "CherryPick") return "Cherry-pick in progress";
-	if (info.op_type === "Revert") return "Revert in progress";
+	if (info.op_type === "CherryPick") return "Cherry-picking";
+	if (info.op_type === "Revert") return "Reverting";
 	return "";
 });
 

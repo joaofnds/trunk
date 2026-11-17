@@ -128,7 +128,19 @@ describe("OperationBanner", () => {
 				resolved: true,
 			},
 		});
-		expect(screen.getByText("Cherry-pick in progress")).toBeInTheDocument();
+		expect(screen.getByText("Cherry-picking")).toBeInTheDocument();
+	});
+
+	it("shows revert label", () => {
+		render(OperationBanner, {
+			props: {
+				info: makeInfo({ op_type: "Revert" }),
+				repoPath: "/repo",
+				resolved: true,
+			},
+		});
+
+		expect(screen.getByText("Reverting")).toBeInTheDocument();
 	});
 });
 
