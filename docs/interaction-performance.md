@@ -1202,9 +1202,33 @@ since the walk recorded no predicate. The commit the user sees is fast. A Commit
 click inside that delay after a `git add` made outside the app ran no `create_commit`,
 because the panel had not yet seen the new index, and by the form's code it shows "No
 files staged" until it does. No
-action follows: a person types a summary for longer than the delay. No app-level timing
-exists yet for I10 compare, I11 hunk navigation, I15 conflict resolution or I16
-checkout and history operations, and I18 refresh has only the walk's reading above.
+action follows: a person types a summary for longer than the delay.
+
+The same page-side timer, one drive-build launch per fixture copy, then covered the
+flows the walk left untimed. Each reading runs from the delivered event to a predicate
+on the page, checked every frame:
+
+| Flow | Fixture copy and predicate | Usable, ms |
+| --- | --- | --- |
+| I16 checkout from the branch menu, n=4 | deep-history (843 commits): header and sidebar name the new branch | 78 to 97, of which `checkout_branch` 69 to 85 |
+| I10 compare from the commit menu, n=6 | deep-history, tip against commits 796 to 810: pair and changed files shown | 9 to 15 |
+| I10 swap direction, n=1 | same: pair shown reversed | 12 |
+| I10 open a file in a compare, n=4 | same: path and its added line shown | 6 to 14 |
+| I11 open a 3,000-line file with 20 hunks, n=3 | diff-scenarios plus that file: path and first hunk shown | 10 to 14 |
+| I11 `]` and `[` hunk steps, n=9 | same: scroll moves, then holds for three frames | moves 2 to 9, settles 27 to 37 |
+| I11 full file, hunks, split and inline, n=3 each | same: toolbar title flipped and the pane's markup present | 13 to 36 |
+| I15 open the merge editor, n=1 | merge-conflict, 3 conflicts: navigation and Take All shown | 21 |
+| I15 take a side, n=3 | same: that side reports pressed | 2 to 3 |
+| I15 Save and Mark Resolved, n=1 | same: file listed resolved and none conflicted | 12, index stage 0 checked in git |
+
+After every mutation here the last command ended 527 to 855 ms after the event,
+which is the watcher refresh described above. Compare and diff options start no
+refresh. These are one-launch readings on small fixtures in a debug Rust build, so
+they show that nothing in these flows waits on the user, not how they scale. Merge,
+rebase, cherry-pick, revert, reset and stash under I16 were walked for their result
+but not timed, and I18 refresh has only the walk's reading above. The merge editor run
+also showed that taking the incoming side of a conflict whose current side is already
+taken keeps both, which is recorded on TRUNK-451.
 
 Not every row is a walker's observation. A walker saw dead `[` presses at the last
 hunk; the stale cursor, the whole-file stepping and the comment jump in that row came
@@ -1341,7 +1365,7 @@ Frequency remains an assumption; no usage telemetry was collected.
 | 3 | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. Settle how often users open large highlighted files in full mode first. The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
 | Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
 | 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Index writes are not serialized per repository, so two overlapping actions can report a lock failure for work that happened. Saves, local fetch and watcher refreshes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
-| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. History depth, review size and conflict-region count remain unbenchmarked; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh, and I10, I11 hunk navigation, I15 and I16 still have no app-level timing. |
+| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. History depth, review size and conflict-region count remain unbenchmarked; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh; the same timer put checkout, compare, hunk navigation, diff options and merge-editor actions under 100 ms on small fixtures, while merge, rebase, cherry-pick, revert, reset and stash remain untimed. |
 
 The evidence supports retaining current warm diff reuse, mounted-tab reuse,
 coalesced refresh, and the search debounce. It does not support another cache or
