@@ -564,6 +564,34 @@ describe("CommitGraph", () => {
 			expect(menuItemOptions("Interactive Rebase...").enabled).toBe(false);
 		});
 
+		async function openTheMenuOnRow(commits: GraphCommit[], row: number) {
+			installReads({ commits });
+			render(CommitGraph, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					tabActive: true,
+				},
+			});
+			await openContextMenu(row);
+		}
+
+		it("offers a fast-forward to a commit that descends from HEAD", async () => {
+			const child = makeCommit({
+				oid: "eee555eee555eee5eee555eee555eee5eee555ee",
+				parent_oids: [HEAD_COMMIT.oid],
+			});
+			await openTheMenuOnRow([child, HEAD_COMMIT], 0);
+
+			expect(menuItemOptions("Fast-forward main to here").enabled).toBe(true);
+		});
+
+		it("refuses a fast-forward to a commit HEAD cannot reach forward", async () => {
+			await openTheMenuOnRow(MERGE_FIXTURE, 1);
+
+			expect(menuItemOptions("Fast-forward main to here").enabled).toBe(false);
+		});
+
 		it("revert: begin -> editor -> revert_continue with edited message", async () => {
 			const onopenmessageeditor = vi.fn().mockResolvedValue("edited revert");
 			installReads({

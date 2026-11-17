@@ -54,6 +54,7 @@ import {
 	reportErrorDialog,
 	reportErrorToast,
 } from "../lib/error-report.js";
+import { canFastForward } from "../lib/fast-forward.js";
 import {
 	BADGE_FONT_SIZE,
 	BADGE_HEIGHT,
@@ -1025,15 +1026,17 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 		);
 	}
 
-	// Fast-forward (only when HEAD is on a branch and commit is not HEAD and not a stash)
+	// Fast-forward (only when HEAD is on a branch and commit is not HEAD and not a
+	// stash), enabled only where git can move the branch forward to the commit.
 	const fastForwardItems: (
 		| Awaited<ReturnType<typeof MenuItem.new>>
 		| Awaited<ReturnType<typeof PredefinedMenuItem.new>>
 	)[] = [];
-	if (headBranchName && !commit.is_stash && !commit.is_head) {
+	if (headCommit && headBranchName && !commit.is_stash && !commit.is_head) {
 		fastForwardItems.push(
 			await MenuItem.new({
 				text: `Fast-forward ${headBranchName} to here`,
+				enabled: canFastForward(commits, headCommit.oid, commit.oid),
 				action: async () => {
 					try {
 						await safeInvoke("fast_forward_to", {
