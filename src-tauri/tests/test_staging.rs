@@ -2157,3 +2157,37 @@ fn stage_lines_of_the_terminated_copy_of_an_unterminated_last_line_adds_only_its
 
     assert_eq!(ctx.staged_content("tail.txt"), "a\nb\n}\n");
 }
+
+#[test]
+fn stage_lines_keeps_every_selected_addition_after_a_changed_unterminated_last_line() {
+    let ctx = TestContext::builder()
+        .with_file("tail.txt", "if (a) {\n\tb();\n}")
+        .with_commit("Initial commit")
+        .build();
+    std::fs::write(
+        ctx.repo_path().join("tail.txt"),
+        "if (a) {\n\tb();\n} else {\n\tc();\n}\n",
+    )
+    .unwrap();
+    let unstaged = ctx.diff_unstaged("tail.txt").expect("diff_unstaged failed");
+    let additions: Vec<u32> = unstaged[0].hunks[0]
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add))
+        .map(|(i, _)| u32::try_from(i).unwrap())
+        .collect();
+    assert_eq!(
+        additions.len(),
+        3,
+        "the edit adds three lines after the old brace"
+    );
+
+    ctx.stage_lines("tail.txt", 0, &additions)
+        .expect("stage_lines failed");
+
+    assert_eq!(
+        ctx.staged_content("tail.txt"),
+        "if (a) {\n\tb();\n}\n} else {\n\tc();\n}\n"
+    );
+}

@@ -1368,8 +1368,9 @@ fn rewrite_hunk_lines(
         new_count: 0,
     };
     let mut run = ChangeRun::default();
-    // The text of an unterminated old last line this patch terminates, until the
-    // addition that terminates it in the working tree is passed over.
+    // The text of an unterminated old last line this patch terminates. The working
+    // tree spells that line terminated as the first addition after it, and only
+    // there: a later addition of the same text is a line of its own.
     let mut terminated: Option<String> = None;
 
     for line_idx in 0..num_lines {
@@ -1398,8 +1399,7 @@ fn rewrite_hunk_lines(
             terminated = Some(format!("{content}\n"));
             continue;
         }
-        if origin == '+' && !reverse && terminated.as_deref() == Some(content.as_ref()) {
-            terminated = None;
+        if origin == '+' && !reverse && terminated.take().is_some_and(|copy| copy == content) {
             continue;
         }
 
