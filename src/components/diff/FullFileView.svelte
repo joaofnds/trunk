@@ -108,12 +108,17 @@ const model = $derived(
 	}),
 );
 
+// A file shown whole holds no change, so its old and new numbers agree and one
+// column of them says it all.
+const showsWholeFile = $derived(diffKind === "current_file");
+
 const vd = createVirtualizedDiff({
 	layout: "inline",
 	model: () => model,
 	wordWrap: () => wordWrap,
 	composer: () => composer?.place,
 	list: () => list,
+	numberColumns: () => (showsWholeFile ? 1 : 2),
 });
 
 // An allowlist, not a denylist: a diff kind the store cannot anchor a thread
@@ -254,9 +259,11 @@ export function clearSelection() {
 {/snippet}
 
 {#snippet lineNumbers(line: DiffLine)}
-	<span class="gutter-num" style:min-width={vd.gutterW}
-		>{line.old_lineno ?? ""}</span
-	><span class="gutter-num" style:min-width={vd.gutterW}
+	{#if !showsWholeFile}
+		<span class="gutter-num" style:min-width={vd.gutterW}
+			>{line.old_lineno ?? ""}</span
+		>
+	{/if}<span class="gutter-num" style:min-width={vd.gutterW}
 		>{line.new_lineno ?? ""}</span
 	>
 {/snippet}

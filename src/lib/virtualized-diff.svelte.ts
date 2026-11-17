@@ -34,6 +34,8 @@ export const TAB_SIZE = 4;
 // each of the two gutters. Erring high shortens the wrap point, which
 // over-predicts a wrapped row's height — the safe direction.
 const ROW_CHROME_PX = 35;
+// The gap after one gutter, which a row with a single number column spends once.
+const GUTTER_GAP_PX = 8;
 
 // Horizontal room ONE HALF spends on something other than columns: 8px padding
 // each side, the 3px change-indicator border, the 8px gap after this half's one
@@ -52,6 +54,10 @@ export interface VirtualizedDiffDeps {
 	wordWrap: () => boolean;
 	composer: () => ComposerPlace | undefined;
 	list: () => DiffListHandle | null;
+	/** The line-number columns an inline row draws: two for a change, the old
+	 *  number and the new, and one for a file shown whole, whose numbers agree.
+	 *  Two when omitted. A split side draws one whatever this says. */
+	numberColumns?: () => 1 | 2;
 }
 
 export interface InlineVirtualizedDiff {
@@ -113,7 +119,13 @@ export function createVirtualizedDiff(
 	// Inline wraps into the full pane less two gutters; a split side has half
 	// the pane and one gutter — what a single side actually has to wrap into.
 	// Each layout's marker column sits beside its gutters, once per side.
-	const inlineGutterChars = $derived(2 * model.gutterChars + model.markerChars);
+	const numberColumns = $derived(deps.numberColumns?.() ?? 2);
+	const inlineGutterChars = $derived(
+		numberColumns * model.gutterChars + model.markerChars,
+	);
+	const inlineChromePx = $derived(
+		ROW_CHROME_PX - (2 - numberColumns) * GUTTER_GAP_PX,
+	);
 	const sideGutterChars = $derived(model.gutterChars + model.markerChars);
 
 	const availableColumns = $derived.by(() => {
@@ -130,7 +142,7 @@ export function createVirtualizedDiff(
 			: availableCharsFor(
 					state.paneWidthPx,
 					inlineGutterChars,
-					ROW_CHROME_PX,
+					inlineChromePx,
 					measured,
 				);
 	});
@@ -197,7 +209,7 @@ export function createVirtualizedDiff(
 
 		return split
 			? `calc(${Math.max(maxLeftPx, maxRightPx)}px + 50cqi)`
-			: `${(inlineGutterChars + (model.columns[0] ?? 0)) * measured.charWidthPx + ROW_CHROME_PX}px`;
+			: `${(inlineGutterChars + (model.columns[0] ?? 0)) * measured.charWidthPx + inlineChromePx}px`;
 	});
 
 	const gutterW = $derived(`${model.gutterChars}ch`);

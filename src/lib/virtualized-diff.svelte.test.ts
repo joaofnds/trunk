@@ -127,6 +127,7 @@ interface HostProps {
 	wordWrap: boolean;
 	comments?: Thread[];
 	list?: DiffListHandle | null;
+	numberColumns?: 1 | 2;
 	onready: (vd: InlineVirtualizedDiff | SplitVirtualizedDiff) => void;
 }
 
@@ -209,6 +210,14 @@ describe("createVirtualizedDiff", () => {
 		// one gutter and that side's marker column.
 		expect(inline.availableColumns).toBe(87);
 		expect(split.availableColumns).toBe(40);
+	});
+
+	it("wraps a file shown whole into the pane less its one number column", () => {
+		const { vd } = mount({ layout: "inline", numberColumns: 1 });
+
+		// The 900px pane less 27px chrome, one 3-char gutter and the 3-char marker
+		// column at 9px.
+		expect(vd.availableColumns).toBe(91);
 	});
 
 	it("reports the marker width in ch from the model's marker columns", () => {

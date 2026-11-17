@@ -149,6 +149,42 @@ describe("FullFileView", () => {
 		expect(screen.queryByRole("button", { name: /comment/i })).toBeNull();
 	});
 
+	it("numbers each line of a file shown whole once, since it holds no change", () => {
+		const wholeFile: FileDiff = {
+			...emptyFile,
+			path: "src/whole.ts",
+			hunks: [
+				{
+					header: "@@ -1,2 +1,2 @@",
+					old_start: 1,
+					old_lines: 2,
+					new_start: 1,
+					new_lines: 2,
+					lines: [1, 2].map((n) => ({
+						origin: "Context" as const,
+						content: `line ${n}`,
+						old_lineno: n,
+						new_lineno: n,
+						spans: [],
+					})),
+				},
+			],
+		};
+		render(FullFileView, {
+			props: defaultProps({
+				diffKind: "current_file" as const,
+				fileDiffs: [wholeFile],
+			}),
+		});
+
+		const numbers = [
+			...document.querySelectorAll(".diff-line[data-flat-index]"),
+		].map((row) =>
+			[...row.querySelectorAll(".gutter-num")].map((n) => n.textContent),
+		);
+		expect(numbers).toEqual([["1"], ["2"]]);
+	});
+
 	it("offers the Comment affordance in a current-file view, which the store now anchors by content", async () => {
 		render(FullFileView, {
 			props: defaultProps({ diffKind: "current_file" as const }),

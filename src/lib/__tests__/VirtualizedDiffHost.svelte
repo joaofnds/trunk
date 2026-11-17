@@ -21,6 +21,7 @@ interface Props {
 	wordWrap: boolean;
 	comments?: Thread[];
 	list?: DiffListHandle | null;
+	numberColumns?: 1 | 2;
 	onready: (vd: InlineVirtualizedDiff | SplitVirtualizedDiff) => void;
 }
 
@@ -30,6 +31,7 @@ let {
 	wordWrap,
 	comments = [],
 	list = null,
+	numberColumns = 2,
 	onready,
 }: Props = $props();
 
@@ -54,6 +56,7 @@ const deps = {
 	wordWrap: () => wordWrap,
 	composer: () => undefined,
 	list: () => list,
+	numberColumns: () => numberColumns,
 };
 
 // The factory is created once, from the initial layout: a view states its
