@@ -934,11 +934,9 @@ async function handleRevert(commit: GraphCommit) {
 		if (msg == null) return;
 		await safeInvoke("revert_continue", { path: repoPath, message: msg });
 	} catch (e) {
-		await reportErrorDialog(
-			e,
-			"Revert Error",
-			"Revert failed. You may need to resolve conflicts manually.",
-		);
+		// A conflicted revert stops in progress, as a conflicted pick does.
+		if (isTrunkError(e) && e.code === "conflict_state") return;
+		await reportErrorDialog(e, "Revert Error", "Revert failed.");
 	}
 }
 
@@ -946,16 +944,14 @@ async function handleReset(
 	commit: GraphCommit,
 	mode: "soft" | "mixed" | "hard",
 ) {
-	const labels: Record<string, string> = {
-		soft: "Soft reset keeps every change, staged.",
-		mixed: "Mixed reset keeps every change, unstaged.",
-		hard: "Hard reset discards your uncommitted changes and the changes of every commit after this one. This cannot be undone.",
-	};
-	// The dialog names what moves and where, so a reset picked from the wrong row
-	// reads wrong before it runs.
 	const branch = commits
 		.find((c) => c.is_head)
 		?.refs.find((r) => r.ref_type === "LocalBranch" && r.is_head)?.short_name;
+	const labels: Record<typeof mode, string> = {
+		soft: "Soft reset keeps every change, staged.",
+		mixed: "Mixed reset keeps every change, unstaged.",
+		hard: `Hard reset discards your uncommitted changes to tracked files, which cannot be recovered, and leaves ${branch ?? "HEAD"} with only the history of ${commit.short_oid}.`,
+	};
 	const confirmed = await ask(
 		`Reset ${branch ?? "HEAD"} to ${commit.short_oid} "${commit.summary}"?\n\n${labels[mode]}`,
 		{

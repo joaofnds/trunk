@@ -620,7 +620,7 @@ describe("CommitGraph", () => {
 			expect(menuItemOptions("Fast-forward main to here").enabled).toBe(false);
 		});
 
-		it("leaves a cherry-pick that stops on conflicts to the banner, with no error", async () => {
+		it("opens no error dialog for a cherry-pick stopped on conflicts", async () => {
 			installReads({
 				commits: MERGE_FIXTURE,
 				override: (cmd) =>
@@ -703,6 +703,28 @@ describe("CommitGraph", () => {
 				path: "/test/repo",
 				message: "edited revert",
 			});
+		});
+
+		it("opens no error dialog for a revert stopped on conflicts", async () => {
+			installReads({
+				commits: MERGE_FIXTURE,
+				override: (cmd) =>
+					cmd === "revert_commit_begin"
+						? Promise.reject({
+								code: "conflict_state",
+								message: "error: could not revert aaa111a... main tip",
+							})
+						: undefined,
+			});
+			render(CommitGraph, {
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+			});
+			await openContextMenu(0);
+
+			await getMenuAction("Revert")();
+			await flush();
+
+			expect(vi.mocked(message)).not.toHaveBeenCalled();
 		});
 
 		it("revert: cancel (null) does not invoke revert_continue", async () => {
@@ -3397,6 +3419,51 @@ describe("CommitGraph", () => {
 
 			expect(vi.mocked(ask)).toHaveBeenCalledWith(
 				expect.stringMatching(/^Reset main to bbb222b "older work"\?/),
+				expect.anything(),
+			);
+		});
+
+		// The target need not be an ancestor, so the warning says what the branch
+		// ends up holding rather than which commits come after the target.
+		it("warns that a hard reset leaves the branch with the target's history", async () => {
+			installReads({ commits: [HEAD_COMMIT, TARGET] });
+			render(CommitGraph, {
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.contextMenu(rows[1]);
+			await flush();
+
+			await getMenuAction("Hard")();
+			await flush();
+
+			expect(vi.mocked(ask)).toHaveBeenCalledWith(
+				expect.stringContaining(
+					"leaves main with only the history of bbb222b.",
+				),
+				expect.anything(),
+			);
+		});
+
+		it("names HEAD as what moves when no branch is checked out", async () => {
+			const detached = makeCommit({
+				oid: HEAD_COMMIT.oid,
+				summary: "detached tip",
+				is_head: true,
+			});
+			installReads({ commits: [detached, TARGET] });
+			render(CommitGraph, {
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.contextMenu(rows[1]);
+			await flush();
+
+			await getMenuAction("Soft")();
+			await flush();
+
+			expect(vi.mocked(ask)).toHaveBeenCalledWith(
+				expect.stringMatching(/^Reset HEAD to bbb222b "older work"\?/),
 				expect.anything(),
 			);
 		});
