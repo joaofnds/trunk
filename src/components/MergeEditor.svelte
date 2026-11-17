@@ -42,6 +42,10 @@ const LINE_HEIGHT = 18;
    plain bar to leave the same visible band between them. */
 const CONFLICT_HEADER_HEIGHT = BAR_HEIGHT + 1;
 const OVERSCAN = 20;
+const SIDE_LABEL = {
+	ours: "Current (Ours)",
+	theirs: "Incoming (Theirs)",
+} as const;
 
 // ---------- State ----------
 let regions = $state<ConflictRegion[]>([]);
@@ -450,6 +454,8 @@ registerUpdateBlocker(
 		<Row
 			variant="divider"
 			tone="muted"
+			aria-label="Take conflict {row.conflictNum} from {SIDE_LABEL[side]}"
+			aria-pressed={isHunkAllTaken(side, row.regionIdx)}
 			onclick={() => handleToggleHunk(side, row.regionIdx)}
 		>
 			{#if isHunkAllTaken(side, row.regionIdx)}
@@ -471,6 +477,7 @@ registerUpdateBlocker(
 	>
 		<Row
 			variant="fill"
+			aria-pressed={taken}
 			onclick={(e: MouseEvent) => handleToggleLine(row.key, e)}
 		>
 			<span class="flex-1 self-stretch flex min-w-0">
@@ -540,7 +547,7 @@ registerUpdateBlocker(
 				<div
 					class="h-bar bg-accent-bg hairline-accent flex items-center py-0 px-2 gap-2 shrink-0"
 				>
-					<span class="text-callout text-text">Current (Ours)</span>
+					<span class="text-callout text-text">{SIDE_LABEL.ours}</span>
 					<span class="flex-1"></span>
 					<Button size="sm" variant="success" onclick={handleTakeAllCurrent}
 						>Take All Current</Button
@@ -587,7 +594,7 @@ registerUpdateBlocker(
 				<div
 					class="h-bar bg-success-bg hairline-success flex items-center py-0 px-2 gap-2 shrink-0"
 				>
-					<span class="text-callout text-text">Incoming (Theirs)</span>
+					<span class="text-callout text-text">{SIDE_LABEL.theirs}</span>
 					<span class="flex-1"></span>
 					<Button size="sm" variant="success" onclick={handleTakeAllIncoming}
 						>Take All Incoming</Button
@@ -646,7 +653,7 @@ registerUpdateBlocker(
 						variant="ghost"
 						onclick={handleReset}
 						aria-label="Reset merge selections"
-						title="Reset to Current (Ours)"
+						title="Reset to {SIDE_LABEL.ours}"
 						><RotateCcw size={14} /></Button
 					>
 				</div>

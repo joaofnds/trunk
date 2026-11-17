@@ -185,11 +185,11 @@ describe("MergeEditor", () => {
 
 			expect(result.value).toBe("a\ntheirs b\nc\nd\nours e\n");
 			expect(
-				screen.getAllByRole("button", { name: "Conflict 1" }),
+				screen.getAllByRole("button", { name: /^Take conflict 1 from/ }),
 			).toHaveLength(2);
-			expect(screen.queryAllByRole("button", { name: "Conflict 2" })).toEqual(
-				[],
-			);
+			expect(
+				screen.queryAllByRole("button", { name: /^Take conflict 2 from/ }),
+			).toEqual([]);
 		});
 	});
 
@@ -260,13 +260,50 @@ describe("MergeEditor", () => {
 		it("takes every line of a side when its conflict header is clicked", async () => {
 			render(MergeEditor, { props });
 			const result = await output();
-			const [, incoming] = screen.getAllByRole("button", {
-				name: "Conflict 1",
+			const incoming = screen.getByRole("button", {
+				name: "Take conflict 1 from Incoming (Theirs)",
 			});
 
 			await fireEvent.click(incoming);
 
 			expect(result.value).toContain("theirs one\ntheirs two\ntheirs three");
+		});
+
+		it("tells each side's conflict header apart and says which side is taken", async () => {
+			render(MergeEditor, { props });
+			await output();
+
+			const current = screen.getByRole("button", {
+				name: "Take conflict 1 from Current (Ours)",
+			});
+			const incoming = screen.getByRole("button", {
+				name: "Take conflict 1 from Incoming (Theirs)",
+			});
+
+			expect(current).toHaveAttribute("aria-pressed", "true");
+			expect(incoming).toHaveAttribute("aria-pressed", "false");
+		});
+
+		it("presses a side's conflict header once that side is taken", async () => {
+			render(MergeEditor, { props });
+			await output();
+			const incoming = screen.getByRole("button", {
+				name: "Take conflict 1 from Incoming (Theirs)",
+			});
+
+			await fireEvent.click(incoming);
+
+			expect(incoming).toHaveAttribute("aria-pressed", "true");
+		});
+
+		it("says which lines are taken", async () => {
+			render(MergeEditor, { props });
+			await output();
+
+			await fireEvent.click(line("theirs two"));
+
+			expect(line("theirs two")).toHaveAttribute("aria-pressed", "true");
+			expect(line("theirs one")).toHaveAttribute("aria-pressed", "false");
 		});
 	});
 
