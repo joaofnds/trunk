@@ -290,16 +290,31 @@ impl TestContext {
         staging::unstage_files_inner(self.path(), &paths, self.state_map())
     }
 
-    /// The bytes a path holds in the index, as staging left them.
+    /// The text a path holds in the index, as staging left it.
     pub fn staged_content(&self, file_path: &str) -> String {
+        String::from_utf8_lossy(&self.staged_bytes(file_path)).into_owned()
+    }
+
+    /// The bytes a path holds in the index, as staging left them.
+    pub fn staged_bytes(&self, file_path: &str) -> Vec<u8> {
         let repo = self.repo();
-        let index = repo.index().expect("failed to read index");
-        let entry = index
-            .get_path(std::path::Path::new(file_path), 0)
-            .unwrap_or_else(|| panic!("{file_path} is not in the index"));
+        let entry = self.staged_entry(file_path);
         let blob = repo.find_blob(entry.id).expect("failed to read blob");
 
-        String::from_utf8_lossy(blob.content()).into_owned()
+        blob.content().to_vec()
+    }
+
+    /// The mode a path holds in the index, such as `0o100_755` for an executable.
+    pub fn staged_mode(&self, file_path: &str) -> u32 {
+        self.staged_entry(file_path).mode
+    }
+
+    fn staged_entry(&self, file_path: &str) -> git2::IndexEntry {
+        let index = self.repo().index().expect("failed to read index");
+
+        index
+            .get_path(std::path::Path::new(file_path), 0)
+            .unwrap_or_else(|| panic!("{file_path} is not in the index"))
     }
 }
 

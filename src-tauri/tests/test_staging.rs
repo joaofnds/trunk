@@ -1,5 +1,6 @@
 mod common;
 
+use common::builder::make_executable;
 use common::context::TestContext;
 use std::fmt::Write as _;
 use trunk_lib::types::{DiffOrigin, DiffRequestOptions, FileStatusType};
@@ -1479,6 +1480,16 @@ fn staging_many_keeps_a_symlink_that_now_dangles_in_the_index() {
 /// without rename detection sees a whole-file add instead, and its hunk 0 is the
 /// entire file rather than the line the user clicked (TRUNK-73's failure mode).
 fn staged_rename_with_one_edit() -> TestContext {
+    staged_rename_with_one_edit_beside("util.ts", "math-util.ts", &[])
+}
+
+/// The same staged rename between the two named paths, with each file in `beside`
+/// committed next to the renamed one and left untouched.
+fn staged_rename_with_one_edit_beside(
+    old_path: &str,
+    new_path: &str,
+    beside: &[&str],
+) -> TestContext {
     let original = (1..=20).fold(String::new(), |mut out, n| {
         let _ = writeln!(out, "export const value{n} = {n};");
         out
@@ -1488,19 +1499,21 @@ fn staged_rename_with_one_edit() -> TestContext {
         "export const value7 = 7 + offset;",
     );
 
-    let ctx = TestContext::builder()
-        .with_file("util.ts", &original)
-        .with_commit("add util.ts")
-        .with_removed_file("util.ts")
-        .with_file("math-util.ts", &edited)
+    let mut builder = TestContext::builder();
+    builder.with_file(old_path, &original);
+    for path in beside {
+        builder.with_file(path, "beside\n");
+    }
+    let ctx = builder
+        .with_commit("add the files")
+        .with_removed_file(old_path)
+        .with_file(new_path, &edited)
         .build();
 
     let repo = ctx.repo();
     let mut index = repo.index().unwrap();
-    index.remove_path(std::path::Path::new("util.ts")).unwrap();
-    index
-        .add_path(std::path::Path::new("math-util.ts"))
-        .unwrap();
+    index.remove_path(std::path::Path::new(old_path)).unwrap();
+    index.add_path(std::path::Path::new(new_path)).unwrap();
     index.write().unwrap();
 
     ctx
@@ -2265,4 +2278,209 @@ fn unstage_hunk_unstages_the_shown_hunk_after_the_index_changed_above_it() {
     let mut expected = edited.clone();
     expected[24] = "line 25".to_string();
     assert_eq!(ctx.staged_content("two.txt"), joined(&expected));
+}
+
+// -- patches git can read back exactly (TRUNK-458 review) --
+//
+// Every hunk and line action rebuilds a patch as text and has libgit2 parse it back.
+// Whatever the text fails to say, a path's spelling, a byte, a mode, that a file is
+// new or gone, the action loses.
+
+fn committed(path: &str, content: &str) -> TestContext {
+    TestContext::builder()
+        .with_file("README.md", "hello\n")
+        .with_file(path, content)
+        .with_commit("add the files")
+        .build()
+}
+
+fn committed_executable(path: &str, content: &str) -> TestContext {
+    TestContext::builder()
+        .with_file("README.md", "hello\n")
+        .with_executable_file(path, content)
+        .with_commit("add the files")
+        .build()
+}
+
+fn is_executable(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o111 != 0
+}
+
+#[test]
+fn unstaging_a_hunk_of_a_rename_between_paths_with_spaces_restores_the_old_path() {
+    let ctx = staged_rename_with_one_edit_beside("util file.ts", "math util.ts", &[]);
+
+    ctx.unstage_hunk("math util.ts", 0).unwrap();
+
+    assert_eq!(staged_paths(&ctx), vec!["util file.ts".to_string()]);
+}
+
+#[test]
+fn unstaging_a_hunk_of_a_rename_to_a_quoted_name_leaves_other_files_staged() {
+    let ctx = staged_rename_with_one_edit_beside("util.ts", "\"x\"", &["x"]);
+
+    ctx.unstage_hunk("\"x\"", 0).unwrap();
+
+    assert_eq!(
+        staged_paths(&ctx),
+        vec!["util.ts".to_string(), "x".to_string()]
+    );
+}
+
+#[test]
+fn staging_a_hunk_of_a_file_whose_name_holds_a_newline_stages_it() {
+    let ctx = committed("two\nlines.txt", "one\n");
+    std::fs::write(ctx.repo_path().join("two\nlines.txt"), "one\ntwo\n").unwrap();
+
+    ctx.stage_hunk("two\nlines.txt", 0).unwrap();
+
+    assert_eq!(ctx.staged_content("two\nlines.txt"), "one\ntwo\n");
+}
+
+#[test]
+fn staging_a_hunk_keeps_bytes_that_are_not_utf8() {
+    let ctx = committed("notes.txt", "one\n");
+    std::fs::write(ctx.repo_path().join("notes.txt"), b"one\ncaf\xe9\n").unwrap();
+
+    ctx.stage_hunk("notes.txt", 0).unwrap();
+
+    assert_eq!(ctx.staged_bytes("notes.txt"), b"one\ncaf\xe9\n");
+}
+
+#[test]
+fn discarding_a_hunk_restores_bytes_that_are_not_utf8() {
+    let ctx = TestContext::builder()
+        .with_binary_file("notes.txt", b"one\ncaf\xe9\n")
+        .with_commit("add notes")
+        .build();
+    let file = ctx.repo_path().join("notes.txt");
+    std::fs::write(&file, "one\n").unwrap();
+
+    ctx.discard_hunk("notes.txt", 0).unwrap();
+
+    assert_eq!(std::fs::read(&file).unwrap(), b"one\ncaf\xe9\n");
+}
+
+#[test]
+fn staging_a_hunk_of_an_executable_keeps_it_executable() {
+    let ctx = committed_executable("run.sh", "echo one\n");
+    std::fs::write(ctx.repo_path().join("run.sh"), "echo one\necho two\n").unwrap();
+
+    ctx.stage_hunk("run.sh", 0).unwrap();
+
+    assert_eq!(ctx.staged_mode("run.sh"), 0o100_755);
+}
+
+#[test]
+fn unstaging_a_hunk_of_an_executable_keeps_it_executable() {
+    let ctx = committed_executable("run.sh", "echo one\n");
+    std::fs::write(ctx.repo_path().join("run.sh"), "echo one\necho two\n").unwrap();
+    ctx.stage_file("run.sh").unwrap();
+
+    ctx.unstage_hunk("run.sh", 0).unwrap();
+
+    assert_eq!(ctx.staged_mode("run.sh"), 0o100_755);
+}
+
+#[test]
+fn discarding_a_hunk_of_an_executable_keeps_it_executable() {
+    let ctx = committed_executable("run.sh", "echo one\n");
+    let file = ctx.repo_path().join("run.sh");
+    std::fs::write(&file, "echo one\necho two\n").unwrap();
+
+    ctx.discard_hunk("run.sh", 0).unwrap();
+
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "echo one\n");
+    assert!(is_executable(&file), "the discard kept the executable bits");
+}
+
+#[test]
+fn staging_a_hunk_of_an_untracked_executable_stages_it_executable() {
+    let ctx = committed("README.md", "hello\n");
+    let file = ctx.repo_path().join("run.sh");
+    std::fs::write(&file, "echo one\n").unwrap();
+    make_executable(&file);
+
+    ctx.stage_hunk("run.sh", 0).unwrap();
+
+    assert_eq!(ctx.staged_mode("run.sh"), 0o100_755);
+}
+
+#[test]
+fn staging_the_hunk_of_a_deleted_file_stages_its_deletion() {
+    let ctx = committed("gone.txt", "a\nb\n");
+    std::fs::remove_file(ctx.repo_path().join("gone.txt")).unwrap();
+
+    ctx.stage_hunk("gone.txt", 0).unwrap();
+
+    assert_eq!(staged_paths(&ctx), vec!["README.md".to_string()]);
+}
+
+#[test]
+fn staging_some_lines_of_a_deleted_file_stages_only_their_removal() {
+    let ctx = committed("gone.txt", "a\nb\n");
+    std::fs::remove_file(ctx.repo_path().join("gone.txt")).unwrap();
+
+    ctx.stage_lines("gone.txt", 0, &[0]).unwrap();
+
+    assert_eq!(ctx.staged_content("gone.txt"), "b\n");
+}
+
+#[test]
+fn discarding_the_hunk_of_a_deleted_file_restores_it() {
+    let ctx = committed("gone.txt", "a\nb\n");
+    let file = ctx.repo_path().join("gone.txt");
+    std::fs::remove_file(&file).unwrap();
+
+    ctx.discard_hunk("gone.txt", 0).unwrap();
+
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "a\nb\n");
+}
+
+#[test]
+fn unstaging_the_hunk_of_a_staged_new_file_leaves_it_untracked() {
+    let ctx = committed("README.md", "hello\n");
+    let file = ctx.repo_path().join("new.txt");
+    std::fs::write(&file, "a\nb\n").unwrap();
+    ctx.stage_file("new.txt").unwrap();
+
+    ctx.unstage_hunk("new.txt", 0).unwrap();
+
+    assert_eq!(staged_paths(&ctx), vec!["README.md".to_string()]);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "a\nb\n");
+}
+
+#[test]
+fn unstaging_some_lines_of_a_staged_new_file_keeps_the_rest_staged() {
+    let ctx = committed("README.md", "hello\n");
+    std::fs::write(ctx.repo_path().join("new.txt"), "a\nb\n").unwrap();
+    ctx.stage_file("new.txt").unwrap();
+
+    ctx.unstage_lines("new.txt", 0, &[0]).unwrap();
+
+    assert_eq!(ctx.staged_content("new.txt"), "b\n");
+}
+
+#[test]
+fn unstaging_the_hunk_of_a_staged_deletion_stages_the_file_again() {
+    let ctx = committed("gone.txt", "a\nb\n");
+    std::fs::remove_file(ctx.repo_path().join("gone.txt")).unwrap();
+    ctx.stage_file("gone.txt").unwrap();
+
+    ctx.unstage_hunk("gone.txt", 0).unwrap();
+
+    assert_eq!(ctx.staged_content("gone.txt"), "a\nb\n");
+}
+
+#[test]
+fn discarding_the_hunk_of_an_untracked_file_deletes_it() {
+    let ctx = committed("README.md", "hello\n");
+    let file = ctx.repo_path().join("scratch.txt");
+    std::fs::write(&file, "a\nb\n").unwrap();
+
+    ctx.discard_hunk("scratch.txt", 0).unwrap();
+
+    assert!(!file.exists(), "the untracked file is gone");
 }

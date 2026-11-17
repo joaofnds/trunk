@@ -241,36 +241,6 @@ pub fn stage_files_inner(
     Ok(())
 }
 
-/// Ensure the index has an entry for `file_path` so that `repo.apply(Index)` works
-/// on untracked files. Seeds an empty blob if the file is absent from the index.
-fn seed_index_for_untracked(repo: &git2::Repository, file_path: &str) -> Result<(), TrunkError> {
-    let needs_seed = {
-        let index = repo.index()?;
-        index.get_path(Path::new(file_path), 0).is_none()
-    };
-    if needs_seed {
-        let empty_oid = repo.blob(&[])?;
-        let mut index = repo.index()?;
-        let entry = git2::IndexEntry {
-            ctime: git2::IndexTime::new(0, 0),
-            mtime: git2::IndexTime::new(0, 0),
-            dev: 0,
-            ino: 0,
-            mode: 0o100_644,
-            uid: 0,
-            gid: 0,
-            file_size: 0,
-            id: empty_oid,
-            flags: 0,
-            flags_extended: 0,
-            path: file_path.as_bytes().to_vec(),
-        };
-        index.add(&entry)?;
-        index.write()?;
-    }
-    Ok(())
-}
-
 fn is_head_unborn(repo: &git2::Repository) -> bool {
     match repo.head() {
         Err(e) => e.code() == git2::ErrorCode::UnbornBranch,
@@ -1157,7 +1127,7 @@ fn build_partial_patch_text(
     hunk_idx: usize,
     selected_indices: &[u32],
     reverse: bool,
-) -> Result<String, TrunkError> {
+) -> Result<Vec<u8>, TrunkError> {
     let (hunk, _) = patch.hunk(hunk_idx)?;
     let body = rewrite_hunk_lines(patch, hunk_idx, selected_indices, reverse)?;
 
@@ -1167,23 +1137,25 @@ fn build_partial_patch_text(
         hunk.old_start()
     };
 
-    let header = patch_header(file_path, patch, reverse);
     let new_start = body.lone_new_start(old_start);
     let HunkBody {
         lines,
         old_count,
         new_count,
     } = body;
-    let lines_joined = lines.join("");
 
-    Ok(format!(
-        "{header}@@ -{old_start},{old_count} +{new_start},{new_count} @@\n{lines_joined}",
-    ))
+    let mut text = patch_header(file_path, patch, reverse, new_count == 0);
+    text.extend_from_slice(
+        format!("@@ -{old_start},{old_count} +{new_start},{new_count} @@\n").as_bytes(),
+    );
+    text.extend(lines.concat());
+
+    Ok(text)
 }
 
 /// One hunk's rewritten lines, with the line counts its header must declare.
 struct HunkBody {
-    lines: Vec<String>,
+    lines: Vec<Vec<u8>>,
     old_count: u32,
     new_count: u32,
 }
@@ -1250,12 +1222,12 @@ fn rewrite_hunk_lines(
     // The text of an unterminated old last line this patch terminates. The working
     // tree spells that line terminated as the first addition after it, and only
     // there: a later addition of the same text is a line of its own.
-    let mut terminated: Option<String> = None;
+    let mut terminated: Option<Vec<u8>> = None;
 
     for line_idx in 0..num_lines {
         let line = patch.line_in_hunk(hunk_idx, line_idx)?;
         let origin = line.origin();
-        let content = String::from_utf8_lossy(line.content());
+        let content = line.content();
 
         if is_no_newline_marker(origin) {
             continue;
@@ -1267,29 +1239,20 @@ fn rewrite_hunk_lines(
         if origin == '-'
             && !reverse
             && !is_selected(line_idx)
-            && !content.ends_with('\n')
+            && !content.ends_with(b"\n")
             && stages_an_addition_after(line_idx)
         {
-            run.deletions
-                .push(format!("-{content}\n\\ No newline at end of file\n"));
-            run.additions.push(format!("+{content}\n"));
+            let copy = [content, b"\n"].concat();
+            run.deletions.push(patch_line(b'-', content));
+            run.additions.push(patch_line(b'+', &copy));
             body.old_count += 1;
             body.new_count += 1;
-            terminated = Some(format!("{content}\n"));
+            terminated = Some(copy);
             continue;
         }
         if origin == '+' && !reverse && terminated.take().is_some_and(|copy| copy == content) {
             continue;
         }
-
-        // A line libgit2 hands over without a newline is the file's last, and
-        // git spells that as the marker on its own line straight after. The
-        // marker counts toward neither side's line count.
-        let content_str = if content.ends_with('\n') {
-            content.into_owned()
-        } else {
-            format!("{content}\n\\ No newline at end of file\n")
-        };
 
         let selected = is_selected(line_idx);
 
@@ -1297,11 +1260,11 @@ fn rewrite_hunk_lines(
             // A selected line is staged onto one side. Reversing swaps which one,
             // so an add undone reads as a delete and a delete undone as an add.
             ('+', true, false) | ('-', true, true) => {
-                run.additions.push(format!("+{content_str}"));
+                run.additions.push(patch_line(b'+', content));
                 body.new_count += 1;
             }
             ('+', true, true) | ('-', true, false) => {
-                run.deletions.push(format!("-{content_str}"));
+                run.deletions.push(patch_line(b'-', content));
                 body.old_count += 1;
             }
             // Contributes nothing: an unselected add is not staged, and an
@@ -1310,7 +1273,7 @@ fn rewrite_hunk_lines(
             // Everything else survives on both sides, so it becomes context.
             _ => {
                 run.flush_into(&mut body.lines);
-                body.lines.push(format!(" {content_str}"));
+                body.lines.push(patch_line(b' ', content));
                 body.old_count += 1;
                 body.new_count += 1;
             }
@@ -1330,69 +1293,134 @@ fn rewrite_hunk_lines(
 /// interleaved order is rejected outright (probed, git2 0.21).
 #[derive(Default)]
 struct ChangeRun {
-    deletions: Vec<String>,
-    additions: Vec<String>,
+    deletions: Vec<Vec<u8>>,
+    additions: Vec<Vec<u8>>,
 }
 
 impl ChangeRun {
-    fn flush_into(&mut self, lines: &mut Vec<String>) {
+    fn flush_into(&mut self, lines: &mut Vec<Vec<u8>>) {
         lines.append(&mut self.deletions);
         lines.append(&mut self.additions);
     }
 }
 
-/// The `diff --git` and `---`/`+++` lines a hunk's patch must carry, newline-terminated.
+/// One line of a hunk's body, its byte content as the file holds it after `marker`.
 ///
-/// Each side names its own path. They differ for a rename, and a header that repeats
-/// one of them is rejected outright ("mismatched new path names"). Reversing the patch
+/// A line libgit2 hands over without a newline is the file's last, and git spells
+/// that as the marker on its own line straight after. The marker counts toward
+/// neither side's line count.
+fn patch_line(marker: u8, content: &[u8]) -> Vec<u8> {
+    let mut line = vec![marker];
+    line.extend_from_slice(content);
+    if !content.ends_with(b"\n") {
+        line.extend_from_slice(b"\n\\ No newline at end of file\n");
+    }
+    line
+}
+
+/// The header a hunk's patch must carry, as git writes it, newline-terminated.
+///
+/// libgit2 takes everything but the lines themselves from here: each side's path,
+/// the mode the file ends with, and whether the patch creates or deletes it. What a
+/// header leaves out, the apply loses, so a file without a mode comes out 100644 and
+/// one never declared new or deleted is refused for its `/dev/null` side.
+///
+/// Each side names its own path. They differ for a rename, and reversing the patch
 /// swaps which side is which. A rename also says so, because libgit2 only takes the
 /// old path out of the index for a patch it parsed as one, and otherwise leaves both
 /// files staged, so the old one would come back with the next commit.
-fn patch_header(file_path: &str, patch: &git2::Patch<'_>, reverse: bool) -> String {
+///
+/// The patch changes lines only: a file that exists on both sides keeps the mode it
+/// has where the patch applies.
+fn patch_header(
+    file_path: &str,
+    patch: &git2::Patch<'_>,
+    reverse: bool,
+    leaves_no_lines: bool,
+) -> Vec<u8> {
     let delta = patch.delta();
-    let delta_status = delta.status();
+    let status = delta.status();
+    let is_new = matches!(status, git2::Delta::Added | git2::Delta::Untracked);
+    let is_gone = status == git2::Delta::Deleted;
 
-    let path_of = |file: git2::DiffFile<'_>| {
-        file.path().map_or_else(
-            || file_path.to_string(),
-            |p| p.to_string_lossy().into_owned(),
-        )
-    };
-    let (old_path, new_path) = if reverse {
-        (path_of(delta.new_file()), path_of(delta.old_file()))
+    let (before, after) = if reverse {
+        (delta.new_file(), delta.old_file())
     } else {
-        (path_of(delta.old_file()), path_of(delta.new_file()))
+        (delta.old_file(), delta.new_file())
     };
+    let creates = if reverse { is_gone } else { is_new };
+    let deletes = leaves_no_lines && if reverse { is_new } else { is_gone };
 
-    let git_line = format!("diff --git a/{old_path} b/{new_path}\n");
+    let path_of =
+        |file: &git2::DiffFile<'_>| file.path_bytes().unwrap_or(file_path.as_bytes()).to_vec();
+    let (before_path, after_path) = (path_of(&before), path_of(&after));
+    let old_side = header_path(b"a/", &before_path);
+    let new_side = header_path(b"b/", &after_path);
 
-    if delta_status == git2::Delta::Renamed {
-        return format!(
-            "{git_line}similarity index {RENAME_SIMILARITY}%\nrename from {old_path}\nrename to {new_path}\n"
-        );
+    let mut header = [b"diff --git ", &old_side[..], b" ", &new_side[..], b"\n"].concat();
+    if creates {
+        header.extend(format!("new file mode {:o}\n", u32::from(after.mode())).into_bytes());
+    } else if deletes {
+        header.extend(format!("deleted file mode {:o}\n", u32::from(before.mode())).into_bytes());
+    }
+    if status == git2::Delta::Renamed {
+        header.extend(format!("similarity index {RENAME_SIMILARITY}%\n").into_bytes());
+        header.extend([b"rename from ", &header_path(b"", &before_path)[..], b"\n"].concat());
+        header.extend([b"rename to ", &header_path(b"", &after_path)[..], b"\n"].concat());
+    }
+    header.extend(format!("index {}..{}", before.id(), after.id()).into_bytes());
+    if !creates && !deletes {
+        header.extend(format!(" {:o}", u32::from(before.mode())).into_bytes());
+    }
+    header.push(b'\n');
+    header.extend(if creates {
+        b"--- /dev/null".to_vec()
+    } else {
+        [b"--- ", &old_side[..]].concat()
+    });
+    header.push(b'\n');
+    header.extend(if deletes {
+        b"+++ /dev/null".to_vec()
+    } else {
+        [b"+++ ", &new_side[..]].concat()
+    });
+    header.push(b'\n');
+
+    header
+}
+
+/// A path as a patch header spells it, after `prefix`, quoted as git quotes one.
+///
+/// libgit2 ends an unquoted path at whitespace, trims it at the end of a line, and
+/// decodes any path that starts with a quote, so a path holding whitespace, a quote,
+/// a backslash or a control byte goes in double quotes with its C escapes.
+fn header_path(prefix: &[u8], path: &[u8]) -> Vec<u8> {
+    let needs_quotes = path
+        .iter()
+        .any(|&byte| byte <= b' ' || byte == b'"' || byte == b'\\' || byte == 0x7f);
+    if !needs_quotes {
+        return [prefix, path].concat();
     }
 
-    let old_header = if (!reverse && delta_status == git2::Delta::Added)
-        || (reverse && delta_status == git2::Delta::Deleted)
-    {
-        "--- /dev/null".to_string()
-    } else {
-        format!("--- a/{old_path}")
-    };
-    let new_header = if (!reverse && delta_status == git2::Delta::Deleted)
-        || (reverse && delta_status == git2::Delta::Added)
-    {
-        "+++ /dev/null".to_string()
-    } else {
-        format!("+++ b/{new_path}")
-    };
+    let mut quoted = vec![b'"'];
+    quoted.extend_from_slice(prefix);
+    for &byte in path {
+        match byte {
+            b'"' | b'\\' => quoted.extend([b'\\', byte]),
+            _ if byte < b' ' || byte == 0x7f => {
+                quoted.extend(format!("\\{byte:03o}").into_bytes());
+            }
+            _ => quoted.push(byte),
+        }
+    }
+    quoted.push(b'"');
 
-    format!("{git_line}{old_header}\n{new_header}\n")
+    quoted
 }
 
 /// The similarity a rename's patch declares. libgit2 parses a rename only after a
-/// similarity line, and then no `---`/`+++` lines, while its apply never reads the
-/// figure (`patch_parse.c` and `apply.c`, libgit2 1.9.7), so any percentage does.
+/// similarity line, while its apply never reads the figure (`patch_parse.c` and
+/// `apply.c`, libgit2 1.9.7), so any percentage does.
 const RENAME_SIMILARITY: u8 = 100;
 
 /// The file's unstaged diff, index to working tree, as the view built it.
@@ -1452,10 +1480,10 @@ fn shown_hunk_index(
 /// Apply a partial patch built by `build_partial_patch_text`.
 fn apply_patch_text(
     repo: &git2::Repository,
-    patch_text: &str,
+    patch_text: &[u8],
     location: git2::ApplyLocation,
 ) -> Result<(), TrunkError> {
-    let partial_diff = git2::Diff::from_buffer(patch_text.as_bytes())
+    let partial_diff = git2::Diff::from_buffer(patch_text)
         .map_err(|e| TrunkError::new("patch_parse_failed", e.message().to_owned()))?;
 
     repo.apply(&partial_diff, location, None)
@@ -1485,7 +1513,6 @@ pub fn stage_lines_inner(
         build_partial_patch_text(file_path, &current, hunk_index, line_indices, false)?;
     drop(current);
 
-    seed_index_for_untracked(&repo, file_path)?;
     apply_patch_text(&repo, &patch_text, git2::ApplyLocation::Index)
 }
 

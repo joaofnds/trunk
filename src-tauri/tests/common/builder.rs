@@ -25,6 +25,9 @@ enum BuildStep {
     RemoveFile {
         path: String,
     },
+    MakeExecutable {
+        path: String,
+    },
     Commit {
         message: String,
         secs: Option<i64>,
@@ -106,6 +109,15 @@ impl TestContextBuilder {
         self.steps.push(BuildStep::WriteBinaryFile {
             path: path.to_string(),
             content: content.to_vec(),
+        });
+        self
+    }
+
+    /// A file with its executable bits set, so the next commit records it as 100755.
+    pub fn with_executable_file(&mut self, path: &str, content: &str) -> &mut Self {
+        self.with_file(path, content);
+        self.steps.push(BuildStep::MakeExecutable {
+            path: path.to_string(),
         });
         self
     }
@@ -271,6 +283,7 @@ impl TestContextBuilder {
                 BuildStep::RemoveFile { path } => {
                     remove_file(dir.path(), path, &mut pending);
                 }
+                BuildStep::MakeExecutable { path } => make_executable(&dir.path().join(path)),
                 BuildStep::Commit { message, secs } => {
                     commit(&repo, message, *secs, &mut clock, &mut pending);
                 }
@@ -347,6 +360,13 @@ fn write_file(
     }
     std::fs::write(&full_path, content).unwrap();
     pending.push(PendingChange::Add(path.to_string()));
+}
+
+/// Set a file's executable bits, which `add_path` then records as mode 100755.
+pub fn make_executable(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
 /// Delete a file from the working tree and queue its removal.
