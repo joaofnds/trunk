@@ -72,6 +72,7 @@ import {
 	PILL_PADDING_X,
 	TABLE_INSET_X,
 } from "../lib/graph-constants.js";
+import { centredRowTop, openingScrollTop } from "../lib/graph-scroll.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import { laneRefForRow } from "../lib/lane-ref.js";
@@ -1902,18 +1903,13 @@ export async function scrollToOid(
 
 	if (!isCurrent() || idx < 0 || !listRef) return;
 
-	// Center the row in the viewport by computing the scroll offset manually.
-	// VirtualList doesn't support 'center' alignment, so we calculate:
-	//   scrollTop = rowTop - (viewportHeight / 2) + (rowHeight / 2)
-	const rowTop = idx * svgRowHeight;
+	// VirtualList has no 'center' alignment, so the offset is computed here.
 	const viewport = listViewport();
 	if (viewport) {
-		const viewportHeight = viewport.clientHeight;
-		const centerOffset = Math.max(
-			0,
-			rowTop - viewportHeight / 2 + svgRowHeight / 2,
-		);
-		viewport.scrollTo({ top: centerOffset, behavior: "smooth" });
+		viewport.scrollTo({
+			top: centredRowTop(idx, svgRowHeight, viewport.clientHeight),
+			behavior: "smooth",
+		});
 	} else {
 		// Fallback: use VirtualList's scroll with 'auto' alignment
 		await listRef.scroll({ index: idx, smoothScroll: true, align: "auto" });
@@ -2112,9 +2108,20 @@ $effect(() => {
 	const headIdx = displayItems.findIndex((c) => c.in_head_chain);
 	if (headIdx >= 0) {
 		scrolledToHead = true;
-		tick().then(() =>
-			listRef?.scroll({ index: headIdx, smoothScroll: false, align: "top" }),
-		);
+		tick().then(() => {
+			const viewport = listViewport();
+			if (viewport) {
+				viewport.scrollTo({
+					top: openingScrollTop(headIdx, svgRowHeight, viewport.clientHeight),
+				});
+			} else {
+				void listRef?.scroll({
+					index: headIdx,
+					smoothScroll: false,
+					align: "top",
+				});
+			}
+		});
 	} else if (untrack(() => hasMore)) {
 		// HEAD not in current batch -- load the next batch so the effect re-fires with more commits.
 		// untrack prevents hasMore from creating a reactive dependency here.
