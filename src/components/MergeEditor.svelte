@@ -4,6 +4,7 @@ import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronUp from "@lucide/svelte/icons/chevron-up";
 import CircleCheck from "@lucide/svelte/icons/circle-check";
 import CircleX from "@lucide/svelte/icons/circle-x";
+import Minus from "@lucide/svelte/icons/minus";
 import RotateCcw from "@lucide/svelte/icons/rotate-ccw";
 import X from "@lucide/svelte/icons/x";
 import { tick } from "svelte";
@@ -436,13 +437,20 @@ async function handleSaveAndResolve() {
 }
 
 // ---------- Helpers ----------
-/** Check if all lines from one side of a conflict region are taken */
-function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
+/** Whether all, some or none of one side's lines in a conflict are taken, in
+ *  the values `aria-pressed` takes. */
+function sideTaken(
+	side: "ours" | "theirs",
+	regionIdx: number,
+): boolean | "mixed" {
 	const region = regions[regionIdx];
 	if (region?.type !== "conflict") return false;
 	const lines = side === "ours" ? region.oursLines : region.theirsLines;
-	if (lines.length === 0) return false;
-	return lines.every((_, j) => takenLines.has(`${side}-${regionIdx}-${j}`));
+	const taken = lines.filter((_, j) =>
+		takenLines.has(`${side}-${regionIdx}-${j}`),
+	).length;
+	if (taken === 0) return false;
+	return taken === lines.length ? true : "mixed";
 }
 registerUpdateBlocker(
 	() => "Finish or close the merge editor before restarting.",
@@ -450,16 +458,19 @@ registerUpdateBlocker(
 </script>
 
 {#snippet conflictHeader(side: "ours" | "theirs", row: FlatRow)}
+	{@const taken = sideTaken(side, row.regionIdx)}
 	<div class="w-full conflict-header shrink-0">
 		<Row
 			variant="divider"
 			tone="muted"
 			aria-label="Take conflict {row.conflictNum} from {SIDE_LABEL[side]}"
-			aria-pressed={isHunkAllTaken(side, row.regionIdx)}
+			aria-pressed={taken}
 			onclick={() => handleToggleHunk(side, row.regionIdx)}
 		>
-			{#if isHunkAllTaken(side, row.regionIdx)}
+			{#if taken === true}
 				<Check size={14} class="text-success" />
+			{:else if taken === "mixed"}
+				<Minus size={14} class="text-success" />
 			{:else}
 				<span class="icon-slot inline-block"></span>
 			{/if}

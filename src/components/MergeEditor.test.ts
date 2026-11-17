@@ -296,6 +296,19 @@ describe("MergeEditor", () => {
 			expect(incoming).toHaveAttribute("aria-pressed", "true");
 		});
 
+		it("marks a side's conflict header mixed while only some of its lines are taken", async () => {
+			render(MergeEditor, { props });
+			await output();
+
+			await fireEvent.click(line("theirs two"));
+
+			expect(
+				screen.getByRole("button", {
+					name: "Take conflict 1 from Incoming (Theirs)",
+				}),
+			).toHaveAttribute("aria-pressed", "mixed");
+		});
+
 		it("says which lines are taken", async () => {
 			render(MergeEditor, { props });
 			await output();
