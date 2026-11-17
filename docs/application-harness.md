@@ -330,6 +330,14 @@ reply. Those want different fixes, and until this existed a red run could not te
 (TRUNK-62). The accounting starts when `invoke` is entered rather than when the request is
 sent, so a command the stall knob is deliberately starving still reads as outstanding.
 
+A hook that expires, such as a `beforeAll` whose spawn or seed never returns, fails in vitest
+and never reaches a wait, so it prints none of that. The host client covers it separately.
+When the host has not printed its ready line, or has not answered a request, 4 000 ms after it
+was asked, the client runs macOS's `sample` on the host process once. It writes the stacks and
+the outstanding list to `trunk-app-host-stall-<pid>.txt` in the system temp directory and
+names that file on stderr. A healthy round trip takes milliseconds, so that line appears only
+when something stalled (TRUNK-413).
+
 `app.events.externalChange()` waits for the application's in-flight `listen` calls before it
 emits, because registering a listener costs a host round trip. In the pre-TRUNK-130 harness,
 two of the four measured `repo-changed` registrations in RepoView and StagingPanel had still

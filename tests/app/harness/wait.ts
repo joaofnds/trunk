@@ -2,20 +2,22 @@ const POLL_MS = 5;
 const TIMEOUT_MS = 5_000;
 
 /**
- * Points a timeout back at the card that already investigated it. Two sessions
- * ruled out the deadline, the harness's old quiet window, splitting the wait,
- * and reproducing by loading the machine (TRUNK-62); a session meeting this
- * failure fresh would otherwise re-derive all of it. The card is parked, not
- * fixed, so this message is how it comes back.
+ * Points a timeout back at the cards that investigated it. Two sessions ruled
+ * out the deadline, the harness's old quiet window, splitting the wait, and
+ * reproducing by loading the machine (TRUNK-62, archived); TRUNK-413 carries the
+ * open investigation. A session meeting this failure fresh would otherwise
+ * re-derive all of it, so this message is how it comes back.
  */
 const KNOWN_FLAKE =
 	"This wait has expired before under contention without the application " +
-	"being broken. Before investigating, read TRUNK-62 " +
-	"(`backlog task 62 --plain`): it records what is already ruled out and how " +
-	"to reproduce two of the three known sites on demand. The outstanding " +
-	"commands above are the evidence that card was waiting for: a command with " +
-	"a large age means the host never answered, and none outstanding means it " +
-	"answered and the frontend did not act on it. Attach them to the card.";
+	"being broken. Before investigating, read TRUNK-413 " +
+	"(`backlog task 413 --plain`), the open investigation, and the archived " +
+	"TRUNK-62 (backlog/archive/tasks/trunk-62*), which records what is already " +
+	"ruled out and how to reproduce two of the three known sites on demand. The " +
+	"outstanding commands above are the evidence: a command with a large age " +
+	"means the host never answered, and none outstanding means it answered and " +
+	"the frontend did not act on it. Attach them, and any stall sample the host " +
+	"client printed, to TRUNK-413.";
 
 /**
  * What the running application was still owed when a wait expired. The harness

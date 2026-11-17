@@ -1,5 +1,5 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -41,10 +41,19 @@ interface Pending {
 	 *  which round trip never came back. */
 	label: string;
 	startedAt: number;
+	stallTimer: NodeJS.Timeout;
 }
 
 const DEFAULT_HOST = "src-tauri/target/debug/examples/app_host";
 const DEFAULT_CLI = "src-tauri/target/debug/trunk";
+
+/**
+ * A healthy round trip takes milliseconds and a default wait expires at 5 s, so
+ * a host still silent at 4 s is sampled while it is stuck. A hook timeout never
+ * reaches the wait's diagnostics, and this is the only record it leaves
+ * (TRUNK-413).
+ */
+const SAMPLE_STALLED_HOST_AFTER_MS = 4_000;
 
 /**
  * Starves a chosen host command, so a wait that only fails on a loaded machine
@@ -85,6 +94,7 @@ export class HostClient {
 	private stderr = "";
 	private exited: string | null = null;
 	private closing = false;
+	private sampled = false;
 
 	/** Invariant 7: a crashed test that skips `teardown` must not leave a host
 	 *  process holding a tempdir. */
@@ -259,8 +269,42 @@ export class HostClient {
 		const label = String(body.cmd ?? body.verb);
 		const startedAt = Date.now();
 		return new Promise((resolve, reject) => {
-			this.pending.set(id, { resolve, reject, onReply, label, startedAt });
+			const stallTimer = this.sampleIfStalled(`request #${id} ${label}`);
+			this.pending.set(id, {
+				resolve,
+				reject,
+				onReply,
+				label,
+				startedAt,
+				stallTimer,
+			});
 			this.send({ id, ...body });
+		});
+	}
+
+	private sampleIfStalled(waitingOn: string): NodeJS.Timeout {
+		const timer = setTimeout(
+			() => this.sampleStall(waitingOn),
+			SAMPLE_STALLED_HOST_AFTER_MS,
+		);
+		timer.unref();
+		return timer;
+	}
+
+	private sampleStall(waitingOn: string): void {
+		const pid = this.child.pid;
+		if (this.sampled || this.closing || this.exited || pid === undefined)
+			return;
+		this.sampled = true;
+
+		const path = join(tmpdir(), `trunk-app-host-stall-${pid}.txt`);
+		process.stderr.write(
+			`app host ${pid} has not answered ${waitingOn} in ${SAMPLE_STALLED_HOST_AFTER_MS}ms; sampling it into ${path} (TRUNK-413)\n`,
+		);
+		execFile("sample", [String(pid), "1", "-file", path], () => {
+			try {
+				appendFileSync(path, `\n${this.describeOutstanding()}\n`);
+			} catch {}
 		});
 	}
 
@@ -276,14 +320,20 @@ export class HostClient {
 		});
 
 		const lines = createInterface({ input: requireStream(this.child.stdout) });
+		const startup = this.sampleIfStalled("startup, before its ready line");
 		const ready = new Promise<void>((resolve, reject) => {
 			lines.on("line", (line) => {
-				if (this.dispatch(JSON.parse(line))) resolve();
+				if (this.dispatch(JSON.parse(line))) {
+					clearTimeout(startup);
+					resolve();
+				}
 			});
 			this.child.on("exit", (code, signal) => {
+				clearTimeout(startup);
 				this.exited = `the host exited with code ${code}, signal ${signal}\n${this.stderr}`;
 				const failure = new Error(this.exited);
 				for (const [, waiter] of this.pending) {
+					clearTimeout(waiter.stallTimer);
 					if (this.closing) waiter.resolve(null);
 					else waiter.reject(failure);
 				}
@@ -310,6 +360,7 @@ export class HostClient {
 		const waiter = this.pending.get(message.id as number);
 		if (!waiter) return false;
 		this.pending.delete(message.id as number);
+		clearTimeout(waiter.stallTimer);
 
 		if ("hostError" in message) {
 			waiter.reject(new Error(message.hostError as string));
