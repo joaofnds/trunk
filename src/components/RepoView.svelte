@@ -624,9 +624,9 @@ let compareOids = $derived<ReadonlySet<string>>(
 );
 
 // The WIP-inclusive display list + pagination state CommitGraph reports via
-// oncommitschange, cached here so commitNav below can be recomputed on every
-// selectedCommitOid change without requiring CommitGraph to be mounted — it
-// unmounts for the whole duration of diff-in-view navigation (showDiff true).
+// oncommitschange, cached here so commitNav below is computed from the rows the
+// graph last reported, the same while a diff, the review panel or the rebase
+// editor covers it.
 let graphDisplayItems = $state<GraphCommit[]>([]);
 let graphHasMore = $state(false);
 let commitNav = $derived(
@@ -732,8 +732,7 @@ let showMergeEditor = $derived(selectedFile?.kind === "conflicted");
 // The graph stays mounted under whatever covers the center pane, as a background
 // tab stays mounted under the active one, so closing a diff returns to the rows
 // and scroll position the user left rather than to the top of a fresh first page.
-const rebasing = $derived(rebaseBase !== null);
-const graphCovered = $derived(reviewPanelShown || showDiff || rebasing);
+const graphCovered = $derived(reviewPanelShown || showDiff || showRebaseEditor);
 let graphLayer = $state<HTMLDivElement | null>(null);
 let leftPane = $state<HTMLDivElement | null>(null);
 let rightPane = $state<HTMLDivElement | null>(null);
@@ -760,7 +759,7 @@ $effect(() => {
 	releaseFocusWithin(rebaseRightPane);
 });
 $effect(() => {
-	if (rebasing) releaseFocusWithin(browseLayout);
+	if (showRebaseEditor) releaseFocusWithin(browseLayout);
 });
 // A tab in the background lets go of the focus, so the one shown can take it and
 // the arrow keys reach the commits on screen.
@@ -791,8 +790,8 @@ let currentDiffFiles = $derived(
 );
 
 // The current file while it is the one on screen: every other selection
-// supersedes it in `currentDiffFiles` above, and the rebase takeover replaces
-// the pane outright.
+// supersedes it in `currentDiffFiles` above, and the rebase editor covers the
+// pane while it is open.
 let shownCurrentFile = $derived(
 	!showRebaseEditor &&
 		selectedCompareFile === null &&
@@ -2588,8 +2587,8 @@ function stepRightPane(delta: number) {
 		<div
 			class="flex flex-1 overflow-hidden"
 			bind:this={browseLayout}
-			class:invisible={rebasing}
-			inert={rebasing}
+			class:invisible={showRebaseEditor}
+			inert={showRebaseEditor}
 		>
 			<!-- Review mode puts the reviews where the branches were. The sidebar stays
 			     mounted under it, since the graph's first page waits on its read. -->
@@ -2681,7 +2680,9 @@ function stepRightPane(delta: number) {
 									onopenfile={openCurrentFile}
 									headBranch={headBranch ?? null}
 									shown={reviewPanelShown}
-									keysActive={tabActive && reviewPanelShown}
+									keysActive={tabActive &&
+										reviewPanelShown &&
+										!showRebaseEditor}
 									{windowFocused}
 									reviewList={reviewListPane}
 								/>
@@ -2719,7 +2720,7 @@ function stepRightPane(delta: number) {
 						{#snippet children(DiffPanel)}
 							<DiffPanel
 								bind:this={diffPanelRef}
-								keysActive={tabActive}
+								keysActive={tabActive && !showRebaseEditor}
 								fileDiffs={currentDiffFiles}
 								commitDetail={selectedCompareFile
 									? compareTargetDetail
@@ -2910,7 +2911,7 @@ function stepRightPane(delta: number) {
 								ontreeviewtoggle={handleTreeViewToggle}
 								nav={commitNav}
 								navigationNav={requestedCommitNav}
-								pagerKeys={!reviewMode}
+								pagerKeys={tabActive && !reviewMode && !showRebaseEditor}
 								onnavigate={navigateToCommit}
 							/>
 						{/snippet}

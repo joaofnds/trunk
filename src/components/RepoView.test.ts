@@ -3100,6 +3100,64 @@ describe("RepoView", () => {
 			expect(graphReads()).toBe(readsWithEditorOpen);
 		});
 
+		it("leaves the commit selected under the editor where it was when j is pressed", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((command, args) => {
+				if (command === "get_commit_detail")
+					return Promise.resolve(makeRebaseDetail(HEAD_OID, "head commit"));
+				if (command === "list_commit_files") return Promise.resolve([]);
+				return base(command, args);
+			});
+			render(RepoView, { props: baseProps(createMockRemoteState()) });
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[0]);
+			await flush();
+			await fireEvent.contextMenu(rows[1]);
+			await waitFor(() => {
+				expect(menuActions.has("Interactive Rebase...")).toBe(true);
+			});
+			await getMenuAction("Interactive Rebase...")();
+			await screen.findByRole("listbox", { name: "Commits to rebase" });
+
+			await fireEvent.keyDown(window, { key: "j" });
+			await flush();
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Cancel Rebase" }),
+			);
+			await flush();
+
+			const [head] = await screen.findAllByTestId("commit-row");
+			expect(head).toHaveAttribute("aria-selected", "true");
+		});
+
+		it("leaves the commit selected in a background tab where it was when j is pressed", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((command, args) => {
+				if (command === "get_commit_detail")
+					return Promise.resolve(makeRebaseDetail(HEAD_OID, "head commit"));
+				if (command === "list_commit_files") return Promise.resolve([]);
+				return base(command, args);
+			});
+			const view = render(RepoView, {
+				props: baseProps(createMockRemoteState()),
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[0]);
+			await screen.findByRole("button", { name: "Go to older commit" });
+			await view.rerender({ tabActive: false });
+
+			await fireEvent.keyDown(window, { key: "j" });
+			await flush();
+			await view.rerender({ tabActive: true });
+
+			const [head] = await screen.findAllByTestId("commit-row");
+			expect(head).toHaveAttribute("aria-selected", "true");
+		});
+
 		it.each(["pending", "failed"] as const)(
 			"can cancel a %s rebase editor load without starting the rebase",
 			async (state) => {

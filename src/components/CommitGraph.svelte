@@ -129,8 +129,7 @@ interface Props {
 	oncommitnavigate?: (oid: string) => void;
 	// Reports the WIP-inclusive display list + pagination state whenever they
 	// change, so the parent can compute commit nav (pager + child chips) itself
-	// via computeCommitNav — independent of whether this component is mounted
-	// (it unmounts for the whole duration of diff-in-view navigation).
+	// via computeCommitNav from the rows this graph last reported.
 	oncommitschange?: (displayItems: GraphCommit[], hasMore: boolean) => void;
 	wipCount?: number;
 	wipMessage?: string;
