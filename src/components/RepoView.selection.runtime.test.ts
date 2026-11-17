@@ -586,7 +586,7 @@ describe("RepoView commit selection", () => {
 		expect(commitRow("second")).toHaveAttribute("aria-selected", "false");
 	});
 
-	it("deselects a pending target when that row is clicked again", async () => {
+	it("keeps a pending target selected when that row is clicked again", async () => {
 		await openRepository();
 		await selectCommit("first");
 		await screen.findByText("first.txt");
@@ -598,8 +598,56 @@ describe("RepoView commit selection", () => {
 		detail.release(detailFor("second"));
 		await drainReplies();
 
-		expect(screen.queryByTestId("commit-detail")).toBeNull();
-		expect(commitRow("second")).toHaveAttribute("aria-selected", "false");
+		expect(screen.getByTestId("commit-detail")).toHaveTextContent(
+			"second change",
+		);
+		expect(commitRow("second")).toHaveAttribute("aria-selected", "true");
+	});
+
+	it("reads a pending commit once when its row is clicked again", async () => {
+		await openRepository();
+		const detail = host.holdNextReply("get_commit_detail");
+		await selectCommit("second");
+		await detail.entered;
+
+		await clickCommit("second");
+		detail.release(detailFor("second"));
+		await drainReplies();
+
+		expect(
+			host.requests.filter((request) => request.cmd === "get_commit_detail"),
+		).toHaveLength(1);
+	});
+
+	it("keeps the selected commit when its row is clicked again", async () => {
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+
+		await clickCommit("first");
+		await drainReplies();
+
+		expect(screen.getByTestId("commit-detail")).toHaveTextContent(
+			"first change",
+		);
+		expect(commitRow("first")).toHaveAttribute("aria-selected", "true");
+	});
+
+	it("opens a collapsed right pane when the selected commit is clicked again", async () => {
+		const collapses: boolean[] = [];
+		const view = await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+		await view.rerender({
+			rightPaneCollapsed: true,
+			onrightpanecollapsedchange: (collapsed: boolean) =>
+				collapses.push(collapsed),
+		});
+
+		await clickCommit("first");
+		await drainReplies();
+
+		expect(collapses).toEqual([false]);
 	});
 
 	it("advances through commit diffs with j while metadata is pending", async () => {
@@ -652,7 +700,9 @@ describe("RepoView commit selection", () => {
 		await selectCommit("first");
 		await screen.findByText("first.txt");
 
-		await clickCommit("first");
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Close commit detail" }),
+		);
 		statistics.release({ files_changed: 1, insertions: 17, deletions: 2 });
 		await drainReplies();
 
@@ -665,7 +715,9 @@ describe("RepoView commit selection", () => {
 		await openRepository();
 		await selectCommit("first");
 		await screen.findByText("first.txt");
-		await clickCommit("first");
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Close commit detail" }),
+		);
 		host.holdNextReply("commit_stat");
 		await selectCommit("first");
 		await screen.findByText("first.txt");
@@ -683,7 +735,9 @@ describe("RepoView commit selection", () => {
 		await openRepository();
 		await selectCommit("first");
 		await screen.findByText("first.txt");
-		await clickCommit("first");
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Close commit detail" }),
+		);
 		await selectCommit("first");
 		await within(await screen.findByTestId("commit-detail")).findByText("+17");
 

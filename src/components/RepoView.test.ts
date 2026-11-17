@@ -2961,22 +2961,6 @@ describe("RepoView", () => {
 			expect(diffCommitFileCalls()).toHaveLength(0);
 		});
 
-		it("re-clicking the selected commit clears the selection", async () => {
-			commits = [makeCommit({ oid: "oid-1", summary: "only commit" })];
-			filesByOid = { "oid-1": [makeFileDiff("f.ts")] };
-			detailByOid = { "oid-1": makeDetail("oid-1") };
-
-			const rows = await renderAndGetRows();
-			await fireEvent.click(rows[0]);
-			await flush();
-			expect(await screen.findByLabelText("Close commit detail")).toBeTruthy();
-
-			await fireEvent.click(rows[0]);
-			await flush();
-
-			expect(screen.queryByLabelText("Close commit detail")).toBeFalsy();
-		});
-
 		it("applies only the newest commit's files when responses resolve out of order", async () => {
 			commits = [
 				makeCommit({ oid: "oid-3", summary: "third commit" }),

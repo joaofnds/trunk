@@ -356,10 +356,9 @@ $effect(() => {
 
 // Bind the panel's jump affordance to the rune, wiring the existing RepoView
 // machinery as the rune's navigation seams. The rune uses the IDEMPOTENT
-// variants, because handleCommitSelect is a toggle for graph clicks (clicking
-// the selected row clears it). The jump gesture must never clear the very
-// target it's about to scroll to, otherwise the panel→diff swap lands on a
-// blank diff with no selection.
+// variants, which skip handleCommitSelect's compare handling. The jump gesture
+// must never clear the very target it's about to scroll to, otherwise the
+// panel→diff swap lands on a blank diff with no selection.
 function handleReviewJump(comment: Thread) {
 	reviewSession.jumpTo(comment, {
 		selectCommit: selectCommitIdempotent,
@@ -595,6 +594,8 @@ let commitDiffMode = $derived(
 // response can't clobber a newer one, and a failed switch's catch arm can tell
 // it's still the latest before clearing state.
 let commitSelectGeneration = 0;
+// The commit whose detail is being read, and the generation that read belongs to.
+let commitRead: { oid: string; generation: number } | null = null;
 let navigationIntent = 0;
 
 // Compare selection (TRUNK-1): the Base → Target pair picked in the graph.
@@ -1393,14 +1394,22 @@ async function selectCommitIdempotent(oid: string) {
 	// applySelection starts this read before publishing its comparison, so the
 	// reset happens in the same turn as the gesture that requested it.
 	if (compare !== null) clearCompare();
-	const gen = ++commitSelectGeneration;
-	requestedCommitOid = oid;
-	if (selectedCommitOid === oid && commitDetail?.oid === oid) return;
 
 	// Auto-open right pane if collapsed (LAYOUT-01). Review mode has none to open.
 	if (rightPaneCollapsed && !reviewMode) {
 		onrightpanecollapsedchange(false);
 	}
+
+	// A new generation would discard the read already under way and start it over.
+	if (
+		commitRead?.oid === oid &&
+		commitRead.generation === commitSelectGeneration
+	)
+		return;
+
+	const gen = ++commitSelectGeneration;
+	requestedCommitOid = oid;
+	if (selectedCommitOid === oid && commitDetail?.oid === oid) return;
 
 	// Selecting a commit/ref while the review panel is open swaps the center pane to
 	// the diff so the user sees what they clicked (260531-l02d). showDiff is also what
@@ -1409,6 +1418,7 @@ async function selectCommitIdempotent(oid: string) {
 	if (!repoPath) return;
 
 	const path = repoPath;
+	commitRead = { oid, generation: gen };
 	// Statistics supplement usable details and files; failure only omits totals.
 	const statistics = safeInvoke<DiffStat>("commit_stat", {
 		path,
@@ -1649,10 +1659,9 @@ async function handleCompareFileSelect(path: string) {
 	await reloadCompareFile(path, buildDiffOptions());
 }
 
-// Graph clicks: a plain click keeps the existing toggle (re-clicking the
-// selected commit clears it) and dissolves any compare; cmd/shift route
-// through the compare state machine. The rune uses `selectCommitIdempotent`
-// directly.
+// Graph clicks: a plain click selects the commit, the selected one included,
+// and dissolves any compare; cmd/shift route through the compare state
+// machine. The rune uses `selectCommitIdempotent` directly.
 async function handleCommitSelect(oid: string, mods?: SelectModifiers) {
 	const current: SelectionState = { selectedOid: requestedCommitOid, compare };
 	if (mods?.compare) {
@@ -1673,17 +1682,11 @@ async function handleCommitSelect(oid: string, mods?: SelectModifiers) {
 		return;
 	}
 
-	if (requestedCommitOid === oid) {
-		clearCommit();
-		return;
-	}
-
 	await selectCommitIdempotent(oid);
 }
 
 /** Navigate to a commit from the detail-pane pager or topology chips: select it
- * (idempotent — never toggles) and center the graph on it. Mirrors the tail of
- * handleRefNavigate without the toggle hazard of handleCommitSelect. */
+ * and center the graph on it. Mirrors the tail of handleRefNavigate. */
 async function navigateToCommit(oid: string) {
 	const selection = selectCommitIdempotent(oid);
 	const isCurrent = snapshotNavigationIntent();
