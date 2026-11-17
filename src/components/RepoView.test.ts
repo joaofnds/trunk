@@ -1674,6 +1674,50 @@ describe("RepoView", () => {
 			expect(screen.getByText("OPEN DIFF")).toBeTruthy();
 		});
 
+		it("returns to the diff where it was left when a review ends", async () => {
+			const base = currentInvoke();
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd === "get_status") {
+					return Promise.resolve({
+						unstaged: [
+							{ path: "README.md", status: "Modified", is_binary: false },
+						],
+						staged: [],
+						conflicted: [],
+					});
+				}
+				if (cmd === "diff_unstaged") {
+					return Promise.resolve([stagingDiff("LEFT DIFF")]);
+				}
+				return base(cmd, args);
+			});
+			const props = {
+				...baseProps(createMockRemoteState()),
+				reviewActive: true,
+			};
+			const view = render(RepoView, { props });
+			await fireEvent.click(await screen.findByText("README.md"));
+			expect(await screen.findByText("LEFT DIFF")).toBeTruthy();
+			const scroller = document.querySelector<HTMLElement>(
+				".exact-virtual-viewport",
+			);
+			if (!scroller) throw new Error("diff scroller missing");
+			scroller.scrollTop = 120;
+			await fireEvent.scroll(scroller);
+
+			fireReviewShowPanel();
+			await tick();
+			await view.rerender({ ...props, reviewActive: false });
+			await vi.dynamicImportSettled();
+			await tick();
+
+			const shown = document.querySelector<HTMLElement>(
+				".exact-virtual-viewport",
+			);
+			expect(shown).toBe(scroller);
+			expect(shown?.scrollTop).toBe(120);
+		});
+
 		it("keeps the newest staging mode when superseded requests settle later", async () => {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");

@@ -398,8 +398,9 @@ export class ReviewDriver {
 			enabled(JUMP_TO_CODE),
 		);
 		button.click();
+		// Visible, since the diff stays mounted, hidden, under the review panel.
 		await waitFor("the thread's diff", () =>
-			document.querySelector(DIFF_PATH) ? true : null,
+			visibleElement(DIFF_PATH) ? true : null,
 		);
 	}
 

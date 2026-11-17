@@ -2675,115 +2675,127 @@ function stepRightPane(delta: number) {
 						</LazyView>
 					</div>
 				{/if}
-				{#if reviewPanelShown}
-					<!-- The review panel above holds the pane. -->
-				{:else if showMergeEditor && selectedFile}
+				{#if showMergeEditor && selectedFile}
 					{@const conflictedFile = selectedFile}
-					<LazyView
-						{onready}
-						load={() => import("./MergeEditor.svelte")}
-						label="merge editor"
-					>
-						{#snippet children(MergeEditor)}
-							<MergeEditor
-								{repoPath}
-								filePath={conflictedFile.path}
-								onclose={handleDiffClose}
-								onresolved={handleFileResolved}
-							/>
-						{/snippet}
-					</LazyView>
+					{#if !reviewPanelShown}
+						<LazyView
+							{onready}
+							load={() => import("./MergeEditor.svelte")}
+							label="merge editor"
+						>
+							{#snippet children(MergeEditor)}
+								<MergeEditor
+									{repoPath}
+									filePath={conflictedFile.path}
+									onclose={handleDiffClose}
+									onresolved={handleFileResolved}
+								/>
+							{/snippet}
+						</LazyView>
+					{/if}
 				{:else if showDiff}
 					<!-- Single DiffPanel mount, shared by normal and review mode. In review mode
              rightPaneMode==='diff' routes here (260531-l02e); bind:this exposes the
-             jump-to-comment scroll seam, and onclose returns to the review panel. -->
-					<LazyView
-						{onready}
-						load={() => import("./DiffPanel.svelte")}
-						label="diff"
+             jump-to-comment scroll seam, and onclose returns to the review panel.
+             While the review panel holds the pane the diff stays mounted under it,
+             hidden and inert, the way the graph does, so ending the review returns
+             to the line the user left rather than to the top of a fresh mount. -->
+					<div
+						class="absolute inset-0"
+						class:invisible={reviewPanelShown}
+						{@attach inertWhile(reviewPanelShown)}
 					>
-						{#snippet children(DiffPanel)}
-							<DiffPanel
-								bind:this={diffPanelRef}
-								keysActive={tabActive && !showRebaseEditor}
-								fileDiffs={currentDiffFiles}
-								commitDetail={selectedCompareFile
-									? compareTargetDetail
-									: commitDetail}
-								compareBaseOid={selectedCompareFile
-									? (compareBaseDetail?.oid ?? null)
-									: null}
-								selectedPath={selectedCompareFile ?? selectedDiffPath}
-								{diffKind}
-								emptyCommit={commitEmpty}
-								{repoPath}
-								takesComments={diffTakesComments({
-									compare: selectedCompareFile !== null,
-									reviewMode,
-									threadsHidden: reviewThreadsHidden,
-								})}
-								{reviewFilter}
-								{viewComments}
-								activeReviewId={reviewComments.activeReviewId}
-								activeReview={reviewComments.activeReview}
-								editorSessionForThread={editorSessionForDiffThread}
-								composerSession={diffComposerSession}
-								composerTarget={diffComposerTarget}
-								refreshToken={diffRefreshToken}
-								{contentMode}
-								{oncontentmodechange}
-								loading={currentSourceLoading}
-								payloadStale={currentSourcePayloadStale}
-								loadError={currentSourceError}
-								onloadfullfile={loadFullFileForComment}
-								onretry={() => {
-									void retryVisibleDiff();
-								}}
-								onhunkaction={async (filePath) => {
-									if (selectedFile) {
-										const { path, kind } = selectedFile;
-										const isEmpty = await refetchFileDiff(filePath, kind);
-										if (
-											isEmpty &&
-											selectedFile?.path === path &&
-											selectedFile?.kind === kind
-										) {
-											advanceToNextFile(path, kind);
+						<LazyView
+							{onready}
+							active={!reviewPanelShown}
+							load={() => import("./DiffPanel.svelte")}
+							label="diff"
+						>
+							{#snippet children(DiffPanel)}
+								<DiffPanel
+									bind:this={diffPanelRef}
+									keysActive={tabActive &&
+										!showRebaseEditor &&
+										!reviewPanelShown}
+									fileDiffs={currentDiffFiles}
+									commitDetail={selectedCompareFile
+										? compareTargetDetail
+										: commitDetail}
+									compareBaseOid={selectedCompareFile
+										? (compareBaseDetail?.oid ?? null)
+										: null}
+									selectedPath={selectedCompareFile ?? selectedDiffPath}
+									{diffKind}
+									emptyCommit={commitEmpty}
+									{repoPath}
+									takesComments={diffTakesComments({
+										compare: selectedCompareFile !== null,
+										reviewMode,
+										threadsHidden: reviewThreadsHidden,
+									})}
+									{reviewFilter}
+									{viewComments}
+									activeReviewId={reviewComments.activeReviewId}
+									activeReview={reviewComments.activeReview}
+									editorSessionForThread={editorSessionForDiffThread}
+									composerSession={diffComposerSession}
+									composerTarget={diffComposerTarget}
+									refreshToken={diffRefreshToken}
+									{contentMode}
+									{oncontentmodechange}
+									loading={currentSourceLoading}
+									payloadStale={currentSourcePayloadStale}
+									loadError={currentSourceError}
+									onloadfullfile={loadFullFileForComment}
+									onretry={() => {
+										void retryVisibleDiff();
+									}}
+									onhunkaction={async (filePath) => {
+										if (selectedFile) {
+											const { path, kind } = selectedFile;
+											const isEmpty = await refetchFileDiff(filePath, kind);
+											if (
+												isEmpty &&
+												selectedFile?.path === path &&
+												selectedFile?.kind === kind
+											) {
+												advanceToNextFile(path, kind);
+											}
 										}
-									}
-									await stagingPanelRef?.loadStatus();
-								}}
-								onfileemptied={(filePath, action) => {
-									if (selectedFile?.path === filePath) {
-										const { kind } = selectedFile;
-										advanceToNextFile(filePath, kind);
-										stagingPanelRef?.optimisticMove(filePath, kind, action);
-									}
-								}}
-								ondiffoptionschange={async (options) => {
-									rememberLocalDiffOptions(options);
-									if (selectedFile && selectedFile.kind !== "conflicted") {
-										await refetchFileDiff(
-											selectedFile.path,
-											selectedFile.kind,
-											options,
-										);
-									} else if (selectedCompareFile && compare) {
-										await reloadCompareFile(selectedCompareFile, options);
-									} else if (selectedCommitFile && selectedCommitOid) {
-										await reloadCommitFile(selectedCommitFile, options);
-									}
-								}}
-								onclose={reviewSession.state.reviewActive
-									? () => {
-											handleDiffClose();
-											reviewSession.showPanel();
+										await stagingPanelRef?.loadStatus();
+									}}
+									onfileemptied={(filePath, action) => {
+										if (selectedFile?.path === filePath) {
+											const { kind } = selectedFile;
+											advanceToNextFile(filePath, kind);
+											stagingPanelRef?.optimisticMove(filePath, kind, action);
 										}
-									: handleDiffClose}
-								backLabel={reviewMode ? "Review" : null}
-							/>
-						{/snippet}
-					</LazyView>
+									}}
+									ondiffoptionschange={async (options) => {
+										rememberLocalDiffOptions(options);
+										if (selectedFile && selectedFile.kind !== "conflicted") {
+											await refetchFileDiff(
+												selectedFile.path,
+												selectedFile.kind,
+												options,
+											);
+										} else if (selectedCompareFile && compare) {
+											await reloadCompareFile(selectedCompareFile, options);
+										} else if (selectedCommitFile && selectedCommitOid) {
+											await reloadCommitFile(selectedCommitFile, options);
+										}
+									}}
+									onclose={reviewSession.state.reviewActive
+										? () => {
+												handleDiffClose();
+												reviewSession.showPanel();
+											}
+										: handleDiffClose}
+									backLabel={reviewMode ? "Review" : null}
+								/>
+							{/snippet}
+						</LazyView>
+					</div>
 				{/if}
 				<div
 					class="absolute inset-0"
