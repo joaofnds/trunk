@@ -739,6 +739,7 @@ let leftPane = $state<HTMLDivElement | null>(null);
 let rightPane = $state<HTMLDivElement | null>(null);
 let rebaseRightPane = $state<HTMLDivElement | null>(null);
 let browseLayout = $state<HTMLDivElement | null>(null);
+let repoRoot = $state<HTMLDivElement | null>(null);
 // What is hidden lets go of focus, so the keys reach what the user can see rather
 // than a list or a field nobody can. Not every engine blurs an element that turns
 // inert.
@@ -760,6 +761,11 @@ $effect(() => {
 });
 $effect(() => {
 	if (rebasing) releaseFocusWithin(browseLayout);
+});
+// A tab in the background lets go of the focus, so the one shown can take it and
+// the arrow keys reach the commits on screen.
+$effect(() => {
+	if (!tabActive) releaseFocusWithin(repoRoot);
 });
 
 // The diffs to display: filtered commit file diff, staging diff, or the whole
@@ -2570,7 +2576,11 @@ function stepRightPane(delta: number) {
 }
 </script>
 
-<div class="flex-1 overflow-hidden flex flex-col">
+<div
+	class="flex-1 overflow-hidden flex flex-col"
+	bind:this={repoRoot}
+	inert={!tabActive}
+>
 	<PushRecoveryPrompt {repoPath} {remoteState} {refreshSignal} />
 	<main class="flex-1 overflow-hidden flex relative">
 		<!-- The graph and the panes stay mounted under the rebase editor, so leaving it

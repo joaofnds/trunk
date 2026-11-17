@@ -361,6 +361,37 @@ describe("App", () => {
 	// contention without the application being broken. If it fails, read TRUNK-62
 	// (`backlog task 62 --plain`) before investigating — it records what is already
 	// ruled out, including that raising this deadline is not the fix.
+	it("hands the arrow keys to the commit list of the tab Ctrl+Tab shows", async () => {
+		prefs.open_tabs = [
+			{ id: "tab-1", repoPath: REPO_A, repoName: "A" },
+			{ id: "tab-2", repoPath: REPO_B, repoName: "B" },
+		];
+		const { container } = render(App);
+		const shownCommitList = () =>
+			[
+				...container.querySelectorAll<HTMLElement>(
+					'[role="listbox"][aria-multiselectable="true"]',
+				),
+			].find((list) => !list.closest(".invisible"));
+		const left = await waitFor(() => {
+			const list = shownCommitList();
+			if (!list) throw new Error("no commit list shown");
+			return list;
+		});
+		left.focus();
+
+		window.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Tab", ctrlKey: true }),
+		);
+
+		await waitFor(() => expect(graphPathsRequested()).toContain(REPO_B));
+		await waitFor(() => {
+			const shown = shownCommitList();
+			expect(shown).not.toBe(left);
+			expect(document.activeElement).toBe(shown);
+		});
+	});
+
 	it("loads the new repository's graph when a tab swaps repositories in place", async () => {
 		const { getByText } = render(App);
 		await waitFor(() => expect(graphPathsRequested()).toContain(REPO_A));
