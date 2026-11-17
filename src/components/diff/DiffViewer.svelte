@@ -215,7 +215,7 @@ const pane = $derived.by(() => {
 // The line the reader was at when a line view gave way to another, by layout,
 // content mode or a refetch between them, so the next one opens there rather
 // than at the top. Captured before the outgoing view unmounts, which is what
-// the pre effect is for, and handed over only once the new view's content
+// the pre effect is for, so it is then the only view mounted, and handed over only once the new view's content
 // answers what was asked, since a stale payload holds the old mode's rows.
 // Another file or commit starts at its top. Both are compared by value, since
 // a prop can notify without changing.
@@ -232,8 +232,7 @@ $effect.pre(() => {
 		if (subject !== shownSubject) {
 			keptLine = null;
 		} else if (view !== shownView && shownView !== null) {
-			const outgoing = shownView.startsWith("full:") ? fullFileView : diffNav;
-			keptLine = outgoing?.readingLine() ?? keptLine;
+			keptLine = (diffNav ?? fullFileView)?.readingLine() ?? keptLine;
 		}
 		shownSubject = subject;
 		shownView = view;

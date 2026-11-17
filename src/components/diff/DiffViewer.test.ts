@@ -536,4 +536,24 @@ describe("DiffViewer when the reader switches view", () => {
 			expect(viewportOf(container).scrollTop).toBe(3002 * 18);
 		},
 	);
+
+	it("keeps the line at the top when the inline whole file goes side by side", async () => {
+		const whole = {
+			...props,
+			contentMode: "full" as const,
+			fileDiffs: [wholeFile],
+		};
+		const { container, rerender } = render(DiffViewer, {
+			props: { ...whole, layoutMode: "inline" },
+		});
+		const viewport = viewportOf(container);
+		viewport.scrollTop = 3002 * 18;
+		viewport.dispatchEvent(new Event("scroll"));
+		expect(await screen.findAllByText("line 3003")).not.toHaveLength(0);
+
+		await rerender({ ...whole, layoutMode: "split" });
+
+		expect(await screen.findAllByText("line 3003")).not.toHaveLength(0);
+		expect(viewportOf(container).scrollTop).toBe(3002 * 18);
+	});
 });
