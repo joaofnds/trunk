@@ -210,8 +210,10 @@ impl ShownHunk {
     /// Whether `hunk` is the one the view showed: the same lines, starting on the
     /// same line of the old side.
     ///
-    /// The old side is the one an edit elsewhere leaves in place, since the working
-    /// tree changes under an unstaged diff and the index under a staged one.
+    /// The old side is the one an edit elsewhere usually leaves in place, since the
+    /// working tree changes under an unstaged diff and the index under a staged one.
+    /// An edit to the old side above the hunk moves its start, and the action then
+    /// refuses rather than guess.
     #[must_use]
     pub fn matches(&self, hunk: &DiffHunk) -> bool {
         hunk.old_start == self.old_start
@@ -326,4 +328,90 @@ pub struct RebaseTodoItem {
     pub summary: String,
     pub author_name: String,
     pub author_timestamp: i64,
+}
+
+#[cfg(test)]
+mod shown_hunk_tests {
+    use super::*;
+
+    fn line(origin: DiffOrigin, content: &str) -> DiffLine {
+        DiffLine {
+            origin,
+            content: content.to_string(),
+            old_lineno: None,
+            new_lineno: None,
+            spans: Vec::new(),
+            pairing: LinePairing::Unknown,
+        }
+    }
+
+    fn hunk(old_start: u32, lines: Vec<DiffLine>) -> DiffHunk {
+        DiffHunk {
+            header: String::new(),
+            old_start,
+            old_lines: 0,
+            new_start: 0,
+            new_lines: 0,
+            lines,
+        }
+    }
+
+    fn rewrite_at(old_start: u32) -> DiffHunk {
+        hunk(
+            old_start,
+            vec![
+                line(DiffOrigin::Context, "before\n"),
+                line(DiffOrigin::Delete, "old\n"),
+                line(DiffOrigin::Add, "new\n"),
+            ],
+        )
+    }
+
+    fn shown(hunk: &DiffHunk) -> ShownHunk {
+        ShownHunk {
+            old_start: hunk.old_start,
+            lines: hunk
+                .lines
+                .iter()
+                .map(|line| ShownLine {
+                    origin: line.origin.clone(),
+                    content: line.content.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn a_hunk_matches_the_one_the_view_showed() {
+        assert!(shown(&rewrite_at(20)).matches(&rewrite_at(20)));
+    }
+
+    #[test]
+    fn the_same_lines_at_another_old_start_do_not_match() {
+        assert!(!shown(&rewrite_at(20)).matches(&rewrite_at(21)));
+    }
+
+    #[test]
+    fn a_hunk_holding_more_lines_than_shown_does_not_match() {
+        let mut fewer = rewrite_at(20);
+        fewer.lines.pop();
+
+        assert!(!shown(&fewer).matches(&rewrite_at(20)));
+    }
+
+    #[test]
+    fn a_line_whose_origin_changed_does_not_match() {
+        let mut flipped = rewrite_at(20);
+        flipped.lines[1].origin = DiffOrigin::Context;
+
+        assert!(!shown(&flipped).matches(&rewrite_at(20)));
+    }
+
+    #[test]
+    fn a_line_whose_content_changed_does_not_match() {
+        let mut rewritten = rewrite_at(20);
+        rewritten.lines[2].content = "newer\n".to_string();
+
+        assert!(!shown(&rewritten).matches(&rewrite_at(20)));
+    }
 }

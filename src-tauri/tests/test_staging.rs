@@ -1673,7 +1673,9 @@ fn staged_rename_with_a_further_unstaged_edit_shows_the_current_path() {
 ///
 /// The whitespace change is what makes the two diffs disagree: the view under
 /// ignore-whitespace shows two hunks, while a diff built without the option
-/// shows three, so every hunk index the view hands back is off by one.
+/// shows three, and wide context merges all three into one. An action that
+/// rebuilt the diff without the view's options would act on a different hunk,
+/// or find none and refuse.
 fn whitespace_change_before_real_ones(ctx: &TestContext) -> String {
     let original = (1..=40)
         .map(|i| format!("line {i}"))
@@ -1853,6 +1855,48 @@ fn unstaging_a_hunk_under_ignore_whitespace_unstages_the_lines_the_view_showed()
         staged.contains("line 2   "),
         "the whitespace-only change the view hid must stay staged, got:\n{staged}"
     );
+}
+
+#[test]
+fn unstaging_a_hunk_under_wide_context_unstages_the_merged_hunk_shown() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    whitespace_change_before_real_ones(&ctx);
+    ctx.stage_file("ws.txt").unwrap();
+
+    ctx.unstage_hunk_with_options("ws.txt", 0, &wide_context())
+        .unwrap();
+
+    let staged = staged_content(&ctx, "ws.txt");
+    for unstaged in ["line 2   ", "REAL line 21", "REAL line 39"] {
+        assert!(!staged.contains(unstaged), "{unstaged:?} left the index");
+    }
+}
+
+#[test]
+fn discarding_a_hunk_under_wide_context_discards_the_merged_hunk_shown() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    whitespace_change_before_real_ones(&ctx);
+
+    ctx.discard_hunk_with_options("ws.txt", 0, &wide_context())
+        .unwrap();
+
+    let on_disk = std::fs::read_to_string(ctx.repo_path().join("ws.txt")).unwrap();
+    for discarded in ["line 2   ", "REAL line 21", "REAL line 39"] {
+        assert!(!on_disk.contains(discarded), "{discarded:?} was discarded");
+    }
+}
+
+fn wide_context() -> DiffRequestOptions {
+    DiffRequestOptions {
+        context_lines: 20,
+        ..DiffRequestOptions::default()
+    }
 }
 
 // -- no-newline-at-EOF marker tests --
@@ -2499,4 +2543,39 @@ fn discarding_the_hunk_of_an_untracked_file_deletes_it() {
     ctx.discard_hunk("scratch.txt", 0).unwrap();
 
     assert!(!file.exists(), "the untracked file is gone");
+}
+
+/// A file holding the same edit, with the same context, in two places, as repeated
+/// boilerplate does, so only where each hunk starts tells the two apart.
+fn the_same_edit_twice() -> TestContext {
+    let block = ["begin", "one", "two", "three", "four", "five", "end"];
+    let mut lines: Vec<String> = (1..=40).map(|n| format!("line {n}")).collect();
+    for start in [2, 27] {
+        for (offset, text) in block.iter().enumerate() {
+            lines[start + offset] = (*text).to_string();
+        }
+    }
+    let ctx = committed("twice.txt", &(lines.join("\n") + "\n"));
+    lines[5] = "edit".to_string();
+    lines[30] = "edit".to_string();
+    std::fs::write(ctx.repo_path().join("twice.txt"), lines.join("\n") + "\n").unwrap();
+
+    ctx
+}
+
+#[test]
+fn discard_hunk_discards_the_second_of_two_identical_hunks_when_shown_it() {
+    let ctx = the_same_edit_twice();
+    let shown = ctx.shown_unstaged_hunk("twice.txt", 1);
+
+    ctx.discard_shown_hunk("twice.txt", &shown).unwrap();
+
+    let on_disk = std::fs::read_to_string(ctx.repo_path().join("twice.txt")).unwrap();
+    let edited: Vec<usize> = on_disk
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| *line == "edit")
+        .map(|(index, _)| index)
+        .collect();
+    assert_eq!(edited, vec![5], "the first edit stays, the second is gone");
 }

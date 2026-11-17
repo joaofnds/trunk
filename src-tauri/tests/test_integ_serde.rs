@@ -950,3 +950,18 @@ fn an_anchor_round_trips_through_serde_unchanged() {
 
     assert_eq!(before, serde_json::to_value(&deserialized).unwrap());
 }
+
+#[test]
+fn shown_hunk_deserializes_from_what_the_view_sends() {
+    let json = serde_json::json!({
+        "old_start": 20,
+        "lines": [{ "origin": "Add", "content": "x\n" }],
+    });
+
+    let shown: trunk_lib::types::ShownHunk = serde_json::from_value(json).unwrap();
+
+    assert_eq!(shown.old_start, 20);
+    assert_eq!(shown.lines.len(), 1);
+    assert_eq!(shown.lines[0].origin, trunk_lib::types::DiffOrigin::Add);
+    assert_eq!(shown.lines[0].content, "x\n");
+}
