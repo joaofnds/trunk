@@ -633,6 +633,26 @@ fn stage_hunk_refuses_a_file_turned_binary_since_its_diff_was_shown() {
     assert_eq!(err.code, "stale_hunk");
 }
 
+#[test]
+fn stage_hunk_stages_a_file_the_terminal_marked_intent_to_add() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello\n")
+        .with_commit("Initial commit")
+        .build();
+    std::fs::write(ctx.repo_path().join("new.txt"), "one\ntwo\n").unwrap();
+    let marked = std::process::Command::new("git")
+        .args(["add", "--intent-to-add", "new.txt"])
+        .current_dir(ctx.repo_path())
+        .status()
+        .unwrap();
+    assert!(marked.success());
+    let shown = ctx.shown_unstaged_hunk("new.txt", 0);
+
+    ctx.stage_shown_hunk("new.txt", &shown).unwrap();
+
+    assert_eq!(ctx.staged_content("new.txt"), "one\ntwo\n");
+}
+
 // -- unstage_hunk tests --
 
 #[test]
