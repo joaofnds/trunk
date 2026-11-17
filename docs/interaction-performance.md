@@ -1148,8 +1148,146 @@ tests in `src/components/StagingPanel.test.ts`.
 
 One limit remains. Index writes are not serialized per repository: two overlapping
 `stage_files` calls with the same 40 paths returned one `git_locked` in each of five
-probe runs, while all 40 files ended staged. Folder rows show no busy state, so a double
-click can reach that collision and report a failure for work that succeeded.
+probe runs, while all 40 files ended staged. Folder rows show no busy state. A later screening on
+TRUNK-442 saw the collision only with two clicks under 40 ms apart, which is faster
+than a human double click.
+
+### E10: core flow walk, whether each result is the one the user meant
+
+Flows I01 to I18, walked on 2026-11-17 to find where the app did something other than
+what the user asked. This is a defect walk, not a benchmark, so it has no hypothesis
+and no artifact identity of the kind the measurement record asks for. It sits here
+because it walked this document's interaction map, and the open defects it found live
+on board cards rather than in `known-issues/`. Three walkers
+drove the drive build (`just drive-build`: a production `vite build` frontend over a
+debug Rust binary with the drive feature) through the drive route in
+[build-environment.md](build-environment.md), at the default 1280x800 window, on `/tmp`
+copies of the fixture corpus (`just fixtures`). The binary was built before the walk
+began, from trunk at about `de8b0b48`, and rebuilt during the session as fixes landed.
+No record shows which build each walker drove, and no binary hash was kept. The
+walkers' reports were deleted at cleanup. What remains is the working ledger,
+`.boris/flow-walk-20261117/LEDGER.md`, and the review of the fixes,
+`.boris/reviews/flow-walk-20261117/REVIEW.md`, both local to the machine that ran it.
+
+To see a defect again, export the source before its fix (`git archive <fix>^` into a
+plain directory), link the checkout's `node_modules` into it as `prepare.py` in the
+Reproduction section does, and run that copy's `drive-build` with `CARGO_TARGET_DIR`
+pointing inside the copy, since the recipe replaces `debug/trunk-drive` under whatever
+target it is given. Copy a fixture repository out of `repos/`, keeping only remotes that point
+inside the copy, launch the copy with `drive launch`, and drive the flow's gesture
+from the interaction map, reading the result from the DOM and from git in the copy.
+The drive route cannot send a shortcut the native menu owns, so such a gesture goes
+through `menu-bar`.
+
+The walkers were asked to time each interaction page-side, from the delivered drive
+event to when the expected DOM appeared. The ledger keeps only their summary: every
+interaction under about 370 ms except two. Commit settlement took 650 to 1,400 ms,
+against a predicate nobody recorded, so it is not comparable with E03's Commit,
+usable at a 168.5 ms median with hooks and signing disabled. The refresh after an
+edit made outside the app took about 530 ms, of which about 500 ms is deliberate: the
+watcher's 300 ms debounce (`src-tauri/src/watcher.rs`) and the 200 ms
+`REPO_CHANGE_DELAY_MS` the refresh coalesces over (`src/lib/coalesced-task.ts`).
+The walkers did not separate first feedback from the usable result, so these numbers
+support no speed claim. E01, E03, E07 and E08 hold the timed evidence. Commit
+settlement is the one reading that may miss the speed goal, and it needs E03's method
+against a recorded predicate before anything is decided on it. No app-level timing
+exists yet for I10 compare, I11 hunk navigation, I15 conflict resolution or I16
+checkout and history operations, and I18 refresh has only the walk's reading above.
+
+Not every row is a walker's observation. A walker saw dead `[` presses at the last
+hunk; the stale cursor, the whole-file stepping and the comment jump in that row came
+up while fixing them. The ArrowDown row came up while the Ctrl+Tab fix was being
+checked, and the partly taken side in the I15 row came from the review. An
+independent review of the fixes through `0d5fc406` found several incomplete or
+regressing something else, and the later commits in the Fix column repair them, so
+take every commit in a row, not the first alone. Those later commits had no
+independent review. Two more review fixes sit beside the rows: `649344ed` stops
+the whole-file view's `c` key commenting on lines in a hidden tab or under the rebase
+editor, and `1757135a` holds the landing flash still where reduced motion is
+preferred. Every fix adds a test except three. The checkout advice changes only its
+wording. The footer overflow and the reduced-motion hold are layout and CSS that no
+current suite captures: the headless DOM does not lay out or apply media queries, and
+the visual suite, which runs real WebKit, captures only the commit graph and the
+design catalog. Some of the first tests passed with their subject broken, and
+`66ca1336` left Continue's disabled state untested. `03565fab` and `56932a3d` rewrote
+or added those tests. Each was seen to fail with its subject broken, except the
+rebase cancel test, which was checked by reading. After the last fix, a session that wrote none of them drove a drive build of
+`2ba1be06` through every row and the `c` key fix, and saw each behave as fixed. It
+did not observe the reduced-motion hold, and it could not reach a drag that reopens a
+collapsed pane, because a collapsed pane's splitter is hidden.
+
+| Flow | What the user met | Fix |
+| --- | --- | --- |
+| I13 | Stage Lines joined a staged added line onto the line before it when that line was the file's unterminated last line, and Stage, Unstage and Discard Lines failed in any hunk whose old and new start lines differ | `73b40293`, `6be485a1` |
+| I13 | A double click on Stage Hunk staged that hunk and the next one, because the next hunk's button moved under the pointer | `11f8404a` |
+| I13 | The missing-newline marker offered a line grip that selected nothing, and a single discarded line was counted as "1 selected lines" | `00701031` |
+| I11 | Switching full file, split or inline jumped to the top or to the first hunk | `5555b7ec`, `56932a3d` |
+| I11 | `[` pressed past the last hunk did nothing, `]` and `[` stepped from a stale hunk instead of from where the reader was, they did nothing with the whole file shown, and a comment jump in the inline whole-file view did not scroll | `a410d09a`, `e906dbfd` |
+| I02, I06 | Closing a diff returned the graph to its top and dropped the pages the user had scrolled through | `a705615a` |
+| I06 | A binary file opened from a commit or the staged list showed "No changes to show" | `f7a808cf` |
+| I01 | The graph opened scrolled past the uncommitted-changes row | `9dcf3447` |
+| I01 | After switching tabs with Ctrl+Tab, the arrow keys did nothing | `1e9933b0` |
+| I04 | In a dirty repository, ArrowDown from the uncommitted-changes row selected it again, so the arrow keys could not leave it | `556e87ad` |
+| I03 | A collapsed sidebar kept focus, so typing landed in its hidden filter, and a pane collapsed by dragging reopened at the narrow width it was dragged to (64 and 70 px in the walk) | `a95bffb1`, `0ac9d12a` |
+| I07 | The staged and unstaged lists each showed a highlighted row with no diff open | `866dc0ee` |
+| I08 | A file opened from the finder showed a Modified badge though it was unchanged, numbered each line twice when shown whole, and ranked `f142` above `f42` for the query `42` | `ab6a9f9d`, `ccf67006`, `23436cc2` |
+| I12 | Stage All and Unstage All showed no busy state while they ran | `8ba04756` |
+| I02 | Cancelling the interactive rebase editor cleared the commit selection | `85490107`, `9d601915` |
+| I16 | A merge from the graph's context menu wrote "Merge branch 'refs/heads/feature'" | `b73121be`, `daba151d` |
+| I16 | A cherry-pick or revert that stopped on conflicts arrived as an error alert with git's command-line hints, and Continue was enabled with unmerged files | `66ca1336`, `c5be508b`, `d8d18101` |
+| I16 | "Fast-forward main to here" was offered on commits that do not descend from HEAD, and failed with git's raw error | `cc637feb` |
+| I16 | The stopped-rebase footer overflowed the staging panel at 1280 px, so Abort Rebase was cut off and overlapped Skip, and Abort Merge ran into the panel's padding | `f80c04f4` |
+| I16 | The reset dialogs named neither the branch nor the commit | `4c7d711f`, `d8d18101` |
+| I16 | A checkout refused over local changes advised stashing them, which Stash refuses while the changes are unstaged | `2e60aa0a` |
+| I15 | The merge editor's conflict headers had the same accessible name in both panes and did not say which side was taken, or that a side was partly taken | `0d5fc406`, `1cb79633` |
+
+Three defects stay open, each on a board card awaiting admission with the product
+question its fix depends on. Mark All Resolved and a folder's Resolve All stage a file
+that still holds conflict markers without a warning, and whether to warn, refuse, or
+list the files is open (TRUNK-449). Applying or popping a stash is refused while
+anything is staged, where git applies it, and whether to apply through the git binary
+or over a dirty index is open (TRUNK-450). In a rebase conflict the merge editor's
+output starts as the onto side, so saving at once drops the user's own change, and
+where the output should start is open (TRUNK-451). Three more went to cards that
+already held their area. Skip in a stopped rebase asks for no confirmation where Abort
+does, and the merge editor does not move on to the next conflicted file after a save
+(both TRUNK-445). Overlapping index writes collide on `index.lock`
+(TRUNK-442), though the screening on that card saw it only with clicks under 40 ms
+apart, faster than a human double click. Cmd+F does nothing while a diff covers the
+graph: the native menu's Find reaches only the graph's search, which ignores it while
+covered. The walker pressed it through the drive route, which never reaches the
+menu, so the report came from the wrong route, and the code confirms it. TRUNK-29
+holds the find over a diff.
+
+One finding waits on a product decision, on TRUNK-452. At the default window on a repository with
+wide branch labels, the SHA column shrinks to its 28 px floor and shows one or two
+characters.
+[The column-width decision](decisions/2026-09-21-column-widths-are-measured-not-declared.md)
+accepts that clip and cuts SHA first in its yield order, so showing more of the SHA
+means changing that order or raising SHA's floor.
+
+The walk reported behaviors that were ruled by design. Four rest on a source. A stash
+pops its staged changes into the working tree, as TRUNK-231 designs it. "Interactive
+Rebase X..." on a branch replays onto the fork point, as the glossary's Rebase range
+defines it. The file finder opens only from a review, because it is the picker for a
+review's Comment on a file action, as the glossary's Current-file view says. Undo
+commit leaves the message box empty, which a GitKraken feature request asking for the
+message back (feedback.gitkraken.com/suggestions/203053) implies GitKraken did when
+it was filed. Five rest on the walk's reading of the code and no product decision, so a later walk may raise them again. Jump to commit
+from a review that is not active leaves review mode for the graph, which shows the
+active review's comments. Leaving review shows the view under it, as a staging diff
+does. The review state chips are labelled toggles that hide their state, with presets
+beside them that filter to one. A disabled Commit merge sits under the Conflicted
+Files section, which gives the reason and the count. The full-file and layout toggles
+carry no pressed state because each names the action it takes, the pattern the
+Markdown toggle beside them broke until `2ba1be06`. A report that an interactive
+rebase over merges shows no message did not reproduce: the toast names the merge
+commits it cannot replay.
+
+Walker C's findings are numbered with gaps (C10, C16, C17 and C19 are missing), and
+the walkers' reports are gone, so a flow with no row here is not shown clean. The
+walk did not cover the flows under load, large conflict sets, signing or hooks, or
+remote operations against a real network.
 
 ### Selection presentation and background limits
 
@@ -1183,7 +1321,7 @@ Frequency remains an assumption; no usage telemetry was collected.
 | 3 | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. Settle how often users open large highlighted files in full mode first. The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
 | Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
 | 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Index writes are not serialized per repository, so two overlapping actions can report a lock failure for work that happened. Saves, local fetch and watcher refreshes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
-| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. History depth, review size and conflict-region count remain unbenchmarked; do not extrapolate E01. |
+| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. History depth, review size and conflict-region count remain unbenchmarked; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, commit settlement at 650 to 1,400 ms there needs E03's method before it is ranked, and I10, I11 hunk navigation, I15 and I16 still have no app-level timing. |
 
 The evidence supports retaining current warm diff reuse, mounted-tab reuse,
 coalesced refresh, and the search debounce. It does not support another cache or
