@@ -2001,3 +2001,159 @@ fn unstage_lines_unstages_a_change_to_an_unterminated_last_line() {
         "unstaging the last line's change leaves it at its old value, still unterminated"
     );
 }
+
+// -- hunks shifted by an earlier change --
+
+/// Thirty numbered lines, one per line, each terminated.
+fn numbered_lines() -> Vec<String> {
+    (1..=30).map(|n| format!("line {n}")).collect()
+}
+
+fn joined(lines: &[String]) -> String {
+    lines.join("\n") + "\n"
+}
+
+/// The indices of a hunk's changed lines, additions and deletions both.
+fn changed_lines(ctx_diff: &[trunk_lib::types::FileDiff], hunk: usize) -> Vec<u32> {
+    ctx_diff[0].hunks[hunk]
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add | DiffOrigin::Delete))
+        .map(|(i, _)| u32::try_from(i).unwrap())
+        .collect()
+}
+
+/// Commits thirty lines, then inserts a line after line 2 and rewrites line 20,
+/// so the second hunk starts one line later on the new side than on the old.
+fn shifted_by_an_insertion() -> (TestContext, Vec<String>, Vec<String>) {
+    let original = numbered_lines();
+    let ctx = TestContext::builder()
+        .with_file("shift.txt", &joined(&original))
+        .with_commit("Initial commit")
+        .build();
+    let mut edited = original.clone();
+    edited[19] = "line 20 rewritten".to_string();
+    edited.insert(2, "inserted".to_string());
+    std::fs::write(ctx.repo_path().join("shift.txt"), joined(&edited)).unwrap();
+    (ctx, original, edited)
+}
+
+#[test]
+fn stage_lines_stages_a_hunk_an_earlier_insertion_moved_down() {
+    let (ctx, original, _) = shifted_by_an_insertion();
+    let unstaged = ctx
+        .diff_unstaged("shift.txt")
+        .expect("diff_unstaged failed");
+    assert_eq!(unstaged[0].hunks.len(), 2, "the edit makes two hunks");
+
+    ctx.stage_lines("shift.txt", 1, &changed_lines(&unstaged, 1))
+        .expect("stage_lines failed");
+
+    let mut expected = original;
+    expected[19] = "line 20 rewritten".to_string();
+    assert_eq!(ctx.staged_content("shift.txt"), joined(&expected));
+}
+
+#[test]
+fn stage_lines_stages_a_hunk_an_earlier_deletion_moved_up() {
+    let original = numbered_lines();
+    let ctx = TestContext::builder()
+        .with_file("shift.txt", &joined(&original))
+        .with_commit("Initial commit")
+        .build();
+    let mut edited = original.clone();
+    edited[19] = "line 20 rewritten".to_string();
+    edited.remove(2);
+    std::fs::write(ctx.repo_path().join("shift.txt"), joined(&edited)).unwrap();
+
+    let unstaged = ctx
+        .diff_unstaged("shift.txt")
+        .expect("diff_unstaged failed");
+    ctx.stage_lines("shift.txt", 1, &changed_lines(&unstaged, 1))
+        .expect("stage_lines failed");
+
+    let mut expected = original;
+    expected[19] = "line 20 rewritten".to_string();
+    assert_eq!(ctx.staged_content("shift.txt"), joined(&expected));
+}
+
+#[test]
+fn unstage_lines_unstages_a_hunk_an_earlier_insertion_moved_down() {
+    let (ctx, original, _) = shifted_by_an_insertion();
+    ctx.stage_file("shift.txt").expect("stage_file failed");
+    let staged = ctx.diff_staged("shift.txt").expect("diff_staged failed");
+
+    ctx.unstage_lines("shift.txt", 1, &changed_lines(&staged, 1))
+        .expect("unstage_lines failed");
+
+    let mut expected = original;
+    expected.insert(2, "inserted".to_string());
+    assert_eq!(ctx.staged_content("shift.txt"), joined(&expected));
+}
+
+#[test]
+fn discard_lines_discards_in_a_hunk_an_earlier_insertion_moved_down() {
+    let (ctx, original, _) = shifted_by_an_insertion();
+    let unstaged = ctx
+        .diff_unstaged("shift.txt")
+        .expect("diff_unstaged failed");
+
+    ctx.discard_lines("shift.txt", 1, &changed_lines(&unstaged, 1))
+        .expect("discard_lines failed");
+
+    let mut expected = original;
+    expected.insert(2, "inserted".to_string());
+    assert_eq!(
+        std::fs::read_to_string(ctx.repo_path().join("shift.txt")).unwrap(),
+        joined(&expected)
+    );
+}
+
+// -- a line added after an unterminated last line --
+
+#[test]
+fn stage_lines_keeps_a_line_added_after_an_unterminated_last_line_on_its_own_line() {
+    let ctx = TestContext::builder()
+        .with_file("tail.txt", "a\nb\n}")
+        .with_commit("Initial commit")
+        .build();
+    std::fs::write(ctx.repo_path().join("tail.txt"), "a\nb\n}\nfunc tail()\n").unwrap();
+    let unstaged = ctx.diff_unstaged("tail.txt").expect("diff_unstaged failed");
+    let added_tail: Vec<u32> = unstaged[0].hunks[0]
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add) && l.content.starts_with("func"))
+        .map(|(i, _)| u32::try_from(i).unwrap())
+        .collect();
+    assert_eq!(added_tail.len(), 1);
+
+    ctx.stage_lines("tail.txt", 0, &added_tail)
+        .expect("stage_lines failed");
+
+    assert_eq!(ctx.staged_content("tail.txt"), "a\nb\n}\nfunc tail()\n");
+}
+
+#[test]
+fn stage_lines_of_the_terminated_copy_of_an_unterminated_last_line_adds_only_its_newline() {
+    let ctx = TestContext::builder()
+        .with_file("tail.txt", "a\nb\n}")
+        .with_commit("Initial commit")
+        .build();
+    std::fs::write(ctx.repo_path().join("tail.txt"), "a\nb\n}\nfunc tail()\n").unwrap();
+    let unstaged = ctx.diff_unstaged("tail.txt").expect("diff_unstaged failed");
+    let terminated_brace: Vec<u32> = unstaged[0].hunks[0]
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add) && l.content.starts_with('}'))
+        .map(|(i, _)| u32::try_from(i).unwrap())
+        .collect();
+    assert_eq!(terminated_brace.len(), 1);
+
+    ctx.stage_lines("tail.txt", 0, &terminated_brace)
+        .expect("stage_lines failed");
+
+    assert_eq!(ctx.staged_content("tail.txt"), "a\nb\n}\n");
+}

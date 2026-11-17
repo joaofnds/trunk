@@ -1282,10 +1282,10 @@ fn build_partial_patch_text(
     let (hunk, _) = patch.hunk(hunk_idx)?;
     let body = rewrite_hunk_lines(patch, hunk_idx, selected_indices, reverse)?;
 
-    let (old_start, new_start) = if reverse {
-        (hunk.new_start(), hunk.old_start())
+    let old_start = if reverse {
+        hunk.new_start()
     } else {
-        (hunk.old_start(), hunk.new_start())
+        hunk.old_start()
     };
 
     let header = patch_header(file_path, patch, reverse);
@@ -1294,11 +1294,33 @@ fn build_partial_patch_text(
         old_count,
         new_count,
     } = body;
+    let new_start = lone_hunk_new_start(old_start, old_count, new_count);
     let lines_joined = lines.join("");
 
     Ok(format!(
         "{header}@@ -{old_start},{old_count} +{new_start},{new_count} @@\n{lines_joined}",
     ))
+}
+
+/// Where a patch's only hunk starts on its new side.
+///
+/// libgit2 places each hunk at its new-side start in the file as patched so far
+/// and does not search for it (probed, git2 0.21). The hunk's own new start counts
+/// every line the file's other hunks add or remove above it, which this one-hunk
+/// patch does not carry, so it is derived from the old side instead: the same
+/// lines precede the hunk on both sides. A side with no lines names the line
+/// before the hunk rather than its first, as git writes it.
+const fn lone_hunk_new_start(old_start: u32, old_count: u32, new_count: u32) -> u32 {
+    let preceding = if old_count == 0 {
+        old_start
+    } else {
+        old_start.saturating_sub(1)
+    };
+    if new_count == 0 {
+        preceding
+    } else {
+        preceding + 1
+    }
 }
 
 /// One hunk's rewritten lines, with the line counts its header must declare.
@@ -1329,6 +1351,16 @@ fn rewrite_hunk_lines(
 ) -> Result<HunkBody, TrunkError> {
     let selected_set: HashSet<u32> = selected_indices.iter().copied().collect();
     let num_lines = patch.num_lines_in_hunk(hunk_idx)?;
+    let is_selected =
+        |line_idx: usize| selected_set.contains(&u32::try_from(line_idx).unwrap_or(u32::MAX));
+    let origins = (0..num_lines)
+        .map(|line_idx| patch.line_in_hunk(hunk_idx, line_idx).map(|l| l.origin()))
+        .collect::<Result<Vec<char>, _>>()?;
+    // Whether a line after `line_idx` is staged as an addition.
+    let stages_an_addition_after = |line_idx: usize| {
+        (line_idx + 1..num_lines)
+            .any(|later| !reverse && origins[later] == '+' && is_selected(later))
+    };
 
     let mut body = HunkBody {
         lines: Vec::new(),
@@ -1336,6 +1368,9 @@ fn rewrite_hunk_lines(
         new_count: 0,
     };
     let mut run = ChangeRun::default();
+    // The text of an unterminated old last line this patch terminates, until the
+    // addition that terminates it in the working tree is passed over.
+    let mut terminated: Option<String> = None;
 
     for line_idx in 0..num_lines {
         let line = patch.line_in_hunk(hunk_idx, line_idx)?;
@@ -1343,6 +1378,28 @@ fn rewrite_hunk_lines(
         let content = String::from_utf8_lossy(line.content());
 
         if is_no_newline_marker(origin) {
+            continue;
+        }
+
+        // An unterminated old last line stays last only if nothing is staged
+        // after it. A staged addition below it needs its newline, which the
+        // working tree spells as the same text, terminated, among the additions.
+        if origin == '-'
+            && !reverse
+            && !is_selected(line_idx)
+            && !content.ends_with('\n')
+            && stages_an_addition_after(line_idx)
+        {
+            run.deletions
+                .push(format!("-{content}\n\\ No newline at end of file\n"));
+            run.additions.push(format!("+{content}\n"));
+            body.old_count += 1;
+            body.new_count += 1;
+            terminated = Some(format!("{content}\n"));
+            continue;
+        }
+        if origin == '+' && !reverse && terminated.as_deref() == Some(content.as_ref()) {
+            terminated = None;
             continue;
         }
 
@@ -1355,7 +1412,7 @@ fn rewrite_hunk_lines(
             format!("{content}\n\\ No newline at end of file\n")
         };
 
-        let selected = selected_set.contains(&u32::try_from(line_idx).unwrap_or(u32::MAX));
+        let selected = is_selected(line_idx);
 
         match (origin, selected, reverse) {
             // A selected line is staged onto one side. Reversing swaps which one,
