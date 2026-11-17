@@ -1366,7 +1366,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 	const count = selectedChanges.length;
 	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
-		`Discard ${count} selected lines? This cannot be undone.`,
+		`Discard ${count} selected ${count === 1 ? "line" : "lines"}? This cannot be undone.`,
 		{
 			title: "Discard Lines",
 			kind: "warning",

@@ -283,6 +283,34 @@ describe("HunkView gutter grip", () => {
 
 		expect(grip).toHaveAccessibleName("Select added line 11");
 	});
+
+	it("offers none on the marker for a missing final newline", () => {
+		const noFinalNewline = fileOf("src/main.ts", [
+			{
+				origin: "Add",
+				content: "last line",
+				old_lineno: null,
+				new_lineno: 1,
+				spans: [],
+			},
+			{
+				origin: "NoNewline",
+				content: "\\ No newline at end of file",
+				old_lineno: null,
+				new_lineno: null,
+				spans: [],
+			},
+		]);
+
+		render(HunkView, {
+			props: defaultProps({ fileDiffs: [noFinalNewline] }),
+		});
+
+		const marker = screen
+			.getByText("\\ No newline at end of file", { exact: false })
+			.closest(".diff-line") as HTMLElement;
+		expect(marker.querySelector("[data-gutter-grip]")).toBeNull();
+	});
 });
 
 describe("HunkView thread marker", () => {

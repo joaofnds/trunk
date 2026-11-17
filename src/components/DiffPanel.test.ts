@@ -3212,6 +3212,24 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 			);
 		});
 
+		it("names one discarded line in the singular", async () => {
+			const { ask } = await import("@tauri-apps/plugin-dialog");
+			vi.mocked(ask).mockClear();
+			await renderWorkingDiff("unstaged");
+			await selectLines("const x = 2;", "const x = 2;");
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Discard Lines (1)" }),
+			);
+
+			await waitFor(() =>
+				expect(ask).toHaveBeenCalledWith(
+					"Discard 1 selected line? This cannot be undone.",
+					expect.anything(),
+				),
+			);
+		});
+
 		it("unstages only the changed lines", async () => {
 			await renderWorkingDiff("staged");
 			await selectLines("const x = 2;", "export { x };");

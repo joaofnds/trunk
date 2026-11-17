@@ -283,8 +283,11 @@ function flash(hunkKey: string): void {
 	{#if item.kind === "line"}
 		{@const line = item.line}
 		{@const isSelectable =
-			line.origin !== "Context" ||
-			(commentable && takesNewComment(diffKind, line))}
+			line.origin === "Add" ||
+			line.origin === "Delete" ||
+			(line.origin === "Context" &&
+				commentable &&
+				takesNewComment(diffKind, line))}
 		{@const hunkKey = `${item.path}-${item.hunkIdx}`}
 		{@const isSelected = inSelection(hunkKey, item.lineIdx)}
 		{@const holdsAction =
