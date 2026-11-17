@@ -342,9 +342,7 @@ describe("CommitDetail", () => {
 				onclose: vi.fn(),
 			},
 		});
-		expect(
-			screen.getByText((_, el) => el?.textContent === "commit: abc123d"),
-		).toBeInTheDocument();
+		expect(screen.getByTitle("Copy SHA")).toHaveTextContent("abc123d");
 	});
 
 	it("renders file count", () => {

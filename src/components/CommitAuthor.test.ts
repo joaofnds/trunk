@@ -21,6 +21,14 @@ function renderAuthor(lineage: { parentOids: string[]; childOids: string[] }) {
 }
 
 describe("CommitAuthor", () => {
+	it("shows when the commit was authored", () => {
+		renderAuthor({ parentOids: [], childOids: [] });
+
+		expect(
+			screen.getByText(new Date(1_700_000_000_000).toLocaleString()),
+		).toBeInTheDocument();
+	});
+
 	it("jumps to the parent whose chip is clicked", async () => {
 		const visited = renderAuthor({ parentOids: [PARENT], childOids: [] });
 
