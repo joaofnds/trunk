@@ -13,6 +13,7 @@ import {
 } from "../../tests/app/harness/dom.js";
 import { makeCommit } from "../__tests__/helpers/factories.js";
 import { RepositoryReadHost } from "../__tests__/helpers/repository-read-host.js";
+import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import {
 	disablePerf,
 	enablePerf,
@@ -98,6 +99,7 @@ async function mountCommit() {
 		props: {
 			repoPath: "/repo",
 			repoName: "repo",
+			diffPreferences: DiffPreferences.defaults(),
 			remoteState: createRemoteState(),
 			undoRedo: createUndoRedoState(),
 			leftPaneWidth: 200,
@@ -281,30 +283,6 @@ describe("RepoView commit file reuse", () => {
 
 		expect(screen.queryByText("FIRST ORIGINAL")).toBeNull();
 		expect(host.count("diff_commit_file")).toBe(4);
-	});
-
-	it("loads a retained file again after context-line options change", async () => {
-		await mountCommit();
-		await openFile("f.ts", "FIRST SHORT CONTEXT");
-		await openFile("g.ts", "SECOND SHORT CONTEXT");
-		await fireEvent.click(screen.getByRole("button", { name: "Close diff" }));
-		host.preferences.set("diff_context_lines", 10);
-		await openFile("g.ts", "SECOND SHORT CONTEXT");
-		host.seedResponse("diff_commit_file", [
-			file("g.ts", "FILTERED LONG CONTEXT"),
-		]);
-		await fireEvent.click(screen.getByTitle("Ignore whitespace changes"));
-		await screen.findByText("FILTERED LONG CONTEXT");
-		host.seedResponse("diff_commit_file", [
-			file("g.ts", "SECOND LONG CONTEXT"),
-		]);
-		await fireEvent.click(screen.getByTitle("Ignore whitespace changes"));
-		await screen.findByText("SECOND LONG CONTEXT");
-
-		await openFile("f.ts", "FIRST LONG CONTEXT");
-
-		expect(screen.queryByText("FIRST SHORT CONTEXT")).toBeNull();
-		expect(host.count("diff_commit_file")).toBe(5);
 	});
 
 	it("drops a pending file response after returning to a loaded file", async () => {

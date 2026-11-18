@@ -14,6 +14,7 @@ import {
 } from "../../tests/app/harness/dom.js";
 import { makeCommit } from "../__tests__/helpers/factories.js";
 import { RepositoryReadHost } from "../__tests__/helpers/repository-read-host.js";
+import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import type { RefsResponse } from "../lib/types.js";
@@ -71,6 +72,7 @@ async function mountRepo(tabActive: boolean) {
 		props: {
 			repoPath: "/repo",
 			repoName: "repo",
+			diffPreferences: DiffPreferences.defaults(),
 			remoteState: createRemoteState(),
 			undoRedo: createUndoRedoState(),
 			leftPaneWidth: 200,

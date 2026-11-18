@@ -25,6 +25,7 @@ import { aReview } from "../__tests__/helpers/review-fixture.js";
 import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { REPO_CHANGE_DELAY_MS } from "../lib/coalesced-task.js";
+import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import {
 	disablePerf,
 	enablePerf,
@@ -4200,6 +4201,65 @@ describe("RepoView", () => {
 					kind: "error",
 				}),
 			);
+		});
+
+		it("reloads the diff left open under the editor when the diff options change", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "get_commit_detail" && typeof a?.oid === "string")
+					return Promise.resolve(makeRebaseDetail(a.oid, "focused commit"));
+				if (cmd === "list_commit_files")
+					return Promise.resolve([
+						makeRebaseFile(
+							a?.oid === HEAD_OID ? "src/main.ts" : "src/rebase.ts",
+						),
+					]);
+				if (cmd === "diff_commit_file")
+					return Promise.resolve([
+						makeRebaseFileWithContent(String(a?.filePath), "A DIFF"),
+					]);
+				return base(cmd, args);
+			});
+			const diffPreferences = DiffPreferences.defaults();
+			const props = { ...baseProps(createMockRemoteState()), diffPreferences };
+			render(RepoView, { props });
+			const [head] = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(head);
+			await fireEvent.click(
+				await within(await screen.findByTestId("commit-detail")).findByText(
+					"src/main.ts",
+				),
+			);
+			await screen.findByText("A DIFF");
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.contextMenu(rows[1]);
+			await waitFor(() => {
+				expect(menuActions.has("Interactive Rebase...")).toBe(true);
+			});
+			await getMenuAction("Interactive Rebase...")();
+			await screen.findByRole("listbox", { name: "Commits to rebase" });
+			await fireEvent.click(rebaseRow(1));
+			await fireEvent.click(await screen.findByText("src/rebase.ts"));
+			await waitFor(() =>
+				expect(screen.getAllByText("A DIFF")).toHaveLength(2),
+			);
+
+			diffPreferences.changeIgnoreWhitespace(true);
+
+			await waitFor(() => {
+				const reloaded = mockInvoke.mock.calls
+					.filter(
+						([cmd, args]) =>
+							cmd === "diff_commit_file" &&
+							(args as { options: { ignoreWhitespace: boolean } }).options
+								.ignoreWhitespace,
+					)
+					.map(([, args]) => (args as { filePath: string }).filePath);
+				expect(reloaded.sort()).toEqual(["src/main.ts", "src/rebase.ts"]);
+			});
 		});
 
 		it("withholds the rebase payload when the current mode reload fails", async () => {

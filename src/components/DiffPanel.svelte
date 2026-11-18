@@ -1,5 +1,4 @@
 <script lang="ts">
-import { tick } from "svelte";
 import type { PanelDiffKind } from "../lib/comment-matching.js";
 import {
 	buildDiffAnchor,
@@ -7,6 +6,7 @@ import {
 	resolveSide,
 } from "../lib/diff-anchor.js";
 import type { DiffNav } from "../lib/diff-nav.js";
+import type { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import type { DiffComposer } from "../lib/diff-rows.js";
 import { splitSide, takesNewComment } from "../lib/diff-utils.js";
 import { reportErrorToast } from "../lib/error-report.js";
@@ -29,19 +29,6 @@ import {
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
 import { tallyBadgeThreads } from "../lib/review-filter.js";
-import {
-	getDiffContextLines,
-	getDiffIgnoreWhitespace,
-	getDiffLayoutMode,
-	getDiffShowInvisibles,
-	getDiffWordWrap,
-	getRenderMode,
-	setDiffIgnoreWhitespace,
-	setDiffLayoutMode,
-	setDiffShowInvisibles,
-	setDiffWordWrap,
-	setRenderMode,
-} from "../lib/store.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommitDetail,
@@ -51,7 +38,6 @@ import type {
 	DiffStatus,
 	FileDiff,
 	LayoutMode,
-	RenderMode,
 	Review,
 	ReviewFilter,
 	ShownHunk,
@@ -81,7 +67,7 @@ interface Props {
 		filePath: string,
 		action: "stage" | "unstage" | "discard",
 	) => void;
-	ondiffoptionschange?: (options: DiffRequestOptions) => void;
+	diffPreferences: DiffPreferences;
 	contentMode: ContentMode;
 	oncontentmodechange: (mode: ContentMode) => void;
 	loading?: boolean;
@@ -120,7 +106,7 @@ let {
 	repoPath = "",
 	onhunkaction,
 	onfileemptied,
-	ondiffoptionschange,
+	diffPreferences,
 	contentMode,
 	oncontentmodechange,
 	loading = false,
@@ -142,21 +128,7 @@ let {
 	emptyCommit = false,
 }: Props = $props();
 
-let layoutMode = $state<LayoutMode>("inline");
-let renderMode = $state<RenderMode>("source");
-let contextLines = $state(3);
-let ignoreWhitespace = $state(false);
-let showInvisibles = $state(false);
-let wordWrap = $state(false);
 let hunkOperationInFlight = $state(false);
-
-// The six display values above start at defaults the persisted preferences then
-// replace a microtask later. Rendering a diff view against those defaults picks
-// the wrong view for one frame, and inline+hunk against a full-file payload —
-// what a reopened large file hands us, since the fetched diff outlives the
-// close — builds every one of its lines synchronously. The pane stays empty
-// until the real modes arrive.
-let prefsLoaded = $state(false);
 
 let focusedHunkIndex = $state(0);
 // Two navigation paths, because only some views are virtualized. A virtualized
@@ -684,40 +656,8 @@ async function handleCommentFile() {
 	await openFullFileComposer(fd, indices, true);
 }
 
-$effect(() => {
-	Promise.all([
-		getDiffLayoutMode(),
-		getDiffContextLines(),
-		getDiffIgnoreWhitespace(),
-		getDiffShowInvisibles(),
-		getDiffWordWrap(),
-		getRenderMode(),
-	])
-		.then(([lm, cl, iw, si, ww, rm]) => {
-			layoutMode = lm;
-			contextLines = cl;
-			ignoreWhitespace = iw;
-			showInvisibles = si;
-			wordWrap = ww;
-			renderMode = rm;
-			prefsLoaded = true;
-		})
-		.catch(() => {
-			// A store that cannot be read leaves every option at its default, and
-			// RepoView's own read failed the same way, so the payload matches them.
-			prefsLoaded = true;
-		});
-});
-
-function currentDiffOptions(
-	overrides?: Partial<DiffRequestOptions>,
-): DiffRequestOptions {
-	return {
-		contextLines,
-		ignoreWhitespace,
-		showFullFile: contentMode === "full",
-		...overrides,
-	};
+function currentDiffOptions(): DiffRequestOptions {
+	return diffPreferences.requestOptions(contentMode);
 }
 
 function handleContentModeChange(mode: ContentMode) {
@@ -725,31 +665,9 @@ function handleContentModeChange(mode: ContentMode) {
 	oncontentmodechange(mode);
 }
 
-async function handleLayoutModeChange(mode: LayoutMode) {
-	layoutMode = mode;
+function handleLayoutModeChange(mode: LayoutMode) {
 	clearSelection();
-	setDiffLayoutMode(mode);
-}
-
-function handleRenderModeChange(mode: RenderMode) {
-	renderMode = mode;
-	setRenderMode(mode);
-}
-
-async function handleIgnoreWhitespaceChange(value: boolean) {
-	ignoreWhitespace = value;
-	ondiffoptionschange?.(currentDiffOptions({ ignoreWhitespace: value }));
-	setDiffIgnoreWhitespace(value);
-}
-
-function handleShowInvisiblesChange(value: boolean) {
-	showInvisibles = value;
-	setDiffShowInvisibles(value);
-}
-
-function handleWordWrapChange(value: boolean) {
-	wordWrap = value;
-	setDiffWordWrap(value);
+	diffPreferences.changeLayoutMode(mode);
 }
 
 function clearSelection() {
@@ -821,18 +739,6 @@ function lineIndexIn(lines: DiffLine[], startLine: number, side: Side): number {
 	);
 }
 
-// The viewer mounts only once the diff settings load, so a jump asked for
-// before then has nothing to scroll and waits here until it does.
-let pendingJump = $state<{ startLine: number; side: Side } | null>(null);
-
-$effect(() => {
-	const jump = pendingJump;
-	if (!jump || !prefsLoaded) return;
-
-	pendingJump = null;
-	tick().then(() => scrollToLine(jump.startLine, jump.startLine, jump.side));
-});
-
 // Jump-to-range (Phase 69 / D-07): scroll to and transiently highlight a
 // comment's anchored line. A line no hunk shows lands on the comment row drawn
 // between the hunks for it, and a line drawn nowhere falls back to the first
@@ -842,11 +748,6 @@ export function scrollToLine(
 	_endLine: number,
 	side: Side = "New",
 ) {
-	if (!prefsLoaded) {
-		pendingJump = { startLine, side };
-		return;
-	}
-
 	const target = hunkContaining(startLine, side);
 
 	if (nav) {
@@ -1286,7 +1187,8 @@ function beginDrag(
 	dragAnchorIndex = lineIndex;
 	dragHunkLines = hunkLines;
 	const line = hunkLines[lineIndex];
-	dragSide = layoutMode === "split" && line ? splitSide(line) : null;
+	dragSide =
+		diffPreferences.layoutMode === "split" && line ? splitSide(line) : null;
 	lastClickedIndex = lineIndex;
 }
 
@@ -1488,24 +1390,26 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 <div class="h-full flex flex-col overflow-hidden bg-surface">
 	<DiffToolbar
 		{contentMode}
-		{layoutMode}
-		{renderMode}
+		layoutMode={diffPreferences.layoutMode}
+		renderMode={diffPreferences.renderMode}
 		oncontentmodechange={handleContentModeChange}
 		onlayoutmodechange={handleLayoutModeChange}
-		onrendermodechange={handleRenderModeChange}
+		onrendermodechange={(mode) => diffPreferences.changeRenderMode(mode)}
 		{selectedPath}
 		{selectedStatus}
 		selectedOldPath={selectedFile?.old_path ?? null}
 		{diffKind}
 		{hunkOperationInFlight}
-		{ignoreWhitespace}
-		{showInvisibles}
-		{wordWrap}
+		ignoreWhitespace={diffPreferences.ignoreWhitespace}
+		showInvisibles={diffPreferences.showInvisibles}
+		wordWrap={diffPreferences.wordWrap}
 		{takesComments}
 		commentTally={selectedFileTally}
-		onignorewhitespacechange={handleIgnoreWhitespaceChange}
-		onshowinvisibleschange={handleShowInvisiblesChange}
-		onwordwrapchange={handleWordWrapChange}
+		onignorewhitespacechange={(ignore) =>
+			diffPreferences.changeIgnoreWhitespace(ignore)}
+		onshowinvisibleschange={(show) =>
+			diffPreferences.changeShowInvisibles(show)}
+		onwordwrapchange={(wrap) => diffPreferences.changeWordWrap(wrap)}
 		onstagefile={handleStageFile}
 		onunstagefile={handleUnstageFile}
 		ondiscardfile={handleDiscardFile}
@@ -1513,62 +1417,60 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		{onclose}
 		{backLabel}
 	/>
-	{#if prefsLoaded}
-		<DiffViewer
-			{keysActive}
-			contentMode={effectiveContentMode}
-			{contextLines}
-			{layoutMode}
-			{renderMode}
-			{fileDiffs}
-			{commitDetail}
-			{compareBaseOid}
-			{selectedPath}
-			{diffKind}
-			{emptyCommit}
-			{loading}
-			{payloadStale}
-			{loadError}
-			{onretry}
-			{hunkOperationInFlight}
-			{ignoreWhitespace}
-			{showInvisibles}
-			{wordWrap}
-			{selectedHunkKey}
-			{selectedLineIndices}
-			{selectedCount}
-			selectedChangeCount={selectedChanges.length}
-			{isMerge}
-			{collapsedFiles}
-			{hunkElements}
-			bind:diffNav
-			onfilecollapsetoggle={toggleFileCollapsed}
-			onlineclick={handleLineClick}
-			onlinemousedown={handleLineMouseDown}
-			onstagehunk={handleStageHunk}
-			onunstagehunk={handleUnstageHunk}
-			ondiscardhunk={handleDiscardHunk}
-			onstagelines={handleStageLines}
-			onunstagelines={handleUnstageLines}
-			ondiscardlines={handleDiscardLines}
-			oncommentlines={handleCommentLines}
-			oncommenthunk={handleCommentHunk}
-			selectionComment={selectionComment && {
-				hunkKey: `${selectionComment.path}-${selectionComment.hunkIdx}`,
-				lineIndex: selectionComment.lineIndex,
-			}}
-			oncommentselection={commentOnSelection}
-			{commitOid}
-			{repoPath}
-			{takesComments}
-			{reviewFilter}
-			{viewComments}
-			{editorSessionForThread}
-			{refreshToken}
-			oncommentfullfile={handleCommentFullFile}
-			onextendcomment={handleExtendFullFileComment}
-			composer={diffComposer}
-			bind:fullFileView
-		/>
-	{/if}
+	<DiffViewer
+		{keysActive}
+		contentMode={effectiveContentMode}
+		contextLines={diffPreferences.contextLines}
+		layoutMode={diffPreferences.layoutMode}
+		renderMode={diffPreferences.renderMode}
+		{fileDiffs}
+		{commitDetail}
+		{compareBaseOid}
+		{selectedPath}
+		{diffKind}
+		{emptyCommit}
+		{loading}
+		{payloadStale}
+		{loadError}
+		{onretry}
+		{hunkOperationInFlight}
+		ignoreWhitespace={diffPreferences.ignoreWhitespace}
+		showInvisibles={diffPreferences.showInvisibles}
+		wordWrap={diffPreferences.wordWrap}
+		{selectedHunkKey}
+		{selectedLineIndices}
+		{selectedCount}
+		selectedChangeCount={selectedChanges.length}
+		{isMerge}
+		{collapsedFiles}
+		{hunkElements}
+		bind:diffNav
+		onfilecollapsetoggle={toggleFileCollapsed}
+		onlineclick={handleLineClick}
+		onlinemousedown={handleLineMouseDown}
+		onstagehunk={handleStageHunk}
+		onunstagehunk={handleUnstageHunk}
+		ondiscardhunk={handleDiscardHunk}
+		onstagelines={handleStageLines}
+		onunstagelines={handleUnstageLines}
+		ondiscardlines={handleDiscardLines}
+		oncommentlines={handleCommentLines}
+		oncommenthunk={handleCommentHunk}
+		selectionComment={selectionComment && {
+			hunkKey: `${selectionComment.path}-${selectionComment.hunkIdx}`,
+			lineIndex: selectionComment.lineIndex,
+		}}
+		oncommentselection={commentOnSelection}
+		{commitOid}
+		{repoPath}
+		{takesComments}
+		{reviewFilter}
+		{viewComments}
+		{editorSessionForThread}
+		{refreshToken}
+		oncommentfullfile={handleCommentFullFile}
+		onextendcomment={handleExtendFullFileComment}
+		composer={diffComposer}
+		bind:fullFileView
+	/>
 </div>

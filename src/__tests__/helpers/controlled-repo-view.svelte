@@ -1,15 +1,18 @@
 <script lang="ts">
 import type { ComponentProps } from "svelte";
 import RepoView from "../../components/RepoView.svelte";
+import { DiffPreferences } from "../../lib/diff-preferences.svelte.js";
 import type { ContentMode } from "../../lib/types.js";
 
 type RepoViewProps = ComponentProps<typeof RepoView>;
-type Props = Omit<RepoViewProps, "contentMode" | "oncontentmodechange"> &
-	Partial<Pick<RepoViewProps, "contentMode" | "oncontentmodechange">>;
+type AppOwned = "contentMode" | "oncontentmodechange" | "diffPreferences";
+type Props = Omit<RepoViewProps, AppOwned> &
+	Partial<Pick<RepoViewProps, AppOwned>>;
 
 let {
 	contentMode: suppliedContentMode = "hunk",
 	oncontentmodechange,
+	diffPreferences = DiffPreferences.defaults(),
 	...props
 }: Props = $props();
 let contentMode = $state<ContentMode>("hunk");
@@ -27,5 +30,6 @@ function handleContentModeChange(mode: ContentMode) {
 <RepoView
 	{...props}
 	{contentMode}
+	{diffPreferences}
 	oncontentmodechange={handleContentModeChange}
 />

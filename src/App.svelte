@@ -20,6 +20,7 @@ import {
 	type CoalescedTask,
 	createCoalescedTask,
 } from "./lib/coalesced-task.js";
+import { DiffPreferences } from "./lib/diff-preferences.svelte.js";
 import { errorMessage } from "./lib/error-report.js";
 import { requireIdleInvokesForUpdate, safeInvoke } from "./lib/invoke.js";
 import { focusInEditable, keyChord, onMac } from "./lib/keyboard.js";
@@ -254,7 +255,7 @@ $effect(() => {
 		updateReadinessSent ||
 		!updateStatus ||
 		!tabsRestored ||
-		!diffContentModeLoaded
+		!diffSettingsLoaded
 	)
 		return;
 	for (const tab of tabs) {
@@ -337,6 +338,14 @@ let reviewThreadsHiddenChanged = false;
 let diffContentMode = $state<ContentMode>("hunk");
 let diffContentModeChanged = false;
 let diffContentModeLoaded = $state(false);
+// A repository's diffs are read and drawn under these settings, so no tab
+// mounts before they are known: a diff drawn under the defaults picks the
+// wrong view for a frame, and inline hunks over a full-file payload build every
+// line of a large file at once.
+let diffPreferences = $state.raw<DiffPreferences | null>(null);
+const diffSettingsLoaded = $derived(
+	diffContentModeLoaded && diffPreferences !== null,
+);
 let commentCounts = $state<
 	Map<
 		string,
@@ -897,6 +906,12 @@ $effect(() => {
 		});
 });
 
+$effect(() => {
+	void DiffPreferences.load().then((preferences) => {
+		diffPreferences = preferences;
+	});
+});
+
 // Track fullscreen state (hide traffic-light padding when fullscreen)
 $effect(() => {
 	const appWindow = getCurrentWindow();
@@ -1092,7 +1107,7 @@ async function closeUnusedRepository(path: string): Promise<void> {
 }
 
 function isRepoViewMounted(tab: TabInfo): boolean {
-	return diffContentModeLoaded && repositories.wasVisited(tab);
+	return diffSettingsLoaded && repositories.wasVisited(tab);
 }
 
 function updateDirtyBadge(
@@ -1312,7 +1327,7 @@ $effect(() => {
 				class:pointer-events-none={tab.id !== activeTabId}
 			>
 				{#if tab.repoPath}
-					{#if isRepoViewMounted(tab)}
+					{#if diffPreferences && isRepoViewMounted(tab)}
 						{#key tab.repoPath}
 							{@const tabState = getTabState(tab.id)}
 							{@const tabReviewActive =
@@ -1338,6 +1353,7 @@ $effect(() => {
 								}}
 								contentMode={diffContentMode}
 								oncontentmodechange={handleDiffContentModeChange}
+								{diffPreferences}
 								oncommentcountschange={(c) => setCommentCounts(tab.id, c)}
 								onshownheadchange={(oid) => {
 									tabState.shownHead.oid = oid;

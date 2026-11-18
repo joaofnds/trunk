@@ -738,6 +738,98 @@ describe("App diff content mode", () => {
 	});
 });
 
+describe("App diff settings", () => {
+	it("shows a non-interactive repository loading state until the diff settings are known", async () => {
+		seedOneTab();
+		host.seedCommitDiff(REPO_A, "commit-a", "a.ts");
+		const read = host.holdPreferenceRead("diff_ignore_whitespace");
+		render(App);
+		await read.entered;
+		await nextTask();
+
+		expect(
+			document.querySelector('[data-tab-id="tab-a"] [role="tab"]'),
+		).toBeInstanceOf(HTMLElement);
+		expect(screen.getByLabelText("Loading repository")).toBeTruthy();
+		expect(
+			screen.queryByRole("button", { name: "Open Repository" }),
+		).toBeFalsy();
+
+		read.release();
+		expect(await screen.findByTestId("commit-row")).toBeTruthy();
+	});
+
+	it("opens the repository on the default settings and reports a settings read failure", async () => {
+		seedOneTab();
+		host.seedCommitDiff(REPO_A, "commit-a", "a.ts");
+		host.rejectPreferenceRead("diff_word_wrap");
+		render(App);
+
+		expect(await screen.findByTestId("commit-row")).toBeTruthy();
+		expect(
+			await screen.findByText("Could not load diff settings"),
+		).toBeTruthy();
+	});
+
+	it("applies a setting changed in one tab to the open diff in every mounted tab", async () => {
+		await openDiffsInTwoTabs();
+
+		await fireEvent.click(screen.getAllByTitle("Ignore whitespace changes")[1]);
+
+		await waitFor(() => {
+			const ignoring = host.diffRequests.filter(
+				({ options }) => options.ignoreWhitespace,
+			);
+			expect(ignoring.map(({ path }) => path).sort()).toEqual([REPO_A, REPO_B]);
+		});
+		expect(
+			screen
+				.getAllByTitle("Ignore whitespace changes")
+				.map((toggle) => toggle.getAttribute("aria-pressed")),
+		).toEqual(["true", "true"]);
+	});
+
+	it("saves a changed setting for the next launch", async () => {
+		await openDiffsInTwoTabs();
+
+		await fireEvent.click(screen.getAllByTitle("Ignore whitespace changes")[1]);
+
+		await waitFor(() =>
+			expect(host.preference("diff_ignore_whitespace")).toBe(true),
+		);
+	});
+
+	it("keeps a setting it could not save and reports the failure", async () => {
+		host.rejectPreferenceWrite("diff_ignore_whitespace");
+		await openDiffsInTwoTabs();
+
+		await fireEvent.click(screen.getAllByTitle("Ignore whitespace changes")[1]);
+
+		expect(
+			await screen.findByText("Could not save diff settings"),
+		).toBeTruthy();
+		expect(
+			screen
+				.getAllByTitle("Ignore whitespace changes")
+				.map((toggle) => toggle.getAttribute("aria-pressed")),
+		).toEqual(["true", "true"]);
+	});
+});
+
+async function openDiffsInTwoTabs(): Promise<void> {
+	seedTwoTabs();
+	host.seedCommitDiff(REPO_A, "commit-a", "a.ts");
+	host.seedCommitDiff(REPO_B, "commit-b", "b.ts");
+	render(App);
+	await fireEvent.click(await screen.findByTestId("commit-row"));
+	await fireEvent.click(await screen.findByText("a.ts"));
+	await screen.findByText(`HUNK ${REPO_A}`);
+	await activateTab("tab-b");
+	await fireEvent.click(await shownCommitRow());
+	await fireEvent.click(await screen.findByText("b.ts"));
+	await screen.findByText(`HUNK ${REPO_B}`);
+}
+
 describe("App side panes", () => {
 	it("keeps the graph's sidebar collapsed after the reviews are opened", async () => {
 		seedOneTab();

@@ -23,6 +23,7 @@ import {
 	swapCompare,
 } from "../lib/compare-select.js";
 import { resolveDiffTarget } from "../lib/diff-in-view.js";
+import type { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { listsSameFiles } from "../lib/file-status.js";
 import { inertWhile } from "../lib/inert-while.js";
@@ -68,8 +69,6 @@ import {
 	flushCommitDraftForUpdate,
 	flushReviewComposerForUpdate,
 	getCommitDraft,
-	getDiffContextLines,
-	getDiffIgnoreWhitespace,
 	getReviewUpdateSnapshot,
 	getTreeViewEnabled,
 	setCommitDraft,
@@ -155,6 +154,7 @@ interface Props {
 	onthreadfilterchange?: (filter: ThreadFilter) => void;
 	contentMode: ContentMode;
 	oncontentmodechange: (mode: ContentMode) => void;
+	diffPreferences: DiffPreferences;
 	// Reports whether the active review tab's center pane is showing the review PANEL
 	// (vs. a diff) up to App, so the Toolbar Review button shares one source of truth
 	// with what's rendered: it's lit only when the panel shows, and a click while a
@@ -199,6 +199,7 @@ let {
 	onthreadfilterchange,
 	contentMode,
 	oncontentmodechange,
+	diffPreferences,
 	onreviewpanelshowingchange,
 	oncommentcountschange,
 	onshownheadchange,
@@ -1146,24 +1147,8 @@ function clearCommit() {
 	commitDiffError = null;
 }
 
-// Request-local options are cached here; global content mode is owned by App
-// and is derived at the request boundary so mounted tabs cannot drift.
-let cachedDiffOptions = $state<Omit<DiffRequestOptions, "showFullFile">>({
-	contextLines: 3,
-	ignoreWhitespace: false,
-});
-
-$effect(() => {
-	void repoPath; // re-load when repo changes
-	Promise.all([getDiffContextLines(), getDiffIgnoreWhitespace()])
-		.then(([contextLines, ignoreWhitespace]) => {
-			cachedDiffOptions = { contextLines, ignoreWhitespace };
-		})
-		.catch(() => {});
-});
-
 function buildDiffOptions(): DiffRequestOptions {
-	return { ...cachedDiffOptions, showFullFile: contentMode === "full" };
+	return diffPreferences.requestOptions(contentMode);
 }
 
 /** The working-tree paths whose content the open views are showing. */
@@ -1317,13 +1302,6 @@ async function loadFullFileForComment(
 
 function loadErrorMessage(error: unknown): string {
 	return errorMessage(error, "Failed to load diff");
-}
-
-function rememberLocalDiffOptions(options: DiffRequestOptions): void {
-	cachedDiffOptions = {
-		contextLines: options.contextLines,
-		ignoreWhitespace: options.ignoreWhitespace,
-	};
 }
 
 /** WIP row clicked -- switch to staging view and auto-open right pane if collapsed. */
@@ -2479,11 +2457,21 @@ async function handleRebaseFileSelect(path: string) {
 	await reloadRebaseFile(path, buildDiffOptions());
 }
 
-async function reloadVisibleDiffForCurrentMode() {
+// The main pane stays mounted under the rebase editor, so a change of options
+// reloads both: the pane would otherwise show the old options' payload under
+// the new options' toolbar once the editor closes.
+async function reloadOpenDiffs() {
+	await Promise.all([
+		showRebaseEditor && rebaseDiffFile
+			? reloadRebaseFile(rebaseDiffFile, buildDiffOptions())
+			: undefined,
+		reloadShownDiff(),
+	]);
+}
+
+async function reloadShownDiff() {
 	const options = buildDiffOptions();
-	if (showRebaseEditor && rebaseDiffFile) {
-		await reloadRebaseFile(rebaseDiffFile, options);
-	} else if (selectedFile && selectedFile.kind !== "conflicted") {
+	if (selectedFile && selectedFile.kind !== "conflicted") {
 		await refetchFileDiff(selectedFile.path, selectedFile.kind, options);
 	} else if (selectedCompareFile && compare) {
 		await reloadCompareFile(selectedCompareFile, options);
@@ -2492,17 +2480,19 @@ async function reloadVisibleDiffForCurrentMode() {
 	}
 }
 
-let observedContentMode = untrack(() => contentMode);
+// The content mode and the diff settings are shared by every tab, so a change
+// made in any tab reloads the diff each mounted tab shows, hidden ones too.
+let observedOptions = untrack(buildDiffOptions);
 $effect(() => {
-	const nextMode = contentMode;
-	if (nextMode === observedContentMode) return;
-	observedContentMode = nextMode;
-	void reloadVisibleDiffForCurrentMode();
+	const options = buildDiffOptions();
+	if (sameData(options, observedOptions)) return;
+	observedOptions = options;
+	void reloadOpenDiffs();
 });
 
 /** The pane's Retry, which re-reads whatever the pane is showing. A current-file
  *  view carries no request options, which is why it is not reached through the
- *  mode reload above: the global mode has nothing to change about it. */
+ *  options reload above: the shared options have nothing to change about it. */
 async function retryVisibleDiff(): Promise<void> {
 	const currentFile = shownCurrentFile;
 	if (currentFile !== null) {
@@ -2510,7 +2500,7 @@ async function retryVisibleDiff(): Promise<void> {
 		await currentFileRefresh.run();
 		return;
 	}
-	await reloadVisibleDiffForCurrentMode();
+	await reloadShownDiff();
 }
 
 async function handleRebaseStart(
@@ -2810,6 +2800,7 @@ function stepRightPane(delta: number) {
 							{#snippet children(DiffPanel)}
 								<DiffPanel
 									bind:this={diffPanelRef}
+									{diffPreferences}
 									keysActive={tabActive &&
 										!showRebaseEditor &&
 										!reviewPanelShown}
@@ -2870,20 +2861,6 @@ function stepRightPane(delta: number) {
 												.catch((error) =>
 													reportErrorToast(error, "Failed to refresh status"),
 												);
-										}
-									}}
-									ondiffoptionschange={async (options) => {
-										rememberLocalDiffOptions(options);
-										if (selectedFile && selectedFile.kind !== "conflicted") {
-											await refetchFileDiff(
-												selectedFile.path,
-												selectedFile.kind,
-												options,
-											);
-										} else if (selectedCompareFile && compare) {
-											await reloadCompareFile(selectedCompareFile, options);
-										} else if (selectedCommitFile && selectedCommitOid) {
-											await reloadCommitFile(selectedCommitFile, options);
 										}
 									}}
 									onclose={reviewSession.state.reviewActive
@@ -3081,6 +3058,7 @@ function stepRightPane(delta: number) {
 						>
 							{#snippet children(DiffPanel)}
 								<DiffPanel
+									{diffPreferences}
 									keysActive={tabActive}
 									fileDiffs={rebaseShownDiff}
 									commitDetail={rebaseFocusedCommitDetail}
@@ -3110,11 +3088,6 @@ function stepRightPane(delta: number) {
 									onretry={() => {
 										if (rebaseDiffFile)
 											void reloadRebaseFile(rebaseDiffFile, buildDiffOptions());
-									}}
-									ondiffoptionschange={async (options) => {
-										rememberLocalDiffOptions(options);
-										if (rebaseDiffFile)
-											await reloadRebaseFile(rebaseDiffFile, options);
 									}}
 									onclose={handleRebaseDiffClose}
 								/>

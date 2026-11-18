@@ -17,6 +17,7 @@ import {
 import { makeCommit, makeMergeSides } from "../__tests__/helpers/factories.js";
 import { RepositoryReadHost } from "../__tests__/helpers/repository-read-host.js";
 import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
+import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { _resetToasts, toasts } from "../lib/toast.svelte.js";
@@ -972,6 +973,7 @@ async function openRepository() {
 		props: {
 			repoPath: "/repo",
 			repoName: "repo",
+			diffPreferences: DiffPreferences.defaults(),
 			remoteState: createRemoteState(),
 			undoRedo: createUndoRedoState(),
 			leftPaneWidth: 200,

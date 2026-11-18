@@ -18,6 +18,7 @@ import GraphRefreshHarness from "../__tests__/helpers/graph-refresh-harness.svel
 import { RepositoryReadHost } from "../__tests__/helpers/repository-read-host.js";
 import { noReviewCounts } from "../__tests__/helpers/review-props.js";
 import { ROW_HEIGHT } from "../lib/chrome-heights.js";
+import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { _resetToasts, toasts } from "../lib/toast.svelte.js";
@@ -979,6 +980,7 @@ describe("RepoView", () => {
 			props: {
 				repoPath: "/repo",
 				repoName: "repo",
+				diffPreferences: DiffPreferences.defaults(),
 				remoteState: createRemoteState(),
 				undoRedo: createUndoRedoState(),
 				leftPaneWidth: 200,

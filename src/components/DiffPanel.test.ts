@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import {
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/svelte";
 import { tick } from "svelte";
 import {
 	afterEach,
@@ -12,6 +18,7 @@ import {
 import DiffPanel from "../__tests__/helpers/controlled-diff-panel.svelte";
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
+import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import {
 	pairLines,
 	splitInvisibles,
@@ -37,9 +44,8 @@ import { commentingDiff } from "../__tests__/helpers/review-props.js";
 beforeEach(() => stubLayout({ width: 900, height: 400 }));
 afterEach(restoreLayout);
 
-// Helper: flush microtasks (Promise.resolve in store mocks) + Svelte update queue
-// Needed because DiffPanel loads preferences via $effect Promise.all which resolves
-// asynchronously. This ensures the component has processed the loaded values.
+// The test host mounts the panel only once the store mock's settings promises
+// resolve, the way App waits for the saved settings.
 async function flushPrefs() {
 	await Promise.resolve();
 	await Promise.resolve();
@@ -4425,16 +4431,6 @@ describe("DiffPanel hunk navigation", () => {
 		expect(viewportOf(container).scrollTop).toBe(128);
 	});
 
-	it("scrolls to a line asked for before the diff settings have loaded", async () => {
-		const { container, component, ready } = renderNav();
-
-		component.scrollToLine(11, 11, "New");
-		await ready;
-		await tick();
-
-		expect(viewportOf(container).scrollTop).toBe(128);
-	});
-
 	it("resolves an old-side anchor against the old line numbers", async () => {
 		const { container, component, ready } = renderNav();
 		await ready;
@@ -4776,5 +4772,88 @@ describe("DiffPanel hunk navigation", () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+describe("DiffPanel diff settings", () => {
+	afterEach(async () => {
+		const store = await import("../lib/store.js");
+		await Promise.all([
+			store.setDiffLayoutMode("inline"),
+			store.setDiffIgnoreWhitespace(false),
+			store.setDiffShowInvisibles(false),
+			store.setDiffWordWrap(false),
+			store.setRenderMode("source"),
+		]);
+	});
+
+	function renderSharing(
+		diffPreferences: DiffPreferences,
+		path = testDiff.path,
+	) {
+		return render(DiffPanel, {
+			props: {
+				...commentingDiff,
+				fileDiffs: [{ ...testDiff, path }],
+				selectedPath: path,
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffPreferences,
+			},
+		});
+	}
+
+	it.each([
+		"Ignore whitespace changes",
+		"Show invisible characters",
+		"Toggle word wrap",
+	])(
+		"shows %s turned on in one open diff in every other diff open at once",
+		async (control) => {
+			const diffPreferences = DiffPreferences.defaults();
+			const changed = renderSharing(diffPreferences);
+			const other = renderSharing(diffPreferences);
+
+			await fireEvent.click(within(changed.container).getByTitle(control));
+
+			expect(within(other.container).getByTitle(control)).toHaveAttribute(
+				"aria-pressed",
+				"true",
+			);
+		},
+	);
+
+	it("shows the layout chosen in one open diff in every other diff open at once", async () => {
+		const diffPreferences = DiffPreferences.defaults();
+		const changed = renderSharing(diffPreferences);
+		const other = renderSharing(diffPreferences);
+
+		await fireEvent.click(
+			within(changed.container).getByTitle("Side-by-side view"),
+		);
+
+		expect(within(other.container).getByTitle("Inline view")).toBeTruthy();
+	});
+
+	it("shows the markdown view chosen in one open diff in every other diff open at once", async () => {
+		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+			cmd === "render_markdown_diff"
+				? Promise.resolve({ rows: [], whitespaceOnly: false, changedLines: [] })
+				: Promise.resolve(undefined),
+		);
+		onTestFinished(() => {
+			vi.mocked(safeInvoke).mockImplementation(() =>
+				Promise.resolve(undefined),
+			);
+		});
+		const diffPreferences = DiffPreferences.defaults();
+		const changed = renderSharing(diffPreferences, "README.md");
+		const other = renderSharing(diffPreferences, "README.md");
+
+		await fireEvent.click(
+			within(changed.container).getByTitle("Show rendered markdown"),
+		);
+
+		expect(within(other.container).getByTitle("Show source")).toBeTruthy();
 	});
 });
