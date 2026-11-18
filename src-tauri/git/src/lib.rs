@@ -16,3 +16,4 @@ pub mod status;
 pub mod tracked_files;
 pub mod types;
 pub mod worktree;
+pub mod write_gate;

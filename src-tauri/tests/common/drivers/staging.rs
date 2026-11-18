@@ -316,6 +316,102 @@ impl TestContext {
             .get_path(std::path::Path::new(file_path), 0)
             .unwrap_or_else(|| panic!("{file_path} is not in the index"))
     }
+
+    /// The paths whose index entry differs from HEAD's tree, as the staged list shows
+    /// them, in byte order whatever case folding the platform's diff sorts by.
+    pub fn paths_staged_over_head(&self) -> Vec<String> {
+        let repo = self.repo();
+        let head = repo.head().unwrap().peel_to_tree().unwrap();
+        let diff = repo.diff_tree_to_index(Some(&head), None, None).unwrap();
+        let mut paths: Vec<String> = diff
+            .deltas()
+            .filter_map(|delta| delta.new_file().path().map(|p| p.display().to_string()))
+            .collect();
+        paths.sort();
+
+        paths
+    }
+
+    /// Runs `act` while another writer creates `file_path` and stages it. See
+    /// `act_while_another_writer`.
+    pub fn act_while_another_writer_stages(
+        &mut self,
+        file_path: &str,
+        act: impl FnOnce(&mut Self) -> Result<(), TrunkError> + Send,
+    ) -> Result<(), TrunkError> {
+        std::fs::write(self.repo_path().join(file_path), file_path).unwrap();
+
+        self.act_while_another_writer(
+            |repo| {
+                let mut index = repo.index().unwrap();
+                index.add_path(std::path::Path::new(file_path)).unwrap();
+                index
+            },
+            |_, mut index| index.write().unwrap(),
+            act,
+        )
+    }
+
+    /// Runs `act` while another writer holds the repository, interleaved as two
+    /// overlapping commands are: that writer runs `read` before `act` starts, and runs
+    /// `write` with what it read once `act` has finished or is waiting for the gate.
+    pub fn act_while_another_writer<R>(
+        &mut self,
+        read: impl FnOnce(&mut git2::Repository) -> R,
+        write: impl FnOnce(&mut git2::Repository, R),
+        act: impl FnOnce(&mut Self) -> Result<(), TrunkError> + Send,
+    ) -> Result<(), TrunkError> {
+        let mut repo = self.repo();
+        let (queued, act_waits_or_ends) = std::sync::mpsc::channel();
+        let ended = queued.clone();
+        trunk_git::write_gate::on_next_wait(&repo, move || queued.send(()).unwrap());
+
+        std::thread::scope(|scope| {
+            let other = trunk_git::write_gate::hold(&mut repo, |repo| {
+                let read = read(repo);
+                let other = scope.spawn(|| {
+                    let acted = act(self);
+                    let _ = ended.send(());
+                    acted
+                });
+                act_waits_or_ends.recv().unwrap();
+                write(repo, read);
+                Ok(other)
+            })
+            .expect("the other writer failed");
+
+            other.join().expect("act panicked")
+        })
+    }
+
+    /// Runs `act`, and `write` as another writer the moment `act`'s first hold of the
+    /// repository releases it, before `act` goes on, so whatever `act` does after its
+    /// gated body meets that writer's change.
+    pub fn act_then_another_writer_at_release(
+        &mut self,
+        write: impl FnOnce(&mut git2::Repository) + Send + 'static,
+        act: impl FnOnce(&mut Self) -> Result<(), TrunkError>,
+    ) -> Result<(), TrunkError> {
+        let path = self.repo_path().to_path_buf();
+        trunk_git::write_gate::on_next_release(&self.repo(), move || {
+            let mut repo = git2::Repository::open(path).unwrap();
+            trunk_git::write_gate::hold(&mut repo, |repo| {
+                write(repo);
+                Ok(())
+            })
+            .unwrap();
+        });
+
+        act(self)
+    }
+}
+
+/// What a second writer's Unstage All leaves: the index set back to HEAD's tree.
+pub fn unstage_everything(repo: &git2::Repository) {
+    let head = repo.head().unwrap().peel_to_tree().unwrap();
+    let mut index = repo.index().unwrap();
+    index.read_tree(&head).unwrap();
+    index.write().unwrap();
 }
 
 /// What the view sends for the hunk at `hunk_index` of a one-file diff.

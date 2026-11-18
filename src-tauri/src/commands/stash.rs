@@ -109,6 +109,14 @@ pub fn stash_save_inner(
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let mut repo = state_map.open(path)?;
+    trunk_git::write_gate::hold(&repo, |repo| stash_staged_changes(repo, message))?;
+
+    crate::state::read_graph(&mut repo)
+}
+
+/// Write a stash of what the index stages over HEAD, then take those changes out of the
+/// working tree and the index, leaving every unstaged edit in place.
+fn stash_staged_changes(repo: &git2::Repository, message: &str) -> Result<(), TrunkError> {
     let workdir = repo
         .workdir()
         .ok_or_else(|| TrunkError::new("bare_repo", "Cannot stash in a bare repository"))?
@@ -182,7 +190,7 @@ pub fn stash_save_inner(
                 |head_entry| {
                     let mode = head_entry.filemode().cast_unsigned();
                     let blob = head_entry
-                        .to_object(&repo)
+                        .to_object(repo)
                         .ok()
                         .and_then(|obj| obj.into_blob().ok());
                     (blob, mode)
@@ -220,7 +228,7 @@ pub fn stash_save_inner(
             // Worktree matches index: write HEAD blob back, or delete file if not in HEAD.
             match head_tree.get_path(Path::new(rel_path)) {
                 Ok(head_entry) => {
-                    let head_obj = head_entry.to_object(&repo).map_err(TrunkError::from)?;
+                    let head_obj = head_entry.to_object(repo).map_err(TrunkError::from)?;
                     let head_blob = head_obj.as_blob().ok_or_else(|| {
                         TrunkError::new("git_error", "HEAD tree entry is not a blob")
                     })?;
@@ -368,16 +376,7 @@ pub fn stash_save_inner(
 
     let mut index = repo.index().map_err(TrunkError::from)?;
     index.read_tree(&head_tree).map_err(TrunkError::from)?;
-    index.write().map_err(TrunkError::from)?;
-
-    drop(head_tree);
-    drop(head_commit);
-    drop(head);
-    drop(index_tree);
-    drop(index_commit);
-    drop(statuses);
-
-    crate::state::read_graph(&mut repo)
+    index.write().map_err(TrunkError::from)
 }
 
 /// One path the index stages over HEAD, with the entry to stage it again; `None` stages
@@ -443,7 +442,8 @@ fn stash_apply_error(e: git2::Error, blocked: &[String]) -> TrunkError {
 /// entries in memory, and the staged entries go back once it has written the index.
 /// The index on disk keeps the staged set until that write. A stash that writes a staged
 /// path is refused before anything changes, since git would merge the two and putting
-/// the staged entry back over that path would hide the stash's change.
+/// the staged entry back over that path would hide the stash's change. The caller holds
+/// the repository's write gate, from finding the stash's position to the last write.
 fn apply_keeping_staged(
     repo: &mut git2::Repository,
     oid: &str,
@@ -534,15 +534,21 @@ pub fn stash_pop_inner(
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let mut repo = state_map.open(path)?;
-    let index = stash_index_of(&mut repo, oid)?;
-    // Apply and drop separately rather than `stash_pop`: git2's pop drops the entry even
-    // when it applied with conflicts, leaving the user's stashed work nowhere once they
-    // clear the conflict markers. Real `git stash pop` keeps it, and so does this.
-    apply_keeping_staged(&mut repo, oid, index)?;
-    if trunk_git::repository::has_unmerged_paths(&repo)? {
-        return Err(TrunkError::new("conflict_state", POP_CONFLICT_MESSAGE));
-    }
-    repo.stash_drop(index).map_err(TrunkError::from)?;
+    // Held from finding the stash to dropping it: a stash saved in between would take
+    // the position, and the drop would throw away the stash just saved.
+    trunk_git::write_gate::hold(&mut repo, |repo| {
+        let index = stash_index_of(repo, oid)?;
+        // Apply and drop separately rather than `stash_pop`: git2's pop drops the entry
+        // even when it applied with conflicts, leaving the user's stashed work nowhere
+        // once they clear the conflict markers. Real `git stash pop` keeps it, and so
+        // does this.
+        apply_keeping_staged(repo, oid, index)?;
+        if trunk_git::repository::has_unmerged_paths(repo)? {
+            return Err(TrunkError::new("conflict_state", POP_CONFLICT_MESSAGE));
+        }
+        repo.stash_drop(index).map_err(TrunkError::from)
+    })?;
+
     crate::state::read_graph(&mut repo)
 }
 
@@ -559,11 +565,15 @@ pub fn stash_apply_inner(
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let mut repo = state_map.open(path)?;
-    let index = stash_index_of(&mut repo, oid)?;
-    apply_keeping_staged(&mut repo, oid, index)?;
-    if trunk_git::repository::has_unmerged_paths(&repo)? {
-        return Err(TrunkError::new("conflict_state", APPLY_CONFLICT_MESSAGE));
-    }
+    trunk_git::write_gate::hold(&mut repo, |repo| {
+        let index = stash_index_of(repo, oid)?;
+        apply_keeping_staged(repo, oid, index)?;
+        if trunk_git::repository::has_unmerged_paths(repo)? {
+            return Err(TrunkError::new("conflict_state", APPLY_CONFLICT_MESSAGE));
+        }
+        Ok(())
+    })?;
+
     crate::state::read_graph(&mut repo)
 }
 
@@ -579,8 +589,11 @@ pub fn stash_drop_inner(
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let mut repo = state_map.open(path)?;
-    let index = stash_index_of(&mut repo, oid)?;
-    repo.stash_drop(index).map_err(TrunkError::from)?;
+    trunk_git::write_gate::hold(&mut repo, |repo| {
+        let index = stash_index_of(repo, oid)?;
+        repo.stash_drop(index).map_err(TrunkError::from)
+    })?;
+
     crate::state::read_graph(&mut repo)
 }
 

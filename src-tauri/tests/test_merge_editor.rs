@@ -279,3 +279,20 @@ fn conflict_marker_files_omits_a_file_with_only_a_separator_line() {
 
     assert_eq!(found, Vec::<String>::new());
 }
+
+#[test]
+fn save_merge_result_keeps_the_resolution_while_another_writer_stages_meanwhile() {
+    let mut ctx = conflicted_file();
+
+    ctx.act_while_another_writer_stages("a.txt", |ctx| {
+        ctx.save_merge_result("file.txt", "resolved content")
+    })
+    .expect("save_merge_result failed");
+
+    let index = ctx.repo().index().unwrap();
+    assert!(!index.has_conflicts(), "the conflict came back");
+    assert!(
+        index.get_path(std::path::Path::new("a.txt"), 0).is_some(),
+        "the other writer's file was lost"
+    );
+}

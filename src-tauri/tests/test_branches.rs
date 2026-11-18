@@ -2084,3 +2084,59 @@ mod listing_remote_branches {
         assert_eq!(topic.remote, None);
     }
 }
+
+mod when_another_writer_runs_meanwhile {
+    use super::*;
+    use common::drivers::staging::unstage_everything;
+
+    fn main_and_feat() -> TestContext {
+        TestContext::builder()
+            .with_file("README.md", "base")
+            .with_commit("Initial commit")
+            .with_branch("feat")
+            .checkout("feat")
+            .with_file("README.md", "feature side")
+            .with_commit("Feature edit")
+            .checkout("main")
+            .build()
+    }
+
+    #[test]
+    fn checkout_branch_keeps_the_other_writers_file() {
+        let mut ctx = main_and_feat();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.checkout_branch("feat"))
+            .expect("checkout_branch failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
+    }
+
+    #[test]
+    fn checkout_branch_moves_head_before_the_next_writer_reads_it() {
+        let mut ctx = main_and_feat();
+
+        ctx.act_then_another_writer_at_release(
+            |repo| unstage_everything(repo),
+            |ctx| ctx.checkout_branch("feat"),
+        )
+        .expect("checkout_branch failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn checkout_remote_branch_moves_head_before_the_next_writer_reads_it() {
+        let mut ctx = super::checking_out_a_remote_branch::repo_with_remote_topic("origin");
+
+        ctx.act_then_another_writer_at_release(
+            |repo| unstage_everything(repo),
+            |ctx| {
+                ctx.checkout_remote_branch("refs/remotes/origin/topic")
+                    .map(drop)
+            },
+        )
+        .expect("checkout_remote_branch failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), Vec::<String>::new());
+    }
+}

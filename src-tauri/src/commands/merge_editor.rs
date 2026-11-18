@@ -115,28 +115,29 @@ pub fn save_merge_result_inner(
     content: &str,
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
-    let repo_path = repo
-        .workdir()
-        .ok_or_else(|| TrunkError::new("no_workdir", "Bare repository"))?;
+    state_map.hold_for_writing(path, |repo| {
+        let repo_path = repo
+            .workdir()
+            .ok_or_else(|| TrunkError::new("no_workdir", "Bare repository"))?;
 
-    // Refuse before touching the file. An editor left open after its operation
-    // ended would otherwise overwrite the restored content and stage it, and
-    // nothing committed it, so the repository could not give it back. A side that
-    // deleted the file is refused for the reason the read path gives.
-    sides_with_text(&conflict_entry(&repo, file_path)?, file_path)?;
+        // Refuse before touching the file. An editor left open after its operation
+        // ended would otherwise overwrite the restored content and stage it, and
+        // nothing committed it, so the repository could not give it back. A side that
+        // deleted the file is refused for the reason the read path gives.
+        sides_with_text(&conflict_entry(repo, file_path)?, file_path)?;
 
-    // Write merged content to disk
-    let full_path = repo_path.join(file_path);
-    std::fs::write(&full_path, content)
-        .map_err(|e| TrunkError::new("write_error", e.to_string()))?;
+        // Write merged content to disk
+        let full_path = repo_path.join(file_path);
+        std::fs::write(&full_path, content)
+            .map_err(|e| TrunkError::new("write_error", e.to_string()))?;
 
-    // Stage the file (clears conflict entry from index)
-    let mut index = repo.index()?;
-    index.add_path(std::path::Path::new(file_path))?;
-    index.write()?;
+        // Stage the file (clears conflict entry from index)
+        let mut index = repo.index()?;
+        index.add_path(std::path::Path::new(file_path))?;
+        index.write()?;
 
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Whether `content` holds a conflict git wrote and nobody resolved: an

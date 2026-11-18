@@ -302,10 +302,20 @@ fn classify_checkout_error(e: git2::Error) -> TrunkError {
 }
 
 /// Write `target`'s tree over the index and working tree, keeping every uncommitted
-/// change it does not touch. git2 writes nothing when it refuses on a conflict.
-fn checkout_safely(repo: &git2::Repository, target: &git2::Object<'_>) -> Result<(), TrunkError> {
-    repo.checkout_tree(target, Some(git2::build::CheckoutBuilder::new().safe()))
-        .map_err(classify_checkout_error)
+/// change it does not touch, then run `point_head`. No other writer in this process
+/// runs until HEAD names the tree the index holds. git2 writes nothing when it refuses
+/// on a conflict.
+fn checkout_safely(
+    repo: &git2::Repository,
+    target: &git2::Object<'_>,
+    point_head: impl FnOnce() -> Result<(), TrunkError>,
+) -> Result<(), TrunkError> {
+    trunk_git::write_gate::hold(repo, |repo| {
+        repo.checkout_tree(target, Some(git2::build::CheckoutBuilder::new().safe()))
+            .map_err(classify_checkout_error)?;
+
+        point_head()
+    })
 }
 
 fn check_out_local(repo: &git2::Repository, branch_name: &str) -> Result<(), TrunkError> {
@@ -323,10 +333,7 @@ fn check_out_local(repo: &git2::Repository, branch_name: &str) -> Result<(), Tru
 
     let branch_ref = format!("refs/heads/{branch_name}");
     let (object, _reference) = repo.revparse_ext(&branch_ref)?;
-    checkout_safely(repo, &object)?;
-    repo.set_head(&branch_ref)?;
-
-    Ok(())
+    checkout_safely(repo, &object, || Ok(repo.set_head(&branch_ref)?))
 }
 
 /// Inner implementation of `checkout_branch` — separated for testability.
@@ -495,18 +502,18 @@ fn create_and_check_out(
         ));
     }
 
-    checkout_safely(repo, target.as_object())?;
+    checkout_safely(repo, target.as_object(), || {
+        transaction.set_target(
+            &refname,
+            target.id(),
+            None,
+            &format!("branch: Created from {start}"),
+        )?;
+        transaction.commit()?;
+        repo.set_head(&refname)?;
 
-    transaction.set_target(
-        &refname,
-        target.id(),
-        None,
-        &format!("branch: Created from {start}"),
-    )?;
-    transaction.commit()?;
-    repo.set_head(&refname)?;
-
-    Ok(())
+        Ok(())
+    })
 }
 
 /// The local branch whose ref path holds `name`'s as a directory or a parent file,

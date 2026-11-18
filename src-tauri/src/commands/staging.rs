@@ -195,19 +195,20 @@ pub fn stage_file_inner(
     file_path: &str,
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
-    let mut index = repo.index()?;
-    let abs_path = repo
-        .workdir()
-        .ok_or_else(|| TrunkError::new("bare_repo", "Cannot stage in a bare repository"))?
-        .join(file_path);
-    if present_in_workdir(&abs_path) {
-        index.add_path(Path::new(file_path))?;
-    } else {
-        index.remove_path(Path::new(file_path))?;
-    }
-    index.write()?;
-    Ok(())
+    state_map.hold_for_writing(path, |repo| {
+        let mut index = repo.index()?;
+        let abs_path = repo
+            .workdir()
+            .ok_or_else(|| TrunkError::new("bare_repo", "Cannot stage in a bare repository"))?
+            .join(file_path);
+        if present_in_workdir(&abs_path) {
+            index.add_path(Path::new(file_path))?;
+        } else {
+            index.remove_path(Path::new(file_path))?;
+        }
+        index.write()?;
+        Ok(())
+    })
 }
 
 /// Stage several paths in one index write. An empty list is a no-op.
@@ -224,21 +225,22 @@ pub fn stage_files_inner(
     if file_paths.is_empty() {
         return Ok(());
     }
-    let repo = state_map.open(path)?;
-    let workdir = repo
-        .workdir()
-        .ok_or_else(|| TrunkError::new("bare_repo", "Cannot stage in a bare repository"))?;
-    let mut index = repo.index()?;
-    for fp in file_paths {
-        let abs_path = workdir.join(fp);
-        if present_in_workdir(&abs_path) {
-            index.add_path(Path::new(fp))?;
-        } else {
-            index.remove_path(Path::new(fp))?;
+    state_map.hold_for_writing(path, |repo| {
+        let workdir = repo
+            .workdir()
+            .ok_or_else(|| TrunkError::new("bare_repo", "Cannot stage in a bare repository"))?;
+        let mut index = repo.index()?;
+        for fp in file_paths {
+            let abs_path = workdir.join(fp);
+            if present_in_workdir(&abs_path) {
+                index.add_path(Path::new(fp))?;
+            } else {
+                index.remove_path(Path::new(fp))?;
+            }
         }
-    }
-    index.write()?;
-    Ok(())
+        index.write()?;
+        Ok(())
+    })
 }
 
 fn is_head_unborn(repo: &git2::Repository) -> bool {
@@ -259,20 +261,20 @@ pub fn unstage_file_inner(
     file_path: &str,
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
+    state_map.hold_for_writing(path, |repo| {
+        if is_head_unborn(repo) {
+            // No commits yet, so just remove it from the index
+            let mut index = repo.index()?;
+            index.remove_path(Path::new(file_path))?;
+            index.write()?;
+        } else {
+            // Reset the file to HEAD state using reset_default
+            let head_commit = repo.head()?.peel_to_commit()?;
+            repo.reset_default(Some(head_commit.as_object()), std::iter::once(file_path))?;
+        }
 
-    if is_head_unborn(&repo) {
-        // No commits yet — just remove from index
-        let mut index = repo.index()?;
-        index.remove_path(Path::new(file_path))?;
-        index.write()?;
-    } else {
-        // Reset the file to HEAD state using reset_default
-        let head_commit = repo.head()?.peel_to_commit()?;
-        repo.reset_default(Some(head_commit.as_object()), std::iter::once(file_path))?;
-    }
-
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Restore several paths in the index to their HEAD state.
@@ -289,23 +291,23 @@ pub fn unstage_files_inner(
     if file_paths.is_empty() {
         return Ok(());
     }
-    let repo = state_map.open(path)?;
-
-    if is_head_unborn(&repo) {
-        let mut index = repo.index()?;
-        for fp in file_paths {
-            index.remove_path(Path::new(fp))?;
+    state_map.hold_for_writing(path, |repo| {
+        if is_head_unborn(repo) {
+            let mut index = repo.index()?;
+            for fp in file_paths {
+                index.remove_path(Path::new(fp))?;
+            }
+            index.write()?;
+        } else {
+            let head_commit = repo.head()?.peel_to_commit()?;
+            repo.reset_default(
+                Some(head_commit.as_object()),
+                file_paths.iter().map(String::as_str),
+            )?;
         }
-        index.write()?;
-    } else {
-        let head_commit = repo.head()?.peel_to_commit()?;
-        repo.reset_default(
-            Some(head_commit.as_object()),
-            file_paths.iter().map(String::as_str),
-        )?;
-    }
 
-    Ok(())
+        Ok(())
+    })
 }
 
 /// A working-tree change to a file the index already tracks.
@@ -353,54 +355,55 @@ pub fn discard_files_inner(
         return Ok(());
     }
 
-    let repo = state_map.open(path)?;
-    let mut opts = StatusOptions::new();
-    for file_path in file_paths {
-        opts.pathspec(file_path);
-    }
-    opts.disable_pathspec_match(true)
-        .include_untracked(true)
-        .include_ignored(false)
-        .recurse_untracked_dirs(true);
-    let statuses = repo.statuses(Some(&mut opts))?;
-    let status_by_path: HashMap<String, Status> = statuses
-        .iter()
-        .filter_map(|entry| Some((entry.path().ok()?.to_string(), entry.status())))
-        .collect();
-
-    let mut untracked = Vec::new();
-    let mut tracked = Vec::new();
-    for file_path in file_paths {
-        let status = status_by_path
-            .get(file_path)
-            .copied()
-            .unwrap_or(Status::CURRENT);
-        if status.contains(Status::WT_NEW) {
-            untracked.push(file_path);
-        } else if status.intersects(TRACKED_WORKTREE_CHANGE) {
-            tracked.push(file_path);
-        } else {
-            return Err(TrunkError::new(
-                "file_not_found",
-                format!("File not in working tree changes: {file_path}"),
-            ));
+    state_map.hold_for_writing(path, |repo| {
+        let mut opts = StatusOptions::new();
+        for file_path in file_paths {
+            opts.pathspec(file_path);
         }
-    }
+        opts.disable_pathspec_match(true)
+            .include_untracked(true)
+            .include_ignored(false)
+            .recurse_untracked_dirs(true);
+        let statuses = repo.statuses(Some(&mut opts))?;
+        let status_by_path: HashMap<String, Status> = statuses
+            .iter()
+            .filter_map(|entry| Some((entry.path().ok()?.to_string(), entry.status())))
+            .collect();
 
-    restore_from_index(&repo, &tracked)?;
+        let mut untracked = Vec::new();
+        let mut tracked = Vec::new();
+        for file_path in file_paths {
+            let status = status_by_path
+                .get(file_path)
+                .copied()
+                .unwrap_or(Status::CURRENT);
+            if status.contains(Status::WT_NEW) {
+                untracked.push(file_path);
+            } else if status.intersects(TRACKED_WORKTREE_CHANGE) {
+                tracked.push(file_path);
+            } else {
+                return Err(TrunkError::new(
+                    "file_not_found",
+                    format!("File not in working tree changes: {file_path}"),
+                ));
+            }
+        }
 
-    if !untracked.is_empty() {
-        let workdir = repo
-            .workdir()
-            .ok_or_else(|| TrunkError::new("bare_repo", "Cannot discard in a bare repository"))?;
-        for file_path in untracked {
-            std::fs::remove_file(workdir.join(file_path)).map_err(|e| {
-                TrunkError::new("io_error", format!("Failed to delete {file_path}: {e}"))
+        restore_from_index(repo, &tracked)?;
+
+        if !untracked.is_empty() {
+            let workdir = repo.workdir().ok_or_else(|| {
+                TrunkError::new("bare_repo", "Cannot discard in a bare repository")
             })?;
+            for file_path in untracked {
+                std::fs::remove_file(workdir.join(file_path)).map_err(|e| {
+                    TrunkError::new("io_error", format!("Failed to delete {file_path}: {e}"))
+                })?;
+            }
         }
-    }
 
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Restore the named tracked paths in the working tree from the index.
@@ -432,46 +435,46 @@ fn restore_from_index<S: AsRef<str>>(
 /// Returns `not_open` when `path` names no open repository, `bare_repo` for a
 /// repository with no working tree, and the git error when the checkout fails.
 pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
+    state_map.hold_for_writing(path, |repo| {
+        let mut opts = StatusOptions::new();
+        opts.include_untracked(true)
+            .include_ignored(false)
+            .recurse_untracked_dirs(true);
 
-    let mut opts = StatusOptions::new();
-    opts.include_untracked(true)
-        .include_ignored(false)
-        .recurse_untracked_dirs(true);
+        let statuses = repo.statuses(Some(&mut opts))?;
+        let workdir = repo
+            .workdir()
+            .ok_or_else(|| TrunkError::new("bare_repo", "Cannot discard in a bare repository"))?;
 
-    let statuses = repo.statuses(Some(&mut opts))?;
-    let workdir = repo
-        .workdir()
-        .ok_or_else(|| TrunkError::new("bare_repo", "Cannot discard in a bare repository"))?;
+        // Collect untracked file paths before checkout
+        let untracked_paths: Vec<PathBuf> = statuses
+            .iter()
+            .filter(|entry| entry.status().contains(Status::WT_NEW))
+            .filter_map(|entry| entry.path().ok().map(|p| workdir.join(p)))
+            .collect();
 
-    // Collect untracked file paths before checkout
-    let untracked_paths: Vec<PathBuf> = statuses
-        .iter()
-        .filter(|entry| entry.status().contains(Status::WT_NEW))
-        .filter_map(|entry| entry.path().ok().map(|p| workdir.join(p)))
-        .collect();
+        // Naming the changed paths keeps a conflicted file's resolution in progress:
+        // a checkout of every path rewrites its conflict markers, and libgit2's
+        // skip_unmerged deletes it.
+        let changed_paths: Vec<String> = statuses
+            .iter()
+            .filter(|entry| entry.status().intersects(TRACKED_WORKTREE_CHANGE))
+            .filter_map(|entry| entry.path().ok().map(str::to_string))
+            .collect();
 
-    // Naming the changed paths keeps a conflicted file's resolution in progress:
-    // a checkout of every path rewrites its conflict markers, and libgit2's
-    // skip_unmerged deletes it.
-    let changed_paths: Vec<String> = statuses
-        .iter()
-        .filter(|entry| entry.status().intersects(TRACKED_WORKTREE_CHANGE))
-        .filter_map(|entry| entry.path().ok().map(str::to_string))
-        .collect();
+        restore_from_index(repo, &changed_paths)?;
 
-    restore_from_index(&repo, &changed_paths)?;
-
-    // Delete untracked files
-    for file_path in &untracked_paths {
-        let _ = std::fs::remove_file(file_path);
-        // Try to remove empty parent directories
-        if let Some(parent) = file_path.parent() {
-            let _ = std::fs::remove_dir(parent);
+        // Delete untracked files
+        for file_path in &untracked_paths {
+            let _ = std::fs::remove_file(file_path);
+            // Try to remove empty parent directories
+            if let Some(parent) = file_path.parent() {
+                let _ = std::fs::remove_dir(parent);
+            }
         }
-    }
 
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Stage every change in the working tree, untracked files included.
@@ -481,11 +484,12 @@ pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkE
 /// Returns `not_open` when `path` names no open repository, and the git error when the index
 /// will not update.
 pub fn stage_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
-    let mut index = repo.index()?;
-    index.add_all(std::iter::once(&"*"), git2::IndexAddOption::DEFAULT, None)?;
-    index.write()?;
-    Ok(())
+    state_map.hold_for_writing(path, |repo| {
+        let mut index = repo.index()?;
+        index.add_all(std::iter::once(&"*"), git2::IndexAddOption::DEFAULT, None)?;
+        index.write()?;
+        Ok(())
+    })
 }
 
 /// Stage the hunk the view showed from a file's unstaged diff.
@@ -576,29 +580,29 @@ fn delta_index_of(diff: &git2::Diff, file_path: &str) -> Option<usize> {
 /// Returns `not_open` when `path` names no open repository, and the git error when HEAD will
 /// not read or the index will not reset.
 pub fn unstage_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
-
-    if is_head_unborn(&repo) {
-        let mut index = repo.index()?;
-        index.clear()?;
-        index.write()?;
-    } else {
-        let head_commit = repo.head()?.peel_to_commit()?;
-        // Collect all staged paths first
-        let staged_paths: Vec<String> = get_status_inner(path, state_map)?
-            .staged
-            .into_iter()
-            .map(|f| f.path)
-            .collect();
-        if !staged_paths.is_empty() {
-            repo.reset_default(
-                Some(head_commit.as_object()),
-                staged_paths.iter().map(String::as_str),
-            )?;
+    state_map.hold_for_writing(path, |repo| {
+        if is_head_unborn(repo) {
+            let mut index = repo.index()?;
+            index.clear()?;
+            index.write()?;
+        } else {
+            let head_commit = repo.head()?.peel_to_commit()?;
+            // Collect all staged paths first
+            let staged_paths: Vec<String> = get_status_inner(path, state_map)?
+                .staged
+                .into_iter()
+                .map(|f| f.path)
+                .collect();
+            if !staged_paths.is_empty() {
+                repo.reset_default(
+                    Some(head_commit.as_object()),
+                    staged_paths.iter().map(String::as_str),
+                )?;
+            }
         }
-    }
 
-    Ok(())
+        Ok(())
+    })
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -1502,14 +1506,15 @@ pub fn stage_lines_inner(
     state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
-    let current = unstaged_patch(&repo, file_path, options)?;
-    let hunk_index = shown_hunk_index(&current, file_path, shown)?;
-    let patch_text =
-        build_partial_patch_text(file_path, &current, hunk_index, line_indices, false)?;
-    drop(current);
+    state_map.hold_for_writing(path, |repo| {
+        let current = unstaged_patch(repo, file_path, options)?;
+        let hunk_index = shown_hunk_index(&current, file_path, shown)?;
+        let patch_text =
+            build_partial_patch_text(file_path, &current, hunk_index, line_indices, false)?;
+        drop(current);
 
-    apply_patch_text(&repo, &patch_text, git2::ApplyLocation::Index)
+        apply_patch_text(repo, &patch_text, git2::ApplyLocation::Index)
+    })
 }
 
 /// Unstage selected lines of the hunk the view showed from a file's staged diff.
@@ -1527,13 +1532,15 @@ pub fn unstage_lines_inner(
     state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
-    let current = staged_patch(&repo, file_path, options)?;
-    let hunk_index = shown_hunk_index(&current, file_path, shown)?;
-    let patch_text = build_partial_patch_text(file_path, &current, hunk_index, line_indices, true)?;
-    drop(current);
+    state_map.hold_for_writing(path, |repo| {
+        let current = staged_patch(repo, file_path, options)?;
+        let hunk_index = shown_hunk_index(&current, file_path, shown)?;
+        let patch_text =
+            build_partial_patch_text(file_path, &current, hunk_index, line_indices, true)?;
+        drop(current);
 
-    apply_patch_text(&repo, &patch_text, git2::ApplyLocation::Index)
+        apply_patch_text(repo, &patch_text, git2::ApplyLocation::Index)
+    })
 }
 
 /// Throw away selected lines of the hunk the view showed from a file's unstaged diff.
@@ -1551,11 +1558,13 @@ pub fn discard_lines_inner(
     state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
-    let repo = state_map.open(path)?;
-    let current = unstaged_patch(&repo, file_path, options)?;
-    let hunk_index = shown_hunk_index(&current, file_path, shown)?;
-    let patch_text = build_partial_patch_text(file_path, &current, hunk_index, line_indices, true)?;
-    drop(current);
+    state_map.hold_for_writing(path, |repo| {
+        let current = unstaged_patch(repo, file_path, options)?;
+        let hunk_index = shown_hunk_index(&current, file_path, shown)?;
+        let patch_text =
+            build_partial_patch_text(file_path, &current, hunk_index, line_indices, true)?;
+        drop(current);
 
-    apply_patch_text(&repo, &patch_text, git2::ApplyLocation::WorkDir)
+        apply_patch_text(repo, &patch_text, git2::ApplyLocation::WorkDir)
+    })
 }

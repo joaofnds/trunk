@@ -33,17 +33,19 @@ pub fn checkout_commit_inner(
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
 
-    if trunk_git::repository::is_repo_dirty(&repo)? {
-        return Err(TrunkError::new(
-            "dirty_workdir",
-            "Working tree has uncommitted changes",
-        ));
-    }
+    trunk_git::write_gate::hold(&repo, |repo| {
+        if trunk_git::repository::is_repo_dirty(repo)? {
+            return Err(TrunkError::new(
+                "dirty_workdir",
+                "Working tree has uncommitted changes",
+            ));
+        }
 
-    let obj = repo.revparse_single(oid)?;
-    repo.checkout_tree(&obj, Some(git2::build::CheckoutBuilder::new().safe()))?;
-    repo.set_head_detached(obj.id())?;
-    drop(obj);
+        let obj = repo.revparse_single(oid)?;
+        repo.checkout_tree(&obj, Some(git2::build::CheckoutBuilder::new().safe()))?;
+        repo.set_head_detached(obj.id())?;
+        Ok(())
+    })?;
     drop(repo);
 
     let mut repo2 = git2::Repository::open(path_buf)?;

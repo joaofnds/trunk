@@ -2614,3 +2614,168 @@ fn discard_hunk_discards_the_second_of_two_identical_hunks_when_shown_it() {
         .collect();
     assert_eq!(edited, vec![5], "the first edit stays, the second is gone");
 }
+
+// -- one writer at a time --
+
+mod when_another_writer_stages_meanwhile {
+    use super::*;
+
+    #[test]
+    fn stage_file_keeps_the_other_writers_file() {
+        let mut ctx = committed("README.md", "hello");
+        std::fs::write(ctx.repo_path().join("b.txt"), "b").unwrap();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.stage_file("b.txt"))
+            .expect("stage_file failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt", "b.txt"]);
+    }
+
+    #[test]
+    fn stage_files_keeps_the_other_writers_file() {
+        let mut ctx = committed("README.md", "hello");
+        std::fs::write(ctx.repo_path().join("b.txt"), "b").unwrap();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.stage_files(&["b.txt"]))
+            .expect("stage_files failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt", "b.txt"]);
+    }
+
+    #[test]
+    fn unstage_file_keeps_the_other_writers_file() {
+        let mut ctx = committed("README.md", "hello");
+        std::fs::write(ctx.repo_path().join("b.txt"), "b").unwrap();
+        ctx.stage_file("b.txt").unwrap();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.unstage_file("b.txt"))
+            .expect("unstage_file failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
+    }
+
+    #[test]
+    fn unstage_files_keeps_the_other_writers_file() {
+        let mut ctx = committed("README.md", "hello");
+        std::fs::write(ctx.repo_path().join("b.txt"), "b").unwrap();
+        ctx.stage_file("b.txt").unwrap();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.unstage_files(&["b.txt"]))
+            .expect("unstage_files failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
+    }
+
+    #[test]
+    fn stage_hunk_keeps_the_other_writers_file() {
+        let mut ctx = committed("README.md", "hello\n");
+        std::fs::write(ctx.repo_path().join("README.md"), "changed\n").unwrap();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.stage_hunk("README.md", 0))
+            .expect("stage_hunk failed");
+
+        assert_eq!(ctx.staged_content("README.md"), "changed\n");
+        assert_eq!(ctx.paths_staged_over_head(), ["README.md", "a.txt"]);
+    }
+
+    #[test]
+    fn unstage_hunk_keeps_the_other_writers_file() {
+        let mut ctx = committed("README.md", "hello\n");
+        std::fs::write(ctx.repo_path().join("README.md"), "changed\n").unwrap();
+        ctx.stage_file("README.md").unwrap();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.unstage_hunk("README.md", 0))
+            .expect("unstage_hunk failed");
+
+        assert_eq!(ctx.staged_content("README.md"), "hello\n");
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
+    }
+
+    #[test]
+    fn stage_all_keeps_its_own_change() {
+        let mut ctx = committed("README.md", "hello");
+        std::fs::write(ctx.repo_path().join("b.txt"), "b").unwrap();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.stage_all())
+            .expect("stage_all failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt", "b.txt"]);
+    }
+
+    #[test]
+    fn unstage_all_runs_after_it_and_leaves_nothing_staged() {
+        let mut ctx = committed("README.md", "hello");
+        std::fs::write(ctx.repo_path().join("b.txt"), "b").unwrap();
+        ctx.stage_file("b.txt").unwrap();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.unstage_all())
+            .expect("unstage_all failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn discard_file_finds_nothing_left_once_the_other_writer_staged_the_same_file() {
+        let mut ctx = committed("b.txt", "b");
+
+        let err = ctx
+            .act_while_another_writer_stages("b.txt", |ctx| ctx.discard_file("b.txt"))
+            .expect_err("discard_file threw away the change the other writer staged");
+
+        assert_eq!(err.code, "file_not_found");
+
+        ctx.assert_file_content("b.txt", "b.txt");
+        assert_eq!(ctx.staged_content("b.txt"), "b.txt");
+    }
+
+    #[test]
+    fn discard_files_finds_nothing_left_once_the_other_writer_staged_the_same_file() {
+        let mut ctx = committed("b.txt", "b");
+
+        let err = ctx
+            .act_while_another_writer_stages("b.txt", |ctx| ctx.discard_files(&["b.txt"]))
+            .expect_err("discard_files threw away the change the other writer staged");
+
+        assert_eq!(err.code, "file_not_found");
+
+        ctx.assert_file_content("b.txt", "b.txt");
+        assert_eq!(ctx.staged_content("b.txt"), "b.txt");
+    }
+
+    #[test]
+    fn discard_all_runs_after_the_other_writer_staged_the_same_file() {
+        let mut ctx = committed("b.txt", "b");
+
+        ctx.act_while_another_writer_stages("b.txt", |ctx| ctx.discard_all())
+            .expect("discard_all failed");
+
+        ctx.assert_file_content("b.txt", "b.txt");
+        assert_eq!(ctx.staged_content("b.txt"), "b.txt");
+    }
+}
+
+mod when_another_writer_edits_the_file_meanwhile {
+    use super::*;
+
+    const COMMITTED: &str = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n";
+
+    #[test]
+    fn discard_hunk_keeps_the_other_writers_edit() {
+        let mut ctx = TestContext::builder()
+            .with_file("f.txt", COMMITTED)
+            .with_commit("Initial commit")
+            .build();
+        let first_line_changed = COMMITTED.replacen("1\n", "one\n", 1);
+        std::fs::write(ctx.repo_path().join("f.txt"), &first_line_changed).unwrap();
+        let path = ctx.repo_path().join("f.txt");
+
+        ctx.act_while_another_writer(
+            |_| std::fs::read_to_string(&path).unwrap(),
+            |_, read| std::fs::write(&path, read.replace("12\n", "twelve\n")).unwrap(),
+            |ctx| ctx.discard_hunk("f.txt", 0),
+        )
+        .expect("discard_hunk failed");
+
+        ctx.assert_file_content("f.txt", &COMMITTED.replace("12\n", "twelve\n"));
+    }
+}

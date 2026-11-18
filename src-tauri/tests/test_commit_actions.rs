@@ -62,6 +62,38 @@ fn checkout_commit_dirty_workdir_fails() {
     assert_eq!(result.unwrap_err().code, "dirty_workdir");
 }
 
+mod checkout_commit_when_another_writer_runs_meanwhile {
+    use super::*;
+    use common::drivers::staging::unstage_everything;
+
+    #[test]
+    fn refuses_once_the_other_writer_staged_a_file() {
+        let (mut ctx, first_oid, _second_oid) = build_two_commit_ctx();
+
+        let err = ctx
+            .act_while_another_writer_stages("a.txt", |ctx| {
+                ctx.checkout_commit(&first_oid).map(drop)
+            })
+            .expect_err("checkout_commit moved HEAD over a staged file");
+
+        assert_eq!(err.code, "dirty_workdir");
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
+    }
+
+    #[test]
+    fn moves_head_before_the_next_writer_reads_it() {
+        let (mut ctx, first_oid, _second_oid) = build_two_commit_ctx();
+
+        ctx.act_then_another_writer_at_release(
+            |repo| unstage_everything(repo),
+            |ctx| ctx.checkout_commit(&first_oid).map(drop),
+        )
+        .expect("checkout_commit failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), Vec::<String>::new());
+    }
+}
+
 // --- create_tag tests ---
 
 #[test]

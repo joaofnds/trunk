@@ -908,3 +908,116 @@ mod when_an_unstaged_edit_is_in_the_way {
         assert_eq!(ctx.list_stashes().unwrap().len(), 1);
     }
 }
+
+// -- one writer at a time --
+
+mod when_another_writer_runs_meanwhile {
+    use super::*;
+    use common::drivers::staging::unstage_everything;
+
+    fn committed() -> TestContext {
+        TestContext::builder()
+            .with_file("README.md", "hello")
+            .with_commit("Initial commit")
+            .build()
+    }
+
+    fn stash_staged(ctx: &TestContext, file_path: &str, message: &str) -> String {
+        std::fs::write(ctx.repo_path().join(file_path), file_path).unwrap();
+        ctx.stage_file(file_path).unwrap();
+        ctx.stash_save(message).unwrap();
+
+        ctx.top_stash_oid()
+    }
+
+    /// Another writer stashing `file_path`, staged, with git2's own stash.
+    fn stash_with_git2(repo: &mut git2::Repository, file_path: &str) {
+        std::fs::write(repo.workdir().unwrap().join(file_path), file_path).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new(file_path)).unwrap();
+        index.write().unwrap();
+        let signature = repo.signature().unwrap();
+        repo.stash_save(&signature, "saved meanwhile", None)
+            .unwrap();
+    }
+
+    fn stash_messages(ctx: &TestContext) -> Vec<String> {
+        ctx.list_stashes()
+            .unwrap()
+            .into_iter()
+            .map(|stash| stash.name)
+            .collect()
+    }
+
+    #[test]
+    fn stash_save_takes_the_other_writers_file_into_the_stash() {
+        let mut ctx = committed();
+        std::fs::write(ctx.repo_path().join("stashed.txt"), "stashed").unwrap();
+        ctx.stage_file("stashed.txt").unwrap();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.stash_save("wip").map(drop))
+            .expect("stash_save failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), Vec::<String>::new());
+        ctx.assert_stash_content(&ctx.top_stash_oid(), "a.txt", "a.txt");
+    }
+
+    #[test]
+    fn stash_apply_keeps_the_other_writers_file() {
+        let mut ctx = committed();
+        let oid = stash_staged(&ctx, "stashed.txt", "wip");
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.stash_apply(&oid).map(drop))
+            .expect("stash_apply failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt", "stashed.txt"]);
+    }
+
+    #[test]
+    fn stash_pop_pops_the_picked_stash_when_another_is_saved_while_it_waits() {
+        let mut ctx = committed();
+        let picked = stash_staged(&ctx, "picked.txt", "picked");
+
+        ctx.act_while_another_writer(
+            |_| (),
+            |repo, ()| stash_with_git2(repo, "saved.txt"),
+            |ctx| ctx.stash_pop(&picked).map(drop),
+        )
+        .expect("stash_pop failed");
+
+        ctx.assert_file_content("picked.txt", "picked.txt");
+        assert!(
+            !ctx.repo_path().join("saved.txt").exists(),
+            "the stash saved meanwhile was popped"
+        );
+        assert_eq!(stash_messages(&ctx), ["On main: saved meanwhile"]);
+    }
+
+    #[test]
+    fn stash_pop_drops_the_picked_stash_when_another_is_saved_right_after_it_applies() {
+        let mut ctx = committed();
+        let picked = stash_staged(&ctx, "picked.txt", "picked");
+
+        ctx.act_then_another_writer_at_release(
+            |repo| stash_with_git2(repo, "saved.txt"),
+            |ctx| ctx.stash_pop(&picked).map(drop),
+        )
+        .expect("stash_pop failed");
+
+        assert_eq!(stash_messages(&ctx), ["On main: saved meanwhile"]);
+    }
+
+    #[test]
+    fn stash_apply_leaves_the_index_it_wrote_to_the_next_writer() {
+        let mut ctx = committed();
+        let oid = stash_staged(&ctx, "stashed.txt", "wip");
+
+        ctx.act_then_another_writer_at_release(
+            |repo| unstage_everything(repo),
+            |ctx| ctx.stash_apply(&oid).map(drop),
+        )
+        .expect("stash_apply failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), Vec::<String>::new());
+    }
+}
