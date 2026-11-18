@@ -2998,7 +2998,6 @@ function stepRightPane(delta: number) {
 						onfileselect={handleFileSelect}
 						onsubjectchange={(v) => (wipSubject = v)}
 						onbodychange={(v) => (wipBody = v)}
-						onfileresolved={handleFileResolved}
 						onfileadvance={(path, kind) => {
 							if (selectedFile?.path === path && selectedFile?.kind === kind) {
 								advanceToNextFile(path, kind);

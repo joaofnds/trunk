@@ -1812,6 +1812,95 @@ describe("RepoView", () => {
 			});
 		});
 
+		describe("when another conflicted file is resolved from its menu", () => {
+			function stubConflicts(paths: string[]) {
+				const base = mockInvoke.getMockImplementation();
+				if (!base) throw new Error("base invoke implementation missing");
+				mockInvoke.mockImplementation((cmd, args) => {
+					const a = args as Record<string, unknown> | undefined;
+					if (cmd === "get_status")
+						return Promise.resolve({
+							unstaged: [],
+							staged: [],
+							conflicted: paths.map((path) => ({
+								path,
+								status: "Conflicted",
+								is_binary: false,
+							})),
+						});
+					if (cmd === "get_merge_sides") {
+						const name = String(a?.filePath).replace(".txt", "");
+						return Promise.resolve({
+							base: "line 1\ncommon line\n",
+							ours: `line 1\n${name} ours\n`,
+							theirs: `line 1\n${name} theirs\n`,
+						});
+					}
+					if (cmd === "save_merge_result") return Promise.resolve(null);
+					return base(cmd, args);
+				});
+			}
+
+			async function openConflict(path: string) {
+				render(RepoView, { props: baseProps(createMockRemoteState()) });
+				await fireEvent.click(await screen.findByText(path));
+				await vi.dynamicImportSettled();
+				await screen.findByRole("button", {
+					name: "Take conflict 1 from Current (Ours)",
+				});
+			}
+
+			async function takeAllCurrentFromMenu(path: string) {
+				await fireEvent.contextMenu(screen.getByText(path));
+				await vi.waitFor(() => getMenuAction("Take All Current"));
+				await getMenuAction("Take All Current")();
+				await vi.waitFor(() =>
+					expect(mockInvoke).toHaveBeenCalledWith(
+						"save_merge_result",
+						expect.objectContaining({ filePath: path }),
+					),
+				);
+				for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+			}
+
+			it("keeps the merge editor on the file it shows", async () => {
+				stubConflicts(["a.txt", "b.txt", "c.txt"]);
+				await openConflict("b.txt");
+
+				await takeAllCurrentFromMenu("a.txt");
+
+				expect(screen.getAllByText("b ours")).not.toHaveLength(0);
+				expect(screen.queryByText("c ours")).toBeNull();
+			});
+
+			it("moves the merge editor on when the file it shows is resolved", async () => {
+				stubConflicts(["a.txt", "b.txt", "c.txt"]);
+				await openConflict("b.txt");
+
+				await takeAllCurrentFromMenu("b.txt");
+
+				expect(await screen.findAllByText("c ours")).not.toHaveLength(0);
+			});
+
+			it("keeps the takes made in the file it shows", async () => {
+				stubConflicts(["a.txt", "b.txt"]);
+				await openConflict("b.txt");
+				await fireEvent.click(
+					screen.getByRole("button", {
+						name: "Take conflict 1 from Current (Ours)",
+					}),
+				);
+
+				await takeAllCurrentFromMenu("a.txt");
+
+				expect(
+					screen.getByRole("button", {
+						name: "Take conflict 1 from Current (Ours)",
+					}),
+				).toHaveAttribute("aria-pressed", "true");
+			});
+		});
+
 		it("keeps the newest staging mode when superseded requests settle later", async () => {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");

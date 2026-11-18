@@ -57,7 +57,6 @@ interface Props {
 	initialBody?: string;
 	onsubjectchange?: (value: string) => void;
 	onbodychange?: (value: string) => void;
-	onfileresolved?: () => void;
 	onfileadvance?: (
 		path: string,
 		kind: "unstaged" | "staged" | "conflicted",
@@ -88,7 +87,6 @@ let {
 	onfileselect,
 	onsubjectchange,
 	onbodychange,
-	onfileresolved,
 	onfileadvance,
 	selectedPath = null,
 	selectedKind = null,
@@ -610,7 +608,6 @@ async function resolveConflictedFile(
 			filePath,
 			content,
 		});
-		onfileresolved?.();
 		onfileadvance?.(filePath, "conflicted");
 		await loadStatus();
 	} catch (e) {
