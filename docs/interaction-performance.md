@@ -88,8 +88,9 @@ These mechanisms were read in source; their benefit still needs workload-specifi
 measurement before attaching a speedup claim to them.
 
 - [Coalesced tasks](../src/lib/coalesced-task.ts) allow one active reader and one
-  pending rerun. Notifications keep the first deadline rather than postponing work
-  throughout a burst. Explicit `run()` requests bypass that notification delay.
+  pending rerun. A notification starts a read at once when the last one finished at
+  least the delay ago, and otherwise at the delay after it finished; later
+  notifications do not postpone it. Explicit `run()` requests bypass that delay.
 - [Command-completed notifications](../src/lib/repo-change-subscription.ts) request
   immediate refresh. RepoView filters file-specific reads by affected paths and
   defers refs-only graph publications until tab activation.
@@ -1401,6 +1402,38 @@ in `graph.rs` and was not timed here. The memo's memory cost was not measured.
 The [committed E11 record](performance-data/graph-rebuild-2026-11-18.json) holds the
 generator, both probes and every timing.
 
+### E12: an edit made outside the app, shown at once
+
+Flows I12, I13 and I18. A file saved in an editor or a command run in a terminal reached
+the staging panel about half a second later, every time, even after a long quiet spell.
+E10 traced the cause: the watcher's 300 ms trailing debounce, then the frontend's fixed
+200 ms first deadline, stacked on every change. The watcher now reads `notify` events
+itself, gathers them for 25 ms and delivers; a 300 ms interval starts only after a batch
+that refreshed something, and a due batch waits, for up to a second, while Git holds the
+worktree's `index.lock`. The frontend starts a read at once when its last read finished
+at least 200 ms ago (`f87985e8`). The hypothesis was that a lone outside edit would show
+in under 100 ms. A reading at or above that in any trial would have refuted it.
+
+Each trial armed a `MutationObserver` in the page for a new file's name, wrote that file
+into a scratch repository from Python, and took the page's clock when the name first
+appeared, 1.5 s apart, twelve per build. Both builds were the debug drive build in one
+launch each on an Apple M5 Pro with 48 GB, and the window was occluded, so the reading is
+when the DOM changed, not when it painted.
+
+| Build | Outside write to the row in the panel (ms) |
+|---|---|
+| Before (`f87985e8^`) | 508 to 525 in eleven trials; the first, 5,190, is unexplained |
+| After (`f87985e8`) | 27 to 37 in all twelve, median 32.5 |
+
+The hypothesis stands. A commit made in a terminal replaced the two committed files'
+rows with the new commit in the graph, and left the uncommitted ones in the panel; that
+one reading includes git and the drive client and is not a latency claim. Not measured:
+the app's CPU while ignored build output churns, which can now cost one routing pass per
+25 ms where the debounce cost one per quiet spell, and how long the `index.lock` wait
+holds a refresh during a real terminal rebase. The
+[committed E12 record](performance-data/outside-edit-2026-11-18.json) holds the probe and
+every timing.
+
 ### Selection presentation and background limits
 
 Three five-second ScreenCaptureKit attempts used a requested 60 Hz virtual display.
@@ -1433,7 +1466,7 @@ Frequency remains an assumption; no usage telemetry was collected.
 | 3 | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. Settle how often users open large highlighted files in full mode first. The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
 | Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
 | 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Overlapping in-app actions take turns at a per-repository write gate (E09), so none reports a lock failure or drops another's write. Saves, local fetch and watcher refreshes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
-| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. E11 measured the graph rebuild after a commit at 30,000 commits falling from about 95 to 7.4 ms in the backend capture; the first capture, about 112 to 136 ms, is unchanged and is the open cost there. Review size and conflict-region count remain unbenchmarked, and history depth beyond the graph rebuild too; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. |
+| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. E11 measured the graph rebuild after a commit at 30,000 commits falling from about 95 to 7.4 ms in the backend capture; the first capture, about 112 to 136 ms, is unchanged and is the open cost there. Review size and conflict-region count remain unbenchmarked, and history depth beyond the graph rebuild too; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh, which E12 cut from about 515 to 27 to 37 ms for an outside edit; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. |
 
 The evidence supports retaining current warm diff reuse, mounted-tab reuse,
 coalesced refresh, and the search debounce. It does not support another cache or

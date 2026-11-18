@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "experiment": "E12 an edit made outside the app, shown at once",
+  "date": "2026-11-18",
+  "decision": "an outside file write reached the staging panel in 27 to 37 ms (median 32.5) instead of 508 to 525 ms, by delivering watcher events after a 25 ms gather and pacing only after a refresh, and starting a frontend read at once after a quiet spell (f87985e8)",
+  "scope": "debug drive build, one launch per build, page-side DOM change timed by MutationObserver, window occluded so no paint; small scratch repository; not CPU under ignored churn, not the index.lock wait during a real rebase",
+  "comparativeVerdict": "after faster in every trial, ranges disjoint (after max 37 ms, before min 508 ms)",
+  "globalSettlement": "unknown",
+  "machine": "Apple M5 Pro, 48 GB, macOS",
+  "builds": {
+    "before": "just drive-build at f87985e8^",
+    "after": "just drive-build at f87985e8"
+  },
+  "fixture": "scratch git repository with two commits and a.txt, commit.gpgsign false, opened with drive launch; probe files untracked",
+  "procedure": "per trial: arm a MutationObserver for the probe file name, write the file from Python taking t0 from time.time(), read the page's Date.now() when the name first appears, sleep 1.5 s; twelve trials per build",
+  "probe": "#!/bin/bash\n# usage: trial.sh <repo> <label> <count>  (TRUNK_DRIVE_DIR set)\nset -euo pipefail\ncd /Users/joaofnds/code/trunk\ndrive() { mise exec -- bun scripts/drive/drive.ts \"$@\"; }\nrepo=$1; label=$2; count=$3\nfor i in $(seq 1 \"$count\"); do\n  name=\"probe-$label-$i.txt\"\n  drive eval \"(() => { const s = { name: '$name', seen: null }; window.__t440 = s; const o = new MutationObserver(() => { if (s.seen === null && document.body.textContent.includes(s.name)) { s.seen = Date.now(); o.disconnect(); } }); o.observe(document.body, { subtree: true, childList: true, characterData: true }); return 'armed'; })()\" > /dev/null\n  python3 - \"$repo/$name\" <<'PY' > /tmp/t440w/t0\nimport sys, time\nopen(sys.argv[1], \"w\").write(\"probe\\n\")\nprint(int(time.time() * 1000))\nPY\n  t0=$(cat /tmp/t440w/t0)\n  seen=$(drive until 'window.__t440.seen || null')\n  echo \"$label $i $((seen - t0))\"\n  python3 -c \"import time; time.sleep(1.5)\"\ndone\n",
+  "runs": {
+    "before": {
+      "msPerTrial": [
+        5190,
+        520,
+        511,
+        518,
+        521,
+        518,
+        508,
+        525,
+        518,
+        518,
+        523,
+        513
+      ],
+      "note": "trial 1 unexplained"
+    },
+    "after": {
+      "msPerTrial": [
+        37,
+        30,
+        31,
+        34,
+        34,
+        27,
+        30,
+        34,
+        34,
+        28,
+        34,
+        31
+      ],
+      "median": 32.5
+    }
+  },
+  "followUp": "a commit made in a terminal replaced the committed rows with the new commit row in the graph and left the uncommitted files in the panel, one reading of 486 ms including git and drive client overhead"
+}
