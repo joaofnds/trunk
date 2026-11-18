@@ -39,7 +39,8 @@ DEFAULT_TIMEOUT = 600
 # 38-64 are the sites Appendix A never covered — the twelve `graph.rs` mutants outside row 7
 # and all fifteen in `graph_input.rs` — enumerated with `cargo mutants --list` and anchored by
 # hand. Rows past 64 are sites later changes introduced, appended as they land (row 65:
-# TRUNK-43's `ext_tip`). Rows 7 and 47 mutated the revwalk's sort flags until 2026-11-18, when
+# TRUNK-43's `ext_tip`; rows 66 and 67: TRUNK-467's scan for HEAD's continuations and a
+# stash's drawn parents). Rows 7 and 47 mutated the revwalk's sort flags until 2026-11-18, when
 # `walk_order` replaced the revwalk, and now mutate the time comparison that orders it. Rows
 # 41 to 43 lost `Result` from `parent_map`'s signature that day, which can no longer fail.
 # Indentation is part of the anchor; where indentation still collides, the anchor carries the
@@ -261,6 +262,12 @@ MUTATIONS = [
     (65, P, "can_inline ext tip",
      "            let ext_tip = head_lane_ext.first().copied();",
      "            let ext_tip = head_lane_ext.last().copied();"),
+    (66, P, "rows_above absent tip",
+     "        return &input.oids;",
+     "        return &[];"),
+    (67, P, "assign_lanes stash parents",
+     "            &commit_parents[..commit_parents.len().min(1)]",
+     "            &commit_parents[..commit_parents.len().min(2)]"),
 ]
 
 # The four graph suites, under the env scrub `just` applies. Never `just check`: ~24s against

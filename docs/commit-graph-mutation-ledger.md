@@ -10,14 +10,17 @@ Rows 1 to 37 key to Appendix A of the milestone-5 grill document. Rows 38 to 64 
 later, with `cargo mutants --list`, and cover the twelve `graph.rs` mutants outside row 7 plus
 all fifteen in `graph_input.rs`; §"Extraction-introduced sites" describes them by group. Rows
 past 64 are sites later changes introduced, appended as they land (row 65: TRUNK-43's
-`ext_tip` in `placement.rs`). `scripts/graph-mutation-sweep.py` carries all 65.
+`ext_tip` in `placement.rs`; rows 66 and 67: the scan for HEAD's continuations and a stash's
+drawn parents, both in `placement.rs`, from `68c7e75d`). `scripts/graph-mutation-sweep.py`
+carries all 67.
 
 **Run 2026-08-12** against the suite as it stands after the capture migration. Regenerate with
 `just graph-sweep`; the table below is that command's stdout, pasted unedited — except rows
 11-14 and 65, a sanctioned partial splice from the 2026-08-30 `--only` re-measure after
 TRUNK-43's `can_inline` narrowing, row 25 dated 2026-09-02, row 49 dated
-2026-09-03, and rows 7, 46–48 and 55 from the 2026-10-11
-`--only` re-measure of the capture changes.
+2026-09-03, rows 7, 46–48 and 55 from the 2026-10-11
+`--only` re-measure of the capture changes, and the later `--only` runs §"Verdict table" lists,
+the last of them rows 66 and 67 on 2026-11-18.
 
 **This is a dated audit, not a gate.** The measurement takes 26-32 minutes and nothing runs it
 for you. What runs in `just check` is the *alarm* — `just graph-sweep-check`, milliseconds — which
@@ -26,9 +29,9 @@ different things, and only the alarm is on the fast path. That split is the answ
 objection that killed the `cargo mutants` gate: the 15-minute job nobody fires is not what
 guards this.
 
-**Coverage: 65 of the pipeline's mutants** (139 at the 2026-08-12 enumeration, before
-TRUNK-43 added the `ext_tip` site). 37 of `placement.rs`'s sites (36 from Appendix A of the
-milestone-5 grill, plus row 65), all 13 of `graph.rs`, and all 15 of `graph_input.rs`. The remaining 75 are
+**Coverage: 67 of the pipeline's mutants** (139 at the 2026-08-12 enumeration, before
+TRUNK-43 added the `ext_tip` site and `68c7e75d` rows 66 and 67). 39 of `placement.rs`'s sites
+(36 from Appendix A of the milestone-5 grill, plus rows 65 to 67), all 13 of `graph.rs`, and all 15 of `graph_input.rs`. The remaining 75 are
 all in `placement.rs` and are covered by inference — caught or unviable at `0112f0a`, against an
 unchanged `test_graph.rs` — except the sites the milestone-4 extraction introduced, which
 §"Extraction-introduced sites" below enumerates.
@@ -42,7 +45,7 @@ re-indented, or moved to another file. It does not catch a within-file move or s
 that preserves the anchor text exactly. It does not catch a test removal reviving a mutant that
 used to die — only a re-run does. And it does not catch a placement change *elsewhere* in the
 file: `placement.rs` holds a second `let min_col = usize::from(!head_chain.is_empty());`
-at 12-space indent that is not an anchor, and editing that phase-1 rule leaves all 65 anchors
+at 12-space indent that is not an anchor, and editing that phase-1 rule leaves all 67 anchors
 matching exactly once. The goldens catch that one, because it moves a layout.
 
 **`just mutants` is untouched.** That recipe predates this chain, is documented in `AGENTS.md`,
@@ -61,7 +64,8 @@ run's stdout. Row 25 is dated 2026-09-02 and row 49 is dated 2026-09-03. Rows 7,
 `walk_order` replaced the revwalk and `parent_map` lost its `Result`. Rows 59–64 carry the
 2026-11-01 re-measure after `c2af4fd9` moved bounded slicing into `page_oids` and
 row construction into `hydrate`; all five viable mutants were killed, with row 59
-still unviable. Placement rules and goldens did not change.
+still unviable. Placement rules and goldens did not change. Rows 66 and 67 are dated
+2026-11-18, measured killed by an `--only` run after `68c7e75d` introduced their sites.
 
 **39 killed, 17 survive, 9 unviable.** Every one of the 17 survivors carries a construction
 proof below. No row is open.
@@ -138,6 +142,8 @@ honest.
 | 63 | graph_input.rs | hydrate/is_merge | `        let is_merge = !is_stash && parents.len() >= 2;` → `        let is_merge = is_stash && parents.len() >= 2;` | killed | 2026-11-01 |
 | 64 | graph_input.rs | hydrate/is_merge | `        let is_merge = !is_stash && parents.len() >= 2;` → `        let is_merge = !is_stash && parents.len() < 2;` | killed | 2026-11-01 |
 | 65 | placement.rs | can_inline ext tip | `            let ext_tip = head_lane_ext.first().copied();` → `            let ext_tip = head_lane_ext.last().copied();` | killed | 2026-08-30 |
+| 66 | placement.rs | rows_above absent tip | `        return &input.oids;` → `        return &[];` | killed | 2026-11-18 |
+| 67 | placement.rs | assign_lanes stash parents | `            &commit_parents[..commit_parents.len().min(1)]` → `            &commit_parents[..commit_parents.len().min(2)]` | killed | 2026-11-18 |
 
 ## Deleted anchors
 
@@ -155,8 +161,8 @@ None yet.
 
 Seventeen of the 37 Appendix A mutants survive the suite and cannot be killed by any input. The
 other twenty end killed. Rows 38 to 64 produced no survivor, so no proof below covers them.
-Row 65 (TRUNK-43's `ext_tip`) measured killed on 2026-08-30, so it needs no proof either. No
-row is left open.
+Row 65 (TRUNK-43's `ext_tip`) measured killed on 2026-08-30, and rows 66 and 67 on
+2026-11-18, so they need no proof either. No row is left open.
 
 ### Rows 13, 14, 15, 16, 22 and 23 — the three resize guards are dead
 
