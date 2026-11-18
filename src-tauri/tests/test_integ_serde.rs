@@ -1,6 +1,8 @@
 mod common;
 
 use common::context::TestContext;
+use trunk_git::conflicted_file::MergeRegion;
+use trunk_lib::types::MergeSides;
 
 // ── GraphResult (via stash_save which returns GraphResult) ──────────────────
 
@@ -870,10 +872,40 @@ fn diff_line_serializes_spans_as_array() {
     }
 }
 
-// NOTE: MergeSides and Vec<RebaseTodoItem> are not tested here because they
-// require the repo to be in an active merge/rebase conflict state. They share
-// the same serde patterns as the tested types (structs with String and
-// Option<String> fields, Vec of structs with String/i64 fields).
+// NOTE: Vec<RebaseTodoItem> is not tested here because it requires the repo
+// to be in an active rebase. It shares the same serde patterns as the tested
+// types (Vec of structs with String/i64 fields).
+
+// ── Merge region wire shape ─────────────────────────────────────────────────
+
+#[test]
+fn merge_regions_serialize_tagged_by_type_in_camel_case() {
+    let lines = |text: &[&str]| text.iter().map(ToString::to_string).collect::<Vec<_>>();
+    let regions = vec![
+        MergeRegion::Merged {
+            ours_lines: lines(&["a"]),
+            theirs_lines: lines(&["b"]),
+            merged_lines: lines(&["b"]),
+        },
+        MergeRegion::Conflict {
+            ours_lines: lines(&["x"]),
+            theirs_lines: lines(&["y"]),
+        },
+    ];
+
+    let json =
+        serde_json::to_value(MergeSides { regions }).expect("MergeSides serialization failed");
+
+    assert_eq!(
+        json,
+        serde_json::json!({
+            "regions": [
+                { "type": "merged", "oursLines": ["a"], "theirsLines": ["b"], "mergedLines": ["b"] },
+                { "type": "conflict", "oursLines": ["x"], "theirsLines": ["y"] },
+            ],
+        })
+    );
+}
 
 // ── Anchor wire shape ────────────────────────────────────────────────────────
 

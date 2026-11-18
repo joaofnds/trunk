@@ -2,6 +2,7 @@
 //! pipeline with its DTOs. It depends on neither Tauri nor the review domain.
 
 pub mod blob_reader;
+pub mod conflicted_file;
 pub mod editor;
 pub mod error;
 pub mod fetch;

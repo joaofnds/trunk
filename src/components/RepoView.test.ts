@@ -19,7 +19,7 @@ import {
 } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import RepoView from "../__tests__/helpers/controlled-repo-view.svelte";
-import { makeCommit } from "../__tests__/helpers/factories.js";
+import { makeCommit, makeMergeSides } from "../__tests__/helpers/factories.js";
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
 import { aReview } from "../__tests__/helpers/review-fixture.js";
 import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
@@ -1709,11 +1709,7 @@ describe("RepoView", () => {
 					if (cmd === "get_status") return Promise.resolve(status);
 					if (cmd === "diff_unstaged") return Promise.resolve([diff]);
 					if (cmd === "get_merge_sides")
-						return Promise.resolve({
-							base: "line 1\ncommon line\n",
-							ours: "line 1\nour change\n",
-							theirs: "line 1\ntheir change\n",
-						});
+						return Promise.resolve(makeMergeSides());
 					return base(cmd, args);
 				});
 			}
@@ -1830,11 +1826,9 @@ describe("RepoView", () => {
 						});
 					if (cmd === "get_merge_sides") {
 						const name = String(a?.filePath).replace(".txt", "");
-						return Promise.resolve({
-							base: "line 1\ncommon line\n",
-							ours: `line 1\n${name} ours\n`,
-							theirs: `line 1\n${name} theirs\n`,
-						});
+						return Promise.resolve(
+							makeMergeSides(`${name} ours`, `${name} theirs`),
+						);
 					}
 					if (cmd === "save_merge_result") return Promise.resolve(null);
 					return base(cmd, args);

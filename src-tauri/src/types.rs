@@ -319,9 +319,7 @@ pub struct OperationInfo {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct MergeSides {
-    pub base: String,
-    pub ours: String,
-    pub theirs: String,
+    pub regions: Vec<trunk_git::conflicted_file::MergeRegion>,
 }
 
 #[derive(Debug, Serialize, Clone)]

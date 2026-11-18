@@ -201,10 +201,26 @@ export interface OperationInfo {
 	rebase_message: string | null;
 }
 
+/**
+ * One stretch of a conflicted file as git wrote it. A merged stretch is text git
+ * settled, shown in each pane as that side's own lines. A conflict holds the
+ * lines each side brought between git's markers.
+ */
+export type MergeRegion =
+	| {
+			readonly type: "merged";
+			readonly oursLines: readonly string[];
+			readonly theirsLines: readonly string[];
+			readonly mergedLines: readonly string[];
+	  }
+	| {
+			readonly type: "conflict";
+			readonly oursLines: readonly string[];
+			readonly theirsLines: readonly string[];
+	  };
+
 export interface MergeSides {
-	base: string;
-	ours: string;
-	theirs: string;
+	readonly regions: readonly MergeRegion[];
 }
 
 /**

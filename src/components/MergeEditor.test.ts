@@ -1,6 +1,19 @@
 import { invoke } from "@tauri-apps/api/core";
-import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import {
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	conflictRegion as conflict,
+	gitMergedRegion,
+	makeMergeSides,
+	mergedRegion as merged,
+} from "../__tests__/helpers/factories.js";
+import type { MergeRegion, MergeSides } from "../lib/types.js";
 import MergeEditor from "./MergeEditor.svelte";
 
 // Shared Tauri mocks (event, store, dialog, path, menu, etc.)
@@ -13,11 +26,11 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 const mockInvoke = vi.mocked(invoke);
 
-const MERGE_SIDES = {
-	base: "line 1\ncommon line\n",
-	ours: "line 1\nour change\n",
-	theirs: "line 1\ntheir change\n",
-};
+function sidesOf(...regions: MergeRegion[]): MergeSides {
+	return { regions };
+}
+
+const MERGE_SIDES = makeMergeSides();
 
 describe("MergeEditor", () => {
 	beforeEach(() => {
@@ -157,19 +170,25 @@ describe("MergeEditor", () => {
 		}
 	});
 
-	describe("when the incoming side also changed a line the current side kept", () => {
+	describe("when git merged a line only the incoming side changed", () => {
 		beforeEach(() => {
 			mockInvoke.mockImplementation((cmd: string) => {
 				if (cmd !== "get_merge_sides") return Promise.resolve(undefined);
-				return Promise.resolve({
-					base: "a\nb\nc\nd\ne\n",
-					ours: "a\nb\nc\nd\nours e\n",
-					theirs: "a\ntheirs b\nc\nd\ntheirs e\n",
-				});
+				return Promise.resolve(
+					sidesOf(
+						gitMergedRegion({
+							ours: ["a", "b", "c", "d"],
+							theirs: ["a", "theirs b", "c", "d"],
+							merged: ["a", "theirs b", "c", "d"],
+						}),
+						conflict(["ours e"], ["theirs e"]),
+						merged(""),
+					),
+				);
 			});
 		});
 
-		it("merges that change into the output and leaves one conflict to resolve", async () => {
+		it("outputs the line as git merged it and leaves one conflict to resolve", async () => {
 			render(MergeEditor, {
 				props: {
 					repoPath: "/test/repo",
@@ -191,6 +210,28 @@ describe("MergeEditor", () => {
 				screen.queryAllByRole("button", { name: /^Take conflict 2 from/ }),
 			).toEqual([]);
 		});
+
+		it("shows each side's own line in its pane beside the merged one", async () => {
+			render(MergeEditor, {
+				props: {
+					repoPath: "/test/repo",
+					filePath: "src/main.ts",
+					onclose: () => {},
+					onresolved: () => {},
+				},
+			});
+
+			const current = await screen.findByRole("region", {
+				name: "Current (Ours)",
+			});
+			const incoming = screen.getByRole("region", {
+				name: "Incoming (Theirs)",
+			});
+
+			expect(within(current).getByText("b")).toBeInTheDocument();
+			expect(within(current).queryByText("theirs b")).toBeNull();
+			expect(within(incoming).getByText("theirs b")).toBeInTheDocument();
+		});
 	});
 
 	describe("when a conflict spans several lines", () => {
@@ -204,11 +245,16 @@ describe("MergeEditor", () => {
 		beforeEach(() => {
 			mockInvoke.mockImplementation((cmd: string) => {
 				if (cmd !== "get_merge_sides") return Promise.resolve(undefined);
-				return Promise.resolve({
-					base: "first\nold one\nold two\nold three\nlast\n",
-					ours: "first\nours one\nours two\nours three\nlast\n",
-					theirs: "first\ntheirs one\ntheirs two\ntheirs three\nlast\n",
-				});
+				return Promise.resolve(
+					sidesOf(
+						merged("first"),
+						conflict(
+							["ours one", "ours two", "ours three"],
+							["theirs one", "theirs two", "theirs three"],
+						),
+						merged("last", ""),
+					),
+				);
 			});
 		});
 
@@ -384,12 +430,15 @@ describe("MergeEditor", () => {
 	});
 
 	describe("when the file holds several conflicts", () => {
-		function sides(): typeof MERGE_SIDES {
-			const file = (side: string) =>
-				[1, 2, 3]
-					.map((n) => `${"context\n".repeat(100)}${side} ${n}\n`)
-					.join("");
-			return { base: file("base"), ours: file("ours"), theirs: file("theirs") };
+		function sides(): MergeSides {
+			const context = merged(...Array<string>(100).fill("context"));
+			return sidesOf(
+				...[1, 2, 3].flatMap((n) => [
+					context,
+					conflict([`ours ${n}`], [`theirs ${n}`]),
+				]),
+				merged(""),
+			);
 		}
 
 		beforeEach(() => {
@@ -468,6 +517,10 @@ describe("MergeEditor", () => {
 				"logo.png is binary, so resolve it outside the merge editor.",
 			],
 			["delete_conflict", "logo.png was deleted on one side."],
+			[
+				"link_conflict",
+				"logo.png is a symbolic link on one side, so resolve it outside the merge editor.",
+			],
 		])(
 			"offers no Retry for a %s, which a reload returns again",
 			async (code, message) => {
@@ -521,7 +574,7 @@ describe("MergeEditor", () => {
 		beforeEach(() => {
 			mockInvoke.mockImplementation((cmd: string) => {
 				if (cmd !== "get_merge_sides") return Promise.resolve(undefined);
-				return Promise.resolve({ base: "a\nb", ours: "a", theirs: "a\nB" });
+				return Promise.resolve(sidesOf(merged("a"), conflict([], ["B"])));
 			});
 		});
 
@@ -584,7 +637,7 @@ describe("MergeEditor", () => {
 		});
 
 		it("shows the newer file's sides", async () => {
-			const replies = new Map<string, (sides: typeof MERGE_SIDES) => void>();
+			const replies = new Map<string, (sides: MergeSides) => void>();
 			mockInvoke.mockImplementation((cmd: string, args) => {
 				if (cmd !== "get_merge_sides") return Promise.resolve(undefined);
 				const { filePath } = args as { filePath: string };
@@ -600,8 +653,8 @@ describe("MergeEditor", () => {
 			});
 			await view.rerender({ filePath: "new.ts" });
 
-			replies.get("new.ts")?.({ ...MERGE_SIDES, ours: "line 1\nnew file\n" });
-			replies.get("old.ts")?.({ ...MERGE_SIDES, ours: "line 1\nold file\n" });
+			replies.get("new.ts")?.(makeMergeSides("new file"));
+			replies.get("old.ts")?.(makeMergeSides("old file"));
 
 			expect(
 				await screen.findByRole("button", { name: /new file/ }),

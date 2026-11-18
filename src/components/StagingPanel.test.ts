@@ -19,13 +19,18 @@ import {
 	vi,
 } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
+import {
+	conflictRegion,
+	gitMergedRegion,
+	mergedRegion,
+} from "../__tests__/helpers/factories.js";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
 import { noReviewCounts } from "../__tests__/helpers/review-props.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { _resetToasts, toasts } from "../lib/toast.svelte.js";
-import type { ReviewTally } from "../lib/types.js";
+import type { MergeSides, ReviewTally } from "../lib/types.js";
 import StagingPanel from "./StagingPanel.svelte";
 
 // All Tauri module mocks — declared locally for proper vi.mock hoisting.
@@ -897,17 +902,23 @@ describe("StagingPanel merge-continue", () => {
 	});
 
 	describe("when taking a whole side from a conflicted file's menu", () => {
-		const sides = {
-			base: "a\nb\nc\nd\ne\nf\n",
-			ours: "a\nB-ours\nc\nd-ours\ne\nf\n",
-			theirs: "a\nB-theirs\nc\nd\ne\nf-theirs\n",
+		const sides: MergeSides = {
+			regions: [
+				mergedRegion("a"),
+				conflictRegion(["B-ours"], ["B-theirs"]),
+				gitMergedRegion({
+					ours: ["c", "d-ours", "e", "f", ""],
+					theirs: ["c", "d", "e", "f-theirs", ""],
+					merged: ["c", "d-ours", "e", "f-theirs", ""],
+				}),
+			],
 		};
 
 		it.each([
 			["Take All Current", "a\nB-ours\nc\nd-ours\ne\nf-theirs\n"],
 			["Take All Incoming", "a\nB-theirs\nc\nd-ours\ne\nf-theirs\n"],
 		])(
-			"%s keeps what only the other side changed, as the editor does",
+			"%s takes that side of the conflict and keeps the rest as git merged it",
 			async (text, merged) => {
 				mockMergeState([
 					{ path: "src/a.ts", status: "Conflicted", is_binary: false },

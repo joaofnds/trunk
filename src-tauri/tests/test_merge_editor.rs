@@ -1,10 +1,14 @@
 mod common;
 
 use common::context::TestContext;
+use trunk_git::conflicted_file::MergeRegion;
 
-#[test]
-fn get_merge_sides_returns_conflict_content() {
-    let ctx = TestContext::builder()
+fn lines(text: &str) -> Vec<String> {
+    text.split('\n').map(str::to_owned).collect()
+}
+
+fn conflicted_file_txt() -> TestContext {
+    TestContext::builder()
         .with_file("file.txt", "hello")
         .with_commit("Initial commit")
         .with_branch("feature")
@@ -15,20 +19,94 @@ fn get_merge_sides_returns_conflict_content() {
         .with_file("file.txt", "main content")
         .with_commit("Main commit")
         .with_conflict("feature")
-        .build();
-
-    let sides = ctx.get_merge_sides("file.txt").unwrap();
-    assert_eq!(sides.ours, "main content", "ours should be main content");
-    assert_eq!(
-        sides.theirs, "feature content",
-        "theirs should be feature content"
-    );
-    assert_eq!(sides.base, "hello", "base should be original content");
+        .build()
 }
 
 #[test]
-fn get_merge_sides_no_ancestor_returns_empty_base() {
-    // Both branches add a new file with the same name (no common ancestor for that file)
+fn get_merge_sides_reads_the_conflict_git_wrote() {
+    let ctx = conflicted_file_txt();
+
+    let sides = ctx.get_merge_sides("file.txt").unwrap();
+
+    assert_eq!(
+        sides.regions,
+        [MergeRegion::Conflict {
+            ours_lines: lines("main content"),
+            theirs_lines: lines("feature content"),
+        }]
+    );
+}
+
+#[test]
+fn get_merge_sides_reads_a_file_the_user_already_resolved_as_merged() {
+    let ctx = conflicted_file_txt();
+    std::fs::write(ctx.repo_path().join("file.txt"), "both\n").unwrap();
+
+    let sides = ctx.get_merge_sides("file.txt").unwrap();
+
+    assert_eq!(
+        sides.regions,
+        [MergeRegion::Merged {
+            ours_lines: lines("main content"),
+            theirs_lines: lines("feature content"),
+            merged_lines: lines("both\n"),
+        }]
+    );
+}
+
+/// A file the user resolved to the current side has no markers and equals that side,
+/// as a file git did not merge does, but git did merge it, so it reads as merged.
+#[test]
+fn get_merge_sides_reads_a_file_the_user_resolved_to_the_current_side_as_merged() {
+    let ctx = conflicted_file_txt();
+    std::fs::write(ctx.repo_path().join("file.txt"), "main content").unwrap();
+
+    let sides = ctx.get_merge_sides("file.txt").unwrap();
+
+    assert_eq!(
+        sides.regions,
+        [MergeRegion::Merged {
+            ours_lines: lines("main content"),
+            theirs_lines: lines("feature content"),
+            merged_lines: lines("main content"),
+        }]
+    );
+}
+
+#[test]
+fn get_merge_sides_reads_markers_of_the_size_the_attributes_set() {
+    let ctx = TestContext::builder()
+        .with_file(".gitattributes", "file.txt conflict-marker-size=9\n")
+        .with_file("file.txt", "hello\n")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "feature content\n")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_file("file.txt", "main content\n=======\n")
+        .with_commit("Main commit")
+        .with_conflict("feature")
+        .build();
+    std::fs::write(
+        ctx.repo_path().join("file.txt"),
+        "<<<<<<<<< HEAD\nmain content\n=======\n=========\nfeature content\n>>>>>>>>> feature\n",
+    )
+    .unwrap();
+
+    let sides = ctx.get_merge_sides("file.txt").unwrap();
+
+    assert_eq!(
+        sides.regions[0],
+        MergeRegion::Conflict {
+            ours_lines: lines("main content\n======="),
+            theirs_lines: lines("feature content"),
+        }
+    );
+}
+
+#[test]
+fn get_merge_sides_reads_a_conflict_where_both_sides_added_the_file() {
     let ctx = TestContext::builder()
         .with_file("placeholder.txt", "init")
         .with_commit("Initial commit")
@@ -43,14 +121,204 @@ fn get_merge_sides_no_ancestor_returns_empty_base() {
         .build();
 
     let sides = ctx.get_merge_sides("new_file.txt").unwrap();
+
     assert_eq!(
-        sides.base, "",
-        "base should be empty for file added on both sides"
+        sides.regions[0],
+        MergeRegion::Conflict {
+            ours_lines: lines("main version"),
+            theirs_lines: lines("feature version"),
+        }
     );
-    assert_eq!(sides.ours, "main version", "ours should be main version");
+}
+
+/// Read as empty, a file missing from the working tree would show no conflicts, and
+/// saving it would stage an empty file over both sides.
+#[test]
+fn get_merge_sides_refuses_a_file_missing_from_the_working_tree() {
+    let ctx = conflicted_file_txt();
+    std::fs::remove_file(ctx.repo_path().join("file.txt")).unwrap();
+
+    let err = ctx.get_merge_sides("file.txt").unwrap_err();
+
+    assert_eq!(err.code, "missing_file");
+}
+
+/// Rewrites the conflict's two sides in the index as `mode`, standing in for a
+/// merge of two branches that each hold a symbolic link or a submodule there.
+fn record_both_sides_as(ctx: &TestContext, file_path: &str, mode: u32) {
+    const STAGE_SHIFT: u16 = 12;
+    let repo = ctx.repo();
+    let mut index = repo.index().unwrap();
+    for stage in 1..=3_u16 {
+        let entry = index
+            .get_path(std::path::Path::new(file_path), i32::from(stage))
+            .unwrap();
+        let flags = (entry.flags & !(0b11 << STAGE_SHIFT)) | (stage << STAGE_SHIFT);
+        index
+            .add(&git2::IndexEntry {
+                mode,
+                flags,
+                ..entry
+            })
+            .unwrap();
+    }
+    index.write().unwrap();
+}
+
+/// A link conflict leaves the link itself in the working tree, so reading the path
+/// would show, and saving it would overwrite, whatever the link points at.
+#[test]
+fn get_merge_sides_refuses_a_conflict_between_two_links() {
+    let ctx = conflicted_file_txt();
+    record_both_sides_as(&ctx, "file.txt", 0o120_000);
+
+    let err = ctx.get_merge_sides("file.txt").unwrap_err();
+
+    assert_eq!(err.code, "link_conflict");
+}
+
+#[test]
+fn save_merge_result_refuses_a_conflict_between_two_links() {
+    let ctx = conflicted_file_txt();
+    record_both_sides_as(&ctx, "file.txt", 0o120_000);
+    let before = std::fs::read(ctx.repo_path().join("file.txt")).unwrap();
+
+    let err = ctx.save_merge_result("file.txt", "resolved").unwrap_err();
+
+    assert_eq!(err.code, "link_conflict");
     assert_eq!(
-        sides.theirs, "feature version",
-        "theirs should be feature version"
+        std::fs::read(ctx.repo_path().join("file.txt")).unwrap(),
+        before,
+        "a refused save must not write the path"
+    );
+}
+
+/// A link standing where the conflicted file should be would show a file from
+/// outside the repository as the merge.
+#[cfg(unix)]
+#[test]
+fn get_merge_sides_does_not_follow_a_link_in_the_working_tree() {
+    let ctx = conflicted_file_txt();
+    let outside = tempfile::tempdir().unwrap();
+    let secret = outside.path().join("secret.txt");
+    std::fs::write(
+        &secret,
+        "<<<<<<< HEAD\nsecret\n=======\nx\n>>>>>>> feature\n",
+    )
+    .unwrap();
+    let file = ctx.repo_path().join("file.txt");
+    std::fs::remove_file(&file).unwrap();
+    std::os::unix::fs::symlink(&secret, &file).unwrap();
+
+    let err = ctx.get_merge_sides("file.txt").unwrap_err();
+
+    assert_eq!(err.code, "missing_file");
+}
+
+/// Read lossily, the replacement characters would be saved over the file.
+#[test]
+fn get_merge_sides_refuses_a_working_file_that_is_not_utf8() {
+    let ctx = conflicted_file_txt();
+    std::fs::write(
+        ctx.repo_path().join("file.txt"),
+        b"<<<<<<< HEAD\n\xff\xfe\n=======\nfeature content\n>>>>>>> feature\n",
+    )
+    .unwrap();
+
+    let err = ctx.get_merge_sides("file.txt").unwrap_err();
+
+    assert_eq!(err.code, "binary_conflict");
+}
+
+/// Read as text, a conflict that never closes would be saved and staged with its
+/// markers in it.
+#[test]
+fn get_merge_sides_refuses_a_conflict_whose_markers_do_not_close() {
+    let ctx = conflicted_file_txt();
+    std::fs::write(
+        ctx.repo_path().join("file.txt"),
+        "<<<<<<< HEAD\nmain content\n=======\nfeature content\n",
+    )
+    .unwrap();
+
+    let err = ctx.get_merge_sides("file.txt").unwrap_err();
+
+    assert_eq!(err.code, "unclosed_conflict");
+}
+
+/// Git writes markers of its default size when the attribute holds no usable size.
+#[test]
+fn get_merge_sides_reads_default_markers_when_the_attribute_sets_size_zero() {
+    let ctx = TestContext::builder()
+        .with_file(".gitattributes", "file.txt conflict-marker-size=0\n")
+        .with_file("file.txt", "hello\n")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "feature content\n")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_file("file.txt", "main content\n")
+        .with_commit("Main commit")
+        .with_conflict("feature")
+        .build();
+    std::fs::write(
+        ctx.repo_path().join("file.txt"),
+        "<<<<<<< HEAD\nmain content\n=======\nfeature content\n>>>>>>> feature\n",
+    )
+    .unwrap();
+
+    let sides = ctx.get_merge_sides("file.txt").unwrap();
+
+    assert_eq!(
+        sides.regions[0],
+        MergeRegion::Conflict {
+            ours_lines: lines("main content"),
+            theirs_lines: lines("feature content"),
+        }
+    );
+}
+
+/// Git does not merge a file marked `-merge`: it leaves the current side in the
+/// working tree with no markers. Read as a clean merge, taking the incoming side
+/// would silently save the current one.
+#[test]
+fn get_merge_sides_reads_a_file_git_did_not_merge_as_one_conflict() {
+    let ctx = TestContext::builder()
+        .with_file(".gitattributes", "file.txt -merge\n")
+        .with_file("file.txt", "a\nhello\nz\n")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "a\nfeature content\nz\n")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_file("file.txt", "a\nmain content\nz\n")
+        .with_commit("Main commit")
+        .with_conflict("feature")
+        .build();
+    std::fs::write(ctx.repo_path().join("file.txt"), "a\nmain content\nz\n").unwrap();
+
+    let sides = ctx.get_merge_sides("file.txt").unwrap();
+
+    assert_eq!(
+        sides.regions,
+        [
+            MergeRegion::Merged {
+                ours_lines: lines("a"),
+                theirs_lines: lines("a"),
+                merged_lines: lines("a"),
+            },
+            MergeRegion::Conflict {
+                ours_lines: lines("main content"),
+                theirs_lines: lines("feature content"),
+            },
+            MergeRegion::Merged {
+                ours_lines: lines("z\n"),
+                theirs_lines: lines("z\n"),
+                merged_lines: lines("z\n"),
+            },
+        ]
     );
 }
 
@@ -266,6 +534,25 @@ fn conflict_marker_files_omits_a_file_that_was_deleted() {
     let found = ctx.conflict_marker_files(&["file.txt"]).unwrap();
 
     assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn conflict_marker_files_lists_a_file_holding_markers_of_the_size_the_attributes_set() {
+    let ctx = conflicted_file();
+    std::fs::write(
+        ctx.repo_path().join(".gitattributes"),
+        "file.txt conflict-marker-size=9\n",
+    )
+    .unwrap();
+    std::fs::write(
+        ctx.repo_path().join("file.txt"),
+        "<<<<<<<<< HEAD\nmain content\n=========\nfeature content\n>>>>>>>>> feature\n",
+    )
+    .unwrap();
+
+    let found = ctx.conflict_marker_files(&["file.txt"]).unwrap();
+
+    assert_eq!(found, vec!["file.txt".to_string()]);
 }
 
 /// A Markdown heading underlined with `=======` is not a conflict, so only a

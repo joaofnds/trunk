@@ -563,6 +563,20 @@ hook's output is what the user reads to learn why.
 with GPG, SSH or X.509 as `gpg.format` names and with the key `user.signingkey` names. A
 host that requires signed commits rejects a push that carries an unsigned one.
 
+## Merge conflicts (TRUNK-440, 2026-11-18)
+
+**Conflict markers**: the lines git writes into a conflicted file around each conflict.
+`<<<<<<<` opens it with the current side's lines, `=======` separates them from the
+incoming side's lines, and `>>>>>>>` closes it. The `diff3` and `zdiff3` styles of
+`merge.conflictStyle` add a `|||||||` section holding the base's lines before the separator.
+The `conflict-marker-size` attribute sets the run's length, 7 by default. Everything outside
+the markers is text git merged on its own. That text can be the work of a merge driver, a
+rename or the histogram diff, and a second merge of the three versions does not reproduce it.
+
+**Current and incoming**: the two sides of a conflict as the merge editor names them, ours
+and theirs in git's terms. In a rebase or cherry-pick, ours is the commit being built on and
+theirs is the commit being replayed.
+
 ## Stashing (TRUNK-231, 2026-09-14)
 
 **Staged changes** — what the index holds that HEAD does not. In Trunk this is the whole

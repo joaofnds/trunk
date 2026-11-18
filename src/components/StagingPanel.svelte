@@ -18,7 +18,6 @@ import { pathMenuEntriesOf } from "../lib/file-menu.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
 	computeOutput,
-	parseConflictRegions,
 	takeAllCurrent,
 	takeAllIncoming,
 } from "../lib/merge-parser.js";
@@ -583,12 +582,13 @@ async function resolveConflictedFile(
 			filePath,
 		});
 		// The same result the editor's Take All buttons give: the conflicting
-		// lines come from the chosen side, and what only the other side changed
-		// is kept, since the menu item and the button carry the same name.
-		const regions = parseConflictRegions(sides.base, sides.ours, sides.theirs);
+		// lines come from the chosen side and the rest is the text git merged,
+		// since the menu item and the button carry the same name.
 		const taken =
-			side === "ours" ? takeAllCurrent(regions) : takeAllIncoming(regions);
-		const content = computeOutput(regions, taken);
+			side === "ours"
+				? takeAllCurrent(sides.regions)
+				: takeAllIncoming(sides.regions);
+		const content = computeOutput(sides.regions, taken);
 		await safeInvoke("save_merge_result", {
 			path: repoPath,
 			filePath,

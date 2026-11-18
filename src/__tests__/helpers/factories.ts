@@ -1,4 +1,11 @@
-import type { FileStatus, GraphCommit, GraphEdge, RefLabel } from "$lib/types";
+import type {
+	FileStatus,
+	GraphCommit,
+	GraphEdge,
+	MergeRegion,
+	MergeSides,
+	RefLabel,
+} from "$lib/types";
 
 export function makeCommit(
 	overrides: Partial<GraphCommit> & { oid: string },
@@ -53,5 +60,50 @@ export function makeRef(
 		ref_type: overrides.ref_type ?? "LocalBranch",
 		is_head: overrides.is_head ?? false,
 		color_index: overrides.color_index ?? 0,
+	};
+}
+
+/** Text git merged that both sides already had as it stands. */
+export function mergedRegion(...lines: string[]): MergeRegion {
+	return {
+		type: "merged",
+		oursLines: lines,
+		theirsLines: lines,
+		mergedLines: lines,
+	};
+}
+
+/** A region git merged where the sides differ, so the merge took one side's change. */
+export function gitMergedRegion(sides: {
+	ours: string[];
+	theirs: string[];
+	merged: string[];
+}): MergeRegion {
+	return {
+		type: "merged",
+		oursLines: sides.ours,
+		theirsLines: sides.theirs,
+		mergedLines: sides.merged,
+	};
+}
+
+export function conflictRegion(
+	oursLines: string[],
+	theirsLines: string[],
+): MergeRegion {
+	return { type: "conflict", oursLines, theirsLines };
+}
+
+/** The common conflicted file: one line both sides kept, then a conflict. */
+export function makeMergeSides(
+	ours = "our change",
+	theirs = "their change",
+): MergeSides {
+	return {
+		regions: [
+			mergedRegion("line 1"),
+			conflictRegion([ours], [theirs]),
+			mergedRegion(""),
+		],
 	};
 }

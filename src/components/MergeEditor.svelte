@@ -12,11 +12,9 @@ import { BAR_HEIGHT } from "../lib/chrome-heights.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import {
-	type ConflictRegion,
 	countUnresolved,
 	getConflictIndices,
 	outputRegions,
-	parseConflictRegions,
 	sideKeys,
 	takeAllCurrent,
 	takeAllIncoming,
@@ -24,7 +22,7 @@ import {
 	toggleLine,
 } from "../lib/merge-parser.js";
 import { conflictNearest, layoutFrom, mapOffset } from "../lib/merge-scroll.js";
-import type { MergeSides } from "../lib/types.js";
+import type { MergeRegion, MergeSides } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
 import { registerUpdateBlocker } from "../lib/updates-context.js";
@@ -52,15 +50,20 @@ const SIDE_LABEL = {
 } as const;
 
 // ---------- State ----------
-let regions = $state<ConflictRegion[]>([]);
+let regions = $state<readonly MergeRegion[]>([]);
 let takenLines = $state<Set<string>>(new Set());
 let manualEdit = $state(false);
 let manualText = $state("");
 let loading = $state(true);
 let error = $state<string | null>(null);
-// A binary or deleted side is a fact about the file, so loading it again gets the
-// same refusal, and a Retry button there would only promise otherwise.
 let retryable = $state(true);
+// A binary, deleted or linked side is a fact about the file, so loading it again
+// gets the same refusal, and a Retry button there would only promise otherwise.
+const UNRESOLVABLE_HERE: ReadonlySet<string> = new Set([
+	"binary_conflict",
+	"delete_conflict",
+	"link_conflict",
+]);
 let focusedConflictIdx = $state(0);
 let saving = $state(false);
 
@@ -81,7 +84,7 @@ interface FlatRow {
 }
 
 /** Flatten both panels together so conflict regions are padded to equal height (aligned headers). */
-function flattenAligned(regions: ConflictRegion[]): {
+function flattenAligned(regions: readonly MergeRegion[]): {
 	ours: FlatRow[];
 	theirs: FlatRow[];
 } {
@@ -179,7 +182,7 @@ function flattenAligned(regions: ConflictRegion[]): {
 
 /** Pad the shorter side so the next region starts at the same offset in both panes. */
 function padShorterSide(
-	region: ConflictRegion,
+	region: MergeRegion,
 	regionIdx: number,
 	ours: FlatRow[],
 	theirs: FlatRow[],
@@ -301,7 +304,7 @@ function loadSides(path: string) {
 		.then((result) => {
 			if (path !== filePath) return;
 
-			regions = parseConflictRegions(result.base, result.ours, result.theirs);
+			regions = result.regions;
 			takenLines = new Set();
 			manualEdit = false;
 			manualText = "";
@@ -319,10 +322,7 @@ function loadSides(path: string) {
 			}
 
 			error = errorMessage(e, "Could not load this conflict");
-			retryable = !(
-				isTrunkError(e) &&
-				(e.code === "binary_conflict" || e.code === "delete_conflict")
-			);
+			retryable = !(isTrunkError(e) && UNRESOLVABLE_HERE.has(e.code));
 			loading = false;
 		});
 }
@@ -596,7 +596,10 @@ registerUpdateBlocker(
 		<!-- Top row: Current + Incoming side by side (50% height) -->
 		<div class="flex-1 flex min-h-0">
 			<!-- Current (Ours) Panel -->
-			<div class="flex-1 flex flex-col min-w-0 border-r border-border">
+			<section
+				class="flex-1 flex flex-col min-w-0 border-r border-border"
+				aria-label={SIDE_LABEL.ours}
+			>
 				<!-- Header -->
 				<div
 					class="h-bar bg-accent-bg hairline-accent flex items-center py-0 px-2 gap-2 shrink-0"
@@ -640,10 +643,13 @@ registerUpdateBlocker(
 							(oursOffsets[oursVisible[1]] ?? oursTotalHeight)}px"
 					></div>
 				</div>
-			</div>
+			</section>
 
 			<!-- Incoming (Theirs) Panel -->
-			<div class="flex-1 flex flex-col min-w-0">
+			<section
+				class="flex-1 flex flex-col min-w-0"
+				aria-label={SIDE_LABEL.theirs}
+			>
 				<!-- Header -->
 				<div
 					class="h-bar bg-success-bg hairline-success flex items-center py-0 px-2 gap-2 shrink-0"
@@ -686,7 +692,7 @@ registerUpdateBlocker(
 							(theirsOffsets[theirsVisible[1]] ?? theirsTotalHeight)}px"
 					></div>
 				</div>
-			</div>
+			</section>
 		</div>
 
 		<!-- Bottom panel: Output (50% height) -->

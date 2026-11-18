@@ -14,7 +14,7 @@ import {
 	installDomPolyfills,
 	restoreDomPolyfills,
 } from "../../tests/app/harness/dom.js";
-import { makeCommit } from "../__tests__/helpers/factories.js";
+import { makeCommit, makeMergeSides } from "../__tests__/helpers/factories.js";
 import { RepositoryReadHost } from "../__tests__/helpers/repository-read-host.js";
 import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
 import { createRemoteState } from "../lib/remote-state.svelte.js";
@@ -690,11 +690,7 @@ describe("RepoView commit selection", () => {
 					{ path: "README.md", status: "Conflicted", is_binary: false },
 				],
 			});
-			host.seedResponse("get_merge_sides", {
-				base: "line 1\ncommon line\n",
-				ours: "line 1\nour change\n",
-				theirs: "line 1\ntheir change\n",
-			});
+			host.seedResponse("get_merge_sides", makeMergeSides());
 			await openRepository();
 			await fireEvent.click(await screen.findByText("README.md"));
 			await vi.dynamicImportSettled();
