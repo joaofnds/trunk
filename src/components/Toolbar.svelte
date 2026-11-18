@@ -35,6 +35,9 @@ interface Props {
 	repoPath: string;
 	remoteState: RemoteState;
 	undoRedo: UndoRedoManager;
+	// The commit the graph shows as HEAD, or null before it has shown one. Undo
+	// takes back this commit and no other.
+	shownHeadOid: string | null;
 	reviewActive: boolean;
 	// Whether the active review tab's center pane shows the review panel (vs. a diff).
 	// Defaults true so a consumer that only sets reviewActive still styles correctly
@@ -55,6 +58,7 @@ let {
 	repoPath,
 	remoteState,
 	undoRedo,
+	shownHeadOid,
 	reviewActive,
 	reviewPanelShowing = true,
 	reviewThreadsHidden = false,
@@ -128,7 +132,9 @@ let canRedo = $derived(
 		pendingRedo.headOid === headOid &&
 		pendingRedo.repoPath === repoPath,
 );
-let undoAllowed = $derived(canUndo && !movingHeadIn.has(repoPath));
+let undoAllowed = $derived(
+	canUndo && shownHeadOid !== null && !movingHeadIn.has(repoPath),
+);
 let redoAllowed = $derived(canRedo && !movingHeadIn.has(repoPath));
 
 async function readUndoState(path: string) {
@@ -168,18 +174,13 @@ $effect(() => {
 
 async function handleUndo() {
 	const path = repoPath;
-	if (!undoAllowed) return;
+	const expectedHeadOid = shownHeadOid;
+	if (!undoAllowed || expectedHeadOid === null) return;
 
 	movingHeadIn.add(path);
 	try {
-		// HEAD as the press finds it. The toolbar's own read trails the graph,
-		// which can already show the commit the user means to undo. The backend
-		// refuses once HEAD is not this commit, so an undo queued behind a pull
-		// never takes back a commit that landed after the press.
-		const expectedHeadOid = await safeInvoke<string | null>("head_oid", {
-			path,
-		});
-		if (expectedHeadOid === null) return;
+		// The backend refuses once HEAD is not this commit, so a commit a pull or
+		// the terminal made, which the graph has not shown yet, is never taken back.
 		const result = await safeInvoke<{
 			head_oid: string;
 			undone_oid: string;

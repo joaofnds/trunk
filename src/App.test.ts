@@ -146,7 +146,18 @@ describe("App", () => {
 			case "validate_recent_path":
 				return Promise.resolve(true);
 			case "get_commit_graph":
-				return Promise.resolve({ commits: [], max_columns: 0, revision: 1 });
+				return Promise.resolve({
+					commits: [
+						makeCommit({
+							oid: "a-head",
+							parent_oids: ["a-parent"],
+							is_head: true,
+							in_head_chain: true,
+						}),
+					],
+					max_columns: 1,
+					revision: 1,
+				});
 			case "list_refs":
 				return Promise.resolve({
 					local: [],

@@ -171,6 +171,9 @@ interface Props {
 		viewTone: ReviewTone | null;
 		totalTone: ReviewTone | null;
 	}) => void;
+	// The commit the graph shows as HEAD, or null before it shows one. The
+	// toolbar aims Undo at it, so Undo takes back the commit the user sees.
+	onshownheadchange?: (oid: string | null) => void;
 	onleftpanecollapsedchange: (collapsed: boolean) => void;
 	onrightpanecollapsedchange: (collapsed: boolean) => void;
 	onleftpanewidthchange: (width: number) => void;
@@ -198,6 +201,7 @@ let {
 	oncontentmodechange,
 	onreviewpanelshowingchange,
 	oncommentcountschange,
+	onshownheadchange,
 	onleftpanecollapsedchange,
 	onrightpanecollapsedchange,
 	onleftpanewidthchange,
@@ -1004,6 +1008,13 @@ $effect(() => {
 	const viewTone = inlineCommentTone;
 	const totalTone = reviewCommentTone;
 	untrack(() => oncommentcountschange?.({ view, total, viewTone, totalTone }));
+});
+
+// The topmost row of HEAD's chain is HEAD itself, detached or not, as the WIP
+// row's anchor reads it.
+$effect(() => {
+	const oid = graphDisplayItems.find((c) => c.in_head_chain)?.oid ?? null;
+	untrack(() => onshownheadchange?.(oid));
 });
 
 async function loadDirtyCounts() {

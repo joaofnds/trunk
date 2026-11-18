@@ -92,6 +92,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -104,6 +105,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -116,6 +118,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -128,6 +131,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -141,6 +145,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -173,6 +178,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 			context: new Map([[SCHEDULER, scheduler]]),
@@ -200,6 +206,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState,
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -216,6 +223,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(), // empty redoStack
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -238,6 +246,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo,
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -261,6 +270,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo,
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -287,6 +297,7 @@ describe("Toolbar", () => {
 				repoPath: "/another/clone",
 				remoteState: makeRemoteState(),
 				undoRedo,
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -321,6 +332,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo,
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -361,6 +373,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo,
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -409,6 +422,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -423,6 +437,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: true,
 			},
 		});
@@ -436,6 +451,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: true,
 				reviewPanelShowing: false,
 			},
@@ -451,6 +467,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: true,
 				reviewPanelShowing: false,
 			},
@@ -467,6 +484,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: true,
 				reviewPanelShowing: true,
 			},
@@ -482,6 +500,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 				viewCommentCount: 3,
 			},
@@ -495,6 +514,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 				viewCommentCount: 0,
 			},
@@ -511,6 +531,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 				reviewCommentCount: 4,
 			},
@@ -525,6 +546,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 				reviewCommentCount: 0,
 			},
@@ -539,6 +561,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 				viewCommentCount: 2,
 				reviewCommentCount: 4,
@@ -560,6 +583,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 				viewCommentCount: 2,
 				viewCommentTone: "open",
@@ -582,6 +606,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -602,6 +627,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 				reviewThreadsHidden: true,
 			},
@@ -620,6 +646,7 @@ describe("Toolbar", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 				reviewThreadsHidden: true,
 			},
@@ -642,6 +669,7 @@ describe("Toolbar", () => {
 					repoPath: "/test/repo",
 					remoteState: makeRemoteState(),
 					undoRedo: makeUndoRedo(),
+					shownHeadOid: null,
 					reviewActive: false,
 					reviewThreadsHidden: hidden,
 					onreviewthreadshiddenchange,
@@ -672,6 +700,7 @@ describe("Toolbar remote failure feedback", () => {
 				repoPath: "/test/repo",
 				remoteState,
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -695,6 +724,7 @@ describe("Toolbar remote failure feedback", () => {
 				repoPath: "/test/repo",
 				remoteState,
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -728,6 +758,7 @@ describe("Toolbar stash", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -756,6 +787,7 @@ describe("Toolbar stash", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -783,6 +815,7 @@ describe("Toolbar stash", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -812,6 +845,7 @@ describe("Toolbar stash", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});
@@ -847,38 +881,42 @@ describe("Toolbar undo", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo,
+				shownHeadOid: "head-commit",
 				reviewActive: false,
 			},
 		});
 		return screen.getByRole("button", { name: "Undo" });
 	}
 
-	it("names the HEAD Undo was pressed on", async () => {
+	it("aims Undo at the commit the graph shows, not where HEAD has moved since", async () => {
 		const undo = renderUndoable(() =>
 			Promise.resolve({ head_oid: "parent", undone_oid: "head-commit" }),
 		);
 		await waitFor(() => expect(undo).toBeEnabled());
+		// A pull lands a commit the graph has not drawn yet.
+		const earlier = mockInvoke.getMockImplementation();
+		mockInvoke.mockImplementation((cmd, args) =>
+			cmd === "head_oid"
+				? Promise.resolve("pulled")
+				: (earlier?.(cmd, args) ?? Promise.resolve(null)),
+		);
 
 		await fireEvent.click(undo);
 
-		expect(mockInvoke).toHaveBeenCalledWith("undo_commit", {
-			path: "/test/repo",
-			expectedHeadOid: "head-commit",
-		});
+		await waitFor(() =>
+			expect(mockInvoke).toHaveBeenCalledWith("undo_commit", {
+				path: "/test/repo",
+				expectedHeadOid: "head-commit",
+			}),
+		);
 	});
 
-	it("aims Undo at HEAD as the press finds it, not the toolbar's last read", async () => {
+	it("aims Undo at a commit as soon as the graph shows it", async () => {
 		const undo = renderUndoable(() =>
 			Promise.resolve({ head_oid: "head-commit", undone_oid: "revert" }),
 		);
 		await waitFor(() => expect(undo).toBeEnabled());
-		// A commit lands and the graph shows it before the toolbar reads HEAD again.
-		const earlier = mockInvoke.getMockImplementation();
-		mockInvoke.mockImplementation((cmd, args) =>
-			cmd === "head_oid"
-				? Promise.resolve("revert")
-				: (earlier?.(cmd, args) ?? Promise.resolve(null)),
-		);
+		await view.rerender({ shownHeadOid: "revert" });
 
 		await fireEvent.click(undo);
 
@@ -888,6 +926,15 @@ describe("Toolbar undo", () => {
 				expectedHeadOid: "revert",
 			}),
 		);
+	});
+
+	it("offers no Undo before the graph shows a HEAD", async () => {
+		const undo = renderUndoable(() => deferred<never>().promise);
+		await waitFor(() => expect(undo).toBeEnabled());
+
+		await view.rerender({ shownHeadOid: null });
+
+		expect(undo).toBeDisabled();
 	});
 
 	it("undoes one commit when Undo is pressed twice", async () => {
@@ -980,6 +1027,8 @@ describe("Toolbar undo and redo shortcuts", () => {
 		const history = {
 			head: commits.length - 1,
 			refused: [] as string[],
+			/** Redraws the graph the toolbar reads HEAD from. */
+			repaint: (_tip: string) => {},
 			get tip() {
 				return commits[history.head];
 			},
@@ -999,9 +1048,14 @@ describe("Toolbar undo and redo shortcuts", () => {
 				command_completed: true,
 			};
 			for (const callback of repoChanged) callback({ payload });
+			history.repaint(history.tip);
 		}
 
-		async function undoCommit() {
+		async function undoCommit(expectedHeadOid: string) {
+			if (expectedHeadOid !== history.tip) {
+				history.refused.push(`undo from ${history.tip}`);
+				throw new Error("HEAD moved");
+			}
 			if (history.head === 0) {
 				history.refused.push("undo of a root commit");
 				throw new Error("Cannot undo the root commit");
@@ -1041,8 +1095,10 @@ describe("Toolbar undo and redo shortcuts", () => {
 					return Promise.resolve(history.head > 0);
 				case "head_oid":
 					return Promise.resolve(history.tip);
-				case "undo_commit":
-					return afterHold(undoCommit);
+				case "undo_commit": {
+					const { expectedHeadOid } = args as { expectedHeadOid: string };
+					return afterHold(() => undoCommit(expectedHeadOid));
+				}
 				case "redo_commit": {
 					const { undoneOid, expectedHeadOid } = args as {
 						undoneOid: string;
@@ -1054,18 +1110,23 @@ describe("Toolbar undo and redo shortcuts", () => {
 					return Promise.resolve(null);
 			}
 		});
+		shown = history;
 		return history;
 	}
 
+	let shown: ReturnType<typeof linearHistory>;
+
 	function renderToolbar(undoRedo = createUndoRedoState()) {
-		render(Toolbar, {
+		const view = render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo,
+				shownHeadOid: shown.tip,
 				reviewActive: false,
 			},
 		});
+		shown.repaint = (tip) => void view.rerender({ shownHeadOid: tip });
 		return {
 			undo: screen.getByRole("button", { name: "Undo" }),
 			redo: screen.getByRole("button", { name: "Redo" }),
@@ -1311,6 +1372,7 @@ describe("Toolbar branch creation", () => {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
 				reviewActive: false,
 			},
 		});

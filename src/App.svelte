@@ -524,6 +524,8 @@ $effect(() => {
 interface TabState {
 	remoteState: RemoteState;
 	undoRedo: UndoRedoManager;
+	// The commit the tab's graph shows as HEAD, which the toolbar aims Undo at.
+	shownHead: { oid: string | null };
 }
 
 const tabStates = new SvelteMap<string, TabState>();
@@ -535,9 +537,11 @@ function createTabState(tabId: string): void {
 			autofetch.checked(tab.repoPath);
 	});
 
+	const shownHead = $state<TabState["shownHead"]>({ oid: null });
 	tabStates.set(tabId, {
 		remoteState,
 		undoRedo: createUndoRedoState(),
+		shownHead,
 	});
 }
 
@@ -1212,6 +1216,7 @@ $effect(() => {
 				repoPath={activeTab.repoPath}
 				remoteState={activeState.remoteState}
 				undoRedo={activeState.undoRedo}
+				shownHeadOid={activeState.shownHead.oid}
 				reviewActive={reviewPanelOpen}
 				reviewPanelShowing={activeReviewPanelShowing}
 				{reviewThreadsHidden}
@@ -1334,6 +1339,9 @@ $effect(() => {
 								contentMode={diffContentMode}
 								oncontentmodechange={handleDiffContentModeChange}
 								oncommentcountschange={(c) => setCommentCounts(tab.id, c)}
+								onshownheadchange={(oid) => {
+									tabState.shownHead.oid = oid;
+								}}
 								onreviewpanelshowingchange={(s) => {
 									activeReviewPanelShowing = s;
 								}}
