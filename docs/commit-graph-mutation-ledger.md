@@ -57,7 +57,8 @@ enumerated with `cargo mutants --list` and anchored by hand; rows past 64 are ap
 later changes introduce sites. Rows 11-14 and 65 carry the 2026-08-30 `--only` re-measure
 after TRUNK-43's `can_inline` narrowing — a sanctioned partial splice into the 2026-08-12
 run's stdout. Row 25 is dated 2026-09-02 and row 49 is dated 2026-09-03. Rows 7,
-46–48 and 55 carry the 2026-10-11 `--only` re-measure. Rows 59–64 carry the
+46–48 and 55 carry the 2026-10-11 `--only` re-measure. Rows 7, 41–43 and 47 carry the 2026-11-18 `--only` re-measure after
+`walk_order` replaced the revwalk and `parent_map` lost its `Result`. Rows 59–64 carry the
 2026-11-01 re-measure after `c2af4fd9` moved bounded slicing into `page_oids` and
 row construction into `hydrate`; all five viable mutants were killed, with row 59
 still unviable. Placement rules and goldens did not change.
@@ -78,7 +79,7 @@ honest.
 | 4 | placement.rs | find_free_column_near | `let left = target - delta;` → `let left = target / delta;` | killed | 2026-08-12 |
 | 5 | placement.rs | find_free_column_near | `if left >= min_col && active_lanes[left].is_none() {` → `if left < min_col && active_lanes[left].is_none() {` | killed | 2026-08-12 |
 | 6 | placement.rs | find_free_column_near | `if left >= min_col && active_lanes[left].is_none() {` → `if left >= min_col \|\| active_lanes[left].is_none() {` | killed | 2026-08-12 |
-| 7 | graph.rs | capture | `git2::Sort::TOPOLOGICAL \| git2::Sort::TIME` → `git2::Sort::TOPOLOGICAL ^ git2::Sort::TIME` | SURVIVES | 2026-10-11 |
+| 7 | graph.rs | TimeHeap::below | `        nodes[a].time < nodes[b].time` → `        nodes[a].time <= nodes[b].time` | SURVIVES | 2026-11-18 |
 | 8 | placement.rs | assign_lanes/head-ext colour | `lane_colors.insert(0, next_color);⏎            next_color += 1;` → `lane_colors.insert(0, next_color);⏎            next_color -= 1;` | killed | 2026-08-12 |
 | 9 | placement.rs | assign_lanes/head-ext colour | `lane_colors.insert(0, next_color);⏎            next_color += 1;` → `lane_colors.insert(0, next_color);⏎            next_color *= 1;` | killed | 2026-08-12 |
 | 10 | placement.rs | assign_lanes/is_merge | `let is_merge = !is_stash && commit_parents.len() >= 2;` → `let is_merge = !is_stash \|\| commit_parents.len() >= 2;` | SURVIVES | 2026-08-12 |
@@ -112,13 +113,13 @@ honest.
 | 38 | graph.rs | tracked_upstream_oid | `fn tracked_upstream_oid(repo: &git2::Repository) -> Option<git2::Oid> {` → `fn tracked_upstream_oid(repo: &git2::Repository) -> Option<git2::Oid> {⏎    if true {⏎        return None;⏎    }` | killed | 2026-08-12 |
 | 39 | graph.rs | tracked_upstream_oid | `fn tracked_upstream_oid(repo: &git2::Repository) -> Option<git2::Oid> {` → `fn tracked_upstream_oid(repo: &git2::Repository) -> Option<git2::Oid> {⏎    if true {⏎        return Some(Default::default());⏎    }` | UNVIABLE | 2026-08-12 |
 | 40 | graph.rs | tracked_upstream_oid | `    if !head.is_branch() {` → `    if head.is_branch() {` | killed | 2026-08-12 |
-| 41 | graph.rs | parent_map | `) -> Result<HashMap<git2::Oid, Vec<git2::Oid>>, TrunkError> {` → `) -> Result<HashMap<git2::Oid, Vec<git2::Oid>>, TrunkError> {⏎    if true {⏎        return Ok(HashMap::new());⏎    }` | killed | 2026-08-12 |
-| 42 | graph.rs | parent_map | `) -> Result<HashMap<git2::Oid, Vec<git2::Oid>>, TrunkError> {` → `) -> Result<HashMap<git2::Oid, Vec<git2::Oid>>, TrunkError> {⏎    if true {⏎        return Ok(HashMap::from_iter([(Default::default(), vec![])]));⏎    }` | UNVIABLE | 2026-08-12 |
-| 43 | graph.rs | parent_map | `) -> Result<HashMap<git2::Oid, Vec<git2::Oid>>, TrunkError> {` → `) -> Result<HashMap<git2::Oid, Vec<git2::Oid>>, TrunkError> {⏎    if true {⏎        return Ok(HashMap::from_iter([(⏎            Default::default(),⏎            vec![Default::default()],⏎        )]));⏎    }` | UNVIABLE | 2026-08-12 |
+| 41 | graph.rs | parent_map | `) -> HashMap<git2::Oid, Vec<git2::Oid>> {` → `) -> HashMap<git2::Oid, Vec<git2::Oid>> {⏎    if true {⏎        return HashMap::new();⏎    }` | killed | 2026-11-18 |
+| 42 | graph.rs | parent_map | `) -> HashMap<git2::Oid, Vec<git2::Oid>> {` → `) -> HashMap<git2::Oid, Vec<git2::Oid>> {⏎    if true {⏎        return HashMap::from_iter([(Default::default(), vec![])]);⏎    }` | UNVIABLE | 2026-11-18 |
+| 43 | graph.rs | parent_map | `) -> HashMap<git2::Oid, Vec<git2::Oid>> {` → `) -> HashMap<git2::Oid, Vec<git2::Oid>> {⏎    if true {⏎        return HashMap::from_iter([(⏎            Default::default(),⏎            vec![Default::default()],⏎        )]);⏎    }` | UNVIABLE | 2026-11-18 |
 | 44 | graph.rs | parent_map | `        while let Some(oid) = current⏎            && !parents.contains_key(&oid)` → `        while let Some(oid) = current⏎            \|\| !parents.contains_key(&oid)` | UNVIABLE | 2026-08-12 |
 | 45 | graph.rs | parent_map | `            && !parents.contains_key(&oid)` → `            && parents.contains_key(&oid)` | killed | 2026-08-12 |
 | 46 | graph.rs | capture | `pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {` → `pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {⏎    if true {⏎        return Ok(Default::default());⏎    }` | killed | 2026-10-11 |
-| 47 | graph.rs | capture | `git2::Sort::TOPOLOGICAL \| git2::Sort::TIME` → `git2::Sort::TOPOLOGICAL & git2::Sort::TIME` | killed | 2026-10-11 |
+| 47 | graph.rs | TimeHeap::below | `        nodes[a].time < nodes[b].time` → `        nodes[a].time > nodes[b].time` | killed | 2026-11-18 |
 | 48 | graph.rs | capture | `    oids.retain(\|oid\| !stash_internals.contains(oid));` → `    oids.retain(\|oid\| stash_internals.contains(oid));` | killed | 2026-10-11 |
 | 49 | graph.rs | snapshot | `    Ok(GraphSnapshot::new(capture(repo)?, visibility.clone()))` → `    Ok(GraphSnapshot::new(GraphSource::default(), visibility.clone()))` | killed | 2026-09-03 |
 | 50 | graph_input.rs | parse_oid | `fn parse_oid(hex: &str) -> Oid {` → `fn parse_oid(hex: &str) -> Oid {⏎    if true {⏎        return Default::default();⏎    }` | UNVIABLE | 2026-08-12 |
@@ -205,11 +206,15 @@ last clause's first disjunct with `assert!(pcol < active_lanes.len())`. All 80 t
 suites stayed green. That result refutes nothing and proves nothing on its own. The lemmas above
 carry the verdict.
 
-### Row 7 — `Sort::TOPOLOGICAL | Sort::TIME` and `^` are the same value
+### Row 7: `<` and `<=` in the walk's time comparison differ only between same-second commits
 
-`git2::Sort::TOPOLOGICAL` is bit 1 and `git2::Sort::TIME` is bit 2. Measured directly against
-git2 0.21. The two flags are disjoint, so `|` and `^` both yield `Sort { bits: 3 }`. No revwalk
-can distinguish them.
+`TimeHeap::below` in `graph.rs` orders the heap `walk_order` drains, and `<` and `<=` give
+different answers only when two commits share a committer second. No input the four suites
+read can hold such a pair: every graph shape pins spaced timestamps by rule
+(`.claude/rules/commit-graph.md`, the timestamp bullet), and the goldens read frozen captures.
+The tie order is pinned outside the sweep, by the differential tests in `graph.rs`'s own test
+module, which compare `walk_order` with libgit2's revwalk over generated histories full of
+same-second commits. Changing `<` to `<=` fails them, measured 2026-11-18.
 
 ### Row 10 — `is_merge`'s `&&` and `||` agree wherever the value is read
 
