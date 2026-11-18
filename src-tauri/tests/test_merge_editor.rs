@@ -356,6 +356,67 @@ fn save_merge_result_writes_and_stages() {
     );
 }
 
+/// A link standing where the conflicted file should be is not the file, so the save
+/// replaces it with the resolution rather than writing through it to the file it
+/// points at.
+#[cfg(unix)]
+#[test]
+fn save_merge_result_replaces_a_link_in_the_working_tree_with_the_resolution() {
+    let ctx = conflicted_file_txt();
+    let outside = tempfile::tempdir().unwrap();
+    let secret = outside.path().join("secret.txt");
+    std::fs::write(&secret, "secret").unwrap();
+    let file = ctx.repo_path().join("file.txt");
+    std::fs::remove_file(&file).unwrap();
+    std::os::unix::fs::symlink(&secret, &file).unwrap();
+
+    ctx.save_merge_result("file.txt", "resolved content")
+        .unwrap();
+
+    assert_eq!(std::fs::read_to_string(&secret).unwrap(), "secret");
+    assert!(!file.is_symlink(), "the link is still there");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "resolved content");
+    let staged = ctx
+        .repo()
+        .index()
+        .unwrap()
+        .get_path(std::path::Path::new("file.txt"), 0)
+        .unwrap();
+    assert_eq!(staged.mode, 0o100_644);
+}
+
+#[cfg(unix)]
+#[test]
+fn save_merge_result_refuses_a_file_inside_a_linked_directory() {
+    let ctx = TestContext::builder()
+        .with_file("dir/file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("dir/file.txt", "feature content")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_file("dir/file.txt", "main content")
+        .with_commit("Main commit")
+        .with_conflict("feature")
+        .build();
+    let outside = tempfile::tempdir().unwrap();
+    std::fs::write(outside.path().join("file.txt"), "secret").unwrap();
+    let dir = ctx.repo_path().join("dir");
+    std::fs::remove_dir_all(&dir).unwrap();
+    std::os::unix::fs::symlink(outside.path(), &dir).unwrap();
+
+    let err = ctx
+        .save_merge_result("dir/file.txt", "resolved content")
+        .unwrap_err();
+
+    assert_eq!(err.code, "write_error");
+    assert_eq!(
+        std::fs::read_to_string(outside.path().join("file.txt")).unwrap(),
+        "secret"
+    );
+}
+
 /// A PNG carries no text sides. Reading it through `String::from_utf8_lossy`
 /// replaces every invalid byte with U+FFFD, and saving that back writes the
 /// replacement characters over the file with both original sides already gone.

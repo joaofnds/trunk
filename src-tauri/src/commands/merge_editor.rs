@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::MergeSides;
 use crate::watcher::RepoChanged;
@@ -193,8 +195,9 @@ fn conflict_marker_size(repo: &git2::Repository, file_path: &str) -> Result<usiz
 ///
 /// Returns `not_open` when `path` names no open repository, `no_workdir` for a
 /// bare repository, `not_conflicted` when the index holds no conflict for
-/// `file_path`, `delete_conflict` when a side deleted it, `write_error` when the
-/// file will not write, and the git error when the index will not stage.
+/// `file_path`, `delete_conflict` when a side deleted it, `link_conflict` when a side
+/// is a link or submodule, `write_error` when the file will not write or sits inside
+/// a linked directory, and the git error when the index will not stage.
 pub fn save_merge_result_inner(
     path: &str,
     file_path: &str,
@@ -212,10 +215,7 @@ pub fn save_merge_result_inner(
         // deleted the file is refused for the reason the read path gives.
         sides_with_text(&conflict_entry(repo, file_path)?, file_path)?;
 
-        // Write merged content to disk
-        let full_path = repo_path.join(file_path);
-        std::fs::write(&full_path, content)
-            .map_err(|e| TrunkError::new("write_error", e.to_string()))?;
+        write_working_file(repo_path, file_path, content)?;
 
         // Stage the file (clears conflict entry from index)
         let mut index = repo.index()?;
@@ -224,6 +224,39 @@ pub fn save_merge_result_inner(
 
         Ok(())
     })
+}
+
+/// Writes the resolution as a regular file at `file_path`, as staging records it. A
+/// link standing at the path is replaced rather than written through, so the write
+/// cannot reach a file outside the repository, and a directory on the way that is a
+/// link is refused for the same reason.
+fn write_working_file(workdir: &Path, file_path: &str, content: &str) -> Result<(), TrunkError> {
+    let write_error =
+        |error: std::io::Error| TrunkError::new("write_error", format!("{file_path}: {error}"));
+    let full_path = workdir.join(file_path);
+    let mut parent = workdir.to_path_buf();
+    for component in Path::new(file_path)
+        .parent()
+        .into_iter()
+        .flat_map(Path::components)
+    {
+        parent.push(component);
+        if std::fs::symlink_metadata(&parent)
+            .map_err(write_error)?
+            .is_symlink()
+        {
+            return Err(TrunkError::new(
+                "write_error",
+                format!(
+                    "{file_path} is inside a symbolic link, so resolve it outside the merge editor."
+                ),
+            ));
+        }
+    }
+    if full_path.is_symlink() {
+        std::fs::remove_file(&full_path).map_err(write_error)?;
+    }
+    std::fs::write(&full_path, content).map_err(write_error)
 }
 
 /// The files among `file_paths` whose working copy still holds conflict markers.
