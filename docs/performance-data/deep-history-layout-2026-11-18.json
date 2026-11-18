@@ -1,0 +1,307 @@
+{
+  "schema": 1,
+  "experiment": "E13 deep-history graph layout, only the observed worktree state before publication",
+  "date": "2026-11-18",
+  "decision": "on a 300,000-commit repository the layout a graph capture waits for fell from 377.7 to 408.4 ms, both worktree states, to 153.0 to 172.5 ms, the observed state only; the other state is laid out after publication in the background (68c7e75d)",
+  "scope": "backend only, timed in-process around trunk_git::graph::capture_remembering and GraphSnapshot construction in a release build; not the app's open or commit-to-usable time, not the frontend, not whether the background layout finishes before the user's next edit; one machine, three alternating runs per build",
+  "comparativeVerdict": "after faster in every reading, ranges disjoint (before min 377.7 ms, after max 172.5 ms)",
+  "globalSettlement": "unknown",
+  "machine": "Apple M5 Pro, 48 GB, macOS, release profile with debug = 1, CARGO_BUILD_JOBS=2 for the build only; load average about 3 during the runs",
+  "builds": {
+    "before": "trunk-git exported with git archive at 68c7e75d^",
+    "after": "trunk-git exported with git archive at 68c7e75d"
+  },
+  "fixture": {
+    "build": "git init <dir>; python3 generator.py 300000 | git -C <dir> fast-import --quiet",
+    "commits": 300000,
+    "refs": [
+      "refs/heads/main",
+      "refs/heads/feature",
+      "refs/heads/topic"
+    ],
+    "shape": "the E11 generator, seeded (7)",
+    "storage": "one pack written by fast-import, no commit-graph file",
+    "reuse": "the probe adds no commits, so one copy served every run"
+  },
+  "procedure": "per run: open the repository, time one capture with a fresh CommitMemo (open.captureMs) and GraphSnapshot::new (open.layoutMs); then seven times: open a fresh handle, time a capture with the memo held (captureMs), GraphSnapshot::new (layoutMs), and with_worktree_dirty of the other state (firstOtherStateMs), which in the after build is the layout the background task takes off the first edit, since the probe never runs it. Runs alternate before, after, three times.",
+  "generator": "import sys, random\nrandom.seed(7)\nn = int(sys.argv[1])\nout = sys.stdout.buffer\nt = 1_600_000_000\nmarks = {}\nmark = 0\nheads = {\"main\": None, \"feature\": None, \"topic\": None}\ndef commit(branch, parents, ts):\n    global mark\n    mark += 1\n    msg = f\"commit {mark} on {branch}\\n\".encode()\n    out.write(f\"commit refs/heads/{branch}\\nmark :{mark}\\n\".encode())\n    out.write(f\"author A <a@x> {ts} +0000\\ncommitter A <a@x> {ts} +0000\\n\".encode())\n    out.write(f\"data {len(msg)}\\n\".encode() + msg)\n    if parents:\n        out.write(f\"from :{parents[0]}\\n\".encode())\n        for p in parents[1:]:\n            out.write(f\"merge :{p}\\n\".encode())\n    out.write(f\"M 644 inline f{mark % 50}.txt\\ndata 2\\n{mark % 10}\\n\".encode())\n    out.write(b\"\\n\")\n    return mark\nfor i in range(n):\n    # same-second runs, like scripted or rebased commits\n    if random.random() < 0.7: t += random.randint(1, 600)\n    r = random.random()\n    if heads[\"main\"] and r < 0.04 and heads[\"feature\"]:\n        m = commit(\"main\", [heads[\"main\"], heads[\"feature\"]], t); heads[\"main\"] = m\n    elif r < 0.25 and heads[\"main\"]:\n        b = \"feature\" if r < 0.15 else \"topic\"\n        base = heads[b] or heads[\"main\"]\n        heads[b] = commit(b, [base], t)\n    else:\n        heads[\"main\"] = commit(\"main\", [heads[\"main\"]] if heads[\"main\"] else [], t)\n",
+  "probe": "// t467 probe: open, rebuild and first flip at depth, through GraphSnapshot as the app uses it.\nuse std::time::Instant;\nuse trunk_git::graph::{CommitMemo, capture_remembering};\nuse trunk_git::graph_input::{GraphSnapshot, RefVisibility};\n\nfn ms(t: Instant) -> f64 { t.elapsed().as_secs_f64() * 1000.0 }\n\nfn main() {\n    let path = std::env::args().nth(1).unwrap();\n    let memo = CommitMemo::default();\n    let mut repo = git2::Repository::open(&path).unwrap();\n    let t = Instant::now();\n    let source = capture_remembering(&mut repo, &memo).unwrap();\n    let cap = ms(t);\n    let t = Instant::now();\n    let snap = GraphSnapshot::new(source, RefVisibility::default());\n    let layout = ms(t);\n    drop(snap);\n    println!(\"open: capture {cap:.1} ms, layout {layout:.1} ms\");\n    for round in 0..7 {\n        let mut repo = git2::Repository::open(&path).unwrap();\n        let t = Instant::now();\n        let source = capture_remembering(&mut repo, &memo).unwrap();\n        let cap = ms(t);\n        let t = Instant::now();\n        let snap = GraphSnapshot::new(source, RefVisibility::default());\n        let layout = ms(t);\n        let t = Instant::now();\n        let flipped = snap.with_worktree_dirty(!snap.worktree_dirty());\n        let flip = ms(t);\n        drop(flipped);\n        println!(\"rebuild {round}: capture {cap:.1} ms, layout {layout:.1} ms, first flip {flip:.1} ms\");\n    }\n}\n",
+  "runs": [
+    {
+      "build": "before",
+      "run": 1,
+      "open": {
+        "captureMs": 1090.7,
+        "layoutMs": 405.8
+      },
+      "rebuilds": [
+        {
+          "captureMs": 102.9,
+          "layoutMs": 397.9,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 101.0,
+          "layoutMs": 396.1,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 101.6,
+          "layoutMs": 383.3,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 98.1,
+          "layoutMs": 390.0,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 103.6,
+          "layoutMs": 381.9,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 99.3,
+          "layoutMs": 399.5,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 100.7,
+          "layoutMs": 378.5,
+          "firstOtherStateMs": 0.0
+        }
+      ]
+    },
+    {
+      "build": "after",
+      "run": 1,
+      "open": {
+        "captureMs": 1094.6,
+        "layoutMs": 164.0
+      },
+      "rebuilds": [
+        {
+          "captureMs": 103.6,
+          "layoutMs": 155.9,
+          "firstOtherStateMs": 151.6
+        },
+        {
+          "captureMs": 100.9,
+          "layoutMs": 157.3,
+          "firstOtherStateMs": 149.2
+        },
+        {
+          "captureMs": 100.9,
+          "layoutMs": 167.8,
+          "firstOtherStateMs": 148.3
+        },
+        {
+          "captureMs": 100.3,
+          "layoutMs": 154.7,
+          "firstOtherStateMs": 145.1
+        },
+        {
+          "captureMs": 100.2,
+          "layoutMs": 156.0,
+          "firstOtherStateMs": 157.8
+        },
+        {
+          "captureMs": 98.1,
+          "layoutMs": 154.3,
+          "firstOtherStateMs": 145.6
+        },
+        {
+          "captureMs": 101.2,
+          "layoutMs": 157.6,
+          "firstOtherStateMs": 147.1
+        }
+      ]
+    },
+    {
+      "build": "before",
+      "run": 2,
+      "open": {
+        "captureMs": 1091.7,
+        "layoutMs": 398.1
+      },
+      "rebuilds": [
+        {
+          "captureMs": 101.6,
+          "layoutMs": 396.7,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 98.3,
+          "layoutMs": 377.7,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 97.9,
+          "layoutMs": 398.8,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 96.2,
+          "layoutMs": 380.1,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 98.0,
+          "layoutMs": 381.3,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 98.4,
+          "layoutMs": 377.7,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 97.7,
+          "layoutMs": 386.8,
+          "firstOtherStateMs": 0.0
+        }
+      ]
+    },
+    {
+      "build": "after",
+      "run": 2,
+      "open": {
+        "captureMs": 1097.0,
+        "layoutMs": 162.4
+      },
+      "rebuilds": [
+        {
+          "captureMs": 100.4,
+          "layoutMs": 153.0,
+          "firstOtherStateMs": 150.5
+        },
+        {
+          "captureMs": 100.1,
+          "layoutMs": 156.8,
+          "firstOtherStateMs": 152.1
+        },
+        {
+          "captureMs": 100.2,
+          "layoutMs": 163.0,
+          "firstOtherStateMs": 149.7
+        },
+        {
+          "captureMs": 101.2,
+          "layoutMs": 157.9,
+          "firstOtherStateMs": 148.1
+        },
+        {
+          "captureMs": 101.0,
+          "layoutMs": 153.5,
+          "firstOtherStateMs": 143.6
+        },
+        {
+          "captureMs": 99.7,
+          "layoutMs": 156.1,
+          "firstOtherStateMs": 160.8
+        },
+        {
+          "captureMs": 101.8,
+          "layoutMs": 172.5,
+          "firstOtherStateMs": 146.1
+        }
+      ]
+    },
+    {
+      "build": "before",
+      "run": 3,
+      "open": {
+        "captureMs": 1091.8,
+        "layoutMs": 408.4
+      },
+      "rebuilds": [
+        {
+          "captureMs": 100.9,
+          "layoutMs": 390.2,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 100.3,
+          "layoutMs": 397.6,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 98.0,
+          "layoutMs": 392.8,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 97.1,
+          "layoutMs": 389.5,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 98.4,
+          "layoutMs": 391.6,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 100.0,
+          "layoutMs": 391.8,
+          "firstOtherStateMs": 0.0
+        },
+        {
+          "captureMs": 102.4,
+          "layoutMs": 383.7,
+          "firstOtherStateMs": 0.0
+        }
+      ]
+    },
+    {
+      "build": "after",
+      "run": 3,
+      "open": {
+        "captureMs": 1095.6,
+        "layoutMs": 166.0
+      },
+      "rebuilds": [
+        {
+          "captureMs": 99.9,
+          "layoutMs": 166.0,
+          "firstOtherStateMs": 155.9
+        },
+        {
+          "captureMs": 100.9,
+          "layoutMs": 155.9,
+          "firstOtherStateMs": 144.9
+        },
+        {
+          "captureMs": 104.1,
+          "layoutMs": 156.4,
+          "firstOtherStateMs": 143.7
+        },
+        {
+          "captureMs": 102.2,
+          "layoutMs": 157.5,
+          "firstOtherStateMs": 145.2
+        },
+        {
+          "captureMs": 99.8,
+          "layoutMs": 159.8,
+          "firstOtherStateMs": 144.1
+        },
+        {
+          "captureMs": 99.5,
+          "layoutMs": 159.8,
+          "firstOtherStateMs": 140.1
+        },
+        {
+          "captureMs": 96.8,
+          "layoutMs": 155.7,
+          "firstOtherStateMs": 150.7
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "the probe never starts the background layout, so firstOtherStateMs is the cost of the first edit when the background task has not run; whether it finishes before a real first edit was not timed in the app",
+    "the commit message of 68c7e75d quotes 506 to 541 ms before and 172 to 235 ms after from earlier single, unalternated probe runs; these alternating runs are the record",
+    "cold capture, about 1.09 s here, is unchanged; git rev-list --topo-order --all took 0.95 to 1.1 s on the same fixture in an earlier reading",
+    "one generated history shape; real repositories of this depth were not measured"
+  ]
+}

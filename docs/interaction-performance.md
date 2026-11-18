@@ -1434,6 +1434,44 @@ holds a refresh during a real terminal rebase. The
 [committed E12 record](performance-data/outside-edit-2026-11-18.json) holds the probe and
 every timing.
 
+### E13: deep-history graph layout, only the worktree state the user sees
+
+Flows I01, I12 to I14 and I18. Every graph capture laid out the whole history twice,
+once for a clean and once for a dirty worktree, before the graph could show, although
+only the observed state's plan is drawn. On a deep history that layout outweighed the
+capture itself, and it sat between opening a repository, or committing, checking out or
+changing a ref, and the graph showing the result. A snapshot now lays out only the
+observed state before it is published, and the rebuild lays out the other state in the
+background afterwards, so the first edit after a commit usually finds it ready
+(`68c7e75d`, sweep rows in `9d8b049b`). The hypothesis was that the layout a capture
+waits for would fall to at most 60% of the old one. A reading above that in any run
+would have refuted it.
+
+The fixture is E11's generator run for 300,000 commits, in one pack with no
+commit-graph file. Each build ran three times, alternating with the other: one capture
+and layout with an empty memo, then seven recaptures with the memo held, each followed
+by the snapshot's layout and by asking for the other worktree state. The probe called
+the backend directly in a release build on an Apple M5 Pro with 48 GB, so the numbers
+exclude status, the watcher and the frontend, and the probe never starts the
+background layout.
+
+| Build | Capture, memo held (ms) | Layout a capture waits for (ms) | First use of the other worktree state (ms) |
+|---|---|---|---|
+| Before (`68c7e75d^`) | 96.2 to 103.6 | 377.7 to 408.4 | 0.0, laid out up front |
+| After (`68c7e75d`) | 96.8 to 104.1 | 153.0 to 172.5 | 140.1 to 160.8 when the background layout has not run |
+
+The ranges do not overlap, so the hypothesis stands: the wait fell to about 40% of the
+old one, so a rebuild there costs about 260 ms instead of about 490, and the first
+capture of a session about 1.26 s instead of about 1.5. That first capture, about
+1.09 s, is unchanged and is now the open cost at this depth; `git rev-list
+--topo-order --all` took 0.95 to 1.1 s on the same fixture, so the walk is near Git's
+own floor without a commit-graph file. Not measured: whether the background layout
+finishes before a real first edit, and real repositories of this depth. Lane
+assignment's remaining cost is mostly hashing and allocation in its maps keyed by
+commit id; a faster hasher alone measured 12 to 18% of a layout and was not taken. The
+[committed E13 record](performance-data/deep-history-layout-2026-11-18.json) holds the
+probe and every timing.
+
 ### Selection presentation and background limits
 
 Three five-second ScreenCaptureKit attempts used a requested 60 Hz virtual display.
@@ -1466,7 +1504,7 @@ Frequency remains an assumption; no usage telemetry was collected.
 | 3 | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. Settle how often users open large highlighted files in full mode first. The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
 | Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
 | 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Overlapping in-app actions take turns at a per-repository write gate (E09), so none reports a lock failure or drops another's write. Saves, local fetch and watcher refreshes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
-| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. E11 measured the graph rebuild after a commit at 30,000 commits falling from about 95 to 7.4 ms in the backend capture; the first capture, about 112 to 136 ms, is unchanged and is the open cost there. Review size and conflict-region count remain unbenchmarked, and history depth beyond the graph rebuild too; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh, which E12 cut from about 515 to 27 to 37 ms for an outside edit; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. |
+| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. E11 measured the graph rebuild after a commit at 30,000 commits falling from about 95 to 7.4 ms in the backend capture. E13 measured the layout a capture waits for at 300,000 commits falling from about 390 to about 160 ms; the first capture, about 1.09 s there and 112 to 136 ms at 30,000, is unchanged and is the open cost. Review size and conflict-region count remain unbenchmarked, and history depth beyond the graph rebuild too; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh, which E12 cut from about 515 to 27 to 37 ms for an outside edit; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. |
 
 The evidence supports retaining current warm diff reuse, mounted-tab reuse,
 coalesced refresh, and the search debounce. It does not support another cache or
