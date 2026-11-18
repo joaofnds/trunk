@@ -112,16 +112,16 @@ function openMenu(e: MouseEvent) {
 	>
 
 	<!-- Filename, or both paths when the file was renamed -->
-	<span class="flex-1 min-w-0 flex items-baseline gap-1 text-callout">
+	<span class="flex-1 overflow-hidden flex items-baseline gap-1 text-callout">
 		{#if rename !== null}
-			<!-- The old path yields space first: it shrinks and ellipsizes while the
-           new path, which is where the file is now, keeps its width. -->
+			<!-- The old path yields space first: it takes only the width the new
+           path leaves, down to its floor, and the new path ellipsizes after. -->
 			<span
-				class="shrink path-min overflow-hidden text-ellipsis whitespace-nowrap text-text-muted"
+				class="flex-1 max-w-max path-min overflow-hidden text-ellipsis whitespace-nowrap text-text-muted"
 				>{rename.from}</span
 			>
 			<span aria-hidden="true" class="shrink-0 text-text-muted">→</span>
-			<span class="shrink-0 overflow-hidden text-ellipsis whitespace-nowrap"
+			<span class="overflow-hidden text-ellipsis whitespace-nowrap"
 				>{rename.to}</span
 			>
 		{:else}
