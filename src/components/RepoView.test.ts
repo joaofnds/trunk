@@ -2173,7 +2173,7 @@ describe("RepoView", () => {
 			it("clears the selection and keeps the diff open", async () => {
 				await openReadmeWithALineSelected();
 
-				await fireEvent.keyDown(window, { key: "Escape" });
+				await fireEvent.keyDown(document.body, { key: "Escape" });
 
 				await vi.waitFor(() =>
 					expect(
@@ -2185,9 +2185,9 @@ describe("RepoView", () => {
 
 			it("closes the diff on the next Escape", async () => {
 				await openReadmeWithALineSelected();
-				await fireEvent.keyDown(window, { key: "Escape" });
+				await fireEvent.keyDown(document.body, { key: "Escape" });
 
-				await fireEvent.keyDown(window, { key: "Escape" });
+				await fireEvent.keyDown(document.body, { key: "Escape" });
 
 				await vi.waitFor(() =>
 					expect(screen.queryByText("UNSTAGED CONTENT")).toBeNull(),

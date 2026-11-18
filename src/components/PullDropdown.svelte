@@ -2,6 +2,7 @@
 import ArrowDown from "@lucide/svelte/icons/arrow-down";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import { autofetchSummary } from "../lib/autofetch-status.js";
+import { focusInEditable } from "../lib/keyboard.js";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import Button from "../lib/ui/Button.svelte";
@@ -76,10 +77,32 @@ function handleWindowClick(e: MouseEvent) {
 	}
 }
 
+let menu: HTMLElement | undefined = $state();
+let optionsButton: HTMLButtonElement | undefined;
+
+// Claimed on the window before anything below it, so the view behind the menu
+// neither clears its diff's selected lines nor closes the diff.
+function closeOnEscape(e: KeyboardEvent) {
+	if (e.key !== "Escape") return;
+	if (focusInEditable(document.activeElement)) return;
+
+	e.preventDefault();
+	e.stopPropagation();
+	const focusInMenu = menu?.contains(document.activeElement) ?? false;
+	open = false;
+	// Focus on an option would fall to the page as the menu goes, so it returns to
+	// the button that opened the menu. Focus anywhere else stays where it is.
+	if (focusInMenu) optionsButton?.focus();
+}
+
 $effect(() => {
 	if (open) {
 		window.addEventListener("click", handleWindowClick, true);
-		return () => window.removeEventListener("click", handleWindowClick, true);
+		window.addEventListener("keydown", closeOnEscape, true);
+		return () => {
+			window.removeEventListener("click", handleWindowClick, true);
+			window.removeEventListener("keydown", closeOnEscape, true);
+		};
 	}
 });
 </script>
@@ -131,6 +154,9 @@ $effect(() => {
 			aria-label="Pull options"
 			aria-expanded={open}
 			tooltip="Pull options"
+			{@attach (el: HTMLButtonElement) => {
+				optionsButton = el;
+			}}
 		>
 			<ChevronDown size={12} />
 		</Button>
@@ -140,7 +166,12 @@ $effect(() => {
 	{/if}
 
 	{#if open}
-		<div class="dropdown-panel" role="menu" aria-label="Pull options">
+		<div
+			class="dropdown-panel"
+			role="menu"
+			aria-label="Pull options"
+			bind:this={menu}
+		>
 			{#each options as opt}
 				<ListOption role="menuitem" onclick={() => handleOptionClick(opt)}>
 					{opt.label}

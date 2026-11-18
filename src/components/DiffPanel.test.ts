@@ -25,6 +25,7 @@ import {
 	trailingWhitespaceStart,
 } from "../lib/diff-utils.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { createReviewEditorStore } from "../lib/review-editors.svelte.js";
 import type {
 	CommitDetail,
@@ -37,6 +38,7 @@ import type {
 // Shared Tauri mock
 import "../__tests__/helpers/tauri-mock";
 import { commentingDiff } from "../__tests__/helpers/review-props.js";
+import PullDropdown from "./PullDropdown.svelte";
 
 // Both inline views render through a virtual list, which mounts no rows at all
 // against jsdom's zero-height viewport. The box is wide enough for the widest
@@ -2936,7 +2938,9 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		await flushPrefs();
 		await selectLines("const x = 2;", "const y = 3;");
 
-		const handled = !(await fireEvent.keyDown(window, { key: "Escape" }));
+		const handled = !(await fireEvent.keyDown(document.body, {
+			key: "Escape",
+		}));
 
 		expect(handled).toBe(true);
 		expect(
@@ -2944,12 +2948,34 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		).toBeNull();
 	});
 
+	it("leaves the selection alone on an Escape that closes a menu opened after it", async () => {
+		renderPanel();
+		await flushPrefs();
+		await selectLines("const x = 2;", "const y = 3;");
+		render(PullDropdown, {
+			props: {
+				repoPath: "/repo",
+				disabled: false,
+				remoteState: createRemoteState(),
+				onpull: vi.fn(),
+			},
+		});
+		await fireEvent.click(screen.getByRole("button", { name: "Pull options" }));
+
+		await fireEvent.keyDown(document.body, { key: "Escape" });
+
+		expect(screen.queryByRole("menu")).toBeNull();
+		expect(selectionComment()).toBeTruthy();
+	});
+
 	it("leaves the selection alone on Escape while its tab is hidden", async () => {
 		renderPanel({ keysActive: false });
 		await flushPrefs();
 		await selectLines("const x = 2;", "const y = 3;");
 
-		const handled = !(await fireEvent.keyDown(window, { key: "Escape" }));
+		const handled = !(await fireEvent.keyDown(document.body, {
+			key: "Escape",
+		}));
 
 		expect(handled).toBe(false);
 		expect(selectionComment()).toBeTruthy();

@@ -783,9 +783,10 @@ function toggleFileCollapsed(path: string) {
 }
 
 $effect(() => {
-	// Escape with lines selected clears them and leaves the diff open. It runs in
-	// the capture phase so it lands before the view's own Escape, which closes
-	// the diff unless the event arrives already handled.
+	// Escape with lines selected clears them and leaves the diff open. Listening
+	// on the document puts it after a menu that claims Escape on the window
+	// first and before the view's own Escape on the window, which closes the
+	// diff unless the event arrives already handled.
 	function clearSelectionOnEscape(e: KeyboardEvent) {
 		if (!keysActive || selectedCount === 0) return;
 		if (keyChord(e) !== "Escape") return;
@@ -814,13 +815,11 @@ $effect(() => {
 			stepHunk(-1);
 		}
 	}
-	window.addEventListener("keydown", clearSelectionOnEscape, { capture: true });
+	document.addEventListener("keydown", clearSelectionOnEscape);
 	window.addEventListener("keydown", handleKeydown);
 	window.addEventListener("mouseup", stopDrag);
 	return () => {
-		window.removeEventListener("keydown", clearSelectionOnEscape, {
-			capture: true,
-		});
+		document.removeEventListener("keydown", clearSelectionOnEscape);
 		window.removeEventListener("keydown", handleKeydown);
 		window.removeEventListener("mouseup", stopDrag);
 		stopDrag();
