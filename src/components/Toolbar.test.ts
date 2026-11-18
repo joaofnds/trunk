@@ -2,7 +2,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { message } from "@tauri-apps/plugin-dialog";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { CHECKOUT_CONFLICT_MESSAGE } from "../lib/checkout.js";
 import { safeInvoke } from "../lib/invoke.js";
@@ -932,42 +932,84 @@ describe("Toolbar undo and redo shortcuts", () => {
 
 	/** A branch's linear history, oldest first, with HEAD on one commit. It answers
 	 *  the toolbar's undo and redo commands as the backend does, refusals included,
-	 *  and sends no repository-change event, so the toolbar learns where HEAD went
-	 *  only from its own reads. */
+	 *  and like the backend it announces a finished undo or redo as a completed
+	 *  repository change before replying. `hold()` keeps the next undo or redo
+	 *  running until the returned release is called. */
 	function linearHistory(...commits: string[]) {
+		const repoChanged: ((event: { payload: unknown }) => void)[] = [];
+		let held: Promise<void> | null = null;
 		const history = {
 			head: commits.length - 1,
 			refused: [] as string[],
 			get tip() {
 				return commits[history.head];
 			},
+			hold() {
+				let release!: () => void;
+				held = new Promise<void>((done) => {
+					release = done;
+				});
+				return release;
+			},
 		};
+
+		function announce() {
+			const payload = {
+				repo: "/test/repo",
+				paths: [],
+				command_completed: true,
+			};
+			for (const callback of repoChanged) callback({ payload });
+		}
+
+		async function undoCommit() {
+			if (history.head === 0) {
+				history.refused.push("undo of a root commit");
+				throw new Error("Cannot undo the root commit");
+			}
+			const undone = history.tip;
+			history.head -= 1;
+			announce();
+			return { head_oid: history.tip, undone_oid: undone };
+		}
+
+		async function redoCommit(undoneOid: string, expectedHeadOid: string) {
+			if (expectedHeadOid !== history.tip) {
+				history.refused.push(`redo from ${history.tip}`);
+				throw new Error("HEAD moved");
+			}
+			history.head = commits.indexOf(undoneOid);
+			announce();
+			return null;
+		}
+
+		async function afterHold<T>(step: () => Promise<T>) {
+			const wait = held;
+			held = null;
+			if (wait) await wait;
+			return step();
+		}
+
+		vi.mocked(listen).mockImplementation(async (name, callback) => {
+			if (name === "repo-changed") {
+				repoChanged.push(callback as (event: { payload: unknown }) => void);
+			}
+			return () => {};
+		});
 		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
 			switch (cmd) {
 				case "check_undo_available":
 					return Promise.resolve(history.head > 0);
 				case "head_oid":
 					return Promise.resolve(history.tip);
-				case "undo_commit": {
-					if (history.head === 0) {
-						history.refused.push("undo of a root commit");
-						return Promise.reject(new Error("Cannot undo the root commit"));
-					}
-					const undone = history.tip;
-					history.head -= 1;
-					return Promise.resolve({ head_oid: history.tip, undone_oid: undone });
-				}
+				case "undo_commit":
+					return afterHold(undoCommit);
 				case "redo_commit": {
 					const { undoneOid, expectedHeadOid } = args as {
 						undoneOid: string;
 						expectedHeadOid: string;
 					};
-					if (expectedHeadOid !== history.tip) {
-						history.refused.push(`redo from ${history.tip}`);
-						return Promise.reject(new Error("HEAD moved"));
-					}
-					history.head = commits.indexOf(undoneOid);
-					return Promise.resolve(null);
+					return afterHold(() => redoCommit(undoneOid, expectedHeadOid));
 				}
 				default:
 					return Promise.resolve(null);
@@ -976,86 +1018,64 @@ describe("Toolbar undo and redo shortcuts", () => {
 		return history;
 	}
 
-	function renderToolbar() {
-		render(Toolbar, {
+	function renderToolbar(undoRedo = createUndoRedoState()) {
+		const view = render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: createUndoRedoState(),
+				undoRedo,
 				reviewActive: false,
 			},
 		});
 		return {
+			container: view.container,
 			undo: screen.getByRole("button", { name: "Undo" }),
 			redo: screen.getByRole("button", { name: "Redo" }),
 		};
 	}
 
-	function press(target: Element, key: string, shiftKey = false) {
-		return fireEvent.keyDown(target, { key, metaKey: true, shiftKey });
+	function press(
+		target: Element,
+		chord: { key: string; shiftKey?: boolean; repeat?: boolean },
+		modifier: "metaKey" | "ctrlKey" = "metaKey",
+	) {
+		return fireEvent.keyDown(target, { ...chord, [modifier]: true });
 	}
+
+	const cmdZ = { key: "z" };
+	const cmdShiftZ = { key: "Z", shiftKey: true };
 
 	it("undoes the last commit on Cmd+Z", async () => {
 		const history = linearHistory("root", "parent", "tip");
 		const { undo } = renderToolbar();
 		await waitFor(() => expect(undo).toBeEnabled());
 
-		await press(document.body, "z");
+		const notCancelled = await press(document.body, cmdZ);
 
+		expect(notCancelled).toBe(false);
 		await waitFor(() => expect(history.tip).toBe("parent"));
-	});
-
-	it("leaves Cmd+Z to the text field that has focus", async () => {
-		const history = linearHistory("root", "parent", "tip");
-		const { undo } = renderToolbar();
-		await waitFor(() => expect(undo).toBeEnabled());
-		const field = document.body.appendChild(document.createElement("input"));
-		field.focus();
-
-		const notCancelled = await press(field, "z");
-
-		expect(notCancelled).toBe(true);
-		expect(history.tip).toBe("tip");
-		field.remove();
-	});
-
-	it("leaves Cmd+Z alone while a dialog is open", async () => {
-		const history = linearHistory("root", "parent", "tip");
-		const { undo } = renderToolbar();
-		await waitFor(() => expect(undo).toBeEnabled());
-		const dialog = document.body.appendChild(document.createElement("dialog"));
-		dialog.setAttribute("open", "");
-
-		await press(document.body, "z");
-
-		expect(history.tip).toBe("tip");
-		dialog.remove();
-	});
-
-	it("does nothing on Cmd+Z when there is no commit to undo", async () => {
-		const history = linearHistory("root");
-		renderToolbar();
-		await waitFor(() =>
-			expect(mockInvoke).toHaveBeenCalledWith("check_undo_available", {
-				path: "/test/repo",
-			}),
-		);
-
-		await press(document.body, "z");
-
-		expect(history.refused).toEqual([]);
 	});
 
 	it("redoes the undone commit on Cmd+Shift+Z", async () => {
 		const history = linearHistory("root", "parent", "tip");
 		const { undo, redo } = renderToolbar();
 		await waitFor(() => expect(undo).toBeEnabled());
-		await press(document.body, "z");
+		await press(document.body, cmdZ);
 		await waitFor(() => expect(redo).toBeEnabled());
 
-		await press(document.body, "Z", true);
+		await press(document.body, cmdShiftZ);
 
 		await waitFor(() => expect(history.tip).toBe("tip"));
+	});
+
+	it("undoes on Ctrl+Z outside macOS", async () => {
+		const history = linearHistory("root", "parent", "tip");
+		const { undo } = renderToolbar();
+		await waitFor(() => expect(undo).toBeEnabled());
+
+		await press(document.body, cmdZ, "ctrlKey");
+
+		await waitFor(() => expect(history.tip).toBe("parent"));
 	});
 
 	it("stops offering Undo once it reaches the root commit", async () => {
@@ -1063,7 +1083,7 @@ describe("Toolbar undo and redo shortcuts", () => {
 		const { undo } = renderToolbar();
 		await waitFor(() => expect(undo).toBeEnabled());
 
-		await press(document.body, "z");
+		await press(document.body, cmdZ);
 
 		await waitFor(() => expect(undo).toBeDisabled());
 	});
@@ -1072,19 +1092,170 @@ describe("Toolbar undo and redo shortcuts", () => {
 		const history = linearHistory("root", "one", "two", "three");
 		const { undo, redo } = renderToolbar();
 		await waitFor(() => expect(undo).toBeEnabled());
-		await press(document.body, "z");
+		await press(document.body, cmdZ);
 		await waitFor(() => expect(history.tip).toBe("two"));
-		await press(document.body, "z");
+		await press(document.body, cmdZ);
 		await waitFor(() => expect(history.tip).toBe("one"));
 		await waitFor(() => expect(redo).toBeEnabled());
-		await press(document.body, "Z", true);
+		await press(document.body, cmdShiftZ);
 		await waitFor(() => expect(history.tip).toBe("two"));
 
 		await waitFor(() => expect(redo).toBeEnabled());
-		await press(document.body, "Z", true);
+		await press(document.body, cmdShiftZ);
 
 		await waitFor(() => expect(history.tip).toBe("three"));
 		expect(history.refused).toEqual([]);
+	});
+
+	describe("when on macOS", () => {
+		beforeEach(() => {
+			const platform = vi
+				.spyOn(navigator, "platform", "get")
+				.mockReturnValue("MacIntel");
+			onTestFinished(() => platform.mockRestore());
+		});
+
+		it("undoes the last commit on Cmd+Z", async () => {
+			const history = linearHistory("root", "parent", "tip");
+			const { undo } = renderToolbar();
+			await waitFor(() => expect(undo).toBeEnabled());
+
+			await press(document.body, cmdZ);
+
+			await waitFor(() => expect(history.tip).toBe("parent"));
+		});
+
+		it("leaves Ctrl+Z alone", async () => {
+			const history = linearHistory("root", "parent", "tip");
+			const { undo } = renderToolbar();
+			await waitFor(() => expect(undo).toBeEnabled());
+
+			const notCancelled = await press(document.body, cmdZ, "ctrlKey");
+
+			expect(notCancelled).toBe(true);
+			expect(history.tip).toBe("tip");
+		});
+	});
+
+	describe("when the keys belong to something else", () => {
+		it("leaves Cmd+Z to the text field that has focus", async () => {
+			const history = linearHistory("root", "parent", "tip");
+			const { undo } = renderToolbar();
+			await waitFor(() => expect(undo).toBeEnabled());
+			const field = document.body.appendChild(document.createElement("input"));
+			onTestFinished(() => field.remove());
+			field.focus();
+
+			const notCancelled = await press(field, cmdZ);
+
+			expect(notCancelled).toBe(true);
+			expect(history.tip).toBe("tip");
+		});
+
+		it("leaves Cmd+Z alone while a dialog is open", async () => {
+			const history = linearHistory("root", "parent", "tip");
+			const { undo } = renderToolbar();
+			await waitFor(() => expect(undo).toBeEnabled());
+			const dialog = document.body.appendChild(
+				document.createElement("dialog"),
+			);
+			onTestFinished(() => dialog.remove());
+			dialog.setAttribute("open", "");
+
+			const notCancelled = await press(document.body, cmdZ);
+
+			expect(notCancelled).toBe(true);
+			expect(history.tip).toBe("tip");
+		});
+
+		it("leaves Cmd+Z alone while the toolbar is inert", async () => {
+			const history = linearHistory("root", "parent", "tip");
+			const { container, undo } = renderToolbar();
+			await waitFor(() => expect(undo).toBeEnabled());
+			container.setAttribute("inert", "");
+
+			const notCancelled = await press(document.body, cmdZ);
+
+			expect(notCancelled).toBe(true);
+			expect(history.tip).toBe("tip");
+		});
+	});
+
+	describe("when the history cannot take the step", () => {
+		it("does nothing on Cmd+Z at the root commit", async () => {
+			const history = linearHistory("root");
+			renderToolbar();
+
+			await press(document.body, cmdZ);
+
+			expect(history.refused).toEqual([]);
+		});
+
+		it("does nothing on Cmd+Shift+Z when the redo belongs elsewhere", async () => {
+			const history = linearHistory("root", "parent");
+			const undoRedo = createUndoRedoState();
+			undoRedo.push({
+				undoneOid: "tip",
+				headOid: "other",
+				repoPath: "/test/repo",
+			});
+			const { undo } = renderToolbar(undoRedo);
+			await waitFor(() => expect(undo).toBeEnabled());
+
+			await press(document.body, cmdShiftZ);
+
+			expect(history.refused).toEqual([]);
+		});
+
+		it("takes one step for a held Cmd+Z", async () => {
+			const history = linearHistory("root", "one", "two");
+			const { undo } = renderToolbar();
+			await waitFor(() => expect(undo).toBeEnabled());
+			await press(document.body, cmdZ);
+			await waitFor(() => expect(history.tip).toBe("one"));
+			await waitFor(() => expect(undo).toBeEnabled());
+
+			const notCancelled = await press(document.body, {
+				...cmdZ,
+				repeat: true,
+			});
+
+			expect(notCancelled).toBe(false);
+			expect(history.tip).toBe("one");
+		});
+
+		it("ignores Cmd+Shift+Z while an undo is still running", async () => {
+			const history = linearHistory("root", "one", "two");
+			const { undo, redo } = renderToolbar();
+			await waitFor(() => expect(undo).toBeEnabled());
+			await press(document.body, cmdZ);
+			await waitFor(() => expect(redo).toBeEnabled());
+			const release = history.hold();
+			await press(document.body, cmdZ);
+
+			await press(document.body, cmdShiftZ);
+			release();
+
+			await waitFor(() => expect(history.tip).toBe("root"));
+			await waitFor(() => expect(redo).toBeEnabled());
+			expect(history.refused).toEqual([]);
+		});
+
+		it("ignores Cmd+Z while a redo is still running", async () => {
+			const history = linearHistory("root", "one", "two");
+			const { undo, redo } = renderToolbar();
+			await waitFor(() => expect(undo).toBeEnabled());
+			await press(document.body, cmdZ);
+			await waitFor(() => expect(redo).toBeEnabled());
+			const release = history.hold();
+			await press(document.body, cmdShiftZ);
+
+			await press(document.body, cmdZ);
+			release();
+
+			await waitFor(() => expect(history.tip).toBe("two"));
+			expect(history.refused).toEqual([]);
+		});
 	});
 });
 

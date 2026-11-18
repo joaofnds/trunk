@@ -14,13 +14,10 @@ import {
 	checkedOutMessage,
 	isCheckoutConflict,
 } from "../lib/checkout.js";
-import {
-	type CoalescedTask,
-	createCoalescedTask,
-} from "../lib/coalesced-task.js";
+import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { reportErrorDialog, reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
-import { focusInEditable, keyChord } from "../lib/keyboard.js";
+import { focusInEditable, keyChord, onMac } from "../lib/keyboard.js";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
@@ -113,10 +110,12 @@ let canUndo = $state(false);
 // position it belongs on, and offering it anywhere else would move the branch
 // off history the user made since.
 let headOid = $state<string | null>(null);
-// A second press while the first undo runs would undo a second commit, and a
-// second Pop would pop the next stash, neither of which the user asked for. Each
+// An undo or redo moves HEAD, and the next one is decided against where it
+// lands. A second Undo pressed meanwhile would undo a second commit, and a Redo
+// would meet the old position, be refused, and bury the commit just undone. A
+// second Pop would pop the next stash. Neither is what the user asked for. Each
 // repository is held on its own, since the toolbar follows the active tab.
-const undoingIn = new SvelteSet<string>();
+const movingHeadIn = new SvelteSet<string>();
 const poppingIn = new SvelteSet<string>();
 
 let pendingRedo = $derived(
@@ -128,6 +127,8 @@ let canRedo = $derived(
 		pendingRedo.headOid === headOid &&
 		pendingRedo.repoPath === repoPath,
 );
+let undoAllowed = $derived(canUndo && !movingHeadIn.has(repoPath));
+let redoAllowed = $derived(canRedo && !movingHeadIn.has(repoPath));
 
 async function readUndoState(path: string) {
 	let nextCanUndo = false;
@@ -143,11 +144,6 @@ async function readUndoState(path: string) {
 	return { canUndo: nextCanUndo, headOid: nextHeadOid };
 }
 
-// The reader for the open repository. The toolbar's own undo and redo run it as
-// soon as they land, because the watcher reports them only after its debounce,
-// and a second press in that time would meet the position HEAD left.
-let undoState: CoalescedTask | null = null;
-
 // Check undo availability on mount and repo changes
 $effect(() => {
 	const path = repoPath;
@@ -158,14 +154,12 @@ $effect(() => {
 		canUndo = next.canUndo;
 		headOid = next.headOid;
 	});
-	undoState = refresh;
 	void refresh.run();
 
 	const unsubscribe = subscribeToRepoChanges(path, refresh);
 
 	return () => {
 		active = false;
-		undoState = null;
 		refresh.dispose();
 		unsubscribe();
 	};
@@ -173,9 +167,9 @@ $effect(() => {
 
 async function handleUndo() {
 	const path = repoPath;
-	if (!canUndo || undoingIn.has(path)) return;
+	if (!undoAllowed) return;
 
-	undoingIn.add(path);
+	movingHeadIn.add(path);
 	try {
 		const result = await safeInvoke<{
 			head_oid: string;
@@ -186,24 +180,21 @@ async function handleUndo() {
 			headOid: result.head_oid,
 			repoPath: path,
 		});
-		if (path === repoPath) {
-			headOid = result.head_oid;
-			void undoState?.run();
-		}
+		if (path === repoPath) headOid = result.head_oid;
 	} catch (e) {
 		reportErrorToast(e, "Undo failed");
 	} finally {
-		undoingIn.delete(path);
+		movingHeadIn.delete(path);
 	}
 }
 
 async function handleRedo() {
-	// The button is gated on the same condition, so this only catches HEAD moving
-	// between the render and the click.
-	if (!canRedo) return;
 	const path = repoPath;
+	if (!redoAllowed) return;
 	const entry = undoRedo.pop();
 	if (!entry) return;
+
+	movingHeadIn.add(path);
 	try {
 		await safeInvoke("redo_commit", {
 			path,
@@ -211,27 +202,43 @@ async function handleRedo() {
 			expectedHeadOid: entry.headOid,
 			expectedRepoPath: entry.repoPath,
 		});
-		if (path === repoPath) void undoState?.run();
 	} catch (e) {
 		// A commit the repository no longer has can never be restored, so the
 		// entry goes rather than leaving Redo on offer to fail the same way.
 		if (!(isTrunkError(e) && e.code === "redo_missing")) undoRedo.push(entry);
 		await reportErrorDialog(e, "Redo Error", "Redo failed");
+	} finally {
+		movingHeadIn.delete(path);
 	}
 }
 
-// A focused field undoes its own typing, and an open dialog is still asking the
-// user something, so in either the keys are theirs and not the repository's.
+// Cmd is the shortcut key on macOS, where Ctrl+Z belongs to nothing, and Ctrl
+// or the system key elsewhere.
+function historyStep(chord: string): "undo" | "redo" | null {
+	const modifiers = onMac() ? ["Meta"] : ["Ctrl", "Meta"];
+	for (const modifier of modifiers) {
+		if (chord === `${modifier}+z`) return "undo";
+		if (chord === `${modifier}+Shift+z`) return "redo";
+	}
+	return null;
+}
+
+let toolbar: HTMLDivElement;
+
+// A focused field undoes its own typing, an open dialog is still asking the
+// user something, and an inert toolbar is one the user cannot reach, so in each
+// the keys are not the repository's. A held key repeats, and each repeat would
+// step one more commit.
 function handleUndoRedoKey(e: KeyboardEvent) {
-	const chord = keyChord(e);
-	const undo = chord === "Meta+z" || chord === "Ctrl+z";
-	const redo = chord === "Meta+Shift+z" || chord === "Ctrl+Shift+z";
-	if (!undo && !redo) return;
+	const step = historyStep(keyChord(e));
+	if (step === null) return;
+	if (toolbar.closest("[inert]")) return;
 	if (focusInEditable(document.activeElement)) return;
 	if (document.querySelector("dialog[open]")) return;
 
 	e.preventDefault();
-	void (redo ? handleRedo() : handleUndo());
+	if (e.repeat) return;
+	void (step === "redo" ? handleRedo() : handleUndo());
 }
 
 function handlePull() {
@@ -356,11 +363,11 @@ async function handleBranchCreate(values: Record<string, string>) {
 
 <svelte:window onkeydown={handleUndoRedoKey} />
 
-<div data-tauri-drag-region class="toolbar">
+<div bind:this={toolbar} data-tauri-drag-region class="toolbar">
 	<div class="toolbar-group">
 		<Button
 			icon
-			disabled={!canUndo || undoingIn.has(repoPath)}
+			disabled={!undoAllowed}
 			onclick={handleUndo}
 			aria-label="Undo"
 			tooltip="Undo"
@@ -369,7 +376,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 		</Button>
 		<Button
 			icon
-			disabled={!canRedo}
+			disabled={!redoAllowed}
 			onclick={handleRedo}
 			aria-label="Redo"
 			tooltip="Redo"
