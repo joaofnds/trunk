@@ -742,8 +742,9 @@ fn topic_layout(name: &str) -> (usize, usize, usize) {
 
 /// (`max_columns`, T1's column, T1's color) clean, then with the worktree dirtied. Built from a
 /// repository rather than a capture: this pair is one of the two tests that still pin the
-/// revwalk's `TOPOLOGICAL | TIME` sort, which a committed capture would freeze (count
-/// re-measured 2026-08-11; `.claude/rules/commit-graph.md` states the same one).
+/// walk's `TOPOLOGICAL | TIME` order, which a committed capture would freeze (count
+/// re-measured 2026-08-11, and again 2026-11-18 by inverting `walk_order`'s time comparison
+/// in `graph.rs`: the same two failed; `.claude/rules/commit-graph.md` states the same one).
 fn topic_layout_clean_then_dirty(
     ctx: &TestContext,
 ) -> ((usize, usize, usize), (usize, usize, usize)) {
@@ -1202,8 +1203,8 @@ fn unreadable_stash_commit_is_skipped() {
     }
 }
 
-/// The same failure one level down, and the one `revwalk.push` cannot catch: the stash commit
-/// itself reads fine, so the push succeeds and the walk only fails when it reaches the
+/// The same failure one level down, and the one a read of the stash commit alone cannot
+/// catch: the stash commit itself reads fine, so the walk only fails when it reaches the
 /// index-tree commit.
 #[test]
 fn unreadable_stash_index_commit_is_skipped() {

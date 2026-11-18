@@ -1844,14 +1844,14 @@ mod tests {
         git2::Oid::from_str(&format!("{n:040x}")).expect("build a hex oid")
     }
 
-    fn facts(summary: &str) -> CommitFacts {
-        CommitFacts {
+    fn facts(summary: &str) -> Arc<CommitFacts> {
+        Arc::new(CommitFacts {
             summary: summary.to_owned(),
             body: None,
             author_name: "T".to_owned(),
             author_email: "t@t.com".to_owned(),
             author_timestamp: 1000,
-        }
+        })
     }
 
     /// Two unrelated roots: `main`'s tip, always visible, and a second commit only

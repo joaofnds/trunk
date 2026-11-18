@@ -113,13 +113,22 @@ still match. The ordering, placement and hydration stages remain the ones below.
    and every one of its parents read back from the object store (`graph.rs`, the walkable-stash pre-flight in `capture`); an
    unreadable one is skipped, so a corrupt object costs that stash its row instead of
    failing the walk for the whole repo.
-2. `revwalk` over `refs/heads`, `refs/remotes`, `refs/tags` **plus every walkable stash
-   OID**, with `TOPOLOGICAL | TIME` sort (`graph.rs`, `capture` Step 2). Git orders the stashes with
-   everything else: `TOPOLOGICAL` puts a commit above its parents unconditionally, and
-   `TIME` only breaks ties between topologically independent commits. So a stash sorts
-   above its parent whatever its committer time says, and a stash whose first parent is
-   another stash falls out of the same rule. There is no separate ordering step for
-   stashes and no `base_oids` list.
+2. A walk from every ref under `refs/heads`, `refs/remotes` and `refs/tags` **plus every
+   walkable stash OID** (`walk_tips` in `graph.rs`), ordered by `walk_order`, which gives
+   exactly the order libgit2 1.9's `TOPOLOGICAL | TIME` revwalk gives, same-second ties
+   included. A commit goes out once all its children have, and the newest such commit goes
+   first. So a stash sorts above its parent whatever its committer time says, and a stash
+   whose first parent is another stash falls out of the same rule. There is no separate
+   ordering step for stashes and no `base_oids` list. The order is a port rather than the
+   revwalk so that `capture` can answer it from commits it has already read: it keeps the
+   parents, committer time and facts of every commit its last walk of that git directory
+   returned, and reads only the commits it lacks. Commits never change, so the memo is
+   dropped only when `info/grafts` or `shallow` changes, which rewrites parents, or when
+   the repository closes (`forget`). With a fresh repository handle per command, a rebuild
+   otherwise re-read the whole history: 93 ms of capture at 30,000 commits, against 9 ms
+   with the memo (release build, 2026-11-18). The differential tests in `graph.rs` hold the
+   port to libgit2's walk over generated histories with merges, same-second and backdated
+   commits, tags on trees and blobs, symbolic refs, stashes and a shallow boundary.
 3. Pushing a stash makes its parents 1.. reachable — the index tree, and the untracked
    tree under `INCLUDE_UNTRACKED`. They are dropped from the collected list, or they would
    appear as rows of their own.
@@ -173,7 +182,7 @@ ever produced.
    2026-08-28).
 2. HEAD's tracked upstream, when its first-parent path reaches HEAD's tip. This is the only
    case that keeps HEAD's colour.
-3. Otherwise the first-parent child that the revwalk emitted earliest, walked upward as far
+3. Otherwise the first-parent child that the walk emitted earliest, walked upward as far
    as it goes.
 
 Stashes are excluded from **both** candidates. A stash hangs off its parent by first parent
@@ -268,7 +277,7 @@ For the first parent:
   - The parent, when later processed, detects this as a fork-in and emits ForkRight.
 - If parent not in `pending_parents`:
   - Claim it: `active_lanes[col] = Some(parent_oid)`, `pending_parents[parent_oid] = col`.
-    This applies to stashes too — pushing them into the revwalk means a stash's parent is
+    This applies to stashes too. Pushing them into the walk means a stash's parent is
     always in the walk, so there is no orphan case to special-case.
 
 **Stash-specific**: stashes only have one logical parent (index `0`). Parents 1+ are
@@ -377,7 +386,7 @@ at a branch tip.
 the corner, and the bezier control points. The magnitudes (`R`, `dotRadius`, `DASH_GAP`,
 `KAPPA`) never change; only their sign is derived.
 
-Layer 1 orders a stash by the revwalk, so it cannot emit a parent above its child. The sign
+Layer 1 orders a stash by the walk, so it cannot emit a parent above its child. The sign
 covers the transient case: pagination, and any future ordering change. Do not delete it as
 dead code without reverting that ordering too.
 
@@ -450,8 +459,8 @@ difference is visible three ways:
 Consequences of naming the lane's opener:
 
 - A lane only a tag holds is named by that tag. Branch off, commit, tag the tip, delete
-  the branch: the tag is the only thing keeping that line on the graph, and the revwalk
-  pushes `refs/tags` alongside `refs/heads`, so this needs no rule of its own.
+  the branch: the tag is the only thing keeping that line on the graph, and the walk
+  starts from `refs/tags` alongside `refs/heads`, so this needs no rule of its own.
 - A merged topic branch keeps naming itself below the merge, matching the colour already
   drawn there.
 - Where the claiming commit carries several refs, `ref_rank` in `graph_input.rs` mirrors
@@ -552,8 +561,8 @@ The lane algorithm has deeply coupled state. Changing any one thing cascades:
 
 **Where the stash-specific code is**: (1) parent filtering (only first parent), (2) the
 lane's dashed flag, (3) `is_stash` flag on output, (4) the `can_inline` placement exception,
-(5) the readability pre-flight that keeps an unreadable stash out of the revwalk. What each is *allowed* to do — the rendering
-shape, the dirtiness dependency, the post-processing prohibition — is stated once, in
+(5) the readability pre-flight that keeps an unreadable stash out of the walk. What each is *allowed* to do (the rendering
+shape, the dirtiness dependency, the post-processing prohibition) is stated once, in
 `.claude/rules/commit-graph.md`.
 
 ---
@@ -574,7 +583,7 @@ fixture's layout as one text file, so a change to Layer 1 can be diffed against 
 
 For Layer 3, `scripts/graph-connector-render.ts` writes an SVG of the connector shapes
 `buildPath()` emits — run it before and after a change and open both. It covers the upward
-cases a dev build cannot reach, since Layer 1 orders stashes by the revwalk:
+cases a dev build cannot reach, since Layer 1 orders stashes by the walk:
 
 ```
 bun run scripts/graph-connector-render.ts > connectors.svg

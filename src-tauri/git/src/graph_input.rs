@@ -32,7 +32,7 @@ pub struct CommitFacts {
 #[derive(Debug, Clone, Default)]
 pub struct GraphSource {
     pub placement: PlacementInput,
-    pub commits: HashMap<Oid, CommitFacts>,
+    pub commits: HashMap<Oid, Arc<CommitFacts>>,
     pub refs: HashMap<Oid, Vec<RefLabel>>,
     pub stash_order: Vec<Oid>,
 }
@@ -94,7 +94,7 @@ impl CapturedGraph {
             commits: source
                 .commits
                 .iter()
-                .map(|(oid, facts)| (hex(oid), facts.clone()))
+                .map(|(oid, facts)| (hex(oid), CommitFacts::clone(facts)))
                 .collect(),
             refs: source
                 .refs
@@ -123,7 +123,7 @@ impl CapturedGraph {
             commits: self
                 .commits
                 .iter()
-                .map(|(oid, facts)| (parse_oid(oid), facts.clone()))
+                .map(|(oid, facts)| (parse_oid(oid), Arc::new(facts.clone())))
                 .collect(),
             refs: self
                 .refs
@@ -249,7 +249,7 @@ pub fn apply_visibility(source: &GraphSource, visibility: &RefVisibility) -> Gra
             .commits
             .iter()
             .filter(|(oid, _)| reachable.contains(oid))
-            .map(|(&oid, facts)| (oid, facts.clone()))
+            .map(|(&oid, facts)| (oid, Arc::clone(facts)))
             .collect(),
         refs: refs
             .into_iter()
@@ -488,7 +488,7 @@ impl GraphSnapshot {
     /// Every captured commit's facts, hidden refs' commits included, for a reader
     /// that must tell a rewritten commit from a hidden one.
     #[must_use]
-    pub fn captured_commits(&self) -> &HashMap<Oid, CommitFacts> {
+    pub fn captured_commits(&self) -> &HashMap<Oid, Arc<CommitFacts>> {
         &self.capture.commits
     }
 

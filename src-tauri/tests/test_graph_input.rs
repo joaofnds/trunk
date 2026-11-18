@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 
 use git2::Oid;
 use trunk_git::graph_input::{
@@ -12,14 +13,14 @@ fn oid(n: u8) -> Oid {
     Oid::from_str(&format!("{n:040x}")).expect("build a hex oid")
 }
 
-fn facts(summary: &str) -> CommitFacts {
-    CommitFacts {
+fn facts(summary: &str) -> Arc<CommitFacts> {
+    Arc::new(CommitFacts {
         summary: summary.to_owned(),
         body: None,
         author_name: "T".to_owned(),
         author_email: "t@t.com".to_owned(),
         author_timestamp: 1000,
-    }
+    })
 }
 
 #[test]
@@ -134,10 +135,10 @@ fn source_using_every_captured_field() -> GraphSource {
             (older_stash, facts("WIP on topic")),
             (
                 tip,
-                CommitFacts {
+                Arc::new(CommitFacts {
                     body: Some("why it changed".to_owned()),
-                    ..facts("Add lib")
-                },
+                    ..CommitFacts::clone(&facts("Add lib"))
+                }),
             ),
             (root, facts("Init")),
         ]),

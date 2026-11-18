@@ -39,8 +39,11 @@ DEFAULT_TIMEOUT = 600
 # 38-64 are the sites Appendix A never covered — the twelve `graph.rs` mutants outside row 7
 # and all fifteen in `graph_input.rs` — enumerated with `cargo mutants --list` and anchored by
 # hand. Rows past 64 are sites later changes introduced, appended as they land (row 65:
-# TRUNK-43's `ext_tip`). Indentation is part of the anchor; where indentation still collides,
-# the anchor carries the following line.
+# TRUNK-43's `ext_tip`). Rows 7 and 47 mutated the revwalk's sort flags until 2026-11-18, when
+# `walk_order` replaced the revwalk, and now mutate the time comparison that orders it. Rows
+# 41 to 43 lost `Result` from `parent_map`'s signature that day, which can no longer fail.
+# Indentation is part of the anchor; where indentation still collides, the anchor carries the
+# following line.
 #
 # A whole-function replacement is expressed as an `if true { return … }` prologue spliced
 # under the signature: the body below it stops running, which is the mutation, and every
@@ -64,9 +67,9 @@ MUTATIONS = [
     (6, P, "find_free_column_near",
      "if left >= min_col && active_lanes[left].is_none() {",
      "if left >= min_col || active_lanes[left].is_none() {"),
-    (7, G, "capture",
-     "git2::Sort::TOPOLOGICAL | git2::Sort::TIME",
-     "git2::Sort::TOPOLOGICAL ^ git2::Sort::TIME"),
+    (7, G, "TimeHeap::below",
+     "        nodes[a].time < nodes[b].time",
+     "        nodes[a].time <= nodes[b].time"),
     (8, P, "assign_lanes/head-ext colour",
      "lane_colors.insert(0, next_color);\n            next_color += 1;",
      "lane_colors.insert(0, next_color);\n            next_color -= 1;"),
@@ -169,21 +172,21 @@ MUTATIONS = [
      "    if !head.is_branch() {",
      "    if head.is_branch() {"),
     (41, G, "parent_map",
-     ") -> Result<HashMap<git2::Oid, Vec<git2::Oid>>, TrunkError> {",
-     ") -> Result<HashMap<git2::Oid, Vec<git2::Oid>>, TrunkError> {\n"
-     "    if true {\n        return Ok(HashMap::new());\n    }"),
+     ") -> HashMap<git2::Oid, Vec<git2::Oid>> {",
+     ") -> HashMap<git2::Oid, Vec<git2::Oid>> {\n"
+     "    if true {\n        return HashMap::new();\n    }"),
     (42, G, "parent_map",
-     ") -> Result<HashMap<git2::Oid, Vec<git2::Oid>>, TrunkError> {",
-     ") -> Result<HashMap<git2::Oid, Vec<git2::Oid>>, TrunkError> {\n"
-     "    if true {\n        return Ok(HashMap::from_iter([(Default::default(), vec![])]));\n    }"),
+     ") -> HashMap<git2::Oid, Vec<git2::Oid>> {",
+     ") -> HashMap<git2::Oid, Vec<git2::Oid>> {\n"
+     "    if true {\n        return HashMap::from_iter([(Default::default(), vec![])]);\n    }"),
     (43, G, "parent_map",
-     ") -> Result<HashMap<git2::Oid, Vec<git2::Oid>>, TrunkError> {",
-     ") -> Result<HashMap<git2::Oid, Vec<git2::Oid>>, TrunkError> {\n"
+     ") -> HashMap<git2::Oid, Vec<git2::Oid>> {",
+     ") -> HashMap<git2::Oid, Vec<git2::Oid>> {\n"
      "    if true {\n"
-     "        return Ok(HashMap::from_iter([(\n"
+     "        return HashMap::from_iter([(\n"
      "            Default::default(),\n"
      "            vec![Default::default()],\n"
-     "        )]));\n    }"),
+     "        )]);\n    }"),
     (44, G, "parent_map",
      "        while let Some(oid) = current\n            && !parents.contains_key(&oid)",
      "        while let Some(oid) = current\n            || !parents.contains_key(&oid)"),
@@ -194,9 +197,9 @@ MUTATIONS = [
      "pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {",
      "pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {\n"
      "    if true {\n        return Ok(Default::default());\n    }"),
-    (47, G, "capture",
-     "git2::Sort::TOPOLOGICAL | git2::Sort::TIME",
-     "git2::Sort::TOPOLOGICAL & git2::Sort::TIME"),
+    (47, G, "TimeHeap::below",
+     "        nodes[a].time < nodes[b].time",
+     "        nodes[a].time > nodes[b].time"),
     (48, G, "capture",
      "    oids.retain(|oid| !stash_internals.contains(oid));",
      "    oids.retain(|oid| stash_internals.contains(oid));"),

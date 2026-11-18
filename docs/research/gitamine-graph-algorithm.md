@@ -15,7 +15,7 @@ Drawing a commit graph on a 2D grid requires two decisions per commit:
 2. **Column (j)**: Which column? → Solved by the lane/placement algorithm
 
 These are independent. Gitamine solves them in two separate phases.
-Trunk conflates them somewhat: the same revwalk that decides rows also decides the order
+Trunk conflates them somewhat: the same walk that decides rows also decides the order
 in which the lane algorithm sees commits, and that decides columns.
 
 ---
@@ -49,7 +49,9 @@ Properties:
 
 > **The divergence described below was closed on 2026-08-03.** Trunk pushes stash OIDs
 > into the revwalk itself, so it now does exactly what this section recommends. The
-> comparison is kept as the record of why.
+> comparison is kept as the record of why. Since 2026-11-18 the walk is `walk_order` in
+> `graph.rs`, a port that gives the revwalk's exact order, so `capture` can answer it from
+> commits it has already read.
 
 Trunk uses `git2::Revwalk` with `TOPOLOGICAL | TIME` sort flags, which does
 essentially the same thing. The key difference *was*: Trunk then **interleaved

@@ -93,6 +93,7 @@ pub async fn close_repo(
     ref_visibility.forget(&path);
     watcher::stop_watcher(&path, &watcher_state);
     drop(repositories);
+    trunk_git::graph::forget(std::path::Path::new(&path));
     Ok(())
 }
 

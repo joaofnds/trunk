@@ -22,6 +22,7 @@ use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::BuildHasher;
 use std::path::Path;
+use std::sync::Arc;
 use trunk_git::error::TrunkError;
 use trunk_git::graph_input::CommitFacts;
 
@@ -43,7 +44,7 @@ pub fn follow<S: BuildHasher>(
     store: &Store,
     repo_path: &Path,
     repo: &Repository,
-    captured: &HashMap<Oid, CommitFacts, S>,
+    captured: &HashMap<Oid, Arc<CommitFacts>, S>,
     now: i64,
 ) -> Result<usize, TrunkError> {
     follow_while(store, repo_path, repo, captured, now, || true)
@@ -60,7 +61,7 @@ pub fn follow_while<S: BuildHasher>(
     store: &Store,
     repo_path: &Path,
     repo: &Repository,
-    captured: &HashMap<Oid, CommitFacts, S>,
+    captured: &HashMap<Oid, Arc<CommitFacts>, S>,
     now: i64,
     still_current: impl FnOnce() -> bool,
 ) -> Result<usize, TrunkError> {
@@ -219,7 +220,7 @@ fn by_commit(threads: Vec<AnchoredThread>) -> BTreeMap<Oid, Vec<AnchoredThread>>
 fn left_the_graph<S: BuildHasher>(
     oids: &[String],
     on_commit: &BTreeMap<Oid, Vec<AnchoredThread>>,
-    captured: &HashMap<Oid, CommitFacts, S>,
+    captured: &HashMap<Oid, Arc<CommitFacts>, S>,
 ) -> BTreeSet<Oid> {
     oids.iter()
         .filter_map(|oid| Oid::from_str(oid).ok())
@@ -246,7 +247,7 @@ fn readable(repo: &Repository, oid: Oid) -> Result<Option<Commit<'_>>, TrunkErro
 fn replacement<S: BuildHasher>(
     repo: &Repository,
     left: &Commit<'_>,
-    captured: &HashMap<Oid, CommitFacts, S>,
+    captured: &HashMap<Oid, Arc<CommitFacts>, S>,
 ) -> Result<Option<Oid>, TrunkError> {
     let author = left.author();
     let email = author.email().unwrap_or("");
@@ -255,7 +256,7 @@ fn replacement<S: BuildHasher>(
     let same_second: Vec<(Oid, &CommitFacts)> = captured
         .iter()
         .filter(|(_, facts)| facts.author_email == email && facts.author_timestamp == time)
-        .map(|(oid, facts)| (*oid, facts))
+        .map(|(oid, facts)| (*oid, &**facts))
         .collect();
 
     let same_subject: Vec<Oid> = same_second

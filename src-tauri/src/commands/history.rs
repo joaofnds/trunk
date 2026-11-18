@@ -590,7 +590,7 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use std::ops::Range;
     use std::sync::{
-        Mutex,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     };
     use tauri::{App, Manager};
@@ -611,13 +611,13 @@ mod tests {
             },
             commits: HashMap::from([(
                 oid,
-                CommitFacts {
+                Arc::new(CommitFacts {
                     summary: "one".into(),
                     body: None,
                     author_name: "T".into(),
                     author_email: "t@example.com".into(),
                     author_timestamp: 1000,
-                },
+                }),
             )]),
             refs: HashMap::from([(
                 oid,
@@ -659,13 +659,13 @@ mod tests {
             .map(|(index, oid)| {
                 (
                     *oid,
-                    CommitFacts {
+                    Arc::new(CommitFacts {
                         summary: format!("commit {index}"),
                         body: None,
                         author_name: "T".into(),
                         author_email: "t@example.com".into(),
                         author_timestamp: 1000 - i64::try_from(index).unwrap(),
-                    },
+                    }),
                 )
             })
             .collect();
