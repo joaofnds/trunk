@@ -2096,6 +2096,50 @@ describe("RepoView", () => {
 			});
 		});
 
+		// git restore --staged in a terminal writes only the index, so the app
+		// learns of it from the watcher rather than from an action of its own.
+		it("follows the open staged file into the unstaged list when a terminal unstages it", async () => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const readme = {
+				path: "README.md",
+				status: "Modified",
+				is_binary: false,
+			};
+			let staged = true;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd === "get_status")
+					return Promise.resolve({
+						unstaged: staged ? [] : [readme],
+						staged: staged ? [readme] : [],
+						conflicted: [],
+					});
+				if (cmd === "diff_unstaged")
+					return Promise.resolve([stagingDiff("UNSTAGED CONTENT")]);
+				if (cmd === "diff_staged")
+					return Promise.resolve([stagingDiff("STAGED CONTENT")]);
+				return base(cmd, args);
+			});
+			const scheduler = new FakeScheduler();
+			render(RepoView, {
+				props: baseProps(createMockRemoteState()),
+				context: new Map([[SCHEDULER, scheduler]]),
+			});
+			await fireEvent.click(await screen.findByText("README.md"));
+			expect(await screen.findByText("STAGED CONTENT")).toBeTruthy();
+
+			staged = false;
+			fireRepoChanged("/test/repo", [".git/index"]);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			scheduler.advanceBy(REPO_CHANGE_DELAY_MS);
+
+			expect(await screen.findByText("UNSTAGED CONTENT")).toBeTruthy();
+			expect(screen.getByRole("button", { name: "Stage File" })).toBeTruthy();
+			expect(
+				screen.queryByRole("button", { name: "Unstage File" }),
+			).toBeFalsy();
+		});
+
 		it("keeps the last unstaged file open in the staged list when it is staged", async () => {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
