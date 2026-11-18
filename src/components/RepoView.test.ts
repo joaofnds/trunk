@@ -2200,6 +2200,108 @@ describe("RepoView", () => {
 			});
 		});
 
+		describe("when the index changes under a line selection", () => {
+			// Opens README.md with one changed line selected, its diff read by
+			// `read` each time RepoView asks for it.
+			async function openReadmeWithALineSelected(read: () => FileDiff[]) {
+				const base = mockInvoke.getMockImplementation();
+				if (!base) throw new Error("base invoke implementation missing");
+				mockInvoke.mockImplementation((cmd, args) => {
+					if (cmd === "get_status")
+						return Promise.resolve({
+							unstaged: [
+								{ path: "README.md", status: "Modified", is_binary: false },
+							],
+							staged: [],
+							conflicted: [],
+						});
+					if (cmd === "diff_unstaged") return Promise.resolve(read());
+					return base(cmd, args);
+				});
+				render(RepoView, { props: baseProps(createMockRemoteState()) });
+				await fireEvent.click(await screen.findByText("README.md"));
+				const line = await screen.findByText("UNSTAGED CONTENT");
+				const grip = line
+					.closest(".diff-line")
+					?.querySelector("[data-gutter-grip]");
+				if (!grip) throw new Error("no gutter grip on the changed line");
+				await fireEvent.mouseDown(grip);
+				await fireEvent.mouseUp(window);
+				expect(
+					screen.getByRole("button", { name: /^Stage Lines/ }),
+				).toBeTruthy();
+			}
+
+			it("keeps the selection when the open file's diff reads the same", async () => {
+				let reads = 0;
+				await openReadmeWithALineSelected(() => {
+					reads += 1;
+					return [stagingDiff("UNSTAGED CONTENT")];
+				});
+				const before = reads;
+
+				fireRepoChanged("/test/repo", [".git/index"]);
+
+				await vi.waitFor(() => expect(reads).toBeGreaterThan(before));
+				for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+				expect(
+					screen.getByRole("button", { name: /^Stage Lines/ }),
+				).toBeTruthy();
+			});
+
+			it("keeps the selection in a file opened from the finder when it reads the same", async () => {
+				let reads = 0;
+				const base = mockInvoke.getMockImplementation();
+				if (!base) throw new Error("base invoke implementation missing");
+				mockInvoke.mockImplementation((cmd, args) => {
+					if (cmd === "list_tracked_files")
+						return Promise.resolve([{ path: "src/alpha.ts", changed: false }]);
+					if (cmd === "open_current_file") {
+						reads += 1;
+						return Promise.resolve([stagingDiff("ALPHA LINE", "src/alpha.ts")]);
+					}
+					if (cmd === "get_active_review") return Promise.resolve("r1");
+					return base(cmd, args);
+				});
+				render(RepoView, {
+					props: { ...baseProps(createMockRemoteState()), reviewActive: true },
+				});
+				await fireEvent.click(await screen.findByText(/Comment on a file/));
+				await fireEvent.click(await findFinderOption());
+				const grip = (await screen.findByText("ALPHA LINE"))
+					.closest(".diff-line")
+					?.querySelector("[data-gutter-grip]");
+				if (!grip) throw new Error("no gutter grip on the file's line");
+				await fireEvent.mouseDown(grip);
+				await fireEvent.mouseUp(window);
+				expect(
+					screen.getByRole("button", { name: "Comment on selected lines" }),
+				).toBeTruthy();
+				const before = reads;
+
+				fireRepoChanged("/test/repo", [".git/index"]);
+
+				await vi.waitFor(() => expect(reads).toBeGreaterThan(before));
+				for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+				expect(
+					screen.getByRole("button", { name: "Comment on selected lines" }),
+				).toBeTruthy();
+			});
+
+			it("drops the selection when the open file's diff changed", async () => {
+				let content = "UNSTAGED CONTENT";
+				await openReadmeWithALineSelected(() => [stagingDiff(content)]);
+				content = "EDITED CONTENT";
+
+				fireRepoChanged("/test/repo", [".git/index"]);
+
+				expect(await screen.findByText("EDITED CONTENT")).toBeTruthy();
+				expect(
+					screen.queryByRole("button", { name: /^Stage Lines/ }),
+				).toBeNull();
+			});
+		});
+
 		it("drops a Comment File read superseded by a same-file reload", async () => {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");

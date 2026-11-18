@@ -60,6 +60,7 @@ import {
 } from "../lib/review-filter.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
 import { initials, provideReviewer } from "../lib/reviewer.svelte.js";
+import { sameData } from "../lib/same-data.js";
 import { getScheduler } from "../lib/scheduler.js";
 import {
 	clearCommitDraft,
@@ -519,7 +520,10 @@ async function readCurrentFile(): Promise<void> {
 			filePath: load.path,
 		});
 		if (!loadIsCurrent()) return;
-		currentFileDiffs = result;
+		// A fresh array, even of identical data, resets the pane's selection and
+		// folds. Every index write re-reads the open file, so only a real change
+		// may replace it.
+		if (!sameData(currentFileDiffs, result)) currentFileDiffs = result;
 		currentFileError = null;
 	} catch (error) {
 		if (!loadIsCurrent()) return;
@@ -1913,7 +1917,10 @@ async function readSelectedFileDiff(): Promise<void> {
 			selectedFile.kind !== load.kind
 		)
 			return;
-		stagingDiffFiles = result;
+		// A fresh array, even of identical data, resets the pane's selection and
+		// folds. Every index write re-reads the open file, so only a real change
+		// may replace it.
+		if (!sameData(stagingDiffFiles, result)) stagingDiffFiles = result;
 		stagingDiffMode = load.mode;
 		stagingDiffError = null;
 		if (
