@@ -518,6 +518,12 @@ impl GraphSnapshot {
         )
     }
 
+    /// The row a commit sits in, when the graph shows it.
+    #[must_use]
+    pub fn row_of(&self, oid: Oid) -> Option<usize> {
+        self.positions.get(&oid).copied()
+    }
+
     /// Requested review members in graph order, without hydrating unrelated history.
     #[must_use]
     pub fn select(&self, oids: impl Iterator<Item = Oid>) -> GraphResult {

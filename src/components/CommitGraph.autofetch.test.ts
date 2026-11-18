@@ -322,6 +322,7 @@ describe("CommitGraph automatic ref updates", () => {
 			path: "/repo",
 			offset: 200,
 			revision: 1,
+			through: "target-oid",
 		});
 		page.reject({ code: "graph_changed", message: "Graph changed" });
 		await reached;

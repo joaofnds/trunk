@@ -42,17 +42,38 @@ pub async fn get_commit_graph(
     path: String,
     offset: usize,
     loaded: Option<usize>,
+    through: Option<String>,
     revision: Option<u64>,
     cache: State<'_, CommitCache>,
 ) -> Result<GraphResponse, String> {
+    let through = through
+        .as_deref()
+        .map(git2::Oid::from_str)
+        .transpose()
+        .map_err(|e| TrunkError::new("invalid_oid", e.to_string()).to_json())?;
     cache
         .read_versioned(&path, revision, |graph, revision| {
             loaded.map_or_else(
-                || GraphResponse::cached(graph, offset, PAGE, revision),
+                || {
+                    GraphResponse::cached(
+                        graph,
+                        offset,
+                        rows_through(graph, offset, through),
+                        revision,
+                    )
+                },
                 |depth| GraphResponse::cached(graph, 0, depth.max(PAGE), revision),
             )
         })
         .map_err(|e| e.to_json())
+}
+
+/// One page, or every row down to `through` and a page past it when the graph
+/// shows that commit below `offset`, so a jump to a deep commit is one request.
+fn rows_through(graph: &GraphSnapshot, offset: usize, through: Option<git2::Oid>) -> usize {
+    through
+        .and_then(|oid| graph.row_of(oid))
+        .map_or(PAGE, |row| (row + PAGE).saturating_sub(offset).max(PAGE))
 }
 
 /// # Errors
@@ -728,6 +749,7 @@ mod tests {
                 offset,
                 loaded,
                 None,
+                None,
                 fixture.app.state(),
             ))
             .unwrap()
@@ -749,6 +771,71 @@ mod tests {
         .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(&results[0].oid, root);
+    }
+
+    fn page_through(
+        fixture: &StatsCommandFixture,
+        offset: usize,
+        through: &str,
+    ) -> Result<GraphResponse, String> {
+        tauri::async_runtime::block_on(super::get_commit_graph(
+            activity(),
+            "/repo".into(),
+            offset,
+            None,
+            Some(through.into()),
+            None,
+            fixture.app.state(),
+        ))
+    }
+
+    #[test]
+    fn a_page_through_a_deep_commit_runs_a_page_past_it() {
+        let fixture = StatsCommandFixture::with_rows(1000);
+
+        let page = page_through(&fixture, 200, &fixture.oids[700]).unwrap();
+
+        assert_eq!(page.commits.len(), 700);
+        assert_eq!(page.commits[0].oid, fixture.oids[200]);
+        assert_eq!(page.commits[699].oid, fixture.oids[899]);
+    }
+
+    #[test]
+    fn a_page_through_a_commit_near_the_end_stops_at_the_last_row() {
+        let fixture = StatsCommandFixture::with_rows(1000);
+
+        let page = page_through(&fixture, 200, &fixture.oids[950]).unwrap();
+
+        assert_eq!(page.commits.len(), 800);
+        assert_eq!(page.commits[799].oid, fixture.oids[999]);
+    }
+
+    #[test]
+    fn a_page_through_a_commit_already_loaded_is_one_page() {
+        let fixture = StatsCommandFixture::with_rows(1000);
+
+        let page = page_through(&fixture, 400, &fixture.oids[100]).unwrap();
+
+        assert_eq!(page.commits.len(), super::PAGE);
+        assert_eq!(page.commits[0].oid, fixture.oids[400]);
+    }
+
+    #[test]
+    fn a_page_through_a_commit_the_graph_does_not_show_is_one_page() {
+        let fixture = StatsCommandFixture::with_rows(1000);
+
+        let page = page_through(&fixture, 0, &format!("{:040x}", 5000)).unwrap();
+
+        assert_eq!(page.commits.len(), super::PAGE);
+    }
+
+    #[test]
+    fn a_page_through_a_malformed_oid_is_refused() {
+        let fixture = StatsCommandFixture::with_rows(10);
+
+        let error = page_through(&fixture, 0, "not an oid").unwrap_err();
+
+        assert!(error.contains("invalid_oid"), "{error}");
     }
 
     #[test]

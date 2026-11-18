@@ -231,9 +231,10 @@ function commentTallyFor(oid: string): ReviewTally | null {
 
 const BATCH = 200;
 const SKELETON_COUNT = 10;
-/** How many page loads in a row may return nothing before scrollToOid gives up.
- *  Above 1 so a page dropped by the stale-page guard is retried against the
- *  rebuilt graph, low enough that a persistent failure stops quickly. */
+/** How many times scrollToOid asks again for a page that did not land before it
+ *  gives up. Above 1 so a page dropped by the stale-page guard is retried
+ *  against the rebuilt graph, low enough that a persistent failure stops
+ *  quickly. */
 const PAGE_ATTEMPT_BUDGET = 3;
 
 /** What one loadMore call did, for callers that must tell its outcomes apart.
@@ -1841,7 +1842,9 @@ onDestroy(() => {
 	visibleStatsRefresh.dispose();
 });
 
-async function loadMore(): Promise<PageResult> {
+/** Appends the next page, or with `through` every row down to that commit and a
+ *  page past it, which the backend answers in one response. */
+async function loadMore(through?: string): Promise<PageResult> {
 	// Blocks every caller -- the mount effect below, VirtualList's own
 	// infinite-scroll trigger (which fires immediately on an empty first render,
 	// independent of that effect), and scrollToOid -- until BranchSidebar's
@@ -1860,6 +1863,7 @@ async function loadMore(): Promise<PageResult> {
 			path: repoPath,
 			offset,
 			...(offset > 0 ? { revision: graphRevision } : {}),
+			...(through === undefined ? {} : { through }),
 		});
 		// Drop it rather than append: these rows were laid out under the old
 		// graph, and offset now indexes the new one. The viewport re-triggers a
@@ -1901,19 +1905,23 @@ export async function scrollToOid(
 
 	let idx = displayItems.findIndex((c) => c.oid === oid);
 
-	// Load more batches until found or all commits exhausted. A page that did
-	// not append is either a failure or a drop by the stale-page guard, and both
-	// count against the budget. The budget is not 1: the stale-page guard relies
-	// on this loop re-issuing the load a rebuild made it discard.
-	let stalled = 0;
-	while (idx < 0 && hasMore && !loading && stalled < PAGE_ATTEMPT_BUDGET) {
-		stalled = (await loadMore()) === "appended" ? 0 : stalled + 1;
+	// A page that lands runs through the commit whenever the graph holds it, so
+	// the search ends there. A page that did not append is either a failure or a
+	// drop by the stale-page guard, and is asked for again. The budget is not 1:
+	// the stale-page guard relies on this loop re-issuing the load a rebuild made
+	// it discard.
+	let attempts = 0;
+	while (idx < 0 && hasMore && !loading && attempts < PAGE_ATTEMPT_BUDGET) {
+		const result = await loadMore(oid);
 		if (!isCurrent()) return;
 
 		await tick();
 		if (!isCurrent()) return;
 
 		idx = displayItems.findIndex((c) => c.oid === oid);
+		if (result === "appended") break;
+
+		attempts += 1;
 	}
 
 	if (!isCurrent() || idx < 0 || !listRef) return;

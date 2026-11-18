@@ -3076,6 +3076,93 @@ describe("CommitGraph", () => {
 			);
 		});
 	});
+	// A commit thousands of rows down is reached in one request, which the backend
+	// answers with every row down to it, rather than one page at a time.
+	describe("scrollToOid reaching a commit deep in history", () => {
+		const BATCH = 200;
+		const TOTAL = 3000;
+		const scrollTargets: Element[] = [];
+		const originalScrollTo = Element.prototype.scrollTo;
+
+		beforeEach(() => {
+			scrollTargets.length = 0;
+			Element.prototype.scrollTo = function scrollTo() {
+				scrollTargets.push(this);
+			};
+		});
+
+		afterEach(() => {
+			Element.prototype.scrollTo = originalScrollTo;
+		});
+
+		function oidOf(row: number) {
+			return `${row}`.padStart(40, "0");
+		}
+
+		// Answers the way get_commit_graph does: a page from the offset, or every
+		// row down to `through` and a page past it when the graph holds it.
+		function installHistory() {
+			const requests: { offset: number; through?: string }[] = [];
+			installReads({
+				override: (cmd, args) => {
+					if (cmd !== "get_commit_graph") return undefined;
+					const offset = Number(args?.offset ?? 0);
+					const through =
+						typeof args?.through === "string" ? args.through : undefined;
+					requests.push({ offset, through });
+					const row = through === undefined ? -1 : Number(through);
+					const count =
+						row >= offset ? Math.max(BATCH, row + BATCH - offset) : BATCH;
+					const end = Math.min(TOTAL, offset + count);
+					const commits = Array.from({ length: end - offset }, (_, i) =>
+						makeCommit({
+							oid: oidOf(offset + i),
+							summary: `commit ${offset + i}`,
+							in_head_chain: offset + i === 0,
+						}),
+					);
+					return Promise.resolve({ commits, max_columns: 1, revision: 1 });
+				},
+			});
+			return requests;
+		}
+
+		async function mounted() {
+			const rendered = render(CommitGraph, {
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+			});
+			await waitFor(() => {
+				expect(screen.getByText("commit 0")).toBeInTheDocument();
+			});
+			await flush();
+			scrollTargets.length = 0;
+			return rendered;
+		}
+
+		it("loads the rows down to the commit in one request", async () => {
+			const requests = installHistory();
+			const rendered = await mounted();
+			const before = requests.length;
+
+			await rendered.component.scrollToOid(oidOf(2500));
+			await flush();
+
+			expect(requests.length - before).toBe(1);
+			expect(scrollTargets.length).toBeGreaterThan(0);
+		});
+
+		it("asks once for a commit the graph does not hold", async () => {
+			const requests = installHistory();
+			const rendered = await mounted();
+			const before = requests.length;
+
+			await rendered.component.scrollToOid(oidOf(TOTAL + 1));
+			await flush();
+
+			expect(requests.length - before).toBe(1);
+			expect(scrollTargets).toEqual([]);
+		});
+	});
 	// A rebuild replaces the whole commit list. It must ask the backend for as many
 	// rows as the component already holds, or every page the user scrolled through
 	// is dropped and the author column re-fits to page one alone.
