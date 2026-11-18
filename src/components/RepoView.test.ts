@@ -2733,6 +2733,118 @@ describe("RepoView", () => {
 			});
 		});
 
+		it("keeps the shown diff until the next commit's diff lands when the pager steps", async () => {
+			commits = [
+				makeCommit({ oid: "oid-2", summary: "second commit" }),
+				makeCommit({ oid: "oid-1", summary: "first commit" }),
+			];
+			filesByOid = {
+				"oid-2": [makeFileDiff("f.ts")],
+				"oid-1": [makeFileDiff("f.ts")],
+			};
+			detailByOid = {
+				"oid-2": makeDetail("oid-2", ["oid-1"]),
+				"oid-1": makeDetail("oid-1"),
+			};
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await flush();
+			diffFor = (path) => makeFileDiffWithContent(path, "SECOND DIFF");
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await screen.findByText("SECOND DIFF");
+			let landFirst: ((diffs: FileDiff[]) => void) | undefined;
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "diff_commit_file"
+					? new Promise((resolve) => {
+							landFirst = resolve;
+						})
+					: base(cmd, args),
+			);
+
+			await fireEvent.click(await screen.findByLabelText("Go to older commit"));
+			await vi.waitFor(() => expect(landFirst).toBeTypeOf("function"));
+			await flush();
+
+			expect(screen.queryByText("Loading diff…")).toBeNull();
+			expect(screen.getByText("SECOND DIFF")).toBeTruthy();
+			expect(screen.getByText("commit oid-2")).toBeTruthy();
+			landFirst?.([makeFileDiffWithContent("f.ts", "FIRST DIFF")]);
+			expect(await screen.findByText("FIRST DIFF")).toBeTruthy();
+			expect(screen.getByText("commit oid-1")).toBeTruthy();
+			expect(screen.queryByText("commit oid-2")).toBeNull();
+		});
+
+		describe("when the pager steps while the next diff is read", () => {
+			async function openSecondCommitDiff() {
+				commits = [
+					makeCommit({ oid: "oid-2", summary: "second commit" }),
+					makeCommit({ oid: "oid-1", summary: "first commit" }),
+				];
+				filesByOid = {
+					"oid-2": [makeFileDiff("f.ts")],
+					"oid-1": [makeFileDiff("f.ts")],
+				};
+				detailByOid = {
+					"oid-2": makeDetail("oid-2", ["oid-1"]),
+					"oid-1": makeDetail("oid-1"),
+				};
+				const rows = await renderAndGetRows();
+				await fireEvent.click(rows[0]);
+				await flush();
+				diffFor = (path) => makeFileDiffWithContent(path, "SECOND DIFF");
+				await fireEvent.click(await screen.findByText("f.ts"));
+				await screen.findByText("SECOND DIFF");
+			}
+
+			it("opens the commit with the read's failure when the diff cannot be read", async () => {
+				await openSecondCommitDiff();
+				const base = mockInvoke.getMockImplementation();
+				if (!base) throw new Error("base invoke implementation missing");
+				mockInvoke.mockImplementation((cmd, args) =>
+					cmd === "diff_commit_file"
+						? Promise.reject(new Error("read failed"))
+						: base(cmd, args),
+				);
+
+				await fireEvent.click(
+					await screen.findByLabelText("Go to older commit"),
+				);
+
+				expect(await screen.findByText("Could not load diff")).toBeTruthy();
+				expect(screen.getByText("commit oid-1")).toBeTruthy();
+				expect(screen.queryByText("SECOND DIFF")).toBeNull();
+			});
+
+			it("stays on the shown commit when the diff closes during the read", async () => {
+				await openSecondCommitDiff();
+				let landFirst: ((diffs: FileDiff[]) => void) | undefined;
+				const base = mockInvoke.getMockImplementation();
+				if (!base) throw new Error("base invoke implementation missing");
+				mockInvoke.mockImplementation((cmd, args) =>
+					cmd === "diff_commit_file"
+						? new Promise((resolve) => {
+								landFirst = resolve;
+							})
+						: base(cmd, args),
+				);
+				await fireEvent.click(
+					await screen.findByLabelText("Go to older commit"),
+				);
+				await vi.waitFor(() => expect(landFirst).toBeTypeOf("function"));
+
+				await fireEvent.click(screen.getByLabelText("Close diff"));
+				landFirst?.([makeFileDiffWithContent("f.ts", "FIRST DIFF")]);
+
+				await flush();
+
+				expect(screen.getByText("commit oid-2")).toBeTruthy();
+				expect(screen.queryByText("commit oid-1")).toBeNull();
+				expect(screen.queryByText("FIRST DIFF")).toBeNull();
+			});
+		});
+
 		it("opens the first file when the new commit does not touch the viewed path", async () => {
 			commits = [
 				makeCommit({ oid: "oid-2", summary: "second commit" }),

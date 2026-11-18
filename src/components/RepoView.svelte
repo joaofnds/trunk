@@ -29,6 +29,7 @@ import { inertWhile } from "../lib/inert-while.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { focusInEditable } from "../lib/keyboard.js";
 import {
+	type LoadedDiff,
 	loadedDiffFor,
 	loadedModeFor,
 	modeFor,
@@ -1454,8 +1455,23 @@ async function readCommit({
 				oid,
 			}),
 		]);
-		if (!repoViewActive || path !== repoPath || gen !== commitSelectGeneration)
-			return;
+		const isCurrent = () =>
+			repoViewActive && path === repoPath && gen === commitSelectGeneration;
+		if (!isCurrent()) return;
+
+		const target =
+			diffInViewPath === null
+				? null
+				: resolveDiffTarget(
+						diffInViewPath,
+						files.map((f) => f.path),
+						treeViewEnabled,
+					);
+		const opened =
+			target?.kind === "file"
+				? await readCommitFileAhead(path, oid, target.path)
+				: null;
+		if (!isCurrent()) return;
 
 		clearStagingDiff();
 		selectedCommitFile = null;
@@ -1464,6 +1480,13 @@ async function readCommit({
 		commitDetailStat = null;
 		commitFileDiffs = files;
 		commitDetail = detail;
+		if (target?.kind === "file" && opened) {
+			commitLoadedDiffs = withLoadedDiff(
+				commitLoadedDiffs,
+				{ source: oid, path: target.path },
+				opened,
+			);
+		}
 		void statistics.then((stat) => {
 			if (
 				stat === null ||
@@ -1480,12 +1503,7 @@ async function readCommit({
 		// Diff-in-view navigation: reconcile the remembered path against the new
 		// commit's file list. Lives inline here, never in an $effect — an effect
 		// reading and writing selection state loops (svelte_effect_callback_loop).
-		if (diffInViewPath !== null) {
-			const target = resolveDiffTarget(
-				diffInViewPath,
-				files.map((f) => f.path),
-				treeViewEnabled,
-			);
+		if (target !== null && diffInViewPath !== null) {
 			if (target.kind === "file") {
 				await selectCommitFileIdempotent(target.path);
 			} else {
@@ -1498,6 +1516,25 @@ async function readCommit({
 
 		reportErrorToast(error, "Could not load commit details");
 		clearCommit();
+	}
+}
+
+/** Reads the diff a pager step will open before the step publishes the new
+ *  commit, so the pane goes from one commit's diff to the next and never shows
+ *  a loading pane between them. A failed read yields null: the open after the
+ *  publish reads the file again and reports that failure. */
+async function readCommitFileAhead(
+	repo: string,
+	oid: string,
+	filePath: string,
+): Promise<LoadedDiff | null> {
+	const options = buildDiffOptions();
+	try {
+		const [diff] = await requestCommitFileDiff(repo, oid, filePath, options);
+
+		return diff ? { diff, options } : null;
+	} catch {
+		return null;
 	}
 }
 
