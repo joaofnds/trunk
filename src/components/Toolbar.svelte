@@ -27,6 +27,7 @@ import type { ReviewTone, StashEntry } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import ButtonGroup from "../lib/ui/ButtonGroup.svelte";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
+import { isUpdateFrozen } from "../lib/updates-lifecycle.js";
 import InputDialog from "./InputDialog.svelte";
 import PullDropdown from "./PullDropdown.svelte";
 
@@ -223,16 +224,14 @@ function historyStep(chord: string): "undo" | "redo" | null {
 	return null;
 }
 
-let toolbar: HTMLDivElement;
-
 // A focused field undoes its own typing, an open dialog is still asking the
-// user something, and an inert toolbar is one the user cannot reach, so in each
+// user something, and an update in preparation has frozen the app, so in each
 // the keys are not the repository's. A held key repeats, and each repeat would
 // step one more commit.
 function handleUndoRedoKey(e: KeyboardEvent) {
 	const step = historyStep(keyChord(e));
 	if (step === null) return;
-	if (toolbar.closest("[inert]")) return;
+	if (isUpdateFrozen()) return;
 	if (focusInEditable(document.activeElement)) return;
 	if (document.querySelector("dialog[open]")) return;
 
@@ -363,7 +362,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 
 <svelte:window onkeydown={handleUndoRedoKey} />
 
-<div bind:this={toolbar} data-tauri-drag-region class="toolbar">
+<div data-tauri-drag-region class="toolbar">
 	<div class="toolbar-group">
 		<Button
 			icon

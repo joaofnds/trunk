@@ -16,6 +16,7 @@ import {
 	createUndoRedoState,
 	type UndoEntry,
 } from "../lib/undo-redo.svelte.js";
+import { setUpdateFrozen } from "../lib/updates-lifecycle.js";
 import Toolbar from "./Toolbar.svelte";
 
 // All Tauri module mocks — declared locally (NOT via ../__tests__/helpers/tauri-mock)
@@ -1019,7 +1020,7 @@ describe("Toolbar undo and redo shortcuts", () => {
 	}
 
 	function renderToolbar(undoRedo = createUndoRedoState()) {
-		const view = render(Toolbar, {
+		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
@@ -1028,7 +1029,6 @@ describe("Toolbar undo and redo shortcuts", () => {
 			},
 		});
 		return {
-			container: view.container,
 			undo: screen.getByRole("button", { name: "Undo" }),
 			redo: screen.getByRole("button", { name: "Redo" }),
 		};
@@ -1168,11 +1168,12 @@ describe("Toolbar undo and redo shortcuts", () => {
 			expect(history.tip).toBe("tip");
 		});
 
-		it("leaves Cmd+Z alone while the toolbar is inert", async () => {
+		it("leaves Cmd+Z alone while an update freezes the app", async () => {
 			const history = linearHistory("root", "parent", "tip");
-			const { container, undo } = renderToolbar();
+			const { undo } = renderToolbar();
 			await waitFor(() => expect(undo).toBeEnabled());
-			container.setAttribute("inert", "");
+			setUpdateFrozen(true);
+			onTestFinished(() => setUpdateFrozen(false));
 
 			const notCancelled = await press(document.body, cmdZ);
 
