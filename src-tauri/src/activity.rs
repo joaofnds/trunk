@@ -1,3 +1,5 @@
+#[cfg(feature = "test-util")]
+use std::sync::Condvar;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
@@ -44,8 +46,15 @@ struct Admission {
     generation: u64,
 }
 
+#[derive(Debug, Default)]
+struct Gate {
+    admission: Mutex<Admission>,
+    #[cfg(feature = "test-util")]
+    settled: Condvar,
+}
+
 #[derive(Debug, Clone, Default)]
-pub struct ActivityState(Arc<Mutex<Admission>>);
+pub struct ActivityState(Arc<Gate>);
 
 impl ActivityState {
     /// Admit ordinary work while update preparation is open.
@@ -62,7 +71,7 @@ impl ActivityState {
         command: &str,
         permit: Option<&str>,
     ) -> Result<Activity, ActivityError> {
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.0.admission.lock().unwrap();
         let allowed = match &state.phase {
             Phase::Open => true,
             Phase::Preparing(token) => {
@@ -88,7 +97,7 @@ impl ActivityState {
     /// Panics if the admission mutex is poisoned.
     #[must_use]
     pub fn begin_exit(&self) -> bool {
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.0.admission.lock().unwrap();
         if matches!(state.phase, Phase::Preparing(_) | Phase::Installing(_)) {
             return false;
         }
@@ -104,7 +113,7 @@ impl ActivityState {
     /// # Panics
     /// Panics if the admission mutex is poisoned.
     pub fn begin_prepare(&self) -> Result<String, ActivityError> {
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.0.admission.lock().unwrap();
         if state.active != 0 || !matches!(state.phase, Phase::Open) {
             return Err(ActivityError::busy());
         }
@@ -122,7 +131,7 @@ impl ActivityState {
     /// # Panics
     /// Panics if the admission mutex is poisoned.
     pub fn finish_prepare(&self, token: &str) -> Result<(), ActivityError> {
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.0.admission.lock().unwrap();
         if !matches!(&state.phase, Phase::Preparing(current) if current == token) {
             return Err(ActivityError::invalid());
         }
@@ -141,7 +150,7 @@ impl ActivityState {
     /// # Panics
     /// Panics if the admission mutex is poisoned.
     pub fn cancel_prepare(&self, token: &str) -> Result<(), ActivityError> {
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.0.admission.lock().unwrap();
         if !matches!(&state.phase, Phase::Preparing(current) if current == token) {
             return Err(ActivityError::invalid());
         }
@@ -154,13 +163,29 @@ impl ActivityState {
         Ok(())
     }
 
+    /// Block until no lease is held, so a test can begin preparation once the
+    /// background work an earlier command left running has settled, the way the
+    /// frontend starts it only when nothing is pending.
+    /// # Panics
+    /// Panics if the admission mutex is poisoned.
+    #[cfg(feature = "test-util")]
+    pub fn wait_until_settled(&self) {
+        let state = self.0.admission.lock().unwrap();
+        drop(
+            self.0
+                .settled
+                .wait_while(state, |state| state.active != 0)
+                .unwrap(),
+        );
+    }
+
     /// Reopen after the installer proves the original executable remains intact.
     /// # Errors
     /// Returns invalid unless this token owns the installing phase.
     /// # Panics
     /// Panics if the admission mutex is poisoned.
     pub fn recover_install(&self, token: &str) -> Result<(), ActivityError> {
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.0.admission.lock().unwrap();
         if !matches!(&state.phase, Phase::Installing(current) if current == token) {
             return Err(ActivityError::invalid());
         }
@@ -176,7 +201,12 @@ struct Lease(ActivityState);
 
 impl Drop for Lease {
     fn drop(&mut self) {
-        self.0.0.lock().unwrap().active -= 1;
+        let mut state = self.0.0.admission.lock().unwrap();
+        state.active -= 1;
+        #[cfg(feature = "test-util")]
+        if state.active == 0 {
+            self.0.0.settled.notify_all();
+        }
     }
 }
 

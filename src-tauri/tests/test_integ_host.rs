@@ -439,6 +439,9 @@ fn reopening_after_preparation_invalidates_graphs_and_refreshes_reviews() {
     let (app, webview) = boot(WatcherState::disabled());
     invoke(&webview, "open_repo", json!({ "path": ctx.path() })).unwrap();
     let activity = app.state::<trunk_lib::activity::ActivityState>();
+    // The open leaves the other worktree state's layout running, and preparation
+    // is refused until it settles.
+    activity.wait_until_settled();
     let token = activity.begin_prepare().unwrap();
     let cache = app.state::<CommitCache>();
     assert!(
