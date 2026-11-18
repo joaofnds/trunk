@@ -764,20 +764,23 @@ describe("RepoView", () => {
 		},
 	);
 
-	it("stores the width a drag left the sidebar at when it is released", async () => {
-		renderWithPanes({ leftPaneWidth: 200 });
+	it.each([
+		{ pane: "sidebar", to: 1040, key: "left_pane_width", value: 240 },
+		{ pane: "detail pane", to: 960, key: "right_pane_width", value: 340 },
+	])(
+		"stores the width a drag left the $pane at when it is released",
+		async ({ pane, to, key, value }) => {
+			renderWithPanes({ leftPaneWidth: 200, rightPaneWidth: 300 });
 
-		await drag(
-			screen.getByRole("slider", { name: "Resize sidebar" }),
-			1000,
-			1040,
-		);
+			await drag(
+				screen.getByRole("slider", { name: `Resize ${pane}` }),
+				1000,
+				to,
+			);
 
-		expect(mockInvoke).toHaveBeenCalledWith("prefs_set", {
-			key: "left_pane_width",
-			value: 240,
-		});
-	});
+			expect(mockInvoke).toHaveBeenCalledWith("prefs_set", { key, value });
+		},
+	);
 
 	it("tells assistive tech each pane's width and the widths it moves between", () => {
 		renderWithPanes({ leftPaneWidth: 200, rightPaneWidth: 300 });

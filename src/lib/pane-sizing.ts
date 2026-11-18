@@ -1,5 +1,4 @@
-/** Narrower than this, a pane collapses rather than showing a sliver. */
-export const NARROWEST_PANE = 50;
+const NARROWEST_PANE = 50;
 
 export interface PaneSizingOptions {
 	/** Which of the pane's edges its splitter sits on, so which way widens it. */
@@ -9,12 +8,12 @@ export interface PaneSizingOptions {
 	collapsed: () => boolean;
 	onwidthchange: (width: number) => void;
 	oncollapsedchange: (collapsed: boolean) => void;
-	/** Keeps the width the pane settled at for the next launch. */
 	store: (width: number) => void;
 }
 
-/** How a splitter's keyboard steps and drags size its pane. */
 export interface PaneSizing {
+	/** The width the pane takes up: none while it is collapsed. */
+	size(): number;
 	/** A keyboard step, in the splitter's own direction: positive moves it right. */
 	step(delta: number): void;
 	startResize(e: MouseEvent): void;
@@ -26,7 +25,7 @@ export interface PaneSizing {
 // first of a run of narrowing steps, which any widening ends. A drag or a step
 // that widens a collapsed pane opens it at NARROWEST_PANE instead.
 export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
-	const widening = options.splitterEdge === "right" ? 1 : -1;
+	const widenSign = options.splitterEdge === "right" ? 1 : -1;
 	let stepsFrom: number | null = null;
 
 	function size() {
@@ -45,7 +44,7 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		return false;
 	}
 
-	function store() {
+	function storeOpenWidth() {
 		if (!options.collapsed()) options.store(options.width());
 	}
 
@@ -59,13 +58,13 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 
 		function onMouseMove(ev: MouseEvent) {
 			collapsed = resize(
-				Math.max(0, startWidth + widening * (ev.clientX - startX)),
+				Math.max(0, startWidth + widenSign * (ev.clientX - startX)),
 			);
 		}
 
 		function onMouseUp() {
 			if (collapsed) options.onwidthchange(reopenWidth);
-			store();
+			storeOpenWidth();
 			window.removeEventListener("mousemove", onMouseMove);
 			window.removeEventListener("mouseup", onMouseUp);
 		}
@@ -75,7 +74,7 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 	}
 
 	function step(delta: number) {
-		const change = widening * delta;
+		const change = widenSign * delta;
 		const widens = change > 0;
 		if (options.collapsed() && !widens) return;
 
@@ -87,11 +86,12 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 
 		const from = stepsFrom ?? options.width();
 		stepsFrom = widens ? null : from;
+
 		if (!resize(Math.max(0, size() + change))) return;
 
 		stepsFrom = null;
 		if (from !== options.width()) options.onwidthchange(from);
 	}
 
-	return { step, startResize };
+	return { size, step, startResize };
 }

@@ -221,8 +221,6 @@ const reviewFilter = $derived<ReviewFilter>(
 
 const LEFT_PANE_MAX = 600;
 const RIGHT_PANE_MAX = 700;
-const leftPaneSize = $derived(leftPaneCollapsed ? 0 : leftPaneWidth);
-const rightPaneSize = $derived(rightPaneCollapsed ? 0 : rightPaneWidth);
 const leftPane = createPaneSizing({
 	splitterEdge: "right",
 	max: LEFT_PANE_MAX,
@@ -241,6 +239,8 @@ const rightPane = createPaneSizing({
 	oncollapsedchange: (collapsed) => onrightpanecollapsedchange(collapsed),
 	store: setRightPaneWidth,
 });
+const leftPaneSize = $derived(leftPane.size());
+const rightPaneSize = $derived(rightPane.size());
 const scheduler = getScheduler();
 let repoViewActive = true;
 
