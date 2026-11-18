@@ -448,11 +448,16 @@ pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkE
             .workdir()
             .ok_or_else(|| TrunkError::new("bare_repo", "Cannot discard in a bare repository"))?;
 
-        // Collect untracked file paths before checkout
+        // Collect untracked file paths before checkout. A directory listed whole is
+        // a repository nested in this one, and deleting it would take its history,
+        // so it stays, as `git clean -fd` leaves it.
         let untracked_paths: Vec<PathBuf> = statuses
             .iter()
             .filter(|entry| entry.status().contains(Status::WT_NEW))
-            .filter_map(|entry| entry.path().ok().map(|p| workdir.join(p)))
+            .filter_map(|entry| {
+                let path = entry.path().ok()?;
+                (!path.ends_with('/')).then(|| workdir.join(path))
+            })
             .collect();
 
         // Naming the changed paths keeps a conflicted file's resolution in progress:
@@ -479,7 +484,7 @@ pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkE
                     continue;
                 }
             }
-            // An emptied directory goes too, when nothing else is in it.
+            // The file's own directory goes too, once nothing else is in it.
             if let Some(parent) = file_path.parent() {
                 let _ = std::fs::remove_dir(parent);
             }

@@ -413,29 +413,62 @@ fn discard_all_deletes_nested_untracked_file() {
 }
 
 #[test]
-fn discard_all_reports_an_untracked_file_it_cannot_delete_and_deletes_the_rest() {
+fn discard_all_reports_the_untracked_files_it_cannot_delete_and_deletes_the_rest() {
     use std::os::unix::fs::PermissionsExt as _;
+    struct Unlock<'a>(&'a std::path::Path);
+    impl Drop for Unlock<'_> {
+        fn drop(&mut self) {
+            let _ = std::fs::set_permissions(self.0, std::fs::Permissions::from_mode(0o755));
+        }
+    }
     let ctx = TestContext::builder()
         .with_file("README.md", "hello")
         .with_commit("Initial commit")
         .build();
     let locked = ctx.repo_path().join("locked");
     std::fs::create_dir(&locked).unwrap();
-    std::fs::write(locked.join("kept.txt"), "kept").unwrap();
-    std::fs::write(ctx.repo_path().join("z-free.txt"), "free").unwrap();
-    let set_mode = |mode| {
-        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(mode)).unwrap();
-    };
-    set_mode(0o555);
+    std::fs::write(locked.join("kept-a.txt"), "kept").unwrap();
+    std::fs::write(locked.join("kept-b.txt"), "kept").unwrap();
+    // Sorts after locked/, so a discard that stopped at the first failure would leave it.
+    let after_locked = ctx.repo_path().join("past-locked.txt");
+    std::fs::write(&after_locked, "free").unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let unlock = Unlock(&locked);
 
     let result = ctx.discard_all();
-    set_mode(0o755);
+    drop(unlock);
 
-    let err = result.expect_err("discard_all reported a file it left behind as discarded");
+    let err = result.expect_err("discard_all reported files it left behind as discarded");
     assert_eq!(err.code, "io_error");
-    assert!(err.message.contains("locked/kept.txt"), "{}", err.message);
-    assert!(locked.join("kept.txt").exists());
-    assert!(!ctx.repo_path().join("z-free.txt").exists());
+    assert!(
+        err.message
+            .starts_with("Failed to delete locked/kept-a.txt and 1 more:"),
+        "{}",
+        err.message
+    );
+    assert!(locked.join("kept-a.txt").exists());
+    assert!(locked.join("kept-b.txt").exists());
+    assert!(!after_locked.exists());
+}
+
+#[test]
+fn discard_all_leaves_an_untracked_repository_nested_in_the_worktree() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    let nested = ctx.repo_path().join("nested");
+    git2::Repository::init(&nested).unwrap();
+    std::fs::write(nested.join("work.txt"), "its own work").unwrap();
+    let loose = ctx.repo_path().join("loose.txt");
+    std::fs::write(&loose, "loose").unwrap();
+
+    ctx.discard_all()
+        .expect("discard_all failed on a nested repository it should leave alone");
+
+    assert!(nested.join(".git").exists());
+    assert!(nested.join("work.txt").exists());
+    assert!(!loose.exists());
 }
 
 #[test]
