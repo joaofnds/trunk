@@ -1,5 +1,5 @@
 //! The drive route's reach into `AppKit`: the window's pixels, the alert a
-//! modal loop is showing, and the app's menu bar.
+//! modal loop is showing, the app's menu bar, and key presses.
 //!
 //! Everything here runs through the main operation queue, which `AppKit` keeps
 //! draining inside a modal loop. Tauri's own main-thread dispatch goes through
@@ -19,7 +19,7 @@ use objc2::runtime::{NSObjectProtocol, ProtocolObject};
 use objc2::{MainThreadMarker, Message, msg_send, sel};
 use objc2_app_kit::{
     NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSButton, NSEvent,
-    NSEventModifierFlags, NSEventType, NSImage, NSMenu, NSTextField, NSView,
+    NSEventModifierFlags, NSEventType, NSImage, NSMenu, NSMenuItem, NSTextField, NSView,
     NSWindowOcclusionState, NSWindowWillBeginSheetNotification,
 };
 use objc2_foundation::{
@@ -37,6 +37,14 @@ const MAIN_DEADLINE: Duration = Duration::from_secs(10);
 /// main window, which the app never closes while it runs.
 #[derive(Clone, Copy)]
 pub struct WebViewAddress(pub usize);
+
+impl WebViewAddress {
+    const fn webview(self, _main: MainThreadMarker) -> &'static WKWebView {
+        // SAFETY: the address is the live WKWebView, which outlives every
+        // request, and AppKit objects are read on the main thread alone.
+        unsafe { &*(self.0 as *const WKWebView) }
+    }
+}
 
 fn on_main<T: Send + 'static>(
     work: impl FnOnce(MainThreadMarker) -> T + Send + 'static,
@@ -88,9 +96,8 @@ pub fn keep_drawing_when_covered(webview: &WKWebView) -> Result<(), String> {
 /// `keep_drawing_when_covered` failed, and whether other windows cover the
 /// drive window now.
 pub fn drawing(webview: WebViewAddress) -> Result<Value, String> {
-    on_main(move |_| {
-        // SAFETY: the address is the live WKWebView, read on the main thread.
-        let webview: &WKWebView = unsafe { &*(webview.0 as *const WKWebView) };
+    on_main(move |main| {
+        let webview = webview.webview(main);
         let window = webview.window().ok_or("the page has no window")?;
 
         Ok(json!({
@@ -114,9 +121,8 @@ fn detects_occlusion(webview: &WKWebView) -> Result<bool, String> {
 /// Writes a PNG of what the page shows to `path`, and answers its size.
 pub fn snapshot(webview: WebViewAddress, path: &Path) -> Result<Value, String> {
     let (sender, receiver) = mpsc::channel();
-    on_main(move |_| {
-        // SAFETY: the address is the live WKWebView, read on the main thread.
-        let webview: &WKWebView = unsafe { &*(webview.0 as *const WKWebView) };
+    on_main(move |main| {
+        let webview = webview.webview(main);
         let sender = Mutex::new(Some(sender));
         let done = RcBlock::new(move |image: *mut NSImage, error: *mut NSError| {
             let Some(sender) = sender.lock().expect("the sender lock").take() else {
@@ -297,84 +303,172 @@ pub fn choose_menu_bar(path: Vec<String>) -> Result<Value, String> {
 }
 
 /// Presses `chord`, a letter after any of `Meta+`, `Shift+`, `Ctrl+` and
-/// `Alt+` as in `Meta+Shift+z`, the way `AppKit` routes a key pressed in the key
-/// window, and answers which stage took it: the window's views, which hold the
-/// page, the menu bar's key equivalents, or else the window's first responder.
+/// `Alt+` as in `Meta+Shift+z`, the way `AppKit` offers a key equivalent to the
+/// key window ("The Path of Key Events" in Apple's Cocoa Event Handling Guide).
+/// The drive window is never the key window, since it never takes focus, and
+/// `NSApplication` would hand the key to the menu bar alone, so the drive offers
+/// it to the drive window by name.
 ///
-/// That order is `NSApplication`'s for a key equivalent ("The Path of Key
-/// Events" in Apple's Cocoa Event Handling Guide). The drive window is never
-/// the key window, since it never takes focus, and `NSApplication` would hand
-/// the key to the menu bar alone, so the drive walks the same stages against
-/// the drive window by name.
+/// The page's `WKWebView` claims every key so offered and passes one the page
+/// leaves on to the whole menu bar, where Cmd+Q quit the drive instance. So a
+/// chord that a menu item outside the Edit menu owns, Quit, Minimize, Enter Full
+/// Screen and the rest, is refused, and whether the page took a chord shows only
+/// in what the page did.
 pub fn chord(webview: WebViewAddress, chord: String) -> Result<Value, String> {
-    let (flags, letter) = parse_chord(&chord)?;
-    let code = ANSI_LETTER_CODES[usize::from(letter - b'a')];
-    let typed = if flags.contains(NSEventModifierFlags::Shift) {
-        letter.to_ascii_uppercase()
-    } else {
-        letter
-    };
+    let chord = Chord::parse(&chord)?;
     on_main(move |main| {
-        // SAFETY: the address is the live WKWebView, read on the main thread.
-        let webview: &WKWebView = unsafe { &*(webview.0 as *const WKWebView) };
-        let window = webview.window().ok_or("the page has no window")?;
-        let keys = NSString::from_str(&char::from(typed).to_string());
+        let menu_bar = NSApplication::sharedApplication(main)
+            .mainMenu()
+            .ok_or("the app has no menu bar")?;
+        if let Some(owner) = owner_outside_edit(&menu_bar, chord) {
+            return Err(format!(
+                "{owner} owns that chord, which the page would pass on to it"
+            ));
+        }
+        let window = webview
+            .webview(main)
+            .window()
+            .ok_or("the page has no window")?;
+        let keys = NSString::from_str(&chord.typed.to_string());
         let time = NSProcessInfo::processInfo().systemUptime();
         let key = |kind| {
             NSEvent::keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode(
                 kind,
                 NSPoint::ZERO,
-                flags,
+                chord.flags,
                 time,
                 window.windowNumber(),
                 None,
                 &keys,
                 &keys,
                 false,
-                code,
+                chord.code,
             )
             .ok_or("AppKit made no key event")
         };
         let (down, up) = (key(NSEventType::KeyDown)?, key(NSEventType::KeyUp)?);
 
-        let taken_by = if window.performKeyEquivalent(&down) {
-            "window"
-        } else if NSApplication::sharedApplication(main)
-            .mainMenu()
-            .is_some_and(|menu| menu.performKeyEquivalent(&down))
-        {
-            "menu bar"
-        } else {
-            window.sendEvent(&down);
-            "first responder"
-        };
+        window.performKeyEquivalent(&down);
         window.sendEvent(&up);
-        Ok(json!({ "takenBy": taken_by }))
+        Ok(Value::Null)
     })?
 }
 
-fn parse_chord(chord: &str) -> Result<(NSEventModifierFlags, u8), String> {
-    let (held, key) = chord.rsplit_once('+').unwrap_or(("", chord));
-    let mut flags = NSEventModifierFlags::empty();
-    for modifier in held.split('+').filter(|name| !name.is_empty()) {
-        flags |= match modifier {
-            "Meta" => NSEventModifierFlags::Command,
-            "Shift" => NSEventModifierFlags::Shift,
-            "Ctrl" => NSEventModifierFlags::Control,
-            "Alt" => NSEventModifierFlags::Option,
-            other => return Err(format!("{other} is not Meta, Shift, Ctrl or Alt")),
-        };
+/// The title of the menu item outside the Edit menu whose key equivalent is
+/// `chord`, as "Trunk > Quit Trunk", searched from the menu bar down.
+fn owner_outside_edit(menu_bar: &NSMenu, chord: Chord) -> Option<String> {
+    (0..menu_bar.numberOfItems())
+        .filter_map(|index| menu_bar.itemAtIndex(index))
+        .filter(|item| item.title().to_string() != "Edit")
+        .find_map(|item| owner_in(&item, chord, ""))
+}
+
+fn owner_in(item: &NSMenuItem, chord: Chord, parents: &str) -> Option<String> {
+    let path = format!("{parents}{}", item.title());
+    if chord.is_equivalent_of(item) {
+        return Some(path);
     }
-    match key.as_bytes() {
-        [letter @ b'a'..=b'z'] => Ok((flags, *letter)),
-        _ => Err(format!("{key} is not a lowercase letter")),
+
+    let menu = item.submenu()?;
+    (0..menu.numberOfItems())
+        .filter_map(|index| menu.itemAtIndex(index))
+        .find_map(|child| owner_in(&child, chord, &format!("{path} > ")))
+}
+
+/// A key press the drive can build: the held modifiers, the letter, its key
+/// code on an ANSI keyboard, and the character it types.
+#[derive(Clone, Copy)]
+struct Chord {
+    flags: NSEventModifierFlags,
+    letter: char,
+    code: u16,
+    typed: char,
+}
+
+impl Chord {
+    fn parse(chord: &str) -> Result<Self, String> {
+        let (held, key) = chord.rsplit_once('+').unwrap_or(("", chord));
+        let mut flags = NSEventModifierFlags::empty();
+        for modifier in held.split('+').filter(|name| !name.is_empty()) {
+            flags |= match modifier {
+                "Meta" => NSEventModifierFlags::Command,
+                "Shift" => NSEventModifierFlags::Shift,
+                "Ctrl" => NSEventModifierFlags::Control,
+                "Alt" => NSEventModifierFlags::Option,
+                other => return Err(format!("{other} is not Meta, Shift, Ctrl or Alt")),
+            };
+        }
+
+        let mut letters = key.chars();
+        let (Some(letter), None) = (letters.next(), letters.next()) else {
+            return Err(format!("{key} is not a lowercase letter"));
+        };
+        let (_, code) = ANSI_LETTER_CODES
+            .into_iter()
+            .find(|&(candidate, _)| candidate == letter)
+            .ok_or_else(|| format!("{key} is not a lowercase letter"))?;
+        let typed = if flags.contains(NSEventModifierFlags::Shift) {
+            letter.to_ascii_uppercase()
+        } else {
+            letter
+        };
+        Ok(Self {
+            flags,
+            letter,
+            code,
+            typed,
+        })
+    }
+
+    /// Whether `item`'s key equivalent is this chord. `AppKit` reads an
+    /// uppercase key equivalent as one that needs Shift.
+    fn is_equivalent_of(self, item: &NSMenuItem) -> bool {
+        let key = item.keyEquivalent().to_string();
+        let mut chars = key.chars();
+        let (Some(key), None) = (chars.next(), chars.next()) else {
+            return false;
+        };
+        let mut flags = item.keyEquivalentModifierMask()
+            & (NSEventModifierFlags::Command
+                | NSEventModifierFlags::Shift
+                | NSEventModifierFlags::Control
+                | NSEventModifierFlags::Option);
+        if key.is_ascii_uppercase() {
+            flags |= NSEventModifierFlags::Shift;
+        }
+        key.to_ascii_lowercase() == self.letter && flags == self.flags
     }
 }
 
-/// The virtual key code of each letter on an ANSI keyboard, from `a` to `z`
-/// (`kVK_ANSI_A` and the rest in Carbon's `Events.h`).
-const ANSI_LETTER_CODES: [u16; 26] = [
-    0, 11, 8, 2, 14, 3, 5, 4, 34, 38, 40, 37, 46, 45, 31, 35, 12, 15, 1, 17, 32, 9, 13, 7, 16, 6,
+/// Each letter with its virtual key code on an ANSI keyboard (`kVK_ANSI_A` and
+/// the rest in Carbon's `Events.h`).
+const ANSI_LETTER_CODES: [(char, u16); 26] = [
+    ('a', 0),
+    ('b', 11),
+    ('c', 8),
+    ('d', 2),
+    ('e', 14),
+    ('f', 3),
+    ('g', 5),
+    ('h', 4),
+    ('i', 34),
+    ('j', 38),
+    ('k', 40),
+    ('l', 37),
+    ('m', 46),
+    ('n', 45),
+    ('o', 31),
+    ('p', 35),
+    ('q', 12),
+    ('r', 15),
+    ('s', 1),
+    ('t', 17),
+    ('u', 32),
+    ('v', 9),
+    ('w', 13),
+    ('x', 7),
+    ('y', 16),
+    ('z', 6),
 ];
 
 /// The actions of the standard menu items (muda-0.20.0

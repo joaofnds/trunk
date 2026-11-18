@@ -6,7 +6,8 @@
  * naming that worktree with OK as its only button, and OK leaves the branch.
  * Cmd+Z, pressed through AppKit's key path, undoes the last commit, and
  * Cmd+Shift+Z redoes it, which only holds while the page meets those keys
- * before the Edit menu's own Undo and Redo do.
+ * before the Edit menu's own Undo and Redo do. Cmd+Q through the same path is
+ * refused, since the page would pass it on to Quit.
  * Open Repository, answered with a path, opens that repository's commits. The
  * instance never becomes the active application. Run by `just drive-native`.
  *
@@ -200,11 +201,7 @@ async function undoAndRedoFromTheKeyboard(instance: Instance): Promise<void> {
 	const parent = git(repo, "rev-parse", "HEAD~1");
 	await until(instance, toolbarButtonEnabled("Undo"), DEADLINE_MS);
 
-	const undo = await request(
-		instance,
-		{ op: "chord", chord: "Meta+z" },
-		DEADLINE_MS,
-	);
+	await request(instance, { op: "chord", chord: "Meta+z" }, DEADLINE_MS);
 	// The parent is a root commit, which Undo refuses, so Undo going off shows
 	// the toolbar has read where HEAD went.
 	await until(
@@ -215,7 +212,7 @@ async function undoAndRedoFromTheKeyboard(instance: Instance): Promise<void> {
 	const undone = git(repo, "rev-parse", "HEAD");
 	check(
 		undone === parent,
-		`Cmd+Z, taken by the ${(undo as { takenBy?: string } | null)?.takenBy} stage, moves HEAD from main one back to its parent`,
+		"Cmd+Z moves HEAD from main one back to its parent",
 		`after Cmd+Z HEAD is ${undone}, not the parent ${parent}`,
 	);
 
@@ -228,6 +225,16 @@ async function undoAndRedoFromTheKeyboard(instance: Instance): Promise<void> {
 		redone === head,
 		"Cmd+Shift+Z puts HEAD back on main one",
 		`after Cmd+Shift+Z HEAD is ${redone}, not main one at ${head}`,
+	);
+
+	const quit = await failureOf(
+		request(instance, { op: "chord", chord: "Meta+q" }, DEADLINE_MS),
+	);
+	await request(instance, { op: "ping" }, DEADLINE_MS);
+	check(
+		/^Trunk > Quit .+ owns that chord/.test(quit),
+		"Cmd+Q through chord is refused, since the page would pass it on to Quit, and the instance keeps answering",
+		`Cmd+Q through chord answered: ${quit}`,
 	);
 }
 

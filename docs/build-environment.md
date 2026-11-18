@@ -319,13 +319,16 @@ Five places where the drive instance differs from the app a user runs:
 
 - `click`, `type` and `key` send DOM events to the page, not keystrokes to the
   app. `type` appends to the field's value, and a shortcut the native menu owns,
-  such as Cmd+F, undo or paste, never reaches the menu. `chord Meta+z` sends a
-  modifier and a letter as an `NSEvent` along AppKit's order for a key
-  equivalent, the window's views and so the page first, then the menu bar, and
-  prints which stage took it. `menu-bar Edit Find` fires Find. Undo and paste
-  do nothing through `menu-bar` or `chord`, because their actions go to the key
-  window's first responder and a drive window never is the key window, so a
-  text field's own undo cannot be seen through the drive route.
+  such as Cmd+F, undo or paste, never reaches the menu. `chord Meta+z` offers a
+  modifier and a letter to the drive window as an `NSEvent` key equivalent, so
+  the page meets it as it meets a real key press. The page's web view claims
+  every key and passes one the page leaves on to the whole menu bar, so `chord`
+  refuses a key that a menu item outside the Edit menu owns, such as Cmd+Q, and
+  whether the page took a key shows only in what the page did. `menu-bar Edit
+  Find` fires Find. A text field's own undo cannot be seen through the drive
+  route. The Edit menu's Undo and Paste send their actions to the key window's
+  first responder, and a drive window is never the key window, so they do
+  nothing whether `menu-bar` chooses them or `chord` reaches them.
 - A context menu is recorded rather than shown, because a menu with no position
   opens under the real cursor and its tracking loop takes the user's input.
   `menu` reads it and `choose` fires an item by its label path, as `choose
