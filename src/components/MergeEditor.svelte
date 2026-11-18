@@ -13,9 +13,9 @@ import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import {
 	type ConflictRegion,
-	computeOutput,
 	countUnresolved,
 	getConflictIndices,
+	outputRegions,
 	parseConflictRegions,
 	sideKeys,
 	takeAllCurrent,
@@ -23,6 +23,7 @@ import {
 	toggleHunk,
 	toggleLine,
 } from "../lib/merge-parser.js";
+import { conflictNearest, layoutFrom, mapOffset } from "../lib/merge-scroll.js";
 import type { MergeSides } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
@@ -209,6 +210,12 @@ function computeOffsets(rows: FlatRow[]): number[] {
 	return offsets;
 }
 
+function regionHeights(rows: FlatRow[], count: number): number[] {
+	const heights = new Array<number>(count).fill(0);
+	for (const row of rows) heights[row.regionIdx] += row.height;
+	return heights;
+}
+
 function getVisibleRange(
 	scrollTop: number,
 	viewportHeight: number,
@@ -240,10 +247,10 @@ function getVisibleRange(
 
 // ---------- Derived ----------
 let conflictIndices = $derived(getConflictIndices(regions));
-let outputText = $derived.by(() => {
-	if (manualEdit) return manualText;
-	return computeOutput(regions, takenLines);
-});
+let outputLines = $derived(outputRegions(regions, takenLines));
+let outputText = $derived(
+	manualEdit ? manualText : outputLines.flat().join("\n"),
+);
 let hasPrev = $derived(focusedConflictIdx > 0);
 let hasNext = $derived(focusedConflictIdx < conflictIndices.length - 1);
 let hasConflicts = $derived(conflictIndices.length > 0);
@@ -264,6 +271,18 @@ let oursVisible = $derived(
 );
 let theirsVisible = $derived(
 	getVisibleRange(panelScrollTop, panelViewportHeight, theirsOffsets),
+);
+
+// Where each region sits in the side panes and in the output. Typed text has
+// no regions, so a manual edit leaves the output scrolling on its own.
+let sideLayout = $derived(layoutFrom(regionHeights(oursFlat, regions.length)));
+let outputLayout = $derived(
+	manualEdit
+		? null
+		: layoutFrom(outputLines.map((lines) => lines.length * LINE_HEIGHT)),
+);
+let headerCentres = $derived(
+	conflictIndices.map((r) => sideLayout[r] + CONFLICT_HEADER_HEIGHT / 2),
 );
 
 // ---------- Data loading ----------
@@ -309,27 +328,62 @@ function loadSides(path: string) {
 }
 
 // ---------- Synchronized scroll ----------
+const OUTPUT_PANEL = 2;
 let scrolling = false;
 let scrollRaf = 0;
 
 function handleScroll(sourceIdx: number) {
 	if (scrolling) return;
-	scrolling = true;
 	const source = panelRefs[sourceIdx];
-	if (!source) {
-		scrolling = false;
-		return;
+	if (!source) return;
+	let sideTop = source.scrollTop;
+	if (sourceIdx === OUTPUT_PANEL) {
+		if (!outputLayout) return;
+		sideTop = mapOffset(outputLayout, sideLayout, source.scrollTop);
 	}
-	const st = source.scrollTop;
+	scrolling = true;
 	// Sync other panels immediately (no DOM mutation, so no jitter)
-	panelRefs.forEach((el, i) => {
-		if (el && i !== sourceIdx) el.scrollTop = st;
-	});
+	scrollPanels(sideTop, sourceIdx);
 	// Defer virtualization state update to next frame so DOM mutations
 	// don't happen mid-scroll (which causes jitter on the source panel)
 	cancelAnimationFrame(scrollRaf);
 	scrollRaf = requestAnimationFrame(() => {
-		panelScrollTop = st;
+		panelScrollTop = sideTop;
+		if (hasConflicts) {
+			focusedConflictIdx = conflictNearest(
+				headerCentres,
+				sideTop + panelViewportHeight / 2,
+			);
+		}
+		scrolling = false;
+	});
+}
+
+/** Scroll every panel but `except` to show what the sides show at `sideTop`. */
+function scrollPanels(sideTop: number, except = -1) {
+	panelRefs.forEach((el, i) => {
+		if (!el || i === except) return;
+		if (i !== OUTPUT_PANEL) el.scrollTop = sideTop;
+		else if (outputLayout)
+			el.scrollTop = mapOffset(sideLayout, outputLayout, sideTop);
+	});
+}
+
+// A take grows or shrinks the output above the place on screen, so the output
+// is lined up again with what the sides show.
+$effect(() => {
+	if (!outputLayout) return;
+	const output = panelRefs[OUTPUT_PANEL];
+	const side = panelRefs[0];
+	if (!output || !side) return;
+	holdScrollEvents();
+	output.scrollTop = mapOffset(sideLayout, outputLayout, side.scrollTop);
+});
+
+/** Ignore the scroll events a programmatic scroll raises until the next frame. */
+function holdScrollEvents() {
+	scrolling = true;
+	requestAnimationFrame(() => {
 		scrolling = false;
 	});
 }
@@ -402,26 +456,13 @@ function handleNextConflict() {
 }
 
 function scrollToConflict(idx: number) {
-	const regionIndex = conflictIndices[idx];
-	if (regionIndex == null) return;
-	// Find the conflict header row in the flat array
-	const rowIdx = oursFlat.findIndex(
-		(r) => r.type === "conflict-header" && r.regionIdx === regionIndex,
-	);
-	if (rowIdx === -1) return;
-	const targetTop = oursOffsets[rowIdx];
-	const scrollTo = Math.max(
-		0,
-		targetTop - panelViewportHeight / 2 + CONFLICT_HEADER_HEIGHT / 2,
-	);
-	scrolling = true;
-	for (const panel of panelRefs) {
-		if (panel) panel.scrollTop = scrollTo;
-	}
+	const centre = headerCentres[idx];
+	if (centre == null) return;
+	const scrollTo = Math.max(0, centre - panelViewportHeight / 2);
+	cancelAnimationFrame(scrollRaf);
+	holdScrollEvents();
+	scrollPanels(scrollTo);
 	panelScrollTop = scrollTo;
-	requestAnimationFrame(() => {
-		scrolling = false;
-	});
 }
 
 async function handleSaveAndResolve() {
@@ -727,10 +768,11 @@ registerUpdateBlocker(
 			<!-- Editable output textarea -->
 			<textarea
 				aria-label="Merge output"
-				bind:this={panelRefs[2]}
+				bind:this={panelRefs[OUTPUT_PANEL]}
 				value={outputText}
+				wrap="off"
 				oninput={handleOutputEdit}
-				onscroll={() => handleScroll(2)}
+				onscroll={() => handleScroll(OUTPUT_PANEL)}
 				class="flex-1 w-full resize-none border-none bg-bg text-text font-mono text-callout py-1 px-2 outline-none box-border"
 				style:line-height="{LINE_HEIGHT}px"
 			></textarea>

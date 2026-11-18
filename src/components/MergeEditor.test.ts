@@ -383,6 +383,50 @@ describe("MergeEditor", () => {
 		});
 	});
 
+	describe("when the file holds several conflicts", () => {
+		function sides(): typeof MERGE_SIDES {
+			const file = (side: string) =>
+				[1, 2, 3]
+					.map((n) => `${"context\n".repeat(100)}${side} ${n}\n`)
+					.join("");
+			return { base: file("base"), ours: file("ours"), theirs: file("theirs") };
+		}
+
+		beforeEach(() => {
+			mockInvoke.mockImplementation((cmd: string) =>
+				Promise.resolve(cmd === "get_merge_sides" ? sides() : undefined),
+			);
+		});
+
+		// The editor ignores the scroll events its own scrolling raises until the
+		// next frame, so a user's scroll comes after one.
+		function nextFrame(): Promise<void> {
+			return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+		}
+
+		it("counts the conflict the user scrolled back to", async () => {
+			render(MergeEditor, {
+				props: {
+					repoPath: "/test/repo",
+					filePath: "src/main.ts",
+					onclose: () => {},
+					onresolved: () => {},
+				},
+			});
+			const next = await screen.findByRole("button", { name: "Next conflict" });
+			await fireEvent.click(next);
+			await fireEvent.click(next);
+			const output = screen.getByRole("textbox", { name: "Merge output" });
+			await nextFrame();
+
+			output.scrollTop = 0;
+			await fireEvent.scroll(output);
+
+			expect(await screen.findByText("1/3")).toBeInTheDocument();
+			expect(next).toBeEnabled();
+		});
+	});
+
 	describe("when the conflict cannot be loaded", () => {
 		function props(onclose = vi.fn()) {
 			return {

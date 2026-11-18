@@ -3,6 +3,7 @@ import type { ConflictRegion } from "./merge-parser.js";
 import {
 	computeOutput,
 	getConflictIndices,
+	outputRegions,
 	parseConflictRegions,
 	takeAllCurrent,
 	takeAllIncoming,
@@ -180,6 +181,14 @@ describe("computeOutput", () => {
 
 		const output = computeOutput(regions, takenLines);
 		expect(output).toBe("A\nX\nY\nC");
+	});
+});
+
+describe("outputRegions", () => {
+	it("keeps each region's output lines apart, with none for a conflict nothing was taken from", () => {
+		const regions = parseConflictRegions("A\nB\nC", "A\nX\nC", "A\nY\nC");
+
+		expect(outputRegions(regions, new Set())).toEqual([["A"], [], ["C"]]);
 	});
 });
 

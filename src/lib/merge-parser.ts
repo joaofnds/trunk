@@ -235,42 +235,36 @@ export function parseConflictRegions(
 }
 
 /**
- * Compute the merged output text from regions and selection state.
+ * The merged output's lines, one list per region, from regions and selection
+ * state.
  *
  * For context regions, all lines are included.
  * For resolved regions, the changed side's lines are included.
  * For conflict regions, lines are included if their key is in takenLines.
  * Ours lines come before theirs lines within each conflict region.
  */
+export function outputRegions(
+	regions: ConflictRegion[],
+	takenLines: Set<string>,
+): string[][] {
+	return regions.map((region, i) => {
+		if (region.type === "context") return region.oursLines;
+		if (region.type === "resolved") return resolvedLines(region);
+		return [
+			...region.oursLines.filter((_, j) => takenLines.has(`ours-${i}-${j}`)),
+			...region.theirsLines.filter((_, j) =>
+				takenLines.has(`theirs-${i}-${j}`),
+			),
+		];
+	});
+}
+
+/** The merged output text from regions and selection state. */
 export function computeOutput(
 	regions: ConflictRegion[],
 	takenLines: Set<string>,
 ): string {
-	const lines: string[] = [];
-
-	for (let i = 0; i < regions.length; i++) {
-		const region = regions[i];
-		if (region.type === "context") {
-			// For context, include all lines (oursLines === theirsLines === baseLines)
-			lines.push(...region.oursLines);
-		} else if (region.type === "resolved") {
-			lines.push(...resolvedLines(region));
-		} else {
-			// For conflict, include taken ours lines first, then taken theirs lines
-			region.oursLines.forEach((line, j) => {
-				if (takenLines.has(`ours-${i}-${j}`)) {
-					lines.push(line);
-				}
-			});
-			region.theirsLines.forEach((line, j) => {
-				if (takenLines.has(`theirs-${i}-${j}`)) {
-					lines.push(line);
-				}
-			});
-		}
-	}
-
-	return lines.join("\n");
+	return outputRegions(regions, takenLines).flat().join("\n");
 }
 
 /**
