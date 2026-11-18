@@ -32,6 +32,14 @@ const selectedReadme: FileDiff = {
 	hunks: [],
 };
 
+const pureRename: FileDiff = {
+	path: "docs/README.md",
+	old_path: "README.md",
+	status: "Renamed",
+	is_binary: false,
+	hunks: [],
+};
+
 const baseProps = {
 	...commentingDiff,
 	contentMode: "hunk" as const,
@@ -276,6 +284,37 @@ describe("DiffViewer with a file that has no hunks", () => {
 		expect(
 			screen.getByRole("region", { name: "No changes to show" }),
 		).toHaveTextContent("This file has no diff here.");
+	});
+
+	it("says a file renamed with its content unchanged was renamed", () => {
+		render(DiffViewer, {
+			props: {
+				...baseProps,
+				selectedPath: "docs/README.md",
+				fileDiffs: [pureRename],
+			},
+		});
+
+		expect(
+			screen.getByRole("region", { name: "Renamed without changes" }),
+		).toHaveTextContent("This file's content matches README.md.");
+	});
+
+	it("says a rename matches its old content only once whitespace is ignored", () => {
+		render(DiffViewer, {
+			props: {
+				...baseProps,
+				ignoreWhitespace: true,
+				selectedPath: "docs/README.md",
+				fileDiffs: [pureRename],
+			},
+		});
+
+		expect(
+			screen.getByRole("region", { name: "Renamed without changes" }),
+		).toHaveTextContent(
+			"This file's content matches README.md once whitespace is ignored.",
+		);
 	});
 
 	it("says nothing about changes while the file is still loading", () => {

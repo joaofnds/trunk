@@ -329,9 +329,23 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 		</div>
 	{:else if pane === "no-changes"}
 		<div class="h-full grid content-center-safe overflow-y-auto">
-			<ReviewEmpty title="No changes to show">
-				<p>This file has no diff here.</p>
-			</ReviewEmpty>
+			<!-- Without this, a rename with nothing in its content to show reads as a
+			     diff that failed to load. A path has no spaces to wrap at, so the line
+			     may break anywhere rather than run out of the box. -->
+			{#if selectedFileDiff?.status === "Renamed" && selectedFileDiff.old_path}
+				<ReviewEmpty title="Renamed without changes">
+					<p class="wrap-anywhere">
+						This file's content matches
+						{selectedFileDiff.old_path}{ignoreWhitespace
+							? " once whitespace is ignored"
+							: ""}.
+					</p>
+				</ReviewEmpty>
+			{:else}
+				<ReviewEmpty title="No changes to show">
+					<p>This file has no diff here.</p>
+				</ReviewEmpty>
+			{/if}
 			{#if threadsWithoutDiff.length > 0}
 				<div class="flex flex-col gap-2 p-2">
 					{#each threadsWithoutDiff as thread (thread.id)}
