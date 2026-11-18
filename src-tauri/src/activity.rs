@@ -164,8 +164,7 @@ impl ActivityState {
     }
 
     /// Block until no lease is held, so a test can begin preparation once the
-    /// background work an earlier command left running has settled, the way the
-    /// frontend starts it only when nothing is pending.
+    /// background work an earlier command left running has settled.
     /// # Panics
     /// Panics if the admission mutex is poisoned.
     #[cfg(feature = "test-util")]
