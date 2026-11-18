@@ -548,25 +548,34 @@ describe("CommitForm", () => {
 	});
 
 	describe("aiming an amend at the commit the user saw", () => {
+		const stale = {
+			code: "amend_stale",
+			message:
+				"HEAD is no longer the commit this amend was opened on, so nothing was amended",
+		};
 		let message: typeof import("@tauri-apps/plugin-dialog").message;
-		let heads: string[];
+		let head: { oid: string; subject: string };
+		let refuseNextAmend: boolean;
 		let amends: unknown[];
 
 		beforeEach(async () => {
 			({ message } = await import("@tauri-apps/plugin-dialog"));
 			vi.mocked(message).mockClear();
 			vi.mocked(safeInvoke).mockReset();
-			heads = ["head-1"];
+			head = { oid: "head-1", subject: "Prev subject" };
+			refuseNextAmend = false;
 			amends = [];
 			vi.mocked(safeInvoke).mockImplementation((cmd: string, args) => {
 				if (cmd === "get_head_commit_message") {
-					return Promise.resolve({
-						oid: heads[0],
-						subject: "Prev subject",
-						body: null,
-					});
+					return Promise.resolve({ ...head, body: null });
 				}
-				if (cmd === "amend_commit") amends.push(args);
+				if (cmd === "amend_commit") {
+					amends.push(args);
+					if (refuseNextAmend) {
+						refuseNextAmend = false;
+						return Promise.reject(stale);
+					}
+				}
 				return Promise.resolve(undefined);
 			});
 		});
@@ -575,17 +584,29 @@ describe("CommitForm", () => {
 			return screen.getByTestId("commit-form-subject") as HTMLInputElement;
 		}
 
-		async function openAmend() {
-			await fireEvent.click(screen.getByRole("tab", { name: "Amend" }));
-			await waitFor(() => expect(subjectInput().value).toBe("Prev subject"));
+		function tab(name: string) {
+			return screen.getByRole("tab", { name });
+		}
+
+		async function openAmend(subject = "Prev subject") {
+			await fireEvent.click(tab("Amend"));
+			await waitFor(() => expect(subjectInput().value).toBe(subject));
+		}
+
+		function submit() {
+			return fireEvent.click(screen.getByTestId("commit-form-submit"));
+		}
+
+		function pullLands() {
+			head = { oid: "head-2", subject: "Pulled subject" };
 		}
 
 		it("names the commit whose message the amend was opened on", async () => {
 			render(CommitForm, { props: defaultProps });
 			await openAmend();
-			heads = ["head-2"];
+			pullLands();
 
-			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+			await submit();
 
 			await waitFor(() =>
 				expect(amends).toEqual([
@@ -594,50 +615,109 @@ describe("CommitForm", () => {
 			);
 		});
 
-		it("keeps the message and aims the next amend at HEAD as it is then once HEAD moved", async () => {
-			const moved = "HEAD moved before the amend ran, so nothing was amended";
-			vi.mocked(safeInvoke).mockImplementation((cmd: string, args) => {
-				if (cmd === "get_head_commit_message") {
-					return Promise.resolve({
-						oid: heads[0],
-						subject: "Prev subject",
-						body: null,
-					});
-				}
-				if (cmd === "amend_commit") {
-					amends.push(args);
-					if (amends.length === 1) {
-						return Promise.reject({ code: "amend_stale", message: moved });
-					}
-				}
-				return Promise.resolve(undefined);
-			});
+		it("shows HEAD's message on re-entry when the buffer was not edited", async () => {
+			render(CommitForm, { props: defaultProps });
+			await openAmend();
+			await fireEvent.click(tab("Commit"));
+			pullLands();
+
+			await openAmend("Pulled subject");
+			await submit();
+
+			await waitFor(() =>
+				expect(amends).toEqual([
+					expect.objectContaining({
+						subject: "Pulled subject",
+						expectedHeadOid: "head-2",
+					}),
+				]),
+			);
+		});
+
+		it("keeps edits aimed at the commit they were written for across a mode switch", async () => {
 			render(CommitForm, { props: defaultProps });
 			await openAmend();
 			await fireEvent.input(subjectInput(), {
 				target: { value: "fixed subject" },
 			});
-			heads = ["head-2"];
-			await fireEvent.click(screen.getByTestId("commit-form-submit"));
-			await waitFor(() =>
-				expect(message).toHaveBeenCalledWith(moved, {
-					title: "Amend Error",
-					kind: "error",
-				}),
-			);
-			expect(subjectInput().value).toBe("fixed subject");
+			await fireEvent.click(tab("Commit"));
+			pullLands();
+			await fireEvent.click(tab("Amend"));
 
-			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+			await submit();
 
 			await waitFor(() =>
 				expect(amends).toEqual([
-					expect.objectContaining({ expectedHeadOid: "head-1" }),
 					expect.objectContaining({
 						subject: "fixed subject",
-						expectedHeadOid: "head-2",
+						expectedHeadOid: "head-1",
 					}),
 				]),
 			);
+		});
+
+		describe("once HEAD moved under the amend", () => {
+			it("names the commit an edited amend would now replace", async () => {
+				render(CommitForm, { props: defaultProps });
+				await openAmend();
+				await fireEvent.input(subjectInput(), {
+					target: { value: "fixed subject" },
+				});
+				pullLands();
+				refuseNextAmend = true;
+
+				await submit();
+
+				await waitFor(() =>
+					expect(message).toHaveBeenCalledWith(
+						`${stale.message}. HEAD is now "Pulled subject". Amend again to amend it with this message.`,
+						{ title: "Amend Error", kind: "error" },
+					),
+				);
+				expect(subjectInput().value).toBe("fixed subject");
+			});
+
+			it("aims the next amend of an edited buffer at the commit the dialog named", async () => {
+				render(CommitForm, { props: defaultProps });
+				await openAmend();
+				await fireEvent.input(subjectInput(), {
+					target: { value: "fixed subject" },
+				});
+				pullLands();
+				refuseNextAmend = true;
+				await submit();
+				await waitFor(() => expect(message).toHaveBeenCalled());
+				head = { oid: "head-3", subject: "Pulled again" };
+
+				await submit();
+
+				await waitFor(() =>
+					expect(amends).toEqual([
+						expect.objectContaining({ expectedHeadOid: "head-1" }),
+						expect.objectContaining({
+							subject: "fixed subject",
+							expectedHeadOid: "head-2",
+						}),
+					]),
+				);
+			});
+
+			it("shows the new HEAD's message in a buffer the user had not edited", async () => {
+				render(CommitForm, { props: defaultProps });
+				await openAmend();
+				pullLands();
+				refuseNextAmend = true;
+
+				await submit();
+
+				await waitFor(() =>
+					expect(subjectInput().value).toBe("Pulled subject"),
+				);
+				expect(message).toHaveBeenCalledWith(
+					`${stale.message}. HEAD is now "Pulled subject". The form now shows its message.`,
+					{ title: "Amend Error", kind: "error" },
+				);
+			});
 		});
 	});
 

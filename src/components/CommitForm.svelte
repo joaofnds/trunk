@@ -1,7 +1,7 @@
 <script lang="ts">
 import { untrack } from "svelte";
 import { reportErrorDialog, reportErrorToast } from "../lib/error-report.js";
-import { isTrunkError, safeInvoke } from "../lib/invoke.js";
+import { isTrunkError, safeInvoke, type TrunkError } from "../lib/invoke.js";
 import { shortcutModifier } from "../lib/keyboard.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { HeadCommitMessage } from "../lib/types.js";
@@ -31,10 +31,12 @@ let draftSubject = $state(untrack(() => initialSubject) ?? "");
 let draftBody = $state(untrack(() => initialBody) ?? "");
 let amendSubject = $state("");
 let amendBody = $state("");
-// The commit the amend buffer was opened on. The amend names it, and the
-// backend refuses once HEAD is another commit, so a pull or a commit landing
-// meanwhile is never replaced under this message.
+// The commit the amend buffer is aimed at, and the message it was filled with.
+// The amend names that commit, and the backend refuses once HEAD is another, so
+// a pull or a commit landing meanwhile is never replaced under this message.
 let amendHeadOid = $state<string | null>(null);
+let amendSeed = { subject: "", body: "" };
+let amendSeeding = 0;
 let mode = $state<"commit" | "amend" | "stash">("commit");
 let committing = $state(false);
 let subjectError = $state("");
@@ -101,31 +103,38 @@ async function handleModeSwitch(newMode: "commit" | "amend" | "stash") {
 	mode = newMode;
 	subjectError = "";
 
-	// Entering amend with an empty amend buffer: seed it from HEAD. A non-empty
-	// buffer holds kept amend edits — leave them alone. The draft is never read
-	// or written here, so it survives untouched.
-	if (newMode === "amend" && amendSubject === "" && amendBody === "") {
-		amendHeadOid = null;
+	// An amend buffer the user has not edited shows HEAD as it is now, since the
+	// commit it was filled from may be gone. Edits are kept, and stay aimed at the
+	// commit they were written for. The draft is never read or written here.
+	if (newMode === "amend" && amendUntouched()) {
 		try {
-			const msg = await safeInvoke<HeadCommitMessage>(
-				"get_head_commit_message",
-				{
-					path: repoPath,
-				},
-			);
-			if (mode !== "amend") return;
-			// Text typed during the fetch was typed with this HEAD on screen.
-			amendHeadOid ??= msg.oid;
-			// Guard the stale prefill: only apply with an untouched buffer. Typing
-			// during the fetch invalidates it.
-			if (amendSubject === "" && amendBody === "") {
-				amendSubject = msg.subject;
-				amendBody = msg.body ?? "";
-			}
+			await seedAmend();
 		} catch (e) {
 			console.error("Failed to get HEAD commit message:", e);
 		}
 	}
+}
+
+function amendUntouched() {
+	return amendSubject === amendSeed.subject && amendBody === amendSeed.body;
+}
+
+// Aim the amend at HEAD, and show HEAD's message unless the user has edited the
+// buffer, during this read included. Answers HEAD, or null when a later read or
+// leaving Amend made this one moot.
+async function seedAmend(): Promise<HeadCommitMessage | null> {
+	const seeding = ++amendSeeding;
+	const head = await safeInvoke<HeadCommitMessage>("get_head_commit_message", {
+		path: repoPath,
+	});
+	if (seeding !== amendSeeding || mode !== "amend") return null;
+	amendHeadOid = head.oid;
+	if (amendUntouched()) {
+		amendSubject = head.subject;
+		amendBody = head.body ?? "";
+		amendSeed = { subject: amendSubject, body: amendBody };
+	}
+	return head;
 }
 
 async function handleSubmit() {
@@ -157,17 +166,19 @@ async function handleSubmit() {
 	committing = true;
 	try {
 		if (mode === "amend") {
+			const expectedHeadOid = await amendTarget();
 			await safeInvoke("amend_commit", {
 				path: repoPath,
 				subject: subject.trim(),
 				body: body.trim() || null,
-				expectedHeadOid: await amendTarget(),
+				expectedHeadOid,
 			});
 			// Amend never touches the WIP draft: clear only the amend buffer so the
 			// next amend re-fetches fresh HEAD, and leave the draft (and its parent
 			// callbacks) alone.
 			amendSubject = "";
 			amendBody = "";
+			amendSeed = { subject: "", body: "" };
 			amendHeadOid = null;
 		} else if (mode === "stash") {
 			await safeInvoke("stash_save", {
@@ -186,11 +197,10 @@ async function handleSubmit() {
 		}
 		mode = "commit"; // Always reset to commit mode after any successful operation
 	} catch (e) {
-		// The buffer stays, and the next Amend is aimed at HEAD as it is then,
-		// which the dialog has just told the user moved.
-		if (isTrunkError(e) && e.code === "amend_stale") amendHeadOid = null;
 		if (mode === "stash") {
 			reportErrorToast(e, "Stash failed");
+		} else if (isTrunkError(e) && e.code === "amend_stale") {
+			await retargetAmend(e);
 		} else {
 			const action = mode === "commit" ? "Commit" : "Amend";
 			await reportErrorDialog(e, `${action} Error`, `${action} failed`);
@@ -200,14 +210,34 @@ async function handleSubmit() {
 	}
 }
 
-// The commit this amend replaces: the one the buffer was opened on, or HEAD now
-// when no fetch has named one.
+// A buffer whose HEAD read failed names no commit, and its amend goes to HEAD.
 async function amendTarget(): Promise<string> {
 	if (amendHeadOid !== null) return amendHeadOid;
 	const head = await safeInvoke<HeadCommitMessage>("get_head_commit_message", {
 		path: repoPath,
 	});
 	return head.oid;
+}
+
+// HEAD is not the commit the amend was aimed at. The next Amend goes to the commit
+// HEAD is now, and the dialog names it, so it replaces only a commit the user was
+// told about: under its own message when the buffer was not edited, or under the
+// edits when it was.
+async function retargetAmend(refusal: TrunkError) {
+	const edited = !amendUntouched();
+	let head: HeadCommitMessage | null = null;
+	try {
+		head = await seedAmend();
+	} catch {}
+	const next =
+		head === null
+			? ""
+			: `. HEAD is now "${head.subject}". ${edited ? "Amend again to amend it with this message." : "The form now shows its message."}`;
+	await reportErrorDialog(
+		{ ...refusal, message: refusal.message + next },
+		"Amend Error",
+		"Amend failed",
+	);
 }
 
 function submitOnModEnter(e: KeyboardEvent) {
