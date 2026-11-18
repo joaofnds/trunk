@@ -115,6 +115,34 @@ pub fn wait_for_turn(repo: &git2::Repository) -> Turn {
     Turn::take(repo.path())
 }
 
+/// The name the gate knows a repository by.
+///
+/// Only an open repository makes one, so a reader cannot name the repository
+/// another way, such as by its canonical path, and find it never held.
+#[derive(Clone, Debug)]
+pub struct GateKey(PathBuf);
+
+impl GateKey {
+    #[must_use]
+    pub fn of(repo: &git2::Repository) -> Self {
+        Self(repo.path().to_path_buf())
+    }
+}
+
+/// Whether a writer in this process holds the repository `key` names.
+///
+/// A reader that reports changes, such as the file watcher, defers them while
+/// one does, since the writer is midway through its work.
+#[must_use]
+pub fn is_held(key: &GateKey) -> bool {
+    let gate = GATES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&key.0)
+        .cloned();
+    gate.is_some_and(|gate| *gate.taken.lock().unwrap_or_else(PoisonError::into_inner))
+}
+
 /// The gate of one repository, held by this thread until it drops.
 struct Held {
     repo: PathBuf,
@@ -320,6 +348,29 @@ mod tests {
 
         assert!(for_libgit2.is_err(), "libgit2 reads a split index here");
         assert_eq!(for_git.unwrap(), "ran");
+    }
+
+    #[test]
+    fn a_repository_reads_as_held_only_while_a_writer_holds_it() {
+        let (_dir, repo) = repository();
+        let key = GateKey::of(&repo);
+        let before = is_held(&key);
+
+        let during = hold_for_git(&repo, |_| Ok(is_held(&key))).unwrap();
+
+        assert_eq!((before, during, is_held(&key)), (false, true, false));
+    }
+
+    #[test]
+    fn a_turn_holds_the_repository_until_it_drops() {
+        let (_dir, repo) = repository();
+        let key = GateKey::of(&repo);
+        let turn = wait_for_turn(&repo);
+        let during = is_held(&key);
+
+        drop(turn);
+
+        assert_eq!((during, is_held(&key)), (true, false));
     }
 
     #[test]

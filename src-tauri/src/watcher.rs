@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use trunk_git::error::TrunkError;
+use trunk_git::write_gate::GateKey;
 
 /// The `repo-changed` payload.
 ///
@@ -113,8 +114,7 @@ struct GitDirectories {
 }
 
 impl GitDirectories {
-    fn open(path: &Path) -> Option<Self> {
-        let repo = git2::Repository::open(path).ok()?;
+    fn of(repo: &git2::Repository) -> Option<Self> {
         Some(Self {
             private: repo.path().canonicalize().ok()?,
             common: repo.commondir().canonicalize().ok()?,
@@ -404,6 +404,25 @@ const PACING_INTERVAL: Duration = Duration::from_millis(300);
 /// lets changes through after this.
 const LOCK_PATIENCE: Duration = Duration::from_secs(1);
 
+/// How often a batch held for one of the app's own writes checks whether the write
+/// has ended. Nothing else wakes the pacer then, since the run's last writes may
+/// already have been reported.
+const APP_WRITE_RECHECK: Duration = Duration::from_millis(20);
+
+/// Who is midway through writing the repository when a batch falls due.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Writer {
+    Nobody,
+    /// A git process holds the index lock. It may be one run outside the app, or one
+    /// left behind by a crash.
+    Git,
+    /// A writer in this app holds the repository, such as a pull running git. Its
+    /// writes are shown once it ends rather than halfway through. No patience
+    /// bounds this wait, so while a git run that never ends holds the repository,
+    /// such as one whose commit hook hangs, no change is shown.
+    App,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum Changes {
     Paths(BTreeSet<PathBuf>),
@@ -445,10 +464,21 @@ impl Changes {
     }
 }
 
+/// What a held batch waits for once it is due.
+#[derive(Clone, Copy)]
+enum Wait {
+    /// Nothing yet: it goes out at its due time unless someone is writing then.
+    Nothing,
+    /// Git has held the index lock since this instant.
+    IndexLock { since: Instant },
+    /// The app was writing the repository, so the batch looks again at this instant.
+    AppWrite { look_again: Instant },
+}
+
 struct Held {
     due: Instant,
     changes: Changes,
-    locked_since: Option<Instant>,
+    wait: Wait,
 }
 
 /// Releases filesystem changes in batches. The first change after a quiet spell
@@ -476,34 +506,44 @@ impl Pacer {
         self.held = Some(Held {
             due,
             changes,
-            locked_since: None,
+            wait: Wait::Nothing,
         });
     }
 
     fn deadline(&self) -> Option<Instant> {
-        self.held.as_ref().map(|held| {
-            held.locked_since
-                .map_or(held.due, |since| since + LOCK_PATIENCE)
+        self.held.as_ref().map(|held| match held.wait {
+            Wait::Nothing => held.due,
+            Wait::IndexLock { since } => since + LOCK_PATIENCE,
+            Wait::AppWrite { look_again } => look_again,
         })
     }
 
-    /// The held batch once it is due, unless the index is locked and has not
-    /// been for `LOCK_PATIENCE` yet.
-    fn release(
-        &mut self,
-        now: Instant,
-        index_locked: impl FnOnce() -> bool,
-    ) -> Option<Vec<PathBuf>> {
+    /// The held batch once it is due, unless the app is writing the repository,
+    /// or the index is locked and has not been for `LOCK_PATIENCE` yet.
+    fn release(&mut self, now: Instant, writer: impl FnOnce() -> Writer) -> Option<Vec<PathBuf>> {
         let held = self.held.as_mut()?;
         if now < held.due {
             return None;
         }
 
-        if index_locked() {
-            let since = *held.locked_since.get_or_insert(now);
-            if now < since + LOCK_PATIENCE {
+        match writer() {
+            Writer::App => {
+                held.wait = Wait::AppWrite {
+                    look_again: now + APP_WRITE_RECHECK,
+                };
                 return None;
             }
+            Writer::Git => {
+                let since = match held.wait {
+                    Wait::IndexLock { since } => since,
+                    Wait::Nothing | Wait::AppWrite { .. } => now,
+                };
+                if now < since + LOCK_PATIENCE {
+                    held.wait = Wait::IndexLock { since };
+                    return None;
+                }
+            }
+            Writer::Nobody => {}
         }
 
         self.held.take().map(|held| held.changes.into_paths())
@@ -512,6 +552,41 @@ impl Pacer {
     /// Starts the pacing interval: a released batch reached a subscriber at `at`.
     const fn refreshed(&mut self, at: Instant) {
         self.delivered_at = Some(at);
+    }
+}
+
+/// The git directories of the worktree at `path`, and where to look for a writer
+/// midway through it, read from one open of the repository.
+fn open_for_watching(path: &Path) -> Option<(GitDirectories, Writers)> {
+    let repo = git2::Repository::open(path).ok()?;
+    let git = GitDirectories::of(&repo)?;
+    let writers = Writers::of(&repo, &git);
+    Some((git, writers))
+}
+
+/// Where to look for a writer midway through a worktree.
+struct Writers {
+    /// The lock git holds on this worktree's index while it writes it.
+    index_lock: PathBuf,
+    gate: GateKey,
+}
+
+impl Writers {
+    fn of(repo: &git2::Repository, git: &GitDirectories) -> Self {
+        Self {
+            index_lock: git.private.join("index.lock"),
+            gate: GateKey::of(repo),
+        }
+    }
+
+    fn current(&self) -> Writer {
+        if trunk_git::write_gate::is_held(&self.gate) {
+            Writer::App
+        } else if self.index_lock.exists() {
+            Writer::Git
+        } else {
+            Writer::Nobody
+        }
     }
 }
 
@@ -529,16 +604,17 @@ pub struct RepoWatcher {
 
 impl RepoWatcher {
     /// `deliver` routes a released batch and answers whether it refreshed a
-    /// subscriber. `index_lock` is the lock Git holds on this worktree's index.
+    /// subscriber. `writers` tells who is midway through writing the repository,
+    /// and without them a batch never waits for a writer.
     fn start(
-        index_lock: Option<PathBuf>,
+        writers: Option<Writers>,
         deliver: impl FnMut(Vec<PathBuf>) -> bool + Send + 'static,
     ) -> notify::Result<Self> {
         let (outbox, inbox) = mpsc::channel();
 
         std::thread::Builder::new()
             .name("trunk repo watcher".to_string())
-            .spawn(move || pace(&inbox, index_lock.as_deref(), deliver))?;
+            .spawn(move || pace(&inbox, writers.as_ref(), deliver))?;
 
         let forward = outbox.clone();
         let watcher = RecommendedWatcher::new(
@@ -558,7 +634,7 @@ impl Drop for RepoWatcher {
 
 fn pace(
     inbox: &Receiver<Message>,
-    index_lock: Option<&Path>,
+    writers: Option<&Writers>,
     mut deliver: impl FnMut(Vec<PathBuf>) -> bool,
 ) {
     let mut pacer = Pacer::default();
@@ -579,9 +655,9 @@ fn pace(
             Ok(Message::Stop) | Err(RecvTimeoutError::Disconnected) => return,
         }
 
-        let index_locked = || index_lock.is_some_and(Path::exists);
-        if let Some(batch) = pacer.release(Instant::now(), index_locked)
-            && deliver(batch)
+        if let Some(batch) = pacer.release(Instant::now(), || {
+            writers.map_or(Writer::Nobody, Writers::current)
+        }) && deliver(batch)
         {
             pacer.refreshed(Instant::now());
         }
@@ -626,7 +702,7 @@ impl WatcherState {
         changed: Vec<PathBuf>,
         app: &AppHandle<R>,
     ) -> Result<(), TrunkError> {
-        let git = GitDirectories::open(path);
+        let git = open_for_watching(path).map(|(git, _)| git);
         if let Routed::Published(Some(task)) = route_changes(
             path,
             &root_forms(path),
@@ -678,12 +754,11 @@ where
 
     let watched = path.to_path_buf();
     let roots = root_forms(path);
-    let git = GitDirectories::open(path);
+    let (git, writers) = open_for_watching(path).unzip();
     let callback_git = git.clone();
     let pending = Arc::clone(&state.pending_refs);
 
-    let index_lock = git.as_ref().map(|git| git.private.join("index.lock"));
-    let mut repo_watcher = RepoWatcher::start(index_lock, move |changed| {
+    let mut repo_watcher = RepoWatcher::start(writers, move |changed| {
         match route_changes(
             &watched,
             &roots,
@@ -1101,6 +1176,45 @@ mod tests {
         assert!(state.watchers.lock().unwrap().is_empty());
     }
 
+    mod writers {
+        use super::*;
+
+        /// The writers a watcher started on `path` looks for. A temporary directory on
+        /// macOS sits under `/var`, whose canonical form is `/private/var`, so these
+        /// tests also pin that the watcher names the repository as the gate does.
+        fn watching(path: &Path) -> Writers {
+            open_for_watching(path).unwrap().1
+        }
+
+        #[test]
+        fn names_the_app_while_a_turn_on_the_watched_path_holds_it() {
+            let dir = tempfile::tempdir().unwrap();
+            git2::Repository::init(dir.path()).unwrap();
+            let writers = watching(dir.path());
+
+            let repo = git2::Repository::open(dir.path()).unwrap();
+            let turn = trunk_git::write_gate::wait_for_turn(&repo);
+            let during = writers.current();
+            drop(turn);
+
+            assert_eq!((during, writers.current()), (Writer::App, Writer::Nobody));
+        }
+
+        #[test]
+        fn names_the_app_over_the_index_lock_its_own_git_run_takes() {
+            let dir = tempfile::tempdir().unwrap();
+            let repo = git2::Repository::init(dir.path()).unwrap();
+            std::fs::write(repo.path().join("index.lock"), "").unwrap();
+            let writers = watching(dir.path());
+
+            let turn = trunk_git::write_gate::wait_for_turn(&repo);
+            let during = writers.current();
+            drop(turn);
+
+            assert_eq!((during, writers.current()), (Writer::App, Writer::Git));
+        }
+    }
+
     mod pacer {
         use super::*;
 
@@ -1116,12 +1230,16 @@ mod tests {
             Duration::from_millis(count)
         }
 
-        const fn unlocked() -> bool {
-            false
+        const fn unlocked() -> Writer {
+            Writer::Nobody
         }
 
-        const fn locked() -> bool {
-            true
+        const fn locked() -> Writer {
+            Writer::Git
+        }
+
+        const fn app_writing() -> Writer {
+            Writer::App
         }
 
         /// A pacer that released a batch at the returned instant and refreshed
@@ -1246,6 +1364,85 @@ mod tests {
             let released = pacer.release(start + GATHER_WINDOW, unlocked);
 
             assert_eq!(released, Some(batch(&[])));
+        }
+
+        /// Trunk's own git run, such as a pull that rebases, writes the repository
+        /// for seconds. Released midway, its batches showed each step of the run.
+        mod when_the_app_is_writing_the_repository {
+            use super::*;
+
+            #[test]
+            fn holds_a_due_batch_past_the_lock_patience() {
+                let start = Instant::now();
+                let due = start + GATHER_WINDOW;
+                let mut pacer = Pacer::default();
+                pacer.record(start, paths(&["a"]));
+                pacer.release(due, app_writing);
+
+                assert_eq!(pacer.release(due + LOCK_PATIENCE, app_writing), None);
+            }
+
+            #[test]
+            fn checks_again_a_recheck_interval_after_it_last_looked() {
+                let start = Instant::now();
+                let due = start + GATHER_WINDOW;
+                let mut pacer = Pacer::default();
+                pacer.record(start, paths(&["a"]));
+                pacer.release(due, app_writing);
+                let looked = due + APP_WRITE_RECHECK + millis(3);
+
+                pacer.release(looked, app_writing);
+
+                assert_eq!(pacer.deadline(), Some(looked + APP_WRITE_RECHECK));
+            }
+
+            #[test]
+            fn waits_out_the_lock_patience_when_git_locks_the_index_as_the_write_ends() {
+                let start = Instant::now();
+                let due = start + GATHER_WINDOW;
+                let mut pacer = Pacer::default();
+                pacer.record(start, paths(&["a"]));
+                pacer.release(due, app_writing);
+                let ended = due + APP_WRITE_RECHECK;
+
+                pacer.release(ended, locked);
+
+                assert_eq!(pacer.deadline(), Some(ended + LOCK_PATIENCE));
+            }
+
+            #[test]
+            fn gives_a_lock_seen_before_the_write_its_patience_again_after_it() {
+                let start = Instant::now();
+                let due = start + GATHER_WINDOW;
+                let mut pacer = Pacer::default();
+                pacer.record(start, paths(&["a"]));
+                pacer.release(due, locked);
+                pacer.release(due + LOCK_PATIENCE * 2, app_writing);
+                let ended = due + LOCK_PATIENCE * 2 + APP_WRITE_RECHECK;
+
+                let released = pacer.release(ended, locked);
+
+                assert_eq!(
+                    (released, pacer.deadline()),
+                    (None, Some(ended + LOCK_PATIENCE))
+                );
+            }
+
+            #[test]
+            fn releases_every_change_it_held_once_the_write_ends() {
+                let start = Instant::now();
+                let due = start + GATHER_WINDOW;
+                let mut pacer = Pacer::default();
+                pacer.record(start, paths(&["a"]));
+                pacer.release(due, app_writing);
+                let midway = due + millis(500);
+                pacer.record(midway, paths(&["b"]));
+                pacer.release(midway, app_writing);
+
+                let released = pacer.release(midway + APP_WRITE_RECHECK, unlocked);
+
+                assert_eq!(released, Some(batch(&["a", "b"])));
+            }
         }
 
         mod when_the_index_is_locked {

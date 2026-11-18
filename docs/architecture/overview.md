@@ -194,7 +194,10 @@ needs no drag handler.
    checkout or a build causes; a batch that refreshes nothing, such as ignored build output,
    starts no interval. While Git holds the worktree's `index.lock` a due batch waits, for up to
    a second, so an operation run in a terminal shows its result rather than a state halfway
-   through it. A rescan or a backend error, where events may be lost, is unscoped
+   through it. While a writer in the app holds the repository's write gate, such as a pull
+   running git, a due batch waits until the gate is free, with no time limit, and then goes
+   out with every change gathered meanwhile, so the app's own git run is never shown halfway
+   through. A rescan or a backend error, where events may be lost, is unscoped
 2. `watcher.rs:start_watcher` emits Tauri event `"repo-changed"` with a `RepoChanged`
    payload: the repo path plus the changed paths relative to it. The write sites in
    `commands/` emit the same event with an empty path list, meaning the extent is
