@@ -1,13 +1,26 @@
 import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	onTestFinished,
+	vi,
+} from "vitest";
 import { makeFile } from "../__tests__/helpers/factories";
+import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
 import type { ReviewTally } from "../lib/types.js";
 import TreeFileList from "./TreeFileList.svelte";
 
 // Shared Tauri mock
 import "../__tests__/helpers/tauri-mock";
 
+// The file lists build only the rows in view, and jsdom lays nothing out, so
+// every list is given a viewport tall enough to hold all of its rows.
+beforeEach(() => stubLayout({ width: 300, height: 4000 }));
+afterEach(restoreLayout);
 describe("TreeFileList", () => {
 	it("renders file paths in flat mode", () => {
 		const files = [makeFile("src/a.ts"), makeFile("b.ts")];
@@ -407,5 +420,103 @@ describe("TreeFileList", () => {
 				).toHaveTextContent("src");
 			},
 		);
+	});
+
+	describe("with more files than its viewport holds", () => {
+		const ROW = 28;
+		const VIEWPORT = 10 * ROW;
+		const files = Array.from({ length: 500 }, (_, i) =>
+			makeFile(`file-${String(i).padStart(3, "0")}.ts`),
+		);
+
+		beforeEach(() => stubLayout({ width: 300, height: VIEWPORT }));
+		afterEach(restoreLayout);
+
+		function renderList(selectedPath: string | null = null) {
+			return render(TreeFileList, {
+				props: {
+					files,
+					treeMode: false,
+					actionLabel: "Stage",
+					onfileaction: () => {},
+					onfileclick: () => {},
+					selectedPath,
+				},
+			});
+		}
+
+		it("builds the rows in view and a viewport either side, not all of them", () => {
+			renderList();
+
+			const built = screen.getAllByRole("option").length;
+			expect(built).toBeGreaterThanOrEqual(VIEWPORT / ROW);
+			expect(built).toBeLessThanOrEqual((3 * VIEWPORT) / ROW + 1);
+		});
+
+		it("builds the rows a scroll brings into view", async () => {
+			renderList();
+			const list = screen.getByRole("listbox");
+
+			list.scrollTop = 300 * ROW;
+			await fireEvent.scroll(list);
+
+			expect(screen.getByText("file-300.ts")).toBeInTheDocument();
+			expect(screen.queryByText("file-000.ts")).toBeNull();
+		});
+
+		it("builds the rows in sight when the pane around it scrolls instead", async () => {
+			const pane = document.createElement("div");
+			pane.style.overflowY = "auto";
+			document.body.append(pane);
+			onTestFinished(() => pane.remove());
+			stubLayout({
+				width: 300,
+				height: VIEWPORT,
+				measure: (el) =>
+					el.getAttribute("role") === "listbox"
+						? { top: -pane.scrollTop, height: files.length * ROW }
+						: undefined,
+			});
+			onTestFinished(restoreLayout);
+			render(TreeFileList, {
+				target: pane,
+				props: {
+					files,
+					treeMode: false,
+					actionLabel: "Stage",
+					onfileaction: () => {},
+				},
+			});
+
+			pane.scrollTop = 300 * ROW;
+			await fireEvent.scroll(pane);
+
+			expect(screen.getByText("file-300.ts")).toBeInTheDocument();
+			expect(screen.queryByText("file-000.ts")).toBeNull();
+		});
+
+		it("scrolls to keep the cursor in sight as the arrow keys move it down", async () => {
+			renderList();
+			const list = screen.getByRole("listbox");
+			list.focus();
+
+			for (let i = 0; i < 15; i++) {
+				await fireEvent.keyDown(list, { key: "ArrowDown" });
+			}
+
+			expect(list.scrollTop).toBe(16 * ROW - VIEWPORT);
+			expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
+				"file-015.ts",
+			);
+		});
+
+		it("scrolls to the file its parent selects", async () => {
+			renderList("file-400.ts");
+			await tick();
+			const list = screen.getByRole("listbox");
+
+			expect(list.scrollTop).toBe(401 * ROW - VIEWPORT);
+			expect(screen.getByText("file-400.ts")).toBeInTheDocument();
+		});
 	});
 });

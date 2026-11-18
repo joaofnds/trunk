@@ -9,9 +9,18 @@ import {
 	within,
 } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	onTestFinished,
+	vi,
+} from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
+import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
 import { noReviewCounts } from "../__tests__/helpers/review-props.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
@@ -139,6 +148,10 @@ async function chooseFolderMenuItem(folder: RegExp, text: RegExp) {
 	item?.action?.(item.text);
 }
 
+// The file lists build only the rows in view, and jsdom lays nothing out, so
+// every list is given a viewport tall enough to hold all of its rows.
+beforeEach(() => stubLayout({ width: 300, height: 4000 }));
+afterEach(restoreLayout);
 describe("StagingPanel", () => {
 	beforeEach(() => {
 		eventHandlers.clear();

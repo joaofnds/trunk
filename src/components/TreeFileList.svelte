@@ -5,6 +5,7 @@ import {
 	collectFilePaths,
 	type DirectoryNode,
 } from "../lib/build-tree.js";
+import { ROW_HEIGHT } from "../lib/chrome-heights.js";
 import type { FlatRow } from "../lib/flatten-tree.js";
 import {
 	collectDirPaths,
@@ -13,6 +14,7 @@ import {
 	migrateExpanded,
 } from "../lib/flatten-tree.js";
 import type { FileStatus, ReviewTally } from "../lib/types.js";
+import { buildOffsets, windowFor } from "../lib/virtual-window.js";
 import DirectoryRow from "./DirectoryRow.svelte";
 import FileRow from "./FileRow.svelte";
 
@@ -57,6 +59,9 @@ let focusIndex = $state(0);
 let lastFocusedPath = $state<string | null>(null);
 let list = $state<HTMLElement>();
 let listFocused = $state(false);
+// The part of the list in sight, in the list's own content coordinates.
+let viewTop = $state(0);
+let viewHeight = $state(0);
 
 // The cursor is drawn only while the list holds the focus, where the arrow
 // keys move it. Otherwise the open file is drawn as selected, and no row is
@@ -142,6 +147,7 @@ $effect(() => {
 		if (idx >= 0) {
 			focusIndex = idx;
 			lastFocusedPath = selectedPath;
+			untrack(() => revealRow(idx));
 		}
 	}
 });
@@ -165,6 +171,97 @@ $effect(() => {
 		focusIndex = 0;
 	}
 });
+
+// Only the rows in sight, and as much again either side, are built: a status
+// change replaces the list, and building every row of a few thousand changed
+// files froze the panel for most of a second. Spacers stand in for the rest, so
+// the list is as tall as all its rows and a section sized by its content sizes
+// the same. What is in sight is whatever the list's own box and every box
+// around it that clips leave showing, since the staging panel scrolls the list
+// itself while a commit's details scroll the pane the list sits in.
+const offsets = $derived(
+	buildOffsets(Array.from({ length: flatRows.length }, () => ROW_HEIGHT)),
+);
+const shown = $derived(windowFor(offsets, viewTop, viewHeight, viewHeight));
+const shownRows = $derived(flatRows.slice(shown.start, shown.end));
+
+let clips: HTMLElement[] = [];
+
+/** The list, then each ancestor that clips what overflows it. */
+function clipsAround(el: HTMLElement): HTMLElement[] {
+	const found = [el];
+	for (let box = el.parentElement; box; box = box.parentElement) {
+		if (getComputedStyle(box).overflowY !== "visible") found.push(box);
+	}
+	return found;
+}
+
+/** The viewport band the clipping boxes leave open, in viewport coordinates. */
+function openBand(boxes: HTMLElement[]): { top: number; bottom: number } {
+	let top = Number.NEGATIVE_INFINITY;
+	let bottom = Number.POSITIVE_INFINITY;
+	for (const box of boxes) {
+		const rect = box.getBoundingClientRect();
+		top = Math.max(top, rect.top);
+		bottom = Math.min(bottom, rect.bottom);
+	}
+	return { top, bottom };
+}
+
+function measureView() {
+	const el = list;
+	if (!el) return;
+
+	const band = openBand(clips);
+	const listTop = el.getBoundingClientRect().top;
+	viewTop = el.scrollTop + Math.max(0, band.top - listTop);
+	viewHeight = Math.max(0, band.bottom - band.top);
+}
+
+$effect(() => {
+	const el = list;
+	if (!el) return;
+
+	clips = clipsAround(el);
+	measureView();
+	const observer = new ResizeObserver(measureView);
+	for (const box of clips) {
+		observer.observe(box);
+		box.addEventListener("scroll", measureView, { passive: true });
+	}
+	return () => {
+		observer.disconnect();
+		for (const box of clips) box.removeEventListener("scroll", measureView);
+		clips = [];
+	};
+});
+
+/** Scrolls the least distance that shows the whole row, and not at all when it
+ *  already shows, so the cursor never moves out of sight. The list scrolls when
+ *  it overflows, and otherwise the nearest box around it that does. */
+function revealRow(index: number) {
+	const el = list;
+	if (!el || index < 0 || index >= flatRows.length) return;
+
+	// A selection made as the list mounts arrives before the boxes are gathered.
+	const boxes = clips.length > 0 ? clips : clipsAround(el);
+	const band = openBand(boxes);
+	const contentTop = el.getBoundingClientRect().top - el.scrollTop;
+	const top = contentTop + offsets[index];
+	const bottom = contentTop + offsets[index + 1];
+	const by =
+		top < band.top
+			? top - band.top
+			: bottom > band.bottom
+				? bottom - band.bottom
+				: 0;
+	if (by === 0) return;
+
+	const scroller =
+		boxes.find((box) => box.scrollHeight > box.clientHeight) ?? el;
+	scroller.scrollTop += by;
+	measureView();
+}
 
 const LIST = "flex-1 overflow-y-auto min-h-0 outline-none";
 
@@ -245,6 +342,8 @@ function handleKeydown(e: KeyboardEvent) {
 			}
 			break;
 	}
+	if (focusIndex !== prevIndex) revealRow(focusIndex);
+
 	// Track focused path for preservation across data changes
 	const focusedRow = flatRows[focusIndex];
 	lastFocusedPath = focusedRow?.node.path ?? null;
@@ -262,9 +361,11 @@ function handleKeydown(e: KeyboardEvent) {
 </script>
 
 {#snippet rows()}
-	{#each flatRows as row, i (row.type === "file"
+	<div aria-hidden="true" style:height="{shown.offsetTop}px"></div>
+	{#each shownRows as row, shownIndex (row.type === "file"
 		? row.node.path
 		: `dir:${row.node.path}`)}
+		{@const i = shown.start + shownIndex}
 		{#if row.type === "directory"}
 			<DirectoryRow
 				node={row.node}
@@ -309,6 +410,10 @@ function handleKeydown(e: KeyboardEvent) {
 			/>
 		{/if}
 	{/each}
+	<div
+		aria-hidden="true"
+		style:height="{shown.totalHeight - offsets[shown.end]}px"
+	></div>
 {/snippet}
 
 <!--
