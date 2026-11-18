@@ -14,9 +14,13 @@ import {
 	checkedOutMessage,
 	isCheckoutConflict,
 } from "../lib/checkout.js";
-import { createCoalescedTask } from "../lib/coalesced-task.js";
+import {
+	type CoalescedTask,
+	createCoalescedTask,
+} from "../lib/coalesced-task.js";
 import { reportErrorDialog, reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
+import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
@@ -139,6 +143,11 @@ async function readUndoState(path: string) {
 	return { canUndo: nextCanUndo, headOid: nextHeadOid };
 }
 
+// The reader for the open repository. The toolbar's own undo and redo run it as
+// soon as they land, because the watcher reports them only after its debounce,
+// and a second press in that time would meet the position HEAD left.
+let undoState: CoalescedTask | null = null;
+
 // Check undo availability on mount and repo changes
 $effect(() => {
 	const path = repoPath;
@@ -149,12 +158,14 @@ $effect(() => {
 		canUndo = next.canUndo;
 		headOid = next.headOid;
 	});
+	undoState = refresh;
 	void refresh.run();
 
 	const unsubscribe = subscribeToRepoChanges(path, refresh);
 
 	return () => {
 		active = false;
+		undoState = null;
 		refresh.dispose();
 		unsubscribe();
 	};
@@ -162,7 +173,7 @@ $effect(() => {
 
 async function handleUndo() {
 	const path = repoPath;
-	if (undoingIn.has(path)) return;
+	if (!canUndo || undoingIn.has(path)) return;
 
 	undoingIn.add(path);
 	try {
@@ -175,7 +186,10 @@ async function handleUndo() {
 			headOid: result.head_oid,
 			repoPath: path,
 		});
-		if (path === repoPath) headOid = result.head_oid;
+		if (path === repoPath) {
+			headOid = result.head_oid;
+			void undoState?.run();
+		}
 	} catch (e) {
 		reportErrorToast(e, "Undo failed");
 	} finally {
@@ -187,21 +201,37 @@ async function handleRedo() {
 	// The button is gated on the same condition, so this only catches HEAD moving
 	// between the render and the click.
 	if (!canRedo) return;
+	const path = repoPath;
 	const entry = undoRedo.pop();
 	if (!entry) return;
 	try {
 		await safeInvoke("redo_commit", {
-			path: repoPath,
+			path,
 			undoneOid: entry.undoneOid,
 			expectedHeadOid: entry.headOid,
 			expectedRepoPath: entry.repoPath,
 		});
+		if (path === repoPath) void undoState?.run();
 	} catch (e) {
 		// A commit the repository no longer has can never be restored, so the
 		// entry goes rather than leaving Redo on offer to fail the same way.
 		if (!(isTrunkError(e) && e.code === "redo_missing")) undoRedo.push(entry);
 		await reportErrorDialog(e, "Redo Error", "Redo failed");
 	}
+}
+
+// A focused field undoes its own typing, and an open dialog is still asking the
+// user something, so in either the keys are theirs and not the repository's.
+function handleUndoRedoKey(e: KeyboardEvent) {
+	const chord = keyChord(e);
+	const undo = chord === "Meta+z" || chord === "Ctrl+z";
+	const redo = chord === "Meta+Shift+z" || chord === "Ctrl+Shift+z";
+	if (!undo && !redo) return;
+	if (focusInEditable(document.activeElement)) return;
+	if (document.querySelector("dialog[open]")) return;
+
+	e.preventDefault();
+	void (redo ? handleRedo() : handleUndo());
 }
 
 function handlePull() {
@@ -323,6 +353,8 @@ async function handleBranchCreate(values: Record<string, string>) {
 	background: var(--color-thread-stale);
 }
 </style>
+
+<svelte:window onkeydown={handleUndoRedoKey} />
 
 <div data-tauri-drag-region class="toolbar">
 	<div class="toolbar-group">
