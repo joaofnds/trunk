@@ -5,8 +5,9 @@ use crate::repository;
 use crate::status;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+use std::io::Read;
+use std::path::Path;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 fn tracked_upstream_oid(repo: &git2::Repository) -> Option<git2::Oid> {
     let head = repo.head().ok()?;
@@ -22,12 +23,12 @@ fn tracked_upstream_oid(repo: &git2::Repository) -> Option<git2::Oid> {
 /// past the walk's own edge. A detached HEAD no ref reaches lives entirely in that closure.
 fn parent_map(
     repo: &git2::Repository,
-    walked: &[(git2::Oid, Arc<Known>)],
+    walked: &[(git2::Oid, Arc<WalkedCommit>)],
     seeds: [Option<git2::Oid>; 2],
 ) -> HashMap<git2::Oid, Vec<git2::Oid>> {
     let mut parents: HashMap<git2::Oid, Vec<git2::Oid>> = walked
         .iter()
-        .map(|(oid, known)| (*oid, known.parents.clone()))
+        .map(|(oid, commit)| (*oid, commit.parents.clone()))
         .collect();
 
     for seed in seeds.into_iter().flatten() {
@@ -58,6 +59,7 @@ fn walk_tips(repo: &git2::Repository, stashes: &[git2::Oid]) -> Result<Vec<git2:
             git2::ErrorCode::NotFound | git2::ErrorCode::InvalidSpec | git2::ErrorCode::Peel
         )
     };
+
     let mut tips = Vec::new();
     for glob in ["refs/heads/*", "refs/remotes/*", "refs/tags/*"] {
         for reference in repo.references_glob(glob)? {
@@ -67,6 +69,7 @@ fn walk_tips(repo: &git2::Repository, stashes: &[git2::Oid]) -> Result<Vec<git2:
                 Err(error) => return Err(error.into()),
             };
             let Some(target) = target else { continue };
+
             // A ref naming an object the repository lacks fails the walk, as it fails
             // `git log --all`. One naming a tree or a blob is passed over.
             match repo.find_object(target, None)?.peel_to_commit() {
@@ -77,98 +80,134 @@ fn walk_tips(repo: &git2::Repository, stashes: &[git2::Oid]) -> Result<Vec<git2:
         }
     }
     tips.extend_from_slice(stashes);
+
     Ok(tips)
 }
 
 /// Everything a capture reads from one commit. A commit never changes, so what one
-/// capture read answers every later capture of the same repository.
-struct Known {
+/// capture read answers every later capture of the same repository, for as long as the
+/// graft files it was read under stay as they were.
+struct WalkedCommit {
     parents: Vec<git2::Oid>,
-    /// Committer time, which orders the walk.
-    time: i64,
+    committer_time: i64,
     facts: Arc<CommitFacts>,
 }
 
-impl Known {
+impl WalkedCommit {
     fn read(repo: &git2::Repository, oid: git2::Oid) -> Result<Arc<Self>, TrunkError> {
         let commit = repo.find_commit(oid)?;
         let author = commit.author();
+        let facts = CommitFacts {
+            summary: commit.summary().ok().flatten().unwrap_or("").to_owned(),
+            body: commit
+                .body()
+                .ok()
+                .flatten()
+                .map(std::borrow::ToOwned::to_owned),
+            author_name: author.name().unwrap_or("").to_owned(),
+            author_email: author.email().unwrap_or("").to_owned(),
+            author_timestamp: author.when().seconds(),
+        };
+
         Ok(Arc::new(Self {
             parents: commit.parent_ids().collect(),
-            time: commit.time().seconds(),
-            facts: Arc::new(CommitFacts {
-                summary: commit.summary().ok().flatten().unwrap_or("").to_owned(),
-                body: commit
-                    .body()
-                    .ok()
-                    .flatten()
-                    .map(std::borrow::ToOwned::to_owned),
-                author_name: author.name().unwrap_or("").to_owned(),
-                author_email: author.email().unwrap_or("").to_owned(),
-                author_timestamp: author.when().seconds(),
-            }),
+            committer_time: commit.time().seconds(),
+            facts: Arc::new(facts),
         }))
     }
 }
 
-/// The commits a repository's last capture walked, and the graft files they were read
-/// under: libgit2 rewrites a commit's parents from `info/grafts` and `shallow`, so once
-/// either file changes, nothing read before it can be trusted.
-struct Memo {
-    grafts: Grafts,
-    commits: HashMap<git2::Oid, Arc<Known>>,
+/// What one open repository's captures have read, so each reads only what the last did not.
+///
+/// Every command opens a repository handle of its own, and a fresh handle has an empty
+/// object cache, so without a memo every capture reads the whole history again.
+///
+/// Whoever holds the repository open holds its memo, and dropping the memo is what frees
+/// the commits, so a capture still running when the repository closes keeps nothing alive.
+#[derive(Default)]
+pub struct CommitMemo(Mutex<Option<Arc<Walk>>>);
+
+impl std::fmt::Debug for CommitMemo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let commits = self.lock().as_ref().map_or(0, |walk| walk.commits.len());
+        f.debug_struct("CommitMemo")
+            .field("commits", &commits)
+            .finish()
+    }
 }
+
+impl CommitMemo {
+    /// What the last capture walked, when it was read under exactly `grafts`.
+    fn remembered(&self, grafts: &Grafts) -> Option<Arc<Walk>> {
+        self.lock()
+            .as_ref()
+            .filter(|walk| walk.grafts == *grafts)
+            .cloned()
+    }
+
+    fn keep(&self, walk: Walk) {
+        // The guard is a temporary, so the walk this replaces is freed after the lock is
+        // released rather than under it.
+        let replaced = self.lock().replace(Arc::new(walk));
+        drop(replaced);
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Option<Arc<Walk>>> {
+        // A walk is replaced whole, never edited in place, so a panic cannot leave one torn.
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// The commits one capture walked, and the graft files it read them under: libgit2
+/// rewrites a commit's parents from `info/grafts` and `shallow`, so once either file
+/// changes, nothing read before it can be trusted.
+struct Walk {
+    grafts: Grafts,
+    commits: WalkedCommits,
+}
+
+type WalkedCommits = HashMap<git2::Oid, Arc<WalkedCommit>>;
 
 #[derive(PartialEq, Eq)]
 struct Grafts {
-    grafts: Option<Vec<u8>>,
+    info_grafts: Option<Vec<u8>>,
     shallow: Option<Vec<u8>>,
 }
 
 impl Grafts {
-    fn read(repo: &git2::Repository) -> Self {
-        let read = |path: PathBuf| std::fs::read(path).ok();
-        Self {
-            grafts: read(repo.commondir().join("info/grafts")),
-            shallow: read(repo.path().join("shallow")),
-        }
+    /// The graft files as they are on disk now, from where libgit2 reads them. `None` when
+    /// one exists but will not read, which leaves nothing to compare a memo against.
+    fn read(repo: &git2::Repository) -> Option<Self> {
+        Some(Self {
+            info_grafts: read_graft_file(&repo.commondir().join("info/grafts")).ok()?,
+            shallow: read_graft_file(&repo.path().join("shallow")).ok()?,
+        })
     }
 }
 
-/// Each open repository's memo, by git directory. Every command opens a repository of
-/// its own, and a fresh one has an empty object cache, so without this every capture
-/// would read the whole history again: about 75 ms at 30,000 commits.
-static MEMOS: LazyLock<Mutex<HashMap<PathBuf, Arc<Memo>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+/// A graft file's bytes, or `None` when there is no such file. Reads only the size the file
+/// reports, as libgit2 does, so a `shallow` linked to `/dev/zero` reads as empty rather
+/// than without end.
+fn read_graft_file(path: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    let file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    let size = file.metadata()?.len();
 
-fn memos() -> std::sync::MutexGuard<'static, HashMap<PathBuf, Arc<Memo>>> {
-    // A memo is replaced whole, never edited in place, so a panic cannot leave one torn.
-    MEMOS.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-/// What the last capture of `repo` read, when the graft files it was read under are
-/// still the ones on disk.
-fn remembered(repo: &git2::Repository, grafts: &Grafts) -> Option<Arc<Memo>> {
-    memos()
-        .get(repo.path())
-        .filter(|memo| memo.grafts == *grafts)
-        .cloned()
-}
-
-/// Drop what captures of the repository at `path` have remembered, when it closes.
-pub fn forget(path: &Path) {
-    if let Ok(repo) = git2::Repository::open(path) {
-        memos().remove(repo.path());
-    }
+    let mut bytes = Vec::new();
+    file.take(size).read_to_end(&mut bytes)?;
+    Ok(Some(bytes))
 }
 
 /// One commit as the walk sees it.
 struct WalkNode {
     oid: git2::Oid,
     parents: Vec<usize>,
-    time: i64,
-    /// Children not yet in the order. A commit is ready once none are left.
-    children: usize,
+    committer_time: i64,
+    /// A commit is ready to go out once none of its children are left to.
+    children_left: usize,
 }
 
 /// The commits reachable from `tips`, children before parents and newer before older
@@ -188,61 +227,64 @@ fn walk_order(
 ) -> Result<Vec<git2::Oid>, TrunkError> {
     let mut nodes: Vec<WalkNode> = Vec::new();
     let mut index: HashMap<git2::Oid, usize> = HashMap::new();
-    let mut node = |nodes: &mut Vec<WalkNode>, oid: git2::Oid| {
+    let mut index_of = |nodes: &mut Vec<WalkNode>, oid: git2::Oid| {
         *index.entry(oid).or_insert_with(|| {
             nodes.push(WalkNode {
                 oid,
                 parents: Vec::new(),
-                time: 0,
-                children: 0,
+                committer_time: 0,
+                children_left: 0,
             });
             nodes.len() - 1
         })
     };
 
+    // A tip pushed twice starts the walk once, from where it was first pushed.
     let mut starts = Vec::new();
     for &tip in tips.iter().rev() {
-        let known = nodes.len();
-        let at = node(&mut nodes, tip);
-        if nodes.len() > known {
-            starts.push(at);
+        let nodes_before = nodes.len();
+        let tip_index = index_of(&mut nodes, tip);
+        if nodes.len() > nodes_before {
+            starts.push(tip_index);
         }
     }
 
     // Read every commit the tips reach, once each. A commit that will not read fails the
     // walk, as it fails libgit2's.
-    let mut at = 0;
-    while at < nodes.len() {
-        let (parents, time) = read(nodes[at].oid)?;
+    let mut cursor = 0;
+    while cursor < nodes.len() {
+        let (parents, committer_time) = read(nodes[cursor].oid)?;
         let parents: Vec<usize> = parents
             .into_iter()
-            .map(|parent| node(&mut nodes, parent))
+            .map(|parent| index_of(&mut nodes, parent))
             .collect();
         for &parent in &parents {
-            nodes[parent].children += 1;
+            nodes[parent].children_left += 1;
         }
-        nodes[at].parents = parents;
-        nodes[at].time = time;
-        at += 1;
+        nodes[cursor].parents = parents;
+        nodes[cursor].committer_time = committer_time;
+        cursor += 1;
     }
 
     let mut ready = TimeHeap::default();
     for &start in &starts {
-        if nodes[start].children == 0 {
+        if nodes[start].children_left == 0 {
             ready.insert(&nodes, start);
         }
     }
+
     let mut order = Vec::with_capacity(nodes.len());
-    while let Some(at) = ready.pop(&nodes) {
-        for edge in 0..nodes[at].parents.len() {
-            let parent = nodes[at].parents[edge];
-            nodes[parent].children -= 1;
-            if nodes[parent].children == 0 {
+    while let Some(next) = ready.pop(&nodes) {
+        for edge in 0..nodes[next].parents.len() {
+            let parent = nodes[next].parents[edge];
+            nodes[parent].children_left -= 1;
+            if nodes[parent].children_left == 0 {
                 ready.insert(&nodes, parent);
             }
         }
-        order.push(nodes[at].oid);
+        order.push(nodes[next].oid);
     }
+
     Ok(order)
 }
 
@@ -252,24 +294,26 @@ fn walk_order(
 struct TimeHeap(Vec<usize>);
 
 impl TimeHeap {
-    /// `git_commit_list_time_cmp`: `Greater` when `a` belongs below `b`.
+    /// Whether `a` belongs below `b`, which is when `git_commit_list_time_cmp` answers
+    /// that `a` is the older.
     const fn below(nodes: &[WalkNode], a: usize, b: usize) -> bool {
-        nodes[a].time < nodes[b].time
+        nodes[a].committer_time < nodes[b].committer_time
     }
 
-    fn insert(&mut self, nodes: &[WalkNode], kid: usize) {
+    fn insert(&mut self, nodes: &[WalkNode], node: usize) {
         let heap = &mut self.0;
-        heap.push(kid);
-        let mut at = heap.len() - 1;
-        while at > 0 {
-            let parent = (at - 1) >> 1;
-            if !Self::below(nodes, heap[parent], kid) {
+        heap.push(node);
+
+        let mut slot = heap.len() - 1;
+        while slot > 0 {
+            let parent = (slot - 1) >> 1;
+            if !Self::below(nodes, heap[parent], node) {
                 break;
             }
-            heap[at] = heap[parent];
-            at = parent;
+            heap[slot] = heap[parent];
+            slot = parent;
         }
-        heap[at] = kid;
+        heap[slot] = node;
     }
 
     fn pop(&mut self, nodes: &[WalkNode]) -> Option<usize> {
@@ -279,9 +323,10 @@ impl TimeHeap {
         if heap.is_empty() {
             return Some(top);
         }
-        let mut at = 0;
+
+        let mut slot = 0;
         loop {
-            let mut kid = 2 * at + 1;
+            let mut kid = 2 * slot + 1;
             if kid >= heap.len() {
                 break;
             }
@@ -291,12 +336,34 @@ impl TimeHeap {
             if !Self::below(nodes, last, heap[kid]) {
                 break;
             }
-            heap[at] = heap[kid];
-            at = kid;
+            heap[slot] = heap[kid];
+            slot = kid;
         }
-        heap[at] = last;
+        heap[slot] = last;
+
         Some(top)
     }
+}
+
+/// The walk from `tips`, with everything it read from each commit. A commit `previous`
+/// holds is answered from it, so only the commits it lacks are read from `objects`.
+fn walk_reading(
+    objects: &git2::Repository,
+    tips: &[git2::Oid],
+    previous: Option<&Walk>,
+) -> Result<(Vec<git2::Oid>, WalkedCommits), TrunkError> {
+    let mut walked = WalkedCommits::new();
+    let order = walk_order(tips, |oid| {
+        let commit = match previous.and_then(|walk| walk.commits.get(&oid)) {
+            Some(commit) => Arc::clone(commit),
+            None => WalkedCommit::read(objects, oid)?,
+        };
+        let read = (commit.parents.clone(), commit.committer_time);
+        walked.insert(oid, commit);
+        Ok(read)
+    })?;
+
+    Ok((order, walked))
 }
 
 /// Everything one walk reads from the repository, in one pass.
@@ -309,13 +376,35 @@ impl TimeHeap {
 /// Returns the git error when a commit the walk reaches, the refs, or the stash
 /// reflog will not read.
 pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {
-    capture_with_worktree_reader(repo, status::worktree_dirty)
+    capture_with_worktree_reader(repo, &CommitMemo::default(), status::worktree_dirty)
+}
+
+/// `capture`, reading only the commits `memo` does not hold yet, and leaving it holding
+/// what this capture walked. Pass the same memo for every capture of one open repository.
+///
+/// # Errors
+///
+/// As `capture`, and the git error when the repository will not open a second handle.
+pub fn capture_remembering(
+    repo: &mut git2::Repository,
+    memo: &CommitMemo,
+) -> Result<GraphSource, TrunkError> {
+    capture_with_worktree_reader(repo, memo, status::worktree_dirty)
 }
 
 fn capture_with_worktree_reader(
     repo: &mut git2::Repository,
+    memo: &CommitMemo,
     read_worktree: impl FnOnce(&git2::Repository) -> bool,
 ) -> Result<GraphSource, TrunkError> {
+    // libgit2 reads the graft files once, as a handle opens, and parses every commit under
+    // them after, so the handle the caller opened may hold files older than these. Every
+    // commit is parsed through a handle opened after this read, which therefore parses
+    // under these files or newer ones, and the memo keeps this walk only when the files
+    // still read the same once it is done.
+    let grafts = Grafts::read(repo);
+    let objects = git2::Repository::open(repo.path())?;
+
     // Step 1: Build ref map (needs &mut repo for stash_foreach)
     let ref_map = repository::build_ref_map(repo);
 
@@ -337,12 +426,12 @@ fn capture_with_worktree_reader(
     let mut walkable_stashes: Vec<git2::Oid> = Vec::new();
     let mut stash_internals: HashSet<git2::Oid> = HashSet::new();
     for &s_oid in &stash_oids {
-        let Ok(commit) = repo.find_commit(s_oid) else {
+        let Ok(commit) = objects.find_commit(s_oid) else {
             continue;
         };
 
         let parents: Vec<git2::Oid> = commit.parent_ids().collect();
-        if parents.iter().any(|&p| repo.find_commit(p).is_err()) {
+        if parents.iter().any(|&p| objects.find_commit(p).is_err()) {
             continue;
         }
 
@@ -352,44 +441,35 @@ fn capture_with_worktree_reader(
 
     // Step 2: Collect all OIDs. Stashes ride the same walk as the refs, so the topological
     // order places each one above its parent whatever its committer time says. A commit
-    // the last capture read is answered from its memo, so a rebuild after a commit reads
+    // the last capture read is answered from the memo, so a rebuild after a commit reads
     // only the commits that are new.
-    let grafts = Grafts::read(repo);
-    let previous = remembered(repo, &grafts);
-    let mut walked: HashMap<git2::Oid, Arc<Known>> = HashMap::new();
-    let tips = walk_tips(repo, &walkable_stashes)?;
-    let mut oids = walk_order(&tips, |oid| {
-        let known = match previous.as_ref().and_then(|memo| memo.commits.get(&oid)) {
-            Some(known) => Arc::clone(known),
-            None => Known::read(repo, oid)?,
-        };
-        let read = (known.parents.clone(), known.time);
-        walked.insert(oid, known);
-        Ok(read)
-    })?;
-    drop(previous);
+    let tips = walk_tips(&objects, &walkable_stashes)?;
+    let previous = grafts.as_ref().and_then(|grafts| memo.remembered(grafts));
+    let (mut oids, walked) = walk_reading(&objects, &tips, previous.as_deref())?;
     oids.retain(|oid| !stash_internals.contains(oid));
-    let members: Vec<(git2::Oid, Arc<Known>)> = oids
+    let members: Vec<(git2::Oid, Arc<WalkedCommit>)> = oids
         .iter()
         .map(|oid| (*oid, Arc::clone(&walked[oid])))
         .collect();
-    memos().insert(
-        repo.path().to_path_buf(),
-        Arc::new(Memo {
+
+    if let Some(grafts) = grafts
+        && Grafts::read(repo).as_ref() == Some(&grafts)
+    {
+        memo.keep(Walk {
             grafts,
             commits: walked,
-        }),
-    );
+        });
+    }
 
     // Step 3b: Gather everything lane assignment reads. An unborn HEAD leaves `head_tip`
     // None, which is what keeps a fresh repository laying out at all.
     let head_tip = repo.head().ok().and_then(|head_ref| head_ref.target());
     let tracked_upstream = tracked_upstream_oid(repo);
-    let parents = parent_map(repo, &members, [head_tip, tracked_upstream]);
+    let parents = parent_map(&objects, &members, [head_tip, tracked_upstream]);
 
     let commits: HashMap<git2::Oid, Arc<CommitFacts>> = members
         .iter()
-        .map(|(oid, known)| (*oid, Arc::clone(&known.facts)))
+        .map(|(oid, commit)| (*oid, Arc::clone(&commit.facts)))
         .collect();
 
     // Only a page member is ever hydrated, and a page is a subset of the walk, so a ref on
@@ -428,16 +508,15 @@ pub fn capture_with_worktree_observation(
     repo: &mut git2::Repository,
     read_worktree: impl FnOnce(&git2::Repository) -> bool,
 ) -> Result<GraphSource, TrunkError> {
-    capture_with_worktree_reader(repo, read_worktree)
+    capture_with_worktree_reader(repo, &CommitMemo::default(), read_worktree)
 }
 
 /// The whole history laid out under `visibility`, together with the capture it came from,
 /// which is what the commit cache holds so a later visibility change needs no repository.
 ///
-/// Every site that fills `CommitCache` comes through here, which is what keeps a rebuild
-/// after a commit, a checkout or a stash honouring the same visibility the graph was drawn
-/// with. `visibility` is a parameter rather than a lookup so a new rebuild site cannot
-/// forget it.
+/// It remembers nothing between calls, so every call is a cold capture, which is what the
+/// benches built on it measure. The app captures through `capture_remembering` with the
+/// memo its open repository owns, and wraps the result in `GraphSnapshot::new` itself.
 ///
 /// # Errors
 ///
@@ -452,8 +531,8 @@ pub fn snapshot(
 #[cfg(test)]
 mod tests {
     use super::capture_with_worktree_reader;
-    use super::{Known, walk_order, walk_tips};
-    use crate::graph_input::CapturedGraph;
+    use super::{CommitMemo, WalkedCommit, walk_order, walk_tips};
+    use crate::graph_input::{CapturedGraph, GraphSource};
     use std::sync::Arc;
 
     /// A seeded xorshift, so a failing history can be rebuilt from its seed.
@@ -585,8 +664,8 @@ mod tests {
     fn ported_order(repo: &git2::Repository, stashes: &[git2::Oid]) -> Vec<git2::Oid> {
         let tips = walk_tips(repo, stashes).unwrap();
         walk_order(&tips, |oid| {
-            let known = Known::read(repo, oid)?;
-            Ok((known.parents.clone(), known.time))
+            let commit = WalkedCommit::read(repo, oid)?;
+            Ok((commit.parents.clone(), commit.committer_time))
         })
         .unwrap()
     }
@@ -689,19 +768,20 @@ mod tests {
         }
     }
 
-    /// What `capture` gives for `repo` once nothing is remembered, in the committed form so
-    /// two captures compare field by field.
+    /// A capture in the committed form, so two captures compare field by field.
+    fn committed(source: &GraphSource) -> String {
+        serde_json::to_string(&CapturedGraph::from_source(source)).unwrap()
+    }
+
     fn fresh_capture(repo: &mut git2::Repository) -> String {
-        super::forget(repo.workdir().unwrap());
-        remembered_capture(repo)
+        committed(&super::capture(repo).unwrap())
     }
 
-    fn remembered_capture(repo: &mut git2::Repository) -> String {
-        let source = super::capture(repo).unwrap();
-        serde_json::to_string(&CapturedGraph::from_source(&source)).unwrap()
+    fn remembering(repo: &mut git2::Repository, memo: &CommitMemo) -> String {
+        committed(&super::capture_remembering(repo, memo).unwrap())
     }
 
-    fn commit_on_main(repo: &git2::Repository, message: &str, parents: &[git2::Oid]) {
+    fn commit_on(repo: &git2::Repository, message: &str, parents: &[git2::Oid]) -> git2::Oid {
         let tree_oid = repo.treebuilder(None).unwrap().write().unwrap();
         let tree = repo.find_tree(tree_oid).unwrap();
         let parents: Vec<git2::Commit> = parents
@@ -710,63 +790,151 @@ mod tests {
             .collect();
         let parents: Vec<&git2::Commit> = parents.iter().collect();
         let sig = signature(9_000_000);
-        let oid = repo
-            .commit(None, &sig, &sig, message, &tree, &parents)
+
+        repo.commit(None, &sig, &sig, message, &tree, &parents)
+            .unwrap()
+    }
+
+    fn main_tip(repo: &git2::Repository) -> git2::Oid {
+        repo.refname_to_id("refs/heads/main").unwrap()
+    }
+
+    /// Check out `main` with a file of its own, so the history can stash.
+    fn on_main_with_a_file(repo: &git2::Repository) {
+        repo.set_head("refs/heads/main").unwrap();
+        repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))
             .unwrap();
-        repo.reference("refs/heads/main", oid, true, "fixture")
+        let workdir = repo.workdir().unwrap();
+        std::fs::write(workdir.join("work.txt"), "work").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("work.txt")).unwrap();
+        index.write().unwrap();
+        let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+        let head = repo.find_commit(main_tip(repo)).unwrap();
+        let sig = signature(9_000_000);
+        repo.commit(Some("HEAD"), &sig, &sig, "add work", &tree, &[&head])
             .unwrap();
     }
 
-    #[test]
-    fn a_recapture_after_history_moves_matches_a_capture_that_remembers_nothing() {
-        for seed in 1..=20 {
+    fn stash_an_edit(repo: &mut git2::Repository) {
+        let workdir = repo.workdir().unwrap().to_owned();
+        std::fs::write(workdir.join("work.txt"), "edited").unwrap();
+        repo.stash_save(&signature(9_000_100), "an edit", None)
+            .unwrap();
+    }
+
+    /// For each generated history: run `prepare`, capture into a memo, run `history_move`,
+    /// and compare the capture the memo answers with one that remembers nothing.
+    fn assert_recapture_matches_a_fresh_one(
+        prepare: impl Fn(&mut git2::Repository),
+        history_move: impl Fn(&mut git2::Repository),
+    ) {
+        for seed in 1..=10 {
             let (_directory, mut repo) = generated_history(seed);
-            remembered_capture(&mut repo);
-            let main = |repo: &git2::Repository| repo.refname_to_id("refs/heads/main").unwrap();
+            prepare(&mut repo);
+            let memo = CommitMemo::default();
+            remembering(&mut repo, &memo);
 
-            let tip = main(&repo);
-            commit_on_main(&repo, "a new commit", &[tip]);
-            let after_commit = remembered_capture(&mut repo);
-            assert_eq!(
-                after_commit,
-                fresh_capture(&mut repo),
-                "seed {seed}, commit"
-            );
+            history_move(&mut repo);
+            let recaptured = remembering(&mut repo, &memo);
 
-            let parents: Vec<git2::Oid> = repo
-                .find_commit(main(&repo))
-                .unwrap()
-                .parent_ids()
-                .collect();
-            commit_on_main(&repo, "the same commit, amended", &parents);
-            let after_amend = remembered_capture(&mut repo);
-            assert_eq!(after_amend, fresh_capture(&mut repo), "seed {seed}, amend");
-
-            for branch in ["b0", "b1"] {
-                if let Ok(mut branch) = repo.find_branch(branch, git2::BranchType::Local) {
-                    branch.delete().unwrap();
-                }
-            }
-            let after_delete = remembered_capture(&mut repo);
-            assert_eq!(
-                after_delete,
-                fresh_capture(&mut repo),
-                "seed {seed}, delete"
-            );
+            assert_eq!(recaptured, fresh_capture(&mut repo), "history seed {seed}");
         }
+    }
+
+    #[test]
+    fn a_recapture_after_a_commit_matches_a_capture_that_remembers_nothing() {
+        assert_recapture_matches_a_fresh_one(
+            |_| {},
+            |repo| {
+                let commit = commit_on(repo, "a new commit", &[main_tip(repo)]);
+                repo.reference("refs/heads/main", commit, true, "fixture")
+                    .unwrap();
+            },
+        );
+    }
+
+    #[test]
+    fn a_recapture_after_an_amend_matches_a_capture_that_remembers_nothing() {
+        assert_recapture_matches_a_fresh_one(
+            |_| {},
+            |repo| {
+                let parents: Vec<git2::Oid> = repo
+                    .find_commit(main_tip(repo))
+                    .unwrap()
+                    .parent_ids()
+                    .collect();
+                let amended = commit_on(repo, "main's tip, amended", &parents);
+                repo.reference("refs/heads/main", amended, true, "fixture")
+                    .unwrap();
+            },
+        );
+    }
+
+    #[test]
+    fn a_recapture_after_a_branch_is_deleted_matches_a_capture_that_remembers_nothing() {
+        assert_recapture_matches_a_fresh_one(
+            |_| {},
+            |repo| {
+                repo.find_reference("refs/heads/main")
+                    .unwrap()
+                    .delete()
+                    .unwrap();
+            },
+        );
+    }
+
+    #[test]
+    fn a_recapture_after_a_checkout_matches_a_capture_that_remembers_nothing() {
+        assert_recapture_matches_a_fresh_one(
+            |_| {},
+            |repo| {
+                let parent = repo.find_commit(main_tip(repo)).unwrap().parent_id(0);
+                repo.set_head_detached(parent.unwrap_or_else(|_| main_tip(repo)))
+                    .unwrap();
+            },
+        );
+    }
+
+    #[test]
+    fn a_recapture_after_a_fetch_matches_a_capture_that_remembers_nothing() {
+        assert_recapture_matches_a_fresh_one(
+            |_| {},
+            |repo| {
+                let fetched = commit_on(repo, "a fetched commit", &[main_tip(repo)]);
+                repo.reference("refs/remotes/origin/fetched", fetched, true, "fixture")
+                    .unwrap();
+            },
+        );
+    }
+
+    #[test]
+    fn a_recapture_after_a_stash_matches_a_capture_that_remembers_nothing() {
+        assert_recapture_matches_a_fresh_one(|repo| on_main_with_a_file(repo), stash_an_edit);
+    }
+
+    #[test]
+    fn a_recapture_after_a_stash_pop_matches_a_capture_that_remembers_nothing() {
+        assert_recapture_matches_a_fresh_one(
+            |repo| {
+                on_main_with_a_file(repo);
+                stash_an_edit(repo);
+            },
+            |repo| repo.stash_pop(0, None).unwrap(),
+        );
     }
 
     #[test]
     fn a_recapture_answers_the_commits_it_has_seen_from_what_it_read_before() {
         let (_directory, mut repo) = generated_history(7);
-        let before = super::capture(&mut repo).unwrap();
-        let tip = repo.refname_to_id("refs/heads/main").unwrap();
-        commit_on_main(&repo, "a new commit", &[tip]);
+        let memo = CommitMemo::default();
+        let before = super::capture_remembering(&mut repo, &memo).unwrap();
+        let commit = commit_on(&repo, "a new commit", &[main_tip(&repo)]);
+        repo.reference("refs/heads/main", commit, true, "fixture")
+            .unwrap();
 
-        let after = super::capture(&mut repo).unwrap();
+        let after = super::capture_remembering(&mut repo, &memo).unwrap();
 
-        let new_tip = repo.refname_to_id("refs/heads/main").unwrap();
-        assert_eq!(after.commits[&new_tip].summary, "a new commit");
         for (oid, facts) in &before.commits {
             assert!(
                 Arc::ptr_eq(facts, &after.commits[oid]),
@@ -776,24 +944,16 @@ mod tests {
     }
 
     #[test]
-    fn a_capture_after_forget_reads_every_commit_again() {
-        let (directory, mut repo) = generated_history(7);
-        let before = super::capture(&mut repo).unwrap();
-
-        super::forget(directory.path());
-        let after = super::capture(&mut repo).unwrap();
-
-        let tip = repo.refname_to_id("refs/heads/main").unwrap();
-        assert!(!Arc::ptr_eq(&before.commits[&tip], &after.commits[&tip]));
-    }
-
-    #[test]
     fn a_shallow_boundary_moving_drops_what_the_last_capture_read() {
         for seed in 1..=20 {
             let (directory, mut repo) = generated_history(seed);
-            remembered_capture(&mut repo);
-            let main = repo.refname_to_id("refs/heads/main").unwrap();
-            let boundary = repo.find_commit(main).unwrap().parent_id(0).unwrap();
+            let memo = CommitMemo::default();
+            remembering(&mut repo, &memo);
+            let boundary = repo
+                .find_commit(main_tip(&repo))
+                .unwrap()
+                .parent_id(0)
+                .unwrap();
             std::fs::write(
                 directory.path().join(".git/shallow"),
                 format!("{boundary}\n"),
@@ -801,9 +961,36 @@ mod tests {
             .unwrap();
             let mut repo = git2::Repository::open(directory.path()).unwrap();
 
-            let shallow = remembered_capture(&mut repo);
+            let shallow = remembering(&mut repo, &memo);
 
-            assert_eq!(shallow, fresh_capture(&mut repo), "seed {seed}");
+            assert_eq!(shallow, fresh_capture(&mut repo), "history seed {seed}");
+        }
+    }
+
+    /// libgit2 reads `shallow` as a handle opens, so a handle opened before the file went
+    /// still parses the boundary commit as parentless.
+    #[test]
+    fn a_shallow_boundary_gone_before_the_capture_is_gone_from_it_and_from_the_next() {
+        for seed in 1..=20 {
+            let (directory, repo) = generated_history(seed);
+            let boundary = repo
+                .find_commit(main_tip(&repo))
+                .unwrap()
+                .parent_id(0)
+                .unwrap();
+            let shallow = directory.path().join(".git/shallow");
+            std::fs::write(&shallow, format!("{boundary}\n")).unwrap();
+            let mut opened_while_shallow = git2::Repository::open(directory.path()).unwrap();
+            std::fs::remove_file(&shallow).unwrap();
+            let memo = CommitMemo::default();
+
+            let first = remembering(&mut opened_while_shallow, &memo);
+            let mut repo = git2::Repository::open(directory.path()).unwrap();
+            let next = remembering(&mut repo, &memo);
+
+            let full = fresh_capture(&mut repo);
+            assert_eq!(first, full, "history seed {seed}, first");
+            assert_eq!(next, full, "history seed {seed}, next");
         }
     }
 
@@ -834,7 +1021,7 @@ mod tests {
         drop(tree);
         repo.set_head("refs/heads/main").unwrap();
 
-        let captured = capture_with_worktree_reader(&mut repo, |repo| {
+        let captured = capture_with_worktree_reader(&mut repo, &CommitMemo::default(), |repo| {
             std::fs::write(repo.workdir().unwrap().join("late.txt"), "late work").unwrap();
             repo.reference("refs/heads/late", oid, false, "fixture")
                 .unwrap();

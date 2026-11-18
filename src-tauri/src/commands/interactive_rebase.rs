@@ -209,14 +209,12 @@ pub fn start_interactive_rebase_blocking(
     session_dir: &std::path::Path,
     state_map: &OpenRepos,
 ) -> Result<(crate::state::GraphRead, RebaseStartResult), TrunkError> {
-    let path_buf = state_map.path_for(path)?;
     let stopped_at_a_commit = state_map.hold_for_git(path, |repo| {
         ensure_todo_lists_the_range(repo, base_oid, todo_items)?;
         run_interactive_rebase(repo, base_oid, todo_items, session_dir)
     })?;
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    let source = crate::state::read_graph(&mut repo)?;
+    let source = state_map.read_graph(path)?;
 
     let outcome = if stopped_at_a_commit {
         RebaseStartResult::Stopped

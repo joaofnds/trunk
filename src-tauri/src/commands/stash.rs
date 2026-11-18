@@ -108,10 +108,10 @@ pub fn stash_save_inner(
     message: &str,
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
-    let mut repo = state_map.open(path)?;
+    let repo = state_map.open(path)?;
     trunk_git::write_gate::hold(&repo, |repo| stash_staged_changes(repo, message))?;
 
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 /// Write a stash of what the index stages over HEAD, then take those changes out of the
@@ -549,7 +549,7 @@ pub fn stash_pop_inner(
         repo.stash_drop(index).map_err(TrunkError::from)
     })?;
 
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 /// Apply a stash, leaving it in the reflog.
@@ -574,7 +574,7 @@ pub fn stash_apply_inner(
         Ok(())
     })?;
 
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 /// Drop a stash without applying it.
@@ -594,7 +594,7 @@ pub fn stash_drop_inner(
         repo.stash_drop(index).map_err(TrunkError::from)
     })?;
 
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 /// # Errors

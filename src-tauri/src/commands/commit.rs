@@ -13,9 +13,7 @@ fn refresh_commit_cache(
     path: &str,
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
-    let path_buf = state_map.path_for(path)?;
-    let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 fn build_message(subject: &str, body: Option<&str>) -> String {

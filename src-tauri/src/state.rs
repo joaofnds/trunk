@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use trunk_git::error::TrunkError;
+use trunk_git::graph::CommitMemo;
 use trunk_git::graph_input::{GraphSnapshot, GraphSource, RefVisibility};
 
 /// The repositories the app currently has open, keyed by the path the frontend
@@ -12,18 +13,52 @@ use trunk_git::graph_input::{GraphSnapshot, GraphSource, RefVisibility};
 /// so it is a snapshot: a repository closed after the clone still resolves here.
 /// The window is the command's own duration, and the repository it names is the
 /// one the user was looking at when they acted.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct OpenRepos(HashMap<String, PathBuf>);
+#[derive(Clone, Debug, Default)]
+pub struct OpenRepos(HashMap<String, OpenRepo>);
+
+/// One repository the app has open: where it lives, and what its graph captures have read
+/// so far, which goes when the repository closes.
+#[derive(Clone, Debug)]
+pub struct OpenRepo {
+    location: PathBuf,
+    commits: Arc<CommitMemo>,
+}
+
+impl OpenRepo {
+    /// `location`, with nothing its graph captures have read yet.
+    #[must_use]
+    pub fn new(location: PathBuf) -> Self {
+        Self {
+            location,
+            commits: Arc::default(),
+        }
+    }
+
+    #[must_use]
+    pub fn location(&self) -> &Path {
+        &self.location
+    }
+
+    /// Capture this repository's graph, reading only the commits earlier captures have not.
+    ///
+    /// # Errors
+    ///
+    /// The git error when the repository will not open, and whatever `read_graph` returns.
+    pub fn read_graph(&self) -> Result<GraphRead, TrunkError> {
+        let mut repo = git2::Repository::open(&self.location)?;
+        read_graph(&mut repo, &self.commits)
+    }
+}
 
 impl OpenRepos {
-    /// Where `path` lives on disk, or `not_open` when the app has no such
-    /// repository open.
+    /// The repository the frontend addresses as `path`, or `not_open` when the app has no
+    /// such repository open.
     ///
     /// # Errors
     ///
     /// Returns `not_open` when `path` names no open repository.
-    pub fn path_for(&self, path: &str) -> Result<&Path, TrunkError> {
-        self.location_of(path).ok_or_else(|| {
+    pub fn repository(&self, path: &str) -> Result<&OpenRepo, TrunkError> {
+        self.0.get(path).ok_or_else(|| {
             // The message reaches the user as a toast, so it names the
             // repository rather than spelling out where it lives on disk.
             let name = Path::new(path)
@@ -32,6 +67,26 @@ impl OpenRepos {
 
             TrunkError::new("not_open", format!("Repository not open: {name}"))
         })
+    }
+
+    /// Where `path` lives on disk, or `not_open` when the app has no such
+    /// repository open.
+    ///
+    /// # Errors
+    ///
+    /// Returns `not_open` when `path` names no open repository.
+    pub fn path_for(&self, path: &str) -> Result<&Path, TrunkError> {
+        self.repository(path).map(OpenRepo::location)
+    }
+
+    /// Capture the graph of the repository the frontend addresses as `path`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `not_open` when `path` names no open repository, and whatever
+    /// `OpenRepo::read_graph` returns.
+    pub fn read_graph(&self, path: &str) -> Result<GraphRead, TrunkError> {
+        self.repository(path)?.read_graph()
     }
 
     /// Open the git repository registered for `path`.
@@ -88,7 +143,7 @@ impl OpenRepos {
     /// as an error, such as the background fetch.
     #[must_use]
     pub fn location_of(&self, path: &str) -> Option<&Path> {
-        self.0.get(path).map(PathBuf::as_path)
+        self.0.get(path).map(OpenRepo::location)
     }
 
     /// Whether the frontend's `path` names a repository this app has open.
@@ -97,9 +152,9 @@ impl OpenRepos {
         self.0.contains_key(path)
     }
 
-    /// Record `location` as the repository the frontend addresses as `path`.
-    pub fn register(&mut self, path: String, location: PathBuf) {
-        self.0.insert(path, location);
+    /// Record `repository` as the one the frontend addresses as `path`.
+    pub fn register(&mut self, path: String, repository: OpenRepo) {
+        self.0.insert(path, repository);
     }
 
     /// Drop the repository the frontend addresses as `path`.
@@ -107,16 +162,27 @@ impl OpenRepos {
         self.0.remove(path);
     }
 
+    pub fn repositories(&self) -> impl Iterator<Item = (&str, &OpenRepo)> {
+        self.0
+            .iter()
+            .map(|(path, repository)| (path.as_str(), repository))
+    }
+
     pub fn locations(&self) -> impl Iterator<Item = (&str, &Path)> {
         self.0
             .iter()
-            .map(|(path, location)| (path.as_str(), location.as_path()))
+            .map(|(path, repository)| (path.as_str(), repository.location()))
     }
 }
 
 impl FromIterator<(String, PathBuf)> for OpenRepos {
     fn from_iter<T: IntoIterator<Item = (String, PathBuf)>>(entries: T) -> Self {
-        Self(entries.into_iter().collect())
+        Self(
+            entries
+                .into_iter()
+                .map(|(path, location)| (path, OpenRepo::new(location)))
+                .collect(),
+        )
     }
 }
 
@@ -137,13 +203,23 @@ impl RepoState {
         self.0.lock().unwrap().clone()
     }
 
-    /// Record `location` as the repository the frontend addresses as `path`.
+    /// Record `repository` as the one the frontend addresses as `path`.
     ///
     /// # Panics
     ///
     /// Panics when the lock is poisoned, matching every other writer of it.
-    pub fn register(&self, path: String, location: PathBuf) {
-        self.0.lock().unwrap().register(path, location);
+    pub fn register(&self, path: String, repository: OpenRepo) {
+        self.0.lock().unwrap().register(path, repository);
+    }
+
+    /// The repository the frontend addresses as `path`, or `None` once it has closed.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the lock is poisoned, matching every other reader of it.
+    #[must_use]
+    pub fn repository(&self, path: &str) -> Option<OpenRepo> {
+        self.0.lock().unwrap().repository(path).ok().cloned()
     }
 
     /// Drop the repository the frontend addresses as `path`.
@@ -240,8 +316,10 @@ impl std::ops::Deref for GraphRead {
 ///
 /// Returns repository read errors. A repeatedly superseded capture is returned as
 /// changed so publication can preserve the command's outcome without caching it.
-pub fn read_graph(repo: &mut git2::Repository) -> Result<GraphRead, TrunkError> {
-    read_graph_with_capture(repo, trunk_git::graph::capture)
+pub fn read_graph(repo: &mut git2::Repository, memo: &CommitMemo) -> Result<GraphRead, TrunkError> {
+    read_graph_with_capture(repo, |repo| {
+        trunk_git::graph::capture_remembering(repo, memo)
+    })
 }
 
 fn read_graph_with_capture(
@@ -988,19 +1066,19 @@ impl<'a> GraphRebuild<'a> {
     pub async fn refresh_worktree_in_session(
         &self,
         path: String,
-        location: PathBuf,
+        repository: OpenRepo,
         session: u64,
     ) -> Result<GraphSnapshot, TrunkError> {
         let (_gate, mut ticket) = self.cache.begin_rebuild(&path, session).await?;
         ticket.require_fresh = true;
 
-        self.refresh_locked(path, location, ticket).await
+        self.refresh_locked(path, repository, ticket).await
     }
 
     async fn refresh_locked(
         &self,
         path: String,
-        location: PathBuf,
+        repository: OpenRepo,
         ticket: GraphTicket,
     ) -> Result<GraphSnapshot, TrunkError> {
         let previous = {
@@ -1015,7 +1093,7 @@ impl<'a> GraphRebuild<'a> {
         let prepared = self
             .activity
             .spawn_blocking(move || {
-                let mut repo = git2::Repository::open(location)?;
+                let mut repo = git2::Repository::open(repository.location())?;
                 if let Some((snapshot, refs)) = previous {
                     let before = crate::ref_state::RefState::read(&repo)?;
                     if before == refs {
@@ -1026,7 +1104,7 @@ impl<'a> GraphRebuild<'a> {
                         }
                     }
                 }
-                let read = read_graph(&mut repo)?;
+                let read = read_graph(&mut repo, &repository.commits)?;
                 Ok::<_, TrunkError>(
                     (!read.changed)
                         .then(|| (GraphSnapshot::new(read.source, visibility), read.inputs)),
@@ -1243,10 +1321,10 @@ impl<'a> GraphRebuild<'a> {
     pub async fn reconcile_refs(
         &self,
         path: String,
-        location: PathBuf,
+        repository: OpenRepo,
     ) -> Result<Option<ReconciledGraph>, TrunkError> {
         let session = self.cache.capture_session(&path)?;
-        self.reconcile_refs_in_session(path, location, session)
+        self.reconcile_refs_in_session(path, repository, session)
             .await
     }
 
@@ -1260,11 +1338,11 @@ impl<'a> GraphRebuild<'a> {
     pub async fn reconcile_refs_in_session(
         &self,
         path: String,
-        location: PathBuf,
+        repository: OpenRepo,
         session: u64,
     ) -> Result<Option<ReconciledGraph>, TrunkError> {
         let _gate = self.cache.lock_rebuild(&path).await;
-        let probe = location.clone();
+        let probe = repository.location().to_owned();
         let inputs = self
             .activity
             .spawn_blocking(move || {
@@ -1290,7 +1368,8 @@ impl<'a> GraphRebuild<'a> {
             ticket.require_fresh = true;
             (ticket, worktree_context_changed)
         };
-        self.refresh_locked(path.clone(), location, ticket).await?;
+        self.refresh_locked(path.clone(), repository, ticket)
+            .await?;
         let read = self
             .cache
             .read_versioned_with_session(&path, None, |_, revision| {
@@ -1460,7 +1539,7 @@ mod tests {
             path.clone(),
             move || {
                 let mut repo = git2::Repository::open(capture_location)?;
-                super::read_graph(&mut repo)
+                super::read_graph(&mut repo, &super::CommitMemo::default())
             },
         ))
         .unwrap();
@@ -1470,8 +1549,11 @@ mod tests {
         let session = cache.session_id(&path).unwrap();
 
         let refreshed = tauri::async_runtime::block_on(
-            GraphRebuild::new(activity(), &cache, &visibility)
-                .refresh_worktree_in_session(path, location, session),
+            GraphRebuild::new(activity(), &cache, &visibility).refresh_worktree_in_session(
+                path,
+                super::OpenRepo::new(location),
+                session,
+            ),
         )
         .unwrap();
 
@@ -1499,8 +1581,9 @@ mod tests {
         let cache = std::sync::Arc::new(CommitCache::new(GraphCache::default()));
         let visibility = std::sync::Arc::new(RefVisibilityState::default());
         tauri::async_runtime::block_on(
-            GraphRebuild::new(activity(), &cache, &visibility)
-                .rebuild(path.clone(), move || super::read_graph(&mut repo)),
+            GraphRebuild::new(activity(), &cache, &visibility).rebuild(path.clone(), move || {
+                super::read_graph(&mut repo, &super::CommitMemo::default())
+            }),
         )
         .unwrap();
         let revision = cache
@@ -1522,7 +1605,11 @@ mod tests {
         let refresh = std::thread::spawn(move || {
             tauri::async_runtime::block_on(
                 GraphRebuild::new(activity(), &worker_cache, &worker_visibility)
-                    .refresh_worktree_in_session(worker_path, location, session),
+                    .refresh_worktree_in_session(
+                        worker_path,
+                        super::OpenRepo::new(location),
+                        session,
+                    ),
             )
         });
         observed_rx.recv().unwrap();
@@ -1587,8 +1674,9 @@ mod tests {
         let cache = CommitCache::new(GraphCache::default());
         let visibility = RefVisibilityState::default();
         tauri::async_runtime::block_on(
-            GraphRebuild::new(activity(), &cache, &visibility)
-                .rebuild("/repo".into(), move || super::read_graph(&mut repo)),
+            GraphRebuild::new(activity(), &cache, &visibility).rebuild("/repo".into(), move || {
+                super::read_graph(&mut repo, &super::CommitMemo::default())
+            }),
         )
         .unwrap();
         assert!(cache.checked_revision("/repo").is_some());
@@ -1605,8 +1693,9 @@ mod tests {
         let cache = CommitCache::new(GraphCache::default());
         let visibility = RefVisibilityState::default();
         let graph = tauri::async_runtime::block_on(
-            GraphRebuild::new(activity(), &cache, &visibility)
-                .rebuild("/repo".into(), move || super::read_graph(&mut repo)),
+            GraphRebuild::new(activity(), &cache, &visibility).rebuild("/repo".into(), move || {
+                super::read_graph(&mut repo, &super::CommitMemo::default())
+            }),
         )
         .unwrap();
         cache.invalidate("/repo");
@@ -2243,7 +2332,7 @@ mod tests {
         let result = tauri::async_runtime::block_on(
             GraphRebuild::new(activity(), &cache, &visibility).reconcile_refs_in_session(
                 "/repo".to_owned(),
-                repo.workdir().unwrap().to_path_buf(),
+                super::OpenRepo::new(repo.workdir().unwrap().to_path_buf()),
                 old_session,
             ),
         );
@@ -2454,7 +2543,7 @@ mod tests {
             path.clone(),
             move || {
                 let mut repo = git2::Repository::open(capture_location)?;
-                super::read_graph(&mut repo)
+                super::read_graph(&mut repo, &super::CommitMemo::default())
             },
         ))
         .unwrap();
@@ -2463,8 +2552,11 @@ mod tests {
         let session = cache.session_id(&path).unwrap();
 
         let refreshed = tauri::async_runtime::block_on(
-            GraphRebuild::new(activity(), &cache, &visibility)
-                .refresh_worktree_in_session(path, location, session),
+            GraphRebuild::new(activity(), &cache, &visibility).refresh_worktree_in_session(
+                path,
+                super::OpenRepo::new(location),
+                session,
+            ),
         )
         .unwrap();
 

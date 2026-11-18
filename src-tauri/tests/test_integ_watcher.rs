@@ -9,7 +9,7 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 use tauri::{Listener, Manager};
 use trunk_lib::state::{
-    CommitCache, GraphCache, GraphRebuild, RefVisibilityState, RemoteOps, RunningOp,
+    CommitCache, GraphCache, GraphRebuild, OpenRepo, RefVisibilityState, RemoteOps, RunningOp,
 };
 use trunk_lib::watcher::{RepoChanged, WatcherState, start_watcher};
 
@@ -129,9 +129,7 @@ fn ignored_untracked_writes_emit_no_repository_change() {
             &cache,
             &visibility,
         )
-        .rebuild(key.clone(), move || {
-            trunk_lib::state::read_graph(&mut git2::Repository::open(path)?)
-        }),
+        .rebuild(key.clone(), move || OpenRepo::new(path).read_graph()),
     )
     .unwrap();
 
@@ -152,7 +150,7 @@ fn ignored_untracked_writes_emit_no_repository_change() {
                 &cache,
                 &visibility
             )
-            .reconcile_refs(key, dir.path().to_path_buf())
+            .reconcile_refs(key, OpenRepo::new(dir.path().to_path_buf()))
         )
         .unwrap()
         .is_none()
@@ -189,9 +187,7 @@ fn unreadable_index_preserves_ignored_notifications_and_invalidates_the_capture(
             &cache,
             &visibility,
         )
-        .rebuild(key.clone(), move || {
-            trunk_lib::state::read_graph(&mut git2::Repository::open(path)?)
-        }),
+        .rebuild(key.clone(), move || OpenRepo::new(path).read_graph()),
     )
     .unwrap();
     let index_path = context.repo().path().join("index");
@@ -223,7 +219,7 @@ fn unreadable_index_preserves_ignored_notifications_and_invalidates_the_capture(
                 &cache,
                 &visibility
             )
-            .reconcile_refs(key, context.repo_path().to_path_buf())
+            .reconcile_refs(key, OpenRepo::new(context.repo_path().to_path_buf()))
         )
         .unwrap()
         .is_some()

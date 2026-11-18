@@ -48,8 +48,7 @@ pub fn checkout_commit_inner(
     })?;
     drop(repo);
 
-    let mut repo2 = git2::Repository::open(path_buf)?;
-    crate::state::read_graph(&mut repo2)
+    state_map.read_graph(path)
 }
 
 /// Create an annotated tag on a commit.
@@ -78,8 +77,7 @@ pub fn create_tag_inner(
     drop(obj);
     drop(repo);
 
-    let mut repo2 = git2::Repository::open(path_buf)?;
-    crate::state::read_graph(&mut repo2)
+    state_map.read_graph(path)
 }
 
 /// Delete a tag.
@@ -101,8 +99,7 @@ pub fn delete_tag_inner(
     drop(reference);
     drop(repo);
 
-    let mut repo2 = git2::Repository::open(path_buf)?;
-    crate::state::read_graph(&mut repo2)
+    state_map.read_graph(path)
 }
 
 /// The error for a pick or revert git refused, named by what it left behind:
@@ -183,8 +180,7 @@ pub fn cherry_pick_inner(
         Ok(())
     })?;
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 /// Conclude a conflicted cherry-pick by committing the resolved tree.
@@ -216,8 +212,7 @@ pub fn cherry_pick_continue_inner(
         Ok(())
     })?;
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 /// Abandon an in-progress cherry-pick and restore the previous tree.
@@ -248,8 +243,7 @@ pub fn cherry_pick_abort_inner(
         Ok(())
     })?;
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 /// Stage a revert without committing, so the message can be edited first.
@@ -286,8 +280,7 @@ pub fn revert_commit_begin_inner(
         Ok(std::fs::read_to_string(repo.path().join("MERGE_MSG")).ok())
     })?;
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    let source = crate::state::read_graph(&mut repo)?;
+    let source = state_map.read_graph(path)?;
     Ok((source, message))
 }
 
@@ -320,8 +313,7 @@ pub fn revert_continue_inner(
         Ok(())
     })?;
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 /// Abandon an in-progress revert and restore a clean tree.
@@ -352,8 +344,7 @@ pub fn revert_abort_inner(
         Ok(())
     })?;
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 /// Reset HEAD to a commit in soft, mixed or hard mode.
@@ -383,8 +374,7 @@ pub fn reset_to_commit_inner(
         run_git_reset(path_buf, &[&format!("--{mode}"), oid], "reset_error")
     })?;
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 /// # Errors
@@ -933,9 +923,7 @@ pub async fn undo_commit<R: Runtime>(
     let (_graph, undo_result) = rebuild
         .rebuild_carrying(path.clone(), move || {
             let undo = undo_commit_inner(&path_clone, &expected_head_oid, &state_map)?;
-            let path_buf = state_map.path_for(&path_clone)?;
-            let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-            let source = crate::state::read_graph(&mut repo)?;
+            let source = state_map.read_graph(&path_clone)?;
             Ok((source, undo))
         })
         .await
@@ -981,9 +969,7 @@ pub async fn redo_commit<R: Runtime>(
                 },
                 &state_map,
             )?;
-            let path_buf = state_map.path_for(&path_clone)?;
-            let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-            crate::state::read_graph(&mut repo)
+            state_map.read_graph(&path_clone)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -1423,7 +1409,10 @@ mod tests {
         let (dir_b, repo_b, base_b, undone_b) = undone_child_repo();
         assert_eq!((base_a, undone_a), (base_b, undone_b));
         let mut map = state_map_for(&dir_a);
-        map.register(path_str(&dir_b), dir_b.path().to_path_buf());
+        map.register(
+            path_str(&dir_b),
+            crate::state::OpenRepo::new(dir_b.path().to_path_buf()),
+        );
 
         let err = redo_commit_inner(
             &path_str(&dir_b),

@@ -106,7 +106,10 @@ impl Harness {
                 &cache,
                 &visibility,
             )
-            .reconcile_refs(path.to_str().unwrap().to_owned(), path.to_path_buf()),
+            .reconcile_refs(
+                path.to_str().unwrap().to_owned(),
+                trunk_lib::state::OpenRepo::new(path.to_path_buf()),
+            ),
         )
         .unwrap()
     }

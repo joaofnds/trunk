@@ -166,8 +166,7 @@ pub fn delete_branch_inner(
     drop(repo);
 
     // Rebuild graph cache
-    let mut repo2 = git2::Repository::open(path_buf)?;
-    let read = crate::state::read_graph(&mut repo2)?;
+    let read = state_map.read_graph(path)?;
     cache_map.insert_read(path.to_owned(), read, visibility.clone());
 
     Ok(())
@@ -217,8 +216,7 @@ pub fn rename_branch_inner(
     drop(repo);
 
     // Rebuild graph cache
-    let mut repo2 = git2::Repository::open(path_buf)?;
-    let read = crate::state::read_graph(&mut repo2)?;
+    let read = state_map.read_graph(path)?;
     cache_map.insert_read(path.to_owned(), read, visibility.clone());
 
     Ok(())
@@ -358,8 +356,7 @@ pub fn checkout_branch_inner(
     drop(repo);
 
     // Rebuild graph cache after checkout
-    let mut repo2 = git2::Repository::open(path_buf)?;
-    let read = crate::state::read_graph(&mut repo2)?;
+    let read = state_map.read_graph(path)?;
     cache_map.insert_read(path.to_owned(), read, visibility.clone());
 
     Ok(())
@@ -432,8 +429,7 @@ pub fn fast_forward_to_inner(
     })?;
 
     // Rebuild graph cache
-    let mut repo = git2::Repository::open(path_buf)?;
-    let read = crate::state::read_graph(&mut repo)?;
+    let read = state_map.read_graph(path)?;
     cache_map.insert_read(path.to_owned(), read, visibility.clone());
 
     Ok(())
@@ -587,8 +583,7 @@ pub fn create_branch_inner(
     drop(repo);
 
     // Rebuild graph cache after branch creation
-    let mut repo2 = git2::Repository::open(path_buf)?;
-    let read = crate::state::read_graph(&mut repo2)?;
+    let read = state_map.read_graph(path)?;
     cache_map.insert_read(path.to_owned(), read, visibility.clone());
 
     Ok(())
@@ -818,8 +813,7 @@ pub fn checkout_remote_branch_inner(
     }
     drop(repo);
 
-    let mut repo2 = git2::Repository::open(path_buf)?;
-    let read = crate::state::read_graph(&mut repo2)?;
+    let read = state_map.read_graph(path)?;
     cache_map.insert_read(path.to_owned(), read, visibility.clone());
 
     Ok(name)

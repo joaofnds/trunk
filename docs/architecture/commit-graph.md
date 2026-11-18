@@ -120,13 +120,23 @@ still match. The ordering, placement and hydration stages remain the ones below.
    first. So a stash sorts above its parent whatever its committer time says, and a stash
    whose first parent is another stash falls out of the same rule. There is no separate
    ordering step for stashes and no `base_oids` list. The order is a port rather than the
-   revwalk so that `capture` can answer it from commits it has already read: it keeps the
-   parents, committer time and facts of every commit its last walk of that git directory
-   returned, and reads only the commits it lacks. Commits never change, so the memo is
-   dropped only when `info/grafts` or `shallow` changes, which rewrites parents, or when
-   the repository closes (`forget`). With a fresh repository handle per command, a rebuild
-   otherwise re-read the whole history: 93 ms of capture at 30,000 commits, against 9 ms
-   with the memo (release build, 2026-11-18). The differential tests in `graph.rs` hold the
+   revwalk so that `capture_remembering` can answer it from commits it has already read: a
+   `CommitMemo` keeps the parents, committer time and facts of every commit the last walk
+   returned, and the next walk reads only the commits it lacks. The memo belongs to the
+   app's registry entry for the open repository (`OpenRepo` in `state.rs`), so closing the
+   repository frees it, and a capture still running then holds only its own reference to
+   the last walk. `capture` and `snapshot` remember nothing, so each call is a cold capture.
+   Commits never change, so the memo goes stale only when `info/grafts` or `shallow`
+   changes, which rewrites parents. libgit2 reads those two files once, when a handle
+   opens, so a handle opened before a change parses under the old files. `capture` therefore
+   reads both files first, then opens its own handle and parses every commit through it,
+   and keeps the walk only when a second read of the files matches the first. A tip whose
+   object is missing fails the capture as it does cold, but a remembered ancestor whose
+   object was later lost is answered from the memo. That is corruption, and the next cold
+   capture, after the repository reopens, reports it. With a fresh repository handle per
+   command, a rebuild otherwise re-read the whole history: 93 ms of capture at 30,000
+   commits, against 8 ms with the memo, of which opening the second handle is 0.1 ms
+   (release build, 2026-11-18). The differential tests in `graph.rs` hold the
    port to libgit2's walk over generated histories with merges, same-second and backdated
    commits, tags on trees and blobs, symbolic refs, stashes and a shallow boundary.
 3. Pushing a stash makes its parents 1.. reachable — the index tree, and the untracked

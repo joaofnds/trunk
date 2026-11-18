@@ -395,8 +395,8 @@ Process B: only branchChild is S at col 0 → replace → B at col 0
 
 ### Why Stashes End Up Far Right in Trunk
 
-> **STALE as of 2026-08-03.** Two premises below no longer hold: stashes are pushed into the
-> revwalk and ordered topologically, not "interleaved before parent" and not merged by
+> **STALE as of 2026-08-03.** Two premises below no longer hold: stashes are tips of the
+> walk and ordered topologically, not "interleaved before parent" and not merged by
 > committer timestamp (`graph.rs`, `capture` Step 2), and a stash on a clean worktree's HEAD tip is
 > placed inline at column 0 rather than far right (`can_inline`). `5b29894` ("compact stash
 > placement via temporal sort and proximity search") already addressed the far-right
@@ -481,7 +481,7 @@ code should be:
 1. Second parent filtering (ignore index/untracked parents)
 2. Visual marker (`is_stash` flag → dashed square + dashed edges)
 3. ~~Orphan stash detection (parent not reachable → standalone dot)~~ — **dropped
-   2026-08-03.** Stashes ride the revwalk, so a stash's parent is always in the walk and
+   2026-08-03.** Stashes are tips of the walk, so a stash's parent is always in the walk and
    gets a row of its own; there is no orphan case left to detect. Items 1 and 2 were
    adopted.
 

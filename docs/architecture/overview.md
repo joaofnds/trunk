@@ -93,7 +93,7 @@
 | `remote_ops.rs` | Labeled worktree/common-directory targets, operation identities and process ownership | `src-tauri/src/remote_ops.rs` |
 | `git/types.rs` | The commit graph's DTOs (`GraphCommit`, `GraphEdge`, `RefLabel`), owned, with no git2 types | `src-tauri/git/src/types.rs` |
 | `types.rs` | The app's other IPC DTOs (`FileDiff`, `WorkingTreeStatus`, etc.), owned, with no git2 types | `src-tauri/src/types.rs` |
-| `state.rs` | `RepoState` (open paths), `CommitCache` (versioned worktree graphs), `RunningOp` (shared-repository reservations); `GraphRebuild` owns checked capture and publication under current visibility | `src-tauri/src/state.rs` |
+| `state.rs` | `RepoState` (open paths, each with the commit memo its graph captures reuse), `CommitCache` (versioned worktree graphs), `RunningOp` (shared-repository reservations); `GraphRebuild` owns checked capture and publication under current visibility | `src-tauri/src/state.rs` |
 | `watcher.rs` | `start_watcher` / `stop_watcher` — `notify_debouncer_mini` emitting `"repo-changed"` events; `RepoChanged` carries changed paths, an optional checked graph revision, a refs-only marker and a completed-command marker; `WatcherState::disabled()` turns the watch off | `src-tauri/src/watcher.rs` |
 
 ## Pattern Overview
@@ -156,7 +156,7 @@
 **Managed State Layer:**
 - Purpose: Cross-command shared state, Tauri-managed singletons
 - Location: `src-tauri/src/state.rs`, `src-tauri/src/watcher.rs`
-- Contains: `RepoState` (path registry), `CommitCache` (one `GraphSnapshot` per repo: capture, visibility and prepared clean/dirty lane placements), `RunningOp` (operation reservations and process identity for cancel), `WatcherState` (fs watchers)
+- Contains: `RepoState` (path registry, each open repository owning the `CommitMemo` its graph captures reuse), `CommitCache` (one `GraphSnapshot` per repo: capture, visibility and prepared clean/dirty lane placements), `RunningOp` (operation reservations and process identity for cancel), `WatcherState` (fs watchers)
 - Repository and graph entries use worktree paths. Remote reservations use operation identities and canonical common directories. `WatcherState::disabled()` makes `start_watcher` register nothing, which is how a test host runs `open_repo` unchanged with no filesystem watch
 - Used by: All command modules via `State<'_, T>` injection
 

@@ -179,7 +179,7 @@ impl ReviewDriver<'_> {
                 &visibility,
             )
             .rebuild(self.ctx.path().to_string(), move || {
-                trunk_lib::state::read_graph(&mut git2::Repository::open(location)?)
+                trunk_lib::state::OpenRepo::new(location).read_graph()
             }),
         )
         .unwrap();

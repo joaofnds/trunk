@@ -30,26 +30,27 @@ pub async fn open_repo<R: Runtime>(
     cache.open_session(&path);
     let opening_session = cache.session_id(&path);
     let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
-    let path_clone = path.clone();
+    let path_buf = std::path::PathBuf::from(&path);
+    // The repository is registered with the memo its first capture filled, so the next
+    // capture reads only what changed.
+    let entry = crate::state::OpenRepo::new(path_buf.clone());
+    let opening = entry.clone();
     rebuild
         .rebuild(
             path.clone(),
             move || -> Result<crate::state::GraphRead, TrunkError> {
-                let path_buf = std::path::PathBuf::from(&path_clone);
-                repository::validate_and_open(&path_buf)?;
-                let mut repo = git2::Repository::open(&path_buf)?;
-                crate::state::read_graph(&mut repo)
+                repository::validate_and_open(opening.location())?;
+                opening.read_graph()
             },
         )
         .await
         .map_err(|e| e.to_json())?;
 
-    let path_buf = std::path::PathBuf::from(&path);
     let mut repositories = state.0.lock().unwrap();
     if cache.session_id(&path) != opening_session {
         return Err(TrunkError::new("not_open", "Repository session was closed").to_json());
     }
-    repositories.register(path.clone(), path_buf.clone());
+    repositories.register(path.clone(), entry);
     if let Err(error) = watcher::start_watcher(&path_buf, app, &watcher_state) {
         repositories.forget(&path);
         cache.forget(&path);
@@ -93,7 +94,6 @@ pub async fn close_repo(
     ref_visibility.forget(&path);
     watcher::stop_watcher(&path, &watcher_state);
     drop(repositories);
-    trunk_git::graph::forget(std::path::Path::new(&path));
     Ok(())
 }
 

@@ -210,8 +210,7 @@ pub fn merge_continue_inner(
         Ok(())
     })?;
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 /// Abandon an in-progress merge and restore the previous tree.
@@ -240,8 +239,7 @@ pub fn merge_abort_inner(
         Ok(())
     })?;
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 /// `git rebase <step>` with the commit-message editor pinned to a no-op.
@@ -311,8 +309,7 @@ pub fn rebase_continue_inner(
         Ok(())
     })?;
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 /// Skip the commit a rebase is stuck on and carry on.
@@ -340,8 +337,7 @@ pub fn rebase_skip_inner(
         Ok(())
     })?;
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 /// Abandon an in-progress rebase and restore the original branch.
@@ -367,8 +363,7 @@ pub fn rebase_abort_inner(
         Ok(())
     })?;
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 // --- Start merge/rebase ---
@@ -432,12 +427,10 @@ pub fn merge_branch_begin_inner(
     branch: &str,
     state_map: &OpenRepos,
 ) -> Result<(crate::state::GraphRead, MergeBeginOutcome), TrunkError> {
-    let path_buf = state_map.path_for(path)?;
     let outcome =
         state_map.hold_for_git(path, |repo| start_merge(repo, &typed_name(repo, branch)))?;
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    let source = crate::state::read_graph(&mut repo)?;
+    let source = state_map.read_graph(path)?;
     Ok((source, outcome))
 }
 
@@ -521,8 +514,7 @@ pub fn rebase_branch_inner(
         Ok(())
     })?;
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    crate::state::read_graph(&mut repo)
+    state_map.read_graph(path)
 }
 
 // --- Tauri command wrappers ---

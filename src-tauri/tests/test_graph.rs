@@ -743,8 +743,10 @@ fn topic_layout(name: &str) -> (usize, usize, usize) {
 /// (`max_columns`, T1's column, T1's color) clean, then with the worktree dirtied. Built from a
 /// repository rather than a capture: this pair is one of the two tests that still pin the
 /// walk's `TOPOLOGICAL | TIME` order, which a committed capture would freeze (count
-/// re-measured 2026-08-11, and again 2026-11-18 by inverting `walk_order`'s time comparison
-/// in `graph.rs`: the same two failed; `.claude/rules/commit-graph.md` states the same one).
+/// re-measured 2026-08-11, and again 2026-11-18 by ordering the walk with libgit2's
+/// `TOPOLOGICAL` sort alone in place of `walk_order`: the same two failed, and
+/// `.claude/rules/commit-graph.md` states the same count. Making `walk_order`'s time
+/// comparison always false is a weaker mutant that fails only the stash test of the pair).
 fn topic_layout_clean_then_dirty(
     ctx: &TestContext,
 ) -> ((usize, usize, usize), (usize, usize, usize)) {

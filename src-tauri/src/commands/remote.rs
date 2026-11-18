@@ -251,7 +251,7 @@ async fn checked_manual_pull<R: Runtime>(
 async fn refresh_graph<R: Runtime>(
     activity: &crate::activity::Activity,
     path: &str,
-    path_buf: PathBuf,
+    repository: crate::state::OpenRepo,
     cache: &CommitCache,
     ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
@@ -263,11 +263,7 @@ async fn refresh_graph<R: Runtime>(
         .rebuild_in_session(
             path_owned.clone(),
             session,
-            move || -> Result<crate::state::GraphRead, TrunkError> {
-                let mut repo = git2::Repository::open(&path_buf)
-                    .map_err(|e| TrunkError::new("git_error", e.to_string()))?;
-                crate::state::read_graph(&mut repo)
-            },
+            move || -> Result<crate::state::GraphRead, TrunkError> { repository.read_graph() },
         )
         .await?;
 
@@ -294,10 +290,11 @@ pub async fn git_fetch<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<crate::background_fetch::FetchReport, String> {
     let state_map = state.snapshot();
-    let path_buf = state_map
-        .path_for(&path)
+    let repository = state_map
+        .repository(&path)
         .map_err(|e| e.to_json())?
-        .to_path_buf();
+        .clone();
+    let path_buf = repository.location().to_path_buf();
 
     let completion = run_git_remote(
         &activity,
@@ -314,7 +311,7 @@ pub async fn git_fetch<R: Runtime>(
     refresh_graph(
         &activity,
         &path,
-        path_buf,
+        repository,
         &cache,
         &ref_visibility,
         &app,
@@ -459,7 +456,8 @@ pub async fn git_pull_inner<R: Runtime>(
     ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
-    let path_buf = state_map.path_for(path)?.to_path_buf();
+    let repository = state_map.repository(path)?.clone();
+    let path_buf = repository.location().to_path_buf();
 
     let args: Vec<&str> = match strategy {
         Some("ff") => vec!["pull", "--ff", "--progress"],
@@ -497,7 +495,7 @@ pub async fn git_pull_inner<R: Runtime>(
         activity,
         ran,
         path,
-        path_buf,
+        repository,
         cache,
         ref_visibility,
         app,
@@ -574,7 +572,7 @@ async fn finish_pull<R: Runtime>(
     activity: &crate::activity::Activity,
     ran: Result<(), TrunkError>,
     path: &str,
-    path_buf: PathBuf,
+    repository: crate::state::OpenRepo,
     cache: &CommitCache,
     ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
@@ -582,6 +580,7 @@ async fn finish_pull<R: Runtime>(
 ) -> Result<(), TrunkError> {
     ran?;
 
+    let path_buf = repository.location().to_path_buf();
     checked_manual_pull(activity, app, path, session, path_buf.clone()).await;
     let probe_path = path_buf.clone();
     let conflicted = activity
@@ -597,7 +596,7 @@ async fn finish_pull<R: Runtime>(
     refresh_graph(
         activity,
         path,
-        path_buf,
+        repository,
         cache,
         ref_visibility,
         app,
@@ -663,7 +662,8 @@ pub async fn git_push_inner<R: Runtime>(
     ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
-    let path_buf = state_map.path_for(path)?.to_path_buf();
+    let repository = state_map.repository(path)?.clone();
+    let path_buf = repository.location().to_path_buf();
 
     let completion = run_git_remote(
         activity,
@@ -678,7 +678,7 @@ pub async fn git_push_inner<R: Runtime>(
     refresh_graph(
         activity,
         path,
-        path_buf,
+        repository,
         cache,
         ref_visibility,
         app,
@@ -808,7 +808,8 @@ pub async fn git_push_force_inner<R: Runtime>(
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
     let (confirmed_remote, confirmed_branch) = (confirmed.remote, confirmed.branch);
-    let path_buf = state_map.path_for(path)?.to_path_buf();
+    let repository = state_map.repository(path)?.clone();
+    let path_buf = repository.location().to_path_buf();
 
     let target_path = path_buf.clone();
     let target = activity.spawn_blocking(move || {
@@ -858,7 +859,7 @@ pub async fn git_push_force_inner<R: Runtime>(
     refresh_graph(
         activity,
         path,
-        path_buf,
+        repository,
         cache,
         ref_visibility,
         app,
@@ -887,10 +888,11 @@ pub async fn delete_remote_branch<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
-    let path_buf = state_map
-        .path_for(&path)
+    let repository = state_map
+        .repository(&path)
         .map_err(|e| e.to_json())?
-        .to_path_buf();
+        .clone();
+    let path_buf = repository.location().to_path_buf();
 
     // Parse "origin/feature" into remote="origin", branch="feature"
     let slash = branch_name.find('/').ok_or_else(|| {
@@ -917,7 +919,7 @@ pub async fn delete_remote_branch<R: Runtime>(
     refresh_graph(
         &activity,
         &path,
-        path_buf,
+        repository,
         &cache,
         &ref_visibility,
         &app,

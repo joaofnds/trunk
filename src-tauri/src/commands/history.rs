@@ -118,9 +118,9 @@ async fn refresh_graph_in_session(
     session: u64,
 ) -> Result<GraphResponse, TrunkError> {
     let rebuild = crate::state::GraphRebuild::new(activity.clone(), cache, ref_visibility);
-    let location = state_map.path_for(path)?.to_owned();
+    let repository = state_map.repository(path)?.clone();
     rebuild
-        .refresh_worktree_in_session(path.to_owned(), location, session)
+        .refresh_worktree_in_session(path.to_owned(), repository, session)
         .await?;
 
     cache.read_versioned(path, None, |graph, revision| {
@@ -870,12 +870,16 @@ mod tests {
         let cache = CommitCache::new(GraphCache::default());
         let visibility = RefVisibilityState::default();
         tauri::async_runtime::block_on(
-            GraphRebuild::new(activity(), &cache, &visibility)
-                .rebuild(path.clone(), move || crate::state::read_graph(&mut repo)),
+            GraphRebuild::new(activity(), &cache, &visibility).rebuild(path.clone(), move || {
+                crate::state::read_graph(&mut repo, &trunk_git::graph::CommitMemo::default())
+            }),
         )
         .unwrap();
         let mut locations = OpenRepos::default();
-        locations.register(path.clone(), directory.path().to_owned());
+        locations.register(
+            path.clone(),
+            crate::state::OpenRepo::new(directory.path().to_owned()),
+        );
         let session = cache.capture_session(&path).unwrap();
         let root = root.to_string();
         std::fs::remove_file(

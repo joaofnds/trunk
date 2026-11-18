@@ -318,7 +318,6 @@ fn route_changes<R: Runtime>(
     let common = git.map(|git| git.common.to_string_lossy().to_string());
     let pending = Arc::clone(pending);
     let app = app.clone();
-    let location = watched.to_path_buf();
     Some(tauri::async_runtime::spawn(async move {
         loop {
             let running = app.state::<crate::state::RunningOp>();
@@ -334,10 +333,15 @@ fn route_changes<R: Runtime>(
                 .insert(repo.clone(), RefRefresh::Running);
             let cache = app.state::<crate::state::CommitCache>();
             let visibility = app.state::<crate::state::RefVisibilityState>();
-            match crate::state::GraphRebuild::new(activity.clone(), &cache, &visibility)
-                .reconcile_refs(repo.clone(), location.clone())
-                .await
-            {
+            let reconciled = match app.state::<crate::state::RepoState>().repository(&repo) {
+                Some(repository) => {
+                    crate::state::GraphRebuild::new(activity.clone(), &cache, &visibility)
+                        .reconcile_refs(repo.clone(), repository)
+                        .await
+                }
+                None => Err(TrunkError::new("not_open", "Repository closed")),
+            };
+            match reconciled {
                 Ok(Some(graph)) => {
                     let _ = app.emit(
                         "repo-changed",

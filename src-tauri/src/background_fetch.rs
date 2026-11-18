@@ -718,14 +718,14 @@ pub async fn fetch<R: Runtime>(
     let common = info.common;
     let affected = activity
         .spawn_blocking(move || {
-            open.locations()
-                .map(|(key, location)| {
-                    let resolved = (|| -> Result<Option<PathBuf>, TrunkError> {
-                        let repo = git2::Repository::open(location)?;
+            open.repositories()
+                .map(|(key, repository)| {
+                    let resolved = (|| -> Result<Option<crate::state::OpenRepo>, TrunkError> {
+                        let repo = git2::Repository::open(repository.location())?;
                         let directory = repo.commondir().canonicalize().map_err(|_| {
                             TrunkError::new("git_error", "Shared Git directory is unavailable")
                         })?;
-                        Ok((directory.to_string_lossy() == common).then(|| location.to_path_buf()))
+                        Ok((directory.to_string_lossy() == common).then(|| repository.clone()))
                     })();
                     (key.to_owned(), resolved)
                 })
@@ -744,7 +744,7 @@ pub async fn fetch<R: Runtime>(
         return Ok(report);
     };
     let rebuild = GraphRebuild::new(activity.clone(), cache, visibility);
-    for (key, location) in affected {
+    for (key, repository) in affected {
         let Some(&opening_session) = opening_sessions.get(&key) else {
             continue;
         };
@@ -752,8 +752,8 @@ pub async fn fetch<R: Runtime>(
             continue;
         }
 
-        let location = match location {
-            Ok(Some(location)) => location,
+        let repository = match repository {
+            Ok(Some(repository)) => repository,
             Ok(None) => continue,
             Err(error) => {
                 report.graph_error = Some(error.code);
@@ -764,7 +764,7 @@ pub async fn fetch<R: Runtime>(
             }
         };
         match rebuild
-            .reconcile_refs_in_session(key.clone(), location, opening_session)
+            .reconcile_refs_in_session(key.clone(), repository, opening_session)
             .await
         {
             Ok(Some(graph)) => {

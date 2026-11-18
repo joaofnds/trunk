@@ -45,8 +45,10 @@ impl TestContext {
 
     /// Open `location` in a tab of its own, as the frontend does for another repository
     pub fn open_in_tab(&mut self, location: &std::path::Path) {
-        self.state_map
-            .register(location.display().to_string(), location.to_path_buf());
+        self.state_map.register(
+            location.display().to_string(),
+            trunk_lib::state::OpenRepo::new(location.to_path_buf()),
+        );
     }
 
     /// Check out a local branch from the worktree at `location`, opened in its own tab
