@@ -90,7 +90,7 @@ exceed it they yield toward their floors, rightmost first, so a layout the app c
 the list whenever the list is at least the floors' sum. A user width sits outside the
 budget, which is how a dragged column can push the row past the list and into a scroll.
 
-**Graph snapshot** — what the commit cache holds for one repository: captured history, its ref visibility and the lane placements for a clean or dirty working tree. The cache prepares both placements when history or visibility changes, then builds only the rows a page requests. An ordinary save can select the right placement without walking history again. A visibility toggle uses the cached capture without opening the repository, and visibility travels with its placements, so the cache cannot serve a graph built under a different hidden set (TRUNK-129, TRUNK-120, TRUNK-96).
+**Graph snapshot**: what the commit cache holds for one repository: captured history, its ref visibility and the lane placements for a clean or dirty working tree. When history or visibility changes, the cache lays out the placement for the worktree state it observed before it shows the graph, and lays out the other one in the background. It then builds only the rows a page requests. An ordinary save can select the right placement without walking history again. A visibility toggle uses the cached capture without opening the repository, and visibility travels with its placements, so the cache cannot serve a graph built under a different hidden set (TRUNK-129, TRUNK-120, TRUNK-96).
 
 **Page** — one fixed-size slice of the laid-out graph the frontend fetches at a time,
 200 rows. Both sides hold that size independently, the backend in `history.rs` and `BATCH`

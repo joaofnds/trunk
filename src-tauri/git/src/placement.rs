@@ -19,6 +19,8 @@ type LaneSlot = Option<(Oid, bool)>;
 
 /// Everything lane assignment reads.
 ///
+/// `oids` is a walk order: every child before its parents.
+///
 /// `parents` carries full, unfiltered parent lists and is total over every oid the
 /// algorithm looks up: `oids` plus the first-parent chains above `head_tip` and
 /// `tracked_upstream`.
@@ -159,10 +161,13 @@ fn head_lane_extension(input: &PlacementInput) -> (Vec<Oid>, bool) {
         return (path, true);
     }
 
+    let mut first_parent_children: HashMap<Oid, Vec<Oid>> = HashMap::new();
     // A stash hangs off its parent by first parent too, and it is not a continuation of that
     // branch — it has its own placement rules and must never take the lane.
-    let mut first_parent_children: HashMap<Oid, Vec<Oid>> = HashMap::new();
-    for &oid in input.oids.iter().filter(|o| !input.stashes.contains(o)) {
+    for &oid in rows_above(input, head_tip)
+        .iter()
+        .filter(|o| !input.stashes.contains(o))
+    {
         if let Some(&parent) = input.parents.get(&oid).and_then(|ps| ps.first()) {
             first_parent_children.entry(parent).or_default().push(oid);
         }
@@ -184,6 +189,16 @@ fn head_lane_extension(input: &PlacementInput) -> (Vec<Oid>, bool) {
     }
     path.reverse();
     (path, false)
+}
+
+/// The rows that can continue `head_tip`: those the walk puts above it, since it lists every
+/// child before its parents. A tip that is no row of its own, such as a stash's index commit
+/// a detached HEAD points at, can still be continued by any row.
+fn rows_above(input: &PlacementInput, head_tip: Oid) -> &[Oid] {
+    let Some(row) = input.oids.iter().position(|&oid| oid == head_tip) else {
+        return &input.oids;
+    };
+    &input.oids[..row]
 }
 
 /// The first-parent commits between `from` and `target`, newest first, or `None` when
@@ -257,7 +272,7 @@ pub fn assign_lanes(input: &PlacementInput) -> Layout {
     // pending_parents[oid] = col → a child already reserved this column for oid
     let mut active_lanes: Vec<LaneSlot> = Vec::new();
     let mut pending_parents: HashMap<Oid, usize> = HashMap::new();
-    let mut placements: HashMap<Oid, Placement> = HashMap::new();
+    let mut placements: HashMap<Oid, Placement> = HashMap::with_capacity(input.oids.len());
 
     // max_columns: high-water mark of active_lanes.len() (Fix 3: ALGO-03)
     let mut max_columns: usize = 0;
@@ -448,10 +463,10 @@ pub fn assign_lanes(input: &PlacementInput) -> Layout {
         // Assign columns to parents and emit crossing edges
         // For stash commits, only track the first parent (base commit).
         // Parents 1+ are internal stash state (index, untracked) not in the graph.
-        let parents: Vec<Oid> = if is_stash {
-            commit_parents.first().copied().into_iter().collect()
+        let parents: &[Oid] = if is_stash {
+            &commit_parents[..commit_parents.len().min(1)]
         } else {
-            commit_parents.to_vec()
+            commit_parents
         };
 
         // Track whether the current column is re-occupied by a parent

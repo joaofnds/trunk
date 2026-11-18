@@ -1285,19 +1285,28 @@ impl<'a> GraphRebuild<'a> {
             // Visibility cannot change between this comparison and publication.
             let visibility = self.ref_visibility.0.lock().unwrap();
             if visibility.get(&path).cloned().unwrap_or_default() == *snapshot.visibility() {
-                let (published, replaced_history) = {
+                let (published, replaced_history, current) = {
                     let mut cache = self.cache.0.lock().unwrap();
                     let before = cache.get(&path).cloned();
                     let published = cache.publish(path.clone(), ticket, snapshot, inputs)?;
-                    let replaced_history = cache.get(&path).is_some_and(|current| {
+                    let current = cache.get(&path).cloned();
+                    drop(cache);
+                    let replaced_history = current.as_ref().is_some_and(|current| {
                         before
                             .as_ref()
                             .is_none_or(|before| !before.same_history_as(current))
                     });
-                    drop(cache);
-                    (published, replaced_history)
+                    (published, replaced_history, current)
                 };
                 drop(visibility);
+
+                // Lay out the other worktree state now, so the first edit after this only
+                // selects its plan.
+                if let Some(current) = current {
+                    drop(self.activity.spawn_blocking(move || {
+                        current.lay_out_unobserved_worktree_state();
+                    }));
+                }
 
                 if replaced_history {
                     self.cache.announce_publication(&path, &published);

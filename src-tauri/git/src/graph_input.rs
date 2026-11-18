@@ -6,7 +6,7 @@
 //! same `layout`, so a golden stays evidence about production for that half of the pipeline.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use git2::Oid;
 use serde::{Deserialize, Serialize};
@@ -419,15 +419,16 @@ fn hydrate(source: &GraphSource, assigned: &placement::Layout, page_oids: &[Oid]
     }
 }
 
-/// A captured history and its prepared clean/dirty lane placements.
+/// A captured history and its clean and dirty lane placements, each laid out the first
+/// time an observation of that worktree state asks for it.
 ///
 /// Row facts are hydrated only when a caller requests them; worktree changes select a plan
-/// without walking, laying out, or cloning the history again.
+/// without walking or cloning the history again, and lay it out only once per history.
 #[derive(Debug, Clone)]
 pub struct GraphSnapshot {
     capture: Arc<GraphSource>,
     visible: Arc<GraphSource>,
-    layouts: Arc<[placement::Layout; 2]>,
+    layouts: Arc<[OnceLock<placement::Layout>; 2]>,
     positions: Arc<HashMap<Oid, usize>>,
     visibility: RefVisibility,
     worktree_dirty: bool,
@@ -453,13 +454,15 @@ impl GraphSnapshot {
         Self::prepare(Arc::clone(&self.capture), visibility, self.worktree_dirty)
     }
 
-    /// Select an already prepared layout; the immutable history remains shared.
+    /// The same history under another worktree observation, its layout laid out now if no
+    /// earlier observation of that state did; the immutable history remains shared.
     #[must_use]
     pub fn with_worktree_dirty(&self, worktree_dirty: bool) -> Self {
         Self {
             worktree_dirty,
             ..self.clone()
         }
+        .laid_out()
     }
 
     #[must_use]
@@ -513,7 +516,7 @@ impl GraphSnapshot {
     pub fn page(&self, offset: usize, limit: usize) -> GraphResult {
         hydrate(
             &self.visible,
-            &self.layouts[usize::from(self.worktree_dirty)],
+            self.plan(),
             page_oids(&self.visible, offset, limit),
         )
     }
@@ -539,11 +542,7 @@ impl GraphSnapshot {
             .map(|position| self.oids()[position])
             .collect();
 
-        hydrate(
-            &self.visible,
-            &self.layouts[usize::from(self.worktree_dirty)],
-            &oids,
-        )
+        hydrate(&self.visible, self.plan(), &oids)
     }
 
     /// Materialize the full graph only for callers explicitly asking for every row.
@@ -568,20 +567,41 @@ impl GraphSnapshot {
                 .collect(),
         );
 
-        let mut input = visible.placement.clone();
-        input.worktree_dirty = false;
-        let clean = placement::assign_lanes(&input);
-        input.worktree_dirty = true;
-        let dirty = placement::assign_lanes(&input);
-
         Self {
             capture,
             visible,
-            layouts: Arc::new([clean, dirty]),
+            layouts: Arc::new([OnceLock::new(), OnceLock::new()]),
             positions,
             visibility,
             worktree_dirty,
         }
+        .laid_out()
+    }
+
+    /// This observation with its own plan laid out, so that reading its rows never lays out
+    /// a history while a reader waits.
+    fn laid_out(self) -> Self {
+        self.plan();
+        self
+    }
+
+    /// Lay out the worktree state this observation does not hold, so that a later
+    /// observation of it only selects its plan. Meant to run off the path a user waits on.
+    pub fn lay_out_unobserved_worktree_state(&self) {
+        self.plan_for(!self.worktree_dirty);
+    }
+
+    fn plan(&self) -> &placement::Layout {
+        self.plan_for(self.worktree_dirty)
+    }
+
+    /// The layout for `worktree_dirty`, laid out the first time it is asked for.
+    fn plan_for(&self, worktree_dirty: bool) -> &placement::Layout {
+        self.layouts[usize::from(worktree_dirty)].get_or_init(|| {
+            let mut input = self.visible.placement.clone();
+            input.worktree_dirty = worktree_dirty;
+            placement::assign_lanes(&input)
+        })
     }
 }
 
@@ -590,7 +610,33 @@ mod snapshot_sharing_tests {
     use super::*;
 
     #[test]
-    fn worktree_observations_share_both_prepared_placement_plans() {
+    fn a_capture_lays_out_only_the_worktree_state_it_observed() {
+        let clean = GraphSnapshot::new(GraphSource::default(), RefVisibility::default());
+
+        assert!(clean.layouts[0].get().is_some());
+        assert!(clean.layouts[1].get().is_none());
+    }
+
+    #[test]
+    fn laying_out_ahead_lays_out_the_worktree_state_not_observed() {
+        let clean = GraphSnapshot::new(GraphSource::default(), RefVisibility::default());
+
+        clean.lay_out_unobserved_worktree_state();
+
+        assert!(clean.layouts[1].get().is_some());
+    }
+
+    #[test]
+    fn a_new_worktree_observation_lays_out_its_state_before_any_read() {
+        let clean = GraphSnapshot::new(GraphSource::default(), RefVisibility::default());
+
+        let dirty = clean.with_worktree_dirty(true);
+
+        assert!(dirty.layouts[1].get().is_some());
+    }
+
+    #[test]
+    fn worktree_observations_share_both_placement_plans() {
         let clean = GraphSnapshot::new(GraphSource::default(), RefVisibility::default());
         let dirty = clean.with_worktree_dirty(true);
         let restored = dirty.with_worktree_dirty(false);

@@ -843,8 +843,10 @@ fn a_cached_dirty_selection_matches_fresh_placement_and_changes_branch_colour() 
 #[test]
 fn a_cached_clean_selection_restores_the_original_placement() {
     let mut source = source_using_every_captured_field();
+    source.placement.head_tip = Some(oid(4));
+    source.placement.tracked_upstream = Some(oid(3));
     source.placement.worktree_dirty = false;
-    let snapshot = GraphSnapshot::new(source, RefVisibility::default());
+    let snapshot = GraphSnapshot::new(source.clone(), RefVisibility::default());
 
     let restored = snapshot
         .with_worktree_dirty(true)
@@ -853,7 +855,7 @@ fn a_cached_clean_selection_restores_the_original_placement() {
     assert!(snapshot.same_capture_as(&restored));
     assert_eq!(
         layout_dump::render(&restored.layout()),
-        layout_dump::render(&snapshot.layout())
+        layout_dump::render(&layout(&source, 0, usize::MAX))
     );
 }
 
@@ -878,4 +880,44 @@ fn selected_review_members_keep_graph_order_and_omit_unrequested_rows() {
         .map(|row| row.summary.as_str())
         .collect();
     assert_eq!(summaries, ["Tip", "Init"]);
+}
+
+/// HEAD's tip with one commit above it on its first-parent line, the shape whose layout
+/// depends on the worktree: clean, the commit above extends the HEAD lane; dirty, it forks.
+fn tip_with_a_commit_above_it(worktree_dirty: bool) -> GraphSource {
+    let (above, tip, root) = (oid(1), oid(2), oid(3));
+    GraphSource {
+        placement: PlacementInput {
+            oids: vec![above, tip, root],
+            parents: HashMap::from([(above, vec![tip]), (tip, vec![root]), (root, vec![])]),
+            stashes: HashSet::new(),
+            head_tip: Some(tip),
+            tracked_upstream: None,
+            worktree_dirty,
+        },
+        commits: HashMap::from([
+            (above, facts("Above")),
+            (tip, facts("Tip")),
+            (root, facts("Init")),
+        ]),
+        refs: HashMap::new(),
+        stash_order: Vec::new(),
+    }
+}
+
+#[test]
+fn a_plan_laid_out_ahead_matches_a_fresh_capture_of_that_worktree_state() {
+    let fresh_clean =
+        layout_dump::render(&layout(&tip_with_a_commit_above_it(false), 0, usize::MAX));
+    let fresh_dirty =
+        layout_dump::render(&layout(&tip_with_a_commit_above_it(true), 0, usize::MAX));
+    assert_ne!(fresh_clean, fresh_dirty);
+    let clean = GraphSnapshot::new(tip_with_a_commit_above_it(false), RefVisibility::default());
+
+    clean.lay_out_unobserved_worktree_state();
+
+    assert_eq!(
+        layout_dump::render(&clean.with_worktree_dirty(true).layout()),
+        fresh_dirty
+    );
 }

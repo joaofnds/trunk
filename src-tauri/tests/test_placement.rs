@@ -140,6 +140,25 @@ fn a_stash_never_extends_the_head_lane() {
     assert_eq!(lane_of(&layout, stash), (0, 0));
 }
 
+/// A detached HEAD can sit on a commit the walk never lists as a row, a stash's index commit
+/// among them, while a branch continues it.
+#[test]
+fn a_commit_continuing_a_head_tip_that_is_no_row_extends_the_head_lane() {
+    let (above, tip) = (oid(1), oid(2));
+    let input = PlacementInput {
+        oids: vec![above],
+        parents: HashMap::from([(above, vec![tip]), (tip, vec![])]),
+        stashes: HashSet::new(),
+        head_tip: Some(tip),
+        tracked_upstream: None,
+        worktree_dirty: false,
+    };
+
+    let layout = assign_lanes(&input);
+
+    assert_eq!(lane_of(&layout, above), (0, 1));
+}
+
 #[test]
 fn a_stash_on_the_tracked_upstream_path_blocks_the_head_lane_extension() {
     let (above, stash, tip) = (oid(1), oid(2), oid(3));
