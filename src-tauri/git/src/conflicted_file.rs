@@ -388,12 +388,12 @@ struct Hunk {
 fn line_hunks(side: &[&str], resolved: &[&str]) -> Result<Vec<Hunk>, git2::Error> {
     // Every line ends in a newline here, so libgit2's lines are exactly these.
     let text = |lines: &[&str]| -> Vec<u8> {
-        lines
-            .iter()
-            .flat_map(|line| [line.as_bytes(), &b"\n"[..]])
-            .flatten()
-            .copied()
-            .collect()
+        let mut text = Vec::with_capacity(lines.iter().map(|line| line.len() + 1).sum());
+        for line in lines {
+            text.extend_from_slice(line.as_bytes());
+            text.push(b'\n');
+        }
+        text
     };
     let mut options = git2::DiffOptions::new();
     options.context_lines(0).interhunk_lines(0).force_text(true);
