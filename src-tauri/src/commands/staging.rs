@@ -433,7 +433,9 @@ fn restore_from_index<S: AsRef<str>>(
 /// # Errors
 ///
 /// Returns `not_open` when `path` names no open repository, `bare_repo` for a
-/// repository with no working tree, and the git error when the checkout fails.
+/// repository with no working tree, the git error when the checkout fails, and
+/// `io_error` naming an untracked file that would not delete, once every other
+/// one is deleted.
 pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkError> {
     state_map.hold_for_writing(path, |repo| {
         let mut opts = StatusOptions::new();
@@ -464,16 +466,39 @@ pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkE
 
         restore_from_index(repo, &changed_paths)?;
 
-        // Delete untracked files
+        // Every file is tried, so one that will not delete leaves only itself
+        // behind, and the user hears about it rather than being told all went.
+        // A file already gone is as discarded as the user asked.
+        let mut undeleted = Vec::new();
         for file_path in &untracked_paths {
-            let _ = std::fs::remove_file(file_path);
-            // Try to remove empty parent directories
+            match std::fs::remove_file(file_path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    undeleted.push((file_path, e));
+                    continue;
+                }
+            }
+            // An emptied directory goes too, when nothing else is in it.
             if let Some(parent) = file_path.parent() {
                 let _ = std::fs::remove_dir(parent);
             }
         }
 
-        Ok(())
+        match undeleted.as_slice() {
+            [] => Ok(()),
+            [(file_path, e), rest @ ..] => {
+                let name = file_path.strip_prefix(workdir).unwrap_or(file_path);
+                let more = match rest.len() {
+                    0 => String::new(),
+                    n => format!(" and {n} more"),
+                };
+                Err(TrunkError::new(
+                    "io_error",
+                    format!("Failed to delete {}{more}: {e}", name.display()),
+                ))
+            }
+        }
     })
 }
 

@@ -413,6 +413,32 @@ fn discard_all_deletes_nested_untracked_file() {
 }
 
 #[test]
+fn discard_all_reports_an_untracked_file_it_cannot_delete_and_deletes_the_rest() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    let locked = ctx.repo_path().join("locked");
+    std::fs::create_dir(&locked).unwrap();
+    std::fs::write(locked.join("kept.txt"), "kept").unwrap();
+    std::fs::write(ctx.repo_path().join("z-free.txt"), "free").unwrap();
+    let set_mode = |mode| {
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(mode)).unwrap();
+    };
+    set_mode(0o555);
+
+    let result = ctx.discard_all();
+    set_mode(0o755);
+
+    let err = result.expect_err("discard_all reported a file it left behind as discarded");
+    assert_eq!(err.code, "io_error");
+    assert!(err.message.contains("locked/kept.txt"), "{}", err.message);
+    assert!(locked.join("kept.txt").exists());
+    assert!(!ctx.repo_path().join("z-free.txt").exists());
+}
+
+#[test]
 fn discard_all_restores_staged_versions_and_keeps_them_staged() {
     let ctx = TestContext::builder()
         .with_file("README.md", "committed\n")
