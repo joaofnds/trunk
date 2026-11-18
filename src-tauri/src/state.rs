@@ -63,6 +63,25 @@ impl OpenRepos {
         trunk_git::write_gate::hold(&self.open(path)?, body)
     }
 
+    /// Open the git repository registered for `path` and run `body`, which leaves the
+    /// writing to a git process, as this process's only writer of it, as
+    /// `trunk_git::write_gate::hold_for_git` does.
+    ///
+    /// # Errors
+    ///
+    /// As `open`, then whatever `body` returns.
+    ///
+    /// # Panics
+    ///
+    /// Panics when this thread already holds the repository, as `hold_for_git` does.
+    pub fn hold_for_git<T>(
+        &self,
+        path: &str,
+        body: impl FnOnce(&git2::Repository) -> Result<T, TrunkError>,
+    ) -> Result<T, TrunkError> {
+        trunk_git::write_gate::hold_for_git(&self.open(path)?, body)
+    }
+
     /// Where `path` lives on disk, or `None` when no such repository is open.
     ///
     /// For callers that treat a closed repository as nothing to do rather than

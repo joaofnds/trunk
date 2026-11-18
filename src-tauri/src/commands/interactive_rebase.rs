@@ -210,8 +210,37 @@ pub fn start_interactive_rebase_blocking(
     state_map: &OpenRepos,
 ) -> Result<(crate::state::GraphRead, RebaseStartResult), TrunkError> {
     let path_buf = state_map.path_for(path)?;
+    let stopped_at_a_commit = state_map.hold_for_git(path, |repo| {
+        ensure_todo_lists_the_range(repo, base_oid, todo_items)?;
+        run_interactive_rebase(repo, base_oid, todo_items, session_dir)
+    })?;
 
-    ensure_todo_lists_the_range(&git2::Repository::open(path_buf)?, base_oid, todo_items)?;
+    let mut repo = git2::Repository::open(path_buf)?;
+    let source = crate::state::read_graph(&mut repo)?;
+
+    let outcome = if stopped_at_a_commit {
+        RebaseStartResult::Stopped
+    } else {
+        RebaseStartResult::Completed
+    };
+
+    Ok((source, outcome))
+}
+
+/// Run `git rebase -i` over `todo_items`, answering whether it stopped at a commit.
+fn run_interactive_rebase(
+    repo: &git2::Repository,
+    base_oid: Option<&str>,
+    todo_items: &[RebaseTodoAction],
+    session_dir: &std::path::Path,
+) -> Result<bool, TrunkError> {
+    let work_tree = repo.workdir().ok_or_else(|| {
+        TrunkError::new(
+            "rebase_error",
+            "A bare repository has no work tree to rebase",
+        )
+    })?;
+    let git_dir = repo.path();
 
     // 1. Write todo file
     let todo_path = session_dir.join("trunk-rebase-todo");
@@ -245,10 +274,7 @@ pub fn start_interactive_rebase_blocking(
     //    the editor. These live in the repository's git dir rather than the session
     //    dir, because a rebase that stops on a conflict outlives this call and
     //    `rebase --continue` still has messages left to deliver.
-    let msg_dir = {
-        let repo = git2::Repository::open(path_buf)?;
-        repo.path().join(trunk_git::editor::MESSAGE_DIR)
-    };
+    let msg_dir = git_dir.join(trunk_git::editor::MESSAGE_DIR);
     // Clearing first is load-bearing: a message left over from an earlier rebase is
     // named for a commit this one could touch without editing.
     let _ = std::fs::remove_dir_all(&msg_dir);
@@ -274,7 +300,7 @@ pub fn start_interactive_rebase_blocking(
 
     let output = std::process::Command::new("git")
         .args(&args)
-        .current_dir(path_buf)
+        .current_dir(work_tree)
         .env("PATH", shell_env::system_path())
         .env("GIT_SEQUENCE_EDITOR", seq_editor_path.to_str().unwrap())
         .env("GIT_EDITOR", editor.script_path())
@@ -284,8 +310,7 @@ pub fn start_interactive_rebase_blocking(
     // 6. Classify by the stop marker git writes, not by its stderr prose.
     //    A refused todo also leaves `rebase-merge` behind, having applied nothing,
     //    so the directory alone would report a refusal as a benign pause.
-    let mut repo = git2::Repository::open(path_buf)?;
-    let rebase_dir = repo.path().join("rebase-merge");
+    let rebase_dir = git_dir.join("rebase-merge");
     let stopped_at_a_commit = rebase_dir.join("stopped-sha").exists();
 
     if !output.status.success() && !stopped_at_a_commit {
@@ -297,15 +322,7 @@ pub fn start_interactive_rebase_blocking(
         let _ = std::fs::remove_dir_all(&msg_dir);
     }
 
-    let source = crate::state::read_graph(&mut repo)?;
-
-    let outcome = if stopped_at_a_commit {
-        RebaseStartResult::Stopped
-    } else {
-        RebaseStartResult::Completed
-    };
-
-    Ok((source, outcome))
+    Ok(stopped_at_a_commit)
 }
 
 /// Refuses a range holding a merge, and a todo that is not the rebase range: every commit

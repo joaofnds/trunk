@@ -457,3 +457,167 @@ fn a_paused_rebase_onto_a_commit_no_branch_points_at_names_the_commit_not_a_bran
     assert_eq!(info.target_branch, None);
     assert_eq!(info.onto_oid, Some(onto.to_string()));
 }
+
+/// Each merge and rebase step run while another writer holds the repository: that
+/// writer read before the step started, and writes once the step waits for it.
+mod when_another_writer_runs_meanwhile {
+    use super::*;
+
+    fn merge_stopped_on_a_conflict() -> TestContext {
+        TestContext::builder()
+            .with_file("file.txt", "hello")
+            .with_commit("Initial commit")
+            .with_branch("feature")
+            .checkout("feature")
+            .with_file("file.txt", "feature content")
+            .with_commit("Feature commit")
+            .checkout("main")
+            .with_file("file.txt", "main content")
+            .with_commit("Main commit")
+            .with_conflict("feature")
+            .build()
+    }
+
+    fn rebase_stopped_on_a_conflict() -> TestContext {
+        let ctx = diverged_on_one_file();
+        ctx.rebase_branch("main").expect("rebase_branch failed");
+        assert!(
+            has_conflicts(&ctx),
+            "the rebase did not stop on its conflict"
+        );
+
+        ctx
+    }
+
+    fn resolve(ctx: &TestContext) {
+        std::fs::write(ctx.repo_path().join("file.txt"), "resolved content\n").unwrap();
+        ctx.stage_file("file.txt").unwrap();
+    }
+
+    fn has_conflicts(ctx: &TestContext) -> bool {
+        ctx.repo().index().unwrap().has_conflicts()
+    }
+
+    #[test]
+    fn merge_continue_commits_the_file_the_other_writer_staged_first() {
+        let mut ctx = merge_stopped_on_a_conflict();
+        resolve(&ctx);
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| {
+            ctx.merge_continue(Some("Merge feature")).map(drop)
+        })
+        .expect("merge_continue failed");
+
+        ctx.assert_head_has_file("a.txt");
+        assert_eq!(ctx.paths_staged_over_head(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn merge_abort_leaves_no_conflict_behind() {
+        let mut ctx = merge_stopped_on_a_conflict();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.merge_abort().map(drop))
+            .expect("merge_abort failed");
+
+        assert!(!has_conflicts(&ctx));
+    }
+
+    #[test]
+    fn rebase_continue_commits_its_message_and_the_file_the_other_writer_staged_first() {
+        let mut ctx = rebase_stopped_on_a_conflict();
+        resolve(&ctx);
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| {
+            ctx.rebase_continue(Some("Resolved feature")).map(drop)
+        })
+        .expect("rebase_continue failed");
+
+        ctx.assert_head_message("Resolved feature");
+        ctx.assert_head_has_file("a.txt");
+        assert_eq!(ctx.paths_staged_over_head(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn rebase_skip_leaves_no_conflict_behind() {
+        let mut ctx = rebase_stopped_on_a_conflict();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.rebase_skip().map(drop))
+            .expect("rebase_skip failed");
+
+        assert!(!has_conflicts(&ctx));
+    }
+
+    #[test]
+    fn rebase_abort_leaves_no_conflict_behind() {
+        let mut ctx = rebase_stopped_on_a_conflict();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.rebase_abort().map(drop))
+            .expect("rebase_abort failed");
+
+        assert!(!has_conflicts(&ctx));
+    }
+
+    #[test]
+    fn merge_branch_begin_fast_forward_leaves_only_the_other_writers_file_staged() {
+        let mut ctx = TestContext::builder()
+            .with_file("file.txt", "hello")
+            .with_commit("Initial commit")
+            .with_branch("feature")
+            .checkout("feature")
+            .with_file("feature.txt", "feature work")
+            .with_commit("Feature commit")
+            .checkout("main")
+            .build();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| {
+            ctx.merge_branch_begin("feature").map(drop)
+        })
+        .expect("merge_branch_begin failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
+    }
+
+    #[test]
+    fn rebase_branch_refuses_once_the_other_writer_staged_a_file() {
+        let mut ctx = diverged_on_one_file();
+        ctx.repo()
+            .config()
+            .unwrap()
+            .set_bool("rebase.autoStash", false)
+            .unwrap();
+        let feature_before = ctx.resolve_ref("feature").unwrap();
+
+        let err = ctx
+            .act_while_another_writer_stages("a.txt", |ctx| ctx.rebase_branch("main").map(drop))
+            .expect_err("rebase_branch ran over a staged file");
+
+        assert_eq!(err.code, "rebase_error");
+        assert_eq!(ctx.resolve_ref("feature").unwrap(), feature_before);
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
+    }
+
+    #[test]
+    fn merge_branch_begin_refuses_a_merge_once_the_other_writer_staged_a_file() {
+        let mut ctx = TestContext::builder()
+            .with_file("file.txt", "hello")
+            .with_commit("Initial commit")
+            .with_branch("feature")
+            .checkout("feature")
+            .with_file("feature.txt", "feature work")
+            .with_commit("Feature commit")
+            .checkout("main")
+            .with_file("main.txt", "main work")
+            .with_commit("Main commit")
+            .build();
+
+        let err = ctx
+            .act_while_another_writer_stages("a.txt", |ctx| {
+                ctx.merge_branch_begin("feature").map(drop)
+            })
+            .expect_err("merge_branch_begin merged over a staged file");
+
+        assert_eq!(err.code, "merge_error");
+        assert!(!ctx.repo().path().join("MERGE_HEAD").exists());
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
+    }
+}

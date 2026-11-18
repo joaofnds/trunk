@@ -189,22 +189,27 @@ pub fn merge_continue_inner(
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    // The editor flow always supplies a message (frontend aborts on null and
-    // never invokes). --cleanup=strip drops git's `# Conflicts:` comment block
-    // so conflicted-merge bodies stay clean (MSG-01 fidelity).
-    let msg = message.ok_or_else(|| {
-        TrunkError::new("merge_error", "merge_continue requires a commit message")
+    state_map.hold_for_git(path, |_| {
+        // The editor flow always supplies a message (frontend aborts on null and
+        // never invokes). --cleanup=strip drops git's `# Conflicts:` comment block
+        // so conflicted-merge bodies stay clean (MSG-01 fidelity).
+        let msg = message.ok_or_else(|| {
+            TrunkError::new("merge_error", "merge_continue requires a commit message")
+        })?;
+        let output = std::process::Command::new("git")
+            .args(["commit", "-m", msg, "--cleanup=strip"])
+            .current_dir(path_buf)
+            .env("PATH", shell_env::system_path())
+            .output()
+            .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(TrunkError::new("merge_error", stderr.to_string()));
+        }
+
+        Ok(())
     })?;
-    let output = std::process::Command::new("git")
-        .args(["commit", "-m", msg, "--cleanup=strip"])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
-        .output()
-        .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(TrunkError::new("merge_error", stderr.to_string()));
-    }
+
     let mut repo = git2::Repository::open(path_buf)?;
     crate::state::read_graph(&mut repo)
 }
@@ -220,16 +225,21 @@ pub fn merge_abort_inner(
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    let output = std::process::Command::new("git")
-        .args(["merge", "--abort"])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
-        .output()
-        .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(TrunkError::new("merge_error", stderr.to_string()));
-    }
+    state_map.hold_for_git(path, |_| {
+        let output = std::process::Command::new("git")
+            .args(["merge", "--abort"])
+            .current_dir(path_buf)
+            .env("PATH", shell_env::system_path())
+            .output()
+            .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(TrunkError::new("merge_error", stderr.to_string()));
+        }
+
+        Ok(())
+    })?;
+
     let mut repo = git2::Repository::open(path_buf)?;
     crate::state::read_graph(&mut repo)
 }
@@ -267,37 +277,40 @@ pub fn rebase_continue_inner(
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
-
-    // Write edited message to .git/rebase-merge/message before continuing
-    if let Some(msg) = message {
-        let repo = git2::Repository::open(path_buf)?;
-        let git_dir = repo.path();
-        let rebase_dir = if git_dir.join("rebase-merge").exists() {
-            git_dir.join("rebase-merge")
-        } else {
-            git_dir.join("rebase-apply")
-        };
-        let msg_file = rebase_dir.join("message");
-        if msg_file.exists() {
-            std::fs::write(&msg_file, msg)
-                .map_err(|e| TrunkError::new("io_error", e.to_string()))?;
+    state_map.hold_for_git(path, |repo| {
+        // Write edited message to .git/rebase-merge/message before continuing
+        if let Some(msg) = message {
+            let git_dir = repo.path();
+            let rebase_dir = if git_dir.join("rebase-merge").exists() {
+                git_dir.join("rebase-merge")
+            } else {
+                git_dir.join("rebase-apply")
+            };
+            let msg_file = rebase_dir.join("message");
+            if msg_file.exists() {
+                std::fs::write(&msg_file, msg)
+                    .map_err(|e| TrunkError::new("io_error", e.to_string()))?;
+            }
         }
-    }
 
-    let editor = trunk_git::editor::keyed_rebase_editor()?;
-    let output = rebase_command(path_buf, "--continue")
-        .env("GIT_EDITOR", editor.script_path())
-        .output()
-        .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        // Next commit hit a conflict — rebase paused at next step, not an error
-        if !stderr.to_lowercase().contains("conflict")
-            && !stderr.to_lowercase().contains("could not apply")
-        {
-            return Err(TrunkError::new("rebase_error", stderr));
+        let editor = trunk_git::editor::keyed_rebase_editor()?;
+        let output = rebase_command(path_buf, "--continue")
+            .env("GIT_EDITOR", editor.script_path())
+            .output()
+            .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+            // The next commit hit a conflict, so the rebase paused there. Not an error.
+            if !stderr.to_lowercase().contains("conflict")
+                && !stderr.to_lowercase().contains("could not apply")
+            {
+                return Err(TrunkError::new("rebase_error", stderr));
+            }
         }
-    }
+
+        Ok(())
+    })?;
+
     let mut repo = git2::Repository::open(path_buf)?;
     crate::state::read_graph(&mut repo)
 }
@@ -313,15 +326,20 @@ pub fn rebase_skip_inner(
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    let editor = trunk_git::editor::keyed_rebase_editor()?;
-    let output = rebase_command(path_buf, "--skip")
-        .env("GIT_EDITOR", editor.script_path())
-        .output()
-        .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(TrunkError::new("rebase_error", stderr.to_string()));
-    }
+    state_map.hold_for_git(path, |_| {
+        let editor = trunk_git::editor::keyed_rebase_editor()?;
+        let output = rebase_command(path_buf, "--skip")
+            .env("GIT_EDITOR", editor.script_path())
+            .output()
+            .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(TrunkError::new("rebase_error", stderr.to_string()));
+        }
+
+        Ok(())
+    })?;
+
     let mut repo = git2::Repository::open(path_buf)?;
     crate::state::read_graph(&mut repo)
 }
@@ -337,13 +355,18 @@ pub fn rebase_abort_inner(
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    let output = rebase_command(path_buf, "--abort")
-        .output()
-        .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(TrunkError::new("rebase_error", stderr.to_string()));
-    }
+    state_map.hold_for_git(path, |_| {
+        let output = rebase_command(path_buf, "--abort")
+            .output()
+            .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(TrunkError::new("rebase_error", stderr.to_string()));
+        }
+
+        Ok(())
+    })?;
+
     let mut repo = git2::Repository::open(path_buf)?;
     crate::state::read_graph(&mut repo)
 }
@@ -410,29 +433,42 @@ pub fn merge_branch_begin_inner(
     state_map: &OpenRepos,
 ) -> Result<(crate::state::GraphRead, MergeBeginOutcome), TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    let typed = typed_name(&git2::Repository::open(path_buf)?, branch);
-    let branch = typed.as_str();
+    let outcome =
+        state_map.hold_for_git(path, |repo| start_merge(repo, &typed_name(repo, branch)))?;
+
+    let mut repo = git2::Repository::open(path_buf)?;
+    let source = crate::state::read_graph(&mut repo)?;
+    Ok((source, outcome))
+}
+
+/// Merge `branch` into HEAD, fast-forwarding when it can and otherwise stopping
+/// before the merge commit.
+fn start_merge(repo: &git2::Repository, branch: &str) -> Result<MergeBeginOutcome, TrunkError> {
+    let work_tree = repo.workdir().ok_or_else(|| {
+        TrunkError::new(
+            "merge_error",
+            "A bare repository has no work tree to merge into",
+        )
+    })?;
 
     // 1. Probe fast-forward (RESEARCH OQ-1). `--ff-only` succeeds silently on an
     //    ff-able or already-up-to-date merge (no MERGE_HEAD, no merge commit) and
     //    fails clean on a non-ff merge (exit 128, MERGE_HEAD absent, tree clean).
     let probe = std::process::Command::new("git")
         .args(["merge", "--ff-only", "--", branch])
-        .current_dir(path_buf)
+        .current_dir(work_tree)
         .env("PATH", shell_env::system_path())
         .output()
         .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
     if probe.status.success() {
-        let mut repo = git2::Repository::open(path_buf)?;
-        let source = crate::state::read_graph(&mut repo)?;
-        return Ok((source, MergeBeginOutcome::FastForwarded));
+        return Ok(MergeBeginOutcome::FastForwarded);
     }
 
     // 2. Non-ff: branches are now provably divergent (the ff probe left the tree
     //    clean), so --no-commit creates a real merge. --no-ff is unnecessary.
     let output = std::process::Command::new("git")
         .args(["merge", "--no-commit", "--", branch])
-        .current_dir(path_buf)
+        .current_dir(work_tree)
         .env("PATH", shell_env::system_path())
         .output()
         .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
@@ -445,21 +481,17 @@ pub fn merge_branch_begin_inner(
         let is_conflict = stdout.to_lowercase().contains("conflict")
             || stderr.to_lowercase().contains("conflict");
         if is_conflict {
-            // Conflicts: rebuild graph so the merge-continue UI picks up the
-            // state. NOT an error, NOT an editor — the message isn't ready yet.
-            let mut repo = git2::Repository::open(path_buf)?;
-            let source = crate::state::read_graph(&mut repo)?;
-            return Ok((source, MergeBeginOutcome::Conflicts));
+            // Conflicts: the merge-continue UI picks up the state from the graph.
+            // NOT an error, NOT an editor: the message isn't ready yet.
+            return Ok(MergeBeginOutcome::Conflicts);
         }
         return Err(TrunkError::new("merge_error", stderr.to_string()));
     }
 
     // Clean non-ff merge staged: read the default message git wrote verbatim.
-    let mut repo = git2::Repository::open(path_buf)?;
     let message = std::fs::read_to_string(repo.path().join("MERGE_MSG"))
         .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
-    let source = crate::state::read_graph(&mut repo)?;
-    Ok((source, MergeBeginOutcome::Ready { message }))
+    Ok(MergeBeginOutcome::Ready { message })
 }
 
 /// Rebase the current branch onto another.
@@ -474,20 +506,21 @@ pub fn rebase_branch_inner(
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    let output = std::process::Command::new("git")
-        .args(["rebase", "--", onto_branch])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
-        .output()
-        .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
-    if !output.status.success() {
+    state_map.hold_for_git(path, |_| {
+        let output = std::process::Command::new("git")
+            .args(["rebase", "--", onto_branch])
+            .current_dir(path_buf)
+            .env("PATH", shell_env::system_path())
+            .output()
+            .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.to_lowercase().contains("conflict") {
-            let mut repo = git2::Repository::open(path_buf)?;
-            return crate::state::read_graph(&mut repo);
+        if !output.status.success() && !stderr.to_lowercase().contains("conflict") {
+            return Err(TrunkError::new("rebase_error", stderr.to_string()));
         }
-        return Err(TrunkError::new("rebase_error", stderr.to_string()));
-    }
+
+        Ok(())
+    })?;
+
     let mut repo = git2::Repository::open(path_buf)?;
     crate::state::read_graph(&mut repo)
 }

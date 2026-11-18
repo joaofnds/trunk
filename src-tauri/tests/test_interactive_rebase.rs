@@ -900,3 +900,36 @@ fn an_action_git_would_run_as_a_command_is_rejected_at_the_boundary() {
 
     assert!(parsed.is_err(), "got {parsed:?}");
 }
+
+mod when_another_writer_runs_meanwhile {
+    use super::*;
+    use common::drivers::commit::commit_what_is_staged;
+
+    #[test]
+    fn a_start_refuses_once_a_commit_landed_while_it_waited() {
+        let mut ctx = TestContext::builder()
+            .with_file("a.txt", "a")
+            .with_commit("A")
+            .with_file("b.txt", "b")
+            .with_commit("B")
+            .build();
+        without_commit_signing(&ctx);
+        let listing = ctx
+            .get_rebase_todo(&oid_of(&ctx, "A").to_string(), false)
+            .unwrap();
+        let items = [todo(oid_of(&ctx, "B"), RebaseAction::Pick, None)];
+
+        let err = ctx
+            .act_while_another_writer(
+                |_| (),
+                |repo, ()| commit_what_is_staged(repo),
+                |ctx| {
+                    ctx.start_interactive_rebase(listing.base_oid.as_deref(), &items)
+                        .map(drop)
+                },
+            )
+            .expect_err("a todo that no longer lists the branch dropped the commit made meanwhile");
+
+        assert_eq!(err.code, "rebase_todo_stale");
+    }
+}

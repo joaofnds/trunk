@@ -449,3 +449,110 @@ fn get_head_commit_message_returns_subject_and_body() {
     assert_eq!(msg.subject, "Subject");
     assert_eq!(msg.body, Some("Body text".to_owned()));
 }
+
+mod when_another_writer_runs_meanwhile {
+    use super::*;
+    use common::drivers::staging::stage_path;
+    use trunk_git::error::TrunkError;
+
+    /// A `pre-commit` hook that says it has started, then waits to be let go.
+    struct PausedHook {
+        fifos: tempfile::TempDir,
+    }
+
+    impl PausedHook {
+        fn install(ctx: &TestContext) -> Self {
+            let fifos = tempfile::tempdir().unwrap();
+            for name in ["started", "go"] {
+                let made = std::process::Command::new("mkfifo")
+                    .arg(fifos.path().join(name))
+                    .status()
+                    .unwrap();
+                assert!(made.success(), "mkfifo failed");
+            }
+            let hook = Self { fifos };
+            install_hook(
+                ctx,
+                "pre-commit",
+                &format!(
+                    "echo started > '{}'\nread line < '{}'",
+                    hook.fifo("started").display(),
+                    hook.fifo("go").display()
+                ),
+            );
+
+            hook
+        }
+
+        fn fifo(&self, name: &str) -> std::path::PathBuf {
+            self.fifos.path().join(name)
+        }
+
+        fn wait_until_started(&self) {
+            std::fs::read_to_string(self.fifo("started")).unwrap();
+        }
+
+        fn let_go(&self) {
+            std::fs::write(self.fifo("go"), "go\n").unwrap();
+        }
+    }
+
+    /// Runs `create_commit` and, once its pre-commit hook has started, another writer
+    /// that stages `file_path`. The hook is let go once that writer waits or ends.
+    fn commit_while_another_writer_stages_during_the_hook(
+        ctx: &TestContext,
+        file_path: &str,
+    ) -> Result<(), TrunkError> {
+        std::fs::write(ctx.repo_path().join(file_path), file_path).unwrap();
+        let repo = ctx.repo();
+        let hook = PausedHook::install(ctx);
+        let (queued, waits_or_ends) = std::sync::mpsc::channel();
+        let ended = queued.clone();
+
+        std::thread::scope(|scope| {
+            let committed = scope.spawn(|| ctx.create_commit("Commit b", None));
+            hook.wait_until_started();
+            trunk_git::write_gate::on_next_wait(&repo, move || queued.send(()).unwrap());
+            scope.spawn(move || {
+                trunk_git::write_gate::hold(&repo, |repo| {
+                    stage_path(repo, file_path);
+                    Ok(())
+                })
+                .unwrap();
+                let _ = ended.send(());
+            });
+            waits_or_ends.recv().unwrap();
+            hook.let_go();
+
+            committed.join().expect("create_commit panicked")
+        })
+    }
+
+    #[test]
+    fn create_commit_leaves_a_file_staged_while_its_hook_runs_for_the_next_commit() {
+        let ctx = TestContext::builder()
+            .with_file("README.md", "hello")
+            .with_commit("Initial commit")
+            .build();
+        stage_new_file(&ctx, "b.txt");
+
+        commit_while_another_writer_stages_during_the_hook(&ctx, "a.txt")
+            .expect("create_commit failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
+    }
+
+    #[test]
+    fn amend_commit_includes_the_file_the_other_writer_staged_first() {
+        let mut ctx = TestContext::builder()
+            .with_file("README.md", "hello")
+            .with_commit("Initial commit")
+            .build();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.amend_commit("Amended", None))
+            .expect("amend_commit failed");
+
+        ctx.assert_head_has_file("a.txt");
+        assert_eq!(ctx.paths_staged_over_head(), Vec::<String>::new());
+    }
+}

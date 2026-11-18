@@ -163,22 +163,25 @@ pub fn cherry_pick_inner(
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
+    state_map.hold_for_git(path, |_| {
+        let output = std::process::Command::new("git")
+            .args(["cherry-pick", "--", oid])
+            .current_dir(path_buf)
+            .env("PATH", shell_env::system_path())
+            .output()
+            .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
 
-    let output = std::process::Command::new("git")
-        .args(["cherry-pick", "--", oid])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
-        .output()
-        .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
-
-    if !output.status.success() {
-        if pick_is_empty(path_buf)? {
-            cherry_pick_skip(path_buf)?;
-            let reason = String::from_utf8_lossy(&output.stderr).to_string();
-            return Err(TrunkError::new("cherry_pick_empty", reason));
+        if !output.status.success() {
+            if pick_is_empty(path_buf)? {
+                cherry_pick_skip(path_buf)?;
+                let reason = String::from_utf8_lossy(&output.stderr).to_string();
+                return Err(TrunkError::new("cherry_pick_empty", reason));
+            }
+            return Err(stopped_error(path_buf, &output.stderr, "cherry_pick_error"));
         }
-        return Err(stopped_error(path_buf, &output.stderr, "cherry_pick_error"));
-    }
+
+        Ok(())
+    })?;
 
     let mut repo = git2::Repository::open(path_buf)?;
     crate::state::read_graph(&mut repo)
@@ -196,18 +199,23 @@ pub fn cherry_pick_continue_inner(
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    // Mirrors revert_continue: --cleanup=strip drops git's `# Conflicts:` block,
-    // and `git commit -m` concludes the pick, clearing CHERRY_PICK_HEAD.
-    let output = std::process::Command::new("git")
-        .args(["commit", "-m", message, "--cleanup=strip"])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
-        .output()
-        .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
-    }
+    state_map.hold_for_git(path, |_| {
+        // Mirrors revert_continue: --cleanup=strip drops git's `# Conflicts:` block,
+        // and `git commit -m` concludes the pick, clearing CHERRY_PICK_HEAD.
+        let output = std::process::Command::new("git")
+            .args(["commit", "-m", message, "--cleanup=strip"])
+            .current_dir(path_buf)
+            .env("PATH", shell_env::system_path())
+            .output()
+            .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
+        }
+
+        Ok(())
+    })?;
+
     let mut repo = git2::Repository::open(path_buf)?;
     crate::state::read_graph(&mut repo)
 }
@@ -223,18 +231,23 @@ pub fn cherry_pick_abort_inner(
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    // merge_abort cannot stand in here: `git merge --abort` needs MERGE_HEAD,
-    // which a cherry-pick never sets.
-    let output = std::process::Command::new("git")
-        .args(["cherry-pick", "--abort"])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
-        .output()
-        .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
-    }
+    state_map.hold_for_git(path, |_| {
+        // merge_abort cannot stand in here: `git merge --abort` needs MERGE_HEAD,
+        // which a cherry-pick never sets.
+        let output = std::process::Command::new("git")
+            .args(["cherry-pick", "--abort"])
+            .current_dir(path_buf)
+            .env("PATH", shell_env::system_path())
+            .output()
+            .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
+        }
+
+        Ok(())
+    })?;
+
     let mut repo = git2::Repository::open(path_buf)?;
     crate::state::read_graph(&mut repo)
 }
@@ -252,25 +265,28 @@ pub fn revert_commit_begin_inner(
     state_map: &OpenRepos,
 ) -> Result<(crate::state::GraphRead, Option<String>), TrunkError> {
     let path_buf = state_map.path_for(path)?;
+    let message = state_map.hold_for_git(path, |repo| {
+        // Stage the revert without committing so the editor can edit the message.
+        // git writes the default message (Revert "<subject>" + full 40-char OID) to
+        // .git/MERGE_MSG. REVERT_HEAD is set; the wrapper emits repo-changed.
+        let output = std::process::Command::new("git")
+            .args(["revert", "--no-commit", "--", oid])
+            .current_dir(path_buf)
+            .env("PATH", shell_env::system_path())
+            .output()
+            .map_err(|e| TrunkError::new("revert_error", e.to_string()))?;
 
-    // Stage the revert without committing so the editor can edit the message.
-    // git writes the default message (Revert "<subject>" + full 40-char OID) to
-    // .git/MERGE_MSG. REVERT_HEAD is set; the wrapper emits repo-changed.
-    let output = std::process::Command::new("git")
-        .args(["revert", "--no-commit", "--", oid])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
-        .output()
-        .map_err(|e| TrunkError::new("revert_error", e.to_string()))?;
+        if !output.status.success() {
+            return Err(stopped_error(path_buf, &output.stderr, "revert_error"));
+        }
 
-    if !output.status.success() {
-        return Err(stopped_error(path_buf, &output.stderr, "revert_error"));
-    }
+        // Read before the next writer can abort this revert or start another. The
+        // message is git's verbatim default: `# Conflicts:` lines (conflicted revert)
+        // are stripped at commit time via --cleanup=strip, never here.
+        Ok(std::fs::read_to_string(repo.path().join("MERGE_MSG")).ok())
+    })?;
 
     let mut repo = git2::Repository::open(path_buf)?;
-    // Verbatim default — `# Conflicts:` lines (conflicted revert) are stripped at
-    // commit time via --cleanup=strip, never here.
-    let message = std::fs::read_to_string(repo.path().join("MERGE_MSG")).ok();
     let source = crate::state::read_graph(&mut repo)?;
     Ok((source, message))
 }
@@ -287,18 +303,23 @@ pub fn revert_continue_inner(
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    // --cleanup=strip drops git's `# Conflicts:` comment block so conflicted
-    // revert bodies stay clean (MSG-03 fidelity). git commit -m clears REVERT_HEAD.
-    let output = std::process::Command::new("git")
-        .args(["commit", "-m", message, "--cleanup=strip"])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
-        .output()
-        .map_err(|e| TrunkError::new("revert_error", e.to_string()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(TrunkError::new("revert_error", stderr.to_string()));
-    }
+    state_map.hold_for_git(path, |_| {
+        // --cleanup=strip drops git's `# Conflicts:` comment block so conflicted
+        // revert bodies stay clean (MSG-03 fidelity). git commit -m clears REVERT_HEAD.
+        let output = std::process::Command::new("git")
+            .args(["commit", "-m", message, "--cleanup=strip"])
+            .current_dir(path_buf)
+            .env("PATH", shell_env::system_path())
+            .output()
+            .map_err(|e| TrunkError::new("revert_error", e.to_string()))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(TrunkError::new("revert_error", stderr.to_string()));
+        }
+
+        Ok(())
+    })?;
+
     let mut repo = git2::Repository::open(path_buf)?;
     crate::state::read_graph(&mut repo)
 }
@@ -314,18 +335,23 @@ pub fn revert_abort_inner(
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    // The MSG-06 recovery path for revert: clears REVERT_HEAD + restores a clean
-    // tree. Without it a cancelled revert traps the user (RESEARCH finding 4).
-    let output = std::process::Command::new("git")
-        .args(["revert", "--abort"])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
-        .output()
-        .map_err(|e| TrunkError::new("revert_error", e.to_string()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(TrunkError::new("revert_error", stderr.to_string()));
-    }
+    state_map.hold_for_git(path, |_| {
+        // The MSG-06 recovery path for revert: clears REVERT_HEAD + restores a clean
+        // tree. Without it a cancelled revert traps the user (RESEARCH finding 4).
+        let output = std::process::Command::new("git")
+            .args(["revert", "--abort"])
+            .current_dir(path_buf)
+            .env("PATH", shell_env::system_path())
+            .output()
+            .map_err(|e| TrunkError::new("revert_error", e.to_string()))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(TrunkError::new("revert_error", stderr.to_string()));
+        }
+
+        Ok(())
+    })?;
+
     let mut repo = git2::Repository::open(path_buf)?;
     crate::state::read_graph(&mut repo)
 }
@@ -353,7 +379,9 @@ pub fn reset_to_commit_inner(
         ));
     }
 
-    run_git_reset(path_buf, &[&format!("--{mode}"), oid], "reset_error")?;
+    state_map.hold_for_git(path, |_| {
+        run_git_reset(path_buf, &[&format!("--{mode}"), oid], "reset_error")
+    })?;
 
     let mut repo = git2::Repository::open(path_buf)?;
     crate::state::read_graph(&mut repo)
@@ -696,34 +724,33 @@ pub async fn revert_abort<R: Runtime>(
 /// when the reset fails, and the git error when HEAD will not read.
 pub fn undo_commit_inner(path: &str, state_map: &OpenRepos) -> Result<UndoResult, TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    let repo = git2::Repository::open(path_buf)?;
-    let head = repo.head()?.peel_to_commit()?;
+    state_map.hold_for_git(path, |repo| {
+        let head = repo.head()?.peel_to_commit()?;
 
-    if head.parent_count() == 0 {
-        return Err(TrunkError::new(
-            "nothing_to_undo",
-            "Cannot undo the initial commit",
-        ));
-    }
-    if head.parent_count() > 1 {
-        return Err(TrunkError::new(
-            "merge_commit",
-            "Cannot undo a merge commit",
-        ));
-    }
+        if head.parent_count() == 0 {
+            return Err(TrunkError::new(
+                "nothing_to_undo",
+                "Cannot undo the initial commit",
+            ));
+        }
+        if head.parent_count() > 1 {
+            return Err(TrunkError::new(
+                "merge_commit",
+                "Cannot undo a merge commit",
+            ));
+        }
 
-    let undone_oid = head.id().to_string();
-    // The parent is where the soft reset below lands HEAD, and the only position
-    // a redo of this commit belongs on.
-    let head_oid = head.parent_id(0)?.to_string();
-    drop(head);
-    drop(repo);
+        let undone_oid = head.id().to_string();
+        // The parent is where the soft reset below lands HEAD, and the only position
+        // a redo of this commit belongs on.
+        let head_oid = head.parent_id(0)?.to_string();
 
-    run_git_reset(path_buf, &["--soft", "HEAD~1"], "undo_error")?;
+        run_git_reset(path_buf, &["--soft", "HEAD~1"], "undo_error")?;
 
-    Ok(UndoResult {
-        head_oid,
-        undone_oid,
+        Ok(UndoResult {
+            head_oid,
+            undone_oid,
+        })
     })
 }
 
@@ -776,52 +803,48 @@ pub fn redo_commit_inner(
             "This redo belongs to a different repository",
         ));
     }
-    let repo = state_map.open(path)?;
-    let current = repo.head().and_then(|h| h.peel_to_commit()).map(|c| c.id());
-    let Some(current) = current
-        .ok()
-        .filter(|oid| oid.to_string() == request.expected_head_oid)
-    else {
-        return Err(TrunkError::new(
-            "redo_stale",
-            "HEAD has moved since the undo; refusing to redo onto unrelated history",
-        ));
-    };
-    let missing = || {
-        TrunkError::new(
-            "redo_missing",
-            "The commit this redo restores is no longer in the repository",
-        )
-    };
-    let Ok(undone_oid) = git2::Oid::from_str(request.undone_oid) else {
-        return Err(missing());
-    };
-    let undone = match repo.find_commit(undone_oid) {
-        Ok(commit) => commit,
-        Err(e) if e.code() == git2::ErrorCode::NotFound => return Err(missing()),
-        Err(e) => return Err(e.into()),
-    };
-    // An undo from here took back a commit whose one parent is HEAD. Restoring
-    // any other commit would move the branch to history the user never made on it.
-    if !undone.parent_ids().eq([current]) {
-        return Err(TrunkError::new(
-            "redo_stale",
-            "This redo names no commit made on top of HEAD",
-        ));
-    }
-    let undone_hex = undone.id().to_string();
-    drop(undone);
-    drop(repo);
+    let repo_dir = state_map.path_for(path)?;
+    state_map.hold_for_git(path, |repo| {
+        let current = repo.head().and_then(|h| h.peel_to_commit()).map(|c| c.id());
+        let Some(current) = current
+            .ok()
+            .filter(|oid| oid.to_string() == request.expected_head_oid)
+        else {
+            return Err(TrunkError::new(
+                "redo_stale",
+                "HEAD has moved since the undo; refusing to redo onto unrelated history",
+            ));
+        };
+        let missing = || {
+            TrunkError::new(
+                "redo_missing",
+                "The commit this redo restores is no longer in the repository",
+            )
+        };
+        let Ok(undone_oid) = git2::Oid::from_str(request.undone_oid) else {
+            return Err(missing());
+        };
+        let undone = match repo.find_commit(undone_oid) {
+            Ok(commit) => commit,
+            Err(e) if e.code() == git2::ErrorCode::NotFound => return Err(missing()),
+            Err(e) => return Err(e.into()),
+        };
+        // An undo from here took back a commit whose one parent is HEAD. Restoring
+        // any other commit would move the branch to history the user never made on it.
+        if !undone.parent_ids().eq([current]) {
+            return Err(TrunkError::new(
+                "redo_stale",
+                "This redo names no commit made on top of HEAD",
+            ));
+        }
+        let undone_hex = undone.id().to_string();
 
-    // The inverse of the undo's soft reset: HEAD returns to the same commit, and
-    // the index and files stay as the user left them, so anything staged since
-    // the undo is still staged, on top of it. The `--` keeps a file that happens
-    // to be named like the oid from being read as a path.
-    run_git_reset(
-        state_map.path_for(path)?,
-        &["--soft", &undone_hex, "--"],
-        "redo_error",
-    )
+        // The inverse of the undo's soft reset: HEAD returns to the same commit, and
+        // the index and files stay as the user left them, so anything staged since
+        // the undo is still staged, on top of it. The `--` keeps a file that happens
+        // to be named like the oid from being read as a path.
+        run_git_reset(repo_dir, &["--soft", &undone_hex, "--"], "redo_error")
+    })
 }
 
 /// Whether HEAD is a commit with exactly one parent, so it can be undone.

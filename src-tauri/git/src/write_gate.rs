@@ -94,12 +94,36 @@ pub fn hold<R: Borrow<git2::Repository>, T>(
     repo: R,
     body: impl FnOnce(R) -> Result<T, TrunkError>,
 ) -> Result<T, TrunkError> {
+    hold_for_git(repo, |repo| {
+        repo.borrow().index()?.read(false)?;
+        body(repo)
+    })
+}
+
+/// Run `body`, which leaves the writing to a git process, as this process's only
+/// writer of `repo`.
+///
+/// Unlike [`hold`], the index is not read first: git reads it for itself, and an
+/// index libgit2 cannot parse, such as a split index, would otherwise refuse an action
+/// git can run. What `body` decides from `repo` itself, its refs and its files, is
+/// read once the gate is held.
+///
+/// # Errors
+///
+/// Returns whatever `body` returns.
+///
+/// # Panics
+///
+/// Panics when this thread already holds `repo`'s gate, as [`hold`] does.
+pub fn hold_for_git<R: Borrow<git2::Repository>, T>(
+    repo: R,
+    body: impl FnOnce(R) -> Result<T, TrunkError>,
+) -> Result<T, TrunkError> {
     let path = repo.borrow().path().to_path_buf();
     let gate = gate_of(&path);
 
     let done = {
         let _held = Held::take(&gate, &path);
-        repo.borrow().index()?.read(false)?;
         body(repo)
     };
 
@@ -191,6 +215,28 @@ mod tests {
         let held = hold(&one, |_| hold(&two, |_| Ok("both")));
 
         assert_eq!(held.unwrap(), "both");
+    }
+
+    #[test]
+    fn a_git_process_can_be_held_for_on_an_index_libgit2_cannot_read() {
+        let (dir, repo) = repository();
+        std::fs::write(dir.path().join("a.txt"), "a").unwrap();
+        let git = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir.path())
+                .status()
+                .unwrap();
+            assert!(status.success(), "git {args:?} failed");
+        };
+        git(&["add", "a.txt"]);
+        git(&["update-index", "--split-index"]);
+
+        let for_libgit2 = hold(&repo, |_| Ok(()));
+        let for_git = hold_for_git(&repo, |_| Ok("ran"));
+
+        assert!(for_libgit2.is_err(), "libgit2 reads a split index here");
+        assert_eq!(for_git.unwrap(), "ran");
     }
 
     #[test]

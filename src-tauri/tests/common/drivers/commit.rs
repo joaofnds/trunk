@@ -20,3 +20,21 @@ impl TestContext {
         commit::get_user_name_inner(self.path(), self.state_map())
     }
 }
+
+/// What a second writer's Commit leaves: HEAD one commit further, holding the index.
+pub fn commit_what_is_staged(repo: &git2::Repository) {
+    let tree = repo
+        .find_tree(repo.index().unwrap().write_tree().unwrap())
+        .unwrap();
+    let parent = repo.head().unwrap().peel_to_commit().unwrap();
+    let writer = git2::Signature::now("Other writer", "other@example.com").unwrap();
+    repo.commit(
+        Some("HEAD"),
+        &writer,
+        &writer,
+        "Committed meanwhile",
+        &tree,
+        &[&parent],
+    )
+    .unwrap();
+}

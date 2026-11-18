@@ -100,6 +100,15 @@ impl TestContext {
         );
     }
 
+    pub fn assert_head_has_file(&self, file: &str) {
+        let repo = self.repo();
+        let tree = repo.head().unwrap().peel_to_tree().unwrap();
+        assert!(
+            tree.get_path(std::path::Path::new(file)).is_ok(),
+            "expected HEAD's tree to hold '{file}'"
+        );
+    }
+
     pub fn assert_file_content(&self, file: &str, expected: &str) {
         let content = std::fs::read_to_string(self.repo_path().join(file))
             .unwrap_or_else(|e| panic!("failed to read '{file}': {e}"));

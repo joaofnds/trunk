@@ -416,17 +416,20 @@ pub fn fast_forward_to_inner(
 ) -> Result<(), TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
-    let output = std::process::Command::new("git")
-        .args(["merge", "--ff-only", "--", target_oid])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
-        .output()
-        .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
+    state_map.hold_for_git(path, |_| {
+        let output = std::process::Command::new("git")
+            .args(["merge", "--ff-only", "--", target_oid])
+            .current_dir(path_buf)
+            .env("PATH", shell_env::system_path())
+            .output()
+            .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+            return Err(TrunkError::new("not_fast_forward", stderr));
+        }
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Err(TrunkError::new("not_fast_forward", stderr));
-    }
+        Ok(())
+    })?;
 
     // Rebuild graph cache
     let mut repo = git2::Repository::open(path_buf)?;

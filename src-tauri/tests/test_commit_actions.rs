@@ -331,8 +331,6 @@ fn revert_abort_restores_the_reverted_file() {
     );
 }
 
-// -- cherry-pick has a way out --
-
 /// A conflicted cherry-pick leaves `CHERRY_PICK_HEAD` set. Until this module the
 /// app had no command that clears it: the banner rendered a label and no
 /// buttons, `is_mid_operation` stayed true so force-push refused and background
@@ -428,4 +426,170 @@ mod cherry_pick_lifecycle {
             "abort must restore HEAD's content"
         );
     }
+
+    mod when_another_writer_runs_meanwhile {
+        use super::*;
+
+        #[test]
+        fn cherry_pick_continue_commits_the_file_the_other_writer_staged_first() {
+            let (mut ctx, side_oid) = conflicting_cherry_pick_ctx();
+            ctx.cherry_pick(&side_oid).unwrap_err();
+            resolve_conflict(&ctx);
+
+            ctx.act_while_another_writer_stages("a.txt", |ctx| {
+                ctx.cherry_pick_continue("Pick the side change").map(drop)
+            })
+            .expect("cherry_pick_continue failed");
+
+            ctx.assert_head_has_file("a.txt");
+            assert_eq!(ctx.paths_staged_over_head(), Vec::<String>::new());
+        }
+
+        #[test]
+        fn cherry_pick_abort_leaves_no_conflict_behind() {
+            let (mut ctx, side_oid) = conflicting_cherry_pick_ctx();
+            ctx.cherry_pick(&side_oid).unwrap_err();
+
+            ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.cherry_pick_abort().map(drop))
+                .expect("cherry_pick_abort failed");
+
+            assert!(!ctx.repo().index().unwrap().has_conflicts());
+        }
+    }
 }
+
+/// Each git action run while another writer holds the repository: that writer read
+/// before the action started, and writes once the action waits for it.
+mod when_another_writer_runs_meanwhile {
+    use super::*;
+    use common::drivers::commit::commit_what_is_staged;
+    use common::drivers::staging::stage_path;
+
+    fn head(ctx: &TestContext) -> String {
+        ctx.resolve_ref("HEAD").unwrap()
+    }
+
+    #[test]
+    fn cherry_pick_refuses_once_the_other_writer_staged_a_file() {
+        let (mut ctx, first_oid, second_oid) = build_two_commit_ctx();
+        ctx.reset_to_commit(&first_oid, "hard").unwrap();
+
+        let err = ctx
+            .act_while_another_writer_stages("a.txt", |ctx| ctx.cherry_pick(&second_oid).map(drop))
+            .expect_err("cherry_pick ran over a staged file");
+
+        assert_eq!(err.code, "cherry_pick_error");
+        assert_eq!(head(&ctx), first_oid);
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
+    }
+
+    #[test]
+    fn cherry_pick_of_a_change_head_already_has_ends_the_pick_before_the_next_writer() {
+        let mut ctx = TestContext::builder()
+            .with_file("f.txt", "a\n")
+            .with_commit("Initial commit")
+            .with_branch("side")
+            .checkout("side")
+            .with_file("f.txt", "b\n")
+            .with_commit("Side change")
+            .checkout("main")
+            .with_file("f.txt", "b\n")
+            .with_commit("Same change on main")
+            .build();
+        let side_oid = ctx.resolve_ref("side").unwrap();
+        std::fs::write(ctx.repo_path().join("a.txt"), "a.txt").unwrap();
+
+        let err = ctx
+            .act_then_another_writer_at_release(
+                |repo| stage_path(repo, "a.txt"),
+                |ctx| ctx.cherry_pick(&side_oid).map(drop),
+            )
+            .expect_err("a pick HEAD already has reported success");
+
+        assert_eq!(err.code, "cherry_pick_empty");
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
+    }
+
+    #[test]
+    fn revert_commit_begin_stages_its_revert_beside_the_other_writers_file() {
+        let (mut ctx, _first_oid, second_oid) = build_two_commit_ctx();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| {
+            ctx.revert_commit_begin(&second_oid).map(drop)
+        })
+        .expect("revert_commit_begin failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt", "second.txt"]);
+    }
+
+    #[test]
+    fn revert_continue_commits_the_file_the_other_writer_staged_first() {
+        let (mut ctx, _first_oid, second_oid) = build_two_commit_ctx();
+        ctx.revert_commit_begin(&second_oid).unwrap();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| {
+            ctx.revert_continue("Revert \"Second commit\"").map(drop)
+        })
+        .expect("revert_continue failed");
+
+        ctx.assert_head_has_file("a.txt");
+        assert_eq!(ctx.paths_staged_over_head(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn revert_abort_leaves_nothing_of_the_revert_staged() {
+        let (mut ctx, _first_oid, second_oid) = build_two_commit_ctx();
+        ctx.revert_commit_begin(&second_oid).unwrap();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.revert_abort().map(drop))
+            .expect("revert_abort failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn reset_to_commit_sets_the_index_after_the_other_writer_staged() {
+        let (mut ctx, first_oid, _second_oid) = build_two_commit_ctx();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| {
+            ctx.reset_to_commit(&first_oid, "mixed").map(drop)
+        })
+        .expect("reset_to_commit failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn undo_commit_takes_back_the_commit_made_while_it_waited() {
+        let (mut ctx, _first_oid, second_oid) = build_two_commit_ctx();
+
+        let undo = ctx
+            .act_while_another_writer(
+                |_| (),
+                |repo, ()| commit_what_is_staged(repo),
+                |ctx| ctx.undo_commit(),
+            )
+            .expect("undo_commit failed");
+
+        assert_eq!(undo.head_oid, second_oid);
+        assert_eq!(head(&ctx), second_oid);
+    }
+
+    #[test]
+    fn redo_commit_refuses_once_the_other_writer_moved_head() {
+        let (mut ctx, _first_oid, _second_oid) = build_two_commit_ctx();
+        let undo = ctx.undo_commit().unwrap();
+
+        let err = ctx
+            .act_while_another_writer(
+                |_| (),
+                |repo, ()| commit_what_is_staged(repo),
+                |ctx| ctx.redo_commit(&undo),
+            )
+            .expect_err("redo_commit moved the branch off the commit made meanwhile");
+
+        assert_eq!(err.code, "redo_stale");
+    }
+}
+
+// -- cherry-pick has a way out --

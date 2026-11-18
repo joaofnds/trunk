@@ -2112,6 +2112,17 @@ mod when_another_writer_runs_meanwhile {
     }
 
     #[test]
+    fn fast_forward_to_leaves_only_the_other_writers_file_staged() {
+        let mut ctx = main_and_feat();
+        let feat = ctx.resolve_ref("feat").unwrap();
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.fast_forward_to(&feat))
+            .expect("fast_forward_to failed");
+
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
+    }
+
+    #[test]
     fn checkout_branch_moves_head_before_the_next_writer_reads_it() {
         let mut ctx = main_and_feat();
 

@@ -334,11 +334,11 @@ impl TestContext {
 
     /// Runs `act` while another writer creates `file_path` and stages it. See
     /// `act_while_another_writer`.
-    pub fn act_while_another_writer_stages(
+    pub fn act_while_another_writer_stages<T: Send>(
         &mut self,
         file_path: &str,
-        act: impl FnOnce(&mut Self) -> Result<(), TrunkError> + Send,
-    ) -> Result<(), TrunkError> {
+        act: impl FnOnce(&mut Self) -> Result<T, TrunkError> + Send,
+    ) -> Result<T, TrunkError> {
         std::fs::write(self.repo_path().join(file_path), file_path).unwrap();
 
         self.act_while_another_writer(
@@ -355,12 +355,12 @@ impl TestContext {
     /// Runs `act` while another writer holds the repository, interleaved as two
     /// overlapping commands are: that writer runs `read` before `act` starts, and runs
     /// `write` with what it read once `act` has finished or is waiting for the gate.
-    pub fn act_while_another_writer<R>(
+    pub fn act_while_another_writer<R, T: Send>(
         &mut self,
         read: impl FnOnce(&mut git2::Repository) -> R,
         write: impl FnOnce(&mut git2::Repository, R),
-        act: impl FnOnce(&mut Self) -> Result<(), TrunkError> + Send,
-    ) -> Result<(), TrunkError> {
+        act: impl FnOnce(&mut Self) -> Result<T, TrunkError> + Send,
+    ) -> Result<T, TrunkError> {
         let mut repo = self.repo();
         let (queued, act_waits_or_ends) = std::sync::mpsc::channel();
         let ended = queued.clone();
@@ -404,6 +404,13 @@ impl TestContext {
 
         act(self)
     }
+}
+
+/// What a second writer's Stage leaves: `file_path` staged as it reads on disk.
+pub fn stage_path(repo: &git2::Repository, file_path: &str) {
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new(file_path)).unwrap();
+    index.write().unwrap();
 }
 
 /// What a second writer's Unstage All leaves: the index set back to HEAD's tree.

@@ -40,7 +40,8 @@ pub fn create_commit_inner(
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
     let message = build_message(subject, body);
-    run_git_commit(state_map.path_for(path)?, &["-m", &message])
+    let repo_dir = state_map.path_for(path)?;
+    state_map.hold_for_git(path, |_| run_git_commit(repo_dir, &["-m", &message]))
 }
 
 /// Replace HEAD's commit through `git commit --amend`, with the current index
@@ -58,7 +59,10 @@ pub fn amend_commit_inner(
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
     let message = build_message(subject, body);
-    run_git_commit(state_map.path_for(path)?, &["--amend", "-m", &message])
+    let repo_dir = state_map.path_for(path)?;
+    state_map.hold_for_git(path, |_| {
+        run_git_commit(repo_dir, &["--amend", "-m", &message])
+    })
 }
 
 fn run_git_commit(repo_dir: &Path, flags: &[&str]) -> Result<(), TrunkError> {
