@@ -26,6 +26,7 @@ interface Props {
 	oncontextmenu?: (e: MouseEvent) => void;
 	commentCounts?: Map<string, number>;
 	commentTallies?: Map<string, ReviewTally>;
+	isLoading?: boolean;
 }
 
 let {
@@ -39,6 +40,7 @@ let {
 	oncontextmenu,
 	commentCounts,
 	commentTallies,
+	isLoading = false,
 }: Props = $props();
 
 let fileCount = $derived(countFiles(node.children));
@@ -87,13 +89,14 @@ function openMenu(e: MouseEvent) {
 	variant="parent"
 	role="treeitem"
 	{selected}
+	tone={isLoading ? "muted" : "plain"}
 	indent={treeIndent(depth)}
 	tabindex={-1}
 	aria-expanded={expanded}
 	aria-level={depth + 1}
 	onclick={toggle}
 	oncontextmenu={openMenu}
-	actions={actionLabel && onaction ? action : undefined}
+	actions={!isLoading && actionLabel && onaction ? action : undefined}
 	reveal="pointer"
 >
 	<span class="inline-flex items-center text-text-muted w-3 min-w-3">

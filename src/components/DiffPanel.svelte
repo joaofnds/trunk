@@ -1436,7 +1436,10 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			lineIndices,
 			options: currentDiffOptions(),
 		});
-		showToast(`Discarded ${count} lines`, "success");
+		showToast(
+			`Discarded ${count} ${count === 1 ? "line" : "lines"}`,
+			"success",
+		);
 		await onhunkaction?.(filePath);
 	} catch (e) {
 		await reportHunkActionError(e, filePath, "Discard lines failed");

@@ -1,6 +1,10 @@
 <script lang="ts">
 import { untrack } from "svelte";
-import { buildTree } from "../lib/build-tree.js";
+import {
+	buildTree,
+	collectFilePaths,
+	type DirectoryNode,
+} from "../lib/build-tree.js";
 import type { FlatRow } from "../lib/flatten-tree.js";
 import {
 	collectDirPaths,
@@ -60,6 +64,13 @@ let listFocused = $state(false);
 function isMarked(index: number, row: FlatRow): boolean {
 	if (listFocused) return index === focusIndex;
 	return row.type === "file" && row.node.file.path === selectedPath;
+}
+
+function holdsBusyFile(directory: DirectoryNode): boolean {
+	const busy = loadingFiles;
+	if (!busy?.size) return false;
+
+	return collectFilePaths(directory.children).some((path) => busy.has(path));
 }
 
 function trackFocusLeaving(e: FocusEvent) {
@@ -273,6 +284,7 @@ function handleKeydown(e: KeyboardEvent) {
 					: undefined}
 				{commentCounts}
 				{commentTallies}
+				isLoading={holdsBusyFile(row.node)}
 			/>
 		{:else}
 			<FileRow

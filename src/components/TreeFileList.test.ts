@@ -70,6 +70,33 @@ describe("TreeFileList", () => {
 		expect(screen.queryByText("a.ts")).not.toBeInTheDocument();
 	});
 
+	it.each([
+		["src/a.ts", false],
+		["README.md", true],
+	])("offers a directory's action when %s is busy: %s", (busy, offered) => {
+		render(TreeFileList, {
+			props: {
+				files: [
+					makeFile("src/a.ts"),
+					makeFile("src/b.ts"),
+					makeFile("README.md"),
+				],
+				treeMode: true,
+				actionLabel: "+",
+				loadingFiles: new Set([busy]),
+				onfileaction: vi.fn(),
+				ondirectoryaction: vi.fn(),
+			},
+		});
+
+		const directory = screen.getByRole("treeitem", { name: /^src/ });
+		const action = within(directory.parentElement ?? document.body).queryByRole(
+			"button",
+			{ name: "Stage directory" },
+		);
+		expect(action !== null).toBe(offered);
+	});
+
 	it("stages a file from its action without opening it", async () => {
 		const seen: string[] = [];
 		render(TreeFileList, {

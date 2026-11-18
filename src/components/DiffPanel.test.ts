@@ -3260,6 +3260,23 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 			);
 		});
 
+		it("reports one discarded line in the singular", async () => {
+			const { ask } = await import("@tauri-apps/plugin-dialog");
+			const { showToast } = await import("../lib/toast.svelte.js");
+			vi.mocked(ask).mockResolvedValueOnce(true);
+			vi.mocked(showToast).mockClear();
+			await renderWorkingDiff("unstaged");
+			await selectLines("const x = 2;", "const x = 2;");
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Discard Lines (1)" }),
+			);
+
+			await waitFor(() =>
+				expect(showToast).toHaveBeenCalledWith("Discarded 1 line", "success"),
+			);
+		});
+
 		it("unstages only the changed lines", async () => {
 			await renderWorkingDiff("staged");
 			await selectLines("const x = 2;", "export { x };");

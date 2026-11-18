@@ -9,7 +9,7 @@ import {
 	within,
 } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { noReviewCounts } from "../__tests__/helpers/review-props.js";
@@ -95,6 +95,22 @@ function stagingRowFor(element: Element): HTMLElement {
 	const row = element.closest<HTMLElement>('[data-testid="staging-file"]');
 	if (!row) throw new Error("expected content inside a staging file row");
 	return row;
+}
+
+// A busy row draws no button of its own, so a click on it cannot race the
+// operation that moves it.
+function rowAction(text: string, name: string): HTMLElement | null {
+	const row = stagingRowFor(screen.getByText(text));
+	return within(row.parentElement ?? document.body).queryByRole("button", {
+		name,
+	});
+}
+
+function folderAction(folder: RegExp): HTMLElement | null {
+	const row = screen.getByRole("treeitem", { name: folder });
+	return within(row.parentElement ?? document.body).queryByRole("button", {
+		name: "Stage directory",
+	});
 }
 
 async function callsOnceRefreshed(commandPrefix: string) {
@@ -276,21 +292,20 @@ describe("StagingPanel", () => {
 	it.each([
 		["Stage all changes", "stage_all", "README.md", "Stage file"],
 		["Unstage all", "unstage_all", "src/main.ts", "Unstage file"],
+		["Discard all changes", "discard_all", "README.md", "Stage file"],
 	])(
 		"holds the files %s moves busy until it finishes",
-		async (button, command, path, rowAction) => {
+		async (button, command, path, action) => {
 			const finished = deferred<undefined>();
 			const answer = mockInvoke.getMockImplementation();
 			if (!answer) throw new Error("the panel's reads have no stub");
 			mockInvoke.mockImplementation((cmd, args) =>
 				cmd === command ? finished.promise : answer(cmd, args),
 			);
-			// A busy row draws no button of its own, so a click on it cannot
-			// race the operation that moves it.
-			const actionOf = () =>
-				within(
-					stagingRowFor(screen.getByText(path)).parentElement ?? document.body,
-				).queryByRole("button", { name: rowAction });
+			vi.mocked(ask).mockResolvedValue(true);
+			onTestFinished(() => {
+				vi.mocked(ask).mockResolvedValue(false);
+			});
 			render(StagingPanel, {
 				props: { ...noReviewCounts(), repoPath: "/test/repo" },
 			});
@@ -298,13 +313,34 @@ describe("StagingPanel", () => {
 			await fireEvent.click(
 				await screen.findByRole("button", { name: button }),
 			);
-			const whileRunning = actionOf();
+			await waitFor(() =>
+				expect(mockInvoke).toHaveBeenCalledWith(command, expect.anything()),
+			);
+			const whileRunning = rowAction(path, action);
 			finished.resolve(undefined);
 
 			expect(whileRunning).toBeNull();
-			await waitFor(() => expect(actionOf()).not.toBeNull());
+			await waitFor(() => expect(rowAction(path, action)).not.toBeNull());
 		},
 	);
+
+	it("names one discarded file in the singular", async () => {
+		_resetToasts();
+		vi.mocked(ask).mockResolvedValueOnce(true);
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/test/repo" },
+		});
+
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Discard all changes" }),
+		);
+
+		await waitFor(() =>
+			expect(toasts.items.map((toast) => toast.message)).toEqual([
+				"Discarded all changes (1 file)",
+			]),
+		);
+	});
 
 	it("renders current branch name when provided", async () => {
 		render(StagingPanel, {
@@ -889,6 +925,51 @@ describe("StagingPanel merge-continue", () => {
 			]);
 		});
 
+		it.each([
+			[
+				"Mark All Resolved",
+				() =>
+					fireEvent.click(
+						screen.getByRole("button", { name: "Mark All Resolved" }),
+					),
+			],
+			[
+				"a folder's Resolve All",
+				() => chooseFolderMenuItem(/^src \(2\)/, /^Resolve All/),
+			],
+		])(
+			"holds the files %s resolves busy until it finishes",
+			async (_action, resolve) => {
+				const finished = deferred<undefined>();
+				const answer = mockInvoke.getMockImplementation();
+				if (!answer) throw new Error("the panel's reads have no stub");
+				mockInvoke.mockImplementation((cmd, args) =>
+					cmd === "stage_files" ? finished.promise : answer(cmd, args),
+				);
+				render(StagingPanel, {
+					props: {
+						...noReviewCounts(),
+						repoPath: "/repo",
+						treeViewEnabled: true,
+					},
+				});
+				await screen.findByRole("button", { name: "Mark All Resolved" });
+
+				await resolve();
+				await waitFor(() =>
+					expect(mockInvoke).toHaveBeenCalledWith(
+						"stage_files",
+						expect.anything(),
+					),
+				);
+				const whileRunning = folderAction(/^src \(2\)/);
+				finished.resolve(undefined);
+
+				expect(whileRunning).toBeNull();
+				await waitFor(() => expect(folderAction(/^src \(2\)/)).not.toBeNull());
+			},
+		);
+
 		it("resolves a conflicted directory in one index update", async () => {
 			render(StagingPanel, {
 				props: {
@@ -1089,6 +1170,35 @@ describe("StagingPanel discarding a folder", () => {
 		expect(await callsOnceRefreshed("discard_file")).toEqual([
 			["discard_files", { path: "/repo", filePaths: ["src/a.ts", "src/b.ts"] }],
 		]);
+	});
+
+	it("holds the folder's files busy until the discard finishes", async () => {
+		const finished = deferred<undefined>();
+		const answer = mockInvoke.getMockImplementation();
+		if (!answer) throw new Error("the panel's reads have no stub");
+		mockInvoke.mockImplementation((cmd, args) =>
+			cmd === "discard_files" ? finished.promise : answer(cmd, args),
+		);
+		render(StagingPanel, {
+			props: {
+				...noReviewCounts(),
+				repoPath: "/repo",
+				treeViewEnabled: true,
+			},
+		});
+
+		await chooseFolderMenuItem(/^src \(2\)/, /^Discard All/);
+		await waitFor(() =>
+			expect(mockInvoke).toHaveBeenCalledWith(
+				"discard_files",
+				expect.anything(),
+			),
+		);
+		const whileRunning = folderAction(/^src \(2\)/);
+		finished.resolve(undefined);
+
+		expect(whileRunning).toBeNull();
+		await waitFor(() => expect(folderAction(/^src \(2\)/)).not.toBeNull());
 	});
 
 	it("reports a failed discard and shows what it left behind", async () => {

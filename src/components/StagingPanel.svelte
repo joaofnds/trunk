@@ -275,6 +275,23 @@ function stopLoading(paths: readonly string[]) {
 	loadingFiles = next;
 }
 
+/** Runs a change to these files with each of them busy until the status is
+ *  read back, so the click shows it was taken and no row action races it. */
+async function changeFiles(
+	paths: readonly string[],
+	failure: string,
+	change: () => Promise<unknown>,
+) {
+	loadingFiles = new Set([...loadingFiles, ...paths]);
+	try {
+		await change();
+	} catch (e) {
+		reportErrorToast(e, failure);
+	}
+	await refreshStatusOrReport();
+	stopLoading(paths);
+}
+
 const MARKER_NAMES_SHOWN = 5;
 
 /** Whether to mark these conflicted files resolved, asking first when any of
@@ -333,65 +350,35 @@ async function unstageFile(filePath: string) {
 }
 
 async function stageDirectory(dirPath: string) {
-	const directMatches = filesUnder(status?.unstaged, dirPath);
-	const pathsToStage = directMatches.map((f) => f.path);
-	if (pathsToStage.length === 0) return;
+	const filePaths = filesUnder(status?.unstaged, dirPath).map((f) => f.path);
+	if (filePaths.length === 0) return;
 
-	loadingFiles = new Set([...loadingFiles, ...pathsToStage]);
-	try {
-		await safeInvoke("stage_files", {
-			path: repoPath,
-			filePaths: pathsToStage,
-		});
-	} catch (e) {
-		reportErrorToast(e, "Stage failed");
-	}
-	await refreshStatusOrReport();
-	stopLoading(pathsToStage);
+	await changeFiles(filePaths, "Stage failed", () =>
+		safeInvoke("stage_files", { path: repoPath, filePaths }),
+	);
 }
 
 async function unstageDirectory(dirPath: string) {
-	const directMatches = filesUnder(status?.staged, dirPath);
-	const pathsToUnstage = directMatches.map((f) => f.path);
-	if (pathsToUnstage.length === 0) return;
+	const filePaths = filesUnder(status?.staged, dirPath).map((f) => f.path);
+	if (filePaths.length === 0) return;
 
-	loadingFiles = new Set([...loadingFiles, ...pathsToUnstage]);
-	try {
-		await safeInvoke("unstage_files", {
-			path: repoPath,
-			filePaths: pathsToUnstage,
-		});
-	} catch (e) {
-		reportErrorToast(e, "Unstage failed");
-	}
-	await refreshStatusOrReport();
-	stopLoading(pathsToUnstage);
+	await changeFiles(filePaths, "Unstage failed", () =>
+		safeInvoke("unstage_files", { path: repoPath, filePaths }),
+	);
 }
 
-// The files a whole-list move takes are busy until the status is read back, as
-// a file or a folder staged on its own is, so the click shows it was taken.
 async function stageAll() {
 	const paths = (status?.unstaged ?? []).map((f) => f.path);
-	loadingFiles = new Set([...loadingFiles, ...paths]);
-	try {
-		await safeInvoke("stage_all", { path: repoPath });
-	} catch (e) {
-		reportErrorToast(e, "Stage all failed");
-	}
-	await refreshStatusOrReport();
-	stopLoading(paths);
+	await changeFiles(paths, "Stage all failed", () =>
+		safeInvoke("stage_all", { path: repoPath }),
+	);
 }
 
 async function unstageAll() {
 	const paths = (status?.staged ?? []).map((f) => f.path);
-	loadingFiles = new Set([...loadingFiles, ...paths]);
-	try {
-		await safeInvoke("unstage_all", { path: repoPath });
-	} catch (e) {
-		reportErrorToast(e, "Unstage all failed");
-	}
-	await refreshStatusOrReport();
-	stopLoading(paths);
+	await changeFiles(paths, "Unstage all failed", () =>
+		safeInvoke("unstage_all", { path: repoPath }),
+	);
 }
 
 async function handleDiscardFile(filePath: string, fileStatus: FileStatusType) {
@@ -427,16 +414,14 @@ async function handleDiscardDirectory(dirPath: string) {
 	);
 	if (!confirmed) return;
 
-	try {
-		await safeInvoke("discard_files", {
-			path: repoPath,
-			filePaths: files.map((f) => f.path),
-		});
-		showToast(`Discarded ${files.length} files in ${dirPath}/`, "success");
-	} catch (e) {
-		reportErrorToast(e, "Discard failed");
-	}
-	await refreshStatusOrReport();
+	const filePaths = files.map((f) => f.path);
+	await changeFiles(filePaths, "Discard failed", async () => {
+		await safeInvoke("discard_files", { path: repoPath, filePaths });
+		showToast(
+			`Discarded ${files.length} file${files.length === 1 ? "" : "s"} in ${dirPath}/`,
+			"success",
+		);
+	});
 }
 
 async function showUnstagedContextMenu(
@@ -653,17 +638,10 @@ async function showConflictedContextMenu(_e: MouseEvent, filePath: string) {
 }
 
 async function resolveDirectory(dirPath: string) {
-	const files = filesUnder(status?.conflicted, dirPath);
-	if (files.length === 0) return;
+	const filePaths = filesUnder(status?.conflicted, dirPath).map((f) => f.path);
+	if (filePaths.length === 0) return;
 
-	try {
-		const filePaths = files.map((f) => f.path);
-		if (!(await confirmResolved(filePaths))) return;
-		await safeInvoke("stage_files", { path: repoPath, filePaths });
-	} catch (e) {
-		reportErrorToast(e, "Resolution failed");
-	}
-	await refreshStatusOrReport();
+	await resolveFiles(filePaths);
 }
 
 async function showConflictedDirContextMenu(_e: MouseEvent, dirPath: string) {
@@ -701,33 +679,34 @@ async function showConflictedDirContextMenu(_e: MouseEvent, dirPath: string) {
 }
 
 async function handleDiscardAll() {
-	const count = status?.unstaged.length ?? 0;
+	const paths = (status?.unstaged ?? []).map((f) => f.path);
+	const count = paths.length;
 	if (count === 0) return;
+
+	const files = `${count} file${count === 1 ? "" : "s"}`;
 	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
-		`Discard all changes to ${count} file${count === 1 ? "" : "s"}? This cannot be undone.`,
+		`Discard all changes to ${files}? This cannot be undone.`,
 		{ title: "Discard All Changes", kind: "warning" },
 	);
 	if (!confirmed) return;
-	try {
+
+	await changeFiles(paths, "Discard all failed", async () => {
 		await safeInvoke("discard_all", { path: repoPath });
-		await loadStatus();
-		showToast(`Discarded all changes (${count} files)`, "success");
-	} catch (e) {
-		reportErrorToast(e, "Discard all failed");
-	}
+		showToast(`Discarded all changes (${files})`, "success");
+	});
 }
 
 // ---------- Merge-mode actions ----------
 async function markAllResolved() {
-	try {
-		const filePaths = (status?.conflicted ?? []).map((f) => f.path);
+	await resolveFiles((status?.conflicted ?? []).map((f) => f.path));
+}
+
+async function resolveFiles(filePaths: string[]) {
+	await changeFiles(filePaths, "Resolution failed", async () => {
 		if (!(await confirmResolved(filePaths))) return;
 		await safeInvoke("stage_files", { path: repoPath, filePaths });
-	} catch (e) {
-		reportErrorToast(e, "Resolution failed");
-	}
-	await refreshStatusOrReport();
+	});
 }
 
 let mergeLoading = $state(false);
