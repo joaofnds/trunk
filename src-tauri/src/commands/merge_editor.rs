@@ -227,32 +227,21 @@ pub async fn save_merge_result<R: Runtime>(
     content: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let state_map_clone = state_map.clone();
     activity
         .spawn_blocking(move || {
-            save_merge_result_inner(&path_clone, &file_path, &content, &state_map_clone)
+            save_merge_result_inner(&path_clone, &file_path, &content, &state_map)
         })
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())?;
 
-    // Repopulate cache and emit repo-changed (same pattern as merge_continue)
-    let path_for_cache = path.clone();
-    rebuild
-        .rebuild(path.clone(), move || {
-            let path_buf = state_map.path_for(&path_for_cache)?;
-            let mut repo = git2::Repository::open(path_buf)?;
-            crate::state::read_graph(&mut repo)
-        })
-        .await
-        .map_err(|e| e.to_json())?;
-
+    // Staging a resolution moves no ref and writes no commit, so the cached
+    // graph still holds. The change is announced at once rather than when the
+    // watcher sees the index write.
     let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
 }
