@@ -1596,7 +1596,7 @@ fn a_dirty_worktree_outranks_the_upstream_for_the_head_lane() {
     );
 }
 
-/// The same for the revwalk tie-break arm: with no tracked upstream a local continuation holds
+/// The same for the walk-order tie-break arm: with no tracked upstream a local continuation holds
 /// the lane while the worktree is clean, and forks right the moment the working tree wants it.
 #[test]
 fn a_dirty_worktree_outranks_the_tiebreak_continuation_for_the_head_lane() {

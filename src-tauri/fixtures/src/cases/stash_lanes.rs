@@ -420,7 +420,7 @@ an oversight. It is nil in single-lane repos, which is the common case.
       the churn is bounded — not every branch moves.
 - [ ] **12-orphan-stash** — `reset --hard` dropped the stash's parent from every
       ref, but the stash still points at it, so it keeps its row — and `Add app`
-      is the revwalk tie-break extension of the HEAD lane, with the stash parented
+      is the walk-order tie-break extension of the HEAD lane, with the stash parented
       on its tip. Clean: one lane — stash at column 0 colour 1, straight dashed
       line down to `Add app` (also column 0, colour 1), `Add notes` below it at
       column 0 colour 0, no fork. Dirty (edit `notes.txt`): the WIP row suppresses

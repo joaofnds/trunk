@@ -7,8 +7,8 @@
  * before a change to overlay-paths.ts, capture again after, and open both to see what moved.
  * Panels are scaled up so the gaps where rails stop short of a marker are legible.
  *
- * Upward scenes (parent above child) are unreachable from graph::snapshot — it orders stashes by
- * the revwalk — so a dev build cannot show them. They are here because the geometry still has
+ * Upward scenes (parent above child) are unreachable from graph::snapshot, because it orders
+ * stashes by the walk, so a dev build cannot show them. They are here because the geometry still has
  * a transient caller; see docs/architecture/commit-graph.md, "Direction of travel".
  */
 

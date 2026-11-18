@@ -159,8 +159,8 @@ clone) are in `docs/decisions/2026-09-02-fixtures-built-by-libgit2.md`.
 **Fixture corpus** — the full set of fixture repositories the golden suites run over.
 
 **Captured input** — a committed file recording everything `graph::snapshot` reads from one
-fixture repository — the revwalk order, full unfiltered parent lists, the stash set,
-`head_tip`, `tracked_upstream`, `worktree_dirty`, per-commit facts and refs — plus the
+fixture repository (the walk order, full unfiltered parent lists, the stash set,
+`head_tip`, `tracked_upstream`, `worktree_dirty`, per-commit facts and refs), plus the
 `wipCount` the app would pass alongside it. The golden suites and the named-rule tests read
 these instead of building repositories, so the corpus scripts leave the test loop and only
 `just graph-capture` reaches them.

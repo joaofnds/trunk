@@ -1,6 +1,6 @@
 //! Lane assignment for the commit graph, as a pure function over plain data.
 //!
-//! The algorithm needs no repository: it reads a revwalk order, a parent map and a stash
+//! The algorithm needs no repository: it reads a walk order, a parent map and a stash
 //! set, and returns a column, a colour and edges per commit. `graph.rs` gathers those
 //! values from git2; a test can write them as a literal.
 
@@ -139,7 +139,7 @@ fn head_chain(input: &PlacementInput) -> HashSet<Oid> {
 /// The HEAD lane owns these as well as HEAD's ancestors, so a branch that is merely behind
 /// renders as the straight line the DAG actually is. Several chains can continue `head_tip`
 /// and only one holds the lane, in this order: the working tree while it is dirty, then the
-/// tracked upstream, then whichever continuation the revwalk ordered first. The working tree
+/// tracked upstream, then whichever continuation the walk ordered first. The working tree
 /// has no commits to place — the frontend draws it as the WIP row above `head_tip` — so when
 /// it wins there is no extension at all and every real continuation forks right.
 fn head_lane_extension(input: &PlacementInput) -> (Vec<Oid>, bool) {
