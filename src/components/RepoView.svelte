@@ -2531,9 +2531,10 @@ async function handleRebaseStart(
 }
 
 // A pane collapses on the way to narrower than NARROWEST_PANE, so the width it
-// last had is one it only passed through. It reopens at the width it had when
-// the narrowing began: where the drag took hold, or before the first of a run
-// of narrowing steps, which any widening ends.
+// last had is one it only passed through. Toggled open, it reopens at the width
+// it had when the narrowing began: where the drag took hold, or before the
+// first of a run of narrowing steps, which any widening ends. A drag or a step
+// that widens a collapsed pane opens it at NARROWEST_PANE instead.
 let leftStepsFrom: number | null = null;
 let rightStepsFrom: number | null = null;
 
@@ -2577,8 +2578,17 @@ function startLeftResize(e: MouseEvent) {
 }
 
 function stepLeftPane(delta: number) {
+	const widens = delta > 0;
+	if (leftPaneCollapsed && !widens) return;
+
+	if (leftPaneCollapsed) {
+		leftStepsFrom = null;
+		resizeLeftPane(NARROWEST_PANE);
+		return;
+	}
+
 	const from = leftStepsFrom ?? leftPaneWidth;
-	leftStepsFrom = delta < 0 ? from : null;
+	leftStepsFrom = widens ? null : from;
 	if (!resizeLeftPane(Math.max(0, leftPaneSize + delta))) return;
 
 	leftStepsFrom = null;
@@ -2627,18 +2637,21 @@ function startRightResize(e: MouseEvent) {
 }
 
 function stepRightPane(delta: number) {
-	const width = rightPaneSize - delta;
-	if (!rightPaneCollapsed) {
-		const from = rightStepsFrom ?? rightPaneWidth;
-		rightStepsFrom = delta > 0 ? from : null;
-		if (!resizeRightPane(Math.max(0, width))) return;
+	const widens = delta < 0;
+	if (rightPaneCollapsed && !widens) return;
 
+	if (rightPaneCollapsed) {
 		rightStepsFrom = null;
-		if (from !== rightPaneWidth) onrightpanewidthchange(from);
+		resizeRightPane(NARROWEST_PANE);
 		return;
 	}
 
-	if (width > 0) resizeRightPane(NARROWEST_PANE);
+	const from = rightStepsFrom ?? rightPaneWidth;
+	rightStepsFrom = widens ? null : from;
+	if (!resizeRightPane(Math.max(0, rightPaneSize - delta))) return;
+
+	rightStepsFrom = null;
+	if (from !== rightPaneWidth) onrightpanewidthchange(from);
 }
 </script>
 
@@ -2702,7 +2715,6 @@ function stepRightPane(delta: number) {
 				value={leftPaneSize}
 				min={0}
 				max={LEFT_PANE_MAX}
-				hidden={leftPaneCollapsed}
 				onstep={stepLeftPane}
 				onmousedown={startLeftResize}
 			/>
@@ -2925,7 +2937,7 @@ function stepRightPane(delta: number) {
 				value={rightPaneSize}
 				min={0}
 				max={RIGHT_PANE_MAX}
-				hidden={rightPaneCollapsed || reviewMode}
+				hidden={reviewMode}
 				onstep={stepRightPane}
 				onmousedown={startRightResize}
 			/>

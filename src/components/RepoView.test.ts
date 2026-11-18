@@ -530,31 +530,75 @@ describe("RepoView", () => {
 		},
 	);
 
-	it("reopens a collapsed detail pane at the narrowest width a drag leaves it open at", async () => {
-		const changes = renderWithPanes({
-			rightPaneWidth: 300,
-			rightPaneCollapsed: true,
-		});
+	it.each([
+		{ pane: "sidebar", key: "ArrowLeft" },
+		{ pane: "detail pane", key: "ArrowRight" },
+	])(
+		"keeps the focus on the $pane's divider when a step collapses the pane",
+		async ({ pane, key }) => {
+			renderWithPanes({ leftPaneWidth: 56, rightPaneWidth: 56 });
+			const divider = screen.getByRole("slider", { name: `Resize ${pane}` });
+			divider.focus();
 
-		await fireEvent.keyDown(screen.getByLabelText("Resize detail pane"), {
-			key: "ArrowLeft",
-		});
+			await fireEvent.keyDown(divider, { key });
 
-		expect(changes).toEqual(["right collapsed false", "right width 50"]);
-	});
+			expect(
+				screen.getByRole("slider", { name: `Resize ${pane}` }),
+			).toHaveFocus();
+		},
+	);
 
-	it("leaves a collapsed detail pane collapsed when a step would narrow it", async () => {
-		const changes = renderWithPanes({
-			rightPaneWidth: 300,
-			rightPaneCollapsed: true,
-		});
-
-		await fireEvent.keyDown(screen.getByLabelText("Resize detail pane"), {
+	it.each([
+		{
+			pane: "sidebar",
 			key: "ArrowRight",
-		});
+			reopened: ["left collapsed false", "left width 50"],
+		},
+		{
+			pane: "detail pane",
+			key: "ArrowLeft",
+			reopened: ["right collapsed false", "right width 50"],
+		},
+	])(
+		"reopens a collapsed $pane at the narrowest width a drag leaves it open at",
+		async ({ pane, key, reopened }) => {
+			const changes = renderWithPanes({
+				leftPaneWidth: 200,
+				rightPaneWidth: 300,
+				leftPaneCollapsed: true,
+				rightPaneCollapsed: true,
+			});
 
-		expect(changes).toEqual([]);
-	});
+			await fireEvent.keyDown(
+				screen.getByRole("slider", { name: `Resize ${pane}` }),
+				{ key },
+			);
+
+			expect(changes).toEqual(reopened);
+		},
+	);
+
+	it.each([
+		{ pane: "sidebar", key: "ArrowLeft" },
+		{ pane: "detail pane", key: "ArrowRight" },
+	])(
+		"leaves a collapsed $pane collapsed when a step would narrow it",
+		async ({ pane, key }) => {
+			const changes = renderWithPanes({
+				leftPaneWidth: 200,
+				rightPaneWidth: 300,
+				leftPaneCollapsed: true,
+				rightPaneCollapsed: true,
+			});
+
+			await fireEvent.keyDown(
+				screen.getByRole("slider", { name: `Resize ${pane}` }),
+				{ key },
+			);
+
+			expect(changes).toEqual([]);
+		},
+	);
 
 	it.each([
 		{ pane: "sidebar", to: 1500, widest: "left width 600" },
@@ -646,14 +690,12 @@ describe("RepoView", () => {
 		},
 	);
 
-	// Only the divider beside the rebase editor shows while its pane is
-	// collapsed, and both dividers run this same drag.
 	it("reopens the detail pane at its width after a drag opens it and closes it again", async () => {
 		const changes = renderWithPanes({
 			rightPaneWidth: 300,
 			rightPaneCollapsed: true,
 		});
-		const handle = screen.getByLabelText("Resize detail pane");
+		const handle = screen.getByRole("slider", { name: "Resize detail pane" });
 
 		await fireEvent.mouseDown(handle, { clientX: 1000 });
 		await fireEvent.mouseMove(window, { clientX: 900 });
@@ -691,16 +733,36 @@ describe("RepoView", () => {
 		expect(document.activeElement).not.toBe(filter);
 	});
 
-	it("reopens a collapsed detail pane when a drag takes it to 50 pixels", async () => {
-		const changes = renderWithPanes({
-			rightPaneWidth: 300,
-			rightPaneCollapsed: true,
-		});
+	it.each([
+		{
+			pane: "sidebar",
+			to: 1050,
+			reopened: ["left collapsed false", "left width 50"],
+		},
+		{
+			pane: "detail pane",
+			to: 950,
+			reopened: ["right collapsed false", "right width 50"],
+		},
+	])(
+		"reopens a collapsed $pane when a drag takes it to 50 pixels",
+		async ({ pane, to, reopened }) => {
+			const changes = renderWithPanes({
+				leftPaneWidth: 200,
+				rightPaneWidth: 300,
+				leftPaneCollapsed: true,
+				rightPaneCollapsed: true,
+			});
 
-		await drag(screen.getByLabelText("Resize detail pane"), 1000, 950);
+			await drag(
+				screen.getByRole("slider", { name: `Resize ${pane}` }),
+				1000,
+				to,
+			);
 
-		expect(changes).toEqual(["right collapsed false", "right width 50"]);
-	});
+			expect(changes).toEqual(reopened);
+		},
+	);
 
 	it("stores the width a drag left the sidebar at when it is released", async () => {
 		renderWithPanes({ leftPaneWidth: 200 });
@@ -729,10 +791,15 @@ describe("RepoView", () => {
 		expect(detail).toHaveAttribute("aria-valuemax", "700");
 	});
 
-	it("takes the divider of a collapsed sidebar out of the Tab order", () => {
-		renderWithPanes({ leftPaneCollapsed: true });
+	it("tells assistive tech a collapsed pane is at its narrowest", () => {
+		renderWithPanes({ leftPaneCollapsed: true, rightPaneCollapsed: true });
 
-		expect(screen.queryByRole("slider", { name: "Resize sidebar" })).toBeNull();
+		expect(
+			screen.getByRole("slider", { name: "Resize sidebar" }),
+		).toHaveAttribute("aria-valuenow", "0");
+		expect(
+			screen.getByRole("slider", { name: "Resize detail pane" }),
+		).toHaveAttribute("aria-valuenow", "0");
 	});
 
 	// Review mode is a window of its own: the reviews take the sidebar's place

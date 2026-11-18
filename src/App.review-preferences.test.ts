@@ -831,6 +831,60 @@ async function openDiffsInTwoTabs(): Promise<void> {
 }
 
 describe("App side panes", () => {
+	const panes = [
+		{
+			pane: "sidebar",
+			shortcut: "j",
+			narrow: "ArrowLeft",
+			widen: "ArrowRight",
+		},
+		{
+			pane: "detail pane",
+			shortcut: "k",
+			narrow: "ArrowRight",
+			widen: "ArrowLeft",
+		},
+	];
+
+	it.each(panes)(
+		"keeps the focus on the $pane's divider when its shortcut collapses the pane",
+		async ({ pane, shortcut }) => {
+			seedOneTab();
+			render(App);
+			const divider = await screen.findByRole("slider", {
+				name: `Resize ${pane}`,
+			});
+			await nextTask();
+			divider.focus();
+
+			await fireEvent.keyDown(divider, { key: shortcut, metaKey: true });
+
+			expect(
+				screen.getByRole("slider", { name: `Resize ${pane}` }),
+			).toHaveFocus();
+		},
+	);
+
+	it.each(panes)(
+		"reopens the $pane at the narrowest width after a step reopened it and a step closed it",
+		async ({ pane, shortcut, narrow, widen }) => {
+			seedOneTab();
+			render(App);
+			const divider = await screen.findByRole("slider", {
+				name: `Resize ${pane}`,
+			});
+			await nextTask();
+			await fireEvent.keyDown(divider, { key: narrow });
+			await pressShortcut(shortcut);
+			await fireEvent.keyDown(divider, { key: widen });
+			await fireEvent.keyDown(divider, { key: narrow });
+
+			await pressShortcut(shortcut);
+
+			expect(divider).toHaveAttribute("aria-valuenow", "50");
+		},
+	);
+
 	it("keeps the graph's sidebar collapsed after the reviews are opened", async () => {
 		seedOneTab();
 		host.seedReview(REPO_A, reviewWith("open"));
@@ -845,7 +899,9 @@ describe("App side panes", () => {
 
 		await leaveReview();
 
-		expect(screen.queryByRole("slider", { name: "Resize sidebar" })).toBeNull();
+		expect(
+			screen.getByRole("slider", { name: "Resize sidebar" }),
+		).toHaveAttribute("aria-valuenow", "0");
 	});
 
 	it("opens review mode on the reviews' own collapsed state", async () => {
@@ -889,7 +945,7 @@ describe("App side panes", () => {
 
 		expect(
 			screen.getByRole("slider", { name: "Resize detail pane" }),
-		).toBeInTheDocument();
+		).not.toHaveAttribute("aria-valuenow", "0");
 	});
 });
 
