@@ -94,7 +94,7 @@
 | `git/types.rs` | The commit graph's DTOs (`GraphCommit`, `GraphEdge`, `RefLabel`), owned, with no git2 types | `src-tauri/git/src/types.rs` |
 | `types.rs` | The app's other IPC DTOs (`FileDiff`, `WorkingTreeStatus`, etc.), owned, with no git2 types | `src-tauri/src/types.rs` |
 | `state.rs` | `RepoState` (open paths, each with the commit memo its graph captures reuse), `CommitCache` (versioned worktree graphs), `RunningOp` (shared-repository reservations); `GraphRebuild` owns checked capture and publication under current visibility | `src-tauri/src/state.rs` |
-| `watcher.rs` | `start_watcher` / `stop_watcher` — `notify_debouncer_mini` emitting `"repo-changed"` events; `RepoChanged` carries changed paths, an optional checked graph revision, a refs-only marker and a completed-command marker; `WatcherState::disabled()` turns the watch off | `src-tauri/src/watcher.rs` |
+| `watcher.rs` | `start_watcher` / `stop_watcher`: a `notify` watch whose changes a pacer releases as `"repo-changed"` events; `RepoChanged` carries changed paths, an optional checked graph revision, a refs-only marker and a completed-command marker; `WatcherState::disabled()` turns the watch off | `src-tauri/src/watcher.rs` |
 
 ## Pattern Overview
 
@@ -188,13 +188,21 @@ needs no drag handler.
 
 ### Filesystem Change Path
 
-1. `notify_debouncer_mini` detects change in watched repo directory (300ms debounce)
+1. `notify` reports a change in the watched repository, and `watcher.rs`'s pacer releases
+   it 25 ms later, so an editor's write and rename arrive as one batch. A change that
+   follows a delivery waits until 300 ms have passed since it, which bounds the refreshes a
+   checkout or a build causes; a batch that refreshes nothing, such as ignored build output,
+   starts no interval. While Git holds the worktree's `index.lock` a due batch waits, for up to
+   a second, so an operation run in a terminal shows its result rather than a state halfway
+   through it. A rescan or a backend error, where events may be lost, is unscoped
 2. `watcher.rs:start_watcher` emits Tauri event `"repo-changed"` with a `RepoChanged`
    payload: the repo path plus the changed paths relative to it. The write sites in
    `commands/` emit the same event with an empty path list, meaning the extent is
    unknown and every subscriber refreshes. Reconciled ref changes additionally carry
    a graph revision and distinguish refs-only changes from worktree context changes
-3. Path-scoped frontend consumers arm a fixed 200 ms first deadline; more events do not move it.
+3. Path-scoped frontend consumers start their read at once when their last read finished at
+   least 200 ms ago, and otherwise 200 ms after it finished; more events do not move that
+   deadline.
    `subscribeToRepoChanges` hands each event's changed paths to its subscriber, so a
    subscriber whose work depends on particular files can skip a write naming none of them.
    Refs-only events reach only subscribers that opt into ref changes

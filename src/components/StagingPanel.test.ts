@@ -501,6 +501,52 @@ describe("StagingPanel", () => {
 		expect(await screen.findByLabelText("Unstage file")).toBeInTheDocument();
 	});
 
+	it("keeps a staged row when a read started before the stage answers late", async () => {
+		const scheduler = new FakeScheduler();
+		const beforeAction = {
+			unstaged: [{ path: "README.md", status: "Modified", is_binary: false }],
+			staged: [],
+			conflicted: [],
+		};
+		const held = deferred<typeof beforeAction>();
+		const caughtUp = deferred<typeof beforeAction>();
+		let statusReads = 0;
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "get_status") {
+				statusReads += 1;
+				if (statusReads === 1) return Promise.resolve(beforeAction);
+				if (statusReads === 2) return held.promise;
+				return caughtUp.promise;
+			}
+			if (cmd === "get_operation_state") {
+				return Promise.resolve({ op_type: "None" });
+			}
+			return Promise.resolve(undefined);
+		});
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/test/repo" },
+			context: new Map([[SCHEDULER, scheduler]]),
+		});
+		const row = await screen.findByText("README.md");
+		eventHandlers.get("repo-changed")?.({
+			payload: { repo: "/test/repo", paths: [] },
+		});
+		scheduler.advanceBy(200);
+		await tick();
+		expect(statusReads).toBe(2);
+		await fireEvent.mouseEnter(stagingRowFor(row));
+		await fireEvent.click(screen.getByLabelText("Stage file"));
+		const staged = screen.getByTestId("staging-staged-section");
+		await waitFor(() =>
+			expect(within(staged).getByText("README.md")).toBeInTheDocument(),
+		);
+
+		held.resolve(beforeAction);
+		await waitFor(() => expect(statusReads).toBe(3));
+
+		expect(within(staged).getByText("README.md")).toBeInTheDocument();
+	});
+
 	it("reports a failed stage and gives the file its stage action back", async () => {
 		_resetToasts();
 		const answer = mockInvoke.getMockImplementation();

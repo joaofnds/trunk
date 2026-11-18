@@ -8,7 +8,8 @@ interface Waiter {
 }
 
 export interface CoalescedTask {
-	/** Schedules work at the first deadline and never moves that deadline. */
+	/** Starts work now when the delay has passed since the last run finished,
+	 *  otherwise once it has, and never moves that deadline. */
 	invalidate(): void;
 	/** Starts notification work now, retaining only one pending rerun while busy. */
 	request(): void;
@@ -24,8 +25,9 @@ interface CoalescedTaskOptions {
 
 /**
  * Bounds an asynchronous reader to one active run and one pending rerun.
- * Invalidations are edge-triggered: a burst keeps the first deadline instead
- * of postponing it until the producer becomes quiet.
+ * Invalidations are edge-triggered: the first after a quiet spell starts the
+ * reader at once, and a burst keeps the deadline the delay sets after each run
+ * instead of postponing it until the producer becomes quiet.
  */
 export function createCoalescedTask(
 	scheduler: Scheduler,
@@ -37,6 +39,7 @@ export function createCoalescedTask(
 		options.onError ??
 		((error: unknown) => console.error("Coalesced task failed", error));
 	let scheduled: number | null = null;
+	let finishedAt: number | null = null;
 	let running = false;
 	let rerunPending = false;
 	let disposed = false;
@@ -45,10 +48,21 @@ export function createCoalescedTask(
 
 	function schedule(): void {
 		if (disposed || running || scheduled !== null) return;
+
+		const waitMs =
+			finishedAt === null
+				? 0
+				: finishedAt + delayMs - scheduler.currentTimeMs();
+
+		if (waitMs <= 0) {
+			void start();
+			return;
+		}
+
 		scheduled = scheduler.setTimeout(() => {
 			scheduled = null;
 			void start();
-		}, delayMs);
+		}, waitMs);
 	}
 
 	async function start(): Promise<void> {
@@ -69,6 +83,7 @@ export function createCoalescedTask(
 			}
 		} finally {
 			activeWaiters = [];
+			finishedAt = scheduler.currentTimeMs();
 			running = false;
 			if (!disposed && waiters.length > 0) void start();
 			else if (!disposed && rerunPending) schedule();

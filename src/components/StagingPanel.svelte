@@ -159,6 +159,7 @@ export function optimisticMove(
 			file,
 		];
 	}
+	loadSeq += 1;
 	status = updated;
 	onstatuschange?.(status);
 }

@@ -184,9 +184,9 @@ in `current-file-refresh-error.test.ts`. `app.openTrackedFile(query)` is the fin
 all three open with. The split keeps their nine app boots on parallel workers instead of
 making one serial file the suite's critical path.
 
-Repository refresh backpressure, in `tests/app/repo-change-backpressure.test.ts`: virtual
-events keep arriving before the 200 ms policy interval, but the graph starts at the first
-deadline. Command barriers hold graph, status and dirty-count reads while more events arrive,
+Repository refresh backpressure, in `tests/app/repo-change-backpressure.test.ts`: an outside
+change refreshes without the clock advancing, and events that arrive inside the 200 ms after a
+refresh produce one more refresh at its end. Command barriers hold graph, status and dirty-count reads while more events arrive,
 proving each owner admits one active read and one catch-up. The staging case also records the
 new status read owed after a mutation rather than accepting the older in-flight read as its
 completion.
@@ -285,9 +285,10 @@ variant on both sides to reach a shape it cannot build yet. Commits are day-spac
 step pins `at`, because the graph sorts `TOPOLOGICAL | TIME` and same-second commits sort
 arbitrarily.
 
-Repository-change consumers use a fixed-deadline coalescer backed by the frozen
-`FakeScheduler` installed through `mount`'s context option. The first invalidation arms a
-200 ms deadline; later invalidations do not move it. While its command is active, a consumer
+Repository-change consumers use a paced coalescer backed by the frozen
+`FakeScheduler` installed through `mount`'s context option. An invalidation starts the read at
+once when the last one finished at least 200 ms ago, and otherwise arms a deadline 200 ms after
+it finished; later invalidations do not move it. While its command is active, a consumer
 holds one pending catch-up and schedules that catch-up 200 ms after completion, unless an
 explicit run is waiting on it, which starts as soon as the command completes. Consumers
 remain independent, so a held status read does not hold graph refresh. Every other owned
@@ -299,7 +300,7 @@ along the way. No wall-clock window outlasts it, so a test advances it deliberat
 - `app.elapse()` waits for foreground work to be armed and fires it. Use it after a gesture that
   produces one `repo-changed` emit.
 - `app.advanceBy(ms)` advances virtual time and fires only deadlines reached in that span.
-  Use it to distinguish a fixed first deadline from a trailing debounce.
+  Use it to distinguish a fixed deadline from a trailing debounce.
 - `app.elapseUntil(description, condition)` waits for `condition`, advancing through foreground deadlines.
   Use it when one user action produces several emits, such as a revert, an undo or a redo, so the
   test asserts on the state it wants rather than counting emits it does not control.

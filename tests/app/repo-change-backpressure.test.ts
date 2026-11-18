@@ -1,5 +1,6 @@
 import { tick } from "svelte";
 import { afterEach, describe, expect, it } from "vitest";
+import { REPO_CHANGE_DELAY_MS } from "../../src/lib/coalesced-task.js";
 import { setup, teardown } from "./harness/index.js";
 import { driveWaitsWith, waitFor } from "./harness/wait.js";
 
@@ -56,26 +57,48 @@ describe("repository changes during a sustained event stream", () => {
 		}
 	});
 
-	it("refreshes at the first deadline while changes continue", async () => {
+	it("shows an outside change without advancing the clock", async () => {
 		const app = await setup({ repo: REPO });
 		await app.repo.open();
 		await app.settled();
+		app.advanceBy(REPO_CHANGE_DELAY_MS);
+		driveWaitsWith(null);
+
+		try {
+			app.repo.writeWorkingTreeFile("a.txt", "changed\n");
+			await app.events.externalChange(app.repo.path);
+			await waitFor("the working tree row", () =>
+				app.repo.commitRows().some((row) => row.includes("// WIP"))
+					? true
+					: null,
+			);
+		} finally {
+			driveWaitsWith((elapsed) => app.advanceBy(elapsed));
+		}
+	});
+
+	it("refreshes once more when the delay after a refresh ends while changes continue", async () => {
+		const app = await setup({ repo: REPO });
+		await app.repo.open();
+		await app.settled();
+		app.advanceBy(REPO_CHANGE_DELAY_MS);
 		const before = app.refreshes();
+		driveWaitsWith(null);
 
-		app.repo.writeWorkingTreeFile("a.txt", "changed\n");
-		await app.events.externalChange(app.repo.path);
-		app.advanceBy(150);
-		await app.events.externalChange(app.repo.path);
-		app.advanceBy(49);
-		expect(app.refreshes()).toBe(before);
+		try {
+			await app.events.externalChange(app.repo.path);
+			await app.events.externalChange(app.repo.path);
+			app.advanceBy(REPO_CHANGE_DELAY_MS - 1);
+			await tick();
+			expect(app.refreshes()).toBe(before + 1);
 
-		app.advanceBy(1);
-		await tick();
-		expect(app.refreshes()).toBe(before + 1);
-
-		await app.elapseUntil("the working tree row", () =>
-			app.repo.commitRows().some((row) => row.includes("// WIP")) ? true : null,
-		);
+			app.advanceBy(1);
+			await waitFor("the catch-up refresh", () =>
+				app.refreshes() === before + 2 ? true : null,
+			);
+		} finally {
+			driveWaitsWith((elapsed) => app.advanceBy(elapsed));
+		}
 	});
 
 	it("admits one graph refresh and one catch-up while the graph is busy", async () => {

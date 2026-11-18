@@ -10,6 +10,7 @@ import { RepositoryReadHost } from "../__tests__/helpers/repository-read-host.js
 import { reviewPanelProps } from "../__tests__/helpers/review-props.js";
 import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
 import { aPinnedThread, aThread } from "../__tests__/helpers/thread-fixture.js";
+import { REPO_CHANGE_DELAY_MS } from "../lib/coalesced-task.js";
 import {
 	createReviewComments,
 	type ReviewCommentsManager,
@@ -97,7 +98,6 @@ async function mountPanel(): Promise<void> {
 	});
 	await screen.findByTitle("Commit gone. Only the saved excerpt survives.");
 	await screen.findByTitle("Code gone. Only the saved excerpt survives.");
-	clock.advanceBy(200);
 	await waitFor(() => expect(host.count("refresh_thread_staleness")).toBe(1));
 	await manager.refresh();
 	await tick();
@@ -114,8 +114,6 @@ async function deliverRefs(): Promise<void> {
 	await waitFor(() =>
 		expect(host.count("refresh_thread_ref_staleness")).toBe(1),
 	);
-	await waitFor(() => expect(clock.pending).toBe(1));
-	clock.advanceBy(200);
 }
 
 describe("refs-only review refresh", () => {
@@ -148,12 +146,9 @@ describe("refs-only review refresh", () => {
 		expect(host.count("list_threads")).toBe(reads);
 
 		manager.setActive(true);
-		clock.advanceBy(200);
 		await waitFor(() =>
 			expect(host.count("refresh_thread_ref_staleness")).toBe(1),
 		);
-		await waitFor(() => expect(clock.pending).toBe(1));
-		clock.advanceBy(200);
 		await waitFor(() =>
 			expect(
 				screen.queryByTitle("Commit gone. Only the saved excerpt survives."),
@@ -174,10 +169,10 @@ describe("refs-only review refresh", () => {
 	it("keeps local file staleness checks immediate while the tab is inactive", async () => {
 		await mountPanel();
 		manager.setActive(false);
+		clock.advanceBy(REPO_CHANGE_DELAY_MS);
 		const local = host.holdNextReply("refresh_thread_staleness");
 
 		await host.emitRepoChanged({ repo: "/repo", paths: ["local.txt"] });
-		clock.advanceBy(200);
 		expect(await local.entered).toEqual({ path: "/repo" });
 		local.release(0);
 

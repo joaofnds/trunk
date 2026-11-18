@@ -2865,6 +2865,11 @@ function stepRightPane(delta: number) {
 											const { kind } = selectedFile;
 											advanceToNextFile(filePath, kind);
 											stagingPanelRef?.optimisticMove(filePath, kind, action);
+											void stagingPanelRef
+												?.loadStatus()
+												.catch((error) =>
+													reportErrorToast(error, "Failed to refresh status"),
+												);
 										}
 									}}
 									ondiffoptionschange={async (options) => {

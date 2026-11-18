@@ -1,14 +1,12 @@
-use notify_debouncer_mini::notify::event::{AccessKind, AccessMode};
-use notify_debouncer_mini::notify::{
-    self, Event, EventHandler, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
-};
-use notify_debouncer_mini::{Config, DebounceEventResult, Debouncer, new_debouncer_opt};
+use notify::event::{AccessKind, AccessMode};
+use notify::{Event, EventHandler, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::cell::OnceCell;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use trunk_git::error::TrunkError;
 
@@ -254,6 +252,15 @@ fn ignored_worktree_path(
     repo.is_path_ignored(relative).unwrap_or(false)
 }
 
+/// What routing a batch did.
+enum Routed {
+    /// Nothing in the batch concerned a subscriber.
+    Nothing,
+    /// Subscribers were told, or will be once the ref reconciliation this
+    /// holds, or one already running, ends.
+    Published(Option<tauri::async_runtime::JoinHandle<()>>),
+}
+
 fn route_changes<R: Runtime>(
     watched: &Path,
     roots: &[PathBuf],
@@ -261,9 +268,9 @@ fn route_changes<R: Runtime>(
     changed: Vec<PathBuf>,
     app: &AppHandle<R>,
     pending: &Arc<Mutex<HashMap<String, RefRefresh>>>,
-) -> Option<tauri::async_runtime::JoinHandle<()>> {
+) -> Routed {
     let Ok(activity) = crate::activity::Activity::for_app(app) else {
-        return None;
+        return Routed::Nothing;
     };
     let mut relevant = Vec::new();
     let mut worktree = changed.is_empty();
@@ -295,7 +302,7 @@ fn route_changes<R: Runtime>(
         }
     }
     if relevant.is_empty() && !worktree {
-        return None;
+        return Routed::Nothing;
     }
     let repo = watched.to_string_lossy().to_string();
     let cache = app.state::<crate::state::CommitCache>();
@@ -305,20 +312,20 @@ fn route_changes<R: Runtime>(
             "repo-changed",
             RepoChanged::scoped_to(watched, roots, &relevant),
         );
-        return None;
+        return Routed::Published(None);
     }
     {
         let mut pending = pending.lock().unwrap();
         if let Some(refresh) = pending.get_mut(&repo) {
             *refresh = RefRefresh::Pending;
-            return None;
+            return Routed::Published(None);
         }
         pending.insert(repo.clone(), RefRefresh::Running);
     }
     let common = git.map(|git| git.common.to_string_lossy().to_string());
     let pending = Arc::clone(pending);
     let app = app.clone();
-    Some(tauri::async_runtime::spawn(async move {
+    Routed::Published(Some(tauri::async_runtime::spawn(async move {
         loop {
             let running = app.state::<crate::state::RunningOp>();
             let _reconciliation = match &common {
@@ -361,7 +368,7 @@ fn route_changes<R: Runtime>(
                 break;
             }
         }
-    }))
+    })))
 }
 
 struct FileChangeEvents<F>(F);
@@ -383,35 +390,205 @@ impl<F: EventHandler> EventHandler for FileChangeEvents<F> {
     }
 }
 
-pub struct FileChangeWatcher(RecommendedWatcher);
+/// How long the first change after a quiet spell waits for the writes that come
+/// with it, such as an editor's rename over the file it saved.
+const GATHER_WINDOW: Duration = Duration::from_millis(25);
 
-impl Watcher for FileChangeWatcher {
-    fn new<F: EventHandler>(handler: F, config: notify::Config) -> notify::Result<Self> {
-        RecommendedWatcher::new(FileChangeEvents(handler), config).map(Self)
+/// The least time between two deliveries, which bounds the refreshes a burst of
+/// writes such as a checkout or a build can cause.
+const PACING_INTERVAL: Duration = Duration::from_millis(300);
+
+/// How long a due batch waits for Git to release the index lock, so an
+/// operation run outside the app, such as a checkout, shows its result rather
+/// than a state halfway through it. A lock left behind by a crashed Git still
+/// lets changes through after this.
+const LOCK_PATIENCE: Duration = Duration::from_secs(1);
+
+#[derive(Debug, PartialEq, Eq)]
+enum Changes {
+    Paths(BTreeSet<PathBuf>),
+    /// The backend lost track of what changed, so every subscriber refreshes.
+    Unscoped,
+}
+
+impl Changes {
+    fn of(event: notify::Result<Event>) -> Option<Self> {
+        let Ok(event) = event else {
+            return Some(Self::Unscoped);
+        };
+
+        if event.need_rescan() {
+            return Some(Self::Unscoped);
+        }
+
+        if event.paths.is_empty() {
+            return None;
+        }
+
+        Some(Self::Paths(event.paths.into_iter().collect()))
     }
 
-    fn watch(&mut self, path: &Path, recursive_mode: RecursiveMode) -> notify::Result<()> {
-        self.0.watch(path, recursive_mode)
+    fn absorb(&mut self, more: Self) {
+        match (self, more) {
+            (Self::Unscoped, _) => {}
+            (held, Self::Unscoped) => *held = Self::Unscoped,
+            (Self::Paths(held), Self::Paths(more)) => held.extend(more),
+        }
     }
 
-    fn unwatch(&mut self, path: &Path) -> notify::Result<()> {
-        self.0.unwatch(path)
-    }
-
-    fn paths_mut(&mut self) -> Box<dyn notify::PathsMut + '_> {
-        self.0.paths_mut()
-    }
-
-    fn configure(&mut self, config: notify::Config) -> notify::Result<bool> {
-        self.0.configure(config)
-    }
-
-    fn kind() -> notify::WatcherKind {
-        RecommendedWatcher::kind()
+    /// The batch in `route_changes`'s terms, where no path means unscoped.
+    fn into_paths(self) -> Vec<PathBuf> {
+        match self {
+            Self::Paths(paths) => paths.into_iter().collect(),
+            Self::Unscoped => Vec::new(),
+        }
     }
 }
 
-pub type WatcherMap = HashMap<String, Debouncer<FileChangeWatcher>>;
+struct Held {
+    due: Instant,
+    changes: Changes,
+    locked_since: Option<Instant>,
+}
+
+/// Releases filesystem changes in batches. The first change after a quiet spell
+/// goes out when its gather window closes, and a change that follows a refresh
+/// waits until the pacing interval since that refresh has passed. A change
+/// never moves the deadline already set.
+#[derive(Default)]
+struct Pacer {
+    held: Option<Held>,
+    delivered_at: Option<Instant>,
+}
+
+impl Pacer {
+    fn record(&mut self, now: Instant, changes: Changes) {
+        if let Some(held) = &mut self.held {
+            held.changes.absorb(changes);
+            return;
+        }
+
+        let gathered = now + GATHER_WINDOW;
+        let due = self.delivered_at.map_or(gathered, |delivered| {
+            gathered.max(delivered + PACING_INTERVAL)
+        });
+
+        self.held = Some(Held {
+            due,
+            changes,
+            locked_since: None,
+        });
+    }
+
+    fn deadline(&self) -> Option<Instant> {
+        self.held.as_ref().map(|held| {
+            held.locked_since
+                .map_or(held.due, |since| since + LOCK_PATIENCE)
+        })
+    }
+
+    /// The held batch once it is due, unless the index is locked and has not
+    /// been for `LOCK_PATIENCE` yet.
+    fn release(
+        &mut self,
+        now: Instant,
+        index_locked: impl FnOnce() -> bool,
+    ) -> Option<Vec<PathBuf>> {
+        let held = self.held.as_mut()?;
+        if now < held.due {
+            return None;
+        }
+
+        if index_locked() {
+            let since = *held.locked_since.get_or_insert(now);
+            if now < since + LOCK_PATIENCE {
+                return None;
+            }
+        }
+
+        self.held.take().map(|held| held.changes.into_paths())
+    }
+
+    /// Starts the pacing interval: a released batch reached a subscriber at `at`.
+    const fn refreshed(&mut self, at: Instant) {
+        self.delivered_at = Some(at);
+    }
+}
+
+enum Message {
+    Event(notify::Result<Event>),
+    Stop,
+}
+
+/// A repository's filesystem watch and the thread that paces what it reports.
+/// Dropping it stops both.
+pub struct RepoWatcher {
+    watcher: RecommendedWatcher,
+    outbox: Sender<Message>,
+}
+
+impl RepoWatcher {
+    /// `deliver` routes a released batch and answers whether it refreshed a
+    /// subscriber. `index_lock` is the lock Git holds on this worktree's index.
+    fn start(
+        index_lock: Option<PathBuf>,
+        deliver: impl FnMut(Vec<PathBuf>) -> bool + Send + 'static,
+    ) -> notify::Result<Self> {
+        let (outbox, inbox) = mpsc::channel();
+
+        std::thread::Builder::new()
+            .name("trunk repo watcher".to_string())
+            .spawn(move || pace(&inbox, index_lock.as_deref(), deliver))?;
+
+        let forward = outbox.clone();
+        let watcher = RecommendedWatcher::new(
+            FileChangeEvents(move |event| drop(forward.send(Message::Event(event)))),
+            notify::Config::default(),
+        )?;
+
+        Ok(Self { watcher, outbox })
+    }
+}
+
+impl Drop for RepoWatcher {
+    fn drop(&mut self) {
+        drop(self.outbox.send(Message::Stop));
+    }
+}
+
+fn pace(
+    inbox: &Receiver<Message>,
+    index_lock: Option<&Path>,
+    mut deliver: impl FnMut(Vec<PathBuf>) -> bool,
+) {
+    let mut pacer = Pacer::default();
+
+    loop {
+        let message = pacer.deadline().map_or_else(
+            || inbox.recv().map_err(RecvTimeoutError::from),
+            |deadline| inbox.recv_timeout(deadline.saturating_duration_since(Instant::now())),
+        );
+
+        match message {
+            Ok(Message::Event(event)) => {
+                if let Some(changes) = Changes::of(event) {
+                    pacer.record(Instant::now(), changes);
+                }
+            }
+            Err(RecvTimeoutError::Timeout) => {}
+            Ok(Message::Stop) | Err(RecvTimeoutError::Disconnected) => return,
+        }
+
+        let index_locked = || index_lock.is_some_and(Path::exists);
+        if let Some(batch) = pacer.release(Instant::now(), index_locked)
+            && deliver(batch)
+        {
+            pacer.refreshed(Instant::now());
+        }
+    }
+}
+
+pub type WatcherMap = HashMap<String, RepoWatcher>;
 pub struct WatcherState {
     pub watchers: Mutex<WatcherMap>,
     pub enabled: bool,
@@ -439,7 +616,7 @@ impl WatcherState {
         }
     }
 
-    /// Deliver an observed batch and join its ref reconciliation without an OS debounce.
+    /// Deliver an observed batch and join its ref reconciliation without waiting on the pacer.
     /// # Errors
     /// Returns `spawn_error` if the reconciliation task fails to join.
     #[cfg(feature = "test-util")]
@@ -450,7 +627,7 @@ impl WatcherState {
         app: &AppHandle<R>,
     ) -> Result<(), TrunkError> {
         let git = GitDirectories::open(path);
-        if let Some(task) = route_changes(
+        if let Routed::Published(Some(task)) = route_changes(
             path,
             &root_forms(path),
             git.as_ref(),
@@ -480,8 +657,8 @@ pub fn start_watcher<R: Runtime>(
     app: AppHandle<R>,
     state: &WatcherState,
 ) -> Result<(), TrunkError> {
-    start_watcher_with_registration(path, app, state, |debouncer, path| {
-        debouncer.watcher().watch(path, RecursiveMode::Recursive)
+    start_watcher_with_registration(path, app, state, |watcher, path| {
+        watcher.watch(path, RecursiveMode::Recursive)
     })
 }
 
@@ -493,7 +670,7 @@ fn start_watcher_with_registration<R, F>(
 ) -> Result<(), TrunkError>
 where
     R: Runtime,
-    F: FnMut(&mut Debouncer<FileChangeWatcher>, &Path) -> notify::Result<()>,
+    F: FnMut(&mut RecommendedWatcher, &Path) -> notify::Result<()>,
 {
     if !state.enabled {
         return Ok(());
@@ -505,26 +682,27 @@ where
     let callback_git = git.clone();
     let pending = Arc::clone(&state.pending_refs);
 
-    let mut debouncer = new_debouncer_opt::<_, FileChangeWatcher>(
-        Config::default().with_timeout(Duration::from_millis(300)),
-        move |res: DebounceEventResult| {
-            let Ok(events) = res else { return };
-
-            let changed: Vec<PathBuf> = events.into_iter().map(|event| event.path).collect();
-
-            drop(route_changes(
-                &watched,
-                &roots,
-                callback_git.as_ref(),
-                changed,
-                &app,
-                &pending,
-            ));
-        },
-    )
+    let index_lock = git.as_ref().map(|git| git.private.join("index.lock"));
+    let mut repo_watcher = RepoWatcher::start(index_lock, move |changed| {
+        match route_changes(
+            &watched,
+            &roots,
+            callback_git.as_ref(),
+            changed,
+            &app,
+            &pending,
+        ) {
+            Routed::Nothing => false,
+            // The reconciliation runs detached; the next batch must not wait on it.
+            Routed::Published(reconcile) => {
+                drop(reconcile);
+                true
+            }
+        }
+    })
     .map_err(|_| TrunkError::new("watcher_unavailable", "Repository watcher could not start"))?;
 
-    register(&mut debouncer, path).map_err(|_| {
+    register(&mut repo_watcher.watcher, path).map_err(|_| {
         TrunkError::new(
             "watcher_unavailable",
             "Repository path could not be watched",
@@ -533,7 +711,7 @@ where
     if let Some(git) = git {
         let canonical_root = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
         if !git.common.starts_with(&canonical_root) {
-            register(&mut debouncer, &git.common).map_err(|_| {
+            register(&mut repo_watcher.watcher, &git.common).map_err(|_| {
                 TrunkError::new(
                     "watcher_unavailable",
                     "Shared Git directory could not be watched",
@@ -541,7 +719,7 @@ where
             })?;
         }
         if !git.private.starts_with(&canonical_root) && !git.private.starts_with(&git.common) {
-            register(&mut debouncer, &git.private).map_err(|_| {
+            register(&mut repo_watcher.watcher, &git.private).map_err(|_| {
                 TrunkError::new(
                     "watcher_unavailable",
                     "Worktree Git directory could not be watched",
@@ -554,7 +732,7 @@ where
         .watchers
         .lock()
         .unwrap()
-        .insert(path.to_string_lossy().to_string(), debouncer);
+        .insert(path.to_string_lossy().to_string(), repo_watcher);
     Ok(())
 }
 
@@ -583,7 +761,7 @@ pub fn stop_watcher(path: &str, state: &WatcherState) {
 
 #[cfg(test)]
 mod tests {
-    use notify_debouncer_mini::notify::event::{CreateKind, ModifyKind, RemoveKind};
+    use notify::event::{CreateKind, ModifyKind, RemoveKind};
     use std::cell::Cell;
 
     use super::*;
@@ -727,17 +905,15 @@ mod tests {
             "refs/remotes/origin/main.lock",
             "worktrees/other/index",
         ] {
-            route_changes(
+            let routed = route_changes(
                 Path::new("/repo"),
                 &[PathBuf::from("/repo")],
                 Some(&git),
                 vec![git.common.join(path)],
                 app.handle(),
                 &Arc::default(),
-            )
-            .map(tauri::async_runtime::block_on)
-            .transpose()
-            .unwrap();
+            );
+            assert!(matches!(routed, Routed::Nothing), "{path}");
         }
         assert!(events.lock().unwrap().is_empty());
     }
@@ -885,11 +1061,7 @@ mod tests {
             Path::new("repo"),
             app.handle().clone(),
             &state,
-            |_, _| {
-                Err(notify_debouncer_mini::notify::Error::generic(
-                    "registration failed",
-                ))
-            },
+            |_, _| Err(notify::Error::generic("registration failed")),
         );
 
         assert_eq!(result.unwrap_err().code, "watcher_unavailable");
@@ -921,13 +1093,250 @@ mod tests {
                 if path == linked {
                     Ok(())
                 } else {
-                    Err(notify_debouncer_mini::notify::Error::generic(
-                        "shared registration failed",
-                    ))
+                    Err(notify::Error::generic("shared registration failed"))
                 }
             });
 
         assert_eq!(result.unwrap_err().code, "watcher_unavailable");
         assert!(state.watchers.lock().unwrap().is_empty());
+    }
+
+    mod pacer {
+        use super::*;
+
+        fn paths(names: &[&str]) -> Changes {
+            Changes::Paths(names.iter().map(PathBuf::from).collect())
+        }
+
+        fn batch(names: &[&str]) -> Vec<PathBuf> {
+            names.iter().map(PathBuf::from).collect()
+        }
+
+        fn millis(count: u64) -> Duration {
+            Duration::from_millis(count)
+        }
+
+        const fn unlocked() -> bool {
+            false
+        }
+
+        const fn locked() -> bool {
+            true
+        }
+
+        /// A pacer that released a batch at the returned instant and refreshed
+        /// a subscriber with it.
+        fn refreshed_once(start: Instant) -> (Pacer, Instant) {
+            let delivered = start + GATHER_WINDOW;
+            let mut pacer = Pacer::default();
+            pacer.record(start, paths(&["a"]));
+            pacer.release(delivered, unlocked);
+            pacer.refreshed(delivered);
+            (pacer, delivered)
+        }
+
+        #[test]
+        fn has_no_deadline_while_nothing_is_held() {
+            assert_eq!(Pacer::default().deadline(), None);
+        }
+
+        #[test]
+        fn holds_an_isolated_change_until_the_gather_window_closes() {
+            let start = Instant::now();
+            let mut pacer = Pacer::default();
+
+            pacer.record(start, paths(&["a"]));
+
+            assert_eq!(
+                pacer.release(start + GATHER_WINDOW.saturating_sub(millis(1)), unlocked),
+                None
+            );
+        }
+
+        #[test]
+        fn releases_an_isolated_change_when_the_gather_window_closes() {
+            let start = Instant::now();
+            let mut pacer = Pacer::default();
+            pacer.record(start, paths(&["a"]));
+
+            let released = pacer.release(start + GATHER_WINDOW, unlocked);
+
+            assert_eq!(released, Some(batch(&["a"])));
+            assert_eq!(pacer.deadline(), None);
+        }
+
+        #[test]
+        fn releases_changes_inside_the_gather_window_as_one_batch() {
+            let start = Instant::now();
+            let mut pacer = Pacer::default();
+            pacer.record(start, paths(&["b"]));
+            pacer.record(start + millis(10), paths(&["a", "b"]));
+
+            let released = pacer.release(start + GATHER_WINDOW, unlocked);
+
+            assert_eq!(released, Some(batch(&["a", "b"])));
+        }
+
+        #[test]
+        fn keeps_the_first_changes_deadline_while_changes_continue() {
+            let start = Instant::now();
+            let mut pacer = Pacer::default();
+            pacer.record(start, paths(&["a"]));
+
+            pacer.record(
+                start + GATHER_WINDOW.saturating_sub(millis(1)),
+                paths(&["b"]),
+            );
+
+            assert_eq!(pacer.deadline(), Some(start + GATHER_WINDOW));
+        }
+
+        #[test]
+        fn holds_a_change_after_a_refresh_until_the_pacing_interval_ends() {
+            let (mut pacer, delivered) = refreshed_once(Instant::now());
+
+            pacer.record(delivered + millis(1), paths(&["b"]));
+
+            assert_eq!(pacer.deadline(), Some(delivered + PACING_INTERVAL));
+        }
+
+        #[test]
+        fn releases_every_change_held_during_the_pacing_interval_together() {
+            let (mut pacer, delivered) = refreshed_once(Instant::now());
+            pacer.record(delivered + millis(50), paths(&["c"]));
+            pacer.record(delivered + millis(100), paths(&["b"]));
+            pacer.record(delivered + millis(200), paths(&["c"]));
+
+            let released = pacer.release(delivered + PACING_INTERVAL, unlocked);
+
+            assert_eq!(released, Some(batch(&["b", "c"])));
+        }
+
+        #[test]
+        fn gives_a_change_after_a_quiet_interval_the_gather_window_again() {
+            let (mut pacer, delivered) = refreshed_once(Instant::now());
+            let quiet = delivered + PACING_INTERVAL + millis(1);
+
+            pacer.record(quiet, paths(&["b"]));
+
+            assert_eq!(pacer.deadline(), Some(quiet + GATHER_WINDOW));
+        }
+
+        #[test]
+        fn gives_a_change_after_a_release_that_refreshed_nothing_the_gather_window() {
+            let start = Instant::now();
+            let released = start + GATHER_WINDOW;
+            let mut pacer = Pacer::default();
+            pacer.record(start, paths(&["target/out.o"]));
+            pacer.release(released, unlocked);
+
+            pacer.record(released + millis(1), paths(&["a"]));
+
+            assert_eq!(pacer.deadline(), Some(released + millis(1) + GATHER_WINDOW));
+        }
+
+        #[test]
+        fn an_unscoped_change_leaves_the_whole_batch_unscoped() {
+            let start = Instant::now();
+            let mut pacer = Pacer::default();
+            pacer.record(start, paths(&["a"]));
+            pacer.record(start, Changes::Unscoped);
+            pacer.record(start, paths(&["b"]));
+
+            let released = pacer.release(start + GATHER_WINDOW, unlocked);
+
+            assert_eq!(released, Some(batch(&[])));
+        }
+
+        mod when_the_index_is_locked {
+            use super::*;
+
+            #[test]
+            fn holds_a_due_batch() {
+                let start = Instant::now();
+                let mut pacer = Pacer::default();
+                pacer.record(start, paths(&["a"]));
+
+                assert_eq!(pacer.release(start + GATHER_WINDOW, locked), None);
+            }
+
+            #[test]
+            fn waits_out_the_lock_patience_from_when_the_batch_fell_due() {
+                let start = Instant::now();
+                let due = start + GATHER_WINDOW;
+                let mut pacer = Pacer::default();
+                pacer.record(start, paths(&["a"]));
+
+                pacer.release(due, locked);
+
+                assert_eq!(pacer.deadline(), Some(due + LOCK_PATIENCE));
+            }
+
+            #[test]
+            fn releases_the_batch_once_the_lock_clears() {
+                let start = Instant::now();
+                let due = start + GATHER_WINDOW;
+                let mut pacer = Pacer::default();
+                pacer.record(start, paths(&["a"]));
+                pacer.release(due, locked);
+                pacer.record(due + millis(40), paths(&["index"]));
+
+                let released = pacer.release(due + millis(40), unlocked);
+
+                assert_eq!(released, Some(batch(&["a", "index"])));
+            }
+
+            #[test]
+            fn releases_the_batch_when_a_lock_outlasts_the_patience() {
+                let start = Instant::now();
+                let due = start + GATHER_WINDOW;
+                let mut pacer = Pacer::default();
+                pacer.record(start, paths(&["a"]));
+                pacer.release(due, locked);
+
+                let released = pacer.release(due + LOCK_PATIENCE, locked);
+
+                assert_eq!(released, Some(batch(&["a"])));
+            }
+        }
+
+        #[test]
+        fn a_rescan_is_an_unscoped_change() {
+            let event = Event::new(EventKind::Any)
+                .add_path("/repo/a".into())
+                .set_flag(notify::event::Flag::Rescan);
+
+            assert_eq!(Changes::of(Ok(event)), Some(Changes::Unscoped));
+        }
+
+        #[test]
+        fn a_rescan_naming_no_path_is_an_unscoped_change() {
+            let event = Event::new(EventKind::Any).set_flag(notify::event::Flag::Rescan);
+
+            assert_eq!(Changes::of(Ok(event)), Some(Changes::Unscoped));
+        }
+
+        #[test]
+        fn a_backend_error_is_an_unscoped_change() {
+            let error = notify::Error::generic("events were lost");
+
+            assert_eq!(Changes::of(Err(error)), Some(Changes::Unscoped));
+        }
+
+        #[test]
+        fn an_event_names_the_paths_it_changed() {
+            let event = Event::new(EventKind::Modify(ModifyKind::Any))
+                .add_path("/repo/a".into())
+                .add_path("/repo/b".into());
+
+            assert_eq!(Changes::of(Ok(event)), Some(paths(&["/repo/a", "/repo/b"])));
+        }
+
+        #[test]
+        fn an_event_without_paths_is_no_change() {
+            let event = Event::new(EventKind::Modify(ModifyKind::Any));
+
+            assert_eq!(Changes::of(Ok(event)), None);
+        }
     }
 }

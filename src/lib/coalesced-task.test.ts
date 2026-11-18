@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createCoalescedTask } from "./coalesced-task.js";
+import { createCoalescedTask, REPO_CHANGE_DELAY_MS } from "./coalesced-task.js";
 import type { Scheduler } from "./scheduler.js";
 
 class TestScheduler implements Scheduler {
@@ -54,7 +54,7 @@ function controlled(): {
 }
 
 describe("createCoalescedTask", () => {
-	it("keeps the first deadline while invalidations continue", async () => {
+	it("starts an idle task's work at once", () => {
 		const scheduler = new TestScheduler();
 		let runs = 0;
 		const task = createCoalescedTask(scheduler, async () => {
@@ -62,17 +62,46 @@ describe("createCoalescedTask", () => {
 		});
 
 		task.invalidate();
-		scheduler.advanceBy(150);
-		task.invalidate();
-		scheduler.advanceBy(49);
-		expect(runs).toBe(0);
 
-		scheduler.advanceBy(1);
-		await Promise.resolve();
 		expect(runs).toBe(1);
 	});
 
-	it("admits one catch-up run after busy invalidations", async () => {
+	it("runs once for one invalidation", async () => {
+		const scheduler = new TestScheduler();
+		let runs = 0;
+		const task = createCoalescedTask(scheduler, async () => {
+			runs += 1;
+		});
+
+		task.invalidate();
+		await Promise.resolve();
+		await Promise.resolve();
+		scheduler.advanceBy(REPO_CHANGE_DELAY_MS);
+
+		expect(runs).toBe(1);
+	});
+
+	it("keeps the deadline after a run while invalidations continue", async () => {
+		const scheduler = new TestScheduler();
+		let runs = 0;
+		const task = createCoalescedTask(scheduler, async () => {
+			runs += 1;
+		});
+		task.invalidate();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		scheduler.advanceBy(150);
+		task.invalidate();
+		scheduler.advanceBy(49);
+		task.invalidate();
+		expect(runs).toBe(1);
+
+		scheduler.advanceBy(1);
+		expect(runs).toBe(2);
+	});
+
+	it("admits one catch-up run, the delay after a long run finishes", async () => {
 		const scheduler = new TestScheduler();
 		const first = controlled();
 		let runs = 0;
@@ -80,9 +109,10 @@ describe("createCoalescedTask", () => {
 			runs += 1;
 			return runs === 1 ? first.promise : Promise.resolve();
 		});
+		const longRunMs = REPO_CHANGE_DELAY_MS * 2;
 
 		task.invalidate();
-		scheduler.advanceBy(200);
+		scheduler.advanceBy(longRunMs);
 		for (let index = 0; index < 10; index += 1) task.invalidate();
 		expect(runs).toBe(1);
 
