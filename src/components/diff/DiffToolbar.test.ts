@@ -362,8 +362,70 @@ describe("DiffToolbar file header", () => {
 		expect(screen.getByTestId("diff-path")).toHaveTextContent("src/main.rs");
 	});
 
+	// jsdom lays nothing out, so these read the declared values that decide
+	// which part of the file name gives way to the controls beside it.
+	it("declares the path to ellipsize inside a container that clips what cannot", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "src/main.rs",
+				selectedOldPath: null,
+			},
+		});
+
+		const path = screen.getByTestId("diff-path");
+
+		expect(ellipsizing(path)).toEqual(ELLIPSIZES);
+		expect(clipping(path.closest(".filename") as HTMLElement)).toEqual({
+			flexShrink: "1",
+			overflow: "hidden",
+		});
+	});
+
+	it("declares a rename's old path to take only the width the new path leaves", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "code/math-util.ts",
+				selectedStatus: "Renamed" as const,
+				selectedOldPath: "util.ts",
+			},
+		});
+
+		const old = getComputedStyle(screen.getByTestId("diff-old-path"));
+
+		expect({
+			flexGrow: old.flexGrow,
+			flexBasis: old.flexBasis,
+			maxWidth: old.maxWidth,
+		}).toEqual({ flexGrow: "1", flexBasis: "0px", maxWidth: "max-content" });
+		expect(ellipsizing(screen.getByTestId("diff-path"))).toEqual(ELLIPSIZES);
+	});
+
 	it("shows no badge until a file is selected", () => {
 		render(DiffToolbar, { props: { ...baseProps, selectedPath: null } });
 		expect(screen.queryByTestId("diff-status-badge")).toBeNull();
 	});
 });
+
+const ELLIPSIZES = {
+	flexShrink: "1",
+	overflow: "hidden",
+	textOverflow: "ellipsis",
+	whiteSpace: "nowrap",
+};
+
+function ellipsizing(element: HTMLElement) {
+	const style = getComputedStyle(element);
+	return {
+		flexShrink: style.flexShrink,
+		overflow: style.overflow,
+		textOverflow: style.textOverflow,
+		whiteSpace: style.whiteSpace,
+	};
+}
+
+function clipping(element: HTMLElement) {
+	const style = getComputedStyle(element);
+	return { flexShrink: style.flexShrink, overflow: style.overflow };
+}

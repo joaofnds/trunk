@@ -10,10 +10,14 @@ directory:
 
     code/util.ts → code/math-util.ts
 
-The old path yields width first, down to `2ch`; the new path never shrinks.
-Measured in the running app from 240px down to 95px: the new path stays fully
-legible while the old path ellipsizes, and the arrow always survives, so the row
-still reads as a rename at every width.
+The old path yields width first, down to `2ch`, and the new path keeps its
+full width until then. Measured in the running app from 240px down to 95px: the
+new path stays fully legible while the old path ellipsizes, and the arrow always
+survives, so the row still reads as a rename at every width. A new path too long
+for the row even with the old path at `2ch` ends in an ellipsis rather than
+running under the row's actions. Narrower than the old path's floor and the
+arrow together, the name is cut at its own edge, so nothing of it is drawn over
+what follows it.
 
 This is what GitLab's diff header does. It repeats the directory when the file
 stayed put, which is real cost, and it is never wrong.

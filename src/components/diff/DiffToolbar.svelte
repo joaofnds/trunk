@@ -145,8 +145,8 @@ const renderedActive = $derived(
 
 	<span class="filename">
 		{#if rename !== null}
-			<!-- The old path yields space first, matching FileRow: it shrinks and
-           ellipsizes while the new path keeps its width. -->
+			<!-- The old path yields space first: it takes only the width the new
+           path leaves, down to its floor, and the new path ellipsizes after. -->
 			<span data-testid="diff-old-path" class="old-path">{rename.from}</span>
 			<span aria-hidden="true" class="rename-arrow">&rarr;</span>
 			<span data-testid="diff-path" class="new-path">{rename.to}</span>
@@ -327,9 +327,11 @@ const renderedActive = $derived(
 	gap: var(--space-1);
 }
 
+/* Clipped, so the parts of a rename that cannot shrink (the old path's floor and
+   the arrow) are cut at its edge rather than drawn over the next control. */
 .filename {
 	flex: 1;
-	min-width: 0;
+	overflow: hidden;
 	display: flex;
 	align-items: baseline;
 	gap: var(--space-1);
@@ -339,8 +341,9 @@ const renderedActive = $derived(
 }
 
 .old-path {
-	flex-shrink: 1;
+	flex: 1 1 0;
 	min-width: 2ch;
+	max-width: max-content;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -351,7 +354,6 @@ const renderedActive = $derived(
 }
 
 .new-path {
-	flex-shrink: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
