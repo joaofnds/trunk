@@ -1368,6 +1368,39 @@ the walkers' reports are gone, so a flow with no row here is not shown clean. Th
 walk did not cover the flows under load, large conflict sets, signing or hooks, or
 remote operations against a real network.
 
+### E11: graph rebuild after a commit, remembering what earlier captures read
+
+Flows I12 to I14 and I18. Every command opens a fresh repository handle, so each graph
+rebuild after a commit, checkout, stash or ref change walked and parsed the whole
+history again, and on a deep history that rebuild sits between the user's action and
+the graph showing its result. Capture now keeps each commit's parents, committer time
+and facts from the last walk, in a memo the open repository owns, and reads only the
+commits it lacks (`d6087c97`, ownership and graft fixes in `9e6ec1b9`). The hypothesis
+was that a rebuild after one new commit would cost a small fraction of a full walk. A
+rebuild within a factor of two of the old one would have refuted it.
+
+The fixture is a generated repository with 30,000 commits on three branches, about 4%
+merges and about 30% of commits in the same second as the one before, in one pack with
+no commit-graph file. Each build ran three times, alternating with the other, on a fresh
+copy: one first capture, then 21 rounds of committing once on `main` and timing one
+capture through a fresh handle. The probe called the backend capture directly in a
+release build on an Apple M5 Pro with 48 GB, so the numbers exclude the commit itself,
+status, the watcher refresh and the frontend.
+
+| Build | First capture (ms) | Rebuild after a commit, median per run (ms) | Range over all 63 rebuilds (ms) |
+|---|---|---|---|
+| Before (`d6087c97^`) | 123.9 to 136.2 | 95.0, 95.3, 104.5 | 94.2 to 114.4 |
+| After (`9e6ec1b9`) | 111.6 to 124.8 | 7.4, 7.4, 7.5 | 7.1 to 8.8 |
+
+The ranges do not overlap, so the hypothesis stands: a rebuild after a commit costs
+about 8% of the old one, and the first capture of a session is no slower. Opening the
+capture's own object handle, which keeps parents correct when `shallow` or
+`info/grafts` changes under an open handle, costs about 0.1 ms. Recapture equality for
+checkout, amend, branch deletion, fetch, stash and stash pop is held by the unit tests
+in `graph.rs` and was not timed here. The memo's memory cost was not measured.
+The [committed E11 record](performance-data/graph-rebuild-2026-11-18.json) holds the
+generator, both probes and every timing.
+
 ### Selection presentation and background limits
 
 Three five-second ScreenCaptureKit attempts used a requested 60 Hz virtual display.
@@ -1400,7 +1433,7 @@ Frequency remains an assumption; no usage telemetry was collected.
 | 3 | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. Settle how often users open large highlighted files in full mode first. The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
 | Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
 | 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Overlapping in-app actions take turns at a per-repository write gate (E09), so none reports a lock failure or drops another's write. Saves, local fetch and watcher refreshes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
-| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. History depth, review size and conflict-region count remain unbenchmarked; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. |
+| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. E11 measured the graph rebuild after a commit at 30,000 commits falling from about 95 to 7.4 ms in the backend capture; the first capture, about 112 to 136 ms, is unchanged and is the open cost there. Review size and conflict-region count remain unbenchmarked, and history depth beyond the graph rebuild too; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. |
 
 The evidence supports retaining current warm diff reuse, mounted-tab reuse,
 coalesced refresh, and the search debounce. It does not support another cache or
