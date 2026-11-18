@@ -321,6 +321,17 @@ fn amend_commit_refuses_when_head_is_not_the_commit_chosen() {
 }
 
 #[test]
+fn amend_commit_reports_a_head_that_will_not_read_rather_than_a_moved_one() {
+    let ctx = TestContext::builder().build();
+
+    let err = ctx
+        .amend_commit_on("0000000000000000000000000000000000000000", "Subject", None)
+        .unwrap_err();
+
+    assert_eq!(err.code, "git_unborn_branch");
+}
+
+#[test]
 fn amend_commit_includes_newly_staged_files() {
     let ctx = TestContext::builder()
         .with_file("README.md", "hello")

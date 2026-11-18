@@ -60,9 +60,9 @@ pub struct AmendRequest<'a> {
 /// # Errors
 ///
 /// Returns `not_open` when `path` names no open repository, `amend_stale` when
-/// HEAD is no longer the commit the user chose to amend, and `commit_error`
-/// carrying git's own output when `git` will not run or refuses the amend,
-/// a hook's refusal included.
+/// HEAD is no longer the commit the user chose to amend, the git error when
+/// HEAD will not read, and `commit_error` carrying git's own output when `git`
+/// will not run or refuses the amend, a hook's refusal included.
 pub fn amend_commit_inner(
     path: &str,
     request: &AmendRequest,
@@ -73,10 +73,10 @@ pub fn amend_commit_inner(
     state_map.hold_for_git(path, |repo| {
         // An amend queued behind a pull or another commit would otherwise
         // replace the commit that landed meanwhile, under this message.
-        if head_if_still(repo, request.expected_head_oid).is_none() {
+        if head_if_still(repo, request.expected_head_oid)?.is_none() {
             return Err(TrunkError::new(
                 "amend_stale",
-                "HEAD moved before the amend ran, so nothing was amended",
+                "HEAD is no longer the commit this amend was opened on, so nothing was amended",
             ));
         }
         run_git_commit(repo_dir, &["--amend", "-m", &message])

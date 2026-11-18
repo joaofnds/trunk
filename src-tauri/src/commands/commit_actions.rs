@@ -717,16 +717,18 @@ pub async fn revert_abort<R: Runtime>(
 /// HEAD's commit, when it is still `expected`, the commit the user acted on.
 ///
 /// An action that waited its turn behind another writer runs on whatever that
-/// writer left. One aimed at HEAD itself, an undo, a redo or an amend, checks
-/// here under its hold that HEAD is still the commit the user saw.
+/// writer left, so an action aimed at HEAD itself checks here, under its hold,
+/// that HEAD is still the commit the user saw.
+///
+/// # Errors
+///
+/// Returns the git error when HEAD will not read, which is not the same as HEAD having moved.
 pub(crate) fn head_if_still<'r>(
     repo: &'r git2::Repository,
     expected: &str,
-) -> Option<git2::Commit<'r>> {
-    repo.head()
-        .and_then(|h| h.peel_to_commit())
-        .ok()
-        .filter(|commit| commit.id().to_string() == expected)
+) -> Result<Option<git2::Commit<'r>>, TrunkError> {
+    let head = repo.head()?.peel_to_commit()?;
+    Ok((head.id().to_string() == expected).then_some(head))
 }
 
 /// Soft-reset HEAD by one commit, returning the commit it took back and where HEAD landed, so
@@ -736,8 +738,8 @@ pub(crate) fn head_if_still<'r>(
 ///
 /// Returns `not_open` when `path` names no open repository, `undo_stale` when HEAD is no
 /// longer `expected_head_oid`, the commit the user pressed Undo on, `nothing_to_undo` for the
-/// initial commit, `merge_commit` for a merge, and `undo_error` carrying git's own message
-/// when the reset fails.
+/// initial commit, `merge_commit` for a merge, `undo_error` carrying git's own message when
+/// the reset fails, and the git error when HEAD will not read.
 pub fn undo_commit_inner(
     path: &str,
     expected_head_oid: &str,
@@ -747,10 +749,10 @@ pub fn undo_commit_inner(
     state_map.hold_for_git(path, |repo| {
         // An undo queued behind a pull or a commit would otherwise take back the
         // commit that landed meanwhile, not the one the user pressed Undo on.
-        let Some(head) = head_if_still(repo, expected_head_oid) else {
+        let Some(head) = head_if_still(repo, expected_head_oid)? else {
             return Err(TrunkError::new(
                 "undo_stale",
-                "HEAD moved before the undo ran, so nothing was undone",
+                "HEAD is no longer the commit Undo was pressed on, so nothing was undone",
             ));
         };
 
@@ -815,7 +817,7 @@ fn run_git_reset(dir: &std::path::Path, args: &[&str], code: &str) -> Result<(),
 /// Returns `not_open` when `path` names no open repository, `redo_stale` when the redo names a
 /// different repository, HEAD has moved since the undo, or the named commit's one parent is not
 /// HEAD, `redo_missing` when the named commit is not in the repository, `redo_error` when the
-/// reset fails, and the git error when the commit will not read.
+/// reset fails, and the git error when HEAD or the commit will not read.
 pub fn redo_commit_inner(
     path: &str,
     request: &RedoRequest,
@@ -832,7 +834,7 @@ pub fn redo_commit_inner(
     }
     let repo_dir = state_map.path_for(path)?;
     state_map.hold_for_git(path, |repo| {
-        let Some(current) = head_if_still(repo, request.expected_head_oid).map(|c| c.id()) else {
+        let Some(current) = head_if_still(repo, request.expected_head_oid)?.map(|c| c.id()) else {
             return Err(TrunkError::new(
                 "redo_stale",
                 "HEAD has moved since the undo; refusing to redo onto unrelated history",

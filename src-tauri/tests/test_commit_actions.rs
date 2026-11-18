@@ -207,19 +207,23 @@ fn cherry_pick_of_a_change_head_already_has_ends_the_pick_and_says_so() {
 
 #[test]
 fn undo_commit_refuses_when_head_is_not_the_commit_it_was_pressed_on() {
-    let ctx = TestContext::builder()
-        .with_file("file.txt", "hello")
-        .with_commit("Initial commit")
-        .with_file("second.txt", "content")
-        .with_commit("Second commit")
-        .build();
-    let first = ctx.resolve_ref("HEAD~1").unwrap();
-    let second = ctx.resolve_ref("HEAD").unwrap();
+    let (ctx, first, second) = build_two_commit_ctx();
 
     let err = ctx.undo_commit_on(&first).unwrap_err();
 
     assert_eq!(err.code, "undo_stale");
     assert_eq!(ctx.resolve_ref("HEAD").unwrap(), second);
+}
+
+#[test]
+fn undo_commit_reports_a_head_that_will_not_read_rather_than_a_moved_one() {
+    let ctx = TestContext::builder().build();
+
+    let err = ctx
+        .undo_commit_on("0000000000000000000000000000000000000000")
+        .unwrap_err();
+
+    assert_eq!(err.code, "git_unborn_branch");
 }
 
 #[test]
