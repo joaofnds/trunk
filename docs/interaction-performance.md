@@ -1319,6 +1319,7 @@ and the uncommitted-changes row never shows as selected (TRUNK-455).
 | I16 | The reset dialogs named neither the branch nor the commit | `4c7d711f`, `d8d18101` |
 | I16 | A checkout refused over local changes advised stashing them, which Stash refuses while the changes are unstaged | `2e60aa0a` |
 | I15 | The merge editor's conflict headers had the same accessible name in both panes and did not say which side was taken, or that a side was partly taken | `0d5fc406`, `1cb79633` |
+| I15 | The merge editor and a conflicted file's Take All Current and Take All Incoming showed and saved a second merge run in TypeScript, which merged hunks git left in conflict, raised conflicts git had merged, and saved the current side of a file git does not merge. A conflict between symbolic links was read and saved through the link | `e75a157c`, `ef15db6c` |
 
 Three defects stay open, each on a board card awaiting admission with the product
 question its fix depends on. Mark All Resolved and a folder's Resolve All stage a file
