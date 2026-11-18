@@ -30,6 +30,8 @@ drive = [
   "objc2-web-kit/WKSnapshotConfiguration",
   "objc2-app-kit/NSApplication",
   "objc2-app-kit/NSBitmapImageRep",
+  "objc2-app-kit/NSEvent",
+  "objc2-app-kit/NSGraphicsContext",
   "objc2-app-kit/NSImage",
   "objc2-app-kit/NSImageRep",
   "objc2-app-kit/NSMenu",
@@ -37,6 +39,8 @@ drive = [
   "objc2-app-kit/NSTextField",
   "objc2-foundation/NSData",
   "objc2-foundation/NSDictionary",
+  "objc2-foundation/NSGeometry",
+  "objc2-foundation/NSProcessInfo",
 ]
 
 [build-dependencies]

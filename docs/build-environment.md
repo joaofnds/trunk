@@ -319,9 +319,13 @@ Five places where the drive instance differs from the app a user runs:
 
 - `click`, `type` and `key` send DOM events to the page, not keystrokes to the
   app. `type` appends to the field's value, and a shortcut the native menu owns,
-  such as Cmd+F, undo or paste, never reaches the menu. `menu-bar Edit Find`
-  fires Find. Whether `menu-bar` can fire undo or paste is unverified, since
-  their actions go to the key window and a drive window never is one.
+  such as Cmd+F, undo or paste, never reaches the menu. `chord Meta+z` sends a
+  modifier and a letter as an `NSEvent` along AppKit's order for a key
+  equivalent, the window's views and so the page first, then the menu bar, and
+  prints which stage took it. `menu-bar Edit Find` fires Find. Undo and paste
+  do nothing through `menu-bar` or `chord`, because their actions go to the key
+  window's first responder and a drive window never is the key window, so a
+  text field's own undo cannot be seen through the drive route.
 - A context menu is recorded rather than shown, because a menu with no position
   opens under the real cursor and its tracking loop takes the user's input.
   `menu` reads it and `choose` fires an item by its label path, as `choose
@@ -341,7 +345,7 @@ Five places where the drive instance differs from the app a user runs:
 Message dialogs are the real ones, shown as a sheet on the drive window.
 
 `just drive-smoke` runs two instances side by side and commits through one, and
-`just drive-native` runs the menu, dialog and picker paths. Both also check from
+`just drive-native` runs the menu, dialog, picker and key-equivalent paths. Both also check from
 a log of application activations that no instance became active. They launch
 apps, so `just check` does not run them. Run them after a change to the route.
 

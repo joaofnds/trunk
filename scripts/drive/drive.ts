@@ -20,6 +20,7 @@
  *   bun scripts/drive/drive.ts context <role> <name> [--in <landmark role>]
  *   bun scripts/drive/drive.ts type <role> <name> <text> [--in <landmark role>]
  *   bun scripts/drive/drive.ts key <key, as Escape or Meta+Enter>
+ *   bun scripts/drive/drive.ts chord <modifiers and a letter, as Meta+Shift+z, pressed through AppKit>
  *   bun scripts/drive/drive.ts list <role>
  *   bun scripts/drive/drive.ts snapshot <png path>
  *   bun scripts/drive/drive.ts press <button title>
@@ -135,6 +136,8 @@ async function run(): Promise<unknown> {
 			return callHook(instance(), "choose", rest, DEADLINE_MS);
 		case "menu-bar":
 			return request(instance(), { op: "menu-bar", path: rest }, DEADLINE_MS);
+		case "chord":
+			return request(instance(), { op: "chord", chord: rest[0] }, DEADLINE_MS);
 		case "picker":
 			return hook("picker", 0);
 		case "pick": {
@@ -150,7 +153,7 @@ async function run(): Promise<unknown> {
 			return request(instance(), { op: "quit" }, DEADLINE_MS);
 		default:
 			throw new UsageError(
-				"usage: drive.ts launch|ping|rows|eval|until|invoke|click|context|type|key|list|snapshot|alert|drawing|press|menu|choose|menu-bar|picker|pick|dismiss-picker|quit",
+				"usage: drive.ts launch|ping|rows|eval|until|invoke|click|context|type|key|list|snapshot|alert|drawing|press|menu|choose|menu-bar|chord|picker|pick|dismiss-picker|quit",
 			);
 	}
 }

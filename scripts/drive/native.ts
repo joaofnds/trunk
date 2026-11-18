@@ -4,6 +4,9 @@
  * app menu bar's Edit > Find opens the history search bar. Delete, chosen from
  * the context menu of a branch a linked worktree is rebasing, shows a dialog
  * naming that worktree with OK as its only button, and OK leaves the branch.
+ * Cmd+Z, pressed through AppKit's key path, undoes the last commit, and
+ * Cmd+Shift+Z redoes it, which only holds while the page meets those keys
+ * before the Edit menu's own Undo and Redo do.
  * Open Repository, answered with a path, opens that repository's commits. The
  * instance never becomes the active application. Run by `just drive-native`.
  *
@@ -57,6 +60,7 @@ await driveScenario(
 		// runs.
 		for (const step of [
 			deleteTheRebasingBranch,
+			undoAndRedoFromTheKeyboard,
 			readTheResetSubmenu,
 			openAnotherRepository,
 			findFromTheMenuBar,
@@ -72,7 +76,8 @@ await driveScenario(
 );
 
 /** A repository whose branch `feature` is checked out in a linked worktree
- *  stopped partway through an interactive rebase. Its commits are unsigned,
+ *  stopped partway through an interactive rebase, and whose `main` is a
+ *  commit ahead of it, since Undo refuses a root commit. Its commits are unsigned,
  *  as the fixture corpus's are, since a signing key's passphrase prompt would
  *  draw on the operator's screen. */
 function seedRebasingWorktree(): void {
@@ -81,6 +86,16 @@ function seedRebasingWorktree(): void {
 	git(repo, "add", "f");
 	git(repo, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "base");
 	git(repo, "branch", "feature");
+	writeFileSync(join(repo, "f"), "b\n");
+	git(
+		repo,
+		"-c",
+		"commit.gpgsign=false",
+		"commit",
+		"--quiet",
+		"-am",
+		"main one",
+	);
 	git(repo, "worktree", "add", "--quiet", worktree, "feature");
 	writeFileSync(join(worktree, "g"), "c\n");
 	git(worktree, "add", "g");
@@ -178,6 +193,47 @@ async function deleteTheRebasingBranch(instance: Instance): Promise<void> {
 		"after OK, git branch --list still lists feature",
 		`git branch --list shows ${JSON.stringify(branches)}`,
 	);
+}
+
+async function undoAndRedoFromTheKeyboard(instance: Instance): Promise<void> {
+	const head = git(repo, "rev-parse", "HEAD");
+	const parent = git(repo, "rev-parse", "HEAD~1");
+	await until(instance, toolbarButtonEnabled("Undo"), DEADLINE_MS);
+
+	const undo = await request(
+		instance,
+		{ op: "chord", chord: "Meta+z" },
+		DEADLINE_MS,
+	);
+	// The parent is a root commit, which Undo refuses, so Undo going off shows
+	// the toolbar has read where HEAD went.
+	await until(
+		instance,
+		`${toolbarButtonEnabled("Redo")} && !(${toolbarButtonEnabled("Undo")})`,
+		DEADLINE_MS,
+	);
+	const undone = git(repo, "rev-parse", "HEAD");
+	check(
+		undone === parent,
+		`Cmd+Z, taken by the ${(undo as { takenBy?: string } | null)?.takenBy} stage, moves HEAD from main one back to its parent`,
+		`after Cmd+Z HEAD is ${undone}, not the parent ${parent}`,
+	);
+
+	await request(instance, { op: "chord", chord: "Meta+Shift+z" }, DEADLINE_MS);
+	// Redo drops its button as it starts, and Undo returns once HEAD is back on
+	// a commit it can undo.
+	await until(instance, toolbarButtonEnabled("Undo"), DEADLINE_MS);
+	const redone = git(repo, "rev-parse", "HEAD");
+	check(
+		redone === head,
+		"Cmd+Shift+Z puts HEAD back on main one",
+		`after Cmd+Shift+Z HEAD is ${redone}, not main one at ${head}`,
+	);
+}
+
+/** An expression for whether the toolbar's button named `name` is enabled. */
+function toolbarButtonEnabled(name: string): string {
+	return `document.querySelector('[aria-label="${name}"]')?.disabled === false`;
 }
 
 async function readTheResetSubmenu(instance: Instance): Promise<void> {

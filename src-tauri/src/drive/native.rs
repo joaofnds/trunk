@@ -18,11 +18,13 @@ use objc2::rc::Retained;
 use objc2::runtime::{NSObjectProtocol, ProtocolObject};
 use objc2::{MainThreadMarker, Message, msg_send, sel};
 use objc2_app_kit::{
-    NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSButton, NSImage, NSMenu, NSTextField,
-    NSView, NSWindowOcclusionState, NSWindowWillBeginSheetNotification,
+    NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSButton, NSEvent,
+    NSEventModifierFlags, NSEventType, NSImage, NSMenu, NSTextField, NSView,
+    NSWindowOcclusionState, NSWindowWillBeginSheetNotification,
 };
 use objc2_foundation::{
-    NSDictionary, NSError, NSNotification, NSNotificationCenter, NSOperationQueue, NSString,
+    NSDictionary, NSError, NSNotification, NSNotificationCenter, NSOperationQueue, NSPoint,
+    NSProcessInfo, NSString,
 };
 use objc2_web_kit::WKWebView;
 use serde_json::{Value, json};
@@ -293,6 +295,87 @@ pub fn choose_menu_bar(path: Vec<String>) -> Result<Value, String> {
         Ok(Value::Null)
     })?
 }
+
+/// Presses `chord`, a letter after any of `Meta+`, `Shift+`, `Ctrl+` and
+/// `Alt+` as in `Meta+Shift+z`, the way `AppKit` routes a key pressed in the key
+/// window, and answers which stage took it: the window's views, which hold the
+/// page, the menu bar's key equivalents, or else the window's first responder.
+///
+/// That order is `NSApplication`'s for a key equivalent ("The Path of Key
+/// Events" in Apple's Cocoa Event Handling Guide). The drive window is never
+/// the key window, since it never takes focus, and `NSApplication` would hand
+/// the key to the menu bar alone, so the drive walks the same stages against
+/// the drive window by name.
+pub fn chord(webview: WebViewAddress, chord: String) -> Result<Value, String> {
+    let (flags, letter) = parse_chord(&chord)?;
+    let code = ANSI_LETTER_CODES[usize::from(letter - b'a')];
+    let typed = if flags.contains(NSEventModifierFlags::Shift) {
+        letter.to_ascii_uppercase()
+    } else {
+        letter
+    };
+    on_main(move |main| {
+        // SAFETY: the address is the live WKWebView, read on the main thread.
+        let webview: &WKWebView = unsafe { &*(webview.0 as *const WKWebView) };
+        let window = webview.window().ok_or("the page has no window")?;
+        let keys = NSString::from_str(&char::from(typed).to_string());
+        let time = NSProcessInfo::processInfo().systemUptime();
+        let key = |kind| {
+            NSEvent::keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode(
+                kind,
+                NSPoint::ZERO,
+                flags,
+                time,
+                window.windowNumber(),
+                None,
+                &keys,
+                &keys,
+                false,
+                code,
+            )
+            .ok_or("AppKit made no key event")
+        };
+        let (down, up) = (key(NSEventType::KeyDown)?, key(NSEventType::KeyUp)?);
+
+        let taken_by = if window.performKeyEquivalent(&down) {
+            "window"
+        } else if NSApplication::sharedApplication(main)
+            .mainMenu()
+            .is_some_and(|menu| menu.performKeyEquivalent(&down))
+        {
+            "menu bar"
+        } else {
+            window.sendEvent(&down);
+            "first responder"
+        };
+        window.sendEvent(&up);
+        Ok(json!({ "takenBy": taken_by }))
+    })?
+}
+
+fn parse_chord(chord: &str) -> Result<(NSEventModifierFlags, u8), String> {
+    let (held, key) = chord.rsplit_once('+').unwrap_or(("", chord));
+    let mut flags = NSEventModifierFlags::empty();
+    for modifier in held.split('+').filter(|name| !name.is_empty()) {
+        flags |= match modifier {
+            "Meta" => NSEventModifierFlags::Command,
+            "Shift" => NSEventModifierFlags::Shift,
+            "Ctrl" => NSEventModifierFlags::Control,
+            "Alt" => NSEventModifierFlags::Option,
+            other => return Err(format!("{other} is not Meta, Shift, Ctrl or Alt")),
+        };
+    }
+    match key.as_bytes() {
+        [letter @ b'a'..=b'z'] => Ok((flags, *letter)),
+        _ => Err(format!("{key} is not a lowercase letter")),
+    }
+}
+
+/// The virtual key code of each letter on an ANSI keyboard, from `a` to `z`
+/// (`kVK_ANSI_A` and the rest in Carbon's `Events.h`).
+const ANSI_LETTER_CODES: [u16; 26] = [
+    0, 11, 8, 2, 14, 3, 5, 4, 34, 38, 40, 37, 46, 45, 31, 35, 12, 15, 1, 17, 32, 9, 13, 7, 16, 6,
+];
 
 /// The actions of the standard menu items (muda-0.20.0
 /// `platform_impl/macos/mod.rs`, `PredefinedMenuItemType`) that draw a window,
