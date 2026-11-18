@@ -5,6 +5,7 @@ import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
 import { commentingLeaf } from "../../__tests__/helpers/review-props.js";
 import { aThread } from "../../__tests__/helpers/thread-fixture.js";
 import { describeThreadedCommentActions } from "../../__tests__/helpers/threaded-comment-actions.js";
+import { CONTROL_SM_HEIGHT } from "../../lib/chrome-heights.js";
 import { FIXED_ROW_HEIGHTS } from "../../lib/diff-rows.js";
 import { safeInvoke } from "../../lib/invoke.js";
 import type { DiffLine, FileDiff } from "../../lib/types.js";
@@ -531,6 +532,17 @@ describe("SplitView thread marker", () => {
 });
 
 describe("SplitView selection comment", () => {
+	it("leaves room under the last line for the action to hang into", () => {
+		const { container } = render(SplitView, { props: defaultProps() });
+
+		// The 28px hunk header and three 18px rows, the second removed line
+		// sharing none, then the space.
+		expect(
+			container.querySelector<HTMLElement>(".exact-virtual-content")?.style
+				.height,
+		).toBe(`${82 + CONTROL_SM_HEIGHT}px`);
+	});
+
 	function cellsOf(text: string): HTMLElement[] {
 		return screen
 			.getAllByText(text)

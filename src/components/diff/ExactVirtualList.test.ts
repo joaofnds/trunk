@@ -321,17 +321,19 @@ describe("ExactVirtualList", () => {
 		it("sizes a short list's surface to hold the space", () => {
 			const { container } = mountHeights([40, 80, 30], TRAILING_SPACE);
 
-			expect(heightOf(container, ".exact-virtual-surface")).toBe("170px");
+			expect(heightOf(container, ".exact-virtual-surface")).toBe(
+				`${150 + TRAILING_SPACE}px`,
+			);
 		});
 
-		it("lets the last row scroll up through the space", async () => {
+		it("lets the last row scroll up through the space and no further", async () => {
 			const { container } = mountHeights(
 				[40, 80, 30, 150, 60, 140, 80, 120, 50, 150, 100],
 				TRAILING_SPACE,
 			);
 			const viewport = viewportOf(container);
 
-			viewport.scrollTop = 820;
+			viewport.scrollTop = 920;
 			viewport.dispatchEvent(new Event("scroll"));
 			await tick();
 

@@ -34,7 +34,9 @@ with complete row coverage, including in a standalone WKWebView with all rows mo
 
 The list separates the logical scroll extent from the painted surface:
 
-- The outer viewport scrolls natively over the exact total height `T`.
+- The outer viewport scrolls natively over the extent `T`: the exact total row height
+  plus the trailing space the view passes, which keeps the selection's Comment action
+  whole where it hangs below the last line. A list with no rows has no trailing space.
 - A `position: sticky; top: 0` surface inside that extent has height `min(H, T)`,
   where `H` is the viewport height. It stays at the viewport while scrolling inside
   the file bounds. Its height is part of the extent, not added to it.

@@ -9,6 +9,7 @@ import {
 import { commentingDiff } from "../../__tests__/helpers/review-props.js";
 import { aThread } from "../../__tests__/helpers/thread-fixture";
 import { describeThreadedCommentActions } from "../../__tests__/helpers/threaded-comment-actions.js";
+import { CONTROL_SM_HEIGHT } from "../../lib/chrome-heights.js";
 import { safeInvoke } from "../../lib/invoke.js";
 import {
 	disablePerf,
@@ -18,7 +19,6 @@ import {
 } from "../../lib/perf.js";
 import type { FileDiff } from "../../lib/types.js";
 import FullFileView from "./FullFileView.svelte";
-import { SELECTION_COMMENT_CLEARANCE } from "./SelectionComment.svelte";
 
 // Command-aware safeInvoke dispatcher, matching ReviewPanel.test.ts's pattern:
 // the threaded comment actions route through safeInvoke via
@@ -529,7 +529,7 @@ describe("FullFileView", () => {
 		// 9px per character over a 900px pane leaves 87 columns beside the marker
 		// column, so 174 columns is two 18px lines; row 5 therefore starts at 180px.
 		expect(content.getAttribute("style")).toContain(
-			`height: ${360 + SELECTION_COMMENT_CLEARANCE}px`,
+			`height: ${360 + CONTROL_SM_HEIGHT}px`,
 		);
 		viewport.scrollTop = 180;
 		viewport.dispatchEvent(new Event("scroll"));
@@ -544,7 +544,7 @@ describe("FullFileView", () => {
 
 		// 37 columns now, so 174 columns is five lines and row 5 starts at 450px.
 		expect(content.getAttribute("style")).toContain(
-			`height: ${900 + SELECTION_COMMENT_CLEARANCE}px`,
+			`height: ${900 + CONTROL_SM_HEIGHT}px`,
 		);
 		expect(viewport.scrollTop).toBe(450);
 
@@ -694,9 +694,9 @@ describe("FullFileView", () => {
 		for (const resize of resizes) resize();
 		await tick();
 
-		expect(before).toContain(`height: ${490 + SELECTION_COMMENT_CLEARANCE}px`);
+		expect(before).toContain(`height: ${490 + CONTROL_SM_HEIGHT}px`);
 		expect(content.getAttribute("style")).toContain(
-			`height: ${990 + SELECTION_COMMENT_CLEARANCE}px`,
+			`height: ${990 + CONTROL_SM_HEIGHT}px`,
 		);
 
 		vi.unstubAllGlobals();

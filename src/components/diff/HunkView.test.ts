@@ -5,6 +5,7 @@ import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
 import { commentingLeaf } from "../../__tests__/helpers/review-props.js";
 import { aThread } from "../../__tests__/helpers/thread-fixture.js";
 import { describeThreadedCommentActions } from "../../__tests__/helpers/threaded-comment-actions.js";
+import { CONTROL_SM_HEIGHT } from "../../lib/chrome-heights.js";
 import { safeInvoke } from "../../lib/invoke.js";
 import {
 	disablePerf,
@@ -501,6 +502,16 @@ describe("HunkView composer", () => {
 });
 
 describe("HunkView selection comment", () => {
+	it("leaves room under the last line for the action to hang into", () => {
+		const { container } = render(HunkView, { props: defaultProps() });
+
+		// The 28px hunk header and two 18px lines, then the space.
+		expect(
+			container.querySelector<HTMLElement>(".exact-virtual-content")?.style
+				.height,
+		).toBe(`${64 + CONTROL_SM_HEIGHT}px`);
+	});
+
 	function rowOf(text: string): HTMLElement {
 		return screen.getByText(text).closest(".diff-line") as HTMLElement;
 	}

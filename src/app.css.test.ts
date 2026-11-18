@@ -224,10 +224,12 @@ describe("tokens.css lengths", () => {
 		expect(unread).toEqual([]);
 	});
 
-	it("gives the virtualized bars, rows and small controls the heights their constants assume", () => {
-		expect(multiple("--bar-h") * UNIT).toBe(BAR_HEIGHT);
-		expect(multiple("--row-h") * UNIT).toBe(ROW_HEIGHT);
-		expect(multiple("--control-sm-h") * UNIT).toBe(CONTROL_SM_HEIGHT);
+	it.each([
+		{ token: "--bar-h", constant: BAR_HEIGHT },
+		{ token: "--row-h", constant: ROW_HEIGHT },
+		{ token: "--control-sm-h", constant: CONTROL_SM_HEIGHT },
+	])("gives $token the height its constant assumes", ({ token, constant }) => {
+		expect(multiple(token) * UNIT).toBe(constant);
 	});
 
 	/* WCAG 2.2 SC 2.5.8 asks for 24 CSS px. The sidebar's toggles and the slots that
