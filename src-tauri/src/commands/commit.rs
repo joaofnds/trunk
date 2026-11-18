@@ -1,3 +1,4 @@
+use crate::commands::commit_actions::head_if_still;
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::HeadCommitMessage;
@@ -44,23 +45,40 @@ pub fn create_commit_inner(
     state_map.hold_for_git(path, |_| run_git_commit(repo_dir, &["-m", &message]))
 }
 
+/// An amend as its caller names it. Its strings travel as named fields: passed
+/// positionally, a swapped subject and oid would still compile.
+pub struct AmendRequest<'a> {
+    pub subject: &'a str,
+    pub body: Option<&'a str>,
+    /// The commit the user chose to amend, HEAD when they did.
+    pub expected_head_oid: &'a str,
+}
+
 /// Replace HEAD's commit through `git commit --amend`, with the current index
 /// and a new message. The original author stays, as in the terminal.
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, and `commit_error`
+/// Returns `not_open` when `path` names no open repository, `amend_stale` when
+/// HEAD is no longer the commit the user chose to amend, and `commit_error`
 /// carrying git's own output when `git` will not run or refuses the amend,
 /// a hook's refusal included.
 pub fn amend_commit_inner(
     path: &str,
-    subject: &str,
-    body: Option<&str>,
+    request: &AmendRequest,
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    let message = build_message(subject, body);
+    let message = build_message(request.subject, request.body);
     let repo_dir = state_map.path_for(path)?;
-    state_map.hold_for_git(path, |_| {
+    state_map.hold_for_git(path, |repo| {
+        // An amend queued behind a pull or another commit would otherwise
+        // replace the commit that landed meanwhile, under this message.
+        if head_if_still(repo, request.expected_head_oid).is_none() {
+            return Err(TrunkError::new(
+                "amend_stale",
+                "HEAD moved before the amend ran, so nothing was amended",
+            ));
+        }
         run_git_commit(repo_dir, &["--amend", "-m", &message])
     })
 }
@@ -120,6 +138,7 @@ pub fn get_head_commit_message_inner(
     let repo = state_map.open(path)?;
     let commit = repo.head()?.peel_to_commit()?;
     Ok(HeadCommitMessage {
+        oid: commit.id().to_string(),
         subject: commit.summary().ok().flatten().unwrap_or("").to_owned(),
         body: commit.body().ok().flatten().map(str::to_owned),
     })
@@ -212,6 +231,7 @@ pub async fn amend_commit<R: Runtime>(
     path: String,
     subject: String,
     body: Option<String>,
+    expected_head_oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
@@ -222,7 +242,15 @@ pub async fn amend_commit<R: Runtime>(
     let path_clone = path.clone();
     rebuild
         .rebuild(path.clone(), move || {
-            amend_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
+            amend_commit_inner(
+                &path_clone,
+                &AmendRequest {
+                    subject: &subject,
+                    body: body.as_deref(),
+                    expected_head_oid: &expected_head_oid,
+                },
+                &state_map,
+            )?;
             refresh_commit_cache(&path_clone, &state_map)
         })
         .await

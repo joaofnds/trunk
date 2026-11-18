@@ -1,7 +1,7 @@
 <script lang="ts">
 import { untrack } from "svelte";
 import { reportErrorDialog, reportErrorToast } from "../lib/error-report.js";
-import { safeInvoke } from "../lib/invoke.js";
+import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { shortcutModifier } from "../lib/keyboard.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { HeadCommitMessage } from "../lib/types.js";
@@ -31,6 +31,10 @@ let draftSubject = $state(untrack(() => initialSubject) ?? "");
 let draftBody = $state(untrack(() => initialBody) ?? "");
 let amendSubject = $state("");
 let amendBody = $state("");
+// The commit the amend buffer was opened on. The amend names it, and the
+// backend refuses once HEAD is another commit, so a pull or a commit landing
+// meanwhile is never replaced under this message.
+let amendHeadOid = $state<string | null>(null);
 let mode = $state<"commit" | "amend" | "stash">("commit");
 let committing = $state(false);
 let subjectError = $state("");
@@ -101,6 +105,7 @@ async function handleModeSwitch(newMode: "commit" | "amend" | "stash") {
 	// buffer holds kept amend edits — leave them alone. The draft is never read
 	// or written here, so it survives untouched.
 	if (newMode === "amend" && amendSubject === "" && amendBody === "") {
+		amendHeadOid = null;
 		try {
 			const msg = await safeInvoke<HeadCommitMessage>(
 				"get_head_commit_message",
@@ -108,9 +113,12 @@ async function handleModeSwitch(newMode: "commit" | "amend" | "stash") {
 					path: repoPath,
 				},
 			);
-			// Guard the stale prefill: only apply if we're still in amend with an
-			// untouched buffer. Leaving amend or typing during the fetch invalidates it.
-			if (mode === "amend" && amendSubject === "" && amendBody === "") {
+			if (mode !== "amend") return;
+			// Text typed during the fetch was typed with this HEAD on screen.
+			amendHeadOid ??= msg.oid;
+			// Guard the stale prefill: only apply with an untouched buffer. Typing
+			// during the fetch invalidates it.
+			if (amendSubject === "" && amendBody === "") {
 				amendSubject = msg.subject;
 				amendBody = msg.body ?? "";
 			}
@@ -153,12 +161,14 @@ async function handleSubmit() {
 				path: repoPath,
 				subject: subject.trim(),
 				body: body.trim() || null,
+				expectedHeadOid: await amendTarget(),
 			});
 			// Amend never touches the WIP draft: clear only the amend buffer so the
 			// next amend re-fetches fresh HEAD, and leave the draft (and its parent
 			// callbacks) alone.
 			amendSubject = "";
 			amendBody = "";
+			amendHeadOid = null;
 		} else if (mode === "stash") {
 			await safeInvoke("stash_save", {
 				path: repoPath,
@@ -176,6 +186,9 @@ async function handleSubmit() {
 		}
 		mode = "commit"; // Always reset to commit mode after any successful operation
 	} catch (e) {
+		// The buffer stays, and the next Amend is aimed at HEAD as it is then,
+		// which the dialog has just told the user moved.
+		if (isTrunkError(e) && e.code === "amend_stale") amendHeadOid = null;
 		if (mode === "stash") {
 			reportErrorToast(e, "Stash failed");
 		} else {
@@ -185,6 +198,16 @@ async function handleSubmit() {
 	} finally {
 		committing = false;
 	}
+}
+
+// The commit this amend replaces: the one the buffer was opened on, or HEAD now
+// when no fetch has named one.
+async function amendTarget(): Promise<string> {
+	if (amendHeadOid !== null) return amendHeadOid;
+	const head = await safeInvoke<HeadCommitMessage>("get_head_commit_message", {
+		path: repoPath,
+	});
+	return head.oid;
 }
 
 function submitOnModEnter(e: KeyboardEvent) {

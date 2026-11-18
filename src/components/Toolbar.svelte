@@ -172,10 +172,18 @@ async function handleUndo() {
 
 	movingHeadIn.add(path);
 	try {
+		// HEAD as the press finds it. The toolbar's own read trails the graph,
+		// which can already show the commit the user means to undo. The backend
+		// refuses once HEAD is not this commit, so an undo queued behind a pull
+		// never takes back a commit that landed after the press.
+		const expectedHeadOid = await safeInvoke<string | null>("head_oid", {
+			path,
+		});
+		if (expectedHeadOid === null) return;
 		const result = await safeInvoke<{
 			head_oid: string;
 			undone_oid: string;
-		}>("undo_commit", { path });
+		}>("undo_commit", { path, expectedHeadOid });
 		undoRedo.push({
 			undoneOid: result.undone_oid,
 			headOid: result.head_oid,

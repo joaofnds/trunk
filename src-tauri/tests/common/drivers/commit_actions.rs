@@ -113,9 +113,16 @@ impl TestContext {
         ))
     }
 
-    /// Undo the last commit (soft reset HEAD~1), returning the commit it took back
+    /// Undo the last commit (soft reset HEAD~1) as a user who sees HEAD now and presses Undo,
+    /// returning the commit it took back
     pub fn undo_commit(&self) -> Result<UndoResult, TrunkError> {
-        commit_actions::undo_commit_inner(self.path(), self.state_map())
+        let head = self.resolve_ref("HEAD").expect("HEAD did not resolve");
+        self.undo_commit_on(&head)
+    }
+
+    /// Undo as a user who pressed Undo while HEAD was `expected_head`.
+    pub fn undo_commit_on(&self, expected_head: &str) -> Result<UndoResult, TrunkError> {
+        commit_actions::undo_commit_inner(self.path(), expected_head, self.state_map())
     }
 
     /// Redo what `undo` took back, in this repository

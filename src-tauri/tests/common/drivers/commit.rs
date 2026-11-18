@@ -8,8 +8,28 @@ impl TestContext {
         commit::create_commit_inner(self.path(), subject, body, self.state_map())
     }
 
+    /// Amend HEAD as it is when called, as a user who sees it and clicks Amend.
     pub fn amend_commit(&self, subject: &str, body: Option<&str>) -> Result<(), TrunkError> {
-        commit::amend_commit_inner(self.path(), subject, body, self.state_map())
+        let head = self.resolve_ref("HEAD").expect("HEAD did not resolve");
+        self.amend_commit_on(&head, subject, body)
+    }
+
+    /// Amend as a user who chose to amend `expected_head`.
+    pub fn amend_commit_on(
+        &self,
+        expected_head: &str,
+        subject: &str,
+        body: Option<&str>,
+    ) -> Result<(), TrunkError> {
+        commit::amend_commit_inner(
+            self.path(),
+            &commit::AmendRequest {
+                subject,
+                body,
+                expected_head_oid: expected_head,
+            },
+            self.state_map(),
+        )
     }
 
     pub fn get_head_commit_message(&self) -> Result<HeadCommitMessage, TrunkError> {

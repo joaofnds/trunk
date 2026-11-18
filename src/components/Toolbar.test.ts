@@ -837,6 +837,7 @@ describe("Toolbar undo", () => {
 	function renderUndoable(undoCommit: () => Promise<unknown>) {
 		mockInvoke.mockImplementation((cmd: string) => {
 			if (cmd === "check_undo_available") return Promise.resolve(true);
+			if (cmd === "head_oid") return Promise.resolve("head-commit");
 			if (cmd === "undo_commit") return undoCommit();
 			return Promise.resolve(null);
 		});
@@ -851,6 +852,43 @@ describe("Toolbar undo", () => {
 		});
 		return screen.getByRole("button", { name: "Undo" });
 	}
+
+	it("names the HEAD Undo was pressed on", async () => {
+		const undo = renderUndoable(() =>
+			Promise.resolve({ head_oid: "parent", undone_oid: "head-commit" }),
+		);
+		await waitFor(() => expect(undo).toBeEnabled());
+
+		await fireEvent.click(undo);
+
+		expect(mockInvoke).toHaveBeenCalledWith("undo_commit", {
+			path: "/test/repo",
+			expectedHeadOid: "head-commit",
+		});
+	});
+
+	it("aims Undo at HEAD as the press finds it, not the toolbar's last read", async () => {
+		const undo = renderUndoable(() =>
+			Promise.resolve({ head_oid: "head-commit", undone_oid: "revert" }),
+		);
+		await waitFor(() => expect(undo).toBeEnabled());
+		// A commit lands and the graph shows it before the toolbar reads HEAD again.
+		const earlier = mockInvoke.getMockImplementation();
+		mockInvoke.mockImplementation((cmd, args) =>
+			cmd === "head_oid"
+				? Promise.resolve("revert")
+				: (earlier?.(cmd, args) ?? Promise.resolve(null)),
+		);
+
+		await fireEvent.click(undo);
+
+		await waitFor(() =>
+			expect(mockInvoke).toHaveBeenCalledWith("undo_commit", {
+				path: "/test/repo",
+				expectedHeadOid: "revert",
+			}),
+		);
+	});
 
 	it("undoes one commit when Undo is pressed twice", async () => {
 		let undos = 0;

@@ -282,6 +282,7 @@ export type RenderMode = "source" | "rendered";
 export type RenderedDiffStyle = "copies" | "merged";
 
 export interface HeadCommitMessage {
+	oid: string;
 	subject: string;
 	body: string | null;
 }

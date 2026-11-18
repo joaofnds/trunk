@@ -263,6 +263,9 @@ pub struct FileDiff {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeadCommitMessage {
+    /// The commit the message belongs to. An amend names it, so that the commit
+    /// replaced is the one the user was shown, not one that landed meanwhile.
+    pub oid: String,
     pub subject: String,
     pub body: Option<String>,
 }

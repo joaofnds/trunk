@@ -98,7 +98,7 @@ not_open_contract! {
     delete_tag_reports_not_open_for_an_unregistered_repo =>
         |path, state| delete_tag_inner(path, "v1", state);
     undo_commit_reports_not_open_for_an_unregistered_repo =>
-        undo_commit_inner;
+        |path, state| undo_commit_inner(path, "HEAD", state);
     start_interactive_rebase_reports_not_open_for_an_unregistered_repo =>
         |path, state| start_interactive_rebase_blocking(path, Some("HEAD"), &[], Path::new("/tmp"), state);
 }

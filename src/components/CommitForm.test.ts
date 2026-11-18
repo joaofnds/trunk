@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../__tests__/helpers/tauri-mock";
 import { safeInvoke } from "../lib/invoke.js";
+import type { HeadCommitMessage } from "../lib/types.js";
 import CommitForm from "./CommitForm.svelte";
 
 // Mock safeInvoke at the wrapper layer so tests dispatch by command name.
@@ -169,6 +170,7 @@ describe("CommitForm", () => {
 			vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
 				if (cmd === "get_head_commit_message") {
 					return Promise.resolve({
+						oid: "head-1",
 						subject: "Prev subject",
 						body: "Prev body",
 					});
@@ -374,8 +376,7 @@ describe("CommitForm", () => {
 		});
 
 		it("keeps text typed during an in-flight HEAD fetch over the stale prefill", async () => {
-			let resolveHead: (msg: { subject: string; body: string }) => void =
-				() => {};
+			let resolveHead: (msg: HeadCommitMessage) => void = () => {};
 			vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
 				if (cmd === "get_head_commit_message") {
 					return new Promise((resolve) => {
@@ -391,7 +392,11 @@ describe("CommitForm", () => {
 				target: { value: "typed fast" },
 			});
 
-			resolveHead({ subject: "Prev subject", body: "Prev body" });
+			resolveHead({
+				oid: "head-1",
+				subject: "Prev subject",
+				body: "Prev body",
+			});
 			await waitFor(() => expect(subjectInput().value).toBe("typed fast"));
 		});
 
@@ -486,8 +491,7 @@ describe("CommitForm", () => {
 		});
 
 		it("keeps body text typed during an in-flight HEAD fetch over the stale prefill", async () => {
-			let resolveHead: (msg: { subject: string; body: string }) => void =
-				() => {};
+			let resolveHead: (msg: HeadCommitMessage) => void = () => {};
 			vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
 				if (cmd === "get_head_commit_message") {
 					return new Promise((resolve) => {
@@ -503,7 +507,11 @@ describe("CommitForm", () => {
 				target: { value: "typed body" },
 			});
 
-			resolveHead({ subject: "Prev subject", body: "Prev body" });
+			resolveHead({
+				oid: "head-1",
+				subject: "Prev subject",
+				body: "Prev body",
+			});
 			await waitFor(() => expect(bodyTextarea().value).toBe("typed body"));
 			expect(subjectInput().value).toBe("");
 		});
@@ -539,6 +547,100 @@ describe("CommitForm", () => {
 		});
 	});
 
+	describe("aiming an amend at the commit the user saw", () => {
+		let message: typeof import("@tauri-apps/plugin-dialog").message;
+		let heads: string[];
+		let amends: unknown[];
+
+		beforeEach(async () => {
+			({ message } = await import("@tauri-apps/plugin-dialog"));
+			vi.mocked(message).mockClear();
+			vi.mocked(safeInvoke).mockReset();
+			heads = ["head-1"];
+			amends = [];
+			vi.mocked(safeInvoke).mockImplementation((cmd: string, args) => {
+				if (cmd === "get_head_commit_message") {
+					return Promise.resolve({
+						oid: heads[0],
+						subject: "Prev subject",
+						body: null,
+					});
+				}
+				if (cmd === "amend_commit") amends.push(args);
+				return Promise.resolve(undefined);
+			});
+		});
+
+		function subjectInput(): HTMLInputElement {
+			return screen.getByTestId("commit-form-subject") as HTMLInputElement;
+		}
+
+		async function openAmend() {
+			await fireEvent.click(screen.getByRole("tab", { name: "Amend" }));
+			await waitFor(() => expect(subjectInput().value).toBe("Prev subject"));
+		}
+
+		it("names the commit whose message the amend was opened on", async () => {
+			render(CommitForm, { props: defaultProps });
+			await openAmend();
+			heads = ["head-2"];
+
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+
+			await waitFor(() =>
+				expect(amends).toEqual([
+					expect.objectContaining({ expectedHeadOid: "head-1" }),
+				]),
+			);
+		});
+
+		it("keeps the message and aims the next amend at HEAD as it is then once HEAD moved", async () => {
+			const moved = "HEAD moved before the amend ran, so nothing was amended";
+			vi.mocked(safeInvoke).mockImplementation((cmd: string, args) => {
+				if (cmd === "get_head_commit_message") {
+					return Promise.resolve({
+						oid: heads[0],
+						subject: "Prev subject",
+						body: null,
+					});
+				}
+				if (cmd === "amend_commit") {
+					amends.push(args);
+					if (amends.length === 1) {
+						return Promise.reject({ code: "amend_stale", message: moved });
+					}
+				}
+				return Promise.resolve(undefined);
+			});
+			render(CommitForm, { props: defaultProps });
+			await openAmend();
+			await fireEvent.input(subjectInput(), {
+				target: { value: "fixed subject" },
+			});
+			heads = ["head-2"];
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+			await waitFor(() =>
+				expect(message).toHaveBeenCalledWith(moved, {
+					title: "Amend Error",
+					kind: "error",
+				}),
+			);
+			expect(subjectInput().value).toBe("fixed subject");
+
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+
+			await waitFor(() =>
+				expect(amends).toEqual([
+					expect.objectContaining({ expectedHeadOid: "head-1" }),
+					expect.objectContaining({
+						subject: "fixed subject",
+						expectedHeadOid: "head-2",
+					}),
+				]),
+			);
+		});
+	});
+
 	describe("when git refuses the commit", () => {
 		const hookOutput = "lint-staged failed:\n  src/a.ts: missing semicolon";
 
@@ -552,7 +654,11 @@ describe("CommitForm", () => {
 			vi.mocked(safeInvoke).mockReset();
 			vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
 				if (cmd === "get_head_commit_message") {
-					return Promise.resolve({ subject: "Prev subject", body: null });
+					return Promise.resolve({
+						oid: "head-1",
+						subject: "Prev subject",
+						body: null,
+					});
 				}
 				if (cmd === "create_commit" || cmd === "amend_commit") {
 					return Promise.reject({ code: "commit_error", message: hookOutput });

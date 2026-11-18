@@ -175,6 +175,8 @@ describe("App", () => {
 				return Promise.resolve({ staged: 0, unstaged: 0, conflicted: 0 });
 			case "check_undo_available":
 				return Promise.resolve(true);
+			case "head_oid":
+				return Promise.resolve("a-head");
 			case "undo_commit":
 				return Promise.resolve({
 					head_oid: "a-parent",

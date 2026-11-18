@@ -541,6 +541,10 @@ fn head_commit_message_serializes_correctly() {
 
     assert!(json.is_object(), "HeadCommitMessage should be an object");
     assert!(json["subject"].is_string(), "subject should be a string");
+    assert_eq!(
+        json["oid"].as_str(),
+        Some(ctx.resolve_ref("HEAD").unwrap().as_str())
+    );
     // body is Option<String>
     let body = &json["body"];
     assert!(

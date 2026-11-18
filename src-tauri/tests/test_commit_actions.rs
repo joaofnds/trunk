@@ -206,6 +206,23 @@ fn cherry_pick_of_a_change_head_already_has_ends_the_pick_and_says_so() {
 // --- undo_commit tests ---
 
 #[test]
+fn undo_commit_refuses_when_head_is_not_the_commit_it_was_pressed_on() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_file("second.txt", "content")
+        .with_commit("Second commit")
+        .build();
+    let first = ctx.resolve_ref("HEAD~1").unwrap();
+    let second = ctx.resolve_ref("HEAD").unwrap();
+
+    let err = ctx.undo_commit_on(&first).unwrap_err();
+
+    assert_eq!(err.code, "undo_stale");
+    assert_eq!(ctx.resolve_ref("HEAD").unwrap(), second);
+}
+
+#[test]
 fn undo_commit_captures_message() {
     let ctx = TestContext::builder()
         .with_file("file.txt", "hello")
@@ -560,19 +577,23 @@ mod when_another_writer_runs_meanwhile {
     }
 
     #[test]
-    fn undo_commit_takes_back_the_commit_made_while_it_waited() {
+    fn undo_commit_refuses_once_the_other_writer_committed() {
         let (mut ctx, _first_oid, second_oid) = build_two_commit_ctx();
 
-        let undo = ctx
+        let err = ctx
             .act_while_another_writer(
                 |_| (),
                 |repo, ()| commit_what_is_staged(repo),
                 |ctx| ctx.undo_commit(),
             )
-            .expect("undo_commit failed");
+            .expect_err("undo_commit took back the commit made while it waited");
 
-        assert_eq!(undo.head_oid, second_oid);
-        assert_eq!(head(&ctx), second_oid);
+        assert_eq!(err.code, "undo_stale");
+        assert_eq!(
+            ctx.get_head_commit_message().unwrap().subject,
+            "Committed meanwhile"
+        );
+        assert_eq!(ctx.resolve_ref("HEAD~1").unwrap(), second_oid);
     }
 
     #[test]

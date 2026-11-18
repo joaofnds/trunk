@@ -714,18 +714,45 @@ pub async fn revert_abort<R: Runtime>(
     Ok(())
 }
 
+/// HEAD's commit, when it is still `expected`, the commit the user acted on.
+///
+/// An action that waited its turn behind another writer runs on whatever that
+/// writer left. One aimed at HEAD itself, an undo, a redo or an amend, checks
+/// here under its hold that HEAD is still the commit the user saw.
+pub(crate) fn head_if_still<'r>(
+    repo: &'r git2::Repository,
+    expected: &str,
+) -> Option<git2::Commit<'r>> {
+    repo.head()
+        .and_then(|h| h.peel_to_commit())
+        .ok()
+        .filter(|commit| commit.id().to_string() == expected)
+}
+
 /// Soft-reset HEAD by one commit, returning the commit it took back and where HEAD landed, so
 /// a redo can restore that commit onto that position.
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `nothing_to_undo` for the initial
-/// commit, `merge_commit` for a merge, `undo_error` carrying git's own message
-/// when the reset fails, and the git error when HEAD will not read.
-pub fn undo_commit_inner(path: &str, state_map: &OpenRepos) -> Result<UndoResult, TrunkError> {
+/// Returns `not_open` when `path` names no open repository, `undo_stale` when HEAD is no
+/// longer `expected_head_oid`, the commit the user pressed Undo on, `nothing_to_undo` for the
+/// initial commit, `merge_commit` for a merge, and `undo_error` carrying git's own message
+/// when the reset fails.
+pub fn undo_commit_inner(
+    path: &str,
+    expected_head_oid: &str,
+    state_map: &OpenRepos,
+) -> Result<UndoResult, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     state_map.hold_for_git(path, |repo| {
-        let head = repo.head()?.peel_to_commit()?;
+        // An undo queued behind a pull or a commit would otherwise take back the
+        // commit that landed meanwhile, not the one the user pressed Undo on.
+        let Some(head) = head_if_still(repo, expected_head_oid) else {
+            return Err(TrunkError::new(
+                "undo_stale",
+                "HEAD moved before the undo ran, so nothing was undone",
+            ));
+        };
 
         if head.parent_count() == 0 {
             return Err(TrunkError::new(
@@ -805,11 +832,7 @@ pub fn redo_commit_inner(
     }
     let repo_dir = state_map.path_for(path)?;
     state_map.hold_for_git(path, |repo| {
-        let current = repo.head().and_then(|h| h.peel_to_commit()).map(|c| c.id());
-        let Some(current) = current
-            .ok()
-            .filter(|oid| oid.to_string() == request.expected_head_oid)
-        else {
+        let Some(current) = head_if_still(repo, request.expected_head_oid).map(|c| c.id()) else {
             return Err(TrunkError::new(
                 "redo_stale",
                 "HEAD has moved since the undo; refusing to redo onto unrelated history",
@@ -896,6 +919,7 @@ pub fn head_oid_inner(path: &str, state_map: &OpenRepos) -> Result<Option<String
 pub async fn undo_commit<R: Runtime>(
     activity: crate::activity::Activity,
     path: String,
+    expected_head_oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
@@ -906,7 +930,7 @@ pub async fn undo_commit<R: Runtime>(
     let path_clone = path.clone();
     let (_graph, undo_result) = rebuild
         .rebuild_carrying(path.clone(), move || {
-            let undo = undo_commit_inner(&path_clone, &state_map)?;
+            let undo = undo_commit_inner(&path_clone, &expected_head_oid, &state_map)?;
             let path_buf = state_map.path_for(&path_clone)?;
             let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
             let source = crate::state::read_graph(&mut repo)?;

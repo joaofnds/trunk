@@ -301,6 +301,26 @@ fn amend_commit_updates_message() {
 }
 
 #[test]
+fn amend_commit_refuses_when_head_is_not_the_commit_chosen() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .with_file("second.txt", "content")
+        .with_commit("Second commit")
+        .build();
+    let second = head_oid(&ctx);
+    let first = ctx.resolve_ref("HEAD~1").unwrap();
+
+    let err = ctx
+        .amend_commit_on(&first, "Amended subject", None)
+        .unwrap_err();
+
+    assert_eq!(err.code, "amend_stale");
+    assert_eq!(head_oid(&ctx), second);
+    assert_eq!(head_message(&ctx).trim_end(), "Second commit");
+}
+
+#[test]
 fn amend_commit_includes_newly_staged_files() {
     let ctx = TestContext::builder()
         .with_file("README.md", "hello")
@@ -452,6 +472,7 @@ fn get_head_commit_message_returns_subject_and_body() {
 
 mod when_another_writer_runs_meanwhile {
     use super::*;
+    use common::drivers::commit::commit_what_is_staged;
     use common::drivers::staging::stage_path;
     use trunk_git::error::TrunkError;
 
@@ -554,5 +575,35 @@ mod when_another_writer_runs_meanwhile {
 
         ctx.assert_head_has_file("a.txt");
         assert_eq!(ctx.paths_staged_over_head(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn amend_commit_refuses_once_the_other_writer_committed() {
+        let mut ctx = TestContext::builder()
+            .with_file("README.md", "hello")
+            .with_commit("Initial commit")
+            .build();
+        let chosen = head_oid(&ctx);
+
+        let err = ctx
+            .act_while_another_writer(
+                |_| (),
+                |repo, ()| commit_what_is_staged(repo),
+                |ctx| ctx.amend_commit("Amended", None),
+            )
+            .expect_err("amend_commit replaced the commit made while it waited");
+
+        assert_eq!(err.code, "amend_stale");
+        assert_eq!(head_message(&ctx).trim_end(), "Committed meanwhile");
+        assert_eq!(
+            ctx.repo()
+                .head()
+                .unwrap()
+                .peel_to_commit()
+                .unwrap()
+                .parent_id(0)
+                .unwrap(),
+            chosen
+        );
     }
 }
