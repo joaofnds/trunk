@@ -95,6 +95,14 @@ fn renamed_from(delta: Option<git2::DiffDelta<'_>>) -> Option<String> {
     Some(old.to_string_lossy().into_owned())
 }
 
+/// Dirty entries with each staged rename paired into one, which is how the staging
+/// list and the uncommitted-changes counts both describe the tree.
+fn working_tree_status_options() -> StatusOptions {
+    let mut opts = dirty_status_options();
+    opts.renames_head_to_index(true);
+    opts
+}
+
 /// The working tree's staged, unstaged and untracked entries.
 ///
 /// # Errors
@@ -106,13 +114,7 @@ pub fn get_status_inner(
     state_map: &OpenRepos,
 ) -> Result<WorkingTreeStatus, TrunkError> {
     let repo = state_map.open(path)?;
-
-    let mut opts = StatusOptions::new();
-    opts.include_untracked(true)
-        .include_ignored(false)
-        .recurse_untracked_dirs(true)
-        .renames_head_to_index(true);
-
+    let mut opts = working_tree_status_options();
     let statuses = repo.statuses(Some(&mut opts))?;
 
     let mut unstaged: Vec<FileStatus> = Vec::new();
@@ -660,7 +662,7 @@ pub fn get_dirty_counts_inner(
     state_map: &OpenRepos,
 ) -> Result<DirtyCounts, TrunkError> {
     let repo = state_map.open(path)?;
-    let mut opts = dirty_status_options();
+    let mut opts = working_tree_status_options();
     let statuses = repo.statuses(Some(&mut opts)).map_err(TrunkError::from)?;
     let mut staged = 0usize;
     let mut unstaged = 0usize;

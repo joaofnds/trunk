@@ -1433,6 +1433,23 @@ fn dirty_counts_conflicted_path_goes_to_conflicted_bucket() {
     );
 }
 
+/// The staging list pairs a staged rename into one entry, so the counts the graph's
+/// uncommitted-changes row shows must too, or the two views of one tree disagree.
+#[test]
+fn dirty_counts_count_a_staged_rename_once_as_renamed() {
+    use trunk_lib::commands::staging::get_dirty_counts_inner;
+
+    let ctx = staged_rename_with_one_edit();
+
+    let c = get_dirty_counts_inner(ctx.path(), ctx.state_map()).expect("get_dirty_counts failed");
+
+    assert_eq!(
+        (c.staged, c.renamed, c.new, c.deleted),
+        (1, 1, 0, 0),
+        "one staged rename is one staged, renamed file"
+    );
+}
+
 // -- pathspec is a filename, not a glob --
 
 /// libgit2 matches a pathspec with fnmatch unless told otherwise, so a filename
