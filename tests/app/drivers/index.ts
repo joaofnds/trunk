@@ -234,6 +234,11 @@ export class AppDriver {
 		}
 	}
 
+	/** Whether the host has answered every command the application sent. */
+	get answeredEverything(): boolean {
+		return this.host.pendingInvokes === 0;
+	}
+
 	/** Nothing armed and nothing in flight, as of this instant. */
 	private quiet(): boolean {
 		return (

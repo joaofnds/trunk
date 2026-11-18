@@ -88,6 +88,13 @@ describe("repository changes during a sustained event stream", () => {
 		try {
 			await app.events.externalChange(app.repo.path);
 			await app.events.externalChange(app.repo.path);
+			// The delay runs from when the refresh finished, so it must finish
+			// before the clock moves.
+			await waitFor("the first refresh to finish", () =>
+				app.answeredEverything && app.scheduler.pendingForeground > 0
+					? true
+					: null,
+			);
 			app.advanceBy(REPO_CHANGE_DELAY_MS - 1);
 			await tick();
 			expect(app.refreshes()).toBe(before + 1);
