@@ -79,7 +79,7 @@ honest.
 | 4 | placement.rs | find_free_column_near | `let left = target - delta;` → `let left = target / delta;` | killed | 2026-08-12 |
 | 5 | placement.rs | find_free_column_near | `if left >= min_col && active_lanes[left].is_none() {` → `if left < min_col && active_lanes[left].is_none() {` | killed | 2026-08-12 |
 | 6 | placement.rs | find_free_column_near | `if left >= min_col && active_lanes[left].is_none() {` → `if left >= min_col \|\| active_lanes[left].is_none() {` | killed | 2026-08-12 |
-| 7 | graph.rs | TimeHeap::below | `        nodes[a].time < nodes[b].time` → `        nodes[a].time <= nodes[b].time` | SURVIVES | 2026-11-18 |
+| 7 | graph.rs | TimeHeap::below | `        nodes[a].committer_time < nodes[b].committer_time` → `        nodes[a].committer_time <= nodes[b].committer_time` | SURVIVES | 2026-11-18 |
 | 8 | placement.rs | assign_lanes/head-ext colour | `lane_colors.insert(0, next_color);⏎            next_color += 1;` → `lane_colors.insert(0, next_color);⏎            next_color -= 1;` | killed | 2026-08-12 |
 | 9 | placement.rs | assign_lanes/head-ext colour | `lane_colors.insert(0, next_color);⏎            next_color += 1;` → `lane_colors.insert(0, next_color);⏎            next_color *= 1;` | killed | 2026-08-12 |
 | 10 | placement.rs | assign_lanes/is_merge | `let is_merge = !is_stash && commit_parents.len() >= 2;` → `let is_merge = !is_stash \|\| commit_parents.len() >= 2;` | SURVIVES | 2026-08-12 |
@@ -119,7 +119,7 @@ honest.
 | 44 | graph.rs | parent_map | `        while let Some(oid) = current⏎            && !parents.contains_key(&oid)` → `        while let Some(oid) = current⏎            \|\| !parents.contains_key(&oid)` | UNVIABLE | 2026-08-12 |
 | 45 | graph.rs | parent_map | `            && !parents.contains_key(&oid)` → `            && parents.contains_key(&oid)` | killed | 2026-08-12 |
 | 46 | graph.rs | capture | `pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {` → `pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {⏎    if true {⏎        return Ok(Default::default());⏎    }` | killed | 2026-10-11 |
-| 47 | graph.rs | TimeHeap::below | `        nodes[a].time < nodes[b].time` → `        nodes[a].time > nodes[b].time` | killed | 2026-11-18 |
+| 47 | graph.rs | TimeHeap::below | `        nodes[a].committer_time < nodes[b].committer_time` → `        nodes[a].committer_time > nodes[b].committer_time` | killed | 2026-11-18 |
 | 48 | graph.rs | capture | `    oids.retain(\|oid\| !stash_internals.contains(oid));` → `    oids.retain(\|oid\| stash_internals.contains(oid));` | killed | 2026-10-11 |
 | 49 | graph.rs | snapshot | `    Ok(GraphSnapshot::new(capture(repo)?, visibility.clone()))` → `    Ok(GraphSnapshot::new(GraphSource::default(), visibility.clone()))` | killed | 2026-09-03 |
 | 50 | graph_input.rs | parse_oid | `fn parse_oid(hex: &str) -> Oid {` → `fn parse_oid(hex: &str) -> Oid {⏎    if true {⏎        return Default::default();⏎    }` | UNVIABLE | 2026-08-12 |
