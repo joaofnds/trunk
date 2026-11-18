@@ -1146,11 +1146,35 @@ collided, so its wall-clock time was not measured. Behavior is pinned by the
 `discard_files_*` tests in `src-tauri/tests/test_staging.rs` and the folder discard
 tests in `src/components/StagingPanel.test.ts`.
 
-One limit remains. Index writes are not serialized per repository: two overlapping
-`stage_files` calls with the same 40 paths returned one `git_locked` in each of five
-probe runs, while all 40 files ended staged. Folder rows show no busy state. A later screening on
-TRUNK-442 saw the collision only with two clicks under 40 ms apart, which is faster
-than a human double click.
+Overlapping writes used to collide. Two overlapping `stage_files` calls with the same 40
+paths returned one `git_locked` in each of five probe runs, while all 40 files ended
+staged, and the screening on TRUNK-442 saw that collision only with two clicks under
+40 ms apart. A larger repository widens the window enough to lose work. In a drive build
+on a repository with 20,000 new files, an Unstage clicked 300 ms into a 3.6 s Stage All
+was written, then Stage All saved the index it had read and the file was staged again,
+with nothing shown to the user. libgit2 takes `index.lock` only for the moment it writes,
+so two commands that both read before either writes each save their own copy. The git
+binary actions had the same gap, and a file staged while a commit's pre-commit hook ran
+went into that commit, because plain `git commit` holds no lock while the hook runs and
+reads the index again after it.
+
+Every command that writes the index, the working tree or the stash list now runs under
+`trunk_git::write_gate`, which holds a per-repository gate from the command's first read
+to its last write: the libgit2 writers through `hold`, which reads the index afresh once
+held, the git binary actions through `hold_for_git`, and pull through a `Turn` it holds
+across its awaits from its safety copy to settling it (`ed5a0354`, `3ebe401e` and
+`65e43445`). A second action waits for the first and then starts from what it saved, and a
+file staged during a commit's hook stays staged for the next commit. The cost is the
+wait: a Stage clicked during a pull waits for the pull's fetch, and one clicked during a
+long pre-commit hook waits for the hook. The `when_another_writer_*` modules in the
+staging, stash, branch, commit, commit-action, merge, rebase and remote suites run each
+command while another writer holds the gate, and each test fails with its command's
+gating removed. Taking turns has one more consequence: an Undo or an Amend queued behind
+a pull would run on the HEAD the pull left and take back or replace a commit the user
+never saw. Each now names the commit it was aimed at and refuses, changing nothing, once
+HEAD is another commit (`c2742dbc`), as Redo already did. Each linked worktree has a gate
+of its own, since each has its own index and working tree. Another process meets only
+git's own lock.
 
 ### E10: core flow walk, whether each result is the one the user meant
 
@@ -1305,9 +1329,10 @@ output starts as the onto side, so saving at once drops the user's own change, a
 where the output should start is open (TRUNK-451). Three more went to cards that
 already held their area. Skip in a stopped rebase asks for no confirmation where Abort
 does, and the merge editor does not move on to the next conflicted file after a save
-(both TRUNK-445). Overlapping index writes collide on `index.lock`
-(TRUNK-442), though the screening on that card saw it only with clicks under 40 ms
-apart, faster than a human double click. Cmd+F does nothing while a diff covers the
+(both TRUNK-445). Overlapping index writes collided on `index.lock`
+(TRUNK-442). The screening on that card saw it only with clicks under 40 ms apart, but on
+a repository of 20,000 new files the window lasts seconds and a write was lost, and the
+write gate in E09 now makes overlapping actions take turns. Cmd+F does nothing while a diff covers the
 graph: the native menu's Find reaches only the graph's search, which ignores it while
 covered. The walker pressed it through the drive route, which never reaches the
 menu, so the report came from the wrong route, and the code confirms it. TRUNK-29
@@ -1374,7 +1399,7 @@ Frequency remains an assumption; no usage telemetry was collected.
 | 2 | Preserve the reviewed selection and navigation contracts | Browsing is assumed frequent. E01 removes 116.5 ms in the width series and 129 ms in the delivered-source confirmation at 1,000 files. Warm ranges overlap; CPU, memory and highlight costs remain explicit. Correctness risk requires held-response tests. |
 | 3 | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. Settle how often users open large highlighted files in full mode first. The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
 | Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
-| 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Index writes are not serialized per repository, so two overlapping actions can report a lock failure for work that happened. Saves, local fetch and watcher refreshes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
+| 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Overlapping in-app actions take turns at a per-repository write gate (E09), so none reports a lock failure or drops another's write. Saves, local fetch and watcher refreshes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
 | 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. History depth, review size and conflict-region count remain unbenchmarked; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. |
 
 The evidence supports retaining current warm diff reuse, mounted-tab reuse,
