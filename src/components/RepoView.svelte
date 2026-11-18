@@ -39,6 +39,7 @@ import {
 	withLoadedDiff,
 } from "../lib/loaded-diffs.js";
 import { createOwnedTimer } from "../lib/owned-timer.js";
+import { createPaneSizing } from "../lib/pane-sizing.js";
 import { span } from "../lib/perf.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import {
@@ -220,9 +221,26 @@ const reviewFilter = $derived<ReviewFilter>(
 
 const LEFT_PANE_MAX = 600;
 const RIGHT_PANE_MAX = 700;
-const NARROWEST_PANE = 50;
 const leftPaneSize = $derived(leftPaneCollapsed ? 0 : leftPaneWidth);
 const rightPaneSize = $derived(rightPaneCollapsed ? 0 : rightPaneWidth);
+const leftPane = createPaneSizing({
+	splitterEdge: "right",
+	max: LEFT_PANE_MAX,
+	width: () => leftPaneWidth,
+	collapsed: () => leftPaneCollapsed,
+	onwidthchange: (width) => onleftpanewidthchange(width),
+	oncollapsedchange: (collapsed) => onleftpanecollapsedchange(collapsed),
+	store: setLeftPaneWidth,
+});
+const rightPane = createPaneSizing({
+	splitterEdge: "left",
+	max: RIGHT_PANE_MAX,
+	width: () => rightPaneWidth,
+	collapsed: () => rightPaneCollapsed,
+	onwidthchange: (width) => onrightpanewidthchange(width),
+	oncollapsedchange: (collapsed) => onrightpanecollapsedchange(collapsed),
+	store: setRightPaneWidth,
+});
 const scheduler = getScheduler();
 let repoViewActive = true;
 
@@ -2529,130 +2547,6 @@ async function handleRebaseStart(
 		reportErrorToast(e, "Rebase failed");
 	}
 }
-
-// A pane collapses on the way to narrower than NARROWEST_PANE, so the width it
-// last had is one it only passed through. Toggled open, it reopens at the width
-// it had when the narrowing began: where the drag took hold, or before the
-// first of a run of narrowing steps, which any widening ends. A drag or a step
-// that widens a collapsed pane opens it at NARROWEST_PANE instead.
-let leftStepsFrom: number | null = null;
-let rightStepsFrom: number | null = null;
-
-/** Reports whether the width collapsed the pane. */
-function resizeLeftPane(width: number): boolean {
-	if (width < NARROWEST_PANE) {
-		onleftpanecollapsedchange(true);
-		return true;
-	}
-
-	onleftpanecollapsedchange(false);
-	onleftpanewidthchange(Math.min(LEFT_PANE_MAX, width));
-	return false;
-}
-
-function storeLeftPane() {
-	if (!leftPaneCollapsed) setLeftPaneWidth(leftPaneWidth);
-}
-
-function startLeftResize(e: MouseEvent) {
-	e.preventDefault();
-	const startX = e.clientX;
-	const startWidth = leftPaneSize;
-	const reopenWidth = leftPaneWidth;
-	let collapsed = false;
-	leftStepsFrom = null;
-
-	function onMouseMove(ev: MouseEvent) {
-		collapsed = resizeLeftPane(Math.max(0, startWidth + ev.clientX - startX));
-	}
-
-	function onMouseUp() {
-		if (collapsed) onleftpanewidthchange(reopenWidth);
-		storeLeftPane();
-		window.removeEventListener("mousemove", onMouseMove);
-		window.removeEventListener("mouseup", onMouseUp);
-	}
-
-	window.addEventListener("mousemove", onMouseMove);
-	window.addEventListener("mouseup", onMouseUp);
-}
-
-function stepLeftPane(delta: number) {
-	const widens = delta > 0;
-	if (leftPaneCollapsed && !widens) return;
-
-	if (leftPaneCollapsed) {
-		leftStepsFrom = null;
-		resizeLeftPane(NARROWEST_PANE);
-		return;
-	}
-
-	const from = leftStepsFrom ?? leftPaneWidth;
-	leftStepsFrom = widens ? null : from;
-	if (!resizeLeftPane(Math.max(0, leftPaneSize + delta))) return;
-
-	leftStepsFrom = null;
-	if (from !== leftPaneWidth) onleftpanewidthchange(from);
-}
-
-/** Reports whether the width collapsed the pane. */
-function resizeRightPane(width: number): boolean {
-	if (width < NARROWEST_PANE) {
-		onrightpanecollapsedchange(true);
-		return true;
-	}
-
-	onrightpanecollapsedchange(false);
-	onrightpanewidthchange(Math.min(RIGHT_PANE_MAX, width));
-	return false;
-}
-
-function storeRightPane() {
-	if (!rightPaneCollapsed) setRightPaneWidth(rightPaneWidth);
-}
-
-function startRightResize(e: MouseEvent) {
-	e.preventDefault();
-	const startX = e.clientX;
-	const startWidth = rightPaneSize;
-	const reopenWidth = rightPaneWidth;
-	let collapsed = false;
-	rightStepsFrom = null;
-
-	function onMouseMove(ev: MouseEvent) {
-		collapsed = resizeRightPane(
-			Math.max(0, startWidth - (ev.clientX - startX)),
-		);
-	}
-
-	function onMouseUp() {
-		if (collapsed) onrightpanewidthchange(reopenWidth);
-		storeRightPane();
-		window.removeEventListener("mousemove", onMouseMove);
-		window.removeEventListener("mouseup", onMouseUp);
-	}
-
-	window.addEventListener("mousemove", onMouseMove);
-	window.addEventListener("mouseup", onMouseUp);
-}
-
-function stepRightPane(delta: number) {
-	const widens = delta < 0;
-	if (rightPaneCollapsed && !widens) return;
-
-	if (rightPaneCollapsed) {
-		rightStepsFrom = null;
-		resizeRightPane(NARROWEST_PANE);
-		return;
-	}
-
-	const from = rightStepsFrom ?? rightPaneWidth;
-	rightStepsFrom = widens ? null : from;
-	if (!resizeRightPane(Math.max(0, rightPaneSize - delta))) return;
-
-	rightStepsFrom = null;
-	if (from !== rightPaneWidth) onrightpanewidthchange(from);
-}
 </script>
 
 <div
@@ -2715,8 +2609,8 @@ function stepRightPane(delta: number) {
 				value={leftPaneSize}
 				min={0}
 				max={LEFT_PANE_MAX}
-				onstep={stepLeftPane}
-				onmousedown={startLeftResize}
+				onstep={leftPane.step}
+				onmousedown={leftPane.startResize}
 			/>
 			<div class="flex-1 overflow-hidden relative">
 				{#if reviewMode}
@@ -2938,8 +2832,8 @@ function stepRightPane(delta: number) {
 				min={0}
 				max={RIGHT_PANE_MAX}
 				hidden={reviewMode}
-				onstep={stepRightPane}
-				onmousedown={startRightResize}
+				onstep={rightPane.step}
+				onmousedown={rightPane.startResize}
 			/>
 			<div
 				class="shrink-0 overflow-hidden flex flex-col"
@@ -3113,8 +3007,8 @@ function stepRightPane(delta: number) {
 					value={rightPaneSize}
 					min={0}
 					max={RIGHT_PANE_MAX}
-					onstep={stepRightPane}
-					onmousedown={startRightResize}
+					onstep={rightPane.step}
+					onmousedown={rightPane.startResize}
 				/>
 				<div
 					class="shrink-0 overflow-hidden flex flex-col"
