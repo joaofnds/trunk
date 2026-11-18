@@ -6,21 +6,54 @@
 //! the earlier one's change while both report success. Git's own commands lock the
 //! index before they read it. A command run through [`hold`] holds its repository the
 //! same way, from its first read to its last write, so the next command starts from
-//! what it saved. Another process meets only git's lock.
+//! what it saved, and a writer whose work spans threads takes a [`Turn`] instead.
+//! Another process meets only git's lock.
 
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError, TryLockError};
+use std::sync::{Arc, Condvar, LazyLock, Mutex, PoisonError};
 
 use crate::error::TrunkError;
 
 #[derive(Default)]
 struct Gate {
-    held: Mutex<()>,
+    taken: Mutex<bool>,
+    freed: Condvar,
     #[cfg(feature = "test-util")]
     hooks: Mutex<Hooks>,
+}
+
+impl Gate {
+    /// Wait until no writer holds this gate, then hold it. The flag is only ever set
+    /// or cleared under the mutex, so a writer that panics while it holds the gate
+    /// leaves nothing poisoned: its [`Turn`] frees the gate as the panic unwinds.
+    fn take(&self) {
+        let mut taken = self.taken.lock().unwrap_or_else(PoisonError::into_inner);
+        if *taken {
+            #[cfg(feature = "test-util")]
+            {
+                drop(taken);
+                self.run_hook(|hooks| hooks.on_wait.take());
+                taken = self.taken.lock().unwrap_or_else(PoisonError::into_inner);
+            }
+            while *taken {
+                taken = self
+                    .freed
+                    .wait(taken)
+                    .unwrap_or_else(PoisonError::into_inner);
+            }
+        }
+        *taken = true;
+    }
+
+    fn free(&self) {
+        *self.taken.lock().unwrap_or_else(PoisonError::into_inner) = false;
+        self.freed.notify_one();
+        #[cfg(feature = "test-util")]
+        self.run_hook(|hooks| hooks.on_release.take());
+    }
 }
 
 static GATES: LazyLock<Mutex<HashMap<PathBuf, Arc<Gate>>>> = LazyLock::new(Mutex::default);
@@ -36,42 +69,73 @@ fn gate_of(repo: &Path) -> Arc<Gate> {
     Arc::clone(gates.entry(repo.to_path_buf()).or_default())
 }
 
-/// The gate of one repository, held by this thread until it drops.
-struct Held<'a> {
-    repo: &'a Path,
-    _guard: MutexGuard<'a, ()>,
+fn refuse_to_wait_on_this_thread(repo: &Path) {
+    let held_here = HELD_HERE.with_borrow(|held| held.iter().any(|path| path == repo));
+    assert!(
+        !held_here,
+        "{} is already held by this thread, and waiting for it again would never end",
+        repo.display()
+    );
 }
 
-impl<'a> Held<'a> {
-    fn take(gate: &'a Gate, repo: &'a Path) -> Self {
-        let held_here = HELD_HERE.with_borrow(|held| held.iter().any(|path| path == repo));
-        assert!(
-            !held_here,
-            "{} is already held by this thread, and waiting for it again would never end",
-            repo.display()
-        );
+/// One repository's gate, held until this drops, on whichever thread it drops.
+#[must_use = "the gate is freed as soon as the turn drops"]
+pub struct Turn {
+    gate: Arc<Gate>,
+}
 
-        let guard = match gate.held.try_lock() {
-            Ok(guard) => guard,
-            Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
-            Err(TryLockError::WouldBlock) => {
-                #[cfg(feature = "test-util")]
-                gate.run_hook(|hooks| hooks.on_wait.take());
-                gate.held.lock().unwrap_or_else(PoisonError::into_inner)
-            }
-        };
+impl Turn {
+    fn take(repo: &Path) -> Self {
+        refuse_to_wait_on_this_thread(repo);
+        let gate = gate_of(repo);
+        gate.take();
+
+        Self { gate }
+    }
+}
+
+impl Drop for Turn {
+    fn drop(&mut self) {
+        self.gate.free();
+    }
+}
+
+/// Wait for this process's turn to write `repo`, for a writer whose work runs on more
+/// than one thread, such as a pull that awaits its git process. The gate is held until
+/// the [`Turn`] drops.
+///
+/// The calling thread blocks while it waits, so an async caller takes its turn inside
+/// a blocking task. Nothing the writer runs while it holds the turn may wait for the
+/// gate itself, since it would wait on its own turn for good.
+///
+/// # Panics
+///
+/// Panics when this thread already holds `repo`'s gate through [`hold`].
+pub fn wait_for_turn(repo: &git2::Repository) -> Turn {
+    Turn::take(repo.path())
+}
+
+/// The gate of one repository, held by this thread until it drops.
+struct Held {
+    repo: PathBuf,
+    _turn: Turn,
+}
+
+impl Held {
+    fn take(repo: &Path) -> Self {
+        let turn = Turn::take(repo);
 
         HELD_HERE.with_borrow_mut(|held| held.push(repo.to_path_buf()));
         Self {
-            repo,
-            _guard: guard,
+            repo: repo.to_path_buf(),
+            _turn: turn,
         }
     }
 }
 
-impl Drop for Held<'_> {
+impl Drop for Held {
     fn drop(&mut self) {
-        HELD_HERE.with_borrow_mut(|held| held.retain(|path| path != self.repo));
+        HELD_HERE.with_borrow_mut(|held| held.retain(|path| path != &self.repo));
     }
 }
 
@@ -79,8 +143,8 @@ impl Drop for Held<'_> {
 ///
 /// The index is read afresh once the gate is held, so `body` starts from what the
 /// writer before it saved. `repo` is a shared or a mutable borrow, whichever `body`
-/// needs. A poisoned gate still serves, since the fresh read drops whatever the
-/// panicking writer left.
+/// needs. A writer that panicked frees the gate as it unwinds, and the fresh read
+/// drops whatever it left half-written.
 ///
 /// # Errors
 ///
@@ -119,23 +183,14 @@ pub fn hold_for_git<R: Borrow<git2::Repository>, T>(
     repo: R,
     body: impl FnOnce(R) -> Result<T, TrunkError>,
 ) -> Result<T, TrunkError> {
-    let path = repo.borrow().path().to_path_buf();
-    let gate = gate_of(&path);
-
-    let done = {
-        let _held = Held::take(&gate, &path);
-        body(repo)
-    };
-
-    #[cfg(feature = "test-util")]
-    gate.run_hook(|hooks| hooks.on_release.take());
-    done
+    let _held = Held::take(repo.borrow().path());
+    body(repo)
 }
 
 #[cfg(feature = "test-util")]
 type Hook = Box<dyn FnOnce() + Send>;
 
-/// What a test runs at a point inside [`hold`] that no outside caller can reach.
+/// What a test runs at a point inside the gate that no outside caller can reach.
 #[cfg(feature = "test-util")]
 #[derive(Default)]
 struct Hooks {
@@ -157,18 +212,20 @@ impl Gate {
     }
 }
 
-/// Run `hook` when the next [`hold`] of `repo` finds the gate taken, just before it
-/// waits, so a test can act once a command is known to be queued.
+/// Run `hook` when the next [`hold`] or [`wait_for_turn`] of `repo` finds the gate
+/// taken, just before it waits, so a test can act once a command is known to be queued.
 #[cfg(feature = "test-util")]
 pub fn on_next_wait(repo: &git2::Repository, hook: impl FnOnce() + Send + 'static) {
     gate_of(repo.path()).set_hook(|hooks| &mut hooks.on_wait, Box::new(hook));
 }
 
-/// Run `hook` when the next [`hold`] of `repo` releases the gate.
+/// Run `hook` when the gate of `repo` is next released, by a [`hold`] ending or a
+/// [`Turn`] dropping.
 ///
-/// It runs on that `hold`'s thread, after the release and before `hold` returns, so a
-/// test can put another writer in the gap between one command's gated body and
-/// whatever the command does next.
+/// It runs on the releasing thread, after the release and before `hold` returns or the
+/// drop ends, so a test can put another writer in the gap between one command's gated
+/// work and whatever the command does next. A [`Turn`] held across awaits drops on an
+/// async runtime thread, where a hook that waits for the gate blocks that thread.
 #[cfg(feature = "test-util")]
 pub fn on_next_release(repo: &git2::Repository, hook: impl FnOnce() + Send + 'static) {
     gate_of(repo.path()).set_hook(|hooks| &mut hooks.on_release, Box::new(hook));
@@ -205,6 +262,32 @@ mod tests {
         let (_dir, repo) = repository();
 
         let _ = hold(&repo, |repo| hold(repo, |_| Ok(())));
+    }
+
+    #[test]
+    #[should_panic(expected = "is already held by this thread")]
+    fn waiting_for_a_turn_from_inside_a_body_of_the_same_repository_panics() {
+        let (_dir, repo) = repository();
+
+        let _ = hold(&repo, |repo| {
+            let _turn = wait_for_turn(repo);
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn a_repository_can_be_held_again_after_a_body_panicked() {
+        let (_dir, repo) = repository();
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            hold(&repo, |_| -> Result<(), TrunkError> {
+                panic!("the body failed")
+            })
+        }));
+        assert!(panicked.is_err());
+
+        let again = hold(&repo, |_| Ok("again"));
+
+        assert_eq!(again.unwrap(), "again");
     }
 
     #[test]

@@ -441,8 +441,9 @@ pub async fn git_pull<R: Runtime>(
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `rebase_conflict` when a
-/// pull with rebase stops on a conflict, `autostash_conflict` when the pull finished
+/// Returns `not_open` when `path` names no open repository, a `git_*` code when the
+/// repository will not open, `spawn_error` when a blocking step cannot be joined,
+/// `rebase_conflict` when a pull with rebase stops on a conflict, `autostash_conflict` when the pull finished
 /// but restoring the autostash conflicted, `cancelled` when the repository closed while
 /// git ran, `auth_failure` when the remote refuses the credentials, and `remote_error`
 /// carrying git's own message otherwise. Each carries `pull_safety_copy` when the pull
@@ -468,6 +469,17 @@ pub async fn git_pull_inner<R: Runtime>(
     };
 
     let completion = reserve_remote(activity, &path_buf, app, path, running).await?;
+    // Held from the copy to its settling, so no other writer in the app stages over the
+    // merge git writes, or moves the stash list between finding the copy and dropping
+    // it. Freed before the graph is rebuilt, since the git actions wait for the gate
+    // while they hold the rebuild. A cancel ends the pull while it still waits, and the
+    // abandoned wait frees the turn the moment it takes it.
+    let turn = tokio::select! {
+        turn = wait_for_write_turn(activity, path_buf.clone()) => turn?,
+        () = completion.reservation.until_cancelled() => {
+            return Err(remote_ops::operation_cancelled());
+        }
+    };
     let copy = save_pull_safety_copy(activity, path_buf.clone()).await;
     let ran = run_reserved(
         activity,
@@ -479,6 +491,7 @@ pub async fn git_pull_inner<R: Runtime>(
     )
     .await;
     let kept = settle_pull_safety_copy(activity, copy, path_buf.clone()).await;
+    drop(turn);
 
     let finished = finish_pull(
         activity,
@@ -502,6 +515,20 @@ pub async fn git_pull_inner<R: Runtime>(
         }
         Err(error) => Err(error.with_pull_safety_copy(copy)),
     }
+}
+
+/// Wait, off the async runtime, until no other writer in the app holds the repository.
+async fn wait_for_write_turn(
+    activity: &crate::activity::Activity,
+    location: PathBuf,
+) -> Result<trunk_git::write_gate::Turn, TrunkError> {
+    activity
+        .spawn_blocking(move || {
+            let repo = git2::Repository::open(location)?;
+            Ok(trunk_git::write_gate::wait_for_turn(&repo))
+        })
+        .await
+        .map_err(|error| TrunkError::new("spawn_error", error.to_string()))?
 }
 
 /// A copy that cannot be saved leaves the pull to run unguarded, as git alone would run

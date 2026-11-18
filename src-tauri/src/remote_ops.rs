@@ -232,7 +232,10 @@ impl RemoteOps {
             .values_mut()
             .find(|operation| operation.path == path)?;
         operation.cancelled = true;
-        operation.process
+        let process = operation.process;
+        self.changed.notify_waiters();
+
+        process
     }
 
     fn complete(&mut self, id: u64) {
@@ -417,6 +420,24 @@ impl<'a> RemoteReservation<'a> {
                 }
                 Admission::Queued(id) => place = Some(WaitingForeground { running, id }),
                 Admission::StillQueued => {}
+            }
+            notified.await;
+        }
+    }
+
+    /// Resolve once the user cancels this operation or its reservation is gone, for an
+    /// operation that waits on something else before it starts its process.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the registry lock is poisoned.
+    pub async fn until_cancelled(&self) {
+        let changed = Arc::clone(&self.running.lock().unwrap().changed);
+        loop {
+            let mut notified = std::pin::pin!(changed.notified());
+            notified.as_mut().enable();
+            if self.cancelled() {
+                return;
             }
             notified.await;
         }

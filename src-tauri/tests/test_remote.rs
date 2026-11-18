@@ -1066,6 +1066,10 @@ impl ScriptBarrier {
             .unwrap();
     }
 
+    fn release(&self) {
+        std::fs::write(self.dir.path().join("release"), "\n").unwrap();
+    }
+
     fn wait_started(&self) -> impl FnOnce() + Send + 'static {
         let started = self.dir.path().join("started");
         move || {
@@ -1178,4 +1182,127 @@ fn pull_that_finishes_clean_drops_its_own_copy_and_not_the_entry_stashed_above_i
 
     assert_eq!(stash_names(&ctx), ["stashed elsewhere"]);
     assert_eq!(read(&ctx, "notes.txt"), "uncommitted notes");
+}
+
+/// A pull and another writer of the same repository overlapping.
+mod when_another_writer_runs_meanwhile {
+    use super::*;
+    use std::sync::mpsc;
+
+    #[test]
+    fn pull_waiting_for_the_other_writer_leaves_only_its_file_staged() {
+        let mut ctx = pushed("true");
+        upstream_changes_file_txt(&ctx);
+
+        ctx.act_while_another_writer_stages("a.txt", |ctx| ctx.remote().pull(None))
+            .expect("pull failed");
+
+        assert_eq!(read(&ctx, "file.txt"), "remote content");
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_stage_started_while_the_pull_fetches_waits_for_the_pull() {
+        let ctx = pushed("true");
+        upstream_changes_file_txt(&ctx);
+        let barrier = ScriptBarrier::new();
+        let upload_pack = barrier.dir.path().join("upload-pack");
+        barrier.write_script(&upload_pack, "exec git-upload-pack \"$@\"\n");
+        set_config(
+            &ctx,
+            &[(
+                "remote.origin.uploadpack",
+                &upload_pack.display().to_string(),
+            )],
+        );
+        write(&ctx, "a.txt", "a");
+        let (stage_waits_or_ends, first) = mpsc::channel();
+        let waits = stage_waits_or_ends.clone();
+        trunk_git::write_gate::on_next_wait(&ctx.repo(), move || {
+            let _ = waits.send("waited");
+        });
+
+        let (pulled, staged) = std::thread::scope(|scope| {
+            let pull = scope.spawn(|| ctx.remote().pull(None));
+            barrier.wait_started()();
+            let stage = scope.spawn(|| {
+                let staged = ctx.stage_file("a.txt");
+                let _ = stage_waits_or_ends.send("ended");
+                staged
+            });
+            let stage_first = first.recv().unwrap();
+            barrier.release();
+            assert_eq!(stage_first, "waited", "the stage ran while git pulled");
+            (pull.join().unwrap(), stage.join().unwrap())
+        });
+
+        pulled.expect("pull failed");
+        staged.expect("stage_file failed");
+        assert_eq!(read(&ctx, "file.txt"), "remote content");
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
+    }
+
+    /// Without the cancel reaching the wait, the pull waits for a writer that frees the
+    /// gate only once the pull returns, so the test fails by never ending.
+    #[test]
+    fn pull_cancelled_while_it_waits_for_its_turn_runs_no_git() {
+        let ctx = pushed("true");
+        upstream_changes_file_txt(&ctx);
+        write(&ctx, "notes.txt", "uncommitted notes");
+        let (holding_tx, holding) = mpsc::channel();
+        let (release, released) = mpsc::channel::<()>();
+        let (queued_tx, queued) = mpsc::channel();
+
+        let pulled = std::thread::scope(|scope| {
+            let location = ctx.repo_path().to_path_buf();
+            scope.spawn(move || {
+                let repo = git2::Repository::open(location).unwrap();
+                trunk_git::write_gate::hold(&repo, |_| {
+                    holding_tx.send(()).unwrap();
+                    let _ = released.recv();
+                    Ok(())
+                })
+                .unwrap();
+            });
+            holding.recv().unwrap();
+            trunk_git::write_gate::on_next_wait(&ctx.repo(), move || {
+                let _ = queued_tx.send(());
+            });
+            let pulled = ctx
+                .remote()
+                .pull_cancelled_once(None, move || queued.recv().unwrap());
+            drop(release);
+            pulled
+        });
+
+        assert_eq!(pulled.unwrap_err().code, "cancelled");
+        assert_eq!(read(&ctx, "file.txt"), "base");
+        assert_eq!(stash_names(&ctx), Vec::<String>::new());
+        assert_eq!(read(&ctx, "notes.txt"), "uncommitted notes");
+    }
+
+    #[test]
+    fn pull_settles_its_safety_copy_before_the_next_writer_runs() {
+        let ctx = pushed("true");
+        upstream_changes_file_txt(&ctx);
+        write(&ctx, "notes.txt", "uncommitted notes");
+        let location = ctx.repo_path().to_path_buf();
+        let (stashes_tx, stashes_at_release) = mpsc::channel();
+        trunk_git::write_gate::on_next_release(&ctx.repo(), move || {
+            let mut repo = git2::Repository::open(location).unwrap();
+            let mut names = Vec::new();
+            repo.stash_foreach(|_, name, _| {
+                names.push(name.to_owned());
+                true
+            })
+            .unwrap();
+            let _ = stashes_tx.send(names);
+        });
+
+        ctx.remote().pull(None).unwrap();
+
+        assert_eq!(stashes_at_release.recv().unwrap(), Vec::<String>::new());
+        assert_eq!(read(&ctx, "notes.txt"), "uncommitted notes");
+    }
 }
