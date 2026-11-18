@@ -8,6 +8,8 @@ interface Props {
 	heights: number[];
 	/** CSS width of the scrollable content, computed rather than measured. */
 	contentWidth: string;
+	/** Space after the last row, for what hangs below it. */
+	trailingSpace: number;
 	horizontal?: boolean;
 	/** Runway either side, in pixels. Defaults to one viewport height. */
 	overscanPx?: number;
@@ -18,6 +20,7 @@ let {
 	items,
 	heights,
 	contentWidth,
+	trailingSpace,
 	horizontal = true,
 	overscanPx,
 	renderItem,
@@ -31,12 +34,12 @@ let panLeft = $state(0);
 let viewportHeight = $state(0);
 
 const offsets = $derived(buildOffsets(heights));
+const contentHeight = $derived(
+	items.length > 0 ? offsets[items.length] + trailingSpace : 0,
+);
 const runway = $derived(overscanPx ?? viewportHeight);
 const renderedScrollTop = $derived(
-	Math.max(
-		0,
-		Math.min(scrollTop, Math.max(0, offsets[items.length] - viewportHeight)),
-	),
+	Math.max(0, Math.min(scrollTop, Math.max(0, contentHeight - viewportHeight))),
 );
 const shown = $derived(
 	windowFor(offsets, renderedScrollTop, viewportHeight, runway),
@@ -107,12 +110,12 @@ function onscroll() {
 >
 	<div
 		class="exact-virtual-content relative min-w-full"
-		style:height="{shown.totalHeight}px"
+		style:height="{contentHeight}px"
 		style:width={contentWidth}
 	>
 		<div
 			class="exact-virtual-surface sticky top-0 w-full min-w-full overflow-clip"
-			style:height="{Math.min(viewportHeight, shown.totalHeight)}px"
+			style:height="{Math.min(viewportHeight, contentHeight)}px"
 		>
 			<div
 				class="exact-virtual-rows absolute left-0 w-full min-w-full"

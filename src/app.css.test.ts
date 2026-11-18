@@ -1,7 +1,13 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { BAR_HEIGHT, ROW_HEIGHT, treeIndent, UNIT } from "./lib/chrome-heights";
+import {
+	BAR_HEIGHT,
+	CONTROL_SM_HEIGHT,
+	ROW_HEIGHT,
+	treeIndent,
+	UNIT,
+} from "./lib/chrome-heights";
 import { FIXED_ROW_HEIGHTS } from "./lib/diff-rows";
 import { THUMB_CLASS } from "./lib/scrollbar-activity.js";
 
@@ -218,9 +224,10 @@ describe("tokens.css lengths", () => {
 		expect(unread).toEqual([]);
 	});
 
-	it("gives the virtualized bars and rows the heights their constants assume", () => {
+	it("gives the virtualized bars, rows and small controls the heights their constants assume", () => {
 		expect(multiple("--bar-h") * UNIT).toBe(BAR_HEIGHT);
 		expect(multiple("--row-h") * UNIT).toBe(ROW_HEIGHT);
+		expect(multiple("--control-sm-h") * UNIT).toBe(CONTROL_SM_HEIGHT);
 	});
 
 	/* WCAG 2.2 SC 2.5.8 asks for 24 CSS px. The sidebar's toggles and the slots that

@@ -74,7 +74,7 @@ function mountList(count: number, rowHeight: number = ROW_HEIGHT) {
 	return mountHeights(Array.from({ length: count }, () => rowHeight));
 }
 
-function mountHeights(heights: number[]) {
+function mountHeights(heights: number[], trailingSpace = 0) {
 	stubLayout({ width: 800, height: VIEWPORT_HEIGHT });
 
 	return render(ExactVirtualList, {
@@ -82,9 +82,14 @@ function mountHeights(heights: number[]) {
 			items: heights.map((_, index) => index),
 			heights,
 			contentWidth: "1000px",
+			trailingSpace,
 			renderItem,
 		},
 	});
+}
+
+function heightOf(container: Element, selector: string): string | undefined {
+	return container.querySelector<HTMLElement>(selector)?.style.height;
 }
 
 function viewportOf(container: Element): HTMLElement {
@@ -297,6 +302,47 @@ describe("ExactVirtualList", () => {
 				expect(rowsTop(container)).toBe("0px");
 			},
 		);
+	});
+
+	describe("when it keeps space after its last row", () => {
+		const TRAILING_SPACE = 20;
+
+		it("adds the space to the scroll extent", () => {
+			const { container } = mountHeights(
+				Array.from({ length: 5000 }, () => ROW_HEIGHT),
+				TRAILING_SPACE,
+			);
+
+			expect(heightOf(container, ".exact-virtual-content")).toBe(
+				`${5000 * ROW_HEIGHT + TRAILING_SPACE}px`,
+			);
+		});
+
+		it("sizes a short list's surface to hold the space", () => {
+			const { container } = mountHeights([40, 80, 30], TRAILING_SPACE);
+
+			expect(heightOf(container, ".exact-virtual-surface")).toBe("170px");
+		});
+
+		it("lets the last row scroll up through the space", async () => {
+			const { container } = mountHeights(
+				[40, 80, 30, 150, 60, 140, 80, 120, 50, 150, 100],
+				TRAILING_SPACE,
+			);
+			const viewport = viewportOf(container);
+
+			viewport.scrollTop = 820;
+			viewport.dispatchEvent(new Event("scroll"));
+			await tick();
+
+			expect(rowsTop(container)).toBe("-240px");
+		});
+
+		it("keeps no space when there is no row to follow", () => {
+			const { container } = mountHeights([], TRAILING_SPACE);
+
+			expect(heightOf(container, ".exact-virtual-content")).toBe("0px");
+		});
 	});
 
 	describe("when the content shrinks while scrolled", () => {

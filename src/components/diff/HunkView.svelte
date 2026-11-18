@@ -40,6 +40,7 @@ import ThreadCard from "../ThreadCard.svelte";
 import ExactVirtualList from "./ExactVirtualList.svelte";
 import HunkActions from "./HunkActions.svelte";
 import SelectionComment, {
+	SELECTION_COMMENT_CLEARANCE,
 	type SelectionCommentPlace,
 } from "./SelectionComment.svelte";
 import ThreadMarker from "./ThreadMarker.svelte";
@@ -396,6 +397,7 @@ export const step = vd.step;
 			items={model.rows}
 			heights={vd.heights}
 			contentWidth={vd.contentWidth}
+			trailingSpace={SELECTION_COMMENT_CLEARANCE}
 			renderItem={diffRow}
 		/>
 	{/if}

@@ -17,6 +17,9 @@ export const BAR_HEIGHT = 7 * UNIT;
 /** A list row: a file, a directory, a branch, a commit. Mirrors `--row-h`. */
 export const ROW_HEIGHT = 7 * UNIT;
 
+/** A small control, such as a `size="sm"` button. Mirrors `--control-sm-h`. */
+export const CONTROL_SM_HEIGHT = 5 * UNIT;
+
 /** A staging-tree row's left inset: one step of gutter, plus four per level of
  *  nesting. Stated here rather than in each row component, which restated the
  *  same two numbers, and derived from the unit so a rescale reaches it. */

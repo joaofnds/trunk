@@ -38,7 +38,9 @@ import {
 } from "../../lib/virtualized-diff.svelte.js";
 import ThreadCard from "../ThreadCard.svelte";
 import ExactVirtualList from "./ExactVirtualList.svelte";
-import SelectionComment from "./SelectionComment.svelte";
+import SelectionComment, {
+	SELECTION_COMMENT_CLEARANCE,
+} from "./SelectionComment.svelte";
 import ThreadMarker from "./ThreadMarker.svelte";
 
 interface Props {
@@ -425,6 +427,7 @@ export function clearSelection() {
 				items={model.rows}
 				heights={vd.heights}
 				contentWidth={vd.contentWidth}
+				trailingSpace={SELECTION_COMMENT_CLEARANCE}
 				renderItem={diffRow}
 			/>
 		{/if}

@@ -1,9 +1,15 @@
 <script lang="ts" module>
+import { CONTROL_SM_HEIGHT } from "../../lib/chrome-heights.js";
+
 /** The line the selection's Comment action sits on. */
 export interface SelectionCommentPlace {
 	hunkKey: string;
 	lineIndex: number;
 }
+
+/** The space a diff keeps after its last line so the action shows whole there:
+ *  a small control's height holds the half of it that hangs below the line. */
+export const SELECTION_COMMENT_CLEARANCE = CONTROL_SM_HEIGHT;
 </script>
 
 <script lang="ts">
