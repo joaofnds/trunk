@@ -265,7 +265,10 @@ let displaySettings = $state({ ...DEFAULT_GRAPH_SETTINGS });
 // measured height so the SVG overlay stays aligned with the DOM rows.
 let svgRowHeight = $state(displaySettings.rowHeight);
 
-let commits = $state<GraphCommit[]>([]);
+// Rows arrive laid out and are never edited in place, so each change replaces
+// the list. Deep state would wrap every row in a proxy, and each append re-reads
+// every loaded row through those proxies in the lane, path and pill passes.
+let commits = $state.raw<GraphCommit[]>([]);
 let maxColumns = $state(1);
 let hasMore = $state(true);
 let loading = $state(false);
@@ -1625,8 +1628,8 @@ async function showHeaderContextMenu(e: MouseEvent) {
 const displayItems = $derived(withWipRow(commits, wipCount, wipMessage));
 
 // Report the display list + pagination state whenever they change (loadMore
-// extending the tail included, since `commits` is deeply reactive), so the
-// parent can derive commit nav itself.
+// extending the tail included, since it replaces `commits`), so the parent can
+// derive commit nav itself.
 $effect(() => {
 	oncommitschange?.(displayItems, hasMore);
 });
@@ -1871,7 +1874,7 @@ async function loadMore(through?: string): Promise<PageResult> {
 		if (!graphActive || seq !== refreshSeq) return "stale";
 		graphRevision = response.revision;
 		graphReady = true;
-		commits.push(...response.commits);
+		commits = commits.concat(response.commits);
 		maxColumns = response.max_columns;
 		updateContentWidths(response.commits);
 		offset += response.commits.length;

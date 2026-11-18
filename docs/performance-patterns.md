@@ -6,8 +6,9 @@ TRUNK-12. Review new code against them; when one seems worth violating, bring a
 measurement. `docs/application-harness.md` §Budget holds the frontend numbers and the cost
 model those rules fall out of; TRUNK-12's implementation notes hold the Rust-gate
 measurements in full. The runtime sections cover startup, as well as
-a libgit2 diff walk, measured in a release build, and a style write on the commit list's
-root, measured in headless WebKit.
+a libgit2 diff walk, measured in a release build, a style write on the commit list's
+root, measured in headless WebKit, and reactive state over the commit list's rows,
+measured in the drive app.
 
 ## Module startup in the macOS WebView (2026-10-12)
 
@@ -229,3 +230,33 @@ component test "writes to nothing but the summaries' text as it pans" in
 `CommitGraph.test.ts` pins it for the Message pan: any attribute a pan writes under the
 list, other than on a summary's text box, fails it. To measure frames in the running
 app, `docs/performance-instrumentation.md` has `just perf`.
+
+## Rows the backend sent, held in deep `$state`, tax every walk over them (TRUNK-440, 2026-11-18)
+
+A list of rows that arrive complete and are only ever replaced must be held in
+`$state.raw`, never `$state`. Deep state wraps each row, and each object inside it, in a
+proxy as it is read, and every property read then goes through a trap. The commit list
+held its rows that way, and each page appended while scrolling re-ran the lane, path and
+pill passes over every loaded row through those proxies.
+
+Measured in the drive app (a production frontend over a debug Rust build) on an M5 Pro,
+scrolling a 30,000-commit history steadily from row 12,200 to 14,800, the totals of the
+probes around each pass divided by the pages appended:
+
+| Per appended page | Deep `$state` | `$state.raw` |
+|---|---|---|
+| Main-thread work for the page | 32 ms | 6 ms |
+| of it, `buildGraphData` | 17.5 ms | 1.4 ms |
+| The frame the page lands in | 44 to 57 ms | 21 to 24 ms |
+
+Under deep state the work grew with the rows loaded, from 6 ms a page at 2,800 rows to
+32 ms at 14,000, so the hitch at each page got worse the further the user scrolled. Held
+raw it stays flat.
+
+**Rule:** data that arrives whole and is replaced rather than edited (rows, pages, a
+response) goes in `$state.raw`, and a change assigns a new array. Keep deep `$state` for
+state the component edits in place.
+
+**Review check:** for a `$state` holding backend data, ask whether anything mutates it in
+place. If nothing does, it is raw. The component test "hands on the rows the backend
+sent, not copies of them" in `CommitGraph.test.ts` pins the commit list.

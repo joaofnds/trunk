@@ -3163,6 +3163,47 @@ describe("CommitGraph", () => {
 			expect(scrollTargets).toEqual([]);
 		});
 	});
+
+	describe("rows loaded page by page", () => {
+		// The lane, path and pill passes re-read every loaded row on each page, so
+		// a row wrapped in reactive state makes every append cost more than the
+		// last. Handing the rows on as the backend sent them shows none is wrapped.
+		it("hands on the rows the backend sent, not copies of them", async () => {
+			const BATCH = 200;
+			const served: GraphCommit[] = [];
+			installReads({
+				override: (cmd, args) => {
+					if (cmd !== "get_commit_graph") return undefined;
+					const offset = Number(args?.offset ?? 0);
+					const commits = Array.from({ length: BATCH }, (_, i) =>
+						makeCommit({
+							oid: `${offset + i}`.padStart(40, "0"),
+							summary: `commit ${offset + i}`,
+						}),
+					);
+					served.push(...commits);
+					return Promise.resolve({ commits, max_columns: 1, revision: 1 });
+				},
+			});
+			const oncommitschange = vi.fn<(commits: GraphCommit[]) => void>();
+			const rendered = render(CommitGraph, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					tabActive: true,
+					oncommitschange,
+				},
+			});
+			await screen.findByText("commit 0");
+
+			await rendered.component.scrollToOid(`${BATCH}`.padStart(40, "0"));
+			await tick();
+
+			const items = oncommitschange.mock.lastCall?.[0] ?? [];
+			expect(items.length).toBeGreaterThanOrEqual(2 * BATCH);
+			expect(items.every((row, i) => row === served[i])).toBe(true);
+		});
+	});
 	// A rebuild replaces the whole commit list. It must ask the backend for as many
 	// rows as the component already holds, or every page the user scrolled through
 	// is dropped and the author column re-fits to page one alone.

@@ -638,8 +638,9 @@ let compareOids = $derived<ReadonlySet<string>>(
 // The WIP-inclusive display list + pagination state CommitGraph reports via
 // oncommitschange, cached here so commitNav below is computed from the rows the
 // graph last reported, the same while a diff, the review panel or the rebase
-// editor covers it.
-let graphDisplayItems = $state<GraphCommit[]>([]);
+// editor covers it. Raw, like CommitGraph's own list: the rows are replaced,
+// never edited, and a proxy on each would tax every walk commitNav makes.
+let graphDisplayItems = $state.raw<GraphCommit[]>([]);
 let graphHasMore = $state(false);
 let commitNav = $derived(
 	computeCommitNav(graphDisplayItems, selectedCommitOid ?? null, graphHasMore),
