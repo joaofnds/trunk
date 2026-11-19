@@ -408,7 +408,6 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{wordWrap}
 			{repoPath}
 			{diffKind}
-			{isMerge}
 			{oncommentfullfile}
 			{onextendcomment}
 			{takesComments}

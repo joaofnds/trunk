@@ -3040,7 +3040,6 @@ $effect(() => {
 					{#snippet renderItem(commit, index)}
 						<CommitRow
 							{commit}
-							rowIndex={index}
 							onselect={handleRowSelect}
 							oncontextmenu={handleRowContextMenu}
 							onenter={() => (hoveredRow = index)}

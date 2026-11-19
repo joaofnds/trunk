@@ -49,7 +49,6 @@ interface Props {
 	wordWrap: boolean;
 	repoPath: string;
 	diffKind: PanelDiffKind;
-	isMerge: boolean;
 	/** Whether this view's keys act: false while its tab is behind another or
 	 *  the rebase editor covers it, since its listener is on the window. */
 	keysActive: boolean;
@@ -76,7 +75,6 @@ let {
 	wordWrap,
 	repoPath = "",
 	diffKind,
-	isMerge,
 	keysActive,
 	oncommentfullfile,
 	onextendcomment,

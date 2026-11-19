@@ -2656,7 +2656,6 @@ async function handleRebaseStart(
 						refVisibilityResolved = true;
 					}}
 					loadedRows={() => commitGraphRef?.loadedRows() ?? 0}
-					onstashselect={handleCommitSelect}
 					onrefnavigate={handleRefNavigate}
 					refreshSignal={sidebarRefreshSignal}
 					{refreshImmediately}

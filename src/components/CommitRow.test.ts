@@ -34,7 +34,6 @@ describe("CommitRow", () => {
 		render(CommitRow, {
 			props: {
 				commit,
-				rowIndex: 0,
 				columnVisibility: allVisible,
 			},
 		});
@@ -51,7 +50,6 @@ describe("CommitRow", () => {
 		render(CommitRow, {
 			props: {
 				commit,
-				rowIndex: 0,
 				columnVisibility: allVisible,
 			},
 		});
@@ -66,7 +64,6 @@ describe("CommitRow", () => {
 		render(CommitRow, {
 			props: {
 				commit,
-				rowIndex: 0,
 				columnVisibility: { ...allVisible, author: false },
 			},
 		});
@@ -78,7 +75,6 @@ describe("CommitRow", () => {
 		render(CommitRow, {
 			props: {
 				commit,
-				rowIndex: 0,
 				columnVisibility: allVisible,
 			},
 		});
@@ -93,7 +89,6 @@ describe("CommitRow", () => {
 		const { container } = render(CommitRow, {
 			props: {
 				commit,
-				rowIndex: 0,
 				columnVisibility: allVisible,
 			},
 		});
@@ -107,7 +102,6 @@ describe("CommitRow", () => {
 		render(CommitRow, {
 			props: {
 				commit,
-				rowIndex: 0,
 				columnVisibility: allVisible,
 				wipStats: {
 					modified: 5,
@@ -132,7 +126,6 @@ describe("CommitRow", () => {
 		render(CommitRow, {
 			props: {
 				commit,
-				rowIndex: 0,
 				columnVisibility: allVisible,
 			},
 		});
@@ -148,7 +141,6 @@ describe("CommitRow", () => {
 		const { container } = render(CommitRow, {
 			props: {
 				commit,
-				rowIndex: 0,
 				columnVisibility: allVisible,
 				onselect,
 			},
@@ -168,7 +160,6 @@ describe("CommitRow", () => {
 			render(CommitRow, {
 				props: {
 					commit: makeCommit({ oid: "abc1234567" }),
-					rowIndex: 0,
 					columnVisibility: allVisible,
 					onenter: () => pointer.push("entered"),
 					onleave: () => pointer.push("left"),
@@ -216,7 +207,6 @@ describe("CommitRow", () => {
 			render(CommitRow, {
 				props: {
 					commit,
-					rowIndex: 0,
 					columnVisibility: allVisible,
 				},
 			});
@@ -232,7 +222,6 @@ describe("CommitRow", () => {
 			render(CommitRow, {
 				props: {
 					commit,
-					rowIndex: 0,
 					columnVisibility: allVisible,
 					onselect,
 				},
@@ -249,7 +238,6 @@ describe("CommitRow", () => {
 		render(CommitRow, {
 			props: {
 				commit,
-				rowIndex: 0,
 				columnVisibility: { ...allVisible, sha: false },
 			},
 		});
@@ -264,7 +252,6 @@ describe("CommitRow", () => {
 			render(CommitRow, {
 				props: {
 					commit,
-					rowIndex: 0,
 					columnVisibility: allVisible,
 					diffStat: stat,
 				},
@@ -287,7 +274,6 @@ describe("CommitRow", () => {
 			render(CommitRow, {
 				props: {
 					commit,
-					rowIndex: 0,
 					columnVisibility: allVisible,
 					diffStat: stat, // both add + delete
 				},
@@ -312,7 +298,6 @@ describe("CommitRow", () => {
 			render(CommitRow, {
 				props: {
 					commit,
-					rowIndex: 0,
 					columnVisibility: allVisible,
 					diffStat: { insertions: 50, deletions: 0, files_changed: 1 },
 				},
@@ -332,7 +317,6 @@ describe("CommitRow", () => {
 			render(CommitRow, {
 				props: {
 					commit,
-					rowIndex: 0,
 					columnVisibility: allVisible,
 					diffStat: { insertions: 0, deletions: 0, files_changed: 3 },
 				},
@@ -348,7 +332,6 @@ describe("CommitRow", () => {
 			render(CommitRow, {
 				props: {
 					commit,
-					rowIndex: 0,
 					columnVisibility: allVisible,
 					diffStat: { insertions: 0, deletions: 0, files_changed: 0 },
 				},
@@ -365,7 +348,6 @@ describe("CommitRow", () => {
 			render(CommitRow, {
 				props: {
 					commit,
-					rowIndex: 0,
 					columnVisibility: allVisible,
 				},
 			});
@@ -380,7 +362,6 @@ describe("CommitRow", () => {
 				render(CommitRow, {
 					props: {
 						commit,
-						rowIndex: 0,
 						columnVisibility: allVisible,
 						diffStat: stat,
 					},
@@ -407,7 +388,6 @@ describe("CommitRow", () => {
 			render(CommitRow, {
 				props: {
 					commit,
-					rowIndex: 0,
 					columnVisibility: { ...allVisible, diff: false },
 					diffStat: stat,
 				},
@@ -421,7 +401,6 @@ describe("CommitRow", () => {
 		render(CommitRow, {
 			props: {
 				commit,
-				rowIndex: 0,
 				columnVisibility: allVisible,
 				inSession: true,
 			},
@@ -438,7 +417,6 @@ describe("CommitRow", () => {
 		render(CommitRow, {
 			props: {
 				commit,
-				rowIndex: 0,
 				columnVisibility: allVisible,
 				inSession: false,
 			},
@@ -452,7 +430,6 @@ describe("CommitRow", () => {
 		render(CommitRow, {
 			props: {
 				commit,
-				rowIndex: 0,
 				columnVisibility: allVisible,
 				isPendingBase: true,
 			},
@@ -469,7 +446,6 @@ describe("CommitRow", () => {
 		render(CommitRow, {
 			props: {
 				commit,
-				rowIndex: 0,
 				columnVisibility: allVisible,
 				isPendingBase: false,
 			},
@@ -483,7 +459,6 @@ describe("CommitRow", () => {
 		render(CommitRow, {
 			props: {
 				commit,
-				rowIndex: 0,
 				columnVisibility: allVisible,
 				inSession: true,
 				isPendingBase: true,
@@ -521,7 +496,6 @@ describe("CommitRow", () => {
 			render(CommitRow, {
 				props: {
 					commit: makeCommit({ oid: "abc1234567", summary, is_stash }),
-					rowIndex: 0,
 					columnVisibility: allVisible,
 				},
 			});
@@ -563,7 +537,6 @@ describe("CommitRow", () => {
 			render(CommitRow, {
 				props: {
 					commit: makeCommit({ oid: "abc1234567", author_name: name }),
-					rowIndex: 0,
 					columnVisibility: allVisible,
 				},
 			});
@@ -608,7 +581,6 @@ describe("CommitRow", () => {
 						oid: "abc1234567",
 						author_timestamp: pinnedNow.getTime() / 1000,
 					}),
-					rowIndex: 0,
 					columnVisibility: allVisible,
 				},
 			});

@@ -23,7 +23,6 @@ import CommentBadge from "./CommentBadge.svelte";
 
 interface Props {
 	commit: GraphCommit;
-	rowIndex: number;
 	onselect?: (oid: string, mods?: SelectModifiers) => void;
 	oncontextmenu?: (e: MouseEvent, commit: GraphCommit) => void;
 	onenter?: () => void;
@@ -59,7 +58,6 @@ interface Props {
 
 let {
 	commit,
-	rowIndex,
 	onselect,
 	oncontextmenu,
 	onenter,

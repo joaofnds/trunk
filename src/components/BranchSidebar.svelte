@@ -60,7 +60,6 @@ interface Props {
 	onvisibilitychanged?: (graph: GraphResponse) => void;
 	/** How many rows the graph holds, so a rebuild answers with the same depth. */
 	loadedRows?: () => number;
-	onstashselect?: (oid: string) => void;
 	onrefnavigate?: (refNameOrOid: string) => void;
 	/** Fires once the persisted hidden-ref set for this repo is known and, if it
 	 *  hides anything, has been pushed to the backend -- whether that read
@@ -83,7 +82,6 @@ let {
 	onrefschange,
 	onvisibilitychanged,
 	loadedRows,
-	onstashselect,
 	onrefnavigate,
 	onvisibilityresolved,
 	refreshSignal,

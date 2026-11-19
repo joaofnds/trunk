@@ -112,7 +112,6 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
 		wordWrap: false,
 		repoPath: "/repo",
 		diffKind: "commit" as const,
-		isMerge: false,
 		keysActive: true,
 		oncommentfullfile: vi.fn(),
 		...overrides,
@@ -370,17 +369,6 @@ describe("FullFileView", () => {
 		await tick();
 
 		expect(screen.queryByRole("button", { name: /comment/i })).toBeNull();
-	});
-
-	it("V10/L-05: with isMerge=true the Comment affordance is present and NOT disabled", async () => {
-		render(FullFileView, { props: defaultProps({ isMerge: true }) });
-
-		await fireEvent.click(gutterGrip("added one"));
-		await tick();
-
-		const affordance = commentAction() as HTMLButtonElement;
-		expect(affordance).toBeTruthy();
-		expect(affordance.disabled).toBe(false);
 	});
 
 	it("withholds the list until every comment row has a measured height", async () => {
