@@ -453,6 +453,15 @@ describe("trackScrollActivity", () => {
 			expect(sidewaysThumbFor(el)).toBeNull();
 		});
 
+		it("gives no thumb to a pane that asks for none", () => {
+			const el = makePane();
+			el.dataset.scrollThumb = "none";
+
+			scrollSidewaysTo(el, 400);
+
+			expect(sidewaysThumbFor(el)).toBeNull();
+		});
+
 		it("gives no sideways thumb while only the vertical position moves", () => {
 			const el = makePane({ scrollHeight: 1000, clientHeight: 200 });
 

@@ -213,6 +213,7 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 		class:fades-end={fades.end}
 		role="tablist"
 		aria-label="Repository tabs"
+		data-scroll-thumb="none"
 		bind:this={tabBarEl}
 		onwheel={scrollSideways}
 	>

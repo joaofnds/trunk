@@ -1,8 +1,17 @@
 import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	onTestFinished,
+	vi,
+} from "vitest";
 import { FakeIntersectionObserver } from "../__tests__/helpers/fake-intersection-observer.js";
 import { reportWidthOf } from "../__tests__/helpers/fake-resize-observer.js";
+import { THUMB_CLASS, trackScrollActivity } from "../lib/scrollbar-activity.js";
 import type { TabInfo } from "../lib/tab-types.js";
 import TabBar from "./TabBar.svelte";
 
@@ -365,6 +374,19 @@ describe("TabBar", () => {
 		});
 
 		expect([unhandled, tablist.scrollLeft]).toEqual([true, 0]);
+	});
+
+	it("paints no scrollbar thumb over the tabs as the strip scrolls", () => {
+		onTestFinished(trackScrollActivity());
+		render(TabBar, { props: defaultProps });
+		const tablist = screen.getByRole("tablist", { name: "Repository tabs" });
+		Object.defineProperty(tablist, "scrollWidth", { value: 1000 });
+		Object.defineProperty(tablist, "clientWidth", { value: 200 });
+
+		tablist.scrollLeft = 100;
+		tablist.dispatchEvent(new Event("scroll"));
+
+		expect(document.querySelector(`.${THUMB_CLASS}`)).toBeNull();
 	});
 
 	it("offers no close on a tab the strip's edge cuts", async () => {
