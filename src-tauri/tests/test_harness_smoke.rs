@@ -35,6 +35,30 @@ fn builder_creates_branch_and_merge() {
 }
 
 #[test]
+fn builder_merges_onto_the_commit_just_before_it() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("feature.txt", "work")
+        .with_commit("Feature work")
+        .checkout("main")
+        .with_file("README.md", "hello again")
+        .with_commit("Main work")
+        .merge("feature")
+        .build();
+
+    let repo = ctx.repo();
+    let merge = repo.head().unwrap().peel_to_commit().unwrap();
+    let parents: Vec<String> = merge
+        .parents()
+        .map(|parent| parent.message().unwrap().to_owned())
+        .collect();
+    assert_eq!(parents, ["Main work", "Feature work"]);
+}
+
+#[test]
 fn builder_creates_conflict_state() {
     let ctx = TestContext::builder()
         .with_file("file.txt", "original")
