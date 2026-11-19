@@ -12,7 +12,6 @@ import RepoView from "../__tests__/helpers/update-repo-view-harness.svelte";
 import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import type { Anchor, Draft, FileDiff } from "../lib/types.js";
-import { createUndoRedoState } from "../lib/undo-redo.svelte.js";
 import {
 	setUpdateFrozen,
 	UpdatePreparation,
@@ -105,9 +104,7 @@ class UpdateRepositoryHarness {
 			props: {
 				preparation: this.preparation,
 				repoPath: "/repo",
-				repoName: "repo",
 				remoteState: createRemoteState(),
-				undoRedo: createUndoRedoState(),
 				leftPaneWidth: 200,
 				leftPaneCollapsed: false,
 				rightPaneWidth: 300,

@@ -46,7 +46,6 @@ import type {
 	FileDiff,
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
-import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
 
 // Stub OffscreenCanvas for jsdom — used by text-measure.ts (measureTextWidth) via CommitGraph
 if (typeof globalThis.OffscreenCanvas === "undefined") {
@@ -207,14 +206,6 @@ function createMockRemoteState(): RemoteState {
 	return createRemoteState();
 }
 
-function createMockUndoRedo(): UndoRedoManager {
-	return {
-		state: { redoStack: [] },
-		push: vi.fn(),
-		pop: vi.fn(),
-	};
-}
-
 function holdLazyModule(path: string, label: string) {
 	const request = Promise.withResolvers<{ default: typeof Button }>();
 	const entered = Promise.withResolvers<void>();
@@ -317,9 +308,7 @@ describe("RepoView", () => {
 		const { container } = render(RepoView, {
 			props: {
 				repoPath: "/test/repo",
-				repoName: "test-repo",
 				remoteState: createMockRemoteState(),
-				undoRedo: createMockUndoRedo(),
 				leftPaneWidth: 200,
 				leftPaneCollapsed: false,
 				rightPaneWidth: 300,
@@ -344,9 +333,7 @@ describe("RepoView", () => {
 		const { container } = render(RepoView, {
 			props: {
 				repoPath: "/test/repo",
-				repoName: "test-repo",
 				remoteState: createMockRemoteState(),
-				undoRedo: createMockUndoRedo(),
 				leftPaneWidth: 200,
 				leftPaneCollapsed: false,
 				rightPaneWidth: 300,
@@ -370,9 +357,7 @@ describe("RepoView", () => {
 		render(RepoView, {
 			props: {
 				repoPath: "/test/repo",
-				repoName: "test-repo",
 				remoteState: createMockRemoteState(),
-				undoRedo: createMockUndoRedo(),
 				leftPaneWidth: 200,
 				leftPaneCollapsed: false,
 				rightPaneWidth: 300,
@@ -399,9 +384,7 @@ describe("RepoView", () => {
 		const { container } = render(RepoView, {
 			props: {
 				repoPath: "/test/repo",
-				repoName: "test-repo",
 				remoteState: createMockRemoteState(),
-				undoRedo: createMockUndoRedo(),
 				leftPaneWidth: 200,
 				leftPaneCollapsed: true,
 				rightPaneWidth: 300,
@@ -1443,9 +1426,7 @@ describe("RepoView", () => {
 	function baseProps(remoteState: RemoteState) {
 		return {
 			repoPath: "/test/repo",
-			repoName: "test-repo",
 			remoteState,
-			undoRedo: createMockUndoRedo(),
 			leftPaneWidth: 200,
 			leftPaneCollapsed: false,
 			rightPaneWidth: 300,
@@ -1768,9 +1749,7 @@ describe("RepoView", () => {
 		const { container } = render(RepoView, {
 			props: {
 				repoPath: "/test/repo",
-				repoName: "test-repo",
 				remoteState: createMockRemoteState(),
-				undoRedo: createMockUndoRedo(),
 				leftPaneWidth: 200,
 				leftPaneCollapsed: false,
 				rightPaneWidth: 300,
@@ -1796,9 +1775,7 @@ describe("RepoView", () => {
 	describe("out-of-order dirty-count loads", () => {
 		const props = () => ({
 			repoPath: "/test/repo",
-			repoName: "test-repo",
 			remoteState: createMockRemoteState(),
-			undoRedo: createMockUndoRedo(),
 			leftPaneWidth: 200,
 			leftPaneCollapsed: false,
 			rightPaneWidth: 300,

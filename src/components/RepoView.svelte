@@ -101,7 +101,6 @@ import type {
 	WorkingTreeStatus,
 } from "../lib/types.js";
 import Splitter from "../lib/ui/Splitter.svelte";
-import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
 import { registerUpdateParticipant } from "../lib/updates-context.js";
 import { isUpdateFrozen } from "../lib/updates-lifecycle.js";
 import { restoreReviewUpdateComposer } from "../lib/updates-review.js";
@@ -129,9 +128,7 @@ interface Props {
 	onrecoveryready?: (error: string | null) => void;
 	ondirtychange?: (counts: { staged: number; unstaged: number }) => void;
 	repoPath: string;
-	repoName: string;
 	remoteState: RemoteState;
-	undoRedo: UndoRedoManager;
 	leftPaneWidth: number;
 	leftPaneCollapsed: boolean;
 	rightPaneWidth: number;
@@ -185,9 +182,7 @@ interface Props {
 
 let {
 	repoPath,
-	repoName,
 	remoteState,
-	undoRedo,
 	leftPaneWidth,
 	leftPaneCollapsed,
 	rightPaneWidth,

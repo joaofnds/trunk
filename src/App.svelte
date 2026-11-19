@@ -1334,9 +1334,7 @@ $effect(() => {
 								reviewPanelOpen && tab.id === activeTabId}
 							<RepoView
 								repoPath={tab.repoPath}
-								repoName={tab.repoName}
 								remoteState={tabState.remoteState}
-								undoRedo={tabState.undoRedo}
 								{leftPaneWidth}
 								leftPaneCollapsed={tabReviewActive
 									? reviewLeftPaneCollapsed

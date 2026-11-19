@@ -23,7 +23,6 @@ import {
 import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import type { CommitDetail, FileDiff } from "../lib/types.js";
-import { createUndoRedoState } from "../lib/undo-redo.svelte.js";
 import RepoView from "./RepoView.svelte";
 
 let host: RepositoryReadHost;
@@ -98,10 +97,8 @@ async function mountCommit() {
 	const view = render(RepoView, {
 		props: {
 			repoPath: "/repo",
-			repoName: "repo",
 			diffPreferences: DiffPreferences.defaults(),
 			remoteState: createRemoteState(),
-			undoRedo: createUndoRedoState(),
 			leftPaneWidth: 200,
 			leftPaneCollapsed: false,
 			rightPaneWidth: 300,

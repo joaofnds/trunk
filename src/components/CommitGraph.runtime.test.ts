@@ -22,7 +22,6 @@ import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { _resetToasts, toasts } from "../lib/toast.svelte.js";
-import { createUndoRedoState } from "../lib/undo-redo.svelte.js";
 import CommitGraph from "./CommitGraph.svelte";
 import RepoView from "./RepoView.svelte";
 
@@ -979,10 +978,8 @@ describe("RepoView", () => {
 		render(RepoView, {
 			props: {
 				repoPath: "/repo",
-				repoName: "repo",
 				diffPreferences: DiffPreferences.defaults(),
 				remoteState: createRemoteState(),
-				undoRedo: createUndoRedoState(),
 				leftPaneWidth: 200,
 				leftPaneCollapsed: false,
 				rightPaneWidth: 300,

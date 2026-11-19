@@ -18,7 +18,6 @@ import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import type { RefsResponse } from "../lib/types.js";
-import { createUndoRedoState } from "../lib/undo-redo.svelte.js";
 import RepoView from "./RepoView.svelte";
 
 let host: RepositoryReadHost;
@@ -71,10 +70,8 @@ async function mountRepo(tabActive: boolean) {
 	const view = render(RepoView, {
 		props: {
 			repoPath: "/repo",
-			repoName: "repo",
 			diffPreferences: DiffPreferences.defaults(),
 			remoteState: createRemoteState(),
-			undoRedo: createUndoRedoState(),
 			leftPaneWidth: 200,
 			leftPaneCollapsed: false,
 			rightPaneWidth: 300,
