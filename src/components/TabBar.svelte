@@ -44,12 +44,26 @@ $effect(() => {
 	}
 });
 
+function revealActiveTab() {
+	tabBarEl
+		?.querySelector(`[data-tab-id="${activeTabId}"]`)
+		?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+$effect(revealActiveTab);
+
 $effect(() => {
-	const activeButton = tabBarEl?.querySelector(
-		`[data-tab-id="${activeTabId}"]`,
-	);
-	activeButton?.scrollIntoView({ block: "nearest", inline: "nearest" });
+	const observer = new ResizeObserver(() => revealActiveTab());
+	observer.observe(tabBarEl);
+
+	return () => observer.disconnect();
 });
+
+function scrollSideways(e: WheelEvent) {
+	if (e.deltaX !== 0) return;
+
+	tabBarEl.scrollLeft += e.deltaY;
+}
 
 const canReorder = $derived(tabs.length > 1);
 
@@ -140,62 +154,65 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 	SortableJS switches them off on the copy it drags, and a descendant that
 	opts back in is found under the pointer as a drop target.
 -->
-<div
-	class="tab-bar"
-	role="tablist"
-	aria-label="Repository tabs"
-	bind:this={tabBarEl}
->
-	{#each tabs as tab (tab.id)}
-		{@const title = tab.repoPath
-			? (resolvedPaths[tab.repoPath] ?? tab.repoPath)
-			: tab.repoName || "New Tab"}
-		<div
-			class="tab-item"
-			class:active={tab.id === activeTabId}
-			role="presentation"
-			data-tab-id={tab.id}
-			{title}
-		>
-			<Tab
-				variant="framed"
-				selected={tab.id === activeTabId}
+<div class="flex h-full min-w-0 items-center">
+	<div
+		class="tab-bar"
+		role="tablist"
+		aria-label="Repository tabs"
+		bind:this={tabBarEl}
+		onwheel={scrollSideways}
+	>
+		{#each tabs as tab (tab.id)}
+			{@const title = tab.repoPath
+				? (resolvedPaths[tab.repoPath] ?? tab.repoPath)
+				: tab.repoName || "New Tab"}
+			<div
+				class="tab-item"
+				class:active={tab.id === activeTabId}
+				role="presentation"
+				data-tab-id={tab.id}
 				{title}
-				onmousedown={(e) => activateOnPrimary(e, tab.id)}
-				onkeydown={(e) => {
-					if (e.key === "Enter" || e.key === " ") onactivate(tab.id);
-				}}
-				oncontextmenu={(e) => openMenu(e, tab.id)}
-				onauxclick={(e) => closeOnMiddle(e, tab.id)}
 			>
-				{#if tab.dirty}
-					<span class="dirty-dot"></span>
-				{/if}
-				<span class="truncate tab-label flex-1"
-					>{tab.repoName || "New Tab"}</span
+				<Tab
+					variant="framed"
+					selected={tab.id === activeTabId}
+					{title}
+					onmousedown={(e) => activateOnPrimary(e, tab.id)}
+					onkeydown={(e) => {
+						if (e.key === "Enter" || e.key === " ") onactivate(tab.id);
+					}}
+					oncontextmenu={(e) => openMenu(e, tab.id)}
+					onauxclick={(e) => closeOnMiddle(e, tab.id)}
 				>
-				{#snippet trailing()}
-					<Button
-						icon
-						size="xs"
-						variant="ghost"
-						aria-label="Close tab"
-						onmousedown={(e) => pressClose(e, tab.id)}
-						oncontextmenu={(e) => openMenu(e, tab.id)}
-						onauxclick={(e) => closeOnMiddle(e, tab.id)}
-						onclick={(e) => {
-							e.stopPropagation();
-							onclose(tab.id, e.shiftKey);
-						}}
+					{#if tab.dirty}
+						<span class="dirty-dot"></span>
+					{/if}
+					<span class="truncate tab-label flex-1"
+						>{tab.repoName || "New Tab"}</span
 					>
-						<X size={12} />
-					</Button>
-				{/snippet}
-			</Tab>
-		</div>
-	{/each}
+					{#snippet trailing()}
+						<Button
+							icon
+							size="xs"
+							variant="ghost"
+							aria-label="Close tab"
+							onmousedown={(e) => pressClose(e, tab.id)}
+							oncontextmenu={(e) => openMenu(e, tab.id)}
+							onauxclick={(e) => closeOnMiddle(e, tab.id)}
+							onclick={(e) => {
+								e.stopPropagation();
+								onclose(tab.id, e.shiftKey);
+							}}
+						>
+							<X size={12} />
+						</Button>
+					{/snippet}
+				</Tab>
+			</div>
+		{/each}
+	</div>
 	<span
-		class="ml-1 inline-flex shrink-0 rounded outline-1 outline-dashed -outline-offset-1 outline-border"
+		class="mx-1 inline-flex shrink-0 rounded outline-1 outline-dashed -outline-offset-1 outline-border"
 	>
 		<Button icon variant="ghost" aria-label="New tab" onclick={onnew}>
 			<Plus size={14} />
@@ -222,8 +239,9 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 	font-size: var(--text-callout);
 	font-weight: var(--weight-medium);
 	color: var(--color-text-muted);
+	grid-template-columns: minmax(0, auto);
+	min-width: calc(18 * var(--u));
 	white-space: nowrap;
-	flex-shrink: 0;
 	background: none;
 	/* Paint, not length: the active state's outline must not take a pixel out
        of a tab item already declaring its height. */

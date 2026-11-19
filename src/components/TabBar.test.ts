@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { reportWidthOf } from "../__tests__/helpers/fake-resize-observer.js";
 import type { TabInfo } from "../lib/tab-types.js";
 import TabBar from "./TabBar.svelte";
 
@@ -20,6 +21,10 @@ vi.mock("sortablejs", () => {
 // jsdom does not implement scrollIntoView — stub it globally
 beforeEach(() => {
 	Element.prototype.scrollIntoView = vi.fn();
+});
+
+afterEach(() => {
+	vi.unstubAllGlobals();
 });
 
 const tabs: TabInfo[] = [
@@ -310,6 +315,49 @@ describe("TabBar", () => {
 		await fireEvent(screen.getByRole("tab", { name: "other" }), auxClick(2));
 
 		expect(closed).toEqual([]);
+	});
+
+	it("keeps the new-tab button out of the tablist", () => {
+		render(TabBar, { props: defaultProps });
+
+		const tablist = screen.getByRole("tablist", { name: "Repository tabs" });
+
+		expect(tablist).not.toContainElement(screen.getByLabelText("New tab"));
+	});
+
+	it("scrolls the strip sideways on a vertical wheel", async () => {
+		render(TabBar, { props: defaultProps });
+		const tablist = screen.getByRole("tablist", { name: "Repository tabs" });
+
+		await fireEvent.wheel(tablist, { deltaY: 40 });
+
+		expect(tablist.scrollLeft).toBe(40);
+	});
+
+	it("leaves a sideways wheel to the strip's own scrolling", async () => {
+		render(TabBar, { props: defaultProps });
+		const tablist = screen.getByRole("tablist", { name: "Repository tabs" });
+
+		await fireEvent.wheel(tablist, { deltaX: 30, deltaY: 40 });
+
+		expect(tablist.scrollLeft).toBe(0);
+	});
+
+	it("brings the active tab into view when the strip narrows", async () => {
+		const strip = reportWidthOf(
+			(target) => target.getAttribute("role") === "tablist",
+			600,
+		);
+		render(TabBar, { props: { ...defaultProps, activeTabId: "2" } });
+		await Promise.resolve();
+		const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView);
+		scrollIntoView.mockClear();
+
+		strip.resize(300);
+
+		expect(scrollIntoView.mock.contexts).toEqual([
+			screen.getByRole("tab", { name: "other" }).closest(".tab-item"),
+		]);
 	});
 
 	describe("on a tab's close", () => {
