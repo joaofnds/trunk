@@ -1,7 +1,7 @@
 # Scrollbars
 
-Every scroller in the app hides its native scrollbar and gets a themed thumb painted from
-JavaScript instead. The reason is layout, not taste, and the rule that forces it is easy to
+Every scroller in the app hides its native scrollbar and, unless it opts out, gets a themed
+thumb painted from JavaScript instead. The reason is layout, not taste, and the rule that forces it is easy to
 re-derive wrongly.
 
 ## The pieces
@@ -61,6 +61,11 @@ with two narrowings the vertical thumb does not have:
 Once up, the two thumbs share one linger: a pane that goes on scrolling up and down after a
 sideways scroll keeps its sideways thumb until 900ms after it stops, and a sideways scroll
 shows the vertical thumb too wherever the pane has a vertical range.
+
+A scroller that shows its overflow some other way sets `data-scroll-thumb="none"` and gets
+no thumb on either axis. The repository tab strip does: its edge fades show that tabs run
+past it, and a sideways thumb there would sit along its bottom edge, which is inside the
+tabs, and cover their labels after every click or resize that scrolls it.
 
 Each thumb carries `data-axis`, `vertical` or `horizontal`, and `app.css` gives it its 5px
 thickness by that name, so a thumb without it paints nothing.
