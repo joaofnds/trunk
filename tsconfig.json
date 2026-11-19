@@ -9,6 +9,7 @@
 		"noEmit": true,
 		"sourceMap": true,
 		"strict": true,
+		"noUnusedLocals": true,
 		"moduleResolution": "bundler",
 		"target": "ESNext",
 		"module": "ESNext",
