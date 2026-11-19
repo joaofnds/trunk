@@ -837,12 +837,14 @@ describe("App side panes", () => {
 			shortcut: "j",
 			narrow: "ArrowLeft",
 			widen: "ArrowRight",
+			floor: "80",
 		},
 		{
 			pane: "detail pane",
 			shortcut: "k",
 			narrow: "ArrowRight",
 			widen: "ArrowLeft",
+			floor: "200",
 		},
 	];
 
@@ -866,8 +868,8 @@ describe("App side panes", () => {
 	);
 
 	it.each(panes)(
-		"reopens the $pane at the narrowest width after a step reopened it and a step closed it",
-		async ({ pane, shortcut, narrow, widen }) => {
+		"reopens the $pane at its floor after a step reopened it and a step closed it",
+		async ({ pane, shortcut, narrow, widen, floor }) => {
 			seedOneTab();
 			render(App);
 			const divider = await screen.findByRole("slider", {
@@ -881,7 +883,7 @@ describe("App side panes", () => {
 
 			await pressShortcut(shortcut);
 
-			expect(divider).toHaveAttribute("aria-valuenow", "50");
+			expect(divider).toHaveAttribute("aria-valuenow", floor);
 		},
 	);
 

@@ -219,10 +219,13 @@ const reviewFilter = $derived<ReviewFilter>(
 	reviewThreadsHidden ? "none" : threadFilter,
 );
 
+const LEFT_PANE_MIN = 80;
 const LEFT_PANE_MAX = 600;
+const RIGHT_PANE_MIN = 200;
 const RIGHT_PANE_MAX = 700;
 const leftPane = createPaneSizing({
 	splitterEdge: "right",
+	min: LEFT_PANE_MIN,
 	max: LEFT_PANE_MAX,
 	width: () => leftPaneWidth,
 	collapsed: () => leftPaneCollapsed,
@@ -232,6 +235,7 @@ const leftPane = createPaneSizing({
 });
 const rightPane = createPaneSizing({
 	splitterEdge: "left",
+	min: RIGHT_PANE_MIN,
 	max: RIGHT_PANE_MAX,
 	width: () => rightPaneWidth,
 	collapsed: () => rightPaneCollapsed,

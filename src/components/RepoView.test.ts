@@ -552,15 +552,15 @@ describe("RepoView", () => {
 		{
 			pane: "sidebar",
 			key: "ArrowRight",
-			reopened: ["left collapsed false", "left width 50"],
+			reopened: ["left collapsed false", "left width 80"],
 		},
 		{
 			pane: "detail pane",
 			key: "ArrowLeft",
-			reopened: ["right collapsed false", "right width 50"],
+			reopened: ["right collapsed false", "right width 200"],
 		},
 	])(
-		"reopens a collapsed $pane at the narrowest width a drag leaves it open at",
+		"reopens a collapsed $pane at its floor on a widening step",
 		async ({ pane, key, reopened }) => {
 			const changes = renderWithPanes({
 				leftPaneWidth: 200,
@@ -624,16 +624,16 @@ describe("RepoView", () => {
 	it.each([
 		{
 			pane: "sidebar",
-			to: 849,
+			to: 879,
 			collapsed: ["left collapsed true", "left width 200"],
 		},
 		{
 			pane: "detail pane",
-			to: 1251,
+			to: 1101,
 			collapsed: ["right collapsed true", "right width 300"],
 		},
 	])(
-		"collapses the $pane when a drag leaves it narrower than 50 pixels",
+		"collapses the $pane when a drag leaves it narrower than its floor",
 		async ({ pane, to, collapsed }) => {
 			const changes = renderWithPanes({
 				leftPaneWidth: 200,
@@ -651,8 +651,8 @@ describe("RepoView", () => {
 	);
 
 	it.each([
-		{ pane: "sidebar", through: [852, 800], kept: "left width 200" },
-		{ pane: "detail pane", through: [1248, 1300], kept: "right width 300" },
+		{ pane: "sidebar", through: [882, 800], kept: "left width 200" },
+		{ pane: "detail pane", through: [1098, 1300], kept: "right width 300" },
 	])(
 		"keeps the width the $pane had when a drag closes it, to reopen at",
 		async ({ pane, through, kept }) => {
@@ -672,14 +672,14 @@ describe("RepoView", () => {
 	);
 
 	it.each([
-		{ pane: "sidebar", key: "ArrowLeft", kept: "left width 64" },
-		{ pane: "detail pane", key: "ArrowRight", kept: "right width 64" },
+		{ pane: "sidebar", key: "ArrowLeft", kept: "left width 94" },
+		{ pane: "detail pane", key: "ArrowRight", kept: "right width 214" },
 	])(
 		"keeps the width the $pane had when steps close it, to reopen at",
 		async ({ pane, key, kept }) => {
 			const changes = renderWithPanes({
-				leftPaneWidth: 64,
-				rightPaneWidth: 64,
+				leftPaneWidth: 94,
+				rightPaneWidth: 214,
 			});
 			const handle = screen.getByRole("slider", { name: `Resize ${pane}` });
 
@@ -706,7 +706,7 @@ describe("RepoView", () => {
 	});
 
 	it("lets go of the focus in the detail pane when it collapses", async () => {
-		renderWithPanes({ rightPaneWidth: 56 });
+		renderWithPanes({ rightPaneWidth: 204 });
 		const [field] = await screen.findAllByPlaceholderText(
 			"Description (optional)",
 		);
@@ -721,7 +721,7 @@ describe("RepoView", () => {
 	});
 
 	it("lets go of the focus in the sidebar when it collapses", async () => {
-		renderWithPanes({ leftPaneWidth: 56 });
+		renderWithPanes({ leftPaneWidth: 84 });
 		const filter = await screen.findByPlaceholderText("Filter branches…");
 		filter.focus();
 
@@ -736,16 +736,16 @@ describe("RepoView", () => {
 	it.each([
 		{
 			pane: "sidebar",
-			to: 1050,
-			reopened: ["left collapsed false", "left width 50"],
+			to: 1080,
+			reopened: ["left collapsed false", "left width 80"],
 		},
 		{
 			pane: "detail pane",
-			to: 950,
-			reopened: ["right collapsed false", "right width 50"],
+			to: 800,
+			reopened: ["right collapsed false", "right width 200"],
 		},
 	])(
-		"reopens a collapsed $pane when a drag takes it to 50 pixels",
+		"reopens a collapsed $pane when a drag takes it to its floor",
 		async ({ pane, to, reopened }) => {
 			const changes = renderWithPanes({
 				leftPaneWidth: 200,

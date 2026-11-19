@@ -1,8 +1,8 @@
-const NARROWEST_PANE = 50;
-
 export interface PaneSizingOptions {
 	/** Which of the pane's edges its splitter sits on, so which way widens it. */
 	splitterEdge: "left" | "right";
+	/** The narrowest the pane is drawn open: narrower, it collapses. */
+	min: number;
 	max: number;
 	width: () => number;
 	collapsed: () => boolean;
@@ -19,11 +19,11 @@ export interface PaneSizing {
 	startResize(e: MouseEvent): void;
 }
 
-// A pane collapses on the way to narrower than NARROWEST_PANE, so the width it
+// A pane collapses on the way to narrower than its minimum, so the width it
 // last had is one it only passed through. Toggled open, it reopens at the width
 // it had when the narrowing began: where the drag took hold, or before the
 // first of a run of narrowing steps, which any widening ends. A drag or a step
-// that widens a collapsed pane opens it at NARROWEST_PANE instead.
+// that widens a collapsed pane opens it at its minimum instead.
 export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 	const widenSign = options.splitterEdge === "right" ? 1 : -1;
 	let stepsFrom: number | null = null;
@@ -34,7 +34,7 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 
 	/** Reports whether the width collapsed the pane. */
 	function resize(width: number): boolean {
-		if (width < NARROWEST_PANE) {
+		if (width < options.min) {
 			options.oncollapsedchange(true);
 			return true;
 		}
@@ -80,7 +80,7 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 
 		if (options.collapsed()) {
 			stepsFrom = null;
-			resize(NARROWEST_PANE);
+			resize(options.min);
 			return;
 		}
 
