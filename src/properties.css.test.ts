@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 
 const root = resolve(process.cwd(), "src");
 const properties = readFileSync(join(root, "properties.css"), "utf8");
+const bundle = JSON.parse(
+	readFileSync(resolve(process.cwd(), "src-tauri/tauri.conf.json"), "utf8"),
+);
 
 /** Every file that can set or read a property: a component, a stylesheet or a
  *  module, with the registrations themselves left out. */
@@ -36,6 +39,14 @@ describe("properties.css", () => {
 
 	it("registers at least one property", () => {
 		expect(registered.length).toBeGreaterThan(0);
+	});
+
+	it("is honored on the oldest macOS the app declares, since WebKit before Safari 16.4 (macOS 13.3) drops every registration", () => {
+		const [major, minor] = bundle.bundle.macOS.minimumSystemVersion
+			.split(".")
+			.map(Number);
+
+		expect(major * 100 + minor).toBeGreaterThanOrEqual(13 * 100 + 3);
 	});
 
 	it.each(registered)(

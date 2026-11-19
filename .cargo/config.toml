@@ -3,4 +3,4 @@
 # exports under this name. With the two different, every switch between `just
 # dev-app` and any other build recompiles the C dependencies and everything built on
 # them (docs/build-environment.md). `just toolchain-parity` checks that they agree.
-MACOSX_DEPLOYMENT_TARGET = "10.13"
+MACOSX_DEPLOYMENT_TARGET = "13.3"

@@ -298,6 +298,8 @@ jobs:
             desc "Desktop Git GUI"
             homepage "https://github.com/joaofnds/trunk"
 
+            depends_on macos: :ventura
+
             app "Trunk.app"
             binary "#{appdir}/Trunk.app/Contents/MacOS/trunk"
 

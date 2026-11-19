@@ -95,6 +95,23 @@ the same one on several units. `EnvVarChanged` names the variable, and
 `FeaturesChanged` on a unit you did not reconfigure means two builds share its
 slot.
 
+## The oldest macOS the app runs on is 13.3
+
+`src/properties.css` registers custom properties with `@property`, and their
+reads carry no fallback. WebKit honors `@property` from Safari 16.4, which
+macOS 13.3 ships, and drops every registration before it. A read of an
+unregistered property with no fallback leaves the declaration that reads it
+unset, so the zero and initial values the registrations give would be lost
+and the layouts built on them would break. The floor is declared in three places:
+tauri.conf.json's `bundle.macOS.minimumSystemVersion`, which becomes
+`LSMinimumSystemVersion` and makes macOS refuse to open the app on anything
+older; `.cargo/config.toml`'s `MACOSX_DEPLOYMENT_TARGET`, which must equal it
+(above); and the release workflow's cask, `depends_on macos: :ventura`.
+Homebrew names a floor only by release, so brew installs on 13.0 to 13.2 and
+macOS then refuses to open it. `just toolchain-parity` fails when the three
+disagree, and a test in `src/properties.css.test.ts` fails when the floor
+drops below 13.3.
+
 ## macOS Gatekeeper can stall every fresh binary
 
 Symptom: cargo runs sit for minutes with near-zero CPU; hour-long gates. A
