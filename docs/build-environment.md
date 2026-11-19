@@ -98,8 +98,12 @@ slot.
 ## The oldest macOS the app runs on is 13.3
 
 `src/properties.css` registers custom properties with `@property`, and their
-reads carry no fallback. WebKit honors `@property` from Safari 16.4, which
-macOS 13.3 ships, and drops every registration before it. A read of an
+reads carry no fallback. WebKit honors `@property` from Safari 16.4 and
+drops every registration before it. macOS 13.3 is the first release that ships
+that WebKit. Apple also released Safari 16.4 for macOS 11 and 12, and a Mac
+there may honor the registrations once it installs that update, but the app
+cannot require a Safari update, so it declares the release that guarantees
+one. A read of an
 unregistered property with no fallback leaves the declaration that reads it
 unset, so the zero and initial values the registrations give would be lost
 and the layouts built on them would break. The floor is declared in three places:
@@ -108,7 +112,10 @@ tauri.conf.json's `bundle.macOS.minimumSystemVersion`, which becomes
 older; `.cargo/config.toml`'s `MACOSX_DEPLOYMENT_TARGET`, which must equal it
 (above); and the release workflow's cask, `depends_on macos: :ventura`.
 Homebrew names a floor only by release, so brew installs on 13.0 to 13.2 and
-macOS then refuses to open it. `just toolchain-parity` fails when the three
+macOS then refuses to open it. The bare release means that release or newer
+from Homebrew 7 on. Homebrew 5.1.7 read it as that release alone, which
+refuses every newer macOS, and the string form `">= :ventura"` that both read
+is deprecated in Homebrew 7, so the cask is written for Homebrew 7. `just toolchain-parity` fails when the three
 disagree, and a test in `src/properties.css.test.ts` fails when the floor
 drops below 13.3.
 

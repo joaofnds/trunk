@@ -268,10 +268,18 @@ jobs:
       - name: Generate cask and push to tap
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAURI_VERSION: ${{ steps.tauri.outputs.version }}
         run: |
           TAG="$GITHUB_REF_NAME"
           VERSION="${TAG#v}"
-          TAURI_VERSION="${{ steps.tauri.outputs.version }}"
+
+          # Both versions land inside Ruby strings in the cask, where `#{...}`
+          # runs as code on every machine that reads it.
+          release='^[0-9]+\.[0-9]+\.[0-9]+$'
+          if ! [[ "$VERSION" =~ $release && "$TAURI_VERSION" =~ $release ]]; then
+            echo "::error::cask versions must be MAJOR.MINOR.PATCH: tag $TAG, tauri.conf.json $TAURI_VERSION"
+            exit 1
+          fi
 
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/joaofnds/homebrew-tap.git" tap
 

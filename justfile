@@ -153,7 +153,7 @@ check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-swee
 contrast:
     bun scripts/contrast/re-audit-verify.mjs
 
-# Verify every file naming the rust version, or the macOS deployment target, names the same one (milliseconds)
+# Verify every file naming the rust version, or the macOS deployment target, names the same one, and the cask names the macOS release of that target (milliseconds)
 toolchain-parity:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -178,6 +178,7 @@ toolchain-parity:
         14) release=sonoma ;;
         15) release=sequoia ;;
         26) release=tahoe ;;
+        27) release=golden_gate ;;
         *) release="" ;;
     esac
     if [ -z "$release" ] || [ "$casked" != "$release" ]; then

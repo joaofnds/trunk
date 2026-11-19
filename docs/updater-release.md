@@ -21,7 +21,7 @@ entry has exactly these fields:
 ```json
 {
   "publicKey": "base64-encoded Tauri minisign public-key text",
-  "minimumOsVersion": "13.0",
+  "minimumOsVersion": "13.3",
   "acceptanceRecord": "docs/updater-acceptance/darwin-aarch64.json"
 }
 ```
@@ -38,8 +38,8 @@ An acceptance record has exactly these fields:
 ```json
 {
   "target": "darwin-aarch64",
-  "minimumOsVersion": "13.0",
-  "oldestOsTested": "13.0",
+  "minimumOsVersion": "13.3",
+  "oldestOsTested": "13.3",
   "status": "accepted",
   "platformSigning": "verified",
   "evidence": "docs/updater-acceptance/darwin-aarch64-results.md"
@@ -98,7 +98,7 @@ build job, containing exactly:
 {
   "target": "darwin-aarch64",
   "version": "1.2.3",
-  "minimumOsVersion": "13.0",
+  "minimumOsVersion": "13.3",
   "file": "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Trunk.app.tar.gz",
   "sha256": "sha256 of the accepted final archive",
   "size": 12345,
