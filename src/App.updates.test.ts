@@ -1,5 +1,5 @@
 import { fireEvent, screen, within } from "@testing-library/svelte";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { StartupHarness } from "./__tests__/helpers/startup-harness.js";
 import { REPO_CHANGE_DELAY_MS } from "./lib/coalesced-task.js";
 import type { UpdateStatus } from "./lib/updates.js";
@@ -601,7 +601,9 @@ describe("App update controls", () => {
 		]);
 		app.start();
 		await fireEvent.click(await screen.findByText("README.md"));
-		await screen.findByRole("button", { name: "Close diff" });
+		await vi.dynamicImportSettled();
+		await app.settle();
+		expect(screen.getByRole("button", { name: "Close diff" })).toBeVisible();
 		const trigger = screen.getByRole("button", {
 			name: "Download update 2.0.0",
 		});
