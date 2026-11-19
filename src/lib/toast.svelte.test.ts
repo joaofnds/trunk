@@ -76,6 +76,37 @@ describe("toast store", () => {
 		expect(toasts.items.map((t) => t.message)).toEqual(["refused"]);
 	});
 
+	it("shows a second, different error beside the first", () => {
+		showToast("first refusal", "error");
+
+		showToast("second refusal", "error");
+
+		expect(toasts.items.map((t) => t.message)).toEqual([
+			"first refusal",
+			"second refusal",
+		]);
+	});
+
+	it("clears the errors on screen when a later action succeeds", () => {
+		showToast("Your uncommitted changes conflict", "error");
+
+		showToast("Checked out feature", "success");
+
+		expect(toasts.items.map((t) => t.message)).toEqual(["Checked out feature"]);
+	});
+
+	it("drops the oldest error when a fourth arrives", () => {
+		for (const message of ["one", "two", "three"]) showToast(message, "error");
+
+		showToast("four", "error");
+
+		expect(toasts.items.map((t) => t.message)).toEqual([
+			"two",
+			"three",
+			"four",
+		]);
+	});
+
 	// Test E: showToast with kind='error' adds item with kind='error'
 	it("showToast('err', 'error') adds an item with kind='error'", () => {
 		showToast("err", "error");
