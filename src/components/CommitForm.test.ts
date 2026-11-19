@@ -547,6 +547,143 @@ describe("CommitForm", () => {
 		});
 	});
 
+	describe("the summary the uncommitted-changes row labels", () => {
+		const DRAFT = "fix: draft";
+		let amend: Promise<void>;
+		let finishAmend: () => void;
+
+		beforeEach(() => {
+			amend = new Promise((resolve) => {
+				finishAmend = resolve;
+			});
+			vi.mocked(safeInvoke).mockReset();
+			vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
+				if (cmd === "get_head_commit_message") {
+					return Promise.resolve({
+						oid: "head-1",
+						subject: "Prev subject",
+						body: null,
+					});
+				}
+				if (cmd === "amend_commit") return amend;
+				return Promise.resolve(undefined);
+			});
+		});
+
+		function renderForm() {
+			const focus: boolean[] = [];
+			const { component, unmount } = render(CommitForm, {
+				props: {
+					...defaultProps,
+					initialSubject: DRAFT,
+					ondraftsummaryfocuschange: (focused: boolean) => focus.push(focused),
+				},
+			});
+			const subject = screen.getByTestId(
+				"commit-form-subject",
+			) as HTMLInputElement;
+
+			return { form: component, subject, focus, unmount };
+		}
+
+		async function openAmend(subject: HTMLInputElement) {
+			await fireEvent.click(screen.getByRole("tab", { name: "Amend" }));
+			await waitFor(() => expect(subject.value).toBe("Prev subject"));
+		}
+
+		function selectedMode() {
+			return screen
+				.getAllByRole("tab")
+				.find((tab) => tab.getAttribute("aria-selected") === "true")
+				?.textContent?.trim();
+		}
+
+		it("takes the focus with the caret after the draft", async () => {
+			const { form, subject } = renderForm();
+			subject.setSelectionRange(0, 0);
+
+			await form.focusDraftSummary();
+
+			expect(document.activeElement).toBe(subject);
+			expect([subject.selectionStart, subject.selectionEnd]).toEqual([
+				DRAFT.length,
+				DRAFT.length,
+			]);
+		});
+
+		it.each(["Amend", "Stash"])(
+			"returns the form from %s to the commit draft",
+			async (mode) => {
+				const { form, subject } = renderForm();
+				await fireEvent.click(screen.getByRole("tab", { name: mode }));
+
+				await form.focusDraftSummary();
+
+				expect(selectedMode()).toBe("Commit");
+				expect(subject.value).toBe(DRAFT);
+				expect(document.activeElement).toBe(subject);
+			},
+		);
+
+		it("leaves an amend in flight in Amend", async () => {
+			const { form, subject } = renderForm();
+			await openAmend(subject);
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+
+			await form.focusDraftSummary();
+
+			expect(selectedMode()).toBe("Amend");
+		});
+
+		it("reports the draft's summary taking and losing the focus", async () => {
+			const { subject, focus } = renderForm();
+
+			await fireEvent.focus(subject);
+			await fireEvent.blur(subject);
+
+			expect(focus).toEqual([true, false]);
+		});
+
+		it("reports the draft's summary losing the focus when the form goes away", async () => {
+			const { subject, focus, unmount } = renderForm();
+			await fireEvent.focus(subject);
+
+			unmount();
+
+			expect(focus).toEqual([true, false]);
+		});
+
+		it("counts Stash's name as the draft's summary, since typing there edits it", async () => {
+			const { subject, focus } = renderForm();
+			await fireEvent.click(screen.getByRole("tab", { name: "Stash" }));
+
+			await fireEvent.focus(subject);
+
+			expect(focus).toEqual([true]);
+		});
+
+		it("reports no draft focus while the field holds an amend message", async () => {
+			const { subject, focus } = renderForm();
+			await openAmend(subject);
+
+			await fireEvent.focus(subject);
+
+			expect(focus).toEqual([]);
+		});
+
+		it("reports the draft's summary focused once a submitted amend returns the field to it", async () => {
+			const { subject, focus } = renderForm();
+			await openAmend(subject);
+			await fireEvent.focus(subject);
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+
+			finishAmend();
+			await waitFor(() => expect(selectedMode()).toBe("Commit"));
+
+			expect(focus).toEqual([true]);
+		});
+	});
+
 	describe("aiming an amend at the commit the user saw", () => {
 		const stale = {
 			code: "amend_stale",

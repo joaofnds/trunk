@@ -1,5 +1,5 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { fireEvent, render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CommitRow from "./CommitRow.svelte";
@@ -12,6 +12,7 @@ import {
 import { exactLabel } from "../lib/relative-time.js";
 import type { ColumnVisibility } from "../lib/store";
 import { SHOW_DELAY_MS } from "../lib/tooltip.js";
+import type { WipStats } from "../lib/types";
 
 vi.mock("../lib/toast.svelte.js", () => ({ showToast: vi.fn() }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
@@ -81,20 +82,105 @@ describe("CommitRow", () => {
 		expect(screen.getByText("def5678")).toBeInTheDocument();
 	});
 
-	it("renders WIP row with italic class", () => {
-		const commit = makeCommit({
-			oid: "__wip__",
-			summary: "Working changes",
-		});
-		const { container } = render(CommitRow, {
+	describe("the uncommitted-changes row", () => {
+		function renderWip(
 			props: {
-				commit,
-				columnVisibility: allVisible,
-			},
+				summary?: string;
+				draftSummaryFocused?: boolean;
+				wipStats?: WipStats;
+			} = {},
+		) {
+			const calls: string[] = [];
+			render(CommitRow, {
+				props: {
+					commit: makeCommit({ oid: "__wip__", summary: props.summary ?? "" }),
+					columnVisibility: allVisible,
+					draftSummaryFocused: props.draftSummaryFocused,
+					wipStats: props.wipStats,
+					onselect: () => calls.push("select"),
+					onfocusdraftsummary: () => calls.push("focus draft summary"),
+				},
+			});
+
+			return {
+				row: screen.getByTestId("commit-row"),
+				message: screen.getByTestId("commit-row-summary"),
+				label: screen.getByRole("button", { name: /edit commit summary/ }),
+				pencil: screen.getByTestId("wip-edit-mark"),
+				calls,
+			};
+		}
+
+		it("reads // WIP in muted italics while the draft has no subject", () => {
+			const { label } = renderWip();
+
+			expect(label).toHaveTextContent("// WIP");
+			expect(within(label).getByText("// WIP")).toHaveClass(
+				"italic",
+				"text-text-muted",
+			);
 		});
-		const italicEl = container.querySelector(".italic");
-		expect(italicEl).not.toBeNull();
-		expect(italicEl?.textContent).toContain("Working changes");
+
+		it("draws no box behind its message", () => {
+			const { message } = renderWip();
+
+			expect(message.querySelector('[class*="bg-"]')).toBeNull();
+			expect(message.className).not.toMatch(/\bbg-/);
+		});
+
+		it("draws a typed subject the way a committed row draws it", () => {
+			const { label } = renderWip({ summary: "feat(ui): label the draft" });
+
+			expect(label).toHaveTextContent("feat(ui): label the draft");
+			expect(label.querySelector(".italic")).toBeNull();
+			expect(within(label).getByText("feat(ui)").style.color).toBe(
+				"var(--color-success)",
+			);
+		});
+
+		it("names its label by the text it shows", () => {
+			const { label } = renderWip({ summary: "fix: draft" });
+
+			expect(label).toHaveAccessibleName("fix: draft, edit commit summary");
+		});
+
+		it("asks for the draft's summary when its message is clicked, in place of selecting the row", async () => {
+			const { label, calls } = renderWip();
+
+			await fireEvent.click(label);
+
+			expect(calls).toEqual(["focus draft summary"]);
+		});
+
+		it("leaves its file badges outside the label", () => {
+			const { message, label } = renderWip({
+				wipStats: {
+					modified: 2,
+					new: 0,
+					deleted: 0,
+					renamed: 0,
+					typechange: 0,
+					conflicted: 0,
+				},
+			});
+
+			expect(message).toHaveTextContent("M 2");
+			expect(label).not.toHaveTextContent("M 2");
+		});
+
+		it("reveals the pencil only under the pointer while the summary is unfocused", () => {
+			const { row, pencil } = renderWip();
+
+			expect(row).toHaveClass("group");
+			expect(pencil).toHaveClass("invisible", "group-hover:visible");
+		});
+
+		it("shows the pencil in the accent while the draft's summary has the focus", () => {
+			const { pencil } = renderWip({ draftSummaryFocused: true });
+
+			expect(pencil).toHaveClass("text-accent");
+			expect(pencil).not.toHaveClass("invisible");
+		});
 	});
 
 	it("renders WIP file-status badges from wipStats", () => {

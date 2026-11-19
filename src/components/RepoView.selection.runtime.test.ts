@@ -628,7 +628,9 @@ describe("RepoView commit selection", () => {
 			conflicted: 0,
 		});
 		await openRepository();
-		const uncommittedChanges = await screen.findByText("// WIP");
+		const uncommittedChanges = (await screen.findByText("// WIP")).closest(
+			'[data-testid="commit-row"]',
+		) as HTMLElement;
 		await selectCommit("first");
 		await screen.findByText("first.txt");
 
@@ -637,6 +639,81 @@ describe("RepoView commit selection", () => {
 
 		expect(screen.queryByTestId("commit-detail")).toBeNull();
 		expect(commitRow("first")).toHaveAttribute("aria-selected", "false");
+	});
+
+	describe("the uncommitted changes' message", () => {
+		const DRAFT = "fix: draft";
+
+		beforeEach(() => {
+			host.seedResponse("get_dirty_counts", {
+				staged: 1,
+				unstaged: 0,
+				conflicted: 0,
+			});
+		});
+
+		function draftSummary(): HTMLInputElement {
+			return screen.getByTestId("commit-form-subject") as HTMLInputElement;
+		}
+
+		async function typeDraftSummary(text: string): Promise<void> {
+			await screen.findByTestId("commit-form-subject");
+			await fireEvent.input(draftSummary(), { target: { value: text } });
+		}
+
+		function wipMessage(): Promise<HTMLElement> {
+			return screen.findByRole("button", { name: /edit commit summary/ });
+		}
+
+		async function clickWipMessage(): Promise<void> {
+			await fireEvent.click(await wipMessage());
+			await drainReplies();
+		}
+
+		it("focuses the draft's summary from a selected commit", async () => {
+			await openRepository();
+			await typeDraftSummary(DRAFT);
+			await selectCommit("first");
+			await screen.findByText("first.txt");
+
+			await clickWipMessage();
+
+			expect(document.activeElement).toBe(draftSummary());
+			expect(draftSummary().value).toBe(DRAFT);
+		});
+
+		it("opens the collapsed detail pane before focusing the draft's summary", async () => {
+			const view = await openRepository({ rightPaneCollapsed: true });
+			const inertAtFocus: boolean[] = [];
+			draftSummary().addEventListener("focus", (e) => {
+				const field = e.target as HTMLElement;
+				inertAtFocus.push(
+					[...ancestorsOf(field)].some((node) => node.inert === true),
+				);
+			});
+
+			await clickWipMessage();
+
+			expect(view.rightPaneChanges).toEqual([false]);
+			expect(inertAtFocus).toEqual([false]);
+			expect(document.activeElement).toBe(draftSummary());
+		});
+
+		it("shows its pencil while the draft's summary has the focus", async () => {
+			await openRepository();
+
+			await clickWipMessage();
+
+			expect(screen.getByTestId("wip-edit-mark")).toHaveClass("text-accent");
+		});
+
+		it("reads the draft's summary as it is typed", async () => {
+			await openRepository();
+
+			await typeDraftSummary("feat: live label");
+
+			expect(await wipMessage()).toHaveTextContent("feat: live label");
+		});
 	});
 
 	describe("on Escape", () => {
@@ -957,7 +1034,8 @@ describe("RepoView commit selection", () => {
 	});
 });
 
-async function openRepository() {
+async function openRepository(panes: { rightPaneCollapsed?: boolean } = {}) {
+	const rightPaneChanges: boolean[] = [];
 	host.seedGraph({
 		commits: [
 			makeCommit({ oid: "first", summary: "first change" }),
@@ -976,7 +1054,7 @@ async function openRepository() {
 			leftPaneWidth: 200,
 			leftPaneCollapsed: false,
 			rightPaneWidth: 300,
-			rightPaneCollapsed: false,
+			rightPaneCollapsed: panes.rightPaneCollapsed ?? false,
 			tabActive: true,
 			windowFocused: false,
 			reviewActive: false,
@@ -984,7 +1062,10 @@ async function openRepository() {
 			oncontentmodechange: () => {},
 			onreviewpanelshowingchange: () => {},
 			onleftpanecollapsedchange: () => {},
-			onrightpanecollapsedchange: () => {},
+			onrightpanecollapsedchange: (collapsed) => {
+				rightPaneChanges.push(collapsed);
+				void view.rerender({ rightPaneCollapsed: collapsed });
+			},
 			onleftpanewidthchange: () => {},
 			onrightpanewidthchange: () => {},
 			onleavereview: () => {},
@@ -993,7 +1074,7 @@ async function openRepository() {
 	});
 
 	await screen.findAllByTestId("commit-row");
-	return view;
+	return { ...view, rightPaneChanges };
 }
 
 function seedBranch(): void {
@@ -1154,6 +1235,10 @@ async function pressNavigationKey(key: string): Promise<void> {
 	if (!graph) throw new Error("commit graph is not shown");
 
 	await fireEvent.keyDown(graph, { key });
+}
+
+function* ancestorsOf(node: HTMLElement): Generator<HTMLElement> {
+	for (let at = node.parentElement; at; at = at.parentElement) yield at;
 }
 
 async function drainReplies(): Promise<void> {

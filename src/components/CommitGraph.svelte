@@ -134,6 +134,11 @@ interface Props {
 	wipMessage?: string;
 	wipStats?: WipStats;
 	onWipClick?: () => void;
+	/** The WIP row's message labels the commit draft's Summary field: a click
+	 *  on it asks for that field. */
+	onFocusDraftSummary?: () => void;
+	/** True while the commit draft's Summary field has the focus. */
+	draftSummaryFocused?: boolean;
 	refreshSignal?: number;
 	/** Last notification captured successfully, retained by RepoView across pane changes. */
 	consumedRefreshSignal?: number;
@@ -175,9 +180,11 @@ let {
 	oncommitnavigate,
 	oncommitschange,
 	wipCount = 0,
-	wipMessage = "WIP",
+	wipMessage = "",
 	wipStats,
 	onWipClick,
+	onFocusDraftSummary,
+	draftSummaryFocused = false,
 	refreshSignal,
 	consumedRefreshSignal = 0,
 	onrefreshconsumed,
@@ -3059,6 +3066,11 @@ $effect(() => {
 							commentCount={commentCountFor(commit.oid)}
 							commentTally={commentTallyFor(commit.oid)}
 							wipStats={commit.oid === "__wip__" ? wipStats : undefined}
+							onfocusdraftsummary={commit.oid === "__wip__"
+								? onFocusDraftSummary
+								: undefined}
+							draftSummaryFocused={commit.oid === "__wip__" &&
+								draftSummaryFocused}
 							diffStat={commit.oid === "__wip__"
 								? wipDiffStat
 								: commitStats.get(commit.oid)}

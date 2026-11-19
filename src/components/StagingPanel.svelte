@@ -55,6 +55,7 @@ interface Props {
 	initialBody?: string;
 	onsubjectchange?: (value: string) => void;
 	onbodychange?: (value: string) => void;
+	ondraftsummaryfocuschange?: (focused: boolean) => void;
 	onfileadvance?: (
 		path: string,
 		kind: "unstaged" | "staged" | "conflicted",
@@ -85,6 +86,7 @@ let {
 	onfileselect,
 	onsubjectchange,
 	onbodychange,
+	ondraftsummaryfocuschange,
 	onfileadvance,
 	selectedPath = null,
 	selectedKind = null,
@@ -133,6 +135,14 @@ let unstagedCommentCounts = $derived(sectionCounts("unstaged"));
 let stagedCommentCounts = $derived(sectionCounts("staged"));
 let unstagedCommentTallies = $derived(sectionTones("unstaged"));
 let stagedCommentTallies = $derived(sectionTones("staged"));
+
+let commitForm = $state<CommitForm>();
+
+/** Focuses the commit draft's Summary. A merge or a rebase in progress shows
+ *  no commit form, so there is nothing to focus then. */
+export async function focusDraftSummary() {
+	await commitForm?.focusDraftSummary();
+}
 
 export function optimisticMove(
 	filePath: string,
@@ -1257,6 +1267,8 @@ registerUpdateBlocker(() => {
 			{initialBody}
 			{onsubjectchange}
 			{onbodychange}
+			{ondraftsummaryfocuschange}
+			bind:this={commitForm}
 		/>
 	{/if}
 </div>

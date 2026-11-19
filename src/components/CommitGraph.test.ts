@@ -3890,7 +3890,7 @@ describe("CommitGraph", () => {
 			});
 			await screen.findByText("first commit");
 
-			return screen.getByText("WIP").closest('[data-testid="commit-row"]');
+			return screen.getByText("// WIP").closest('[data-testid="commit-row"]');
 		}
 
 		it("shows as selected while no commit is", async () => {

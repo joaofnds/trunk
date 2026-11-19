@@ -1,4 +1,5 @@
 <script lang="ts">
+import Pencil from "@lucide/svelte/icons/pencil";
 import { copySha } from "../lib/clipboard.js";
 import { MESSAGE_FLOOR } from "../lib/column-widths.js";
 import { parseSummary, prefixToneVar } from "../lib/commit-prefix.js";
@@ -17,6 +18,7 @@ import type {
 	ReviewTally,
 	WipStats,
 } from "../lib/types.js";
+import HitArea from "../lib/ui/HitArea.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Avatar from "./Avatar.svelte";
 import CommentBadge from "./CommentBadge.svelte";
@@ -49,6 +51,11 @@ interface Props {
 	commentTally?: ReviewTally | null;
 	/** File-status breakdown for the synthetic WIP row (only set when isWip). */
 	wipStats?: WipStats;
+	/** The WIP row's message labels the commit draft's Summary field: a click on
+	 *  it asks for that field in place of selecting the row. Only set when isWip. */
+	onfocusdraftsummary?: () => void;
+	/** True while the commit draft's Summary field has the focus. */
+	draftSummaryFocused?: boolean;
 	/** Diff size for the Diff column. `undefined` = not yet computed (placeholder);
 	 *  a present value with zeros = a real empty/binary commit. */
 	diffStat?: DiffStat;
@@ -74,6 +81,8 @@ let {
 	commentCount = 0,
 	commentTally = null,
 	wipStats,
+	onfocusdraftsummary,
+	draftSummaryFocused = false,
 	diffStat,
 	messageScrollX = 0,
 }: Props = $props();
@@ -85,6 +94,13 @@ const dateLabel = $derived(
 const isWip = $derived(commit.oid === "__wip__");
 const isStash = $derived(commit.is_stash);
 const parsed = $derived(parseSummary(commit.summary));
+
+const WIP_PLACEHOLDER = "// WIP";
+// The name starts with the text the label shows, so a user who reads it out to
+// voice control reaches the label.
+const draftSummaryLabel = $derived(
+	`${commit.summary || WIP_PLACEHOLDER}, edit commit summary`,
+);
 
 // Diff column: log-scaled green/red bar fractions + a files-changed tooltip.
 // `diffStat === undefined` renders a placeholder, distinct from a real +0 −0.
@@ -139,7 +155,7 @@ const rowShadow = $derived(
 	role="option"
 	aria-selected={selected}
 	tabindex="-1"
-	class="relative flex items-center cursor-pointer text-body text-text"
+	class="group relative flex items-center cursor-pointer text-body text-text"
 	class:hover:bg-hover={!selected && !isCurrentMatch && !isSearchMatch}
 	class:bg-search-current={isCurrentMatch}
 	class:bg-search-match={isSearchMatch && !isCurrentMatch}
@@ -189,19 +205,47 @@ const rowShadow = $derived(
 	<!-- Column 3: Message (flex-1, always visible) + WIP file badges + trailing comment badge -->
 	<div
 		data-column="message"
-		class="flex-1 flex items-center gap-2 overflow-hidden"
+		class="flex-1 self-stretch flex items-center gap-2 overflow-hidden"
 		style:padding="0 {COLUMN_PADDING_X}px"
 		style:min-width="{MESSAGE_FLOOR}px"
 	>
 		{#if isWip}
 			<div
 				data-testid="commit-row-summary"
-				class="flex items-center gap-2 overflow-hidden whitespace-nowrap"
+				class="flex-1 flex items-center gap-2 min-w-0 self-stretch overflow-hidden whitespace-nowrap"
 			>
-				<span
-					class="wip-summary overflow-hidden text-ellipsis italic rounded px-2 py-1 bg-surface-raised text-text-muted"
-					>{commit.summary}</span
-				>
+				<span class="flex min-w-0 self-stretch">
+					<HitArea
+						aria-label={draftSummaryLabel}
+						cursor="pointer"
+						onfocus={() => onfocus?.()}
+						onclick={(e) => {
+							e.stopPropagation();
+							onfocusdraftsummary?.();
+						}}
+						><span class="flex items-center gap-2 min-w-0 overflow-hidden"
+							><span
+								class="overflow-hidden text-ellipsis"
+								class:italic={!commit.summary}
+								class:text-text-muted={!commit.summary}
+								>{#if commit.summary}
+									{@render conventionalSummary()}
+								{:else}
+									{WIP_PLACEHOLDER}
+								{/if}</span
+							><span
+								data-testid="wip-edit-mark"
+								class={[
+									"flex-shrink-0",
+									draftSummaryFocused
+										? "text-accent"
+										: "invisible group-hover:visible text-text-subtle",
+								]}
+								><Pencil size={12} aria-hidden="true" /></span
+							></span
+						></HitArea
+					>
+				</span>
 				{#if wipFileBadges.length}
 					<span
 						class="flex items-center gap-2 flex-shrink-0 font-mono text-small"
@@ -231,13 +275,7 @@ const rowShadow = $derived(
 				class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
 				use:cutTooltip={commit.summary}
 				><span style:margin-left="{-messageScrollX}px"
-					>{#if parsed.prefix}
-						<span style:color={prefixToneVar(parsed.prefix)}
-							>{parsed.prefix}{parsed.scope}{parsed.bang}</span
-						><span class="prefix-colon">{": "}</span>{parsed.rest}
-					{:else}
-						{commit.summary}
-					{/if}</span
+					>{@render conventionalSummary()}</span
 				></span
 			>
 		{/if}
@@ -370,6 +408,16 @@ const rowShadow = $derived(
 	{/if}
 </div>
 
+{#snippet conventionalSummary()}
+	{#if parsed.prefix}
+		<span style:color={prefixToneVar(parsed.prefix)}
+			>{parsed.prefix}{parsed.scope}{parsed.bang}</span
+		><span class="prefix-colon">{": "}</span>{parsed.rest}
+	{:else}
+		{commit.summary}
+	{/if}
+{/snippet}
+
 <style>
 .prefix-colon {
 	color: var(--color-text-muted);
@@ -378,10 +426,5 @@ const rowShadow = $derived(
 /* A row the open search did not match steps back so the matches read first. */
 .search-dim {
 	opacity: var(--opacity-search-dim);
-}
-
-/* Wide enough that a one-word WIP summary still reads as a chip. */
-.wip-summary {
-	min-width: calc(24 * var(--u));
 }
 </style>

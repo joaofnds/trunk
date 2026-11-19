@@ -414,6 +414,7 @@ let dirtyCountsSeq = 0;
 let headBranch = $state<string | undefined>(undefined);
 let wipSubject = $state("");
 let wipBody = $state("");
+let draftSummaryFocused = $state(false);
 let draftLoaded = $state(false);
 let treeViewEnabled = $state(false);
 
@@ -1324,6 +1325,12 @@ function handleWipClick() {
 	if (rightPaneCollapsed) {
 		onrightpanecollapsedchange(false);
 	}
+}
+
+async function focusDraftSummary() {
+	handleWipClick();
+	await tick();
+	await stagingPanelRef?.focusDraftSummary();
 }
 
 function handleDiffClose() {
@@ -2794,9 +2801,11 @@ async function handleRebaseStart(
 							graphHasMore = hasMore;
 						}}
 						{wipCount}
-						wipMessage={wipSubject.trim() || "// WIP"}
+						wipMessage={wipSubject.trim()}
 						{wipStats}
 						onWipClick={handleWipClick}
+						onFocusDraftSummary={focusDraftSummary}
+						{draftSummaryFocused}
 						refreshSignal={graphRefreshSignal}
 						consumedRefreshSignal={consumedGraphRefreshSignal}
 						onrefreshconsumed={(generation) => {
@@ -2901,6 +2910,8 @@ async function handleRebaseStart(
 						onfileselect={handleFileSelect}
 						onsubjectchange={(v) => (wipSubject = v)}
 						onbodychange={(v) => (wipBody = v)}
+						ondraftsummaryfocuschange={(focused) =>
+							(draftSummaryFocused = focused)}
 						onfileadvance={(path, kind) => {
 							if (selectedFile?.path === path && selectedFile?.kind === kind) {
 								advanceToNextFile(path, kind);

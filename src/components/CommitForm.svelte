@@ -1,5 +1,5 @@
 <script lang="ts">
-import { untrack } from "svelte";
+import { onDestroy, tick, untrack } from "svelte";
 import { reportErrorDialog, reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke, type TrunkError } from "../lib/invoke.js";
 import { shortcutModifier } from "../lib/keyboard.js";
@@ -16,6 +16,8 @@ interface Props {
 	initialBody?: string;
 	onsubjectchange?: (value: string) => void;
 	onbodychange?: (value: string) => void;
+	/** The Summary field took or lost the focus while it holds the commit draft. */
+	ondraftsummaryfocuschange?: (focused: boolean) => void;
 }
 
 let {
@@ -25,6 +27,7 @@ let {
 	initialBody,
 	onsubjectchange,
 	onbodychange,
+	ondraftsummaryfocuschange,
 }: Props = $props();
 
 let draftSubject = $state(untrack(() => initialSubject) ?? "");
@@ -41,6 +44,11 @@ let mode = $state<"commit" | "amend" | "stash">("commit");
 let committing = $state(false);
 let subjectError = $state("");
 let stagedError = $state("");
+let subjectInput = $state<HTMLInputElement>();
+let subjectFocused = $state(false);
+// Commit and Stash both edit the draft, as getSubject says; Amend edits HEAD's message.
+const draftSummaryFocused = $derived(subjectFocused && mode !== "amend");
+let reportedDraftSummaryFocus = false;
 
 function getSubject() {
 	return mode === "amend" ? amendSubject : draftSubject;
@@ -113,6 +121,31 @@ async function handleModeSwitch(newMode: "commit" | "amend" | "stash") {
 		}
 	}
 }
+
+/** Puts the caret at the end of the commit draft's Summary, returning the form
+ *  to Commit first, since the draft is what the uncommitted-changes row shows.
+ *  A submit in flight keeps its mode, and its success returns the form to Commit. */
+export async function focusDraftSummary() {
+	if (!committing) await handleModeSwitch("commit");
+	await tick();
+	if (!subjectInput) return;
+
+	const end = subjectInput.value.length;
+	subjectInput.focus();
+	subjectInput.setSelectionRange(end, end);
+}
+
+function reportDraftSummaryFocus(focused: boolean) {
+	if (focused === reportedDraftSummaryFocus) return;
+	reportedDraftSummaryFocus = focused;
+	ondraftsummaryfocuschange?.(focused);
+}
+
+$effect(() => reportDraftSummaryFocus(draftSummaryFocused));
+
+// Removing the focused field need not fire a blur, which would leave the
+// WIP row drawing its pencil for a field that is gone.
+onDestroy(() => reportDraftSummaryFocus(false));
 
 function amendUntouched() {
 	return amendSubject === amendSeed.subject && amendBody === amendSeed.body;
@@ -270,7 +303,10 @@ function submitOnModEnter(e: KeyboardEvent) {
 			<input
 				data-testid="commit-form-subject"
 				type="text"
+				bind:this={subjectInput}
 				bind:value={getSubject, setSubject}
+				onfocus={() => (subjectFocused = true)}
+				onblur={() => (subjectFocused = false)}
 				onkeydown={submitOnModEnter}
 				placeholder={mode === "stash"
 					? "Stash name (optional)"
