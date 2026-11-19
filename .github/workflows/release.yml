@@ -243,7 +243,7 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "${{ github.ref_name }}" --draft=false --repo "${{ github.repository }}"
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --repo "$GITHUB_REPOSITORY"
 
   update-tap:
     needs: [publish]
@@ -260,7 +260,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ github.ref_name }}"
+          TAG="$GITHUB_REF_NAME"
           gh release download "$TAG" --pattern "*.dmg" --dir ./dmgs
           echo "arm_sha256=$(shasum -a 256 ./dmgs/*_aarch64.dmg | awk '{print $1}')" >> "$GITHUB_ENV"
           echo "intel_sha256=$(shasum -a 256 ./dmgs/*_x64.dmg | awk '{print $1}')" >> "$GITHUB_ENV"
@@ -269,7 +269,7 @@ jobs:
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
-          TAG="${{ github.ref_name }}"
+          TAG="$GITHUB_REF_NAME"
           VERSION="${TAG#v}"
           TAURI_VERSION="${{ steps.tauri.outputs.version }}"
 
