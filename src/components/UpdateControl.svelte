@@ -32,8 +32,6 @@ let {
 }: Props = $props();
 let trigger: HTMLDivElement;
 let popup: HTMLDivElement | undefined;
-// The pointer and the focus each show the panel, and each hides only what it
-// showed, so the app moving focus leaves a panel under the pointer in place.
 let pointerShown = $state(false);
 let focusShown = $state(false);
 const visible = $derived(open || pointerShown || focusShown);
@@ -75,26 +73,27 @@ function close() {
 	open = false;
 	onclose();
 }
-function leave(event: MouseEvent | FocusEvent) {
-	const next = event.relatedTarget;
-	if (next instanceof Node && (trigger.contains(next) || popup?.contains(next)))
-		return;
-
-	if (event.type === "mouseleave") pointerShown = false;
-	else focusShown = false;
+function inside(node: EventTarget | null): boolean {
+	return (
+		node instanceof Node &&
+		(trigger.contains(node) || Boolean(popup?.contains(node)))
+	);
 }
-function outside(event: MouseEvent | FocusEvent) {
-	const target = event.target;
-	if (
-		!(target instanceof Node) ||
-		trigger.contains(target) ||
-		popup?.contains(target)
-	)
-		return;
-
-	if (event.type === "pointerdown") close();
-	else if (event.type === "pointermove") pointerShown = false;
-	else focusShown = false;
+function pointerLeft(event: MouseEvent) {
+	if (!inside(event.relatedTarget)) pointerShown = false;
+}
+function focusLeft(event: FocusEvent) {
+	if (!inside(event.relatedTarget)) focusShown = false;
+}
+function pointerMoved(event: PointerEvent) {
+	if (!inside(event.target)) pointerShown = false;
+}
+function pressed(event: PointerEvent) {
+	if (!inside(event.target)) close();
+}
+function focusMoved(event: FocusEvent) {
+	if (!inside(event.target)) focusShown = false;
+	else if (!suppressFocusOpen) focusShown = true;
 }
 
 function place(node: HTMLDivElement) {
@@ -170,9 +169,9 @@ $effect(() => {
 </script>
 
 <svelte:window
-	onpointermove={outside}
-	onpointerdown={outside}
-	onfocusin={outside}
+	onpointermove={pointerMoved}
+	onpointerdown={pressed}
+	onfocusin={focusMoved}
 	onresize={close}
 />
 <div bind:this={trigger} class="flex items-center">
@@ -186,8 +185,8 @@ $effect(() => {
 		onfocus={() => {
 			if (!suppressFocusOpen) focusShown = true;
 		}}
-		onblur={leave}
-		onmouseleave={leave}
+		onblur={focusLeft}
+		onmouseleave={pointerLeft}
 	>
 		<span
 			class="flex items-center"

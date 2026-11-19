@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { createRawSnippet, tick } from "svelte";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import type { UpdateStatus } from "../lib/updates.js";
 import UpdateControl from "./UpdateControl.svelte";
 
@@ -25,6 +25,12 @@ const panel = createRawSnippet<[() => void]>((close) => ({
 		return () => button?.removeEventListener("click", closePanel);
 	},
 }));
+function focusSomethingElse() {
+	const elsewhere = document.createElement("button");
+	document.body.append(elsewhere);
+	onTestFinished(() => elsewhere.remove());
+	elsewhere.focus();
+}
 function mount(status = idle) {
 	const actions: string[] = [];
 	const view = render(UpdateControl, {
@@ -164,12 +170,21 @@ describe("update control", () => {
 		await fireEvent.mouseEnter(
 			screen.getByRole("button", { name: "Check for updates" }),
 		);
-		const elsewhere = document.createElement("button");
-		document.body.append(elsewhere);
 
-		elsewhere.focus();
+		focusSomethingElse();
 		await tick();
-		elsewhere.remove();
+
+		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
+	});
+	it("keeps the hovered panel visible while focus is inside it", async () => {
+		mount();
+		await fireEvent.mouseEnter(
+			screen.getByRole("button", { name: "Check for updates" }),
+		);
+		screen.getByRole("link", { name: "Update details" }).focus();
+		await tick();
+
+		await fireEvent.pointerMove(document.body);
 
 		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
 	});
@@ -186,12 +201,39 @@ describe("update control", () => {
 	it("hides the keyboard-focused panel when focus moves elsewhere", async () => {
 		mount();
 		screen.getByRole("button", { name: "Check for updates" }).focus();
-		const elsewhere = document.createElement("button");
-		document.body.append(elsewhere);
 
-		elsewhere.focus();
+		focusSomethingElse();
 		await tick();
-		elsewhere.remove();
+
+		expect(screen.queryByRole("region", { name: "Trunk updates" })).toBeNull();
+	});
+	it("hides the panel when focus leaves its actions for elsewhere", async () => {
+		mount();
+		const trigger = screen.getByRole("button", { name: "Check for updates" });
+		trigger.focus();
+		await fireEvent.keyDown(trigger, { key: "Tab" });
+
+		focusSomethingElse();
+		await tick();
+
+		expect(screen.queryByRole("region", { name: "Trunk updates" })).toBeNull();
+	});
+	it("hides the hovered panel when its Close is pressed", async () => {
+		mount();
+		await fireEvent.mouseEnter(
+			screen.getByRole("button", { name: "Check for updates" }),
+		);
+
+		await fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+		expect(screen.queryByRole("region", { name: "Trunk updates" })).toBeNull();
+	});
+	it("hides the hovered panel when its button is pressed", async () => {
+		mount();
+		const trigger = screen.getByRole("button", { name: "Check for updates" });
+		await fireEvent.mouseEnter(trigger);
+
+		await fireEvent.click(trigger);
 
 		expect(screen.queryByRole("region", { name: "Trunk updates" })).toBeNull();
 	});

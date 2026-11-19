@@ -530,14 +530,13 @@ function jump(thread: Thread) {
 	onJump(thread);
 }
 
-// Showing the panel puts the keys in it, on the thread the cursor is on where
-// it has one, so they answer at once whichever control showed it: the toolbar's
-// Review button, the menu, or closing the diff a jump opened.
+// Showing the panel puts the keys in it, on the cursor's thread where it has
+// one, unless the user is typing in a field.
 let wasShown = false;
 $effect(() => {
 	const appearing = shown && !wasShown;
 	wasShown = shown;
-	if (!appearing) return;
+	if (!appearing || focusInEditable(document.activeElement)) return;
 
 	const id = untrack(() => focusedId);
 	void tick().then(() => {

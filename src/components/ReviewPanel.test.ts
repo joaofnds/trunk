@@ -2182,11 +2182,11 @@ describe("read failures", () => {
 	});
 });
 
-// The panel is a {#if} sibling of DiffPanel, so every jump from the panel into
-// a diff destroys it. list_session_commits takes its headers from the graph
+// The panel unmounts when review mode ends and mounts again when it starts.
+// list_session_commits takes its headers from the graph
 // cache, so its answer changes on every commit, amend, rebase and checkout —
 // and the owning rune only refreshes on reviews-changed, which none of those
-// emit. Coming back has to re-ask.
+// emit. Mounting again has to re-ask.
 describe("remount", () => {
 	it("re-reads the session so a change made while it was gone is on screen", async () => {
 		installReads({
@@ -3139,7 +3139,7 @@ describe("ReviewPanel keyboard", () => {
 			expect(focusedThread()).toHaveTextContent("on the commit");
 		});
 
-		it("takes the keys back when the diff over it closes", async () => {
+		it("takes the keys with no thread under the cursor", async () => {
 			await aCommitWithANoteAndALineThread();
 			const props = panelProps({ headBranch: "main", shown: false });
 			const view = render(ReviewPanel, { props });
@@ -3153,20 +3153,38 @@ describe("ReviewPanel keyboard", () => {
 			expect(focusedThread()).toHaveTextContent("on the commit");
 		});
 
-		it("puts the focus back on the thread the cursor was on", async () => {
+		it("leaves the focus in a field the user is typing in", async () => {
+			await aCommitWithANoteAndALineThread();
+			const props = panelProps({ headBranch: "main", shown: false });
+			const view = render(ReviewPanel, { props });
+			await flush();
+			const field = document.createElement("input");
+			document.body.append(field);
+			field.focus();
+			onTestFinished(() => field.remove());
+
+			await view.rerender({ ...props, shown: true });
+			await flush();
+
+			expect(document.activeElement).toBe(field);
+		});
+
+		it("puts the focus back on the thread a jump left from", async () => {
 			await aCommitWithANoteAndALineThread();
 			const props = panelProps({ headBranch: "main" });
 			const view = render(ReviewPanel, { props });
 			await flush();
 			await press("j");
-			await press("j");
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Lines 10–12" }),
+			);
 			await view.rerender({ ...props, shown: false });
 			focusAControlOutside();
 
 			await view.rerender({ ...props, shown: true });
 			await flush();
 
-			expect(document.activeElement).toBe(focusedThread());
+			expect(document.activeElement).toHaveTextContent("on the lines");
 		});
 	});
 
