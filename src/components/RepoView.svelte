@@ -2613,6 +2613,7 @@ async function handleRebaseStart(
 				min={0}
 				max={sidePanes.sidebar.max}
 				onstep={sidePanes.sidebar.step}
+				ontoggle={sidePanes.sidebar.toggle}
 				onmousedown={sidePanes.sidebar.startResize}
 			/>
 			<div class="flex-1 overflow-hidden relative">
@@ -2838,6 +2839,7 @@ async function handleRebaseStart(
 				max={sidePanes.detailPane.max}
 				hidden={reviewMode}
 				onstep={sidePanes.detailPane.step}
+				ontoggle={sidePanes.detailPane.toggle}
 				onmousedown={sidePanes.detailPane.startResize}
 			/>
 			<div
@@ -3015,6 +3017,7 @@ async function handleRebaseStart(
 					min={0}
 					max={sidePanes.rebaseDetailPane.max}
 					onstep={sidePanes.rebaseDetailPane.step}
+					ontoggle={sidePanes.rebaseDetailPane.toggle}
 					onmousedown={sidePanes.rebaseDetailPane.startResize}
 				/>
 				<div

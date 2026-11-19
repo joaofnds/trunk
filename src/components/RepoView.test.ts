@@ -7,7 +7,7 @@ import {
 	waitFor,
 	within,
 } from "@testing-library/svelte";
-import { tick } from "svelte";
+import { type ComponentProps, tick } from "svelte";
 import {
 	afterEach,
 	beforeEach,
@@ -529,6 +529,63 @@ describe("RepoView", () => {
 			expect(
 				screen.getByRole("slider", { name: `Resize ${pane}` }),
 			).toHaveFocus();
+		},
+	);
+
+	it.each([
+		{ pane: "sidebar", collapsed: ["left collapsed true"] },
+		{ pane: "detail pane", collapsed: ["right collapsed true"] },
+	])(
+		"collapses the open $pane on Enter on its divider",
+		async ({ pane, collapsed }) => {
+			const changes = renderWithPanes({
+				leftPaneWidth: 200,
+				rightPaneWidth: 300,
+			});
+
+			await fireEvent.keyDown(
+				screen.getByRole("slider", { name: `Resize ${pane}` }),
+				{ key: "Enter" },
+			);
+
+			expect(changes).toEqual(collapsed);
+		},
+	);
+
+	it.each(["sidebar", "detail pane"])(
+		"keeps the focus on the %s's divider when Enter collapses the pane",
+		async (pane) => {
+			renderWithPanes({ leftPaneWidth: 200, rightPaneWidth: 300 });
+			const divider = screen.getByRole("slider", { name: `Resize ${pane}` });
+			divider.focus();
+
+			await fireEvent.keyDown(divider, { key: "Enter" });
+
+			const collapsed = screen.getByRole("slider", { name: `Resize ${pane}` });
+			expect(collapsed).toHaveAttribute("aria-valuenow", "0");
+			expect(collapsed).toHaveFocus();
+		},
+	);
+
+	it.each([
+		{ pane: "sidebar", reopened: ["left collapsed false"] },
+		{ pane: "detail pane", reopened: ["right collapsed false"] },
+	])(
+		"reopens a collapsed $pane at the width it had on Enter on its divider",
+		async ({ pane, reopened }) => {
+			const changes = renderWithPanes({
+				leftPaneWidth: 200,
+				rightPaneWidth: 300,
+				leftPaneCollapsed: true,
+				rightPaneCollapsed: true,
+			});
+
+			await fireEvent.keyDown(
+				screen.getByRole("slider", { name: `Resize ${pane}` }),
+				{ key: "Enter" },
+			);
+
+			expect(changes).toEqual(reopened);
 		},
 	);
 
@@ -3821,7 +3878,9 @@ describe("RepoView", () => {
 		beforeEach(_resetToasts);
 
 		async function openTheEditorOnTheClickedCommit(
-			props = baseProps(createMockRemoteState()),
+			props: ComponentProps<typeof RepoView> = baseProps(
+				createMockRemoteState(),
+			),
 			waitForEditor = true,
 		) {
 			const view = render(RepoView, { props });
@@ -3843,6 +3902,14 @@ describe("RepoView", () => {
 				if ((node as HTMLElement & { inert?: boolean }).inert) return true;
 
 			return false;
+		}
+
+		function editorsDetailDivider(): HTMLElement {
+			const divider = screen
+				.getAllByRole("slider", { name: "Resize detail pane" })
+				.find((slider) => !insideInert(slider));
+			if (!divider) throw new Error("the editor shows no detail pane divider");
+			return divider;
 		}
 
 		function rebaseRow(index: number): HTMLElement {
@@ -3946,6 +4013,26 @@ describe("RepoView", () => {
 
 			const [head] = await screen.findAllByTestId("commit-row");
 			expect(head).toHaveAttribute("aria-selected", "true");
+		});
+
+		it("closes and reopens the detail pane beside the editor on Enter, keeping the focus on its divider", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const changes: boolean[] = [];
+			let view: Awaited<ReturnType<typeof openTheEditorOnTheClickedCommit>>;
+			view = await openTheEditorOnTheClickedCommit({
+				...baseProps(createMockRemoteState()),
+				onrightpanecollapsedchange: (collapsed) => {
+					changes.push(collapsed);
+					void view.rerender({ rightPaneCollapsed: collapsed });
+				},
+			});
+			editorsDetailDivider().focus();
+
+			await fireEvent.keyDown(editorsDetailDivider(), { key: "Enter" });
+			await fireEvent.keyDown(editorsDetailDivider(), { key: "Enter" });
+
+			expect(changes).toEqual([true, false]);
+			expect(editorsDetailDivider()).toHaveFocus();
 		});
 
 		it("takes the graph out of focus and pointer reach under the editor", async () => {

@@ -18,6 +18,23 @@ function renderSplitter(variant: SplitterVariant) {
 	return { steps, splitter: screen.getByRole("slider") };
 }
 
+function renderPaneThatCloses() {
+	const toggles = { count: 0 };
+	render(Splitter, {
+		props: {
+			variant: "pane",
+			value: 220,
+			min: 0,
+			max: 600,
+			"aria-label": "Resize sidebar",
+			onstep: () => {},
+			ontoggle: () => toggles.count++,
+		},
+	});
+
+	return { toggles, splitter: screen.getByRole("slider") };
+}
+
 describe("Splitter", () => {
 	it.each([
 		{ variant: "pane", key: "ArrowRight", step: 8 },
@@ -46,6 +63,8 @@ describe("Splitter", () => {
 		{ variant: "bar", key: "ArrowLeft" },
 		{ variant: "bar", key: "ArrowRight" },
 		{ variant: "pane", key: "Enter" },
+		{ variant: "column", key: "Enter" },
+		{ variant: "bar", key: "Enter" },
 	] as const)(
 		"leaves $key on a $variant to whatever is listening above it",
 		async ({ variant, key }) => {
@@ -57,6 +76,49 @@ describe("Splitter", () => {
 			expect(unhandled).toBe(true);
 		},
 	);
+
+	it("reports Enter to a caller that closes and reopens its pane", async () => {
+		const { toggles, splitter } = renderPaneThatCloses();
+
+		await fireEvent.keyDown(splitter, { key: "Enter" });
+
+		expect(toggles.count).toBe(1);
+	});
+
+	it("keeps an Enter it answered from the page and from a listener above it", async () => {
+		const { splitter } = renderPaneThatCloses();
+		const bubbled: string[] = [];
+		const record = (event: KeyboardEvent) => bubbled.push(event.key);
+		document.body.addEventListener("keydown", record);
+		onTestFinished(() => document.body.removeEventListener("keydown", record));
+
+		const unhandled = await fireEvent.keyDown(splitter, { key: "Enter" });
+
+		expect(unhandled).toBe(false);
+		expect(bubbled).toEqual([]);
+	});
+
+	it("toggles its pane once for an Enter held down", async () => {
+		const { toggles, splitter } = renderPaneThatCloses();
+
+		await fireEvent.keyDown(splitter, { key: "Enter" });
+		await fireEvent.keyDown(splitter, { key: "Enter", repeat: true });
+		await fireEvent.keyDown(splitter, { key: "Enter", repeat: true });
+
+		expect(toggles.count).toBe(1);
+	});
+
+	it("leaves Cmd+Enter on a pane that closes to whatever is listening above it", async () => {
+		const { toggles, splitter } = renderPaneThatCloses();
+
+		const unhandled = await fireEvent.keyDown(splitter, {
+			key: "Enter",
+			metaKey: true,
+		});
+
+		expect(toggles.count).toBe(0);
+		expect(unhandled).toBe(true);
+	});
 
 	it("keeps a key it answered from scrolling the page or reaching a list above it", async () => {
 		const { splitter } = renderSplitter("pane");

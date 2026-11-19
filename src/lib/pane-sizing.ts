@@ -24,6 +24,8 @@ export interface PaneSizingOptions {
 export interface PaneSizing {
 	/** A keyboard step, in the splitter's own direction: positive moves it right. */
 	step(delta: number): void;
+	/** Closes the open pane, or reopens a collapsed one at the width it had. */
+	toggle(): void;
 	startResize(e: MouseEvent): void;
 	/**
 	 * Takes a width the layout narrowed the open pane to as its own, and stores
@@ -39,8 +41,8 @@ export interface PaneSizing {
 // A pane collapses on the way to narrower than its minimum, so the width it
 // last had is one it only passed through. Toggled open, it reopens at the width
 // it had when the narrowing began: where the drag took hold, or before the
-// first of a run of narrowing steps, which any widening or a change of its
-// minimum ends. A drag or a step that widens a collapsed pane opens it at its
+// first of a run of narrowing steps, which any widening, a drag or a change of
+// its minimum ends. A drag or a step that widens a collapsed pane opens it at its
 // minimum instead, keeping a narrower width the minimum already draws it at.
 export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 	const widenSign = options.splitterEdge === "right" ? 1 : -1;
@@ -159,7 +161,11 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		if (from !== options.width()) options.onwidthchange(from);
 	}
 
-	return { step, startResize, adopt };
+	function toggle() {
+		options.oncollapsedchange(!options.collapsed());
+	}
+
+	return { step, toggle, startResize, adopt };
 }
 
 export interface PaneWidths {

@@ -100,6 +100,16 @@ describe("createPaneSizing", () => {
 		expect(pane).toEqual({ width: 90, collapsed: true });
 	});
 
+	it("closes on a toggle and reopens on the next at the width it had", () => {
+		const { pane, collapses, sizing } = sidebarAt(200);
+
+		sizing.toggle();
+		sizing.toggle();
+
+		expect(collapses).toEqual([true, false]);
+		expect(pane).toEqual({ width: 200, collapsed: false });
+	});
+
 	it("stops following the pointer once the drag is released", () => {
 		const { pane, stored, sizing } = sidebarAt(200);
 

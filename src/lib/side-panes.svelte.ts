@@ -31,6 +31,7 @@ export interface DrawnPane {
 	readonly width: number;
 	readonly max: number;
 	step(delta: number): void;
+	toggle(): void;
 	startResize(e: MouseEvent): void;
 }
 
@@ -143,6 +144,7 @@ function drawnPane(sizing: PaneSizing, fitted: () => FittedPane): DrawnPane {
 			return fitted().max;
 		},
 		step: sizing.step,
+		toggle: sizing.toggle,
 		startResize: sizing.startResize,
 	};
 }

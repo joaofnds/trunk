@@ -4,6 +4,7 @@ export type SplitterVariant = "pane" | "column" | "column-leading" | "bar";
 
 <script lang="ts">
 import type { HTMLAttributes } from "svelte/elements";
+import { keyChord } from "../keyboard.js";
 
 type Orientation = "horizontal" | "vertical";
 
@@ -19,6 +20,7 @@ interface Shared
 		| "aria-valuemin"
 		| "aria-valuemax"
 		| "onkeydown"
+		| "ontoggle"
 	> {
 	/** `pane` is the strip between two panes laid side by side, `column` the
 	 *  one over the trailing edge of a table's header cell and `column-leading`
@@ -39,6 +41,14 @@ interface Moving extends Shared {
 	/** An arrow key moved it by this many pixels along its axis, positive to
 	 *  the right or down. The caller resizes through the limits its drag has. */
 	onstep: (delta: number) => void;
+	ontoggle?: never;
+}
+
+/** A pane's strip that can also close the pane it resizes. */
+interface ClosingPane extends Omit<Moving, "variant" | "ontoggle"> {
+	variant: "pane";
+	/** Enter closes the pane, or reopens it at the width it had. */
+	ontoggle: () => void;
 }
 
 /** The same strip where nothing can be resized for now: a line between two
@@ -49,9 +59,10 @@ interface Fixed extends Shared {
 	min?: never;
 	max?: never;
 	onstep?: never;
+	ontoggle?: never;
 }
 
-type Props = Moving | Fixed;
+type Props = ClosingPane | Moving | Fixed;
 
 let {
 	variant,
@@ -60,6 +71,7 @@ let {
 	min,
 	max,
 	onstep,
+	ontoggle,
 	...rest
 }: Props = $props();
 
@@ -96,7 +108,14 @@ function wholePixels(size: number | undefined) {
 	return size === undefined ? undefined : Math.round(size);
 }
 
-function stepOnArrow(event: KeyboardEvent) {
+function answerKey(event: KeyboardEvent) {
+	if (ontoggle && keyChord(event) === "Enter") {
+		event.preventDefault();
+		event.stopPropagation();
+		if (!event.repeat) ontoggle();
+		return;
+	}
+
 	const direction = DIRECTIONS[ORIENTATIONS[variant]][event.key];
 	if (direction === undefined) return;
 
@@ -108,10 +127,11 @@ function stepOnArrow(event: KeyboardEvent) {
 
 <!--
 	The handle between two things that share a width or a height. Its caller
-	starts the drag from the press it passes through, and resizes by the step
-	an arrow key reports. The focus ring is drawn inside the strip. A column's
-	handle straddles the edge between two header cells, so the cell that holds
-	it must not clip what leaves it.
+	starts the drag from the press it passes through, resizes by the step an
+	arrow key reports, and closes or reopens its pane on Enter where it can.
+	The focus ring is drawn inside the strip. A column's handle straddles the
+	edge between two header cells, so the cell that holds it must not clip
+	what leaves it.
 -->
 {#if fixed}
 	<div class={VARIANTS[variant]} {...rest}></div>
@@ -124,7 +144,7 @@ function stepOnArrow(event: KeyboardEvent) {
 		aria-valuemin={wholePixels(min)}
 		aria-valuemax={wholePixels(max)}
 		class={[VARIANTS[variant], CURSORS[ORIENTATIONS[variant]], FOCUS]}
-		onkeydown={stepOnArrow}
+		onkeydown={answerKey}
 		{...rest}
 	></div>
 {/if}
