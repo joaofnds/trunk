@@ -517,8 +517,8 @@ describe("RepoView", () => {
 		"collapses the $pane when a step takes it under the width a drag collapses it at",
 		async ({ pane, key, collapsed }) => {
 			const changes = renderWithPanes({
-				leftPaneWidth: 56,
-				rightPaneWidth: 56,
+				leftPaneWidth: 84,
+				rightPaneWidth: 204,
 			});
 
 			await fireEvent.keyDown(
@@ -536,7 +536,7 @@ describe("RepoView", () => {
 	])(
 		"keeps the focus on the $pane's divider when a step collapses the pane",
 		async ({ pane, key }) => {
-			renderWithPanes({ leftPaneWidth: 56, rightPaneWidth: 56 });
+			renderWithPanes({ leftPaneWidth: 84, rightPaneWidth: 204 });
 			const divider = screen.getByRole("slider", { name: `Resize ${pane}` });
 			divider.focus();
 
@@ -781,6 +781,134 @@ describe("RepoView", () => {
 			expect(mockInvoke).toHaveBeenCalledWith("prefs_set", { key, value });
 		},
 	);
+
+	describe("when the window is too narrow for the panes as set", () => {
+		const unobservedResizeObserver = globalThis.ResizeObserver;
+
+		// Reports the main row at a width the test sets, and nothing else, so
+		// the virtual lists keep the observer they get everywhere else.
+		function observeRowAt(width: number) {
+			const rows: { callback: ResizeObserverCallback; row: Element }[] = [];
+			const report = (
+				observed: { callback: ResizeObserverCallback; row: Element },
+				w: number,
+			) =>
+				observed.callback(
+					[
+						{
+							target: observed.row,
+							contentRect: { width: w },
+						} as ResizeObserverEntry,
+					],
+					{} as ResizeObserver,
+				);
+
+			globalThis.ResizeObserver = class {
+				constructor(private readonly callback: ResizeObserverCallback) {}
+				observe(target: Element) {
+					if (target.tagName !== "MAIN") return;
+					const observed = { callback: this.callback, row: target };
+					rows.push(observed);
+					report(observed, width);
+				}
+				unobserve() {}
+				disconnect() {}
+			} as unknown as typeof ResizeObserver;
+
+			return {
+				resize: async (w: number) => {
+					for (const observed of rows) report(observed, w);
+					await tick();
+				},
+			};
+		}
+
+		function sliderValue(pane: string) {
+			return screen
+				.getByRole("slider", { name: `Resize ${pane}` })
+				.getAttribute("aria-valuenow");
+		}
+
+		afterEach(() => {
+			globalThis.ResizeObserver = unobservedResizeObserver;
+		});
+
+		it("narrows both panes so the centre keeps its floor", async () => {
+			observeRowAt(830);
+
+			renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
+			await tick();
+
+			expect([sliderValue("sidebar"), sliderValue("detail pane")]).toEqual([
+				"180",
+				"250",
+			]);
+		});
+
+		it("draws the panes at the widths the user set once the window widens", async () => {
+			const row = observeRowAt(830);
+			renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
+			await tick();
+
+			await row.resize(1280);
+
+			expect([sliderValue("sidebar"), sliderValue("detail pane")]).toEqual([
+				"280",
+				"300",
+			]);
+		});
+
+		it("stops a drag of the sidebar where the centre would go under its floor", async () => {
+			observeRowAt(1280);
+			const changes = renderWithPanes({
+				leftPaneWidth: 200,
+				rightPaneWidth: 300,
+			});
+			await tick();
+
+			await drag(
+				screen.getByRole("slider", { name: "Resize sidebar" }),
+				1000,
+				1500,
+			);
+
+			expect(changes).toEqual(["left collapsed false", "left width 580"]);
+		});
+
+		it("keeps the detail pane where it is drawn while the sidebar is dragged", async () => {
+			observeRowAt(830);
+			renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
+			await tick();
+
+			await drag(
+				screen.getByRole("slider", { name: "Resize sidebar" }),
+				1000,
+				980,
+			);
+
+			expect([sliderValue("sidebar"), sliderValue("detail pane")]).toEqual([
+				"160",
+				"250",
+			]);
+		});
+
+		it("stores the width the detail pane is drawn at when the sidebar is dragged", async () => {
+			observeRowAt(830);
+			renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
+			await tick();
+
+			await drag(
+				screen.getByRole("slider", { name: "Resize sidebar" }),
+				1000,
+				980,
+			);
+
+			expect(mockInvoke).toHaveBeenCalledWith("prefs_set", {
+				key: "right_pane_width",
+				value: 250,
+			});
+		});
+	});
 
 	it("tells assistive tech each pane's width and the widths it moves between", () => {
 		renderWithPanes({ leftPaneWidth: 200, rightPaneWidth: 300 });

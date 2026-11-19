@@ -3,9 +3,15 @@ export interface PaneSizingOptions {
 	splitterEdge: "left" | "right";
 	/** The narrowest the pane is drawn open: narrower, it collapses. */
 	min: number;
-	max: number;
+	/** The widest the pane may go, which the room beside it can lower. */
+	max: () => number;
+	/** The width the user gave the pane. */
 	width: () => number;
+	/** The width the layout draws the open pane at, which the room can narrow. */
+	drawn: () => number;
 	collapsed: () => boolean;
+	/** Runs as a drag or a step begins, so every pane can adopt its drawn width. */
+	beforeresize: () => void;
 	onwidthchange: (width: number) => void;
 	oncollapsedchange: (collapsed: boolean) => void;
 	store: (width: number) => void;
@@ -17,6 +23,12 @@ export interface PaneSizing {
 	/** A keyboard step, in the splitter's own direction: positive moves it right. */
 	step(delta: number): void;
 	startResize(e: MouseEvent): void;
+	/**
+	 * Takes a width the layout drew the open pane at as its own, and stores it.
+	 * Read every pane's drawn width before adopting any: adopting one re-fits
+	 * the others.
+	 */
+	adopt(drawn: number): void;
 }
 
 // A pane collapses on the way to narrower than its minimum, so the width it
@@ -29,7 +41,7 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 	let stepsFrom: number | null = null;
 
 	function size() {
-		return options.collapsed() ? 0 : options.width();
+		return options.collapsed() ? 0 : options.drawn();
 	}
 
 	/** Reports whether the width collapsed the pane. */
@@ -40,7 +52,9 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		}
 
 		options.oncollapsedchange(false);
-		options.onwidthchange(Math.min(options.max, width));
+		options.onwidthchange(
+			Math.max(options.min, Math.min(options.max(), width)),
+		);
 		return false;
 	}
 
@@ -48,8 +62,16 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		if (!options.collapsed()) options.store(options.width());
 	}
 
+	function adopt(drawn: number) {
+		if (options.collapsed() || drawn === options.width()) return;
+
+		options.onwidthchange(drawn);
+		options.store(drawn);
+	}
+
 	function startResize(e: MouseEvent) {
 		e.preventDefault();
+		options.beforeresize();
 		const startX = e.clientX;
 		const startWidth = size();
 		const reopenWidth = options.width();
@@ -74,6 +96,7 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 	}
 
 	function step(delta: number) {
+		options.beforeresize();
 		const change = widenSign * delta;
 		const widens = change > 0;
 		if (options.collapsed() && !widens) return;
@@ -93,5 +116,37 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		if (from !== options.width()) options.onwidthchange(from);
 	}
 
-	return { size, step, startResize };
+	return { size, step, startResize, adopt };
+}
+
+export interface PaneRoom {
+	width: number;
+	floor: number;
+}
+
+/** A pane that takes no room: collapsed, or not part of the layout. */
+export const CLOSED_PANE: PaneRoom = { width: 0, floor: 0 };
+
+// When the panes and the centre's floor do not fit the room, both panes give
+// up the same share of what they hold above their floors, so neither reaches
+// its floor first. Past their floors the centre gives way instead.
+export function fitPanes(layout: {
+	room: number;
+	centreFloor: number;
+	left: PaneRoom;
+	right: PaneRoom;
+}): { left: number; right: number } {
+	const left = Math.max(layout.left.width, layout.left.floor);
+	const right = Math.max(layout.right.width, layout.right.floor);
+	const spare = layout.room - layout.centreFloor - left - right;
+	if (spare >= 0) return { left, right };
+
+	const leftAbove = left - layout.left.floor;
+	const rightAbove = right - layout.right.floor;
+	const kept = Math.max(0, 1 + spare / (leftAbove + rightAbove));
+
+	return {
+		left: Math.floor(layout.left.floor + leftAbove * kept),
+		right: Math.floor(layout.right.floor + rightAbove * kept),
+	};
 }
