@@ -196,15 +196,9 @@ pub fn merge_continue_inner(
         let msg = message.ok_or_else(|| {
             TrunkError::new("merge_error", "merge_continue requires a commit message")
         })?;
-        let output = UserGit::in_dir(path_buf)
+        UserGit::in_dir(path_buf)
             .args(["commit", "-m", msg, "--cleanup=strip"])
-            .output()
-            .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
-        if !output.status.success() {
-            return Err(TrunkError::new("merge_error", refusal(&output)));
-        }
-
-        Ok(())
+            .run("merge_error")
     })?;
 
     state_map.read_graph(path)
@@ -222,15 +216,9 @@ pub fn merge_abort_inner(
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     state_map.hold_for_git(path, |_| {
-        let output = UserGit::in_dir(path_buf)
+        UserGit::in_dir(path_buf)
             .args(["merge", "--abort"])
-            .output()
-            .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
-        if !output.status.success() {
-            return Err(TrunkError::new("merge_error", refusal(&output)));
-        }
-
-        Ok(())
+            .run("merge_error")
     })?;
 
     state_map.read_graph(path)
@@ -313,15 +301,9 @@ pub fn rebase_skip_inner(
     let path_buf = state_map.path_for(path)?;
     state_map.hold_for_git(path, |_| {
         let editor = trunk_git::editor::keyed_rebase_editor()?;
-        let output = rebase_command(path_buf, "--skip")
+        rebase_command(path_buf, "--skip")
             .env("GIT_EDITOR", editor.script_path())
-            .output()
-            .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
-        if !output.status.success() {
-            return Err(TrunkError::new("rebase_error", refusal(&output)));
-        }
-
-        Ok(())
+            .run("rebase_error")
     })?;
 
     state_map.read_graph(path)
@@ -339,14 +321,7 @@ pub fn rebase_abort_inner(
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     state_map.hold_for_git(path, |_| {
-        let output = rebase_command(path_buf, "--abort")
-            .output()
-            .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
-        if !output.status.success() {
-            return Err(TrunkError::new("rebase_error", refusal(&output)));
-        }
-
-        Ok(())
+        rebase_command(path_buf, "--abort").run("rebase_error")
     })?;
 
     state_map.read_graph(path)

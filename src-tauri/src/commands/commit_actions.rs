@@ -134,14 +134,9 @@ fn pick_is_empty(path: &std::path::Path) -> Result<bool, TrunkError> {
 }
 
 fn cherry_pick_skip(path: &std::path::Path) -> Result<(), TrunkError> {
-    let output = UserGit::in_dir(path)
+    UserGit::in_dir(path)
         .args(["cherry-pick", "--skip"])
-        .output()
-        .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
-    if !output.status.success() {
-        return Err(TrunkError::new("cherry_pick_error", refusal(&output)));
-    }
-    Ok(())
+        .run("cherry_pick_error")
 }
 
 /// Cherry-pick a commit onto HEAD.
@@ -193,15 +188,9 @@ pub fn cherry_pick_continue_inner(
     state_map.hold_for_git(path, |_| {
         // Mirrors revert_continue: --cleanup=strip drops git's `# Conflicts:` block,
         // and `git commit -m` concludes the pick, clearing CHERRY_PICK_HEAD.
-        let output = UserGit::in_dir(path_buf)
+        UserGit::in_dir(path_buf)
             .args(["commit", "-m", message, "--cleanup=strip"])
-            .output()
-            .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
-        if !output.status.success() {
-            return Err(TrunkError::new("cherry_pick_error", refusal(&output)));
-        }
-
-        Ok(())
+            .run("cherry_pick_error")
     })?;
 
     state_map.read_graph(path)
@@ -221,15 +210,9 @@ pub fn cherry_pick_abort_inner(
     state_map.hold_for_git(path, |_| {
         // merge_abort cannot stand in here: `git merge --abort` needs MERGE_HEAD,
         // which a cherry-pick never sets.
-        let output = UserGit::in_dir(path_buf)
+        UserGit::in_dir(path_buf)
             .args(["cherry-pick", "--abort"])
-            .output()
-            .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
-        if !output.status.success() {
-            return Err(TrunkError::new("cherry_pick_error", refusal(&output)));
-        }
-
-        Ok(())
+            .run("cherry_pick_error")
     })?;
 
     state_map.read_graph(path)
@@ -286,15 +269,9 @@ pub fn revert_continue_inner(
     state_map.hold_for_git(path, |_| {
         // --cleanup=strip drops git's `# Conflicts:` comment block so conflicted
         // revert bodies stay clean (MSG-03 fidelity). git commit -m clears REVERT_HEAD.
-        let output = UserGit::in_dir(path_buf)
+        UserGit::in_dir(path_buf)
             .args(["commit", "-m", message, "--cleanup=strip"])
-            .output()
-            .map_err(|e| TrunkError::new("revert_error", e.to_string()))?;
-        if !output.status.success() {
-            return Err(TrunkError::new("revert_error", refusal(&output)));
-        }
-
-        Ok(())
+            .run("revert_error")
     })?;
 
     state_map.read_graph(path)
@@ -314,15 +291,9 @@ pub fn revert_abort_inner(
     state_map.hold_for_git(path, |_| {
         // The MSG-06 recovery path for revert: clears REVERT_HEAD + restores a clean
         // tree. Without it a cancelled revert traps the user (RESEARCH finding 4).
-        let output = UserGit::in_dir(path_buf)
+        UserGit::in_dir(path_buf)
             .args(["revert", "--abort"])
-            .output()
-            .map_err(|e| TrunkError::new("revert_error", e.to_string()))?;
-        if !output.status.success() {
-            return Err(TrunkError::new("revert_error", refusal(&output)));
-        }
-
-        Ok(())
+            .run("revert_error")
     })?;
 
     state_map.read_graph(path)
@@ -767,15 +738,7 @@ pub struct RedoRequest<'a> {
 
 /// Run `git reset` with `args` in `dir`, reporting a failure under `code` with git's own words.
 fn run_git_reset(dir: &std::path::Path, args: &[&str], code: &str) -> Result<(), TrunkError> {
-    let output = UserGit::in_dir(dir)
-        .arg("reset")
-        .args(args)
-        .output()
-        .map_err(|e| TrunkError::new(code, e.to_string()))?;
-    if !output.status.success() {
-        return Err(TrunkError::new(code, refusal(&output)));
-    }
-    Ok(())
+    UserGit::in_dir(dir).arg("reset").args(args).run(code)
 }
 
 /// Restore the commit an undo took back, refusing if HEAD or the repository has moved.

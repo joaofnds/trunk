@@ -1,7 +1,7 @@
 use crate::commands::commit_actions::head_if_still;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::HeadCommitMessage;
-use crate::user_git::{UserGit, refusal};
+use crate::user_git::UserGit;
 use crate::watcher::RepoChanged;
 use std::path::Path;
 use tauri::{AppHandle, Emitter, Runtime, State};
@@ -80,17 +80,10 @@ pub fn amend_commit_inner(
 }
 
 fn run_git_commit(repo_dir: &Path, flags: &[&str]) -> Result<(), TrunkError> {
-    let output = UserGit::in_dir(repo_dir)
+    UserGit::in_dir(repo_dir)
         .arg("commit")
         .args(flags)
-        .output()
-        .map_err(|e| TrunkError::new("commit_error", e.to_string()))?;
-
-    if output.status.success() {
-        return Ok(());
-    }
-
-    Err(TrunkError::new("commit_error", refusal(&output)))
+        .run("commit_error")
 }
 
 /// HEAD's commit message, split into subject and body.

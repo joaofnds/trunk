@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
 use std::process::{Command, ExitStatus, Output, Stdio};
+use trunk_git::error::TrunkError;
 
 /// The git the user's terminal runs.
 ///
@@ -38,6 +39,23 @@ impl UserGit {
     pub fn env(&mut self, key: impl AsRef<OsStr>, value: impl AsRef<OsStr>) -> &mut Self {
         self.0.env(key, value);
         self
+    }
+
+    /// Runs git for a caller that needs only whether it succeeded.
+    ///
+    /// # Errors
+    ///
+    /// Returns `code` with the reason git would not start, or with [`refusal`]
+    /// when git ran and failed.
+    pub fn run(&mut self, code: &str) -> Result<(), TrunkError> {
+        let output = self
+            .output()
+            .map_err(|e| TrunkError::new(code, e.to_string()))?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(TrunkError::new(code, refusal(&output)))
+        }
     }
 
     /// Runs git with no input and returns what it printed, once it exits.
