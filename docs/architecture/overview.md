@@ -223,10 +223,14 @@ needs no drag handler.
 6. Post-mutation status and review callers enter the same guard and wait for a run admitted
    after the active read rather than returning its older completion
 
-The watcher still reports ignored build output: it applies no gitignore filtering. The event
-now names the changed paths, so a subscriber that depends on particular files skips a write
-naming none of them, and the frontend bound limits the rest. No build-time CPU target is
-established.
+The watcher drops a batch's ignored untracked paths before anything refreshes, so ignored
+build output emits no change. A tracked or conflicted path, a path inside a submodule and a
+`.gitignore` are never dropped. Each watcher answers from one repository handle kept for the
+life of the watch, and libgit2 rereads its index only when the file changed: parsing the
+index for every batch took about 39% of a core in a debug drive build at 20,000 tracked files
+while ignored output was written every 10 ms. The event names the changed paths, so a
+subscriber that depends on particular files skips a write naming none of them, and the
+frontend bound limits the rest. No build-time CPU target is established.
 
 ### Staging a File
 
