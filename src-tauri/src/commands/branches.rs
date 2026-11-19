@@ -414,10 +414,8 @@ pub fn fast_forward_to_inner(
     let path_buf = state_map.path_for(path)?;
 
     state_map.hold_for_git(path, |_| {
-        let output = std::process::Command::new("git")
+        let output = shell_env::user_git(path_buf)
             .args(["merge", "--ff-only", "--", target_oid])
-            .current_dir(path_buf)
-            .env("PATH", shell_env::system_path())
             .output()
             .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
         if !output.status.success() {

@@ -132,11 +132,9 @@ async fn run_reserved<R: Runtime>(
     repo_path: &str,
     reservation: &RemoteReservation<'_>,
 ) -> Result<(), TrunkError> {
-    let mut command = Command::new("git");
+    let mut command = Command::from(shell_env::user_git(cwd));
     command
         .args(args)
-        .current_dir(cwd)
-        .env("PATH", shell_env::system_path())
         // Nothing reads stdout, and git blocks writing a large merge diffstat
         // into a full pipe while this task blocks in wait().
         .stdout(std::process::Stdio::null())

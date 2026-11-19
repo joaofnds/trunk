@@ -196,10 +196,8 @@ pub fn merge_continue_inner(
         let msg = message.ok_or_else(|| {
             TrunkError::new("merge_error", "merge_continue requires a commit message")
         })?;
-        let output = std::process::Command::new("git")
+        let output = shell_env::user_git(path_buf)
             .args(["commit", "-m", msg, "--cleanup=strip"])
-            .current_dir(path_buf)
-            .env("PATH", shell_env::system_path())
             .output()
             .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
         if !output.status.success() {
@@ -225,10 +223,8 @@ pub fn merge_abort_inner(
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     state_map.hold_for_git(path, |_| {
-        let output = std::process::Command::new("git")
+        let output = shell_env::user_git(path_buf)
             .args(["merge", "--abort"])
-            .current_dir(path_buf)
-            .env("PATH", shell_env::system_path())
             .output()
             .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
         if !output.status.success() {
@@ -255,11 +251,8 @@ pub fn merge_abort_inner(
 /// before it stopped. `true` would drop every one of them silently.
 #[must_use]
 pub fn rebase_command(dir: &std::path::Path, step: &str) -> std::process::Command {
-    let mut cmd = std::process::Command::new("git");
-    cmd.args(["rebase", step])
-        .current_dir(dir)
-        .env("PATH", shell_env::system_path())
-        .env("GIT_EDITOR", "true");
+    let mut cmd = shell_env::user_git(dir);
+    cmd.args(["rebase", step]).env("GIT_EDITOR", "true");
     cmd
 }
 
@@ -447,10 +440,8 @@ fn start_merge(repo: &git2::Repository, branch: &str) -> Result<MergeBeginOutcom
     // 1. Probe fast-forward (RESEARCH OQ-1). `--ff-only` succeeds silently on an
     //    ff-able or already-up-to-date merge (no MERGE_HEAD, no merge commit) and
     //    fails clean on a non-ff merge (exit 128, MERGE_HEAD absent, tree clean).
-    let probe = std::process::Command::new("git")
+    let probe = shell_env::user_git(work_tree)
         .args(["merge", "--ff-only", "--", branch])
-        .current_dir(work_tree)
-        .env("PATH", shell_env::system_path())
         .output()
         .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
     if probe.status.success() {
@@ -459,10 +450,8 @@ fn start_merge(repo: &git2::Repository, branch: &str) -> Result<MergeBeginOutcom
 
     // 2. Non-ff: branches are now provably divergent (the ff probe left the tree
     //    clean), so --no-commit creates a real merge. --no-ff is unnecessary.
-    let output = std::process::Command::new("git")
+    let output = shell_env::user_git(work_tree)
         .args(["merge", "--no-commit", "--", branch])
-        .current_dir(work_tree)
-        .env("PATH", shell_env::system_path())
         .output()
         .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
 
@@ -500,10 +489,8 @@ pub fn rebase_branch_inner(
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     state_map.hold_for_git(path, |_| {
-        let output = std::process::Command::new("git")
+        let output = shell_env::user_git(path_buf)
             .args(["rebase", "--", onto_branch])
-            .current_dir(path_buf)
-            .env("PATH", shell_env::system_path())
             .output()
             .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -786,7 +773,6 @@ mod tests {
     use super::*;
     use git2::{Repository, Signature};
     use std::path::PathBuf;
-    use std::process::Command;
     use tempfile::TempDir;
     use trunk_git::graph_input::RefVisibility;
 
@@ -1120,10 +1106,8 @@ mod tests {
     fn get_merge_message_returns_merge_msg_verbatim() {
         let (dir, _repo) = conflict_divergent_repo();
         // Start a conflicted merge so MERGE_MSG carries a `# Conflicts:` block.
-        let _ = Command::new("git")
+        let _ = shell_env::user_git(dir.path())
             .args(["merge", "--no-commit", "feature"])
-            .current_dir(dir.path())
-            .env("PATH", shell_env::system_path())
             .output()
             .unwrap();
         let raw = read_merge_msg(&dir);

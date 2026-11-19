@@ -161,10 +161,8 @@ pub fn get_fork_point_inner(
 ) -> Result<String, TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
-    let output = std::process::Command::new("git")
+    let output = shell_env::user_git(path_buf)
         .args(["merge-base", "--", branch, "HEAD"])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
         .output()
         .map_err(|e| TrunkError::new("fork_point_error", e.to_string()))?;
 
@@ -296,10 +294,8 @@ fn run_interactive_rebase(
         None => args.push("--root"),
     }
 
-    let output = std::process::Command::new("git")
+    let output = shell_env::user_git(work_tree)
         .args(&args)
-        .current_dir(work_tree)
-        .env("PATH", shell_env::system_path())
         .env("GIT_SEQUENCE_EDITOR", seq_editor_path.to_str().unwrap())
         .env("GIT_EDITOR", editor.script_path())
         .output()

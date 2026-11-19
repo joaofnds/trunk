@@ -89,11 +89,9 @@ fn run_git_commit(repo_dir: &Path, flags: &[&str]) -> Result<(), TrunkError> {
     let mut stdout = tempfile::tempfile().map_err(to_error)?;
     let mut stderr = tempfile::tempfile().map_err(to_error)?;
 
-    let status = std::process::Command::new("git")
+    let status = shell_env::user_git(repo_dir)
         .arg("commit")
         .args(flags)
-        .current_dir(repo_dir)
-        .env("PATH", shell_env::system_path())
         .stdin(Stdio::null())
         .stdout(stdout.try_clone().map_err(to_error)?)
         .stderr(stderr.try_clone().map_err(to_error)?)
