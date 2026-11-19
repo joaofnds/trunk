@@ -1222,7 +1222,7 @@ $effect(() => {
 				persistTabs();
 			}}
 		/>
-		<div data-tauri-drag-region class="flex-1 h-full"></div>
+		<div data-tauri-drag-region class="flex-1 min-w-6 h-full"></div>
 		{#if activeTab?.repoPath && repositories.isReady(activeTab)}
 			{@const activeState = getTabState(activeTabId)}
 			<Toolbar
