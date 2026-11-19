@@ -1,24 +1,23 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { mismatch } from "./baseline.js";
-import { VisualHarness } from "./harness.js";
+import { SuiteHarness, type VisualHarness } from "./harness.js";
 
 /** The narrowest the detail pane gets (`DETAIL_PANE` in
  *  src/lib/side-panes.svelte.ts), where a footer's buttons have least room. */
 const DETAIL_PANE_FLOOR = 200;
 
 describe.concurrent("staging panel footers at the detail pane's floor", () => {
+	const suite = new SuiteHarness();
 	let harness: VisualHarness;
 
 	beforeAll(async () => {
-		harness = await VisualHarness.setup({
+		harness = await suite.start({
 			cases: ["01-commit-message", "10-nested-conflict"],
 			pages: 2,
 		});
 	});
 
-	afterAll(async () => {
-		await harness?.teardown();
-	});
+	afterAll(() => suite.teardown());
 
 	async function expectBaseline(name: string, capture: Buffer): Promise<void> {
 		const reason = await mismatch(name, capture, (baseline, actual) =>

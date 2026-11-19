@@ -1,8 +1,7 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { promisify } from "node:util";
 import { type Browser, type Page, webkit } from "playwright";
 import {
 	createServer,
@@ -63,6 +62,8 @@ const NEVER_ABANDONED = new AbortController().signal;
  *  page would never be borrowed (docs/visual-regression.md). */
 const PAGES = pageCount(process.env.TRUNK_VISUAL_PAGES ?? "5");
 
+const GRAPH_SHAPE: HarnessShape = { cases: GRAPH_CASES, pages: PAGES };
+
 /** The test a capture is taken for: the signal vitest aborts when it abandons
  *  the test, and the note that then reaches the test's failure. */
 export type CaptureTest = Pick<TestContext, "signal" | "annotate">;
@@ -107,14 +108,15 @@ export class VisualHarness {
 		private readonly opened: Opened,
 	) {}
 
-	/** The graph cases by default. A suite that captures fewer repositories
-	 *  builds only the cases it reads and opens fewer pages. */
+	/** A setup `stopped` before it finished closes what it had opened and
+	 *  rejects. */
 	static async setup(
-		harness: HarnessShape = { cases: GRAPH_CASES, pages: PAGES },
+		shape: HarnessShape,
+		stopped: AbortSignal,
 	): Promise<VisualHarness> {
 		const opened = new Opened();
 		try {
-			return await VisualHarness.start(opened, harness);
+			return await VisualHarness.start(opened, shape, stopped);
 		} catch (error) {
 			return closeAfterFailure(opened, error);
 		}
@@ -123,15 +125,17 @@ export class VisualHarness {
 	/** The fixture build takes longest, so the pages open and load the app beside it. */
 	private static async start(
 		opened: Opened,
-		harness: HarnessShape,
+		shape: HarnessShape,
+		stopped: AbortSignal,
 	): Promise<VisualHarness> {
 		const repos = mkdtempSync(join(tmpdir(), "trunk-visual-"));
 		opened.add(() => rmSync(repos, { recursive: true, force: true }));
 
 		const [fixtures, browsing] = await Promise.allSettled([
-			buildFixtures(repos, harness.cases),
-			VisualHarness.openPages(opened, harness.pages),
+			buildFixtures(repos, shape.cases, stopped),
+			VisualHarness.openPages(opened, shape.pages),
 		]);
+		stopped.throwIfAborted();
 		if (fixtures.status === "rejected") throw fixtures.reason;
 		if (browsing.status === "rejected") throw browsing.reason;
 
@@ -240,6 +244,43 @@ export class VisualHarness {
 		const next = this.waiting.shift();
 		if (next) next(page);
 		else this.idle.push(page);
+	}
+}
+
+/**
+ * One suite's visual harness, from its start before the tests to its teardown
+ * after them. vitest gives up on a hook at its timeout without telling the
+ * hook, so the teardown stops a start still under way, whose fixture builds
+ * would otherwise run on and leave their repositories behind.
+ */
+export class SuiteHarness {
+	private readonly stopping = new AbortController();
+	private started: Promise<VisualHarness | undefined> =
+		Promise.resolve(undefined);
+
+	/** The graph cases by default. A suite that captures fewer repositories
+	 *  builds only the cases it reads and opens fewer pages. */
+	start(shape: HarnessShape = GRAPH_SHAPE): Promise<VisualHarness> {
+		const starting = VisualHarness.setup(shape, this.stopping.signal);
+		this.started = starting.catch((error: unknown) => this.failedStart(error));
+
+		return starting;
+	}
+
+	async teardown(): Promise<void> {
+		this.stopping.abort();
+		const harness = await this.started;
+		await harness?.teardown();
+	}
+
+	/** Before the stop, a failed start fails the suite's beforeAll. After it,
+	 *  vitest no longer awaits the start, so a failure other than the stop
+	 *  itself, a repository left undeleted, fails the teardown instead. */
+	private failedStart(error: unknown): undefined {
+		const stop = this.stopping.signal;
+		if (stop.aborted && error !== stop.reason) throw error;
+
+		return undefined;
 	}
 }
 
@@ -775,24 +816,61 @@ async function comparePixels([baseline, capture, tolerance]: readonly [
 	return { pixels, image: btoa(binary) };
 }
 
-/** Every build finishes before this returns, failed or not, since the run
- *  deletes their directory once one fails. */
+/** Every build's process exits before this returns. When one fails or the
+ *  builds are stopped, their directory is deleted then, without waiting for
+ *  the pages, so a teardown that vitest also gives up on leaves none behind. */
 async function buildFixtures(
 	out: string,
 	cases: readonly string[],
+	stopped: AbortSignal,
 ): Promise<void> {
 	const binary = process.env.TRUNK_FIXTURES ?? join(ROOT, DEFAULT_FIXTURES);
 	const builds = await Promise.allSettled(
 		cases.map((fixtureCase) =>
-			promisify(execFile)(binary, ["build", fixtureCase, "--out", out]),
+			buildCase(binary, ["build", fixtureCase, "--out", out], stopped),
 		),
 	);
-
 	const failures = builds
 		.filter((build) => build.status === "rejected")
 		.map((build) => build.reason);
-	if (failures.length > 0)
-		throw new AggregateError(failures, "the fixture cases did not all build");
+	if (!stopped.aborted && failures.length === 0) return;
+
+	rmSync(out, { recursive: true, force: true });
+	stopped.throwIfAborted();
+	throw new AggregateError(failures, "the fixture cases did not all build");
+}
+
+/** Settles once the build's process has exited, a stopped one too, so
+ *  nothing writes into the directory after the run deletes it. */
+function buildCase(
+	binary: string,
+	args: readonly string[],
+	stopped: AbortSignal,
+): Promise<void> {
+	return new Promise((built, failed) => {
+		const build = spawn(binary, args, {
+			signal: stopped,
+			stdio: ["ignore", "ignore", "pipe"],
+		});
+		let output = "";
+		build.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+			output += chunk;
+		});
+		build.on("error", (error) => {
+			output += error.message;
+		});
+
+		build.on("close", (code, signal) => {
+			if (code === 0) return built();
+
+			const ending = signal ?? `exit code ${code}`;
+			failed(
+				new Error(
+					`${[binary, ...args].join(" ")} ended with ${ending}:\n${output}`,
+				),
+			);
+		});
+	});
 }
 
 async function serve(): Promise<ViteDevServer> {

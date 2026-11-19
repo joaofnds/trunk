@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { mismatch } from "./baseline.js";
-import { VisualHarness } from "./harness.js";
+import { SuiteHarness, type VisualHarness } from "./harness.js";
 
 const GRAPH_REPOSITORIES = [
 	"graph-lanes/01-behind-only",
@@ -62,16 +62,15 @@ const OVERFLOWING_GRAPH_COLUMN = 56;
 const PANNED_PARTWAY = 20;
 
 describe.concurrent("commit graph", () => {
+	const suite = new SuiteHarness();
 	let harness: VisualHarness;
 
 	beforeAll(async () => {
-		harness = await VisualHarness.setup();
+		harness = await suite.start();
 		await harness.warmUp();
 	});
 
-	afterAll(async () => {
-		await harness?.teardown();
-	});
+	afterAll(() => suite.teardown());
 
 	async function expectBaseline(name: string, capture: Buffer): Promise<void> {
 		const reason = await mismatch(name, capture, (baseline, actual) =>

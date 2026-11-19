@@ -135,7 +135,10 @@ other little more than the median, so how much of that cost the warm-up pays is 
 On a fast runner before the warm-up, 36874399859, the first five took 1.3 s against 0.8 s.
 
 Setup, warm-up included, must finish inside vitest's 60-second hook timeout, and each of the
-warm-up's waits ends at Playwright's 30-second default. Setup and teardown together took 17 to
+warm-up's waits ends at Playwright's 30-second default. vitest abandons a setup that outruns the
+timeout without telling it, so the suite's teardown stops it: the fixture builds are ended,
+their repositories are deleted once the builds have exited, and then whatever else the setup
+opened is closed. Setup and teardown together took 17 to
 22 s on the slower runners above whose logs could be read and 6 s on the fast one before the
 warm-up, and 20 s and 31 s on the two runs with it, reckoned as the run's duration less the
 time its tests took five at a time. A warm-up capture that fails is
