@@ -70,6 +70,20 @@ enum BuildStep {
     },
 }
 
+impl BuildStep {
+    /// Every step but a file edit or a commit reads or moves HEAD.
+    const fn reads_head(&self) -> bool {
+        !matches!(
+            self,
+            Self::WriteFile { .. }
+                | Self::WriteBinaryFile { .. }
+                | Self::RemoveFile { .. }
+                | Self::MakeExecutable { .. }
+                | Self::Commit { .. }
+        )
+    }
+}
+
 /// 2026-01-01T00:00:00Z, the same base `scripts/qa-*-fixtures.sh` pin. Commits are spaced a
 /// day apart because the graph sorts with `TOPOLOGICAL | TIME`: same-second commits sort
 /// arbitrarily and can render a coincidentally-correct layout.
@@ -274,7 +288,14 @@ impl TestContextBuilder {
         let mut pending: Vec<PendingChange> = Vec::new();
         let mut stash_counter: usize = 0;
 
+        // Moving HEAD's branch and its reflog on every commit held a 440-commit
+        // seed past 4 s under load, so a run of commits moves it once.
+        let mut unwritten_head: Option<git2::Oid> = None;
+
         for step in &self.steps {
+            if step.reads_head() {
+                write_head(&repo, unwritten_head.take());
+            }
             match step {
                 BuildStep::WriteFile { path, content }
                 | BuildStep::WriteBinaryFile { path, content } => {
@@ -285,7 +306,15 @@ impl TestContextBuilder {
                 }
                 BuildStep::MakeExecutable { path } => make_executable(&dir.path().join(path)),
                 BuildStep::Commit { message, secs } => {
-                    commit(&repo, message, *secs, &mut clock, &mut pending);
+                    let onto = unwritten_head.take();
+                    unwritten_head = Some(commit(
+                        &repo,
+                        onto,
+                        message,
+                        *secs,
+                        &mut clock,
+                        &mut pending,
+                    ));
                 }
                 BuildStep::Branch { name } => branch(&repo, name),
                 BuildStep::Checkout { name } => checkout(&repo, name),
@@ -307,6 +336,7 @@ impl TestContextBuilder {
                 }
             }
         }
+        write_head(&repo, unwritten_head);
 
         repo.index().unwrap().write().unwrap();
 
@@ -375,14 +405,16 @@ fn remove_file(root: &std::path::Path, path: &str, pending: &mut Vec<PendingChan
     pending.push(PendingChange::Remove(path.to_string()));
 }
 
-/// Commit every queued change, taking the next day off the clock unless pinned.
+/// Commit every queued change onto `onto`, or onto HEAD when no commit is
+/// waiting to be written to it, taking the next day off the clock unless pinned.
 fn commit(
     repo: &git2::Repository,
+    onto: Option<git2::Oid>,
     message: &str,
     secs: Option<i64>,
     clock: &mut i64,
     pending: &mut Vec<PendingChange>,
-) {
+) -> git2::Oid {
     let sig = secs.map_or_else(
         || {
             let sig = pinned_signature(*clock);
@@ -407,27 +439,45 @@ fn commit(
     }
     pending.clear();
 
-    commit_index_onto_head(repo, &mut index, &sig, message);
+    let parent = onto.map_or_else(
+        || head_commit(repo),
+        |oid| Some(repo.find_commit(oid).unwrap()),
+    );
+    commit_index(repo, &mut index, &sig, message, parent.as_ref())
 }
 
-/// Commit the index's tree onto HEAD, parenting on it when it already exists.
-///
-/// The first commit in a repository has no parent, which is the only reason
-/// this takes the parent list from `repo.head()` rather than being told one.
-fn commit_index_onto_head(
+/// The commit HEAD names, or none while its branch is unborn.
+fn head_commit(repo: &git2::Repository) -> Option<git2::Commit<'_>> {
+    repo.head().ok().and_then(|head| head.peel_to_commit().ok())
+}
+
+/// Commit the index's tree onto `parent` without moving any ref.
+fn commit_index(
     repo: &git2::Repository,
     index: &mut git2::Index,
     sig: &git2::Signature<'_>,
     message: &str,
-) {
+    parent: Option<&git2::Commit<'_>>,
+) -> git2::Oid {
     let tree_oid = index.write_tree().unwrap();
     let tree = repo.find_tree(tree_oid).unwrap();
+    let parents: Vec<&git2::Commit> = parent.into_iter().collect();
 
-    let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
-    let parents: Vec<&git2::Commit> = parent.as_ref().map(|p| vec![p]).unwrap_or_default();
+    repo.commit(None, sig, sig, message, &tree, &parents)
+        .unwrap()
+}
 
-    repo.commit(Some("HEAD"), sig, sig, message, &tree, &parents)
-        .unwrap();
+/// Move HEAD's branch to `commit`, or HEAD itself when it is detached.
+fn write_head(repo: &git2::Repository, commit: Option<git2::Oid>) {
+    let Some(commit) = commit else { return };
+
+    let head = repo.find_reference("HEAD").unwrap();
+    match head.symbolic_target().unwrap() {
+        Some(branch) => {
+            repo.reference(branch, commit, true, "commit").unwrap();
+        }
+        None => repo.set_head_detached(commit).unwrap(),
+    }
 }
 
 /// Branch at the current HEAD.
@@ -522,7 +572,9 @@ fn stash(
             .unwrap();
         index.write().unwrap();
 
-        commit_index_onto_head(repo, &mut index, &sig, "Add stash marker");
+        let parent = head_commit(repo);
+        let marker = commit_index(repo, &mut index, &sig, "Add stash marker", parent.as_ref());
+        write_head(repo, Some(marker));
     }
 
     // Modify the tracked file to create something to stash
