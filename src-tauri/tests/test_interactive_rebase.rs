@@ -356,6 +356,35 @@ fn get_fork_point_returns_merge_base() {
 }
 
 #[test]
+fn get_fork_point_of_a_branch_with_unrelated_history_says_so() {
+    let (ctx, _) = make_three_commit_ctx();
+    {
+        let repo = ctx.repo();
+        let tree = repo
+            .find_tree(repo.treebuilder(None).unwrap().write().unwrap())
+            .unwrap();
+        let sig = repo.signature().unwrap();
+        repo.commit(
+            Some("refs/heads/orphan"),
+            &sig,
+            &sig,
+            "Unrelated root",
+            &tree,
+            &[],
+        )
+        .unwrap();
+    }
+
+    let err = ctx.get_fork_point("orphan").unwrap_err();
+
+    assert_eq!(err.code, "fork_point_error");
+    assert_eq!(
+        err.message,
+        "orphan shares no history with the current branch"
+    );
+}
+
+#[test]
 fn an_inclusive_todo_resolves_its_base_to_the_clicked_commits_parent() {
     let (ctx, oids) = make_three_commit_ctx();
 

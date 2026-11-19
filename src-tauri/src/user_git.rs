@@ -2,7 +2,7 @@ use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, ExitStatus, Output, Stdio};
 
 /// The git the user's terminal runs.
 ///
@@ -95,10 +95,18 @@ pub fn refusal(output: &Output) -> String {
     [stderr.trim_end(), stdout.trim_end()]
         .into_iter()
         .find(|text| !text.is_empty())
-        .map_or_else(
-            || format!("git exited with {} and printed no reason", output.status),
-            str::to_owned,
-        )
+        .map_or_else(|| silent_refusal(output.status), str::to_owned)
+}
+
+fn silent_refusal(status: ExitStatus) -> String {
+    status.code().map_or_else(
+        || "git was stopped by a signal and printed no reason.".to_owned(),
+        |code| {
+            format!(
+                "git exited with code {code} and printed no reason. A hook may have refused it."
+            )
+        },
+    )
 }
 
 fn read_from_start(file: &mut File) -> io::Result<Vec<u8>> {

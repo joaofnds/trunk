@@ -464,7 +464,10 @@ mod cherry_pick_lifecycle {
             .cherry_pick_continue("Pick the side change")
             .unwrap_err();
 
-        assert!(err.message.contains("exit status: 1"), "got: {err:?}");
+        assert_eq!(
+            err.message,
+            "git exited with code 1 and printed no reason. A hook may have refused it."
+        );
     }
 
     #[test]

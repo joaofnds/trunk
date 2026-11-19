@@ -152,26 +152,34 @@ fn merge_refusal(merge: &git2::Commit<'_>, others: usize) -> TrunkError {
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, and `fork_point_error` carrying
-/// git's own message when `git` will not run or the branches share no history.
+/// Returns `not_open` when `path` names no open repository, and `fork_point_error` saying
+/// which of `branch` and HEAD will not resolve, or that the two share no history.
 pub fn get_fork_point_inner(
     path: &str,
     branch: &str,
     state_map: &OpenRepos,
 ) -> Result<String, TrunkError> {
     let path_buf = state_map.path_for(path)?;
+    let failed = |e: git2::Error| TrunkError::new("fork_point_error", e.message().to_owned());
 
-    let output = UserGit::in_dir(path_buf)
-        .args(["merge-base", "--", branch, "HEAD"])
-        .output()
-        .map_err(|e| TrunkError::new("fork_point_error", e.to_string()))?;
+    let repo = git2::Repository::open(path_buf).map_err(failed)?;
+    let theirs = repo
+        .revparse_single(branch)
+        .and_then(|object| object.peel_to_commit())
+        .map_err(failed)?;
+    let head = repo
+        .head()
+        .and_then(|head| head.peel_to_commit())
+        .map_err(failed)?;
 
-    if !output.status.success() {
-        return Err(TrunkError::new("fork_point_error", refusal(&output)));
+    match repo.merge_base(theirs.id(), head.id()) {
+        Ok(oid) => Ok(oid.to_string()),
+        Err(e) if e.code() == git2::ErrorCode::NotFound => Err(TrunkError::new(
+            "fork_point_error",
+            format!("{branch} shares no history with the current branch"),
+        )),
+        Err(e) => Err(failed(e)),
     }
-
-    let oid = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    Ok(oid)
 }
 
 /// How a started rebase ended.

@@ -230,7 +230,10 @@ fn create_commit_refused_by_a_silent_hook_still_explains_the_refusal() {
 
     let err = ctx.create_commit("New commit", None).unwrap_err();
 
-    assert!(err.message.contains("exit status: 1"), "got: {err:?}");
+    assert_eq!(
+        err.message,
+        "git exited with code 1 and printed no reason. A hook may have refused it."
+    );
 }
 
 #[test]
