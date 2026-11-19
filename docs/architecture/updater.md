@@ -99,8 +99,10 @@ recovery still closes admission only when nothing is running. An ordinary read
 also needs admission because opening preferences or
 review data can migrate or quarantine files.
 
-The frontend refuses restart while ordinary IPC is pending, freezes input, and captures each
-participant's draft generation. The backend then issues a preparation token.
+The frontend first waits for its pending IPC while Trunk stays usable, so a
+running push stays cancellable and the panel offers to cancel the restart. Once
+nothing is pending it freezes input and captures each participant's draft
+generation. The backend then issues a preparation token.
 Only preferences and review-draft persistence commands may carry that token
 through the closed gate. Flushes must finish and generations must still match
 before installation starts. Commit draft updates serialize their whole-map

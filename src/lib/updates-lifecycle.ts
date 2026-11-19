@@ -21,6 +21,7 @@ interface PreparationHost {
 export class UpdatePreparation {
 	private readonly participants = new Set<UpdateParticipant>();
 	private running = false;
+	private stopWaiting: (() => void) | null = null;
 
 	constructor(private readonly host: PreparationHost) {}
 
@@ -29,15 +30,43 @@ export class UpdatePreparation {
 		return () => this.participants.delete(participant);
 	}
 
+	/** Restart once the work running at the click has finished, unless cancelled first. */
 	async install(version: string): Promise<void> {
 		if (this.running) throw new Error("An update is already being prepared.");
 		this.running = true;
+		try {
+			if (await this.earlierWorkSettles())
+				await this.prepareAndInstall(version);
+		} finally {
+			this.running = false;
+		}
+	}
+
+	/** Stop a restart still waiting on earlier work. */
+	cancel(): void {
+		this.stopWaiting?.();
+	}
+
+	private async earlierWorkSettles(): Promise<boolean> {
+		const cancelled = new Promise<false>((resolve) => {
+			this.stopWaiting = () => resolve(false);
+		});
+		try {
+			return await Promise.race([
+				this.host.settle().then(() => true),
+				cancelled,
+			]);
+		} finally {
+			this.stopWaiting = null;
+		}
+	}
+
+	private async prepareAndInstall(version: string): Promise<void> {
 		this.host.freeze(true);
 		let token: string | undefined;
 		let captures: { participant: UpdateParticipant; capture: UpdateCapture }[] =
 			[];
 		try {
-			await this.host.settle();
 			captures = [...this.participants].map((participant) => ({
 				participant,
 				capture: participant.capture(),
@@ -93,8 +122,6 @@ export class UpdatePreparation {
 					);
 			}
 			throw error;
-		} finally {
-			this.running = false;
 		}
 	}
 }

@@ -64,6 +64,20 @@ describe("update preparation", () => {
 		expect(host.frozen).toBe(true);
 	});
 
+	it("ends a restart cancelled while earlier work runs without preparing it", async () => {
+		const host = new Host();
+		const work = deferred();
+		host.settle = () => work.promise;
+		const preparation = new UpdatePreparation(host);
+
+		const restart = preparation.install("2.0.0");
+		preparation.cancel();
+		await restart;
+
+		expect(host.calls).toEqual([]);
+		expect(host.frozen).toBe(false);
+	});
+
 	it("defers before closing backend admission when an editor cannot be recovered", async () => {
 		const host = new Host();
 		const preparation = new UpdatePreparation(host);

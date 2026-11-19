@@ -1,6 +1,6 @@
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, describe, expect, it } from "vitest";
-import { requireIdleInvokesForUpdate, safeInvoke } from "./invoke.js";
+import { invokesSettled, safeInvoke } from "./invoke.js";
 import {
 	flushCommitDraftForUpdate,
 	flushPreferencesForUpdate,
@@ -8,11 +8,7 @@ import {
 	setCommitDraft,
 	setZoomLevel,
 } from "./store.js";
-import {
-	isUpdateFrozen,
-	setUpdateFrozen,
-	UpdatePreparation,
-} from "./updates-lifecycle.js";
+import { setUpdateFrozen, UpdatePreparation } from "./updates-lifecycle.js";
 
 function barrier() {
 	let release = () => {};
@@ -53,7 +49,7 @@ afterEach(() => {
 });
 
 describe("update draft persistence", () => {
-	it("refuses restart while a Git operation is pending and leaves cancellation available", async () => {
+	it("waits for a pending Git operation, which stays cancellable, before installing", async () => {
 		const operation = barrier();
 		mockIPC((command) =>
 			command === "git_push" ? operation.promise : undefined,
@@ -68,15 +64,16 @@ describe("update draft persistence", () => {
 			},
 			abort: async () => {},
 			freeze: setUpdateFrozen,
-			settle: async () => requireIdleInvokesForUpdate(),
+			settle: invokesSettled,
 		});
-		await expect(preparation.install("2.0.0")).rejects.toThrow("Trunk is busy");
-		expect(isUpdateFrozen()).toBe(false);
-		expect(installed).toBe(false);
+
+		const restart = preparation.install("2.0.0");
 		await safeInvoke("cancel_remote_op");
+
+		expect(installed).toBe(false);
 		operation.release();
 		await pending;
-		await preparation.install("2.0.0");
+		await restart;
 		expect(installed).toBe(true);
 	});
 	it("serializes drafts from different repositories without losing either entry", async () => {

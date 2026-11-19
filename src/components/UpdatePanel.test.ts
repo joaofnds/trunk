@@ -25,11 +25,13 @@ function mount(
 		props: {
 			status,
 			frozen,
+			waiting: false,
 			busy: false,
 			error: null,
 			confirmVersion,
 			onconfirm: (version: string) => calls.push(`confirm:${version}`),
 			onconfirmcancel: () => calls.push("confirm-cancel"),
+			onwaitcancel: () => calls.push("wait-cancel"),
 			onclose: () => calls.push("close"),
 			onenable: () => calls.push("enable"),
 			oncheck: () => calls.push("check"),

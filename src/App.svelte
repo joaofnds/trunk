@@ -22,7 +22,7 @@ import {
 } from "./lib/coalesced-task.js";
 import { DiffPreferences } from "./lib/diff-preferences.svelte.js";
 import { errorMessage } from "./lib/error-report.js";
-import { requireIdleInvokesForUpdate, safeInvoke } from "./lib/invoke.js";
+import { invokesSettled, safeInvoke } from "./lib/invoke.js";
 import { focusInEditable, keyChord, onMac } from "./lib/keyboard.js";
 import { createOwnedTimer } from "./lib/owned-timer.js";
 import { perfEnabled, record } from "./lib/perf.js";
@@ -85,6 +85,7 @@ let updateStatus = $state<UpdateStatus | null>(null);
 let updateOpen = $state(false);
 let updateBusy = $state(false);
 let updateFrozen = $state(false);
+let updateWaiting = $state(false);
 let confirmUpdateVersion = $state<string | null>(null);
 let updateError = $state<string | null>(null);
 let updateRetry = $state<"status" | "readiness" | null>(null);
@@ -143,11 +144,7 @@ const preparation = new UpdatePreparation({
 					"Could not refresh repositories after preparing the update. Refresh before continuing.";
 			});
 	},
-	settle: async () => {
-		await tick();
-		requireIdleInvokesForUpdate();
-		await tick();
-	},
+	settle: invokesSettled,
 });
 provideUpdatePreparation(preparation);
 onDestroy(() => setUpdateFrozen(false));
@@ -432,7 +429,7 @@ $effect(() => {
 });
 
 async function runAutofetch(path: string, intervalMs: number): Promise<void> {
-	if (updateFrozen) return;
+	if (updateFrozen || updateWaiting) return;
 	const tab = tabs.find((tab) => tab.repoPath === path);
 	const target = tab ? tabStates.get(tab.id)?.remoteState : undefined;
 	let report: FetchReport;
@@ -1266,6 +1263,7 @@ $effect(() => {
 							status={updateStatus}
 							busy={updateBusy}
 							frozen={updateFrozen}
+							waiting={updateWaiting && !updateFrozen}
 							error={updateError}
 							confirmVersion={confirmUpdateVersion}
 							retry={updateRetry
@@ -1286,6 +1284,7 @@ $effect(() => {
 								updateOpen = true;
 							}}
 							onconfirmcancel={() => (confirmUpdateVersion = null)}
+							onwaitcancel={() => preparation.cancel()}
 							onconfirm={(version) => {
 								if (
 									version !== confirmUpdateVersion ||
@@ -1297,7 +1296,12 @@ $effect(() => {
 								confirmUpdateVersion = null;
 								updateOpen = true;
 								void updateAction(async () => {
-									await preparation.install(version);
+									updateWaiting = true;
+									try {
+										await preparation.install(version);
+									} finally {
+										updateWaiting = false;
+									}
 									return undefined;
 								});
 							}}

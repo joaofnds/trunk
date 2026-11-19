@@ -11,11 +11,14 @@ const UPDATE_FLUSH_COMMANDS = new Set([
 	"delete_draft",
 ]);
 
-export function requireIdleInvokesForUpdate(): void {
-	if (pendingInvokes.size > 0)
-		throw new Error(
-			"Trunk is busy. Finish or cancel the current operation, then try restarting again.",
-		);
+/** Resolve once no call is pending and the callers of the last ones have
+ *  moved on, so a call their continuation makes is waited for too. */
+export async function invokesSettled(): Promise<void> {
+	for (;;) {
+		await Promise.allSettled(pendingInvokes);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		if (pendingInvokes.size === 0) return;
+	}
 }
 
 // Tauri IPC errors arrive as raw strings, not Error objects.
@@ -68,6 +71,8 @@ export async function safeInvoke<T>(
 			throw asTrunkError(e);
 		}
 	});
+	if (cmd.startsWith("updates_")) return pending;
+
 	pendingInvokes.add(pending);
 	try {
 		return await pending;

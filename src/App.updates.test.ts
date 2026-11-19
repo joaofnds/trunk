@@ -1,6 +1,7 @@
-import { fireEvent, screen, within } from "@testing-library/svelte";
+import { fireEvent, screen, waitFor, within } from "@testing-library/svelte";
 import { afterEach, describe, expect, it } from "vitest";
 import { StartupHarness } from "./__tests__/helpers/startup-harness.js";
+import { REPO_CHANGE_DELAY_MS } from "./lib/coalesced-task.js";
 import type { UpdateStatus } from "./lib/updates.js";
 
 let app: StartupHarness;
@@ -321,6 +322,73 @@ describe("App update controls", () => {
 		});
 		expect(app.host.count("updates_install")).toBe(1);
 		expect(screen.queryByRole("alert")).toBeNull();
+	});
+	describe("when work is running at the click", () => {
+		async function restartDuringARefresh() {
+			startup();
+			const ready: UpdateStatus = {
+				...manual,
+				phase: "ready",
+				version: "2.0.0",
+				eligible: true,
+				adopted: true,
+			};
+			app.host.seedResponse("updates_status", ready);
+			app.host.seedResponse("updates_ready", ready);
+			app.host.seedResponse("updates_prepare", "prepared-version-2");
+			const install = app.host.holdNextReply("updates_install");
+			app.start();
+			await screen.findByText("restored history");
+			await app.settle();
+			const refresh = app.host.holdNextReply("get_dirty_counts");
+			await app.host.emitRepoChanged({ repo: "/active", paths: ["file.txt"] });
+			app.clock.advanceBy(REPO_CHANGE_DELAY_MS);
+			await refresh.entered;
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Restart to update to 2.0.0" }),
+			);
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Restart and install 2.0.0" }),
+			);
+			await app.settle();
+			return { install, refresh };
+		}
+
+		it("keeps Trunk usable and restarts once that work finishes", async () => {
+			const { install, refresh } = await restartDuringARefresh();
+
+			expect(
+				screen.getByText("Trunk will restart when the current work finishes."),
+			).toBeVisible();
+			expect(document.querySelector("[inert]")).toBeNull();
+			expect(app.host.count("updates_prepare")).toBe(0);
+			refresh.release({ staged: 0, unstaged: 1 });
+			await install.entered;
+			install.release(undefined);
+			await app.settle();
+
+			expect(app.host.count("updates_prepare")).toBe(1);
+			expect(screen.queryByRole("alert")).toBeNull();
+		});
+
+		it("prepares nothing when the restart is cancelled first", async () => {
+			const { refresh } = await restartDuringARefresh();
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Cancel restart" }),
+			);
+			refresh.release({ staged: 0, unstaged: 1 });
+			await app.settle();
+
+			await waitFor(() =>
+				expect(
+					screen.queryByText(
+						"Trunk will restart when the current work finishes.",
+					),
+				).toBeNull(),
+			);
+			expect(app.host.count("updates_prepare")).toBe(0);
+		});
 	});
 	it("keeps manual updates reachable from the native menu", async () => {
 		startup().start();

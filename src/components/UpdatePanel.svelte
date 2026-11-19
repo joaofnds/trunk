@@ -6,6 +6,7 @@ interface Props {
 	status: UpdateStatus | null;
 	busy: boolean;
 	frozen: boolean;
+	waiting: boolean;
 	error: string | null;
 	confirmVersion: string | null;
 	retry?: { label: string; run(): void };
@@ -16,6 +17,7 @@ interface Props {
 	onrestart(version: string): void;
 	onconfirm(version: string): void;
 	onconfirmcancel(): void;
+	onwaitcancel(): void;
 	oncancel(): void;
 }
 
@@ -23,6 +25,7 @@ let {
 	status,
 	busy,
 	frozen,
+	waiting,
 	error,
 	confirmVersion,
 	retry,
@@ -33,6 +36,7 @@ let {
 	onrestart,
 	onconfirm,
 	onconfirmcancel,
+	onwaitcancel,
 	oncancel,
 }: Props = $props();
 const downloading = $derived(status?.phase === "downloading");
@@ -79,11 +83,16 @@ $effect(() => {
 				? "Installing and restarting…"
 				: "Saving drafts and preparing to restart…"}</p
 		>
+	{:else if waiting}
+		<p role="status">Trunk will restart when the current work finishes.</p>
+		<div class="flex justify-end">
+			<Button size="sm" onclick={onwaitcancel}>Cancel restart</Button>
+		</div>
 	{:else if confirmVersion}
 		<h4 class="font-medium">Restart and install {confirmVersion}?</h4>
 		<p class="text-text-muted"
-			>Trunk will save your supported drafts and restart. Finish or cancel
-			active Git operations first.</p
+			>Trunk will save your supported drafts and restart once the work in
+			progress finishes.</p
 		>
 		<div class="flex flex-wrap justify-end gap-2">
 			<Button size="sm" onclick={onconfirmcancel}>Cancel</Button>
