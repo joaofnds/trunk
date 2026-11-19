@@ -7,16 +7,27 @@ runs:
       id: packages
       shell: bash
       run: |
-        packages="libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev"
+        packages=(
+          libwebkit2gtk-4.1-dev
+          build-essential
+          curl
+          wget
+          file
+          libxdo-dev
+          libssl-dev
+          libayatana-appindicator3-dev
+          librsvg2-dev
+        )
         sudo apt-get update
-        versions=$(apt-get install --simulate $packages | grep '^Inst ' | sha256sum | cut -c1-16)
+        digest=$(apt-get install --simulate "${packages[@]}" | awk '/^Inst /' | sha256sum | cut -c1-16)
         prefix="apt-${{ runner.arch }}-${ImageOS:-unknown}-"
         {
-          echo "list=$packages"
+          echo "list=${packages[*]}"
           echo "prefix=$prefix"
-          echo "key=$prefix$versions"
+          echo "key=$prefix$digest"
         } >> "$GITHUB_OUTPUT"
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: restore
       with:
         path: ~/apt-archives
         key: ${{ steps.packages.outputs.key }}
@@ -29,3 +40,9 @@ runs:
         sudo apt-get install -y -o Dir::Cache::Archives="$archives" ${{ steps.packages.outputs.list }}
         sudo apt-get autoclean -o Dir::Cache::Archives="$archives"
         sudo chown -R "$(id -u):$(id -g)" "$archives"
+    # Saved before the job runs any repository code, since apt installs these files as root in later jobs.
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: github.ref == 'refs/heads/main' && steps.restore.outputs.cache-hit != 'true'
+      with:
+        path: ~/apt-archives
+        key: ${{ steps.packages.outputs.key }}
