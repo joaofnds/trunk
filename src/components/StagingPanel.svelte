@@ -1237,8 +1237,8 @@ registerUpdateBlocker(() => {
 		<Splitter variant="bar" fixed />
 		<!-- Merge-continue actions. The commit message is edited in the host-owned
          MessageEditor modal (runMergeContinue), not an inline form. -->
-		<div class="flex shrink-0 gap-2 p-2">
-			<div class="grid flex-1">
+		<div class="flex flex-wrap shrink-0 gap-2 p-2">
+			<div class="grid grow-3">
 				<Button
 					size="lg"
 					variant="success"
@@ -1248,14 +1248,16 @@ registerUpdateBlocker(() => {
 					{mergeLoading ? "Committing..." : "Commit merge"}
 				</Button>
 			</div>
-			<Button
-				size="lg"
-				variant="danger"
-				onclick={abortMerge}
-				disabled={mergeLoading}
-			>
-				Abort Merge
-			</Button>
+			<div class="grid grow">
+				<Button
+					size="lg"
+					variant="danger"
+					onclick={abortMerge}
+					disabled={mergeLoading}
+				>
+					Abort Merge
+				</Button>
+			</div>
 		</div>
 	{:else}
 		<Splitter variant="bar" fixed />
