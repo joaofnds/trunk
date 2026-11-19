@@ -20,6 +20,7 @@ import {
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import RepoView from "../__tests__/helpers/controlled-repo-view.svelte";
 import { makeCommit, makeMergeSides } from "../__tests__/helpers/factories.js";
+import { reportWidthOf } from "../__tests__/helpers/fake-resize-observer.js";
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
 import { aReview } from "../__tests__/helpers/review-fixture.js";
 import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
@@ -783,41 +784,14 @@ describe("RepoView", () => {
 	);
 
 	describe("when the window is too narrow for the panes as set", () => {
-		const unobservedResizeObserver = globalThis.ResizeObserver;
-
 		// Reports the main row at a width the test sets, and nothing else, so
 		// the virtual lists keep the observer they get everywhere else.
 		function observeRowAt(width: number) {
-			const rows: { callback: ResizeObserverCallback; row: Element }[] = [];
-			const report = (
-				observed: { callback: ResizeObserverCallback; row: Element },
-				w: number,
-			) =>
-				observed.callback(
-					[
-						{
-							target: observed.row,
-							contentRect: { width: w },
-						} as ResizeObserverEntry,
-					],
-					{} as ResizeObserver,
-				);
-
-			globalThis.ResizeObserver = class {
-				constructor(private readonly callback: ResizeObserverCallback) {}
-				observe(target: Element) {
-					if (target.tagName !== "MAIN") return;
-					const observed = { callback: this.callback, row: target };
-					rows.push(observed);
-					report(observed, width);
-				}
-				unobserve() {}
-				disconnect() {}
-			} as unknown as typeof ResizeObserver;
+			const row = reportWidthOf((target) => target.tagName === "MAIN", width);
 
 			return {
-				resize: async (w: number) => {
-					for (const observed of rows) report(observed, w);
+				resize: async (next: number) => {
+					row.resize(next);
 					await tick();
 				},
 			};
@@ -830,7 +804,7 @@ describe("RepoView", () => {
 		}
 
 		afterEach(() => {
-			globalThis.ResizeObserver = unobservedResizeObserver;
+			vi.unstubAllGlobals();
 		});
 
 		it("narrows both panes so the centre keeps its floor", async () => {

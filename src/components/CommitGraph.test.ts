@@ -11,6 +11,7 @@ import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
+import { reportWidthOf } from "../__tests__/helpers/fake-resize-observer.js";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub.js";
 import { noReviewCounts } from "../__tests__/helpers/review-props.js";
@@ -225,39 +226,15 @@ function renderedWidth(cell: HTMLElement): string {
 
 // Reports the commit list at a width the test sets, and nothing else, so the
 // virtual list keeps the observer it gets everywhere else.
-const unobservedResizeObserver = globalThis.ResizeObserver;
-
 function observeListAt(width: number) {
-	const lists: { callback: ResizeObserverCallback; list: Element }[] = [];
-	const report = (
-		target: { callback: ResizeObserverCallback; list: Element },
-		w: number,
-	) =>
-		target.callback(
-			[
-				{
-					target: target.list,
-					contentRect: { width: w },
-				} as ResizeObserverEntry,
-			],
-			{} as ResizeObserver,
-		);
-
-	globalThis.ResizeObserver = class {
-		constructor(private readonly callback: ResizeObserverCallback) {}
-		observe(target: Element) {
-			if (target.getAttribute("role") !== "listbox") return;
-			const observed = { callback: this.callback, list: target };
-			lists.push(observed);
-			queueMicrotask(() => report(observed, width));
-		}
-		unobserve() {}
-		disconnect() {}
-	} as unknown as typeof ResizeObserver;
+	const list = reportWidthOf(
+		(target) => target.getAttribute("role") === "listbox",
+		width,
+	);
 
 	return {
-		resize: async (w: number) => {
-			for (const observed of lists) report(observed, w);
+		resize: async (next: number) => {
+			list.resize(next);
 			await flush();
 		},
 	};
@@ -273,7 +250,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	globalThis.ResizeObserver = unobservedResizeObserver;
+	vi.unstubAllGlobals();
 });
 
 describe("CommitGraph", () => {
