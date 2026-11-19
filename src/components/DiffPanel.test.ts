@@ -4823,6 +4823,110 @@ describe("DiffPanel hunk navigation", () => {
 			vi.useRealTimers();
 		}
 	});
+
+	describe("when a jump lands on a done thread", () => {
+		const done = aThread({
+			id: "t-done",
+			state: "done",
+			anchor: {
+				commit_oid: "abc123",
+				file_path: "src/main.ts",
+				source: "Diff",
+				side: "New",
+				start_line: 11,
+				end_line: 11,
+			},
+		});
+
+		async function renderJumpTarget(props: {
+			layout: "inline" | "split";
+			contentMode: "hunk" | "full";
+			fileDiff: FileDiff;
+		}) {
+			const storeMock = await import("../lib/store.js");
+			vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
+				Promise.resolve(props.layout),
+			);
+			const result = render(DiffPanel, {
+				props: {
+					...commentingDiff,
+					fileDiffs: [props.fileDiff],
+					commitDetail: null,
+					onclose: vi.fn(),
+					diffKind: "unstaged",
+					contentMode: props.contentMode,
+					repoPath: "/repo",
+					selectedPath: "src/main.ts",
+					viewComments: [done],
+				},
+			});
+			await flushPrefs();
+			return result;
+		}
+
+		afterEach(async () => {
+			const storeMock = await import("../lib/store.js");
+			vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
+				Promise.resolve("inline"),
+			);
+		});
+
+		it.each([
+			{ layout: "inline", contentMode: "hunk" },
+			{ layout: "split", contentMode: "hunk" },
+			{ layout: "inline", contentMode: "full" },
+			{ layout: "split", contentMode: "full" },
+		] as const)(
+			"opens it in the $layout layout in $contentMode mode",
+			async ({ layout, contentMode }) => {
+				const { component } = await renderJumpTarget({
+					layout,
+					contentMode,
+					fileDiff: navDiff,
+				});
+
+				component.jumpToThread(done, 11, 11, "New");
+				await tick();
+
+				expect(
+					screen.getByRole("button", { name: "Collapse thread" }),
+				).toHaveAttribute("aria-expanded", "true");
+			},
+		);
+
+		it("keeps it open through a switch to the side-by-side view", async () => {
+			const { component, container } = await renderJumpTarget({
+				layout: "inline",
+				contentMode: "hunk",
+				fileDiff: navDiff,
+			});
+			component.jumpToThread(done, 11, 11, "New");
+			await tick();
+
+			await fireEvent.click(screen.getByTitle("Side-by-side view"));
+			await flushPrefs();
+
+			expect(container.querySelectorAll(".split-row")).not.toHaveLength(0);
+			expect(
+				screen.getByRole("button", { name: "Collapse thread" }),
+			).toHaveAttribute("aria-expanded", "true");
+		});
+
+		it("opens it under the note of a file with no changes", async () => {
+			const { component } = await renderJumpTarget({
+				layout: "inline",
+				contentMode: "hunk",
+				fileDiff: { ...navDiff, hunks: [] },
+			});
+
+			component.jumpToThread(done, 11, 11, "New");
+			await tick();
+
+			expect(
+				screen.getByRole("button", { name: "Collapse thread" }),
+			).toHaveAttribute("aria-expanded", "true");
+		});
+	});
 });
 
 describe("DiffPanel diff settings", () => {

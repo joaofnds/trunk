@@ -8,6 +8,7 @@ import {
 import { commentingDiff } from "../../__tests__/helpers/review-props.js";
 import { aThread } from "../../__tests__/helpers/thread-fixture.js";
 import { FIXED_ROW_HEIGHTS } from "../../lib/diff-rows.js";
+import { ThreadFolds } from "../../lib/thread-folds.svelte.js";
 import type { CommitDetail, FileDiff } from "../../lib/types.js";
 import DiffViewer from "./DiffViewer.svelte";
 
@@ -42,6 +43,7 @@ const pureRename: FileDiff = {
 
 const baseProps = {
 	...commentingDiff,
+	folds: new ThreadFolds(),
 	contentMode: "hunk" as const,
 	contextLines: 3,
 	layoutMode: "inline" as const,

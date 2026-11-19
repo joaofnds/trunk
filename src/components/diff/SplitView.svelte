@@ -23,6 +23,7 @@ import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
 import { FLASH_DURATION } from "../../lib/row-flash.svelte.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
+import type { ThreadFolds } from "../../lib/thread-folds.svelte.js";
 import type {
 	ContentMode,
 	DiffLine,
@@ -65,6 +66,8 @@ interface Props {
 	composer?: DiffComposer | null;
 	/** The line the view this one replaced was at, which this one opens at. */
 	startAt?: ReadingLine | null;
+	/** Which threads are folded, shared with the views the diff switches to. */
+	folds: ThreadFolds;
 	/** Where the selection's Comment action sits, or null while it shows none. */
 	selectionComment: SelectionCommentPlace | null;
 	oncommentselection: () => void;
@@ -130,6 +133,7 @@ let {
 	editorSessionForThread,
 	composer = null,
 	startAt = null,
+	folds,
 	selectionComment,
 	oncommentselection,
 }: Props = $props();
@@ -219,7 +223,7 @@ function originClass(origin: string): string {
 		onedit={(id, text) => editThread(repoPath, id, text)}
 		ondelete={(id) => deleteThread(repoPath, id)}
 		{editorSessionForThread}
-		folds={vd.folds}
+		{folds}
 	/>
 {/snippet}
 

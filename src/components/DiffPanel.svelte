@@ -30,6 +30,7 @@ import {
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
 import { tallyBadgeThreads } from "../lib/review-filter.js";
+import { ThreadFolds } from "../lib/thread-folds.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommitDetail,
@@ -138,6 +139,11 @@ let focusedHunkIndex = $state(0);
 // view publishes the same handle under the binding its selection uses, below.
 let diffNav = $state<DiffNav | null>(null);
 let hunkElements = $state<Record<string, HTMLDivElement>>({});
+
+// One fold state for as long as the diff stays open, so a thread the reader
+// folded, or a jump opened, stays that way across layouts, content modes and
+// files, and under the no-changes note, which has no view of its own.
+const folds = new ThreadFolds();
 
 // A selection names lines by their index in the diff it was made on, so each part
 // of it starts over the moment the diff reloads. An effect clearing it would run
@@ -774,6 +780,17 @@ export function scrollToLine(
 	if (keys.length === 0) return;
 	const index = target ? keys.indexOf(`${target.path}-${target.hunkIdx}`) : 0;
 	scrollToHunk(Math.max(index, 0));
+}
+
+// A jump lands on a thread the reader asked to read, so it opens the thread too.
+export function jumpToThread(
+	thread: Thread,
+	startLine: number,
+	endLine: number,
+	side: Side,
+) {
+	folds.open(thread);
+	scrollToLine(startLine, endLine, side);
 }
 
 function toggleFileCollapsed(path: string) {
@@ -1415,6 +1432,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		{backLabel}
 	/>
 	<DiffViewer
+		{folds}
 		{keysActive}
 		contentMode={effectiveContentMode}
 		contextLines={diffPreferences.contextLines}

@@ -44,6 +44,7 @@ import type {
 	ContentMode,
 	DiffRequestOptions,
 	FileDiff,
+	ThreadState,
 } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 
@@ -1244,7 +1245,10 @@ describe("RepoView", () => {
 			r2: "a note on the review shown",
 		};
 
-		function twoReviewsOnOneLine(props: { secondArchived: boolean }) {
+		function twoReviewsOnOneLine(props: {
+			secondArchived: boolean;
+			state?: ThreadState;
+		}) {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
 			const commit = makeCommit({ oid: "oid-1", summary: "the commit" });
@@ -1290,6 +1294,7 @@ describe("RepoView", () => {
 					id: `t-${reviewId}`,
 					review_id: reviewId,
 					text: NOTE_OF[reviewId],
+					state: props.state ?? "open",
 					anchor: {
 						commit_oid: commit.oid,
 						file_path: file.path,
@@ -1356,6 +1361,12 @@ describe("RepoView", () => {
 		async function cardInTheDiff() {
 			await screen.findByRole("button", { name: "Close diff" });
 			return screen.getByRole("article");
+		}
+
+		// A jump scrolls to its thread in the frame after the diff draws, and frame
+		// callbacks run in the order they were asked for.
+		function jumpLanded(): Promise<void> {
+			return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 		}
 
 		async function showReview(title: string) {
@@ -1479,6 +1490,27 @@ describe("RepoView", () => {
 
 			expect(screen.getByTestId("branch-sidebar")).toBeVisible();
 			expect(screen.queryByRole("navigation", { name: "Reviews" })).toBeNull();
+		});
+
+		it("opens a done thread, which the diff draws folded, when Enter jumps to it", async () => {
+			twoReviewsOnOneLine({ secondArchived: false, state: "done" });
+			renderWithPanes({ reviewActive: true });
+			await fireEvent.click(
+				await screen.findByRole("button", { name: "Expand commit" }),
+			);
+			await flush();
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Expand file" }),
+			);
+			await flush();
+
+			await openThreadWithEnter();
+			await jumpLanded();
+
+			const card = await cardInTheDiff();
+			expect(
+				within(card).getByRole("button", { name: "Collapse thread" }),
+			).toHaveAttribute("aria-expanded", "true");
 		});
 	});
 

@@ -12,7 +12,8 @@ interface Toggle {
  * Which review threads are folded to their header. A settled thread folds and
  * one that still needs the user opens, and a reader's toggle overrides that
  * only until the thread's state next moves, so marking a thread done always
- * folds it.
+ * folds it. A jump to a thread opens it the same way, since the reader asked
+ * to read it.
  */
 export class ThreadFolds {
 	readonly #toggles = new SvelteMap<string, Toggle>();
@@ -25,10 +26,18 @@ export class ThreadFolds {
 	}
 
 	toggle(thread: Thread) {
+		this.#hold(thread, !this.isCollapsed(thread));
+	}
+
+	open(thread: Thread) {
+		this.#hold(thread, false);
+	}
+
+	#hold(thread: Thread, collapsed: boolean) {
 		this.#toggles.set(thread.id, {
 			state: thread.state,
 			changeCount: changeCountOf(thread),
-			collapsed: !this.isCollapsed(thread),
+			collapsed,
 		});
 	}
 }

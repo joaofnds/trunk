@@ -2,7 +2,7 @@
 import type { ComponentProps } from "svelte";
 import DiffPanel from "../../components/DiffPanel.svelte";
 import { DiffPreferences } from "../../lib/diff-preferences.svelte.js";
-import type { ContentMode, Side } from "../../lib/types.js";
+import type { ContentMode, Side, Thread } from "../../lib/types.js";
 
 type DiffPanelProps = ComponentProps<typeof DiffPanel>;
 type AppOwned = "contentMode" | "oncontentmodechange" | "diffPreferences";
@@ -21,6 +21,12 @@ let diffPreferences = $state.raw<DiffPreferences | null>(null);
 let contentMode = $state<ContentMode>("hunk");
 let diffPanel = $state<{
 	scrollToLine: (start: number, end: number, side: Side) => void;
+	jumpToThread: (
+		thread: Thread,
+		start: number,
+		end: number,
+		side: Side,
+	) => void;
 }>();
 
 $effect(() => {
@@ -45,6 +51,16 @@ function handleContentModeChange(mode: ContentMode) {
 export function scrollToLine(start: number, end: number, side: Side) {
 	if (!diffPanel) throw new Error("the panel mounts once its settings load");
 	diffPanel.scrollToLine(start, end, side);
+}
+
+export function jumpToThread(
+	thread: Thread,
+	start: number,
+	end: number,
+	side: Side,
+) {
+	if (!diffPanel) throw new Error("the panel mounts once its settings load");
+	diffPanel.jumpToThread(thread, start, end, side);
 }
 </script>
 

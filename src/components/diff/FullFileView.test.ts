@@ -17,6 +17,7 @@ import {
 	flushPerf,
 	type PerfSink,
 } from "../../lib/perf.js";
+import { ThreadFolds } from "../../lib/thread-folds.svelte.js";
 import type { FileDiff } from "../../lib/types.js";
 import FullFileView from "./FullFileView.svelte";
 
@@ -107,6 +108,7 @@ const emptyFile: FileDiff = {
 function defaultProps(overrides: Record<string, unknown> = {}) {
 	return {
 		...commentingDiff,
+		folds: new ThreadFolds(),
 		fileDiffs: [modifiedFile],
 		showInvisibles: false,
 		wordWrap: false,

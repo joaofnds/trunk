@@ -40,6 +40,54 @@ describe(ThreadFolds, () => {
 		expect(folds.isCollapsed(aThread({ id: "b", state: "open" }))).toBe(false);
 	});
 
+	it("opens a done thread a jump lands on", () => {
+		const folds = new ThreadFolds();
+		const done = aThread({ state: "done" });
+
+		folds.open(done);
+
+		expect(folds.isCollapsed(done)).toBe(false);
+	});
+
+	it("opens a thread the reader had folded when a jump lands on it", () => {
+		const folds = new ThreadFolds();
+		const open = aThread({ state: "open" });
+		folds.toggle(open);
+
+		folds.open(open);
+
+		expect(folds.isCollapsed(open)).toBe(false);
+	});
+
+	it("keeps an open thread open when a jump lands on it", () => {
+		const folds = new ThreadFolds();
+		const open = aThread({ state: "open" });
+
+		folds.open(open);
+
+		expect(folds.isCollapsed(open)).toBe(false);
+	});
+
+	it("leaves another thread's fold alone when a jump opens one", () => {
+		const folds = new ThreadFolds();
+		const folded = aThread({ id: "a", state: "open" });
+		folds.toggle(folded);
+
+		folds.open(aThread({ id: "b", state: "done" }));
+
+		expect(folds.isCollapsed(folded)).toBe(true);
+	});
+
+	it("folds a thread a jump opened once it is resolved", () => {
+		const folds = new ThreadFolds();
+		const done = aThread({ state: "done" });
+		folds.open(done);
+
+		const doneAgain = moved(moved(done, "open"), "done");
+
+		expect(folds.isCollapsed(doneAgain)).toBe(true);
+	});
+
 	it("folds a thread once it is resolved, though the reader had opened it", () => {
 		const folds = new ThreadFolds();
 		const done = aThread({ state: "done" });

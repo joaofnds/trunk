@@ -8,6 +8,7 @@ import { describeThreadedCommentActions } from "../../__tests__/helpers/threaded
 import { CONTROL_SM_HEIGHT } from "../../lib/chrome-heights.js";
 import { FIXED_ROW_HEIGHTS } from "../../lib/diff-rows.js";
 import { safeInvoke } from "../../lib/invoke.js";
+import { ThreadFolds } from "../../lib/thread-folds.svelte.js";
 import type { DiffLine, FileDiff } from "../../lib/types.js";
 import SplitView from "./SplitView.svelte";
 
@@ -92,6 +93,7 @@ const lopsided = fileOf("src/main.ts", [
 function defaultProps(overrides: Record<string, unknown> = {}) {
 	return {
 		...commentingLeaf,
+		folds: new ThreadFolds(),
 		contentMode: "hunk" as const,
 		fileDiffs: [lopsided],
 		selectedPath: "src/main.ts",

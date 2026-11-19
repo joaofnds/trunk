@@ -20,6 +20,7 @@ import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
 import { FLASH_DURATION } from "../../lib/row-flash.svelte.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
+import type { ThreadFolds } from "../../lib/thread-folds.svelte.js";
 import type {
 	DiffLine,
 	FileDiff,
@@ -63,6 +64,8 @@ interface Props {
 	composer?: DiffComposer | null;
 	/** The line the view this one replaced was at, which this one opens at. */
 	startAt?: ReadingLine | null;
+	/** Which threads are folded, shared with the views the diff switches to. */
+	folds: ThreadFolds;
 }
 
 let {
@@ -80,6 +83,7 @@ let {
 	editorSessionForThread,
 	composer = null,
 	startAt = null,
+	folds,
 }: Props = $props();
 
 // Net-new contiguous selection state (D-01): a click sets a single-line anchor;
@@ -273,7 +277,7 @@ export function clearSelection() {
 		onedit={(id, text) => editThread(repoPath, id, text)}
 		ondelete={(id) => deleteThread(repoPath, id)}
 		{editorSessionForThread}
-		folds={vd.folds}
+		{folds}
 	/>
 {/snippet}
 

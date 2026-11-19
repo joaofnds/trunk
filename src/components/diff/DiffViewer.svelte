@@ -11,6 +11,7 @@ import { isMarkdownPath } from "../../lib/markdown.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
 import { filterThreads } from "../../lib/review-filter.js";
+import type { ThreadFolds } from "../../lib/thread-folds.svelte.js";
 import type {
 	CommitDetail,
 	ContentMode,
@@ -95,6 +96,8 @@ interface Props {
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	/** The open comment composer, if any. */
 	composer?: DiffComposer | null;
+	/** Which threads are folded, in every view and under the no-changes note. */
+	folds: ThreadFolds;
 	oncommentfullfile: (filePath: string, selectedIndices: Set<number>) => void;
 	onextendcomment?: (filePath: string, selectedIndices: Set<number>) => void;
 	/** Where the selection's Comment action sits, or null while it shows none. */
@@ -151,6 +154,7 @@ let {
 	viewComments = [],
 	editorSessionForThread,
 	composer = null,
+	folds,
 	oncommentfullfile,
 	onextendcomment,
 	selectionComment,
@@ -353,6 +357,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 							variant="inline"
 							confirmDelete={false}
 							{thread}
+							{folds}
 							{repoPath}
 							onedit={(id, text) => editThread(repoPath, id, text)}
 							ondelete={(id) => deleteThread(repoPath, id)}
@@ -364,6 +369,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 		</div>
 	{:else if pane === "hunk"}
 		<HunkView
+			{folds}
 			bind:this={diffNav}
 			{startAt}
 			{fileDiffs}
@@ -400,6 +406,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 		/>
 	{:else if pane === "full"}
 		<FullFileView
+			{folds}
 			bind:this={fullFileView}
 			{keysActive}
 			{startAt}
@@ -418,6 +425,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 		/>
 	{:else}
 		<SplitView
+			{folds}
 			bind:this={diffNav}
 			{startAt}
 			{contentMode}

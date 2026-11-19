@@ -13,6 +13,7 @@ import {
 	flushPerf,
 	type PerfSink,
 } from "../../lib/perf.js";
+import { ThreadFolds } from "../../lib/thread-folds.svelte.js";
 import type { DiffLine, FileDiff } from "../../lib/types.js";
 import HunkView from "./HunkView.svelte";
 
@@ -81,6 +82,7 @@ const oneHunk = fileOf("src/main.ts", [
 function defaultProps(overrides: Record<string, unknown> = {}) {
 	return {
 		...commentingLeaf,
+		folds: new ThreadFolds(),
 		fileDiffs: [oneHunk],
 		selectedPath: "src/main.ts",
 		diffKind: "unstaged" as const,

@@ -32,7 +32,6 @@ import {
 	type RowMetrics,
 } from "./row-metrics.js";
 import { getScheduler } from "./scheduler.js";
-import { ThreadFolds } from "./thread-folds.svelte.js";
 import type { ContentMode, Side, Thread } from "./types.js";
 
 // Tailwind's preflight sets tab-size: 4 globally, so a tab advances four
@@ -92,8 +91,6 @@ export interface InlineVirtualizedDiff extends DiffNav {
 	readonly metrics: RowMetrics | null;
 	readonly paneWidthPx: number;
 	readonly probedHeights: Map<string, number>;
-	/** Shared by each row's card and its copy in the comment probe, so the height measured is the height drawn. */
-	readonly folds: ThreadFolds;
 	readonly wrapActive: boolean;
 	readonly availableColumns: number;
 	readonly threadsToProbe: Thread[];
@@ -133,7 +130,6 @@ export function createVirtualizedDiff(
 		paneWidthPx: 0,
 		probedHeights: new Map<string, number>(),
 	});
-	const folds = new ThreadFolds();
 
 	const model = $derived(deps.model());
 
@@ -390,7 +386,6 @@ export function createVirtualizedDiff(
 	}
 
 	return {
-		folds,
 		readingLine() {
 			return drawnLine;
 		},

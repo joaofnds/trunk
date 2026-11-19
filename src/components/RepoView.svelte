@@ -324,10 +324,16 @@ $effect(() => {
 
 // DiffPanel ref for jump-to-range scroll+highlight (Phase 69 / D-07).
 let diffPanelRef = $state<{
-	scrollToLine: (startLine: number, endLine: number, side: Side) => void;
+	jumpToThread: (
+		thread: Thread,
+		startLine: number,
+		endLine: number,
+		side: Side,
+	) => void;
 } | null>(null);
 
-let pendingReviewScroll = $state<{
+let pendingReviewJump = $state<{
+	thread: Thread;
 	path: string | null;
 	startLine: number;
 	endLine: number;
@@ -335,21 +341,22 @@ let pendingReviewScroll = $state<{
 } | null>(null);
 
 $effect(() => {
-	const scroll = pendingReviewScroll;
+	const jump = pendingReviewJump;
 	const panel = diffPanelRef;
 	const targetPath = selectedCompareFile ?? selectedDiffPath;
-	if (!scroll) return;
+	if (!jump) return;
 
-	if (!showDiff || scroll.path !== targetPath) {
-		pendingReviewScroll = null;
+	if (!showDiff || jump.path !== targetPath) {
+		pendingReviewJump = null;
 		return;
 	}
 	if (!panel) return;
 
-	pendingReviewScroll = null;
+	pendingReviewJump = null;
 	requestAnimationFrame(() => {
-		if (panel === diffPanelRef)
-			panel.scrollToLine(scroll.startLine, scroll.endLine, scroll.side);
+		if (panel !== diffPanelRef) return;
+
+		panel.jumpToThread(jump.thread, jump.startLine, jump.endLine, jump.side);
 	});
 });
 
@@ -364,7 +371,8 @@ function handleReviewJump(comment: Thread) {
 		selectFile: selectCommitFileIdempotent,
 		openCurrentFile,
 		scrollToRange: (startLine, endLine, side) => {
-			pendingReviewScroll = {
+			pendingReviewJump = {
+				thread: comment,
 				path: selectedCompareFile ?? selectedDiffPath,
 				startLine,
 				endLine,
