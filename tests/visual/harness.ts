@@ -133,7 +133,7 @@ export class VisualHarness {
 
 		const [fixtures, browsing] = await Promise.allSettled([
 			buildFixtures(repos, shape.cases, stopped),
-			VisualHarness.openPages(opened, shape.pages),
+			VisualHarness.openPages(opened, shape.pages, stopped),
 		]);
 		stopped.throwIfAborted();
 		if (fixtures.status === "rejected") throw fixtures.reason;
@@ -146,8 +146,10 @@ export class VisualHarness {
 	private static async openPages(
 		opened: Opened,
 		count: number,
+		stopped: AbortSignal,
 	): Promise<{ browser: Browser; pages: AppPage[] }> {
 		const { browser, origin } = await openBrowser(opened);
+		stopped.throwIfAborted();
 
 		// A page that opened before another failed closes with the browser.
 		const url = new URL(PAGE, origin).href;
