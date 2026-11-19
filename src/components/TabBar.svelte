@@ -7,6 +7,7 @@ import type { TabInfo } from "../lib/tab-types.js";
 import { showToast } from "../lib/toast.svelte.js";
 import Button from "../lib/ui/Button.svelte";
 import Tab from "../lib/ui/Tab.svelte";
+import { isSideways } from "../lib/wheel.js";
 
 interface Props {
 	tabs: TabInfo[];
@@ -44,23 +45,28 @@ $effect(() => {
 	}
 });
 
-function revealActiveTab() {
-	tabBarEl
-		?.querySelector(`[data-tab-id="${activeTabId}"]`)
-		?.scrollIntoView({ block: "nearest", inline: "nearest" });
+function reveal(item: Element) {
+	item.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
-$effect(revealActiveTab);
-
+// The strip narrows with the window and when a repository's toolbar appears
+// beside it, and the active tab widens when a repository opens in it: either
+// can push the active tab out of view without a change of tab.
 $effect(() => {
-	const observer = new ResizeObserver(() => revealActiveTab());
+	const active = tabBarEl.querySelector(`[data-tab-id="${activeTabId}"]`);
+	if (!active) return;
+
+	reveal(active);
+
+	const observer = new ResizeObserver(() => reveal(active));
 	observer.observe(tabBarEl);
+	observer.observe(active);
 
 	return () => observer.disconnect();
 });
 
 function scrollSideways(e: WheelEvent) {
-	if (e.deltaX !== 0) return;
+	if (isSideways(e)) return;
 
 	tabBarEl.scrollLeft += e.deltaY;
 }
@@ -230,6 +236,7 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 	overflow-x: auto;
 	overflow-y: hidden;
 	scrollbar-width: none;
+	scroll-padding-inline: var(--space-1);
 }
 
 .tab-item {
@@ -239,8 +246,10 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 	font-size: var(--text-callout);
 	font-weight: var(--weight-medium);
 	color: var(--color-text-muted);
+	flex: 1 1 0;
 	grid-template-columns: minmax(0, auto);
-	min-width: calc(18 * var(--u));
+	min-width: calc(20 * var(--u));
+	max-width: max-content;
 	white-space: nowrap;
 	background: none;
 	/* Paint, not length: the active state's outline must not take a pixel out

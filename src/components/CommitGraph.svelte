@@ -112,6 +112,7 @@ import type {
 import Button from "../lib/ui/Button.svelte";
 import HitArea from "../lib/ui/HitArea.svelte";
 import Splitter from "../lib/ui/Splitter.svelte";
+import { isSideways } from "../lib/wheel.js";
 import { withWipRow } from "../lib/wip-row.js";
 import CommitRow from "./CommitRow.svelte";
 import InputDialog from "./InputDialog.svelte";
@@ -514,12 +515,11 @@ const columnPans: readonly ColumnPan[] = [graphPan, messagePan];
 // content until that reaches its end in the gesture's direction, and from
 // there, or anywhere else, it scrolls the table. While the table can scroll
 // sideways the pan cancels the gesture, or the table would move under it too;
-// a table that fits leaves the gesture to the engine. A wheel event no more
-// sideways than vertical is the engine's whole: WebKit hands the page a
-// trackpad's sideways drift as it scrolls down, and holds only its own
-// scrollers to the swipe's main axis.
+// a table that fits leaves the gesture to the engine. A wheel event that is
+// not sideways is the engine's whole, since WebKit holds its own scrollers to
+// the swipe's main axis.
 function panColumn(event: WheelEvent & { currentTarget: HTMLElement }) {
-	if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
+	if (!isSideways(event)) return;
 
 	const viewport = listViewport();
 	if (!viewport) return;

@@ -32,13 +32,17 @@ const tabs: TabInfo[] = [
 	{ id: "2", repoPath: "/path/to/other", repoName: "other", dirty: true },
 ];
 
-function closeOf(name: string): HTMLElement {
+function itemOf(name: string): HTMLElement {
 	const item = screen
 		.getByRole("tab", { name })
 		.closest<HTMLElement>(".tab-item");
 	if (!item) throw new Error(`no tab item around the tab named ${name}`);
 
-	return within(item).getByLabelText("Close tab");
+	return item;
+}
+
+function closeOf(name: string): HTMLElement {
+	return within(itemOf(name)).getByLabelText("Close tab");
 }
 
 function auxClick(button: number): MouseEvent {
@@ -328,19 +332,33 @@ describe("TabBar", () => {
 	it("scrolls the strip sideways on a vertical wheel", async () => {
 		render(TabBar, { props: defaultProps });
 		const tablist = screen.getByRole("tablist", { name: "Repository tabs" });
+		tablist.scrollLeft = 100;
 
-		await fireEvent.wheel(tablist, { deltaY: 40 });
+		await fireEvent.wheel(tablist, { deltaX: 2, deltaY: 40 });
 
-		expect(tablist.scrollLeft).toBe(40);
+		expect(tablist.scrollLeft).toBe(140);
 	});
 
 	it("leaves a sideways wheel to the strip's own scrolling", async () => {
 		render(TabBar, { props: defaultProps });
 		const tablist = screen.getByRole("tablist", { name: "Repository tabs" });
 
-		await fireEvent.wheel(tablist, { deltaX: 30, deltaY: 40 });
+		const unhandled = await fireEvent.wheel(tablist, {
+			deltaX: 40,
+			deltaY: 30,
+		});
 
-		expect(tablist.scrollLeft).toBe(0);
+		expect([unhandled, tablist.scrollLeft]).toEqual([true, 0]);
+	});
+
+	it("brings the active tab into view when another tab becomes active", async () => {
+		const view = render(TabBar, { props: defaultProps });
+		const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView);
+		scrollIntoView.mockClear();
+
+		await view.rerender({ ...defaultProps, activeTabId: "2" });
+
+		expect(scrollIntoView.mock.contexts).toEqual([itemOf("other")]);
 	});
 
 	it("brings the active tab into view when the strip narrows", async () => {
@@ -355,9 +373,22 @@ describe("TabBar", () => {
 
 		strip.resize(300);
 
-		expect(scrollIntoView.mock.contexts).toEqual([
-			screen.getByRole("tab", { name: "other" }).closest(".tab-item"),
-		]);
+		expect(scrollIntoView.mock.contexts).toEqual([itemOf("other")]);
+	});
+
+	it("brings the active tab into view when it widens", async () => {
+		const activeItem = reportWidthOf(
+			(target) => target.matches(".tab-item.active"),
+			80,
+		);
+		render(TabBar, { props: { ...defaultProps, activeTabId: "2" } });
+		await Promise.resolve();
+		const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView);
+		scrollIntoView.mockClear();
+
+		activeItem.resize(140);
+
+		expect(scrollIntoView.mock.contexts).toEqual([itemOf("other")]);
 	});
 
 	describe("on a tab's close", () => {
