@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { makeCommit } from "./__tests__/helpers/factories.js";
 import { StartupHarness } from "./__tests__/helpers/startup-harness.js";
 import { REPO_CHANGE_DELAY_MS } from "./lib/coalesced-task.js";
+import { _resetToasts, toasts } from "./lib/toast.svelte.js";
 
 const savedTabs = [
 	{ id: "first", repoPath: "/first", repoName: "first" },
@@ -10,7 +11,10 @@ const savedTabs = [
 	{ id: "last", repoPath: "/last", repoName: "last" },
 ];
 let app: StartupHarness;
-afterEach(() => app?.teardown());
+afterEach(() => {
+	app?.teardown();
+	_resetToasts();
+});
 
 describe("App startup", () => {
 	it("reads initial refs and dirty counts once for the visible repository", async () => {
@@ -22,6 +26,25 @@ describe("App startup", () => {
 
 		expect(app.paths("list_refs")).toEqual(["/active"]);
 		expect(app.paths("get_dirty_counts")).toEqual(["/active"]);
+	});
+
+	it("warns that an unwatched repository will not show changes made outside Trunk", async () => {
+		app = new StartupHarness(savedTabs, "active");
+		app.start();
+		await screen.findByText("restored history");
+		await app.settle();
+
+		await app.host.emit("watch-unavailable", { repo: "/repos/opening" });
+
+		await waitFor(() =>
+			expect(toasts.items).toContainEqual(
+				expect.objectContaining({
+					message:
+						"Changes made outside Trunk won't show in opening until you close it and open it again.",
+					kind: "error",
+				}),
+			),
+		);
 	});
 
 	it("keeps dirty badges current for prepared tabs before their views mount", async () => {

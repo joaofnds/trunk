@@ -94,7 +94,7 @@
 | `git/types.rs` | The commit graph's DTOs (`GraphCommit`, `GraphEdge`, `RefLabel`), owned, with no git2 types | `src-tauri/git/src/types.rs` |
 | `types.rs` | The app's other IPC DTOs (`FileDiff`, `WorkingTreeStatus`, etc.), owned, with no git2 types | `src-tauri/src/types.rs` |
 | `state.rs` | `RepoState` (open paths, each with the commit memo its graph captures reuse), `CommitCache` (versioned worktree graphs), `RunningOp` (shared-repository reservations); `GraphRebuild` owns checked capture and publication under current visibility | `src-tauri/src/state.rs` |
-| `watcher.rs` | `start_watcher` / `stop_watcher`: a `notify` watch whose changes a pacer releases as `"repo-changed"` events; `RepoChanged` carries changed paths, an optional checked graph revision, a refs-only marker and a completed-command marker; `WatcherState::disabled()` turns the watch off | `src-tauri/src/watcher.rs` |
+| `watcher.rs` | `watch_in_background` / `stop_watcher`: a `notify` watch whose changes a pacer releases as `"repo-changed"` events; `RepoChanged` carries changed paths, an optional checked graph revision, a refs-only marker and a completed-command marker; `WatcherState::disabled()` turns the watch off | `src-tauri/src/watcher.rs` |
 
 ## Pattern Overview
 
@@ -157,7 +157,7 @@
 - Purpose: Cross-command shared state, Tauri-managed singletons
 - Location: `src-tauri/src/state.rs`, `src-tauri/src/watcher.rs`
 - Contains: `RepoState` (path registry, each open repository owning the `CommitMemo` its graph captures reuse), `CommitCache` (one `GraphSnapshot` per repo: capture, visibility and clean/dirty lane placements, the unobserved one laid out in the background), `RunningOp` (operation reservations and process identity for cancel), `WatcherState` (fs watchers)
-- Repository and graph entries use worktree paths. Remote reservations use operation identities and canonical common directories. `WatcherState::disabled()` makes `start_watcher` register nothing, which is how a test host runs `open_repo` unchanged with no filesystem watch
+- Repository and graph entries use worktree paths. Remote reservations use operation identities and canonical common directories. `WatcherState::disabled()` makes the watch register nothing, which is how a test host runs `open_repo` unchanged with no filesystem watch
 - Used by: All command modules via `State<'_, T>` injection
 
 ## Data Flow
@@ -165,8 +165,8 @@
 ### Primary Request Path: Open Repository
 
 1. User picks repo path via `tauri-plugin-dialog` → `WelcomeScreen.svelte` calls `safeInvoke("open_repo", { path })` (`src/lib/invoke.ts:10`)
-2. Rust `open_repo` command (`src-tauri/src/commands/repo.rs:8`) runs `repository::validate_and_open()`, then calls `graph::snapshot()` in `spawn_blocking`
-3. Graph result cached in `CommitCache`, repo path registered in `RepoState`, `start_watcher()` called for path
+2. Rust `open_repo` command (`src-tauri/src/commands/repo.rs:19`) runs `repository::validate_and_open()`, then calls `graph::snapshot()` in `spawn_blocking`
+3. Graph result cached in `CommitCache`, repo path registered in `RepoState`, then `watch_in_background()` starts the watch on a thread of its own and `open_repo` returns without waiting for it, because registering an FSEvents stream waits on fseventsd and has taken 20 to 36 s while it was busy. It starts under the lock that registers the repository, and `close_repo` stops it under the same lock, so a watch is recorded only if no close or later open of that path came after its start. It registers the worktree and any Git directory outside it with one stream start, reports the whole repository as changed once it is live (it misses anything earlier), and emits `"watch-unavailable"` if it cannot register, which `App.svelte` shows as an error toast while the repository stays open
 4. Frontend receives `Ok(())`, updates `tabs` state in `App.svelte`, renders `RepoView.svelte`
 5. `RepoView` → `CommitGraph` calls `safeInvoke("get_commit_graph", { path, offset: 0 })` → returns first 200 `GraphCommit` rows from cache
 6. `CommitGraph` runs `buildGraphData()` → `buildOverlayPaths()` → renders SVG overlay via `VirtualList`
@@ -198,7 +198,7 @@ needs no drag handler.
    running git, a due batch waits until the gate is free, with no time limit, and then goes
    out with every change gathered meanwhile, so the app's own git run is never shown halfway
    through. A rescan or a backend error, where events may be lost, is unscoped
-2. `watcher.rs:start_watcher` emits Tauri event `"repo-changed"` with a `RepoChanged`
+2. The watch `watcher.rs` starts emits Tauri event `"repo-changed"` with a `RepoChanged`
    payload: the repo path plus the changed paths relative to it. The write sites in
    `commands/` emit the same event with an empty path list, meaning the extent is
    unknown and every subscriber refreshes. Reconciled ref changes additionally carry

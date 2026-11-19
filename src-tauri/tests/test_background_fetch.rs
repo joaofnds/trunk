@@ -72,6 +72,25 @@ impl Harness {
         self.opened.push(path.to_owned());
     }
 
+    /// Open `path` and return once its watch is live, so an edit made next is reported.
+    fn open_watched(&mut self, path: &Path) {
+        let (watching, live) = std::sync::mpsc::channel();
+        let watched = path.to_str().unwrap().to_owned();
+        let listener = self.app.listen_any("repo-changed", move |event| {
+            let change: RepoChanged = serde_json::from_str(event.payload()).unwrap();
+            if change == RepoChanged::whole_repo(watched.clone()) {
+                let _ = watching.send(());
+            }
+        });
+
+        self.open(path);
+        // Registering the watch waits on fseventsd, which takes tens of seconds while it
+        // is busy. The timeout only bounds a stalled test.
+        live.recv_timeout(std::time::Duration::from_secs(90))
+            .expect("the watch reports the whole repository once it is live");
+        self.app.unlisten(listener);
+    }
+
     fn fetch(&self, path: &Path) -> Value {
         self.invoke(
             "git_fetch_background",
@@ -1712,7 +1731,7 @@ mod cancellation {
         let (events, observations) = mpsc::channel();
         let worker = BlockedWorker::setup(events.clone());
         let mut harness = Harness::with_worker(WatcherState::default(), worker.executable.clone());
-        harness.open(fixture.clone.path());
+        harness.open_watched(fixture.clone.path());
         let path = fixture.clone.path().to_str().unwrap().to_owned();
         let worker_webview = harness.webview.clone();
         let worker_path = path.clone();
@@ -1830,7 +1849,7 @@ mod cancellation {
         let (events, observations) = mpsc::channel();
         let worker = BlockedWorker::setup(events.clone());
         let mut harness = Harness::with_worker(WatcherState::default(), worker.executable.clone());
-        harness.open(fixture.clone.path());
+        harness.open_watched(fixture.clone.path());
         assert!(
             harness.graph(fixture.clone.path())["commits"]
                 .as_array()

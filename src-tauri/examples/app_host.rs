@@ -248,7 +248,12 @@ fn serve(
         }
 
         Request::WatcherCount { .. } => {
-            let count = app.state::<WatcherState>().watchers.lock().unwrap().len();
+            let count = app
+                .state::<WatcherState>()
+                .watches
+                .lock()
+                .unwrap()
+                .live_count();
             Ok(Ok(json!(count)))
         }
 

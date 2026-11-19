@@ -137,18 +137,21 @@ fn an_unchanged_background_fetch_preserves_the_cached_capture() {
     git2::Repository::clone(remote_dir.path().to_str().unwrap(), clone_dir.path()).unwrap();
     let path = clone_dir.path().to_str().unwrap();
     let (app, webview) = boot(WatcherState::default());
-    invoke(&webview, "open_repo", json!({ "path": path })).unwrap();
-    let _close = CloseRepoOnDrop {
-        webview: &webview,
-        path,
-    };
-    let before = app.state::<CommitCache>().snapshot(path).unwrap();
+    let (watching, live) = std::sync::mpsc::channel();
+    let watching = std::sync::Mutex::new(Some(watching));
     let (sentinel, drained) = std::sync::mpsc::channel();
     let changes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let recorded = std::sync::Arc::clone(&changes);
+    let watched = path.to_owned();
     app.listen_any("repo-changed", move |event| {
         let change: trunk_lib::watcher::RepoChanged =
             serde_json::from_str(event.payload()).unwrap();
+        if change == trunk_lib::watcher::RepoChanged::whole_repo(watched.clone())
+            && let Some(watching) = watching.lock().unwrap().take()
+        {
+            let _ = watching.send(());
+            return;
+        }
         let is_sentinel = change
             .paths
             .iter()
@@ -158,6 +161,20 @@ fn an_unchanged_background_fetch_preserves_the_cached_capture() {
             sentinel.send(()).unwrap();
         }
     });
+    invoke(&webview, "open_repo", json!({ "path": path })).unwrap();
+    let _close = CloseRepoOnDrop {
+        webview: &webview,
+        path,
+    };
+    // Registering the watch waits on fseventsd, which takes tens of seconds while it is
+    // busy. The timeout only bounds a stalled test.
+    live.recv_timeout(std::time::Duration::from_secs(90))
+        .expect("the watch reports the whole repository once it is live");
+    // That report clears the capture's ref inputs, and the first fetch afterwards
+    // recaptures. Only a fetch after that one can show that an unchanged fetch keeps it.
+    invoke(&webview, "git_fetch_background", json!({ "path": path })).unwrap();
+    changes.lock().unwrap().clear();
+    let before = app.state::<CommitCache>().snapshot(path).unwrap();
 
     let outcome = invoke(&webview, "git_fetch_background", json!({ "path": path })).unwrap();
     assert_eq!(outcome["outcome"], "unchanged");

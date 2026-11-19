@@ -1179,6 +1179,26 @@ $effect(() => {
 	};
 });
 
+$effect(() => {
+	let disposed = false;
+	let unlisten: (() => void) | undefined;
+	listen<{ repo: string }>("watch-unavailable", ({ payload }) => {
+		const name =
+			repositoryPathKey(payload.repo)?.split("/").at(-1) || payload.repo;
+		showToast(
+			`Changes made outside Trunk won't show in ${name} until you close it and open it again.`,
+			"error",
+		);
+	}).then((fn) => {
+		if (disposed) fn();
+		else unlisten = fn;
+	});
+	return () => {
+		disposed = true;
+		unlisten?.();
+	};
+});
+
 // Review mode toggle (Phase 69): the View-menu "Start/End Code Review" item
 // emits review-toggle (registered in Rust, Plan 65-03). The flag is owned here
 // at the App level so this window-global event only flips the ACTIVE tab into

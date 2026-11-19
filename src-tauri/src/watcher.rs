@@ -640,6 +640,7 @@ impl Writers {
 
 enum Message {
     Event(notify::Result<Event>),
+    CatchUp,
     Stop,
 }
 
@@ -655,7 +656,6 @@ impl<T: Send + 'static> DetachedDrop<T> {
 impl<T: Send + 'static> Drop for DetachedDrop<T> {
     fn drop(&mut self) {
         let value = self.0.take();
-
         drop(
             std::thread::Builder::new()
                 .name("trunk detached drop".to_string())
@@ -720,6 +720,11 @@ impl RepoWatcher {
             outbox,
         })
     }
+
+    /// Report the whole repository as changed, for what changed before the watch began.
+    fn catch_up(&self) {
+        drop(self.outbox.send(Message::CatchUp));
+    }
 }
 
 impl Drop for RepoWatcher {
@@ -747,6 +752,7 @@ fn pace(
                     pacer.record(Instant::now(), changes);
                 }
             }
+            Ok(Message::CatchUp) => pacer.record(Instant::now(), Changes::Unscoped),
             Err(RecvTimeoutError::Timeout) => {}
             Ok(Message::Stop) | Err(RecvTimeoutError::Disconnected) => return,
         }
@@ -760,9 +766,49 @@ fn pace(
     }
 }
 
-pub type WatcherMap = HashMap<String, RepoWatcher>;
+/// The repositories being watched, and the watch starts not yet finished.
+#[derive(Default)]
+pub struct Watches {
+    live: HashMap<String, RepoWatcher>,
+    starting: HashMap<String, u64>,
+    started: u64,
+}
+
+impl Watches {
+    /// How many repositories have a live watch.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn live_count(&self) -> usize {
+        self.live.len()
+    }
+
+    fn begin(&mut self, repo: String) -> u64 {
+        self.started += 1;
+        self.starting.insert(repo, self.started);
+
+        self.started
+    }
+
+    /// Whether `start` is still the start of `repo` that a watch may finish, which
+    /// it stops being once the repository is closed or opened again.
+    fn finish(&mut self, repo: &str, start: u64) -> bool {
+        let current = self.starting.get(repo) == Some(&start);
+
+        if current {
+            self.starting.remove(repo);
+        }
+
+        current
+    }
+
+    fn stop(&mut self, repo: &str) {
+        self.starting.remove(repo);
+        self.live.remove(repo);
+    }
+}
+
 pub struct WatcherState {
-    pub watchers: Mutex<WatcherMap>,
+    pub watches: Mutex<Watches>,
     pub enabled: bool,
     pending_refs: Arc<Mutex<HashMap<String, RefRefresh>>>,
 }
@@ -770,7 +816,7 @@ pub struct WatcherState {
 impl Default for WatcherState {
     fn default() -> Self {
         Self {
-            watchers: Mutex::new(HashMap::new()),
+            watches: Mutex::default(),
             enabled: true,
             pending_refs: Arc::default(),
         }
@@ -818,43 +864,104 @@ impl WatcherState {
     }
 }
 
-/// Watch `path` and emit `repo-changed` when it changes. A disabled state
-/// watches nothing.
+/// The event that tells the frontend a repository is open but unwatched.
+pub const WATCH_UNAVAILABLE: &str = "watch-unavailable";
+
+/// The `watch-unavailable` payload.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WatchUnavailable {
+    pub repo: String,
+}
+
+/// Watch `path` from a thread of its own.
+///
+/// The caller never waits on the platform registering the watch, which on macOS
+/// waits on fseventsd and can take tens of seconds. A `stop_watcher` after this call
+/// cancels the start, so call it under the lock that registers the repository as open,
+/// which `close_repo` holds while it stops the watch. Once recorded, the watch reports
+/// the whole repository as changed, since nothing changed before it began is reported.
+/// A watch that cannot register emits `watch-unavailable`.
 ///
 /// # Errors
-/// Returns `watcher_unavailable` if a watcher or required registration fails.
+///
+/// Returns the error from spawning the thread, after which nothing is watched.
 ///
 /// # Panics
 ///
 /// Panics when the watcher lock is poisoned.
-pub fn start_watcher<R: Runtime>(
-    path: &Path,
-    app: AppHandle<R>,
-    state: &WatcherState,
-) -> Result<(), TrunkError> {
-    start_watcher_with_registration(path, app, state, |watcher, path| {
-        watcher.watch(path, RecursiveMode::Recursive)
-    })
+pub fn watch_in_background<R: Runtime>(path: PathBuf, app: AppHandle<R>) -> std::io::Result<()> {
+    watch_in_background_with_registration(path, app, watch_all).map(drop)
 }
 
-fn start_watcher_with_registration<R, F>(
+fn watch_in_background_with_registration<R, F>(
+    path: PathBuf,
+    app: AppHandle<R>,
+    register: F,
+) -> std::io::Result<Option<std::thread::JoinHandle<()>>>
+where
+    R: Runtime,
+    F: FnOnce(&mut RecommendedWatcher, &[PathBuf]) -> notify::Result<()> + Send + 'static,
+{
+    let state = app.state::<WatcherState>();
+    if !state.enabled {
+        return Ok(None);
+    }
+
+    let repo = path.to_string_lossy().to_string();
+    let start = state.watches.lock().unwrap().begin(repo.clone());
+    let watching = app.clone();
+    let started = std::thread::Builder::new()
+        .name("trunk watch start".to_string())
+        .spawn(move || finish_watch(&path, &watching, start, register));
+
+    if started.is_err() {
+        state.watches.lock().unwrap().finish(&repo, start);
+    }
+    started.map(Some)
+}
+
+/// Register the watch on `path` and record it, unless its start `start` was cancelled.
+fn finish_watch<R, F>(path: &Path, app: &AppHandle<R>, start: u64, register: F)
+where
+    R: Runtime,
+    F: FnOnce(&mut RecommendedWatcher, &[PathBuf]) -> notify::Result<()>,
+{
+    let state = app.state::<WatcherState>();
+    let repo = path.to_string_lossy().to_string();
+    let registered = watch_repository(path, app.clone(), &state, register);
+    let mut watches = state.watches.lock().unwrap();
+    if !watches.finish(&repo, start) {
+        return;
+    }
+
+    match registered {
+        Ok(repo_watcher) => {
+            repo_watcher.catch_up();
+            watches.live.insert(repo, repo_watcher);
+        }
+        Err(error) => {
+            drop(watches);
+            eprintln!("{repo} is not watched: {}", error.message);
+            let _ = app.emit(WATCH_UNAVAILABLE, WatchUnavailable { repo });
+        }
+    }
+}
+
+/// A started watch on `path` and, where they lie outside it, its Git directories.
+fn watch_repository<R, F>(
     path: &Path,
     app: AppHandle<R>,
     state: &WatcherState,
-    mut register: F,
-) -> Result<(), TrunkError>
+    register: F,
+) -> Result<RepoWatcher, TrunkError>
 where
     R: Runtime,
-    F: FnMut(&mut RecommendedWatcher, &Path) -> notify::Result<()>,
+    F: FnOnce(&mut RecommendedWatcher, &[PathBuf]) -> notify::Result<()>,
 {
-    if !state.enabled {
-        return Ok(());
-    }
-
     let watched = path.to_path_buf();
     let roots = root_forms(path);
     let (git, writers) = open_for_watching(path).unzip();
-    let callback_git = git.clone();
+    let paths = watched_paths(path, git.as_ref());
     let pending = Arc::clone(&state.pending_refs);
 
     let mut repo_watcher = RepoWatcher::start(writers, move || {
@@ -862,7 +969,7 @@ where
         move |changed| match route_changes(
             &watched,
             &roots,
-            callback_git.as_ref(),
+            git.as_ref(),
             changed,
             &mut ignores,
             &app,
@@ -878,38 +985,44 @@ where
     })
     .map_err(|_| TrunkError::new("watcher_unavailable", "Repository watcher could not start"))?;
 
-    register(&mut repo_watcher.watcher, path).map_err(|_| {
+    register(&mut repo_watcher.watcher, &paths).map_err(|error| {
         TrunkError::new(
             "watcher_unavailable",
-            "Repository path could not be watched",
+            format!("Repository could not be watched: {error}"),
         )
     })?;
+    Ok(repo_watcher)
+}
+
+/// `path` and, where they lie outside it, its Git directories.
+fn watched_paths(path: &Path, git: Option<&GitDirectories>) -> Vec<PathBuf> {
+    let mut paths = vec![path.to_path_buf()];
+
     if let Some(git) = git {
         let canonical_root = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
         if !git.common.starts_with(&canonical_root) {
-            register(&mut repo_watcher.watcher, &git.common).map_err(|_| {
-                TrunkError::new(
-                    "watcher_unavailable",
-                    "Shared Git directory could not be watched",
-                )
-            })?;
+            paths.push(git.common.clone());
         }
         if !git.private.starts_with(&canonical_root) && !git.private.starts_with(&git.common) {
-            register(&mut repo_watcher.watcher, &git.private).map_err(|_| {
-                TrunkError::new(
-                    "watcher_unavailable",
-                    "Worktree Git directory could not be watched",
-                )
-            })?;
+            paths.push(git.private.clone());
         }
     }
 
-    state
-        .watchers
-        .lock()
-        .unwrap()
-        .insert(path.to_string_lossy().to_string(), repo_watcher);
-    Ok(())
+    paths
+}
+
+/// Watch every one of `paths` with one start of the platform's watch.
+///
+/// Each separate registration of notify's macOS watcher stops and restarts its stream,
+/// and each of those waits on fseventsd.
+fn watch_all(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) -> notify::Result<()> {
+    let mut batch = watcher.paths_mut();
+
+    for path in paths {
+        batch.add(path, RecursiveMode::Recursive)?;
+    }
+
+    batch.commit()
 }
 
 /// The forms of `path` a reported event may carry: the path itself, and its
@@ -926,19 +1039,18 @@ fn root_forms(path: &Path) -> Vec<PathBuf> {
     roots
 }
 
-/// Stop watching `path`. A path with no watcher is not an error.
+/// Stop watching `path`, or cancel its watch's start. A path with no watch is not an error.
 ///
 /// # Panics
 ///
 /// Panics when the watcher lock is poisoned.
 pub fn stop_watcher(path: &str, state: &WatcherState) {
-    state.watchers.lock().unwrap().remove(path);
+    state.watches.lock().unwrap().stop(path);
 }
 
 #[cfg(test)]
 mod tests {
     use notify::event::{CreateKind, ModifyKind, RemoveKind};
-    use std::cell::Cell;
 
     use super::*;
 
@@ -1313,102 +1425,255 @@ mod tests {
         assert_eq!(payload, RepoChanged::whole_repo("/repo"));
     }
 
-    #[test]
-    fn an_enabled_start_records_the_path() {
-        let app = tauri::test::mock_app();
-        let state = WatcherState::default();
+    mod starting {
+        use super::*;
+        use std::sync::atomic::{AtomicBool, Ordering};
 
-        start_watcher_with_registration(Path::new("repo"), app.handle().clone(), &state, |_, _| {
-            Ok(())
-        })
-        .unwrap();
+        /// How long a held registration waits for its release. It bounds a stalled
+        /// test and never decides a pass.
+        const STALL: Duration = Duration::from_secs(10);
 
-        assert!(state.watchers.lock().unwrap().contains_key("repo"));
-    }
+        trait Registration:
+            FnOnce(&mut RecommendedWatcher, &[PathBuf]) -> notify::Result<()> + Send + 'static
+        {
+        }
 
-    #[test]
-    fn stopping_one_path_leaves_the_other_registered() {
-        let app = tauri::test::mock_app();
-        let handle = app.handle().clone();
-        let state = WatcherState::default();
+        impl<F> Registration for F where
+            F: FnOnce(&mut RecommendedWatcher, &[PathBuf]) -> notify::Result<()> + Send + 'static
+        {
+        }
 
-        start_watcher_with_registration(Path::new("repo-one"), handle.clone(), &state, |_, _| {
-            Ok(())
-        })
-        .unwrap();
-        start_watcher_with_registration(Path::new("repo-two"), handle, &state, |_, _| Ok(()))
-            .unwrap();
-        stop_watcher("repo-one", &state);
+        fn app_with(state: WatcherState) -> tauri::App<tauri::test::MockRuntime> {
+            let app = tauri::test::mock_app();
+            app.manage(state);
+            app
+        }
 
-        assert_eq!(
-            state.watchers.lock().unwrap().keys().collect::<Vec<_>>(),
-            vec!["repo-two"]
-        );
-    }
+        fn recorded(app: &tauri::App<tauri::test::MockRuntime>) -> Vec<String> {
+            let mut repos: Vec<String> = app
+                .state::<WatcherState>()
+                .watches
+                .lock()
+                .unwrap()
+                .live
+                .keys()
+                .cloned()
+                .collect();
 
-    #[test]
-    fn a_disabled_state_skips_registration_and_records_nothing() {
-        let app = tauri::test::mock_app();
-        let state = WatcherState::disabled();
-        let registration_called = Cell::new(false);
+            repos.sort();
+            repos
+        }
 
-        start_watcher_with_registration(Path::new("repo"), app.handle().clone(), &state, |_, _| {
-            registration_called.set(true);
-            Ok(())
-        })
-        .unwrap();
-
-        assert!(!registration_called.get());
-        assert!(state.watchers.lock().unwrap().is_empty());
-    }
-
-    #[test]
-    fn a_registration_error_is_reported_without_recording_the_path() {
-        let app = tauri::test::mock_app();
-        let state = WatcherState::default();
-
-        let result = start_watcher_with_registration(
-            Path::new("repo"),
-            app.handle().clone(),
-            &state,
-            |_, _| Err(notify::Error::generic("registration failed")),
-        );
-
-        assert_eq!(result.unwrap_err().code, "watcher_unavailable");
-        assert!(state.watchers.lock().unwrap().is_empty());
-    }
-
-    #[test]
-    fn a_shared_directory_registration_failure_leaves_no_partial_worktree_watch() {
-        let directory = tempfile::tempdir().unwrap();
-        let repo = git2::Repository::init(directory.path().join("primary")).unwrap();
-        let signature = git2::Signature::now("Fixture", "fixture@example.com").unwrap();
-        let tree_id = repo.treebuilder(None).unwrap().write().unwrap();
-        let tree = repo.find_tree(tree_id).unwrap();
-        let commit_id = repo
-            .commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
-            .unwrap();
-        let commit = repo.find_commit(commit_id).unwrap();
-        repo.branch("linked", &commit, false).unwrap();
-        let branch = repo.find_reference("refs/heads/linked").unwrap();
-        let mut options = git2::WorktreeAddOptions::new();
-        options.reference(Some(&branch));
-        let linked = directory.path().join("linked");
-        repo.worktree("linked", &linked, Some(&options)).unwrap();
-        let app = tauri::test::mock_app();
-        let state = WatcherState::default();
-
-        let result =
-            start_watcher_with_registration(&linked, app.handle().clone(), &state, |_, path| {
-                if path == linked {
-                    Ok(())
-                } else {
-                    Err(notify::Error::generic("shared registration failed"))
-                }
+        fn unwatched_reports(
+            app: &tauri::App<tauri::test::MockRuntime>,
+        ) -> Arc<Mutex<Vec<WatchUnavailable>>> {
+            let reports = Arc::new(Mutex::new(Vec::new()));
+            let reported = Arc::clone(&reports);
+            tauri::Listener::listen(app.handle(), WATCH_UNAVAILABLE, move |event| {
+                reported
+                    .lock()
+                    .unwrap()
+                    .push(serde_json::from_str(event.payload()).unwrap());
             });
 
-        assert_eq!(result.unwrap_err().code, "watcher_unavailable");
-        assert!(state.watchers.lock().unwrap().is_empty());
+            reports
+        }
+
+        fn start(
+            app: &tauri::App<tauri::test::MockRuntime>,
+            repo: &str,
+            register: impl Registration,
+        ) -> Option<std::thread::JoinHandle<()>> {
+            watch_in_background_with_registration(
+                PathBuf::from(repo),
+                app.handle().clone(),
+                register,
+            )
+            .unwrap()
+        }
+
+        fn started(
+            app: &tauri::App<tauri::test::MockRuntime>,
+            repo: &str,
+            register: impl Registration,
+        ) {
+            start(app, repo, register).unwrap().join().unwrap();
+        }
+
+        /// A registration that returns `result` once the returned sender is sent to.
+        fn held(result: notify::Result<()>) -> (Sender<()>, impl Registration) {
+            let (release, released) = mpsc::channel::<()>();
+
+            (release, move |_: &mut RecommendedWatcher, _: &[PathBuf]| {
+                let _ = released.recv_timeout(STALL);
+                result
+            })
+        }
+
+        fn failing(_: &mut RecommendedWatcher, _: &[PathBuf]) -> notify::Result<()> {
+            Err(notify::Error::generic("registration failed"))
+        }
+
+        fn registering() -> impl Registration {
+            |_: &mut RecommendedWatcher, _: &[PathBuf]| Ok(())
+        }
+
+        #[test]
+        fn an_enabled_start_records_the_path() {
+            let app = app_with(WatcherState::default());
+
+            started(&app, "repo", registering());
+
+            assert_eq!(recorded(&app), ["repo"]);
+        }
+
+        #[test]
+        fn stopping_one_path_leaves_the_other_registered() {
+            let app = app_with(WatcherState::default());
+            started(&app, "repo-one", registering());
+            started(&app, "repo-two", registering());
+
+            stop_watcher("repo-one", &app.state::<WatcherState>());
+
+            assert_eq!(recorded(&app), ["repo-two"]);
+        }
+
+        #[test]
+        fn the_start_returns_before_the_registration_does() {
+            let app = app_with(WatcherState::default());
+            let (release, registration) = held(Ok(()));
+
+            let watching = start(&app, "repo", registration).unwrap();
+            let while_registering = recorded(&app);
+            release.send(()).unwrap();
+            watching.join().unwrap();
+
+            assert_eq!(while_registering, Vec::<String>::new());
+            assert_eq!(recorded(&app), ["repo"]);
+        }
+
+        #[test]
+        fn a_linked_worktree_registers_its_shared_git_directory_with_it_in_one_registration() {
+            let directory = tempfile::tempdir().unwrap();
+            let repo = git2::Repository::init(directory.path().join("primary")).unwrap();
+            let signature = git2::Signature::now("Fixture", "fixture@example.com").unwrap();
+            let tree_id = repo.treebuilder(None).unwrap().write().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            let commit_id = repo
+                .commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
+                .unwrap();
+            let commit = repo.find_commit(commit_id).unwrap();
+            repo.branch("linked", &commit, false).unwrap();
+            let branch = repo.find_reference("refs/heads/linked").unwrap();
+            let mut options = git2::WorktreeAddOptions::new();
+            options.reference(Some(&branch));
+            let linked = directory.path().join("linked");
+            repo.worktree("linked", &linked, Some(&options)).unwrap();
+            let app = app_with(WatcherState::default());
+            let registrations = Arc::new(Mutex::new(Vec::new()));
+            let registered = Arc::clone(&registrations);
+
+            started(&app, &linked.to_string_lossy(), move |_, paths| {
+                registered.lock().unwrap().push(paths.to_vec());
+                Ok(())
+            });
+
+            assert_eq!(
+                *registrations.lock().unwrap(),
+                [vec![
+                    linked,
+                    directory
+                        .path()
+                        .join("primary/.git")
+                        .canonicalize()
+                        .unwrap()
+                ]]
+            );
+        }
+
+        #[test]
+        fn a_disabled_state_skips_registration_and_records_nothing() {
+            let app = app_with(WatcherState::disabled());
+            let registration_called = Arc::new(AtomicBool::new(false));
+            let called = Arc::clone(&registration_called);
+
+            let watching = start(&app, "repo", move |_, _| {
+                called.store(true, Ordering::SeqCst);
+                Ok(())
+            });
+
+            assert!(watching.is_none());
+            assert!(!registration_called.load(Ordering::SeqCst));
+            assert_eq!(recorded(&app), Vec::<String>::new());
+        }
+
+        #[test]
+        fn a_failed_registration_reports_the_repository_as_unwatched() {
+            let app = app_with(WatcherState::default());
+            let reports = unwatched_reports(&app);
+
+            started(&app, "repo", failing);
+
+            assert_eq!(
+                *reports.lock().unwrap(),
+                [WatchUnavailable {
+                    repo: "repo".to_owned()
+                }]
+            );
+            assert_eq!(recorded(&app), Vec::<String>::new());
+        }
+
+        mod when_the_repository_closes_during_the_start {
+            use super::*;
+
+            #[test]
+            fn the_repository_is_never_watched() {
+                let app = app_with(WatcherState::default());
+                let (release, registration) = held(Ok(()));
+                let watching = start(&app, "repo", registration).unwrap();
+
+                stop_watcher("repo", &app.state::<WatcherState>());
+                release.send(()).unwrap();
+                watching.join().unwrap();
+
+                assert_eq!(recorded(&app), Vec::<String>::new());
+            }
+
+            #[test]
+            fn a_failed_registration_reports_nothing() {
+                let app = app_with(WatcherState::default());
+                let reports = unwatched_reports(&app);
+                let (release, registration) =
+                    held(Err(notify::Error::generic("registration failed")));
+                let watching = start(&app, "repo", registration).unwrap();
+
+                stop_watcher("repo", &app.state::<WatcherState>());
+                release.send(()).unwrap();
+                watching.join().unwrap();
+
+                assert_eq!(*reports.lock().unwrap(), Vec::<WatchUnavailable>::new());
+            }
+        }
+
+        mod when_the_repository_opens_again_during_the_start {
+            use super::*;
+
+            #[test]
+            fn the_earlier_start_neither_reports_nor_disturbs_the_later_watch() {
+                let app = app_with(WatcherState::default());
+                let reports = unwatched_reports(&app);
+                let (release, registration) =
+                    held(Err(notify::Error::generic("registration failed")));
+                let earlier = start(&app, "repo", registration).unwrap();
+                started(&app, "repo", registering());
+
+                release.send(()).unwrap();
+                earlier.join().unwrap();
+
+                assert_eq!(*reports.lock().unwrap(), Vec::<WatchUnavailable>::new());
+                assert_eq!(recorded(&app), ["repo"]);
+            }
+        }
     }
 
     mod detached_drop {

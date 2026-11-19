@@ -11,11 +11,16 @@ use tauri::{Listener, Manager};
 use trunk_lib::state::{
     CommitCache, GraphCache, GraphRebuild, OpenRepo, RefVisibilityState, RemoteOps, RunningOp,
 };
-use trunk_lib::watcher::{RepoChanged, WatcherState, start_watcher};
+use trunk_lib::watcher::{RepoChanged, WatcherState, watch_in_background};
 
 /// How long a test waits for an event before calling it absent. Generous per
 /// D-05: it bounds a failure, never a pass.
 const EVENT_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// How long a test waits for a watch to go live. macOS registers the watch through
+/// fseventsd, which takes tens of seconds while it is busy. It bounds a failure, never
+/// a pass.
+const WATCH_START_TIMEOUT: Duration = Duration::from_secs(90);
 
 fn watcher_app() -> tauri::App<tauri::test::MockRuntime> {
     let app = tauri::test::mock_app();
@@ -23,7 +28,24 @@ fn watcher_app() -> tauri::App<tauri::test::MockRuntime> {
     app.manage(CommitCache::new(GraphCache::default()));
     app.manage(RunningOp(Mutex::new(RemoteOps::default())));
     app.manage(RefVisibilityState::default());
+    app.manage(WatcherState::default());
     app
+}
+
+/// Watch `path` and return once the watch is live, which it reports by publishing the
+/// whole repository as changed.
+fn watch_live(
+    events: &Receiver<String>,
+    path: &std::path::Path,
+    handle: tauri::AppHandle<tauri::test::MockRuntime>,
+) {
+    watch_in_background(path.to_path_buf(), handle).unwrap();
+    let payload = events
+        .recv_timeout(WATCH_START_TIMEOUT)
+        .expect("the watch reports the whole repository once it is live");
+    let emitted: RepoChanged = serde_json::from_str(&payload).unwrap();
+
+    assert_eq!(emitted, RepoChanged::whole_repo(path.to_string_lossy()));
 }
 
 /// Listen for `repo-changed` on `handle`, returning the receiving half of a
@@ -67,10 +89,9 @@ fn watcher_names_the_repository_for_rapid_nested_writes() {
     git2::Repository::init(dir.path()).unwrap();
     let nested_dir = dir.path().join("nested");
     std::fs::create_dir(&nested_dir).unwrap();
-    let watcher_state = WatcherState::default();
     let path = dir.path().to_string_lossy().to_string();
+    watch_live(&events, dir.path(), handle);
 
-    start_watcher(dir.path(), handle, &watcher_state).unwrap();
     for index in 0..5 {
         std::fs::write(
             nested_dir.join(format!("rapid-{index}.txt")),
@@ -97,9 +118,8 @@ fn watcher_names_the_written_file_relative_to_the_repository() {
     git2::Repository::init(dir.path()).unwrap();
     let nested_dir = dir.path().join("nested");
     std::fs::create_dir(&nested_dir).unwrap();
-    let watcher_state = WatcherState::default();
+    watch_live(&events, dir.path(), handle);
 
-    start_watcher(dir.path(), handle, &watcher_state).unwrap();
     std::fs::write(nested_dir.join("only.txt"), "content").unwrap();
     let emitted = await_event_naming(&events, "nested/only.txt");
 

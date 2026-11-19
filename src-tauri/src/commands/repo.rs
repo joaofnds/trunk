@@ -1,16 +1,16 @@
 use crate::state::{CommitCache, CommitStatsCache, RepoState, RunningOp};
 use crate::watcher::{self, WatcherState};
-use tauri::{AppHandle, Runtime, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
 use trunk_git::repository;
 
-/// Open a repository, cache its first graph, and start watching it.
+/// Open a repository, cache its first graph, and start watching it. It returns
+/// without waiting for the watch, which reports its own failure.
 ///
 /// # Errors
 ///
 /// Returns `spawn_error` as JSON when the blocking task cannot be joined, and
 /// the git error as JSON when the path is not a repository this app can open.
-/// Returns `watcher_unavailable` when filesystem watching cannot be registered.
 ///
 /// # Panics
 ///
@@ -21,7 +21,6 @@ pub async fn open_repo<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    watcher_state: State<'_, WatcherState>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
@@ -51,12 +50,16 @@ pub async fn open_repo<R: Runtime>(
         return Err(TrunkError::new("not_open", "Repository session was closed").to_json());
     }
     repositories.register(path.clone(), entry);
-    if let Err(error) = watcher::start_watcher(&path_buf, app, &watcher_state) {
-        repositories.forget(&path);
-        cache.forget(&path);
-        return Err(error.to_json());
-    }
+    let watching = watcher::watch_in_background(path_buf, app.clone());
     drop(repositories);
+
+    if let Err(error) = watching {
+        eprintln!("{path} is not watched: {error}");
+        let _ = app.emit(
+            watcher::WATCH_UNAVAILABLE,
+            watcher::WatchUnavailable { repo: path },
+        );
+    }
 
     Ok(())
 }
