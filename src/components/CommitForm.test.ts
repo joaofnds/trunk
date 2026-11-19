@@ -829,6 +829,34 @@ describe("CommitForm", () => {
 				expect.anything(),
 			);
 		});
+
+		it("drops the warning once a file is staged", async () => {
+			const { rerender } = render(CommitForm, {
+				props: { ...defaultProps, stagedCount: 0 },
+			});
+			await fireEvent.click(stashTab());
+			await fireEvent.click(submit());
+			await screen.findByText("Nothing to stash — stage changes first.");
+
+			await rerender({ stagedCount: 1 });
+
+			expect(
+				screen.queryByText("Nothing to stash — stage changes first."),
+			).not.toBeInTheDocument();
+		});
+
+		it("drops the warning when the mode changes", async () => {
+			render(CommitForm, { props: { ...defaultProps, stagedCount: 0 } });
+			await fireEvent.click(stashTab());
+			await fireEvent.click(submit());
+			await screen.findByText("Nothing to stash — stage changes first.");
+
+			await fireEvent.click(screen.getByRole("tab", { name: "Commit" }));
+
+			expect(
+				screen.queryByText("Nothing to stash — stage changes first."),
+			).not.toBeInTheDocument();
+		});
 	});
 
 	describe("when Cmd+Enter is pressed in the message", () => {
