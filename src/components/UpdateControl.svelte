@@ -32,8 +32,11 @@ let {
 }: Props = $props();
 let trigger: HTMLDivElement;
 let popup: HTMLDivElement | undefined;
-let hovered = $state(false);
-const visible = $derived(open || hovered);
+// The pointer and the focus each show the panel, and each hides only what it
+// showed, so the app moving focus leaves a panel under the pointer in place.
+let pointerShown = $state(false);
+let focusShown = $state(false);
+const visible = $derived(open || pointerShown || focusShown);
 let suppressFocusOpen = false;
 const eligible = $derived(status?.eligible && status.adopted);
 const checking = $derived(status?.phase === "checking");
@@ -55,7 +58,8 @@ const label = $derived.by(() => {
 	return "Check for updates";
 });
 function activate() {
-	hovered = false;
+	pointerShown = false;
+	focusShown = false;
 	if (busy && !downloading) open = true;
 	else if (available && status?.version) ondownload(status.version);
 	else if (ready && status?.version) onrestart(status.version);
@@ -66,22 +70,20 @@ function close() {
 	if (frozen) return;
 
 	if (popup?.contains(document.activeElement)) focusTrigger();
-	hovered = false;
+	pointerShown = false;
+	focusShown = false;
 	open = false;
 	onclose();
 }
 function leave(event: MouseEvent | FocusEvent) {
-	if (event.type === "mouseleave" && hasFocus()) return;
-
 	const next = event.relatedTarget;
 	if (next instanceof Node && (trigger.contains(next) || popup?.contains(next)))
 		return;
 
-	hovered = false;
+	if (event.type === "mouseleave") pointerShown = false;
+	else focusShown = false;
 }
 function outside(event: MouseEvent | FocusEvent) {
-	if (event.type === "pointermove" && hasFocus()) return;
-
 	const target = event.target;
 	if (
 		!(target instanceof Node) ||
@@ -91,13 +93,8 @@ function outside(event: MouseEvent | FocusEvent) {
 		return;
 
 	if (event.type === "pointerdown") close();
-	else hovered = false;
-}
-function hasFocus(): boolean {
-	return (
-		trigger.contains(document.activeElement) ||
-		Boolean(popup?.contains(document.activeElement))
-	);
+	else if (event.type === "pointermove") pointerShown = false;
+	else focusShown = false;
 }
 
 function place(node: HTMLDivElement) {
@@ -185,9 +182,9 @@ $effect(() => {
 		aria-expanded={visible}
 		disabled={frozen}
 		onclick={activate}
-		onmouseenter={() => (hovered = true)}
+		onmouseenter={() => (pointerShown = true)}
 		onfocus={() => {
-			if (!suppressFocusOpen) hovered = true;
+			if (!suppressFocusOpen) focusShown = true;
 		}}
 		onblur={leave}
 		onmouseleave={leave}

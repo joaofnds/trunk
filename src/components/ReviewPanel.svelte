@@ -530,18 +530,19 @@ function jump(thread: Thread) {
 	onJump(thread);
 }
 
-// Coming back from the diff puts the keys on the thread the jump left from,
-// where its card was, instead of on nothing.
-let wasShown = untrack(() => shown);
+// Showing the panel puts the keys in it, on the thread the cursor is on where
+// it has one, so they answer at once whichever control showed it: the toolbar's
+// Review button, the menu, or closing the diff a jump opened.
+let wasShown = false;
 $effect(() => {
-	const returning = shown && !wasShown;
+	const appearing = shown && !wasShown;
 	wasShown = shown;
-	if (!returning || focusedId === null) return;
+	if (!appearing) return;
 
-	const id = focusedId;
+	const id = untrack(() => focusedId);
 	void tick().then(() => {
-		const card = cardOf(id);
-		card?.focus({ preventScroll: true });
+		const card = id === null ? null : cardOf(id);
+		(card ?? panelEl)?.focus({ preventScroll: true });
 		card?.scrollIntoView({ block: "nearest" });
 	});
 });
@@ -847,7 +848,8 @@ registerUpdateBlocker(() =>
 
 <section
 	aria-label="Review threads"
-	class="flex flex-col flex-1 min-h-0 overflow-hidden bg-surface"
+	class="flex flex-col flex-1 min-h-0 overflow-hidden bg-surface outline-none"
+	tabindex="-1"
 	bind:this={panelEl}
 >
 	<!-- The shown review's name, id and state over its actions, and under them

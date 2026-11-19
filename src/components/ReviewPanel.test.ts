@@ -7,7 +7,15 @@ import {
 	within,
 } from "@testing-library/svelte";
 import { type ComponentProps, tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	onTestFinished,
+	vi,
+} from "vitest";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import {
 	aReview,
@@ -3110,6 +3118,56 @@ describe("ReviewPanel keyboard", () => {
 		elsewhere.remove();
 
 		expect(focusedThread()).toBeNull();
+	});
+
+	describe("when it is shown", () => {
+		function focusAControlOutside() {
+			const control = document.createElement("button");
+			document.body.append(control);
+			control.focus();
+			onTestFinished(() => control.remove());
+		}
+
+		it("takes the keys from the control that opened it", async () => {
+			await aCommitWithANoteAndALineThread();
+			focusAControlOutside();
+
+			renderPanel();
+			await flush();
+			await press("j");
+
+			expect(focusedThread()).toHaveTextContent("on the commit");
+		});
+
+		it("takes the keys back when the diff over it closes", async () => {
+			await aCommitWithANoteAndALineThread();
+			const props = panelProps({ headBranch: "main", shown: false });
+			const view = render(ReviewPanel, { props });
+			await flush();
+			focusAControlOutside();
+
+			await view.rerender({ ...props, shown: true });
+			await flush();
+			await press("j");
+
+			expect(focusedThread()).toHaveTextContent("on the commit");
+		});
+
+		it("puts the focus back on the thread the cursor was on", async () => {
+			await aCommitWithANoteAndALineThread();
+			const props = panelProps({ headBranch: "main" });
+			const view = render(ReviewPanel, { props });
+			await flush();
+			await press("j");
+			await press("j");
+			await view.rerender({ ...props, shown: false });
+			focusAControlOutside();
+
+			await view.rerender({ ...props, shown: true });
+			await flush();
+
+			expect(document.activeElement).toBe(focusedThread());
+		});
 	});
 
 	describe("when the user is typing", () => {

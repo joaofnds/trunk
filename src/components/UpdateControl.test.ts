@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
-import { createRawSnippet } from "svelte";
+import { createRawSnippet, tick } from "svelte";
 import { describe, expect, it } from "vitest";
 import type { UpdateStatus } from "../lib/updates.js";
 import UpdateControl from "./UpdateControl.svelte";
@@ -158,6 +158,42 @@ describe("update control", () => {
 		await fireEvent.mouseLeave(trigger, { relatedTarget: document.body });
 
 		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
+	});
+	it("keeps the hovered panel visible when focus moves elsewhere", async () => {
+		mount();
+		await fireEvent.mouseEnter(
+			screen.getByRole("button", { name: "Check for updates" }),
+		);
+		const elsewhere = document.createElement("button");
+		document.body.append(elsewhere);
+
+		elsewhere.focus();
+		await tick();
+		elsewhere.remove();
+
+		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
+	});
+	it("hides the hovered panel when the pointer moves away", async () => {
+		mount();
+		await fireEvent.mouseEnter(
+			screen.getByRole("button", { name: "Check for updates" }),
+		);
+
+		await fireEvent.pointerMove(document.body);
+
+		expect(screen.queryByRole("region", { name: "Trunk updates" })).toBeNull();
+	});
+	it("hides the keyboard-focused panel when focus moves elsewhere", async () => {
+		mount();
+		screen.getByRole("button", { name: "Check for updates" }).focus();
+		const elsewhere = document.createElement("button");
+		document.body.append(elsewhere);
+
+		elsewhere.focus();
+		await tick();
+		elsewhere.remove();
+
+		expect(screen.queryByRole("region", { name: "Trunk updates" })).toBeNull();
 	});
 	it("opens cancellation controls during download", async () => {
 		const { rerender, actions } = mount({
