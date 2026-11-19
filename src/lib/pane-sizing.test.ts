@@ -145,6 +145,27 @@ describe("createPaneSizing", () => {
 		expect(pane.width).toBe(142);
 	});
 
+	it("keeps the width the user gave it through a press that moves nothing", () => {
+		const { pane, stored, sizing } = sidebarAt(200, { drawnUpTo: 150 });
+
+		sizing.startResize(grab(1000));
+		release();
+
+		expect(pane.width).toBe(200);
+		expect(stored).toEqual([]);
+	});
+
+	it("reopens a pane a drag collapsed at the width the layout drew it at", () => {
+		const { pane, stored, sizing } = sidebarAt(200, { drawnUpTo: 150 });
+
+		sizing.startResize(grab(1000));
+		moveTo(800);
+		release();
+
+		expect(pane).toEqual({ width: 150, collapsed: true });
+		expect(stored).toEqual([150]);
+	});
+
 	it("stores the width the layout draws it at when a resize begins", () => {
 		const { stored, sizing } = sidebarAt(200, { drawnUpTo: 150 });
 

@@ -10,7 +10,7 @@ export interface PaneSizingOptions {
 	/** The width the layout draws the open pane at, which the room can narrow. */
 	drawn: () => number;
 	collapsed: () => boolean;
-	/** Runs as a drag or a step begins, so every pane can adopt its drawn width. */
+	/** Runs before a drag or a step first changes a width, so every pane can adopt its drawn width. */
 	beforeresize: () => void;
 	onwidthchange: (width: number) => void;
 	oncollapsedchange: (collapsed: boolean) => void;
@@ -69,16 +69,24 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		options.store(drawn);
 	}
 
+	// A press that moves nothing leaves every width as the user gave it, so the
+	// drawn widths are adopted only once the pointer moves the splitter.
 	function startResize(e: MouseEvent) {
 		e.preventDefault();
-		options.beforeresize();
 		const startX = e.clientX;
 		const startWidth = size();
-		const reopenWidth = options.width();
+		let reopenWidth = options.width();
+		let moved = false;
 		let collapsed = false;
 		stepsFrom = null;
 
 		function onMouseMove(ev: MouseEvent) {
+			if (ev.clientX === startX && !moved) return;
+			if (!moved) {
+				options.beforeresize();
+				reopenWidth = options.width();
+			}
+			moved = true;
 			collapsed = resize(
 				Math.max(0, startWidth + widenSign * (ev.clientX - startX)),
 			);
@@ -86,7 +94,7 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 
 		function onMouseUp() {
 			if (collapsed) options.onwidthchange(reopenWidth);
-			storeOpenWidth();
+			if (moved) storeOpenWidth();
 			window.removeEventListener("mousemove", onMouseMove);
 			window.removeEventListener("mouseup", onMouseUp);
 		}
@@ -96,10 +104,11 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 	}
 
 	function step(delta: number) {
-		options.beforeresize();
 		const change = widenSign * delta;
 		const widens = change > 0;
 		if (options.collapsed() && !widens) return;
+
+		options.beforeresize();
 
 		if (options.collapsed()) {
 			stepsFrom = null;

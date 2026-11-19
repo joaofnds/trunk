@@ -858,6 +858,36 @@ describe("RepoView", () => {
 			]);
 		});
 
+		it("keeps the widths the user set through a press on a divider that moves nothing", async () => {
+			const row = observeRowAt(830);
+			renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
+			await tick();
+			const divider = screen.getByRole("slider", { name: "Resize sidebar" });
+			await fireEvent.mouseDown(divider, { clientX: 1000 });
+			await fireEvent.mouseUp(window);
+
+			await row.resize(1280);
+
+			expect([sliderValue("sidebar"), sliderValue("detail pane")]).toEqual([
+				"280",
+				"300",
+			]);
+		});
+
+		it("keeps the detail pane's width through a step that cannot narrow the collapsed sidebar", async () => {
+			const row = observeRowAt(1000);
+			renderWithPanes({ leftPaneCollapsed: true, rightPaneWidth: 700 });
+			await tick();
+			await fireEvent.keyDown(
+				screen.getByRole("slider", { name: "Resize sidebar" }),
+				{ key: "ArrowLeft" },
+			);
+
+			await row.resize(1600);
+
+			expect(sliderValue("detail pane")).toBe("700");
+		});
+
 		it("stops a drag of the sidebar where the centre would go under its floor", async () => {
 			observeRowAt(1280);
 			const changes = renderWithPanes({
