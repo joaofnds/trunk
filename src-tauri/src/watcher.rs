@@ -643,10 +643,52 @@ enum Message {
     Stop,
 }
 
+/// A value that drops on a thread of its own, so dropping its owner returns at once.
+struct DetachedDrop<T: Send + 'static>(Option<T>);
+
+impl<T: Send + 'static> DetachedDrop<T> {
+    const fn new(value: T) -> Self {
+        Self(Some(value))
+    }
+}
+
+impl<T: Send + 'static> Drop for DetachedDrop<T> {
+    fn drop(&mut self) {
+        let value = self.0.take();
+
+        drop(
+            std::thread::Builder::new()
+                .name("trunk detached drop".to_string())
+                .spawn(move || drop(value)),
+        );
+    }
+}
+
+impl<T: Send + 'static> std::ops::Deref for DetachedDrop<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        self.0
+            .as_ref()
+            .expect("the value is present until the drop")
+    }
+}
+
+impl<T: Send + 'static> std::ops::DerefMut for DetachedDrop<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        self.0
+            .as_mut()
+            .expect("the value is present until the drop")
+    }
+}
+
 /// A repository's filesystem watch and the thread that paces what it reports.
-/// Dropping it stops both.
+///
+/// Dropping it stops the pacer before it returns. The watch stops on a thread of its
+/// own, because notify's macOS watcher waits on fseventsd to unregister its stream,
+/// which takes tens of seconds while fseventsd is busy.
 pub struct RepoWatcher {
-    watcher: RecommendedWatcher,
+    watcher: DetachedDrop<RecommendedWatcher>,
     outbox: Sender<Message>,
 }
 
@@ -673,7 +715,10 @@ impl RepoWatcher {
             notify::Config::default(),
         )?;
 
-        Ok(Self { watcher, outbox })
+        Ok(Self {
+            watcher: DetachedDrop::new(watcher),
+            outbox,
+        })
     }
 }
 
@@ -1364,6 +1409,28 @@ mod tests {
 
         assert_eq!(result.unwrap_err().code, "watcher_unavailable");
         assert!(state.watchers.lock().unwrap().is_empty());
+    }
+
+    mod detached_drop {
+        use super::*;
+        use std::thread::ThreadId;
+
+        struct RecordsItsDroppingThread(Sender<ThreadId>);
+
+        impl Drop for RecordsItsDroppingThread {
+            fn drop(&mut self) {
+                self.0.send(std::thread::current().id()).unwrap();
+            }
+        }
+
+        #[test]
+        fn its_value_drops_on_a_thread_other_than_the_owners() {
+            let (dropping_thread, dropped_on) = mpsc::channel();
+
+            drop(DetachedDrop::new(RecordsItsDroppingThread(dropping_thread)));
+
+            assert_ne!(dropped_on.recv().unwrap(), std::thread::current().id());
+        }
     }
 
     mod writers {
