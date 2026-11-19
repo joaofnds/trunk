@@ -456,7 +456,7 @@ describe("RepoView", () => {
 			{ key: "ArrowRight" },
 		);
 
-		expect(changes).toEqual(["left collapsed false", "left width 208"]);
+		expect(changes).toEqual(["left width 208"]);
 	});
 
 	it("narrows the detail pane by a step when its divider takes ArrowRight", async () => {
@@ -467,7 +467,7 @@ describe("RepoView", () => {
 			{ key: "ArrowRight" },
 		);
 
-		expect(changes).toEqual(["right collapsed false", "right width 292"]);
+		expect(changes).toEqual(["right width 292"]);
 	});
 
 	it.each([
@@ -810,7 +810,7 @@ describe("RepoView", () => {
 				0,
 			);
 
-			expect(changes).toEqual(["right collapsed false", "right width 680"]);
+			expect(changes).toEqual(["right width 680"]);
 		});
 
 		it("stops a drag of the sidebar where the center would go under its floor", async () => {
@@ -827,7 +827,7 @@ describe("RepoView", () => {
 				1500,
 			);
 
-			expect(changes).toEqual(["left collapsed false", "left width 580"]);
+			expect(changes).toEqual(["left width 580"]);
 		});
 
 		describe("when the window is too narrow for the panes as set", () => {
@@ -993,7 +993,7 @@ describe("RepoView", () => {
 				1040,
 			);
 
-			expect(changes).toEqual(["left collapsed false", "left width 240"]);
+			expect(changes).toEqual(["left width 240"]);
 		});
 
 		it("takes the reviews away while the sidebar is collapsed", async () => {

@@ -60,13 +60,11 @@ import {
 	setActiveTabId,
 	setDiffContentMode,
 	setLeftPaneCollapsed,
-	setLeftPaneWidth,
 	setOpenRepo,
 	setOpenTabs,
 	setReviewLeftPaneCollapsed,
 	setReviewThreadsHidden,
 	setRightPaneCollapsed,
-	setRightPaneWidth,
 	setZoomLevel,
 	subscribeFetchInterval,
 } from "./lib/store.js";
@@ -1363,11 +1361,9 @@ $effect(() => {
 								onrightpanecollapsedchange={changeRightPaneCollapsed}
 								onleftpanewidthchange={(w) => {
 									leftPaneWidth = w;
-									setLeftPaneWidth(w);
 								}}
 								onrightpanewidthchange={(w) => {
 									rightPaneWidth = w;
-									setRightPaneWidth(w);
 								}}
 								onleavereview={() => {
 									reviewPanelOpen = false;

@@ -14,6 +14,7 @@ export interface PaneSizingOptions {
 	beforeresize: () => void;
 	onwidthchange: (width: number) => void;
 	oncollapsedchange: (collapsed: boolean) => void;
+	/** Saves the width the user gave the pane, once a resize that changed it ends. */
 	store: (width: number) => void;
 }
 
@@ -44,14 +45,18 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		return options.collapsed() ? 0 : options.drawn();
 	}
 
+	function setCollapsed(collapsed: boolean) {
+		if (options.collapsed() !== collapsed) options.oncollapsedchange(collapsed);
+	}
+
 	/** Reports whether the width collapsed the pane. */
 	function resize(width: number): boolean {
 		if (width < options.floor()) {
-			options.oncollapsedchange(true);
+			setCollapsed(true);
 			return true;
 		}
 
-		options.oncollapsedchange(false);
+		setCollapsed(false);
 		options.onwidthchange(
 			Math.max(options.floor(), Math.min(options.max(), width)),
 		);
@@ -59,14 +64,10 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 	}
 
 	function openAtFloor() {
-		options.oncollapsedchange(false);
+		setCollapsed(false);
 		if (options.width() > options.floor()) {
 			options.onwidthchange(options.floor());
 		}
-	}
-
-	function storeOpenWidth() {
-		if (!options.collapsed()) options.store(options.width());
 	}
 
 	function adopt(drawn: number) {
@@ -74,6 +75,10 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 
 		options.onwidthchange(drawn);
 		options.store(drawn);
+	}
+
+	function storeIfChangedFrom(width: number) {
+		if (options.width() !== width) options.store(options.width());
 	}
 
 	// A press that moves nothing leaves every width as the user gave it, so the
@@ -101,7 +106,7 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 
 		function onMouseUp() {
 			if (collapsed) options.onwidthchange(reopenWidth);
-			if (moved) storeOpenWidth();
+			storeIfChangedFrom(reopenWidth);
 			window.removeEventListener("mousemove", onMouseMove);
 			window.removeEventListener("mouseup", onMouseUp);
 		}
@@ -116,16 +121,22 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		if (options.collapsed() && !widens) return;
 
 		options.beforeresize();
+		const width = options.width();
 
 		if (options.collapsed()) {
 			steps = null;
 			openAtFloor();
-			return;
+		} else {
+			stepOpen(change);
 		}
 
+		storeIfChangedFrom(width);
+	}
+
+	function stepOpen(change: number) {
 		const floor = options.floor();
 		const from = steps?.floor === floor ? steps.from : options.width();
-		steps = widens ? null : { from, floor };
+		steps = change > 0 ? null : { from, floor };
 
 		if (!resize(Math.max(0, size() + change))) return;
 

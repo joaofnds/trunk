@@ -17,6 +17,7 @@ interface Layout {
 function sidebarAt(width: number, layout: Layout = {}) {
 	const pane = { width, collapsed: layout.collapsed ?? false };
 	const stored: number[] = [];
+	const collapses: boolean[] = [];
 	const drawn = () =>
 		Math.min(pane.width, layout.drawnUpTo ?? Number.POSITIVE_INFINITY);
 	const sizing: PaneSizing = createPaneSizing({
@@ -31,11 +32,12 @@ function sidebarAt(width: number, layout: Layout = {}) {
 			pane.width = next;
 		},
 		oncollapsedchange: (next) => {
+			collapses.push(next);
 			pane.collapsed = next;
 		},
 		store: (next) => stored.push(next),
 	});
-	return { pane, stored, sizing };
+	return { pane, stored, collapses, sizing };
 }
 
 function grab(clientX: number) {
@@ -164,6 +166,47 @@ describe("createPaneSizing", () => {
 
 		expect(pane).toEqual({ width: 150, collapsed: true });
 		expect(stored).toEqual([150]);
+	});
+
+	it("stores the width a step leaves it at", () => {
+		const { stored, sizing } = sidebarAt(200);
+
+		sizing.step(-8);
+
+		expect(stored).toEqual([192]);
+	});
+
+	it("stores the width it reopens at when a step closes it", () => {
+		const { stored, sizing } = sidebarAt(88);
+
+		sizing.step(-8);
+		sizing.step(-8);
+
+		expect(stored).toEqual([80, 88]);
+	});
+
+	it("stores nothing for a drag that closes it at the width it began at", () => {
+		const { pane, stored, sizing } = sidebarAt(200);
+
+		sizing.startResize(grab(1000));
+		moveTo(879);
+		release();
+
+		expect(pane).toEqual({ width: 200, collapsed: true });
+		expect(stored).toEqual([]);
+	});
+
+	it("reports the pane collapsed or opened only when it changes", () => {
+		const { collapses, sizing } = sidebarAt(200);
+
+		sizing.startResize(grab(1000));
+		moveTo(1010);
+		moveTo(1020);
+		moveTo(879);
+		moveTo(890);
+		release();
+
+		expect(collapses).toEqual([true, false]);
 	});
 
 	it("stores the width the layout draws it at when a resize begins", () => {

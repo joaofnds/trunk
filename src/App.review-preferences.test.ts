@@ -77,6 +77,7 @@ interface PreferenceReadBarrier {
 class StatefulAppHost implements HostChannel {
 	private readonly preferences = new Map<string, unknown>();
 	private readonly readPreferences: string[] = [];
+	private readonly writtenPreferences: [string, unknown][] = [];
 	private readonly eventHandlers: EventHandler[] = [];
 	private readonly reviews = new Map<string, RepositoryReviews>();
 	private readonly commitDiffs = new Map<
@@ -107,6 +108,11 @@ class StatefulAppHost implements HostChannel {
 
 	preferenceReads(): readonly string[] {
 		return this.readPreferences;
+	}
+
+	/** Every preference write the app made, in order, as key and value. */
+	preferenceWrites(): readonly (readonly [string, unknown])[] {
+		return this.writtenPreferences;
 	}
 
 	seedReview(path: string, review: RepositoryReview): void {
@@ -216,6 +222,7 @@ class StatefulAppHost implements HostChannel {
 					throw new Error(`could not write ${String(args.key)}`);
 				}
 				this.preferences.set(String(args.key), args.value);
+				this.writtenPreferences.push([String(args.key), args.value]);
 				return null;
 			case "canonical_repo_path":
 				return path;
@@ -838,6 +845,8 @@ describe("App side panes", () => {
 			narrow: "ArrowLeft",
 			widen: "ArrowRight",
 			floor: "80",
+			widthKey: "left_pane_width",
+			steppedWidth: 212,
 		},
 		{
 			pane: "detail pane",
@@ -845,6 +854,8 @@ describe("App side panes", () => {
 			narrow: "ArrowRight",
 			widen: "ArrowLeft",
 			floor: "200",
+			widthKey: "right_pane_width",
+			steppedWidth: 272,
 		},
 	];
 
@@ -884,6 +895,39 @@ describe("App side panes", () => {
 			await pressShortcut(shortcut);
 
 			expect(divider).toHaveAttribute("aria-valuenow", floor);
+		},
+	);
+
+	it("writes the sidebar's width to the preferences once for a drag", async () => {
+		seedOneTab();
+		render(App);
+		const divider = await screen.findByRole("slider", {
+			name: "Resize sidebar",
+		});
+		await nextTask();
+
+		await fireEvent.mouseDown(divider, { clientX: 1000 });
+		await fireEvent.mouseMove(window, { clientX: 1010 });
+		await fireEvent.mouseMove(window, { clientX: 1020 });
+		await fireEvent.mouseMove(window, { clientX: 1030 });
+		await fireEvent.mouseUp(window);
+
+		expect(paneWrites()).toEqual([["left_pane_width", 250]]);
+	});
+
+	it.each(panes)(
+		"writes the width a step leaves the $pane at",
+		async ({ pane, narrow, widthKey, steppedWidth }) => {
+			seedOneTab();
+			render(App);
+			const divider = await screen.findByRole("slider", {
+				name: `Resize ${pane}`,
+			});
+			await nextTask();
+
+			await fireEvent.keyDown(divider, { key: narrow });
+
+			expect(paneWrites()).toEqual([[widthKey, steppedWidth]]);
 		},
 	);
 
@@ -950,6 +994,11 @@ describe("App side panes", () => {
 		).not.toHaveAttribute("aria-valuenow", "0");
 	});
 });
+
+/** The side panes' widths and collapsed states the app wrote, in order. */
+function paneWrites(): (readonly [string, unknown])[] {
+	return host.preferenceWrites().filter(([key]) => key.includes("_pane_"));
+}
 
 function seedOneTab(): void {
 	host.seedPreference("open_tabs", [
