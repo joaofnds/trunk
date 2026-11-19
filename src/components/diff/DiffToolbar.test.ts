@@ -230,6 +230,27 @@ describe("DiffToolbar toggles", () => {
 	});
 });
 
+describe("DiffToolbar in a narrow pane", () => {
+	it.each([
+		{ name: "Comment File", diffKind: "commit" },
+		{ name: "Discard File", diffKind: "unstaged" },
+		{ name: "Stage File", diffKind: "unstaged" },
+		{ name: "Unstage File", diffKind: "staged" },
+	] as const)(
+		"draws a glyph in $name, which stands for its words where they do not fit",
+		({ name, diffKind }) => {
+			render(DiffToolbar, {
+				props: { ...baseProps, selectedPath: "src/main.rs", diffKind },
+			});
+
+			const action = screen.getByRole("button", { name });
+
+			expect(action.querySelector("svg")).not.toBeNull();
+			expect(action).toHaveAttribute("title", name);
+		},
+	);
+});
+
 describe("DiffToolbar way back", () => {
 	it("goes back to where the diff was opened from", async () => {
 		let closes = 0;

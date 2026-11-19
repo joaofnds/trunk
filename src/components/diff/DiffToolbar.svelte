@@ -4,10 +4,14 @@ import Code2 from "@lucide/svelte/icons/code-2";
 import Columns2 from "@lucide/svelte/icons/columns-2";
 import Eye from "@lucide/svelte/icons/eye";
 import FoldVertical from "@lucide/svelte/icons/fold-vertical";
+import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
+import Minus from "@lucide/svelte/icons/minus";
 import Pilcrow from "@lucide/svelte/icons/pilcrow";
+import Plus from "@lucide/svelte/icons/plus";
 import Rows2 from "@lucide/svelte/icons/rows-2";
 import Space from "@lucide/svelte/icons/space";
 import TextWrap from "@lucide/svelte/icons/text-wrap";
+import Trash2 from "@lucide/svelte/icons/trash-2";
 import UnfoldVertical from "@lucide/svelte/icons/unfold-vertical";
 import X from "@lucide/svelte/icons/x";
 import { onMount } from "svelte";
@@ -126,10 +130,24 @@ const renderedActive = $derived(
 );
 </script>
 
-<div class="toolbar">
+<!-- Where the pane is too narrow for the worded actions beside a readable file
+     name, they drop their words for their glyphs (the container rules below). -->
+<div
+	class="toolbar"
+	class:unstaged={diffKind === "unstaged"}
+	class:staged={diffKind === "staged"}
+	class:has-back={backLabel !== null}
+>
 	{#if backLabel !== null}
-		<Button size="sm" variant="ghost" onclick={onclose}>
-			<ChevronLeft size={12} aria-hidden="true" />{backLabel}
+		<Button
+			size="sm"
+			variant="ghost"
+			aria-label={backLabel}
+			title={backLabel}
+			onclick={onclose}
+		>
+			<ChevronLeft size={12} aria-hidden="true" />
+			<span class="word">{backLabel}</span>
 		</Button>
 	{/if}
 	{#if badge !== null}
@@ -167,9 +185,17 @@ const renderedActive = $derived(
        sits right after the file name, which gives up the width it takes, so its
        arrival moves no other control. -->
 	{#if takesComments && diffKind !== "current_file"}
-		<Button size="sm" variant="accent" onclick={oncommentfile}
-			>Comment File</Button
+		<Button
+			size="sm"
+			variant="accent"
+			aria-label="Comment File"
+			title="Comment File"
+			onclick={oncommentfile}
 		>
+			<span class="glyph"
+				><MessageSquarePlus size={12} aria-hidden="true" /></span
+			><span class="word">Comment File</span>
+		</Button>
 	{/if}
 
 	{#if selectedPath && isMarkdownPath(selectedPath)}
@@ -270,9 +296,12 @@ const renderedActive = $derived(
 			size="sm"
 			variant="danger"
 			disabled={hunkOperationInFlight}
+			aria-label="Discard File"
+			title="Discard File"
 			onclick={ondiscardfile}
 		>
-			Discard File
+			<span class="glyph"><Trash2 size={12} aria-hidden="true" /></span
+			><span class="word">Discard File</span>
 		</Button>
 		<Button
 			size="sm"
@@ -280,10 +309,12 @@ const renderedActive = $derived(
 			disabled={hunkOperationInFlight || ignoreWhitespace}
 			title={ignoreWhitespace
 				? "Staging is disabled while whitespace changes are ignored"
-				: undefined}
+				: "Stage File"}
+			aria-label="Stage File"
 			onclick={onstagefile}
 		>
-			Stage File
+			<span class="glyph"><Plus size={12} aria-hidden="true" /></span
+			><span class="word">Stage File</span>
 		</Button>
 	{:else if diffKind === "staged"}
 		<Button
@@ -292,10 +323,12 @@ const renderedActive = $derived(
 			disabled={hunkOperationInFlight || ignoreWhitespace}
 			title={ignoreWhitespace
 				? "Staging is disabled while whitespace changes are ignored"
-				: undefined}
+				: "Unstage File"}
+			aria-label="Unstage File"
 			onclick={onunstagefile}
 		>
-			Unstage File
+			<span class="glyph"><Minus size={12} aria-hidden="true" /></span
+			><span class="word">Unstage File</span>
 		</Button>
 	{/if}
 
@@ -318,6 +351,7 @@ const renderedActive = $derived(
 }
 
 .toolbar {
+	container: diff-toolbar / inline-size;
 	height: var(--bar-h);
 	box-shadow: inset 0 -1px 0 var(--color-border);
 	padding: 0 var(--space-2);
@@ -325,6 +359,54 @@ const renderedActive = $derived(
 	align-items: center;
 	flex-shrink: 0;
 	gap: var(--space-1);
+}
+
+.glyph {
+	display: none;
+}
+
+/* Each width is what the toolbar's worded controls take, with the markdown
+   toggle among them, plus about six ems of file name, in the toolbar's own
+   text size, so the words go a little early rather than leave the name no
+   room. The kinds with more worded actions need more. */
+@container diff-toolbar (width < 39.5em) {
+	.unstaged.has-back .word {
+		display: none;
+	}
+
+	.unstaged.has-back .glyph {
+		display: inline-flex;
+	}
+}
+
+@container diff-toolbar (width < 35em) {
+	:is(.unstaged, .staged.has-back) .word {
+		display: none;
+	}
+
+	:is(.unstaged, .staged.has-back) .glyph {
+		display: inline-flex;
+	}
+}
+
+@container diff-toolbar (width < 30.5em) {
+	:is(.staged, .has-back) .word {
+		display: none;
+	}
+
+	:is(.staged, .has-back) .glyph {
+		display: inline-flex;
+	}
+}
+
+@container diff-toolbar (width < 25em) {
+	.word {
+		display: none;
+	}
+
+	.glyph {
+		display: inline-flex;
+	}
 }
 
 /* Clipped, so the parts of a rename that cannot shrink (the old path's floor and
