@@ -3089,6 +3089,30 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		expect(await screen.findByText("Comment on line 4")).toBeTruthy();
 	});
 
+	it("selects a context line from the keyboard", async () => {
+		renderPanel();
+		await flushPrefs();
+		await fireEvent.keyDown(gutterOf("export { x };"), { key: "Enter" });
+
+		await fireEvent.keyDown(window, { key: "c" });
+
+		expect(await screen.findByText("Comment on line 4")).toBeTruthy();
+	});
+
+	it("extends a selection onto a context line from the keyboard with Shift held", async () => {
+		renderPanel();
+		await flushPrefs();
+		await fireEvent.keyDown(gutterOf("const x = 2;"), { key: "Enter" });
+
+		await fireEvent.keyDown(gutterOf("export { x };"), {
+			key: " ",
+			shiftKey: true,
+		});
+
+		expect(rowOf("const y = 3;")).toHaveClass("in-selection");
+		expect(rowOf("export { x };")).toHaveClass("in-selection");
+	});
+
 	it("carries a drag from a changed line onto the context lines it crosses", async () => {
 		renderPanel();
 		await flushPrefs();
