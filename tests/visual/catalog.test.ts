@@ -7,6 +7,7 @@ describe("design catalog", () => {
 
 	beforeAll(async () => {
 		harness = await CatalogHarness.setup();
+		await harness.warmUp();
 	});
 
 	afterAll(async () => {

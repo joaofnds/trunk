@@ -53,7 +53,8 @@ here before any screen that uses it does, and a reader can see the system whole.
 `tests/visual/catalog.test.ts` opens `tests/visual/page/catalog.html` through its own
 `CatalogHarness`: one Vite server and one WebKit page, with no `app_host` and no fixture
 repository, since the catalog binds to nothing. vitest runs it in parallel with the graph
-file, so it adds well under a second to the suite.
+file, so it adds well under a second to the suite. Its page takes one capture of the catalog
+and discards it before the test, as each graph page does below.
 
 The capture masks every element carrying `data-catalog-text` with Playwright's mask color,
 solid magenta. GitHub's `macos-latest` runner draws text up to 36 levels away from this Mac

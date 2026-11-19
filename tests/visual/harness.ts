@@ -273,13 +273,24 @@ export class CatalogHarness {
 		}
 	}
 
+	/** The page takes its first capture here, and the test takes only a later
+	 *  one, which costs less, as each graph page's does. A capture that fails
+	 *  here is taken again by the test, which reports the failure. */
+	async warmUp(): Promise<void> {
+		await this.captureUntil(NEVER_ABANDONED).catch(() => undefined);
+	}
+
 	/** The whole catalog with every text label masked, since glyphs differ
 	 *  between machines by more than the tolerance (docs/visual-regression.md)
 	 *  and the tokens and primitives around them are what the baseline pins. */
-	async capture(test: CaptureTest): Promise<Buffer> {
-		await this.page.goto(this.url, { signal: test.signal });
+	capture(test: CaptureTest): Promise<Buffer> {
+		return this.captureUntil(test.signal);
+	}
+
+	private async captureUntil(abandoned: AbortSignal): Promise<Buffer> {
+		await this.page.goto(this.url, { signal: abandoned });
 		const catalog = this.page.locator("[data-testid=catalog]");
-		await catalog.waitFor({ signal: test.signal });
+		await catalog.waitFor({ signal: abandoned });
 
 		return settled(async () => {
 			await painted(this.page);
@@ -288,7 +299,7 @@ export class CatalogHarness {
 				mask: [
 					this.page.locator("[data-catalog-text], [data-catalog-headings] h3"),
 				],
-				signal: test.signal,
+				signal: abandoned,
 			});
 		});
 	}
