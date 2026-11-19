@@ -60,6 +60,22 @@ describe("toast store", () => {
 		expect(toasts.items.map((t) => t.message)).toEqual(["live"]);
 	});
 
+	it("keeps an error toast until it is dismissed", () => {
+		showToast("refused", "error");
+
+		vi.runAllTimers();
+
+		expect(toasts.items.map((t) => t.message)).toEqual(["refused"]);
+	});
+
+	it("shows an error that is already on screen once", () => {
+		showToast("refused", "error");
+
+		showToast("refused", "error");
+
+		expect(toasts.items.map((t) => t.message)).toEqual(["refused"]);
+	});
+
 	// Test E: showToast with kind='error' adds item with kind='error'
 	it("showToast('err', 'error') adds an item with kind='error'", () => {
 		showToast("err", "error");
