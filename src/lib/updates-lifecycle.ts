@@ -16,7 +16,11 @@ interface PreparationHost {
 	abort(token: string): Promise<unknown>;
 	freeze(frozen: boolean): void;
 	settle(): Promise<void>;
+	/** Whether the restart is still waiting on earlier work and can be called off. */
+	waiting(waiting: boolean): void;
 }
+
+type Capture = { participant: UpdateParticipant; capture: UpdateCapture };
 
 export class UpdatePreparation {
 	private readonly participants = new Set<UpdateParticipant>();
@@ -35,94 +39,131 @@ export class UpdatePreparation {
 		if (this.running) throw new Error("An update is already being prepared.");
 		this.running = true;
 		try {
-			if (await this.earlierWorkSettles())
+			this.refuseBlocked();
+			if (await this.unlessCancelled(this.host.settle()))
 				await this.prepareAndInstall(version);
 		} finally {
 			this.running = false;
 		}
 	}
 
-	/** Stop a restart still waiting on earlier work. */
+	/** Call off a restart still waiting on earlier work. */
 	cancel(): void {
 		this.stopWaiting?.();
 	}
 
-	private async earlierWorkSettles(): Promise<boolean> {
+	private refuseBlocked(): void {
+		for (const participant of this.participants) {
+			const { blocker } = participant.capture();
+			if (blocker) throw new Error(blocker);
+		}
+	}
+
+	private async unlessCancelled(work: Promise<void>): Promise<boolean> {
 		const cancelled = new Promise<false>((resolve) => {
 			this.stopWaiting = () => resolve(false);
 		});
+		this.host.waiting(true);
 		try {
-			return await Promise.race([
-				this.host.settle().then(() => true),
-				cancelled,
-			]);
+			return await Promise.race([work.then(() => true), cancelled]);
 		} finally {
 			this.stopWaiting = null;
+			this.host.waiting(false);
 		}
 	}
 
 	private async prepareAndInstall(version: string): Promise<void> {
 		this.host.freeze(true);
-		let token: string | undefined;
-		let captures: { participant: UpdateParticipant; capture: UpdateCapture }[] =
-			[];
+		let captures: Capture[];
+		let permit: string;
 		try {
-			captures = [...this.participants].map((participant) => ({
-				participant,
-				capture: participant.capture(),
-			}));
-			for (const { capture } of captures) {
-				if (capture.blocker) throw new Error(capture.blocker);
-			}
-
-			const permit = await this.host.prepare(version);
-			token = permit;
-			await this.host.drained(permit);
-			const results = await Promise.allSettled(
-				captures.map(({ capture }) =>
-					Promise.resolve().then(() => capture.flush(permit)),
-				),
-			);
-			for (const result of results) {
-				if (result.status === "rejected") throw result.reason;
-			}
-			if (captures.length !== this.participants.size)
-				throw new Error(
-					"Open editors changed while preparing the update. Try again.",
-				);
-			for (const { participant, capture } of captures) {
-				const current = participant.capture();
-				if (
-					!this.participants.has(participant) ||
-					current.blocker ||
-					current.generation !== capture.generation
-				)
-					throw new Error(
-						"A draft changed while preparing the update. Try again.",
-					);
-			}
-
-			await this.host.install(version, token);
+			captures = this.capture();
+			permit = await this.host.prepare(version);
 		} catch (error) {
-			if (token !== undefined) await this.host.abort(token);
 			this.host.freeze(false);
-			if (token !== undefined) {
-				const cleanup = await Promise.allSettled(
-					captures.map(({ capture }) =>
-						Promise.resolve().then(() => capture.discard?.()),
-					),
-				);
-				const failures = cleanup.flatMap((result) =>
-					result.status === "rejected" ? [result.reason] : [],
-				);
-				if (failures.length > 0)
-					throw new AggregateError(
-						[error, ...failures],
-						"The update was stopped, but some recovery snapshots could not be cleared. You can keep working; draft recovery may need attention on the next launch.",
-					);
-			}
 			throw error;
 		}
+
+		try {
+			if (await this.unlessCancelled(this.host.drained(permit))) {
+				await this.flushAndInstall(version, permit, captures);
+				return;
+			}
+		} catch (error) {
+			await this.stop(permit, captures, error);
+			throw error;
+		}
+
+		await this.stop(permit, captures, null);
+	}
+
+	private capture(): Capture[] {
+		const captures = [...this.participants].map((participant) => ({
+			participant,
+			capture: participant.capture(),
+		}));
+
+		for (const { capture } of captures) {
+			if (capture.blocker) throw new Error(capture.blocker);
+		}
+
+		return captures;
+	}
+
+	private async flushAndInstall(
+		version: string,
+		permit: string,
+		captures: Capture[],
+	): Promise<void> {
+		const results = await Promise.allSettled(
+			captures.map(({ capture }) =>
+				Promise.resolve().then(() => capture.flush(permit)),
+			),
+		);
+		for (const result of results) {
+			if (result.status === "rejected") throw result.reason;
+		}
+		if (captures.length !== this.participants.size)
+			throw new Error(
+				"Open editors changed while preparing the update. Try again.",
+			);
+		for (const { participant, capture } of captures) {
+			const current = participant.capture();
+			if (
+				!this.participants.has(participant) ||
+				current.blocker ||
+				current.generation !== capture.generation
+			)
+				throw new Error(
+					"A draft changed while preparing the update. Try again.",
+				);
+		}
+
+		await this.host.install(version, permit);
+	}
+
+	/** Reopen Trunk after a preparation that will not install, and clear the
+	 *  recovery snapshots its flushes may have written. */
+	private async stop(
+		token: string,
+		captures: Capture[],
+		cause: unknown,
+	): Promise<void> {
+		await this.host.abort(token);
+		this.host.freeze(false);
+		const cleanup = await Promise.allSettled(
+			captures.map(({ capture }) =>
+				Promise.resolve().then(() => capture.discard?.()),
+			),
+		);
+		const failures = cleanup.flatMap((result) =>
+			result.status === "rejected" ? [result.reason] : [],
+		);
+		if (failures.length > 0)
+			throw new AggregateError(
+				cause === null ? failures : [cause, ...failures],
+				"The update was stopped, but some recovery snapshots could not be cleared. You can keep working; draft recovery may need attention on the next launch.",
+			);
 	}
 }
 

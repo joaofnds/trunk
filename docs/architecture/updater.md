@@ -99,23 +99,27 @@ recovery still closes admission only when nothing is running. An ordinary read
 also needs admission because opening preferences or
 review data can migrate or quarantine files.
 
-The frontend first waits for its pending IPC while Trunk stays usable, so a
-running push stays cancellable and the panel offers to cancel the restart. Once
-nothing is pending it freezes input and captures each participant's draft
-generation. The backend then issues a preparation token.
+An editor whose full state cannot be restored refuses the restart at the click,
+with a reason. Otherwise the frontend first waits for its pending IPC while
+Trunk stays usable, so a running push stays cancellable and the panel offers to
+cancel the restart. Once nothing is pending it freezes input, opens the panel,
+and captures each participant's draft generation. The backend then issues a
+preparation token and waits for the work it admitted earlier, which lasts as
+long as that hidden work runs. The panel offers to cancel through that wait too.
+Cancelling aborts the token and reopens Trunk with no draft flushed.
 Only preferences and review-draft persistence commands may carry that token
 through the closed gate. Flushes must finish and generations must still match
 before installation starts. Commit draft updates serialize their whole-map
 read/modify/write. A supported review composer saves its recovery context.
-Editors whose full state cannot be restored block restart with a reason.
 
 Native Quit and closing the main window participate in the gate. An accepted
 exit prevents a later preparation. A preparation still waiting on earlier work
-ends and lets the exit through. Once flushing begins, preparation and
-installation prevent a normal exit. The updater's explicit restart is allowed. Before replacement, a checked
-window-state save runs on the main thread, and an atomic intent record is saved
-outside the application bundle. Aborting reopens admission, invalidates repository
-caches, and refreshes repositories and reviews after frontend input resumes.
+ends and lets the exit through. Once that earlier work has settled, preparation
+and installation prevent a normal exit. The updater's explicit restart is
+allowed. Before replacement, a checked window-state save runs on the main
+thread, and an atomic intent record is saved outside the application bundle.
+Aborting reopens admission, invalidates repository caches, and refreshes
+repositories and reviews after frontend input resumes.
 
 The external review CLI remains a separate process. It can update the shared
 review database while GUI admission is closed. SQLite and the existing schema

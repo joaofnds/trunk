@@ -85,7 +85,7 @@ let updateStatus = $state<UpdateStatus | null>(null);
 let updateOpen = $state(false);
 let updateBusy = $state(false);
 let updateFrozen = $state(false);
-let updateWaiting = $state(false);
+let restartWaiting = $state(false);
 let confirmUpdateVersion = $state<string | null>(null);
 let updateError = $state<string | null>(null);
 let updateRetry = $state<"status" | "readiness" | null>(null);
@@ -136,6 +136,7 @@ const preparation = new UpdatePreparation({
 	},
 	freeze: (frozen) => {
 		updateFrozen = frozen;
+		if (frozen) updateOpen = true;
 		setUpdateFrozen(frozen);
 		updateChecks.update(releaseChecksEnabled, frozen || updateBusy);
 		if (!frozen)
@@ -144,7 +145,10 @@ const preparation = new UpdatePreparation({
 					"Could not refresh repositories after preparing the update. Refresh before continuing.";
 			});
 	},
-	settle: invokesSettled,
+	settle: () => invokesSettled(updateClock),
+	waiting: (waiting) => {
+		restartWaiting = waiting;
+	},
 });
 provideUpdatePreparation(preparation);
 onDestroy(() => setUpdateFrozen(false));
@@ -429,7 +433,7 @@ $effect(() => {
 });
 
 async function runAutofetch(path: string, intervalMs: number): Promise<void> {
-	if (updateFrozen || updateWaiting) return;
+	if (updateFrozen || restartWaiting) return;
 	const tab = tabs.find((tab) => tab.repoPath === path);
 	const target = tab ? tabStates.get(tab.id)?.remoteState : undefined;
 	let report: FetchReport;
@@ -1249,6 +1253,7 @@ $effect(() => {
 					status={updateStatus}
 					busy={updateBusy}
 					frozen={updateFrozen}
+					waiting={restartWaiting}
 					bind:open={updateOpen}
 					onclose={() => (confirmUpdateVersion = null)}
 					oncheck={() => void updateAction(updates.check)}
@@ -1263,7 +1268,7 @@ $effect(() => {
 							status={updateStatus}
 							busy={updateBusy}
 							frozen={updateFrozen}
-							waiting={updateWaiting && !updateFrozen}
+							waiting={restartWaiting}
 							error={updateError}
 							confirmVersion={confirmUpdateVersion}
 							retry={updateRetry
@@ -1296,12 +1301,7 @@ $effect(() => {
 								confirmUpdateVersion = null;
 								updateOpen = true;
 								void updateAction(async () => {
-									updateWaiting = true;
-									try {
-										await preparation.install(version);
-									} finally {
-										updateWaiting = false;
-									}
+									await preparation.install(version);
 									return undefined;
 								});
 							}}

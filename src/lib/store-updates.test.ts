@@ -1,6 +1,7 @@
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, describe, expect, it } from "vitest";
 import { invokesSettled, safeInvoke } from "./invoke.js";
+import { realScheduler } from "./scheduler.js";
 import {
 	flushCommitDraftForUpdate,
 	flushPreferencesForUpdate,
@@ -64,7 +65,8 @@ describe("update draft persistence", () => {
 			},
 			abort: async () => {},
 			freeze: setUpdateFrozen,
-			settle: invokesSettled,
+			settle: () => invokesSettled(realScheduler),
+			waiting: () => {},
 		});
 
 		const restart = preparation.install("2.0.0");

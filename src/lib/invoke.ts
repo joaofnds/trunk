@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { span } from "./perf.js";
+import type { Scheduler } from "./scheduler.js";
 import { isUpdateFrozen } from "./updates-lifecycle.js";
 
 const pendingInvokes = new Set<Promise<unknown>>();
@@ -13,12 +14,16 @@ const UPDATE_FLUSH_COMMANDS = new Set([
 
 /** Resolve once no call is pending and the callers of the last ones have
  *  moved on, so a call their continuation makes is waited for too. */
-export async function invokesSettled(): Promise<void> {
+export async function invokesSettled(scheduler: Scheduler): Promise<void> {
 	for (;;) {
 		await Promise.allSettled(pendingInvokes);
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		await new Promise<void>((resolve) => scheduler.setTimeout(resolve, 0));
 		if (pendingInvokes.size === 0) return;
 	}
+}
+
+function isUpdateCommand(cmd: string): boolean {
+	return cmd.startsWith("updates_");
 }
 
 // Tauri IPC errors arrive as raw strings, not Error objects.
@@ -52,7 +57,7 @@ export async function safeInvoke<T>(
 ): Promise<T> {
 	if (
 		isUpdateFrozen() &&
-		!cmd.startsWith("updates_") &&
+		!isUpdateCommand(cmd) &&
 		!(
 			UPDATE_FLUSH_COMMANDS.has(cmd) && typeof args?.__updatePermit === "string"
 		)
@@ -71,7 +76,7 @@ export async function safeInvoke<T>(
 			throw asTrunkError(e);
 		}
 	});
-	if (cmd.startsWith("updates_")) return pending;
+	if (isUpdateCommand(cmd)) return pending;
 
 	pendingInvokes.add(pending);
 	try {

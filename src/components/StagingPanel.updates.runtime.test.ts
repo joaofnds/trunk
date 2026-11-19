@@ -40,6 +40,7 @@ async function openPausedRebase(message: string) {
 		abort: async () => {},
 		freeze: setUpdateFrozen,
 		settle: tick,
+		waiting: () => {},
 	});
 	render(UpdateStagingHarness, {
 		props: { preparation },

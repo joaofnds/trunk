@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/svelte";
+import { fireEvent, screen, within } from "@testing-library/svelte";
 import { afterEach, describe, expect, it } from "vitest";
 import { StartupHarness } from "./__tests__/helpers/startup-harness.js";
 import { REPO_CHANGE_DELAY_MS } from "./lib/coalesced-task.js";
@@ -309,6 +309,7 @@ describe("App update controls", () => {
 		await fireEvent.click(
 			screen.getByRole("button", { name: "Restart and install 2.0.0" }),
 		);
+		await app.untilRestartBegins();
 		const installation = await install.entered;
 		install.release(undefined);
 		await app.settle();
@@ -335,6 +336,7 @@ describe("App update controls", () => {
 			app.host.seedResponse("updates_status", ready);
 			app.host.seedResponse("updates_ready", ready);
 			app.host.seedResponse("updates_prepare", "prepared-version-2");
+			return ready;
 		}
 
 		async function confirmRestart() {
@@ -375,9 +377,10 @@ describe("App update controls", () => {
 			expect(
 				screen.getByText("Trunk will restart when the current work finishes."),
 			).toBeVisible();
-			expect(document.querySelector("[inert]")).toBeNull();
+			expect(app.frozen()).toBe(false);
 			expect(app.host.count("updates_prepare")).toBe(0);
 			refresh.release({ staged: 0, unstaged: 1 });
+			await app.untilRestartBegins();
 			await install.entered;
 			install.release(undefined);
 			await app.settle();
@@ -403,6 +406,7 @@ describe("App update controls", () => {
 			await confirmRestart();
 
 			opening.release(null);
+			await app.untilRestartBegins();
 			await install.entered;
 			install.release(undefined);
 			await app.settle();
@@ -426,9 +430,59 @@ describe("App update controls", () => {
 
 			expect(app.host.count("git_fetch_background")).toBe(fetchesBefore);
 			refresh.release({ staged: 0, unstaged: 1 });
+			await app.untilRestartBegins();
 			await install.entered;
 			install.release(undefined);
 			await app.settle();
+		});
+
+		it("brings the panel back when the restart freezes Trunk", async () => {
+			const { install, refresh } = await restartDuringARefresh();
+			await fireEvent.pointerDown(document.body);
+			const closed =
+				screen.queryByRole("region", { name: "Trunk updates" }) === null;
+
+			refresh.release({ staged: 0, unstaged: 1 });
+			await app.untilRestartBegins();
+			await install.entered;
+
+			expect(closed).toBe(true);
+			expect(
+				screen.getByRole("region", { name: "Trunk updates" }),
+			).toBeVisible();
+			install.release(undefined);
+			await app.settle();
+		});
+
+		it("calls the restart off while the backend finishes hidden work", async () => {
+			startup();
+			app.host.seedResponse("updates_abort", seedReady());
+			const drain = app.host.holdNextReply("updates_drained");
+			app.start();
+			await screen.findByText("restored history");
+			await app.settle();
+			await confirmRestart();
+			await app.untilRestartBegins();
+			await drain.entered;
+			const frozen = app.frozen();
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Cancel restart" }),
+			);
+			drain.reject({
+				code: "update_preparing",
+				message: "Preparation was aborted.",
+			});
+			await app.settle();
+
+			expect(frozen).toBe(true);
+			expect(app.host.count("updates_abort")).toBe(1);
+			expect(app.host.count("updates_install")).toBe(0);
+			expect(app.frozen()).toBe(false);
+			expect(screen.queryByRole("alert")).toBeNull();
+			expect(
+				screen.getByRole("button", { name: "Restart to update to 2.0.0" }),
+			).toBeEnabled();
 		});
 
 		it("prepares nothing when the restart is cancelled first", async () => {
@@ -440,13 +494,11 @@ describe("App update controls", () => {
 			refresh.release({ staged: 0, unstaged: 1 });
 			await app.settle();
 
-			await waitFor(() =>
-				expect(
-					screen.queryByText(
-						"Trunk will restart when the current work finishes.",
-					),
-				).toBeNull(),
-			);
+			expect(
+				screen.queryByText(
+					"Trunk will restart when the current work finishes.",
+				),
+			).toBeNull();
 			expect(app.host.count("updates_prepare")).toBe(0);
 		});
 	});

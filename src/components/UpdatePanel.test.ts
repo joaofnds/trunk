@@ -19,13 +19,14 @@ function mount(
 	status = ready,
 	frozen = false,
 	confirmVersion: string | null = null,
+	waiting = false,
 ) {
 	const calls: string[] = [];
 	const view = render(UpdatePanel, {
 		props: {
 			status,
 			frozen,
-			waiting: false,
+			waiting,
 			busy: false,
 			error: null,
 			confirmVersion,
@@ -175,6 +176,21 @@ describe("update panel", () => {
 		expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
 		expect(screen.queryByRole("button", { name: /Restart/ })).toBeNull();
 		expect(calls).toEqual([]);
+	});
+	it.each([
+		{ stage: "while Trunk stays usable", frozen: false },
+		{ stage: "while the backend finishes earlier work", frozen: true },
+	])("offers to cancel a waiting restart $stage", async ({ frozen }) => {
+		const { calls } = mount(ready, frozen, null, true);
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Cancel restart" }),
+		);
+
+		expect(screen.getByRole("status")).toHaveTextContent(
+			"Trunk will restart when the current work finishes.",
+		);
+		expect(calls).toEqual(["wait-cancel"]);
 	});
 	it("keeps keyboard focus inside the panel while the app is frozen", async () => {
 		const view = mount();

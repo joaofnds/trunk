@@ -102,6 +102,27 @@ export class StartupHarness {
 		await this.settle();
 	}
 
+	/** Whether the restart froze input. jsdom keeps `inert` as a property with
+	 *  no attribute, so no selector can see it. */
+	frozen(): boolean {
+		const root = this.view?.container.firstElementChild;
+		if (!(root instanceof HTMLElement))
+			throw new Error("the app is not mounted");
+		return root.inert;
+	}
+
+	/** A restart looks for pending work again on each zero-delay tick, so tick
+	 *  the clock until it asks the backend to prepare. */
+	async untilRestartBegins(): Promise<void> {
+		const before = this.host.count("updates_prepare");
+		for (let look = 0; look < 10; look += 1) {
+			this.clock.advanceBy(0);
+			await this.settle();
+			if (this.host.count("updates_prepare") > before) return;
+		}
+		throw new Error("The restart never asked the backend to prepare.");
+	}
+
 	async advanceFetches(count: number): Promise<void> {
 		for (let i = 0; i < count; i += 1) {
 			this.clock.advanceBy(60_000);

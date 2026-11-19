@@ -77,17 +77,17 @@ $effect(() => {
 			>Use your original installation method to update Trunk. Keep your
 			application data when reinstalling.</p
 		>
+	{:else if waiting}
+		<p role="status">Trunk will restart when the current work finishes.</p>
+		<div class="flex justify-end">
+			<Button size="sm" onclick={onwaitcancel}>Cancel restart</Button>
+		</div>
 	{:else if frozen}
 		<p role="status"
 			>{status?.phase === "installing"
 				? "Installing and restarting…"
 				: "Saving drafts and preparing to restart…"}</p
 		>
-	{:else if waiting}
-		<p role="status">Trunk will restart when the current work finishes.</p>
-		<div class="flex justify-end">
-			<Button size="sm" onclick={onwaitcancel}>Cancel restart</Button>
-		</div>
 	{:else if confirmVersion}
 		<h4 class="font-medium">Restart and install {confirmVersion}?</h4>
 		<p class="text-text-muted"

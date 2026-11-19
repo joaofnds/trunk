@@ -10,6 +10,7 @@ interface Props {
 	status: UpdateStatus | null;
 	busy: boolean;
 	frozen: boolean;
+	waiting: boolean;
 	open: boolean;
 	children: Snippet<[() => void]>;
 	onclose(): void;
@@ -21,6 +22,7 @@ let {
 	status,
 	busy,
 	frozen,
+	waiting,
 	open = $bindable(),
 	children,
 	onclose,
@@ -43,22 +45,19 @@ const percent = $derived(
 		? Math.min(100, Math.round((status.downloaded / status.total) * 100))
 		: null,
 );
-const label = $derived(
-	checking
-		? "Checking for updates…"
-		: downloading
-			? `Downloading update${percent === null ? "…" : `: ${percent}%`}`
-			: ready
-				? `Restart to update to ${status?.version}`
-				: available
-					? `Download update ${status?.version}`
-					: "Check for updates",
-);
+const label = $derived.by(() => {
+	if (waiting) return "Waiting to restart…";
+	if (checking) return "Checking for updates…";
+	if (downloading)
+		return `Downloading update${percent === null ? "…" : `: ${percent}%`}`;
+	if (ready) return `Restart to update to ${status?.version}`;
+	if (available) return `Download update ${status?.version}`;
+	return "Check for updates";
+});
 function activate() {
-	if (busy && !downloading) return;
-
 	hovered = false;
-	if (available && status?.version) ondownload(status.version);
+	if (busy && !downloading) open = true;
+	else if (available && status?.version) ondownload(status.version);
 	else if (ready && status?.version) onrestart(status.version);
 	else if (status && ["idle", "manual"].includes(status.phase)) oncheck();
 	else open = true;

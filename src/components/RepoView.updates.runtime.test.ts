@@ -95,6 +95,7 @@ class UpdateRepositoryHarness {
 		settle: async () => {
 			await tick();
 		},
+		waiting: () => {},
 	});
 	mount() {
 		let recovered!: (error: string | null) => void;

@@ -31,6 +31,7 @@ function mount(status = idle) {
 		status,
 		busy: false,
 		frozen: false,
+		waiting: false,
 		open: false,
 		children: panel,
 		onclose: () => {},
@@ -173,6 +174,17 @@ describe("update control", () => {
 
 		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
 		expect(actions).toEqual([]);
+	});
+	it("reopens the panel while a restart waits on earlier work", async () => {
+		const view = mount({ ...idle, phase: "ready", version: "2.0.0" });
+		await view.rerender({ busy: true, waiting: true });
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Waiting to restart…" }),
+		);
+
+		expect(screen.getByRole("region", { name: "Trunk updates" })).toBeVisible();
+		expect(view.actions).toEqual([]);
 	});
 	it("keeps the preparation panel visible on Escape", async () => {
 		const view = mount({ ...idle, phase: "ready", version: "2.0.0" });

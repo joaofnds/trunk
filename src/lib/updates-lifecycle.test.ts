@@ -32,6 +32,10 @@ class Host {
 		this.frozen = value;
 	}
 	async settle() {}
+	cancellable = false;
+	waiting(value: boolean) {
+		this.cancellable = value;
+	}
 }
 
 function participant(
@@ -76,6 +80,119 @@ describe("update preparation", () => {
 
 		expect(host.calls).toEqual([]);
 		expect(host.frozen).toBe(false);
+	});
+
+	it("offers to cancel while earlier work runs", async () => {
+		const host = new Host();
+		const work = deferred();
+		host.settle = () => work.promise;
+		const preparation = new UpdatePreparation(host);
+
+		const restart = preparation.install("2.0.0");
+		const waiting = host.cancellable;
+		work.resolve();
+		await restart;
+
+		expect(waiting).toBe(true);
+		expect(host.cancellable).toBe(false);
+	});
+
+	it("flushes no draft until the backend's earlier work has settled", async () => {
+		const host = new Host();
+		const drained = deferred();
+		const entered = deferred();
+		host.drained = async (token) => {
+			host.calls.push(`drained:${token}`);
+			entered.resolve();
+			await drained.promise;
+			host.calls.push("earlier-work-settled");
+		};
+		const preparation = new UpdatePreparation(host);
+		preparation.register(
+			participant(async (token) => {
+				host.calls.push(`flush:${token}`);
+			}),
+		);
+
+		const restart = preparation.install("2.0.0");
+		await entered.promise;
+		drained.resolve();
+		await restart;
+
+		expect(host.calls).toEqual([
+			"prepare:2.0.0",
+			"drained:permit",
+			"earlier-work-settled",
+			"flush:permit",
+			"install:2.0.0:permit",
+		]);
+	});
+
+	it("ends a restart cancelled while the backend drains without saving a draft", async () => {
+		const host = new Host();
+		const drained = deferred();
+		const entered = deferred();
+		host.drained = async (token) => {
+			host.calls.push(`drained:${token}`);
+			entered.resolve();
+			await drained.promise;
+		};
+		const preparation = new UpdatePreparation(host);
+		preparation.register(
+			participant(async (token) => {
+				host.calls.push(`flush:${token}`);
+			}),
+		);
+
+		const restart = preparation.install("2.0.0");
+		await entered.promise;
+		const waiting = host.cancellable;
+		preparation.cancel();
+		drained.resolve();
+		await restart;
+
+		expect(waiting).toBe(true);
+		expect(host.calls).toEqual([
+			"prepare:2.0.0",
+			"drained:permit",
+			"abort:permit",
+		]);
+		expect(host.frozen).toBe(false);
+		expect(host.cancellable).toBe(false);
+	});
+
+	it("reopens Trunk when the backend drain fails", async () => {
+		const host = new Host();
+		host.drained = async () => {
+			throw new Error("exiting");
+		};
+		const preparation = new UpdatePreparation(host);
+
+		await expect(preparation.install("2.0.0")).rejects.toThrow("exiting");
+
+		expect(host.calls).toEqual(["prepare:2.0.0", "abort:permit"]);
+		expect(host.frozen).toBe(false);
+	});
+
+	it("refuses a blocked editor at the click, before waiting on earlier work", async () => {
+		const host = new Host();
+		host.settle = async () => {
+			host.calls.push("settle");
+		};
+		const preparation = new UpdatePreparation(host);
+		preparation.register({
+			capture: () => ({
+				generation: "1",
+				blocker: "Finish the merge editor",
+				flush: async () => {},
+			}),
+		});
+
+		await expect(preparation.install("2.0.0")).rejects.toThrow(
+			"Finish the merge editor",
+		);
+
+		expect(host.calls).toEqual([]);
 	});
 
 	it("defers before closing backend admission when an editor cannot be recovered", async () => {
@@ -227,6 +344,29 @@ describe("update recovery admission", () => {
 			"manual recovery required",
 		);
 
+		expect(host.frozen).toBe(true);
+	});
+
+	it("aborts once and stays frozen when a cancelled restart cannot reopen admission", async () => {
+		const host = new Host();
+		const drained = deferred();
+		const entered = deferred();
+		host.drained = async () => {
+			entered.resolve();
+			await drained.promise;
+		};
+		host.abort = async (token) => {
+			host.calls.push(`abort:${token}`);
+			throw new Error("manual recovery required");
+		};
+		const preparation = new UpdatePreparation(host);
+
+		const restart = preparation.install("2.0.0");
+		await entered.promise;
+		preparation.cancel();
+
+		await expect(restart).rejects.toThrow("manual recovery required");
+		expect(host.calls).toEqual(["prepare:2.0.0", "abort:permit"]);
 		expect(host.frozen).toBe(true);
 	});
 
