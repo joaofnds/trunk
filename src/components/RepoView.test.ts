@@ -1197,6 +1197,24 @@ describe("RepoView", () => {
 			expect(within(threads).getByRole("article")).toHaveFocus();
 		});
 
+		it("takes the keys from the commit list when review mode starts", async () => {
+			reviewWithOneLineThread();
+			const view = render(RepoView, {
+				props: { ...baseProps(createMockRemoteState()), reviewActive: false },
+			});
+			const commitList = (
+				await screen.findAllByTestId("commit-row")
+			)[0]?.closest<HTMLElement>('[role="listbox"]');
+			commitList?.focus();
+			expect(commitList).toHaveFocus();
+
+			await view.rerender({ reviewActive: true });
+			await flush();
+
+			const threads = screen.getByRole("region", { name: "Review threads" });
+			expect(threads.contains(document.activeElement)).toBe(true);
+		});
+
 		it("keeps a reply typed on a review that is not active while another review is shown", async () => {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
