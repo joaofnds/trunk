@@ -1,6 +1,6 @@
-use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::UndoResult;
+use crate::user_git::UserGit;
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
@@ -133,7 +133,7 @@ fn pick_is_empty(path: &std::path::Path) -> Result<bool, TrunkError> {
 }
 
 fn cherry_pick_skip(path: &std::path::Path) -> Result<(), TrunkError> {
-    let output = shell_env::user_git(path)
+    let output = UserGit::in_dir(path)
         .args(["cherry-pick", "--skip"])
         .output()
         .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
@@ -159,7 +159,7 @@ pub fn cherry_pick_inner(
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     state_map.hold_for_git(path, |_| {
-        let output = shell_env::user_git(path_buf)
+        let output = UserGit::in_dir(path_buf)
             .args(["cherry-pick", "--", oid])
             .output()
             .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
@@ -194,7 +194,7 @@ pub fn cherry_pick_continue_inner(
     state_map.hold_for_git(path, |_| {
         // Mirrors revert_continue: --cleanup=strip drops git's `# Conflicts:` block,
         // and `git commit -m` concludes the pick, clearing CHERRY_PICK_HEAD.
-        let output = shell_env::user_git(path_buf)
+        let output = UserGit::in_dir(path_buf)
             .args(["commit", "-m", message, "--cleanup=strip"])
             .output()
             .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
@@ -223,7 +223,7 @@ pub fn cherry_pick_abort_inner(
     state_map.hold_for_git(path, |_| {
         // merge_abort cannot stand in here: `git merge --abort` needs MERGE_HEAD,
         // which a cherry-pick never sets.
-        let output = shell_env::user_git(path_buf)
+        let output = UserGit::in_dir(path_buf)
             .args(["cherry-pick", "--abort"])
             .output()
             .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
@@ -255,7 +255,7 @@ pub fn revert_commit_begin_inner(
         // Stage the revert without committing so the editor can edit the message.
         // git writes the default message (Revert "<subject>" + full 40-char OID) to
         // .git/MERGE_MSG. REVERT_HEAD is set; the wrapper emits repo-changed.
-        let output = shell_env::user_git(path_buf)
+        let output = UserGit::in_dir(path_buf)
             .args(["revert", "--no-commit", "--", oid])
             .output()
             .map_err(|e| TrunkError::new("revert_error", e.to_string()))?;
@@ -289,7 +289,7 @@ pub fn revert_continue_inner(
     state_map.hold_for_git(path, |_| {
         // --cleanup=strip drops git's `# Conflicts:` comment block so conflicted
         // revert bodies stay clean (MSG-03 fidelity). git commit -m clears REVERT_HEAD.
-        let output = shell_env::user_git(path_buf)
+        let output = UserGit::in_dir(path_buf)
             .args(["commit", "-m", message, "--cleanup=strip"])
             .output()
             .map_err(|e| TrunkError::new("revert_error", e.to_string()))?;
@@ -318,7 +318,7 @@ pub fn revert_abort_inner(
     state_map.hold_for_git(path, |_| {
         // The MSG-06 recovery path for revert: clears REVERT_HEAD + restores a clean
         // tree. Without it a cancelled revert traps the user (RESEARCH finding 4).
-        let output = shell_env::user_git(path_buf)
+        let output = UserGit::in_dir(path_buf)
             .args(["revert", "--abort"])
             .output()
             .map_err(|e| TrunkError::new("revert_error", e.to_string()))?;
@@ -772,7 +772,7 @@ pub struct RedoRequest<'a> {
 
 /// Run `git reset` with `args` in `dir`, reporting a failure under `code` with git's own words.
 fn run_git_reset(dir: &std::path::Path, args: &[&str], code: &str) -> Result<(), TrunkError> {
-    let output = shell_env::user_git(dir)
+    let output = UserGit::in_dir(dir)
         .arg("reset")
         .args(args)
         .output()

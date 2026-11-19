@@ -40,14 +40,6 @@ pub fn system_path() -> &'static str {
     SHELL_PATH.get_or_init(|| resolve(Stopper::Deadline))
 }
 
-/// The git the user's terminal runs, started in `dir`.
-#[must_use]
-pub fn user_git(dir: impl AsRef<std::path::Path>) -> Command {
-    let mut git = Command::new("git");
-    git.current_dir(dir).env("PATH", system_path());
-    git
-}
-
 /// Resolve [`system_path`] on a thread of its own, so the user's first commit,
 /// merge or push does not wait for their shell's startup files.
 pub fn resolve_in_background() {

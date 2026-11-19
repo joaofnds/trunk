@@ -348,18 +348,16 @@ fn rebase_skip_with_a_later_reword_completes() {
 
 #[test]
 fn rebase_skip_pins_the_editor() {
-    assert!(pins_the_editor(&rebase_command(
-        Path::new("/tmp"),
-        "--skip"
-    )));
+    assert!(pins_the_editor(
+        rebase_command(Path::new("/tmp"), "--skip").as_ref()
+    ));
 }
 
 #[test]
 fn rebase_continue_pins_the_editor() {
-    assert!(pins_the_editor(&rebase_command(
-        Path::new("/tmp"),
-        "--continue"
-    )));
+    assert!(pins_the_editor(
+        rebase_command(Path::new("/tmp"), "--continue").as_ref()
+    ));
 }
 
 /// git parses options before positionals, so an argument reaching an option slot

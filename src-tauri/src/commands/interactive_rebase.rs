@@ -1,6 +1,6 @@
-use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::RebaseTodoItem;
+use crate::user_git::UserGit;
 use crate::watcher::RepoChanged;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -161,7 +161,7 @@ pub fn get_fork_point_inner(
 ) -> Result<String, TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
-    let output = shell_env::user_git(path_buf)
+    let output = UserGit::in_dir(path_buf)
         .args(["merge-base", "--", branch, "HEAD"])
         .output()
         .map_err(|e| TrunkError::new("fork_point_error", e.to_string()))?;
@@ -294,7 +294,7 @@ fn run_interactive_rebase(
         None => args.push("--root"),
     }
 
-    let output = shell_env::user_git(work_tree)
+    let output = UserGit::in_dir(work_tree)
         .args(&args)
         .env("GIT_SEQUENCE_EDITOR", seq_editor_path.to_str().unwrap())
         .env("GIT_EDITOR", editor.script_path())

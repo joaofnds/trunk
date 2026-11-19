@@ -22,6 +22,7 @@ mod storage;
 pub mod syntax;
 pub mod types;
 mod updates;
+pub mod user_git;
 pub use updates::ReleaseSource;
 pub mod watcher;
 pub mod word_spans;

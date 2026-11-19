@@ -181,6 +181,27 @@ fn cherry_pick_applies_commit() {
 }
 
 #[test]
+fn cherry_pick_returns_while_a_process_its_hook_started_still_runs() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("side")
+        .checkout("side")
+        .with_file("side.txt", "side")
+        .with_commit("Side work")
+        .checkout("main")
+        .build();
+    let side = ctx.repo().revparse_single("side").unwrap().id().to_string();
+    let left_running = ctx.install_hook_leaving_a_process_running("post-commit");
+
+    let result = ctx.cherry_pick(&side);
+
+    left_running.release();
+    result.unwrap();
+    assert!(ctx.repo_path().join("side.txt").exists());
+}
+
+#[test]
 fn cherry_pick_of_a_change_head_already_has_ends_the_pick_and_says_so() {
     let ctx = TestContext::builder()
         .with_file("f.txt", "a\n")

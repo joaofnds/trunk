@@ -6,8 +6,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 use crate::remote_ops::{self, RemoteProcess, RemoteReservation, RemoteTarget};
-use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RemoteOps, RepoState, RunningOp};
+use crate::user_git::UserGit;
 use crate::watcher::RepoChanged;
 use trunk_git::error::TrunkError;
 use trunk_git::pull_safety::PullSafetyCopy;
@@ -132,7 +132,7 @@ async fn run_reserved<R: Runtime>(
     repo_path: &str,
     reservation: &RemoteReservation<'_>,
 ) -> Result<(), TrunkError> {
-    let mut command = Command::from(shell_env::user_git(cwd));
+    let mut command = Command::from(UserGit::in_dir(cwd).into_command());
     command
         .args(args)
         // Nothing reads stdout, and git blocks writing a large merge diffstat

@@ -1,6 +1,6 @@
-use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::{OperationInfo, OperationType};
+use crate::user_git::UserGit;
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
@@ -196,7 +196,7 @@ pub fn merge_continue_inner(
         let msg = message.ok_or_else(|| {
             TrunkError::new("merge_error", "merge_continue requires a commit message")
         })?;
-        let output = shell_env::user_git(path_buf)
+        let output = UserGit::in_dir(path_buf)
             .args(["commit", "-m", msg, "--cleanup=strip"])
             .output()
             .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
@@ -223,7 +223,7 @@ pub fn merge_abort_inner(
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     state_map.hold_for_git(path, |_| {
-        let output = shell_env::user_git(path_buf)
+        let output = UserGit::in_dir(path_buf)
             .args(["merge", "--abort"])
             .output()
             .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
@@ -250,8 +250,8 @@ pub fn merge_abort_inner(
 /// is equally TTY-free but also delivers the messages an interactive rebase filed
 /// before it stopped. `true` would drop every one of them silently.
 #[must_use]
-pub fn rebase_command(dir: &std::path::Path, step: &str) -> std::process::Command {
-    let mut cmd = shell_env::user_git(dir);
+pub fn rebase_command(dir: &std::path::Path, step: &str) -> UserGit {
+    let mut cmd = UserGit::in_dir(dir);
     cmd.args(["rebase", step]).env("GIT_EDITOR", "true");
     cmd
 }
@@ -440,7 +440,7 @@ fn start_merge(repo: &git2::Repository, branch: &str) -> Result<MergeBeginOutcom
     // 1. Probe fast-forward (RESEARCH OQ-1). `--ff-only` succeeds silently on an
     //    ff-able or already-up-to-date merge (no MERGE_HEAD, no merge commit) and
     //    fails clean on a non-ff merge (exit 128, MERGE_HEAD absent, tree clean).
-    let probe = shell_env::user_git(work_tree)
+    let probe = UserGit::in_dir(work_tree)
         .args(["merge", "--ff-only", "--", branch])
         .output()
         .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
@@ -450,7 +450,7 @@ fn start_merge(repo: &git2::Repository, branch: &str) -> Result<MergeBeginOutcom
 
     // 2. Non-ff: branches are now provably divergent (the ff probe left the tree
     //    clean), so --no-commit creates a real merge. --no-ff is unnecessary.
-    let output = shell_env::user_git(work_tree)
+    let output = UserGit::in_dir(work_tree)
         .args(["merge", "--no-commit", "--", branch])
         .output()
         .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
@@ -489,7 +489,7 @@ pub fn rebase_branch_inner(
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     state_map.hold_for_git(path, |_| {
-        let output = shell_env::user_git(path_buf)
+        let output = UserGit::in_dir(path_buf)
             .args(["rebase", "--", onto_branch])
             .output()
             .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
@@ -1106,7 +1106,7 @@ mod tests {
     fn get_merge_message_returns_merge_msg_verbatim() {
         let (dir, _repo) = conflict_divergent_repo();
         // Start a conflicted merge so MERGE_MSG carries a `# Conflicts:` block.
-        let _ = shell_env::user_git(dir.path())
+        let _ = UserGit::in_dir(dir.path())
             .args(["merge", "--no-commit", "feature"])
             .output()
             .unwrap();

@@ -1,13 +1,6 @@
 mod common;
 
 use common::context::TestContext;
-use std::os::unix::fs::PermissionsExt;
-
-fn install_hook(ctx: &TestContext, name: &str, script: &str) {
-    let hook = ctx.repo_path().join(".git").join("hooks").join(name);
-    std::fs::write(&hook, format!("#!/bin/sh\n{script}\n")).unwrap();
-    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
-}
 
 fn stage_new_file(ctx: &TestContext, name: &str) {
     std::fs::write(ctx.repo_path().join(name), name).unwrap();
@@ -170,7 +163,7 @@ fn create_commit_is_refused_by_a_failing_pre_commit_hook() {
         .with_commit("Initial commit")
         .build();
     let before = head_oid(&ctx);
-    install_hook(&ctx, "pre-commit", "echo 'refused by pre-commit'\nexit 1");
+    ctx.install_hook("pre-commit", "echo 'refused by pre-commit'\nexit 1");
     stage_new_file(&ctx, "new_file.txt");
 
     let err = ctx.create_commit("New commit", None).unwrap_err();
@@ -202,7 +195,7 @@ fn create_commit_keeps_the_trailer_a_commit_msg_hook_adds() {
         .with_file("README.md", "hello")
         .with_commit("Initial commit")
         .build();
-    install_hook(&ctx, "commit-msg", TRAILER_HOOK);
+    ctx.install_hook("commit-msg", TRAILER_HOOK);
     stage_new_file(&ctx, "new_file.txt");
 
     ctx.create_commit("New commit", None).unwrap();
@@ -232,7 +225,7 @@ fn create_commit_refused_by_a_silent_hook_still_explains_the_refusal() {
         .with_file("README.md", "hello")
         .with_commit("Initial commit")
         .build();
-    install_hook(&ctx, "pre-commit", "exit 1");
+    ctx.install_hook("pre-commit", "exit 1");
     stage_new_file(&ctx, "new_file.txt");
 
     let err = ctx.create_commit("New commit", None).unwrap_err();
@@ -246,23 +239,12 @@ fn create_commit_returns_while_a_process_its_hook_started_still_runs() {
         .with_file("README.md", "hello")
         .with_commit("Initial commit")
         .build();
-    let gate = tempfile::tempdir().unwrap();
-    let fifo = gate.path().join("release");
-    let made = std::process::Command::new("mkfifo")
-        .arg(&fifo)
-        .status()
-        .unwrap();
-    assert!(made.success(), "mkfifo failed");
-    install_hook(
-        &ctx,
-        "post-commit",
-        &format!("(read line < '{}') &", fifo.display()),
-    );
+    let left_running = ctx.install_hook_leaving_a_process_running("post-commit");
     stage_new_file(&ctx, "new_file.txt");
 
     let result = ctx.create_commit("New commit", None);
 
-    std::fs::write(&fifo, "go\n").unwrap();
+    left_running.release();
     result.unwrap();
     assert_eq!(head_message(&ctx).trim_end(), "New commit");
 }
@@ -382,7 +364,7 @@ fn amend_commit_is_refused_by_a_failing_pre_commit_hook() {
         .with_commit("Initial commit")
         .build();
     let before = head_oid(&ctx);
-    install_hook(&ctx, "pre-commit", "echo 'refused by pre-commit'\nexit 1");
+    ctx.install_hook("pre-commit", "echo 'refused by pre-commit'\nexit 1");
 
     let err = ctx.amend_commit("Amended subject", None).unwrap_err();
 
@@ -412,7 +394,7 @@ fn amend_commit_keeps_the_trailer_a_commit_msg_hook_adds() {
         .with_file("README.md", "hello")
         .with_commit("Initial commit")
         .build();
-    install_hook(&ctx, "commit-msg", TRAILER_HOOK);
+    ctx.install_hook("commit-msg", TRAILER_HOOK);
 
     ctx.amend_commit("Amended subject", None).unwrap();
 
@@ -429,7 +411,7 @@ fn amend_commit_runs_the_post_rewrite_hook() {
         .with_file("README.md", "hello")
         .with_commit("Initial commit")
         .build();
-    install_hook(&ctx, "post-rewrite", "echo \"$1\" > .git/post-rewrite-ran");
+    ctx.install_hook("post-rewrite", "echo \"$1\" > .git/post-rewrite-ran");
 
     ctx.amend_commit("Amended subject", None).unwrap();
 
@@ -503,8 +485,7 @@ mod when_another_writer_runs_meanwhile {
                 assert!(made.success(), "mkfifo failed");
             }
             let hook = Self { fifos };
-            install_hook(
-                ctx,
+            ctx.install_hook(
                 "pre-commit",
                 &format!(
                     "echo started > '{}'\nread line < '{}'",

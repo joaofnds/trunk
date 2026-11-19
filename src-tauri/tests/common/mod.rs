@@ -9,6 +9,8 @@ pub mod drivers;
 pub mod exports;
 pub mod goldens;
 pub mod graph_shapes;
+#[cfg(unix)]
+pub mod hooks;
 pub mod repository_manifest;
 pub mod review_schema;
 pub mod rule_inputs;

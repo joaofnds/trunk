@@ -1,6 +1,6 @@
-use crate::shell_env;
 use crate::state::{CommitCache, GraphCache, OpenRepos, RepoState};
 use crate::types::{BranchInfo, RefsResponse, StashEntry};
+use crate::user_git::UserGit;
 use crate::watcher::RepoChanged;
 use git2::BranchType;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
@@ -414,7 +414,7 @@ pub fn fast_forward_to_inner(
     let path_buf = state_map.path_for(path)?;
 
     state_map.hold_for_git(path, |_| {
-        let output = shell_env::user_git(path_buf)
+        let output = UserGit::in_dir(path_buf)
             .args(["merge", "--ff-only", "--", target_oid])
             .output()
             .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
