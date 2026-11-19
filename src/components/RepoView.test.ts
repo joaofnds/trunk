@@ -766,7 +766,7 @@ describe("RepoView", () => {
 		},
 	);
 
-	describe("when the window is too narrow for the panes as set", () => {
+	describe("in a row the app has measured", () => {
 		// Reports the main row at a width the test sets, and nothing else, so
 		// the virtual lists keep the observer they get everywhere else.
 		function observeRowAt(width: number) {
@@ -794,73 +794,6 @@ describe("RepoView", () => {
 
 		afterEach(() => {
 			vi.unstubAllGlobals();
-		});
-
-		it("narrows both panes so the center keeps its floor", async () => {
-			observeRowAt(830);
-
-			renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
-			await tick();
-
-			expect([sliderValue("sidebar"), sliderValue("detail pane")]).toEqual([
-				"180",
-				"250",
-			]);
-		});
-
-		it("draws the panes at the widths the user set once the window widens", async () => {
-			const row = observeRowAt(830);
-			renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
-			await tick();
-
-			await row.resize(1280);
-
-			expect([sliderValue("sidebar"), sliderValue("detail pane")]).toEqual([
-				"280",
-				"300",
-			]);
-		});
-
-		it("keeps the widths the user set through a press on a divider that moves nothing", async () => {
-			const row = observeRowAt(830);
-			renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
-			await tick();
-			const divider = screen.getByRole("slider", { name: "Resize sidebar" });
-			await fireEvent.mouseDown(divider, { clientX: 1000 });
-			await fireEvent.mouseUp(window);
-
-			await row.resize(1280);
-
-			expect([sliderValue("sidebar"), sliderValue("detail pane")]).toEqual([
-				"280",
-				"300",
-			]);
-		});
-
-		it("keeps the detail pane's width through a step that cannot narrow the collapsed sidebar", async () => {
-			const row = observeRowAt(1000);
-			renderWithPanes({ leftPaneCollapsed: true, rightPaneWidth: 700 });
-			await tick();
-			await fireEvent.keyDown(
-				screen.getByRole("slider", { name: "Resize sidebar" }),
-				{ key: "ArrowLeft" },
-			);
-
-			await row.resize(1600);
-
-			expect(sliderValue("detail pane")).toBe("700");
-		});
-
-		it("never offers a divider a maximum below its pane's floor", async () => {
-			observeRowAt(500);
-
-			renderWithPanes({ leftPaneWidth: 220, rightPaneWidth: 280 });
-			await tick();
-
-			expect([sliderMax("sidebar"), sliderMax("detail pane")]).toEqual([
-				"80",
-				"200",
-			]);
 		});
 
 		it("stops a drag of the detail pane where the center would go under its floor", async () => {
@@ -897,37 +830,106 @@ describe("RepoView", () => {
 			expect(changes).toEqual(["left collapsed false", "left width 580"]);
 		});
 
-		it("keeps the detail pane where it is drawn while the sidebar is dragged", async () => {
-			observeRowAt(830);
-			renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
-			await tick();
+		describe("when the window is too narrow for the panes as set", () => {
+			it("narrows both panes so the center keeps its floor", async () => {
+				observeRowAt(830);
 
-			await drag(
-				screen.getByRole("slider", { name: "Resize sidebar" }),
-				1000,
-				980,
-			);
+				renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
+				await tick();
 
-			expect([sliderValue("sidebar"), sliderValue("detail pane")]).toEqual([
-				"160",
-				"250",
-			]);
-		});
+				expect([sliderValue("sidebar"), sliderValue("detail pane")]).toEqual([
+					"180",
+					"250",
+				]);
+			});
 
-		it("stores the width the detail pane is drawn at when the sidebar is dragged", async () => {
-			observeRowAt(830);
-			renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
-			await tick();
+			it("draws the panes at the widths the user set once the window widens", async () => {
+				const row = observeRowAt(830);
+				renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
+				await tick();
 
-			await drag(
-				screen.getByRole("slider", { name: "Resize sidebar" }),
-				1000,
-				980,
-			);
+				await row.resize(1280);
 
-			expect(mockInvoke).toHaveBeenCalledWith("prefs_set", {
-				key: "right_pane_width",
-				value: 250,
+				expect([sliderValue("sidebar"), sliderValue("detail pane")]).toEqual([
+					"280",
+					"300",
+				]);
+			});
+
+			it("keeps the widths the user set through a press on a divider that moves nothing", async () => {
+				const row = observeRowAt(830);
+				renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
+				await tick();
+				const divider = screen.getByRole("slider", { name: "Resize sidebar" });
+				await fireEvent.mouseDown(divider, { clientX: 1000 });
+				await fireEvent.mouseUp(window);
+
+				await row.resize(1280);
+
+				expect([sliderValue("sidebar"), sliderValue("detail pane")]).toEqual([
+					"280",
+					"300",
+				]);
+			});
+
+			it("keeps the detail pane's width through a step that cannot narrow the collapsed sidebar", async () => {
+				const row = observeRowAt(1000);
+				renderWithPanes({ leftPaneCollapsed: true, rightPaneWidth: 700 });
+				await tick();
+				await fireEvent.keyDown(
+					screen.getByRole("slider", { name: "Resize sidebar" }),
+					{ key: "ArrowLeft" },
+				);
+
+				await row.resize(1600);
+
+				expect(sliderValue("detail pane")).toBe("700");
+			});
+
+			it("never offers a divider a maximum below its pane's floor", async () => {
+				observeRowAt(500);
+
+				renderWithPanes({ leftPaneWidth: 220, rightPaneWidth: 280 });
+				await tick();
+
+				expect([sliderMax("sidebar"), sliderMax("detail pane")]).toEqual([
+					"80",
+					"200",
+				]);
+			});
+
+			it("keeps the detail pane where it is drawn while the sidebar is dragged", async () => {
+				observeRowAt(830);
+				renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
+				await tick();
+
+				await drag(
+					screen.getByRole("slider", { name: "Resize sidebar" }),
+					1000,
+					980,
+				);
+
+				expect([sliderValue("sidebar"), sliderValue("detail pane")]).toEqual([
+					"160",
+					"250",
+				]);
+			});
+
+			it("stores the width the detail pane is drawn at when the sidebar is dragged", async () => {
+				observeRowAt(830);
+				renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
+				await tick();
+
+				await drag(
+					screen.getByRole("slider", { name: "Resize sidebar" }),
+					1000,
+					980,
+				);
+
+				expect(mockInvoke).toHaveBeenCalledWith("prefs_set", {
+					key: "right_pane_width",
+					value: 250,
+				});
 			});
 		});
 	});
