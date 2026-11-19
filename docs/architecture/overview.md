@@ -39,6 +39,7 @@
 │  src-tauri/src/state.rs — Tauri-managed shared state (Mutex-wrapped) │
 │  src-tauri/src/watcher.rs — notify-based fs watcher                  │
 │  src-tauri/src/shell_env.rs — macOS PATH resolution                  │
+│  src-tauri/src/user_git.rs: git binary runner, returns at its exit   │
 └───────────────────────────────┬──────────────────────────────────────┘
                                 │  git2 (libgit2 bindings)
                                 │  subprocess: git remote ops, merge, rebase, cherry-pick, revert, reset
@@ -401,7 +402,7 @@ store revision.
 
 - **Threading:** Tauri uses tokio async runtime. Repository mutation/capture work runs in `spawn_blocking`; automatic transport work runs synchronously in its isolated worker. Foreground remote subprocesses use `tokio::process::Command` with stderr streaming.
 - **git2 not Sync:** `git2::Repository` cannot be stored in shared state. Each command opens its own fresh handle, as `state::RepoState` documents.
-- **Git execution:** Foreground remote commands, merge, rebase, cherry-pick, revert, reset and the merge-base read for interactive rebase run the git binary, as do the commits that conclude a merge, cherry-pick or revert. Other local operations and automatic fetch use git2. AGENTS.md states which operations may run the binary and why.
+- **Git execution:** Foreground remote commands, merge, rebase, cherry-pick, revert, reset and the merge-base read for interactive rebase run the git binary, as do the commits that conclude a merge, cherry-pick or revert. Other local operations and automatic fetch use git2. AGENTS.md states which operations may run the binary and why. Every one of those runs starts through `UserGit` in `src-tauri/src/user_git.rs`, whose `output` returns when git exits rather than when git's output closes, because a process a hook leaves in the background holds that output open. A refusal is reported through `user_git::refusal`: git's stderr, else its stdout, else its exit status, since a hook can refuse without printing anything. Pull and push read stderr as git writes it to show progress, so they still wait for such a process.
 - **Global state:** Tauri manages `RepoState`'s path registry, `CommitCache`'s graph/session/revision maps, `RunningOp`'s identity-based remote reservations and `WatcherState`'s watchers/pending ref reconciliations. Worktree UI/cache entries use repository paths; remote exclusion uses canonical common directories. `WatcherState.enabled` lets the App harness disable filesystem watching, and the state is passed into `configure` because `Builder::manage` panics on a duplicate type.
 - **Circular imports:** None detected. Frontend has a clear dependency direction: `components/` → `lib/` → `@tauri-apps/`.
 - **macOS PATH:** `src-tauri/src/shell_env.rs` reads the user's login-shell PATH, with `/usr/libexec/path_helper` as a fallback, because GUI apps inherit a minimal launchd PATH.
