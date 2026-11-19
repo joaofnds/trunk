@@ -1,0 +1,31 @@
+name: Linux build dependencies
+description: Installs the system packages Tauri compiles against on Linux, with their .deb files kept in the Actions cache.
+runs:
+  using: composite
+  steps:
+    - name: Resolve the package versions
+      id: packages
+      shell: bash
+      run: |
+        packages="libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev"
+        sudo apt-get update
+        versions=$(apt-get install --simulate $packages | grep '^Inst ' | sha256sum | cut -c1-16)
+        prefix="apt-${{ runner.arch }}-${ImageOS:-unknown}-"
+        {
+          echo "list=$packages"
+          echo "prefix=$prefix"
+          echo "key=$prefix$versions"
+        } >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/apt-archives
+        key: ${{ steps.packages.outputs.key }}
+        restore-keys: ${{ steps.packages.outputs.prefix }}
+    - name: Install the packages
+      shell: bash
+      run: |
+        archives="$HOME/apt-archives"
+        mkdir -p "$archives/partial"
+        sudo apt-get install -y -o Dir::Cache::Archives="$archives" ${{ steps.packages.outputs.list }}
+        sudo apt-get autoclean -o Dir::Cache::Archives="$archives"
+        sudo chown -R "$(id -u):$(id -g)" "$archives"
