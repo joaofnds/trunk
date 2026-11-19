@@ -1256,6 +1256,10 @@ on the page, checked every frame:
 | I16 rebase main onto the feature branch, n=1 | same: graph shows main rebuilt on the feature tip | 39 |
 | I16 soft reset from the commit menu, n=1 | same: header names the target commit and its changes listed staged | 33 after the confirm dialog closed, HEAD and index checked in git |
 
+The deep-history rows were read on a build that stored its objects loose. Since
+2b178196 (2026-11-19) that fixture stores its history as one pack, so a re-run
+compared against them also compares two storage forms.
+
 After every mutation here the last command ended 527 to 855 ms after the event,
 which is the watcher refresh described above. Compare and diff options start no
 refresh. These are one-launch readings on small fixtures in a debug Rust build, so
