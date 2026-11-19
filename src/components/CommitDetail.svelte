@@ -277,6 +277,7 @@ let commitNotes = $derived(
 				actionLabel=""
 				onfileaction={() => {}}
 				onfileclick={(path) => onfileselect(path)}
+				selectedPath={selectedFile}
 				onfilecontextmenu={(e, _path, file) => showFileContextMenu(e, file)}
 				commentCounts={fileCommentCounts}
 				commentTallies={fileCommentTallies}

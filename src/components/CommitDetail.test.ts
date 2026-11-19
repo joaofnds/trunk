@@ -359,6 +359,24 @@ describe("CommitDetail", () => {
 		expect(screen.getByText("2 files changed")).toBeInTheDocument();
 	});
 
+	it("marks the open file in the file list", () => {
+		const open = fileDiffs[1].path;
+		render(CommitDetailComponent, {
+			props: {
+				...uncountedReview(),
+				commitDetail: detail,
+				fileDiffs,
+				selectedFile: open,
+				onfileselect: vi.fn(),
+				onclose: vi.fn(),
+			},
+		});
+
+		expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
+			open,
+		);
+	});
+
 	describe("stats bar", () => {
 		const stat: DiffStat = { insertions: 12, deletions: 3, files_changed: 2 };
 
