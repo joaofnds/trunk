@@ -53,7 +53,7 @@ export function createSidePanes(options: {
 	// Unmeasured until the observer first reports, so nothing narrows the panes.
 	let rowWidth = $state(Number.POSITIVE_INFINITY);
 
-	function fit(shows: { sidebar: boolean; detailPane: boolean }) {
+	function fitShown(shows: { sidebar: boolean; detailPane: boolean }) {
 		return fitPanes({
 			rowWidth,
 			centerFloor: CENTER_FLOOR,
@@ -73,9 +73,9 @@ export function createSidePanes(options: {
 	}
 
 	const mainFit = $derived(
-		fit({ sidebar: true, detailPane: options.view() !== "review" }),
+		fitShown({ sidebar: true, detailPane: options.view() !== "review" }),
 	);
-	const rebaseFit = $derived(fit({ sidebar: false, detailPane: true }));
+	const rebaseFit = $derived(fitShown({ sidebar: false, detailPane: true }));
 	const shownFit = $derived(options.view() === "rebase" ? rebaseFit : mainFit);
 
 	// Both panes adopt their drawn widths from one fit, read before either
