@@ -99,7 +99,8 @@ measurement before attaching a speedup claim to them.
   repository, OID, context lines, whitespace, and full-file options.
 - CommitGraph rejects stale pages, limits non-progressing paging attempts, and
   reads statistics for visible commits in batches of at most 32. Hidden statistics
-  columns avoid that read path. Stored ref visibility gates the first page.
+  columns avoid that read path. Stored ref visibility and the view's repo-changed
+  listener gate the first page, and an unchecked first graph requests one refresh.
 - RepositoryTabs prepares the foreground first, mounts visited views, and keeps
   unvisited views unmounted. App preserves visited views while switching tabs.
 - Autofetch uses one completion-based queue with focus and manual-operation gates.
