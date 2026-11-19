@@ -234,9 +234,10 @@ export class AppDriver {
 		}
 	}
 
-	/** Whether the host has answered every command the application sent. */
+	/** Whether the application has its answer back for every command it sent.
+	 *  The host's own count misses a command still on its way to the host. */
 	get answeredEverything(): boolean {
-		return this.host.pendingInvokes === 0;
+		return this.internals.pendingInvokes === 0;
 	}
 
 	/** Nothing armed and nothing in flight, as of this instant. */

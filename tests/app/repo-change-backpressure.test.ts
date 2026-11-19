@@ -89,9 +89,13 @@ describe("repository changes during a sustained event stream", () => {
 			await app.events.externalChange(app.repo.path);
 			await app.events.externalChange(app.repo.path);
 			// The delay runs from when the refresh finished, so it must finish
-			// before the clock moves.
+			// before the clock moves: a refresh that finishes later starts its
+			// own delay later, and the catch-up waits on a clock that never
+			// reaches it.
 			await waitFor("the first refresh to finish", () =>
-				app.answeredEverything && app.scheduler.pendingForeground > 0
+				app.refreshes() === before + 1 &&
+				app.answeredEverything &&
+				app.scheduler.pendingForeground > 0
 					? true
 					: null,
 			);

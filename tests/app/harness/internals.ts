@@ -77,6 +77,7 @@ export class TauriInternals {
 	private readonly heldReads: HeldRead[] = [];
 	private heldCommand: string | null = null;
 	private readonly heldCommands: Array<() => void> = [];
+	private inFlight = 0;
 
 	constructor(private readonly host: HostChannel) {}
 
@@ -120,12 +121,18 @@ export class TauriInternals {
 		return this.records;
 	}
 
+	/** Commands the application has sent and not yet had its answer back for,
+	 *  wherever they wait: held here, at the host, or at a Fake. */
+	get pendingInvokes(): number {
+		return this.inFlight;
+	}
+
 	install(): void {
 		this.host.onEvent((event, payload) => this.deliver(event, payload));
 
 		window.__TAURI_INTERNALS__ = {
 			invoke: (cmd: string, args: Record<string, unknown> = {}) =>
-				this.invoke(cmd, args),
+				this.counted(this.invoke(cmd, args)),
 			transformCallback: (handler: (payload: unknown) => void, once = false) =>
 				this.transformCallback(handler, once),
 			unregisterCallback: (id: number) => this.callbacks.delete(id),
@@ -230,6 +237,17 @@ export class TauriInternals {
 		while (this.registering.size > 0) {
 			await Promise.allSettled([...this.registering]);
 		}
+	}
+
+	// Hands the application the answer itself rather than a promise chained on
+	// it, so counting a command adds no turn before the application sees it.
+	private counted(answer: Promise<unknown>): Promise<unknown> {
+		this.inFlight += 1;
+		const answered = () => {
+			this.inFlight -= 1;
+		};
+		answer.then(answered, answered);
+		return answer;
 	}
 
 	private transformCallback(
