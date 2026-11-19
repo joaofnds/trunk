@@ -19,6 +19,9 @@ class Host {
 		this.calls.push(`prepare:${version}`);
 		return "permit";
 	}
+	async drained(token: string) {
+		this.calls.push(`drained:${token}`);
+	}
 	async install(version: string, token: string) {
 		this.calls.push(`install:${version}:${token}`);
 	}
@@ -54,6 +57,7 @@ describe("update preparation", () => {
 
 		expect(host.calls).toEqual([
 			"prepare:2.0.0",
+			"drained:permit",
 			"flush:permit",
 			"install:2.0.0:permit",
 		]);
@@ -100,13 +104,14 @@ describe("update preparation", () => {
 		const result = preparation.install("2.0.0");
 		const rejected = expect(result).rejects.toThrow("disk full");
 		await entered.promise;
-		expect(host.calls).toEqual(["prepare:2.0.0"]);
+		expect(host.calls).toEqual(["prepare:2.0.0", "drained:permit"]);
 		expect(host.frozen).toBe(true);
 		held.resolve();
 		await rejected;
 
 		expect(host.calls).toEqual([
 			"prepare:2.0.0",
+			"drained:permit",
 			"second-saved",
 			"abort:permit",
 		]);
@@ -128,7 +133,11 @@ describe("update preparation", () => {
 
 		await expect(preparation.install("2.0.0")).rejects.toThrow("changed");
 
-		expect(host.calls).toEqual(["prepare:2.0.0", "abort:permit"]);
+		expect(host.calls).toEqual([
+			"prepare:2.0.0",
+			"drained:permit",
+			"abort:permit",
+		]);
 	});
 });
 
@@ -183,7 +192,11 @@ describe("update recovery admission", () => {
 
 			expect(await error).toBeInstanceOf(AggregateError);
 			expect(await error).toMatchObject({ errors: [original, cleanup] });
-			expect(host.calls).toEqual(["prepare:2.0.0", "abort:permit"]);
+			expect(host.calls).toEqual([
+				"prepare:2.0.0",
+				"drained:permit",
+				"abort:permit",
+			]);
 		},
 	);
 	it("keeps controls frozen when the backend cannot reopen admission", async () => {
@@ -245,6 +258,7 @@ describe("synchronous flush failures", () => {
 
 		expect(host.calls).toEqual([
 			"prepare:2.0.0",
+			"drained:permit",
 			"second-saved",
 			"abort:permit",
 		]);

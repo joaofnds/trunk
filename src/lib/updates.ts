@@ -39,6 +39,7 @@ export const updates = {
 	cancel: () => safeInvoke<UpdateStatus>("updates_cancel"),
 	prepare: (version: string) =>
 		safeInvoke<string>("updates_prepare", { version }),
+	drained: (token: string) => safeInvoke<void>("updates_drained", { token }),
 	abort: (token: string) =>
 		safeInvoke<UpdateStatus>("updates_abort", { token }),
 	install: (version: string, token: string) =>

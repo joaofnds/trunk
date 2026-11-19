@@ -524,4 +524,4 @@ pub async fn download<R: Runtime>(
     Ok(coordinator.emit(&app))
 }
 
-pub use install::{abort, install, prepare, ready};
+pub use install::{abort, drained, install, prepare, ready};

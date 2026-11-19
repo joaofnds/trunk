@@ -56,6 +56,13 @@ pub fn updates_prepare<R: Runtime>(app: AppHandle<R>, version: String) -> Result
 }
 
 #[tauri::command]
+pub async fn updates_drained<R: Runtime>(app: AppHandle<R>, token: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || updates::drained(&app, &token))
+        .await
+        .map_err(|_| "Preparation stopped unexpectedly")?
+}
+
+#[tauri::command]
 pub fn updates_abort<R: Runtime>(app: AppHandle<R>, token: String) -> Result<UpdateStatus, String> {
     updates::abort(&app, &token)
 }

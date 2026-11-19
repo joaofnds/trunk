@@ -1,6 +1,4 @@
-#[cfg(feature = "test-util")]
-use std::sync::Condvar;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 
 use serde::Serialize;
 use tauri::{
@@ -34,6 +32,7 @@ impl ActivityError {
 enum Phase {
     #[default]
     Open,
+    Draining(String),
     Preparing(String),
     Installing(String),
     Exiting,
@@ -46,11 +45,21 @@ struct Admission {
     generation: u64,
 }
 
+impl Admission {
+    fn settle_drain(&mut self) {
+        if self.active != 0 {
+            return;
+        }
+        if let Phase::Draining(token) = &self.phase {
+            self.phase = Phase::Preparing(token.clone());
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 struct Gate {
     admission: Mutex<Admission>,
-    #[cfg(feature = "test-util")]
-    settled: Condvar,
+    changed: Condvar,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -81,7 +90,7 @@ impl ActivityState {
                         "prefs_get" | "prefs_set" | "save_draft" | "get_draft" | "delete_draft"
                     )
             }
-            Phase::Installing(_) | Phase::Exiting => false,
+            Phase::Draining(_) | Phase::Installing(_) | Phase::Exiting => false,
         };
         if !allowed {
             return Err(ActivityError::busy());
@@ -103,6 +112,7 @@ impl ActivityState {
         }
         state.phase = Phase::Exiting;
         drop(state);
+        self.0.changed.notify_all();
 
         true
     }
@@ -125,6 +135,50 @@ impl ActivityState {
         Ok(token)
     }
 
+    /// Close ordinary admission now and enter preparation once the work admitted
+    /// before it has settled.
+    /// # Errors
+    /// Returns busy unless admission is open.
+    /// # Panics
+    /// Panics if the admission mutex is poisoned.
+    pub fn begin_drain(&self) -> Result<String, ActivityError> {
+        let mut state = self.0.admission.lock().unwrap();
+        if !matches!(state.phase, Phase::Open) {
+            return Err(ActivityError::busy());
+        }
+        state.generation += 1;
+        let token = format!("prepare-{}", state.generation);
+        state.phase = Phase::Draining(token.clone());
+        state.settle_drain();
+        drop(state);
+
+        Ok(token)
+    }
+
+    /// Block until this drain becomes preparation.
+    /// # Errors
+    /// Returns invalid once the drain was cancelled or Trunk began to exit.
+    /// # Panics
+    /// Panics if the admission mutex is poisoned.
+    pub fn wait_for_preparation(&self, token: &str) -> Result<(), ActivityError> {
+        let state = self.0.admission.lock().unwrap();
+        let state = self
+            .0
+            .changed
+            .wait_while(
+                state,
+                |state| matches!(&state.phase, Phase::Draining(current) if current == token),
+            )
+            .unwrap();
+        let prepared = matches!(&state.phase, Phase::Preparing(current) if current == token);
+        drop(state);
+        if !prepared {
+            return Err(ActivityError::invalid());
+        }
+
+        Ok(())
+    }
+
     /// Finish preparation after all permit-bearing persistence has settled.
     /// # Errors
     /// Returns invalid for a stale token and busy for unsettled writes.
@@ -144,13 +198,19 @@ impl ActivityState {
         Ok(())
     }
 
-    /// Cancel preparation once its persistence work has settled.
+    /// End a drain at once, or cancel preparation once its persistence work has settled.
     /// # Errors
     /// Returns invalid after installation begins or for a stale token; busy while flushing.
     /// # Panics
     /// Panics if the admission mutex is poisoned.
     pub fn cancel_prepare(&self, token: &str) -> Result<(), ActivityError> {
         let mut state = self.0.admission.lock().unwrap();
+        if matches!(&state.phase, Phase::Draining(current) if current == token) {
+            state.phase = Phase::Open;
+            drop(state);
+            self.0.changed.notify_all();
+            return Ok(());
+        }
         if !matches!(&state.phase, Phase::Preparing(current) if current == token) {
             return Err(ActivityError::invalid());
         }
@@ -172,7 +232,7 @@ impl ActivityState {
         let state = self.0.admission.lock().unwrap();
         drop(
             self.0
-                .settled
+                .changed
                 .wait_while(state, |state| state.active != 0)
                 .unwrap(),
         );
@@ -202,9 +262,9 @@ impl Drop for Lease {
     fn drop(&mut self) {
         let mut state = self.0.0.admission.lock().unwrap();
         state.active -= 1;
-        #[cfg(feature = "test-util")]
+        state.settle_drain();
         if state.active == 0 {
-            self.0.0.settled.notify_all();
+            self.0.0.changed.notify_all();
         }
     }
 }
@@ -289,6 +349,97 @@ mod tests {
         assert!(state.acquire_command("prefs_set", Some(&token)).is_ok());
         assert!(state.acquire_command("delete_draft", Some(&token)).is_ok());
         assert!(state.acquire_command("clear_draft", Some(&token)).is_err());
+    }
+
+    #[test]
+    fn draining_closes_admission_and_prepares_once_earlier_work_settles() {
+        let state = ActivityState::default();
+        let work = state.acquire().unwrap();
+
+        let token = state.begin_drain().unwrap();
+
+        assert!(state.acquire().is_err());
+        assert!(state.acquire_command("prefs_set", Some(&token)).is_err());
+        drop(work);
+        assert!(state.acquire().is_err());
+        assert!(state.acquire_command("prefs_set", Some(&token)).is_ok());
+    }
+
+    #[test]
+    fn draining_waits_for_work_carried_on_by_a_copy_of_its_lease() {
+        let state = ActivityState::default();
+        let work = state.acquire().unwrap();
+        let carried = work.clone();
+        let token = state.begin_drain().unwrap();
+
+        drop(work);
+
+        assert!(state.acquire_command("prefs_set", Some(&token)).is_err());
+        drop(carried);
+        assert!(state.acquire_command("prefs_set", Some(&token)).is_ok());
+    }
+
+    #[test]
+    fn cancelling_a_drain_reopens_admission_while_earlier_work_runs() {
+        let state = ActivityState::default();
+        let _work = state.acquire().unwrap();
+        let token = state.begin_drain().unwrap();
+
+        assert_eq!(state.cancel_prepare(&token), Ok(()));
+
+        assert!(state.acquire().is_ok());
+    }
+
+    #[test]
+    fn a_drain_accepts_native_exit() {
+        let state = ActivityState::default();
+        let _work = state.acquire().unwrap();
+        state.begin_drain().unwrap();
+
+        assert!(state.begin_exit());
+    }
+
+    #[test]
+    fn waiting_on_a_drain_returns_once_preparation_begins() {
+        let state = ActivityState::default();
+        let work = state.acquire().unwrap();
+        let token = state.begin_drain().unwrap();
+        let waiter = std::thread::spawn(move || state.wait_for_preparation(&token));
+
+        drop(work);
+
+        assert_eq!(waiter.join().unwrap(), Ok(()));
+    }
+
+    #[test]
+    fn waiting_on_a_drain_reports_it_ended_when_cancelled() {
+        let state = ActivityState::default();
+        let _work = state.acquire().unwrap();
+        let token = state.begin_drain().unwrap();
+        let waiter = {
+            let state = state.clone();
+            let token = token.clone();
+            std::thread::spawn(move || state.wait_for_preparation(&token))
+        };
+
+        state.cancel_prepare(&token).unwrap();
+
+        assert_eq!(waiter.join().unwrap(), Err(ActivityError::invalid()));
+    }
+
+    #[test]
+    fn waiting_on_a_drain_reports_it_ended_when_trunk_exits() {
+        let state = ActivityState::default();
+        let _work = state.acquire().unwrap();
+        let token = state.begin_drain().unwrap();
+        let waiter = {
+            let state = state.clone();
+            std::thread::spawn(move || state.wait_for_preparation(&token))
+        };
+
+        assert!(state.begin_exit());
+
+        assert_eq!(waiter.join().unwrap(), Err(ActivityError::invalid()));
     }
 
     #[test]

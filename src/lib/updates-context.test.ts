@@ -12,6 +12,7 @@ function preparation() {
 				calls.push("prepare");
 				return "permit";
 			},
+			drained: async () => {},
 			install: async () => {
 				calls.push("install");
 			},

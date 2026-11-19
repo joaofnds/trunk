@@ -33,6 +33,7 @@ async function openPausedRebase(message: string) {
 	const installed: string[] = [];
 	const preparation = new UpdatePreparation({
 		prepare: async () => "permit",
+		drained: async () => {},
 		install: async (version) => {
 			installed.push(version);
 		},

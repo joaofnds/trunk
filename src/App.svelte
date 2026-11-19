@@ -121,6 +121,7 @@ onDestroy(() => updateChecks.update(false, false));
 const releaseChecksEnabled = $derived(updateStatus !== null);
 const preparation = new UpdatePreparation({
 	prepare: updates.prepare,
+	drained: updates.drained,
 	install: updates.install,
 	abort: async (token) => {
 		try {

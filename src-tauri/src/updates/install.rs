@@ -14,7 +14,7 @@ pub fn prepare<R: Runtime>(app: &AppHandle<R>, version: &str) -> Result<String, 
     }
     let token = app
         .state::<ActivityState>()
-        .begin_prepare()
+        .begin_drain()
         .map_err(|error| error.message)?;
     coordinator.preparation = Some(token.clone());
     coordinator.status.phase = Phase::Preparing;
@@ -22,6 +22,15 @@ pub fn prepare<R: Runtime>(app: &AppHandle<R>, version: &str) -> Result<String, 
     coordinator.emit(app);
     drop(coordinator);
     Ok(token)
+}
+
+/// Wait until the work admitted before preparation began has settled.
+/// # Errors
+/// Returns why preparation ended first: it was aborted or Trunk began to exit.
+pub fn drained<R: Runtime>(app: &AppHandle<R>, token: &str) -> Result<(), String> {
+    app.state::<ActivityState>()
+        .wait_for_preparation(token)
+        .map_err(|error| error.message.into())
 }
 
 pub fn abort<R: Runtime>(app: &AppHandle<R>, token: &str) -> Result<UpdateStatus, String> {

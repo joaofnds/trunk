@@ -62,6 +62,7 @@ describe("update draft persistence", () => {
 		let installed = false;
 		const preparation = new UpdatePreparation({
 			prepare: async () => "permit",
+			drained: async () => {},
 			install: async () => {
 				installed = true;
 			},

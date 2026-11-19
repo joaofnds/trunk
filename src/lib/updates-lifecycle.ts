@@ -11,6 +11,7 @@ export interface UpdateParticipant {
 
 interface PreparationHost {
 	prepare(version: string): Promise<string>;
+	drained(token: string): Promise<void>;
 	install(version: string, token: string): Promise<void>;
 	abort(token: string): Promise<unknown>;
 	freeze(frozen: boolean): void;
@@ -47,6 +48,7 @@ export class UpdatePreparation {
 
 			const permit = await this.host.prepare(version);
 			token = permit;
+			await this.host.drained(permit);
 			const results = await Promise.allSettled(
 				captures.map(({ capture }) =>
 					Promise.resolve().then(() => capture.flush(permit)),

@@ -84,6 +84,7 @@ class UpdateRepositoryHarness {
 	recovery: Promise<string | null> = Promise.resolve(null);
 	readonly preparation = new UpdatePreparation({
 		prepare: async () => "restart-permit",
+		drained: async () => {},
 		install: async (version) => {
 			this.installed.push(version);
 		},

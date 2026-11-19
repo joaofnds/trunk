@@ -189,12 +189,22 @@ fn no_update_refresh_preserves_a_download_ready_to_install() {
 }
 
 #[test]
-fn preparation_checks_active_work_and_the_exact_downloaded_version() {
+fn preparation_waits_for_work_admitted_before_it() {
     let app = prepared_app();
     let activity = app.state::<crate::activity::ActivityState>();
     let work = activity.acquire().unwrap();
-    assert!(prepare(app.handle(), "2.0.0").is_err());
+
+    let token = prepare(app.handle(), "2.0.0").unwrap();
+
+    assert!(activity.acquire().is_err());
     drop(work);
+    assert_eq!(drained(app.handle(), &token), Ok(()));
+}
+
+#[test]
+fn preparation_checks_the_exact_downloaded_version() {
+    let app = prepared_app();
+    let activity = app.state::<crate::activity::ActivityState>();
     assert!(prepare(app.handle(), "3.0.0").is_err());
     let token = prepare(app.handle(), "2.0.0").unwrap();
     assert!(activity.acquire().is_err());

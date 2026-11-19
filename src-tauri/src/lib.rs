@@ -292,6 +292,7 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         commands::updates::updates_download,
         commands::updates::updates_cancel,
         commands::updates::updates_prepare,
+        commands::updates::updates_drained,
         commands::updates::updates_abort,
         commands::updates::updates_install,
         commands::updates::updates_ready,

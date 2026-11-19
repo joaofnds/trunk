@@ -91,8 +91,12 @@ text.
 
 The Rust activity gate admits ordinary commands and independent workers while
 open. A command's lease follows its real blocking work, even if its IPC caller
-is cancelled. Preparation closes admission only when all earlier leases have
-settled. An ordinary read also needs admission because opening preferences or
+is cancelled. Preparation closes admission at once and then waits, off the main
+thread, for the leases admitted before it to settle, so background work the user
+never sees delays the restart rather than refusing it. Aborting or exiting ends
+that wait. No flush is admitted until every earlier lease has settled. Startup
+recovery still closes admission only when nothing is running. An ordinary read
+also needs admission because opening preferences or
 review data can migrate or quarantine files.
 
 The frontend refuses restart while ordinary IPC is pending, freezes input, and captures each
@@ -104,8 +108,9 @@ read/modify/write. A supported review composer saves its recovery context.
 Editors whose full state cannot be restored block restart with a reason.
 
 Native Quit and closing the main window participate in the gate. An accepted
-exit prevents a later preparation; preparation and installation prevent a normal
-exit. The updater's explicit restart is allowed. Before replacement, a checked
+exit prevents a later preparation. A preparation still waiting on earlier work
+ends and lets the exit through. Once flushing begins, preparation and
+installation prevent a normal exit. The updater's explicit restart is allowed. Before replacement, a checked
 window-state save runs on the main thread, and an atomic intent record is saved
 outside the application bundle. Aborting reopens admission, invalidates repository
 caches, and refreshes repositories and reviews after frontend input resumes.
