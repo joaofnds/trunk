@@ -2694,6 +2694,30 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		);
 	});
 
+	it("offers a comment on a full-file selection of a merge commit", async () => {
+		render(DiffPanel, {
+			props: {
+				...commentingDiff,
+				fileDiffs: [testDiff],
+				commitDetail: mergeCommit,
+				onclose: vi.fn(),
+				diffKind: "commit",
+				repoPath: "/repo",
+				selectedPath: "src/main.ts",
+				contentMode: "full",
+			},
+		});
+		await flushPrefs();
+
+		await fireEvent.click(fullFileGutterOf("const x = 2;"));
+		await tick();
+
+		const commentBtn = screen.getByRole("button", {
+			name: "Comment on selected lines",
+		}) as HTMLButtonElement;
+		expect(commentBtn.disabled).toBe(false);
+	});
+
 	it("keeps the Comment affordance enabled on an Added file (status forces side, does not disable)", async () => {
 		render(DiffPanel, {
 			props: {
