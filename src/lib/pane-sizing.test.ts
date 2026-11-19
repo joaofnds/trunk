@@ -21,7 +21,7 @@ function sidebarAt(width: number, layout: Layout = {}) {
 		Math.min(pane.width, layout.drawnUpTo ?? Number.POSITIVE_INFINITY);
 	const sizing: PaneSizing = createPaneSizing({
 		splitterEdge: "right",
-		floor: 80,
+		floor: () => 80,
 		max: () => Math.min(600, layout.room ?? Number.POSITIVE_INFINITY),
 		width: () => pane.width,
 		drawn,

@@ -6,6 +6,7 @@ import {
 } from "./pane-sizing.js";
 
 const SIDEBAR = { floor: 80, ceiling: 600 };
+const REVIEW_LIST_FLOOR = 200;
 const DETAIL_PANE = { floor: 200, ceiling: 700 };
 // Room for the diff toolbar's compact controls beside a file name.
 const CENTER_FLOOR = 400;
@@ -53,13 +54,17 @@ export function createSidePanes(options: {
 	// Unmeasured until the observer first reports, so nothing narrows the panes.
 	let rowWidth = $state(Number.POSITIVE_INFINITY);
 
+	function sidebarFloor() {
+		return options.view() === "review" ? REVIEW_LIST_FLOOR : SIDEBAR.floor;
+	}
+
 	function fitShown(shows: { sidebar: boolean; detailPane: boolean }) {
 		return fitPanes({
 			rowWidth,
 			centerFloor: CENTER_FLOOR,
 			left: {
 				width: sidebar.width(),
-				floor: SIDEBAR.floor,
+				floor: sidebarFloor(),
 				ceiling: SIDEBAR.ceiling,
 				open: shows.sidebar && !sidebar.collapsed(),
 			},
@@ -90,7 +95,7 @@ export function createSidePanes(options: {
 
 	const sidebarSizing = createPaneSizing({
 		splitterEdge: "right",
-		floor: SIDEBAR.floor,
+		floor: sidebarFloor,
 		max: () => mainFit.left.max,
 		width: sidebar.width,
 		drawn: () => mainFit.left.drawn,
@@ -102,7 +107,7 @@ export function createSidePanes(options: {
 	});
 	const detailSizing = createPaneSizing({
 		splitterEdge: "left",
-		floor: DETAIL_PANE.floor,
+		floor: () => DETAIL_PANE.floor,
 		max: () => shownFit.right.max,
 		width: detailPane.width,
 		drawn: () => shownFit.right.drawn,

@@ -151,7 +151,7 @@ registerUpdateBlocker(() =>
 				>
 				{#snippet detail()}
 					<span
-						class="flex flex-1 items-center gap-2 min-w-0 font-mono text-caption text-text-subtle"
+						class="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1 min-w-0 font-mono text-caption text-text-subtle"
 					>
 						<span>{review.id}</span>
 						<StatePill review={review.state} />

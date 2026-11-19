@@ -2,7 +2,7 @@ export interface PaneSizingOptions {
 	/** Which of the pane's edges its splitter sits on, so which way widens it. */
 	splitterEdge: "left" | "right";
 	/** The narrowest the pane is drawn open: narrower, it collapses. */
-	floor: number;
+	floor: () => number;
 	/** The widest the pane may go, which the room beside it can lower. */
 	max: () => number;
 	/** The width the user gave the pane. */
@@ -44,14 +44,14 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 
 	/** Reports whether the width collapsed the pane. */
 	function resize(width: number): boolean {
-		if (width < options.floor) {
+		if (width < options.floor()) {
 			options.oncollapsedchange(true);
 			return true;
 		}
 
 		options.oncollapsedchange(false);
 		options.onwidthchange(
-			Math.max(options.floor, Math.min(options.max(), width)),
+			Math.max(options.floor(), Math.min(options.max(), width)),
 		);
 		return false;
 	}
@@ -110,7 +110,7 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 
 		if (options.collapsed()) {
 			stepsFrom = null;
-			resize(options.floor);
+			resize(options.floor());
 			return;
 		}
 

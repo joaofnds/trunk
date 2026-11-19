@@ -28,15 +28,22 @@ async function sidePanesIn(panes: Panes) {
 		},
 		store: () => {},
 	});
+	const shown = $state({ view: panes.view });
 	const sidePanes = createSidePanes({
-		view: () => panes.view,
+		view: () => shown.view,
 		sidebar: pane("sidebar"),
 		detailPane: pane("detailPane"),
 	});
 
 	sidePanes.observeRow(row);
 	await tick();
-	return { set, sidePanes };
+	return {
+		set,
+		sidePanes,
+		show: (view: SidePaneView) => {
+			shown.view = view;
+		},
+	};
 }
 
 afterEach(() => {
@@ -103,5 +110,44 @@ describe("createSidePanes", () => {
 		sidePanes.sidebar.step(-8);
 
 		expect([set.sidebar.width, set.detailPane.width]).toEqual([292, 300]);
+	});
+
+	describe("while the sidebar holds the review list", () => {
+		it("draws the sidebar no narrower than the review list's floor", async () => {
+			const { sidePanes } = await sidePanesIn({
+				view: "review",
+				rowWidth: 1280,
+				sidebarWidth: 100,
+				detailPaneWidth: 300,
+			});
+
+			expect(sidePanes.sidebar.width).toBe(200);
+		});
+
+		it("collapses the sidebar on a step below the review list's floor", async () => {
+			const { set, sidePanes } = await sidePanesIn({
+				view: "review",
+				rowWidth: 1280,
+				sidebarWidth: 200,
+				detailPaneWidth: 300,
+			});
+
+			sidePanes.sidebar.step(-8);
+
+			expect(set.sidebar.collapsed).toBe(true);
+		});
+
+		it("draws the sidebar at the width the user gave it on leaving review mode", async () => {
+			const { sidePanes, show } = await sidePanesIn({
+				view: "review",
+				rowWidth: 1280,
+				sidebarWidth: 100,
+				detailPaneWidth: 300,
+			});
+
+			show("main");
+
+			expect(sidePanes.sidebar.width).toBe(100);
+		});
 	});
 });
