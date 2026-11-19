@@ -1,6 +1,6 @@
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::{OperationInfo, OperationType};
-use crate::user_git::UserGit;
+use crate::user_git::{UserGit, refusal};
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
@@ -201,8 +201,7 @@ pub fn merge_continue_inner(
             .output()
             .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(TrunkError::new("merge_error", stderr.to_string()));
+            return Err(TrunkError::new("merge_error", refusal(&output)));
         }
 
         Ok(())
@@ -228,8 +227,7 @@ pub fn merge_abort_inner(
             .output()
             .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(TrunkError::new("merge_error", stderr.to_string()));
+            return Err(TrunkError::new("merge_error", refusal(&output)));
         }
 
         Ok(())
@@ -289,12 +287,10 @@ pub fn rebase_continue_inner(
             .output()
             .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
             // The next commit hit a conflict, so the rebase paused there. Not an error.
-            if !stderr.to_lowercase().contains("conflict")
-                && !stderr.to_lowercase().contains("could not apply")
-            {
-                return Err(TrunkError::new("rebase_error", stderr));
+            if !stderr.contains("conflict") && !stderr.contains("could not apply") {
+                return Err(TrunkError::new("rebase_error", refusal(&output)));
             }
         }
 
@@ -322,8 +318,7 @@ pub fn rebase_skip_inner(
             .output()
             .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(TrunkError::new("rebase_error", stderr.to_string()));
+            return Err(TrunkError::new("rebase_error", refusal(&output)));
         }
 
         Ok(())
@@ -348,8 +343,7 @@ pub fn rebase_abort_inner(
             .output()
             .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(TrunkError::new("rebase_error", stderr.to_string()));
+            return Err(TrunkError::new("rebase_error", refusal(&output)));
         }
 
         Ok(())
@@ -466,7 +460,7 @@ fn start_merge(repo: &git2::Repository, branch: &str) -> Result<MergeBeginOutcom
             // NOT an error, NOT an editor: the message isn't ready yet.
             return Ok(MergeBeginOutcome::Conflicts);
         }
-        return Err(TrunkError::new("merge_error", stderr.to_string()));
+        return Err(TrunkError::new("merge_error", refusal(&output)));
     }
 
     // Clean non-ff merge staged: read the default message git wrote verbatim.
@@ -494,7 +488,7 @@ pub fn rebase_branch_inner(
             .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
         let stderr = String::from_utf8_lossy(&output.stderr);
         if !output.status.success() && !stderr.to_lowercase().contains("conflict") {
-            return Err(TrunkError::new("rebase_error", stderr.to_string()));
+            return Err(TrunkError::new("rebase_error", refusal(&output)));
         }
 
         Ok(())

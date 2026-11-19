@@ -1,6 +1,6 @@
 use crate::state::{CommitCache, GraphCache, OpenRepos, RepoState};
 use crate::types::{BranchInfo, RefsResponse, StashEntry};
-use crate::user_git::UserGit;
+use crate::user_git::{UserGit, refusal};
 use crate::watcher::RepoChanged;
 use git2::BranchType;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
@@ -419,8 +419,7 @@ pub fn fast_forward_to_inner(
             .output()
             .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-            return Err(TrunkError::new("not_fast_forward", stderr));
+            return Err(TrunkError::new("not_fast_forward", refusal(&output)));
         }
 
         Ok(())

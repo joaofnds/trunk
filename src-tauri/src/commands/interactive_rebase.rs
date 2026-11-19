@@ -1,6 +1,6 @@
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::RebaseTodoItem;
-use crate::user_git::UserGit;
+use crate::user_git::{UserGit, refusal};
 use crate::watcher::RepoChanged;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -167,8 +167,7 @@ pub fn get_fork_point_inner(
         .map_err(|e| TrunkError::new("fork_point_error", e.to_string()))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(TrunkError::new("fork_point_error", stderr.to_string()));
+        return Err(TrunkError::new("fork_point_error", refusal(&output)));
     }
 
     let oid = String::from_utf8_lossy(&output.stdout).trim().to_owned();
@@ -308,8 +307,7 @@ fn run_interactive_rebase(
     let stopped_at_a_commit = rebase_dir.join("stopped-sha").exists();
 
     if !output.status.success() && !stopped_at_a_commit {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Err(TrunkError::new("rebase_error", stderr));
+        return Err(TrunkError::new("rebase_error", refusal(&output)));
     }
 
     if !rebase_dir.exists() {

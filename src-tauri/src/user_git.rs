@@ -83,6 +83,24 @@ impl UserGit {
     }
 }
 
+/// Why git refused, in its own words where it gave any.
+///
+/// That is its stderr, else its stdout, where `git commit` says there is
+/// nothing to commit, else its exit status, since a hook can refuse without
+/// printing a word.
+#[must_use]
+pub fn refusal(output: &Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    [stderr.trim_end(), stdout.trim_end()]
+        .into_iter()
+        .find(|text| !text.is_empty())
+        .map_or_else(
+            || format!("git exited with {} and printed no reason", output.status),
+            str::to_owned,
+        )
+}
+
 fn read_from_start(file: &mut File) -> io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     file.seek(SeekFrom::Start(0))?;

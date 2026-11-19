@@ -1,7 +1,7 @@
 use crate::commands::commit_actions::head_if_still;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::HeadCommitMessage;
-use crate::user_git::UserGit;
+use crate::user_git::{UserGit, refusal};
 use crate::watcher::RepoChanged;
 use std::path::Path;
 use tauri::{AppHandle, Emitter, Runtime, State};
@@ -90,19 +90,7 @@ fn run_git_commit(repo_dir: &Path, flags: &[&str]) -> Result<(), TrunkError> {
         return Ok(());
     }
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // "nothing to commit" is printed to stdout with an empty stderr, and a
-    // hook can refuse without printing anything at all.
-    let message = [stderr.trim_end(), stdout.trim_end()]
-        .into_iter()
-        .find(|text| !text.is_empty())
-        .map_or_else(
-            || format!("git commit failed with {}", output.status),
-            str::to_owned,
-        );
-
-    Err(TrunkError::new("commit_error", message))
+    Err(TrunkError::new("commit_error", refusal(&output)))
 }
 
 /// HEAD's commit message, split into subject and body.

@@ -1,7 +1,8 @@
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::UndoResult;
-use crate::user_git::UserGit;
+use crate::user_git::{UserGit, refusal};
 use crate::watcher::RepoChanged;
+use std::process::Output;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
 use trunk_git::graph_input::GraphSnapshot;
@@ -106,12 +107,12 @@ pub fn delete_tag_inner(
 /// `conflict_state` when the index holds conflicted paths, and `other` with
 /// git's own message otherwise. git's text is no guide, since the message for
 /// a pick HEAD already has says "possibly due to conflict resolution".
-fn stopped_error(path: &std::path::Path, stderr: &[u8], other: &str) -> TrunkError {
+fn stopped_error(path: &std::path::Path, output: &Output, other: &str) -> TrunkError {
     let conflicted = git2::Repository::open(path)
         .and_then(|repo| repo.index())
         .is_ok_and(|index| index.has_conflicts());
     let code = if conflicted { "conflict_state" } else { other };
-    TrunkError::new(code, String::from_utf8_lossy(stderr).to_string())
+    TrunkError::new(code, refusal(output))
 }
 
 /// Whether git stopped the pick because HEAD already has its changes: the pick
@@ -138,8 +139,7 @@ fn cherry_pick_skip(path: &std::path::Path) -> Result<(), TrunkError> {
         .output()
         .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
+        return Err(TrunkError::new("cherry_pick_error", refusal(&output)));
     }
     Ok(())
 }
@@ -167,10 +167,9 @@ pub fn cherry_pick_inner(
         if !output.status.success() {
             if pick_is_empty(path_buf)? {
                 cherry_pick_skip(path_buf)?;
-                let reason = String::from_utf8_lossy(&output.stderr).to_string();
-                return Err(TrunkError::new("cherry_pick_empty", reason));
+                return Err(TrunkError::new("cherry_pick_empty", refusal(&output)));
             }
-            return Err(stopped_error(path_buf, &output.stderr, "cherry_pick_error"));
+            return Err(stopped_error(path_buf, &output, "cherry_pick_error"));
         }
 
         Ok(())
@@ -199,8 +198,7 @@ pub fn cherry_pick_continue_inner(
             .output()
             .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
+            return Err(TrunkError::new("cherry_pick_error", refusal(&output)));
         }
 
         Ok(())
@@ -228,8 +226,7 @@ pub fn cherry_pick_abort_inner(
             .output()
             .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
+            return Err(TrunkError::new("cherry_pick_error", refusal(&output)));
         }
 
         Ok(())
@@ -261,7 +258,7 @@ pub fn revert_commit_begin_inner(
             .map_err(|e| TrunkError::new("revert_error", e.to_string()))?;
 
         if !output.status.success() {
-            return Err(stopped_error(path_buf, &output.stderr, "revert_error"));
+            return Err(stopped_error(path_buf, &output, "revert_error"));
         }
 
         // Read before the next writer can abort this revert or start another. The
@@ -294,8 +291,7 @@ pub fn revert_continue_inner(
             .output()
             .map_err(|e| TrunkError::new("revert_error", e.to_string()))?;
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(TrunkError::new("revert_error", stderr.to_string()));
+            return Err(TrunkError::new("revert_error", refusal(&output)));
         }
 
         Ok(())
@@ -323,8 +319,7 @@ pub fn revert_abort_inner(
             .output()
             .map_err(|e| TrunkError::new("revert_error", e.to_string()))?;
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(TrunkError::new("revert_error", stderr.to_string()));
+            return Err(TrunkError::new("revert_error", refusal(&output)));
         }
 
         Ok(())
@@ -778,8 +773,7 @@ fn run_git_reset(dir: &std::path::Path, args: &[&str], code: &str) -> Result<(),
         .output()
         .map_err(|e| TrunkError::new(code, e.to_string()))?;
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(TrunkError::new(code, stderr.to_string()));
+        return Err(TrunkError::new(code, refusal(&output)));
     }
     Ok(())
 }

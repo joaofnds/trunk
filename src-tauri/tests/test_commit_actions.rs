@@ -452,6 +452,21 @@ mod cherry_pick_lifecycle {
         assert_eq!(head.subject, "Pick the side change");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn cherry_pick_continue_refused_by_a_silent_hook_still_explains_the_refusal() {
+        let (ctx, side_oid) = conflicting_cherry_pick_ctx();
+        ctx.cherry_pick(&side_oid).unwrap_err();
+        resolve_conflict(&ctx);
+        ctx.install_hook("pre-commit", "exit 1");
+
+        let err = ctx
+            .cherry_pick_continue("Pick the side change")
+            .unwrap_err();
+
+        assert!(err.message.contains("exit status: 1"), "got: {err:?}");
+    }
+
     #[test]
     fn cherry_pick_abort_restores_a_clean_tree() {
         let (ctx, side_oid) = conflicting_cherry_pick_ctx();
