@@ -110,7 +110,8 @@ and the layouts built on them would break. The floor is declared in three places
 tauri.conf.json's `bundle.macOS.minimumSystemVersion`, which becomes
 `LSMinimumSystemVersion` and makes macOS refuse to open the app on anything
 older; `.cargo/config.toml`'s `MACOSX_DEPLOYMENT_TARGET`, which must equal it
-(above); and the release workflow's cask, `depends_on macos: :ventura`.
+(above); and the cask the release workflow writes through
+`scripts/homebrew-cask.sh`, `depends_on macos: :ventura`.
 Homebrew names a floor only by release, so brew installs on 13.0 to 13.2 and
 macOS then refuses to open it. The bare release means that release or newer
 from Homebrew 7 on. Homebrew 5.1.7 read it as that release alone, which

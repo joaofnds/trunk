@@ -172,7 +172,7 @@ toolchain-parity:
         echo "::error::.cargo/config.toml sets MACOSX_DEPLOYMENT_TARGET to '$exported' and tauri.conf.json's bundle.macOS.minimumSystemVersion is '$bundled'. tauri build exports the second to cargo and every other build takes the first, so a mismatch recompiles the C dependencies and everything built on them on every switch between \`just dev-app\` and any other build (docs/build-environment.md). Make them equal."
         exit 1
     fi
-    casked=$(sed -n 's/^ *depends_on macos: :\([a-z_]*\)$/\1/p' .github/workflows/release.yml)
+    casked=$(sed -n 's/^ *depends_on macos: :\([a-z_]*\)$/\1/p' scripts/homebrew-cask.sh)
     case "${bundled%%.*}" in
         13) release=ventura ;;
         14) release=sonoma ;;
@@ -182,7 +182,7 @@ toolchain-parity:
         *) release="" ;;
     esac
     if [ -z "$release" ] || [ "$casked" != "$release" ]; then
-        echo "::error::release.yml's cask says 'depends_on macos: :$casked' and tauri.conf.json's bundle.macOS.minimumSystemVersion is '$bundled', which belongs to '${release:-a release this recipe does not name}'. Homebrew names a floor only by release, so the cask names the release of the bundle's floor, or brew installs an app that macOS then refuses to open. Make them agree, adding the release to this recipe when it is new."
+        echo "::error::scripts/homebrew-cask.sh says 'depends_on macos: :$casked' and tauri.conf.json's bundle.macOS.minimumSystemVersion is '$bundled', which belongs to '${release:-a release this recipe does not name}'. Homebrew names a floor only by release, so the cask names the release of the bundle's floor, or brew installs an app that macOS then refuses to open. Make them agree, adding the release to this recipe when it is new."
         exit 1
     fi
 
