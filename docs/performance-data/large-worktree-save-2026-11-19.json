@@ -1,0 +1,149 @@
+{
+  "schema": 1,
+  "experiment": "E16",
+  "date": "2026-11-19",
+  "decision": "Deferred. Sharing one worktree scan among a save's readers measured no faster than today's four readers, and no repository in use is past 8,655 tracked files.",
+  "scope": "The worktree reads a save starts: get_status, get_dirty_counts, the graph refresh's dirtiness read, get_wip_diff_stats. Backend probe only; the page trial was run at 20,000 and 30 files.",
+  "comparativeVerdict": "Hypothesis refuted: status beside the WIP diff alone (the shared-scan end state) is no faster than all four readers.",
+  "globalSettlement": "none",
+  "machine": "Apple M5 Pro, 48 GB, macOS, shared with other sessions",
+  "builds": {
+    "probe": "release, git2 0.21 and trunk-git by path at 91c6411d",
+    "pageTrial": "cargo build --release --features drive at 23c0fd1b"
+  },
+  "fixture": {
+    "generator": "import sys\nn = int(sys.argv[1])\nout = sys.stdout.buffer\nout.write(b\"commit refs/heads/main\\nmark :1\\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\\ndata 7\\ninitial\\n\")\nfor i in range(n):\n    body = f\"file {i}\\n\".encode() * 20\n    out.write(f\"M 100644 inline src/d{i//200:03d}/f{i:05d}.txt\\ndata {len(body)}\\n\".encode() + body + b\"\\n\")\nout.write(b\"\\n\")\n",
+    "command": "python3 gen.py N | git -C repo fast-import; git -C repo checkout -f main; then one line appended to src/d000/f00007.txt",
+    "sizes": [
+      20000,
+      100000
+    ]
+  },
+  "procedure": "t489 <repo> mixes: for each round, each set of readers starts on its own threads at one instant, and the status thread's finish time is recorded. Readers: status (dirty_status_options plus renames_head_to_index), counts (same options), graph dirtiness (dirty_status_options), WIP diff (tree-to-index plus index-to-workdir with untracked content).",
+  "probe": "// t489 probe: what one save in a large worktree costs the reads that follow it,\n// and what a read limited to the changed path would cost.\nuse std::time::Instant;\n\nfn ms(t: Instant) -> f64 { t.elapsed().as_secs_f64() * 1000.0 }\n\nfn status(path: &str, renames: bool, only: Option<&str>) -> usize {\n    let repo = git2::Repository::open(path).unwrap();\n    let mut opts = trunk_git::status::dirty_status_options();\n    if renames { opts.renames_head_to_index(true); }\n    if let Some(p) = only { opts.pathspec(p); opts.disable_pathspec_match(true); }\n    repo.statuses(Some(&mut opts)).unwrap().len()\n}\n\nfn wip_diff(path: &str, only: Option<&str>) -> usize {\n    let repo = git2::Repository::open(path).unwrap();\n    let head = repo.head().unwrap().peel_to_tree().unwrap();\n    let mut s = git2::DiffOptions::new();\n    if let Some(p) = only { s.pathspec(p); s.disable_pathspec_match(true); }\n    let staged = repo.diff_tree_to_index(Some(&head), None, Some(&mut s)).unwrap();\n    let mut opts = git2::DiffOptions::new();\n    opts.include_untracked(true).recurse_untracked_dirs(true).show_untracked_content(true);\n    if let Some(p) = only { opts.pathspec(p); opts.disable_pathspec_match(true); }\n    let unstaged = repo.diff_index_to_workdir(None, Some(&mut opts)).unwrap();\n    staged.stats().unwrap().files_changed() + unstaged.stats().unwrap().files_changed()\n}\n\nfn capture(path: &str) -> usize {\n    let mut repo = git2::Repository::open(path).unwrap();\n    let memo = trunk_git::graph::CommitMemo::default();\n    drop(trunk_git::graph::capture_remembering(&mut repo, &memo).unwrap());\n    0\n}\n\nfn main() {\n    let path = std::env::args().nth(1).unwrap();\n    let one = \"src/d000/f00007.txt\";\n    if std::env::args().nth(2).as_deref() == Some(\"mixes\") { mixes(&path); return; }\n    if std::env::args().nth(2).as_deref() == Some(\"loop\") { for _ in 0..15 { status(&path, false, None); } return; }\n    for round in 0..5 {\n        let t = Instant::now(); drop(git2::Repository::open(&path).unwrap().index().unwrap()); let open = ms(t);\n        let t = Instant::now(); let n = status(&path, true, None); let st = ms(t);\n        let t = Instant::now(); status(&path, false, None); let dirty = ms(t);\n        let t = Instant::now(); wip_diff(&path, None); let wip = ms(t);\n        let t = Instant::now(); capture(&path); let cap = ms(t);\n        let t = Instant::now(); let n1 = status(&path, true, Some(one)); let st1 = ms(t);\n        let t = Instant::now(); wip_diff(&path, Some(one)); let wip1 = ms(t);\n        let t = Instant::now();\n        let p = path.clone();\n        let threads: Vec<_> = (0..4).map(|i| { let p = p.clone(); std::thread::spawn(move || match i { 0 => status(&p, true, None), 1 => status(&p, false, None), 2 => wip_diff(&p, None), _ => capture(&p) }) }).collect();\n        let mut first = 0.0;\n        for (i, h) in threads.into_iter().enumerate() { h.join().unwrap(); if i == 0 { first = ms(t); } }\n        let together = ms(t);\n        println!(\"round {round}: entries {n} index {open:.1} status {st:.1} dirty {dirty:.1} wipdiff {wip:.1} capture {cap:.1} | one-path status {st1:.2} ({n1}) wipdiff {wip1:.2} | four together {together:.1}, status among them {first:.1}\");\n    }\n}\n\n// Status latency when it runs beside the other readers of a save. 0 status (renames),\n// 1 counts (renames), 2 graph dirtiness (no renames), 3 wip diff.\nfn mixes(path: &str) {\n    let sets: [(&str, &[u8]); 5] = [(\"status+counts+dirty+wip\", &[0, 1, 2, 3]), (\"status+dirty+wip\", &[0, 2, 3]), (\"status+wip\", &[0, 3]), (\"wip alone\", &[3]), (\"status alone\", &[0])];\n    for round in 0..5 {\n        let mut line = format!(\"round {round}:\"); let _ = 0;\n        for (name, set) in sets {\n            let t = Instant::now();\n            let threads: Vec<_> = set.iter().map(|&i| { let p = path.to_owned(); std::thread::spawn(move || { match i { 0 | 1 => { status(&p, true, None); } 2 => { status(&p, false, None); } _ => { wip_diff(&p, None); } } ms(t) }) }).collect();\n            let times: Vec<f64> = threads.into_iter().map(|h| h.join().unwrap()).collect();\n            let all = ms(t);\n            line += &format!(\" | {name}: status {:.1} all {:.1}\", times[0], all);\n        }\n        println!(\"{line}\");\n    }\n}\n",
+  "runs": {
+    "pageTrial20000Files": {
+      "saveToListMs": "91 to 110",
+      "trials": 20,
+      "control30FilesMs": "31 to 51"
+    },
+    "status100000Files": {
+      "order1": {
+        "statusAlone": [
+          689.4,
+          225.0,
+          230.2,
+          217.0,
+          218.2
+        ],
+        "statusAndWip": [
+          351.7,
+          349.0,
+          353.9,
+          330.9,
+          352.1
+        ],
+        "statusDirtyWip": [
+          271.6,
+          281.7,
+          282.0,
+          280.5,
+          273.4
+        ],
+        "allFour": [
+          345.6,
+          339.6,
+          331.9,
+          343.0,
+          347.4
+        ]
+      },
+      "order2Reverse": {
+        "allFour": [
+          403.5,
+          345.9,
+          332.9,
+          354.8,
+          354.1
+        ],
+        "statusDirtyWip": [
+          293.8,
+          291.9,
+          275.0,
+          277.8,
+          281.2
+        ],
+        "statusAndWip": [
+          344.8,
+          347.6,
+          345.9,
+          347.9,
+          345.1
+        ],
+        "wipAlone": [
+          229.2,
+          216.6,
+          219.3,
+          231.1,
+          220.8
+        ],
+        "statusAlone": [
+          242.8,
+          235.0,
+          230.1,
+          234.4,
+          247.9
+        ]
+      }
+    },
+    "status20000Files": {
+      "order1": {
+        "statusAlone": [
+          137.4,
+          45.7,
+          50.7,
+          47.0,
+          45.1
+        ],
+        "statusAndWip": [
+          70.2,
+          66.6,
+          69.1,
+          69.5,
+          70.2
+        ],
+        "statusDirtyWip": [
+          54.2,
+          57.2,
+          55.8,
+          55.7,
+          57.3
+        ],
+        "allFour": [
+          65.4,
+          72.8,
+          66.5,
+          67.6,
+          70.3
+        ]
+      }
+    },
+    "gitStatus100000FilesMs": 100,
+    "repositorySizes": {
+      "command": "for d in ~/code/*/; do git -C \"$d\" ls-files | wc -l; done",
+      "largest": [
+        8655,
+        3819,
+        3613,
+        1880
+      ]
+    }
+  },
+  "profile": "sample of 15 status scans at 100,000 files: lstat in about 420 of 720 samples, in libgit2's single-threaded scan",
+  "limitations": [
+    "The non-monotone cost in the number of concurrent scans was not explained.",
+    "The page trial was not run at 100,000 files.",
+    "Untracked trees of this size were not generated.",
+    "The machine was shared with other sessions' work."
+  ]
+}

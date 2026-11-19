@@ -1550,6 +1550,45 @@ maintenance or `git gc` writes one. The
 [committed E15 record](performance-data/deep-history-commit-graph-2026-11-19.json)
 holds the probe and every timing.
 
+### E16: a save in a large worktree, what one shared scan would change
+
+Flows I12 and I18. In the release drive build on an Apple M5 Pro, a line appended to
+a tracked file reached the staging list in 91 to 110 ms across 20 trials in a
+generated repository of 20,000 tracked files, against 31 to 51 ms in a 30-file
+repository in the same runs. A save starts four readers, each a full worktree status
+scan or diff: the staging list's `get_status`, the counts' `get_dirty_counts`, the
+graph refresh's dirtiness read and `get_wip_diff_stats`. When the save adds a file to
+the list, RepoView reads the counts a second time. The hypothesis was that one scan
+shared by every reader of a change would bring the staging list's read close to a
+lone scan. A shared read no faster than today's four would refute it.
+
+A release probe linking `trunk-git` ran each set of readers on its own threads, five
+rounds, on generated repositories with one edit, and at 100,000 files again with the
+sets in reverse order. The first round of the first run read a cold cache, 137.4 ms at
+20,000 files and 689.4 ms at 100,000 for status alone, and is left out:
+
+| Readers running together | 20,000 files, status read (ms) | 100,000 files, status read (ms) |
+|---|---|---|
+| Status alone | 45.1 to 50.7 | 217.0 to 247.9 |
+| Status and WIP diff | 66.6 to 70.2 | 330.9 to 353.9 |
+| Status, graph dirtiness and WIP diff | 54.2 to 57.3 | 271.6 to 293.8 |
+| All four | 65.4 to 72.8 | 332.9 to 403.5 |
+
+The hypothesis is refuted. Sharing one scan among status, counts and dirtiness leaves
+the status read beside the WIP diff alone, and that pair measured no faster than all
+four. The cost is not monotone in the number of scans, and the cause was not
+isolated. Dropping only the counts scan, so that the status read carries the counts,
+measured fastest, about 12 ms faster than all four at 20,000 files and about 65 ms at 100,000, comparing medians. At 100,000 files a lone
+libgit2 scan took about twice git 2.56's threaded `git status` (100 ms), with `lstat`
+in about 420 of 720 samples, so a parallel scan is likely the larger lever there (inferred, not built).
+
+No repository in use reaches these sizes. The largest under `~/code` on this machine
+has 8,655 tracked files, so the work is deferred, and the counts carried by the status
+read are the first option to reopen. Not measured: the page trial at 100,000 files,
+and untracked trees of that size. The
+[committed E16 record](performance-data/large-worktree-save-2026-11-19.json) holds the
+probe and every timing.
+
 ### Selection presentation and background limits
 
 Three five-second ScreenCaptureKit attempts used a requested 60 Hz virtual display.
@@ -1579,10 +1618,10 @@ Frequency remains an assumption; no usage telemetry was collected.
 | --- | --- | --- |
 | 1 | Broaden I19 scrolling evidence while preserving the accepted behavior | The user made scrolling the priority. E05 changes captured diff-content cadence from 17.820 to 8.903 ms and accepts added process CPU in diff and graph scrolling. Painting checks pass at requested 60 and 120 Hz, including a replacement 90,000-line run with workload admission. Four admitted graph pairs have overlapping medians and capture gaps in both builds. Earlier competing-test confirmations remain excluded. Preserve the stationary row layout and configuration fallback. Physical trackpad timing, long-session cost and older-OS behavior remain open. High presentation risk. |
 | 2 | Preserve the reviewed selection and navigation contracts | Browsing is assumed frequent. E01 removes 116.5 ms in the width series and 129 ms in the delivered-source confirmation at 1,000 files. Warm ranges overlap; CPU, memory and highlight costs remain explicit. Correctness risk requires held-response tests. |
-| 3 | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. Settle how often users open large highlighted files in full mode first. The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
+| 3 | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. Settle how often users open large highlighted files in full mode first. The installed copy on the measuring machine is set to hunk mode, and files above the 5,000-line cap open as plain text, so the cost reaches only a full-mode user opening a file between about 3,000 and 5,000 lines (2026-11-19). The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
 | Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
-| 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Overlapping in-app actions take turns at a per-repository write gate (E09), so none reports a lock failure or drops another's write. E14 cut the watcher's CPU under ignored build output to about a tenth. Saves, local fetch and refreshes for tracked changes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
-| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. E11 measured the graph rebuild after a commit at 30,000 commits falling from about 95 to 7.4 ms in the backend capture. E13 measured the layout a capture waits for at 300,000 commits falling from about 390 to about 160 ms; the first capture, about 1.09 s there and 112 to 136 ms at 30,000, is unchanged and is the open cost. E15 found libgit2 reads none of the commit-graph files git writes today, and that cutting the first capture needs a commit-graph reader of Trunk's own and commit facts read after the first page. Conflict-region count is measured in the backend and the editor's TypeScript, on generated conflicts on an Apple M5 Pro: after `a0f61f2a` the merge editor's read takes 11.5 ms at 20,000 lines and 500 conflicts and 57 ms at 100,000 lines and 2,500, most of the rest being libgit2's SHA-1, and a click's output rebuild takes under 1 ms and 2.3 to 4.8 ms there under bun. The webview's share, a reply about three times the file's size and an output textarea rewritten on each click, is unmeasured. Review size remains unbenchmarked, and history depth beyond the graph rebuild too; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh, which E12 cut from about 515 to 27 to 37 ms for an outside edit; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. |
+| 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Overlapping in-app actions take turns at a per-repository write gate (E09), so none reports a lock failure or drops another's write. E14 cut the watcher's CPU under ignored build output to about a tenth. E16 measured a save at 20,000 tracked files reaching the list in 91 to 110 ms and found sharing one scan among its readers no faster; the largest repository in use has 8,655 files. Local fetch and refreshes for tracked changes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
+| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. E11 measured the graph rebuild after a commit at 30,000 commits falling from about 95 to 7.4 ms in the backend capture. E13 measured the layout a capture waits for at 300,000 commits falling from about 390 to about 160 ms; the first capture, about 1.09 s there and 112 to 136 ms at 30,000, is unchanged and is the open cost. E15 found libgit2 reads none of the commit-graph files git writes today, and that cutting the first capture needs a commit-graph reader of Trunk's own and commit facts read after the first page. The deepest repository under `~/code` on this machine has 5,077 commits (2026-11-19). Conflict-region count is measured in the backend and the editor's TypeScript, on generated conflicts on an Apple M5 Pro: after `a0f61f2a` the merge editor's read takes 11.5 ms at 20,000 lines and 500 conflicts and 57 ms at 100,000 lines and 2,500, most of the rest being libgit2's SHA-1, and a click's output rebuild takes under 1 ms and 2.3 to 4.8 ms there under bun. The webview's share, a reply about three times the file's size and an output textarea rewritten on each click, is unmeasured. Review size remains unbenchmarked, and history depth beyond the graph rebuild too; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh, which E12 cut from about 515 to 27 to 37 ms for an outside edit; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. |
 
 The evidence supports retaining current warm diff reuse, mounted-tab reuse,
 coalesced refresh, and the search debounce. It does not support another cache or
