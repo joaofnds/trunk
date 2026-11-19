@@ -42,7 +42,7 @@ describe("properties.css", () => {
 	});
 
 	it("is honored on the oldest macOS the app declares, since WebKit before Safari 16.4 (macOS 13.3) drops every registration", () => {
-		const [major, minor] = bundle.bundle.macOS.minimumSystemVersion
+		const [major, minor = 0] = bundle.bundle.macOS.minimumSystemVersion
 			.split(".")
 			.map(Number);
 
