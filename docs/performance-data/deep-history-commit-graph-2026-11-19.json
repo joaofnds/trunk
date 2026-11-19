@@ -1,0 +1,137 @@
+{
+ "schema": 1,
+ "experiment": "E15 deep-history first capture: what a commit-graph file would change",
+ "date": "2026-11-19",
+ "decision": "no change; a cold capture at 300,000 commits spends about 0.84 of its 1.19 s in a walk that reads every commit object, which a commit-graph file can replace for topology only (0.84 s to 0.08 to 0.09 s in libgit2's own walk), but libgit2 1.9 reads neither the generation-data chunk git 2.56 writes by default nor a split chain, and the capture also reads every commit's message and author, so the gain needs a commit-graph reader of Trunk's own and facts read after the first page",
+ "scope": "backend only, a release probe linking trunk-git at 08fbdebf and git2 0.21 (libgit2 1.9.7 vendored); timed in-process; not the app's open, not the frontend",
+ "comparativeVerdict": "the version-1 commit-graph walk is faster in every reading (max 106.8 ms against min 830.4 ms without a readable file); the generation-data file and the chain match the no-file walk (835.2 to 850.7 ms against 830.4 to 856.4 ms); disabling strict hash verification saved 2 to 10% of the capture",
+ "globalSettlement": "unknown",
+ "machine": "Apple M5 Pro, 48 GB, macOS, release profile with debug = 1, CARGO_BUILD_JOBS=2 for the build only",
+ "builds": {
+  "probe": "a scratch crate holding the probe below, with a path dependency on src-tauri/git at 08fbdebf"
+ },
+ "fixture": {
+  "build": "git init <dir>; python3 generator.py 300000 | git -C <dir> fast-import --quiet, the E13 generator (docs/performance-data/deep-history-layout-2026-11-18.json)",
+  "commits": 300000,
+  "variants": {
+   "repo": "one pack, no commit-graph",
+   "repo-cg": "git commit-graph write --reachable (git 2.56.0 default, chunks OIDF OIDL CDAT GDA2)",
+   "repo-cg1": "git -c commitGraph.generationVersion=1 commit-graph write --reachable (chunks OIDF OIDL CDAT)",
+   "repo-chain": "git commit-graph write --reachable --split (objects/info/commit-graphs/commit-graph-chain)"
+  }
+ },
+ "procedure": "each mode is one process run on one variant: capture = trunk_git::graph::capture_remembering with an empty memo; revwalk = libgit2 revwalk TOPOLOGICAL|TIME over refs/*, counted; unsorted = the same walk unsorted; topology = unsorted walk plus find_commit reading parents and time; facts = unsorted walk plus find_commit and the summary, body, author name and email copied as the capture copies them. NOSTRICT=1 sets git2::opts::strict_hash_verification(false) first. git rev-list --topo-order --all timed with /usr/bin/time for comparison.",
+ "probe": "// t440cg probe: where a cold capture's time goes, and what a commit-graph file changes.\nuse std::time::Instant;\nuse trunk_git::graph::{CommitMemo, capture_remembering};\n\nfn ms(t: Instant) -> f64 { t.elapsed().as_secs_f64() * 1000.0 }\n\nfn main() {\n    let path = std::env::args().nth(1).unwrap();\n    let mode = std::env::args().nth(2).unwrap();\n    if std::env::var_os(\"NOSTRICT\").is_some() { git2::opts::strict_hash_verification(false); }\n    let repo = git2::Repository::open(&path).unwrap();\n    let t = Instant::now();\n    let n = match mode.as_str() {\n        \"capture\" => {\n            let mut repo = repo;\n            let s = capture_remembering(&mut repo, &CommitMemo::default()).unwrap();\n            s.placement.oids.len()\n        }\n        \"revwalk\" => {\n            let mut w = repo.revwalk().unwrap();\n            w.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME).unwrap();\n            w.push_glob(\"refs/*\").unwrap();\n            w.count()\n        }\n        \"topology\" => {\n            // read every commit object, keep only parents and time\n            let mut w = repo.revwalk().unwrap();\n            w.push_glob(\"refs/*\").unwrap();\n            let mut n = 0;\n            for oid in w { let c = repo.find_commit(oid.unwrap()).unwrap(); n += c.parent_count() + (c.time().seconds() as usize & 0); }\n            n\n        }\n        \"facts\" => {\n            let mut w = repo.revwalk().unwrap();\n            w.push_glob(\"refs/*\").unwrap();\n            let mut n = 0;\n            for oid in w { let c = repo.find_commit(oid.unwrap()).unwrap(); let a = c.author(); let s = c.summary().ok().flatten().unwrap_or(\"\").to_owned(); let b = c.body().ok().flatten().map(str::to_owned); let an = a.name().unwrap_or(\"\").to_owned(); let ae = a.email().unwrap_or(\"\").to_owned(); n += s.len() + b.map_or(0, |b| b.len()) + an.len() + ae.len(); }\n            n\n        }\n        \"unsorted\" => {\n            let mut w = repo.revwalk().unwrap();\n            w.push_glob(\"refs/*\").unwrap();\n            w.count()\n        }\n        \"unsorted5\" => {\n            let mut n = 0;\n            for _ in 0..5 { let repo = git2::Repository::open(&path).unwrap(); let mut w = repo.revwalk().unwrap(); w.push_glob(\"refs/*\").unwrap(); n += w.count(); }\n            n\n        }\n        \"cgfile\" => {\n            let odb = repo.odb().unwrap();\n            let p = std::path::Path::new(&path).join(\".git/objects/info/commit-graph\");\n            usize::from(p.exists()) + usize::from(odb.exists(repo.head().unwrap().target().unwrap()))\n        }\n        _ => panic!(\"mode\"),\n    };\n    println!(\"{mode}: {:.1} ms ({n})\", ms(t));\n}\n",
+ "runs": {
+  "repo": {
+   "capture": [
+    1193.3,
+    1189.4,
+    1188.0
+   ],
+   "revwalk": [
+    841.3,
+    856.4,
+    847.5
+   ],
+   "topology": [
+    942.0,
+    932.5,
+    942.6
+   ],
+   "facts": [
+    1004.8,
+    999.6,
+    993.8
+   ],
+   "unsorted": [
+    833.6,
+    830.4
+   ]
+  },
+  "repo-cg": {
+   "capture": [
+    1194.1,
+    1197.5,
+    1177.1
+   ],
+   "revwalk": [
+    850.7,
+    835.9,
+    835.2
+   ],
+   "topology": [
+    941.6,
+    937.3,
+    947.2
+   ],
+   "facts": [
+    989.5,
+    993.2,
+    990.9
+   ],
+   "unsorted": [
+    835.9,
+    841.6
+   ]
+  },
+  "repo-cg1": {
+   "revwalk": [
+    106.8,
+    95.4,
+    99.9
+   ],
+   "unsorted": [
+    93.3,
+    82.9,
+    83.5
+   ]
+  },
+  "repo-chain": {
+   "unsorted": [
+    837.1,
+    835.3
+   ]
+  },
+  "repo, NOSTRICT": {
+   "capture": [
+    1139.8,
+    1070.2,
+    1116.2
+   ],
+   "facts": [
+    931.1,
+    883.4,
+    951.2
+   ]
+  },
+  "repo, strict, interleaved with NOSTRICT": {
+   "capture": [
+    1177.3,
+    1198.2,
+    1189.4
+   ]
+  },
+  "git rev-list --topo-order --all, seconds": {
+   "repo": [
+    0.8,
+    0.79
+   ],
+   "repo-cg": [
+    0.27,
+    0.28
+   ],
+   "repo-chain": [
+    0.26,
+    0.27
+   ]
+  }
+ },
+ "profile": "sample(1) over five unsorted walks of repo-cg: 594 of the walk's samples under git_commit_list_parse were in git_odb_read, 509 in zlib inflate, 85 in git_odb__hashobj; libgit2's commit_graph.c returns 'unrecognized chunk ID' for any chunk but OIDF, OIDL, CDAT, EDGE, BIDX and BDAT, and opens only objects/info/commit-graph",
+ "limitations": [
+  "one generated history shape whose commit objects are small; real commits carry longer messages, which raises the facts share",
+  "no real repository of this depth was available; the deepest on this machine has 5,073 commits",
+  "every repository past 100 commits under ~/code on this machine (11) keeps a split chain, none a single file, so the chain result is the representative one here",
+  "fresh clones carry no commit-graph until git gc or git maintenance writes one"
+ ]
+}

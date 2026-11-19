@@ -1510,6 +1510,46 @@ index holds per watched repository. The
 [committed E14 record](performance-data/ignored-churn-2026-11-19.json) holds the probe
 and every reading.
 
+### E15: deep-history first capture, what a commit-graph file would change
+
+Flow I01. E13 left the first capture of a session, about 1.1 s at 300,000 commits, as
+the open cost at that depth, measured without a commit-graph file. Git keeps one in
+most repositories it maintains, and with it `git rev-list --topo-order --all` on E13's
+fixture fell from 0.79 to 0.80 s to 0.26 to 0.28 s. The hypothesis was that libgit2's
+walk, which the capture's order reproduces, would gain as much from it. A walk within
+10% of the no-file walk would refute it.
+
+A release probe linking `trunk-git` timed one walk or capture per process on four
+copies of E13's fixture: no file, git 2.56's default file, a version-1 file
+(`-c commitGraph.generationVersion=1`) and a split chain (`--split`), on an Apple M5
+Pro with 48 GB.
+
+| Copy | libgit2 walk, unsorted (ms) | Trunk's cold capture (ms) |
+|---|---|---|
+| No commit-graph | 830.4 to 833.6 | 1,188.0 to 1,193.3 |
+| git 2.56 default file | 835.9 to 841.6 | 1,177.1 to 1,197.5 |
+| Version-1 file | 82.9 to 93.3 | not run |
+| Split chain | 835.3 to 837.1 | not run |
+
+The hypothesis is refuted for the files git writes today. libgit2 1.9 rejects any
+commit-graph chunk it does not know, and the generation-data chunk git writes by
+default is one of them. It also opens only `objects/info/commit-graph`, never a chain,
+and every repository past 100 commits under `~/code` on this machine keeps a chain.
+Only a version-1 file is read, and then the walk takes about a tenth of the time.
+
+The walk is not the whole capture either. The capture reads every commit's summary,
+body and author along with its parents, which needs every object inflated whatever the
+walk reads them from: that walk alone took 989.5 to 1,004.8 ms. So a faster first capture
+needs both a commit-graph reader of Trunk's own, for chains and the current chunks, and
+commit facts read after the first page rather than for the whole history up front.
+Search and review's check for rewritten commits read every commit's facts, so they
+would wait for that read. Turning off libgit2's strict hash verification saved 2 to 10% of the capture and
+was not taken. Not measured: real repositories of this depth, whose longer messages
+raise the facts share, and fresh clones, which carry no commit-graph until git
+maintenance or `git gc` writes one. The
+[committed E15 record](performance-data/deep-history-commit-graph-2026-11-19.json)
+holds the probe and every timing.
+
 ### Selection presentation and background limits
 
 Three five-second ScreenCaptureKit attempts used a requested 60 Hz virtual display.
@@ -1542,7 +1582,7 @@ Frequency remains an assumption; no usage telemetry was collected.
 | 3 | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. Settle how often users open large highlighted files in full mode first. The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
 | Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
 | 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Overlapping in-app actions take turns at a per-repository write gate (E09), so none reports a lock failure or drops another's write. E14 cut the watcher's CPU under ignored build output to about a tenth. Saves, local fetch and refreshes for tracked changes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
-| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. E11 measured the graph rebuild after a commit at 30,000 commits falling from about 95 to 7.4 ms in the backend capture. E13 measured the layout a capture waits for at 300,000 commits falling from about 390 to about 160 ms; the first capture, about 1.09 s there and 112 to 136 ms at 30,000, is unchanged and is the open cost. Conflict-region count is measured in the backend and the editor's TypeScript, on generated conflicts on an Apple M5 Pro: after `a0f61f2a` the merge editor's read takes 11.5 ms at 20,000 lines and 500 conflicts and 57 ms at 100,000 lines and 2,500, most of the rest being libgit2's SHA-1, and a click's output rebuild takes under 1 ms and 2.3 to 4.8 ms there under bun. The webview's share, a reply about three times the file's size and an output textarea rewritten on each click, is unmeasured. Review size remains unbenchmarked, and history depth beyond the graph rebuild too; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh, which E12 cut from about 515 to 27 to 37 ms for an outside edit; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. |
+| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. E11 measured the graph rebuild after a commit at 30,000 commits falling from about 95 to 7.4 ms in the backend capture. E13 measured the layout a capture waits for at 300,000 commits falling from about 390 to about 160 ms; the first capture, about 1.09 s there and 112 to 136 ms at 30,000, is unchanged and is the open cost. E15 found libgit2 reads none of the commit-graph files git writes today, and that cutting the first capture needs a commit-graph reader of Trunk's own and commit facts read after the first page. Conflict-region count is measured in the backend and the editor's TypeScript, on generated conflicts on an Apple M5 Pro: after `a0f61f2a` the merge editor's read takes 11.5 ms at 20,000 lines and 500 conflicts and 57 ms at 100,000 lines and 2,500, most of the rest being libgit2's SHA-1, and a click's output rebuild takes under 1 ms and 2.3 to 4.8 ms there under bun. The webview's share, a reply about three times the file's size and an output textarea rewritten on each click, is unmeasured. Review size remains unbenchmarked, and history depth beyond the graph rebuild too; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh, which E12 cut from about 515 to 27 to 37 ms for an outside edit; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. |
 
 The evidence supports retaining current warm diff reuse, mounted-tab reuse,
 coalesced refresh, and the search debounce. It does not support another cache or
