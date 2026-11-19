@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  # ── Gate 1: Fast checks (~10-30s each) ──
+  # ── Fast checks (~10-30s each) ──
 
   biome:
     name: Biome
@@ -117,11 +117,10 @@ jobs:
             exit 1
           fi
 
-  # ── Gate 2: Heavy checks (only after Gate 1 passes) ──
+  # ── Heavy checks ──
 
   cargo-clippy:
     name: Clippy
-    needs: [biome, cargo-fmt, graph-sweep-check, svelte-check]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -143,7 +142,6 @@ jobs:
 
   cargo-test:
     name: Rust Tests
-    needs: [biome, cargo-fmt, graph-sweep-check, svelte-check]
     runs-on: ubuntu-latest
     # The suite takes ~2min; the default is 6h.
     timeout-minutes: 20
@@ -174,7 +172,6 @@ jobs:
 
   macos:
     name: macOS Clippy + Tests
-    needs: [biome, cargo-fmt, graph-sweep-check, svelte-check]
     runs-on: macos-latest
     timeout-minutes: 20
     steps:
@@ -200,7 +197,6 @@ jobs:
 
   windows-current-file-links:
     name: Windows Current-File Link Safety
-    needs: [biome, cargo-fmt, graph-sweep-check, svelte-check]
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -216,7 +212,6 @@ jobs:
 
   app-test:
     name: Application Harness
-    needs: [biome, cargo-fmt, graph-sweep-check, svelte-check]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -231,12 +226,11 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: bun install --frozen-lockfile
       # Builds a Rust example and the trunk CLI and runs vitest over them, so this
-      # job needs both toolchains where the other gate-2 jobs need one.
+      # job needs both toolchains.
       - run: just app-test
 
   vitest:
     name: Vitest
-    needs: [biome, cargo-fmt, graph-sweep-check, svelte-check]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -255,7 +249,6 @@ jobs:
 
   visual:
     name: Visual Baselines
-    needs: [biome, cargo-fmt, graph-sweep-check, svelte-check]
     # The baselines are WebKit on macOS, the engine and platform Trunk ships on
     # (docs/decisions/2026-09-26-visual-regression-baselines.md).
     runs-on: macos-latest
