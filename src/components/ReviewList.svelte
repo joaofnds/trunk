@@ -155,8 +155,8 @@ registerUpdateBlocker(() =>
 					>
 						<span>{review.id}</span>
 						<StatePill review={review.state} />
-						<span class="flex-1"></span>
 						<span
+							class="ml-auto"
 							title="{review.unresolved_count} unresolved of {review.thread_count}"
 							>{review.unresolved_count > 0
 								? `${review.unresolved_count}/${review.thread_count}`

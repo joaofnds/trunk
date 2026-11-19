@@ -22,7 +22,8 @@ export interface PaneSizing {
 	step(delta: number): void;
 	startResize(e: MouseEvent): void;
 	/**
-	 * Takes a width the layout drew the open pane at as its own, and stores it.
+	 * Takes a width the layout narrowed the open pane to as its own, and stores
+	 * it. A pane drawn wider than its width, at its floor, keeps its width.
 	 * Read every pane's drawn width before adopting any: adopting one re-fits
 	 * the others.
 	 */
@@ -32,11 +33,12 @@ export interface PaneSizing {
 // A pane collapses on the way to narrower than its minimum, so the width it
 // last had is one it only passed through. Toggled open, it reopens at the width
 // it had when the narrowing began: where the drag took hold, or before the
-// first of a run of narrowing steps, which any widening ends. A drag or a step
-// that widens a collapsed pane opens it at its minimum instead.
+// first of a run of narrowing steps, which any widening or a change of its
+// minimum ends. A drag or a step that widens a collapsed pane opens it at its
+// minimum instead, keeping a narrower width the minimum already draws it at.
 export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 	const widenSign = options.splitterEdge === "right" ? 1 : -1;
-	let stepsFrom: number | null = null;
+	let steps: { from: number; floor: number } | null = null;
 
 	function size() {
 		return options.collapsed() ? 0 : options.drawn();
@@ -56,12 +58,19 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		return false;
 	}
 
+	function openAtFloor() {
+		options.oncollapsedchange(false);
+		if (options.width() > options.floor()) {
+			options.onwidthchange(options.floor());
+		}
+	}
+
 	function storeOpenWidth() {
 		if (!options.collapsed()) options.store(options.width());
 	}
 
 	function adopt(drawn: number) {
-		if (options.collapsed() || drawn === options.width()) return;
+		if (options.collapsed() || drawn >= options.width()) return;
 
 		options.onwidthchange(drawn);
 		options.store(drawn);
@@ -76,7 +85,7 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		let reopenWidth = options.width();
 		let moved = false;
 		let collapsed = false;
-		stepsFrom = null;
+		steps = null;
 
 		function onMouseMove(ev: MouseEvent) {
 			if (ev.clientX === startX && !moved) return;
@@ -109,17 +118,18 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		options.beforeresize();
 
 		if (options.collapsed()) {
-			stepsFrom = null;
-			resize(options.floor());
+			steps = null;
+			openAtFloor();
 			return;
 		}
 
-		const from = stepsFrom ?? options.width();
-		stepsFrom = widens ? null : from;
+		const floor = options.floor();
+		const from = steps?.floor === floor ? steps.from : options.width();
+		steps = widens ? null : { from, floor };
 
 		if (!resize(Math.max(0, size() + change))) return;
 
-		stepsFrom = null;
+		steps = null;
 		if (from !== options.width()) options.onwidthchange(from);
 	}
 

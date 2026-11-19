@@ -137,7 +137,85 @@ describe("createSidePanes", () => {
 			expect(set.sidebar.collapsed).toBe(true);
 		});
 
-		it("draws the sidebar at the width the user gave it on leaving review mode", async () => {
+		it("collapses the sidebar on a step below the review list's floor once review mode begins", async () => {
+			const { set, sidePanes, show } = await sidePanesIn({
+				view: "main",
+				rowWidth: 1280,
+				sidebarWidth: 200,
+				detailPaneWidth: 300,
+			});
+
+			show("review");
+			sidePanes.sidebar.step(-8);
+
+			expect(set.sidebar.collapsed).toBe(true);
+		});
+
+		it("keeps the narrower width the user gave the sidebar through a step that collapses it", async () => {
+			const { set, sidePanes } = await sidePanesIn({
+				view: "review",
+				rowWidth: 1280,
+				sidebarWidth: 100,
+				detailPaneWidth: 300,
+			});
+
+			sidePanes.sidebar.step(-8);
+
+			expect(set.sidebar).toEqual({ width: 100, collapsed: true });
+		});
+
+		it("keeps the narrower width the user gave the sidebar through a drag that collapses it", async () => {
+			const { set, sidePanes } = await sidePanesIn({
+				view: "review",
+				rowWidth: 1280,
+				sidebarWidth: 100,
+				detailPaneWidth: 300,
+			});
+
+			sidePanes.sidebar.startResize(
+				new MouseEvent("mousedown", { clientX: 200, cancelable: true }),
+			);
+			window.dispatchEvent(new MouseEvent("mousemove", { clientX: 150 }));
+			window.dispatchEvent(new MouseEvent("mouseup"));
+
+			expect(set.sidebar).toEqual({ width: 100, collapsed: true });
+		});
+
+		it("keeps the narrower width the user gave the sidebar through a step that reopens it", async () => {
+			const { set, sidePanes } = await sidePanesIn({
+				view: "review",
+				rowWidth: 1280,
+				sidebarWidth: 100,
+				detailPaneWidth: 300,
+			});
+			sidePanes.sidebar.step(-8);
+
+			sidePanes.sidebar.step(8);
+
+			expect([set.sidebar, sidePanes.sidebar.width]).toEqual([
+				{ width: 100, collapsed: false },
+				200,
+			]);
+		});
+
+		it("keeps the width the steps before review mode left the sidebar at when a step collapses it", async () => {
+			const { set, sidePanes, show } = await sidePanesIn({
+				view: "main",
+				rowWidth: 1280,
+				sidebarWidth: 208,
+				detailPaneWidth: 300,
+			});
+			for (let i = 0; i < 13; i++) sidePanes.sidebar.step(-8);
+			show("review");
+
+			sidePanes.sidebar.step(-8);
+
+			expect(set.sidebar).toEqual({ width: 104, collapsed: true });
+		});
+	});
+
+	describe("when review mode ends", () => {
+		it("draws the sidebar at the width the user gave it", async () => {
 			const { sidePanes, show } = await sidePanesIn({
 				view: "review",
 				rowWidth: 1280,
