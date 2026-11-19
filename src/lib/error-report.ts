@@ -1,4 +1,4 @@
-import { message } from "@tauri-apps/plugin-dialog";
+import { message } from "./dialog.js";
 import { isTrunkError } from "./invoke.js";
 import { showToast } from "./toast.svelte.js";
 

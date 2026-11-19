@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onDestroy } from "svelte";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
+import { ask } from "../lib/dialog.js";
 import { forDisplay } from "../lib/display-text.js";
 import { safeInvoke, type TrunkError } from "../lib/invoke.js";
 import { remoteErrorMessage } from "../lib/remote-error.js";
@@ -146,7 +147,6 @@ function dismiss() {
 }
 
 async function handleForcePush(target: Target) {
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
 		`Force push? This overwrites the remote branch.\n\nBranch: ${forDisplay(target.branch)}\nRemote: ${forDisplay(target.remote)}`,
 		{ title: "Force Push", kind: "warning" },

@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { PanelDiffKind } from "../lib/comment-matching.js";
+import { ask } from "../lib/dialog.js";
 import {
 	buildDiffAnchor,
 	hunkSelectableIndices,
@@ -875,7 +876,6 @@ async function handleDiscardFile() {
 	const path = selectedPath;
 	const isUntracked =
 		fileDiffs.find((f) => f.path === path)?.status === "Untracked";
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
 		isUntracked
 			? `Delete ${path}? This file is untracked and will be permanently removed. This cannot be undone.`
@@ -978,7 +978,6 @@ async function handleUnstageHunk(filePath: string, hunkIndex: number) {
 async function handleDiscardHunk(filePath: string, hunkIndex: number) {
 	if (hunkOperationInFlight) return;
 	const hunk = shownHunk(filePath, hunkIndex);
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask("Discard this hunk? This cannot be undone.", {
 		title: "Discard Hunk",
 		kind: "warning",
@@ -1318,7 +1317,6 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 	const hunk = shownHunk(filePath, hunkIndex);
 	const lineIndices = selectedChanges;
 	const count = lineIndices.length;
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
 		`Discard ${count} selected ${count === 1 ? "line" : "lines"}? This cannot be undone.`,
 		{

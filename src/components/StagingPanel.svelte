@@ -12,6 +12,7 @@ import { copyText } from "../lib/clipboard.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { fileCountsForOid, fileTalliesForOid } from "../lib/comment-counts.js";
 import { resolveViewOid } from "../lib/comment-matching.js";
+import { ask } from "../lib/dialog.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { pathMenuEntriesOf } from "../lib/file-menu.js";
 import { safeInvoke } from "../lib/invoke.js";
@@ -305,7 +306,6 @@ async function confirmResolved(filePaths: string[]): Promise<boolean> {
 	const rest = marked.length - MARKER_NAMES_SHOWN;
 	const names = rest > 0 ? `${shown}\nand ${rest} more` : shown;
 	const one = marked.length === 1;
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	return ask(
 		`${one ? "This file still holds" : "These files still hold"} conflict markers:\n\n${names}\n\nMark ${one ? "it" : "them"} resolved anyway? The markers will be committed as content.`,
 		{
@@ -380,7 +380,6 @@ async function unstageAll() {
 }
 
 async function handleDiscardFile(filePath: string, fileStatus: FileStatusType) {
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const isUntracked = fileStatus === "New";
 	const msg = isUntracked
 		? `Delete ${filePath}? This file is untracked and will be permanently removed. This cannot be undone.`
@@ -405,7 +404,6 @@ async function handleDiscardDirectory(dirPath: string) {
 	const files = filesUnder(status?.unstaged, dirPath);
 	if (files.length === 0) return;
 
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
 		`Discard all changes in ${dirPath}/ (${files.length} file${files.length === 1 ? "" : "s"})? This cannot be undone.`,
 		{ title: "Discard Directory Changes", kind: "warning" },
@@ -683,7 +681,6 @@ async function handleDiscardAll() {
 	if (count === 0) return;
 
 	const files = `${count} file${count === 1 ? "" : "s"}`;
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
 		`Discard all changes to ${files}? This cannot be undone.`,
 		{ title: "Discard All Changes", kind: "warning" },
@@ -734,7 +731,6 @@ async function runMergeContinue() {
 }
 
 async function abortMerge() {
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
 		"Abort merge? This will discard all merge progress and return to the previous state.",
 		{ title: "Abort Merge", kind: "warning" },
@@ -782,7 +778,6 @@ async function continueRebase() {
 }
 
 async function abortRebase() {
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
 		"Abort rebase? This will return to the pre-rebase state.",
 		{

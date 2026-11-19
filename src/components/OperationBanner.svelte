@@ -1,6 +1,7 @@
 <script lang="ts">
 import GitBranch from "@lucide/svelte/icons/git-branch";
 import GitMerge from "@lucide/svelte/icons/git-merge";
+import { ask } from "../lib/dialog.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -82,7 +83,6 @@ async function handleCherryPickContinue() {
 }
 
 async function handleCherryPickAbort() {
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
 		"Abort cherry-pick? This will discard the in-progress cherry-pick and return to the previous state.",
 		{ title: "Abort Cherry-pick", kind: "warning" },
@@ -101,7 +101,6 @@ async function handleCherryPickAbort() {
 }
 
 async function handleRevertAbort() {
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
 		"Abort revert? This will discard the in-progress revert and return to the previous state.",
 		{ title: "Abort Revert", kind: "warning" },

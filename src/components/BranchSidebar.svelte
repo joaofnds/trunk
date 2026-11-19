@@ -15,6 +15,7 @@ import {
 	reportCheckoutFailure,
 } from "../lib/checkout.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
+import { ask } from "../lib/dialog.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
@@ -465,7 +466,6 @@ async function handleStashApply(oid: string) {
 }
 
 async function handleStashDrop(stash: StashEntry) {
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
 		`Drop ${stash.short_name} (${stash.name})? This cannot be undone.`,
 		{ title: "Confirm Drop", kind: "warning" },
@@ -549,7 +549,6 @@ function handleRenameBranch(branchName: string) {
 }
 
 async function handleDeleteTag(tagName: string) {
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
 		`Delete tag '${tagName}'? This cannot be undone.`,
 		{
@@ -592,7 +591,6 @@ async function handleInteractiveRebase(branchName: string) {
 }
 
 async function handleDeleteRemoteBranch(fullRefName: string) {
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
 		`Delete remote branch '${fullRefName}'? This will remove it from the remote.`,
 		{ title: "Delete Remote Branch", kind: "warning" },

@@ -100,9 +100,12 @@ also needs admission because opening preferences or
 review data can migrate or quarantine files.
 
 An editor whose full state cannot be restored refuses the restart at the click,
-with a reason. Otherwise the frontend first waits for its pending IPC while
-Trunk stays usable, so a running push stays cancellable and the panel offers to
-cancel the restart. Once nothing is pending it freezes input, opens the panel,
+with a reason. Otherwise the frontend first waits for its pending IPC, and for
+any native dialog still waiting on the user's answer, while Trunk stays usable.
+A running push stays cancellable, a confirmed action reaches the backend before
+the freeze, and the panel offers to cancel the restart. Native dialogs go
+through `src/lib/dialog.ts`, and a lint rule refuses a direct plugin import.
+Once nothing is pending the frontend freezes input, opens the panel,
 and captures each participant's draft generation. The backend then issues a
 preparation token and waits for the work it admitted earlier, which lasts as
 long as that hidden work runs. The panel offers to cancel through that wait too.

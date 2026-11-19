@@ -9,6 +9,7 @@ import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
 import Pencil from "@lucide/svelte/icons/pencil";
 import Trash2 from "@lucide/svelte/icons/trash-2";
 import { tick } from "svelte";
+import { ask } from "../lib/dialog.js";
 import { externalLinks } from "../lib/external-links.js";
 import { gapLength } from "../lib/full-file-anchor.js";
 import { currentMinute } from "../lib/now.svelte.js";
@@ -463,7 +464,6 @@ async function confirmedDeletion(
 	title: string,
 ): Promise<boolean> {
 	if (!confirmDelete) return true;
-	const { ask } = await import("@tauri-apps/plugin-dialog");
 	return ask(prompt, { title, kind: "warning" });
 }
 

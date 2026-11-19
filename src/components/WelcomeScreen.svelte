@@ -1,6 +1,6 @@
 <script lang="ts">
 import X from "@lucide/svelte/icons/x";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open } from "../lib/dialog.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { displayPath } from "../lib/path.js";

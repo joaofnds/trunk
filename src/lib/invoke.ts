@@ -3,7 +3,7 @@ import { span } from "./perf.js";
 import type { Scheduler } from "./scheduler.js";
 import { isUpdateFrozen } from "./updates-lifecycle.js";
 
-const pendingInvokes = new Set<Promise<unknown>>();
+const pendingWork = new Set<Promise<unknown>>();
 const UPDATE_FLUSH_COMMANDS = new Set([
 	"prefs_get",
 	"prefs_set",
@@ -16,9 +16,20 @@ const UPDATE_FLUSH_COMMANDS = new Set([
  *  moved on, so a call their continuation makes is waited for too. */
 export async function invokesSettled(scheduler: Scheduler): Promise<void> {
 	for (;;) {
-		await Promise.allSettled(pendingInvokes);
+		await Promise.allSettled(pendingWork);
 		await new Promise<void>((resolve) => scheduler.setTimeout(resolve, 0));
-		if (pendingInvokes.size === 0) return;
+		if (pendingWork.size === 0) return;
+	}
+}
+
+/** Count work the user is waiting on, such as a confirm dialog, as pending
+ *  until it settles, the way a backend call is. */
+export async function trackPending<T>(work: Promise<T>): Promise<T> {
+	pendingWork.add(work);
+	try {
+		return await work;
+	} finally {
+		pendingWork.delete(work);
 	}
 }
 
@@ -78,12 +89,7 @@ export async function safeInvoke<T>(
 	});
 	if (isUpdateCommand(cmd)) return pending;
 
-	pendingInvokes.add(pending);
-	try {
-		return await pending;
-	} finally {
-		pendingInvokes.delete(pending);
-	}
+	return trackPending(pending);
 }
 
 function asTrunkError(e: unknown): TrunkError {

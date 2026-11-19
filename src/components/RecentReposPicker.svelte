@@ -1,6 +1,6 @@
 <script lang="ts">
-import { open } from "@tauri-apps/plugin-dialog";
 import { tick } from "svelte";
+import { open } from "../lib/dialog.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { displayPath } from "../lib/path.js";
 import { filterRecents } from "../lib/recent-filter.js";

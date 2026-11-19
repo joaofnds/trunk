@@ -1,5 +1,8 @@
+import { setImmediate } from "node:timers";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, describe, expect, it } from "vitest";
+import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
+import { ask } from "./dialog.js";
 import { invokesSettled, safeInvoke } from "./invoke.js";
 import { realScheduler } from "./scheduler.js";
 import {
@@ -44,6 +47,14 @@ class Preferences {
 	}
 }
 
+/** Fires the restart's zero-delay looks at pending work, one per turn. */
+async function look(clock: FakeScheduler, times: number): Promise<void> {
+	for (let turn = 0; turn < times; turn += 1) {
+		clock.advanceBy(0);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+	}
+}
+
 afterEach(() => {
 	setUpdateFrozen(false);
 	clearMocks();
@@ -77,6 +88,40 @@ describe("update draft persistence", () => {
 		await pending;
 		await restart;
 		expect(installed).toBe(true);
+	});
+	it("waits for the answer to a confirm dialog and the call it leads to", async () => {
+		const answer = barrier();
+		const calls: string[] = [];
+		mockIPC(async (command) => {
+			calls.push(command);
+			if (command !== "plugin:dialog|message") return null;
+			await answer.promise;
+			return "Yes";
+		});
+		const clock = new FakeScheduler();
+		const preparation = new UpdatePreparation({
+			prepare: async () => "permit",
+			drained: async () => {},
+			install: async () => {
+				calls.push("install");
+			},
+			abort: async () => {},
+			freeze: setUpdateFrozen,
+			settle: () => invokesSettled(clock),
+			waiting: () => {},
+		});
+		const discarded = ask("Discard all changes?").then(
+			(yes) => yes && safeInvoke("discard_all"),
+		);
+
+		const restart = preparation.install("2.0.0");
+		await look(clock, 2);
+		answer.release();
+		await discarded;
+		await look(clock, 4);
+		await restart;
+
+		expect(calls).toEqual(["plugin:dialog|message", "discard_all", "install"]);
 	});
 	it("serializes drafts from different repositories without losing either entry", async () => {
 		const preferences = new Preferences();

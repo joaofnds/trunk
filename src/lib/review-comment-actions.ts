@@ -1,3 +1,4 @@
+import { ask } from "./dialog.js";
 import { reportErrorToast } from "./error-report.js";
 import { safeInvoke } from "./invoke.js";
 import type { Anchor, Delivery, Draft, ThreadState } from "./types.js";
@@ -131,8 +132,6 @@ export function getDraft(repoPath: string): Promise<Draft | null> {
 
 /** Asks whether to throw away the comment being written. */
 export async function askToDiscardComment(): Promise<boolean> {
-	const { ask } = await import("@tauri-apps/plugin-dialog");
-
 	return ask("Discard your unsaved comment?", {
 		title: "Discard Comment",
 		kind: "warning",

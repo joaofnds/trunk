@@ -40,7 +40,8 @@
 					"level": "error",
 					"options": {
 						"paths": {
-							"@tauri-apps/plugin-clipboard-manager": "Copy through $lib/clipboard, which tells the user when the clipboard refuses the write."
+							"@tauri-apps/plugin-clipboard-manager": "Copy through $lib/clipboard, which tells the user when the clipboard refuses the write.",
+							"@tauri-apps/plugin-dialog": "Open dialogs through $lib/dialog, which holds a restart until the user answers."
 						}
 					}
 				}
@@ -54,6 +55,28 @@
 		"enabled": true
 	},
 	"overrides": [
+		{
+			"includes": [
+				"src/lib/dialog.ts",
+				"src/drive.ts",
+				"src/drive-dialog.ts",
+				"src/drive-open-panel.ts"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"paths": {
+									"@tauri-apps/plugin-clipboard-manager": "Copy through $lib/clipboard, which tells the user when the clipboard refuses the write."
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		{
 			"includes": [
 				"src/lib/clipboard.ts",

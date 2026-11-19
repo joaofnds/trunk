@@ -1,3 +1,4 @@
+import { ask, message } from "./dialog.js";
 import {
 	forDisplay,
 	MAX_MESSAGE_CHARS,
@@ -43,7 +44,6 @@ async function askThenDelete(
 	repoPath: string,
 	branchName: string,
 ): Promise<boolean> {
-	const { ask, message } = await import("@tauri-apps/plugin-dialog");
 	const hold = await safeInvoke<BranchHold>("branch_hold", {
 		path: repoPath,
 		branchName,

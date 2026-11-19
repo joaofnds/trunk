@@ -11,7 +11,6 @@ import Network from "@lucide/svelte/icons/network";
 import Tag from "@lucide/svelte/icons/tag";
 import User from "@lucide/svelte/icons/user";
 import { listen } from "@tauri-apps/api/event";
-import { ask, message } from "@tauri-apps/plugin-dialog";
 import { type Component, onDestroy, tick, untrack } from "svelte";
 import { buildGraphData } from "../lib/active-lanes.js";
 import { deleteBranch } from "../lib/branch-delete.js";
@@ -49,6 +48,7 @@ import {
 	tableMinWidth,
 } from "../lib/column-widths.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
+import { ask, message } from "../lib/dialog.js";
 import {
 	errorMessage,
 	reportErrorDialog,
