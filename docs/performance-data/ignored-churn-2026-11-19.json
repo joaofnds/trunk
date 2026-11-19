@@ -1,0 +1,69 @@
+{
+ "schema": 1,
+ "experiment": "E14 ignored build output, one index parse per change to it",
+ "date": "2026-11-19",
+ "decision": "the watcher keeps the index it parsed and opens the repository afresh per batch, so ignored churn cost 0.58 to 0.59 s of CPU per 15 s instead of 5.87 to 5.92 s, with the same ignore answers (7928445c, then 8ce8069a)",
+ "scope": "debug drive build, one launch per run, cumulative process CPU from ps; generated 20,000-file repository; release cost per batch from a probe of the same libgit2 calls; not a release app build, not a real compiler's writes, not memory",
+ "comparativeVerdict": "after under one tenth of before in every run, ranges disjoint (after max 0.59 s, before min 5.87 s)",
+ "globalSettlement": "unknown",
+ "machine": "Apple M5 Pro, 48 GB, macOS",
+ "builds": {
+  "before": "just drive-build at 92cf5734 (7928445c^)",
+  "keptHandle": "just drive-build at 7928445c",
+  "after": "just drive-build at 8ce8069a"
+ },
+ "fixture": "git init; 200 directories of 101 tracked text files (20,201 entries, index 1,622,273 bytes); .gitignore listing target/ and node_modules/; empty target/debug/deps",
+ "procedure": "per run: launch the drive build on the fixture, wait for rows, wait 5 s, read CPU time, idle 15 s, read, rewrite one of 40 files under target/debug/deps every 10 ms for 15 s (1,129 to 1,164 writes), read, quit; builds alternate, two runs each",
+ "probe": "#!/bin/bash\n# t440 ignored-churn CPU: one instance per build, idle then churn, cumulative CPU from ps.\nset -u\ncd /Users/joaofnds/code/trunk\ncpu() { ps -o time= -p \"$1\" | awk -F'[:.]' '{ if (NF==3) print ($1*60+$2)+$3/100; else print ($1*3600+$2*60+$3)+$4/100 }'; }\nfor round in 1 2; do\nfor build in before after; do\n  dir=$(mise exec -- bun scripts/drive/drive.ts launch /tmp/t440ign/trunk-$build /tmp/t440ign/r | tail -1)\n  export TRUNK_DRIVE_DIR=\"$dir\"\n  mise exec -- bun scripts/drive/drive.ts rows > /dev/null\n  pid=$(pgrep -f \"/tmp/t440ign/trunk-$build\" | head -1)\n  python3 -I -c 'import time; time.sleep(5)'\n  c0=$(cpu \"$pid\")\n  python3 -I -c 'import time; time.sleep(15)'\n  c1=$(cpu \"$pid\")\n  python3 -I -c '\nimport time, os\nd = \"/tmp/t440ign/r/target/debug/deps\"\nend = time.time() + 15\ni = 0\nwhile time.time() < end:\n    with open(os.path.join(d, f\"lib{i % 40}.rmeta\"), \"w\") as f: f.write(str(i))\n    i += 1\n    time.sleep(0.01)\nprint(\"writes\", i)\n'\n  c2=$(cpu \"$pid\")\n  mise exec -- bun scripts/drive/drive.ts quit > /dev/null 2>&1\n  python3 -I -c \"print('round $round $build pid $pid idle15s', round($c1-$c0,2), 's cpu, churn15s', round($c2-$c1,2), 's cpu')\"\n  rm -rf \"$dir\"\ndone\ndone\n",
+ "releaseProbe": {
+  "what": "Repository::open, repo.index(), index.get_path and is_path_ignored on one ignored path, 41 runs, release",
+  "freshOpenAndIndexMs": {
+   "median": 3.66,
+   "min": 3.57,
+   "max": 10.1
+  },
+  "openOnlyMs": {
+   "median": 0.073
+  },
+  "keptRepositoryIndexReadFalseMs": {
+   "median": 0.012
+  }
+ },
+ "runs": {
+  "before": {
+   "idleCpuS": [
+    0.03,
+    0.02,
+    0.03,
+    0.02
+   ],
+   "churnCpuS": [
+    5.87,
+    5.9,
+    5.91,
+    5.92
+   ]
+  },
+  "keptHandle": {
+   "idleCpuS": [
+    0.03,
+    0.02
+   ],
+   "churnCpuS": [
+    0.27,
+    0.29
+   ]
+  },
+  "after": {
+   "idleCpuS": [
+    0.03,
+    0.02
+   ],
+   "churnCpuS": [
+    0.58,
+    0.59
+   ]
+  }
+ },
+ "limitations": "one machine, debug build, synthetic write pattern; the kept handle reading is a rejected build whose answers drifted (core.excludesFile, core.ignoreCase, deleted index)"
+}

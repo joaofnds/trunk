@@ -1473,6 +1473,37 @@ commit id; a faster hasher alone measured 12 to 18% of a layout and was not take
 [committed E13 record](performance-data/deep-history-layout-2026-11-18.json) holds the
 probe and every timing.
 
+### E14: ignored build output, one index parse per change to it
+
+Flow I18. E12 left the app's CPU unmeasured while ignored output churns. To drop a
+batch's ignored paths, the watcher opened the repository and parsed the whole index for
+every batch, and a batch arrives every 25 ms while a build writes. A release probe of
+that path at 20,000 tracked files measured 3.7 ms a batch, 0.073 ms of it the open,
+across 41 runs. The hypothesis was that keeping the parsed index would cut the app's CPU
+under ignored churn by an order of magnitude. A reading under churn within a factor of
+ten of the old one would have refuted it.
+
+Each run launched the debug drive build on a generated repository of 20,000 tracked
+files with an ignored `target/`, waited 5 s, read the process's CPU time from `ps`, left
+it idle for 15 s, then rewrote one of 40 ignored files every 10 ms for 15 s from Python.
+The builds alternated, two runs each, on an Apple M5 Pro.
+
+| Build | Idle, 15 s (CPU s) | Ignored churn, 15 s (CPU s) |
+|---|---|---|
+| Before (`7928445c^`) | 0.02 to 0.03 | 5.87 to 5.92 in four runs |
+| One kept handle (`7928445c`) | 0.02 to 0.03 | 0.27 and 0.29 |
+| Kept index, fresh open per batch (`8ce8069a`) | 0.02 to 0.03 | 0.58 and 0.59 |
+
+The hypothesis stands. The kept handle was the cheapest, but review found that libgit2
+reads `core.excludesFile` and `core.ignoreCase` once per handle and keeps a deleted
+index's entries, so its answers drifted from a fresh read. The delivered build opens
+the repository for each batch and keeps only the parsed index, which costs the doubled
+reading against the kept handle and gives the answers the code gave before. Not
+measured: a release build, a real compiler's write pattern, and the memory the kept
+index holds per watched repository. The
+[committed E14 record](performance-data/ignored-churn-2026-11-19.json) holds the probe
+and every reading.
+
 ### Selection presentation and background limits
 
 Three five-second ScreenCaptureKit attempts used a requested 60 Hz virtual display.
@@ -1504,7 +1535,7 @@ Frequency remains an assumption; no usage telemetry was collected.
 | 2 | Preserve the reviewed selection and navigation contracts | Browsing is assumed frequent. E01 removes 116.5 ms in the width series and 129 ms in the delivered-source confirmation at 1,000 files. Warm ranges overlap; CPU, memory and highlight costs remain explicit. Correctness risk requires held-response tests. |
 | 3 | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. Settle how often users open large highlighted files in full mode first. The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
 | Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
-| 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Overlapping in-app actions take turns at a per-repository write gate (E09), so none reports a lock failure or drops another's write. Saves, local fetch and watcher refreshes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
+| 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Overlapping in-app actions take turns at a per-repository write gate (E09), so none reports a lock failure or drops another's write. E14 cut the watcher's CPU under ignored build output to about a tenth. Saves, local fetch and refreshes for tracked changes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
 | 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. E11 measured the graph rebuild after a commit at 30,000 commits falling from about 95 to 7.4 ms in the backend capture. E13 measured the layout a capture waits for at 300,000 commits falling from about 390 to about 160 ms; the first capture, about 1.09 s there and 112 to 136 ms at 30,000, is unchanged and is the open cost. Conflict-region count is measured in the backend and the editor's TypeScript, on generated conflicts on an Apple M5 Pro: after `a0f61f2a` the merge editor's read takes 11.5 ms at 20,000 lines and 500 conflicts and 57 ms at 100,000 lines and 2,500, most of the rest being libgit2's SHA-1, and a click's output rebuild takes under 1 ms and 2.3 to 4.8 ms there under bun. The webview's share, a reply about three times the file's size and an output textarea rewritten on each click, is unmeasured. Review size remains unbenchmarked, and history depth beyond the graph rebuild too; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh, which E12 cut from about 515 to 27 to 37 ms for an outside edit; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. |
 
 The evidence supports retaining current warm diff reuse, mounted-tab reuse,
