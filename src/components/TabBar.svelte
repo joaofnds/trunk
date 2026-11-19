@@ -65,6 +65,28 @@ $effect(() => {
 	return () => observer.disconnect();
 });
 
+let fades = $state({ start: false, end: false });
+
+function measureFades() {
+	const scrolled = tabBarEl.scrollLeft;
+	const end = tabBarEl.scrollWidth - tabBarEl.clientWidth;
+
+	fades = { start: scrolled >= 1, end: scrolled <= end - 1 };
+}
+
+// Closing or opening a tab, and a tab's name changing, change how far the strip
+// scrolls without scrolling it.
+$effect(() => {
+	const observer = new ResizeObserver(measureFades);
+	observer.observe(tabBarEl);
+	for (const tab of tabs) {
+		const item = tabBarEl.querySelector(`[data-tab-id="${tab.id}"]`);
+		if (item) observer.observe(item);
+	}
+
+	return () => observer.disconnect();
+});
+
 function scrollSideways(e: WheelEvent) {
 	if (isSideways(e)) return;
 
@@ -163,10 +185,13 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 <div class="flex h-full min-w-0 items-center">
 	<div
 		class="tab-bar"
+		class:fades-start={fades.start}
+		class:fades-end={fades.end}
 		role="tablist"
 		aria-label="Repository tabs"
 		bind:this={tabBarEl}
 		onwheel={scrollSideways}
+		onscroll={measureFades}
 	>
 		{#each tabs as tab (tab.id)}
 			{@const title = tab.repoPath
@@ -236,7 +261,26 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 	overflow-x: auto;
 	overflow-y: hidden;
 	scrollbar-width: none;
-	scroll-padding-inline: var(--space-1);
+	/* Narrower than the fade, it leaves a revealed tab under the fade. */
+	scroll-padding-inline: var(--space-6);
+}
+
+.tab-bar.fades-start {
+	mask-image: linear-gradient(to right, transparent, black var(--space-6));
+}
+
+.tab-bar.fades-end {
+	mask-image: linear-gradient(to left, transparent, black var(--space-6));
+}
+
+.tab-bar.fades-start.fades-end {
+	mask-image: linear-gradient(
+		to right,
+		transparent,
+		black var(--space-6),
+		black calc(100% - var(--space-6)),
+		transparent
+	);
 }
 
 .tab-item {

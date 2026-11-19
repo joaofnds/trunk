@@ -45,6 +45,23 @@ function closeOf(name: string): HTMLElement {
 	return within(itemOf(name)).getByLabelText("Close tab");
 }
 
+/** Gives the strip the scroll extent jsdom, which lays nothing out, leaves at 0. */
+function overflow(
+	strip: HTMLElement,
+	extent: { scrollWidth: number; clientWidth: number },
+) {
+	for (const [name, value] of Object.entries(extent)) {
+		Object.defineProperty(strip, name, { value, configurable: true });
+	}
+}
+
+function fadedEdgesOf(strip: HTMLElement): [boolean, boolean] {
+	return [
+		strip.classList.contains("fades-start"),
+		strip.classList.contains("fades-end"),
+	];
+}
+
 function auxClick(button: number): MouseEvent {
 	return new MouseEvent("auxclick", {
 		button,
@@ -349,6 +366,38 @@ describe("TabBar", () => {
 		});
 
 		expect([unhandled, tablist.scrollLeft]).toEqual([true, 0]);
+	});
+
+	it.each([
+		{ at: "its start", scrollLeft: 0, fades: [false, true] },
+		{ at: "a point between its ends", scrollLeft: 100, fades: [true, true] },
+		{ at: "its end", scrollLeft: 400, fades: [true, false] },
+	])(
+		"fades each edge the strip can still scroll toward, scrolled to $at",
+		async ({ scrollLeft, fades }) => {
+			render(TabBar, { props: defaultProps });
+			const tablist = screen.getByRole("tablist", { name: "Repository tabs" });
+			overflow(tablist, { scrollWidth: 800, clientWidth: 400 });
+			tablist.scrollLeft = scrollLeft;
+
+			await fireEvent.scroll(tablist);
+
+			expect(fadedEdgesOf(tablist)).toEqual(fades);
+		},
+	);
+
+	it("stops fading once a tab closes and the rest fit", async () => {
+		reportWidthOf((target) => target.matches(".tab-item"), 80);
+		const view = render(TabBar, { props: defaultProps });
+		const tablist = screen.getByRole("tablist", { name: "Repository tabs" });
+		overflow(tablist, { scrollWidth: 800, clientWidth: 400 });
+		await fireEvent.scroll(tablist);
+		overflow(tablist, { scrollWidth: 400, clientWidth: 400 });
+
+		await view.rerender({ ...defaultProps, tabs: tabs.slice(0, 1) });
+		await Promise.resolve();
+
+		expect(fadedEdgesOf(tablist)).toEqual([false, false]);
 	});
 
 	it("brings the active tab into view when another tab becomes active", async () => {
