@@ -16,7 +16,6 @@ import {
 	trailingWhitespaceStart,
 } from "../../lib/diff-utils.js";
 import { measure } from "../../lib/perf.js";
-import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
 import { FLASH_DURATION } from "../../lib/row-flash.svelte.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
@@ -34,9 +33,9 @@ import {
 	type DiffListHandle,
 	TAB_SIZE,
 } from "../../lib/virtualized-diff.svelte.js";
-import ThreadCard from "../ThreadCard.svelte";
 import ExactVirtualList from "./ExactVirtualList.svelte";
 import HunkActions from "./HunkActions.svelte";
+import InlineThread from "./InlineThread.svelte";
 import SelectionComment, {
 	SELECTION_COMMENT_CLEARANCE,
 	type SelectionCommentPlace,
@@ -180,16 +179,7 @@ export const step = vd.step;
 </script>
 
 {#snippet threadCard(c: Thread)}
-	<ThreadCard
-		variant="inline"
-		confirmDelete={false}
-		thread={c}
-		{repoPath}
-		onedit={(id, text) => editThread(repoPath, id, text)}
-		ondelete={(id) => deleteThread(repoPath, id)}
-		{editorSessionForThread}
-		{folds}
-	/>
+	<InlineThread thread={c} {repoPath} {folds} {editorSessionForThread} />
 {/snippet}
 
 {#snippet lineNumbers(line: DiffLine)}

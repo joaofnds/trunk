@@ -8,7 +8,6 @@ import {
 	type ReadingLine,
 } from "../../lib/diff-rows.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
-import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
 import { filterThreads } from "../../lib/review-filter.js";
 import type { ThreadFolds } from "../../lib/thread-folds.svelte.js";
@@ -24,9 +23,9 @@ import type {
 } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
 import ReviewEmpty from "../review/ReviewEmpty.svelte";
-import ThreadCard from "../ThreadCard.svelte";
 import FullFileView from "./FullFileView.svelte";
 import HunkView from "./HunkView.svelte";
+import InlineThread from "./InlineThread.svelte";
 import RenderedDiff from "./RenderedDiff.svelte";
 import type { SelectionCommentPlace } from "./SelectionComment.svelte";
 import SplitView from "./SplitView.svelte";
@@ -353,14 +352,10 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{#if threadsWithoutDiff.length > 0}
 				<div class="flex flex-col gap-2 p-2">
 					{#each threadsWithoutDiff as thread (thread.id)}
-						<ThreadCard
-							variant="inline"
-							confirmDelete={false}
+						<InlineThread
 							{thread}
-							{folds}
 							{repoPath}
-							onedit={(id, text) => editThread(repoPath, id, text)}
-							ondelete={(id) => deleteThread(repoPath, id)}
+							{folds}
 							{editorSessionForThread}
 						/>
 					{/each}
