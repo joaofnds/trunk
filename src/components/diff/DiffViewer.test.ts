@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/svelte";
-import { createRawSnippet } from "svelte";
+import { createRawSnippet, tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	restoreLayout,
@@ -465,21 +465,21 @@ describe("DiffViewer when the reader switches view", () => {
 	beforeEach(() => stubLayout({ width: 900, height: 600 }));
 	afterEach(restoreLayout);
 
-	const contextLines = (from: number, to: number) =>
+	const contextLines = (from: number, to: number, tail: string) =>
 		Array.from({ length: to - from + 1 }, (_, i) => ({
 			origin: "Context" as const,
-			content: `line ${from + i}`,
+			content: `line ${from + i}${tail}`,
 			old_lineno: from + i,
 			new_lineno: from + i,
 			spans: [],
 		}));
-	const hunkOf = (from: number, to: number) => ({
+	const hunkOf = (from: number, to: number, tail = "") => ({
 		header: `@@ -${from},${to - from + 1} +${from},${to - from + 1} @@`,
 		old_start: from,
 		old_lines: to - from + 1,
 		new_start: from,
 		new_lines: to - from + 1,
-		lines: contextLines(from, to),
+		lines: contextLines(from, to, tail),
 	});
 	const bigFile = (hunks: ReturnType<typeof hunkOf>[]): FileDiff => ({
 		path: "big.txt",
@@ -594,5 +594,110 @@ describe("DiffViewer when the reader switches view", () => {
 
 		expect(await screen.findAllByText("line 3003")).not.toHaveLength(0);
 		expect(viewportOf(container).scrollTop).toBe(3002 * 18);
+	});
+
+	describe("when the reader turns word wrap on and off", () => {
+		// Forty hunks of five lines, numbered from 1001 so every line has the same
+		// length, and several times wider than the pane, so wrapping grows each of
+		// the two hundred lines by the same height.
+		const wide = " wide".repeat(80);
+		const wideHunks = bigFile(
+			Array.from({ length: 40 }, (_, i) =>
+				hunkOf(i * 100 + 1001, i * 100 + 1005, wide),
+			),
+		);
+		const wideProps = { ...props, fileDiffs: [wideHunks] };
+		const header = FIXED_ROW_HEIGHTS.hunkHeader;
+		const line = 18;
+
+		const headerOffset = (hunk: number, lineHeight: number) =>
+			hunk * (header + 5 * lineHeight);
+		const lineOffset = (hunk: number, row: number, lineHeight: number) =>
+			headerOffset(hunk, lineHeight) + header + row * lineHeight;
+
+		const contentHeightOf = (container: Element) =>
+			Number.parseFloat(
+				(container.querySelector(".exact-virtual-content") as HTMLElement).style
+					.height,
+			);
+
+		/** A wrapped line's height, from how much the content grew past its
+		 *  `unwrapped` height. */
+		const wrappedLineHeight = (container: Element, unwrapped: number) =>
+			line + (contentHeightOf(container) - unwrapped) / 200;
+
+		async function scrollTo(viewport: HTMLElement, top: number) {
+			viewport.scrollTop = top;
+			viewport.dispatchEvent(new Event("scroll"));
+			await tick();
+		}
+
+		/** Renders the diff unwrapped, then wrapped, and returns the wrapped
+		 *  height of one line. */
+		async function renderWrapped(layoutMode: "inline" | "split") {
+			const rendered = render(DiffViewer, {
+				props: { ...wideProps, layoutMode },
+			});
+			const unwrapped = contentHeightOf(rendered.container);
+			await rendered.rerender({ ...wideProps, layoutMode, wordWrap: true });
+			return {
+				...rendered,
+				wrappedLine: wrappedLineHeight(rendered.container, unwrapped),
+			};
+		}
+
+		const layouts: [string, "inline" | "split"][] = [
+			["inline", "inline"],
+			["side-by-side", "split"],
+		];
+
+		it.each(layouts)(
+			"keeps the line at the top when the %s view wraps",
+			async (_, layoutMode) => {
+				const { container, rerender } = render(DiffViewer, {
+					props: { ...wideProps, layoutMode },
+				});
+				const viewport = viewportOf(container);
+				await scrollTo(viewport, lineOffset(30, 2, line));
+				const unwrapped = contentHeightOf(container);
+
+				await rerender({ ...wideProps, layoutMode, wordWrap: true });
+
+				const wrappedLine = wrappedLineHeight(container, unwrapped);
+				expect(viewport.scrollTop).toBe(lineOffset(30, 2, wrappedLine));
+			},
+		);
+
+		it.each(layouts)(
+			"keeps a hunk header at the top when the %s view wraps",
+			async (_, layoutMode) => {
+				const { container, rerender } = render(DiffViewer, {
+					props: { ...wideProps, layoutMode },
+				});
+				const viewport = viewportOf(container);
+				await scrollTo(viewport, headerOffset(30, line));
+				const unwrapped = contentHeightOf(container);
+
+				await rerender({ ...wideProps, layoutMode, wordWrap: true });
+
+				const wrappedLine = wrappedLineHeight(container, unwrapped);
+				expect(viewport.scrollTop).toBe(headerOffset(30, wrappedLine));
+			},
+		);
+
+		it.each(layouts)(
+			"keeps the line at the top when the %s view unwraps",
+			async (_, layoutMode) => {
+				const { container, rerender, wrappedLine } =
+					await renderWrapped(layoutMode);
+				const viewport = viewportOf(container);
+				await scrollTo(viewport, lineOffset(30, 2, wrappedLine));
+
+				await rerender({ ...wideProps, layoutMode, wordWrap: false });
+
+				expect(viewport.scrollTop).toBe(lineOffset(30, 2, line));
+				expect(screen.getAllByText(`line 4003${wide}`)).not.toHaveLength(0);
+			},
+		);
 	});
 });

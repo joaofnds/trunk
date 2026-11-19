@@ -338,11 +338,20 @@ export function createVirtualizedDiff(
 	// already be the next view's, and the split view rebuilds its rows for a new
 	// content mode over the old one's payload, which puts another line at the top.
 	let drawnLine: ReadingLine | null = null;
+
+	// Wrapping changes every row's height but never which rows there are, so the
+	// first frame drawn under the other wrap puts the row that was at the top back
+	// there rather than show another one at the old scroll offset.
+	let drawnTop: { index: number; wrap: boolean } | null = null;
 	$effect(() => {
 		const list = deps.list();
 		if (!list || !ready) return;
 
-		drawnLine = readingLineAt(model, list.topIndex());
+		if (drawnTop && drawnTop.wrap !== wrapActive) list.anchorTo(drawnTop.index);
+
+		const top = list.topIndex();
+		drawnTop = { index: top, wrap: wrapActive };
+		drawnLine = readingLineAt(model, top);
 	});
 
 	// Derived rather than built with the rows, and so computed only when a step
