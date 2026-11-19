@@ -1316,6 +1316,7 @@ and the uncommitted-changes row never shows as selected (TRUNK-455).
 | I16 | A cherry-pick or revert that stopped on conflicts arrived as an error alert with git's command-line hints, and Continue was enabled with unmerged files | `66ca1336`, `c5be508b`, `d8d18101` |
 | I16 | "Fast-forward main to here" was offered on commits that do not descend from HEAD, and failed with git's raw error | `cc637feb` |
 | I16 | The stopped-rebase footer overflowed the staging panel at 1280 px, so Abort Rebase was cut off and overlapped Skip, and Abort Merge ran into the panel's padding | `f80c04f4` |
+| I16 | At the detail pane's 200 px floor the stopped-rebase footer still cut off Abort Rebase, 20 px past the window's edge, and the stopped-merge footer put Abort Merge 49 px past it. The rebase's abort button now reads Abort, and the merge footer's two buttons stack when they do not fit one row | `d566ce52`, `cdaa6195` |
 | I16 | The reset dialogs named neither the branch nor the commit | `4c7d711f`, `d8d18101` |
 | I16 | A checkout refused over local changes advised stashing them, which Stash refuses while the changes are unstaged | `2e60aa0a` |
 | I15 | The merge editor's conflict headers had the same accessible name in both panes and did not say which side was taken, or that a side was partly taken | `0d5fc406`, `1cb79633` |
