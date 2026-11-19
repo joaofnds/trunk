@@ -2,7 +2,6 @@
 import Check from "@lucide/svelte/icons/check";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronUp from "@lucide/svelte/icons/chevron-up";
-import CircleCheck from "@lucide/svelte/icons/circle-check";
 import CircleX from "@lucide/svelte/icons/circle-x";
 import Minus from "@lucide/svelte/icons/minus";
 import RotateCcw from "@lucide/svelte/icons/rotate-ccw";

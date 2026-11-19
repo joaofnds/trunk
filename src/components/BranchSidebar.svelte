@@ -19,7 +19,6 @@ import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
 	EVERYTHING_VISIBLE,
-	type GroupState,
 	groupState,
 	hidesNothing,
 	isRefHidden,

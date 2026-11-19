@@ -2,14 +2,11 @@
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import {
 	buildInlineRows,
-	changeRunEnd,
 	countLines,
 	type DiffComposer,
 	type DiffRow,
 	FIXED_ROW_HEIGHT_VARS,
 	type ReadingLine,
-	rowIndexForLine,
-	rowIndexForThread,
 } from "../../lib/diff-rows.js";
 import {
 	gripLabel,
@@ -27,7 +24,6 @@ import type {
 	DiffLine,
 	FileDiff,
 	ReviewFilter,
-	Side,
 	Thread,
 } from "../../lib/types.js";
 import GutterGrip from "../../lib/ui/GutterGrip.svelte";

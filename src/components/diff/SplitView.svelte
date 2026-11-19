@@ -2,15 +2,12 @@
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import {
 	buildSplitRows,
-	changeRunEnd,
 	countLines,
 	type DiffComposer,
 	type DiffRow,
 	FIXED_ROW_HEIGHT_VARS,
 	type LineMarker,
 	type ReadingLine,
-	rowIndexForLine,
-	rowIndexForThread,
 } from "../../lib/diff-rows.js";
 import {
 	gripLabel,

@@ -13,13 +13,6 @@ export const PILL_STROKE = 1;
 /** The length of each dash, and of each gap, in the graph's dashed strokes. */
 export const DASH = 3;
 
-/**
- * How far a rail fades out before the graph column's right edge. A dot clamped
- * to that edge is the end of its line, so the rail behind it has to stop there
- * rather than carry on and show past the dot.
- */
-export const EDGE_FADE_WIDTH = 3 * UNIT;
-
 /** Default graph display settings. Pass to buildOverlayPaths / buildRefPillData.
  *  When a settings page is added, load user prefs and spread over these defaults. */
 export const DEFAULT_GRAPH_SETTINGS: GraphDisplaySettings = {

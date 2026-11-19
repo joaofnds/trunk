@@ -92,9 +92,8 @@ let buttonLabel = $derived.by(() => {
 
 // Clear stagedError when stagedCount changes or mode changes
 $effect(() => {
-	// access reactive values to track them
-	const _staged = stagedCount;
-	const _mode = mode;
+	void stagedCount;
+	void mode;
 	stagedError = "";
 });
 

@@ -9,7 +9,6 @@ import {
 import type { ReviewVisibility } from "../lib/review-visibility.svelte.js";
 import { threadTimeline } from "../lib/thread-timeline.js";
 import type { Reply, StateChange, ThreadFollow } from "../lib/types.js";
-import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import { isUnseenAgentReply } from "../lib/unread.js";

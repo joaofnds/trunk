@@ -8,7 +8,6 @@ import FolderTree from "@lucide/svelte/icons/folder-tree";
 import List from "@lucide/svelte/icons/list";
 import Trash2 from "@lucide/svelte/icons/trash-2";
 import { onDestroy } from "svelte";
-import { buildTree, collectFilePaths } from "../lib/build-tree.js";
 import { copyText } from "../lib/clipboard.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { fileCountsForOid, fileTalliesForOid } from "../lib/comment-counts.js";
@@ -41,7 +40,6 @@ import { registerUpdateBlocker } from "../lib/updates-context.js";
 import BranchChip from "./BranchChip.svelte";
 import CommitChip from "./CommitChip.svelte";
 import CommitForm from "./CommitForm.svelte";
-import FileRow from "./FileRow.svelte";
 import OperationBanner from "./OperationBanner.svelte";
 import TreeFileList from "./TreeFileList.svelte";
 
