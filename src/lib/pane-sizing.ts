@@ -14,7 +14,10 @@ export interface PaneSizingOptions {
 	beforeresize: () => void;
 	onwidthchange: (width: number) => void;
 	oncollapsedchange: (collapsed: boolean) => void;
-	/** Saves the width the user gave the pane, once a resize that changed it ends. */
+	/**
+	 * Saves the width the user gave the pane: once a resize of it that changed
+	 * the width ends, or when a resize of another pane adopts its drawn width.
+	 */
 	store: (width: number) => void;
 }
 
@@ -24,7 +27,9 @@ export interface PaneSizing {
 	startResize(e: MouseEvent): void;
 	/**
 	 * Takes a width the layout narrowed the open pane to as its own, and stores
-	 * it. A pane drawn wider than its width, at its floor, keeps its width.
+	 * it unless the pane is the one being resized, which stores its width once
+	 * the resize ends. A pane drawn wider than its width, at its floor, keeps
+	 * its width.
 	 * Read every pane's drawn width before adopting any: adopting one re-fits
 	 * the others.
 	 */
@@ -40,6 +45,7 @@ export interface PaneSizing {
 export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 	const widenSign = options.splitterEdge === "right" ? 1 : -1;
 	let steps: { from: number; floor: number } | null = null;
+	let resizing = false;
 
 	function size() {
 		return options.collapsed() ? 0 : options.drawn();
@@ -74,7 +80,16 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		if (options.collapsed() || drawn >= options.width()) return;
 
 		options.onwidthchange(drawn);
-		options.store(drawn);
+		if (!resizing) options.store(drawn);
+	}
+
+	/** Adopts every pane's drawn width, and returns this pane's width from before. */
+	function beginResize(): number {
+		const width = options.width();
+		resizing = true;
+		options.beforeresize();
+		resizing = false;
+		return width;
 	}
 
 	function storeIfChangedFrom(width: number) {
@@ -87,7 +102,8 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		e.preventDefault();
 		const startX = e.clientX;
 		const startWidth = size();
-		let reopenWidth = options.width();
+		let widthBefore = options.width();
+		let reopenWidth = widthBefore;
 		let moved = false;
 		let collapsed = false;
 		steps = null;
@@ -95,7 +111,7 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		function onMouseMove(ev: MouseEvent) {
 			if (ev.clientX === startX && !moved) return;
 			if (!moved) {
-				options.beforeresize();
+				widthBefore = beginResize();
 				reopenWidth = options.width();
 			}
 			moved = true;
@@ -106,7 +122,7 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 
 		function onMouseUp() {
 			if (collapsed) options.onwidthchange(reopenWidth);
-			storeIfChangedFrom(reopenWidth);
+			storeIfChangedFrom(widthBefore);
 			window.removeEventListener("mousemove", onMouseMove);
 			window.removeEventListener("mouseup", onMouseUp);
 		}
@@ -120,8 +136,7 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		const widens = change > 0;
 		if (options.collapsed() && !widens) return;
 
-		options.beforeresize();
-		const width = options.width();
+		const width = beginResize();
 
 		if (options.collapsed()) {
 			steps = null;

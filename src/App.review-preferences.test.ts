@@ -846,7 +846,6 @@ describe("App side panes", () => {
 			widen: "ArrowRight",
 			floor: "80",
 			widthKey: "left_pane_width",
-			steppedWidth: 212,
 		},
 		{
 			pane: "detail pane",
@@ -855,7 +854,6 @@ describe("App side panes", () => {
 			widen: "ArrowLeft",
 			floor: "200",
 			widthKey: "right_pane_width",
-			steppedWidth: 272,
 		},
 	];
 
@@ -900,6 +898,7 @@ describe("App side panes", () => {
 
 	it("writes the sidebar's width to the preferences once for a drag", async () => {
 		seedOneTab();
+		host.seedPreference("left_pane_width", 300);
 		render(App);
 		const divider = await screen.findByRole("slider", {
 			name: "Resize sidebar",
@@ -912,13 +911,14 @@ describe("App side panes", () => {
 		await fireEvent.mouseMove(window, { clientX: 1030 });
 		await fireEvent.mouseUp(window);
 
-		expect(paneWrites()).toEqual([["left_pane_width", 250]]);
+		expect(paneWrites()).toEqual([["left_pane_width", 330]]);
 	});
 
 	it.each(panes)(
 		"writes the width a step leaves the $pane at",
-		async ({ pane, narrow, widthKey, steppedWidth }) => {
+		async ({ pane, narrow, widthKey }) => {
 			seedOneTab();
+			host.seedPreference(widthKey, 300);
 			render(App);
 			const divider = await screen.findByRole("slider", {
 				name: `Resize ${pane}`,
@@ -927,7 +927,7 @@ describe("App side panes", () => {
 
 			await fireEvent.keyDown(divider, { key: narrow });
 
-			expect(paneWrites()).toEqual([[widthKey, steppedWidth]]);
+			expect(paneWrites()).toEqual([[widthKey, 292]]);
 		},
 	);
 

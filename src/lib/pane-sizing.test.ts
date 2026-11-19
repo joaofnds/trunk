@@ -209,12 +209,65 @@ describe("createPaneSizing", () => {
 		expect(collapses).toEqual([true, false]);
 	});
 
-	it("stores the width the layout draws it at when a resize begins", () => {
-		const { stored, sizing } = sidebarAt(200, { drawnUpTo: 150 });
+	it("stores nothing for a step that leaves its width as it was", () => {
+		const { stored, sizing } = sidebarAt(600);
 
-		sizing.step(-8);
+		sizing.step(8);
 
-		expect(stored[0]).toBe(150);
+		expect(stored).toEqual([]);
+	});
+
+	it("stores nothing for a drag that ends where it began", () => {
+		const { stored, sizing } = sidebarAt(200);
+
+		sizing.startResize(grab(1000));
+		moveTo(1040);
+		moveTo(1000);
+		release();
+
+		expect(stored).toEqual([]);
+	});
+
+	it("stores nothing for a drag that narrows it and then closes it", () => {
+		const { pane, stored, sizing } = sidebarAt(200);
+
+		sizing.startResize(grab(1000));
+		moveTo(950);
+		moveTo(800);
+		release();
+
+		expect(pane).toEqual({ width: 200, collapsed: true });
+		expect(stored).toEqual([]);
+	});
+
+	describe("when the layout draws it narrower than its width", () => {
+		it("stores once the width a step leaves it at", () => {
+			const { stored, sizing } = sidebarAt(200, { drawnUpTo: 150 });
+
+			sizing.step(-8);
+
+			expect(stored).toEqual([142]);
+		});
+
+		it("stores once the width a drag leaves it at", () => {
+			const { stored, sizing } = sidebarAt(200, { drawnUpTo: 150 });
+
+			sizing.startResize(grab(1000));
+			moveTo(1010);
+			moveTo(1020);
+			release();
+
+			expect(stored).toEqual([170]);
+		});
+
+		it("stores once the drawn width it reopens at when a step closes it", () => {
+			const { pane, stored, sizing } = sidebarAt(200, { drawnUpTo: 85 });
+
+			sizing.step(-8);
+
+			expect(pane).toEqual({ width: 85, collapsed: true });
+			expect(stored).toEqual([85]);
+		});
 	});
 });
 
