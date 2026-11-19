@@ -133,8 +133,6 @@ pub fn run() {
 ///
 /// Panics when the Tauri runtime cannot start.
 fn run_gui() {
-    shell_env::resolve_in_background();
-
     let builder = configure(
         gui_builder(),
         WatcherState::default(),
@@ -466,8 +464,10 @@ fn serve_trunk_asset<R: tauri::Runtime>(
     }
 }
 
-/// Build the app menu, start the review-store poll, and place the traffic lights.
+/// Start the PATH lookup, build the app menu, start the review-store poll, and
+/// place the traffic lights.
 fn setup_app<R: tauri::Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
+    shell_env::resolve_in_background();
     updates::initialize(app.handle());
     app.set_menu(build_menu(app)?)?;
 

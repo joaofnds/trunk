@@ -17,6 +17,10 @@ pub struct WorkerError {
     pub message: String,
 }
 
+/// The variable the app passes its resolved PATH to a worker in, so the worker
+/// skips the login shell.
+pub const RESOLVED_PATH_VARIABLE: &str = "TRUNK_RESOLVED_PATH";
+
 /// Handle the private worker entry point before Tauri or its runtime starts.
 #[must_use]
 pub fn run_if_worker() -> bool {
@@ -44,10 +48,13 @@ pub fn run_if_worker() -> bool {
 }
 
 fn configure_worker() -> Result<(), TrunkError> {
-    // This entry point runs before Tauri or any thread. Libgit2 timeout options
-    // and noninteractive environment policy are process-global state.
+    let path =
+        std::env::var(RESOLVED_PATH_VARIABLE).unwrap_or_else(|_| crate::shell_env::worker_path());
+    // This entry point runs before Tauri. The only other threads are the PATH
+    // lookup's, which never touch the environment. Libgit2 timeout options and
+    // noninteractive environment policy are process-global state.
     unsafe {
-        std::env::set_var("PATH", crate::shell_env::system_path());
+        std::env::set_var("PATH", path);
         std::env::set_var("GIT_TERMINAL_PROMPT", "0");
         std::env::set_var("GCM_INTERACTIVE", "never");
         std::env::set_var("SSH_ASKPASS_REQUIRE", "never");

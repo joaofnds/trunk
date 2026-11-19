@@ -336,6 +336,9 @@ impl BackgroundFetch {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .kill_on_drop(true);
+        if let Some(path) = crate::shell_env::resolved_path() {
+            command.env(crate::fetch_worker::RESOLVED_PATH_VARIABLE, path);
+        }
         #[cfg(unix)]
         command.process_group(0);
         let mut child = command

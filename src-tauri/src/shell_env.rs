@@ -1,4 +1,5 @@
 use std::io::Read;
+use std::process::{Child, Command, Stdio};
 use std::sync::OnceLock;
 use std::sync::mpsc::{Receiver, channel};
 use std::time::Duration;
@@ -8,9 +9,18 @@ static SHELL_PATH: OnceLock<String> = OnceLock::new();
 const PATH_BEGIN: &str = "__TRUNK_PATH_BEGIN__";
 const PATH_END: &str = "__TRUNK_PATH_END__";
 
-/// How long the user's shell may take to start before git runs with the system
-/// PATH instead. The slowest start measured on a developer laptop is 0.56 s.
 const LOGIN_SHELL_DEADLINE: Duration = Duration::from_secs(10);
+
+/// Who stops a login shell whose startup files never finish.
+#[derive(Clone, Copy)]
+enum Stopper {
+    /// The lookup, once [`LOGIN_SHELL_DEADLINE`] passes, along with every process
+    /// the shell started.
+    Deadline,
+    /// The caller's process group, which the app stops when a fetch worker's
+    /// fetch is cancelled or out of time.
+    CallerGroup,
+}
 
 /// PATH that matches what the user gets in their terminal.
 ///
@@ -27,7 +37,7 @@ const LOGIN_SHELL_DEADLINE: Duration = Duration::from_secs(10);
 /// `/etc/paths(.d)`, orders system dirs first, and never sees a user's package
 /// manager.
 pub fn system_path() -> &'static str {
-    SHELL_PATH.get_or_init(resolve)
+    SHELL_PATH.get_or_init(|| resolve(Stopper::Deadline))
 }
 
 /// Resolve [`system_path`] on a thread of its own, so the user's first commit,
@@ -40,14 +50,26 @@ pub fn resolve_in_background() {
     drop(resolving);
 }
 
-fn resolve() -> String {
-    if let Some(path) = std::env::var("SHELL")
-        .ok()
-        .filter(|shell| !shell.is_empty())
-        .and_then(|shell| from_login_shell(&shell))
+/// [`system_path`], when it has already been resolved.
+pub fn resolved_path() -> Option<&'static str> {
+    SHELL_PATH.get().map(String::as_str)
+}
+
+/// The terminal's PATH for a fetch worker, whose process group the app stops.
+#[must_use]
+pub fn worker_path() -> String {
+    resolve(Stopper::CallerGroup)
+}
+
+fn resolve(stopper: Stopper) -> String {
+    let shell = std::env::var("SHELL").unwrap_or_default();
+    if !shell.is_empty()
+        && let Some(path) = from_login_shell(&shell, stopper)
     {
         return path;
     }
+
+    eprintln!("the login shell gave no PATH, so git runs without the terminal's PATH");
     #[cfg(target_os = "macos")]
     if let Some(path) = from_path_helper() {
         return path;
@@ -61,49 +83,84 @@ fn resolve() -> String {
 /// then runs the print command and exits — `-c` means it never enters a REPL,
 /// so it can't hang on input. Markers bracket the value so any banner the rc
 /// files write to stdout is discarded; stderr (job-control chatter under `-i`)
-/// is dropped. Startup files that never finish are given
-/// [`LOGIN_SHELL_DEADLINE`].
-fn from_login_shell(shell: &str) -> Option<String> {
-    ask_login_shell(shell, |printed| {
-        printed.recv_timeout(LOGIN_SHELL_DEADLINE).ok()
-    })
+/// is dropped.
+fn from_login_shell(shell: &str, stopper: Stopper) -> Option<String> {
+    match stopper {
+        Stopper::Deadline => ask_login_shell(shell, stopper, |answer| {
+            answer.recv_timeout(LOGIN_SHELL_DEADLINE).ok()
+        }),
+        Stopper::CallerGroup => ask_login_shell(shell, stopper, |answer| answer.recv().ok()),
+    }
 }
 
-/// Run `shell` for its `$PATH`, with `wait` returning what it printed or `None`
-/// once it is out of time. A shell out of time is stopped.
-///
-/// The shell stays in the caller's process group, so a fetch worker that is
-/// cancelled while it waits here stops the shell along with itself.
+/// Run `shell` for its `$PATH`, with `wait` returning the shell's answer, or
+/// `None` once the shell is out of time.
 fn ask_login_shell(
     shell: &str,
-    wait: impl FnOnce(&Receiver<std::io::Result<Vec<u8>>>) -> Option<std::io::Result<Vec<u8>>>,
+    stopper: Stopper,
+    wait: impl FnOnce(&Receiver<Option<String>>) -> Option<Option<String>>,
 ) -> Option<String> {
     let script = format!("printf '%s%s%s' '{PATH_BEGIN}' \"$PATH\" '{PATH_END}'");
-    let mut command = std::process::Command::new(shell);
+    let mut command = Command::new(shell);
     command
         .args(["-l", "-i", "-c", &script])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    #[cfg(unix)]
+    if matches!(stopper, Stopper::Deadline) {
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    }
     let mut child = command.spawn().ok()?;
 
-    let mut stdout = child.stdout.take().expect("the shell's stdout is piped");
-    let (sender, printed) = channel();
-    std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        drop(sender.send(stdout.read_to_end(&mut bytes).map(|_| bytes)));
-    });
+    let stdout = child.stdout.take().expect("the shell's stdout is piped");
+    let (sender, answer) = channel();
+    let reading = std::thread::Builder::new()
+        .name("shell-path-reader".into())
+        .spawn(move || drop(sender.send(read_marked_path(stdout))));
+    let path = reading.ok().and_then(|_| wait(&answer)).flatten();
 
-    let Some(Ok(bytes)) = wait(&printed) else {
-        drop(child.kill());
-        drop(child.wait());
-        eprintln!("{shell} gave no PATH; git runs with the system PATH");
-        return None;
-    };
-    if !child.wait().ok()?.success() {
-        return None;
+    if path.is_none() {
+        stop(&mut child, stopper);
     }
-    parse_marked_path(&String::from_utf8_lossy(&bytes))
+    reap(child);
+    path
+}
+
+/// Read the shell's output up to the PATH it prints. Reading on to the end
+/// would also wait for any process the startup files leave running in the
+/// background, since such a process holds the same output open.
+fn read_marked_path(mut stdout: impl Read) -> Option<String> {
+    let mut printed = Vec::new();
+    let mut chunk = [0; 4096];
+    loop {
+        match stdout.read(&mut chunk) {
+            Ok(0) => return None,
+            Ok(read) => printed.extend_from_slice(&chunk[..read]),
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => return None,
+        }
+
+        if let Some(path) = parse_marked_path(&String::from_utf8_lossy(&printed)) {
+            return Some(path);
+        }
+    }
+}
+
+fn stop(child: &mut Child, stopper: Stopper) {
+    match stopper {
+        Stopper::Deadline => crate::remote_ops::RemoteProcess::background(child.id()).stop(),
+        Stopper::CallerGroup => drop(child.kill()),
+    }
+}
+
+/// Collect the shell's exit status on a thread of its own, since a shell that
+/// printed its PATH may still be running its logout files.
+fn reap(mut child: Child) {
+    let reaping = std::thread::Builder::new()
+        .name("shell-path-reaper".into())
+        .spawn(move || drop(child.wait()));
+    drop(reaping);
 }
 
 /// Extract the PATH the shell printed between our markers. Returns `None` when a
@@ -164,9 +221,23 @@ mod tests {
             "printf '{PATH_BEGIN}/opt/user/bin:/usr/bin{PATH_END}'"
         ));
 
-        let path = from_login_shell(&shell);
+        let path = from_login_shell(&shell, Stopper::Deadline);
 
         assert_eq!(path.as_deref(), Some("/opt/user/bin:/usr/bin"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_login_shell_gives_its_path_while_a_job_it_started_still_runs() {
+        let (_directory, shell) = shell(&format!(
+            "sleep 86400 &\necho $! > \"$0.job\"\nprintf '{PATH_BEGIN}/opt/user/bin{PATH_END}'"
+        ));
+
+        let path = from_login_shell(&shell, Stopper::Deadline);
+
+        let job = std::fs::read_to_string(format!("{shell}.job")).unwrap();
+        unsafe { libc::kill(job.trim().parse().unwrap(), libc::SIGKILL) };
+        assert_eq!(path.as_deref(), Some("/opt/user/bin"));
     }
 
     #[cfg(unix)]
@@ -174,28 +245,29 @@ mod tests {
     fn a_login_shell_out_of_time_gives_no_path() {
         let (_directory, shell) = shell("exec sleep 86400");
 
-        assert_eq!(ask_login_shell(&shell, |_| None), None);
+        assert_eq!(ask_login_shell(&shell, Stopper::Deadline, |_| None), None);
     }
 
     #[cfg(unix)]
     #[test]
-    fn a_login_shell_out_of_time_is_stopped() {
-        let (_directory, shell) = shell("exec 3>\"$0.alive\"\necho started >&3\nexec sleep 86400");
+    fn a_login_shell_out_of_time_is_stopped_with_everything_it_started() {
+        let (_directory, shell) =
+            shell("exec 3>\"$0.alive\"\nsleep 86400 &\necho started >&3\nwait");
         let alive = format!("{shell}.alive");
         let fifo = std::ffi::CString::new(alive.as_str()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
         let opening = std::thread::spawn(move || std::fs::File::open(alive).unwrap());
         let mut held = None;
 
-        ask_login_shell(&shell, |_| {
+        ask_login_shell(&shell, Stopper::Deadline, |_| {
             let mut alive = std::io::BufReader::new(opening.join().unwrap());
             std::io::BufRead::read_line(&mut alive, &mut String::new()).unwrap();
             held = Some(alive);
             None
         });
 
-        // Only the shell holds the fifo open, so it reads to its end only once
-        // the shell has exited.
+        // The shell and its sleep both hold the fifo open, so it reads to its end
+        // only once both have exited.
         let mut rest = Vec::new();
         std::io::Read::read_to_end(&mut held.unwrap(), &mut rest).unwrap();
         assert_eq!(rest, b"");

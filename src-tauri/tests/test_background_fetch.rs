@@ -2000,3 +2000,32 @@ mod cancellation {
         assert_eq!(cancelled["outcome"], "cancelled");
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn a_worker_given_the_apps_path_never_starts_the_login_shell() {
+    use std::os::unix::fs::PermissionsExt;
+    let directory = tempfile::tempdir().unwrap();
+    let started = directory.path().join("started");
+    let shell = directory.path().join("shell.sh");
+    std::fs::write(
+        &shell,
+        format!("#!/bin/sh\n: > '{}'\nexec sleep 86400\n", started.display()),
+    )
+    .unwrap();
+    std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+    let answered = std::process::Command::new(env!("CARGO_BIN_EXE_trunk"))
+        .arg("--background-fetch-worker")
+        .env("SHELL", &shell)
+        .env(
+            trunk_lib::fetch_worker::RESOLVED_PATH_VARIABLE,
+            "/usr/bin:/bin",
+        )
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+
+    assert!(answered.status.success());
+    assert!(!started.exists(), "the worker started the login shell");
+}
