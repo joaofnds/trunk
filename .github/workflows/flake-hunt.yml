@@ -64,8 +64,12 @@ jobs:
       # Builds a Rust example and runs vitest over it, and repeats a Rust test
       # suite, so this job needs both toolchains, as the Application Harness job
       # does.
-      - run: just flake-hunt ${{ github.event.inputs.runs || '10' }}
+      - run: just flake-hunt "$RUNS"
+        env:
+          RUNS: ${{ github.event.inputs.runs || '10' }}
       # Separate from the frontend repeat above: a coverage pass over the whole
       # workspace takes about half a minute, so multiplying it by the frontend
       # suites' runs overran the job's timeout and produced no evidence.
-      - run: just flake-hunt-cov ${{ github.event.inputs.cov_runs || '5' }}
+      - run: just flake-hunt-cov "$COV_RUNS"
+        env:
+          COV_RUNS: ${{ github.event.inputs.cov_runs || '5' }}
