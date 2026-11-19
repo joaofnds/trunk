@@ -150,7 +150,8 @@ function widthForWords(kind: PanelDiffKind, hasWayBack: boolean): number {
 }
 
 // Where the pane is too narrow for the worded actions beside a readable file
-// name, each is drawn as its glyph and keeps its words as its name.
+// name, each is drawn as its glyph and keeps its words as its name and its
+// tooltip. Drawn with its words, it has no tooltip to repeat them.
 const compact = $derived(
 	toolbarWidth < widthForWords(diffKind, backLabel !== null),
 );
@@ -163,7 +164,7 @@ const compact = $derived(
 			size="sm"
 			variant="ghost"
 			aria-label={backLabel}
-			title={backLabel}
+			title={compact ? backLabel : undefined}
 			onclick={onclose}
 		>
 			{#if compact}
@@ -214,7 +215,7 @@ const compact = $derived(
 			size="sm"
 			variant="accent"
 			aria-label="Comment File"
-			title="Comment File"
+			title={compact ? "Comment File" : undefined}
 			onclick={oncommentfile}
 		>
 			{#if compact}
@@ -325,7 +326,7 @@ const compact = $derived(
 			variant="danger"
 			disabled={hunkOperationInFlight}
 			aria-label="Discard File"
-			title="Discard File"
+			title={compact ? "Discard File" : undefined}
 			onclick={ondiscardfile}
 		>
 			{#if compact}
@@ -341,7 +342,9 @@ const compact = $derived(
 			disabled={hunkOperationInFlight || ignoreWhitespace}
 			title={ignoreWhitespace
 				? "Staging is disabled while whitespace changes are ignored"
-				: "Stage File"}
+				: compact
+					? "Stage File"
+					: undefined}
 			aria-label="Stage File"
 			onclick={onstagefile}
 		>
@@ -359,7 +362,9 @@ const compact = $derived(
 			disabled={hunkOperationInFlight || ignoreWhitespace}
 			title={ignoreWhitespace
 				? "Staging is disabled while whitespace changes are ignored"
-				: "Unstage File"}
+				: compact
+					? "Unstage File"
+					: undefined}
 			aria-label="Unstage File"
 			onclick={onunstagefile}
 		>

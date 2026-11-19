@@ -280,6 +280,27 @@ describe("DiffToolbar in a narrow pane", () => {
 		},
 	);
 
+	it.each(WORDED)(
+		"shows no tooltip that repeats the words $name already spells out",
+		async ({ name, diffKind }) => {
+			await renderAt(1000, { diffKind });
+
+			expect(screen.getByRole("button", { name })).not.toHaveAttribute("title");
+		},
+	);
+
+	it.each(WORDED)(
+		"names $name in a tooltip where it draws only its glyph",
+		async ({ name, diffKind }) => {
+			await renderAt(300, { diffKind });
+
+			expect(screen.getByRole("button", { name })).toHaveAttribute(
+				"title",
+				name,
+			);
+		},
+	);
+
 	it("spells out its actions again once the pane widens", async () => {
 		const toolbar = await renderAt(300, { diffKind: "staged" });
 
@@ -301,6 +322,14 @@ describe("DiffToolbar in a narrow pane", () => {
 		expect(
 			screen.getByRole("button", { name: "Unstage File" }),
 		).toHaveTextContent("Unstage File");
+	});
+
+	it("shows no tooltip on the way back where it spells out its label", async () => {
+		await renderAt(1000, { backLabel: "Review" });
+
+		expect(screen.getByRole("button", { name: "Review" })).not.toHaveAttribute(
+			"title",
+		);
 	});
 
 	it("draws the way back as its chevron where its label does not fit", async () => {
