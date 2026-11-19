@@ -1347,6 +1347,14 @@ describe("StagingPanel rebase form", () => {
 		},
 	);
 
+	// The footer already names the rebase, and a longer label runs past the pane
+	// at its narrowest width.
+	it("offers to abort beside Skip, as the operation banner does", async () => {
+		await renderRebaseForm();
+
+		expect(screen.getByRole("button", { name: "Abort" })).toBeEnabled();
+	});
+
 	describe("when no branch points at the commit it rebases onto", () => {
 		const ONTO = "7d6008b2c4e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7";
 

@@ -167,7 +167,7 @@ describe("an interactive rebase", () => {
 		).resolves.toEqual([REBASE_STOPPED]);
 		await expect(
 			waitFor("the rebase banner", () => app.staging.banner()),
-		).resolves.toEqual(["Continue Rebase", "Skip", "Abort Rebase"]);
+		).resolves.toEqual(["Continue Rebase", "Skip", "Abort"]);
 	});
 
 	describe("over a range holding a merge", () => {

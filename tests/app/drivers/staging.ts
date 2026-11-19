@@ -33,7 +33,7 @@ const STAGE_LINES = "Stage Lines";
 const UNSTAGE_LINES = "Unstage Lines";
 const MARK_ALL_RESOLVED = "Mark All Resolved";
 const CONTINUE_REBASE = "Continue Rebase";
-const ABORT_REBASE = "Abort Rebase";
+const ABORT_REBASE = "Abort";
 
 /** The working-tree view: what the graph's top row opens onto, and the commit
  *  the user builds there. */

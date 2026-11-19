@@ -1228,7 +1228,7 @@ registerUpdateBlocker(() => {
 						onclick={abortRebase}
 						disabled={rebaseLoading}
 					>
-						Abort Rebase
+						Abort
 					</Button>
 				</div>
 			</div>
