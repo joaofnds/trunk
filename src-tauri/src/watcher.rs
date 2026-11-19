@@ -251,36 +251,57 @@ fn ignored_worktree_path(
     repo.is_path_ignored(relative).unwrap_or(false)
 }
 
-/// The repository one watcher answers ignore questions from, kept open across batches,
-/// since libgit2 keeps the index it parsed inside the handle and rereads it only when
-/// the file changed. Parsing the index is what such an answer costs, about 3.7 ms at
-/// 20,000 tracked files, and a build writing ignored output delivers a batch every 25 ms.
+/// The index one watcher answers ignore questions from, kept across batches because
+/// parsing it is what an answer costs. libgit2 rereads a kept index only when its file
+/// changed. Each batch opens the repository afresh, so config and ignore files read as
+/// they are now, and the index is parsed again whenever the case setting it was parsed
+/// under changed or its file is gone.
 #[derive(Default)]
-struct WorktreeIgnores(Option<git2::Repository>);
+struct WorktreeIgnores(Option<KeptIndex>);
+
+struct KeptIndex {
+    index: git2::Index,
+    ignore_case: bool,
+}
+
+/// One batch's ignore answers: the repository and its index as they are on disk now.
+struct IgnoreView<'a> {
+    repo: git2::Repository,
+    index: &'a git2::Index,
+}
 
 impl WorktreeIgnores {
-    /// The index as it is on disk now, opening the repository on first use. `None`
-    /// when either will not read, and then no path is ignored.
-    fn refresh(&mut self, watched: &Path) -> Option<git2::Index> {
-        if let Some(index) = self.0.as_ref().and_then(current_index) {
-            return Some(index);
-        }
+    /// `None` when the repository or its index will not read, and then no path is ignored.
+    fn current(&mut self, watched: &Path) -> Option<IgnoreView<'_>> {
+        let repo = git2::Repository::open(watched).ok()?;
+        let ignore_case = repo
+            .config()
+            .and_then(|config| config.get_bool("core.ignoreCase"))
+            .unwrap_or(false);
+        let reusable = self.0.take().filter(|kept| {
+            kept.ignore_case == ignore_case && kept.index.path().is_some_and(Path::exists)
+        });
+        let mut kept = match reusable {
+            Some(kept) => kept,
+            None => KeptIndex {
+                index: repo.index().ok()?,
+                ignore_case,
+            },
+        };
 
-        self.0 = git2::Repository::open(watched).ok();
-        self.0.as_ref().and_then(current_index)
-    }
-
-    fn ignores(&self, path: &Path, roots: &[PathBuf], index: &git2::Index) -> bool {
-        self.0
-            .as_ref()
-            .is_some_and(|repo| ignored_worktree_path(path, roots, repo, index))
+        kept.index.read(false).ok()?;
+        let kept = self.0.insert(kept);
+        Some(IgnoreView {
+            repo,
+            index: &kept.index,
+        })
     }
 }
 
-fn current_index(repo: &git2::Repository) -> Option<git2::Index> {
-    let mut index = repo.index().ok()?;
-    index.read(false).ok()?;
-    Some(index)
+impl IgnoreView<'_> {
+    fn ignores(&self, path: &Path, roots: &[PathBuf]) -> bool {
+        ignored_worktree_path(path, roots, &self.repo, self.index)
+    }
 }
 
 /// What routing a batch did.
@@ -306,7 +327,7 @@ fn route_changes<R: Runtime>(
     };
     let mut relevant = Vec::new();
     let mut worktree = changed.is_empty();
-    let mut batch_index = None;
+    let ignores = ignores.current(watched);
 
     for path in changed {
         match git.map_or(GitChange::Worktree, |git| git.classify(&path)) {
@@ -317,8 +338,9 @@ fn route_changes<R: Runtime>(
                     path.starts_with(&git.private) || path.starts_with(&git.common)
                 });
                 if !metadata
-                    && let Some(index) = batch_index.get_or_insert_with(|| ignores.refresh(watched))
-                    && ignores.ignores(&path, roots, index)
+                    && ignores
+                        .as_ref()
+                        .is_some_and(|ignores| ignores.ignores(&path, roots))
                 {
                     continue;
                 }
@@ -629,18 +651,21 @@ pub struct RepoWatcher {
 }
 
 impl RepoWatcher {
-    /// `deliver` routes a released batch and answers whether it refreshed a
-    /// subscriber. `writers` tells who is midway through writing the repository,
-    /// and without them a batch never waits for a writer.
-    fn start(
+    /// `deliver` makes, on the watcher's own thread, what routes a released batch and
+    /// answers whether it refreshed a subscriber. `writers` tells who is midway through
+    /// writing the repository, and without them a batch never waits for a writer.
+    fn start<D>(
         writers: Option<Writers>,
-        deliver: impl FnMut(Vec<PathBuf>) -> bool + Send + 'static,
-    ) -> notify::Result<Self> {
+        deliver: impl FnOnce() -> D + Send + 'static,
+    ) -> notify::Result<Self>
+    where
+        D: FnMut(Vec<PathBuf>) -> bool,
+    {
         let (outbox, inbox) = mpsc::channel();
 
         std::thread::Builder::new()
             .name("trunk repo watcher".to_string())
-            .spawn(move || pace(&inbox, writers.as_ref(), deliver))?;
+            .spawn(move || pace(&inbox, writers.as_ref(), deliver()))?;
 
         let forward = outbox.clone();
         let watcher = RecommendedWatcher::new(
@@ -729,7 +754,7 @@ impl WatcherState {
         app: &AppHandle<R>,
     ) -> Result<(), TrunkError> {
         let git = open_for_watching(path).map(|(git, _)| git);
-        if let Routed::Published(Some(task)) = route_changes(
+        let routed = route_changes(
             path,
             &root_forms(path),
             git.as_ref(),
@@ -737,7 +762,9 @@ impl WatcherState {
             &mut WorktreeIgnores::default(),
             app,
             &self.pending_refs,
-        ) {
+        );
+
+        if let Routed::Published(Some(task)) = routed {
             task.await
                 .map_err(|error| TrunkError::new("spawn_error", error.to_string()))?;
         }
@@ -784,10 +811,10 @@ where
     let (git, writers) = open_for_watching(path).unzip();
     let callback_git = git.clone();
     let pending = Arc::clone(&state.pending_refs);
-    let mut ignores = WorktreeIgnores::default();
 
-    let mut repo_watcher = RepoWatcher::start(writers, move |changed| {
-        match route_changes(
+    let mut repo_watcher = RepoWatcher::start(writers, move || {
+        let mut ignores = WorktreeIgnores::default();
+        move |changed| match route_changes(
             &watched,
             &roots,
             callback_git.as_ref(),
@@ -1039,9 +1066,33 @@ mod tests {
         }
 
         fn ignored_now(ignores: &mut WorktreeIgnores, dir: &Path) -> bool {
-            ignores.refresh(dir).is_some_and(|index| {
-                ignores.ignores(&dir.join(ARTIFACT), &[dir.to_path_buf()], &index)
-            })
+            ignored_at(ignores, dir, ARTIFACT)
+        }
+
+        fn ignored_at(ignores: &mut WorktreeIgnores, dir: &Path, relative: &str) -> bool {
+            ignores
+                .current(dir)
+                .is_some_and(|view| view.ignores(&dir.join(relative), &[dir.to_path_buf()]))
+        }
+
+        /// Ignore answers for `dir` that have already read it once, so a later answer
+        /// comes from what the first one kept.
+        fn watching(dir: &Path) -> WorktreeIgnores {
+            let mut ignores = WorktreeIgnores::default();
+            ignored_now(&mut ignores, dir);
+            ignores
+        }
+
+        fn track_the_artifact(dir: &Path) {
+            let repo = git2::Repository::open(dir).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new(ARTIFACT)).unwrap();
+            index.write().unwrap();
+        }
+
+        fn set_config(dir: &Path, name: &str, value: &str) {
+            let repo = git2::Repository::open(dir).unwrap();
+            repo.config().unwrap().set_str(name, value).unwrap();
         }
 
         #[test]
@@ -1054,22 +1105,29 @@ mod tests {
         #[test]
         fn a_path_stops_being_ignored_once_the_index_tracks_it() {
             let dir = repository_with_an_ignored_artifact();
-            let mut ignores = WorktreeIgnores::default();
-            assert!(ignored_now(&mut ignores, dir.path()));
+            let mut ignores = watching(dir.path());
 
-            let repo = git2::Repository::open(dir.path()).unwrap();
-            let mut index = repo.index().unwrap();
-            index.add_path(Path::new(ARTIFACT)).unwrap();
-            index.write().unwrap();
+            track_the_artifact(dir.path());
 
             assert!(!ignored_now(&mut ignores, dir.path()));
         }
 
         #[test]
+        fn a_tracked_path_is_ignored_again_once_the_index_file_is_gone() {
+            let dir = repository_with_an_ignored_artifact();
+            track_the_artifact(dir.path());
+            let mut ignores = watching(dir.path());
+            assert!(!ignored_now(&mut ignores, dir.path()));
+
+            std::fs::remove_file(dir.path().join(".git/index")).unwrap();
+
+            assert!(ignored_now(&mut ignores, dir.path()));
+        }
+
+        #[test]
         fn a_path_stops_being_ignored_once_its_rule_is_removed() {
             let dir = repository_with_an_ignored_artifact();
-            let mut ignores = WorktreeIgnores::default();
-            assert!(ignored_now(&mut ignores, dir.path()));
+            let mut ignores = watching(dir.path());
 
             std::fs::write(dir.path().join(".gitignore"), "other/\n").unwrap();
 
@@ -1077,16 +1135,51 @@ mod tests {
         }
 
         #[test]
+        fn a_path_stops_being_ignored_once_the_excludes_file_setting_names_another_file() {
+            let dir = repository_with_an_ignored_artifact();
+            let excludes = tempfile::tempdir().unwrap();
+            std::fs::write(excludes.path().join("ignoring"), "notes/\n").unwrap();
+            std::fs::write(excludes.path().join("empty"), "").unwrap();
+            let setting = |file: &str| excludes.path().join(file).to_string_lossy().into_owned();
+            set_config(dir.path(), "core.excludesFile", &setting("ignoring"));
+            let mut ignores = watching(dir.path());
+            assert!(ignored_at(&mut ignores, dir.path(), "notes/scratch.txt"));
+
+            set_config(dir.path(), "core.excludesFile", &setting("empty"));
+
+            assert!(!ignored_at(&mut ignores, dir.path(), "notes/scratch.txt"));
+        }
+
+        #[test]
+        fn a_path_differing_from_a_tracked_one_only_in_case_is_tracked_once_case_is_ignored() {
+            let dir = repository_with_an_ignored_artifact();
+            set_config(dir.path(), "core.ignoreCase", "false");
+            track_the_artifact(dir.path());
+            let mut ignores = watching(dir.path());
+            assert!(ignored_at(&mut ignores, dir.path(), "artifacts/PROBE.txt"));
+
+            set_config(dir.path(), "core.ignoreCase", "true");
+
+            assert!(!ignored_at(&mut ignores, dir.path(), "artifacts/PROBE.txt"));
+        }
+
+        #[test]
         fn no_path_is_ignored_while_the_index_will_not_read() {
             let dir = repository_with_an_ignored_artifact();
-            let mut ignores = WorktreeIgnores::default();
-            let repo = git2::Repository::open(dir.path()).unwrap();
-            repo.index().unwrap().write().unwrap();
-            assert!(ignored_now(&mut ignores, dir.path()));
+            track_the_artifact(dir.path());
+            let mut ignores = watching(dir.path());
 
-            std::fs::write(repo.path().join("index"), "unreadable index").unwrap();
+            std::fs::write(
+                dir.path().join(".git/index"),
+                "an index file longer than its checksum that no parser accepts",
+            )
+            .unwrap();
 
-            assert!(!ignored_now(&mut ignores, dir.path()));
+            assert!(!ignored_at(
+                &mut ignores,
+                dir.path(),
+                "artifacts/untracked.txt"
+            ));
         }
     }
 
