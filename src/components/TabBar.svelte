@@ -65,26 +65,50 @@ $effect(() => {
 	return () => observer.disconnect();
 });
 
-let fades = $state({ start: false, end: false });
+/** How much of a tab the strip shows: all of it, part of it, or none. */
+type Shown = "whole" | "cut" | "out";
 
-function measureFades() {
-	const scrolled = tabBarEl.scrollLeft;
-	const end = tabBarEl.scrollWidth - tabBarEl.clientWidth;
+let shown: Record<string, Shown> = $state.raw({});
 
-	fades = { start: scrolled >= 1, end: scrolled <= end - 1 };
+function shownBy(entry: IntersectionObserverEntry): Shown {
+	if (!entry.isIntersecting) return "out";
+
+	return entry.intersectionRatio < 1 ? "cut" : "whole";
 }
 
-// Closing or opening a tab, and a tab's name changing, change how far the strip
-// scrolls without scrolling it.
 $effect(() => {
-	const observer = new ResizeObserver(measureFades);
-	observer.observe(tabBarEl);
+	const ids = new Map<Element, string>();
+	const seen: Record<string, Shown> = {};
+	const observer = new IntersectionObserver(
+		(entries) => {
+			for (const entry of entries) {
+				const id = ids.get(entry.target);
+				if (id) seen[id] = shownBy(entry);
+			}
+			shown = { ...seen };
+		},
+		// The margin keeps a tab whose edge rounds past the strip's by a
+		// fraction of a pixel whole.
+		{ root: tabBarEl, rootMargin: "0px 1px", threshold: [0, 1] },
+	);
 	for (const tab of tabs) {
 		const item = tabBarEl.querySelector(`[data-tab-id="${tab.id}"]`);
-		if (item) observer.observe(item);
+		if (!item) continue;
+
+		ids.set(item, tab.id);
+		observer.observe(item);
 	}
 
 	return () => observer.disconnect();
+});
+
+function isWhole(tab: TabInfo | undefined): boolean {
+	return tab === undefined || (shown[tab.id] ?? "whole") === "whole";
+}
+
+const fades = $derived({
+	start: !isWhole(tabs[0]),
+	end: !isWhole(tabs.at(-1)),
 });
 
 function scrollSideways(e: WheelEvent) {
@@ -191,7 +215,6 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 		aria-label="Repository tabs"
 		bind:this={tabBarEl}
 		onwheel={scrollSideways}
-		onscroll={measureFades}
 	>
 		{#each tabs as tab (tab.id)}
 			{@const title = tab.repoPath
@@ -222,21 +245,23 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 						>{tab.repoName || "New Tab"}</span
 					>
 					{#snippet trailing()}
-						<Button
-							icon
-							size="xs"
-							variant="ghost"
-							aria-label="Close tab"
-							onmousedown={(e) => pressClose(e, tab.id)}
-							oncontextmenu={(e) => openMenu(e, tab.id)}
-							onauxclick={(e) => closeOnMiddle(e, tab.id)}
-							onclick={(e) => {
-								e.stopPropagation();
-								onclose(tab.id, e.shiftKey);
-							}}
-						>
-							<X size={12} />
-						</Button>
+						{#if shown[tab.id] !== "cut"}
+							<Button
+								icon
+								size="xs"
+								variant="ghost"
+								aria-label="Close tab"
+								onmousedown={(e) => pressClose(e, tab.id)}
+								oncontextmenu={(e) => openMenu(e, tab.id)}
+								onauxclick={(e) => closeOnMiddle(e, tab.id)}
+								onclick={(e) => {
+									e.stopPropagation();
+									onclose(tab.id, e.shiftKey);
+								}}
+							>
+								<X size={12} />
+							</Button>
+						{/if}
 					{/snippet}
 				</Tab>
 			</div>

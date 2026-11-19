@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/svelte";
+import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeIntersectionObserver } from "../__tests__/helpers/fake-intersection-observer.js";
 import { reportWidthOf } from "../__tests__/helpers/fake-resize-observer.js";
 import type { TabInfo } from "../lib/tab-types.js";
 import TabBar from "./TabBar.svelte";
@@ -45,15 +47,12 @@ function closeOf(name: string): HTMLElement {
 	return within(itemOf(name)).getByLabelText("Close tab");
 }
 
-/** Gives the strip the scroll extent jsdom, which lays nothing out, leaves at 0. */
-function overflow(
-	strip: HTMLElement,
-	extent: { scrollWidth: number; clientWidth: number },
-) {
-	for (const [name, value] of Object.entries(extent)) {
-		Object.defineProperty(strip, name, { value, configurable: true });
-	}
-}
+/** Shows a tab item to the strip as a scroll would leave it. */
+const SHOW = {
+	whole: (item: Element) => FakeIntersectionObserver.enter(item),
+	cut: (item: Element) => FakeIntersectionObserver.reveal(item, 0.4),
+	out: (item: Element) => FakeIntersectionObserver.leave(item),
+};
 
 function fadedEdgesOf(strip: HTMLElement): [boolean, boolean] {
 	return [
@@ -368,35 +367,58 @@ describe("TabBar", () => {
 		expect([unhandled, tablist.scrollLeft]).toEqual([true, 0]);
 	});
 
+	it("offers no close on a tab the strip's edge cuts", async () => {
+		render(TabBar, { props: defaultProps });
+		await Promise.resolve();
+
+		FakeIntersectionObserver.reveal(itemOf("other"), 0.4);
+		await tick();
+
+		expect(within(itemOf("other")).queryByLabelText("Close tab")).toBeNull();
+	});
+
+	it("gives a cut tab its close back once it scrolls whole", async () => {
+		render(TabBar, { props: defaultProps });
+		await Promise.resolve();
+		SHOW.cut(itemOf("other"));
+		await tick();
+
+		SHOW.whole(itemOf("other"));
+		await tick();
+
+		expect(closeOf("other")).toBeInTheDocument();
+	});
+
 	it.each([
-		{ at: "its start", scrollLeft: 0, fades: [false, true] },
-		{ at: "a point between its ends", scrollLeft: 100, fades: [true, true] },
-		{ at: "its end", scrollLeft: 400, fades: [true, false] },
-	])(
-		"fades each edge the strip can still scroll toward, scrolled to $at",
-		async ({ scrollLeft, fades }) => {
+		{ first: "whole", last: "whole", fades: [false, false] },
+		{ first: "cut", last: "whole", fades: [true, false] },
+		{ first: "out", last: "cut", fades: [true, true] },
+		{ first: "whole", last: "out", fades: [false, true] },
+	] as const)(
+		"fades each edge whose end tab is not whole, with the first $first and the last $last",
+		async ({ first, last, fades }) => {
 			render(TabBar, { props: defaultProps });
+			await Promise.resolve();
+
+			SHOW[first](itemOf("trunk"));
+			SHOW[last](itemOf("other"));
+			await tick();
+
 			const tablist = screen.getByRole("tablist", { name: "Repository tabs" });
-			overflow(tablist, { scrollWidth: 800, clientWidth: 400 });
-			tablist.scrollLeft = scrollLeft;
-
-			await fireEvent.scroll(tablist);
-
 			expect(fadedEdgesOf(tablist)).toEqual(fades);
 		},
 	);
 
-	it("stops fading once a tab closes and the rest fit", async () => {
-		reportWidthOf((target) => target.matches(".tab-item"), 80);
+	it("stops fading the end once its cut tab closes", async () => {
 		const view = render(TabBar, { props: defaultProps });
-		const tablist = screen.getByRole("tablist", { name: "Repository tabs" });
-		overflow(tablist, { scrollWidth: 800, clientWidth: 400 });
-		await fireEvent.scroll(tablist);
-		overflow(tablist, { scrollWidth: 400, clientWidth: 400 });
+		await Promise.resolve();
+		SHOW.whole(itemOf("trunk"));
+		SHOW.cut(itemOf("other"));
+		await tick();
 
 		await view.rerender({ ...defaultProps, tabs: tabs.slice(0, 1) });
-		await Promise.resolve();
 
+		const tablist = screen.getByRole("tablist", { name: "Repository tabs" });
 		expect(fadedEdgesOf(tablist)).toEqual([false, false]);
 	});
 
