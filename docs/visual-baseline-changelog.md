@@ -376,3 +376,12 @@ Changed baselines:
     tests/visual/baselines/stash-lanes__08-multi-stash-dirty.png
     tests/visual/baselines/stash-lanes__17-no-stash-dirty.png
     tests/visual/baselines/stash-lanes__18-many-files.png
+
+## 2026-11-19
+
+staging panel footers at the detail pane's 200px floor, at João's direction 2026-11-19 (TRUNK-362)
+
+Changed baselines:
+
+    tests/visual/baselines/staging-footer__merge__detail-200px.png
+    tests/visual/baselines/staging-footer__rebase__detail-200px.png

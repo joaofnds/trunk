@@ -49,6 +49,12 @@ visible string added to every commit message, each kept all 28 captures green (m
 (`kitchen-sink`). A list that would scroll fails its capture rather than leave its last rows
 uncompared.
 
+Two footers of the staging panel joined on 2026-11-19 at João's direction (TRUNK-362, the
+answer "Sure" to adding screenshot baselines of both footers at the narrowest pane): the
+stopped rebase's and the stopped merge's, each with the detail pane at its 200 px floor, their
+text drawn transparent. Both had run their buttons past the panel's edge at that width, which
+no jsdom test can see. `docs/visual-regression.md` says how each is reached.
+
 Not captured, and why:
 
 - The column header and the ref pills. Both are text, which GitHub's macOS runner draws up to

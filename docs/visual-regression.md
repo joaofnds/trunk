@@ -3,8 +3,9 @@
 `just visual` renders the real application in Playwright's WebKit against the repositories
 four of the fixture crate's cases build, screenshots the graph column of the commit list for
 each, and compares every capture with its committed baseline in `tests/visual/baselines/`. It
-also captures the design catalog, below. It is part of `just check` and has its own CI job,
-`Visual Baselines`, on `macos-latest`.
+also captures the design catalog and the staging panel's footers for a stopped rebase and a
+stopped merge, both below. It is part of `just check` and has its own CI job, `Visual
+Baselines`, on `macos-latest`.
 
 It exists because every other graph suite runs without a layout engine. The render goldens
 compare SVG markup, in which an erased rail and a drawn one are identical, and TRUNK-255 ran
@@ -70,6 +71,29 @@ mise exec -- bunx vite
 ```
 
 Then visit `/tests/visual/page/catalog.html` on the port it prints.
+
+## The staging panel footers
+
+`tests/visual/staging-footers.test.ts` captures the footer the staging panel draws under a
+stopped rebase (Continue Rebase, Skip and Abort) and the one it draws under a stopped merge
+(Commit merge and Abort Merge), each with the detail pane stored at its 200 px floor, where
+their buttons have least room. jsdom lays nothing out, so this is the one check that sees a
+button run past its cell or out of the panel, which both footers did at that width before
+TRUNK-362.
+
+The merge capture opens `nested-conflict`, which `10-nested-conflict` builds stopped
+mid-merge. The fixture crate has no verb that stops a rebase, so the rebase capture opens
+`03-conflict-merge` from `01-commit-message` and has the app rebase `main` onto `feature`
+through its own `rebase_branch` command, which stops on the line both branches change. The
+capture waits for the footer to draw, not for the command.
+
+Each capture draws the footer's text transparent through the screenshot's `style` option,
+since the runner draws glyphs further from this Mac than the tolerance (the Text bullet under
+What it does not cover). The text still lays out, so a label that grows still widens its
+button and moves the capture, as a font metric change would.
+
+The file sets up its own harness, which builds only those two cases and captures on two
+pages, and vitest runs it beside the graph file.
 
 ## A capture differs
 
@@ -227,13 +251,14 @@ Alternatives not taken:
   look at the images, and accept with the reason.
 - Text. The graph capture holds no label: the column header and the ref pills are outside it,
   and GitHub's `macos-latest` runner draws text up to 36 levels away from this Mac. The
-  catalog capture masks its text for the same reason, so a type step that changes only its
-  glyphs passes.
+  catalog capture masks its text and the footer captures draw theirs transparent for the same
+  reason, so a type step that changes only its glyphs passes.
 - Ref pills, which sit in the Branch/Tag column (TRUNK-290). The line joining each pill to
   its dot is captured where it crosses into the graph column.
 - A graph pan other than the one captured, `09-column-saturation` at 56 px panned 20 px. A
   break that shows only at another offset, or in another repository, passes.
 - The diff pane (TRUNK-288).
+- The rest of the staging panel, and its footers at any width but the detail pane's floor.
 - A page zoom other than 1. Playwright cannot set a page's zoom the way the webview's own
   zoom does, and CSS `zoom` on the root is no stand-in: WebKit then reports every box in
   zoomed pixels, so the row height the graph measures grows with the zoom and the whole

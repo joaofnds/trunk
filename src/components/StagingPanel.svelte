@@ -1185,6 +1185,7 @@ registerUpdateBlocker(() => {
 		<div
 			class="p-2 flex flex-col gap-2 shrink-0 overflow-hidden"
 			style:height="{bottomHeight}px"
+			data-testid="rebase-footer"
 		>
 			<div class="text-small leading-normal text-text-muted mb-1">
 				Rebasing commit {rebaseProgressNum} out of {rebaseProgressTotal}
@@ -1237,7 +1238,7 @@ registerUpdateBlocker(() => {
 		<Splitter variant="bar" fixed />
 		<!-- Merge-continue actions. The commit message is edited in the host-owned
          MessageEditor modal (runMergeContinue), not an inline form. -->
-		<div class="flex flex-wrap shrink-0 gap-2 p-2">
+		<div class="flex flex-wrap shrink-0 gap-2 p-2" data-testid="merge-footer">
 			<div class="grid grow-3">
 				<Button
 					size="lg"

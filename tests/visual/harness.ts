@@ -42,6 +42,11 @@ const NOW = new Date("2026-09-01T00:00:00Z");
  *  Mac, and an erased rail moves at least 96 pixels per capture by more than 64. */
 const CHANNEL_TOLERANCE = 24;
 
+/** Glyphs differ between machines by more than the tolerance, and the advance
+ *  widths that size a footer's buttons do not, so a footer's text draws clear. */
+const CLEAR_TEXT =
+	"* { color: transparent !important; caret-color: transparent !important; } ::placeholder { color: transparent !important; }";
+
 /** Captures that differ this many times running mean the page never settled. */
 const SETTLE_ATTEMPTS = 5;
 
@@ -70,6 +75,23 @@ export interface GraphView {
 	pan?: number;
 }
 
+/** The fixture cases a harness builds and the pages it captures on at once. */
+export interface HarnessShape {
+	cases: readonly string[];
+	pages: number;
+}
+
+/** A footer of the staging panel, in a repository stopped mid-operation. */
+export interface FooterView {
+	/** The footer's `data-testid`. */
+	footer: string;
+	/** Sizes the detail pane as a user dragging it would, in CSS pixels. */
+	detailPaneWidth: number;
+	/** Rebases the repository onto this branch through the app's own command
+	 *  once it is open, for a repository the fixtures build unstopped. */
+	rebaseOnto?: string;
+}
+
 /**
  * The real application, served by Vite to Playwright's WebKit, reading
  * repositories built by the fixture crate through a real host. A few pages
@@ -85,23 +107,30 @@ export class VisualHarness {
 		private readonly opened: Opened,
 	) {}
 
-	static async setup(): Promise<VisualHarness> {
+	/** The graph cases by default. A suite that captures fewer repositories
+	 *  builds only the cases it reads and opens fewer pages. */
+	static async setup(
+		harness: HarnessShape = { cases: GRAPH_CASES, pages: PAGES },
+	): Promise<VisualHarness> {
 		const opened = new Opened();
 		try {
-			return await VisualHarness.start(opened);
+			return await VisualHarness.start(opened, harness);
 		} catch (error) {
 			return closeAfterFailure(opened, error);
 		}
 	}
 
 	/** The fixture build takes longest, so the pages open and load the app beside it. */
-	private static async start(opened: Opened): Promise<VisualHarness> {
+	private static async start(
+		opened: Opened,
+		harness: HarnessShape,
+	): Promise<VisualHarness> {
 		const repos = mkdtempSync(join(tmpdir(), "trunk-visual-"));
 		opened.add(() => rmSync(repos, { recursive: true, force: true }));
 
 		const [fixtures, browsing] = await Promise.allSettled([
-			buildFixtures(repos),
-			VisualHarness.openPages(opened),
+			buildFixtures(repos, harness.cases),
+			VisualHarness.openPages(opened, harness.pages),
 		]);
 		if (fixtures.status === "rejected") throw fixtures.reason;
 		if (browsing.status === "rejected") throw browsing.reason;
@@ -112,13 +141,14 @@ export class VisualHarness {
 
 	private static async openPages(
 		opened: Opened,
+		count: number,
 	): Promise<{ browser: Browser; pages: AppPage[] }> {
 		const { browser, origin } = await openBrowser(opened);
 
 		// A page that opened before another failed closes with the browser.
 		const url = new URL(PAGE, origin).href;
 		const pages = await Promise.all(
-			Array.from({ length: PAGES }, () => AppPage.open(browser, url)),
+			Array.from({ length: count }, () => AppPage.open(browser, url)),
 		);
 		for (const page of pages) opened.add(() => page.close());
 
@@ -146,12 +176,42 @@ export class VisualHarness {
 	}
 
 	/** Opens `repository` the way a restored tab does and captures the graph
-	 *  column. vitest drops whatever a test throws after its timeout, so when it
-	 *  abandons `test`, what the host still owed the page is noted on the test. */
-	async captureGraph(
+	 *  column. */
+	captureGraph(
 		repository: string,
 		test: CaptureTest,
 		view: GraphView = {},
+	): Promise<Buffer> {
+		return this.onPage(test, (page) =>
+			page.captureGraph(join(this.repos, repository), view, test.signal),
+		);
+	}
+
+	/** Opens `repository` the way a restored tab does and captures one footer
+	 *  of the staging panel. */
+	captureFooter(
+		repository: string,
+		test: CaptureTest,
+		view: FooterView,
+	): Promise<Buffer> {
+		return this.onPage(test, (page) =>
+			page.captureFooter(join(this.repos, repository), view, test.signal),
+		);
+	}
+
+	difference(baseline: Buffer, capture: Buffer): Promise<Difference> {
+		return pixelDifference(this.browser, baseline, capture);
+	}
+
+	async teardown(): Promise<void> {
+		await this.opened.close();
+	}
+
+	/** vitest drops whatever a test throws after its timeout, so when it abandons
+	 *  `test`, what the host still owed the page is noted on the test. */
+	private async onPage(
+		test: CaptureTest,
+		capture: (page: AppPage) => Promise<Buffer>,
 	): Promise<Buffer> {
 		const page = await this.borrow();
 		const report = () =>
@@ -162,23 +222,11 @@ export class VisualHarness {
 		test.signal.addEventListener("abort", report, { once: true });
 
 		try {
-			return await page.captureGraph(
-				join(this.repos, repository),
-				view,
-				test.signal,
-			);
+			return await capture(page);
 		} finally {
 			test.signal.removeEventListener("abort", report);
 			this.giveBack(page);
 		}
-	}
-
-	difference(baseline: Buffer, capture: Buffer): Promise<Difference> {
-		return pixelDifference(this.browser, baseline, capture);
-	}
-
-	async teardown(): Promise<void> {
-		await this.opened.close();
 	}
 
 	private borrow(): Promise<AppPage> {
@@ -287,15 +335,11 @@ class AppPage {
 		view: GraphView,
 		abandoned: AbortSignal,
 	): Promise<Buffer> {
-		await this.retireHost(abandoned);
-		await this.attachHost();
-		await this.openTab(path, view);
-
-		await this.page.goto(this.url, { signal: abandoned });
-		await this.page
-			.locator("[data-testid=commit-row]")
-			.first()
-			.waitFor({ signal: abandoned });
+		const prefs: Record<string, unknown> = {};
+		if (view.graphColumnWidth !== undefined) {
+			prefs[`column_user_widths:${path}`] = { graph: view.graphColumnWidth };
+		}
+		await this.openRepository(path, prefs, abandoned);
 
 		// The stored column width arrives after the first rows draw. A wheel before
 		// it is clamped to the fitted width's range, which is 0 for an uncapped fit.
@@ -305,6 +349,37 @@ class AppPage {
 		}
 
 		return this.settledCapture(abandoned);
+	}
+
+	/** The footer is what the capture waits for: a rebase the command stops
+	 *  draws it only once the graph it rebuilt reaches the page. */
+	async captureFooter(
+		path: string,
+		view: FooterView,
+		abandoned: AbortSignal,
+	): Promise<Buffer> {
+		await this.openRepository(
+			path,
+			{ right_pane_width: view.detailPaneWidth },
+			abandoned,
+		);
+		if (view.rebaseOnto !== undefined) {
+			await this.currentHost().invoke("rebase_branch", {
+				path,
+				ontoBranch: view.rebaseOnto,
+			});
+		}
+
+		const footer = this.page.locator(`[data-testid=${view.footer}]`);
+		await footer.waitFor({ signal: abandoned });
+		return settled(async () => {
+			await this.idle(abandoned);
+			return footer.screenshot({
+				animations: "disabled",
+				style: CLEAR_TEXT,
+				signal: abandoned,
+			});
+		});
 	}
 
 	describeHost(): string {
@@ -393,19 +468,38 @@ class AppPage {
 		await this.page.mouse.move(0, 0);
 	}
 
-	private async openTab(path: string, view: GraphView): Promise<void> {
+	/** A fresh host whose stored prefs restore `path` as the one open tab, with
+	 *  `prefs` stored beside them, and the app loaded until its first row draws. */
+	private async openRepository(
+		path: string,
+		prefs: Record<string, unknown>,
+		abandoned: AbortSignal,
+	): Promise<void> {
+		await this.retireHost(abandoned);
+		await this.attachHost();
+		await this.storeTab(path, prefs);
+
+		await this.page.goto(this.url, { signal: abandoned });
+		await this.page
+			.locator("[data-testid=commit-row]")
+			.first()
+			.waitFor({ signal: abandoned });
+	}
+
+	private async storeTab(
+		path: string,
+		prefs: Record<string, unknown>,
+	): Promise<void> {
 		const host = this.currentHost();
 		const name = basename(path);
-		const prefs: Record<string, unknown> = {
+		const stored: Record<string, unknown> = {
 			open_tabs: [{ id: "visual", repoPath: path, repoName: name }],
 			active_tab_id: "visual",
 			recent_repos: [{ name, path }],
+			...prefs,
 		};
-		if (view.graphColumnWidth !== undefined) {
-			prefs[`column_user_widths:${path}`] = { graph: view.graphColumnWidth };
-		}
 
-		for (const [key, value] of Object.entries(prefs))
+		for (const [key, value] of Object.entries(stored))
 			await host.invoke("prefs_set", { key, value });
 	}
 
@@ -417,16 +511,21 @@ class AppPage {
 	 */
 	private settledCapture(abandoned: AbortSignal): Promise<Buffer> {
 		return settled(async () => {
-			await this.page.waitForFunction(() => window.__trunkPending === 0, null, {
-				signal: abandoned,
-			});
-			await painted(this.page);
+			await this.idle(abandoned);
 			return this.page.screenshot({
 				clip: await this.page.evaluate(graphColumn),
 				animations: "disabled",
 				signal: abandoned,
 			});
 		});
+	}
+
+	/** Nothing is owed by the host and two frames have painted. */
+	private async idle(abandoned: AbortSignal): Promise<void> {
+		await this.page.waitForFunction(() => window.__trunkPending === 0, null, {
+			signal: abandoned,
+		});
+		await painted(this.page);
 	}
 
 	private currentHost(): HostClient {
@@ -667,11 +766,14 @@ async function comparePixels([baseline, capture, tolerance]: readonly [
 
 /** Every build finishes before this returns, failed or not, since the run
  *  deletes their directory once one fails. */
-async function buildFixtures(out: string): Promise<void> {
+async function buildFixtures(
+	out: string,
+	cases: readonly string[],
+): Promise<void> {
 	const binary = process.env.TRUNK_FIXTURES ?? join(ROOT, DEFAULT_FIXTURES);
 	const builds = await Promise.allSettled(
-		GRAPH_CASES.map((graphCase) =>
-			promisify(execFile)(binary, ["build", graphCase, "--out", out]),
+		cases.map((fixtureCase) =>
+			promisify(execFile)(binary, ["build", fixtureCase, "--out", out]),
 		),
 	);
 
