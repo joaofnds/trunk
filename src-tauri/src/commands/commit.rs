@@ -96,7 +96,7 @@ fn run_git_commit(repo_dir: &Path, flags: &[&str]) -> Result<(), TrunkError> {
     // hook can refuse without printing anything at all.
     let message = [stderr.trim_end(), stdout.trim_end()]
         .into_iter()
-        .find(|output| !output.is_empty())
+        .find(|text| !text.is_empty())
         .map_or_else(
             || format!("git commit failed with {}", output.status),
             str::to_owned,

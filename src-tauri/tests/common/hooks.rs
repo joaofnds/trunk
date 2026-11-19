@@ -16,6 +16,16 @@ impl LeftRunning {
     }
 }
 
+impl Drop for LeftRunning {
+    fn drop(&mut self) {
+        use std::os::unix::fs::OpenOptionsExt;
+        let _ = std::fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&self.fifo);
+    }
+}
+
 impl TestContext {
     pub fn install_hook(&self, name: &str, script: &str) {
         let hook = self.repo_path().join(".git").join("hooks").join(name);
@@ -33,7 +43,8 @@ impl TestContext {
             .unwrap();
         assert!(made.success(), "mkfifo failed");
 
-        self.install_hook(name, &format!("(read line < '{}') &", fifo.display()));
+        let quoted = fifo.display().to_string().replace('\'', r"'\''");
+        self.install_hook(name, &format!("(read line < '{quoted}') &"));
         LeftRunning { _gate: gate, fifo }
     }
 }

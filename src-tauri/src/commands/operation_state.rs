@@ -249,8 +249,7 @@ pub fn merge_abort_inner(
 /// Resuming steps override the pin with `trunk_git::editor::keyed_rebase_editor`, which
 /// is equally TTY-free but also delivers the messages an interactive rebase filed
 /// before it stopped. `true` would drop every one of them silently.
-#[must_use]
-pub fn rebase_command(dir: &std::path::Path, step: &str) -> UserGit {
+fn rebase_command(dir: &std::path::Path, step: &str) -> UserGit {
     let mut cmd = UserGit::in_dir(dir);
     cmd.args(["rebase", step]).env("GIT_EDITOR", "true");
     cmd

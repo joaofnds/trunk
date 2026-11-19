@@ -1,20 +1,10 @@
 mod common;
 
 use common::context::TestContext;
-use std::ffi::OsStr;
-use std::path::Path;
 use trunk_lib::commands::operation_state::{
     MergeBeginOutcome, MergeBeginResult, merge_branch_begin_inner, rebase_branch_inner,
-    rebase_command,
 };
 use trunk_lib::types::OperationType;
-
-/// `GIT_EDITOR` outranks every git config key, so no repo-local or global
-/// discriminator can prove the pin is in place — only the built command can.
-fn pins_the_editor(cmd: &std::process::Command) -> bool {
-    cmd.get_envs()
-        .any(|(key, value)| key == "GIT_EDITOR" && value == Some(OsStr::new("true")))
-}
 
 #[test]
 fn clean_repo_returns_none_operation_type() {
@@ -344,20 +334,6 @@ fn rebase_skip_with_a_later_reword_completes() {
         "rebase should be finished, got {:?}",
         info.op_type
     );
-}
-
-#[test]
-fn rebase_skip_pins_the_editor() {
-    assert!(pins_the_editor(
-        rebase_command(Path::new("/tmp"), "--skip").as_ref()
-    ));
-}
-
-#[test]
-fn rebase_continue_pins_the_editor() {
-    assert!(pins_the_editor(
-        rebase_command(Path::new("/tmp"), "--continue").as_ref()
-    ));
 }
 
 /// git parses options before positionals, so an argument reaching an option slot

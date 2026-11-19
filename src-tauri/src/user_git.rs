@@ -17,6 +17,7 @@ impl UserGit {
         let mut git = Command::new("git");
         git.current_dir(dir)
             .env("PATH", crate::shell_env::system_path());
+
         Self(git)
     }
 
@@ -62,16 +63,23 @@ impl UserGit {
         })
     }
 
-    /// The command itself, for a caller that reads git's output as it runs.
-    #[must_use]
-    pub fn into_command(self) -> Command {
-        self.0
-    }
-}
+    /// Starts git for a caller that shows its progress, read from stderr as git
+    /// writes it. Nothing reads stdout, which goes nowhere so a large diffstat
+    /// cannot fill a pipe and stall git. Reading stderr to its end also waits
+    /// for any process a hook left running.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error from starting git.
+    pub fn spawn_showing_progress(self) -> io::Result<tokio::process::Child> {
+        let mut git = tokio::process::Command::from(self.0);
+        git.stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        #[cfg(unix)]
+        git.process_group(0);
 
-impl AsRef<Command> for UserGit {
-    fn as_ref(&self) -> &Command {
-        &self.0
+        git.spawn()
     }
 }
 
@@ -79,5 +87,6 @@ fn read_from_start(file: &mut File) -> io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     file.seek(SeekFrom::Start(0))?;
     file.read_to_end(&mut bytes)?;
+
     Ok(bytes)
 }

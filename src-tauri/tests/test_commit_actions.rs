@@ -180,6 +180,7 @@ fn cherry_pick_applies_commit() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn cherry_pick_returns_while_a_process_its_hook_started_still_runs() {
     let ctx = TestContext::builder()
@@ -191,7 +192,7 @@ fn cherry_pick_returns_while_a_process_its_hook_started_still_runs() {
         .with_commit("Side work")
         .checkout("main")
         .build();
-    let side = ctx.repo().revparse_single("side").unwrap().id().to_string();
+    let side = ctx.resolve_ref("side").unwrap();
     let left_running = ctx.install_hook_leaving_a_process_running("post-commit");
 
     let result = ctx.cherry_pick(&side);

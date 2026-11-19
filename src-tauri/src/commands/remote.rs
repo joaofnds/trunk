@@ -3,7 +3,6 @@ use std::sync::Mutex;
 
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 
 use crate::remote_ops::{self, RemoteProcess, RemoteReservation, RemoteTarget};
 use crate::state::{CommitCache, OpenRepos, RemoteOps, RepoState, RunningOp};
@@ -132,18 +131,10 @@ async fn run_reserved<R: Runtime>(
     repo_path: &str,
     reservation: &RemoteReservation<'_>,
 ) -> Result<(), TrunkError> {
-    let mut command = Command::from(UserGit::in_dir(cwd).into_command());
-    command
-        .args(args)
-        // Nothing reads stdout, and git blocks writing a large merge diffstat
-        // into a full pipe while this task blocks in wait().
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true);
-    #[cfg(unix)]
-    command.process_group(0);
-    let mut child = command
-        .spawn()
+    let mut git = UserGit::in_dir(cwd);
+    git.args(args);
+    let mut child = git
+        .spawn_showing_progress()
         .map_err(|e| TrunkError::new("remote_error", e.to_string()))?;
 
     // Store PID for cancel support (keyed by repo path)
