@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { RepositoryReadHost } from "../__tests__/helpers/repository-read-host.js";
 import { createCoalescedTask } from "./coalesced-task.js";
@@ -12,7 +12,10 @@ beforeEach(() => {
 	host = new RepositoryReadHost();
 	host.install();
 });
-afterEach(() => host.dispose());
+afterEach(() => {
+	host.dispose();
+	vi.restoreAllMocks();
+});
 
 describe("subscribeToRepoChanges", () => {
 	it.each<RepoChanged>([
@@ -110,5 +113,54 @@ describe("subscribeToRepoChanges", () => {
 
 		expect(seen).toEqual([]);
 		expect(host.count("plugin:event|unlisten")).toBe(1);
+	});
+
+	it("reports the listener settled once its registration finishes", async () => {
+		const registration = host.holdNextReply("plugin:event|listen");
+		const reports: string[] = [];
+		const dispose = subscribeToRepoChanges("/repo", {
+			invalidate: () => {},
+			listenerSettled: () => reports.push("settled"),
+		});
+		await registration.entered;
+		const beforeRegistration = [...reports];
+
+		registration.release(1);
+
+		expect(beforeRegistration).toEqual([]);
+		await vi.waitFor(() => expect(reports).toEqual(["settled"]));
+		dispose();
+	});
+
+	it("reports the listener settled when its registration fails", async () => {
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		const registration = host.holdNextReply("plugin:event|listen");
+		const reports: string[] = [];
+		const dispose = subscribeToRepoChanges("/repo", {
+			invalidate: () => {},
+			listenerSettled: () => reports.push("settled"),
+		});
+		await registration.entered;
+
+		registration.reject({ code: "denied", message: "listener denied" });
+
+		await vi.waitFor(() => expect(reports).toEqual(["settled"]));
+		dispose();
+	});
+
+	it("never reports the listener settled when disposed before its registration finishes", async () => {
+		const registration = host.holdNextReply("plugin:event|listen");
+		const reports: string[] = [];
+		const dispose = subscribeToRepoChanges("/repo", {
+			invalidate: () => {},
+			listenerSettled: () => reports.push("settled"),
+		});
+		await registration.entered;
+
+		dispose();
+		registration.release(1);
+
+		await vi.waitFor(() => expect(host.count("plugin:event|unlisten")).toBe(1));
+		expect(reports).toEqual([]);
 	});
 });

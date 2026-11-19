@@ -816,6 +816,7 @@ fn graph_response_serializes_correctly() {
         commits: graph_result.commits,
         max_columns: graph_result.max_columns,
         revision: 42,
+        checked: true,
     };
 
     let json = serde_json::to_value(&response).expect("GraphResponse serialization failed");
@@ -825,6 +826,10 @@ fn graph_response_serializes_correctly() {
     assert_eq!(
         json["revision"], 42,
         "revision should cross the IPC boundary"
+    );
+    assert_eq!(
+        json["checked"], true,
+        "checked should cross the IPC boundary"
     );
     assert!(
         json["max_columns"].is_number(),

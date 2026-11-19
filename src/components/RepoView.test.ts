@@ -253,7 +253,12 @@ describe("RepoView", () => {
 		mockInvoke.mockImplementation((cmd: string) => {
 			switch (cmd) {
 				case "get_commit_graph":
-					return Promise.resolve({ commits: [], max_columns: 0, revision: 1 });
+					return Promise.resolve({
+						commits: [],
+						max_columns: 0,
+						revision: 1,
+						checked: true,
+					});
 				case "get_commit_stats":
 					return Promise.resolve({});
 				case "get_commit_detail":
@@ -1082,6 +1087,7 @@ describe("RepoView", () => {
 						return Promise.resolve({
 							commits: [commit],
 							max_columns: 1,
+							checked: true,
 							revision: 1,
 						});
 					case "list_reviews":
@@ -1126,6 +1132,7 @@ describe("RepoView", () => {
 						return Promise.resolve({
 							commits: [commit],
 							max_columns: 1,
+							checked: true,
 							revision: 1,
 						});
 					case "list_reviews":
@@ -1329,6 +1336,7 @@ describe("RepoView", () => {
 						return Promise.resolve({
 							commits: [commit],
 							max_columns: 1,
+							checked: true,
 							revision: 1,
 						});
 					case "list_reviews":
@@ -1616,6 +1624,7 @@ describe("RepoView", () => {
 					return Promise.resolve({
 						commits: [commit],
 						max_columns: 1,
+						checked: true,
 						revision: 1,
 					});
 				case "list_commit_files":
@@ -1697,6 +1706,7 @@ describe("RepoView", () => {
 					return Promise.resolve({
 						commits: [makeCommit({ oid: "before", summary: "before refresh" })],
 						max_columns: 1,
+						checked: true,
 						revision: 1,
 					});
 				}
@@ -1739,6 +1749,7 @@ describe("RepoView", () => {
 			finishRefresh({
 				commits: [makeCommit({ oid: "after", summary: "after refresh" })],
 				max_columns: 1,
+				checked: true,
 				revision: 2,
 			});
 			await screen.findByText("after refresh");
@@ -1774,6 +1785,7 @@ describe("RepoView", () => {
 								makeCommit({ oid: "oid-1", summary: `revision ${revision}` }),
 							],
 							max_columns: 1,
+							checked: true,
 							revision,
 						})
 					: base(cmd, args),
@@ -3017,7 +3029,12 @@ describe("RepoView", () => {
 				const a = args as Record<string, unknown> | undefined;
 				switch (cmd) {
 					case "get_commit_graph":
-						return Promise.resolve({ commits, max_columns: 1, revision: 1 });
+						return Promise.resolve({
+							commits,
+							max_columns: 1,
+							revision: 1,
+							checked: true,
+						});
 					case "list_commit_files":
 						return Promise.resolve(filesByOid[a?.oid as string] ?? []);
 					case "get_commit_detail": {
@@ -3883,6 +3900,7 @@ describe("RepoView", () => {
 								}),
 							],
 							max_columns: 1,
+							checked: true,
 							revision: 1,
 						});
 					case "start_interactive_rebase":
@@ -4992,7 +5010,12 @@ describe("RepoView", () => {
 				const a = args as Record<string, unknown> | undefined;
 				switch (cmd) {
 					case "get_commit_graph":
-						return Promise.resolve({ commits, max_columns: 1, revision: 1 });
+						return Promise.resolve({
+							commits,
+							max_columns: 1,
+							revision: 1,
+							checked: true,
+						});
 					case "list_commit_files":
 						return Promise.resolve([]);
 					case "get_commit_detail":

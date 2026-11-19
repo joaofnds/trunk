@@ -676,6 +676,9 @@ let commitGraphRef = $state<{
 // false on every mount -- RepoView is remounted per repoPath via {#key} in App.svelte,
 // so this does not need its own reset effect.
 let refVisibilityResolved = $state(false);
+// Gates the view's first graph, CommitGraph's first page and BranchSidebar's push
+// of the stored set, on this view's repo-changed listener (TRUNK-494).
+let repoListenerSettled = $state(false);
 
 // Rebase editor state
 let rebaseEditorCommits = $state<RebaseTodoItem[]>([]);
@@ -2178,6 +2181,9 @@ $effect(() => {
 	const path = repoPath;
 	return subscribeToRepoChanges(path, {
 		includeRefs: true,
+		listenerSettled() {
+			repoListenerSettled = true;
+		},
 		invalidate(event) {
 			const changed = event.paths;
 			refreshImmediately = event.command_completed ?? false;
@@ -2592,6 +2598,7 @@ async function handleRebaseStart(
 					onvisibilityresolved={() => {
 						refVisibilityResolved = true;
 					}}
+					{repoListenerSettled}
 					loadedRows={() => commitGraphRef?.loadedRows() ?? 0}
 					onrefnavigate={handleRefNavigate}
 					refreshSignal={sidebarRefreshSignal}
@@ -2836,6 +2843,7 @@ async function handleRebaseStart(
 						{reviewComments}
 						{compareOids}
 						visibilityResolved={refVisibilityResolved}
+						{repoListenerSettled}
 					/>
 				</div>
 			</div>

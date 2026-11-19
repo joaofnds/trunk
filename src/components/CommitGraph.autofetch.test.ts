@@ -47,11 +47,15 @@ function graph(revision: number): GraphResponse {
 			}),
 		],
 		max_columns: 1,
+		checked: true,
 		revision,
 	};
 }
 
-function mountGraph(cachedGraphRevision: number) {
+function mountGraph(
+	cachedGraphRevision: number,
+	gates: { visibilityResolved?: boolean; repoListenerSettled?: boolean } = {},
+) {
 	return render(CommitGraph, {
 		props: {
 			...noReviewCounts(),
@@ -59,9 +63,15 @@ function mountGraph(cachedGraphRevision: number) {
 			tabActive: true,
 			refreshSignal: 0,
 			cachedGraphRevision,
+			...gates,
 		},
 		context: new Map([[SCHEDULER, clock]]),
 	});
+}
+
+/** A graph the watcher reported a change against since it was published. */
+function unchecked(revision: number): GraphResponse {
+	return { ...graph(revision), checked: false };
 }
 
 function graphViewport(container: HTMLElement): HTMLElement {
@@ -73,6 +83,53 @@ function graphViewport(container: HTMLElement): HTMLElement {
 }
 
 describe("CommitGraph automatic ref updates", () => {
+	// TRUNK-494: the view's first graph can predate a change whose event no listener heard.
+	it("refreshes a first page that predates a reported change", async () => {
+		host.seedGraph(unchecked(5));
+		host.seedResponse("refresh_commit_graph", graph(6));
+		mountGraph(5);
+
+		await screen.findByText("revision 6");
+
+		expect(host.count("refresh_commit_graph")).toBe(1);
+	});
+
+	// The listener hears every change after the first graph, so it brings its own refresh.
+	it("shows a later unchecked graph as it stands", async () => {
+		host.seedGraph(graph(5));
+		host.seedResponse("refresh_commit_graph", graph(7));
+		const view = mountGraph(5);
+		await screen.findByText("revision 5");
+
+		view.component.showGraph(unchecked(6));
+		await tick();
+
+		expect(screen.getByText("revision 6")).toBeInTheDocument();
+		expect(host.count("refresh_commit_graph")).toBe(0);
+	});
+
+	it("refreshes a first graph shown by a visibility push that predates a reported change", async () => {
+		host.seedResponse("refresh_commit_graph", graph(6));
+		const view = mountGraph(5, { visibilityResolved: false });
+
+		view.component.showGraph(unchecked(5));
+
+		await screen.findByText("revision 6");
+		expect(host.count("refresh_commit_graph")).toBe(1);
+	});
+
+	it("reads no page until the view's repo-changed listener is registered", async () => {
+		host.seedGraph(graph(5));
+		const view = mountGraph(5, { repoListenerSettled: false });
+		await tick();
+		const pagesBeforeRegistration = host.count("get_commit_graph");
+
+		await view.rerender({ repoListenerSettled: true });
+
+		expect(pagesBeforeRegistration).toBe(0);
+		await screen.findByText("revision 5");
+	});
+
 	it("uses the pending initial page when its revision already matches the publication", async () => {
 		const first = host.holdNextReply("get_commit_graph");
 		host.seedGraph(graph(5));
@@ -139,7 +196,7 @@ describe("CommitGraph automatic ref updates", () => {
 						{ files_changed: 1, insertions: 11, deletions: 0 },
 					]),
 			);
-		host.seedGraph({ commits, max_columns: 1, revision: 1 });
+		host.seedGraph({ commits, max_columns: 1, revision: 1, checked: true });
 		host.seedResponse("get_commit_stats", stats(0, 200));
 		const view = mountGraph(1);
 		await screen.findByText("commit 0");
@@ -192,7 +249,12 @@ describe("CommitGraph automatic ref updates", () => {
 					}
 				: commit,
 		);
-		host.seedGraph({ commits: fetched, max_columns: 1, revision: 2 });
+		host.seedGraph({
+			commits: fetched,
+			max_columns: 1,
+			revision: 2,
+			checked: true,
+		});
 		await view.rerender({ cachedGraphRevision: 2 });
 		await screen.findByText("origin/fetched");
 		const selected = screen
@@ -284,7 +346,7 @@ describe("CommitGraph automatic ref updates", () => {
 				in_head_chain: true,
 			}),
 		);
-		host.seedGraph({ commits, max_columns: 1, revision: 1 });
+		host.seedGraph({ commits, max_columns: 1, revision: 1, checked: true });
 		host.seedResponse(
 			"get_commit_stats",
 			Object.fromEntries(

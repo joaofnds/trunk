@@ -77,6 +77,8 @@ export interface GraphResponse {
 	commits: GraphCommit[];
 	max_columns: number;
 	revision: number;
+	/** False when the graph may predate a change the watcher reported. */
+	checked: boolean;
 }
 
 // Navigation context for the currently-selected commit, derived from the

@@ -255,6 +255,7 @@ class StatefulAppHost implements HostChannel {
 						? [makeCommit({ oid: commitDiff.oid, summary: `${path} commit` })]
 						: [],
 					max_columns: commitDiff ? 1 : 0,
+					checked: true,
 					revision: 1,
 				};
 			case "get_commit_detail":

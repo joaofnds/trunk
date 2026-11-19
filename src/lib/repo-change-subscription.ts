@@ -15,6 +15,10 @@ export interface RepoChangeSubscriber {
 	includeRefs?: boolean;
 	invalidate(event: RepoChanged): void;
 	run?(): Promise<void>;
+	/** The listener's registration has finished. A read made before this can
+	 *  miss a change reported between the read and the registration. A failed
+	 *  registration finishes too, so no reader waits on events that never come. */
+	listenerSettled?(): void;
 }
 
 /** Completed commands bypass the watcher deadline, including an already busy reader. */
@@ -48,10 +52,21 @@ export function subscribeToRepoChanges(
 		if (event.payload.refs_only && !subscriber.includeRefs) return;
 
 		requestRepoChange(subscriber, event.payload);
-	}).then((registeredUnlisten) => {
-		if (disposed) registeredUnlisten();
-		else unlisten = registeredUnlisten;
-	});
+	}).then(
+		(registeredUnlisten) => {
+			if (disposed) {
+				registeredUnlisten();
+				return;
+			}
+
+			unlisten = registeredUnlisten;
+			subscriber.listenerSettled?.();
+		},
+		(error: unknown) => {
+			console.error("Repository change listener failed", error);
+			if (!disposed) subscriber.listenerSettled?.();
+		},
+	);
 
 	return () => {
 		disposed = true;

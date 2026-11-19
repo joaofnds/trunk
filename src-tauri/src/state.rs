@@ -341,6 +341,12 @@ fn read_graph_with_capture(
 }
 
 impl GraphCache {
+    /// Whether `path`'s publication is still checked against the latest local
+    /// watcher epoch.
+    fn checked(&self, path: &str) -> bool {
+        self.inputs.contains_key(path)
+    }
+
     /// The cached graph for `path`, or `None` when nothing has been built yet.
     #[must_use]
     pub fn get(&self, path: &str) -> Option<&trunk_git::graph_input::GraphSnapshot> {
@@ -508,6 +514,16 @@ pub struct CommitCache(
     Mutex<Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>>,
 );
 
+/// Which publication a graph read saw.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GraphVersion {
+    pub revision: u64,
+    /// Whether the cache vouches that the graph shows the repository as it
+    /// stands. A local change the watcher reported, or a capture that raced a
+    /// ref move, leaves it false until the next rebuild publishes.
+    pub checked: bool,
+}
+
 pub(crate) struct CachedGraphRead<T> {
     pub value: T,
     pub revision: u64,
@@ -653,10 +669,7 @@ impl CommitCache {
     /// A publication still checked against the latest local watcher epoch.
     pub(crate) fn checked_revision(&self, path: &str) -> Option<u64> {
         let cache = self.0.lock().unwrap();
-        cache
-            .inputs
-            .contains_key(path)
-            .then(|| cache.revisions[path])
+        cache.checked(path).then(|| cache.revisions[path])
     }
 
     /// Reserve a publication directly for tests that exercise publication fencing.
@@ -694,7 +707,7 @@ impl CommitCache {
         &self,
         path: &str,
         expected: Option<u64>,
-        render: impl FnOnce(&GraphSnapshot, u64) -> T,
+        render: impl FnOnce(&GraphSnapshot, GraphVersion) -> T,
     ) -> Result<T, TrunkError> {
         self.read_versioned_with_session(path, expected, render)
             .map(|read| read.value)
@@ -713,7 +726,7 @@ impl CommitCache {
         &self,
         path: &str,
         expected: Option<u64>,
-        render: impl FnOnce(&GraphSnapshot, u64) -> T,
+        render: impl FnOnce(&GraphSnapshot, GraphVersion) -> T,
     ) -> Result<CachedGraphRead<T>, TrunkError> {
         let cache = self.0.lock().unwrap();
         let graph = cache
@@ -726,7 +739,8 @@ impl CommitCache {
                 "The graph revision changed",
             ));
         }
-        let result = render(graph, revision);
+        let checked = cache.checked(path);
+        let result = render(graph, GraphVersion { revision, checked });
         let session = cache.sessions[path];
         drop(cache);
         Ok(CachedGraphRead {
@@ -1381,9 +1395,9 @@ impl<'a> GraphRebuild<'a> {
             .await?;
         let read = self
             .cache
-            .read_versioned_with_session(&path, None, |_, revision| {
+            .read_versioned_with_session(&path, None, |_, version| {
                 Some(ReconciledGraph {
-                    revision,
+                    revision: version.revision,
                     worktree_context_changed,
                 })
             })?;
@@ -1675,6 +1689,38 @@ mod tests {
 
         assert_eq!(result.unwrap_err().code, "graph_changed");
         assert!(cache.snapshot("/repo").unwrap().same_capture_as(&original));
+    }
+
+    fn published_cache() -> (tempfile::TempDir, CommitCache) {
+        let (directory, mut repo) = capture_repository();
+        let cache = CommitCache::new(GraphCache::default());
+        let visibility = RefVisibilityState::default();
+        tauri::async_runtime::block_on(
+            GraphRebuild::new(activity(), &cache, &visibility).rebuild("/repo".into(), move || {
+                super::read_graph(&mut repo, &super::CommitMemo::default())
+            }),
+        )
+        .unwrap();
+        (directory, cache)
+    }
+
+    #[test]
+    fn a_graph_read_after_a_publication_is_checked() {
+        let (_directory, cache) = published_cache();
+
+        let version = cache.read_versioned("/repo", None, |_, version| version);
+
+        assert!(version.unwrap().checked);
+    }
+
+    #[test]
+    fn a_graph_read_after_a_local_invalidation_is_unchecked() {
+        let (_directory, cache) = published_cache();
+
+        cache.invalidate("/repo");
+        let version = cache.read_versioned("/repo", None, |_, version| version);
+
+        assert!(!version.unwrap().checked);
     }
 
     #[test]

@@ -350,11 +350,9 @@ impl<'de, R: Runtime> CommandArg<'de, R> for Activity {
 pub fn resume_after_update<R: Runtime>(app: &AppHandle<R>) -> Result<(), ActivityError> {
     let _activity = Activity::for_app(app)?;
     let repositories = app.state::<crate::state::RepoState>().snapshot();
-    let cache = app.state::<crate::state::CommitCache>();
     for (path, _) in repositories.locations() {
-        cache.invalidate(path);
-        let _ = app.emit(
-            "repo-changed",
+        let _ = crate::watcher::publish_worktree_change(
+            app,
             crate::watcher::RepoChanged::whole_repo(path),
         );
     }

@@ -4,8 +4,9 @@ import type { TauriInternals } from "../harness/internals.js";
 /**
  * Events the application would otherwise receive from the outside world. The
  * filesystem watcher is off in the harness, so the external-change gesture is
- * the host making the identical `app.emit("repo-changed", payload)` call that
- * `src-tauri/src/watcher.rs` makes: indistinguishable downstream.
+ * the host calling the function `src-tauri/src/watcher.rs` publishes a worktree
+ * change through, which marks the cached graph unchecked and emits
+ * `repo-changed`: indistinguishable downstream.
  */
 export class EventsDriver {
 	constructor(
@@ -21,7 +22,7 @@ export class EventsDriver {
 	 *  is what the write commands in `src-tauri/src/commands/` emit. */
 	async externalChange(path: string, paths: string[] = []): Promise<void> {
 		await this.internals.registrationsSettled();
-		await this.host.emit("repo-changed", { repo: path, paths });
+		await this.host.worktreeChange(path, paths);
 	}
 
 	/** The review store poll noticing a write from outside the app, such as an

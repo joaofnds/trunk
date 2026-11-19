@@ -1,4 +1,4 @@
-use crate::state::{CommitCache, CommitStatsCache, OpenRepos, RepoState};
+use crate::state::{CommitCache, CommitStatsCache, GraphVersion, OpenRepos, RepoState};
 use crate::types::{DiffStat, MatchType, SearchResult};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -12,6 +12,9 @@ pub struct GraphResponse {
     pub commits: Vec<GraphCommit>,
     pub max_columns: usize,
     pub revision: u64,
+    /// False when the graph may predate a change the watcher reported, which a
+    /// refresh brings in.
+    pub checked: bool,
 }
 
 /// Rows per page. The frontend's own BATCH must match: it decides there whether a
@@ -19,12 +22,13 @@ pub struct GraphResponse {
 const PAGE: usize = 200;
 
 impl GraphResponse {
-    fn cached(graph: &GraphSnapshot, offset: usize, count: usize, revision: u64) -> Self {
+    fn cached(graph: &GraphSnapshot, offset: usize, count: usize, version: GraphVersion) -> Self {
         let rows = graph.page(offset, count);
         Self {
             commits: rows.commits,
             max_columns: rows.max_columns,
-            revision,
+            revision: version.revision,
+            checked: version.checked,
         }
     }
 }
@@ -52,17 +56,17 @@ pub async fn get_commit_graph(
         .transpose()
         .map_err(|e| TrunkError::new("invalid_oid", e.to_string()).to_json())?;
     cache
-        .read_versioned(&path, revision, |graph, revision| {
+        .read_versioned(&path, revision, |graph, version| {
             loaded.map_or_else(
                 || {
                     GraphResponse::cached(
                         graph,
                         offset,
                         rows_through(graph, offset, through),
-                        revision,
+                        version,
                     )
                 },
-                |depth| GraphResponse::cached(graph, 0, depth.max(PAGE), revision),
+                |depth| GraphResponse::cached(graph, 0, depth.max(PAGE), version),
             )
         })
         .map_err(|e| e.to_json())
@@ -123,8 +127,8 @@ async fn refresh_graph_in_session(
         .refresh_worktree_in_session(path.to_owned(), repository, session)
         .await?;
 
-    cache.read_versioned(path, None, |graph, revision| {
-        GraphResponse::cached(graph, 0, loaded.max(PAGE), revision)
+    cache.read_versioned(path, None, |graph, version| {
+        GraphResponse::cached(graph, 0, loaded.max(PAGE), version)
     })
 }
 
@@ -187,8 +191,8 @@ pub async fn set_ref_visibility(
         .await
         .map_err(|e| e.to_json())?;
     cache
-        .read_versioned(&path, None, |graph, revision| {
-            GraphResponse::cached(graph, 0, loaded.max(PAGE), revision)
+        .read_versioned(&path, None, |graph, version| {
+            GraphResponse::cached(graph, 0, loaded.max(PAGE), version)
         })
         .map_err(|e| e.to_json())
 }
@@ -583,8 +587,8 @@ mod tests {
 
     use super::{GraphResponse, cached_commit_stat, cached_commit_stats};
     use crate::state::{
-        CommitCache, CommitStatsCache, GraphCache, GraphRebuild, OpenRepos, RefVisibilityState,
-        RepoState, StatsCache,
+        CommitCache, CommitStatsCache, GraphCache, GraphRebuild, GraphVersion, OpenRepos,
+        RefVisibilityState, RepoState, StatsCache,
     };
     use crate::types::DiffStat;
     use std::collections::{HashMap, HashSet};
@@ -948,9 +952,34 @@ mod tests {
     fn a_maximum_offset_returns_no_graph_rows() {
         let cache = cache();
         let graph = cache.snapshot("/repo").unwrap();
-        let page = GraphResponse::cached(&graph, usize::MAX, super::PAGE, 1);
+        let page = GraphResponse::cached(
+            &graph,
+            usize::MAX,
+            super::PAGE,
+            GraphVersion {
+                revision: 1,
+                checked: true,
+            },
+        );
 
         assert!(page.commits.is_empty());
+    }
+
+    #[test]
+    fn a_page_reports_the_publication_it_was_read_from() {
+        let cache = cache();
+        let graph = cache.snapshot("/repo").unwrap();
+        let version = GraphVersion {
+            revision: 3,
+            checked: false,
+        };
+
+        let page = GraphResponse::cached(&graph, 0, super::PAGE, version);
+
+        assert_eq!(
+            (page.revision, page.checked),
+            (version.revision, version.checked)
+        );
     }
 
     #[test]

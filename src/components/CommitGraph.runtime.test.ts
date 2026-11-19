@@ -109,6 +109,7 @@ describe("CommitGraph", () => {
 						makeCommit({ oid: "unloaded", summary: "unloaded change" }),
 					],
 					max_columns: 1,
+					checked: true,
 					revision: 1,
 				});
 				await drainSearchReplies();
@@ -177,6 +178,7 @@ describe("CommitGraph", () => {
 						makeCommit({ oid: "unloaded", summary: "unloaded change" }),
 					],
 					max_columns: 1,
+					checked: true,
 					revision: 1,
 				});
 				await drainSearchReplies();
@@ -364,6 +366,7 @@ describe("CommitGraph", () => {
 			host.seedGraph({
 				commits,
 				max_columns: 1,
+				checked: true,
 				revision: 1,
 			});
 			const view = render(CommitGraph, {
@@ -500,7 +503,7 @@ describe("CommitGraph", () => {
 			restoreDomPolyfills();
 			installDomPolyfills({ viewportHeight: 1400 });
 			const commits = history(150);
-			host.seedGraph({ commits, max_columns: 1, revision: 1 });
+			host.seedGraph({ commits, max_columns: 1, revision: 1, checked: true });
 			host.seedResponse("get_commit_stats", stats(commits.slice(32)));
 			const view = render(CommitGraph, {
 				props: { ...noReviewCounts(), repoPath: "/repo", tabActive: true },
@@ -551,7 +554,7 @@ describe("CommitGraph", () => {
 				toFake: ["requestAnimationFrame", "cancelAnimationFrame"],
 			});
 			const commits = history(150);
-			host.seedGraph({ commits, max_columns: 1, revision: 1 });
+			host.seedGraph({ commits, max_columns: 1, revision: 1, checked: true });
 			host.seedResponse("get_commit_stats", stats(commits));
 			const first = host.holdNextReply("get_commit_stats");
 			const view = render(CommitGraph, {
@@ -634,7 +637,7 @@ describe("CommitGraph", () => {
 				toFake: ["requestAnimationFrame", "cancelAnimationFrame"],
 			});
 			const commits = history(150);
-			host.seedGraph({ commits, max_columns: 1, revision: 1 });
+			host.seedGraph({ commits, max_columns: 1, revision: 1, checked: true });
 			host.seedResponse(
 				"get_commit_stats",
 				stats(commits.filter((_, i) => i !== 55)),
@@ -689,7 +692,7 @@ describe("CommitGraph", () => {
 				toFake: ["requestAnimationFrame", "cancelAnimationFrame"],
 			});
 			const commits = history(150);
-			host.seedGraph({ commits, max_columns: 1, revision: 1 });
+			host.seedGraph({ commits, max_columns: 1, revision: 1, checked: true });
 			host.seedResponse("get_commit_stats", stats(commits));
 			const view = render(GraphRefreshHarness, {
 				props: { withWip: true },
@@ -761,6 +764,7 @@ describe("CommitGraph", () => {
 				}),
 			],
 			max_columns: 1,
+			checked: true,
 			revision,
 		};
 	}
@@ -805,7 +809,12 @@ describe("CommitGraph", () => {
 			vi.useFakeTimers({
 				toFake: ["requestAnimationFrame", "cancelAnimationFrame"],
 			});
-			host.seedGraph({ commits: history(150), max_columns: 1, revision: 1 });
+			host.seedGraph({
+				commits: history(150),
+				max_columns: 1,
+				revision: 1,
+				checked: true,
+			});
 			const view = render(CommitGraph, {
 				props: {
 					...noReviewCounts(),
@@ -948,7 +957,12 @@ describe("RepoView", () => {
 			summary: "updated history",
 			in_head_chain: true,
 		});
-		const graph = { commits: [commit], max_columns: 1, revision: 2 };
+		const graph = {
+			commits: [commit],
+			max_columns: 1,
+			revision: 2,
+			checked: true,
+		};
 		host.seedGraph({ ...graph, revision: 1 });
 		host.seedResponse("refresh_commit_graph", graph);
 		host.seedResponse("get_commit_detail", {

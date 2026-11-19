@@ -80,6 +80,7 @@ beforeEach(() => {
 	host.seedGraph({
 		commits: [makeCommit({ oid: "commit-1", summary: "first commit" })],
 		max_columns: 1,
+		checked: true,
 		revision: 1,
 	});
 	host.seedResponse("list_commit_files", [file("f.ts"), file("g.ts")]);
@@ -209,6 +210,7 @@ describe("RepoView commit file reuse", () => {
 				makeCommit({ oid: "commit-2" }),
 			],
 			max_columns: 1,
+			checked: true,
 			revision: 1,
 		});
 		await mountCommit();

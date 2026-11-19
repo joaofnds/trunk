@@ -32,7 +32,7 @@ vi.mock("../../lib/toast.svelte.js", () => ({ showToast: vi.fn() }));
 /** One fixture's graph layout plus the `wipCount` the app would pass. */
 export interface LayoutExport {
 	wipCount: number;
-	layout: Omit<GraphResponse, "revision">;
+	layout: Omit<GraphResponse, "revision" | "checked">;
 }
 
 const EXPORTS_DIR = join(process.cwd(), "src-tauri/tests/goldens/exports");
@@ -126,7 +126,11 @@ async function renderGraph(fixture: LayoutExport, wipCount: number) {
 		switch (cmd) {
 			case "get_commit_graph":
 			case "refresh_commit_graph":
-				return Promise.resolve({ ...fixture.layout, revision: 1 });
+				return Promise.resolve({
+					...fixture.layout,
+					revision: 1,
+					checked: true,
+				});
 			case "list_stashes":
 				return Promise.resolve([]);
 			default:

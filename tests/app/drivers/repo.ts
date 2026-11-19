@@ -37,15 +37,23 @@ export class RepoDriver {
 	) {}
 
 	async open(path: string = this.path): Promise<void> {
+		await this.pick(path);
+
+		await waitFor("the repository's commits", () =>
+			this.rows().length > 0 ? true : null,
+		);
+	}
+
+	/**
+	 * Clicks the recent entry and returns at once, for a test that holds the open
+	 * partway and so cannot wait for the commits the way `open` does.
+	 */
+	async pick(path: string = this.path): Promise<void> {
 		const entry = await waitFor(`the recent entry for ${path}`, () =>
 			recentEntry(path),
 		);
 
 		entry.click();
-
-		await waitFor("the repository's commits", () =>
-			this.rows().length > 0 ? true : null,
-		);
 	}
 
 	/**

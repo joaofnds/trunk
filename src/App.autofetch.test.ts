@@ -44,6 +44,7 @@ beforeEach(() => {
 	host.seedGraph({
 		commits: [makeCommit({ oid: "restored-oid", summary: "restored commit" })],
 		max_columns: 1,
+		checked: true,
 		revision: 1,
 	});
 	host.seedResponse("git_fetch_background", fetched);
@@ -57,13 +58,20 @@ afterEach(() => {
 	_resetToasts();
 });
 
-async function restoreApp() {
+/** The restored repository's toolbar, without waiting for its graph, which
+ *  waits on the view's repo-changed listener. */
+async function restoreToolbar() {
 	const view = render(App, { context: new Map([[SCHEDULER, clock]]) });
-	await screen.findAllByText("restored commit");
 	await waitFor(() =>
 		expect(screen.getByRole("button", { name: "Pull options" })).toBeEnabled(),
 	);
 	await tick();
+	return view;
+}
+
+async function restoreApp() {
+	const view = await restoreToolbar();
+	await screen.findAllByText("restored commit");
 	return view;
 }
 
@@ -108,7 +116,7 @@ describe("App automatic fetch coordination", () => {
 
 	it("releases focus listeners that finish registering after disposal", async () => {
 		const releaseListeners = host.holdCommand("plugin:event|listen");
-		const view = await restoreApp();
+		const view = await restoreToolbar();
 		view.unmount();
 
 		releaseListeners();
@@ -182,6 +190,7 @@ describe("App automatic fetch coordination", () => {
 				makeCommit({ oid: "other-oid", summary: "other repository commit" }),
 			],
 			max_columns: 1,
+			checked: true,
 			revision: 1,
 		});
 

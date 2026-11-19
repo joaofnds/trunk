@@ -37,6 +37,7 @@ beforeEach(() => {
 			}),
 		],
 		max_columns: 1,
+		checked: true,
 		revision: 1,
 	});
 	host.seedResponse("list_refs", refs("main", ["main", "develop"]));

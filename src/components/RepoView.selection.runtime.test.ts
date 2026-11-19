@@ -1044,6 +1044,7 @@ async function openRepository(panes: { rightPaneCollapsed?: boolean } = {}) {
 			makeCommit({ oid: "fourth", summary: "fourth change" }),
 		],
 		max_columns: 1,
+		checked: true,
 		revision: 1,
 	});
 	const view = render(RepoView, {

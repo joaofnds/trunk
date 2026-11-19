@@ -197,9 +197,19 @@ function installReads(
 		if (overridden !== undefined) return overridden as Promise<unknown>;
 		switch (cmd) {
 			case "get_commit_graph":
-				return Promise.resolve({ commits, max_columns: 1, revision: 1 });
+				return Promise.resolve({
+					commits,
+					max_columns: 1,
+					revision: 1,
+					checked: true,
+				});
 			case "refresh_commit_graph":
-				return Promise.resolve({ commits, max_columns: 1, revision: 2 });
+				return Promise.resolve({
+					commits,
+					max_columns: 1,
+					revision: 2,
+					checked: true,
+				});
 			case "list_stashes":
 				return Promise.resolve([]);
 			case "get_commit_stats":
@@ -1044,6 +1054,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: TEST_COMMITS,
 							max_columns: lanes,
+							checked: true,
 							revision: 1,
 						});
 					if (cmd !== "prefs_get") return undefined;
@@ -1367,6 +1378,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: commitsOf(options.refreshedTo),
 							max_columns: 1,
+							checked: true,
 							revision: 1,
 						});
 					if (cmd !== "prefs_get") return undefined;
@@ -2520,6 +2532,7 @@ describe("CommitGraph", () => {
 						? Promise.resolve({
 								commits: pages.shift() ?? [],
 								max_columns: 1,
+								checked: true,
 								revision: 1,
 							})
 						: undefined,
@@ -2556,6 +2569,7 @@ describe("CommitGraph", () => {
 			return {
 				commits: [makeCommit({ oid: oidChar.repeat(40), summary })],
 				max_columns: 1,
+				checked: true,
 				revision: 1,
 			};
 		}
@@ -2769,6 +2783,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: page(0, "old"),
 							max_columns: 1,
+							checked: true,
 							revision: 1,
 						});
 					}
@@ -2796,12 +2811,18 @@ describe("CommitGraph", () => {
 			rendered.component.showGraph({
 				commits: page(0, "new"),
 				max_columns: 1,
+				checked: true,
 				revision: 1,
 			});
 		}
 
 		function resolveStalePage(pending: ((page: unknown) => void)[]) {
-			pending[0]({ commits: page(BATCH, "old"), max_columns: 1, revision: 1 });
+			pending[0]({
+				commits: page(BATCH, "old"),
+				max_columns: 1,
+				revision: 1,
+				checked: true,
+			});
 		}
 
 		it("drops a page that describes the graph it replaced", async () => {
@@ -2830,6 +2851,7 @@ describe("CommitGraph", () => {
 			pending.at(-1)?.({
 				commits: page(BATCH, "new"),
 				max_columns: 1,
+				checked: true,
 				revision: 1,
 			});
 			await flush();
@@ -2847,6 +2869,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: page(0, "new"),
 							max_columns: 1,
+							checked: true,
 							revision: 1,
 						});
 					}
@@ -2855,6 +2878,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: page(0, "old"),
 							max_columns: 1,
+							checked: true,
 							revision: 1,
 						});
 					}
@@ -2952,6 +2976,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: page(0, "old"),
 							max_columns: 1,
+							checked: true,
 							revision: 1,
 						});
 					}
@@ -2962,6 +2987,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: [],
 							max_columns: 1,
+							checked: true,
 							revision: 1,
 						});
 					}
@@ -2986,6 +3012,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: page(0, "old"),
 							max_columns: 1,
+							checked: true,
 							revision: 1,
 						});
 					}
@@ -2994,6 +3021,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: [],
 							max_columns: 1,
+							checked: true,
 							revision: 1,
 						});
 					}
@@ -3002,11 +3030,13 @@ describe("CommitGraph", () => {
 					rendered.component.showGraph({
 						commits: page(0, "new"),
 						max_columns: 1,
+						checked: true,
 						revision: 1,
 					});
 					return Promise.resolve({
 						commits: page(BATCH, "old"),
 						max_columns: 1,
+						checked: true,
 						revision: 1,
 					});
 				},
@@ -3028,6 +3058,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: page(0, "old"),
 							max_columns: 1,
+							checked: true,
 							revision: 1,
 						});
 					}
@@ -3036,6 +3067,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits: [],
 							max_columns: 1,
+							checked: true,
 							revision: 1,
 						});
 					}
@@ -3098,7 +3130,12 @@ describe("CommitGraph", () => {
 							in_head_chain: offset + i === 0,
 						}),
 					);
-					return Promise.resolve({ commits, max_columns: 1, revision: 1 });
+					return Promise.resolve({
+						commits,
+						max_columns: 1,
+						revision: 1,
+						checked: true,
+					});
 				},
 			});
 			return requests;
@@ -3159,7 +3196,12 @@ describe("CommitGraph", () => {
 						}),
 					);
 					served.push(...commits);
-					return Promise.resolve({ commits, max_columns: 1, revision: 1 });
+					return Promise.resolve({
+						commits,
+						max_columns: 1,
+						revision: 1,
+						checked: true,
+					});
 				},
 			});
 			const oncommitschange = vi.fn<(commits: GraphCommit[]) => void>();
@@ -3224,6 +3266,7 @@ describe("CommitGraph", () => {
 				return Promise.resolve({
 					commits: rows(Math.min(asked, available)),
 					max_columns: 1,
+					checked: true,
 					revision: 1,
 				});
 			};
@@ -3253,6 +3296,7 @@ describe("CommitGraph", () => {
 											? page(BATCH, WIDE_AUTHOR)
 											: [],
 								max_columns: 1,
+								checked: true,
 								revision: 1,
 							})
 						: undefined;
@@ -3343,6 +3387,7 @@ describe("CommitGraph", () => {
 						return Promise.resolve({
 							commits,
 							max_columns: 1,
+							checked: true,
 							revision: cacheRevision,
 						});
 					}
@@ -3354,6 +3399,7 @@ describe("CommitGraph", () => {
 									? page(BATCH, WIDE_AUTHOR)
 									: [],
 						max_columns: 1,
+						checked: true,
 						revision: 1,
 					});
 				},

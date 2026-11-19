@@ -156,6 +156,7 @@ describe("App", () => {
 						}),
 					],
 					max_columns: 1,
+					checked: true,
 					revision: 1,
 				});
 			case "list_refs":
@@ -243,6 +244,7 @@ describe("App", () => {
 						return Promise.resolve({
 							commits: history,
 							max_columns: 1,
+							checked: true,
 							revision: 1,
 						});
 					case "get_commit_detail":

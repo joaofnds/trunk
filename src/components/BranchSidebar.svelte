@@ -66,6 +66,10 @@ interface Props {
 	 *  succeeded or failed. CommitGraph's first page load waits on it so it
 	 *  never paints against the backend's unfiltered default. */
 	onvisibilityresolved?: () => void;
+	/** Whether the view's repo-changed listener has registered. The stored set's
+	 *  push, not its read, waits for it, since the push answers with the view's
+	 *  first graph. Defaults to true for a sidebar with no view. */
+	repoListenerSettled?: boolean;
 	refreshSignal?: number;
 	refreshImmediately?: boolean;
 	workingTreeDirty?: boolean;
@@ -84,6 +88,7 @@ let {
 	loadedRows,
 	onrefnavigate,
 	onvisibilityresolved,
+	repoListenerSettled = true,
 	refreshSignal,
 	refreshImmediately = false,
 	workingTreeDirty,
@@ -92,6 +97,13 @@ let {
 }: Props = $props();
 const scheduler = getScheduler();
 let sidebarActive = true;
+// The push answers with the view's first graph, which must be read after the
+// listener that hears the next change (TRUNK-494).
+const listenerSettled = new Promise<void>((resolve) => {
+	$effect(() => {
+		if (repoListenerSettled) resolve();
+	});
+});
 
 let refs = $state<RefsResponse | null>(null);
 let loading = $state(false);
@@ -172,7 +184,10 @@ async function loadVisibility(path: string) {
 		visibility = stored;
 		// Opening a repository walks with everything visible, so a repo with a stored set
 		// needs it pushed before its first graph is drawn.
-		if (!hidesNothing(stored)) await pushVisibility(path, stored);
+		if (hidesNothing(stored)) return;
+		await listenerSettled;
+		if (!sidebarActive || path !== repoPath) return;
+		await pushVisibility(path, stored);
 	} catch {
 		showToast("Could not load which refs are hidden", "error");
 	} finally {

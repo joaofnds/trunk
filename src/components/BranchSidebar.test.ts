@@ -1060,6 +1060,37 @@ describe("BranchSidebar ref visibility", () => {
 		expect(eye.closest(".pr-2")).toBeInTheDocument();
 	});
 
+	// TRUNK-494: the stored set's push answers with the view's first graph, so a change
+	// the watcher reports before the view's listener registers would never reach it.
+	it("pushes the stored hidden set only once the view's listener is registered", async () => {
+		prefsStore.set("ref_visibility", {
+			"/test/repo": { hiddenRefs: ["refs/heads/topic"], hiddenStashes: [] },
+		});
+		const resolved = vi.fn();
+		const view = render(BranchSidebar, {
+			props: {
+				repoPath: "/test/repo",
+				repoListenerSettled: false,
+				onvisibilityresolved: resolved,
+			},
+		});
+		await screen.findByLabelText("Show all Local refs");
+		const pushesBeforeRegistration = mockInvoke.mock.calls.filter(
+			([cmd]) => cmd === "set_ref_visibility",
+		);
+
+		await view.rerender({ repoListenerSettled: true });
+
+		expect(pushesBeforeRegistration).toEqual([]);
+		await waitFor(() => {
+			expect(resolved).toHaveBeenCalled();
+		});
+		expect(mockInvoke).toHaveBeenCalledWith(
+			"set_ref_visibility",
+			expect.objectContaining({ path: "/test/repo" }),
+		);
+	});
+
 	// TRUNK-128: onvisibilityresolved gates CommitGraph's first page load, so a stored-
 	// visibility read that fails must still release it -- a stuck gate would leave the
 	// graph with no first page at all, worse than the flash this card fixes.
@@ -1096,7 +1127,12 @@ describe("BranchSidebar ref visibility", () => {
 		const base = mockInvoke.getMockImplementation();
 		mockInvoke.mockImplementation((cmd, args) => {
 			if (cmd === "set_ref_visibility")
-				return Promise.resolve({ commits: [], max_columns: 0, revision: 1 });
+				return Promise.resolve({
+					commits: [],
+					max_columns: 0,
+					revision: 1,
+					checked: true,
+				});
 			if (cmd === "prefs_set")
 				return Promise.reject(
 					JSON.stringify({ code: "io_error", message: "disk full" }),
@@ -1117,7 +1153,9 @@ describe("BranchSidebar ref visibility", () => {
 		await fireEvent.click(screen.getByLabelText("Hide topic"));
 
 		await waitFor(() => {
-			expect(received).toEqual([{ commits: [], max_columns: 0, revision: 1 }]);
+			expect(received).toEqual([
+				{ commits: [], max_columns: 0, revision: 1, checked: true },
+			]);
 		});
 		await waitFor(() => {
 			expect(toasts.items.map((t) => t.message)).toContain(

@@ -105,8 +105,12 @@ refresh makes the result retryable rather than acknowledging stale worktree stat
 
 Each publication of a new capture also reaches the review follow, which moves threads off commits the
 new capture no longer holds onto their rewritten copies (`follow_on_publication` in
-`src-tauri/src/commands/review.rs`). Responses carry a revision; stale graph pages and
-commit-stat requests fail with `graph_changed`. Completed commands emit `command_completed` and a graph revision only
+`src-tauri/src/commands/review.rs`). Responses carry a revision and whether that
+publication is still checked; stale graph pages and commit-stat requests fail with
+`graph_changed`. A repository view reads its first graph, the first page or the sidebar's
+push of a stored hidden set, only after its `repo-changed` listener registers, and an
+unchecked first graph requests the refresh that a missed event would have, so a change the
+watcher reported before the view existed still reaches it. Completed commands emit `command_completed` and a graph revision only
 while that publication remains checked. Subscribers request status, counters and relevant
 diffs immediately; the graph reads the published revision at its loaded depth. Without a
 checked revision, it requests a checked refresh immediately. Watcher bursts retain their

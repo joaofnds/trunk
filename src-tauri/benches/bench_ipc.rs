@@ -134,6 +134,7 @@ fn bench_ipc_get_graph(c: &mut Criterion) {
                 commits: result.commits,
                 max_columns: result.max_columns,
                 revision: 0,
+                checked: true,
             };
             serde_json::to_string(&response).unwrap()
         });
@@ -219,6 +220,7 @@ fn bench_startup_sequence(c: &mut Criterion) {
                         commits: graph.commits,
                         max_columns: graph.max_columns,
                         revision: 0,
+                        checked: true,
                     })
                     .unwrap();
 

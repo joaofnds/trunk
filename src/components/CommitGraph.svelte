@@ -170,6 +170,11 @@ interface Props {
 	 *  since the backend has nothing stored for a path it has not seen yet.
 	 *  Defaults true: only RepoView has a BranchSidebar sibling to gate on. */
 	visibilityResolved?: boolean;
+	/** Whether the parent's `repo-changed` listener has finished registering.
+	 *  The first page waits on it, so a change reported before that page's read
+	 *  arrives as an unchecked page and one reported after it as an event, and
+	 *  none falls between the two. Defaults true for the same reason. */
+	repoListenerSettled?: boolean;
 }
 
 let {
@@ -205,7 +210,9 @@ let {
 	// Every other caller -- tests included -- has nothing else resolving a
 	// visibility set for this repo, so there is nothing to wait for.
 	visibilityResolved: refVisibilityResolved = true,
+	repoListenerSettled = true,
 }: Props = $props();
+const pagesReadable = $derived(refVisibilityResolved && repoListenerSettled);
 const scheduler = getScheduler();
 // The staging panel shows the uncommitted changes while no commit is selected
 // and nothing is compared, and their row reads as selected then.
@@ -334,6 +341,15 @@ let graphActive = true;
 let refreshSeq = 0;
 let graphRevision = 0;
 let graphReady = $state(false);
+
+/** Marks a graph as shown. The view's first graph can predate a change the
+ *  watcher reported before this view's listener could hear it, so an unchecked
+ *  one gets the refresh that change's event would have requested (TRUNK-494).
+ *  The listener hears every change after that, so later graphs need none. */
+function markGraphReady(response: GraphResponse): void {
+	if (!graphReady && !response.checked) graphRefresh.request();
+	graphReady = true;
+}
 
 let columnWidths = $state<ColumnWidths>({ ...DEFAULT_WIDTHS });
 let columnVisibility = $state<ColumnVisibility>({
@@ -1856,9 +1872,11 @@ async function loadMore(through?: string): Promise<PageResult> {
 	// Blocks every caller -- the mount effect below, VirtualList's own
 	// infinite-scroll trigger (which fires immediately on an empty first render,
 	// independent of that effect), and scrollToOid -- until BranchSidebar's
-	// stored-visibility read has resolved. Otherwise this pages against
-	// open_repo's unfiltered default, which is the paint TRUNK-128 fixed.
-	if (!graphActive || !refVisibilityResolved) return "idle";
+	// stored-visibility read has resolved and the view's repo-changed listener is
+	// registered. Otherwise this pages against open_repo's unfiltered default,
+	// which is the paint TRUNK-128 fixed, or reads a graph whose next change no
+	// listener hears (TRUNK-494).
+	if (!graphActive || !pagesReadable) return "idle";
 	if (loading || !hasMore) return "idle";
 	loading = true;
 	error = null;
@@ -1878,7 +1896,7 @@ async function loadMore(through?: string): Promise<PageResult> {
 		// load for whatever it still needs.
 		if (!graphActive || seq !== refreshSeq) return "stale";
 		graphRevision = response.revision;
-		graphReady = true;
+		markGraphReady(response);
 		commits = commits.concat(response.commits);
 		maxColumns = response.max_columns;
 		updateContentWidths(response.commits);
@@ -1969,7 +1987,7 @@ function replaceGraph(response: GraphResponse): void {
 
 	refreshSeq += 1;
 	graphRevision = response.revision;
-	graphReady = true;
+	markGraphReady(response);
 	// Swap data atomically -- old data stays visible until this assignment
 	commits = response.commits;
 	maxColumns = response.max_columns;
@@ -2065,9 +2083,10 @@ onDestroy(() => graphRefresh.dispose());
 // this never paints against open_repo's unfiltered default -- the backend has
 // nothing stored for a path it has not seen yet, and BranchSidebar's read of the
 // persisted set is an independent sibling effect with no ordering against this
-// one otherwise (TRUNK-128).
+// one otherwise (TRUNK-128). It waits on the view's repo-changed listener too, so
+// a change reported after this read always reaches the graph (TRUNK-494).
 $effect(() => {
-	if (!refVisibilityResolved) return;
+	if (!pagesReadable) return;
 	untrack(async () => {
 		await loadMore();
 		await stashMapRefresh.run();

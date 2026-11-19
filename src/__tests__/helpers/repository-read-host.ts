@@ -179,7 +179,7 @@ export class RepositoryReadHost implements HostChannel {
 			case "canonical_repo_path":
 				return args.path;
 			case "get_commit_graph":
-				return { commits: [], max_columns: 0, revision: 1 };
+				return { commits: [], max_columns: 0, revision: 1, checked: true };
 			case "get_commit_stats":
 				return {};
 			case "get_wip_diff_stats":

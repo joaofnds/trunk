@@ -228,6 +228,13 @@ export class HostClient {
 		});
 	}
 
+	/** The watcher's report of a change to `paths`, relative to `repo`, made
+	 *  through the function the watcher itself calls. No paths reports the
+	 *  unscoped form. */
+	async worktreeChange(repo: string, paths: string[]): Promise<void> {
+		await this.request({ verb: "worktreeChange", repo, paths });
+	}
+
 	/** How many filesystem watches the application holds. Off means zero. */
 	async watcherCount(): Promise<number> {
 		return (await this.request({ verb: "watcherCount" })) as number;

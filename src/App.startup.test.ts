@@ -197,6 +197,7 @@ describe("App startup", () => {
 				}),
 			],
 			max_columns: 1,
+			checked: true,
 			revision: 1,
 		});
 		await screen.findByText("active history");
@@ -336,7 +337,7 @@ describe("App startup", () => {
 		await app.prepareNextRepository();
 		await app.prepareNextRepository();
 		const opened = app.paths("open_repo");
-		graph.release({ commits: [], max_columns: 0, revision: 1 });
+		graph.release({ commits: [], max_columns: 0, revision: 1, checked: true });
 		await app.settle();
 
 		expect(opened).toEqual(["/active", "/first", "/last"]);

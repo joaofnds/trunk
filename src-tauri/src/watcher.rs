@@ -304,6 +304,18 @@ impl IgnoreView<'_> {
     }
 }
 
+/// Marks the cached graph unchecked, then tells subscribers the working tree changed.
+/// # Errors
+/// Returns the emit failure. The cache is already marked unchecked by then.
+pub fn publish_worktree_change<R: Runtime>(
+    app: &AppHandle<R>,
+    change: RepoChanged,
+) -> tauri::Result<()> {
+    app.state::<crate::state::CommitCache>()
+        .invalidate(&change.repo);
+    app.emit("repo-changed", change)
+}
+
 /// What routing a batch did.
 enum Routed {
     /// Nothing in the batch concerned a subscriber.
@@ -352,16 +364,11 @@ fn route_changes<R: Runtime>(
     if relevant.is_empty() && !worktree {
         return Routed::Nothing;
     }
-    let repo = watched.to_string_lossy().to_string();
-    let cache = app.state::<crate::state::CommitCache>();
     if worktree {
-        cache.invalidate(&repo);
-        let _ = app.emit(
-            "repo-changed",
-            RepoChanged::scoped_to(watched, roots, &relevant),
-        );
+        let _ = publish_worktree_change(app, RepoChanged::scoped_to(watched, roots, &relevant));
         return Routed::Published(None);
     }
+    let repo = watched.to_string_lossy().to_string();
     {
         let mut pending = pending.lock().unwrap();
         if let Some(refresh) = pending.get_mut(&repo) {

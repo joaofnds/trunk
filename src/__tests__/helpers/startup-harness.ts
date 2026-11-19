@@ -29,6 +29,7 @@ export class StartupHarness {
 		this.host.seedGraph({
 			commits: [makeCommit({ oid: "history", summary: "restored history" })],
 			max_columns: 1,
+			checked: true,
 			revision: 1,
 		});
 	}

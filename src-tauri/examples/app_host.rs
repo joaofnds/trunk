@@ -18,13 +18,14 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::io::{BufRead, Write};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{INVOKE_KEY, MockRuntime, get_ipc_response, mock_builder};
 use tauri::webview::InvokeRequest;
 use tauri::{App, Emitter, Listener, Manager, WebviewWindow};
 use trunk_lib::state::TrafficLights;
-use trunk_lib::watcher::WatcherState;
+use trunk_lib::watcher::{RepoChanged, WatcherState, publish_worktree_change};
 
 /// Invariant 2: `http://tauri.localhost` is refused by the real capability set,
 /// and the refusal reads like a missing plugin.
@@ -49,6 +50,11 @@ enum Request {
         event: String,
         payload: Value,
     },
+    WorktreeChange {
+        id: u64,
+        repo: String,
+        paths: Vec<String>,
+    },
     WatcherCount {
         id: u64,
     },
@@ -63,6 +69,7 @@ impl Request {
             Self::SeedRepo { id, .. }
             | Self::Invoke { id, .. }
             | Self::Emit { id, .. }
+            | Self::WorktreeChange { id, .. }
             | Self::WatcherCount { id }
             | Self::Shutdown { id } => *id,
         }
@@ -244,6 +251,17 @@ fn serve(
         Request::Emit { event, payload, .. } => {
             app.emit(&event, payload)
                 .map_err(|e| format!("emit {event}: {e}"))?;
+            Ok(Ok(Value::Null))
+        }
+
+        Request::WorktreeChange { repo, paths, .. } => {
+            let root = PathBuf::from(&repo);
+            let changed: Vec<PathBuf> = paths.iter().map(|path| root.join(path)).collect();
+            publish_worktree_change(
+                app.handle(),
+                RepoChanged::scoped_to(&root, std::slice::from_ref(&root), &changed),
+            )
+            .map_err(|e| format!("emit repo-changed: {e}"))?;
             Ok(Ok(Value::Null))
         }
 
