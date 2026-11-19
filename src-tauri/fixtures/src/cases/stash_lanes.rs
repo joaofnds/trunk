@@ -269,19 +269,19 @@ fn build_17_no_stash_dirty(out: &Path) {
 
 fn build_18_many_files(out: &Path) {
     let mut repo = init_repo(out, "18-many-files");
+    repo.in_one_pack(many_files);
+}
+
+fn many_files(repo: &mut Repo) {
     for i in 1..=3000 {
-        echo(
-            &mut repo,
-            &format!("src/file_{i}.txt"),
-            &format!("content {i}"),
-        );
+        echo(repo, &format!("src/file_{i}.txt"), &format!("content {i}"));
     }
-    commit(&mut repo, 1, "Add 3000 files");
-    echo(&mut repo, "notes.txt", "notes v1");
-    commit(&mut repo, 2, "Add notes");
-    echo(&mut repo, "notes.txt", "notes v2 — stashed");
-    stash(&mut repo, 10, "half-finished notes");
-    echo(&mut repo, "src/file_1.txt", "content changed");
+    commit(repo, 1, "Add 3000 files");
+    echo(repo, "notes.txt", "notes v1");
+    commit(repo, 2, "Add notes");
+    echo(repo, "notes.txt", "notes v2 — stashed");
+    stash(repo, 10, "half-finished notes");
+    echo(repo, "src/file_1.txt", "content changed");
 }
 
 fn build_19_two_backdated(out: &Path) {

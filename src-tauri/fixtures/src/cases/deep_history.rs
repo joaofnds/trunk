@@ -183,7 +183,4 @@ fn spur(repo: &mut Repo, name: &str, file: &str, sig: Signature) {
     repo.add(&[file]);
     repo.commit(sig, &format!("feat: the {name} branch's own tip"));
     repo.checkout("main");
-    // The checkout back leaves the branch's file in the worktree, because it removes
-    // nothing the target tree does not name. It stays untracked and harmless: every
-    // commit here stages one named path, so nothing ever sweeps it into main.
 }

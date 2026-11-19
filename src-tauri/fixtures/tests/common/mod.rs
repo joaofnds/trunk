@@ -14,6 +14,16 @@ pub fn case(name: &str) -> &'static Case {
         .unwrap_or_else(|| panic!("{name} is not in CASES"))
 }
 
+/// The objects stored loose under `repo`'s fan-out directories, as opposed to packed.
+pub fn loose_objects(repo: &Path) -> usize {
+    std::fs::read_dir(repo.join(".git/objects"))
+        .unwrap()
+        .map(|dir| dir.unwrap())
+        .filter(|dir| dir.file_name().len() == 2)
+        .map(|dir| std::fs::read_dir(dir.path()).unwrap().count())
+        .sum()
+}
+
 pub fn oracle(name: &str) -> String {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("oracle")

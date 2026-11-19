@@ -20,8 +20,7 @@ mod common;
 use common::{case, fixtures_command, oracle, report};
 
 /// The cases a setting in [`hostile_home`] moves when isolation is off. The isolation is
-/// process-wide, so a case none of those settings reaches proves nothing more and only
-/// adds two builds' worth of file writes.
+/// process-wide, so a case none of those settings reaches proves nothing.
 const CASES_UNDER_TEST: [&str; 2] = ["09-kitchen-sink", "04-graph-lanes"];
 
 /// A HOME carrying the settings the shell corpus's isolation suite guarded against. Two of

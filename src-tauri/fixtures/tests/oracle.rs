@@ -9,9 +9,9 @@ use trunk_fixtures::fingerprint;
 
 mod common;
 
-use common::{case, oracle, report};
+use common::{case, loose_objects, oracle, report};
 
-fn assert_matches_oracle(name: &str) {
+fn assert_matches_oracle(name: &str) -> tempfile::TempDir {
     trunk_fixtures::isolate();
     let case = case(name);
     let out = tempfile::tempdir().unwrap();
@@ -26,6 +26,8 @@ fn assert_matches_oracle(name: &str) {
         report(&expected, &actual)
     );
     assert_documented(out.path(), case.repos);
+
+    out
 }
 
 /// 04 and 05 carry no document of their own (the catalogue is theirs); 06 and 07 carry
@@ -57,7 +59,13 @@ fn assert_documented(out: &Path, repos: &[&str]) {
 
 #[test]
 fn stash_lanes_matches_its_oracle() {
-    assert_matches_oracle("06-stash-lanes");
+    let out = assert_matches_oracle("06-stash-lanes");
+
+    assert_eq!(
+        loose_objects(&out.path().join("stash-lanes/18-many-files")),
+        0,
+        "18-many-files is built as one pack"
+    );
 }
 
 #[test]
@@ -112,7 +120,13 @@ fn rendered_markdown_matches_its_oracle() {
 
 #[test]
 fn deep_history_matches_its_oracle() {
-    assert_matches_oracle("12-deep-history");
+    let out = assert_matches_oracle("12-deep-history");
+
+    assert_eq!(
+        loose_objects(&out.path().join("deep-history")),
+        0,
+        "deep history is built as one pack"
+    );
 }
 
 #[test]

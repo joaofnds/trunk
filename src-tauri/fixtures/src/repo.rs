@@ -13,6 +13,8 @@ use git2::{Buf, Commit, Odb, Oid, Repository, RepositoryInitOptions, Time};
 /// first.
 const AHEAD_OF_THE_DISK_BACKENDS: i32 = 3;
 
+const GITLINK_MODE: u32 = 0o160000;
+
 /// Who authors and commits: fixed per case so the author column is the same on every
 /// machine.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -103,10 +105,10 @@ impl Repo {
         &self.workdir
     }
 
-    /// Runs `build` with every object it writes held in memory, then stores them as one
-    /// pack. Writing a tree reads the header of every object the index names, so n
-    /// commits over a growing set of loose objects open on the order of n² files, and a
-    /// busy disk turns that into minutes.
+    /// Runs `build` with the objects it writes held in memory, then stores every object a
+    /// commit reaches as one pack. Panics if a ref or the index names any other object,
+    /// since that one is lost with the memory. Without it, n commits over loose objects
+    /// read on the order of n² object headers, which a busy disk turns into minutes.
     pub fn in_one_pack(&mut self, build: impl FnOnce(&mut Self)) {
         let objects = self.repo.path().join("objects");
         let odb = Odb::new().expect("create an object database");
@@ -128,6 +130,32 @@ impl Repo {
         let mut writer = disk.packwriter().expect("start writing a pack");
         writer.write_all(&pack).expect("write the pack");
         writer.commit().expect("index the pack");
+
+        self.assert_every_name_resolves(&disk);
+    }
+
+    fn assert_every_name_resolves(&self, odb: &Odb<'_>) {
+        let references = self.repo.references().expect("list the references");
+        for reference in references.map(|reference| reference.expect("read a reference")) {
+            if let Some(target) = reference.target() {
+                assert!(
+                    odb.exists(target),
+                    "{} names {target}, which no commit reaches",
+                    reference.name().unwrap_or("a reference")
+                );
+            }
+        }
+        for entry in self
+            .index()
+            .iter()
+            .filter(|entry| entry.mode != GITLINK_MODE)
+        {
+            assert!(
+                odb.exists(entry.id),
+                "the index names {}, which no commit reaches",
+                String::from_utf8_lossy(&entry.path)
+            );
+        }
     }
 
     /// `git config <key> <value>` in the repository's own config.
@@ -312,7 +340,7 @@ impl Repo {
         let mut index = self.index();
         let id = Oid::from_str(oid).expect("a gitlink target is a hex OID");
         index
-            .add(&index_entry(0o160000, id, 0, rel))
+            .add(&index_entry(GITLINK_MODE, id, 0, rel))
             .expect("stage the gitlink");
         index.write().expect("write the index");
     }
