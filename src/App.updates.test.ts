@@ -347,9 +347,16 @@ describe("App update controls", () => {
 			await app.settle();
 		}
 
-		async function restartDuringARefresh() {
+		async function restartDuringARefresh(fetchIntervalMs = 0) {
 			startup();
 			seedReady();
+			app.host.preferences.set("fetch_interval_ms", fetchIntervalMs);
+			app.host.seedResponse("git_fetch_background", {
+				outcome: "unchanged",
+				remotes: [],
+				graph_error: null,
+				graph_rebuilds: 0,
+			});
 			const install = app.host.holdNextReply("updates_install");
 			app.start();
 			await screen.findByText("restored history");
@@ -409,6 +416,19 @@ describe("App update controls", () => {
 			]);
 			expect(app.host.count("updates_prepare")).toBe(1);
 			expect(screen.queryByRole("alert")).toBeNull();
+		});
+
+		it("starts no automatic fetch while it waits", async () => {
+			const { install, refresh } = await restartDuringARefresh(60_000);
+			const fetchesBefore = app.host.count("git_fetch_background");
+
+			await app.advanceFetches(2);
+
+			expect(app.host.count("git_fetch_background")).toBe(fetchesBefore);
+			refresh.release({ staged: 0, unstaged: 1 });
+			await install.entered;
+			install.release(undefined);
+			await app.settle();
 		});
 
 		it("prepares nothing when the restart is cancelled first", async () => {
