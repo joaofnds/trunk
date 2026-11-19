@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-	CLOSED_PANE,
 	createPaneSizing,
 	fitPanes,
 	type PaneSizing,
+	type PaneWidths,
 } from "./pane-sizing.js";
 
 interface Layout {
@@ -21,7 +21,7 @@ function sidebarAt(width: number, layout: Layout = {}) {
 		Math.min(pane.width, layout.drawnUpTo ?? Number.POSITIVE_INFINITY);
 	const sizing: PaneSizing = createPaneSizing({
 		splitterEdge: "right",
-		min: 80,
+		floor: 80,
 		max: () => Math.min(600, layout.room ?? Number.POSITIVE_INFINITY),
 		width: () => pane.width,
 		drawn,
@@ -175,59 +175,100 @@ describe("createPaneSizing", () => {
 	});
 });
 
+function sidebarOf(width: number, open = true): PaneWidths {
+	return { width, floor: 80, ceiling: 600, open };
+}
+
+function detailPaneOf(width: number, open = true): PaneWidths {
+	return { width, floor: 200, ceiling: 700, open };
+}
+
 describe("fitPanes", () => {
-	it("draws each pane at its width while both fit beside the centre's floor", () => {
-		expect(
-			fitPanes({
-				room: 1280,
-				centreFloor: 400,
-				left: { width: 220, floor: 80 },
-				right: { width: 280, floor: 200 },
-			}),
-		).toEqual({ left: 220, right: 280 });
+	it("draws each pane at its width while both fit beside the center's floor", () => {
+		const fit = fitPanes({
+			rowWidth: 1280,
+			centerFloor: 400,
+			left: sidebarOf(220),
+			right: detailPaneOf(280),
+		});
+
+		expect([fit.left.drawn, fit.right.drawn]).toEqual([220, 280]);
 	});
 
 	it("narrows both panes in proportion to their width above their floors", () => {
-		expect(
-			fitPanes({
-				room: 830,
-				centreFloor: 400,
-				left: { width: 280, floor: 80 },
-				right: { width: 300, floor: 200 },
-			}),
-		).toEqual({ left: 180, right: 250 });
+		const fit = fitPanes({
+			rowWidth: 830,
+			centerFloor: 400,
+			left: sidebarOf(280),
+			right: detailPaneOf(300),
+		});
+
+		expect([fit.left.drawn, fit.right.drawn]).toEqual([180, 250]);
 	});
 
-	it("draws both panes at their floors when even those leave the centre less than its floor", () => {
-		expect(
-			fitPanes({
-				room: 600,
-				centreFloor: 400,
-				left: { width: 220, floor: 80 },
-				right: { width: 280, floor: 200 },
-			}),
-		).toEqual({ left: 80, right: 200 });
+	it("draws both panes at their floors when even those leave the center less than its floor", () => {
+		const fit = fitPanes({
+			rowWidth: 600,
+			centerFloor: 400,
+			left: sidebarOf(220),
+			right: detailPaneOf(280),
+		});
+
+		expect([fit.left.drawn, fit.right.drawn]).toEqual([80, 200]);
 	});
 
 	it("draws a pane narrower than its floor at its floor", () => {
-		expect(
-			fitPanes({
-				room: 1280,
-				centreFloor: 400,
-				left: { width: 60, floor: 80 },
-				right: { width: 280, floor: 200 },
-			}),
-		).toEqual({ left: 80, right: 280 });
+		const fit = fitPanes({
+			rowWidth: 1280,
+			centerFloor: 400,
+			left: sidebarOf(60),
+			right: detailPaneOf(280),
+		});
+
+		expect(fit.left.drawn).toBe(80);
 	});
 
 	it("gives a closed pane's room to the other", () => {
-		expect(
-			fitPanes({
-				room: 900,
-				centreFloor: 400,
-				left: CLOSED_PANE,
-				right: { width: 600, floor: 200 },
-			}),
-		).toEqual({ left: 0, right: 500 });
+		const fit = fitPanes({
+			rowWidth: 900,
+			centerFloor: 400,
+			left: sidebarOf(220, false),
+			right: detailPaneOf(600),
+		});
+
+		expect([fit.left.drawn, fit.right.drawn]).toEqual([0, 500]);
+	});
+
+	it("lets a resize take a pane up to what the other pane and the center's floor leave", () => {
+		const fit = fitPanes({
+			rowWidth: 1000,
+			centerFloor: 400,
+			left: sidebarOf(220),
+			right: detailPaneOf(280),
+		});
+
+		expect([fit.left.max, fit.right.max]).toEqual([320, 380]);
+	});
+
+	it("lets a resize take a pane up to its ceiling in a wide row", () => {
+		const fit = fitPanes({
+			rowWidth: 2400,
+			centerFloor: 400,
+			left: sidebarOf(220),
+			right: detailPaneOf(280),
+		});
+
+		expect([fit.left.max, fit.right.max]).toEqual([600, 700]);
+	});
+
+	it("keeps a pane's max at its floor when the row leaves it less", () => {
+		const fit = fitPanes({
+			rowWidth: 500,
+			centerFloor: 400,
+			left: sidebarOf(220),
+			right: detailPaneOf(280),
+		});
+
+		expect([fit.left.max, fit.right.max]).toEqual([80, 200]);
 	});
 });

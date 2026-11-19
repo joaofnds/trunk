@@ -803,11 +803,17 @@ describe("RepoView", () => {
 				.getAttribute("aria-valuenow");
 		}
 
+		function sliderMax(pane: string) {
+			return screen
+				.getByRole("slider", { name: `Resize ${pane}` })
+				.getAttribute("aria-valuemax");
+		}
+
 		afterEach(() => {
 			vi.unstubAllGlobals();
 		});
 
-		it("narrows both panes so the centre keeps its floor", async () => {
+		it("narrows both panes so the center keeps its floor", async () => {
 			observeRowAt(830);
 
 			renderWithPanes({ leftPaneWidth: 280, rightPaneWidth: 300 });
@@ -862,7 +868,36 @@ describe("RepoView", () => {
 			expect(sliderValue("detail pane")).toBe("700");
 		});
 
-		it("stops a drag of the sidebar where the centre would go under its floor", async () => {
+		it("never offers a divider a maximum below its pane's floor", async () => {
+			observeRowAt(500);
+
+			renderWithPanes({ leftPaneWidth: 220, rightPaneWidth: 280 });
+			await tick();
+
+			expect([sliderMax("sidebar"), sliderMax("detail pane")]).toEqual([
+				"80",
+				"200",
+			]);
+		});
+
+		it("stops a drag of the detail pane where the center would go under its floor", async () => {
+			observeRowAt(1280);
+			const changes = renderWithPanes({
+				leftPaneWidth: 200,
+				rightPaneWidth: 300,
+			});
+			await tick();
+
+			await drag(
+				screen.getByRole("slider", { name: "Resize detail pane" }),
+				1000,
+				0,
+			);
+
+			expect(changes).toEqual(["right collapsed false", "right width 680"]);
+		});
+
+		it("stops a drag of the sidebar where the center would go under its floor", async () => {
 			observeRowAt(1280);
 			const changes = renderWithPanes({
 				leftPaneWidth: 200,

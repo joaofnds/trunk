@@ -2,7 +2,7 @@ export interface PaneSizingOptions {
 	/** Which of the pane's edges its splitter sits on, so which way widens it. */
 	splitterEdge: "left" | "right";
 	/** The narrowest the pane is drawn open: narrower, it collapses. */
-	min: number;
+	floor: number;
 	/** The widest the pane may go, which the room beside it can lower. */
 	max: () => number;
 	/** The width the user gave the pane. */
@@ -18,8 +18,6 @@ export interface PaneSizingOptions {
 }
 
 export interface PaneSizing {
-	/** The width the pane takes up: none while it is collapsed. */
-	size(): number;
 	/** A keyboard step, in the splitter's own direction: positive moves it right. */
 	step(delta: number): void;
 	startResize(e: MouseEvent): void;
@@ -46,14 +44,14 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 
 	/** Reports whether the width collapsed the pane. */
 	function resize(width: number): boolean {
-		if (width < options.min) {
+		if (width < options.floor) {
 			options.oncollapsedchange(true);
 			return true;
 		}
 
 		options.oncollapsedchange(false);
 		options.onwidthchange(
-			Math.max(options.min, Math.min(options.max(), width)),
+			Math.max(options.floor, Math.min(options.max(), width)),
 		);
 		return false;
 	}
@@ -112,7 +110,7 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 
 		if (options.collapsed()) {
 			stepsFrom = null;
-			resize(options.min);
+			resize(options.floor);
 			return;
 		}
 
@@ -125,37 +123,90 @@ export function createPaneSizing(options: PaneSizingOptions): PaneSizing {
 		if (from !== options.width()) options.onwidthchange(from);
 	}
 
-	return { size, step, startResize, adopt };
+	return { step, startResize, adopt };
 }
 
-export interface PaneRoom {
-	width: number;
-	floor: number;
+export interface PaneWidths {
+	/** The width the user gave the pane. */
+	readonly width: number;
+	readonly floor: number;
+	readonly ceiling: number;
+	/** Whether the view draws the pane: not while it is collapsed or the view has none. */
+	readonly open: boolean;
 }
 
-/** A pane that takes no room: collapsed, or not part of the layout. */
-export const CLOSED_PANE: PaneRoom = { width: 0, floor: 0 };
+export interface FittedPane {
+	/** The width the layout draws the pane at: none while it is closed. */
+	readonly drawn: number;
+	/** The widest a resize may take the pane, which leaves the center its floor. */
+	readonly max: number;
+}
 
-// When the panes and the centre's floor do not fit the room, both panes give
+export interface PaneFit {
+	readonly left: FittedPane;
+	readonly right: FittedPane;
+}
+
+export interface PaneLayout {
+	/** The width of the row the panes and the center share. */
+	readonly rowWidth: number;
+	/** The narrowest the center is drawn, the splitters beside it included. */
+	readonly centerFloor: number;
+	readonly left: PaneWidths;
+	readonly right: PaneWidths;
+}
+
+export function fitPanes(layout: PaneLayout): PaneFit {
+	const drawn = drawnWidths(layout);
+
+	return {
+		left: {
+			drawn: drawn.left,
+			max: maxWidth(layout, layout.left, drawn.right),
+		},
+		right: {
+			drawn: drawn.right,
+			max: maxWidth(layout, layout.right, drawn.left),
+		},
+	};
+}
+
+// When the panes and the center's floor do not fit the row, both panes give
 // up the same share of what they hold above their floors, so neither reaches
-// its floor first. Past their floors the centre gives way instead.
-export function fitPanes(layout: {
-	room: number;
-	centreFloor: number;
-	left: PaneRoom;
-	right: PaneRoom;
-}): { left: number; right: number } {
-	const left = Math.max(layout.left.width, layout.left.floor);
-	const right = Math.max(layout.right.width, layout.right.floor);
-	const spare = layout.room - layout.centreFloor - left - right;
+// its floor first. Past their floors the center gives way instead.
+function drawnWidths(layout: PaneLayout): { left: number; right: number } {
+	const leftFloor = heldFloor(layout.left);
+	const rightFloor = heldFloor(layout.right);
+	const left = heldWidth(layout.left);
+	const right = heldWidth(layout.right);
+	const spare = layout.rowWidth - layout.centerFloor - left - right;
 	if (spare >= 0) return { left, right };
 
-	const leftAbove = left - layout.left.floor;
-	const rightAbove = right - layout.right.floor;
+	const leftAbove = left - leftFloor;
+	const rightAbove = right - rightFloor;
 	const kept = Math.max(0, 1 + spare / (leftAbove + rightAbove));
 
 	return {
-		left: Math.floor(layout.left.floor + leftAbove * kept),
-		right: Math.floor(layout.right.floor + rightAbove * kept),
+		left: Math.floor(leftFloor + leftAbove * kept),
+		right: Math.floor(rightFloor + rightAbove * kept),
 	};
+}
+
+function heldWidth(pane: PaneWidths): number {
+	return pane.open ? Math.max(pane.width, pane.floor) : 0;
+}
+
+function heldFloor(pane: PaneWidths): number {
+	return pane.open ? pane.floor : 0;
+}
+
+// An open pane is drawn at least its floor wide, so a maximum under the floor
+// would sit below the value its divider reports.
+function maxWidth(
+	layout: PaneLayout,
+	pane: PaneWidths,
+	otherDrawn: number,
+): number {
+	const room = layout.rowWidth - layout.centerFloor - otherDrawn;
+	return Math.max(pane.floor, Math.min(pane.ceiling, room));
 }

@@ -39,7 +39,6 @@ import {
 	withLoadedDiff,
 } from "../lib/loaded-diffs.js";
 import { createOwnedTimer } from "../lib/owned-timer.js";
-import { CLOSED_PANE, createPaneSizing, fitPanes } from "../lib/pane-sizing.js";
 import { span } from "../lib/perf.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import {
@@ -64,6 +63,7 @@ import { createReviewSession } from "../lib/review-session.svelte.js";
 import { initials, provideReviewer } from "../lib/reviewer.svelte.js";
 import { sameData } from "../lib/same-data.js";
 import { getScheduler } from "../lib/scheduler.js";
+import { createSidePanes } from "../lib/side-panes.svelte.js";
 import {
 	clearCommitDraft,
 	clearReviewUpdateSnapshot,
@@ -737,102 +737,26 @@ let showDiff = $derived(
 // or one of its diffs in the center, and no right pane.
 const reviewMode = $derived(reviewSession.state.reviewActive);
 
-const LEFT_PANE_MIN = 80;
-const LEFT_PANE_MAX = 600;
-const RIGHT_PANE_MIN = 200;
-const RIGHT_PANE_MAX = 700;
-// The width the centre keeps between the side panes, the splitters beside it
-// included: room for the diff toolbar's compact controls beside a file name.
-const CENTRE_FLOOR = 400;
-
-// Unmeasured until the observer first reports, so nothing narrows the panes.
-let rowWidth = $state(Number.POSITIVE_INFINITY);
-
-function observeRowWidth(row: HTMLElement) {
-	const observer = new ResizeObserver((entries) => {
-		for (const entry of entries) rowWidth = entry.contentRect.width;
-	});
-	observer.observe(row);
-	return () => observer.disconnect();
-}
-
-const leftRoom = $derived(
-	leftPaneCollapsed
-		? CLOSED_PANE
-		: { width: leftPaneWidth, floor: LEFT_PANE_MIN },
-);
-const rightRoom = $derived(
-	rightPaneCollapsed
-		? CLOSED_PANE
-		: { width: rightPaneWidth, floor: RIGHT_PANE_MIN },
-);
-const mainFit = $derived(
-	fitPanes({
-		room: rowWidth,
-		centreFloor: CENTRE_FLOOR,
-		left: leftRoom,
-		right: reviewMode ? CLOSED_PANE : rightRoom,
-	}),
-);
-const rebaseFit = $derived(
-	fitPanes({
-		room: rowWidth,
-		centreFloor: CENTRE_FLOOR,
-		left: CLOSED_PANE,
-		right: rightRoom,
-	}),
-);
-const leftPaneMax = $derived(
-	Math.min(LEFT_PANE_MAX, rowWidth - CENTRE_FLOOR - mainFit.right),
-);
-const rightPaneMax = $derived(
-	Math.min(
-		RIGHT_PANE_MAX,
-		rowWidth - CENTRE_FLOOR - (rebaseBase ? 0 : mainFit.left),
-	),
-);
-
-const leftPaneDrawn = $derived(rebaseBase ? leftPaneWidth : mainFit.left);
-const rightPaneDrawn = $derived.by(() => {
-	if (rebaseBase) return rebaseFit.right;
-	return reviewMode ? rightPaneWidth : mainFit.right;
+const sidePanes = createSidePanes({
+	view: () => {
+		if (rebaseBase) return "rebase";
+		return reviewMode ? "review" : "main";
+	},
+	sidebar: {
+		width: () => leftPaneWidth,
+		collapsed: () => leftPaneCollapsed,
+		onwidthchange: (width) => onleftpanewidthchange(width),
+		oncollapsedchange: (collapsed) => onleftpanecollapsedchange(collapsed),
+		store: setLeftPaneWidth,
+	},
+	detailPane: {
+		width: () => rightPaneWidth,
+		collapsed: () => rightPaneCollapsed,
+		onwidthchange: (width) => onrightpanewidthchange(width),
+		oncollapsedchange: (collapsed) => onrightpanecollapsedchange(collapsed),
+		store: setRightPaneWidth,
+	},
 });
-
-function adoptDrawnWidths() {
-	const left = leftPaneDrawn;
-	const right = rightPaneDrawn;
-
-	leftPane.adopt(left);
-	rightPane.adopt(right);
-}
-
-const leftPane = createPaneSizing({
-	splitterEdge: "right",
-	min: LEFT_PANE_MIN,
-	max: () => leftPaneMax,
-	width: () => leftPaneWidth,
-	drawn: () => leftPaneDrawn,
-	collapsed: () => leftPaneCollapsed,
-	beforeresize: adoptDrawnWidths,
-	onwidthchange: (width) => onleftpanewidthchange(width),
-	oncollapsedchange: (collapsed) => onleftpanecollapsedchange(collapsed),
-	store: setLeftPaneWidth,
-});
-const rightPane = createPaneSizing({
-	splitterEdge: "left",
-	min: RIGHT_PANE_MIN,
-	max: () => rightPaneMax,
-	width: () => rightPaneWidth,
-	drawn: () => rightPaneDrawn,
-	collapsed: () => rightPaneCollapsed,
-	beforeresize: adoptDrawnWidths,
-	onwidthchange: (width) => onrightpanewidthchange(width),
-	oncollapsedchange: (collapsed) => onrightpanecollapsedchange(collapsed),
-	store: setRightPaneWidth,
-});
-const leftPaneSize = $derived(mainFit.left);
-const rightPaneSize = $derived(mainFit.right);
-const rebaseRightPaneSize = $derived(rebaseFit.right);
 let reviewListPane = $state<HTMLDivElement | null>(null);
 
 // The review panel claims the center pane until a selection swaps it for the diff.
@@ -2629,7 +2553,10 @@ async function handleRebaseStart(
 	{@attach inertWhile(!tabActive)}
 >
 	<PushRecoveryPrompt {repoPath} {remoteState} {refreshSignal} />
-	<main class="flex-1 overflow-hidden flex relative" {@attach observeRowWidth}>
+	<main
+		class="flex-1 overflow-hidden flex relative"
+		{@attach sidePanes.observeRow}
+	>
 		<!-- The graph and the panes stay mounted under the rebase editor, so leaving it
 		     returns to the rows, scroll position and selection the user left. -->
 		<div
@@ -2641,7 +2568,7 @@ async function handleRebaseStart(
 			     mounted under it, since the graph's first page waits on its read. -->
 			<div
 				class="shrink-0 overflow-hidden grid"
-				style:width="{leftPaneSize}px"
+				style:width="{sidePanes.sidebar.width}px"
 				hidden={reviewMode}
 				{@attach inertWhile(leftPaneCollapsed)}
 			>
@@ -2667,7 +2594,7 @@ async function handleRebaseStart(
 			{#if reviewMode && !leftPaneCollapsed}
 				<div
 					class="shrink-0 overflow-hidden flex flex-col"
-					style:width="{leftPaneSize}px"
+					style:width="{sidePanes.sidebar.width}px"
 					bind:this={reviewListPane}
 				>
 					<LazyView load={() => import("./ReviewList.svelte")} label="reviews">
@@ -2680,11 +2607,11 @@ async function handleRebaseStart(
 			<Splitter
 				variant="pane"
 				aria-label="Resize sidebar"
-				value={leftPaneSize}
+				value={sidePanes.sidebar.width}
 				min={0}
-				max={leftPaneMax}
-				onstep={leftPane.step}
-				onmousedown={leftPane.startResize}
+				max={sidePanes.sidebar.max}
+				onstep={sidePanes.sidebar.step}
+				onmousedown={sidePanes.sidebar.startResize}
 			/>
 			<div class="flex-1 overflow-hidden relative">
 				{#if reviewMode}
@@ -2902,16 +2829,16 @@ async function handleRebaseStart(
 			<Splitter
 				variant="pane"
 				aria-label="Resize detail pane"
-				value={rightPaneSize}
+				value={sidePanes.detailPane.width}
 				min={0}
-				max={rightPaneMax}
+				max={sidePanes.detailPane.max}
 				hidden={reviewMode}
-				onstep={rightPane.step}
-				onmousedown={rightPane.startResize}
+				onstep={sidePanes.detailPane.step}
+				onmousedown={sidePanes.detailPane.startResize}
 			/>
 			<div
 				class="shrink-0 overflow-hidden flex flex-col"
-				style:width="{rightPaneSize}px"
+				style:width="{sidePanes.detailPane.width}px"
 				hidden={reviewMode}
 				{@attach inertWhile(rightPaneCollapsed)}
 			>
@@ -3078,15 +3005,15 @@ async function handleRebaseStart(
 				<Splitter
 					variant="pane"
 					aria-label="Resize detail pane"
-					value={rebaseRightPaneSize}
+					value={sidePanes.rebaseDetailPane.width}
 					min={0}
-					max={rightPaneMax}
-					onstep={rightPane.step}
-					onmousedown={rightPane.startResize}
+					max={sidePanes.rebaseDetailPane.max}
+					onstep={sidePanes.rebaseDetailPane.step}
+					onmousedown={sidePanes.rebaseDetailPane.startResize}
 				/>
 				<div
 					class="shrink-0 overflow-hidden flex flex-col"
-					style:width="{rebaseRightPaneSize}px"
+					style:width="{sidePanes.rebaseDetailPane.width}px"
 					{@attach inertWhile(rightPaneCollapsed)}
 				>
 					{#if rebaseFocusedCommitDetail}

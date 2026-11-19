@@ -90,6 +90,14 @@ exceed it they yield toward their floors, rightmost first, so a layout the app c
 the list whenever the list is at least the floors' sum. A user width sits outside the
 budget, which is how a dragged column can push the row past the list and into a scroll.
 
+**Center floor**: the narrowest the center pane is drawn between the sidebar and the
+detail pane, their dividers included, sized so the diff toolbar's compact controls fit
+beside a file name. Each side pane has a floor of its own, under which it collapses. When
+the window is too narrow for the side panes at the widths the user set, both give up the
+same share of their width above their floors, and the widths the user set come back as
+the window widens. Only once both stand at their floors does the center go under its own
+(TRUNK-473).
+
 **Graph snapshot**: what the commit cache holds for one repository: captured history, its ref visibility and the lane placements for a clean or dirty working tree. When history or visibility changes, the cache lays out the placement for the worktree state it observed before it shows the graph, and lays out the other one in the background. It then builds only the rows a page requests. An ordinary save can select the right placement without walking history again. A visibility toggle uses the cached capture without opening the repository, and visibility travels with its placements, so the cache cannot serve a graph built under a different hidden set (TRUNK-129, TRUNK-120, TRUNK-96).
 
 **Page** — one fixed-size slice of the laid-out graph the frontend fetches at a time,
