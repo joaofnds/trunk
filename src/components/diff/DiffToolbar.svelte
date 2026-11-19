@@ -128,26 +128,50 @@ const renderedActive = $derived(
 		selectedPath !== null &&
 		isMarkdownPath(selectedPath),
 );
+
+// Unmeasured until the observer first reports, so the actions keep their words.
+let toolbarWidth = $state(Number.POSITIVE_INFINITY);
+
+function observeToolbarWidth(toolbar: HTMLElement) {
+	const observer = new ResizeObserver((entries) => {
+		for (const entry of entries) toolbarWidth = entry.contentRect.width;
+	});
+	observer.observe(toolbar);
+	return () => observer.disconnect();
+}
+
+// Each is the width the toolbar's worded actions take, the markdown toggle
+// among them, plus about 96px of file name, so the words go a little early
+// rather than leave the name no room. The kinds with more of them need more.
+function widthForWords(kind: PanelDiffKind, hasWayBack: boolean): number {
+	if (kind === "unstaged") return hasWayBack ? 632 : 560;
+	if (kind === "staged") return hasWayBack ? 560 : 488;
+	return hasWayBack ? 488 : 400;
+}
+
+// Where the pane is too narrow for the worded actions beside a readable file
+// name, each is drawn as its glyph and keeps its words as its name.
+const compact = $derived(
+	toolbarWidth < widthForWords(diffKind, backLabel !== null),
+);
 </script>
 
-<!-- Where the pane is too narrow for the worded actions beside a readable file
-     name, they drop their words for their glyphs (the container rules below). -->
-<div
-	class="toolbar"
-	class:unstaged={diffKind === "unstaged"}
-	class:staged={diffKind === "staged"}
-	class:has-back={backLabel !== null}
->
+<div class="toolbar" {@attach observeToolbarWidth}>
 	{#if backLabel !== null}
 		<Button
+			icon={compact}
 			size="sm"
 			variant="ghost"
 			aria-label={backLabel}
 			title={backLabel}
 			onclick={onclose}
 		>
-			<ChevronLeft size={12} aria-hidden="true" />
-			<span class="word">{backLabel}</span>
+			{#if compact}
+				<ChevronLeft size={14} aria-hidden="true" />
+			{:else}
+				<ChevronLeft size={12} aria-hidden="true" />
+				{backLabel}
+			{/if}
 		</Button>
 	{/if}
 	{#if badge !== null}
@@ -186,15 +210,18 @@ const renderedActive = $derived(
        arrival moves no other control. -->
 	{#if takesComments && diffKind !== "current_file"}
 		<Button
+			icon={compact}
 			size="sm"
 			variant="accent"
 			aria-label="Comment File"
 			title="Comment File"
 			onclick={oncommentfile}
 		>
-			<span class="glyph"
-				><MessageSquarePlus size={12} aria-hidden="true" /></span
-			><span class="word">Comment File</span>
+			{#if compact}
+				<MessageSquarePlus size={14} aria-hidden="true" />
+			{:else}
+				Comment File
+			{/if}
 		</Button>
 	{/if}
 
@@ -293,6 +320,7 @@ const renderedActive = $derived(
 
 	{#if diffKind === "unstaged"}
 		<Button
+			icon={compact}
 			size="sm"
 			variant="danger"
 			disabled={hunkOperationInFlight}
@@ -300,10 +328,14 @@ const renderedActive = $derived(
 			title="Discard File"
 			onclick={ondiscardfile}
 		>
-			<span class="glyph"><Trash2 size={12} aria-hidden="true" /></span
-			><span class="word">Discard File</span>
+			{#if compact}
+				<Trash2 size={14} aria-hidden="true" />
+			{:else}
+				Discard File
+			{/if}
 		</Button>
 		<Button
+			icon={compact}
 			size="sm"
 			variant="success"
 			disabled={hunkOperationInFlight || ignoreWhitespace}
@@ -313,11 +345,15 @@ const renderedActive = $derived(
 			aria-label="Stage File"
 			onclick={onstagefile}
 		>
-			<span class="glyph"><Plus size={12} aria-hidden="true" /></span
-			><span class="word">Stage File</span>
+			{#if compact}
+				<Plus size={14} aria-hidden="true" />
+			{:else}
+				Stage File
+			{/if}
 		</Button>
 	{:else if diffKind === "staged"}
 		<Button
+			icon={compact}
 			size="sm"
 			variant="warning"
 			disabled={hunkOperationInFlight || ignoreWhitespace}
@@ -327,8 +363,11 @@ const renderedActive = $derived(
 			aria-label="Unstage File"
 			onclick={onunstagefile}
 		>
-			<span class="glyph"><Minus size={12} aria-hidden="true" /></span
-			><span class="word">Unstage File</span>
+			{#if compact}
+				<Minus size={14} aria-hidden="true" />
+			{:else}
+				Unstage File
+			{/if}
 		</Button>
 	{/if}
 
@@ -351,7 +390,6 @@ const renderedActive = $derived(
 }
 
 .toolbar {
-	container: diff-toolbar / inline-size;
 	height: var(--bar-h);
 	box-shadow: inset 0 -1px 0 var(--color-border);
 	padding: 0 var(--space-2);
@@ -359,54 +397,6 @@ const renderedActive = $derived(
 	align-items: center;
 	flex-shrink: 0;
 	gap: var(--space-1);
-}
-
-.glyph {
-	display: none;
-}
-
-/* Each width is what the toolbar's worded controls take, with the markdown
-   toggle among them, plus about six ems of file name, in the toolbar's own
-   text size, so the words go a little early rather than leave the name no
-   room. The kinds with more worded actions need more. */
-@container diff-toolbar (width < 39.5em) {
-	.unstaged.has-back .word {
-		display: none;
-	}
-
-	.unstaged.has-back .glyph {
-		display: inline-flex;
-	}
-}
-
-@container diff-toolbar (width < 35em) {
-	:is(.unstaged, .staged.has-back) .word {
-		display: none;
-	}
-
-	:is(.unstaged, .staged.has-back) .glyph {
-		display: inline-flex;
-	}
-}
-
-@container diff-toolbar (width < 30.5em) {
-	:is(.staged, .has-back) .word {
-		display: none;
-	}
-
-	:is(.staged, .has-back) .glyph {
-		display: inline-flex;
-	}
-}
-
-@container diff-toolbar (width < 25em) {
-	.word {
-		display: none;
-	}
-
-	.glyph {
-		display: inline-flex;
-	}
 }
 
 /* Clipped, so the parts of a rename that cannot shrink (the old path's floor and

@@ -1,5 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
-import { afterEach, describe, expect, it } from "vitest";
+import { type ComponentProps, tick } from "svelte";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { reportWidthOf } from "../../__tests__/helpers/fake-resize-observer.js";
 import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
 import DiffToolbar from "./DiffToolbar.svelte";
 
@@ -231,24 +233,83 @@ describe("DiffToolbar toggles", () => {
 });
 
 describe("DiffToolbar in a narrow pane", () => {
-	it.each([
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	async function renderAt(
+		width: number,
+		props: Partial<ComponentProps<typeof DiffToolbar>>,
+	) {
+		const toolbar = reportWidthOf(
+			(target) => target.classList.contains("toolbar"),
+			width,
+		);
+		render(DiffToolbar, {
+			props: { ...baseProps, selectedPath: "src/main.rs", ...props },
+		});
+		await tick();
+		return toolbar;
+	}
+
+	const WORDED = [
 		{ name: "Comment File", diffKind: "commit" },
 		{ name: "Discard File", diffKind: "unstaged" },
 		{ name: "Stage File", diffKind: "unstaged" },
 		{ name: "Unstage File", diffKind: "staged" },
-	] as const)(
-		"draws a glyph in $name, which stands for its words where they do not fit",
-		({ name, diffKind }) => {
-			render(DiffToolbar, {
-				props: { ...baseProps, selectedPath: "src/main.rs", diffKind },
-			});
+	] as const;
+
+	it.each(WORDED)(
+		"draws $name as its glyph where its words do not fit",
+		async ({ name, diffKind }) => {
+			await renderAt(300, { diffKind });
 
 			const action = screen.getByRole("button", { name });
 
+			expect(action).not.toHaveTextContent(name);
 			expect(action.querySelector("svg")).not.toBeNull();
-			expect(action).toHaveAttribute("title", name);
 		},
 	);
+
+	it.each(WORDED)(
+		"spells out $name where its words fit",
+		async ({ name, diffKind }) => {
+			await renderAt(1000, { diffKind });
+
+			expect(screen.getByRole("button", { name })).toHaveTextContent(name);
+		},
+	);
+
+	it("spells out its actions again once the pane widens", async () => {
+		const toolbar = await renderAt(300, { diffKind: "staged" });
+
+		toolbar.resize(1000);
+		await tick();
+
+		expect(
+			screen.getByRole("button", { name: "Unstage File" }),
+		).toHaveTextContent("Unstage File");
+	});
+
+	it("drops the words of an unstaged file's actions sooner than a staged file's, since they need more room", async () => {
+		await renderAt(520, { diffKind: "unstaged" });
+		await renderAt(520, { diffKind: "staged" });
+
+		expect(
+			screen.getByRole("button", { name: "Stage File" }),
+		).not.toHaveTextContent("Stage File");
+		expect(
+			screen.getByRole("button", { name: "Unstage File" }),
+		).toHaveTextContent("Unstage File");
+	});
+
+	it("draws the way back as its chevron where its label does not fit", async () => {
+		await renderAt(300, { backLabel: "Review" });
+
+		expect(
+			screen.getByRole("button", { name: "Review" }),
+		).not.toHaveTextContent("Review");
+	});
 });
 
 describe("DiffToolbar way back", () => {
