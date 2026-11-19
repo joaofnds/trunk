@@ -442,7 +442,7 @@ fn reopening_after_preparation_invalidates_graphs_and_refreshes_reviews() {
     // The open leaves the other worktree state's layout running, and preparation
     // waits for it.
     let token = activity.begin_drain().unwrap();
-    activity.wait_for_preparation(&token).unwrap();
+    invoke(&webview, "updates_drained", json!({ "token": token })).unwrap();
     let cache = app.state::<CommitCache>();
     assert!(
         trunk_lib::watcher::RepoChanged::completed(ctx.path(), &cache)

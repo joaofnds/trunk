@@ -1,4 +1,4 @@
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 use serde::Serialize;
 use tauri::{
@@ -43,9 +43,16 @@ struct Admission {
     phase: Phase,
     active: usize,
     generation: u64,
+    #[cfg(any(test, feature = "test-util"))]
+    parked: usize,
 }
 
 impl Admission {
+    fn next_token(&mut self) -> String {
+        self.generation += 1;
+        format!("prepare-{}", self.generation)
+    }
+
     fn settle_drain(&mut self) {
         if self.active != 0 {
             return;
@@ -127,8 +134,7 @@ impl ActivityState {
         if state.active != 0 || !matches!(state.phase, Phase::Open) {
             return Err(ActivityError::busy());
         }
-        state.generation += 1;
-        let token = format!("prepare-{}", state.generation);
+        let token = state.next_token();
         state.phase = Phase::Preparing(token.clone());
         drop(state);
 
@@ -146,8 +152,7 @@ impl ActivityState {
         if !matches!(state.phase, Phase::Open) {
             return Err(ActivityError::busy());
         }
-        state.generation += 1;
-        let token = format!("prepare-{}", state.generation);
+        let token = state.next_token();
         state.phase = Phase::Draining(token.clone());
         state.settle_drain();
         drop(state);
@@ -161,15 +166,15 @@ impl ActivityState {
     /// # Panics
     /// Panics if the admission mutex is poisoned.
     pub fn wait_for_preparation(&self, token: &str) -> Result<(), ActivityError> {
-        let state = self.0.admission.lock().unwrap();
-        let state = self
-            .0
-            .changed
-            .wait_while(
-                state,
-                |state| matches!(&state.phase, Phase::Draining(current) if current == token),
-            )
-            .unwrap();
+        let state = Self::unparked(
+            self.0
+                .changed
+                .wait_while(
+                    self.parked_lock(),
+                    |state| matches!(&state.phase, Phase::Draining(current) if current == token),
+                )
+                .unwrap(),
+        );
         let prepared = matches!(&state.phase, Phase::Preparing(current) if current == token);
         drop(state);
         if !prepared {
@@ -221,6 +226,46 @@ impl ActivityState {
         drop(state);
 
         Ok(())
+    }
+
+    #[cfg(any(test, feature = "test-util"))]
+    fn parked_lock(&self) -> MutexGuard<'_, Admission> {
+        let mut state = self.0.admission.lock().unwrap();
+        state.parked += 1;
+        self.0.changed.notify_all();
+        state
+    }
+
+    #[cfg(not(any(test, feature = "test-util")))]
+    fn parked_lock(&self) -> MutexGuard<'_, Admission> {
+        self.0.admission.lock().unwrap()
+    }
+
+    #[cfg(any(test, feature = "test-util"))]
+    fn unparked(mut state: MutexGuard<'_, Admission>) -> MutexGuard<'_, Admission> {
+        state.parked -= 1;
+        state
+    }
+
+    #[cfg(not(any(test, feature = "test-util")))]
+    const fn unparked(state: MutexGuard<'_, Admission>) -> MutexGuard<'_, Admission> {
+        state
+    }
+
+    /// Block until a caller of `wait_for_preparation` is parked on the gate, so a
+    /// test can end the drain knowing the wake, not the first check, is what
+    /// the waiter observes.
+    /// # Panics
+    /// Panics if the admission mutex is poisoned.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn wait_until_parked(&self) {
+        let state = self.0.admission.lock().unwrap();
+        drop(
+            self.0
+                .changed
+                .wait_while(state, |state| state.parked == 0)
+                .unwrap(),
+        );
     }
 
     /// Reopen after the installer proves the original executable remains intact.
@@ -365,6 +410,59 @@ mod tests {
     }
 
     #[test]
+    fn a_drain_completes_while_new_work_keeps_asking_for_admission() {
+        let state = ActivityState::default();
+        let work = state.acquire().unwrap();
+        let carried = work.clone();
+        let token = state.begin_drain().unwrap();
+        let waiter = {
+            let state = state.clone();
+            let token = token.clone();
+            std::thread::spawn(move || state.wait_for_preparation(&token))
+        };
+        state.wait_until_parked();
+
+        assert!(state.acquire().is_err());
+        drop(work);
+        assert!(state.acquire().is_err());
+        drop(carried);
+        assert!(state.acquire().is_err());
+
+        assert_eq!(waiter.join().unwrap(), Ok(()));
+        assert!(state.acquire_command("prefs_set", Some(&token)).is_ok());
+    }
+
+    #[test]
+    fn a_drain_waits_for_blocking_work_whose_caller_was_dropped() {
+        let state = ActivityState::default();
+        let work = state.acquire().unwrap();
+        let (started, running) = std::sync::mpsc::channel();
+        let (release, finish) = std::sync::mpsc::channel();
+        let task = work.spawn_blocking(move || {
+            started.send(()).unwrap();
+            finish.recv().unwrap();
+        });
+        running.recv().unwrap();
+        task.abort();
+        drop(work);
+        let token = state.begin_drain().unwrap();
+
+        assert!(state.acquire_command("prefs_set", Some(&token)).is_err());
+        release.send(()).unwrap();
+        tauri::async_runtime::block_on(task).unwrap();
+        assert_eq!(state.wait_for_preparation(&token), Ok(()));
+    }
+
+    #[test]
+    fn an_accepted_exit_refuses_a_later_drain() {
+        let state = ActivityState::default();
+
+        assert!(state.begin_exit());
+
+        assert_eq!(state.begin_drain(), Err(ActivityError::busy()));
+    }
+
+    #[test]
     fn cancelling_a_drain_reopens_admission_while_earlier_work_runs() {
         let state = ActivityState::default();
         let _work = state.acquire().unwrap();
@@ -389,7 +487,11 @@ mod tests {
         let state = ActivityState::default();
         let work = state.acquire().unwrap();
         let token = state.begin_drain().unwrap();
-        let waiter = std::thread::spawn(move || state.wait_for_preparation(&token));
+        let waiter = {
+            let state = state.clone();
+            std::thread::spawn(move || state.wait_for_preparation(&token))
+        };
+        state.wait_until_parked();
 
         drop(work);
 
@@ -406,6 +508,7 @@ mod tests {
             let token = token.clone();
             std::thread::spawn(move || state.wait_for_preparation(&token))
         };
+        state.wait_until_parked();
 
         state.cancel_prepare(&token).unwrap();
 
@@ -421,6 +524,7 @@ mod tests {
             let state = state.clone();
             std::thread::spawn(move || state.wait_for_preparation(&token))
         };
+        state.wait_until_parked();
 
         assert!(state.begin_exit());
 

@@ -195,10 +195,25 @@ fn preparation_waits_for_work_admitted_before_it() {
     let work = activity.acquire().unwrap();
 
     let token = prepare(app.handle(), "2.0.0").unwrap();
+    let waiter = {
+        let handle = app.handle().clone();
+        std::thread::spawn(move || drained(&handle, &token))
+    };
+    activity.wait_until_parked();
 
     assert!(activity.acquire().is_err());
     drop(work);
+    assert_eq!(waiter.join().unwrap(), Ok(()));
+}
+
+#[test]
+fn preparation_with_nothing_running_begins_at_once() {
+    let app = prepared_app();
+
+    let token = prepare(app.handle(), "2.0.0").unwrap();
+
     assert_eq!(drained(app.handle(), &token), Ok(()));
+    assert!(!allow_exit(app.handle()));
 }
 
 #[test]

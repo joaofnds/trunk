@@ -26,7 +26,7 @@ pub fn prepare<R: Runtime>(app: &AppHandle<R>, version: &str) -> Result<String, 
 
 /// Wait until the work admitted before preparation began has settled.
 /// # Errors
-/// Returns why preparation ended first: it was aborted or Trunk began to exit.
+/// Returns an error once preparation was aborted or Trunk began to exit.
 pub fn drained<R: Runtime>(app: &AppHandle<R>, token: &str) -> Result<(), String> {
     app.state::<ActivityState>()
         .wait_for_preparation(token)
