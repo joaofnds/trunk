@@ -122,6 +122,10 @@ page you had scrolled through was thrown away.
 fn build(out: &Path) {
     let dest = out.join("deep-history");
     let mut repo = Repo::init(&dest, "main", QA);
+    repo.in_one_pack(history);
+}
+
+fn history(repo: &mut Repo) {
     let mut stamp = STAMP_SECS;
 
     // Both branches are built while the history above them does not exist yet, so a
@@ -151,18 +155,13 @@ fn build(out: &Path) {
         // wider than every other, which is what makes the author column's width
         // observable once the user has paged down to this row.
         if i == ANCIENT_ROOT {
-            spur(
-                &mut repo,
-                "ancient",
-                "ancient.txt",
-                WIDE.at(stamp + HALF_HOUR),
-            );
+            spur(repo, "ancient", "ancient.txt", WIDE.at(stamp + HALF_HOUR));
         }
 
         // A branch whose tip renders inside the first page, so hiding it rebuilds the
         // graph without removing anything the user had to scroll for.
         if i == RECENT_ROOT {
-            spur(&mut repo, "recent", "recent.txt", QA.at(stamp + HALF_HOUR));
+            spur(repo, "recent", "recent.txt", QA.at(stamp + HALF_HOUR));
         }
     }
 

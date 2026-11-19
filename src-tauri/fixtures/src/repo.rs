@@ -3,10 +3,15 @@
 //! panics on a git error: a fixture that cannot be built is a broken fixture, not a
 //! condition to handle.
 
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use git2::build::CheckoutBuilder;
-use git2::{Commit, Oid, Repository, RepositoryInitOptions, Time};
+use git2::{Buf, Commit, Odb, Oid, Repository, RepositoryInitOptions, Time};
+
+/// libgit2 gives its loose and pack backends priorities 1 and 2, and reads the highest
+/// first.
+const AHEAD_OF_THE_DISK_BACKENDS: i32 = 3;
 
 /// Who authors and commits: fixed per case so the author column is the same on every
 /// machine.
@@ -96,6 +101,33 @@ impl Repo {
 
     pub fn path(&self) -> &Path {
         &self.workdir
+    }
+
+    /// Runs `build` with every object it writes held in memory, then stores them as one
+    /// pack. Writing a tree reads the header of every object the index names, so n
+    /// commits over a growing set of loose objects open on the order of n² files, and a
+    /// busy disk turns that into minutes.
+    pub fn in_one_pack(&mut self, build: impl FnOnce(&mut Self)) {
+        let objects = self.repo.path().join("objects");
+        let odb = Odb::new().expect("create an object database");
+        let pending = odb
+            .add_new_mempack_backend(AHEAD_OF_THE_DISK_BACKENDS)
+            .expect("hold new objects in memory");
+        odb.add_disk_alternate(objects.to_str().expect("a fixture path is utf-8"))
+            .expect("read the objects already on disk");
+        self.repo.set_odb(&odb).expect("send new objects to memory");
+
+        build(self);
+
+        let mut pack = Buf::new();
+        pending
+            .dump(&self.repo, &mut pack)
+            .expect("pack the objects held in memory");
+        self.repo = Repository::open(&self.workdir).expect("reopen on the disk's objects");
+        let disk = self.repo.odb().expect("open the object database");
+        let mut writer = disk.packwriter().expect("start writing a pack");
+        writer.write_all(&pack).expect("write the pack");
+        writer.commit().expect("index the pack");
     }
 
     /// `git config <key> <value>` in the repository's own config.
