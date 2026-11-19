@@ -1,9 +1,16 @@
+use std::io::Read;
 use std::sync::OnceLock;
+use std::sync::mpsc::{Receiver, channel};
+use std::time::Duration;
 
 static SHELL_PATH: OnceLock<String> = OnceLock::new();
 
 const PATH_BEGIN: &str = "__TRUNK_PATH_BEGIN__";
 const PATH_END: &str = "__TRUNK_PATH_END__";
+
+/// How long the user's shell may take to start before git runs with the system
+/// PATH instead. The slowest start measured on a developer laptop is 0.56 s.
+const LOGIN_SHELL_DEADLINE: Duration = Duration::from_secs(10);
 
 /// PATH that matches what the user gets in their terminal.
 ///
@@ -34,7 +41,11 @@ pub fn resolve_in_background() {
 }
 
 fn resolve() -> String {
-    if let Some(path) = from_login_shell() {
+    if let Some(path) = std::env::var("SHELL")
+        .ok()
+        .filter(|shell| !shell.is_empty())
+        .and_then(|shell| from_login_shell(&shell))
+    {
         return path;
     }
     #[cfg(target_os = "macos")]
@@ -50,20 +61,49 @@ fn resolve() -> String {
 /// then runs the print command and exits — `-c` means it never enters a REPL,
 /// so it can't hang on input. Markers bracket the value so any banner the rc
 /// files write to stdout is discarded; stderr (job-control chatter under `-i`)
-/// is dropped.
-fn from_login_shell() -> Option<String> {
-    let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty())?;
+/// is dropped. Startup files that never finish are given
+/// [`LOGIN_SHELL_DEADLINE`].
+fn from_login_shell(shell: &str) -> Option<String> {
+    ask_login_shell(shell, |printed| {
+        printed.recv_timeout(LOGIN_SHELL_DEADLINE).ok()
+    })
+}
+
+/// Run `shell` for its `$PATH`, with `wait` returning what it printed or `None`
+/// once it is out of time. A shell out of time is stopped.
+///
+/// The shell stays in the caller's process group, so a fetch worker that is
+/// cancelled while it waits here stops the shell along with itself.
+fn ask_login_shell(
+    shell: &str,
+    wait: impl FnOnce(&Receiver<std::io::Result<Vec<u8>>>) -> Option<std::io::Result<Vec<u8>>>,
+) -> Option<String> {
     let script = format!("printf '%s%s%s' '{PATH_BEGIN}' \"$PATH\" '{PATH_END}'");
-    let output = std::process::Command::new(&shell)
+    let mut command = std::process::Command::new(shell);
+    command
         .args(["-l", "-i", "-c", &script])
         .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
-    if !output.status.success() {
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+    let mut child = command.spawn().ok()?;
+
+    let mut stdout = child.stdout.take().expect("the shell's stdout is piped");
+    let (sender, printed) = channel();
+    std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        drop(sender.send(stdout.read_to_end(&mut bytes).map(|_| bytes)));
+    });
+
+    let Some(Ok(bytes)) = wait(&printed) else {
+        drop(child.kill());
+        drop(child.wait());
+        eprintln!("{shell} gave no PATH; git runs with the system PATH");
+        return None;
+    };
+    if !child.wait().ok()?.success() {
         return None;
     }
-    parse_marked_path(&String::from_utf8_lossy(&output.stdout))
+    parse_marked_path(&String::from_utf8_lossy(&bytes))
 }
 
 /// Extract the PATH the shell printed between our markers. Returns `None` when a
@@ -103,6 +143,63 @@ fn parse_path_helper_output(stdout: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A login shell made of `body`, in a directory the test owns.
+    #[cfg(unix)]
+    fn shell(body: &str) -> (tempfile::TempDir, String) {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("shell.sh");
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o700))
+            .unwrap();
+        let path = path.to_str().unwrap().to_owned();
+
+        (directory, path)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_login_shell_gives_the_path_it_prints() {
+        let (_directory, shell) = shell(&format!(
+            "printf '{PATH_BEGIN}/opt/user/bin:/usr/bin{PATH_END}'"
+        ));
+
+        let path = from_login_shell(&shell);
+
+        assert_eq!(path.as_deref(), Some("/opt/user/bin:/usr/bin"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_login_shell_out_of_time_gives_no_path() {
+        let (_directory, shell) = shell("exec sleep 86400");
+
+        assert_eq!(ask_login_shell(&shell, |_| None), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_login_shell_out_of_time_is_stopped() {
+        let (_directory, shell) = shell("exec 3>\"$0.alive\"\necho started >&3\nexec sleep 86400");
+        let alive = format!("{shell}.alive");
+        let fifo = std::ffi::CString::new(alive.as_str()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+        let opening = std::thread::spawn(move || std::fs::File::open(alive).unwrap());
+        let mut held = None;
+
+        ask_login_shell(&shell, |_| {
+            let mut alive = std::io::BufReader::new(opening.join().unwrap());
+            std::io::BufRead::read_line(&mut alive, &mut String::new()).unwrap();
+            held = Some(alive);
+            None
+        });
+
+        // Only the shell holds the fifo open, so it reads to its end only once
+        // the shell has exited.
+        let mut rest = Vec::new();
+        std::io::Read::read_to_end(&mut held.unwrap(), &mut rest).unwrap();
+        assert_eq!(rest, b"");
+    }
 
     #[test]
     fn extracts_path_between_markers() {
