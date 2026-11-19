@@ -324,8 +324,7 @@ describe("App update controls", () => {
 		expect(screen.queryByRole("alert")).toBeNull();
 	});
 	describe("when work is running at the click", () => {
-		async function restartDuringARefresh() {
-			startup();
+		function seedReady() {
 			const ready: UpdateStatus = {
 				...manual,
 				phase: "ready",
@@ -336,6 +335,21 @@ describe("App update controls", () => {
 			app.host.seedResponse("updates_status", ready);
 			app.host.seedResponse("updates_ready", ready);
 			app.host.seedResponse("updates_prepare", "prepared-version-2");
+		}
+
+		async function confirmRestart() {
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Restart to update to 2.0.0" }),
+			);
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Restart and install 2.0.0" }),
+			);
+			await app.settle();
+		}
+
+		async function restartDuringARefresh() {
+			startup();
+			seedReady();
 			const install = app.host.holdNextReply("updates_install");
 			app.start();
 			await screen.findByText("restored history");
@@ -344,13 +358,7 @@ describe("App update controls", () => {
 			await app.host.emitRepoChanged({ repo: "/active", paths: ["file.txt"] });
 			app.clock.advanceBy(REPO_CHANGE_DELAY_MS);
 			await refresh.entered;
-			await fireEvent.click(
-				screen.getByRole("button", { name: "Restart to update to 2.0.0" }),
-			);
-			await fireEvent.click(
-				screen.getByRole("button", { name: "Restart and install 2.0.0" }),
-			);
-			await app.settle();
+			await confirmRestart();
 			return { install, refresh };
 		}
 
@@ -367,6 +375,38 @@ describe("App update controls", () => {
 			install.release(undefined);
 			await app.settle();
 
+			expect(app.host.count("updates_prepare")).toBe(1);
+			expect(screen.queryByRole("alert")).toBeNull();
+		});
+
+		it("finishes opening a repository picked before the click", async () => {
+			startup();
+			seedReady();
+			app.host.preferences.set("recent_repos", [
+				{ path: "/other", name: "other" },
+			]);
+			app.host.seedResponse("validate_recent_path", true);
+			const install = app.host.holdNextReply("updates_install");
+			app.start();
+			await screen.findByText("restored history");
+			await app.settle();
+			const opening = app.host.holdNextReply("open_repo");
+			await app.pickRecent("other");
+			await opening.entered;
+			await confirmRestart();
+
+			opening.release(null);
+			await install.entered;
+			install.release(undefined);
+			await app.settle();
+
+			expect(screen.getByRole("tab", { name: "other" })).toHaveAttribute(
+				"aria-selected",
+				"true",
+			);
+			expect(app.host.preferences.get("recent_repos")).toEqual([
+				expect.objectContaining({ path: "/other" }),
+			]);
 			expect(app.host.count("updates_prepare")).toBe(1);
 			expect(screen.queryByRole("alert")).toBeNull();
 		});

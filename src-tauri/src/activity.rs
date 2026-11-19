@@ -223,21 +223,6 @@ impl ActivityState {
         Ok(())
     }
 
-    /// Block until no lease is held, so a test can begin preparation once the
-    /// background work an earlier command left running has settled.
-    /// # Panics
-    /// Panics if the admission mutex is poisoned.
-    #[cfg(feature = "test-util")]
-    pub fn wait_until_settled(&self) {
-        let state = self.0.admission.lock().unwrap();
-        drop(
-            self.0
-                .changed
-                .wait_while(state, |state| state.active != 0)
-                .unwrap(),
-        );
-    }
-
     /// Reopen after the installer proves the original executable remains intact.
     /// # Errors
     /// Returns invalid unless this token owns the installing phase.

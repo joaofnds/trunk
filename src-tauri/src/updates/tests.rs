@@ -202,6 +202,17 @@ fn preparation_waits_for_work_admitted_before_it() {
 }
 
 #[test]
+fn quitting_while_preparation_waits_on_earlier_work_exits() {
+    let app = prepared_app();
+    let activity = app.state::<crate::activity::ActivityState>();
+    let _work = activity.acquire().unwrap();
+    let token = prepare(app.handle(), "2.0.0").unwrap();
+
+    assert!(allow_exit(app.handle()));
+    assert!(drained(app.handle(), &token).is_err());
+}
+
+#[test]
 fn preparation_checks_the_exact_downloaded_version() {
     let app = prepared_app();
     let activity = app.state::<crate::activity::ActivityState>();
