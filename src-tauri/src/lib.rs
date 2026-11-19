@@ -133,6 +133,8 @@ pub fn run() {
 ///
 /// Panics when the Tauri runtime cannot start.
 fn run_gui() {
+    shell_env::resolve_in_background();
+
     let builder = configure(
         gui_builder(),
         WatcherState::default(),

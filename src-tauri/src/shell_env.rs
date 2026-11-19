@@ -23,6 +23,16 @@ pub fn system_path() -> &'static str {
     SHELL_PATH.get_or_init(resolve)
 }
 
+/// Resolve [`system_path`] on a thread of its own, so the user's first commit,
+/// merge or push does not wait for their shell's startup files.
+pub fn resolve_in_background() {
+    let resolving = std::thread::Builder::new()
+        .name("shell-path".into())
+        .spawn(system_path);
+    // Without the thread the first git action resolves the PATH itself.
+    drop(resolving);
+}
+
 fn resolve() -> String {
     if let Some(path) = from_login_shell() {
         return path;
