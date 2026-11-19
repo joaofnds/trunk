@@ -1347,9 +1347,7 @@ describe("StagingPanel rebase form", () => {
 		},
 	);
 
-	// The footer already names the rebase, and a longer label runs past the pane
-	// at its narrowest width.
-	it("offers to abort beside Skip, as the operation banner does", async () => {
+	it("labels its abort button Abort", async () => {
 		await renderRebaseForm();
 
 		expect(screen.getByRole("button", { name: "Abort" })).toBeEnabled();
