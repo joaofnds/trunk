@@ -226,7 +226,6 @@ async function handleSubmit() {
 			});
 			showToast("Stash created", "success");
 			clearCommittedSubject(subject);
-			clearCommittedBody(body);
 		} else {
 			await safeInvoke("create_commit", {
 				path: repoPath,
@@ -348,14 +347,15 @@ function submitOnClick(e: MouseEvent) {
 			<span class="error-text text-small leading-normal">{subjectError}</span>
 		{/if}
 
-		<!-- Body field -->
-		<textarea
-			bind:value={getBody, setBody}
-			onkeydown={submitOnModEnter}
-			rows={3}
-			placeholder="Description (optional)"
-			class="w-full box-border border border-border bg-bg text-text rounded py-2 px-3 text-callout leading-normal resize-y"
-		></textarea>
+		{#if mode !== "stash"}
+			<textarea
+				bind:value={getBody, setBody}
+				onkeydown={submitOnModEnter}
+				rows={3}
+				placeholder="Description (optional)"
+				class="w-full box-border border border-border bg-bg text-text rounded py-2 px-3 text-callout leading-normal resize-y"
+			></textarea>
+		{/if}
 
 		<!-- Staged error -->
 		{#if stagedError}

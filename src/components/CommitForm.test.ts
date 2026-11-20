@@ -254,7 +254,6 @@ describe("CommitForm", () => {
 
 			await fireEvent.click(tab("Stash"));
 			await waitFor(() => expect(subjectInput().value).toBe(""));
-			expect(bodyTextarea().value).toBe("");
 		});
 
 		it("shows the WIP draft when leaving amend after editing", async () => {
@@ -464,37 +463,46 @@ describe("CommitForm", () => {
 			await fireEvent.input(bodyTextarea(), { target: { value: "wip body" } });
 
 			await fireEvent.click(tab("Stash"));
-			expect(subjectInput().value).toBe("wip draft");
-			expect(bodyTextarea().value).toBe("wip body");
-
 			await fireEvent.click(tab("Commit"));
+
 			expect(subjectInput().value).toBe("wip draft");
 			expect(bodyTextarea().value).toBe("wip body");
 		});
 
-		it("clears the draft on a successful stash", async () => {
-			const onsubjectchange = vi.fn();
-			const onbodychange = vi.fn();
-			render(CommitForm, {
-				props: { ...defaultProps, onsubjectchange, onbodychange },
-			});
+		it("offers no description in stash mode", async () => {
+			render(CommitForm, { props: defaultProps });
 
+			await fireEvent.click(tab("Stash"));
+
+			expect(
+				screen.queryByPlaceholderText("Description (optional)"),
+			).toBeNull();
+		});
+
+		it("clears the stash name on a successful stash", async () => {
+			const onsubjectchange = vi.fn();
+			render(CommitForm, { props: { ...defaultProps, onsubjectchange } });
+			await fireEvent.input(subjectInput(), { target: { value: "wip draft" } });
+
+			await fireEvent.click(tab("Stash"));
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+
+			await waitFor(() => expect(onsubjectchange).toHaveBeenLastCalledWith(""));
+			expect(subjectInput().value).toBe("");
+		});
+
+		it("keeps the description a stash leaves out", async () => {
+			const onbodychange = vi.fn();
+			render(CommitForm, { props: { ...defaultProps, onbodychange } });
 			await fireEvent.input(subjectInput(), { target: { value: "wip draft" } });
 			await fireEvent.input(bodyTextarea(), { target: { value: "wip body" } });
 
 			await fireEvent.click(tab("Stash"));
 			await fireEvent.click(screen.getByTestId("commit-form-submit"));
 
-			await waitFor(() =>
-				expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith(
-					"stash_save",
-					expect.anything(),
-				),
-			);
-			expect(onsubjectchange).toHaveBeenLastCalledWith("");
-			expect(onbodychange).toHaveBeenLastCalledWith("");
-			expect(subjectInput().value).toBe("");
-			expect(bodyTextarea().value).toBe("");
+			await waitFor(() => expect(subjectInput().value).toBe(""));
+			expect(bodyTextarea().value).toBe("wip body");
+			expect(onbodychange).toHaveBeenLastCalledWith("wip body");
 		});
 
 		it("keeps body text typed during an in-flight HEAD fetch over the stale prefill", async () => {
