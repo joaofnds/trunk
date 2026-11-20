@@ -313,31 +313,53 @@ describe("renameBranch", () => {
 });
 
 describe("runTagAction", () => {
-	it("pushes the tag to the remote as the tab's running push, and says so", async () => {
+	function pushTag(remoteState = createRemoteState()) {
+		return runTagAction(
+			"/repo",
+			"v1.0",
+			{ kind: "push", remote: "origin" },
+			remoteState,
+		);
+	}
+
+	it("pushes the tag to the remote it names", async () => {
+		await pushTag();
+
+		expect(mockInvoke).toHaveBeenCalledWith("push_tag", {
+			path: "/repo",
+			remote: "origin",
+			tagName: "v1.0",
+		});
+	});
+
+	it("runs a tag push as the tab's running push", async () => {
 		const remoteState = createRemoteState();
 		let busyDuring: unknown;
 		mockInvoke.mockImplementation(async () => {
 			busyDuring = { ...remoteState };
 		});
 
-		const changed = await runTagAction(
-			"/repo",
-			"v1.0",
-			{ kind: "push", remote: "origin" },
-			remoteState,
-		);
+		await pushTag(remoteState);
 
-		expect(changed).toBe(false);
-		expect(mockInvoke).toHaveBeenCalledWith("push_tag", {
-			path: "/repo",
-			remote: "origin",
-			tagName: "v1.0",
-		});
 		expect(busyDuring).toMatchObject({ isRunning: true, lastOp: "push" });
+	});
+
+	it("pushes a tag without asking", async () => {
+		await pushTag();
+
 		expect(mockAsk).not.toHaveBeenCalled();
+	});
+
+	it("says the tag was pushed", async () => {
+		await pushTag();
+
 		expect(shown()).toEqual([
 			{ kind: "success", message: "Pushed tag v1.0 to origin" },
 		]);
+	});
+
+	it("reports no local change after a tag push", async () => {
+		expect(await pushTag()).toBe(false);
 	});
 
 	it("says in the app's words that the remote has another tag of that name", async () => {
@@ -362,26 +384,43 @@ describe("runTagAction", () => {
 		]);
 	});
 
-	it("deletes the tag from the remote once the user agrees", async () => {
-		const changed = await runTagAction(
+	function deleteRemoteTag() {
+		return runTagAction(
 			"/repo",
 			"v1.0",
 			{ kind: "delete_remote", remote: "origin" },
 			createRemoteState(),
 		);
+	}
 
-		expect(changed).toBe(false);
+	it("asks before deleting the tag from a remote", async () => {
+		await deleteRemoteTag();
+
 		expect(mockAsk.mock.calls[0]?.[0]).toBe(
 			"Delete tag 'v1.0' from origin? This will remove it from the remote.",
 		);
+	});
+
+	it("deletes the tag from the remote once the user agrees", async () => {
+		await deleteRemoteTag();
+
 		expect(mockInvoke).toHaveBeenCalledWith("delete_remote_tag", {
 			path: "/repo",
 			remote: "origin",
 			tagName: "v1.0",
 		});
+	});
+
+	it("says the tag was deleted from the remote", async () => {
+		await deleteRemoteTag();
+
 		expect(shown()).toEqual([
 			{ kind: "success", message: "Deleted tag v1.0 from origin" },
 		]);
+	});
+
+	it("reports no local change after deleting the remote's tag", async () => {
+		expect(await deleteRemoteTag()).toBe(false);
 	});
 
 	it("asks nothing and leaves the remote's tag while another remote operation runs", async () => {

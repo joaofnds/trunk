@@ -172,6 +172,14 @@ fn classify_hook_forged_lease_markers_are_not_a_lease_refusal() {
 }
 
 #[test]
+fn classify_hook_forged_tag_exists_is_not_tag_exists() {
+    let err = classify_git_error(
+        "remote: note: v1.0 (already exists) on the mirror\nfatal: the remote end hung up unexpectedly\nerror: failed to push some refs to 'origin'",
+    );
+    assert_eq!(err.code, "remote_error");
+}
+
+#[test]
 fn classify_hook_decline_is_not_non_fast_forward() {
     // Verbatim git 2.55 output for a pre-receive decline. It carries "failed to push
     // some refs" like every failed push, and a force push cannot fix a declined hook.
@@ -985,7 +993,7 @@ fn publishing_names_the_remote_when_only_the_remote_changed() {
 }
 
 #[test]
-fn force_push_to_a_differently_named_upstream_never_creates_a_branch_of_the_local_name() {
+fn force_push_to_a_differently_named_upstream_is_refused_as_from_the_terminal() {
     let ctx = TestContext::builder()
         .with_file("file.txt", "hello")
         .with_commit("Initial commit")

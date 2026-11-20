@@ -463,10 +463,11 @@ describe("PushRecoveryPrompt push target", () => {
 
 describe("PushRecoveryPrompt when the failed operation was not a push", () => {
 	it.each([
-		["fetch", "fetch" as const],
-		["an unrecorded operation", null],
-	])("offers no recovery actions after %s", async (_name, failedOp) => {
-		const rs = stateWith(err("non_fast_forward"), failedOp);
+		["a rejected fetch", "non_fast_forward", "fetch" as const],
+		["a rejected unrecorded operation", "non_fast_forward", null],
+		["a pull with no upstream", "no_upstream", "pull" as const],
+	])("offers no recovery actions after %s", async (_name, code, failedOp) => {
+		const rs = stateWith(err(code), failedOp);
 
 		render(PushRecoveryPrompt, { props: propsFor(rs) });
 

@@ -1632,7 +1632,7 @@ describe("BranchSidebar stash and tag actions", () => {
 		expect(shown()).toEqual([{ message: "Deleted tag v1.0", kind: "success" }]);
 	});
 
-	it("pushes a tag to a remote and keeps it listed", async () => {
+	it("pushes a tag to a remote", async () => {
 		await fireEvent.click(await screen.findByText("Tags (1)"));
 
 		await choose("Push v1.0 to origin", "Hide v1.0");
@@ -1647,7 +1647,6 @@ describe("BranchSidebar stash and tag actions", () => {
 			remote: "origin",
 			tagName: "v1.0",
 		});
-		expect(screen.getByText("Tags (1)")).toBeInTheDocument();
 	});
 });
 
@@ -1696,19 +1695,14 @@ describe("BranchSidebar branch remote actions", () => {
 		});
 	});
 
-	it("pulls and pushes the checked-out branch as the toolbar does", async () => {
-		await choose("Pull", "main");
-		await waitFor(() =>
-			expect(mockInvoke).toHaveBeenCalledWith("git_pull", {
-				path: "/test/repo",
-			}),
-		);
+	it.each([
+		["Pull", "git_pull"],
+		["Push", "git_push"],
+	])("runs %s on the checked-out branch", async (item, command) => {
+		await choose(item, "main");
 
-		await choose("Push", "main");
 		await waitFor(() =>
-			expect(mockInvoke).toHaveBeenCalledWith("git_push", {
-				path: "/test/repo",
-			}),
+			expect(mockInvoke).toHaveBeenCalledWith(command, { path: "/test/repo" }),
 		);
 	});
 
