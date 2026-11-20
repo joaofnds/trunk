@@ -853,6 +853,26 @@ fn a_start_git_refuses_is_an_error_that_leaves_no_rebase() {
 }
 
 #[test]
+fn a_todo_git_refuses_to_run_leaves_the_branch_checked_out_and_no_rebase() {
+    let (ctx, oids) = make_three_commit_ctx();
+    without_commit_signing(&ctx);
+    let head_before = head_of_main(&ctx);
+
+    let err = ctx
+        .start_interactive_rebase(
+            Some(&oids[0].to_string()),
+            &[
+                todo(oids[1], RebaseAction::Squash, None),
+                todo(oids[2], RebaseAction::Pick, None),
+            ],
+        )
+        .expect_err("git cannot squash the first commit of a todo into nothing");
+
+    assert_eq!(err.code, "rebase_error");
+    assert_nothing_moved(&ctx, head_before);
+}
+
+#[test]
 fn a_dropped_commit_survives_git_checking_for_missing_commits() {
     let (ctx, oids) = four_commit_ctx();
     ctx.repo()

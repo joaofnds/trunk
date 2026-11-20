@@ -135,7 +135,10 @@ describe("RebaseEditor", () => {
 		Element.prototype.scrollIntoView = originalScrollIntoView;
 	});
 
-	function renderEditor({ onclose = () => {} } = {}) {
+	function renderEditor({
+		onclose = () => {},
+		onstart = (): Promise<void> => Promise.resolve(),
+	} = {}) {
 		return render(RebaseEditor, {
 			props: {
 				repoPath: "/test/repo",
@@ -143,7 +146,7 @@ describe("RebaseEditor", () => {
 				branchName: "feature/login",
 				base: { kind: "branch", name: "main" },
 				onclose,
-				onstart: vi.fn(),
+				onstart,
 			},
 		});
 	}
@@ -896,6 +899,70 @@ describe("RebaseEditor", () => {
 
 			expect(actions(first.container)).toEqual(["pick", "pick", "pick"]);
 			expect(actions(second.container)).toEqual(["squash", "pick", "pick"]);
+		});
+	});
+
+	describe("while git runs the plan", () => {
+		function startHeld() {
+			let answer = () => {};
+			const view = renderEditor({
+				onstart: () =>
+					new Promise<void>((resolve) => {
+						answer = resolve;
+					}),
+			});
+
+			return { ...view, answer: () => answer() };
+		}
+
+		it("ignores an action key on a row", async () => {
+			const { container } = startHeld();
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Start Rebase" }),
+			);
+
+			await fireEvent.keyDown(planRow(container, 0), { key: "d" });
+
+			expect(actions(container)).toEqual(["pick", "pick", "pick"]);
+		});
+
+		it("offers neither the rows' actions nor Reset", async () => {
+			const { container } = startHeld();
+			await fireEvent.keyDown(planRow(container, 0), { key: "d" });
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Start Rebase" }),
+			);
+
+			for (const select of container.querySelectorAll("select")) {
+				expect(select).toBeDisabled();
+			}
+			expect(screen.getByRole("button", { name: "Reset" })).toBeDisabled();
+		});
+
+		it("opens no message editor on a row's Enter", async () => {
+			const { container } = startHeld();
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Start Rebase" }),
+			);
+
+			await fireEvent.keyDown(planRow(container, 0), { key: "Enter" });
+			await settled();
+
+			expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		});
+
+		it("takes edits again once git answers", async () => {
+			const { container, answer } = startHeld();
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Start Rebase" }),
+			);
+
+			answer();
+			await settled();
+			await fireEvent.keyDown(planRow(container, 0), { key: "d" });
+
+			expect(actions(container)).toEqual(["drop", "pick", "pick"]);
 		});
 	});
 });

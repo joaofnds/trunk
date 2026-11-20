@@ -315,7 +315,13 @@ fn run_interactive_rebase(
     let stopped_at_a_commit = rebase_dir.join("stopped-sha").exists();
 
     if !output.status.success() && !stopped_at_a_commit {
-        return Err(TrunkError::new("rebase_error", refusal(&output)));
+        let refused = refusal(&output);
+        let applied_nothing = !rebase_dir.join("done").exists();
+        if rebase_dir.exists() && applied_nothing {
+            undo_unstarted_rebase(work_tree, &refused)?;
+            let _ = std::fs::remove_dir_all(&msg_dir);
+        }
+        return Err(TrunkError::new("rebase_error", refused));
     }
 
     if !rebase_dir.exists() {
@@ -323,6 +329,21 @@ fn run_interactive_rebase(
     }
 
     Ok(stopped_at_a_commit)
+}
+
+fn undo_unstarted_rebase(work_tree: &std::path::Path, refused: &str) -> Result<(), TrunkError> {
+    UserGit::in_dir(work_tree)
+        .args(["rebase", "--abort"])
+        .run("rebase_error")
+        .map_err(|abort| {
+            TrunkError::new(
+                "rebase_error",
+                format!(
+                    "{refused}\n\nThe rebase could not be undone, so it is still in progress: {}",
+                    abort.message
+                ),
+            )
+        })
 }
 
 /// Refuses a range holding a merge, and a todo that is not the rebase range: every commit

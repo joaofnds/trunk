@@ -255,6 +255,7 @@ $effect(() => {
 		fallbackClass: "rebase-row-fallback",
 		filter: "select, option",
 		preventOnFilter: false,
+		disabled: starting,
 		onStart: (e) => {
 			if (e.oldIndex != null) focusedIndex = e.oldIndex;
 		},
@@ -281,6 +282,7 @@ function scrollRowIntoView(idx: number) {
 
 function handleEditorKeydown(e: KeyboardEvent) {
 	if (!(e.target instanceof Element) || !editorEl?.contains(e.target)) return;
+	if (starting) return;
 
 	if (e.target.closest(`#${CSS.escape(messageEditorId)}`)) {
 		e.stopPropagation();
@@ -379,7 +381,7 @@ function selectAll(node: HTMLInputElement) {
 
 async function openMessageEditor(idx: number) {
 	const item = items[idx];
-	if (item.action === "drop") return;
+	if (starting || item.action === "drop") return;
 	focusedIndex = idx;
 
 	if (item.action === "squash") {
@@ -551,7 +553,7 @@ registerUpdateBlocker(
 			>
 		</div>
 		<div class="rebase-toolbar-right">
-			<Button size="sm" disabled={!hasChanges} onclick={handleReset}
+			<Button size="sm" disabled={!hasChanges || starting} onclick={handleReset}
 				>Reset</Button
 			>
 		</div>
@@ -646,6 +648,7 @@ registerUpdateBlocker(
 							<select
 								class="rebase-select"
 								aria-label="Action for {item.summary}"
+								disabled={starting}
 								bind:value={item.action}
 								onclick={(e) => e.stopPropagation()}
 								onchange={() => {
