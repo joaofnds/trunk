@@ -281,9 +281,7 @@ cargo-test:
 # Run Rust tests with coverage. Through nextest for the same reason as
 # `cargo-test`; coverage is identical either way.
 cargo-test-cov:
-    {{scrubbed_env}} cargo llvm-cov nextest --workspace --manifest-path {{manifest}} --lcov --output-path rust-lcov.info
-    {{scrubbed_env}} cargo llvm-cov report --manifest-path {{manifest}} --html --output-dir rust-coverage-html
-    {{scrubbed_env}} cargo llvm-cov report --manifest-path {{manifest}} --fail-under-lines 65
+    {{scrubbed_env}} cargo llvm-cov nextest --workspace --manifest-path {{manifest}} --html --output-dir rust-coverage-html --fail-under-lines 65
 
 # Repeat the Rust workspace under coverage the way CI runs it (`just flake-hunt-cov 5`)
 flake-hunt-cov runs="10":
