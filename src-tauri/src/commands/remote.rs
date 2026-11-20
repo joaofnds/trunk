@@ -814,12 +814,7 @@ pub async fn git_push_force_inner<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses, or
-/// `spawn_error` when the blocking task cannot be joined.
-///
-/// # Panics
-///
-/// Panics when one of the shared state locks it takes is poisoned.
+/// Returns the inner error as JSON, which is what the frontend parses.
 #[tauri::command]
 pub async fn delete_remote_branch<R: Runtime>(
     activity: crate::activity::Activity,
@@ -832,45 +827,69 @@ pub async fn delete_remote_branch<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
-    let repository = state_map
-        .repository(&path)
-        .map_err(|e| e.to_json())?
-        .clone();
+    delete_remote_branch_inner(
+        &activity,
+        &path,
+        &branch_name,
+        &state_map,
+        &cache,
+        &running.0,
+        &ref_visibility,
+        &app,
+    )
+    .await
+    .map_err(|e| e.to_json())
+}
+
+/// Delete `branch_name`, a remote-tracking name such as `origin/feature`, from its
+/// remote, then rebuild the graph.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `invalid_ref` when
+/// `branch_name` names no remote, `auth_failure` when the remote refuses the
+/// credentials, `spawn_error` when a blocking step cannot be joined, and
+/// `remote_error` carrying git's own message otherwise.
+pub async fn delete_remote_branch_inner<R: Runtime>(
+    activity: &crate::activity::Activity,
+    path: &str,
+    branch_name: &str,
+    state_map: &OpenRepos,
+    cache: &CommitCache,
+    running: &Mutex<RemoteOps>,
+    ref_visibility: &crate::state::RefVisibilityState,
+    app: &AppHandle<R>,
+) -> Result<(), TrunkError> {
+    let repository = state_map.repository(path)?.clone();
     let path_buf = repository.location().to_path_buf();
 
-    // Parse "origin/feature" into remote="origin", branch="feature"
-    let slash = branch_name.find('/').ok_or_else(|| {
+    let (remote, branch) = branch_name.split_once('/').ok_or_else(|| {
         TrunkError::new(
             "invalid_ref",
             format!("Invalid remote branch name: {branch_name}"),
         )
-        .to_json()
     })?;
-    let remote = &branch_name[..slash];
-    let branch = &branch_name[slash + 1..];
 
     let completion = run_git_remote(
-        &activity,
+        activity,
         &["push", "--delete", "--", remote, branch],
         &path_buf,
-        &app,
-        &path,
-        &running.0,
+        app,
+        path,
+        running,
     )
-    .await
-    .map_err(|e| e.to_json())?;
+    .await?;
 
     refresh_graph(
-        &activity,
-        &path,
+        activity,
+        path,
         repository,
-        &cache,
-        &ref_visibility,
-        &app,
+        cache,
+        ref_visibility,
+        app,
         completion.session,
     )
     .await
-    .map_err(|e| e.to_json())
 }
 
 /// # Errors

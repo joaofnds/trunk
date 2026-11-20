@@ -275,6 +275,45 @@ fn push_returns_while_a_process_its_hook_started_still_runs() {
     );
 }
 
+#[test]
+fn delete_remote_branch_removes_the_branch_from_its_remote() {
+    let ctx = repo_on_main();
+    let bare = bare_remote(&ctx, "origin");
+    branch_on_remote(&ctx, "feature");
+
+    ctx.remote().delete_remote_branch("origin/feature").unwrap();
+
+    assert!(!has_branch(&bare, "feature"));
+}
+
+#[test]
+fn delete_remote_branch_returns_while_a_process_its_hook_started_still_runs() {
+    let ctx = repo_on_main();
+    let bare = bare_remote(&ctx, "origin");
+    branch_on_remote(&ctx, "feature");
+    let left_running = ctx.install_hook_leaving_a_process_running("pre-push");
+
+    let result = ctx.remote().delete_remote_branch("origin/feature");
+
+    left_running.release();
+    result.unwrap();
+    assert!(!has_branch(&bare, "feature"));
+}
+
+fn branch_on_remote(ctx: &TestContext, branch: &str) {
+    git(
+        ctx,
+        &["push", "origin", &format!("HEAD:refs/heads/{branch}")],
+    );
+}
+
+fn has_branch(bare: &Path, branch: &str) -> bool {
+    git2::Repository::open(bare)
+        .unwrap()
+        .find_reference(&format!("refs/heads/{branch}"))
+        .is_ok()
+}
+
 /// A file name long enough that `git pull` writes about 200 bytes to stdout for
 /// the file, in its diffstat line and its `create mode` line together.
 fn bulk_file(i: usize) -> String {
