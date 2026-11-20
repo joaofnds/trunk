@@ -686,7 +686,8 @@ pub(crate) fn head_if_still<'r>(
 ///
 /// Returns `not_open` when `path` names no open repository, `undo_stale` when HEAD is no
 /// longer `expected_head_oid`, the commit the user pressed Undo on, `nothing_to_undo` for the
-/// initial commit, `merge_commit` for a merge, `undo_error` carrying git's own message when
+/// initial commit or a HEAD that last moved by something other than a commit,
+/// `merge_commit` for a merge, `undo_error` carrying git's own message when
 /// the reset fails, and the git error when HEAD will not read.
 pub fn undo_commit_inner(
     path: &str,
@@ -716,13 +717,19 @@ pub fn undo_commit_inner(
                 "Cannot undo a merge commit",
             ));
         }
+        if !made_by_a_commit(repo, &head) {
+            return Err(TrunkError::new(
+                "nothing_to_undo",
+                "HEAD last moved by something other than a commit, so there is nothing to undo",
+            ));
+        }
 
         let undone_oid = head.id().to_string();
         // The parent is where the soft reset below lands HEAD, and the only position
         // a redo of this commit belongs on.
         let head_oid = head.parent_id(0)?.to_string();
 
-        run_git_reset(path_buf, &["--soft", "HEAD~1"], "undo_error")?;
+        run_reflogged_reset(path_buf, UNDO_ACTION, &["--soft", "HEAD~1"], "undo_error")?;
 
         Ok(UndoResult {
             head_oid,
@@ -742,9 +749,47 @@ pub struct RedoRequest<'a> {
     pub expected_path: &'a str,
 }
 
+const UNDO_ACTION: &str = "trunk undo";
+const REDO_ACTION: &str = "trunk redo";
+
 /// Run `git reset` with `args` in `dir`, reporting a failure under `code` with git's own words.
 fn run_git_reset(dir: &std::path::Path, args: &[&str], code: &str) -> Result<(), TrunkError> {
     UserGit::in_dir(dir).arg("reset").args(args).run(code)
+}
+
+/// A reset whose reflog entry names the Trunk step that made it, for `made_by_a_commit`.
+fn run_reflogged_reset(
+    dir: &std::path::Path,
+    action: &str,
+    args: &[&str],
+    code: &str,
+) -> Result<(), TrunkError> {
+    UserGit::in_dir(dir)
+        .env("GIT_REFLOG_ACTION", action)
+        .arg("reset")
+        .args(args)
+        .run(code)
+}
+
+/// Whether `head` was made by a commit since HEAD last moved any other way. Trunk's own
+/// undo and redo are steps through those commits, so the walk passes over them.
+fn made_by_a_commit(repo: &git2::Repository, head: &git2::Commit<'_>) -> bool {
+    let Ok(reflog) = repo.reflog("HEAD") else {
+        return false;
+    };
+    for entry in reflog.iter() {
+        let message = entry.message().ok().flatten().unwrap_or("");
+        if message.starts_with(UNDO_ACTION) || message.starts_with(REDO_ACTION) {
+            continue;
+        }
+        if !message.starts_with("commit: ") {
+            return false;
+        }
+        if entry.id_new() == head.id() {
+            return true;
+        }
+    }
+    false
 }
 
 /// Restore the commit an undo took back, refusing if HEAD or the repository has moved.
@@ -805,11 +850,17 @@ pub fn redo_commit_inner(
         // the index and files stay as the user left them, so anything staged since
         // the undo is still staged, on top of it. The `--` keeps a file that happens
         // to be named like the oid from being read as a path.
-        run_git_reset(repo_dir, &["--soft", &undone_hex, "--"], "redo_error")
+        run_reflogged_reset(
+            repo_dir,
+            REDO_ACTION,
+            &["--soft", &undone_hex, "--"],
+            "redo_error",
+        )
     })
 }
 
-/// Whether HEAD is a commit with exactly one parent, so it can be undone.
+/// Whether HEAD is a commit with exactly one parent, made by a commit since HEAD last moved
+/// any other way, so it can be undone.
 ///
 /// # Errors
 ///
@@ -824,8 +875,7 @@ pub fn check_undo_available_inner(path: &str, state_map: &OpenRepos) -> Result<b
         },
         Err(_) => return Ok(false),
     };
-    // Can undo if exactly one parent (not initial, not merge)
-    Ok(head.parent_count() == 1)
+    Ok(head.parent_count() == 1 && made_by_a_commit(&repo, &head))
 }
 
 /// Where HEAD is now, or `None` when it cannot be read as a commit.

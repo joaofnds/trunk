@@ -476,15 +476,49 @@ fn commit_index(
         .unwrap()
 }
 
-/// Move HEAD's branch to `tip`.
+/// Move HEAD's branch to `tip`, logging each commit since its old tip in HEAD's reflog as
+/// `git commit` does, since Undo reads that log to tell a commit from a checkout.
 fn write_branch(repo: &git2::Repository, tip: git2::Oid) {
     let head = repo.find_reference("HEAD").unwrap();
     let branch = head
         .symbolic_target()
         .unwrap()
-        .expect("the builder never detaches HEAD");
+        .expect("the builder never detaches HEAD")
+        .to_owned();
+    let old_tip = repo.refname_to_id(&branch).ok();
 
-    repo.reference(branch, tip, true, "commit").unwrap();
+    repo.reference(&branch, tip, true, "commit").unwrap();
+    log_commits_on_head(repo, old_tip, tip);
+}
+
+fn log_commits_on_head(repo: &git2::Repository, old_tip: Option<git2::Oid>, tip: git2::Oid) {
+    let mut made = Vec::new();
+    let mut next = Some(repo.find_commit(tip).unwrap());
+    while let Some(commit) = next.filter(|commit| Some(commit.id()) != old_tip) {
+        next = commit.parents().next();
+        made.push(commit);
+    }
+
+    let mut reflog = repo.reflog("HEAD").unwrap();
+    let batched = reflog.get(0).unwrap();
+    assert_eq!(
+        batched.id_new(),
+        tip,
+        "the branch move was not logged on HEAD"
+    );
+    reflog.remove(0, false).unwrap();
+    for commit in made.iter().rev() {
+        let kind = if commit.parent_count() == 0 {
+            "commit (initial)"
+        } else {
+            "commit"
+        };
+        let message = format!("{kind}: {}", commit.summary().ok().flatten().unwrap_or(""));
+        reflog
+            .append(commit.id(), &commit.committer(), Some(&message))
+            .unwrap();
+    }
+    reflog.write().unwrap();
 }
 
 /// Branch at the current HEAD.

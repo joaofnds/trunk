@@ -327,6 +327,78 @@ fn undo_merge_commit_fails() {
     assert_eq!(result.unwrap_err().code, "merge_commit");
 }
 
+// --- what Undo takes back ---
+
+fn on_main_beside_a_feature_branch() -> TestContext {
+    TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("feature.txt", "feature change")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_file("main.txt", "main change")
+        .with_commit("Main commit")
+        .build()
+}
+
+#[test]
+fn undo_is_not_offered_once_a_checkout_moved_head() {
+    let mut ctx = on_main_beside_a_feature_branch();
+
+    ctx.checkout_branch("feature").unwrap();
+
+    assert!(!ctx.check_undo_available().unwrap());
+}
+
+#[test]
+fn undo_after_a_checkout_takes_nothing_back() {
+    let mut ctx = on_main_beside_a_feature_branch();
+    ctx.checkout_branch("feature").unwrap();
+    let feature_tip = ctx.resolve_ref("HEAD").unwrap();
+
+    let err = ctx.undo_commit().unwrap_err();
+
+    assert_eq!(err.code, "nothing_to_undo");
+    assert_eq!(ctx.resolve_ref("HEAD").unwrap(), feature_tip);
+}
+
+#[test]
+fn undo_is_not_offered_once_an_amend_rewrote_head() {
+    let (ctx, _, _) = build_two_commit_ctx();
+
+    ctx.amend_commit("Second commit, reworded", None).unwrap();
+
+    assert!(!ctx.check_undo_available().unwrap());
+}
+
+#[test]
+fn undo_stays_offered_for_the_commit_beneath_an_undone_one() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_file("second.txt", "world")
+        .with_commit("Second commit")
+        .with_file("third.txt", "again")
+        .with_commit("Third commit")
+        .build();
+
+    ctx.undo_commit().unwrap();
+
+    assert!(ctx.check_undo_available().unwrap());
+}
+
+#[test]
+fn undo_is_offered_again_once_a_redo_restored_the_commit() {
+    let (ctx, _, _) = build_two_commit_ctx();
+    let undo = ctx.undo_commit().unwrap();
+
+    ctx.redo_commit(&undo).unwrap();
+
+    assert!(ctx.check_undo_available().unwrap());
+}
+
 // --- revert (two-step begin/continue/abort) tests ---
 
 #[test]
