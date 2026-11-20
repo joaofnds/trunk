@@ -70,7 +70,7 @@
 | `store.ts` | All persistent preferences via `@tauri-apps/plugin-store` (`trunk-prefs.json`) | `src/lib/store.ts` |
 | `toast.svelte.ts` | Global toast notification state using module-level `$state` | `src/lib/toast.svelte.ts` |
 | `remote-state.svelte.ts` | Per-tab remote operation state (`isRunning`, `error`) | `src/lib/remote-state.svelte.ts` |
-| `undo-redo.svelte.ts` | Per-tab redo stack, client-side only: each entry names the commit an undo took back and where HEAD was left, and the backend keeps no record of undos | `src/lib/undo-redo.svelte.ts` |
+| `undo-redo.svelte.ts` | Undo and redo history for each repository, shared by every tab on it: the branches deleted in Trunk, newest first, and the steps Redo can take again, each naming where HEAD was left. Decides whether Undo puts back a delete or takes back a commit. The backend keeps each delete's settings under the number the history holds | `src/lib/undo-redo.svelte.ts` |
 | `commands/repo.rs` | `open_repo`, `close_repo`, `force_close_repo` — loads cache, starts watcher | `src-tauri/src/commands/repo.rs` |
 | `commands/history.rs` | `get_commit_graph`, `refresh_commit_graph`, `search_commits` — reads from `CommitCache` | `src-tauri/src/commands/history.rs` |
 | `commands/staging.rs` | Full staging surface: status, stage/unstage/discard file/hunk/lines | `src-tauri/src/commands/staging.rs` |
@@ -334,8 +334,8 @@ store revision.
 - `App.svelte` owns: tab array, active tab, layout dimensions (pane widths, zoom) — all `$state`
 - `RepositoryTabs` tracks backend readiness and whether each restored repository has been visited, separately from App's persisted tab list
 - `RepoView.svelte` owns: per-repo selection state (selected commit OID, selected file, dirty counts, head branch) — all `$state`
-- `App.svelte` creates per-tab `RemoteState` and `UndoRedoManager` via factory functions and passes them as props to `RepoView` and `Toolbar`
-- `toast.svelte.ts` and `undo-redo.svelte.ts` use module-level `$state` as lightweight global stores (toast is truly global; undo-redo has a singleton shim but the canonical API is per-tab factory)
+- `App.svelte` creates a per-tab `RemoteState` through a factory function and passes it as a prop to `RepoView` and `Toolbar`
+- `toast.svelte.ts` keeps module-level `$state` as a lightweight global store, and `undo-redo.svelte.ts` keeps module-level `SvelteMap`s holding one history for each repository path
 - Persistence via `@tauri-apps/plugin-store` (`trunk-prefs.json`) through `src/lib/store.ts`
 
 ## Key Abstractions

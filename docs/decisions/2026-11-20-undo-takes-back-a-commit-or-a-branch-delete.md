@@ -35,16 +35,28 @@ because it keeps no state of its own.
 
 ## A deleted branch
 
-Undo also puts back a branch the user deleted in Trunk. The delete reports what it
-took: the tip, the branch's settings under `branch.<name>.`, which hold its
-upstream, and where HEAD was. Undo recreates the branch at that tip with those
-settings, and refuses when a branch of that name has been made since. Redo deletes
-it again only while it still points at the same commit.
+Undo also puts back a branch the user deleted in Trunk. The backend keeps what each
+delete took under a number it hands the webview: the repository, the branch's name
+and tip, and its settings under `branch.<name>.`, which hold its upstream. Undo names
+that number, and the backend recreates the branch at that tip with those settings.
+The settings never travel to the webview and back, because they decide where the
+branch pushes and what it pulls, and the webview can only ask for a delete this
+session made. Undo refuses when a branch made since holds the name, or a folder of
+it. Redo deletes the branch again only while it still points at the same commit,
+and libgit2 deletes the ref only while it still holds the value Redo read.
 
 A delete is later than every commit while HEAD has not moved since it, so Undo
 takes the delete back first then. Once HEAD has moved, Undo takes back the commit
 that moved it when that commit is undoable, and otherwise the delete, since putting
-a branch back does not touch HEAD. A new delete ends what Redo could take again.
+a branch back does not touch HEAD. Undo reads HEAD when it is pressed and makes that
+choice against it, and the backend refuses the restore when HEAD has moved since that
+read, so a commit that has just landed is taken back first. A new delete ends what
+Redo could take again.
+
+The branch's ref and its settings change together. A settings write that fails
+leaves the ref as it was, and a ref write that fails takes back the settings
+already changed, so a delete, a restore or a rename either lands whole or leaves the
+branch as it was.
 
 Nothing on disk records a delete, because git removes the branch's reflog with the
 branch, so the deletes are kept in memory for each repository. A restart forgets

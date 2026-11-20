@@ -603,6 +603,7 @@ fn register_state<R: tauri::Runtime>(
         .manage(ReviewStoreState(StoreSlot::default()))
         .manage(crate::state::SweptRepos::default())
         .manage(crate::state::RefVisibilityState::default())
+        .manage(commands::branches::Deletions::default())
         .manage(commands::prefs::PrefsState::default())
         .manage(commands::markdown::MarkdownDiffCache(Mutex::default()))
         .manage(commands::diff::CurrentSourceCache::default())

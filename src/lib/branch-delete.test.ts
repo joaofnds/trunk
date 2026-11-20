@@ -14,9 +14,9 @@ vi.mock("./invoke.js", async (importActual) => ({
 const PATH = "/work/wt";
 
 const DELETED = {
+	deletion: 1,
 	name: "topic",
 	tip: "5f3c2a1b9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b",
-	config: [],
 	head_oid: "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567",
 };
 

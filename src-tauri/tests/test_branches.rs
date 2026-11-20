@@ -436,27 +436,340 @@ fn renaming_a_branch_leaves_the_settings_of_a_branch_named_under_it() {
 #[test]
 fn restore_leaves_a_branch_made_since_under_the_same_name_alone() {
     let mut ctx = branch_with_two_commits_of_its_own();
+    set_branch_config(&ctx, "feature", &[("remote", "origin")]);
     let deleted = ctx.delete_branch("feature").unwrap();
     ctx.create_branch("feature", None).unwrap();
     ctx.checkout_branch("main").unwrap();
+    set_branch_config(&ctx, "feature", &[("remote", "upstream")]);
     let remade = ctx.resolve_ref("feature").unwrap();
 
     let error = ctx.restore_branch(&deleted).unwrap_err();
 
     assert_eq!(error.code, "branch_exists");
     assert_eq!(ctx.resolve_ref("feature").unwrap(), remade);
+    assert_eq!(
+        branch_config(&ctx, "feature"),
+        [("remote", "upstream")].map(owned)
+    );
+}
+
+#[test]
+fn restore_reports_a_name_a_branch_made_since_has_taken_a_folder_of() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    let deleted = ctx.delete_branch("feature").unwrap();
+    ctx.create_branch("feature/x", None).unwrap();
+    ctx.checkout_branch("main").unwrap();
+
+    let error = ctx.restore_branch(&deleted).unwrap_err();
+
+    assert_eq!(error.code, "branch_exists");
+    ctx.assert_branch_not_exists("feature");
 }
 
 #[test]
 fn restore_reports_a_commit_the_repository_no_longer_has() {
     let mut ctx = branch_with_two_commits_of_its_own();
-    let mut deleted = ctx.delete_branch("feature").unwrap();
-    deleted.tip = "0123456789abcdef0123456789abcdef01234567".to_owned();
+    set_branch_config(&ctx, "feature", &[("remote", "origin")]);
+    let deleted = ctx.delete_branch("feature").unwrap();
+    remove_object(&ctx, &deleted.tip);
 
     let error = ctx.restore_branch(&deleted).unwrap_err();
 
     assert_eq!(error.code, "restore_missing");
     ctx.assert_branch_not_exists("feature");
+    assert_eq!(branch_config(&ctx, "feature"), []);
+}
+
+#[test]
+fn a_delete_already_undone_is_not_put_back_twice() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    let deleted = ctx.delete_branch("feature").unwrap();
+    ctx.restore_branch(&deleted).unwrap();
+    ctx.delete_branch("feature").unwrap();
+
+    let error = ctx.restore_branch(&deleted).unwrap_err();
+
+    assert_eq!(error.code, "restore_missing");
+    ctx.assert_branch_not_exists("feature");
+}
+
+#[test]
+fn a_delete_made_in_one_tab_is_not_put_back_through_another() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    ctx.create_branch("parked", None).unwrap();
+    ctx.checkout_branch("main").unwrap();
+    let linked = ctx.add_linked_worktree("wt", "parked");
+    let deleted = ctx.delete_branch_in(&linked, "feature").unwrap();
+
+    let error = ctx.restore_branch(&deleted).unwrap_err();
+
+    assert_eq!(error.code, "restore_missing");
+    ctx.assert_branch_not_exists("feature");
+}
+
+#[test]
+fn each_delete_of_a_branch_is_put_back_with_the_settings_it_took() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    let tip = ctx.resolve_ref("feature").unwrap();
+    set_branch_config(&ctx, "feature", &[("remote", "origin")]);
+    let first = ctx.delete_branch("feature").unwrap();
+    force_branch(&ctx, "feature", &tip);
+    set_branch_config(&ctx, "feature", &[("remote", "upstream")]);
+    ctx.delete_branch("feature").unwrap();
+
+    ctx.restore_branch(&first).unwrap();
+
+    assert_eq!(
+        branch_config(&ctx, "feature"),
+        [("remote", "origin")].map(owned)
+    );
+}
+
+#[test]
+fn restore_refuses_once_head_has_moved_since_undo_was_pressed() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    let deleted = ctx.delete_branch("feature").unwrap();
+    let seen = ctx.resolve_ref("HEAD").unwrap();
+    let moved_to = git2::Oid::from_str(&deleted.tip).unwrap();
+    ctx.repo()
+        .reference("refs/heads/main", moved_to, true, "moved meanwhile")
+        .unwrap();
+
+    let error = ctx
+        .restore_branch_seen_at(&deleted, Some(&seen))
+        .unwrap_err();
+
+    assert_eq!(error.code, "undo_stale");
+    ctx.assert_branch_not_exists("feature");
+}
+
+#[test]
+fn a_branch_deleted_while_head_is_unborn_is_restored() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    ctx.repo().set_head("refs/heads/orphan").unwrap();
+    let tip = ctx.resolve_ref("feature").unwrap();
+    let deleted = ctx.delete_branch("feature").unwrap();
+
+    ctx.restore_branch_seen_at(&deleted, None).unwrap();
+
+    assert_eq!(deleted.head_oid, None);
+    assert_eq!(ctx.resolve_ref("feature").unwrap(), tip);
+}
+
+#[test]
+fn a_restore_after_a_redo_puts_back_the_settings_the_redo_took() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    set_branch_config(&ctx, "feature", &[("remote", "origin")]);
+    let deleted = ctx.delete_branch("feature").unwrap();
+    ctx.restore_branch(&deleted).unwrap();
+    set_branch_config(&ctx, "feature", &[("merge", "refs/heads/feature")]);
+    let again = ctx.redo_branch_delete("feature", &deleted.tip).unwrap();
+
+    ctx.restore_branch(&again).unwrap();
+
+    assert_eq!(
+        branch_config(&ctx, "feature"),
+        [("remote", "origin"), ("merge", "refs/heads/feature")].map(owned)
+    );
+}
+
+#[test]
+fn deleting_a_branch_reads_past_a_setting_with_no_value_elsewhere_in_the_config() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    append_config(&ctx, "[branch \"other\"]\n\tflag\n");
+
+    ctx.delete_branch("feature").unwrap();
+
+    ctx.assert_branch_not_exists("feature");
+}
+
+#[test]
+fn a_setting_written_with_no_value_is_deleted_with_its_branch_and_restored_as_true() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    append_config(&ctx, "[branch \"feature\"]\n\tflag\n");
+
+    let deleted = ctx.delete_branch("feature").unwrap();
+    let after_delete = branch_config(&ctx, "feature");
+    ctx.restore_branch(&deleted).unwrap();
+
+    assert_eq!(after_delete, []);
+    assert_eq!(
+        branch_config(&ctx, "feature"),
+        [("flag", "true")].map(owned)
+    );
+}
+
+#[test]
+fn a_delete_refuses_a_repeated_setting_written_once_with_no_value_and_changes_nothing() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    append_config(
+        &ctx,
+        "[branch \"feature\"]\n\tflag\n\tflag = false\n\tremote = origin\n",
+    );
+
+    let error = ctx.delete_branch("feature").unwrap_err();
+
+    assert_eq!(error.code, "settings_unsupported");
+    ctx.assert_branch_exists("feature");
+    assert_eq!(
+        branch_config(&ctx, "feature"),
+        [("flag", "true"), ("flag", "false"), ("remote", "origin")].map(owned)
+    );
+}
+
+#[test]
+fn a_delete_the_config_refuses_leaves_the_branch_and_its_settings() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    set_branch_config(&ctx, "feature", &[("remote", "origin")]);
+    let _lock = lock_config(&ctx);
+
+    let error = ctx.delete_branch("feature").unwrap_err();
+
+    assert_eq!(error.code, "git_locked");
+    ctx.assert_branch_exists("feature");
+    assert_eq!(
+        branch_config(&ctx, "feature"),
+        [("remote", "origin")].map(owned)
+    );
+}
+
+#[test]
+fn a_restore_the_config_refuses_leaves_no_branch_and_can_be_tried_again() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    set_branch_config(&ctx, "feature", &[("remote", "origin")]);
+    let deleted = ctx.delete_branch("feature").unwrap();
+    let lock = lock_config(&ctx);
+
+    let error = ctx.restore_branch(&deleted).unwrap_err();
+    let left_behind = ctx
+        .list_refs()
+        .unwrap()
+        .local
+        .iter()
+        .any(|b| b.name == "feature");
+    drop(lock);
+    ctx.restore_branch(&deleted).unwrap();
+
+    assert_eq!(error.code, "git_locked");
+    assert!(!left_behind, "the refused restore left the branch behind");
+    assert_eq!(
+        branch_config(&ctx, "feature"),
+        [("remote", "origin")].map(owned)
+    );
+}
+
+#[test]
+fn a_delete_git_refuses_puts_back_every_setting_it_had_removed() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    set_branch_config(
+        &ctx,
+        "feature",
+        &[
+            ("remote", "origin"),
+            ("merge", "refs/heads/one"),
+            ("merge", "refs/heads/two"),
+        ],
+    );
+    let _lock = lock_branch(&ctx, "feature");
+
+    let error = ctx.delete_branch("feature").unwrap_err();
+
+    assert_eq!(error.code, "git_locked");
+    ctx.assert_branch_exists("feature");
+    assert_eq!(
+        branch_config(&ctx, "feature"),
+        [
+            ("remote", "origin"),
+            ("merge", "refs/heads/one"),
+            ("merge", "refs/heads/two")
+        ]
+        .map(owned)
+    );
+}
+
+#[test]
+fn a_restore_a_folder_name_blocks_leaves_none_of_the_settings_it_wrote() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    set_branch_config(
+        &ctx,
+        "feature",
+        &[
+            ("remote", "origin"),
+            ("merge", "refs/heads/one"),
+            ("merge", "refs/heads/two"),
+        ],
+    );
+    let deleted = ctx.delete_branch("feature").unwrap();
+    ctx.create_branch("feature/x", None).unwrap();
+    ctx.checkout_branch("main").unwrap();
+
+    let error = ctx.restore_branch(&deleted).unwrap_err();
+
+    assert_eq!(
+        error.message,
+        "A branch made since the delete has taken the name 'feature', so the deleted one was not restored"
+    );
+    assert_eq!(branch_config(&ctx, "feature"), []);
+}
+
+#[test]
+fn a_restore_git_refuses_leaves_none_of_the_settings_it_wrote() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    set_branch_config(&ctx, "feature", &[("remote", "origin")]);
+    let deleted = ctx.delete_branch("feature").unwrap();
+    let _lock = lock_branch(&ctx, "feature");
+
+    let error = ctx.restore_branch(&deleted).unwrap_err();
+
+    assert_eq!(error.code, "git_locked");
+    assert_eq!(branch_config(&ctx, "feature"), []);
+}
+
+#[test]
+fn a_rename_git_refuses_keeps_every_setting_under_the_old_name() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    set_branch_config(
+        &ctx,
+        "feature",
+        &[
+            ("remote", "origin"),
+            ("merge", "refs/heads/one"),
+            ("merge", "refs/heads/two"),
+        ],
+    );
+    let _lock = lock_branch(&ctx, "renamed");
+
+    let error = ctx.rename_branch("feature", "renamed").unwrap_err();
+
+    assert_eq!(error.code, "git_locked");
+    ctx.assert_branch_exists("feature");
+    assert_eq!(
+        branch_config(&ctx, "feature"),
+        [
+            ("remote", "origin"),
+            ("merge", "refs/heads/one"),
+            ("merge", "refs/heads/two")
+        ]
+        .map(owned)
+    );
+    assert_eq!(branch_config(&ctx, "renamed"), []);
+}
+
+#[test]
+fn a_rename_the_config_refuses_leaves_the_branch_under_its_old_name() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    set_branch_config(&ctx, "feature", &[("remote", "origin")]);
+    let _lock = lock_config(&ctx);
+
+    let error = ctx.rename_branch("feature", "renamed").unwrap_err();
+
+    assert_eq!(error.code, "git_locked");
+    ctx.assert_branch_exists("feature");
+    ctx.assert_branch_not_exists("renamed");
+    assert_eq!(
+        branch_config(&ctx, "feature"),
+        [("remote", "origin")].map(owned)
+    );
 }
 
 #[test]
@@ -486,7 +799,20 @@ fn redo_keeps_a_branch_that_moved_since_the_undo() {
 }
 
 #[test]
-fn redo_reports_a_branch_deleted_since_the_undo() {
+fn redo_keeps_a_restored_branch_the_user_has_since_checked_out() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    let deleted = ctx.delete_branch("feature").unwrap();
+    ctx.restore_branch(&deleted).unwrap();
+    ctx.checkout_branch("feature").unwrap();
+
+    let error = ctx.redo_branch_delete("feature", &deleted.tip).unwrap_err();
+
+    assert_eq!(error.code, "cannot_delete_head");
+    assert_eq!(ctx.resolve_ref("feature").unwrap(), deleted.tip);
+}
+
+#[test]
+fn redo_reports_a_branch_that_is_already_gone() {
     let mut ctx = branch_with_two_commits_of_its_own();
     let deleted = ctx.delete_branch("feature").unwrap();
 
@@ -509,27 +835,63 @@ fn set_branch_config(ctx: &TestContext, branch: &str, entries: &[(&str, &str)]) 
     }
 }
 
+// Read through git itself, which places a variable in the subsection between the
+// first and the last dot, rather than through libgit2 as the code under test does.
 fn branch_config(ctx: &TestContext, branch: &str) -> Vec<(String, String)> {
-    let config = ctx
-        .repo()
-        .config()
-        .unwrap()
-        .open_level(git2::ConfigLevel::Local)
+    let output = std::process::Command::new("git")
+        .args(["config", "--local", "--list"])
+        .current_dir(ctx.path())
+        .output()
         .unwrap();
-    let prefix = format!("branch.{branch}.");
-    let mut found = Vec::new();
-    let mut entries = config.entries(None).unwrap();
-    while let Some(entry) = entries.next() {
-        let entry = entry.unwrap();
-        let name = entry.name().unwrap();
-        if let Some(variable) = name
-            .strip_prefix(&prefix)
-            .filter(|rest| !rest.contains('.'))
-        {
-            found.push((variable.to_owned(), entry.value().unwrap().to_owned()));
-        }
+    assert!(output.status.success(), "git config --list failed");
+    String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .filter_map(|line| {
+            let (name, value) = line.split_once('=').unwrap_or((line, "true"));
+            let (section_and_subsection, variable) = name.rsplit_once('.')?;
+            let subsection = section_and_subsection.strip_prefix("branch.")?;
+            (subsection == branch).then(|| (variable.to_owned(), value.to_owned()))
+        })
+        .collect()
+}
+
+fn append_config(ctx: &TestContext, text: &str) {
+    use std::io::Write;
+    let path = std::path::Path::new(ctx.path()).join(".git").join("config");
+    let mut file = std::fs::OpenOptions::new().append(true).open(path).unwrap();
+    file.write_all(text.as_bytes()).unwrap();
+}
+
+/// Holds `.git/config.lock`, as another git process writing the config does, until
+/// dropped.
+fn lock_config(ctx: &TestContext) -> LockFile {
+    lock(ctx, "config")
+}
+
+/// Holds the lock on branch `name`, as another git process moving it does, until
+/// dropped.
+fn lock_branch(ctx: &TestContext, name: &str) -> LockFile {
+    lock(ctx, &format!("refs/heads/{name}"))
+}
+
+fn lock(ctx: &TestContext, file: &str) -> LockFile {
+    let path = ctx.repo().path().join(format!("{file}.lock"));
+    std::fs::write(&path, "").unwrap();
+    LockFile(path)
+}
+
+struct LockFile(std::path::PathBuf);
+
+impl Drop for LockFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
     }
-    found
+}
+
+fn remove_object(ctx: &TestContext, oid: &str) {
+    let (folder, file) = oid.split_at(2);
+    std::fs::remove_file(ctx.repo().path().join("objects").join(folder).join(file)).unwrap();
 }
 
 fn owned((variable, value): (&str, &str)) -> (String, String) {

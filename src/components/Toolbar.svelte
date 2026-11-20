@@ -31,11 +31,11 @@ import type { DeletedBranch, ReviewTone, StashEntry } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import ButtonGroup from "../lib/ui/ButtonGroup.svelte";
 import {
-	lastDeletion,
+	deletionToUndo,
 	pendingRedo as pendingRedoIn,
-	pushDeletion,
 	pushRedo,
 	type RedoEntry,
+	reofferDeletion,
 	takeDeletion,
 	takeRedo,
 } from "../lib/undo-redo.svelte.js";
@@ -119,27 +119,17 @@ const movingHeadIn = new SvelteSet<string>();
 const poppingIn = new SvelteSet<string>();
 
 let pendingRedo = $derived(pendingRedoIn(repoPath));
-let canRedo = $derived(
-	pendingRedo !== null && headOid !== null && pendingRedo.headOid === headOid,
-);
-// Undo takes back the latest thing it can. A delete is later than every commit
-// while HEAD has not moved since it, and it is the latest left when what moved
-// HEAD last cannot be undone.
-let deletion = $derived(lastDeletion(repoPath));
-let undoesDeletion = $derived(
-	deletion !== null &&
-		headOid !== null &&
-		(deletion.head_oid === headOid || !canUndo),
+let canRedo = $derived(pendingRedo !== null && pendingRedo.headOid === headOid);
+let deletion = $derived(
+	deletionToUndo(repoPath, { headOid, canUndoCommit: canUndo }),
 );
 let undoAllowed = $derived(
 	!movingHeadIn.has(repoPath) &&
-		(undoesDeletion || (canUndo && shownHeadOid !== null)),
+		(deletion !== null || (canUndo && shownHeadOid !== null)),
 );
 let redoAllowed = $derived(canRedo && !movingHeadIn.has(repoPath));
 let undoTooltip = $derived(
-	undoesDeletion && deletion !== null
-		? `Undo delete of branch ${branchLabel(deletion)}`
-		: "Undo",
+	deletion !== null ? `Undo delete of branch ${branchLabel(deletion)}` : "Undo",
 );
 let redoTooltip = $derived(
 	canRedo && pendingRedo?.kind === "delete"
@@ -162,7 +152,7 @@ async function readUndoState(path: string) {
 	try {
 		nextHeadOid = await safeInvoke<string | null>("head_oid", { path });
 	} catch {}
-	return { canUndo: nextCanUndo, headOid: nextHeadOid };
+	return { canUndoCommit: nextCanUndo, headOid: nextHeadOid };
 }
 
 // Check undo availability on mount and repo changes
@@ -172,7 +162,7 @@ $effect(() => {
 	const refresh = createCoalescedTask(scheduler, async () => {
 		const next = await readUndoState(path);
 		if (!active) return;
-		canUndo = next.canUndo;
+		canUndo = next.canUndoCommit;
 		headOid = next.headOid;
 	});
 	void refresh.run();
@@ -186,18 +176,31 @@ $effect(() => {
 	};
 });
 
+// Undo decides between a delete and a commit against HEAD as it is when pressed,
+// since the toolbar's view of it can trail a commit that just landed.
 async function handleUndo() {
 	if (!undoAllowed) return;
-	if (undoesDeletion) {
-		await undoDeletion(repoPath);
-		return;
-	}
-
 	const path = repoPath;
 	const expectedHeadOid = shownHeadOid;
-	if (expectedHeadOid === null) return;
 
 	movingHeadIn.add(path);
+	try {
+		const now = await readUndoState(path);
+		if (path === repoPath) {
+			canUndo = now.canUndoCommit;
+			headOid = now.headOid;
+		}
+		if (deletionToUndo(path, now) !== null) {
+			await undoDeletion(path, now.headOid);
+		} else if (now.canUndoCommit && expectedHeadOid !== null) {
+			await undoCommit(path, expectedHeadOid);
+		}
+	} finally {
+		movingHeadIn.delete(path);
+	}
+}
+
+async function undoCommit(path: string, expectedHeadOid: string) {
 	try {
 		// The backend refuses once HEAD is not this commit, so a commit a pull or
 		// the terminal made, which the graph has not shown yet, is never taken back.
@@ -215,37 +218,41 @@ async function handleUndo() {
 		clearErrorToasts();
 	} catch (e) {
 		reportErrorToast(e, "Undo failed");
-	} finally {
-		movingHeadIn.delete(path);
 	}
 }
 
 // A branch made since under the same name, or a commit the repository no
 // longer has, refuses every later try too, so the entry goes rather than staying
-// on offer to fail the same way.
+// on offer to fail the same way. A redo delete meets the same once the branch is
+// checked out somewhere, which is a new action on it.
 const UNDO_NEVER_LANDS = new Set(["branch_exists", "restore_missing"]);
 const REDO_NEVER_LANDS: Record<RedoEntry["kind"], Set<string>> = {
 	commit: new Set(["redo_missing"]),
-	delete: new Set(["redo_missing", "redo_stale"]),
+	delete: new Set([
+		"redo_missing",
+		"redo_stale",
+		"cannot_delete_head",
+		"branch_in_use",
+	]),
 };
 
-async function undoDeletion(path: string) {
+async function undoDeletion(path: string, seenHeadOid: string | null) {
 	const deleted = takeDeletion(path);
-	const leftAt = headOid;
-	if (!deleted || leftAt === null) return;
+	if (deleted === null) return;
 
-	movingHeadIn.add(path);
 	try {
-		await safeInvoke("restore_branch", { path, deleted });
-		pushRedo({ kind: "delete", deleted, headOid: leftAt, repoPath: path });
+		await safeInvoke("restore_branch", {
+			path,
+			deletion: deleted.deletion,
+			seenHeadOid,
+		});
+		pushRedo({ kind: "delete", deleted, headOid: seenHeadOid, repoPath: path });
 		showToast(`Restored branch ${branchLabel(deleted)}`);
 	} catch (e) {
 		if (!(isTrunkError(e) && UNDO_NEVER_LANDS.has(e.code))) {
-			pushDeletion(path, deleted);
+			reofferDeletion(path, deleted);
 		}
 		reportErrorToast(e, "Undo failed");
-	} finally {
-		movingHeadIn.delete(path);
 	}
 }
 
@@ -253,7 +260,7 @@ async function handleRedo() {
 	const path = repoPath;
 	if (!redoAllowed) return;
 	const entry = takeRedo(path);
-	if (!entry) return;
+	if (entry === null) return;
 
 	movingHeadIn.add(path);
 	try {
@@ -275,7 +282,7 @@ async function redo(entry: RedoEntry) {
 			branchName: entry.deleted.name,
 			expectedTip: entry.deleted.tip,
 		});
-		pushDeletion(entry.repoPath, deleted);
+		reofferDeletion(entry.repoPath, deleted);
 		showToast(deletedReport(deleted));
 		return;
 	}

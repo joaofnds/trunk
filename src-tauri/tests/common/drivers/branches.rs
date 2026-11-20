@@ -32,17 +32,39 @@ impl TestContext {
             &self.path,
             name,
             None,
+            &self.deletions,
             &self.state_map,
             &mut self.cache_map,
             &trunk_git::graph_input::RefVisibility::default(),
         )
     }
 
-    /// Bring back a branch a delete took, as Undo does
+    /// Bring back a branch a delete took, as Undo does with HEAD where it is now
     pub fn restore_branch(&mut self, deleted: &DeletedBranch) -> Result<(), TrunkError> {
+        let head = self.repo().head().ok().and_then(|head| head.target());
+        self.restore_branch_with_head(deleted, head)
+    }
+
+    /// Bring back a branch a delete took, as Undo does when pressed with HEAD at `seen`
+    pub fn restore_branch_seen_at(
+        &mut self,
+        deleted: &DeletedBranch,
+        seen: Option<&str>,
+    ) -> Result<(), TrunkError> {
+        let head = seen.map(|oid| git2::Oid::from_str(oid).unwrap());
+        self.restore_branch_with_head(deleted, head)
+    }
+
+    fn restore_branch_with_head(
+        &mut self,
+        deleted: &DeletedBranch,
+        seen_head: Option<git2::Oid>,
+    ) -> Result<(), TrunkError> {
         branches::restore_branch_inner(
             &self.path,
-            deleted,
+            deleted.deletion,
+            seen_head,
+            &self.deletions,
             &self.state_map,
             &mut self.cache_map,
             &trunk_git::graph_input::RefVisibility::default(),
@@ -58,7 +80,8 @@ impl TestContext {
         branches::redo_branch_delete_inner(
             &self.path,
             name,
-            tip,
+            git2::Oid::from_str(tip).unwrap(),
+            &self.deletions,
             &self.state_map,
             &mut self.cache_map,
             &trunk_git::graph_input::RefVisibility::default(),
@@ -110,6 +133,7 @@ impl TestContext {
             &location.display().to_string(),
             name,
             None,
+            &self.deletions,
             &self.state_map,
             &mut self.cache_map,
             &trunk_git::graph_input::RefVisibility::default(),
@@ -126,6 +150,7 @@ impl TestContext {
             &self.path,
             name,
             Some(worktree),
+            &self.deletions,
             &self.state_map,
             &mut self.cache_map,
             &trunk_git::graph_input::RefVisibility::default(),

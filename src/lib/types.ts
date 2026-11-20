@@ -142,13 +142,13 @@ export interface WorktreeRemoval {
 	go_ahead: boolean;
 }
 
-/** A local branch as its delete found it, which is everything an undo needs to put
- *  it back. `config` holds its own settings, its upstream among them, as
- *  [variable, value] pairs. `head_oid` is where HEAD was when it went. */
+/** A local branch as its delete found it. Undo names the delete by `deletion`, and
+ *  the backend puts the branch back with the settings it kept under that number.
+ *  `head_oid` is where HEAD was when it went, or null while HEAD had no commit. */
 export interface DeletedBranch {
+	deletion: number;
 	name: string;
 	tip: string;
-	config: [string, string][];
 	head_oid: string | null;
 }
 

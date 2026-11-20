@@ -1,4 +1,5 @@
 use std::path::Path;
+use trunk_lib::commands::branches::Deletions;
 use trunk_lib::state::{GraphCache, OpenRepos};
 
 pub struct TestContext {
@@ -9,6 +10,7 @@ pub struct TestContext {
     pub(crate) path: String,
     pub(crate) state_map: OpenRepos,
     pub(crate) cache_map: GraphCache,
+    pub(crate) deletions: Deletions,
 }
 
 impl TestContext {
@@ -39,6 +41,7 @@ impl TestContext {
             path,
             state_map,
             cache_map: GraphCache::default(),
+            deletions: Deletions::default(),
         }
     }
 
@@ -88,6 +91,7 @@ impl TestContext {
             path,
             state_map,
             cache_map: GraphCache::default(),
+            deletions: Deletions::default(),
         }
     }
 }

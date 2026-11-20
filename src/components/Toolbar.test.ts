@@ -423,7 +423,7 @@ describe("Toolbar", () => {
 	});
 
 	/** Render a Toolbar holding one redo entry whose `redo_commit` fails with
-	 *  `error`, click Redo, and hand back the store. */
+	 *  `error`, click Redo, and wait for the failure's toast. */
 	async function redoFailingWith(error: { code: string; message: string }) {
 		_resetToasts();
 		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) => {
@@ -1636,21 +1636,23 @@ describe("Toolbar branch creation", () => {
 describe("Toolbar undo of a branch delete", () => {
 	const mockInvoke = vi.mocked(safeInvoke);
 	const TOPIC: DeletedBranch = {
+		deletion: 7,
 		name: "topic",
 		tip: "5f3c2a1b9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b",
-		config: [["remote", "origin"]],
 		head_oid: "head-commit",
 	};
+	const DELETED_AGAIN: DeletedBranch = { ...TOPIC, deletion: 8 };
 
 	function backend({
 		commitUndoable = true,
+		head = "head-commit" as string | null,
 		restore = (): Promise<unknown> => Promise.resolve(null),
-		redoDelete = (): Promise<unknown> => Promise.resolve(TOPIC),
+		redoDelete = (): Promise<unknown> => Promise.resolve(DELETED_AGAIN),
 	} = {}) {
 		mockInvoke.mockImplementation((cmd: string) => {
 			if (cmd === "check_undo_available")
 				return Promise.resolve(commitUndoable);
-			if (cmd === "head_oid") return Promise.resolve("head-commit");
+			if (cmd === "head_oid") return Promise.resolve(head);
 			if (cmd === "restore_branch") return restore();
 			if (cmd === "redo_branch_delete") return redoDelete();
 			if (cmd === "undo_commit")
@@ -1676,8 +1678,29 @@ describe("Toolbar undo of a branch delete", () => {
 		return { undo, redo: screen.getByRole("button", { name: "Redo" }) };
 	}
 
+	async function undoThenRedo(redoDelete: () => Promise<unknown>) {
+		recordDeletion("/test/repo", TOPIC);
+		backend({ redoDelete });
+		const { undo, redo } = await renderToolbar();
+		await fireEvent.click(undo);
+		await waitFor(() => expect(redo).toBeEnabled());
+		await fireEvent.click(redo);
+		return { undo, redo };
+	}
+
 	function calls(command: string) {
 		return mockInvoke.mock.calls.filter(([cmd]) => cmd === command);
+	}
+
+	function tooltipOn(button: HTMLElement): string | null {
+		vi.useFakeTimers();
+		onTestFinished(() => {
+			document.querySelector(".tooltip-pop")?.remove();
+			vi.useRealTimers();
+		});
+		button.dispatchEvent(new MouseEvent("mouseenter"));
+		vi.advanceTimersByTime(SHOW_DELAY_MS);
+		return document.querySelector(".tooltip-pop")?.textContent ?? null;
 	}
 
 	it("puts a deleted branch back on Undo while HEAD has not moved since", async () => {
@@ -1694,7 +1717,10 @@ describe("Toolbar undo of a branch delete", () => {
 			}),
 		);
 		expect(calls("restore_branch")).toEqual([
-			["restore_branch", { path: "/test/repo", deleted: TOPIC }],
+			[
+				"restore_branch",
+				{ path: "/test/repo", deletion: 7, seenHeadOid: "head-commit" },
+			],
 		]);
 		expect(calls("undo_commit")).toEqual([]);
 	});
@@ -1703,6 +1729,18 @@ describe("Toolbar undo of a branch delete", () => {
 		recordDeletion("/test/repo", { ...TOPIC, head_oid: "before-the-commit" });
 		backend();
 		const { undo } = await renderToolbar();
+
+		await fireEvent.click(undo);
+
+		await waitFor(() => expect(calls("undo_commit")).toHaveLength(1));
+		expect(calls("restore_branch")).toEqual([]);
+	});
+
+	it("takes back a commit that landed after the toolbar last looked", async () => {
+		recordDeletion("/test/repo", TOPIC);
+		backend();
+		const { undo } = await renderToolbar();
+		backend({ head: "a-commit-just-made" });
 
 		await fireEvent.click(undo);
 
@@ -1720,19 +1758,38 @@ describe("Toolbar undo of a branch delete", () => {
 		await waitFor(() => expect(calls("restore_branch")).toHaveLength(1));
 	});
 
+	it("puts back a branch deleted while HEAD had no commit, and offers to delete it again", async () => {
+		recordDeletion("/test/repo", { ...TOPIC, head_oid: null });
+		backend({ commitUndoable: false, head: null });
+		const { undo, redo } = await renderToolbar();
+
+		await fireEvent.click(undo);
+
+		await waitFor(() => expect(redo).toBeEnabled());
+		expect(calls("restore_branch")).toEqual([
+			[
+				"restore_branch",
+				{ path: "/test/repo", deletion: 7, seenHeadOid: null },
+			],
+		]);
+	});
+
 	it("names the branch Undo will put back", async () => {
 		recordDeletion("/test/repo", TOPIC);
 		backend();
 		const { undo } = await renderToolbar();
-		onTestFinished(() => document.querySelector(".tooltip-pop")?.remove());
 
-		await fireEvent.mouseEnter(undo);
+		expect(tooltipOn(undo)).toBe("Undo delete of branch topic");
+	});
 
-		await waitFor(() =>
-			expect(document.querySelector(".tooltip-pop")).toHaveTextContent(
-				"Undo delete of branch topic",
-			),
-		);
+	it("names the branch Redo will delete again", async () => {
+		recordDeletion("/test/repo", TOPIC);
+		backend();
+		const { undo, redo } = await renderToolbar();
+		await fireEvent.click(undo);
+		await waitFor(() => expect(redo).toBeEnabled());
+
+		expect(tooltipOn(redo)).toBe("Redo delete of branch topic");
 	});
 
 	it("puts the branch back once when Undo is pressed twice", async () => {
@@ -1750,14 +1807,8 @@ describe("Toolbar undo of a branch delete", () => {
 		expect(calls("undo_commit")).toEqual([]);
 	});
 
-	it("deletes the branch again on Redo, and leaves that for Undo", async () => {
-		recordDeletion("/test/repo", TOPIC);
-		backend();
-		const { undo, redo } = await renderToolbar();
-		await fireEvent.click(undo);
-		await waitFor(() => expect(redo).toBeEnabled());
-
-		await fireEvent.click(redo);
+	it("deletes the branch again on Redo", async () => {
+		await undoThenRedo(() => Promise.resolve(DELETED_AGAIN));
 
 		await waitFor(() =>
 			expect(toasted()).toContainEqual({
@@ -1771,15 +1822,22 @@ describe("Toolbar undo of a branch delete", () => {
 				{ path: "/test/repo", branchName: "topic", expectedTip: TOPIC.tip },
 			],
 		]);
-		expect(lastDeletion("/test/repo")).toEqual(TOPIC);
 	});
 
-	it("drops a delete whose name has been taken since", async () => {
+	it("offers the delete Redo made to Undo", async () => {
+		await undoThenRedo(() => Promise.resolve(DELETED_AGAIN));
+
+		await waitFor(() =>
+			expect(lastDeletion("/test/repo")).toEqual(DELETED_AGAIN),
+		);
+	});
+
+	it("keeps the delete for another try when HEAD moved as Undo was pressed", async () => {
 		const message =
-			"A branch named 'topic' has been made since the delete, so the deleted one was not restored";
+			"HEAD has moved since Undo was pressed, so nothing was undone";
 		recordDeletion("/test/repo", TOPIC);
 		backend({
-			restore: () => Promise.reject({ code: "branch_exists", message }),
+			restore: () => Promise.reject({ code: "undo_stale", message }),
 		});
 		const { undo } = await renderToolbar();
 
@@ -1788,14 +1846,14 @@ describe("Toolbar undo of a branch delete", () => {
 		await waitFor(() =>
 			expect(toasted()).toContainEqual({ message, kind: "error" }),
 		);
-		expect(lastDeletion("/test/repo")).toBeNull();
+		expect(lastDeletion("/test/repo")).toEqual(TOPIC);
 	});
 
 	it("keeps the delete for another try when the restore fails otherwise", async () => {
 		recordDeletion("/test/repo", TOPIC);
 		backend({
 			restore: () =>
-				Promise.reject({ code: "git_error", message: "config is locked" }),
+				Promise.reject({ code: "git_locked", message: "config is locked" }),
 		});
 		const { undo } = await renderToolbar();
 
@@ -1810,22 +1868,49 @@ describe("Toolbar undo of a branch delete", () => {
 		expect(lastDeletion("/test/repo")).toEqual(TOPIC);
 	});
 
-	it("drops a redo whose branch has moved since the undo", async () => {
-		const message =
-			"The branch 'topic' has moved since the undo, so it was not deleted";
+	it.each([
+		["a branch made since has taken its name", "branch_exists"],
+		["the repository no longer has its commit", "restore_missing"],
+	])("drops a delete once %s", async (_, code) => {
+		const message = `refused with ${code}`;
 		recordDeletion("/test/repo", TOPIC);
-		backend({
-			redoDelete: () => Promise.reject({ code: "redo_stale", message }),
-		});
-		const { undo, redo } = await renderToolbar();
-		await fireEvent.click(undo);
-		await waitFor(() => expect(redo).toBeEnabled());
+		backend({ restore: () => Promise.reject({ code, message }) });
+		const { undo } = await renderToolbar();
 
-		await fireEvent.click(redo);
+		await fireEvent.click(undo);
+
+		await waitFor(() =>
+			expect(toasted()).toContainEqual({ message, kind: "error" }),
+		);
+		expect(lastDeletion("/test/repo")).toBeNull();
+	});
+
+	it.each([
+		["the branch is already gone", "redo_missing"],
+		["the branch has moved since the undo", "redo_stale"],
+		["the branch is checked out here", "cannot_delete_head"],
+		["another worktree uses the branch", "branch_in_use"],
+	])("drops a redo once %s", async (_, code) => {
+		const message = `refused with ${code}`;
+
+		await undoThenRedo(() => Promise.reject({ code, message }));
 
 		await waitFor(() =>
 			expect(toasted()).toContainEqual({ message, kind: "error" }),
 		);
 		expect(pendingRedo("/test/repo")).toBeNull();
+	});
+
+	it("keeps a redo the backend could not finish for another try", async () => {
+		const message = "config is locked";
+
+		const { redo } = await undoThenRedo(() =>
+			Promise.reject({ code: "git_locked", message }),
+		);
+
+		await waitFor(() =>
+			expect(toasted()).toContainEqual({ message, kind: "error" }),
+		);
+		expect(redo).toBeEnabled();
 	});
 });
