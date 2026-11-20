@@ -451,6 +451,50 @@ fn undo_stays_offered_for_the_commit_beneath_an_undone_one() {
     assert!(ctx.check_undo_available().unwrap());
 }
 
+#[test]
+fn undo_is_not_offered_once_a_pull_moved_head() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_remote("origin")
+        .with_pushed("origin", "main")
+        .with_tracking("origin", "main")
+        .with_remote_commit("origin", "main", "upstream.txt", "theirs", "Remote commit")
+        .build();
+
+    ctx.remote().pull(Some("ff-only")).unwrap();
+
+    assert!(!ctx.check_undo_available().unwrap());
+}
+
+#[test]
+fn undo_is_not_offered_once_a_cherry_pick_moved_head() {
+    let ctx = on_main_beside_a_feature_branch();
+    let feature_tip = ctx.resolve_ref("feature").unwrap();
+
+    ctx.cherry_pick(&feature_tip).unwrap();
+
+    assert!(!ctx.check_undo_available().unwrap());
+}
+
+#[test]
+fn undo_is_not_offered_once_a_rebase_moved_head() {
+    let ctx = on_main_beside_a_feature_branch();
+
+    ctx.rebase_branch("feature").unwrap();
+
+    assert!(!ctx.check_undo_available().unwrap());
+}
+
+#[test]
+fn undo_stays_offered_once_the_checked_out_branch_is_renamed() {
+    let (mut ctx, _, _) = build_two_commit_ctx();
+
+    ctx.rename_branch("main", "trunk").unwrap();
+
+    assert!(ctx.check_undo_available().unwrap());
+}
+
 fn terminal_git(ctx: &TestContext, args: &[&std::ffi::OsStr]) {
     let output = std::process::Command::new("git")
         .args(args)
@@ -471,6 +515,39 @@ fn undo_stays_offered_once_a_terminal_reset_left_head_where_it_was() {
     terminal_git(&ctx, &["add".as_ref(), "second.txt".as_ref()]);
 
     terminal_git(&ctx, &["reset".as_ref(), "-q".as_ref()]);
+
+    assert!(ctx.check_undo_available().unwrap());
+}
+
+#[test]
+fn undo_is_not_offered_once_a_terminal_reset_moved_head() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_file("second.txt", "world")
+        .with_commit("Second commit")
+        .with_file("third.txt", "again")
+        .with_commit("Third commit")
+        .build();
+
+    terminal_git(
+        &ctx,
+        &[
+            "reset".as_ref(),
+            "-q".as_ref(),
+            "--hard".as_ref(),
+            "HEAD~1".as_ref(),
+        ],
+    );
+
+    assert!(!ctx.check_undo_available().unwrap());
+}
+
+#[test]
+fn undo_stays_offered_once_the_checked_out_branch_is_renamed_in_a_terminal() {
+    let (ctx, _, _) = build_two_commit_ctx();
+
+    terminal_git(&ctx, &["branch".as_ref(), "-m".as_ref(), "trunk".as_ref()]);
 
     assert!(ctx.check_undo_available().unwrap());
 }

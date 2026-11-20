@@ -958,16 +958,17 @@ fn run_reflogged_reset(
 
 /// Whether `head` was made by a commit since HEAD last moved any other way. Trunk's own
 /// undo and redo are steps through those commits, and a reset that left HEAD where it was,
-/// as a stash or an unstaging reset is, moved nothing, so the walk passes over them all. A
-/// checkout that stays on the commit still moves HEAD to another branch, so it is not one.
+/// as a stash or an unstaging reset is, moved nothing, nor did a rename of the checked-out
+/// branch, so the walk passes over them all. A checkout that stays on the commit still
+/// moves HEAD to another branch, so it is not one.
 fn made_by_a_commit(repo: &git2::Repository, head: &git2::Commit<'_>) -> Result<bool, TrunkError> {
     let reflog = repo.reflog("HEAD")?;
-    for entry in reflog.iter() {
+    for (index, entry) in reflog.iter().enumerate() {
         let message = entry.message_bytes().unwrap_or_default();
-        let reset_in_place = entry.id_old() == entry.id_new() && message.starts_with(b"reset: ");
-        if reset_in_place
-            || message.starts_with(UNDO_ACTION.as_bytes())
+        if message.starts_with(UNDO_ACTION.as_bytes())
             || message.starts_with(REDO_ACTION.as_bytes())
+            || message.starts_with(b"Branch: renamed ")
+            || (moves_nothing_in_place(message) && left_head_in_place(&reflog, index))
         {
             continue;
         }
@@ -979,6 +980,25 @@ fn made_by_a_commit(repo: &git2::Repository, head: &git2::Commit<'_>) -> Result<
         }
     }
     Ok(false)
+}
+
+/// A reset moves nothing when it leaves HEAD in place, and neither does libgit2's rename
+/// of the checked-out branch, which it logs with no message. Git logs its own rename as
+/// `Branch: renamed`, in two entries through a zero id, so the walk names that one apart.
+fn moves_nothing_in_place(message: &[u8]) -> bool {
+    message.is_empty() || message.starts_with(b"reset: ")
+}
+
+/// Whether the entry at `index` left HEAD on the commit the entry before it left HEAD on.
+/// The older entry says where that was, since libgit2 logs a rename's old position as zero.
+fn left_head_in_place(reflog: &git2::Reflog, index: usize) -> bool {
+    let Some(entry) = reflog.get(index) else {
+        return false;
+    };
+    let before = reflog
+        .get(index + 1)
+        .map_or_else(|| entry.id_old(), |older| older.id_new());
+    before == entry.id_new()
 }
 
 /// Restore the commit an undo took back, refusing if HEAD or the repository has moved.

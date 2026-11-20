@@ -16,7 +16,9 @@ entry git writes for `git commit` starts with `commit: `. The walk passes over
 Trunk's own undo and redo, and answers true when it meets the `commit: ` entry
 that made HEAD. It also passes over a `reset:` that left HEAD on the commit it
 was on, which `git stash` and an unstaging `git reset` write, since HEAD did not
-move. Any other entry ends it with false: `checkout:`, even one that stays on the
+move, and over a rename of the checked-out branch, which git logs as
+`Branch: renamed` and libgit2 logs with no message, since the commit stays on the
+same branch under its new name. Any other entry ends it with false: `checkout:`, even one that stays on the
 commit, since it moves HEAD to another branch, `pull:`, `merge`,
 `commit (amend):`, `cherry-pick:`, `rebase`, and a `reset:` that moved HEAD, from
 the terminal or from Trunk's Reset. A log git cannot read is an error rather than
