@@ -228,6 +228,37 @@ fn clean_pull_returns_ok() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn pull_returns_while_a_process_its_hook_started_still_runs() {
+    let ctx = pushed("false");
+    upstream_changes_file_txt(&ctx);
+    let left_running = ctx.install_hook_leaving_a_process_running("post-merge");
+
+    let result = ctx.remote().pull(Some("ff-only"));
+
+    left_running.release();
+    result.unwrap();
+    assert_eq!(read(&ctx, "file.txt"), "remote content");
+}
+
+#[cfg(unix)]
+#[test]
+fn push_returns_while_a_process_its_hook_started_still_runs() {
+    let ctx = repo_on_main();
+    track_upstream(&ctx, "origin", "main");
+    let left_running = ctx.install_hook_leaving_a_process_running("pre-push");
+
+    let result = ctx.remote().push();
+
+    left_running.release();
+    result.unwrap();
+    assert_eq!(
+        remote_tip(&bare_remote(&ctx, "origin"), "main").to_string(),
+        ctx.resolve_ref("main").unwrap()
+    );
+}
+
 /// A file name long enough that `git pull` writes about 200 bytes to stdout for
 /// the file, in its diffstat line and its `create mode` line together.
 fn bulk_file(i: usize) -> String {
@@ -1029,6 +1060,22 @@ fn merge_pull_that_conflicts_with_merge_autostash_keeps_the_copy() {
     assert_eq!(err.pull_safety_copy.as_deref(), COPY);
     let copy = pull_safety_copy_tree(&ctx).unwrap();
     assert_eq!(blob_at(&ctx, copy, "notes.txt"), "uncommitted notes");
+}
+
+#[test]
+fn merge_pull_that_conflicts_names_the_conflict() {
+    let ctx = diverged_on_file_txt("false");
+    set_config(&ctx, &[("pull.rebase", "false")]);
+
+    let err = ctx.remote().pull(None).unwrap_err();
+
+    assert_eq!(err.code, "remote_error");
+    assert!(
+        err.message
+            .contains("CONFLICT (content): Merge conflict in file.txt"),
+        "{}",
+        err.message
+    );
 }
 
 /// A barrier a git hook or helper script waits on. The script writes `started`, which

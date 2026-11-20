@@ -28,7 +28,7 @@
 └───────────────────────────────┬──────────────────────────────────────┘
                                 │  invoke("command_name", args)
                                 │  Tauri IPC bridge
-                                │  events: "repo-changed", "remote-progress"
+                                │  events: "repo-changed"
 ┌───────────────────────────────▼──────────────────────────────────────┐
 │                          Rust Backend (Tauri 2)                       │
 │                                                                      │
@@ -63,20 +63,20 @@
 | `BranchSidebar.svelte` | Lists local/remote branches, tags, stashes; checkout/create/delete | `src/components/BranchSidebar.svelte` |
 | `StagingPanel.svelte` | Shows working tree status, stage/unstage/discard per file and hunk | `src/components/StagingPanel.svelte` |
 | `DiffPanel.svelte` | Orchestrates diff view mode (inline/split, hunk/full) | `src/components/DiffPanel.svelte` |
-| `Toolbar.svelte` | Fetch/pull/push buttons, remote progress display, undo/redo buttons | `src/components/Toolbar.svelte` |
+| `Toolbar.svelte` | Fetch/pull/push buttons, undo/redo buttons | `src/components/Toolbar.svelte` |
 | `RebaseEditor.svelte` | Interactive rebase todo list UI | `src/components/RebaseEditor.svelte` |
 | `MergeEditor.svelte` | Three-way merge conflict editor | `src/components/MergeEditor.svelte` |
 | `invoke.ts` | Wraps `@tauri-apps/api/core invoke`, parses JSON error strings into `TrunkError` | `src/lib/invoke.ts` |
 | `store.ts` | All persistent preferences via `@tauri-apps/plugin-store` (`trunk-prefs.json`) | `src/lib/store.ts` |
 | `toast.svelte.ts` | Global toast notification state using module-level `$state` | `src/lib/toast.svelte.ts` |
-| `remote-state.svelte.ts` | Per-tab remote operation state (`isRunning`, `progressLine`, `error`) | `src/lib/remote-state.svelte.ts` |
+| `remote-state.svelte.ts` | Per-tab remote operation state (`isRunning`, `error`) | `src/lib/remote-state.svelte.ts` |
 | `undo-redo.svelte.ts` | Per-tab redo stack, client-side only: each entry names the commit an undo took back and where HEAD was left, and the backend keeps no record of undos | `src/lib/undo-redo.svelte.ts` |
 | `commands/repo.rs` | `open_repo`, `close_repo`, `force_close_repo` — loads cache, starts watcher | `src-tauri/src/commands/repo.rs` |
 | `commands/history.rs` | `get_commit_graph`, `refresh_commit_graph`, `search_commits` — reads from `CommitCache` | `src-tauri/src/commands/history.rs` |
 | `commands/staging.rs` | Full staging surface: status, stage/unstage/discard file/hunk/lines | `src-tauri/src/commands/staging.rs` |
 | `commands/diff.rs` | `diff_unstaged`, `diff_staged`, `diff_commit_file`, `list_commit_files`, `list_compare_files`, `diff_compare_file`, `compare_stat`, `get_commit_detail`, `list_tracked_files`, `open_current_file`. The compare pair diffs any two commit trees (Base → Target, no ancestry required; null Base = empty tree); highlighting parses a bounded window above each cluster of displayed lines, with no cache and no warming | `src-tauri/src/commands/diff.rs` |
 | `commands/branches.rs` | `list_refs`, `resolve_ref`, `checkout_branch`, `fast_forward_to`, `create_branch`, `checkout_remote_branch`, `branch_hold`, `delete_branch`, `rename_branch` | `src-tauri/src/commands/branches.rs` |
-| `commands/remote.rs` | `git_fetch`, `git_fetch_background`, `git_pull`, `git_push`, `delete_remote_branch`, `cancel_remote_op` — foreground subprocess/progress; background git2 worker | `src-tauri/src/commands/remote.rs` |
+| `commands/remote.rs` | `git_fetch`, `git_fetch_background`, `git_pull`, `git_push`, `delete_remote_branch`, `cancel_remote_op`: foreground subprocess, background git2 worker | `src-tauri/src/commands/remote.rs` |
 | `commands/commit.rs` | `create_commit`, `amend_commit`, `get_head_commit_message` | `src-tauri/src/commands/commit.rs` |
 | `commands/commit_actions.rs` | `checkout_commit`, `create_tag`, `delete_tag`, `cherry_pick`, `revert_commit`, `reset_to_commit`, `undo_commit`, `redo_commit`, `check_undo_available` | `src-tauri/src/commands/commit_actions.rs` |
 | `commands/stash.rs` | `list_stashes`, `stash_save`, `stash_pop`, `stash_apply`, `stash_drop` | `src-tauri/src/commands/stash.rs` |
@@ -105,8 +105,8 @@
 - Frontend is stateful (Svelte 5 `$state`/`$derived`) but never touches git directly — all git operations are `invoke(...)` calls
 - Backend is stateless per-command: each command receives Tauri-managed state via `State<'_, T>` and opens a fresh `git2::Repository` inside `spawn_blocking`
 - `git2::Repository` is not `Sync` — it is NEVER stored in `RepoState`. Only `PathBuf` is stored. Every command calls `git2::Repository::open(path)` fresh.
-- Events flow backend→frontend via Tauri `Emitter`: `"repo-changed"` (fs watcher + after write ops) and `"remote-progress"` (per stderr line of git subprocess)
-- Automatic fetch uses git2 in a private worker. Foreground remote commands run Git subprocesses, which stream progress.
+- Events flow backend→frontend via Tauri `Emitter`: `"repo-changed"` (fs watcher + after write ops)
+- Automatic fetch uses git2 in a private worker. Foreground remote commands run Git subprocesses.
 
 ## Layers
 
@@ -245,11 +245,10 @@ them, and the frontend bound limits the rest. No build-time CPU target is establ
 ### Remote Operation (Fetch/Pull/Push) Path
 
 1. User clicks Fetch in `Toolbar.svelte` → `safeInvoke("git_fetch", { path })`
-2. Rust `git_fetch` (`src-tauri/src/commands/remote.rs`) calls `run_git_remote()` which spawns `git fetch --all --progress` subprocess
-3. The command reserves the shared repository before spawning; `RunningOp` attaches its owned process group for cancellation. The reservation lasts through exit and graph refresh. Stderr lines emit `"remote-progress"` events.
-4. `Toolbar.svelte` listens to `"remote-progress"` → updates `remoteState.progressLine`
-5. On subprocess exit: cache refreshed via `refresh_graph()`, `"repo-changed"` event emitted
-6. Frontend graph auto-refreshes via step 3-5 of Filesystem Change Path
+2. Rust `git_fetch` (`src-tauri/src/commands/remote.rs`) calls `run_git_remote()` which spawns `git fetch --all` subprocess
+3. The command reserves the shared repository before spawning; `RunningOp` attaches its owned process group for cancellation. The reservation lasts through exit and graph refresh. Git's stderr goes to a file, read once git exits, for the error message.
+4. On subprocess exit: cache refreshed via `refresh_graph()`, `"repo-changed"` event emitted
+5. Frontend graph auto-refreshes via step 3-5 of Filesystem Change Path
 
 A pull runs the same `git pull` under the user's configuration, with a step on each side of
 it. After the reservation and before the spawn, `git_pull_inner` saves a pull safety copy
@@ -266,7 +265,7 @@ the fetch runs is not in it.
 
 1. `App.svelte` owns `AutofetchScheduler`: one completion-based deadline for prepared repositories. Repositories added together are staggered across the configured interval (default 60 seconds; `0` disables). Restored tabs join individually after their backends open, each with a full interval before its first fetch (about 60 seconds by default). Focus loss and manual remote work disarm it. The active tab gets preference while overdue inactive tabs retain fairness.
 2. `git_fetch_background` acquires an atomic reservation keyed by canonical Git common directory. One complete background job, including graph reconciliation, can run application-wide; a manual operation on the same shared repository waits for it to end, and no new background job starts while one waits. The operation identity controls cleanup after execution exits.
-3. A private worker entry point in the Trunk executable runs git2 before GUI/runtime startup. Its parent bounds each remote to 60 seconds, kills the owned process group on cancellation/deadline and joins it before releasing exclusion. Background work emits no progress lines. Foreground fetch/pull/push retain their existing Git subprocess path.
+3. A private worker entry point in the Trunk executable runs git2 before GUI/runtime startup. Its parent bounds each remote to 60 seconds, kills the owned process group on cancellation/deadline and joins it before releasing exclusion. Foreground fetch/pull/push retain their existing Git subprocess path.
 4. The worker checks configured remotes with all tags and pruning, honors `skipFetchAll`, guards checked-out destinations across linked worktrees, preserves accumulated per-worktree FETCH_HEAD metadata and creates a missing remote HEAD. The parent compares lightweight ref state and reconciles successful updates even after a later remote fails.
 5. Unchanged input causes no history capture or repository event. Changed refs build one graph per affected open worktree and publish a path-scoped revision. The active view consumes its cached head at the loaded depth; inactive views retain the newest revision until activation. Ref-only events leave status, WIP and file-diff readers idle. Index, HEAD, config, stash and local file events retain their worktree refresh path.
 6. Typed per-remote results keep last success separate from attempt and graph publication. Transient failures double their retry ceiling up to 15 minutes (or the configured interval, if longer), with jitter between 80% and 100% of the ceiling and never below the configured interval. Unsupported configurations use the same capped jittered retry or retry after a configuration change. Manual checks clear backoff and defer automatic checks for the remotes checked. Repeated manual checks can keep postponing the background tag/prune check; manual and background fetch scope is not identical. Pull exposes freshness, failure and retry through its accessible description.
@@ -400,9 +399,9 @@ store revision.
 
 ## Architectural Constraints
 
-- **Threading:** Tauri uses tokio async runtime. Repository mutation/capture work runs in `spawn_blocking`; automatic transport work runs synchronously in its isolated worker. Foreground remote subprocesses use `tokio::process::Command` with stderr streaming.
+- **Threading:** Tauri uses tokio async runtime. Repository mutation/capture work runs in `spawn_blocking`; automatic transport work runs synchronously in its isolated worker. Foreground remote subprocesses use `tokio::process::Command`, waited on until git exits.
 - **git2 not Sync:** `git2::Repository` cannot be stored in shared state. Each command opens its own fresh handle, as `state::RepoState` documents.
-- **Git execution:** Foreground remote commands, merge, rebase, cherry-pick, revert and reset run the git binary, as do the commits that conclude a merge, cherry-pick or revert. Other local operations and automatic fetch use git2. AGENTS.md states which operations may run the binary and why. Every one of those runs starts through `UserGit` in `src-tauri/src/user_git.rs`, whose `output` returns when git exits rather than when git's output closes, because a process a hook leaves in the background holds that output open. A refusal is reported through `user_git::refusal`: git's stderr, else its stdout, else its exit status, since a hook can refuse without printing anything. Pull, push, foreground fetch and remote branch delete read stderr as git writes it to show progress, so they still wait for such a process.
+- **Git execution:** Foreground remote commands, merge, rebase, cherry-pick, revert and reset run the git binary, as do the commits that conclude a merge, cherry-pick or revert. Other local operations and automatic fetch use git2. AGENTS.md states which operations may run the binary and why. Every one of those runs starts through `UserGit` in `src-tauri/src/user_git.rs`, whose `output` and `spawn` return when git exits rather than when git's output closes, because a process a hook leaves in the background holds that output open. `spawn` serves the remote commands, which the user can cancel while they run. A refusal is reported through `user_git::refusal`: git's stderr, else its stdout, else its exit status, since a hook can refuse without printing anything.
 - **Global state:** Tauri manages `RepoState`'s path registry, `CommitCache`'s graph/session/revision maps, `RunningOp`'s identity-based remote reservations and `WatcherState`'s watchers/pending ref reconciliations. Worktree UI/cache entries use repository paths; remote exclusion uses canonical common directories. `WatcherState.enabled` lets the App harness disable filesystem watching, and the state is passed into `configure` because `Builder::manage` panics on a duplicate type.
 - **Circular imports:** None detected. Frontend has a clear dependency direction: `components/` → `lib/` → `@tauri-apps/`.
 - **macOS PATH:** `src-tauri/src/shell_env.rs` reads the user's login-shell PATH, with `/usr/libexec/path_helper` as a fallback, because GUI apps inherit a minimal launchd PATH.

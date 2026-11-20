@@ -2,11 +2,10 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
-use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::remote_ops::{self, RemoteProcess, RemoteReservation, RemoteTarget};
 use crate::state::{CommitCache, OpenRepos, RemoteOps, RepoState, RunningOp};
-use crate::user_git::UserGit;
+use crate::user_git::{UserGit, refusal};
 use crate::watcher::RepoChanged;
 use trunk_git::error::TrunkError;
 use trunk_git::pull_safety::PullSafetyCopy;
@@ -63,11 +62,10 @@ struct RemoteCompletion<'a> {
     session: u64,
 }
 
-/// Spawns a foreground git subprocess with stderr progress events and an owned
-/// reservation retained through the caller's graph reconciliation.
+/// Spawns a foreground git subprocess with an owned reservation retained through
+/// the caller's graph reconciliation.
 ///
 /// Stores child PID in `running` for cancel support.
-/// Emits `remote-progress` Tauri events per stderr line.
 /// On failure, classifies the error using `classify_git_error`.
 async fn run_git_remote<'a, R: Runtime>(
     activity: &crate::activity::Activity,
@@ -78,7 +76,7 @@ async fn run_git_remote<'a, R: Runtime>(
     running: &'a Mutex<RemoteOps>,
 ) -> Result<RemoteCompletion<'a>, TrunkError> {
     let held = reserve_remote(activity, cwd, app, repo_path, running).await?;
-    run_reserved(activity, args, cwd, app, repo_path, &held.reservation).await?;
+    run_reserved(args, cwd, &held.reservation).await?;
     Ok(held)
 }
 
@@ -123,69 +121,50 @@ async fn reserve_remote<'a, R: Runtime>(
     })
 }
 
-async fn run_reserved<R: Runtime>(
-    _activity: &crate::activity::Activity,
+async fn run_reserved(
     args: &[&str],
     cwd: &std::path::Path,
-    app: &AppHandle<R>,
-    repo_path: &str,
     reservation: &RemoteReservation<'_>,
 ) -> Result<(), TrunkError> {
     let mut git = UserGit::in_dir(cwd);
     git.args(args);
-    let mut child = git
-        .spawn_showing_progress()
+    let git = git
+        .spawn()
         .map_err(|e| TrunkError::new("remote_error", e.to_string()))?;
-
-    // Store PID for cancel support (keyed by repo path)
-    if let Some(pid) = child.id() {
+    if let Some(pid) = git.id() {
         reservation.attach(RemoteProcess::foreground(pid));
     }
 
-    // Read stderr lines and emit progress events
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| TrunkError::new("remote_error", "Failed to capture stderr"))?;
-
-    let mut reader = BufReader::new(stderr).lines();
-    let mut collected_stderr = Vec::new();
-
-    while let Ok(Some(line)) = reader.next_line().await {
-        collected_stderr.push(line.clone());
-
-        // Git progress uses \r for in-place updates; take the last segment
-        let display = line
-            .split('\r')
-            .rfind(|s| !s.trim().is_empty())
-            .unwrap_or("")
-            .trim();
-
-        if !display.is_empty() {
-            let _ = app.emit(
-                "remote-progress",
-                serde_json::json!({"path": repo_path, "line": display}),
-            );
-        }
-    }
-
-    let status = child.wait().await;
-    if status.is_err() {
-        let _ = child.kill().await;
-        let _ = child.wait().await;
-    }
+    let output = git.wait().await;
     reservation.exited();
-    let status = status.map_err(|e| TrunkError::new("remote_error", e.to_string()))?;
+    let output = output.map_err(|e| TrunkError::new("remote_error", e.to_string()))?;
     if reservation.cancelled() {
         return Err(remote_ops::operation_cancelled());
     }
 
-    if !status.success() {
-        let full_stderr = collected_stderr.join("\n");
-        return Err(classify_git_error(&full_stderr));
+    if !output.status.success() {
+        let mut refused = classify_git_error(&String::from_utf8_lossy(&output.stderr));
+        refused.message = what_git_said(&output);
+        return Err(refused);
     }
 
     Ok(())
+}
+
+/// Everything git said about a remote command that failed: its stderr, where fetch
+/// and push report, then its stdout, where the merge a pull runs names its conflicts.
+fn what_git_said(output: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let said: Vec<&str> = [stderr.trim(), stdout.trim()]
+        .into_iter()
+        .filter(|text| !text.is_empty())
+        .collect();
+    if said.is_empty() {
+        return refusal(output);
+    }
+
+    said.join("\n")
 }
 
 async fn checked_manual_fetch<R: Runtime>(
@@ -287,7 +266,7 @@ pub async fn git_fetch<R: Runtime>(
 
     let completion = run_git_remote(
         &activity,
-        &["fetch", "--all", "--progress"],
+        &["fetch", "--all"],
         &path_buf,
         &app,
         &path,
@@ -316,7 +295,7 @@ pub async fn git_fetch<R: Runtime>(
         .report(&path, session))
 }
 
-/// Check all configured remotes without progress events or foreground dialogs.
+/// Check all configured remotes without foreground dialogs.
 /// The reservation spans worker exit and change-aware graph reconciliation.
 /// # Errors
 ///
@@ -449,10 +428,10 @@ pub async fn git_pull_inner<R: Runtime>(
     let path_buf = repository.location().to_path_buf();
 
     let args: Vec<&str> = match strategy {
-        Some("ff") => vec!["pull", "--ff", "--progress"],
-        Some("ff-only") => vec!["pull", "--ff-only", "--progress"],
-        Some("rebase") => vec!["pull", "--rebase", "--progress"],
-        _ => vec!["pull", "--progress"],
+        Some("ff") => vec!["pull", "--ff"],
+        Some("ff-only") => vec!["pull", "--ff-only"],
+        Some("rebase") => vec!["pull", "--rebase"],
+        _ => vec!["pull"],
     };
 
     let completion = reserve_remote(activity, &path_buf, app, path, running).await?;
@@ -468,15 +447,7 @@ pub async fn git_pull_inner<R: Runtime>(
         }
     };
     let copy = save_pull_safety_copy(activity, path_buf.clone()).await;
-    let ran = run_reserved(
-        activity,
-        &args,
-        &path_buf,
-        app,
-        path,
-        &completion.reservation,
-    )
-    .await;
+    let ran = run_reserved(&args, &path_buf, &completion.reservation).await;
     let kept = settle_pull_safety_copy(activity, copy, path_buf.clone()).await;
     drop(turn);
 
@@ -654,15 +625,7 @@ pub async fn git_push_inner<R: Runtime>(
     let repository = state_map.repository(path)?.clone();
     let path_buf = repository.location().to_path_buf();
 
-    let completion = run_git_remote(
-        activity,
-        &["push", "--progress"],
-        &path_buf,
-        app,
-        path,
-        running,
-    )
-    .await?;
+    let completion = run_git_remote(activity, &["push"], &path_buf, app, path, running).await?;
 
     refresh_graph(
         activity,
@@ -681,12 +644,7 @@ pub async fn git_push_inner<R: Runtime>(
 /// Both lease flags are mandatory: `--force-with-lease` alone is unsafe in Trunk
 /// because the background fetch can refresh the lease, so `--force-if-includes`
 /// requires the remote tip to be in the local reflog. Never a bare `--force`.
-pub const FORCE_PUSH_ARGS: [&str; 4] = [
-    "push",
-    "--force-with-lease",
-    "--force-if-includes",
-    "--progress",
-];
+pub const FORCE_PUSH_ARGS: [&str; 3] = ["push", "--force-with-lease", "--force-if-includes"];
 
 /// Where a bare `git push` would send the current branch.
 #[derive(Debug, serde::Serialize)]
@@ -896,7 +854,7 @@ pub async fn delete_remote_branch<R: Runtime>(
 
     let completion = run_git_remote(
         &activity,
-        &["push", "--delete", "--progress", "--", remote, branch],
+        &["push", "--delete", "--", remote, branch],
         &path_buf,
         &app,
         &path,
@@ -936,4 +894,34 @@ pub async fn cancel_remote_op(
         process.stop();
     }
     Ok(())
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::what_git_said;
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::{ExitStatus, Output};
+
+    fn failed(stdout: &str, stderr: &str) -> Output {
+        Output {
+            status: ExitStatus::from_raw(1 << 8),
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: stderr.as_bytes().to_vec(),
+        }
+    }
+
+    #[test]
+    fn what_git_said_puts_stderr_before_stdout() {
+        let output = failed("CONFLICT in f\n", "From origin\n");
+
+        assert_eq!(what_git_said(&output), "From origin\nCONFLICT in f");
+    }
+
+    #[test]
+    fn what_git_said_without_a_word_names_the_exit_code() {
+        assert_eq!(
+            what_git_said(&failed("", "\n")),
+            "git exited with code 1 and printed no reason. A hook may have refused it."
+        );
+    }
 }

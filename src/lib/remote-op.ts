@@ -21,7 +21,6 @@ export async function runRemoteOp(
 ): Promise<void> {
 	remoteState.isRunning = true;
 	remoteState.error = null;
-	remoteState.progressLine = "";
 	remoteState.lastOp = OP_KINDS[cmd];
 	try {
 		const args = {
@@ -35,7 +34,6 @@ export async function runRemoteOp(
 		} else await safeInvoke<void>(cmd, args);
 
 		remoteState.isRunning = false;
-		remoteState.progressLine = "";
 		showToast(successMsg, "success");
 	} catch (e: unknown) {
 		remoteState.isRunning = false;

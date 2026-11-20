@@ -81,23 +81,67 @@ impl UserGit {
         })
     }
 
-    /// Starts git for a caller that shows its progress, read from stderr as git
-    /// writes it. Nothing reads stdout, which goes nowhere so a large diffstat
-    /// cannot fill a pipe and stall git. Reading stderr to its end also waits
-    /// for any process a hook left running.
+    /// Starts git in a process group of its own, for a command the user can cancel
+    /// while it runs.
+    ///
+    /// Its stdout and stderr go to files, so waiting for it ends at git's exit and
+    /// a large diffstat cannot stall it.
     ///
     /// # Errors
     ///
-    /// Returns the error from starting git.
-    pub fn spawn_showing_progress(self) -> io::Result<tokio::process::Child> {
+    /// Returns the error from making the files for git's output or from starting git.
+    pub fn spawn(self) -> io::Result<RunningGit> {
+        let stdout = tempfile::tempfile()?;
+        let stderr = tempfile::tempfile()?;
         let mut git = tokio::process::Command::from(self.0);
-        git.stdout(Stdio::null())
-            .stderr(Stdio::piped())
+        git.stdout(stdout.try_clone()?)
+            .stderr(stderr.try_clone()?)
             .kill_on_drop(true);
         #[cfg(unix)]
         git.process_group(0);
 
-        git.spawn()
+        Ok(RunningGit {
+            child: git.spawn()?,
+            stdout,
+            stderr,
+        })
+    }
+}
+
+/// A git started by [`UserGit::spawn`].
+pub struct RunningGit {
+    child: tokio::process::Child,
+    stdout: File,
+    stderr: File,
+}
+
+impl RunningGit {
+    /// Git's process id, which is also its process group's.
+    #[must_use]
+    pub fn id(&self) -> Option<u32> {
+        self.child.id()
+    }
+
+    /// Waits for git to exit and returns its status and what it printed.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error from waiting for git, which kills it, or from reading its
+    /// output.
+    pub async fn wait(mut self) -> io::Result<Output> {
+        let status = match self.child.wait().await {
+            Ok(status) => status,
+            Err(error) => {
+                let _ = self.child.kill().await;
+                return Err(error);
+            }
+        };
+
+        Ok(Output {
+            status,
+            stdout: read_from_start(&mut self.stdout)?,
+            stderr: read_from_start(&mut self.stderr)?,
+        })
     }
 }
 

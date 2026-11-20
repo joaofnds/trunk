@@ -7,7 +7,7 @@ import GitBranch from "@lucide/svelte/icons/git-branch";
 import MessageSquare from "@lucide/svelte/icons/message-square";
 import Redo2 from "@lucide/svelte/icons/redo-2";
 import Undo2 from "@lucide/svelte/icons/undo-2";
-import { emit, listen } from "@tauri-apps/api/event";
+import { emit } from "@tauri-apps/api/event";
 import { SvelteSet } from "svelte/reactivity";
 import {
 	CHECKOUT_CONFLICT_MESSAGE,
@@ -87,24 +87,6 @@ function handleReviewToggle() {
 function handleReviewThreadsToggle() {
 	onreviewthreadshiddenchange?.(!reviewThreadsHidden);
 }
-
-// Listen to remote-progress events from backend (relocated from StatusBar)
-$effect(() => {
-	let unlisten: (() => void) | undefined;
-	const path = repoPath;
-
-	listen<{ path: string; line: string }>("remote-progress", (event) => {
-		if (event.payload.path === path) {
-			remoteState.progressLine = event.payload.line;
-		}
-	}).then((fn) => {
-		unlisten = fn;
-	});
-
-	return () => {
-		unlisten?.();
-	};
-});
 
 // Branch creation dialog state
 let branchDialogOpen = $state(false);

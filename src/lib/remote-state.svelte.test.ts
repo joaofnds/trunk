@@ -5,7 +5,6 @@ describe("createRemoteState", () => {
 	it("returns object with correct defaults", () => {
 		const state = createRemoteState();
 		expect(state.isRunning).toBe(false);
-		expect(state.progressLine).toBe("");
 		expect(state.error).toBe(null);
 	});
 
@@ -14,13 +13,6 @@ describe("createRemoteState", () => {
 		const b = createRemoteState();
 		a.isRunning = true;
 		expect(b.isRunning).toBe(false);
-	});
-
-	it("returns independent instances for progressLine", () => {
-		const a = createRemoteState();
-		const b = createRemoteState();
-		a.progressLine = "fetching";
-		expect(b.progressLine).toBe("");
 	});
 
 	it("returns independent instances for error", () => {
