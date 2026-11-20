@@ -49,6 +49,7 @@ import {
 } from "../lib/column-widths.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
 import { ask } from "../lib/dialog.js";
+import { forDisplay } from "../lib/display-text.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { canFastForward } from "../lib/fast-forward.js";
 import {
@@ -1004,24 +1005,27 @@ async function handleRevert(commit: GraphCommit) {
 	}
 }
 
+const loadedHead = $derived(commits.find((c) => c.is_head));
 const checkedOutBranch = $derived(
-	headBranch ??
-		commits
-			.find((c) => c.is_head)
-			?.refs.find((r) => r.ref_type === "LocalBranch" && r.is_head)?.short_name,
+	loadedHead === undefined
+		? headBranch
+		: loadedHead.refs.find((r) => r.ref_type === "LocalBranch" && r.is_head)
+				?.short_name,
 );
 
 async function handleReset(
 	commit: GraphCommit,
 	mode: "soft" | "mixed" | "hard",
 ) {
+	const moving =
+		checkedOutBranch === undefined ? "HEAD" : forDisplay(checkedOutBranch);
 	const labels: Record<typeof mode, string> = {
 		soft: `Soft reset keeps your files as they are. The difference from ${commit.short_oid} shows as staged, and unstaged changes stay unstaged.`,
 		mixed: "Mixed reset keeps every change, unstaged.",
-		hard: `Hard reset discards your uncommitted changes to tracked files and deletes new files you staged but never committed. Neither can be recovered. Untracked files stay. It leaves ${checkedOutBranch ?? "HEAD"} with only the history of ${commit.short_oid}.`,
+		hard: `Hard reset discards your uncommitted changes to tracked files and deletes new files you staged but never committed. Neither can be recovered. Untracked files stay. It leaves ${moving} with only the history of ${commit.short_oid}.`,
 	};
 	const confirmed = await ask(
-		`Reset ${checkedOutBranch ?? "HEAD"} to ${commit.short_oid} "${commit.summary}"?\n\n${labels[mode]}`,
+		`Reset ${moving} to ${commit.short_oid} "${forDisplay(commit.summary)}"?\n\n${labels[mode]}`,
 		{
 			title: `Reset (${mode})`,
 			kind: mode === "hard" ? "warning" : "info",

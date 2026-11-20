@@ -3929,6 +3929,69 @@ describe("CommitGraph", () => {
 			);
 		});
 
+		async function resetMessage(
+			commits: GraphCommit[],
+			headBranch?: string,
+		): Promise<string> {
+			installReads({ commits });
+			render(CommitGraph, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+					headBranch,
+				},
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.contextMenu(rows[1]);
+			await flush();
+
+			await getMenuAction("Mixed")();
+			await flush();
+
+			return vi.mocked(ask).mock.calls[0][0];
+		}
+
+		it("names the branch the loaded history shows checked out when the branch list has not caught up", async () => {
+			const message = await resetMessage([HEAD_COMMIT, TARGET], "feature");
+
+			expect(message).toMatch(/^Reset main to bbb222b/);
+		});
+
+		it("names HEAD when the loaded history shows it detached and the branch list has not caught up", async () => {
+			const detached = makeCommit({ oid: HEAD_COMMIT.oid, is_head: true });
+
+			const message = await resetMessage([detached, TARGET], "main");
+
+			expect(message).toMatch(/^Reset HEAD to bbb222b/);
+		});
+
+		it("shows line breaks and direction controls in the branch and summary as marks", async () => {
+			const head = makeCommit({
+				oid: HEAD_COMMIT.oid,
+				is_head: true,
+				refs: [
+					makeRef({
+						short_name: "ma\u202Ein",
+						ref_type: "LocalBranch",
+						is_head: true,
+					}),
+				],
+			});
+			const target = makeCommit({
+				oid: TARGET.oid,
+				short_oid: "bbb222b",
+				summary: "older\u2028work",
+			});
+
+			const message = await resetMessage([head, target]);
+
+			expect(message).toMatch(
+				/^Reset ma\uFFFDin to bbb222b "older\uFFFDwork"\?/,
+			);
+		});
+
 		it("says a soft reset leaves unstaged changes unstaged", async () => {
 			installReads({ commits: [HEAD_COMMIT, TARGET] });
 			render(CommitGraph, {
