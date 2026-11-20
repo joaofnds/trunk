@@ -1,10 +1,10 @@
 <script lang="ts">
-import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
 import Sortable from "sortablejs";
 import { copySha } from "../lib/clipboard.js";
 import { exactDate } from "../lib/exact-date.js";
 import { COLUMN_PADDING_X } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { nativeMenu } from "../lib/native-menu.js";
 import { currentMinute } from "../lib/now.svelte.js";
 import { validateRebasePlan } from "../lib/rebase-validation.js";
 import { relativeLabel } from "../lib/relative-time.js";
@@ -227,6 +227,7 @@ async function showHeaderContextMenu(e: MouseEvent) {
 		{ key: "author", label: "Author" },
 		{ key: "date", label: "Date" },
 	];
+	const { CheckMenuItem, Menu } = await nativeMenu();
 	const menuItems = await Promise.all(
 		cols.map((col) =>
 			CheckMenuItem.new({

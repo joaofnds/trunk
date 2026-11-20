@@ -1,8 +1,12 @@
-import type { MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { ask } from "./dialog.js";
 import { forDisplay } from "./display-text.js";
 import { errorMessage, reportErrorToast } from "./error-report.js";
 import { isTrunkError, safeInvoke } from "./invoke.js";
+import {
+	type MenuItem,
+	nativeMenu,
+	type PredefinedMenuItem,
+} from "./native-menu.js";
 import { remoteErrorMessage } from "./remote-error.js";
 import {
 	pullCheckedOut,
@@ -124,7 +128,7 @@ export async function branchRemoteMenuGroup(
 	remoteState: RemoteState,
 ): Promise<(MenuItem | PredefinedMenuItem)[]> {
 	if ((await listRemotes(repoPath)).length === 0) return [];
-	const { PredefinedMenuItem } = await import("@tauri-apps/api/menu");
+	const { PredefinedMenuItem } = await nativeMenu();
 	return [
 		...(await branchRemoteMenuItems(repoPath, branch, isHead, remoteState)),
 		await PredefinedMenuItem.new({ item: "Separator" }),
@@ -137,7 +141,7 @@ async function branchRemoteMenuItems(
 	isHead: boolean,
 	remoteState: RemoteState,
 ): Promise<MenuItem[]> {
-	const { MenuItem } = await import("@tauri-apps/api/menu");
+	const { MenuItem } = await nativeMenu();
 	const enabled = !remoteState.isRunning;
 	if (!isHead)
 		return [

@@ -10,6 +10,7 @@ import type { Draft } from "../lib/draft.svelte.js";
 import { pathMenuEntriesOf } from "../lib/file-menu.js";
 import { toFileStatusList } from "../lib/file-status.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
+import { nativeMenu } from "../lib/native-menu.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
 import type {
@@ -98,7 +99,7 @@ let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
 
 async function showFileContextMenu(e: MouseEvent, file: FileStatus) {
 	e.preventDefault();
-	const { Menu, MenuItem } = await import("@tauri-apps/api/menu");
+	const { Menu, MenuItem } = await nativeMenu();
 	const menu = await Menu.new({
 		items: await Promise.all(
 			pathMenuEntriesOf(repoPath, file.path, file.old_path ?? null).map(

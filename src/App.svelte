@@ -24,6 +24,7 @@ import { DiffPreferences } from "./lib/diff-preferences.svelte.js";
 import { errorMessage } from "./lib/error-report.js";
 import { invokesSettled, safeInvoke } from "./lib/invoke.js";
 import { focusInEditable, keyChord, onMac } from "./lib/keyboard.js";
+import { nativeMenu } from "./lib/native-menu.js";
 import { createOwnedTimer } from "./lib/owned-timer.js";
 import { repositoryName } from "./lib/path.js";
 import { perfEnabled, record } from "./lib/perf.js";
@@ -648,9 +649,7 @@ function closeAllTabs() {
 }
 
 async function showTabContextMenu(tabId: string, _event: MouseEvent) {
-	const { Menu, MenuItem, PredefinedMenuItem } = await import(
-		"@tauri-apps/api/menu"
-	);
+	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
 	const tab = tabs.find((t) => t.id === tabId);
 
 	const menu = await Menu.new({

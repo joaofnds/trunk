@@ -17,6 +17,7 @@ import {
 import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { nativeMenu } from "../lib/native-menu.js";
 import {
 	branchRemoteMenuGroup,
 	deleteRemoteBranch,
@@ -436,7 +437,7 @@ async function handleStashSave() {
 
 async function showStashEntryMenu(e: MouseEvent, stash: StashEntry) {
 	e.preventDefault();
-	const { Menu, MenuItem } = await import("@tauri-apps/api/menu");
+	const { Menu, MenuItem } = await nativeMenu();
 	const menu = await Menu.new({
 		items: [
 			await MenuItem.new({
@@ -573,9 +574,7 @@ async function showBranchContextMenu(
 	branchName: string,
 	isHead: boolean,
 ) {
-	const { Menu, MenuItem, PredefinedMenuItem } = await import(
-		"@tauri-apps/api/menu"
-	);
+	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
 	const headBranchName = refs?.local.find((b) => b.is_head)?.name;
 	const menu = await Menu.new({
 		items: [
@@ -644,9 +643,7 @@ async function showTagContextMenu(_e: MouseEvent, tagShortName: string) {
 }
 
 async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
-	const { Menu, MenuItem, PredefinedMenuItem } = await import(
-		"@tauri-apps/api/menu"
-	);
+	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
 	const headBranchName = refs?.local.find((b) => b.is_head)?.name;
 	const menu = await Menu.new({
 		items: [

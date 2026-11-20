@@ -8,10 +8,14 @@ const MAX_REFNAME_CHARS = 60;
 export const MAX_PATH_CHARS = 200;
 export const MAX_MESSAGE_CHARS = 4000;
 
+export function flattened(text: string): string {
+	return text.replace(RENDER_UNSAFE, "�");
+}
+
 export function forDisplay(text: string, maxChars = MAX_REFNAME_CHARS): string {
-	const flattened = text.replace(RENDER_UNSAFE, "�");
-	const points = Array.from(flattened);
+	const shown = flattened(text);
+	const points = Array.from(shown);
 	return points.length <= maxChars
-		? flattened
+		? shown
 		: `${points.slice(0, maxChars).join("")}…`;
 }

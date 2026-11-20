@@ -1,3 +1,5 @@
+import { nativeMenu } from "./native-menu.js";
+
 /** What a tag's context menu entry does to the tag. */
 export type TagAction =
 	| { readonly kind: "push"; readonly remote: string }
@@ -53,9 +55,7 @@ export async function popupTagMenu(
 	groups: TagMenuEntry[][],
 	pick: (action: TagAction) => void,
 ): Promise<void> {
-	const { Menu, MenuItem, PredefinedMenuItem } = await import(
-		"@tauri-apps/api/menu"
-	);
+	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
 	const items = await Promise.all(
 		groups.flatMap((group, index) => [
 			...(index > 0 ? [PredefinedMenuItem.new({ item: "Separator" })] : []),

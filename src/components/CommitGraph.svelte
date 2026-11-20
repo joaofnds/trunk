@@ -72,6 +72,7 @@ import { centredRowTop, openingScrollTop } from "../lib/graph-scroll.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import { laneRefForRow } from "../lib/lane-ref.js";
+import { nativeMenu } from "../lib/native-menu.js";
 import {
 	buildOverlayPaths,
 	makePathContext,
@@ -1077,9 +1078,7 @@ async function handleInteractiveRebaseBranch(branchName: string) {
 
 async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 	e.preventDefault();
-	const { Menu, MenuItem, PredefinedMenuItem, Submenu } = await import(
-		"@tauri-apps/api/menu"
-	);
+	const { Menu, MenuItem, PredefinedMenuItem, Submenu } = await nativeMenu();
 
 	// Determine if merge/rebase options should be shown
 	const clickedBranch = commit.refs.find(
@@ -1329,7 +1328,7 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 
 async function showStashContextMenu(e: MouseEvent, commit: GraphCommit) {
 	e.preventDefault();
-	const { Menu, MenuItem } = await import("@tauri-apps/api/menu");
+	const { Menu, MenuItem } = await nativeMenu();
 	if (!stashOids.has(commit.oid)) return;
 	const menu = await Menu.new({
 		items: [
@@ -1465,9 +1464,7 @@ async function handleRefCheckout(e: MouseEvent, ref: RefInfo) {
 async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 	e.preventDefault();
 	e.stopPropagation();
-	const { Menu, MenuItem, PredefinedMenuItem } = await import(
-		"@tauri-apps/api/menu"
-	);
+	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
 
 	if (ref.refType === "LocalBranch") {
 		const menu = await Menu.new({
@@ -1591,7 +1588,7 @@ function openMenuIfOnHeader(e: MouseEvent) {
 
 async function showHeaderContextMenu(e: MouseEvent) {
 	e.preventDefault();
-	const { Menu, CheckMenuItem } = await import("@tauri-apps/api/menu");
+	const { Menu, CheckMenuItem } = await nativeMenu();
 	const items = await Promise.all(
 		columnLabels.map((col) =>
 			CheckMenuItem.new({

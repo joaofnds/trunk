@@ -2,6 +2,7 @@
 import ArrowDown from "@lucide/svelte/icons/arrow-down";
 import ArrowUp from "@lucide/svelte/icons/arrow-up";
 import { copySha } from "../lib/clipboard.js";
+import { nativeMenu } from "../lib/native-menu.js";
 import Chip from "../lib/ui/Chip.svelte";
 import Avatar from "./Avatar.svelte";
 
@@ -29,7 +30,7 @@ let authorDate = $derived(new Date(authorTimestamp * 1000).toLocaleString());
 
 async function showShaContextMenu(e: MouseEvent, oid: string) {
 	e.preventDefault();
-	const { Menu, MenuItem } = await import("@tauri-apps/api/menu");
+	const { Menu, MenuItem } = await nativeMenu();
 	const menu = await Menu.new({
 		items: [
 			await MenuItem.new({

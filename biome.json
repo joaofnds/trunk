@@ -40,6 +40,7 @@
 					"level": "error",
 					"options": {
 						"paths": {
+							"@tauri-apps/api/menu": "Build menus through $lib/native-menu, which keeps a ref name from changing how its label reads.",
 							"@tauri-apps/plugin-clipboard-manager": "Copy through $lib/clipboard, which tells the user when the clipboard refuses the write.",
 							"@tauri-apps/plugin-dialog": "Open dialogs through $lib/dialog, which holds a restart until the user answers."
 						}
@@ -58,6 +59,7 @@
 		{
 			"includes": [
 				"src/lib/dialog.ts",
+				"src/lib/native-menu.ts",
 				"src/drive.ts",
 				"src/drive-dialog.ts",
 				"src/drive-open-panel.ts"

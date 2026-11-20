@@ -22,6 +22,7 @@ import {
 	takeAllCurrent,
 	takeAllIncoming,
 } from "../lib/merge-parser.js";
+import { nativeMenu } from "../lib/native-menu.js";
 import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
@@ -444,9 +445,7 @@ async function showUnstagedContextMenu(
 	filePath: string,
 	fileStatus: FileStatusType,
 ) {
-	const { Menu, MenuItem, PredefinedMenuItem } = await import(
-		"@tauri-apps/api/menu"
-	);
+	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
 	const isUntracked = fileStatus === "New";
 	const absPath = `${repoPath}/${filePath}`;
 	const menu = await Menu.new({
@@ -482,9 +481,7 @@ async function showUnstagedContextMenu(
 }
 
 async function showUnstagedDirContextMenu(_e: MouseEvent, dirPath: string) {
-	const { Menu, MenuItem, PredefinedMenuItem } = await import(
-		"@tauri-apps/api/menu"
-	);
+	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
 	const absPath = `${repoPath}/${dirPath}`;
 	const files = filesUnder(status?.unstaged, dirPath);
 	if (files.length === 0) return;
@@ -526,9 +523,7 @@ async function showStagedContextMenu(
 	filePath: string,
 	oldPath: string | null,
 ) {
-	const { Menu, MenuItem, PredefinedMenuItem } = await import(
-		"@tauri-apps/api/menu"
-	);
+	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
 	const menu = await Menu.new({
 		items: [
 			...(await Promise.all(
@@ -554,9 +549,7 @@ async function showStagedContextMenu(
 }
 
 async function showStagedDirContextMenu(_e: MouseEvent, dirPath: string) {
-	const { Menu, MenuItem, PredefinedMenuItem } = await import(
-		"@tauri-apps/api/menu"
-	);
+	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
 	const absPath = `${repoPath}/${dirPath}`;
 	const files = filesUnder(status?.staged, dirPath);
 	if (files.length === 0) return;
@@ -617,9 +610,7 @@ async function resolveConflictedFile(
 }
 
 async function showConflictedContextMenu(_e: MouseEvent, filePath: string) {
-	const { Menu, MenuItem, PredefinedMenuItem } = await import(
-		"@tauri-apps/api/menu"
-	);
+	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
 	const absPath = `${repoPath}/${filePath}`;
 	const menu = await Menu.new({
 		items: [
@@ -661,9 +652,7 @@ async function resolveDirectory(dirPath: string) {
 }
 
 async function showConflictedDirContextMenu(_e: MouseEvent, dirPath: string) {
-	const { Menu, MenuItem, PredefinedMenuItem } = await import(
-		"@tauri-apps/api/menu"
-	);
+	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
 	const absPath = `${repoPath}/${dirPath}`;
 	const files = filesUnder(status?.conflicted, dirPath);
 	if (files.length === 0) return;

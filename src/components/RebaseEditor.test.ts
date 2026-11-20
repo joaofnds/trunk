@@ -1,6 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { fireEvent, render, screen, within } from "@testing-library/svelte";
+import {
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/svelte";
 import { tick } from "svelte";
 import {
 	afterEach,
@@ -766,9 +772,7 @@ describe("RebaseEditor", () => {
 
 			await fireEvent.contextMenu(screen.getByText("Author"));
 
-			await settled();
-
-			expect(menusShown).toEqual([true]);
+			await waitFor(() => expect(menusShown).toEqual([true]));
 		});
 
 		it.each(["Interactive Rebase", "fix: null check"])(
@@ -787,9 +791,8 @@ describe("RebaseEditor", () => {
 			const second = renderEditor();
 
 			await fireEvent.contextMenu(within(second.container).getByText("Author"));
-			await settled();
 
-			expect(menusShown).toEqual([true]);
+			await waitFor(() => expect(menusShown).toEqual([true]));
 		});
 	});
 
