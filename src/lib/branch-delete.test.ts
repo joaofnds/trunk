@@ -43,6 +43,14 @@ describe("deletePrompt", () => {
 		});
 	});
 
+	it("says it could not count the commits only the branch holds", () => {
+		expect(deletePrompt("topic", { kind: "not_held" }, null)).toEqual({
+			kind: "ask",
+			message:
+				"Delete branch 'topic'? Trunk could not check whether another branch or tag contains its commits.",
+		});
+	});
+
 	it("names the commits only the branch holds when it removes the worktree too", () => {
 		expect(
 			deletePrompt("topic", { kind: "offer", name: "wt", path: PATH }, 2)
@@ -184,6 +192,22 @@ describe("deleteBranch", () => {
 			kind: "deleted",
 			report: "Deleted branch topic (was 5f3c2a1)",
 		});
+	});
+
+	it("still asks, and deletes, when the commits cannot be counted", async () => {
+		vi.mocked(ask).mockResolvedValue(true);
+		vi.mocked(safeInvoke).mockImplementation(async (command) => {
+			if (command === "branch_hold") return { kind: "not_held" };
+			if (command === "commits_only_on_branch")
+				throw { code: "git_error", message: "object not found" };
+			if (command === "delete_branch")
+				return "5f3c2a1b9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b";
+			throw new Error(`unexpected ${command}`);
+		});
+
+		const outcome = await deleteBranch("/repo", "topic");
+
+		expect(outcome.kind).toBe("deleted");
 	});
 
 	it("deletes nothing once the user declines", async () => {

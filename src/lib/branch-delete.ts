@@ -53,7 +53,7 @@ async function askThenDelete(
 		safeInvoke<number>("commits_only_on_branch", {
 			path: repoPath,
 			branchName,
-		}),
+		}).catch(() => null),
 	]);
 	const prompt = deletePrompt(branchName, hold, lost);
 
@@ -92,26 +92,31 @@ async function askThenDelete(
 }
 
 /** `lost` counts the commits no other branch, tag or HEAD contains, which the
- *  delete would leave behind. */
+ *  delete would leave behind, or is null when they could not be counted. The count
+ *  only informs the question, so the question is asked without it. */
 export function deletePrompt(
 	branchName: string,
 	hold: BranchHold,
-	lost: number,
+	lost: number | null,
 ): DeletePrompt {
 	const branch = forDisplay(branchName, MAX_PATH_CHARS);
-	const withLost = lostText(lost);
+	const withLost = lost === null ? "" : lostText(lost);
+	const unchecked =
+		lost === null
+			? " Trunk could not check whether another branch or tag contains its commits."
+			: "";
 
 	switch (hold.kind) {
 		case "not_held":
 		case "held_by_main":
 			return {
 				kind: "ask",
-				message: `Delete branch '${branch}'${withLost}?`,
+				message: `Delete branch '${branch}'${withLost}?${unchecked}`,
 			};
 		case "offer":
 			return {
 				kind: "remove",
-				message: `'${branch}' is checked out in the worktree at ${pathText(hold.path)}.\n\nRemove that worktree and delete the branch${withLost}? This cannot be undone.`,
+				message: `'${branch}' is checked out in the worktree at ${pathText(hold.path)}.\n\nRemove that worktree and delete the branch${withLost}? This cannot be undone.${unchecked}`,
 				okLabel: "Remove Worktree and Delete",
 				removal: { name: hold.name, path: hold.path, go_ahead: false },
 			};
@@ -121,7 +126,7 @@ export function deletePrompt(
 				.join("\n");
 			return {
 				kind: "remove",
-				message: `'${branch}' is checked out in the worktree at ${pathText(hold.path)}, and removing it may lose work:\n\n${reasons}\n\nRemove it anyway and delete the branch${withLost}? This cannot be undone.`,
+				message: `'${branch}' is checked out in the worktree at ${pathText(hold.path)}, and removing it may lose work:\n\n${reasons}\n\nRemove it anyway and delete the branch${withLost}? This cannot be undone.${unchecked}`,
 				okLabel: "Remove Anyway and Delete",
 				removal: { name: hold.name, path: hold.path, go_ahead: true },
 			};
