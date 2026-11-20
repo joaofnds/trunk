@@ -770,6 +770,65 @@ describe("Toolbar stash", () => {
 		);
 	});
 
+	it("stashes once when Stash is pressed twice", async () => {
+		let saves = 0;
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "stash_save") {
+				saves += 1;
+				return deferred<never>().promise;
+			}
+			return Promise.resolve(false);
+		});
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
+				reviewActive: false,
+			},
+		});
+		const stash = screen.getByRole("button", { name: "Stash" });
+
+		await fireEvent.click(stash);
+		await waitFor(() => expect(saves).toBe(1));
+		await fireEvent.click(stash);
+
+		expect(saves).toBe(1);
+	});
+
+	it("stashes again once the first stash settles", async () => {
+		let saves = 0;
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "stash_save") {
+				saves += 1;
+				return Promise.resolve(null);
+			}
+			return Promise.resolve(false);
+		});
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
+				reviewActive: false,
+			},
+		});
+		const stash = screen.getByRole("button", { name: "Stash" });
+		await fireEvent.click(stash);
+		await waitFor(() =>
+			expect(toasted()).toContainEqual({
+				message: "Stash created",
+				kind: "success",
+			}),
+		);
+
+		await fireEvent.click(stash);
+
+		await waitFor(() => expect(saves).toBe(2));
+	});
+
 	it("pops one stash when Pop is pressed twice", async () => {
 		let pops = 0;
 		mockInvoke.mockImplementation((cmd: string) => {

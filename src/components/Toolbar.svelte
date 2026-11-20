@@ -101,10 +101,12 @@ let headOid = $state<string | null>(null);
 // An undo or redo moves HEAD, and the next one is decided against where it
 // lands. A second Undo pressed meanwhile would undo a second commit, and a Redo
 // would meet the old position, be refused, and bury the commit just undone. A
-// second Pop would pop the next stash. Neither is what the user asked for. Each
+// second Pop would pop the next stash, and a second Stash would find nothing
+// left to stash and report a failure. None is what the user asked for. Each
 // repository is held on its own, since the toolbar follows the active tab.
 const movingHeadIn = new SvelteSet<string>();
 const poppingIn = new SvelteSet<string>();
+const stashingIn = new SvelteSet<string>();
 
 let pendingRedo = $derived(
 	undoRedo.state.redoStack[undoRedo.state.redoStack.length - 1] ?? null,
@@ -241,12 +243,18 @@ function handlePush() {
 }
 
 async function handleStash() {
+	const path = repoPath;
+	if (stashingIn.has(path)) return;
+
+	stashingIn.add(path);
 	try {
-		await safeInvoke("stash_save", { path: repoPath, message: "" });
+		await safeInvoke("stash_save", { path, message: "" });
 		showToast("Stash created", "success");
 	} catch (e) {
 		console.error("stash_save failed:", e);
 		reportErrorToast(e, "Failed to create stash");
+	} finally {
+		stashingIn.delete(path);
 	}
 }
 
@@ -401,7 +409,13 @@ async function handleBranchCreate(values: Record<string, string>) {
 		<Button icon onclick={handleBranch} aria-label="Branch" tooltip="Branch">
 			<GitBranch size={14} />
 		</Button>
-		<Button icon onclick={handleStash} aria-label="Stash" tooltip="Stash">
+		<Button
+			icon
+			disabled={stashingIn.has(repoPath)}
+			onclick={handleStash}
+			aria-label="Stash"
+			tooltip="Stash"
+		>
 			<Archive size={14} />
 		</Button>
 		<Button
