@@ -32,17 +32,14 @@ pub fn classify_git_error(stderr: &str) -> TrunkError {
     {
         TrunkError::new("auth_failure", stderr)
     } else if lower.contains("remote rejected") || lower.contains("hook declined") {
-        // Tested before divergence: a decline also prints "failed to push some refs",
-        // and offering a force push as the remedy loops the user into the same refusal.
+        // Its own kind, so the user is not offered a force push, which a decline
+        // refuses again.
         TrunkError::new("push_declined", stderr)
     } else if git_own_lines(&lower).any(|line| {
         line.contains("remote ref updated since checkout") || line.contains("stale info")
     }) {
         TrunkError::new("push_lease_refused", stderr)
-    } else if lower.contains("non-fast-forward")
-        || lower.contains("fetch first")
-        || lower.contains("failed to push some refs")
-    {
+    } else if lower.contains("non-fast-forward") || lower.contains("fetch first") {
         TrunkError::new("non_fast_forward", stderr)
     } else if lower.contains("no upstream") || lower.contains("has no upstream branch") {
         TrunkError::new("no_upstream", stderr)

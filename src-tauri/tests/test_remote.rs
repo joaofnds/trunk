@@ -111,9 +111,9 @@ fn classify_non_fast_forward_fetch_first() {
 }
 
 #[test]
-fn classify_non_fast_forward_failed_push() {
+fn classify_a_failed_push_that_names_no_cause_is_not_non_fast_forward() {
     let err = classify_git_error("error: failed to push some refs to 'origin'");
-    assert_eq!(err.code, "non_fast_forward");
+    assert_eq!(err.code, "remote_error");
 }
 
 #[test]
@@ -151,8 +151,7 @@ fn classify_hook_forged_lease_markers_are_not_a_lease_refusal() {
 #[test]
 fn classify_hook_decline_is_not_non_fast_forward() {
     // Verbatim git 2.55 output for a pre-receive decline. It carries "failed to push
-    // some refs" like every failed push, so the divergence arm captures it unless the
-    // decline is tested first — and a force push cannot fix a declined hook.
+    // some refs" like every failed push, and a force push cannot fix a declined hook.
     let err = classify_git_error(
         "remote: error: pushing to a protected branch is not allowed\n! [remote rejected] HEAD -> master (pre-receive hook declined)\nerror: failed to push some refs to '/tmp/hookprobe/remote.git'",
     );
@@ -240,6 +239,23 @@ fn pull_returns_while_a_process_its_hook_started_still_runs() {
     left_running.release();
     result.unwrap();
     assert_eq!(read(&ctx, "file.txt"), "remote content");
+}
+
+#[cfg(unix)]
+#[test]
+fn push_its_pre_push_hook_refuses_reports_the_hooks_reason_as_a_remote_error() {
+    let ctx = repo_on_main();
+    track_upstream(&ctx, "origin", "main");
+    ctx.install_hook("pre-push", "echo 'run the tests first' >&2\nexit 1");
+
+    let err = ctx.remote().push().unwrap_err();
+
+    assert_eq!(err.code, "remote_error");
+    assert!(
+        err.message.contains("run the tests first"),
+        "{}",
+        err.message
+    );
 }
 
 #[cfg(unix)]
