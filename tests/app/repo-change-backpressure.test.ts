@@ -83,7 +83,19 @@ describe("repository changes during a sustained event stream", () => {
 		await app.settled();
 		app.advanceBy(REPO_CHANGE_DELAY_MS);
 		const before = app.refreshes();
+		const sentBefore = app.invokes().length;
 		driveWaitsWith(null);
+		// This catch-up has timed out on CI and under full checks with nothing
+		// outstanding, and never alone (TRUNK-440). The clock, the timers and the
+		// commands sent are what tell a refresh that finished late from one whose
+		// rerun was never asked for.
+		const timeline = (label: string) =>
+			`${label} at ${app.scheduler.time}ms, timers due at [${app.scheduler.foregroundDeadlines.join(", ")}], sent [${app
+				.invokes()
+				.slice(sentBefore)
+				.map(({ cmd }) => cmd)
+				.join(", ")}]`;
+		let firstFinished = "";
 
 		try {
 			await app.events.externalChange(app.repo.path);
@@ -99,6 +111,7 @@ describe("repository changes during a sustained event stream", () => {
 					? true
 					: null,
 			);
+			firstFinished = timeline("first refresh finished");
 			app.advanceBy(REPO_CHANGE_DELAY_MS - 1);
 			await tick();
 			expect(app.refreshes()).toBe(before + 1);
@@ -106,7 +119,11 @@ describe("repository changes during a sustained event stream", () => {
 			app.advanceBy(1);
 			await waitFor("the catch-up refresh", () =>
 				app.refreshes() === before + 2 ? true : null,
-			);
+			).catch((error: Error) => {
+				throw new Error(
+					`${firstFinished}\n${timeline("gave up")}\n\n${error.message}`,
+				);
+			});
 		} finally {
 			driveWaitsWith((elapsed) => app.advanceBy(elapsed));
 		}

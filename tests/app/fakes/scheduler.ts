@@ -35,6 +35,15 @@ export class FakeScheduler implements Scheduler {
 		return this.armed.filter((timer) => !timer.background).length;
 	}
 
+	/** When each armed foreground timer is due, soonest first, for a failure to
+	 *  report what the application was waiting on. */
+	get foregroundDeadlines(): number[] {
+		return this.armed
+			.filter((timer) => !timer.background)
+			.map((timer) => timer.at)
+			.sort((left, right) => left - right);
+	}
+
 	setTimeout(
 		callback: () => void,
 		delayMs: number,
