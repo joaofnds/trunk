@@ -270,13 +270,41 @@ pub fn unstage_file_inner(
             index.remove_path(Path::new(file_path))?;
             index.write()?;
         } else {
-            // Reset the file to HEAD state using reset_default
             let head_commit = repo.head()?.peel_to_commit()?;
-            repo.reset_default(Some(head_commit.as_object()), std::iter::once(file_path))?;
+            let paths = with_staged_rename_sources(repo, &[file_path])?;
+            repo.reset_default(
+                Some(head_commit.as_object()),
+                paths.iter().map(String::as_str),
+            )?;
         }
 
         Ok(())
     })
+}
+
+/// The given paths, each followed by the path it was renamed from when the index
+/// holds it as a staged rename. The staging list shows a staged rename as one row
+/// named by its new path, so unstaging that row has to put back both sides.
+fn with_staged_rename_sources(
+    repo: &git2::Repository,
+    paths: &[&str],
+) -> Result<Vec<String>, TrunkError> {
+    let head_tree = repo.head()?.peel_to_tree()?;
+    let mut diff = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
+    diff.find_similar(Some(git2::DiffFindOptions::new().renames(true)))?;
+
+    let mut out: Vec<String> = paths.iter().map(|p| (*p).to_owned()).collect();
+    for delta in diff.deltas() {
+        let is_wanted = delta
+            .new_file()
+            .path()
+            .is_some_and(|new| paths.iter().any(|p| Path::new(p) == new));
+        if delta.status() == git2::Delta::Renamed && is_wanted {
+            out.extend(renamed_from(Some(delta)));
+        }
+    }
+
+    Ok(out)
 }
 
 /// Restore several paths in the index to their HEAD state.
@@ -302,9 +330,11 @@ pub fn unstage_files_inner(
             index.write()?;
         } else {
             let head_commit = repo.head()?.peel_to_commit()?;
+            let wanted: Vec<&str> = file_paths.iter().map(String::as_str).collect();
+            let paths = with_staged_rename_sources(repo, &wanted)?;
             repo.reset_default(
                 Some(head_commit.as_object()),
-                file_paths.iter().map(String::as_str),
+                paths.iter().map(String::as_str),
             )?;
         }
 
@@ -619,11 +649,11 @@ pub fn unstage_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkE
             index.write()?;
         } else {
             let head_commit = repo.head()?.peel_to_commit()?;
-            // Collect all staged paths first
+            // A staged rename is one entry carrying both of its paths.
             let staged_paths: Vec<String> = get_status_inner(path, state_map)?
                 .staged
                 .into_iter()
-                .map(|f| f.path)
+                .flat_map(|f| std::iter::once(f.path).chain(f.old_path))
                 .collect();
             if !staged_paths.is_empty() {
                 repo.reset_default(

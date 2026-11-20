@@ -1646,6 +1646,16 @@ fn staged_rename_with_one_edit_beside(
     ctx
 }
 
+/// The staging list's staged rows, each named by its path.
+fn staged_rows(ctx: &TestContext) -> Vec<String> {
+    ctx.get_status()
+        .unwrap()
+        .staged
+        .into_iter()
+        .map(|file| file.path)
+        .collect()
+}
+
 fn staged_paths(ctx: &TestContext) -> Vec<String> {
     let repo = ctx.repo();
     let index = repo.index().unwrap();
@@ -1734,6 +1744,36 @@ fn unstaging_selected_lines_of_a_staged_rename_leaves_one_file_staged() {
         .unwrap();
 
     assert_eq!(staged_paths(&ctx), vec!["util.ts".to_string()]);
+}
+
+/// The staging list shows a staged rename as one row, so unstaging that row puts the
+/// whole rename back. Resetting only the new path left the old path's deletion staged,
+/// and the row came back as a staged delete of the file the user had just unstaged.
+#[test]
+fn unstaging_a_staged_rename_unstages_both_of_its_paths() {
+    let ctx = staged_rename_with_one_edit();
+
+    ctx.unstage_file("math-util.ts").unwrap();
+
+    assert_eq!(staged_rows(&ctx), Vec::<String>::new());
+}
+
+#[test]
+fn unstaging_a_staged_rename_among_several_files_unstages_both_of_its_paths() {
+    let ctx = staged_rename_with_one_edit();
+
+    ctx.unstage_files(&["math-util.ts"]).unwrap();
+
+    assert_eq!(staged_rows(&ctx), Vec::<String>::new());
+}
+
+#[test]
+fn unstaging_everything_unstages_both_paths_of_a_staged_rename() {
+    let ctx = staged_rename_with_one_edit();
+
+    ctx.unstage_all().unwrap();
+
+    assert_eq!(staged_rows(&ctx), Vec::<String>::new());
 }
 
 /// The staged file list is a separate libgit2 call from the staged diff
