@@ -210,6 +210,30 @@ describe("StagingPanel", () => {
 		);
 	});
 
+	it("says a bare repository has no working tree, in place of the commit form", async () => {
+		_resetToasts();
+		mockInvoke.mockImplementation((cmd: string) =>
+			cmd === "get_status"
+				? Promise.reject({
+						code: "git_bare_repo",
+						message:
+							"cannot status. This operation is not allowed against bare repositories.",
+					})
+				: Promise.resolve(undefined),
+		);
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/test/repo" },
+		});
+
+		expect(
+			await screen.findByText(
+				"This is a bare repository. It has no working tree, so there are no changes to stage or commit.",
+			),
+		).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Commit" })).toBeNull();
+		expect(toasts.items).toEqual([]);
+	});
+
 	it("draws the view switch as a small icon control", async () => {
 		render(StagingPanel, {
 			props: { ...noReviewCounts(), repoPath: "/test/repo" },
@@ -283,7 +307,7 @@ describe("StagingPanel", () => {
 		const header = await screen.findByRole("button", {
 			name: /Unstaged Files/,
 		});
-		expect(screen.getAllByTestId("staging-file")).toHaveLength(2);
+		expect(await screen.findAllByTestId("staging-file")).toHaveLength(2);
 
 		await fireEvent.click(header);
 

@@ -3,6 +3,7 @@ mod common;
 use common::builder::make_executable;
 use common::context::TestContext;
 use std::fmt::Write as _;
+use trunk_lib::state::OpenRepos;
 use trunk_lib::types::{DiffOrigin, DiffRequestOptions, FileStatusType};
 
 // -- get_status tests --
@@ -22,6 +23,18 @@ fn modified_file_shows_in_unstaged_status() {
         "expected unstaged to be non-empty"
     );
     assert!(status.staged.is_empty(), "expected staged to be empty");
+}
+
+#[test]
+fn get_status_names_a_bare_repository_as_having_no_working_tree() {
+    let dir = tempfile::tempdir().unwrap();
+    git2::Repository::init_bare(dir.path()).unwrap();
+    let path = dir.path().display().to_string();
+    let state_map = OpenRepos::from_iter([(path.clone(), dir.path().to_path_buf())]);
+
+    let error = trunk_lib::commands::staging::get_status_inner(&path, &state_map).unwrap_err();
+
+    assert_eq!(error.code, "git_bare_repo");
 }
 
 #[test]

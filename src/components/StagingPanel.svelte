@@ -16,7 +16,7 @@ import type { CommitFormSession } from "../lib/commit-form-session.svelte.js";
 import { ask } from "../lib/dialog.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { pathMenuEntriesOf } from "../lib/file-menu.js";
-import { safeInvoke } from "../lib/invoke.js";
+import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import {
 	computeOutput,
 	takeAllCurrent,
@@ -232,6 +232,7 @@ let totalCount = $derived(
 		(status?.staged.length ?? 0) +
 		(status?.conflicted.length ?? 0),
 );
+let bare = $state(false);
 let allResolved = $derived((status?.conflicted.length ?? 0) === 0);
 
 async function loadOperationState(path = repoPath) {
@@ -242,13 +243,23 @@ async function loadOperationState(path = repoPath) {
 	operationInfo = result;
 }
 
+/** The working tree's status, or null for a bare repository, which has none. */
+async function readStatus(path: string): Promise<WorkingTreeStatus | null> {
+	try {
+		return await safeInvoke<WorkingTreeStatus>("get_status", { path });
+	} catch (e) {
+		if (isTrunkError(e) && e.code === "git_bare_repo") return null;
+		throw e;
+	}
+}
+
 async function refreshStatus() {
 	const seq = ++loadSeq;
 	const path = repoPath;
-	const result = await safeInvoke<WorkingTreeStatus>("get_status", {
-		path,
-	});
+	const result = await readStatus(path);
 	if (panelActive && path === repoPath && seq === loadSeq) {
+		bare = result === null;
+		if (result === null) return;
 		status = result;
 		onstatuschange?.(result);
 	}
@@ -887,401 +898,412 @@ registerUpdateBlocker(() => {
 {/snippet}
 
 <div class="w-full min-w-0 flex flex-col h-full overflow-hidden bg-surface">
-	<!-- Panel header -->
-	<div
-		class="h-bar bg-surface-raised shadow-hairline py-0 px-3 flex items-center justify-center gap-2 shrink-0"
-	>
-		<span class="flex-1 flex items-center justify-center gap-2 min-w-0">
-			<span class="text-callout text-text">
-				{`${totalCount} file${totalCount === 1 ? "" : "s"} changed`}
-			</span>
-			{#if currentBranch}
-				<span class="text-small text-text-muted">on</span>
-				<BranchChip name={currentBranch} />
-			{/if}
-		</span>
-		{#if treeViewEnabled}
-			<Button
-				icon
-				size="sm"
-				variant="ghost"
-				aria-label="Expand all directories"
-				title="Expand All"
-				onclick={(e) => {
-					e.stopPropagation();
-					expandAllSignal++;
-				}}
-			>
-				<ChevronsUpDown size={14} />
-			</Button>
-			<Button
-				icon
-				size="sm"
-				variant="ghost"
-				aria-label="Collapse all directories"
-				title="Collapse All"
-				onclick={(e) => {
-					e.stopPropagation();
-					collapseAllSignal++;
-				}}
-			>
-				<ChevronsDownUp size={14} />
-			</Button>
-		{/if}
-		<Button
-			icon
-			size="sm"
-			variant="ghost"
-			role="switch"
-			aria-checked={treeViewEnabled}
-			aria-label={treeViewEnabled
-				? "Switch to list view"
-				: "Switch to tree view"}
-			title={treeViewEnabled ? "List view" : "Tree view"}
-			onclick={(e) => {
-				e.stopPropagation();
-				ontreeviewtoggle?.();
-			}}
-		>
-			{#if treeViewEnabled}
-				<FolderTree size={14} />
-			{:else}
-				<List size={14} />
-			{/if}
-		</Button>
-	</div>
-
-	<!-- Operation banners -->
-	{#if isRebase && operationInfo}
-		<!-- Rebase conflict/progress header -->
-		{#if (status?.conflicted.length ?? 0) > 0}
-			<div
-				class="h-bar bg-badge-warning-bg shadow-hairline flex items-center justify-center gap-2 shrink-0"
-			>
-				<span class="text-badge-warning inline-flex items-center">
-					<AlertTriangle size={12} />
-				</span>
-				<span class="text-callout font-semibold text-badge-warning"
-					>Rebase conflicts detected</span
-				>
-			</div>
-		{/if}
+	{#if bare}
+		<p class="m-auto px-4 text-body text-center text-text-muted">
+			This is a bare repository. It has no working tree, so there are no changes
+			to stage or commit.
+		</p>
+	{:else}
+		<!-- Panel header -->
 		<div
-			class="h-bar shadow-hairline py-0 px-3 flex items-center justify-center gap-2 shrink-0 text-small text-text-muted"
+			class="h-bar bg-surface-raised shadow-hairline py-0 px-3 flex items-center justify-center gap-2 shrink-0"
 		>
-			Rebasing
-			{#if operationInfo.source_branch}
-				<BranchChip name={operationInfo.source_branch} />
+			<span class="flex-1 flex items-center justify-center gap-2 min-w-0">
+				<span class="text-callout text-text">
+					{`${totalCount} file${totalCount === 1 ? "" : "s"} changed`}
+				</span>
+				{#if currentBranch}
+					<span class="text-small text-text-muted">on</span>
+					<BranchChip name={currentBranch} />
+				{/if}
+			</span>
+			{#if treeViewEnabled}
+				<Button
+					icon
+					size="sm"
+					variant="ghost"
+					aria-label="Expand all directories"
+					title="Expand All"
+					onclick={(e) => {
+						e.stopPropagation();
+						expandAllSignal++;
+					}}
+				>
+					<ChevronsUpDown size={14} />
+				</Button>
+				<Button
+					icon
+					size="sm"
+					variant="ghost"
+					aria-label="Collapse all directories"
+					title="Collapse All"
+					onclick={(e) => {
+						e.stopPropagation();
+						collapseAllSignal++;
+					}}
+				>
+					<ChevronsDownUp size={14} />
+				</Button>
 			{/if}
-			onto
-			{#if operationInfo.target_branch}
-				<BranchChip name={operationInfo.target_branch} />
-			{:else if operationInfo.onto_oid}
-				<CommitChip oid={operationInfo.onto_oid} />
-			{/if}
+			<Button
+				icon
+				size="sm"
+				variant="ghost"
+				role="switch"
+				aria-checked={treeViewEnabled}
+				aria-label={treeViewEnabled
+					? "Switch to list view"
+					: "Switch to tree view"}
+				title={treeViewEnabled ? "List view" : "Tree view"}
+				onclick={(e) => {
+					e.stopPropagation();
+					ontreeviewtoggle?.();
+				}}
+			>
+				{#if treeViewEnabled}
+					<FolderTree size={14} />
+				{:else}
+					<List size={14} />
+				{/if}
+			</Button>
 		</div>
-	{:else if operationInfo && operationInfo.op_type !== "None"}
-		<OperationBanner
-			info={operationInfo}
-			{repoPath}
-			resolved={allResolved}
-			{onopenmessageeditor}
-			onaction={() => {
-				loadStatus();
-			}}
-		/>
-	{/if}
 
-	<!-- File sections: the expanded ones share the height evenly -->
-	<div class="flex-1 flex flex-col overflow-hidden min-h-0">
-		<!-- Conflicted Files section (rebase: always shown; otherwise only when conflicts exist) -->
-		{#if isRebase || (status?.conflicted.length ?? 0) > 0}
+		<!-- Operation banners -->
+		{#if isRebase && operationInfo}
+			<!-- Rebase conflict/progress header -->
+			{#if (status?.conflicted.length ?? 0) > 0}
+				<div
+					class="h-bar bg-badge-warning-bg shadow-hairline flex items-center justify-center gap-2 shrink-0"
+				>
+					<span class="text-badge-warning inline-flex items-center">
+						<AlertTriangle size={12} />
+					</span>
+					<span class="text-callout font-semibold text-badge-warning"
+						>Rebase conflicts detected</span
+					>
+				</div>
+			{/if}
 			<div
+				class="h-bar shadow-hairline py-0 px-3 flex items-center justify-center gap-2 shrink-0 text-small text-text-muted"
+			>
+				Rebasing
+				{#if operationInfo.source_branch}
+					<BranchChip name={operationInfo.source_branch} />
+				{/if}
+				onto
+				{#if operationInfo.target_branch}
+					<BranchChip name={operationInfo.target_branch} />
+				{:else if operationInfo.onto_oid}
+					<CommitChip oid={operationInfo.onto_oid} />
+				{/if}
+			</div>
+		{:else if operationInfo && operationInfo.op_type !== "None"}
+			<OperationBanner
+				info={operationInfo}
+				{repoPath}
+				resolved={allResolved}
+				{onopenmessageeditor}
+				onaction={() => {
+					loadStatus();
+				}}
+			/>
+		{/if}
+
+		<!-- File sections: the expanded ones share the height evenly -->
+		<div class="flex-1 flex flex-col overflow-hidden min-h-0">
+			<!-- Conflicted Files section (rebase: always shown; otherwise only when conflicts exist) -->
+			{#if isRebase || (status?.conflicted.length ?? 0) > 0}
+				<div
+					class="flex flex-col overflow-hidden min-h-0"
+					class:flex-1={conflicted_expanded && staged_expanded}
+					class:section-capped={conflicted_expanded && !staged_expanded}
+				>
+					<Row
+						variant="band"
+						reveal="always"
+						onclick={() => (conflicted_expanded = !conflicted_expanded)}
+					>
+						<span class="text-text-muted inline-flex items-center mr-1">
+							{#if conflicted_expanded}
+								<ChevronDown size={12} />
+							{:else}
+								<ChevronRight size={12} />
+							{/if}
+						</span>
+						{@render sectionTitle(
+							"Conflicted Files",
+							status?.conflicted.length ?? 0,
+						)}
+						{#snippet actions()}
+							{#if (status?.conflicted.length ?? 0) > 0}
+								<Button size="sm" variant="success" onclick={markAllResolved}>
+									Mark All Resolved
+								</Button>
+							{/if}
+						{/snippet}
+					</Row>
+
+					{#if conflicted_expanded}
+						<TreeFileList
+							files={status?.conflicted ?? []}
+							treeMode={treeViewEnabled}
+							actionLabel="+"
+							{loadingFiles}
+							onfileaction={(path) => stageFile(path, "conflicted")}
+							onfileclick={(path) => onfileselect?.(path, "conflicted")}
+							onfilecontextmenu={(e, path) =>
+								showConflictedContextMenu(e, path)}
+							ondirectoryaction={(dirPath) => resolveDirectory(dirPath)}
+							ondirectorycontextmenu={(e, dirPath) =>
+								showConflictedDirContextMenu(e, dirPath)}
+							selectedPath={selectedKind === "conflicted" ? selectedPath : null}
+							{expandAllSignal}
+							{collapseAllSignal}
+						/>
+					{/if}
+				</div>
+			{/if}
+
+			<!-- Unstaged Files section (hidden during a rebase, and beside conflicts when it would be empty) -->
+			{#if showUnstaged}
+				<div
+					data-testid="staging-unstaged-section"
+					class="flex flex-col overflow-hidden min-h-0"
+					class:flex-1={unstaged_expanded && staged_expanded}
+					class:section-capped={unstaged_expanded && !staged_expanded}
+				>
+					<Row
+						variant="band"
+						reveal="always"
+						onclick={() => (unstaged_expanded = !unstaged_expanded)}
+					>
+						<span class="text-text-muted inline-flex items-center mr-1">
+							{#if unstaged_expanded}
+								<ChevronDown size={12} />
+							{:else}
+								<ChevronRight size={12} />
+							{/if}
+						</span>
+						{@render sectionTitle(
+							"Unstaged Files",
+							status?.unstaged.length ?? 0,
+						)}
+						{#snippet actions()}
+							{#if (status?.unstaged.length ?? 0) > 0}
+								<Button
+									icon
+									size="sm"
+									variant="danger"
+									onclick={handleDiscardAll}
+									aria-label="Discard all changes"
+									tooltip="Discard All"
+								>
+									<Trash2 size={14} aria-hidden="true" />
+								</Button>
+								<Button
+									size="sm"
+									variant="success"
+									onclick={stageAll}
+									aria-label="Stage all changes"
+								>
+									Stage All
+								</Button>
+							{/if}
+						{/snippet}
+					</Row>
+
+					{#if unstaged_expanded}
+						<TreeFileList
+							files={status?.unstaged ?? []}
+							treeMode={treeViewEnabled}
+							actionLabel="+"
+							{loadingFiles}
+							onfileaction={(path) => stageFile(path, "unstaged")}
+							onfileclick={(path) => onfileselect?.(path, "unstaged")}
+							onfilecontextmenu={(e, path, file) =>
+								showUnstagedContextMenu(e, path, file.status)}
+							ondirectoryaction={(dirPath) => stageDirectory(dirPath)}
+							ondirectorycontextmenu={(e, dirPath) =>
+								showUnstagedDirContextMenu(e, dirPath)}
+							selectedPath={selectedKind === "unstaged" ? selectedPath : null}
+							commentCounts={unstagedCommentCounts}
+							commentTallies={unstagedCommentTallies}
+							{expandAllSignal}
+							{collapseAllSignal}
+						/>
+					{/if}
+				</div>
+			{/if}
+
+			<!-- Staged Files section -->
+			<div
+				data-testid="staging-staged-section"
 				class="flex flex-col overflow-hidden min-h-0"
-				class:flex-1={conflicted_expanded && staged_expanded}
-				class:section-capped={conflicted_expanded && !staged_expanded}
+				class:flex-1={staged_expanded && unstaged_expanded}
+				class:section-capped={staged_expanded && !unstaged_expanded}
 			>
 				<Row
 					variant="band"
 					reveal="always"
-					onclick={() => (conflicted_expanded = !conflicted_expanded)}
+					onclick={() => (staged_expanded = !staged_expanded)}
 				>
 					<span class="text-text-muted inline-flex items-center mr-1">
-						{#if conflicted_expanded}
+						{#if staged_expanded}
 							<ChevronDown size={12} />
 						{:else}
 							<ChevronRight size={12} />
 						{/if}
 					</span>
 					{@render sectionTitle(
-						"Conflicted Files",
-						status?.conflicted.length ?? 0,
+						isOperation ? "Resolved Files" : "Staged Files",
+						status?.staged.length ?? 0,
 					)}
 					{#snippet actions()}
-						{#if (status?.conflicted.length ?? 0) > 0}
-							<Button size="sm" variant="success" onclick={markAllResolved}>
-								Mark All Resolved
+						{#if (status?.staged.length ?? 0) > 0}
+							<Button
+								size="sm"
+								variant="warning"
+								onclick={unstageAll}
+								aria-label="Unstage all"
+							>
+								Unstage All
 							</Button>
 						{/if}
 					{/snippet}
 				</Row>
 
-				{#if conflicted_expanded}
+				{#if staged_expanded}
 					<TreeFileList
-						files={status?.conflicted ?? []}
+						files={status?.staged ?? []}
 						treeMode={treeViewEnabled}
-						actionLabel="+"
+						actionLabel="−"
 						{loadingFiles}
-						onfileaction={(path) => stageFile(path, "conflicted")}
-						onfileclick={(path) => onfileselect?.(path, "conflicted")}
-						onfilecontextmenu={(e, path) => showConflictedContextMenu(e, path)}
-						ondirectoryaction={(dirPath) => resolveDirectory(dirPath)}
-						ondirectorycontextmenu={(e, dirPath) =>
-							showConflictedDirContextMenu(e, dirPath)}
-						selectedPath={selectedKind === "conflicted" ? selectedPath : null}
-						{expandAllSignal}
-						{collapseAllSignal}
-					/>
-				{/if}
-			</div>
-		{/if}
-
-		<!-- Unstaged Files section (hidden during a rebase, and beside conflicts when it would be empty) -->
-		{#if showUnstaged}
-			<div
-				data-testid="staging-unstaged-section"
-				class="flex flex-col overflow-hidden min-h-0"
-				class:flex-1={unstaged_expanded && staged_expanded}
-				class:section-capped={unstaged_expanded && !staged_expanded}
-			>
-				<Row
-					variant="band"
-					reveal="always"
-					onclick={() => (unstaged_expanded = !unstaged_expanded)}
-				>
-					<span class="text-text-muted inline-flex items-center mr-1">
-						{#if unstaged_expanded}
-							<ChevronDown size={12} />
-						{:else}
-							<ChevronRight size={12} />
-						{/if}
-					</span>
-					{@render sectionTitle("Unstaged Files", status?.unstaged.length ?? 0)}
-					{#snippet actions()}
-						{#if (status?.unstaged.length ?? 0) > 0}
-							<Button
-								icon
-								size="sm"
-								variant="danger"
-								onclick={handleDiscardAll}
-								aria-label="Discard all changes"
-								tooltip="Discard All"
-							>
-								<Trash2 size={14} aria-hidden="true" />
-							</Button>
-							<Button
-								size="sm"
-								variant="success"
-								onclick={stageAll}
-								aria-label="Stage all changes"
-							>
-								Stage All
-							</Button>
-						{/if}
-					{/snippet}
-				</Row>
-
-				{#if unstaged_expanded}
-					<TreeFileList
-						files={status?.unstaged ?? []}
-						treeMode={treeViewEnabled}
-						actionLabel="+"
-						{loadingFiles}
-						onfileaction={(path) => stageFile(path, "unstaged")}
-						onfileclick={(path) => onfileselect?.(path, "unstaged")}
+						onfileaction={(path) => unstageFile(path)}
+						onfileclick={(path) => onfileselect?.(path, "staged")}
 						onfilecontextmenu={(e, path, file) =>
-							showUnstagedContextMenu(e, path, file.status)}
-						ondirectoryaction={(dirPath) => stageDirectory(dirPath)}
+							showStagedContextMenu(e, path, file.old_path ?? null)}
+						ondirectoryaction={(dirPath) => unstageDirectory(dirPath)}
 						ondirectorycontextmenu={(e, dirPath) =>
-							showUnstagedDirContextMenu(e, dirPath)}
-						selectedPath={selectedKind === "unstaged" ? selectedPath : null}
-						commentCounts={unstagedCommentCounts}
-						commentTallies={unstagedCommentTallies}
+							showStagedDirContextMenu(e, dirPath)}
+						selectedPath={selectedKind === "staged" ? selectedPath : null}
+						commentCounts={stagedCommentCounts}
+						commentTallies={stagedCommentTallies}
 						{expandAllSignal}
 						{collapseAllSignal}
 					/>
 				{/if}
 			</div>
-		{/if}
 
-		<!-- Staged Files section -->
-		<div
-			data-testid="staging-staged-section"
-			class="flex flex-col overflow-hidden min-h-0"
-			class:flex-1={staged_expanded && unstaged_expanded}
-			class:section-capped={staged_expanded && !unstaged_expanded}
-		>
-			<Row
-				variant="band"
-				reveal="always"
-				onclick={() => (staged_expanded = !staged_expanded)}
-			>
-				<span class="text-text-muted inline-flex items-center mr-1">
-					{#if staged_expanded}
-						<ChevronDown size={12} />
-					{:else}
-						<ChevronRight size={12} />
-					{/if}
-				</span>
-				{@render sectionTitle(
-					isOperation ? "Resolved Files" : "Staged Files",
-					status?.staged.length ?? 0,
-				)}
-				{#snippet actions()}
-					{#if (status?.staged.length ?? 0) > 0}
-						<Button
-							size="sm"
-							variant="warning"
-							onclick={unstageAll}
-							aria-label="Unstage all"
-						>
-							Unstage All
-						</Button>
-					{/if}
-				{/snippet}
-			</Row>
-
-			{#if staged_expanded}
-				<TreeFileList
-					files={status?.staged ?? []}
-					treeMode={treeViewEnabled}
-					actionLabel="−"
-					{loadingFiles}
-					onfileaction={(path) => unstageFile(path)}
-					onfileclick={(path) => onfileselect?.(path, "staged")}
-					onfilecontextmenu={(e, path, file) =>
-						showStagedContextMenu(e, path, file.old_path ?? null)}
-					ondirectoryaction={(dirPath) => unstageDirectory(dirPath)}
-					ondirectorycontextmenu={(e, dirPath) =>
-						showStagedDirContextMenu(e, dirPath)}
-					selectedPath={selectedKind === "staged" ? selectedPath : null}
-					commentCounts={stagedCommentCounts}
-					commentTallies={stagedCommentTallies}
-					{expandAllSignal}
-					{collapseAllSignal}
-				/>
+			<!-- Spacer: absorbs remaining space when a section is collapsed -->
+			{#if !(unstaged_expanded && staged_expanded)}
+				<div class="flex-1"></div>
 			{/if}
 		</div>
 
-		<!-- Spacer: absorbs remaining space when a section is collapsed -->
-		{#if !(unstaged_expanded && staged_expanded)}
-			<div class="flex-1"></div>
-		{/if}
-	</div>
-
-	{#if isRebase && operationInfo}
-		<Splitter
-			variant="bar"
-			aria-label="Resize rebase form"
-			value={bottomHeight}
-			min={BOTTOM_MIN}
-			max={BOTTOM_MAX}
-			onstep={(delta) => resizeBottom(bottomHeight - delta)}
-			onmousedown={startBottomResize}
-		/>
-		<!-- Rebase progress + actions (GitKraken style) -->
-		<div
-			class="p-2 flex flex-col gap-2 shrink-0 overflow-hidden"
-			style:height="{bottomHeight}px"
-			data-testid="rebase-footer"
-		>
-			<div class="text-small leading-normal text-text-muted mb-1">
-				Rebasing commit {rebaseProgressNum} out of {rebaseProgressTotal}
-			</div>
-			<input
-				type="text"
-				bind:value={rebaseMsgSummary}
-				placeholder="Commit message summary"
-				class="w-full box-border border border-border bg-surface text-text rounded h-control py-1 px-2 text-callout"
+		{#if isRebase && operationInfo}
+			<Splitter
+				variant="bar"
+				aria-label="Resize rebase form"
+				value={bottomHeight}
+				min={BOTTOM_MIN}
+				max={BOTTOM_MAX}
+				onstep={(delta) => resizeBottom(bottomHeight - delta)}
+				onmousedown={startBottomResize}
+			/>
+			<!-- Rebase progress + actions (GitKraken style) -->
+			<div
+				class="p-2 flex flex-col gap-2 shrink-0 overflow-hidden"
+				style:height="{bottomHeight}px"
+				data-testid="rebase-footer"
 			>
-			<textarea
-				bind:value={rebaseMsgBody}
-				placeholder="Description (optional)"
-				class="w-full flex-1 min-h-0 box-border border border-border bg-surface text-text rounded py-1 px-2 text-callout leading-normal resize-none"
-			></textarea>
-			<div class="grid">
-				<Button
-					size="lg"
-					variant="success"
-					onclick={continueRebase}
-					disabled={rebaseLoading || !allResolved}
+				<div class="text-small leading-normal text-text-muted mb-1">
+					Rebasing commit {rebaseProgressNum} out of {rebaseProgressTotal}
+				</div>
+				<input
+					type="text"
+					bind:value={rebaseMsgSummary}
+					placeholder="Commit message summary"
+					class="w-full box-border border border-border bg-surface text-text rounded h-control py-1 px-2 text-callout"
 				>
-					Continue Rebase
-				</Button>
-			</div>
-			<div class="grid grid-cols-2 gap-2">
+				<textarea
+					bind:value={rebaseMsgBody}
+					placeholder="Description (optional)"
+					class="w-full flex-1 min-h-0 box-border border border-border bg-surface text-text rounded py-1 px-2 text-callout leading-normal resize-none"
+				></textarea>
 				<div class="grid">
 					<Button
 						size="lg"
-						variant="warning"
-						onclick={skipRebase}
-						disabled={rebaseLoading}
+						variant="success"
+						onclick={continueRebase}
+						disabled={rebaseLoading || !allResolved}
 					>
-						Skip
+						Continue Rebase
 					</Button>
 				</div>
-				<div class="grid">
+				<div class="grid grid-cols-2 gap-2">
+					<div class="grid">
+						<Button
+							size="lg"
+							variant="warning"
+							onclick={skipRebase}
+							disabled={rebaseLoading}
+						>
+							Skip
+						</Button>
+					</div>
+					<div class="grid">
+						<Button
+							size="lg"
+							variant="danger"
+							onclick={abortRebase}
+							disabled={rebaseLoading}
+						>
+							Abort
+						</Button>
+					</div>
+				</div>
+			</div>
+		{:else if isMerge}
+			<Splitter variant="bar" fixed />
+			<!-- Merge-continue actions. The commit message is edited in the host-owned
+	         MessageEditor modal (runMergeContinue), not an inline form. -->
+			<div class="flex flex-wrap shrink-0 gap-2 p-2" data-testid="merge-footer">
+				<div class="grid grow-3">
+					<Button
+						size="lg"
+						variant="success"
+						onclick={runMergeContinue}
+						disabled={!allResolved || mergeLoading}
+					>
+						{mergeLoading ? "Committing..." : "Commit merge"}
+					</Button>
+				</div>
+				<div class="grid grow">
 					<Button
 						size="lg"
 						variant="danger"
-						onclick={abortRebase}
-						disabled={rebaseLoading}
+						onclick={abortMerge}
+						disabled={mergeLoading}
 					>
-						Abort
+						Abort Merge
 					</Button>
 				</div>
 			</div>
-		</div>
-	{:else if isMerge}
-		<Splitter variant="bar" fixed />
-		<!-- Merge-continue actions. The commit message is edited in the host-owned
-         MessageEditor modal (runMergeContinue), not an inline form. -->
-		<div class="flex flex-wrap shrink-0 gap-2 p-2" data-testid="merge-footer">
-			<div class="grid grow-3">
-				<Button
-					size="lg"
-					variant="success"
-					onclick={runMergeContinue}
-					disabled={!allResolved || mergeLoading}
-				>
-					{mergeLoading ? "Committing..." : "Commit merge"}
-				</Button>
-			</div>
-			<div class="grid grow">
-				<Button
-					size="lg"
-					variant="danger"
-					onclick={abortMerge}
-					disabled={mergeLoading}
-				>
-					Abort Merge
-				</Button>
-			</div>
-		</div>
-	{:else}
-		<Splitter variant="bar" fixed />
-		<!-- CommitForm — normal mode -->
-		<CommitForm
-			{repoPath}
-			stagedCount={status?.staged.length ?? 0}
-			{initialSubject}
-			{initialBody}
-			session={commitFormSession}
-			{onsubjectchange}
-			{onbodychange}
-			{ondraftsummaryfocuschange}
-			bind:this={commitForm}
-		/>
+		{:else}
+			<Splitter variant="bar" fixed />
+			<!-- CommitForm — normal mode -->
+			<CommitForm
+				{repoPath}
+				stagedCount={status?.staged.length ?? 0}
+				{initialSubject}
+				{initialBody}
+				session={commitFormSession}
+				{onsubjectchange}
+				{onbodychange}
+				{ondraftsummaryfocuschange}
+				bind:this={commitForm}
+			/>
+		{/if}
 	{/if}
 </div>
 
