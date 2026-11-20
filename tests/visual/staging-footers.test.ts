@@ -14,6 +14,7 @@ describe.concurrent("staging panel footers at the detail pane's floor", () => {
 		harness = await suite.start({
 			cases: ["01-commit-message", "10-nested-conflict"],
 			pages: 2,
+			runsUsersGit: true,
 		});
 	});
 

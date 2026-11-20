@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -80,6 +80,8 @@ export interface GraphView {
 export interface HarnessShape {
 	cases: readonly string[];
 	pages: number;
+	/** The suite's captures run the user's git, so setup runs it once first. */
+	runsUsersGit?: boolean;
 }
 
 /** A footer of the staging panel, in a repository stopped mid-operation. */
@@ -134,6 +136,7 @@ export class VisualHarness {
 		const [fixtures, browsing] = await Promise.allSettled([
 			buildFixtures(repos, shape.cases, stopped),
 			VisualHarness.openPages(opened, shape.pages, stopped),
+			shape.runsUsersGit ? runUsersGitOnce(stopped) : undefined,
 		]);
 		stopped.throwIfAborted();
 		if (fixtures.status === "rejected") throw fixtures.reason;
@@ -872,6 +875,34 @@ function buildCase(
 				),
 			);
 		});
+	});
+}
+
+/**
+ * Runs the git the host will run, once. Apple's /usr/bin/git finds the real
+ * binary through `xcodebuild -find git`, which on a fresh CI runner took 16 s
+ * of a 20 s capture the first time (run 44649181007, TRUNK-500), and setup
+ * has the time a capture does not. With SHELL empty the host takes its PATH
+ * from path_helper, as `shell_env::system_path` does, so this does too. It
+ * settles once git has exited, and a failure is left to the capture, which
+ * reports git's own error.
+ */
+function runUsersGitOnce(stopped: AbortSignal): Promise<void> {
+	if (process.platform !== "darwin") return Promise.resolve();
+
+	return new Promise((ran) => {
+		execFile(
+			"/usr/libexec/path_helper",
+			["-s"],
+			{ signal: stopped },
+			(helperFailed, stdout) => {
+				const path = /PATH="([^"]*)"/.exec(stdout)?.[1];
+				if (helperFailed || path === undefined) return ran();
+
+				const env = { ...process.env, PATH: path };
+				execFile("git", ["--version"], { signal: stopped, env }, () => ran());
+			},
+		);
 	});
 }
 
