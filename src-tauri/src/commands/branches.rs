@@ -1,6 +1,6 @@
 use crate::commands::remote_tracking::{Remotes, spelled_by};
 use crate::state::{CommitCache, GraphCache, OpenRepos, RepoState};
-use crate::types::{BranchInfo, RefsResponse, StashEntry};
+use crate::types::{BranchInfo, DeletedBranch, RefsResponse, StashEntry};
 use crate::user_git::{UserGit, refusal};
 use crate::watcher::RepoChanged;
 use git2::BranchType;
@@ -130,7 +130,7 @@ pub fn delete_branch_inner(
     state_map: &OpenRepos,
     cache_map: &mut GraphCache,
     visibility: &trunk_git::graph_input::RefVisibility,
-) -> Result<String, TrunkError> {
+) -> Result<DeletedBranch, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
 
@@ -147,22 +147,30 @@ pub fn delete_branch_inner(
     }
 
     let mut branch = repo.find_branch(branch_name, BranchType::Local)?;
-    let tip = branch.get().peel_to_commit()?.id().to_string();
+    let deleted = DeletedBranch {
+        name: branch_name.to_owned(),
+        tip: branch.get().peel_to_commit()?.id().to_string(),
+        config: branch_settings(&repo, branch_name)?,
+        head_oid: repo
+            .head()
+            .ok()
+            .and_then(|head| head.target())
+            .map(|oid| oid.to_string()),
+    };
     if let Some(worktree) = worktree {
         trunk_git::worktree::remove(&repo, branch_name, worktree, &open_tabs(state_map))?;
-        branch.delete().map_err(|error| {
+        delete_local(&repo, &mut branch, &deleted.config).map_err(|error| {
             TrunkError::new(
                 "branch_not_deleted",
                 format!(
                     "the worktree at {} was removed but the branch could not be deleted: {}",
-                    worktree.path,
-                    error.message()
+                    worktree.path, error.message
                 ),
             )
         })?;
     } else {
         trunk_git::worktree::ensure_no_linked_holder(&repo, branch_name, &open_tabs(state_map))?;
-        branch.delete()?;
+        delete_local(&repo, &mut branch, &deleted.config)?;
     }
     drop(branch);
     drop(repo);
@@ -171,7 +179,190 @@ pub fn delete_branch_inner(
     let read = state_map.read_graph(path)?;
     cache_map.insert_read(path.to_owned(), read, visibility.clone());
 
-    Ok(tip)
+    Ok(deleted)
+}
+
+// git keeps a branch's settings, its upstream among them, under `branch.<name>.`, and a
+// branch name may hold dots. libgit2's own delete and rename find that section by a
+// pattern that also matches every branch named under it, so deleting "feature" would
+// take the upstream of "feature.x" with it. The ref half goes through libgit2 and the
+// settings half is done here, one exact name at a time.
+
+/// Delete `branch` and then its `settings`, refusing while another worktree has it
+/// checked out or is rebasing or bisecting it.
+fn delete_local(
+    repo: &git2::Repository,
+    branch: &mut git2::Branch<'_>,
+    settings: &[(String, String)],
+) -> Result<(), TrunkError> {
+    let name = branch.name()?.unwrap_or_default().to_owned();
+    if let Some(holder) = trunk_git::worktree::held_elsewhere(repo, &name)? {
+        return Err(TrunkError::new(
+            "branch_in_use",
+            format!(
+                "Cannot delete '{name}' while the worktree at {} uses it",
+                holder.display()
+            ),
+        ));
+    }
+    branch.get_mut().delete()?;
+    let mut config = repo.config()?.open_level(git2::ConfigLevel::Local)?;
+    remove_settings(&mut config, &name, settings)
+}
+
+/// Rename `branch` to `new_name`, moving its settings with it.
+fn rename_local(
+    repo: &git2::Repository,
+    branch: &mut git2::Branch<'_>,
+    new_name: &str,
+) -> Result<(), TrunkError> {
+    let old_ref = branch.get().name()?.to_owned();
+    let old_name = branch.name()?.unwrap_or_default().to_owned();
+    let new_ref = format!("refs/heads/{new_name}");
+    let settings = branch_settings(repo, &old_name)?;
+    branch.get_mut().rename(
+        &new_ref,
+        false,
+        &format!("branch: renamed {old_ref} to {new_ref}"),
+    )?;
+    let mut config = repo.config()?.open_level(git2::ConfigLevel::Local)?;
+    write_settings(&mut config, new_name, &settings)?;
+    remove_settings(&mut config, &old_name, &settings)
+}
+
+/// The `branch.<name>.<variable>` settings in the repository's own config, in file
+/// order. A variable is only what follows the whole name and itself holds no dot.
+fn branch_settings(
+    repo: &git2::Repository,
+    branch_name: &str,
+) -> Result<Vec<(String, String)>, TrunkError> {
+    let config = repo.config()?.open_level(git2::ConfigLevel::Local)?;
+    let prefix = format!("branch.{branch_name}.");
+    let mut settings = Vec::new();
+    let mut entries = config.entries(None)?;
+    while let Some(entry) = entries.next() {
+        let entry = entry?;
+        let (Ok(name), Ok(value)) = (entry.name(), entry.value()) else {
+            continue;
+        };
+        if let Some(variable) = name
+            .strip_prefix(&prefix)
+            .filter(|rest| !rest.contains('.'))
+        {
+            settings.push((variable.to_owned(), value.to_owned()));
+        }
+    }
+    Ok(settings)
+}
+
+/// Add each of `settings` under `branch.<name>.`. A pattern that matches only an empty
+/// value adds rather than replaces, so a repeated setting keeps every value.
+fn write_settings(
+    config: &mut git2::Config,
+    name: &str,
+    settings: &[(String, String)],
+) -> Result<(), TrunkError> {
+    for (variable, value) in settings {
+        config.set_multivar(&format!("branch.{name}.{variable}"), "^$", value)?;
+    }
+    Ok(())
+}
+
+/// Remove every value of each variable in `settings` from `branch.<name>.`. A repeated
+/// variable is gone after its first removal, so the later ones find nothing.
+fn remove_settings(
+    config: &mut git2::Config,
+    name: &str,
+    settings: &[(String, String)],
+) -> Result<(), TrunkError> {
+    for (variable, _) in settings {
+        match config.remove_multivar(&format!("branch.{name}.{variable}"), ".*") {
+            Err(error) if error.code() != git2::ErrorCode::NotFound => return Err(error.into()),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Put back a branch `delete_branch_inner` took, at the commit it pointed at and with
+/// the settings it had, then rebuild the graph cache.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `branch_exists` when a branch
+/// of that name has been made since, `restore_missing` when the repository no longer has
+/// the commit, and the git error when the branch or its settings will not write.
+pub fn restore_branch_inner(
+    path: &str,
+    deleted: &DeletedBranch,
+    state_map: &OpenRepos,
+    cache_map: &mut GraphCache,
+    visibility: &trunk_git::graph_input::RefVisibility,
+) -> Result<(), TrunkError> {
+    let repo = state_map.open(path)?;
+
+    if repo.find_branch(&deleted.name, BranchType::Local).is_ok() {
+        return Err(TrunkError::new(
+            "branch_exists",
+            format!(
+                "A branch named '{}' has been made since the delete, so the deleted one was not restored",
+                deleted.name
+            ),
+        ));
+    }
+    let tip = git2::Oid::from_str(&deleted.tip)
+        .and_then(|oid| repo.find_commit(oid))
+        .map_err(|_| {
+            TrunkError::new(
+                "restore_missing",
+                "The commit the deleted branch pointed at is no longer in the repository",
+            )
+        })?;
+    repo.branch(&deleted.name, &tip, false)?;
+    let mut config = repo.config()?.open_level(git2::ConfigLevel::Local)?;
+    write_settings(&mut config, &deleted.name, &deleted.config)?;
+    drop(config);
+    drop(tip);
+    drop(repo);
+
+    let read = state_map.read_graph(path)?;
+    cache_map.insert_read(path.to_owned(), read, visibility.clone());
+    Ok(())
+}
+
+/// Delete `branch_name` again after an undo restored it, while it still points at
+/// `expected_tip`.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `redo_missing` when the branch
+/// is gone, `redo_stale` when it has moved, since the redo would take commits the undone
+/// delete never held, and every error `delete_branch_inner` names.
+pub fn redo_branch_delete_inner(
+    path: &str,
+    branch_name: &str,
+    expected_tip: &str,
+    state_map: &OpenRepos,
+    cache_map: &mut GraphCache,
+    visibility: &trunk_git::graph_input::RefVisibility,
+) -> Result<DeletedBranch, TrunkError> {
+    let repo = state_map.open(path)?;
+    let Ok(branch) = repo.find_branch(branch_name, BranchType::Local) else {
+        return Err(TrunkError::new(
+            "redo_missing",
+            format!("The branch '{branch_name}' is already gone"),
+        ));
+    };
+    if branch.get().peel_to_commit()?.id().to_string() != expected_tip {
+        return Err(TrunkError::new(
+            "redo_stale",
+            format!("The branch '{branch_name}' has moved since the undo, so it was not deleted"),
+        ));
+    }
+    drop(branch);
+    drop(repo);
+
+    delete_branch_inner(path, branch_name, None, state_map, cache_map, visibility)
 }
 
 /// How many commits deleting local branch `branch_name` would leave on no other
@@ -250,7 +441,7 @@ pub fn rename_branch_inner(
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
     let mut branch = repo.find_branch(old_name, BranchType::Local)?;
-    branch.rename(new_name, false)?; // false = no force (fail if new_name exists)
+    rename_local(&repo, &mut branch, new_name)?;
     drop(branch);
     drop(repo);
 
@@ -893,12 +1084,12 @@ pub async fn delete_branch<R: Runtime>(
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
-) -> Result<String, String> {
+) -> Result<DeletedBranch, String> {
     let path_clone = path.clone();
     let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let tabs = app.clone();
 
-    let tip = rebuild
+    let deleted = rebuild
         .rebuild_merging(path.clone(), move |visibility, rebuilt| {
             // Read the open tabs after the gate, not before it, so a tab opened on the
             // worktree while this delete waited still refuses its removal.
@@ -916,7 +1107,81 @@ pub async fn delete_branch<R: Runtime>(
         .map_err(|e| e.to_json())?;
 
     let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
-    Ok(tip)
+    Ok(deleted)
+}
+
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn restore_branch<R: Runtime>(
+    activity: crate::activity::Activity,
+    path: String,
+    deleted: DeletedBranch,
+    state: State<'_, RepoState>,
+    cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
+    app: AppHandle<R>,
+) -> Result<(), String> {
+    let path_clone = path.clone();
+    let state_map = state.snapshot();
+    let rebuild = crate::state::GraphRebuild::new(activity, &cache, &ref_visibility);
+
+    rebuild
+        .rebuild_merging(path.clone(), move |visibility, rebuilt| {
+            restore_branch_inner(&path_clone, &deleted, &state_map, rebuilt, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
+
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
+    Ok(())
+}
+
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn redo_branch_delete<R: Runtime>(
+    activity: crate::activity::Activity,
+    path: String,
+    branch_name: String,
+    expected_tip: String,
+    cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
+    app: AppHandle<R>,
+) -> Result<DeletedBranch, String> {
+    let path_clone = path.clone();
+    let rebuild = crate::state::GraphRebuild::new(activity, &cache, &ref_visibility);
+    let tabs = app.clone();
+
+    let deleted = rebuild
+        .rebuild_merging(path.clone(), move |visibility, rebuilt| {
+            let state_map = tabs.state::<RepoState>().snapshot();
+            redo_branch_delete_inner(
+                &path_clone,
+                &branch_name,
+                &expected_tip,
+                &state_map,
+                rebuilt,
+                visibility,
+            )
+        })
+        .await
+        .map_err(|e| e.to_json())?;
+
+    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
+    Ok(deleted)
 }
 
 /// # Errors

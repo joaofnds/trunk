@@ -142,6 +142,16 @@ export interface WorktreeRemoval {
 	go_ahead: boolean;
 }
 
+/** A local branch as its delete found it, which is everything an undo needs to put
+ *  it back. `config` holds its own settings, its upstream among them, as
+ *  [variable, value] pairs. `head_oid` is where HEAD was when it went. */
+export interface DeletedBranch {
+	name: string;
+	tip: string;
+	config: [string, string][];
+	head_oid: string | null;
+}
+
 export interface StashEntry {
 	index: number;
 	name: string;

@@ -12,6 +12,13 @@ vi.mock("./invoke.js", async (importActual) => ({
 
 const PATH = "/work/wt";
 
+const DELETED = {
+	name: "topic",
+	tip: "5f3c2a1b9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b",
+	config: [],
+	head_oid: "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567",
+};
+
 describe("deletePrompt", () => {
 	it("asks the plain question when no worktree holds the branch", () => {
 		expect(deletePrompt("topic", { kind: "not_held" }, 0)).toEqual({
@@ -181,8 +188,7 @@ describe("deleteBranch", () => {
 		vi.mocked(safeInvoke).mockImplementation(async (command) => {
 			if (command === "branch_hold") return { kind: "not_held" };
 			if (command === "commits_only_on_branch") return 1;
-			if (command === "delete_branch")
-				return "5f3c2a1b9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b";
+			if (command === "delete_branch") return DELETED;
 			throw new Error(`unexpected ${command}`);
 		});
 
@@ -200,8 +206,7 @@ describe("deleteBranch", () => {
 			if (command === "branch_hold") return { kind: "not_held" };
 			if (command === "commits_only_on_branch")
 				throw { code: "git_error", message: "object not found" };
-			if (command === "delete_branch")
-				return "5f3c2a1b9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b";
+			if (command === "delete_branch") return DELETED;
 			throw new Error(`unexpected ${command}`);
 		});
 

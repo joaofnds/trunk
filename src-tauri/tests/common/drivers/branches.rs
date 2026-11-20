@@ -2,7 +2,7 @@ use crate::common::context::TestContext;
 use trunk_git::error::TrunkError;
 use trunk_git::worktree::{BranchHold, WorktreeRemoval};
 use trunk_lib::commands::branches;
-use trunk_lib::types::RefsResponse;
+use trunk_lib::types::{DeletedBranch, RefsResponse};
 
 impl TestContext {
     /// List all refs (branches, tags, stashes) in the test repo
@@ -27,11 +27,38 @@ impl TestContext {
     }
 
     /// Delete a local branch (needs &mut self for `cache_map`)
-    pub fn delete_branch(&mut self, name: &str) -> Result<String, TrunkError> {
+    pub fn delete_branch(&mut self, name: &str) -> Result<DeletedBranch, TrunkError> {
         branches::delete_branch_inner(
             &self.path,
             name,
             None,
+            &self.state_map,
+            &mut self.cache_map,
+            &trunk_git::graph_input::RefVisibility::default(),
+        )
+    }
+
+    /// Bring back a branch a delete took, as Undo does
+    pub fn restore_branch(&mut self, deleted: &DeletedBranch) -> Result<(), TrunkError> {
+        branches::restore_branch_inner(
+            &self.path,
+            deleted,
+            &self.state_map,
+            &mut self.cache_map,
+            &trunk_git::graph_input::RefVisibility::default(),
+        )
+    }
+
+    /// Delete `name` again, as Redo does after an undone delete, only while it is at `tip`
+    pub fn redo_branch_delete(
+        &mut self,
+        name: &str,
+        tip: &str,
+    ) -> Result<DeletedBranch, TrunkError> {
+        branches::redo_branch_delete_inner(
+            &self.path,
+            name,
+            tip,
             &self.state_map,
             &mut self.cache_map,
             &trunk_git::graph_input::RefVisibility::default(),
@@ -72,12 +99,29 @@ impl TestContext {
         )
     }
 
+    /// Delete a local branch from the worktree at `location`, opened in its own tab
+    pub fn delete_branch_in(
+        &mut self,
+        location: &std::path::Path,
+        name: &str,
+    ) -> Result<DeletedBranch, TrunkError> {
+        self.open_in_tab(location);
+        branches::delete_branch_inner(
+            &location.display().to_string(),
+            name,
+            None,
+            &self.state_map,
+            &mut self.cache_map,
+            &trunk_git::graph_input::RefVisibility::default(),
+        )
+    }
+
     /// Delete a local branch, removing the linked worktree the user agreed to remove
     pub fn delete_branch_removing(
         &mut self,
         name: &str,
         worktree: &WorktreeRemoval,
-    ) -> Result<String, TrunkError> {
+    ) -> Result<DeletedBranch, TrunkError> {
         branches::delete_branch_inner(
             &self.path,
             name,

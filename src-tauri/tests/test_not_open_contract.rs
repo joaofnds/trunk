@@ -10,7 +10,7 @@ use trunk_git::graph_input::RefVisibility;
 use trunk_lib::commands::branches::{
     branch_hold_inner, checkout_branch_inner, checkout_remote_branch_inner,
     commits_only_on_branch_inner, create_branch_inner, delete_branch_inner, fast_forward_to_inner,
-    rename_branch_inner,
+    redo_branch_delete_inner, rename_branch_inner, restore_branch_inner,
 };
 use trunk_lib::commands::commit_actions::{
     checkout_commit_inner, cherry_pick_inner, create_tag_inner, delete_tag_inner,
@@ -29,6 +29,7 @@ use trunk_lib::commands::remote::{git_pull_inner, git_push_force_inner, git_push
 use trunk_lib::state::{
     CommitCache, GraphCache, OpenRepos, RefVisibilityState, RemoteOps, RepoState,
 };
+use trunk_lib::types::DeletedBranch;
 
 const UNREGISTERED: &str = "/not/a/registered/repo";
 
@@ -82,6 +83,10 @@ not_open_contract! {
         |path, state| get_fork_point_inner(path, "main", state);
     delete_branch_reports_not_open_for_an_unregistered_repo =>
         |path, state| delete_branch_inner(path, "feature", None, state, &mut GraphCache::default(), &RefVisibility::default());
+    restore_branch_reports_not_open_for_an_unregistered_repo =>
+        |path, state| restore_branch_inner(path, &DeletedBranch { name: "feature".into(), tip: "0".repeat(40), config: Vec::new(), head_oid: None }, state, &mut GraphCache::default(), &RefVisibility::default());
+    redo_branch_delete_reports_not_open_for_an_unregistered_repo =>
+        |path, state| redo_branch_delete_inner(path, "feature", &"0".repeat(40), state, &mut GraphCache::default(), &RefVisibility::default());
     branch_hold_reports_not_open_for_an_unregistered_repo =>
         |path, state| branch_hold_inner(path, "feature", state);
     commits_only_on_branch_reports_not_open_for_an_unregistered_repo =>

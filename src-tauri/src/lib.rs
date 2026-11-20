@@ -326,6 +326,8 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         commands::branches::branch_hold,
         commands::branches::commits_only_on_branch,
         commands::branches::delete_branch,
+        commands::branches::restore_branch,
+        commands::branches::redo_branch_delete,
         commands::branches::rename_branch,
         commands::staging::get_dirty_counts,
         commands::staging::get_status,

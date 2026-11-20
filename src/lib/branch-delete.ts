@@ -5,7 +5,12 @@ import {
 	MAX_PATH_CHARS,
 } from "./display-text.js";
 import { isTrunkError, safeInvoke, type TrunkError } from "./invoke.js";
-import type { BranchHold, RemovalRisk, WorktreeRemoval } from "./types.js";
+import type {
+	BranchHold,
+	DeletedBranch,
+	RemovalRisk,
+	WorktreeRemoval,
+} from "./types.js";
 
 export type DeletePrompt =
 	| { readonly kind: "ask"; readonly message: string }
@@ -72,9 +77,9 @@ async function askThenDelete(
 	});
 	if (!confirmed) return { kind: "declined" };
 
-	let tip: string;
+	let deleted: DeletedBranch;
 	try {
-		tip = await safeInvoke<string>("delete_branch", {
+		deleted = await safeInvoke<DeletedBranch>("delete_branch", {
 			path: repoPath,
 			branchName,
 			worktree: prompt.kind === "remove" ? prompt.removal : null,
@@ -87,7 +92,7 @@ async function askThenDelete(
 	}
 	return {
 		kind: "deleted",
-		report: `Deleted branch ${forDisplay(branchName, MAX_PATH_CHARS)} (was ${tip.slice(0, 7)})`,
+		report: `Deleted branch ${forDisplay(branchName, MAX_PATH_CHARS)} (was ${deleted.tip.slice(0, 7)})`,
 	};
 }
 

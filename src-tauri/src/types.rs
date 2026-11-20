@@ -40,6 +40,21 @@ pub struct SearchResult {
     pub match_types: Vec<MatchType>,
 }
 
+/// A local branch as its delete found it, which is everything an undo needs to put it
+/// back.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct DeletedBranch {
+    pub name: String,
+    pub tip: String,
+    /// The branch's own settings, `branch.<name>.<variable>` in the repository's config,
+    /// as (variable, value) in file order. Its upstream lives here, and git removes the
+    /// whole section with the branch.
+    pub config: Vec<(String, String)>,
+    /// Where HEAD was when the branch went, or None on an unborn HEAD. Undo takes the
+    /// delete back before a commit only while HEAD is still here.
+    pub head_oid: Option<String>,
+}
+
 #[derive(Debug, Serialize, Clone)]
 pub struct BranchInfo {
     pub name: String,

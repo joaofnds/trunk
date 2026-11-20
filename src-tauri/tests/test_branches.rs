@@ -321,7 +321,225 @@ fn delete_branch_reports_the_tip_it_deleted() {
 
     let deleted = ctx.delete_branch("feature").unwrap();
 
-    assert_eq!(deleted, tip);
+    assert_eq!(deleted.tip, tip);
+}
+
+#[test]
+fn delete_branch_reports_where_head_was() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    let head = ctx.resolve_ref("HEAD").unwrap();
+
+    let deleted = ctx.delete_branch("feature").unwrap();
+
+    assert_eq!(deleted.head_oid.as_deref(), Some(head.as_str()));
+}
+
+#[test]
+fn a_deleted_branch_is_restored_where_it_pointed() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    let tip = ctx.resolve_ref("feature").unwrap();
+    let deleted = ctx.delete_branch("feature").unwrap();
+
+    ctx.restore_branch(&deleted).unwrap();
+
+    assert_eq!(ctx.resolve_ref("feature").unwrap(), tip);
+}
+
+#[test]
+fn a_restored_branch_tracks_its_upstream_again() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    set_branch_config(
+        &ctx,
+        "feature",
+        &[("remote", "origin"), ("merge", "refs/heads/feature")],
+    );
+    let deleted = ctx.delete_branch("feature").unwrap();
+
+    ctx.restore_branch(&deleted).unwrap();
+
+    assert_eq!(
+        branch_config(&ctx, "feature"),
+        [("remote", "origin"), ("merge", "refs/heads/feature")].map(owned)
+    );
+}
+
+#[test]
+fn a_restored_branch_keeps_every_value_of_a_repeated_setting() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    set_branch_config(
+        &ctx,
+        "feature",
+        &[("merge", "refs/heads/one"), ("merge", "refs/heads/two")],
+    );
+    let deleted = ctx.delete_branch("feature").unwrap();
+
+    ctx.restore_branch(&deleted).unwrap();
+
+    assert_eq!(
+        branch_config(&ctx, "feature"),
+        [("merge", "refs/heads/one"), ("merge", "refs/heads/two")].map(owned)
+    );
+}
+
+#[test]
+fn a_restored_branch_takes_back_none_of_the_settings_of_a_branch_named_under_it() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    ctx.create_branch("feature.x", None).unwrap();
+    ctx.checkout_branch("main").unwrap();
+    set_branch_config(&ctx, "feature", &[("remote", "origin")]);
+    set_branch_config(&ctx, "feature.x", &[("remote", "upstream")]);
+    let deleted = ctx.delete_branch("feature").unwrap();
+
+    ctx.restore_branch(&deleted).unwrap();
+
+    assert_eq!(
+        branch_config(&ctx, "feature"),
+        [("remote", "origin")].map(owned)
+    );
+    assert_eq!(
+        branch_config(&ctx, "feature.x"),
+        [("remote", "upstream")].map(owned)
+    );
+}
+
+#[test]
+fn deleting_a_branch_leaves_the_settings_of_a_branch_named_under_it() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    ctx.create_branch("feature.x", None).unwrap();
+    ctx.checkout_branch("main").unwrap();
+    set_branch_config(&ctx, "feature.x", &[("remote", "upstream")]);
+
+    ctx.delete_branch("feature").unwrap();
+
+    assert_eq!(
+        branch_config(&ctx, "feature.x"),
+        [("remote", "upstream")].map(owned)
+    );
+}
+
+#[test]
+fn renaming_a_branch_leaves_the_settings_of_a_branch_named_under_it() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    ctx.create_branch("feature.x", None).unwrap();
+    ctx.checkout_branch("main").unwrap();
+    set_branch_config(&ctx, "feature.x", &[("remote", "upstream")]);
+
+    ctx.rename_branch("feature", "renamed").unwrap();
+
+    assert_eq!(
+        branch_config(&ctx, "feature.x"),
+        [("remote", "upstream")].map(owned)
+    );
+    assert_eq!(branch_config(&ctx, "renamed.x"), []);
+}
+
+#[test]
+fn restore_leaves_a_branch_made_since_under_the_same_name_alone() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    let deleted = ctx.delete_branch("feature").unwrap();
+    ctx.create_branch("feature", None).unwrap();
+    ctx.checkout_branch("main").unwrap();
+    let remade = ctx.resolve_ref("feature").unwrap();
+
+    let error = ctx.restore_branch(&deleted).unwrap_err();
+
+    assert_eq!(error.code, "branch_exists");
+    assert_eq!(ctx.resolve_ref("feature").unwrap(), remade);
+}
+
+#[test]
+fn restore_reports_a_commit_the_repository_no_longer_has() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    let mut deleted = ctx.delete_branch("feature").unwrap();
+    deleted.tip = "0123456789abcdef0123456789abcdef01234567".to_owned();
+
+    let error = ctx.restore_branch(&deleted).unwrap_err();
+
+    assert_eq!(error.code, "restore_missing");
+    ctx.assert_branch_not_exists("feature");
+}
+
+#[test]
+fn redoing_a_delete_deletes_the_restored_branch_again() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    let deleted = ctx.delete_branch("feature").unwrap();
+    ctx.restore_branch(&deleted).unwrap();
+
+    let again = ctx.redo_branch_delete("feature", &deleted.tip).unwrap();
+
+    ctx.assert_branch_not_exists("feature");
+    assert_eq!(again.tip, deleted.tip);
+}
+
+#[test]
+fn redo_keeps_a_branch_that_moved_since_the_undo() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    let deleted = ctx.delete_branch("feature").unwrap();
+    ctx.restore_branch(&deleted).unwrap();
+    let main = ctx.resolve_ref("main").unwrap();
+    force_branch(&ctx, "feature", &main);
+
+    let error = ctx.redo_branch_delete("feature", &deleted.tip).unwrap_err();
+
+    assert_eq!(error.code, "redo_stale");
+    assert_eq!(ctx.resolve_ref("feature").unwrap(), main);
+}
+
+#[test]
+fn redo_reports_a_branch_deleted_since_the_undo() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    let deleted = ctx.delete_branch("feature").unwrap();
+
+    let error = ctx.redo_branch_delete("feature", &deleted.tip).unwrap_err();
+
+    assert_eq!(error.code, "redo_missing");
+}
+
+fn set_branch_config(ctx: &TestContext, branch: &str, entries: &[(&str, &str)]) {
+    let mut config = ctx
+        .repo()
+        .config()
+        .unwrap()
+        .open_level(git2::ConfigLevel::Local)
+        .unwrap();
+    for (variable, value) in entries {
+        config
+            .set_multivar(&format!("branch.{branch}.{variable}"), "^$", value)
+            .unwrap();
+    }
+}
+
+fn branch_config(ctx: &TestContext, branch: &str) -> Vec<(String, String)> {
+    let config = ctx
+        .repo()
+        .config()
+        .unwrap()
+        .open_level(git2::ConfigLevel::Local)
+        .unwrap();
+    let prefix = format!("branch.{branch}.");
+    let mut found = Vec::new();
+    let mut entries = config.entries(None).unwrap();
+    while let Some(entry) = entries.next() {
+        let entry = entry.unwrap();
+        let name = entry.name().unwrap();
+        if let Some(variable) = name
+            .strip_prefix(&prefix)
+            .filter(|rest| !rest.contains('.'))
+        {
+            found.push((variable.to_owned(), entry.value().unwrap().to_owned()));
+        }
+    }
+    found
+}
+
+fn owned((variable, value): (&str, &str)) -> (String, String) {
+    (variable.to_owned(), value.to_owned())
+}
+
+fn force_branch(ctx: &TestContext, branch: &str, oid: &str) {
+    let repo = ctx.repo();
+    let commit = repo.find_commit(git2::Oid::from_str(oid).unwrap()).unwrap();
+    repo.branch(branch, &commit, true).unwrap();
 }
 
 fn branch_with_two_commits_of_its_own() -> TestContext {
@@ -431,6 +649,33 @@ fn rename_branch_changes_name() {
 
     ctx.assert_branch_not_exists("old-name");
     ctx.assert_branch_exists("new-name");
+}
+
+#[test]
+fn a_renamed_branch_keeps_its_settings() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    set_branch_config(
+        &ctx,
+        "feature",
+        &[
+            ("remote", "origin"),
+            ("merge", "refs/heads/one"),
+            ("merge", "refs/heads/two"),
+        ],
+    );
+
+    ctx.rename_branch("feature", "renamed").unwrap();
+
+    assert_eq!(
+        branch_config(&ctx, "renamed"),
+        [
+            ("remote", "origin"),
+            ("merge", "refs/heads/one"),
+            ("merge", "refs/heads/two")
+        ]
+        .map(owned)
+    );
+    assert_eq!(branch_config(&ctx, "feature"), []);
 }
 
 mod creating_a_branch_over_uncommitted_changes {
@@ -1515,6 +1760,17 @@ mod deleting_a_branch_a_linked_worktree_holds {
         assert_eq!(hold, BranchHold::HeldByMain);
         assert_eq!(result.unwrap_err().code, "cannot_delete_head");
         assert_eq!(worktree_names(&ctx), ["wt"]);
+    }
+
+    #[test]
+    fn keeps_a_branch_the_main_worktree_has_checked_out_when_deleted_from_a_linked_tab() {
+        let mut ctx = repo_with_branch("wt-branch");
+        let path = ctx.add_linked_worktree("wt", "wt-branch");
+
+        let result = ctx.delete_branch_in(&path, "main");
+
+        assert_eq!(result.unwrap_err().code, "branch_in_use");
+        ctx.assert_branch_exists("main");
     }
 
     #[test]
