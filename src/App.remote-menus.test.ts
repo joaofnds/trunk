@@ -16,6 +16,7 @@ import { makeCommit, makeRef } from "./__tests__/helpers/factories.js";
 import { RepositoryReadHost } from "./__tests__/helpers/repository-read-host.js";
 import App from "./App.svelte";
 import { SCHEDULER } from "./lib/scheduler.js";
+import { _resetToasts, toasts } from "./lib/toast.svelte.js";
 
 let host: RepositoryReadHost;
 
@@ -87,12 +88,14 @@ beforeEach(() => {
 		stashes: [],
 	});
 	host.seedResponse("list_remotes", ["origin"]);
+	_resetToasts();
 });
 
 afterEach(() => {
 	cleanup();
 	host.dispose();
 	restoreDomPolyfills();
+	_resetToasts();
 });
 
 async function openAppWhilePushing(): Promise<void> {
@@ -169,4 +172,66 @@ describe("while a push runs", () => {
 			);
 		},
 	);
+});
+
+async function openApp(): Promise<void> {
+	render(App, { context: new Map([[SCHEDULER, new FakeScheduler()]]) });
+	await screen.findAllByText("on main");
+}
+
+async function menuOn(target: Element): Promise<string[]> {
+	await fireEvent.contextMenu(target);
+	await waitFor(() => expect(host.contextMenu.items()).not.toEqual([]));
+	return host.contextMenu.items().map(({ label }) => label);
+}
+
+const BRANCHES = [
+	["the checked-out branch", "main"],
+	["another branch", "feature"],
+] as const;
+const REMOTE_ENTRIES = ["Pull", "Push", "Push feature"];
+
+describe("in a repository with no remotes", () => {
+	beforeEach(() => host.seedResponse("list_remotes", []));
+
+	it.each(BRANCHES)(
+		"leaves the remote entries out of the sidebar menu of %s",
+		async (_, name) => {
+			await openApp();
+
+			const labels = await menuOn(await sidebarRow(name));
+
+			expect(labels.filter((label) => REMOTE_ENTRIES.includes(label))).toEqual(
+				[],
+			);
+		},
+	);
+
+	it.each(BRANCHES)(
+		"leaves the remote entries out of the graph menu of %s",
+		async (_, name) => {
+			await openApp();
+
+			const labels = await menuOn(await graphPill(name));
+
+			expect(labels.filter((label) => REMOTE_ENTRIES.includes(label))).toEqual(
+				[],
+			);
+		},
+	);
+});
+
+describe("when the remotes cannot be read", () => {
+	it("says so as the branch menu opens", async () => {
+		await openApp();
+		host
+			.holdNextReply("list_remotes")
+			.reject({ code: "git_error", message: "bad config" });
+
+		await menuOn(await sidebarRow("feature"));
+
+		expect(toasts.items.map(({ message }) => message)).toEqual([
+			"Could not read the remotes, so the menu leaves them out. bad config",
+		]);
+	});
 });

@@ -18,7 +18,7 @@ import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
-	branchRemoteMenuItems,
+	branchRemoteMenuGroup,
 	deleteRemoteBranch,
 	listRemotes,
 	renameBranch,
@@ -616,13 +616,12 @@ async function showBranchContextMenu(
 					]
 				: []),
 			await PredefinedMenuItem.new({ item: "Separator" }),
-			...(await branchRemoteMenuItems(
+			...(await branchRemoteMenuGroup(
 				repoPath,
 				branchName,
 				isHead,
 				remoteState,
 			)),
-			await PredefinedMenuItem.new({ item: "Separator" }),
 			await MenuItem.new({
 				text: "Rename…",
 				action: () => {

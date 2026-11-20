@@ -480,6 +480,7 @@ describe("BranchSidebar", () => {
 			const onopenmessageeditor = vi.fn().mockResolvedValue("edited merge");
 			mockInvoke.mockImplementation((cmd: string) => {
 				if (cmd === "list_refs") return Promise.resolve(twoLocals);
+				if (cmd === "list_remotes") return Promise.resolve([]);
 				if (cmd === "merge_branch_begin")
 					return Promise.resolve({ kind: "ready", message: "Merge default" });
 				return Promise.resolve(undefined);
@@ -507,6 +508,7 @@ describe("BranchSidebar", () => {
 			const onopenmessageeditor = vi.fn().mockResolvedValue(null);
 			mockInvoke.mockImplementation((cmd: string) => {
 				if (cmd === "list_refs") return Promise.resolve(twoLocals);
+				if (cmd === "list_remotes") return Promise.resolve([]);
 				if (cmd === "merge_branch_begin")
 					return Promise.resolve({ kind: "ready", message: "Merge default" });
 				return Promise.resolve(undefined);
@@ -527,6 +529,7 @@ describe("BranchSidebar", () => {
 			const onopenmessageeditor = vi.fn();
 			mockInvoke.mockImplementation((cmd: string) => {
 				if (cmd === "list_refs") return Promise.resolve(twoLocals);
+				if (cmd === "list_remotes") return Promise.resolve([]);
 				if (cmd === "merge_branch_begin")
 					return Promise.resolve({ kind: "fast_forwarded" });
 				return Promise.resolve(undefined);
@@ -1628,6 +1631,7 @@ describe("BranchSidebar branch remote actions", () => {
 						local: [branch("main", true), branch("feature", false)],
 					}),
 				);
+			if (cmd === "list_remotes") return Promise.resolve(["origin"]);
 			return Promise.resolve(undefined);
 		});
 		render(BranchSidebar, { props: { repoPath: "/test/repo" } });

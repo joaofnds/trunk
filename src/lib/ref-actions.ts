@@ -1,4 +1,4 @@
-import type { MenuItem } from "@tauri-apps/api/menu";
+import type { MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { ask } from "./dialog.js";
 import { forDisplay } from "./display-text.js";
 import { errorMessage, reportErrorToast } from "./error-report.js";
@@ -61,11 +61,15 @@ export async function deleteTag(
 	return true;
 }
 
-/** The repository's remotes, or none when they cannot be read. */
+/** The repository's remotes. When they cannot be read, says so and answers none. */
 export async function listRemotes(repoPath: string): Promise<string[]> {
 	try {
 		return await safeInvoke<string[]>("list_remotes", { path: repoPath });
-	} catch {
+	} catch (e) {
+		showToast(
+			`Could not read the remotes, so the menu leaves them out. ${errorMessage(e, "The repository did not answer")}`,
+			"error",
+		);
 		return [];
 	}
 }
@@ -107,11 +111,26 @@ export async function runTagAction(
 }
 
 /**
- * The entries of a local branch's context menu that talk to a remote. The checked-out
- * branch pulls and pushes as the toolbar does, recovery prompt included. Any other
- * branch pushes on its own. While a remote operation runs, they are off.
+ * The group of a local branch's context menu that talks to a remote, closed by a
+ * separator, or nothing in a repository without remotes. The checked-out branch
+ * pulls and pushes as the toolbar does, recovery prompt included. Any other branch
+ * pushes on its own. While a remote operation runs, they are off.
  */
-export async function branchRemoteMenuItems(
+export async function branchRemoteMenuGroup(
+	repoPath: string,
+	branch: string,
+	isHead: boolean,
+	remoteState: RemoteState,
+): Promise<(MenuItem | PredefinedMenuItem)[]> {
+	if ((await listRemotes(repoPath)).length === 0) return [];
+	const { PredefinedMenuItem } = await import("@tauri-apps/api/menu");
+	return [
+		...(await branchRemoteMenuItems(repoPath, branch, isHead, remoteState)),
+		await PredefinedMenuItem.new({ item: "Separator" }),
+	];
+}
+
+async function branchRemoteMenuItems(
 	repoPath: string,
 	branch: string,
 	isHead: boolean,

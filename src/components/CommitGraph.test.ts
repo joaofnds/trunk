@@ -207,6 +207,7 @@ function installReads(
 					checked: true,
 				});
 			case "list_stashes":
+			case "list_remotes":
 				return Promise.resolve([]);
 			case "get_commit_stats":
 				return Promise.resolve({});
