@@ -1197,32 +1197,91 @@ describe("StagingPanel merge-continue", () => {
 	});
 });
 
-describe("StagingPanel discarding a folder", () => {
-	beforeEach(() => {
-		mockInvoke.mockReset();
-		mockInvoke.mockImplementation((cmd: string) => {
-			if (cmd === "get_status")
-				return Promise.resolve({
-					unstaged: [
-						{ path: "src/a.ts", status: "Modified", is_binary: false },
-						{ path: "src/b.ts", status: "New", is_binary: false },
-						{ path: "docs/c.md", status: "Modified", is_binary: false },
-					],
-					staged: [],
-					conflicted: [],
-				});
-			if (cmd === "get_operation_state")
-				return Promise.resolve({
-					op_type: "None",
-					source_branch: null,
-					target_branch: null,
-					onto_oid: null,
-					progress: null,
-					rebase_message: null,
-				});
-			return Promise.resolve(undefined);
+function withOneUntrackedFileInSrc() {
+	mockInvoke.mockReset();
+	mockInvoke.mockImplementation((cmd: string) => {
+		if (cmd === "get_status")
+			return Promise.resolve({
+				unstaged: [
+					{ path: "src/a.ts", status: "Modified", is_binary: false },
+					{ path: "src/b.ts", status: "New", is_binary: false },
+					{ path: "docs/c.md", status: "Modified", is_binary: false },
+				],
+				staged: [],
+				conflicted: [],
+			});
+		if (cmd === "get_operation_state")
+			return Promise.resolve({
+				op_type: "None",
+				source_branch: null,
+				target_branch: null,
+				onto_oid: null,
+				progress: null,
+				rebase_message: null,
+			});
+		return Promise.resolve(undefined);
+	});
+	vi.mocked(ask).mockReset().mockResolvedValueOnce(true);
+}
+
+describe("StagingPanel discarding every change", () => {
+	beforeEach(withOneUntrackedFileInSrc);
+
+	it("discards only the files the user confirmed", async () => {
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/repo" },
 		});
-		vi.mocked(ask).mockResolvedValueOnce(true);
+
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Discard all changes" }),
+		);
+
+		expect(await callsOnceRefreshed("discard_all")).toEqual([
+			[
+				"discard_all",
+				{ path: "/repo", filePaths: ["src/a.ts", "src/b.ts", "docs/c.md"] },
+			],
+		]);
+	});
+
+	it("warns that the untracked file will be deleted", async () => {
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/repo" },
+		});
+
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Discard all changes" }),
+		);
+
+		await waitFor(() =>
+			expect(ask).toHaveBeenCalledWith(
+				"Discard all changes to 3 files? This deletes 1 untracked file and cannot be undone.",
+				expect.objectContaining({ okLabel: "Discard All" }),
+			),
+		);
+	});
+});
+
+describe("StagingPanel discarding a folder", () => {
+	beforeEach(withOneUntrackedFileInSrc);
+
+	it("warns that the folder's untracked file will be deleted", async () => {
+		render(StagingPanel, {
+			props: {
+				...noReviewCounts(),
+				repoPath: "/repo",
+				treeViewEnabled: true,
+			},
+		});
+
+		await chooseFolderMenuItem(/^src \(2\)/, /^Discard All/);
+
+		await waitFor(() =>
+			expect(ask).toHaveBeenCalledWith(
+				"Discard all changes in src/ (2 files)? This deletes 1 untracked file and cannot be undone.",
+				expect.objectContaining({ okLabel: "Discard" }),
+			),
+		);
 	});
 
 	it("discards the folder's changes in one index update", async () => {

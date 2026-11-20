@@ -410,12 +410,18 @@ async function handleDiscardFile(filePath: string, fileStatus: FileStatusType) {
 	});
 }
 
+function cannotBeUndone(files: readonly FileStatus[]): string {
+	const untracked = files.filter((f) => f.status === "New").length;
+	if (untracked === 0) return "This cannot be undone.";
+	return `This deletes ${untracked} untracked file${untracked === 1 ? "" : "s"} and cannot be undone.`;
+}
+
 async function handleDiscardDirectory(dirPath: string) {
 	const files = filesUnder(status?.unstaged, dirPath);
 	if (files.length === 0) return;
 
 	const confirmed = await ask(
-		`Discard all changes in ${dirPath}/ (${files.length} file${files.length === 1 ? "" : "s"})? This cannot be undone.`,
+		`Discard all changes in ${dirPath}/ (${files.length} file${files.length === 1 ? "" : "s"})? ${cannotBeUndone(files)}`,
 		{ title: "Discard Directory Changes", kind: "warning", okLabel: "Discard" },
 	);
 	if (!confirmed) return;
@@ -686,19 +692,20 @@ async function showConflictedDirContextMenu(_e: MouseEvent, dirPath: string) {
 }
 
 async function handleDiscardAll() {
-	const paths = (status?.unstaged ?? []).map((f) => f.path);
+	const unstaged = status?.unstaged ?? [];
+	const paths = unstaged.map((f) => f.path);
 	const count = paths.length;
 	if (count === 0) return;
 
 	const files = `${count} file${count === 1 ? "" : "s"}`;
 	const confirmed = await ask(
-		`Discard all changes to ${files}? This cannot be undone.`,
+		`Discard all changes to ${files}? ${cannotBeUndone(unstaged)}`,
 		{ title: "Discard All Changes", kind: "warning", okLabel: "Discard All" },
 	);
 	if (!confirmed) return;
 
 	await changeFiles(paths, "Discard all failed", async () => {
-		await safeInvoke("discard_all", { path: repoPath });
+		await safeInvoke("discard_all", { path: repoPath, filePaths: paths });
 		showToast(`Discarded all changes (${files})`, "success");
 	});
 }

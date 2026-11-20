@@ -10,6 +10,7 @@ import {
 
 const COMMIT_ROW = '[data-testid="commit-row"]';
 const STAGE_ALL = '[aria-label="Stage all changes"]';
+const DISCARD_ALL = '[aria-label="Discard all changes"]';
 const STAGE_FILE = '[aria-label="Stage file"]';
 const SUBJECT = '[data-testid="commit-form-subject"]';
 const SUBMIT = '[data-testid="commit-form-submit"]';
@@ -59,6 +60,16 @@ export class StagingDriver {
 		await waitFor("an empty unstaged section", () =>
 			stageAllButton() ? null : true,
 		);
+	}
+
+	/** Discards every unstaged change. The confirmation goes to the dialog Fake,
+	 *  which dismisses unless the test has said otherwise. */
+	async discardEverything(): Promise<void> {
+		const button = await waitFor("the discard-all button", () =>
+			document.querySelector<HTMLElement>(DISCARD_ALL),
+		);
+
+		button.click();
 	}
 
 	/** Opens the unstaged file's diff in the center pane. */

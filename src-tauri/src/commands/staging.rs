@@ -459,8 +459,11 @@ fn restore_from_index<S: AsRef<str>>(
     Ok(())
 }
 
-/// Throw away every working-tree change, keeping what is staged, and delete
-/// untracked files too.
+/// Throw away the working-tree changes the user confirmed, keeping what is staged,
+/// and delete the confirmed untracked files too.
+///
+/// A change made after the user saw the list stays, and a confirmed one already
+/// gone counts as discarded.
 ///
 /// # Errors
 ///
@@ -468,7 +471,11 @@ fn restore_from_index<S: AsRef<str>>(
 /// repository with no working tree, the git error when the checkout fails, and
 /// `io_error` naming an untracked file that would not delete, once every other
 /// one is deleted.
-pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkError> {
+pub fn discard_all_inner(
+    path: &str,
+    file_paths: &[String],
+    state_map: &OpenRepos,
+) -> Result<(), TrunkError> {
     state_map.hold_for_writing(path, |repo| {
         let mut opts = StatusOptions::new();
         opts.include_untracked(true)
@@ -479,12 +486,17 @@ pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkE
         let workdir = repo
             .workdir()
             .ok_or_else(|| TrunkError::new("bare_repo", "Cannot discard in a bare repository"))?;
+        let confirmed: HashSet<&str> = file_paths.iter().map(String::as_str).collect();
+        let confirmed_entries = || {
+            statuses
+                .iter()
+                .filter(|entry| entry.path().is_ok_and(|path| confirmed.contains(path)))
+        };
 
         // Collect untracked file paths before checkout. A directory listed whole is
         // a repository nested in this one, and deleting it would take its history,
         // so it stays, as `git clean -fd` leaves it.
-        let untracked_paths: Vec<PathBuf> = statuses
-            .iter()
+        let untracked_paths: Vec<PathBuf> = confirmed_entries()
             .filter(|entry| entry.status().contains(Status::WT_NEW))
             .filter_map(|entry| {
                 let path = entry.path().ok()?;
@@ -495,8 +507,7 @@ pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkE
         // Naming the changed paths keeps a conflicted file's resolution in progress:
         // a checkout of every path rewrites its conflict markers, and libgit2's
         // skip_unmerged deletes it.
-        let changed_paths: Vec<String> = statuses
-            .iter()
+        let changed_paths: Vec<String> = confirmed_entries()
             .filter(|entry| entry.status().intersects(TRACKED_WORKTREE_CHANGE))
             .filter_map(|entry| entry.path().ok().map(str::to_string))
             .collect();
@@ -823,11 +834,12 @@ pub async fn discard_files(
 pub async fn discard_all(
     activity: crate::activity::Activity,
     path: String,
+    file_paths: Vec<String>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
     activity
-        .spawn_blocking(move || discard_all_inner(&path, &state_map))
+        .spawn_blocking(move || discard_all_inner(&path, &file_paths, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())

@@ -539,6 +539,42 @@ fn stage_all_leaves_a_conflicted_file_unresolved() {
 }
 
 #[test]
+fn discard_all_leaves_the_changes_made_after_the_user_confirmed() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "a")
+        .with_file("b.txt", "b")
+        .with_commit("Initial commit")
+        .build();
+    let root = ctx.repo_path();
+    std::fs::write(root.join("a.txt"), "confirmed edit").unwrap();
+    std::fs::write(root.join("new.txt"), "confirmed new file").unwrap();
+    std::fs::write(root.join("b.txt"), "edit made after the question").unwrap();
+    std::fs::write(root.join("late.txt"), "file made after the question").unwrap();
+
+    ctx.discard_all_of(&["a.txt", "new.txt"])
+        .expect("discard_all failed");
+
+    assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "a");
+    assert!(!root.join("new.txt").exists());
+    assert_eq!(
+        std::fs::read_to_string(root.join("b.txt")).unwrap(),
+        "edit made after the question"
+    );
+    assert!(root.join("late.txt").exists());
+}
+
+#[test]
+fn discard_all_counts_a_confirmed_change_already_gone_as_discarded() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "a")
+        .with_commit("Initial commit")
+        .build();
+
+    ctx.discard_all_of(&["a.txt", "gone.txt"])
+        .expect("discard_all refused a change that was already gone");
+}
+
+#[test]
 fn discard_all_reverts_all_changes() {
     let ctx = TestContext::builder()
         .with_file("README.md", "hello")

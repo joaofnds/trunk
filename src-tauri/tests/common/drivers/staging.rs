@@ -28,8 +28,17 @@ impl TestContext {
         staging::discard_files_inner(self.path(), &paths, self.state_map())
     }
 
+    /// Discard every unstaged change, as the panel does once the user confirms the list
     pub fn discard_all(&self) -> Result<(), TrunkError> {
-        staging::discard_all_inner(self.path(), self.state_map())
+        let shown = self.get_status()?.unstaged;
+        let paths: Vec<&str> = shown.iter().map(|file| file.path.as_str()).collect();
+        self.discard_all_of(&paths)
+    }
+
+    /// Discard the unstaged changes the user confirmed, whatever else changed since
+    pub fn discard_all_of(&self, confirmed: &[&str]) -> Result<(), TrunkError> {
+        let paths: Vec<String> = confirmed.iter().map(|path| (*path).to_owned()).collect();
+        staging::discard_all_inner(self.path(), &paths, self.state_map())
     }
 
     pub fn stage_all(&self) -> Result<(), TrunkError> {

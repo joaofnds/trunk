@@ -193,6 +193,36 @@ describe("staging selected lines", () => {
 describe("discarding every change", () => {
 	afterEach(teardown);
 
+	it("discards the files the user confirmed and leaves a file written while they read", async () => {
+		const app = await setup({
+			repo: {
+				steps: [
+					...TWO_HUNK_EDIT.steps,
+					{ step: "file", path: "notes.md", content: "draft\n" },
+				],
+			},
+		});
+		await app.repo.open();
+		await app.staging.open();
+		await app.settled();
+		app.dialog.confirms();
+		app.dialog.whileAsking(() =>
+			app.repo.writeWorkingTreeFile("later.md", "written while asked\n"),
+		);
+
+		await app.staging.discardEverything();
+		await app.elapseUntil("the discard to restore the file", () =>
+			app.repo.workingTreeFileIfPresent(FILE) === COMMITTED ? true : null,
+		);
+		await app.settled();
+
+		expect(app.dialog.questions).toEqual([
+			"Discard all changes to 2 files? This deletes 1 untracked file and cannot be undone.",
+		]);
+		expect(app.repo.workingTreeFileIfPresent("notes.md")).toBeNull();
+		expect(app.repo.workingTreeFile("later.md")).toBe("written while asked\n");
+	});
+
 	it("drops the working-tree row from the graph without waiting for the watcher", async () => {
 		const app = await setup({ repo: APPENDED_LINES });
 		await app.repo.open();
