@@ -1,4 +1,5 @@
 import { CheckMenuItem, MenuItem } from "@tauri-apps/api/menu";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
 	fireEvent,
@@ -3700,6 +3701,50 @@ describe("CommitGraph", () => {
 			expect(vi.mocked(ask)).toHaveBeenCalledWith(
 				expect.stringMatching(/^Reset HEAD to bbb222b "older work"\?/),
 				expect.anything(),
+			);
+		});
+
+		it("says a soft reset leaves unstaged changes unstaged", async () => {
+			installReads({ commits: [HEAD_COMMIT, TARGET] });
+			render(CommitGraph, {
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.contextMenu(rows[1]);
+			await flush();
+
+			await getMenuAction("Soft")();
+			await flush();
+
+			expect(vi.mocked(ask)).toHaveBeenCalledWith(
+				expect.stringContaining(
+					"Soft reset keeps your files as they are. The difference from bbb222b shows as staged, and unstaged changes stay unstaged.",
+				),
+				expect.anything(),
+			);
+		});
+	});
+
+	describe("copying a commit's message", () => {
+		it("copies the whole message, body included", async () => {
+			const commit = makeCommit({
+				oid: "ccc333ccc333ccc3ccc333ccc333ccc3ccc333cc",
+				summary: "Fix the parser",
+				body: "It dropped empty rows.",
+				is_head: true,
+			});
+			installReads({ commits: [commit] });
+			render(CommitGraph, {
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.contextMenu(rows[0]);
+			await flush();
+
+			await getMenuAction("Copy Message")();
+
+			expect(vi.mocked(writeText)).toHaveBeenCalledWith(
+				"Fix the parser\n\nIt dropped empty rows.",
 			);
 		});
 	});

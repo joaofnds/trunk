@@ -7,8 +7,9 @@ export async function copySha(oid: string): Promise<void> {
 	await copy({ text: oid, shown: oid.slice(0, 7) });
 }
 
-export async function copyText(text: string): Promise<void> {
-	await copy({ text, shown: text });
+/** Copy `text`, naming it in the toast by `shown`, which defaults to the text itself. */
+export async function copyText(text: string, shown = text): Promise<void> {
+	await copy({ text, shown });
 }
 
 async function copy({

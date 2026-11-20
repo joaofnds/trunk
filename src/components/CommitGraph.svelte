@@ -994,7 +994,7 @@ async function handleReset(
 		.find((c) => c.is_head)
 		?.refs.find((r) => r.ref_type === "LocalBranch" && r.is_head)?.short_name;
 	const labels: Record<typeof mode, string> = {
-		soft: "Soft reset keeps every change, staged.",
+		soft: `Soft reset keeps your files as they are. The difference from ${commit.short_oid} shows as staged, and unstaged changes stay unstaged.`,
 		mixed: "Mixed reset keeps every change, unstaged.",
 		hard: `Hard reset discards your uncommitted changes to tracked files, which cannot be recovered, and leaves ${branch ?? "HEAD"} with only the history of ${commit.short_oid}.`,
 	};
@@ -1224,7 +1224,12 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 			await MenuItem.new({
 				text: "Copy Message",
 				action: () => {
-					copyText(commit.summary);
+					copyText(
+						commit.body
+							? `${commit.summary}\n\n${commit.body}`
+							: commit.summary,
+						commit.summary,
+					);
 				},
 			}),
 			await PredefinedMenuItem.new({ item: "Separator" }),
