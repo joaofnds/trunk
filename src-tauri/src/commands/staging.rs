@@ -539,7 +539,9 @@ pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkE
     })
 }
 
-/// Stage every change in the working tree, untracked files included.
+/// Stage every change in the working tree, untracked files included, and leave each
+/// conflicted file conflicted. Marking one resolved is its own step, which checks the
+/// file for conflict markers first.
 ///
 /// # Errors
 ///
@@ -548,10 +550,34 @@ pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkE
 pub fn stage_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkError> {
     state_map.hold_for_writing(path, |repo| {
         let mut index = repo.index()?;
-        index.add_all(std::iter::once(&"*"), git2::IndexAddOption::DEFAULT, None)?;
+        let conflicted = conflicted_paths(&index)?;
+        let mut skip_conflicted = |file: &Path, _: &[u8]| i32::from(conflicted.contains(file));
+        index.add_all(
+            std::iter::once(&"*"),
+            git2::IndexAddOption::DEFAULT,
+            Some(&mut skip_conflicted),
+        )?;
         index.write()?;
         Ok(())
     })
+}
+
+/// Every path the index holds a conflict for, whichever side names it.
+fn conflicted_paths(index: &git2::Index) -> Result<HashSet<PathBuf>, TrunkError> {
+    let mut paths = HashSet::new();
+    for conflict in index.conflicts()? {
+        let conflict = conflict?;
+        for entry in [conflict.ancestor, conflict.our, conflict.their]
+            .into_iter()
+            .flatten()
+        {
+            paths.insert(PathBuf::from(
+                String::from_utf8_lossy(&entry.path).into_owned(),
+            ));
+        }
+    }
+
+    Ok(paths)
 }
 
 /// Stage the hunk the view showed from a file's unstaged diff.

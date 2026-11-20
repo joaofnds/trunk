@@ -511,6 +511,33 @@ fn discard_all_leaves_a_conflicted_file_as_it_is() {
     assert!(ctx.repo().index().unwrap().has_conflicts());
 }
 
+/// Stage All acts on the unstaged list. A conflicted file sits in its own list, where
+/// marking it resolved first checks it for conflict markers, so Stage All must not
+/// mark it resolved behind that check.
+#[test]
+fn stage_all_leaves_a_conflicted_file_unresolved() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "feature content")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_file("file.txt", "main content")
+        .with_commit("Main commit")
+        .with_conflict("feature")
+        .build();
+    std::fs::write(ctx.repo_path().join("notes.txt"), "new").unwrap();
+
+    ctx.stage_all().unwrap();
+
+    let status = ctx.get_status().unwrap();
+    let conflicted: Vec<_> = status.conflicted.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(conflicted, ["file.txt"]);
+    assert_eq!(staged_rows(&ctx), ["notes.txt"]);
+}
+
 #[test]
 fn discard_all_reverts_all_changes() {
     let ctx = TestContext::builder()
