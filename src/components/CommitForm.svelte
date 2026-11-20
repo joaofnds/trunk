@@ -252,7 +252,7 @@ async function amendTarget(): Promise<string> {
 }
 
 // HEAD is not the commit the amend was aimed at. The next Amend goes to the commit
-// HEAD is now, and the dialog names it, so it replaces only a commit the user was
+// HEAD is now, and the toast names it, so it replaces only a commit the user was
 // told about: under its own message when the buffer was not edited, or under the
 // edits when it was.
 async function retargetAmend(refusal: TrunkError) {
@@ -271,10 +271,21 @@ async function retargetAmend(refusal: TrunkError) {
 	);
 }
 
+// A held key or the second click of a double click repeats a submit the user
+// already made, and after a refused amend it would amend the commit the toast
+// has only just named.
 function submitOnModEnter(e: KeyboardEvent) {
 	if (e.key !== "Enter" || !shortcutModifier(e) || e.isComposing) return;
 
 	e.preventDefault();
+	if (e.repeat) return;
+
+	void handleSubmit();
+}
+
+function submitOnClick(e: MouseEvent) {
+	if (e.detail > 1) return;
+
 	void handleSubmit();
 }
 </script>
@@ -347,7 +358,7 @@ function submitOnModEnter(e: KeyboardEvent) {
 				size="lg"
 				variant="primary"
 				data-testid="commit-form-submit"
-				onclick={handleSubmit}
+				onclick={submitOnClick}
 				disabled={committing}
 			>
 				{buttonLabel}

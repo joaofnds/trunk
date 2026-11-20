@@ -843,6 +843,41 @@ describe("CommitForm", () => {
 				);
 			});
 
+			it("does not amend the new HEAD from a held Cmd+Enter", async () => {
+				render(CommitForm, { props: defaultProps });
+				await openAmend();
+				pullLands();
+				refuseNextAmend = true;
+				await fireEvent.keyDown(subjectInput(), {
+					key: "Enter",
+					metaKey: true,
+				});
+				await waitFor(() => expect(errorsShown()).toHaveLength(1));
+
+				await fireEvent.keyDown(subjectInput(), {
+					key: "Enter",
+					metaKey: true,
+					repeat: true,
+				});
+
+				expect(amends).toHaveLength(1);
+			});
+
+			it("does not amend the new HEAD from the second click of a double click", async () => {
+				render(CommitForm, { props: defaultProps });
+				await openAmend();
+				pullLands();
+				refuseNextAmend = true;
+				await submit();
+				await waitFor(() => expect(errorsShown()).toHaveLength(1));
+
+				await fireEvent.click(screen.getByTestId("commit-form-submit"), {
+					detail: 2,
+				});
+
+				expect(amends).toHaveLength(1);
+			});
+
 			it("shows the new HEAD's message in a buffer the user had not edited", async () => {
 				render(CommitForm, { props: defaultProps });
 				await openAmend();
@@ -1048,6 +1083,17 @@ describe("CommitForm", () => {
 			await fireEvent.keyDown(subject, { key: "Enter", metaKey: true });
 
 			expect(commits()).toHaveLength(1);
+		});
+
+		it("keeps a held Cmd+Enter out of the description", async () => {
+			render(CommitForm, { props: defaultProps });
+
+			const typed = await fireEvent.keyDown(
+				screen.getByPlaceholderText("Description (optional)"),
+				{ key: "Enter", metaKey: true, repeat: true },
+			);
+
+			expect(typed).toBe(false);
 		});
 
 		it("leaves a plain Enter in the description as a new line", async () => {
