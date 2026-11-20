@@ -402,15 +402,12 @@ async function handleDiscardFile(filePath: string, fileStatus: FileStatusType) {
 		okLabel: isUntracked ? "Delete" : "Discard",
 	});
 	if (!confirmed) return;
-	try {
+	await changeFiles([filePath], "Discard failed", async () => {
 		await safeInvoke("discard_file", { path: repoPath, filePath });
 		onfileadvance?.(filePath, "unstaged");
 		optimisticMove(filePath, "unstaged", "discard");
 		showToast(`Discarded ${filePath}`, "success");
-		await loadStatus();
-	} catch (e) {
-		reportErrorToast(e, "Discard failed");
-	}
+	});
 }
 
 async function handleDiscardDirectory(dirPath: string) {

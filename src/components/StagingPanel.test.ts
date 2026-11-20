@@ -1297,6 +1297,97 @@ describe("StagingPanel discarding a folder", () => {
 	});
 });
 
+describe("StagingPanel discarding a file", () => {
+	beforeEach(() => {
+		mockInvoke.mockReset();
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "get_status")
+				return Promise.resolve({
+					unstaged: [
+						{ path: "README.md", status: "Modified", is_binary: false },
+					],
+					staged: [],
+					conflicted: [],
+				});
+			if (cmd === "get_operation_state")
+				return Promise.resolve({
+					op_type: "None",
+					source_branch: null,
+					target_branch: null,
+					onto_oid: null,
+					progress: null,
+					rebase_message: null,
+				});
+			return Promise.resolve(undefined);
+		});
+		vi.mocked(ask).mockResolvedValueOnce(true);
+	});
+
+	async function chooseDiscardChanges() {
+		const row = stagingRowFor(await screen.findByText("README.md"));
+		vi.mocked(MenuItem.new).mockClear();
+		await fireEvent.contextMenu(row);
+		const item = await waitFor(() => {
+			const found = vi
+				.mocked(MenuItem.new)
+				.mock.calls.map(([options]) => options)
+				.find((options) => options.text === "Discard Changes");
+			expect(found?.action).toBeDefined();
+			return found;
+		});
+		item?.action?.(item.text);
+	}
+
+	it("holds the file busy until the discard finishes", async () => {
+		const finished = deferred<undefined>();
+		const answer = mockInvoke.getMockImplementation();
+		if (!answer) throw new Error("the panel's reads have no stub");
+		mockInvoke.mockImplementation((cmd, args) =>
+			cmd === "discard_file" ? finished.promise : answer(cmd, args),
+		);
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/repo" },
+		});
+
+		await chooseDiscardChanges();
+		await waitFor(() =>
+			expect(mockInvoke).toHaveBeenCalledWith("discard_file", {
+				path: "/repo",
+				filePath: "README.md",
+			}),
+		);
+		const whileRunning = rowAction("README.md", "Stage file");
+		finished.resolve(undefined);
+
+		expect(whileRunning).toBeNull();
+		await waitFor(() =>
+			expect(rowAction("README.md", "Stage file")).not.toBeNull(),
+		);
+	});
+
+	it("reports a failed discard and shows what it left behind", async () => {
+		_resetToasts();
+		const answer = mockInvoke.getMockImplementation();
+		if (answer === undefined) throw new Error("status is not mocked");
+		mockInvoke.mockImplementation(
+			(command: string, args?: Record<string, unknown>) =>
+				command === "discard_file"
+					? Promise.reject({ code: "io_error", message: "permission denied" })
+					: answer(command, args),
+		);
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/repo" },
+		});
+
+		await chooseDiscardChanges();
+
+		await callsOnceRefreshed("discard_file");
+		expect(toasts.items).toEqual([
+			{ id: expect.any(Number), message: "permission denied", kind: "error" },
+		]);
+	});
+});
+
 describe("StagingPanel rebase form", () => {
 	beforeEach(() => {
 		vi.mocked(writeText).mockClear();
