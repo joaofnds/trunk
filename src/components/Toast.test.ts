@@ -33,7 +33,7 @@ describe("Toast", () => {
 		expect(status).toHaveTextContent("Fail");
 	});
 
-	it("shows a message of several lines as exactly those lines", () => {
+	it("adds no whitespace of its own around a message of several lines", () => {
 		const said = "hook declined\nfatal: The pre-rebase hook refused to rebase.";
 		showToast(said, "error");
 
