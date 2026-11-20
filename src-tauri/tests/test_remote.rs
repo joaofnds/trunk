@@ -1306,7 +1306,7 @@ fn merge_pull_that_conflicts_with_merge_autostash_keeps_the_copy() {
 
     let err = ctx.remote().pull(None).unwrap_err();
 
-    assert_eq!(err.code, "remote_error");
+    assert_eq!(err.code, "merge_conflict");
     assert!(ctx.repo_path().join(".git/MERGE_AUTOSTASH").exists());
     assert_eq!(err.pull_safety_copy.as_deref(), COPY);
     let copy = pull_safety_copy_tree(&ctx).unwrap();
@@ -1320,7 +1320,7 @@ fn merge_pull_that_conflicts_names_the_conflict() {
 
     let err = ctx.remote().pull(None).unwrap_err();
 
-    assert_eq!(err.code, "remote_error");
+    assert_eq!(err.code, "merge_conflict");
     assert!(
         err.message
             .contains("CONFLICT (content): Merge conflict in file.txt"),

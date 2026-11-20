@@ -68,11 +68,11 @@ $effect(() => {
 	);
 });
 
-// A pull whose rebase stopped on a conflict. The failure is the stop itself, so
-// it stays true only for as long as that rebase is in progress, unlike a refused
-// push, which stays true until the user acts on it.
+// A pull whose rebase or merge stopped on a conflict. The failure is the stop
+// itself, so it stays true only for as long as that operation is in progress,
+// unlike a refused push, which stays true until the user acts on it.
 function reportsAStoppedOperation(error: TrunkError | null): boolean {
-	return error?.code === "rebase_conflict";
+	return error?.code === "rebase_conflict" || error?.code === "merge_conflict";
 }
 
 let active = true;

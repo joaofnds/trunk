@@ -46,6 +46,20 @@ describe("remoteErrorMessage", () => {
 		expect(message).not.toContain("hint:");
 	});
 
+	it("says a stopped merge in its own words, not git's", () => {
+		const message = remoteErrorMessage(
+			err(
+				"merge_conflict",
+				"CONFLICT (content): Merge conflict in file.txt\nAutomatic merge failed; fix conflicts and then commit the result.",
+			),
+			"pull",
+		);
+
+		expect(message).toBe(
+			"Pulled with a merge and stopped on a conflict. Resolve the conflicted files, then commit the merge",
+		);
+	});
+
 	// git 2.56's output for a push a pre-receive hook declined, as it reaches a
 	// pipe: each "remote:" line that carries text padded with the spaces that
 	// clear a terminal line, and a bare "remote: " where the hook printed an

@@ -143,6 +143,12 @@ async fn run_reserved(
 
     if !output.status.success() {
         let mut refused = classify_git_error(&String::from_utf8_lossy(&output.stderr));
+        // The merge a pull runs reports its conflicts on stdout, not stderr.
+        if refused.code == "remote_error"
+            && String::from_utf8_lossy(&output.stdout).contains("Automatic merge failed")
+        {
+            refused.code = "merge_conflict".into();
+        }
         refused.message = what_git_said(&output);
         return Err(refused);
     }
@@ -426,7 +432,7 @@ pub async fn git_pull<R: Runtime>(
 ///
 /// Returns `not_open` when `path` names no open repository, a `git_*` code when the
 /// repository will not open, `spawn_error` when a blocking step cannot be joined,
-/// `rebase_conflict` when a pull with rebase stops on a conflict, `autostash_conflict` when the pull finished
+/// `rebase_conflict` or `merge_conflict` when the pull stops on a conflict, `autostash_conflict` when the pull finished
 /// but restoring the autostash conflicted, `cancelled` when the repository closed while
 /// git ran, `auth_failure` when the remote refuses the credentials, and `remote_error`
 /// carrying git's own message otherwise. Each carries `pull_safety_copy` when the pull

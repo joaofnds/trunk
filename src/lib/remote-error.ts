@@ -34,6 +34,8 @@ function describeFailure(
 			].join("\n");
 		case "rebase_conflict":
 			return "Pulled with rebase and stopped on a conflict — resolve the conflicted files, then continue the rebase";
+		case "merge_conflict":
+			return "Pulled with a merge and stopped on a conflict. Resolve the conflicted files, then commit the merge";
 		default:
 			return error.message;
 	}

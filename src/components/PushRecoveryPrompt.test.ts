@@ -475,6 +475,26 @@ describe("PushRecoveryPrompt scoping and clearing", () => {
 		expect(rs.error).toBeNull();
 	});
 
+	it.each([
+		["rebase_conflict", REBASE_OP],
+		["merge_conflict", MERGE_OP],
+	])(
+		"keeps a pull stopped on %s up only while that operation is in progress",
+		async (code, stopped) => {
+			let op: unknown = stopped;
+			respondWith({ get_operation_state: () => Promise.resolve(op) });
+			const rs = stateWith(err(code), "pull");
+			const props = reactiveProps(propsFor(rs));
+			render(PushRecoveryPrompt, { props });
+			await screen.findByRole("alert");
+
+			op = NONE_OP;
+			props.refreshSignal = 1;
+
+			await waitFor(() => expect(rs.error).toBeNull());
+		},
+	);
+
 	it("hides the surface when a subsequent successful op clears the error (C18)", async () => {
 		const rs = stateWith(err("non_fast_forward"));
 
