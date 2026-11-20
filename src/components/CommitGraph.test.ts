@@ -4213,6 +4213,7 @@ describe("CommitGraph ref and stash actions", () => {
 			override: (called) => {
 				if (called === "list_stashes")
 					return Promise.resolve([{ oid: STASH_OID }]);
+				if (called === "list_remotes") return Promise.resolve(["origin"]);
 				if (called === cmd)
 					return Promise.reject({ code: "git_error", message: "it failed" });
 				return undefined;
@@ -4261,7 +4262,23 @@ describe("CommitGraph ref and stash actions", () => {
 			makeCommit({ oid: OID, is_head: true, refs: [tag] }),
 		);
 
-		await chooseOnPill("Delete", "v1.0");
+		await chooseOnPill("Delete v1.0 locally", "v1.0");
+
+		expect(errorsShown()).toEqual(["it failed"]);
+	});
+
+	it("reports a failed tag push in a toast", async () => {
+		const tag = makeRef({
+			short_name: "v1.0",
+			name: "refs/tags/v1.0",
+			ref_type: "Tag",
+		});
+		await mountFailing(
+			"push_tag",
+			makeCommit({ oid: OID, is_head: true, refs: [tag] }),
+		);
+
+		await chooseOnPill("Push v1.0 to origin", "v1.0");
 
 		expect(errorsShown()).toEqual(["it failed"]);
 	});

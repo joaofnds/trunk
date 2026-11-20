@@ -19,8 +19,9 @@ import { reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
 	deleteRemoteBranch,
-	deleteTag,
+	listRemotes,
 	renameBranch,
+	runTagAction,
 } from "../lib/ref-actions.js";
 import {
 	EVERYTHING_VISIBLE,
@@ -43,6 +44,11 @@ import {
 import { getScheduler } from "../lib/scheduler.js";
 import { applyStash, dropStash, popStash } from "../lib/stash-actions.js";
 import { getRefVisibility, setRefVisibility } from "../lib/store.js";
+import {
+	popupTagMenu,
+	type TagAction,
+	tagMenuEntriesOf,
+} from "../lib/tag-menu.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
 	BranchInfo,
@@ -537,8 +543,10 @@ async function refreshAfterAction() {
 	onrefreshed?.();
 }
 
-async function handleDeleteTag(tagName: string) {
-	if (await deleteTag(repoPath, tagName)) await refreshAfterAction();
+async function handleTagAction(tagName: string, action: TagAction) {
+	if (await runTagAction(repoPath, tagName, action, remoteState)) {
+		await refreshAfterAction();
+	}
 }
 
 async function handleDeleteRemoteBranch(fullRefName: string) {
@@ -625,18 +633,13 @@ async function showBranchContextMenu(
 }
 
 async function showTagContextMenu(_e: MouseEvent, tagShortName: string) {
-	const { Menu, MenuItem } = await import("@tauri-apps/api/menu");
-	const menu = await Menu.new({
-		items: [
-			await MenuItem.new({
-				text: "Delete",
-				action: () => {
-					handleDeleteTag(tagShortName).catch(() => {});
-				},
-			}),
-		],
-	});
-	await menu.popup();
+	const remotes = await listRemotes(repoPath);
+	await popupTagMenu(
+		tagMenuEntriesOf(tagShortName, remotes, remoteState.isRunning),
+		(action) => {
+			handleTagAction(tagShortName, action).catch(() => {});
+		},
+	);
 }
 
 async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {

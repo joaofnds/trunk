@@ -1,7 +1,12 @@
 import { ask } from "@tauri-apps/plugin-dialog";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { safeInvoke } from "./invoke.js";
-import { deleteRemoteBranch, deleteTag, renameBranch } from "./ref-actions.js";
+import {
+	deleteRemoteBranch,
+	deleteTag,
+	renameBranch,
+	runTagAction,
+} from "./ref-actions.js";
 import { createRemoteState } from "./remote-state.svelte.js";
 import { _resetToasts, toasts } from "./toast.svelte.js";
 
@@ -231,5 +236,107 @@ describe("renameBranch", () => {
 		expect(shown()).toEqual([
 			{ kind: "error", message: "a branch named 'feature' already exists" },
 		]);
+	});
+});
+
+describe("runTagAction", () => {
+	it("pushes the tag to the remote as the tab's running push, and says so", async () => {
+		const remoteState = createRemoteState();
+		let busyDuring: unknown;
+		mockInvoke.mockImplementation(async () => {
+			busyDuring = { ...remoteState };
+		});
+
+		const changed = await runTagAction(
+			"/repo",
+			"v1.0",
+			{ kind: "push", remote: "origin" },
+			remoteState,
+		);
+
+		expect(changed).toBe(false);
+		expect(mockInvoke).toHaveBeenCalledWith("push_tag", {
+			path: "/repo",
+			remote: "origin",
+			tagName: "v1.0",
+		});
+		expect(busyDuring).toMatchObject({ isRunning: true, lastOp: "push" });
+		expect(mockAsk).not.toHaveBeenCalled();
+		expect(shown()).toEqual([
+			{ kind: "success", message: "Pushed tag v1.0 to origin" },
+		]);
+	});
+
+	it("says in the app's words that the remote has another tag of that name", async () => {
+		mockInvoke.mockRejectedValue({
+			code: "tag_exists",
+			message: " ! [rejected] v1.0 -> v1.0 (already exists)",
+		});
+
+		await runTagAction(
+			"/repo",
+			"v1.0",
+			{ kind: "push", remote: "origin" },
+			createRemoteState(),
+		);
+
+		expect(shown()).toEqual([
+			{
+				kind: "error",
+				message:
+					"The remote already has a different tag of this name. Delete it from the remote first to replace it",
+			},
+		]);
+	});
+
+	it("deletes the tag from the remote once the user agrees", async () => {
+		const changed = await runTagAction(
+			"/repo",
+			"v1.0",
+			{ kind: "delete_remote", remote: "origin" },
+			createRemoteState(),
+		);
+
+		expect(changed).toBe(false);
+		expect(mockAsk.mock.calls[0]?.[0]).toBe(
+			"Delete tag 'v1.0' from origin? This will remove it from the remote.",
+		);
+		expect(mockInvoke).toHaveBeenCalledWith("delete_remote_tag", {
+			path: "/repo",
+			remote: "origin",
+			tagName: "v1.0",
+		});
+		expect(shown()).toEqual([
+			{ kind: "success", message: "Deleted tag v1.0 from origin" },
+		]);
+	});
+
+	it("leaves the remote's tag when the user declines", async () => {
+		mockAsk.mockResolvedValue(false);
+
+		await runTagAction(
+			"/repo",
+			"v1.0",
+			{ kind: "delete_remote", remote: "origin" },
+			createRemoteState(),
+		);
+
+		expect(mockInvoke).not.toHaveBeenCalled();
+		expect(shown()).toEqual([]);
+	});
+
+	it("deletes the local tag and reports that a ref here changed", async () => {
+		const changed = await runTagAction(
+			"/repo",
+			"v1.0",
+			{ kind: "delete" },
+			createRemoteState(),
+		);
+
+		expect(changed).toBe(true);
+		expect(mockInvoke).toHaveBeenCalledWith("delete_tag", {
+			path: "/repo",
+			tagName: "v1.0",
+		});
 	});
 });

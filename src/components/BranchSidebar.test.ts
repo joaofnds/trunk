@@ -1512,6 +1512,7 @@ describe("BranchSidebar stash and tag actions", () => {
 			};
 			if (cmd === "list_refs")
 				return Promise.resolve(mockListRefs({ stashes, tags }));
+			if (cmd === "list_remotes") return Promise.resolve(["origin"]);
 			if (cmd === "stash_pop" || cmd === "stash_drop")
 				stashes = stashes.filter((stash) => stash.oid !== oid);
 			if (cmd === "delete_tag")
@@ -1563,11 +1564,29 @@ describe("BranchSidebar stash and tag actions", () => {
 	it("takes a deleted tag off the list", async () => {
 		await fireEvent.click(await screen.findByText("Tags (1)"));
 
-		await choose("Delete", "Hide v1.0");
+		await choose("Delete v1.0 locally", "Hide v1.0");
 
 		await waitFor(() =>
 			expect(screen.queryByText("Tags (1)")).not.toBeInTheDocument(),
 		);
 		expect(shown()).toEqual([{ message: "Deleted tag v1.0", kind: "success" }]);
+	});
+
+	it("pushes a tag to a remote and keeps it listed", async () => {
+		await fireEvent.click(await screen.findByText("Tags (1)"));
+
+		await choose("Push v1.0 to origin", "Hide v1.0");
+
+		await waitFor(() =>
+			expect(shown()).toEqual([
+				{ message: "Pushed tag v1.0 to origin", kind: "success" },
+			]),
+		);
+		expect(mockInvoke).toHaveBeenCalledWith("push_tag", {
+			path: "/test/repo",
+			remote: "origin",
+			tagName: "v1.0",
+		});
+		expect(screen.getByText("Tags (1)")).toBeInTheDocument();
 	});
 });

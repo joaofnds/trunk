@@ -5,7 +5,8 @@ use std::path::Path;
 use trunk_git::pull_safety::PullSafetyCopy;
 use trunk_git::repository::has_unmerged_paths;
 use trunk_lib::commands::remote::{
-    FORCE_PUSH_ARGS, classify_git_error, get_push_target_inner, resolve_push_target,
+    FORCE_PUSH_ARGS, classify_git_error, get_push_target_inner, list_remotes_inner,
+    resolve_push_target,
 };
 
 fn set_config(ctx: &TestContext, pairs: &[(&str, &str)]) {
@@ -453,6 +454,111 @@ fn refs_in_graph(remote: &common::drivers::remote::RemoteDriver<'_>) -> Vec<Stri
         .iter()
         .flat_map(|commit| commit.refs.iter().map(|label| label.name.clone()))
         .collect()
+}
+
+fn tag_on(bare: &Path, tag: &str) -> Option<git2::Oid> {
+    git2::Repository::open(bare)
+        .unwrap()
+        .find_reference(&format!("refs/tags/{tag}"))
+        .ok()
+        .and_then(|reference| reference.target())
+}
+
+#[test]
+fn push_tag_sends_the_tag_to_the_remote() {
+    let ctx = repo_on_main();
+    let bare = bare_remote(&ctx, "origin");
+    git(&ctx, &["tag", "v1"]);
+
+    ctx.remote().push_tag("origin", "v1").unwrap();
+
+    assert_eq!(tag_on(&bare, "v1"), ctx.repo().head().unwrap().target());
+}
+
+#[test]
+fn push_tag_refuses_to_move_a_tag_the_remote_has_at_another_object() {
+    let ctx = repo_on_main();
+    let bare = bare_remote(&ctx, "origin");
+    let elsewhere = {
+        let repo = git2::Repository::open(&bare).unwrap();
+        let tree = repo.treebuilder(None).unwrap().write().unwrap();
+        repo.reference("refs/tags/v1", tree, false, "another clone's v1")
+            .unwrap();
+        tree
+    };
+    git(&ctx, &["tag", "v1"]);
+
+    let err = ctx.remote().push_tag("origin", "v1").unwrap_err();
+
+    assert_eq!(err.code, "tag_exists", "{}", err.message);
+    assert_eq!(tag_on(&bare, "v1"), Some(elsewhere));
+}
+
+#[test]
+fn delete_remote_tag_removes_the_tag_from_the_remote_and_keeps_it_here() {
+    let ctx = repo_on_main();
+    let bare = bare_remote(&ctx, "origin");
+    git(&ctx, &["tag", "v1"]);
+    git(&ctx, &["push", "origin", "refs/tags/v1"]);
+
+    ctx.remote().delete_remote_tag("origin", "v1").unwrap();
+
+    assert_eq!(tag_on(&bare, "v1"), None);
+    assert!(ctx.repo().find_reference("refs/tags/v1").is_ok());
+}
+
+#[test]
+fn a_tag_change_refuses_a_remote_the_repository_does_not_configure() {
+    let ctx = repo_on_main();
+    git(&ctx, &["tag", "v1"]);
+
+    let err = ctx
+        .remote()
+        .push_tag("--upload-pack=touch", "v1")
+        .unwrap_err();
+
+    assert_eq!(err.code, "invalid_ref", "{}", err.message);
+}
+
+#[test]
+fn delete_remote_tag_refuses_a_name_that_is_not_a_tag_git_accepts() {
+    let ctx = repo_on_main();
+    let bare = bare_remote(&ctx, "origin");
+    branch_on_remote(&ctx, "main");
+
+    let err = ctx
+        .remote()
+        .delete_remote_tag("origin", "v1:refs/heads/main")
+        .unwrap_err();
+
+    assert_eq!(err.code, "invalid_ref", "{}", err.message);
+    assert!(has_branch(&bare, "main"));
+}
+
+#[test]
+fn push_tag_refuses_a_tag_the_repository_does_not_have() {
+    let ctx = repo_on_main();
+    let bare = bare_remote(&ctx, "origin");
+
+    let err = ctx.remote().push_tag("origin", "v1").unwrap_err();
+
+    assert_eq!(err.code, "invalid_ref", "{}", err.message);
+    assert_eq!(tag_on(&bare, "v1"), None);
+}
+
+#[test]
+fn list_remotes_names_every_configured_remote() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_remote("origin")
+        .with_remote("team/fork")
+        .build();
+
+    let mut names = list_remotes_inner(ctx.path(), ctx.state_map()).unwrap();
+    names.sort();
+
+    assert_eq!(names, ["origin", "team/fork"]);
 }
 
 fn has_branch(bare: &Path, branch: &str) -> bool {

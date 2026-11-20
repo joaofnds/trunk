@@ -43,6 +43,8 @@ pub fn classify_git_error(stderr: &str) -> TrunkError {
         TrunkError::new("push_lease_refused", stderr)
     } else if lower.contains("non-fast-forward") || lower.contains("fetch first") {
         TrunkError::new("non_fast_forward", stderr)
+    } else if git_own_lines(&lower).any(|line| line.contains("(already exists)")) {
+        TrunkError::new("tag_exists", stderr)
     } else if lower.contains("no upstream") || lower.contains("has no upstream branch") {
         TrunkError::new("no_upstream", stderr)
     } else if lower.contains("could not apply") && lower.contains("rebase --continue") {
@@ -1089,6 +1091,192 @@ fn tracked_remote_ref(
         )
     })?;
     Ok((source.remote, source.branch))
+}
+
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn list_remotes(
+    activity: crate::activity::Activity,
+    path: String,
+    state: State<'_, RepoState>,
+) -> Result<Vec<String>, String> {
+    let state_map = state.snapshot();
+    activity
+        .spawn_blocking(move || list_remotes_inner(&path, &state_map))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e: TrunkError| e.to_json())
+}
+
+/// The names of the repository's configured remotes.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error
+/// when its config will not read.
+pub fn list_remotes_inner(path: &str, state_map: &OpenRepos) -> Result<Vec<String>, TrunkError> {
+    let repo = state_map.open(path)?;
+    let names = repo.remotes()?;
+    Ok(names.iter().flatten().flatten().map(String::from).collect())
+}
+
+/// What a tag change does to the tag on the remote.
+#[derive(Clone, Copy)]
+pub enum TagChange {
+    Push,
+    Delete,
+}
+
+/// A tag, by its short name, and the configured remote a change to it goes to.
+pub struct TagOnRemote<'a> {
+    pub remote: &'a str,
+    pub tag: &'a str,
+}
+
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn push_tag<R: Runtime>(
+    activity: crate::activity::Activity,
+    path: String,
+    remote: String,
+    tag_name: String,
+    state: State<'_, RepoState>,
+    running: State<'_, RunningOp>,
+    app: AppHandle<R>,
+) -> Result<(), String> {
+    let target = TagOnRemote {
+        remote: &remote,
+        tag: &tag_name,
+    };
+    change_remote_tag_inner(
+        &activity,
+        &path,
+        TagChange::Push,
+        &target,
+        &state.snapshot(),
+        &running.0,
+        &app,
+    )
+    .await
+    .map_err(|e| e.to_json())
+}
+
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn delete_remote_tag<R: Runtime>(
+    activity: crate::activity::Activity,
+    path: String,
+    remote: String,
+    tag_name: String,
+    state: State<'_, RepoState>,
+    running: State<'_, RunningOp>,
+    app: AppHandle<R>,
+) -> Result<(), String> {
+    let target = TagOnRemote {
+        remote: &remote,
+        tag: &tag_name,
+    };
+    change_remote_tag_inner(
+        &activity,
+        &path,
+        TagChange::Delete,
+        &target,
+        &state.snapshot(),
+        &running.0,
+        &app,
+    )
+    .await
+    .map_err(|e| e.to_json())
+}
+
+/// Push a local tag to a remote, or delete a tag from one. Neither changes a ref
+/// here, since no remote-tracking ref follows a remote's tags, so the graph stays.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `invalid_ref` when the
+/// remote is not configured or a pushed tag does not exist here, `op_in_progress`
+/// while another remote operation runs on it, `cancelled` when the user cancels it,
+/// `tag_exists` when the remote has a different tag of that name, and otherwise the
+/// code [`classify_git_error`] gives what git said, such as `push_declined`,
+/// `auth_failure` or `remote_error`.
+pub async fn change_remote_tag_inner<R: Runtime>(
+    activity: &crate::activity::Activity,
+    path: &str,
+    change: TagChange,
+    target: &TagOnRemote<'_>,
+    state_map: &OpenRepos,
+    running: &Mutex<RemoteOps>,
+    app: &AppHandle<R>,
+) -> Result<(), TrunkError> {
+    let path_buf = state_map.repository(path)?.location().to_path_buf();
+    let refname = format!("refs/tags/{}", target.tag);
+
+    let location = path_buf.clone();
+    let (remote, checked) = (target.remote.to_owned(), refname.clone());
+    activity
+        .spawn_blocking(move || check_tag_change(&location, change, &remote, &checked))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
+
+    let args: &[&str] = match change {
+        TagChange::Push => &["push", "--", target.remote, &refname],
+        TagChange::Delete => &["push", "--delete", "--", target.remote, &refname],
+    };
+    run_git_remote(activity, args, &path_buf, app, path, running).await?;
+    Ok(())
+}
+
+fn check_tag_change(
+    location: &std::path::Path,
+    change: TagChange,
+    remote: &str,
+    refname: &str,
+) -> Result<(), TrunkError> {
+    let repo = git2::Repository::open(location)?;
+    let configured = repo
+        .remotes()?
+        .iter()
+        .flatten()
+        .any(|name| name == Some(remote));
+    if !configured {
+        return Err(TrunkError::new(
+            "invalid_ref",
+            format!("{remote} is not a remote of this repository"),
+        ));
+    }
+    if !git2::Reference::is_valid_name(refname) {
+        return Err(TrunkError::new(
+            "invalid_ref",
+            format!("{refname} is not a tag name git accepts"),
+        ));
+    }
+    if matches!(change, TagChange::Push) && repo.find_reference(refname).is_err() {
+        return Err(TrunkError::new(
+            "invalid_ref",
+            format!("This repository has no tag {refname}"),
+        ));
+    }
+    Ok(())
 }
 
 /// # Errors

@@ -131,6 +131,33 @@ impl RemoteDriver<'_> {
         ))
     }
 
+    pub fn push_tag(&self, remote: &str, tag: &str) -> Result<(), TrunkError> {
+        self.change_tag(remote::TagChange::Push, remote, tag)
+    }
+
+    pub fn delete_remote_tag(&self, remote: &str, tag: &str) -> Result<(), TrunkError> {
+        self.change_tag(remote::TagChange::Delete, remote, tag)
+    }
+
+    fn change_tag(
+        &self,
+        change: remote::TagChange,
+        remote: &str,
+        tag: &str,
+    ) -> Result<(), TrunkError> {
+        tauri::async_runtime::block_on(remote::change_remote_tag_inner(
+            &trunk_lib::activity::ActivityState::default()
+                .acquire()
+                .unwrap(),
+            self.ctx.path(),
+            change,
+            &remote::TagOnRemote { remote, tag },
+            self.ctx.state_map(),
+            &self.app.state::<RunningOp>().0,
+            self.app.handle(),
+        ))
+    }
+
     pub fn push_force(&self, remote: &str, branch: &str) -> Result<(), TrunkError> {
         tauri::async_runtime::block_on(remote::git_push_force_inner(
             &trunk_lib::activity::ActivityState::default()

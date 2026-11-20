@@ -79,8 +79,9 @@ import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
 import { createOwnedTimer } from "../lib/owned-timer.js";
 import {
 	deleteRemoteBranch,
-	deleteTag,
+	listRemotes,
 	renameBranch,
+	runTagAction,
 } from "../lib/ref-actions.js";
 import { buildRefPillData, overflowBadgeWidth } from "../lib/ref-pill-data.js";
 import {
@@ -100,6 +101,7 @@ import {
 	saveUserWidths,
 	setColumnVisibility,
 } from "../lib/store.js";
+import { popupTagMenu, tagMenuEntriesOf } from "../lib/tag-menu.js";
 import { measureTextWidth } from "../lib/text-measure.js";
 import { textOverrun } from "../lib/text-overrun.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -1532,17 +1534,13 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 		});
 		await menu.popup();
 	} else if (ref.refType === "Tag") {
-		const menu = await Menu.new({
-			items: [
-				await MenuItem.new({
-					text: "Delete",
-					action: () => {
-						void deleteTag(repoPath, ref.shortName);
-					},
-				}),
-			],
-		});
-		await menu.popup();
+		const remotes = await listRemotes(repoPath);
+		await popupTagMenu(
+			tagMenuEntriesOf(ref.shortName, remotes, remoteState.isRunning),
+			(action) => {
+				void runTagAction(repoPath, ref.shortName, action, remoteState);
+			},
+		);
 	}
 }
 

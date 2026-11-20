@@ -1,9 +1,11 @@
 import { ask } from "./dialog.js";
 import { forDisplay } from "./display-text.js";
-import { reportErrorToast } from "./error-report.js";
-import { safeInvoke } from "./invoke.js";
+import { errorMessage, reportErrorToast } from "./error-report.js";
+import { isTrunkError, safeInvoke } from "./invoke.js";
+import { remoteErrorMessage } from "./remote-error.js";
 import { whileRemoteRuns } from "./remote-op.js";
 import type { RemoteState } from "./remote-state.svelte.js";
+import type { TagAction } from "./tag-menu.js";
 import { showToast } from "./toast.svelte.js";
 
 // Each resolves whether a ref changed, so the caller knows to read the refs again.
@@ -51,6 +53,74 @@ export async function deleteTag(
 
 	showToast(`Deleted tag ${tagName}`, "success");
 	return true;
+}
+
+/** The repository's remotes, or none when they cannot be read. */
+export async function listRemotes(repoPath: string): Promise<string[]> {
+	try {
+		return await safeInvoke<string[]>("list_remotes", { path: repoPath });
+	} catch {
+		return [];
+	}
+}
+
+/** Runs a tag menu entry. Resolves whether a ref here changed. */
+export async function runTagAction(
+	repoPath: string,
+	tagName: string,
+	action: TagAction,
+	remoteState: RemoteState,
+): Promise<boolean> {
+	if (action.kind === "delete") return deleteTag(repoPath, tagName);
+
+	const tag = { path: repoPath, remote: action.remote, tagName };
+	if (action.kind === "push") {
+		await changeTagOnRemote(
+			remoteState,
+			"push_tag",
+			tag,
+			`Pushed tag ${tagName} to ${action.remote}`,
+		);
+		return false;
+	}
+
+	try {
+		const confirmed = await ask(
+			`Delete tag '${forDisplay(tagName)}' from ${forDisplay(action.remote)}? This will remove it from the remote.`,
+			{ title: "Delete Remote Tag", kind: "warning", okLabel: "Delete" },
+		);
+		if (!confirmed) return false;
+	} catch (e) {
+		reportErrorToast(e, "Failed to delete tag");
+		return false;
+	}
+	await changeTagOnRemote(
+		remoteState,
+		"delete_remote_tag",
+		tag,
+		`Deleted tag ${tagName} from ${action.remote}`,
+	);
+	return false;
+}
+
+async function changeTagOnRemote(
+	remoteState: RemoteState,
+	command: "push_tag" | "delete_remote_tag",
+	tag: { path: string; remote: string; tagName: string },
+	done: string,
+): Promise<void> {
+	try {
+		await whileRemoteRuns(remoteState, "push", () => safeInvoke(command, tag));
+	} catch (e) {
+		showToast(
+			isTrunkError(e)
+				? remoteErrorMessage(e, "push")
+				: errorMessage(e, "The remote did not answer"),
+			"error",
+		);
+		return;
+	}
+	showToast(done, "success");
 }
 
 /** Renames branch `from` to `to`, trimmed. Typing nothing new changes nothing. */

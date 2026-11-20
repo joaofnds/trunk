@@ -25,6 +25,8 @@ function describeFailure(
 			return lastOp === "push"
 				? "Push rejected — the remote has commits you don’t have locally"
 				: "The remote has commits you don’t have locally";
+		case "tag_exists":
+			return "The remote already has a different tag of this name. Delete it from the remote first to replace it";
 		case "no_upstream":
 			return "This branch has no upstream on the remote";
 		case "push_declined":
