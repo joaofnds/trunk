@@ -1347,6 +1347,23 @@ fn push_target_has_no_branch_on_a_detached_head() {
     assert_eq!(target.branch, None);
 }
 
+#[test]
+fn push_target_follows_settings_git_includes_only_where_a_remote_is_configured() {
+    let ctx = repo_on_main();
+    track_upstream(&ctx, "origin", "main");
+    set_config(&ctx, &[("branch.main.merge", "refs/heads/trunk")]);
+    let git_dir = ctx.repo_path().join(".git");
+    std::fs::write(git_dir.join("extra.cfg"), "[push]\n\tdefault = upstream\n").unwrap();
+    let mut config = std::fs::read_to_string(git_dir.join("config")).unwrap();
+    config.push_str("[includeIf \"hasconfig:remote.*.url:**\"]\n\tpath = extra.cfg\n");
+    std::fs::write(git_dir.join("config"), config).unwrap();
+
+    let target = resolve_push_target(&ctx.repo()).unwrap();
+
+    assert_eq!(target.remote.as_deref(), Some("origin"));
+    assert_eq!(target.branch.as_deref(), Some("trunk"));
+}
+
 // --- get_push_target tests ---
 
 #[test]

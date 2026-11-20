@@ -756,8 +756,8 @@ pub struct PushTarget {
     pub branch: Option<String>,
 }
 
-/// Resolve the *remote* the way git does — the full `pushRemote` / `pushDefault`
-/// chain, which git2's `branch.upstream()` cannot see because it reads
+/// Resolve the *remote* the way git does, through the full `pushRemote` /
+/// `pushDefault` chain, which git2's `branch.upstream()` cannot see because it reads
 /// `branch.<name>.remote` only.
 ///
 /// The *branch* is HEAD's shorthand, except under `push.default=upstream` (or its old
@@ -767,8 +767,9 @@ pub struct PushTarget {
 ///
 /// # Errors
 ///
-/// Returns the git error when the repository config will not read. A detached
-/// HEAD or a missing remote is not an error: the corresponding field is `None`.
+/// Returns `git_error` with git's message when git cannot read the configuration. A
+/// detached HEAD or a missing remote is not an error: the corresponding field is
+/// `None`.
 pub fn resolve_push_target(repo: &git2::Repository) -> Result<PushTarget, TrunkError> {
     let head = repo.head().ok();
     let branch = head
@@ -776,28 +777,39 @@ pub fn resolve_push_target(repo: &git2::Repository) -> Result<PushTarget, TrunkE
         .filter(|head| head.is_branch())
         .and_then(|head| head.shorthand().ok())
         .map(str::to_owned);
-    push_target_of(repo, branch)
+    Ok(push_target_of(&push_config(repo)?, branch))
 }
 
-fn push_target_of(
-    repo: &git2::Repository,
-    branch: Option<String>,
-) -> Result<PushTarget, TrunkError> {
-    let config = repo.config().map_err(TrunkError::from)?;
+/// The settings a bare push reads to pick its remote and branch, as the user's git
+/// reads them.
+fn push_config(repo: &git2::Repository) -> Result<UserConfig, TrunkError> {
+    UserConfig::read(
+        repo.workdir().unwrap_or_else(|| repo.path()),
+        r"^(branch\..*\.(pushremote|remote|merge)|remote\.pushdefault|push\.default|remote\.origin\.url)$",
+        "git_error",
+    )
+}
+
+fn push_target_of(config: &UserConfig, branch: Option<String>) -> PushTarget {
+    let value = |name: &str| config.get(name).flatten().map(str::to_owned);
     let branch_key = |suffix: &str| {
         branch
             .as_deref()
-            .and_then(|name| config.get_string(&format!("branch.{name}.{suffix}")).ok())
+            .and_then(|name| value(&format!("branch.{name}.{suffix}")))
     };
-    let remote = branch_key("pushRemote")
-        .or_else(|| config.get_string("remote.pushDefault").ok())
+    let remote = branch_key("pushremote")
+        .or_else(|| value("remote.pushdefault"))
         .or_else(|| branch_key("remote"))
         // A bare push falls back to `origin` by name, not to "the only remote":
         // with a sole differently-named remote git fatals with "no upstream branch".
-        .or_else(|| repo.find_remote("origin").ok().map(|_| "origin".to_owned()));
+        .or_else(|| {
+            config
+                .is_set("remote.origin.url")
+                .then(|| "origin".to_owned())
+        });
 
     let pushes_to_upstream = matches!(
-        config.get_string("push.default").ok().as_deref(),
+        value("push.default").as_deref(),
         Some("upstream" | "tracking")
     ) && remote.is_some()
         && branch_key("remote") == remote;
@@ -806,7 +818,7 @@ fn push_target_of(
         .and_then(|merge| merge.strip_prefix("refs/heads/").map(str::to_owned));
     let branch = upstream_branch.or(branch);
 
-    Ok(PushTarget { remote, branch })
+    PushTarget { remote, branch }
 }
 
 /// # Errors
@@ -880,12 +892,9 @@ pub async fn push_branch_inner<R: Runtime>(
                     format!("There is no branch named {name} to push."),
                 ));
             }
-            let tracked = repo
-                .config()
-                .map_err(TrunkError::from)?
-                .get_string(&format!("branch.{name}.merge"))
-                .is_ok();
-            Ok((push_target_of(&repo, Some(name))?, tracked))
+            let config = push_config(&repo)?;
+            let tracked = config.is_set(&format!("branch.{name}.merge"));
+            Ok((push_target_of(&config, Some(name)), tracked))
         })
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
