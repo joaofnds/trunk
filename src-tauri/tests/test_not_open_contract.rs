@@ -8,8 +8,9 @@ use tauri::Manager;
 use trunk_git::error::TrunkError;
 use trunk_git::graph_input::RefVisibility;
 use trunk_lib::commands::branches::{
-    branch_hold_inner, checkout_branch_inner, checkout_remote_branch_inner, create_branch_inner,
-    delete_branch_inner, fast_forward_to_inner, rename_branch_inner,
+    branch_hold_inner, checkout_branch_inner, checkout_remote_branch_inner,
+    commits_only_on_branch_inner, create_branch_inner, delete_branch_inner, fast_forward_to_inner,
+    rename_branch_inner,
 };
 use trunk_lib::commands::commit_actions::{
     checkout_commit_inner, cherry_pick_inner, create_tag_inner, delete_tag_inner,
@@ -83,6 +84,8 @@ not_open_contract! {
         |path, state| delete_branch_inner(path, "feature", None, state, &mut GraphCache::default(), &RefVisibility::default());
     branch_hold_reports_not_open_for_an_unregistered_repo =>
         |path, state| branch_hold_inner(path, "feature", state);
+    commits_only_on_branch_reports_not_open_for_an_unregistered_repo =>
+        |path, state| commits_only_on_branch_inner(path, "feature", state);
     rename_branch_reports_not_open_for_an_unregistered_repo =>
         |path, state| rename_branch_inner(path, "feature", "renamed", state, &mut GraphCache::default(), &RefVisibility::default());
     checkout_branch_reports_not_open_for_an_unregistered_repo =>

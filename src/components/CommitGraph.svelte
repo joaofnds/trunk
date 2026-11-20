@@ -1334,8 +1334,9 @@ function handleRowContextMenu(e: MouseEvent, commit: GraphCommit) {
 
 async function handleDeleteBranch(branchName: string) {
 	try {
-		if (!(await deleteBranch(repoPath, branchName))) return;
-		showToast(`Deleted branch ${branchName}`, "success");
+		const outcome = await deleteBranch(repoPath, branchName);
+		if (outcome.kind === "declined") return;
+		showToast(outcome.report, "success");
 	} catch (e) {
 		reportErrorToast(e, "Failed to delete branch");
 	}

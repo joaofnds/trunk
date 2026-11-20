@@ -27,7 +27,7 @@ impl TestContext {
     }
 
     /// Delete a local branch (needs &mut self for `cache_map`)
-    pub fn delete_branch(&mut self, name: &str) -> Result<(), TrunkError> {
+    pub fn delete_branch(&mut self, name: &str) -> Result<String, TrunkError> {
         branches::delete_branch_inner(
             &self.path,
             name,
@@ -41,6 +41,11 @@ impl TestContext {
     /// Which worktree holds `name`, and what removing it would lose
     pub fn branch_hold(&self, name: &str) -> Result<BranchHold, TrunkError> {
         branches::branch_hold_inner(self.path(), name, self.state_map())
+    }
+
+    /// How many commits deleting `name` would leave on no branch, tag or HEAD
+    pub fn commits_only_on(&self, name: &str) -> Result<usize, TrunkError> {
+        branches::commits_only_on_branch_inner(self.path(), name, self.state_map())
     }
 
     /// Open `location` in a tab of its own, as the frontend does for another repository
@@ -72,7 +77,7 @@ impl TestContext {
         &mut self,
         name: &str,
         worktree: &WorktreeRemoval,
-    ) -> Result<(), TrunkError> {
+    ) -> Result<String, TrunkError> {
         branches::delete_branch_inner(
             &self.path,
             name,

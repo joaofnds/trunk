@@ -130,7 +130,7 @@ pub fn delete_branch_inner(
     state_map: &OpenRepos,
     cache_map: &mut GraphCache,
     visibility: &trunk_git::graph_input::RefVisibility,
-) -> Result<(), TrunkError> {
+) -> Result<String, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
 
@@ -147,6 +147,7 @@ pub fn delete_branch_inner(
     }
 
     let mut branch = repo.find_branch(branch_name, BranchType::Local)?;
+    let tip = branch.get().peel_to_commit()?.id().to_string();
     if let Some(worktree) = worktree {
         trunk_git::worktree::remove(&repo, branch_name, worktree, &open_tabs(state_map))?;
         branch.delete().map_err(|error| {
@@ -170,7 +171,44 @@ pub fn delete_branch_inner(
     let read = state_map.read_graph(path)?;
     cache_map.insert_read(path.to_owned(), read, visibility.clone());
 
-    Ok(())
+    Ok(tip)
+}
+
+/// How many commits deleting local branch `branch_name` would leave on no other
+/// branch, remote-tracking branch, tag, stash or HEAD.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when the
+/// branch is missing or the history will not walk.
+pub fn commits_only_on_branch_inner(
+    path: &str,
+    branch_name: &str,
+    state_map: &OpenRepos,
+) -> Result<usize, TrunkError> {
+    let repo = state_map.open(path)?;
+    let branch = repo.find_branch(branch_name, BranchType::Local)?;
+    let own_ref = branch.get().name_bytes().to_vec();
+
+    let mut walk = repo.revwalk()?;
+    walk.push(branch.get().peel_to_commit()?.id())?;
+    for reference in repo.references()? {
+        let reference = reference?;
+        if reference.name_bytes() == own_ref.as_slice() {
+            continue;
+        }
+        if let Ok(commit) = reference.peel_to_commit() {
+            walk.hide(commit.id())?;
+        }
+    }
+    if let Ok(head) = repo.head()
+        && let Ok(commit) = head.peel_to_commit()
+    {
+        walk.hide(commit.id())?;
+    }
+
+    walk.try_fold(0, |count, oid| oid.map(|_| count + 1))
+        .map_err(TrunkError::from)
 }
 
 /// Which worktree holds local branch `branch_name`, so Delete can offer to remove it.
@@ -824,6 +862,29 @@ pub async fn branch_hold(
 ///
 /// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
+pub async fn commits_only_on_branch(
+    activity: crate::activity::Activity,
+    path: String,
+    branch_name: String,
+    state: State<'_, RepoState>,
+) -> Result<usize, String> {
+    let state_map = state.snapshot();
+    activity
+        .spawn_blocking(move || commits_only_on_branch_inner(&path, &branch_name, &state_map))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
+}
+
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
 pub async fn delete_branch<R: Runtime>(
     activity: crate::activity::Activity,
     path: String,
@@ -832,12 +893,12 @@ pub async fn delete_branch<R: Runtime>(
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let path_clone = path.clone();
     let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let tabs = app.clone();
 
-    rebuild
+    let tip = rebuild
         .rebuild_merging(path.clone(), move |visibility, rebuilt| {
             // Read the open tabs after the gate, not before it, so a tab opened on the
             // worktree while this delete waited still refuses its removal.
@@ -855,7 +916,7 @@ pub async fn delete_branch<R: Runtime>(
         .map_err(|e| e.to_json())?;
 
     let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
-    Ok(())
+    Ok(tip)
 }
 
 /// # Errors

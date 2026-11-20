@@ -315,6 +315,104 @@ fn delete_head_branch_fails() {
 }
 
 #[test]
+fn delete_branch_reports_the_tip_it_deleted() {
+    let mut ctx = branch_with_two_commits_of_its_own();
+    let tip = ctx.resolve_ref("feature").unwrap();
+
+    let deleted = ctx.delete_branch("feature").unwrap();
+
+    assert_eq!(deleted, tip);
+}
+
+fn branch_with_two_commits_of_its_own() -> TestContext {
+    TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("a.txt", "a")
+        .with_commit("First feature commit")
+        .with_file("b.txt", "b")
+        .with_commit("Second feature commit")
+        .checkout("main")
+        .build()
+}
+
+#[test]
+fn commits_only_on_counts_the_commits_no_other_ref_holds() {
+    let ctx = branch_with_two_commits_of_its_own();
+
+    assert_eq!(ctx.commits_only_on("feature").unwrap(), 2);
+}
+
+#[test]
+fn commits_only_on_counts_none_once_another_branch_holds_them() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("a.txt", "a")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .merge("feature")
+        .build();
+
+    assert_eq!(ctx.commits_only_on("feature").unwrap(), 0);
+}
+
+#[test]
+fn commits_only_on_counts_none_once_they_are_pushed() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("a.txt", "a")
+        .with_commit("Feature commit")
+        .with_remote("origin")
+        .with_pushed("origin", "feature")
+        .checkout("main")
+        .build();
+
+    assert_eq!(ctx.commits_only_on("feature").unwrap(), 0);
+}
+
+#[test]
+fn commits_only_on_counts_none_a_tag_holds() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("a.txt", "a")
+        .with_commit("Feature commit")
+        .with_tag("v1")
+        .checkout("main")
+        .build();
+
+    assert_eq!(ctx.commits_only_on("feature").unwrap(), 0);
+}
+
+#[test]
+fn commits_only_on_counts_none_a_detached_head_holds() {
+    let ctx = branch_with_two_commits_of_its_own();
+    let tip = ctx.repo().revparse_single("feature").unwrap().id();
+    ctx.repo().set_head_detached(tip).unwrap();
+
+    assert_eq!(ctx.commits_only_on("feature").unwrap(), 0);
+}
+
+#[test]
+fn commits_only_on_refuses_a_branch_the_repository_does_not_have() {
+    let ctx = branch_with_two_commits_of_its_own();
+
+    let error = ctx.commits_only_on("missing").unwrap_err();
+
+    assert_eq!(error.code, "git_not_found");
+}
+
+#[test]
 fn rename_branch_changes_name() {
     let mut ctx = TestContext::builder()
         .with_file("README.md", "hello")
@@ -686,7 +784,7 @@ mod deleting_a_branch_a_linked_worktree_holds {
 
         let result = ctx.delete_branch_removing("wt-branch", &removal("wt", &path, false));
 
-        assert_eq!(result, Ok(()));
+        assert_eq!(result.map(drop), Ok(()));
         ctx.assert_branch_not_exists("wt-branch");
         assert_eq!(worktree_names(&ctx), Vec::<String>::new());
         assert!(!path.exists());
@@ -771,7 +869,7 @@ mod deleting_a_branch_a_linked_worktree_holds {
                     let result =
                         ctx.delete_branch_removing("wt-branch", &removal("wt", &path, true));
 
-                    assert_eq!(result, Ok(()));
+                    assert_eq!(result.map(drop), Ok(()));
                     ctx.assert_branch_not_exists("wt-branch");
                     assert_eq!(worktree_names(&ctx), Vec::<String>::new());
                     assert!(!path.exists());
@@ -1485,7 +1583,7 @@ mod deleting_a_branch_a_linked_worktree_holds {
 
         let result = ctx.delete_branch_removing("wt-branch", &removal("wt", &path, false));
 
-        assert_eq!(result, Ok(()));
+        assert_eq!(result.map(drop), Ok(()));
         ctx.assert_branch_not_exists("wt-branch");
         assert!(!path.exists());
     }

@@ -17,6 +17,10 @@ export type DeletePrompt =
 	  }
 	| { readonly kind: "refuse"; readonly message: string };
 
+export type DeleteOutcome =
+	| { readonly kind: "declined" }
+	| { readonly kind: "deleted"; readonly report: string };
+
 const TITLE = "Delete Branch";
 
 /** Codes after which the user's answer no longer fits the worktree: another one holds
@@ -26,13 +30,12 @@ const ASK_AGAIN = new Set(["worktree_at_risk", "worktree_changed"]);
 /**
  * Asks before deleting `branchName` and deletes it once the user agrees,
  * removing the linked worktree that holds it when they agreed to that too.
- * Resolves false when the user declined, and rejects with the reason when
- * Trunk refuses or the delete fails.
+ * Rejects with the reason when Trunk refuses or the delete fails.
  */
 export async function deleteBranch(
 	repoPath: string,
 	branchName: string,
-): Promise<boolean> {
+): Promise<DeleteOutcome> {
 	try {
 		return await askThenDelete(repoPath, branchName);
 	} catch (e) {
@@ -44,12 +47,15 @@ export async function deleteBranch(
 async function askThenDelete(
 	repoPath: string,
 	branchName: string,
-): Promise<boolean> {
-	const hold = await safeInvoke<BranchHold>("branch_hold", {
-		path: repoPath,
-		branchName,
-	});
-	const prompt = deletePrompt(branchName, hold);
+): Promise<DeleteOutcome> {
+	const [hold, lost] = await Promise.all([
+		safeInvoke<BranchHold>("branch_hold", { path: repoPath, branchName }),
+		safeInvoke<number>("commits_only_on_branch", {
+			path: repoPath,
+			branchName,
+		}),
+	]);
+	const prompt = deletePrompt(branchName, hold, lost);
 
 	if (prompt.kind === "refuse") {
 		const refusal: TrunkError = {
@@ -64,10 +70,11 @@ async function askThenDelete(
 		kind: "warning",
 		okLabel: prompt.kind === "remove" ? prompt.okLabel : "Delete",
 	});
-	if (!confirmed) return false;
+	if (!confirmed) return { kind: "declined" };
 
+	let tip: string;
 	try {
-		await safeInvoke("delete_branch", {
+		tip = await safeInvoke<string>("delete_branch", {
 			path: repoPath,
 			branchName,
 			worktree: prompt.kind === "remove" ? prompt.removal : null,
@@ -78,26 +85,33 @@ async function askThenDelete(
 		if (!isTrunkError(e)) throw e;
 		throw { ...e, message: forDisplay(e.message, MAX_MESSAGE_CHARS) };
 	}
-	return true;
+	return {
+		kind: "deleted",
+		report: `Deleted branch ${forDisplay(branchName, MAX_PATH_CHARS)} (was ${tip.slice(0, 7)})`,
+	};
 }
 
+/** `lost` counts the commits no other branch, tag or HEAD contains, which the
+ *  delete would leave behind. */
 export function deletePrompt(
 	branchName: string,
 	hold: BranchHold,
+	lost: number,
 ): DeletePrompt {
 	const branch = forDisplay(branchName, MAX_PATH_CHARS);
+	const withLost = lostText(lost);
 
 	switch (hold.kind) {
 		case "not_held":
 		case "held_by_main":
 			return {
 				kind: "ask",
-				message: `Delete branch '${branch}'? This cannot be undone.`,
+				message: `Delete branch '${branch}'${withLost}?`,
 			};
 		case "offer":
 			return {
 				kind: "remove",
-				message: `'${branch}' is checked out in the worktree at ${pathText(hold.path)}.\n\nRemove that worktree and delete the branch? This cannot be undone.`,
+				message: `'${branch}' is checked out in the worktree at ${pathText(hold.path)}.\n\nRemove that worktree and delete the branch${withLost}? This cannot be undone.`,
 				okLabel: "Remove Worktree and Delete",
 				removal: { name: hold.name, path: hold.path, go_ahead: false },
 			};
@@ -107,7 +121,7 @@ export function deletePrompt(
 				.join("\n");
 			return {
 				kind: "remove",
-				message: `'${branch}' is checked out in the worktree at ${pathText(hold.path)}, and removing it may lose work:\n\n${reasons}\n\nRemove it anyway and delete the branch? This cannot be undone.`,
+				message: `'${branch}' is checked out in the worktree at ${pathText(hold.path)}, and removing it may lose work:\n\n${reasons}\n\nRemove it anyway and delete the branch${withLost}? This cannot be undone.`,
 				okLabel: "Remove Anyway and Delete",
 				removal: { name: hold.name, path: hold.path, go_ahead: true },
 			};
@@ -115,6 +129,13 @@ export function deletePrompt(
 		case "refuse":
 			return { kind: "refuse", message: refusalText(branch, hold) };
 	}
+}
+
+function lostText(lost: number): string {
+	if (lost === 0) return "";
+
+	const commits = lost === 1 ? "1 commit" : `${lost} commits`;
+	return ` with the ${commits} no other branch or tag contains`;
 }
 
 function riskText(risk: RemovalRisk): string {

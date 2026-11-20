@@ -125,6 +125,33 @@ describe("branch mutation", () => {
 		);
 	});
 
+	it("names the commits a delete loses and the tip it deleted", async () => {
+		const app = await setup({
+			repo: {
+				steps: [
+					...TWO_COMMITS.steps,
+					{ step: "branch", name: "feature" },
+					{ step: "checkout", name: "feature" },
+					{ step: "file", path: "f.txt", content: "f" },
+					{ step: "commit", message: "F1" },
+					{ step: "checkout", name: "main" },
+				],
+			},
+		});
+		await app.repo.open();
+
+		app.dialog.confirms();
+		await app.branches.contextMenu("feature");
+		app.contextMenu.choose("Delete");
+
+		await expect(
+			waitFor("the delete report", () => app.toasts().at(0) ?? null),
+		).resolves.toMatch(/^Deleted branch feature \(was [0-9a-f]{7}\)$/);
+		expect(app.dialog.shown).toEqual([
+			"Delete branch 'feature' with the 1 commit no other branch or tag contains?",
+		]);
+	});
+
 	// TRUNK-277: an edit the new branch's tree does not touch rides along, as git switch -c does.
 	it("creates a branch over an uncommitted edit and carries the edit onto it", async () => {
 		const app = await setup({ repo: TWO_COMMITS });

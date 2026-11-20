@@ -506,12 +506,13 @@ function closeDialog() {
 async function handleDeleteBranch(branchName: string) {
 	const path = repoPath;
 	try {
-		if (!(await deleteBranch(path, branchName))) return;
+		const outcome = await deleteBranch(path, branchName);
+		if (outcome.kind === "declined") return;
 		if (!sidebarActive || repoPath !== path) return;
 		await loadRefs(path);
 		if (!sidebarActive || repoPath !== path) return;
 		onrefreshed?.();
-		showToast(`Deleted branch ${branchName}`, "success");
+		showToast(outcome.report, "success");
 	} catch (e) {
 		if (sidebarActive && repoPath === path) {
 			reportErrorToast(e, "Failed to delete branch");
