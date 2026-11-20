@@ -376,6 +376,56 @@ describe("CommitGraph", () => {
 			expect(selections).toEqual(["latest", "earlier"]);
 		});
 
+		it("keeps the current match's place when a rewrite replaces it", async () => {
+			const { view } = await openSearch();
+			host.seedResponse("search_commits", [
+				{ oid: "latest" },
+				{ oid: "earlier" },
+			]);
+			await searchFor("change");
+			await drainSearchReplies();
+			await fireEvent.click(screen.getByRole("button", { name: "Next match" }));
+			host.seedResponse("search_commits", [
+				{ oid: "latest-rewritten" },
+				{ oid: "earlier-rewritten" },
+			]);
+
+			view.component.showGraph({
+				commits: [
+					makeCommit({ oid: "latest-rewritten", summary: "latest change" }),
+					makeCommit({ oid: "earlier-rewritten", summary: "earlier change" }),
+				],
+				max_columns: 1,
+				checked: true,
+				revision: 2,
+			});
+			await drainSearchReplies();
+
+			expect(screen.getByText("2 of 2")).toBeVisible();
+		});
+
+		it("keeps the place of a current match that left the end of the results", async () => {
+			const { view } = await openSearch();
+			host.seedResponse("search_commits", [
+				{ oid: "latest" },
+				{ oid: "earlier" },
+			]);
+			await searchFor("change");
+			await drainSearchReplies();
+			await fireEvent.click(screen.getByRole("button", { name: "Next match" }));
+			host.seedResponse("search_commits", [{ oid: "latest" }]);
+
+			view.component.showGraph({
+				commits: [makeCommit({ oid: "latest", summary: "latest change" })],
+				max_columns: 1,
+				checked: true,
+				revision: 2,
+			});
+			await drainSearchReplies();
+
+			expect(screen.getByText("1 of 1")).toBeVisible();
+		});
+
 		it("keeps the match the user moves to while the graph's new search runs", async () => {
 			const { view, selections } = await openSearch();
 			host.seedResponse("search_commits", [

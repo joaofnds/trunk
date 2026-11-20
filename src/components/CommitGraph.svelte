@@ -136,7 +136,7 @@ interface Props {
 	/** The tab's remote operation, which a remote delete from a menu runs as. */
 	remoteState: RemoteState;
 	/** The checked-out branch, read from every ref, so it is known while HEAD's row
-	 *  is not yet loaded. Undefined while HEAD is detached. */
+	 *  is not yet loaded. Undefined while HEAD is detached and until the refs load. */
 	headBranch?: string;
 	oncommitselect?: (oid: string, mods?: SelectModifiers) => void;
 	oncomparecommits?: (baseOid: string, targetOid: string) => void;
@@ -1972,7 +1972,8 @@ function replaceGraph(response: GraphResponse): void {
 }
 
 /** A rebuilt graph can add or drop matches, so an answered search asks again. The
- *  match the user is on stays current, and the selection does not move. */
+ *  match the user is on stays current, a match a rewrite replaced keeps its place,
+ *  and the selection does not move. */
 function refreshAnsweredSearch() {
 	const query = searchQuery.trim();
 	if (!searchOpen || !searchAnswered || !query) return;
@@ -1980,11 +1981,12 @@ function refreshAnsweredSearch() {
 	void currentSearchFor(query).then((results) => {
 		if (results === undefined) return;
 		const current = searchResults[searchCurrentIndex]?.oid;
+		const stillThere = results.findIndex((r) => r.oid === current);
 		searchResults = results;
-		searchCurrentIndex = Math.max(
-			0,
-			results.findIndex((r) => r.oid === current),
-		);
+		searchCurrentIndex =
+			stillThere === -1
+				? Math.max(0, Math.min(searchCurrentIndex, results.length - 1))
+				: stillThere;
 	});
 }
 
