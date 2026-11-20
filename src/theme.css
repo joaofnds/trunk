@@ -79,6 +79,7 @@
 	--default-transition-duration: var(--duration-fast);
 	--default-transition-timing-function: var(--ease-standard);
 	--animate-pulse: var(--animate-pulse);
+	--animate-spin: var(--animate-spin);
 
 	/* ── Color roles ── */
 	--color-scrollbar-thumb: var(--color-scrollbar-thumb);

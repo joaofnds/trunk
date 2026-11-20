@@ -125,6 +125,7 @@
 	--duration-fast: 150ms;
 	--ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 	--animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+	--animate-spin: spin 1s linear infinite;
 
 	/* ── Radius & elevation ── */
 	--radius: calc(1 * var(--u));

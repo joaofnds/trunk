@@ -4,6 +4,7 @@ import ArchiveRestore from "@lucide/svelte/icons/archive-restore";
 import ArrowUp from "@lucide/svelte/icons/arrow-up";
 import ClipboardCheck from "@lucide/svelte/icons/clipboard-check";
 import GitBranch from "@lucide/svelte/icons/git-branch";
+import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 import MessageSquare from "@lucide/svelte/icons/message-square";
 import Redo2 from "@lucide/svelte/icons/redo-2";
 import Undo2 from "@lucide/svelte/icons/undo-2";
@@ -70,6 +71,9 @@ let {
 	onreviewthreadshiddenchange,
 }: Props = $props();
 const scheduler = getScheduler();
+const pushing = $derived(
+	remoteState.isRunning && remoteState.lastOp === "push",
+);
 
 // The Review button reflects whether the review PANEL is showing, not merely that a
 // session is alive: active only when reviewActive AND the center pane shows the panel.
@@ -399,9 +403,14 @@ async function handleBranchCreate(values: Record<string, string>) {
 			disabled={remoteState.isRunning}
 			onclick={handlePush}
 			aria-label="Push"
-			tooltip="Push"
+			aria-busy={pushing || undefined}
+			tooltip={pushing ? "Pushing…" : "Push"}
 		>
-			<ArrowUp size={14} />
+			{#if pushing}
+				<LoaderCircle size={14} class="animate-spin" />
+			{:else}
+				<ArrowUp size={14} />
+			{/if}
 		</Button>
 	</div>
 

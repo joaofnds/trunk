@@ -109,6 +109,59 @@ describe("Toolbar", () => {
 		expect(screen.getByRole("button", { name: "Push" })).toBeInTheDocument();
 	});
 
+	it.each([
+		["push", "Push", "Pull"],
+		["pull", "Pull", "Push"],
+		["fetch", "Pull", "Push"],
+	] as const)(
+		"marks the button of a running %s busy, and only that one",
+		(op, busy, idle) => {
+			const remoteState = makeRemoteState();
+			remoteState.isRunning = true;
+			remoteState.lastOp = op;
+
+			render(Toolbar, {
+				props: {
+					repoPath: "/test/repo",
+					remoteState,
+					undoRedo: makeUndoRedo(),
+					shownHeadOid: null,
+					reviewActive: false,
+				},
+			});
+
+			expect(screen.getByRole("button", { name: busy })).toHaveAttribute(
+				"aria-busy",
+				"true",
+			);
+			expect(screen.getByRole("button", { name: idle })).not.toHaveAttribute(
+				"aria-busy",
+			);
+		},
+	);
+
+	it("drops the busy mark once the operation ends", async () => {
+		const remoteState = makeRemoteState();
+		remoteState.isRunning = true;
+		remoteState.lastOp = "push";
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState,
+				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
+				reviewActive: false,
+			},
+		});
+
+		remoteState.isRunning = false;
+		await tick();
+
+		expect(screen.getByRole("button", { name: "Push" })).not.toHaveAttribute(
+			"aria-busy",
+		);
+	});
+
 	it("renders Branch button", () => {
 		render(Toolbar, {
 			props: {

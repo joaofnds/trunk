@@ -1,6 +1,7 @@
 <script lang="ts">
 import ArrowDown from "@lucide/svelte/icons/arrow-down";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
+import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 import { autofetchSummary } from "../lib/autofetch-status.js";
 import { focusInEditable } from "../lib/keyboard.js";
 import { runRemoteOp } from "../lib/remote-op.js";
@@ -21,6 +22,9 @@ let { repoPath, disabled, remoteState, onpull }: Props = $props();
 let open = $state(false);
 const statusId = $props.id();
 const fetchStatus = $derived(autofetchSummary(remoteState.autofetch));
+const pulling = $derived(
+	remoteState.isRunning && remoteState.lastOp !== "push",
+);
 
 interface PullOption {
 	label: string;
@@ -137,10 +141,19 @@ $effect(() => {
 			{disabled}
 			onclick={onpull}
 			aria-label="Pull"
+			aria-busy={pulling || undefined}
 			aria-describedby={remoteState.autofetch ? statusId : undefined}
-			tooltip={fetchStatus}
+			tooltip={pulling
+				? remoteState.lastOp === "fetch"
+					? "Fetching…"
+					: "Pulling…"
+				: fetchStatus}
 		>
-			<ArrowDown size={14} />
+			{#if pulling}
+				<LoaderCircle size={14} class="animate-spin" />
+			{:else}
+				<ArrowDown size={14} />
+			{/if}
 		</Button>
 		<!-- Narrower than the button it hangs off: this is that button's menu,
 		     not a peer of it. -->

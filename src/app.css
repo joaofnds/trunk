@@ -92,11 +92,17 @@ textarea::placeholder {
 		opacity: 0.5;
 	}
 }
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
 @media (prefers-reduced-motion: reduce) {
 	.tooltip-pop {
 		transition: none;
 	}
-	.animate-pulse {
+	.animate-pulse,
+	.animate-spin {
 		animation: none;
 	}
 }
