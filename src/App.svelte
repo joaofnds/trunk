@@ -415,7 +415,13 @@ const repositories = new RepositoryTabs(scheduler, {
 			// Keep the previous marker if the initial status read fails.
 		}
 	},
-	failed: (id) => {
+	failed: (id, error) => {
+		const name = tabs.find((tab) => tab.id === id)?.repoName;
+		if (name)
+			showToast(
+				`Closed the tab for ${name} because it could not be opened: ${errorMessage(error, "unknown error")}`,
+				"error",
+			);
 		if (activeTabId === id && initialActiveId === id)
 			activeTabId = tabs.find((tab) => tab.id !== id)?.id ?? "";
 		closeTab(id);

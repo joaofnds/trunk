@@ -400,6 +400,30 @@ describe("App startup", () => {
 		);
 	});
 
+	it("says why it closed the tab of a repository that will not open", async () => {
+		app = new StartupHarness(savedTabs, "active");
+		app.start();
+		await screen.findByText("restored history");
+		await app.settle();
+		const missing = app.host.holdNextReply("open_repo");
+		await app.prepareNextRepository();
+		await missing.entered;
+
+		missing.reject({
+			code: "not_a_git_repo",
+			message: "could not find repository at '/first'",
+		});
+		await app.settle();
+
+		expect(toasts.items).toContainEqual(
+			expect.objectContaining({
+				message:
+					"Closed the tab for first because it could not be opened: could not find repository at '/first'",
+				kind: "error",
+			}),
+		);
+	});
+
 	it("selects the adjacent tab when a newly selected repository is missing", async () => {
 		app = new StartupHarness(savedTabs, "active");
 		app.start();

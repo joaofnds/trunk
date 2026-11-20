@@ -24,7 +24,7 @@ interface RepositoryLifecycle {
 	open(path: string): Promise<void>;
 	close(path: string): Promise<void>;
 	loadUnvisitedBadge(tab: OpenRepositoryTab): Promise<void>;
-	failed(id: string): void;
+	failed(id: string, error: unknown): void;
 }
 
 /** Restore the foreground first; prepare other backends without mounting their views. */
@@ -132,10 +132,10 @@ export class RepositoryTabs {
 		try {
 			await this.lifecycle.open(session.path);
 			return true;
-		} catch {
+		} catch (error) {
 			if (!this.disposed && this.sessions.get(session.id) === session) {
 				this.sessions.delete(session.id);
-				this.lifecycle.failed(session.id);
+				this.lifecycle.failed(session.id, error);
 			}
 			return false;
 		}
