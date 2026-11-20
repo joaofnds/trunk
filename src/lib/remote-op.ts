@@ -40,6 +40,17 @@ export async function whileRemoteRuns<T>(
 	}
 }
 
+/**
+ * Whether the tab already runs a remote operation, which it then says. A gesture
+ * made from a menu that opened before that operation started asks nothing and
+ * leaves the running operation's state as it stands.
+ */
+export function refusedWhileRunning(remoteState: RemoteState): boolean {
+	if (!remoteState.isRunning) return false;
+	showToast(ALREADY_RUNNING.message, "error");
+	return true;
+}
+
 export async function runRemoteOp(
 	remoteState: RemoteState,
 	repoPath: string,
@@ -47,6 +58,7 @@ export async function runRemoteOp(
 	successMsg: string,
 	extra: Record<string, unknown> = {},
 ): Promise<void> {
+	if (refusedWhileRunning(remoteState)) return;
 	const args = { path: repoPath, ...extra };
 	try {
 		await whileRemoteRuns(remoteState, OP_KINDS[cmd], async () => {

@@ -4,7 +4,11 @@ import { forDisplay } from "./display-text.js";
 import { errorMessage, reportErrorToast } from "./error-report.js";
 import { isTrunkError, safeInvoke } from "./invoke.js";
 import { remoteErrorMessage } from "./remote-error.js";
-import { runRemoteOp, whileRemoteRuns } from "./remote-op.js";
+import {
+	refusedWhileRunning,
+	runRemoteOp,
+	whileRemoteRuns,
+} from "./remote-op.js";
 import type { RemoteState } from "./remote-state.svelte.js";
 import type { TagAction } from "./tag-menu.js";
 import { showToast } from "./toast.svelte.js";
@@ -16,6 +20,7 @@ export async function deleteRemoteBranch(
 	branchName: string,
 	remoteState: RemoteState,
 ): Promise<boolean> {
+	if (refusedWhileRunning(remoteState)) return false;
 	try {
 		const confirmed = await ask(
 			`Delete remote branch '${forDisplay(branchName)}'? This will remove it from the remote.`,
@@ -83,6 +88,7 @@ export async function runTagAction(
 		return false;
 	}
 
+	if (refusedWhileRunning(remoteState)) return false;
 	try {
 		const confirmed = await ask(
 			`Delete tag '${forDisplay(tagName)}' from ${forDisplay(action.remote)}? This will remove it from the remote.`,

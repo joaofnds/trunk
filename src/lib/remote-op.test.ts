@@ -59,6 +59,38 @@ describe("runRemoteOp", () => {
 		expect(remoteState.lastOp).toBe("fetch");
 	});
 
+	it("leaves the running operation and its standing failure as they are", async () => {
+		const remoteState = createRemoteState();
+		const standing = { code: "non_fast_forward", message: "rejected" };
+		Object.assign(remoteState, {
+			isRunning: true,
+			lastOp: "pull",
+			failedOp: "push",
+			error: standing,
+		});
+
+		await runRemoteOp(remoteState, "/repo", "git_push", "done");
+
+		expect(mockInvoke).not.toHaveBeenCalled();
+		expect(remoteState).toMatchObject({
+			isRunning: true,
+			lastOp: "pull",
+			failedOp: "push",
+			error: standing,
+		});
+	});
+
+	it("says another operation runs when asked for one while it does", async () => {
+		const remoteState = createRemoteState();
+		remoteState.isRunning = true;
+
+		await runRemoteOp(remoteState, "/repo", "git_push", "done");
+
+		expect(vi.mocked(showToast).mock.calls).toEqual([
+			["A remote operation is already running", "error"],
+		]);
+	});
+
 	it.each([
 		["git_push_publish", "push"],
 		["git_pull", "pull"],

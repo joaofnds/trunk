@@ -82,6 +82,15 @@ describe("deleteRemoteBranch", () => {
 		]);
 	});
 
+	it("asks nothing while another remote operation runs", async () => {
+		const remoteState = createRemoteState();
+		remoteState.isRunning = true;
+
+		await deleteRemoteBranch("/repo", "origin/topic", remoteState);
+
+		expect(mockAsk).not.toHaveBeenCalled();
+	});
+
 	it("leaves the branch when the user declines", async () => {
 		mockAsk.mockResolvedValue(false);
 
@@ -372,6 +381,24 @@ describe("runTagAction", () => {
 		});
 		expect(shown()).toEqual([
 			{ kind: "success", message: "Deleted tag v1.0 from origin" },
+		]);
+	});
+
+	it("asks nothing and leaves the remote's tag while another remote operation runs", async () => {
+		const remoteState = createRemoteState();
+		remoteState.isRunning = true;
+
+		await runTagAction(
+			"/repo",
+			"v1.0",
+			{ kind: "delete_remote", remote: "origin" },
+			remoteState,
+		);
+
+		expect(mockAsk).not.toHaveBeenCalled();
+		expect(mockInvoke).not.toHaveBeenCalled();
+		expect(shown()).toEqual([
+			{ kind: "error", message: "A remote operation is already running" },
 		]);
 	});
 
