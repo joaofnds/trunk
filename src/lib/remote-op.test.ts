@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { safeInvoke } from "./invoke.js";
-import { runRemoteOp } from "./remote-op.js";
+import { runRemoteOp, whileRemoteRuns } from "./remote-op.js";
 import { createRemoteState } from "./remote-state.svelte.js";
 import { showToast } from "./toast.svelte.js";
 
@@ -57,5 +57,45 @@ describe("runRemoteOp", () => {
 		await runRemoteOp(remoteState, "/repo", "git_fetch", "done");
 
 		expect(remoteState.lastOp).toBe("fetch");
+	});
+});
+
+describe("whileRemoteRuns", () => {
+	it("marks the tab busy with its operation until the operation ends", async () => {
+		const remoteState = createRemoteState();
+		let busyDuring: [boolean, string | null] | undefined;
+
+		await whileRemoteRuns(remoteState, "push", async () => {
+			busyDuring = [remoteState.isRunning, remoteState.lastOp];
+		});
+
+		expect(busyDuring).toEqual([true, "push"]);
+		expect(remoteState.isRunning).toBe(false);
+	});
+
+	it("drops the busy mark when the operation fails, and passes the failure on", async () => {
+		const remoteState = createRemoteState();
+		const refused = { code: "push_declined", message: "no" };
+
+		await expect(
+			whileRemoteRuns(remoteState, "push", () => Promise.reject(refused)),
+		).rejects.toBe(refused);
+		expect(remoteState.isRunning).toBe(false);
+	});
+
+	it("refuses a second operation while one runs, and keeps the first one marked", async () => {
+		const remoteState = createRemoteState();
+		const second = vi.fn(() => Promise.resolve());
+		let refusal: unknown;
+
+		await whileRemoteRuns(remoteState, "pull", async () => {
+			refusal = await whileRemoteRuns(remoteState, "push", second).catch(
+				(e: unknown) => e,
+			);
+			expect(remoteState).toMatchObject({ isRunning: true, lastOp: "pull" });
+		});
+
+		expect(second).not.toHaveBeenCalled();
+		expect(refusal).toMatchObject({ code: "op_in_progress" });
 	});
 });

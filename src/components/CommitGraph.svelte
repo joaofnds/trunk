@@ -83,6 +83,10 @@ import {
 	renameBranch,
 } from "../lib/ref-actions.js";
 import { buildRefPillData, overflowBadgeWidth } from "../lib/ref-pill-data.js";
+import {
+	createRemoteState,
+	type RemoteState,
+} from "../lib/remote-state.svelte.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
 import { createHorizontalScrollSync } from "../lib/scroll-sync.js";
@@ -125,6 +129,8 @@ interface Props {
 	/** The initial page has settled and its rows or error have rendered. */
 	onready?: () => void;
 	repoPath: string;
+	/** The tab's remote operation, which a remote delete from a menu runs as. */
+	remoteState?: RemoteState;
 	oncommitselect?: (oid: string, mods?: SelectModifiers) => void;
 	oncomparecommits?: (baseOid: string, targetOid: string) => void;
 	oncommitnavigate?: (oid: string) => void;
@@ -181,6 +187,7 @@ interface Props {
 
 let {
 	repoPath,
+	remoteState = createRemoteState(),
 	onready,
 	oncommitselect,
 	oncomparecommits,
@@ -1516,8 +1523,9 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 				await PredefinedMenuItem.new({ item: "Separator" }),
 				await MenuItem.new({
 					text: "Delete",
+					enabled: !remoteState.isRunning,
 					action: () => {
-						void deleteRemoteBranch(repoPath, ref.shortName);
+						void deleteRemoteBranch(repoPath, ref.shortName, remoteState);
 					},
 				}),
 			],

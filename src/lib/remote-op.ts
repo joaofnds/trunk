@@ -1,5 +1,5 @@
 import type { FetchReport } from "./autofetch-status.js";
-import { isTrunkError, safeInvoke } from "./invoke.js";
+import { isTrunkError, safeInvoke, type TrunkError } from "./invoke.js";
 import type { RemoteOpKind, RemoteState } from "./remote-state.svelte.js";
 import { showToast } from "./toast.svelte.js";
 
@@ -13,6 +13,32 @@ const OP_KINDS = {
 
 export type RemoteCommand = keyof typeof OP_KINDS;
 
+const ALREADY_RUNNING: TrunkError = {
+	code: "op_in_progress",
+	message: "A remote operation is already running",
+};
+
+/**
+ * Runs `talk` as the tab's one remote operation of `kind`: the toolbar shows it
+ * running and holds back another until it ends. While one already runs, refuses
+ * without calling `talk`, as the backend would, so the mark stays on the one running.
+ */
+export async function whileRemoteRuns<T>(
+	remoteState: RemoteState,
+	kind: RemoteOpKind,
+	talk: () => Promise<T>,
+): Promise<T> {
+	if (remoteState.isRunning) throw ALREADY_RUNNING;
+	remoteState.isRunning = true;
+	remoteState.error = null;
+	remoteState.lastOp = kind;
+	try {
+		return await talk();
+	} finally {
+		remoteState.isRunning = false;
+	}
+}
+
 export async function runRemoteOp(
 	remoteState: RemoteState,
 	repoPath: string,
@@ -20,24 +46,17 @@ export async function runRemoteOp(
 	successMsg: string,
 	extra: Record<string, unknown> = {},
 ): Promise<void> {
-	remoteState.isRunning = true;
-	remoteState.error = null;
-	remoteState.lastOp = OP_KINDS[cmd];
+	const args = { path: repoPath, ...extra };
 	try {
-		const args = {
-			path: repoPath,
-			...extra,
-		};
-		if (cmd === "git_fetch" || cmd === "git_pull") {
-			const report = await safeInvoke<FetchReport>(cmd, args);
-			remoteState.autofetch = report;
-			if (cmd === "git_fetch") remoteState.fetchCompleted();
-		} else await safeInvoke<void>(cmd, args);
-
-		remoteState.isRunning = false;
+		await whileRemoteRuns(remoteState, OP_KINDS[cmd], async () => {
+			if (cmd === "git_fetch" || cmd === "git_pull") {
+				const report = await safeInvoke<FetchReport>(cmd, args);
+				remoteState.autofetch = report;
+				if (cmd === "git_fetch") remoteState.fetchCompleted();
+			} else await safeInvoke<void>(cmd, args);
+		});
 		showToast(successMsg, "success");
 	} catch (e: unknown) {
-		remoteState.isRunning = false;
 		remoteState.error = isTrunkError(e)
 			? e
 			: { code: "unknown_error", message: String(e) };

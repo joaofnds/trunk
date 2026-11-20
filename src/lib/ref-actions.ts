@@ -2,6 +2,8 @@ import { ask } from "./dialog.js";
 import { forDisplay } from "./display-text.js";
 import { reportErrorToast } from "./error-report.js";
 import { safeInvoke } from "./invoke.js";
+import { whileRemoteRuns } from "./remote-op.js";
+import type { RemoteState } from "./remote-state.svelte.js";
 import { showToast } from "./toast.svelte.js";
 
 // Each resolves whether a ref changed, so the caller knows to read the refs again.
@@ -9,6 +11,7 @@ import { showToast } from "./toast.svelte.js";
 export async function deleteRemoteBranch(
 	repoPath: string,
 	branchName: string,
+	remoteState: RemoteState,
 ): Promise<boolean> {
 	try {
 		const confirmed = await ask(
@@ -17,7 +20,9 @@ export async function deleteRemoteBranch(
 		);
 		if (!confirmed) return false;
 
-		await safeInvoke("delete_remote_branch", { path: repoPath, branchName });
+		await whileRemoteRuns(remoteState, "push", () =>
+			safeInvoke("delete_remote_branch", { path: repoPath, branchName }),
+		);
 	} catch (e) {
 		reportErrorToast(e, "Failed to delete remote branch");
 		return false;

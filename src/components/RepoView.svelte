@@ -2598,6 +2598,7 @@ async function handleRebaseStart(
 				{@attach inertWhile(leftPaneCollapsed)}
 			>
 				<BranchSidebar
+					{remoteState}
 					onrefschange={(refs) => {
 						headBranch = refs.local.find((branch) => branch.is_head)?.name;
 					}}
@@ -2808,6 +2809,7 @@ async function handleRebaseStart(
 				>
 					<CommitGraph
 						{onready}
+						{remoteState}
 						bind:this={commitGraphRef}
 						{repoPath}
 						oncommitselect={handleCommitSelect}

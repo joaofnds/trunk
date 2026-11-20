@@ -2,6 +2,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { safeInvoke } from "./invoke.js";
 import { deleteRemoteBranch, deleteTag, renameBranch } from "./ref-actions.js";
+import { createRemoteState } from "./remote-state.svelte.js";
 import { _resetToasts, toasts } from "./toast.svelte.js";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ ask: vi.fn() }));
@@ -28,7 +29,11 @@ beforeEach(() => {
 
 describe("deleteRemoteBranch", () => {
 	it("deletes the branch once the user agrees and says so", async () => {
-		const changed = await deleteRemoteBranch("/repo", "origin/topic");
+		const changed = await deleteRemoteBranch(
+			"/repo",
+			"origin/topic",
+			createRemoteState(),
+		);
 
 		expect(changed).toBe(true);
 		expect(mockInvoke).toHaveBeenCalledWith("delete_remote_branch", {
@@ -40,10 +45,45 @@ describe("deleteRemoteBranch", () => {
 		]);
 	});
 
+	it("shows the delete as the tab's running push until the remote answers", async () => {
+		const remoteState = createRemoteState();
+		let busyDuring: unknown;
+		mockInvoke.mockImplementation(async () => {
+			busyDuring = { ...remoteState };
+		});
+
+		await deleteRemoteBranch("/repo", "origin/topic", remoteState);
+
+		expect(busyDuring).toMatchObject({ isRunning: true, lastOp: "push" });
+		expect(remoteState.isRunning).toBe(false);
+	});
+
+	it("leaves the branch alone while another remote operation runs", async () => {
+		const remoteState = createRemoteState();
+		remoteState.isRunning = true;
+
+		const changed = await deleteRemoteBranch(
+			"/repo",
+			"origin/topic",
+			remoteState,
+		);
+
+		expect(changed).toBe(false);
+		expect(mockInvoke).not.toHaveBeenCalled();
+		expect(remoteState.isRunning).toBe(true);
+		expect(shown()).toEqual([
+			{ kind: "error", message: "A remote operation is already running" },
+		]);
+	});
+
 	it("leaves the branch when the user declines", async () => {
 		mockAsk.mockResolvedValue(false);
 
-		const changed = await deleteRemoteBranch("/repo", "origin/topic");
+		const changed = await deleteRemoteBranch(
+			"/repo",
+			"origin/topic",
+			createRemoteState(),
+		);
 
 		expect(changed).toBe(false);
 		expect(mockInvoke).not.toHaveBeenCalled();
@@ -51,7 +91,7 @@ describe("deleteRemoteBranch", () => {
 	});
 
 	it("asks with the name flattened, so it cannot add lines to the question", async () => {
-		await deleteRemoteBranch("/repo", "origin/a\u2028b");
+		await deleteRemoteBranch("/repo", "origin/a\u2028b", createRemoteState());
 
 		expect(mockAsk.mock.calls[0]?.[0]).toBe(
 			"Delete remote branch 'origin/a\uFFFDb'? This will remove it from the remote.",
@@ -61,7 +101,11 @@ describe("deleteRemoteBranch", () => {
 	it("reports in an error toast when the question cannot be asked", async () => {
 		mockAsk.mockRejectedValue(new Error("dialog plugin unavailable"));
 
-		const changed = await deleteRemoteBranch("/repo", "origin/topic");
+		const changed = await deleteRemoteBranch(
+			"/repo",
+			"origin/topic",
+			createRemoteState(),
+		);
 
 		expect(changed).toBe(false);
 		expect(mockInvoke).not.toHaveBeenCalled();
@@ -76,7 +120,11 @@ describe("deleteRemoteBranch", () => {
 			message: "fatal: unable to access the remote",
 		});
 
-		const changed = await deleteRemoteBranch("/repo", "origin/topic");
+		const changed = await deleteRemoteBranch(
+			"/repo",
+			"origin/topic",
+			createRemoteState(),
+		);
 
 		expect(changed).toBe(false);
 		expect(shown()).toEqual([
