@@ -1449,6 +1449,8 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		{onretry}
 		{hunkOperationInFlight}
 		ignoreWhitespace={diffPreferences.ignoreWhitespace}
+		onignorewhitespacechange={(ignore) =>
+			diffPreferences.changeIgnoreWhitespace(ignore)}
 		showInvisibles={diffPreferences.showInvisibles}
 		wordWrap={diffPreferences.wordWrap}
 		{selectedHunkKey}

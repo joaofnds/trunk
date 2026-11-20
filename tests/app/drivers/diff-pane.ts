@@ -188,6 +188,21 @@ export class DiffPaneDriver {
 		button.click();
 	}
 
+	/** Takes the way out an empty file offers when ignoring whitespace hid
+	 *  every change it had, which waits for that offer to appear. */
+	async showWhitespaceChanges(): Promise<void> {
+		const button = await waitFor(
+			"the offer to show whitespace changes",
+			() =>
+				[...document.querySelectorAll<HTMLButtonElement>("button")].find(
+					(candidate) =>
+						candidate.textContent?.trim() === "Show whitespace changes",
+				) ?? null,
+		);
+
+		button.click();
+	}
+
 	/** The text of every green (added) rendered block, topmost first. */
 	renderedAdded(): string[] {
 		return textsOf(ADDED_BLOCK);

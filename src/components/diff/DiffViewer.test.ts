@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen } from "@testing-library/svelte";
 import { createRawSnippet, tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -81,6 +81,7 @@ const baseProps = {
 	commitOid: "",
 	repoPath: "/repo",
 	oncommentfullfile: noop,
+	onignorewhitespacechange: noop,
 };
 
 afterEach(() => safeInvoke.mockReset());
@@ -300,6 +301,69 @@ describe("DiffViewer with a file that has no hunks", () => {
 		expect(
 			screen.getByRole("region", { name: "Renamed without changes" }),
 		).toHaveTextContent("This file's content matches README.md.");
+	});
+
+	describe("when whitespace is ignored", () => {
+		it("says ignoring whitespace left nothing to show", () => {
+			render(DiffViewer, {
+				props: {
+					...baseProps,
+					ignoreWhitespace: true,
+					fileDiffs: [selectedReadme],
+				},
+			});
+
+			expect(
+				screen.getByRole("region", { name: "No changes to show" }),
+			).toHaveTextContent("Nothing is left to show with whitespace ignored.");
+		});
+
+		it("stops ignoring whitespace from the empty file", async () => {
+			const asked: boolean[] = [];
+			render(DiffViewer, {
+				props: {
+					...baseProps,
+					ignoreWhitespace: true,
+					fileDiffs: [selectedReadme],
+					onignorewhitespacechange: (ignore: boolean) => asked.push(ignore),
+				},
+			});
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Show whitespace changes" }),
+			);
+
+			expect(asked).toEqual([false]);
+		});
+
+		it("stops ignoring whitespace from a rename it made look unchanged", async () => {
+			const asked: boolean[] = [];
+			render(DiffViewer, {
+				props: {
+					...baseProps,
+					ignoreWhitespace: true,
+					selectedPath: "docs/README.md",
+					fileDiffs: [pureRename],
+					onignorewhitespacechange: (ignore: boolean) => asked.push(ignore),
+				},
+			});
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Show whitespace changes" }),
+			);
+
+			expect(asked).toEqual([false]);
+		});
+	});
+
+	it("offers no whitespace to show while whitespace counts", () => {
+		render(DiffViewer, {
+			props: { ...baseProps, fileDiffs: [selectedReadme] },
+		});
+
+		expect(
+			screen.queryByRole("button", { name: "Show whitespace changes" }),
+		).not.toBeInTheDocument();
 	});
 
 	it("says a rename matches its old content only once whitespace is ignored", () => {

@@ -53,6 +53,7 @@ interface Props {
 	onretry?: () => void;
 	hunkOperationInFlight: boolean;
 	ignoreWhitespace: boolean;
+	onignorewhitespacechange: (ignore: boolean) => void;
 	showInvisibles: boolean;
 	wordWrap: boolean;
 	selectedHunkKey: string | null;
@@ -125,6 +126,7 @@ let {
 	onretry,
 	hunkOperationInFlight,
 	ignoreWhitespace,
+	onignorewhitespacechange,
 	showInvisibles,
 	wordWrap,
 	selectedHunkKey,
@@ -278,6 +280,12 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 }
 </script>
 
+{#snippet showWhitespace()}
+	<Button size="base" onclick={() => onignorewhitespacechange(false)}
+		>Show whitespace changes</Button
+	>
+{/snippet}
+
 <!-- Every view mounted here owns its own scroller, so this wrapper must never be
      one: two scrollers on the same axis give the wheel two places to go, and a
      reader who reaches the end of the inner one drags it up out of the window.
@@ -336,13 +344,20 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			     diff that failed to load. A path has no spaces to wrap at, so the line
 			     may break anywhere rather than run out of the box. -->
 			{#if selectedFileDiff?.status === "Renamed" && selectedFileDiff.old_path}
-				<ReviewEmpty title="Renamed without changes">
+				<ReviewEmpty
+					title="Renamed without changes"
+					actions={ignoreWhitespace ? showWhitespace : undefined}
+				>
 					<p class="wrap-anywhere">
 						This file's content matches
 						{selectedFileDiff.old_path}{ignoreWhitespace
 							? " once whitespace is ignored"
 							: ""}.
 					</p>
+				</ReviewEmpty>
+			{:else if selectedFileDiff && ignoreWhitespace}
+				<ReviewEmpty title="No changes to show" actions={showWhitespace}>
+					<p>Nothing is left to show with whitespace ignored.</p>
 				</ReviewEmpty>
 			{:else}
 				<ReviewEmpty title="No changes to show">
