@@ -24,9 +24,22 @@ impl TestContext {
         commit::amend_commit_inner(
             self.path(),
             &commit::AmendRequest {
-                subject,
-                body,
+                message: commit::AmendMessage::Replace { subject, body },
                 expected_head_oid: expected_head,
+            },
+            self.state_map(),
+        )
+    }
+
+    /// Amend HEAD under the message it already has, as a user who leaves the
+    /// amend's message untouched.
+    pub fn amend_commit_keeping_message(&self) -> Result<(), TrunkError> {
+        let head = self.resolve_ref("HEAD").expect("HEAD did not resolve");
+        commit::amend_commit_inner(
+            self.path(),
+            &commit::AmendRequest {
+                message: commit::AmendMessage::Keep,
+                expected_head_oid: &head,
             },
             self.state_map(),
         )

@@ -204,11 +204,15 @@ async function handleSubmit() {
 	session.committing = true;
 	try {
 		if (session.mode === "amend") {
+			// An unedited buffer leaves the message to git, which keeps it byte for
+			// byte, where the subject and body it was shown as would rewrap it.
+			const message = amendUntouched()
+				? null
+				: { subject: subject.trim(), body: body.trim() || null };
 			const expectedHeadOid = await amendTarget();
 			await safeInvoke("amend_commit", {
 				path: repoPath,
-				subject: subject.trim(),
-				body: body.trim() || null,
+				message,
 				expectedHeadOid,
 			});
 			// Amend never touches the WIP draft: clear only the amend buffer so the

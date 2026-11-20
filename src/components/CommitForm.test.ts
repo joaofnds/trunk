@@ -844,6 +844,57 @@ describe("CommitForm", () => {
 			);
 		});
 
+		describe("for the message it leaves on the commit", () => {
+			it("keeps HEAD's own message when the buffer was not edited", async () => {
+				render(CommitForm, { props: defaultProps });
+				await openAmend();
+
+				await submit();
+
+				await waitFor(() =>
+					expect(amends).toEqual([
+						{ path: "/repo", message: null, expectedHeadOid: "head-1" },
+					]),
+				);
+			});
+
+			it("keeps HEAD's own message when an edit was typed back out", async () => {
+				render(CommitForm, { props: defaultProps });
+				await openAmend();
+				await fireEvent.input(subjectInput(), {
+					target: { value: "Prev subject, reworded" },
+				});
+				await fireEvent.input(subjectInput(), {
+					target: { value: "Prev subject" },
+				});
+
+				await submit();
+
+				await waitFor(() =>
+					expect(amends).toEqual([expect.objectContaining({ message: null })]),
+				);
+			});
+
+			it("sends the body an edit added under HEAD's subject", async () => {
+				render(CommitForm, { props: defaultProps });
+				await openAmend();
+				await fireEvent.input(
+					screen.getByPlaceholderText("Description (optional)"),
+					{ target: { value: "  Why it changed.  " } },
+				);
+
+				await submit();
+
+				await waitFor(() =>
+					expect(amends).toEqual([
+						expect.objectContaining({
+							message: { subject: "Prev subject", body: "Why it changed." },
+						}),
+					]),
+				);
+			});
+		});
+
 		describe("when the form closes and returns", () => {
 			it("shows HEAD's message for an amend left unedited", async () => {
 				const session = new CommitFormSession();
@@ -885,7 +936,7 @@ describe("CommitForm", () => {
 				await waitFor(() =>
 					expect(amends).toEqual([
 						expect.objectContaining({
-							subject: "Edited subject",
+							message: { subject: "Edited subject", body: null },
 							expectedHeadOid: "head-1",
 						}),
 					]),
@@ -938,7 +989,7 @@ describe("CommitForm", () => {
 			await waitFor(() =>
 				expect(amends).toEqual([
 					expect.objectContaining({
-						subject: "Pulled subject",
+						message: null,
 						expectedHeadOid: "head-2",
 					}),
 				]),
@@ -960,7 +1011,7 @@ describe("CommitForm", () => {
 			await waitFor(() =>
 				expect(amends).toEqual([
 					expect.objectContaining({
-						subject: "fixed subject",
+						message: { subject: "fixed subject", body: null },
 						expectedHeadOid: "head-1",
 					}),
 				]),
@@ -1005,7 +1056,7 @@ describe("CommitForm", () => {
 					expect(amends).toEqual([
 						expect.objectContaining({ expectedHeadOid: "head-1" }),
 						expect.objectContaining({
-							subject: "fixed subject",
+							message: { subject: "fixed subject", body: null },
 							expectedHeadOid: "head-2",
 						}),
 					]),

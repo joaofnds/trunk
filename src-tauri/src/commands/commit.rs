@@ -41,17 +41,34 @@ pub fn create_commit_inner(
     state_map.hold_for_git(path, |_| run_git_commit(repo_dir, &["-m", &message]))
 }
 
+/// The message an amend leaves on the commit.
+pub enum AmendMessage<'a> {
+    /// The commit's own message, byte for byte, as `git commit --amend --no-edit`.
+    Keep,
+    Replace {
+        subject: &'a str,
+        body: Option<&'a str>,
+    },
+}
+
 /// An amend as its caller names it. Its strings travel as named fields: passed
 /// positionally, a swapped subject and oid would still compile.
 pub struct AmendRequest<'a> {
-    pub subject: &'a str,
-    pub body: Option<&'a str>,
+    pub message: AmendMessage<'a>,
     /// The commit the user chose to amend, HEAD when they did.
     pub expected_head_oid: &'a str,
 }
 
+/// A replacement message as the amend form sends it.
+#[derive(serde::Deserialize)]
+pub struct NewMessage {
+    pub subject: String,
+    pub body: Option<String>,
+}
+
 /// Replace HEAD's commit through `git commit --amend`, with the current index
-/// and a new message. The original author stays, as in the terminal.
+/// and the message the request names. The original author stays, as in the
+/// terminal.
 ///
 /// # Errors
 ///
@@ -64,7 +81,10 @@ pub fn amend_commit_inner(
     request: &AmendRequest,
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    let message = build_message(request.subject, request.body);
+    let message = match request.message {
+        AmendMessage::Keep => None,
+        AmendMessage::Replace { subject, body } => Some(build_message(subject, body)),
+    };
     let repo_dir = state_map.path_for(path)?;
     state_map.hold_for_git(path, |repo| {
         // An amend queued behind a pull or another commit would otherwise
@@ -75,7 +95,10 @@ pub fn amend_commit_inner(
                 "HEAD is no longer the commit this amend was opened on, so nothing was amended",
             ));
         }
-        run_git_commit(repo_dir, &["--amend", "-m", &message])
+        message.as_deref().map_or_else(
+            || run_git_commit(repo_dir, &["--amend", "--no-edit"]),
+            |message| run_git_commit(repo_dir, &["--amend", "-m", message]),
+        )
     })
 }
 
@@ -204,8 +227,7 @@ pub async fn create_commit<R: Runtime>(
 pub async fn amend_commit<R: Runtime>(
     activity: crate::activity::Activity,
     path: String,
-    subject: String,
-    body: Option<String>,
+    message: Option<NewMessage>,
     expected_head_oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
@@ -220,8 +242,12 @@ pub async fn amend_commit<R: Runtime>(
             amend_commit_inner(
                 &path_clone,
                 &AmendRequest {
-                    subject: &subject,
-                    body: body.as_deref(),
+                    message: message.as_ref().map_or(AmendMessage::Keep, |new| {
+                        AmendMessage::Replace {
+                            subject: &new.subject,
+                            body: new.body.as_deref(),
+                        }
+                    }),
                     expected_head_oid: &expected_head_oid,
                 },
                 &state_map,

@@ -286,6 +286,32 @@ fn amend_commit_updates_message() {
 }
 
 #[test]
+fn amend_commit_keeping_the_message_leaves_it_as_written() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    stage_new_file(&ctx, "first.txt");
+    ctx.create_commit("line one\nline two", Some("  indented body\n"))
+        .unwrap();
+    let written = head_message(&ctx);
+    stage_new_file(&ctx, "late.txt");
+
+    ctx.amend_commit_keeping_message().unwrap();
+
+    assert_eq!(head_message(&ctx), written);
+    assert!(
+        ctx.repo()
+            .head()
+            .unwrap()
+            .peel_to_tree()
+            .unwrap()
+            .get_name("late.txt")
+            .is_some()
+    );
+}
+
+#[test]
 fn amend_commit_refuses_when_head_is_not_the_commit_chosen() {
     let ctx = TestContext::builder()
         .with_file("README.md", "hello")

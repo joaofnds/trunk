@@ -302,6 +302,28 @@ export class StagingDriver {
 		await pressButton(ABORT_REBASE);
 	}
 
+	/** Amends HEAD with what is staged, leaving the message the form shows for
+	 *  it as it is. */
+	async amendKeepingMessage(): Promise<void> {
+		const tab = await waitFor(
+			"the Amend tab",
+			() =>
+				[...document.querySelectorAll<HTMLElement>('[role="tab"]')].find(
+					(candidate) => candidate.textContent?.trim() === "Amend",
+				) ?? null,
+		);
+		tab.click();
+		await waitFor("HEAD's message in the subject field", () =>
+			document.querySelector<HTMLInputElement>(SUBJECT)?.value ? true : null,
+		);
+
+		const submit = await waitFor("an enabled amend button", () => {
+			const button = document.querySelector<HTMLButtonElement>(SUBMIT);
+			return button && !button.disabled ? button : null;
+		});
+		submit.click();
+	}
+
 	async commit(subject: string): Promise<void> {
 		const field = await waitFor("the commit subject field", () =>
 			document.querySelector<HTMLInputElement>(SUBJECT),
